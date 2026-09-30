@@ -1,0 +1,158 @@
+{
+  "generated_at_utc": "2026-09-30T13:21:32.289Z",
+  "command": "npm run check (typecheck followed by npm run closure)",
+  "runtime": {
+    "node": "v24.15.0",
+    "os_type": "Windows_NT",
+    "os_release": "10.0.19045",
+    "platform": "win32",
+    "architecture": "x64"
+  },
+  "pi_package": {
+    "name": "@earendil-works/pi-coding-agent",
+    "installed_version": "0.87.1",
+    "locked_version": "0.87.1",
+    "package_lock_sha256": "87b23dd8763f7417af5958e47482767250402a78aef1a025508a939119bb1d17"
+  },
+  "profile_sha256": "334b2376b7e34cc25a2cfbcba4009c50aab74cb8b3d49313c93610f853c49c65",
+  "negative_check_classifications": {
+    "SDK-session": "A real createAgentSession was constructed or inspected; each case's evidence states which session behavior was checked.",
+    "comparator-fixture": "No altered SDK session was inspected; a standalone admission predicate or loader guard received synthetic input."
+  },
+  "tools": [
+    {
+      "name": "read",
+      "source": "sdk",
+      "source_path": "<sdk:read>",
+      "schema_sha256": "5fad0fa7493528bc4284f5c447781325f67099f5fc018206efdc461d33962e85"
+    },
+    {
+      "name": "bash",
+      "source": "sdk",
+      "source_path": "<sdk:bash>",
+      "schema_sha256": "854beb37435894c8f97dcad8d4610c0ea1458b57a6a8d4bb5b0ea435cdaa5893"
+    },
+    {
+      "name": "edit",
+      "source": "sdk",
+      "source_path": "<sdk:edit>",
+      "schema_sha256": "394741d0cb4c9a6fe96d3275897405c8b13a1c7ff712426a942c10d484993fa1"
+    },
+    {
+      "name": "write",
+      "source": "sdk",
+      "source_path": "<sdk:write>",
+      "schema_sha256": "7e51d1de0f2ccb5fe8de82d51ee3a1d9065e3c4f7c53497ce12f283d6f2f5aa0"
+    }
+  ],
+  "schema_manifest_sha256": "c13fcb4fb8f6df9fe70e5b8fd047646c97607c9a9831bd8ded9d9b05a205d6f6",
+  "active_tool_names": [
+    "bash",
+    "edit",
+    "read",
+    "write"
+  ],
+  "resources": "empty; additions and reload throw",
+  "proxy_dispatches": 4,
+  "unavailable_native_tool_activation": {
+    "powershell": "rejected",
+    "grep": "rejected",
+    "find": "rejected",
+    "ls": "rejected"
+  },
+  "negative_checks": [
+    {
+      "id": "injected-extension-resource-rejected",
+      "classification": "comparator-fixture",
+      "rejected": true,
+      "evidence": "Resource admission predicate called directly with a poisoned loader; no Pi session created."
+    },
+    {
+      "id": "injected-skill-resource-rejected",
+      "classification": "comparator-fixture",
+      "rejected": true,
+      "evidence": "Resource admission predicate called directly with a poisoned loader; no Pi session created."
+    },
+    {
+      "id": "injected-context-resource-rejected",
+      "classification": "comparator-fixture",
+      "rejected": true,
+      "evidence": "Resource admission predicate called directly with a poisoned loader; no Pi session created."
+    },
+    {
+      "id": "sdk-session-injected-context-resource-rejected",
+      "classification": "SDK-session",
+      "rejected": true,
+      "evidence": "A real createAgentSession was constructed with a loader returning an injected context file; the external resource admission predicate rejected that loader. This does not prove Pi consumed the file."
+    },
+    {
+      "id": "undeclared-tool-rejected",
+      "classification": "SDK-session",
+      "rejected": true,
+      "evidence": "Real Pi session inventory included an injected inert SDK tool named ls and failed the exact inventory check."
+    },
+    {
+      "id": "native-same-name-fallback-rejected",
+      "classification": "SDK-session",
+      "rejected": true,
+      "evidence": "Real Pi session omitted the bash proxy and exposed the native same-named built-in; source/inventory admission rejected it."
+    },
+    {
+      "id": "schema-drift-rejected",
+      "classification": "comparator-fixture",
+      "rejected": true,
+      "evidence": "Real session schema was compared against an altered expected digest; this changes the comparator fixture, not the SDK session."
+    },
+    {
+      "id": "native-powershell-unavailable",
+      "classification": "SDK-session",
+      "rejected": true,
+      "evidence": "Real Pi session did not register the native tool and refused its activation request."
+    },
+    {
+      "id": "native-grep-unavailable",
+      "classification": "SDK-session",
+      "rejected": true,
+      "evidence": "Real Pi session did not register the native tool and refused its activation request."
+    },
+    {
+      "id": "native-find-unavailable",
+      "classification": "SDK-session",
+      "rejected": true,
+      "evidence": "Real Pi session did not register the native tool and refused its activation request."
+    },
+    {
+      "id": "native-ls-unavailable",
+      "classification": "SDK-session",
+      "rejected": true,
+      "evidence": "Real Pi session did not register the native tool and refused its activation request."
+    },
+    {
+      "id": "resource-addition-rejected",
+      "classification": "comparator-fixture",
+      "rejected": true,
+      "evidence": "LockedResourceLoader.extendResources was called directly and threw; no resource discovery cycle was run."
+    },
+    {
+      "id": "loader-reload-rejected",
+      "classification": "comparator-fixture",
+      "rejected": true,
+      "evidence": "LockedResourceLoader.reload was called directly and threw; no replacement loader was installed."
+    },
+    {
+      "id": "session-reload-rejected",
+      "classification": "SDK-session",
+      "rejected": true,
+      "evidence": "reload was requested on the real Pi session using the locked loader and rejected by the loader guard."
+    }
+  ],
+  "provider_stream_attempts": 0,
+  "selected_provider_model": null,
+  "pi_model_placeholder": "unknown/unknown",
+  "credential_store": "empty in-memory store; no provider key loaded from disk",
+  "session_reload": "rejected by locked resource loader",
+  "provider_broker_manifest_enforcement": "not part of adapter spike",
+  "surface_closed": "not established; broker enforcement is still required",
+  "probe_mode": "profile conformance",
+  "report_artifact": "artifacts/pi-closure-report.json"
+}

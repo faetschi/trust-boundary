@@ -1,0 +1,12 @@
+{
+  "pi_package": "@earendil-works/pi-coding-agent",
+  "pi_version": "0.87.1",
+  "schema_format": "Pi TypeBox parameters serialized as sorted-key JSON then SHA-256",
+  "tools": ["read", "write", "edit", "bash"],
+  "schema_sha256": {
+    "read": "5fad0fa7493528bc4284f5c447781325f67099f5fc018206efdc461d33962e85",
+    "write": "7e51d1de0f2ccb5fe8de82d51ee3a1d9065e3c4f7c53497ce12f283d6f2f5aa0",
+    "edit": "394741d0cb4c9a6fe96d3275897405c8b13a1c7ff712426a942c10d484993fa1",
+    "bash": "854beb37435894c8f97dcad8d4610c0ea1458b57a6a8d4bb5b0ea435cdaa5893"
+  }
+}

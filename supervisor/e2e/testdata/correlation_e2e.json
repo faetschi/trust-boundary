@@ -1,0 +1,908 @@
+{
+  "fixture_id": "synthetic-correlation-v1",
+  "evidence_class": "synthetic_protocol_fixture",
+  "real_provider_exchange": false,
+  "claim_bearing": false,
+  "scenarios": [
+    {
+      "name": "four-call-two-transition-shape",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-1"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-1"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-00000001",
+            "sequence": 1,
+            "generation": "g0"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-1"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-1"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-00000001",
+            "sequence": 1,
+            "generation": "g0"
+          },
+          "want_accepted": true,
+          "want_reason": "matched",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-2"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-2"
+            },
+            "tool_name": "edit",
+            "canonical_arguments_digest": "fixture-digest-00000002",
+            "sequence": 2,
+            "generation": "g1"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 2
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-2"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-2"
+            },
+            "tool_name": "edit",
+            "canonical_arguments_digest": "fixture-digest-00000002",
+            "sequence": 2,
+            "generation": "g1"
+          },
+          "want_accepted": true,
+          "want_reason": "matched",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 2
+        },
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-3"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-3"
+            },
+            "tool_name": "bash",
+            "canonical_arguments_digest": "fixture-digest-00000003",
+            "sequence": 3,
+            "generation": "g2"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 3
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-3"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-3"
+            },
+            "tool_name": "bash",
+            "canonical_arguments_digest": "fixture-digest-00000003",
+            "sequence": 3,
+            "generation": "g2"
+          },
+          "want_accepted": true,
+          "want_reason": "matched",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 3
+        },
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-4"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-4"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-00000004",
+            "sequence": 4,
+            "generation": "g2"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 4
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-4"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-4"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-00000004",
+            "sequence": 4,
+            "generation": "g2"
+          },
+          "want_accepted": true,
+          "want_reason": "matched",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 4
+        }
+      ]
+    },
+    {
+      "name": "digest-mismatch-closes-stream",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-5"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-5"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-00000005",
+            "sequence": 5,
+            "generation": "g2"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-5"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-5"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-ffffffff",
+            "sequence": 5,
+            "generation": "g2"
+          },
+          "want_accepted": false,
+          "want_reason": "argument_digest_mismatch",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-5"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-5"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-00000005",
+            "sequence": 5,
+            "generation": "g2"
+          },
+          "want_accepted": false,
+          "want_reason": "session_closed",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 1
+        }
+      ]
+    },
+    {
+      "name": "replay-after-one-time-consumption",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-6"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-6"
+            },
+            "tool_name": "write",
+            "canonical_arguments_digest": "fixture-digest-00000006",
+            "sequence": 6,
+            "generation": "g2"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-6"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-6"
+            },
+            "tool_name": "write",
+            "canonical_arguments_digest": "fixture-digest-00000006",
+            "sequence": 6,
+            "generation": "g2"
+          },
+          "want_accepted": true,
+          "want_reason": "matched",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-6"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-6"
+            },
+            "tool_name": "write",
+            "canonical_arguments_digest": "fixture-digest-00000006",
+            "sequence": 6,
+            "generation": "g2"
+          },
+          "want_accepted": false,
+          "want_reason": "replay",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 1
+        }
+      ]
+    },
+    {
+      "name": "unregistered-tool-denials",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-7"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-7"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-00000007",
+            "sequence": 7,
+            "generation": "g2"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-7"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-7"
+            },
+            "tool_name": "apply_patch",
+            "canonical_arguments_digest": "fixture-digest-00000007",
+            "sequence": 7,
+            "generation": "g2"
+          },
+          "want_accepted": false,
+          "want_reason": "unregistered_tool",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 1
+        }
+      ]
+    },
+    {
+      "name": "broker-unregistered-tool-denial",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-8"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-8"
+            },
+            "tool_name": "find",
+            "canonical_arguments_digest": "fixture-digest-00000008",
+            "sequence": 8,
+            "generation": "g2"
+          },
+          "want_accepted": false,
+          "want_reason": "unregistered_tool",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 0
+        }
+      ]
+    },
+    {
+      "name": "out-of-order-proposal-denial",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-9"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-9a"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-00000009",
+            "sequence": 9,
+            "generation": "g2"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-9"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-9b"
+            },
+            "tool_name": "edit",
+            "canonical_arguments_digest": "fixture-digest-00000010",
+            "sequence": 10,
+            "generation": "g3"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 2
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-9"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-9b"
+            },
+            "tool_name": "edit",
+            "canonical_arguments_digest": "fixture-digest-00000010",
+            "sequence": 10,
+            "generation": "g3"
+          },
+          "want_accepted": false,
+          "want_reason": "out_of_order",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 2
+        }
+      ]
+    },
+    {
+      "name": "generation-mismatch-denial",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-11"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-11"
+            },
+            "tool_name": "bash",
+            "canonical_arguments_digest": "fixture-digest-00000011",
+            "sequence": 11,
+            "generation": "g3"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-11"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-11"
+            },
+            "tool_name": "bash",
+            "canonical_arguments_digest": "fixture-digest-00000011",
+            "sequence": 11,
+            "generation": "g2"
+          },
+          "want_accepted": false,
+          "want_reason": "generation_mismatch",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 1
+        }
+      ]
+    },
+    {
+      "name": "response-id-mismatch",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-12"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-12"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-response-id",
+            "sequence": 12,
+            "generation": "g3"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-12-substituted"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-12"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-response-id",
+            "sequence": 12,
+            "generation": "g3"
+          },
+          "want_accepted": false,
+          "want_reason": "response_id_mismatch",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 1
+        }
+      ]
+    },
+    {
+      "name": "unique-call-issuer-mismatch",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-13"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-13"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-call-issuer",
+            "sequence": 13,
+            "generation": "g3"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-13"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/alternate-tool-call/v1",
+              "opaque": "call-13"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-call-issuer",
+            "sequence": 13,
+            "generation": "g3"
+          },
+          "want_accepted": false,
+          "want_reason": "call_id_mismatch",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 1
+        }
+      ]
+    },
+    {
+      "name": "ambiguous-call-issuer-mismatch",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-14"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "shared-opaque-14"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-ambiguous-a",
+            "sequence": 14,
+            "generation": "g3"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-14"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/second-tool-call/v1",
+              "opaque": "shared-opaque-14"
+            },
+            "tool_name": "edit",
+            "canonical_arguments_digest": "fixture-digest-ambiguous-b",
+            "sequence": 15,
+            "generation": "g4"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 2
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-14"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/third-tool-call/v1",
+              "opaque": "shared-opaque-14"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-ambiguous-a",
+            "sequence": 14,
+            "generation": "g3"
+          },
+          "want_accepted": false,
+          "want_reason": "call_id_mismatch",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 0
+        }
+      ]
+    },
+    {
+      "name": "registered-tool-name-mismatch",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-16"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-16"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-name",
+            "sequence": 16,
+            "generation": "g4"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-16"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-16"
+            },
+            "tool_name": "edit",
+            "canonical_arguments_digest": "fixture-digest-name",
+            "sequence": 16,
+            "generation": "g4"
+          },
+          "want_accepted": false,
+          "want_reason": "tool_name_mismatch",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 1
+        }
+      ]
+    },
+    {
+      "name": "sequence-mismatch",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-17"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-17"
+            },
+            "tool_name": "bash",
+            "canonical_arguments_digest": "fixture-digest-sequence",
+            "sequence": 17,
+            "generation": "g4"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-17"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-17"
+            },
+            "tool_name": "bash",
+            "canonical_arguments_digest": "fixture-digest-sequence",
+            "sequence": 18,
+            "generation": "g4"
+          },
+          "want_accepted": false,
+          "want_reason": "sequence_mismatch",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 1
+        }
+      ]
+    },
+    {
+      "name": "malformed-capture-denial",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-18"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-18"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "",
+            "sequence": 0,
+            "generation": "g4"
+          },
+          "want_accepted": false,
+          "want_reason": "malformed_capture",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 0
+        }
+      ]
+    },
+    {
+      "name": "malformed-proposal-denial",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-19"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-19"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-malformed-proposal",
+            "sequence": 19,
+            "generation": "g4"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-19"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-19"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "",
+            "sequence": 19,
+            "generation": "g4"
+          },
+          "want_accepted": false,
+          "want_reason": "malformed_proposal",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 1
+        }
+      ]
+    },
+    {
+      "name": "duplicate-capture-denial",
+      "steps": [
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-20"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-20"
+            },
+            "tool_name": "write",
+            "canonical_arguments_digest": "fixture-digest-duplicate",
+            "sequence": 20,
+            "generation": "g4"
+          },
+          "want_accepted": true,
+          "want_reason": "call_captured",
+          "want_stream_closed": false,
+          "want_capture_ordinal": 1
+        },
+        {
+          "action": "capture",
+          "capture": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-20"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "call-20"
+            },
+            "tool_name": "write",
+            "canonical_arguments_digest": "fixture-digest-duplicate",
+            "sequence": 20,
+            "generation": "g4"
+          },
+          "want_accepted": false,
+          "want_reason": "duplicate_call_id",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 1
+        }
+      ]
+    },
+    {
+      "name": "unknown-call-denial",
+      "steps": [
+        {
+          "action": "proposal",
+          "proposal": {
+            "response_id": {
+              "issuer": "fixture/provider-response/v1",
+              "opaque": "response-21"
+            },
+            "tool_call_id": {
+              "issuer": "fixture/provider-tool-call/v1",
+              "opaque": "unknown-21"
+            },
+            "tool_name": "read",
+            "canonical_arguments_digest": "fixture-digest-unknown",
+            "sequence": 21,
+            "generation": "g4"
+          },
+          "want_accepted": false,
+          "want_reason": "unknown_call",
+          "want_stream_closed": true,
+          "want_capture_ordinal": 0
+        }
+      ]
+    }
+  ],
+  "digest_values_are_synthetic": true
+}
