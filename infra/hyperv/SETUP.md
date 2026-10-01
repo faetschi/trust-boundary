@@ -118,6 +118,13 @@ The repair script applies the ID-based service policy, adds the verified ISO and
    Checkpoint-VM -Name $vmName -SnapshotName 'ubuntu-24.04.5-golden-baseline'
    ~~~
 
+   Treat this as a host-specific compatibility gate. Microsoft documents production checkpoints as using VSS or Linux file-system freeze, and documents the VSS integration service / `hv_vss_daemon` for live guest backups. Its documentation does not establish whether a cleanly powered-off Linux VM can create a `ProductionOnly` checkpoint while VSS is disabled ([checkpoint behavior](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/checkpoints), [integration services](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/integration-services), [Linux VSS daemon](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/manage/manage-hyper-v-integration-services)). Accept the baseline only if the command above succeeds on this host after all prior gates pass. If it fails, stop and retain the error for diagnosis; do not fall back to a Standard checkpoint or change the VSS service policy. After success, use these read-only checks to confirm the VM remains Off and exactly one checkpoint exists, then run the Verify command in step 9:
+
+   ~~~powershell
+   Get-VM -Name $vmName | Select-Object Name, State
+   Get-VMSnapshot -VMName $vmName | Select-Object Name, SnapshotType
+   ~~~
+
 9. Run read-only verification again after creating the checkpoint. This check counts the checkpoint files against the 100 GiB budget and confirms that no more than one checkpoint exists:
 
    ~~~powershell
