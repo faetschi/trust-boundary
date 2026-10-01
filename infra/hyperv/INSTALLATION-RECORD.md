@@ -22,6 +22,7 @@
 - `eth0` is UP with DHCP address `172.20.247.201/20` and link-local IPv6 address `fe80::215:5dff:fe0c:4000`. This is the guest's current interface state, not verification of the host switch or offline state.
 - The operator ran `sudo dpkg-reconfigure keyboard-configuration`, selecting **Generic 105-key PC** and German origin, then ran `sudo setupcon`; the operator reports German keyboard mappings.
 - The operator confirms the previously disclosed weak password was changed. No credential value is recorded.
+- The operator reports the SSH Ed25519 host-key fingerprint `SHA256:22ZTQXN5L54AhovENJ0Eo7ZViomYVv1HRWfbG3izY5g` (256 bits; public-key comment `root@tboundubuntu2404`). This fingerprint does not establish that the SSH service is active.
 
 Credentials and secret values are intentionally omitted.
 
@@ -29,13 +30,13 @@ Credentials and secret values are intentionally omitted.
 
 The operator selected **Reboot Now**. During reboot, the installer showed a `cdrom.mount` failure while asking to remove the installation medium and press Enter. The operator pressed Enter and reports reaching a login session as `tboundadmin`. This does not establish whether the ISO was ejected from the VM.
 
-Host-side output reported one attached virtual disk at `F:\TBoundVMs\TBound-Ubuntu-2404\Virtual Hard Disks\TBound-Ubuntu-2404.vhdx`, with a blank `DiskNumber`. The read-only **Created** verification passed before installation; that earlier result is not a post-installation baseline verification. The host's non-admin context was denied VM access; use the operator's admin context for later Hyper-V controls.
+Host-side output reported one attached virtual disk at `F:\TBoundVMs\TBound-Ubuntu-2404\Virtual Hard Disks\TBound-Ubuntu-2404.vhdx`, with a blank `DiskNumber`. The read-only **Created** verification passed before installation; that earlier result is not a post-installation baseline verification. The host's non-admin context was denied VM access; use the operator's admin context for later Hyper-V controls. On 2026-10-01, the operator confirmed the elevated host query `Get-VM -Name 'TBound-Ubuntu-2404'` reported state `Off`.
 
 ## Pending provisioning and verification
 
-- Extend the existing guest root LV into the reported free VG extents and verify filesystem/LV/VG sizes before source transfer.
-- Confirm OpenSSH server status. If absent, install and enable it while the provisioning network is connected; record the guest IP and compare the Ed25519 host-key fingerprint locally before SCP. Do not record passwords or private keys.
-- Quiesce the guest and confirm Hyper-V reports the VM **Off** before running the source-bundle exporter. Source export has not run since migration. The exporter must pass its clean-worktree, source-review, and F: storage-budget gates.
+- Guest LV-extension and post-change filesystem/LV/VG outputs were not supplied. No successful root resize is claimed; verify those sizes during provisioning before SCP transfer.
+- OpenSSH service status output (`systemctl is-active ssh`) was not supplied, so service-active state remains unverified. Before SCP, verify the service and guest IP, then compare the Ed25519 host-key fingerprint locally. Do not record passwords or private keys.
+- The operator confirmed the VM is **Off** using elevated Hyper-V controls. Source export has not run since migration; retain the quiesced state and stop other file/checkpoint writers during export. The exporter must pass its clean-worktree, source-review, and F: storage-budget gates.
 - Confirm VMConnect Basic Session or Enhanced Session unavailable and inspect clipboard/device redirection state.
 - With the VM off, disconnect the network adapter, eject the ISO, set the installed disk first in boot order, and run the documented final read-only **Verify** checks. No secure baseline is claimed; no checkpoint creation is reported.
 - No API or application/runtime tests are reported as passed.
