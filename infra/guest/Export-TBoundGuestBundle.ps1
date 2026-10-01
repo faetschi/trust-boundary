@@ -254,7 +254,7 @@ try {
     $expectedArchiveDirectories = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
     [void]$expectedArchiveDirectories.Add('tbound')
     foreach ($line in $inventory) {
-        $match = [regex]::Match([string]$line, '^(?<mode>[0-9]{6}) blob [0-9a-f]{40,64} (?<size>[0-9]+)\t(?<path>.+)$')
+        $match = [regex]::Match([string]$line, '^(?<mode>[0-9]{6}) blob [0-9a-f]{40,64} +(?<size>[0-9]+)\t(?<path>.+)$')
         if (-not $match.Success) {
             throw "Unexpected Git tree entry; refusing an ambiguous source inventory: $line"
         }
