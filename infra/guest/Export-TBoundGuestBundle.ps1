@@ -232,7 +232,7 @@ try {
     if ($trackedAttributeFiles.Count -ne 1 -or $trackedAttributeFiles[0] -cne '.gitattributes') {
         throw 'Expected exactly one committed attribute file at .gitattributes; other attribute files are not allowed.'
     }
-    $attributeEntry = @(Invoke-Git @('ls-tree', '-r', '--full-tree', $commit, '--', '.gitattributes'))
+    $attributeEntry = @(Invoke-Git @('ls-tree', '-r', '-l', '--full-tree', $commit, '--', '.gitattributes'))
     $attributeMatch = [regex]::Match([string]($attributeEntry | Select-Object -First 1), '^100644 blob (?<oid>[0-9a-f]{40,64})\s+[0-9]+\t\.gitattributes$')
     if ($attributeEntry.Count -ne 1 -or -not $attributeMatch.Success -or $attributeMatch.Groups['oid'].Value -cne $ExpectedTBoundAttributesBlob) {
         throw '.gitattributes does not match the reviewed text/eol=lf rules; archive-affecting attributes are not allowed.'
