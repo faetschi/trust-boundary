@@ -37,14 +37,26 @@ npm ci --ignore-scripts --no-audit --no-fund
 
 ## Offline code verification
 
-After booting the guest from the completed baseline state with every adapter disconnected, run the runner as the non-root trial account. It requires a cached sudo authorization for one exact audit ownership test; enter `sudo -v` locally after disconnecting, then run:
+For a direct guest-console run, boot the guest from the completed baseline state with every adapter disconnected. Run the verifier as the non-root trial account; enter `sudo -v` locally after disconnecting, then run:
 
 ```sh
 sudo -v
 python3 "$TBOUND_TREE/infra/guest/verify-offline.py" --host-adapter-disconnected
 ```
 
-Before booting, verify in the hypervisor that the VM's virtual NIC is disconnected. `--host-adapter-disconnected` records that operator confirmation. The runner also checks that every guest non-loopback interface has a readable carrier value of `0` and that neither IP family has a default route. Missing, unreadable, unknown, or connected link state fails the gate. Its JSON records the interface names, carrier values, and default-route booleans. These are offline-run prerequisites; they do not prove runtime containment.
+For the direct console path, verify in the hypervisor before booting that the VM's virtual NIC is disconnected. `--host-adapter-disconnected` records that operator confirmation. The runner also checks that every guest non-loopback interface has a readable carrier value of `0` and that neither IP family has a default route. Missing, unreadable, unknown, or connected link state fails the gate. Its JSON records the interface names, carrier values, and default-route booleans. These are offline-run prerequisites; they do not prove runtime containment.
+
+### Queue a run from SSH before disconnecting
+
+When operating over SSH, stage this directory and the source tree while the VM is connected. Start an attached tmux pane through an SSH PTY, run `sudo -v` inside that pane, then queue the run:
+
+```sh
+tmux new-session -A -s tbound-offline
+sudo -v
+bash "$TBOUND_TREE/infra/guest/run-offline-queued.sh" --host-adapter-disconnected
+```
+
+While the launcher waits, disconnect every Hyper-V network adapter from the host with the approved PowerShell procedure. It waits at most 10 minutes for every non-loopback guest interface to report carrier `0` and for both IP route tables to have no default route, then runs the reviewed verifier as the trial user. The verifier repeats those checks. The flag is an explicit operator attestation; the launcher cannot inspect Hyper-V and does not disconnect or reconnect adapters. Keep the adapter disconnected through the full run. The launcher preserves each run in a new mode-`0700` directory under `$HOME`; `status`, `completed`, `runner.exit-code`, `verification.json`, and `verification.stderr` record its result. A timeout or unreadable network state fails closed. tmux must be available in the guest before the baseline is made, and sudo authorization must be cached from the same tmux pane.
 
 The runner checks the installed Go and Node.js versions, npm, and the actual GCC driver file's `dpkg-query -S` owner. On Noble amd64 it requires the held `gcc-13-x86-64-linux-gnu` backend package, reports that package's version, the resolved driver path, and its binary hash; it also reports the installed package/version manifest for context. It verifies the Go module cache offline; hashes the staged supervisor and adapter source files (excluding generated `artifacts/`, original `node_modules`, and cache directories); hashes the fresh staged dependency tree plus `go.mod`, `go.sum`, `package.json`, `package-lock.json`, `profile.json`, the runner, and setup script; and reports the resolved Go module graph hash and count. It runs `go test -json -count=1 ./...` and `go test -race -json -count=1 ./...` as the trial user with `GOPROXY=off`, `GOSUMDB=off`, and `GOTOOLCHAIN=local`. GCC and cgo are required for the race gate; missing race support is a failure.
 
