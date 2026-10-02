@@ -32,12 +32,22 @@ The operator selected **Reboot Now**. During reboot, the installer showed a `cdr
 
 Host-side output reported one attached virtual disk at `F:\TBoundVMs\TBound-Ubuntu-2404\Virtual Hard Disks\TBound-Ubuntu-2404.vhdx`, with a blank `DiskNumber`. The read-only **Created** verification passed before installation; that earlier result is not a post-installation baseline verification. The host's non-admin context was denied VM access; use the operator's admin context for later Hyper-V controls. On 2026-10-01, the operator confirmed the elevated host query `Get-VM -Name 'TBound-Ubuntu-2404'` reported state `Off`.
 
+## Provisioning evidence — 2026-10-02
+
+- After the DHCP change, the operator connected to the guest over SSH at `172.19.193.190`.
+- The transferred source archive and manifest for project commit `9a73af56e8a81cf20c1f3cfc960a891c4b545152` passed guest-side SHA-256 verification. Safe extraction completed at `/home/tboundadmin/tbound-handoff-9a73af56e8a8/tbound`.
+- The original installer hash matched, but its APT guard produced a false positive and stopped at preflight. The unchanged full-tree installer from the `9a73af56...` source was not rerun. A separate guest-side transfer directory at `/home/tboundadmin/tbound-apt-fix-68de01bfef86`, from fix commit `68de01bfef8628333f47a1760d44f7bca9412bf0`, supplied the corrected installer (SHA-256 `478484545bb73a531f20732de784b5a3edf2c816bd0b5ed3519e8546a16d5443`) and regression test artifact (SHA-256 `99e59bbc23c995bbc396e8133980ce99eb94042c4d65d483bebdbeb732dd301d`); both hashes were verified in the guest, and the seven regression tests passed.
+- The guest provisioning command is reported complete at `2026-10-02T15:22:52Z`. Online Go/npm cache-preparation instructions were provided; execution and success remain unverified.
+- Reported guest runtime versions: Node.js `24.21.0`, Go `1.27.1 linux/amd64`, Podman `4.9.3`, crun `1.14.1`, and GCC `13.3.0`. Provisioning log: `/var/log/tbound-guest-provision.log`.
+- `getent` did not support the subuid/subgid queries; this was non-fatal. Direct reads verified `/etc/subuid` and `/etc/subgid` each contain `tboundadmin:100000:65536`.
+- The root filesystem was reported as `37G` total, `3.5G` used, and `32G` available.
+
 ## Pending provisioning and verification
 
-- After root extension, a later operator screenshot and LVM reports showed the expanded root and VG values described above. These are operator-reported observations; guest-side SHA-256 verification, archive extraction, remaining provisioning, and offline tests are still pending.
-- The SSH service was observed inactive during temporary provisioning. Port `22` responded and its Ed25519 host key matched the fingerprint above. Socket-unit status is not inferred; SSH behavior after final network isolation remains unverified.
-- Codex completed the source export successfully from pinned commit `9a73af56e8a81cf20c1f3cfc960a891c4b545152`. The operator reported SCP progress reaching 100% for a 550 KB tar and a 348-byte manifest copied to `/home/tboundadmin/tbound-incoming`; the manifest identifies that commit. This documentation update is later than the source commit and does not change the transferred bundle. Guest-side SHA-256 verification and extraction are unverified.
+- Execute and verify the provided online Go/npm cache-preparation instructions.
+- Complete clean logout/reboot and rootless-operation checks.
+- With the VM off, verify network isolation, ISO ejection, installed-disk-first boot order, and the documented final read-only **Verify** checks, including checkpoint state. These host-side checks remain pending; no checkpoint creation is reported.
+- Run offline capability checks and Go/Pi-adapter tests; containment gates and the actual TODO LLM demo also remain pending.
+- Confirm VMConnect Basic Session or Enhanced Session unavailable and inspect clipboard/device-redirection state.
+- No secure baseline or WP1 completion is established by this record.
 - Any future source export requires a clean worktree, reviewed source, no VM or file/checkpoint writers during export, and the documented `F:` storage-budget gates.
-- Confirm VMConnect Basic Session or Enhanced Session unavailable and inspect clipboard/device redirection state.
-- With the VM off, disconnect the network adapter, eject the ISO, set the installed disk first in boot order, and run the documented final read-only **Verify** checks. No secure baseline is claimed; no checkpoint creation is reported.
-- No API or application/runtime tests are reported as passed.
