@@ -65,6 +65,17 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def parse_installed_package_manifest(manifest: str) -> list[dict[str, str]]:
+    installed_packages = []
+    for line in manifest.splitlines():
+        fields = line.split("\t")
+        # The second status character is the current state, even when the desired action is hold.
+        if len(fields) == 3 and len(fields[0]) >= 2 and fields[0][1] == "i":
+            installed_packages.append({"package": fields[1], "version": fields[2]})
+    installed_packages.sort(key=lambda row: row["package"])
+    return installed_packages
+
+
 def tree_sha256(root: Path, excluded: set[str]) -> str:
     digest = hashlib.sha256()
     entries = sorted(root.rglob("*"), key=lambda path: path.relative_to(root).as_posix())
@@ -567,12 +578,7 @@ def main() -> int:
         )
         if package_manifest.returncode:
             raise GateError("toolchains", "installed package manifest could not be captured")
-        installed_packages = []
-        for line in package_manifest.stdout.splitlines():
-            fields = line.split("\t")
-            if len(fields) == 3 and fields[0].startswith("ii"):
-                installed_packages.append({"package": fields[1], "version": fields[2]})
-        installed_packages.sort(key=lambda row: row["package"])
+        installed_packages = parse_installed_package_manifest(package_manifest.stdout)
         canonical_manifest = "".join(f'{row["package"]}\t{row["version"]}\n' for row in installed_packages)
         gcc_manifest_entry = next(
             (row for row in installed_packages if row["package"] in accepted_owners), None
