@@ -2,6 +2,8 @@
 
 **Status:** architecture scaffold only. No provider exchange, Linux containment run, conformance result, or WP1/G1 evidence exists yet.
 
+**Setup guide:** [Fresh-host setup and offline verification](docs/setup.md).
+
 `tbound` is a host-side supervisor prototype for one Pi coding workflow. The first slice is deliberately narrow: one Pi configuration, one agent, the proxy-backed `read`, `write`, `edit`, and `bash` tools, one compliant task, and one declared Linux VM/host profile. The prototype is intended to make the existing thesis design concrete; this README does not claim that its security properties have been implemented or demonstrated.
 
 ## Design boundary
