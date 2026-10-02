@@ -539,7 +539,7 @@ def main() -> int:
             raise GateError("toolchains", "bundled npm version check failed")
         go_env_result = run(
             [str(go), "env", "GOOS", "GOARCH", "CGO_ENABLED"],
-            env={"GOTOOLCHAIN": "local", "GOENV": "off", "HOME": str(user_home)},
+            env={"GOTOOLCHAIN": "local", "GOENV": "off", "HOME": str(user_home), "PATH": "/usr/bin:/bin"},
             timeout=10,
         )
         if go_env_result.returncode or go_env_result.stdout.splitlines() != ["linux", "amd64", "1"]:
