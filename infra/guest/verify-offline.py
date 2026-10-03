@@ -57,6 +57,20 @@ def run(
         raise GateError("runner", f"could not complete {Path(command[0]).name}: {type(exc).__name__}") from None
 
 
+def go_module_graph_failure_diagnostic(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    stderr = re.sub(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]", "", result.stderr)
+    stderr = re.sub(r"(?i)([a-z][a-z0-9+.-]*://)[^/\s?#@]*@", r"\1[REDACTED]@", stderr).strip()
+    encoded = stderr.encode("utf-8", errors="replace")
+    truncated = len(encoded) > 2048
+    excerpt = encoded[:2048].decode("utf-8", errors="ignore") if truncated else encoded.decode("utf-8")
+    return {
+        "command": "go list -m all",
+        "exit_code": result.returncode,
+        "stderr_excerpt": excerpt,
+        "truncated": truncated,
+    }
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -679,6 +693,7 @@ def main() -> int:
         }
         graph = run([str(go), "list", "-m", "all"], cwd=staged_supervisor, env=user_env)
         if graph.returncode:
+            report.setdefault("diagnostics", {})["go_modules"] = go_module_graph_failure_diagnostic(graph)
             raise GateError("go_modules", "offline Go module graph resolution failed; provision go.mod dependencies first")
         modules = [line.strip() for line in graph.stdout.splitlines() if line.strip()]
         if not modules:
