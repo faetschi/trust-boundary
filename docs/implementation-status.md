@@ -20,10 +20,10 @@ It excludes the later arms, corpus, and headline trials.
 | Todo criterion | Evidence now | Missing proof |
 |---|---|---|
 | Broker correlation | The OpenRouter request/parser/capture mapping is committed at `d317e7a85c09b6d71c1dce557eeb759ce8fa79e4`; static review accepted strict Unicode and pre-marshal size fixes. No compile, gofmt, tests, HTTP requests, Pi wiring, or E05 run. | A real call-to-proposal-to-verdict-to-result chain bound by IDs and argument digest. |
-| Generation visibility | The bounded Linux workspace import/scanner is in the current candidate change. Static review accepted the directory-read bound, opened-file mount checks, and disjoint-root rejection. No Go compile, gofmt, or tests ran. | Approved-delta mapping, sealed generations, and no live, mount, or Git reachability; sealing and publish are not implemented. |
+| Generation visibility | The five-file bounded Linux workspace package is committed at `e187650`. Static review accepted bounded directory reads, mount checks on fresh opened file descriptors before and after reads, and disjoint-root rejection. No compile, gofmt, or tests ran. | Approved-delta mapping, sealed generations, and no live, mount, or Git reachability; sealing and publish are not implemented. |
 | Durable authority | No fault-injection run is recorded. | Durable pre-effect/result records and fail-closed write, fsync, and disk-full tests. |
-| Containment | Three queued runs passed the guest-offline network gate; the latest verifier exit 1 is user-reported, but suite outcomes are unknown until its report is collected. | Capability and runtime proof for protected paths, unauthorized egress, and surviving children. |
-| Reconstructable evidence | A preserved report reconstructs a failed pre-suite attempt. | Raw evidence for a successful workflow, including its decision, effects, and outcome. |
+| Containment | Three queued runs passed the guest-offline network gate. The preserved third-run report has an overall exit 1 and mixed phase results; the Go test summary is incomplete. | Capability and runtime proof for protected paths, unauthorized egress, and surviving children. |
+| Reconstructable evidence | Preserved evidence reconstructs two pre-suite failures and a third run that reached Go test phases but failed overall. | Raw evidence for a successful workflow, including its decision, effects, and outcome. |
 
 The second queued run (third offline attempt overall) ended at `go_modules` with runner and
 launcher exit code 1, `checks={}`, no suites, cleanup PASS with no leftovers, and all claims
@@ -33,13 +33,40 @@ report, not every file in the separately reported host evidence folder.
 
 Earlier attempts stopped before suites at the cgo/PATH check and the held-GCC package parser.
 The targeted APT trust-guard regressions, one held-package parser regression, guest AST check,
-and launcher Bash syntax check passed. These are component checks, not a full Go/Pi run. The second queued run failed its Go module graph check. Reviewed dependency preparation and a guarded guest apply followed. The user reported that the third queued verifier run failed with exit code 1 at `2026-10-03T13:19:19Z`; its report and stderr have not been independently collected, so both the failure cause and suite outcomes are unknown. The guest network is last confirmed disconnected; a guarded trusted-maintenance reconnect is pending user confirmation. After confirmation, collect the report and stderr over pinned-key SSH. Do not retry, requeue, or restore. No successful full Go/Pi suite has been independently verified.
+and launcher Bash syntax check passed. These are component checks, not a full Go/Pi run. The
+second queued run failed its Go module graph check. After dependency preparation and guarded
+guest apply, the third run passed the offline gate and completed at `2026-10-03T13:19:19Z`
+with runner and launcher exit code 1. Its preserved evidence is under
+`F:\TBoundAssets\Evidence\offline-20261003-131833`; root verified the JSON hash
+`5c5fa36fea3d91c36f70c32100f4f1cfaca2f86fe6ec1169a452ddbb8baa8350` and manifest hash
+`48170022e98ed0c15216074e8b8f276b3f83389f81e7273c555c016062397878`. An agent checked all
+nine captured guest-file size/hash pairs; root's independent comparison covers those two
+files. Six of seven source hashes matched the current host; the captured setup installer came
+from an earlier source base than the corrected host installer, so there is no full-tree match.
+
+The report records `go_modules`, `adapter_dependencies`, and `node_adapter` PASS; Pi `0.87.1`
+with zero provider stream attempts; and 62 passed, zero failed, zero skipped counters for each
+of `go_tests` and `go_race`. Overall status is FAIL. The report also names an
+`unexpected_skips`/failed-packages condition for expected test `TestOpenRejectsUntrustedOwnership`
+but omits `package_results`, so the counters do not establish a successful suite or identify
+the cause. Captured Go output was only held in memory and removed during scratch cleanup;
+`verification.stderr` and `sudo.stderr` are empty. The actual Go error remains unknown. The
+report records ownership audit package-fail 0 and run/pass 0/0, noninteractive sudo true,
+cleanup and global cleanup PASS, offline carrier 0 with no default routes and host-disconnect
+attestation true, and all four claims false.
+
+The user has since reconnected the VM to `Default Switch` for trusted maintenance. Fresh
+pinned-key SSH found no active guest test processes. The uncommitted bounded Go-phase
+diagnostics patch is under independent review; host-only Python tests passed 3/3 and the Go
+module helper tests passed 5/5. It has not been compiled, gofmt-checked, or deployed, and no
+guest rerun has occurred. Do not retry, requeue, or restore before review and evidence-backed
+diagnosis. No successful full Go/Pi suite has been independently verified.
 
 ## Current broker slice and provider plan
 
 The OpenRouter request/parser/capture mapping is committed at `d317e7a85c09b6d71c1dce557eeb759ce8fa79e4` in `supervisor/internal/broker/openrouter/`. Strict Unicode validation and pre-marshal size bounds passed static review only. The code remains uncompiled, unformatted, and untested; no HTTP request, Pi wiring, or live provider support has been verified.
 
-The three workspace files add a bounded descriptor-relative Linux scanner/importer, streaming byte copying, normalized modes/ownership, mount checks on opened file descriptors, disjoint-root validation, and canonical manifests using existing `delta.TreeManifest` types. Static author and independent review accepted these targeted fixes. The package does not seal or publish generations, map approved deltas into a durable ledger, or prove containment. Caller-provided quiescence and complete xattr visibility remain unproven against the actual guest profile. Hashes: `doc.go` `DD9702867E6C03898D79D0FDC97A6E94EDC42C12CB72049BEC609B7A867D1DC8`; `workspace_linux.go` `848A695AD7B6F92D02081CDD40D1928C333996D273F86736ABAA8644DF4D389D`; `workspace_linux_test.go` `18E94E12EBC887A623426EDACEE6EF675DAFBEE1FC9B80D45BC64696CDD2220E`. No Go compile, gofmt, or tests have run.
+The five-file workspace package committed at `e187650` adds a bounded descriptor-relative Linux scanner/importer, streaming byte copying, normalized modes and ownership, mount checks on fresh opened file descriptors before and after reads, disjoint-root validation, and canonical manifests using existing `delta.TreeManifest` types. The approved policy currently maps directories to `0755`, regular files to `0644` or `0755` when executable, and normalizes ownership; these values and implementation have not been tested. Static author and independent review accepted the targeted fixes. The package does not seal or publish generations, map approved deltas into a durable ledger, or prove containment. Caller-provided quiescence and complete xattr visibility remain unproven against the actual guest profile. Hashes: `doc.go` `DD9702867E6C03898D79D0FDC97A6E94EDC42C12CB72049BEC609B7A867D1DC8`; `workspace_linux.go` `848A695AD7B6F92D02081CDD40D1928C333996D273F86736ABAA8644DF4D389D`; `workspace_linux_test.go` `18E94E12EBC887A623426EDACEE6EF675DAFBEE1FC9B80D45BC64696CDD2220E`. No Go compile, gofmt, or tests have run.
 
 OpenRouter is the primary planned provider. OpenCode Go is optional for testing and may be selectable later; exact second-profile authentication compatibility is unverified. These are portable design plans, not actual supported integrations.
 
