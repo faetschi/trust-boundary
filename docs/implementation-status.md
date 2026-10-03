@@ -22,8 +22,8 @@ It excludes the later arms, corpus, and headline trials.
 | Broker correlation | The OpenRouter request/parser/capture mapping is committed at `d317e7a85c09b6d71c1dce557eeb759ce8fa79e4`; static review accepted strict Unicode and pre-marshal size fixes. No compile, gofmt, tests, HTTP requests, Pi wiring, or E05 run. | A real call-to-proposal-to-verdict-to-result chain bound by IDs and argument digest. |
 | Generation visibility | The five-file bounded Linux workspace package is committed at `e187650`. Static review accepted bounded directory reads, mount checks on fresh opened file descriptors before and after reads, and disjoint-root rejection. No compile, gofmt, or tests ran. | Approved-delta mapping, sealed generations, and no live, mount, or Git reachability; sealing and publish are not implemented. |
 | Durable authority | No fault-injection run is recorded. | Durable pre-effect/result records and fail-closed write, fsync, and disk-full tests. |
-| Containment | Three queued runs passed the guest-offline network gate. The preserved third-run report has an overall exit 1 and mixed phase results; the Go test summary is incomplete. | Capability and runtime proof for protected paths, unauthorized egress, and surviving children. |
-| Reconstructable evidence | Preserved evidence reconstructs two pre-suite failures and a third run that reached Go test phases but failed overall. | Raw evidence for a successful workflow, including its decision, effects, and outcome. |
+| Containment | Four verifier runs passed the guest-offline network gate. The latest report identifies a Go compile failure before Go test functions ran; this is not a containment result. | Capability and runtime proof for protected paths, unauthorized egress, and surviving children. |
+| Reconstructable evidence | Hash-verified evidence reconstructs the earlier failures and the latest compile failure. | Raw evidence for a successful workflow, including its decision, effects, and outcome. |
 
 The second queued run (third offline attempt overall) ended at `go_modules` with runner and
 launcher exit code 1, `checks={}`, no suites, cleanup PASS with no leftovers, and all claims
@@ -55,12 +55,34 @@ report records ownership audit package-fail 0 and run/pass 0/0, noninteractive s
 cleanup and global cleanup PASS, offline carrier 0 with no default routes and host-disconnect
 attestation true, and all four claims false.
 
-The user has since reconnected the VM to `Default Switch` for trusted maintenance. Fresh
-pinned-key SSH found no active guest test processes. The uncommitted bounded Go-phase
-diagnostics patch is under independent review; host-only Python tests passed 3/3 and the Go
-module helper tests passed 5/5. It has not been compiled, gofmt-checked, or deployed, and no
-guest rerun has occurred. Do not retry, requeue, or restore before review and evidence-backed
-diagnosis. No successful full Go/Pi suite has been independently verified.
+An intervening launcher attempt ended with `SUDO_AUTHORIZATION_MISSING` before the verifier
+started; it did not reach the offline gate or run tests. The later queued run
+`.tbound-offline-queued.LPvHct5VqZ` passed the offline gate at `2026-10-03T19:25:35Z` and
+completed at `19:26:17Z` with exit 1. Its console report shows `go_tests`, `go_race`, and
+`privileged_ownership_test` failing at compile time with
+`internal/audit/audit.go:248:5: declared and not used: state`. The ownership test itself did not
+run; retain the expected-test gate. Root independently verified `verification.json` SHA-256
+`f536204b261f7ca4f099082fd7758337906f9fdc12b12b834cb0511136b75761`; root read the failure
+details. The capture agent verified `capturemanifest.json` SHA-256
+`68b6502667ef37e2ab101793d14a1f3ca2674fdd95af963890070d4b2de36d01` under
+`F:\TBoundAssets\Evidence\offline-20261003-192535` and matched all nine captured guest/source
+file size and hash pairs (123,503 bytes total). The report records `FAIL`, all four claims
+false, `sudo_noninteractive=true`, and ownership audit run/pass 0/0. Saved stderr files are
+empty; the compiler message is in the report.
+
+After the run, the user confirmed reconnection to `Default Switch` for trusted maintenance;
+no active guest test process remained. Host commit `833915a` retains bounded Go-phase
+diagnostics; its verifier SHA-256 `a0cabda405c58e5bcfe8453eaa0e892579dbe51ee81d0f9d8add45d4d5476de5`
+was deployed to the guest. Host-only Python and Go module-helper tests passed 5/5 each, with
+AST/compile checks; these do not test the application packages. Commit `7c91b47` fixes the
+reported unused local in `supervisor/internal/audit/audit.go`, source SHA-256
+`3a6f97639aa9b2d38f21de8f274867c7c3f97dc430624dbfc88fdce22e761c82`; guarded guest
+application was verified with the expected SHA-256 and backup, but no tests have run after the
+change. The guest application remains the earlier `9a73` tree with the separately recorded
+dependency-sum update, diagnostics verifier, and audit patch; the committed OpenRouter and
+workspace packages have not been deployed or tested.
+Do not relax the ownership test gate, requeue automatically, or restore. No successful full
+Go/Pi suite has been independently verified.
 
 ## Current broker slice and provider plan
 
@@ -94,6 +116,6 @@ states path-specific outcomes: direct-console success is judged by the verifier'
 and JSON; SSH-queued success also requires launcher completion and exit evidence. Its checklist
 accepts either path.
 
-Root's independent verification covers the second-run JSON, its SHA-256, and the reported exit
-codes. The mechanics agent separately reported a match for all seven copied evidence files;
-keep that copy comparison distinct from verification of the JSON report itself.
+Root's independent verification covers the second-run JSON and the latest run's report,
+manifest, and nine captured guest/source-local file pairs. The second-run complete-folder
+comparison remains distinct from verification of its JSON report alone.

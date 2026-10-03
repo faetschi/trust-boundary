@@ -60,7 +60,7 @@ The tracked starting point is [`todo-implementation-tbound.md`](../agentic-harne
 
 WP1/G1 requires more than a tool smoke test. On the declared candidate VM, the plan requires: (1) prove the Pi surface is closed to exactly the four proxy tools; (2) capture one real provider-specific exchange and the E05 two-generation `read → edit → Bash → read` fixture; (3) prove independent repository isolation and delta provenance, beginning with ordinary byte-copy views; (4) exercise the selected rootless Podman/crun containment profile and Go entrypoint; (5) fault-inject audit write, sync, and disk-full failures; and (6) prepare the E04 transient-mutation and E06 denied-read fixtures. The tested host and runtime identities must be frozen. A failed capability probe requires redesign or a narrower claim, not an unrecorded runtime fallback.
 
-No WP1 spike, G1 fixture, provider integration, model request, package installation, or test has been run for this scaffold.
+Toolchains and package dependencies have been provisioned, and targeted component checks have run. No WP1 spike or G1 fixture has passed; no provider integration or model request has occurred. See [`docs/implementation-status.md`](docs/implementation-status.md) for recorded checks and their limits.
 
 ## Open decisions
 
