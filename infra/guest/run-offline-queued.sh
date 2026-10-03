@@ -3,7 +3,6 @@ set -Eeuo pipefail
 export PATH=/usr/bin:/bin
 
 POLL_SECONDS=5
-SUDO_REFRESH_SECONDS=30
 MAX_WAIT_SECONDS=600
 STATUS=STARTING
 OUTPUT_DIR=
@@ -54,8 +53,8 @@ runner_path=$script_dir/verify-offline.py
 if [[ ! -f $runner_path || -L $runner_path ]]; then
   fail "verify-offline.py must be a regular file beside this launcher"
 fi
-if [[ ! -x /usr/bin/python3 || ! -x /usr/bin/sudo ]]; then
-  fail "system Python 3 and sudo are required"
+if [[ ! -x /usr/bin/python3 ]]; then
+  fail "system Python 3 is required"
 fi
 
 if [[ -z ${HOME:-} || $HOME != /* || ! -d $HOME || -L $HOME ]]; then
@@ -83,12 +82,6 @@ log() {
   line="$(date -Is) $*"
   printf '%s\n' "$line" | tee -a "$OUTPUT_DIR/launcher.log"
 }
-
-if ! /usr/bin/sudo -n -v >/dev/null 2>"$OUTPUT_DIR/sudo.stderr"; then
-  STATUS=SUDO_AUTHORIZATION_MISSING
-  log "sudo authorization is not cached in this tmux pane; run sudo -v here and relaunch"
-  exit 1
-fi
 
 ip_bin=
 for candidate in /usr/sbin/ip /usr/bin/ip /sbin/ip /bin/ip; do
@@ -138,7 +131,6 @@ offline_state() {
 
 log "queued; waiting up to $MAX_WAIT_SECONDS seconds for all guest links to report carrier 0 and both route tables to have no default"
 deadline=$((SECONDS + MAX_WAIT_SECONDS))
-last_sudo_refresh=$SECONDS
 last_progress=$SECONDS
 while true; do
   if offline_state; then
@@ -155,14 +147,6 @@ while true; do
     STATUS=WAIT_TIMEOUT
     log "timed out before the guest reached the offline gate"
     exit 1
-  fi
-  if (( SECONDS - last_sudo_refresh >= SUDO_REFRESH_SECONDS )); then
-    if ! /usr/bin/sudo -n -v >/dev/null 2>"$OUTPUT_DIR/sudo.stderr"; then
-      STATUS=SUDO_AUTHORIZATION_EXPIRED
-      log "cached sudo authorization expired while waiting; refusing to continue"
-      exit 1
-    fi
-    last_sudo_refresh=$SECONDS
   fi
   if (( SECONDS - last_progress >= 60 )); then
     log "still waiting for guest network links to go offline"

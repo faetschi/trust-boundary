@@ -544,10 +544,13 @@ func checkPrivateJournalFile(file *os.File) error {
 	if !info.Mode().IsRegular() {
 		return ErrInvalidJournalFile
 	}
+	if err := checkSupervisorOwnership(info); err != nil {
+		return err
+	}
 	if info.Mode().Perm() != 0o600 {
 		return fmt.Errorf("%w: journal file mode %04o", ErrInsecurePermissions, info.Mode().Perm())
 	}
-	return checkSupervisorOwnership(info)
+	return nil
 }
 
 func cloneBytes(value []byte) []byte {

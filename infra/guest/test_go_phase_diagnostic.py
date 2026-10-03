@@ -13,7 +13,7 @@ _RUNNER = runpy.run_path(str(Path(__file__).with_name("verify-offline.py")))
 MAX_DIAGNOSTIC_BYTES = _RUNNER["MAX_DIAGNOSTIC_BYTES"]
 bounded_diagnostic_excerpt = _RUNNER["bounded_diagnostic_excerpt"]
 summarize_go_phase = _RUNNER["summarize_go_phase"]
-parse_privileged_helper_report = _RUNNER["parse_privileged_helper_report"]
+summarize_ownership_test_events = _RUNNER["summarize_ownership_test_events"]
 
 
 class GoPhaseDiagnosticTests(unittest.TestCase):
@@ -55,39 +55,51 @@ class GoPhaseDiagnosticTests(unittest.TestCase):
         self.assertNotIn("secret", clipped["excerpt"])
         self.assertLessEqual(len(clipped["excerpt"].encode("utf-8")), MAX_DIAGNOSTIC_BYTES)
 
-    def test_nonobject_helper_reports_fail_with_bounded_outer_diagnostics(self):
-        for stdout in ("{invalid", "[]", "null", json.dumps("text")):
-            with self.subTest(stdout=stdout):
-                result = subprocess.CompletedProcess(
-                    ["sudo", "python3"],
-                    1,
-                    stdout,
-                    "sudo failed https://alice:secret@example.test/\x00\x1b[31m",
-                )
-                report = parse_privileged_helper_report(result)
-                self.assertEqual(report["status"], "FAIL")
-                self.assertEqual(report["failures"], ["invalid_helper_report"])
-                self.assertEqual(report["diagnostics"]["stdout"]["excerpt"], stdout)
-                stderr = report["diagnostics"]["stderr"]["excerpt"]
-                self.assertIn("https://[REDACTED]@example.test/", stderr)
-                self.assertNotIn("alice", stderr)
-                self.assertNotIn("secret", stderr)
-
-    def test_valid_helper_report_keeps_go_diagnostics_and_adds_wrapper_stderr(self):
-        helper_diagnostics = {"stdout": {"excerpt": "go test detail"}}
-        result = subprocess.CompletedProcess(
-            ["sudo", "python3"],
-            1,
-            json.dumps({"status": "FAIL", "failures": ["test_failed"], "diagnostics": helper_diagnostics}),
-            "sudo warning https://alice:secret@example.test/",
+    def test_ownership_fixture_phase_requires_exactly_one_unskipped_pass(self):
+        package = "tbound/supervisor/internal/audit"
+        test = "TestOpenRejectsUntrustedOwnership"
+        passed = "\n".join([
+            json.dumps({"Action": "run", "Package": package, "Test": test}),
+            json.dumps({"Action": "pass", "Package": package, "Test": test}),
+            json.dumps({"Action": "pass", "Package": package}),
+        ]) + "\n"
+        report, failures = summarize_ownership_test_events(
+            subprocess.CompletedProcess(["go", "test"], 0, passed, "")
         )
+        self.assertEqual(failures, [])
+        self.assertEqual(report["status"], "PASS")
+        self.assertEqual(report["test_run_events"], 1)
+        self.assertEqual(report["test_pass_events"], 1)
+        self.assertEqual(report["skipped_tests"], [])
 
-        report = parse_privileged_helper_report(result)
+        skipped = "\n".join([
+            json.dumps({"Action": "run", "Package": package, "Test": test}),
+            json.dumps({"Action": "skip", "Package": package, "Test": test}),
+            json.dumps({"Action": "pass", "Package": package}),
+        ]) + "\n"
+        report, failures = summarize_ownership_test_events(
+            subprocess.CompletedProcess(["go", "test"], 0, skipped, "")
+        )
+        self.assertEqual(report["status"], "FAIL")
+        self.assertIn("ownership_test_skipped", failures)
+        self.assertIn("ownership_test_did_not_pass_exactly_once", failures)
 
-        self.assertEqual(report["failures"], ["test_failed"])
-        self.assertEqual(report["diagnostics"], helper_diagnostics)
-        self.assertIn("https://[REDACTED]@example.test/", report["wrapper_stderr_diagnostic"]["excerpt"])
-        self.assertNotIn("secret", report["wrapper_stderr_diagnostic"]["excerpt"])
+    def test_ownership_fixture_phase_rejects_extra_tests_and_malformed_events(self):
+        package = "tbound/supervisor/internal/audit"
+        test = "TestOpenRejectsUntrustedOwnership"
+        output = "\n".join([
+            json.dumps({"Action": "run", "Package": package, "Test": test}),
+            json.dumps({"Action": "pass", "Package": package, "Test": test}),
+            json.dumps({"Action": "run", "Package": package, "Test": "TestUnexpected"}),
+            json.dumps({"Action": "pass", "Package": package}),
+            "{not-json",
+        ]) + "\n"
+        report, failures = summarize_ownership_test_events(
+            subprocess.CompletedProcess(["go", "test"], 0, output, "")
+        )
+        self.assertEqual(report["status"], "FAIL")
+        self.assertIn("invalid_go_test_json", failures)
+        self.assertIn("ownership_test_not_run_exactly_once", failures)
 
     def test_normal_and_race_reports_retain_package_results_without_changing_gates(self):
         package = "tbound/supervisor/internal/example"

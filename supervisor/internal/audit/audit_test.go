@@ -8,7 +8,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -550,8 +552,166 @@ func TestOpenRejectsWritableAncestorsAndTmpStyleAncestry(t *testing.T) {
 	}
 }
 
+func fixtureUnixIdentity(info os.FileInfo) (uid, gid uint64, nlink uint64, ok bool) {
+	value := reflect.ValueOf(info.Sys())
+	if !value.IsValid() {
+		return 0, 0, 0, false
+	}
+	if value.Kind() == reflect.Ptr {
+		if value.IsNil() {
+			return 0, 0, 0, false
+		}
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Struct {
+		return 0, 0, 0, false
+	}
+	readUint := func(name string) (uint64, bool) {
+		field := value.FieldByName(name)
+		if !field.IsValid() {
+			return 0, false
+		}
+		switch field.Kind() {
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+			return field.Uint(), true
+		default:
+			return 0, false
+		}
+	}
+	uid, uidOK := readUint("Uid")
+	gid, gidOK := readUint("Gid")
+	nlink, nlinkOK := readUint("Nlink")
+	return uid, gid, nlink, uidOK && gidOK && nlinkOK
+}
+
+func requireOwnershipFixtureEntry(
+	t *testing.T,
+	path string,
+	directory bool,
+	uid, gid uint64,
+	mode os.FileMode,
+) os.FileInfo {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat ownership fixture %q: %v", path, err)
+	}
+	if directory {
+		if !info.IsDir() {
+			t.Fatalf("ownership fixture %q is not a directory", path)
+		}
+	} else if !info.Mode().IsRegular() {
+		t.Fatalf("ownership fixture %q is not a regular file", path)
+	}
+	if info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
+		t.Fatalf("ownership fixture %q has unexpected setuid, setgid, or sticky bits: %v", path, info.Mode())
+	}
+	if info.Mode().Perm() != mode {
+		t.Fatalf("ownership fixture %q mode=%04o, want %04o", path, info.Mode().Perm(), mode)
+	}
+	actualUID, actualGID, nlink, ok := fixtureUnixIdentity(info)
+	if !ok || actualUID != uid || actualGID != gid {
+		t.Fatalf("ownership fixture %q uid/gid=%d:%d (available=%t), want %d:%d", path, actualUID, actualGID, ok, uid, gid)
+	}
+	if !directory && (nlink != 1 || info.Size() != 0) {
+		t.Fatalf("ownership fixture %q must be empty with one link; links=%d size=%d", path, nlink, info.Size())
+	}
+	return info
+}
+
+func requireOwnershipFixtureNames(t *testing.T, directory string, expected []string) {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatalf("read ownership fixture directory %q: %v", directory, err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	if len(names) != len(expected) {
+		t.Fatalf("ownership fixture directory %q entries=%v, want %v", directory, names, expected)
+	}
+	for index, name := range names {
+		if name != expected[index] {
+			t.Fatalf("ownership fixture directory %q entries=%v, want %v", directory, names, expected)
+		}
+	}
+}
+
+func requireRootOwnedFixtureAncestor(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("lstat ownership fixture ancestor %q: %v", path, err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("ownership fixture ancestor %q is not a directory", path)
+	}
+	uid, _, _, ok := fixtureUnixIdentity(info)
+	if !ok || uid != 0 || info.Mode().Perm()&0o022 != 0 {
+		t.Fatalf("ownership fixture ancestor %q must be root-owned and not group- or other-writable", path)
+	}
+}
+
+// These checks cover the fixed path and stat metadata. The offline verifier preflights ACLs and xattrs before invoking this test.
+func validateOwnershipFixtures(t *testing.T, fixtureRoot string) {
+	t.Helper()
+	uid := currentEffectiveUID()
+	gid := os.Getegid()
+	expectedRoot := filepath.Join(string(os.PathSeparator), "var", "lib", "tbound", "audit-ownership-fixtures", strconv.Itoa(uid))
+	if filepath.Clean(fixtureRoot) != expectedRoot {
+		t.Fatalf("ownership fixture root %q, want fixed path %q", fixtureRoot, expectedRoot)
+	}
+	fixtureRoot = expectedRoot
+
+	for _, ancestor := range []string{"/var", "/var/lib", "/var/lib/tbound", "/var/lib/tbound/audit-ownership-fixtures"} {
+		requireRootOwnedFixtureAncestor(t, ancestor)
+	}
+
+	directory, err := openJournalDirectory(fixtureRoot)
+	if err != nil {
+		t.Fatalf("open ownership fixture ancestry: %v", err)
+	}
+	if err := checkPrivateDirectory(directory); err != nil {
+		_ = directory.Close()
+		t.Fatalf("ownership fixture root is not private and trial-owned: %v", err)
+	}
+	if err := directory.Close(); err != nil {
+		t.Fatalf("close ownership fixture root: %v", err)
+	}
+	requireOwnershipFixtureEntry(t, fixtureRoot, true, uint64(uid), uint64(gid), 0o700)
+	requireOwnershipFixtureNames(t, fixtureRoot, []string{"file-parent", "foreign-dir"})
+
+	foreignDirectory := filepath.Join(fixtureRoot, "foreign-dir")
+	requireOwnershipFixtureEntry(t, foreignDirectory, true, 65534, 65534, 0o755)
+	requireOwnershipFixtureNames(t, foreignDirectory, []string{})
+
+	fileParent := filepath.Join(fixtureRoot, "file-parent")
+	requireOwnershipFixtureEntry(t, fileParent, true, uint64(uid), uint64(gid), 0o700)
+	requireOwnershipFixtureNames(t, fileParent, []string{"journal.jsonl", "owned-insecure-mode.jsonl"})
+	requireOwnershipFixtureEntry(t, filepath.Join(fileParent, "journal.jsonl"), false, 65534, uint64(gid), 0o660)
+	requireOwnershipFixtureEntry(t, filepath.Join(fileParent, "owned-insecure-mode.jsonl"), false, uint64(uid), uint64(gid), 0o660)
+}
+
 func TestOpenRejectsUntrustedOwnership(t *testing.T) {
 	requireLinuxJournalOpen(t)
+	if fixtureRoot := os.Getenv("TBOUND_AUDIT_OWNERSHIP_FIXTURE_ROOT"); fixtureRoot != "" {
+		if currentEffectiveUID() <= 0 {
+			t.Fatal("ownership fixtures must be tested as the non-root trial user")
+		}
+		validateOwnershipFixtures(t, fixtureRoot)
+		if _, err := Open(filepath.Join(fixtureRoot, "foreign-dir", "journal.jsonl")); !errors.Is(err, ErrInsecureOwnership) || !strings.Contains(err.Error(), "ancestor owner uid 65534") {
+			t.Fatalf("Open through fixed foreign-owned ancestor error = %v, want ErrInsecureOwnership for uid 65534", err)
+		}
+		if _, err := Open(filepath.Join(fixtureRoot, "file-parent", "journal.jsonl")); !errors.Is(err, ErrInsecureOwnership) || !strings.Contains(err.Error(), "owner uid 65534,") {
+			t.Fatalf("Open fixed foreign-owned file error = %v, want ErrInsecureOwnership for uid 65534", err)
+		}
+		if _, err := Open(filepath.Join(fixtureRoot, "file-parent", "owned-insecure-mode.jsonl")); !errors.Is(err, ErrInsecurePermissions) {
+			t.Fatalf("Open owned mode-0660 file error = %v, want ErrInsecurePermissions", err)
+		}
+		return
+	}
 	if currentEffectiveUID() != 0 {
 		t.Skip("changing file ownership requires root")
 	}
