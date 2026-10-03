@@ -245,7 +245,7 @@ func (j *Journal) RunEffect(id string, intent []byte, effect func() ([]byte, err
 		}
 		return nil, fmt.Errorf("%w: unresolved effect %q", ErrQuarantined, priorID)
 	}
-	if state, exists := j.effects[id]; exists {
+	if _, exists := j.effects[id]; exists {
 		return nil, fmt.Errorf("%w: %s", ErrDuplicateEffect, id)
 	}
 	_, err := j.appendLocked(Event{Kind: intentKind, ID: id, Data: cloneBytes(intent)})
