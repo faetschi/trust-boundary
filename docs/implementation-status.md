@@ -99,12 +99,36 @@ files totaling 124,538 bytes. The post-capture F: inventory found 4,081,694,378 
 `TBoundAssets` files and 25,028,681,596 bytes in 8 `TBoundVMs` files (29,110,375,974 bytes
 total), no reparse points, and 869,672,910,848 bytes free. Both storage limits passed.
 
-Host commit `1f03c7604ba3041b34aa869e58a73453fbdc9887` contains the follow-on Linux audit
-symlink-classification fix; `lock_linux.go` SHA-256 is
-`7d0e73761a7f3b14980a0ede32b80b9fb75b2e7edbd0892c4f822875d5680dc9`. It has not been
-applied to the guest or tested. No success is inferred from the committed source change.
+At the time of the `vlH6WMLbws` report, host commit `1f03c7604ba3041b34aa869e58a73453fbdc9887`
+contained the follow-on Linux audit symlink-classification fix; `lock_linux.go` SHA-256 was
+`7d0e73761a7f3b14980a0ede32b80b9fb75b2e7edbd0892c4f822875d5680dc9`. That report preceded the
+source transfer below. No success is inferred from the committed source change.
 Do not relax the ownership test gate, requeue automatically, or restore. No successful full
 Go/Pi suite has been independently verified.
+
+On 2026-10-03, the user approved transfer of the selected source bundle at commit
+`05245378a3df82fbf2cb413aa1ac59085dfc0bf6`. The queue agent reports that eight selected files
+were applied under `/home/tboundadmin/tbound-handoff-9a73af56e8a8/tbound`, each as UID/GID
+`1000:1000`, mode `0600`, link count `1`; this is an overlay of eight files, not deployment of
+the complete commit tree. The archive SHA-256 is
+`afc1610495ec34c754460351cd1e73e1fb8f351913d5e1762eed4feb1a2fb1f1`; its manifest SHA-256 is
+`a792425bcc8916b62bc42b46a6403f8450d7a441170e50be737806f7e1fcf1ef` at
+`/home/tboundadmin/.tbound-code-stage-05245378a3df82fbf2cb413aa1ac59085dfc0bf6/deployment-manifest.txt`.
+The five preimage backups are preserved under the sibling `preimage` directory. The queue agent's
+per-file hashes are:
+
+- `supervisor/internal/audit/audit.go`: `ed2016d599390b536834b090c5634c7509b02da0806864cb8994a201ae0561a9`
+- `supervisor/internal/audit/audit_test.go`: `0ab7d221be009937fc476243be520323138ab844d7ae44b5d1fe9e420aac7181`
+- `supervisor/internal/audit/lock_linux.go`: `b4d4bca6f9fcd3529e862d3404a3c9bddd31e0926b72e77fb4daae6e7b07843d`
+- `infra/guest/verify-offline.py`: `0186d2d6137dac170d0fb7cf4876c4bd21c887fb0399642edc77cee2b7a90c6a`
+- `infra/guest/run-offline-queued.sh`: `4e919dfb720f2b2d5e2fba992b6771938b77dda9eeacc01e26422be13ac125e5`
+- `infra/guest/test_go_phase_diagnostic.py`: `e8557a93f38e51654fb0234cf1dddbeab3dd1136497b7e64daab3d7f5ef58a18`
+- `infra/guest/provision_audit_ownership_fixtures.py`: `0a50ea1f919ea8911114e35088c20cc018d445b640e998e7112a1f1d5e2f7028`
+- `infra/guest/test_ownership_fixtures.py`: `44b5e4dd1957846ad0b593b4e2a7d2c3ec56da9bb147d06232bbba997498b8c9`
+
+The transfer left `go.mod` and `go.sum` unchanged. The static root-owned bootstrap artifact has
+not been installed or run, and no fixture test or post-transfer offline verification has run.
+The new broker and workspace packages were not among these eight files and remain undeployed.
 
 ## Current broker slice and provider plan
 
@@ -147,4 +171,5 @@ accepts either path.
 Root independently verified the second-run JSON and, for the latest run, the report hash and
 failure details. The capture agent verified the latest manifest and all nine guest/source-local
 file size/hash pairs. This run-specific capture verification does not imply a full-tree source
-match or a successful verifier result.
+match or a successful verifier result. The separately approved eight-file source overlay is
+recorded above; it has not been tested in the guest.

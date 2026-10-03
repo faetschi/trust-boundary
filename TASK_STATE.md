@@ -123,7 +123,7 @@ Targeted checks already reported: APT trust-guard regression suite (7 tests) pas
 
 1. The latest preserved run is `vlH6WMLbws` at `F:\TBoundAssets\Evidence\offline-20261003-195947`; its report/manifest pins and nine-file capture verification are recorded above. The 19:25 compile failure is a separate historical run.
 2. The latest run verified that the `7c91b47` audit.go compile fix reached Go tests, where normal and race phases failed at the symlink-classification assertion. At that point, host commit `1f03c76` contained the reviewed follow-on fix but had not been deployed or tested. Do not relax the expected-test gate, queue automatically, or restore.
-3. The user approved transfer of the selected committed source bundle at `05245378a3df82fbf2cb413aa1ac59085dfc0bf6`; the queue agent is staging it, and completion is not yet confirmed. The static root-owned fixture bootstrap artifact and exact queue command are still being prepared. The bootstrap has not been installed or run in the guest, and no post-transfer fixture test or offline verification result exists. After staging and review, provision fixtures once during connected trusted maintenance with private `sudo -v`; later verification runs as `tboundadmin` without `sudo`.
+3. The user approved transfer of the selected source bundle at `05245378a3df82fbf2cb413aa1ac59085dfc0bf6`; the queue agent reports eight selected files applied and hash-verified under the guest handoff tree, not the full HEAD. Archive SHA-256 is `afc1610495ec34c754460351cd1e73e1fb8f351913d5e1762eed4feb1a2fb1f1`; deployment-manifest SHA-256 is `a792425bcc8916b62bc42b46a6403f8450d7a441170e50be737806f7e1fcf1ef`. The five preimage backups are preserved. Per-file hashes and paths are in `docs/implementation-status.md`. The static root-owned fixture bootstrap is still being prepared; it has not been installed or run, and no post-transfer fixture test or offline verification exists. The next verification must wait for the reviewed bootstrap and use the updated launcher as `tboundadmin` without per-run `sudo`.
 4. The post-capture F: inventory passed the 100-GiB tracked-data and 700-GiB free-space limits; older host inventory values remain historical. No successful full Go/Pi suite, provider call, real E05 exchange, containment proof, G1 durability/destruction proof, or end-to-end demonstration is established.
 
 ## Resume VMConnect and the existing tmux terminal
@@ -172,14 +172,9 @@ For trusted SSH maintenance, verify the current guest IP and pinned host key fir
 
 ### Queue procedure for a later run
 
-The Oct 3 queued runs are complete; do not reissue or retry them. A later run should follow review of the latest report and deployment of the reviewed source fix; that offline verification will test the fix. The currently installed launcher still requires fresh private `sudo -v` authorization in the attached pane; the autonomous fixture flow is not installed. Before a later queue, verify the installed launcher hash, mode, and owner against the committed file.
+The Oct 3 queued runs are complete; do not reissue or retry them. The eight-file source overlay is applied but untested. Do not queue another offline run until the static root-owned fixture bootstrap is prepared, reviewed, and installed once during connected trusted maintenance. The human refreshes `sudo -v` privately in the attached pane for that one-time bootstrap only; the updated launcher and verifier run afterward as `tboundadmin` without per-run `sudo`.
 
-~~~bash
-sudo -v
-bash "$HOME/tbound-handoff-9a73af56e8a8/tbound/infra/guest/run-offline-queued.sh" --host-adapter-disconnected
-~~~
-
-The launcher creates a new private report directory and waits up to ten minutes for every non-loopback carrier to be zero and both IP route tables to have no default route. Do not queue a second launcher. Watch this same pane for a terminal status and exit code. Keep the VM network disconnected through completion and only then reconnect for trusted evidence collection.
+For the later SSH path, run the updated launcher while the guest is connected in trusted maintenance mode. Before disconnecting the host adapter, confirm the terminal prints `queued; waiting...`, get the exact report-directory path for that invocation, and verify its `status` file contains `WAITING_FOR_OFFLINE`. Do not select a report directory by wildcard or queue a second launcher. Keep the adapter disconnected through verifier completion, then reconnect only for trusted evidence collection after confirming the launcher and verifier have exited.
 
 Before disconnecting, elevated PowerShell must confirm the VM is Running, F: has at least 700 GiB free, and exactly one adapter is connected to `Default Switch`. The guarded disconnect form used previously is:
 
