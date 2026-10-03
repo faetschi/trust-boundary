@@ -13,7 +13,7 @@ The script contains no embedded credentials, downloads no private material, adds
 
 ## Prepare pinned dependencies while online
 
-Do this in the guest after provisioning and before creating the clean offline baseline. These commands only populate the Go module cache and the adapter's `node_modules`; npm lifecycle scripts are disabled during installation.
+Do this in the guest after provisioning and before creating the clean offline baseline. These commands prepare the Go module cache and the adapter's `node_modules`; npm lifecycle scripts are disabled during installation. The Go command uses the official Go module proxy and checksum database to prepare the full module graph, including transitive dependencies, while the guest is online. It may add entries to `go.sum`, so verify the dependency manifest is frozen before offline verification. Finish this step before disconnecting the guest NIC.
 
 ```sh
 export PATH=/opt/tbound/toolchains/node-v24.21.0-linux-x64/bin:/opt/tbound/toolchains/go1.27.1/bin:$PATH
@@ -21,7 +21,7 @@ export GOTOOLCHAIN=local
 export TBOUND_TREE=/path/to/tbound
 
 cd "$TBOUND_TREE/supervisor"
-GOPROXY=https://proxy.golang.org,direct GOSUMDB=sum.golang.org go mod download
+GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org go mod download all
 
 cd "$TBOUND_TREE/adapter"
 install -d -m 0700 "$HOME/.cache/tbound-npm-cache"
