@@ -430,6 +430,13 @@ func TestOpenRejectsBroadPermissionsAndLeafSymlink(t *testing.T) {
 	if _, err := Open(filepath.Join(parentLink, "journal.jsonl")); !errors.Is(err, ErrJournalSymlink) {
 		t.Fatalf("Open parent symlink error = %v, want ErrJournalSymlink", err)
 	}
+	regularComponent := filepath.Join(root, "regular-component")
+	if err := os.WriteFile(regularComponent, []byte("file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Open(filepath.Join(regularComponent, "journal.jsonl")); err == nil || errors.Is(err, ErrJournalSymlink) || !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("Open non-directory component error = %v, want a non-symlink not-directory error", err)
+	}
 }
 
 func TestProcessExitReleasesLockButIntentStillQuarantines(t *testing.T) {
