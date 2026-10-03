@@ -26,6 +26,8 @@ EXPECTED_OWNERSHIP_SKIP = "TestOpenRejectsUntrustedOwnership"
 SCHEMA = "tbound.guest-verification/v1"
 OWNERSHIP_PACKAGE = "tbound/supervisor/internal/audit"
 GCC_DRIVER_PACKAGE = "gcc-13-x86-64-linux-gnu"
+MAX_DIAGNOSTIC_BYTES = 32 * 1024
+TRUNCATED_DIAGNOSTIC_MARKER = "\n[... sanitized output truncated; omitted byte count is in metadata ...]\n"
 
 
 class GateError(Exception):
@@ -57,9 +59,61 @@ def run(
         raise GateError("runner", f"could not complete {Path(command[0]).name}: {type(exc).__name__}") from None
 
 
+def sanitize_diagnostic_text(output: str) -> str:
+    output = re.sub(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]", "", output)
+    return re.sub(r"(?i)([a-z][a-z0-9+.-]*://)[^/\s?#@]*@", r"\1[REDACTED]@", output)
+
+
+def bounded_diagnostic_excerpt(output: str) -> dict[str, Any]:
+    sanitized = sanitize_diagnostic_text(output)
+    encoded = sanitized.encode("utf-8", errors="replace")
+    source_bytes = len(output.encode("utf-8", errors="replace"))
+    truncated = len(encoded) > MAX_DIAGNOSTIC_BYTES
+    omitted = 0
+    excerpt = sanitized
+    if truncated:
+        marker_bytes = TRUNCATED_DIAGNOSTIC_MARKER.encode("utf-8")
+        excerpt_budget = MAX_DIAGNOSTIC_BYTES - len(marker_bytes)
+        head_budget = excerpt_budget // 2
+        tail_budget = excerpt_budget - head_budget
+        head = encoded[:head_budget].decode("utf-8", errors="ignore")
+        tail = encoded[-tail_budget:].decode("utf-8", errors="ignore")
+        omitted = len(encoded) - len(head.encode("utf-8")) - len(tail.encode("utf-8"))
+        excerpt = head + TRUNCATED_DIAGNOSTIC_MARKER + tail
+    return {
+        "excerpt": excerpt,
+        "source_bytes": source_bytes,
+        "sanitized_bytes": len(encoded),
+        "omitted_sanitized_bytes": omitted,
+        "excerpt_truncated": truncated,
+    }
+
+
+def process_output_diagnostics(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    return {
+        "stdout": bounded_diagnostic_excerpt(result.stdout),
+        "stderr": bounded_diagnostic_excerpt(result.stderr),
+    }
+
+
+def parse_privileged_helper_report(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
+    try:
+        report = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        report = None
+    if not isinstance(report, dict):
+        return {
+            "status": "FAIL",
+            "failures": ["invalid_helper_report"],
+            "diagnostics": process_output_diagnostics(result),
+        }
+    if result.stderr:
+        report["wrapper_stderr_diagnostic"] = bounded_diagnostic_excerpt(result.stderr)
+    return report
+
+
 def go_module_graph_failure_diagnostic(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
-    stderr = re.sub(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]", "", result.stderr)
-    stderr = re.sub(r"(?i)([a-z][a-z0-9+.-]*://)[^/\s?#@]*@", r"\1[REDACTED]@", stderr).strip()
+    stderr = sanitize_diagnostic_text(result.stderr).strip()
     encoded = stderr.encode("utf-8", errors="replace")
     truncated = len(encoded) > 2048
     excerpt = encoded[:2048].decode("utf-8", errors="ignore") if truncated else encoded.decode("utf-8")
@@ -341,6 +395,8 @@ def summarize_go_phase(
         "skip_event_counts": events["skip_event_counts"],
         "deferred_known_skip": expected_skip if allow_ownership_skip and expected_skip in skips else None,
         "packages": sorted(observed_packages),
+        "package_results": observed_packages,
+        "diagnostics": process_output_diagnostics(result),
         "unexpected_skips": unexpected_skips,
         "failures": failures,
     }
@@ -448,6 +504,7 @@ def privileged_ownership_main(arguments: list[str]) -> int:
             "skipped_tests": events["skipped_tests"],
             "skip_event_counts": events["skip_event_counts"],
             "package_results": events["package_results"],
+            "diagnostics": process_output_diagnostics(completed),
             "failures": failures,
         })
     except GateError as exc:
@@ -732,10 +789,7 @@ def main() -> int:
             str(staged_supervisor), str(module_cache), str(os.geteuid()),
         ]
         root_result = run(root_command, timeout=900)
-        try:
-            ownership = json.loads(root_result.stdout)
-        except json.JSONDecodeError:
-            ownership = {"status": "FAIL", "failures": ["invalid_helper_report"]}
+        ownership = parse_privileged_helper_report(root_result)
         ownership_failures = list(ownership.get("failures", []))
         if root_result.returncode != 0 and not ownership_failures:
             ownership_failures.append("privileged_helper_failed")
