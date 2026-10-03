@@ -20,7 +20,7 @@ The user wants a disposable Linux VM so untrusted model/tool activity cannot dir
 - Hyper-V Basic Session is the intended console mode. “Erweiterte Sitzung” was observed greyed out; do not enable clipboard or device redirection. This visual observation alone is not a complete security proof.
 - Temporary Default Switch networking is allowed for trusted provisioning and maintenance. Disconnect it and verify the offline gate before any untrusted execution or offline trial. The provider-only runtime route is not implemented or verified.
 - OpenRouter is the primary planned provider. OpenCode Go is optional for testing and may be selectable later; exact authentication compatibility for a second profile is unverified. These are portable design plans, not implemented or verified provider support. Model IDs are deferred. Never request or record API keys or passwords in chat, logs, Git, or this file. Accurately identify any hosted provider/model actually used.
-- User approved this initial workspace metadata policy: admit regular files/directories; preserve file contents and executable bits; normalize ownership and other permissions; exclude timestamps from generation identity; reject symlinks, hard links, special files, ACLs, extended attributes, and file capabilities; represent sparse files as ordinary file contents; fail explicitly on unsupported entries. The current uncommitted implementation selects directories `0755` and regular files `0644` unless executable, then `0755`, with normalized ownership. This behavior is not yet tested.
+- User approved this initial workspace metadata policy: admit regular files/directories; preserve file contents and executable bits; normalize ownership and other permissions; exclude timestamps from generation identity; reject symlinks, hard links, special files, ACLs, extended attributes, and file capabilities; represent sparse files as ordinary file contents; fail explicitly on unsupported entries. The workspace package implements directory mode `0755`, regular-file mode `0644` or `0755` when executable, normalized ownership, and a canonical manifest from the existing delta types. Its static-reviewed Linux code has not been compiled or tested.
 - Keep TBound files in this standalone repo so it can later become its own repository.
 - Orchestrate at a high level. Delegate mechanical code reading, implementation, and tests to GPT-6 Luna agents with xhigh reasoning. Preserve unrelated work.
 - Document a reproducible fresh Windows setup. Clearly mark fresh Linux-host migration as untested; do not invent a tested KVM procedure.
@@ -31,10 +31,10 @@ The user wants a disposable Linux VM so untrusted model/tool activity cannot dir
 ### Git and files
 
 - Branch: `codex/tbound-prototype`
-- Last independently inspected HEAD at the start of this refresh: `99f87ddc6b16861730f3d68fb54348a08df72c4e` — restore acceptance runbook added; procedure planned and untested.
-- This handoff refresh updates only `TASK_STATE.md` and `docs/implementation-status.md`. The preexisting untracked `vm_start.txt` is unrelated; do not read, stage, alter, or delete it.
+- The last committed code before this candidate foundation was `d317e7a85c09b6d71c1dce557eeb759ce8fa79e4`, which adds only the OpenRouter request/parser/capture mapping.
+- The scoped candidate change contains `TASK_STATE.md`, `docs/implementation-status.md`, and the three workspace package files. The preexisting untracked `vm_start.txt` is unrelated; do not read, stage, alter, or delete it.
 - This `TASK_STATE.md` is a handoff note requested by the user; it is not a test result or implementation.
-- Preserve unrelated working-tree changes, including the uncommitted OpenRouter and workspace package directories and `vm_start.txt`. Do not read or alter `vm_start.txt`; do not stage unrelated work.
+- Preserve unrelated working-tree changes, including `vm_start.txt` and any other untracked paths. Do not read or alter `vm_start.txt`; do not stage unrelated work.
 
 Recent relevant commits:
 
@@ -52,8 +52,11 @@ Recent relevant commits:
 - `9bcf88b` add Go module failure diagnostics.
 - `711e641` complete offline Go dependency preparation.
 - `99f87dd` add the planned restore acceptance runbook (untested).
+- `d317e7a` add the OpenRouter request/parser/capture mapping only; no provider request or Pi wiring.
 
-The uncommitted OpenRouter slice is in `supervisor/internal/broker/openrouter/openrouter.go` and `openrouter_test.go`: fixed profile, bounded SSE handling, and trusted capture. Independent review by `/root/broker_firstslice_review_luna` found invalid UTF-16 surrogate IDs; `/root/broker_integration_plan_luna` is updating both files with the repair, a pre-marshal size bound, and trust-boundary comments. The slice is uncompiled and under review. No Go or gofmt host checks, guest tests, provider requests, or live E05 exchange have run. `/root/generation_integration_plan_luna` has created three uncommitted files under `supervisor/internal/workspace/` (documentation, Linux implementation, and test). Static review found that `ReadDir(-1)` can load an entire directory into memory; a fix is in progress. No Go tests have run, and sealing/publish are not implemented. Preserve all uncommitted package files and unrelated work.
+The OpenRouter request/parser/capture mapping is committed at `d317e7a85c09b6d71c1dce557eeb759ce8fa79e4` in `supervisor/internal/broker/openrouter/`. Strict Unicode validation and pre-marshal size bounds passed static review only. It has not been compiled, formatted, or tested; there have been no HTTP requests, Pi wiring, or live provider support proven.
+
+The bounded Linux workspace package is in `supervisor/internal/workspace/`: descriptor-relative scanning/import, bounded directory enumeration and streaming, mount identity checks on opened file descriptors, disjoint-root validation, and normalization into existing `delta.TreeManifest` types. Static author and independent review accepted these targeted fixes, but no Go compile, gofmt, or tests have run. The package does not seal or publish generations, connect approved deltas to a durable ledger, or prove containment. Quiescence and complete xattr visibility remain caller/profile obligations and have not been proven for the actual guest. Preserve unrelated work.
 
 The implementation tree includes `adapter/`, `supervisor/`, `infra/guest/`, `infra/hyperv/`, and `docs/setup.md`. The latest README correctly labels the project “architecture scaffold only” and states that no provider exchange, containment run, conformance result, or WP1/G1 evidence has been established. Review the normative thesis checklist/specs in the original thesis repository when resuming implementation.
 
