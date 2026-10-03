@@ -131,17 +131,31 @@ next run. With the console path, collect locally after completion and shutdown.
 
 ## Interpret the result
 
-A complete PASS covers offline prerequisites, pinned toolchain/dependency checks, Go normal and
-race suites, the privileged ownership test, and the adapter type/closure check. Require a
-successful launcher and runner exit status plus the expected evidence. The adapter check makes
-zero provider-stream attempts, and the Go end-to-end transcript is synthetic. PASS does not
-establish Linux runtime containment, a real provider exchange, external-effect control, or
-WP1/G1 evidence. Provider route, model IDs, and LLM credentials remain deferred; supply keys
-privately after those profiles are selected.
+### Direct-console run
 
-Keep each run's evidence private. Record the host/guest profile, completion state, exit
-codes, JSON, and error output. A failed or unverified network gate is not a pass. Do not remove
-held package versions to force a pass. Investigate from a trusted provisioning phase before
+A direct-console success requires `verify-offline.py` to exit 0 and its compact JSON summary to
+report `PASS`. Save the verifier's stdout and exit status together. This path does not create
+queued-launcher completion files.
+
+### SSH-queued run
+
+A queued success requires terminal launcher status, `completed`, and `launcher.exit-code=0`,
+plus a started verifier with `runner.exit-code=0` and `verification.json` reporting `PASS`.
+If the launcher exits before the verifier starts, runner artifacts will be absent; classify
+that as a pre-verification failure, never as a pass.
+
+### Scope of PASS
+
+A verifier `PASS` covers offline prerequisites, pinned toolchain/dependency checks, Go normal
+and race suites, the privileged ownership test, and the adapter type/closure check. It does not
+prove runtime containment, a real provider exchange, external-effect control, or WP1/G1. The
+adapter check makes zero provider-stream attempts, and the Go end-to-end transcript is
+synthetic. Provider route, model IDs, and LLM credentials remain deferred; supply keys privately
+after those profiles are selected.
+
+Keep each run's evidence private. Record the host/guest profile, completion state, exit codes,
+JSON, and error output. A failed or unverified network gate is not a pass. Do not remove held
+package versions to force a pass. Investigate from a trusted provisioning phase before
 scheduling another run.
 
 ## Fresh-host completion checklist
@@ -151,7 +165,8 @@ scheduling another run.
 - [ ] Signed ISO verification, read-only preflight, VM creation, and Created/Verify checks pass.
 - [ ] Guest setup, pinned dependency preparation, provisioning records, Basic Session check,
       and the single disconnected baseline checkpoint are complete.
-- [ ] Offline network checks pass and the queued job has a recorded terminal status before
-      evidence collection or reconnection.
+- [ ] The selected direct-console or SSH-queued path reaches a terminal verifier result. Capture
+      its JSON and exit status; for SSH queues also preserve launcher completion and exit data.
+      Collect evidence or reconnect only after the run completes.
 - [ ] The result is described as code/offline verification only unless containment and WP1/G1
       evidence has been separately produced.
