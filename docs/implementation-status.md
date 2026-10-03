@@ -22,8 +22,8 @@ It excludes the later arms, corpus, and headline trials.
 | Broker correlation | The OpenRouter request/parser/capture mapping is committed at `d317e7a85c09b6d71c1dce557eeb759ce8fa79e4`; static review accepted strict Unicode and pre-marshal size fixes. No compile, gofmt, tests, HTTP requests, Pi wiring, or E05 run. | A real call-to-proposal-to-verdict-to-result chain bound by IDs and argument digest. |
 | Generation visibility | The five-file bounded Linux workspace package is committed at `e187650`. Static review accepted bounded directory reads, mount checks on fresh opened file descriptors before and after reads, and disjoint-root rejection. No compile, gofmt, or tests ran. | Approved-delta mapping, sealed generations, and no live, mount, or Git reachability; sealing and publish are not implemented. |
 | Durable authority | No fault-injection run is recorded. | Durable pre-effect/result records and fail-closed write, fsync, and disk-full tests. |
-| Containment | Four verifier runs passed the guest-offline network gate. The latest report identifies a Go compile failure before Go test functions ran; this is not a containment result. | Capability and runtime proof for protected paths, unauthorized egress, and surviving children. |
-| Reconstructable evidence | Hash-verified evidence reconstructs the earlier failures and the latest compile failure. | Raw evidence for a successful workflow, including its decision, effects, and outcome. |
+| Containment | The latest verifier run passed the offline gate, then failed a Go audit symlink-classification test; this is not a containment result. Its privileged ownership phase passed 1/1. | Capability and runtime proof for protected paths, unauthorized egress, and surviving children. |
+| Reconstructable evidence | Hash-pinned captures preserve the earlier failures and the latest Go test failure. | Raw evidence for a successful workflow, including its decision, effects, and outcome. |
 
 The second queued run (third offline attempt overall) ended at `go_modules` with runner and
 launcher exit code 1, `checks={}`, no suites, cleanup PASS with no leftovers, and all claims
@@ -70,17 +70,39 @@ file size and hash pairs (123,503 bytes total). The report records `FAIL`, all f
 false, `sudo_noninteractive=true`, and ownership audit run/pass 0/0. Saved stderr files are
 empty; the compiler message is in the report.
 
-After the run, the user confirmed reconnection to `Default Switch` for trusted maintenance;
+After the `LPvHct5VqZ` run, the user confirmed reconnection to `Default Switch` for trusted maintenance;
 no active guest test process remained. Host commit `833915a` retains bounded Go-phase
 diagnostics; its verifier SHA-256 `a0cabda405c58e5bcfe8453eaa0e892579dbe51ee81d0f9d8add45d4d5476de5`
 was deployed to the guest. Host-only Python and Go module-helper tests passed 5/5 each, with
 AST/compile checks; these do not test the application packages. Commit `7c91b47` fixes the
 reported unused local in `supervisor/internal/audit/audit.go`, source SHA-256
 `3a6f97639aa9b2d38f21de8f274867c7c3f97dc430624dbfc88fdce22e761c82`; guarded guest
-application was verified with the expected SHA-256 and backup, but no tests have run after the
-change. The guest application remains the earlier `9a73` tree with the separately recorded
-dependency-sum update, diagnostics verifier, and audit patch; the committed OpenRouter and
+application was verified with the expected SHA-256 and backup. The later `vlH6WMLbws` trial
+compiled this file and reached tests, where the audit symlink-classification assertion failed.
+The guest application remains the earlier `9a73` tree with the separately recorded
+dependency-sum update, diagnostics verifier, and audit.go patch; the new OpenRouter and
 workspace packages have not been deployed or tested.
+
+The latest queued run used `.tbound-offline-queued.vlH6WMLbws`. Its offline gate passed at
+`2026-10-03T19:59:47Z`; the verifier completed at `20:00:34Z` with runner and launcher exit
+`1`. Both `go_tests` and `go_race` failed in
+`TestOpenRejectsBroadPermissionsAndLeafSymlink` (`audit_test.go:431`): expected
+`ErrJournalSymlink`, got `open audit journal: open audit path directory "parent-link": not a
+directory`. The privileged ownership phase passed, run/pass `1/1`; overall status is `FAIL`
+and all four claims are false. Root verified the report hash and failure details; the capture
+agent verified the manifest and all nine captured guest-file size/hash pairs. The preserved
+capture is `F:\TBoundAssets\Evidence\offline-20261003-195947`: `verification.json` SHA-256
+`095af79e04c4b1587e890fd66c2b4f2d5fdf0440f33cc59d9272fcc6b05e5890`,
+`capturemanifest.json` SHA-256
+`29fc15b13a4f542578e09cb9bfcbd53b0f8d66ab73a79204e46b01d189287281`, and nine regular
+files totaling 124,538 bytes. The post-capture F: inventory found 4,081,694,378 bytes in 62
+`TBoundAssets` files and 25,028,681,596 bytes in 8 `TBoundVMs` files (29,110,375,974 bytes
+total), no reparse points, and 869,672,910,848 bytes free. Both storage limits passed.
+
+Host commit `1f03c7604ba3041b34aa869e58a73453fbdc9887` contains the follow-on Linux audit
+symlink-classification fix; `lock_linux.go` SHA-256 is
+`7d0e73761a7f3b14980a0ede32b80b9fb75b2e7edbd0892c4f822875d5680dc9`. It has not been
+applied to the guest or tested. No success is inferred from the committed source change.
 Do not relax the ownership test gate, requeue automatically, or restore. No successful full
 Go/Pi suite has been independently verified.
 
@@ -104,6 +126,12 @@ policy was `ProductionOnly`; that inventory value does not establish creation po
 guaranteed freeze/thaw behavior. Guest capability probes and the full runtime profile remain
 unverified. Fresh Linux physical-host migration is **UNVERIFIED**.
 
+The user requested an autonomous privileged-ownership step. The current design uses a
+one-time root bootstrap to create fixed ownership fixtures under
+`/var/lib/tbound/audit-ownership-fixtures/<tboundadmin-uid>`, then runs the verifier without
+per-run sudo. It does not store a password or add persistent sudoers access. This flow is still
+under implementation; it has not been installed or verified.
+
 The current handoff sequence is to complete the narrow demonstration before starting the agreed
 WP1/G1 roadmap. Passing the offline verifier alone does not meet the five exit criteria or
 establish G1; the todo additionally requires all five spikes, E04/E06 fixtures, and a frozen
@@ -116,6 +144,7 @@ states path-specific outcomes: direct-console success is judged by the verifier'
 and JSON; SSH-queued success also requires launcher completion and exit evidence. Its checklist
 accepts either path.
 
-Root's independent verification covers the second-run JSON and the latest run's report,
-manifest, and nine captured guest/source-local file pairs. The second-run complete-folder
-comparison remains distinct from verification of its JSON report alone.
+Root independently verified the second-run JSON and, for the latest run, the report hash and
+failure details. The capture agent verified the latest manifest and all nine guest/source-local
+file size/hash pairs. This run-specific capture verification does not imply a full-tree source
+match or a successful verifier result.
