@@ -5,7 +5,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $ExpectedBranch = 'codex/tbound-prototype'
-$ExpectedTBoundAttributesBlob = '1bbd6959aa788033f8382a3e750d9fdbaf8a98d4'
+$ExpectedTBoundAttributesBlob = '9f5fb419253366bc0c09c284f750211177b3d76e'
 $AssetsRoot = 'F:\TBoundAssets'
 $VmStorageRoot = 'F:\TBoundVMs'
 $ExportRoot = Join-Path $AssetsRoot 'GuestHandoff'
@@ -358,7 +358,7 @@ try {
         throw 'An output file already exists; refusing to overwrite it.'
     }
 
-    $archiveOutput = & git -C $RepoRoot -c "safe.directory=$RepoRoot" -c 'tar.umask=0000' archive --format=tar --prefix=tbound/ --output=$archivePath $commit 2>&1
+    $archiveOutput = & git -C $RepoRoot -c "safe.directory=$RepoRoot" -c 'core.autocrlf=false' -c 'tar.umask=0000' archive --format=tar --prefix=tbound/ --output=$archivePath $commit 2>&1
     $archiveExit = $LASTEXITCODE
     if ($archiveExit -ne 0) {
         $detail = [string]::Join([Environment]::NewLine, @($archiveOutput))
