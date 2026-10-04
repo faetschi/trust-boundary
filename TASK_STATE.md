@@ -181,6 +181,16 @@ must not break the current green test suite.
 - Independently verified: full Linux `-race` suite under verifier-like `TMPDIR`/`umask 077` (all 10
   packages including the three new ones), Windows `go test ./internal/... ./e2e`, `gofmt -l` empty,
   `git diff --check` clean, and no `go.mod`/`go.sum` change.
+- Extended (`1cba0ba`): `internal/broker` — a concrete supervisor broker. Given a trusted registered
+  profile it validates the exact ordered four-tool manifest, builds the OpenRouter request, records
+  bounded request/response bytes in memory through an injected `HTTPDoer`, and correlates IPC
+  proposals against registered provider calls (trusted response/call issuers, exact tool name,
+  canonical argument digest, sequence, and one-use status) before gate policy evaluation. Wired into
+  the `cmd/tbound` loop (ipc → broker correlation → gate → result) with a fake transport. Records
+  are process-local, not durable audit evidence; no real network, containment, or publication.
+  Verified with the full Linux `-race` suite (11 packages incl. `internal/broker`) under
+  verifier-like `TMPDIR`/`umask 077` and the Windows suite.
+- Adapter-side IPC client is in progress in a separate workstream (not yet committed).
 
 ## Current goal
 
