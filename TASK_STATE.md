@@ -192,6 +192,24 @@ must not break the current green test suite.
   verifier-like `TMPDIR`/`umask 077` and the Windows suite.
 - Adapter-side IPC client is in progress in a separate workstream (not yet committed).
 
+### Planned end-to-end integration (next)
+
+Once the adapter IPC client is verified and committed:
+
+1. Give `cmd/tbound` a real supervised listener mode over `internal/ipc`'s Linux Unix-socket
+   transport (session-bound token, strict framing, one connection per session), in addition to the
+   injected/`net.Pipe` test path.
+2. Point the adapter's `ipc-transport.ts` at that socket so the four proxy tools each send one
+   proposal and receive the correlated result; the ClosureProbe surface must stay exactly
+   `read/write/edit/bash` with zero provider-stream attempts.
+3. Add a Linux-only cross-language smoke/`-race` harness: start the Go supervisor on a private
+   mode-0700 socket, run the Node adapter against it, drive the synthetic `read → edit → Bash →
+   read` fixture through ipc → broker correlation → gate → sessionrepo, and assert decisions and
+   generation state. Provider traffic remains a fake `HTTPDoer` (no credentials).
+4. Then continue the thesis path: durable-audit wiring into the decision path, the containment
+   executor (Landlock/seccomp/rootless Podman), the publication path, E04/E06 fixtures, the frozen
+   profile, and disposable restore.
+
 ## Current goal
 
 Continue the existing TBound prototype on branch codex/tbound-prototype in this standalone repository:
