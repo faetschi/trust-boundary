@@ -487,7 +487,8 @@ func TestDurableEditDecisionPath(t *testing.T) {
 }
 
 // TestDurableExecutorRejectsUnsupportedTool checks that a trusted ALLOW for a
-// tool outside the durable write/edit slice fails closed instead of guessing.
+// tool outside the durable write/edit/bash slice fails closed instead of
+// guessing.
 func TestDurableExecutorRejectsUnsupportedTool(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("durable session-repository integration runs only on Linux")
@@ -539,12 +540,12 @@ func TestDurableExecutorRejectsUnsupportedTool(t *testing.T) {
 	decision := gate.Decision{
 		Verdict: gate.Allow, ReasonCode: "policy_rule_allow",
 		PolicyDigest: "tbound-policy/v1:sha256:" + strings.Repeat("4", 64),
-		ToolCallID:   "call-unsupported", Tool: "bash", Sequence: 1,
+		ToolCallID:   "call-unsupported", Tool: "read", Sequence: 1,
 		ResponseID: &correlation.Identifier{Issuer: durableResponseIssuer, Opaque: "response-unsupported"},
 	}
 	if _, err := executor.Execute(context.Background(), protocol.Proposal{
 		SchemaVersion: protocol.ProposalSchemaVersion,
-		ToolCallID:    "call-unsupported", Tool: "bash", Arguments: json.RawMessage(`{"command":"true"}`),
+		ToolCallID:    "call-unsupported", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`),
 	}, decision); err == nil {
 		t.Fatal("durable executor accepted an unsupported tool")
 	}
@@ -563,6 +564,9 @@ type durableReceiptAuthority struct {
 	outputTreeDigest     string
 	observedOutputDigest string
 	observedChanges      []delta.ObjectChange
+	bashLeaseID          string
+	bashViewID           string
+	bashExecutionContext string
 }
 
 func (a *durableReceiptAuthority) observedOutput() string {
@@ -585,20 +589,14 @@ func (a *durableReceiptAuthority) setBinding(inputTreeDigest, outputTreeDigest s
 }
 
 // authorize is the fixture trusted policy authority. It accepts only the exact
-// durable write slice the test composes and then remembers the request so
-// verifyDecision can bind the transition to it.
+// durable write/edit/bash slice the test composes and then remembers the request
+// so verifyDecision can bind the transition to it.
 func (a *durableReceiptAuthority) authorize(request sessionrepo.OperationRequest) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	switch {
-	case request.Tool != "write" && request.Tool != "edit":
-		return fmt.Errorf("fixture authority only grants the durable write/edit slice, got %q", request.Tool)
-	case request.Operation.Kind != delta.OperationProposalCall:
-		return errors.New("fixture operation is not a proposal call")
-	case request.Operation.CallIssuer != a.callIssuer:
-		return fmt.Errorf("unexpected call issuer %q", request.Operation.CallIssuer)
-	case request.Operation.CallID != a.callID || !strings.HasPrefix(request.Operation.ProposalID, "proposal-"):
-		return errors.New("operation call identity is incomplete")
+	case request.Tool != "write" && request.Tool != "edit" && request.Tool != "bash":
+		return fmt.Errorf("fixture authority only grants the durable write/edit/bash slice, got %q", request.Tool)
 	case request.Decision.Outcome != delta.PolicyAllow ||
 		request.Decision.PolicyDigest != a.policyDigest ||
 		request.Decision.MetadataPolicyDigest != a.metadataPolicyDigest ||
@@ -611,6 +609,47 @@ func (a *durableReceiptAuthority) authorize(request sessionrepo.OperationRequest
 	case request.EffectID == "":
 		return errors.New("request lacks a supervisor effect ID")
 	}
+	if request.Tool == "bash" {
+		switch {
+		case request.Operation.Kind != delta.OperationLease:
+			return errors.New("fixture bash operation is not a lease")
+		case !strings.HasPrefix(request.Operation.LeaseID, "lease-") ||
+			request.Operation.ProposalID != "" || request.Operation.CallIssuer != "" || request.Operation.CallID != "":
+			return errors.New("fixture bash lease identity is incomplete")
+		case request.ViewID == "" || request.ExecutionContextDigest == "":
+			return errors.New("fixture bash request lacks command-view context")
+		}
+		a.bashLeaseID = request.Operation.LeaseID
+		a.bashViewID = request.ViewID
+		a.bashExecutionContext = request.ExecutionContextDigest
+		return nil
+	}
+	switch {
+	case request.Operation.Kind != delta.OperationProposalCall:
+		return errors.New("fixture operation is not a proposal call")
+	case request.Operation.CallIssuer != a.callIssuer:
+		return fmt.Errorf("unexpected call issuer %q", request.Operation.CallIssuer)
+	case request.Operation.CallID != a.callID || !strings.HasPrefix(request.Operation.ProposalID, "proposal-"):
+		return errors.New("operation call identity is incomplete")
+	}
+	return nil
+}
+
+// verifySettlement accepts the runner's synthetic settlement for the authorized
+// bash lease. RunBash has already validated every settlement boolean; this
+// fixture additionally proves the receipt names the lease and view the
+// authority authorized.
+func (a *durableReceiptAuthority) verifySettlement(settlement sessionrepo.CommandSettlement, viewID, leaseID string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	switch {
+	case settlement.LeaseID != leaseID || settlement.ViewID != viewID:
+		return errors.New("settlement receipt names a different lease or view")
+	case leaseID != a.bashLeaseID || viewID != a.bashViewID:
+		return errors.New("settlement does not cover the authorized bash request")
+	case strings.TrimSpace(settlement.EvidenceClass) == "":
+		return errors.New("settlement receipt lacks an evidence class")
+	}
 	return nil
 }
 
@@ -622,6 +661,25 @@ func (a *durableReceiptAuthority) verifyDecision(decision delta.PolicyDecision, 
 	defer a.mu.Unlock()
 	a.observedOutputDigest = binding.OutputTreeDigest
 	a.observedChanges = append([]delta.ObjectChange(nil), binding.Changes...)
+	if binding.Tool == "bash" {
+		switch {
+		case binding.ID != "transition-000001" || binding.Sequence != 1:
+			return fmt.Errorf("unexpected transition binding %q/%d", binding.ID, binding.Sequence)
+		case binding.InputGeneration != "g0" || binding.InputTreeDigest != a.inputTreeDigest:
+			return errors.New("binding input generation is not the seeded g0")
+		case binding.OutputTreeDigest != a.outputTreeDigest:
+			return errors.New("binding output tree digest does not match the expected settled tree")
+		case binding.ViewID != a.bashViewID || binding.ExecutionContextDigest != a.bashExecutionContext:
+			return errors.New("binding command-view context is not the authorized bash request")
+		case decision.Outcome != delta.PolicyAllow || decision.PolicyDigest != a.policyDigest ||
+			decision.MetadataPolicyDigest != a.metadataPolicyDigest || !strings.HasPrefix(decision.ID, "decision-"):
+			return errors.New("binding decision is not the configured allow decision")
+		case binding.Operation.Kind != delta.OperationLease || binding.Operation.LeaseID != a.bashLeaseID ||
+			binding.Operation.ProposalID != "" || binding.Operation.CallIssuer != "" || binding.Operation.CallID != "":
+			return errors.New("binding operation identity is not the authorized command lease")
+		}
+		return nil
+	}
 	switch {
 	case (binding.Tool != "write" && binding.Tool != "edit") || binding.ID != "transition-000001" || binding.Sequence != 1:
 		return fmt.Errorf("unexpected transition binding %q/%d", binding.ID, binding.Sequence)
