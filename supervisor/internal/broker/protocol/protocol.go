@@ -25,7 +25,7 @@ const (
 	// ProposalSchemaVersion matches the JSON emitted by the Pi proxy tools.
 	ProposalSchemaVersion = "tbound-proposal/v1"
 	// CanonicalizationProfile pins RFC 8785 argument digest rules at this boundary.
-	CanonicalizationProfile = "tbound-args-jcs-rfc8785/v1"
+	CanonicalizationProfile   = "tbound-args-jcs-rfc8785/v1"
 	MaxFrameBytes             = 1 << 20
 	MaxCapturesPerStream      = 1024
 	MaxProposalsPerStream     = 1024
@@ -40,16 +40,16 @@ const ReasonResourceLimit correlation.ReasonCode = "protocol_resource_limit"
 // TrustedCapture is supplied only by broker code after it has captured a
 // provider response. Pi request fields cannot populate these broker facts.
 type TrustedCapture struct {
-	ResponseID                 correlation.Identifier
-	ToolCallID                 correlation.Identifier
-	ToolName                   string
-	RawArguments               json.RawMessage
-	CanonicalizationProfile    string
+	ResponseID              correlation.Identifier
+	ToolCallID              correlation.Identifier
+	ToolName                string
+	RawArguments            json.RawMessage
+	CanonicalizationProfile string
 	// CanonicalArgumentsDigest is an asserted broker digest. Capture recomputes
 	// it from RawArguments and rejects a mismatch; digest-only evidence is invalid.
-	CanonicalArgumentsDigest   string
-	Sequence                   uint64
-	Generation                 string
+	CanonicalArgumentsDigest string
+	Sequence                 uint64
+	Generation               string
 }
 
 // proposalRequest is deliberately the small, actual Pi-side wire shape. Broker
@@ -107,8 +107,8 @@ func (s *Stream) Capture(capture TrustedCapture) correlation.Decision {
 	call := correlation.BrokerCall{
 		ResponseID: capture.ResponseID,
 		ToolCallID: capture.ToolCallID,
-		ToolName: capture.ToolName,
-		Sequence: capture.Sequence,
+		ToolName:   capture.ToolName,
+		Sequence:   capture.Sequence,
 		Generation: capture.Generation,
 	}
 	if capture.CanonicalizationProfile != CanonicalizationProfile ||
@@ -181,19 +181,19 @@ func (s *Stream) Propose(raw []byte) correlation.Decision {
 	call, exists := s.captures[request.ToolCallID]
 	if !exists {
 		proposal := correlation.Proposal{
-			ToolCallID: correlation.Identifier{Issuer: s.callIssuer, Opaque: request.ToolCallID},
-			ToolName: request.Tool,
+			ToolCallID:               correlation.Identifier{Issuer: s.callIssuer, Opaque: request.ToolCallID},
+			ToolName:                 request.Tool,
 			CanonicalArgumentsDigest: digest,
 		}
 		return s.rejectProposal(correlation.ReasonUnknownCall, &proposal)
 	}
 	proposal := correlation.Proposal{
-		ResponseID: call.ResponseID,
-		ToolCallID: call.ToolCallID,
-		ToolName: request.Tool,
+		ResponseID:               call.ResponseID,
+		ToolCallID:               call.ToolCallID,
+		ToolName:                 request.Tool,
 		CanonicalArgumentsDigest: digest,
-		Sequence: call.Sequence,
-		Generation: call.Generation,
+		Sequence:                 call.Sequence,
+		Generation:               call.Generation,
 	}
 	decision := s.correlator.Validate(proposal)
 	if decision.StreamClosed {
@@ -205,11 +205,11 @@ func (s *Stream) Propose(raw []byte) correlation.Decision {
 func (s *Stream) rejectProposal(reason correlation.ReasonCode, proposal *correlation.Proposal) correlation.Decision {
 	s.closed = true
 	return correlation.Decision{
-		Phase: correlation.PhaseProposal,
-		Accepted: false,
-		ReasonCode: reason,
+		Phase:        correlation.PhaseProposal,
+		Accepted:     false,
+		ReasonCode:   reason,
 		StreamClosed: true,
-		Proposal: proposal,
+		Proposal:     proposal,
 	}
 }
 

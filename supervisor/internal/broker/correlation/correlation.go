@@ -52,23 +52,23 @@ const (
 type ReasonCode string
 
 const (
-	ReasonCallCaptured             ReasonCode = "call_captured"
-	ReasonMatched                  ReasonCode = "matched"
-	ReasonSessionClosed             ReasonCode = "session_closed"
-	ReasonMalformedCapture          ReasonCode = "malformed_capture"
-	ReasonMalformedProposal         ReasonCode = "malformed_proposal"
-	ReasonUnregisteredTool          ReasonCode = "unregistered_tool"
-	ReasonDuplicateCallID           ReasonCode = "duplicate_call_id"
-	ReasonNonIncreasingSequence     ReasonCode = "non_increasing_sequence"
-	ReasonReplay                    ReasonCode = "replay"
-	ReasonUnknownCall               ReasonCode = "unknown_call"
-	ReasonCallIDMismatch            ReasonCode = "call_id_mismatch"
-	ReasonOutOfOrder                ReasonCode = "out_of_order"
-	ReasonResponseIDMismatch        ReasonCode = "response_id_mismatch"
-	ReasonToolNameMismatch          ReasonCode = "tool_name_mismatch"
-	ReasonArgumentDigestMismatch    ReasonCode = "argument_digest_mismatch"
-	ReasonSequenceMismatch          ReasonCode = "sequence_mismatch"
-	ReasonGenerationMismatch        ReasonCode = "generation_mismatch"
+	ReasonCallCaptured           ReasonCode = "call_captured"
+	ReasonMatched                ReasonCode = "matched"
+	ReasonSessionClosed          ReasonCode = "session_closed"
+	ReasonMalformedCapture       ReasonCode = "malformed_capture"
+	ReasonMalformedProposal      ReasonCode = "malformed_proposal"
+	ReasonUnregisteredTool       ReasonCode = "unregistered_tool"
+	ReasonDuplicateCallID        ReasonCode = "duplicate_call_id"
+	ReasonNonIncreasingSequence  ReasonCode = "non_increasing_sequence"
+	ReasonReplay                 ReasonCode = "replay"
+	ReasonUnknownCall            ReasonCode = "unknown_call"
+	ReasonCallIDMismatch         ReasonCode = "call_id_mismatch"
+	ReasonOutOfOrder             ReasonCode = "out_of_order"
+	ReasonResponseIDMismatch     ReasonCode = "response_id_mismatch"
+	ReasonToolNameMismatch       ReasonCode = "tool_name_mismatch"
+	ReasonArgumentDigestMismatch ReasonCode = "argument_digest_mismatch"
+	ReasonSequenceMismatch       ReasonCode = "sequence_mismatch"
+	ReasonGenerationMismatch     ReasonCode = "generation_mismatch"
 )
 
 // Decision preserves the raw input evidence used for a decision. Accepted
@@ -79,9 +79,9 @@ type Decision struct {
 	Accepted       bool        `json:"accepted"`
 	ReasonCode     ReasonCode  `json:"reason_code"`
 	StreamClosed   bool        `json:"stream_closed"`
-	CaptureOrdinal uint64     `json:"capture_ordinal,omitempty"`
+	CaptureOrdinal uint64      `json:"capture_ordinal,omitempty"`
 	BrokerCapture  *BrokerCall `json:"broker_capture,omitempty"`
-	Proposal      *Proposal   `json:"proposal,omitempty"`
+	Proposal       *Proposal   `json:"proposal,omitempty"`
 }
 
 type callIdentity struct {

@@ -24,32 +24,32 @@ import (
 )
 
 const (
-	recordVersion   = 1
+	recordVersion = 1
 	// MaxRecordBytes bounds each JSON frame during append and reconstruction.
-	MaxRecordBytes  = 8 << 20
-	intentKind      = "effect_intent"
-	outcomeKind     = "effect_outcome"
-	outcomeUnknown  = "unknown"
+	MaxRecordBytes = 8 << 20
+	intentKind     = "effect_intent"
+	outcomeKind    = "effect_outcome"
+	outcomeUnknown = "unknown"
 )
 
 var (
-	ErrClosed            = errors.New("audit journal is closed")
-	ErrPoisoned          = errors.New("audit journal is fail-closed after an I/O error")
-	ErrCorrupt           = errors.New("audit journal is corrupt or truncated")
-	ErrInvalidEvent      = errors.New("invalid audit event")
-	ErrRecordTooLarge    = errors.New("audit record exceeds the configured record limit")
-	ErrDurability        = errors.New("audit record was not confirmed durable")
-	ErrOutcomeUnknown    = errors.New("effect may have occurred; durable outcome is unavailable")
-	ErrDuplicateEffect   = errors.New("effect ID has already been used")
-	ErrUnresolvedEffect  = errors.New("effect ID has an unresolved prior attempt")
-	ErrQuarantined       = errors.New("audit journal is quarantined by an unresolved effect")
-	ErrAlreadyOpen       = errors.New("audit journal already has an exclusive writer")
-	ErrLockUnsupported   = errors.New("exclusive audit journal locking is unsupported on this platform")
+	ErrClosed              = errors.New("audit journal is closed")
+	ErrPoisoned            = errors.New("audit journal is fail-closed after an I/O error")
+	ErrCorrupt             = errors.New("audit journal is corrupt or truncated")
+	ErrInvalidEvent        = errors.New("invalid audit event")
+	ErrRecordTooLarge      = errors.New("audit record exceeds the configured record limit")
+	ErrDurability          = errors.New("audit record was not confirmed durable")
+	ErrOutcomeUnknown      = errors.New("effect may have occurred; durable outcome is unavailable")
+	ErrDuplicateEffect     = errors.New("effect ID has already been used")
+	ErrUnresolvedEffect    = errors.New("effect ID has an unresolved prior attempt")
+	ErrQuarantined         = errors.New("audit journal is quarantined by an unresolved effect")
+	ErrAlreadyOpen         = errors.New("audit journal already has an exclusive writer")
+	ErrLockUnsupported     = errors.New("exclusive audit journal locking is unsupported on this platform")
 	ErrInsecurePermissions = errors.New("audit journal path has broader permissions than allowed")
-	ErrInsecureOwnership = errors.New("audit journal path has an untrusted owner")
-	ErrJournalSymlink    = errors.New("audit journal path may not be a symlink")
-	ErrInvalidJournalFile = errors.New("audit journal must be a regular file in a private directory")
-	ErrSequenceExhausted = errors.New("audit sequence exhausted")
+	ErrInsecureOwnership   = errors.New("audit journal path has an untrusted owner")
+	ErrJournalSymlink      = errors.New("audit journal path may not be a symlink")
+	ErrInvalidJournalFile  = errors.New("audit journal must be a regular file in a private directory")
+	ErrSequenceExhausted   = errors.New("audit sequence exhausted")
 )
 
 // Event is the caller-owned evidence associated with one journal frame. Data
@@ -77,13 +77,13 @@ type Record struct {
 // when Outcome is unknown or a legacy failed callback result. Such an attempt
 // needs reconciliation before any retry.
 type EffectTrace struct {
-	ID             string `json:"id"`
-	Intent         []byte `json:"intent,omitempty"`
-	IntentSequence uint64 `json:"intent_sequence"`
-	Outcome        string `json:"outcome,omitempty"`
-	Result         []byte `json:"result,omitempty"`
+	ID              string `json:"id"`
+	Intent          []byte `json:"intent,omitempty"`
+	IntentSequence  uint64 `json:"intent_sequence"`
+	Outcome         string `json:"outcome,omitempty"`
+	Result          []byte `json:"result,omitempty"`
 	OutcomeSequence uint64 `json:"outcome_sequence,omitempty"`
-	Unresolved     bool   `json:"unresolved"`
+	Unresolved      bool   `json:"unresolved"`
 }
 
 // Trace is the verified journal prefix and its reconstructed effect attempts.
@@ -111,15 +111,15 @@ const (
 // also prevents another cooperating process from opening the same file for
 // writing. The target filesystem must honor flock semantics.
 type Journal struct {
-	mu       sync.Mutex
-	file     syncFile
-	lockFile *os.File
+	mu        sync.Mutex
+	file      syncFile
+	lockFile  *os.File
 	directory *os.File
-	sequence uint64
-	head     string
-	effects  map[string]effectState
-	poisoned bool
-	closed   bool
+	sequence  uint64
+	head      string
+	effects   map[string]effectState
+	poisoned  bool
+	closed    bool
 }
 
 // Open opens an existing journal or creates a new one with mode 0600. On Linux,
@@ -216,6 +216,36 @@ func (j *Journal) Append(event Event) (Record, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	return j.appendLocked(event)
+}
+
+// Trace returns the currently verified journal prefix from the same locked
+// file descriptor used for appends. The journal lock prevents a concurrent
+// writer in this process from changing the file while it is verified, and the
+// saved offset is restored before returning. Callers use this for recovery;
+// it does not make unresolved effects safe to replay.
+func (j *Journal) Trace() (Trace, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	if j.closed {
+		return Trace{}, ErrClosed
+	}
+	if j.poisoned {
+		return Trace{}, ErrPoisoned
+	}
+	position, err := j.file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return Trace{}, fmt.Errorf("save audit journal position: %w", err)
+	}
+	if _, err := j.file.Seek(0, io.SeekStart); err != nil {
+		_, restoreErr := j.file.Seek(position, io.SeekStart)
+		return Trace{}, errors.Join(fmt.Errorf("seek audit journal for recovery: %w", err), restoreErr)
+	}
+	trace, verifyErr := Verify(j.file)
+	_, restoreErr := j.file.Seek(position, io.SeekStart)
+	if verifyErr != nil || restoreErr != nil {
+		return Trace{}, errors.Join(verifyErr, restoreErr)
+	}
+	return trace, nil
 }
 
 // RunEffect durably records an intent before calling effect. If that append
@@ -569,4 +599,3 @@ func cloneRecord(record Record) Record {
 	record.Event = cloneEvent(record.Event)
 	return record
 }
-

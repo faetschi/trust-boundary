@@ -14,12 +14,12 @@ import (
 )
 
 type transcript struct {
-	FixtureID               string     `json:"fixture_id"`
-	EvidenceClass           string     `json:"evidence_class"`
-	RealProviderExchange    bool       `json:"real_provider_exchange"`
-	ClaimBearing            bool       `json:"claim_bearing"`
+	FixtureID                string     `json:"fixture_id"`
+	EvidenceClass            string     `json:"evidence_class"`
+	RealProviderExchange     bool       `json:"real_provider_exchange"`
+	ClaimBearing             bool       `json:"claim_bearing"`
 	DigestValuesAreSynthetic bool       `json:"digest_values_are_synthetic"`
-	Scenarios               []scenario `json:"scenarios"`
+	Scenarios                []scenario `json:"scenarios"`
 }
 
 type scenario struct {
@@ -38,12 +38,12 @@ type step struct {
 }
 
 type artifact struct {
-	FixtureID               string             `json:"fixture_id"`
-	EvidenceClass           string             `json:"evidence_class"`
-	RealExchange            bool               `json:"real_provider_exchange"`
-	ClaimBearing            bool               `json:"claim_bearing"`
+	FixtureID                string             `json:"fixture_id"`
+	EvidenceClass            string             `json:"evidence_class"`
+	RealExchange             bool               `json:"real_provider_exchange"`
+	ClaimBearing             bool               `json:"claim_bearing"`
 	DigestValuesAreSynthetic bool               `json:"digest_values_are_synthetic"`
-	Decisions               []artifactDecision `json:"decisions"`
+	Decisions                []artifactDecision `json:"decisions"`
 }
 
 type artifactDecision struct {

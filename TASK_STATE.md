@@ -1,28 +1,142 @@
 # TBound handoff state
 
-Last updated: 2026-10-04 (Europe/Vienna)
+Last updated: 2026-10-04 (Europe/Vienna) — autonomous continuation session
+
+## Autonomous continuation plan — 2026-10-04
+
+Goal: continue from the verified current state; fix all open issues, then advance the prototype.
+The orchestrator delegates mechanical exploration, implementation, and testing to GPT-6 Luna
+(xhigh) subagents and independently verifies critical facts.
+
+### Verified at session start (repo + host + guest)
+
+- VM `TBound-Ubuntu-2404` is **Running**, NIC connected to `Default Switch`; pinned-key SSH
+  works to `172.24.196.42`; guest booted `2026-10-04T13:56:03Z`; a tty1 console login is
+  active; no tmux/verifier/launcher/Go process is running.
+- The VFH offline run is **PASS**. `verification.json` SHA-256
+  `fbed5d86a9afc79c5889d782bcbe5d03f2cffa921fe4df42f0c16d6ced8667f8` and
+  `artifact-manifest.json` SHA-256
+  `0c4864a585c9870ab5a2bd4cdb0c97f3608c9cbd0489dc3f489b5f84c5321598` were recomputed and
+  match; 6/6 checks PASS; 85/86 Go events (one expected skip); ownership fixture 1/1; Pi
+  0.87.1 with zero provider-stream attempts; **all four claims remain false**.
+- The Windows host now has **Go 1.27.1** (`windows/amd64`) and Node `v24.15.0`; Python is
+  absent. (The earlier note "Go is unavailable on the host" is superseded.)
+- `F:` has 868,471,529,472 bytes (~808.8 GiB) free; storage gates pass.
+- Host automation is **not installed**: `C:\ProgramData\TBoundHostAutomation` is absent and no
+  `\TBound\*` tasks exist. `FABIAN\CodexSandboxOffline` (SID `…-1004`) exists and is enabled.
+  This session runs as **`FABIAN\Admin`** (SID `…-1001`), **unelevated**, with UAC secure-desktop
+  consent (`ConsentPromptBehaviorAdmin=5`).
+- Host-automation bundle pins verified against the actual files: bootstrap `0EF86511…`;
+  internal pins Install `7638C052…`, Actions `BB39E08E…`, Policy `C06BAE16…`, Initializer
+  `E521CCB7…`; the installer action pin `9EF7B338…` reproduces exactly as the canonical-LF
+  SHA-256 of `TBoundHostActions.ps1`. The `37405715…` paragraph in TASK_STATE/implementation
+  status is **stale** and should be marked superseded.
+
+### Open issues found (must fix / follow up)
+
+1. `supervisor/internal/broker/openrouter/openrouter.go:417` does not compile:
+   `integer(o,"created")` while `integer` takes `[]byte`. This package has never compiled.
+2. `supervisor/internal/workspace/workspace_linux.go:590` uses undefined `syscall.O_PATH`.
+   Never compiled. Fix with a package-local Linux constant; **do not add a new module** because
+   the offline verifier resolves the module graph with downloads disabled.
+3. `supervisor/internal/sessionrepo` is blocked by (2); the uncommitted lifecycle slice has no
+   compile/test evidence.
+4. `gofmt` is not clean on the sessionrepo files and the modified delta/audit files.
+5. The controller `ReviewedSourceCommit` (`5ccc52b2…`, `Invoke-TBoundTrustedOfflineVerifier.ps1`
+   line 21) is stale relative to current source and must be frozen/reviewed/updated before an
+   offline trial.
+6. Host-automation docs disagree on deferral vs. the reauthorized narrow helper, and carry the
+   stale `37405715…` pin.
+7. **VM power/NIC autonomy is blocked**: this session is unelevated, the fixed helper is not
+   installed, the installer requires the VM `Off`, and the reviewed policy targets SID `…-1004`
+   rather than this session's `…-1001`. A one-time elevated step plus a small reviewed policy
+   decision is required; the orchestrator asks before proceeding.
+
+### Workstreams
+
+- **WS1 (now):** fix the compile errors, gofmt, run the portable Windows tests, cross-compile
+  `GOOS=linux`, then get the sessionrepo lifecycle compiling and (on Linux) tested; commit the
+  reviewed lifecycle slice in isolated commits; reconcile docs/pins.
+- **WS2 (blocked on user decision):** one-time elevated host step so this session can start,
+  shut down, disconnect, and reconnect the VM autonomously. Options: (A) install the reviewed
+  fixed-task helper granting this session's SID (recommended; requires VM `Off` first);
+  (B) add `FABIAN\Admin` to Hyper-V-Administratoren (broader; needs a new logon); (C) keep VM
+  operations manual for now.
+- **WS3 (after WS1/WS2):** deploy the fixed source to the guest, re-run the offline verifier
+  pipeline, then continue the thesis path (provider/broker + E05, generation/sealing/publish,
+  containment/executor, durable-authority faults, reconstructable evidence, E04/E06, frozen
+  profile, disposable restore).
+
+### Constraints
+
+- Preserve unrelated working-tree changes; do not read, stage, alter, or delete `vm_start.txt`.
+- Never request, record, print, or commit secrets, passwords, or private keys.
+- No host-automation install without the user's one-time elevation approval.
+- Orchestrator keeps context lean and verifies critical results directly.
+
+### Progress — this session (2026-10-04)
+
+- **Host autonomy installed and verified.** Created protected `C:\ProgramData\TBoundVmOps`
+  (DACL: SYSTEM/Administrators full control, `FABIAN\Admin` SID `…-1001` read/run only) and five
+  fixed tasks in `\TBoundVmOps`: `Status`, `Start`, `Stop`, `Connect`, `Disconnect`. Each runs as
+  `FABIAN\Admin` (S4U, highest) with a fixed action script that hardcodes VM name/GUID
+  `c676170c-31a1-48e3-aa74-1d845411d253`, adapter `Netzwerkkarte`, and `Default Switch`; there are
+  no caller-controlled VM/switch arguments. Verified from the unelevated session: `schtasks /run`
+  works, ACL modification is denied (`E_ACCESSDENIED`), and `Status` returns live state. Each
+  install/recon step used a single UAC elevation.
+- Guest IP after a restart is rediscovered from the pinned MAC `00-15-5D-0C-40-00` via the host
+  neighbor table (`172.24.196.42`). Guest `sudo` requires a password and the guest has no
+  `hv-kvp-daemon`; no persistent `NOPASSWD` was added, so clean shutdown is Hyper-V-side.
+- **Supervisor now builds and passes all tests on Linux and Windows.** Fixed: the `openrouter`
+  `integer` call; the malformed `edit` tool JSON schema (miscounted braces / `required` nested
+  inside `properties`); `workspace` `syscall.O_PATH` (package-local `linuxOPath`); `sessionrepo`
+  Linux compile issues; and the `sessionrepo` runtime `ErrInvalidOptions` — tree digests are
+  profile-qualified (`tbound-tree-jcs-rfc8785/v1:sha256:…`) and are now validated by
+  `validTreeDigest`. Added `sessionrepo/context_linux_test.go` proving plain/unknown/uppercase/short
+  digests remain rejected. `gofmt` is clean and no Go module dependency was added.
+- Verified with WSL2 Ubuntu + Go 1.27.1 (private mode-0700 `TMPDIR`, because `audit` rejects
+  world-writable ancestors): `go test ./...` green across e2e, audit, protocol, openrouter, delta,
+  sessionrepo, workspace. Windows host `go build ./...` and the portable tests are green.
+- The autonomous VM lifecycle (Disconnect/Connect/Stop/Start) verification was launched; its result
+  is appended below once complete.
+- Still open: commit the code changes; host-automation (reviewed verifier helper) decision;
+  controller `ReviewedSourceCommit` update; wire the Linux WSL build/test into the normal workflow.
 
 ## Current goal
 
-Continue the existing TBound prototype on branch `codex/tbound-prototype` in this standalone repository:
+Continue the existing TBound prototype on branch codex/tbound-prototype in this standalone repository:
 
-`C:\Users\Admin\Desktop\FH\Master Software Engineering\MA Thesis\trust-boundary`
+C:\Users\Admin\Desktop\FH\Master Software Engineering\MA Thesis\trust-boundary
 
-Do not restart the VM decision or provisioning. Finish the narrow demonstration in the thesis checklist at `C:\Users\Admin\Desktop\FH\Master Software Engineering\MA Thesis\MSE_MA_Thesis\agentic-harness\todo-implementation-tbound.md`; after that passes, report its evidence and limitations and proceed to the agreed WP1/G1 roadmap. The full thesis experiments will later run on a separate dedicated Linux environment. Keep this Windows guest useful for early implementation and testing.
+The VFH offline verifier run now has a hash-verified PASS for the guest source pins recorded in its report. It does not accept the current repository working tree or establish any of the four provider, effect, containment, or G1 claims. See the current guest-state section below.
 
-The user wants a disposable Linux VM so untrusted model/tool activity cannot directly reach the Windows workstation. The accepted claim boundary allows documented residual hypervisor escape risk; do not claim zero escape risk. Keep the thesis checkout and host credentials outside the guest. Use synthetic repositories and canaries. Do not run adversarial tests on the workstation host.
+Next, complete and review the durable session-repository slice in the current repository. Then implement and verify the actual Pi/provider/broker flow, runtime controls, publication path, reconstructable evidence, and disposable restore. Keep the full thesis scope and checklist unchanged; the VFH report does not complete the end-to-end demonstration. The full thesis experiments will later run on a separate dedicated Linux environment.
 
+## Current host access helper handoff — 2026-10-04
 
-## Host automation evaluation and current state — 2026-10-04
+The user reauthorized the narrow TBound helper preparation and one-time Admin installation. This supersedes the earlier host-automation deferral only for this trusted-verifier helper. It does not grant broad Hyper-V group/Admin membership. No helper installation, task registration, VM operation, key generation, guest enrollment, or private-key access has occurred.
 
-The normative thesis checklist asks for one complete Linux/Pi workflow, including broker correlation, generation visibility, durable authority, containment, and reconstructable evidence. It does not require TBoundHostAutomation or Windows scheduled tasks. TBoundHostAutomation is a separate fixed-task wrapper for trusted offline-verifier operations.
+The helper changes are in `infra/hyperv/Bootstrap-TBoundHostAutomation.ps1`, `Install-TBoundHostAutomation.ps1`, `TBoundHostAccessPolicy.psm1`, `Initialize-TBoundOperatorSsh.ps1`, and `Invoke-TBoundTrustedOfflineVerifier.ps1`; supporting notes are in `TBOUND-HOST-AUTOMATION.md`, `INSTALLATION-RECORD.md`, and this file. The policy grants only the exact FABIAN\CodexSandboxOffline SID (`S-1-5-21-2350865082-651554413-1548572510-1004`) run/query access on five fixed SYSTEM tasks. The old Admin-owned SSH key remains untouched. The new separate operator key is not generated or enrolled.
 
-The pre-automation procedure supports continued controlled prototype work: use pinned-key SSH or VMConnect for trusted maintenance, start one exact queued launcher and record its report directory, have the operator disconnect the Hyper-V adapter, and let the guest launcher proceed only after every non-loopback interface reports carrier 0 and both IPv4 and IPv6 route tables have no default route. After the launcher exits, reconnect only for trusted maintenance and collect that invocation's report and capture. This keeps the offline phase behind the guest network gate, while host sequencing and evidence collection depend on the operator. The latest VFH terminal reported completion at 2026-10-04 09:07:19 UTC, but its report and capture are still unverified; this is not a verifier PASS or a completed end-to-end demonstration.
+The source bundle uses an external hash guard because the repository is operator-writable. The raw bootstrap SHA-256 is `0EF86511A6A00F0EB3F285E9CDD6D9703892C9F311B86A427E367130CC335469`; the exact byte-capture/hash-check/ScriptBlock command is recorded in the “One-time administrative install” section of `infra/hyperv/TBOUND-HOST-AUTOMATION.md`. The internal source-pin chain and outer documentation pin passed 9/9 checks. Windows PowerShell 5.1.19041.6456 policy/native tests passed 52 assertions, zero failures, including a root-side repeat; no installer or bootstrap was executed. Independent final static review found the hash guard and ACL design coherent. Live Task Scheduler SDDL readback remains unproven until a human installation. The repository uninstaller is not in the protected bundle: never run it elevated from the repository; task removal needs its own reviewed hash guard and protected copy.
 
-The five fixed SYSTEM tasks, protected profile/receipt paths, and host identity/state checks add repeatability and guardrails around those host transitions. They improve operations but are not a thesis-checklist completion requirement. The user decided to defer host automation and resume the previous manual guest workflow. No further host automation fix or installation is in scope unless the user later requests it.
+Next: finish that review and recheck the exact bundle hashes. Before any Admin install, inspect current guest work and host state. The last user report says the VM is Running; the installer requires it Off and the NIC disconnected. Since the helper is not installed, any shutdown must follow a user-approved manual path after confirming no active guest work. Do not force-off or restore. Then run the exact hash-guarded bootstrap from elevated Windows PowerShell/UAC. Inspect installed task definitions, task/folder SDDL, protected file ACLs and an `Inspect` receipt. Run the protected key initializer as the operator, then have a human Admin enroll only its public key through the old protected credential with OpenSSH `restrict`; this still gives the key normal `tboundadmin` shell/SCP access. Finally verify pinned SSH. The controller's older `ReviewedSourceCommit` (`5ccc52b2fa35be3dde9d3839f63ec613627b796b`) will reject the current lifecycle source; freeze and review the exact source snapshot and update that gate before an offline test.
 
-Current installer state: the latest installer attempt used source commit f41cdbb on codex/tbound-prototype. The latest reported installer error is the native Hyper-V adapter ID cast to Guid while constructing the profile at Install-TBoundHostAutomation.ps1 line 321. That happens before ShouldProcess at line 330 and before the first persistent write at line 332. Presence-only checks found C:\ProgramData\TBoundHostAutomation and its profile.json absent, so no partial protected installation is evident. The worktree still has untracked infra/hyperv/Invoke-TBoundTrustedOfflineVerifier.ps1 and infra/hyperv/Test-TBoundTrustedOfflineVerifierPolicy.ps1, plus vm_start.txt. The controller/policy tests remain pending with a reviewed hard-timeout/pipe-inheritance blocker; no live VM/task cycle was run. The user has deferred host automation, so no further host-automation fix or install is in scope. vm_start.txt remains unread and untouched. The VM's present state and network attachment are unknown here; the last known Off/disconnected state came from user-reported commands before the installer attempt and was not rechecked.
+## Session-repository source handoff — 2026-10-04
 
+The current uncommitted lifecycle slice updates `supervisor/internal/sessionrepo/` and `supervisor/internal/delta/delta.go` plus `delta_test.go`. It binds durable transitions to tool and normalized execution-argument digests, keeps Bash view/context identity separate, snapshots caller-owned edit and command inputs, and reopens by revalidating command intent, receipt, settlement, and transition evidence. Bash view IDs are random and historical IDs are reconstructed from successful intents and denial records. The E2E fixtures cover mismatched receipts/contexts, no-run denial, input-slice mutation, reopen recovery, and historical view-ID collisions. Normalized sessionrepo argument digests are not asserted to equal raw Pi proposal JSON digests.
+
+Static review and `git diff --check` completed; no Go test, race test, or `gofmt` run was possible because Go is unavailable on the host and WSL/VM access is denied for this non-admin account. Deterministic source-swap coverage and injected persistence-failure tests remain pending. This source snapshot is not deployed to the VM; runtime containment, provider exchange, and complete demonstration claims remain unverified. The `sessionrepo/` package is untracked, while the delta files are modified tracked files; preserve unrelated audit, documentation, infrastructure, and `vm_start.txt` changes.
+
+## Current guest and automation state — 2026-10-04
+
+The user reports the existing VM is Running and guest eth0 is UP at 172.24.196.42/20. The latest-boot Basic Session attestation is pending; the previous baseline attestation is not current. The host adapter state was not queried during report retrieval. Use this session only for trusted maintenance; no new untrusted guest run is authorized.
+
+The saved run /home/tboundadmin/.tbound-offline-queued.VFHmYRa5HO passed its offline gate at 2026-10-04T09:06:39Z and completed at 09:07:19Z. Its eight-file capture is at F:\TBoundAssets\ProvisioningSSH\TBoundTrustedCapture-VFHmYRa5HO; all source and local hashes matched the reviewed metadata. verification.json SHA-256 is fbed5d86a9afc79c5889d782bcbe5d03f2cffa921fe4df42f0c16d6ced8667f8; artifact-manifest.json SHA-256 is 0c4864a585c9870ab5a2bd4cdb0c97f3608c9cbd0489dc3f489b5f84c5321598.
+
+That report has schema tbound.guest-verification/v2, status PASS, six checks PASS, no failures, cleanup PASS with zero leftovers, runner and launcher exit 0, and host-adapter-disconnected attestation true. Normal and race runs each covered five packages and 86 test events: 85 passed, zero failed, with the one expected ownership test skip; the separate ownership fixture passed 1/1. All four claims (live_provider_exchange, live_effect_execution, containment_established, g1_durability_established) are false. This is a successful trusted offline verifier run against the source pins recorded in that report, not acceptance of the current repository working tree, a provider exchange, containment proof, or completion of the thesis checklist. The later OpenRouter and workspace source packages have not been deployed to the guest.
+
+The VFH capture recorded 29,200,952,811 tracked bytes and 867,972,812,800 bytes free on F:, within the 100-GiB/700-GiB limits. Helper installation remains pending; see the current host-access handoff above.
 ## Decisions and constraints
 
 - FABIAN is Windows 10 Education. Keep its current Windows version.
@@ -150,15 +264,15 @@ The report records UID 1000, offline `eth0` carrier 0, no IPv4/IPv6 default rout
 
 The host parser correction was not deployed to or tested in this guest run. Passing targeted Go and fixture phases do not establish a successful overall verifier, provider exchange, end-to-end demonstration, or containment.
 
-After this run, source commit `90ee23e` corrected the package-skip parser and passed seven host-only pure tests. A guarded two-file guest deployment was verified as UID 1000 without sudo: `infra/guest/verify-offline.py` SHA-256 `cb4d8d2a235548b2a3a1528befb880e0dc5f1619d5ac46591672ed17547b204a` and `infra/guest/test_go_phase_diagnostic.py` SHA-256 `61a56ea541e5ed5648b02b79643a2b6a667144a99b2129b77ea7622dc1e6099f`. The preimages are preserved under `/home/tboundadmin/.tbound-verifier-backup-90ee23e34b60f4e2`; deployment manifest SHA-256 is `07c791f66507a3125ca73ed96696c50853c5509422f07f32aa8e870693e90af4`. A follow-up queue was then run; its terminal reported successful completion, but the report and capture remain unavailable for independent verification.
+After this run, source commit `90ee23e` corrected the package-skip parser and passed seven host-only pure tests. A guarded two-file guest deployment was verified as UID 1000 without sudo: `infra/guest/verify-offline.py` SHA-256 `cb4d8d2a235548b2a3a1528befb880e0dc5f1619d5ac46591672ed17547b204a` and `infra/guest/test_go_phase_diagnostic.py` SHA-256 `61a56ea541e5ed5648b02b79643a2b6a667144a99b2129b77ea7622dc1e6099f`. The preimages are preserved under `/home/tboundadmin/.tbound-verifier-backup-90ee23e34b60f4e2`; deployment manifest SHA-256 is `07c791f66507a3125ca73ed96696c50853c5509422f07f32aa8e870693e90af4`. The VFH report and capture were later retrieved and verified; see the current state above.
 
-The queued follow-up is `/home/tboundadmin/.tbound-offline-queued.VFHmYRa5HO`, created at `2026-10-04T09:03:53Z`. The offline gate passed at `2026-10-04T09:06:39Z`; the terminal reported successful completion at `09:07:19Z`. This is a provisional terminal result only: the report JSON and capture have not been retrieved or independently verified, so do not claim verifier PASS, full checklist completion, or containment.
+The queued follow-up VFHmYRa5HO passed its offline gate and reached terminal completion. Its report and capture were later retrieved and hash-verified. The report is PASS for its recorded inputs, but all four claims are false; this is not full checklist completion or containment evidence. See the current state above for capture hashes and scope.
 
-Host automation source remains independently security-reviewed. The retry reached the installer’s firmware gate but rejected the valid Ubuntu entry because BootType is the native enum Microsoft.HyperV.PowerShell.VMBootSourceType, while the guard required a string. The guard now accepts only string File or the exact native enum value File, along with the pinned VM identity, null Device, empty checkpoint IDs/names, IsDeleted false, and the structural GPT path to \EFI\ubuntu\shimx64.efi. The installer captures that exact FirmwarePath in protected profile schema 2; runtime requires the same first-entry path. Windows PowerShell 5.1 parsing passed for four scripts and 45 pure fixtures passed using the real Hyper-V enum metadata; canonical LF action SHA-256 and installer pin are 9EF7B338B18DA61204F84E3B74FD1ADA609652E4FC7A25DEB5CF633605581D26. The enum correction is prepared but not installed or live-tested; the failed attempt stopped before persistent changes. The later user decision supersedes the retry recommendation: defer host automation and resume the previous manual guest workflow. Do not perform further host-automation fixes or installation under this decision.
+Host automation source remains independently security-reviewed. The retry reached the installer’s firmware gate but rejected the valid Ubuntu entry because BootType is the native enum Microsoft.HyperV.PowerShell.VMBootSourceType, while the guard required a string. The guard now accepts only string File or the exact native enum value File, along with the pinned VM identity, null Device, empty checkpoint IDs/names, IsDeleted false, and the structural GPT path to \EFI\ubuntu\shimx64.efi. The installer captures that exact FirmwarePath in protected profile schema 2; runtime requires the same first-entry path. Windows PowerShell 5.1 parsing passed for four scripts and 45 pure fixtures passed using the real Hyper-V enum metadata; canonical LF action SHA-256 and installer pin are 9EF7B338B18DA61204F84E3B74FD1ADA609652E4FC7A25DEB5CF633605581D26. The enum correction is prepared but not installed or live-tested; the failed attempt stopped before persistent changes. The later user decision deferred host automation, then the user reauthorized the narrow trusted-verifier helper on Oct 4; see the current handoff above. No helper install has been run.
 
 A focused firmware guard fix now accepts only the target VM’s File entry with null Device, matching VM identity, empty checkpoint IDs/names, IsDeleted false, and a local GPT path to \EFI\ubuntu\shimx64.efi. The installer captures that validated FirmwarePath in protected profile schema 2; runtime requires an exact match to the pinned path at boot-order position one. The partition GUID and geometry are validated structurally and captured per installation. Secure Boot’s Linux template and the single attached disk remain separate existing checks. Windows PowerShell 5.1 parsed the three source scripts and the pure fixture harness passed 36 accept/reject cases; canonical LF action SHA-256 and installer pin are 3740571565DBDA14A3517D9A891FAA98E9DFEF80D22A9BBC67F9389575CDA716.
 
-These source fixes are prepared but not installed or live-tested. This work did not inspect or alter the live VM, firmware, Hyper-V settings, tasks, or SSH state. The user decided to defer host automation and resume the previous manual guest workflow; no further host-automation fixes or installation are in scope. The VFH terminal success remains provisional until its exact report JSON and capture are retrieved and verified through trusted maintenance.
+These source fixes were prepared but not installed or live-tested at that point. This work did not inspect or alter the live VM, firmware, Hyper-V settings, tasks, or SSH state. The later Oct 4 user reauthorization for a narrow helper supersedes that historical deferral; see the current handoff above. The VFH report and capture were retrieved through pinned trusted maintenance and hash-verified; the report scope and limits are recorded above.
 
 ## Resume VMConnect and the existing tmux terminal
 

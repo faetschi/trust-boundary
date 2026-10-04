@@ -107,9 +107,12 @@ func TestValidateChainAllowsEmptyGenerationTransition(t *testing.T) {
 	spec.ExpectedSealedTreeDigest = spec.ExpectedBaselineTreeDigest
 	entry := Transition{
 		ID: "empty-transition", Sequence: 1, InputGeneration: "g0", OutputGeneration: "g1-empty",
-		InputTreeDigest: spec.ExpectedBaselineTreeDigest, OutputTreeDigest: spec.ExpectedBaselineTreeDigest,
+		Tool: "bash", ArgumentDigest: testDigest("command arguments"),
+		ViewID:                 "view-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ExecutionContextDigest: testDigest("command execution context"),
+		InputTreeDigest:        spec.ExpectedBaselineTreeDigest, OutputTreeDigest: spec.ExpectedBaselineTreeDigest,
 		Operation: OperationIdentity{Kind: OperationLease, LeaseID: "empty-lease"},
-		Changes: []ObjectChange{},
+		Changes:   []ObjectChange{},
 		Decision: PolicyDecision{ID: "empty-decision", Outcome: PolicyAllow,
 			PolicyDigest: spec.PolicyDigest, MetadataPolicyDigest: spec.MetadataPolicyDigest},
 	}
@@ -119,6 +122,27 @@ func TestValidateChainAllowsEmptyGenerationTransition(t *testing.T) {
 	}
 	if len(result.ComposedChanges) != 0 || len(result.TouchedPaths) != 0 {
 		t.Fatalf("empty-change transition produced object delta: %+v", result)
+	}
+}
+
+func TestValidateChainRequiresExactToolArgumentBinding(t *testing.T) {
+	spec, entries := fixture(t)
+	for _, test := range []struct {
+		name        string
+		mutate      func(*Transition)
+		wantMessage string
+	}{
+		{name: "missing tool", mutate: func(entry *Transition) { entry.Tool = "" }, wantMessage: "tool and exact argument digest"},
+		{name: "malformed argument digest", mutate: func(entry *Transition) { entry.ArgumentDigest = "sha256:short" }, wantMessage: "tool and exact argument digest"},
+		{name: "Bash without context", mutate: func(entry *Transition) { entry.Tool = "bash" }, wantMessage: "Bash transition requires"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := append([]Transition(nil), entries...)
+			test.mutate(&candidate[0])
+			if _, err := ValidateChain(spec, candidate, acceptingVerifier); err == nil || !strings.Contains(err.Error(), test.wantMessage) {
+				t.Fatalf("transition without exact receipt binding was accepted: %v", err)
+			}
+		})
 	}
 }
 
@@ -137,6 +161,7 @@ func TestValidateChainAppliesChangeSetFromOneInputSnapshot(t *testing.T) {
 	spec := ChainSpec{Baseline: baseline, Sealed: sealed, ExpectedBaselineTreeDigest: baselineDigest,
 		ExpectedSealedTreeDigest: sealedDigest, PolicyDigest: policy, MetadataPolicyDigest: metadataPolicy}
 	entry := Transition{ID: "swap", Sequence: 1, InputGeneration: "g0", OutputGeneration: "g1",
+		Tool: "edit", ArgumentDigest: testDigest("edit arguments"),
 		InputTreeDigest: baselineDigest, OutputTreeDigest: sealedDigest,
 		Operation: OperationIdentity{Kind: OperationProposalCall, ProposalID: "p", CallIssuer: "broker", CallID: "c"},
 		Changes: []ObjectChange{
@@ -163,9 +188,12 @@ func TestValidateChainRejectsExcessAggregateTreeWorkBeforeStepCopy(t *testing.T)
 	spec := ChainSpec{Baseline: baseline, Sealed: sealed, ExpectedBaselineTreeDigest: baselineDigest,
 		ExpectedSealedTreeDigest: sealedDigest, PolicyDigest: policy, MetadataPolicyDigest: metadataPolicy}
 	entry := Transition{ID: "empty", Sequence: 1, InputGeneration: "g0", OutputGeneration: "g1",
-		InputTreeDigest: baselineDigest, OutputTreeDigest: sealedDigest,
+		Tool: "bash", ArgumentDigest: testDigest("command arguments"),
+		ViewID:                 "view-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		ExecutionContextDigest: testDigest("command execution context"),
+		InputTreeDigest:        baselineDigest, OutputTreeDigest: sealedDigest,
 		Operation: OperationIdentity{Kind: OperationLease, LeaseID: "lease"},
-		Decision: PolicyDecision{ID: "decision", Outcome: PolicyAllow, PolicyDigest: policy, MetadataPolicyDigest: metadataPolicy},
+		Decision:  PolicyDecision{ID: "decision", Outcome: PolicyAllow, PolicyDigest: policy, MetadataPolicyDigest: metadataPolicy},
 	}
 	if _, err := ValidateChain(spec, []Transition{entry}, acceptingVerifier); err == nil || !strings.Contains(err.Error(), "aggregate tree-validation work") {
 		t.Fatalf("aggregate tree work limit not enforced: %v", err)
@@ -310,13 +338,15 @@ func fixture(t *testing.T) (ChainSpec, []Transition) {
 	entries := []Transition{
 		{
 			ID: "transition-1", Sequence: 1, InputGeneration: "g0", OutputGeneration: "g1",
+			Tool: "edit", ArgumentDigest: testDigest("edit arguments 1"),
 			InputTreeDigest: baselineDigest, OutputTreeDigest: middleDigest,
 			Operation: OperationIdentity{Kind: OperationProposalCall, ProposalID: "proposal-1", CallIssuer: "broker", CallID: "call-1"},
-			Changes: []ObjectChange{{Path: "docs/a.txt", Before: oldFile, After: middleFile}},
-			Decision: PolicyDecision{ID: "decision-1", Outcome: PolicyAllow, PolicyDigest: policy, MetadataPolicyDigest: metadataPolicy},
+			Changes:   []ObjectChange{{Path: "docs/a.txt", Before: oldFile, After: middleFile}},
+			Decision:  PolicyDecision{ID: "decision-1", Outcome: PolicyAllow, PolicyDigest: policy, MetadataPolicyDigest: metadataPolicy},
 		},
 		{
 			ID: "transition-2", Sequence: 2, InputGeneration: "g1", OutputGeneration: "g2",
+			Tool: "write", ArgumentDigest: testDigest("write arguments 2"),
 			InputTreeDigest: middleDigest, OutputTreeDigest: sealedDigest,
 			Operation: OperationIdentity{Kind: OperationLease, LeaseID: "lease-2"},
 			Changes: []ObjectChange{

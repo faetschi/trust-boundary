@@ -20,23 +20,26 @@ import (
 	"tbound/supervisor/internal/delta"
 )
 
+// linuxOPath is Linux O_PATH, which is not exposed by syscall on all Go versions.
+const linuxOPath = 0x200000
+
 var (
-	ErrInvalidOptions          = errors.New("invalid workspace options")
-	ErrUntrustedRoot           = errors.New("workspace root is not supervisor-owned and private")
-	ErrNotQuiescent            = errors.New("workspace root was not attested quiescent")
-	ErrXattrVisibilityUnproven = errors.New("complete xattr visibility is not attested")
-	ErrUnsupportedMetadata     = errors.New("workspace contains unsupported metadata")
-	ErrSymlink                 = errors.New("workspace contains a symbolic link")
-	ErrHardLink                = errors.New("workspace contains a linked regular file")
-	ErrSpecialFile             = errors.New("workspace contains a special file")
-	ErrNestedMount             = errors.New("workspace crosses a mount point")
+	ErrInvalidOptions           = errors.New("invalid workspace options")
+	ErrUntrustedRoot            = errors.New("workspace root is not supervisor-owned and private")
+	ErrNotQuiescent             = errors.New("workspace root was not attested quiescent")
+	ErrXattrVisibilityUnproven  = errors.New("complete xattr visibility is not attested")
+	ErrUnsupportedMetadata      = errors.New("workspace contains unsupported metadata")
+	ErrSymlink                  = errors.New("workspace contains a symbolic link")
+	ErrHardLink                 = errors.New("workspace contains a linked regular file")
+	ErrSpecialFile              = errors.New("workspace contains a special file")
+	ErrNestedMount              = errors.New("workspace crosses a mount point")
 	ErrOverlappingRoots         = errors.New("workspace source and destination roots overlap")
 	ErrRootAncestryUnverified   = errors.New("workspace root ancestry could not be verified")
 	ErrMountIdentityUnavailable = errors.New("workspace mount identity is unavailable")
-	ErrSourceChanged           = errors.New("workspace changed during import or scan")
-	ErrLimit                   = errors.New("workspace exceeds a configured limit")
-	ErrDestinationNotEmpty     = errors.New("workspace import destination is not empty")
-	ErrNoncanonicalMode        = errors.New("stored workspace mode is not normalized")
+	ErrSourceChanged            = errors.New("workspace changed during import or scan")
+	ErrLimit                    = errors.New("workspace exceeds a configured limit")
+	ErrDestinationNotEmpty      = errors.New("workspace import destination is not empty")
+	ErrNoncanonicalMode         = errors.New("stored workspace mode is not normalized")
 )
 
 const metadataIdentityProfile = "tbound-normalized-metadata/v1"
@@ -172,11 +175,11 @@ func Scan(root *os.File, options Options) (Snapshot, error) {
 }
 
 type walkState struct {
-	options    Options
+	options     Options
 	rootMountID uint64
-	objects    []delta.ManifestObject
-	bytes      int64
-	seen       int
+	objects     []delta.ManifestObject
+	bytes       int64
+	seen        int
 }
 
 func validateOptions(options Options) error {
@@ -587,7 +590,7 @@ func makeSnapshot(options Options, state walkState) (Snapshot, error) {
 }
 
 func openPathNode(parent *os.File, name string) (*os.File, error) {
-	fd, err := syscall.Openat(int(parent.Fd()), name, syscall.O_PATH|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	fd, err := syscall.Openat(int(parent.Fd()), name, linuxOPath|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, err
 	}

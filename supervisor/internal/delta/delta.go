@@ -124,35 +124,46 @@ type PolicyDecision struct {
 }
 
 type Transition struct {
-	ID               string            `json:"id"`
-	Sequence         uint64            `json:"sequence"`
-	InputGeneration  string            `json:"input_generation"`
-	OutputGeneration string            `json:"output_generation"`
-	InputTreeDigest  string            `json:"input_tree_digest"`
-	OutputTreeDigest string            `json:"output_tree_digest"`
-	Operation        OperationIdentity `json:"operation"`
-	Changes          []ObjectChange    `json:"changes"`
-	Decision         PolicyDecision    `json:"decision"`
+	ID       string `json:"id"`
+	Sequence uint64 `json:"sequence"`
+	// Tool and ArgumentDigest bind the terminal transition to the exact
+	// authorized tool operation, in addition to its output tree delta.
+	Tool                   string            `json:"tool"`
+	ArgumentDigest         string            `json:"argument_digest"`
+	ViewID                 string            `json:"view_id,omitempty"`
+	ExecutionContextDigest string            `json:"execution_context_digest,omitempty"`
+	InputGeneration        string            `json:"input_generation"`
+	OutputGeneration       string            `json:"output_generation"`
+	InputTreeDigest        string            `json:"input_tree_digest"`
+	OutputTreeDigest       string            `json:"output_tree_digest"`
+	Operation              OperationIdentity `json:"operation"`
+	Changes                []ObjectChange    `json:"changes"`
+	Decision               PolicyDecision    `json:"decision"`
 }
 
 // TransitionBinding is a defensive copy passed to DecisionVerifier. The
 // verifier should resolve the decision ID against its trusted policy/audit
-// source and attest that it covers this exact transition.
+// source and attest that it covers this tool, argument digest, and transition.
 type TransitionBinding struct {
-	ID               string
-	Sequence         uint64
-	InputGeneration  string
-	OutputGeneration string
-	InputTreeDigest  string
-	OutputTreeDigest string
-	Operation        OperationIdentity
-	Changes          []ObjectChange
+	ID                     string
+	Sequence               uint64
+	Tool                   string
+	ArgumentDigest         string
+	ViewID                 string
+	ExecutionContextDigest string
+	InputGeneration        string
+	OutputGeneration       string
+	InputTreeDigest        string
+	OutputTreeDigest       string
+	Operation              OperationIdentity
+	Changes                []ObjectChange
 }
 
 // DecisionVerifier is supplied by the trusted caller. It must reject decisions
 // without authentic supervisor provenance or whose policy receipt is not bound
-// to this exact operation, generations, tree digests, and change set. This
-// package provides no signature scheme or persistent audit source.
+// to this exact tool and argument digest, operation, generations, tree digests,
+// and change set. This package provides no signature scheme or persistent
+// audit source.
 type DecisionVerifier func(PolicyDecision, TransitionBinding) error
 
 // Result contains the validated endpoint commitment and composed baseline to
@@ -459,6 +470,10 @@ func preflightInput(spec ChainSpec, entries []Transition) error {
 			limit int
 		}{
 			{"transition ID", entry.ID, MaxIdentityBytes},
+			{"tool", entry.Tool, MaxIdentityBytes},
+			{"argument digest", entry.ArgumentDigest, 71},
+			{"view ID", entry.ViewID, MaxIdentityBytes},
+			{"execution context digest", entry.ExecutionContextDigest, 71},
 			{"input generation", entry.InputGeneration, MaxIdentityBytes},
 			{"output generation", entry.OutputGeneration, MaxIdentityBytes},
 			{"input tree digest", entry.InputTreeDigest, len(TreeDigestProfile) + 64},
@@ -577,6 +592,16 @@ func validateTransitionHeader(entry Transition, spec ChainSpec) error {
 	if !validLabel(entry.ID) || !validLabel(entry.InputGeneration) || !validLabel(entry.OutputGeneration) ||
 		entry.InputGeneration == entry.OutputGeneration {
 		return errors.New("transition and distinct generation labels are required")
+	}
+	if !validLabel(entry.Tool) || !validDigest(entry.ArgumentDigest, "sha256:") {
+		return errors.New("transition tool and exact argument digest are required")
+	}
+	if entry.Tool == "bash" {
+		if !validLabel(entry.ViewID) || !validDigest(entry.ExecutionContextDigest, "sha256:") {
+			return errors.New("Bash transition requires a valid view ID and execution-context digest")
+		}
+	} else if entry.ViewID != "" || entry.ExecutionContextDigest != "" {
+		return errors.New("non-Bash transition contains command-view context")
 	}
 	if !validDigest(entry.InputTreeDigest, TreeDigestProfile) ||
 		!validDigest(entry.OutputTreeDigest, TreeDigestProfile) {
@@ -807,7 +832,9 @@ func cloneChanges(changes []ObjectChange) []ObjectChange {
 
 func transitionBinding(entry Transition) TransitionBinding {
 	return TransitionBinding{
-		ID: entry.ID, Sequence: entry.Sequence, InputGeneration: entry.InputGeneration,
+		ID: entry.ID, Sequence: entry.Sequence, Tool: entry.Tool, ArgumentDigest: entry.ArgumentDigest,
+		ViewID: entry.ViewID, ExecutionContextDigest: entry.ExecutionContextDigest,
+		InputGeneration:  entry.InputGeneration,
 		OutputGeneration: entry.OutputGeneration, InputTreeDigest: entry.InputTreeDigest,
 		OutputTreeDigest: entry.OutputTreeDigest, Operation: entry.Operation,
 		Changes: cloneChanges(entry.Changes),

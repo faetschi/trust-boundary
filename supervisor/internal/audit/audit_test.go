@@ -19,16 +19,16 @@ var errInjectedDiskFull = errors.New("ENOSPC: injected disk full")
 var errInjectedSync = errors.New("injected fsync failure")
 
 type faultFile struct {
-	data            []byte
-	readOffset      int64
-	maxWrite        int
-	writeCalls      int
-	failWriteCall   int
-	failWrite       error
-	syncCalls       int
-	failSyncCall    int
-	failSync        error
-	closed          bool
+	data          []byte
+	readOffset    int64
+	maxWrite      int
+	writeCalls    int
+	failWriteCall int
+	failWrite     error
+	syncCalls     int
+	failSyncCall  int
+	failSync      error
+	closed        bool
 }
 
 func (f *faultFile) Read(p []byte) (int, error) {
@@ -112,6 +112,26 @@ func TestRunEffectCompletesShortWritesAndReconstructsTrace(t *testing.T) {
 	if effect.ID != "effect-1" || effect.Unresolved || effect.Outcome != "success" ||
 		!bytes.Equal(effect.Intent, []byte("intent")) || !bytes.Equal(effect.Result, []byte("result")) {
 		t.Fatalf("unexpected reconstructed effect: %+v", effect)
+	}
+	journalTrace, err := journal.Trace()
+	if err != nil {
+		t.Fatalf("Journal.Trace: %v", err)
+	}
+	if !reflect.DeepEqual(journalTrace, trace) {
+		t.Fatalf("Journal.Trace differs from verified bytes: got %+v, want %+v", journalTrace, trace)
+	}
+}
+
+func TestJournalTraceRejectsClosedAndPoisonedJournals(t *testing.T) {
+	closed := testJournal(&faultFile{})
+	closed.closed = true
+	if _, err := closed.Trace(); !errors.Is(err, ErrClosed) {
+		t.Fatalf("Trace on closed journal = %v, want ErrClosed", err)
+	}
+	poisoned := testJournal(&faultFile{})
+	poisoned.poisoned = true
+	if _, err := poisoned.Trace(); !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("Trace on poisoned journal = %v, want ErrPoisoned", err)
 	}
 }
 
