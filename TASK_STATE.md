@@ -14,6 +14,16 @@ durable end-to-end path; and keep VM lifecycle + SSH autonomous (no manual VMCon
   rediscovered from the pinned MAC `00-15-5D-0C-40-00` with pinned-key SSH succeeding. If any step
   needs a one-time elevation, stop and ask for that single approval only.
 
+### Autonomy verification (2026-10-04)
+
+- `\TBoundVmOps\{Status,Start,Stop,Connect,Disconnect}` are all present and `Ready` and were invoked
+  unelevated via `schtasks /run`. Full cycle re-proven this session: `Status` Running → `Stop`
+  reached Hyper-V `Off` (graceful, no force-off) → `Start` returned `Running` on `Default Switch`.
+  Guest DHCP moved `172.24.196.229` → `172.24.195.3`, rediscovered from pinned MAC
+  `00-15-5D-0C-40-00` via `Get-NetNeighbor`, and pinned-key SSH returned exit 0 (`tboundadmin`,
+  `tboundubuntu2404`; toolchains `go1.27.1`, `node-v24.21.0-linux-x64` under `/opt/tbound`). VM
+  start/stop/connect/disconnect and SSH require no manual VMConnect and no new elevation.
+
 ### Workstreams (ordered)
 1. **Durable integration (next):** wire `internal/sessionrepo` + pre-effect durable audit into the
    `cmd/tbound` decision path (proposal → broker correlation → gate → durable intent/audit → effect
