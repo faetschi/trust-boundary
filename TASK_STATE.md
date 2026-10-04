@@ -40,10 +40,21 @@ durable end-to-end path; and keep VM lifecycle + SSH autonomous (no manual VMCon
   executes; `TestServeRecordsDecisionFailClosed` proves the hook withholds on failure on every
   platform. Independently verified: Linux `-race` all 12 packages green, Windows build/tests green,
   `gofmt`/`git diff --check` clean, no module change.
-- Found a real pre-existing bug during verification: `sessionrepo.Store.Write` passes its `0o644`
-  default as `executableBits`, so a **new** file is created mode `0755` instead of `0644` (`Edit` is
-  unaffected because `readRegularAt` returns `Mode & 0o111`). Fix + Linux regression test in
-  progress.
+- Found a real pre-existing bug during verification: `sessionrepo.Store.Write` passed its `0o644`
+  default as `executableBits`, so a **new** file was created mode `0755` instead of `0644` (`Edit` was
+  unaffected because `readRegularAt` returns `Mode & 0o111`). Fixed and committed (`26b71dd`):
+  new paths default to `0644`, an existing file's executable bit is preserved, and
+  `TestSessionRepositoryWriteCanonicalModeE2E` proves new-file `0644`, overwrite non-executable
+  `0644`, and overwrite executable `0755` across a verified `g0→g3` chain. Independently verified
+  (Linux `-race` all packages, Windows build, gofmt/diff clean).
+- **Contained executor (Option-A) in progress** (two parallel lanes): (a) new Linux dev/WSL packages
+  `internal/sandbox` + `internal/executor` implementing namespaces + Landlock ABI-1 + seccomp-bpf +
+  cgroup v2 + pidfd/`cgroup.kill` teardown behind `sessionrepo.CommandRunner`, with a fail-closed
+  `Probe()` and honest, kernel-observed settlement (`EvidenceClass` measured, never a constant;
+  containment stays `not-established`); (b) the Bash lease path in `DurableExecutor` (`OperationLease`,
+  injected `CommandRunner`, strict `{command,timeout}` args) tested with stub runners including an
+  inconsistent-settlement fail-closed case. The claim-bearing rootless Podman/crun path and Landlock
+  ABI ≥5 network/REFER/TRUNCATE rights remain guest-only and deferred.
 
 ### Workstreams (ordered)
 1. **Durable integration (next):** wire `internal/sessionrepo` + pre-effect durable audit into the
