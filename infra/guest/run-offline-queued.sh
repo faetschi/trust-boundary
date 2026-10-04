@@ -75,7 +75,9 @@ if [[ $output_owner != "$EUID" || $output_mode != 700 ]]; then
   fail "report directory is not trial-user-owned mode 0700"
 fi
 printf '%s\n' "$OUTPUT_DIR" >"$OUTPUT_DIR/location"
+printf '%s\n' "$$" >"$OUTPUT_DIR/launcher.pid"
 printf '%s\n' 'WAITING_FOR_OFFLINE' >"$OUTPUT_DIR/status"
+printf 'TBOUND_RUN_PATH=%s\n' "$OUTPUT_DIR"
 
 log() {
   local line
