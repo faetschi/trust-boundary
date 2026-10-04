@@ -12,6 +12,17 @@ Do not restart the VM decision or provisioning. Finish the narrow demonstration 
 
 The user wants a disposable Linux VM so untrusted model/tool activity cannot directly reach the Windows workstation. The accepted claim boundary allows documented residual hypervisor escape risk; do not claim zero escape risk. Keep the thesis checkout and host credentials outside the guest. Use synthetic repositories and canaries. Do not run adversarial tests on the workstation host.
 
+
+## Host automation evaluation and current state — 2026-10-04
+
+The normative thesis checklist asks for one complete Linux/Pi workflow, including broker correlation, generation visibility, durable authority, containment, and reconstructable evidence. It does not require TBoundHostAutomation or Windows scheduled tasks. TBoundHostAutomation is a separate fixed-task wrapper for trusted offline-verifier operations.
+
+The pre-automation procedure supports continued controlled prototype work: use pinned-key SSH or VMConnect for trusted maintenance, start one exact queued launcher and record its report directory, have the operator disconnect the Hyper-V adapter, and let the guest launcher proceed only after every non-loopback interface reports carrier 0 and both IPv4 and IPv6 route tables have no default route. After the launcher exits, reconnect only for trusted maintenance and collect that invocation's report and capture. This keeps the offline phase behind the guest network gate, while host sequencing and evidence collection depend on the operator. The latest VFH terminal reported completion at 2026-10-04 09:07:19 UTC, but its report and capture are still unverified; this is not a verifier PASS or a completed end-to-end demonstration.
+
+The five fixed SYSTEM tasks, protected profile/receipt paths, and host identity/state checks add repeatability and guardrails around those host transitions. They improve operations but are not a thesis-checklist completion requirement. Recommendation: defer installation while the manual procedure remains adequate for prototype progress. This is an evaluation recommendation, not a recorded user decision; the decision remains pending.
+
+Current installer state: the latest installer attempt used source commit f41cdbb on codex/tbound-prototype. The latest reported installer error is the native Hyper-V adapter ID cast to Guid while constructing the profile at Install-TBoundHostAutomation.ps1 line 321. That happens before ShouldProcess at line 330 and before the first persistent write at line 332. Presence-only checks found C:\ProgramData\TBoundHostAutomation and its profile.json absent, so no partial protected installation is evident. The worktree still has untracked infra/hyperv/Invoke-TBoundTrustedOfflineVerifier.ps1 and infra/hyperv/Test-TBoundTrustedOfflineVerifierPolicy.ps1, plus vm_start.txt. The controller/policy tests remain pending with a reviewed hard-timeout/pipe-inheritance blocker; no live VM/task cycle was run. vm_start.txt remains unread and untouched. The VM's present state and network attachment are unknown here; the last known Off/disconnected state came from user-reported commands before the installer attempt and was not rechecked.
+
 ## Decisions and constraints
 
 - FABIAN is Windows 10 Education. Keep its current Windows version.
