@@ -188,7 +188,17 @@ function Get-ValidatedUbuntuFirmwarePath {
         if ($null -eq $property) { return '' }
     }
 
-    if ($bootType.Value -isnot [string] -or [string]$bootType.Value -cne 'File' -or $null -ne $device.Value) { return '' }
+    $bootTypeIsFile = $false
+    if ($bootType.Value -is [string]) {
+        $bootTypeIsFile = [string]$bootType.Value -ceq 'File'
+    }
+    elseif ($null -ne $bootType.Value) {
+        $bootTypeValueType = $bootType.Value.GetType()
+        if ($bootTypeValueType.IsEnum -and $bootTypeValueType.FullName -ceq 'Microsoft.HyperV.PowerShell.VMBootSourceType') {
+            $bootTypeIsFile = [Enum]::GetName($bootTypeValueType, $bootType.Value) -ceq 'File'
+        }
+    }
+    if (-not $bootTypeIsFile -or $null -ne $device.Value) { return '' }
     if ($null -eq $entryVmId.Value -or $entryVmName.Value -isnot [string] -or [string]$entryVmName.Value -cne $VmName) { return '' }
     try { $actualVmId = [guid]$entryVmId.Value } catch { return '' }
     if ($actualVmId -ne $VmId) { return '' }

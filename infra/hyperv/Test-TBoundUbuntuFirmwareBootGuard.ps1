@@ -11,6 +11,14 @@ $sourceFiles = @(
 )
 $script:FixtureCount = 0
 $expectedVmId = [guid]'C676170C-31A1-48E3-AA74-1D845411D253'
+$hyperVManifest = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\Modules\Hyper-V\2.0.0.0\Hyper-V.psd1'
+Import-Module -Name $hyperVManifest -ErrorAction Stop
+$nativeBootType = 'Microsoft.HyperV.PowerShell.VMBootSourceType' -as [type]
+if ($null -eq $nativeBootType -or -not $nativeBootType.IsEnum -or 'File' -notin [Enum]::GetNames($nativeBootType)) {
+    throw 'Trusted Hyper-V module does not expose its expected boot-source enum.'
+}
+$nativeFile = [Enum]::Parse($nativeBootType, 'File')
+$nativeNetwork = [Enum]::Parse($nativeBootType, 'Network')
 $firmwarePath = 'HD(1,GPT,CE904A5D-4CBF-4D44-B146-2ADCE6396701,0x800,0x219800)/\EFI\ubuntu\shimx64.efi'
 
 function New-BootEntryFixture {
@@ -60,6 +68,9 @@ foreach ($path in $sourceFiles) {
     . ([scriptblock]::Create($definitions[0].Extent.Text))
 
     Assert-Fixture 'captured Ubuntu GPT shim entry' (New-BootEntryFixture) $true
+    Assert-Fixture 'native Hyper-V File enum' (New-BootEntryFixture @{ BootType = $nativeFile }) $true
+    Assert-Fixture 'native Hyper-V Network enum' (New-BootEntryFixture @{ BootType = $nativeNetwork }) $false
+    Assert-Fixture 'unrelated enum with File member name' (New-BootEntryFixture @{ BootType = [DayOfWeek]::Monday }) $false
     $freshPartitionPath = 'HD(1,GPT,12345678-1234-4234-8234-1234567890AB,0x1000,0x100000)/\EFI\ubuntu\shimx64.efi'
     Assert-Fixture 'fresh host GPT GUID and geometry' (New-BootEntryFixture @{ FirmwarePath = $freshPartitionPath }) $true
     Assert-Fixture 'wrong VM identity' (New-BootEntryFixture @{ VMId = [guid]::NewGuid() }) $false

@@ -16,7 +16,7 @@ $vmStorageRoot = 'F:\TBoundVMs'
 $assetsRoot = 'F:\TBoundAssets'
 $switchName = 'Default Switch'
 $policy = 'TRUSTEDVERIFIERONLY'
-$reviewedActionSha256 = '3740571565DBDA14A3517D9A891FAA98E9DFEF80D22A9BBC67F9389575CDA716'
+$reviewedActionSha256 = '9EF7B338B18DA61204F84E3B74FD1ADA609652E4FC7A25DEB5CF633605581D26'
 $GiB = [int64]1073741824
 $taskLeaves = @('Inspect', 'Disconnect', 'StopOffline', 'ConnectOff', 'StartTrustedMaintenance')
 
@@ -135,7 +135,17 @@ function Get-ValidatedUbuntuFirmwarePath {
         if ($null -eq $property) { return '' }
     }
 
-    if ($bootType.Value -isnot [string] -or [string]$bootType.Value -cne 'File' -or $null -ne $device.Value) { return '' }
+    $bootTypeIsFile = $false
+    if ($bootType.Value -is [string]) {
+        $bootTypeIsFile = [string]$bootType.Value -ceq 'File'
+    }
+    elseif ($null -ne $bootType.Value) {
+        $bootTypeValueType = $bootType.Value.GetType()
+        if ($bootTypeValueType.IsEnum -and $bootTypeValueType.FullName -ceq 'Microsoft.HyperV.PowerShell.VMBootSourceType') {
+            $bootTypeIsFile = [Enum]::GetName($bootTypeValueType, $bootType.Value) -ceq 'File'
+        }
+    }
+    if (-not $bootTypeIsFile -or $null -ne $device.Value) { return '' }
     if ($null -eq $entryVmId.Value -or $entryVmName.Value -isnot [string] -or [string]$entryVmName.Value -cne $VmName) { return '' }
     try { $actualVmId = [guid]$entryVmId.Value } catch { return '' }
     if ($actualVmId -ne $VmId) { return '' }
