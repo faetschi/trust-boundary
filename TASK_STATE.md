@@ -47,14 +47,26 @@ durable end-to-end path; and keep VM lifecycle + SSH autonomous (no manual VMCon
   `TestSessionRepositoryWriteCanonicalModeE2E` proves new-file `0644`, overwrite non-executable
   `0644`, and overwrite executable `0755` across a verified `g0→g3` chain. Independently verified
   (Linux `-race` all packages, Windows build, gofmt/diff clean).
-- **Contained executor (Option-A) in progress** (two parallel lanes): (a) new Linux dev/WSL packages
-  `internal/sandbox` + `internal/executor` implementing namespaces + Landlock ABI-1 + seccomp-bpf +
-  cgroup v2 + pidfd/`cgroup.kill` teardown behind `sessionrepo.CommandRunner`, with a fail-closed
-  `Probe()` and honest, kernel-observed settlement (`EvidenceClass` measured, never a constant;
-  containment stays `not-established`); (b) the Bash lease path in `DurableExecutor` (`OperationLease`,
-  injected `CommandRunner`, strict `{command,timeout}` args) tested with stub runners including an
-  inconsistent-settlement fail-closed case. The claim-bearing rootless Podman/crun path and Landlock
-  ABI ≥5 network/REFER/TRUNCATE rights remain guest-only and deferred.
+- **Contained executor (Option-A) committed** (`b609bad`, runner `wsl-dev-sandbox-non-claim-bearing`):
+  `internal/sandbox` composes user/mount/PID/IPC/UTS/network namespaces + `no_new_privs` + a Landlock
+  ABI-1 ruleset + a pinned default-deny seccomp-bpf allowlist + cgroup v2 memory/pids/cpu when
+  delegated + loopback-only networking + read-only runtime binds with a writable cell root, reaps via
+  pidfd/`wait4`, and tears down with `cgroup.kill` or process-group SIGKILL confirming in-namespace
+  scope emptiness. `internal/executor` adapts it to `sessionrepo.CommandRunner`. A fail-closed
+  `Probe()` records effective mechanisms. Independently verified on WSL2 5.15.153 (full `-race`,
+  private TMPDIR): real Landlock denials, no external network/DNS, path-escape denial, `Seccomp: 2`,
+  read-only `/usr` vs writable workspace, surviving-child fail-closed, cancellation, an explicit
+  cgroup unsupported-skip, and a real `store.RunBash` import of `g1` with containment
+  `not-established`. Landlock is ABI 1 here (no REFER/TRUNCATE/network rights) and cgroup v2 is not
+  delegated, so resource bounds are unestablished and carried honestly in every evidence class.
+- **Bash command lease committed** (`0941557`): `DurableExecutor` takes an injected
+  `sessionrepo.CommandRunner` and maps a trusted ALLOW `bash` to a `delta.OperationLease` through
+  `Store.RunBash`; nil runner fails closed; inconsistent settlement quarantines; malformed args are
+  rejected before any command runs.
+- Next containment steps: validate the sandbox on the guest kernel 6.8 (higher Landlock ABI, possible
+  cgroup delegation, unprivileged-userns/AppArmor behaviour) and compose the real runner into the
+  `cmd/tbound` bash path end-to-end. The claim-bearing rootless Podman 4.9.3/crun + signed-entrypoint
+  profile and Landlock ABI ≥5 rights remain guest-only and unimplemented.
 
 ### Workstreams (ordered)
 1. **Durable integration (next):** wire `internal/sessionrepo` + pre-effect durable audit into the
