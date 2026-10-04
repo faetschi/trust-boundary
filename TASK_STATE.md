@@ -106,8 +106,47 @@ The orchestrator delegates mechanical exploration, implementation, and testing t
   resolved from the pinned MAC `00-15-5D-0C-40-00` via the host neighbor table before pinned-key
   SSH (host-key alias stays `172.19.207.142`). This address step is the one manual/wrapper gap in
   the VM loop; the rest is fully autonomous.
-- Still open: commit the code changes; host-automation (reviewed verifier helper) decision;
-  controller `ReviewedSourceCommit` update; wire the Linux WSL build/test into the normal workflow.
+- Still open: host-automation (reviewed verifier helper) decision; controller `ReviewedSourceCommit`
+  update; wire the Linux WSL build/test into the normal workflow. Code fixes are committed
+  (`a4a83ee`, docs `726dda5`).
+
+### Approved next steps — 2026-10-04 (both directions)
+
+The user approved doing both, concurrently where safe:
+
+1. **Guest re-verification.** Export the committed source with `git archive HEAD` and deploy it into
+   the guest tree `~/tbound-handoff-9a73af56e8a8/tbound` (backup first), then run the offline
+   verifier autonomously: queue `run-offline-queued.sh` in the guest, disconnect the NIC with the
+   `\TBoundVmOps\Disconnect` task, wait for the offline gate + run, reconnect with `\TBoundVmOps\Connect`,
+   resolve the guest IP from the pinned MAC, collect and hash-verify the report. The guest verifier
+   discovers its package set via `go list ./...`, so `sessionrepo`/`workspace`/`openrouter` are
+   included, and it already provides a private `TMPDIR` and `HOME` for the Go tests.
+2. **End-to-end path.** Implement `cmd/tbound` (supervisor entry point), `internal/ipc` (bounded,
+   session-bound proposal/result transport), and `internal/gate` (canonicalization + deterministic
+   policy decision), against the normative specs, developing/testing on WSL2 (Go 1.27.1) and the
+   Windows host. A real provider exchange still requires a model ID + API key supplied privately.
+
+Sequencing: direction 1 deploys the committed `HEAD`, so concurrent direction-2 working-tree edits
+cannot contaminate the deployed tree. Direction 2 must not weaken the existing security checks and
+must not break the current green test suite.
+
+### Direction-1 progress — guest offline re-verification (2026-10-04)
+
+- First attempt against `726dda5` returned **FAIL**, solely in `sessionrepo` (`go_tests`/`go_race`);
+  `adapter_dependencies`, `go_modules`, `node_adapter`, and `ownership_fixture_test` passed
+  (report SHA-256 `87b443ff4e2dc3a922cb6c0526e000297ad226e187169cf39a318055d283a048`, evidence copy
+  under `%TEMP%\opencode\evidence-726dda5`). All failures were `newE2EStore` → `audit.Open`.
+- Root cause (guest-specific, not a product bug): the new E2E test used raw `t.TempDir()` (→ `/tmp`,
+  mode 1777) for the audit-journal base, which `audit.checkTrustedAncestor` correctly rejects, and
+  its fixtures relied on the process umask (the verifier sets `umask 077`, turning requested
+  0644/0755 into 0600/0700, which the canonical-seed import correctly rejects).
+- Fixed in `supervisor/internal/sessionrepo/sessionrepo_e2e_test.go` (commit `bab67bd`): a private
+  test base with a trusted ancestor chain (prefers HOME, mirroring audit's `privateJournalTestDir`)
+  and explicit `chmod` for fixture files/directories. No product check or test assertion was
+  weakened. Re-verified with a verifier-like WSL `-race` run (`TMPDIR` under `/tmp`, `umask 077`)
+  and the guest sessionrepo tests: all pass.
+- Re-run against `bab67bd` queued as `~/.tbound-offline-queued.6u8CoWrEvN`; result appended when
+  collected.
 
 ## Current goal
 
