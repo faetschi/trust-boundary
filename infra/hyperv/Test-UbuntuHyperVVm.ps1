@@ -166,6 +166,48 @@ function Get-BootTypeName {
     return ($parts -join ' ')
 }
 
+function Get-ValidatedUbuntuFirmwarePath {
+    param(
+        [AllowNull()][object]$BootEntry,
+        [Parameter(Mandatory = $true)][guid]$VmId,
+        [Parameter(Mandatory = $true)][string]$VmName
+    )
+    if ($null -eq $BootEntry -or $VmId -eq [guid]::Empty) { return '' }
+
+    $bootType = $BootEntry.PSObject.Properties['BootType']
+    $device = $BootEntry.PSObject.Properties['Device']
+    $firmwarePath = $BootEntry.PSObject.Properties['FirmwarePath']
+    $entryVmId = $BootEntry.PSObject.Properties['VMId']
+    $entryVmName = $BootEntry.PSObject.Properties['VMName']
+    $checkpointId = $BootEntry.PSObject.Properties['VMCheckpointId']
+    $checkpointName = $BootEntry.PSObject.Properties['VMCheckpointName']
+    $snapshotId = $BootEntry.PSObject.Properties['VMSnapshotId']
+    $snapshotName = $BootEntry.PSObject.Properties['VMSnapshotName']
+    $isDeleted = $BootEntry.PSObject.Properties['IsDeleted']
+    foreach ($property in @($bootType, $device, $firmwarePath, $entryVmId, $entryVmName, $checkpointId, $checkpointName, $snapshotId, $snapshotName, $isDeleted)) {
+        if ($null -eq $property) { return '' }
+    }
+
+    if ($bootType.Value -isnot [string] -or [string]$bootType.Value -cne 'File' -or $null -ne $device.Value) { return '' }
+    if ($null -eq $entryVmId.Value -or $entryVmName.Value -isnot [string] -or [string]$entryVmName.Value -cne $VmName) { return '' }
+    try { $actualVmId = [guid]$entryVmId.Value } catch { return '' }
+    if ($actualVmId -ne $VmId) { return '' }
+
+    foreach ($checkpoint in @($checkpointId, $snapshotId)) {
+        if ($null -eq $checkpoint.Value) { return '' }
+        try { $checkpointGuid = [guid]$checkpoint.Value } catch { return '' }
+        if ($checkpointGuid -ne [guid]::Empty) { return '' }
+    }
+    if ([string]$checkpointName.Value -cne '' -or [string]$snapshotName.Value -cne '') { return '' }
+    if ($isDeleted.Value -isnot [bool] -or [bool]$isDeleted.Value) { return '' }
+
+    $path = [string]$firmwarePath.Value
+    $match = [regex]::Match($path, '(?i)^HD\(1,GPT,(?<PartitionId>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}),0x[0-9a-f]+,0x[0-9a-f]+\)/\\EFI\\ubuntu\\shimx64\.efi$')
+    if (-not $match.Success) { return '' }
+    try { $partitionGuid = [guid]$match.Groups['PartitionId'].Value } catch { return '' }
+    if ($partitionGuid -eq [guid]::Empty) { return '' }
+    return $path
+}
 $fullVmRoot = Get-FullPath -Path $VmRoot
 $driveRoot = [IO.Path]::GetPathRoot($fullVmRoot)
 $assetsRoot = Join-Path $driveRoot 'TBoundAssets'
@@ -370,7 +412,11 @@ else {
         else {
             $dvdEjected = ($dvdDrives.Count -eq 1) -and [string]::IsNullOrWhiteSpace([string]$dvdDrives[0].Path)
             Add-Check -Name 'Installation ISO is ejected' -Passed $dvdEjected
-            Add-Check -Name 'Boot disk is first in firmware boot order' -Passed ($firstBootType -match '(?i)Hard.?Disk') -Detail $firstBootType
+            $ubuntuFirmwarePath = ''
+            if ($null -ne $firstBoot) {
+                $ubuntuFirmwarePath = Get-ValidatedUbuntuFirmwarePath -BootEntry $firstBoot -VmId ([guid]$vm.Id) -VmName $VmName
+            }
+            Add-Check -Name 'Ubuntu EFI shim is first in firmware boot order' -Passed (-not [string]::IsNullOrEmpty($ubuntuFirmwarePath)) -Detail $ubuntuFirmwarePath
         }
 
         if ([bool]$hostInfo.EnableEnhancedSessionMode) {

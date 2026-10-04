@@ -134,7 +134,7 @@ function Read-Profile {
     Assert-NoReparsePath $script:Receipts
     if ((Get-FullPath $PSCommandPath) -ine (Get-FullPath $script:Action)) { Stop-Action 'FAIL' 'Actions may run only from the protected installed path.' }
     $p = Get-Content -LiteralPath $script:ProfileFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-    if ([int]$p.schema -ne 1 -or [string]$p.vmName -cne $script:VmName -or [string]$p.vmRoot -ine $script:VmRoot -or
+    if ([int]$p.schema -ne 2 -or [string]$p.vmName -cne $script:VmName -or [string]$p.vmRoot -ine $script:VmRoot -or
         [string]$p.vmStorageRoot -ine $script:StorageRoot -or [string]$p.assetsRoot -ine $script:AssetsRoot -or
         [string]$p.switchName -cne $script:SwitchName -or [string]$p.maintenancePolicy -cne $script:Policy -or
         [string]$p.adapterMacAddress -cnotmatch '^(?:[0-9A-F]{2}:){5}[0-9A-F]{2}$') {
@@ -220,31 +220,47 @@ function Assert-PinnedIdentity {
     return (Get-TargetSnapshot $Profile)
 }
 
-function Get-BootTypeName {
-    param([AllowNull()][object]$BootEntry)
-    if ($null -eq $BootEntry) { return '' }
-    $parts = [System.Collections.Generic.List[string]]::new()
-    foreach ($typeName in @($BootEntry.PSObject.TypeNames)) {
-        if (-not [string]::IsNullOrWhiteSpace([string]$typeName)) { $parts.Add([string]$typeName) }
+function Get-ValidatedUbuntuFirmwarePath {
+    param(
+        [AllowNull()][object]$BootEntry,
+        [Parameter(Mandatory = $true)][guid]$VmId,
+        [Parameter(Mandatory = $true)][string]$VmName
+    )
+    if ($null -eq $BootEntry -or $VmId -eq [guid]::Empty) { return '' }
+
+    $bootType = $BootEntry.PSObject.Properties['BootType']
+    $device = $BootEntry.PSObject.Properties['Device']
+    $firmwarePath = $BootEntry.PSObject.Properties['FirmwarePath']
+    $entryVmId = $BootEntry.PSObject.Properties['VMId']
+    $entryVmName = $BootEntry.PSObject.Properties['VMName']
+    $checkpointId = $BootEntry.PSObject.Properties['VMCheckpointId']
+    $checkpointName = $BootEntry.PSObject.Properties['VMCheckpointName']
+    $snapshotId = $BootEntry.PSObject.Properties['VMSnapshotId']
+    $snapshotName = $BootEntry.PSObject.Properties['VMSnapshotName']
+    $isDeleted = $BootEntry.PSObject.Properties['IsDeleted']
+    foreach ($property in @($bootType, $device, $firmwarePath, $entryVmId, $entryVmName, $checkpointId, $checkpointName, $snapshotId, $snapshotName, $isDeleted)) {
+        if ($null -eq $property) { return '' }
     }
-    $parts.Add($BootEntry.GetType().Name)
-    foreach ($propertyName in @('BootType', 'DeviceType', 'Device', 'DeviceName', 'Description', 'Name')) {
-        $property = $BootEntry.PSObject.Properties[$propertyName]
-        if ($null -eq $property -or $null -eq $property.Value) { continue }
-        $value = $property.Value
-        $parts.Add([string]$value)
-        if ($value -isnot [string]) {
-            $parts.Add($value.GetType().Name)
-            foreach ($typeName in @($value.PSObject.TypeNames)) {
-                if (-not [string]::IsNullOrWhiteSpace([string]$typeName)) { $parts.Add([string]$typeName) }
-            }
-            foreach ($nestedName in @('DeviceType', 'DeviceName', 'Name', 'Type')) {
-                $nestedProperty = $value.PSObject.Properties[$nestedName]
-                if ($null -ne $nestedProperty -and $null -ne $nestedProperty.Value) { $parts.Add([string]$nestedProperty.Value) }
-            }
-        }
+
+    if ($bootType.Value -isnot [string] -or [string]$bootType.Value -cne 'File' -or $null -ne $device.Value) { return '' }
+    if ($null -eq $entryVmId.Value -or $entryVmName.Value -isnot [string] -or [string]$entryVmName.Value -cne $VmName) { return '' }
+    try { $actualVmId = [guid]$entryVmId.Value } catch { return '' }
+    if ($actualVmId -ne $VmId) { return '' }
+
+    foreach ($checkpoint in @($checkpointId, $snapshotId)) {
+        if ($null -eq $checkpoint.Value) { return '' }
+        try { $checkpointGuid = [guid]$checkpoint.Value } catch { return '' }
+        if ($checkpointGuid -ne [guid]::Empty) { return '' }
     }
-    return ($parts -join ' ')
+    if ([string]$checkpointName.Value -cne '' -or [string]$snapshotName.Value -cne '') { return '' }
+    if ($isDeleted.Value -isnot [bool] -or [bool]$isDeleted.Value) { return '' }
+
+    $path = [string]$firmwarePath.Value
+    $match = [regex]::Match($path, '(?i)^HD\(1,GPT,(?<PartitionId>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}),0x[0-9a-f]+,0x[0-9a-f]+\)/\\EFI\\ubuntu\\shimx64\.efi$')
+    if (-not $match.Success) { return '' }
+    try { $partitionGuid = [guid]$match.Groups['PartitionId'].Value } catch { return '' }
+    if ($partitionGuid -eq [guid]::Empty) { return '' }
+    return $path
 }
 
 function Assert-MaintenanceProfile {
@@ -275,8 +291,12 @@ function Assert-MaintenanceProfile {
         Stop-Action 'FAIL' 'VM must have exactly one DVD drive with no ISO attached.'
     }
     $bootOrder = @($firmware.BootOrder)
-    if ($bootOrder.Count -lt 1 -or (Get-BootTypeName $bootOrder[0]) -notmatch '(?i)Hard.?Disk') {
-        Stop-Action 'FAIL' 'The hard disk must be first in firmware boot order.'
+    $actualFirmwarePath = ''
+    if ($bootOrder.Count -gt 0) {
+        $actualFirmwarePath = Get-ValidatedUbuntuFirmwarePath -BootEntry $bootOrder[0] -VmId ([guid]$Profile.vmId) -VmName $script:VmName
+    }
+    if ([string]::IsNullOrEmpty($actualFirmwarePath) -or $actualFirmwarePath -cne [string]$Profile.firmwarePath) {
+        Stop-Action 'FAIL' 'The pinned Ubuntu EFI shim entry must remain first in firmware boot order.'
     }
     $switches = @(Get-VMSwitch -ErrorAction Stop | Where-Object { $_.Name -ceq $script:SwitchName })
     if ($switches.Count -ne 1 -or [guid]$switches[0].Id -ne [guid]$Profile.switchId) { Stop-Action 'FAIL' 'Installed Default Switch GUID is missing or ambiguous.' }
