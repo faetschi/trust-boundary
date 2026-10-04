@@ -148,6 +148,27 @@ must not break the current green test suite.
 - Re-run against `bab67bd` queued as `~/.tbound-offline-queued.6u8CoWrEvN`; result appended when
   collected.
 
+### Direction-2 progress — end-to-end path (2026-10-04)
+
+- Implemented and committed (`923abb1`): `supervisor/cmd/tbound`, `supervisor/internal/ipc`,
+  `supervisor/internal/gate`, plus bounded proposal/result codecs in `broker/protocol`.
+  - `ipc`: strict length-prefixed JSON envelope (4-byte big-endian length, 1 MiB message cap,
+    256-bit lowercase-hex binding token checked on every frame, sequence starting at 1 and strictly
+    +1, per-direction caps of 1,024 frames / 16 MiB), with a Linux unix-socket transport
+    (supervisor-owned mode-0700 parent, socket 0600, one connection per session) and a portable
+    `net.Pipe` backend. Duplicate/unknown fields/kinds, replay, wrong-direction, truncation, and
+    oversize input fail closed; clean EOF returns `ErrClosed`. The token is explicitly not peer
+    authentication.
+  - `gate`: versioned `tbound-policy/v1` per-tool allow/deny rules, deny-by-default, unknown
+    versions/tools and duplicate rules rejected, stable policy digest; requires a broker-correlation
+    receipt before policy evaluation/argument canonicalization.
+  - `cmd/tbound`: injected broker/gate/executor loop; synthetic broker and stub executor only. No
+    real provider call, containment, durable audit wiring, session-repository operation, or
+    publication path. The executable refuses unconfigured session startup.
+- Independently verified: full Linux `-race` suite under verifier-like `TMPDIR`/`umask 077` (all 10
+  packages including the three new ones), Windows `go test ./internal/... ./e2e`, `gofmt -l` empty,
+  `git diff --check` clean, and no `go.mod`/`go.sum` change.
+
 ## Current goal
 
 Continue the existing TBound prototype on branch codex/tbound-prototype in this standalone repository:
