@@ -1,6 +1,6 @@
 # TBound handoff state
 
-Last updated: 2026-10-03 (Europe/Vienna)
+Last updated: 2026-10-04 (Europe/Vienna)
 
 ## Current goal
 
@@ -31,7 +31,7 @@ The user wants a disposable Linux VM so untrusted model/tool activity cannot dir
 ### Git and files
 
 - Branch: `codex/tbound-prototype`
-- Current HEAD at this draft: `1f03c7604ba3041b34aa869e58a73453fbdc9887`. The new OpenRouter and workspace packages remain uncompiled and untested.
+- Repository HEAD before this documentation update: `9e1855fecea598d5d38539246e44221244d37710`. The new OpenRouter and workspace packages remain uncompiled and untested.
 - This evidence reconciliation updates `TASK_STATE.md`, `docs/implementation-status.md`, and `infra/hyperv/INSTALLATION-RECORD.md`. The README remains unchanged because its architecture-scaffold status is still accurate. The preexisting untracked `vm_start.txt` is unrelated; do not read, stage, alter, or delete it.
 - This `TASK_STATE.md` is a handoff note requested by the user; it is not a test result or implementation.
 - Preserve unrelated working-tree changes, including `vm_start.txt` and any other untracked paths. Do not read or alter `vm_start.txt`; do not stage unrelated work.
@@ -58,6 +58,7 @@ Recent relevant commits:
 - `833915a` retain bounded Go-phase failure diagnostics in the verifier.
 - `7c91b47` fix the unused local in the audit duplicate-effect check; guest deployment and the later test result are recorded below.
 - `1f03c76` add the follow-on Linux audit symlink-classification fix; it is not applied to the guest or tested.
+- `9e1855f` record the applied guest source overlay.
 
 The OpenRouter request/parser/capture mapping is committed at `d317e7a85c09b6d71c1dce557eeb759ce8fa79e4` in `supervisor/internal/broker/openrouter/`. Strict Unicode validation and pre-marshal size bounds passed static review only. It has not been compiled, formatted, or tested; there have been no HTTP requests, Pi wiring, or live provider support proven.
 
@@ -90,7 +91,7 @@ After the second failed run completed on Oct 2, the user confirmed a maintenance
 
 The user once typed a long command in VMConnect and the keyboard produced garbled symbols; a reboot restored input. Prefer SSH for trusted maintenance and use VMConnect for observing/reattaching to the existing terminal. The earlier `tmux a` command was mistakenly tried in Windows PowerShell once and then redundantly inside the already attached Ubuntu tmux, producing the nesting warning. Do not run Windows-side `tmux`; do not nest/unset `TMUX`.
 
-## Offline verifier evidence and what it means
+## Prior offline verifier evidence through 19:59 UTC
 
 The first two queued runs failed before their Go/Pi suites. The Oct 3 afternoon run passed the offline gate and produced an incomplete Go test summary. The 19:25 UTC run passed the gate but failed compilation; the later 19:59 UTC run compiled and reached the audit tests, where one symlink-classification assertion failed. Its evidence is pinned below. No successful full Go/Pi suite is established.
 
@@ -119,12 +120,30 @@ Before the Oct 3 dependency apply, the guest verifier SHA-256 was `9665d40045855
 
 Targeted checks already reported: APT trust-guard regression suite (7 tests) passed; one held-package parser regression passed; guest Python AST validation passed; queued-launcher Bash syntax checks passed; and the host Go-phase diagnostic helper tests passed 5/5 with Python tests 5/5. These are component checks. The Oct 3 afternoon Go report has incomplete test summaries; the 19:25 run failed compilation, and the 19:59 run compiled but failed the audit symlink-classification assertion. No successful full Go/Pi suite is independently verified. No provider call, real E05 exchange, live effect execution, containment proof, G1 durability/destruction proof, or end-to-end TBound demonstration is established.
 
-## Immediate next steps
+## Immediate next steps recorded before the latest diagnostic run
 
 1. The latest preserved run is `vlH6WMLbws` at `F:\TBoundAssets\Evidence\offline-20261003-195947`; its report/manifest pins and nine-file capture verification are recorded above. The 19:25 compile failure is a separate historical run.
 2. The latest run verified that the `7c91b47` audit.go compile fix reached Go tests, where normal and race phases failed at the symlink-classification assertion. At that point, host commit `1f03c76` contained the reviewed follow-on fix but had not been deployed or tested. Do not relax the expected-test gate, queue automatically, or restore.
 3. The user approved transfer of the selected source bundle at `05245378a3df82fbf2cb413aa1ac59085dfc0bf6`; the queue agent reports eight selected files applied and hash-verified under the guest handoff tree, not the full HEAD. Archive SHA-256 is `afc1610495ec34c754460351cd1e73e1fb8f351913d5e1762eed4feb1a2fb1f1`; deployment-manifest SHA-256 is `a792425bcc8916b62bc42b46a6403f8450d7a441170e50be737806f7e1fcf1ef`. The five preimage backups are preserved. Per-file hashes and paths are in `docs/implementation-status.md`. The static root-owned fixture bootstrap is still being prepared; it has not been installed or run, and no post-transfer fixture test or offline verification exists. The next verification must wait for the reviewed bootstrap and use the updated launcher as `tboundadmin` without per-run `sudo`.
 4. The post-capture F: inventory passed the 100-GiB tracked-data and 700-GiB free-space limits; older host inventory values remain historical. No successful full Go/Pi suite, provider call, real E05 exchange, containment proof, G1 durability/destruction proof, or end-to-end demonstration is established.
+
+## Current status — diagnostic run and follow-up
+
+The latest queued run `q0swUUj1Kl` passed the offline gate at `2026-10-03T21:41:28Z` and completed at `21:42:09Z` with runner/launcher exit 1. Overall verifier status is FAIL solely on `failed_packages` in both modes; all four claims are false.
+
+Both normal and race Go phases report 5/5 packages, 86 test-run events, 85 passes, 0 failures, and one expected test-level skip for `TestOpenRejectsUntrustedOwnership`. The correlation package has a separate package-level skip with the exact `[no test files]` marker; the current parser flags that marker as failure.
+
+The dedicated `ownership_fixture_test` passed without per-run sudo: UID/GID 1000, one named test/run/pass, zero failures or skips. A static root-owned fixture bootstrap was installed once; no persistent NOPASSWD sudoers entry was added.
+
+The report records UID 1000, offline `eth0` carrier 0, no IPv4/IPv6 default route, cleanup PASS, and all claims false. Saved `verification.stderr` is empty. Root verified report SHA-256 `1fd2bec7cfb4d3cabf0031f163c6e323418914db5190d77b962e5469a45da561` (123,858 bytes), manifest SHA-256 `58bc33702a40464aa7ddc424e96add1941c327ade19e0209df3344562b8d9934`, and the capture confirmation matching all eight captured guest files at `F:\TBoundAssets\Evidence\offline-20261003-214128`.
+
+The host parser correction was not deployed to or tested in this guest run. Passing targeted Go and fixture phases do not establish a successful overall verifier, provider exchange, end-to-end demonstration, or containment.
+
+After this run, source commit `90ee23e` corrected the package-skip parser and passed seven host-only pure tests. A guarded two-file guest deployment was verified as UID 1000 without sudo: `infra/guest/verify-offline.py` SHA-256 `cb4d8d2a235548b2a3a1528befb880e0dc5f1619d5ac46591672ed17547b204a` and `infra/guest/test_go_phase_diagnostic.py` SHA-256 `61a56ea541e5ed5648b02b79643a2b6a667144a99b2129b77ea7622dc1e6099f`. The preimages are preserved under `/home/tboundadmin/.tbound-verifier-backup-90ee23e34b60f4e2`; deployment manifest SHA-256 is `07c791f66507a3125ca73ed96696c50853c5509422f07f32aa8e870693e90af4`. A follow-up queue was then run; its terminal reported successful completion, but the report and capture remain unavailable for independent verification.
+
+The queued follow-up is `/home/tboundadmin/.tbound-offline-queued.VFHmYRa5HO`, created at `2026-10-04T09:03:53Z`. The offline gate passed at `2026-10-04T09:06:39Z`; the terminal reported successful completion at `09:07:19Z`. This is a provisional terminal result only: the report JSON and capture have not been retrieved or independently verified, so do not claim verifier PASS, full checklist completion, or containment.
+
+Host automation for the Hyper-V NIC disconnect/offline gate is under design and review. Its one-time administrator installation is not complete; no automation result is established.
 
 ## Resume VMConnect and the existing tmux terminal
 

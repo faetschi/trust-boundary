@@ -1,6 +1,6 @@
 # Narrow demonstration status
 
-**Reviewed:** 2026-10-03. This maps current evidence to the implementation checklist; it does not
+**Reviewed:** 2026-10-04. This maps current evidence to the implementation checklist; it does not
 claim a completed demonstration.
 
 ## Requirement source and scope
@@ -22,7 +22,7 @@ It excludes the later arms, corpus, and headline trials.
 | Broker correlation | The OpenRouter request/parser/capture mapping is committed at `d317e7a85c09b6d71c1dce557eeb759ce8fa79e4`; static review accepted strict Unicode and pre-marshal size fixes. No compile, gofmt, tests, HTTP requests, Pi wiring, or E05 run. | A real call-to-proposal-to-verdict-to-result chain bound by IDs and argument digest. |
 | Generation visibility | The five-file bounded Linux workspace package is committed at `e187650`. Static review accepted bounded directory reads, mount checks on fresh opened file descriptors before and after reads, and disjoint-root rejection. No compile, gofmt, or tests ran. | Approved-delta mapping, sealed generations, and no live, mount, or Git reachability; sealing and publish are not implemented. |
 | Durable authority | No fault-injection run is recorded. | Durable pre-effect/result records and fail-closed write, fsync, and disk-full tests. |
-| Containment | The latest verifier run passed the offline gate, then failed a Go audit symlink-classification test; this is not a containment result. Its privileged ownership phase passed 1/1. | Capability and runtime proof for protected paths, unauthorized egress, and surviving children. |
+| Containment | A later queued run passed its offline gate and its terminal reported successful completion, but its report and capture have not been retrieved or independently verified. This is provisional and establishes no verifier PASS or containment. | Capability and runtime proof for protected paths, unauthorized egress, and surviving children. |
 | Reconstructable evidence | Hash-pinned captures preserve the earlier failures and the latest Go test failure. | Raw evidence for a successful workflow, including its decision, effects, and outcome. |
 
 The second queued run (third offline attempt overall) ended at `go_modules` with runner and
@@ -83,7 +83,7 @@ The guest application remains the earlier `9a73` tree with the separately record
 dependency-sum update, diagnostics verifier, and audit.go patch; the new OpenRouter and
 workspace packages have not been deployed or tested.
 
-The latest queued run used `.tbound-offline-queued.vlH6WMLbws`. Its offline gate passed at
+The preceding queued run used `.tbound-offline-queued.vlH6WMLbws`. Its offline gate passed at
 `2026-10-03T19:59:47Z`; the verifier completed at `20:00:34Z` with runner and launcher exit
 `1`. Both `go_tests` and `go_race` failed in
 `TestOpenRejectsBroadPermissionsAndLeafSymlink` (`audit_test.go:431`): expected
@@ -103,8 +103,9 @@ At the time of the `vlH6WMLbws` report, host commit `1f03c7604ba3041b34aa869e58a
 contained the follow-on Linux audit symlink-classification fix; `lock_linux.go` SHA-256 was
 `7d0e73761a7f3b14980a0ede32b80b9fb75b2e7edbd0892c4f822875d5680dc9`. That report preceded the
 source transfer below. No success is inferred from the committed source change.
-Do not relax the ownership test gate, requeue automatically, or restore. No successful full
-Go/Pi suite has been independently verified.
+Do not relax the ownership test gate, requeue automatically, or restore. At this snapshot, no
+successful overall verifier, end-to-end demonstration, or containment result was established;
+later component-level test results are recorded below.
 
 On 2026-10-03, the user approved transfer of the selected source bundle at commit
 `05245378a3df82fbf2cb413aa1ac59085dfc0bf6`. The queue agent reports that eight selected files
@@ -126,9 +127,23 @@ per-file hashes are:
 - `infra/guest/provision_audit_ownership_fixtures.py`: `0a50ea1f919ea8911114e35088c20cc018d445b640e998e7112a1f1d5e2f7028`
 - `infra/guest/test_ownership_fixtures.py`: `44b5e4dd1957846ad0b593b4e2a7d2c3ec56da9bb147d06232bbba997498b8c9`
 
-The transfer left `go.mod` and `go.sum` unchanged. The static root-owned bootstrap artifact has
-not been installed or run, and no fixture test or post-transfer offline verification has run.
-The new broker and workspace packages were not among these eight files and remain undeployed.
+The transfer left `go.mod` and `go.sum` unchanged. The new broker and workspace packages were not
+among these eight files and remain undeployed. The one-time root-owned fixture bootstrap was later
+installed; the diagnostic run above records its passing fixture test without per-run sudo.
+
+## Preceding diagnostic offline verifier run — 2026-10-03
+
+The queued run `.tbound-offline-queued.q0swUUj1Kl` passed the offline gate at `2026-10-03T21:41:28Z` and completed at `21:42:09Z` with runner and launcher exit code 1. The preserved host copy is `F:\TBoundAssets\Evidence\offline-20261003-214128`. Root verified `verification.json` SHA-256 `1fd2bec7cfb4d3cabf0031f163c6e323418914db5190d77b962e5469a45da561` (123,858 bytes), `manifest.json` SHA-256 `58bc33702a40464aa7ddc424e96add1941c327ade19e0209df3344562b8d9934`, and the capture confirmation for all eight captured guest files. `verification.stderr` is empty.
+
+Both `go_tests` and `go_race` exited 0 and report 5/5 packages, 86 test-run events, 85 passed, 0 failed, and one expected test-level skip for `TestOpenRejectsUntrustedOwnership`. The correlation package separately reports the exact `[no test files]` marker as a package-level skip. The dedicated `ownership_fixture_test` passed without per-run sudo (execution UID/GID 1000; one named test, one run, one pass, zero failures or skips). A static root-owned bootstrap copy was installed once; no persistent NOPASSWD sudoers entry was added.
+
+The verifier still reports overall `FAIL` solely through `failed_packages` in both normal and race modes: its current parser treats the correlation package's `[no test files]` package action as a failure. The parser correction was not deployed to or tested in this guest run. The report records UID 1000, offline `eth0` carrier 0, no IPv4 or IPv6 default route, cleanup PASS, and all four claims false. Passing targeted Go and fixture checks do not establish a successful overall verifier, provider exchange, end-to-end workflow, or containment.
+
+Afterward, parser-fix commit `90ee23e` passed seven host-only pure tests and was deployed to the guest in a guarded two-file update as UID 1000 without sudo. The verified guest SHA-256 pins are `infra/guest/verify-offline.py` `cb4d8d2a235548b2a3a1528befb880e0dc5f1619d5ac46591672ed17547b204a` and `infra/guest/test_go_phase_diagnostic.py` `61a56ea541e5ed5648b02b79643a2b6a667144a99b2129b77ea7622dc1e6099f`. The preimages are retained at `/home/tboundadmin/.tbound-verifier-backup-90ee23e34b60f4e2`; deployment-manifest SHA-256 is `07c791f66507a3125ca73ed96696c50853c5509422f07f32aa8e870693e90af4`. A follow-up queue ran after deployment, but its report JSON and capture remain unavailable, so parser behavior in that run is not independently verified.
+
+The follow-up queue is `/home/tboundadmin/.tbound-offline-queued.VFHmYRa5HO`, created at `2026-10-04T09:03:53Z`. Its offline gate passed at `2026-10-04T09:06:39Z`, and the terminal reported successful completion at `09:07:19Z`. The report JSON and capture are still pending retrieval and independent verification; record this as a provisional terminal result only, not a verifier PASS, full checklist result, or containment evidence.
+
+Host automation for the Hyper-V NIC disconnect/offline gate is under design and review. The one-time administrator installation is still pending, so no automated host control has been verified.
 
 ## Current broker slice and provider plan
 
@@ -150,11 +165,12 @@ policy was `ProductionOnly`; that inventory value does not establish creation po
 guaranteed freeze/thaw behavior. Guest capability probes and the full runtime profile remain
 unverified. Fresh Linux physical-host migration is **UNVERIFIED**.
 
-The user requested an autonomous privileged-ownership step. The current design uses a
-one-time root bootstrap to create fixed ownership fixtures under
+The user requested an autonomous privileged-ownership step. The design uses a one-time root
+bootstrap to create fixed ownership fixtures under
 `/var/lib/tbound/audit-ownership-fixtures/<tboundadmin-uid>`, then runs the verifier without
-per-run sudo. It does not store a password or add persistent sudoers access. This flow is still
-under implementation; it has not been installed or verified.
+per-run sudo. It stores no password and adds no persistent sudoers access. The bootstrap was
+installed once and the latest `ownership_fixture_test` passed 1/1; this targeted result does not
+turn the overall verifier's FAIL into a pass.
 
 The current handoff sequence is to complete the narrow demonstration before starting the agreed
 WP1/G1 roadmap. Passing the offline verifier alone does not meet the five exit criteria or
@@ -168,8 +184,8 @@ states path-specific outcomes: direct-console success is judged by the verifier'
 and JSON; SSH-queued success also requires launcher completion and exit evidence. Its checklist
 accepts either path.
 
-Root independently verified the second-run JSON and, for the latest run, the report hash and
-failure details. The capture agent verified the latest manifest and all nine guest/source-local
-file size/hash pairs. This run-specific capture verification does not imply a full-tree source
-match or a successful verifier result. The separately approved eight-file source overlay is
-recorded above; it has not been tested in the guest.
+Root independently verified the latest diagnostic `verification.json` hash and `manifest.json`
+hash; capture confirmation matched all eight captured guest files to their recorded hashes.
+This run-specific capture does not establish a full-tree source match, a successful overall
+verifier, or containment. The separately approved eight-file source overlay and its limited
+scope are recorded above.
