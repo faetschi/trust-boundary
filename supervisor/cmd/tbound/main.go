@@ -42,10 +42,19 @@ type Executor interface {
 	Execute(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error)
 }
 
+// DecisionRecorder durably records a gate decision before any effect runs. Serve
+// calls it for every verdict, including DENY, so both authorization and refusal
+// are durable pre-effect. It is optional: a nil recorder disables recording. A
+// returned error is fail-closed and withholds the result.
+type DecisionRecorder interface {
+	RecordDecision(context.Context, protocol.Proposal, gate.Decision) error
+}
+
 type Supervisor struct {
 	IPC           *ipc.Server
 	Broker        Broker
 	Policy        gate.Policy
+	Decisions     DecisionRecorder
 	Executor      Executor
 	Transcript    io.Writer
 	ProposalLimit uint64
@@ -134,6 +143,12 @@ func (s *Supervisor) Serve(ctx context.Context) error {
 		}
 		decision := gate.Evaluate(proposal, matched, s.Policy)
 		result := resultFor(proposal, decision)
+		if s.Decisions != nil {
+			if err := s.Decisions.RecordDecision(ctx, proposal, decision); err != nil {
+				_ = s.IPC.Close()
+				return fmt.Errorf("record gate decision; result withheld: %w", err)
+			}
+		}
 		if decision.Verdict == gate.Allow {
 			output, err := s.Executor.Execute(ctx, proposal, decision)
 			if err != nil {
