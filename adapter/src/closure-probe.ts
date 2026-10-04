@@ -484,7 +484,7 @@ async function main(): Promise<void> {
     const report = {
       generated_at_utc: new Date().toISOString(),
       command: process.env.npm_lifecycle_event === "closure"
-        ? "npm run check (typecheck followed by npm run closure)"
+        ? "npm run check (typecheck, IPC tests, then closure probe)"
         : "node --experimental-strip-types src/closure-probe.ts",
       runtime: {
         node: process.version,

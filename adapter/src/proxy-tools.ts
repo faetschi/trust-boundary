@@ -1,23 +1,33 @@
 import { Type, type Static } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
+import type { IpcClient, IpcProposal, IpcResult } from "./ipc-transport.ts";
 
 export const declaredToolNames = ["read", "write", "edit", "bash"] as const;
 export type DeclaredToolName = (typeof declaredToolNames)[number];
 
-export interface ToolProposal {
-  schema_version: "tbound-proposal/v1";
-  tool_call_id: string;
-  tool: DeclaredToolName;
-  arguments: Record<string, unknown>;
-}
+export type ToolProposal = IpcProposal;
 
-export interface ProposalReply {
+export interface ProbeProposalReply {
   verdict: "DENY";
   reason: "probe-only";
 }
 
+export type ProposalReply = IpcResult | ProbeProposalReply;
+
 export interface ProposalSender {
   send(proposal: ToolProposal, signal?: AbortSignal): Promise<ProposalReply>;
+}
+
+export class IpcProposalSender implements ProposalSender {
+  private readonly client: IpcClient;
+
+  constructor(client: IpcClient) {
+    this.client = client;
+  }
+
+  send(proposal: ToolProposal, signal?: AbortSignal): Promise<IpcResult> {
+    return this.client.request(proposal, signal);
+  }
 }
 
 const readParameters = Type.Object({
@@ -123,4 +133,8 @@ export function createProxyTools(sender: ProposalSender): ToolDefinition[] {
       sender,
     ),
   ];
+}
+
+export function createIpcProxyTools(client: IpcClient): ToolDefinition[] {
+  return createProxyTools(new IpcProposalSender(client));
 }

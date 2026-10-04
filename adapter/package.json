@@ -9,7 +9,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "closure": "node --experimental-strip-types src/closure-probe.ts",
-    "check": "npm run typecheck && npm run closure"
+    "test": "node --experimental-strip-types --test src/ipc-transport.test.ts",
+    "check": "npm run typecheck && npm test && npm run closure"
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "0.87.1",

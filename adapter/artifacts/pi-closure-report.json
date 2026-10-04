@@ -1,6 +1,6 @@
 {
-  "generated_at_utc": "2026-09-30T13:21:32.289Z",
-  "command": "npm run check (typecheck followed by npm run closure)",
+  "generated_at_utc": "2026-10-04T18:51:59.615Z",
+  "command": "npm run check (typecheck, IPC tests, then closure probe)",
   "runtime": {
     "node": "v24.15.0",
     "os_type": "Windows_NT",
@@ -12,9 +12,9 @@
     "name": "@earendil-works/pi-coding-agent",
     "installed_version": "0.87.1",
     "locked_version": "0.87.1",
-    "package_lock_sha256": "87b23dd8763f7417af5958e47482767250402a78aef1a025508a939119bb1d17"
+    "package_lock_sha256": "2055c228154c615c4f29a6422afe16b0d2372742ec9497af0406903ba37a6bf2"
   },
-  "profile_sha256": "334b2376b7e34cc25a2cfbcba4009c50aab74cb8b3d49313c93610f853c49c65",
+  "profile_sha256": "49a584bf72dce5fff2a89d8a01a9929902dc5e2bb26e0fb45d139ab443431591",
   "negative_check_classifications": {
     "SDK-session": "A real createAgentSession was constructed or inspected; each case's evidence states which session behavior was checked.",
     "comparator-fixture": "No altered SDK session was inspected; a standalone admission predicate or loader guard received synthetic input."
