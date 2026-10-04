@@ -36,10 +36,31 @@ That broker accepts one immutable registered profile, enforces the ordered
 records bounded request/response bytes in memory, and registers parsed provider
 tool calls for strict one-use proposal correlation. It requires an injected
 `HTTPDoer`; there is no default HTTP client, and tests use a fake Doer only. The
-executable still refuses to start a session: production provider transport,
-durable admission/audit, execution containment, session repository operations,
-and publication are not provided by this slice. Passing synthetic and fake-Doer
-tests are component/integration checks, not WP1/G1 evidence or proof of a closed
-security boundary.
+executable still refuses to start a production session. Its explicit
+`--smoke-listen --socket-dir DIR` mode is a no-effect integration fixture only:
+it requires a caller-created, supervisor-owned mode-0700 directory, creates a
+mode-0600 Unix socket and transient mode-0600 binding-token file there, accepts
+one connection, and processes exactly the four fixed tool proposals. A scripted
+fake `HTTPDoer` returns canned SSE bytes to the existing broker, and a stub
+executor reports that it did nothing. Standard output is bounded JSONL with
+proposal, broker-correlation receipt, gate decision, and result for each call.
+The binding token is not peer authentication. This mode does not perform real
+provider transport, workspace I/O, command execution, containment, publication,
+durable audit, or session repository operations. Passing synthetic and
+fake-Doer tests are component/integration checks, not WP1/G1 evidence or proof
+of a closed security boundary.
+
+The Linux cross-language smoke script copies the Go module and the dependency-
+free IPC adapter client to a private ext4 working directory, builds and starts
+the listener, runs Node with `--experimental-strip-types`, and asserts all four
+transcript/result pairs. From the Windows checkout under WSL, run:
+
+```bash
+bash /mnt/c/<path-to-checkout>/supervisor/ipc-smoke.sh
+```
+
+It uses `$HOME/go-sdk/go/bin/go` when present, otherwise `go` from `PATH`, and
+uses Node 24.15.0 from its standard extracted path under `$HOME` when present,
+otherwise Node on `PATH` or `NODE_BIN` (Node 22.19+).
 
 See `CORRELATION_FAILURE_MODES.md` for the pre-implementation failure analysis and review addendum.
