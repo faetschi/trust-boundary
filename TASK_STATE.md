@@ -97,8 +97,15 @@ The orchestrator delegates mechanical exploration, implementation, and testing t
 - Verified with WSL2 Ubuntu + Go 1.27.1 (private mode-0700 `TMPDIR`, because `audit` rejects
   world-writable ancestors): `go test ./...` green across e2e, audit, protocol, openrouter, delta,
   sessionrepo, workspace. Windows host `go build ./...` and the portable tests are green.
-- The autonomous VM lifecycle (Disconnect/Connect/Stop/Start) verification was launched; its result
-  is appended below once complete.
+- **Autonomous VM lifecycle proven** (2026-10-04 ~19:55 local, from the unelevated session):
+  `Disconnect` dropped the guest (TCP 22 false), `Connect` restored it (TCP 22 true), `Stop`
+  reached clean Hyper-V `Off` in ~2 s (guest `hv_utils` shutdown integration works; no force-off),
+  and `Start` returned it to `Running`. Final `Status`: Running, adapter on `Default Switch`.
+  The guest DHCP address changed across the restart (`172.24.196.42` → `172.24.196.229`), and
+  Hyper-V exposes no adapter IP (no guest `hv-kvp-daemon`), so after every start the address must be
+  resolved from the pinned MAC `00-15-5D-0C-40-00` via the host neighbor table before pinned-key
+  SSH (host-key alias stays `172.19.207.142`). This address step is the one manual/wrapper gap in
+  the VM loop; the rest is fully autonomous.
 - Still open: commit the code changes; host-automation (reviewed verifier helper) decision;
   controller `ReviewedSourceCommit` update; wire the Linux WSL build/test into the normal workflow.
 
