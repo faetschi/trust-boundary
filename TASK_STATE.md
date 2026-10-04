@@ -1,6 +1,6 @@
 # TBound handoff state
 
-Last updated: 2026-10-04 (Europe/Vienna) — autonomous continuation session
+Last updated: 2026-10-04 (Europe/Vienna) — autonomous continuation session; cross-language IPC integration committed (`ca9f227`) and independently verified
 
 ## Autonomous continuation plan — 2026-10-04
 
@@ -199,24 +199,40 @@ must not break the current green test suite.
   Verified: constants match `supervisor/internal/ipc` exactly; `npm run check` passes (14/14 tests);
   the probe still exposes exactly `read/write/edit/bash` with `provider_stream_attempts=0`; no new
   dependency (`package-lock.json` unchanged).
+- Supervised Unix-socket integration committed (`ca9f227`): `cmd/tbound` gains an explicit
+  `--smoke-listen --socket-dir DIR` mode that validates a caller-created, supervisor-owned
+  mode-0700 directory, creates a mode-0600 Unix socket and a transient mode-0600 binding-token
+  file, accepts one connection through `internal/ipc`'s Linux transport, and runs exactly four
+  canned SSE captures through the concrete broker with a fake `HTTPDoer` and a no-effect stub
+  executor across the existing ipc → broker correlation → gate → result loop. Standard output is a
+  bounded JSONL proposal/correlation/decision/result transcript. Added a Linux-only real-socket
+  round-trip test (`unix_integration_test.go`, skips on non-Linux), `adapter/src/ipc-smoke-client.ts`
+  (transport-only Node CLI sending the fixed read/write/edit/bash proposals), and
+  `supervisor/ipc-smoke.sh`, which copies the module to a private ext4 workdir, builds, starts the
+  listener, runs Node `--experimental-strip-types` with the pinned Linux Node, and asserts all four
+  transcript/result pairs. Independently verified by the orchestrator: full Linux
+  `-race -count=1 ./...` green (all 12 packages), `gofmt -l` empty, `git diff --check` clean, no
+  `go.mod`/`go.sum`/`package-lock.json` change, adapter `npm run check` exit 0 (typecheck + 14/14
+  tests + closure probe with `provider_stream_attempts=0`), and the cross-language smoke exit 0
+  (`Linux cross-language IPC smoke passed (4 proposal/correlation/gate/result records).`). This is
+  synthetic-only: no provider/network call, no real tool effect, no containment, publication, or
+  durable audit, and the binding token is not peer authentication.
 
-### Planned end-to-end integration (next)
+### End-to-end integration follow-ups (remaining)
 
-Once the adapter IPC client is verified and committed:
+The synthetic cross-language path (real Unix socket, real `tbound-ipc/v1` framing, four proposals)
+is now proven. What it deliberately does **not** cover, and what remains on the thesis path:
 
-1. Give `cmd/tbound` a real supervised listener mode over `internal/ipc`'s Linux Unix-socket
-   transport (session-bound token, strict framing, one connection per session), in addition to the
-   injected/`net.Pipe` test path.
-2. Point the adapter's `ipc-transport.ts` at that socket so the four proxy tools each send one
-   proposal and receive the correlated result; the ClosureProbe surface must stay exactly
-   `read/write/edit/bash` with zero provider-stream attempts.
-3. Add a Linux-only cross-language smoke/`-race` harness: start the Go supervisor on a private
-   mode-0700 socket, run the Node adapter against it, drive the synthetic `read → edit → Bash →
-   read` fixture through ipc → broker correlation → gate → sessionrepo, and assert decisions and
-   generation state. Provider traffic remains a fake `HTTPDoer` (no credentials).
-4. Then continue the thesis path: durable-audit wiring into the decision path, the containment
-   executor (Landlock/seccomp/rootless Podman), the publication path, E04/E06 fixtures, the frozen
-   profile, and disposable restore.
+1. Wire the durable session repository and pre-effect audit into the decision path, and assert
+   generation state across the exchange (the smoke uses a no-effect stub executor and process-local
+   broker records only; it does not touch `sessionrepo`, sealing, or audit).
+2. Implement a contained executor (Landlock/seccomp/rootless Podman) for real tool effects.
+3. Implement the publication path, add E04/E06 fixtures, freeze the profile, and add the
+   disposable-restore test.
+4. A real provider exchange still requires a model ID and API key supplied privately; only a
+   scripted fake `HTTPDoer` is configured.
+5. Update the reviewed verifier helper's `ReviewedSourceCommit` and re-run the guest offline
+   verifier against a committed snapshot that includes the integration slice.
 
 ## Current goal
 
