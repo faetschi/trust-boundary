@@ -519,13 +519,13 @@ func (s *Store) Write(ctx context.Context, input *Generation, operation delta.Op
 		return MutationResult{}, err
 	}
 	return s.mutate(ctx, input, "write", operation, decision, argumentDigest, func(root *os.File) error {
-		mode := uint32(0o644)
-		if existingMode, exists, err := regularModeAt(root, path); err != nil {
+		executableBits := uint32(0)
+		if existingExecutableBits, exists, err := regularModeAt(root, path); err != nil {
 			return err
 		} else if exists {
-			mode = existingMode
+			executableBits = existingExecutableBits
 		}
-		return replaceRegularAt(root, path, copyContent, mode)
+		return replaceRegularAt(root, path, copyContent, executableBits)
 	})
 }
 
