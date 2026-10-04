@@ -190,7 +190,15 @@ must not break the current green test suite.
   are process-local, not durable audit evidence; no real network, containment, or publication.
   Verified with the full Linux `-race` suite (11 packages incl. `internal/broker`) under
   verifier-like `TMPDIR`/`umask 077` and the Windows suite.
-- Adapter-side IPC client is in progress in a separate workstream (not yet committed).
+- Adapter-side IPC client committed (`89c5320`): `adapter/src/ipc-transport.ts` implements the framed
+  transport matching the Go `tbound-ipc/v1` wire format (4-byte big-endian prefix; 1,048,576-byte
+  message / 1,048,580-byte frame caps; 64-lowercase-hex binding token checked per frame; strictly
+  increasing sequence from 1; 1,024-frame / 16 MiB per-direction caps; fail-closed), with a Linux
+  Unix-socket dialer and an in-memory duplex for tests, plus `ipc-transport.test.ts`. `proxy-tools.ts`
+  gains `createIpcProxyTools` while keeping the injected `ProposalSender` for the closure probe.
+  Verified: constants match `supervisor/internal/ipc` exactly; `npm run check` passes (14/14 tests);
+  the probe still exposes exactly `read/write/edit/bash` with `provider_stream_attempts=0`; no new
+  dependency (`package-lock.json` unchanged).
 
 ### Planned end-to-end integration (next)
 
