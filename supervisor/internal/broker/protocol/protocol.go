@@ -61,6 +61,32 @@ type proposalRequest struct {
 	Arguments     json.RawMessage `json:"arguments"`
 }
 
+// Proposal is the bounded adapter-facing request carried over session IPC.
+// Its fields contain no broker-owned response identity, sequence, or digest.
+type Proposal struct {
+	SchemaVersion string          `json:"schema_version"`
+	ToolCallID    string          `json:"tool_call_id"`
+	Tool          string          `json:"tool"`
+	Arguments     json.RawMessage `json:"arguments"`
+}
+
+// Result is the bounded supervisor reply. Correlation identifiers are copied
+// from accepted broker state when available; ToolCallID is never authority.
+type Result struct {
+	SchemaVersion            string                  `json:"schema_version"`
+	ResponseID               *correlation.Identifier `json:"response_id,omitempty"`
+	ToolCallID               string                  `json:"tool_call_id"`
+	Tool                     string                  `json:"tool"`
+	Sequence                 uint64                  `json:"sequence"`
+	CanonicalArgumentsDigest string                  `json:"canonical_arguments_digest,omitempty"`
+	Verdict                  string                  `json:"verdict"`
+	ReasonCode               string                  `json:"reason_code"`
+	PolicyDigest             string                  `json:"policy_digest"`
+	Output                   json.RawMessage         `json:"output,omitempty"`
+}
+
+const ResultSchemaVersion = "tbound-result/v1"
+
 // Stream serializes trusted captures and untrusted Pi proposals. Its mutex
 // keeps lookup, digest comparison, and one-time consumption in a single order.
 type Stream struct {
@@ -237,6 +263,132 @@ func decodeProposal(raw []byte) (proposalRequest, error) {
 		return request, errors.New("tool arguments must be an object")
 	}
 	return request, nil
+}
+
+// DecodeProposal applies the same strict, exact-shape validation used by the
+// broker correlation stream and returns a defensive copy of the arguments.
+func DecodeProposal(raw []byte) (Proposal, error) {
+	request, err := decodeProposal(raw)
+	if err != nil {
+		return Proposal{}, err
+	}
+	return Proposal{
+		SchemaVersion: request.SchemaVersion,
+		ToolCallID:    request.ToolCallID,
+		Tool:          request.Tool,
+		Arguments:     append(json.RawMessage(nil), request.Arguments...),
+	}, nil
+}
+
+// MarshalProposal encodes a typed proposal after validating its exact wire
+// shape. Canonicalization and broker correlation still happen in Stream.Propose.
+func MarshalProposal(proposal Proposal) ([]byte, error) {
+	if proposal.SchemaVersion != ProposalSchemaVersion ||
+		!validText(proposal.ToolCallID, maxIdentifierBytes) ||
+		!validText(proposal.Tool, maxIdentifierBytes) || len(proposal.Arguments) == 0 || len(proposal.Arguments) > MaxFrameBytes {
+		return nil, errors.New("proposal fields exceed the protocol bounds")
+	}
+	encoded, err := json.Marshal(proposal)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := DecodeProposal(encoded); err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
+// ValidateStrictJSON exposes the protocol's duplicate-key, UTF-8, number, and
+// nesting checks to the session IPC framing layer. It does not validate a
+// particular message schema.
+func ValidateStrictJSON(raw []byte) error {
+	if len(raw) == 0 || len(raw) > MaxFrameBytes {
+		return errors.New("JSON message has invalid size")
+	}
+	return checkStrictJSON(raw)
+}
+
+// DecodeResult validates a supervisor result before it is released to the
+// adapter. Unknown fields and duplicate JSON keys are rejected.
+func DecodeResult(raw []byte) (Result, error) {
+	var result Result
+	if err := ValidateStrictJSON(raw); err != nil {
+		return result, err
+	}
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return result, err
+	}
+	allowed := map[string]bool{
+		"schema_version": true, "response_id": true, "tool_call_id": true,
+		"tool": true, "sequence": true, "canonical_arguments_digest": true,
+		"verdict": true, "reason_code": true, "policy_digest": true, "output": true,
+	}
+	for key := range object {
+		if !allowed[key] {
+			return result, fmt.Errorf("unknown result field %q", key)
+		}
+	}
+	for _, key := range []string{"schema_version", "tool_call_id", "tool", "sequence", "verdict", "reason_code", "policy_digest"} {
+		if _, exists := object[key]; !exists {
+			return result, fmt.Errorf("result is missing required field %q", key)
+		}
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&result); err != nil {
+		return Result{}, err
+	}
+	if result.SchemaVersion != ResultSchemaVersion ||
+		!validText(result.ToolCallID, maxIdentifierBytes) ||
+		!validText(result.Tool, maxIdentifierBytes) ||
+		(result.Verdict != "ALLOW" && result.Verdict != "DENY") ||
+		!validText(result.ReasonCode, maxIdentifierBytes) ||
+		!validText(result.PolicyDigest, maxIdentifierBytes) {
+		return Result{}, errors.New("result has invalid required values")
+	}
+	if result.ResponseID != nil && !validIdentifier(*result.ResponseID) {
+		return Result{}, errors.New("result has invalid response identity")
+	}
+	if result.CanonicalArgumentsDigest != "" && !validDigest(result.CanonicalArgumentsDigest) {
+		return Result{}, errors.New("result has invalid canonical-arguments digest")
+	}
+	if result.Verdict == "ALLOW" && (result.ResponseID == nil || result.Sequence == 0 ||
+		result.CanonicalArgumentsDigest == "" || !registeredTool(result.Tool) || result.ReasonCode != "policy_rule_allow") {
+		return Result{}, errors.New("allow result is not bound to a matched registered proposal")
+	}
+	if result.Verdict == "DENY" && len(result.Output) != 0 {
+		return Result{}, errors.New("denial result may not contain executor output")
+	}
+	if len(result.Output) > 0 {
+		if err := ValidateStrictJSON(result.Output); err != nil {
+			return Result{}, fmt.Errorf("result output: %w", err)
+		}
+	}
+	result.Output = append(json.RawMessage(nil), result.Output...)
+	return result, nil
+}
+
+// MarshalResult validates and encodes a result using the same schema accepted
+// by DecodeResult.
+func MarshalResult(result Result) ([]byte, error) {
+	if len(result.ToolCallID) > maxIdentifierBytes || len(result.Tool) > maxIdentifierBytes ||
+		len(result.ReasonCode) > maxIdentifierBytes || len(result.PolicyDigest) > maxIdentifierBytes ||
+		len(result.CanonicalArgumentsDigest) > len(CanonicalizationProfile)+len(":sha256:")+sha256.Size*2 ||
+		len(result.Output) > MaxFrameBytes {
+		return nil, errors.New("result fields exceed the protocol bounds")
+	}
+	if result.ResponseID != nil && (len(result.ResponseID.Issuer) > maxIdentifierBytes || len(result.ResponseID.Opaque) > maxIdentifierBytes) {
+		return nil, errors.New("result response identity exceeds the protocol bounds")
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := DecodeResult(encoded); err != nil {
+		return nil, err
+	}
+	return encoded, nil
 }
 
 func checkExactProposalKeys(raw []byte) error {

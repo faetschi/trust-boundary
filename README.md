@@ -1,6 +1,6 @@
 # `tbound` prototype
 
-**Status:** architecture scaffold only. No provider exchange, Linux containment run, conformance result, or WP1/G1 evidence exists yet.
+**Status:** architecture scaffold plus a bounded supervisor prototype slice. No real provider exchange, Linux containment run, conformance result, or WP1/G1 evidence exists yet.
 
 **Setup guide:** [Fresh-host setup and offline verification](docs/setup.md).
 
@@ -42,7 +42,12 @@ internal/oracle/        protected-tree, network, and process observations
 internal/eval/          profile identity, evidence manifest, and trial disposition
 ```
 
-This is a module plan, not a set of implemented packages. The README is the only initial project artifact; dependency and lock files wait until the Go toolchain, Pi SDK release, and provider profile are selected. Go is the prototype supervisor direction, but entrypoint viability remains a WP1 spike and is not G1 evidence.
+The Go module now contains the synthetic broker/protocol boundary, bounded
+session IPC, a versioned deterministic gate, and a dependency-injected
+supervisor loop. The executable refuses to start until trusted provider,
+durable-audit, and contained-executor adapters exist. These component tests are
+not a real provider exchange, an effect-containment result, or WP1/G1 evidence.
+Go entrypoint viability remains a WP1 spike.
 
 ## Effect and generation invariants
 
