@@ -28,9 +28,7 @@ func TestSessionRepositoryLifecycleE2E(t *testing.T) {
 	if err := os.Mkdir(sourcePath, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(sourcePath, "build"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeFixtureDir(t, filepath.Join(sourcePath, "build"), 0o755)
 	writeFixtureFile(t, filepath.Join(sourcePath, "README.md"), "baseline text\n", 0o644)
 	writeFixtureFile(t, filepath.Join(sourcePath, "build", "result.txt"), "baseline result\n", 0o644)
 	source := openFixtureRoot(t, sourcePath)
@@ -267,9 +265,7 @@ func TestSessionRepositoryRejectsUnsupportedSeedAndSealedSourceSwapE2E(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(g0.testPath(), "task.txt"), []byte("swapped\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		writeFixtureFile(t, filepath.Join(g0.testPath(), "task.txt"), "swapped\n", 0o644)
 		operation, decision := proposal("read-after-swap"), allow("read-after-swap")
 		authority.grant(OperationRequest{Tool: "read", Operation: operation, Decision: decision, InputGeneration: g0.ID(), InputTreeDigest: g0.TreeDigest(), ArgumentDigest: readArgumentsDigest("task.txt", 1024)})
 		if _, err := g0.Read(context.Background(), operation, decision, "task.txt", 1024); err == nil {
@@ -284,9 +280,7 @@ func TestSessionRepositoryBindsReceiptToToolAndExactArgumentsE2E(t *testing.T) {
 	if err := os.Mkdir(sourcePath, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(sourcePath, "build"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeFixtureDir(t, filepath.Join(sourcePath, "build"), 0o755)
 	writeFixtureFile(t, filepath.Join(sourcePath, "README.md"), "baseline text\n", 0o644)
 	writeFixtureFile(t, filepath.Join(sourcePath, "build", "result.txt"), "baseline result\n", 0o644)
 	g0, err := store.Seed(openFixtureRoot(t, sourcePath), RootAttestation{Quiescent: true})
@@ -419,9 +413,7 @@ func TestSessionRepositorySnapshotsAuthorizedEditAndBashArgumentsE2E(t *testing.
 		if err := os.Mkdir(sourcePath, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Mkdir(filepath.Join(sourcePath, "build"), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		writeFixtureDir(t, filepath.Join(sourcePath, "build"), 0o755)
 		writeFixtureFile(t, filepath.Join(sourcePath, "README.md"), "baseline text\n", 0o644)
 		writeFixtureFile(t, filepath.Join(sourcePath, "build", "result.txt"), "baseline result\n", 0o644)
 		g0, err := store.Seed(openFixtureRoot(t, sourcePath), RootAttestation{Quiescent: true})
@@ -462,9 +454,7 @@ func TestSessionRepositorySnapshotsAuthorizedEditAndBashArgumentsE2E(t *testing.
 		if err := os.Mkdir(sourcePath, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.Mkdir(filepath.Join(sourcePath, "build"), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		writeFixtureDir(t, filepath.Join(sourcePath, "build"), 0o755)
 		writeFixtureFile(t, filepath.Join(sourcePath, "README.md"), "baseline text\n", 0o644)
 		writeFixtureFile(t, filepath.Join(sourcePath, "build", "result.txt"), "baseline result\n", 0o644)
 		g0, err := store.Seed(openFixtureRoot(t, sourcePath), RootAttestation{Quiescent: true})
@@ -563,9 +553,7 @@ func TestSessionRepositoryRecoversCommittedPrefixAndQuarantinesOrphanViewE2E(t *
 	if err := os.Mkdir(sourcePath, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(sourcePath, "build"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeFixtureDir(t, filepath.Join(sourcePath, "build"), 0o755)
 	writeFixtureFile(t, filepath.Join(sourcePath, "README.md"), "baseline text\n", 0o644)
 	writeFixtureFile(t, filepath.Join(sourcePath, "build", "result.txt"), "baseline result\n", 0o644)
 	g0, err := store.Seed(openFixtureRoot(t, sourcePath), RootAttestation{Quiescent: true})
@@ -660,9 +648,58 @@ func TestSessionRepositoryUnknownEffectDoesNotAdvanceHeadE2E(t *testing.T) {
 	}
 }
 
+func privateTestBase(t *testing.T) string {
+	t.Helper()
+	candidates := make([]string, 0, 2)
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		candidates = append(candidates, home)
+	}
+	if tmp := os.TempDir(); tmp != "" {
+		candidates = append(candidates, tmp)
+	}
+	for _, base := range candidates {
+		if !ancestorsArePrivate(base) {
+			continue
+		}
+		directory, err := os.MkdirTemp(base, ".sessionrepo-test-")
+		if err != nil {
+			continue
+		}
+		if err := os.Chmod(directory, 0o700); err != nil {
+			_ = os.RemoveAll(directory)
+			continue
+		}
+		t.Cleanup(func() { _ = os.RemoveAll(directory) })
+		return directory
+	}
+	t.Skip("no private base directory with a trusted ancestor chain is available")
+	return ""
+}
+
+// ancestorsArePrivate mirrors audit.checkTrustedAncestor: no component of the
+// path may be group- or other-writable. This keeps the audit journal out of
+// world-writable trees such as a sticky /tmp.
+func ancestorsArePrivate(path string) bool {
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	for {
+		info, err := os.Lstat(absolute)
+		if err != nil || !info.IsDir() || info.Mode().Perm()&0o022 != 0 {
+			return false
+		}
+		parent := filepath.Dir(absolute)
+		if parent == absolute {
+			return true
+		}
+		absolute = parent
+	}
+}
+
 func newE2EStore(t *testing.T) (*Store, *audit.Journal, string, *e2eReceiptAuthority) {
 	t.Helper()
-	base := t.TempDir()
+	base := privateTestBase(t)
 	storePath := filepath.Join(base, "repository")
 	auditPath := filepath.Join(base, "audit")
 	if err := os.Mkdir(storePath, 0o700); err != nil {
@@ -793,9 +830,7 @@ func fixtureSnapshot(t *testing.T, generation, readme, result string) workspace.
 	if err := os.Mkdir(rootPath, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(filepath.Join(rootPath, "build"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeFixtureDir(t, filepath.Join(rootPath, "build"), 0o755)
 	writeFixtureFile(t, filepath.Join(rootPath, "README.md"), readme, 0o644)
 	writeFixtureFile(t, filepath.Join(rootPath, "build", "result.txt"), result, 0o644)
 	root := openFixtureRoot(t, rootPath)
@@ -853,6 +888,21 @@ func openFixtureRoot(t *testing.T, path string) *os.File {
 func writeFixtureFile(t *testing.T, path, content string, mode os.FileMode) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), mode); err != nil {
+		t.Fatal(err)
+	}
+	// os.WriteFile applies the process umask; force the exact fixture mode so
+	// the canonical-mode import contract is exercised independently of umask.
+	if err := os.Chmod(path, mode); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeFixtureDir(t *testing.T, path string, mode os.FileMode) {
+	t.Helper()
+	if err := os.Mkdir(path, mode); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, mode); err != nil {
 		t.Fatal(err)
 	}
 }
