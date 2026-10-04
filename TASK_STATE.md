@@ -143,7 +143,7 @@ After this run, source commit `90ee23e` corrected the package-skip parser and pa
 
 The queued follow-up is `/home/tboundadmin/.tbound-offline-queued.VFHmYRa5HO`, created at `2026-10-04T09:03:53Z`. The offline gate passed at `2026-10-04T09:06:39Z`; the terminal reported successful completion at `09:07:19Z`. This is a provisional terminal result only: the report JSON and capture have not been retrieved or independently verified, so do not claim verifier PASS, full checklist completion, or containment.
 
-Host automation for the Hyper-V NIC disconnect/offline gate is under design and review. Its one-time administrator installation is not complete; no automation result is established.
+Hyper-V host automation source is prepared and independently security-reviewed. PowerShell parsing, local-function named-parameter lint, and pure mocked policy checks pass. It is not installed or live-tested; no installer, task, or VM operation ran. The latest VFH terminal success at 09:07:19Z remains provisional because its report JSON and capture are still uncaptured. Next: run the one-time elevated installer, then use Inspect and safe quiescence tasks before retrieving and independently verifying the exact report and capture.
 
 ## Resume VMConnect and the existing tmux terminal
 

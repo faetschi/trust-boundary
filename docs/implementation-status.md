@@ -143,7 +143,7 @@ Afterward, parser-fix commit `90ee23e` passed seven host-only pure tests and was
 
 The follow-up queue is `/home/tboundadmin/.tbound-offline-queued.VFHmYRa5HO`, created at `2026-10-04T09:03:53Z`. Its offline gate passed at `2026-10-04T09:06:39Z`, and the terminal reported successful completion at `09:07:19Z`. The report JSON and capture are still pending retrieval and independent verification; record this as a provisional terminal result only, not a verifier PASS, full checklist result, or containment evidence.
 
-Host automation for the Hyper-V NIC disconnect/offline gate is under design and review. The one-time administrator installation is still pending, so no automated host control has been verified.
+Hyper-V host automation source is prepared and independently security-reviewed. PowerShell parsing, local-function named-parameter lint, and pure mocked policy checks pass. It is not installed or live-tested; no installer, task, or VM operation ran. The latest VFH terminal success at 09:07:19Z remains provisional because its report JSON and capture are still uncaptured. Next: run the one-time elevated installer, then use Inspect and safe quiescence tasks before retrieving and independently verifying the exact report and capture.
 
 ## Current broker slice and provider plan
 
