@@ -67,6 +67,17 @@ durable end-to-end path; and keep VM lifecycle + SSH autonomous (no manual VMCon
   cgroup delegation, unprivileged-userns/AppArmor behaviour) and compose the real runner into the
   `cmd/tbound` bash path end-to-end. The claim-bearing rootless Podman 4.9.3/crun + signed-entrypoint
   profile and Landlock ABI ≥5 rights remain guest-only and unimplemented.
+- **Guest validation result** (kernel `6.8.0-146-generic`, HEAD `5e503642`, private module cache):
+  Landlock ABI **4**, seccomp-bpf and pidfd present, cgroup v2 mounted but **not delegated** to
+  `tboundadmin`. The Option-A cell could **not** start because Ubuntu 24.04's AppArmor
+  unprivileged-userns restriction (`kernel.apparmor_restrict_unprivileged_userns=1`) denies
+  `clone(CLONE_NEWUSER)` (`fork/exec /proc/self/exe: permission denied`; `unshare --user --map-root-user`
+  also EPERM). The sandbox stayed honest — `Probe()` reported `UserNamespaces=false`, mechanism-requiring
+  tests failed fast (2 PASS / 1 SKIP / 10 FAIL), and the cgroup test emitted an explicit unsupported
+  skip; nothing silently passed and no host/guest security setting was changed. This is a blocker for
+  the in-process userns cell on the guest and a key input to the claim-bearing path (rootless
+  Podman/crun, or a reviewed AppArmor profile granting userns to the frozen entrypoint) — a
+  host-configuration decision to make before the guest containment conformance run.
 
 ### Workstreams (ordered)
 1. **Durable integration (next):** wire `internal/sessionrepo` + pre-effect durable audit into the
