@@ -2,6 +2,33 @@
 
 Last updated: 2026-10-04 (Europe/Vienna) — autonomous continuation session; cross-language IPC integration committed (`ca9f227`) and independently verified
 
+## Resume point — end of session 2026-10-04
+
+Paused for continuation. HEAD = `289accb`. Working tree additionally holds the pre-existing
+unrelated `docs/` + `infra/hyperv/` modifications and `vm_start.txt` (all untouched), plus an
+**uncommitted, not-yet-verified** Podman runner scaffold from the subagent
+`ses_ef761e423ffeswWlBySkYfEifg` ("Rootless Podman runner scaffold"), untracked at
+`supervisor/internal/podman/` (`doc.go`, `podman_linux.go`, `podman_linux_test.go`). Do **not** commit
+that scaffold until it is independently verified.
+
+Committed this session, in order: `26b71dd` sessionrepo `Write` new-file mode fix; `0941557` bash
+command lease; `b609bad` Option-A sandbox + contained runner; `145ac42` real sandbox runner
+end-to-end; docs `a8957e2`, `4f9c081`, `b7d4127`, `5e50364`, `dc175ad`, `289accb`.
+
+Resume steps:
+1. If the Podman subagent is still running, stop it in the OpenChamber UI, then read its final report
+   (`openchamber session.messages` for `ses_ef761e423ffeswWlBySkYfEifg`) and independently verify
+   `internal/podman`: WSL `go test -race -count=1 ./...` (private mode-0700 TMPDIR), Windows
+   `go build ./...`, `gofmt -l supervisor` empty, `git diff --check`, no `go.mod`/`go.sum` change, and
+   the guest conformance run. Commit only if green and honest (containment must stay `not-established`).
+2. Continue the claim-bearing containment path: image digest pin + signed entrypoint + offline cosign
+   + a real settlement observer for the Podman runner; then publication path, E04/E06 fixtures, frozen
+   profile, disposable restore; update the controller `ReviewedSourceCommit`; re-run the guest offline
+   verifier against a committed snapshot.
+3. VM/SSH autonomy is verified: `\TBoundVmOps\{Status,Start,Stop,Connect,Disconnect}` run unelevated,
+   a clean Stop→Start cycle works, and the guest DHCP IP is rediscovered from MAC `00-15-5D-0C-40-00`
+   via `Get-NetNeighbor` with pinned-key SSH.
+
 ## Continuation plan — 2026-10-04 (this session)
 
 Objective: continue from the verified state (`ca9f227`); fix remaining open issues; advance the
