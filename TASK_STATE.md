@@ -2,6 +2,39 @@
 
 Last updated: 2026-10-04 (Europe/Vienna) — autonomous continuation session; cross-language IPC integration committed (`ca9f227`) and independently verified
 
+## Continuation plan — 2026-10-04 (this session)
+
+Objective: continue from the verified state (`ca9f227`); fix remaining open issues; advance the
+durable end-to-end path; and keep VM lifecycle + SSH autonomous (no manual VMConnect).
+
+### Autonomy focus
+- Confirm the pre-installed fixed tasks in `\TBoundVmOps` (`Status`, `Start`, `Stop`, `Connect`,
+  `Disconnect`) still run unelevated as `FABIAN\Admin` via `schtasks /run`; that a clean guest
+  shutdown reaches Hyper-V `Off` without force-off; and that after `Start` the guest DHCP address is
+  rediscovered from the pinned MAC `00-15-5D-0C-40-00` with pinned-key SSH succeeding. If any step
+  needs a one-time elevation, stop and ask for that single approval only.
+
+### Workstreams (ordered)
+1. **Durable integration (next):** wire `internal/sessionrepo` + pre-effect durable audit into the
+   `cmd/tbound` decision path (proposal → broker correlation → gate → durable intent/audit → effect
+   → settled result) and assert generation state; keep the synthetic no-effect smoke as the
+   transport-level harness.
+2. **Contained executor:** a bounded, contained effect implementation (Landlock/seccomp/rootless
+   Podman) behind the `Executor` seam.
+3. **Publication + fixtures:** publication path, E04/E06 fixtures, frozen profile, disposable
+   restore.
+4. **Controller + docs reconciliation:** update the reviewed verifier helper's
+   `ReviewedSourceCommit`; reconcile the stale host-automation pins/paragraphs.
+5. **Guest re-verification:** deploy a committed snapshot that includes the integration slice and
+   re-run the offline verifier.
+6. **Real provider exchange:** still blocked on a privately supplied model ID + API key.
+
+### Constraints
+- Preserve unrelated working-tree changes; never read/stage/alter/delete `vm_start.txt`.
+- Never request, record, print, or commit secrets, passwords, or private keys.
+- No push without a separate instruction. Verify critical facts directly; delegate mechanical work
+  to GPT-6 Luna (xhigh) subagents.
+
 ## Autonomous continuation plan — 2026-10-04
 
 Goal: continue from the verified current state; fix all open issues, then advance the prototype.
