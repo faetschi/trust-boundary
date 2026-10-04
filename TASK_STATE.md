@@ -24,6 +24,27 @@ durable end-to-end path; and keep VM lifecycle + SSH autonomous (no manual VMCon
   `tboundubuntu2404`; toolchains `go1.27.1`, `node-v24.21.0-linux-x64` under `/opt/tbound`). VM
   start/stop/connect/disconnect and SSH require no manual VMConnect and no new elevation.
 
+### Progress — durable decision/effect wiring (2026-10-04)
+
+- Committed `08af31b`: `Supervisor` gains a nil-safe, fail-closed `DecisionRecorder` hook invoked
+  after the gate decision and before the executor, recording every ALLOW and DENY as a benign
+  `gate_decision` audit event (`cmd/tbound/decisions_test.go`, `durable_decisions_linux.go`). A Linux
+  `DurableExecutor` (`durable_executor_linux.go`) maps a trusted ALLOW `write`/`edit` proposal onto
+  one `sessionrepo` mutation on the current tip and releases a strict-JSON settlement summary only
+  after the effect is durable. The gate's versioned `tbound-policy/v1:sha256:…` digest is never
+  equated with the sessionrepo bare `sha256:…` commitments; operation/decision IDs are derived
+  deterministically from the trusted response issuer/opaque + sequence + tool-call ID.
+  `durable_integration_linux_test.go` proves ordering (gate_decision → intent → effect → outcome →
+  result), exactly one durable write effect, `store.Verify`/`Evidence` consistency, and close+reopen
+  recovery; `TestDurableDenyDecisionIsRecorded` proves deny is recorded pre-effect and never
+  executes; `TestServeRecordsDecisionFailClosed` proves the hook withholds on failure on every
+  platform. Independently verified: Linux `-race` all 12 packages green, Windows build/tests green,
+  `gofmt`/`git diff --check` clean, no module change.
+- Found a real pre-existing bug during verification: `sessionrepo.Store.Write` passes its `0o644`
+  default as `executableBits`, so a **new** file is created mode `0755` instead of `0644` (`Edit` is
+  unaffected because `readRegularAt` returns `Mode & 0o111`). Fix + Linux regression test in
+  progress.
+
 ### Workstreams (ordered)
 1. **Durable integration (next):** wire `internal/sessionrepo` + pre-effect durable audit into the
    `cmd/tbound` decision path (proposal → broker correlation → gate → durable intent/audit → effect
