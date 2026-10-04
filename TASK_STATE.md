@@ -145,8 +145,21 @@ must not break the current green test suite.
   and explicit `chmod` for fixture files/directories. No product check or test assertion was
   weakened. Re-verified with a verifier-like WSL `-race` run (`TMPDIR` under `/tmp`, `umask 077`)
   and the guest sessionrepo tests: all pass.
-- Re-run against `bab67bd` queued as `~/.tbound-offline-queued.6u8CoWrEvN`; result appended when
-  collected.
+- Re-run against `bab67bd` **PASSED** at `2026-10-04T18:34:08Z` (run
+  `~/.tbound-offline-queued.6u8CoWrEvN`; `verification.json` SHA-256
+  `9b2533eb856281a6d2470dceebe9e8eb4f7c15cebf1c7c11410d7fcc0b890921`, size 124,192 bytes; runner and
+  launcher exit 0; `supervisor_source_sha256`
+  `41a6e1edac91aec0926265c7c5e8897d416d1d15cfbf77982117a94b8128f1d0`). All six checks PASS
+  (`adapter_dependencies`, `go_modules`, `go_race`, `go_tests`, `node_adapter`,
+  `ownership_fixture_test`), cleanup PASS, no failures, and the four provider/effect/containment/G1
+  claims remain false. This is the first offline verifier run whose package set includes
+  `sessionrepo`, `workspace`, and `openrouter` (normal + `-race`). Evidence copy under
+  `%TEMP%\opencode\evidence-bab67bd`.
+- Note on pins: the archived tree's `supervisor/go.sum` is the CRLF variant
+  (`fffd308c722c967519775e13035f57c57edb8c50403365c8b39741b9124b1f3f`) of the committed LF file
+  (`2ff7956b…`) because this Windows Git has `core.autocrlf=true`; the verifier's `go_modules` check
+  passed on it and the repository working tree is unchanged at the LF pin. Use
+  `git -c core.autocrlf=false archive` for future exports so deployed blobs match the commit exactly.
 
 ### Direction-2 progress — end-to-end path (2026-10-04)
 
