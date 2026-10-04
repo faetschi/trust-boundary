@@ -2,7 +2,7 @@
 // durable session admission, audit wiring, and a contained executor are not
 // configured in this prototype slice, so the executable refuses to start an
 // ungoverned session. The dependency-injected supervisor loop below is exercised
-// with net.Pipe and a synthetic broker in tests only.
+// with net.Pipe, an injected provider Doer, and a stub executor in tests only.
 package main
 
 import (

@@ -30,10 +30,16 @@ is not peer authentication. `internal/gate` compiles the explicit
 broker correlation receipt before rule evaluation, and denies unlisted tools.
 
 The `cmd/tbound` loop accepts abstract broker and executor interfaces and is
-tested only with a synthetic broker and stub executor. The executable currently
-refuses to start a session: real provider transport, durable admission/audit,
-execution containment, session repository operations, and publication are not
-provided by this slice. Synthetic passing tests are component/integration
-checks, not WP1/G1 evidence or proof of a closed security boundary.
+tested with both a synthetic broker and the concrete `internal/broker` flow.
+That broker accepts one immutable registered profile, enforces the ordered
+`read`/`write`/`edit`/`bash` manifest, builds requests through `internal/broker/openrouter`,
+records bounded request/response bytes in memory, and registers parsed provider
+tool calls for strict one-use proposal correlation. It requires an injected
+`HTTPDoer`; there is no default HTTP client, and tests use a fake Doer only. The
+executable still refuses to start a session: production provider transport,
+durable admission/audit, execution containment, session repository operations,
+and publication are not provided by this slice. Passing synthetic and fake-Doer
+tests are component/integration checks, not WP1/G1 evidence or proof of a closed
+security boundary.
 
 See `CORRELATION_FAILURE_MODES.md` for the pre-implementation failure analysis and review addendum.
