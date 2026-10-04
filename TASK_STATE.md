@@ -74,10 +74,14 @@ durable end-to-end path; and keep VM lifecycle + SSH autonomous (no manual VMCon
   `clone(CLONE_NEWUSER)` (`fork/exec /proc/self/exe: permission denied`; `unshare --user --map-root-user`
   also EPERM). The sandbox stayed honest — `Probe()` reported `UserNamespaces=false`, mechanism-requiring
   tests failed fast (2 PASS / 1 SKIP / 10 FAIL), and the cgroup test emitted an explicit unsupported
-  skip; nothing silently passed and no host/guest security setting was changed. This is a blocker for
-  the in-process userns cell on the guest and a key input to the claim-bearing path (rootless
-  Podman/crun, or a reviewed AppArmor profile granting userns to the frozen entrypoint) — a
-  host-configuration decision to make before the guest containment conformance run.
+  skip; nothing silently passed and no host/guest security setting was changed. This blocks only the
+  raw in-process userns cell (the **non-claim-bearing** dev/WSL profile). **Rootless Podman is viable
+  on the guest**: Ubuntu ships AppArmor profiles for `podman`/`crun` (`/etc/apparmor.d/{podman,crun,unprivileged_userns}`),
+  `podman info` reports `rootless=true cgroup=v2 oci=crun`, and `podman run --rm docker.io/library/alpine`
+  exited 0 printing `podman-rootless-ok` (uid 0 in-container). So the claim-bearing container path needs
+  **no host-config change**; raw `unshare --user` stays denied. Implement the rootless Podman 4.9.3/crun
+  `CommandRunner` as the next containment milestone (image digest pin, signed entrypoint, offline cosign,
+  and a real settlement observer remain to be added before any containment claim).
 
 ### Workstreams (ordered)
 1. **Durable integration (next):** wire `internal/sessionrepo` + pre-effect durable audit into the
