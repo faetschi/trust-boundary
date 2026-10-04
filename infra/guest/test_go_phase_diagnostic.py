@@ -101,6 +101,87 @@ class GoPhaseDiagnosticTests(unittest.TestCase):
         self.assertIn("invalid_go_test_json", failures)
         self.assertIn("ownership_test_not_run_exactly_once", failures)
 
+    def test_normal_and_race_accept_explicit_no_test_files_package_skip(self):
+        audit = "tbound/supervisor/internal/audit"
+        correlation = "tbound/supervisor/internal/broker/correlation"
+        ownership_test = "TestOpenRejectsUntrustedOwnership"
+        stdout = "\n".join([
+            json.dumps({"Action": "run", "Package": audit, "Test": ownership_test}),
+            json.dumps({"Action": "skip", "Package": audit, "Test": ownership_test}),
+            json.dumps({"Action": "pass", "Package": audit}),
+            json.dumps({"Action": "output", "Package": correlation,
+                        "Output": f"?\t{correlation}\t[no test files]\n"}),
+            json.dumps({"Action": "skip", "Package": correlation}),
+        ]) + "\n"
+        result = subprocess.CompletedProcess(["go", "test"], 0, stdout, "")
+
+        for name, command in (
+            ("normal", ["go", "test", "-json", "./..."]),
+            ("race", ["go", "test", "-race", "-json", "./..."]),
+        ):
+            with self.subTest(name=name):
+                with patch.dict(summarize_go_phase.__globals__, {"run": lambda *_args, **_kwargs: result}):
+                    entry, failures = summarize_go_phase(
+                        command,
+                        Path("/unused"),
+                        {},
+                        {audit, correlation},
+                        allow_ownership_skip=True,
+                    )
+                self.assertEqual(failures, [])
+                self.assertEqual(entry["status"], "PASS")
+                self.assertEqual(entry["package_results"], {audit: "pass", correlation: "skip"})
+                self.assertEqual(entry["skipped_tests"], [{"package": audit, "test": ownership_test}])
+
+    def test_package_skip_requires_matching_no_test_marker_and_no_test_events(self):
+        audit = "tbound/supervisor/internal/audit"
+        correlation = "tbound/supervisor/internal/broker/correlation"
+        other = "tbound/supervisor/internal/other"
+        ownership_test = "TestOpenRejectsUntrustedOwnership"
+
+        def phase_output(*, marker_package=None, correlation_has_test=False):
+            events = [
+                {"Action": "run", "Package": audit, "Test": ownership_test},
+                {"Action": "skip", "Package": audit, "Test": ownership_test},
+                {"Action": "pass", "Package": audit},
+            ]
+            if marker_package:
+                events.append({
+                    "Action": "output",
+                    "Package": marker_package,
+                    "Output": f"?\t{marker_package}\t[no test files]\n",
+                })
+            if correlation_has_test:
+                events.extend([
+                    {"Action": "run", "Package": correlation, "Test": "TestUnexpected"},
+                    {"Action": "pass", "Package": correlation, "Test": "TestUnexpected"},
+                ])
+            events.append({"Action": "skip", "Package": correlation})
+            return "\n".join(json.dumps(event) for event in events) + "\n"
+
+        cases = (
+            ("unmarked", phase_output(), {"failed_packages"}),
+            ("marker-on-other-package", phase_output(marker_package=other),
+             {"failed_packages", "invalid_no_test_files_package_skip"}),
+            ("marker-with-test-events", phase_output(
+                marker_package=correlation, correlation_has_test=True
+            ), {"failed_packages", "invalid_no_test_files_package_skip"}),
+        )
+        for name, stdout, required_failures in cases:
+            with self.subTest(name=name):
+                result = subprocess.CompletedProcess(["go", "test"], 0, stdout, "")
+                with patch.dict(summarize_go_phase.__globals__, {"run": lambda *_args, **_kwargs: result}):
+                    entry, failures = summarize_go_phase(
+                        ["go", "test", "-json", "./..."],
+                        Path("/unused"),
+                        {},
+                        {audit, correlation},
+                        allow_ownership_skip=True,
+                    )
+                self.assertEqual(entry["status"], "FAIL")
+                self.assertEqual(entry["package_results"], {audit: "pass", correlation: "skip"})
+                self.assertTrue(required_failures.issubset(set(failures)))
+
     def test_normal_and_race_reports_retain_package_results_without_changing_gates(self):
         package = "tbound/supervisor/internal/example"
         stdout = "\n".join([

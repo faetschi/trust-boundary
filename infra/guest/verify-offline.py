@@ -282,6 +282,8 @@ def inspect_guest_network() -> tuple[dict[str, Any], list[str]]:
 def parse_go_events(output: str) -> dict[str, Any]:
     tests: dict[tuple[str, str], dict[str, int]] = {}
     package_actions: dict[str, str] = {}
+    packages_with_test_events: set[str] = set()
+    no_test_files_packages: set[str] = set()
     malformed = 0
     for line in output.splitlines():
         try:
@@ -293,10 +295,18 @@ def parse_go_events(output: str) -> dict[str, Any]:
         action = event.get("Action")
         test_name = event.get("Test")
         if test_name:
-            identity = (package or "", test_name)
+            package_key = package or ""
+            packages_with_test_events.add(package_key)
+            identity = (package_key, test_name)
             counts = tests.setdefault(identity, {"run": 0, "pass": 0, "fail": 0, "skip": 0})
             if action in counts:
                 counts[action] += 1
+        elif package and action == "output":
+            package_output = event.get("Output")
+            if isinstance(package_output, str):
+                no_test_marker = re.compile(r"\?\s+" + re.escape(package) + r"\s+\[no test files\]")
+                if any(no_test_marker.fullmatch(output_line.strip()) for output_line in package_output.splitlines()):
+                    no_test_files_packages.add(package)
         elif package and action in {"pass", "fail", "skip"}:
             package_actions[package] = action
     run_tests = [
@@ -328,6 +338,8 @@ def parse_go_events(output: str) -> dict[str, Any]:
         "skip_event_counts": skip_event_counts,
         "failed_tests": failed_tests,
         "package_results": package_actions,
+        "packages_with_test_events": sorted(packages_with_test_events),
+        "no_test_files_packages": sorted(no_test_files_packages),
         "malformed_events": malformed,
     }
 
@@ -365,7 +377,20 @@ def summarize_go_phase(
     observed_packages = events["package_results"]
     if set(observed_packages) != expected_packages:
         failures.append("package_coverage_mismatch")
-    if any(action != "pass" for action in observed_packages.values()):
+    no_test_files_packages = set(events["no_test_files_packages"])
+    packages_with_test_events = set(events["packages_with_test_events"])
+    accepted_no_test_skips = {
+        package for package, action in observed_packages.items()
+        if action == "skip"
+        and package in no_test_files_packages
+        and package not in packages_with_test_events
+    }
+    if no_test_files_packages != accepted_no_test_skips:
+        failures.append("invalid_no_test_files_package_skip")
+    if any(
+        action != "pass" and package not in accepted_no_test_skips
+        for package, action in observed_packages.items()
+    ):
         failures.append("failed_packages")
     entry = {
         "status": "PASS" if not failures else "FAIL",
