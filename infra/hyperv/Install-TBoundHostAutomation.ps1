@@ -16,7 +16,7 @@ $vmStorageRoot = 'F:\TBoundVMs'
 $assetsRoot = 'F:\TBoundAssets'
 $switchName = 'Default Switch'
 $policy = 'TRUSTEDVERIFIERONLY'
-$reviewedActionSha256 = '19FD7656AAE0B7A3DF9F10AD98FE7E0B92668B07E8AD85933789B1BA64B37986'
+$reviewedActionSha256 = '5ECBCC3F5DB8ECF90A4940D3CCD3D8F39C309300A53192AFC6259097643F942C'
 $GiB = [int64]1073741824
 $taskLeaves = @('Inspect', 'Disconnect', 'StopOffline', 'ConnectOff', 'StartTrustedMaintenance')
 
@@ -191,6 +191,8 @@ function Set-ProtectedPathAcl {
 
 if (-not (Test-Administrator)) { throw 'Run this installer from an elevated Windows PowerShell session.' }
 if (-not [Environment]::Is64BitProcess) { throw 'Run the 64-bit Windows PowerShell executable.' }
+$expectedPowerShellHome = Get-FullPath (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0')
+if ((Get-FullPath $PSHOME) -ine $expectedPowerShellHome) { throw 'Run this installer from 64-bit Windows PowerShell 5.1.' }
 if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) { throw ('Missing action source: ' + $sourcePath) }
 if (Test-Path -LiteralPath $installRoot) { throw ('Refusing to overwrite existing protected install: ' + $installRoot) }
 Assert-NoReparsePath $sourcePath
@@ -198,7 +200,7 @@ Assert-NoReparsePath 'C:\ProgramData'
 if (-not (Test-Path -LiteralPath $vmRoot -PathType Container)) { throw ('Expected VM root is missing: ' + $vmRoot) }
 Assert-NoReparsePath $vmRoot
 $env:PSModulePath = Join-Path $PSHOME 'Modules'
-$moduleManifest = Join-Path $PSHOME 'Modules\Hyper-V\Hyper-V.psd1'
+$moduleManifest = Join-Path $PSHOME 'Modules\Hyper-V\2.0.0.0\Hyper-V.psd1'
 if (-not (Test-Path -LiteralPath $moduleManifest -PathType Leaf)) { throw 'Protected Windows Hyper-V module manifest is missing.' }
 Assert-NoReparsePath $moduleManifest
 Import-Module -Name $moduleManifest -ErrorAction Stop

@@ -206,8 +206,10 @@ function Assert-IntegrationServicePolicy {
 }
 
 function Import-TrustedHyperVModule {
+    $expectedPowerShellHome = Get-FullPath (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0')
+    if ((Get-FullPath $PSHOME) -ine $expectedPowerShellHome) { Stop-Action 'FAIL' 'Host actions require 64-bit Windows PowerShell 5.1.' }
     $env:PSModulePath = Join-Path $PSHOME 'Modules'
-    $moduleManifest = Join-Path $PSHOME 'Modules\Hyper-V\Hyper-V.psd1'
+    $moduleManifest = Join-Path $PSHOME 'Modules\Hyper-V\2.0.0.0\Hyper-V.psd1'
     if (-not (Test-Path -LiteralPath $moduleManifest -PathType Leaf)) { Stop-Action 'FAIL' 'Protected Windows Hyper-V module manifest is missing.' }
     Assert-NoReparsePath $moduleManifest
     Import-Module -Name $moduleManifest -ErrorAction Stop
