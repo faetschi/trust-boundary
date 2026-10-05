@@ -125,13 +125,18 @@ func (s *Supervisor) Serve(ctx context.Context) error {
 			return nil
 		}
 		proposal, err := s.IPC.ReceiveProposal()
-		if errors.Is(err, ipc.ErrClosed) {
+		if err != nil {
+			// A cancellation closes the bound transport out from under a
+			// blocked read, which surfaces as a closed/truncated frame rather
+			// than ipc.ErrClosed. Treat any concurrent cancellation as a clean
+			// session stop so no result is released and no spurious transport
+			// failure is reported.
 			if ctx.Err() != nil {
 				return nil
 			}
-			return nil
-		}
-		if err != nil {
+			if errors.Is(err, ipc.ErrClosed) {
+				return nil
+			}
 			return fmt.Errorf("receive IPC proposal: %w", err)
 		}
 		if err := ctx.Err(); err != nil {

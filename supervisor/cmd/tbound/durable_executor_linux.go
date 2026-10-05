@@ -25,6 +25,12 @@ import (
 	"tbound/supervisor/internal/sessionrepo"
 )
 
+// durableReadMaxBytes is the file-byte ceiling the durable read path requests
+// from the session repository. It equals the protocol frame bound so a read
+// whose encoded strict-JSON result would not fit on the wire is rejected before
+// any bytes are released rather than truncated.
+const durableReadMaxBytes = protocol.MaxFrameBytes
+
 // DurableExecutorConfig binds the durable effect path to one seeded session
 // repository. Tip is the current sealed tip generation; Execute advances it
 // after every committed mutation. CallIssuer is the configured broker call
@@ -47,10 +53,12 @@ type DurableExecutorConfig struct {
 }
 
 // DurableExecutor is the production-shaped Executor for cmd/tbound. It maps one
-// trusted ALLOW proposal onto one sessionrepo mutation on the current tip and
-// releases a strict-JSON summary only after the effect is durable. It owns no
-// containment, publication, or provider claim: those remain unresolved in the
-// session repository evidence.
+// trusted ALLOW proposal onto one sessionrepo read or mutation on the current
+// tip and releases a strict-JSON summary only after the operation is durable.
+// A read returns bounded bytes from the current sealed tip and never advances
+// it; write/edit/bash each advance the tip by one committed transition. It owns
+// no containment, publication, or provider claim: those remain unresolved in
+// the session repository evidence.
 type DurableExecutor struct {
 	mu                   sync.Mutex
 	store                *sessionrepo.Store
@@ -91,10 +99,10 @@ func (e *DurableExecutor) Tip() *sessionrepo.Generation {
 	return e.tip
 }
 
-// Execute maps one trusted ALLOW proposal to a sessionrepo Write, Edit, or Bash
-// command lease on the current tip. It never fabricates authority: the argument
-// digest, effect ID, generation, transition, and settlement evidence all come
-// from the store's durable path.
+// Execute maps one trusted ALLOW proposal to a sessionrepo Read, Write, Edit,
+// or Bash command lease on the current tip. It never fabricates authority: the
+// argument digest, effect ID, generation, transition, and settlement evidence
+// all come from the store's durable path.
 func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposal, decision gate.Decision) (json.RawMessage, error) {
 	if e == nil || e.store == nil {
 		return nil, errors.New("durable executor is not configured")
@@ -122,6 +130,19 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 
 	var mutation sessionrepo.MutationResult
 	switch proposal.Tool {
+	case "read":
+		// A read is not a mutation: it resolves the path against the current
+		// sealed tip, journals the correlated intent before releasing bytes,
+		// and returns a bounded summary without advancing the tip.
+		path, err := durableReadArguments(proposal.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		content, err := e.tip.Read(ctx, operation, policyDecision, path, durableReadMaxBytes)
+		if err != nil {
+			return nil, fmt.Errorf("durable read: %w", err)
+		}
+		return durableReadSummary(path, e.tip, content)
 	case "write":
 		path, content, err := durableWriteArguments(proposal.Arguments)
 		if err != nil {
@@ -404,6 +425,85 @@ func durableBashArguments(raw json.RawMessage) (string, error) {
 		return "", errors.New("bash arguments require a command")
 	}
 	return arguments.Command, nil
+}
+
+// durableReadSummaryPayload is the bounded strict-JSON view of a completed
+// read. It carries the resolved workspace-relative path, the sealed generation
+// the bytes came from, the byte size and content digest, and the content
+// itself. It never carries an effect ID because a read creates no approved
+// delta; the store still records its own durable read operation evidence.
+type durableReadSummaryPayload struct {
+	Tool          string                   `json:"tool"`
+	Path          string                   `json:"path"`
+	Generation    durableGenerationSummary `json:"generation"`
+	Size          int                      `json:"size"`
+	ContentDigest string                   `json:"content_digest"`
+	Content       string                   `json:"content"`
+	Outcome       string                   `json:"outcome"`
+}
+
+// durableReadSummary encodes a completed read and fails closed when the encoded
+// strict-JSON result would exceed the protocol's frame bound.
+func durableReadSummary(path string, generation *sessionrepo.Generation, content []byte) (json.RawMessage, error) {
+	if generation == nil {
+		return nil, errors.New("durable read returned no generation")
+	}
+	payload := durableReadSummaryPayload{
+		Tool: "read", Path: path,
+		Generation:    durableGenerationSummary{ID: generation.ID(), TreeDigest: generation.TreeDigest()},
+		Size:          len(content),
+		ContentDigest: durableContentDigest(content),
+		Content:       string(content),
+		Outcome:       "success",
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("encode durable read summary: %w", err)
+	}
+	if len(encoded) > protocol.MaxFrameBytes {
+		return nil, errors.New("durable read result exceeds the protocol bound; result withheld")
+	}
+	return json.RawMessage(encoded), nil
+}
+
+// durableReadArgumentsPayload mirrors the adapter's read tool schema: a
+// required path and optional numeric offset/limit. The offset/limit fields are
+// parsed so the trusted decoder rejects a malformed value, but the durable read
+// path reads the whole bounded file and fails closed on a paginated request
+// rather than inventing line semantics the session repository does not own.
+type durableReadArgumentsPayload struct {
+	Path   string   `json:"path"`
+	Offset *float64 `json:"offset,omitempty"`
+	Limit  *float64 `json:"limit,omitempty"`
+}
+
+// durableReadArguments strictly decodes the adapter read arguments. Unknown
+// fields and trailing JSON are rejected so the trusted supervisor never reads a
+// path that differs from what the adapter signed.
+func durableReadArguments(raw json.RawMessage) (string, error) {
+	var arguments durableReadArgumentsPayload
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&arguments); err != nil {
+		return "", fmt.Errorf("read arguments: %w", err)
+	}
+	if err := durableNoTrailingJSON(decoder); err != nil {
+		return "", fmt.Errorf("read arguments: %w", err)
+	}
+	if arguments.Path == "" {
+		return "", errors.New("read arguments require a path")
+	}
+	if arguments.Offset != nil || arguments.Limit != nil {
+		return "", errors.New("read offset/limit are not supported by the durable read path")
+	}
+	return arguments.Path, nil
+}
+
+// durableContentDigest is the bare sha256 commitment the session repository
+// uses for released result bytes.
+func durableContentDigest(content []byte) string {
+	digest := sha256.Sum256(content)
+	return "sha256:" + hex.EncodeToString(digest[:])
 }
 
 func durableNoTrailingJSON(decoder *json.Decoder) error {

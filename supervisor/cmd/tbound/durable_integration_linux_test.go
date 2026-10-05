@@ -487,7 +487,7 @@ func TestDurableEditDecisionPath(t *testing.T) {
 }
 
 // TestDurableExecutorRejectsUnsupportedTool checks that a trusted ALLOW for a
-// tool outside the durable write/edit/bash slice fails closed instead of
+// tool outside the durable read/write/edit/bash slice fails closed instead of
 // guessing.
 func TestDurableExecutorRejectsUnsupportedTool(t *testing.T) {
 	if runtime.GOOS != "linux" {
@@ -537,15 +537,17 @@ func TestDurableExecutorRejectsUnsupportedTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// "grep" is a Pi convenience tool that is deliberately outside the closed
+	// read/write/edit/bash surface, so it must never be durable-executed.
 	decision := gate.Decision{
 		Verdict: gate.Allow, ReasonCode: "policy_rule_allow",
 		PolicyDigest: "tbound-policy/v1:sha256:" + strings.Repeat("4", 64),
-		ToolCallID:   "call-unsupported", Tool: "read", Sequence: 1,
+		ToolCallID:   "call-unsupported", Tool: "grep", Sequence: 1,
 		ResponseID: &correlation.Identifier{Issuer: durableResponseIssuer, Opaque: "response-unsupported"},
 	}
 	if _, err := executor.Execute(context.Background(), protocol.Proposal{
 		SchemaVersion: protocol.ProposalSchemaVersion,
-		ToolCallID:    "call-unsupported", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`),
+		ToolCallID:    "call-unsupported", Tool: "grep", Arguments: json.RawMessage(`{"pattern":"baseline"}`),
 	}, decision); err == nil {
 		t.Fatal("durable executor accepted an unsupported tool")
 	}
