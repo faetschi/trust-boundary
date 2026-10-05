@@ -2,7 +2,24 @@
 
 ## Active five-slice execution — 2026-10-05
 
-### Slice 3 independently verified — commit pending
+### Slice 2 final combined-source verification — commit pending
+
+Final snapshot `/home/jeli2k/tbound-coordinator-s2final.m6uvfA` uses committed
+explorer `b827199` plus publication only. Full race suite exit 0, publication
+3.576s, gofmt empty, `/dev/sdc ext4`, TMPDIR 0700. Windows exact-copy build and
+internal/e2e tests both exit 0; Linux-only publication is covered by WSL, not
+Windows no-test-files. Final hashes in `docs/publication-contract.md`. No module
+or adapter changes; scoped diff check and committed-byte comparison are required
+at commit. Public-API sessionrepo fixture proves package composition only;
+production gate/CLI publication wiring and cross-workflow crash admission remain
+explicit integration gaps, not established guarantees.
+
+### Slice 3 verified — `b827199`
+
+Commit `b827199c9550fd89b3e713d19ae067b90d8c4250`. Post-commit LF archive
+comparison matched all pre-test supervisor source bytes and the complete Go-file
+set against the final tested snapshot (exit 0). Unrelated working-tree source
+and test-generated scratch artifacts were excluded.
 
 Explorer corrections plus the independently discovered mobile-selector fix
 passed final isolated full WSL race tests in
