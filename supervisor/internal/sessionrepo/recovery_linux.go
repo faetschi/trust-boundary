@@ -38,6 +38,7 @@ func Open(root *os.File, options Options) (*Store, error) {
 		root: rootCopy, rootPath: root.Name(), options: options,
 		viewIDGenerator: newRandomViewID,
 		views:           make(map[string]*CommandView),
+		exposedViews:    make(map[string]*ExposedView),
 		usedDecisions:   make(map[string]struct{}), usedOperations: make(map[delta.OperationIdentity]struct{}), usedViewIDs: make(map[string]struct{}),
 	}
 	store.genDir, err = openDirectoryAt(rootCopy, "generations")
@@ -50,11 +51,20 @@ func Open(root *os.File, options Options) (*Store, error) {
 		_ = store.Close()
 		return nil, fmt.Errorf("open repository views: %w", err)
 	}
+	store.exposedDir, err = openDirectoryAt(rootCopy, "exposed")
+	if err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("open repository exposed views: %w", err)
+	}
 	if err := validatePrivateDirectory(store.genDir); err != nil {
 		_ = store.Close()
 		return nil, err
 	}
 	if err := validatePrivateDirectory(store.viewDir); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	if err := validatePrivateDirectory(store.exposedDir); err != nil {
 		_ = store.Close()
 		return nil, err
 	}
@@ -67,8 +77,8 @@ func Open(root *os.File, options Options) (*Store, error) {
 	for _, name := range rootNames {
 		rootEntries[name] = true
 	}
-	if len(rootNames) < 2 || len(rootNames) > 3 || !rootEntries["generations"] || !rootEntries["views"] ||
-		(len(rootNames) == 3 && !rootEntries[repositoryStateName]) {
+	if len(rootNames) < 3 || len(rootNames) > 4 || !rootEntries["generations"] || !rootEntries["views"] || !rootEntries["exposed"] ||
+		(len(rootNames) == 4 && !rootEntries[repositoryStateName]) {
 		_ = store.Close()
 		return nil, errors.New("repository root contains an unknown entry")
 	}
@@ -400,6 +410,13 @@ func (s *Store) reconcileDirectoryContentsLocked() error {
 	}
 	if len(viewNames) != 0 {
 		return errors.New("repository contains an unfinished writable command view")
+	}
+	exposedNames, err := directoryNames(s.exposedDir)
+	if err != nil {
+		return err
+	}
+	if len(exposedNames) != 0 {
+		return errors.New("repository contains an unfinished exposed generation view")
 	}
 	return nil
 }

@@ -69,6 +69,7 @@ type Options struct {
 	Limits               workspace.Limits
 	XattrVisibility      workspace.XattrVisibilityAttestation
 	Journal              *audit.Journal
+	ExposureBinder       Binder
 	AuthorizeOperation   func(OperationRequest) error
 	VerifyDecision       delta.DecisionVerifier
 	VerifySettlement     func(settlement CommandSettlement, viewID, leaseID string) error
@@ -227,6 +228,7 @@ type Store struct {
 	root              *os.File
 	genDir            *os.File
 	viewDir           *os.File
+	exposedDir        *os.File
 	rootPath          string
 	options           Options
 	baseline          *Generation
@@ -238,6 +240,7 @@ type Store struct {
 	usedOperations    map[delta.OperationIdentity]struct{}
 	usedViewIDs       map[string]struct{}
 	views             map[string]*CommandView
+	exposedViews      map[string]*ExposedView
 	viewIDGenerator   func() (string, error)
 	closed            bool
 	quarantined       bool
@@ -289,6 +292,7 @@ func Create(root *os.File, options Options) (*Store, error) {
 		root: rootCopy, rootPath: root.Name(), options: options,
 		viewIDGenerator: newRandomViewID,
 		views:           make(map[string]*CommandView),
+		exposedViews:    make(map[string]*ExposedView),
 		usedDecisions:   make(map[string]struct{}), usedOperations: make(map[delta.OperationIdentity]struct{}), usedViewIDs: make(map[string]struct{}),
 	}
 	if err := syscall.Mkdirat(int(rootCopy.Fd()), "generations", 0o700); err != nil {
@@ -300,6 +304,12 @@ func Create(root *os.File, options Options) (*Store, error) {
 		_ = rootCopy.Close()
 		return nil, fmt.Errorf("create command-view directory: %w", err)
 	}
+	if err := syscall.Mkdirat(int(rootCopy.Fd()), "exposed", 0o700); err != nil {
+		_ = removeTreeAt(int(rootCopy.Fd()), "views")
+		_ = removeTreeAt(int(rootCopy.Fd()), "generations")
+		_ = rootCopy.Close()
+		return nil, fmt.Errorf("create exposed-view directory: %w", err)
+	}
 	store.genDir, err = openDirectoryAt(rootCopy, "generations")
 	if err != nil {
 		_ = store.Close()
@@ -310,10 +320,15 @@ func Create(root *os.File, options Options) (*Store, error) {
 		_ = store.Close()
 		return nil, fmt.Errorf("open command-view directory: %w", err)
 	}
+	store.exposedDir, err = openDirectoryAt(rootCopy, "exposed")
+	if err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("open exposed-view directory: %w", err)
+	}
 	for _, item := range []struct {
 		name string
 		root *os.File
-	}{{"generations", store.genDir}, {"views", store.viewDir}} {
+	}{{"generations", store.genDir}, {"views", store.viewDir}, {"exposed", store.exposedDir}} {
 		if err := validatePrivateDirectory(item.root); err != nil {
 			_ = store.Close()
 			return nil, fmt.Errorf("validate private %s directory: %w", item.name, err)
@@ -815,7 +830,23 @@ func (s *Store) Close() error {
 			closeErrors = append(closeErrors, generation.root.Close())
 		}
 	}
-	for _, file := range []*os.File{s.viewDir, s.genDir, s.root} {
+	for _, view := range s.exposedViews {
+		if err := view.closeLocked(); err != nil {
+			closeErrors = append(closeErrors, err)
+			// Store.Close cannot leave an open descriptor that suggests a later
+			// retry is possible. Any unremoved entry remains in exposed/ and
+			// causes Open to fail closed.
+			if view.root != nil {
+				closeErrors = append(closeErrors, view.root.Close())
+				view.root = nil
+			}
+			view.closed = true
+			view.selected = nil
+			view.observed = GenerationEvidence{}
+			delete(s.exposedViews, view.name)
+		}
+	}
+	for _, file := range []*os.File{s.exposedDir, s.viewDir, s.genDir, s.root} {
 		if file != nil {
 			closeErrors = append(closeErrors, file.Close())
 		}
