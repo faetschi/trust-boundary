@@ -1,10 +1,30 @@
 # TBound handoff state
 
-## Active five-slice execution — 2026-10-05
+## Five-slice execution outcomes — 2026-10-05
+
+Execution ledger closed: slices 1, 3 and 2 have independently verified commits;
+slices 4 and 5 have separate exact evidenced blocker commits, not passing
+implementation claims. Reconciliation: `docs/thesis-gap-ledger-2026-10-05.md`.
+This is **not** thesis completion, full narrow-demonstration acceptance, complete
+frontend-plan delivery or established containment. G1=false.
+
+| Slice | Commit | Outcome |
+| --- | --- | --- |
+| 1 | `1bedc0ec350edcbb2b7e3df4d877de50f5308c66` | Genuine synthetic-content provider write through durable IPC, verified. |
+| 3 | `b827199c9550fd89b3e713d19ae067b90d8c4250` | Read-only explorer and bounded replay, full tests/browser verified. |
+| 2 | `4cbfbf6b7beacf81de70841bf12703809b9b6bf3` | Bounded publication/recovery package, full combined-source tests verified. |
+| 4 | `022b74a7c21633ed4d00afd748dd82357144df7e` | Final tested source export frozen; current-source guest verifier blocked. |
+| 5 | `72a682700eb247232a68f9be11ed76621f0fab53` | Frozen containment blocked; no restrictions weakened. |
+
+All code acceptance snapshots used only committed source plus explicit slice
+overlays. Final implementation source is `4cbfbf6`, not the preserved dirty user
+infrastructure. No push, reset, broad deletion, blanket staging, new worktree,
+adapter/module edits, or forbidden-file access occurred. Outstanding user changes
+remain outside this execution's commits. Browser/viewer scratch processes closed.
 
 ### Slice 5 blocked — no frozen containment profile
 
-Committed blocker evidence is prepared in
+Committed blocker evidence is recorded in
 `docs/containment-blockers-2026-10-05.md`: pinned maintenance SSH succeeds but
 cosign/authorized signer/signed entrypoint/static profile and fixed writable
 cgroup-v2 teardown delegation are absent or unestablished; sudo -n requires a
@@ -59,7 +79,7 @@ document width 390px. Source truncation visibly reports a gap. Evidence hashes,
 driver failures and scope are in `docs/test-run-explorer.md`. Modules unchanged,
 adapter untouched; no current-source guest offline or authority/containment claim.
 
-### Independent review in progress — slices 3 and 2
+### Earlier independent review — retained history (resolved)
 
 Publication corrections received and independently reviewed. Isolated snapshot
 `/home/jeli2k/tbound-coordinator-s2.9tscTx` uses HEAD `1bedc0e` plus publication
@@ -68,18 +88,18 @@ full `go test -race -count=1 ./...` exit 0, publication 3.614s; empty gofmt.
 Windows copy `tbound-windows-11a74bfc9348472fb940343cce24659f` passed build and
 internal/e2e tests (both exit 0). Linux-only publication is not tested by the
 Windows `[no test files]` result. Modules unchanged, scoped diff check exit 0.
-Race-log/hash-list SHA-256 recorded in `docs/publication-contract.md`. Commit is
-pending the chosen slice-3-before-slice-2 order and committed-byte comparison.
+Race-log/hash-list SHA-256 recorded in `docs/publication-contract.md`. This early
+snapshot was superseded by final combined-source verification above.
 
-Neither slice is committed or accepted as committed source yet. Focused agent
-checks alone are insufficient for full-suite/browser/committed-byte evidence.
+At this earlier review neither slice was committed or accepted; focused agent
+checks alone were insufficient for full-suite/browser/committed-byte evidence.
 Explorer review requested bounded prior-run retention, explicit restart-source
 gap handling, package-label/UI bounds and stricter source/lifecycle parsing.
 Publication review requested retained validated source descriptors, repository
 locking across workflows, complete fault-boundary/mixed-object recovery tests,
 authenticated origin binding and actual sessionrepo-generated evidence fixtures.
-Explorer agent retains its ownership during corrections; publication edits are
-finished. Coordinator independently verifies snapshots and owns evidence/state.
+Agents retained disjoint ownership during corrections; the coordinator then
+independently verified snapshots and owned evidence/state. Both are now finished.
 
 Slice 4 admission returned exit 1 before guest/task operations: native Git array
 splits its concatenated safe-directory option. Dummy-only delegated review found
@@ -117,8 +137,8 @@ Limits: WSL development evidence, injected synthetic receipt authority, no live
 Pi/adapter or subsequent provider-result lineage/cell-authentication claim; no
 live publication in this test. Guest pinned SSH succeeded, but current-source
 guest offline verification is blocked (helper/operator context absent).
-Containment `not-established`; G1=false. Next: independently verify explorer,
-then publication; retain slice 4/5 exact prerequisite blockers separately.
+Containment `not-established`; G1=false. Explorer/publication were subsequently
+verified above; current-source guest and whole-profile prerequisites remain open.
 
 Initial inspection verified branch `codex/tbound-prototype`, HEAD
 `00ce8849878da04649815f3fd2bf4c4706ad0e81`. No applicable AGENTS.md was found
