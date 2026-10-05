@@ -2,15 +2,31 @@
 
 ## Active five-slice execution — 2026-10-05
 
-### Slice 2 final combined-source verification — commit pending
+### Slice 4 blocked — final source frozen, no guest report
+
+Verified implementation source is `4cbfbf6b7beacf81de70841bf12703809b9b6bf3`.
+Explicit LF archive (`adapter`, `supervisor`, `infra/guest`, no overlays) and
+139-file host manifest hash readback passed (exit 0); exact hashes/retained path
+are in `docs/verifier-blockers-2026-10-05.md`. Missing installed helper/tasks,
+protected operator SID/enrollment, stale reviewed pin, malformed native option
+vectors and unsafe pre-queue cleanup ordering block an authorized verifier run.
+No infrastructure patch/install, privilege prompt, guest transfer, queue, NIC/VM
+transition or fresh offline report was attempted after admission failure.
+
+### Slice 2 verified — `4cbfbf6`
+
+Commit `4cbfbf6b7beacf81de70841bf12703809b9b6bf3`. Post-commit LF archive
+comparison matched every pre-test source byte and the complete Go-file set
+against the final combined-source snapshot (exit 0); scope includes the committed
+explorer and publication, not pre-existing user infrastructure changes.
 
 Final snapshot `/home/jeli2k/tbound-coordinator-s2final.m6uvfA` uses committed
 explorer `b827199` plus publication only. Full race suite exit 0, publication
 3.576s, gofmt empty, `/dev/sdc ext4`, TMPDIR 0700. Windows exact-copy build and
 internal/e2e tests both exit 0; Linux-only publication is covered by WSL, not
 Windows no-test-files. Final hashes in `docs/publication-contract.md`. No module
-or adapter changes; scoped diff check and committed-byte comparison are required
-at commit. Public-API sessionrepo fixture proves package composition only;
+or adapter changes; scoped diff check and committed-byte comparison passed.
+Public-API sessionrepo fixture proves package composition only;
 production gate/CLI publication wiring and cross-workflow crash admission remain
 explicit integration gaps, not established guarantees.
 
