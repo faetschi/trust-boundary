@@ -448,9 +448,6 @@ func decodeSSE(raw []byte) (CapturedResponse, error) {
 			if string(data) == "[DONE]" {
 				s.done = true
 			} else {
-				if s.finished {
-					return CapturedResponse{}, errors.New("chunk after finish_reason")
-				}
 				if err := s.chunk(data); err != nil {
 					return CapturedResponse{}, err
 				}
@@ -505,7 +502,7 @@ func (s *stream) chunk(raw []byte) error {
 	if err != nil {
 		return err
 	}
-	if err = keys(o, []string{"id", "model", "created", "choices"}, []string{"provider", "object", "system_fingerprint", "usage"}); err != nil {
+	if err = keys(o, []string{"id", "model", "created", "choices"}, []string{"provider", "object", "system_fingerprint", "usage", "service_tier"}); err != nil {
 		return err
 	}
 	id, e1 := str(o, "id")
@@ -553,7 +550,13 @@ func (s *stream) chunk(raw []byte) error {
 		s.out.provider = provider
 	}
 	choices, e := array(o["choices"])
-	if e != nil || len(choices) != 1 {
+	if e != nil {
+		return errors.New("choices is not an array")
+	}
+	if s.finished {
+		return s.trailerChunk(choices)
+	}
+	if len(choices) != 1 {
 		return errors.New("chunk must have exactly one choice")
 	}
 	c, e := object(choices[0])
@@ -592,12 +595,80 @@ func (s *stream) chunk(raw []byte) error {
 	s.out.finish = finish
 	return nil
 }
+
+// trailerChunk accepts a terminal metadata chunk that real providers send after
+// finish_reason (for example an OpenRouter usage chunk). It permits an empty
+// choices array or one choice with a null finish_reason, and it rejects any new
+// trusted content or tool call, so nothing can be smuggled in after completion.
+func (s *stream) trailerChunk(choices []json.RawMessage) error {
+	if len(choices) == 0 {
+		return nil
+	}
+	if len(choices) != 1 {
+		return errors.New("trailer chunk must have at most one choice")
+	}
+	c, e := object(choices[0])
+	if e != nil {
+		return e
+	}
+	if e = keys(c, []string{"index", "delta", "finish_reason"}, []string{"logprobs", "native_finish_reason"}); e != nil {
+		return e
+	}
+	index, e := integer(c["index"])
+	if e != nil || index != 0 {
+		return errors.New("choice index must be zero")
+	}
+	if !isNull(c["finish_reason"]) {
+		finish, e := strRaw(c["finish_reason"])
+		if e != nil || finish != s.out.finish {
+			return errors.New("conflicting finish reason after completion")
+		}
+	}
+	if v, ok := c["logprobs"]; ok && !isNull(v) {
+		return errors.New("logprobs are unsupported")
+	}
+	return s.trailerDelta(c["delta"])
+}
+
+// trailerDelta validates the delta of a post-finish trailer: it may repeat the
+// assistant role or carry a null/empty content string, but it must not add any
+// assistant text or a tool call after the stream already completed.
+func (s *stream) trailerDelta(raw []byte) error {
+	d, e := object(raw)
+	if e != nil {
+		return errors.New("choice delta is not an object")
+	}
+	if e = keys(d, nil, []string{"role", "content", "tool_calls", "reasoning", "reasoning_content", "reasoning_details", "refusal"}); e != nil {
+		return e
+	}
+	if v, ok := d["tool_calls"]; ok && !isNull(v) {
+		return errors.New("tool call after completion")
+	}
+	if v, ok := d["content"]; ok && !isNull(v) {
+		text, e := strRaw(v)
+		if e != nil || text != "" {
+			return errors.New("content after completion")
+		}
+	}
+	if v, ok := d["role"]; ok && !isNull(v) {
+		role, e := strRaw(v)
+		if e != nil || role != "assistant" {
+			return errors.New("role changed after completion")
+		}
+	}
+	return nil
+}
+
 func (s *stream) delta(raw []byte) error {
 	d, e := object(raw)
 	if e != nil {
 		return errors.New("choice delta is not an object")
 	}
-	if e = keys(d, nil, []string{"role", "content", "tool_calls"}); e != nil {
+	// role/content/tool_calls are the trusted delta fields. reasoning,
+	// reasoning_content, reasoning_details, and refusal are provider-emitted
+	// non-claim fields that real models stream; they are ignored and cannot
+	// affect the trusted capture.
+	if e = keys(d, nil, []string{"role", "content", "tool_calls", "reasoning", "reasoning_content", "reasoning_details", "refusal"}); e != nil {
 		return e
 	}
 	if v, ok := d["role"]; ok {

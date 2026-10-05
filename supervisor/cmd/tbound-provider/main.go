@@ -41,7 +41,7 @@ func runOneShot(ctx context.Context, credentials openrouter.Credentials, doer br
 	if credentials.ModelID() == "" || doer == nil || output == nil {
 		return errors.New("one-shot provider exchange is not configured")
 	}
-	prompt := "Reply with a short acknowledgment. Do not call a tool unless necessary."
+	prompt := "Call the read tool exactly once with arguments {\"path\":\"README.md\"}. Do not add commentary."
 	profile := broker.Profile{
 		ID:               profileID,
 		Model:            credentials.ModelID(),

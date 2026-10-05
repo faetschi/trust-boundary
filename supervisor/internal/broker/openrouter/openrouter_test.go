@@ -194,6 +194,72 @@ func TestCaptureSSEAcceptsTextStop(t *testing.T) {
 		t.Fatal("text response produced trusted tool capture")
 	}
 }
+
+// TestCaptureSSEIgnoresProviderReasoningDeltas proves the strict parser accepts
+// the non-claim delta fields some real models stream (reasoning,
+// reasoning_content, refusal), ignores them, and still validates and captures
+// the tool call unchanged.
+func TestCaptureSSEIgnoresProviderReasoningDeltas(t *testing.T) {
+	body := chunk("resp-reasoning", map[string]any{"role": "assistant", "reasoning_content": "thinking"}, nil)
+	body = append(body, chunk("resp-reasoning", map[string]any{"reasoning": "more", "reasoning_details": []any{}, "content": "ok"}, nil)...)
+	body = append(body, chunk("resp-reasoning", map[string]any{
+		"refusal": "ignored",
+		"tool_calls": []any{map[string]any{
+			"index": 0, "id": "call-r", "type": "function",
+			"function": map[string]any{"name": "read", "arguments": `{"path":"README.md"}`},
+		}},
+	}, nil)...)
+	body = append(body, chunk("resp-reasoning", map[string]any{}, "tool_calls")...)
+	body = append(body, doneEvent()...)
+	got, err := CaptureSSE(bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("capture with reasoning deltas: %v", err)
+	}
+	if got.AssistantText() != "ok" {
+		t.Fatalf("assistant text = %q, want ok", got.AssistantText())
+	}
+	call, ok := got.ToolCall()
+	if !ok || call.ID != "call-r" || call.Name != "read" {
+		t.Fatalf("expected the read tool call, got ok=%v call=%+v", ok, call)
+	}
+}
+
+// TestCaptureSSEAcceptsTrailingUsageChunkAfterFinish proves the parser accepts
+// the terminal usage chunk OpenRouter streams after finish_reason, captures the
+// usage metadata, and still rejects any post-completion content.
+func TestCaptureSSEAcceptsTrailingUsageChunkAfterFinish(t *testing.T) {
+	body := toolStream("resp-usage", "call-u", `{"path":"x.txt"}`, ``, "tool_calls")
+	trailer := map[string]any{
+		"id": "resp-usage", "model": "vendor/model:free", "created": 123,
+		"service_tier": "default",
+		"choices":      []any{map[string]any{"index": 0, "delta": map[string]any{}, "finish_reason": "tool_calls"}},
+		"usage":        map[string]any{"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7},
+	}
+	raw, err := json.Marshal(trailer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = append(bytes.TrimSuffix(body, doneEvent()), event(raw)...)
+	body = append(body, doneEvent()...)
+	got, err := CaptureSSE(bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("capture with trailing usage chunk: %v", err)
+	}
+	if call, ok := got.ToolCall(); !ok || call.ID != "call-u" {
+		t.Fatalf("expected the tool call, got ok=%v call=%+v", ok, call)
+	}
+	if len(got.Usage()) == 0 {
+		t.Fatal("trailing usage metadata was not captured")
+	}
+
+	// A trailing chunk that tries to add content must still be rejected.
+	bad := append(bytes.TrimSuffix(toolStream("resp-usage", "call-u", `{"path":"x.txt"}`, ``, "tool_calls"), doneEvent()),
+		chunk("resp-usage", map[string]any{"content": "late injection"}, nil)...)
+	bad = append(bad, doneEvent()...)
+	if _, err := CaptureSSE(bytes.NewReader(bad)); err == nil {
+		t.Fatal("content after finish_reason was accepted")
+	}
+}
 func TestCaptureSSERejectsAmbiguousStreams(t *testing.T) {
 	valid := toolStream("resp-1", "call-1", `{"path":"`, `x.txt"}`, "tool_calls")
 	noDone := bytes.TrimSuffix(valid, doneEvent())
