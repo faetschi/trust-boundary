@@ -26,7 +26,19 @@ Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman ru
   sessionrepo read path and the sandbox cell boundary. Independently verified (WSL `-race`, Windows
   build/test, gofmt/diff, no module change). Delete is a store capability only, not wired into the
   registered four-tool surface.
-- In progress: Podman digest-pin + settlement-observer hardening (non-claim-bearing).
+- Committed `2b13e7d`: Podman hardening — manifest-frozen digest pin
+  (`sha256:294b68…77e6`), `--pull=never`, exact `RepoDigests`-only matching, and a real settlement
+  observer (`--cidfile` FIFO that survives `--rm`, then `podman container exists`, a `/proc`
+  cmdline/environ scan, a bounded `/sys/fs/cgroup` scan, and mountinfo) that fails closed unless all
+  signals agree; containment stays `not-established`. Independently re-verified on the guest with the
+  exact artifact (Probe digest-pinned; unpinned pin rejected fail-closed; conformance and RunBash
+  integration PASS).
+- Committed `de936bf`: real kernel durability-fault tests for the audit journal (ENOSPC via
+  `/dev/full`, `EINVAL` fsync via a FIFO, `EFBIG` via `RLIMIT_FSIZE` on a real journal) proving
+  intent-before-effect and outcome-before-release fail closed, with poisoning and unresolved-intent
+  quarantine reproduced on reopen. Independently verified (WSL `-race`, Windows, gofmt/diff, no module
+  change).
+- In progress: D1 self-contained reconstructable evidence bundle + independent replay (exit #5).
 
 ## Resume point — next
 
