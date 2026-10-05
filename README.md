@@ -72,3 +72,5 @@ No WP1 spike, G1 fixture, provider integration, model request, package installat
 ## Thesis design references
 
 The normative thesis documents remain in the original thesis repository under agentic-harness/ and are not part of this standalone repository. The design references are DOCUMENT-GOVERNANCE.md, AH-technical/02-process-model.md, AH-technical/02-1-recovery-and-continuation.md, AH-technical/03-architecture.md, and AH-technical/11-evidence-contract.md.
+<!-- PR base marker added 2026-10-05 -->
+
