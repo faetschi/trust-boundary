@@ -46,12 +46,12 @@ Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman ru
   durable-manifest tamper fail closed. Independently verified (WSL `-race`, Windows, gofmt/diff, no
   module change).
 - **Open decisions (blocking full G1):** (a) spec §6/D06 call for a new private Git repository; the
-  prototype has none — record a waiver or implement; (b) **credentials mechanism is ready** — supply
-  the OpenRouter model + key via `TBOUND_OPENROUTER_MODEL` and `TBOUND_OPENROUTER_API_KEY` or
-  `TBOUND_OPENROUTER_API_KEY_FILE`; (c) checkpoint tasks are prepared but the one-time elevation was
-  cancelled — approve UAC (or run the staged installer) to install `\TBoundVmCheckpoint`.
-- Checkpoint tasks staged (not installed): `C:\Users\Admin\AppData\Local\Temp\opencode\elev-vmcheckpoint-setup-wrapper.ps1`
-  installs `\TBoundVmCheckpoint\{List,Create,Restore,Delete}` for the pinned VM and a pinned
+  prototype has none — record a waiver or implement. Items (b) and (c) are now **resolved**:
+  (b) genuine provider exchange achieved (see the `cmd/tbound-provider` bullet above);
+  (c) `\TBoundVmCheckpoint\{List,Create,Restore,Delete}` installed (one-time UAC approved) and a
+  checkpoint create → restore was demonstrated (see below).
+- Checkpoint tasks **installed** (2026-10-05): `C:\Users\Admin\AppData\Local\Temp\opencode\elev-vmcheckpoint-setup-wrapper.ps1`
+  installed `\TBoundVmCheckpoint\{List,Create,Restore,Delete}` for the pinned VM and a pinned
   `tbound-demo-checkpoint` (S4U, RunLevel Highest, `FABIAN\Admin` run/query only), modeled on the
   reviewed VmOps installer.
 - Committed `4c5d218`: candidate G1 experiment manifest (`docs/experiment-manifest.md`) recording the
@@ -81,6 +81,14 @@ Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman ru
   `finish_reason`), committed in `602f111`. This is a one-shot **transport + trusted-capture** proof:
   the adapter→Pi session wiring is still not live, and the free endpoint logs sessions (only a synthetic
   prompt was sent).
+- **Hyper-V checkpoint/restore demonstrated (2026-10-05):** installed
+  `\TBoundVmCheckpoint\{List,Create,Restore,Delete}` for the pinned VM + a pinned
+  `tbound-demo-checkpoint` (S4U, RunLevel Highest, `FABIAN\Admin` run/query only). A running
+  production checkpoint fails (the guest lacks VSS/`hv_vss_daemon`), so `Create` is done while the VM
+  is Off; then `\TBoundVmOps\Stop` → `Restore` → `Start` returned the guest to the checkpoint state:
+  `Running` on `Default Switch`, new DHCP `172.25.23.3`, pinned-key SSH OK (`tboundadmin`, kernel
+  `6.8.0-146-generic`, fresh boot). This satisfies the todo's "create a clean snapshot and demonstrate
+  restore" item.
 - Remaining implementable items: publication path / frozen profile, the controller
   `ReviewedSourceCommit` + guest offline re-verification, and the webserver observability frontend
   below.
