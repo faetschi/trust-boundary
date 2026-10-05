@@ -2,6 +2,17 @@
 
 ## Active five-slice execution — 2026-10-05
 
+### Slice 5 blocked — no frozen containment profile
+
+Committed blocker evidence is prepared in
+`docs/containment-blockers-2026-10-05.md`: pinned maintenance SSH succeeds but
+cosign/authorized signer/signed entrypoint/static profile and fixed writable
+cgroup-v2 teardown delegation are absent or unestablished; sudo -n requires a
+password, raw namespace mapping fails EPERM, Landlock ABI 4 is not ABI ≥5.
+No privileged setup, signer invention, image/VM restore or security restriction
+relaxation was attempted. Entire frozen profile and descendant settlement proof
+are required before changing containment `not-established` or G1=false.
+
 ### Slice 4 blocked — final source frozen, no guest report
 
 Verified implementation source is `4cbfbf6b7beacf81de70841bf12703809b9b6bf3`.
