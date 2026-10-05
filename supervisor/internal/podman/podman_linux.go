@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,11 +28,34 @@ import (
 // of the evidence, not containment.
 const Profile = "guest-podman-rootless-non-claim-bearing"
 
+// ExpectedImageDigest is the manifest-frozen content digest of the local cell
+// image (the cached docker.io/library/alpine on the guest). Probe and Run fail
+// closed unless a local image's repo digest equals it: the runner never pulls,
+// and a merely-present or mismatched tag is never accepted. Override the pin
+// per runner with Runner.ExpectedDigest; a missing signed entrypoint and the
+// absent offline cosign verification remain deferred, so this pin alone does
+// not make the profile claim-bearing.
+const ExpectedImageDigest = "sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
+
 const (
 	defaultPidsMax  = 256
 	defaultMemoryMB = 512
 	cellNamePrefix  = "tbound-cell-"
 	observeTimeout  = 30 * time.Second
+	// observeSettle bounds how long observe waits for a just-removed cell's
+	// cgroup and processes to disappear before reporting them honestly.
+	observeSettle = 5 * time.Second
+	// cgroupScanRoot is the rootless cgroup-v2 hierarchy root. The scan looks
+	// only at directory names beneath it.
+	cgroupScanRoot = "/sys/fs/cgroup"
+	// cgroupScanMaxDepth and cgroupScanMaxDirs bound the scan. Reaching either
+	// bound without exhausting the tree marks the scan unscannable so Run fails
+	// closed rather than assuming absence.
+	cgroupScanMaxDepth = 8
+	cgroupScanMaxDirs  = 8192
+	// containerIDLength is the full hexadecimal container id length podman
+	// writes to --cidfile.
+	containerIDLength = 64
 )
 
 var (
@@ -45,9 +69,10 @@ var (
 	ErrNotSettled = errors.New("podman cell did not settle")
 )
 
-// defaultCandidates is the ordered list of local images this slice may use.
-// It is the first candidate that is already present in the local store; the
-// runner never pulls during a command. Override by setting Runner.Image. Each
+// defaultCandidates is the ordered list of local image references this slice
+// may use. selectImage chooses the first candidate already present whose repo
+// digest equals the expected manifest digest; the runner never pulls during a
+// command. Override by setting Runner.Image (still digest-checked). Each
 // candidate must provide a POSIX /bin/sh and awk for the embedded entrypoint.
 var defaultCandidates = []string{
 	"docker.io/library/alpine:latest",
@@ -66,7 +91,9 @@ type Report struct {
 	CgroupVersion     string
 	UserNamespace     bool
 	// Image is the local candidate tag; ImageRef is the reference the runner
-	// uses. ImagePinned is true only when ImageRef names a repo digest.
+	// uses. ImagePinned is true only when ImageDigest was observed to equal the
+	// manifest-frozen ExpectedImageDigest; it is never inferred from mere
+	// presence.
 	Image       string
 	ImageDigest string
 	ImageRef    string
@@ -109,13 +136,14 @@ func (report Report) EvidenceClass() string {
 
 // Probe measures the rootless Podman/crun profile. It fails closed when
 // podman, crun, rootless mode, cgroup v2, a usable user namespace, or a local
-// candidate image is missing. Every reported mechanism was observed; none is
-// inferred. Probe does not claim containment.
+// image whose repo digest equals ExpectedImageDigest is missing. Every reported
+// mechanism was observed; none is inferred, and no image is ever pulled. Probe
+// does not claim containment.
 func Probe() (Report, error) {
-	return probe(defaultCandidates, os.Geteuid(), os.Getegid())
+	return probe(defaultCandidates, ExpectedImageDigest, os.Geteuid(), os.Getegid())
 }
 
-func probe(candidates []string, uid, gid int) (Report, error) {
+func probe(candidates []string, expectedDigest string, uid, gid int) (Report, error) {
 	report := Report{}
 	binary, err := exec.LookPath("podman")
 	if err != nil {
@@ -151,7 +179,7 @@ func probe(candidates []string, uid, gid int) (Report, error) {
 		missing = append(missing, "cgroup-v2: got "+report.CgroupVersion)
 	}
 
-	image, imageErr := selectImage(binary, candidates)
+	image, imageErr := selectImage(binary, candidates, expectedDigest)
 	if imageErr != nil {
 		report.Unsupported = append(report.Unsupported, "image: "+imageErr.Error())
 	} else {
@@ -183,9 +211,15 @@ type Runner struct {
 	// LeaseID is the authorized command lease this runner may settle. The
 	// CommandRunner seam does not expose the lease, so it is supplied here.
 	LeaseID string
-	// Image optionally overrides the reference selected by Probe. It must be
-	// a local image; the runner never pulls.
+	// Image optionally overrides the reference selected by Probe. It is still
+	// verified against ExpectedDigest and must be a local image; the runner
+	// never pulls.
 	Image string
+	// ExpectedDigest optionally overrides the manifest-frozen digest Probe
+	// requires. Empty selects the package-level ExpectedImageDigest. It can only
+	// narrow or move the pin, never weaken it: Run re-verifies the launched
+	// image's repo digest against it and fails closed on any mismatch.
+	ExpectedDigest string
 	// UID and GID are the in-container identities. The default is the invoking
 	// user, mapped through --userns=keep-id so the bind-mounted /work stays
 	// writable without granting root inside the cell.
@@ -211,6 +245,15 @@ func New(leaseID string) *Runner {
 // Profile returns the descriptive, non-claim-bearing runner profile label.
 func (runner *Runner) Profile() string { return Profile }
 
+// expectedDigest returns the digest this runner requires, defaulting to the
+// package-level manifest pin.
+func (runner *Runner) expectedDigest() string {
+	if digest := strings.TrimSpace(runner.ExpectedDigest); digest != "" {
+		return digest
+	}
+	return ExpectedImageDigest
+}
+
 // Run launches the authorized command inside a fresh rootless Podman cell
 // rooted at the private command view. It resolves the view to a real path,
 // probes the profile, runs the hardened cell, and returns only after it has
@@ -223,7 +266,7 @@ func (runner *Runner) Run(ctx context.Context, view *sessionrepo.CommandView, sp
 	if err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 	}
-	report, err := Probe()
+	report, err := probe(defaultCandidates, runner.expectedDigest(), os.Geteuid(), os.Getegid())
 	if err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("podman: probe profile: %w", err)
 	}
@@ -273,9 +316,35 @@ func (runner *Runner) runCell(ctx context.Context, report Report, viewPath, view
 	if report.PodmanPath == "" {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("%w: podman path is unknown", ErrUnsupported)
 	}
+	// Re-verify the image this run will actually launch against the frozen pin.
+	// This closes the Runner.Image override: a tag that is merely present, or a
+	// reference whose repo digest differs from the expected digest, fails closed
+	// and is never pulled. The resolved repo-digest reference is what runs.
+	image, err := selectImage(report.PodmanPath, []string{config.Image}, config.ExpectedDigest)
+	if err != nil {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("%w: launch image is not the manifest-frozen digest: %v", ErrUnsupported, err)
+	}
+	config.Image = image.Ref
+
+	cidDir, err := os.MkdirTemp("", "tbound-cid-")
+	if err != nil {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("podman: create private cid directory: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(cidDir) }()
+	// podman 4.9.3 deletes a regular --cidfile when --rm removes the container,
+	// so a plain file cannot be read after the run. A private FIFO keeps the id
+	// in the kernel pipe buffer: the fd is opened O_RDWR|O_NONBLOCK here, podman
+	// writes the id to the same FIFO, and the buffered bytes survive --rm's
+	// unlink of the path.
+	cidFifo := filepath.Join(cidDir, "container.id")
+	cidReader, err := newCIDFifo(cidFifo)
+	if err != nil {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("podman: create private cid fifo: %w", err)
+	}
+	defer func() { _ = cidReader.Close() }()
 
 	name := cellNamePrefix + newToken()
-	arguments := cellArguments(config, name, viewPath, spec)
+	arguments := cellArguments(config, name, cidFifo, viewPath, spec)
 
 	command := exec.CommandContext(ctx, report.PodmanPath, arguments...)
 	command.Env = hostEnv()
@@ -297,19 +366,33 @@ func (runner *Runner) runCell(ctx context.Context, report Report, viewPath, view
 	}
 	exitCode := exitCodeOf(command.ProcessState)
 
+	// The container id is captured from the host-side cid fifo even though --rm
+	// has already removed the container (and unlinked the fifo path). Without it
+	// the postconditions below cannot be observed, so the cell is not settled.
+	containerID, cidErr := readCIDFifo(cidReader, observeSettle)
+	if cidErr != nil {
+		_ = forceRemove(report.PodmanPath, name)
+		if runErr != nil {
+			return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("podman: run cell: %w", runErr)
+		}
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("%w: container id unavailable from cid fifo: %v", ErrNotSettled, cidErr)
+	}
+
 	// The container is expected to remove itself via --rm; force-remove any
 	// residue so a killed cell cannot outlive this call.
 	_ = forceRemove(report.PodmanPath, name)
 
 	observeCtx, cancel := context.WithTimeout(context.Background(), observeTimeout)
 	defer cancel()
-	observed, err := observe(observeCtx, report.PodmanPath, name, viewPath)
+	observed, err := observe(observeCtx, report.PodmanPath, name, containerID, viewPath)
 	if err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("podman: observe settlement: %w", err)
 	}
-	if !observed.ProcessScopeEmpty || !observed.MountDetached {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("%w: survivors=%d container_removed=%t mount_referenced=%t",
-			ErrNotSettled, observed.Survivors, observed.ContainerRemoved, observed.MountReferenced)
+	if !observed.ProcessScopeEmpty || !observed.WritersStopped || !observed.MountDetached {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf(
+			"%w: container_id=%s container_removed=%t proc_refs=%d cgroup_scanned=%t cgroup_refs=%d cgroup_note=%q mount_referenced=%t",
+			ErrNotSettled, observed.ContainerID, observed.ContainerRemoved, observed.ProcReferences,
+			observed.CgroupScanned, observed.CgroupReferences, observed.CgroupNote, observed.MountReferenced)
 	}
 
 	result := sessionrepo.CommandResult{
@@ -326,7 +409,8 @@ func (runner *Runner) runCell(ctx context.Context, report Report, viewPath, view
 		MountDetached:     observed.MountDetached,
 		ExitObserved:      true,
 		ExitCode:          exitCode,
-		EvidenceClass:     report.EvidenceClass() + ":run-observed",
+		EvidenceClass: fmt.Sprintf("%s:run-observed:proc_refs=%d:cgroup_refs=%d:mount_referenced=%t",
+			report.EvidenceClass(), observed.ProcReferences, observed.CgroupReferences, observed.MountReferenced),
 	}
 	return result, settlement, nil
 }
@@ -334,11 +418,16 @@ func (runner *Runner) runCell(ctx context.Context, report Report, viewPath, view
 // cellArguments builds the exact hardened `podman run` argument vector for one
 // cell. It is unexported so in-package tests can record the exact invocation.
 //
+// `--cidfile` records the container id in a private host path so settlement can
+// be observed by id even when --rm has already removed the container.
+// `--pull=never` guarantees a missing image fails closed instead of being
+// fetched from a registry.
+//
 // `--userns=keep-id` maps the invoking UID/GID to the same in-container value.
 // It is required so that a non-root cell can write the host-owned bind at
 // /work: under the default rootless mapping only container root maps to the
 // invoking user, so `--user <uid>:<gid>` alone cannot write a host-owned bind.
-func cellArguments(config Runner, name, viewPath string, spec sessionrepo.CommandSpec) []string {
+func cellArguments(config Runner, name, cidPath, viewPath string, spec sessionrepo.CommandSpec) []string {
 	workdir := "/work"
 	if spec.WorkingDirectory != "" {
 		workdir = "/work/" + spec.WorkingDirectory
@@ -347,6 +436,8 @@ func cellArguments(config Runner, name, viewPath string, spec sessionrepo.Comman
 	gid := strconv.Itoa(config.GID)
 	arguments := []string{
 		"run", "--rm", "--name", name,
+		"--cidfile", cidPath,
+		"--pull=never",
 		"--network=none",
 		"--read-only",
 		"--cap-drop=ALL",
@@ -371,6 +462,9 @@ func (runner *Runner) normalized(report Report) Runner {
 	if config.Image == "" {
 		config.Image = report.ImageRef
 	}
+	if strings.TrimSpace(config.ExpectedDigest) == "" {
+		config.ExpectedDigest = ExpectedImageDigest
+	}
 	if config.UID <= 0 {
 		config.UID = os.Geteuid()
 	}
@@ -389,9 +483,12 @@ func (runner *Runner) normalized(report Report) Runner {
 // entrypointScript is the in-image entrypoint for this slice. It verifies the
 // observable cell postconditions and then execs the authorized target argv.
 //
-// DEFERRED: this script is embedded in the host process and passed as an
-// argument; it is not a frozen, signed in-image entrypoint and carries no
-// offline cosign verification. A later slice must replace it.
+// DEFERRED (must not be relied on as a claim): this script is embedded in the
+// host process and passed as an argument string. It is NOT a frozen, signed
+// in-image entrypoint, it is not byte-identity-checked, and it carries no
+// offline cosign verification. It can be swapped by anyone who controls this
+// process. No H1 entrypoint-integrity or containment claim may cite it; a later
+// slice must replace it with a frozen entrypoint signed and verified offline.
 const entrypointScript = `set -eu
 fail() { printf 'tbound-cell-entrypoint: %s\n' "$*" >&2; exit 97; }
 [ "$(id -u)" = "$TBOUND_CELL_UID" ] || fail "uid $(id -u) != $TBOUND_CELL_UID"
@@ -436,8 +533,16 @@ type imageRef struct {
 }
 
 // selectImage chooses the first candidate already present in the local store
-// and, when possible, resolves it to a repo digest. It never pulls.
-func selectImage(binary string, candidates []string) (imageRef, error) {
+// whose repo digest equals the expected content digest, and returns it pinned
+// to that repo-digest reference. It never pulls. A candidate that is present
+// only under a mismatched or digestless tag is rejected, not merely noted; if
+// none matches, the caller must fail closed.
+func selectImage(binary string, candidates []string, expectedDigest string) (imageRef, error) {
+	expected := strings.TrimSpace(expectedDigest)
+	if expected == "" {
+		return imageRef{}, errors.New("expected image digest is empty")
+	}
+	var observed []string
 	for _, candidate := range candidates {
 		if strings.TrimSpace(candidate) == "" {
 			continue
@@ -461,30 +566,37 @@ func selectImage(binary string, candidates []string) (imageRef, error) {
 		if len(images) == 0 {
 			return imageRef{}, fmt.Errorf("image inspect returned no object for %s", candidate)
 		}
-		selected := imageRef{Tag: candidate, Ref: candidate}
 		for _, repoDigest := range images[0].RepoDigests {
-			if strings.Contains(repoDigest, "@sha256:") {
-				selected.Ref = repoDigest
-				selected.Digest = repoDigest[strings.Index(repoDigest, "@")+1:]
-				selected.Pinned = true
-				break
+			at := strings.LastIndex(repoDigest, "@")
+			if at < 0 {
+				continue
+			}
+			digest := strings.TrimSpace(repoDigest[at+1:])
+			observed = append(observed, digest)
+			if digestMatches(digest, expected) {
+				return imageRef{Tag: candidate, Digest: digest, Ref: repoDigest, Pinned: true}, nil
 			}
 		}
-		if !selected.Pinned && strings.HasPrefix(images[0].Digest, "sha256:") {
-			repo := candidate
-			if at := strings.Index(repo, "@"); at >= 0 {
-				repo = repo[:at]
-			}
-			if colon := strings.LastIndex(repo, ":"); colon > strings.LastIndex(repo, "/") {
-				repo = repo[:colon]
-			}
-			selected.Digest = images[0].Digest
-			selected.Ref = repo + "@" + images[0].Digest
-			selected.Pinned = true
-		}
-		return selected, nil
 	}
-	return imageRef{}, errors.New("no candidate image is present in the local podman store")
+	if len(observed) == 0 {
+		return imageRef{}, fmt.Errorf("no local candidate image is present in the local podman store (expected %s)", expected)
+	}
+	return imageRef{}, fmt.Errorf("no local image matches expected digest %s (observed repo digests: %s)", expected, strings.Join(observed, ", "))
+}
+
+// digestMatches reports whether an observed repo digest names the expected
+// content digest. It trims surrounding whitespace and compares the complete
+// digest case-insensitively (hexadecimal case is not significant). It is not a
+// prefix, suffix, or substring match, so a merely-present, truncated, or
+// swapped digest is rejected. An empty observed or expected digest never
+// matches.
+func digestMatches(observed, expected string) bool {
+	observed = strings.TrimSpace(observed)
+	expected = strings.TrimSpace(expected)
+	if observed == "" || expected == "" {
+		return false
+	}
+	return strings.EqualFold(observed, expected)
 }
 
 // usernsProbe proves that --userns=keep-id maps the invoking identity into the
@@ -492,7 +604,7 @@ func selectImage(binary string, candidates []string) (imageRef, error) {
 func usernsProbe(binary, image string, uid, gid int) error {
 	script := `[ "$(id -u)" = "$TBOUND_CELL_UID" ] && [ "$(id -g)" = "$TBOUND_CELL_GID" ]`
 	_, err := runCapture(binary,
-		"run", "--rm", "--network=none", "--read-only", "--cap-drop=ALL",
+		"run", "--rm", "--pull=never", "--network=none", "--read-only", "--cap-drop=ALL",
 		"--security-opt", "no-new-privileges", "--userns=keep-id",
 		"--user", strconv.Itoa(uid)+":"+strconv.Itoa(gid),
 		"-e", "TBOUND_CELL_UID="+strconv.Itoa(uid),
@@ -501,46 +613,88 @@ func usernsProbe(binary, image string, uid, gid int) error {
 	return err
 }
 
+// observation records, honestly and individually, each settlement signal this
+// slice can see. A false field means the signal was not observed; none is
+// inferred. This is evidence, not proof of containment.
 type observation struct {
+	ContainerID       string
+	ContainerRemoved  bool
+	ProcReferences    int
+	ProcScanned       bool
+	CgroupRoot        string
+	CgroupScanned     bool
+	CgroupReferences  int
+	CgroupNote        string
+	MountReferenced   bool
 	ProcessScopeEmpty bool
 	WritersStopped    bool
 	MountDetached     bool
-	Survivors         int
-	ContainerRemoved  bool
-	MountReferenced   bool
 }
 
-// observe measures the postconditions this slice can honestly see: the named
-// container is gone, no process on the host still carries the unique cell
-// name, and the host mount table does not reference the view. It is evidence,
-// not proof of containment.
-func observe(ctx context.Context, binary, name, viewPath string) (observation, error) {
-	exists, err := containerExists(ctx, binary, name)
+// observe waits for and measures the postconditions this slice can honestly
+// see: (a) `podman container exists <id>` is false; (b) no host process's
+// cmdline or environ references the container id or the unique cell name; (c) a
+// bounded scan of the rootless cgroup roots finds no path containing the id;
+// and (d) the command-view host path is absent from /proc/self/mountinfo. It
+// retries until observeSettle or ctx expires, then returns whatever it last
+// observed so the caller can fail closed.
+func observe(ctx context.Context, binary, name, id, viewPath string) (observation, error) {
+	deadline := time.Now().Add(observeSettle)
+	for {
+		observed, err := observeOnce(ctx, binary, name, id, viewPath)
+		if err != nil {
+			return observed, err
+		}
+		if observed.ProcessScopeEmpty && observed.WritersStopped && observed.MountDetached {
+			return observed, nil
+		}
+		if time.Now().After(deadline) {
+			return observed, nil
+		}
+		select {
+		case <-ctx.Done():
+			return observed, ctx.Err()
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+}
+
+func observeOnce(ctx context.Context, binary, name, id, viewPath string) (observation, error) {
+	observed := observation{ContainerID: id, CgroupRoot: cgroupScanRoot}
+	exists, err := containerExists(ctx, binary, id)
 	if err != nil {
-		return observation{}, err
+		return observed, err
 	}
-	survivors, ok := countSurvivors(name)
+	observed.ContainerRemoved = !exists
+
+	references, ok := countReferences(id, name)
 	if !ok {
-		return observation{}, errors.New("scan /proc for surviving cell processes")
+		return observed, errors.New("scan /proc for surviving cell processes")
 	}
+	observed.ProcScanned = true
+	observed.ProcReferences = references
+
+	found, scanned, note := scanCgroup(cgroupScanRoot, id)
+	observed.CgroupScanned = scanned
+	observed.CgroupNote = note
+	if found {
+		observed.CgroupReferences = 1
+	}
+
 	mounted, err := mountReferences(viewPath)
 	if err != nil {
-		return observation{}, err
+		return observed, err
 	}
-	removed := !exists
-	scopeEmpty := removed && survivors == 0
-	return observation{
-		ProcessScopeEmpty: scopeEmpty,
-		WritersStopped:    scopeEmpty,
-		MountDetached:     removed && !mounted,
-		Survivors:         survivors,
-		ContainerRemoved:  removed,
-		MountReferenced:   mounted,
-	}, nil
+	observed.MountReferenced = mounted
+
+	observed.ProcessScopeEmpty = observed.ContainerRemoved && references == 0 && observed.CgroupScanned && observed.CgroupReferences == 0
+	observed.WritersStopped = observed.ProcessScopeEmpty
+	observed.MountDetached = !mounted
+	return observed, nil
 }
 
-func containerExists(ctx context.Context, binary, name string) (bool, error) {
-	command := exec.CommandContext(ctx, binary, "container", "exists", name)
+func containerExists(ctx context.Context, binary, id string) (bool, error) {
+	command := exec.CommandContext(ctx, binary, "container", "exists", id)
 	command.Env = hostEnv()
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
@@ -554,17 +708,18 @@ func containerExists(ctx context.Context, binary, name string) (bool, error) {
 	return false, fmt.Errorf("podman container exists: %w: %s", err, strings.TrimSpace(stderr.String()))
 }
 
-// countSurvivors scans /proc for a process whose command line or environment
-// still carries the unique cell name. The name is passed only to podman, so a
-// returned cell leaves no match.
-func countSurvivors(name string) (int, bool) {
+// countReferences scans /proc for a process whose command line or environment
+// still carries any needle: the container id or the unique cell name. Our own
+// process is skipped. The name is passed only to podman, so a returned cell
+// leaves no match.
+func countReferences(needles ...string) (int, bool) {
 	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return 0, false
 	}
-	needle := []byte(name)
-	count := 0
+	needles = append([]string(nil), needles...)
 	self := strconv.Itoa(os.Getpid())
+	count := 0
 	for _, entry := range entries {
 		pid := entry.Name()
 		if pid == self || !isDigits(pid) {
@@ -575,13 +730,123 @@ func countSurvivors(name string) (int, bool) {
 			if err != nil {
 				continue
 			}
-			if bytes.Contains(data, needle) {
+			matched := false
+			for _, needle := range needles {
+				if needle != "" && bytes.Contains(data, []byte(needle)) {
+					matched = true
+					break
+				}
+			}
+			if matched {
 				count++
 				break
 			}
 		}
 	}
 	return count, true
+}
+
+// scanCgroup performs a bounded breadth-first scan of the directory names
+// beneath root for a path component containing id. It returns found=true when
+// such a path exists. scanned is false when the scan could not be completed
+// (unreadable or absent root, or a depth/directory bound was reached), in which
+// case note explains why and the caller must fail closed rather than assume
+// absence.
+func scanCgroup(root, id string) (found bool, scanned bool, note string) {
+	if strings.TrimSpace(id) == "" {
+		return false, false, "empty container id"
+	}
+	info, err := os.Stat(root)
+	if err != nil || !info.IsDir() {
+		return false, false, fmt.Sprintf("cgroup root unavailable: %v", err)
+	}
+	type directory struct {
+		path  string
+		depth int
+	}
+	queue := []directory{{path: root}}
+	visited := 0
+	for len(queue) > 0 {
+		current := queue[0]
+		queue = queue[1:]
+		entries, err := os.ReadDir(current.path)
+		if err != nil {
+			return false, false, fmt.Sprintf("cgroup directory unreadable %q: %v", current.path, err)
+		}
+		visited++
+		if visited > cgroupScanMaxDirs {
+			return false, false, "cgroup scan exceeded directory bound"
+		}
+		for _, entry := range entries {
+			if strings.Contains(entry.Name(), id) {
+				return true, true, ""
+			}
+			if entry.IsDir() && current.depth < cgroupScanMaxDepth {
+				queue = append(queue, directory{path: filepath.Join(current.path, entry.Name()), depth: current.depth + 1})
+			}
+		}
+	}
+	return false, true, ""
+}
+
+// newCIDFifo creates a private FIFO at path and returns it opened O_RDWR with
+// O_NONBLOCK. The O_RDWR fd acts as its own writer so reads report EAGAIN (not
+// a spurious EOF) until podman writes the id, and the buffered bytes survive
+// podman's --rm unlink of the path.
+func newCIDFifo(path string) (*os.File, error) {
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
+		return nil, err
+	}
+	return os.OpenFile(path, os.O_RDWR|syscall.O_NONBLOCK, 0)
+}
+
+// readCIDFifo reads and validates the 64-hex container id written by `podman
+// run --cidfile`. It waits on the non-blocking FIFO with a read deadline until a
+// complete id is present, then fails closed. Requiring the full 64-hex id means
+// a truncated or hostile cidfile can never masquerade as an observation target.
+func readCIDFifo(file *os.File, timeout time.Duration) (string, error) {
+	deadline := time.Now().Add(timeout)
+	buffer := make([]byte, 256)
+	var data []byte
+	for {
+		if err := file.SetReadDeadline(deadline); err != nil {
+			return "", err
+		}
+		n, err := file.Read(buffer)
+		if n > 0 {
+			data = append(data, buffer[:n]...)
+			if id, parseErr := parseContainerID(string(data)); parseErr == nil {
+				return id, nil
+			}
+			if len(data) > len(buffer) {
+				return "", errors.New("cidfile is larger than a container id")
+			}
+			continue
+		}
+		if err != nil {
+			if os.IsTimeout(err) {
+				return "", fmt.Errorf("timed out reading cid fifo after %d bytes", len(data))
+			}
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return "", err
+		}
+	}
+	return parseContainerID(string(data))
+}
+
+// parseContainerID trims and validates a raw container id: exactly one
+// hexadecimal container id.
+func parseContainerID(raw string) (string, error) {
+	id := strings.TrimSpace(raw)
+	if id == "" {
+		return "", errors.New("cidfile is empty")
+	}
+	if len(id) != containerIDLength || !isHex(id) {
+		return "", fmt.Errorf("cidfile does not contain a %d-hex container id: %q", containerIDLength, id)
+	}
+	return id, nil
 }
 
 func mountReferences(viewPath string) (bool, error) {
@@ -691,6 +956,22 @@ func isDigits(value string) bool {
 	}
 	for _, char := range value {
 		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isHex(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, char := range value {
+		switch {
+		case char >= '0' && char <= '9':
+		case char >= 'a' && char <= 'f':
+		case char >= 'A' && char <= 'F':
+		default:
 			return false
 		}
 	}

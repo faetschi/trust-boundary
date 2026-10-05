@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
@@ -63,13 +64,183 @@ func TestProbe(t *testing.T) {
 	if report.ImageRef == "" {
 		t.Fatalf("probe did not select a local candidate image: %+v", report)
 	}
+	if !report.ImagePinned {
+		t.Fatalf("probe did not pin the image to the manifest digest: %+v", report)
+	}
+	if !digestMatches(report.ImageDigest, ExpectedImageDigest) {
+		t.Fatalf("probe digest %q does not match the manifest pin %q", report.ImageDigest, ExpectedImageDigest)
+	}
 	if !strings.Contains(report.EvidenceClass(), "non-claim-bearing") {
 		t.Fatalf("evidence class is not explicitly non-claim-bearing: %q", report.EvidenceClass())
+	}
+	if strings.Contains(report.EvidenceClass(), "image-digest-unpinned") {
+		t.Fatalf("evidence class reports an unpinned image despite the digest pin: %q", report.EvidenceClass())
 	}
 	t.Logf("probe: podman=%s path=%s rootless=%t runtime=%s runtime_version=%q cgroup=%s userns=%t image=%s pinned=%t digest=%s evidence=%s unsupported=%v",
 		report.PodmanVersion, report.PodmanPath, report.Rootless, report.OCIRuntime, report.OCIRuntimeVersion,
 		report.CgroupVersion, report.UserNamespace, report.ImageRef, report.ImagePinned, report.ImageDigest,
 		report.EvidenceClass(), report.Unsupported)
+}
+
+// TestExpectedImageDigestConstant freezes the manifest pin. Changing the pin
+// must be a deliberate edit to this expectation, never an accident.
+func TestExpectedImageDigestConstant(t *testing.T) {
+	const want = "sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
+	if ExpectedImageDigest != want {
+		t.Fatalf("manifest image pin changed: got %q want %q", ExpectedImageDigest, want)
+	}
+}
+
+// TestDigestMatches is a pure unit test for the digest-match helper: no podman
+// is required. It covers exact match, tolerated formatting, mismatch, truncation,
+// embedded references, and absence.
+func TestDigestMatches(t *testing.T) {
+	other := "sha256:" + strings.Repeat("a", 64)
+	cases := []struct {
+		name     string
+		observed string
+		want     bool
+	}{
+		{"exact match", ExpectedImageDigest, true},
+		{"surrounding whitespace", "  " + ExpectedImageDigest + "\n", true},
+		{"upper-case hex", strings.ToUpper(ExpectedImageDigest), true},
+		{"mismatched digest", other, false},
+		{"absent observed", "", false},
+		{"truncated digest", ExpectedImageDigest[:len("sha256:")+16], false},
+		{"full reference is not a digest", "docker.io/library/alpine@" + ExpectedImageDigest, false},
+		{"substring is not a match", ExpectedImageDigest[:len(ExpectedImageDigest)-1], false},
+	}
+	for _, tc := range cases {
+		if got := digestMatches(tc.observed, ExpectedImageDigest); got != tc.want {
+			t.Errorf("%s: digestMatches(%q, expected)=%t want %t", tc.name, tc.observed, got, tc.want)
+		}
+	}
+	if digestMatches(ExpectedImageDigest, "") {
+		t.Errorf("digestMatches must be false when the expected digest is absent")
+	}
+	if digestMatches("", "") {
+		t.Errorf("digestMatches must be false when both digests are absent")
+	}
+}
+
+// TestScanCgroup is a pure unit test for the bounded cgroup-name scan using a
+// temporary tree. Every podman-independent branch is covered.
+func TestScanCgroup(t *testing.T) {
+	root := t.TempDir()
+	const id = "bb7cb32bc2163ede7acc9d3e729cb460f743aced617822849dc3e34f8d38dee0"
+	if found, scanned, note := scanCgroup(root, id); found || !scanned || note != "" {
+		t.Fatalf("empty cgroup tree: found=%t scanned=%t note=%q", found, scanned, note)
+	}
+	scope := filepath.Join(root, "user.slice", "user-1000.slice", "libpod-"+id+".scope")
+	if err := os.MkdirAll(scope, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if found, scanned, note := scanCgroup(root, id); !found || !scanned || note != "" {
+		t.Fatalf("present cgroup scope: found=%t scanned=%t note=%q", found, scanned, note)
+	}
+	if found, scanned, note := scanCgroup(root, "different-id"); found || !scanned || note != "" {
+		t.Fatalf("unrelated id: found=%t scanned=%t note=%q", found, scanned, note)
+	}
+	if found, scanned, note := scanCgroup(filepath.Join(root, "missing"), id); found || scanned || note == "" {
+		t.Fatalf("missing root must be unscannable: found=%t scanned=%t note=%q", found, scanned, note)
+	}
+	if found, scanned, note := scanCgroup(root, ""); found || scanned || note == "" {
+		t.Fatalf("empty id must be unscannable: found=%t scanned=%t note=%q", found, scanned, note)
+	}
+}
+
+// TestParseContainerID is a pure unit test for cidfile validation.
+func TestParseContainerID(t *testing.T) {
+	const id = "bb7cb32bc2163ede7acc9d3e729cb460f743aced617822849dc3e34f8d38dee0"
+	if got, err := parseContainerID(id + "\n"); err != nil || got != id {
+		t.Fatalf("parseContainerID(valid)=%q, %v", got, err)
+	}
+	for name, content := range map[string]string{
+		"empty":      "\n",
+		"spaces":     "   ",
+		"not an id":  "not-an-id",
+		"truncated":  id[:32],
+		"shell meta": id + "; rm -rf /",
+		"colon form": "sha256:" + id,
+	} {
+		if _, err := parseContainerID(content); err == nil {
+			t.Errorf("parseContainerID(%s) accepted %q", name, content)
+		}
+	}
+}
+
+// TestCIDFifo exercises the FIFO captured id: a writer's bytes survive the
+// writer closing and unlinking the path, and the absence of a writer fails
+// closed without hanging.
+func TestCIDFifo(t *testing.T) {
+	const id = "bb7cb32bc2163ede7acc9d3e729cb460f743aced617822849dc3e34f8d38dee0"
+	dir := t.TempDir()
+
+	path := filepath.Join(dir, "cid")
+	reader, err := newCIDFifo(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	go func() {
+		writer, err := os.OpenFile(path, os.O_WRONLY, 0)
+		if err != nil {
+			return
+		}
+		_, _ = writer.WriteString(id + "\n")
+		_ = writer.Close()
+	}()
+	if got, err := readCIDFifo(reader, 5*time.Second); err != nil || got != id {
+		t.Fatalf("readCIDFifo=%q, %v", got, err)
+	}
+
+	// No writer: readCIDFifo must fail closed rather than block forever. The
+	// O_RDWR fd means EAGAIN until the deadline, not a spurious early EOF.
+	empty := filepath.Join(dir, "empty")
+	emptyReader, err := newCIDFifo(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer emptyReader.Close()
+	done := make(chan error, 1)
+	go func() {
+		_, err := readCIDFifo(emptyReader, 200*time.Millisecond)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatalf("readCIDFifo with no writer did not fail")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("readCIDFifo with no writer hung")
+	}
+}
+
+// TestRunnerRejectsUnpinnedDigest proves Run fails closed when the manifest pin
+// is not present locally: it must refuse before launching, never pulling and
+// never accepting a merely-present tag. It requires the pinned image on the
+// guest and skips where rootless podman is absent.
+func TestRunnerRejectsUnpinnedDigest(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("requires an unprivileged invoking user")
+	}
+	report := requireProfile(t)
+	runner := New(testLeaseID)
+	if report.ImageRef != "" {
+		runner.Image = report.ImageRef
+	}
+	runner.ExpectedDigest = "sha256:" + strings.Repeat("0", 64)
+	viewPath := t.TempDir()
+	if err := os.Chmod(viewPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := runner.runCell(context.Background(), report, viewPath, testViewID, testLeaseID,
+		sessionrepo.CommandSpec{Executable: "/bin/true"})
+	if !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("runCell with a digest pin that is not present locally did not fail closed: %v", err)
+	}
+	t.Logf("fail-closed pin rejection: %v", err)
 }
 
 // TestConformance runs trivial commands in the cell and asserts the observable
@@ -100,8 +271,9 @@ if printf probe > /work/tbound-write 2>/dev/null; then echo "WORK=writable"; els
 echo DONE`
 
 	spec := sessionrepo.CommandSpec{Executable: "/bin/sh", Args: []string{"-c", script}}
+	cidPath := filepath.Join(t.TempDir(), "container.id")
 	t.Logf("cell invocation: podman %s",
-		strings.ReplaceAll(strings.Join(cellArguments(runner.normalized(report), "tbound-cell-<token>", viewPath, spec), " "), "\n", "\\n"))
+		strings.ReplaceAll(strings.Join(cellArguments(runner.normalized(report), "tbound-cell-<token>", cidPath, viewPath, spec), " "), "\n", "\\n"))
 
 	result, settlement, err := runner.runCell(context.Background(), report, viewPath, testViewID, testLeaseID, spec)
 	if err != nil {
@@ -174,6 +346,11 @@ func assertSettlement(t *testing.T, settlement sessionrepo.CommandSettlement, wa
 	}
 	if !strings.Contains(settlement.EvidenceClass, "non-claim-bearing") {
 		t.Fatalf("settlement is not an honest non-claim-bearing receipt: %q", settlement.EvidenceClass)
+	}
+	for _, marker := range []string{"run-observed", "proc_refs=0", "cgroup_refs=0", "mount_referenced=false"} {
+		if !strings.Contains(settlement.EvidenceClass, marker) {
+			t.Fatalf("settlement evidence does not record observer postcondition %q: %q", marker, settlement.EvidenceClass)
+		}
 	}
 }
 
