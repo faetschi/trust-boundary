@@ -388,6 +388,7 @@ func (s *Store) denyLocked(request OperationRequest, cause error) error {
 		AuditSequence: record.Sequence, Tool: request.Tool, EffectID: request.EffectID, Operation: request.Operation,
 		DecisionID: request.Decision.ID, InputGeneration: request.InputGeneration,
 		InputTreeDigest: request.InputTreeDigest, ArgumentDigest: request.ArgumentDigest,
+		ViewID: request.ViewID, ExecutionContextDigest: request.ExecutionContextDigest,
 		ResultDigest: digestBytes(data), Outcome: "denied",
 	})
 	return fmt.Errorf("%w: %v", ErrDenied, cause)

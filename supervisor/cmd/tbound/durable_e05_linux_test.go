@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -428,6 +429,35 @@ func TestDurableE05TwoGenerationWorkflow(t *testing.T) {
 		if got := e05CountEffects(t, trace, tool); got != want {
 			t.Fatalf("e05 journal has %d %q effects; want %d", got, tool, want)
 		}
+	}
+
+	// Exit criterion #5 (reconstructable evidence): capture the self-contained
+	// bundle, discard the live Store, and re-derive the identical disposition
+	// from retained bytes alone.
+	bundle, err := store.EvidenceBundle()
+	if err != nil {
+		t.Fatalf("build e05 evidence bundle: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("close e05 store before replay: %v", err)
+	}
+	disposition, err := sessionrepo.Reconstruct(bundle)
+	if err != nil {
+		t.Fatalf("reconstruct e05 evidence bundle without the store: %v", err)
+	}
+	if disposition.Quarantined || disposition.Baseline != "g0" || disposition.Sealed != "g2" ||
+		disposition.Attempts != 5 || disposition.Decisions != 4 || disposition.Effects != 5 ||
+		disposition.Successes != 5 || disposition.Unknowns != 0 || disposition.Denials != 0 {
+		t.Fatalf("unexpected e05 reconstructed disposition: %+v", disposition)
+	}
+	if !reflect.DeepEqual(disposition.Generations, artifact.Generations) {
+		t.Fatalf("e05 reconstructed generations differ from the evidence artifact")
+	}
+	if !reflect.DeepEqual(disposition.Ledger, artifact.ApprovedDeltaLedger) {
+		t.Fatalf("e05 reconstructed ledger differs from the evidence artifact")
+	}
+	if !reflect.DeepEqual(disposition.Operations, artifact.Operations) {
+		t.Fatalf("e05 reconstructed operations differ:\n got %+v\nwant %+v", disposition.Operations, artifact.Operations)
 	}
 }
 
