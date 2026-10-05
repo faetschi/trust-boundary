@@ -46,9 +46,14 @@ Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman ru
   durable-manifest tamper fail closed. Independently verified (WSL `-race`, Windows, gofmt/diff, no
   module change).
 - **Open decisions (blocking full G1):** (a) spec §6/D06 call for a new private Git repository; the
-  prototype has none — record a waiver or implement; (b) a real provider exchange needs privately
-  supplied model ID + API key; (c) checkpoint-restore demonstration needs a Hyper-V checkpoint task
-  (not in `\TBoundVmOps`), i.e. a one-time elevation decision.
+  prototype has none — record a waiver or implement; (b) **credentials mechanism is ready** — supply
+  the OpenRouter model + key via `TBOUND_OPENROUTER_MODEL` and `TBOUND_OPENROUTER_API_KEY` or
+  `TBOUND_OPENROUTER_API_KEY_FILE`; (c) checkpoint tasks are prepared but the one-time elevation was
+  cancelled — approve UAC (or run the staged installer) to install `\TBoundVmCheckpoint`.
+- Checkpoint tasks staged (not installed): `C:\Users\Admin\AppData\Local\Temp\opencode\elev-vmcheckpoint-setup-wrapper.ps1`
+  installs `\TBoundVmCheckpoint\{List,Create,Restore,Delete}` for the pinned VM and a pinned
+  `tbound-demo-checkpoint` (S4U, RunLevel Highest, `FABIAN\Admin` run/query only), modeled on the
+  reviewed VmOps installer.
 - Committed `4c5d218`: candidate G1 experiment manifest (`docs/experiment-manifest.md`) recording the
   verified environment/toolchain/isolation facts, the frozen image pin, Pi closure, the four-false
   claim status, the "must freeze before G1" gap list, and a docs-reconciliation note.
@@ -61,6 +66,11 @@ Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman ru
   gofmt/diff/module clean, and the guest `sessionrepo` package green (the mount-backed test skips
   explicitly under the guest's AppArmor userns restriction, as designed). No containment/Pi/G1 claim;
   live publication/apply is out of scope.
+- Committed `2a39170`: real OpenRouter transport + secure credential loading + `cmd/tbound-provider`
+  one-shot exchange (request clone, single `Bearer` header, redirects forbidden, TLS ≥1.2, cross-read
+  key redaction; the key is never logged/serialized/recorded and is passed via closure; model + key via
+  env or a 0600 owner-only file). Independently verified (WSL `-race`, Windows build/tests, gofmt/diff,
+  no module change); the real-network exchange test skips until credentials are supplied.
 - Remaining implementable items: publication path / frozen profile, the controller
   `ReviewedSourceCommit` + guest offline re-verification, and the webserver observability frontend
   below.
