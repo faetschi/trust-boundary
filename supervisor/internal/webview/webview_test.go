@@ -142,10 +142,16 @@ func TestTailerReopensAfterTruncation(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"result":true}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	records := waitForRecords(t, buffer, 1)
-	if len(records) != 1 || !strings.Contains(string(records[0].Record), `"result":true`) {
-		t.Fatalf("tailer did not read replacement after truncation: %+v", records)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, record := range buffer.Snapshot() {
+			if strings.Contains(string(record.Record), `"result":true`) {
+				return
+			}
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
+	t.Fatalf("tailer did not read replacement after truncation: %+v", buffer.Snapshot())
 }
 
 func TestTailerOpensSourceReadOnly(t *testing.T) {

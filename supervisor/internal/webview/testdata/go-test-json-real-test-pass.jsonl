@@ -1,0 +1,8 @@
+{"Time":"2026-10-05T22:05:44.2361034+02:00","Action":"start","Package":"tbound/supervisor/internal/webview"}
+{"Time":"2026-10-05T22:05:44.2790128+02:00","Action":"run","Package":"tbound/supervisor/internal/webview","Test":"TestGoTestOutputAndCatalogAreBounded"}
+{"Time":"2026-10-05T22:05:44.2790128+02:00","Action":"output","Package":"tbound/supervisor/internal/webview","Test":"TestGoTestOutputAndCatalogAreBounded","Output":"=== RUN   TestGoTestOutputAndCatalogAreBounded\n","OutputType":"frame"}
+{"Time":"2026-10-05T22:05:44.2795563+02:00","Action":"output","Package":"tbound/supervisor/internal/webview","Test":"TestGoTestOutputAndCatalogAreBounded","Output":"--- PASS: TestGoTestOutputAndCatalogAreBounded (0.00s)\n","OutputType":"frame"}
+{"Time":"2026-10-05T22:05:44.2795563+02:00","Action":"pass","Package":"tbound/supervisor/internal/webview","Test":"TestGoTestOutputAndCatalogAreBounded","Elapsed":0}
+{"Time":"2026-10-05T22:05:44.2795563+02:00","Action":"output","Package":"tbound/supervisor/internal/webview","Output":"PASS\n","OutputType":"frame"}
+{"Time":"2026-10-05T22:05:44.2814192+02:00","Action":"output","Package":"tbound/supervisor/internal/webview","Output":"ok  \ttbound/supervisor/internal/webview\t0.045s\n"}
+{"Time":"2026-10-05T22:05:44.2891407+02:00","Action":"pass","Package":"tbound/supervisor/internal/webview","Elapsed":0.053}

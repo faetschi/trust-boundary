@@ -3,82 +3,241 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>tbound observability</title>
+  <title>tbound live test explorer</title>
   <style>
     :root { color-scheme: light dark; font: 15px/1.45 system-ui, sans-serif; }
-    body { margin: 0 auto; max-width: 1200px; padding: 1.25rem; }
+    body { margin: 0 auto; max-width: 1400px; padding: 1.25rem; }
     .banner { background: #7c2d12; color: white; padding: .9rem 1rem; border-radius: .4rem; font-weight: 700; }
     .subtle { color: #777; }
+    .notice { border: 1px solid #b7791f; padding: .75rem; border-radius: .4rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem; }
+    section { margin: 1.4rem 0; }
+    .panel { border: 1px solid #8886; border-radius: .4rem; padding: .8rem; min-width: 0; }
     .table-wrap { overflow-x: auto; }
-    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-    th, td { border-bottom: 1px solid #8886; padding: .65rem; text-align: left; vertical-align: top; }
+    #run-select { max-width: 100%; box-sizing: border-box; }
+    table { border-collapse: collapse; width: 100%; margin-top: .5rem; }
+    th, td { border-bottom: 1px solid #8886; padding: .55rem; text-align: left; vertical-align: top; }
     th { position: sticky; top: 0; background: Canvas; }
-    td.record { min-width: 28rem; }
-    pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, monospace; }
+    pre { margin: .25rem 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, monospace; }
     .badge { display: inline-block; border: 1px solid #8888; border-radius: 999px; margin: 0 .25rem .2rem 0; padding: .1rem .5rem; font-size: .78rem; }
-    .badge.malformed { background: #7c2d12; color: white; }
+    .state-failed, .state-interrupted, .state-invalid, .state-unavailable { color: #d33; font-weight: 700; }
+    .state-passed { color: #188038; font-weight: 700; }
     #status { margin-top: .8rem; }
+    #feed { max-height: 22rem; overflow: auto; }
+    @media (max-width: 600px) { body { padding: .75rem; } h1 { font-size: 1.55rem; } }
   </style>
 </head>
 <body>
   <header>
     <div class="banner">untrusted presentation client — read-only; not in the claim path</div>
-    <h1>tbound observability</h1>
-    <p class="subtle">Recent journal and transcript lines, presented as observations only. This view provides no mutation controls and makes no security or containment claim.</p>
-    <p id="status" role="status">Connecting to the local event stream…</p>
+    <h1>tbound live test explorer</h1>
+    <p class="subtle">A bounded, nonauthoritative view of explicitly configured sources. The required CLI remains claim-bearing. This viewer does not launch tests or change supervisor state.</p>
+    <p id="status" role="status" aria-live="polite">Loading retained observation snapshot…</p>
+    <p id="gap" class="notice" role="alert" hidden></p>
   </header>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>Type</th><th>Source</th><th>Observed</th><th>JSONL line</th></tr></thead>
-      <tbody id="records"></tbody>
-    </table>
-  </div>
+  <main>
+    <section class="grid" aria-label="Run and source overview">
+      <article class="panel"><h2>Go test run</h2><div id="run">No run manifest configured.</div></article>
+      <article class="panel"><h2>Observation sources</h2><div id="sources">Waiting for snapshot.</div><p id="history" class="subtle"></p></article>
+    </section>
+     <section class="panel">
+      <h2>Packages and tests</h2>
+      <p class="subtle">States come from Go's structured <code>go test -json</code> events plus the external versioned run manifest. A missing terminal event is shown as interrupted, not passed.</p>
+      <label for="run-select">Run view</label> <select id="run-select"><option value="">LIVE — current run</option></select> <span id="run-mode" class="badge">LIVE</span>
+      <div class="table-wrap"><table><thead><tr><th>Package</th><th>Test / subtest</th><th>State / provenance</th><th>Elapsed (s)</th><th>Bounded output</th></tr></thead><tbody id="tests"></tbody></table></div>
+      <p id="test-limit" class="subtle"></p>
+    </section>
+    <section class="grid">
+      <article class="panel"><h2>Audit chain check (structural)</h2><div id="audit">No audit source configured.</div></article>
+      <article class="panel"><h2>Generation evidence</h2><div id="generations">No evidence bundle configured.</div></article>
+    </section>
+    <section class="panel">
+      <h2>Recent observations</h2>
+      <p class="subtle">Payloads are rendered as text. Output and retained rows are bounded; observations do not establish authorization, containment, or external authenticity.</p>
+      <div id="feed" role="log" aria-label="Recent observation events"></div>
+    </section>
+  </main>
   <script>
     (() => {
-      const rows = document.getElementById('records');
       const status = document.getElementById('status');
-      const maxRows = 256;
-      function cell(text) {
-        const td = document.createElement('td');
-        td.textContent = text;
-        return td;
-      }
-      function render(record) {
-        const row = document.createElement('tr');
-        const types = Array.isArray(record.types) ? record.types : ['record'];
-        const typeCell = document.createElement('td');
-        for (const type of types) {
-          const badge = document.createElement('span');
-          badge.className = 'badge' + (type === 'malformed' ? ' malformed' : '');
-          badge.textContent = type;
-          typeCell.appendChild(badge);
-        }
-        row.appendChild(typeCell);
-        row.appendChild(cell(record.source || 'unknown'));
-        row.appendChild(cell(record.received_at || ''));
-        const detailCell = document.createElement('td');
-        detailCell.className = 'record';
-        const pre = document.createElement('pre');
-        const payload = Object.prototype.hasOwnProperty.call(record, 'record')
-          ? record.record
-          : { raw_line: record.raw_line, parse_error: record.parse_error };
-        pre.textContent = JSON.stringify(payload, null, 2);
-        detailCell.appendChild(pre);
-        row.appendChild(detailCell);
-        rows.prepend(row);
-        while (rows.children.length > maxRows) rows.lastElementChild.remove();
-      }
-      const events = new EventSource('/events');
-      events.onopen = () => { status.textContent = 'Live event stream connected.'; };
-      events.onmessage = (event) => {
-        try {
-          render(JSON.parse(event.data));
-          status.textContent = 'Live event stream connected.';
-        } catch (_) {
-          status.textContent = 'Received an event that could not be displayed.';
-        }
+      const gapBox = document.getElementById('gap');
+      const seen = new Set();
+      const seenFIFO = [];
+      const cursorKey = 'tbound-observation-cursor-v1';
+      const maxFeedRows = 256;
+      let currentRunID = '';
+      let selectedHistoricalRun = '';
+      const text = (parent, value) => { parent.textContent = value == null ? '' : String(value); };
+      const stateNode = (value) => {
+        const node = document.createElement('span');
+        node.className = 'state-' + String(value || 'unknown').replace(/[^a-z0-9_-]/gi, '-');
+        node.textContent = value || 'unknown';
+        return node;
       };
-      events.onerror = () => { status.textContent = 'Event stream disconnected; reconnecting…'; };
+      function showGap(reason) { gapBox.hidden = false; text(gapBox, 'Replay gap: ' + reason + '. The available retained snapshot is shown; unavailable observations were not reconstructed.'); }
+      function renderRun(manifest, updateCurrent = true) {
+        const target = document.getElementById('run'); target.replaceChildren();
+        if (updateCurrent) currentRunID = manifest.test_run ? manifest.test_run.run_id : '';
+        if (manifest.test_run_error) {
+          const invalid = document.createElement('p'); invalid.append(stateNode('invalid')); invalid.append(document.createTextNode(' — latest manifest update rejected: ' + manifest.test_run_error)); target.append(invalid);
+          if (manifest.test_run) { const previous = document.createElement('p'); previous.textContent = 'Last accepted run (stale): ' + manifest.test_run.run_id + ' — ' + manifest.test_run.state; target.append(previous); }
+          return;
+        }
+        if (!manifest.test_run) {
+          text(target, 'No valid run manifest configured.');
+          return;
+        }
+        const run = manifest.test_run;
+        const summary = document.createElement('p');
+        summary.append(document.createTextNode(run.run_id + ' — '), stateNode(run.state));
+        target.append(summary);
+        const details = document.createElement('p');
+        details.textContent = 'Started: ' + run.started_at + (run.finished_at ? '\nFinished: ' + run.finished_at : '') + (run.exit_code == null ? '' : '\nProcess exit: ' + run.exit_code) + (run.go_version ? '\nGo: ' + run.go_version : '') + (run.module ? '\nModule: ' + run.module : '');
+        target.append(details);
+        if (Array.isArray(run.packages) && run.packages.length) { const p = document.createElement('p'); p.textContent = 'Declared packages: ' + run.packages.join(', '); target.append(p); }
+        if (run.source_identity) { const identity = document.createElement('p'); const source = run.source_identity; const dirty = source.dirty === true ? 'working tree dirty' : source.dirty === false ? 'working tree declared clean' : 'working-tree state undeclared'; identity.textContent = 'Self-declared source identity (not authenticated): ' + [source.commit ? 'commit ' + source.commit : '', source.source_epoch ? 'epoch ' + source.source_epoch : '', source.source_digest ? 'digest ' + source.source_digest : '', dirty].filter(Boolean).join(' · '); target.append(identity); }
+      }
+      function renderSources(manifest) {
+        const target = document.getElementById('sources'); target.replaceChildren();
+        if (!manifest.sources.length) { text(target, 'No sources configured.'); }
+        for (const source of manifest.sources) {
+          const p = document.createElement('p');
+          p.textContent = source.name + ' (' + source.kind + ')' + (source.epoch ? ' — source epoch ' + source.epoch : ' — awaiting epoch') + (source.gap ? ' — SOURCE GAP: ' + (source.gap_reason || 'unobserved bytes') : source.continuity ? ' — ' + source.continuity : '');
+          target.append(p);
+        }
+        if (Array.isArray(manifest.warnings) && manifest.warnings.length) { const list = document.createElement('ul'); for (const warning of manifest.warnings) { const li = document.createElement('li'); li.textContent = warning; list.append(li); } target.append(list); }
+        const history = manifest.history;
+        text(document.getElementById('history'), !history.enabled ? 'Durable viewer history is disabled; a process restart starts a new observation epoch.' : history.healthy ? 'Bounded retained history is enabled.' : 'History persistence unavailable: ' + history.error);
+      }
+      function renderTests(catalog, replay = false) {
+        const body = document.getElementById('tests'); body.replaceChildren();
+        const rows = [];
+        for (const pkg of catalog.packages) rows.push({ package: pkg.package, test: '(package)', state: pkg.state, output: pkg.output, output_truncated: pkg.output_truncated, provenance: pkg.no_test_files_provenance });
+        for (const test of catalog.tests) rows.push(test);
+        for (const item of rows) {
+          const row = document.createElement('tr');
+          const packageCell = document.createElement('td'); packageCell.textContent = item.package; row.append(packageCell);
+          const nameCell = document.createElement('td'); nameCell.textContent = item.test || '(package)'; row.append(nameCell);
+          const statusCell = document.createElement('td'); statusCell.append(stateNode(item.state)); if (item.provenance) statusCell.append(document.createTextNode(' — ' + item.provenance + ' (observed marker only)')); row.append(statusCell);
+          const elapsedCell = document.createElement('td'); elapsedCell.textContent = item.elapsed == null ? '—' : String(item.elapsed); row.append(elapsedCell);
+          const outputCell = document.createElement('td'); const pre = document.createElement('pre'); pre.textContent = (item.output || '') + (item.output_truncated ? replay ? '\n[output omitted from retained run summary]' : '\n[older output omitted by bound]' : ''); outputCell.append(pre); row.append(outputCell);
+          body.append(row);
+        }
+        text(document.getElementById('test-limit'), catalog.dropped ? catalog.dropped + ' package/test entries omitted at the configured catalog bound.' : '');
+      }
+      function renderAudit(projection) {
+        const target = document.getElementById('audit'); target.replaceChildren();
+        if (projection.status === 'not-configured') { text(target, 'No audit source configured.'); return; }
+        const summary = document.createElement('p'); summary.append(stateNode(projection.status)); summary.append(document.createTextNode(' — ' + projection.record_count + ' records; ' + projection.effect_count + ' effects')); target.append(summary);
+        if (projection.head_hash) { const head = document.createElement('p'); head.textContent = 'Verified head hash: ' + projection.head_hash; target.append(head); }
+        if (projection.error) { const error = document.createElement('p'); error.textContent = projection.error; target.append(error); }
+        if (projection.truncated) { const note = document.createElement('p'); note.textContent = 'Projection list truncated to the newest bounded entries.'; target.append(note); }
+        const list = document.createElement('ul');
+        for (const item of (projection.effects || [])) { const li = document.createElement('li'); li.textContent = item.id + ': ' + (item.outcome || (item.unresolved ? 'unresolved' : 'no terminal outcome')); list.append(li); }
+        target.append(list);
+      }
+      function renderGenerations(projection) {
+        const target = document.getElementById('generations'); target.replaceChildren();
+        if (projection.status === 'not-configured') { text(target, 'No evidence bundle configured.'); return; }
+        const summary = document.createElement('p'); summary.append(stateNode(projection.status)); summary.append(document.createTextNode(projection.error ? ' — ' + projection.error : '')); target.append(summary);
+        if (projection.baseline || projection.sealed) { const p = document.createElement('p'); p.textContent = 'Baseline: ' + (projection.baseline || 'unknown') + '\nSealed: ' + (projection.sealed || 'unknown') + '\nQuarantined: ' + Boolean(projection.quarantined); target.append(p); }
+        if (projection.generations && projection.generations.length) { const p = document.createElement('p'); p.textContent = 'Generations: ' + projection.generations.join(' → '); target.append(p); }
+        if (projection.limitations) { const list = document.createElement('ul'); for (const limitation of projection.limitations) { const li = document.createElement('li'); li.textContent = limitation; list.append(li); } target.append(list); }
+      }
+      function renderRecord(record, eventID) {
+        const key = eventID || (record.source_epoch || '') + ':' + record.id;
+        if (seen.has(key)) return;
+        seen.add(key);
+        seenFIFO.push(key);
+        const feed = document.getElementById('feed');
+        const article = document.createElement('article'); article.className = 'panel';
+        const heading = document.createElement('p');
+        heading.textContent = '#' + record.id + ' ' + (Array.isArray(record.types) ? record.types.join(', ') : 'record') + ' — ' + (record.source || 'unknown') + (record.source_epoch ? ' [' + record.source_epoch.slice(0, 12) + ']' : '');
+        article.append(heading);
+        const pre = document.createElement('pre');
+        pre.textContent = record.record !== undefined ? JSON.stringify(record.record, null, 2) : JSON.stringify({ raw_line: record.raw_line, parse_error: record.parse_error }, null, 2);
+        article.append(pre); feed.prepend(article);
+        while (feed.children.length > maxFeedRows) { feed.lastElementChild.remove(); const removed = seenFIFO.shift(); if (removed) seen.delete(removed); }
+        if (eventID) { try { localStorage.setItem(cursorKey, eventID); } catch (_) {} }
+      }
+      async function refreshRunCatalog() {
+        const response = await fetch('/runs', { cache: 'no-store' });
+        if (!response.ok) throw new Error('run catalog HTTP ' + response.status);
+        const catalog = await response.json();
+        const select = document.getElementById('run-select');
+        const selected = selectedHistoricalRun;
+        select.replaceChildren();
+        const live = document.createElement('option'); live.value = ''; live.textContent = 'LIVE — current run' + (catalog.current_run_id ? ': ' + catalog.current_run_id : ''); select.append(live);
+        for (const entry of (catalog.runs || [])) {
+          if (entry.run.run_id === catalog.current_run_id) continue;
+          const option = document.createElement('option'); option.value = entry.run.run_id; option.textContent = 'REPLAY — ' + entry.run.run_id + ' (' + entry.run.state + ')'; select.append(option);
+        }
+        const stillRegistered = selected && Array.from(select.options).some(option => option.value === selected);
+        if (selected && !stillRegistered) {
+          selectedHistoricalRun = '';
+          document.getElementById('run-mode').textContent = 'LIVE';
+          fetch('/snapshot', { cache: 'no-store' }).then(r => r.json()).then(snapshot => { renderRun(snapshot.manifest); renderTests(snapshot.tests); }).catch(() => {});
+        }
+        select.value = stillRegistered ? selected : '';
+      }
+      async function selectRun(runID) {
+        selectedHistoricalRun = runID;
+        const mode = document.getElementById('run-mode');
+        if (!runID) {
+          mode.textContent = 'LIVE';
+          const response = await fetch('/snapshot', { cache: 'no-store' });
+          const snapshot = await response.json(); renderRun(snapshot.manifest); renderTests(snapshot.tests); return;
+        }
+        if (runID === currentRunID) { selectedHistoricalRun = ''; document.getElementById('run-select').value = ''; return selectRun(''); }
+        mode.textContent = 'REPLAY';
+        const response = await fetch('/runs/' + encodeURIComponent(runID), { cache: 'no-store' });
+        if (!response.ok) throw new Error('retained run HTTP ' + response.status);
+        const retained = await response.json();
+        renderRun({ test_run: retained.run, warnings: ['REPLAY: retained bounded summary; test output was omitted.'] }, false);
+        const replayNote = document.createElement('p'); replayNote.className = 'notice'; replayNote.textContent = 'REPLAY — retained bounded run summary. Test/package output was omitted; this is not a live view.'; document.getElementById('run').append(replayNote);
+        renderTests(retained.tests, true);
+      }
+      async function start() {
+        try {
+          const response = await fetch('/snapshot', { cache: 'no-store' });
+          if (!response.ok) throw new Error('snapshot HTTP ' + response.status);
+          const snapshot = await response.json();
+          renderRun(snapshot.manifest); renderSources(snapshot.manifest); renderTests(snapshot.tests); renderAudit(snapshot.audit); renderGenerations(snapshot.generations);
+          await refreshRunCatalog();
+          for (const record of snapshot.records) renderRecord(record, snapshot.epoch + ':' + record.id);
+          let prior = null; try { prior = localStorage.getItem(cursorKey); } catch (_) {}
+          if (prior) {
+            const split = prior.lastIndexOf(':'); const priorEpoch = prior.slice(0, split); const priorID = Number(prior.slice(split + 1));
+            if (priorEpoch !== snapshot.epoch) showGap('source epoch changed since the prior page view');
+            else if (snapshot.earliest_id && Number.isFinite(priorID) && priorID + 1 < snapshot.earliest_id) showGap('history evicted observations after cursor ' + prior);
+          }
+          text(status, 'Snapshot loaded for observation epoch ' + snapshot.epoch + ' at cursor ' + snapshot.cursor + '. Connecting to read-only SSE…');
+          const events = new EventSource('/events?cursor=' + encodeURIComponent(snapshot.cursor));
+          events.onopen = () => { text(status, 'Live observation stream connected — nonauthoritative.'); };
+          events.onmessage = event => {
+            try {
+              const record = JSON.parse(event.data); renderRecord(record, event.lastEventId);
+              if (record.types && record.types.includes('source_epoch')) fetch('/manifest', { cache: 'no-store' }).then(r => r.json()).then(renderSources).catch(() => {});
+              if (record.types && record.types.includes('source_gap')) { showGap((record.record && record.record.reason) || 'Go test source discontinuity'); fetch('/manifest', { cache: 'no-store' }).then(r => r.json()).then(renderSources).catch(() => {}); }
+              if (record.types && record.types.includes('go_test') && !selectedHistoricalRun) fetch('/tests', { cache: 'no-store' }).then(r => r.json()).then(renderTests).catch(() => {});
+              if (record.types && (record.types.includes('run_manifest') || record.types.includes('run_manifest_error'))) {
+                fetch('/snapshot', { cache: 'no-store' }).then(r => r.json()).then(s => { currentRunID = s.manifest.test_run ? s.manifest.test_run.run_id : ''; renderSources(s.manifest); if (!selectedHistoricalRun) { renderRun(s.manifest); renderTests(s.tests); } }).catch(() => {});
+                refreshRunCatalog().catch(() => {});
+              }
+              if (record.types && record.types.includes('audit_projection')) fetch('/snapshot', { cache: 'no-store' }).then(r => r.json()).then(s => renderAudit(s.audit)).catch(() => {});
+              if (record.types && record.types.includes('generation_projection')) fetch('/snapshot', { cache: 'no-store' }).then(r => r.json()).then(s => renderGenerations(s.generations)).catch(() => {});
+              text(status, 'Live observation stream connected — nonauthoritative.');
+            } catch (_) { text(status, 'An event could not be displayed; source evidence was not changed.'); }
+          };
+          events.addEventListener('gap', event => {
+            try { const gap = JSON.parse(event.data); showGap(gap.reason + ' (requested ' + gap.requested_cursor + ', current ' + gap.epoch + ')'); }
+            catch (_) { showGap('server reported an unreadable replay gap'); }
+          });
+          events.onerror = () => { text(status, 'Event stream disconnected; browser is attempting cursor-based reconnection…'); };
+        } catch (error) { text(status, 'Could not load the local observation snapshot: ' + error.message); }
+      }
+      document.getElementById('run-select').addEventListener('change', event => selectRun(event.target.value).catch(error => text(status, 'Could not load selected run: ' + error.message)));
+      start();
     })();
   </script>
 </body>

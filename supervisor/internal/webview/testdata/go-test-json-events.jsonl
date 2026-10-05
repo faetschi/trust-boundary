@@ -1,0 +1,16 @@
+{"Time":"2026-10-05T10:00:00.000Z","Action":"start","Package":"example.test/project/pkg"}
+{"Time":"2026-10-05T10:00:00.010Z","Action":"run","Package":"example.test/project/pkg","Test":"TestPass"}
+{"Time":"2026-10-05T10:00:00.015Z","Action":"output","Package":"example.test/project/pkg","Test":"TestPass","Output":"ok\n"}
+{"Time":"2026-10-05T10:00:00.020Z","Action":"pass","Package":"example.test/project/pkg","Test":"TestPass","Elapsed":0.01}
+{"Time":"2026-10-05T10:00:00.030Z","Action":"run","Package":"example.test/project/pkg","Test":"TestNested"}
+{"Time":"2026-10-05T10:00:00.031Z","Action":"run","Package":"example.test/project/pkg","Test":"TestNested/child"}
+{"Time":"2026-10-05T10:00:00.040Z","Action":"pass","Package":"example.test/project/pkg","Test":"TestNested/child","Elapsed":0.01}
+{"Time":"2026-10-05T10:00:00.041Z","Action":"run","Package":"example.test/project/pkg","Test":"TestNested/skip"}
+{"Time":"2026-10-05T10:00:00.045Z","Action":"skip","Package":"example.test/project/pkg","Test":"TestNested/skip","Elapsed":0}
+{"Time":"2026-10-05T10:00:00.046Z","Action":"pass","Package":"example.test/project/pkg","Test":"TestNested","Elapsed":0.02}
+{"Time":"2026-10-05T10:00:00.050Z","Action":"run","Package":"example.test/project/pkg","Test":"TestFail"}
+{"Time":"2026-10-05T10:00:00.060Z","Action":"fail","Package":"example.test/project/pkg","Test":"TestFail","Elapsed":0.01}
+{"Time":"2026-10-05T10:00:00.070Z","Action":"run","Package":"example.test/project/pkg","Test":"TestInterrupted"}
+{"Time":"2026-10-05T10:00:00.080Z","Action":"fail","Package":"example.test/project/pkg","Elapsed":0.03}
+{"Time":"2026-10-05T10:00:00.090Z","Action":"output","Package":"example.test/project/empty","Output":"?   example.test/project/empty [no test files]\n"}
+{"Time":"2026-10-05T10:00:00.100Z","Action":"skip","Package":"example.test/project/empty"}

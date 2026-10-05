@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -45,6 +46,51 @@ func newHTTPHandler(buffer *Buffer) http.Handler {
 			return
 		}
 	})
+	mux.HandleFunc("/snapshot", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		writeJSON(w, buffer.snapshot())
+	})
+	mux.HandleFunc("/manifest", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		writeJSON(w, buffer.snapshot().Manifest)
+	})
+	mux.HandleFunc("/tests", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		writeJSON(w, buffer.snapshot().Tests)
+	})
+	mux.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		writeJSON(w, buffer.retainedRunCatalog())
+	})
+	mux.HandleFunc("/runs/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			methodNotAllowed(w)
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/runs/")
+		if !runIDPattern.MatchString(id) {
+			http.NotFound(w, r)
+			return
+		}
+		run, ok := buffer.retainedRun(id)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, run)
+	})
 	mux.HandleFunc("/events", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
@@ -61,7 +107,11 @@ func streamEvents(buffer *Buffer, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming is not supported", http.StatusInternalServerError)
 		return
 	}
-	subscription := buffer.Subscribe()
+	cursor := r.Header.Get("Last-Event-ID")
+	if cursor == "" {
+		cursor = r.URL.Query().Get("cursor")
+	}
+	subscription, gap := buffer.SubscribeAfter(cursor)
 	defer subscription.Close()
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
@@ -72,8 +122,13 @@ func streamEvents(buffer *Buffer, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	flusher.Flush()
+	if gap != nil {
+		if writeSSEGap(w, flusher, *gap) != nil {
+			return
+		}
+	}
 	for _, record := range subscription.Initial {
-		if r.Context().Err() != nil || writeSSE(w, flusher, record) != nil {
+		if r.Context().Err() != nil || writeSSE(w, flusher, buffer.Epoch(), record) != nil {
 			return
 		}
 	}
@@ -84,7 +139,7 @@ func streamEvents(buffer *Buffer, w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case record, open := <-subscription.Records:
-			if !open || writeSSE(w, flusher, record) != nil {
+			if !open || writeSSE(w, flusher, buffer.Epoch(), record) != nil {
 				return
 			}
 		case <-ticker.C:
@@ -96,16 +151,35 @@ func streamEvents(buffer *Buffer, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func writeSSE(w io.Writer, flusher http.Flusher, record Record) error {
+func writeSSE(w io.Writer, flusher http.Flusher, epoch string, record Record) error {
 	encoded, err := json.Marshal(record)
 	if err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "id: %d\ndata: %s\n\n", record.ID, encoded); err != nil {
+	if _, err := fmt.Fprintf(w, "id: %s\ndata: %s\n\n", formatCursor(epoch, record.ID), encoded); err != nil {
 		return err
 	}
 	flusher.Flush()
 	return nil
+}
+
+func writeSSEGap(w io.Writer, flusher http.Flusher, gap ReplayGap) error {
+	encoded, err := json.Marshal(gap)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "event: gap\ndata: %s\n\n", encoded); err != nil {
+		return err
+	}
+	flusher.Flush()
+	return nil
+}
+
+func writeJSON(w http.ResponseWriter, value any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Cache-Control", "no-store")
+	_ = json.NewEncoder(w).Encode(value)
 }
 
 func methodNotAllowed(w http.ResponseWriter) {

@@ -2,7 +2,53 @@
 
 ## Active five-slice execution — 2026-10-05
 
-### Slice 1 verified — 2026-10-05 (commit recorded after creation)
+### Slice 3 independently verified — commit pending
+
+Explorer corrections plus the independently discovered mobile-selector fix
+passed final isolated full WSL race tests in
+`/home/jeli2k/tbound-coordinator-s3final.8DGobj` (`/dev/sdc` ext4, TMPDIR 0700),
+empty gofmt, and Windows snapshot build/internal/e2e (all exit 0). Actual external
+Go JSON runs returned 0; 17 snapshots observed running tests; terminal projection
+retained 203 passed tests/17 packages. Chrome private-profile desktop/mobile and
+restart/history REPLAY checks passed, 81 summary rows, no JS exceptions; mobile
+document width 390px. Source truncation visibly reports a gap. Evidence hashes,
+driver failures and scope are in `docs/test-run-explorer.md`. Modules unchanged,
+adapter untouched; no current-source guest offline or authority/containment claim.
+
+### Independent review in progress — slices 3 and 2
+
+Publication corrections received and independently reviewed. Isolated snapshot
+`/home/jeli2k/tbound-coordinator-s2.9tscTx` uses HEAD `1bedc0e` plus publication
+only (no explorer overlays). `findmnt`: `/dev/sdc ext4`, private TMPDIR 0700;
+full `go test -race -count=1 ./...` exit 0, publication 3.614s; empty gofmt.
+Windows copy `tbound-windows-11a74bfc9348472fb940343cce24659f` passed build and
+internal/e2e tests (both exit 0). Linux-only publication is not tested by the
+Windows `[no test files]` result. Modules unchanged, scoped diff check exit 0.
+Race-log/hash-list SHA-256 recorded in `docs/publication-contract.md`. Commit is
+pending the chosen slice-3-before-slice-2 order and committed-byte comparison.
+
+Neither slice is committed or accepted as committed source yet. Focused agent
+checks alone are insufficient for full-suite/browser/committed-byte evidence.
+Explorer review requested bounded prior-run retention, explicit restart-source
+gap handling, package-label/UI bounds and stricter source/lifecycle parsing.
+Publication review requested retained validated source descriptors, repository
+locking across workflows, complete fault-boundary/mixed-object recovery tests,
+authenticated origin binding and actual sessionrepo-generated evidence fixtures.
+Explorer agent retains its ownership during corrections; publication edits are
+finished. Coordinator independently verifies snapshots and owns evidence/state.
+
+Slice 4 admission returned exit 1 before guest/task operations: native Git array
+splits its concatenated safe-directory option. Dummy-only delegated review found
+analogous SSH/SCP option splits and unsafe pre-queue cleanup admission ordering.
+These are documented prerequisites, not applied changes to pre-existing infra.
+No fresh offline report exists; slice 5 remains blocked, G1=false.
+
+### Slice 1 verified — 2026-10-05 — `1bedc0e`
+
+Commit `1bedc0ec350edcbb2b7e3df4d877de50f5308c66`. A post-commit LF archive
+comparison verified every pre-test source byte and the complete Go-file set
+against the independently tested snapshot (exit 0). Test-produced artifacts
+were retained separately and were not overlaid into committed source.
 
 Real OpenRouter single captured write successfully traversed real Unix IPC,
 concrete broker correlation, audit-backed gate and durable executor. Independent

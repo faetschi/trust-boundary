@@ -1,0 +1,8 @@
+{
+  "schema_version": "tbound-go-test-run/v99",
+  "run_id": "fixture-run-invalid",
+  "state": "passed",
+  "started_at": "2026-10-05T10:00:00Z",
+  "finished_at": "2026-10-05T10:01:00Z",
+  "exit_code": 0
+}
