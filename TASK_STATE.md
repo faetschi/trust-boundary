@@ -49,9 +49,21 @@ Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman ru
   prototype has none — record a waiver or implement; (b) a real provider exchange needs privately
   supplied model ID + API key; (c) checkpoint-restore demonstration needs a Hyper-V checkpoint task
   (not in `\TBoundVmOps`), i.e. a one-time elevation decision.
-- Remaining implementable items: candidate experiment manifest (record VM/kernel/Podman/crun/Landlock/
-  cgroup/userns/entrypoint facts and explicit gaps), publication path / frozen profile, and the
-  controller `ReviewedSourceCommit` + guest offline re-verification.
+- Committed `4c5d218`: candidate G1 experiment manifest (`docs/experiment-manifest.md`) recording the
+  verified environment/toolchain/isolation facts, the frozen image pin, Pi closure, the four-false
+  claim status, the "must freeze before G1" gap list, and a docs-reconciliation note.
+- Committed `b63f201`: **P1 (generation-exposure read-only view)** — `exposure_linux.go`
+  (`Expose`/`Refresh`/`Observed`/`ReadOnlyMountSource`/`Close` with an injected `Binder` and
+  `ViewRecreated`/`ViewIndirection` modes), `exposure_linux_test.go` (E01-style recreated + indirection,
+  the stale-view negative, exposure-directory recovery, and a real mount-backed read-only `EROFS`
+  refresh), plus the private `exposed/` directory wiring in `sessionrepo_linux.go`/`recovery_linux.go`.
+  Independently verified: WSL full `-race` green (mount-backed test PASS), Windows build/tests green,
+  gofmt/diff/module clean, and the guest `sessionrepo` package green (the mount-backed test skips
+  explicitly under the guest's AppArmor userns restriction, as designed). No containment/Pi/G1 claim;
+  live publication/apply is out of scope.
+- Remaining implementable items: publication path / frozen profile, the controller
+  `ReviewedSourceCommit` + guest offline re-verification, and the webserver observability frontend
+  below.
 
 ## Resume point — next
 
@@ -68,6 +80,29 @@ Next steps:
 4. VM/SSH autonomy verified: `\TBoundVmOps\{Status,Start,Stop,Connect,Disconnect}` run unelevated, a
    clean Stop→Start cycle works, and the guest IP is rediscovered from MAC `00-15-5D-0C-40-00` via
    `Get-NetNeighbor` with pinned-key SSH.
+
+### Planned: webserver observability frontend (future todo)
+
+User request (2026-10-05): a visual "frontend" to watch sessions/tests in real time, ideally a
+**webserver** rather than a TUI. The thesis already scopes this:
+
+- `tbound-thesis.md:113,346,463,963`: the required operator frontend is the **CLI-first,
+  client-independent supervisor API**; a TUI or web client is an **optional untrusted presentation
+  client** that must use the same supervisor API and does not change H1.
+- `AH-technical/06-1-language-decision.md:11,16`: a future TUI/browser client is deferred; browser
+  access may use **WebSockets/SSE** and needs separate authentication and session-management
+  evaluation.
+- `AH-technical/00-roadmap.md:77`, `01-decisions-glossary.md:37`, `todo-implementation-tbound.md:60`:
+  a polished TUI/browser UI is a **deferred non-goal** for the MVP; `visualizations-plan.md:417,543`
+  keeps presentation dashboards/live charts out of the claim path.
+
+Proposed future slice (not started): a **Go webserver** presentation client in the same module that
+subscribes to the supervisor API (event stream over SSE/WebSocket) and shows live: preflight, session
+lifecycle, the `proposal → broker correlation → gate verdict → durable effect → result` chain, the
+bounded transcript/audit records, generation transitions, and exposure/refresh. Constraints:
+untrusted client with **no** policy/workspace/audit authority; read-only against the supervisor;
+separate auth before any non-loopback exposure; bind loopback by default; never in the claim path.
+The CLI remains the claim-bearing entry point.
 
 ## Continuation plan — 2026-10-04 (this session)
 
