@@ -76,13 +76,15 @@ does not yet have a required frozen identity, the value is recorded as a gap in
 
 | Claim | Status | Source |
 |---|---|---|
-| Live provider exchange | **false** | `docs/implementation-status.md` "Current guest run and source scope"; `TASK_STATE.md` "Current verified state" |
+| Live provider exchange | **partial** — a real one-shot OpenRouter exchange with a captured tool call succeeded via `cmd/tbound-provider` on 2026-10-05 (HTTP 200, `captured_tool_calls=1`, ordered four-tool manifest respected); the adapter→Pi session wiring is still not live | `TASK_STATE.md` "Progress — session 2026-10-05" (genuine provider exchange); `supervisor/cmd/tbound-provider`, `supervisor/internal/broker/openrouter` |
 | Live effect execution | **false** | same |
 | Containment established | **false / not-established** | same; `podman_linux.go` `Profile`; `internal/sandbox/doc.go` |
 | G1 durability established | **false** | same |
 | Command containment | `not-established` (non-claim-bearing profiles only) | `podman_linux.go` (`Profile`, `EvidenceClass`); `internal/sandbox/sandbox_linux.go` (`Report.EvidenceClass`), `doc.go` |
 
-No value in this document moves any claim above `not-established`.
+No value in this document moves any containment or G1 claim above
+`not-established`; the live provider exchange is recorded as a one-shot
+transport/capture proof only.
 
 ## 7. "Must freeze before G1" gap list
 

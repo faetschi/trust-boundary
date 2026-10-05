@@ -71,6 +71,16 @@ Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman ru
   key redaction; the key is never logged/serialized/recorded and is passed via closure; model + key via
   env or a 0600 owner-only file). Independently verified (WSL `-race`, Windows build/tests, gofmt/diff,
   no module change); the real-network exchange test skips until credentials are supplied.
+- **Genuine provider exchange achieved (2026-10-05):** `cmd/tbound-provider` performed a real
+  OpenRouter exchange — HTTP 200, response id `gen-1791225506-zYER5MjxF0PnnrPQhzL6`, model
+  `nvidia/nemotron-3.5-lightning:free`, `captured_tool_calls=1`, ordered four-tool manifest respected,
+  21,683 bounded response bytes; containment `not-established`, `g1=false`. The API key was supplied via
+  `F:\TBoundAssets\secrets\openrouter.key` (ownership/DACL tightened to owner-only; never
+  printed/logged/committed). Forcing the exchange surfaced three real provider-compatibility fixes
+  (reasoning / reasoning_details / service_tier metadata, and a trailing usage trailer after
+  `finish_reason`), committed in `602f111`. This is a one-shot **transport + trusted-capture** proof:
+  the adapter→Pi session wiring is still not live, and the free endpoint logs sessions (only a synthetic
+  prompt was sent).
 - Remaining implementable items: publication path / frozen profile, the controller
   `ReviewedSourceCommit` + guest offline re-verification, and the webserver observability frontend
   below.
