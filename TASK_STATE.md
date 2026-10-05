@@ -1,5 +1,69 @@
 # TBound handoff state
 
+## Active five-slice execution — 2026-10-05
+
+### Slice 1 verified — 2026-10-05 (commit recorded after creation)
+
+Real OpenRouter single captured write successfully traversed real Unix IPC,
+concrete broker correlation, audit-backed gate and durable executor. Independent
+coordinator run: `TestRealProviderDurableLinux` `-race -count=1`, exit 0,
+response `gen-1791230451-K3yGWV65fIsMKy4gB3wt`; five audit records, exactly one
+write effect, delivered result, promoted `provider-write.txt=from-real-provider`,
+audit/Store.Verify and close/reopen verified. Redacted receipt:
+`docs/evidence/real-provider-durable-2026-10-05.json`.
+
+Isolated source based on starting HEAD with only the new test overlaid; exact
+test SHA-256 `e89e656944f7e73a97af28727fefcd75f28369f4117ca2574d6bdcaf296f7207`.
+WSL full race suite exit 0, ext4/private 0700 TMPDIR; frozen Windows build and
+internal/e2e tests both exit 0. Gofmt empty, diff check clean, modules unchanged;
+adapter untouched. Raw captured and normalized execution argument digests are
+deliberately separate, both bound to the actual captured call/derived proposal.
+Credential-free synthetic assertion fixture also passed. First loader attempt
+failed (exit 1, no network); same-file read-only mount lifecycle corrected it,
+and successful mounted attempt was explicitly unmounted. Original key ACL was
+owner-only and protected; no credential contents inspected/logged/copied.
+
+Limits: WSL development evidence, injected synthetic receipt authority, no live
+Pi/adapter or subsequent provider-result lineage/cell-authentication claim; no
+live publication in this test. Guest pinned SSH succeeded, but current-source
+guest offline verification is blocked (helper/operator context absent).
+Containment `not-established`; G1=false. Next: independently verify explorer,
+then publication; retain slice 4/5 exact prerequisite blockers separately.
+
+Initial inspection verified branch `codex/tbound-prototype`, HEAD
+`00ce8849878da04649815f3fd2bf4c4706ad0e81`. No applicable AGENTS.md was found
+in this checkout, the thesis tree, or ancestor directories. Pre-existing changes
+in implementation-status and Hyper-V infrastructure, the untracked user frontend
+plan, and the forbidden `vm_start.txt` remain excluded from staging and edits.
+
+Execution order: 1 → 3 → 2 → 4 → 5; investigate 4/5 prerequisites early.
+Delegate isolated implementation/exploration to `openai/gpt-6-luna#xhigh`;
+coordinator independently checks critical results and commits explicit paths only.
+1. Add credential-gated genuine OpenRouter captured-write durable IPC integration;
+   independently run synthetic-only exchange with the authorized model/key loader.
+2. Implement bounded publication from verified descriptors with cooperative locking,
+   consumed token and per-object durable recovery; test partial apply and disposable
+   restoration. Read process §5.4 and recovery §§2,4,6.6,8 before design. No global
+   atomicity or blind replay: normative per-object reconciliation overrides earlier
+   all-or-nothing/idempotent wording. §6/D06 private Git initialization is an explicit
+   prototype waiver/divergence, not normative compliance, and excluded from scope.
+3. Implement read-only live test explorer P0–P3 as explicitly requested. The current
+   user-authored frontend plan now describes interactive Pi chat, not the historical
+   P0–P3 dashboard; this narrower authorized explorer does not complete that plan's
+   governed-launch/chat milestones. Do not add mutation/control endpoints.
+4. Inspect reviewed helper/policy and prerequisites; freeze a verified committed
+   snapshot using `git -c core.autocrlf=false archive`, update only the reviewed
+   source pin if safe, and run offline guest verification or record exact unlock.
+5. Inspect normative frozen containment requirements and guest tooling/delegation;
+   implement only feasible bounded controls or record evidenced prerequisites.
+
+Each code slice requires independent WSL Ubuntu full race tests in a mode-0700
+ext4 copy/private TMPDIR, Windows build and internal/e2e tests, adapter check if
+touched, empty gofmt output, clean diff check and unchanged Go module files.
+Guest-relevant slices require pinned SSH evidence or an explicit blocker. Retain
+redacted evidence only. Final status is per-slice commits/evidence or exact blockers;
+containment remains `not-established`, `G1=false` absent the entire frozen proof.
+
 Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman runner committed (`c0a0522`) and independently re-verified on the guest
 
 ## Progress — session 2026-10-05
