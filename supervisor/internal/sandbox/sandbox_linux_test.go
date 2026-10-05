@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -40,6 +41,8 @@ func init() {
 		os.Exit(runReadOnlyProbe())
 	case "memory":
 		os.Exit(runMemoryProbe())
+	case "readmatrix":
+		os.Exit(runReadMatrixProbe())
 	}
 }
 
@@ -257,6 +260,69 @@ func TestPathEscapeDenied(t *testing.T) {
 	t.Logf("path-escape probe: %s", strings.TrimSpace(string(result.Stdout)))
 }
 
+// TestDeniedReadMatrixConfinement is the E06 cell-boundary containment matrix.
+// Inside one real cell it attempts an absolute outside read, a relative ".."
+// traversal, a symlink escape, an unknown target, and a Bash-style /bin/cat of
+// the outside file. Every route must be denied or confined, no outside content
+// may appear in the captured output, and the cell must still settle cleanly.
+//
+// The probe needs an out-of-workspace secret. Under the required private
+// 0700 TMPDIR the secret lives outside every Landlock-allowed path; /tmp itself
+// is writable and allowed by design, so /tmp is not used as the secret root.
+func TestDeniedReadMatrixConfinement(t *testing.T) {
+	requireMechanisms(t)
+	work := newWorkDir(t)
+	outsideDir := filepath.Join(work, "outside")
+	if err := os.MkdirAll(outsideDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const secret = "outside-secret"
+	outsideFile := filepath.Join(outsideDir, "secret.txt")
+	if err := os.WriteFile(outsideFile, []byte(secret+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rootPath := filepath.Join(work, "cell")
+	if err := os.MkdirAll(rootPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideDir, filepath.Join(rootPath, "escape")); err != nil {
+		t.Fatal(err)
+	}
+	root := openDir(t, rootPath)
+	result, settlement, err := Launch(context.Background(), Request{
+		Root: root,
+		Argv: []string{"/proc/self/exe"},
+		Env: []string{
+			"PATH=/usr/bin:/bin", "HOME=/tmp", "TMPDIR=/tmp", testCommandEnv + "=readmatrix",
+			"TBOUND_PROBE_OUTSIDE=" + outsideFile, "TBOUND_PROBE_SECRET=" + secret,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Launch read-matrix target: %v\n%s", err, result.Stderr)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("read-matrix probe failed (%d): %s", result.ExitCode, result.Stdout)
+	}
+	if !settlement.ExitObserved || !settlement.ProcessScopeEmpty || !settlement.WritersStopped || !settlement.MountDetached {
+		t.Fatalf("read-matrix cell did not settle: %+v", settlement)
+	}
+	output := string(result.Stdout)
+	for _, marker := range []string{"absolute-DENIED", "symlink-DENIED", "cat-DENIED"} {
+		if !strings.Contains(output, marker) {
+			t.Fatalf("read matrix missing %s: %s", marker, output)
+		}
+	}
+	if !strings.Contains(output, "dotdot-DENIED") && !strings.Contains(output, "dotdot-BLOCKED") {
+		t.Fatalf("read matrix did not confine the relative traversal: %s", output)
+	}
+	if !strings.Contains(output, "missing-DENIED") && !strings.Contains(output, "missing-BLOCKED") {
+		t.Fatalf("read matrix did not confine the unknown target: %s", output)
+	}
+	if strings.Contains(output, secret) || strings.Contains(output, "ALLOWED") {
+		t.Fatalf("read matrix released outside content: %s", output)
+	}
+}
+
 func TestSurvivingChildFailsClosed(t *testing.T) {
 	requireMechanisms(t)
 	work := newWorkDir(t)
@@ -403,6 +469,71 @@ func runLandlockProbe() int {
 			// mount namespace; treat any hard failure as confinement.
 			fmt.Printf("dotdot-outside-BLOCKED:%v\n", err)
 		}
+	}
+	return 0
+}
+
+// runReadMatrixProbe attempts the denied-read matrix from inside the cell. It
+// prints one marker per route and returns nonzero if any route released bytes
+// or allowed a read. Paths outside the mount namespace may fail during
+// resolution before Landlock; a hard failure still released no content and is
+// recorded as BLOCKED.
+func runReadMatrixProbe() int {
+	outside := os.Getenv("TBOUND_PROBE_OUTSIDE")
+	secret := os.Getenv("TBOUND_PROBE_SECRET")
+	failed := false
+
+	report := func(name string, data []byte, err error) {
+		if err == nil {
+			fmt.Printf("%s-READ-ALLOWED:%q\n", name, data)
+			failed = true
+			return
+		}
+		if len(data) != 0 {
+			fmt.Printf("%s-LEAKED-BYTES:%q\n", name, data)
+			failed = true
+			return
+		}
+		if isDenied(err) {
+			fmt.Printf("%s-DENIED:%v\n", name, err)
+			return
+		}
+		fmt.Printf("%s-BLOCKED:%v\n", name, err)
+	}
+
+	data, err := os.ReadFile(outside)
+	report("absolute", data, err)
+
+	if cwd, err := os.Getwd(); err != nil {
+		fmt.Printf("getcwd-FAILED:%v\n", err)
+		return 1
+	} else if relative, relErr := filepath.Rel(cwd, outside); relErr != nil {
+		fmt.Printf("dotdot-REL-FAILED:%v\n", relErr)
+	} else {
+		data, err := os.ReadFile(relative)
+		report("dotdot", data, err)
+	}
+
+	data, err = os.ReadFile("escape/secret.txt")
+	report("symlink", data, err)
+
+	data, err = os.ReadFile("does-not-exist.txt")
+	report("missing", data, err)
+
+	// Bash command view: a /bin/cat of the outside file must also be denied. On
+	// failure cat writes a diagnostic to stderr, so only the secret content
+	// itself is disqualifying.
+	cat := exec.Command("/bin/cat", outside)
+	combined, catErr := cat.CombinedOutput()
+	if catErr == nil || (secret != "" && strings.Contains(string(combined), secret)) {
+		fmt.Printf("cat-READ-ALLOWED:%q\n", combined)
+		failed = true
+	} else {
+		fmt.Printf("cat-DENIED:%v\n", catErr)
+	}
+
+	if failed {
+		return 1
 	}
 	return 0
 }

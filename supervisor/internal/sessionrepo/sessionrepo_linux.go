@@ -529,6 +529,28 @@ func (s *Store) Write(ctx context.Context, input *Generation, operation delta.Op
 	})
 }
 
+// Delete removes one regular file from a fresh private copy of the input
+// generation and promotes the sealed result, with the same durable intent,
+// ordered transition, approved-delta ledger, and recovery semantics as Write
+// and Edit. Deleting a path that is absent, non-regular, linked, or substituted
+// is rejected; the sealed input generation is never modified. Parent
+// directories are not removed, so create/delete-and-revert fixtures are
+// representable as their own recorded transitions (process §5.4).
+func (s *Store) Delete(ctx context.Context, input *Generation, operation delta.OperationIdentity, decision delta.PolicyDecision, path string) (MutationResult, error) {
+	if err := validateRelativePath(path); err != nil {
+		return MutationResult{}, err
+	}
+	argumentDigest, err := argumentsDigest(struct {
+		Path string `json:"path"`
+	}{path})
+	if err != nil {
+		return MutationResult{}, err
+	}
+	return s.mutate(ctx, input, "delete", operation, decision, argumentDigest, func(root *os.File) error {
+		return removeRegularAt(root, path)
+	})
+}
+
 // RunBash supplies an independent ordinary byte-copy view to a trusted
 // CommandRunner. Intent is durable before Run is called, and no command result
 // is released until the imported gN transition and terminal audit result are

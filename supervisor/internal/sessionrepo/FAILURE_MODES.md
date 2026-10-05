@@ -12,8 +12,9 @@ released:
    the observed tree must match a complete stable scan before promotion.
 4. An import contains a symlink, hard link, special file, nested mount, visible
    xattr/ACL/file capability, noncanonical stored mode, or unsupported path.
-5. An edit target is absent, non-regular, linked, too large, or replaced by a
-   link between path lookup and open.
+5. An edit or delete target is absent, non-regular, linked, too large, or
+   replaced by a link between path lookup and open; a delete may only remove a
+   regular file already present in the approved tree.
 6. An edit replacement is empty, occurs zero/multiple times, or overlaps
    another replacement; the operation must not partially update its source.
 7. A write/edit exceeds file/tree limits, produces a malformed manifest, or

@@ -398,7 +398,7 @@ func (s *Store) transitionLocked(input *Generation, outputID string, request Ope
 	noCommandContext := request.ViewID == "" && request.ExecutionContextDigest == ""
 	if input == nil || request.InputGeneration != input.id || request.InputTreeDigest != input.snapshot.TreeDigest ||
 		!validSHA256(request.ArgumentDigest) || validateOperation(request.Operation) != nil ||
-		(request.Tool != "edit" && request.Tool != "write" && request.Tool != "bash") ||
+		(request.Tool != "edit" && request.Tool != "write" && request.Tool != "delete" && request.Tool != "bash") ||
 		(request.Tool == "bash" && !commandContextValid) || (request.Tool != "bash" && !noCommandContext) ||
 		output.Manifest.Generation != outputID || output.Manifest.MetadataPolicyDigest != s.options.MetadataPolicyDigest {
 		return delta.Transition{}, delta.Result{}, ErrInvalidOptions
@@ -1033,6 +1033,31 @@ func replaceRegularAt(root *os.File, path string, content []byte, executableBits
 	tempExists = false
 	if err := syncDirectory(parent); err != nil {
 		return fmt.Errorf("sync output parent directory: %w", err)
+	}
+	return nil
+}
+
+// removeRegularAt unlinks one regular file beneath a validated descriptor
+// chain. A missing, non-regular, linked, or owner-mismatched target is rejected
+// so a delete can only remove an object already present in the approved tree;
+// the affected parent directory is synced after the unlink so the deletion is
+// durable before the generation is promoted.
+func removeRegularAt(root *os.File, path string) error {
+	parent, leaf, err := openParent(root, path)
+	if err != nil {
+		return err
+	}
+	defer parent.Close()
+	if _, exists, err := targetIdentity(parent, leaf); err != nil {
+		return err
+	} else if !exists {
+		return ErrUnsupportedTarget
+	}
+	if err := unlinkAt(int(parent.Fd()), leaf, 0); err != nil {
+		return fmt.Errorf("unlink workspace file: %w", err)
+	}
+	if err := syncDirectory(parent); err != nil {
+		return fmt.Errorf("sync unlink parent directory: %w", err)
 	}
 	return nil
 }

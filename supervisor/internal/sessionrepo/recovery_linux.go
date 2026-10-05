@@ -185,7 +185,7 @@ func (s *Store) recoverEffectLocked(effect audit.EffectTrace) error {
 		return ErrInvalidDecision
 	}
 	if (request.Tool == "bash" && request.Operation.Kind != delta.OperationLease) ||
-		((request.Tool == "write" || request.Tool == "edit" || request.Tool == "read") && request.Operation.Kind != delta.OperationProposalCall) {
+		((request.Tool == "write" || request.Tool == "edit" || request.Tool == "delete" || request.Tool == "read") && request.Operation.Kind != delta.OperationProposalCall) {
 		return ErrInvalidOptions
 	}
 	if request.Tool == "bash" {
@@ -307,7 +307,7 @@ func (s *Store) recoverMutationLocked(effect audit.EffectTrace, request Operatio
 		if err := s.options.VerifySettlement(result.Settlement, request.ViewID, request.Operation.LeaseID); err != nil {
 			return fmt.Errorf("revalidate command settlement: %w", err)
 		}
-	} else if request.Tool == "write" || request.Tool == "edit" {
+	} else if request.Tool == "write" || request.Tool == "edit" || request.Tool == "delete" {
 		if err := json.Unmarshal(effect.Result, &transition); err != nil {
 			return fmt.Errorf("decode mutation transition: %w", err)
 		}
