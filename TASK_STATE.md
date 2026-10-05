@@ -15,6 +15,18 @@ Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman ru
   pinned); containment recorded `not-established`.
 - Guest DHCP moved `172.24.195.3` → `172.25.31.157` (VM Running on `Default Switch`), rediscovered from
   MAC `00-15-5D-0C-40-00`.
+- Committed `ebf7e53`: E05 two-generation `read → edit → bash → read` workflow over
+  ipc → broker correlation → gate → durable executor, plus the durable (non-mutating) `read` path
+  (bounded strict-JSON summary, fail-closed path/argument/bound checks, no generation advance), with
+  ambient-bypass denial and cancellation tests. Independently verified (WSL `-race`, Windows
+  build/test, gofmt/diff, no module change).
+- Committed `42c82d7`: `Store.Delete` (same durable intent/transition/ledger/recovery semantics as
+  Write/Edit) and the E04 create-delete-revert / modify-revert observation fixtures (both intervening
+  transitions retained even when the final tree matches), plus the E06 denied-read matrix for the
+  sessionrepo read path and the sandbox cell boundary. Independently verified (WSL `-race`, Windows
+  build/test, gofmt/diff, no module change). Delete is a store capability only, not wired into the
+  registered four-tool surface.
+- In progress: Podman digest-pin + settlement-observer hardening (non-claim-bearing).
 
 ## Resume point — next
 
