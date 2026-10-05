@@ -41,9 +41,17 @@ Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman ru
 - Committed `abfe515`: D1 self-contained evidence bundle + pure `Reconstruct` replay (exit #5), with
   reconstruct/quarantine and eight tamper cases; independently verified (WSL `-race`, Windows,
   gofmt/diff, no module change).
-- In progress: D2 sealed-generation reachability + read-only proof (exit #2). **Open decision:** the
-  normative spec §6 wants a *new private Git repository*; the implementation has none. Decide between
-  recording an explicit spec waiver and implementing private-repo init before closing #2 as written.
+- Committed `ce3ec63`: D2 sealed-generation reachability + read-only proof (exit #2) — live-source
+  independence, no Git/mount reachability, O_PATH-only mount source, and sealed-tree plus
+  durable-manifest tamper fail closed. Independently verified (WSL `-race`, Windows, gofmt/diff, no
+  module change).
+- **Open decisions (blocking full G1):** (a) spec §6/D06 call for a new private Git repository; the
+  prototype has none — record a waiver or implement; (b) a real provider exchange needs privately
+  supplied model ID + API key; (c) checkpoint-restore demonstration needs a Hyper-V checkpoint task
+  (not in `\TBoundVmOps`), i.e. a one-time elevation decision.
+- Remaining implementable items: candidate experiment manifest (record VM/kernel/Podman/crun/Landlock/
+  cgroup/userns/entrypoint facts and explicit gaps), publication path / frozen profile, and the
+  controller `ReviewedSourceCommit` + guest offline re-verification.
 
 ## Resume point — next
 
