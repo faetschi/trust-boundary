@@ -93,6 +93,27 @@ Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman ru
   `ReviewedSourceCommit` + guest offline re-verification, and the webserver observability frontend
   below.
 
+### Five-slice completion plan (2026-10-05)
+
+Executing the remaining items as separate, committed, independently verified slices. Evidence standard
+for each: WSL2 `go test -race -count=1 ./...` with a private mode-0700 TMPDIR, Windows `go build ./...`
+plus `go test ./internal/... ./e2e`, adapter `npm run check` when the adapter is touched,
+`gofmt -l supervisor` empty, `git diff --check` clean, no `go.mod`/`go.sum` change, and a pinned-key-SSH
+guest re-run where guest-relevant. Containment stays `not-established`; spec §6/D06 private-Git-repo is
+recorded as a documented waiver (not implemented); the CLI stays the claim-bearing frontend and the web
+client untrusted/read-only.
+
+1. Real provider capture → ipc → broker correlation → gate → durable effect (in progress).
+2. Publication / live-apply: repository lock, single-use commit token, per-object apply, recovery
+   record, disposable restore.
+3. Extend `cmd/tbound-web` + `internal/webview` into a live read-only test-run dashboard per
+   `docs/frontend-observability-plan.md` (P0–P3 first).
+4. Update the reviewed verifier controller's `ReviewedSourceCommit` and re-run the guest offline
+   verifier against a frozen committed snapshot (may need the one-time reviewed-helper install).
+5. Claim-bearing containment hardening toward G1 (signed in-image entrypoint, offline cosign, delegated
+   non-threaded cgroup-v2 with `cgroup.kill`/pidfd, real settlement observer) — expected to be blocked
+   on tooling/elevation and reported as such.
+
 ## Resume point — next
 
 HEAD = `c0a0522`. Working tree holds only the pre-existing unrelated `docs/` + `infra/hyperv/`
