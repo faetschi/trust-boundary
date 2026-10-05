@@ -38,7 +38,12 @@ Last updated: 2026-10-05 (Europe/Vienna) — resumed session; rootless Podman ru
   intent-before-effect and outcome-before-release fail closed, with poisoning and unresolved-intent
   quarantine reproduced on reopen. Independently verified (WSL `-race`, Windows, gofmt/diff, no module
   change).
-- In progress: D1 self-contained reconstructable evidence bundle + independent replay (exit #5).
+- Committed `abfe515`: D1 self-contained evidence bundle + pure `Reconstruct` replay (exit #5), with
+  reconstruct/quarantine and eight tamper cases; independently verified (WSL `-race`, Windows,
+  gofmt/diff, no module change).
+- In progress: D2 sealed-generation reachability + read-only proof (exit #2). **Open decision:** the
+  normative spec §6 wants a *new private Git repository*; the implementation has none. Decide between
+  recording an explicit spec waiver and implementing private-repo init before closing #2 as written.
 
 ## Resume point — next
 
