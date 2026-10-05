@@ -96,13 +96,15 @@ User request (2026-10-05): a visual "frontend" to watch sessions/tests in real t
   a polished TUI/browser UI is a **deferred non-goal** for the MVP; `visualizations-plan.md:417,543`
   keeps presentation dashboards/live charts out of the claim path.
 
-Proposed future slice (not started): a **Go webserver** presentation client in the same module that
-subscribes to the supervisor API (event stream over SSE/WebSocket) and shows live: preflight, session
-lifecycle, the `proposal → broker correlation → gate verdict → durable effect → result` chain, the
-bounded transcript/audit records, generation transitions, and exposure/refresh. Constraints:
-untrusted client with **no** policy/workspace/audit authority; read-only against the supervisor;
-separate auth before any non-loopback exposure; bind loopback by default; never in the claim path.
-The CLI remains the claim-bearing entry point.
+First slice committed (`93fb8bf`): `cmd/tbound-web` + `internal/webview` — a loopback-only
+(`127.0.0.1:8787`; non-loopback `--addr` rejected, no remote auth), read-only Go server that tails the
+audit-journal JSONL and supervisor-transcript NDJSON (opened read-only, never written) and serves an
+embedded live page + SSE `/events` + `records` (bounded buffer; malformed/oversized lines surfaced
+honestly; truncation/rotation handled). Verified (WSL `-race`, Windows build/tests, gofmt/diff, no
+module change). Remaining for later: wire it to a live supervisor session/event source and enrich the
+views (preflight, session lifecycle, generation transitions, exposure/refresh). Keep it an untrusted
+client with **no** policy/workspace/audit authority, loopback by default, separate auth before any
+non-loopback exposure, and never in the claim path. The CLI remains the claim-bearing entry point.
 
 ## Continuation plan — 2026-10-04 (this session)
 
