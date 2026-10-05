@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>tbound observability</title>
+  <style>
+    :root { color-scheme: light dark; font: 15px/1.45 system-ui, sans-serif; }
+    body { margin: 0 auto; max-width: 1200px; padding: 1.25rem; }
+    .banner { background: #7c2d12; color: white; padding: .9rem 1rem; border-radius: .4rem; font-weight: 700; }
+    .subtle { color: #777; }
+    .table-wrap { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border-bottom: 1px solid #8886; padding: .65rem; text-align: left; vertical-align: top; }
+    th { position: sticky; top: 0; background: Canvas; }
+    td.record { min-width: 28rem; }
+    pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 ui-monospace, monospace; }
+    .badge { display: inline-block; border: 1px solid #8888; border-radius: 999px; margin: 0 .25rem .2rem 0; padding: .1rem .5rem; font-size: .78rem; }
+    .badge.malformed { background: #7c2d12; color: white; }
+    #status { margin-top: .8rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="banner">untrusted presentation client — read-only; not in the claim path</div>
+    <h1>tbound observability</h1>
+    <p class="subtle">Recent journal and transcript lines, presented as observations only. This view provides no mutation controls and makes no security or containment claim.</p>
+    <p id="status" role="status">Connecting to the local event stream…</p>
+  </header>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Type</th><th>Source</th><th>Observed</th><th>JSONL line</th></tr></thead>
+      <tbody id="records"></tbody>
+    </table>
+  </div>
+  <script>
+    (() => {
+      const rows = document.getElementById('records');
+      const status = document.getElementById('status');
+      const maxRows = 256;
+      function cell(text) {
+        const td = document.createElement('td');
+        td.textContent = text;
+        return td;
+      }
+      function render(record) {
+        const row = document.createElement('tr');
+        const types = Array.isArray(record.types) ? record.types : ['record'];
+        const typeCell = document.createElement('td');
+        for (const type of types) {
+          const badge = document.createElement('span');
+          badge.className = 'badge' + (type === 'malformed' ? ' malformed' : '');
+          badge.textContent = type;
+          typeCell.appendChild(badge);
+        }
+        row.appendChild(typeCell);
+        row.appendChild(cell(record.source || 'unknown'));
+        row.appendChild(cell(record.received_at || ''));
+        const detailCell = document.createElement('td');
+        detailCell.className = 'record';
+        const pre = document.createElement('pre');
+        const payload = Object.prototype.hasOwnProperty.call(record, 'record')
+          ? record.record
+          : { raw_line: record.raw_line, parse_error: record.parse_error };
+        pre.textContent = JSON.stringify(payload, null, 2);
+        detailCell.appendChild(pre);
+        row.appendChild(detailCell);
+        rows.prepend(row);
+        while (rows.children.length > maxRows) rows.lastElementChild.remove();
+      }
+      const events = new EventSource('/events');
+      events.onopen = () => { status.textContent = 'Live event stream connected.'; };
+      events.onmessage = (event) => {
+        try {
+          render(JSON.parse(event.data));
+          status.textContent = 'Live event stream connected.';
+        } catch (_) {
+          status.textContent = 'Received an event that could not be displayed.';
+        }
+      };
+      events.onerror = () => { status.textContent = 'Event stream disconnected; reconnecting…'; };
+    })();
+  </script>
+</body>
+</html>
