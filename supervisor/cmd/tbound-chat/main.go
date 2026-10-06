@@ -675,13 +675,27 @@ func run(args []string) error {
 	defer stop()
 	go func() {
 		<-ctx.Done()
+		fmt.Fprintln(os.Stderr, "shutting down tbound-chat...")
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 		_ = manager.Close(shutdown)
 	}()
+	writeStartupBanner(os.Stderr, actualHost, *tokenFile)
 	if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
+	fmt.Fprintln(os.Stderr, "tbound-chat stopped.")
 	return nil
+}
+
+// writeStartupBanner states that this is the explicit non-claim-bearing fixture
+// chat, where to open it, and which owner-private pairing file holds the token.
+// The token value itself is never printed, logged, or returned.
+func writeStartupBanner(w io.Writer, address, tokenFile string) {
+	fmt.Fprintln(w, "tbound-chat - Pi SDK chat (FIXTURE MODE, non-claim-bearing)")
+	fmt.Fprintf(w, "  listener  : http://%s/ - open this URL in a browser\n", address)
+	fmt.Fprintln(w, "  mode      : fixture only; real/governed launch is refused until profile and containment gates exist")
+	fmt.Fprintf(w, "  token file: %s (owner-private; contents are never printed)\n", tokenFile)
+	fmt.Fprintln(w, "ready; press Ctrl+C to stop. Fixture events are nonauthoritative.")
 }

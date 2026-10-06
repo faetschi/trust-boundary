@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"tbound/supervisor/internal/webview"
 )
 
 func TestReadOnlySourceFlagValidation(t *testing.T) {
@@ -25,6 +27,23 @@ func TestReadOnlySourceFlagValidation(t *testing.T) {
 				t.Fatalf("run error = %v; want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestStartupBannerNamesViewerSourcesAndURL(t *testing.T) {
+	var buffer bytes.Buffer
+	writeStartupBanner(&buffer, []webview.Source{
+		{Name: "go test JSON stream", Kind: "go-test", Path: "events.jsonl"},
+		{Name: "go test run manifest", Kind: "manifest", Path: "run.json"},
+	}, "history.json", "127.0.0.1:8787")
+	out := buffer.String()
+	for _, want := range []string{
+		"tbound-web", "read-only", "http://127.0.0.1:8787/",
+		"go-test", "events.jsonl", "manifest", "run.json", "history.json",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("startup banner missing %q in:\n%s", want, out)
+		}
 	}
 }
 

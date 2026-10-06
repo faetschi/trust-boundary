@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
@@ -13,6 +14,20 @@ import (
 	"tbound/supervisor/internal/ipc"
 	"tbound/supervisor/internal/sessioncontrol"
 )
+
+func TestStartupBannerNamesFixtureChatAndURL(t *testing.T) {
+	var buffer bytes.Buffer
+	writeStartupBanner(&buffer, "127.0.0.1:8788", ".tbound-chat-token")
+	out := buffer.String()
+	for _, want := range []string{
+		"tbound-chat", "FIXTURE MODE", "non-claim-bearing",
+		"http://127.0.0.1:8788/", ".tbound-chat-token",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("startup banner missing %q in:\n%s", want, out)
+		}
+	}
+}
 
 func TestLauncherRefusesRealModeWithoutExplicitFixture(t *testing.T) {
 	if err := run(nil); err != sessioncontrol.ErrRealLaunchRefused {

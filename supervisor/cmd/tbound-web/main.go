@@ -15,6 +15,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -118,10 +119,11 @@ func run(args []string, stderr interface{ Write([]byte) (int, error) }) error {
 	}
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- server.Serve(listener) }()
-	fmt.Fprintf(stderr, "tbound-web listening at http://%s (untrusted presentation client; read-only; loopback only)\n", listener.Addr())
+	writeStartupBanner(stderr, sources, *history, listener.Addr().String())
 
 	select {
 	case <-ctx.Done():
+		fmt.Fprintln(stderr, "shutting down tbound-web...")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		shutdownErr := server.Shutdown(shutdownCtx)
@@ -143,6 +145,22 @@ func run(args []string, stderr interface{ Write([]byte) (int, error) }) error {
 		}
 		return fmt.Errorf("file tailer: %w", err)
 	}
+}
+
+// writeStartupBanner states what the process is, which files it exposes
+// read-only, and the exact URL to open. It never prints credentials or secrets,
+// and it exists so an operator cannot mistake a silently running server for a
+// crash. This viewer is untrusted and nonauthoritative.
+func writeStartupBanner(w io.Writer, sources []webview.Source, history, address string) {
+	fmt.Fprintln(w, "tbound-web - untrusted, read-only test/observability viewer (not the claim path)")
+	for _, source := range sources {
+		fmt.Fprintf(w, "  source  %-10s %s\n", source.Kind, source.Path)
+	}
+	if history != "" {
+		fmt.Fprintf(w, "  history %s (viewer-owned; must not be a configured source)\n", history)
+	}
+	fmt.Fprintf(w, "listening at http://%s/ - open this URL in a browser\n", address)
+	fmt.Fprintln(w, "ready; press Ctrl+C to stop. This viewer never runs tests or changes supervisor state.")
 }
 
 func sameConfiguredPath(left, right string) bool {
