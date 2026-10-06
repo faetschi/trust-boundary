@@ -2,6 +2,53 @@
 
 ## Next implementation increments — 2026-10-06
 
+Corrected publication integration independently accepted; commit pending.
+Snapshot `publicationcorrected.N85jr8`: full Linux race suite, gofmt and focused
+vet passed; Windows exact-copy build/internal/e2e passed; four new runtime
+regression groups repeated ten times with race detection passed. Agent corrected
+active-owner/recovery exclusion, journal/workflow/epoch/workspace binding, nil
+recovery refusal, concurrent finalization and descriptor cleanup. Only additional
+existing publication change is the read-only repository binding accessor.
+Evidence hashes and vet shell-invocation failure/corrected success recorded in
+`docs/publication-runtime-integration.md`. Production host callbacks, actual Pi
+launch integration, guest/profile proof and containment remain absent; G1=false.
+
+Earlier publication draft review (superseded by corrected acceptance above):
+the increment was NOT accepted or committed. Independent full private-ext4 race snapshot
+`/home/jeli2k/tbound-coordinator-publicationreview.cRwM17` passed all supervisor
+packages (`RACE_EXIT=0`, gofmt empty, private TMPDIR mode 0700), with only its
+explicit workflow/gate/cmd overlays. This tests the original draft, not the
+requested corrections or missing interleavings. Correction dispatched to the existing
+publication agent: active pending markers can be reconciled before their owner
+writes prepare; repository/lifecycle journal and owner binding need enforcement;
+concurrent Serve/Finalize broker access needs synchronization; nil recovery
+openers and descriptor error cleanup need fail-closed handling. Require new
+active-owner/recovery interleaving, configuration-mismatch and concurrent
+finalization tests before acceptance. Existing synthetic runner proves no
+containment; production admission remains refused.
+
+### User architecture correction — actual Pi harness, not replacement chat
+
+User clarified that the product must launch and preserve the actual Pi harness
+and its normal user experience under TBound governance (target example:
+`tbound serve --pi`, not a currently implemented command). Pi owns its native
+conversation/tool/UI behavior; TBound owns admitted launch, policy, broker,
+execution authority, lifecycle, publication, evidence and a separate governance
+frontend. Do not continue treating custom SDK/browser chat as the final product
+or recreate Pi from scratch. Existing `9144d59` remains useful fixture/API/security
+evidence, not fulfillment of this native-harness integration requirement.
+
+Next integration must investigate minimal launcher + governed Pi adapter/extension
+hooks while retaining stock Pi presentation where feasible. Desired extensions
+must be admitted through a registered/reviewed profile, not an arbitrary bypass.
+Model tools, direct user-shell actions and config/resource changes need explicit
+governance coverage or honest refusal; never forge provider lineage for user
+commands. Native TUI/PTY presentation and the optional governance viewer share
+the same supervisor authority, not separate implementations. Preserve existing
+fixture work and user-authored frontend plan; do not overwrite either as a pivot.
+Publication integration remains presentation-independent and has been explicitly
+resumed again at the user's request. No production admission/G1 claim changes.
+
 Restricted real-Pi fixture workspace committed as
 `9144d59e0875bc6679c79fd57044b05660747b8b`. Post-commit LF archive compared every
 tested supervisor source byte and complete Go-file set (exit 0), plus all eight

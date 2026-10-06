@@ -96,6 +96,17 @@ type Repository struct {
 	closed    bool
 }
 
+// RepositoryBinding is a read-only snapshot of the repository configuration
+// that owns durable publication records. The Journal pointer is included so a
+// trusted lifecycle coordinator can reject a repository attached to a
+// different audit log before allowing publication or recovery.
+type RepositoryBinding struct {
+	WorkflowID string
+	OwnerEpoch uint64
+	Journal    *audit.Journal
+	Workspace  workspace.Options
+}
+
 type liveRootLock struct {
 	rootID   fileIdentity
 	parentID fileIdentity
@@ -315,6 +326,26 @@ func Acquire(options Options) (*Repository, error) {
 		return closeOnError(fmt.Errorf("persist publication owner epoch: %w", err))
 	}
 	return r, nil
+}
+
+// Binding returns the repository's immutable durable binding while it remains
+// open. It exposes no mutable repository state and is intended for trusted
+// composition/recovery checks.
+func (r *Repository) Binding() (RepositoryBinding, bool) {
+	if r == nil {
+		return RepositoryBinding{}, false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || r.options.Journal == nil {
+		return RepositoryBinding{}, false
+	}
+	return RepositoryBinding{
+		WorkflowID: r.options.WorkflowID,
+		OwnerEpoch: r.options.OwnerEpoch,
+		Journal:    r.options.Journal,
+		Workspace:  r.options.Workspace,
+	}, true
 }
 
 // Publish validates the ordered ledger and complete manifests, stages every
