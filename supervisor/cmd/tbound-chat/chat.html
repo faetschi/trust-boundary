@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TBound fixture Pi workspace</title>
+<style>
+body{font:15px system-ui,sans-serif;max-width:58rem;margin:1.5rem auto;padding:0 1rem;background:#10151d;color:#eef}
+main{display:grid;gap:.8rem}label{display:grid;gap:.3rem}input,textarea{width:100%;box-sizing:border-box;background:#18212c;color:#eef;border:1px solid #526070;padding:.6rem}textarea{resize:vertical}
+button{padding:.55rem .9rem}#session-meta,#context{border:1px solid #526070;padding:.6rem;background:#18212c;font-family:ui-monospace,monospace;font-size:.88rem}
+#log{min-height:16rem;max-height:30rem;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid #526070;padding:1rem;background:#18212c}
+#session-meta,#context{overflow-wrap:anywhere}
+.server{color:#ffd58a}.fixture{color:#b8d5ff}.pending{color:#f4d35e}.completed{color:#8ee28e}.denied,.failed{color:#ff9e9e}.unknown{color:#ff7b7b}
+</style>
+</head>
+<body><main>
+<h1>Restricted Pi fixture workspace</h1>
+<p>This is an explicit Pi 0.87.1 fixture. Provider, containment, publication, and effects are non-claim-bearing.</p>
+<section aria-label="local pairing"><label>Owner-private pairing capability <input id="pairing" type="password" autocomplete="off" spellcheck="false"></label><button id="pair">Pair this browser</button></section>
+<div id="session-meta">browser not paired; session unavailable</div>
+<div id="context">Project test/action output context: unsupported in this slice. Publication: unavailable (fixture).</div>
+<div id="log" aria-live="polite"></div>
+<p id="render-limit" role="status" hidden>Older display entries were removed to keep rendering bounded. Server history is separate.</p>
+<textarea id="prompt" rows="4" maxlength="16384" placeholder="Send a bounded task prompt" disabled></textarea>
+<div><button id="start" disabled>Launch registered fixture</button><button id="send" disabled>Send task</button><button id="stop" disabled>Stop session</button></div>
+</main>
+<script>
+"use strict";
+const log=document.getElementById("log"),pairing=document.getElementById("pairing"),pair=document.getElementById("pair"),meta=document.getElementById("session-meta"),prompt=document.getElementById("prompt"),start=document.getElementById("start"),send=document.getElementById("send"),stop=document.getElementById("stop");
+let sessionId="",cursor=0,source,reconnectTimer,assistantNode,assistantTurn,assistantText="",assistantTruncated=false;
+const maxRenderedEntries=512,maxRenderedText=16384;
+function line(text,cls){const node=document.createElement("div");node.className=cls||"";const value=String(text);node.textContent=value.length>maxRenderedText?value.slice(0,maxRenderedText)+" [display truncated]":value;log.appendChild(node);while(log.childElementCount>maxRenderedEntries){log.firstElementChild.remove();document.getElementById("render-limit").hidden=false;}log.scrollTop=log.scrollHeight;return node;}
+async function api(path,init){const response=await fetch(path,{credentials:"same-origin",headers:{"Content-Type":"application/json",...(init&&init.headers||{})},...init});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||`HTTP ${response.status}`);return body;}
+function sessionView(body){meta.textContent=`session=${body.session_id||sessionId} state=${body.state||"unavailable"} generation=${body.generation_id||"unavailable"} publication=unavailable (fixture)`;}
+function renderEvent(event){
+  if(event.event_id&&event.event_id<=cursor)return;
+  cursor=Math.max(cursor,event.event_id||0);
+  if(event.kind==="user_message"){assistantNode=undefined;line("You: "+(event.text||""),"server");return;}
+  if(event.kind==="text_delta"){
+    if(!assistantNode||!assistantNode.isConnected||assistantTurn!==event.turn_id){assistantTurn=event.turn_id;assistantText="";assistantTruncated=false;assistantNode=line("Pi: ","fixture");}
+    const combined=assistantText+(event.text||"");assistantTruncated=assistantTruncated||combined.length>maxRenderedText;assistantText=combined.slice(0,maxRenderedText);assistantNode.textContent="Pi: "+assistantText+(assistantTruncated?" [display truncated]":"");log.scrollTop=log.scrollHeight;return;
+  }
+  if(event.kind&&event.kind.indexOf("tool_")===0){
+    const refs=`proposal=${event.proposal_ref||"unavailable"} decision=${event.decision_ref||"unavailable"} result=${event.result_ref||"unavailable"} provider=${event.provider_ref||"unavailable"}`;
+    const effect=event.effect_ref?` effect=${event.effect_ref}`:"";
+    line(`${(event.status||"failed").toUpperCase()} ${event.tool||"tool"} | ${refs}${effect}${event.text?` | ${event.text}`:""}`,event.status||"failed");return;
+  }
+  if(event.kind==="session_unknown"){line("UNKNOWN: worker cleanup is not settled with certainty","unknown");}
+  else if(event.error){line(`${event.kind}: ${event.error}`,"server");}
+  else if(event.kind!=="gap"){line(`[${event.kind}]`,event.trust_level||"server");}
+}
+function scheduleEvents(delay){if(reconnectTimer||!sessionId)return;reconnectTimer=setTimeout(()=>{reconnectTimer=undefined;events();},delay);}
+function events(){source=new EventSource(`/api/v1/sessions/${encodeURIComponent(sessionId)}/events?after=${cursor}`);source.onmessage=(message)=>renderEvent(JSON.parse(message.data));source.addEventListener("gap",(message)=>{const event=JSON.parse(message.data);cursor=event.resume_cursor||cursor;assistantNode=undefined;line("REPLAY GAP: some observations are no longer retained","unknown");source.close();scheduleEvents(0);});source.onerror=()=>{source.close();scheduleEvents(500);};}
+pair.onclick=async()=>{try{await api("/api/v1/auth",{method:"POST",body:JSON.stringify({token:pairing.value})});pairing.value="";pairing.disabled=true;pair.disabled=true;start.disabled=false;meta.textContent="browser paired; no session admitted";line("browser paired; capability was not retained in page state","server");}catch(error){line("pairing failed","failed");}};
+start.onclick=async()=>{try{const body=await api("/api/v1/sessions",{method:"POST",body:JSON.stringify({mode:"fixture"})});sessionId=body.session_id;cursor=0;sessionView(body);line(`registered fixture launched: ${sessionId}`,"server");start.disabled=true;prompt.disabled=false;send.disabled=false;stop.disabled=false;events();}catch(error){line(String(error),"failed");}};
+send.onclick=async()=>{const text=prompt.value;if(!text)return;send.disabled=true;try{const body=await api(`/api/v1/sessions/${encodeURIComponent(sessionId)}/turns`,{method:"POST",body:JSON.stringify({text})});sessionView(body);prompt.value="";line("task admitted; awaiting SDK stream","pending");}catch(error){line(String(error),"failed");}finally{send.disabled=false;}};
+stop.onclick=async()=>{stop.disabled=true;try{const body=await api(`/api/v1/sessions/${encodeURIComponent(sessionId)}/stop`,{method:"POST"});sessionView(body);line(`session ${body.state}`,body.state==="UNKNOWN"?"unknown":"server");}catch(error){line(String(error),"failed");}finally{send.disabled=true;prompt.disabled=true;if(source)source.close();}};
+</script>
+</body>
+</html>

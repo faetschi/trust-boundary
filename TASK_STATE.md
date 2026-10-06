@@ -2,7 +2,32 @@
 
 ## Next implementation increments — 2026-10-06
 
-Cleanup independently verified, commit pending: isolated
+Restricted real-Pi fixture workspace independently verified, commit pending.
+Final Go snapshot `chatbrowserfinal.O0yNav`: Linux full race, gofmt, Windows
+build/internal/e2e and extra cmd/tbound-chat tests passed. Isolated adapter
+typecheck/IPC/closure and new SDK tests passed. Actual private-Chrome parent/SDK
+workflow paired securely, ran four prompts/four SDK tools with linked backend
+refs/no effects, then STOPPED. Hostile content remained text, mobile 390px,
+rendering bounded, no JS errors. Coordinator fixed Windows capability creation
+ordering, render bounds/coalescing/user prompts and server-derived turn refs.
+Evidence and initial driver/browser failures in `docs/pi-session-control.md`;
+allowlisted receipt in `docs/evidence/pi-sdk-fixture-2026-10-06.json`. This is
+fixture-only Windows SDK evidence, not production governed Pi or Linux guest
+verification. Production admission still refused and publication unsupported.
+
+SDK/chat first draft returned but is NOT independently accepted or committed.
+Review found unauthenticated root-page cookie bootstrap, inherited worker
+environment, browser CSP missing same-origin connection permission, fixture
+correlation derived from incoming proposals, text-only SDK provider vs required
+model-driven four-tool workflow, and lifecycle/cancellation/bounds gaps. Agent
+is correcting these inside its original paths. Production launch remains refused;
+no real credentials/provider request or production effect is authorized by the
+draft. Authenticated pairing, minimal child environment, preregistered fixture
+capture/result lineage and actual SDK tool calls are acceptance prerequisites.
+
+Cleanup committed as `7a80f5afb644285767b3ff656b3ae9ea0a40d89b`; post-commit LF
+archive matched every tested source byte and the complete Go-file set (exit 0).
+Independent verification used isolated
 `/home/jeli2k/tbound-coordinator-cleanup.ddU75W`, full WSL race exit 0, ext4/private
 0700 TMPDIR, gofmt empty; Windows build/internal/e2e exit 0. Explicit network
 opt-in prevents even dummy credential-file configuration from reaching loaders
