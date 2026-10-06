@@ -2,7 +2,10 @@
 
 ## Next implementation increments — 2026-10-06
 
-Restricted real-Pi fixture workspace independently verified, commit pending.
+Restricted real-Pi fixture workspace committed as
+`9144d59e0875bc6679c79fd57044b05660747b8b`. Post-commit LF archive compared every
+tested supervisor source byte and complete Go-file set (exit 0), plus all eight
+tested adapter source files (exit 0). Independent verification follows.
 Final Go snapshot `chatbrowserfinal.O0yNav`: Linux full race, gofmt, Windows
 build/internal/e2e and extra cmd/tbound-chat tests passed. Isolated adapter
 typecheck/IPC/closure and new SDK tests passed. Actual private-Chrome parent/SDK
@@ -15,12 +18,12 @@ allowlisted receipt in `docs/evidence/pi-sdk-fixture-2026-10-06.json`. This is
 fixture-only Windows SDK evidence, not production governed Pi or Linux guest
 verification. Production admission still refused and publication unsupported.
 
-SDK/chat first draft returned but is NOT independently accepted or committed.
+Earlier SDK/chat first draft was NOT accepted or committed; retained review history:
 Review found unauthenticated root-page cookie bootstrap, inherited worker
 environment, browser CSP missing same-origin connection permission, fixture
 correlation derived from incoming proposals, text-only SDK provider vs required
 model-driven four-tool workflow, and lifecycle/cancellation/bounds gaps. Agent
-is correcting these inside its original paths. Production launch remains refused;
+corrected these inside its original paths. Production launch remains refused;
 no real credentials/provider request or production effect is authorized by the
 draft. Authenticated pairing, minimal child environment, preregistered fixture
 capture/result lineage and actual SDK tool calls are acceptance prerequisites.
