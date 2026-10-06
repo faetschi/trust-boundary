@@ -2,7 +2,10 @@
 
 ## Next implementation increments — 2026-10-06
 
-Corrected publication integration independently accepted; commit pending.
+Corrected publication integration committed as
+`a977766722dcfaa12060385b95ef028877d04eb6`. Post-commit LF archive comparison
+confirmed every tested supervisor source byte and complete Go-file set matched
+the corrected snapshot (`COMMITTED_BYTES_MATCH=1`, exit 0).
 Snapshot `publicationcorrected.N85jr8`: full Linux race suite, gofmt and focused
 vet passed; Windows exact-copy build/internal/e2e passed; four new runtime
 regression groups repeated ten times with race detection passed. Agent corrected
