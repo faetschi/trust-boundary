@@ -2,6 +2,30 @@
 
 ## Next implementation increments — 2026-10-06
 
+Guest/operator prerequisites rechecked independently: SID ends 1001, unelevated,
+protected helper absent, exact Inspect query exit 1; agent verified all five tasks
+absent and reproduced native-vector/cleanup defects using dummy-only stubs.
+New report: `docs/guest-profile-prerequisites-2026-10-06.md`. No current guest
+probe/run, privileged setup or existing infra edit; fresh offline verification and
+frozen-profile proof remain blocked. Code-only session/publication/cleanup work
+continues separately and cannot convert those prerequisites into passes.
+
+Plan committed as `0177b14`. Independent baseline adapter check driver initially
+stopped on an npm stderr notice because Windows PowerShell treated native stderr
+as a terminating error; this is a scratch-driver failure, not a recorded adapter
+test failure. Driver now captures native output with explicit process-exit checks;
+the isolated committed-source baseline check is rerunning. No provider opt-in or
+credential environment is passed. Linux development PATH has Go 1.27.1 but no
+`node` executable; cross-runtime SDK evidence must not be inferred from Go tests
+alone. Windows real-SDK verification and Linux composition prerequisites are
+recorded separately as each increment is tested.
+
+Corrected isolated baseline adapter check passed (exit 0): typecheck, 14 IPC
+tests, and real Pi 0.87.1 SDK closure probe, provider stream attempts 0. Snapshot
+`tbound-adapter-d8ad627ac6204565a0a13433d5aa46fe` pins `0177b14`; Node v24.15.0
+Windows. This is baseline component evidence, not the new worker/chat increment
+or established surface closure/containment.
+
 User authorizes cleanup in a subagent plus parallel thesis/session/frontend work,
 with commits between verified increments. Baseline HEAD is `cb63b11`, branch
 `codex/tbound-prototype`; no new worktree/push/reset/blanket staging. Preserve
