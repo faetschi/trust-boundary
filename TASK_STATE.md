@@ -2,6 +2,14 @@
 
 ## Next implementation increments — 2026-10-06
 
+Cleanup independently verified, commit pending: isolated
+`/home/jeli2k/tbound-coordinator-cleanup.ddU75W`, full WSL race exit 0, ext4/private
+0700 TMPDIR, gofmt empty; Windows build/internal/e2e exit 0. Explicit network
+opt-in prevents even dummy credential-file configuration from reaching loaders
+or requests. Repeated Windows benchmarks and actual Go JSON live viewer passed;
+evidence hashes/failures in `docs/economy-cleanup-2026-10-06.md`. SDK/workflow
+unfinished sources excluded. Modules/adapter unchanged for this increment.
+
 Guest/operator prerequisites rechecked independently: SID ends 1001, unelevated,
 protected helper absent, exact Inspect query exit 1; agent verified all five tasks
 absent and reproduced native-vector/cleanup defects using dummy-only stubs.

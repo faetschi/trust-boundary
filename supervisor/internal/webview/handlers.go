@@ -58,14 +58,14 @@ func newHTTPHandler(buffer *Buffer) http.Handler {
 			methodNotAllowed(w)
 			return
 		}
-		writeJSON(w, buffer.snapshot().Manifest)
+		writeJSON(w, buffer.manifest())
 	})
 	mux.HandleFunc("/tests", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			methodNotAllowed(w)
 			return
 		}
-		writeJSON(w, buffer.snapshot().Tests)
+		writeJSON(w, buffer.testCatalog())
 	})
 	mux.HandleFunc("/runs", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

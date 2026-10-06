@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"tbound/supervisor/internal/audit"
@@ -76,11 +77,12 @@ type fileState struct {
 // It reads sources with os.Open (read-only); it never creates, truncates, or
 // writes a source file.
 type Tailer struct {
-	states  []*fileState
-	buffer  *Buffer
-	options TailerOptions
-	started bool
-	done    chan error
+	lifecycleMu sync.Mutex
+	states      []*fileState
+	buffer      *Buffer
+	options     TailerOptions
+	started     bool
+	done        chan error
 }
 
 // NewTailer creates a tailer but does not open any paths until Start.
@@ -159,9 +161,13 @@ func (t *Tailer) Start(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("webview tailer requires a context")
 	}
+	t.lifecycleMu.Lock()
+	defer t.lifecycleMu.Unlock()
 	if t.started {
 		return errors.New("webview tailer has already been started")
 	}
+	t.buffer.beginHistoryBatch()
+	defer t.buffer.endHistoryBatch()
 	// Read the lifecycle manifest before stream catch-up so events following a
 	// run transition are assigned to the new run. Terminal states are staged
 	// until all complete stream lines have been drained.
@@ -231,51 +237,66 @@ func (t *Tailer) Start(ctx context.Context) error {
 }
 
 // Done returns the channel which receives the tailer's termination error.
-func (t *Tailer) Done() <-chan error { return t.done }
+func (t *Tailer) Done() <-chan error {
+	t.lifecycleMu.Lock()
+	defer t.lifecycleMu.Unlock()
+	return t.done
+}
 
 func (t *Tailer) run(ctx context.Context) error {
 	ticker := time.NewTicker(t.options.PollInterval)
 	defer ticker.Stop()
-	defer t.closeStates("tailer stopped before the line ended")
+	defer func() {
+		t.buffer.beginHistoryBatch()
+		t.closeStates("tailer stopped before the line ended")
+		t.buffer.endHistoryBatch()
+	}()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			for _, state := range t.states {
-				if state.source.Kind == "manifest" {
-					if err := t.pollControlSourceMode(state, true); err != nil {
-						return fmt.Errorf("read run manifest %q: %w", state.source.Path, err)
-					}
-				}
-			}
-			for _, state := range t.states {
-				if state.source.Kind == "manifest" || state.source.Kind == "evidence" {
-					continue
-				}
-				if state.source.Kind == "go-test" && t.buffer.hasRunManifestError() {
-					continue
-				}
-				var err error
-				err = t.poll(state)
-				if err != nil {
-					return fmt.Errorf("tail %q: %w", state.source.Path, err)
-				}
-			}
-			for _, state := range t.states {
-				if state.source.Kind == "manifest" {
-					t.applyPendingManifest(state)
-				}
-			}
-			for _, state := range t.states {
-				if state.source.Kind == "evidence" {
-					if err := t.pollControlSource(state); err != nil {
-						return fmt.Errorf("poll evidence %q: %w", state.source.Path, err)
-					}
-				}
+			if err := t.pollCycle(); err != nil {
+				return err
 			}
 		}
 	}
+}
+
+func (t *Tailer) pollCycle() error {
+	t.buffer.beginHistoryBatch()
+	defer t.buffer.endHistoryBatch()
+	for _, state := range t.states {
+		if state.source.Kind == "manifest" {
+			if err := t.pollControlSourceMode(state, true); err != nil {
+				return fmt.Errorf("read run manifest %q: %w", state.source.Path, err)
+			}
+		}
+	}
+	for _, state := range t.states {
+		if state.source.Kind == "manifest" || state.source.Kind == "evidence" {
+			continue
+		}
+		if state.source.Kind == "go-test" && t.buffer.hasRunManifestError() {
+			continue
+		}
+		if err := t.poll(state); err != nil {
+			return fmt.Errorf("tail %q: %w", state.source.Path, err)
+		}
+	}
+	for _, state := range t.states {
+		if state.source.Kind == "manifest" {
+			t.applyPendingManifest(state)
+		}
+	}
+	for _, state := range t.states {
+		if state.source.Kind == "evidence" {
+			if err := t.pollControlSource(state); err != nil {
+				return fmt.Errorf("poll evidence %q: %w", state.source.Path, err)
+			}
+		}
+	}
+	return nil
 }
 
 func openState(state *fileState, fromStart bool) error {
@@ -729,17 +750,15 @@ func (t *Tailer) publishLine(source Source, line []byte, sourceEpoch string) {
 		}
 		return
 	}
-	var parsed json.RawMessage
 	if err := validateJSONDocument(line); err != nil {
 		t.buffer.addWarning(source.Name, "invalid JSONL record: "+err.Error())
 		t.buffer.publish(malformedRecord(source, string(line), "invalid JSON: "+err.Error(), sourceEpoch))
 		return
 	}
-	if err := json.Unmarshal(line, &parsed); err != nil {
-		t.buffer.addWarning(source.Name, "invalid JSONL record: "+err.Error())
-		t.buffer.publish(malformedRecord(source, string(line), "invalid JSON: "+err.Error(), sourceEpoch))
-		return
-	}
+	// validateJSONDocument has already consumed and validated the complete
+	// value, including UTF-8, duplicate keys, nesting, and trailing data. Keep
+	// the original validated bytes instead of decoding them a second time.
+	parsed := append(json.RawMessage(nil), line...)
 	t.buffer.publish(Record{
 		Source: source.Name, SourceEpoch: sourceEpoch, Types: classify(source, parsed),
 		ReceivedAt: time.Now().UTC(), Record: parsed,

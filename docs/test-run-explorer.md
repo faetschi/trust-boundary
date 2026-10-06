@@ -112,6 +112,19 @@ $run.finished_at = [DateTime]::UtcNow.ToString('o')
 & $writeRun
 ```
 
+Provider integration tests are opt-in even when provider credentials are
+present. They perform real network requests and remain skipped unless the
+explicit gate is set for that invocation:
+
+```powershell
+$env:TBOUND_RUN_REAL_PROVIDER_TESTS = '1'
+go test ./cmd/tbound ./internal/broker/openrouter -run 'Real(OpenRouterExchange|ProviderDurableLinux)$'
+```
+
+Credentials alone never enable these tests or cause a provider request. Leave
+the variable unset for credential-free local and CI runs; historical evidence
+from an explicitly enabled run is not retroactively changed by this gate.
+
 The run manifest schema is `tbound-go-test-run/v1`; duplicate, unknown,
 incorrectly cased, invalid-UTF-8 fields and invalid lifecycle combinations are
 rejected. It requires `run_id`, `state`, and
@@ -200,7 +213,12 @@ authentication. Do not expose it through a reverse proxy or network tunnel.
 
 With `--history`, the viewer atomically rewrites a JSON snapshot bounded to
 16 MiB, the configured 64-record ring, Go stream checkpoints, and at most 16
-run summaries total, including the current run. Summaries survive ring eviction and restart, omit output,
+run summaries total, including the current run. Live tailer changes are kept
+in memory and history writes are batched at startup, each poll/control cycle,
+and shutdown; the shutdown path performs an explicit final flush. A batch
+contains the observations, catalog/projection state, source epochs, and
+checkpoints from one consistent viewer state, so a checkpoint is never written
+without its preceding observed event. Summaries survive ring eviction and restart, omit output,
 and cap each run at 64 tests/32 packages. History loading is limited to 16 MiB
 even if the file grows while it is being read. The temporary replacement file
 uses mode 0600 where supported;

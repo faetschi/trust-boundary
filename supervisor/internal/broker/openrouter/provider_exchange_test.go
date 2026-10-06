@@ -48,6 +48,9 @@ func TestBrokerDoesNotRecordCredentialOrCredentialSourceError(t *testing.T) {
 }
 
 func TestRealOpenRouterExchange(t *testing.T) {
+	if os.Getenv("TBOUND_RUN_REAL_PROVIDER_TESTS") != "1" {
+		t.Skip("set TBOUND_RUN_REAL_PROVIDER_TESTS=1 to enable provider/network tests")
+	}
 	key, keySet := os.LookupEnv(openrouter.APIKeyEnv)
 	keyFile, keyFileSet := os.LookupEnv(openrouter.APIKeyFileEnv)
 	if (!keySet || strings.TrimSpace(key) == "") && (!keyFileSet || strings.TrimSpace(keyFile) == "") {

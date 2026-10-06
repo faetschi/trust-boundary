@@ -40,6 +40,9 @@ const (
 // the captured write call through a Unix IPC socket, broker correlation,
 // audit-backed gate decision, and the seeded durable session repository.
 func TestRealProviderDurableLinux(t *testing.T) {
+	if os.Getenv("TBOUND_RUN_REAL_PROVIDER_TESTS") != "1" {
+		t.Skip("set TBOUND_RUN_REAL_PROVIDER_TESTS=1 to enable provider/network tests")
+	}
 	_, keyConfigured := os.LookupEnv(openrouter.APIKeyEnv)
 	_, keyFileConfigured := os.LookupEnv(openrouter.APIKeyFileEnv)
 	if !keyConfigured && !keyFileConfigured {

@@ -267,35 +267,104 @@ func (b *Buffer) persistLocked() {
 	if b.historyPath == "" {
 		return
 	}
+	b.historyDirty = true
+	b.historyRevision++
+}
+
+func (b *Buffer) beginHistoryBatch() {
+	b.mu.Lock()
+	b.historyBatchDepth++
+	b.mu.Unlock()
+}
+
+func (b *Buffer) endHistoryBatch() {
+	b.mu.Lock()
+	if b.historyBatchDepth > 0 {
+		b.historyBatchDepth--
+	}
+	flush := b.historyBatchDepth == 0 && b.historyDirty
+	b.mu.Unlock()
+	if flush {
+		b.flushHistory()
+	}
+}
+
+// FlushHistory synchronously writes the latest consistent viewer snapshot. It
+// is intentionally viewer-only; source files and authoritative audit state are
+// never modified by this operation.
+func (b *Buffer) FlushHistory() {
+	b.flushHistory()
+}
+
+func (b *Buffer) flushHistory() {
+	b.historyWriteMu.Lock()
+	defer b.historyWriteMu.Unlock()
 	for {
+		b.mu.Lock()
+		if b.historyPath == "" || b.historyBatchDepth != 0 || !b.historyDirty {
+			b.mu.Unlock()
+			return
+		}
 		state := b.historyStateLocked()
+		revision := b.historyRevision
+		path := b.historyPath
+		b.mu.Unlock()
+
 		encoded, err := json.Marshal(state)
 		if err != nil {
+			b.mu.Lock()
 			b.historyErr = truncateUTF8(err.Error(), 256)
+			b.mu.Unlock()
 			return
 		}
-		if len(encoded) <= defaultHistoryBytes {
-			if err := replaceHistory(b.historyPath, encoded); err != nil {
-				b.historyErr = "viewer history could not be persisted"
-			} else {
-				b.historyErr = ""
+		if len(encoded) > defaultHistoryBytes {
+			b.mu.Lock()
+			if b.historyRevision != revision {
+				b.mu.Unlock()
+				continue
 			}
+			if b.count <= 1 {
+				b.historyErr = "latest observation exceeds retained history byte limit"
+				b.mu.Unlock()
+				return
+			}
+			b.items[b.start] = Record{}
+			b.start = (b.start + 1) % b.capacity
+			b.count--
+			b.historyRevision++
+			b.mu.Unlock()
+			continue
+		}
+
+		b.mu.Lock()
+		if b.historyRevision != revision {
+			b.mu.Unlock()
+			continue
+		}
+		b.mu.Unlock()
+		if err := replaceHistory(path, encoded); err != nil {
+			b.mu.Lock()
+			b.historyErr = "viewer history could not be persisted"
+			b.mu.Unlock()
 			return
 		}
-		if b.count <= 1 {
-			b.historyErr = "latest observation exceeds retained history byte limit"
+		b.mu.Lock()
+		if b.historyRevision == revision {
+			b.historyDirty = false
+			b.historyErr = ""
+		}
+		dirty := b.historyDirty
+		b.mu.Unlock()
+		if !dirty {
 			return
 		}
-		b.items[b.start] = Record{}
-		b.start = (b.start + 1) % b.capacity
-		b.count--
 	}
 }
 
 func (b *Buffer) historyStateLocked() historyState {
 	tests := make([]TestCase, 0, len(b.tests))
 	for _, item := range b.tests {
-		tests = append(tests, item)
+		tests = append(tests, cloneTestCase(item))
 	}
 	packages := make([]TestPackage, 0, len(b.packages))
 	for _, item := range b.packages {

@@ -258,6 +258,60 @@ func TestIndexServesEmbeddedUntrustedPresentationPage(t *testing.T) {
 	}
 }
 
+func TestFocusedCatalogEndpointsReturnDefensiveCopies(t *testing.T) {
+	buffer := NewBuffer(4)
+	buffer.setSources([]SourceInfo{{Name: "events", Kind: "go-test"}})
+	elapsed := 0.25
+	if err := buffer.applyGoTestEvent(goTestEvent{Action: "pass", Package: "p", Test: "TestCopy", Elapsed: &elapsed}, "events", "epoch"); err != nil {
+		t.Fatal(err)
+	}
+	run := TestRunManifest{SchemaVersion: "tbound-go-test-run/v1", RunID: "copy-run", State: "running", StartedAt: time.Now().UTC()}
+	if err := buffer.setRunManifest(run, "manifest", "epoch"); err != nil {
+		t.Fatal(err)
+	}
+
+	catalog := buffer.testCatalog()
+	*catalog.Tests[0].Elapsed = 9
+	manifest := buffer.manifest()
+	manifest.Sources[0].Name = "redacted mutation"
+	manifest.Warnings[0] = "redacted mutation"
+	manifest.TestRun.Packages = append(manifest.TestRun.Packages, "mutated")
+
+	unchangedCatalog := buffer.testCatalog()
+	if *unchangedCatalog.Tests[0].Elapsed != elapsed {
+		t.Fatalf("catalog endpoint leaked elapsed pointer: %+v", unchangedCatalog.Tests[0])
+	}
+	unchangedManifest := buffer.manifest()
+	if unchangedManifest.Sources[0].Name != "events" || unchangedManifest.Warnings[0] == "redacted mutation" || len(unchangedManifest.TestRun.Packages) != 0 {
+		t.Fatalf("manifest endpoint leaked mutable state: %+v", unchangedManifest)
+	}
+}
+
+func TestHistoryBatchPersistsCatalogEventAndCheckpointTogether(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.json")
+	buffer, err := NewHistoryBuffer(path, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buffer.setSources([]SourceInfo{{Name: "events", Kind: "go-test"}})
+	buffer.beginHistoryBatch()
+	buffer.publish(Record{Source: "events", Types: []string{"go_test"}, Record: json.RawMessage(`{"action":"pass"}`)})
+	buffer.setSourceCheckpoint(SourceCheckpoint{Name: "events", Kind: "go-test", Epoch: "epoch", Offset: 24, Fingerprint: "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"})
+	buffer.endHistoryBatch()
+
+	restored, err := NewHistoryBuffer(path, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if records := restored.Snapshot(); len(records) != 1 || records[0].ID != 1 {
+		t.Fatalf("batched history records = %+v", records)
+	}
+	checkpoint, ok := restored.sourceCheckpoint("events")
+	if !ok || checkpoint.Offset != 24 {
+		t.Fatalf("batched checkpoint = %+v, present=%v", checkpoint, ok)
+	}
+}
+
 func newTestTailer(t *testing.T, path string, buffer *Buffer, options TailerOptions) *Tailer {
 	t.Helper()
 	tailer, err := NewTailer([]Source{{Name: "test transcript", Path: path, Kind: "transcript"}}, buffer, options)

@@ -51,28 +51,32 @@ type Record struct {
 // SSE clients. Slow clients are disconnected rather than silently losing
 // events; reconnecting clients receive the current replay window.
 type Buffer struct {
-	mu           sync.Mutex
-	capacity     int
-	items        []Record
-	start        int
-	count        int
-	nextID       uint64
-	nextSub      uint64
-	subs         map[uint64]chan Record
-	epoch        string
-	historyPath  string
-	historyErr   string
-	sources      []SourceInfo
-	checkpoints  map[string]SourceCheckpoint
-	warnings     []string
-	run          *TestRunManifest
-	runError     string
-	tests        map[string]TestCase
-	packages     map[string]TestPackage
-	droppedTests int
-	retainedRuns []RetainedRun
-	audit        AuditProjection
-	generations  GenerationProjection
+	mu                sync.Mutex
+	capacity          int
+	items             []Record
+	start             int
+	count             int
+	nextID            uint64
+	nextSub           uint64
+	subs              map[uint64]chan Record
+	epoch             string
+	historyPath       string
+	historyErr        string
+	historyDirty      bool
+	historyRevision   uint64
+	historyBatchDepth int
+	historyWriteMu    sync.Mutex
+	sources           []SourceInfo
+	checkpoints       map[string]SourceCheckpoint
+	warnings          []string
+	run               *TestRunManifest
+	runError          string
+	tests             map[string]TestCase
+	packages          map[string]TestPackage
+	droppedTests      int
+	retainedRuns      []RetainedRun
+	audit             AuditProjection
+	generations       GenerationProjection
 }
 
 // NewBuffer creates a ring buffer. Non-positive capacities use the default.
@@ -112,16 +116,17 @@ func (b *Buffer) snapshotLocked() []Record {
 	return result
 }
 
-func (b *Buffer) publish(record Record) Record {
+func (b *Buffer) publish(record Record) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.publishLocked(record)
+	b.publishLocked(record)
+	b.mu.Unlock()
+	b.flushHistory()
 }
 
 // publishLocked appends and broadcasts one observation while the caller holds
 // b.mu. Typed catalog/projection updates use it to make state and cursor changes
 // visible as one atomic snapshot.
-func (b *Buffer) publishLocked(record Record) Record {
+func (b *Buffer) publishLocked(record Record) {
 	b.nextID++
 	record.ID = b.nextID
 	if record.ReceivedAt.IsZero() {
@@ -147,7 +152,6 @@ func (b *Buffer) publishLocked(record Record) Record {
 		}
 	}
 	b.persistLocked()
-	return cloneRecord(record)
 }
 
 // Epoch identifies this observation stream. It remains stable when a bounded
@@ -261,26 +265,26 @@ func NewHandler(buffer *Buffer) http.Handler {
 func (b *Buffer) snapshot() ExplorerSnapshot {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	tests := make([]TestCase, 0, len(b.tests))
-	for _, item := range b.tests {
-		tests = append(tests, item)
-	}
-	sort.Slice(tests, func(i, j int) bool {
-		if tests[i].Package == tests[j].Package {
-			return tests[i].Name < tests[j].Name
-		}
-		return tests[i].Package < tests[j].Package
-	})
-	packages := make([]TestPackage, 0, len(b.packages))
-	for _, item := range b.packages {
-		packages = append(packages, item)
-	}
-	sort.Slice(packages, func(i, j int) bool { return packages[i].Name < packages[j].Name })
 	records := b.snapshotLocked()
 	earliest := uint64(0)
 	if len(records) > 0 {
 		earliest = records[0].ID
 	}
+	return ExplorerSnapshot{
+		SchemaVersion: "tbound-observation-snapshot/v1",
+		Epoch:         b.epoch, Cursor: formatCursor(b.epoch, b.nextID), EarliestID: earliest,
+		Records: records, Manifest: b.manifestLocked(), Tests: b.testCatalogLocked(),
+		Audit: cloneAuditProjection(b.audit), Generations: cloneGenerationProjection(b.generations),
+	}
+}
+
+func (b *Buffer) manifest() ObservationManifest {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.manifestLocked()
+}
+
+func (b *Buffer) manifestLocked() ObservationManifest {
 	manifest := ObservationManifest{
 		SchemaVersion: "tbound-observation-manifest/v1",
 		Epoch:         b.epoch,
@@ -295,12 +299,32 @@ func (b *Buffer) snapshot() ExplorerSnapshot {
 		manifest.TestRun = &copy
 	}
 	manifest.TestRunError = b.runError
-	return ExplorerSnapshot{
-		SchemaVersion: "tbound-observation-snapshot/v1",
-		Epoch:         b.epoch, Cursor: formatCursor(b.epoch, b.nextID), EarliestID: earliest,
-		Records: records, Manifest: manifest, Tests: TestCatalog{Packages: packages, Tests: tests, Dropped: b.droppedTests},
-		Audit: cloneAuditProjection(b.audit), Generations: cloneGenerationProjection(b.generations),
+	return manifest
+}
+
+func (b *Buffer) testCatalog() TestCatalog {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.testCatalogLocked()
+}
+
+func (b *Buffer) testCatalogLocked() TestCatalog {
+	tests := make([]TestCase, 0, len(b.tests))
+	for _, item := range b.tests {
+		tests = append(tests, cloneTestCase(item))
 	}
+	sort.Slice(tests, func(i, j int) bool {
+		if tests[i].Package == tests[j].Package {
+			return tests[i].Name < tests[j].Name
+		}
+		return tests[i].Package < tests[j].Package
+	})
+	packages := make([]TestPackage, 0, len(b.packages))
+	for _, item := range b.packages {
+		packages = append(packages, item)
+	}
+	sort.Slice(packages, func(i, j int) bool { return packages[i].Name < packages[j].Name })
+	return TestCatalog{Packages: packages, Tests: tests, Dropped: b.droppedTests}
 }
 
 func (b *Buffer) retainedRunCatalog() RetainedRunCatalog {
@@ -433,7 +457,11 @@ func summarizeRun(run TestRunManifest, tests map[string]TestCase, packages map[s
 func cloneRetainedRun(value RetainedRun) RetainedRun {
 	value.Run.Packages = append([]string(nil), value.Run.Packages...)
 	value.Run.SourceIdentity = cloneSourceIdentity(value.Run.SourceIdentity)
-	value.Tests.Tests = append([]TestCase(nil), value.Tests.Tests...)
+	tests := value.Tests.Tests
+	value.Tests.Tests = make([]TestCase, len(value.Tests.Tests))
+	for index, test := range tests {
+		value.Tests.Tests[index] = cloneTestCase(test)
+	}
 	value.Tests.Packages = append([]TestPackage(nil), value.Tests.Packages...)
 	return value
 }
@@ -442,4 +470,12 @@ func cloneRecord(record Record) Record {
 	record.Types = append([]string(nil), record.Types...)
 	record.Record = append(json.RawMessage(nil), record.Record...)
 	return record
+}
+
+func cloneTestCase(value TestCase) TestCase {
+	if value.Elapsed != nil {
+		elapsed := *value.Elapsed
+		value.Elapsed = &elapsed
+	}
+	return value
 }

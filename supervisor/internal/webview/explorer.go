@@ -319,7 +319,6 @@ func validSHA256Digest(value string) bool {
 
 func (b *Buffer) setSources(sources []SourceInfo) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	previous := make(map[string]SourceInfo, len(b.sources))
 	for _, source := range b.sources {
 		previous[source.Name+"\x00"+source.Kind] = source
@@ -334,6 +333,8 @@ func (b *Buffer) setSources(sources []SourceInfo) {
 		}
 	}
 	b.persistLocked()
+	b.mu.Unlock()
+	b.flushHistory()
 }
 
 func (b *Buffer) sourceCheckpoint(name string) (SourceCheckpoint, bool) {
@@ -345,24 +346,27 @@ func (b *Buffer) sourceCheckpoint(name string) (SourceCheckpoint, bool) {
 
 func (b *Buffer) setSourceCheckpoint(checkpoint SourceCheckpoint) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	if b.checkpoints == nil {
 		b.checkpoints = make(map[string]SourceCheckpoint)
 	}
 	b.checkpoints[checkpoint.Name] = checkpoint
 	b.persistLocked()
+	b.mu.Unlock()
+	b.flushHistory()
 }
 
 func (b *Buffer) setSourceContinuity(name, continuity string) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	for i := range b.sources {
 		if b.sources[i].Name == name {
 			b.sources[i].Continuity = continuity
 			b.persistLocked()
+			b.mu.Unlock()
+			b.flushHistory()
 			return
 		}
 	}
+	b.mu.Unlock()
 }
 
 func (b *Buffer) markSourceGap(name, reason string) {
@@ -401,13 +405,15 @@ func (b *Buffer) markSourceGap(name, reason string) {
 	payload, _ := json.Marshal(map[string]string{"reason": reason})
 	b.publishLocked(Record{Source: name, Types: []string{"source_gap"}, Record: payload})
 	b.mu.Unlock()
+	b.flushHistory()
 }
 
 func (b *Buffer) addWarning(source, warning string) {
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	b.addWarningLocked(source + ": " + warning)
 	b.persistLocked()
+	b.mu.Unlock()
+	b.flushHistory()
 }
 
 func (b *Buffer) addWarningLocked(warning string) {
@@ -431,6 +437,7 @@ func (b *Buffer) setRunManifestError(message, source, sourceEpoch string) {
 	encoded, _ := json.Marshal(map[string]string{"status": "invalid", "error": truncateUTF8(message, 256)})
 	b.publishLocked(Record{Source: source, SourceEpoch: sourceEpoch, Types: []string{"run_manifest_error"}, Record: encoded})
 	b.mu.Unlock()
+	b.flushHistory()
 }
 
 func (b *Buffer) currentRunID() string {
@@ -465,6 +472,7 @@ func (b *Buffer) setSourceEpoch(name, epoch, reason string) {
 		b.persistLocked()
 	}
 	b.mu.Unlock()
+	b.flushHistory()
 }
 
 func (b *Buffer) setRunManifest(manifest TestRunManifest, source, sourceEpoch string) error {
@@ -564,6 +572,7 @@ func (b *Buffer) setRunManifest(manifest TestRunManifest, source, sourceEpoch st
 	encoded, _ := json.Marshal(manifest)
 	b.publishLocked(Record{Source: source, SourceEpoch: sourceEpoch, Types: []string{"run_manifest"}, Record: encoded})
 	b.mu.Unlock()
+	b.flushHistory()
 	return nil
 }
 
@@ -637,7 +646,9 @@ func (b *Buffer) applyGoTestEvent(event goTestEvent, source, sourceEpoch string)
 		pkg, exists := b.packages[event.Package]
 		if !exists && len(b.packages) >= maxTestPackages {
 			b.incrementDroppedLocked()
+			b.persistLocked()
 			b.mu.Unlock()
+			b.flushHistory()
 			return nil
 		}
 		if !exists {
@@ -660,7 +671,9 @@ func (b *Buffer) applyGoTestEvent(event goTestEvent, source, sourceEpoch string)
 		test, exists := b.tests[key]
 		if !exists && len(b.tests) >= maxTestCases {
 			b.incrementDroppedLocked()
+			b.persistLocked()
 			b.mu.Unlock()
+			b.flushHistory()
 			return nil
 		}
 		if !exists {
@@ -677,6 +690,7 @@ func (b *Buffer) applyGoTestEvent(event goTestEvent, source, sourceEpoch string)
 	}
 	b.publishLocked(Record{Source: source, SourceEpoch: sourceEpoch, Types: []string{"go_test"}, Record: encoded})
 	b.mu.Unlock()
+	b.flushHistory()
 	return nil
 }
 
@@ -737,6 +751,7 @@ func (b *Buffer) markGoTestEventUnresolved(event goTestEvent, source, reason str
 	b.addWarningLocked(source + ": " + reason)
 	b.persistLocked()
 	b.mu.Unlock()
+	b.flushHistory()
 }
 
 func applyPackageEvent(pkg *TestPackage, event goTestEvent, now time.Time) {
@@ -857,6 +872,7 @@ func (b *Buffer) setAudit(projection AuditProjection, source, sourceEpoch string
 	encoded, _ := json.Marshal(projection)
 	b.publishLocked(Record{Source: source, SourceEpoch: sourceEpoch, Types: []string{"audit_projection"}, Record: encoded})
 	b.mu.Unlock()
+	b.flushHistory()
 }
 
 func (b *Buffer) setGeneration(projection GenerationProjection, source, sourceEpoch string) {
@@ -865,6 +881,7 @@ func (b *Buffer) setGeneration(projection GenerationProjection, source, sourceEp
 	encoded, _ := json.Marshal(projection)
 	b.publishLocked(Record{Source: source, SourceEpoch: sourceEpoch, Types: []string{"generation_projection"}, Record: encoded})
 	b.mu.Unlock()
+	b.flushHistory()
 }
 
 func cloneAuditProjection(value AuditProjection) AuditProjection {
