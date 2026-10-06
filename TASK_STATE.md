@@ -1,5 +1,40 @@
 # TBound handoff state
 
+## Next implementation increments — 2026-10-06
+
+User authorizes cleanup in a subagent plus parallel thesis/session/frontend work,
+with commits between verified increments. Baseline HEAD is `cb63b11`, branch
+`codex/tbound-prototype`; no new worktree/push/reset/blanket staging. Preserve
+pre-existing user docs/Hyper-V/frontend-plan changes; never access `vm_start.txt`
+or inspect/log/copy secret material. Coordinator owns state/evidence and commits.
+
+Milestones (not containment/thesis acceptance):
+1. Clean network-test opt-in, focused viewer snapshots, bounded history batching,
+   safe dead-code/decoding cleanup; measure costs, preserve atomic resume state.
+2. Shared authenticated local session API and restricted real Pi SDK worker,
+   fixture provider first, explicit lineage/ID namespaces and owned cancellation.
+3. Live chat/governance frontend, reusing Go/SSE/history where appropriate, browser
+   origin/auth/CSRF/ownership/hostile-output/disconnection tests before mutations.
+4. Trusted publication admission and lifecycle integration, fail closed on missing
+   authority/profile, actual sessionrepo generation evidence and fault tests.
+5. Recheck/review guest/operator/frozen-profile prerequisites without bypassing
+   existing restrictions; run fresh pinned offline verification only if admitted.
+6. Four-tool real SDK fixture workflow with retained source/effect evidence; real
+   provider/full governed profile only with approved secure-loader and prerequisites.
+
+Cleanup owns existing webview plus real-network tests and its guide. SDK/control
+agent owns new sessioncontrol/SDK-worker/client paths, not webview during cleanup.
+Publication integration and prerequisite review get disjoint paths. Existing
+viewer remains read-only; authenticated chat/control uses a separate explicit
+surface. No new unsafe legacy TUI/RPC shell/config path. Fake-provider SDK work
+must be labeled fixture; G1=false and containment not-established until all proof.
+
+Each code increment needs coordinator full WSL race tests in private ext4 TMPDIR,
+Windows build/internal/e2e, adapter npm check if touched, clean formatting/diff,
+unchanged module files, explicit source snapshots and committed-byte verification.
+No untested concurrent overlays in evidence. Report exact blockers, not completion
+claims, for privileged/signing/profile requirements that cannot be safely met.
+
 ## Five-slice execution outcomes — 2026-10-05
 
 Execution ledger closed: slices 1, 3 and 2 have independently verified commits;
