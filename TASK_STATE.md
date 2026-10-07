@@ -1,5 +1,44 @@
 # TBound handoff state
 
+## Native Pi and companion governance execution — 2026-10-07
+
+User authorizes the named remaining tasks and frontend in parallel, delegates
+mechanical exploration/reading/implementation to GPT-5.6 reasoning xhigh, and
+asks to research and start the next scoped work after accepted increments.
+Coordinator resolves architecture, verifies critical boundaries independently,
+owns evidence and commits; production admission remains refused/G1=false.
+
+Four GPT-5.6 Luna xhigh agents started with disjoint ownership:
+
+- Native Pi host: `ses_ee90afdf3ffexcnQKQh6XzVohX`, new
+  `adapter/src/native-pi-*` and `docs/native-pi-integration.md`. Actual public
+  `InteractiveMode`, not replacement chat; fake provider first, no unrestricted
+  stock CLI fallback or provider credentials. Native action closure must be
+  demonstrated or unsupported actions refused explicitly.
+- Companion frontend/observation contract: `ses_ee90aa1f0ffeCJkUywyd25UZHi`, new
+  `supervisor/internal/governanceview/**`, `supervisor/cmd/tbound-governance/**`,
+  `docs/governance-companion.md`. Read-only structured governance/status/replay,
+  not another Pi chat or developer-test explorer. Bounded versioned events and
+  honest fixture/unavailable labeling before production composition.
+- Runtime composition: `ses_ee90a5123ffeDXfZWejFoVgAYh`,
+  `supervisor/cmd/tbound/**`, new `supervisor/internal/piruntime/**` and
+  `docs/native-runtime-composition.md`. First identify narrow extraction/API
+  seams, then integrate lifecycle/IPC/durable generation/publication safely.
+- Guest/profile/evaluation unlock review: `ses_ee90a0ae2ffecu5hnmXg1Nt6od`, new
+  `docs/next-evaluation-unlocks-2026-10-07.md` and optional isolated dummy-only
+  preflight-review tests. No privilege/task/VM/controller/network/key operations
+  or existing user infrastructure edits; return exact operator prerequisites.
+
+Milestones: shared event/runtime contracts; tested native Pi fixture host;
+browser-verified companion viewer; independently verified runtime integration;
+reviewed guest/profile unlocks and frozen evaluation evidence if prerequisites
+permit. Do not equate code milestones with containment or thesis acceptance.
+After accepted increments, research/start the next safe scoped gap; blocked
+operator/signing prerequisites require authorization, not an invented bypass.
+No agents commit or touch dependency files without coordination. Preserve all
+unrelated dirty work and `docs/frontend-observability-plan.md`; never access
+`vm_start.txt`. No new worktree/push/reset/discard/blanket staging.
+
 ## Next implementation increments — 2026-10-06
 
 Corrected publication integration committed as
