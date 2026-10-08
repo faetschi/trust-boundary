@@ -645,6 +645,16 @@ func VerifyLinuxPiRuntimeBundle(root *os.File) (string, error) {
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
+// DeveloperPiSDKAdapterSourceFiles is the fixed, bounded adapter source set the
+// governed Pi SDK worker imports at runtime. It is the single source of truth
+// shared by the development bundle staging step and the developer bundle digest
+// so the two cannot drift.
+var DeveloperPiSDKAdapterSourceFiles = []string{
+	"package.json", "package-lock.json",
+	"src/governed-pi-worker.ts", "src/broker-provider.ts", "src/proxy-tools.ts",
+	"src/ipc-transport.ts", "src/locked-resource-loader.ts",
+}
+
 // DigestDeveloperPiSDKBundle binds the small adapter source snapshot and lock
 // metadata used by the offline Linux worker test, plus the explicit existing
 // dependency-link target and pinned package manifests. It is development-only:
@@ -685,10 +695,7 @@ func DigestDeveloperPiSDKBundle(root *os.File, pinnedNodeModules string) (string
 	if err := writeDigestField(hash, "node_modules-link", []byte(filepath.Clean(linkTarget))); err != nil {
 		return "", err
 	}
-	for _, relative := range []string{
-		"package.json", "package-lock.json", "src/governed-pi-worker.ts", "src/broker-provider.ts",
-		"src/proxy-tools.ts", "src/ipc-transport.ts", "src/locked-resource-loader.ts",
-	} {
+	for _, relative := range DeveloperPiSDKAdapterSourceFiles {
 		data, err := readRegularBounded(filepath.Join(rootPath, filepath.FromSlash(relative)), 16<<20)
 		if err != nil {
 			return "", fmt.Errorf("read developer Pi runtime file %s: %w", relative, err)

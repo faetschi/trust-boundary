@@ -17,20 +17,13 @@ import (
 // not discover a Node binary: the caller must provide this exact release.
 const DevelopmentPiNodeVersion = "v24.15.0"
 
-// developmentAdapterSourceFiles is the fixed, bounded source set staged into the
-// private development bundle. It mirrors the files the actual governed Pi SDK
-// worker imports at runtime and must stay in sync with the adapter entrypoint.
-var developmentAdapterSourceFiles = []string{
-	"package.json", "package-lock.json",
-	"src/governed-pi-worker.ts", "src/broker-provider.ts", "src/proxy-tools.ts",
-	"src/ipc-transport.ts", "src/locked-resource-loader.ts",
-}
-
-// ValidateDevelopmentPrivateRoot enforces the same private-ext4 precondition the
-// opt-in development tests require: a non-symlink mode-0700 directory owned by
-// the launching UID. It is shared by the tests and the explicit development CLI
+// ValidateDevelopmentPrivateDirectory enforces the private development-root
+// precondition the opt-in development tests and the explicit development CLI
+// route require: a non-symlink mode-0700 directory owned by the launching UID.
+// It deliberately does not verify or claim any underlying filesystem type (for
+// example ext4). It is shared by the tests and the explicit development CLI
 // route so the private-root contract cannot drift between them.
-func ValidateDevelopmentPrivateRoot(path string) error {
+func ValidateDevelopmentPrivateDirectory(path string) error {
 	info, err := os.Lstat(path)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
 		return errors.New("development private root must be a non-symlink mode-0700 directory")
@@ -96,7 +89,7 @@ func StageDevelopmentPiWorkerBundle(bundleParent, adapterRoot, dependencyRoot st
 	if err := os.Symlink(dependencyRoot, filepath.Join(bundleRoot, "node_modules")); err != nil {
 		return "", fmt.Errorf("link existing pinned dependencies into private development bundle: %w", err)
 	}
-	for _, relative := range developmentAdapterSourceFiles {
+	for _, relative := range DeveloperPiSDKAdapterSourceFiles {
 		data, err := readRegularBounded(filepath.Join(adapterRoot, filepath.FromSlash(relative)), 16<<20)
 		if err != nil {
 			return "", fmt.Errorf("read development adapter source %s: %w", relative, err)

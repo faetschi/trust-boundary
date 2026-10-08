@@ -1,3 +1,5 @@
+//go:build linux
+
 package providerbridge
 
 import (
@@ -27,10 +29,13 @@ type DevelopmentProviderTurn struct {
 
 // NewDevelopmentOfflineConversation constructs a Conversation whose provider
 // transport is the caller-supplied scripted offline turns. It performs no
-// network access and loads no credentials. This is an explicit development
-// seam: it must never be reachable from the production serve --pi route, and a
-// Conversation built here carries no provider-authenticity, G1, or containment
-// claim. Production callers must use NewFromCredentials/NewFromEnvironment.
+// network access and loads no credentials. This is an explicit, Linux-only
+// development seam, compiled only on Linux and reachable only from the explicit
+// `serve --pi --dev-fixture` route: it must never be reachable from the
+// production serve --pi route or any other composition root, and a Conversation
+// built here carries no provider-authenticity, G1, or containment claim. Its
+// receipt remains claim_bearing=false and provider_exchange=false. Production
+// callers must use NewFromCredentials/NewFromEnvironment.
 func NewDevelopmentOfflineConversation(cfg Config, journal *audit.Journal, turns []DevelopmentProviderTurn) (*Conversation, error) {
 	if journal == nil {
 		return nil, errors.New("development offline conversation requires the protected durable audit journal")
