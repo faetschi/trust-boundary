@@ -184,9 +184,16 @@ install_at() {
     if ! mv "$prefix" "$hold/old"; then die "failed to move existing prefix aside"; fi
   fi
   if ! mv "$stage" "$prefix"; then
-    if [ -n "$hold" ] && [ -d "$hold/old" ]; then mv "$hold/old" "$prefix"; fi
-    rm -rf -- "$hold"
-    STAGE_HOLD=""
+    if [ -n "$hold" ] && [ -d "$hold/old" ]; then
+      if mv "$hold/old" "$prefix"; then
+        rm -rf -- "$hold"; STAGE_HOLD=""
+        die "failed to move staged install into place; the previous installation was restored"
+      fi
+      # Restoration failed: keep the hold directory and tell the operator how to
+      # recover, rather than letting the EXIT trap delete the previous install.
+      STAGE_HOLD=""
+      die "failed to move staged install into place AND failed to restore; the previous installation is preserved at $hold/old (move it back to $prefix manually)"
+    fi
     die "failed to move staged install into place"
   fi
   STAGE_INSTALL=""
@@ -211,7 +218,15 @@ STAGE=""; STAGE_INSTALL=""; STAGE_HOLD=""
 cleanup() {
   [ -n "${STAGE:-}" ] && rm -rf -- "$STAGE" || true
   [ -n "${STAGE_INSTALL:-}" ] && rm -rf -- "$STAGE_INSTALL" || true
-  [ -n "${STAGE_HOLD:-}" ] && rm -rf -- "$STAGE_HOLD" || true
+  # Never delete a hold directory that still contains a moved-aside previous
+  # installation; preserve it and tell the operator how to restore.
+  if [ -n "${STAGE_HOLD:-}" ]; then
+    if [ -e "$STAGE_HOLD/old" ]; then
+      printf 'tbound-install: preserving previous installation at %s (move it back manually)\n' "$STAGE_HOLD/old" >&2
+    else
+      rm -rf -- "$STAGE_HOLD" || true
+    fi
+  fi
 }
 trap cleanup EXIT
 

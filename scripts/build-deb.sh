@@ -15,15 +15,17 @@ DIST="${2:-$ROOT/dist}"
 ARCH="${TBOUND_DEB_ARCH:-amd64}"
 TGZ="$DIST/tbound-$VERSION-linux-$ARCH.tar.gz"
 
-command -v dpkg-deb >/dev/null 2>&1 || { echo "build-deb: dpkg-deb is required" >&2; exit 1; }
-if ! printf '%s' "$VERSION" | grep -Eq '^([0-9]+:)?[0-9][0-9A-Za-z.+~-]*$'; then
-  echo "build-deb: version '$VERSION' is not a valid Debian version (expect [epoch:]upstream[-revision])" >&2
+# Validate inputs before requiring the packaging tool, so callers get a clear
+# error either way.
+if ! printf '%s' "$VERSION" | grep -Eq '^([0-9]+:)?[0-9][0-9A-Za-z.+~-]*$' || [ "${VERSION%-}" != "$VERSION" ]; then
+  echo "build-deb: version '$VERSION' is not a valid Debian version (expect [epoch:]upstream[-revision]; no trailing '-')" >&2
   exit 1
 fi
 case "$ARCH" in
   amd64|arm64) ;;
   *) echo "build-deb: unsupported architecture '$ARCH'" >&2; exit 1 ;;
 esac
+command -v dpkg-deb >/dev/null 2>&1 || { echo "build-deb: dpkg-deb is required" >&2; exit 1; }
 [ -f "$TGZ" ] || { echo "build-deb: missing $TGZ (run scripts/build-release.sh first)" >&2; exit 1; }
 
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/tbound-deb.XXXXXX")"
