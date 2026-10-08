@@ -31,19 +31,24 @@ config_dir() {
   printf '%s/.config/tbound' "$HOME"
 }
 
-# canonical_prefix prints an absolute, normalized prefix path or exits on a
-# protected/shared target. Guards against deleting or extracting into unrelated
-# directories ($HOME, /, /usr, ancestors of $HOME).
-canonical_prefix() {
+# canon_path prints an absolute path with symlinks and . / .. resolved when the
+# platform tools allow it, falling back to lexical normalization.
+canon_path() {
   local p="$1"
-  [ -n "$p" ] || die "empty prefix"
+  [ -n "$p" ] || return 1
   case "$p" in
     /*) ;;
     *) p="$PWD/$p" ;;
   esac
-  # Normalize . and .. without requiring external tools.
-  local part out=""
-  local IFS='/'
+  if command -v realpath >/dev/null 2>&1; then
+    local rp
+    if rp="$(realpath -m -- "$p" 2>/dev/null)" && [ -n "$rp" ]; then printf '%s' "$rp"; return 0; fi
+  fi
+  if command -v readlink >/dev/null 2>&1; then
+    local rl
+    if rl="$(readlink -f -- "$p" 2>/dev/null)" && [ -n "$rl" ]; then printf '%s' "$rl"; return 0; fi
+  fi
+  local part out="" IFS='/'
   for part in $p; do
     case "$part" in
       ""|.) ;;
@@ -51,14 +56,20 @@ canonical_prefix() {
       *) out="$out/$part" ;;
     esac
   done
-  p="${out:-/}"
+  printf '%s' "${out:-/}"
+}
+
+# canonical_prefix prints a resolved, safe prefix path or exits on a protected or
+# shared target (including symlink aliases of HOME and system directories).
+canonical_prefix() {
+  local p
+  p="$(canon_path "$1")" || die "empty prefix"
   case "$p" in
-    "/"|"/usr"|"/etc"|"/bin"|"/sbin"|"/var"|"/home") die "refusing protected prefix: $p" ;;
+    "/"|"/usr"|"/etc"|"/bin"|"/sbin"|"/var"|"/home"|"/opt"|"/root") die "refusing protected prefix: $p" ;;
   esac
-  local home="${HOME%/}"
+  local home; home="$(canon_path "$HOME" 2>/dev/null || printf '%s' "${HOME%/}")"
   if [ -n "$home" ]; then
     [ "$p" = "$home" ] && die "refusing prefix equal to HOME: $p"
-    # Reject only when HOME lives *inside* the prefix (deleting it would remove HOME).
     if [ "${home#"$p"/}" != "$home" ]; then
       die "refusing prefix that contains HOME: $p"
     fi
@@ -152,42 +163,34 @@ install_at() {
   [ "$want" = "$got" ] || die "checksum mismatch for $(basename "$artifact") (want $want got $got)"
   log "checksum ok"
 
-  # Stage next to the prefix so the final swap is a same-filesystem rename.
-  local parent; parent="$(dirname "$prefix")"
-  mkdir -p "$parent"
-  local stage; stage="$(mktemp -d "$parent/.tbound-stage.XXXXXX")" || die "cannot stage next to $parent"
-  if ! tar -xzf "$artifact" -C "$stage"; then rm -rf -- "$stage"; die "extraction failed"; fi
-  if [ ! -x "$stage/bin/tbound" ]; then rm -rf -- "$stage"; die "extracted archive has no bin/tbound"; fi
-  printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER"
-
   if [ -e "$prefix" ] && [ -n "$(ls -A "$prefix" 2>/dev/null || true)" ] && ! is_owned_prefix "$prefix"; then
-    rm -rf -- "$stage"
     die "refusing to install into non-empty, non-tbound prefix $prefix (remove it or choose another --prefix)"
   fi
-  local backup=""
+
+  local parent; parent="$(dirname "$prefix")"
+  mkdir -p "$parent"
+  # Stage next to the prefix so the final swap is a same-filesystem rename.
+  local stage; stage="$(mktemp -d "$parent/.tbound-stage.XXXXXX")" || die "cannot stage next to $parent"
+  STAGE_INSTALL="$stage"
+  if ! tar -xzf "$artifact" -C "$stage"; then die "extraction failed"; fi
+  if [ ! -x "$stage/bin/tbound" ]; then die "extracted archive has no bin/tbound"; fi
+  printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER"
+
+  # Move any existing install into an exclusively created hold directory so a
+  # concurrent or pre-existing path can never be nested or deleted.
+  local hold=""
   if [ -d "$prefix" ]; then
-    backup="$(alloc_backup "$prefix")" || { rm -rf -- "$stage"; die "cannot allocate a backup path next to $prefix"; }
-    if ! mv "$prefix" "$backup"; then rm -rf -- "$stage"; die "failed to move existing prefix aside"; fi
+    hold="$(mktemp -d "$parent/.tbound-hold.XXXXXX")" || die "cannot allocate hold directory next to $parent"
+    if ! mv "$prefix" "$hold/old"; then rm -rf -- "$hold"; die "failed to move existing prefix aside"; fi
   fi
   if ! mv "$stage" "$prefix"; then
-    [ -n "$backup" ] && mv "$backup" "$prefix"
+    if [ -n "$hold" ] && [ -d "$hold/old" ]; then mv "$hold/old" "$prefix"; fi
     die "failed to move staged install into place"
   fi
-  [ -n "$backup" ] && rm -rf -- "$backup"
+  STAGE_INSTALL=""
+  [ -n "$hold" ] && rm -rf -- "$hold"
   chmod 700 "$prefix" 2>/dev/null || true
   log "installed binaries to $prefix/bin"
-}
-
-# alloc_backup returns a path next to prefix that does not yet exist, so the
-# existing installation can be moved aside without nesting inside unrelated data.
-alloc_backup() {
-  local prefix="$1" cand i=0
-  while [ "$i" -lt 32 ]; do
-    cand="$prefix.tbound-bak.$RANDOM$RANDOM$$"
-    if [ ! -e "$cand" ]; then printf '%s' "$cand"; return 0; fi
-    i=$((i+1))
-  done
-  return 1
 }
 
 write_config() {
@@ -201,8 +204,11 @@ write_config() {
   fi
 }
 
-STAGE=""
-cleanup() { [ -n "${STAGE:-}" ] && rm -rf -- "$STAGE" || true; }
+STAGE=""; STAGE_INSTALL=""
+cleanup() {
+  [ -n "${STAGE:-}" ] && rm -rf -- "$STAGE" || true
+  [ -n "${STAGE_INSTALL:-}" ] && rm -rf -- "$STAGE_INSTALL" || true
+}
 trap cleanup EXIT
 
 main() {

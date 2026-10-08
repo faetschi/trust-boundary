@@ -17,28 +17,51 @@ DIST="${2:-$ROOT/dist}"
 OUT="${3:-$DIST/npm}"
 
 die() { echo "make-npm-packages: $*" >&2; exit 1; }
-case "$VERSION" in
-  [0-9]*.[0-9]*.[0-9]*) ;;
-  *) die "version '$VERSION' is not semver x.y.z (required for npm packages)" ;;
-esac
-[ -d "$DIST" ] || die "dist dir $DIST does not exist (run scripts/build-release.sh first)"
 
-# Guard the output directory: never delete an unrelated directory.
-case "$OUT" in
-  ""|"/"|"$HOME"|"$ROOT"|"$DIST") die "refusing to write npm packages to '$OUT'" ;;
-esac
-if [ "${DIST#"$OUT"/}" != "$DIST" ]; then
-  die "refusing OUT '$OUT' that contains DIST '$DIST'"
+# Resolve a path with symlinks and . / .. when possible (falls back to lexical).
+canon() {
+  local p="$1"
+  [ -n "$p" ] || return 1
+  case "$p" in /*) ;; *) p="$PWD/$p" ;; esac
+  if command -v realpath >/dev/null 2>&1; then
+    local rp
+    if rp="$(realpath -m -- "$p" 2>/dev/null)" && [ -n "$rp" ]; then printf '%s' "$rp"; return 0; fi
+  fi
+  local part out="" IFS='/'
+  for part in $p; do
+    case "$part" in ""|.) ;; ..) out="${out%/*}" ;; *) out="$out/$part" ;; esac
+  done
+  printf '%s' "${out:-/}"
+}
+
+if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+  die "version '$VERSION' is not a valid semver (required for npm packages)"
 fi
-if [ -d "$OUT" ]; then
-  if [ -f "$OUT/.tbound-npm" ]; then
-    rm -rf -- "$OUT"
+
+DIST_C="$(canon "$DIST")"
+OUT_C="$(canon "$OUT")"
+ROOT_C="$(canon "$ROOT")"
+HOME_C="$(canon "${HOME:-/nonexistent}")"
+[ -d "$DIST_C" ] || die "dist dir $DIST_C does not exist (run scripts/build-release.sh first)"
+
+# Guard the output directory: never delete an unrelated or aliased directory.
+case "$OUT_C" in
+  ""|"/"|"/usr"|"/etc"|"/var"|"$HOME_C"|"$ROOT_C"|"$DIST_C") die "refusing to write npm packages to '$OUT_C'" ;;
+esac
+if [ "${DIST_C#"$OUT_C"/}" != "$DIST_C" ]; then
+  die "refusing OUT '$OUT_C' that contains DIST '$DIST_C'"
+fi
+if [ -e "$OUT_C" ]; then
+  if [ -f "$OUT_C/.tbound-npm" ] && [ -d "$OUT_C" ]; then
+    rm -rf -- "$OUT_C"
   else
-    die "refusing to remove existing non-tbound-npm directory '$OUT' (remove it manually)"
+    die "refusing to remove existing non-tbound-npm path '$OUT_C' (remove it manually)"
   fi
 fi
-mkdir -p "$OUT"
-: > "$OUT/.tbound-npm"
+mkdir -p "$OUT_C"
+: > "$OUT_C/.tbound-npm"
+OUT="$OUT_C"
+DIST="$DIST_C"
 
 map_os() { case "$1" in linux) echo linux;; darwin) echo darwin;; windows) echo win32;; *) return 1;; esac; }
 map_cpu() { case "$1" in amd64) echo x64;; arm64) echo arm64;; *) return 1;; esac; }
@@ -59,8 +82,9 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   exefile="tbound-doctor"; [ "$os" = "windows" ] && exefile="tbound-doctor.exe"
   src_bin="$work/bin/$binfile"; src_exe="$work/bin/$exefile"
   [ -f "$src_bin" ] || die "archive $base missing bin/$binfile"
+  [ -f "$src_exe" ] || die "archive $base missing bin/$exefile"
   cp "$src_bin" "$bindir/$binfile"
-  [ -f "$src_exe" ] && cp "$src_exe" "$bindir/$exefile"
+  cp "$src_exe" "$bindir/$exefile"
   rm -rf "$work"
   cat > "$OUT/$pkg/package.json" <<JSON
 {

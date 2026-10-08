@@ -1,8 +1,9 @@
 # Releasing tbound
 
 This is the maintainer runbook for producing and publishing tbound artifacts. It
-does **not** enable governed `serve --pi`; that still requires the signed profile
-and containment described in [`governed-setup.md`](governed-setup.md).
+does **not** enable governed `serve --pi`; that also requires the runtime
+composition/authoritative verifier admitting the signed profile and containment
+described in [`governed-setup.md`](governed-setup.md).
 
 ## Local build
 

@@ -5,10 +5,11 @@ worker. It installs **next to** an existing Pi — it does not modify your globa
 Node or Pi, and its dev path needs no `sudo`.
 
 > Honesty note: **governed `tbound serve --pi` is not yet shippable.** It requires
-> a signed root-owned host profile and a rootless Podman/crun containment stack
-> that do not exist as an installer yet (Phase 2). What installs today is the
-> dev/runtime surface: the CLI, the `tbound-doctor` preflight, the runtime bundle,
-> and side-by-side pinned Pi packages.
+> a signed root-owned host profile, a rootless Podman/crun containment stack, and
+> the runtime composition plus authoritative verifier that admits them — none of
+> which exist yet (Phase 2). What installs today is the dev/runtime surface: the
+> CLI, the `tbound-doctor` preflight, the runtime bundle, and side-by-side pinned
+> Pi packages. Provisioning prerequisites alone does not enable governed launch.
 
 ## Channels
 

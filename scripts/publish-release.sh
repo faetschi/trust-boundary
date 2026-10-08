@@ -29,6 +29,11 @@ files=("$DIST"/tbound-"$VERSION"-*.tar.gz "$DIST/SHA256SUMS")
 if ( cd "$DIST" && sha256sum -c SHA256SUMS >/dev/null 2>&1 ); then :
 elif ( cd "$DIST" && shasum -a 256 -c SHA256SUMS >/dev/null 2>&1 ); then :
 else die "SHA256SUMS does not verify the artifacts in $DIST"; fi
+# Every uploaded tarball must appear in SHA256SUMS (coverage, not just validity).
+for f in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
+  base="$(basename "$f")"
+  grep -Eq "(^|[[:space:]])${base}$" "$DIST/SHA256SUMS" || die "SHA256SUMS is missing an entry for $base"
+done
 
 TARGET="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo '')"
 target_arg=()
