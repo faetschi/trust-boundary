@@ -10,11 +10,9 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -43,7 +41,7 @@ func TestDevelopmentPiSDKWorkerInheritedFDProcessRoundTrip(t *testing.T) {
 			t.Fatalf("%s path must be absolute", name)
 		}
 	}
-	if err := validatePrivate0700Directory(privateRoot); err != nil {
+	if err := ValidateDevelopmentPrivateRoot(privateRoot); err != nil {
 		t.Fatalf("private ext4 test root preflight: %v", err)
 	}
 	runRoot, err := os.MkdirTemp(privateRoot, ".governed-pi-run-")
@@ -65,38 +63,18 @@ func TestDevelopmentPiSDKWorkerInheritedFDProcessRoundTrip(t *testing.T) {
 		_ = os.RemoveAll(workerEnvHome)
 		_ = os.RemoveAll(workerEnvTemp)
 	})
-	if err := validateMinimalWorkerEnvironment(minimalWorkerEnvironment(workerEnvHome, workerEnvTemp)); err != nil {
-		t.Fatal(err)
-	}
-	nodeVersionCommand := exec.Command(nodePath, "--version")
-	nodeVersionCommand.Env = minimalWorkerEnvironment(workerEnvHome, workerEnvTemp)
-	nodeVersion, err := nodeVersionCommand.Output()
-	if err != nil || strings.TrimSpace(string(nodeVersion)) != "v24.15.0" {
-		t.Fatalf("explicit Linux Node is not the pinned v24.15.0 binary: %q %v", strings.TrimSpace(string(nodeVersion)), err)
+	nodeVersion, err := DevelopmentNodeVersion(nodePath, workerEnvHome, workerEnvTemp)
+	if err != nil || nodeVersion != DevelopmentPiNodeVersion {
+		t.Fatalf("explicit Linux Node is not the pinned %s binary: %q %v", DevelopmentPiNodeVersion, nodeVersion, err)
 	}
 
-	bundleRoot := filepath.Join(runRoot, "adapter")
-	workerDir := filepath.Join(bundleRoot, "src")
 	workingDirectory := filepath.Join(runRoot, "session-root")
-	if err := os.MkdirAll(workerDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(bundleRoot, 0o700); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.Mkdir(workingDirectory, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(dependencyRoot, filepath.Join(bundleRoot, "node_modules")); err != nil {
-		t.Fatalf("link existing pinned dependencies into private source bundle: %v", err)
-	}
-	adapterSource := sourceAdapterRoot(t)
-	for _, relative := range []string{
-		"package.json", "package-lock.json",
-		"src/governed-pi-worker.ts", "src/broker-provider.ts", "src/proxy-tools.ts",
-		"src/ipc-transport.ts", "src/locked-resource-loader.ts",
-	} {
-		copyRegularSource(t, filepath.Join(adapterSource, filepath.FromSlash(relative)), filepath.Join(bundleRoot, filepath.FromSlash(relative)))
+	bundleRoot, err := StageDevelopmentPiWorkerBundle(runRoot, sourceAdapterRoot(t), dependencyRoot)
+	if err != nil {
+		t.Fatalf("stage development Pi worker bundle: %v", err)
 	}
 	workingHandle, err := os.Open(workingDirectory)
 	if err != nil {
@@ -361,31 +339,4 @@ func sourceAdapterRoot(t *testing.T) string {
 	}
 	root := filepath.Clean(filepath.Join(filepath.Dir(source), "..", "..", ".."))
 	return filepath.Join(root, "adapter")
-}
-
-func copyRegularSource(t *testing.T, source, target string) {
-	t.Helper()
-	info, err := os.Lstat(source)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() < 0 || info.Size() > 16<<20 {
-		t.Fatalf("source input is not a bounded regular file: %s", source)
-	}
-	contents, err := os.ReadFile(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(target, contents, 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func validatePrivate0700Directory(path string) error {
-	info, err := os.Lstat(path)
-	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
-		return errors.New("test root must be a non-symlink mode-0700 directory")
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != uint32(os.Geteuid()) {
-		return errors.New("test root must be owned by the current Linux UID")
-	}
-	return nil
 }
