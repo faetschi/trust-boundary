@@ -1,0 +1,30 @@
+{
+  "artifact": "experimental-private-pi-interactive-mode-policy",
+  "package": "@earendil-works/pi-coding-agent",
+  "version": "0.87.1",
+  "input": {
+    "relativePath": "node_modules/@earendil-works/pi-coding-agent/dist/modes/interactive/interactive-mode.js",
+    "sha256": "7dc366e8609d7d1e81fb85952e466aea9933b13e74842c2a9b9df678d267d12e",
+    "bytes": 268619,
+    "contextChecks": [
+      "export class InteractiveMode {",
+      "        this.defaultEditor.onSubmit = async (text) => {",
+      "        this.defaultEditor.onEscape = () => {\n            if (this.session.isStreaming)",
+      "// Accept text while startup completes, but only enable interrupt, exit, and submission feedback.",
+      "this.defaultEditor.onAction(\"app.model.cycleForward\", () => this.cycleModel(\"forward\"));",
+      "this.defaultEditor.onExtensionShortcut = (data) => {",
+      "async run() {"
+    ]
+  },
+  "output": {
+    "relativePath": "native-pi-policy/patched-interactive-mode.js",
+    "sha256": "d48a7c98e2ee2f97ecf4b148b37098dae35fb5afe874318879c5d7d953cab953",
+    "bytes": 286139
+  },
+  "patch": {
+    "source": "apply-patch.mjs",
+    "policyBoundary": "InteractiveMode submit, startup, app/extension shortcut, and escape dispatch",
+    "dependencies": "installed Pi 0.87.1 internal modules; no dependency copy or package edit",
+    "moduleResolution": "static imports resolve to absolute installed-package file URLs for exact-byte data-URL loading; output is checkout-specific"
+  }
+}

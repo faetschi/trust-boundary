@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TBound Governance Companion</title>
+<style>
+:root { color-scheme: dark; --bg:#0d1117; --panel:#161b22; --line:#30363d; --ink:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --good:#3fb950; --warn:#d29922; --bad:#f85149; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+main { max-width:1420px; margin:auto; padding:20px; }
+header { display:flex; align-items:flex-start; justify-content:space-between; gap:18px; margin-bottom:18px; }
+h1,h2,h3,p { margin:0; }
+h1 { font-size:clamp(1.35rem,2.5vw,2rem); letter-spacing:.01em; }
+h2 { font-size:1.05rem; margin-bottom:12px; }
+h3 { font-size:.92rem; margin:0 0 6px; }
+.eyebrow { color:var(--accent); font-size:.74rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+.subtitle,.muted { color:var(--muted); }
+.subtitle { margin-top:4px; max-width:780px; }
+.badge { border:1px solid var(--line); border-radius:999px; color:var(--muted); padding:6px 11px; white-space:nowrap; font-weight:700; font-size:.78rem; }
+.badge.fixture,.badge.replay { color:var(--warn); border-color:var(--warn); }
+.badge.live { color:var(--accent); border-color:var(--accent); }
+.badge.unavailable { color:var(--bad); border-color:var(--bad); }
+.grid { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(300px,.7fr); gap:14px; }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px; min-width:0; }
+.wide { grid-column:1 / -1; }
+.facts { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+.fact { border:1px solid var(--line); border-radius:7px; padding:10px; min-width:0; }
+.fact dt { color:var(--muted); font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; }
+.fact dd { margin:3px 0 0; overflow-wrap:anywhere; }
+.state { font-weight:700; }
+.state.completed,.state.passed,.state.published,.state.ready { color:var(--good); }
+.state.pending,.state.staged,.state.recovery-required { color:var(--warn); }
+.state.failed,.state.denied,.state.withheld,.state.quarantined { color:var(--bad); }
+.state.unknown,.state.unavailable { color:var(--muted); }
+.timeline { display:flex; flex-direction:column; gap:8px; max-height:570px; overflow:auto; }
+.event { width:100%; text-align:left; color:inherit; background:#0d1117; border:1px solid var(--line); border-radius:7px; padding:10px; cursor:pointer; }
+.event:hover,.event:focus { border-color:var(--accent); outline:none; }
+.event.selected { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+.event-top { display:flex; justify-content:space-between; gap:10px; }
+.event-title { font-weight:700; overflow-wrap:anywhere; }
+.event-meta { color:var(--muted); font-size:.78rem; margin-top:4px; }
+.detail { min-height:170px; }
+.detail-row { display:grid; grid-template-columns:130px minmax(0,1fr); gap:8px; padding:5px 0; border-bottom:1px solid #21262d; }
+.detail-row:last-child { border-bottom:0; }
+.detail-key { color:var(--muted); }
+.detail-value { overflow-wrap:anywhere; }
+.list { display:flex; flex-direction:column; gap:7px; }
+.list-item { padding:8px 0; border-bottom:1px solid #21262d; }
+.list-item:last-child { border-bottom:0; }
+.warning { color:var(--warn); }
+.notice { color:var(--muted); border:1px dashed var(--line); border-radius:7px; padding:10px; }
+code { color:#c9d1d9; font-size:.86em; overflow-wrap:anywhere; }
+@media (max-width:850px) { .grid { grid-template-columns:1fr; } .facts { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:520px) { main { padding:12px; } header { display:block; } header .badge { display:inline-block; margin-top:12px; } .facts { grid-template-columns:1fr; } .detail-row { grid-template-columns:1fr; gap:1px; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div><div class="eyebrow">TBound / native Pi companion</div><h1>Governance observations</h1><p class="subtitle">Read-only, bounded companion view. Pi's native TUI remains the operator surface; this page never launches, stops, approves, executes, or publishes.</p></div>
+  <div id="mode-badge" class="badge unavailable">UNAVAILABLE</div>
+</header>
+<section class="panel wide" aria-labelledby="session-heading">
+  <h2 id="session-heading">Session / preflight / source health</h2>
+  <div id="facts" class="facts"></div>
+  <div id="preflight" class="list" style="margin-top:12px"></div>
+</section>
+<div class="grid" style="margin-top:14px">
+  <section class="panel" aria-labelledby="timeline-heading"><h2 id="timeline-heading">Correlated timeline</h2><div id="timeline" class="timeline"></div></section>
+  <section class="panel" aria-labelledby="detail-heading"><h2 id="detail-heading">Selected record</h2><div id="detail" class="detail notice">Select a record. Links remain namespaced; diagnostic observations are not authority.</div></section>
+  <section class="panel" aria-labelledby="generation-heading"><h2 id="generation-heading">Generation / publication / recovery</h2><div id="generation"></div></section>
+  <section class="panel" aria-labelledby="tests-heading"><h2 id="tests-heading">Pi actions / project tests / bounded output</h2><div id="tests" class="list"></div></section>
+  <section class="panel wide" aria-labelledby="warnings-heading"><h2 id="warnings-heading">Warnings and source limits</h2><div id="warnings" class="list"></div></section>
+</div>
+</main>
+<script>
+(function () {
+  "use strict";
+  var state = { snapshot: null, selected: "", epoch: "", cursor: "", seen: new Set(), stream: null, loading: false };
+  var $ = function (id) { return document.getElementById(id); };
+  var text = function (node, value) { node.textContent = value == null || value === "" ? "—" : String(value); };
+  var el = function (tag, className) { var node = document.createElement(tag); if (className) node.className = className; return node; };
+  var stateNode = function (value) { var node = el("span", "state " + String(value || "unknown").replace(/[^a-z-]/g, "-")); text(node, value || "unknown"); return node; };
+  function fact(label, value, valueState) {
+    var box = el("div", "fact"), dt = el("dt"), dd = el("dd"); text(dt, label); if (valueState) dd.appendChild(stateNode(value)); else text(dd, value); box.appendChild(dt); box.appendChild(dd); return box;
+  }
+  function render(snapshot) {
+    state.snapshot = snapshot;
+    var mode = String(snapshot.mode || "unavailable");
+    var badge = $("mode-badge"); badge.className = "badge " + mode; text(badge, mode.toUpperCase());
+    var facts = $("facts"); facts.replaceChildren();
+    facts.appendChild(fact("Mode", mode, true)); facts.appendChild(fact("Session", snapshot.session && snapshot.session.session_id || "not established")); facts.appendChild(fact("Profile", snapshot.session && snapshot.session.profile || "unavailable")); facts.appendChild(fact("Session status", snapshot.session && snapshot.session.status || "unknown", true));
+    var sourceText = (snapshot.sources || []).map(function (source) { return source.label + " · " + source.health + (source.epoch ? " · " + source.epoch : "") + (source.continuity ? " · " + source.continuity : ""); }).join("; ") || "none registered";
+    facts.appendChild(fact("Sources", sourceText)); facts.appendChild(fact("Cursor", snapshot.cursor || "—"));
+    var preflight = $("preflight"); preflight.replaceChildren(); (snapshot.preflight || []).forEach(function (check) { var item = el("div", "list-item"); item.appendChild(stateNode(check.state)); var name = el("strong"); text(name, "  " + check.name); item.appendChild(name); if (check.detail) { var detail = el("div", "muted"); text(detail, check.detail); item.appendChild(detail); } preflight.appendChild(item); });
+    renderTimeline(snapshot.records || []); renderDetail(snapshot.records || []); renderGovernance(snapshot); renderTests(snapshot.project_tests || [], snapshot.actions || []); renderWarnings(snapshot.warnings || []);
+  }
+  function renderTimeline(records) {
+    var timeline = $("timeline"); timeline.replaceChildren(); if (!records.length) { var empty = el("div", "notice"); text(empty, "No retained observations. Unavailable is shown instead of fabricated production authority."); timeline.appendChild(empty); return; }
+    records.slice().reverse().forEach(function (record) { var button = el("button", "event" + (record.id === state.selected ? " selected" : "")); button.type = "button"; button.dataset.id = record.id; var top = el("div", "event-top"), title = el("span", "event-title"), status = el("span"); text(title, record.namespace + " / " + record.kind); status.appendChild(stateNode(record.status)); top.appendChild(title); top.appendChild(status); button.appendChild(top); var meta = el("div", "event-meta"); text(meta, (record.authority || "unknown") + " · " + (record.mode || "unknown") + " · " + (record.source_id || "unregistered") + " · seq " + (record.sequence || "—")); button.appendChild(meta); button.addEventListener("click", function () { state.selected = record.id; render(state.snapshot); }); timeline.appendChild(button); });
+  }
+  function detailRow(parent, label, value) { var row = el("div", "detail-row"), key = el("div", "detail-key"), valueNode = el("div", "detail-value"); text(key, label); text(valueNode, value); row.appendChild(key); row.appendChild(valueNode); parent.appendChild(row); }
+  function renderDetail(records) {
+    var detail = $("detail"), record = records.filter(function (item) { return item.id === state.selected; })[0]; detail.replaceChildren(); if (!record) { detail.className = "detail notice"; text(detail, "Select a record. Links remain namespaced; diagnostic observations are not authority."); return; } detail.className = "detail"; detailRow(detail, "Namespace / kind", record.namespace + " / " + record.kind); detailRow(detail, "Status", record.status); detailRow(detail, "Authority", record.authority); detailRow(detail, "Source / mode", record.source_id + " / " + record.mode); detailRow(detail, "Summary", record.summary); if (record.detail) detailRow(detail, "Detail", record.detail); var links = Object.keys(record.links || {}).filter(function (key) { return record.links[key]; }).map(function (key) { return key.replace(/_id$/, "") + "=" + record.links[key]; }).join(" · "); detailRow(detail, "Correlations", links || "none retained"); var evidence = (record.evidence || []).map(function (item) { return item.kind + " " + item.id + " (" + item.scope + ")"; }).join(" · "); detailRow(detail, "Registered evidence", evidence || "none retained"); }
+  function renderGovernance(snapshot) {
+    var target = $("generation"); target.replaceChildren(); var generation = snapshot.generation || {}; detailRow(target, "Generation", generation.id || "unavailable"); detailRow(target, "Metadata", generation.metadata_state || "unavailable"); detailRow(target, "Tree/content", (generation.tree_digest || "no digest") + " / " + (generation.contents_state || "unavailable")); detailRow(target, "Diff", generation.diff_state || "not-comparable"); detailRow(target, "Publication", (snapshot.publication || {}).state || "unavailable"); detailRow(target, "Recovery", (snapshot.recovery || {}).state || "unavailable"); if (generation.note) detailRow(target, "Honest scope", generation.note); }
+  function renderTests(tests, actions) { var target = $("tests"); target.replaceChildren(); var entries = (actions || []).map(function (action) { return { name: "Pi action / " + action.name, state: action.state, authority: action.authority, detail: action.detail, output: action.output }; }).concat((tests || []).map(function (test) { return { name: /^Pi project test/.test(test.name) ? test.name : "Pi project test / " + test.name, state: test.state, detail: test.detail, output: test.output }; })); if (!entries.length) { var empty = el("div", "notice"); text(empty, "No Pi action or project-test observation retained."); target.appendChild(empty); return; } entries.forEach(function (entry) { var item = el("div", "list-item"), heading = el("div"); heading.appendChild(stateNode(entry.state)); var name = el("strong"); text(name, "  " + entry.name); heading.appendChild(name); if (entry.authority) { var authority = el("span", "muted"); text(authority, " · " + entry.authority); heading.appendChild(authority); } item.appendChild(heading); if (entry.detail) { var detail = el("div", "muted"); text(detail, entry.detail); item.appendChild(detail); } if (entry.output) { var output = el("code"); text(output, entry.output); item.appendChild(output); } target.appendChild(item); }); }
+  function renderWarnings(warnings) { var target = $("warnings"); target.replaceChildren(); if (!warnings.length) { var empty = el("div", "notice"); text(empty, "No additional warnings."); target.appendChild(empty); return; } warnings.forEach(function (warning) { var item = el("div", "list-item warning"); text(item, warning); target.appendChild(item); }); }
+  function sequenceFromCursor(cursor) { var parts = String(cursor || "").split(":"); var sequence = Number(parts[parts.length - 1]); return Number.isSafeInteger(sequence) && sequence >= 0 ? sequence : -1; }
+  function rememberSnapshot(snapshot) { state.epoch = snapshot.epoch || ""; state.cursor = snapshot.cursor || ""; state.seen = new Set((snapshot.records || []).map(function (record) { return state.epoch + ":" + record.sequence; })); }
+  function mergeSources(sources) { if (!state.snapshot || !Array.isArray(sources)) return; var byID = {}; (state.snapshot.sources || []).forEach(function (source) { byID[source.id] = source; }); sources.forEach(function (source) { byID[source.id] = source; }); state.snapshot.sources = Object.keys(byID).map(function (id) { return byID[id]; }); }
+  function reload(reason) { if (state.snapshot && reason) { state.snapshot.warnings = (state.snapshot.warnings || []).concat([reason + "; snapshot reload requested"]); render(state.snapshot); } loadSnapshot(); }
+  function connect() { if (!state.snapshot || !state.cursor) return; if (state.stream) state.stream.close(); var cursor = state.cursor; var stream = new EventSource("/api/v1/events?cursor=" + encodeURIComponent(cursor)); state.stream = stream; stream.addEventListener("observation", function (event) { try { var value = JSON.parse(event.data), parts = String(value.cursor || "").split(":"), eventEpoch = parts[0], eventSequence = sequenceFromCursor(value.cursor); if (!state.snapshot || eventEpoch !== state.epoch || eventSequence < 0) { reload("observation epoch/cursor invalid"); return; } mergeSources(value.sources); var key = eventEpoch + ":" + eventSequence; var current = sequenceFromCursor(state.cursor); if (state.seen.has(key) || eventSequence <= current) return; if (eventSequence !== current + 1) { reload("observation cursor gap detected"); return; } state.seen.add(key); var records = state.snapshot.records || []; records.push(value.record); if (records.length > 256) { var removed = records.shift(); state.seen.delete(state.epoch + ":" + removed.sequence); } state.snapshot.records = records; state.cursor = value.cursor; state.snapshot.cursor = value.cursor; render(state.snapshot); } catch (_) { reload("observation event was malformed"); } }); stream.addEventListener("gap", function () { reload("live stream replay gap reported"); }); stream.onerror = function () {}; }
+  function loadSnapshot() { if (state.loading) return; state.loading = true; if (state.stream) { state.stream.close(); state.stream = null; } fetch("/api/v1/snapshot", { credentials: "same-origin", cache: "no-store" }).then(function (response) { if (!response.ok) throw new Error("snapshot request failed"); return response.json(); }).then(function (snapshot) { state.snapshot = snapshot; state.selected = ""; rememberSnapshot(snapshot); render(snapshot); connect(); }).catch(function (error) { render({ mode: "unavailable", session: { status: "unknown" }, sources: [], preflight: [{ name: "browser connection", state: "failed", detail: error.message }], generation: { metadata_state: "unavailable", contents_state: "unavailable", diff_state: "not-comparable" }, publication: { state: "unavailable" }, recovery: { state: "unavailable" }, actions: [], project_tests: [], records: [], warnings: ["snapshot could not be loaded"] }); }).finally(function () { state.loading = false; }); }
+  loadSnapshot();
+}());
+</script>
+</body>
+</html>

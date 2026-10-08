@@ -37,6 +37,7 @@ var (
 	ErrRootAncestryUnverified   = errors.New("workspace root ancestry could not be verified")
 	ErrMountIdentityUnavailable = errors.New("workspace mount identity is unavailable")
 	ErrSourceChanged            = errors.New("workspace changed during import or scan")
+	ErrReservedMetadata         = errors.New("workspace contains prohibited reserved Git metadata")
 	ErrLimit                    = errors.New("workspace exceeds a configured limit")
 	ErrDestinationNotEmpty      = errors.New("workspace import destination is not empty")
 	ErrNoncanonicalMode         = errors.New("stored workspace mode is not normalized")
@@ -75,6 +76,32 @@ type XattrVisibilityAttestation struct {
 	Complete      bool
 }
 
+// ReservedMetadataFilter selects the narrow reserved-name policy used by an
+// import or scan. The zero value preserves the historical workspace behavior;
+// the rejecting value is intended for D06 private-Git materialization. The
+// exclusion value skips only the root .git directory without opening it; its
+// caller must separately prove that this is the newly-created private admin
+// directory. Nested .git components remain rejected.
+type ReservedMetadataFilter uint8
+
+const (
+	ReservedMetadataAllowed ReservedMetadataFilter = iota
+	ReservedMetadataRejectLiveGit
+	ReservedMetadataExcludeRootPrivateGit
+)
+
+// ImportPolicy is a typed, closed policy boundary rather than a caller
+// callback. A same-package-only test seam is kept separately so this policy
+// remains comparable and cannot be supplied by an external caller.
+type ImportPolicy struct {
+	ReservedMetadata ReservedMetadataFilter
+}
+
+// admissionBarrierForTests is a same-package deterministic race seam. It is
+// never set by production callers and is intentionally outside ImportPolicy so
+// workspace.Options remains comparable for existing workflow bindings.
+var admissionBarrierForTests func(string)
+
 // Options bind a scan to its generation label, selected metadata policy,
 // bounded work profile, and trusted source/profile assumptions. The caller
 // must establish QuiescentRoot and XattrVisibility; this package cannot prove
@@ -85,6 +112,7 @@ type Options struct {
 	Limits               Limits
 	QuiescentRoot        bool
 	XattrVisibility      XattrVisibilityAttestation
+	ImportPolicy         ImportPolicy
 }
 
 // Snapshot is derived from a complete descriptor-relative scan. Objects and
@@ -207,6 +235,11 @@ func validateOptions(options Options) error {
 		limits.MaxFileBytes <= 0 || limits.MaxTotalBytes <= 0 ||
 		limits.MaxFileBytes > limits.MaxTotalBytes {
 		return fmt.Errorf("%w: invalid limits", ErrInvalidOptions)
+	}
+	if options.ImportPolicy.ReservedMetadata != ReservedMetadataAllowed &&
+		options.ImportPolicy.ReservedMetadata != ReservedMetadataRejectLiveGit &&
+		options.ImportPolicy.ReservedMetadata != ReservedMetadataExcludeRootPrivateGit {
+		return fmt.Errorf("%w: invalid reserved-metadata filter", ErrInvalidOptions)
 	}
 	return nil
 }
@@ -349,10 +382,18 @@ func walkDirectory(source, destination *os.File, parent string, depth int, state
 		return fmt.Errorf("%w: directory %q", ErrNoncanonicalMode, parent)
 	}
 	remainingObjects := state.options.Limits.MaxObjects - state.seen
-	entries, err := readEntries(source, remainingObjects)
+	entryBudget := remainingObjects
+	if state.options.ImportPolicy.ReservedMetadata == ReservedMetadataExcludeRootPrivateGit && parent == "" {
+		// The newly-created private root .git is excluded from the logical
+		// manifest, but it still occupies one directory entry. Admit one extra
+		// physical name without weakening the logical object limit.
+		entryBudget++
+	}
+	entries, err := readEntries(source, entryBudget)
 	if err != nil {
 		return fmt.Errorf("read directory %q: %w", parent, err)
 	}
+	entries = filterReservedEntries(state.options.ImportPolicy.ReservedMetadata, parent, entries)
 	for _, entry := range entries {
 		if state.seen >= state.options.Limits.MaxObjects {
 			return fmt.Errorf("%w: object count", ErrLimit)
@@ -369,6 +410,24 @@ func walkDirectory(source, destination *os.File, parent string, depth int, state
 		if len(path) > delta.MaxPathBytes {
 			return fmt.Errorf("%w: path length", ErrLimit)
 		}
+		if err := admitReservedMetadata(state.options.ImportPolicy.ReservedMetadata, name, path); err != nil {
+			return err
+		}
+		enumeratedNode, err := openPathNode(source, name)
+		if err != nil {
+			return fmt.Errorf("%w: enumerate %q: %v", ErrSourceChanged, path, err)
+		}
+		enumeratedStat, err := statFile(enumeratedNode)
+		_ = enumeratedNode.Close()
+		if err != nil {
+			return fmt.Errorf("%w: enumerate %q: %v", ErrSourceChanged, path, err)
+		}
+		if admissionBarrierForTests != nil {
+			admissionBarrierForTests(path)
+		}
+		if err := admitReservedMetadata(state.options.ImportPolicy.ReservedMetadata, name, path); err != nil {
+			return err
+		}
 		node, err := openPathNode(source, name)
 		if err != nil {
 			return fmt.Errorf("open %q without following links: %w", path, err)
@@ -377,6 +436,10 @@ func walkDirectory(source, destination *os.File, parent string, depth int, state
 		if err != nil {
 			_ = node.Close()
 			return fmt.Errorf("stat %q: %w", path, err)
+		}
+		if !sameNode(enumeratedStat, nodeInfo) {
+			_ = node.Close()
+			return fmt.Errorf("%w: entry identity changed at %q", ErrSourceChanged, path)
 		}
 		if err := checkMount(node, state.rootMountID, path); err != nil {
 			_ = node.Close()
@@ -407,12 +470,30 @@ func walkDirectory(source, destination *os.File, parent string, depth int, state
 		}
 		_ = node.Close()
 	}
-	afterEntries, err := readEntries(source, len(entries))
+	// A filtered reserved entry (the private root .git directory) is not part
+	// of the logical manifest but remains part of the directory enumeration.
+	// Re-read against the full bounded object budget before applying the same
+	// filter, otherwise one excluded entry would look like a source change.
+	afterBudget := state.options.Limits.MaxObjects
+	if state.options.ImportPolicy.ReservedMetadata == ReservedMetadataExcludeRootPrivateGit && parent == "" {
+		afterBudget++
+	}
+	afterEntries, err := readEntries(source, afterBudget)
 	if err != nil {
 		if errors.Is(err, ErrLimit) {
 			return fmt.Errorf("%w: directory entries changed in %q", ErrSourceChanged, parent)
 		}
 		return fmt.Errorf("recheck directory %q: %w", parent, err)
+	}
+	afterEntries = filterReservedEntries(state.options.ImportPolicy.ReservedMetadata, parent, afterEntries)
+	for _, entry := range afterEntries {
+		path := entry.Name()
+		if parent != "" {
+			path = parent + "/" + entry.Name()
+		}
+		if err := admitReservedMetadata(state.options.ImportPolicy.ReservedMetadata, entry.Name(), path); err != nil {
+			return fmt.Errorf("%w: directory entries changed in %q: %w", ErrSourceChanged, parent, err)
+		}
 	}
 	if !sameEntryNames(entries, afterEntries) {
 		return fmt.Errorf("%w: directory entries changed in %q", ErrSourceChanged, parent)
@@ -421,6 +502,31 @@ func walkDirectory(source, destination *os.File, parent string, depth int, state
 		return fmt.Errorf("%w: directory %q: %v", ErrSourceChanged, parent, err)
 	}
 	return nil
+}
+
+func admitReservedMetadata(policy ReservedMetadataFilter, name, path string) error {
+	if strings.EqualFold(name, ".git") &&
+		(policy == ReservedMetadataRejectLiveGit || policy == ReservedMetadataExcludeRootPrivateGit) {
+		if policy == ReservedMetadataExcludeRootPrivateGit && name == ".git" && !strings.ContainsRune(path, '/') {
+			return nil
+		}
+		return fmt.Errorf("%w: %q", ErrReservedMetadata, path)
+	}
+	return nil
+}
+
+func filterReservedEntries(policy ReservedMetadataFilter, parent string, entries []os.DirEntry) []os.DirEntry {
+	if policy != ReservedMetadataExcludeRootPrivateGit || parent != "" {
+		return entries
+	}
+	filtered := entries[:0]
+	for _, entry := range entries {
+		if entry.Name() == ".git" {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
 }
 
 func walkSubdirectory(parentSource, parentDestination *os.File, name, path string, node *os.File, nodeInfo syscall.Stat_t, depth int, state *walkState, requireCanonical bool) error {

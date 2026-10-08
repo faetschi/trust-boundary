@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -224,6 +225,123 @@ func TestImportEnforcesStreamingLimits(t *testing.T) {
 	_, err := Import(source, destination, options)
 	if !errors.Is(err, ErrLimit) {
 		t.Fatalf("Import error = %v, want ErrLimit", err)
+	}
+}
+
+func TestImportReservedGitFilterRejectsBeforeOpeningMetadata(t *testing.T) {
+	source, destination, sourcePath := newRoots(t)
+	if err := os.Mkdir(filepath.Join(sourcePath, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourcePath, ".git", "secret"), []byte("live Git bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options := testOptions()
+	options.ImportPolicy = ImportPolicy{ReservedMetadata: ReservedMetadataRejectLiveGit}
+	_, err := Import(source, destination, options)
+	if !errors.Is(err, ErrReservedMetadata) {
+		t.Fatalf("Import error = %v, want ErrReservedMetadata", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(destination.Name(), ".git", "secret")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("reserved Git bytes reached destination: %v", statErr)
+	}
+}
+
+func TestImportReservedGitFilterRaceBarrierCopiesZeroInsertedGitBytes(t *testing.T) {
+	source, destination, sourcePath := newRoots(t)
+	if err := os.WriteFile(filepath.Join(sourcePath, "payload"), []byte("ordinary payload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options := testOptions()
+	var injected sync.Once
+	options.ImportPolicy = ImportPolicy{ReservedMetadata: ReservedMetadataRejectLiveGit}
+	previousBarrier := admissionBarrierForTests
+	admissionBarrierForTests = func(path string) {
+		if path != "payload" {
+			return
+		}
+		injected.Do(func() {
+			if err := os.Mkdir(filepath.Join(sourcePath, ".git"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(sourcePath, ".git", "secret"), []byte("must never be copied"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	defer func() { admissionBarrierForTests = previousBarrier }()
+	_, err := Import(source, destination, options)
+	if !errors.Is(err, ErrSourceChanged) {
+		t.Fatalf("Import error = %v, want ErrSourceChanged", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(destination.Name(), ".git", "secret")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("race-inserted Git bytes reached destination: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(destination.Name(), "payload")); statErr != nil {
+		t.Fatalf("ordinary payload was not the only partial output: %v", statErr)
+	}
+}
+
+func TestImportDefaultPolicyPreservesReservedMetadataCompatibility(t *testing.T) {
+	source, destination, sourcePath := newRoots(t)
+	if err := os.Mkdir(filepath.Join(sourcePath, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourcePath, ".git", "description"), []byte("ordinary default-policy fixture"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Import(source, destination, testOptions()); err != nil {
+		t.Fatalf("default Import changed semantics: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(destination.Name(), ".git", "description")); err != nil {
+		t.Fatalf("default Import no longer copies reserved metadata: %v", err)
+	}
+}
+
+func TestScanExcludesOnlyExactPrivateRootGitWithinLogicalObjectLimit(t *testing.T) {
+	rootPath := t.TempDir()
+	if err := os.Chmod(rootPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rootPath, "payload"), []byte("payload"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(rootPath, "payload"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(rootPath, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(rootPath, ".git", "secret"), []byte("must not be scanned"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := openPrivateRoot(t, rootPath)
+	options := testOptions()
+	options.Limits.MaxObjects = 1
+	options.ImportPolicy = ImportPolicy{ReservedMetadata: ReservedMetadataExcludeRootPrivateGit}
+	snapshot, err := Scan(root, options)
+	if err != nil {
+		t.Fatalf("Scan private root with excluded .git: %v", err)
+	}
+	if snapshot.Objects != 1 || snapshot.Manifest.Objects[0].Path != "payload" {
+		t.Fatalf("unexpected private-root manifest: %+v", snapshot.Manifest)
+	}
+}
+
+func TestScanRejectsCaseVariantPrivateRootGitName(t *testing.T) {
+	rootPath := t.TempDir()
+	if err := os.Chmod(rootPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(rootPath, ".GIT"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root := openPrivateRoot(t, rootPath)
+	options := testOptions()
+	options.ImportPolicy = ImportPolicy{ReservedMetadata: ReservedMetadataExcludeRootPrivateGit}
+	_, err := Scan(root, options)
+	if !errors.Is(err, ErrReservedMetadata) {
+		t.Fatalf("Scan case-variant .GIT = %v, want ErrReservedMetadata", err)
 	}
 }
 

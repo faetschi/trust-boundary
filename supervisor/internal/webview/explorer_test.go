@@ -699,7 +699,8 @@ func TestRealGoTestJSONPassFixtureIncludingOutputType(t *testing.T) {
 	if err := file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	snapshot := waitForTestCatalog(t, buffer, 1, 1)
+	waitForCheckpoint(t, buffer, "real go test stream", int64(len(raw)))
+	snapshot := buffer.snapshot()
 	assertPackageState(t, snapshot.Tests, "tbound/supervisor/internal/webview", "passed")
 	assertTestState(t, snapshot.Tests, "tbound/supervisor/internal/webview", "TestGoTestOutputAndCatalogAreBounded", "passed")
 }

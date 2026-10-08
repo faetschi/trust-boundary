@@ -16,6 +16,7 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/ipc"
+	"tbound/supervisor/internal/piruntime"
 )
 
 const (
@@ -66,8 +67,7 @@ func TestProposalTraversesIPCBrokerGateExecutorAndResult(t *testing.T) {
 	var mu sync.Mutex
 	events := make([]string, 0, 2)
 	broker := &streamBroker{stream: stream, events: &events, mu: &mu}
-	executor := &stubExecutor{events: &events, mu: &mu}
-	supervisor := &Supervisor{IPC: server, Broker: broker, Policy: policy, Executor: executor}
+	supervisor := &Supervisor{IPC: server, Broker: broker, Policy: policy, NoEffect: &piruntime.NoEffectSession{}}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- supervisor.Serve(context.Background()) }()
 
@@ -82,7 +82,7 @@ func TestProposalTraversesIPCBrokerGateExecutorAndResult(t *testing.T) {
 	}
 	if result.Verdict != "ALLOW" || result.ReasonCode != "policy_rule_allow" ||
 		result.PolicyDigest != policy.Digest() || result.CanonicalArgumentsDigest != digest ||
-		result.ResponseID == nil || result.ResponseID.Opaque != "response-1" || string(result.Output) != `{"status":"stub-executed"}` {
+		result.ResponseID == nil || result.ResponseID.Opaque != "response-1" || string(result.Output) != `{"status":"stubbed-no-effect"}` {
 		t.Fatalf("unexpected integrated result: %+v", result)
 	}
 	if err := client.Close(); err != nil {
@@ -94,8 +94,8 @@ func TestProposalTraversesIPCBrokerGateExecutorAndResult(t *testing.T) {
 	mu.Lock()
 	gotEvents := append([]string(nil), events...)
 	mu.Unlock()
-	if !reflect.DeepEqual(gotEvents, []string{"broker-correlation", "stub-executor"}) {
-		t.Fatalf("broker/gate/executor ordering = %v", gotEvents)
+	if !reflect.DeepEqual(gotEvents, []string{"broker-correlation"}) {
+		t.Fatalf("no-effect path invoked or reordered effects: %v", gotEvents)
 	}
 }
 
@@ -134,8 +134,7 @@ func TestConcreteProviderBrokerTraversesIPCToGateAndResult(t *testing.T) {
 	}
 	defer client.Close()
 	defer server.Close()
-	executor := &stubExecutor{events: &[]string{}, mu: &sync.Mutex{}}
-	supervisor := &Supervisor{IPC: server, Broker: broker, Policy: policy, Executor: executor}
+	supervisor := &Supervisor{IPC: server, Broker: broker, Policy: policy, NoEffect: &piruntime.NoEffectSession{}}
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- supervisor.Serve(context.Background()) }()
 
@@ -156,7 +155,7 @@ func TestConcreteProviderBrokerTraversesIPCToGateAndResult(t *testing.T) {
 		result.ToolCallID != "call-concrete" || result.Tool != "bash" || result.Sequence != 1 ||
 		result.ResponseID == nil || result.ResponseID.Issuer != integrationResponseIssuer ||
 		result.ResponseID.Opaque != "response-concrete" || len(result.CanonicalArgumentsDigest) == 0 ||
-		string(result.Output) != `{"status":"stub-executed"}` {
+		string(result.Output) != `{"status":"stubbed-no-effect"}` {
 		t.Fatalf("unexpected concrete broker result: %+v", result)
 	}
 	if len(broker.Records()) != 1 || transport.calls != 1 {
@@ -185,18 +184,6 @@ func (b *streamBroker) Correlate(_ context.Context, proposal protocol.Proposal) 
 		return correlation.Decision{}, err
 	}
 	return b.stream.Propose(encoded), nil
-}
-
-type stubExecutor struct {
-	events *[]string
-	mu     *sync.Mutex
-}
-
-func (e *stubExecutor) Execute(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error) {
-	e.mu.Lock()
-	*e.events = append(*e.events, "stub-executor")
-	e.mu.Unlock()
-	return json.RawMessage(`{"status":"stub-executed"}`), nil
 }
 
 type integrationDoer struct {

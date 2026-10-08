@@ -16,6 +16,7 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/ipc"
+	"tbound/supervisor/internal/piruntime"
 )
 
 const (
@@ -63,24 +64,12 @@ func (d *scriptedDoer) Do(request *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-type noEffectExecutor struct{}
-
-func (noEffectExecutor) Execute(ctx context.Context, _ protocol.Proposal, decision gate.Decision) (json.RawMessage, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if decision.Verdict != gate.Allow {
-		return nil, errors.New("no-effect executor refuses a non-allow decision")
-	}
-	return json.RawMessage(`{"status":"stubbed-no-effect"}`), nil
-}
-
-func newSyntheticRuntime() (*providerbroker.Broker, gate.Policy, Executor, error) {
+func newSyntheticRuntime() (*providerbroker.Broker, gate.Policy, error) {
 	responses := make([][]byte, 0, len(smokeCalls))
 	for _, call := range smokeCalls {
 		response, err := syntheticSSE(call)
 		if err != nil {
-			return nil, gate.Policy{}, nil, fmt.Errorf("encode synthetic SSE: %w", err)
+			return nil, gate.Policy{}, fmt.Errorf("encode synthetic SSE: %w", err)
 		}
 		responses = append(responses, response)
 	}
@@ -93,16 +82,16 @@ func newSyntheticRuntime() (*providerbroker.Broker, gate.Policy, Executor, error
 		Generation: smokeGeneration,
 	}, &scriptedDoer{responses: responses})
 	if err != nil {
-		return nil, gate.Policy{}, nil, fmt.Errorf("create synthetic broker: %w", err)
+		return nil, gate.Policy{}, fmt.Errorf("create synthetic broker: %w", err)
 	}
 	for index, expected := range smokeCalls {
 		captured, err := broker.Exchange(context.Background())
 		if err != nil {
-			return nil, gate.Policy{}, nil, fmt.Errorf("capture synthetic SSE %d: %w", index+1, err)
+			return nil, gate.Policy{}, fmt.Errorf("capture synthetic SSE %d: %w", index+1, err)
 		}
 		actual, ok := captured.ToolCall()
 		if !ok || actual.ID != expected.callID || actual.Name != expected.tool || !bytes.Equal(actual.RawArguments, expected.arguments) {
-			return nil, gate.Policy{}, nil, fmt.Errorf("synthetic SSE %d did not capture the scripted proposal", index+1)
+			return nil, gate.Policy{}, fmt.Errorf("synthetic SSE %d did not capture the scripted proposal", index+1)
 		}
 	}
 	rules := make([]gate.Rule, 0, len(smokeCalls))
@@ -111,9 +100,9 @@ func newSyntheticRuntime() (*providerbroker.Broker, gate.Policy, Executor, error
 	}
 	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: rules})
 	if err != nil {
-		return nil, gate.Policy{}, nil, fmt.Errorf("compile synthetic smoke policy: %w", err)
+		return nil, gate.Policy{}, fmt.Errorf("compile synthetic smoke policy: %w", err)
 	}
-	return broker, policy, noEffectExecutor{}, nil
+	return broker, policy, nil
 }
 
 func syntheticSSE(call smokeCall) ([]byte, error) {
@@ -148,7 +137,7 @@ func runSyntheticListener(ctx context.Context, socketDir string, transcript io.W
 	if err := validatePrivateSocketDirectory(socketDir); err != nil {
 		return err
 	}
-	broker, policy, executor, err := newSyntheticRuntime()
+	broker, policy, err := newSyntheticRuntime()
 	if err != nil {
 		return err
 	}
@@ -181,14 +170,14 @@ func runSyntheticListener(ctx context.Context, socketDir string, transcript io.W
 		return err
 	}
 	session := &Supervisor{
-		IPC: server, Broker: broker, Policy: policy, Executor: executor,
+		IPC: server, Broker: broker, Policy: policy, NoEffect: &piruntime.NoEffectSession{},
 		Transcript: transcript, ProposalLimit: uint64(len(smokeCalls)),
 	}
 	if err := session.Serve(ctx); err != nil {
 		return err
 	}
-	if session.handledProposals != uint64(len(smokeCalls)) {
-		return fmt.Errorf("synthetic IPC session ended after %d proposals; expected %d", session.handledProposals, len(smokeCalls))
+	if session.HandledProposals() != uint64(len(smokeCalls)) {
+		return fmt.Errorf("synthetic IPC session ended after %d proposals; expected %d", session.HandledProposals(), len(smokeCalls))
 	}
 	return nil
 }
