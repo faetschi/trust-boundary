@@ -105,9 +105,10 @@ cp install/completions/tbound.fish ~/.config/fish/completions/
 
 ## Governed runs
 
-Governed `tbound serve --pi` requires operator provisioning. See
-[`doctor.md`](doctor.md) for readiness and [`governed-setup.md`](governed-setup.md)
-for the operator runbook (signed profile, Podman/crun/Cosign, delegated cgroup).
+Governed `tbound serve --pi` requires operator provisioning **and** the runtime
+composition plus authoritative verifier (not yet implemented); provisioning alone
+does not enable it. See [`doctor.md`](doctor.md) (advisory checks; `governed_ready`
+is always false) and [`governed-setup.md`](governed-setup.md) (operator runbook).
 
 ## Package skeleton
 

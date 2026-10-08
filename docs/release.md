@@ -11,9 +11,11 @@ scripts/build-release.sh 0.1.0 dist \
   linux/amd64 darwin/amd64 darwin/arm64 windows/amd64
 ```
 
-Artifacts are staged in a private work dir and only published to `dist/` after
-every target builds, so a failed target never leaves partial tarballs or a stale
-`SHA256SUMS`. Each tarball contains `bin/tbound`, `bin/tbound-doctor`, `runtime/`,
+Artifacts are staged and checksummed in a private work dir and the destination is
+updated only after every target builds, so a failed target never leaves partial
+tarballs or a stale `SHA256SUMS`. The final destination update is not a
+transactional swap: if the process is interrupted while updating `dist/`, rerun the
+build. Each tarball contains `bin/tbound`, `bin/tbound-doctor`, `runtime/`,
 `share/completions/`, and `VERSION`.
 
 > `linux/arm64` is intentionally not built yet: the runtime uses a

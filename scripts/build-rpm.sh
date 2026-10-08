@@ -20,7 +20,7 @@ DIST="${2:-$ROOT/dist}"
 die() { echo "build-rpm: $*" >&2; exit 1; }
 
 case "$VERSION" in
-  *[!A-Za-z0-9._-]*|"") die "invalid version '$VERSION' (allow A-Za-z0-9._-)" ;;
+  *[!A-Za-z0-9._]*|"") die "invalid version '$VERSION' (allow A-Za-z0-9._; RPM forbids '-')" ;;
 esac
 # Bind the RPM architecture to the artifact we actually ship. Only the
 # linux/amd64 (x86_64) tarball is supported today; linux/arm64 does not build.

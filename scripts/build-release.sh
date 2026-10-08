@@ -70,10 +70,10 @@ for target in "${TARGETS[@]}"; do
   echo "build-release: staged tbound-$VERSION-$os-$arch.tar.gz"
 done
 
-# Publish atomically only after all targets succeeded.
+# All targets built. Checksum in staging, then update the destination.
+( cd "$STAGE_OUT" && { sha256sum tbound-"$VERSION"-*.tar.gz > SHA256SUMS 2>/dev/null || shasum -a 256 tbound-"$VERSION"-*.tar.gz > SHA256SUMS; } )
 mkdir -p "$OUT"
 rm -f "$OUT"/tbound-"$VERSION"-*.tar.gz "$OUT/SHA256SUMS"
-cp "$STAGE_OUT"/tbound-"$VERSION"-*.tar.gz "$OUT/"
-( cd "$OUT" && { sha256sum tbound-"$VERSION"-*.tar.gz > SHA256SUMS 2>/dev/null || shasum -a 256 tbound-"$VERSION"-*.tar.gz > SHA256SUMS; } )
+mv "$STAGE_OUT"/tbound-"$VERSION"-*.tar.gz "$STAGE_OUT/SHA256SUMS" "$OUT/"
 echo "build-release: wrote $OUT/SHA256SUMS"
 cat "$OUT/SHA256SUMS"

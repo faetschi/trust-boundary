@@ -25,9 +25,18 @@ ls "$DIST"/tbound-"$VERSION"-*.tar.gz >/dev/null 2>&1 || die "no artifacts for v
 
 files=("$DIST"/tbound-"$VERSION"-*.tar.gz "$DIST/SHA256SUMS")
 
+# Require the checksums to actually cover the artifacts before publishing.
+if ( cd "$DIST" && sha256sum -c SHA256SUMS >/dev/null 2>&1 ); then :
+elif ( cd "$DIST" && shasum -a 256 -c SHA256SUMS >/dev/null 2>&1 ); then :
+else die "SHA256SUMS does not verify the artifacts in $DIST"; fi
+
+TARGET="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo '')"
+target_arg=()
+[ -n "$TARGET" ] && target_arg=(--target "$TARGET")
+
 if [ "$DRY" = 1 ]; then
   echo "publish-release: would run:"
-  echo "  gh release create $TAG --title \"tbound $VERSION\" --notes-file <notes> ${files[*]}"
+  echo "  gh release create $TAG --title \"tbound $VERSION\" ${target_arg[*]} --notes-file <notes> ${files[*]}"
   exit 0
 fi
 
@@ -41,8 +50,9 @@ tbound $VERSION
 Tarballs contain bin/tbound, bin/tbound-doctor, runtime/, and shell completions.
 The dev/install surface: \`tbound serve --pi --native-fixture\` runs the
 non-claim-bearing smoke path; governed \`tbound serve --pi\` remains refused until
-a signed host profile and the Podman/crun containment stack exist.
+the runtime composition admits a signed host profile and the Podman/crun
+containment stack.
 NOTES
 
-gh release create "$TAG" --title "tbound $VERSION" --notes-file "$notes" "${files[@]}"
+gh release create "$TAG" --title "tbound $VERSION" "${target_arg[@]}" --notes-file "$notes" "${files[@]}"
 echo "publish-release: created $TAG"

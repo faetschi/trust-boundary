@@ -17,11 +17,28 @@ DIST="${2:-$ROOT/dist}"
 OUT="${3:-$DIST/npm}"
 
 die() { echo "make-npm-packages: $*" >&2; exit 1; }
-case "$VERSION" in *[!A-Za-z0-9._-]*|"") die "invalid version '$VERSION'";; esac
+case "$VERSION" in
+  [0-9]*.[0-9]*.[0-9]*) ;;
+  *) die "version '$VERSION' is not semver x.y.z (required for npm packages)" ;;
+esac
 [ -d "$DIST" ] || die "dist dir $DIST does not exist (run scripts/build-release.sh first)"
 
-rm -rf "$OUT"
+# Guard the output directory: never delete an unrelated directory.
+case "$OUT" in
+  ""|"/"|"$HOME"|"$ROOT"|"$DIST") die "refusing to write npm packages to '$OUT'" ;;
+esac
+if [ "${DIST#"$OUT"/}" != "$DIST" ]; then
+  die "refusing OUT '$OUT' that contains DIST '$DIST'"
+fi
+if [ -d "$OUT" ]; then
+  if [ -f "$OUT/.tbound-npm" ]; then
+    rm -rf -- "$OUT"
+  else
+    die "refusing to remove existing non-tbound-npm directory '$OUT' (remove it manually)"
+  fi
+fi
 mkdir -p "$OUT"
+: > "$OUT/.tbound-npm"
 
 map_os() { case "$1" in linux) echo linux;; darwin) echo darwin;; windows) echo win32;; *) return 1;; esac; }
 map_cpu() { case "$1" in amd64) echo x64;; arm64) echo arm64;; *) return 1;; esac; }
@@ -38,12 +55,12 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   tar -xzf "$tgz" -C "$work"
   bindir="$OUT/$pkg/bin"
   mkdir -p "$bindir"
-  cp "$work/bin/tbound" "$bindir/tbound"
-  [ -f "$work/bin/tbound-doctor" ] && cp "$work/bin/tbound-doctor" "$bindir/tbound-doctor"
   binfile="tbound"; [ "$os" = "windows" ] && binfile="tbound.exe"
   exefile="tbound-doctor"; [ "$os" = "windows" ] && exefile="tbound-doctor.exe"
-  [ -f "$work/bin/$binfile" ] && mv "$bindir/tbound" "$bindir/$binfile" 2>/dev/null || true
-  [ -f "$work/bin/$exefile" ] && mv "$bindir/tbound-doctor" "$bindir/$exefile" 2>/dev/null || true
+  src_bin="$work/bin/$binfile"; src_exe="$work/bin/$exefile"
+  [ -f "$src_bin" ] || die "archive $base missing bin/$binfile"
+  cp "$src_bin" "$bindir/$binfile"
+  [ -f "$src_exe" ] && cp "$src_exe" "$bindir/$exefile"
   rm -rf "$work"
   cat > "$OUT/$pkg/package.json" <<JSON
 {

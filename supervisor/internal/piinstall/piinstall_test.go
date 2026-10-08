@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -111,6 +112,36 @@ func TestInstallPinnedPackagesRequiresNetworkOptIn(t *testing.T) {
 	err := InstallPinnedPackages(context.Background(), Options{Prefix: t.TempDir()}, false)
 	if !errors.Is(err, ErrNetworkRequired) {
 		t.Fatalf("want ErrNetworkRequired, got %v", err)
+	}
+}
+
+func TestInstallWritesLowercaseManifest(t *testing.T) {
+	prefix := t.TempDir()
+	var manifest string
+	o := Options{
+		Prefix:       prefix,
+		ExplicitNode: "/usr/bin/node",
+		Run: func(_ context.Context, _ string, _ string, args ...string) ([]byte, error) {
+			if len(args) == 1 && args[0] == "--version" {
+				return []byte("v24.15.0"), nil
+			}
+			b, _ := os.ReadFile(filepath.Join(prefix, "pi", "package.json"))
+			manifest = string(b)
+			pkgDir := filepath.Join(PrefixPIModules(prefix), PiCodingAgentPkg)
+			if err := os.MkdirAll(pkgDir, 0o700); err != nil {
+				return nil, err
+			}
+			return nil, os.WriteFile(filepath.Join(pkgDir, "package.json"), []byte(`{"version":"0.87.1"}`), 0o600)
+		},
+	}
+	if err := InstallPinnedPackages(context.Background(), o, true); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(manifest, `"Name"`) || strings.Contains(manifest, `"Dependencies"`) {
+		t.Fatalf("manifest uses non-npm (uppercase) keys: %s", manifest)
+	}
+	if !strings.Contains(manifest, `"dependencies"`) || !strings.Contains(manifest, `"name"`) {
+		t.Fatalf("manifest missing lowercase npm fields: %s", manifest)
 	}
 }
 

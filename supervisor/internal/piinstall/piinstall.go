@@ -196,6 +196,7 @@ func InstallPinnedPackages(ctx context.Context, o Options, allowNetwork bool) er
 	if err != nil {
 		return fmt.Errorf("resolve prefix: %w", err)
 	}
+	o.Prefix = prefix
 	node, err := DiscoverNode(ctx, o)
 	if err != nil {
 		return err

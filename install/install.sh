@@ -90,7 +90,9 @@ sha256_file() {
 }
 
 json_escape() {
-  printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+  printf '%s' "$1" \
+    | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r/\\r/g' -e 's/\n/\\n/g' \
+    | tr -d '\000-\010\013\014\016-\037'
 }
 
 install_completions() {
@@ -150,20 +152,22 @@ install_at() {
   [ "$want" = "$got" ] || die "checksum mismatch for $(basename "$artifact") (want $want got $got)"
   log "checksum ok"
 
-  local stage="$STAGE/stage"
-  mkdir -p "$stage"
-  tar -xzf "$artifact" -C "$stage"
-  [ -x "$stage/bin/tbound" ] || die "extracted archive has no bin/tbound"
+  # Stage next to the prefix so the final swap is a same-filesystem rename.
+  local parent; parent="$(dirname "$prefix")"
+  mkdir -p "$parent"
+  local stage; stage="$(mktemp -d "$parent/.tbound-stage.XXXXXX")" || die "cannot stage next to $parent"
+  if ! tar -xzf "$artifact" -C "$stage"; then rm -rf -- "$stage"; die "extraction failed"; fi
+  if [ ! -x "$stage/bin/tbound" ]; then rm -rf -- "$stage"; die "extracted archive has no bin/tbound"; fi
   printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER"
 
   if [ -e "$prefix" ] && [ -n "$(ls -A "$prefix" 2>/dev/null || true)" ] && ! is_owned_prefix "$prefix"; then
+    rm -rf -- "$stage"
     die "refusing to install into non-empty, non-tbound prefix $prefix (remove it or choose another --prefix)"
   fi
-  mkdir -p "$(dirname "$prefix")"
   local backup=""
   if [ -d "$prefix" ]; then
-    backup="$prefix.tbound-bak.$$"
-    mv "$prefix" "$backup"
+    backup="$(alloc_backup "$prefix")" || { rm -rf -- "$stage"; die "cannot allocate a backup path next to $prefix"; }
+    if ! mv "$prefix" "$backup"; then rm -rf -- "$stage"; die "failed to move existing prefix aside"; fi
   fi
   if ! mv "$stage" "$prefix"; then
     [ -n "$backup" ] && mv "$backup" "$prefix"
@@ -172,6 +176,18 @@ install_at() {
   [ -n "$backup" ] && rm -rf -- "$backup"
   chmod 700 "$prefix" 2>/dev/null || true
   log "installed binaries to $prefix/bin"
+}
+
+# alloc_backup returns a path next to prefix that does not yet exist, so the
+# existing installation can be moved aside without nesting inside unrelated data.
+alloc_backup() {
+  local prefix="$1" cand i=0
+  while [ "$i" -lt 32 ]; do
+    cand="$prefix.tbound-bak.$RANDOM$RANDOM$$"
+    if [ ! -e "$cand" ]; then printf '%s' "$cand"; return 0; fi
+    i=$((i+1))
+  done
+  return 1
 }
 
 write_config() {

@@ -16,10 +16,10 @@ ARCH="${TBOUND_DEB_ARCH:-amd64}"
 TGZ="$DIST/tbound-$VERSION-linux-$ARCH.tar.gz"
 
 command -v dpkg-deb >/dev/null 2>&1 || { echo "build-deb: dpkg-deb is required" >&2; exit 1; }
-case "$VERSION" in
-  [0-9]*) ;;
-  *) echo "build-deb: version '$VERSION' is not a valid Debian package version (must start with a digit, e.g. 0.1.0)" >&2; exit 1 ;;
-esac
+if ! printf '%s' "$VERSION" | grep -Eq '^[0-9][0-9A-Za-z.+:~-]*$'; then
+  echo "build-deb: version '$VERSION' is not a valid Debian package version (must start with a digit; allow 0-9 A-Za-z . + : ~ -)" >&2
+  exit 1
+fi
 case "$ARCH" in
   amd64|arm64) ;;
   *) echo "build-deb: unsupported architecture '$ARCH'" >&2; exit 1 ;;

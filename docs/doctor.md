@@ -45,7 +45,9 @@ tbound-doctor --json     # machine-readable report
 
 ## dev-ready vs governed-ready
 
-`dev_ready` means you can run the non-claim-bearing dev/runtime surface. A
-`governed_ready` result additionally requires the Linux containment stack and a
-signed host profile; until those exist, `tbound serve --pi` stays refused. A
-missing containment stack is reported as WARN so a developer can still work.
+`dev_ready` means you can run the non-claim-bearing dev/runtime surface.
+`governed_ready` is **always false**: this tool never returns an admission result.
+The Linux containment/profile checks are advisory prerequisites only
+(`governed_prereqs_advisory`). `tbound serve --pi` stays refused until the runtime
+composition and the authoritative verifier admit a signed profile. A missing
+containment stack is reported but does not block dev work.
