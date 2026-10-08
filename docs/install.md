@@ -69,6 +69,36 @@ install/install.sh uninstall            # removes the prefix
 # or: rm -rf "$TBOUND_PREFIX"
 ```
 
+## Update
+
+```sh
+install/install.sh update               # reinstall the latest into the existing prefix
+install/install.sh update --version 0.2.0
+```
+
+## Shell completions
+
+```sh
+# bash
+cp install/completions/tbound.bash ~/.local/share/bash-completion/completions/tbound
+# zsh (with compinit)
+cp install/completions/_tbound "${fpath[1]}/_tbound"
+# fish
+cp install/completions/tbound.fish ~/.config/fish/completions/
+```
+
+## Packaging (templates)
+
+- Homebrew: `packaging/homebrew/tbound.rb` (fill in url/sha256 after publishing).
+- Debian: `scripts/build-deb.sh <ver>` (needs `dpkg-deb`) builds `tbound_<ver>_<arch>.deb`.
+- Container: planned for the governed Podman story.
+
+## Governed runs
+
+Governed `tbound serve --pi` requires operator provisioning. See
+[`doctor.md`](doctor.md) for readiness and [`governed-setup.md`](governed-setup.md)
+for the operator runbook (signed profile, Podman/crun/Cosign, delegated cgroup).
+
 ## Package skeleton
 
 `packaging/npm/` contains the npm distribution skeleton (root launcher +

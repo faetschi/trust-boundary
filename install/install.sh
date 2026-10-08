@@ -74,8 +74,29 @@ uninstall() {
   log "done (config left at $(config_dir)/config.json if it existed)"
 }
 
+# update reinstalls the requested (default: latest) version into an existing
+# prefix, reusing the same verified download path as install.
+update() {
+  local prefix
+  prefix="$(default_prefix)"
+  local prev="" a
+  for a in "$@"; do
+    [ "$prev" = "--prefix" ] && prefix="$a"
+    prev="$a"
+  done
+  case "$prefix" in
+    ""|"/"|"$HOME") die "refusing to update '$prefix'" ;;
+  esac
+  if [ ! -x "$prefix/bin/tbound" ]; then
+    die "tbound is not installed at $prefix; run install.sh first"
+  fi
+  log "updating tbound in $prefix"
+  main "$@"
+}
+
 main() {
   if [ "${1:-}" = "uninstall" ]; then shift; uninstall "$@"; return; fi
+  if [ "${1:-}" = "update" ]; then shift; update "$@"; return; fi
 
   local version="${TBOUND_VERSION:-$DEFAULT_VERSION}"
   local prefix base_url local_dist=""
