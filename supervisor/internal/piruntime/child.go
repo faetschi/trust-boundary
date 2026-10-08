@@ -19,6 +19,7 @@ type IOMode string
 const (
 	IOModeNativeTUI   IOMode = "native-tui"
 	IOModeObservation IOMode = "observation"
+	IOModeSilent      IOMode = "silent-worker"
 
 	MaxObservationBytes      = 1 << 20
 	observationQueueSize     = 8
@@ -53,7 +54,8 @@ type ObservationSink interface {
 
 // ChildSpec deliberately has no inherit-environment switch. Env is an exact
 // allow-list and a nil value is converted to a non-nil empty environment.
-// Native TUI output and structured observation are mutually exclusive.
+// Native TUI output, structured observation, and the explicit silent-worker
+// mode are mutually exclusive.
 type ChildSpec struct {
 	Executable     string
 	Args           []string
@@ -65,6 +67,7 @@ type ChildSpec struct {
 	Observation    ObservationSink
 	ObservationMax int
 	Descendant     DescendantSettler
+	Descriptors    []InheritedDescriptor
 
 	capability *childCapability
 }
@@ -74,16 +77,32 @@ type ChildSpec struct {
 // platform-specific immutable/handle-bound launch; path hashing followed by a
 // normal path exec is not sufficient proof against TOCTOU.
 type ExecutableLaunchRequest struct {
-	Path                   string
-	Digest                 string
-	Args                   []string
-	Dir                    string
-	WorkingDirectoryHandle *os.File
-	Env                    []string
-	Stdin                  io.Reader
-	Stdout                 io.Writer
-	Stderr                 io.Writer
-	ProfileDigest          string
+	Path                    string
+	Digest                  string
+	NodeVersion             string
+	Args                    []string
+	Dir                     string
+	WorkerExposureHandle    *os.File
+	Env                     []string
+	Stdin                   io.Reader
+	Stdout                  io.Writer
+	Stderr                  io.Writer
+	ProfileDigest           string
+	ArgumentsDigest         string
+	EnvironmentDigest       string
+	WorkingDirectoryDigest  string
+	PiRuntimeBundleRoot     string
+	PiRuntimeBundleDigest   string
+	PiRuntimeBundleHandle   *os.File
+	StdinDigest             string
+	StdinProfile            string
+	DescriptorProfile       string
+	DescriptorProfileDigest string
+	ContainmentProfile      string
+	SettlementProfile       string
+	SourceDigest            string
+	Descriptors             []InheritedDescriptor
+	admission               *AdmissionCapability
 }
 
 type ExecutableLauncher interface {
@@ -140,7 +159,7 @@ func (s ChildSpec) validateShape() error {
 	if strings.TrimSpace(s.Executable) == "" || strings.ContainsAny(s.Executable, "\x00\r\n") || !filepath.IsAbs(s.Executable) {
 		return errors.New("native child executable must be an absolute path")
 	}
-	if s.Mode != IOModeNativeTUI && s.Mode != IOModeObservation {
+	if s.Mode != IOModeNativeTUI && s.Mode != IOModeObservation && s.Mode != IOModeSilent {
 		return errors.New("native child IO mode is required")
 	}
 	if s.Mode == IOModeNativeTUI && s.Observation != nil {
@@ -151,6 +170,9 @@ func (s ChildSpec) validateShape() error {
 	}
 	if s.Mode == IOModeObservation && s.TUIOutput != nil {
 		return errors.New("observation mode cannot attach native TUI output")
+	}
+	if s.Mode == IOModeSilent && (s.TUIOutput != nil || s.Observation != nil || s.ObservationMax != 0) {
+		return errors.New("silent worker mode cannot attach TUI or process-output observation")
 	}
 	seen := make(map[string]struct{}, len(s.Env))
 	for _, item := range s.Env {
@@ -168,6 +190,11 @@ func (s ChildSpec) validateShape() error {
 	}
 	if s.Mode == IOModeObservation && (s.ObservationMax <= 0 || s.ObservationMax > MaxObservationBytes) {
 		return fmt.Errorf("observation bound must be between 1 and %d bytes", MaxObservationBytes)
+	}
+	if len(s.Descriptors) != 0 {
+		if err := validatePiWorkerDescriptors(PiWorkerDescriptorProfile, s.Descriptors, nil, nil); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -194,6 +221,9 @@ func (c *AdmissionCapability) BindChild(spec ChildSpec, launcher ExecutableLaunc
 	if spec.Mode == IOModeObservation && !sameBinding(spec.Observation, c.runtime.Observation) {
 		return ChildSpec{}, ErrHostBindingsMissing
 	}
+	if !sameInheritedDescriptors(spec.Descriptors, c.runtime.Descriptors) {
+		return ChildSpec{}, ErrHostBindingsMissing
+	}
 	if spec.Executable != c.profile.ChildExecutable || !equalStrings(spec.Args, c.runtime.Arguments) ||
 		!equalStrings(spec.Env, c.runtime.Environment) || spec.Dir != c.runtime.WorkingDirectory ||
 		!sameBinding(spec.Stdin, c.runtime.Stdin) ||
@@ -204,14 +234,16 @@ func (c *AdmissionCapability) BindChild(spec ChildSpec, launcher ExecutableLaunc
 		admission: c, launcher: c.runtime.Launcher, settler: c.runtime.Descendant,
 		executable: spec.Executable, executableDigest: c.profile.ExecutableDigest,
 		args: append([]string(nil), c.runtime.Arguments...), dir: c.runtime.WorkingDirectory,
-		workingDirectoryHandle: c.runtime.WorkingDirectoryHandle,
-		env:                    append([]string{}, c.runtime.Environment...), stdin: spec.Stdin, mode: spec.Mode,
+		workerExposureHandle: c.runtime.WorkerExposureHandle,
+		env:                  append([]string{}, c.runtime.Environment...), stdin: spec.Stdin, mode: spec.Mode,
 		tuiOutput: spec.TUIOutput, observation: spec.Observation,
 		observationMax: spec.ObservationMax, profileDigest: c.profile.Digest,
+		descriptors: cloneInheritedDescriptors(c.runtime.Descriptors),
 	}
 	bound := spec
 	bound.Args = append([]string(nil), c.runtime.Arguments...)
 	bound.Env = append([]string{}, c.runtime.Environment...)
+	bound.Descriptors = cloneInheritedDescriptors(c.runtime.Descriptors)
 	bound.capability = &childCapability{bound: snapshot}
 	return bound, nil
 }
@@ -254,21 +286,22 @@ type Settlement struct {
 // for source compatibility, but StartChild never consults its exported fields
 // after this snapshot exists.
 type boundChild struct {
-	admission              *AdmissionCapability
-	launcher               ExecutableLauncher
-	settler                DescendantSettler
-	executable             string
-	executableDigest       string
-	args                   []string
-	dir                    string
-	workingDirectoryHandle *os.File
-	env                    []string
-	stdin                  io.Reader
-	mode                   IOMode
-	tuiOutput              io.Writer
-	observation            ObservationSink
-	observationMax         int
-	profileDigest          string
+	admission            *AdmissionCapability
+	launcher             ExecutableLauncher
+	settler              DescendantSettler
+	executable           string
+	executableDigest     string
+	args                 []string
+	dir                  string
+	workerExposureHandle *os.File
+	env                  []string
+	stdin                io.Reader
+	mode                 IOMode
+	tuiOutput            io.Writer
+	observation          ObservationSink
+	observationMax       int
+	profileDigest        string
+	descriptors          []InheritedDescriptor
 }
 
 type childCapability struct{ bound *boundChild }
@@ -323,7 +356,7 @@ func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
 	profile := bound.admission.profile
 	if err := runtime.validate(profile); err != nil || bound.executable != profile.ChildExecutable ||
 		bound.executableDigest != profile.ExecutableDigest || !equalStrings(bound.args, runtime.Arguments) ||
-		bound.dir != runtime.WorkingDirectory || !sameBinding(bound.workingDirectoryHandle, runtime.WorkingDirectoryHandle) ||
+		bound.dir != runtime.WorkingDirectory || !sameBinding(bound.workerExposureHandle, runtime.WorkerExposureHandle) ||
 		!sameBinding(bound.stdin, runtime.Stdin) ||
 		!equalStrings(bound.env, runtime.Environment) || DigestEnvironment(bound.env) != profile.ChildEnvironmentDigest ||
 		(bound.mode == IOModeNativeTUI && !sameBinding(bound.tuiOutput, runtime.Terminal)) ||
@@ -339,10 +372,19 @@ func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
 		return nil, err
 	}
 	cmd, err := bound.launcher.StartVerified(ctx, ExecutableLaunchRequest{
-		Path: bound.executable, Digest: bound.executableDigest,
-		Args: append([]string(nil), bound.args...), Dir: bound.dir, WorkingDirectoryHandle: bound.workingDirectoryHandle,
+		Path: bound.executable, Digest: bound.executableDigest, NodeVersion: profile.NodeVersion,
+		Args: append([]string(nil), bound.args...), Dir: bound.dir, WorkerExposureHandle: bound.workerExposureHandle,
 		Env:   append([]string{}, bound.env...),
 		Stdin: bound.stdin, Stdout: stdout, Stderr: stderr, ProfileDigest: bound.profileDigest,
+		ArgumentsDigest: profile.ChildArgumentsDigest, EnvironmentDigest: profile.ChildEnvironmentDigest,
+		WorkingDirectoryDigest: profile.WorkingDirectoryDigest, StdinDigest: profile.StdinDigest,
+		StdinProfile: profile.StdinProfile, ContainmentProfile: profile.ContainmentProfile,
+		SettlementProfile:   profile.SettlementProfile,
+		PiRuntimeBundleRoot: runtime.PiRuntimeBundleRoot, PiRuntimeBundleDigest: profile.PiRuntimeBundleDigest,
+		PiRuntimeBundleHandle: runtime.PiRuntimeBundleHandle,
+		DescriptorProfile:     profile.DescriptorProfile, DescriptorProfileDigest: profile.DescriptorProfileDigest,
+		SourceDigest: profile.SourceProvenanceDigest, Descriptors: cloneInheritedDescriptors(bound.descriptors),
+		admission: bound.admission,
 	})
 	if err != nil {
 		releaseSettlementWorker()
@@ -392,6 +434,9 @@ func StartFixtureChild(ctx context.Context, spec ChildSpec) (*Process, error) {
 func childOutputs(mode IOMode, tuiOutput io.Writer, observation ObservationSink, observationMax int) (io.Writer, io.Writer, []*observationWriter, error) {
 	if mode == IOModeNativeTUI {
 		return tuiOutput, tuiOutput, nil, nil
+	}
+	if mode == IOModeSilent {
+		return io.Discard, io.Discard, nil, nil
 	}
 	stdout, err := newObservationWriter("stdout", observation, observationMax)
 	if err != nil {
