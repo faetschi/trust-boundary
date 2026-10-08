@@ -4,13 +4,16 @@
 VERSION ?= dev
 GO ?= go
 
-.PHONY: help build release verify test fmt clean
+.PHONY: help build release verify test fmt clean deb rpm container
 
 help:
 	@echo "tbound make targets:"
 	@echo "  build     build host binaries + runtime bundle into dist/ (tarballs + SHA256SUMS)"
 	@echo "  release   cross-build linux/darwin/windows (amd64,arm64) into dist/"
 	@echo "  verify    offline end-to-end install verification (install into a throwaway prefix)"
+	@echo "  deb       build a .deb from the linux-amd64 tarball (needs dpkg-deb)"
+	@echo "  rpm       build an RPM from the linux-amd64 tarball (needs rpmbuild)"
+	@echo "  container build the container image (needs podman or docker)"
 	@echo "  test      run the Go unit tests for the doctor and Pi bootstrap"
 	@echo "  fmt       gofmt the doctor and Pi bootstrap packages"
 	@echo "  clean     remove dist/"
@@ -23,6 +26,15 @@ release:
 
 verify:
 	@scripts/verify-install.sh $(VERSION)
+
+deb:
+	@scripts/build-deb.sh $(VERSION) dist
+
+rpm:
+	@scripts/build-rpm.sh $(VERSION) dist
+
+container:
+	@scripts/build-container.sh $(VERSION)
 
 test:
 	cd supervisor && $(GO) test ./internal/piinstall ./cmd/tbound-doctor

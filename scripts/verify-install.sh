@@ -18,6 +18,7 @@ BASE="${TBOUND_VERIFY_ROOT:-$(mktemp -d "${TMPDIR:-/tmp}/tbound-verify.XXXXXX")}
 mkdir -p "$BASE"; chmod 700 "$BASE" 2>/dev/null || true
 DIST="$BASE/dist"; PREFIX="$BASE/prefix"
 export XDG_CONFIG_HOME="$BASE/config"
+export XDG_DATA_HOME="$BASE/data"
 export GO="${GO:-go}"
 
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"

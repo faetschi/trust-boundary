@@ -78,6 +78,9 @@ install/install.sh update --version 0.2.0
 
 ## Shell completions
 
+The installer installs completions automatically (bash/zsh/fish) unless you pass
+`--no-completions`. To install them manually:
+
 ```sh
 # bash
 cp install/completions/tbound.bash ~/.local/share/bash-completion/completions/tbound
@@ -91,7 +94,11 @@ cp install/completions/tbound.fish ~/.config/fish/completions/
 
 - Homebrew: `packaging/homebrew/tbound.rb` (fill in url/sha256 after publishing).
 - Debian: `scripts/build-deb.sh <ver>` (needs `dpkg-deb`) builds `tbound_<ver>_<arch>.deb`.
-- Container: planned for the governed Podman story.
+- RPM: `scripts/build-rpm.sh <ver>` (needs `rpmbuild`) builds an RPM from the linux tarball.
+- Container: `packaging/container/Containerfile` + `scripts/build-container.sh`
+  (podman, or docker) — a distribution convenience, not the governed D09 cell.
+- Both `build-rpm.sh` and `build-container.sh` support `--check` to validate inputs
+  without a build.
 
 ## Governed runs
 

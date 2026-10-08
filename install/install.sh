@@ -94,6 +94,30 @@ update() {
   main "$@"
 }
 
+# install_completions installs the packaged shell completions into the user's
+# completion directories, if the release bundle shipped them. Idempotent; only
+# touches files named `tbound`.
+install_completions() {
+  local prefix="$1"
+  local src="$prefix/share/completions"
+  [ -d "$src" ] || return 0
+  local data="${XDG_DATA_HOME:-$HOME/.local/share}"
+  local cfg="${XDG_CONFIG_HOME:-$HOME/.config}"
+  if [ -f "$src/tbound.bash" ]; then
+    mkdir -p "$data/bash-completion/completions"
+    cp -f "$src/tbound.bash" "$data/bash-completion/completions/tbound"
+  fi
+  if [ -f "$src/_tbound" ]; then
+    mkdir -p "$data/zsh/site-functions"
+    cp -f "$src/_tbound" "$data/zsh/site-functions/_tbound"
+  fi
+  if [ -f "$src/tbound.fish" ]; then
+    mkdir -p "$cfg/fish/completions"
+    cp -f "$src/tbound.fish" "$cfg/fish/completions/tbound.fish"
+  fi
+  log "installed shell completions (bash/zsh/fish); restart your shell to activate"
+}
+
 main() {
   if [ "${1:-}" = "uninstall" ]; then shift; uninstall "$@"; return; fi
   if [ "${1:-}" = "update" ]; then shift; update "$@"; return; fi
@@ -104,6 +128,7 @@ main() {
   base_url="${TBOUND_BASE_URL:-https://get.tbound.dev/releases}"
   local_dist="${TBOUND_LOCAL_DIST:-}"
   local add_path=1
+  local no_completions=0
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -112,6 +137,7 @@ main() {
       --base-url)  base_url="${2:?}"; shift 2 ;;
       --local-dist) local_dist="${2:?}"; shift 2 ;;
       --no-path)   add_path=0; shift ;;
+      --no-completions) no_completions=1; shift ;;
       *) die "unexpected argument: $1" ;;
     esac
   done
@@ -162,6 +188,8 @@ main() {
 JSON
     log "wrote $cfg/config.json"
   fi
+
+  if [ "$no_completions" = 0 ]; then install_completions "$prefix"; fi
 
   if [ "$add_path" = 1 ]; then
     log "add to PATH (then restart your shell):"

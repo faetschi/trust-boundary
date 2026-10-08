@@ -52,6 +52,10 @@ for target in "${TARGETS[@]}"; do
   ( cd "$ROOT/supervisor" && GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 "$GO" build -trimpath -o "$stage/bin/$bin" ./cmd/tbound )
   ( cd "$ROOT/supervisor" && GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 "$GO" build -trimpath -o "$stage/bin/$exe" ./cmd/tbound-doctor )
   cp -R "$RUNTIME" "$stage/runtime"
+  if [ -d "$ROOT/install/completions" ]; then
+    mkdir -p "$stage/share/completions"
+    cp "$ROOT"/install/completions/* "$stage/share/completions/"
+  fi
   printf '%s\n' "$VERSION" > "$stage/VERSION"
   tar -C "$stage" -czf "$OUT/tbound-$VERSION-$os-$arch.tar.gz" .
   echo "build-release: wrote $OUT/tbound-$VERSION-$os-$arch.tar.gz"
