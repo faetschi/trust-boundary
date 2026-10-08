@@ -113,6 +113,17 @@ provider protocol and does not read provider credentials. The configured
 the exact result bytes and updating canonical provider history only after its
 journal append succeeds.
 
+The explicit `tbound serve --pi --dev-fixture` route (see `docs/dev-launch.md`)
+does not use `SessionOperationAuthority` or D06 provenance. It launches the real
+pinned Pi worker offline and drives `read(g0) -> edit(g1) -> bash(g2) ->
+read(g2)` through the real `DurableExecutor`. Its Bash step prefers the reviewed
+`sessionlaunch.DevelopmentCommandRunner` (the measured `dev-wsl-non-claim-bearing`
+sandbox cell) and falls back to a bounded, explicitly **non-contained**
+development runner only when that sandbox cannot be established. The receipt
+records the exact runner profile; it keeps `containment="not-established"`,
+`settlement="UNKNOWN"`, `provider_exchange=false`, and
+`publication="not-attempted"`.
+
 `SessionOperationAuthority.AdmitPrompt` verifies D06/store identity and that
 the current `DurableExecutor.Tip()` matches the verified latest Store generation
 before calling `Conversation.AdmitPrompt`. The caller must forward that same

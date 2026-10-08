@@ -86,8 +86,9 @@ func TestServePiDevFixtureRequiresExplicitEnvironment(t *testing.T) {
 // TestServePiDevFixtureLaunchesActualPinnedPiOffline is opt-in. It runs the
 // actual pinned Pi SDK worker through the explicit development composition and
 // asserts the bounded, non-claim-bearing receipt with the observed four-tool
-// lineage. It is skipped unless the same explicit Linux Node/pinned-dependency/
-// private-root environment the opt-in process tests use is provided.
+// E05 lineage read -> edit -> bash -> read over g0/g1/g2, including the Bash
+// settlement field. It is skipped unless the same explicit Linux Node/
+// pinned-dependency/private-root environment the opt-in process tests use.
 func TestServePiDevFixtureLaunchesActualPinnedPiOffline(t *testing.T) {
 	for _, name := range []string{devFixtureNodeEnv, devFixtureAdapterEnv, devFixtureNodeModulesEnv, devFixtureRootEnv} {
 		if os.Getenv(name) == "" {
@@ -105,7 +106,8 @@ func TestServePiDevFixtureLaunchesActualPinnedPiOffline(t *testing.T) {
 		t.Fatalf("decode development fixture receipt: %v; receipt=%q", err, transcript.String())
 	}
 	if receipt.Mode != "dev-fixture" || receipt.ClaimBearing || receipt.ProviderExchange ||
-		receipt.Containment != "not-established" || receipt.Settlement != "UNKNOWN" {
+		receipt.Containment != "not-established" || receipt.Settlement != "UNKNOWN" ||
+		receipt.Publication != "not-attempted" {
 		t.Fatalf("development receipt lost its claim boundary: %+v", receipt)
 	}
 	if !receipt.WorkerReady || !receipt.PromptAdmitted || !receipt.TurnCompleted {
@@ -114,13 +116,36 @@ func TestServePiDevFixtureLaunchesActualPinnedPiOffline(t *testing.T) {
 	if receipt.ToolCallCount != 4 || receipt.ToolResultCount != 4 || receipt.ProposalCount != 4 {
 		t.Fatalf("development receipt lineage count mismatch: %+v", receipt)
 	}
-	if len(receipt.ToolLineage) != 4 || len(receipt.Generations) < 3 {
+	if len(receipt.Generations) != 3 ||
+		receipt.Generations[0] != "g0" || receipt.Generations[1] != "g1" || receipt.Generations[2] != "g2" ||
+		receipt.InitialGeneration != "g0" || receipt.FinalGeneration != "g2" {
+		t.Fatalf("development receipt generation lineage is not g0/g1/g2: %+v", receipt)
+	}
+	if len(receipt.ToolLineage) != 4 {
 		t.Fatalf("development receipt lineage is incomplete: %+v", receipt)
 	}
-	wantTools := []string{"read", "edit", "write", "read"}
+	wantTools := []string{"read", "edit", "bash", "read"}
+	wantFrom := []string{"g0", "g0", "g1", "g2"}
+	wantTo := []string{"g0", "g1", "g2", "g2"}
 	for index, want := range wantTools {
-		if receipt.ToolLineage[index].Tool != want {
-			t.Fatalf("development lineage[%d].tool = %q, want %q", index, receipt.ToolLineage[index].Tool, want)
+		line := receipt.ToolLineage[index]
+		if line.Tool != want || line.GenerationFrom != wantFrom[index] || line.GenerationTo != wantTo[index] {
+			t.Fatalf("development lineage[%d] = %+v, want tool=%s %s->%s",
+				index, line, want, wantFrom[index], wantTo[index])
 		}
+		if index == 2 && (line.ToolCallID != "dev-call-bash-g1" || line.TransitionID == "" || line.EffectID == "") {
+			t.Fatalf("development bash lineage lost its durable transition/effect identity: %+v", line)
+		}
+	}
+	if receipt.BashSettlement == nil {
+		t.Fatalf("development receipt has no bash settlement field: %+v", receipt)
+	}
+	bash := receipt.BashSettlement
+	if bash.ToolCallID != "dev-call-bash-g1" || bash.GenerationTo != "g2" ||
+		!bash.ExitObserved || bash.ExitCode != 0 ||
+		bash.CommandContainmentStatus != "not-established" ||
+		!strings.HasPrefix(bash.CommandRunnerProfile, "dev-") ||
+		!strings.Contains(bash.CommandRunnerProfile, "non-claim-bearing") {
+		t.Fatalf("development bash settlement is not the honest observed result: %+v", bash)
 	}
 }
