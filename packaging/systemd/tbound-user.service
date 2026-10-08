@@ -1,0 +1,19 @@
+[Unit]
+Description=TBound governed Pi session
+Documentation=file:/usr/local/share/doc/tbound/install.md
+After=default.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Delegate grants this unit a writable, non-threaded cgroup v2 subtree with the
+# controllers required for rootless containers and cgroup.kill teardown.
+Delegate=yes
+MemoryMax=4G
+TasksMax=512
+CPUWeight=100
+# Production launch refuses until the signed host profile and cell image exist.
+ExecStart=/usr/local/bin/tbound serve --pi
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,21 @@
+[Unit]
+Description=TBound governed Pi session (system unit)
+Documentation=file:/usr/local/share/doc/tbound/install.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Prefer the user unit (tbound-user.service). This system unit exists for hosts
+# that run the supervisor under a dedicated service account. Do not run as root.
+Delegate=yes
+MemoryMax=4G
+TasksMax=512
+CPUWeight=100
+# Set User= to a dedicated non-root trial account before enabling.
+User=tbound
+ExecStart=/usr/local/bin/tbound serve --pi
+
+[Install]
+WantedBy=multi-user.target

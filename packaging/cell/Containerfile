@@ -1,0 +1,19 @@
+# Signed cell image for TBound isolated command execution.
+#
+# Operator steps before use:
+#   1. Replace the base FROM digest with a pinned, reviewed digest.
+#   2. Build, then pin the resulting image digest.
+#   3. Sign offline with cosign and publish the public key.
+#   4. Wire the digest + key into TBound (tbound install / cell verification).
+#
+# This scaffold is NOT a frozen G1 profile and must be independently reviewed.
+
+FROM ubuntu@sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+COPY entrypoint.sh /usr/local/bin/tbound-cell-entrypoint
+COPY seccomp.json /usr/local/share/tbound/seccomp.json
+RUN chmod 0755 /usr/local/bin/tbound-cell-entrypoint
+
+# Run as a non-root user by default; the launcher constrains the rest.
+USER 65534:65534
+ENTRYPOINT ["/usr/local/bin/tbound-cell-entrypoint"]

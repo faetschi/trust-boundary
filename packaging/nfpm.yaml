@@ -1,0 +1,49 @@
+# nfpm configuration: builds .deb and .rpm packages for the static tbound binary.
+# Build with: VERSION=<ver> nfpm pkg --config packaging/nfpm.yaml --packager deb|rpm --target dist/
+name: tbound
+arch: amd64
+platform: linux
+version: ${VERSION}
+section: utils
+priority: optional
+maintainer: TBound
+description: |
+  TBound supervisor for governed AI coding-agent (Pi) execution.
+  Installs the tbound CLI and a systemd user unit. The signed host profile and
+  cell image are provisioned separately by an operator.
+vendor: TBound
+homepage: https://github.com/faetschi/trust-boundary
+license: MIT
+
+contents:
+  - src: dist/tbound-${VERSION}/bin/tbound
+    dst: /usr/local/bin/tbound
+    file_info:
+      mode: 0755
+  - src: packaging/systemd/tbound-user.service
+    dst: /usr/lib/systemd/user/tbound.service
+    file_info:
+      mode: 0644
+  - src: docs/install.md
+    dst: /usr/local/share/doc/tbound/install.md
+    file_info:
+      mode: 0644
+  - dst: /etc/tbound
+    type: dir
+    file_info:
+      mode: 0750
+  - dst: /opt/tbound
+    type: dir
+    file_info:
+      mode: 0750
+
+scripts:
+  postinstall: |
+    echo "TBound installed. Run 'tbound doctor' and see /usr/local/share/doc/tbound/install.md."
+    echo "Provision /etc/tbound/pi-host-profile.json and the signed cell image before governed launch."
+
+overrides:
+  rpm:
+    scripts:
+      postinstall: |
+        echo "TBound installed. Run 'tbound doctor' and see /usr/local/share/doc/tbound/install.md."

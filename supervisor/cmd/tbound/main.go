@@ -49,8 +49,17 @@ func main() {
 }
 
 func run(args []string, transcript io.Writer, stderr io.Writer) error {
-	if len(args) > 0 && args[0] == "serve" {
-		return runServe(args[1:], transcript, stderr)
+	if len(args) > 0 {
+		switch args[0] {
+		case "serve":
+			return runServe(args[1:], transcript, stderr)
+		case "install":
+			return runInstall(args[1:], transcript, stderr)
+		case "doctor":
+			return runDoctor(args[1:], transcript, stderr)
+		case "uninstall":
+			return runUninstall(args[1:], transcript, stderr)
+		}
 	}
 	flags := flag.NewFlagSet("tbound", flag.ContinueOnError)
 	flags.SetOutput(stderr)

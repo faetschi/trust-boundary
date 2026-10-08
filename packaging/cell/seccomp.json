@@ -1,0 +1,14 @@
+{
+  "defaultAction": "SCMP_ACT_ERRNO",
+  "defaultErrnoRet": 1,
+  "architectures": ["SCMP_ARCH_X86_64", "SCMP_ARCH_AARCH64"],
+  "syscalls": [
+    {"names": ["read", "write", "readv", "writev", "close", "fstat", "newfstatat", "lseek", "pread64", "pwrite64", "statx"], "action": "SCMP_ACT_ALLOW"},
+    {"names": ["mmap", "mprotect", "munmap", "mremap", "brk", "madvise"], "action": "SCMP_ACT_ALLOW"},
+    {"names": ["rt_sigaction", "rt_sigprocmask", "rt_sigreturn", "sigaltstack", "restart_syscall"], "action": "SCMP_ACT_ALLOW"},
+    {"names": ["clone3", "clone", "execve", "execveat", "wait4", "exit", "exit_group", "set_tid_address", "set_robust_list"], "action": "SCMP_ACT_ALLOW"},
+    {"names": ["getpid", "getppid", "gettid", "getuid", "geteuid", "getgid", "getegid", "getrandom", "uname", "prlimit64", "futex", "sched_yield", "nanosleep", "clock_nanosleep", "clock_gettime", "gettimeofday"], "action": "SCMP_ACT_ALLOW"},
+    {"names": ["openat", "open", "openat2", "readlink", "readlinkat", "getcwd", "chdir", "fchdir", "getdents64", "dup", "dup2", "dup3", "fcntl", "ioctl", "pipe", "pipe2", "socketpair", "epoll_create1", "epoll_ctl", "epoll_wait", "eventfd2", "ppoll", "poll"], "action": "SCMP_ACT_ALLOW"},
+    {"names": ["kill", "tkill", "tgkill", "arch_prctl", "set_robust_list", "rseq", "capget"], "action": "SCMP_ACT_ALLOW"}
+  ]
+}
