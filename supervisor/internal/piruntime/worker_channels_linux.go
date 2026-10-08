@@ -578,6 +578,116 @@ func (c *PiWorkerChannels) readEvents() {
 	c.setEventError(errors.New("Pi worker event frame budget exhausted"))
 }
 
+func developmentWorkerSourceEvidence(directory *os.File) (PiWorkerBootstrap, error) {
+	if directory == nil {
+		return PiWorkerBootstrap{}, errors.New("development worker source evidence requires the selected fixture directory")
+	}
+	info, err := directory.Stat()
+	if err != nil || !info.IsDir() {
+		return PiWorkerBootstrap{}, errors.New("development worker source handle is not a directory")
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Ino == 0 {
+		return PiWorkerBootstrap{}, errors.New("development worker source directory identity is unavailable")
+	}
+	device := uint64(stat.Dev)
+	if device == 0 {
+		return PiWorkerBootstrap{}, errors.New("development worker source directory device is unavailable")
+	}
+	mountID, err := descriptorMountID(directory.Fd())
+	if err != nil {
+		return PiWorkerBootstrap{}, fmt.Errorf("read development fixture directory mount identity: %w", err)
+	}
+	manifestDigest, err := digestDevelopmentFixtureDirectory(directory, info)
+	if err != nil {
+		return PiWorkerBootstrap{}, err
+	}
+	treeDigest := DigestBytes([]byte("DEVELOPMENT/UNKNOWN/fixture-tree/v1\x00" + manifestDigest))
+	viewIdentity := DigestBytes([]byte(fmt.Sprintf("DEVELOPMENT/UNKNOWN/fixture-view/v1\x00%d:%d:%d", device, stat.Ino, mountID)))
+	generationID := fmt.Sprintf("DEVELOPMENT/UNKNOWN/fixture-%d-%d", device, stat.Ino)
+	return PiWorkerBootstrap{
+		SourceBindingDigest:    DigestBytes([]byte("DEVELOPMENT/UNKNOWN/source-binding/v1\x00" + treeDigest)),
+		SourceProvenanceDigest: DigestBytes([]byte("DEVELOPMENT/UNKNOWN/source-provenance/v1\x00" + treeDigest)),
+		SourceGenerationID:     generationID,
+		SourceTreeDigest:       treeDigest,
+		SourceManifestDigest:   manifestDigest,
+		WorkerViewIdentity:     viewIdentity,
+		WorkerMountID:          mountID,
+	}, nil
+}
+
+func digestDevelopmentFixtureDirectory(directory *os.File, rootInfo os.FileInfo) (string, error) {
+	rootPath, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", directory.Fd()))
+	if err != nil || !filepath.IsAbs(rootPath) || strings.HasSuffix(rootPath, " (deleted)") {
+		return "", errors.New("development worker fixture directory path is unavailable")
+	}
+	pathInfo, err := os.Lstat(rootPath)
+	if err != nil || pathInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(rootInfo, pathInfo) {
+		return "", errors.New("development worker fixture directory path differs from its held descriptor")
+	}
+	var manifest strings.Builder
+	var entries uint64
+	var contentBytes int64
+	err = filepath.WalkDir(rootPath, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		entries++
+		if entries > 4096 {
+			return errors.New("development worker fixture entry budget exhausted")
+		}
+		relative, err := filepath.Rel(rootPath, path)
+		if err != nil {
+			return err
+		}
+		name := filepath.ToSlash(relative)
+		if name == "." {
+			name = ""
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		switch {
+		case info.IsDir():
+			_, err = fmt.Fprintf(&manifest, "d\x00%s\x00%o\n", name, info.Mode().Perm())
+		case info.Mode().IsRegular():
+			remaining := (16 << 20) - contentBytes
+			if remaining < 0 {
+				return errors.New("development worker fixture byte budget exhausted")
+			}
+			data, readErr := readRegularBounded(path, remaining)
+			if readErr != nil {
+				return readErr
+			}
+			contentBytes += int64(len(data))
+			_, err = fmt.Fprintf(&manifest, "f\x00%s\x00%o\x00%d\x00%s\n", name, info.Mode().Perm(), len(data), DigestBytes(data))
+		case info.Mode()&os.ModeSymlink != 0:
+			target, readErr := os.Readlink(path)
+			if readErr != nil {
+				return readErr
+			}
+			if len(target) > 4096 {
+				return errors.New("development worker fixture symlink target exceeds bound")
+			}
+			_, err = fmt.Fprintf(&manifest, "l\x00%s\x00%s\n", name, target)
+		default:
+			return errors.New("development worker fixture contains an unsupported filesystem object")
+		}
+		if err != nil {
+			return err
+		}
+		if manifest.Len() > 16<<20 {
+			return errors.New("development worker fixture manifest exceeds bound")
+		}
+		return nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("digest development worker fixture directory: %w", err)
+	}
+	return DigestBytes([]byte("DEVELOPMENT/UNKNOWN/fixture-manifest/v1\x00" + manifest.String())), nil
+}
+
 func (c *PiWorkerChannels) setEventError(err error) {
 	c.eventsMu.Lock()
 	if c.eventsErr == nil {
@@ -601,7 +711,7 @@ func decodePiWorkerEvent(raw []byte) (PiWorkerEvent, error) {
 		return event, errors.New("worker event has invalid sequence or type")
 	}
 	allowed := map[string][]string{
-		"ready":        {"type", "sequence", "schema_version", "profile_id", "profile_digest", "source_binding_digest", "source_provenance_digest", "runtime_bundle_digest", "descriptor_profile", "descriptor_profile_digest", "node_version", "pi_version", "provider_id", "model_id", "tools", "tool_schema_sha256"},
+		"ready":        {"type", "sequence", "schema_version", "profile_id", "profile_digest", "source_binding_digest", "source_provenance_digest", "source_generation_id", "source_tree_digest", "source_manifest_digest", "worker_view_identity", "worker_mount_id", "runtime_bundle_digest", "descriptor_profile", "descriptor_profile_digest", "node_version", "pi_version", "provider_id", "model_id", "tools", "tool_schema_sha256"},
 		"turn_end":     {"type", "sequence", "request_id"},
 		"worker_error": {"type", "sequence", "request_id", "code"},
 		"stopped":      {"type", "sequence", "request_id"},
@@ -647,7 +757,13 @@ func (c *PiWorkerChannels) CloseChildEnds() error {
 	c.childClosed = true
 	var joined error
 	for _, descriptor := range c.DescriptorBindings() {
-		if descriptor.Role == DescriptorWorkerExposure || descriptor.Role == DescriptorRuntimeBundle || descriptor.File == nil {
+		if descriptor.File == nil {
+			continue
+		}
+		if descriptor.Role == DescriptorWorkerExposure || descriptor.Role == DescriptorRuntimeBundle {
+			if c.ownedSourceFDs {
+				joined = errors.Join(joined, descriptor.File.Close())
+			}
 			continue
 		}
 		joined = errors.Join(joined, descriptor.File.Close())
@@ -881,12 +997,22 @@ func StartDevelopmentPiSDKWorker(ctx context.Context, plan DeveloperPiWorkerPlan
 	}
 	profile := developmentPiWorkerProfile(plan, nodeDigest, bundleDigest)
 	bootstrap := PiWorkerBootstrap{
-		SourceBindingDigest:    DigestBytes([]byte("developer-unbound-source")),
-		SourceProvenanceDigest: DigestBytes([]byte("developer-unbound-source-nonclaiming")),
-		SessionID:              plan.SessionID,
-		WorkflowID:             plan.WorkflowID,
-		ConversationID:         plan.ConversationID,
+		SessionID:      plan.SessionID,
+		WorkflowID:     plan.WorkflowID,
+		ConversationID: plan.ConversationID,
 	}
+	sourceEvidence, err := developmentWorkerSourceEvidence(plan.WorkingHandle)
+	if err != nil {
+		_ = channels.Close()
+		return nil, err
+	}
+	bootstrap.SourceBindingDigest = sourceEvidence.SourceBindingDigest
+	bootstrap.SourceProvenanceDigest = sourceEvidence.SourceProvenanceDigest
+	bootstrap.SourceGenerationID = sourceEvidence.SourceGenerationID
+	bootstrap.SourceTreeDigest = sourceEvidence.SourceTreeDigest
+	bootstrap.SourceManifestDigest = sourceEvidence.SourceManifestDigest
+	bootstrap.WorkerViewIdentity = sourceEvidence.WorkerViewIdentity
+	bootstrap.WorkerMountID = sourceEvidence.WorkerMountID
 	runtime := developmentPiWorkerBindings(profile, plan, channels)
 	return launchPiSDKWorker(ctx, profile, runtime, nil, channels, bootstrap, true, plan.NodePath, plan.DependencyRoot)
 }
@@ -908,7 +1034,7 @@ func developmentPiWorkerProfile(plan DeveloperPiWorkerPlan, nodeDigest, bundleDi
 		ObservationProfile: "worker-events/fd8/v1", ObservationProfileDigest: DigestBytes([]byte("worker-events/fd8/v1")),
 		DescriptorProfile: PiWorkerDescriptorProfile, DescriptorProfileDigest: DigestBytes([]byte(PiWorkerDescriptorProfile)),
 		PiRuntimeBundleRoot: plan.BundleRoot, PiRuntimeBundleDigest: bundleDigest,
-		SourceProvenance: "developer-unbound-source", SourceProvenanceDigest: DigestBytes([]byte("developer-unbound-source")),
+		SourceProvenance: "DEVELOPMENT/UNKNOWN", SourceProvenanceDigest: DigestBytes([]byte("DEVELOPMENT/UNKNOWN")),
 		OfflineVerifier: "none-developer-only", OfflineVerifierDigest: DigestBytes([]byte("none-developer-only")),
 		ProviderProfile: "go-providerbridge-synthetic-peer-nonclaiming", ProviderProfileDigest: DigestBytes([]byte("go-providerbridge-synthetic-peer-nonclaiming")),
 	}
@@ -1149,6 +1275,7 @@ func (w *PiSDKWorker) releasePromptLease(requestID string) {
 
 func (w *PiSDKWorker) pumpEvents() {
 	defer close(w.readerDone)
+	defer close(w.events)
 	for {
 		event, err := w.Channels.NextEvent(context.Background())
 		if err != nil {
@@ -1243,6 +1370,9 @@ func boundedStartupContext(parent context.Context) (context.Context, context.Can
 func validateReadyEvent(event PiWorkerEvent, profile HostProfile, bootstrap PiWorkerBootstrap) error {
 	if event.SchemaVersion != PiWorkerSchemaVersion || event.ProfileID != profile.ID || event.ProfileDigest != profile.Digest ||
 		event.SourceBindingDigest != bootstrap.SourceBindingDigest || event.SourceProvenanceDigest != bootstrap.SourceProvenanceDigest ||
+		event.SourceGenerationID != bootstrap.SourceGenerationID || event.SourceTreeDigest != bootstrap.SourceTreeDigest ||
+		event.SourceManifestDigest != bootstrap.SourceManifestDigest || event.WorkerViewIdentity != bootstrap.WorkerViewIdentity ||
+		event.WorkerMountID != bootstrap.WorkerMountID ||
 		event.RuntimeBundleDigest != profile.PiRuntimeBundleDigest ||
 		event.DescriptorProfile != profile.DescriptorProfile || event.DescriptorDigest != profile.DescriptorProfileDigest ||
 		event.NodeVersion != profile.NodeVersion || event.PiVersion != "0.87.1" ||

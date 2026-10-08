@@ -56,10 +56,6 @@ func Serve(ctx context.Context, channel io.ReadWriteCloser, conversation *Conver
 		return errors.New("provider bridge requires context, inherited channel, and conversation")
 	}
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	defer conversation.Close()
-	defer channel.Close()
-	context.AfterFunc(ctx, func() { _ = channel.Close() })
 
 	requests := make(chan incomingFrame, 1)
 	results := make(chan exchangeResult, 1)
@@ -71,6 +67,15 @@ func Serve(ctx context.Context, channel io.ReadWriteCloser, conversation *Conver
 	var inflight bool
 	var activeID string
 	var cancelActive context.CancelFunc
+	defer func() {
+		if cancelActive != nil {
+			cancelActive()
+		}
+		cancel()
+		_ = channel.Close()
+		conversation.Close()
+	}()
+	context.AfterFunc(ctx, func() { _ = channel.Close() })
 	seenRequestIDs := make(map[string]struct{})
 	cancelledIDs := make(map[string]struct{})
 	var writeMu sync.Mutex

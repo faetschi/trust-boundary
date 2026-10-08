@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -190,6 +191,239 @@ func TestPiWorkerEventReaderFailsClosedOnSequenceGapAndUnknownField(t *testing.T
 				t.Fatalf("invalid worker event stream did not fail closed: %v", err)
 			}
 		})
+	}
+}
+
+func TestPiWorkerReadyAcceptsAndBindsActualTypeScriptEventShape(t *testing.T) {
+	profile, _ := testHostProfile()
+	bootstrap := PiWorkerBootstrap{
+		SourceBindingDigest: DigestBytes([]byte("dev binding")), SourceProvenanceDigest: DigestBytes([]byte("dev provenance")),
+		SourceGenerationID: "DEVELOPMENT/UNKNOWN/fixture-1", SourceTreeDigest: DigestBytes([]byte("dev tree")),
+		SourceManifestDigest: DigestBytes([]byte("dev manifest")), WorkerViewIdentity: DigestBytes([]byte("dev view")), WorkerMountID: 42,
+	}
+	// This is the exact ready payload emitted in governed-pi-worker.ts, including
+	// its five additional source/view exposure-evidence fields.
+	shape := map[string]any{
+		"type": "ready", "sequence": 1, "schema_version": PiWorkerSchemaVersion,
+		"profile_id": profile.ID, "profile_digest": profile.Digest,
+		"source_binding_digest": bootstrap.SourceBindingDigest, "source_provenance_digest": bootstrap.SourceProvenanceDigest,
+		"source_generation_id": bootstrap.SourceGenerationID, "source_tree_digest": bootstrap.SourceTreeDigest,
+		"source_manifest_digest": bootstrap.SourceManifestDigest, "worker_view_identity": bootstrap.WorkerViewIdentity,
+		"worker_mount_id": bootstrap.WorkerMountID, "runtime_bundle_digest": profile.PiRuntimeBundleDigest,
+		"descriptor_profile": profile.DescriptorProfile, "descriptor_profile_digest": profile.DescriptorProfileDigest,
+		"node_version": profile.NodeVersion, "pi_version": "0.87.1", "provider_id": PiWorkerProviderID,
+		"model_id": PiWorkerModelID, "tools": []string{"read", "write", "edit", "bash"},
+		"tool_schema_sha256": piWorkerToolSchemaDigests(),
+	}
+	body, err := json.Marshal(shape)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event, err := decodePiWorkerEvent(body)
+	if err != nil {
+		t.Fatalf("decode actual TypeScript ready event shape: %v", err)
+	}
+	if err := validateReadyEvent(event, profile, bootstrap); err != nil {
+		t.Fatalf("actual TypeScript ready event did not match bootstrap evidence: %v", err)
+	}
+
+	for name, mutate := range map[string]func(*PiWorkerEvent){
+		"generation": func(event *PiWorkerEvent) { event.SourceGenerationID += "/other" },
+		"tree":       func(event *PiWorkerEvent) { event.SourceTreeDigest = DigestBytes([]byte("other tree")) },
+		"manifest":   func(event *PiWorkerEvent) { event.SourceManifestDigest = DigestBytes([]byte("other manifest")) },
+		"view":       func(event *PiWorkerEvent) { event.WorkerViewIdentity = DigestBytes([]byte("other view")) },
+		"mount":      func(event *PiWorkerEvent) { event.WorkerMountID++ },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := event
+			mutate(&changed)
+			if err := validateReadyEvent(changed, profile, bootstrap); err == nil {
+				t.Fatal("ready event with mismatched exposure evidence was accepted")
+			}
+		})
+	}
+}
+
+func TestDevelopmentWorkerSourceEvidenceIsExplicitAndFixtureBound(t *testing.T) {
+	directory := makePrivateTestDirectory(t, "worker-fixture")
+	fixture := filepath.Join(directory, "fixture.txt")
+	if err := os.WriteFile(fixture, []byte("selected fixture v1"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	handle, err := os.Open(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Close()
+	first, err := developmentWorkerSourceEvidence(handle)
+	if err != nil {
+		t.Fatalf("derive non-claiming development evidence: %v", err)
+	}
+	if !strings.HasPrefix(first.SourceGenerationID, "DEVELOPMENT/UNKNOWN/") ||
+		!validDigest(first.SourceBindingDigest) || !validDigest(first.SourceProvenanceDigest) ||
+		!validDigest(first.SourceTreeDigest) || !validDigest(first.SourceManifestDigest) ||
+		!validDigest(first.WorkerViewIdentity) || first.WorkerMountID == 0 {
+		t.Fatalf("development evidence is incomplete or not explicitly labelled UNKNOWN: %+v", first)
+	}
+	if err := os.WriteFile(fixture, []byte("selected fixture v2"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := developmentWorkerSourceEvidence(handle)
+	if err != nil {
+		t.Fatalf("rederive development evidence after fixture change: %v", err)
+	}
+	if first.SourceTreeDigest == second.SourceTreeDigest || first.SourceManifestDigest == second.SourceManifestDigest {
+		t.Fatal("development source evidence did not change with selected fixture contents")
+	}
+}
+
+func TestPiWorkerEventPumpDeliversTerminalEOFErrorAndObservationGap(t *testing.T) {
+	t.Run("terminal EOF", func(t *testing.T) {
+		worker := newPiWorkerEventPumpFixture(t, 1)
+		if err := worker.Channels.childEvents.Close(); err != nil {
+			t.Fatal(err)
+		}
+		waitWorkerEventPump(t, worker)
+		if _, err := worker.NextEvent(context.Background()); !errors.Is(err, io.EOF) {
+			t.Fatalf("terminal worker EOF = %v, want io.EOF", err)
+		}
+	})
+	t.Run("terminal error", func(t *testing.T) {
+		worker := newPiWorkerEventPumpFixture(t, 1)
+		if err := writePiFrame(worker.Channels.childEvents, []byte(`{"type":"stopped","sequence":1,"unknown":true}`)); err != nil {
+			t.Fatal(err)
+		}
+		if err := worker.Channels.childEvents.Close(); err != nil {
+			t.Fatal(err)
+		}
+		waitWorkerEventPump(t, worker)
+		if _, err := worker.NextEvent(context.Background()); err == nil || errors.Is(err, io.EOF) {
+			t.Fatalf("terminal worker error was not delivered: %v", err)
+		}
+	})
+	t.Run("observation gap before EOF", func(t *testing.T) {
+		worker := newPiWorkerEventPumpFixture(t, 1)
+		for sequence := uint64(1); sequence <= 2; sequence++ {
+			body, err := json.Marshal(PiWorkerEvent{Type: "turn_end", Sequence: sequence, RequestID: "request-gap"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := writePiFrame(worker.Channels.childEvents, body); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := worker.Channels.childEvents.Close(); err != nil {
+			t.Fatal(err)
+		}
+		waitWorkerEventPump(t, worker)
+		first, err := worker.NextEvent(context.Background())
+		if err != nil || first.Type != "turn_end" || first.Sequence != 1 {
+			t.Fatalf("first buffered event=%+v err=%v", first, err)
+		}
+		gap, err := worker.NextEvent(context.Background())
+		if err != nil || gap.Type != "observation_gap" || gap.DroppedEvents != 1 || gap.DroppedBytes == 0 {
+			t.Fatalf("observation gap=%+v err=%v", gap, err)
+		}
+		if _, err := worker.NextEvent(context.Background()); !errors.Is(err, io.EOF) {
+			t.Fatalf("worker EOF after observation gap=%v", err)
+		}
+	})
+}
+
+func TestPiWorkerChannelsCloseOwnedSourcesButBorrowDevelopmentSources(t *testing.T) {
+	newChannels := func(t *testing.T) (*PiWorkerChannels, *os.File, *os.File) {
+		t.Helper()
+		cwd, err := os.Open(makePrivateTestDirectory(t, "worker-cwd"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		bundle, err := os.Open(makePrivateTestDirectory(t, "worker-bundle"))
+		if err != nil {
+			_ = cwd.Close()
+			t.Fatal(err)
+		}
+		channels, err := newPiWorkerChannels(cwd, bundle)
+		if err != nil {
+			_ = cwd.Close()
+			_ = bundle.Close()
+			t.Fatal(err)
+		}
+		return channels, cwd, bundle
+	}
+
+	t.Run("borrowed development sources stay open", func(t *testing.T) {
+		channels, cwd, bundle := newChannels(t)
+		defer cwd.Close()
+		defer bundle.Close()
+		if err := channels.CloseChildEnds(); err != nil {
+			t.Fatal(err)
+		}
+		if err := channels.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := cwd.Stat(); err != nil {
+			t.Fatalf("borrowed fixture CWD descriptor was closed: %v", err)
+		}
+		if _, err := bundle.Stat(); err != nil {
+			t.Fatalf("borrowed fixture bundle descriptor was closed: %v", err)
+		}
+	})
+	t.Run("owned production sources close once", func(t *testing.T) {
+		channels, cwd, bundle := newChannels(t)
+		defer cwd.Close()
+		defer bundle.Close()
+		channels.ownedSourceFDs = true
+		if err := channels.CloseChildEnds(); err != nil {
+			t.Fatal(err)
+		}
+		if err := channels.CloseChildEnds(); err != nil {
+			t.Fatalf("repeated child-end close was not idempotent: %v", err)
+		}
+		if err := channels.Close(); err != nil {
+			t.Fatalf("close owned channel set: %v", err)
+		}
+		if _, err := cwd.Stat(); err == nil {
+			t.Fatal("owned worker exposure descriptor remained open")
+		}
+		if _, err := bundle.Stat(); err == nil {
+			t.Fatal("owned runtime bundle descriptor remained open")
+		}
+	})
+}
+
+func newPiWorkerEventPumpFixture(t *testing.T, queueSize int) *PiSDKWorker {
+	t.Helper()
+	cwdHandle, err := os.Open(makePrivateTestDirectory(t, "worker-cwd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundleHandle, err := os.Open(makePrivateTestDirectory(t, "worker-bundle"))
+	if err != nil {
+		_ = cwdHandle.Close()
+		t.Fatal(err)
+	}
+	channels, err := newPiWorkerChannels(cwdHandle, bundleHandle)
+	if err != nil {
+		_ = cwdHandle.Close()
+		_ = bundleHandle.Close()
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = channels.Close()
+		_ = cwdHandle.Close()
+		_ = bundleHandle.Close()
+	})
+	worker := &PiSDKWorker{Channels: channels, events: make(chan PiWorkerEvent, queueSize), readerDone: make(chan struct{})}
+	go worker.pumpEvents()
+	return worker
+}
+
+func waitWorkerEventPump(t *testing.T, worker *PiSDKWorker) {
+	t.Helper()
+	select {
+	case <-worker.readerDone:
+	case <-time.After(time.Second):
+		t.Fatal("Pi worker event pump did not terminate")
 	}
 }
 
