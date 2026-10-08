@@ -18,21 +18,16 @@ OUT="${3:-$DIST/npm}"
 
 die() { echo "make-npm-packages: $*" >&2; exit 1; }
 
-# Resolve a path with symlinks and . / .. when possible (falls back to lexical).
-canon() {
-  local p="$1"
-  [ -n "$p" ] || return 1
-  case "$p" in /*) ;; *) p="$PWD/$p" ;; esac
-  if command -v realpath >/dev/null 2>&1; then
-    local rp
-    if rp="$(realpath -m -- "$p" 2>/dev/null)" && [ -n "$rp" ]; then printf '%s' "$rp"; return 0; fi
-  fi
-  local part out="" IFS='/'
-  for part in $p; do
-    case "$part" in ""|.) ;; ..) out="${out%/*}" ;; *) out="$out/$part" ;; esac
-  done
-  printf '%s' "${out:-/}"
-}
+# A real path resolver is required: without it we cannot safely prove that the
+# output directory is not an alias of DIST/HOME, so we refuse rather than fall
+# back to lexical comparison that could delete an unrelated directory.
+if command -v realpath >/dev/null 2>&1 && realpath -m -- / >/dev/null 2>&1; then
+  canon() { realpath -m -- "$1"; }
+elif command -v readlink >/dev/null 2>&1 && readlink -f -- / >/dev/null 2>&1; then
+  canon() { readlink -f -- "$1"; }
+else
+  die "a path resolver (realpath or readlink -f) is required to guard the output directory"
+fi
 
 if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
   die "version '$VERSION' is not a valid semver (required for npm packages)"
@@ -52,8 +47,12 @@ if [ "${DIST_C#"$OUT_C"/}" != "$DIST_C" ]; then
   die "refusing OUT '$OUT_C' that contains DIST '$DIST_C'"
 fi
 if [ -e "$OUT_C" ]; then
-  if [ -f "$OUT_C/.tbound-npm" ] && [ -d "$OUT_C" ]; then
-    rm -rf -- "$OUT_C"
+  if [ -d "$OUT_C" ] && [ -f "$OUT_C/.tbound-npm" ]; then
+    # Replace our own previous output via rename, never an in-place rm of an
+    # arbitrary resolved path.
+    old="$(dirname "$OUT_C")/.tbound-npm-old.$$.$RANDOM"
+    mv "$OUT_C" "$old" || die "cannot move previous output aside: $OUT_C"
+    rm -rf -- "$old"
   else
     die "refusing to remove existing non-tbound-npm path '$OUT_C' (remove it manually)"
   fi

@@ -16,7 +16,7 @@ ARCH="${TBOUND_DEB_ARCH:-amd64}"
 TGZ="$DIST/tbound-$VERSION-linux-$ARCH.tar.gz"
 
 command -v dpkg-deb >/dev/null 2>&1 || { echo "build-deb: dpkg-deb is required" >&2; exit 1; }
-if ! printf '%s' "$VERSION" | grep -Eq '^([0-9]+:)?[0-9][0-9A-Za-z.+~]*(-[0-9A-Za-z.+~]+)?$'; then
+if ! printf '%s' "$VERSION" | grep -Eq '^([0-9]+:)?[0-9][0-9A-Za-z.+~-]*$'; then
   echo "build-deb: version '$VERSION' is not a valid Debian version (expect [epoch:]upstream[-revision])" >&2
   exit 1
 fi
@@ -45,8 +45,8 @@ Architecture: $ARCH
 Maintainer: tbound <noreply@tbound.dev>
 Description: Host-side supervisor for the Pi coding agent
  Installs the tbound supervisor CLI and the tbound-doctor preflight tool.
- Governed runs additionally require a signed host profile and the Podman/crun
- containment stack.
+ Governed runs additionally require the runtime composition/authoritative
+ verifier plus a signed host profile and the Podman/crun containment stack.
 CTRL
 
 out="$DIST/tbound_${VERSION}_${ARCH}.deb"

@@ -31,8 +31,16 @@ config_dir() {
   printf '%s/.config/tbound' "$HOME"
 }
 
-# canon_path prints an absolute path with symlinks and . / .. resolved when the
-# platform tools allow it, falling back to lexical normalization.
+# A real path resolver is required for any prefix operation: without one we
+# cannot prove the prefix is not a symlink alias of HOME or a system directory,
+# so we refuse rather than fall back to lexical comparison.
+require_resolver() {
+  if command -v realpath >/dev/null 2>&1 && realpath -m -- / >/dev/null 2>&1; then return 0; fi
+  if command -v readlink >/dev/null 2>&1 && readlink -f -- / >/dev/null 2>&1; then return 0; fi
+  return 1
+}
+
+# canon_path prints an absolute, symlink/. / .. resolved path.
 canon_path() {
   local p="$1"
   [ -n "$p" ] || return 1
@@ -40,34 +48,25 @@ canon_path() {
     /*) ;;
     *) p="$PWD/$p" ;;
   esac
-  if command -v realpath >/dev/null 2>&1; then
-    local rp
-    if rp="$(realpath -m -- "$p" 2>/dev/null)" && [ -n "$rp" ]; then printf '%s' "$rp"; return 0; fi
+  if command -v realpath >/dev/null 2>&1 && realpath -m -- / >/dev/null 2>&1; then
+    realpath -m -- "$p"
+  else
+    readlink -f -- "$p"
   fi
-  if command -v readlink >/dev/null 2>&1; then
-    local rl
-    if rl="$(readlink -f -- "$p" 2>/dev/null)" && [ -n "$rl" ]; then printf '%s' "$rl"; return 0; fi
-  fi
-  local part out="" IFS='/'
-  for part in $p; do
-    case "$part" in
-      ""|.) ;;
-      ..) out="${out%/*}" ;;
-      *) out="$out/$part" ;;
-    esac
-  done
-  printf '%s' "${out:-/}"
 }
 
 # canonical_prefix prints a resolved, safe prefix path or exits on a protected or
 # shared target (including symlink aliases of HOME and system directories).
 canonical_prefix() {
+  require_resolver || die "a path resolver (realpath or readlink -f) is required to operate on a prefix safely"
   local p
   p="$(canon_path "$1")" || die "empty prefix"
+  [ -n "$p" ] || die "empty prefix"
   case "$p" in
     "/"|"/usr"|"/etc"|"/bin"|"/sbin"|"/var"|"/home"|"/opt"|"/root") die "refusing protected prefix: $p" ;;
   esac
-  local home; home="$(canon_path "$HOME" 2>/dev/null || printf '%s' "${HOME%/}")"
+  local home
+  home="$(canon_path "$HOME")" || home="${HOME%/}"
   if [ -n "$home" ]; then
     [ "$p" = "$home" ] && die "refusing prefix equal to HOME: $p"
     if [ "${home#"$p"/}" != "$home" ]; then
@@ -181,14 +180,18 @@ install_at() {
   local hold=""
   if [ -d "$prefix" ]; then
     hold="$(mktemp -d "$parent/.tbound-hold.XXXXXX")" || die "cannot allocate hold directory next to $parent"
-    if ! mv "$prefix" "$hold/old"; then rm -rf -- "$hold"; die "failed to move existing prefix aside"; fi
+    STAGE_HOLD="$hold"
+    if ! mv "$prefix" "$hold/old"; then die "failed to move existing prefix aside"; fi
   fi
   if ! mv "$stage" "$prefix"; then
     if [ -n "$hold" ] && [ -d "$hold/old" ]; then mv "$hold/old" "$prefix"; fi
+    rm -rf -- "$hold"
+    STAGE_HOLD=""
     die "failed to move staged install into place"
   fi
   STAGE_INSTALL=""
   [ -n "$hold" ] && rm -rf -- "$hold"
+  STAGE_HOLD=""
   chmod 700 "$prefix" 2>/dev/null || true
   log "installed binaries to $prefix/bin"
 }
@@ -198,16 +201,17 @@ write_config() {
   local cfg; cfg="$(config_dir)"
   mkdir -p "$cfg"
   if [ ! -f "$cfg/config.json" ]; then
-    printf '{\n  "version": "%s",\n  "prefix": "%s",\n  "node_min": "%s",\n  "note": "governed serve --pi additionally needs a signed host profile and the Podman/crun containment stack"\n}\n' \
+    printf '{\n  "version": "%s",\n  "prefix": "%s",\n  "node_min": "%s",\n  "note": "governed serve --pi additionally needs runtime composition, a signed host profile, and the Podman/crun containment stack"\n}\n' \
       "$(json_escape "$version")" "$(json_escape "$prefix")" "$(json_escape "$NODE_MIN")" > "$cfg/config.json"
     log "wrote $cfg/config.json"
   fi
 }
 
-STAGE=""; STAGE_INSTALL=""
+STAGE=""; STAGE_INSTALL=""; STAGE_HOLD=""
 cleanup() {
   [ -n "${STAGE:-}" ] && rm -rf -- "$STAGE" || true
   [ -n "${STAGE_INSTALL:-}" ] && rm -rf -- "$STAGE_INSTALL" || true
+  [ -n "${STAGE_HOLD:-}" ] && rm -rf -- "$STAGE_HOLD" || true
 }
 trap cleanup EXIT
 
