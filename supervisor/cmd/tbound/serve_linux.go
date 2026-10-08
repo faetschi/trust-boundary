@@ -31,6 +31,9 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	if *devFixture && *nativeFixture {
 		return errors.New("--dev-fixture and --native-fixture are mutually exclusive")
 	}
+	if *devFixture && *nativeHostProfile != "" {
+		return errors.New("--dev-fixture and --native-host-profile are mutually exclusive")
+	}
 	if *devFixture {
 		return runDevelopmentPiFixture(context.Background(), transcript)
 	}

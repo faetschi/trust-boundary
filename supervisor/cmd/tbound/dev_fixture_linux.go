@@ -102,7 +102,7 @@ type developmentFixtureResult struct {
 
 // runDevelopmentPiFixture is the explicit, non-claim-bearing development launch
 // route. It requires four environment variables (Node binary, adapter source
-// root, pinned dependency root, private mode-0700 ext4 root) and refuses if any
+// root, pinned dependency root, private mode-0700 root) and refuses if any
 // is absent; it never falls back to the Go-only fixture or a stock Pi CLI.
 func runDevelopmentPiFixture(ctx context.Context, output io.Writer) error {
 	if ctx == nil {
@@ -282,7 +282,7 @@ func loadDevelopmentFixtureConfig() (developmentFixtureConfig, error) {
 			return config, fmt.Errorf("%s must be an absolute path", name)
 		}
 	}
-	if err := piruntime.ValidateDevelopmentPrivateRoot(config.privateRoot); err != nil {
+	if err := piruntime.ValidateDevelopmentPrivateDirectory(config.privateRoot); err != nil {
 		return config, fmt.Errorf("%s: %w", devFixtureRootEnv, err)
 	}
 	return config, nil

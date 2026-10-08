@@ -45,6 +45,23 @@ func TestServePiDevFixtureIsMutuallyExclusive(t *testing.T) {
 	}
 }
 
+// TestServePiDevFixtureConflictsWithNativeHostProfile proves the explicit
+// development route can never be combined with a production host profile, so a
+// profile-bearing `serve --pi` invocation is refused rather than silently
+// routed to the non-claim-bearing development fixture.
+func TestServePiDevFixtureConflictsWithNativeHostProfile(t *testing.T) {
+	for _, profile := range []string{"x", "/no/such/attested/profile"} {
+		var transcript bytes.Buffer
+		err := run([]string{"serve", "--pi", "--dev-fixture", "--native-host-profile", profile}, &transcript, io.Discard)
+		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
+			t.Fatalf("dev-fixture + native-host-profile(%q) = %v, want a mutual-exclusion refusal", profile, err)
+		}
+		if transcript.Len() != 0 {
+			t.Fatalf("conflicting dev-fixture/native-host-profile flags wrote a receipt: %q", transcript.String())
+		}
+	}
+}
+
 // TestServePiDevFixtureRequiresExplicitEnvironment proves the development route
 // is opt-in and never silently falls back to the Go-only fixture or the
 // production refusal. With the explicit paths absent it must name the missing
@@ -70,7 +87,7 @@ func TestServePiDevFixtureRequiresExplicitEnvironment(t *testing.T) {
 // actual pinned Pi SDK worker through the explicit development composition and
 // asserts the bounded, non-claim-bearing receipt with the observed four-tool
 // lineage. It is skipped unless the same explicit Linux Node/pinned-dependency/
-// private-ext4 environment the opt-in process tests use is provided.
+// private-root environment the opt-in process tests use is provided.
 func TestServePiDevFixtureLaunchesActualPinnedPiOffline(t *testing.T) {
 	for _, name := range []string{devFixtureNodeEnv, devFixtureAdapterEnv, devFixtureNodeModulesEnv, devFixtureRootEnv} {
 		if os.Getenv(name) == "" {

@@ -27,22 +27,22 @@ import (
 // the Go provider-turn fixture and the DENY response; no credential, user
 // directory, network, or host-containment claim participates. The child and
 // all temporary source/CWD/HOME/TMP artifacts live under the caller-supplied
-// mode-0700 ext4 test root; node_modules is a link to the preexisting pinned
+// mode-0700 test root; node_modules is a link to the preexisting pinned
 // repository asset tree and is never modified.
 func TestDevelopmentPiSDKWorkerInheritedFDProcessRoundTrip(t *testing.T) {
 	nodePath := os.Getenv("TBOUND_GOVERNED_PI_NODE")
 	dependencyRoot := os.Getenv("TBOUND_GOVERNED_PI_NODE_MODULES")
 	privateRoot := os.Getenv("TBOUND_GOVERNED_PI_TEST_ROOT")
 	if nodePath == "" || dependencyRoot == "" || privateRoot == "" {
-		t.Skip("set explicit Linux Node, pinned existing node_modules, and private ext4 test root to run actual Pi process integration")
+		t.Skip("set explicit Linux Node, pinned existing node_modules, and private test root to run actual Pi process integration")
 	}
 	for name, path := range map[string]string{"Linux Node": nodePath, "pinned dependency root": dependencyRoot, "private test root": privateRoot} {
 		if !filepath.IsAbs(path) {
 			t.Fatalf("%s path must be absolute", name)
 		}
 	}
-	if err := ValidateDevelopmentPrivateRoot(privateRoot); err != nil {
-		t.Fatalf("private ext4 test root preflight: %v", err)
+	if err := ValidateDevelopmentPrivateDirectory(privateRoot); err != nil {
+		t.Fatalf("private test root preflight: %v", err)
 	}
 	runRoot, err := os.MkdirTemp(privateRoot, ".governed-pi-run-")
 	if err != nil {
