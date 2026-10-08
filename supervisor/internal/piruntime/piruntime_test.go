@@ -249,7 +249,7 @@ func TestBoundChildIgnoresPostBindAuthorityFieldSwaps(t *testing.T) {
 	request := launcher.Request()
 	if request.Path != profile.ChildExecutable || request.Digest != profile.ExecutableDigest || request.Env == nil || len(request.Env) != 0 ||
 		!equalStrings(request.Args, expectedArguments) || request.Dir != profile.WorkingDirectory ||
-		!sameBinding(request.WorkingDirectoryHandle, testWorkingDirectoryHandle) || !sameBinding(request.Stdin, spec.Stdin) {
+		!sameBinding(request.WorkerExposureHandle, testWorkingDirectoryHandle) || !sameBinding(request.Stdin, spec.Stdin) {
 		t.Fatalf("post-bind mutation changed trusted launch request: %+v", request)
 	}
 	if got := trustedSettler.(*countingSettler).Calls(); got != 1 {
@@ -726,15 +726,32 @@ func TestChildSpecKeepsTUIAndObservationSeparate(t *testing.T) {
 	}
 }
 
+func TestSilentWorkerModeDiscardsStdoutAndStderr(t *testing.T) {
+	spec := ChildSpec{Executable: testExecutablePath(), Mode: IOModeSilent}
+	if err := spec.validate(); err != nil {
+		t.Fatalf("empty silent worker output plan rejected: %v", err)
+	}
+	stdout, stderr, writers, err := childOutputs(IOModeSilent, nil, nil, 0)
+	if err != nil || len(writers) != 0 || !sameBinding(stdout, io.Discard) || !sameBinding(stderr, io.Discard) {
+		t.Fatalf("silent worker output was observable: stdout=%T stderr=%T writers=%d err=%v", stdout, stderr, len(writers), err)
+	}
+	if err := (ChildSpec{Executable: testExecutablePath(), Mode: IOModeSilent, Observation: testHostObservationSink{}}).validate(); err == nil {
+		t.Fatal("silent worker mode accepted a transcript-capable process-output observer")
+	}
+}
+
 func testHostProfile() (HostProfile, HostAttestation) {
 	profile := HostProfile{
 		ID: "profile-v1", Digest: DigestBytes([]byte("profile-v1")), Mode: ModeProduction,
-		ChildExecutable: testExecutablePath(), ChildEnvironment: "env-v1", ChildEnvironmentDigest: DigestEnvironment(nil),
+		ChildExecutable: testExecutablePath(), NodeVersion: "v24.15.0", ChildEnvironment: "env-v1", ChildEnvironmentDigest: DigestEnvironment(nil),
 		ChildArgumentsProfile: "args-v1", ChildArgumentsDigest: DigestArguments([]string{"--native-tbound-host"}),
 		WorkingDirectory: os.TempDir(), WorkingDirectoryDigest: DigestBytes([]byte(os.TempDir())),
 		StdinProfile: "terminal-input-v1", StdinDigest: DigestBytes([]byte("terminal-input-v1")),
 		IPCProfile: "ipc-v1", TerminalProfile: "terminal-v1", ContainmentProfile: "containment-v1",
+		CgroupRootDigest:  DigestBytes([]byte("test cgroup root identity")),
 		SettlementProfile: "settlement-v1", ObservationProfile: "observation-v1", SourceProvenance: "source-v1",
+		DescriptorProfile:   PiWorkerDescriptorProfile,
+		PiRuntimeBundleRoot: testRuntimeBundleRoot, PiRuntimeBundleDigest: DigestBytes([]byte("test runtime bundle")),
 		OfflineVerifier: "verifier-v1", ProviderProfile: "provider-v1",
 	}
 	profile.ExecutableDigest = DigestBytes([]byte("pi"))
@@ -743,17 +760,21 @@ func testHostProfile() (HostProfile, HostAttestation) {
 	profile.ContainmentProfileDigest = DigestBytes([]byte(profile.ContainmentProfile))
 	profile.SettlementProfileDigest = DigestBytes([]byte(profile.SettlementProfile))
 	profile.ObservationProfileDigest = DigestBytes([]byte(profile.ObservationProfile))
+	profile.DescriptorProfileDigest = DigestBytes([]byte(profile.DescriptorProfile))
 	profile.SourceProvenanceDigest = DigestBytes([]byte(profile.SourceProvenance))
 	profile.OfflineVerifierDigest = DigestBytes([]byte(profile.OfflineVerifier))
 	profile.ProviderProfileDigest = DigestBytes([]byte(profile.ProviderProfile))
 	attestation := HostAttestation{
 		HostID: "host-v1", ProfileID: profile.ID, ProfileDigest: profile.Digest,
-		ExecutableDigest: profile.ExecutableDigest, ChildArgumentsDigest: profile.ChildArgumentsDigest,
+		ExecutableDigest: profile.ExecutableDigest, NodeVersion: profile.NodeVersion, ChildArgumentsDigest: profile.ChildArgumentsDigest,
 		WorkingDirectoryDigest: profile.WorkingDirectoryDigest, StdinDigest: profile.StdinDigest,
 		ChildEnvironmentDigest: profile.ChildEnvironmentDigest,
 		IPCProfileDigest:       profile.IPCProfileDigest, TerminalDigest: profile.TerminalProfileDigest,
 		ContainmentDigest: profile.ContainmentProfileDigest, SettlementDigest: profile.SettlementProfileDigest,
-		ObservationDigest: profile.ObservationProfileDigest, SourceDigest: profile.SourceProvenanceDigest,
+		CgroupRootDigest:  profile.CgroupRootDigest,
+		ObservationDigest: profile.ObservationProfileDigest, DescriptorDigest: profile.DescriptorProfileDigest,
+		PiRuntimeBundleDigest: profile.PiRuntimeBundleDigest,
+		SourceDigest:          profile.SourceProvenanceDigest,
 		OfflineVerifierDigest: profile.OfflineVerifierDigest, ProviderProfileDigest: profile.ProviderProfileDigest,
 	}
 	return profile, attestation
@@ -774,20 +795,96 @@ func (a staticHostAttestor) BindRuntime(context.Context, HostProfile) (HostRunti
 	return a.bindings, nil
 }
 
+func (staticHostAttestor) trustedHostProfileVerifier() {}
+
 func testRuntimeBindings(profile HostProfile, launcher ExecutableLauncher) HostRuntimeBindings {
 	arguments := []string{"--native-tbound-host"}
 	return HostRuntimeBindings{
-		ChildExecutable: profile.ChildExecutable, ChildArgumentsProfile: profile.ChildArgumentsProfile,
-		WorkingDirectory: profile.WorkingDirectory, WorkingDirectoryHandle: testWorkingDirectoryHandle,
-		StdinProfile: profile.StdinProfile,
-		Arguments:    arguments, Stdin: bytes.NewReader(nil), ChildEnvironment: profile.ChildEnvironment,
+		ChildExecutable: profile.ChildExecutable, NodeVersion: profile.NodeVersion, ChildArgumentsProfile: profile.ChildArgumentsProfile,
+		WorkingDirectory: profile.WorkingDirectory, WorkerExposureHandle: testWorkingDirectoryHandle,
+		WorkerExposure:         testWorkerExposure{file: testWorkingDirectoryHandle, evidence: testWorkerExposureEvidence()},
+		WorkerExposureEvidence: testWorkerExposureEvidence(),
+		PiRuntimeBundleRoot:    profile.PiRuntimeBundleRoot, PiRuntimeBundleHandle: testRuntimeBundleHandle,
+		PiRuntimeBundleDigest: profile.PiRuntimeBundleDigest,
+		WorkerRuntimeAssets:   testWorkerRuntimeAssets{file: testRuntimeBundleHandle, evidence: testWorkerRuntimeEvidence(profile)},
+		RuntimeAssetEvidence:  testWorkerRuntimeEvidence(profile),
+		StdinProfile:          profile.StdinProfile,
+		Arguments:             arguments, Stdin: bytes.NewReader(nil), ChildEnvironment: profile.ChildEnvironment,
 		Environment: []string{},
 		IPCProfile:  profile.IPCProfile, TerminalProfile: profile.TerminalProfile,
 		ContainmentProfile: profile.ContainmentProfile, SettlementProfile: profile.SettlementProfile,
 		ObservationProfile: profile.ObservationProfile, SourceProvenance: profile.SourceProvenance,
-		OfflineVerifier: profile.OfflineVerifier, ProviderProfile: profile.ProviderProfile,
+		DescriptorProfile: profile.DescriptorProfile,
+		OfflineVerifier:   profile.OfflineVerifier, ProviderProfile: profile.ProviderProfile,
 		Launcher: launcher, Descendant: &countingSettler{}, Terminal: io.Discard,
 		Observation: testHostObservationSink{},
+		Descriptors: testInheritedDescriptors(),
+	}
+}
+
+func testInheritedDescriptors() []InheritedDescriptor {
+	descriptors := make([]InheritedDescriptor, 0, len(piWorkerDescriptorLayout()))
+	descriptors = append(descriptors, InheritedDescriptor{Role: DescriptorWorkerExposure, ChildFD: 4, File: testWorkingDirectoryHandle})
+	for _, expected := range piWorkerDescriptorLayout()[1:] {
+		if expected.role == DescriptorRuntimeBundle {
+			descriptors = append(descriptors, InheritedDescriptor{Role: expected.role, ChildFD: expected.fd, File: testRuntimeBundleHandle})
+			continue
+		}
+		file, writeEnd, err := os.Pipe()
+		if err != nil {
+			panic(err)
+		}
+		if err := writeEnd.Close(); err != nil {
+			panic(err)
+		}
+		descriptors = append(descriptors, InheritedDescriptor{Role: expected.role, ChildFD: expected.fd, File: file})
+	}
+	return descriptors
+}
+
+type testWorkerExposure struct {
+	file     *os.File
+	evidence WorkerExposureEvidence
+}
+
+func (e testWorkerExposure) ExportVerifiedWorkerExposure(context.Context) (*os.File, WorkerExposureEvidence, error) {
+	return e.file, e.evidence, nil
+}
+func (e testWorkerExposure) VerifyWorkerExposure(_ context.Context, evidence WorkerExposureEvidence) error {
+	if evidence != e.evidence {
+		return ErrHostProfileMismatch
+	}
+	return nil
+}
+
+type testWorkerRuntimeAssets struct {
+	file     *os.File
+	evidence WorkerRuntimeAssetEvidence
+}
+
+func (a testWorkerRuntimeAssets) ExportVerifiedWorkerRuntimeAssets(context.Context) (*os.File, WorkerRuntimeAssetEvidence, error) {
+	return a.file, a.evidence, nil
+}
+func (a testWorkerRuntimeAssets) VerifyWorkerRuntimeAssets(_ context.Context, evidence WorkerRuntimeAssetEvidence) error {
+	if evidence != a.evidence {
+		return ErrHostProfileMismatch
+	}
+	return nil
+}
+
+func testWorkerExposureEvidence() WorkerExposureEvidence {
+	return WorkerExposureEvidence{
+		GenerationID: "test-generation", TreeDigest: DigestBytes([]byte("test tree")),
+		ManifestDigest: DigestBytes([]byte("test manifest")), BindingDigest: DigestBytes([]byte("test binding")),
+		ProvenanceDigest: DigestBytes([]byte("test provenance")), ViewIdentity: DigestBytes([]byte("test view")),
+		Device: 1, Inode: 2, MountID: 3,
+	}
+}
+
+func testWorkerRuntimeEvidence(profile HostProfile) WorkerRuntimeAssetEvidence {
+	return WorkerRuntimeAssetEvidence{
+		BundleDigest: profile.PiRuntimeBundleDigest, ViewIdentity: DigestBytes([]byte("test asset view")),
+		NamespaceProfileDigest: profile.ContainmentProfileDigest, Device: 1, Inode: 4, MountID: 5,
 	}
 }
 
@@ -799,6 +896,25 @@ var testWorkingDirectoryHandle = func() *os.File {
 	return file
 }()
 
+var testRuntimeBundleHandle = func() *os.File {
+	file, err := os.Open(testRuntimeBundleRoot)
+	if err != nil {
+		panic(err)
+	}
+	return file
+}()
+
+var testRuntimeBundleRoot = func() string {
+	path, err := os.MkdirTemp("", "tbound-test-runtime-bundle-")
+	if err != nil {
+		panic(err)
+	}
+	if err := os.Chmod(path, 0o700); err != nil {
+		panic(err)
+	}
+	return path
+}()
+
 type testHostObservationSink struct{}
 
 func (testHostObservationSink) Observe(context.Context, Observation) error { return nil }
@@ -808,6 +924,7 @@ func testChildSpec(profile HostProfile, bindings HostRuntimeBindings) ChildSpec 
 		Executable: profile.ChildExecutable, Args: append([]string(nil), bindings.Arguments...),
 		Dir: bindings.WorkingDirectory, Env: append([]string{}, bindings.Environment...), Stdin: bindings.Stdin,
 		Mode: IOModeNativeTUI, TUIOutput: bindings.Terminal, Descendant: bindings.Descendant,
+		Descriptors: cloneInheritedDescriptors(bindings.Descriptors),
 	}
 }
 
