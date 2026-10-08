@@ -192,23 +192,52 @@ func InstallPinnedPackages(ctx context.Context, o Options, allowNetwork bool) er
 	if o.Prefix == "" {
 		return errors.New("piinstall: prefix is required")
 	}
+	prefix, err := filepath.Abs(o.Prefix)
+	if err != nil {
+		return fmt.Errorf("resolve prefix: %w", err)
+	}
 	node, err := DiscoverNode(ctx, o)
 	if err != nil {
 		return err
 	}
-	piDir := filepath.Join(o.Prefix, "pi")
+	if !node.Satisfies() {
+		return fmt.Errorf("node %s is older than the required %d.%d", node.Version, MinNodeMajor, MinNodeMinor)
+	}
+	piDir := filepath.Join(prefix, "pi")
 	if err := os.MkdirAll(piDir, 0o700); err != nil {
 		return err
 	}
-	// Local install into the prefix; --no-save keeps it isolated.
-	args := append([]string{"install", "--prefix", piDir, "--omit=dev", "--no-save", "--no-audit", "--no-fund"}, PinnedPackages...)
+	// Write a pinned manifest so the install is driven by exact versions rather
+	// than floating ranges, and remains reproducible from the lockfile.
+	manifest := struct {
+		Name         string            `json:"name"`
+		Private      bool              `json:"private"`
+		Dependencies map[string]string `json:"dependencies"`
+	}{
+		Name:    "tbound-pi-runtime",
+		Private: true,
+		Dependencies: map[string]string{
+			PiCodingAgentPkg: PinnedPiVersion,
+			PiAIPkg:          PinnedPiVersion,
+			PiTUIPkg:         PinnedPiVersion,
+			TypeboxPkg:       PinnedTypeboxVersion,
+		},
+	}
+	encoded, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(piDir, "package.json"), append(encoded, '\n'), 0o600); err != nil {
+		return err
+	}
+	args := []string{"install", "--prefix", piDir, "--omit=dev", "--no-audit", "--no-fund"}
 	if _, err := o.Run(ctx, piDir, node.Path, append([]string{npmCLIPath(node.Path)}, args...)...); err != nil {
 		// Fall back to a sibling npm executable if the CLI shim is absent.
 		if _, err2 := o.Run(ctx, piDir, npmBinary(node.Path), args...); err2 != nil {
 			return fmt.Errorf("install pinned Pi packages: %w", err)
 		}
 	}
-	got, ok := DetectNodeModulesPi(PrefixPIModules(o.Prefix))
+	got, ok := DetectNodeModulesPi(PrefixPIModules(prefix))
 	if !ok || got != PinnedPiVersion {
 		return fmt.Errorf("pinned Pi install did not yield %s (got %q)", PinnedPiVersion, got)
 	}

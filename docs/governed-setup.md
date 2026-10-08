@@ -85,4 +85,7 @@ synthetic content. Genuine provider runs need separate approval.
 - [ ] Surviving runner with descendant settlement
 - [ ] Profile frozen and recorded
 
-Only when all of the above holds does `tbound serve --pi` stop refusing.
+Only when all of the above holds **and** the runtime composition and authoritative
+verifier are implemented does `tbound serve --pi` have a path to admission. Provisioning
+alone does not enable it: this runbook and the read-only checker are advisory, and the
+runtime verifier — not a probe — decides admission.

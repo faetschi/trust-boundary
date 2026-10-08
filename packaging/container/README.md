@@ -25,10 +25,13 @@ host profile and containment described in [`../../docs/governed-setup.md`](../..
 
 ## Notes
 
-- The final image runs as the node image's non-root user space; `/var/lib/tbound`
-  is the prefix (declared as a volume).
+- The image runs as the non-root `node` user shipped by the base image; the prefix
+  `/var/lib/tbound` is owned by that user and declared as a volume.
 - `npm install --omit=dev` in the image installs the pinned Pi packages
   (`@earendil-works/pi-*` 0.87.1 + `typebox` 1.3.27) — the same pins as the host
   install, so the runtime matches.
+- The build context is narrowed by `.dockerignore`/`.containerignore`.
+- Base images are currently **not digest-pinned**; pin `golang:1.27-*` and
+  `node:24-*` digests before claiming a pinned runtime.
 - Build context is the repository root; do not add the full repo to the image
   beyond the copied `supervisor/` and `adapter/` subsets.

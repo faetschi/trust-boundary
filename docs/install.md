@@ -16,7 +16,7 @@ Node or Pi, and its dev path needs no `sudo`.
 |---|---|---|
 | npm/pnpm/bun (primary) | `npm i -g @tbound/cli` | Good next to a globally-installed Pi; ships the Go binary via per-platform optional deps |
 | one-shot | `npx @tbound/cli doctor` | Try before installing |
-| curl installer | `curl -fsSL https://get.tbound.dev \| sh` | Universal; checksum-verified |
+| curl installer | `curl -fsSL https://get.tbound.dev \| bash` | Universal; checksum-verified |
 | release tarball | download `tbound-<ver>-<os>-<arch>.tar.gz` + `SHA256SUMS` | Air-gapped/manual |
 | build from source | `make build` then `install/install.sh --local-dist dist` | Requires Go and Node |
 | container | *(planned)* | Matches the governed Podman story; Phase 2 |
@@ -39,13 +39,16 @@ ${XDG_CONFIG_HOME:-$HOME/.config}/tbound/config.json
 ## Install from source (works today)
 
 ```sh
-make build                # builds dist/tbound-<ver>-<os>-<arch>.tar.gz + SHA256SUMS
-TBOUND_LOCAL_DIST=dist install/install.sh --no-path
+make build                # builds dist/tbound-dev-<os>-<arch>.tar.gz + SHA256SUMS (host target)
+bash install/install.sh --version dev --local-dist dist --no-path
 export PATH="$HOME/.local/share/tbound/bin:$PATH"
 tbound-doctor             # check Node/Pi/containment readiness
 tbound serve --pi --native-fixture   # Linux non-claim-bearing smoke test (exit 0)
 tbound serve --pi                    # refused (exit 2) until a signed profile exists
 ```
+
+The installer is a Bash script; run it with `bash`, not `sh`. Match `--version` to
+the built artifact (the `make build` default is `dev`).
 
 Install the pinned Pi packages into the prefix (side-by-side, needs network):
 

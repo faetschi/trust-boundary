@@ -38,15 +38,18 @@ type check struct {
 }
 
 type report struct {
-	Version   string  `json:"version"`
-	GOOS      string  `json:"goos"`
-	GOARCH    string  `json:"goarch"`
-	Prefix    string  `json:"prefix"`
-	Checks    []check `json:"checks"`
-	DevReady  bool    `json:"dev_ready"`
-	GovReady  bool    `json:"governed_ready"`
-	FailCount int     `json:"fail_count"`
-	WarnCount int     `json:"warn_count"`
+	Version  string  `json:"version"`
+	GOOS     string  `json:"goos"`
+	GOARCH   string  `json:"goarch"`
+	Prefix   string  `json:"prefix"`
+	Checks   []check `json:"checks"`
+	DevReady bool    `json:"dev_ready"`
+	GovReady bool    `json:"governed_ready"`
+	// GovernedPrereqsAdvisory reports whether the Linux prerequisites looked
+	// present. It is advisory only: it is never an admission result.
+	GovernedPrereqsAdvisory bool `json:"governed_prereqs_advisory"`
+	FailCount               int  `json:"fail_count"`
+	WarnCount               int  `json:"warn_count"`
 }
 
 func main() {
@@ -195,7 +198,11 @@ func buildReport(ctx context.Context, version, prefix, explicitPi string, opts p
 	// Dev-ready needs a usable Node and a detectable Pi; governed additionally
 	// needs the Linux containment stack and a signed profile.
 	rep.DevReady = nodeErr == nil && nodeInfo.Satisfies()
-	rep.GovReady = rep.DevReady && runtime.GOOS == "linux" && rep.WarnCount == 0
+	// governed_ready stays false until the production composition exists. The
+	// Linux checks are advisory prerequisites, not an admission result, and this
+	// tool must not become a parallel, weaker authority to the runtime verifier.
+	rep.GovReady = false
+	rep.GovernedPrereqsAdvisory = rep.DevReady && runtime.GOOS == "linux" && rep.WarnCount == 0
 	return rep
 }
 
@@ -249,10 +256,8 @@ func printText(rep report) {
 			fmt.Printf("         fix: %s\n", c.Remediation)
 		}
 	}
-	fmt.Printf("\ndev-ready: %v   governed-ready: %v   (%d fail, %d warn)\n", rep.DevReady, rep.GovReady, rep.FailCount, rep.WarnCount)
-	if !rep.GovReady {
-		fmt.Println("note: governed `tbound serve --pi` also needs the signed profile + Podman/crun/cosign containment stack.")
-	}
+	fmt.Printf("\ndev-ready: %v   governed-ready: false (advisory prereqs met: %v)   (%d fail, %d warn)\n", rep.DevReady, rep.GovernedPrereqsAdvisory, rep.FailCount, rep.WarnCount)
+	fmt.Println("note: these checks are advisory. Governed `tbound serve --pi` is refused until the signed host profile and the Podman/crun containment stack exist and are verified by the runtime; no probe result is an admission.")
 }
 
 func defaultPrefix() string {

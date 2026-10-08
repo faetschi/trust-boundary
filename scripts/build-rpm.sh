@@ -16,10 +16,19 @@ CHECK=0
 if [ "${1:-}" = "--check" ]; then CHECK=1; shift; fi
 VERSION="${1:-dev}"
 DIST="${2:-$ROOT/dist}"
-ARTIFACT="$DIST/tbound-$VERSION-linux-amd64.tar.gz"
-RPM_ARCH="${TBOUND_RPM_ARCH:-x86_64}"
 
 die() { echo "build-rpm: $*" >&2; exit 1; }
+
+case "$VERSION" in
+  *[!A-Za-z0-9._-]*|"") die "invalid version '$VERSION' (allow A-Za-z0-9._-)" ;;
+esac
+# Bind the RPM architecture to the artifact we actually ship. Only the
+# linux/amd64 (x86_64) tarball is supported today; linux/arm64 does not build.
+ARCH_TAG="amd64"; RPM_ARCH="x86_64"
+if [ -n "${TBOUND_RPM_ARCH:-}" ] && [ "$TBOUND_RPM_ARCH" != "x86_64" ]; then
+  die "only x86_64 is supported (linux/arm64 does not build yet); got TBOUND_RPM_ARCH=$TBOUND_RPM_ARCH"
+fi
+ARTIFACT="$DIST/tbound-$VERSION-linux-$ARCH_TAG.tar.gz"
 
 [ -f "$SPEC" ] || die "missing spec $SPEC"
 [ -f "$ARTIFACT" ] || die "missing $ARTIFACT (run scripts/build-release.sh first)"

@@ -8,7 +8,7 @@ const os = require("node:os");
 
 const key = `${process.platform}-${process.arch}`;
 console.log(`tbound: installed launcher for ${key} (node ${process.version}).`);
-console.log("tbound: run `tbound doctor` to check that Node and Pi are ready.");
+console.log("tbound: run `tbound doctor` (or `tbound-doctor` after a tarball install) to check that Node and Pi are ready.");
 console.log(
   "tbound: governed `tbound serve --pi` additionally needs a signed host profile and " +
     "the Podman/crun containment stack on Linux."

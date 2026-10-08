@@ -16,11 +16,13 @@ const PLATFORM_PACKAGES = {
   "win32-x64": "@tbound/cli-win32-x64",
 };
 
-function binaryName() {
-  return process.platform === "win32" ? "tbound.exe" : "tbound";
+function binaryName(subcommand) {
+  const isWin = process.platform === "win32";
+  if (subcommand === "doctor") return isWin ? "tbound-doctor.exe" : "tbound-doctor";
+  return isWin ? "tbound.exe" : "tbound";
 }
 
-function resolveBinary() {
+function resolveBinary(subcommand) {
   const key = `${process.platform}-${process.arch}`;
   const pkg = PLATFORM_PACKAGES[key];
   if (!pkg) {
@@ -35,18 +37,21 @@ function resolveBinary() {
         `Reinstall without --no-optional, or build from source (see docs/install.md).`
     );
   }
-  return path.join(pkgDir, "bin", binaryName());
+  return path.join(pkgDir, "bin", binaryName(subcommand));
 }
 
 function main() {
+  const args = process.argv.slice(2);
+  const isDoctor = args[0] === "doctor";
   let binary;
   try {
-    binary = resolveBinary();
+    binary = resolveBinary(isDoctor ? "doctor" : "tbound");
   } catch (err) {
     console.error(`tbound: ${err.message}`);
     process.exit(1);
   }
-  const result = spawnSync(binary, process.argv.slice(2), { stdio: "inherit" });
+  const forwarded = isDoctor ? args.slice(1) : args;
+  const result = spawnSync(binary, forwarded, { stdio: "inherit" });
   if (result.error) {
     console.error(`tbound: failed to launch ${binary}: ${result.error.message}`);
     process.exit(1);

@@ -31,8 +31,12 @@ COPY adapter/src/ /usr/local/lib/tbound/runtime/src/
 RUN cd /usr/local/lib/tbound/runtime \
  && npm install --omit=dev --no-audit --no-fund
 
+# Run as the non-root `node` user shipped by the base image.
 ENV TBOUND_PREFIX=/var/lib/tbound
-RUN mkdir -p /var/lib/tbound && chmod 700 /var/lib/tbound
+RUN mkdir -p /var/lib/tbound \
+ && chown -R node:node /usr/local/lib/tbound /var/lib/tbound \
+ && chmod 700 /var/lib/tbound
+USER node
 VOLUME ["/var/lib/tbound"]
 
 ENTRYPOINT ["tbound"]

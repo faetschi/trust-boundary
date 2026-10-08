@@ -1,0 +1,57 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "stable"
+
+      - name: Build release artifacts
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [ -n "$VERSION" ] || VERSION="0.0.0-dev"
+          bash scripts/build-release.sh "$VERSION" dist \
+            linux/amd64 darwin/amd64 darwin/arm64 windows/amd64
+
+      - name: Generate npm packages
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          [ -n "$VERSION" ] || VERSION="0.0.0-dev"
+          bash scripts/make-npm-packages.sh "$VERSION" dist
+
+      - name: Verify the install flow (offline)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          bash scripts/verify-install.sh "${VERSION:-verify}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tbound-dist
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+            dist/npm/**
+
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+
+      # npm publishing is intentionally manual/opt-in. After a tag build:
+      #   for d in dist/npm/*/; do (cd "$d" && npm publish --access public); done

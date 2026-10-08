@@ -13,7 +13,9 @@ warnf(){ printf '  [WARN] %-22s %s\n' "$1" "$2"; warn=$((warn+1)); }
 bad()  { printf '  [FAIL] %-22s %s\n' "$1" "$2"; fail=$((fail+1)); }
 have() { command -v "$1" >/dev/null 2>&1; }
 
-echo "tbound governed-host readiness (read-only)"
+echo "tbound governed-host readiness (read-only, ADVISORY)"
+echo "This is a preflight inventory, not an admission result. Even a fully green run"
+echo "does not enable governed serve --pi; the runtime verifier and a signed profile decide that."
 echo "host: $(uname -srm)   date: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo
 
@@ -37,8 +39,8 @@ if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
 else
   bad cgroup-v2 "/sys/fs/cgroup/cgroup.controllers missing (not cgroup v2)"
 fi
-if [ -e /sys/fs/cgroup/cgroup.kill ]; then ok cgroup-kill present; else warnf cgroup-kill "not present at root; a delegated subtree with cgroup.kill is required"; fi
-if [ -r /sys/fs/cgroup/cgroup.events ]; then ok cgroup-events "populated=$(grep -m1 populated /sys/fs/cgroup/cgroup.events 2>/dev/null | awk '{print $2}')"; else warnf cgroup-events "unavailable"; fi
+if [ -e /sys/fs/cgroup/cgroup.kill ]; then ok cgroup-kill present; else bad cgroup-kill "not present at root; a delegated subtree with cgroup.kill is required"; fi
+if [ -r /sys/fs/cgroup/cgroup.events ]; then ok cgroup-events "populated=$(grep -m1 populated /sys/fs/cgroup/cgroup.events 2>/dev/null | awk '{print $2}')"; else bad cgroup-events "unavailable (recursive populated accounting is required)"; fi
 
 # Containment + image tooling.
 for bin in podman crun cosign; do
@@ -55,7 +57,7 @@ for f in /etc/tbound/pi-host-profile.json /etc/tbound/pi-host-profile.ed25519 /e
   [ -e "$f" ] || prof_missing=$((prof_missing+1))
 done
 if [ "$prof_missing" -eq 0 ]; then
-  if [ "$(stat -c '%U' /etc/tbound/pi-host-profile.json 2>/dev/null)" = "root" ]; then ok signed-profile "present, root-owned"; else warnf signed-profile "present but not root-owned"; fi
+  if [ "$(stat -c '%U' /etc/tbound/pi-host-profile.json 2>/dev/null)" = "root" ]; then ok signed-profile "present, root-owned"; else bad signed-profile "present but not root-owned"; fi
 else
   bad signed-profile "missing $prof_missing of 3 files under /etc/tbound"
 fi
