@@ -15,12 +15,18 @@ The central reviewer separately concluded:
 - **Integration readiness:** not ready; the real production composition is absent.
 - **Thesis alignment:** aligned as component work, with normative gates open.
 
-The reviewed implementation is committed baseline `efda19e` plus explicit,
-currently uncommitted overlays in `/home/jeli2k/tbound-central-review.9EITMJ`.
+The review used committed baseline `efda19e` plus explicit overlays in
+`/home/jeli2k/tbound-central-review.9EITMJ` (uncommitted at review time).
 Its source-list SHA-256 is
 `cc04bd6e78c37b59884be4dea0a5267ffcc667a1b8df43fa33f122e56252f719`.
 See [the central review](central-review-corrections-2026-10-07.md) for findings,
 traceability and scope. Acceptance of component code is **not** release acceptance.
+
+The reviewed foundations were subsequently preserved as commit
+`8d2e47833030b8c723049006252a24d2d6712be0`. Two policy-helper files were normalized
+from CRLF to LF by Git; all other reviewed file bytes matched. The exact committed
+snapshot passed full Go race/vet/CLI checks and committed-only native/adapter checks.
+New vertical-slice work is separate and remains subject to renewed central review.
 
 Coordinator verification of this combined source passed:
 

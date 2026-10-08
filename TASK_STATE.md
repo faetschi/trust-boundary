@@ -42,14 +42,35 @@ Central review accepts bounded component code, NOT an experiment-ready release.
   host evidence; do not retry old runs or bypass reviewed identity/admission gates.
 - Keep ownership disjoint; no polling or duplicate dispatch to existing workers.
   A prior requested blocking wait timed out; completion notifications supplied status.
-- All corrective workers and renewed central review finished. Component code is
-  accepted; production integration and release qualification remain outstanding.
-- Every future new dispatch/continuation/reviewer uses `openai/gpt-6-luna#xhigh`;
-  no silent model fallback. Previously dispatched workers could finish unchanged.
+- Foundations and their central review finished; concrete vertical-slice workers
+  are active. Production integration and release qualification remain outstanding.
+- Latest user rule: exploration/implementation uses `openai/gpt-6-luna#max`;
+  every completed batch gets CENTRAL `openai/gpt-6.1-sol#high` safety/integration/
+  thesis-alignment review before orchestration continues. No silent model fallback.
 - Explicit exception: user requested GPT 6.1 Sol for this TASK_STATE-only cleanup,
   reusing diagnosis child `ses_ee8ec8962ffeyA0v0Rd7QAKN8v`; no other file ownership.
 
 ## CENTRAL verdict — component code accepted; release not ready
+
+Reviewed foundations committed as `8d2e47833030b8c723049006252a24d2d6712be0`.
+Explicit 50-file staging excluded new worker changes and user-owned frontend plan.
+Post-commit comparison: 48 exact files, two CRLF->LF normalizations only (policy
+patch script and loader); no non-line-ending changes. Exact committed snapshot
+`tbound-central-review-foundation.lzrfJH` passed full Go race/vet/gofmt/CLI and
+source readback; committed-only credential-free npm check and 17 native tests passed.
+This closes the normalization verification gap, not production readiness.
+
+Active next batch (GPT 6 Luna max; no commits by workers):
+- `ses_ee90a0ae2ffecu5hnmXg1Nt6od`: concrete Go broker conversation owner and
+  TS provider stream adapter; new `providerbridge/**`, `adapter/src/broker-provider*`.
+- `ses_ee90afdf3ffexcnQKQh6XzVohX`: concrete launcher/bootstrap and actual Pi
+  worker entrypoint; new piruntime launcher and `adapter/src/governed-pi-worker*`.
+- `ses_ee90a5123ffeDXfZWejFoVgAYh`: sealed-store-backed D06 verification,
+  durable provenance and CLI session composition; new `sessionlaunch/**` and owned cmd files.
+- `ses_ee90aa1f0ffeCJkUywyd25UZHi`: read-only current experiment-host/runtime
+  prerequisite report. No VM/task/key/privilege/network operations authorized.
+Coordinate actual wire/launch APIs before integration; use existing components,
+not more callback-only trust placeholders. New central Sol high review follows all returns.
 
 All five corrections returned. Renewed central review completed on frozen
 `/home/jeli2k/tbound-central-review.9EITMJ` (source-list SHA-256
@@ -78,9 +99,9 @@ Preservation incident: runtime build overwrote pre-existing untracked `superviso
 Preservation incident retained; file not restored/deleted/staged. All later build
 outputs must use explicit private paths. No readiness claim follows.
 
-Before orchestration acceptance, implementation commits or next-stage work:
+For each new batch before acceptance, implementation commits or next-stage work:
 1. Freeze ALL agents' exact combined changes, including this handoff cleanup.
-2. Dispatch a CENTRAL read-only GPT 6 Luna xhigh reviewer of all changes and
+2. Dispatch a CENTRAL read-only GPT 6.1 Sol high reviewer of all changes and
    cross-component contracts. Individual reviews/passing retries are not this gate.
 3. Require separate verdicts for code safety, integration readiness and thesis alignment.
 4. Require requirement/decision -> implementation -> verified evidence -> gap/divergence
