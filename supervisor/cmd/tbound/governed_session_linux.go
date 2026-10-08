@@ -1006,12 +1006,27 @@ func RunGovernedChannels(ctx context.Context, supervisor *Supervisor, providerCh
 		return errors.New("governed channel runner requires providerbridge.NewExecutor around the real DurableExecutor")
 	}
 	bridgeCtx, cancel := context.WithCancel(ctx)
-	bridgeDone := make(chan error, 1)
-	go func() { bridgeDone <- providerbridge.Serve(bridgeCtx, providerChannel, conversation) }()
-	serveErr := supervisor.Serve(bridgeCtx)
+	type loopResult struct {
+		provider bool
+		err      error
+	}
+	done := make(chan loopResult, 2)
+	go func() {
+		done <- loopResult{provider: true, err: providerbridge.Serve(bridgeCtx, providerChannel, conversation)}
+	}()
+	go func() { done <- loopResult{err: supervisor.Serve(bridgeCtx)} }()
+	first := <-done
 	cancel()
 	_ = providerChannel.Close()
-	bridgeErr := <-bridgeDone
+	second := <-done
+	var serveErr, bridgeErr error
+	for _, result := range []loopResult{first, second} {
+		if result.provider {
+			bridgeErr = result.err
+		} else {
+			serveErr = result.err
+		}
+	}
 	conversation.Close()
 	return errors.Join(serveErr, bridgeErr)
 }

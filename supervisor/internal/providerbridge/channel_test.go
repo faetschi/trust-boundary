@@ -105,6 +105,45 @@ func TestInheritedChannelCancellationClosesAndWithholdsTurn(t *testing.T) {
 	t.Fatal("canceled in-flight HTTP exchange lacks durable UNKNOWN evidence")
 }
 
+func TestInheritedChannelInvalidCancelCancelsActiveTurnBeforeConversationClose(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	defer clientConn.Close()
+	started := make(chan struct{})
+	doer := &fixtureDoer{
+		responses: []fixtureResponse{{responseID: "response-invalid-cancel", text: "must not be released"}},
+		block:     make(chan struct{}), started: started,
+	}
+	conversation := newFixtureConversation(t, &memoryJournal{}, doer, "g0", "tree-g0")
+	if err := conversation.AdmitPrompt("task-invalid-cancel", "synthetic prompt"); err != nil {
+		t.Fatal(err)
+	}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- Serve(context.Background(), serverConn, conversation) }()
+	if err := writeChannelTestFrame(clientConn, map[string]any{
+		"version": bridgeSchemaVersion, "sequence": 1, "kind": "next", "request_id": "request-active",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("fixture HTTP Doer was not called")
+	}
+	if err := writeChannelTestFrame(clientConn, map[string]any{
+		"version": bridgeSchemaVersion, "sequence": 2, "kind": "cancel", "request_id": "wrong-active-request",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-serveDone:
+		if err == nil {
+			t.Fatal("invalid cancellation unexpectedly kept provider bridge open")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("invalid cancellation did not cancel the HTTP turn before Conversation.Close")
+	}
+}
+
 func writeChannelTestFrame(writer io.Writer, value any) error {
 	body, err := json.Marshal(value)
 	if err != nil {
