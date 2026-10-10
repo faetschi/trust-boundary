@@ -1,0 +1,34 @@
+#compdef tbound tbound-doctor
+
+_tbound() {
+  local -a subcommands
+  subcommands=(
+    'serve:Run the supervisor (production refused until a signed profile exists)'
+  )
+  _arguments -C \
+    '1:command:->cmd' \
+    '--smoke-listen[synthetic no-effect Unix-socket listener]' \
+    '--socket-dir[private mode-0700 dir for the smoke socket]:dir:_files -/' \
+    '--help[show help]' \
+    '*::arg:->args'
+  case $state in
+    cmd) _describe 'command' subcommands ;;
+    args)
+      case $words[1] in
+        serve) _arguments '--pi[run the native Pi harness]' '--native-fixture[non-claim-bearing fixture]' '--native-host-profile[signed host profile receipt]:file:_files' ;;
+      esac ;;
+  esac
+}
+
+_tbound_doctor() {
+  _arguments \
+    '--json[JSON output]' \
+    '--install-pi[install pinned Pi packages into the prefix]' \
+    '--prefix[tbound prefix]:dir:_files -/' \
+    '--node[explicit Node binary]:file:_files' \
+    '--pi[existing node_modules containing Pi]:dir:_files -/' \
+    '--version[version label]:version:'
+}
+
+compdef _tbound tbound
+compdef _tbound_doctor tbound-doctor

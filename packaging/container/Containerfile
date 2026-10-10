@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1
+# Container image for the tbound supervisor.
+#
+# Build from the repository root:
+#   podman build -f packaging/container/Containerfile -t tbound:dev .
+#   docker build -f packaging/container/Containerfile -t tbound:dev .
+#
+# This image runs the tbound CLI and bundles a pinned Node + Pi runtime. It is a
+# convenient distribution channel, NOT the governed D09 cell: governed
+# `serve --pi` still requires a signed host profile and the Podman/crun
+# containment profile on the host.
+
+FROM golang:1.27-bookworm AS build
+WORKDIR /src
+COPY supervisor/go.mod supervisor/go.sum ./supervisor/
+RUN cd supervisor && go mod download
+COPY supervisor/ ./supervisor/
+RUN cd supervisor \
+ && CGO_ENABLED=0 go build -trimpath -o /out/tbound ./cmd/tbound \
+ && CGO_ENABLED=0 go build -trimpath -o /out/tbound-doctor ./cmd/tbound-doctor
+
+FROM node:24-bookworm-slim
+LABEL org.opencontainers.image.title="tbound" \
+      org.opencontainers.image.description="Host-side supervisor for the Pi coding agent" \
+      org.opencontainers.image.licenses="MIT"
+
+RUN mkdir -p /usr/local/lib/tbound/runtime
+COPY --from=build /out/tbound /out/tbound-doctor /usr/local/bin/
+COPY adapter/package.json adapter/package-lock.json /usr/local/lib/tbound/runtime/
+COPY adapter/src/ /usr/local/lib/tbound/runtime/src/
+RUN cd /usr/local/lib/tbound/runtime \
+ && npm install --omit=dev --no-audit --no-fund
+
+# Run as the non-root `node` user shipped by the base image.
+ENV TBOUND_PREFIX=/var/lib/tbound
+RUN mkdir -p /var/lib/tbound \
+ && chown -R node:node /usr/local/lib/tbound /var/lib/tbound \
+ && chmod 700 /var/lib/tbound
+USER node
+VOLUME ["/var/lib/tbound"]
+
+ENTRYPOINT ["tbound"]
+CMD ["serve", "--pi", "--native-fixture"]
