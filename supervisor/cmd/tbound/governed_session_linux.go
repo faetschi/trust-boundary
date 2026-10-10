@@ -38,7 +38,6 @@ const (
 
 var (
 	ErrGovernedSessionEvidence = errors.New("governed session audit evidence did not authorize the exact operation")
-	ErrLeaseOriginUnsupported  = errors.New("publication finalizer does not yet accept authenticated terminal lease origins")
 )
 
 type providerExchangeEvidence struct {
@@ -158,13 +157,39 @@ type SessionOperationAuthority struct {
 	initialGeneration    string
 	initialTreeDigest    string
 	baselineBound        bool
-	runner               *sessionlaunch.DevelopmentCommandRunner
+	runner               governedCommandRunner
 	conversation         *providerbridge.Conversation
 	operationProofs      map[delta.OperationIdentity]governedOperationProof
+	// requireEvidencedBashContainment makes VerifyOrigin require positive,
+	// evidenced Bash containment (a registered signed command-cell profile and
+	// settlement) instead of the development "not-established" marker. The
+	// production composition sets it; development/E05 tests leave it false.
+	requireEvidencedBashContainment bool
+}
+
+// governedCommandRunner is the authority's measured command-settlement seam. It
+// is deliberately narrower than sessionrepo.CommandRunner: the authority only
+// registers the authenticated Bash view/lease and re-verifies the one-use
+// settlement receipt. sessionlaunch.DevelopmentCommandRunner and the registered
+// signed D09 Bash command-cell runner both satisfy it. The legacy internal/podman
+// Alpine runner is never a production implementation.
+type governedCommandRunner interface {
+	Profile() string
+	RegisterLease(viewID, leaseID string) error
+	VerifySettlement(settlement sessionrepo.CommandSettlement, viewID, leaseID string) error
+}
+
+type governedBashEvidenceVerifier interface {
+	VerifyProductionBashEvidence(context.Context, sessionrepo.OperationEvidence) error
+}
+
+type governedBashEvidenceOriginVerifier interface {
+	VerifyProductionBashEvidenceWithOrigin(context.Context, sessionrepo.EvidenceBundle, delta.OperationIdentity,
+		delta.Transition, sessionrepo.OperationEvidence) error
 }
 
 func NewSessionOperationAuthority(storeJournal, providerJournal *audit.Journal, workflowID, conversationID, providerProfileID string, gatePolicy gate.Policy,
-	storePolicyDigest, metadataPolicyDigest string, runner *sessionlaunch.DevelopmentCommandRunner) (*SessionOperationAuthority, error) {
+	storePolicyDigest, metadataPolicyDigest string, runner governedCommandRunner) (*SessionOperationAuthority, error) {
 	if storeJournal == nil || providerJournal == nil || storeJournal == providerJournal ||
 		!validIdentityText(workflowID) || !validIdentityText(conversationID) || !validIdentityText(providerProfileID) ||
 		gatePolicy.Digest() == "" || !validBareSHA256(storePolicyDigest) || !validBareSHA256(metadataPolicyDigest) {
@@ -708,11 +733,27 @@ func (a *SessionOperationAuthority) VerifyOrigin(bundle sessionrepo.EvidenceBund
 		operationEvidence.Outcome != "success" || operationEvidence.ResultDigest == "" || operationEvidence.AuditSequence == 0 {
 		return ErrGovernedSessionEvidence
 	}
-	if result.Tool == "bash" && (operationEvidence.ViewID != transition.ViewID ||
-		operationEvidence.ExecutionContextDigest != transition.ExecutionContextDigest ||
-		operationEvidence.CommandContainmentStatus != "not-established" ||
-		operationEvidence.CommandRunnerProfile == "" || operationEvidence.ExitCode == nil) {
-		return ErrGovernedSessionEvidence
+	if result.Tool == "bash" {
+		if operationEvidence.ViewID != transition.ViewID ||
+			operationEvidence.ExecutionContextDigest != transition.ExecutionContextDigest ||
+			operationEvidence.CommandRunnerProfile == "" || operationEvidence.ExitCode == nil {
+			return ErrGovernedSessionEvidence
+		}
+		if a.requireEvidencedBashContainment {
+			if operationEvidence.CommandContainmentStatus != "not-established" {
+				return ErrGovernedSessionEvidence
+			}
+			proposalID, proposalErr := durableTrustedIdentity("proposal", proof.proposal, proof.decision)
+			providerCall := delta.OperationIdentity{Kind: delta.OperationProposalCall, ProposalID: proposalID,
+				CallIssuer: governedCallIssuer, CallID: proof.proposal.ToolCallID}
+			verifier, ok := a.runner.(governedBashEvidenceOriginVerifier)
+			if proposalErr != nil || !ok || verifier.VerifyProductionBashEvidenceWithOrigin(context.Background(), bundle,
+				providerCall, transition, *operationEvidence) != nil {
+				return ErrGovernedSessionEvidence
+			}
+		} else if operationEvidence.CommandContainmentStatus != "not-established" {
+			return ErrGovernedSessionEvidence
+		}
 	}
 	var operationAdmission *governedOperationAdmissionRecord
 	var operationAdmissionSequence uint64
@@ -1132,9 +1173,56 @@ func validNextGeneration(input, output string) bool {
 	return in != ^uint64(0) && out == in+1
 }
 
-// CheckFinalizerOrigin documents the current workflow contract boundary. The
-// proposal↔lease receipt can be independently verified, but workflow.Finalizer
-// still rejects terminal lease origins before calling its Trust verifier.
+// ResolveTerminalLeaseOrigin authenticates the originating proposal-call
+// identity of a terminal command lease from the durable session ledger. The
+// association is the proposal-call transition whose output generation/tree is
+// exactly the lease's input generation/tree, re-verified through VerifyOrigin;
+// a caller-supplied origin string is never accepted.
+func (a *SessionOperationAuthority) ResolveTerminalLeaseOrigin(ctx context.Context, bundle sessionrepo.EvidenceBundle, terminal delta.Transition) (delta.OperationIdentity, error) {
+	if a == nil || ctx == nil {
+		return delta.OperationIdentity{}, ErrGovernedSessionEvidence
+	}
+	if err := ctx.Err(); err != nil {
+		return delta.OperationIdentity{}, err
+	}
+	if terminal.Operation.Kind != delta.OperationLease || terminal.Tool != "bash" || terminal.InputGeneration == "" ||
+		terminal.OutputGeneration == "" || terminal.InputTreeDigest == "" || terminal.OutputTreeDigest == "" ||
+		len(bundle.ApprovedDeltaLedger) == 0 || !reflect.DeepEqual(bundle.ApprovedDeltaLedger[len(bundle.ApprovedDeltaLedger)-1], terminal) {
+		return delta.OperationIdentity{}, ErrGovernedSessionEvidence
+	}
+	// Authenticate the terminal Bash lease itself, not the preceding edit/write
+	// whose output happens to equal this lease's input generation. VerifyOrigin
+	// checks the exact provider response/call, canonical arguments, gate decision,
+	// command lease/view/context, Store authorization receipt, effect intent/outcome,
+	// Bash result, and full transition generation/tree binding.
+	if err := a.VerifyOrigin(bundle, terminal); err != nil {
+		return delta.OperationIdentity{}, err
+	}
+	providerTrace, err := a.providerJournal.Trace()
+	if err != nil {
+		return delta.OperationIdentity{}, err
+	}
+	proof, result, err := a.providerResultForTransition(providerTrace, terminal)
+	if err != nil || proof.proposal.Tool != "bash" || proof.proposal.ToolCallID == "" ||
+		result.Tool != "bash" || result.GenerationFrom != terminal.InputGeneration || result.GenerationTo != terminal.OutputGeneration ||
+		result.TreeDigestFrom != terminal.InputTreeDigest || result.TreeDigestTo != terminal.OutputTreeDigest {
+		return delta.OperationIdentity{}, errors.Join(ErrGovernedSessionEvidence, err)
+	}
+	operation, _, _, err := a.bindOperation(proof)
+	if err != nil || operation != terminal.Operation {
+		return delta.OperationIdentity{}, errors.Join(ErrGovernedSessionEvidence, err)
+	}
+	proposalID, err := durableTrustedIdentity("proposal", proof.proposal, proof.decision)
+	if err != nil {
+		return delta.OperationIdentity{}, err
+	}
+	return delta.OperationIdentity{Kind: delta.OperationProposalCall, ProposalID: proposalID,
+		CallIssuer: governedCallIssuer, CallID: proof.proposal.ToolCallID}, nil
+}
+
+// CheckFinalizerOrigin authenticates the final approved operation and, for a
+// command lease, resolves the exact terminal Bash provider call. It returns no
+// caller-controlled origin string.
 func (a *SessionOperationAuthority) CheckFinalizerOrigin(bundle sessionrepo.EvidenceBundle) error {
 	if len(bundle.ApprovedDeltaLedger) == 0 {
 		return errors.New("publication requires at least one approved mutation")
@@ -1144,7 +1232,8 @@ func (a *SessionOperationAuthority) CheckFinalizerOrigin(bundle sessionrepo.Evid
 		if err := a.VerifyOrigin(bundle, terminal); err != nil {
 			return err
 		}
-		return ErrLeaseOriginUnsupported
+		_, err := a.ResolveTerminalLeaseOrigin(context.Background(), bundle, terminal)
+		return err
 	}
 	if terminal.Operation.Kind != delta.OperationProposalCall {
 		return ErrGovernedSessionEvidence

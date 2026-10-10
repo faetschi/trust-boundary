@@ -869,6 +869,10 @@ type PiSDKWorker struct {
 	Channels    *PiWorkerChannels
 	development bool
 
+	// launchProof is the captured, validated per-launch D09 TCB proof, bound to
+	// this worker's exact process. It is nil for development workers.
+	launchProof any
+
 	mu          sync.Mutex
 	leases      map[string]*workerPromptLease
 	closed      bool
@@ -901,6 +905,24 @@ func (w *PiSDKWorker) PID() int {
 		return 0
 	}
 	return w.Session.child.PID()
+}
+
+// D09LaunchProof returns the captured, validated D09 TCB proof for this worker's
+// exact launch, bound to the launched command identity. Production callers MUST
+// journal it before releasing any prompt or effect; a missing proof returns
+// false and no prompt may be released. Development workers always return false.
+func (w *PiSDKWorker) D09LaunchProof() (D09TCBProof, bool) {
+	if w == nil || w.launchProof == nil {
+		return D09TCBProof{}, false
+	}
+	proof, ok := w.launchProof.(D09TCBProof)
+	if !ok || proof.LeaderPID <= 0 || proof.LauncherProcessPID <= 0 || proof.LauncherProcessPID != w.PID() || proof.ContainerName == "" ||
+		!validDigest(proof.ImageDigest) || proof.TemplateDigest == "" ||
+		proof.Schema != "tbound-pi-entrypoint/v1" || !proof.ConsumerMountsVerified ||
+		!proof.RawSourceFDsClosed || proof.WorkerMountID == 0 || proof.RuntimeMountID == 0 {
+		return D09TCBProof{}, false
+	}
+	return proof, true
 }
 
 func LaunchPiSDKWorker(ctx context.Context, capability *AdmissionCapability, exposure VerifiedWorkerExposure, assets VerifiedWorkerRuntimeAssets, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiSDKWorker, error) {
@@ -1175,7 +1197,7 @@ func launchPiSDKWorker(ctx context.Context, profile HostProfile, runtime HostRun
 	if err != nil {
 		return nil, stopFailedPiLaunch(process, channels, err)
 	}
-	worker := &PiSDKWorker{Session: session, Channels: channels, development: development, leases: make(map[string]*workerPromptLease), events: make(chan PiWorkerEvent, PiWorkerEventQueue), readerDone: make(chan struct{})}
+	worker := &PiSDKWorker{Session: session, Channels: channels, development: development, launchProof: process.LaunchProof(), leases: make(map[string]*workerPromptLease), events: make(chan PiWorkerEvent, PiWorkerEventQueue), readerDone: make(chan struct{})}
 	go worker.pumpEvents()
 	keepChannels = true
 	return worker, nil

@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1
+# Governed D09 Pi cell image (rootless Podman/crun).
+#
+# Build from the repository root:
+#   podman build -f packaging/governed/Containerfile -t localhost/tbound/pi-cell:latest .
+#
+# The resulting image is signed with cosign and its repo digest is frozen into
+# the registered /etc/tbound/d09-cell.json template. The image is never pulled
+# at run time (podman --pull=never) and is verified offline from a local OCI
+# layout. No secret or private signing key belongs in this image.
+FROM golang:1.27-bookworm AS entrypoint
+WORKDIR /src
+COPY supervisor/ ./supervisor/
+RUN cd supervisor \
+ && CGO_ENABLED=0 go build -trimpath -o /out/tbound-pi-entrypoint ./cmd/tbound-cell-entrypoint
+
+FROM node:24-bookworm-slim
+LABEL org.opencontainers.image.title="tbound-pi-cell" \
+      org.opencontainers.image.description="Governed D09 Pi worker cell (non-claim-bearing until frozen and signed)" \
+      org.opencontainers.image.licenses="MIT"
+
+# The signed, frozen entrypoint measures the TCB, reopens the sealed source
+# handles fd4/fd9, applies Landlock, and execs the held fd3 binary.
+COPY --from=entrypoint /out/tbound-pi-entrypoint /usr/local/bin/tbound-pi-entrypoint
+
+# Pinned Pi runtime; installed at build time only. The runtime bundle is handed
+# into the cell as fd9, not read from this path at run time.
+RUN mkdir -p /usr/local/lib/tbound/runtime
+COPY adapter/package.json adapter/package-lock.json /usr/local/lib/tbound/runtime/
+COPY adapter/src/ /usr/local/lib/tbound/runtime/src/
+RUN cd /usr/local/lib/tbound/runtime \
+ && npm install --omit=dev --no-audit --no-fund
+
+# Mount targets must exist in the immutable root. Podman replaces these
+# directories with the verified sealed consumer view (/var/lib/tbound/pi-worker),
+# runtime bundle (/runtime), and the private in-cell tmpfs (/tmp). HOME/TMPDIR
+# are deliberately absent here: the entrypoint creates them on each run's tmpfs
+# as the registered non-root UID, so they are never root-owned image directories.
+RUN mkdir -p /var/lib/tbound/pi-worker /runtime /work \
+ && chmod 755 /var/lib/tbound/pi-worker /runtime /work \
+ && command -v /bin/bash >/dev/null
+
+# The launcher supplies the registered non-root UID/GID via rootless
+# `--userns=keep-id --user`; the entrypoint verifies that identity and creates
+# its own mode-0700 HOME/TMPDIR on the per-run tmpfs.
+ENV TBOUND_PREFIX=/var/lib/tbound
+RUN mkdir -p /var/lib/tbound && chown -R node:node /var/lib/tbound && chmod 700 /var/lib/tbound
+
+ENTRYPOINT ["/usr/local/bin/tbound-pi-entrypoint"]

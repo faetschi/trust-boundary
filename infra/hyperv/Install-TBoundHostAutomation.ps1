@@ -1,13 +1,20 @@
 #requires -RunAsAdministrator
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
-param()
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$OperatorSid
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $installRoot = 'C:\ProgramData\TBoundHostAutomation'
 $receiptRoot = Join-Path $installRoot 'receipts'
+$operatorSshRoot = Join-Path $installRoot 'operator-ssh'
+$operatorPublicRoot = Join-Path $installRoot 'operator-public'
 $sourcePath = Join-Path $PSScriptRoot 'TBoundHostActions.ps1'
+$accessPolicyPath = Join-Path $PSScriptRoot 'TBoundHostAccessPolicy.psm1'
+$operatorSshBootstrapPath = Join-Path $PSScriptRoot 'Initialize-TBoundOperatorSsh.ps1'
 $profilePath = Join-Path $installRoot 'profile.json'
 $vmName = 'TBound-Ubuntu-2404'
 $vmRoot = 'F:\TBoundVMs\TBound-Ubuntu-2404'
@@ -17,6 +24,10 @@ $assetsRoot = 'F:\TBoundAssets'
 $switchName = 'Default Switch'
 $policy = 'TRUSTEDVERIFIERONLY'
 $reviewedActionSha256 = '9EF7B338B18DA61204F84E3B74FD1ADA609652E4FC7A25DEB5CF633605581D26'
+$reviewedAccessPolicySha256 = 'C06BAE160364EB4D88914A3468FBB766C426010145ACA9D2C43DD803A993BB15'
+$reviewedOperatorSshBootstrapSha256 = 'E521CCB79AD0CF51E7F48A9B027082F5FD92D640697146F6DB0601BFFF596851'
+$operatorHostAlias = '172.19.207.142'
+$operatorHostFingerprint = 'SHA256:22ZTQXN5L54AhovENJ0Eo7ZViomYVvlHRWfbG3izY5g'
 $GiB = [int64]1073741824
 $taskLeaves = @('Inspect', 'Disconnect', 'StopOffline', 'ConnectOff', 'StartTrustedMaintenance')
 
@@ -29,6 +40,13 @@ function Test-Administrator {
 function Get-FullPath {
     param([Parameter(Mandatory = $true)][string]$Path)
     return [IO.Path]::GetFullPath($Path).TrimEnd('\')
+}
+
+function Get-Sha256Hex {
+    param([Parameter(Mandatory = $true)][byte[]]$Bytes)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($Bytes))).Replace('-', '') }
+    finally { $sha.Dispose() }
 }
 
 function Test-UnderRoot {
@@ -189,40 +207,119 @@ function Get-VhdChain {
     return ,$chain.ToArray()
 }
 
-function Add-AclRule {
+function Set-ProtectedPathAcl {
     param(
-        [Parameter(Mandatory = $true)][object]$Acl,
-        [Parameter(Mandatory = $true)][Security.Principal.SecurityIdentifier]$Sid,
-        [Parameter(Mandatory = $true)][Security.AccessControl.FileSystemRights]$Rights,
-        [Parameter(Mandatory = $true)][bool]$Directory
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][bool]$Directory,
+        [ValidateSet('None', 'Read')][string]$OperatorAccess = 'None'
     )
-    $inherit = [Security.AccessControl.InheritanceFlags]::None
-    if ($Directory) { $inherit = [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit }
-    $rule = [Security.AccessControl.FileSystemAccessRule]::new($Sid, $Rights, $inherit, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow)
-    $Acl.AddAccessRule($rule)
+    $acl = New-TBoundProtectedPathSecurity -Directory:$Directory -OperatorSid $script:OperatorSid.Value -OperatorAccess $OperatorAccess
+    Set-Acl -LiteralPath $Path -AclObject $acl -ErrorAction Stop
+    $readback = Get-Acl -LiteralPath $Path -ErrorAction Stop
+    if (-not (Test-TBoundProtectedPathSecurity -Acl $readback -Directory:$Directory -OperatorSid $script:OperatorSid.Value -OperatorAccess $OperatorAccess)) {
+        throw ('Protected path ACL read-back differs from the fixed policy: ' + $Path)
+    }
 }
 
-function Set-ProtectedPathAcl {
-    param([Parameter(Mandatory = $true)][string]$Path, [Parameter(Mandatory = $true)][bool]$Directory, [switch]$OperatorReadOnly)
-    if ($Directory) { $acl = [Security.AccessControl.DirectorySecurity]::new() } else { $acl = [Security.AccessControl.FileSecurity]::new() }
-    $acl.SetAccessRuleProtection($true, $false)
-    $acl.SetOwner($script:AdminsSid)
-    Add-AclRule $acl $script:SystemSid ([Security.AccessControl.FileSystemRights]::FullControl) $Directory
-    Add-AclRule $acl $script:AdminsSid ([Security.AccessControl.FileSystemRights]::FullControl) $Directory
-    if ($OperatorReadOnly) {
-        Add-AclRule $acl $script:OperatorSid ([Security.AccessControl.FileSystemRights]::ReadAndExecute) $Directory
+function New-ProtectedDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [ValidateSet('None', 'Read', 'Modify')][string]$OperatorAccess = 'None',
+        [switch]$OperatorKeyOnly
+    )
+    $acl = if ($OperatorKeyOnly) {
+        New-TBoundOperatorKeyDirectorySecurity -OperatorSid $script:OperatorSid.Value
     }
-    Set-Acl -LiteralPath $Path -AclObject $acl -ErrorAction Stop
+    else {
+        New-TBoundProtectedPathSecurity -Directory $true -OperatorSid $script:OperatorSid.Value -OperatorAccess $OperatorAccess
+    }
+    $null = New-TBoundDirectoryWithSecurity -Path $Path -Acl $acl
+    if (-not $OperatorKeyOnly) { Assert-NoReparsePath $Path }
+    $readback = Get-Acl -LiteralPath $Path -ErrorAction Stop
+    $valid = if ($OperatorKeyOnly) {
+        Test-TBoundOperatorKeyDirectorySecurity -Acl $readback -OperatorSid $script:OperatorSid.Value
+    }
+    else {
+        Test-TBoundProtectedPathSecurity -Acl $readback -Directory $true -OperatorSid $script:OperatorSid.Value -OperatorAccess $OperatorAccess
+    }
+    if (-not $valid) { throw ('Protected directory ACL read-back differs from the fixed policy: ' + $Path) }
+    if (-not $OperatorKeyOnly -and @(Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop).Count -ne 0) {
+        throw ('New protected directory is not empty: ' + $Path)
+    }
+}
+
+function Assert-RegisteredTaskPolicy {
+    param(
+        [Parameter(Mandatory = $true)][string]$Leaf,
+        [Parameter(Mandatory = $true)][bool]$ExpectedEnabled,
+        [Parameter(Mandatory = $true)][ValidateSet('AdministratorOnly', 'OperatorRunQuery')][string]$AccessMode
+    )
+
+    $tasks = @(Get-ScheduledTask -TaskPath '\TBound\' -TaskName $Leaf -ErrorAction Stop)
+    if ($tasks.Count -ne 1) { throw ('Task registration is missing or ambiguous: \TBound\' + $Leaf) }
+    $task = $tasks[0]
+    $expectedArguments = '-NoLogo -NoProfile -NonInteractive -File "' + (Join-Path $installRoot 'TBoundHostActions.ps1') + '" -Task ' + $Leaf
+    if (@($task.Actions).Count -ne 1 -or
+        [IO.Path]::GetFullPath([string]$task.Actions[0].Execute) -ine (Get-FullPath (Join-Path $PSHOME 'powershell.exe')) -or
+        [string]$task.Actions[0].Arguments -cne $expectedArguments -or
+        [IO.Path]::GetFullPath([string]$task.Actions[0].WorkingDirectory) -ine (Get-FullPath $installRoot)) {
+        throw ('Task action read-back differs from the fixed action: \TBound\' + $Leaf)
+    }
+    $principalSid = [string]$task.Principal.UserId
+    if ($principalSid -notin @('S-1-5-18', 'SYSTEM', 'NT AUTHORITY\SYSTEM')) {
+        try { $principalSid = ([Security.Principal.NTAccount]::new($principalSid)).Translate([Security.Principal.SecurityIdentifier]).Value }
+        catch { throw ('Could not resolve registered task principal: ' + $principalSid) }
+    }
+    if ($principalSid -cne 'S-1-5-18' -or
+        [string]$task.Principal.LogonType -cne 'ServiceAccount' -or
+        [string]$task.Principal.RunLevel -cne 'Highest') {
+        throw ('Task principal read-back differs from the fixed SYSTEM policy: \TBound\' + $Leaf)
+    }
+    if (@($task.Triggers).Count -ne 0 -or [bool]$task.Settings.Enabled -ne $ExpectedEnabled -or
+        -not [bool]$task.Settings.AllowDemandStart -or [bool]$task.Settings.StartWhenAvailable -or
+        [string]$task.Settings.MultipleInstances -cne 'IgnoreNew' -or
+        [string]$task.Settings.ExecutionTimeLimit -cne 'PT0S' -or
+        [bool]$task.Settings.DisallowStartIfOnBatteries -or
+        [bool]$task.Settings.StopIfGoingOnBatteries -or
+        [bool]$task.Settings.RunOnlyIfIdle) {
+        throw ('Task settings read-back differs from the fixed on-demand policy: \TBound\' + $Leaf)
+    }
+
+    $registeredTask = $script:TaskFolder.GetTask($Leaf)
+    $taskSddl = [string]$registeredTask.GetSecurityDescriptor(0x7)
+    $validTaskAcl = if ($AccessMode -eq 'AdministratorOnly') {
+        Test-TBoundTaskSecurityDescriptor -Sddl $taskSddl -OperatorSid ''
+    }
+    else {
+        Test-TBoundTaskSecurityDescriptor -Sddl $taskSddl -OperatorSid $script:OperatorSid.Value
+    }
+    if (-not $validTaskAcl) {
+        throw ('Task security descriptor read-back differs from fixed ' + $AccessMode + ' policy: \TBound\' + $Leaf)
+    }
 }
 
 if (-not (Test-Administrator)) { throw 'Run this installer from an elevated Windows PowerShell session.' }
 if (-not [Environment]::Is64BitProcess) { throw 'Run the 64-bit Windows PowerShell executable.' }
 $expectedPowerShellHome = Get-FullPath (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0')
 if ((Get-FullPath $PSHOME) -ine $expectedPowerShellHome) { throw 'Run this installer from 64-bit Windows PowerShell 5.1.' }
+if ((Get-FullPath $PSScriptRoot) -ine (Get-FullPath 'C:\ProgramData\TBoundHostAutomationSource')) {
+    throw 'Run only the hash-verified installer staged under C:\ProgramData\TBoundHostAutomationSource.'
+}
 if (-not (Test-Path -LiteralPath $sourcePath -PathType Leaf)) { throw ('Missing action source: ' + $sourcePath) }
+if (-not (Test-Path -LiteralPath $accessPolicyPath -PathType Leaf)) { throw ('Missing access policy source: ' + $accessPolicyPath) }
+if (-not (Test-Path -LiteralPath $operatorSshBootstrapPath -PathType Leaf)) { throw ('Missing operator SSH bootstrap source: ' + $operatorSshBootstrapPath) }
 if (Test-Path -LiteralPath $installRoot) { throw ('Refusing to overwrite existing protected install: ' + $installRoot) }
 Assert-NoReparsePath $sourcePath
+Assert-NoReparsePath $accessPolicyPath
+Assert-NoReparsePath $operatorSshBootstrapPath
 Assert-NoReparsePath 'C:\ProgramData'
+$accessPolicyBytes = [IO.File]::ReadAllBytes($accessPolicyPath)
+$operatorSshBootstrapBytes = [IO.File]::ReadAllBytes($operatorSshBootstrapPath)
+if ((Get-Sha256Hex $accessPolicyBytes) -cne $reviewedAccessPolicySha256) { throw 'Access policy source does not match the pinned reviewed hash.' }
+if ((Get-Sha256Hex $operatorSshBootstrapBytes) -cne $reviewedOperatorSshBootstrapSha256) { throw 'Operator SSH bootstrap source does not match the pinned reviewed hash.' }
+Import-Module -Name $accessPolicyPath -Force -ErrorAction Stop
+$script:OperatorSid = Resolve-TBoundOperatorSid $OperatorSid
+Import-Module ScheduledTasks -ErrorAction Stop
 if (-not (Test-Path -LiteralPath $vmRoot -PathType Container)) { throw ('Expected VM root is missing: ' + $vmRoot) }
 Assert-NoReparsePath $vmRoot
 $env:PSModulePath = Join-Path $PSHOME 'Modules'
@@ -287,17 +384,35 @@ if ((Get-FullPath ([string]$disks[0].Path)) -notin @((Get-FullPath $vmRoot)) -an
     throw 'Attached disk path is not under the fixed VM root.'
 }
 
-$operatorSid = [Security.Principal.WindowsIdentity]::GetCurrent().User
-if ($null -eq $operatorSid) { throw 'Could not resolve installing operator SID.' }
-$script:OperatorSid = $operatorSid
-$script:SystemSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')
-$script:AdminsSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
-
 $scheduler = New-Object -ComObject Schedule.Service
 $scheduler.Connect()
 $rootFolder = $scheduler.GetFolder('\')
 $existingFolders = @($rootFolder.GetFolders(0) | Where-Object { $_.Name -ceq 'TBound' })
 if ($existingFolders.Count -ne 0) { throw 'Task Scheduler folder \TBound already exists; refusing to alter it.' }
+
+$sshKeygen = Join-Path $env:WINDIR 'System32\OpenSSH\ssh-keygen.exe'
+$adminKnownHosts = 'F:\TBoundAssets\ProvisioningSSH\known_hosts'
+if (-not (Test-Path -LiteralPath $sshKeygen -PathType Leaf) -or -not (Test-Path -LiteralPath $adminKnownHosts -PathType Leaf)) {
+    throw 'Windows OpenSSH ssh-keygen or the existing public guest known_hosts file is unavailable.'
+}
+$hostMatches = @(& $sshKeygen -F $operatorHostAlias -f $adminKnownHosts 2>$null)
+if ($LASTEXITCODE -ne 0) { throw 'The existing known_hosts file lacks the fixed guest host alias.' }
+$hostLines = @($hostMatches | Where-Object { $_ -and -not $_.StartsWith('#') })
+if ($hostLines.Count -ne 1 -or $hostLines[0] -notmatch '^\S+\s+ssh-ed25519\s+\S+(?:\s+.*)?$') {
+    throw 'The fixed guest host alias must resolve to exactly one ED25519 public host key.'
+}
+$fingerprintPath = Join-Path ([IO.Path]::GetTempPath()) ('tbound-host-fingerprint-' + [guid]::NewGuid().ToString('N') + '.txt')
+try {
+    [IO.File]::WriteAllText($fingerprintPath, ($hostLines[0] + "`n"), [Text.UTF8Encoding]::new($false))
+    $hostFingerprintLines = @(& $sshKeygen -lf $fingerprintPath 2>$null)
+    $fingerprintMatch = if ($hostFingerprintLines.Count -eq 1) { [regex]::Match($hostFingerprintLines[0], '(?:^|\s)(?<Fingerprint>SHA256:[A-Za-z0-9+/]+={0,2})(?:\s|$)') } else { [regex]::Match('', 'a^') }
+    if ($LASTEXITCODE -ne 0 -or -not (Test-TBoundPinnedEd25519Fingerprint -Lines $hostFingerprintLines -ExpectedFingerprint $operatorHostFingerprint)) {
+        throw 'The existing public host key does not match the exact pinned ED25519 fingerprint.'
+    }
+}
+finally {
+    Remove-Item -LiteralPath $fingerprintPath -Force -ErrorAction SilentlyContinue
+}
 
 $sourceBytesOnDisk = [IO.File]::ReadAllBytes($sourcePath)
 $utf8Strict = [Text.UTF8Encoding]::new($false, $true)
@@ -306,8 +421,7 @@ if ($sourceBytesOnDisk.Length -ge 3 -and $sourceBytesOnDisk[0] -eq 0xEF -and $so
 $sourceText = $utf8Strict.GetString($sourceBytesOnDisk, $byteOffset, $sourceBytesOnDisk.Length - $byteOffset)
 $sourceText = $sourceText.Replace("`r`n", "`n").Replace("`r", "`n")
 $sourceBytes = [Text.UTF8Encoding]::new($false).GetBytes($sourceText)
-$sha = [Security.Cryptography.SHA256]::Create()
-try { $sourceHash = ([BitConverter]::ToString($sha.ComputeHash($sourceBytes))).Replace('-', '') } finally { $sha.Dispose() }
+$sourceHash = Get-Sha256Hex $sourceBytes
 if ($sourceHash -cne $reviewedActionSha256) { throw 'Action source does not match the installer pinned reviewed hash.' }
 $profile = [ordered]@{
     schema = 2
@@ -326,15 +440,21 @@ $profile = [ordered]@{
     profileSha256 = $sourceHash
 }
 $profileJson = $profile | ConvertTo-Json -Depth 4
+$profileBytes = [Text.UTF8Encoding]::new($false).GetBytes($profileJson)
+$expectedProfileHash = Get-Sha256Hex $profileBytes
 
 if (-not $PSCmdlet.ShouldProcess($installRoot, 'Install protected TBound host tasks for the pinned VM and adapter')) { return }
 
-New-Item -ItemType Directory -Path $installRoot -ErrorAction Stop | Out-Null
-Assert-NoReparsePath $installRoot
-Set-ProtectedPathAcl -Path $installRoot -Directory $true -OperatorReadOnly
-New-Item -ItemType Directory -Path $receiptRoot -ErrorAction Stop | Out-Null
-Assert-NoReparsePath $receiptRoot
-Set-ProtectedPathAcl -Path $receiptRoot -Directory $true -OperatorReadOnly
+$script:TaskFolder = $null
+$taskFolder = $null
+$taskSddl = Get-TBoundTaskSecurityDescriptor -OperatorSid $script:OperatorSid.Value
+$adminTaskSddl = Get-TBoundTaskAdministratorSecurityDescriptor
+
+try {
+New-ProtectedDirectory -Path $installRoot -OperatorAccess Read
+New-ProtectedDirectory -Path $receiptRoot -OperatorAccess Read
+New-ProtectedDirectory -Path $operatorSshRoot -OperatorKeyOnly
+New-ProtectedDirectory -Path $operatorPublicRoot -OperatorAccess Modify
 
 $installedAction = Join-Path $installRoot 'TBoundHostActions.ps1'
 [IO.File]::WriteAllBytes($installedAction, $sourceBytes)
@@ -343,37 +463,113 @@ $installedHash = (Get-FileHash -LiteralPath $installedAction -Algorithm SHA256 -
 if ($installedHash -cne $reviewedActionSha256 -or $installedHash -cne $sourceHash) {
     throw 'Protected action read-back hash does not match the pinned reviewed source; no tasks were registered.'
 }
-[IO.File]::WriteAllText($profilePath, $profileJson, [Text.UTF8Encoding]::new($false))
+$installedPolicy = Join-Path $installRoot 'TBoundHostAccessPolicy.psm1'
+[IO.File]::WriteAllBytes($installedPolicy, $accessPolicyBytes)
+Set-ProtectedPathAcl -Path $installedPolicy -Directory $false -OperatorAccess Read
+if ((Get-FileHash -LiteralPath $installedPolicy -Algorithm SHA256 -ErrorAction Stop).Hash.ToUpperInvariant() -cne $reviewedAccessPolicySha256) {
+    throw 'Protected access policy read-back hash does not match the pinned reviewed source.'
+}
+$installedSshBootstrap = Join-Path $installRoot 'Initialize-TBoundOperatorSsh.ps1'
+[IO.File]::WriteAllBytes($installedSshBootstrap, $operatorSshBootstrapBytes)
+Set-ProtectedPathAcl -Path $installedSshBootstrap -Directory $false -OperatorAccess Read
+if ((Get-FileHash -LiteralPath $installedSshBootstrap -Algorithm SHA256 -ErrorAction Stop).Hash.ToUpperInvariant() -cne $reviewedOperatorSshBootstrapSha256) {
+    throw 'Protected operator SSH bootstrap read-back hash does not match the pinned reviewed source.'
+}
+[IO.File]::WriteAllBytes($profilePath, $profileBytes)
 Set-ProtectedPathAcl -Path $profilePath -Directory $false
-Set-ProtectedPathAcl -Path $receiptRoot -Directory $true -OperatorReadOnly
+if ((Get-FileHash -LiteralPath $profilePath -Algorithm SHA256 -ErrorAction Stop).Hash.ToUpperInvariant() -cne $expectedProfileHash) {
+    throw 'Protected profile read-back hash does not match the exact profile written.'
+}
+$operatorKnownHostsPath = Join-Path $operatorPublicRoot 'known_hosts'
+$operatorKnownHostsBytes = [Text.UTF8Encoding]::new($false).GetBytes($hostLines[0] + "`n")
+[IO.File]::WriteAllBytes($operatorKnownHostsPath, $operatorKnownHostsBytes)
+Set-ProtectedPathAcl -Path $operatorKnownHostsPath -Directory $false -OperatorAccess Read
+if ((Get-FileHash -LiteralPath $operatorKnownHostsPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToUpperInvariant() -cne (Get-Sha256Hex $operatorKnownHostsBytes)) {
+    throw 'Protected operator known_hosts read-back hash differs from the pinned public host key.'
+}
 
-$taskSddl = 'O:SYG:SYD:P(A;;FA;;;SY)(A;;FA;;;BA)(A;;GRGX;;;' + $operatorSid.Value + ')'
-$folderSddl = $taskSddl
+$rootAclReadback = Get-Acl -LiteralPath $installRoot -ErrorAction Stop
+if (-not (Test-TBoundProtectedPathSecurity -Acl $rootAclReadback -Directory $true -OperatorSid $script:OperatorSid.Value -OperatorAccess Read)) {
+    throw 'ProgramData install-root ACL read-back differs from the fixed policy.'
+}
+$receiptAclReadback = Get-Acl -LiteralPath $receiptRoot -ErrorAction Stop
+if (-not (Test-TBoundProtectedPathSecurity -Acl $receiptAclReadback -Directory $true -OperatorSid $script:OperatorSid.Value -OperatorAccess Read)) {
+    throw 'ProgramData receipt-root ACL read-back differs from the fixed read-only policy.'
+}
+
+$folderSddl = $adminTaskSddl
 $taskFolder = $rootFolder.CreateFolder('TBound', $folderSddl)
+$script:TaskFolder = $taskFolder
+$folderReadback = [string]$taskFolder.GetSecurityDescriptor(0x7)
+if (-not (Test-TBoundTaskSecurityDescriptor -Sddl $folderReadback -OperatorSid '')) {
+    throw 'New task folder does not have the fixed administrator-only staging ACL.'
+}
 $powerShellExe = Join-Path $PSHOME 'powershell.exe'
 if (-not (Test-Path -LiteralPath $powerShellExe -PathType Leaf)) { throw ('Windows PowerShell executable missing: ' + $powerShellExe) }
 
-foreach ($leaf in $taskLeaves) {
-    $definition = $scheduler.NewTask(0)
-    $definition.RegistrationInfo.Description = ('Fixed SYSTEM host action for ' + $vmName + '; no caller-controlled VM arguments.')
-    $definition.Principal.UserId = 'S-1-5-18'
-    $definition.Principal.LogonType = 5
-    $definition.Principal.RunLevel = 1
-    $definition.Settings.Enabled = $true
-    $definition.Settings.AllowDemandStart = $true
-    $definition.Settings.StartWhenAvailable = $false
-    $definition.Settings.MultipleInstances = 2
-    $definition.Settings.ExecutionTimeLimit = 'PT0S'
-    $definition.Settings.DisallowStartIfOnBatteries = $false
-    $definition.Settings.StopIfGoingOnBatteries = $false
-    $definition.Settings.RunOnlyIfIdle = $false
-    $action = $definition.Actions.Create(0)
-    $action.Path = $powerShellExe
-    $action.WorkingDirectory = $installRoot
-    $action.Arguments = ('-NoLogo -NoProfile -NonInteractive -File "' + $installedAction + '" -Task ' + $leaf)
-    $null = $taskFolder.RegisterTaskDefinition($leaf, $definition, 2, 'SYSTEM', $null, 5, $taskSddl)
+    foreach ($leaf in $taskLeaves) {
+        $definition = $scheduler.NewTask(0)
+        $definition.RegistrationInfo.Description = ('Fixed SYSTEM host action for ' + $vmName + '; no caller-controlled VM arguments.')
+        $definition.Principal.UserId = 'S-1-5-18'
+        $definition.Principal.LogonType = 5
+        $definition.Principal.RunLevel = 1
+        $definition.Settings.Enabled = $false
+        $definition.Settings.AllowDemandStart = $true
+        $definition.Settings.StartWhenAvailable = $false
+        $definition.Settings.MultipleInstances = 2
+        $definition.Settings.ExecutionTimeLimit = 'PT0S'
+        $definition.Settings.DisallowStartIfOnBatteries = $false
+        $definition.Settings.StopIfGoingOnBatteries = $false
+        $definition.Settings.RunOnlyIfIdle = $false
+        $action = $definition.Actions.Create(0)
+        $action.Path = $powerShellExe
+        $action.WorkingDirectory = $installRoot
+        $action.Arguments = ('-NoLogo -NoProfile -NonInteractive -File "' + $installedAction + '" -Task ' + $leaf)
+        $null = $taskFolder.RegisterTaskDefinition($leaf, $definition, 2, 'SYSTEM', $null, 5, $adminTaskSddl)
+    }
+
+    $folderReadback = [string]$taskFolder.GetSecurityDescriptor(0x7)
+    if (-not (Test-TBoundTaskSecurityDescriptor -Sddl $folderReadback -OperatorSid '')) {
+        throw 'Task folder staging ACL changed before task verification.'
+    }
+    foreach ($leaf in $taskLeaves) { Assert-RegisteredTaskPolicy -Leaf $leaf -ExpectedEnabled $false -AccessMode AdministratorOnly }
+
+    foreach ($leaf in $taskLeaves) { $taskFolder.GetTask($leaf).Enabled = $true }
+    foreach ($leaf in $taskLeaves) { Assert-RegisteredTaskPolicy -Leaf $leaf -ExpectedEnabled $true -AccessMode AdministratorOnly }
+
+    foreach ($leaf in $taskLeaves) { $taskFolder.GetTask($leaf).SetSecurityDescriptor($taskSddl, 0) }
+    $taskFolder.SetSecurityDescriptor($taskSddl, 0)
+    foreach ($leaf in $taskLeaves) { Assert-RegisteredTaskPolicy -Leaf $leaf -ExpectedEnabled $true -AccessMode OperatorRunQuery }
+    $folderReadback = [string]$taskFolder.GetSecurityDescriptor(0x7)
+    if (-not (Test-TBoundTaskSecurityDescriptor -Sddl $folderReadback -OperatorSid $script:OperatorSid.Value)) {
+        throw 'Task folder ACL read-back is not SYSTEM/Admin control plus exact operator run/query.'
+    }
+}
+catch {
+    $installFailure = [string]$_.Exception.Message
+    $recoveryProblems = [Collections.Generic.List[string]]::new()
+    if ($null -ne $taskFolder) {
+        foreach ($leaf in $taskLeaves) {
+            try {
+                $registeredTask = $taskFolder.GetTask($leaf)
+                if ($null -ne $registeredTask) {
+                    $registeredTask.Enabled = $false
+                    $registeredTask.SetSecurityDescriptor($adminTaskSddl, 0)
+                }
+            }
+            catch { $recoveryProblems.Add($leaf + ': ' + [string]$_.Exception.Message) }
+        }
+        try { $taskFolder.SetSecurityDescriptor($adminTaskSddl, 0) }
+        catch { $recoveryProblems.Add('folder ACL: ' + [string]$_.Exception.Message) }
+    }
+    if ($recoveryProblems.Count -eq 0) {
+        throw ('Host automation preparation failed: ' + $installFailure + '. Any recognized tasks were left disabled with the administrator-only ACL. Preserve ' + $installRoot + ' and ' + 'C:\ProgramData\TBoundHostAutomationSource' + '; do not retry until the exact partial state has been inspected.')
+    }
+    throw ('Host automation preparation failed: ' + $installFailure + '. Recovery did not finish for: ' + ($recoveryProblems -join '; ') + '. Preserve ' + $installRoot + ' and C:\ProgramData\TBoundHostAutomationSource; inspect Task Scheduler before any retry.')
 }
 
 Write-Host ('Installed five fixed SYSTEM tasks in \TBound for VM GUID ' + ([guid]$vm.Id).ToString() + '.')
 Write-Host ('Protected action source: ' + $installedAction)
 Write-Host ('Protected receipts: ' + $receiptRoot)
+Write-Host ('Operator task access: ' + $script:OperatorSid.Value + ' (run/query only)')
+Write-Host ('Operator key directory: ' + $operatorSshRoot + ' (dedicated SID only)')

@@ -274,3 +274,103 @@ loop without exposing credentials/history to Node; and (5) publication needs
 the narrow workflow lease-origin extension described above plus an actual
 registered `workflow.Trust` implementation. Until those interfaces and host
 proof exist, production `serve --pi` must keep refusing admission.
+
+## Concrete sealed worker-exposure and runtime-asset adapters — worker B
+
+This section records a later increment that closes the D06 descriptor blocker
+described above. The launcher's `piruntime/descriptor.go` publishes the typed
+`VerifiedWorkerExposure` and `VerifiedWorkerRuntimeAssets` interfaces. This
+increment supplies the concrete, sessionlaunch-owned implementations so a CLI
+composition root (owner C) can build the real worker channel set without a
+caller-supplied trust boolean.
+
+### Sealed worker exposure
+
+`sessionlaunch.OpenSealedWorkerExposure(generation) (*SealedWorkerExposure, error)`
+is the only worker-exposure constructor for a prepared D06 session. It calls
+the existing `PreparedSession.ExposeReadOnly`, then captures the immutable
+anchors of the session. `SealedWorkerExposure` implements
+`piruntime.VerifiedWorkerExposure`:
+
+- `ExportVerifiedWorkerExposure(ctx)` re-proves the durable anchors and returns
+  a fresh O_PATH descriptor for the registered read-only exposure view plus a
+  `piruntime.WorkerExposureEvidence`.
+- `VerifyWorkerExposure(ctx, evidence)` re-proves the same anchors and re-checks
+  the descriptor identity (`Device`/`Inode`/`MountID`).
+
+The evidence is anchored, not accepted from a caller: `GenerationID`,
+`TreeDigest` (a plain `sha256:` commitment to the delta tree digest),
+`ManifestDigest` (JCS/SHA-256 of the generation manifest), `BindingDigest`
+(the persisted D06 binding), `ProvenanceDigest` (JCS/SHA-256 of the persisted
+`sessionlaunch.Provenance`), `ViewIdentity`, and the descriptor identity. Before
+every export or verify it re-runs `VerifySourceBinding` (Store chain/bundle,
+current-generation selection, `sessionlaunch_source_binding` and
+`sessionlaunch_private_git_ready` journal records, private Git boundary) and the
+retained-generation descriptor rescan (`verifyGenerationDescriptor`).
+
+**D06 resolution.** Export returns the registered exposure view; it never
+returns `privategit.Repository.Root`, `AdminParent.root`, the Store root, or the
+generations/admin directories. Child FD 4 is therefore the sealed read-only
+generation view, not the supervisor-private Git namespace. A Store without a
+registered `sessionrepo.Binder` fails closed with an error wrapping
+`sessionrepo.ErrExposureBinderUnavailable`; the adapter does not fabricate a
+read-only view. Tamper, staleness, forged descriptor identity, and use after
+`Close` all fail closed with `ErrWorkerExposureContract`.
+
+### Verified runtime assets
+
+`sessionlaunch.OpenVerifiedRuntimeAssets(root, RuntimeAssetSpec)` binds an
+already-open bundle root descriptor to a pinned `BundleDigest` and
+`NamespaceProfileDigest`. `VerifiedRuntimeAssets` implements
+`piruntime.VerifiedWorkerRuntimeAssets`; Export returns a fresh descriptor for
+the held Go-only source and Verify re-pins the complete content digest and
+descriptor identity. The content-digest field encoding is byte-for-byte the
+same scheme as `piruntime.VerifyLinuxPiRuntimeBundle`, and Open additionally
+cross-checks the two when the source is already on a read-only mount so the two
+schemes cannot drift. It refuses symlinks, special files, nested filesystem
+mounts, oversized trees, and group/other-writable files.
+
+Per the descriptor contract this source FD is **not** proof that the child
+received a safe mount: the D09 launcher must reopen it inside its controlled
+namespace and independently verify the consumer-side read-only mount before it
+creates child FD 9. This type pins the bytes; it does not fabricate the
+consumer mount, and it does not accept a caller boolean as immutability proof.
+
+### Integration and verification
+
+A focused test wires the concrete adapters into the launcher's own public
+constructor, `piruntime.NewPiWorkerChannels`, proving owner C can consume them
+directly. Linux checks used the WSL Go toolchain
+(`/home/jeli2k/go-sdk/go/bin/go`), a private mode-0700 ext4 `TMPDIR`/`GOCACHE`,
+and the committed `60631d0` worktree with the in-progress owner-A overlays. All
+of the following exited 0:
+
+```text
+gofmt -l internal/sessionlaunch/worker_exposure_linux.go internal/sessionlaunch/runtime_assets_linux.go internal/sessionlaunch/worker_exposure_linux_test.go   # empty
+go vet ./internal/sessionlaunch/...
+go test -count=1 ./internal/sessionlaunch/
+CGO_ENABLED=1 go test -race -count=1 ./internal/sessionlaunch/
+go build ./...
+go test -count=1 ./internal/sessionlaunch/... ./internal/piruntime/...
+```
+
+The tests use the real public `sessionrepo.Store`, real `privategit` private
+fixtures, and a no-privilege recording `sessionrepo.Binder`; they never mount,
+install, or contact the network. They cover: registered-view identity vs
+private Git/Store roots; export/verify round-trip; forged descriptor identity;
+tamper of a sealed generation; stale/closed use; unbound-store `Can'tInit`;
+runtime-asset content pinning, namespace-profile mismatch, symlink and
+writable-file refusal, and content tamper.
+
+### Remaining code vs provisioning gaps
+
+- **Code (owner A/C):** the trusted host composition must register a concrete
+  `sessionrepo.Binder` (production `LinuxReadOnlyBinder`) on the Store and bind
+  the exported exposure descriptor as FD 4, the runtime-asset source as FD 9,
+  and a separate private CWD — none of which this increment can assert. The
+  production `HostProfile`/`TrustedHostVerifier` and the signed host profile
+  still do not exist, so `serve --pi` must keep refusing admission.
+- **Provisioning:** the frozen Podman/crun image, signed in-image entrypoint,
+  offline Cosign verification material, delegated cgroup v2 subtree, and signed
+  `/etc/tbound/pi-host-profile.*` remain operator prerequisites. A successful
+  adapter test is component evidence, not host admission or a G1/H1 result.

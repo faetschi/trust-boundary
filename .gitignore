@@ -1,0 +1,8 @@
+.opencode/
+
+# Local-only / never commit
+vm_start.txt
+
+# Build and generated artifacts
+supervisor/tbound.exe
+supervisor/internal/sessionrepo/artifacts/

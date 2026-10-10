@@ -76,12 +76,12 @@ func NewLinuxCgroupScope(delegatedRoot, directory *os.File, containmentProfile, 
 		return nil, errors.New("delegated cgroup root must be owned by the launching UID")
 	}
 	rootControllers, err := readAt(delegatedRoot, "cgroup.controllers", 1024)
-	if err != nil || !hasCgroupController(rootControllers, "memory") || !hasCgroupController(rootControllers, "pids") {
-		return nil, errors.New("delegated cgroup root lacks memory/pids controllers")
+	if err != nil || !hasCgroupController(rootControllers, "cpu") || !hasCgroupController(rootControllers, "memory") || !hasCgroupController(rootControllers, "pids") {
+		return nil, errors.New("delegated cgroup root lacks cpu/memory/pids controllers")
 	}
 	rootSubtree, err := readAt(delegatedRoot, "cgroup.subtree_control", 1024)
-	if err != nil || !hasCgroupController(rootSubtree, "memory") || !hasCgroupController(rootSubtree, "pids") {
-		return nil, errors.New("delegated cgroup root has not enabled memory/pids controllers")
+	if err != nil || !hasCgroupController(rootSubtree, "cpu") || !hasCgroupController(rootSubtree, "memory") || !hasCgroupController(rootSubtree, "pids") {
+		return nil, errors.New("delegated cgroup root has not enabled cpu/memory/pids controllers")
 	}
 	info, err := directory.Stat()
 	if err != nil || !info.IsDir() {
@@ -102,6 +102,122 @@ func NewLinuxCgroupScope(delegatedRoot, directory *os.File, containmentProfile, 
 	return &LinuxCgroupScope{root: delegatedRoot, file: directory, rootDigest: rootDigest, containment: containmentProfile, settlement: settlementProfile}, nil
 }
 
+// CreateLinuxCgroupScope creates a unique direct-child cgroup using the held
+// delegated-root descriptor (never a caller path), then returns a verified
+// scope which owns both descriptors. The child name is one clean path component.
+// The caller removes it with scope.Remove(ctx); on UNKNOWN it must retain the
+// returned scope handle for reconciliation.
+func CreateLinuxCgroupScope(delegatedRoot *os.File, childName, containmentProfile, settlementProfile string) (*LinuxCgroupScope, error) {
+	if delegatedRoot == nil || !validIdentity(childName) || strings.ContainsAny(childName, "/\\") ||
+		!validIdentity(containmentProfile) || !validIdentity(settlementProfile) {
+		return nil, ErrCgroupScopeRefused
+	}
+	rootInfo, err := delegatedRoot.Stat()
+	if err != nil || !rootInfo.IsDir() {
+		return nil, ErrCgroupScopeRefused
+	}
+	rootPath, err := cgroupDescriptorPath(delegatedRoot)
+	if err != nil {
+		return nil, err
+	}
+	if err := requireCgroup2Path(rootPath); err != nil {
+		return nil, err
+	}
+	rootType, err := readAt(delegatedRoot, "cgroup.type", 128)
+	if err != nil || strings.TrimSpace(string(rootType)) != "domain" {
+		return nil, errors.New("delegated cgroup root is not a non-threaded domain")
+	}
+	rootOwner, ok := rootInfo.Sys().(*syscall.Stat_t)
+	if !ok || rootOwner.Uid != uint32(os.Geteuid()) {
+		return nil, errors.New("delegated cgroup root is not owned by the launching uid")
+	}
+	parentFD, err := syscall.Openat(int(delegatedRoot.Fd()), ".", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, fmt.Errorf("duplicate delegated cgroup root: %w", err)
+	}
+	parent := os.NewFile(uintptr(parentFD), "tbound-cgroup-root")
+	if err := syscall.Mkdirat(int(delegatedRoot.Fd()), childName, 0o700); err != nil {
+		_ = parent.Close()
+		return nil, fmt.Errorf("create unique cgroup child via held root fd: %w", err)
+	}
+	childFD, err := syscall.Openat(int(parent.Fd()), childName, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		_ = unlinkatDir(int(parent.Fd()), childName)
+		_ = parent.Close()
+		return nil, fmt.Errorf("open unique cgroup child: %w", err)
+	}
+	child := os.NewFile(uintptr(childFD), "tbound-cgroup-child")
+	scope, err := NewLinuxCgroupScope(parent, child, containmentProfile, settlementProfile)
+	if err != nil {
+		_ = child.Close()
+		_ = unlinkatDir(int(parent.Fd()), childName)
+		_ = parent.Close()
+		return nil, err
+	}
+	if err := validateCgroupDirectory(scope.file); err != nil {
+		_ = unlinkatDir(int(scope.root.Fd()), childName)
+		_ = scope.Close()
+		return nil, errors.Join(ErrCgroupScopeRefused, err)
+	}
+	if err := enableD09SubtreeControllers(scope.file); err != nil {
+		_ = unlinkatDir(int(scope.root.Fd()), childName)
+		_ = scope.Close()
+		return nil, fmt.Errorf("enable D09 session-scope cpu/memory/pids controllers: %w", err)
+	}
+	return scope, nil
+}
+
+// enableD09SubtreeControllers enables exactly the resource controllers required
+// by the frozen D09 profile on a newly-created, empty scope. It never acts on a
+// caller path and refuses missing controller delegation.
+func enableD09SubtreeControllers(scope *os.File) error {
+	if scope == nil {
+		return ErrCgroupScopeRefused
+	}
+	const required = "cpu,memory,pids"
+	available, err := readAt(scope, "cgroup.controllers", 1024)
+	if err != nil {
+		return err
+	}
+	for _, name := range strings.Split(required, ",") {
+		if !hasCgroupController(available, name) {
+			return fmt.Errorf("D09 cgroup lacks delegated %s controller", name)
+		}
+	}
+	current, err := readAt(scope, "cgroup.subtree_control", 1024)
+	if err != nil {
+		return err
+	}
+	var missing []string
+	for _, name := range strings.Split(required, ",") {
+		if !hasCgroupController(current, name) {
+			missing = append(missing, "+"+name)
+		}
+	}
+	if len(missing) != 0 {
+		fd, err := syscall.Openat(int(scope.Fd()), "cgroup.subtree_control", syscall.O_WRONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+		if err != nil {
+			return err
+		}
+		file := os.NewFile(uintptr(fd), "d09-cgroup-subtree-control")
+		_, writeErr := file.WriteString(strings.Join(missing, " "))
+		closeErr := file.Close()
+		if err := errors.Join(writeErr, closeErr); err != nil {
+			return err
+		}
+	}
+	verified, err := readAt(scope, "cgroup.subtree_control", 1024)
+	if err != nil {
+		return err
+	}
+	for _, name := range strings.Split(required, ",") {
+		if !hasCgroupController(verified, name) {
+			return fmt.Errorf("D09 cgroup subtree failed to enable %s", name)
+		}
+	}
+	return nil
+}
+
 func (s *LinuxCgroupScope) BoundSettlement() DescendantSettler { return s }
 
 func (s *LinuxCgroupScope) Close() error {
@@ -117,11 +233,107 @@ func (s *LinuxCgroupScope) Close() error {
 	return errors.Join(s.file.Close(), s.root.Close())
 }
 
+// Remove settles and removes this exact unique direct-child cgroup using the
+// held parent descriptor. It is the production teardown API for a session-owned
+// worker scope. On any error the descriptors remain open and the scope remains
+// available for UNKNOWN/reconciliation; it never unlinks by caller path or
+// removes the delegated parent.
+func (s *LinuxCgroupScope) Remove(ctx context.Context) error {
+	if s == nil || ctx == nil || s.root == nil || s.file == nil {
+		return ErrCgroupScopeRefused
+	}
+	rootPath, err := cgroupDescriptorPath(s.root)
+	if err != nil {
+		return err
+	}
+	childPath, err := cgroupDescriptorPath(s.file)
+	if err != nil || filepath.Dir(childPath) != rootPath {
+		return errors.Join(ErrCgroupScopeRefused, err)
+	}
+	settled, err := s.Settle(ctx)
+	if err != nil || !settled {
+		return errors.Join(ErrUnknownSettlement, err)
+	}
+	if err := unlinkatDir(int(s.root.Fd()), filepath.Base(childPath)); err != nil {
+		return fmt.Errorf("remove settled unique cgroup scope: %w", err)
+	}
+	return s.Close()
+}
+
 func (s *LinuxCgroupScope) RootDigest() string {
 	if s == nil {
 		return ""
 	}
 	return s.rootDigest
+}
+
+// Path returns the identity path of this held, verified cgroup-v2 scope.
+// Callers must use this path only to place a child under this descriptor-bound
+// scope; it is not a substitute for retaining the scope handle.
+func (s *LinuxCgroupScope) Path() (string, error) {
+	if s == nil || s.file == nil {
+		return "", ErrCgroupScopeRefused
+	}
+	return cgroupDescriptorPath(s.file)
+}
+
+// ContainsPID verifies that pid is currently a member of this scope or one of
+// its descendants in the unified cgroup-v2 hierarchy.
+func (s *LinuxCgroupScope) ContainsPID(pid int) (bool, error) {
+	if pid <= 0 {
+		return false, ErrCgroupScopeRefused
+	}
+	path, err := s.Path()
+	if err != nil {
+		return false, err
+	}
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/cgroup", pid))
+	if err != nil {
+		return false, err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if !strings.HasPrefix(line, "0::") {
+			continue
+		}
+		relative := filepath.Clean(strings.TrimPrefix(line, "0::"))
+		member, err := cgroup2HostPath(relative)
+		if err != nil {
+			return false, err
+		}
+		scope := filepath.Clean(path)
+		return member == scope || strings.HasPrefix(member, scope+string(os.PathSeparator)), nil
+	}
+	return false, errors.New("process cgroup omitted unified hierarchy")
+}
+
+func cgroup2HostPath(relative string) (string, error) {
+	if !filepath.IsAbs(relative) {
+		return "", ErrCgroupScopeRefused
+	}
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		parts := strings.SplitN(line, " - ", 2)
+		if len(parts) != 2 || !strings.HasPrefix(parts[1], "cgroup2 ") {
+			continue
+		}
+		fields := strings.Fields(parts[0])
+		if len(fields) < 5 {
+			continue
+		}
+		root := filepath.Clean(unescapeMountField(fields[3]))
+		mountpoint := filepath.Clean(unescapeMountField(fields[4]))
+		if root == "/" {
+			return filepath.Join(mountpoint, strings.TrimPrefix(relative, string(os.PathSeparator))), nil
+		}
+		if relative == root || strings.HasPrefix(relative, root+string(os.PathSeparator)) {
+			remainder := strings.TrimPrefix(strings.TrimPrefix(relative, root), string(os.PathSeparator))
+			return filepath.Join(mountpoint, remainder), nil
+		}
+	}
+	return "", errors.New("unified cgroup membership is not below a cgroup2 mount")
 }
 
 func cgroupDescriptorPath(directory *os.File) (string, error) {
@@ -227,8 +439,8 @@ func validateCgroupDirectory(directory *os.File) error {
 	for _, controller := range strings.Fields(string(controllers)) {
 		controllerSet[controller] = true
 	}
-	if !controllerSet["memory"] || !controllerSet["pids"] {
-		return errors.New("cgroup memory and pids controllers are not delegated")
+	if !controllerSet["cpu"] || !controllerSet["memory"] || !controllerSet["pids"] {
+		return errors.New("cgroup cpu, memory and pids controllers are not delegated")
 	}
 	populated, err := readCgroupPopulated(directory)
 	if err != nil || populated {

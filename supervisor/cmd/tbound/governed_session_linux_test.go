@@ -22,17 +22,22 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/providerbridge"
+	"tbound/supervisor/internal/publication"
 	"tbound/supervisor/internal/sandbox"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/sessionrepo"
+	"tbound/supervisor/internal/workflow"
 	"tbound/supervisor/internal/workspace"
 )
 
 // This exercises the real Store/DurableExecutor/privateGit/development-sandbox
-// composition against an explicitly synthetic provider audit prefix. It is not
-// an actual Pi/provider run and deliberately does not claim publication/G1.
+// composition against an explicitly synthetic provider audit prefix, then
+// publishes the real lease-ending g0->g2 Store chain with a test-only quiescence
+// Trust over a private temporary live root. It is not an actual Pi/provider run
+// and deliberately makes no production containment/G1 claim.
 func TestSyntheticProviderAuditBindsRealE05StoreAndLeaseOrigin(t *testing.T) {
 	root := privateGovernedTestRoot(t)
 	runner, err := sessionlaunch.NewDevelopmentCommandRunner(sandbox.Limits{})
@@ -264,8 +269,16 @@ func TestSyntheticProviderAuditBindsRealE05StoreAndLeaseOrigin(t *testing.T) {
 	if err := authority.VerifyOrigin(bundle, terminalLease); err != nil {
 		t.Fatalf("providerbridge durable Bash result did not authenticate its proposal-call origin: %v", err)
 	}
-	if err := authority.CheckFinalizerOrigin(bundle); !errors.Is(err, ErrLeaseOriginUnsupported) {
-		t.Fatalf("known Finalizer lease-origin blocker was hidden or fabricated: %v", err)
+	resolvedOrigin, err := authority.ResolveTerminalLeaseOrigin(context.Background(), bundle, terminalLease)
+	if err != nil || resolvedOrigin.Kind != delta.OperationProposalCall ||
+		resolvedOrigin.CallIssuer != governedCallIssuer || resolvedOrigin.CallID != "e05-call-bash" {
+		t.Fatalf("terminal Bash origin was not resolved from its actual captured provider call: %+v err=%v", resolvedOrigin, err)
+	}
+	if resolvedOrigin.ProposalID == bundle.ApprovedDeltaLedger[0].Operation.ProposalID {
+		t.Fatal("terminal Bash origin resolved to the prior edit proposal")
+	}
+	if err := authority.CheckFinalizerOrigin(bundle); err != nil {
+		t.Fatalf("actual terminal Bash origin failed finalizer authentication: %v", err)
 	}
 	if !prepared.HasDurableD06Provenance() {
 		t.Fatal("D06 provenance did not survive actual E05 generations")
@@ -274,6 +287,333 @@ func TestSyntheticProviderAuditBindsRealE05StoreAndLeaseOrigin(t *testing.T) {
 	if err != nil || string(finalBytes) != "edited\nbash-stage\n" {
 		t.Fatalf("durable E05 output = %q, err=%v", finalBytes, err)
 	}
+
+	// Publish the same real Store/authority E05 chain through the versioned
+	// terminal-lease origin binding. Only the host-side quiescence assertion is a
+	// deterministic fixture over this exclusively owned temporary live root; it
+	// does not establish production quiescence or G1.
+	livePath := filepath.Join(root, "live")
+	if err := os.Mkdir(livePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeNativeFixtureWorkspace(livePath, "baseline\n"); err != nil {
+		t.Fatal(err)
+	}
+	liveRoot, err := os.Open(livePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer liveRoot.Close()
+	publicationStatePath := filepath.Join(root, "publication-state")
+	if err := os.Mkdir(publicationStatePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	publicationState := durableOpenRoot(t, publicationStatePath)
+	defer publicationState.Close()
+	publicationJournal, err := audit.Open(filepath.Join(root, "publication-audit.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer publicationJournal.Close()
+	rootLedger, err := workflow.NewRootLedger(publicationJournal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspaceOptions := workspace.Options{Generation: g0.ID(), MetadataPolicyDigest: metadataPolicyDigest,
+		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: xattrDigest, Complete: true}}
+	// Seed one known, already-resolved root owner so the subsequent managed lease
+	// and successful publication exercise a strictly increasing epoch. The
+	// negative-origin assertions below compare against this exact prior prefix.
+	epochReservation, err := rootLedger.Begin(liveRoot, "e05-owner-epoch-seed", 1, "e05-owner-epoch-seed-publication", workspaceOptions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rootLedger.Resolve(epochReservation, liveRoot, "e05-owner-epoch-seed", "e05-owner-epoch-seed-publication", "", publication.StatusFailed); err != nil {
+		t.Fatal(err)
+	}
+	epochReservation.Release()
+	beforeWrongOriginTrace, err := publicationJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicationTrust := &e05PublicationTrust{authority: authority, liveRoot: liveRoot, baseline: g0,
+		workspace: workspaceOptions, policyDigest: storePolicyDigest, metadataDigest: metadataPolicyDigest,
+		commandRunnerProfile: runner.Profile()}
+	openPublication := func(stateRoot *os.File, epoch uint64) func() (*publication.Repository, error) {
+		return func() (*publication.Repository, error) {
+			return publication.Acquire(publication.Options{WorkflowID: workflowID, OwnerEpoch: epoch,
+				StateRoot: stateRoot, Journal: publicationJournal, Workspace: workspaceOptions})
+		}
+	}
+	finalizerOptions := func(stateRoot *os.File, epoch uint64, publicationID string, trust workflow.Trust) workflow.FinalizerOptions {
+		return workflow.FinalizerOptions{
+			WorkflowID: workflowID, OwnerEpoch: epoch, PublicationID: publicationID,
+			LiveRoot: liveRoot, Store: store, Baseline: g0, CurrentTip: durable.Tip, Workspace: workspaceOptions,
+			Journal: publicationJournal, Ledger: rootLedger, OpenPublication: openPublication(stateRoot, epoch),
+			OpenRecovery: func(id string) (workflow.RecoveryRepository, error) {
+				if id != workflowID {
+					return nil, fmt.Errorf("no E05 publication recovery state for %q", id)
+				}
+				return openPublication(stateRoot, epoch+1)()
+			}, Trust: trust,
+		}
+	}
+	// First, prove an origin mismatch/refusal stops before root-ledger begin and
+	// publication prepare. The test resolver returns the actual Bash call once,
+	// then simulates a stale/wrong call association on re-verification.
+	wrongOriginTrust := *publicationTrust
+	wrongOriginTrust.wrongResolveCall = 2
+	wrongStatePath := filepath.Join(root, "publication-state-wrong-origin")
+	if err := os.Mkdir(wrongStatePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	wrongState := durableOpenRoot(t, wrongStatePath)
+	defer wrongState.Close()
+	wrongRuntime, err := NewPublicationRuntime(durable,
+		finalizerOptions(wrongState, 1, "e05-wrong-terminal-origin", &wrongOriginTrust))
+	if err != nil {
+		t.Fatalf("construct wrong-origin E05 negative publication finalizer: %v", err)
+	}
+	releaseWrongSession, err := wrongRuntime.BeginSession(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	releaseWrongSession()
+	if result, err := wrongRuntime.Finalize(context.Background()); result.TransactionID != "" || !errors.Is(err, publication.ErrTerminalLeaseOriginBinding) {
+		t.Fatalf("wrong terminal call origin was not refused before prepare: result=%+v err=%v", result, err)
+	}
+	if err := wrongRuntime.Close(); err != nil {
+		t.Fatal(err)
+	}
+	beforeTrace, err := publicationJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lenRuntimeEvents(beforeTrace, "publication_prepare") != 0 || lenRuntimeEvents(beforeTrace, "publication_token_consumed") != 0 {
+		t.Fatal("wrong terminal origin persisted prepare/token authority")
+	}
+	if lenRuntimeEvents(beforeTrace, "workflow_publication_pending") != 1 ||
+		lenRuntimeEvents(beforeTrace, "workflow_publication_resolved") != 1 ||
+		lenRuntimeEvents(beforeTrace, "workflow_publication_transaction") != 0 {
+		t.Fatalf("wrong-origin refusal changed RootLedger event counts: %+v", beforeTrace.Records)
+	}
+	if len(beforeTrace.Records) < len(beforeWrongOriginTrace.Records) {
+		t.Fatal("wrong-origin refusal truncated the pre-existing lifecycle journal")
+	}
+	for index, prior := range beforeWrongOriginTrace.Records {
+		if beforeTrace.Records[index].Sequence != prior.Sequence || beforeTrace.Records[index].Hash != prior.Hash ||
+			beforeTrace.Records[index].Event.Kind != prior.Event.Kind || beforeTrace.Records[index].Event.ID != prior.Event.ID {
+			t.Fatalf("wrong-origin refusal altered prior lifecycle frame %d: before=%+v after=%+v", index, prior, beforeTrace.Records[index])
+		}
+	}
+	liveIdentity, err := measureManagedLiveRootDescriptor(liveRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongRootEventID := managedWorkflowEventID(workflow.RootIdentity{Device: liveIdentity.Device, Inode: liveIdentity.Inode},
+		workflowID, "e05-wrong-terminal-origin")
+	for _, record := range beforeTrace.Records {
+		if record.Event.ID == wrongRootEventID || record.Event.ID == wrongRootEventID+"/transaction" || record.Event.ID == wrongRootEventID+"/resolved" {
+			t.Fatalf("wrong terminal origin persisted root-ledger authority: %+v", record)
+		}
+	}
+	const managedRunID = "e05-managed-live-root-run"
+	managedAuthority := newFakeManagedLiveRootAuthority()
+	managedLease, err := managedAuthority.acquire(context.Background(), liveRoot,
+		piruntime.D09CellTemplate{ManagedLiveRootRegistrationDigest: testManagedRootDigest}, publicationJournal,
+		managedRunID, workflowID, "e05-terminal-lease-publication", 2)
+	if err != nil {
+		t.Fatalf("acquire test-only managed-root registration boundary: %v", err)
+	}
+	publicationTrust.managedLease = managedLease
+
+	publicationRuntime, err := NewPublicationRuntime(durable,
+		finalizerOptions(publicationState, 2, "e05-terminal-lease-publication", publicationTrust))
+	if err != nil {
+		t.Fatalf("construct real Store E05 publication finalizer: %v", err)
+	}
+	defer publicationRuntime.Close()
+	releaseSession, err := publicationRuntime.BeginSession(context.Background())
+	if err != nil {
+		t.Fatalf("begin protected E05 publication session: %v", err)
+	}
+	if err := managedLease.completeAdmissionRecovery(context.Background()); err != nil {
+		t.Fatalf("complete managed-root RootLedger recovery before E05 finalization: %v", err)
+	}
+	liveBefore, err := os.ReadFile(filepath.Join(livePath, "task.txt"))
+	if err != nil || string(liveBefore) != "baseline\n" {
+		t.Fatalf("live root changed before E05 finalization: %q err=%v", liveBefore, err)
+	}
+	liveBeforeHash := sha256.Sum256(liveBefore)
+	releaseSession()
+	publicationResult, publicationErr := publicationRuntime.Finalize(context.Background())
+	if publicationErr != nil || publicationResult.Status != publication.StatusSucceeded || publicationResult.TransactionID == "" {
+		t.Fatalf("real Store/authority terminal-lease publication failed: result=%+v err=%v", publicationResult, publicationErr)
+	}
+	if err := managedLease.recordDurableTerminal(context.Background(), publicationJournal,
+		publicationResult.Status, publicationResult.TransactionID); err != nil {
+		t.Fatalf("managed live-root lease did not accept the durable E05 terminal status: %v", err)
+	}
+	if publicationResult.Binding.SchemaVersion != publication.CommitBindingV2Schema || publicationResult.Binding.TerminalLeaseOrigin == nil ||
+		publicationResult.Binding.TerminalLeaseOrigin.ProposalCall.CallID != "e05-call-bash" ||
+		publicationResult.Binding.TerminalLeaseOrigin.LeaseOperation != terminalLease.Operation {
+		t.Fatalf("published binding does not retain the exact Bash lease/call association: %+v", publicationResult.Binding)
+	}
+	liveAfter, err := os.ReadFile(filepath.Join(livePath, "task.txt"))
+	liveAfterHash := sha256.Sum256(liveAfter)
+	if err != nil || string(liveAfter) != "edited\nbash-stage\n" || liveAfterHash == liveBeforeHash {
+		t.Fatalf("terminal lease publication did not apply/hash-change the real E05 Store tip: %q err=%v before=%x after=%x", liveAfter, err, liveBeforeHash, liveAfterHash)
+	}
+	publicationTrace, err := publicationJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lenRuntimeEvents(publicationTrace, "publication_prepare") != 1 || lenRuntimeEvents(publicationTrace, "publication_token_consumed") != 1 {
+		t.Fatalf("terminal lease publication lacks durable prepare/token evidence: %+v", publicationTrace.Records)
+	}
+	if err := publicationRuntime.Close(); err != nil {
+		t.Fatalf("close E05 publication runtime before releasing managed root: %v", err)
+	}
+	if err := managedLease.close(); err != nil {
+		t.Fatalf("release managed root after known durable terminal: %v", err)
+	}
+}
+
+type e05PublicationTrust struct {
+	authority            *SessionOperationAuthority
+	managedLease         *managedLiveRootLease
+	liveRoot             *os.File
+	baseline             *sessionrepo.Generation
+	workspace            workspace.Options
+	policyDigest         string
+	metadataDigest       string
+	commandRunnerProfile string
+	wrongResolveCall     int
+	resolveCalls         int
+}
+
+func (trust *e05PublicationTrust) CheckAdmission(ctx context.Context) error {
+	if trust == nil || trust.authority == nil || ctx == nil {
+		return ErrGovernedSessionEvidence
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if trust.managedLease != nil {
+		if err := trust.managedLease.matchesFinalizer(ctx, trust.liveRoot, trust.managedLease.runID,
+			trust.managedLease.workflowID, trust.managedLease.ownerEpoch); err != nil {
+			return err
+		}
+	}
+	return trust.authority.requirePreparedSource()
+}
+
+func (trust *e05PublicationTrust) CheckPublicationPrerequisites(ctx context.Context, request workflow.EvidenceRequest) error {
+	if trust == nil || trust.authority == nil || ctx == nil {
+		return ErrGovernedSessionEvidence
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if request.Bundle.PolicyDigest != trust.policyDigest || request.Bundle.MetadataPolicyDigest != trust.metadataDigest ||
+		request.Bundle.RealProviderExchange || request.Bundle.PiAdapterWired || request.Bundle.CommandContainmentStatus != "not-established" {
+		return errors.New("E05 fixture trust refuses production provider/Pi/containment labels")
+	}
+	for _, operation := range request.Bundle.Operations {
+		if operation.Tool == "bash" && (operation.CommandContainmentStatus != "not-established" ||
+			operation.CommandRunnerProfile != trust.commandRunnerProfile) {
+			return errors.New("E05 fixture trust refuses mismatched synthetic Bash evidence")
+		}
+	}
+	if err := trust.authority.requirePreparedSource(); err != nil {
+		return err
+	}
+	if trust.managedLease != nil {
+		return trust.managedLease.authorizePublication(ctx, trust.liveRoot, request, trust.baseline)
+	}
+	return nil
+}
+
+func (trust *e05PublicationTrust) AttestQuiescent(ctx context.Context, live *os.File, baseline, tip *sessionrepo.Generation) error {
+	if trust == nil || ctx == nil || live == nil || baseline == nil || tip == nil || trust.baseline == nil ||
+		baseline.ID() != trust.baseline.ID() || baseline.TreeDigest() != trust.baseline.TreeDigest() || tip.ID() == baseline.ID() {
+		return errors.New("E05 fixture quiescence check lacks the registered temporary roots")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if trust.managedLease != nil {
+		if err := trust.managedLease.issuePublicationPermit(ctx, live, baseline, tip); err != nil {
+			return err
+		}
+	}
+	options := trust.workspace
+	options.Generation, options.QuiescentRoot = baseline.ID(), true
+	snapshot, err := workspace.Scan(live, options)
+	if err != nil || snapshot.TreeDigest != baseline.TreeDigest() || !sameManifest(snapshot.Manifest, baseline.Manifest()) {
+		return errors.Join(errors.New("E05 test live root changed before finalization"), err)
+	}
+	return nil // Test-only assertion: test exclusively owns this private temp root.
+}
+
+func (trust *e05PublicationTrust) VerifyTransition(ctx context.Context, decision delta.PolicyDecision, binding delta.TransitionBinding) error {
+	if trust == nil || trust.authority == nil {
+		return ErrGovernedSessionEvidence
+	}
+	if trust.managedLease != nil {
+		if err := trust.managedLease.verifyPermitForTransition(ctx, trust.liveRoot); err != nil {
+			return err
+		}
+	}
+	return trust.authority.VerifyTransition(decision, binding)
+}
+
+func (trust *e05PublicationTrust) VerifyOrigin(ctx context.Context, bundle sessionrepo.EvidenceBundle, transition delta.Transition) error {
+	if trust == nil || trust.authority == nil {
+		return ErrGovernedSessionEvidence
+	}
+	if trust.managedLease != nil {
+		if err := trust.managedLease.verifyPermitForTransition(ctx, trust.liveRoot); err != nil {
+			return err
+		}
+	}
+	return trust.authority.VerifyOrigin(bundle, transition)
+}
+
+func (trust *e05PublicationTrust) ResolveTerminalLeaseOrigin(ctx context.Context, bundle sessionrepo.EvidenceBundle, transition delta.Transition) (delta.OperationIdentity, error) {
+	if trust == nil || trust.authority == nil {
+		return delta.OperationIdentity{}, ErrGovernedSessionEvidence
+	}
+	if trust.managedLease != nil {
+		if err := trust.managedLease.verifyPermitForTransition(ctx, trust.liveRoot); err != nil {
+			return delta.OperationIdentity{}, err
+		}
+	}
+	resolved, err := trust.authority.ResolveTerminalLeaseOrigin(ctx, bundle, transition)
+	if err != nil {
+		return delta.OperationIdentity{}, err
+	}
+	trust.resolveCalls++
+	if trust.wrongResolveCall != 0 && trust.resolveCalls == trust.wrongResolveCall {
+		for _, candidate := range bundle.ApprovedDeltaLedger {
+			if candidate.Operation.Kind == delta.OperationProposalCall {
+				return candidate.Operation, nil // negative test injects a stale edit-origin resolution
+			}
+		}
+		return delta.OperationIdentity{}, errors.New("no prior proposal-call candidate for negative origin test")
+	}
+	return resolved, nil
+}
+
+func lenRuntimeEvents(trace audit.Trace, kind string) int {
+	count := 0
+	for _, record := range trace.Records {
+		if record.Event.Kind == kind {
+			count++
+		}
+	}
+	return count
 }
 
 func TestSyntheticProviderConversationAuditDrivesActualDurableE05Executor(t *testing.T) {
@@ -499,8 +839,8 @@ func TestSyntheticProviderConversationAuditDrivesActualDurableE05Executor(t *tes
 	if err := authority.VerifyOrigin(bundle, terminal); err != nil {
 		t.Fatalf("durable provider capture did not authenticate Bash lease origin: %v", err)
 	}
-	if err := authority.CheckFinalizerOrigin(bundle); !errors.Is(err, ErrLeaseOriginUnsupported) {
-		t.Fatalf("terminal lease publication blocker was hidden or misrepresented: %v", err)
+	if err := authority.CheckFinalizerOrigin(bundle); err != nil {
+		t.Fatalf("actual terminal Bash origin failed finalizer authentication: %v", err)
 	}
 	if !prepared.HasDurableD06Provenance() {
 		t.Fatal("D06 source/private-Git provenance did not survive E05 effect history")

@@ -11,16 +11,17 @@ import (
 	"testing"
 )
 
-// TestServePiProductionRefusalUnchanged proves the plain production route and
-// the explicit host-profile route still refuse exactly as before the
-// development fixture flag was added.
+// TestServePiProductionRefusalUnchanged proves the plain production route still
+// refuses on an unprovisioned host (no protected profile, no D09 runtime), and
+// that the explicit host-profile route refuses the same way because the D09
+// prerequisites are checked before any profile is trusted.
 func TestServePiProductionRefusalUnchanged(t *testing.T) {
 	for _, testCase := range []struct {
 		args []string
 		want string
 	}{
-		{[]string{"serve", "--pi"}, "refused"},
-		{[]string{"serve", "--pi", "--native-host-profile", "/no/such/attested/profile"}, "not an installed, attested production runtime"},
+		{[]string{"serve", "--pi"}, "prerequisites are not satisfied"},
+		{[]string{"serve", "--pi", "--native-host-profile", "/no/such/attested/profile"}, "prerequisites are not satisfied"},
 	} {
 		var transcript bytes.Buffer
 		err := run(testCase.args, &transcript, io.Discard)

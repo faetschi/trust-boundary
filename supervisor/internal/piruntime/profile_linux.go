@@ -92,13 +92,10 @@ func VerifyLinuxSignedHostProfile(profileBytes, signature []byte, publicKey ed25
 	if err := decoder.Decode(&profile); err != nil {
 		return HostProfile{}, fmt.Errorf("decode signed Pi profile: %w", err)
 	}
-	canonicalProfile := profile
-	canonicalProfile.Digest = ""
-	canonicalJSON, err := json.Marshal(canonicalProfile)
+	canonicalBytes, err := LinuxHostProfileSigningBytes(profile)
 	if err != nil {
-		return HostProfile{}, fmt.Errorf("canonicalize signed Pi profile: %w", err)
+		return HostProfile{}, err
 	}
-	canonicalBytes := append([]byte(linuxHostProfileSignatureDomain), canonicalJSON...)
 	if profile.Digest != DigestBytes(canonicalBytes) || !ed25519.Verify(publicKey, canonicalBytes, signature) {
 		return HostProfile{}, ErrHostAttestationMissing
 	}
@@ -181,18 +178,34 @@ func (v *LinuxHostProfileVerifier) verifyRuntime(ctx context.Context, profile Ho
 	if err := validateRuntimeAssetDescriptor(v.runtime.PiRuntimeBundleHandle, v.runtime.RuntimeAssetEvidence); err != nil {
 		return err
 	}
-	launcher, ok := v.runtime.Launcher.(interface{ admitsFrozenLinuxProfile(HostProfile) error })
-	if !ok {
+	var scope *LinuxCgroupScope
+	switch launcher := v.runtime.Launcher.(type) {
+	case *LinuxExecutableLauncher:
+		// Cgroup-scoped host exec is not a D09 cell. Keep refusing it here as
+		// well as at the launcher's own gate.
+		return ErrProductionLauncherUnavailable
+	case *D09PodmanCrunLauncher:
+		if err := launcher.admitsFrozenLinuxProfile(profile); err != nil {
+			return err
+		}
+		scope = launcher.scope
+	default:
 		return ErrProductionLauncherUnavailable
 	}
-	if err := launcher.admitsFrozenLinuxProfile(profile); err != nil {
-		return err
-	}
-	if err := validateMinimalWorkerEnvironment(v.runtime.Environment); err != nil {
-		return fmt.Errorf("signed Pi profile environment is not minimal: %w", err)
-	}
-	if err := validatePrivateDirectory(v.runtime.Environment); err != nil {
-		return err
+	if profile.ContainmentProfile == D09ContainmentProfile {
+		// The D09 cell binds the four-field environment by digest; the private
+		// 0700 directories live in the cell image at the authorized UID, not on
+		// the host.
+		if err := validateD09CellEnvironment(v.runtime.Environment); err != nil {
+			return fmt.Errorf("signed Pi D09 profile environment is not the frozen four-field cell environment: %w", err)
+		}
+	} else {
+		if err := validateMinimalWorkerEnvironment(v.runtime.Environment); err != nil {
+			return fmt.Errorf("signed Pi profile environment is not minimal: %w", err)
+		}
+		if err := validatePrivateDirectory(v.runtime.Environment); err != nil {
+			return err
+		}
 	}
 	if err := verifyImmutableLinuxExecutable(profile.ChildExecutable); err != nil {
 		return err
@@ -209,13 +222,12 @@ func (v *LinuxHostProfileVerifier) verifyRuntime(ctx context.Context, profile Ho
 	if err := validatePiWorkerDescriptors(profile.DescriptorProfile, v.runtime.Descriptors, v.runtime.WorkerExposureHandle, v.runtime.PiRuntimeBundleHandle); err != nil {
 		return err
 	}
-	linuxLauncher, ok := v.runtime.Launcher.(*LinuxExecutableLauncher)
-	if !ok || linuxLauncher.scope == nil || !sameBinding(linuxLauncher.scope, v.runtime.Descendant) ||
-		linuxLauncher.scope.containment != profile.ContainmentProfile || linuxLauncher.scope.settlement != profile.SettlementProfile ||
-		linuxLauncher.scope.RootDigest() != profile.CgroupRootDigest {
+	if scope == nil || !sameBinding(scope, v.runtime.Descendant) ||
+		scope.containment != profile.ContainmentProfile || scope.settlement != profile.SettlementProfile ||
+		scope.RootDigest() != profile.CgroupRootDigest {
 		return errors.New("signed Pi profile has no matching concrete Linux cgroup launcher/settler")
 	}
-	if err := validateCgroupDirectory(linuxLauncher.scope.file); err != nil {
+	if err := validateCgroupDirectory(scope.file); err != nil {
 		return errors.Join(ErrCgroupScopeRefused, err)
 	}
 	return nil

@@ -22,6 +22,39 @@ import (
 	"tbound/supervisor/internal/workspace"
 )
 
+func TestTerminalLeaseOriginBindingIsVersionedAndBindsFullTransition(t *testing.T) {
+	call := delta.OperationIdentity{Kind: delta.OperationProposalCall, ProposalID: "proposal-bash",
+		CallIssuer: "go-broker/v1", CallID: "call-bash"}
+	transition := delta.Transition{
+		ID: "transition-bash", Sequence: 3, Tool: "bash", ArgumentDigest: "sha256:" + strings.Repeat("a", 64),
+		InputGeneration: "g2", OutputGeneration: "g3", InputTreeDigest: "sha256:" + strings.Repeat("b", 64),
+		OutputTreeDigest: "sha256:" + strings.Repeat("c", 64),
+		Operation:        delta.OperationIdentity{Kind: delta.OperationLease, LeaseID: "lease-bash"},
+		Decision: delta.PolicyDecision{ID: "decision-bash", Outcome: delta.PolicyAllow,
+			PolicyDigest: "sha256:" + strings.Repeat("d", 64), MetadataPolicyDigest: "sha256:" + strings.Repeat("e", 64)},
+	}
+	binding, err := NewTerminalLeaseOriginBinding(transition, call)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding.SchemaVersion != TerminalLeaseOriginV1Schema || binding.LeaseOperation != transition.Operation || binding.ProposalCall != call || !validSHA256(binding.TerminalTransitionDigest) {
+		t.Fatalf("terminal lease origin binding=%+v", binding)
+	}
+	identifier, err := TerminalLeaseOriginIdentifier(binding)
+	if err != nil || identifier == call.ProposalID || !strings.HasPrefix(identifier, "terminal-lease-origin/v1:") {
+		t.Fatalf("versioned origin identifier=%q err=%v", identifier, err)
+	}
+	changed := transition
+	changed.OutputTreeDigest = "sha256:" + strings.Repeat("f", 64)
+	changedBinding, err := NewTerminalLeaseOriginBinding(changed, call)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changedBinding.TerminalTransitionDigest == binding.TerminalTransitionDigest {
+		t.Fatal("terminal transition digest did not bind the complete output generation/tree")
+	}
+}
+
 type fixture struct {
 	t         *testing.T
 	root      string

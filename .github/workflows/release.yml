@@ -37,12 +37,34 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           bash scripts/verify-install.sh "${VERSION:-verify}"
 
+      - name: Verify Linux packaging strict-mode failure behavior
+        run: |
+          TMPDIR="$(mktemp -d "${RUNNER_TEMP}/tbound-strict-mode.XXXXXX")"
+          chmod 700 "$TMPDIR"
+          export TMPDIR
+          trap 'rm -rf "$TMPDIR"' EXIT
+          bash tests/packaging/verify-release-strict-mode.sh
+
+      - name: Strict packaging acceptance (Linux/amd64 required)
+        env:
+          TBOUND_REQUIRE_LINUX_RELEASE: "1"
+        run: |
+          TMPDIR="$(mktemp -d "${RUNNER_TEMP}/tbound-release-acceptance.XXXXXX")"
+          chmod 700 "$TMPDIR"
+          export TMPDIR
+          trap 'rm -rf "$TMPDIR"' EXIT
+          VERSION="${GITHUB_REF_NAME#v}"
+          [ -n "$VERSION" ] || VERSION="0.0.0-dev"
+          bash tests/packaging/verify-release-layout.sh "$VERSION" --require-linux
+
       - uses: actions/upload-artifact@v4
         with:
           name: tbound-dist
           path: |
             dist/*.tar.gz
             dist/SHA256SUMS
+            dist/tbound-cell-entrypoint-*-linux-amd64.metadata.json
+            dist/tbound-cell-entrypoint-*-linux-amd64.sha256
             dist/npm/**
 
       - name: Publish GitHub release
@@ -52,6 +74,8 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/SHA256SUMS
+            dist/tbound-cell-entrypoint-*-linux-amd64.metadata.json
+            dist/tbound-cell-entrypoint-*-linux-amd64.sha256
 
       # npm publishing is intentionally manual/opt-in. After a tag build:
       #   for d in dist/npm/*/; do (cd "$d" && npm publish --access public); done

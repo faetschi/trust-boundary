@@ -109,6 +109,17 @@ type ExecutableLauncher interface {
 	StartVerified(context.Context, ExecutableLaunchRequest) (*exec.Cmd, error)
 }
 
+// perLaunchProofLauncher is implemented by production launchers that must
+// return a proof and settler for the exact launched command. Its unexported
+// marker keeps external callers from manufacturing this contract; fixture and
+// development launchers retain their existing interface.
+type perLaunchProofLauncher interface {
+	requirePerLaunchProof()
+	TakeLaunchProof(*exec.Cmd) (any, bool)
+	DescendantSettlerFor(*exec.Cmd) (DescendantSettler, bool)
+	ValidateLaunchProof(any, HostProfile, *exec.Cmd) error
+}
+
 var (
 	observationWorkerSlots = make(chan struct{}, maxObservationWorkers)
 	settlementWorkerSlots  = make(chan struct{}, maxSettlementWorkers)
@@ -319,6 +330,11 @@ type Process struct {
 	settler DescendantSettler
 	writers []*observationWriter
 
+	// launchProof is the captured, validated per-launch proof supplied by a
+	// launcher that implements TakeLaunchProof. It is nil for development and
+	// fixture launches and is never a stale global value.
+	launchProof any
+
 	completion chan struct{}
 	waitMu     sync.Mutex
 	waitResult waitResult
@@ -396,7 +412,29 @@ func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
 		closeObservationWriters(writers)
 		return nil, errors.New("trusted native child launcher returned no process")
 	}
-	return newProcess(cmd, bound.settler, writers, true), nil
+	childSettler := bound.settler
+	var launchProof any
+	if proofLauncher, required := bound.launcher.(perLaunchProofLauncher); required {
+		proofValue, proofOK := proofLauncher.TakeLaunchProof(cmd)
+		settler, settlerOK := proofLauncher.DescendantSettlerFor(cmd)
+		if !proofOK || !settlerOK || proofLauncher.ValidateLaunchProof(proofValue, profile, cmd) != nil {
+			ownedCleanup := false
+			if cleaner, ok := bound.launcher.(interface{ cleanupFailedLaunch(*exec.Cmd) bool }); ok {
+				ownedCleanup = cleaner.cleanupFailedLaunch(cmd)
+			}
+			releaseSettlementWorker()
+			closeObservationWriters(writers)
+			if !ownedCleanup {
+				return nil, fmt.Errorf("%w: D09 launch lacks proof and cleanup ownership is UNKNOWN", ErrUnknownSettlement)
+			}
+			return nil, fmt.Errorf("%w: D09 launch lacks its validated per-command TCB proof/settler", ErrProductionLauncherUnavailable)
+		}
+		childSettler = settler
+		launchProof = proofValue
+	}
+	process := newProcess(cmd, childSettler, writers, true)
+	process.launchProof = launchProof
+	return process, nil
 }
 
 // StartFixtureChild is the only path that permits an unbound absolute helper.
@@ -471,6 +509,16 @@ func (p *Process) PID() int {
 		return 0
 	}
 	return p.cmd.Process.Pid
+}
+
+// LaunchProof returns the captured, validated per-launch proof for exactly this
+// process, or nil when the launcher supplied none (development/fixture). It is
+// bound to this process, never stale global state.
+func (p *Process) LaunchProof() any {
+	if p == nil {
+		return nil
+	}
+	return p.launchProof
 }
 
 func (p *Process) wait(ctx context.Context) (waitResult, bool) {
