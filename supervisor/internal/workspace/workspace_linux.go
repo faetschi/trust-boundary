@@ -172,7 +172,7 @@ func Import(sourceRoot, destinationRoot *os.File, options Options) (Snapshot, er
 	if err != nil {
 		return Snapshot{}, fmt.Errorf("verify imported workspace: %w", err)
 	}
-	if !sameManifest(expected.Manifest, actual.Manifest) || expected.TreeDigest != actual.TreeDigest {
+	if !delta.EqualTreeManifest(expected.Manifest, actual.Manifest) || expected.TreeDigest != actual.TreeDigest {
 		return Snapshot{}, errors.New("imported workspace does not match its copied manifest")
 	}
 	return actual, nil
@@ -220,13 +220,13 @@ func validateOptions(options Options) error {
 			return fmt.Errorf("%w: generation label contains a control character", ErrInvalidOptions)
 		}
 	}
-	if !validSHA256(options.MetadataPolicyDigest) {
+	if !delta.ValidSHA256(options.MetadataPolicyDigest) {
 		return fmt.Errorf("%w: metadata-policy digest must be sha256:<lowercase hex>", ErrInvalidOptions)
 	}
 	if !options.QuiescentRoot {
 		return ErrNotQuiescent
 	}
-	if !options.XattrVisibility.Complete || !validSHA256(options.XattrVisibility.ProfileDigest) {
+	if !options.XattrVisibility.Complete || !delta.ValidSHA256(options.XattrVisibility.ProfileDigest) {
 		return ErrXattrVisibilityUnproven
 	}
 	limits := options.Limits
@@ -893,35 +893,8 @@ func validateSegment(name string) error {
 	return nil
 }
 
-func validSHA256(value string) bool {
-	const prefix = "sha256:"
-	if len(value) != len(prefix)+sha256.Size*2 || !strings.HasPrefix(value, prefix) {
-		return false
-	}
-	encoded := value[len(prefix):]
-	if strings.ToLower(encoded) != encoded {
-		return false
-	}
-	_, err := hex.DecodeString(encoded)
-	return err == nil
-}
-
 func digest(contentHash hash.Hash) string {
 	return "sha256:" + hex.EncodeToString(contentHash.Sum(nil))
-}
-
-func sameManifest(left, right delta.TreeManifest) bool {
-	if left.Generation != right.Generation ||
-		left.MetadataPolicyDigest != right.MetadataPolicyDigest ||
-		len(left.Objects) != len(right.Objects) {
-		return false
-	}
-	for i := range left.Objects {
-		if left.Objects[i] != right.Objects[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func writeFull(destination *os.File, data []byte) error {

@@ -72,6 +72,22 @@ type TreeManifest struct {
 	Objects              []ManifestObject `json:"objects"`
 }
 
+// EqualTreeManifest reports whether two manifests have the same generation,
+// metadata policy digest, and ordered objects. Nil and empty Objects slices are
+// equivalent because both represent the same empty object sequence.
+func EqualTreeManifest(left, right TreeManifest) bool {
+	if left.Generation != right.Generation ||
+		left.MetadataPolicyDigest != right.MetadataPolicyDigest || len(left.Objects) != len(right.Objects) {
+		return false
+	}
+	for index := range left.Objects {
+		if left.Objects[index] != right.Objects[index] {
+			return false
+		}
+	}
+	return true
+}
+
 // ChainSpec explicitly pins both complete endpoint manifests and policy
 // commitments. The caller remains responsible for authenticating those inputs.
 type ChainSpec struct {
@@ -757,6 +773,12 @@ func validDigest(value, prefix string) bool {
 	}
 	_, err := hex.DecodeString(encoded)
 	return err == nil
+}
+
+// ValidSHA256 reports whether value is a canonical lowercase sha256:<hex>
+// digest. It is shared by packages that validate the same digest commitment.
+func ValidSHA256(value string) bool {
+	return validDigest(value, "sha256:")
 }
 
 func computeTreeDigestFromMap(objects map[string]ObjectState, metadataPolicyDigest string) (string, error) {

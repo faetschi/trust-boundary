@@ -124,7 +124,7 @@ func (s *Store) recoverLocked() error {
 			return fmt.Errorf("malformed denied-operation record %d", record.Sequence)
 		}
 		if denied.Request.Tool == "bash" {
-			if !validSHA256(denied.Request.ExecutionContextDigest) {
+			if !delta.ValidSHA256(denied.Request.ExecutionContextDigest) {
 				return fmt.Errorf("denied Bash operation %q has no valid execution context", denied.Request.EffectID)
 			}
 			if err := s.rememberViewIDLocked(denied.Request.ViewID); err != nil {
@@ -185,7 +185,7 @@ func (s *Store) recoverEffectLocked(effect audit.EffectTrace) error {
 	if err != nil {
 		return err
 	}
-	if request.EffectID != effect.ID || !validSupervisorEffectID(request.EffectID) || !validSHA256(request.ArgumentDigest) {
+	if request.EffectID != effect.ID || !validSupervisorEffectID(request.EffectID) || !delta.ValidSHA256(request.ArgumentDigest) {
 		return errors.New("effect intent is not bound to its supervisor ID and argument digest")
 	}
 	if err := validateOperation(request.Operation); err != nil {
@@ -199,7 +199,7 @@ func (s *Store) recoverEffectLocked(effect audit.EffectTrace) error {
 		return ErrInvalidOptions
 	}
 	if request.Tool == "bash" {
-		if !validViewID(request.ViewID) || !validSHA256(request.ExecutionContextDigest) {
+		if !validViewID(request.ViewID) || !delta.ValidSHA256(request.ExecutionContextDigest) {
 			return errors.New("Bash intent omits its valid view and execution context")
 		}
 		if err := s.rememberViewIDLocked(request.ViewID); err != nil {
@@ -249,7 +249,7 @@ func (s *Store) recoverSeedLocked(effect audit.EffectTrace) error {
 	if err != nil {
 		return err
 	}
-	if actual.TreeDigest != evidence.TreeDigest || !sameManifest(actual.Manifest, evidence.Manifest) {
+	if actual.TreeDigest != evidence.TreeDigest || !delta.EqualTreeManifest(actual.Manifest, evidence.Manifest) {
 		return ErrGenerationModified
 	}
 	generation, err := s.openGenerationLocked("g0", actual)

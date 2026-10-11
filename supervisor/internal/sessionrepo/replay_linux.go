@@ -204,7 +204,7 @@ func Reconstruct(bundle EvidenceBundle) (Disposition, error) {
 	if len(bundle.AuditJournal) > maxEvidenceJournalBytes {
 		return Disposition{}, invalidBundle("audit journal exceeds the retained-byte bound")
 	}
-	if !validSHA256(bundle.PolicyDigest) || !validSHA256(bundle.MetadataPolicyDigest) {
+	if !delta.ValidSHA256(bundle.PolicyDigest) || !delta.ValidSHA256(bundle.MetadataPolicyDigest) {
 		return Disposition{}, invalidBundle("policy commitments are not SHA-256 digests")
 	}
 	trace, err := audit.Verify(bytes.NewReader(bundle.AuditJournal))
@@ -403,7 +403,7 @@ func (state *reconstruction) reconstructEffect(effect audit.EffectTrace) error {
 	if err != nil {
 		return invalidBundle("decode operation intent %q: %v", effect.ID, err)
 	}
-	if request.EffectID != effect.ID || !validSupervisorEffectID(request.EffectID) || !validSHA256(request.ArgumentDigest) {
+	if request.EffectID != effect.ID || !validSupervisorEffectID(request.EffectID) || !delta.ValidSHA256(request.ArgumentDigest) {
 		return invalidBundle("effect %q intent is not bound to its ID and argument digest", effect.ID)
 	}
 	if err := validateOperation(request.Operation); err != nil {
@@ -418,7 +418,7 @@ func (state *reconstruction) reconstructEffect(effect audit.EffectTrace) error {
 		return invalidBundle("effect %q tool and operation kind disagree", effect.ID)
 	}
 	if request.Tool == "bash" {
-		if !validViewID(request.ViewID) || !validSHA256(request.ExecutionContextDigest) {
+		if !validViewID(request.ViewID) || !delta.ValidSHA256(request.ExecutionContextDigest) {
 			return invalidBundle("effect %q Bash intent omits its view or execution context", effect.ID)
 		}
 	} else if request.ViewID != "" || request.ExecutionContextDigest != "" {
@@ -464,7 +464,7 @@ func (state *reconstruction) reconstructSeed(effect audit.EffectTrace) error {
 		return invalidBundle("effect %q has invalid baseline evidence", effect.ID)
 	}
 	actual := state.generations[0]
-	if evidence.TreeDigest != actual.TreeDigest || !sameManifest(evidence.Manifest, actual.Manifest) {
+	if evidence.TreeDigest != actual.TreeDigest || !delta.EqualTreeManifest(evidence.Manifest, actual.Manifest) {
 		return invalidBundle("baseline seed does not match retained generation %q", actual.ID)
 	}
 	state.hasBaseline = true
@@ -601,7 +601,7 @@ func (state *reconstruction) reconstructDenials(trace audit.Trace) error {
 			return invalidBundle("denied operation %q has an invalid operation identity", request.EffectID)
 		}
 		if request.Tool == "bash" {
-			if !validViewID(request.ViewID) || !validSHA256(request.ExecutionContextDigest) {
+			if !validViewID(request.ViewID) || !delta.ValidSHA256(request.ExecutionContextDigest) {
 				return invalidBundle("denied Bash operation %q has no valid execution context", request.EffectID)
 			}
 		} else if request.ViewID != "" || request.ExecutionContextDigest != "" {
@@ -654,7 +654,7 @@ func verifyBundleGenerations(bundle EvidenceBundle) ([]GenerationEvidence, error
 		return nil, invalidBundle("generation count is out of range")
 	}
 	if bundle.Baseline.ID != bundle.Generations[0].ID || bundle.Baseline.TreeDigest != bundle.Generations[0].TreeDigest ||
-		!sameManifest(bundle.Baseline.Manifest, bundle.Generations[0].Manifest) {
+		!delta.EqualTreeManifest(bundle.Baseline.Manifest, bundle.Generations[0].Manifest) {
 		return nil, invalidBundle("baseline does not match the first retained generation")
 	}
 	generations := make([]GenerationEvidence, len(bundle.Generations))

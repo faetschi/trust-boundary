@@ -8,6 +8,72 @@ import (
 	"testing"
 )
 
+func TestValidSHA256(t *testing.T) {
+	valid := "sha256:" + strings.Repeat("a", 64)
+	for _, value := range []string{
+		valid,
+		"sha256:" + strings.Repeat("0f", 32),
+	} {
+		if !ValidSHA256(value) {
+			t.Errorf("ValidSHA256(%q) = false, want true", value)
+		}
+	}
+	for _, value := range []string{
+		"sha256:" + strings.Repeat("A", 64),
+		"sha256:" + strings.Repeat("a", 63),
+		"sha256:" + strings.Repeat("a", 63) + "g",
+		"sha512:" + strings.Repeat("a", 64),
+	} {
+		if ValidSHA256(value) {
+			t.Errorf("ValidSHA256(%q) = true, want false", value)
+		}
+	}
+}
+
+func TestEqualTreeManifest(t *testing.T) {
+	object := ManifestObject{
+		Path: "file.txt",
+		State: ObjectState{
+			Exists: true, Type: ObjectRegular,
+			ContentDigest:    "sha256:" + strings.Repeat("a", 64),
+			MetadataIdentity: "sha256:" + strings.Repeat("b", 64),
+		},
+	}
+	base := TreeManifest{
+		Generation: "g1", MetadataPolicyDigest: "sha256:" + strings.Repeat("c", 64),
+		Objects: []ManifestObject{object},
+	}
+	if !EqualTreeManifest(base, base) {
+		t.Fatal("identical manifests are not equal")
+	}
+	if !EqualTreeManifest(TreeManifest{}, TreeManifest{Objects: []ManifestObject{}}) {
+		t.Fatal("nil and empty object slices should be equivalent")
+	}
+
+	mutations := map[string]func(*TreeManifest){
+		"generation":             func(manifest *TreeManifest) { manifest.Generation = "g2" },
+		"metadata policy digest": func(manifest *TreeManifest) { manifest.MetadataPolicyDigest = "different" },
+		"object path":            func(manifest *TreeManifest) { manifest.Objects[0].Path = "other.txt" },
+		"object existence":       func(manifest *TreeManifest) { manifest.Objects[0].State.Exists = false },
+		"object type":            func(manifest *TreeManifest) { manifest.Objects[0].State.Type = ObjectDirectory },
+		"content digest":         func(manifest *TreeManifest) { manifest.Objects[0].State.ContentDigest = "different" },
+		"metadata identity":      func(manifest *TreeManifest) { manifest.Objects[0].State.MetadataIdentity = "different" },
+		"object count":           func(manifest *TreeManifest) { manifest.Objects = nil },
+	}
+	for name, mutate := range mutations {
+		t.Run(name, func(t *testing.T) {
+			changed := TreeManifest{
+				Generation: base.Generation, MetadataPolicyDigest: base.MetadataPolicyDigest,
+				Objects: append([]ManifestObject(nil), base.Objects...),
+			}
+			mutate(&changed)
+			if EqualTreeManifest(base, changed) {
+				t.Fatal("manifests with a changed field are equal")
+			}
+		})
+	}
+}
+
 func TestValidateChainComposesEditsAndReverts(t *testing.T) {
 	spec, entries := fixture(t)
 	verified := make([]string, 0, len(entries))

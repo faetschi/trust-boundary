@@ -27,14 +27,14 @@ import (
 )
 
 func validateOptions(options Options) error {
-	if !validSHA256(options.PolicyDigest) || !validSHA256(options.MetadataPolicyDigest) ||
+	if !delta.ValidSHA256(options.PolicyDigest) || !delta.ValidSHA256(options.MetadataPolicyDigest) ||
 		options.Journal == nil || options.AuthorizeOperation == nil || options.VerifyDecision == nil || options.VerifySettlement == nil {
 		return ErrInvalidOptions
 	}
 	if options.Limits.MaxObjects <= 0 || options.Limits.MaxDepth <= 0 ||
 		options.Limits.MaxFileBytes <= 0 || options.Limits.MaxTotalBytes <= 0 ||
 		options.Limits.MaxFileBytes > options.Limits.MaxTotalBytes ||
-		!options.XattrVisibility.Complete || !validSHA256(options.XattrVisibility.ProfileDigest) {
+		!options.XattrVisibility.Complete || !delta.ValidSHA256(options.XattrVisibility.ProfileDigest) {
 		return ErrInvalidOptions
 	}
 	return nil
@@ -101,7 +101,7 @@ func (s *Store) openGenerationLocked(id string, snapshot workspace.Snapshot) (*G
 		_ = root.Close()
 		return nil, fmt.Errorf("verify promoted generation %s: %w", id, err)
 	}
-	if actual.TreeDigest != snapshot.TreeDigest || !sameManifest(actual.Manifest, snapshot.Manifest) {
+	if actual.TreeDigest != snapshot.TreeDigest || !delta.EqualTreeManifest(actual.Manifest, snapshot.Manifest) {
 		_ = root.Close()
 		return nil, ErrGenerationModified
 	}
@@ -144,7 +144,7 @@ func (s *Store) verifyGenerationLocked(generation *Generation) error {
 		s.quarantined = true
 		return fmt.Errorf("rescan sealed generation %s: %w", generation.id, err)
 	}
-	if actual.TreeDigest != generation.snapshot.TreeDigest || !sameManifest(actual.Manifest, generation.snapshot.Manifest) {
+	if actual.TreeDigest != generation.snapshot.TreeDigest || !delta.EqualTreeManifest(actual.Manifest, generation.snapshot.Manifest) {
 		s.quarantined = true
 		return ErrGenerationModified
 	}
@@ -349,7 +349,7 @@ func (s *Store) authorizeLocked(request OperationRequest) error {
 	if err := validateOperation(request.Operation); err != nil {
 		return err
 	}
-	if !validSupervisorEffectID(request.EffectID) || !validSHA256(request.ArgumentDigest) ||
+	if !validSupervisorEffectID(request.EffectID) || !delta.ValidSHA256(request.ArgumentDigest) ||
 		request.Decision.Outcome != delta.PolicyAllow || request.Decision.PolicyDigest != s.options.PolicyDigest ||
 		request.Decision.MetadataPolicyDigest != s.options.MetadataPolicyDigest || !validIdentity(request.Decision.ID) {
 		return s.denyLocked(request, ErrInvalidDecision)
@@ -395,10 +395,10 @@ func (s *Store) denyLocked(request OperationRequest, cause error) error {
 }
 
 func (s *Store) transitionLocked(input *Generation, outputID string, request OperationRequest, output workspace.Snapshot) (delta.Transition, delta.Result, error) {
-	commandContextValid := request.Tool == "bash" && validViewID(request.ViewID) && validSHA256(request.ExecutionContextDigest)
+	commandContextValid := request.Tool == "bash" && validViewID(request.ViewID) && delta.ValidSHA256(request.ExecutionContextDigest)
 	noCommandContext := request.ViewID == "" && request.ExecutionContextDigest == ""
 	if input == nil || request.InputGeneration != input.id || request.InputTreeDigest != input.snapshot.TreeDigest ||
-		!validSHA256(request.ArgumentDigest) || validateOperation(request.Operation) != nil ||
+		!delta.ValidSHA256(request.ArgumentDigest) || validateOperation(request.Operation) != nil ||
 		(request.Tool != "edit" && request.Tool != "write" && request.Tool != "delete" && request.Tool != "bash") ||
 		(request.Tool == "bash" && !commandContextValid) || (request.Tool != "bash" && !noCommandContext) ||
 		output.Manifest.Generation != outputID || output.Manifest.MetadataPolicyDigest != s.options.MetadataPolicyDigest {
@@ -480,7 +480,7 @@ func (s *Store) newViewLocked(input *Generation) (*CommandView, error) {
 		_ = removeTreeAt(int(s.viewDir.Fd()), name)
 		return nil, fmt.Errorf("prepare ordinary-copy command view: %w", err)
 	}
-	if snapshot.TreeDigest != input.snapshot.TreeDigest || !sameManifest(snapshot.Manifest, input.snapshot.Manifest) {
+	if snapshot.TreeDigest != input.snapshot.TreeDigest || !delta.EqualTreeManifest(snapshot.Manifest, input.snapshot.Manifest) {
 		_ = root.Close()
 		_ = removeTreeAt(int(s.viewDir.Fd()), name)
 		return nil, ErrGenerationModified
@@ -706,24 +706,11 @@ func validIdentity(value string) bool {
 	return true
 }
 
-func validSHA256(value string) bool {
-	const prefix = "sha256:"
-	if !strings.HasPrefix(value, prefix) || len(value) != len(prefix)+sha256.Size*2 {
-		return false
-	}
-	encoded := value[len(prefix):]
-	if strings.ToLower(encoded) != encoded {
-		return false
-	}
-	_, err := hex.DecodeString(encoded)
-	return err == nil
-}
-
 func validTreeDigest(value string) bool {
 	if !strings.HasPrefix(value, delta.TreeDigestProfile) {
 		return false
 	}
-	return validSHA256("sha256:" + strings.TrimPrefix(value, delta.TreeDigestProfile))
+	return delta.ValidSHA256("sha256:" + strings.TrimPrefix(value, delta.TreeDigestProfile))
 }
 
 func validGenerationID(id string) bool {
@@ -791,18 +778,6 @@ func cloneSnapshot(snapshot workspace.Snapshot) workspace.Snapshot {
 func cloneManifest(manifest delta.TreeManifest) delta.TreeManifest {
 	manifest.Objects = append([]delta.ManifestObject(nil), manifest.Objects...)
 	return manifest
-}
-
-func sameManifest(left, right delta.TreeManifest) bool {
-	if left.Generation != right.Generation || left.MetadataPolicyDigest != right.MetadataPolicyDigest || len(left.Objects) != len(right.Objects) {
-		return false
-	}
-	for index := range left.Objects {
-		if left.Objects[index] != right.Objects[index] {
-			return false
-		}
-	}
-	return true
 }
 
 func cloneTransitions(transitions []delta.Transition) []delta.Transition {
