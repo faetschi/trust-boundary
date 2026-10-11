@@ -252,6 +252,10 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	session.LiveRoot, session.PublicationStateRoot, session.PublicationJournal = liveRoot, publicationStateRoot, publicationJournal
 	session.ManagedLiveRootLease = managedRootLease
 	session.OwnerEpoch, session.PublicationID = ownerEpoch, publicationID
+	if err := recoverManagedLiveRootBeforeCapture(ctx, managedRootLease, liveRoot, publicationStateRoot,
+		publicationJournal, ownerEpoch); err != nil {
+		return fail(fmt.Errorf("recover registered managed-root publications before source capture: %w", err))
+	}
 
 	policy, err := productionGatePolicy()
 	if err != nil {
@@ -288,9 +292,13 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	session.CommandRunner = runner
 	session.ProductionCommandRunner = runner
 
-	// The source descriptor is opened read-only from an exact root-owned source
-	// snapshot. The trusted xattr visibility profile is accepted only after its
-	// signed template/profile binding and actual source fs/uid/gid checks pass.
+	// Ordinary manual production mode still consumes the protected read-only
+	// source snapshot. Socket service mode must instead use A's dedicated
+	// registered managed-RW source/xattr lease API; never silently reuse the
+	// readonly-source attestation or a caller Complete boolean for that path.
+	if config.ServiceMode {
+		return fail(ErrManagedSourceCaptureUnavailable)
+	}
 	sourceRoot, err := openProductionQuiescentSource(artifacts.SourceRoot)
 	if err != nil {
 		return fail(fmt.Errorf("open and attest protected read-only source root: %w", err))
@@ -357,21 +365,21 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	session.Prepared = prepared
 
 	// Sealed worker exposure and read-only runtime assets.
-	exposure, err := prepared.OpenSealedWorkerExposure(g0)
+	source, err := prepared.OpenVerifiedD09ExposureSource(ctx, g0)
 	if err != nil {
-		return fail(fmt.Errorf("open sealed D06 worker exposure: %w", err))
+		return fail(fmt.Errorf("open verified D09 sealed-source capability for the exact current generation: %w", err))
 	}
-	closers = append(closers, exposure.Close)
+	closers = append(closers, source.Close)
 	bundleRoot, err := os.Open(profile.PiRuntimeBundleRoot)
 	if err != nil {
 		return fail(fmt.Errorf("open read-only Pi runtime bundle root: %w", err))
 	}
 	closers = append(closers, bundleRoot.Close)
-	assets, err := sessionlaunch.OpenVerifiedRuntimeAssets(bundleRoot, sessionlaunch.RuntimeAssetSpec{
+	assets, err := sessionlaunch.OpenVerifiedD09RuntimeAssetSource(bundleRoot, sessionlaunch.RuntimeAssetSpec{
 		BundleDigest: profile.PiRuntimeBundleDigest, NamespaceProfileDigest: profile.ContainmentProfileDigest,
 	})
 	if err != nil {
-		return fail(fmt.Errorf("open verified read-only runtime assets: %w", err))
+		return fail(fmt.Errorf("open strict verified D09 runtime-asset source: %w", err))
 	}
 	closers = append(closers, assets.Close)
 
@@ -409,15 +417,16 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	// the stack before launcher.Close, retaining both owners for UNKNOWN recovery.
 	commandLauncher = launcher
 
-	// Worker channels + host runtime bindings. The launcher-published
-	// constructor binds the exact owned descriptors/evidence; the CLI never
-	// invents FD numbers or re-exports copies.
-	bindings, channels, err := piruntime.BindProductionPiWorkerBindings(ctx, profile, exposure, assets, launcher, scope)
+	// D09 source-stage channels export the Store capability exactly once. The
+	// caller-owned source FD remains in these channels; the sessionlaunch wrapper
+	// and Store capability stay live until after scope/cell cleanup.
+	bindings, d09Channels, err := piruntime.BindProductionPiWorkerBindingsWithSource(ctx, profile,
+		source, source.SourceCapability(), assets, launcher, scope)
 	if err != nil {
 		return fail(fmt.Errorf("assemble production Pi worker bindings: %w", err))
 	}
-	closers = append(closers, channels.Close)
-	session.Bindings, session.Channels = bindings, channels
+	closers = append(closers, d09Channels.Close)
+	session.Bindings, session.D09Channels, session.Channels = bindings, d09Channels, d09Channels.PiWorkerChannels()
 
 	var closeOnce sync.Once
 	var closeErr error
@@ -481,14 +490,15 @@ func productionXattrVisibility(profile piruntime.HostProfile, template piruntime
 
 func loadProductionOperatorArtifacts(config productionServeConfig, template piruntime.D09CellTemplate) (productionOperatorArtifacts, error) {
 	source := strings.TrimSpace(config.Source)
-	if source == "" || !filepath.IsAbs(source) {
-		return productionOperatorArtifacts{}, errors.New("production launch requires an absolute --source snapshot directory")
-	}
 	liveRoot := productionLiveRootDefault
-	if strings.TrimSpace(config.Workspace) != "" {
+	if config.ServiceMode {
+		liveRoot = config.ManagedLiveRootPath
+	} else if strings.TrimSpace(config.Workspace) != "" {
 		liveRoot = strings.TrimSpace(config.Workspace)
 	}
-	if !filepath.IsAbs(liveRoot) || filepath.Clean(liveRoot) != liveRoot || filepath.Clean(source) == filepath.Clean(liveRoot) {
+	if !filepath.IsAbs(liveRoot) || filepath.Clean(liveRoot) != liveRoot ||
+		(!config.ServiceMode && (source == "" || !filepath.IsAbs(source) || filepath.Clean(source) == filepath.Clean(liveRoot))) ||
+		(config.ServiceMode && (source != "" || config.Workspace != "")) {
 		return productionOperatorArtifacts{}, errors.New("--workspace must be a canonical absolute live root distinct from --source")
 	}
 	cgroupRoot := strings.TrimSpace(template.CgroupsPath)

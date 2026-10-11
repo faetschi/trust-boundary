@@ -265,6 +265,7 @@ type PreparedSession struct {
 	closed     bool
 	closing    bool
 	views      map[*WorkerView]struct{}
+	sources    map[*VerifiedD09ExposureSource]struct{}
 }
 
 // WorkerView wraps a sessionrepo read-only exposure. Descriptor returns only a
@@ -633,6 +634,7 @@ func Prepare(ctx context.Context, managed *ManagedStore, generation *sessionrepo
 		profile: profile, provenance: provenance,
 		basePrefix: appendRecordBytes(appendRecordBytes(append([]byte(nil), bundle.AuditJournal...), sourceRecord), readyRecord),
 		views:      make(map[*WorkerView]struct{}),
+		sources:    make(map[*VerifiedD09ExposureSource]struct{}),
 	}, nil
 }
 
@@ -899,10 +901,19 @@ func (p *PreparedSession) Close() error {
 	for view := range p.views {
 		views = append(views, view)
 	}
+	sources := make([]*VerifiedD09ExposureSource, 0, len(p.sources))
+	for source := range p.sources {
+		sources = append(sources, source)
+	}
 	p.mu.Unlock()
 	var errs []error
 	for _, view := range views {
 		if err := view.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	for _, source := range sources {
+		if err := source.Close(); err != nil {
 			errs = append(errs, err)
 		}
 	}

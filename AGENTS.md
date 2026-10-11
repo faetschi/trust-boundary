@@ -2,10 +2,9 @@
 - Keep orchestrator context lean. Delegate codebase exploration to subagents with specific, targeted questions
 - Read code directly only to verify critical details or resolve ambiguity
 - Subagents return concise findings, changed files, decisions, test results, blockers, and next steps—not transcripts
-- Delegate only when beneficial; parallelize independent work with non-overlapping ownership
-- Give subagents minimal context and clear scope; escalate ambiguity or failures
+- Give subagents minimal context and clear scope with fresh context; escalate ambiguity or failures
 - Prefer deterministic scripts for fully mechanical operations
-- Use GPT 6 Luna high for subagents
+- Use GPT 6 Luna xhigh for subagents
 
 ## Engineering Principles
 - **Think before coding:** Identify assumptions, ambiguities, and tradeoffs. Clarify material uncertainties; use judgment for trivial ones

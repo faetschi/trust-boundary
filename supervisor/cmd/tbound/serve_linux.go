@@ -24,6 +24,7 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tbound serve", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	pi := flags.Bool("pi", false, "run the native Pi harness")
+	serviceMode := flags.Bool("service", false, "internal socket-activated Pi service mode")
 	nativeFixture := flags.Bool("native-fixture", false, "run the explicit non-claim-bearing native lifecycle fixture")
 	devFixture := flags.Bool("dev-fixture", false, "launch the actual pinned Pi SDK worker through the offline non-claim-bearing development composition")
 	nativeHostProfile := flags.String("native-host-profile", "", "protected authorized signed host profile path; empty uses the root-owned /etc/tbound trust root")
@@ -44,6 +45,9 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	if *devFixture && *nativeFixture {
 		return errors.New("--dev-fixture and --native-fixture are mutually exclusive")
 	}
+	if *serviceMode && (*devFixture || *nativeFixture) {
+		return errors.New("--service is mutually exclusive with development/native fixtures")
+	}
 	if *devFixture && *nativeHostProfile != "" {
 		return errors.New("--dev-fixture and --native-host-profile are mutually exclusive")
 	}
@@ -55,13 +59,17 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	return runGovernedPiServe(ctx, transcript, productionServeConfig{
-		ProfilePath:   *nativeHostProfile,
-		Workspace:     *workspace,
-		Source:        *source,
-		TaskID:        *taskID,
-		TaskRequestID: *taskRequestID,
-		TaskPrompt:    *task,
+	if *serviceMode {
+		if *nativeHostProfile != "" || *workspace != "" || *source != "" || *taskID != "" || *taskRequestID != "" || *task != "" {
+			return errors.New("internal --service mode accepts no task, profile, workspace, or source arguments")
+		}
+		return runProductionPiService(ctx, transcript)
+	}
+	if *nativeHostProfile != "" || *workspace != "" || *source != "" {
+		return errors.New("ordinary `serve --pi` is a local service client; profile/source/workspace are service-owned and cannot be selected by the client")
+	}
+	return runProductionPiServiceClient(ctx, transcript, piServiceRequest{
+		RequestID: *taskRequestID, TaskID: *taskID, Prompt: *task,
 	})
 }
 

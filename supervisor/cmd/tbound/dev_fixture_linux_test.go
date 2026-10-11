@@ -11,17 +11,16 @@ import (
 	"testing"
 )
 
-// TestServePiProductionRefusalUnchanged proves the plain production route still
-// refuses on an unprovisioned host (no protected profile, no D09 runtime), and
-// that the explicit host-profile route refuses the same way because the D09
-// prerequisites are checked before any profile is trusted.
+// TestServePiProductionClientRefusal proves the ordinary route never falls back
+// to launching a client-local worker when the registered local service is absent,
+// and that clients cannot choose a host profile.
 func TestServePiProductionRefusalUnchanged(t *testing.T) {
 	for _, testCase := range []struct {
 		args []string
 		want string
 	}{
-		{[]string{"serve", "--pi"}, "prerequisites are not satisfied"},
-		{[]string{"serve", "--pi", "--native-host-profile", "/no/such/attested/profile"}, "prerequisites are not satisfied"},
+		{[]string{"serve", "--pi"}, "local Pi service"},
+		{[]string{"serve", "--pi", "--native-host-profile", "/no/such/attested/profile"}, "cannot be selected by the client"},
 	} {
 		var transcript bytes.Buffer
 		err := run(testCase.args, &transcript, io.Discard)

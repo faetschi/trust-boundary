@@ -44,6 +44,27 @@ func (r *fakeD09Runner) Run(_ context.Context, name string, args ...string) D09C
 
 const fakeD09Digest = "sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6"
 
+func testD09CellID(serviceID, preferred int) int {
+	if serviceID == preferred {
+		return preferred + 1
+	}
+	return preferred
+}
+
+func bindTestD09UserNamespace(config *D09Config, cellUID, cellGID, serviceUID, serviceGID int) {
+	config.UID, config.GID = cellUID, cellGID
+	config.CellUID, config.CellGID = cellUID, cellGID
+	config.UserNamespaceHostUID, config.UserNamespaceHostGID = serviceUID, serviceGID
+	config.UserNamespaceMappingProfile = D09UserNamespaceMappingProfile
+	config.UserNamespaceMappingDigest = DigestD09UserNamespaceMapping(cellUID, cellGID, serviceUID, serviceGID)
+}
+
+func bindTestD09TCBProofMaps(proof *D09TCBProof, config D09Config) {
+	proof.UIDMap = D09InsideUIDMap(config.CellUID)
+	proof.GIDMap = D09InsideGIDMap(config.CellGID)
+	proof.UserNamespaceMapDigest = config.UserNamespaceMappingDigest
+}
+
 func completeD09Host(t *testing.T) (D09Config, *fakeD09Runner) {
 	t.Helper()
 	layout := t.TempDir()
@@ -99,10 +120,10 @@ func completeD09Host(t *testing.T) (D09Config, *fakeD09Runner) {
 		CPUs:                              "1",
 		PidsMax:                           128,
 		MemoryMB:                          512,
-		UID:                               os.Geteuid(),
-		GID:                               os.Getegid(),
-		CellUID:                           os.Geteuid(),
-		CellGID:                           os.Getegid(),
+		UID:                               testD09CellID(os.Geteuid(), 731),
+		GID:                               testD09CellID(os.Getegid(), 732),
+		CellUID:                           testD09CellID(os.Geteuid(), 731),
+		CellGID:                           testD09CellID(os.Getegid(), 732),
 		NamespaceProfile:                  "user,mount,pid,ipc,uts,network-none/v1",
 		CgroupVersion:                     "v2",
 		CgroupControllers:                 "cpu,memory,pids",
@@ -114,6 +135,7 @@ func completeD09Host(t *testing.T) (D09Config, *fakeD09Runner) {
 		XattrVisibilityAuthority:          D09XattrVisibilityAuthority,
 		XattrVisibilityProfileDigest:      DigestD09XattrVisibilityProfile(0xef53, DigestBytes([]byte("ro,relatime")), os.Geteuid(), os.Getegid(), D09XattrScanPrivilegeProfile),
 	}
+	bindTestD09UserNamespace(&config, config.CellUID, config.CellGID, os.Geteuid(), os.Getegid())
 	digestRef := "localhost/tbound/pi-cell@" + digest
 	runner := &fakeD09Runner{
 		present: map[string]string{"podman": "/usr/bin/podman", "crun": "/usr/bin/crun", "cosign": "/usr/bin/cosign"},
@@ -215,6 +237,32 @@ func TestD09ProbeAcceptsCompleteHost(t *testing.T) {
 	if !report.ImagePinned || !report.ImageVerified || report.ImageRef == "" {
 		t.Fatalf("probe did not verify the pinned image locally: %+v", report)
 	}
+
+	t.Run("missing signed mapping digest remains refused", func(t *testing.T) {
+		bad := config
+		bad.UserNamespaceMappingDigest = ""
+		if _, err := newTestLauncher(bad, runner).Probe(context.Background()); !errors.Is(err, ErrProductionLauncherUnavailable) {
+			t.Fatalf("missing mapping digest was accepted: %v", err)
+		}
+	})
+	t.Run("service UID equal to cell UID remains refused", func(t *testing.T) {
+		bad := config
+		bad.UserNamespaceHostUID = bad.CellUID
+		bad.UserNamespaceMappingDigest = DigestD09UserNamespaceMapping(bad.CellUID, bad.CellGID,
+			bad.UserNamespaceHostUID, bad.UserNamespaceHostGID)
+		if _, err := newTestLauncher(bad, runner).Probe(context.Background()); !errors.Is(err, ErrProductionLauncherUnavailable) {
+			t.Fatalf("equal cell/service UID was accepted: %v", err)
+		}
+	})
+	t.Run("service GID equal to cell GID remains refused", func(t *testing.T) {
+		bad := config
+		bad.UserNamespaceHostGID = bad.CellGID
+		bad.UserNamespaceMappingDigest = DigestD09UserNamespaceMapping(bad.CellUID, bad.CellGID,
+			bad.UserNamespaceHostUID, bad.UserNamespaceHostGID)
+		if _, err := newTestLauncher(bad, runner).Probe(context.Background()); !errors.Is(err, ErrProductionLauncherUnavailable) {
+			t.Fatalf("equal cell/service GID was accepted: %v", err)
+		}
+	})
 }
 
 // TestD09ProbeFailsClosedOnUnmeasuredRuntime proves an unparseable or failed
@@ -392,6 +440,7 @@ func TestD09LauncherManagedRootBindingRejectsWrongIdentityAndDoubleBind(t *testi
 
 func TestD09ContainerArgumentsComposeFrozenCell(t *testing.T) {
 	config := D09Config{UID: 1000, GID: 1000, PidsMax: 128, MemoryMB: 512, CPUs: "1", SeccompProfilePath: "/etc/tbound/seccomp.json", CgroupsPath: "/sys/fs/cgroup/tbound", EntrypointPath: "/usr/local/bin/tbound-pi-entrypoint", CrunPath: "/usr/bin/crun", LandlockABI: 1, LandlockRulesetDigest: DigestBytes([]byte("landlock")), LandlockROPath: "/usr", LandlockRWPath: "/work"}
+	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
 	args := d09ContainerArguments(config, "tbound-pi-cell-deadbeef",
 		"localhost/tbound/pi-cell@"+fakeD09Digest, PiWorkerCellEnvironment(), PiWorkerCellArguments())
 	joined := strings.Join(args, " ")
@@ -410,7 +459,8 @@ func TestD09ContainerArgumentsComposeFrozenCell(t *testing.T) {
 		"--runtime /usr/bin/crun",
 		"--cgroup-parent /sys/fs/cgroup/tbound",
 		"--preserve-fds 8",
-		"--userns=keep-id",
+		"--uidmap 1000:0:1",
+		"--gidmap 1000:0:1",
 		"--user 1000:1000",
 		"--workdir /work",
 		"-e HOME=" + PiWorkerCellHome,
@@ -427,6 +477,9 @@ func TestD09ContainerArgumentsComposeFrozenCell(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Errorf("container argument vector is missing %q:\n%s", want, joined)
 		}
+	}
+	if strings.Contains(joined, "--userns") {
+		t.Errorf("container arguments must not use a userns profile override: %s", joined)
 	}
 	if strings.Contains(joined, "--mount") {
 		t.Errorf("container argument vector must not bind-mount a host path: %s", joined)
@@ -490,6 +543,7 @@ func TestD09TCBProofValidation(t *testing.T) {
 	imageDigest := DigestBytes([]byte("image"))
 	templateDigest := DigestBytes([]byte("template"))
 	config := D09Config{UID: 1000, GID: 1000, LandlockABI: 8, LandlockRulesetDigest: DigestBytes([]byte("landlock")), ExpectedImageDigest: imageDigest, TemplateDigest: templateDigest}
+	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
 	good := D09TCBProof{
 		Schema: "tbound-pi-entrypoint/v1", UID: 1000, GID: 1000, CapEff: d09EmptyCapabilitySet,
 		NoNewPrivs: true, Seccomp: 2, LandlockABI: 8,
@@ -501,6 +555,7 @@ func TestD09TCBProofValidation(t *testing.T) {
 		WorkerMountID: 1, RuntimeMountID: 2,
 		WorkerDevice: 1, WorkerInode: 2, RuntimeDevice: 1, RuntimeInode: 3,
 	}
+	bindTestD09TCBProofMaps(&good, config)
 	if err := validateD09TCBProof(good, config); err != nil {
 		t.Fatalf("valid TCB proof rejected: %v", err)
 	}
@@ -518,6 +573,13 @@ func TestD09TCBProofValidation(t *testing.T) {
 		"no mounts":          func(p *D09TCBProof) { p.ConsumerMountsVerified = false },
 		"raw source":         func(p *D09TCBProof) { p.RawSourceFDsClosed = false },
 		"no worker mount id": func(p *D09TCBProof) { p.WorkerMountID = 0 },
+		"missing uid map":    func(p *D09TCBProof) { p.UIDMap = "" },
+		"missing gid map":    func(p *D09TCBProof) { p.GIDMap = "" },
+		"substituted map digest": func(p *D09TCBProof) {
+			p.UserNamespaceMapDigest = DigestD09UserNamespaceMapping(1000, 1000, 1703, 1704)
+		},
+		"extra uid map range": func(p *D09TCBProof) { p.UIDMap += "1001 0 1\n" },
+		"extra gid map range": func(p *D09TCBProof) { p.GIDMap += "1001 0 1\n" },
 	} {
 		bad := good
 		mutate(&bad)
@@ -561,6 +623,7 @@ func TestD09CommandProofBindsLeaseViewContainerAndMount(t *testing.T) {
 	config := D09Config{UID: 1000, GID: 1000, LandlockABI: 8, CommandExecutable: "/bin/bash", CommandExecutableDigest: commandDigest,
 		LandlockRulesetDigest: DigestBytes([]byte("landlock")), ExpectedImageDigest: imageDigest, TemplateDigest: templateDigest,
 		HostNamespaces: D09NamespaceInodes{User: 100, Mount: 101, PID: 102, IPC: 103, UTS: 104, Network: 105}}
+	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
 	proof := d09CommandProof{
 		Schema: "tbound-pi-entrypoint/v1", UID: 1000, GID: 1000, CapEff: d09EmptyCapabilitySet,
 		NoNewPrivs: true, Seccomp: 2, LandlockABI: 8, LandlockRulesetDigest: config.LandlockRulesetDigest,
@@ -573,9 +636,27 @@ func TestD09CommandProofBindsLeaseViewContainerAndMount(t *testing.T) {
 		UserNSInode: 200, MountNSInode: 201, PIDNSInode: 202, IPCNSInode: 203, UTSNSInode: 204, NetworkNSInode: 205,
 		NoExternalRoutes: true,
 	}
+	proof.UIDMap = D09InsideUIDMap(config.CellUID)
+	proof.GIDMap = D09InsideGIDMap(config.CellGID)
+	proof.UserNamespaceMapDigest = config.UserNamespaceMappingDigest
 	spec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", "true"}}
 	if err := validateD09CommandProof(proof, config, proof.ImageRef, "lease-1", "view-1", "cell-1", 1, 2, spec); err != nil {
 		t.Fatalf("valid D09 command proof rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(*d09CommandProof){
+		"missing UID map": func(p *d09CommandProof) { p.UIDMap = "" },
+		"missing GID map": func(p *d09CommandProof) { p.GIDMap = "" },
+		"substituted map digest": func(p *d09CommandProof) {
+			p.UserNamespaceMapDigest = DigestD09UserNamespaceMapping(1000, 1000, 1703, 1704)
+		},
+		"extra UID range": func(p *d09CommandProof) { p.UIDMap += "1001 0 1\n" },
+		"extra GID range": func(p *d09CommandProof) { p.GIDMap += "1001 0 1\n" },
+	} {
+		bad := proof
+		mutate(&bad)
+		if err := validateD09CommandProof(bad, config, proof.ImageRef, "lease-1", "view-1", "cell-1", 1, 2, spec); !errors.Is(err, ErrProductionLauncherUnavailable) {
+			t.Errorf("%s was accepted: %v", name, err)
+		}
 	}
 	if err := validateD09CommandProof(proof, config, proof.ImageRef, "other-lease", "view-1", "cell-1", 1, 2, spec); err == nil {
 		t.Fatal("foreign lease command proof was accepted")
@@ -798,6 +879,7 @@ func TestD09LaunchProofMustMatchTheExactSupervisorCommand(t *testing.T) {
 	config := D09Config{UID: 1, GID: 1, ExpectedImageDigest: imageDigest, TemplateDigest: templateDigest,
 		LandlockABI: 8, LandlockRulesetDigest: DigestBytes([]byte("landlock")),
 		HostNamespaces: D09NamespaceInodes{User: 100, Mount: 101, PID: 102, IPC: 103, UTS: 104, Network: 105}}
+	bindTestD09UserNamespace(&config, 1, 1, 1701, 1702)
 	profile := HostProfile{Mode: ModeProduction, ContainmentProfileDigest: templateDigest}
 	launcher := &D09PodmanCrunLauncher{config: config}
 	cmd := exec.Command("/bin/true")
@@ -813,6 +895,7 @@ func TestD09LaunchProofMustMatchTheExactSupervisorCommand(t *testing.T) {
 		UserNSInode: 200, MountNSInode: 201, PIDNSInode: 202, IPCNSInode: 203, UTSNSInode: 204, NetworkNSInode: 205,
 		NoExternalRoutes: true,
 	}
+	bindTestD09TCBProofMaps(&proof, config)
 	if err := launcher.ValidateLaunchProof(proof, profile, cmd); err != nil {
 		t.Fatalf("matching per-command proof rejected: %v", err)
 	}
@@ -884,8 +967,8 @@ func TestD09CellTemplateDraftIsNotAdmissible(t *testing.T) {
 		CosignDigest:                      DigestBytes([]byte("cosign")),
 		CommandExecutable:                 "/bin/bash",
 		CommandExecutableDigest:           DigestBytes([]byte("bash")),
-		CellUID:                           os.Geteuid(),
-		CellGID:                           os.Getegid(),
+		CellUID:                           testD09CellID(os.Geteuid(), 731),
+		CellGID:                           testD09CellID(os.Getegid(), 732),
 		NamespaceProfile:                  "user,mount,pid,ipc,uts,network-none/v1",
 		CgroupVersion:                     "v2",
 		CgroupControllers:                 "cpu,memory,pids",
@@ -897,6 +980,9 @@ func TestD09CellTemplateDraftIsNotAdmissible(t *testing.T) {
 		XattrScanPrivilegeProfile:         D09XattrScanPrivilegeProfile,
 		XattrVisibilityAuthority:          D09XattrVisibilityAuthority,
 		ManagedLiveRootRegistrationDigest: DigestBytes([]byte("managed-live-root-registration")),
+		UserNamespaceMappingProfile:       D09UserNamespaceMappingProfile,
+		UserNamespaceMappingDigest: DigestD09UserNamespaceMapping(
+			testD09CellID(os.Geteuid(), 731), testD09CellID(os.Getegid(), 732), os.Geteuid(), os.Getegid()),
 	}
 	if err := validateD09CellTemplate(measured); err != nil {
 		t.Fatalf("measured template rejected: %v", err)

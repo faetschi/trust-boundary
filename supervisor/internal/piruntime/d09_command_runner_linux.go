@@ -883,6 +883,8 @@ func d09CommandCellArguments(config D09Config, name, cidPath, imageRef, viewPath
 		"-e", "TBOUND_CELL_UID=" + uid, "-e", "TBOUND_CELL_GID=" + gid,
 		"-e", "TBOUND_USERNS_MAP_PROFILE=" + config.UserNamespaceMappingProfile,
 		"-e", "TBOUND_USERNS_MAP_DIGEST=" + config.UserNamespaceMappingDigest,
+		"-e", "TBOUND_USERNS_HOST_UID=" + strconv.Itoa(config.UserNamespaceHostUID),
+		"-e", "TBOUND_USERNS_HOST_GID=" + strconv.Itoa(config.UserNamespaceHostGID),
 		"-e", "TBOUND_LANDLOCK_ABI=" + strconv.Itoa(config.LandlockABI),
 		"-e", "TBOUND_LANDLOCK_RULESET_DIGEST=" + config.LandlockRulesetDigest,
 		"-e", "TBOUND_LANDLOCK_RO_PATH=" + config.LandlockROPath,
@@ -998,7 +1000,8 @@ func validateD09CommandProof(proof d09CommandProof, config D09Config, imageRef, 
 	}
 	if proof.UserNamespaceMapDigest != config.UserNamespaceMappingDigest ||
 		VerifyD09InsideIDMaps(config.UserNamespaceMappingProfile, config.UserNamespaceMappingDigest,
-			config.CellUID, config.CellGID, []byte(proof.UIDMap), []byte(proof.GIDMap)) != nil {
+			config.CellUID, config.CellGID, config.UserNamespaceHostUID, config.UserNamespaceHostGID,
+			[]byte(proof.UIDMap), []byte(proof.GIDMap)) != nil {
 		return fmt.Errorf("%w: command proof does not match the signed one-UID/GID mapping", ErrProductionLauncherUnavailable)
 	}
 	if !proof.ConsumerMountsVerified || !proof.RawSourceFDsClosed || proof.WorkerMountID == 0 ||

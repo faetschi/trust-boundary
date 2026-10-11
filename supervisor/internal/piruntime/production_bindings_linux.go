@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"tbound/supervisor/internal/sessionrepo"
 )
 
 // BindProductionPiWorkerBindings assembles the exact production Pi worker
@@ -33,7 +35,7 @@ func BindProductionPiWorkerBindings(
 	if err := profile.Validate(); err != nil {
 		return HostRuntimeBindings{}, nil, err
 	}
-	if profile.Mode != ModeProduction {
+	if profile.Mode != ModeProduction || profile.ContainmentProfile == D09ContainmentProfile {
 		return HostRuntimeBindings{}, nil, ErrHostAdmissionRefused
 	}
 	environment := PiWorkerCellEnvironment()
@@ -79,6 +81,70 @@ func BindProductionPiWorkerBindings(
 		Terminal:               io.Discard,
 		Observation:            discardObservationSink{},
 		Descriptors:            channels.DescriptorBindings(),
+	}
+	if err := runtime.validate(profile); err != nil {
+		_ = channels.Close()
+		return HostRuntimeBindings{}, nil, err
+	}
+	return runtime, channels, nil
+}
+
+// BindProductionPiWorkerBindingsWithSource is the D09 production-only staging
+// API. The source wrapper is never passed through VerifiedWorkerExposure, and
+// the strict runtime source is never passed through VerifiedWorkerRuntimeAssets.
+// The returned D09PiWorkerChannels owns the one exported fd4 and runtime-bundle
+// descriptor; it does not own source/capability lifetimes. PreparedSession must
+// keep those alive until the launcher has settled and removed the exact cell.
+func BindProductionPiWorkerBindingsWithSource(
+	ctx context.Context,
+	profile HostProfile,
+	source VerifiedD09WorkerSource,
+	sourceCapability *sessionrepo.VerifiedSealedSource,
+	assets VerifiedD09RuntimeAssetSource,
+	launcher ExecutableLauncher,
+	settler DescendantSettler,
+) (HostRuntimeBindings, *D09PiWorkerChannels, error) {
+	if ctx == nil || isNilBinding(source) || sourceCapability == nil || isNilBinding(assets) ||
+		isNilBinding(launcher) || isNilBinding(settler) || source.SourceCapability() != sourceCapability {
+		return HostRuntimeBindings{}, nil, ErrHostBindingsMissing
+	}
+	if err := profile.Validate(); err != nil {
+		return HostRuntimeBindings{}, nil, err
+	}
+	if profile.Mode != ModeProduction || profile.ContainmentProfile != D09ContainmentProfile {
+		return HostRuntimeBindings{}, nil, ErrHostAdmissionRefused
+	}
+	environment := PiWorkerCellEnvironment()
+	if DigestEnvironment(environment) != profile.ChildEnvironmentDigest ||
+		DigestArguments(PiWorkerCellArguments()) != profile.ChildArgumentsDigest {
+		return HostRuntimeBindings{}, nil, fmt.Errorf("%w: fixed D09 in-cell argv/environment differs from signed profile", ErrHostProfileMismatch)
+	}
+	channels, err := NewD09PiWorkerChannels(ctx, source, assets)
+	if err != nil {
+		return HostRuntimeBindings{}, nil, err
+	}
+	if channels.sourceCapability != sourceCapability {
+		_ = channels.Close()
+		return HostRuntimeBindings{}, nil, ErrHostBindingsMissing
+	}
+	runtime := HostRuntimeBindings{
+		ChildExecutable: profile.ChildExecutable, NodeVersion: profile.NodeVersion,
+		ChildArgumentsProfile: profile.ChildArgumentsProfile, WorkingDirectory: profile.WorkingDirectory,
+		D09Source: source, D09SourceCapability: sourceCapability,
+		D09SourceEvidence:   d09SourceEvidenceForBindings(channels.sourceEvidence),
+		D09SourceHandle:     channels.channels.workingDirectory,
+		PiRuntimeBundleRoot: profile.PiRuntimeBundleRoot, PiRuntimeBundleDigest: profile.PiRuntimeBundleDigest,
+		PiRuntimeBundleHandle: channels.channels.runtimeBundle,
+		D09RuntimeAssetSource: assets, D09RuntimeAssetEvidence: channels.assetEvidence,
+		StdinProfile: profile.StdinProfile, ChildEnvironment: profile.ChildEnvironment,
+		IPCProfile: profile.IPCProfile, TerminalProfile: profile.TerminalProfile,
+		ContainmentProfile: profile.ContainmentProfile, SettlementProfile: profile.SettlementProfile,
+		ObservationProfile: profile.ObservationProfile, DescriptorProfile: profile.DescriptorProfile,
+		SourceProvenance: profile.SourceProvenance, OfflineVerifier: profile.OfflineVerifier,
+		ProviderProfile: profile.ProviderProfile, Launcher: launcher, Descendant: settler,
+		Arguments: PiWorkerCellArguments(), Environment: environment, Stdin: channels.channels.ChildStdin(),
+		Terminal: io.Discard, Observation: discardObservationSink{},
+		Descriptors: channels.channels.DescriptorBindings(),
 	}
 	if err := runtime.validate(profile); err != nil {
 		_ = channels.Close()

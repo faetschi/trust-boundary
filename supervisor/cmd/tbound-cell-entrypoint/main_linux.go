@@ -202,6 +202,7 @@ func main() {
 		"container_leader_pid":     os.Getpid(),
 		"consumer_mounts_verified": true, "raw_source_fds_closed": true,
 		"worker_mount_id": workerMountID, "runtime_mount_id": runtimeMountID,
+		"consumer_worker_mount_id": workerMountID, "consumer_runtime_mount_id": runtimeMountID,
 		"worker_device": workerDevice, "worker_inode": workerInode,
 		"runtime_device": runtimeDevice, "runtime_inode": runtimeInode,
 		"uid_map": uidMap, "gid_map": gidMap, "user_namespace_map_digest": mapDigest,
@@ -245,6 +246,11 @@ func main() {
 func measureD09UserNamespaceMaps(uid, gid int) (uidMap, gidMap, digest string, err error) {
 	profile := strings.TrimSpace(os.Getenv("TBOUND_USERNS_MAP_PROFILE"))
 	digest = strings.TrimSpace(os.Getenv("TBOUND_USERNS_MAP_DIGEST"))
+	serviceUID, uidErr := strconv.Atoi(strings.TrimSpace(os.Getenv("TBOUND_USERNS_HOST_UID")))
+	serviceGID, gidErr := strconv.Atoi(strings.TrimSpace(os.Getenv("TBOUND_USERNS_HOST_GID")))
+	if uidErr != nil || gidErr != nil || serviceUID <= 0 || serviceGID <= 0 {
+		return "", "", "", fmt.Errorf("registered host service UID/GID mapping identity is absent")
+	}
 	uidRaw, err := os.ReadFile("/proc/self/uid_map")
 	if err != nil {
 		return "", "", "", err
@@ -253,7 +259,7 @@ func measureD09UserNamespaceMaps(uid, gid int) (uidMap, gidMap, digest string, e
 	if err != nil {
 		return "", "", "", err
 	}
-	if err := piruntime.VerifyD09InsideIDMaps(profile, digest, uid, gid, uidRaw, gidRaw); err != nil {
+	if err := piruntime.VerifyD09InsideIDMaps(profile, digest, uid, gid, serviceUID, serviceGID, uidRaw, gidRaw); err != nil {
 		return "", "", "", err
 	}
 	return strings.TrimSpace(string(uidRaw)), strings.TrimSpace(string(gidRaw)), digest, nil
@@ -437,9 +443,9 @@ func runCommandCell(commandPath string, args []string, base map[string]any) {
 		PIDNSInode: base["pid_ns_inode"].(uint64), IPCNSInode: base["ipc_ns_inode"].(uint64),
 		UTSNSInode: base["uts_ns_inode"].(uint64), NetworkNSInode: base["network_ns_inode"].(uint64),
 		NoExternalRoutes: base["no_external_routes"].(bool),
-		UIDMap: base["uid_map"].(string), GIDMap: base["gid_map"].(string),
+		UIDMap:           base["uid_map"].(string), GIDMap: base["gid_map"].(string),
 		UserNamespaceMapDigest: base["user_namespace_map_digest"].(string),
-		LeaseID:          leaseID, ViewID: viewID, CommandReady: true,
+		LeaseID:                leaseID, ViewID: viewID, CommandReady: true,
 		ContainerName:  strings.TrimSpace(os.Getenv("TBOUND_CONTAINER_NAME")),
 		ImageRef:       strings.TrimSpace(os.Getenv("TBOUND_IMAGE_REF")),
 		ImageDigest:    strings.TrimSpace(os.Getenv("TBOUND_IMAGE_DIGEST")),

@@ -11,6 +11,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"encoding/hex"
 	"encoding/json"
@@ -20,6 +21,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -39,10 +41,17 @@ usage:
   tbound-profile template-digest --template <d09-cell.json>
   tbound-profile xattr-measure   --source <protected-read-only-directory>
   tbound-profile xattr-digest    --filesystem-magic <n> --mount-options-digest <sha256> --uid <n> --gid <n>
+  tbound-profile xattr-calibration-measure --source <calibration-corpus> --access-profile <profile>
+                                           --probe-corpus-digest <sha256> [--out <json>]
+  tbound-profile xattr-calibration-sign --calibration <json> --key <ed25519-private>
+                                        --out-sig <signature> [--out-calibration <signed.json>]
+  tbound-profile xattr-calibration-verify --calibration <json> --sig <signature> --pub <public-key>
   tbound-profile landlock-digest --read-only <comma-absolute-paths> --read-write <comma-absolute-paths>
   tbound-profile managed-root-measure --root <path> --service-name <name> --service-group <name>
-                                     --service-unit <systemd-unit> --mount-unit <systemd-mount-unit>
-                                     --runner <protected-tbound-binary> --service-cgroup </system.slice/name.service>
+                                      --service-unit <systemd-unit> --mount-unit <systemd-mount-unit>
+                                      --runner <protected-tbound-binary> --service-cgroup </system.slice/name.service>
+                                      --allowed-client-uids <sorted-comma-separated-uids>
+                                      --allowed-client-primary-gid <gid>
   tbound-profile managed-root-sign --registration <json> --key <ed25519-private>
                                     --out-sig <signature> [--out-registration <signed.json>]
   tbound-profile managed-root-verify --registration <json> --sig <signature> --pub <public-key>
@@ -95,6 +104,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runXattrMeasure(args[1:], stdout, stderr)
 	case "xattr-digest":
 		return runXattrDigest(args[1:], stdout, stderr)
+	case "xattr-calibration-measure":
+		return runXattrCalibrationMeasure(args[1:], stdout, stderr)
+	case "xattr-calibration-sign":
+		return runXattrCalibrationSign(args[1:], stdout, stderr)
+	case "xattr-calibration-verify":
+		return runXattrCalibrationVerify(args[1:], stdout, stderr)
 	case "landlock-digest":
 		return runLandlockDigest(args[1:], stdout, stderr)
 	case "managed-root-measure":
@@ -331,6 +346,137 @@ func runXattrDigest(args []string, stdout, stderr io.Writer) error {
 	return err
 }
 
+func runXattrCalibrationMeasure(args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("tbound-profile xattr-calibration-measure", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	sourcePath := flags.String("source", "", "held directory containing the operator's xattr calibration corpus")
+	accessProfile := flags.String("access-profile", "", "exact calibration access profile: managed-live-root-rw-under-recovered-lease/v1 or readonly-sealed-source/v1")
+	probeCorpusDigest := flags.String("probe-corpus-digest", "", "operator-reviewed digest identifying the known calibration corpus")
+	out := flags.String("out", "", "optional unsigned calibration-measurement JSON output")
+	force := flags.Bool("force", false, "overwrite --out if it exists")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || strings.TrimSpace(*sourcePath) == "" || !filepath.IsAbs(*sourcePath) ||
+		!piruntime.ValidD09Digest(*probeCorpusDigest) {
+		return errors.New("--source and --probe-corpus-digest are required; --source must be absolute")
+	}
+	file, err := os.Open(*sourcePath)
+	if err != nil {
+		return fmt.Errorf("open calibration source descriptor: %w", err)
+	}
+	defer file.Close()
+	measurement, err := piruntime.MeasureD09XattrEnumerationCalibration(file, *accessProfile, *probeCorpusDigest)
+	if err != nil {
+		return err
+	}
+	encoded, err := json.MarshalIndent(measurement, "", "  ")
+	if err != nil {
+		return err
+	}
+	encoded = append(encoded, '\n')
+	if *out != "" {
+		if err := writeManagedOutput(*out, encoded, *force); err != nil {
+			return err
+		}
+	}
+	_, err = stdout.Write(encoded)
+	return err
+}
+
+func decodeXattrCalibration(encoded []byte) (piruntime.D09XattrEnumerationCalibration, error) {
+	var calibration piruntime.D09XattrEnumerationCalibration
+	if err := protocol.ValidateStrictJSON(encoded); err != nil {
+		return calibration, fmt.Errorf("xattr calibration JSON is not strict: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&calibration); err != nil {
+		return calibration, fmt.Errorf("decode xattr calibration: %w", err)
+	}
+	return calibration, nil
+}
+
+func runXattrCalibrationSign(args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("tbound-profile xattr-calibration-sign", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	calibrationPath := flags.String("calibration", "", "unsigned measured xattr calibration JSON")
+	keyPath := flags.String("key", "", "offline authorized raw Ed25519 private key")
+	outSig := flags.String("out-sig", "", "raw calibration signature output")
+	outCalibration := flags.String("out-calibration", "", "signed calibration JSON output; defaults to --calibration")
+	force := flags.Bool("force", false, "overwrite signature/calibration output paths")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || *calibrationPath == "" || *keyPath == "" || *outSig == "" {
+		return errors.New("--calibration, --key, and --out-sig are required")
+	}
+	encoded, err := os.ReadFile(*calibrationPath)
+	if err != nil {
+		return err
+	}
+	calibration, err := decodeXattrCalibration(encoded)
+	if err != nil {
+		return err
+	}
+	privateKey, err := os.ReadFile(*keyPath)
+	if err != nil {
+		return err
+	}
+	defer clear(privateKey)
+	if len(privateKey) != ed25519.PrivateKeySize {
+		return fmt.Errorf("Ed25519 private key must be exactly %d bytes", ed25519.PrivateKeySize)
+	}
+	signed, signature, digest, err := piruntime.SignD09XattrEnumerationCalibration(calibration, ed25519.PrivateKey(privateKey))
+	if err != nil {
+		return err
+	}
+	target := *outCalibration
+	if target == "" {
+		target = *calibrationPath
+	}
+	if err := writeManagedOutput(*outSig, signature, *force); err != nil {
+		return err
+	}
+	if err := writeManagedOutput(target, signed, *force); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "signed D09 xattr enumeration calibration %s\nDigest: %s\nSignature: %s\n", target, digest, *outSig)
+	return err
+}
+
+func runXattrCalibrationVerify(args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("tbound-profile xattr-calibration-verify", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	calibrationPath := flags.String("calibration", "", "signed xattr calibration JSON")
+	sigPath := flags.String("sig", "", "raw Ed25519 signature")
+	pubPath := flags.String("pub", "", "authorized raw Ed25519 public key")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || *calibrationPath == "" || *sigPath == "" || *pubPath == "" {
+		return errors.New("--calibration, --sig, and --pub are required")
+	}
+	encoded, err := os.ReadFile(*calibrationPath)
+	if err != nil {
+		return err
+	}
+	signature, err := os.ReadFile(*sigPath)
+	if err != nil {
+		return err
+	}
+	publicKey, err := os.ReadFile(*pubPath)
+	if err != nil {
+		return err
+	}
+	calibration, err := piruntime.VerifyD09XattrEnumerationCalibration(encoded, signature, ed25519.PublicKey(publicKey))
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "verified separately signed xattr enumeration calibration %s\n", calibration.Digest)
+	return err
+}
+
 func runLandlockDigest(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tbound-profile landlock-digest", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -369,6 +515,8 @@ func runManagedRootMeasure(args []string, stdout, stderr io.Writer) error {
 	mountUnit := flags.String("mount-unit", "", "protected systemd .mount unit path for --root")
 	runner := flags.String("runner", "", "root-owned read-only TBound executable path used by ExecStart")
 	cgroup := flags.String("service-cgroup", "", "exact unified cgroup path, e.g. /system.slice/tbound.service")
+	allowedClientUIDs := flags.String("allowed-client-uids", "", "explicit sorted comma-separated authorized client UIDs")
+	allowedClientPrimaryGID := flags.Int("allowed-client-primary-gid", -1, "explicit authorized client primary GID (separate from socket/service group)")
 	out := flags.String("out", "", "optional path for the unsigned measured registration JSON")
 	force := flags.Bool("force", false, "overwrite --out if it exists")
 	if err := flags.Parse(args); err != nil {
@@ -377,7 +525,19 @@ func runManagedRootMeasure(args []string, stdout, stderr io.Writer) error {
 	if flags.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
 	}
-	measured, err := piruntime.MeasureD09ManagedLiveRootRegistration(*root, *service, *group, *serviceUnit, *mountUnit, *runner, *cgroup)
+	clientUIDs, err := parseCanonicalIntegerList(*allowedClientUIDs)
+	if err != nil || *allowedClientPrimaryGID <= 0 {
+		return errors.Join(errors.New("explicit sorted client UID list and positive primary GID are required"), err)
+	}
+	calibration, err := piruntime.LoadVerifiedD09XattrEnumerationCalibration(context.Background())
+	if err != nil {
+		return fmt.Errorf("load separately signed managed-root xattr calibration: %w", err)
+	}
+	measured, err := piruntime.MeasureD09ManagedLiveRootRegistrationWithOptions(*root, *service, *group,
+		*serviceUnit, *mountUnit, *runner, *cgroup, piruntime.D09ManagedLiveRootMeasurementOptions{
+			AllowedClientUIDs: clientUIDs, AllowedClientPrimaryGID: *allowedClientPrimaryGID,
+			ManagedRootXattrCalibrationDigest: calibration.Digest,
+		})
 	if err != nil {
 		return fmt.Errorf("measure managed live-root registration: %w", err)
 	}
@@ -393,6 +553,23 @@ func runManagedRootMeasure(args []string, stdout, stderr io.Writer) error {
 	}
 	_, err = stdout.Write(encoded)
 	return err
+}
+
+func parseCanonicalIntegerList(raw string) ([]int, error) {
+	if raw == "" {
+		return nil, errors.New("integer list is empty")
+	}
+	fields := strings.Split(raw, ",")
+	values := make([]int, len(fields))
+	previous := -1
+	for index, field := range fields {
+		value, err := strconv.Atoi(field)
+		if err != nil || value < 0 || value <= previous || strconv.Itoa(value) != field {
+			return nil, errors.Join(errors.New("integer list must be canonical, sorted, unique decimal values"), err)
+		}
+		values[index], previous = value, value
+	}
+	return values, nil
 }
 
 func runManagedRootSign(args []string, stdout, stderr io.Writer) error {

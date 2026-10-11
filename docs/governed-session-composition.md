@@ -10,16 +10,14 @@ thesis acceptance. The current Linux test injects a synthetic audit prefix and
 uses the measured `dev-wsl-non-claim-bearing` command sandbox. It does not use
 credentials or contact OpenRouter.
 
-Production `tbound serve --pi` must remain refusal-only. The launcher owner has
-published its typed worker/channel API and FD-role map, but the current contract
-requires the inherited CWD to be the same inode as the verified private Git
-root and gives that directory descriptor to Node as FD 4. That makes the
-supervisor-private Git/admin namespace reachable by the worker, violating D06.
-This composition deliberately does not pass `Repository.Root`, the admin
-parent, or another private Git handle into `NewPiWorkerChannels` or
-`LaunchPiSDKWorker`; a separate verified sealed-generation/exposure-view
-descriptor contract is required first. No source file owned by that worker or
-by the broker bridge was modified here.
+Production `tbound serve --pi` must remain refusal-only until the D09 path proves
+both trusted source staging and the actual read-only consumer mount before Node
+starts. A host O_PATH descriptor is not itself a read-only view. The CLI must
+never pass `privategit.Repository.Root`, `AdminParent.root`, the Store root or
+parent, or a live-root descriptor to Pi. The D09 source capability below is
+Go/TCB-only staging material; the entrypoint must relocate FD 4 into the private
+container namespace, verify its consumer mount, and replace/close the raw source
+descriptor before Node exec.
 
 ## Concrete D06 APIs and evidence format
 
@@ -181,24 +179,27 @@ this component test.
 ## Remaining vertical-slice contracts
 
 - The launcher has published `NewPiWorkerChannels`, `LaunchPiSDKWorker`,
-  `Admission`, `PID`, `NextEvent`, `SendAdmittedPrompt`, and `Close`. Its
-  documented worker map is FD 0 control, FD 3 held Node ELF, FD 4 opened session
-  CWD, FD 5 bootstrap, FD 6 TBound IPC, FD 7 provider bridge, FD 8 lifecycle
-  events, and FD 9 runtime bundle. The D06 blocker is that FD 4/CWD currently
-  aliases the verified private Git root. This package does not pass that root,
-  guess/reorder roles, or reinterpret the separate provider-bridge FD 3
-  description as the worker map. The launcher owner is refining a distinct
-  sealed/exposure-view descriptor contract.
-- Once a D06-safe read-only sealed-generation/registered-exposure descriptor
-  can be handed to the worker without revealing Store or private Git admin
-  roots, the CLI owner can build the exact fresh
-  session graph: secure host profile → private audit/session root → filtered
-  sealed-source bind → private Git admin root → D06 provenance → real provider
-  conversation → pre-prompt admission → registered proxy IPC → real
-  `DurableExecutor` → broker result journal → actual Pi worker → shutdown and
-  publication/recovery. The production path must still refuse until host
-  executable/environment/terminal identity, containment, process closure,
-  mount detach, and crash-recovery evidence are backed by the admitted profile.
+  `Admission`, `PID`, `NextEvent`, `SendAdmittedPrompt`, and `Close`. The generic
+  `VerifiedWorkerExposure` still means a pre-established consumer read-only view;
+  B's `VerifiedD09ExposureSource` is deliberately a separate source-staging API
+  and must not satisfy that generic interface. In D09 the trusted rootless
+  Podman/crun setup consumes the one exported source FD at FD 4, while the
+  entrypoint verifies the actual consumer mount and closes/replaces the source
+  FD before Node. The remaining FD map is FD 0 control, FD 3 held Node ELF, FD 5
+  bootstrap, FD 6 TBound IPC, FD 7 provider bridge, FD 8 lifecycle events, FD 9
+  runtime bundle, and FD 10 TCB proof. No Store/admin/private-Git/live-root FD is
+  passed to Pi.
+- C's current production binder creates a fresh Store and calls `Seed` under
+  managed-root writer authority; it must not configure `LinuxReadOnlyBinder` in
+  the non-mount-capable service. After `Prepare` persists/verifies D06 and
+  private Git, C calls `OpenVerifiedD09ExposureSource` for the exact current
+  sealed tip and binds it through A's distinct D09-source channel API. Source
+  issuance is current-tip-only, but an already-issued source can remain valid as
+  an immutable retained generation while the Store advances, after checking its
+  captured durable audit prefix. Channel-owned exported FD closes first; D09
+  settlement/scope removal follows; then the source capability and PreparedSession
+  close. UNKNOWN retains the entire cleanup stack. This is interface/code work,
+  not a provisioned consumer-mount proof.
 - The current providerbridge tests intentionally use a synthetic Doer; this
   increment makes no real provider call and does not load credentials. Operator
   approval and the secure loader are separate prerequisites.
@@ -275,102 +276,164 @@ the narrow workflow lease-origin extension described above plus an actual
 registered `workflow.Trust` implementation. Until those interfaces and host
 proof exist, production `serve --pi` must keep refusing admission.
 
-## Concrete sealed worker-exposure and runtime-asset adapters — worker B
+## Two-phase D09 source and consumer capabilities — worker B
 
-This section records a later increment that closes the D06 descriptor blocker
-described above. The launcher's `piruntime/descriptor.go` publishes the typed
-`VerifiedWorkerExposure` and `VerifiedWorkerRuntimeAssets` interfaces. This
-increment supplies the concrete, sessionlaunch-owned implementations so a CLI
-composition root (owner C) can build the real worker channel set without a
-caller-supplied trust boolean.
+The production service runs in an initial user namespace without mount
+authority. It must not configure `sessionrepo.LinuxReadOnlyBinder` or call
+`Generation.Expose` on the host. `Prepare` still creates the filtered sealed
+Store generation and fresh private-Git/admin snapshot. The D09 path then has two
+distinct trust phases:
 
-### Sealed worker exposure
+1. **Trusted Go source authorization.** sessionrepo issues an opaque capability
+   for the exact retained, current Store tip. sessionlaunch returns it only after
+   checking the exact Store chain/bundle, full current manifest/content, exact
+   journal bytes, durable D06 source-binding/private-Git-ready records, and
+   `privategit.Repository.Verify`. No host mount is attempted. No path, Binder,
+   callback, or caller boolean mints the source capability.
+2. **D09 consumer proof.** Only trusted Podman/crun setup consumes the source
+   descriptor as a bind source. The entrypoint verifies the actual read-only
+   consumer mount in the cell namespace, compares its device/inode with source
+   evidence, records its own nonzero consumer mount ID, and replaces/closes the
+   raw source FD before Node starts. Missing/mismatched proof must refuse before
+   worker readiness or prompt admission. Source `MountID` and consumer
+   `MountID` are distinct; they are never equated.
 
-`sessionlaunch.OpenSealedWorkerExposure(generation) (*SealedWorkerExposure, error)`
-is the only worker-exposure constructor for a prepared D06 session. It calls
-the existing `PreparedSession.ExposeReadOnly`, then captures the immutable
-anchors of the session. `SealedWorkerExposure` implements
-`piruntime.VerifiedWorkerExposure`:
+### Opaque sessionrepo source capability
 
-- `ExportVerifiedWorkerExposure(ctx)` re-proves the durable anchors and returns
-  a fresh O_PATH descriptor for the registered read-only exposure view plus a
-  `piruntime.WorkerExposureEvidence`.
-- `VerifyWorkerExposure(ctx, evidence)` re-proves the same anchors and re-checks
-  the descriptor identity (`Device`/`Inode`/`MountID`).
+`sessionrepo.VerifiedSealedSource` is the concrete, opaque issuer retained by the
+trusted host composition. It has no exported fields and can only be created from
+an exact `sessionrepo.Generation` through:
 
-The evidence is anchored, not accepted from a caller: `GenerationID`,
-`TreeDigest` (a plain `sha256:` commitment to the delta tree digest),
-`ManifestDigest` (JCS/SHA-256 of the generation manifest), `BindingDigest`
-(the persisted D06 binding), `ProvenanceDigest` (JCS/SHA-256 of the persisted
-`sessionlaunch.Provenance`), `ViewIdentity`, and the descriptor identity. Before
-every export or verify it re-runs `VerifySourceBinding` (Store chain/bundle,
-current-generation selection, `sessionlaunch_source_binding` and
-`sessionlaunch_private_git_ready` journal records, private Git boundary) and the
-retained-generation descriptor rescan (`verifyGenerationDescriptor`).
+```go
+type sessionrepo.SealedSourceEvidence struct {
+    GenerationID, TreeDigest, ManifestDigest string
+    SourceBindingDigest, ProvenanceDigest string
+    StoreAuditHead string
+    StoreAuditRecordCount uint64
+    SourceIdentityDigest string
+    SourceDevice, SourceInode, SourceMountID uint64 // host SOURCE identity only
+}
 
-**D06 resolution.** Export returns the registered exposure view; it never
-returns `privategit.Repository.Root`, `AdminParent.root`, the Store root, or the
-generations/admin directories. Child FD 4 is therefore the sealed read-only
-generation view, not the supervisor-private Git namespace. A Store without a
-registered `sessionrepo.Binder` fails closed with an error wrapping
-`sessionrepo.ErrExposureBinderUnavailable`; the adapter does not fabricate a
-read-only view. Tamper, staleness, forged descriptor identity, and use after
-`Close` all fail closed with `ErrWorkerExposureContract`.
+type sessionrepo.VerifiedSealedSource // opaque; zero value invalid
 
-### Verified runtime assets
-
-`sessionlaunch.OpenVerifiedRuntimeAssets(root, RuntimeAssetSpec)` binds an
-already-open bundle root descriptor to a pinned `BundleDigest` and
-`NamespaceProfileDigest`. `VerifiedRuntimeAssets` implements
-`piruntime.VerifiedWorkerRuntimeAssets`; Export returns a fresh descriptor for
-the held Go-only source and Verify re-pins the complete content digest and
-descriptor identity. The content-digest field encoding is byte-for-byte the
-same scheme as `piruntime.VerifyLinuxPiRuntimeBundle`, and Open additionally
-cross-checks the two when the source is already on a read-only mount so the two
-schemes cannot drift. It refuses symlinks, special files, nested filesystem
-mounts, oversized trees, and group/other-writable files.
-
-Per the descriptor contract this source FD is **not** proof that the child
-received a safe mount: the D09 launcher must reopen it inside its controlled
-namespace and independently verify the consumer-side read-only mount before it
-creates child FD 9. This type pins the bytes; it does not fabricate the
-consumer mount, and it does not accept a caller boolean as immutability proof.
-
-### Integration and verification
-
-A focused test wires the concrete adapters into the launcher's own public
-constructor, `piruntime.NewPiWorkerChannels`, proving owner C can consume them
-directly. Linux checks used the WSL Go toolchain
-(`/home/jeli2k/go-sdk/go/bin/go`), a private mode-0700 ext4 `TMPDIR`/`GOCACHE`,
-and the committed `60631d0` worktree with the in-progress owner-A overlays. All
-of the following exited 0:
-
-```text
-gofmt -l internal/sessionlaunch/worker_exposure_linux.go internal/sessionlaunch/runtime_assets_linux.go internal/sessionlaunch/worker_exposure_linux_test.go   # empty
-go vet ./internal/sessionlaunch/...
-go test -count=1 ./internal/sessionlaunch/
-CGO_ENABLED=1 go test -race -count=1 ./internal/sessionlaunch/
-go build ./...
-go test -count=1 ./internal/sessionlaunch/... ./internal/piruntime/...
+func (g *sessionrepo.Generation) ExportSealedSource(ctx context.Context) (*sessionrepo.VerifiedSealedSource, error)
+func (s *sessionrepo.VerifiedSealedSource) IsForGeneration(store *sessionrepo.Store, g *sessionrepo.Generation) bool
+func (s *sessionrepo.VerifiedSealedSource) Evidence() (sessionrepo.SealedSourceEvidence, error)
+func (s *sessionrepo.VerifiedSealedSource) DuplicateForD09(ctx context.Context) (*os.File, sessionrepo.SealedSourceEvidence, error)
+func (s *sessionrepo.VerifiedSealedSource) Revalidate(ctx context.Context, evidence sessionrepo.SealedSourceEvidence) error
+func (s *sessionrepo.VerifiedSealedSource) Close() error
+func (s *sessionrepo.Store) OwnsGeneration(g *sessionrepo.Generation) bool
 ```
 
-The tests use the real public `sessionrepo.Store`, real `privategit` private
-fixtures, and a no-privilege recording `sessionrepo.Binder`; they never mount,
-install, or contact the network. They cover: registered-view identity vs
-private Git/Store roots; export/verify round-trip; forged descriptor identity;
-tamper of a sealed generation; stale/closed use; unbound-store `Can'tInit`;
-runtime-asset content pinning, namespace-profile mismatch, symlink and
-writable-file refusal, and content tamper.
+`ExportSealedSource` requires the exact current tip and a passing Store chain,
+bundle, complete manifest/content scan, and a matching durable D06 source and
+private-Git-ready event pair in that Store journal. It captures store audit
+head/count and source fd `(device,inode,mount ID)`. Export is one-use; the
+returned O_PATH descriptor is caller-owned and must be closed by the trusted
+channel/launcher owner. The capability retains a separate private descriptor
+until `Close`, and refuses `Close` while its one exported staging FD is still
+open. `Store.Close` fails while the capability is live. Neither the capability
+nor its evidence asserts that the source has been mounted read-only in the
+consumer.
 
-### Remaining code vs provisioning gaps
+Issuance is current-tip-only. After ordinary tool effects advance the Store,
+`Revalidate` permits this exact generation as a retained immutable ancestor if
+the full Store still verifies and the captured audit prefix through the stored
+head/count is unchanged. It refuses a missing generation, quarantine, modified
+content, D06-record mismatch, or truncated/rewritten prefix; it does not require
+the original Pi source generation to remain the newest tip forever.
 
-- **Code (owner A/C):** the trusted host composition must register a concrete
-  `sessionrepo.Binder` (production `LinuxReadOnlyBinder`) on the Store and bind
-  the exported exposure descriptor as FD 4, the runtime-asset source as FD 9,
-  and a separate private CWD — none of which this increment can assert. The
-  production `HostProfile`/`TrustedHostVerifier` and the signed host profile
-  still do not exist, so `serve --pi` must keep refusing admission.
-- **Provisioning:** the frozen Podman/crun image, signed in-image entrypoint,
-  offline Cosign verification material, delegated cgroup v2 subtree, and signed
-  `/etc/tbound/pi-host-profile.*` remain operator prerequisites. A successful
-  adapter test is component evidence, not host admission or a G1/H1 result.
+sessionlaunch wraps the Store cap only from a live `PreparedSession`:
+
+```go
+func (p *sessionlaunch.PreparedSession) OpenVerifiedD09ExposureSource(
+    ctx context.Context, generation *sessionrepo.Generation,
+) (*sessionlaunch.VerifiedD09ExposureSource, error)
+
+func (s *sessionlaunch.VerifiedD09ExposureSource) SourceCapability() *sessionrepo.VerifiedSealedSource
+func (s *sessionlaunch.VerifiedD09ExposureSource) SourceEvidence() (sessionrepo.SealedSourceEvidence, error)
+func (s *sessionlaunch.VerifiedD09ExposureSource) ExportD09WorkerSource(ctx context.Context) (*os.File, sessionrepo.SealedSourceEvidence, error)
+func (s *sessionlaunch.VerifiedD09ExposureSource) VerifyD09WorkerSource(ctx context.Context, evidence sessionrepo.SealedSourceEvidence) error
+func (s *sessionlaunch.VerifiedD09ExposureSource) Close() error
+```
+
+This type intentionally does **not** implement the legacy
+`piruntime.VerifiedWorkerExposure`; that interface describes a pre-established
+read-only consumer view. A has a separate D09-source interface using the exact
+`ExportD09WorkerSource`/`VerifyD09WorkerSource` method names above. Its channel
+constructor must use the descriptor returned by the single export as the
+Podman source for FD 4; it must not call `DuplicateForD09` again. Channel close
+owns and may close that returned staging FD; channel/transport closure only
+initiates drain and is not kernel-observed STOP. Keep the source cap and sealed
+generation/private-Git ownership alive through actual D09 worker and command
+settlement plus scope and mount cleanup. Only after those independent terminal
+checks may C close the source capability, then B's PreparedSession/private-Git
+and Store. On UNKNOWN, retain every object required for reconciliation—including
+the source capability and generation lease—and never trigger source-generation
+GC or claim STOP.
+
+The requested generation must be the exact retained pointer in this
+PreparedSession Store and the independently reverified current tip; it is not a
+path/label authority input. The wrapper revalidates the durable D06 binding and
+private-Git provenance before each export/verify. The historical
+`OpenSealedWorkerExposure(generation)` API was removed because its name implied
+a consumer view. Production composition must call the explicit
+`OpenVerifiedD09ExposureSource(ctx,generation)` constructor. In existing
+`piruntime.WorkerExposureEvidence`,
+`Device`/`Inode`/`MountID` refer to the host SOURCE descriptor; `ViewIdentity` is
+a digest of the source capability. They do not encode a consumer view.
+
+### Immutable runtime-asset source
+
+`OpenVerifiedRuntimeAssets(root, spec)` remains content-only fixture/development
+inspection. Production should use:
+
+```go
+func sessionlaunch.OpenVerifiedD09RuntimeAssetSource(
+    root *os.File, spec sessionlaunch.RuntimeAssetSpec,
+) (*sessionlaunch.VerifiedD09RuntimeAssetSource, error)
+func (s *sessionlaunch.VerifiedD09RuntimeAssetSource) ExportD09RuntimeAssetSource(ctx context.Context) (*os.File, piruntime.WorkerRuntimeAssetEvidence, error)
+func (s *sessionlaunch.VerifiedD09RuntimeAssetSource) VerifyD09RuntimeAssetSource(ctx context.Context, evidence piruntime.WorkerRuntimeAssetEvidence) error
+```
+
+This opaque production type additionally requires the bundle to be root-owned on
+an actually read-only host mount, verifies the complete pinned content digest,
+rejects symlinks/special files/nested mounts, and exports at most one caller-owned
+source descriptor. The cell entrypoint must still independently prove FD 9's
+consumer-side read-only mount and report its distinct consumer mount ID before
+Node starts. The production D09 runtime source intentionally does **not**
+implement legacy `piruntime.VerifiedWorkerRuntimeAssets`; content-only
+`VerifiedRuntimeAssets` remains the non-production fixture API.
+Its caller-owned FD 9 staging duplicate must close before the strict runtime
+source capability closes; it refuses early close rather than releasing the
+host bundle lease while a consumer may still hold it.
+
+### Tests and current limits
+
+Component tests use actual sessionrepo.Store/audit/private-Git fixtures and do
+not mount, launch a container, install, use a provider, or change host state.
+They cover Store-without-D06 refusal, source-vs-Store/admin-root identity,
+capability/evidence round-trip, caller-owned descriptor close, one-use export,
+stale generation-at-issuance refusal, retained-ancestor revalidation after a
+normal `g0 -> g1` Store advance, captured-audit-prefix rewrite, sealed-tree and
+private-Git snapshot tamper, quarantine refusal, and rejection of writable
+runtime-asset sources. A negative structural assertion proves the D09 source
+and content-only fixture types do not implement the legacy generic consumer-view
+interfaces. These fixtures establish only component behavior, not consumer
+mount proof or G1 evidence.
+
+The current held edits are not yet a frozen combined A/B/C candidate. In
+particular C must use `ExposureBinder: nil`, capture the current managed live-root
+into the fresh Store under its held writer lease (never export that live-root
+handle to Pi), then call `Prepare` and `OpenVerifiedD09ExposureSource` for the
+sealed current tip. A must require and revalidate the concrete
+`*sessionrepo.VerifiedSealedSource` in admitted D09 bindings, and withhold
+Node/ready/prompt until its actual consumer-mount proof is captured and
+validated. No full current-tree Linux acceptance result is inferred from the
+earlier frozen `aehHOH` snapshot.
+
+Remaining operator prerequisites are the protected read-only runtime bundle,
+signed image/profile and offline Cosign trust, rootless Podman/crun, delegated
+cgroup-v2 subtree, and a provisioned host that can exercise the positive source
+bind/consumer proof. No mount was attempted from this unprivileged development
+service. This code does not establish admission, G1, H1, or a governed launch.

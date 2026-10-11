@@ -919,7 +919,13 @@ func (w *PiSDKWorker) D09LaunchProof() (D09TCBProof, bool) {
 	if !ok || proof.LeaderPID <= 0 || proof.LauncherProcessPID <= 0 || proof.LauncherProcessPID != w.PID() || proof.ContainerName == "" ||
 		!validDigest(proof.ImageDigest) || proof.TemplateDigest == "" ||
 		proof.Schema != "tbound-pi-entrypoint/v1" || !proof.ConsumerMountsVerified ||
-		!proof.RawSourceFDsClosed || proof.WorkerMountID == 0 || proof.RuntimeMountID == 0 {
+		!proof.RawSourceFDsClosed || proof.WorkerMountID == 0 || proof.RuntimeMountID == 0 ||
+		proof.ConsumerWorkerMountID != proof.WorkerMountID || proof.ConsumerRuntimeMountID != proof.RuntimeMountID ||
+		!validIdentity(proof.SourceGenerationID) || !validDigest(proof.SourceTreeDigest) ||
+		!validDigest(proof.SourceManifestDigest) || !validDigest(proof.SourceBindingDigest) ||
+		!validDigest(proof.SourceProvenanceDigest) || !validDigest(proof.SourceIdentityDigest) ||
+		!validDigest(proof.SourceStoreAuditHead) || proof.SourceStoreAuditCount == 0 ||
+		proof.SourceDevice == 0 || proof.SourceInode == 0 || proof.SourceMountID == 0 {
 		return D09TCBProof{}, false
 	}
 	return proof, true
@@ -928,6 +934,9 @@ func (w *PiSDKWorker) D09LaunchProof() (D09TCBProof, bool) {
 func LaunchPiSDKWorker(ctx context.Context, capability *AdmissionCapability, exposure VerifiedWorkerExposure, assets VerifiedWorkerRuntimeAssets, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiSDKWorker, error) {
 	if ctx == nil || capability == nil || !capability.valid() || capability.profile.Mode != ModeProduction || channels == nil {
 		return nil, ErrChildCapabilityMissing
+	}
+	if capability.profile.ContainmentProfile == D09ContainmentProfile || capability.runtime.D09Source != nil {
+		return nil, fmt.Errorf("%w: D09 production requires LaunchD09PiSDKWorker and its source-stage capability", ErrHostBindingsMissing)
 	}
 	if isNilBinding(exposure) || isNilBinding(assets) ||
 		!sameBinding(exposure, capability.runtime.WorkerExposure) || !sameBinding(assets, capability.runtime.WorkerRuntimeAssets) ||
@@ -963,6 +972,40 @@ func LaunchPiSDKWorker(ctx context.Context, capability *AdmissionCapability, exp
 		return nil, ErrProductionLauncherUnavailable
 	}
 	return launchPiSDKWorker(ctx, capability.profile, capability.runtime, capability, channels, bootstrap, false, "", "")
+}
+
+// LaunchD09PiSDKWorker launches from a source-stage binding. The Store-issued
+// capability and source evidence are revalidated without treating the host O_PATH
+// descriptor as a consumer view; StartVerified returns only after the trusted
+// entrypoint has proved the distinct read-only consumer mount and replaced the
+// raw source FD. Bootstrap/readiness is released only after that proof exists.
+func LaunchD09PiSDKWorker(ctx context.Context, capability *AdmissionCapability,
+	channels *D09PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiSDKWorker, error) {
+	if ctx == nil || capability == nil || !capability.valid() || capability.profile.Mode != ModeProduction ||
+		capability.profile.ContainmentProfile != D09ContainmentProfile ||
+		channels == nil || channels.channels == nil || capability.runtime.D09Source == nil ||
+		channels.sourceCapability == nil || channels.sourceCapability != capability.runtime.D09SourceCapability ||
+		!sameBinding(channels.source, capability.runtime.D09Source) ||
+		!sameBinding(channels.assets, capability.runtime.D09RuntimeAssetSource) ||
+		!sameBinding(channels.channels.workingDirectory, capability.runtime.D09SourceHandle) ||
+		!sameD09SourceEvidence(capability.runtime.D09SourceEvidence, channels.sourceEvidence) ||
+		!sameBinding(channels.channels.runtimeBundle, capability.runtime.PiRuntimeBundleHandle) {
+		return nil, ErrHostBindingsMissing
+	}
+	if err := verifyD09HostRuntimeSources(ctx, capability.runtime); err != nil {
+		return nil, err
+	}
+	bootstrap.SourceBindingDigest = channels.sourceEvidence.SourceBindingDigest
+	bootstrap.SourceProvenanceDigest = channels.sourceEvidence.ProvenanceDigest
+	bootstrap.SourceGenerationID = channels.sourceEvidence.GenerationID
+	bootstrap.SourceTreeDigest = channels.sourceEvidence.TreeDigest
+	bootstrap.SourceManifestDigest = channels.sourceEvidence.ManifestDigest
+	// These identify source provenance only. Consumer identity/mount are filled
+	// from the captured entrypoint proof after StartChild has returned.
+	bootstrap.WorkerViewIdentity = ""
+	bootstrap.WorkerMountID = 0
+	return launchPiSDKWorker(ctx, capability.profile, capability.runtime, capability,
+		channels.channels, bootstrap, false, "", "")
 }
 
 type DeveloperPiWorkerPlan struct {
@@ -1132,6 +1175,13 @@ func launchPiSDKWorker(ctx context.Context, profile HostProfile, runtime HostRun
 	keepChannels := false
 	defer func() {
 		if !keepChannels {
+			var launchErr *PiWorkerLaunchError
+			if runtime.D09Source != nil && (errors.Is(resultErr, ErrUnknownSettlement) ||
+				(errors.As(resultErr, &launchErr) && launchErr.Settlement.State == SettlementUnknown)) {
+				// The caller retains channels/source/capability with its cleanup
+				// stack until a later exact scope settlement.
+				return
+			}
 			resultErr = errors.Join(resultErr, channels.Close())
 		}
 	}()
@@ -1142,12 +1192,16 @@ func launchPiSDKWorker(ctx context.Context, profile HostProfile, runtime HostRun
 		profile.PiRuntimeBundleRoot == "" || !validDigest(profile.PiRuntimeBundleDigest) ||
 		profile.ChildArgumentsDigest != DigestArguments([]string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"}) ||
 		!equalStrings(runtime.Arguments, []string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"}) ||
-		!sameInheritedDescriptors(channels.DescriptorBindings(), runtime.Descriptors) || channels.ChildStdin() != runtime.Stdin {
+		!sameInheritedDescriptors(channels.DescriptorBindings(), runtime.Descriptors) || channels.ChildStdin() != runtime.Stdin ||
+		(runtime.D09Source != nil && (!sameBinding(channels.workingDirectory, runtime.D09SourceHandle) ||
+			!sameBinding(channels.runtimeBundle, runtime.PiRuntimeBundleHandle))) {
 		return nil, ErrHostBindingsMissing
 	}
-	if err := channels.writeBootstrap(profile, bootstrap); err != nil {
-		_ = channels.Close()
-		return nil, err
+	if runtime.D09Source == nil {
+		if err := channels.writeBootstrap(profile, bootstrap); err != nil {
+			_ = channels.Close()
+			return nil, err
+		}
 	}
 	var process *Process
 	var err error
@@ -1173,6 +1227,20 @@ func launchPiSDKWorker(ctx context.Context, profile HostProfile, runtime HostRun
 	if err != nil {
 		_ = channels.Close()
 		return nil, err
+	}
+	if runtime.D09Source != nil {
+		proof, ok := process.LaunchProof().(D09TCBProof)
+		if !ok || !proof.ConsumerMountsVerified || !proof.RawSourceFDsClosed ||
+			proof.ConsumerWorkerMountID == 0 || proof.ConsumerWorkerMountID != proof.WorkerMountID ||
+			proof.SourceIdentityDigest != runtime.D09SourceEvidence.SourceIdentityDigest {
+			return nil, stopFailedPiLaunch(process, channels, fmt.Errorf("D09 entrypoint did not provide separate source and consumer proof"))
+		}
+		bootstrap.WorkerViewIdentity = DigestBytes([]byte(fmt.Sprintf("tbound-d09-consumer-view/v1\x00%d:%d:%d",
+			proof.WorkerDevice, proof.WorkerInode, proof.ConsumerWorkerMountID)))
+		bootstrap.WorkerMountID = proof.ConsumerWorkerMountID
+		if err := channels.writeBootstrap(profile, bootstrap); err != nil {
+			return nil, stopFailedPiLaunch(process, channels, err)
+		}
 	}
 	_ = channels.CloseChildEnds()
 	startupCtx, cancel := boundedStartupContext(ctx)
@@ -1358,7 +1426,7 @@ func (w *PiSDKWorker) Close(ctx context.Context) (Settlement, error) {
 	w.closed = true
 	w.mu.Unlock()
 	settlement, err := w.Session.Close(ctx)
-	if w.Channels != nil {
+	if w.Channels != nil && settlement.State == SettlementStopped && settlement.DescendantsSettled {
 		err = errors.Join(err, w.Channels.Close())
 	}
 	select {
@@ -1421,7 +1489,10 @@ func stopFailedPiLaunch(process *Process, channels *PiWorkerChannels, cause erro
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), piWorkerStopTimeout)
 	defer cancel()
 	settlement, cleanupErr := process.Stop(cleanupCtx)
-	closeErr := channels.Close()
+	var closeErr error
+	if settlement.State == SettlementStopped && settlement.DescendantsSettled {
+		closeErr = channels.Close()
+	}
 	return &PiWorkerLaunchError{Cause: cause, Settlement: settlement, CleanupErr: errors.Join(cleanupErr, closeErr)}
 }
 

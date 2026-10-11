@@ -25,8 +25,9 @@ import (
 )
 
 var (
-	ErrManagedLiveRootUnavailable = errors.New("registered managed live-root writer authority is unavailable")
-	ErrManagedLiveRootRetained    = errors.New("managed live-root writer authority is retained after an unknown publication/cleanup outcome")
+	ErrManagedLiveRootUnavailable      = errors.New("registered managed live-root writer authority is unavailable")
+	ErrManagedLiveRootRetained         = errors.New("managed live-root writer authority is retained after an unknown publication/cleanup outcome")
+	ErrManagedSourceCaptureUnavailable = errors.New("verified current managed-root source capture is unavailable")
 )
 
 type managedLiveRootDescriptorIdentity struct {
@@ -457,6 +458,41 @@ func (l *managedLiveRootLease) completeAdmissionRecovery(ctx context.Context) er
 	}
 	l.recoveryComplete = true
 	return nil
+}
+
+// recoverManagedLiveRootBeforeCapture resolves prior publication owners while
+// the current run still holds the verified managed-root lease. A fresh source
+// seed must not observe the root until both the durable publication ledger and
+// this run's admitted-owner history have been reconciled.
+func recoverManagedLiveRootBeforeCapture(ctx context.Context, lease *managedLiveRootLease,
+	liveRoot, publicationStateRoot *os.File, journal *audit.Journal, ownerEpoch uint64) error {
+	if ctx == nil || lease == nil || liveRoot == nil || publicationStateRoot == nil || journal == nil || ownerEpoch == 0 {
+		return ErrManagedLiveRootUnavailable
+	}
+	if err := lease.revalidate(ctx, liveRoot); err != nil {
+		return err
+	}
+	ledger, err := workflow.NewRootLedger(journal)
+	if err != nil {
+		return errors.Join(ErrManagedLiveRootUnavailable, err)
+	}
+	openRecovery := func(workflowID string) (workflow.RecoveryRepository, error) {
+		recoveryWorkspace, err := managedRecoveryWorkspace(journal, liveRoot, workflowID)
+		if err != nil {
+			return nil, err
+		}
+		return publication.Acquire(publication.Options{
+			WorkflowID: workflowID, OwnerEpoch: ownerEpoch, StateRoot: publicationStateRoot,
+			Journal: journal, Workspace: recoveryWorkspace,
+		})
+	}
+	if err := ledger.RecoverBeforeAdmission(ctx, liveRoot, openRecovery); err != nil {
+		return errors.Join(ErrManagedLiveRootRetained, err)
+	}
+	if err := lease.completeAdmissionRecovery(ctx); err != nil {
+		return errors.Join(ErrManagedLiveRootRetained, err)
+	}
+	return lease.revalidate(ctx, liveRoot)
 }
 
 func (l *managedLiveRootLease) abortBeforeTask(lifecycle productionLifecycleSnapshot, runner *productionCommandRunner) error {

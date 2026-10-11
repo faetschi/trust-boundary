@@ -26,23 +26,29 @@ type D09IDMapRange struct {
 }
 
 // DigestD09UserNamespaceMapping freezes both the in-container rootless mapping
-// and its translation into the trusted initial host user namespace. The only
-// admitted map gives the dedicated service UID/GID one identity each; it has no
-// container UID/GID 0 and no subordinate or adjacent host IDs.
-func DigestD09UserNamespaceMapping(uid, gid int) string {
-	if uid <= 0 || gid <= 0 {
+// and its translation into the trusted initial host user namespace. Service
+// host IDs and Cell IDs are deliberately independent. The only admitted map has
+// one range for the requested non-root cell UID and one for its GID.
+func DigestD09UserNamespaceMapping(cellUID, cellGID, serviceUID, serviceGID int) string {
+	if cellUID <= 0 || cellGID <= 0 || serviceUID <= 0 || serviceGID <= 0 {
 		return ""
 	}
 	identity := fmt.Sprintf("%s%s\x00uid-inside=%d:0:1\x00gid-inside=%d:0:1\x00uid-host=%d:%d:1\x00gid-host=%d:%d:1\x00parent=initial-userns/v1",
 		d09UserNamespaceMappingDomain, D09UserNamespaceMappingProfile,
-		uid, gid, uid, uid, gid, gid)
+		cellUID, cellGID, cellUID, serviceUID, cellGID, serviceGID)
 	return DigestBytes([]byte(identity))
 }
 
-func D09InsideUIDMap(uid int) string { return fmt.Sprintf("%d 0 1", uid) }
-func D09InsideGIDMap(gid int) string { return fmt.Sprintf("%d 0 1", gid) }
-func D09HostUIDMap(uid int) string   { return fmt.Sprintf("%d %d 1", uid, uid) }
-func D09HostGIDMap(gid int) string   { return fmt.Sprintf("%d %d 1", gid, gid) }
+const D09UserNamespaceParentSemantics = "initial-host-userns/v1"
+
+func D09InsideUIDMap(cellUID int) string { return fmt.Sprintf("%d 0 1", cellUID) }
+func D09InsideGIDMap(cellGID int) string { return fmt.Sprintf("%d 0 1", cellGID) }
+func D09HostUIDMap(cellUID, serviceUID int) string {
+	return fmt.Sprintf("%d %d 1", cellUID, serviceUID)
+}
+func D09HostGIDMap(cellGID, serviceGID int) string {
+	return fmt.Sprintf("%d %d 1", cellGID, serviceGID)
+}
 
 func ParseD09IDMap(raw []byte) (D09IDMapRange, error) {
 	var mapping D09IDMapRange
@@ -75,16 +81,16 @@ func ParseD09IDMap(raw []byte) (D09IDMapRange, error) {
 // supplied by the registered template. This proves only the child-to-parent
 // namespace mapping line; the host supervisor must also call
 // VerifyD09HostIDMaps on /proc/<host-pid> before acknowledging the proof.
-func VerifyD09InsideIDMaps(profile, digest string, uid, gid int, uidMap, gidMap []byte) error {
-	if profile != D09UserNamespaceMappingProfile || digest == "" || digest != DigestD09UserNamespaceMapping(uid, gid) {
+func VerifyD09InsideIDMaps(profile, digest string, cellUID, cellGID, serviceUID, serviceGID int, uidMap, gidMap []byte) error {
+	if profile != D09UserNamespaceMappingProfile || digest == "" || digest != DigestD09UserNamespaceMapping(cellUID, cellGID, serviceUID, serviceGID) {
 		return errors.New("registered D09 user-namespace map profile/digest mismatch")
 	}
 	uidRange, err := ParseD09IDMap(uidMap)
-	if err != nil || uidRange != (D09IDMapRange{ContainerID: uint64(uid), ParentID: 0, Length: 1}) {
+	if err != nil || uidRange != (D09IDMapRange{ContainerID: uint64(cellUID), ParentID: 0, Length: 1}) {
 		return errors.Join(errors.New("in-container uid_map is not the exact registered single-ID mapping"), err)
 	}
 	gidRange, err := ParseD09IDMap(gidMap)
-	if err != nil || gidRange != (D09IDMapRange{ContainerID: uint64(gid), ParentID: 0, Length: 1}) {
+	if err != nil || gidRange != (D09IDMapRange{ContainerID: uint64(cellGID), ParentID: 0, Length: 1}) {
 		return errors.Join(errors.New("in-container gid_map is not the exact registered single-ID mapping"), err)
 	}
 	return nil
@@ -94,16 +100,16 @@ func VerifyD09InsideIDMaps(profile, digest string, uid, gid int, uidMap, gidMap 
 // same process into the initial host user namespace. A self-reported in-cell
 // uid_map cannot satisfy this check; the caller must read host-visible
 // /proc/<host-pid> files after confirming the user-namespace inode.
-func VerifyD09HostIDMaps(profile, digest string, uid, gid int, uidMap, gidMap []byte) error {
-	if profile != D09UserNamespaceMappingProfile || digest == "" || digest != DigestD09UserNamespaceMapping(uid, gid) {
+func VerifyD09HostIDMaps(profile, digest string, cellUID, cellGID, serviceUID, serviceGID int, uidMap, gidMap []byte) error {
+	if profile != D09UserNamespaceMappingProfile || digest == "" || digest != DigestD09UserNamespaceMapping(cellUID, cellGID, serviceUID, serviceGID) {
 		return errors.New("registered D09 host user-namespace map profile/digest mismatch")
 	}
 	uidRange, err := ParseD09IDMap(uidMap)
-	if err != nil || uidRange != (D09IDMapRange{ContainerID: uint64(uid), ParentID: uint64(uid), Length: 1}) {
+	if err != nil || uidRange != (D09IDMapRange{ContainerID: uint64(cellUID), ParentID: uint64(serviceUID), Length: 1}) {
 		return errors.Join(errors.New("host-visible uid_map does not map only the registered service UID"), err)
 	}
 	gidRange, err := ParseD09IDMap(gidMap)
-	if err != nil || gidRange != (D09IDMapRange{ContainerID: uint64(gid), ParentID: uint64(gid), Length: 1}) {
+	if err != nil || gidRange != (D09IDMapRange{ContainerID: uint64(cellGID), ParentID: uint64(serviceGID), Length: 1}) {
 		return errors.Join(errors.New("host-visible gid_map does not map only the registered service GID"), err)
 	}
 	return nil
@@ -111,7 +117,8 @@ func VerifyD09HostIDMaps(profile, digest string, uid, gid int, uidMap, gidMap []
 
 func verifyD09HostProcessIDMaps(pid int, expectedUserNSInode uint64, config D09Config,
 	insideUIDMap, insideGIDMap string) error {
-	if pid <= 0 || expectedUserNSInode == 0 || config.CellUID <= 0 || config.CellGID <= 0 {
+	if pid <= 0 || expectedUserNSInode == 0 || config.CellUID <= 0 || config.CellGID <= 0 ||
+		config.UserNamespaceHostUID <= 0 || config.UserNamespaceHostGID <= 0 {
 		return ErrProductionLauncherUnavailable
 	}
 	userNSInfo, err := os.Stat(fmt.Sprintf("/proc/%d/ns/user", pid))
@@ -131,9 +138,10 @@ func verifyD09HostProcessIDMaps(pid int, expectedUserNSInode uint64, config D09C
 		return err
 	}
 	if err := VerifyD09InsideIDMaps(config.UserNamespaceMappingProfile, config.UserNamespaceMappingDigest,
-		config.CellUID, config.CellGID, []byte(insideUIDMap), []byte(insideGIDMap)); err != nil {
+		config.CellUID, config.CellGID, config.UserNamespaceHostUID, config.UserNamespaceHostGID,
+		[]byte(insideUIDMap), []byte(insideGIDMap)); err != nil {
 		return err
 	}
 	return VerifyD09HostIDMaps(config.UserNamespaceMappingProfile, config.UserNamespaceMappingDigest,
-		config.CellUID, config.CellGID, uidMap, gidMap)
+		config.CellUID, config.CellGID, config.UserNamespaceHostUID, config.UserNamespaceHostGID, uidMap, gidMap)
 }

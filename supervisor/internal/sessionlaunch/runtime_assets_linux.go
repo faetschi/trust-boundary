@@ -30,6 +30,11 @@ const (
 // profile digest, or when a supplied evidence record does not match this source.
 var ErrRuntimeAssets = errors.New("verified runtime-asset source is unavailable or unverified")
 
+// ErrD09RuntimeAssetsUnavailable distinguishes a production-profile runtime
+// source refusal from the content-only development asset inspector below.
+var ErrD09RuntimeAssetsUnavailable = errors.New("D09 runtime assets are not a protected immutable host source")
+var ErrD09RuntimeAssetExportOpen = errors.New("caller-owned D09 runtime-source descriptor must close before its capability")
+
 // RuntimeAssetSpec is the concrete measurement contract the composition root
 // (owner A/C) supplies from the signed host profile. It contains no boolean
 // trust switch: the bundle content digest and the namespace/profile identity
@@ -46,15 +51,16 @@ type RuntimeAssetSpec struct {
 	MaxBytes int64
 }
 
-// VerifiedRuntimeAssets is the sessionlaunch-owned implementation of
-// piruntime.VerifiedWorkerRuntimeAssets for one content-pinned runtime bundle.
+// VerifiedRuntimeAssets is a content-pinned source inspector for fixtures and
+// development. It deliberately does NOT implement
+// piruntime.VerifiedWorkerRuntimeAssets and cannot be admitted by D09.
 //
 // Export returns a fresh descriptor for the held bundle source. Per the
 // piruntime descriptor contract this source FD is Go-only: it is not proof that
 // the child received a safe mount. The D09 launcher must reopen this source
 // inside its controlled namespace and independently verify the consumer-side
-// read-only mount (piruntime.VerifyLinuxPiRuntimeBundle) before it creates child
-// FD 9. This type pins the bytes; it does not fabricate the consumer mount.
+// read-only mount before it creates child FD 9. This type pins bytes only; it
+// does not assert a protected host mount or consumer mount.
 type VerifiedRuntimeAssets struct {
 	mu     sync.Mutex
 	root   *os.File
@@ -63,9 +69,20 @@ type VerifiedRuntimeAssets struct {
 	closed bool
 }
 
-// VerifiedRuntimeAssets must satisfy the launcher-owned descriptor interface
-// exactly; the D09 consumer reopens and re-verifies this source before FD 9.
-var _ piruntime.VerifiedWorkerRuntimeAssets = (*VerifiedRuntimeAssets)(nil)
+// VerifiedD09RuntimeAssetSource is the production D09 runtime-bundle source
+// capability. Unlike OpenVerifiedRuntimeAssets (content-only inspection used by
+// fixtures), this constructor requires a root-owned source on an actually
+// read-only host mount and rechecks that condition before every export/verify.
+// Its exported descriptor is still a SOURCE descriptor: only the trusted D09
+// launcher/entrypoint may bind it read-only and prove the distinct consumer
+// mount before Node starts.
+type VerifiedD09RuntimeAssetSource struct {
+	mu         sync.Mutex
+	assets     *VerifiedRuntimeAssets
+	exportedFD *os.File
+	exported   bool
+	closed     bool
+}
 
 // OpenVerifiedRuntimeAssets binds an already-open bundle root descriptor to a
 // pinned content digest. It duplicates the descriptor (Go-only), recomputes the
@@ -105,9 +122,166 @@ func OpenVerifiedRuntimeAssets(root *os.File, spec RuntimeAssetSpec) (*VerifiedR
 	return &VerifiedRuntimeAssets{root: duplicate, spec: spec, digest: digest}, nil
 }
 
-// ExportVerifiedWorkerRuntimeAssets returns a fresh descriptor for the pinned
-// bundle source and evidence bound to that descriptor.
-func (a *VerifiedRuntimeAssets) ExportVerifiedWorkerRuntimeAssets(ctx context.Context) (*os.File, piruntime.WorkerRuntimeAssetEvidence, error) {
+// OpenVerifiedD09RuntimeAssetSource is the production constructor for the
+// immutable Pi/runtime bundle. It requires the complete expected content digest,
+// root ownership, and a read-only host mount as checked by the same D09 bundle
+// verifier the trusted launcher uses. No mount is created here. The returned
+// opaque capability holds the source FD privately and may export it once for
+// the trusted D09 mount setup.
+func OpenVerifiedD09RuntimeAssetSource(root *os.File, spec RuntimeAssetSpec) (*VerifiedD09RuntimeAssetSource, error) {
+	assets, err := OpenVerifiedRuntimeAssets(root, spec)
+	if err != nil {
+		return nil, errors.Join(ErrD09RuntimeAssetsUnavailable, err)
+	}
+	assets.mu.Lock()
+	err = assets.verifyD09RuntimeSourceLocked()
+	assets.mu.Unlock()
+	if err != nil {
+		_ = assets.Close()
+		return nil, errors.Join(ErrD09RuntimeAssetsUnavailable, err)
+	}
+	return &VerifiedD09RuntimeAssetSource{assets: assets}, nil
+}
+
+// ExportD09RuntimeAssetSource returns one caller-owned descriptor for the host
+// source. The caller (trusted D09 channel/launcher) must close the returned FD;
+// this capability retains its own private descriptor for revalidation. The
+// source evidence is not a consumer-mount proof.
+func (s *VerifiedD09RuntimeAssetSource) ExportD09RuntimeAssetSource(ctx context.Context) (*os.File, piruntime.WorkerRuntimeAssetEvidence, error) {
+	if ctx == nil || s == nil {
+		return nil, piruntime.WorkerRuntimeAssetEvidence{}, ErrD09RuntimeAssetsUnavailable
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.exported || s.assets == nil {
+		return nil, piruntime.WorkerRuntimeAssetEvidence{}, ErrD09RuntimeAssetsUnavailable
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, piruntime.WorkerRuntimeAssetEvidence{}, errors.Join(ErrD09RuntimeAssetsUnavailable, err)
+	}
+	s.assets.mu.Lock()
+	verifyErr := s.assets.verifyD09RuntimeSourceLocked()
+	s.assets.mu.Unlock()
+	if verifyErr != nil {
+		return nil, piruntime.WorkerRuntimeAssetEvidence{}, errors.Join(ErrD09RuntimeAssetsUnavailable, verifyErr)
+	}
+	file, evidence, err := s.assets.ExportPinnedRuntimeAssets(ctx)
+	if err != nil {
+		return nil, piruntime.WorkerRuntimeAssetEvidence{}, errors.Join(ErrD09RuntimeAssetsUnavailable, err)
+	}
+	s.exported = true
+	s.exportedFD = file
+	return file, evidence, nil
+}
+
+// VerifyD09RuntimeAssetSource revalidates host source immutability/content. The
+// in-cell entrypoint still has to separately prove its consumer-side read-only
+// mount and record a distinct consumer mount ID in the D09 TCB proof.
+func (s *VerifiedD09RuntimeAssetSource) VerifyD09RuntimeAssetSource(ctx context.Context, evidence piruntime.WorkerRuntimeAssetEvidence) error {
+	if ctx == nil || s == nil {
+		return ErrD09RuntimeAssetsUnavailable
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.assets == nil {
+		return ErrD09RuntimeAssetsUnavailable
+	}
+	if err := ctx.Err(); err != nil {
+		return errors.Join(ErrD09RuntimeAssetsUnavailable, err)
+	}
+	s.assets.mu.Lock()
+	verifyErr := s.assets.verifyD09RuntimeSourceLocked()
+	s.assets.mu.Unlock()
+	if verifyErr != nil {
+		return errors.Join(ErrD09RuntimeAssetsUnavailable, verifyErr)
+	}
+	if err := s.assets.VerifyPinnedRuntimeAssets(ctx, evidence); err != nil {
+		return errors.Join(ErrD09RuntimeAssetsUnavailable, err)
+	}
+	return nil
+}
+
+// Close releases the retained source capability, not any D09 consumer mount.
+// The launcher/cgroup owner must settle and remove that separate cell view.
+func (s *VerifiedD09RuntimeAssetSource) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil
+	}
+	if s.exportedFD != nil && s.exportedFD.Fd() != ^uintptr(0) {
+		s.mu.Unlock()
+		return ErrD09RuntimeAssetExportOpen
+	}
+	s.closed = true
+	assets := s.assets
+	s.assets, s.exportedFD = nil, nil
+	s.mu.Unlock()
+	if assets != nil {
+		return assets.Close()
+	}
+	return nil
+}
+
+func (a *VerifiedRuntimeAssets) verifyD09RuntimeSourceLocked() error {
+	if a == nil || a.closed || a.root == nil {
+		return ErrRuntimeAssets
+	}
+	info, err := a.root.Stat()
+	if err != nil || !info.IsDir() {
+		return errors.Join(ErrRuntimeAssets, err)
+	}
+	rootStat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || rootStat.Uid != 0 {
+		return errors.New("D09 runtime bundle source must be root-owned on the protected host filesystem")
+	}
+	path, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", a.root.Fd()))
+	if err != nil || !filepath.IsAbs(path) || strings.HasSuffix(path, " (deleted)") {
+		return errors.Join(ErrRuntimeAssets, err)
+	}
+	if err := verifyRootOwnedRuntimeTree(path); err != nil {
+		return err
+	}
+	digest, err := piruntime.VerifyLinuxPiRuntimeBundle(a.root)
+	if err != nil {
+		return fmt.Errorf("runtime bundle source is not on a verified read-only host mount: %w", err)
+	}
+	if digest != a.digest || digest != a.spec.BundleDigest {
+		return errors.New("runtime bundle host-source digest differs from the signed profile")
+	}
+	return nil
+}
+
+func verifyRootOwnedRuntimeTree(root string) error {
+	return filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		info, err := os.Lstat(path)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 {
+			return errors.Join(ErrRuntimeAssets, err)
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || stat.Uid != 0 {
+			return errors.New("every D09 runtime bundle object must be root-owned")
+		}
+		if info.Mode().Perm()&0o022 != 0 {
+			return errors.New("D09 runtime bundle object is group/other writable")
+		}
+		if !entry.IsDir() && !info.Mode().IsRegular() {
+			return errors.New("D09 runtime bundle contains a non-regular object")
+		}
+		return nil
+	})
+}
+
+// ExportPinnedRuntimeAssets returns a fresh descriptor for content-only
+// fixture/development inspection. This name intentionally prevents accidental
+// satisfaction of piruntime.VerifiedWorkerRuntimeAssets.
+func (a *VerifiedRuntimeAssets) ExportPinnedRuntimeAssets(ctx context.Context) (*os.File, piruntime.WorkerRuntimeAssetEvidence, error) {
 	if ctx == nil {
 		return nil, piruntime.WorkerRuntimeAssetEvidence{}, ErrRuntimeAssets
 	}
@@ -128,9 +302,10 @@ func (a *VerifiedRuntimeAssets) ExportVerifiedWorkerRuntimeAssets(ctx context.Co
 	return descriptor, evidence, nil
 }
 
-// VerifyWorkerRuntimeAssets re-pins the complete bundle content and re-checks
-// the descriptor identity against the supplied evidence.
-func (a *VerifiedRuntimeAssets) VerifyWorkerRuntimeAssets(ctx context.Context, evidence piruntime.WorkerRuntimeAssetEvidence) error {
+// VerifyPinnedRuntimeAssets re-pins content and checks descriptor identity for
+// fixtures/development; it proves neither an immutable host mount nor consumer
+// mount state.
+func (a *VerifiedRuntimeAssets) VerifyPinnedRuntimeAssets(ctx context.Context, evidence piruntime.WorkerRuntimeAssetEvidence) error {
 	if ctx == nil {
 		return ErrRuntimeAssets
 	}

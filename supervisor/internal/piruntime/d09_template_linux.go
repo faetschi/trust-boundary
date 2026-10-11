@@ -80,8 +80,8 @@ type D09CellTemplate struct {
 	XattrScanGID                      int    `json:"xattr_scan_gid"`
 	XattrScanPrivilegeProfile         string `json:"xattr_scan_privilege_profile"`
 	ManagedLiveRootRegistrationDigest string `json:"managed_live_root_registration_digest"`
-	UserNamespaceMappingProfile      string `json:"user_namespace_mapping_profile"`
-	UserNamespaceMappingDigest       string `json:"user_namespace_mapping_digest"`
+	UserNamespaceMappingProfile       string `json:"user_namespace_mapping_profile"`
+	UserNamespaceMappingDigest        string `json:"user_namespace_mapping_digest"`
 	registered                        bool
 }
 
@@ -128,8 +128,8 @@ func (t D09CellTemplate) Config() D09Config {
 		CommandExecutable:                 t.CommandExecutable,
 		CommandExecutableDigest:           t.CommandExecutableDigest,
 		ManagedLiveRootRegistrationDigest: t.ManagedLiveRootRegistrationDigest,
-		UserNamespaceMappingProfile:      t.UserNamespaceMappingProfile,
-		UserNamespaceMappingDigest:       t.UserNamespaceMappingDigest,
+		UserNamespaceMappingProfile:       t.UserNamespaceMappingProfile,
+		UserNamespaceMappingDigest:        t.UserNamespaceMappingDigest,
 		CellUID:                           t.CellUID,
 		CellGID:                           t.CellGID,
 		NamespaceProfile:                  t.NamespaceProfile,
@@ -176,11 +176,10 @@ func validateD09CellTemplate(t D09CellTemplate) error {
 		t.NamespaceProfile != "user,mount,pid,ipc,uts,network-none/v1" ||
 		t.CgroupVersion != "v2" || t.CgroupControllers != "cpu,memory,pids" ||
 		!validDigest(t.XattrVisibilityProfileDigest) || t.XattrVisibilityAuthority != D09XattrVisibilityAuthority || t.XattrFilesystemMagic == 0 ||
-		!validDigest(t.XattrMountOptionsDigest) || t.XattrScanUID != t.CellUID || t.XattrScanGID != t.CellGID ||
+		!validDigest(t.XattrMountOptionsDigest) || t.XattrScanUID <= 0 || t.XattrScanGID <= 0 ||
 		t.XattrScanPrivilegeProfile != D09XattrScanPrivilegeProfile ||
 		!validDigest(t.ManagedLiveRootRegistrationDigest) ||
-		t.UserNamespaceMappingProfile != D09UserNamespaceMappingProfile ||
-		t.UserNamespaceMappingDigest != DigestD09UserNamespaceMapping(t.CellUID, t.CellGID) ||
+		t.UserNamespaceMappingProfile != D09UserNamespaceMappingProfile || !validDigest(t.UserNamespaceMappingDigest) ||
 		DigestD09XattrVisibilityProfile(t.XattrFilesystemMagic, t.XattrMountOptionsDigest, t.XattrScanUID, t.XattrScanGID,
 			t.XattrScanPrivilegeProfile) != t.XattrVisibilityProfileDigest {
 		return ErrD09TemplateInvalid

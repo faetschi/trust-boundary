@@ -243,6 +243,8 @@ type D09Config struct {
 	TemplateDigest               string
 	CellUID                      int
 	CellGID                      int
+	UserNamespaceHostUID         int
+	UserNamespaceHostGID         int
 	NamespaceProfile             string
 	CgroupVersion                string
 	CgroupControllers            string
@@ -333,9 +335,11 @@ func validateD09CellIdentity(config D09Config) error {
 	if !config.registeredTemplate || !validDigest(config.TemplateDigest) || !validDigest(config.ManagedLiveRootRegistrationDigest) {
 		return errors.New("D09 launcher config is not bound to the registered root-owned template")
 	}
-	if config.UserNamespaceMappingProfile != D09UserNamespaceMappingProfile ||
-		config.UserNamespaceMappingDigest != DigestD09UserNamespaceMapping(config.CellUID, config.CellGID) {
-		return errors.New("D09 user namespace mapping does not match the exact signed single-service-UID/GID profile")
+	if config.UserNamespaceMappingProfile != D09UserNamespaceMappingProfile || config.UserNamespaceHostUID <= 0 ||
+		config.UserNamespaceHostGID <= 0 || config.UserNamespaceHostUID == config.CellUID ||
+		config.UserNamespaceHostGID == config.CellGID || config.UserNamespaceMappingDigest != DigestD09UserNamespaceMapping(
+		config.CellUID, config.CellGID, config.UserNamespaceHostUID, config.UserNamespaceHostGID) {
+		return errors.New("D09 user namespace mapping does not match the exact signed cell/service UID/GID profile")
 	}
 	if config.CellUID <= 0 || config.CellGID <= 0 || config.UID != config.CellUID || config.GID != config.CellGID {
 		return errors.New("rootless container UID/GID differs from the registered template")
@@ -348,11 +352,11 @@ func validateD09CellIdentity(config D09Config) error {
 	}
 	if !validDigest(config.XattrVisibilityProfileDigest) || config.XattrVisibilityAuthority != D09XattrVisibilityAuthority ||
 		config.XattrScanPrivilegeProfile != D09XattrScanPrivilegeProfile ||
-		config.XattrScanUID != config.CellUID || config.XattrScanGID != config.CellGID {
+		config.XattrScanUID != config.UserNamespaceHostUID || config.XattrScanGID != config.UserNamespaceHostGID {
 		return errors.New("registered xattr visibility profile is absent or bound to another scanner uid/gid")
 	}
-	if os.Geteuid() != config.CellUID || os.Getegid() != config.CellGID {
-		return errors.New("invoking rootless UID/GID differs from the registered cell mapping")
+	if os.Geteuid() != config.UserNamespaceHostUID || os.Getegid() != config.UserNamespaceHostGID {
+		return errors.New("invoking runner UID/GID differs from the registered managed service account")
 	}
 	return nil
 }
@@ -493,6 +497,8 @@ func (l *D09PodmanCrunLauncher) BindManagedLiveRoot(verified *VerifiedD09Managed
 		return ErrD09ManagedLiveRootRefused
 	}
 	l.managedRoot = owned
+	l.config.UserNamespaceHostUID = registration.ServiceUID
+	l.config.UserNamespaceHostGID = registration.ServiceGID
 	l.managedRootMu.Unlock()
 	l.stateMu.Unlock()
 	return nil
@@ -527,7 +533,7 @@ func (l *D09PodmanCrunLauncher) ensureManagedLiveRoot(ctx context.Context) (D09M
 		}
 		return l.managedRoot.Registration(), nil
 	}
-	registration, err := LoadD09ManagedLiveRootRegistration(ctx)
+	registration, err := LoadVerifiedD09ManagedLiveRootPolicy(ctx)
 	if err != nil {
 		return D09ManagedLiveRootRegistration{}, err
 	}
@@ -1537,18 +1543,18 @@ func (l *D09PodmanCrunLauncher) StartVerified(ctx context.Context, request Execu
 // dedicated proof pipe (fd10) before it execs Node. The pipe is closed before
 // Node starts, so the worker cannot forge it.
 type D09TCBProof struct {
-	Schema                string `json:"schema"`
-	UID                   int    `json:"uid"`
-	GID                   int    `json:"gid"`
-	CapEff                string `json:"cap_eff"`
-	NoNewPrivs            bool   `json:"no_new_privs"`
-	Seccomp               int    `json:"seccomp"`
-	LandlockABI           int    `json:"landlock_abi"`
-	LandlockRulesetDigest string `json:"landlock_ruleset_digest"`
-	LandlockTSYNC         bool   `json:"landlock_tsync"`
-	CgroupV2              bool   `json:"cgroup_v2"`
-	UIDMap                string `json:"uid_map"`
-	GIDMap                string `json:"gid_map"`
+	Schema                 string `json:"schema"`
+	UID                    int    `json:"uid"`
+	GID                    int    `json:"gid"`
+	CapEff                 string `json:"cap_eff"`
+	NoNewPrivs             bool   `json:"no_new_privs"`
+	Seccomp                int    `json:"seccomp"`
+	LandlockABI            int    `json:"landlock_abi"`
+	LandlockRulesetDigest  string `json:"landlock_ruleset_digest"`
+	LandlockTSYNC          bool   `json:"landlock_tsync"`
+	CgroupV2               bool   `json:"cgroup_v2"`
+	UIDMap                 string `json:"uid_map"`
+	GIDMap                 string `json:"gid_map"`
 	UserNamespaceMapDigest string `json:"user_namespace_map_digest"`
 	// Launch identity is attached by the launcher after it captures the
 	// entrypoint proof, so a journaled proof is bound to the exact container,
@@ -1562,19 +1568,37 @@ type D09TCBProof struct {
 	TemplateDigest         string `json:"template_digest"`
 	ConsumerMountsVerified bool   `json:"consumer_mounts_verified"`
 	RawSourceFDsClosed     bool   `json:"raw_source_fds_closed"`
-	WorkerMountID          uint64 `json:"worker_mount_id"`
-	RuntimeMountID         uint64 `json:"runtime_mount_id"`
-	WorkerDevice           uint64 `json:"worker_device"`
-	WorkerInode            uint64 `json:"worker_inode"`
-	RuntimeDevice          uint64 `json:"runtime_device"`
-	RuntimeInode           uint64 `json:"runtime_inode"`
-	UserNSInode            uint64 `json:"user_ns_inode"`
-	MountNSInode           uint64 `json:"mount_ns_inode"`
-	PIDNSInode             uint64 `json:"pid_ns_inode"`
-	IPCNSInode             uint64 `json:"ipc_ns_inode"`
-	UTSNSInode             uint64 `json:"uts_ns_inode"`
-	NetworkNSInode         uint64 `json:"network_ns_inode"`
-	NoExternalRoutes       bool   `json:"no_external_routes"`
+	// Source* fields are attached by the host from the Store-issued capability;
+	// they are distinct from ConsumerWorkerMountID, measured by PID1 inside the
+	// private mount namespace after the read-only bind is installed.
+	SourceGenerationID     string `json:"source_generation_id,omitempty"`
+	SourceTreeDigest       string `json:"source_tree_digest,omitempty"`
+	SourceManifestDigest   string `json:"source_manifest_digest,omitempty"`
+	SourceBindingDigest    string `json:"source_binding_digest,omitempty"`
+	SourceProvenanceDigest string `json:"source_provenance_digest,omitempty"`
+	SourceIdentityDigest   string `json:"source_identity_digest,omitempty"`
+	SourceStoreAuditHead   string `json:"source_store_audit_head,omitempty"`
+	SourceStoreAuditCount  uint64 `json:"source_store_audit_record_count,omitempty"`
+	SourceDevice           uint64 `json:"source_device,omitempty"`
+	SourceInode            uint64 `json:"source_inode,omitempty"`
+	SourceMountID          uint64 `json:"source_mount_id,omitempty"`
+	ConsumerWorkerMountID  uint64 `json:"consumer_worker_mount_id,omitempty"`
+	ConsumerRuntimeMountID uint64 `json:"consumer_runtime_mount_id,omitempty"`
+	// WorkerMountID is the historic proof-wire name for the entrypoint's
+	// consumer mount ID; it is never the host source capability's SourceMountID.
+	WorkerMountID    uint64 `json:"worker_mount_id"`
+	RuntimeMountID   uint64 `json:"runtime_mount_id"`
+	WorkerDevice     uint64 `json:"worker_device"`
+	WorkerInode      uint64 `json:"worker_inode"`
+	RuntimeDevice    uint64 `json:"runtime_device"`
+	RuntimeInode     uint64 `json:"runtime_inode"`
+	UserNSInode      uint64 `json:"user_ns_inode"`
+	MountNSInode     uint64 `json:"mount_ns_inode"`
+	PIDNSInode       uint64 `json:"pid_ns_inode"`
+	IPCNSInode       uint64 `json:"ipc_ns_inode"`
+	UTSNSInode       uint64 `json:"uts_ns_inode"`
+	NetworkNSInode   uint64 `json:"network_ns_inode"`
+	NoExternalRoutes bool   `json:"no_external_routes"`
 }
 
 // StartVerifiedWithProof launches the cell and returns the captured, validated
@@ -1609,7 +1633,7 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 			l.proofMu.Unlock()
 		}
 	}()
-	profile, err := l.validateD09LaunchRequest(request)
+	profile, err := l.validateD09LaunchRequest(ctx, request)
 	if err != nil {
 		return nil, D09TCBProof{}, err
 	}
@@ -1677,7 +1701,11 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		return nil, D09TCBProof{}, err
 	}
 	defer cidFile.Close()
-	exposureMount, err := descriptorPathForMount(request.WorkerExposureHandle)
+	workerSourceHandle := request.WorkerExposureHandle
+	if request.admission.runtime.D09Source != nil {
+		workerSourceHandle = request.D09SourceHandle
+	}
+	exposureMount, err := descriptorPathForMount(workerSourceHandle)
 	if err != nil {
 		return nil, D09TCBProof{}, fmt.Errorf("resolve verified consumer exposure mount: %w", err)
 	}
@@ -1690,12 +1718,20 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		"type=bind,src=" + exposureMount + ",dst=" + profile.WorkingDirectory + ",ro,bind-propagation=rprivate",
 		"type=bind,src=" + bundleMount + ",dst=/runtime,ro,bind-propagation=rprivate",
 	}
-	workerEvidence := request.admission.runtime.WorkerExposureEvidence
+	workerDevice, workerInode := uint64(0), uint64(0)
 	runtimeEvidence := request.admission.runtime.RuntimeAssetEvidence
+	if request.admission.runtime.D09Source != nil {
+		workerDevice = request.admission.runtime.D09SourceEvidence.SourceDevice
+		workerInode = request.admission.runtime.D09SourceEvidence.SourceInode
+		runtimeEvidence = request.admission.runtime.D09RuntimeAssetEvidence
+	} else {
+		workerDevice = request.admission.runtime.WorkerExposureEvidence.Device
+		workerInode = request.admission.runtime.WorkerExposureEvidence.Inode
+	}
 	extraEnv := []string{
 		"TBOUND_WORKER_CWD=" + profile.WorkingDirectory,
-		"TBOUND_WORKER_DEVICE=" + strconv.FormatUint(workerEvidence.Device, 10),
-		"TBOUND_WORKER_INODE=" + strconv.FormatUint(workerEvidence.Inode, 10),
+		"TBOUND_WORKER_DEVICE=" + strconv.FormatUint(workerDevice, 10),
+		"TBOUND_WORKER_INODE=" + strconv.FormatUint(workerInode, 10),
 		"TBOUND_RUNTIME_DEVICE=" + strconv.FormatUint(runtimeEvidence.Device, 10),
 		"TBOUND_RUNTIME_INODE=" + strconv.FormatUint(runtimeEvidence.Inode, 10),
 		"TBOUND_RUNTIME_BUNDLE_DIGEST=" + profile.PiRuntimeBundleDigest,
@@ -1746,6 +1782,21 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	proof.ImageRef = report.ImageRef
 	proof.ImageDigest = report.ImageDigest
 	proof.TemplateDigest = config.TemplateDigest
+	if sourceEvidence := request.admission.runtime.D09SourceEvidence; request.admission.runtime.D09Source != nil {
+		proof.SourceGenerationID = sourceEvidence.GenerationID
+		proof.SourceTreeDigest = sourceEvidence.TreeDigest
+		proof.SourceManifestDigest = sourceEvidence.ManifestDigest
+		proof.SourceBindingDigest = sourceEvidence.SourceBindingDigest
+		proof.SourceProvenanceDigest = sourceEvidence.ProvenanceDigest
+		proof.SourceIdentityDigest = sourceEvidence.SourceIdentityDigest
+		proof.SourceStoreAuditHead = sourceEvidence.StoreAuditHead
+		proof.SourceStoreAuditCount = sourceEvidence.StoreAuditRecordCount
+		proof.SourceDevice = sourceEvidence.SourceDevice
+		proof.SourceInode = sourceEvidence.SourceInode
+		proof.SourceMountID = sourceEvidence.SourceMountID
+		proof.ConsumerWorkerMountID = proof.WorkerMountID
+		proof.ConsumerRuntimeMountID = proof.RuntimeMountID
+	}
 	if proof.ContainerLeaderPID != 1 {
 		_ = command.Process.Kill()
 		l.cleanupContainer(report.PodmanPath, name)
@@ -1759,12 +1810,30 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		return nil, D09TCBProof{}, fmt.Errorf("verify exact host-visible D09 uid/gid map before launch admission: %w", err)
 	}
 	if !proof.ConsumerMountsVerified || !proof.RawSourceFDsClosed ||
-		proof.WorkerDevice != workerEvidence.Device || proof.WorkerInode != workerEvidence.Inode ||
+		proof.WorkerDevice != workerDevice || proof.WorkerInode != workerInode ||
 		proof.RuntimeDevice != runtimeEvidence.Device || proof.RuntimeInode != runtimeEvidence.Inode ||
 		proof.WorkerMountID == 0 || proof.RuntimeMountID == 0 {
 		_ = command.Process.Kill()
 		l.cleanupCell()
 		return nil, D09TCBProof{}, fmt.Errorf("%w: consumer-view mount proof does not match the verified D06/runtime handles", ErrHostBindingsMissing)
+	}
+	if request.admission.runtime.D09Source != nil {
+		if proof.ConsumerWorkerMountID != proof.WorkerMountID || proof.ConsumerRuntimeMountID != proof.RuntimeMountID ||
+			proof.SourceGenerationID != request.admission.runtime.D09SourceEvidence.GenerationID ||
+			proof.SourceTreeDigest != request.admission.runtime.D09SourceEvidence.TreeDigest ||
+			proof.SourceManifestDigest != request.admission.runtime.D09SourceEvidence.ManifestDigest ||
+			proof.SourceBindingDigest != request.admission.runtime.D09SourceEvidence.SourceBindingDigest ||
+			proof.SourceProvenanceDigest != request.admission.runtime.D09SourceEvidence.ProvenanceDigest ||
+			proof.SourceIdentityDigest != request.admission.runtime.D09SourceEvidence.SourceIdentityDigest ||
+			proof.SourceStoreAuditHead != request.admission.runtime.D09SourceEvidence.StoreAuditHead ||
+			proof.SourceStoreAuditCount != request.admission.runtime.D09SourceEvidence.StoreAuditRecordCount ||
+			proof.SourceDevice != request.admission.runtime.D09SourceEvidence.SourceDevice ||
+			proof.SourceInode != request.admission.runtime.D09SourceEvidence.SourceInode ||
+			proof.SourceMountID != request.admission.runtime.D09SourceEvidence.SourceMountID {
+			_ = command.Process.Kill()
+			l.cleanupCell()
+			return nil, D09TCBProof{}, fmt.Errorf("%w: host source evidence and entrypoint consumer mount proof are not distinct and bound", ErrHostBindingsMissing)
+		}
 	}
 	if err := validateD09NamespaceProof(proof, config.HostNamespaces); err != nil {
 		_ = command.Process.Kill()
@@ -1976,12 +2045,15 @@ func validateD09TCBProof(proof D09TCBProof, config D09Config) error {
 		proof.LandlockRulesetDigest != config.LandlockRulesetDigest || !proof.CgroupV2 ||
 		proof.UserNamespaceMapDigest != config.UserNamespaceMappingDigest ||
 		VerifyD09InsideIDMaps(config.UserNamespaceMappingProfile, config.UserNamespaceMappingDigest,
-			config.CellUID, config.CellGID, []byte(proof.UIDMap), []byte(proof.GIDMap)) != nil ||
+			config.CellUID, config.CellGID, config.UserNamespaceHostUID, config.UserNamespaceHostGID,
+			[]byte(proof.UIDMap), []byte(proof.GIDMap)) != nil ||
 		proof.ContainerName == "" || proof.LeaderPID <= 0 || proof.ContainerLeaderPID != 1 ||
 		proof.ImageDigest != config.ExpectedImageDigest || proof.TemplateDigest != config.TemplateDigest ||
 		!strings.HasSuffix(proof.ImageRef, "@"+config.ExpectedImageDigest) ||
 		!proof.ConsumerMountsVerified || !proof.RawSourceFDsClosed ||
 		proof.WorkerMountID == 0 || proof.RuntimeMountID == 0 ||
+		(proof.ConsumerWorkerMountID != 0 && proof.ConsumerWorkerMountID != proof.WorkerMountID) ||
+		(proof.ConsumerRuntimeMountID != 0 && proof.ConsumerRuntimeMountID != proof.RuntimeMountID) ||
 		proof.WorkerDevice == 0 || proof.WorkerInode == 0 || proof.RuntimeDevice == 0 || proof.RuntimeInode == 0 {
 		return fmt.Errorf("%w: TCB proof does not match the registered template", ErrProductionLauncherUnavailable)
 	}
@@ -2003,7 +2075,10 @@ func validateD09NamespaceProof(proof D09TCBProof, host D09NamespaceInodes) error
 // profile and the verified sealed exposure. Shape checks are not authority: the
 // exposure evidence must be re-verified, the descriptor identities re-checked,
 // and every digest compared with the signed profile.
-func (l *D09PodmanCrunLauncher) validateD09LaunchRequest(request ExecutableLaunchRequest) (HostProfile, error) {
+func (l *D09PodmanCrunLauncher) validateD09LaunchRequest(ctx context.Context, request ExecutableLaunchRequest) (HostProfile, error) {
+	if ctx == nil {
+		return HostProfile{}, ErrHostBindingsMissing
+	}
 	if request.admission == nil || !request.admission.valid() || request.admission.profile.Mode != ModeProduction {
 		return HostProfile{}, ErrChildCapabilityMissing
 	}
@@ -2032,33 +2107,48 @@ func (l *D09PodmanCrunLauncher) validateD09LaunchRequest(request ExecutableLaunc
 		request.Args[1] != "/proc/self/fd/9/src/governed-pi-worker.ts" {
 		return HostProfile{}, ErrHostProfileMismatch
 	}
-	if request.WorkerExposureHandle == nil || runtime.WorkerExposureHandle == nil ||
-		!sameBinding(request.WorkerExposureHandle, runtime.WorkerExposureHandle) {
-		return HostProfile{}, fmt.Errorf("%w: D09 launch requires the capability-bound sealed exposure handle", ErrHostBindingsMissing)
-	}
-	if runtime.WorkerExposureEvidence.validateShape() != nil {
-		return HostProfile{}, fmt.Errorf("%w: sealed worker exposure evidence is incomplete", ErrHostBindingsMissing)
-	}
-	if err := runtime.WorkerExposure.VerifyWorkerExposure(context.Background(), runtime.WorkerExposureEvidence); err != nil {
-		return HostProfile{}, fmt.Errorf("reverify sealed worker exposure and D06 provenance: %w", err)
-	}
-	if err := validateWorkerExposureDescriptor(request.WorkerExposureHandle, runtime.WorkerExposureEvidence); err != nil {
-		return HostProfile{}, err
+	workerSourceHandle := request.WorkerExposureHandle
+	if runtime.D09Source != nil {
+		workerSourceHandle = request.D09SourceHandle
+		if request.WorkerExposureHandle != nil || runtime.WorkerExposureHandle != nil ||
+			!sameBinding(workerSourceHandle, runtime.D09SourceHandle) {
+			return HostProfile{}, fmt.Errorf("%w: D09 source staging handle is not the capability-bound fd4", ErrHostBindingsMissing)
+		}
+		if err := verifyD09HostRuntimeSources(ctx, runtime); err != nil {
+			return HostProfile{}, err
+		}
+	} else {
+		if workerSourceHandle == nil || runtime.WorkerExposureHandle == nil ||
+			!sameBinding(workerSourceHandle, runtime.WorkerExposureHandle) {
+			return HostProfile{}, fmt.Errorf("%w: D09 launch requires the capability-bound sealed consumer-view handle", ErrHostBindingsMissing)
+		}
+		if runtime.WorkerExposureEvidence.validateShape() != nil {
+			return HostProfile{}, fmt.Errorf("%w: sealed worker exposure evidence is incomplete", ErrHostBindingsMissing)
+		}
+		if err := runtime.WorkerExposure.VerifyWorkerExposure(context.Background(), runtime.WorkerExposureEvidence); err != nil {
+			return HostProfile{}, fmt.Errorf("reverify sealed worker exposure and D06 provenance: %w", err)
+		}
+		if err := validateWorkerExposureDescriptor(workerSourceHandle, runtime.WorkerExposureEvidence); err != nil {
+			return HostProfile{}, err
+		}
 	}
 	if request.PiRuntimeBundleHandle == nil || runtime.PiRuntimeBundleHandle == nil ||
 		!sameBinding(request.PiRuntimeBundleHandle, runtime.PiRuntimeBundleHandle) {
 		return HostProfile{}, fmt.Errorf("%w: D09 launch requires the capability-bound runtime bundle handle", ErrHostBindingsMissing)
 	}
-	if err := validateRuntimeAssetDescriptor(request.PiRuntimeBundleHandle, runtime.RuntimeAssetEvidence); err != nil {
-		return HostProfile{}, err
-	}
-	if err := runtime.WorkerRuntimeAssets.VerifyWorkerRuntimeAssets(context.Background(), runtime.RuntimeAssetEvidence); err != nil {
+	assetEvidence := runtime.RuntimeAssetEvidence
+	if runtime.D09Source != nil {
+		assetEvidence = runtime.D09RuntimeAssetEvidence
+	} else if err := runtime.WorkerRuntimeAssets.VerifyWorkerRuntimeAssets(context.Background(), assetEvidence); err != nil {
 		return HostProfile{}, fmt.Errorf("reverify runtime asset source: %w", err)
+	}
+	if err := validateRuntimeAssetDescriptor(request.PiRuntimeBundleHandle, assetEvidence); err != nil {
+		return HostProfile{}, err
 	}
 	if !sameInheritedDescriptors(request.Descriptors, runtime.Descriptors) {
 		return HostProfile{}, ErrHostBindingsMissing
 	}
-	if err := validatePiWorkerDescriptors(profile.DescriptorProfile, request.Descriptors, request.WorkerExposureHandle, request.PiRuntimeBundleHandle); err != nil {
+	if err := validatePiWorkerDescriptors(profile.DescriptorProfile, request.Descriptors, workerSourceHandle, request.PiRuntimeBundleHandle); err != nil {
 		return HostProfile{}, err
 	}
 	if DigestEnvironment(PiWorkerCellEnvironment()) != profile.ChildEnvironmentDigest {
@@ -2220,6 +2310,8 @@ func d09ContainerArgumentsAtWithEnv(config D09Config, name, imageRef string, env
 		"-e", "TBOUND_CELL_GID="+gid,
 		"-e", "TBOUND_USERNS_MAP_PROFILE="+config.UserNamespaceMappingProfile,
 		"-e", "TBOUND_USERNS_MAP_DIGEST="+config.UserNamespaceMappingDigest,
+		"-e", "TBOUND_USERNS_HOST_UID="+strconv.Itoa(config.UserNamespaceHostUID),
+		"-e", "TBOUND_USERNS_HOST_GID="+strconv.Itoa(config.UserNamespaceHostGID),
 		"-e", "TBOUND_LANDLOCK_ABI="+strconv.Itoa(config.LandlockABI),
 		"-e", "TBOUND_LANDLOCK_RULESET_DIGEST="+config.LandlockRulesetDigest,
 		"-e", "TBOUND_LANDLOCK_RO_PATH="+config.LandlockROPath,

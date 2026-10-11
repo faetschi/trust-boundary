@@ -166,17 +166,26 @@ func (v *LinuxHostProfileVerifier) verifyRuntime(ctx context.Context, profile Ho
 	if err := v.runtime.validate(profile); err != nil {
 		return err
 	}
-	if err := v.runtime.WorkerExposure.VerifyWorkerExposure(ctx, v.runtime.WorkerExposureEvidence); err != nil {
-		return fmt.Errorf("reverify sealed generation and D06 provenance: %w", err)
+	if profile.ContainmentProfile == D09ContainmentProfile && v.runtime.D09Source == nil {
+		return fmt.Errorf("%w: D09 production requires a Store-issued source-stage binding", ErrHostBindingsMissing)
 	}
-	if err := validateWorkerExposureDescriptor(v.runtime.WorkerExposureHandle, v.runtime.WorkerExposureEvidence); err != nil {
-		return err
-	}
-	if err := v.runtime.WorkerRuntimeAssets.VerifyWorkerRuntimeAssets(ctx, v.runtime.RuntimeAssetEvidence); err != nil {
-		return fmt.Errorf("reverify read-only runtime asset source: %w", err)
-	}
-	if err := validateRuntimeAssetDescriptor(v.runtime.PiRuntimeBundleHandle, v.runtime.RuntimeAssetEvidence); err != nil {
-		return err
+	if v.runtime.D09Source != nil {
+		if err := verifyD09HostRuntimeSources(ctx, v.runtime); err != nil {
+			return err
+		}
+	} else {
+		if err := v.runtime.WorkerExposure.VerifyWorkerExposure(ctx, v.runtime.WorkerExposureEvidence); err != nil {
+			return fmt.Errorf("reverify sealed generation and D06 provenance: %w", err)
+		}
+		if err := validateWorkerExposureDescriptor(v.runtime.WorkerExposureHandle, v.runtime.WorkerExposureEvidence); err != nil {
+			return err
+		}
+		if err := v.runtime.WorkerRuntimeAssets.VerifyWorkerRuntimeAssets(ctx, v.runtime.RuntimeAssetEvidence); err != nil {
+			return fmt.Errorf("reverify read-only runtime asset source: %w", err)
+		}
+		if err := validateRuntimeAssetDescriptor(v.runtime.PiRuntimeBundleHandle, v.runtime.RuntimeAssetEvidence); err != nil {
+			return err
+		}
 	}
 	var scope *LinuxCgroupScope
 	switch launcher := v.runtime.Launcher.(type) {
@@ -219,7 +228,7 @@ func (v *LinuxHostProfileVerifier) verifyRuntime(ctx context.Context, profile Ho
 	if err != nil || runtimeDigest != profile.PiRuntimeBundleDigest {
 		return errors.Join(ErrRuntimeBundleRefused, err)
 	}
-	if err := validatePiWorkerDescriptors(profile.DescriptorProfile, v.runtime.Descriptors, v.runtime.WorkerExposureHandle, v.runtime.PiRuntimeBundleHandle); err != nil {
+	if err := validatePiWorkerDescriptors(profile.DescriptorProfile, v.runtime.Descriptors, d09WorkerStagingHandle(v.runtime), v.runtime.PiRuntimeBundleHandle); err != nil {
 		return err
 	}
 	if scope == nil || !sameBinding(scope, v.runtime.Descendant) ||

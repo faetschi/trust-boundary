@@ -72,15 +72,24 @@ func (e *ProductionPrerequisiteError) Unwrap() error { return ErrProductionSeale
 // productionServeConfig is bound, plain CLI input. It carries no credential,
 // endpoint, model, verification key, or profile-directory trust hint.
 type productionServeConfig struct {
-	ProfilePath   string
-	Workspace     string
-	Source        string
-	TaskID        string
-	TaskRequestID string
-	TaskPrompt    string
+	ProfilePath         string
+	Workspace           string
+	Source              string
+	TaskID              string
+	TaskRequestID       string
+	TaskPrompt          string
+	ServiceMode         bool   // set only by the fixed socket-activated service entrypoint
+	ManagedLiveRootPath string // set only from A's verified signed registration in service mode
 }
 
 func (c productionServeConfig) validate() error {
+	if c.ServiceMode && (c.ProfilePath != "" || c.Workspace != "" || c.Source != "" ||
+		!filepath.IsAbs(c.ManagedLiveRootPath) || filepath.Clean(c.ManagedLiveRootPath) != c.ManagedLiveRootPath) {
+		return errors.New("internal Pi service mode refuses client-selected profile/source/workspace")
+	}
+	if !c.ServiceMode && c.ManagedLiveRootPath != "" {
+		return errors.New("managed live-root service path is internal and cannot be supplied by a client")
+	}
 	if strings.TrimSpace(c.ProfilePath) != "" && !filepath.IsAbs(c.ProfilePath) {
 		return errors.New("--native-host-profile must be an absolute protected path")
 	}
@@ -119,6 +128,7 @@ type productionPiSession struct {
 	D09Template piruntime.D09CellTemplate
 	Bindings    piruntime.HostRuntimeBindings
 	Channels    *piruntime.PiWorkerChannels
+	D09Channels *piruntime.D09PiWorkerChannels
 
 	Authority    *SessionOperationAuthority
 	Prepared     *sessionlaunch.PreparedSession
@@ -320,6 +330,15 @@ func productionMissingBindings() []string {
 }
 
 func requireProductionLaunchInputs(config productionServeConfig) error {
+	if config.ServiceMode {
+		if !filepath.IsAbs(config.ManagedLiveRootPath) || filepath.Clean(config.ManagedLiveRootPath) != config.ManagedLiveRootPath ||
+			!boundedProductionIdentity(config.TaskID, productionTaskIDMaxBytes) ||
+			!boundedProductionIdentity(config.TaskRequestID, productionRequestMaxBytes) ||
+			!boundedProductionPrompt(config.TaskPrompt) {
+			return errors.New("socket-activated production task lacks a bounded task id, request id, or prompt")
+		}
+		return nil
+	}
 	if strings.TrimSpace(config.Source) == "" || !filepath.IsAbs(config.Source) {
 		return errors.New("production launch requires an absolute --source protected read-only snapshot")
 	}
@@ -339,7 +358,8 @@ func requireProductionLaunchInputs(config productionServeConfig) error {
 // opaque production admission path, launches the admitted real Pi worker, and
 // drives the governed provider/supervisor loops to a settled disposition.
 func runComposedProductionPiSession(ctx context.Context, output io.Writer, config productionServeConfig, session *productionPiSession) (resultErr error) {
-	if session.Bindings.WorkerExposure == nil || session.Bindings.WorkerRuntimeAssets == nil || session.Channels == nil ||
+	if session.Bindings.D09Source == nil || session.Bindings.D09SourceCapability == nil ||
+		session.Bindings.D09RuntimeAssetSource == nil || session.D09Channels == nil || session.Channels == nil ||
 		session.Authority == nil || session.Store == nil || session.Generation == nil || session.LiveRoot == nil ||
 		session.ManagedLiveRootLease == nil {
 		return &ProductionPrerequisiteError{Missing: productionMissingBindings()}
@@ -353,6 +373,48 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	if err != nil {
 		return fmt.Errorf("admit production Pi host profile: %w", err)
 	}
+	durable, err := NewDurableExecutor(DurableExecutorConfig{
+		Store: session.Store, Tip: session.Generation, CallIssuer: session.CallIssuer,
+		PolicyDigest: session.StorePolicyDigest, MetadataPolicyDigest: session.MetadataPolicyDigest,
+		CommandRunner: session.CommandRunner,
+	})
+	if err != nil {
+		return fmt.Errorf("construct production durable executor: %w", err)
+	}
+	publicationRuntime, err := session.buildPublicationRuntime(durable)
+	if err != nil {
+		return fmt.Errorf("construct production publication runtime: %w", err)
+	}
+	session.Publication = publicationRuntime
+	previousClose := session.Close
+	session.Close = func() error {
+		if !productionCleanupSafe(session.Lifecycle.snapshot(), session.ProductionCommandRunner) {
+			// Do not release the publication live-root owner or any session/cgroup
+			// handles while a child, loop, or command scope may still be active.
+			return ErrProductionLifecycleUnsettled
+		}
+		lifecycle := session.Lifecycle.snapshot()
+		if !lifecycle.taskAdmitted && session.ManagedLiveRootLease != nil {
+			if err := session.ManagedLiveRootLease.abortBeforeTask(lifecycle, session.ProductionCommandRunner); err != nil {
+				return err
+			}
+		}
+		if session.ManagedLiveRootLease == nil || !session.ManagedLiveRootLease.canRelease() {
+			return ErrManagedLiveRootRetained
+		}
+		if err := session.Publication.Close(); err != nil {
+			return err
+		}
+		if previousClose != nil {
+			return previousClose()
+		}
+		return nil
+	}
+	releaseSessionAdmission, err := publicationRuntime.BeginSession(ctx)
+	if err != nil {
+		return fmt.Errorf("recover publication lifecycle and activate session admission before D09 launch: %w", err)
+	}
+	defer releaseSessionAdmission()
 
 	bootstrap := piruntime.PiWorkerBootstrap{
 		SessionID:      session.SessionID,
@@ -360,8 +422,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		ConversationID: session.ConversationID,
 	}
 	session.Lifecycle.markWorkerLaunchAttempted()
-	worker, err := piruntime.LaunchPiSDKWorker(ctx, capability, session.Bindings.WorkerExposure,
-		session.Bindings.WorkerRuntimeAssets, session.Channels, bootstrap)
+	worker, err := piruntime.LaunchD09PiSDKWorker(ctx, capability, session.D09Channels, bootstrap)
 	if err != nil {
 		return fmt.Errorf("launch admitted production Pi worker: %w", err)
 	}
@@ -416,55 +477,6 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		if ownedConversation != conversation {
 			return errors.New("offline test conversation is not bound to the production session authority")
 		}
-	}
-	durable, err := NewDurableExecutor(DurableExecutorConfig{
-		Store: session.Store, Tip: session.Generation, CallIssuer: session.CallIssuer,
-		PolicyDigest: session.StorePolicyDigest, MetadataPolicyDigest: session.MetadataPolicyDigest,
-		CommandRunner: session.CommandRunner,
-	})
-	if err != nil {
-		return fmt.Errorf("construct production durable executor: %w", err)
-	}
-	publicationRuntime, err := session.buildPublicationRuntime(durable)
-	if err != nil {
-		return fmt.Errorf("construct production publication runtime: %w", err)
-	}
-	session.Publication = publicationRuntime
-	previousClose := session.Close
-	session.Close = func() error {
-		if !productionCleanupSafe(session.Lifecycle.snapshot(), session.ProductionCommandRunner) {
-			// Do not release the publication live-root owner or any session/cgroup
-			// handles while a child, loop, or command scope may still be active.
-			return ErrProductionLifecycleUnsettled
-		}
-		lifecycle := session.Lifecycle.snapshot()
-		if !lifecycle.taskAdmitted && session.ManagedLiveRootLease != nil {
-			if err := session.ManagedLiveRootLease.abortBeforeTask(lifecycle, session.ProductionCommandRunner); err != nil {
-				return err
-			}
-		}
-		if session.ManagedLiveRootLease == nil || !session.ManagedLiveRootLease.canRelease() {
-			return ErrManagedLiveRootRetained
-		}
-		var publicationCloseErr error
-		if session.Publication != nil {
-			publicationCloseErr = session.Publication.Close()
-		}
-		if publicationCloseErr != nil {
-			return publicationCloseErr
-		}
-		if previousClose != nil {
-			return previousClose()
-		}
-		return publicationCloseErr
-	}
-	releaseSessionAdmission, err := publicationRuntime.BeginSession(ctx)
-	if err != nil {
-		return fmt.Errorf("recover publication lifecycle and activate session admission before Pi task: %w", err)
-	}
-	defer releaseSessionAdmission()
-	if err := session.ManagedLiveRootLease.completeAdmissionRecovery(ctx); err != nil {
-		return fmt.Errorf("reconcile prior managed-root owner epochs after RootLedger recovery and before Pi task: %w", err)
 	}
 	supervisor, err := NewGovernedSupervisor(session.Channels.IPCServer(), conversation, session.Authority,
 		session.Policy, durable)

@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -21,13 +22,159 @@ import (
 )
 
 const (
-	D09ManagedLiveRootRegistrationPath = "/etc/tbound/managed-live-root.json"
-	D09ManagedLiveRootSignaturePath    = "/etc/tbound/managed-live-root.ed25519"
-	D09ManagedLiveRootSchema           = "tbound-managed-live-root-registration/v1"
-	D09ManagedLiveRootWriterPolicy     = "managed-nonlogin-single-service-writer/v1"
-	d09ManagedLiveRootSignatureDomain  = "tbound-managed-live-root-registration/v1\x00"
-	d09ManagedLiveRootMaximumBytes     = 64 << 10
+	D09ManagedLiveRootRegistrationPath  = "/etc/tbound/managed-live-root.json"
+	D09ManagedLiveRootSignaturePath     = "/etc/tbound/managed-live-root.ed25519"
+	D09ManagedLiveRootSchema            = "tbound-managed-live-root-registration/v1"
+	D09ManagedLiveRootWriterPolicy      = "managed-nonlogin-single-service-writer/v1"
+	D09ManagedPiServiceSocketSchema     = "tbound-managed-pi-service-socket/v1"
+	D09ManagedPiServiceSocketMode       = "systemd-socket-activation-single-task/v1"
+	D09ManagedPiServiceConfigSchema     = "tbound-pi-service-config/v1"
+	D09ManagedPiServiceConfigPath       = "/etc/tbound/serve-pi-service.json"
+	D09ManagedPiServiceSocketPath       = "/run/tbound/serve-pi.sock"
+	D09ManagedPiSocketUnitPath          = "/etc/systemd/system/tbound-pi.socket"
+	D09ManagedPiServiceUnitPath         = "/etc/systemd/system/tbound-pi.service"
+	D09ManagedPiServiceCgroupPath       = "/system.slice/tbound-pi.service"
+	D09ManagedPiServiceName             = "tbound-pi"
+	D09ManagedPiServiceGroup            = "tbound-pi"
+	D09ManagedPiSocketGroup             = "tbound-pi-clients"
+	D09ManagedPiLiveRootPath            = "/var/lib/tbound/live"
+	D09ManagedPiLiveRootParentPath      = "/var/lib/tbound"
+	D09ManagedPiServiceSocketParentPath = "/run/tbound"
+	D09ManagedPiRuntimeDir              = "/run/tbound-pi"
+	D09ManagedPiPodmanHome              = "/var/lib/tbound/podman-home"
+	D09ManagedPiPodmanGraphroot         = "/var/lib/tbound/podman-storage/graphroot"
+	D09ManagedPiPodmanRunroot           = "/run/tbound-pi/podman-runroot"
+	D09ManagedPiPodmanConfigHome        = "/etc/tbound/podman-config"
+	D09ManagedPiPodmanDataHome          = "/var/lib/tbound/podman-home/data"
+	D09ManagedPiPodmanCacheHome         = "/run/tbound-pi/cache"
+	D09ManagedPiTempDir                 = "/run/tbound-pi/tmp"
+	D09ManagedPiContainersConfPath      = "/etc/tbound/podman-config/containers.conf"
+	D09ManagedPiStorageConfPath         = "/etc/tbound/podman-config/storage.conf"
+	D09ManagedPiXattrCalibrationPath    = "/etc/tbound/d09-xattr-enumeration-calibration.json"
+	D09ManagedPiXattrCalibrationSig     = "/etc/tbound/d09-xattr-enumeration-calibration.ed25519"
+	D09ManagedPiServiceConfigMaxBytes   = 16 << 10
+	d09ManagedLiveRootSignatureDomain   = "tbound-managed-live-root-registration/v1\x00"
+	d09ManagedLiveRootMaximumBytes      = 64 << 10
 )
+
+// D09ManagedPiServiceSocket is the fixed systemd activation policy for the
+// authenticated local CLI-to-service boundary. Socket and parent inode/mount
+// IDs are intentionally runtime measurements because /run is recreated at boot.
+type D09ManagedPiServiceSocket struct {
+	SchemaVersion           string `json:"schema_version"`
+	Mode                    string `json:"mode"`
+	SocketPath              string `json:"socket_path"`
+	SocketUnitPath          string `json:"socket_unit_path"`
+	SocketUnitDigest        string `json:"socket_unit_digest"`
+	ListenStream            string `json:"listen_stream"`
+	Accept                  string `json:"accept"`
+	ServiceUnit             string `json:"service_unit"`
+	SocketUser              string `json:"socket_user"`
+	SocketGroup             string `json:"socket_group"`
+	SocketUID               int    `json:"socket_uid"`
+	SocketGID               int    `json:"socket_gid"`
+	SocketMode              uint32 `json:"socket_mode"`
+	DirectoryMode           uint32 `json:"directory_mode"`
+	ParentPath              string `json:"parent_path"`
+	ParentUID               int    `json:"parent_uid"`
+	ParentGID               int    `json:"parent_gid"`
+	ParentMode              uint32 `json:"parent_mode"`
+	ParentFilesystemMagic   uint64 `json:"parent_filesystem_magic"`
+	ParentMountPolicy       string `json:"parent_mount_policy"`
+	AllowedClientUIDs       []int  `json:"allowed_client_uids"`
+	AllowedClientPrimaryGID int    `json:"allowed_client_primary_gid"`
+}
+
+func (s D09ManagedPiServiceSocket) Validate(serviceUID, serviceGID int) error {
+	if s.SchemaVersion != D09ManagedPiServiceSocketSchema || s.Mode != D09ManagedPiServiceSocketMode ||
+		s.SocketPath != D09ManagedPiServiceSocketPath || s.SocketUnitPath != D09ManagedPiSocketUnitPath ||
+		!validDigest(s.SocketUnitDigest) || s.ListenStream != D09ManagedPiServiceSocketPath || s.Accept != "no" ||
+		s.ServiceUnit != "tbound-pi.service" || s.SocketUser != "root" || s.SocketGroup != D09ManagedPiSocketGroup ||
+		s.SocketUID != 0 || s.SocketGID <= 0 || s.SocketGID == serviceGID || s.SocketMode != 0o660 || s.DirectoryMode != 0o755 ||
+		s.ParentPath != D09ManagedPiServiceSocketParentPath || s.ParentUID != 0 || s.ParentGID != 0 || s.ParentMode != 0o755 ||
+		s.ParentFilesystemMagic != 0x01021994 || s.ParentMountPolicy != "tmpfs-rw-nodev-nosuid/v1" ||
+		s.AllowedClientPrimaryGID < 0 || s.AllowedClientPrimaryGID == serviceGID || len(s.AllowedClientUIDs) == 0 {
+		return ErrD09ManagedLiveRootRefused
+	}
+	previous := -1
+	for _, uid := range s.AllowedClientUIDs {
+		if uid < 0 || uid == serviceUID || uid <= previous {
+			return fmt.Errorf("%w: allowed client UIDs must be sorted, unique and distinct from the service", ErrD09ManagedLiveRootRefused)
+		}
+		previous = uid
+	}
+	return nil
+}
+
+// D09ManagedPiServiceConfig is the complete fixed non-client service config.
+// It contains no task, project, source path, profile, environment, or credential
+// values. The registration pins the file digest and runtime verifies every path.
+type D09ManagedPiServiceConfig struct {
+	SchemaVersion        string `json:"schema_version"`
+	SourcePolicy         string `json:"source_policy"`
+	PodmanHome           string `json:"podman_home"`
+	PodmanGraphroot      string `json:"podman_graphroot"`
+	PodmanRunroot        string `json:"podman_runroot"`
+	XDGConfigHome        string `json:"xdg_config_home"`
+	XDGDataHome          string `json:"xdg_data_home"`
+	XDGCacheHome         string `json:"xdg_cache_home"`
+	XDGRuntimeDir        string `json:"xdg_runtime_dir"`
+	TmpDir               string `json:"tmp_dir"`
+	ContainersConfPath   string `json:"containers_conf_path"`
+	ContainersConfDigest string `json:"containers_conf_digest"`
+	StorageConfPath      string `json:"storage_conf_path"`
+	StorageConfDigest    string `json:"storage_conf_digest"`
+}
+
+func (c D09ManagedPiServiceConfig) Validate() error {
+	if c.SchemaVersion != D09ManagedPiServiceConfigSchema || c.SourcePolicy != "current-managed-live-root/v1" ||
+		c.PodmanHome != D09ManagedPiPodmanHome || c.PodmanGraphroot != D09ManagedPiPodmanGraphroot ||
+		c.PodmanRunroot != D09ManagedPiPodmanRunroot || c.XDGRuntimeDir != D09ManagedPiRuntimeDir ||
+		c.XDGConfigHome != D09ManagedPiPodmanConfigHome || c.XDGDataHome != D09ManagedPiPodmanDataHome ||
+		c.XDGCacheHome != D09ManagedPiPodmanCacheHome || c.TmpDir != D09ManagedPiTempDir ||
+		c.ContainersConfPath != D09ManagedPiContainersConfPath || !validDigest(c.ContainersConfDigest) ||
+		c.StorageConfPath != D09ManagedPiStorageConfPath || !validDigest(c.StorageConfDigest) {
+		return ErrD09ManagedLiveRootRefused
+	}
+	return nil
+}
+
+// D09ManagedLiveRootMeasurementOptions contains explicit client authorization
+// policy chosen by the host operator. It is never inferred from the invoking
+// user's UID/GID. The calibration digest must name a separately fixed-anchor-
+// signed artifact; a plain digest is not sufficient at load/verification time.
+type D09ManagedLiveRootMeasurementOptions struct {
+	AllowedClientUIDs                 []int
+	AllowedClientPrimaryGID           int
+	ManagedRootXattrCalibrationDigest string
+}
+
+func d09ManagedPiServiceWritablePaths() []string {
+	paths := []string{
+		"/var/lib/tbound/audit",
+		D09ManagedPiLiveRootPath,
+		"/var/lib/tbound/private-admin",
+		"/var/lib/tbound/publication-state",
+		"/var/lib/tbound/sessions",
+		D09ManagedPiPodmanHome,
+		D09ManagedPiPodmanGraphroot,
+		D09ManagedPiRuntimeDir,
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+func sameCanonicalStringList(got, expected []string) bool {
+	if len(got) != len(expected) {
+		return false
+	}
+	for index, item := range got {
+		if !canonicalAbsolutePath(item) || item != expected[index] || (index > 0 && got[index-1] >= item) {
+			return false
+		}
+	}
+	return true
+}
 
 var ErrD09ManagedLiveRootRefused = errors.New("managed D09 live-root registration or runtime identity is not admitted")
 
@@ -63,48 +210,58 @@ type D09ManagedLiveRootRegistration struct {
 	ParentGID                int    `json:"parent_gid"`
 	ParentMode               uint32 `json:"parent_mode"`
 
-	ServiceName        string `json:"service_name"`
-	ServiceGroup       string `json:"service_group"`
-	ServiceUID         int    `json:"service_uid"`
-	ServiceGID         int    `json:"service_gid"`
-	ServiceLoginShell  string `json:"service_login_shell"`
-	ServiceShellDigest string `json:"service_shell_digest"`
-	PasswdDigest       string `json:"passwd_digest"`
-	GroupDigest        string `json:"group_digest"`
-	NSSwitchDigest     string `json:"nsswitch_digest"`
-	ServiceUnitPath    string `json:"service_unit_path"`
-	ServiceUnitDigest  string `json:"service_unit_digest"`
-	MountUnitPath      string `json:"mount_unit_path"`
-	MountUnitDigest    string `json:"mount_unit_digest"`
-	RunnerPath         string `json:"runner_path"`
-	RunnerDigest       string `json:"runner_digest"`
-	ServiceCgroupPath  string `json:"service_cgroup_path"`
-	Digest             string `json:"digest"`
+	ServiceName                       string                    `json:"service_name"`
+	ServiceGroup                      string                    `json:"service_group"`
+	ServiceUID                        int                       `json:"service_uid"`
+	ServiceGID                        int                       `json:"service_gid"`
+	ServiceLoginShell                 string                    `json:"service_login_shell"`
+	ServiceShellDigest                string                    `json:"service_shell_digest"`
+	PasswdDigest                      string                    `json:"passwd_digest"`
+	GroupDigest                       string                    `json:"group_digest"`
+	NSSwitchDigest                    string                    `json:"nsswitch_digest"`
+	ServiceUnitPath                   string                    `json:"service_unit_path"`
+	ServiceUnitDigest                 string                    `json:"service_unit_digest"`
+	MountUnitPath                     string                    `json:"mount_unit_path"`
+	MountUnitDigest                   string                    `json:"mount_unit_digest"`
+	ServiceConfigPath                 string                    `json:"service_config_path"`
+	ServiceConfigDigest               string                    `json:"service_config_digest"`
+	ServiceWritablePaths              []string                  `json:"service_writable_paths"`
+	ServiceSocket                     D09ManagedPiServiceSocket `json:"service_socket"`
+	ManagedRootXattrCalibrationDigest string                    `json:"managed_root_xattr_calibration_digest"`
+	RunnerPath                        string                    `json:"runner_path"`
+	RunnerDigest                      string                    `json:"runner_digest"`
+	ServiceCgroupPath                 string                    `json:"service_cgroup_path"`
+	Digest                            string                    `json:"digest"`
 }
 
 func (r D09ManagedLiveRootRegistration) Validate() error {
 	if r.SchemaVersion != D09ManagedLiveRootSchema || r.WriterPolicy != D09ManagedLiveRootWriterPolicy ||
-		!canonicalAbsolutePath(r.RootPath) || !canonicalAbsolutePath(r.ParentPath) || filepath.Dir(r.RootPath) != r.ParentPath ||
+		r.RootPath != D09ManagedPiLiveRootPath || r.ParentPath != D09ManagedPiLiveRootParentPath ||
 		r.RootDevice == 0 || r.RootInode == 0 || r.RootFilesystemMagic == 0 || r.RootMountID == 0 ||
 		!validDigest(r.RootMountOptionsDigest) || r.RootUID <= 0 || r.RootGID <= 0 || r.RootMode != 0o700 ||
 		r.ParentDevice == 0 || r.ParentInode == 0 || r.ParentFilesystemMagic == 0 || r.ParentMountID == 0 ||
 		r.RootMountID == r.ParentMountID ||
 		!validDigest(r.ParentMountOptionsDigest) || r.ParentUID != 0 || r.ParentGID != 0 || r.ParentMode&0o022 != 0 ||
-		!validIdentity(r.ServiceName) || !validIdentity(r.ServiceGroup) || r.ServiceUID <= 0 || r.ServiceGID <= 0 ||
+		r.ServiceName != D09ManagedPiServiceName || r.ServiceGroup != D09ManagedPiServiceGroup || r.ServiceUID <= 0 || r.ServiceGID <= 0 ||
 		r.ServiceUID != r.RootUID || r.ServiceGID != r.RootGID || r.ServiceLoginShell != "/usr/sbin/nologin" ||
 		!validDigest(r.ServiceShellDigest) || !validDigest(r.PasswdDigest) || !validDigest(r.GroupDigest) || !validDigest(r.NSSwitchDigest) ||
-		!canonicalAbsolutePath(r.ServiceUnitPath) || !validDigest(r.ServiceUnitDigest) ||
-		!canonicalAbsolutePath(r.MountUnitPath) || !validDigest(r.MountUnitDigest) ||
+		r.ServiceUnitPath != D09ManagedPiServiceUnitPath || !validDigest(r.ServiceUnitDigest) ||
+		r.MountUnitPath != "/etc/systemd/system/var-lib-tbound-live.mount" || !validDigest(r.MountUnitDigest) ||
+		r.ServiceConfigPath != D09ManagedPiServiceConfigPath || !validDigest(r.ServiceConfigDigest) ||
+		!sameCanonicalStringList(r.ServiceWritablePaths, d09ManagedPiServiceWritablePaths()) ||
+		!validDigest(r.ManagedRootXattrCalibrationDigest) ||
 		!canonicalAbsolutePath(r.RunnerPath) || !validDigest(r.RunnerDigest) ||
-		!filepath.IsAbs(r.ServiceCgroupPath) || filepath.Clean(r.ServiceCgroupPath) != r.ServiceCgroupPath || !strings.HasPrefix(r.ServiceCgroupPath, "/system.slice/") ||
+		r.ServiceCgroupPath != D09ManagedPiServiceCgroupPath ||
 		!validDigest(r.Digest) {
 		return ErrD09ManagedLiveRootRefused
 	}
 	serviceBase := filepath.Base(r.ServiceUnitPath)
-	if serviceBase != r.ServiceName+".service" || r.ServiceCgroupPath != "/system.slice/"+serviceBase ||
-		!validSystemdUnitPath(r.ServiceUnitPath) || !validSystemdUnitPath(r.MountUnitPath) ||
+	if serviceBase != "tbound-pi.service" || !validSystemdUnitPath(r.ServiceUnitPath) || !validSystemdUnitPath(r.MountUnitPath) ||
 		filepath.Base(r.MountUnitPath) != systemdMountUnitName(r.RootPath)+".mount" {
 		return ErrD09ManagedLiveRootRefused
+	}
+	if err := r.ServiceSocket.Validate(r.ServiceUID, r.ServiceGID); err != nil {
+		return err
 	}
 	for _, filesystemMagic := range []uint64{r.RootFilesystemMagic, r.ParentFilesystemMagic} {
 		if !isD09ManagedLocalFilesystem(filesystemMagic) {
@@ -193,11 +350,25 @@ func SignD09ManagedLiveRootRegistration(registration D09ManagedLiveRootRegistrat
 // must be the exact system.slice unit path selected by the root administrator.
 func MeasureD09ManagedLiveRootRegistration(rootPath, serviceName, serviceGroup,
 	serviceUnitPath, mountUnitPath, runnerPath, serviceCgroupPath string) (D09ManagedLiveRootRegistration, error) {
+	return MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, serviceGroup,
+		serviceUnitPath, mountUnitPath, runnerPath, serviceCgroupPath, D09ManagedLiveRootMeasurementOptions{})
+}
+
+func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, serviceGroup,
+	serviceUnitPath, mountUnitPath, runnerPath, serviceCgroupPath string,
+	options D09ManagedLiveRootMeasurementOptions) (D09ManagedLiveRootRegistration, error) {
 	var registration D09ManagedLiveRootRegistration
 	if !canonicalAbsolutePath(rootPath) || !validIdentity(serviceName) || !validIdentity(serviceGroup) ||
 		!canonicalAbsolutePath(serviceUnitPath) || !canonicalAbsolutePath(mountUnitPath) ||
-		!canonicalAbsolutePath(runnerPath) || !canonicalAbsolutePath(serviceCgroupPath) {
+		!canonicalAbsolutePath(runnerPath) || !canonicalAbsolutePath(serviceCgroupPath) ||
+		!validDigest(options.ManagedRootXattrCalibrationDigest) || options.AllowedClientPrimaryGID <= 0 ||
+		len(options.AllowedClientUIDs) == 0 {
 		return registration, ErrD09ManagedLiveRootRefused
+	}
+	for index, uid := range options.AllowedClientUIDs {
+		if uid < 0 || (index > 0 && options.AllowedClientUIDs[index-1] >= uid) {
+			return registration, ErrD09ManagedLiveRootRefused
+		}
 	}
 	root, err := openAbsoluteDirectoryNoSymlinks(rootPath)
 	if err != nil {
@@ -273,6 +444,18 @@ func MeasureD09ManagedLiveRootRegistration(rootPath, serviceName, serviceGroup,
 	if !registeredLocalServiceAccount(passwd, accountPolicy) || !registeredLocalServiceGroup(groupFile, accountPolicy) {
 		return registration, errors.New("managed writer UID/GID is shared with an adjacent local account or group")
 	}
+	if options.AllowedClientPrimaryGID == serviceGID {
+		return registration, ErrD09ManagedLiveRootRefused
+	}
+	for _, uid := range options.AllowedClientUIDs {
+		if uid == serviceUID {
+			return registration, ErrD09ManagedLiveRootRefused
+		}
+	}
+	socketGID, ok := registeredLocalGroupGID(groupFile, D09ManagedPiSocketGroup)
+	if !ok || socketGID == serviceGID {
+		return registration, errors.New("managed Pi client socket group is missing or collides with writer group")
+	}
 	if _, err := measureManagedServiceCgroup(serviceCgroupPath, serviceUID); err != nil {
 		return registration, err
 	}
@@ -290,6 +473,45 @@ func MeasureD09ManagedLiveRootRegistration(rootPath, serviceName, serviceGroup,
 	}
 	mountUnitBytes, err := readRootOwnedConfigFile(mountUnitPath, 1<<20)
 	if err != nil {
+		return registration, err
+	}
+	socketUnitBytes, err := readRootOwnedConfigFile(D09ManagedPiSocketUnitPath, 1<<20)
+	if err != nil {
+		return registration, err
+	}
+	socketUnitDigest := DigestBytes(socketUnitBytes)
+	serviceConfigBytes, err := readRootOwnedConfigFile(D09ManagedPiServiceConfigPath, D09ManagedPiServiceConfigMaxBytes)
+	if err != nil {
+		return registration, err
+	}
+	serviceConfig, err := decodeD09ManagedPiServiceConfig(serviceConfigBytes)
+	if err != nil {
+		return registration, err
+	}
+	if err := verifyD09ManagedPiServiceConfigFiles(serviceConfig); err != nil {
+		return registration, err
+	}
+	serviceWritablePaths := d09ManagedPiServiceWritablePaths()
+	serviceSocket := D09ManagedPiServiceSocket{
+		SchemaVersion: D09ManagedPiServiceSocketSchema, Mode: D09ManagedPiServiceSocketMode,
+		SocketPath: D09ManagedPiServiceSocketPath, SocketUnitPath: D09ManagedPiSocketUnitPath,
+		SocketUnitDigest: socketUnitDigest, ListenStream: D09ManagedPiServiceSocketPath,
+		Accept: "no", ServiceUnit: filepath.Base(D09ManagedPiServiceUnitPath), SocketUser: "root",
+		SocketGroup: D09ManagedPiSocketGroup, SocketUID: 0, SocketGID: socketGID,
+		SocketMode: 0o660, DirectoryMode: 0o755,
+		ParentPath: D09ManagedPiServiceSocketParentPath, ParentUID: 0, ParentGID: 0,
+		ParentMode: 0o755, ParentFilesystemMagic: 0x01021994, ParentMountPolicy: "tmpfs-rw-nodev-nosuid/v1",
+		AllowedClientUIDs:       append([]int(nil), options.AllowedClientUIDs...),
+		AllowedClientPrimaryGID: options.AllowedClientPrimaryGID,
+	}
+	if err := verifyD09ManagedPiServiceSocketParent(); err != nil {
+		return registration, err
+	}
+	if err := validateD09ManagedPiServiceSocketUnit(socketUnitBytes, serviceSocket); err != nil {
+		return registration, err
+	}
+	if err := validateD09ManagedPiServiceUnit(serviceUnitBytes, serviceName, serviceGroup, runnerPath,
+		serviceConfig, serviceWritablePaths); err != nil {
 		return registration, err
 	}
 	if err := validateManagedSystemdPolicy(rootPath, serviceName, serviceGroup, runnerPath, uint64(rootFS.Type), serviceUnitBytes, mountUnitBytes); err != nil {
@@ -323,7 +545,10 @@ func MeasureD09ManagedLiveRootRegistration(rootPath, serviceName, serviceGroup,
 		PasswdDigest: DigestBytes(passwd), GroupDigest: DigestBytes(groupFile), NSSwitchDigest: DigestBytes(nsswitch),
 		ServiceUnitPath: serviceUnitPath, ServiceUnitDigest: serviceUnitDigest,
 		MountUnitPath: mountUnitPath, MountUnitDigest: mountUnitDigest,
-		RunnerPath: runnerPath, RunnerDigest: runnerDigest, ServiceCgroupPath: serviceCgroupPath,
+		ServiceConfigPath: D09ManagedPiServiceConfigPath, ServiceConfigDigest: DigestBytes(serviceConfigBytes),
+		ServiceWritablePaths: serviceWritablePaths, ServiceSocket: serviceSocket,
+		ManagedRootXattrCalibrationDigest: options.ManagedRootXattrCalibrationDigest,
+		RunnerPath:                        runnerPath, RunnerDigest: runnerDigest, ServiceCgroupPath: serviceCgroupPath,
 	}
 	message, err := D09ManagedLiveRootSigningBytes(registration)
 	if err != nil {
@@ -626,7 +851,7 @@ func (v *VerifiedD09ManagedLiveRoot) Revalidate(ctx context.Context, candidate *
 	if v.closed {
 		return ErrD09ManagedLiveRootRefused
 	}
-	currentRegistration, err := LoadD09ManagedLiveRootRegistration(ctx)
+	currentRegistration, err := LoadVerifiedD09ManagedLiveRootPolicy(ctx)
 	if err != nil || currentRegistration.Digest != v.registration.Digest {
 		return errors.Join(ErrD09ManagedLiveRootRefused, errors.New("protected managed-root registration/profile changed during the active epoch"), err)
 	}
@@ -639,6 +864,9 @@ func (v *VerifiedD09ManagedLiveRoot) Revalidate(ctx context.Context, candidate *
 	cgroup, err := measureManagedServiceCgroup(v.registration.ServiceCgroupPath, v.registration.ServiceUID)
 	if err != nil || cgroup != v.serviceCgroup {
 		return errors.Join(ErrD09ManagedLiveRootRefused, errors.New("managed service cgroup identity changed during the verified epoch"), err)
+	}
+	if err := verifyD09TemplateCgroupPath(ctx, v.registration, cgroup); err != nil {
+		return err
 	}
 	return nil
 }
@@ -676,7 +904,7 @@ func VerifyD09ManagedLiveRoot(ctx context.Context, candidate *os.File) (*Verifie
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	registration, err := LoadD09ManagedLiveRootRegistration(ctx)
+	registration, err := LoadVerifiedD09ManagedLiveRootPolicy(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -688,6 +916,9 @@ func VerifyD09ManagedLiveRoot(ctx context.Context, candidate *os.File) (*Verifie
 	}
 	serviceCgroup, err := measureManagedServiceCgroup(registration.ServiceCgroupPath, registration.ServiceUID)
 	if err != nil {
+		return nil, err
+	}
+	if err := verifyD09TemplateCgroupPath(ctx, registration, serviceCgroup); err != nil {
 		return nil, err
 	}
 	rootFD, err := syscall.Dup(int(candidate.Fd()))
@@ -704,10 +935,13 @@ func VerifyD09ManagedLiveRoot(ctx context.Context, candidate *os.File) (*Verifie
 	return &VerifiedD09ManagedLiveRoot{registration: registration, root: rootCopy, parent: parentCopy, serviceCgroup: serviceCgroup}, nil
 }
 
-// LoadD09ManagedLiveRootRegistration loads only the fixed /etc/tbound
-// registration and signature, and verifies them with the fixed profile public
-// key. An operator-supplied registration path/key cannot be its own trust root.
-func LoadD09ManagedLiveRootRegistration(ctx context.Context) (D09ManagedLiveRootRegistration, error) {
+// LoadVerifiedD09ManagedLiveRootPolicy verifies the public, fixed-anchor-signed
+// managed-root and local-service policy. It is safe for an unprivileged CLI
+// client: it does not inspect the caller's UID/GID, executable, supplementary
+// groups, or cgroup. Socket endpoint authentication is performed separately by
+// checking the registered socket path and the connected peer's SO_PEERCRED.
+// An operator-supplied registration path/key cannot be its own trust root.
+func LoadVerifiedD09ManagedLiveRootPolicy(ctx context.Context) (D09ManagedLiveRootRegistration, error) {
 	if ctx == nil {
 		return D09ManagedLiveRootRegistration{}, ErrD09ManagedLiveRootRefused
 	}
@@ -739,18 +973,131 @@ func LoadD09ManagedLiveRootRegistration(ctx context.Context) (D09ManagedLiveRoot
 	}
 	template, templateDigest, err := LoadD09CellTemplate(ctx)
 	if err != nil || template.ManagedLiveRootRegistrationDigest != registration.Digest ||
-		registration.ServiceUID != template.CellUID || registration.ServiceGID != template.CellGID ||
+		registration.ServiceUID == template.CellUID || registration.ServiceGID == template.CellGID ||
+		template.UserNamespaceMappingDigest != DigestD09UserNamespaceMapping(template.CellUID, template.CellGID,
+			registration.ServiceUID, registration.ServiceGID) ||
+		template.XattrScanUID != registration.ServiceUID || template.XattrScanGID != registration.ServiceGID ||
 		profile.Mode != ModeProduction || profile.ContainmentProfile != D09ContainmentProfile ||
 		profile.ContainmentProfileDigest != templateDigest {
 		return D09ManagedLiveRootRegistration{}, errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
-	serviceCgroup, err := measureManagedServiceCgroup(registration.ServiceCgroupPath, registration.ServiceUID)
-	if err != nil || (filepath.Clean(template.CgroupsPath) != serviceCgroup.hostPath &&
-		!strings.HasPrefix(filepath.Clean(template.CgroupsPath), serviceCgroup.hostPath+string(os.PathSeparator))) {
-		return D09ManagedLiveRootRegistration{}, errors.Join(ErrD09ManagedLiveRootRefused,
-			errors.New("registered Podman cgroup root must be under the delegated managed service cgroup"), err)
+	if err := verifyD09StaticPolicyFiles(ctx, registration, template); err != nil {
+		return D09ManagedLiveRootRegistration{}, err
 	}
 	return registration, nil
+}
+
+// LoadD09ManagedLiveRootRegistration is retained as a compatibility alias for
+// the static policy loader. It deliberately does not establish that the caller
+// is the managed service; use VerifyD09ManagedLiveRoot for that runtime check.
+func LoadD09ManagedLiveRootRegistration(ctx context.Context) (D09ManagedLiveRootRegistration, error) {
+	return LoadVerifiedD09ManagedLiveRootPolicy(ctx)
+}
+
+func verifyD09StaticPolicyFiles(ctx context.Context, reg D09ManagedLiveRootRegistration, template D09CellTemplate) error {
+	if ctx == nil || !template.registered {
+		return ErrD09ManagedLiveRootRefused
+	}
+	checks := []struct {
+		path    string
+		digest  string
+		maximum int64
+	}{
+		{reg.ServiceUnitPath, reg.ServiceUnitDigest, 1 << 20},
+		{reg.MountUnitPath, reg.MountUnitDigest, 1 << 20},
+		{D09ManagedPiSocketUnitPath, reg.ServiceSocket.SocketUnitDigest, 1 << 20},
+		{reg.ServiceConfigPath, reg.ServiceConfigDigest, D09ManagedPiServiceConfigMaxBytes},
+	}
+	for _, check := range checks {
+		data, err := readRootOwnedConfigFile(check.path, check.maximum)
+		if err != nil || DigestBytes(data) != check.digest {
+			return errors.Join(ErrD09ManagedLiveRootRefused,
+				fmt.Errorf("protected policy file digest differs from signed registration: %s", check.path), err)
+		}
+	}
+	serviceUnit, err := readRootOwnedConfigFile(reg.ServiceUnitPath, 1<<20)
+	if err != nil {
+		return err
+	}
+	mountUnit, err := readRootOwnedConfigFile(reg.MountUnitPath, 1<<20)
+	if err != nil {
+		return err
+	}
+	socketUnit, err := readRootOwnedConfigFile(reg.ServiceSocket.SocketUnitPath, 1<<20)
+	if err != nil {
+		return err
+	}
+	serviceConfigBytes, err := readRootOwnedConfigFile(reg.ServiceConfigPath, D09ManagedPiServiceConfigMaxBytes)
+	if err != nil {
+		return err
+	}
+	serviceConfig, err := decodeD09ManagedPiServiceConfig(serviceConfigBytes)
+	if err != nil {
+		return err
+	}
+	if err := verifyD09ManagedPiServiceConfigFiles(serviceConfig); err != nil {
+		return err
+	}
+	if err := validateD09ManagedPiServiceUnit(serviceUnit, reg.ServiceName, reg.ServiceGroup,
+		reg.RunnerPath, serviceConfig, reg.ServiceWritablePaths); err != nil {
+		return err
+	}
+	if err := validateD09ManagedPiServiceSocketUnit(socketUnit, reg.ServiceSocket); err != nil {
+		return err
+	}
+	if err := validateManagedSystemdPolicy(reg.RootPath, reg.ServiceName, reg.ServiceGroup,
+		reg.RunnerPath, reg.RootFilesystemMagic, serviceUnit, mountUnit); err != nil {
+		return err
+	}
+	if err := verifyNoSystemdDropIns(reg.ServiceUnitPath, reg.MountUnitPath, reg.ServiceSocket.SocketUnitPath); err != nil {
+		return err
+	}
+	passwd, err := readRootOwnedConfigFile("/etc/passwd", 8<<20)
+	if err != nil || DigestBytes(passwd) != reg.PasswdDigest || !registeredLocalServiceAccount(passwd, reg) {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	groupFile, err := readRootOwnedConfigFile("/etc/group", 8<<20)
+	if err != nil || DigestBytes(groupFile) != reg.GroupDigest || !registeredLocalServiceGroup(groupFile, reg) {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	socketGID, groupOK := registeredLocalGroupGID(groupFile, D09ManagedPiSocketGroup)
+	if !groupOK || socketGID != reg.ServiceSocket.SocketGID {
+		return ErrD09ManagedLiveRootRefused
+	}
+	nsswitch, err := readRootOwnedConfigFile("/etc/nsswitch.conf", 1<<20)
+	if err != nil || DigestBytes(nsswitch) != reg.NSSwitchDigest || !localFilesOnlyNSSwitch(nsswitch) {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	calibration, err := LoadVerifiedD09XattrEnumerationCalibration(ctx)
+	if err != nil || calibration.Digest != reg.ManagedRootXattrCalibrationDigest ||
+		calibration.SourceAccessProfile != D09XattrManagedRWSourceProfile ||
+		calibration.FilesystemMagic != reg.RootFilesystemMagic || calibration.MountOptionsDigest != reg.RootMountOptionsDigest ||
+		calibration.ScanUID != reg.ServiceUID || calibration.ScanGID != reg.ServiceGID ||
+		calibration.VisibilityProfileDigest != template.XattrVisibilityProfileDigest {
+		return errors.Join(ErrD09ManagedLiveRootRefused,
+			errors.New("managed RW-root xattr calibration differs from signed registration/template/scanner identity"), err)
+	}
+	return nil
+}
+
+// verifyD09TemplateCgroupPath is intentionally a service-mode check. Static
+// policy loading has no dependency on the caller's cgroup namespace; the
+// service verifier calls this after measuring the actual delegated cgroup.
+func verifyD09TemplateCgroupPath(ctx context.Context, registration D09ManagedLiveRootRegistration,
+	serviceCgroup managedServiceCgroupIdentity) error {
+	if ctx == nil {
+		return ErrD09ManagedLiveRootRefused
+	}
+	template, _, err := LoadD09CellTemplate(ctx)
+	if err != nil || (filepath.Clean(template.CgroupsPath) != serviceCgroup.hostPath &&
+		!strings.HasPrefix(filepath.Clean(template.CgroupsPath), serviceCgroup.hostPath+string(os.PathSeparator))) {
+		return errors.Join(ErrD09ManagedLiveRootRefused,
+			errors.New("registered Podman cgroup root must be under the delegated managed service cgroup"), err)
+	}
+	if template.ManagedLiveRootRegistrationDigest != registration.Digest {
+		return ErrD09ManagedLiveRootRefused
+	}
+	return nil
 }
 
 func verifyD09ManagedRootDescriptor(reg D09ManagedLiveRootRegistration, root *os.File) error {
@@ -819,6 +1166,12 @@ func verifyD09ManagedWriterProcess(reg D09ManagedLiveRootRegistration) error {
 	if os.Geteuid() != reg.ServiceUID || os.Getegid() != reg.ServiceGID {
 		return ErrD09ManagedLiveRootRefused
 	}
+	profile, capEff, noNewPrivs, initialUserNS, privilegeErr := measureXattrScannerPrivilege()
+	if privilegeErr != nil || profile != D09XattrScanPrivilegeProfile || capEff != d09EmptyCapabilitySet ||
+		!noNewPrivs || !initialUserNS {
+		return errors.Join(ErrD09ManagedLiveRootRefused,
+			errors.New("managed writer requires the measured non-root, no-capability, NoNewPrivs initial-userns profile"), privilegeErr)
+	}
 	groups, err := os.Getgroups()
 	if err != nil {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
@@ -843,6 +1196,9 @@ func verifyD09ManagedWriterProcess(reg D09ManagedLiveRootRegistration) error {
 	if !registeredLocalServiceAccount(passwd, reg) || !registeredLocalServiceGroup(groupFile, reg) {
 		return ErrD09ManagedLiveRootRefused
 	}
+	if err := verifyD09ManagedServiceWritablePaths(reg); err != nil {
+		return err
+	}
 	shellDigest, err := measureProtectedNonLoginShell(reg.ServiceLoginShell)
 	if err != nil || shellDigest != reg.ServiceShellDigest {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
@@ -861,6 +1217,9 @@ func verifyD09ManagedWriterProcess(reg D09ManagedLiveRootRegistration) error {
 	if err := verifyNoSystemdDropIns(filepath.Base(reg.ServiceUnitPath), filepath.Base(reg.MountUnitPath)); err != nil {
 		return err
 	}
+	if err := verifyD09ManagedServiceWritableDirectories(reg); err != nil {
+		return err
+	}
 	runnerPath, err := os.Readlink("/proc/self/exe")
 	if err != nil || filepath.Clean(strings.TrimSuffix(runnerPath, " (deleted)")) != reg.RunnerPath || strings.HasSuffix(runnerPath, " (deleted)") {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
@@ -875,6 +1234,28 @@ func verifyD09ManagedWriterProcess(reg D09ManagedLiveRootRegistration) error {
 	cgroupIdentity, err := measureManagedServiceCgroup(reg.ServiceCgroupPath, reg.ServiceUID)
 	if err != nil || cgroupIdentity.inode == 0 || cgroupIdentity.mountID == 0 {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	return nil
+}
+
+func verifyD09ManagedServiceWritableDirectories(reg D09ManagedLiveRootRegistration) error {
+	for _, path := range reg.ServiceWritablePaths {
+		directory, err := openAbsoluteDirectoryNoSymlinks(path)
+		if err != nil {
+			return errors.Join(ErrD09ManagedLiveRootRefused,
+				fmt.Errorf("registered service writable directory is missing or unsafe: %s", path), err)
+		}
+		info, statErr := directory.Stat()
+		stat, ok := (*syscall.Stat_t)(nil), false
+		if info != nil {
+			stat, ok = info.Sys().(*syscall.Stat_t)
+		}
+		_ = directory.Close()
+		if statErr != nil || !ok || !info.IsDir() || int(stat.Uid) != reg.ServiceUID ||
+			int(stat.Gid) != reg.ServiceGID || uint32(stat.Mode)&0o7777 != 0o700 {
+			return errors.Join(ErrD09ManagedLiveRootRefused,
+				fmt.Errorf("registered service writable directory owner/mode differs: %s", path), statErr)
+		}
 	}
 	return nil
 }
@@ -1005,11 +1386,17 @@ func containsExactPath(values []string, expected string) bool {
 	return false
 }
 
-func verifyNoSystemdDropIns(serviceUnit, mountUnit string) error {
-	if !filepath.IsAbs(serviceUnit) || !filepath.IsAbs(mountUnit) {
+func verifyNoSystemdDropIns(unitPaths ...string) error {
+	if len(unitPaths) == 0 {
 		return ErrD09ManagedLiveRootRefused
 	}
-	unitNames := []string{filepath.Base(serviceUnit), filepath.Base(mountUnit)}
+	unitNames := make([]string, 0, len(unitPaths))
+	for _, unitPath := range unitPaths {
+		if !validSystemdUnitPath(unitPath) {
+			return ErrD09ManagedLiveRootRefused
+		}
+		unitNames = append(unitNames, filepath.Base(unitPath))
+	}
 	unitRoots := []string{"/etc/systemd/system", "/run/systemd/system", "/usr/local/lib/systemd/system", "/usr/lib/systemd/system", "/lib/systemd/system"}
 	for _, root := range unitRoots {
 		for _, unit := range unitNames {
@@ -1224,6 +1611,252 @@ func registeredLocalServiceGroup(groupFile []byte, reg D09ManagedLiveRootRegistr
 		}
 	}
 	return foundPrimary
+}
+
+func verifyD09ManagedServiceWritablePaths(reg D09ManagedLiveRootRegistration) error {
+	for _, path := range reg.ServiceWritablePaths {
+		if path == reg.RootPath {
+			continue // the registered root descriptor is verified independently
+		}
+		directory, err := openAbsoluteDirectoryNoSymlinks(path)
+		if err != nil {
+			return errors.Join(ErrD09ManagedLiveRootRefused,
+				fmt.Errorf("open exact service writable directory %s", path), err)
+		}
+		info, statErr := directory.Stat()
+		stat, ok := (*syscall.Stat_t)(nil), false
+		if info != nil {
+			stat, ok = info.Sys().(*syscall.Stat_t)
+		}
+		_ = directory.Close()
+		if statErr != nil || !ok || !info.IsDir() || int(stat.Uid) != reg.ServiceUID ||
+			int(stat.Gid) != reg.ServiceGID || uint32(stat.Mode)&0o7777 != 0o700 {
+			return errors.Join(ErrD09ManagedLiveRootRefused,
+				fmt.Errorf("service writable directory %s must be service-owned mode 0700", path), statErr)
+		}
+	}
+	return nil
+}
+
+func registeredLocalGroupGID(groupFile []byte, name string) (int, bool) {
+	if !validIdentity(name) {
+		return 0, false
+	}
+	found := false
+	result := 0
+	var groups []struct {
+		name string
+		gid  int
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(groupFile)), "\n") {
+		fields := strings.Split(line, ":")
+		if len(fields) != 4 {
+			continue
+		}
+		gid, err := strconv.Atoi(fields[2])
+		if err != nil || gid <= 0 {
+			return 0, false
+		}
+		groups = append(groups, struct {
+			name string
+			gid  int
+		}{fields[0], gid})
+		if fields[0] == name {
+			if found {
+				return 0, false
+			}
+			found, result = true, gid
+		}
+	}
+	for _, group := range groups {
+		if found && group.name != name && group.gid == result {
+			return 0, false
+		}
+	}
+	return result, found
+}
+
+func decodeD09ManagedPiServiceConfig(encoded []byte) (D09ManagedPiServiceConfig, error) {
+	var config D09ManagedPiServiceConfig
+	if len(encoded) == 0 || len(encoded) > D09ManagedPiServiceConfigMaxBytes || protocol.ValidateStrictJSON(encoded) != nil {
+		return config, ErrD09ManagedLiveRootRefused
+	}
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&config); err != nil {
+		return D09ManagedPiServiceConfig{}, errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return D09ManagedPiServiceConfig{}, ErrD09ManagedLiveRootRefused
+	}
+	if err := config.Validate(); err != nil {
+		return D09ManagedPiServiceConfig{}, err
+	}
+	return config, nil
+}
+
+func verifyD09ManagedPiServiceConfigFiles(config D09ManagedPiServiceConfig) error {
+	if err := config.Validate(); err != nil {
+		return err
+	}
+	for _, item := range []struct {
+		path   string
+		digest string
+	}{{config.ContainersConfPath, config.ContainersConfDigest}, {config.StorageConfPath, config.StorageConfDigest}} {
+		data, err := readRootOwnedConfigFile(item.path, 1<<20)
+		if err != nil || DigestBytes(data) != item.digest {
+			return errors.Join(ErrD09ManagedLiveRootRefused,
+				fmt.Errorf("pinned Podman configuration digest differs at %s", item.path), err)
+		}
+	}
+	return nil
+}
+
+func validateD09ManagedPiServiceUnit(data []byte, serviceName, serviceGroup, runnerPath string,
+	config D09ManagedPiServiceConfig, writablePaths []string) error {
+	sections := parseSystemdUnit(data)
+	service := sections["Service"]
+	get := func(key string) (string, bool) { return oneUnitValue(sections, "Service", key) }
+	user, userOK := get("User")
+	group, groupOK := get("Group")
+	execStart, execOK := get("ExecStart")
+	killMode, killOK := get("KillMode")
+	umask, umaskOK := get("UMask")
+	nnp, nnpOK := get("NoNewPrivileges")
+	protectSystem, protectSystemOK := get("ProtectSystem")
+	protectHome, protectHomeOK := get("ProtectHome")
+	privateTmp, privateTmpOK := get("PrivateTmp")
+	delegate, delegateOK := get("Delegate")
+	runtimeDirectory, runtimeDirectoryOK := get("RuntimeDirectory")
+	runtimeDirectoryMode, runtimeDirectoryModeOK := get("RuntimeDirectoryMode")
+	stateDirectories, stateDirectoriesOK := get("StateDirectory")
+	stateDirectoryMode, stateDirectoryModeOK := get("StateDirectoryMode")
+	readWritePaths, readWritePathsOK := get("ReadWritePaths")
+	unsetEnvironment, unsetEnvironmentOK := get("UnsetEnvironment")
+	wantState := []string{"tbound/audit", "tbound/live", "tbound/podman-home", "tbound/podman-storage/graphroot",
+		"tbound/private-admin", "tbound/publication-state", "tbound/sessions"}
+	if !userOK || user != serviceName || !groupOK || group != serviceGroup || !execOK ||
+		!equalStrings(strings.Fields(execStart), []string{runnerPath, "serve", "--pi", "--service"}) ||
+		!killOK || killMode != "control-group" || !umaskOK || umask != "0077" ||
+		!nnpOK || !strings.EqualFold(nnp, "yes") || !protectSystemOK || protectSystem != "strict" ||
+		!protectHomeOK || !strings.EqualFold(protectHome, "yes") || !privateTmpOK || !strings.EqualFold(privateTmp, "yes") ||
+		!delegateOK || !strings.EqualFold(delegate, "yes") || !runtimeDirectoryOK || runtimeDirectory != "tbound-pi" ||
+		!runtimeDirectoryModeOK || runtimeDirectoryMode != "0700" || !stateDirectoriesOK ||
+		!equalSortedStringList(strings.Fields(stateDirectories), wantState) || !stateDirectoryModeOK || stateDirectoryMode != "0700" ||
+		!readWritePathsOK || !equalSortedStringList(strings.Fields(readWritePaths), writablePaths) ||
+		!unsetEnvironmentOK || !equalStrings(strings.Fields(unsetEnvironment), []string{"DBUS_SESSION_BUS_ADDRESS"}) {
+		return fmt.Errorf("%w: protected Pi service unit differs from the fixed UID, NNP, path, or cleanup contract", ErrD09ManagedLiveRootRefused)
+	}
+	wantEnvironment := map[string]string{
+		"HOME": config.PodmanHome, "USER": serviceName, "LOGNAME": serviceName,
+		"XDG_RUNTIME_DIR": config.XDGRuntimeDir, "XDG_CONFIG_HOME": config.XDGConfigHome,
+		"XDG_DATA_HOME": config.XDGDataHome, "XDG_CACHE_HOME": config.XDGCacheHome, "TMPDIR": config.TmpDir,
+		"CONTAINERS_CONF": config.ContainersConfPath, "CONTAINERS_STORAGE_CONF": config.StorageConfPath,
+		"LANG": "C", "LC_ALL": "C",
+	}
+	if !systemdEnvironmentEqual(service["Environment"], wantEnvironment) {
+		return fmt.Errorf("%w: protected Pi service environment differs from the fixed Podman profile", ErrD09ManagedLiveRootRefused)
+	}
+	for _, key := range []string{"EnvironmentFile", "SupplementaryGroups", "ExecStartPre", "ExecStartPost", "ExecCondition",
+		"ExecReload", "ExecStop", "ExecStopPost", "RootDirectory", "RootImage", "DynamicUser", "PAMName"} {
+		if len(service[key]) != 0 {
+			return fmt.Errorf("%w: protected Pi service contains disallowed %s", ErrD09ManagedLiveRootRefused, key)
+		}
+	}
+	return nil
+}
+
+func validateD09ManagedPiServiceSocketUnit(data []byte, socket D09ManagedPiServiceSocket) error {
+	sections := parseSystemdUnit(data)
+	get := func(key string) (string, bool) { return oneUnitValue(sections, "Socket", key) }
+	listen, listenOK := get("ListenStream")
+	accept, acceptOK := get("Accept")
+	service, serviceOK := get("Service")
+	user, userOK := get("SocketUser")
+	group, groupOK := get("SocketGroup")
+	mode, modeOK := get("SocketMode")
+	directoryMode, directoryModeOK := get("DirectoryMode")
+	fdName, fdNameOK := get("FileDescriptorName")
+	if !listenOK || listen != socket.SocketPath || !acceptOK || !strings.EqualFold(accept, "no") ||
+		!serviceOK || service != socket.ServiceUnit || !userOK || user != socket.SocketUser ||
+		!groupOK || group != socket.SocketGroup || !modeOK || mode != "0660" ||
+		!directoryModeOK || directoryMode != "0755" || !fdNameOK || fdName != "tbound-pi" ||
+		len(sections["Socket"]["ListenStream"]) != 1 {
+		return fmt.Errorf("%w: protected Pi socket unit differs from the fixed activation contract", ErrD09ManagedLiveRootRefused)
+	}
+	return nil
+}
+
+func equalSortedStringList(actual, expected []string) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	actual = append([]string(nil), actual...)
+	expected = append([]string(nil), expected...)
+	sort.Strings(actual)
+	sort.Strings(expected)
+	for i := range actual {
+		if actual[i] != expected[i] || (i > 0 && actual[i-1] == actual[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func systemdEnvironmentEqual(directives []string, expected map[string]string) bool {
+	actual := make(map[string]string)
+	for _, directive := range directives {
+		for _, assignment := range strings.Fields(directive) {
+			key, value, ok := strings.Cut(assignment, "=")
+			if !ok || key == "" || value == "" {
+				return false
+			}
+			if _, duplicate := actual[key]; duplicate {
+				return false
+			}
+			actual[key] = strings.Trim(value, `"'`)
+		}
+	}
+	if len(actual) != len(expected) {
+		return false
+	}
+	for key, value := range expected {
+		if actual[key] != value {
+			return false
+		}
+	}
+	return true
+}
+
+func verifyD09ManagedPiServiceSocketParent() error {
+	parent, err := openAbsoluteDirectoryNoSymlinks(D09ManagedPiServiceSocketParentPath)
+	if err != nil {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	defer parent.Close()
+	info, err := parent.Stat()
+	stat, ok := (*syscall.Stat_t)(nil), false
+	if info != nil {
+		stat, ok = info.Sys().(*syscall.Stat_t)
+	}
+	if err != nil || !ok || !info.IsDir() || stat.Uid != 0 || stat.Gid != 0 ||
+		uint32(stat.Mode)&0o7777 != 0o755 || stat.Mode&0o022 != 0 {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	var filesystem syscall.Statfs_t
+	if err := syscall.Fstatfs(int(parent.Fd()), &filesystem); err != nil || uint64(filesystem.Type) != 0x01021994 {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	mountID, err := descriptorMountID(parent.Fd())
+	if err != nil {
+		return err
+	}
+	options, readOnly, err := mountOptionsForID(mountID)
+	if err != nil || readOnly || !hasMountOption(options, "nodev") || !hasMountOption(options, "nosuid") {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	return nil
 }
 
 func readRootOwnedConfigFile(path string, maximum int64) ([]byte, error) {

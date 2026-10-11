@@ -60,6 +60,35 @@ type WorkerRuntimeAssetEvidence struct {
 	MountID                uint64
 }
 
+// D09WorkerSourceEvidence describes the Store-owned host source staged by the
+// trusted D09 launcher. It is deliberately not WorkerExposureEvidence: the
+// latter means an already-registered consumer view. SourceMountID identifies
+// the host source mount only; the entrypoint reports the distinct consumer
+// mount ID in D09TCBProof after installing and verifying its read-only bind.
+type D09WorkerSourceEvidence struct {
+	GenerationID          string
+	TreeDigest            string
+	ManifestDigest        string
+	SourceBindingDigest   string
+	ProvenanceDigest      string
+	StoreAuditHead        string
+	StoreAuditRecordCount uint64
+	SourceIdentityDigest  string
+	SourceDevice          uint64
+	SourceInode           uint64
+	SourceMountID         uint64
+}
+
+func (e D09WorkerSourceEvidence) validateShape() error {
+	if !validIdentity(e.GenerationID) || !validDigest(e.TreeDigest) || !validDigest(e.ManifestDigest) ||
+		!validDigest(e.SourceBindingDigest) || !validDigest(e.ProvenanceDigest) || !validDigest(e.StoreAuditHead) ||
+		!validDigest(e.SourceIdentityDigest) || e.StoreAuditRecordCount == 0 || e.SourceDevice == 0 ||
+		e.SourceInode == 0 || e.SourceMountID == 0 {
+		return errors.New("D09 sealed source evidence is incomplete")
+	}
+	return nil
+}
+
 // VerifiedWorkerRuntimeAssets is implemented by the trusted runtime-bundle
 // owner. The D09 launcher must reopen this source inside its controlled
 // namespace and independently verify the consumer-side read-only mount before
@@ -145,7 +174,7 @@ func validatePiWorkerDescriptors(profile string, descriptors []InheritedDescript
 			if err != nil {
 				return fmt.Errorf("stat Pi worker descriptor role %q: %w", previous.Role, err)
 			}
-			if os.SameFile(left, right) {
+			if sameDescriptorKernelObject(left, right) {
 				return fmt.Errorf("Pi worker descriptor roles %q and %q refer to the same kernel object", previous.Role, descriptor.Role)
 			}
 		}

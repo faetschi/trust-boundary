@@ -126,22 +126,31 @@ type HostRuntimeBindings struct {
 	WorkerExposureHandle   *os.File
 	WorkerExposure         VerifiedWorkerExposure
 	WorkerExposureEvidence WorkerExposureEvidence
-	PiRuntimeBundleRoot    string
-	PiRuntimeBundleDigest  string
-	PiRuntimeBundleHandle  *os.File
-	WorkerRuntimeAssets    VerifiedWorkerRuntimeAssets
-	RuntimeAssetEvidence   WorkerRuntimeAssetEvidence
-	StdinProfile           string
-	ChildEnvironment       string
-	IPCProfile             string
-	TerminalProfile        string
-	ContainmentProfile     string
-	SettlementProfile      string
-	ObservationProfile     string
-	DescriptorProfile      string
-	SourceProvenance       string
-	OfflineVerifier        string
-	ProviderProfile        string
+	// D09 source staging is intentionally separate from the generic consumer
+	// exposure interface. The concrete Linux composition asserts these opaque
+	// fields to the sessionrepo capability and D09-only source interfaces.
+	D09Source               any
+	D09SourceCapability     any
+	D09SourceEvidence       D09WorkerSourceEvidence
+	D09SourceHandle         *os.File
+	PiRuntimeBundleRoot     string
+	PiRuntimeBundleDigest   string
+	PiRuntimeBundleHandle   *os.File
+	WorkerRuntimeAssets     VerifiedWorkerRuntimeAssets
+	RuntimeAssetEvidence    WorkerRuntimeAssetEvidence
+	D09RuntimeAssetSource   any
+	D09RuntimeAssetEvidence WorkerRuntimeAssetEvidence
+	StdinProfile            string
+	ChildEnvironment        string
+	IPCProfile              string
+	TerminalProfile         string
+	ContainmentProfile      string
+	SettlementProfile       string
+	ObservationProfile      string
+	DescriptorProfile       string
+	SourceProvenance        string
+	OfflineVerifier         string
+	ProviderProfile         string
 
 	Launcher    ExecutableLauncher
 	Descendant  DescendantSettler
@@ -158,15 +167,34 @@ func (b HostRuntimeBindings) validate(profile HostProfile) error {
 		DigestArguments(b.Arguments) != profile.ChildArgumentsDigest {
 		return fmt.Errorf("%w: executable, Node version, argv, or argument digest differs from signed profile", ErrHostBindingsMissing)
 	}
-	if b.WorkingDirectory != profile.WorkingDirectory || b.WorkerExposureHandle == nil ||
-		DigestBytes([]byte(b.WorkingDirectory)) != profile.WorkingDirectoryDigest ||
-		isNilBinding(b.WorkerExposure) || b.WorkerExposureEvidence.validateShape() != nil {
-		return fmt.Errorf("%w: namespace CWD or verified sealed worker exposure differs from signed profile", ErrHostBindingsMissing)
+	workerSourceHandle := b.WorkerExposureHandle
+	if b.D09Source != nil {
+		workerSourceHandle = b.D09SourceHandle
+	}
+	if b.WorkingDirectory != profile.WorkingDirectory || workerSourceHandle == nil ||
+		DigestBytes([]byte(b.WorkingDirectory)) != profile.WorkingDirectoryDigest {
+		return fmt.Errorf("%w: namespace CWD or worker source handle differs from signed profile", ErrHostBindingsMissing)
+	}
+	if b.D09Source != nil || b.D09SourceCapability != nil || b.D09SourceEvidence != (D09WorkerSourceEvidence{}) ||
+		b.D09SourceHandle != nil || b.D09RuntimeAssetSource != nil {
+		if isNilBinding(b.D09Source) || isNilBinding(b.D09SourceCapability) ||
+			b.D09SourceHandle == nil || b.D09SourceEvidence.validateShape() != nil || isNilBinding(b.D09RuntimeAssetSource) ||
+			b.WorkerExposureHandle != nil || b.WorkerExposure != nil || b.WorkerExposureEvidence != (WorkerExposureEvidence{}) ||
+			b.WorkerRuntimeAssets != nil || b.RuntimeAssetEvidence != (WorkerRuntimeAssetEvidence{}) ||
+			b.D09RuntimeAssetEvidence.validateShape() != nil {
+			return fmt.Errorf("%w: D09 source-stage binding is incomplete or aliases consumer-view semantics", ErrHostBindingsMissing)
+		}
+		if b.D09RuntimeAssetEvidence.BundleDigest != profile.PiRuntimeBundleDigest ||
+			b.D09RuntimeAssetEvidence.NamespaceProfileDigest != profile.ContainmentProfileDigest {
+			return fmt.Errorf("%w: D09 runtime source evidence differs from signed profile", ErrHostBindingsMissing)
+		}
+	} else if isNilBinding(b.WorkerExposure) || b.WorkerExposureEvidence.validateShape() != nil {
+		return fmt.Errorf("%w: verified sealed worker consumer exposure differs from signed profile", ErrHostBindingsMissing)
 	}
 	if b.PiRuntimeBundleRoot != profile.PiRuntimeBundleRoot || b.PiRuntimeBundleDigest != profile.PiRuntimeBundleDigest ||
-		b.PiRuntimeBundleHandle == nil || isNilBinding(b.WorkerRuntimeAssets) || b.RuntimeAssetEvidence.validateShape() != nil ||
-		b.RuntimeAssetEvidence.BundleDigest != profile.PiRuntimeBundleDigest ||
-		b.RuntimeAssetEvidence.NamespaceProfileDigest != profile.ContainmentProfileDigest {
+		b.PiRuntimeBundleHandle == nil || (b.D09Source == nil && (isNilBinding(b.WorkerRuntimeAssets) ||
+		b.RuntimeAssetEvidence.validateShape() != nil || b.RuntimeAssetEvidence.BundleDigest != profile.PiRuntimeBundleDigest ||
+		b.RuntimeAssetEvidence.NamespaceProfileDigest != profile.ContainmentProfileDigest)) {
 		return fmt.Errorf("%w: read-only namespace runtime asset evidence differs from signed profile", ErrHostBindingsMissing)
 	}
 	if b.StdinProfile != profile.StdinProfile || isNilBinding(b.Stdin) ||
@@ -183,10 +211,10 @@ func (b HostRuntimeBindings) validate(profile HostProfile) error {
 	if isNilBinding(b.Launcher) || isNilBinding(b.Descendant) || isNilBinding(b.Terminal) || isNilBinding(b.Observation) {
 		return fmt.Errorf("%w: launcher, settlement, terminal, or observation binding is absent", ErrHostBindingsMissing)
 	}
-	if err := validatePiWorkerDescriptors(b.DescriptorProfile, b.Descriptors, b.WorkerExposureHandle, b.PiRuntimeBundleHandle); err != nil {
+	if err := validatePiWorkerDescriptors(b.DescriptorProfile, b.Descriptors, workerSourceHandle, b.PiRuntimeBundleHandle); err != nil {
 		return fmt.Errorf("%w: %v", ErrHostBindingsMissing, err)
 	}
-	workingDirectoryInfo, err := b.WorkerExposureHandle.Stat()
+	workingDirectoryInfo, err := workerSourceHandle.Stat()
 	if err != nil || !workingDirectoryInfo.IsDir() {
 		return ErrHostBindingsMissing
 	}

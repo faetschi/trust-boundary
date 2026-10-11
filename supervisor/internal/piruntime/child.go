@@ -83,6 +83,7 @@ type ExecutableLaunchRequest struct {
 	Args                    []string
 	Dir                     string
 	WorkerExposureHandle    *os.File
+	D09SourceHandle         *os.File
 	Env                     []string
 	Stdin                   io.Reader
 	Stdout                  io.Writer
@@ -246,6 +247,7 @@ func (c *AdmissionCapability) BindChild(spec ChildSpec, launcher ExecutableLaunc
 		executable: spec.Executable, executableDigest: c.profile.ExecutableDigest,
 		args: append([]string(nil), c.runtime.Arguments...), dir: c.runtime.WorkingDirectory,
 		workerExposureHandle: c.runtime.WorkerExposureHandle,
+		d09SourceHandle:      c.runtime.D09SourceHandle,
 		env:                  append([]string{}, c.runtime.Environment...), stdin: spec.Stdin, mode: spec.Mode,
 		tuiOutput: spec.TUIOutput, observation: spec.Observation,
 		observationMax: spec.ObservationMax, profileDigest: c.profile.Digest,
@@ -305,6 +307,7 @@ type boundChild struct {
 	args                 []string
 	dir                  string
 	workerExposureHandle *os.File
+	d09SourceHandle      *os.File
 	env                  []string
 	stdin                io.Reader
 	mode                 IOMode
@@ -370,9 +373,16 @@ func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
 	}
 	runtime := bound.admission.runtime
 	profile := bound.admission.profile
+	workerHandlesMatch := sameBinding(bound.workerExposureHandle, runtime.WorkerExposureHandle)
+	if runtime.D09Source != nil {
+		workerHandlesMatch = bound.workerExposureHandle == nil && runtime.WorkerExposureHandle == nil &&
+			sameBinding(bound.d09SourceHandle, runtime.D09SourceHandle)
+	} else {
+		workerHandlesMatch = workerHandlesMatch && bound.d09SourceHandle == nil && runtime.D09SourceHandle == nil
+	}
 	if err := runtime.validate(profile); err != nil || bound.executable != profile.ChildExecutable ||
 		bound.executableDigest != profile.ExecutableDigest || !equalStrings(bound.args, runtime.Arguments) ||
-		bound.dir != runtime.WorkingDirectory || !sameBinding(bound.workerExposureHandle, runtime.WorkerExposureHandle) ||
+		bound.dir != runtime.WorkingDirectory || !workerHandlesMatch ||
 		!sameBinding(bound.stdin, runtime.Stdin) ||
 		!equalStrings(bound.env, runtime.Environment) || DigestEnvironment(bound.env) != profile.ChildEnvironmentDigest ||
 		(bound.mode == IOModeNativeTUI && !sameBinding(bound.tuiOutput, runtime.Terminal)) ||
@@ -390,8 +400,9 @@ func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
 	cmd, err := bound.launcher.StartVerified(ctx, ExecutableLaunchRequest{
 		Path: bound.executable, Digest: bound.executableDigest, NodeVersion: profile.NodeVersion,
 		Args: append([]string(nil), bound.args...), Dir: bound.dir, WorkerExposureHandle: bound.workerExposureHandle,
-		Env:   append([]string{}, bound.env...),
-		Stdin: bound.stdin, Stdout: stdout, Stderr: stderr, ProfileDigest: bound.profileDigest,
+		D09SourceHandle: bound.d09SourceHandle,
+		Env:             append([]string{}, bound.env...),
+		Stdin:           bound.stdin, Stdout: stdout, Stderr: stderr, ProfileDigest: bound.profileDigest,
 		ArgumentsDigest: profile.ChildArgumentsDigest, EnvironmentDigest: profile.ChildEnvironmentDigest,
 		WorkingDirectoryDigest: profile.WorkingDirectoryDigest, StdinDigest: profile.StdinDigest,
 		StdinProfile: profile.StdinProfile, ContainmentProfile: profile.ContainmentProfile,

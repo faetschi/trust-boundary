@@ -3,11 +3,13 @@
 package sessionlaunch
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,327 +18,360 @@ import (
 	"github.com/gowebpki/jcs"
 
 	"tbound/supervisor/internal/audit"
-	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/sessionrepo"
 )
 
-// ErrWorkerExposureContract is the fail-closed sentinel for the concrete
-// sealed-exposure adapter. It is returned when the registered read-only view
-// cannot be established (for example because the Store has no exposure binder),
-// when the durable D06 provenance/journal no longer anchors the selected
-// generation, or when a supplied evidence record does not match this session.
-// Callers must not substitute a fixture, a caller-built descriptor, or a
-// caller-provided boolean for a successful verification.
-var ErrWorkerExposureContract = errors.New("sealed worker exposure contract is unavailable or unverified")
+// ErrD09ExposureSource is returned when a prepared session cannot issue or
+// revalidate a D09-only sealed SOURCE capability. It does not mean that a
+// consumer-side read-only mount has been established; only the trusted D09
+// Podman/crun launcher and in-cell entrypoint can prove that second phase.
+var ErrD09ExposureSource = errors.New("verified D09 sealed source is unavailable or unverified")
 
-// SealedWorkerExposure is the sessionlaunch-owned implementation of
-// piruntime.VerifiedWorkerExposure for exactly one PreparedSession's registered
-// read-only sealed generation view.
+// VerifiedD09ExposureSource is the sessionlaunch wrapper over the concrete
+// sessionrepo-issued source capability. It binds that exact Store generation
+// source to the durable D06 source-binding/private-Git provenance and retains
+// the PreparedSession/private-Git owner for revalidation.
 //
-// It is the D06-safe replacement for handing a worker the private Git admin
-// root or the Store root: Export returns a fresh O_PATH descriptor for the
-// registered exposure view and Verify re-proves the durable D06
-// binding/provenance journal, the current-generation selection, and the exact
-// descriptor identity before the launcher may bind child FD 4. Repository.Root,
-// AdminParent.root, and the Store generations/admin directories are never
-// exported.
-type SealedWorkerExposure struct {
+// The exported descriptor is SOURCE material for trusted D09 staging only. Its
+// fstat/fdinfo fields identify the host source; they are deliberately not a
+// claim about a read-only consumer mount. A must bind it read-only into the
+// actual container namespace, verify the consumer inode/dev/mount/readonly
+// state, replace and close the raw source FD before starting Node, and admit no
+// worker/prompt if its independent consumer proof is missing or mismatched.
+//
+// This type is opaque: fields are package-private and it can only be produced
+// from a live PreparedSession. It deliberately does not implement
+// piruntime.VerifiedWorkerExposure, whose semantics require an already-verified
+// consumer read-only view. A consumes the source-specific D09 methods below.
+type VerifiedD09ExposureSource struct {
 	mu         sync.Mutex
-	session    *PreparedSession
-	view       *WorkerView
-	generation *sessionrepo.Generation
-
-	// Captured once at construction from the live PreparedSession so Verify does
-	// not read mutable PreparedSession fields without its lock.
+	owner      *PreparedSession
 	store      *sessionrepo.Store
 	journal    *audit.Journal
+	generation *sessionrepo.Generation
+	git        *privategit.Repository
 	profile    SourceProfile
 	provenance Provenance
-
-	identity exposureIdentity
-	closed   bool
+	capability *sessionrepo.VerifiedSealedSource
+	source     sessionrepo.SealedSourceEvidence
+	exported   bool
+	closed     bool
 }
 
-// SealedWorkerExposure must satisfy the launcher-owned descriptor interface
-// exactly; this is the D06-safe binding the composition root passes as the
-// worker exposure capability.
-var _ piruntime.VerifiedWorkerExposure = (*SealedWorkerExposure)(nil)
-
-// exposureIdentity is the immutable generation/binding identity of one sealed
-// exposure. Device/Inode/MountID are intentionally excluded: they are re-read
-// from the descriptor being exported or verified.
-type exposureIdentity struct {
-	generationID string
-	// sourceTreeDigest is the delta tree-digest string used for internal
-	// generation/provenance comparisons. treeDigest is the plain sha256
-	// commitment emitted in WorkerExposureEvidence, whose shape validator
-	// requires a "sha256:" digest.
-	sourceTreeDigest string
-	treeDigest       string
-	manifestDigest   string
-	bindingDigest    string
-	provenanceDigest string
-	viewIdentity     string
-}
-
-// OpenSealedWorkerExposure is the only supported worker-exposure constructor
-// for a prepared D06 session. It re-runs ExposeReadOnly, which re-verifies the
-// sessionrepo chain/bundle, the durable sessionlaunch_source_binding and
-// sessionlaunch_private_git_ready journal records, the private Git boundary,
-// and that the requested generation is the durable current selection, before a
-// registered read-only view is created. It then computes the exact evidence a
-// launcher must re-verify.
-//
-// A Store without a registered sessionrepo.Binder fails closed with an error
-// wrapping sessionrepo.ErrExposureBinderUnavailable; the adapter cannot and
-// does not fabricate a read-only view.
-func (p *PreparedSession) OpenSealedWorkerExposure(generation *sessionrepo.Generation) (*SealedWorkerExposure, error) {
-	if p == nil || generation == nil {
-		return nil, ErrWorkerExposureContract
+// OpenVerifiedD09ExposureSource is the production source-capability constructor.
+// The generation argument is not a path or an authority assertion: it must be
+// the exact retained Generation object at the PreparedSession Store's currently
+// verified tip. The method re-verifies the Store chain/bundle, complete selected
+// manifest/tree, exact journal bytes, D06 source-binding/private-Git-ready
+// records, private-Git provenance and private admin tree before asking the Store
+// to issue its opaque O_PATH source capability. No Binder or host mount syscall
+// is used.
+func (p *PreparedSession) OpenVerifiedD09ExposureSource(ctx context.Context,
+	generation *sessionrepo.Generation) (*VerifiedD09ExposureSource, error) {
+	if p == nil || ctx == nil || generation == nil {
+		return nil, ErrD09ExposureSource
 	}
-	view, err := p.ExposeReadOnly(generation, sessionrepo.ViewRecreated)
+	anchors, err := p.verifyD06SourceForGeneration(ctx, generation, true)
 	if err != nil {
-		return nil, errors.Join(ErrWorkerExposureContract, err)
-	}
-	store, journal, profile, provenance, err := p.workerExposureAnchors()
-	if err != nil {
-		_ = view.Close()
 		return nil, err
 	}
-	exposure := &SealedWorkerExposure{
-		session: p, view: view, generation: generation,
-		store: store, journal: journal, profile: profile, provenance: provenance,
-	}
-	identity, err := exposure.computeIdentity()
+	capability, err := generation.ExportSealedSource(ctx)
 	if err != nil {
-		_ = view.Close()
-		return nil, errors.Join(ErrWorkerExposureContract, err)
+		return nil, fmt.Errorf("issue Store-bound sealed source capability: %w", err)
 	}
-	exposure.identity = identity
-	return exposure, nil
-}
-
-// workerExposureAnchors captures the immutable anchors of a live prepared
-// session under its lock. It refuses a closing/closed session.
-func (p *PreparedSession) workerExposureAnchors() (*sessionrepo.Store, *audit.Journal, SourceProfile, Provenance, error) {
+	closeCapability := true
+	defer func() {
+		if closeCapability {
+			_ = capability.Close()
+		}
+	}()
+	sourceEvidence, err := capability.Evidence()
+	if err != nil {
+		return nil, errors.Join(ErrD09ExposureSource, err)
+	}
+	if !capability.IsForGeneration(anchors.store, generation) {
+		return nil, ErrD09ExposureSource
+	}
+	provenanceDigest, err := canonicalDigest(anchors.provenance)
+	if err != nil || sourceEvidence.GenerationID != generation.ID() ||
+		sourceEvidence.SourceBindingDigest != anchors.provenance.BindingDigest ||
+		sourceEvidence.ProvenanceDigest != provenanceDigest ||
+		sourceEvidence.TreeDigest != DigestBytes([]byte(generation.TreeDigest())) {
+		return nil, errors.Join(ErrD09ExposureSource, err)
+	}
+	// Recheck the private Git/source owner after capability issuance so a stale or
+	// concurrently-closing PreparedSession cannot return a partially bound cap.
+	if _, err := p.verifyD06SourceForGeneration(ctx, generation, true); err != nil {
+		return nil, err
+	}
+	if err := capability.Revalidate(ctx, sourceEvidence); err != nil {
+		return nil, errors.Join(ErrD09ExposureSource, err)
+	}
+	source := &VerifiedD09ExposureSource{
+		owner: p, store: anchors.store, journal: anchors.journal, generation: generation,
+		git: anchors.git, profile: anchors.profile, provenance: anchors.provenance,
+		capability: capability, source: sourceEvidence,
+	}
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.closed || p.closing || p.store == nil || p.generation == nil || p.journal == nil || p.git == nil {
-		return nil, nil, SourceProfile{}, Provenance{}, ErrWorkerExposureContract
+	if p.closed || p.closing || p.store != anchors.store || p.journal != anchors.journal || p.git != anchors.git {
+		p.mu.Unlock()
+		return nil, ErrD09ExposureSource
 	}
-	return p.store, p.journal, p.profile, p.provenance, nil
+	if p.sources == nil {
+		p.sources = make(map[*VerifiedD09ExposureSource]struct{})
+	}
+	p.sources[source] = struct{}{}
+	p.mu.Unlock()
+	closeCapability = false
+	return source, nil
 }
 
-// computeIdentity derives the generation/binding identity from the durable
-// provenance and the retained generation. It does not read any descriptor; the
-// descriptor-derived fields are added per Export/Verify.
-func (e *SealedWorkerExposure) computeIdentity() (exposureIdentity, error) {
-	if e == nil || e.generation == nil {
-		return exposureIdentity{}, ErrWorkerExposureContract
+type verifiedD09SourceAnchors struct {
+	store      *sessionrepo.Store
+	journal    *audit.Journal
+	git        *privategit.Repository
+	profile    SourceProfile
+	provenance Provenance
+}
+
+// verifyD06SourceForGeneration checks the exact live Store and audit journal
+// retained by Prepare, confirms the requested generation is the Store's current
+// sealed tip (while the original D06/private-Git seed record remains in the
+// verified chain), verifies every durable provenance record, and verifies the
+// private Git/admin tree. It never substitutes a path or a caller boolean.
+func (p *PreparedSession) verifyD06SourceForGeneration(ctx context.Context,
+	generation *sessionrepo.Generation, requireCurrentTip bool) (verifiedD09SourceAnchors, error) {
+	if p == nil || ctx == nil || generation == nil {
+		return verifiedD09SourceAnchors{}, ErrD09ExposureSource
 	}
-	provenance := e.provenance
-	if !validDigest(provenance.BindingDigest) || provenance.SourceGeneration != e.generation.ID() ||
-		provenance.SourceTreeDigest != e.generation.TreeDigest() {
-		return exposureIdentity{}, ErrWorkerExposureContract
+	p.mu.Lock()
+	if p.closed || p.closing || p.store == nil || p.journal == nil || p.git == nil ||
+		generation == nil || generation.ID() == "" {
+		p.mu.Unlock()
+		return verifiedD09SourceAnchors{}, ErrD09ExposureSource
 	}
-	manifestDigest, err := canonicalDigest(e.generation.Manifest())
+	store, journal, git, profile := p.store, p.journal, p.git, p.profile
+	provenance := p.provenance
+	provenance.PrivateGit.SourceManifest.Objects = append([]delta.ManifestObject(nil), p.provenance.PrivateGit.SourceManifest.Objects...)
+	baseGeneration := p.generation
+	p.mu.Unlock()
+	if !store.OwnsGeneration(generation) || baseGeneration == nil || !store.OwnsGeneration(baseGeneration) {
+		return verifiedD09SourceAnchors{}, ErrD09ExposureSource
+	}
+	if err := ctx.Err(); err != nil {
+		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource, err)
+	}
+	if err := git.Verify(); err != nil {
+		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource,
+			fmt.Errorf("verify supervisor-private Git provenance before D09 source export: %w", err))
+	}
+	chain, err := store.Verify()
 	if err != nil {
-		return exposureIdentity{}, err
+		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource,
+			fmt.Errorf("verify sealed Store chain before D09 source export: %w", err))
 	}
-	provenanceDigest, err := canonicalDigest(provenance)
+	bundle, err := store.EvidenceBundle()
 	if err != nil {
-		return exposureIdentity{}, err
+		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource, err)
 	}
-	viewIdentity := DigestBytes([]byte("tbound/sessionlaunch/worker-view/v1\x00" +
-		provenance.BindingDigest + "\x00" + provenance.SourceTreeDigest + "\x00" + provenance.SourceGeneration))
-	return exposureIdentity{
-		generationID:     e.generation.ID(),
-		sourceTreeDigest: e.generation.TreeDigest(),
-		treeDigest:       DigestBytes([]byte("tbound/sessionlaunch/worker-tree/v1\x00" + e.generation.TreeDigest())),
-		manifestDigest:   manifestDigest,
-		bindingDigest:    provenance.BindingDigest,
-		provenanceDigest: provenanceDigest,
-		viewIdentity:     viewIdentity,
+	if !reflect.DeepEqual(chain, bundle.ValidatedChain) || !bundleContainsGeneration(bundle, generation) ||
+		!bundleContainsGeneration(bundle, baseGeneration) || generation.ID() == "" ||
+		generation.Manifest().MetadataPolicyDigest != bundle.MetadataPolicyDigest ||
+		bundle.PolicyDigest != provenance.PolicyDigest || bundle.MetadataPolicyDigest != provenance.MetadataPolicyDigest {
+		return verifiedD09SourceAnchors{}, fmt.Errorf("%w: requested generation is not the verified current Store tip or D06 seed", ErrD09ExposureSource)
+	}
+	if requireCurrentTip && validateCurrentGeneration(bundle, chain, generation) != nil {
+		return verifiedD09SourceAnchors{}, fmt.Errorf("%w: source capability may only be issued for the current Store tip", ErrD09ExposureSource)
+	}
+	if err := validateJournalSnapshot(journal, bundle); err != nil {
+		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource, err)
+	}
+	if err := verifyPersistedD06Records(bundle.AuditJournal, provenance); err != nil {
+		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource, err)
+	}
+	trace, err := audit.Verify(bytes.NewReader(bundle.AuditJournal))
+	if err != nil {
+		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource, err)
+	}
+	for _, effect := range trace.Effects {
+		if effect.Unresolved {
+			return verifiedD09SourceAnchors{}, fmt.Errorf("%w: unresolved Store effect %q", ErrD09ExposureSource, effect.ID)
+		}
+	}
+	if err := verifySelectedGenerationContent(store, generation, bundle, profile); err != nil {
+		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource, err)
+	}
+	if err := git.Verify(); err != nil {
+		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource,
+			fmt.Errorf("private Git provenance changed during D09 source verification: %w", err))
+	}
+	return verifiedD09SourceAnchors{
+		store: store, journal: journal, git: git, profile: profile, provenance: provenance,
 	}, nil
 }
 
-// ExportVerifiedWorkerExposure re-proves the durable D06 provenance and the
-// current-generation selection, then returns a fresh O_PATH descriptor for the
-// registered read-only view together with evidence whose descriptor identity is
-// read from that same descriptor. The returned descriptor is the registered
-// exposure view, never Repository.Root, the admin parent, or a Store directory.
-func (e *SealedWorkerExposure) ExportVerifiedWorkerExposure(ctx context.Context) (*os.File, piruntime.WorkerExposureEvidence, error) {
+func verifySelectedGenerationContent(store *sessionrepo.Store, generation *sessionrepo.Generation,
+	bundle sessionrepo.EvidenceBundle, profile SourceProfile) error {
+	path, err := generation.ReadOnlyMountSource()
+	if err != nil {
+		return err
+	}
+	root, err := openReadableDirAt(path)
+	_ = path.Close()
+	if err != nil {
+		return err
+	}
+	stat, err := statNode(root)
+	if err != nil {
+		_ = root.Close()
+		return err
+	}
+	err = verifyGenerationDescriptor(store, generation, root, stat, bundle, profile)
+	closeErr := root.Close()
+	return errors.Join(err, closeErr)
+}
+
+// ExportD09WorkerSource returns the one caller-owned O_PATH HOST SOURCE
+// descriptor for A's trusted Podman/crun staging. This source descriptor is not
+// a read-only consumer view and does not implement piruntime.VerifiedWorkerExposure.
+// The D09 launcher/entrypoint must prove the actual consumer bind separately.
+func (s *VerifiedD09ExposureSource) ExportD09WorkerSource(ctx context.Context) (*os.File, sessionrepo.SealedSourceEvidence, error) {
 	if ctx == nil {
-		return nil, piruntime.WorkerExposureEvidence{}, ErrWorkerExposureContract
+		return nil, sessionrepo.SealedSourceEvidence{}, ErrD09ExposureSource
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.closed || e.session == nil || e.view == nil || e.generation == nil {
-		return nil, piruntime.WorkerExposureEvidence{}, ErrWorkerExposureContract
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.owner == nil || s.capability == nil || s.exported {
+		return nil, sessionrepo.SealedSourceEvidence{}, ErrD09ExposureSource
 	}
-	if err := e.verifyLocked(); err != nil {
-		return nil, piruntime.WorkerExposureEvidence{}, err
+	if err := s.verifyLocked(ctx); err != nil {
+		return nil, sessionrepo.SealedSourceEvidence{}, err
 	}
-	descriptor, observed, err := e.view.Descriptor()
+	descriptor, evidence, err := s.capability.DuplicateForD09(ctx)
 	if err != nil {
-		return nil, piruntime.WorkerExposureEvidence{}, errors.Join(ErrWorkerExposureContract, err)
+		return nil, sessionrepo.SealedSourceEvidence{}, errors.Join(ErrD09ExposureSource, err)
 	}
-	if observed.ID != e.identity.generationID || observed.TreeDigest != e.identity.sourceTreeDigest {
+	if evidence != s.source {
 		_ = descriptor.Close()
-		return nil, piruntime.WorkerExposureEvidence{}, ErrWorkerExposureContract
+		return nil, sessionrepo.SealedSourceEvidence{}, ErrD09ExposureSource
 	}
-	evidence, err := e.evidenceFor(descriptor)
-	if err != nil {
+	if err := validateSourceDescriptorIdentity(descriptor, evidence); err != nil {
 		_ = descriptor.Close()
-		return nil, piruntime.WorkerExposureEvidence{}, err
+		return nil, sessionrepo.SealedSourceEvidence{}, err
 	}
+	s.exported = true
 	return descriptor, evidence, nil
 }
 
-// VerifyWorkerExposure re-checks that a previously exported evidence record
-// still matches this session's durable D06 provenance, current selection, and
-// registered view. It is called by the D09 launcher before it creates child
-// FD 4; a syntactically valid evidence copy from a fixture does not authorize a
-// child.
-func (e *SealedWorkerExposure) VerifyWorkerExposure(ctx context.Context, evidence piruntime.WorkerExposureEvidence) error {
+// VerifyD09WorkerSource revalidates D06/private-Git provenance and the concrete
+// sessionrepo issuer/source descriptor. The evidence remains host-source
+// evidence; the D09 entrypoint produces a separate consumer-mount proof.
+func (s *VerifiedD09ExposureSource) VerifyD09WorkerSource(ctx context.Context, evidence sessionrepo.SealedSourceEvidence) error {
 	if ctx == nil {
-		return ErrWorkerExposureContract
+		return ErrD09ExposureSource
 	}
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.closed || e.session == nil || e.view == nil || e.generation == nil {
-		return ErrWorkerExposureContract
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || evidence != s.source {
+		return ErrD09ExposureSource
 	}
-	if evidence.GenerationID != e.identity.generationID || evidence.TreeDigest != e.identity.treeDigest ||
-		evidence.ManifestDigest != e.identity.manifestDigest || evidence.BindingDigest != e.identity.bindingDigest ||
-		evidence.ProvenanceDigest != e.identity.provenanceDigest || evidence.ViewIdentity != e.identity.viewIdentity ||
-		evidence.Device == 0 || evidence.Inode == 0 || evidence.MountID == 0 {
-		return ErrWorkerExposureContract
+	return s.verifyLocked(ctx)
+}
+
+// SourceCapability returns the opaque concrete Store-issued cap for the A-side
+// TrustedHostVerifier/D09 launcher to bind into its admitted request. The
+// returned pointer grants only Revalidate/Evidence/Close; no path or writable
+// directory is exposed. The sessionlaunch wrapper remains its lifecycle owner.
+func (s *VerifiedD09ExposureSource) SourceCapability() *sessionrepo.VerifiedSealedSource {
+	if s == nil {
+		return nil
 	}
-	if err := e.verifyLocked(); err != nil {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil
+	}
+	return s.capability
+}
+
+func (s *VerifiedD09ExposureSource) SourceEvidence() (sessionrepo.SealedSourceEvidence, error) {
+	if s == nil {
+		return sessionrepo.SealedSourceEvidence{}, ErrD09ExposureSource
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.capability == nil {
+		return sessionrepo.SealedSourceEvidence{}, ErrD09ExposureSource
+	}
+	return s.capability.Evidence()
+}
+
+func (s *VerifiedD09ExposureSource) verifyLocked(ctx context.Context) error {
+	if s.owner == nil || s.capability == nil || s.store == nil || s.generation == nil || s.git == nil {
+		return ErrD09ExposureSource
+	}
+	anchors, err := s.owner.verifyD06SourceForGeneration(ctx, s.generation, false)
+	if err != nil {
 		return err
 	}
-	descriptor, _, err := e.view.Descriptor()
-	if err != nil {
-		return errors.Join(ErrWorkerExposureContract, err)
+	if anchors.store != s.store || anchors.journal != s.journal || anchors.git != s.git ||
+		anchors.provenance.BindingDigest != s.provenance.BindingDigest {
+		return ErrD09ExposureSource
 	}
-	defer descriptor.Close()
-	stat, err := statNode(descriptor)
-	if err != nil || stat.mode&syscall.S_IFMT != syscall.S_IFDIR {
-		return errors.Join(ErrWorkerExposureContract, err)
-	}
-	mountID, err := descriptorMountID(descriptor.Fd())
-	if err != nil {
-		return errors.Join(ErrWorkerExposureContract, err)
-	}
-	if stat.device != evidence.Device || stat.inode != evidence.Inode || mountID != evidence.MountID {
-		return ErrWorkerExposureContract
-	}
-	return nil
+	return s.capability.Revalidate(ctx, s.source)
 }
 
-// verifyLocked re-proves the durable anchors of the selected generation. It
-// reuses the existing sessionlaunch validators: VerifySourceBinding (Store
-// chain/bundle, current generation, D06 journal records, private Git boundary)
-// plus the retained generation descriptor rescan that ExposeReadOnly uses.
-func (e *SealedWorkerExposure) verifyLocked() error {
-	if e.session == nil || e.view == nil || e.generation == nil || e.store == nil || e.journal == nil {
-		return ErrWorkerExposureContract
-	}
-	if err := e.session.VerifySourceBinding(e.store, e.generation, e.journal); err != nil {
-		return errors.Join(ErrWorkerExposureContract, err)
-	}
-	bundle, err := e.store.EvidenceBundle()
-	if err != nil {
-		return errors.Join(ErrWorkerExposureContract, err)
-	}
-	source, err := e.generation.ReadOnlyMountSource()
-	if err != nil {
-		return errors.Join(ErrWorkerExposureContract, err)
-	}
-	readable, err := openReadableDirAt(source)
-	_ = source.Close()
-	if err != nil {
-		return errors.Join(ErrWorkerExposureContract, err)
-	}
-	stat, statErr := statNode(readable)
-	if statErr != nil {
-		_ = readable.Close()
-		return errors.Join(ErrWorkerExposureContract, statErr)
-	}
-	verifyErr := verifyGenerationDescriptor(e.store, e.generation, readable, stat, bundle, e.profile)
-	closeErr := readable.Close()
-	if verifyErr != nil || closeErr != nil {
-		return errors.Join(ErrWorkerExposureContract, verifyErr, closeErr)
-	}
-	observed, ok := e.view.observedEvidence()
-	if !ok || observed.ID != e.identity.generationID || observed.TreeDigest != e.identity.sourceTreeDigest {
-		return ErrWorkerExposureContract
-	}
-	return nil
-}
-
-// evidenceFor binds the durable identity to the exact descriptor being exported
-// or verified.
-func (e *SealedWorkerExposure) evidenceFor(descriptor *os.File) (piruntime.WorkerExposureEvidence, error) {
-	stat, err := statNode(descriptor)
-	if err != nil || stat.mode&syscall.S_IFMT != syscall.S_IFDIR {
-		return piruntime.WorkerExposureEvidence{}, errors.Join(ErrWorkerExposureContract, err)
-	}
-	mountID, err := descriptorMountID(descriptor.Fd())
-	if err != nil {
-		return piruntime.WorkerExposureEvidence{}, errors.Join(ErrWorkerExposureContract, err)
-	}
-	return piruntime.WorkerExposureEvidence{
-		GenerationID:     e.identity.generationID,
-		TreeDigest:       e.identity.treeDigest,
-		ManifestDigest:   e.identity.manifestDigest,
-		BindingDigest:    e.identity.bindingDigest,
-		ProvenanceDigest: e.identity.provenanceDigest,
-		ViewIdentity:     e.identity.viewIdentity,
-		Device:           stat.device,
-		Inode:            stat.inode,
-		MountID:          mountID,
-	}, nil
-}
-
-// Close withdraws this adapter's registered view. It does not close the
-// PreparedSession; the session owner remains responsible for Store/Git teardown.
-func (e *SealedWorkerExposure) Close() error {
-	if e == nil {
+func (s *VerifiedD09ExposureSource) Close() error {
+	if s == nil {
 		return nil
 	}
-	e.mu.Lock()
-	view := e.view
-	if e.closed {
-		e.mu.Unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
 		return nil
 	}
-	e.closed = true
-	e.view = nil
-	e.mu.Unlock()
-	if view != nil {
-		return view.Close()
+	// The channel owns and must close its exported source FD before the wrapper
+	// releases the held capability/Store registration. If that FD is still open,
+	// retain this wrapper so the owner can retry after channel close.
+	if s.capability != nil {
+		if err := s.capability.Close(); err != nil {
+			return err
+		}
+	}
+	s.closed = true
+	owner := s.owner
+	s.capability, s.owner = nil, nil
+	if owner != nil {
+		s.mu.Unlock()
+		owner.mu.Lock()
+		delete(owner.sources, s)
+		owner.mu.Unlock()
+		s.mu.Lock()
 	}
 	return nil
 }
 
-// observedEvidence returns a defensive copy of the registered view's selected
-// generation evidence while the view is still open.
-func (v *WorkerView) observedEvidence() (sessionrepo.GenerationEvidence, bool) {
-	if v == nil {
-		return sessionrepo.GenerationEvidence{}, false
+func validateSourceDescriptorIdentity(file *os.File, evidence sessionrepo.SealedSourceEvidence) error {
+	if file == nil || evidence.SourceDevice == 0 || evidence.SourceInode == 0 || evidence.SourceMountID == 0 {
+		return ErrD09ExposureSource
 	}
-	v.mu.Lock()
-	defer v.mu.Unlock()
-	if v.closed || v.source == nil {
-		return sessionrepo.GenerationEvidence{}, false
+	info, err := file.Stat()
+	if err != nil || !info.IsDir() {
+		return errors.Join(ErrD09ExposureSource, err)
 	}
-	return cloneGenerationEvidence(v.evidence), true
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || uint64(stat.Dev) != evidence.SourceDevice || stat.Ino != evidence.SourceInode {
+		return ErrD09ExposureSource
+	}
+	mountID, err := descriptorMountID(file.Fd())
+	if err != nil || mountID != evidence.SourceMountID {
+		return errors.Join(ErrD09ExposureSource, err)
+	}
+	return nil
 }
 
-// canonicalDigest is the RFC-8785 (JCS) SHA-256 commitment used for the
-// manifest and provenance identity fields.
 func canonicalDigest(value any) (string, error) {
 	encoded, err := json.Marshal(value)
 	if err != nil {
@@ -350,8 +385,8 @@ func canonicalDigest(value any) (string, error) {
 }
 
 // descriptorMountID reads the mount identity Linux records for an open
-// descriptor. It mirrors the launcher's own descriptor-identity check so the
-// evidence this package emits is exactly what the launcher re-verifies.
+// descriptor. This is SOURCE identity; D09 proof separately records the
+// consumer mount ID after the read-only bind is checked in its own namespace.
 func descriptorMountID(fd uintptr) (uint64, error) {
 	data, err := os.ReadFile(fmt.Sprintf("/proc/self/fdinfo/%d", fd))
 	if err != nil {
@@ -361,16 +396,15 @@ func descriptorMountID(fd uintptr) (uint64, error) {
 		fields := strings.Fields(line)
 		if len(fields) == 2 && fields[0] == "mnt_id:" {
 			id, err := strconv.ParseUint(fields[1], 10, 64)
-			if err != nil || id == 0 {
-				return 0, errors.New("descriptor mount ID is invalid")
+			if err == nil && id != 0 {
+				return id, nil
 			}
-			return id, nil
+			return 0, errors.New("descriptor mount ID is invalid")
 		}
 	}
 	return 0, errors.New("descriptor fdinfo omitted mount ID")
 }
 
-// statDevice returns the containing filesystem device of an opened node.
 func statDevice(info os.FileInfo) (uint64, bool) {
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
