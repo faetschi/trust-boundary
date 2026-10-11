@@ -4,7 +4,6 @@
 - Subagents return concise findings, changed files, decisions, test results, blockers, and next steps—not transcripts
 - Give subagents minimal context and clear scope with fresh context; escalate ambiguity or failures
 - Prefer deterministic scripts for fully mechanical operations
-- Use GPT 6 Luna xhigh for subagents
 
 ## Engineering Principles
 - **Think before coding:** Identify assumptions, ambiguities, and tradeoffs. Clarify material uncertainties; use judgment for trivial ones
