@@ -6,3 +6,22 @@ vm_start.txt
 # Build and generated artifacts
 supervisor/tbound.exe
 supervisor/internal/sessionrepo/artifacts/
+
+# Generated release outputs (QW-2, additive). scripts/build-release.sh,
+# build-deb.sh, build-rpm.sh and make-npm-packages.sh write tarballs,
+# SHA256SUMS, cell-entrypoint metadata, .deb/.rpm and npm packages under this
+# root by default; `make clean` removes it. Root-anchored so only the repo-root
+# output directory is affected.
+/dist/
+
+# Transient Go test executables (`go test -c` / test-binary artifacts;
+# *.test.exe is the Windows form). Nothing tracked uses these names.
+*.test
+*.test.exe
+
+# Ad-hoc local build binaries produced by running `go build ./cmd/...` inside
+# supervisor/ (e.g. supervisor/tbound-doctor, supervisor/tbound-doctor.exe).
+# Narrowly scoped to the supervisor root and to dash-suffixed tbound names:
+# this never matches the tracked supervisor/tbound ELF (no dash) nor the
+# retained supervisor/tbound.exe pattern above.
+supervisor/tbound-*
