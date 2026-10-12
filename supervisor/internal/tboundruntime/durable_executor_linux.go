@@ -1,6 +1,6 @@
 //go:build linux
 
-package main
+package tboundruntime
 
 import (
 	"bytes"
@@ -31,6 +31,10 @@ import (
 // any bytes are released rather than truncated.
 const durableReadMaxBytes = protocol.MaxFrameBytes
 
+// DurableReadMaxBytes is the protocol-aligned ceiling used by the durable read
+// path. The legacy cmd/tbound name remains available through its adapter.
+const DurableReadMaxBytes = durableReadMaxBytes
+
 // DurableExecutorConfig binds the durable effect path to one seeded session
 // repository. Tip is the current sealed tip generation; Execute advances it
 // after every committed mutation. CallIssuer is the configured broker call
@@ -52,13 +56,12 @@ type DurableExecutorConfig struct {
 	CommandRunner sessionrepo.CommandRunner
 }
 
-// DurableExecutor is the production-shaped Executor for cmd/tbound. It maps one
-// trusted ALLOW proposal onto one sessionrepo read or mutation on the current
-// tip and releases a strict-JSON summary only after the operation is durable.
-// A read returns bounded bytes from the current sealed tip and never advances
-// it; write/edit/bash each advance the tip by one committed transition. It owns
-// no containment, publication, or provider claim: those remain unresolved in
-// the session repository evidence.
+// DurableExecutor maps one trusted ALLOW proposal onto one sessionrepo read or
+// mutation on the current tip and releases a strict-JSON summary only after the
+// operation is durable. A read returns bounded bytes from the current sealed tip
+// and never advances it; write/edit/bash each advance the tip by one committed
+// transition. It owns no containment, publication, or provider claim: those
+// remain unresolved in the session repository evidence.
 type DurableExecutor struct {
 	mu                   sync.Mutex
 	store                *sessionrepo.Store
@@ -207,15 +210,27 @@ type durableMutationSummaryPayload struct {
 	Command    *durableCommandSummary   `json:"command,omitempty"`
 }
 
+// DurableMutationSummaryPayload is the stable JSON result shape emitted for
+// write, edit, and Bash operations.
+type DurableMutationSummaryPayload = durableMutationSummaryPayload
+
 type durableGenerationSummary struct {
 	ID         string `json:"id"`
 	TreeDigest string `json:"tree_digest"`
 }
 
+// DurableGenerationSummary identifies the sealed generation returned by an
+// operation.
+type DurableGenerationSummary = durableGenerationSummary
+
 type durableTransitionSummary struct {
 	ID       string `json:"id"`
 	Sequence uint64 `json:"sequence"`
 }
+
+// DurableTransitionSummary identifies the committed transition returned by a
+// mutation.
+type DurableTransitionSummary = durableTransitionSummary
 
 // durableCommandSummary reports the settled command result. CommandRunnerProfile
 // mirrors the profile the store records in its operation evidence; the
@@ -226,6 +241,10 @@ type durableCommandSummary struct {
 	CommandContainmentStatus string `json:"command_containment_status"`
 	CommandRunnerProfile     string `json:"command_runner_profile"`
 }
+
+// DurableCommandSummary reports a command result without making a containment
+// claim.
+type DurableCommandSummary = durableCommandSummary
 
 func durableMutationSummary(tool string, mutation sessionrepo.MutationResult, runner sessionrepo.CommandRunner) (json.RawMessage, error) {
 	payload := durableMutationSummaryPayload{
@@ -258,6 +277,11 @@ func durableMutationSummary(tool string, mutation sessionrepo.MutationResult, ru
 	return json.RawMessage(encoded), nil
 }
 
+// DurableMutationSummary encodes a bounded strict-JSON mutation result.
+func DurableMutationSummary(tool string, mutation sessionrepo.MutationResult, runner sessionrepo.CommandRunner) (json.RawMessage, error) {
+	return durableMutationSummary(tool, mutation, runner)
+}
+
 // durableCommandRunnerProfile mirrors the store's runner-profile labelling: a
 // runner that does not expose a valid CommandRunnerProfile is "unclassified".
 func durableCommandRunnerProfile(runner sessionrepo.CommandRunner) string {
@@ -275,6 +299,11 @@ func durableCommandRunnerProfile(runner sessionrepo.CommandRunner) string {
 		}
 	}
 	return profile
+}
+
+// DurableCommandRunnerProfile returns the validated descriptive runner label.
+func DurableCommandRunnerProfile(runner sessionrepo.CommandRunner) string {
+	return durableCommandRunnerProfile(runner)
 }
 
 // durableOperationIdentity derives the stable operation identity for one
@@ -302,6 +331,12 @@ func durableOperationIdentity(proposal protocol.Proposal, decision gate.Decision
 	}, nil
 }
 
+// DurableOperationIdentity derives the stable session-repository operation
+// identity from a correlated proposal and its trusted decision.
+func DurableOperationIdentity(proposal protocol.Proposal, decision gate.Decision, callIssuer string) (delta.OperationIdentity, error) {
+	return durableOperationIdentity(proposal, decision, callIssuer)
+}
+
 // durablePolicyDecision derives the stable, unique decision ID from the trusted
 // decision and pins the configured bare session-repository commitments.
 func durablePolicyDecision(proposal protocol.Proposal, decision gate.Decision, policyDigest, metadataPolicyDigest string) (delta.PolicyDecision, error) {
@@ -313,6 +348,12 @@ func durablePolicyDecision(proposal protocol.Proposal, decision gate.Decision, p
 		ID: decisionID, Outcome: delta.PolicyAllow,
 		PolicyDigest: policyDigest, MetadataPolicyDigest: metadataPolicyDigest,
 	}, nil
+}
+
+// DurablePolicyDecision maps a gate allow into the session repository's
+// independently namespaced policy commitment.
+func DurablePolicyDecision(proposal protocol.Proposal, decision gate.Decision, policyDigest, metadataPolicyDigest string) (delta.PolicyDecision, error) {
+	return durablePolicyDecision(proposal, decision, policyDigest, metadataPolicyDigest)
 }
 
 // durableTrustedIdentity hashes a length-prefixed, domain-separated tuple of the
@@ -340,11 +381,22 @@ func durableTrustedIdentity(domain string, proposal protocol.Proposal, decision 
 	return domain + "-" + hex.EncodeToString(digest.Sum(nil)), nil
 }
 
+// DurableTrustedIdentity derives a deterministic domain-separated identity
+// from the trusted provider call tuple.
+func DurableTrustedIdentity(domain string, proposal protocol.Proposal, decision gate.Decision) (string, error) {
+	return durableTrustedIdentity(domain, proposal, decision)
+}
+
 func writeHashField(digest hash.Hash, value string) {
 	var length [8]byte
 	binary.BigEndian.PutUint64(length[:], uint64(len(value)))
 	_, _ = digest.Write(length[:])
 	_, _ = io.WriteString(digest, value)
+}
+
+// WriteHashField appends one length-prefixed field to a domain-separated hash.
+func WriteHashField(digest hash.Hash, value string) {
+	writeHashField(digest, value)
 }
 
 type durableWriteArgumentsPayload struct {
@@ -366,6 +418,11 @@ func durableWriteArguments(raw json.RawMessage) (string, []byte, error) {
 		return "", nil, errors.New("write arguments require a path")
 	}
 	return arguments.Path, []byte(arguments.Content), nil
+}
+
+// DurableWriteArguments strictly decodes the registered write-tool payload.
+func DurableWriteArguments(raw json.RawMessage) (string, []byte, error) {
+	return durableWriteArguments(raw)
 }
 
 type durableEditArgumentsPayload struct {
@@ -398,6 +455,11 @@ func durableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacemen
 	return arguments.Path, edits, nil
 }
 
+// DurableEditArguments strictly decodes the registered edit-tool payload.
+func DurableEditArguments(raw json.RawMessage) (string, []sessionrepo.Replacement, error) {
+	return durableEditArguments(raw)
+}
+
 // durableBashArgumentsPayload mirrors the adapter's bash tool schema exactly:
 // a required command string and an optional numeric timeout. The timeout is
 // parsed for schema conformance but is not placed in the argv; the trusted
@@ -427,6 +489,11 @@ func durableBashArguments(raw json.RawMessage) (string, error) {
 	return arguments.Command, nil
 }
 
+// DurableBashArguments strictly decodes the registered Bash-tool payload.
+func DurableBashArguments(raw json.RawMessage) (string, error) {
+	return durableBashArguments(raw)
+}
+
 // durableReadSummaryPayload is the bounded strict-JSON view of a completed
 // read. It carries the resolved workspace-relative path, the sealed generation
 // the bytes came from, the byte size and content digest, and the content
@@ -441,6 +508,10 @@ type durableReadSummaryPayload struct {
 	Content       string                   `json:"content"`
 	Outcome       string                   `json:"outcome"`
 }
+
+// DurableReadSummaryPayload is the bounded JSON result shape emitted for a
+// completed read.
+type DurableReadSummaryPayload = durableReadSummaryPayload
 
 // durableReadSummary encodes a completed read and fails closed when the encoded
 // strict-JSON result would exceed the protocol's frame bound.
@@ -464,6 +535,11 @@ func durableReadSummary(path string, generation *sessionrepo.Generation, content
 		return nil, errors.New("durable read result exceeds the protocol bound; result withheld")
 	}
 	return json.RawMessage(encoded), nil
+}
+
+// DurableReadSummary encodes a bounded strict-JSON read result.
+func DurableReadSummary(path string, generation *sessionrepo.Generation, content []byte) (json.RawMessage, error) {
+	return durableReadSummary(path, generation, content)
 }
 
 // durableReadArgumentsPayload mirrors the adapter's read tool schema: a
@@ -499,12 +575,21 @@ func durableReadArguments(raw json.RawMessage) (string, error) {
 	return arguments.Path, nil
 }
 
+// DurableReadArguments strictly decodes the registered read-tool payload.
+func DurableReadArguments(raw json.RawMessage) (string, error) {
+	return durableReadArguments(raw)
+}
+
 // durableContentDigest is the bare sha256 commitment the session repository
 // uses for released result bytes.
 func durableContentDigest(content []byte) string {
 	digest := sha256.Sum256(content)
 	return "sha256:" + hex.EncodeToString(digest[:])
 }
+
+// DurableContentDigest returns the session repository's bare SHA-256 content
+// commitment.
+func DurableContentDigest(content []byte) string { return durableContentDigest(content) }
 
 func durableNoTrailingJSON(decoder *json.Decoder) error {
 	var trailing any
@@ -514,12 +599,18 @@ func durableNoTrailingJSON(decoder *json.Decoder) error {
 	return nil
 }
 
+// DurableNoTrailingJSON requires the decoder to be at the end of its input.
+func DurableNoTrailingJSON(decoder *json.Decoder) error { return durableNoTrailingJSON(decoder) }
+
 func validIdentityText(value string) bool {
 	if value == "" || len(value) > delta.MaxIdentityBytes || !utf8.ValidString(value) {
 		return false
 	}
 	return strings.TrimSpace(value) == value
 }
+
+// ValidIdentityText validates a bounded identity used by the durable executor.
+func ValidIdentityText(value string) bool { return validIdentityText(value) }
 
 func validBareSHA256(value string) bool {
 	const prefix = "sha256:"
@@ -533,3 +624,6 @@ func validBareSHA256(value string) bool {
 	_, err := hex.DecodeString(encoded)
 	return err == nil
 }
+
+// ValidBareSHA256 validates a canonical bare sha256:<lowercase hex> value.
+func ValidBareSHA256(value string) bool { return validBareSHA256(value) }

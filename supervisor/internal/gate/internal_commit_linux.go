@@ -18,6 +18,7 @@ import (
 
 	"github.com/gowebpki/jcs"
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/publication"
 )
 
@@ -158,15 +159,7 @@ func internalIdentity(value string) bool {
 }
 
 func internalDigest(value string) bool {
-	if len(value) != len("sha256:")+64 || !strings.HasPrefix(value, "sha256:") {
-		return false
-	}
-	encoded := strings.TrimPrefix(value, "sha256:")
-	if strings.ToLower(encoded) != encoded {
-		return false
-	}
-	decoded, err := hex.DecodeString(encoded)
-	return err == nil && len(decoded) == sha256.Size
+	return delta.ValidSHA256(value)
 }
 
 func decodeCommitRecord(data []byte, target *internalCommitRecord) error {

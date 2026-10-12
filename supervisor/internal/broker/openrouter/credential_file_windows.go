@@ -117,28 +117,30 @@ func verifyCredentialFileOwnerAndDACL(handle syscall.Handle) error {
 	}
 
 	var aclInfo credentialACLSizeInformation
-	result, _, _ = procGetACLInformation.Call(
+	result, _, callErr := procGetACLInformation.Call(
 		dacl, uintptr(unsafe.Pointer(&aclInfo)), unsafe.Sizeof(aclInfo), aclSizeInformation,
 	)
 	if result == 0 {
-		return syscall.GetLastError()
+		if callErr != nil {
+			return callErr
+		}
+		return os.ErrPermission
 	}
 	for index := uint32(0); index < aclInfo.AceCount; index++ {
-		var ace uintptr
+		var ace *credentialACEHeader
 		result, _, _ = procGetACE.Call(dacl, uintptr(index), uintptr(unsafe.Pointer(&ace)))
-		if result == 0 || ace == 0 {
+		if result == 0 || ace == nil {
 			return os.ErrPermission
 		}
-		header := (*credentialACEHeader)(unsafe.Pointer(ace))
-		switch header.AceType {
+		switch ace.AceType {
 		case accessDeniedACEType:
 			continue
 		case accessAllowedACEType:
 			const sidOffset = unsafe.Sizeof(credentialACEHeader{}) + unsafe.Sizeof(uint32(0))
-			if uintptr(header.AceSize) < sidOffset+8 {
+			if !credentialACESIDFits(ace, sidOffset) {
 				return os.ErrPermission
 			}
-			mask := *(*uint32)(unsafe.Pointer(ace + unsafe.Sizeof(credentialACEHeader{})))
+			mask := *(*uint32)(unsafe.Add(unsafe.Pointer(ace), unsafe.Sizeof(credentialACEHeader{})))
 			const (
 				genericAll     = 0x10000000
 				genericExecute = 0x20000000
@@ -147,7 +149,7 @@ func verifyCredentialFileOwnerAndDACL(handle syscall.Handle) error {
 			if mask&(genericAll|genericExecute|fileExecute) != 0 {
 				return os.ErrPermission
 			}
-			aceSID := (*syscall.SID)(unsafe.Pointer(ace + sidOffset))
+			aceSID := (*syscall.SID)(unsafe.Add(unsafe.Pointer(ace), sidOffset))
 			aceSIDString, err := aceSID.String()
 			if err != nil || aceSIDString != currentSID {
 				return os.ErrPermission
@@ -158,4 +160,17 @@ func verifyCredentialFileOwnerAndDACL(handle syscall.Handle) error {
 		}
 	}
 	return nil
+}
+
+const credentialSIDHeaderSize = 8
+
+// credentialACESIDFits reports whether the SID embedded at sidOffset lies
+// entirely within the ACE. The SID sub-authority count is read only after the
+// fixed SID header is known to fit inside AceSize.
+func credentialACESIDFits(ace *credentialACEHeader, sidOffset uintptr) bool {
+	if uintptr(ace.AceSize) < sidOffset+credentialSIDHeaderSize {
+		return false
+	}
+	subAuthorityCount := *(*byte)(unsafe.Add(unsafe.Pointer(ace), sidOffset+1))
+	return uintptr(ace.AceSize) >= sidOffset+credentialSIDHeaderSize+4*uintptr(subAuthorityCount)
 }

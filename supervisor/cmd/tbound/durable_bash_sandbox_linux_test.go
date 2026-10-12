@@ -26,7 +26,7 @@ const durableBashSandboxProfile = "wsl-dev-sandbox-non-claim-bearing"
 // sandbox.Launch into the sessionrepo.CommandRunner seam. The command mutates
 // the private command view, so the promoted g1 differs from the seeded g0; the
 // fixture authority binds the exact expected settled tree and verifies every
-// postcondition. This proves the production wiring without changing the sandbox.
+// postcondition. This exercises the component fixture without changing the sandbox.
 func TestDurableBashSandboxEndToEnd(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("durable sandbox integration runs only on Linux")

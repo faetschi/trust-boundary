@@ -919,13 +919,5 @@ func validWorkflowIdentity(value string) bool {
 }
 
 func validWorkflowDigest(value string) bool {
-	if len(value) != len("sha256:")+64 || !strings.HasPrefix(value, "sha256:") {
-		return false
-	}
-	for _, r := range strings.TrimPrefix(value, "sha256:") {
-		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
-			return false
-		}
-	}
-	return true
+	return delta.ValidSHA256(value)
 }

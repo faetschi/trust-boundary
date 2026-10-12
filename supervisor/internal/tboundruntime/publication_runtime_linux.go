@@ -1,6 +1,6 @@
 //go:build linux
 
-package main
+package tboundruntime
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"tbound/supervisor/internal/broker/correlation"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/publication"
 	"tbound/supervisor/internal/workflow"
 )
@@ -32,7 +33,7 @@ type admissionLease struct {
 }
 
 type admittingBroker struct {
-	inner             Broker
+	inner             piruntime.Broker
 	admission         *workflow.Admission
 	currentGeneration func() string
 	mu                sync.Mutex
@@ -40,12 +41,12 @@ type admittingBroker struct {
 }
 
 type admittedExecutor struct {
-	inner  Executor
+	inner  piruntime.Executor
 	broker *admittingBroker
 }
 
 type admissionDecisionRecorder struct {
-	inner  DecisionRecorder
+	inner  piruntime.DurableDecisionRecorder
 	broker *admittingBroker
 }
 
@@ -71,7 +72,7 @@ func NewPublicationRuntime(executor *DurableExecutor, options workflow.Finalizer
 // proposal-admission lease spanning correlation through durable execution.
 // Caller-supplied executors and missing durable decision recorders are refused
 // so this seam cannot silently bypass the session repository.
-func (r *PublicationRuntime) Serve(ctx context.Context, supervisor *Supervisor) error {
+func (r *PublicationRuntime) Serve(ctx context.Context, supervisor *piruntime.Supervisor) error {
 	if r == nil || r.finalizer == nil || r.durable == nil || supervisor == nil || supervisor.Broker == nil ||
 		supervisor.Policy.Digest() == "" || supervisor.Decisions == nil || supervisor.Executor != nil || ctx == nil {
 		return errors.New("publication runtime requires a configured Supervisor, durable decision recorder, and no bypass executor")
@@ -127,10 +128,19 @@ func (r *PublicationRuntime) Close() error {
 // Run provides the reusable lifecycle boundary for a host-owned session: serve
 // through the ordinary Supervisor, stop admission, then finalize. It does not
 // choose a provider, launch Pi, or weaken the host's trusted runtime profile.
-func (r *PublicationRuntime) Run(ctx context.Context, supervisor *Supervisor) (publication.Result, error) {
+func (r *PublicationRuntime) Run(ctx context.Context, supervisor *piruntime.Supervisor) (publication.Result, error) {
 	serveErr := r.Serve(ctx, supervisor)
 	result, finalizeErr := r.Finalize(ctx)
 	return result, errors.Join(serveErr, finalizeErr)
+}
+
+// Admission exposes the finalizer's existing proposal lease set for host
+// composition and lifecycle testing. It does not authorize proposals itself.
+func (r *PublicationRuntime) Admission() *workflow.Admission {
+	if r == nil || r.finalizer == nil {
+		return nil
+	}
+	return r.finalizer.Admission()
 }
 
 func (b *admittingBroker) Correlate(ctx context.Context, proposal protocol.Proposal) (correlation.Decision, error) {

@@ -14,6 +14,8 @@ import (
 	"reflect"
 	"strings"
 	"unicode/utf8"
+
+	"tbound/supervisor/internal/delta"
 )
 
 var (
@@ -365,13 +367,5 @@ func validIdentity(value string) bool {
 }
 
 func validDigest(value string) bool {
-	if len(value) != len("sha256:")+sha256.Size*2 || !strings.HasPrefix(value, "sha256:") {
-		return false
-	}
-	encoded := value[len("sha256:"):]
-	if encoded != strings.ToLower(encoded) {
-		return false
-	}
-	_, err := hex.DecodeString(encoded)
-	return err == nil
+	return delta.ValidSHA256(value)
 }

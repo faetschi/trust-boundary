@@ -1,81 +1,46 @@
-# `tbound` prototype
+# TBound
 
-**Status:** architecture scaffold plus a bounded supervisor prototype slice. No real provider exchange, Linux containment run, conformance result, or WP1/G1 evidence exists yet.
+TBound is a Go supervisor prototype with a TypeScript adapter around the pinned Pi SDK (0.87.1). The adapter's tool surface is `read`, `write`, `edit`, and `bash`.
 
-**Setup guide:** [Fresh-host setup and offline verification](docs/setup.md).
+**Current implementation:** the repository contains supervisor components for broker protocol/correlation, IPC, policy, durable audit and workflow, session generations, command/runtime interfaces, delta handling, publication, private Git, and the governance companion. The adapter contains Pi host/policy fixtures, proxy tools, and IPC transport. OpenRouter request/transport and provider-bridge components are present; that does not make them a production Pi/provider integration.
 
-`tbound` is a host-side supervisor prototype for one Pi coding workflow. The first slice is deliberately narrow: one Pi configuration, one agent, the proxy-backed `read`, `write`, `edit`, and `bash` tools, one compliant task, and one declared Linux VM/host profile. The prototype is intended to make the existing thesis design concrete; this README does not claim that its security properties have been implemented or demonstrated.
+## Production CLI status
 
-## Design boundary
+`tbound serve --pi` currently refuses to launch: no installed, attested production Pi host profile is accepted. The separate `--native-fixture` route is explicit and non-claim-bearing; it exercises a synthetic Go workflow and does not launch Pi or contact a provider. Component tests are not evidence of a complete admitted Pi/provider workflow or of host security properties.
 
-- A TypeScript Pi SDK adapter will install a **complete custom resource loader** that exposes only `read`, `write`, `edit`, and `bash`. Each tool will send a proposal over session-bound IPC and return the supervisor's correlated result. The adapter will not independently access files, spawn commands, or call a provider. Pi and adapter inputs remain untrusted.
-- A Go supervisor will own session lifecycle, IPC admission, deterministic policy decisions, durable workflow state, the isolated session repository, command-cell execution, delta validation, and evidence collection.
-- A provider broker is a required later component. It will construct provider requests from a registered profile, enforce the declared tool manifest and conversation lineage, and record the exact request/result before forwarding. The model, provider, endpoint, protocol profile, and Pi SDK version remain undecided until the broker and closure work. No model call is part of this scaffold.
-- The Linux runtime, immutable policy, evidence store, and registered external effect observers belong to the declared trusted computing base. Pi, model output, IPC payloads, repository contents, and commands are untrusted. This boundary is a design target, not a tested result.
+Claim boundaries: there is no production Pi route. The opt-in provider exchange tests are one-shot exchanges and do not show a real production multi-turn workflow. Containment is `not-established` and G1 has not passed. Components, fixtures, and synthetic routes are not thesis evidence.
 
-```text
-provider broker (profile/model selected later)
-              │ registered exchange
-              ▼
-TypeScript Pi adapter ── session IPC ── Go supervisor
-   four proxy tools                         ├─ gate + workflow + durable audit
-                                            ├─ sealed session generations
-                                            └─ isolated per-bash command cell
-```
+See [fresh-host setup](docs/setup.md) for setup instructions. The [central review](docs/central-review-corrections-2026-10-07.md) and [dated readiness report](docs/tbound-readiness-status-2026-10-08.md) retain their dated scope; they are historical records, not a fresh verification run.
 
-Provider, workflow, proposal, tool-call, and execution identifiers retain their own issuer/namespace. A provider tool-call ID is correlation data; it is not authorization or an idempotency key. Correlation must bind the response ID, tool-call ID, exact tool name, and canonical argument digest through the returned result.
+## Design contracts (intended, not guaranteed)
 
-## Planned source layout
+- The adapter registers only four untrusted Pi SDK proxy tools (`read`, `write`, `edit`, `bash`), each sending a proposal over session-bound IPC. The Go supervisor owns session lifecycle, admission, policy, durable state, the session repository, execution, delta validation, and evidence. A provider broker binds each exchange to a registered profile and tool manifest. Pi, the model, IPC payloads, the repository, and commands are untrusted. The Linux runtime, immutable policy, evidence store, and registered external-effect observers are the intended trusted computing base; this is not yet an established deployed TCB.
+- A provider tool-call ID is correlation data only, not authorization or an idempotency key. A result must bind the response ID, tool-call ID, exact tool name, and canonical argument digest.
+- Effect sequencing: a proposal proceeds only after its registered provider exchange is verified and policy decides. Before an effect is released, claim-critical intent, decision, and single-use execution authority are durably recorded. Before the proposal completes, a durable terminal result or explicit `UNKNOWN` is recorded. Audit failure blocks effect and result release; recovery never blindly replays an unresolved effect.
+- Generations: reads come from the governed repository. Supervisor `write` and `edit` operations advance the generation. Pi sees a sealed read-only view. Each `bash` call gets a disposable writable view. After it, the supervisor stops writers, detaches the view, validates the full delta, and imports only attributable output into a new sealed generation. Publication to the live workspace happens only through a separately validated path. A matching final tree does not prove that no transient effect occurred.
+- Denying a proxy proposal does not by itself prove that every undeclared Pi or runtime path was contained; the configured surface and the Linux boundary need separate evidence.
 
-```text
-adapter/pi/             TypeScript Pi SDK loader and four proxy-tool definitions
-cmd/tbound/             Go supervisor entry point
-internal/broker/        provider profile, request construction, and lineage (broker stage)
-internal/ipc/           bounded, session-bound proposal/result transport
-internal/gate/          canonicalization and deterministic policy decision
-internal/workflow/      leases, lifecycle, recovery, and checkpoints
-internal/audit/         durable claim-critical records and bounded enrichment
-internal/sessionrepo/   independent, supervisor-owned session generations
-internal/executor/      one isolated command cell per allowed bash call
-internal/delta/         approved-delta attribution, sealing, validation, publication
-internal/oracle/        protected-tree, network, and process observations
-internal/eval/          profile identity, evidence manifest, and trial disposition
-```
+These are intended contracts. They are not guarantees, and no WP1/G1 acceptance is claimed. The normative thesis documents are kept in a separate repository and are not vendored here.
 
-The Go module now contains the synthetic broker/protocol boundary, bounded
-session IPC, a versioned deterministic gate, and a dependency-injected
-supervisor loop. The executable refuses to start until trusted provider,
-durable-audit, and contained-executor adapters exist. These component tests are
-not a real provider exchange, an effect-containment result, or WP1/G1 evidence.
-Go entrypoint viability remains a WP1 spike.
+## Status and gate
 
-## Effect and generation invariants
+- WP1/G1 has not been accepted. Containment is `not-established`. Production Pi routes refuse to launch, and the `--native-fixture` route is synthetic. Fixtures, component tests, and synthetic routes are not thesis evidence.
+- Opt-in provider tests are one-shot, non-production exchanges. They do not establish a production multi-turn workflow or provider authorization.
+- Host, runtime, provider/model, and profile choices remain open; see the [guest profile prerequisites](docs/guest-profile-prerequisites-2026-10-06.md) and the [readiness report](docs/tbound-readiness-status-2026-10-08.md).
+- Further detail: [implementation status](docs/implementation-status.md), [publication contract](docs/publication-contract.md), [correlation failure modes](supervisor/CORRELATION_FAILURE_MODES.md), and [private Git staging](docs/private-git-staging.md).
 
-1. Correlate a proposal with the registered provider exchange before policy evaluation; reject unknown, duplicate, stale, reordered, or digest-mismatched calls.
-2. Durably record claim-critical intent, decision, and single-use execution authority before releasing an allowed effect. Durably record a terminal result, or explicit `UNKNOWN`, before completing the proposal. Audit failure blocks effect/result release. Recovery never blindly replays an unresolved effect.
-3. Read only from the governed session repository. Supervisor `write` and `edit` operations produce new supervisor-owned generations. Pi sees a read-only sealed generation; each `bash` call receives a disposable writable view of a sealed generation.
-4. After `bash`, terminate writers, detach the command view, validate its complete delta, and import only attributable output into a new sealed generation. No Pi or command cell receives the live workspace or live `.git` administration.
-5. Apply to the live workspace only through the separately validated publication path after the workflow is complete. A matching final tree alone does not establish that no transient mutation occurred.
+## Source map
 
-These are intended contracts. They are not implemented guarantees. Denial of a proxy proposal alone does not demonstrate that an undeclared Pi/runtime path was contained; the configured surface and the Linux boundary need separate evidence.
+- `adapter/src/`: Pi SDK host and fixture code, proxy tools, IPC transport, closure probe, and tests.
+- `adapter/native-pi-policy/`: pinned-source policy fixture artifact and its patching metadata.
+- `supervisor/internal/`: Go governance, broker, runtime, storage, publication, and companion components.
+- `supervisor/cmd/`: CLI and doctor/provider/governance/web command packages; `cmd/tbound` includes the refusal path and explicit fixture route.
+- `scripts/`, `install/`, `packaging/`: build, install, verification, and release assets.
 
-## First implementation slice and gate
+## Checks
 
-The tracked starting point is [`todo-implementation-tbound.md`](../agentic-harness/todo-implementation-tbound.md). Begin with its candidate-profile preparation and falsification spikes; do not represent them as completed. The intended order is Pi closure, broker correlation, generation/repository staging, containment, durable authority, and a reconstructable evidence package. Regardless of workstream order, each governed effect must follow the pre-effect durable-recording rule above.
+`make test` is retained as the existing narrow Pi-bootstrap and doctor test target. `make check-go` runs Go tests across `supervisor/`. Real-provider tests are gated and skip unless opted in. The Linux sandbox tests, including `TestNoNetwork` in `supervisor/internal/sandbox/sandbox_linux_test.go`, are local sandbox network-isolation tests: they attempt blocked outbound connections inside the sandbox and are not provider exchanges. They are not gated by `RUN_PROVIDER_TESTS`.
 
-WP1/G1 requires more than a tool smoke test. On the declared candidate VM, the plan requires: (1) prove the Pi surface is closed to exactly the four proxy tools; (2) capture one real provider-specific exchange and the E05 two-generation `read → edit → Bash → read` fixture; (3) prove independent repository isolation and delta provenance, beginning with ordinary byte-copy views; (4) exercise the selected rootless Podman/crun containment profile and Go entrypoint; (5) fault-inject audit write, sync, and disk-full failures; and (6) prepare the E04 transient-mutation and E06 denied-read fixtures. The tested host and runtime identities must be frozen. A failed capability probe requires redesign or a narrower claim, not an unrecorded runtime fallback.
+To opt in to real-provider tests, run `make RUN_PROVIDER_TESTS=1 check-go` and supply the OpenRouter credentials through `TBOUND_OPENROUTER_API_KEY` or `TBOUND_OPENROUTER_API_KEY_FILE`. The durable integration also requires `TBOUND_OPENROUTER_MODEL`. Opted-in tests can make network requests. Platform, privilege, and fixture precondition tests can also skip. Use `go test -v` to see test-level skip reasons; a passing summary does not mean every test ran.
 
-Toolchains and package dependencies have been provisioned, and targeted component checks have run. No WP1 spike or G1 fixture has passed; no provider integration or model request has occurred. See [`docs/implementation-status.md`](docs/implementation-status.md) for recorded checks and their limits.
-
-## Open decisions
-
-- Pi SDK version and the exact native/extension/config paths that must be disabled for closure.
-- Provider/model, endpoint, request/result schemas, streaming/cancellation behavior, content-block limits, and broker profile.
-- Candidate VM image, kernel/filesystem profile, Podman/crun builds, and measured rootless capabilities.
-- Whether the Go supervisor entrypoint meets the declared host boundary; this remains a falsification spike.
-- Journal implementation and pinned engine/filesystem identity after the required durability fault testing.
-- Exact IPC schema/bounds, policy profile, filtered materialization rules, and feasibility-selected resource limits.
-
-## Thesis design references
-
-The normative thesis documents remain in the original thesis repository under agentic-harness/ and are not part of this standalone repository. The design references are DOCUMENT-GOVERNANCE.md, AH-technical/02-process-model.md, AH-technical/02-1-recovery-and-continuation.md, AH-technical/03-architecture.md, and AH-technical/11-evidence-contract.md.
+`make check-adapter` runs the adapter's `npm run typecheck`, its `npm test` suite, and the native host, native policy, and SDK-worker tests. It uses installed dependencies, does not install packages, and does not write artifacts. The closure probe is separate: `make check-closure` runs `npm run closure`, which overwrites `adapter/artifacts/pi-closure-report.json`. `make test-all` runs `check-go` and `check-adapter`. Adapter checks and synthetic fixtures do not establish a production runtime integration.

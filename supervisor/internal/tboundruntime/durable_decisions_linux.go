@@ -1,6 +1,6 @@
 //go:build linux
 
-package main
+package tboundruntime
 
 import (
 	"context"
@@ -22,6 +22,9 @@ import (
 // operation_denied records, so gate_decision frames neither advance nor
 // quarantine the repository.
 const durableDecisionEventKind = "gate_decision"
+
+// DurableDecisionEventKind is the audit event kind for recorded gate decisions.
+const DurableDecisionEventKind = durableDecisionEventKind
 
 // AuditDecisionRecorder durably records every gate decision (ALLOW and DENY)
 // before Serve reaches the executor. It appends one benign event per decision
@@ -72,6 +75,10 @@ type durableDecisionEvent struct {
 	Decision gate.Decision     `json:"decision"`
 }
 
+// DurableDecisionEvent is the faithful durable copy of one proposal and its
+// gate decision.
+type DurableDecisionEvent = durableDecisionEvent
+
 // durableDecisionEventID derives a deterministic, domain-separated event ID
 // from the proposal and decision. It tolerates a denied decision with no
 // trusted response identity.
@@ -97,4 +104,9 @@ func durableDecisionEventID(proposal protocol.Proposal, decision gate.Decision) 
 		writeHashField(digest, decision.ResponseID.Opaque)
 	}
 	return "gate-decision-" + hex.EncodeToString(digest.Sum(nil)), nil
+}
+
+// DurableDecisionEventID derives the deterministic audit event ID.
+func DurableDecisionEventID(proposal protocol.Proposal, decision gate.Decision) (string, error) {
+	return durableDecisionEventID(proposal, decision)
 }

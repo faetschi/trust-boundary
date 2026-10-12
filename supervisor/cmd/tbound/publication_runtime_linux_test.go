@@ -277,7 +277,7 @@ func TestPublicationRuntimeFinalizeWaitsForInflightDurableBashAndDeniesLatePropo
 		finalizeDone <- runtimeRunResult{result: result, err: err}
 	}()
 	for {
-		release, err := fixture.runtime.finalizer.Admission().Acquire(context.Background())
+		release, err := fixture.runtime.Admission().Acquire(context.Background())
 		if errors.Is(err, workflow.ErrAdmissionClosed) {
 			break
 		}

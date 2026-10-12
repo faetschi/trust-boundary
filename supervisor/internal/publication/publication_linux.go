@@ -2102,15 +2102,7 @@ func validStatus(status Status) bool {
 }
 
 func validSHA256(value string) bool {
-	if len(value) != len("sha256:")+64 || !strings.HasPrefix(value, "sha256:") {
-		return false
-	}
-	encoded := strings.TrimPrefix(value, "sha256:")
-	if strings.ToLower(encoded) != encoded {
-		return false
-	}
-	_, err := hex.DecodeString(encoded)
-	return err == nil
+	return delta.ValidSHA256(value)
 }
 
 func validPlan(plan objectPlan) bool {
