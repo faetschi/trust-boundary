@@ -120,3 +120,52 @@ func TestCredentialACESIDFitsRejectsTruncatedSID(t *testing.T) {
 		})
 	}
 }
+
+func TestCredentialACLBounds(t *testing.T) {
+	const base = uintptr(0x1000)
+	t.Run("header outside ACL", func(t *testing.T) {
+		if credentialACLRangeFits(base, 24, base+24, unsafe.Sizeof(credentialACEHeader{})) {
+			t.Fatal("accepted ACE header starting at the ACL end")
+		}
+	})
+	t.Run("ACE crosses AclBytesInUse", func(t *testing.T) {
+		if credentialACLRangeFits(base, 24, base+16, 9) {
+			t.Fatal("accepted an ACE extending past AclBytesInUse")
+		}
+	})
+	t.Run("exact-fit ACE", func(t *testing.T) {
+		if !credentialACLRangeFits(base, 24, base+16, 8) {
+			t.Fatal("rejected an ACE ending exactly at AclBytesInUse")
+		}
+	})
+	t.Run("wrapped or overflowing range", func(t *testing.T) {
+		if credentialACLRangeFits(base, 24, base-1, 1) || credentialACLRangeFits(base, 24, base, ^uintptr(0)) {
+			t.Fatal("accepted an out-of-order or overflowing range")
+		}
+	})
+	t.Run("invalid ACL extent", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			inUse uintptr
+			size  uintptr
+		}{{"short header", 7, 32}, {"in use exceeds ACL size", 33, 32}, {"ACL smaller than header", 32, 7}} {
+			if credentialACLHasValidExtent(tc.inUse, tc.size) {
+				t.Errorf("accepted invalid ACL extent %s", tc.name)
+			}
+		}
+	})
+	t.Run("SID fitting ACE but ACE crossing ACL", func(t *testing.T) {
+		const sidOffset = 8
+		buf := make([]uint32, 8)
+		ace := (*credentialACEHeader)(unsafe.Pointer(&buf[0]))
+		raw := unsafe.Slice((*byte)(unsafe.Pointer(&buf[0])), len(buf)*4)
+		ace.AceSize = 24
+		raw[sidOffset+1] = 2
+		if !credentialACESIDFits(ace, sidOffset) {
+			t.Fatal("test SID should fit inside its claimed ACE")
+		}
+		if credentialACLRangeFits(base, 31, base+8, uintptr(ace.AceSize)) {
+			t.Fatal("accepted SID-bearing ACE whose claimed span crosses AclBytesInUse")
+		}
+	})
+}

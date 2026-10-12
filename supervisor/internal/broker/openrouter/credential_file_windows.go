@@ -38,6 +38,14 @@ type credentialACEHeader struct {
 	AceSize  uint16
 }
 
+type credentialACLHeader struct {
+	AclRevision byte
+	Sbz1        byte
+	AclSize     uint16
+	AceCount    uint16
+	Sbz2        uint16
+}
+
 func readSecureCredentialFile(path string) ([]byte, error) {
 	name, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
@@ -83,7 +91,7 @@ func readSecureCredentialFile(path string) ([]byte, error) {
 
 func verifyCredentialFileOwnerAndDACL(handle syscall.Handle) error {
 	var owner *syscall.SID
-	var dacl uintptr
+	var dacl *byte
 	var descriptor uintptr
 	result, _, _ := procGetSecurityInfo.Call(
 		uintptr(handle), seFileObject, ownerSecurityInformation|daclSecurityInformation,
@@ -94,7 +102,7 @@ func verifyCredentialFileOwnerAndDACL(handle syscall.Handle) error {
 		return syscall.Errno(result)
 	}
 	defer syscall.LocalFree(syscall.Handle(descriptor))
-	if owner == nil || dacl == 0 {
+	if owner == nil || dacl == nil {
 		return os.ErrPermission
 	}
 
@@ -118,7 +126,7 @@ func verifyCredentialFileOwnerAndDACL(handle syscall.Handle) error {
 
 	var aclInfo credentialACLSizeInformation
 	result, _, callErr := procGetACLInformation.Call(
-		dacl, uintptr(unsafe.Pointer(&aclInfo)), unsafe.Sizeof(aclInfo), aclSizeInformation,
+		uintptr(unsafe.Pointer(dacl)), uintptr(unsafe.Pointer(&aclInfo)), unsafe.Sizeof(aclInfo), aclSizeInformation,
 	)
 	if result == 0 {
 		if callErr != nil {
@@ -126,12 +134,36 @@ func verifyCredentialFileOwnerAndDACL(handle syscall.Handle) error {
 		}
 		return os.ErrPermission
 	}
+	aclBase := uintptr(unsafe.Pointer(dacl))
+	aclBytesInUse := uintptr(aclInfo.AclBytesInUse)
+	aclHeaderSize := unsafe.Sizeof(credentialACLHeader{})
+	if aclBytesInUse < aclHeaderSize {
+		return os.ErrPermission
+	}
+	aclSize := uintptr((*credentialACLHeader)(unsafe.Pointer(dacl)).AclSize)
+	if !credentialACLHasValidExtent(aclBytesInUse, aclSize) {
+		return os.ErrPermission
+	}
+	var previousACEEnd uintptr
 	for index := uint32(0); index < aclInfo.AceCount; index++ {
 		var ace *credentialACEHeader
-		result, _, _ = procGetACE.Call(dacl, uintptr(index), uintptr(unsafe.Pointer(&ace)))
+		result, _, _ = procGetACE.Call(uintptr(unsafe.Pointer(dacl)), uintptr(index), uintptr(unsafe.Pointer(&ace)))
 		if result == 0 || ace == nil {
 			return os.ErrPermission
 		}
+		aceAddress := uintptr(unsafe.Pointer(ace))
+		if !credentialACLRangeFits(aclBase, aclBytesInUse, aceAddress, aclHeaderSize) {
+			return os.ErrPermission
+		}
+		aceOffset := aceAddress - aclBase
+		if aceOffset < previousACEEnd {
+			return os.ErrPermission
+		}
+		aceSize := uintptr(ace.AceSize)
+		if aceSize < aclHeaderSize || !credentialACLRangeFits(aclBase, aclBytesInUse, aceAddress, aceSize) {
+			return os.ErrPermission
+		}
+		previousACEEnd = aceOffset + aceSize
 		switch ace.AceType {
 		case accessDeniedACEType:
 			continue
@@ -163,6 +195,24 @@ func verifyCredentialFileOwnerAndDACL(handle syscall.Handle) error {
 }
 
 const credentialSIDHeaderSize = 8
+
+// credentialACLHasValidExtent verifies the size reported by GetAclInformation
+// against both the ACL header and the ACL's declared allocation size.
+func credentialACLHasValidExtent(aclBytesInUse, aclSize uintptr) bool {
+	headerSize := unsafe.Sizeof(credentialACLHeader{})
+	return aclSize >= headerSize && aclBytesInUse >= headerSize && aclBytesInUse <= aclSize
+}
+
+// credentialACLRangeFits checks [address, address+length) without forming an
+// end address, so neither pointer arithmetic nor integer overflow can expand
+// the accepted ACL extent.
+func credentialACLRangeFits(aclBase, aclBytesInUse, address, length uintptr) bool {
+	if address < aclBase {
+		return false
+	}
+	offset := address - aclBase
+	return offset <= aclBytesInUse && length <= aclBytesInUse-offset
+}
 
 // credentialACESIDFits reports whether the SID embedded at sidOffset lies
 // entirely within the ACE. The SID sub-authority count is read only after the
