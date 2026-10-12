@@ -18,7 +18,117 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/piruntime"
 )
+
+func TestValidatePiServiceUnitPinsServicePolicy(t *testing.T) {
+	registration := piruntime.D09ManagedLiveRootRegistration{
+		ServiceName: "tbound-pi", ServiceGroup: "tbound-pi", RunnerPath: "/usr/local/bin/tbound",
+	}
+	serviceConfig := piServiceConfig{
+		PodmanHome:           "/var/lib/tbound/podman-home",
+		XDGRuntimeDir:        "/run/tbound-pi",
+		XDGConfigHome:        "/etc/tbound/podman-config",
+		XDGDataHome:          "/var/lib/tbound/podman-home/data",
+		XDGCacheHome:         "/run/tbound-pi/cache",
+		TMPDir:               "/run/tbound-pi/tmp",
+		ContainersConfigPath: "/etc/tbound/podman-config/containers.conf",
+		StorageConfigPath:    "/etc/tbound/podman-config/storage.conf",
+	}
+	writablePaths := []string{
+		"/run/tbound-pi", "/var/lib/tbound/audit", "/var/lib/tbound/live",
+		"/var/lib/tbound/podman-home", "/var/lib/tbound/podman-storage/graphroot",
+		"/var/lib/tbound/private-admin", "/var/lib/tbound/publication-state", "/var/lib/tbound/sessions",
+	}
+	unit := `[Unit]
+Description=TBound Pi service
+[Service]
+User=tbound-pi
+Group=tbound-pi
+ExecStart=/usr/local/bin/tbound serve --pi --service
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Delegate=yes
+RuntimeDirectory=tbound-pi
+RuntimeDirectoryMode=0700
+StateDirectory=tbound/audit tbound/live tbound/podman-home tbound/podman-storage/graphroot tbound/private-admin tbound/publication-state tbound/sessions
+StateDirectoryMode=0700
+ReadWritePaths=/run/tbound-pi /var/lib/tbound/audit /var/lib/tbound/live /var/lib/tbound/podman-home /var/lib/tbound/podman-storage/graphroot /var/lib/tbound/private-admin /var/lib/tbound/publication-state /var/lib/tbound/sessions
+Environment=HOME=/var/lib/tbound/podman-home USER=tbound-pi LOGNAME=tbound-pi XDG_RUNTIME_DIR=/run/tbound-pi XDG_CONFIG_HOME=/etc/tbound/podman-config XDG_DATA_HOME=/var/lib/tbound/podman-home/data XDG_CACHE_HOME=/run/tbound-pi/cache TMPDIR=/run/tbound-pi/tmp CONTAINERS_CONF=/etc/tbound/podman-config/containers.conf CONTAINERS_STORAGE_CONF=/etc/tbound/podman-config/storage.conf LANG=C LC_ALL=C
+UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS
+`
+	if err := validatePiServiceUnit([]byte(unit), registration, serviceConfig, writablePaths); err != nil {
+		t.Fatalf("valid fixed Pi service unit refused: %v", err)
+	}
+
+	mutations := []struct {
+		name   string
+		before string
+		after  string
+	}{
+		{name: "broaden ReadWritePaths", before: "/var/lib/tbound/sessions", after: "/var/lib/tbound"},
+		{name: "broaden StateDirectory", before: "StateDirectory=tbound/audit tbound/live", after: "StateDirectory=tbound/audit tbound"},
+		{name: "unsafe KillMode", before: "KillMode=control-group", after: "KillMode=process"},
+		{name: "EnvironmentFile", before: "[Service]\n", after: "[Service]\nEnvironmentFile=/etc/tbound/serve-pi.env\n"},
+		{name: "ExecStartPre", before: "[Service]\n", after: "[Service]\nExecStartPre=/bin/true\n"},
+		{name: "duplicate environment key", before: "UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS", after: "Environment=HOME=/tmp\nUnsetEnvironment=DBUS_SESSION_BUS_ADDRESS"},
+	}
+	for _, mutation := range mutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			mutated := strings.Replace(unit, mutation.before, mutation.after, 1)
+			if mutated == unit {
+				t.Fatalf("test mutation did not match the baseline unit: %q", mutation.before)
+			}
+			if err := validatePiServiceUnit([]byte(mutated), registration, serviceConfig, writablePaths); !errors.Is(err, ErrPiServiceUnavailable) {
+				t.Fatalf("unsafe service unit accepted or returned unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidatePiServiceSocketUnitPinsActivationPolicy(t *testing.T) {
+	socket := piServiceSocketRegistration{
+		SocketPath: "/run/tbound/serve-pi.sock", ServiceUnit: "tbound-pi.service",
+		SocketUser: "root", SocketGroup: "tbound-pi-clients",
+	}
+	unit := `[Unit]
+Description=TBound Pi socket
+[Socket]
+ListenStream=/run/tbound/serve-pi.sock
+Accept=no
+Service=tbound-pi.service
+SocketUser=root
+SocketGroup=tbound-pi-clients
+SocketMode=0660
+DirectoryMode=0755
+FileDescriptorName=tbound-pi
+`
+	if err := validatePiServiceSocketUnit([]byte(unit), socket); err != nil {
+		t.Fatalf("valid fixed Pi socket unit refused: %v", err)
+	}
+	for _, mutation := range []struct {
+		name   string
+		before string
+		after  string
+	}{
+		{name: "per-connection activation", before: "Accept=no", after: "Accept=yes"},
+		{name: "wrong file descriptor name", before: "FileDescriptorName=tbound-pi", after: "FileDescriptorName=other"},
+	} {
+		t.Run(mutation.name, func(t *testing.T) {
+			mutated := strings.Replace(unit, mutation.before, mutation.after, 1)
+			if mutated == unit {
+				t.Fatalf("test mutation did not match the baseline unit: %q", mutation.before)
+			}
+			if err := validatePiServiceSocketUnit([]byte(mutated), socket); !errors.Is(err, ErrPiServiceUnavailable) {
+				t.Fatalf("unsafe socket unit accepted or returned unexpected error: %v", err)
+			}
+		})
+	}
+}
 
 func TestPiServiceUnixSocketHandoffUsesKernelPeerAndReplaysTerminal(t *testing.T) {
 	server := newPiServiceTestServer(t, piServiceSocketRegistration{
