@@ -336,11 +336,51 @@ func onePiSystemdValue(sections map[string]map[string][]string, section, key str
 	return values[0], true
 }
 
+func piServiceSystemdUnitHasOnlyAllowedDirectives(sections map[string]map[string][]string,
+	allowed map[string][]string) bool {
+	for section, directives := range sections {
+		allowedDirectives, sectionAllowed := allowed[section]
+		if !sectionAllowed {
+			return false
+		}
+		for directive := range directives {
+			found := false
+			for _, allowedDirective := range allowedDirectives {
+				if directive == allowedDirective {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func piServiceSystemdInstallTargetAllowed(sections map[string]map[string][]string, target string) bool {
+	install, present := sections["Install"]
+	if !present {
+		return true
+	}
+	wantedBy := install["WantedBy"]
+	return len(install) == 1 && len(wantedBy) == 1 && wantedBy[0] == target
+}
+
 func validatePiServiceUnit(data []byte, registration piruntime.D09ManagedLiveRootRegistration,
 	serviceConfig piServiceConfig, writablePaths []string) error {
 	sections, err := parsePiSystemdUnit(data)
 	if err != nil {
 		return err
+	}
+	if !piServiceSystemdUnitHasOnlyAllowedDirectives(sections, map[string][]string{
+		"Unit": {"Description"},
+		"Service": {"User", "Group", "ExecStart", "KillMode", "UMask", "NoNewPrivileges", "ProtectSystem",
+			"ProtectHome", "PrivateTmp", "Delegate", "RuntimeDirectory", "RuntimeDirectoryMode", "StateDirectory",
+			"StateDirectoryMode", "ReadWritePaths", "Environment", "UnsetEnvironment"},
+	}) {
+		return fmt.Errorf("%w: signed Pi service unit contains an unsupported section or directive", ErrPiServiceUnavailable)
 	}
 	service := sections["Service"]
 	get := func(key string) (string, bool) { return onePiSystemdValue(sections, "Service", key) }
@@ -372,10 +412,6 @@ func validatePiServiceUnit(data []byte, registration piruntime.D09ManagedLiveRoo
 		!stateDirectoryModeOK || stateDirectoryMode != "0700" || !writePathsOK ||
 		!piServicePathListEqual(strings.Fields(writePaths), writablePaths) {
 		return fmt.Errorf("%w: signed Pi service unit directives differ from the fixed service contract", ErrPiServiceUnavailable)
-	}
-	if len(service["EnvironmentFile"]) != 0 || len(service["SupplementaryGroups"]) != 0 ||
-		len(service["ExecStartPre"]) != 0 || len(service["ExecStartPost"]) != 0 {
-		return fmt.Errorf("%w: service unit contains unregistered environment, groups, or helper commands", ErrPiServiceUnavailable)
 	}
 	wantEnvironment := map[string]string{
 		"HOME": serviceConfig.PodmanHome, "USER": registration.ServiceName, "LOGNAME": registration.ServiceName,
@@ -445,6 +481,14 @@ func validatePiServiceSocketUnit(data []byte, socket piServiceSocketRegistration
 	sections, err := parsePiSystemdUnit(data)
 	if err != nil {
 		return err
+	}
+	if !piServiceSystemdUnitHasOnlyAllowedDirectives(sections, map[string][]string{
+		"Unit": {"Description"},
+		"Socket": {"ListenStream", "Accept", "Service", "SocketUser", "SocketGroup", "SocketMode", "DirectoryMode",
+			"FileDescriptorName"},
+		"Install": {"WantedBy"},
+	}) || !piServiceSystemdInstallTargetAllowed(sections, "sockets.target") {
+		return fmt.Errorf("%w: signed Pi socket unit contains an unsupported section or directive", ErrPiServiceUnavailable)
 	}
 	get := func(key string) (string, bool) { return onePiSystemdValue(sections, "Socket", key) }
 	listen, listenOK := get("ListenStream")

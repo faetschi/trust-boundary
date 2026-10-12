@@ -49,6 +49,8 @@ check_platform() {
   done
   [ -f "$OUT/$dir/package.json" ] && ok "$dir package.json" || bad "$dir package.json missing"
   if grep -q "\"$pkgname\"" "$OUT/$dir/package.json"; then ok "$dir name $pkgname"; else bad "$dir name mismatch"; fi
+  if cmp -s "$ROOT/LICENSE" "$OUT/$dir/LICENSE"; then ok "$dir carries canonical LICENSE text"; else bad "$dir LICENSE missing or differs from source"; fi
+  if grep -q '"files": \["bin/", "LICENSE"\]' "$OUT/$dir/package.json"; then ok "$dir npm files includes LICENSE"; else bad "$dir npm files omits LICENSE"; fi
 }
 
 check_platform cli-win32-x64 "@tbound/cli-win32-x64" .exe
@@ -57,6 +59,8 @@ check_platform cli-darwin-arm64 "@tbound/cli-darwin-arm64" ""
 echo "[2] root package + launcher"
 rootpkg="$OUT/cli/package.json"
 [ -f "$rootpkg" ] && ok "cli/package.json present" || bad "cli/package.json missing"
+if cmp -s "$ROOT/LICENSE" "$OUT/cli/LICENSE"; then ok "root npm package carries canonical LICENSE text"; else bad "root npm package LICENSE missing or differs from source"; fi
+if grep -q '"files": \["bin/", "scripts/", "README.md", "LICENSE"\]' "$rootpkg"; then ok "root npm files includes LICENSE"; else bad "root npm files omits LICENSE"; fi
 if grep -q '"@tbound/cli-win32-x64"' "$rootpkg" && grep -q '"@tbound/cli-darwin-arm64"' "$rootpkg"; then
   ok "root optionalDependencies cover the built platforms"
 else

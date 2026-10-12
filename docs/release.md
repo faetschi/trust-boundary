@@ -45,6 +45,7 @@ Each tarball contains:
 | `bin/tbound` | yes | |
 | `bin/tbound-doctor` | yes | |
 | `bin/tbound-profile` | yes (Linux-only stub elsewhere) | |
+| `LICENSE` | yes | |
 | `libexec/tbound/tbound-cell-entrypoint` | | yes |
 | `libexec/tbound/cell-entrypoint.json` | | yes |
 | `runtime/`, `share/completions/`, `VERSION` | yes | |
@@ -72,16 +73,14 @@ dist/tbound-cell-entrypoint-<ver>-linux-amd64.sha256
 ```
 
 The metadata records the entrypoint binary digest, source commit/dirty state,
-source-tree and D09-template-source digests, Go toolchain/build flags, declared
-license source, and an explicit `registered_d09_profile_digest: null`; the build
-cannot invent a measured/signed profile hash. `SHA256SUMS` covers each tarball
+source-tree and D09-template-source digests, Go toolchain/build flags, the
+canonical `LICENSE` source, its inclusion status and SHA-256 digest, and an
+explicit `registered_d09_profile_digest: null`; the build cannot invent a
+measured/signed profile hash. `SHA256SUMS` covers each tarball
 and both separate metadata/checksum artifacts. The `.sha256` file names the
 binary as stored inside the tarball and can be checked from the extraction root
-with `sha256sum -c <path-to-release-checksum-file>`.
-The source checkout currently has no canonical `LICENSE` text file. The
-metadata records the existing MIT package/spec declaration but marks
-`license_text_included: false`; resolve the license-text gap before public
-publication.
+with `sha256sum -c <path-to-release-checksum-file>`. Every release tarball
+includes the full MIT license text at its root, covered by `MANIFEST.sha256`.
 
 Attach these alongside the tarballs when publishing; the release workflow
 uploads the tarballs, `SHA256SUMS`, and both exact Linux/amd64 sidecar filename
@@ -101,7 +100,8 @@ scripts/make-npm-packages.sh 0.1.0 dist
 Each platform package ships `bin/tbound`, `bin/tbound-doctor`, and
 `bin/tbound-profile` (`.exe` on win32). The root launcher forwards `tbound
 doctor` and `tbound profile` to the dedicated binaries; the TCB entrypoint is
-never packaged for npm.
+never packaged for npm. The root and platform package trees include the
+canonical `LICENSE` file and list it in their npm `files` allowlists.
 
 Publishing is manual/opt-in:
 

@@ -137,6 +137,7 @@ check_nonlinux() {
   [ -f "$x/bin/tbound-doctor$ext" ] && ok "$os bin/tbound-doctor$ext" || bad "$os bin/tbound-doctor$ext missing"
   [ -f "$x/bin/tbound-profile$ext" ] && ok "$os bin/tbound-profile$ext" || bad "$os bin/tbound-profile$ext missing"
   [ -f "$x/runtime/package.json" ] && ok "$os runtime/package.json" || bad "$os runtime/package.json missing"
+  if cmp -s "$ROOT/LICENSE" "$x/LICENSE"; then ok "$os carries canonical LICENSE text"; else bad "$os LICENSE missing or differs from source"; fi
   [ -f "$x/VERSION" ] && ok "$os VERSION" || bad "$os VERSION missing"
   if [ -e "$x/libexec/tbound/tbound-cell-entrypoint" ]; then
     bad "$os must not ship the linux/amd64 TCB entrypoint"
@@ -186,6 +187,7 @@ if "$ROOT/scripts/build-release.sh" "$VERSION" "$LIN" linux/amd64 >"$LINLOG" 2>&
   [ -f "$x/bin/tbound" ] && ok "linux bin/tbound" || bad "linux bin/tbound missing"
   [ -f "$x/bin/tbound-doctor" ] && ok "linux bin/tbound-doctor" || bad "linux bin/tbound-doctor missing"
   [ -f "$x/bin/tbound-profile" ] && ok "linux bin/tbound-profile" || bad "linux bin/tbound-profile missing"
+  if cmp -s "$ROOT/LICENSE" "$x/LICENSE"; then ok "linux carries canonical LICENSE text"; else bad "linux LICENSE missing or differs from source"; fi
   [ -x "$x/libexec/tbound/tbound-cell-entrypoint" ] && ok "linux TCB entrypoint present" || bad "linux TCB entrypoint missing"
   [ -f "$x/libexec/tbound/cell-entrypoint.json" ] && ok "linux entrypoint metadata present" || bad "linux entrypoint metadata missing"
   if verify_manifest "$x"; then ok "linux MANIFEST.sha256 verifies"; else bad "linux MANIFEST.sha256 failed"; fi
@@ -220,11 +222,13 @@ if "$ROOT/scripts/build-release.sh" "$VERSION" "$LIN" linux/amd64 >"$LINLOG" 2>&
       bad "SHA256SUMS omits standalone metadata/checksum files"
     fi
     workflow="$ROOT/.github/workflows/release.yml"
+    normalized_workflow="$BASE/release-workflow.normalized.yml"
+    sed 's/\r$//' "$workflow" > "$normalized_workflow"
     metadata_glob='dist/tbound-cell-entrypoint-*-linux-amd64.metadata.json'
     checksum_glob='dist/tbound-cell-entrypoint-*-linux-amd64.sha256'
-    if [ "$(grep -Fxc "            dist/SHA256SUMS" "$workflow")" -eq 2 ] &&
-       [ "$(grep -Fxc "            $metadata_glob" "$workflow")" -eq 2 ] &&
-       [ "$(grep -Fxc "            $checksum_glob" "$workflow")" -eq 2 ]; then
+    if [ "$(grep -Fxc "            dist/SHA256SUMS" "$normalized_workflow")" -eq 2 ] &&
+       [ "$(grep -Fxc "            $metadata_glob" "$normalized_workflow")" -eq 2 ] &&
+       [ "$(grep -Fxc "            $checksum_glob" "$normalized_workflow")" -eq 2 ]; then
       ok "both upload-artifact and GitHub release include SHA256SUMS and exact metadata sidecar globs"
     else
       bad "workflow is missing the metadata sidecar glob in one or both upload lists"
@@ -247,6 +251,10 @@ if "$ROOT/scripts/build-release.sh" "$VERSION" "$LIN" linux/amd64 >"$LINLOG" 2>&
     grep -q '"registered_d09_profile_digest": null' "$meta" && ok "unmeasured registered profile stays null" || bad "metadata invented a profile digest"
     grep -q '"signed": false' "$meta" && ok "entrypoint metadata truthfully says unsigned" || bad "entrypoint signed state is misleading"
     grep -q '"license": "MIT"' "$meta" && ok "license metadata present" || bad "license metadata missing"
+    license_digest="$(sha256_of "$ROOT/LICENSE")"
+    grep -q '"license_source": "LICENSE"' "$meta" && ok "license metadata names canonical text" || bad "license source metadata missing"
+    grep -q '"license_text_included": true' "$meta" && ok "license metadata records included text" || bad "license inclusion metadata is false or missing"
+    grep -q "\"license_sha256\": \"sha256:$license_digest\"" "$meta" && ok "license metadata digest matches canonical text" || bad "license metadata digest mismatch"
   else
     bad "separate entrypoint metadata/checksum artifacts missing"
   fi

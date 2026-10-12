@@ -75,7 +75,11 @@ UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS
 		{name: "unsafe KillMode", before: "KillMode=control-group", after: "KillMode=process"},
 		{name: "EnvironmentFile", before: "[Service]\n", after: "[Service]\nEnvironmentFile=/etc/tbound/serve-pi.env\n"},
 		{name: "ExecStartPre", before: "[Service]\n", after: "[Service]\nExecStartPre=/bin/true\n"},
+		{name: "ExecCondition", before: "[Service]\n", after: "[Service]\nExecCondition=/bin/true\n"},
+		{name: "ExecStop", before: "[Service]\n", after: "[Service]\nExecStop=/bin/true\n"},
+		{name: "ExecStopPost", before: "[Service]\n", after: "[Service]\nExecStopPost=/bin/true\n"},
 		{name: "duplicate environment key", before: "UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS", after: "Environment=HOME=/tmp\nUnsetEnvironment=DBUS_SESSION_BUS_ADDRESS"},
+		{name: "service install section", before: "UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS\n", after: "UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS\n[Install]\nWantedBy=multi-user.target\n"},
 	}
 	for _, mutation := range mutations {
 		t.Run(mutation.name, func(t *testing.T) {
@@ -106,6 +110,8 @@ SocketGroup=tbound-pi-clients
 SocketMode=0660
 DirectoryMode=0755
 FileDescriptorName=tbound-pi
+[Install]
+WantedBy=sockets.target
 `
 	if err := validatePiServiceSocketUnit([]byte(unit), socket); err != nil {
 		t.Fatalf("valid fixed Pi socket unit refused: %v", err)
@@ -117,6 +123,9 @@ FileDescriptorName=tbound-pi
 	}{
 		{name: "per-connection activation", before: "Accept=no", after: "Accept=yes"},
 		{name: "wrong file descriptor name", before: "FileDescriptorName=tbound-pi", after: "FileDescriptorName=other"},
+		{name: "additional datagram listener", before: "Accept=no", after: "Accept=no\nListenDatagram=/run/tbound/serve-pi.sock"},
+		{name: "additional stream listener", before: "ListenStream=/run/tbound/serve-pi.sock", after: "ListenStream=/run/tbound/serve-pi.sock\nListenStream=/run/tbound/serve-pi-extra.sock"},
+		{name: "unexpected install target", before: "WantedBy=sockets.target", after: "WantedBy=multi-user.target"},
 	} {
 		t.Run(mutation.name, func(t *testing.T) {
 			mutated := strings.Replace(unit, mutation.before, mutation.after, 1)

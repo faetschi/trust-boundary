@@ -4,7 +4,7 @@
 # Produces, for each target:
 #   tbound-<version>-<os>-<arch>.tar.gz
 #     bin/tbound, bin/tbound-doctor, bin/tbound-profile
-#     runtime/, share/completions/, MANIFEST.sha256 (except self), VERSION
+#     runtime/, share/completions/, LICENSE, MANIFEST.sha256 (except self), VERSION
 #     (linux/amd64 only) libexec/tbound/tbound-cell-entrypoint
 #                        libexec/tbound/cell-entrypoint.json
 # plus a SHA256SUMS file covering every tarball. For linux/amd64 it also writes a
@@ -55,6 +55,7 @@ if ! command -v "$GO" >/dev/null 2>&1; then
   echo "build-release: Go toolchain '$GO' not found on PATH" >&2
   exit 1
 fi
+[ -f "$ROOT/LICENSE" ] || { echo "build-release: missing canonical LICENSE file" >&2; exit 1; }
 
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}';
@@ -155,7 +156,9 @@ for target in "${TARGETS[@]}"; do
   "go_toolchain": "$ENTRY_GO_VERSION",
   "build_flags": ["CGO_ENABLED=0", "-trimpath"],
   "license": "MIT",
-  "license_source": "packaging/rpm/tbound.spec and packaging/npm/package.json; no canonical LICENSE file is present in this checkout",
+  "license_source": "LICENSE",
+  "license_text_included": true,
+  "license_sha256": "sha256:$(sha256_of "$ROOT/LICENSE")",
   "source": "supervisor/cmd/tbound-cell-entrypoint",
   "role": "unsigned binary intended for a governed D09 in-image TCB entrypoint",
   "signed": false,
@@ -165,6 +168,7 @@ for target in "${TARGETS[@]}"; do
 JSON
   fi
   cp -R "$RUNTIME" "$stage/runtime"
+  cp "$ROOT/LICENSE" "$stage/LICENSE"
   if [ -d "$ROOT/install/completions" ]; then
     mkdir -p "$stage/share/completions"
     cp "$ROOT"/install/completions/* "$stage/share/completions/"

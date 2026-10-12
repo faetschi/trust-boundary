@@ -146,6 +146,7 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   cp "$src_bin" "$bindir/$binfile"
   cp "$src_exe" "$bindir/$exefile"
   cp "$src_prof" "$bindir/$proffile"
+  cp "$ROOT/LICENSE" "$OUT/$pkg/LICENSE"
   rm -rf "$work"
   cat > "$OUT/$pkg/package.json" <<JSON
 {
@@ -155,7 +156,7 @@ for tgz in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
   "license": "MIT",
   "os": ["${nos}"],
   "cpu": ["${narch}"],
-  "files": ["bin/"],
+  "files": ["bin/", "LICENSE"],
   "preferUnplugged": true
 }
 JSON
@@ -170,6 +171,7 @@ mkdir -p "$OUT/cli/bin" "$OUT/cli/scripts"
 cp "$ROOT/packaging/npm/bin/tbound.js" "$OUT/cli/bin/"
 cp "$ROOT/packaging/npm/scripts/postinstall.js" "$OUT/cli/scripts/"
 cp "$ROOT/packaging/npm/README.md" "$OUT/cli/README.md"
+cp "$ROOT/LICENSE" "$OUT/cli/LICENSE"
 
 depsfile="$OUT/cli/.deps.json"
 : > "$depsfile"
@@ -186,7 +188,7 @@ done
   printf '  "description": "Install the tbound supervisor CLI next to your Pi coding agent.",\n'
   printf '  "license": "MIT",\n'
   printf '  "bin": { "tbound": "bin/tbound.js" },\n'
-  printf '  "files": ["bin/", "scripts/", "README.md"],\n'
+  printf '  "files": ["bin/", "scripts/", "README.md", "LICENSE"],\n'
   printf '  "optionalDependencies": {\n'
   cat "$depsfile"
   printf '  },\n'

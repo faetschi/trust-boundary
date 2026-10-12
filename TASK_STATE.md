@@ -34,7 +34,7 @@ Updated 2026-10-12. Current-state tracker only; keep short, remove stale items.
 6. Publication: managed-root lease/epoch/permit machinery implemented; per-command D09 receipts minted, validated, and journal-bound, but NOT surfaced to the CLI (final receipt carries only counts/digest). Bash-lease terminal origin resolves via `ResolveTerminalLeaseOrigin`.
 7. Cleanup: effective crun/seccomp binding; owned scope/cgroup cleanup; UNKNOWN keeps references and authority.
 8. Xattr visibility needs independent operator qualification, not scanner metrics alone.
-9. Packaging: strict Linux layout and npm checks pass on the frozen source. RPM, Homebrew, and container builds are not verified. Canonical license text is a public-release blocker.
+9. Packaging: canonical MIT text is included in release tarballs and generated npm root/platform packages, with metadata digest and offline layout assertions. On the existing Ubuntu VM, strict release layout passed 73/73, npm package checks 27/27, and synthetic DEB/RPM layout passed. Actual RPM, Homebrew, and container builds remain unverified.
 
 ## Environment limits
 
