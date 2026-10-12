@@ -461,6 +461,18 @@ func (q *D09ManagedLiveRootSnapshotQualification) XattrEvidence() (D09ManagedRoo
 	return q.xattr, nil
 }
 
+// XattrVisibilityAttestation converts an opaque managed-root qualification into
+// the workspace import attestation. Callers cannot synthesize Complete: the
+// qualification is issued only after the signed RW calibration and current
+// recovered source lease have both been checked.
+func (q *D09ManagedLiveRootSnapshotQualification) XattrVisibilityAttestation() (workspace.XattrVisibilityAttestation, error) {
+	evidence, err := q.XattrEvidence()
+	if err != nil {
+		return workspace.XattrVisibilityAttestation{}, err
+	}
+	return workspace.XattrVisibilityAttestation{ProfileDigest: evidence.CalibrationDigest, Complete: true}, nil
+}
+
 // RevalidateRootSnapshot implements sessionrepo's narrow structural bridge.
 // B calls it before its descriptor-rooted source scan and after workspace.Import;
 // C keeps the same writer lease active across both calls.

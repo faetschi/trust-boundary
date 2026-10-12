@@ -292,21 +292,36 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	session.CommandRunner = runner
 	session.ProductionCommandRunner = runner
 
-	// Ordinary manual production mode still consumes the protected read-only
-	// source snapshot. Socket service mode must instead use A's dedicated
-	// registered managed-RW source/xattr lease API; never silently reuse the
-	// readonly-source attestation or a caller Complete boolean for that path.
+	// Socket service mode seeds only from the current registered managed-RW
+	// root after C's recovered lease and A's signed xattr qualification pass.
+	// Ordinary mode retains the protected read-only source snapshot path.
+	sourceRoot := liveRoot
+	var sourceQualification *piruntime.D09ManagedLiveRootSnapshotQualification
+	var xattrVisibility workspace.XattrVisibilityAttestation
 	if config.ServiceMode {
-		return fail(ErrManagedSourceCaptureUnavailable)
-	}
-	sourceRoot, err := openProductionQuiescentSource(artifacts.SourceRoot)
-	if err != nil {
-		return fail(fmt.Errorf("open and attest protected read-only source root: %w", err))
-	}
-	closers = append(closers, sourceRoot.Close)
-	xattrVisibility, err := productionXattrVisibility(profile, template, sourceRoot)
-	if err != nil {
-		return fail(err)
+		verified, ok := managedRootLease.verified.(*piruntime.VerifiedD09ManagedLiveRoot)
+		if !ok {
+			return fail(ErrManagedSourceCaptureUnavailable)
+		}
+		sourceQualification, err = piruntime.D09ManagedLiveRootSnapshotEvidenceForSeed(ctx,
+			verified, sourceRoot, profile, template, managedRootLease)
+		if err != nil {
+			return fail(fmt.Errorf("qualify current managed-root source under the recovered D09 lease: %w", err))
+		}
+		xattrVisibility, err = sourceQualification.XattrVisibilityAttestation()
+		if err != nil {
+			return fail(fmt.Errorf("derive managed-root workspace xattr attestation from qualification: %w", err))
+		}
+	} else {
+		sourceRoot, err = openProductionQuiescentSource(artifacts.SourceRoot)
+		if err != nil {
+			return fail(fmt.Errorf("open and attest protected read-only source root: %w", err))
+		}
+		closers = append(closers, sourceRoot.Close)
+		xattrVisibility, err = productionXattrVisibility(profile, template, sourceRoot)
+		if err != nil {
+			return fail(err)
+		}
 	}
 
 	storeRoot, err := os.Open(storeRootPath)
@@ -314,7 +329,11 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 		return fail(fmt.Errorf("open protected session Store root: %w", err))
 	}
 	closers = append(closers, storeRoot.Close)
-	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(), xattrVisibility, sessionrepo.LinuxReadOnlyBinder{})
+	var exposureBinder sessionrepo.Binder
+	if !config.ServiceMode {
+		exposureBinder = sessionrepo.LinuxReadOnlyBinder{}
+	}
+	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(), xattrVisibility, exposureBinder)
 	if err != nil {
 		return fail(fmt.Errorf("create protected session Store: %w", err))
 	}
@@ -323,9 +342,14 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	session.ManagedStore = managed
 	session.Store = managed.Store()
 
-	g0, err := managed.Store().Seed(sourceRoot, sessionrepo.RootAttestation{Quiescent: true})
+	var g0 *sessionrepo.Generation
+	if sourceQualification != nil {
+		g0, err = seedQualifiedManagedRootSource(ctx, managed.Store(), sourceRoot, storeJournal, runID, sourceQualification)
+	} else {
+		g0, err = managed.Store().Seed(sourceRoot, sessionrepo.RootAttestation{Quiescent: true})
+	}
 	if err != nil {
-		return fail(fmt.Errorf("seed baseline generation from protected source: %w", err))
+		return fail(fmt.Errorf("seed baseline generation from qualified protected source: %w", err))
 	}
 	if err := authority.BindBaseline(managed.Store(), g0); err != nil {
 		return fail(fmt.Errorf("bind verified baseline generation: %w", err))

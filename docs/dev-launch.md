@@ -141,41 +141,20 @@ of running or claiming anything.
 - **No publication, G1, or H1.** `publication="not-attempted"`; the route is
   component development evidence only.
 
-## Production route: default governed admission attempt
+## Current production entry point
 
-`tbound serve --pi` now attempts the **protected default** route rather than
-refusing unconditionally:
+On Linux, ordinary tbound serve --pi is a client for the local managed service.
+It sends a task request to the registered service; profile, source, and workspace
+configuration belong to that service and cannot be selected by the client.
+The --service mode is the internal systemd socket-activated server.
 
-1. It probes the D09 host prerequisites from the registered, root-owned
-   `/etc/tbound/d09-cell.json` template (or a conservative default when the
-   template is absent) and refuses with the exact missing list on an
-   unprovisioned host.
-2. It loads and verifies the signed host profile from the protected
-   `/etc/tbound` trust root (or a protected `--native-host-profile` path), using
-   the fixed root-owned admin public key as the only trust root.
-3. It binds the D09 template digest to the signed profile, then refuses with the
-   precise `ErrD09SessionCompositionUnavailable` code blocker because the sealed
-   D06 exposure, runtime bundle, and descriptor role mapping are not wired into
-   the cell.
+The handoff protocol, kernel-credential peer authentication, request journaling,
+idempotency, and both endpoints are implemented. The service-mode source-capture
+code now qualifies and revalidates the managed source before worker exposure,
+but its Linux execution and real signed-profile path are unverified. Host
+provisioning and the systemd listener/client-server/restart tests are also still
+open. With the service absent, the client returns **service unavailable**. No
+positive governed Pi session, production containment, or G1 result is claimed.
 
-On this development host (no root-owned profile, no podman/crun/cosign):
-
-```text
-tbound serve --pi
-  -> exit 2 (governed Pi D09 prerequisites are not satisfied: ... missing podman ...; crun ...; cosign ...; image ...)
-tbound serve --pi --native-host-profile <protected signed profile>
-  -> exit 2 (same prerequisite refusal; the path cannot supply its own trust root)
-```
-
-A fully provisioned host still cannot return success: the D09 launcher now
-implements the sealed `StartVerified` adapter (real rootless Podman/crun cell,
-fixed child descriptor role map, held-cgroup settlement), but the **sealed
-session composition** (VerifiedWorkerExposure / VerifiedWorkerRuntimeAssets and
-the CLI composition) is owned by separate workstreams and is not yet wired. No
-production containment or G1 is claimed, and a real provisioned launch is
-**UNVERIFIED** here. The full route will additionally require explicit
-workspace, task, and source configuration before it can admit a real host task;
-those inputs are intentionally not accepted as unused flags while the
-composition is unwired. `--dev-fixture` remains a separate, explicitly
-non-claim-bearing development route.
-
+Use [launch.md](launch.md) for current native Linux and VM steps. The --dev-fixture
+section above remains a separate offline, non-claim-bearing Pi development route.

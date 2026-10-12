@@ -1,31 +1,24 @@
 # Production Pi session composition (`serve --pi`)
 
-Status: **CLI composition, command-receipt binding, and managed-root permit path are
-compiled/tested; real-host positive publication remains externally UNVERIFIED.**
-Production requires the fixed-anchor signed managed-live-root registration,
-binds its verified service/cgroup identity into D09 admission, and holds a
-run-epoch writer lease through recovery, worker/cell drain, publication, and the
-durable terminal disposition. Xattr visibility uses the protected D09 template
-measurement; terminal lease publication uses a versioned authenticated origin.
-`tbound serve --pi` always
-uses the concrete `productionBinder` in package `main`; there is no nil
-placeholder.
+Status: **CLI composition, command-receipt binding, and managed-root permit
+code are compiled; real-host source qualification and positive publication are
+unverified.** On Linux, the ordinary CLI command is a managed-service client;
+the internal --service endpoint is the systemd socket-activated server. This
+document describes the service-side session composition, not a standalone
+user launch command. The service and source-capture path have not been qualified
+on a live Linux host with the real signed profile.
 
-## CLI surface (cmd/tbound)
+## CLI entry point
 
-```
-tbound serve --pi [--native-host-profile PATH]
-                --source SNAPSHOT [--workspace LIVE_ROOT]
-                [--task-id ID] [--task-request-id ID] [--task TEXT]
-```
+The client sends a registered task ID, request ID, and task text to the local
+service:
 
-`--native-host-profile` is an authorized selection only; the verification key is
-always the fixed root-owned `/etc/tbound/pi-host-profile.pub`. `--source` is
-required and names the protected read-only baseline snapshot. `--workspace`, when
-specified, names the distinct live publication root and is never passed to Pi.
-`--task-id`/`--task-request-id`/`--task` are bounded plain input.
-`--dev-fixture`/`--native-fixture` remain mutually exclusive with each other and
-with a non-empty `--native-host-profile`.
+~~~
+tbound serve --pi --task-id ID --task-request-id ID --task TEXT
+~~~
+
+The client cannot select profile, source, or workspace paths. The systemd
+service owns those inputs and is expected to start through socket activation.
 
 ## Concrete binder (`production_binder_linux.go`)
 

@@ -1,16 +1,18 @@
 # TBound task state
 
-Updated 2026-10-11. Current-state tracker only; keep short, remove stale items.
+Concise summary of current tbound state. Make sure not to bloat this file or accumulate outdated information. Always update this file and remove old information so it stays focused and concise
+
+Updated 2026-10-12. Current-state tracker only; keep short, remove stale items.
 
 ## Claim boundary (do not overstate)
 
-- `G1=false`; containment `not-established`; `serve --pi` (production) refuses by design.
+- `G1=false`; containment `not-established`; Linux `serve --pi` is now a managed-service client. M1 source-capture code is present; production admission remains unverified pending host provisioning and validation of the real signed-profile path.
 - Component/fixture/offline passes are NOT H1/G1, containment, provider, or thesis evidence.
 - No stock CLI/SDK fallback, no invented profile. Pi keeps conversation/tool/UI behavior; TBound owns launch, broker/tool authority, lifecycle, durable generations, publication, evidence.
 - D15: CLI-first claim-bearing path. Native TUI/companion UI are optional.
 - D06: private-Git primitive is conformance-only; prototype waiver stays until trusted integration + independent proof.
 - Publication is per-object durable reconciliation (no global atomicity, no blind replay).
-- E07 conformance vs. secondary recovery study: 7 vs 8 crash points, 48 vs 51 trials unresolved. Needs dated reconciliation before registration/execution.
+- E07 conformance vs. secondary recovery study: user selected 48 recovery trials (16 scenarios × 3); the 8th crash point is E07 conformance, not part of that denominator. Needs dated protocol amendment before registration/execution.
 
 ## Status
 
@@ -25,7 +27,7 @@ Updated 2026-10-11. Current-state tracker only; keep short, remove stale items.
 ## Open code gates (product)
 
 1. Real Pi launch through one CLI-owned session: protected profile -> Pi -> Go broker -> durable executor -> `read->edit->bash->read`, with result and generation lineage.
-2. Managed service handoff — characterization (2026-10-11, commit `fdfbd38`): protocol, socket activation, kernel-credential auth, journaling/idempotency, and both endpoints EXIST (`serve --pi` with `--task-id/--task-request-id/--task` is the client; `--service` is the systemd-activated server). Residual work, in dependency order: (a) service-mode source capture — binder hard-refuses at `production_binder_linux.go:295-301` (`ErrManagedSourceCaptureUnavailable`); the managed-RW source/xattr lease API is the single functional blocker; (b) host provisioning tooling (units, service account, `tbound-pi-clients` group, `/run/tbound` tmpfs mount, config, measure/sign sequence) — no code authors any of it; (c) tests for the systemd listener, end-to-end client↔server, cross-restart journal replay, and the untested cmd/tbound unit validators (parallel duplicate of tested piruntime validators — drift hazard, e.g. duplicated config path constants); (d) client UX (request-ID generation, status/receipt command, error surfacing). Note: on Linux, production refusal is now "service unavailable", not the old unconditional design refusal; docs/governed-session-composition.md is stale on this.
+2. Managed service handoff — characterization (2026-10-11, commit `fdfbd38`): protocol, socket activation, kernel-credential auth, journaling/idempotency, and both endpoints EXIST (`serve --pi` with `--task-id/--task-request-id/--task` is the client; `--service` is the systemd-activated server). Residual work, in dependency order: (a) service-mode source capture — code now qualifies the current managed-RW root under the recovered C lease, brackets baseline import with source revalidation, leaves `ExposureBinder` unset in service mode, and durably binds the qualification to g0/tree/manifest digests; focused empty-ledger, qualified-receipt, and pre/post-seed refusal tests were added. A post-seed mismatch emits a durable refusal record, retains g0 only in the private per-run Store for audit, and returns no generation to the caller (no worker/D09 exposure); cleanup/reconciliation of that retained Store is follow-up work. Linux `GOOS=linux GOARCH=amd64 go test -c` compiles both `./cmd/tbound` and `./internal/piruntime` test binaries, and Linux-target `go vet ./cmd/tbound ./internal/piruntime` passes; focused Linux race tests now pass on the existing private ext4 guest with `go test -race -mod=readonly -count=1 -run 'TestManagedSource|TestManagedLiveRootQualificationIssuesWorkspaceXattrAttestation|TestD09XattrEnumeration' ./cmd/tbound ./internal/piruntime`, covering empty-ledger recovery evidence, g0 receipt binding, pre/post-seed refusal, and xattr qualification. The first exact-source run exposed raw audit-hash formatting rejected by typed evidence validation and a test expecting an EvidenceBundle despite no baseline; both are fixed. The real signed-profile source path is also unverified. Xattr qualification inventories paths, metadata, and xattr names rather than file contents, so host provisioning must establish that the dedicated service UID has no other source-tree writers; the lease only serializes cooperating TBound sessions. (b) host provisioning tooling (units, service account, `tbound-pi-clients` group, `/run/tbound` tmpfs mount, config, measure/sign sequence) — no code authors any of it; (c) tests for the systemd listener, end-to-end client↔server, cross-restart journal replay, and the untested cmd/tbound unit validators (parallel duplicate of tested piruntime validators — drift hazard, e.g. duplicated config path constants); (d) client UX (request-ID generation, status/receipt command, error surfacing). Note: on Linux, production refusal is now "service unavailable", not the old unconditional design refusal.
 3. Rootless UID/GID maps must be signed and proof-bound. Use distinct host service IDs; the map contract is `--uidmap CellUID:0:1` / `--gidmap CellGID:0:1` with no `--userns`.
 4. Exact service state-write allowlist — largely pinned by the unit validator (`ReadWritePaths` == 8 registered paths, 7-entry StateDirectory); needs provisioning + tests.
 5. D06 sealed source: export/consumer-view chain implemented through the cell entrypoint (`rebindConsumerFD` with same-inode + ro-mount checks); only ever exercised against fixtures — needs a real Podman/crun environment.
@@ -38,17 +40,19 @@ Updated 2026-10-11. Current-state tracker only; keep short, remove stale items.
 
 - WSL lacks Podman/crun/Cosign and a usable delegated cgroup. Direct cgroup launcher is not the D09 profile.
 - Linux Node: `/home/jeli2k/node-v24.15.0-linux-x64/bin/node`. Go: `/home/jeli2k/go-sdk/go/bin`.
-- Windows: full vet/tests fail on baseline `60631d0` (5 pipe-alias tests, 3 unsafe.Pointer vet diagnostics). Do not report Windows as green. UPDATE 2026-10-11 on `fdfbd38`: the five pipe-identity tests now pass (`descriptor_identity_*`); Windows suite fully green; only the 3 pre-existing `unsafe.Pointer` vet diagnostics remain.
-- Hyper-V VM `TBound-Ubuntu-2404` (authorized for experiments 2026-10-11): running, fresh boot, guest IP `172.30.32.185` on Default Switch (DHCP works after reboot; Hyper-V reports no guest IP — no KVP daemon). SSH BLOCKED: no local credential reaches the guest; old operator-key infrastructure (`C:\ProgramData\TBoundHostAutomation`) does not exist on this machine. Pending: user adds the host `id_ed25519` public key to `tboundadmin` via VM console; then run `infra/guest/probe-capabilities.sh`-equivalent checks (Podman/crun/Cosign/cgroup v2 delegation/Landlock ABI).
-- VM checkpoints present: `ubuntu-24.04.5-golden-baseline`, `tbound-demo-checkpoint` (restore capability untested).
+- Windows: baseline `60631d0` had 5 pipe-alias test failures and 3 `unsafe.Pointer` vet diagnostics. UPDATE 2026-10-11 on `fdfbd38`: the five pipe-identity tests pass (`descriptor_identity_*`); suite passes with only the 3 pre-existing vet diagnostics. UPDATE 2026-10-12: full `go test -count=1 ./...` passed on rerun; first run had a transient piruntime cleanup `TerminateProcess: Access is denied`, and the targeted piruntime rerun passed. Windows tests do not execute Linux-tagged M1 code.
+- Linux verification (2026-10-12): a 233-file source/fixture snapshot matching the current Windows working tree was SHA-256 checked in the existing VM. Go 1.27.1 full `go test -mod=readonly -count=1 ./...`, full `go test -race -mod=readonly -count=1 ./...`, and `go vet -mod=readonly ./...` passed with umask 077 and a private 0700 ext4 TMPDIR. A private-output build and `serve --pi --native-fixture` also passed (non-claim-bearing). These are component and fixture checks; native bare-metal setup, provisioned managed-service admission, real provider exchange, D09 containment, and G1 remain unverified.
+- Hyper-V VM `TBound-Ubuntu-2404` (authorized for experiments 2026-10-11): on 2026-10-12, `CodexSandboxUsers` established strict SSH as `tboundadmin` to `192.168.251.23/20` after operator console login; the ED25519 host fingerprint matched `infra/hyperv/INSTALLATION-RECORD.md`. DHCP address is dynamic. The Hyper-V ACL still denies `Get-VM` to this execution context and the host alias does not resolve. Help-sheet IP `172.19.193.190` was unreachable. Root is LVM (`ubuntu-vg/ubuntu-lv`); checkpoints and a two-AVHDX chain exist. Resume with elevated `Get-VM` / `Start-VM` / `vmconnect.exe`; shut down gracefully with guest `sudo poweroff`.
+- Fresh guest probe (`infra/guest/probe-capabilities.sh`, 2026-10-12): **PASS=13 / FAIL=0 / UNVERIFIED=2**, exit 2 for the two UNVERIFIED rows. SSH reported `192.168.251.23/20`, kernel `6.8.0-146-generic`, and Landlock ABI 4. Installed HWE 7.0.0-38 reached userspace on repeated boots for minutes; inspected journal tails showed no panic/oops, but reboot cause remains unknown and HWE is unqualified. G1 remains false; the probe is not containment or G1 evidence. PASS: cgroup v2 domain, `cgroup.kill` interface (write behavior remains untested), pidfd, seccomp, subuid/subgid >=65536, user namespace creation, rootless Podman/crun 1.14.1, Node 24.21.0, Go 1.27.1. A separate direct check previously reported Podman 4.9.3; the probe's Podman-version observation was `unknown` on this run. `kernel.apparmor_restrict_unprivileged_userns=0` applied; this system-wide change needs an explicit security warning. Cosign v3.1.3 is at `~/.local/bin/cosign` (may not be on non-login SSH PATH). An offline recovery edit changed `/boot/grub/grub.cfg` kernel references back to 6.8; backup is `/boot/grub/grub.cfg.tbound-bootfix-bak`; this is not a clean G1 image. No more offline disk edits; inspect via console and restore/qualify boot selection before any G1 freeze.
+- Researcher setup UX WIP: `infra/repro/{bootstrap-linux.sh,bootstrap-hyperv-windows.ps1,probe-host.ps1,README.md}` and `docs/reproducible-setup.md` are uncommitted, syntax/fixture checked but not end-to-end qualified on a clean native host or new Hyper-V VM. Root `README.md` now documents start/resume and setup options plus actual VM/probe status. Review before acceptance.
 
 ## Commands
 
 ```sh
 cd supervisor
-/home/jeli2k/go-sdk/go/bin/go build -o /tmp/tbound ./cmd/tbound
+go build -o /tmp/tbound ./cmd/tbound
 /tmp/tbound serve --pi --native-fixture   # exit 0, claim_bearing=false (fixture, no Pi)
-/tmp/tbound serve --pi                     # exit 2 (expected refusal)
+/tmp/tbound serve --pi                     # managed-service client; currently unavailable without registration
 ```
 
 Opt-in Go<->Node<->Pi dev test (needs `TBOUND_GOVERNED_PI_NODE`, `TBOUND_GOVERNED_PI_NODE_MODULES`, `TBOUND_GOVERNED_PI_TEST_ROOT` = private 0700 ext4):
@@ -72,7 +76,9 @@ Build outputs must use explicit private `-o` paths. Never overwrite `supervisor/
 
 ## Next step
 
-Finish open code gates 2-8 in disjoint ownership. Then freeze, verify, and send to central review. Do not claim readiness until the review passes.
+1. Review/freeze researcher setup UX; validate scripts on a disposable clean host before claiming reproducibility.
+2. Keep this reference VM on reachable kernel 6.8 for development; inspect HWE boot behavior from console/logs before any further disk edits. Landlock ABI 8 remains a G1 blocker.
+3. Resume M1 code gates: qualify the signed managed-source registration/calibration and provisioned service path on Linux; then run the authorized real-provider E05 within the $1 cap, a positive D09 session, and independent effect oracles. Central review before acceptance; passing component tests and capability probes are not G1/H1 evidence.
 
 ## Source references
 

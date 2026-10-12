@@ -1,9 +1,8 @@
 # tbound documentation index
 
-Navigation index for everything under `docs/` (38 top-level files plus 2 under
-`evidence/`). This index only points at existing paths: **no document has been
-renamed, moved, or edited to build it**, and every linked file keeps its exact
-existing path and content.
+Navigation index for the current Markdown and JSON documentation under docs/.
+It points to existing paths and does not upgrade any implementation or evidence
+claim.
 
 ## How to read the entries
 
@@ -51,7 +50,10 @@ an active handoff rather than a newcomer guide).
 
 ## Install and development
 
+- [launch.md](launch.md) — current run guide for the native Linux Go fixture and existing Hyper-V guest, with M1/M2 status and the present governed-service boundary.
+
 - [install.md](install.md) — installing tbound: a host-side supervisor installed next to an existing Pi; does not modify the global Pi.
+- [reproducible-setup.md](reproducible-setup.md) — scripted reproducible evaluation-host setup (native Linux or Hyper-V VM) with a capability-report probe; reproducibility infrastructure, not containment evidence.
 - [setup.md](setup.md) — fresh-host setup and offline verification; coordinates the Hyper-V host runbook (`../infra/hyperv/SETUP.md`) and the Ubuntu guest runbook (`../infra/guest/README.md`).
 - [dev-launch.md](dev-launch.md) — development launch route `tbound serve --pi --dev-fixture`: the explicit, non-claim-bearing way to run the pinned Pi worker against fixtures.
 - [doctor.md](doctor.md) — `tbound-doctor`: standalone readiness check that never changes system state, never needs sudo, and installs nothing unless asked.

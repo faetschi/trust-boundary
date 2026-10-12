@@ -4,13 +4,15 @@ tbound is a host-side supervisor that runs the Pi coding agent as an untrusted
 worker. It installs **next to** an existing Pi — it does not modify your global
 Node or Pi, and its dev path needs no `sudo`.
 
-> Honesty note: **governed `tbound serve --pi` is not yet shippable.** It requires
-> a signed root-owned host profile, a rootless Podman/crun containment stack, and
-> the runtime composition plus authoritative verifier that admits them — none of
-> which exist yet (Phase 2). What installs today is the dev/runtime surface: the
-> CLI, the `tbound-doctor` preflight, the Linux-only `tbound-profile`
-> host-profile signer, the runtime bundle, and side-by-side pinned Pi packages.
-> Provisioning prerequisites alone does not enable governed launch.
+> **Current launch status:** Linux `tbound serve --pi` is a client for the
+> registered systemd socket-activated service. The client/server handoff,
+> authentication, and journaling code exist, but the service is not provisioned
+> here; service-mode source capture and the real signed-profile path remain
+> unqualified. No positive governed Pi run or G1 result is claimed. The
+> --native-fixture route is a Go-only smoke test; --dev-fixture runs a real Pi
+> SDK worker with offline scripted behavior. See [launch.md](launch.md) for
+> current commands and limits. Install artifacts alone do not enable a governed
+> run.
 
 ## Channels
 
@@ -58,7 +60,7 @@ export PATH="$HOME/.local/share/tbound/bin:$PATH"
 tbound-doctor             # check Node/Pi/containment readiness
 tbound-profile --help     # Linux host-profile tool (stub outside Linux)
 tbound serve --pi --native-fixture   # Linux non-claim-bearing smoke test (exit 0)
-tbound serve --pi                    # refused (exit 2) until a signed profile exists
+tbound serve --pi                    # managed-service client; unavailable until service is provisioned and qualified
 ```
 
 The installer is a Bash script; run it with `bash`, not `sh`. Match `--version` to
@@ -145,10 +147,12 @@ cp install/completions/tbound.fish ~/.config/fish/completions/
 
 ## Governed runs
 
-Governed `tbound serve --pi` requires operator provisioning **and** the runtime
-composition plus authoritative verifier (not yet implemented); provisioning alone
-does not enable it. See [`doctor.md`](doctor.md) (advisory checks; `governed_ready`
-is always false) and [`governed-setup.md`](governed-setup.md) (operator runbook).
+The ordinary Linux CLI is a managed-service client. The internal `--service`
+server entry point is intended for systemd socket activation. Service provisioning,
+Linux client/server and restart testing, live source qualification, and the real
+signed-profile path remain unverified; the current host returns `service unavailable`
+when that service is absent. A local fixture success is not a governed run. See
+[launch.md](launch.md) and [governed-setup.md](governed-setup.md).
 
 ## Package skeleton
 
@@ -161,5 +165,5 @@ does not build for it yet.
 
 - Guided Podman/crun/Cosign setup and the frozen containment profile.
 - A published release host for the `curl` installer and the platform npm packages.
-- The runtime composition and authoritative verifier that admit the signed
-  profile (the profile *tooling* now exists, but admission does not).
+- Provisioned and tested systemd service operation and qualification of the signed
+  profile/source path; a positive governed launch and G1 remain unverified.

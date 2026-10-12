@@ -66,32 +66,35 @@ type managedRootCgroupIdentityProvider interface {
 }
 
 type managedLiveRootLease struct {
-	mu                 sync.Mutex
-	authority          *managedLiveRootAuthority
-	key                managedLiveRootKey
-	verified           managedRootRegistrationVerifier
-	root               *os.File // private duplicate retained independently of the Finalizer descriptor
-	journal            *audit.Journal
-	identity           managedLiveRootDescriptorIdentity
-	serviceCgroup      piruntime.D09ManagedLiveRootCgroupIdentity
-	registrationDigest string
-	runID              string
-	workflowID         string
-	publicationID      string
-	ownerEpoch         uint64
-	admissionSeq       uint64
-	admissionHash      string
-	priorRuns          []managedLiveRootPriorRun
-	recoveryComplete   bool
-	baselineID         string
-	baselineTree       string
-	permit             *managedLivePublicationPermit
-	terminalStatus     publication.Status
-	terminalLedgerSeq  uint64
-	terminalLedgerHash string
-	noPublication      bool
-	abortedBeforeTask  bool
-	released           bool
+	mu                     sync.Mutex
+	authority              *managedLiveRootAuthority
+	key                    managedLiveRootKey
+	verified               managedRootRegistrationVerifier
+	root                   *os.File // private duplicate retained independently of the Finalizer descriptor
+	journal                *audit.Journal
+	identity               managedLiveRootDescriptorIdentity
+	serviceCgroup          piruntime.D09ManagedLiveRootCgroupIdentity
+	registrationDigest     string
+	runID                  string
+	workflowID             string
+	publicationID          string
+	ownerEpoch             uint64
+	admissionSeq           uint64
+	admissionHash          string
+	priorRuns              []managedLiveRootPriorRun
+	recoveryComplete       bool
+	recoveryRecordSequence uint64
+	recoveryRecordHash     string
+	taskAdmitted           bool
+	baselineID             string
+	baselineTree           string
+	permit                 *managedLivePublicationPermit
+	terminalStatus         publication.Status
+	terminalLedgerSeq      uint64
+	terminalLedgerHash     string
+	noPublication          bool
+	abortedBeforeTask      bool
+	released               bool
 }
 
 type managedLivePublicationPermit struct {
@@ -451,12 +454,43 @@ func (l *managedLiveRootLease) completeAdmissionRecovery(ctx context.Context) er
 	if err := l.revalidate(ctx, l.root); err != nil {
 		return err
 	}
+	trace, pending, err = managedRootLedgerState(l.journal, root)
+	if err != nil || len(pending) != 0 || len(trace.Records) == 0 {
+		return errors.Join(ErrManagedLiveRootRetained, err, errors.New("managed-root recovery left an unresolved or empty lifecycle journal"))
+	}
+	rootLedgerSequence := lastManagedLedgerSequence(trace)
+	rootLedgerHash := lastManagedLedgerHash(trace)
+	if rootLedgerSequence == 0 || rootLedgerHash == "" {
+		return ErrManagedLiveRootUnavailable
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.released || l.recoveryComplete {
+	if l.released || l.recoveryComplete || l.recoveryRecordSequence != 0 || l.taskAdmitted || l.permit != nil ||
+		l.terminalStatus != "" || l.noPublication || l.abortedBeforeTask {
+		return ErrManagedLiveRootUnavailable
+	}
+	ready := managedLiveRootSourceCaptureReadyEvent{
+		SchemaVersion: managedLiveRootSourceCaptureReadySchema, Root: root,
+		RegistrationDigest: l.registrationDigest, RunID: l.runID, WorkflowID: l.workflowID,
+		PublicationID: l.publicationID, OwnerEpoch: l.ownerEpoch,
+		AdmissionSequence: l.admissionSeq, AdmissionRecordHash: l.admissionHash,
+		LifecycleJournalSequence: rootLedgerSequence, LifecycleJournalRecordHash: rootLedgerHash,
+	}
+	encoded, err := json.Marshal(ready)
+	if err != nil {
+		return err
+	}
+	record, err := l.journal.Append(audit.Event{Kind: managedLiveRootSourceCaptureReadyKind,
+		ID: managedLiveRootSourceCaptureReadyEventID(root, l.registrationDigest, l.runID, l.ownerEpoch), Data: encoded})
+	if err != nil {
+		return errors.Join(ErrManagedLiveRootUnavailable, err)
+	}
+	if record.Sequence != uint64(len(trace.Records))+1 || record.PreviousHash != rootLedgerHash ||
+		record.Event.Kind != managedLiveRootSourceCaptureReadyKind {
 		return ErrManagedLiveRootUnavailable
 	}
 	l.recoveryComplete = true
+	l.recoveryRecordSequence, l.recoveryRecordHash = record.Sequence, record.Hash
 	return nil
 }
 
@@ -508,7 +542,7 @@ func (l *managedLiveRootLease) abortBeforeTask(lifecycle productionLifecycleSnap
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.released || l.permit != nil || l.terminalStatus != "" {
+	if l.released || l.permit != nil || l.terminalStatus != "" || l.taskAdmitted {
 		return ErrManagedLiveRootRetained
 	}
 	l.recoveryComplete, l.noPublication, l.abortedBeforeTask = true, true, true

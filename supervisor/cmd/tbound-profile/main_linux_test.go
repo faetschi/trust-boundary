@@ -29,20 +29,37 @@ func TestManagedRootSignVerifyOfflineCommands(t *testing.T) {
 	}
 	rootMountDigest := piruntime.DigestBytes([]byte("rw,nosuid,nodev,relatime\x00ext4\x00/dev/test"))
 	parentMountDigest := piruntime.DigestBytes([]byte("ro,nosuid,nodev,relatime\x00ext4\x00/dev/test"))
+	serviceSocket := piruntime.D09ManagedPiServiceSocket{
+		SchemaVersion: piruntime.D09ManagedPiServiceSocketSchema, Mode: piruntime.D09ManagedPiServiceSocketMode,
+		SocketPath: piruntime.D09ManagedPiServiceSocketPath, SocketUnitPath: piruntime.D09ManagedPiSocketUnitPath,
+		SocketUnitDigest: piruntime.DigestBytes([]byte("socket-unit")), ListenStream: piruntime.D09ManagedPiServiceSocketPath,
+		Accept: "no", ServiceUnit: "tbound-pi.service", SocketUser: "root", SocketGroup: piruntime.D09ManagedPiSocketGroup,
+		SocketUID: 0, SocketGID: 993, SocketMode: 0o660, DirectoryMode: 0o755,
+		ParentPath: piruntime.D09ManagedPiServiceSocketParentPath, ParentUID: 0, ParentGID: 0,
+		ParentMode: 0o755, ParentFilesystemMagic: 0x01021994, ParentMountPolicy: "tmpfs-rw-nodev-nosuid/v1",
+		AllowedClientUIDs: []int{1000}, AllowedClientPrimaryGID: 994,
+	}
 	registration := piruntime.D09ManagedLiveRootRegistration{
 		SchemaVersion: piruntime.D09ManagedLiveRootSchema, WriterPolicy: piruntime.D09ManagedLiveRootWriterPolicy,
-		RootPath: "/var/lib/tbound/live", RootDevice: 10, RootInode: 20, RootFilesystemMagic: 0xef53,
+		RootPath: piruntime.D09ManagedPiLiveRootPath, RootDevice: 10, RootInode: 20, RootFilesystemMagic: 0xef53,
 		RootMountID: 101, RootMountOptionsDigest: rootMountDigest, RootUID: 991, RootGID: 992, RootMode: 0o700,
-		ParentPath: "/var/lib/tbound", ParentDevice: 10, ParentInode: 19, ParentFilesystemMagic: 0xef53,
+		ParentPath: piruntime.D09ManagedPiLiveRootParentPath, ParentDevice: 10, ParentInode: 19, ParentFilesystemMagic: 0xef53,
 		ParentMountID: 100, ParentMountOptionsDigest: parentMountDigest, ParentUID: 0, ParentGID: 0, ParentMode: 0o755,
-		ServiceName: "tbound-writer", ServiceGroup: "tbound-writer", ServiceUID: 991, ServiceGID: 992,
+		ServiceName: piruntime.D09ManagedPiServiceName, ServiceGroup: piruntime.D09ManagedPiServiceGroup, ServiceUID: 991, ServiceGID: 992,
 		ServiceLoginShell: "/usr/sbin/nologin", ServiceShellDigest: piruntime.DigestBytes([]byte("nologin")),
 		PasswdDigest: piruntime.DigestBytes([]byte("passwd")), GroupDigest: piruntime.DigestBytes([]byte("group")),
 		NSSwitchDigest:  piruntime.DigestBytes([]byte("nsswitch")),
-		ServiceUnitPath: "/etc/systemd/system/tbound-writer.service", ServiceUnitDigest: piruntime.DigestBytes([]byte("service")),
+		ServiceUnitPath: piruntime.D09ManagedPiServiceUnitPath, ServiceUnitDigest: piruntime.DigestBytes([]byte("service")),
 		MountUnitPath: "/etc/systemd/system/var-lib-tbound-live.mount", MountUnitDigest: piruntime.DigestBytes([]byte("mount")),
+		ServiceConfigPath: piruntime.D09ManagedPiServiceConfigPath, ServiceConfigDigest: piruntime.DigestBytes([]byte("service-config")),
+		ServiceWritablePaths: []string{
+			"/run/tbound-pi", "/var/lib/tbound/audit", "/var/lib/tbound/live", "/var/lib/tbound/podman-home",
+			"/var/lib/tbound/podman-storage/graphroot", "/var/lib/tbound/private-admin", "/var/lib/tbound/publication-state",
+			"/var/lib/tbound/sessions",
+		},
+		ServiceSocket: serviceSocket, ManagedRootXattrCalibrationDigest: piruntime.DigestBytes([]byte("managed-root-xattr-calibration")),
 		RunnerPath: "/usr/local/bin/tbound", RunnerDigest: piruntime.DigestBytes([]byte("runner")),
-		ServiceCgroupPath: "/system.slice/tbound-writer.service",
+		ServiceCgroupPath: piruntime.D09ManagedPiServiceCgroupPath,
 	}
 	registrationPath := filepath.Join(dir, "registration.json")
 	encoded, err := json.Marshal(registration)
@@ -186,7 +203,9 @@ func TestProfileCommandTemplateInitDigest(t *testing.T) {
 		`"xattr_scan_privilege_profile":"` + piruntime.D09XattrScanPrivilegeProfile + `",` +
 		`"xattr_visibility_profile_digest":"` + xattrProfileDigest + `",` +
 		`"xattr_visibility_authority":"` + piruntime.D09XattrVisibilityAuthority + `",` +
-		`"managed_live_root_registration_digest":"sha256:` + strings.Repeat("3", 64) + `"}`
+		`"managed_live_root_registration_digest":"sha256:` + strings.Repeat("3", 64) + `",` +
+		`"user_namespace_mapping_profile":"` + piruntime.D09UserNamespaceMappingProfile + `",` +
+		`"user_namespace_mapping_digest":"` + piruntime.DigestD09UserNamespaceMapping(1000, 1000, 991, 992) + `"}`
 	measuredPath := filepath.Join(dir, "measured.json")
 	if err := os.WriteFile(measuredPath, []byte(measured), 0o600); err != nil {
 		t.Fatal(err)

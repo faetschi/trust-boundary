@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"syscall"
 	"testing"
 
 	"tbound/supervisor/internal/publication"
@@ -55,6 +57,27 @@ func TestNativeFixtureRunPropagatesFailingReceiptWriter(t *testing.T) {
 	err := run([]string{"serve", "--pi", "--native-fixture"}, failingFixtureWriter{err: want}, io.Discard)
 	if !errors.Is(err, want) {
 		t.Fatalf("native fixture CLI writer error = %v, want %v", err, want)
+	}
+}
+
+func TestWriteNativeFixtureWorkspaceEnforcesModesUnderRestrictiveUmask(t *testing.T) {
+	root := t.TempDir()
+	oldMask := syscall.Umask(0o077)
+	defer syscall.Umask(oldMask)
+	if err := writeNativeFixtureWorkspace(root, "baseline\n"); err != nil {
+		t.Fatalf("write fixture workspace: %v", err)
+	}
+	for path, want := range map[string]os.FileMode{
+		filepath.Join(root, "task.txt"): 0o644,
+		filepath.Join(root, "build"):    0o755,
+	} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat fixture path %s: %v", path, err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Errorf("fixture path %s permissions = %#o, want %#o", path, got, want)
+		}
 	}
 }
 

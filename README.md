@@ -1,14 +1,20 @@
 # `tbound` prototype
 
-**Status (2026-10-08):** reviewed governance components are implemented and tested,
-but the prototype is **not an experiment-ready, governed Pi deployment**. Production
-`tbound serve --pi` intentionally refuses, `G1=false`, and containment remains
-`not-established`. No real provider exchange, WP1/G1 conformance, or thesis result is
-claimed. Current status and next steps: [`docs/tbound-readiness-status-2026-10-08.md`](docs/tbound-readiness-status-2026-10-08.md),
+**Status (2026-10-12):** reviewed governance components and a frozen runtime
+integration increment are implemented and tested, but the prototype is **not an
+experiment-ready, governed Pi deployment**. On Linux, `tbound serve --pi` is now a
+managed-service client; it fails when the registered service is absent. The
+service source-capture code path exists but remains unqualified on Linux with a
+provisioned service. No positive governed run has occurred; `G1=false`,
+containment remains `not-established`, and no real provider exchange, WP1/G1
+conformance, or thesis result is claimed. Current status and next steps: [`docs/tbound-readiness-status-2026-10-08.md`](docs/tbound-readiness-status-2026-10-08.md),
 [`docs/central-review-corrections-2026-10-07.md`](docs/central-review-corrections-2026-10-07.md),
 [`TASK_STATE.md`](TASK_STATE.md).
 
-**Setup guide:** [Fresh-host setup and offline verification](docs/setup.md).
+**Run guide:** [Current native Linux and existing VM launch steps](docs/launch.md).
+
+**Setup guides:** [Researcher quickstart and VM resume](docs/reproducible-setup.md)
+and [fresh-host setup and offline verification](docs/setup.md).
 
 `tbound` is a host-side supervisor for one Pi coding workflow. The first slice is
 deliberately narrow: one Pi configuration, one agent, the proxy-backed `read`,
@@ -63,22 +69,28 @@ bridge (real Pi SDK `read→edit→bash→read`, synthetic transport/executor) p
 read-only governance companion and a D06 private-Git primitive exist as reviewed
 components. Reviewed foundations are committed at `8d2e478`.
 
-**Not ready.** No admitted production workflow (`serve --pi` refuses); CLI session
-composition is still being built and currently has temporary compile errors in
-uncommitted files; no real provider exchange; no containment profile (WSL lacks
-Podman/crun/Cosign and usable delegated cgroup, and the direct cgroup launcher is
-explicitly not the D09 profile); D06 provenance/worker isolation not integrated;
-publication currently rejects bash-lease-ending workflows; native TUI is fixture/
-product work, not the claim-bearing CLI path (D15).
+**Not ready.** The Linux CLI is now a managed-service client, and the
+systemd-activated service endpoint, authenticated handoff, journaling, and
+idempotency code exist. Service-mode source qualification code also exists and
+refuses source mismatches before worker exposure. These Linux paths, host
+provisioning, and the real signed-profile route remain unqualified. No positive
+governed Pi workflow, real provider exchange, or D09 runtime has been exercised.
+D06 sealed-source export and read-only consumer-view code, managed-root
+publication permits, command receipt validation, and Bash-origin resolution are
+implemented but only fixture-tested; per-command receipts are not surfaced in
+the CLI, and no live publication or independent effect-oracle run has qualified
+them. Native TUI remains fixture/product work, not the claim-bearing CLI path
+(D15).
 
-**Required before thesis experiments can start.** (1) one CLI-owned run: protected
-profile → real Pi → Go broker → durable executor → `read→edit→bash→read` with exact
-lineage; (2) real provider turn-through with credentials only in Go; (3) a D06-backed
-session (sealed source, no `.git`/admin reachability for Pi, durable provenance);
-(4) resolve the bash-lease publication origin; (5) provision the declared Linux
-profile (signed image/entrypoint, rootless Podman/crun, cgroup kill,
-Landlock/seccomp/NNP) under operator authorization; (6) registered conformance
-(five spikes + E04/E05/E06/E07), then dataset runs.
+**Required before thesis experiments can start.** (1) qualify the implemented
+service-mode source-capture path on Linux with the real signed-profile flow, then
+run one CLI-owned real-Pi workflow through the broker and durable executor: `read→edit→bash→read` with exact lineage and an authorized provider turn;
+(2) qualify D06 source provenance and the read-only consumer view in the real
+Podman/crun boundary; (3) surface per-command receipt evidence and complete live
+publication with independent workspace/network/process oracles; (4) freeze a
+declared Linux profile with verified Landlock ABI 8, rootless UID/GID mapping,
+cgroup cleanup, seccomp and NNP; (5) pass the five WP1 spikes plus E04/E05/E06/E07
+conformance before dataset runs.
 
 ## How to run the current prototype
 
@@ -87,9 +99,9 @@ Pi** and is non-claim-bearing:
 
 ```sh
 cd supervisor
-/home/jeli2k/go-sdk/go/bin/go build -o /tmp/tbound ./cmd/tbound
+go build -o /tmp/tbound ./cmd/tbound
 /tmp/tbound serve --pi --native-fixture   # exit 0, claim_bearing=false
-/tmp/tbound serve --pi                     # exit 2 (production refusal, expected)
+/tmp/tbound serve --pi                     # calls managed service; unavailable until provisioned
 ```
 
 The real Go↔Pi development test is opt-in and needs a Linux Node, the pinned
@@ -108,6 +120,100 @@ Read-only governance companion (unavailable/fixture/replay modes):
 ```sh
 cd supervisor && go run ./cmd/tbound-governance --addr 127.0.0.1:8790
 ```
+
+## Reproducing the evaluation environment
+
+Use [`docs/reproducible-setup.md`](docs/reproducible-setup.md) as the guided
+from-scratch setup, and [`infra/repro/README.md`](infra/repro/README.md) for
+the scripts and their options. There are two paths: native Ubuntu 24.04 Linux
+or an Ubuntu Hyper-V guest on Windows. Both use the same guest capability probe.
+The scripts are new reproducibility tooling and have not yet been qualified by
+an end-to-end run on a clean host; review their proposed changes before using
+them on a valuable machine.
+
+**Security note:** use a dedicated disposable VM for the thesis profile where
+possible. The Ubuntu 24.04 user-namespace workaround changes a system-wide
+AppArmor-related sysctl and weakens a default restriction for unprivileged user
+namespaces. The bootstrap asks before applying it; do not use unattended
+confirmation on a daily-driver workstation. Review the scoped AppArmor-profile
+alternative if provisioning native Linux.
+
+### Existing Windows Hyper-V VM: start, connect, resume
+
+The reference guest is named `TBound-Ubuntu-2404`. After a Windows restart, open
+**elevated PowerShell** in the checkout and run:
+
+```powershell
+Get-VM -Name 'TBound-Ubuntu-2404' | Select-Object Name, State
+Start-VM -Name 'TBound-Ubuntu-2404'   # only if State is Off
+vmconnect.exe localhost 'TBound-Ubuntu-2404'
+```
+
+Log in at the VM console as the configured guest user. In Ubuntu, get the
+current DHCP address (it can change after a reboot):
+
+```sh
+ip -brief address show eth0
+```
+
+From Windows, connect with the SSH key registered for this guest. On first
+connection, use `StrictHostKeyChecking=ask` and compare the displayed host-key
+fingerprint against the guest console before accepting it:
+
+```powershell
+ssh -o StrictHostKeyChecking=ask -o HostKeyAlgorithms=ssh-ed25519 `
+  -i "$env:USERPROFILE\.ssh\id_ed25519" tboundadmin@<guest-ip>
+```
+
+For a normal shutdown, power off Ubuntu cleanly, then confirm the Hyper-V state:
+
+```sh
+sudo poweroff
+```
+
+```powershell
+Get-VM -Name 'TBound-Ubuntu-2404' | Select-Object Name, State
+```
+
+On the next Windows login, repeat `Get-VM` / `Start-VM` / `vmconnect.exe`,
+re-discover the IP, and run the capability probe before experiments. Avoid
+`Stop-VM -TurnOff` except as an explicitly accepted recovery action: it is an
+unclean power loss and can leave filesystems or experiments in an uncertain
+state. Do not edit checkpoint disks manually as a routine start/resume method.
+
+**Current VM access and probe (2026-10-12):** `CodexSandboxUsers` established
+strict SSH as `tboundadmin` to `192.168.251.23/20` after operator console login;
+the ED25519 host fingerprint matched the pin in
+[`infra/hyperv/INSTALLATION-RECORD.md`](infra/hyperv/INSTALLATION-RECORD.md).
+The DHCP address is dynamic. Hyper-V `Get-VM` remains denied to this execution
+context, and the host alias does not resolve. The fresh guest probe reported
+13 PASS, 0 FAIL, and 2 UNVERIFIED; it reported kernel 6.8.0-146-generic with
+Landlock ABI 4. HWE 7.0.0-38 reached userspace on repeated boots and ran for
+minutes; inspected journal tails showed no panic/oops, but the reboot cause is
+unknown and HWE is not qualified. The help-sheet IP `172.19.193.190` was
+unreachable and remains historical. G1 remains false; this VM is not a clean G1
+baseline. See [the run guide](docs/launch.md) and [TASK_STATE.md](TASK_STATE.md).
+### Native Linux: start from scratch and resume
+
+On a dedicated Ubuntu 24.04 amd64 host, follow the guided setup:
+
+```sh
+sudo bash infra/repro/bootstrap-linux.sh <trial-user>
+```
+
+Read and approve each proposed host change. Reboot if the guide says the kernel
+changed, then rerun the probe. To resume after shutdown, sign in as the trial
+user, enter the checkout, and verify the live profile before experiments:
+
+```sh
+uname -r
+bash infra/guest/probe-capabilities.sh
+```
+
+For either environment, a passing capability probe alone does not qualify
+containment. The remaining G1 gate is the five-spike conformance set plus E04,
+E05, E06, and E07 fixtures on the declared host (see "Gate to G1 / experiments"
+below). WSL is development-only, not the evaluation profile.
 
 ## Source layout
 
@@ -166,7 +272,7 @@ disk-full failures; and (6) prepare the E04 transient-mutation and E06 denied-re
 fixtures. The tested host and runtime identities must be frozen; a failed capability
 probe requires redesign or a narrower claim, not an unrecorded runtime fallback.
 
-The tracked starting point remains [`todo-implementation-tbound.md`](../agentic-harness/todo-implementation-tbound.md).
+The tracked starting point remains [`todo-implementation-tbound.md`](../MSE_MA_Thesis/agentic-harness/todo-implementation-tbound.md).
 The intended order is Pi closure, broker correlation, generation/repository staging,
 containment, durable authority, and a reconstructable evidence package. Regardless of
 order, each governed effect follows the pre-effect durable-recording rule above.
@@ -180,8 +286,9 @@ order, each governed effect follows the pre-effect durable-recording rule above.
   profile and the Go secure credential loader (no live request yet).
 - D06 sealed-source provenance, worker isolation, and durable provenance integration.
 - Publication origin binding for workflows that end in a bash lease.
-- Recovery protocol reconciliation: the source declares 48 trials but enumerates
-  points implying 51 — resolve before registration/execution.
+- Recovery protocol amendment: 48 trials (16 scenarios × 3); the eighth crash
+  point is E07 publication conformance, outside that denominator. Record the
+  dated amendment before registration or execution.
 
 ## Thesis design references
 

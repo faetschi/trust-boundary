@@ -1,9 +1,10 @@
 # Releasing tbound
 
-This is the maintainer runbook for producing and publishing tbound artifacts. It
-does **not** enable governed `serve --pi`; that also requires the runtime
-composition/authoritative verifier admitting the signed profile and containment
-described in [`governed-setup.md`](governed-setup.md).
+This is the maintainer runbook for producing and publishing tbound artifacts. A
+release artifact does not qualify a governed run. On Linux, `tbound serve --pi`
+is a client for the local systemd socket-activated service; service provisioning,
+the live signed-profile/source path, and a positive governed launch remain
+unverified. See [launch.md](launch.md) for the current run boundary.
 
 ## Local build
 
@@ -141,8 +142,8 @@ signature, root-owned immutability, or governed trust.
 
 ## Honesty boundary
 
-Every artifact is the **dev/install surface**. Governed `tbound serve --pi`
-remains refused. No packaging artifact establishes containment, G1, or H1. The
-`tbound-cell-entrypoint` binary is distributed for the operator's approved offline
-image-signing/profile workflow; the build never signs it, never generates keys,
-and records no registered profile digest.
+These artifacts are the dev/install surface. The CLI service handoff and
+production composition code do not establish a provisioned or qualified service,
+containment, G1, or H1. The tbound-cell-entrypoint remains unsigned and requires
+the operator's approved offline image-signing/profile workflow. The build never
+signs it, generates keys, or records a registered profile digest.

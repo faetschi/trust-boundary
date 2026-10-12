@@ -527,6 +527,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		return fmt.Errorf("admit and forward registered production prompt to actual Pi: %w", err)
 	}
 	session.Lifecycle.markTaskAdmitted()
+	session.ManagedLiveRootLease.markTaskAdmitted()
 	if err := waitProductionTurnEnd(ctx, worker, config.TaskRequestID); err != nil {
 		cancelRun()
 		return err

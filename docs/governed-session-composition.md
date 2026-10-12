@@ -273,8 +273,10 @@ mount/process scope and shutdown settlement; the current runner is only
 to actual Pi; (4) the broker owner must supply the real Go-owned provider turn
 loop without exposing credentials/history to Node; and (5) publication needs
 the narrow workflow lease-origin extension described above plus an actual
-registered `workflow.Trust` implementation. Until those interfaces and host
-proof exist, production `serve --pi` must keep refusing admission.
+registered `workflow.Trust` implementation. The managed-service source-capture
+code path now exists, but remains unqualified on Linux with a provisioned
+service. No positive governed run has occurred, so production admission is not
+established and `G1=false` remains the status.
 
 ## Two-phase D09 source and consumer capabilities — worker B
 

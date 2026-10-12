@@ -5,6 +5,7 @@ package piruntime
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -78,5 +79,38 @@ func TestMeasureD09XattrEnumerationRejectsSymlinks(t *testing.T) {
 	defer rootFD.Close()
 	if _, err := MeasureD09XattrEnumeration(rootFD); err == nil {
 		t.Fatal("xattr enumeration accepted a symlink")
+	}
+}
+
+func TestManagedLiveRootQualificationIssuesWorkspaceXattrAttestation(t *testing.T) {
+	evidence := D09ManagedRootXattrEvidence{
+		SchemaVersion: "tbound-d09-managed-live-xattr-evidence/v1", RunID: "managed-run",
+		OwnerEpoch: 1, RegistrationDigest: DigestBytes([]byte("registration")),
+		CalibrationDigest:   DigestBytes([]byte("managed-rw-calibration")),
+		LeaseEvidenceDigest: DigestBytes([]byte("lease")), RootDevice: 1, RootInode: 2,
+		RootMountID: 3, FilesystemMagic: 0xef53,
+		MountOptionsDigest: DigestBytes([]byte("rw,nodev,nosuid")), ScanUID: 1001, ScanGID: 1002,
+		ScanPrivilegeProfile: D09XattrScanPrivilegeProfile, EntryCount: 1, DirectoryCount: 1,
+		ObservationDigest: DigestBytes([]byte("observation")),
+	}
+	message, err := d09ManagedRootXattrEvidenceBytes(evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence.EvidenceDigest = DigestBytes(message)
+	qualification := &D09ManagedLiveRootSnapshotQualification{
+		xattr: evidence, digest: DigestBytes([]byte("qualified managed source")),
+	}
+	attestation, err := qualification.XattrVisibilityAttestation()
+	if err != nil {
+		t.Fatalf("qualified managed source did not issue xattr attestation: %v", err)
+	}
+	if !attestation.Complete || attestation.ProfileDigest != evidence.CalibrationDigest {
+		t.Fatalf("workspace xattr attestation = %+v, want calibrated complete result", attestation)
+	}
+
+	qualification.xattr.EvidenceDigest = DigestBytes([]byte("tampered evidence"))
+	if attestation, err := qualification.XattrVisibilityAttestation(); !errors.Is(err, ErrD09ManagedLiveRootRefused) || attestation.Complete {
+		t.Fatalf("tampered qualification issued workspace attestation %+v, err=%v", attestation, err)
 	}
 }

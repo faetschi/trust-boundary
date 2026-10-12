@@ -11,6 +11,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -154,6 +155,7 @@ func TestReadPiServiceResponseRequestIDRules(t *testing.T) {
 
 func TestCallPiServiceConnBindsResponseToRequestID(t *testing.T) {
 	request := piServiceRequest{RequestID: "request-bound", TaskID: "task-bound", Prompt: "bounded test"}
+	socketRoot := t.TempDir()
 	tests := []struct {
 		name       string
 		responseID string
@@ -164,11 +166,11 @@ func TestCallPiServiceConnBindsResponseToRequestID(t *testing.T) {
 		{name: "refused without ID", status: "refused", wantErr: true},
 		{name: "matching completed", responseID: request.RequestID, status: "completed"},
 	}
-	for _, test := range tests {
+	for index, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			response := piServiceResponse{SchemaVersion: piServiceResponseSchema,
 				RequestID: test.responseID, Status: test.status}
-			got, err := callPiServiceConn(testPiServiceResponseServer(t, request, response), request)
+			got, err := callPiServiceConn(testPiServiceResponseServer(t, filepath.Join(socketRoot, "s"+strconv.Itoa(index)), request, response), request)
 			if (err != nil) != test.wantErr {
 				t.Fatalf("callPiServiceConn() error = %v, wantErr %t; response=%+v", err, test.wantErr, got)
 			}
@@ -181,14 +183,8 @@ func TestCallPiServiceConnBindsResponseToRequestID(t *testing.T) {
 
 // testPiServiceResponseServer returns a connected Unix client while a bounded
 // test server consumes the request and sends exactly one chosen response.
-func testPiServiceResponseServer(t *testing.T, request piServiceRequest, response piServiceResponse) *net.UnixConn {
+func testPiServiceResponseServer(t *testing.T, path string, request piServiceRequest, response piServiceResponse) *net.UnixConn {
 	t.Helper()
-	dir, err := os.MkdirTemp("/home/jeli2k/.tbound-scratch", "pis-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	path := filepath.Join(dir, "s.sock")
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
 	if err != nil {
 		t.Fatal(err)
