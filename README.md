@@ -35,6 +35,7 @@ These are intended contracts. They are not guarantees, and no WP1/G1 acceptance 
 - `adapter/native-pi-policy/`: pinned-source policy fixture artifact and its patching metadata.
 - `supervisor/internal/`: Go governance, broker, runtime, storage, publication, and companion components.
 - `supervisor/cmd/`: CLI and doctor/provider/governance/web command packages; `cmd/tbound` includes the refusal path and explicit fixture route.
+- `supervisor/cmd/tbound-chat/`: loopback-only chat launcher requiring `--fixture`; it is a non-claim-bearing fixture, not a production Pi/provider route.
 - `scripts/`, `install/`, `packaging/`: build, install, verification, and release assets.
 
 ## Checks

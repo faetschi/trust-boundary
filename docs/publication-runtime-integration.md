@@ -7,7 +7,7 @@ This increment adds a presentation-independent workflow finalizer, a private
 composition API around the existing `DurableExecutor`. The Linux path is
 implemented under `supervisor/internal/workflow`,
 `supervisor/internal/gate/internal_commit_linux.go`, and
-`supervisor/cmd/tbound/publication_runtime_linux.go`.
+`supervisor/internal/tboundruntime/publication_runtime_linux.go`.
 
 The composition API is not a Pi replacement or a chat client. The product
 direction remains the actual Pi Harness running through TBound (for example,

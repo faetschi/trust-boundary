@@ -41,7 +41,7 @@ var PinnedPackages = []string{
 
 // ErrNetworkRequired is returned when an operation needs the network but the
 // caller did not opt in.
-var ErrNetworkRequired = errors.New("network access is required but was not enabled (pass --install-pi / TBOUND_ALLOW_NETWORK)")
+var ErrNetworkRequired = errors.New("network access is required but was not enabled (pass --install-pi)")
 
 // Runner executes a command and returns its combined output. It is injected so
 // tests can avoid real processes.
