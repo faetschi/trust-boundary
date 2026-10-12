@@ -241,6 +241,7 @@ type Store struct {
 	usedViewIDs       map[string]struct{}
 	views             map[string]*CommandView
 	exposedViews      map[string]*ExposedView
+	sealedSources     map[*VerifiedSealedSource]struct{}
 	viewIDGenerator   func() (string, error)
 	closed            bool
 	quarantined       bool
@@ -293,6 +294,7 @@ func Create(root *os.File, options Options) (*Store, error) {
 		viewIDGenerator: newRandomViewID,
 		views:           make(map[string]*CommandView),
 		exposedViews:    make(map[string]*ExposedView),
+		sealedSources:   make(map[*VerifiedSealedSource]struct{}),
 		usedDecisions:   make(map[string]struct{}), usedOperations: make(map[delta.OperationIdentity]struct{}), usedViewIDs: make(map[string]struct{}),
 	}
 	if err := syscall.Mkdirat(int(rootCopy.Fd()), "generations", 0o700); err != nil {
@@ -817,6 +819,9 @@ func (s *Store) Close() error {
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil
+	}
+	if len(s.sealedSources) != 0 {
+		return ErrSealedSourceOutstanding
 	}
 	s.closed = true
 	var closeErrors []error

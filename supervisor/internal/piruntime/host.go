@@ -19,12 +19,13 @@ import (
 )
 
 var (
-	ErrHostProfileMissing     = errors.New("native Pi host profile is missing")
-	ErrHostAttestationMissing = errors.New("native Pi host attestation is missing")
-	ErrHostProfileMismatch    = errors.New("native Pi host profile and attestation do not match")
-	ErrHostAdmissionRefused   = errors.New("native Pi host admission is not authorized")
-	ErrHostBindingsMissing    = errors.New("native Pi host runtime bindings are missing")
-	ErrChildCapabilityMissing = errors.New("native child lacks an admitted host capability")
+	ErrHostProfileMissing            = errors.New("native Pi host profile is missing")
+	ErrHostAttestationMissing        = errors.New("native Pi host attestation is missing")
+	ErrHostProfileMismatch           = errors.New("native Pi host profile and attestation do not match")
+	ErrHostAdmissionRefused          = errors.New("native Pi host admission is not authorized")
+	ErrHostBindingsMissing           = errors.New("native Pi host runtime bindings are missing")
+	ErrChildCapabilityMissing        = errors.New("native child lacks an admitted host capability")
+	ErrProductionLauncherUnavailable = errors.New("no production Pi launcher is bound to the frozen Podman/crun host profile")
 )
 
 const (
@@ -41,6 +42,7 @@ type HostProfile struct {
 	Mode                     string
 	ChildExecutable          string
 	ExecutableDigest         string
+	NodeVersion              string
 	ChildArgumentsProfile    string
 	ChildArgumentsDigest     string
 	WorkingDirectory         string
@@ -55,10 +57,15 @@ type HostProfile struct {
 	TerminalProfileDigest    string
 	ContainmentProfile       string
 	ContainmentProfileDigest string
+	CgroupRootDigest         string
 	SettlementProfile        string
 	SettlementProfileDigest  string
 	ObservationProfile       string
 	ObservationProfileDigest string
+	DescriptorProfile        string
+	DescriptorProfileDigest  string
+	PiRuntimeBundleRoot      string
+	PiRuntimeBundleDigest    string
 	SourceProvenance         string
 	SourceProvenanceDigest   string
 	OfflineVerifier          string
@@ -75,6 +82,7 @@ type HostAttestation struct {
 	ProfileID              string
 	ProfileDigest          string
 	ExecutableDigest       string
+	NodeVersion            string
 	ChildArgumentsDigest   string
 	WorkingDirectoryDigest string
 	StdinDigest            string
@@ -82,8 +90,11 @@ type HostAttestation struct {
 	IPCProfileDigest       string
 	TerminalDigest         string
 	ContainmentDigest      string
+	CgroupRootDigest       string
 	SettlementDigest       string
 	ObservationDigest      string
+	DescriptorDigest       string
+	PiRuntimeBundleDigest  string
 	SourceDigest           string
 	OfflineVerifierDigest  string
 	ProviderProfileDigest  string
@@ -102,6 +113,7 @@ type HostAttestor interface {
 type TrustedHostVerifier interface {
 	HostAttestor
 	BindRuntime(context.Context, HostProfile) (HostRuntimeBindings, error)
+	trustedHostProfileVerifier()
 }
 
 // HostRuntimeBindings are supplied by the trusted host composition root. The
@@ -110,19 +122,37 @@ type TrustedHostVerifier interface {
 // cannot swap an unreviewed launcher or settlement observer after admission.
 type HostRuntimeBindings struct {
 	ChildExecutable        string
+	NodeVersion            string
 	ChildArgumentsProfile  string
 	WorkingDirectory       string
-	WorkingDirectoryHandle *os.File
-	StdinProfile           string
-	ChildEnvironment       string
-	IPCProfile             string
-	TerminalProfile        string
-	ContainmentProfile     string
-	SettlementProfile      string
-	ObservationProfile     string
-	SourceProvenance       string
-	OfflineVerifier        string
-	ProviderProfile        string
+	WorkerExposureHandle   *os.File
+	WorkerExposure         VerifiedWorkerExposure
+	WorkerExposureEvidence WorkerExposureEvidence
+	// D09 source staging is intentionally separate from the generic consumer
+	// exposure interface. The concrete Linux composition asserts these opaque
+	// fields to the sessionrepo capability and D09-only source interfaces.
+	D09Source               any
+	D09SourceCapability     any
+	D09SourceEvidence       D09WorkerSourceEvidence
+	D09SourceHandle         *os.File
+	PiRuntimeBundleRoot     string
+	PiRuntimeBundleDigest   string
+	PiRuntimeBundleHandle   *os.File
+	WorkerRuntimeAssets     VerifiedWorkerRuntimeAssets
+	RuntimeAssetEvidence    WorkerRuntimeAssetEvidence
+	D09RuntimeAssetSource   any
+	D09RuntimeAssetEvidence WorkerRuntimeAssetEvidence
+	StdinProfile            string
+	ChildEnvironment        string
+	IPCProfile              string
+	TerminalProfile         string
+	ContainmentProfile      string
+	SettlementProfile       string
+	ObservationProfile      string
+	DescriptorProfile       string
+	SourceProvenance        string
+	OfflineVerifier         string
+	ProviderProfile         string
 
 	Launcher    ExecutableLauncher
 	Descendant  DescendantSettler
@@ -131,27 +161,67 @@ type HostRuntimeBindings struct {
 	Stdin       io.Reader
 	Terminal    io.Writer
 	Observation ObservationSink
+	Descriptors []InheritedDescriptor
 }
 
 func (b HostRuntimeBindings) validate(profile HostProfile) error {
-	if b.ChildExecutable != profile.ChildExecutable || b.ChildArgumentsProfile != profile.ChildArgumentsProfile ||
-		b.WorkingDirectory != profile.WorkingDirectory ||
-		b.WorkingDirectoryHandle == nil || b.WorkingDirectoryHandle.Name() != profile.WorkingDirectory ||
-		b.StdinProfile != profile.StdinProfile || isNilBinding(b.Stdin) ||
-		DigestArguments(b.Arguments) != profile.ChildArgumentsDigest ||
-		DigestEnvironment(b.Environment) != profile.ChildEnvironmentDigest ||
-		DigestBytes([]byte(b.WorkingDirectory)) != profile.WorkingDirectoryDigest ||
+	if b.ChildExecutable != profile.ChildExecutable || b.NodeVersion != profile.NodeVersion || b.ChildArgumentsProfile != profile.ChildArgumentsProfile ||
+		DigestArguments(b.Arguments) != profile.ChildArgumentsDigest {
+		return fmt.Errorf("%w: executable, Node version, argv, or argument digest differs from signed profile", ErrHostBindingsMissing)
+	}
+	workerSourceHandle := b.WorkerExposureHandle
+	if b.D09Source != nil {
+		workerSourceHandle = b.D09SourceHandle
+	}
+	if b.WorkingDirectory != profile.WorkingDirectory || workerSourceHandle == nil ||
+		DigestBytes([]byte(b.WorkingDirectory)) != profile.WorkingDirectoryDigest {
+		return fmt.Errorf("%w: namespace CWD or worker source handle differs from signed profile", ErrHostBindingsMissing)
+	}
+	if b.D09Source != nil || b.D09SourceCapability != nil || b.D09SourceEvidence != (D09WorkerSourceEvidence{}) ||
+		b.D09SourceHandle != nil || b.D09RuntimeAssetSource != nil {
+		if isNilBinding(b.D09Source) || isNilBinding(b.D09SourceCapability) ||
+			b.D09SourceHandle == nil || b.D09SourceEvidence.validateShape() != nil || isNilBinding(b.D09RuntimeAssetSource) ||
+			b.WorkerExposureHandle != nil || b.WorkerExposure != nil || b.WorkerExposureEvidence != (WorkerExposureEvidence{}) ||
+			b.WorkerRuntimeAssets != nil || b.RuntimeAssetEvidence != (WorkerRuntimeAssetEvidence{}) ||
+			b.D09RuntimeAssetEvidence.validateShape() != nil {
+			return fmt.Errorf("%w: D09 source-stage binding is incomplete or aliases consumer-view semantics", ErrHostBindingsMissing)
+		}
+		if b.D09RuntimeAssetEvidence.BundleDigest != profile.PiRuntimeBundleDigest ||
+			b.D09RuntimeAssetEvidence.NamespaceProfileDigest != profile.ContainmentProfileDigest {
+			return fmt.Errorf("%w: D09 runtime source evidence differs from signed profile", ErrHostBindingsMissing)
+		}
+	} else if isNilBinding(b.WorkerExposure) || b.WorkerExposureEvidence.validateShape() != nil {
+		return fmt.Errorf("%w: verified sealed worker consumer exposure differs from signed profile", ErrHostBindingsMissing)
+	}
+	if b.PiRuntimeBundleRoot != profile.PiRuntimeBundleRoot || b.PiRuntimeBundleDigest != profile.PiRuntimeBundleDigest ||
+		b.PiRuntimeBundleHandle == nil || (b.D09Source == nil && (isNilBinding(b.WorkerRuntimeAssets) ||
+		b.RuntimeAssetEvidence.validateShape() != nil || b.RuntimeAssetEvidence.BundleDigest != profile.PiRuntimeBundleDigest ||
+		b.RuntimeAssetEvidence.NamespaceProfileDigest != profile.ContainmentProfileDigest)) {
+		return fmt.Errorf("%w: read-only namespace runtime asset evidence differs from signed profile", ErrHostBindingsMissing)
+	}
+	if b.StdinProfile != profile.StdinProfile || isNilBinding(b.Stdin) ||
 		DigestBytes([]byte(b.StdinProfile)) != profile.StdinDigest || b.ChildEnvironment != profile.ChildEnvironment ||
-		b.IPCProfile != profile.IPCProfile || b.TerminalProfile != profile.TerminalProfile ||
+		DigestEnvironment(b.Environment) != profile.ChildEnvironmentDigest {
+		return fmt.Errorf("%w: stdin or exact child environment differs from signed profile", ErrHostBindingsMissing)
+	}
+	if b.IPCProfile != profile.IPCProfile || b.TerminalProfile != profile.TerminalProfile ||
 		b.ContainmentProfile != profile.ContainmentProfile || b.SettlementProfile != profile.SettlementProfile ||
-		b.ObservationProfile != profile.ObservationProfile || b.SourceProvenance != profile.SourceProvenance ||
-		b.OfflineVerifier != profile.OfflineVerifier || b.ProviderProfile != profile.ProviderProfile ||
-		isNilBinding(b.Launcher) || isNilBinding(b.Descendant) ||
-		isNilBinding(b.Terminal) || isNilBinding(b.Observation) {
+		b.ObservationProfile != profile.ObservationProfile || b.DescriptorProfile != profile.DescriptorProfile ||
+		b.SourceProvenance != profile.SourceProvenance || b.OfflineVerifier != profile.OfflineVerifier || b.ProviderProfile != profile.ProviderProfile {
+		return fmt.Errorf("%w: host channel/profile identity differs from signed profile", ErrHostBindingsMissing)
+	}
+	if isNilBinding(b.Launcher) || isNilBinding(b.Descendant) || isNilBinding(b.Terminal) || isNilBinding(b.Observation) {
+		return fmt.Errorf("%w: launcher, settlement, terminal, or observation binding is absent", ErrHostBindingsMissing)
+	}
+	if err := validatePiWorkerDescriptors(b.DescriptorProfile, b.Descriptors, workerSourceHandle, b.PiRuntimeBundleHandle); err != nil {
+		return fmt.Errorf("%w: %v", ErrHostBindingsMissing, err)
+	}
+	workingDirectoryInfo, err := workerSourceHandle.Stat()
+	if err != nil || !workingDirectoryInfo.IsDir() {
 		return ErrHostBindingsMissing
 	}
-	workingDirectoryInfo, err := b.WorkingDirectoryHandle.Stat()
-	if err != nil || !workingDirectoryInfo.IsDir() {
+	bundleInfo, err := b.PiRuntimeBundleHandle.Stat()
+	if err != nil || !bundleInfo.IsDir() {
 		return ErrHostBindingsMissing
 	}
 	switch b.Descendant.(type) {
@@ -199,16 +269,20 @@ func (p HostProfile) Validate() error {
 		return ErrHostProfileMissing
 	}
 	if p.Mode == ModeProduction && (!validIdentity(p.ChildExecutable) || !filepath.IsAbs(p.ChildExecutable) ||
-		!validDigest(p.ExecutableDigest) || !validIdentity(p.ChildArgumentsProfile) ||
+		!validDigest(p.ExecutableDigest) || !validIdentity(p.NodeVersion) || !validIdentity(p.ChildArgumentsProfile) ||
 		!validDigest(p.ChildArgumentsDigest) || !validIdentity(p.WorkingDirectory) ||
 		!filepath.IsAbs(p.WorkingDirectory) || !validDigest(p.WorkingDirectoryDigest) ||
 		!validIdentity(p.StdinProfile) || !validDigest(p.StdinDigest) || !validIdentity(p.ChildEnvironment) ||
 		!validDigest(p.ChildEnvironmentDigest) || !validIdentity(p.IPCProfile) ||
 		!validDigest(p.IPCProfileDigest) || !validIdentity(p.TerminalProfile) ||
 		!validDigest(p.TerminalProfileDigest) || !validIdentity(p.ContainmentProfile) ||
-		!validDigest(p.ContainmentProfileDigest) || !validIdentity(p.SettlementProfile) ||
+		!validDigest(p.ContainmentProfileDigest) || !validDigest(p.CgroupRootDigest) || !validIdentity(p.SettlementProfile) ||
 		!validDigest(p.SettlementProfileDigest) || !validIdentity(p.ObservationProfile) ||
-		!validDigest(p.ObservationProfileDigest) || !validIdentity(p.SourceProvenance) ||
+		!validDigest(p.ObservationProfileDigest) || !validIdentity(p.DescriptorProfile) ||
+		p.DescriptorProfile != PiWorkerDescriptorProfile ||
+		!validDigest(p.DescriptorProfileDigest) || p.DescriptorProfileDigest != DigestBytes([]byte(PiWorkerDescriptorProfile)) ||
+		!validIdentity(p.PiRuntimeBundleRoot) || !filepath.IsAbs(p.PiRuntimeBundleRoot) || !validDigest(p.PiRuntimeBundleDigest) ||
+		!validIdentity(p.SourceProvenance) ||
 		!validDigest(p.SourceProvenanceDigest) || !validIdentity(p.OfflineVerifier) ||
 		!validDigest(p.OfflineVerifierDigest) || !validIdentity(p.ProviderProfile) ||
 		!validDigest(p.ProviderProfileDigest)) {
@@ -219,12 +293,13 @@ func (p HostProfile) Validate() error {
 
 func (a HostAttestation) Validate() error {
 	if !validIdentity(a.HostID) || !validIdentity(a.ProfileID) ||
-		!validDigest(a.ProfileDigest) || !validDigest(a.ExecutableDigest) ||
+		!validDigest(a.ProfileDigest) || !validDigest(a.ExecutableDigest) || !validIdentity(a.NodeVersion) ||
 		!validDigest(a.ChildArgumentsDigest) || !validDigest(a.WorkingDirectoryDigest) ||
 		!validDigest(a.StdinDigest) ||
 		!validDigest(a.ChildEnvironmentDigest) || !validDigest(a.IPCProfileDigest) ||
-		!validDigest(a.TerminalDigest) || !validDigest(a.ContainmentDigest) ||
+		!validDigest(a.TerminalDigest) || !validDigest(a.ContainmentDigest) || !validDigest(a.CgroupRootDigest) ||
 		!validDigest(a.SettlementDigest) || !validDigest(a.ObservationDigest) ||
+		!validDigest(a.DescriptorDigest) || !validDigest(a.PiRuntimeBundleDigest) ||
 		!validDigest(a.SourceDigest) ||
 		!validDigest(a.OfflineVerifierDigest) || !validDigest(a.ProviderProfileDigest) {
 		return ErrHostAttestationMissing
@@ -245,7 +320,7 @@ func ValidateHostAdmission(profile HostProfile, attestation HostAttestation) err
 		return err
 	}
 	if attestation.ProfileID != profile.ID || attestation.ProfileDigest != profile.Digest ||
-		attestation.ExecutableDigest != profile.ExecutableDigest ||
+		attestation.ExecutableDigest != profile.ExecutableDigest || attestation.NodeVersion != profile.NodeVersion ||
 		attestation.ChildArgumentsDigest != profile.ChildArgumentsDigest ||
 		attestation.WorkingDirectoryDigest != profile.WorkingDirectoryDigest ||
 		attestation.StdinDigest != profile.StdinDigest ||
@@ -253,8 +328,11 @@ func ValidateHostAdmission(profile HostProfile, attestation HostAttestation) err
 		attestation.IPCProfileDigest != profile.IPCProfileDigest ||
 		attestation.TerminalDigest != profile.TerminalProfileDigest ||
 		attestation.ContainmentDigest != profile.ContainmentProfileDigest ||
+		attestation.CgroupRootDigest != profile.CgroupRootDigest ||
 		attestation.SettlementDigest != profile.SettlementProfileDigest ||
 		attestation.ObservationDigest != profile.ObservationProfileDigest ||
+		attestation.DescriptorDigest != profile.DescriptorProfileDigest ||
+		attestation.PiRuntimeBundleDigest != profile.PiRuntimeBundleDigest ||
 		attestation.SourceDigest != profile.SourceProvenanceDigest ||
 		attestation.OfflineVerifierDigest != profile.OfflineVerifierDigest ||
 		attestation.ProviderProfileDigest != profile.ProviderProfileDigest {
@@ -295,6 +373,7 @@ func AdmitProduction(ctx context.Context, profile HostProfile, attestor HostAtte
 	// publication; the verifier's retained slice cannot rewrite the plan later.
 	runtime.Arguments = append([]string(nil), runtime.Arguments...)
 	runtime.Environment = append([]string{}, runtime.Environment...)
+	runtime.Descriptors = cloneInheritedDescriptors(runtime.Descriptors)
 	if err := runtime.validate(profile); err != nil {
 		return nil, err
 	}

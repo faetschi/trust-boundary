@@ -56,24 +56,27 @@ func requireOwnerOnlyPositiveControl(t *testing.T, path, sid string) {
 	}
 }
 
-func writeTempCredentialFile(t *testing.T) string {
+func writeTempCredentialFile(t *testing.T, sid string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "credential.txt")
 	if err := os.WriteFile(path, []byte("test-only-value\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// The ACL tests deliberately remove inherited permissions. Restore a
+	// deletable owner grant before TempDir cleanup tries to remove the fixture.
+	t.Cleanup(func() { setTempFileACL(t, path, "*"+sid+":F") })
 	return path
 }
 
 func TestReadSecureCredentialFileAcceptsOwnerReadOnlyDACL(t *testing.T) {
 	sid := currentUserSIDForTest(t)
-	path := writeTempCredentialFile(t)
+	path := writeTempCredentialFile(t, sid)
 	requireOwnerOnlyPositiveControl(t, path, sid)
 }
 
 func TestReadSecureCredentialFileRejectsAdditionalReadSID(t *testing.T) {
 	sid := currentUserSIDForTest(t)
-	path := writeTempCredentialFile(t)
+	path := writeTempCredentialFile(t, sid)
 	requireOwnerOnlyPositiveControl(t, path, sid)
 
 	setTempFileACL(t, path, "*"+sid+":R", "*S-1-1-0:R")
@@ -84,7 +87,7 @@ func TestReadSecureCredentialFileRejectsAdditionalReadSID(t *testing.T) {
 
 func TestReadSecureCredentialFileRejectsExecuteGrant(t *testing.T) {
 	sid := currentUserSIDForTest(t)
-	path := writeTempCredentialFile(t)
+	path := writeTempCredentialFile(t, sid)
 	requireOwnerOnlyPositiveControl(t, path, sid)
 
 	setTempFileACL(t, path, "*"+sid+":RX")

@@ -13,6 +13,7 @@ import (
 	"hash"
 	"io"
 	"os"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -42,24 +43,25 @@ const (
 )
 
 var (
-	ErrInvalidOptions     = errors.New("invalid publication options")
-	ErrLockBusy           = errors.New("publication repository is locked by another owner")
-	ErrLiveRootLockBusy   = errors.New("live-root repository is locked by another publication owner")
-	ErrLiveRootLockState  = errors.New("live-root repository lock identity changed")
-	ErrOwnerEpoch         = errors.New("publication owner epoch is not monotonically increasing")
-	ErrClosed             = errors.New("publication repository is closed")
-	ErrQuarantined        = errors.New("publication repository is paused by unresolved or unknown work")
-	ErrInvalidRequest     = errors.New("invalid publication request")
-	ErrOriginProposal     = errors.New("publication origin is not an approved proposal call in the validated chain")
-	ErrBaselineConflict   = errors.New("live publication baseline conflicts with the recorded baseline")
-	ErrUnsupportedDelta   = errors.New("publication delta contains an unsupported operation or object")
-	ErrTokenReplay        = errors.New("publication identity or decision was already consumed")
-	ErrTokenBinding       = errors.New("publication authorization does not bind the exact validated delta")
-	ErrRecoveryUnknown    = errors.New("publication recovery is ambiguous; repository remains paused")
-	ErrInjectedFault      = errors.New("publication fault injected")
-	ErrUntrustedStateRoot = errors.New("publication state root is not private and supervisor-owned")
-	ErrUntrustedArtifact  = errors.New("publication artifact directory or object is untrusted")
-	ErrUnsupportedOpenat2 = errors.New("Linux openat2 with beneath/no-link resolution is required")
+	ErrInvalidOptions             = errors.New("invalid publication options")
+	ErrLockBusy                   = errors.New("publication repository is locked by another owner")
+	ErrLiveRootLockBusy           = errors.New("live-root repository is locked by another publication owner")
+	ErrLiveRootLockState          = errors.New("live-root repository lock identity changed")
+	ErrOwnerEpoch                 = errors.New("publication owner epoch is not monotonically increasing")
+	ErrClosed                     = errors.New("publication repository is closed")
+	ErrQuarantined                = errors.New("publication repository is paused by unresolved or unknown work")
+	ErrInvalidRequest             = errors.New("invalid publication request")
+	ErrOriginProposal             = errors.New("publication origin is not an approved proposal call in the validated chain")
+	ErrTerminalLeaseOriginBinding = errors.New("publication terminal lease origin binding is missing, malformed, or unauthenticated")
+	ErrBaselineConflict           = errors.New("live publication baseline conflicts with the recorded baseline")
+	ErrUnsupportedDelta           = errors.New("publication delta contains an unsupported operation or object")
+	ErrTokenReplay                = errors.New("publication identity or decision was already consumed")
+	ErrTokenBinding               = errors.New("publication authorization does not bind the exact validated delta")
+	ErrRecoveryUnknown            = errors.New("publication recovery is ambiguous; repository remains paused")
+	ErrInjectedFault              = errors.New("publication fault injected")
+	ErrUntrustedStateRoot         = errors.New("publication state root is not private and supervisor-owned")
+	ErrUntrustedArtifact          = errors.New("publication artifact directory or object is untrusted")
+	ErrUnsupportedOpenat2         = errors.New("Linux openat2 with beneath/no-link resolution is required")
 )
 
 type Status string
@@ -69,6 +71,41 @@ const (
 	StatusFailed    Status = "FAILED"
 	StatusUnknown   Status = "UNKNOWN"
 )
+
+// NewTerminalLeaseOriginBinding builds the v1 terminal lease-origin binding
+// using a canonical digest of the entire approved terminal transition.
+func NewTerminalLeaseOriginBinding(terminal delta.Transition, proposalCall delta.OperationIdentity) (TerminalLeaseOriginBinding, error) {
+	if terminal.Tool != "bash" || terminal.Operation.Kind != delta.OperationLease || terminal.Operation.LeaseID == "" ||
+		proposalCall.Kind != delta.OperationProposalCall || proposalCall.ProposalID == "" ||
+		proposalCall.CallIssuer == "" || proposalCall.CallID == "" {
+		return TerminalLeaseOriginBinding{}, ErrTerminalLeaseOriginBinding
+	}
+	digest, err := digestCanonical(terminal)
+	if err != nil {
+		return TerminalLeaseOriginBinding{}, err
+	}
+	return TerminalLeaseOriginBinding{SchemaVersion: TerminalLeaseOriginV1Schema,
+		TerminalTransitionDigest: digest, LeaseOperation: terminal.Operation, ProposalCall: proposalCall}, nil
+}
+
+// TerminalLeaseOriginIdentifier derives the bounded origin identifier that is
+// covered by the legacy internal-commit gate digest. The versioned typed
+// TerminalLeaseOriginBinding is persisted alongside it and revalidated on
+// recovery; this preserves old CommitBinding v1 consumers while cryptographically
+// binding the terminal lease plus provider-call association into OriginProposalID.
+func TerminalLeaseOriginIdentifier(binding TerminalLeaseOriginBinding) (string, error) {
+	if binding.SchemaVersion != TerminalLeaseOriginV1Schema || !validSHA256(binding.TerminalTransitionDigest) ||
+		binding.LeaseOperation.Kind != delta.OperationLease || binding.LeaseOperation.LeaseID == "" ||
+		binding.ProposalCall.Kind != delta.OperationProposalCall || binding.ProposalCall.ProposalID == "" ||
+		binding.ProposalCall.CallIssuer == "" || binding.ProposalCall.CallID == "" {
+		return "", ErrTerminalLeaseOriginBinding
+	}
+	digest, err := digestCanonical(binding)
+	if err != nil {
+		return "", err
+	}
+	return "terminal-lease-origin/v1:" + strings.TrimPrefix(digest, "sha256:"), nil
+}
 
 type ObjectStatus string
 
@@ -120,18 +157,36 @@ type liveRootLock struct {
 // authorizer. A decision for a different chain, composed delta, baseline,
 // policy, owner epoch, or originating proposal is unusable.
 type CommitBinding struct {
-	WorkflowID           string `json:"workflow_id"`
-	OwnerEpoch           uint64 `json:"owner_epoch"`
-	PublicationID        string `json:"publication_id"`
-	OriginProposalID     string `json:"origin_proposal_id"`
-	ChainDigest          string `json:"chain_digest"`
-	DeltaDigest          string `json:"delta_digest"`
-	BaselineTreeDigest   string `json:"baseline_tree_digest"`
-	SealedTreeDigest     string `json:"sealed_tree_digest"`
-	PolicyDigest         string `json:"policy_digest"`
-	MetadataPolicyDigest string `json:"metadata_policy_digest"`
-	BindingDigest        string `json:"binding_digest"`
+	SchemaVersion        string                      `json:"schema_version,omitempty"`
+	WorkflowID           string                      `json:"workflow_id"`
+	OwnerEpoch           uint64                      `json:"owner_epoch"`
+	PublicationID        string                      `json:"publication_id"`
+	OriginProposalID     string                      `json:"origin_proposal_id"`
+	ChainDigest          string                      `json:"chain_digest"`
+	DeltaDigest          string                      `json:"delta_digest"`
+	BaselineTreeDigest   string                      `json:"baseline_tree_digest"`
+	SealedTreeDigest     string                      `json:"sealed_tree_digest"`
+	PolicyDigest         string                      `json:"policy_digest"`
+	MetadataPolicyDigest string                      `json:"metadata_policy_digest"`
+	BindingDigest        string                      `json:"binding_digest"`
+	TerminalLeaseOrigin  *TerminalLeaseOriginBinding `json:"terminal_lease_origin,omitempty"`
 }
+
+// TerminalLeaseOriginBinding is the versioned authenticated origin for a
+// terminal Bash lease. The exact terminal transition digest prevents substituting
+// an earlier edit/write transition; ProposalCall is resolved by trusted Go
+// provider/session authority and is not caller text.
+type TerminalLeaseOriginBinding struct {
+	SchemaVersion            string                  `json:"schema_version"`
+	TerminalTransitionDigest string                  `json:"terminal_transition_digest"`
+	LeaseOperation           delta.OperationIdentity `json:"lease_operation"`
+	ProposalCall             delta.OperationIdentity `json:"proposal_call"`
+}
+
+const (
+	CommitBindingV2Schema       = "tbound-publication-commit-binding/v2"
+	TerminalLeaseOriginV1Schema = "tbound-publication-terminal-lease-origin/v1"
+)
 
 // Authorization is the receipt returned by the trusted internal-commit gate.
 type Authorization struct {
@@ -147,13 +202,15 @@ type FaultInjector func(point string, objectIndex int) error
 // OriginProposalID must exactly match a ProposalID in an approved proposal-call
 // transition; lease-only origins are unsupported and fail closed.
 type Request struct {
-	LiveRoot         *os.File
-	SealedRoot       *os.File
-	Chain            delta.ChainSpec
-	Transitions      []delta.Transition
-	OriginProposalID string
-	PublicationID    string // fresh internal-commit effect identity
-	VerifyTransition delta.DecisionVerifier
+	LiveRoot                  *os.File
+	SealedRoot                *os.File
+	Chain                     delta.ChainSpec
+	Transitions               []delta.Transition
+	OriginProposalID          string
+	TerminalLeaseOrigin       *TerminalLeaseOriginBinding
+	PublicationID             string // fresh internal-commit effect identity
+	VerifyTransition          delta.DecisionVerifier
+	VerifyTerminalLeaseOrigin func(context.Context, delta.Transition, TerminalLeaseOriginBinding) error
 }
 
 type ObjectResult struct {
@@ -362,6 +419,11 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 		!validIdentity(request.PublicationID) || !validIdentity(request.OriginProposalID) {
 		return Result{}, ErrInvalidRequest
 	}
+	if request.TerminalLeaseOrigin != nil {
+		bindingCopy := *request.TerminalLeaseOrigin
+		request.TerminalLeaseOrigin = &bindingCopy
+	}
+	request.Transitions = clonePublicationTransitions(request.Transitions)
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -401,8 +463,31 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err != nil {
 		return Result{}, fmt.Errorf("validate approved-delta chain: %w", err)
 	}
-	if !chainContainsOriginProposal(request.Transitions, request.OriginProposalID) {
+	if len(request.Transitions) == 0 {
 		return Result{}, ErrOriginProposal
+	}
+	terminalTransition := request.Transitions[len(request.Transitions)-1]
+	if terminalTransition.Operation.Kind == delta.OperationLease {
+		binding := request.TerminalLeaseOrigin
+		if terminalTransition.Tool != "bash" || binding == nil || request.VerifyTerminalLeaseOrigin == nil ||
+			binding.SchemaVersion != TerminalLeaseOriginV1Schema || binding.LeaseOperation != terminalTransition.Operation ||
+			binding.ProposalCall.Kind != delta.OperationProposalCall || binding.ProposalCall.ProposalID == "" ||
+			binding.ProposalCall.CallIssuer == "" || binding.ProposalCall.CallID == "" ||
+			request.OriginProposalID != binding.ProposalCall.ProposalID {
+			return Result{}, ErrTerminalLeaseOriginBinding
+		}
+		transitionDigest, digestErr := digestCanonical(terminalTransition)
+		if digestErr != nil || !validSHA256(binding.TerminalTransitionDigest) || binding.TerminalTransitionDigest != transitionDigest {
+			return Result{}, errors.Join(ErrTerminalLeaseOriginBinding, digestErr)
+		}
+		if err := request.VerifyTerminalLeaseOrigin(ctx, terminalTransition, *binding); err != nil {
+			return Result{}, fmt.Errorf("trusted terminal lease origin verifier refused publication: %w", err)
+		}
+	} else {
+		if request.TerminalLeaseOrigin != nil || request.VerifyTerminalLeaseOrigin != nil ||
+			!chainContainsOriginProposal(request.Transitions, request.OriginProposalID) {
+			return Result{}, ErrOriginProposal
+		}
 	}
 	if len(chain.ComposedChanges) > maxPlanObjects {
 		return Result{}, fmt.Errorf("%w: changed object count exceeds %d", ErrUnsupportedDelta, maxPlanObjects)
@@ -480,7 +565,7 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 		}
 	}
 	prep := prepareRecord{SchemaVersion: publicationSchema, TransactionID: txID, WorkflowID: r.options.WorkflowID,
-		OwnerEpoch: r.options.OwnerEpoch, PublicationID: request.PublicationID, OriginProposalID: request.OriginProposalID,
+		OwnerEpoch: r.options.OwnerEpoch, PublicationID: request.PublicationID, OriginProposalID: binding.OriginProposalID,
 		SealedGeneration: request.Chain.Sealed.Generation, Binding: binding, LiveRoot: rootID,
 		ArtifactParent: parentID, ArtifactName: artifactName, Plans: plans}
 	if err := r.appendRecord("publication_prepare", txID, prep); err != nil {
@@ -579,6 +664,14 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 		return Result{TransactionID: txID, PublicationID: request.PublicationID, Status: StatusUnknown, Binding: binding}, err
 	}
 	return r.reconcile(request.LiveRoot, artifactParent, artifact, tx, inject)
+}
+
+func clonePublicationTransitions(input []delta.Transition) []delta.Transition {
+	copyOf := append([]delta.Transition(nil), input...)
+	for index := range copyOf {
+		copyOf[index].Changes = append([]delta.ObjectChange(nil), input[index].Changes...)
+	}
+	return copyOf
 }
 
 // Recover reconciles a durable prepare/token record against the exact live-root
@@ -1034,11 +1127,47 @@ func buildBinding(options Options, request Request, chain delta.Result) (CommitB
 		ChainDigest: chainDigest, DeltaDigest: deltaDigest, BaselineTreeDigest: chain.BaselineTreeDigest,
 		SealedTreeDigest: chain.SealedTreeDigest, PolicyDigest: request.Chain.PolicyDigest,
 		MetadataPolicyDigest: request.Chain.MetadataPolicyDigest}
+	if request.TerminalLeaseOrigin != nil {
+		originCopy := *request.TerminalLeaseOrigin
+		originID, originErr := TerminalLeaseOriginIdentifier(originCopy)
+		if originErr != nil {
+			return CommitBinding{}, originErr
+		}
+		binding.SchemaVersion = CommitBindingV2Schema
+		binding.TerminalLeaseOrigin = &originCopy
+		binding.OriginProposalID = originID
+	}
 	binding.BindingDigest, err = computeBindingDigest(binding)
 	return binding, err
 }
 
 func computeBindingDigest(binding CommitBinding) (string, error) {
+	if binding.TerminalLeaseOrigin == nil && binding.SchemaVersion == "" {
+		// Preserve the exact v1 digest for already-written recovery records.
+		return digestCanonical(struct {
+			WorkflowID           string `json:"workflow_id"`
+			OwnerEpoch           uint64 `json:"owner_epoch"`
+			PublicationID        string `json:"publication_id"`
+			OriginProposalID     string `json:"origin_proposal_id"`
+			ChainDigest          string `json:"chain_digest"`
+			DeltaDigest          string `json:"delta_digest"`
+			BaselineTreeDigest   string `json:"baseline_tree_digest"`
+			SealedTreeDigest     string `json:"sealed_tree_digest"`
+			PolicyDigest         string `json:"policy_digest"`
+			MetadataPolicyDigest string `json:"metadata_policy_digest"`
+		}{binding.WorkflowID, binding.OwnerEpoch, binding.PublicationID, binding.OriginProposalID, binding.ChainDigest,
+			binding.DeltaDigest, binding.BaselineTreeDigest, binding.SealedTreeDigest, binding.PolicyDigest, binding.MetadataPolicyDigest})
+	}
+	if binding.SchemaVersion != CommitBindingV2Schema || binding.TerminalLeaseOrigin == nil {
+		return "", ErrTerminalLeaseOriginBinding
+	}
+	originID, err := TerminalLeaseOriginIdentifier(*binding.TerminalLeaseOrigin)
+	if err != nil || binding.OriginProposalID != originID {
+		return "", errors.Join(ErrTerminalLeaseOriginBinding, err)
+	}
+	legacy := binding
+	legacy.SchemaVersion = ""
+	legacy.TerminalLeaseOrigin = nil
 	return digestCanonical(struct {
 		WorkflowID           string `json:"workflow_id"`
 		OwnerEpoch           uint64 `json:"owner_epoch"`
@@ -1050,8 +1179,8 @@ func computeBindingDigest(binding CommitBinding) (string, error) {
 		SealedTreeDigest     string `json:"sealed_tree_digest"`
 		PolicyDigest         string `json:"policy_digest"`
 		MetadataPolicyDigest string `json:"metadata_policy_digest"`
-	}{binding.WorkflowID, binding.OwnerEpoch, binding.PublicationID, binding.OriginProposalID, binding.ChainDigest,
-		binding.DeltaDigest, binding.BaselineTreeDigest, binding.SealedTreeDigest, binding.PolicyDigest, binding.MetadataPolicyDigest})
+	}{legacy.WorkflowID, legacy.OwnerEpoch, legacy.PublicationID, legacy.OriginProposalID, legacy.ChainDigest,
+		legacy.DeltaDigest, legacy.BaselineTreeDigest, legacy.SealedTreeDigest, legacy.PolicyDigest, legacy.MetadataPolicyDigest})
 }
 
 func makePlans(chain delta.Result) ([]objectPlan, error) {
@@ -1989,7 +2118,12 @@ func readTransactions(trace audit.Trace, workflow string) ([]txView, error) {
 				!validIdentity(prep.WorkflowID) || !validIdentity(prep.PublicationID) || !validIdentity(prep.OriginProposalID) ||
 				prep.OwnerEpoch == 0 || prep.ArtifactName != ".tbound-publication-"+strings.TrimPrefix(prep.TransactionID, "pub-") ||
 				len(prep.Plans) > maxPlanObjects || prep.Binding.WorkflowID != prep.WorkflowID || prep.Binding.OwnerEpoch != prep.OwnerEpoch ||
-				prep.Binding.PublicationID != prep.PublicationID || prep.Binding.OriginProposalID != prep.OriginProposalID {
+				prep.Binding.PublicationID != prep.PublicationID || prep.Binding.OriginProposalID != prep.OriginProposalID ||
+				(prep.Binding.TerminalLeaseOrigin != nil && (prep.Binding.SchemaVersion != CommitBindingV2Schema ||
+					prep.Binding.TerminalLeaseOrigin.SchemaVersion != TerminalLeaseOriginV1Schema ||
+					prep.Binding.TerminalLeaseOrigin.LeaseOperation.Kind != delta.OperationLease ||
+					prep.Binding.TerminalLeaseOrigin.ProposalCall.Kind != delta.OperationProposalCall)) ||
+				(prep.Binding.TerminalLeaseOrigin == nil && prep.Binding.SchemaVersion != "") {
 				return nil, fmt.Errorf("invalid publication prepare record at sequence %d", record.Sequence)
 			}
 			bindingDigest, err := computeBindingDigest(prep.Binding)
@@ -2033,7 +2167,7 @@ func readTransactions(trace audit.Trace, workflow string) ([]txView, error) {
 			}
 			view := byID[token.TransactionID]
 			if view == nil || view.token != nil || !validIdentity(token.TokenID) || !validIdentity(token.DecisionID) ||
-				token.BindingDigest != view.prepare.Binding.BindingDigest || token.Binding != view.prepare.Binding ||
+				token.BindingDigest != view.prepare.Binding.BindingDigest || !reflect.DeepEqual(token.Binding, view.prepare.Binding) ||
 				usedTokens[token.TokenID] || usedDecisions[token.DecisionID] {
 				return nil, errors.New("publication token is duplicate or not bound to its exact prepare record")
 			}

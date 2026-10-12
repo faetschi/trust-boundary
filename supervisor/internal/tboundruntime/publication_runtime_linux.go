@@ -109,6 +109,43 @@ func (r *PublicationRuntime) Serve(ctx context.Context, supervisor *piruntime.Su
 	return serveErr
 }
 
+// BeginSession prepares recovery/admission for a host-owned session that drives
+// the existing governed channel loops directly instead of PublicationRuntime.Serve.
+// The returned one-use release lease must be held for the entire period in which
+// Pi/IPC/provider/tool work can run and released only after all loops and child
+// cells are joined, before Finalize. This does not attest live-root quiescence.
+func (r *PublicationRuntime) BeginSession(ctx context.Context) (func(), error) {
+	if r == nil || r.finalizer == nil || r.durable == nil || ctx == nil {
+		return nil, errors.New("publication runtime requires a configured session and context")
+	}
+	r.mu.Lock()
+	if r.started {
+		r.mu.Unlock()
+		return nil, errors.New("publication runtime session has already started")
+	}
+	r.mu.Unlock()
+	if err := r.finalizer.RecoverBeforeAdmission(ctx); err != nil {
+		return nil, fmt.Errorf("reconcile registered live-root publications before proposal admission: %w", err)
+	}
+	if err := r.finalizer.Admission().Activate(); err != nil {
+		return nil, err
+	}
+	release, err := r.finalizer.Admission().Acquire(ctx)
+	if err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	if r.started {
+		r.mu.Unlock()
+		release()
+		return nil, errors.New("publication runtime session raced another start")
+	}
+	r.started = true
+	r.mu.Unlock()
+	var once sync.Once
+	return func() { once.Do(release) }, nil
+}
+
 // Finalize closes proposal admission, waits for every admitted proposal's
 // durable executor call, and publishes the verified current session tip.
 func (r *PublicationRuntime) Finalize(ctx context.Context) (publication.Result, error) {

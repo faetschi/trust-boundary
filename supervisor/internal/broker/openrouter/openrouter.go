@@ -346,14 +346,16 @@ type CapturedResponse struct {
 	call                                                               *ToolCall
 }
 
-func (r CapturedResponse) ResponseID() string     { return r.id }
-func (r CapturedResponse) Model() string          { return r.model }
-func (r CapturedResponse) Provider() string       { return r.provider }
-func (r CapturedResponse) Created() int64         { return r.created }
-func (r CapturedResponse) AssistantText() string  { return r.text }
-func (r CapturedResponse) FinishReason() string   { return r.finish }
-func (r CapturedResponse) Usage() json.RawMessage { return append(json.RawMessage(nil), r.usage...) }
-func (r CapturedResponse) RawResponse() []byte    { return append([]byte(nil), r.raw...) }
+func (r CapturedResponse) ResponseID() string         { return r.id }
+func (r CapturedResponse) Model() string              { return r.model }
+func (r CapturedResponse) Provider() string           { return r.provider }
+func (r CapturedResponse) SystemFingerprint() string  { return r.systemFingerprint }
+func (r CapturedResponse) Created() int64             { return r.created }
+func (r CapturedResponse) AssistantText() string      { return r.text }
+func (r CapturedResponse) FinishReason() string       { return r.finish }
+func (r CapturedResponse) NativeFinishReason() string { return r.nativeFinish }
+func (r CapturedResponse) Usage() json.RawMessage     { return append(json.RawMessage(nil), r.usage...) }
+func (r CapturedResponse) RawResponse() []byte        { return append([]byte(nil), r.raw...) }
 func (r CapturedResponse) ToolCall() (ToolCall, bool) {
 	if r.call == nil {
 		return ToolCall{}, false

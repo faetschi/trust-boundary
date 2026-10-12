@@ -354,6 +354,82 @@ func TestPublicationRuntimeFinalizeWaitsForInflightDurableBashAndDeniesLatePropo
 	}
 }
 
+// TestPublicationRuntimePublishesVersionedAuthenticatedTerminalLeaseOrigin
+// exercises read->write->edit->bash with the Bash lease as the final durable
+// ledger transition. The publication transaction stores a versioned binding of
+// that exact lease transition to the actual captured Bash provider call; it
+// never substitutes the earlier edit as terminal authority or adds a fake
+// final write.
+func TestPublicationRuntimePublishesVersionedAuthenticatedTerminalLeaseOrigin(t *testing.T) {
+	resolver := &fixtureLeaseOriginResolver{}
+	trust := &runtimeFixtureTrust{leaseResolver: resolver}
+	fixture := newPublicationRuntimeFixture(t, nil, trust)
+	resolver.journal = fixture.storeJournal
+	proposals, generations := runtimeFourToolProposals()
+	leaseEnding := proposals[:4] // read, write, edit, bash: the terminal ledger entry is a command lease
+	client, supervisor := fixture.supervisorFor(t, leaseEnding, generations[:4])
+	resultChannel := make(chan runtimeRunResult, 1)
+	go func() {
+		result, err := fixture.runtime.Run(context.Background(), supervisor)
+		resultChannel <- runtimeRunResult{result: result, err: err}
+	}()
+	results := make([]protocol.Result, 0, len(leaseEnding))
+	for _, proposal := range leaseEnding {
+		if err := client.SendProposal(proposal); err != nil {
+			t.Fatalf("send %s proposal: %v", proposal.Tool, err)
+		}
+		result, err := client.ReceiveResult()
+		if err != nil {
+			t.Fatalf("receive %s result: %v", proposal.Tool, err)
+		}
+		results = append(results, result)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	run := <-resultChannel
+	if run.err != nil || run.result.Status != publication.StatusSucceeded || run.result.TransactionID == "" {
+		t.Fatalf("versioned authenticated terminal lease publication failed: result=%+v err=%v", run.result, run.err)
+	}
+	evidence, err := fixture.store.EvidenceBundle()
+	if err != nil || len(evidence.ApprovedDeltaLedger) != 3 {
+		t.Fatalf("session evidence=%+v err=%v", evidence, err)
+	}
+	if terminal := evidence.ApprovedDeltaLedger[len(evidence.ApprovedDeltaLedger)-1]; terminal.Operation.Kind != delta.OperationLease {
+		t.Fatalf("terminal approved-ledger entry is not a command lease: %+v", terminal.Operation)
+	}
+	if trust.leaseResolver == nil {
+		t.Fatal("test did not install the durable-journal terminal Bash resolver")
+	}
+	resolved, err := trust.leaseResolver.ResolveTerminalLeaseOrigin(context.Background(), evidence, evidence.ApprovedDeltaLedger[len(evidence.ApprovedDeltaLedger)-1])
+	if err != nil || resolved.Kind != delta.OperationProposalCall || resolved.CallIssuer != durableCallIssuer || resolved.CallID != proposals[3].ToolCallID {
+		t.Fatalf("terminal Bash call was not resolved from the actual durable gate journal: %+v err=%v", resolved, err)
+	}
+	wantBashOrigin, err := durableTrustedIdentity("proposal", proposals[3], gate.Decision{
+		Verdict: gate.Allow, Tool: "bash", ToolCallID: proposals[3].ToolCallID,
+		Sequence: 4, ResponseID: results[3].ResponseID,
+	})
+	if err != nil || resolved.ProposalID != wantBashOrigin || resolved.ProposalID == summaryProposalID(t, proposals[2], results[2]) {
+		t.Fatalf("terminal Bash resolver substituted a prior proposal: resolved=%+v want=%q err=%v", resolved, wantBashOrigin, err)
+	}
+	if run.result.Binding.TerminalLeaseOrigin == nil {
+		t.Fatalf("commit binding omitted versioned terminal lease origin: %+v", run.result.Binding)
+	}
+	wantBindingOrigin, err := publication.TerminalLeaseOriginIdentifier(*run.result.Binding.TerminalLeaseOrigin)
+	if err != nil || run.result.Binding.OriginProposalID != wantBindingOrigin || run.result.Binding.SchemaVersion != publication.CommitBindingV2Schema ||
+		run.result.Binding.TerminalLeaseOrigin.LeaseOperation != evidence.ApprovedDeltaLedger[len(evidence.ApprovedDeltaLedger)-1].Operation ||
+		run.result.Binding.TerminalLeaseOrigin.ProposalCall != resolved {
+		t.Fatalf("commit binding omitted exact terminal lease/captured-call association: %+v", run.result.Binding)
+	}
+	trace, err := fixture.publicationJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countRuntimeAuditKind(trace, "publication_prepare") != 1 || countRuntimeAuditKind(trace, "publication_token_consumed") != 1 {
+		t.Fatal("authenticated terminal lease publication did not persist prepare/token authority")
+	}
+}
+
 func TestPublicationRuntimeDeniedOriginDoesNotBeginPublication(t *testing.T) {
 	trust := &runtimeFixtureTrust{denyOrigin: true}
 	fixture := newPublicationRuntimeFixture(t, nil, trust)
@@ -372,7 +448,7 @@ func TestPublicationRuntimeDeniedOriginDoesNotBeginPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := fixture.runtime.Finalize(context.Background())
-	if result.TransactionID != "" || err == nil || !strings.Contains(err.Error(), "originating proposal receipt") {
+	if result.TransactionID != "" || err == nil || !strings.Contains(err.Error(), "terminal operation receipt") {
 		t.Fatalf("denied origin unexpectedly entered publication: result=%+v err=%v", result, err)
 	}
 	trace, err := fixture.publicationJournal.Trace()
@@ -795,6 +871,10 @@ func newPublicationRuntimeFixture(t *testing.T, inject publication.FaultInjector
 				StateRoot: publicationState, Journal: publicationJournal, Workspace: workspaceOptions})
 		}
 	}
+	finalTrust := workflow.Trust(trust)
+	if trust.leaseResolver != nil {
+		finalTrust = &leaseOriginFixtureTrust{runtimeFixtureTrust: trust, resolver: trust.leaseResolver}
+	}
 	finalizerOptions := workflow.FinalizerOptions{
 		WorkflowID: runtimeWorkflowID, OwnerEpoch: 1, PublicationID: runtimePublicationID,
 		LiveRoot: liveRoot, Store: store, Baseline: baseline, Workspace: workspaceOptions,
@@ -805,7 +885,7 @@ func newPublicationRuntimeFixture(t *testing.T, inject publication.FaultInjector
 			}
 			return openPublication(2)()
 		},
-		Trust: trust, FaultInjector: inject,
+		Trust: finalTrust, FaultInjector: inject,
 	}
 	runtime, err := NewPublicationRuntime(executor, finalizerOptions)
 	if err != nil {
@@ -1041,6 +1121,7 @@ type runtimeFixtureTrust struct {
 	metadataDigest string
 	denyOrigin     bool
 	denyAdmission  bool
+	leaseResolver  workflow.TerminalOriginResolver
 }
 
 func (trust *runtimeFixtureTrust) CheckAdmission(context.Context) error {
@@ -1109,10 +1190,72 @@ func (trust *runtimeFixtureTrust) VerifyOrigin(_ context.Context, bundle session
 		}
 		matched++
 	}
-	if matched != 1 || transition.Operation.Kind != delta.OperationProposalCall || transition.Operation.ProposalID == "" {
+	if matched != 1 ||
+		(transition.Operation.Kind != delta.OperationProposalCall && transition.Operation.Kind != delta.OperationLease) ||
+		(transition.Operation.Kind == delta.OperationProposalCall && transition.Operation.ProposalID == "") ||
+		(transition.Operation.Kind == delta.OperationLease && transition.Operation.LeaseID == "") {
 		return fmt.Errorf("verified evidence bundle contains %d matching durable provider/gate origin receipts", matched)
 	}
 	return nil
+}
+
+// leaseOriginFixtureTrust adds the optional workflow.TerminalOriginResolver to
+// the base fixture trust so a lease-ending session can publish only when the
+// resolver authenticates the originating proposal-call identity.
+type leaseOriginFixtureTrust struct {
+	*runtimeFixtureTrust
+	resolver workflow.TerminalOriginResolver
+}
+
+func (trust *leaseOriginFixtureTrust) ResolveTerminalLeaseOrigin(ctx context.Context, bundle sessionrepo.EvidenceBundle, terminal delta.Transition) (delta.OperationIdentity, error) {
+	if trust == nil || trust.resolver == nil {
+		return delta.OperationIdentity{}, errors.New("fixture has no authenticated lease-origin resolver")
+	}
+	return trust.resolver.ResolveTerminalLeaseOrigin(ctx, bundle, terminal)
+}
+
+// fixtureLeaseOriginResolver resolves a terminal command lease to the
+// proposal-call transition that produced its exact input generation/tree, which
+// is present in the approved ledger. It accepts no caller-supplied origin
+// string.
+type fixtureLeaseOriginResolver struct{ journal *audit.Journal }
+
+func (resolver fixtureLeaseOriginResolver) ResolveTerminalLeaseOrigin(_ context.Context, bundle sessionrepo.EvidenceBundle, terminal delta.Transition) (delta.OperationIdentity, error) {
+	if resolver.journal == nil || terminal.Operation.Kind != delta.OperationLease || terminal.Tool != "bash" ||
+		len(bundle.ApprovedDeltaLedger) == 0 || !reflect.DeepEqual(bundle.ApprovedDeltaLedger[len(bundle.ApprovedDeltaLedger)-1], terminal) {
+		return delta.OperationIdentity{}, errors.New("fixture resolver requires the exact terminal Bash lease and durable journal")
+	}
+	trace, err := resolver.journal.Trace()
+	if err != nil {
+		return delta.OperationIdentity{}, err
+	}
+	var matches []delta.OperationIdentity
+	for _, record := range trace.Records {
+		if record.Event.Kind != durableDecisionEventKind {
+			continue
+		}
+		var event durableDecisionEvent
+		if err := json.Unmarshal(record.Event.Data, &event); err != nil {
+			return delta.OperationIdentity{}, err
+		}
+		if event.Proposal.Tool != "bash" {
+			continue
+		}
+		lease, err := durableOperationIdentity(event.Proposal, event.Decision, durableCallIssuer)
+		if err != nil || lease != terminal.Operation || event.Proposal.ToolCallID == "" {
+			continue
+		}
+		proposalID, err := durableTrustedIdentity("proposal", event.Proposal, event.Decision)
+		if err != nil {
+			return delta.OperationIdentity{}, err
+		}
+		matches = append(matches, delta.OperationIdentity{Kind: delta.OperationProposalCall,
+			ProposalID: proposalID, CallIssuer: durableCallIssuer, CallID: event.Proposal.ToolCallID})
+	}
+	if len(matches) != 1 {
+		return delta.OperationIdentity{}, fmt.Errorf("durable journal matched %d terminal Bash proposal calls", len(matches))
+	}
+	return matches[0], nil
 }
 
 func summaryProposalID(t *testing.T, proposal protocol.Proposal, result protocol.Result) string {

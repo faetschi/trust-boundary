@@ -1,47 +1,300 @@
-# TBound
+# `tbound` prototype
 
-TBound is a Go supervisor prototype with a TypeScript adapter around the pinned Pi SDK (0.87.1). The adapter's tool surface is `read`, `write`, `edit`, and `bash`.
+**Status (2026-10-12):** reviewed governance components and a frozen runtime
+integration increment are implemented and tested, but the prototype is **not an
+experiment-ready, governed Pi deployment**. On Linux, `tbound serve --pi` is now a
+managed-service client; it fails when the registered service is absent. The
+service source-capture code path exists but remains unqualified on Linux with a
+provisioned service. No positive governed run has occurred; `G1=false`,
+containment remains `not-established`, and no real provider exchange, WP1/G1
+conformance, or thesis result is claimed. Current status and next steps: [`docs/tbound-readiness-status-2026-10-08.md`](docs/tbound-readiness-status-2026-10-08.md),
+[`docs/central-review-corrections-2026-10-07.md`](docs/central-review-corrections-2026-10-07.md),
+[`TASK_STATE.md`](TASK_STATE.md).
 
-**Current implementation:** the repository contains supervisor components for broker protocol/correlation, IPC, policy, durable audit and workflow, session generations, command/runtime interfaces, delta handling, publication, private Git, and the governance companion. The adapter contains Pi host/policy fixtures, proxy tools, and IPC transport. OpenRouter request/transport and provider-bridge components are present; that does not make them a production Pi/provider integration.
+**Run guide:** [Current native Linux and existing VM launch steps](docs/launch.md).
 
-## Production CLI status
+**Setup guides:** [Researcher quickstart and VM resume](docs/reproducible-setup.md)
+and [fresh-host setup and offline verification](docs/setup.md).
 
-`tbound serve --pi` currently refuses to launch: no installed, attested production Pi host profile is accepted. The separate `--native-fixture` route is explicit and non-claim-bearing; it exercises a synthetic Go workflow and does not launch Pi or contact a provider. Component tests are not evidence of a complete admitted Pi/provider workflow or of host security properties.
+`tbound` is a host-side supervisor for one Pi coding workflow. The first slice is
+deliberately narrow: one Pi configuration, one agent, the proxy-backed `read`,
+`write`, `edit`, and `bash` tools, one compliant task, and one declared Linux
+VM/host profile. This README does not claim that its security properties have been
+demonstrated; it records what exists and what remains.
 
-Claim boundaries: there is no production Pi route. The opt-in provider exchange tests are one-shot exchanges and do not show a real production multi-turn workflow. Containment is `not-established` and G1 has not passed. Components, fixtures, and synthetic routes are not thesis evidence.
+## Design boundary
 
-See [fresh-host setup](docs/setup.md) for setup instructions. The [central review](docs/central-review-corrections-2026-10-07.md) and [dated readiness report](docs/tbound-readiness-status-2026-10-08.md) retain their dated scope; they are historical records, not a fresh verification run.
+- A TypeScript Pi SDK adapter installs a **complete custom resource loader** that
+  exposes only `read`, `write`, `edit`, and `bash`. Each tool sends a proposal over
+  session-bound IPC and returns the supervisor's correlated result. The adapter does
+  not independently access files, spawn commands, or call a provider. Pi and adapter
+  inputs remain untrusted.
+- A Go supervisor owns session lifecycle, IPC admission, deterministic policy
+  decisions, durable workflow state, the isolated session repository, command-cell
+  execution, delta validation, and evidence collection.
+- A provider broker owns credentials and provider access. It constructs requests
+  from a registered profile, enforces the fixed four-tool manifest and conversation
+  lineage, captures the exact tool call before forwarding, and records the exact
+  result before it reaches Pi. Credentials and HTTP stay in Go; Node/ Pi never receive
+  the key or control the endpoint/model.
+- The Linux runtime, immutable policy, evidence store, and registered external
+  effect observers belong to the declared trusted computing base. Pi, model output,
+  IPC payloads, repository contents, and commands are untrusted. This boundary is a
+  design target, not yet a tested result.
 
-## Design contracts (intended, not guaranteed)
+```text
+provider broker (Go: credentials, fixed profile, captures)
+              │ registered exchange
+              ▼
+TypeScript Pi adapter ── session IPC ── Go supervisor
+   four proxy tools                         ├─ gate + workflow + durable audit
+                                            ├─ sealed session generations
+                                            └─ isolated per-bash command cell
+```
 
-- The adapter registers only four untrusted Pi SDK proxy tools (`read`, `write`, `edit`, `bash`), each sending a proposal over session-bound IPC. The Go supervisor owns session lifecycle, admission, policy, durable state, the session repository, execution, delta validation, and evidence. A provider broker binds each exchange to a registered profile and tool manifest. Pi, the model, IPC payloads, the repository, and commands are untrusted. The Linux runtime, immutable policy, evidence store, and registered external-effect observers are the intended trusted computing base; this is not yet an established deployed TCB.
-- A provider tool-call ID is correlation data only, not authorization or an idempotency key. A result must bind the response ID, tool-call ID, exact tool name, and canonical argument digest.
-- Effect sequencing: a proposal proceeds only after its registered provider exchange is verified and policy decides. Before an effect is released, claim-critical intent, decision, and single-use execution authority are durably recorded. Before the proposal completes, a durable terminal result or explicit `UNKNOWN` is recorded. Audit failure blocks effect and result release; recovery never blindly replays an unresolved effect.
-- Generations: reads come from the governed repository. Supervisor `write` and `edit` operations advance the generation. Pi sees a sealed read-only view. Each `bash` call gets a disposable writable view. After it, the supervisor stops writers, detaches the view, validates the full delta, and imports only attributable output into a new sealed generation. Publication to the live workspace happens only through a separately validated path. A matching final tree does not prove that no transient effect occurred.
-- Denying a proxy proposal does not by itself prove that every undeclared Pi or runtime path was contained; the configured surface and the Linux boundary need separate evidence.
+Provider, workflow, proposal, tool-call, and execution identifiers retain their own
+issuer/namespace. A provider tool-call ID is correlation data; it is not
+authorization or an idempotency key.
 
-These are intended contracts. They are not guarantees, and no WP1/G1 acceptance is claimed. The normative thesis documents are kept in a separate repository and are not vendored here.
+## Current implementation status
 
-## Status and gate
+**Works (verified as components).** Captured-call broker correlation and
+deterministic four-tool policy; bounded framed IPC; durable execution, sealed
+generations, approved deltas, read/write/edit and command leases; write+fsync
+ordering; audit reconstruction and quarantine; per-object publication with recovery
+and cross-workflow quarantine. Real pinned Pi 0.87.1 (`read/write/edit/bash` proxy
+tools) constructs and runs on Linux with the existing pinned `node_modules` (no
+install). A development Go↔Node↔Pi process path and a Go-owned provider-conversation
+bridge (real Pi SDK `read→edit→bash→read`, synthetic transport/executor) pass. A
+read-only governance companion and a D06 private-Git primitive exist as reviewed
+components. Reviewed foundations are committed at `8d2e478`.
 
-- WP1/G1 has not been accepted. Containment is `not-established`. Production Pi routes refuse to launch, and the `--native-fixture` route is synthetic. Fixtures, component tests, and synthetic routes are not thesis evidence.
-- Opt-in provider tests are one-shot, non-production exchanges. They do not establish a production multi-turn workflow or provider authorization.
-- Host, runtime, provider/model, and profile choices remain open; see the [guest profile prerequisites](docs/guest-profile-prerequisites-2026-10-06.md) and the [readiness report](docs/tbound-readiness-status-2026-10-08.md).
-- Further detail: [implementation status](docs/implementation-status.md), [publication contract](docs/publication-contract.md), [correlation failure modes](supervisor/CORRELATION_FAILURE_MODES.md), and [private Git staging](docs/private-git-staging.md).
+**Not ready.** The Linux CLI is now a managed-service client, and the
+systemd-activated service endpoint, authenticated handoff, journaling, and
+idempotency code exist. Service-mode source qualification code also exists and
+refuses source mismatches before worker exposure. These Linux paths, host
+provisioning, and the real signed-profile route remain unqualified. No positive
+governed Pi workflow, real provider exchange, or D09 runtime has been exercised.
+D06 sealed-source export and read-only consumer-view code, managed-root
+publication permits, command receipt validation, and Bash-origin resolution are
+implemented but only fixture-tested; per-command receipts are not surfaced in
+the CLI, and no live publication or independent effect-oracle run has qualified
+them. Native TUI remains fixture/product work, not the claim-bearing CLI path
+(D15).
 
-## Source map
+**Required before thesis experiments can start.** (1) qualify the implemented
+service-mode source-capture path on Linux with the real signed-profile flow, then
+run one CLI-owned real-Pi workflow through the broker and durable executor: `read→edit→bash→read` with exact lineage and an authorized provider turn;
+(2) qualify D06 source provenance and the read-only consumer view in the real
+Podman/crun boundary; (3) surface per-command receipt evidence and complete live
+publication with independent workspace/network/process oracles; (4) freeze a
+declared Linux profile with verified Landlock ABI 8, rootless UID/GID mapping,
+cgroup cleanup, seccomp and NNP; (5) pass the five WP1 spikes plus E04/E05/E06/E07
+conformance before dataset runs.
 
-- `adapter/src/`: Pi SDK host and fixture code, proxy tools, IPC transport, closure probe, and tests.
-- `adapter/native-pi-policy/`: pinned-source policy fixture artifact and its patching metadata.
-- `supervisor/internal/`: Go governance, broker, runtime, storage, publication, and companion components.
-- `supervisor/cmd/`: CLI and doctor/provider/governance/web command packages; `cmd/tbound` includes the refusal path and explicit fixture route.
-- `supervisor/cmd/tbound-chat/`: loopback-only chat launcher requiring `--fixture`; it is a non-claim-bearing fixture, not a production Pi/provider route.
-- `scripts/`, `install/`, `packaging/`: build, install, verification, and release assets.
+## How to run the current prototype
 
-## Checks
+The built-in Go fixture exercises the real durable Go pipeline but **does not launch
+Pi** and is non-claim-bearing:
 
-`make test` is retained as the existing narrow Pi-bootstrap and doctor test target. `make check-go` runs Go tests across `supervisor/`. Real-provider tests are gated and skip unless opted in. The Linux sandbox tests, including `TestNoNetwork` in `supervisor/internal/sandbox/sandbox_linux_test.go`, are local sandbox network-isolation tests: they attempt blocked outbound connections inside the sandbox and are not provider exchanges. They are not gated by `RUN_PROVIDER_TESTS`.
+```sh
+cd supervisor
+go build -o /tmp/tbound ./cmd/tbound
+/tmp/tbound serve --pi --native-fixture   # exit 0, claim_bearing=false
+/tmp/tbound serve --pi                     # calls managed service; unavailable until provisioned
+```
 
-To opt in to real-provider tests, run `make RUN_PROVIDER_TESTS=1 check-go` and supply the OpenRouter credentials through `TBOUND_OPENROUTER_API_KEY` or `TBOUND_OPENROUTER_API_KEY_FILE`. The durable integration also requires `TBOUND_OPENROUTER_MODEL`. Opted-in tests can make network requests. Platform, privilege, and fixture precondition tests can also skip. Use `go test -v` to see test-level skip reasons; a passing summary does not mean every test ran.
+The real Go↔Pi development test is opt-in and needs a Linux Node, the pinned
+dependency tree, and a private ext4 root:
 
-`make check-adapter` runs the adapter's `npm run typecheck`, its `npm test` suite, and the native host, native policy, and SDK-worker tests. It uses installed dependencies, does not install packages, and does not write artifacts. The closure probe is separate: `make check-closure` runs `npm run closure`, which overwrites `adapter/artifacts/pi-closure-report.json`. `make test-all` runs `check-go` and `check-adapter`. Adapter checks and synthetic fixtures do not establish a production runtime integration.
+```sh
+export TBOUND_GOVERNED_PI_NODE=/home/jeli2k/node-v24.15.0-linux-x64/bin/node
+export TBOUND_GOVERNED_PI_NODE_MODULES=<checkout>/adapter/node_modules
+export TBOUND_GOVERNED_PI_TEST_ROOT=<private 0700 ext4 dir>
+cd supervisor
+go test -mod=readonly -run TestDevelopmentPiSDKWorkerInheritedFDProcessRoundTrip -v ./internal/piruntime
+```
+
+Read-only governance companion (unavailable/fixture/replay modes):
+
+```sh
+cd supervisor && go run ./cmd/tbound-governance --addr 127.0.0.1:8790
+```
+
+## Reproducing the evaluation environment
+
+Use [`docs/reproducible-setup.md`](docs/reproducible-setup.md) as the guided
+from-scratch setup, and [`infra/repro/README.md`](infra/repro/README.md) for
+the scripts and their options. There are two paths: native Ubuntu 24.04 Linux
+or an Ubuntu Hyper-V guest on Windows. Both use the same guest capability probe.
+The scripts are new reproducibility tooling and have not yet been qualified by
+an end-to-end run on a clean host; review their proposed changes before using
+them on a valuable machine.
+
+**Security note:** use a dedicated disposable VM for the thesis profile where
+possible. The Ubuntu 24.04 user-namespace workaround changes a system-wide
+AppArmor-related sysctl and weakens a default restriction for unprivileged user
+namespaces. The bootstrap asks before applying it; do not use unattended
+confirmation on a daily-driver workstation. Review the scoped AppArmor-profile
+alternative if provisioning native Linux.
+
+### Existing Windows Hyper-V VM: start, connect, resume
+
+The reference guest is named `TBound-Ubuntu-2404`. After a Windows restart, open
+**elevated PowerShell** in the checkout and run:
+
+```powershell
+Get-VM -Name 'TBound-Ubuntu-2404' | Select-Object Name, State
+Start-VM -Name 'TBound-Ubuntu-2404'   # only if State is Off
+vmconnect.exe localhost 'TBound-Ubuntu-2404'
+```
+
+Log in at the VM console as the configured guest user. In Ubuntu, get the
+current DHCP address (it can change after a reboot):
+
+```sh
+ip -brief address show eth0
+```
+
+From Windows, connect with the SSH key registered for this guest. On first
+connection, use `StrictHostKeyChecking=ask` and compare the displayed host-key
+fingerprint against the guest console before accepting it:
+
+```powershell
+ssh -o StrictHostKeyChecking=ask -o HostKeyAlgorithms=ssh-ed25519 `
+  -i "$env:USERPROFILE\.ssh\id_ed25519" tboundadmin@<guest-ip>
+```
+
+For a normal shutdown, power off Ubuntu cleanly, then confirm the Hyper-V state:
+
+```sh
+sudo poweroff
+```
+
+```powershell
+Get-VM -Name 'TBound-Ubuntu-2404' | Select-Object Name, State
+```
+
+On the next Windows login, repeat `Get-VM` / `Start-VM` / `vmconnect.exe`,
+re-discover the IP, and run the capability probe before experiments. Avoid
+`Stop-VM -TurnOff` except as an explicitly accepted recovery action: it is an
+unclean power loss and can leave filesystems or experiments in an uncertain
+state. Do not edit checkpoint disks manually as a routine start/resume method.
+
+**Current VM access and probe (2026-10-12):** `CodexSandboxUsers` established
+strict SSH as `tboundadmin` to `192.168.251.23/20` after operator console login;
+the ED25519 host fingerprint matched the pin in
+[`infra/hyperv/INSTALLATION-RECORD.md`](infra/hyperv/INSTALLATION-RECORD.md).
+The DHCP address is dynamic. Hyper-V `Get-VM` remains denied to this execution
+context, and the host alias does not resolve. The fresh guest probe reported
+13 PASS, 0 FAIL, and 2 UNVERIFIED; it reported kernel 6.8.0-146-generic with
+Landlock ABI 4. HWE 7.0.0-38 reached userspace on repeated boots and ran for
+minutes; inspected journal tails showed no panic/oops, but the reboot cause is
+unknown and HWE is not qualified. The help-sheet IP `172.19.193.190` was
+unreachable and remains historical. G1 remains false; this VM is not a clean G1
+baseline. See [the run guide](docs/launch.md) and [TASK_STATE.md](TASK_STATE.md).
+### Native Linux: start from scratch and resume
+
+On a dedicated Ubuntu 24.04 amd64 host, follow the guided setup:
+
+```sh
+sudo bash infra/repro/bootstrap-linux.sh <trial-user>
+```
+
+Read and approve each proposed host change. Reboot if the guide says the kernel
+changed, then rerun the probe. To resume after shutdown, sign in as the trial
+user, enter the checkout, and verify the live profile before experiments:
+
+```sh
+uname -r
+bash infra/guest/probe-capabilities.sh
+```
+
+For either environment, a passing capability probe alone does not qualify
+containment. The remaining G1 gate is the five-spike conformance set plus E04,
+E05, E06, and E07 fixtures on the declared host (see "Gate to G1 / experiments"
+below). WSL is development-only, not the evaluation profile.
+
+## Source layout
+
+```text
+adapter/src/            TypeScript Pi worker, four proxy tools, IPC client, broker-provider
+supervisor/cmd/tbound/          Go supervisor entry point (fixture; production refused)
+supervisor/cmd/tbound-governance/  read-only governance companion server
+supervisor/internal/broker/     provider profile/request construction and correlation (broker)
+supervisor/internal/providerbridge/ Go-owned provider conversation + inherited-channel bridge
+supervisor/internal/ipc/        bounded, session-bound proposal/result transport
+supervisor/internal/gate/       canonicalization and deterministic policy decision
+supervisor/internal/sessionrepo/ independent, supervisor-owned session generations
+supervisor/internal/delta/      approved-delta attribution, sealing, validation
+supervisor/internal/workspace/  descriptor-relative scan/import with metadata policy
+supervisor/internal/privategit/ filtered byte snapshot + new private Git (conformance)
+supervisor/internal/publication/ per-object durable application and recovery
+supervisor/internal/workflow/   publication lifecycle, recovery and quarantine
+supervisor/internal/piruntime/  supervisor loop, child lifecycle, launcher (Linux)
+supervisor/internal/sessionlaunch/ sealed-source session composition (in progress)
+supervisor/internal/audit/      durable claim-critical records and bounded enrichment
+supervisor/internal/governanceview/ bounded observation contract + read-only viewer
+supervisor/internal/evaluationindex/ structural obligation ledger validator
+```
+
+## Effect and generation invariants
+
+1. Correlate a proposal with the registered provider exchange before policy
+   evaluation; reject unknown, duplicate, stale, reordered, or digest-mismatched calls.
+2. Durably record claim-critical intent, decision, and single-use execution authority
+   before releasing an allowed effect. Durably record a terminal result, or explicit
+   `UNKNOWN`, before completing the proposal. Audit failure blocks effect/result release.
+   Recovery never blindly replays an unresolved effect.
+3. Read only from the governed session repository. Supervisor `write` and `edit`
+   operations produce new supervisor-owned generations. Pi sees a read-only sealed
+   generation; each `bash` call receives a disposable writable view of a sealed generation.
+4. After `bash`, terminate writers, detach the command view, validate its complete
+   delta, and import only attributable output into a new sealed generation. No Pi or
+   command cell receives the live workspace or live `.git` administration.
+5. Apply to the live workspace only through the separately validated publication path
+   after the workflow is complete. A matching final tree alone does not establish that
+   no transient mutation occurred.
+
+These are intended contracts. Denying a proxy proposal alone does not demonstrate that
+an undeclared Pi/runtime path was contained; the configured surface and the Linux
+boundary need separate evidence.
+
+## Gate to G1 / experiments
+
+WP1/G1 requires more than a tool smoke test. On the declared candidate VM the plan
+requires: (1) prove the Pi surface is closed to exactly the four proxy tools;
+(2) capture one real provider-specific exchange and the E05 two-generation
+`read → edit → bash → read` fixture; (3) prove independent repository isolation and
+delta provenance (ordinary byte-copy views first); (4) exercise the selected rootless
+Podman/crun containment profile and entrypoint; (5) fault-inject audit write, sync, and
+disk-full failures; and (6) prepare the E04 transient-mutation and E06 denied-read
+fixtures. The tested host and runtime identities must be frozen; a failed capability
+probe requires redesign or a narrower claim, not an unrecorded runtime fallback.
+
+The tracked starting point remains [`todo-implementation-tbound.md`](../MSE_MA_Thesis/agentic-harness/todo-implementation-tbound.md).
+The intended order is Pi closure, broker correlation, generation/repository staging,
+containment, durable authority, and a reconstructable evidence package. Regardless of
+order, each governed effect follows the pre-effect durable-recording rule above.
+
+## Open decisions
+
+- Provisioning the declared production Linux evaluation host/profile (signed image,
+  signed entrypoint, rootless Podman/crun, delegated cgroup-v2, Landlock/seccomp/NNP)
+  — requires explicit operator authorization; WSL2 is development only.
+- Provider/model live verification with the approved `nvidia/nemotron-3.5-lightning:free`
+  profile and the Go secure credential loader (no live request yet).
+- D06 sealed-source provenance, worker isolation, and durable provenance integration.
+- Publication origin binding for workflows that end in a bash lease.
+- Recovery protocol amendment: 48 trials (16 scenarios × 3); the eighth crash
+  point is E07 publication conformance, outside that denominator. Record the
+  dated amendment before registration or execution.
+
+## Thesis design references
+
+The normative thesis documents remain in the original thesis repository under
+`agentic-harness/` (one folder up in the MA thesis root) and are not part of this
+standalone repository. Key references: DOCUMENT-GOVERNANCE.md,
+AH-technical/02-process-model.md, AH-technical/02-1-recovery-and-continuation.md,
+AH-technical/03-architecture.md, AH-technical/06-4-sandboxing-decision.md,
+AH-technical/10-decision-register.md, and AH-technical/11-evidence-contract.md.

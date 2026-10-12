@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/sessionrepo"
 )
 
@@ -70,6 +72,15 @@ type DurableExecutor struct {
 	policyDigest         string
 	metadataPolicyDigest string
 	commandRunner        sessionrepo.CommandRunner
+	quarantined          bool
+}
+
+// productionBashEvidenceBinder is implemented only by the CLI's concrete D09
+// runner chain. DurableExecutor calls it after sessionrepo has committed the
+// command outcome, but before the summary can be released to the provider.
+type productionBashEvidenceBinder interface {
+	BindProductionBashEvidence(context.Context, delta.OperationIdentity, sessionrepo.EvidenceBundle,
+		delta.Transition, sessionrepo.OperationEvidence) error
 }
 
 // NewDurableExecutor validates and constructs a DurableExecutor. The caller
@@ -127,6 +138,9 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.quarantined {
+		return nil, errors.New("durable executor is quarantined after incomplete production command evidence")
+	}
 	if e.tip == nil {
 		return nil, errors.New("durable executor has no current tip generation")
 	}
@@ -193,7 +207,98 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 		return nil, errors.New("durable mutation returned no committed generation or transition")
 	}
 	e.tip = mutation.Generation
+	if proposal.Tool == "bash" && durableCommandRunnerProfile(e.commandRunner) == piruntime.D09CommandRunnerProfile {
+		if err := e.bindProductionBashEvidence(ctx, proposal, decision, mutation); err != nil {
+			e.quarantined = true
+			return nil, fmt.Errorf("bind and reverify D09 proof with durable Bash operation before result release: %w", err)
+		}
+	}
 	return durableMutationSummary(proposal.Tool, mutation, e.commandRunner)
+}
+
+func (e *DurableExecutor) bindProductionBashEvidence(ctx context.Context, proposal protocol.Proposal, decision gate.Decision, mutation sessionrepo.MutationResult) error {
+	binder, ok := e.commandRunner.(productionBashEvidenceBinder)
+	if !ok || ctx == nil || mutation.Generation == nil || mutation.EffectID == "" || mutation.Transition.ID == "" ||
+		proposal.Tool != "bash" || proposal.ToolCallID == "" {
+		return errors.New("registered D09 command runner has no durable evidence-binding API")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	bundle, err := e.store.EvidenceBundle()
+	if err != nil {
+		return fmt.Errorf("read committed Bash operation evidence: %w", err)
+	}
+	var operation *sessionrepo.OperationEvidence
+	for index := range bundle.Operations {
+		candidate := &bundle.Operations[index]
+		if candidate.EffectID != mutation.EffectID {
+			continue
+		}
+		if operation != nil {
+			return errors.New("committed store evidence repeats the Bash effect ID")
+		}
+		operation = candidate
+	}
+	var transition *delta.Transition
+	for index := range bundle.ApprovedDeltaLedger {
+		candidate := &bundle.ApprovedDeltaLedger[index]
+		if candidate.ID != mutation.Transition.ID {
+			continue
+		}
+		if transition != nil {
+			return errors.New("committed store ledger repeats the Bash transition ID")
+		}
+		transition = candidate
+	}
+	if operation == nil || transition == nil {
+		return errors.New("committed operation evidence and approved Bash delta do not match the actual Store mutation")
+	}
+	if operation.Operation.Kind != delta.OperationLease || operation.Operation.LeaseID == "" ||
+		operation.Tool != "bash" || operation.EffectID != mutation.EffectID ||
+		operation.InputGeneration != mutation.Transition.InputGeneration || operation.InputTreeDigest != mutation.Transition.InputTreeDigest ||
+		operation.OutputGeneration != mutation.Transition.OutputGeneration || operation.OutputTreeDigest != mutation.Transition.OutputTreeDigest ||
+		operation.Operation != mutation.Transition.Operation {
+		return errors.New("committed Bash OperationEvidence differs from the Store MutationResult transition")
+	}
+	if !sameDurableTransition(*transition, mutation.Transition) {
+		return errors.New("committed approved Bash ledger transition differs from the Store MutationResult transition")
+	}
+	if mutation.Generation.ID() != transition.OutputGeneration || mutation.Generation.TreeDigest() != transition.OutputTreeDigest {
+		return errors.New("committed Bash generation differs from the approved transition output")
+	}
+	expectedLeaseID, err := durableTrustedIdentity("lease", proposal, decision)
+	if err != nil || operation.Operation.LeaseID != expectedLeaseID {
+		return errors.Join(errors.New("committed Bash lease does not derive from the current provider response/call tuple"), err)
+	}
+	proposalID, err := durableTrustedIdentity("proposal", proposal, decision)
+	if err != nil {
+		return err
+	}
+	providerCall := delta.OperationIdentity{Kind: delta.OperationProposalCall, ProposalID: proposalID,
+		CallIssuer: e.callIssuer, CallID: proposal.ToolCallID}
+	if providerCall.CallIssuer != e.callIssuer || !validIdentityText(providerCall.CallIssuer) || !validIdentityText(providerCall.CallID) ||
+		providerCall.CallID != proposal.ToolCallID {
+		return errors.New("durable Bash provider-call identity is invalid")
+	}
+	return binder.BindProductionBashEvidence(ctx, providerCall, bundle, *transition, *operation)
+}
+
+func sameDurableTransition(left, right delta.Transition) bool {
+	if left.ID != right.ID || left.Sequence != right.Sequence || left.Tool != right.Tool ||
+		left.ArgumentDigest != right.ArgumentDigest || left.ViewID != right.ViewID ||
+		left.ExecutionContextDigest != right.ExecutionContextDigest || left.InputGeneration != right.InputGeneration ||
+		left.OutputGeneration != right.OutputGeneration || left.InputTreeDigest != right.InputTreeDigest ||
+		left.OutputTreeDigest != right.OutputTreeDigest || left.Operation != right.Operation ||
+		!reflect.DeepEqual(left.Decision, right.Decision) || len(left.Changes) != len(right.Changes) {
+		return false
+	}
+	for index := range left.Changes {
+		if !reflect.DeepEqual(left.Changes[index], right.Changes[index]) {
+			return false
+		}
+	}
+	return true
 }
 
 // durableMutationSummary encodes a strict-JSON view of a committed mutation. It
