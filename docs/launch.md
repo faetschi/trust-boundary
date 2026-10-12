@@ -1,29 +1,6 @@
 # Launch TBound on Linux
 
-**Updated 2026-10-12.** This is the run guide for the current source tree. It covers a local development smoke run and the existing Linux guest. It does not claim an experiment-ready governed deployment.
-
-## Current status and next work
-
-- **Implemented:** reviewed governance components; Linux managed-service client and
-  systemd socket-activated service endpoints; kernel-credential peer authentication,
-  request journaling/idempotency, and service-mode source qualification with
-  baseline revalidation and source-digest binding. Mismatches refuse before worker exposure.
-- **Verified on the existing VM:** the current source passed the full Linux Go suite,
-  full race suite, and a private-output `--native-fixture` launch.
-- **Still unqualified:** real signed-profile
-  registration, service provisioning and client/server/restart tests, and any positive
-  governed Pi session. No real provider turn or G1 run has passed; containment is
-  not-established and G1=false.
-- **M1, the thesis path:** qualify signed
-  source registration and provision/test the systemd service; then complete the Pi
-  read → edit → bash → read provider workflow, D06/D09 isolation, publication
-  receipts, independent effect checks, and registered G1 gates.
-- **M2 (the parallel product/packaging shorthand in TASK_STATE.md):** parallel
-  product work, not a thesis evidence gate. Next: (1) verify install and package
-  behavior; (2) resolve canonical license text and a portable pinned Pi artifact;
-  (3) validate Linux RPM, Homebrew, and container builds; (4) distribute/publish
-  only after acceptance. Public npm/curl distribution is not available; D15 keeps
-  the thesis claim path CLI-first.
+This is the run guide for the current source tree. It covers a local development smoke run and the existing Linux guest. It does not claim an experiment-ready governed deployment.
 
 Current Hyper-V access, fresh guest-probe results, and the unqualified HWE boot observations are in the [VM section](#existing-windows-hyper-v-vm) below. Treat the guest as a development reference, not a clean G1 baseline.
 
