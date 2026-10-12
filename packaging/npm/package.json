@@ -14,7 +14,6 @@
   ],
   "optionalDependencies": {
     "@tbound/cli-linux-x64": "0.1.0",
-    "@tbound/cli-linux-arm64": "0.1.0",
     "@tbound/cli-darwin-x64": "0.1.0",
     "@tbound/cli-darwin-arm64": "0.1.0",
     "@tbound/cli-win32-x64": "0.1.0"

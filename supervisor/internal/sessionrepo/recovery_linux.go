@@ -39,6 +39,7 @@ func Open(root *os.File, options Options) (*Store, error) {
 		viewIDGenerator: newRandomViewID,
 		views:           make(map[string]*CommandView),
 		exposedViews:    make(map[string]*ExposedView),
+		sealedSources:   make(map[*VerifiedSealedSource]struct{}),
 		usedDecisions:   make(map[string]struct{}), usedOperations: make(map[delta.OperationIdentity]struct{}), usedViewIDs: make(map[string]struct{}),
 	}
 	store.genDir, err = openDirectoryAt(rootCopy, "generations")

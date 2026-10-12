@@ -549,6 +549,18 @@ type Trust interface {
 	VerifyOrigin(context.Context, sessionrepo.EvidenceBundle, delta.Transition) error
 }
 
+// TerminalOriginResolver is optionally implemented by a trusted host Trust to
+// authenticate the originating proposal-call identity of a terminal command
+// lease from the durable Go journal. It is consulted only when the terminal
+// approved-ledger transition is a delta.OperationLease. The Finalizer still
+// verifies the actual lease transition through Trust.VerifyOrigin and uses only
+// the resolver's authenticated identity as the publication origin; a
+// caller-supplied origin string is never accepted. Without this interface a
+// lease-only terminal still fails closed exactly as before.
+type TerminalOriginResolver interface {
+	ResolveTerminalLeaseOrigin(context.Context, sessionrepo.EvidenceBundle, delta.Transition) (delta.OperationIdentity, error)
+}
+
 type FinalizerOptions struct {
 	WorkflowID      string
 	OwnerEpoch      uint64
@@ -567,16 +579,18 @@ type FinalizerOptions struct {
 }
 
 type Finalizer struct {
-	options         FinalizerOptions
-	admission       *Admission
-	commit          *gate.InternalCommitGate
-	repo            *publication.Repository
-	mu              sync.Mutex
-	prepared        bool
-	finished        bool
-	finalizeStarted bool
-	evidence        sessionrepo.EvidenceBundle
-	origin          delta.Transition
+	options             FinalizerOptions
+	admission           *Admission
+	commit              *gate.InternalCommitGate
+	repo                *publication.Repository
+	mu                  sync.Mutex
+	prepared            bool
+	finished            bool
+	finalizeStarted     bool
+	evidence            sessionrepo.EvidenceBundle
+	origin              delta.Transition
+	originOperation     delta.OperationIdentity
+	terminalLeaseOrigin *publication.TerminalLeaseOriginBinding
 }
 
 func NewFinalizer(options FinalizerOptions) (*Finalizer, error) {
@@ -690,7 +704,35 @@ func (f *Finalizer) Finalize(ctx context.Context) (publication.Result, error) {
 		return publication.Result{}, errors.New("publication requires at least one approved mutation and an authenticated origin")
 	}
 	origin := evidence.ApprovedDeltaLedger[len(evidence.ApprovedDeltaLedger)-1]
-	if origin.Operation.Kind != delta.OperationProposalCall || origin.Operation.ProposalID == "" {
+	// Authenticate the exact terminal approved-ledger operation before resolving
+	// any publication-origin representation. For a command lease this is the
+	// Bash lease itself, not an earlier transition that merely produced its input
+	// generation.
+	if err := f.options.Trust.VerifyOrigin(ctx, bundle, origin); err != nil {
+		return publication.Result{}, fmt.Errorf("trusted terminal operation receipt refused publication: %w", err)
+	}
+	originOperation := origin.Operation
+	var terminalLeaseOrigin *publication.TerminalLeaseOriginBinding
+	if originOperation.Kind == delta.OperationLease {
+		resolver, ok := f.options.Trust.(TerminalOriginResolver)
+		if !ok {
+			return publication.Result{}, errors.New("terminal workflow transition has no proposal-call origin; lease-only publication fails closed")
+		}
+		resolved, resolveErr := resolver.ResolveTerminalLeaseOrigin(ctx, bundle, origin)
+		if resolveErr != nil {
+			return publication.Result{}, fmt.Errorf("trusted terminal command-lease origin resolution refused publication: %w", resolveErr)
+		}
+		if resolved.Kind != delta.OperationProposalCall || resolved.ProposalID == "" || resolved.CallIssuer == "" || resolved.CallID == "" {
+			return publication.Result{}, errors.New("trusted terminal lease origin is not a bound proposal-call identity")
+		}
+		binding, bindErr := publication.NewTerminalLeaseOriginBinding(origin, resolved)
+		if bindErr != nil {
+			return publication.Result{}, fmt.Errorf("bind exact terminal lease and captured provider call: %w", bindErr)
+		}
+		terminalLeaseOrigin = &binding
+		originOperation = resolved
+	}
+	if originOperation.Kind != delta.OperationProposalCall || originOperation.ProposalID == "" {
 		return publication.Result{}, errors.New("terminal workflow transition has no proposal-call origin; lease-only publication fails closed")
 	}
 	for _, transition := range evidence.ApprovedDeltaLedger {
@@ -704,9 +746,6 @@ func (f *Finalizer) Finalize(ctx context.Context) (publication.Result, error) {
 		}); err != nil {
 			return publication.Result{}, fmt.Errorf("trusted approved-transition verification refused publication: %w", err)
 		}
-	}
-	if err := f.options.Trust.VerifyOrigin(ctx, bundle, origin); err != nil {
-		return publication.Result{}, fmt.Errorf("trusted originating proposal receipt refused publication: %w", err)
 	}
 	readiness := EvidenceRequest{Bundle: bundle, Verified: verified, LiveRoot: f.options.LiveRoot,
 		Workflow: f.options.WorkflowID, OwnerEpoch: f.options.OwnerEpoch}
@@ -736,24 +775,44 @@ func (f *Finalizer) Finalize(ctx context.Context) (publication.Result, error) {
 	if err != nil || sealedSnapshot.TreeDigest != sealedEvidence.TreeDigest || !reflect.DeepEqual(sealedSnapshot.Manifest, sealedEvidence.Manifest) {
 		return publication.Result{}, errors.Join(errors.New("retained sealed descriptor differs from verified evidence"), err)
 	}
-	reservation, err := f.options.Ledger.Begin(f.options.LiveRoot, f.options.WorkflowID, f.options.OwnerEpoch,
-		f.options.PublicationID, f.options.Workspace)
-	if err != nil {
-		return publication.Result{}, err
+	f.evidence, f.origin, f.originOperation, f.terminalLeaseOrigin = bundle, origin, originOperation, terminalLeaseOrigin
+	var verifyTerminalLeaseOrigin func(context.Context, delta.Transition, publication.TerminalLeaseOriginBinding) error
+	if terminalLeaseOrigin != nil {
+		resolver := f.options.Trust.(TerminalOriginResolver)
+		verifyTerminalLeaseOrigin = func(verifyCtx context.Context, terminal delta.Transition, candidate publication.TerminalLeaseOriginBinding) error {
+			if !reflect.DeepEqual(terminal, origin) || !reflect.DeepEqual(candidate, *terminalLeaseOrigin) {
+				return publication.ErrTerminalLeaseOriginBinding
+			}
+			resolved, err := resolver.ResolveTerminalLeaseOrigin(verifyCtx, bundle, terminal)
+			if err != nil || !reflect.DeepEqual(resolved, candidate.ProposalCall) {
+				return errors.Join(publication.ErrTerminalLeaseOriginBinding, err)
+			}
+			return f.options.Trust.VerifyOrigin(verifyCtx, bundle, terminal)
+		}
 	}
-	defer reservation.Release()
-	f.evidence, f.origin = bundle, origin
 	request := publication.Request{
 		LiveRoot: f.options.LiveRoot, SealedRoot: tipRoot,
 		Chain: delta.ChainSpec{Baseline: evidence.Baseline.Manifest, Sealed: sealedEvidence.Manifest,
 			ExpectedBaselineTreeDigest: evidence.Baseline.TreeDigest, ExpectedSealedTreeDigest: sealedEvidence.TreeDigest,
 			PolicyDigest: evidence.PolicyDigest, MetadataPolicyDigest: evidence.MetadataPolicyDigest},
 		Transitions:      append([]delta.Transition(nil), evidence.ApprovedDeltaLedger...),
-		OriginProposalID: origin.Operation.ProposalID, PublicationID: f.options.PublicationID,
+		OriginProposalID: originOperation.ProposalID, PublicationID: f.options.PublicationID,
+		TerminalLeaseOrigin: terminalLeaseOrigin, VerifyTerminalLeaseOrigin: verifyTerminalLeaseOrigin,
 		VerifyTransition: func(decision delta.PolicyDecision, binding delta.TransitionBinding) error {
 			return f.options.Trust.VerifyTransition(ctx, decision, binding)
 		},
 	}
+	if terminalLeaseOrigin != nil {
+		if err := verifyTerminalLeaseOrigin(ctx, origin, *terminalLeaseOrigin); err != nil {
+			return publication.Result{}, fmt.Errorf("verify terminal lease/call binding before root-ledger registration: %w", err)
+		}
+	}
+	reservation, err := f.options.Ledger.Begin(f.options.LiveRoot, f.options.WorkflowID, f.options.OwnerEpoch,
+		f.options.PublicationID, f.options.Workspace)
+	if err != nil {
+		return publication.Result{}, err
+	}
+	defer reservation.Release()
 	result, publishErr := f.repo.Publish(ctx, request, func(binding publication.CommitBinding) (publication.Authorization, error) {
 		return f.commit.Authorize(ctx, binding, f.verifyCommitBinding)
 	}, f.options.FaultInjector)
@@ -779,8 +838,17 @@ func (f *Finalizer) verifyCommitBinding(ctx context.Context, binding publication
 	if digestErr != nil {
 		return digestErr
 	}
+	wantOriginID := f.originOperation.ProposalID
+	if f.terminalLeaseOrigin != nil {
+		var err error
+		wantOriginID, err = publication.TerminalLeaseOriginIdentifier(*f.terminalLeaseOrigin)
+		if err != nil {
+			return err
+		}
+	}
 	if binding.WorkflowID != f.options.WorkflowID || binding.OwnerEpoch != f.options.OwnerEpoch ||
-		binding.PublicationID != f.options.PublicationID || binding.OriginProposalID != f.origin.Operation.ProposalID ||
+		binding.PublicationID != f.options.PublicationID || binding.OriginProposalID != wantOriginID ||
+		!reflect.DeepEqual(binding.TerminalLeaseOrigin, f.terminalLeaseOrigin) ||
 		binding.BaselineTreeDigest != f.evidence.Baseline.TreeDigest || len(f.evidence.Generations) == 0 ||
 		binding.SealedTreeDigest != f.evidence.Generations[len(f.evidence.Generations)-1].TreeDigest ||
 		binding.PolicyDigest != f.evidence.PolicyDigest || binding.MetadataPolicyDigest != f.evidence.MetadataPolicyDigest ||

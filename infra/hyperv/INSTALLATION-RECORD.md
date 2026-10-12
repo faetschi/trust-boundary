@@ -3,7 +3,11 @@
 **Recorded:** 2026-10-01 (Europe/Vienna)
 **VM:** `TBound-Ubuntu-2404`
 **Installer:** Ubuntu Server 24.04.5 AMD64
+## Current guest and evidence state — 2026-10-04
 
+The user reports the existing VM is Running and guest eth0 is UP at 172.24.196.42/20. Latest-boot Basic Session attestation is pending; the prior baseline attestation is historical. Host automation is deferred and uninstalled.
+
+The saved VFH offline-verifier run completed at 2026-10-04T09:07:19Z. Its eight-file capture is F:\TBoundAssets\ProvisioningSSH\TBoundTrustedCapture-VFHmYRa5HO; verification.json SHA-256 is fbed5d86a9afc79c5889d782bcbe5d03f2cffa921fe4df42f0c16d6ced8667f8, and artifact-manifest.json SHA-256 is 0c4864a585c9870ab5a2bd4cdb0c97f3608c9cbd0489dc3f489b5f84c5321598. The captured report is PASS for its recorded guest source pins, with six checks passed, no failures, cleanup PASS/zero leftovers, and all four provider/effect/containment/G1 claims false. Normal and race runs each covered five packages and 86 test events (85 pass, zero fail, one expected ownership test skip); the separate ownership fixture passed 1/1. This is not acceptance of newer repository source, full workflow completion, or containment evidence. Newer OpenRouter/workspace packages are not deployed to the guest.
 ## Installation choices reported by the operator
 
 - Booted the installer entry **Try or Install Ubuntu Server**.
@@ -118,12 +122,12 @@ Host-side output reported one attached virtual disk at `F:\TBoundVMs\TBound-Ubun
 - The report records UID 1000, offline `eth0` carrier 0, no IPv4/IPv6 default route, cleanup PASS, and all claims false. `verification.stderr` is empty. Root verified report SHA-256 `1fd2bec7cfb4d3cabf0031f163c6e323418914db5190d77b962e5469a45da561` (123,858 bytes) and `manifest.json` SHA-256 `58bc33702a40464aa7ddc424e96add1941c327ade19e0209df3344562b8d9934` at `F:\TBoundAssets\Evidence\offline-20261003-214128`. Capture confirmation matched all eight captured guest files to their recorded hashes.
 - The parser correction was not deployed to or tested in this guest run. These passing component summaries do not make the overall verifier pass or establish containment.
 - Afterward, parser-fix commit `90ee23e` passed seven host-only pure tests and was deployed to the guest in a guarded two-file update as UID 1000 without sudo. Verified guest pins: `infra/guest/verify-offline.py` SHA-256 `cb4d8d2a235548b2a3a1528befb880e0dc5f1619d5ac46591672ed17547b204a`; `infra/guest/test_go_phase_diagnostic.py` SHA-256 `61a56ea541e5ed5648b02b79643a2b6a667144a99b2129b77ea7622dc1e6099f`. Preimages are under `/home/tboundadmin/.tbound-verifier-backup-90ee23e34b60f4e2`; deployment-manifest SHA-256 is `07c791f66507a3125ca73ed96696c50853c5509422f07f32aa8e870693e90af4`.
-- Follow-up queue `/home/tboundadmin/.tbound-offline-queued.VFHmYRa5HO` was created at `2026-10-04T09:03:53Z`. Its offline gate passed at `2026-10-04T09:06:39Z`, and the terminal reported successful completion at `09:07:19Z`. The report JSON and capture have not been retrieved or independently verified, so this is provisional terminal evidence only; do not claim verifier PASS, full checklist completion, or containment.
-- Host automation for the Hyper-V NIC disconnect/offline gate is under design and review. The one-time administrator installation is pending; no automation result is established.
+- Follow-up queue VFHmYRa5HO passed its offline gate and reached terminal completion. Its report and capture were later retrieved and verified. The report is PASS for its recorded guest inputs, but all four claims remain false; do not claim full checklist completion or containment.
+- Host automation for the Hyper-V NIC disconnect/offline gate remains deferred and uninstalled; no scheduled task or controller result is established.
 
 ## Pending provisioning and verification
 
-- Parser-fix commit `90ee23e` was deployed to the guest and the queued trial reached a successful terminal completion, but the report and capture remain unverified. Do not claim overall verifier PASS or containment until those artifacts are retrieved and checked. The one-time administrator install for host automation remains pending. Retire the temporary SSH public key after maintenance.
+- Parser-fix commit 90ee23e was deployed before the VFH queued trial. The report and capture were later retrieved and hash-verified; see the current-state section above. Host automation remains deferred and uninstalled. Retire the temporary SSH public key after maintenance.
 - Rootless-operation checks remain pending.
 - Offline capability checks, Go/Pi-adapter tests, complete containment verification, destruction G1, disposable restore, and the actual TODO LLM demo remain unverified.
 - No secure baseline or WP1 completion is established by this record.

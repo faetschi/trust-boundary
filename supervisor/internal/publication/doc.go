@@ -9,8 +9,13 @@
 // directory, and a quiescent target. The live root uses the workspace package's
 // normalized metadata profile. Regular-file create/overwrite/delete and
 // directory creation are publishable. Directory removal and type replacement
-// fail closed. OriginProposalID must be a proposal-call member of the approved
-// transition chain; lease-only origins fail closed in this bounded slice.
+// fail closed. Proposal-call terminal origins remain compatible with v1
+// CommitBinding journals. A terminal command lease uses a versioned
+// TerminalLeaseOriginBinding that binds the exact complete terminal transition
+// digest to a trusted Go-resolved proposal/call identity; the trusted verifier is
+// required before prepare and the association is included in the v2 commit binding
+// and recovery record. A caller-supplied origin string alone never authorizes a
+// terminal lease.
 //
 // Recovery observes recorded progress and the live tree. It never replays a
 // consumed token, rolls back blindly, or restores an old checkpoint over later

@@ -19,6 +19,7 @@ type IOMode string
 const (
 	IOModeNativeTUI   IOMode = "native-tui"
 	IOModeObservation IOMode = "observation"
+	IOModeSilent      IOMode = "silent-worker"
 
 	MaxObservationBytes      = 1 << 20
 	observationQueueSize     = 8
@@ -53,7 +54,8 @@ type ObservationSink interface {
 
 // ChildSpec deliberately has no inherit-environment switch. Env is an exact
 // allow-list and a nil value is converted to a non-nil empty environment.
-// Native TUI output and structured observation are mutually exclusive.
+// Native TUI output, structured observation, and the explicit silent-worker
+// mode are mutually exclusive.
 type ChildSpec struct {
 	Executable     string
 	Args           []string
@@ -65,6 +67,7 @@ type ChildSpec struct {
 	Observation    ObservationSink
 	ObservationMax int
 	Descendant     DescendantSettler
+	Descriptors    []InheritedDescriptor
 
 	capability *childCapability
 }
@@ -74,20 +77,48 @@ type ChildSpec struct {
 // platform-specific immutable/handle-bound launch; path hashing followed by a
 // normal path exec is not sufficient proof against TOCTOU.
 type ExecutableLaunchRequest struct {
-	Path                   string
-	Digest                 string
-	Args                   []string
-	Dir                    string
-	WorkingDirectoryHandle *os.File
-	Env                    []string
-	Stdin                  io.Reader
-	Stdout                 io.Writer
-	Stderr                 io.Writer
-	ProfileDigest          string
+	Path                    string
+	Digest                  string
+	NodeVersion             string
+	Args                    []string
+	Dir                     string
+	WorkerExposureHandle    *os.File
+	D09SourceHandle         *os.File
+	Env                     []string
+	Stdin                   io.Reader
+	Stdout                  io.Writer
+	Stderr                  io.Writer
+	ProfileDigest           string
+	ArgumentsDigest         string
+	EnvironmentDigest       string
+	WorkingDirectoryDigest  string
+	PiRuntimeBundleRoot     string
+	PiRuntimeBundleDigest   string
+	PiRuntimeBundleHandle   *os.File
+	StdinDigest             string
+	StdinProfile            string
+	DescriptorProfile       string
+	DescriptorProfileDigest string
+	ContainmentProfile      string
+	SettlementProfile       string
+	SourceDigest            string
+	Descriptors             []InheritedDescriptor
+	admission               *AdmissionCapability
 }
 
 type ExecutableLauncher interface {
 	StartVerified(context.Context, ExecutableLaunchRequest) (*exec.Cmd, error)
+}
+
+// perLaunchProofLauncher is implemented by production launchers that must
+// return a proof and settler for the exact launched command. Its unexported
+// marker keeps external callers from manufacturing this contract; fixture and
+// development launchers retain their existing interface.
+type perLaunchProofLauncher interface {
+	requirePerLaunchProof()
+	TakeLaunchProof(*exec.Cmd) (any, bool)
+	DescendantSettlerFor(*exec.Cmd) (DescendantSettler, bool)
+	ValidateLaunchProof(any, HostProfile, *exec.Cmd) error
 }
 
 var (
@@ -140,7 +171,7 @@ func (s ChildSpec) validateShape() error {
 	if strings.TrimSpace(s.Executable) == "" || strings.ContainsAny(s.Executable, "\x00\r\n") || !filepath.IsAbs(s.Executable) {
 		return errors.New("native child executable must be an absolute path")
 	}
-	if s.Mode != IOModeNativeTUI && s.Mode != IOModeObservation {
+	if s.Mode != IOModeNativeTUI && s.Mode != IOModeObservation && s.Mode != IOModeSilent {
 		return errors.New("native child IO mode is required")
 	}
 	if s.Mode == IOModeNativeTUI && s.Observation != nil {
@@ -151,6 +182,9 @@ func (s ChildSpec) validateShape() error {
 	}
 	if s.Mode == IOModeObservation && s.TUIOutput != nil {
 		return errors.New("observation mode cannot attach native TUI output")
+	}
+	if s.Mode == IOModeSilent && (s.TUIOutput != nil || s.Observation != nil || s.ObservationMax != 0) {
+		return errors.New("silent worker mode cannot attach TUI or process-output observation")
 	}
 	seen := make(map[string]struct{}, len(s.Env))
 	for _, item := range s.Env {
@@ -168,6 +202,11 @@ func (s ChildSpec) validateShape() error {
 	}
 	if s.Mode == IOModeObservation && (s.ObservationMax <= 0 || s.ObservationMax > MaxObservationBytes) {
 		return fmt.Errorf("observation bound must be between 1 and %d bytes", MaxObservationBytes)
+	}
+	if len(s.Descriptors) != 0 {
+		if err := validatePiWorkerDescriptors(PiWorkerDescriptorProfile, s.Descriptors, nil, nil); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -194,6 +233,9 @@ func (c *AdmissionCapability) BindChild(spec ChildSpec, launcher ExecutableLaunc
 	if spec.Mode == IOModeObservation && !sameBinding(spec.Observation, c.runtime.Observation) {
 		return ChildSpec{}, ErrHostBindingsMissing
 	}
+	if !sameInheritedDescriptors(spec.Descriptors, c.runtime.Descriptors) {
+		return ChildSpec{}, ErrHostBindingsMissing
+	}
 	if spec.Executable != c.profile.ChildExecutable || !equalStrings(spec.Args, c.runtime.Arguments) ||
 		!equalStrings(spec.Env, c.runtime.Environment) || spec.Dir != c.runtime.WorkingDirectory ||
 		!sameBinding(spec.Stdin, c.runtime.Stdin) ||
@@ -204,14 +246,17 @@ func (c *AdmissionCapability) BindChild(spec ChildSpec, launcher ExecutableLaunc
 		admission: c, launcher: c.runtime.Launcher, settler: c.runtime.Descendant,
 		executable: spec.Executable, executableDigest: c.profile.ExecutableDigest,
 		args: append([]string(nil), c.runtime.Arguments...), dir: c.runtime.WorkingDirectory,
-		workingDirectoryHandle: c.runtime.WorkingDirectoryHandle,
-		env:                    append([]string{}, c.runtime.Environment...), stdin: spec.Stdin, mode: spec.Mode,
+		workerExposureHandle: c.runtime.WorkerExposureHandle,
+		d09SourceHandle:      c.runtime.D09SourceHandle,
+		env:                  append([]string{}, c.runtime.Environment...), stdin: spec.Stdin, mode: spec.Mode,
 		tuiOutput: spec.TUIOutput, observation: spec.Observation,
 		observationMax: spec.ObservationMax, profileDigest: c.profile.Digest,
+		descriptors: cloneInheritedDescriptors(c.runtime.Descriptors),
 	}
 	bound := spec
 	bound.Args = append([]string(nil), c.runtime.Arguments...)
 	bound.Env = append([]string{}, c.runtime.Environment...)
+	bound.Descriptors = cloneInheritedDescriptors(c.runtime.Descriptors)
 	bound.capability = &childCapability{bound: snapshot}
 	return bound, nil
 }
@@ -254,21 +299,23 @@ type Settlement struct {
 // for source compatibility, but StartChild never consults its exported fields
 // after this snapshot exists.
 type boundChild struct {
-	admission              *AdmissionCapability
-	launcher               ExecutableLauncher
-	settler                DescendantSettler
-	executable             string
-	executableDigest       string
-	args                   []string
-	dir                    string
-	workingDirectoryHandle *os.File
-	env                    []string
-	stdin                  io.Reader
-	mode                   IOMode
-	tuiOutput              io.Writer
-	observation            ObservationSink
-	observationMax         int
-	profileDigest          string
+	admission            *AdmissionCapability
+	launcher             ExecutableLauncher
+	settler              DescendantSettler
+	executable           string
+	executableDigest     string
+	args                 []string
+	dir                  string
+	workerExposureHandle *os.File
+	d09SourceHandle      *os.File
+	env                  []string
+	stdin                io.Reader
+	mode                 IOMode
+	tuiOutput            io.Writer
+	observation          ObservationSink
+	observationMax       int
+	profileDigest        string
+	descriptors          []InheritedDescriptor
 }
 
 type childCapability struct{ bound *boundChild }
@@ -285,6 +332,11 @@ type Process struct {
 	cmd     *exec.Cmd
 	settler DescendantSettler
 	writers []*observationWriter
+
+	// launchProof is the captured, validated per-launch proof supplied by a
+	// launcher that implements TakeLaunchProof. It is nil for development and
+	// fixture launches and is never a stale global value.
+	launchProof any
 
 	completion chan struct{}
 	waitMu     sync.Mutex
@@ -321,9 +373,16 @@ func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
 	}
 	runtime := bound.admission.runtime
 	profile := bound.admission.profile
+	workerHandlesMatch := sameBinding(bound.workerExposureHandle, runtime.WorkerExposureHandle)
+	if runtime.D09Source != nil {
+		workerHandlesMatch = bound.workerExposureHandle == nil && runtime.WorkerExposureHandle == nil &&
+			sameBinding(bound.d09SourceHandle, runtime.D09SourceHandle)
+	} else {
+		workerHandlesMatch = workerHandlesMatch && bound.d09SourceHandle == nil && runtime.D09SourceHandle == nil
+	}
 	if err := runtime.validate(profile); err != nil || bound.executable != profile.ChildExecutable ||
 		bound.executableDigest != profile.ExecutableDigest || !equalStrings(bound.args, runtime.Arguments) ||
-		bound.dir != runtime.WorkingDirectory || !sameBinding(bound.workingDirectoryHandle, runtime.WorkingDirectoryHandle) ||
+		bound.dir != runtime.WorkingDirectory || !workerHandlesMatch ||
 		!sameBinding(bound.stdin, runtime.Stdin) ||
 		!equalStrings(bound.env, runtime.Environment) || DigestEnvironment(bound.env) != profile.ChildEnvironmentDigest ||
 		(bound.mode == IOModeNativeTUI && !sameBinding(bound.tuiOutput, runtime.Terminal)) ||
@@ -339,10 +398,20 @@ func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
 		return nil, err
 	}
 	cmd, err := bound.launcher.StartVerified(ctx, ExecutableLaunchRequest{
-		Path: bound.executable, Digest: bound.executableDigest,
-		Args: append([]string(nil), bound.args...), Dir: bound.dir, WorkingDirectoryHandle: bound.workingDirectoryHandle,
-		Env:   append([]string{}, bound.env...),
-		Stdin: bound.stdin, Stdout: stdout, Stderr: stderr, ProfileDigest: bound.profileDigest,
+		Path: bound.executable, Digest: bound.executableDigest, NodeVersion: profile.NodeVersion,
+		Args: append([]string(nil), bound.args...), Dir: bound.dir, WorkerExposureHandle: bound.workerExposureHandle,
+		D09SourceHandle: bound.d09SourceHandle,
+		Env:             append([]string{}, bound.env...),
+		Stdin:           bound.stdin, Stdout: stdout, Stderr: stderr, ProfileDigest: bound.profileDigest,
+		ArgumentsDigest: profile.ChildArgumentsDigest, EnvironmentDigest: profile.ChildEnvironmentDigest,
+		WorkingDirectoryDigest: profile.WorkingDirectoryDigest, StdinDigest: profile.StdinDigest,
+		StdinProfile: profile.StdinProfile, ContainmentProfile: profile.ContainmentProfile,
+		SettlementProfile:   profile.SettlementProfile,
+		PiRuntimeBundleRoot: runtime.PiRuntimeBundleRoot, PiRuntimeBundleDigest: profile.PiRuntimeBundleDigest,
+		PiRuntimeBundleHandle: runtime.PiRuntimeBundleHandle,
+		DescriptorProfile:     profile.DescriptorProfile, DescriptorProfileDigest: profile.DescriptorProfileDigest,
+		SourceDigest: profile.SourceProvenanceDigest, Descriptors: cloneInheritedDescriptors(bound.descriptors),
+		admission: bound.admission,
 	})
 	if err != nil {
 		releaseSettlementWorker()
@@ -354,7 +423,29 @@ func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
 		closeObservationWriters(writers)
 		return nil, errors.New("trusted native child launcher returned no process")
 	}
-	return newProcess(cmd, bound.settler, writers, true), nil
+	childSettler := bound.settler
+	var launchProof any
+	if proofLauncher, required := bound.launcher.(perLaunchProofLauncher); required {
+		proofValue, proofOK := proofLauncher.TakeLaunchProof(cmd)
+		settler, settlerOK := proofLauncher.DescendantSettlerFor(cmd)
+		if !proofOK || !settlerOK || proofLauncher.ValidateLaunchProof(proofValue, profile, cmd) != nil {
+			ownedCleanup := false
+			if cleaner, ok := bound.launcher.(interface{ cleanupFailedLaunch(*exec.Cmd) bool }); ok {
+				ownedCleanup = cleaner.cleanupFailedLaunch(cmd)
+			}
+			releaseSettlementWorker()
+			closeObservationWriters(writers)
+			if !ownedCleanup {
+				return nil, fmt.Errorf("%w: D09 launch lacks proof and cleanup ownership is UNKNOWN", ErrUnknownSettlement)
+			}
+			return nil, fmt.Errorf("%w: D09 launch lacks its validated per-command TCB proof/settler", ErrProductionLauncherUnavailable)
+		}
+		childSettler = settler
+		launchProof = proofValue
+	}
+	process := newProcess(cmd, childSettler, writers, true)
+	process.launchProof = launchProof
+	return process, nil
 }
 
 // StartFixtureChild is the only path that permits an unbound absolute helper.
@@ -393,6 +484,9 @@ func childOutputs(mode IOMode, tuiOutput io.Writer, observation ObservationSink,
 	if mode == IOModeNativeTUI {
 		return tuiOutput, tuiOutput, nil, nil
 	}
+	if mode == IOModeSilent {
+		return io.Discard, io.Discard, nil, nil
+	}
 	stdout, err := newObservationWriter("stdout", observation, observationMax)
 	if err != nil {
 		return nil, nil, nil, err
@@ -426,6 +520,16 @@ func (p *Process) PID() int {
 		return 0
 	}
 	return p.cmd.Process.Pid
+}
+
+// LaunchProof returns the captured, validated per-launch proof for exactly this
+// process, or nil when the launcher supplied none (development/fixture). It is
+// bound to this process, never stale global state.
+func (p *Process) LaunchProof() any {
+	if p == nil {
+		return nil
+	}
+	return p.launchProof
 }
 
 func (p *Process) wait(ctx context.Context) (waitResult, bool) {

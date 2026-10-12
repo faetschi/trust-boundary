@@ -56,6 +56,34 @@ source was edited or staged. The forbidden VM-start file was not accessed.
 
 ## Remaining unlock boundary
 
+### Explicit RunAs attempt after operator request
+
+At `2026-10-07T15:15:35.4938031Z`, the operator explicitly authorized launching
+elevated Windows PowerShell. The agent invoked standard
+`Start-Process ... -Verb RunAs` with an inline, captured command that checks its
+administrator token, verifies the reviewed bootstrap SHA-256 and only then
+evaluates the hash-guarded setup. It does not elevate a mutable scratch script,
+inject commands into the already-open elevated terminal, or disable UAC.
+
+The invocation exceeded its 60-second tool timeout **before returning a child
+PID or exit status**. Do not call this a completed elevation or a failed/settled
+installer. At `2026-10-07T15:16:50.1686887Z`, read-only follow-up found:
+
+- one `consent` process (consistent with pending UAC, not independently proof
+  that this particular request owns it);
+- agent token still unelevated;
+- protected staging/install/profile paths still absent;
+- all five exact reviewed task queries still exited 1.
+
+Elevation/setup outcome is **UNKNOWN/unresolved**, with no observed installed
+artifacts. No retry or process injection was attempted. If consent is granted
+later, the pending captured command could execute; review protected state before
+any subsequent setup attempt. An already-open elevated window does not transfer
+its token to this agent. The agent cannot approve the Windows secure-desktop
+consent boundary autonomously. Captured launcher retained in private scratch:
+`tbound-request-reviewed-elevation.ps1`. This observation does not establish
+signer authority, operator enrollment, guest verification or containment.
+
 An already authorized elevated 64-bit Windows PowerShell 5.1 execution context
 is required to run the hash-guarded bootstrap in
 `infra/hyperv/TBOUND-HOST-AUTOMATION.md:35–55`. Administrator group membership
