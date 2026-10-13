@@ -241,11 +241,43 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   using Netplan get/generate and actual extracted injector, no host network apply.
   Script and two PowerShell doc blocks parse cleanly; logs hyperv-netplan-offline.log.
   Final review tbound-netplan-symlink-applied-review-20261013-r4 ACCEPT across
-  safety/integration/thesis boundaries; guest recipe commit checkpoint follows.
+  safety/integration/thesis boundaries; guest recipe committed as 282bb5e.
+  Receipt supported-guest-recipe-receipt-282bb5e.json records source hashes and
+  five offline Netplan passes; no booted guest qualification performed.
   The separate corrected D09 stdout/public wiring and single-reader positive
   lower-helper fixture candidate is now applied in the worktree for verification,
   not committed or host-qualified. Initial partial application tested only old
-  cases; complete fixture now copied for fresh checks. Public route retains
+  cases; complete fixture now passes focused checks and race count30. Windows
+  full unit 280 passes, zero failures, 13 skips; vet clean. Full Linux unit/race
+  each 912 passes, zero failures, seven skips; vet clean. All nine Go source
+  hashes match the isolated tested copy. Logs d09-positive-launch-* in resume
+  review-artifacts. Applied review r8 ACCEPTED lower-helper integration and claim
+  boundaries but HELD stdout ownership: cmd.Wait closes StdoutPipe before the
+  RPC pump can drain a final buffered record. Task r9 returned requirements only,
+  no patch. Concrete patch preparation split into tbound-owned-rpc-stdout-patch-20261013-r10
+  (owned pipe plus exit-before-read regression) and tbound-rpc-drain-close-patch-20261013-r1
+  (bounded pump-drain/close, errors and UNKNOWN retention). Current test passes
+  precede that repair; they do not resolve the lifecycle race.
+  Factory owned_stdout.go, fixture owned pipe, exit-before-RPC-read regression,
+  and worker drain-before-close/retry/error tests are now applied. Focused unit
+  checks pass; ten focused race repetitions running. The initial phase-two run
+  still using StdoutPipe failed on an already-closed reader, confirming the
+  ownership mismatch; switching the fixture to the owned pipe resolves it.
+  Concrete launcher integration is incomplete: phase-one draft had stale hunks
+  and an unreachable UNKNOWN reader. Complete exact command cleanup/retention
+  patch prepared by tbound-owned-stdout-launcher-integration-20261013-r11.
+  r11 patch now applied: pending per-command reader retained before proof,
+  one bounded failed-start cleanup/wait path, measured scope settlement before
+  reader close and UNKNOWN propagation into admission/quarantine guards.
+  Focused checks pass. Full Linux unit/race/vet and focused ten-race repetitions,
+  plus Windows unit/vet running; fresh applied review
+  tbound-owned-stdout-applied-critical-review-20261013-r12 pending. No launch commit.
+  Integrated owned-stdout snapshot now passes full Linux unit/race each919 tests,
+  zero failures, seven skips; vet clean, focused race10 passes. Windows281 passes,
+  zero failures, 13 skips; vet clean. All ten piruntime Go hashes match the tested
+  copy. Fresh audit subprocess deadline change verified separately below.
+  No launch commit until that lifecycle race is fixed and reverified.
+  Public route retains
   concrete launcher/profile/source/proof checks; no production execution tested.
   User requested independent thesis plus standalone-product direction review:
   tbound-thesis-product-alignment-audit-20261013-r1 (actual thesis files included).
@@ -259,6 +291,44 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   recovery/upgrade/custody and authenticated artifacts. No TUI/browser expansion.
   Prepare consistency-only E07 eighth-point wording/stale status correction via
   tbound-e07-recovery-authority-alignment-20261013-r1; keep recovery denominator48.
+  Follow-up authority audit found no resolution: the normative specification
+  labels seven lifecycle scenarios but lists eight hooks. User clarification
+  requested asynchronously; user then explicitly authorized autonomous evaluation
+  and implementation of the best pre-freeze design, including missing hooks.
+  Design tbound-recovery-protocol-design-20261013-r3 and independent invariant
+  audit tbound-recovery-invariant-independent-audit-20261013-r1 are running.
+  Evaluate distinct durable authority/effect states before choosing the mapping;
+  preserve 48 unless a scientifically justified draft amendment needs otherwise.
+  Design candidate keeps seven post-intent LC scenarios plus nine incidents,
+  RECEIVED-gap mandatory pre-durability conformance outside48, and refines the
+  EXECUTING hook to an independently observed effect before OUTCOME_DURABLE.
+  E07 publication conformance remains separate and does not resolve the
+  lifecycle-list count. Independent review instead recommends51=8 lifecycle+9
+  incidents, and found atomic intent/decision/lease wording incompatible with
+  intermediate persisted-state hooks. User authorized best-design choice; do
+  not force48 or register noninjectable boundaries. Operational amendment
+  tbound-recovery-operational-amendment-20261013-r4 will resolve actual persistence
+  graph, denominator and an effect-before-outcome crash regression before adoption.
+  Operational candidate r4 proposes51=8 lifecycle+9 incident cases, explicitly
+  distinguishing journal commits from callback cutpoints and visible effect.
+  Normative review tbound-recovery-amendment-critical-review-20261013-r5 checks
+  that no internal-commit/authority gate is removed to fit incomplete code.
+  Only the narrow audit marker-before-outcome test is applied so far, with a
+  ten-second deadline for both crash/recovery subprocesses and fresh-process
+  assertions against old and later effect replay. Ten race repetitions running.
+  Protocol review r5 accepts51 as a proposed denominator but requires corrected
+  Store authorization binding, Bash-only lease terminology, internal-commit/
+  publication gates, read/checkpoint distinction and explicit sync-failure
+  conformance. Normative patch preparation tbound-recovery-amendment-corrected-patch-20261013-r6.
+  Audit regression deemed valid for process-crash/no-replay by r5; each helper
+  now has its own ten-second deadline. Ten race repetitions, audit package unit
+  and vet pass after that adjustment. Narrow test commit checkpoint follows.
+  External main-branch thesis repository remains untouched and unfrozen.
+  Code gap identified: audit crash fixture currently exits before making any
+  external effect; add an observable-effect-before-outcome regression and
+  verify UNKNOWN/no replay before treating LC-05 as covered.
+  No external registration/freeze or main-branch thesis edits are authorized by
+  a draft design choice. Implementation work continues independently.
   Prior guest review r4 and launch/input-custody tasks failed at provider usage
   limit without results. Fresh read-only tasks use delegate prefix
   node:delegated-task:command%3Amcp%3A6561c5c6-604c-45e4-8da9-aacc905e367f%3Adelegate-task%3A

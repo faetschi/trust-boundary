@@ -2,6 +2,7 @@ package audit
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 var errInjectedDiskFull = errors.New("ENOSPC: injected disk full")
@@ -464,27 +466,41 @@ func TestOpenRejectsBroadPermissionsAndLeafSymlink(t *testing.T) {
 func TestProcessExitReleasesLockButIntentStillQuarantines(t *testing.T) {
 	requireLinuxJournalOpen(t)
 	path := filepath.Join(privateJournalTestDir(t), "journal.jsonl")
-	command := exec.Command(os.Args[0], "-test.run=^TestJournalCrashHelper$")
-	command.Env = append(os.Environ(), "TB_AUDIT_CRASH_HELPER_PATH="+path)
+	markerPath := filepath.Join(filepath.Dir(path), "external-effect.txt")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestJournalCrashHelper$")
+	command.Env = append(os.Environ(),
+		"TB_AUDIT_CRASH_HELPER_PATH="+path,
+		"TB_AUDIT_CRASH_MARKER_PATH="+markerPath,
+	)
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("crash helper: %v\n%s", err, output)
 	}
 
-	journal, err := Open(path)
-	if err != nil {
-		t.Fatalf("Open after child exit (flock should be released): %v", err)
+	assertEffectMarkerOnce := func() {
+		t.Helper()
+		got, err := os.ReadFile(markerPath)
+		if err != nil {
+			t.Fatalf("read external effect marker: %v", err)
+		}
+		if string(got) != "effect-visible\n" {
+			t.Fatalf("external effect marker = %q, want exactly one effect", got)
+		}
 	}
-	defer journal.Close()
-	called := false
-	if _, err := journal.RunEffect("later-effect", nil, func() ([]byte, error) {
-		called = true
-		return nil, nil
-	}); !errors.Is(err, ErrQuarantined) {
-		t.Fatalf("later effect error = %v, want ErrQuarantined", err)
+	assertEffectMarkerOnce()
+
+	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer recoveryCancel()
+	recovery := exec.CommandContext(recoveryCtx, os.Args[0], "-test.run=^TestJournalRecoveryHelper$")
+	recovery.Env = append(os.Environ(),
+		"TB_AUDIT_RECOVERY_HELPER_PATH="+path,
+		"TB_AUDIT_CRASH_MARKER_PATH="+markerPath,
+	)
+	if output, err := recovery.CombinedOutput(); err != nil {
+		t.Fatalf("fresh recovery helper: %v\n%s", err, output)
 	}
-	if called {
-		t.Fatal("later effect ran after crash left an unresolved intent")
-	}
+	assertEffectMarkerOnce()
 }
 
 func TestJournalCrashHelper(t *testing.T) {
@@ -492,15 +508,74 @@ func TestJournalCrashHelper(t *testing.T) {
 	if path == "" {
 		return
 	}
+	markerPath := os.Getenv("TB_AUDIT_CRASH_MARKER_PATH")
+	if markerPath == "" {
+		t.Fatal("crash helper requires an external effect marker path")
+	}
 	journal, err := Open(path)
 	if err != nil {
 		t.Fatalf("Open in crash helper: %v", err)
 	}
 	_, err = journal.RunEffect("crashed-effect", []byte("durable intent"), func() ([]byte, error) {
+		marker, err := os.OpenFile(markerPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			return nil, err
+		}
+		n, err := marker.WriteString("effect-visible\n")
+		if err == nil && n != len("effect-visible\n") {
+			err = io.ErrShortWrite
+		}
+		if err == nil {
+			err = marker.Sync()
+		}
+		closeErr := marker.Close()
+		if err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			return nil, err
+		}
 		os.Exit(0) // Simulate process death after intent Sync and before outcome.
 		return nil, nil
 	})
 	t.Fatalf("RunEffect returned after os.Exit callback: %v", err)
+}
+
+func TestJournalRecoveryHelper(t *testing.T) {
+	path := os.Getenv("TB_AUDIT_RECOVERY_HELPER_PATH")
+	if path == "" {
+		return
+	}
+	if os.Getenv("TB_AUDIT_CRASH_MARKER_PATH") == "" {
+		t.Fatal("recovery helper requires the external effect marker path")
+	}
+	journal, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open in fresh recovery helper: %v", err)
+	}
+	defer journal.Close()
+
+	oldCalled := false
+	if _, err := journal.RunEffect("crashed-effect", nil, func() ([]byte, error) {
+		oldCalled = true
+		return nil, nil
+	}); !errors.Is(err, ErrUnresolvedEffect) {
+		t.Fatalf("old effect error = %v, want ErrUnresolvedEffect", err)
+	}
+	if oldCalled {
+		t.Fatal("fresh recovery process reran an effect with unresolved outcome")
+	}
+
+	laterCalled := false
+	if _, err := journal.RunEffect("later-effect", nil, func() ([]byte, error) {
+		laterCalled = true
+		return nil, nil
+	}); !errors.Is(err, ErrQuarantined) {
+		t.Fatalf("later effect error = %v, want ErrQuarantined", err)
+	}
+	if laterCalled {
+		t.Fatal("fresh recovery process admitted a later effect while outcome was unknown")
+	}
 }
 
 func requireLinuxJournalOpen(t *testing.T) {
