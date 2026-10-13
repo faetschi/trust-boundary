@@ -38,6 +38,7 @@ implementation detail is in Git history and immutable receipts under
 | 282bb5e | Supported minimal ISO guest recipe and safe clone Netplan handling |
 | ace9592 | Visible-effect crash and fresh-process quarantine/no-replay regression |
 | 47a6d73 | Guarded public D09 CLI launch and single-owner drained RPC stdout |
+| 3d30fcf | Trusted audit hooks and four independent native crash fixtures |
 
 RPC failures require command=prompt and an exact active request ID. Descriptor
 and stdin close errors remain observable; UNKNOWN settlement retains admission
@@ -70,8 +71,24 @@ must precede image registration.
   Both audit Go files hash-match the tested WSL copy. Logs:
   recovery-hooks-corrected-{unit,race,focused}.jsonl and Windows/vet counterparts.
   Earlier preliminary recovery-hook logs are retained and superseded.
+  Recovery increment committed as3d30fcf; receipt
+  recovery-hooks-receipt-3d30fcf.json binds both source hashes and final logs.
 - Prior committed launch receipt guarded-d09-launch-receipt-47a6d73.json records
   Linux925 unit/race passes,7 skips; Windows281 passes,13 skips; vet clean.
+
+## Current installer increment
+
+- Extracted updates require executable tbound, tbound-doctor and tbound-profile
+  before moving aside an existing prefix. Missing tools must preserve all three
+  installed binaries and the install marker.
+- Offline regression builds a release, uses unique private fixtures with valid
+  per-file and outer checksums, and rejects missing doctor/profile updates.
+  Both failures reproduced before their fixes; corrected smoke passes10 checks,
+  including native fixture, unqualified-production refusal, doctor and uninstall.
+  Shell syntax passed; both shell sources match the isolated WSL test copy.
+  Critical reviewer accepted safety, integration, product and thesis boundaries.
+- Linux-only component installation test; no real prefix, Darwin/Windows installer,
+  VM registration, provider exchange or production qualification.
 
 ## Remaining milestones
 

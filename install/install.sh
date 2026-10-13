@@ -173,6 +173,8 @@ install_at() {
   STAGE_INSTALL="$stage"
   if ! tar -xzf "$artifact" -C "$stage"; then die "extraction failed"; fi
   if [ ! -x "$stage/bin/tbound" ]; then die "extracted archive has no bin/tbound"; fi
+  if [ ! -x "$stage/bin/tbound-doctor" ]; then die "extracted archive has no bin/tbound-doctor"; fi
+  if [ ! -x "$stage/bin/tbound-profile" ]; then die "extracted archive has no bin/tbound-profile"; fi
   printf 'name=tbound\nversion=%s\nprefix=%s\n' "$(json_escape "$version")" "$(json_escape "$prefix")" > "$stage/$MARKER"
 
   # Move any existing install into an exclusively created hold directory so a
