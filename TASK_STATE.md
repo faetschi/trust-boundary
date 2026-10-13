@@ -76,8 +76,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
 ## Remaining milestones
 
 1. Admission gate checkpoint completed as da09eea.
-2. Implement a native Store crash cut after admitted candidate promotion/sync
-   but before primary outcome durability; fresh-process quarantine/no-replay oracle.
+2. Store promotion-before-primary-outcome cut committed09a1901. Extend the
+   cut through actual governed authorization and provider result-release gates.
 3. Complete trusted lifecycle/provider/Store/checkpoint cuts and independent
    oracles. LC04/05/06 remain incomplete end to end; hooks are component evidence.
 4. Qualify clean registered ABI8 host, signed CLI closure/profile, service/source
@@ -112,8 +112,32 @@ are preparation only. Media custody and exact ABI checks precede registration.
 - Focused race x3 passed; Store package unit/race each85 passed, zero failures/
   skips; vet clean. Test source matches isolated Linux copy. Independent Luna
   review accepted; stronger callback-dispatch sentinels adopted and verified.
-  Final small re-review accepted with no blockers. This test-only change does not affect Windows.
+  Final small re-review accepted with no blockers. Committed09a1901; receipt
+  promotion-crash-receipt-09a1901.json. This test-only change does not affect Windows.
 - Thesis status sync accepted and committed03e74e5 on existing
   codex/tbound-recovery-protocol; main ea543c5 unchanged. G1/H1 and draft51 claims
   unchanged. No power-loss, registered-trial or qualified-host evidence claimed.
-- store_crash_patch now selects one concrete next lifecycle recovery slice.
+- Next slice: governed authority/result-release subprocess crash harness using
+  actual offline provider conversation, SessionOperationAuthority and durable
+  executor. Check capture/decision -> durable authorization -> primary intent,
+  ALLOW admission/g1, unresolved outcome and no provider_tool_result; fresh
+  recovery quarantines with sentinels/no replay. store_crash_patch prepares
+  an apply-ready READ-ONLY test patch. No new production hook is needed.
+  LC04/05 and post-outcome/checkpoint cuts remain later end-to-end work.
+
+## Governed crash / frontend checkpoint
+
+- Actual governed typed-write crash test now applied: offline provider capture
+  and deterministic ALLOW -> protected v2 operation authorization -> effect
+  intent -> admitted/promoted g1 -> crash before primary outcome/result release.
+  Fresh process quarantines with no callbacks; all three journals stay unchanged.
+- Required pinned Linux build, vet and formatting checks passed. Focused race3
+  passed without skips; full race978 pass,0 fail,7 existing skips. Source hash
+  matches tested copy. Independent Luna safety/integration/thesis review accepted
+  the narrow process-crash claim. No G1/H1 or power-loss evidence implied.
+- Parallel frontend_thesis_exploration reads AH-technical requirements;
+  frontend_surface_inventory found no web frontend, existing headless Pi RPC
+  and final CLI receipts. A live user panel requires event forwarding; existing
+  tool-result text/post-run receipt can support a labelled offline visual demo.
+- external_review_alignment evaluates user's WP0-WP6 and qualification sequence,
+  including exact recovery and H1 counts. No research denominator is frozen.
