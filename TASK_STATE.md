@@ -136,11 +136,33 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   gate under the required StartChild-validated Process.LaunchProof ordering.
   Template/namespace digest domains, PID provenance and source/runtime mount
   semantics were checked against the lower launcher. Full launch not accepted.
-- Next read-only Luna max increment adds StartChild-through-launch-helper proof
-  rejection/capture and cleanup integration tests, including image/PID/source/
-  runtime mismatches before bootstrap/readiness. Public refusal remains until
-  the complete chain is implemented, reviewed and tested. Automatic task:
-  `node:delegated-task:command%3Amcp%3A33dd25f5-74bf-4617-850e-3c26a7d50cf8%3Adelegate-task%3Atbound-d09-startchild-integration-20261013-r4`.
+- Test-only StartChild/helper ordering increment applied. StaticHostAttestor
+  and a simulated per-command launcher exercise real AdmitProduction/StartChild
+  dispatch but not signed host admission or D09 entrypoint proof-pipe capture.
+  Added image/template/PID rejection and Store audit/runtime mismatch cleanup
+  cases with an empty-bootstrap-pipe assertion, plus more binding mismatches.
+  Initial fixture failed the source-bootstrap precondition; corrected it by
+  binding admitted Store evidence before the helper call. Focused tests and
+  30 race-enabled repetitions passed; Linux full unit 874 passes, zero failures,
+  seven skips; vet clean. Full race was not rerun for this test-only increment
+  (the new cases ran under race count30). Reviewer held this test-only commit
+  for bounded pipe reads, mock Wait ownership and fallback child cleanup.
+  Repairs applied; pipe probe now uses a fresh pollable nonblocking duplicate
+  after launch. An initial deadline attempt failed on a nonpollable descriptor.
+  New UNKNOWN-settlement regression exposed a real early channel close in the
+  StartChild error branch. Removed that close so the existing defer retains
+  D09 owners on UNKNOWN and closes them on safe failures. Focused race count30
+  now passes including the regression; full Linux unit/race each 877 passes,
+  zero failures, seven skips; vet clean. All three Go source hashes match the
+  isolated tested copy. Logs: d09-unknown-retention-{unit,race}.jsonl,
+  d09-unknown-retention-race30.log and d09-unknown-retention-vet.log in the
+  resume review-artifacts directory. Critical reviewer accepted this bounded
+  increment: single Wait ownership, bounded probe, proof-before-bootstrap
+  rejection and UNKNOWN channel retention. Commit checkpoint follows.
+  Separate production-session admission lease retention gap is being prepared
+  before enabling launch. Public refusal unchanged. Active read-only task:
+  `tbound-d09-preworker-admission-retention-20261013-r1` (next repair), using
+  the same delegated-task prefix as recorded above.
 
 - Baseline archive, initial working-tree patch and tracked-file SHA-256 manifest:
   ../review-artifacts/tbound-baseline-2026-10-12/. Includes the five document

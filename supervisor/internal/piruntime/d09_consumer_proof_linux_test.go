@@ -56,6 +56,16 @@ func TestD09ConsumerProofBindsViewOnlyFromMatchingLaunchEvidence(t *testing.T) {
 		{"wrong process", func(_ *D09TCBProof, _ *PiWorkerBootstrap, pid *int) { *pid++ }},
 		{"wrong source identity", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.SourceIdentityDigest = digest("other") }},
 		{"wrong source mount evidence", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.SourceMountID++ }},
+		{"wrong source Store audit head", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) {
+			p.SourceStoreAuditHead = digest("other audit head")
+		}},
+		{"wrong source Store audit count", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.SourceStoreAuditCount++ }},
+		{"wrong consumer worker device", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.WorkerDevice++ }},
+		{"wrong consumer worker inode", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.WorkerInode++ }},
+		{"wrong source device", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.SourceDevice++ }},
+		{"wrong source inode", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.SourceInode++ }},
+		{"wrong runtime device", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.RuntimeDevice++ }},
+		{"wrong runtime inode", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.RuntimeInode++ }},
 		{"wrong consumer mount", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.ConsumerWorkerMountID++ }},
 		{"wrong runtime mount", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.ConsumerRuntimeMountID++ }},
 		{"raw source remains open", func(p *D09TCBProof, _ *PiWorkerBootstrap, _ *int) { p.RawSourceFDsClosed = false }},

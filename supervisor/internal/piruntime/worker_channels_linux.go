@@ -1459,7 +1459,6 @@ func launchPiCLIWorker(ctx context.Context, profile HostProfile, runtime HostRun
 		process, err = StartChild(ctx, bound)
 	}
 	if err != nil {
-		_ = channels.Close()
 		return nil, err
 	}
 	if runtime.D09Source != nil {
