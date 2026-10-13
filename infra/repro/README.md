@@ -6,9 +6,10 @@ evaluation Linux environment in two supported ways:
 - **Path A — native Linux** (Ubuntu 24.04 amd64, bare metal or any hypervisor):
   `bootstrap-linux.sh` prepares the environment and runs the capability probe.
 - **Path B — Windows Hyper-V VM** (targets the reference host profile):
-  `bootstrap-hyperv-windows.ps1` creates the VM from an Ubuntu 24.04 cloud
-  image or from a golden VHDX, enables SSH key auth, and runs the same
-  `bootstrap-linux.sh` inside the guest.
+  `bootstrap-hyperv-windows.ps1` creates the VM from a generic install VHDX
+  or an existing VHDX, enables SSH key auth, and runs the same
+  `bootstrap-linux.sh` inside the guest. The local ISO preparation recipe is
+  in [CLEAN-GUEST-QUALIFICATION.md](CLEAN-GUEST-QUALIFICATION.md).
 
 `probe-host.ps1` turns `infra/guest/probe-capabilities.sh` (reused by path,
 never modified) into a one-command capability report for any of those hosts,
@@ -42,8 +43,8 @@ the default VM name already exists.
   a generic install VHDX prepared from authenticated Ubuntu Server media, plus
   its SHA-256. See
   [CLEAN-GUEST-QUALIFICATION.md](CLEAN-GUEST-QUALIFICATION.md) for the
-  artifact-verification and qualification guidance. The local ISO-to-VHDX
-  procedure is being prepared separately; `GoldenVhdx` reuses an existing disk.
+  artifact verification, the manual local ISO-to-VHDX procedure and qualification
+  guidance. `GoldenVhdx` reuses the resulting existing disk.
 - **Both paths:** the `infra/guest/probe-capabilities.sh` script from this
   repository (the bootstrap resolves it relative to its own location, so copy
   the whole `infra/` tree, not just `infra/repro/`).
@@ -101,11 +102,12 @@ UNVERIFIED by design of the read-only probe.
 ## Path B: Hyper-V VM from Windows
 
 ```powershell
-# elevated PowerShell, from the checkout; generic VHDX from authenticated media
+# elevated PowerShell, from the checkout; use a generic VHDX prepared from
+# authenticated Ubuntu Server installation media
 .\infra\repro\bootstrap-hyperv-windows.ps1 `
   -ImageKind GoldenVhdx `
   -ImageSourcePath '<verified generic Ubuntu Server install VHDX>' `
-  -ExpectedImageSha256 <64-hex-sha256-of-the-image> `
+  -ExpectedImageSha256 '<64-hex-sha256-of-the-seed-vhdx>' `
   -PublicKeyFile $env:USERPROFILE\.ssh\id_ed25519.pub
 ```
 
@@ -113,13 +115,16 @@ What it does, in order:
 
 1. **Preflight** — checks Hyper-V and its module, admin elevation, VM name
    and target directory collisions, free space, and the image SHA-256.
-2. **VM creation** — Generation 2, 8 vCPUs, 16 GiB fixed memory, 40 GiB disk
-   (the verified VM profile), Secure Boot on with the Microsoft UEFI
-   Certificate Authority template, one network adapter on the switch you name.
+2. **VM creation** — the current bootstrap configuration is Generation 2,
+   8 vCPUs, 16 GiB fixed memory, 40 GiB disk, Secure Boot with the Microsoft
+   UEFI Certificate Authority template, and one network adapter on the named
+   switch. These are configuration values, not a qualified or registered
+   resource profile; record the actual VM settings used for an evaluation.
 3. **Offline injection (WSL2)** — with the VM off, it bare-mounts the disk via
    `wsl --mount --vhd <path> --bare`, grows the root filesystem (cloud images),
    creates the trial user with your SSH public key and provisioning sudo, and
-   (for golden copies) fixes the installer netplan MAC binding, regenerates SSH
+   (for GoldenVhdx) replaces installer Netplan files with DHCP matched to the
+   Hyper-V network driver, regenerates SSH
    host keys, and regenerates the machine-id. It never combines `Mount-VHD`
    and `wsl --mount` on the same file.
 4. **Boot and verify SSH** — resolves the guest IP, prompts for the ED25519
@@ -136,8 +141,9 @@ What it does, in order:
     removes it automatically. If bootstrap fails before completion, remove
     `/etc/sudoers.d/90-tbound-<trial-user>` before untrusted evaluation; the
     trial account is not a separate root boundary.
-5. **Report** — prints next steps: disconnect the NIC, create the golden
-   baseline, and re-run the probe offline per the guest runbook.
+5. **Report** — prints next steps for recording the candidate, disconnecting
+   the NIC, freezing the measured disk, and running the offline checks. These
+   steps do not register or qualify the candidate.
 
 For the two Hyper-V image modes:
 
@@ -153,7 +159,7 @@ For the two Hyper-V image modes:
   active checkpoint chain is stale state. For a local install, create a generic
   VHDX from supported authenticated media, then pass it through this mode.
   [CLEAN-GUEST-QUALIFICATION.md](CLEAN-GUEST-QUALIFICATION.md) describes input
-  verification and qualification limits; an ISO installation recipe is pending.
+  verification, the manual ISO seed procedure and qualification limits.
 
 After provisioning, produce the capability report from Windows any time:
 

@@ -203,7 +203,8 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   syntax/parser checks pass; r9 accepted code safety and thesis claims, held only
   an inaccurate README promise of an ISO recipe. Corrected that reference to
   artifact verification/qualification guidance; the recipe remains a separate
-  increment. Guest gate commit checkpoint follows.
+  increment. Guest gates committed as 22c7cfd; receipt
+  guest-abi-gates-receipt-22c7cfd.json binds checked sources/results. No VM created.
   Input custody worksheet now distinguishes signed image metadata from caller
   checksum equality and frozen-image deployment from reproducible rebuild.
   Official Ubuntu artifact guidance excludes Azure VHDs on local Hyper-V;
@@ -221,7 +222,43 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   tbound-local-guest-recipe-critical-review-20261013-r2 found unsupported
   Stop-VM -Shutdown, shutdown/hash ordering, assumed NIC/account identities and
   oversized installer seed. Corrections prepared by
-  tbound-local-supported-recipe-repair-20261013-r3; larger recipe still unapplied.
+  ISO seed recipe is now applied: installer-only 2-vCPU/4-GiB settings,
+  authenticated ISO signing-keyring path, bounded graceful shutdown and disk
+  parent/checkpoint checks before hashing. GoldenVhdx clone networking now uses
+  hv_netvsc driver matching instead of eth0 and disables all installer YAML.
+  No new helper deployment layer: patch stays in the existing injector.
+  Script and two PowerShell documentation blocks parse cleanly. Offline Netplan
+  regression prepared by tbound-hyperv-netplan-inline-regression-20261013-r1;
+  fresh review tbound-local-guest-applied-critical-review-20261013-r4 pending.
+  Netplan fixture now passes both cases using actual get/generate under a
+  temporary root; no host networking applied. Initial fixture failures were
+  corrected (extracted closing fi, root-dir CLI placement, quoted driver output).
+  r4 accepted prior functional recipe fixes and held one stale README reference;
+  corrected it. Fixture review r2 then found dangling Netplan symlink write
+  redirection. Scoped fix now rejects symlinked etc/netplan parents and handles
+  dangling file/backup symlinks explicitly before rename/write. Existing two
+  cases plus dedicated private-fixture symlink regressions now pass: five methods
+  using Netplan get/generate and actual extracted injector, no host network apply.
+  Script and two PowerShell doc blocks parse cleanly; logs hyperv-netplan-offline.log.
+  Final review tbound-netplan-symlink-applied-review-20261013-r4 ACCEPT across
+  safety/integration/thesis boundaries; guest recipe commit checkpoint follows.
+  The separate corrected D09 stdout/public wiring and single-reader positive
+  lower-helper fixture candidate is now applied in the worktree for verification,
+  not committed or host-qualified. Initial partial application tested only old
+  cases; complete fixture now copied for fresh checks. Public route retains
+  concrete launcher/profile/source/proof checks; no production execution tested.
+  User requested independent thesis plus standalone-product direction review:
+  tbound-thesis-product-alignment-audit-20261013-r1 (actual thesis files included).
+  Audit completed: internal normative thesis direction ON TRACK, completion AT
+  RISK; standalone governed product not usable yet. Authority is the workspace
+  tbound-thesis.md and governance-indexed contracts, not the institutional LaTeX
+  template. No final manuscript or frozen external registration verified.
+  Priorities: admitted positive/denied vertical path with durable evidence,
+  clean ABI-8 qualification, then frozen corpus/calibration/oracle/analysis and
+  registered H1 protocol. Product release additionally needs fresh-host install,
+  recovery/upgrade/custody and authenticated artifacts. No TUI/browser expansion.
+  Prepare consistency-only E07 eighth-point wording/stale status correction via
+  tbound-e07-recovery-authority-alignment-20261013-r1; keep recovery denominator48.
   Prior guest review r4 and launch/input-custody tasks failed at provider usage
   limit without results. Fresh read-only tasks use delegate prefix
   node:delegated-task:command%3Amcp%3A6561c5c6-604c-45e4-8da9-aacc905e367f%3Adelegate-task%3A

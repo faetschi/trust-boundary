@@ -2,7 +2,7 @@
 #requires -RunAsAdministrator
 <#
 .SYNOPSIS
-    Creates the tbound evaluation Hyper-V VM from an Ubuntu 24.04 cloud image
+    Creates the tbound evaluation Hyper-V VM from a cloud-layout disk
     or a golden VHDX, enables SSH key authentication offline, and runs the same
     guest bootstrap as the native Linux path inside the guest.
 
@@ -20,7 +20,7 @@
          - GoldenVhdx: accept a golden .vhdx, or a checkpoint-chain leaf
            .avhdx (a base .vhdx under an active chain is stale state; the leaf
            is merged into a standalone VHDX before use).
-      3. VM creation with the verified profile: Generation 2, 8 vCPUs, 16 GiB
+      3. VM creation with current prototype settings: Generation 2, 8 vCPUs, 16 GiB
          fixed memory, 40 GiB disk, Secure Boot with the Microsoft UEFI
          Certificate Authority template, ProductionOnly checkpoints, one
          network adapter connected to the provisioning switch only. The disk
@@ -28,7 +28,7 @@
       4. Offline injection with the VM off, via `wsl --mount --vhd <path> --bare`
          (never combined with Mount-VHD on the same file): creates the trial
          user with SSH key auth and NOPASSWD sudo for provisioning, and for
-         golden copies fixes the installer netplan MAC binding, regenerates SSH
+         golden copies replaces installer Netplan files, regenerates SSH
          host keys, and regenerates the machine-id.
       5. Boot, resolve the guest IP (Hyper-V IP reporting where the guest has a
          KVP daemon, otherwise an ARP sweep; or -GuestIpAddress), wait for SSH.
@@ -51,7 +51,7 @@
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
-    [ValidateSet('CloudVhdx', 'GoldenVhdx')][string]$ImageKind = 'CloudVhdx',
+    [ValidateSet('CloudVhdx', 'GoldenVhdx')][string]$ImageKind = 'GoldenVhdx',
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$ImageSourcePath,
     [Parameter(Mandatory)][ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$ExpectedImageSha256,
     [ValidateNotNullOrEmpty()][string]$PublicKeyFile,
@@ -250,6 +250,9 @@ Assert-NoReparsePathComponents -Path $resolvedImage
 $imageItem = Get-Item -LiteralPath $resolvedImage -ErrorAction Stop
 if ($imageItem.PSIsContainer) { throw "ImageSourcePath must be a file: $resolvedImage" }
 Assert-ExpectedSha256 -Path $resolvedImage -Expected $ExpectedImageSha256
+if ($ImageKind -eq 'CloudVhdx') {
+    Write-Warning 'CloudVhdx requires a publisher-supported local Hyper-V input. Ubuntu Azure VHDs do not function outside Azure. The checksum check proves byte equality, not compatibility.'
+}
 
 $publicKeys = $null
 $resolvedKeyPath = $null
@@ -312,7 +315,7 @@ else {
 }
 
 # ---------------------------------------------------------------------------
-# Step 3: VM creation with the verified profile (confirmed via ShouldProcess)
+# Step 3: VM creation with prototype settings (confirmed via ShouldProcess)
 # ---------------------------------------------------------------------------
 
 Write-Step 'Step 3/6: VM creation (Generation 2, 8 vCPU, 16 GiB fixed memory, 40 GiB disk, Secure Boot)'
@@ -408,7 +411,7 @@ try {
     $null = Set-VMFirmware -VMName $VmName -EnableSecureBoot On -SecureBootTemplate 'MicrosoftUEFICertificateAuthority' -ErrorAction Stop
     Write-Host 'Firmware: Secure Boot On, template MicrosoftUEFICertificateAuthority.'
 
-    $script:stepsDone.Add('VM created with the verified profile')
+    $script:stepsDone.Add('VM created with current prototype settings')
 }
 catch {
     Write-Warning "Setup stopped with a partial state possible for '$VmName'. No files or VM objects were removed. Inspect Hyper-V Manager and $fullVmRoot before retrying."
@@ -579,23 +582,27 @@ chmod 600 "$AUTH_KEYS"
 say "SSH public key(s) installed for '$GUEST_USER'."
 
 if [[ "$MODE" == "golden" ]]; then
-  # A cloned golden disk must become an independent machine: netplan MAC
+  # A cloned golden disk must become an independent machine: netplan,
   # binding, SSH host keys, machine-id.
-  for nf in "$MNT"/etc/netplan/*.yaml; do
-    [[ -e "$nf" ]] || continue
-    if grep -q 'macaddress' "$nf"; then
-      mv "$nf" "$nf.installer-orig"
-      say "Renamed MAC-bound netplan file: $(basename "$nf") -> $(basename "$nf").installer-orig"
-    fi
+  [[ ! -L "$MNT/etc" && ! -L "$MNT/etc/netplan" ]] || die 'Symlinked Netplan parent directory is not accepted'
+  for nf in "$MNT"/etc/netplan/*.yaml "$MNT"/etc/netplan/*.yml; do
+    [[ -e "$nf" || -L "$nf" ]] || continue
+    [[ ! -e "$nf.installer-orig" && ! -L "$nf.installer-orig" ]] || die "Netplan backup already exists: $nf.installer-orig"
+    mv -- "$nf" "$nf.installer-orig"
+    say "Renamed installer netplan file: $(basename "$nf")"
   done
   cat > "$MNT/etc/netplan/99-tbound-dhcp.yaml" <<'NETPLAN'
 network:
   version: 2
+  renderer: networkd
   ethernets:
-    eth0:
+    hyperv:
+      match:
+        driver: hv_netvsc
       dhcp4: true
 NETPLAN
-  say 'Wrote /etc/netplan/99-tbound-dhcp.yaml (eth0 DHCP4).'
+  chmod 600 "$MNT/etc/netplan/99-tbound-dhcp.yaml"
+  say 'Wrote /etc/netplan/99-tbound-dhcp.yaml (Hyper-V NIC DHCP4).'
   if [[ -z "$KEEP_HOST_KEYS" ]]; then
     rm -f "$MNT"/etc/ssh/ssh_host_*_key "$MNT"/etc/ssh/ssh_host_*_key.pub
     chroot "$MNT" ssh-keygen -A >/dev/null
@@ -856,7 +863,7 @@ $summaryLines = @(
     "Image source:   $resolvedImage",
     "Image SHA-256:  $((Get-Sha256Hex -Path $resolvedImage))",
     "Image kind:     $ImageKind",
-    "Guest user:     $GuestUser (uid 1000 expected; verify in the guest)",
+    "Guest user:     $GuestUser (record the actual non-root UID in the guest)",
     "Guest IP:       $guestIp (Default Switch DHCP; changes across reboots)",
     "Switch:         $SwitchName (adapter CONNECTED - disconnect before untrusted runs)",
     "Bootstrap exit: $bootstrapExit",

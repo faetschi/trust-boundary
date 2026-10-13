@@ -7,8 +7,11 @@ existing cross-reference; this worksheet does not create registration evidence.
 
 ## Prepare and identify the candidate
 
-Use a new dedicated amd64 Ubuntu 24.04 guest. Before bootstrap, authenticate
-the selected base artifact against Ubuntu's signed SHA256SUMS. Select and record
+Use a new dedicated amd64 Ubuntu 24.04 guest. The cloud-image verification
+block below applies only to cloud artifacts supported by their publisher on
+the intended hypervisor. It does not qualify an Azure VHD for local Hyper-V.
+For a local Hyper-V installation, use the separate ISO procedure below.
+Select and record
 the exact release serial and versioned publisher URL; do not record the mutable
 `noble/release/` alias as the immutable input. Preserve the artifact filename
 and format, signed checksum and signature files, signing-key fingerprint and
@@ -18,8 +21,9 @@ SHA-256 and its relation to that archive. A bootstrap's caller-supplied
 `ExpectedImageSha256` check establishes equality to that value, not publisher
 authenticity.
 
-Verification instructions (run later in a trusted Ubuntu environment; keep the
-selected artifact and checksum files in the same directory):
+Cloud-artifact verification instructions (run later in a trusted Ubuntu
+environment; keep the selected artifact and checksum files in the same
+directory):
 
 ```sh
 set -eu
@@ -40,18 +44,145 @@ sha256sum --check --ignore-missing SHA256SUMS
 sha256sum "$ARTIFACT"
 ```
 
-Record the actual signing fingerprint and verification output; do not fill them
-from an example or assume the keyring is trusted without recording its trust
-source. Consult Ubuntu's [artifact reference](https://ubuntu.com/docs/public-images/public-images-reference/artifacts/)
-and [checksum verification guide](https://ubuntu.com/docs/public-images/public-images-how-to/verify-image-checksum/).
-Azure VHD archives are intended for Azure and are not supported for local
-Hyper-V by that reference. The existing CloudVhdx path is not a qualified local
-guest recipe; choose supported installation media or validate a generic-image
-conversion separately before using it. Follow the applicable bootstrap procedure. Record
-hypervisor settings, filesystem/mount options and the final offline
-disk/checkpoint-chain identity. Disable shared folders and clipboard
-integration. The existing development VM and WSL are component-test
-environments and cannot substitute for the registered clean guest.
+Record the signing fingerprint, trust source and verification output. The
+cloud-image keyring above is not the ISO signing keyring. Canonical documents
+Azure VHDs as Azure-specific and nonfunctional outside Azure, including local
+Hyper-V; do not use an Azure VHD as this local input. `CloudVhdx` remains a
+compatibility path, not evidence that a given publisher supports an artifact
+on local Hyper-V.
+
+### Local Hyper-V input: authenticated Server ISO and generic VHDX
+
+Use the versioned
+[`ubuntu-24.04.5-live-server-amd64.iso`](https://releases.ubuntu.com/24.04.5/).
+For a later point release, record its exact filename and versioned release
+URL. Do not substitute a mutable series or `latest` alias.
+
+Run the following in a trusted Ubuntu environment with `ubuntu-keyring`
+installed. Ubuntu’s image-signing key is included in the trusted
+`/usr/share/keyrings/ubuntu-archive-keyring.gpg` keyring. Record the
+`ubuntu-keyring` package version and trust source, the `VALIDSIG` output, and
+the ISO SHA-256. Do not use the cloud-image keyring for this verification.
+
+```sh
+set -eu
+BASE_URL='https://releases.ubuntu.com/24.04.5'
+ARTIFACT='ubuntu-24.04.5-live-server-amd64.iso'
+dpkg-query -W -f='${binary:Package}\t${Version}\n' ubuntu-keyring
+curl -fSLO "$BASE_URL/SHA256SUMS"
+curl -fSLO "$BASE_URL/SHA256SUMS.gpg"
+curl -fSLO "$BASE_URL/$ARTIFACT"
+gpg --no-default-keyring \
+  --keyring /usr/share/keyrings/ubuntu-archive-keyring.gpg \
+  --list-keys --with-fingerprint
+gpgv --status-fd 1 \
+  --keyring /usr/share/keyrings/ubuntu-archive-keyring.gpg \
+  SHA256SUMS.gpg SHA256SUMS
+test "$(awk -v f="$ARTIFACT" \
+  '$2 == f || $2 == "*" f {n++} END {print n+0}' SHA256SUMS)" -eq 1
+sha256sum --check --ignore-missing SHA256SUMS
+sha256sum "$ARTIFACT"
+```
+
+Create a **seed VM** in elevated PowerShell. The seed is installer-only:
+2 vCPUs, fixed 4 GiB RAM and a 40 GiB disk. The bootstrap’s existing
+follow-on VM configuration remains 8 vCPUs, fixed 16 GiB RAM and a 40 GiB
+disk; those settings are not qualified by this recipe. Ubuntu Server’s
+[Hyper-V guide](https://ubuntu.com/server/docs/how-to/virtualisation/ubuntu-on-hyper-v/)
+and Microsoft’s [support matrix](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/supported-ubuntu-virtual-machines-on-hyper-v)
+document Ubuntu Server installation and Ubuntu 24.04 Hyper-V support.
+
+```powershell
+$BaseRoot = 'F:\TBoundAssets\TBound-Ubuntu-ISO-Seed'
+$BaseVmName = 'TBound-Ubuntu-ISO-Seed'
+$VhdPath = Join-Path $BaseRoot 'ubuntu-24.04.5-server.vhdx'
+$IsoPath = 'F:\TBoundAssets\ubuntu-24.04.5-live-server-amd64.iso'
+$SwitchName = 'Default Switch'
+
+if (Get-VM -Name $BaseVmName -ErrorAction SilentlyContinue) {
+  throw "Seed VM already exists: $BaseVmName"
+}
+New-Item -ItemType Directory -Force -Path $BaseRoot | Out-Null
+if (Test-Path -LiteralPath $VhdPath) {
+  throw "Seed disk already exists: $VhdPath"
+}
+New-VHD -Path $VhdPath -SizeBytes 40GB -Dynamic | Out-Null
+New-VM -Name $BaseVmName -Generation 2 -MemoryStartupBytes 4GB `
+  -NoVHD -Path $BaseRoot -SwitchName $SwitchName | Out-Null
+Set-VMProcessor -VMName $BaseVmName -Count 2
+Set-VMMemory -VMName $BaseVmName -DynamicMemoryEnabled $false `
+  -StartupBytes 4GB
+Set-VM -VMName $BaseVmName -AutomaticCheckpointsEnabled $false `
+  -CheckpointType ProductionOnly
+Add-VMHardDiskDrive -VMName $BaseVmName -Path $VhdPath | Out-Null
+$Dvd = Add-VMDvdDrive -VMName $BaseVmName -Path $IsoPath -PassThru
+Set-VMFirmware -VMName $BaseVmName -EnableSecureBoot On `
+  -SecureBootTemplate MicrosoftUEFICertificateAuthority `
+  -FirstBootDevice $Dvd
+Start-VM -Name $BaseVmName
+vmconnect.exe localhost $BaseVmName
+```
+
+In the installer, use the whole 40 GiB disk and create the first account with
+the same name passed later as `-GuestUser` (default `tboundadmin`). Select
+OpenSSH Server. At the installer reboot prompt, eject the ISO and boot the
+installed disk. Record `id -u tboundadmin` from the guest; the bootstrap
+requires a non-root account and does not require UID 1000. The offline
+injector will replace the installer’s network configuration with DHCP matched
+to the Hyper-V network driver, so the recipe does not assume an interface name
+such as `eth0`.
+
+Shut down the seed through the guest OS, wait for `Off`, and reject checkpoints
+or a parent-linked disk before hashing or cloning. `Stop-VM` without `-Force`
+requests guest shutdown. The bounded wait below refuses to continue if that
+does not complete; it never forces power-off.
+
+```powershell
+Stop-VM -Name $BaseVmName
+$StopDeadline = (Get-Date).AddMinutes(10)
+while ((Get-VM -Name $BaseVmName -ErrorAction Stop).State -ne 'Off' -and
+       (Get-Date) -lt $StopDeadline) {
+  Start-Sleep -Seconds 2
+}
+if ((Get-VM -Name $BaseVmName -ErrorAction Stop).State -ne 'Off') {
+  throw 'Seed VM did not shut down; refusing to hash or copy its disk.'
+}
+if (@(Get-VMSnapshot -VMName $BaseVmName -ErrorAction Stop).Count -ne 0) {
+  throw 'Seed VM has checkpoints; refusing to hash or copy its disk.'
+}
+$BaseDisks = @(Get-VMHardDiskDrive -VMName $BaseVmName -ErrorAction Stop)
+if ($BaseDisks.Count -ne 1) {
+  throw "Expected one seed disk; found $($BaseDisks.Count)."
+}
+$SeedVhdx = $BaseDisks[0].Path
+$SeedVhdInfo = Get-VHD -Path $SeedVhdx -ErrorAction Stop
+if ($SeedVhdInfo.ParentPath) {
+  throw "Seed disk has a parent; refusing to hash or copy it: $SeedVhdx"
+}
+$SeedSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $SeedVhdx).Hash
+
+.\infra\repro\bootstrap-hyperv-windows.ps1 `
+  -ImageKind GoldenVhdx `
+  -ImageSourcePath $SeedVhdx `
+  -ExpectedImageSha256 $SeedSha256 `
+  -PublicKeyFile "$env:USERPROFILE\.ssh\id_ed25519.pub" `
+  -VmName 'TBound-Ubuntu-2404-ISO' `
+  -VmRoot 'F:\TBoundAssets\TBound-Ubuntu-2404-ISO' `
+  -SwitchName $SwitchName
+```
+
+This is manual image preparation, not a scripted ISO rebuild. Record the
+installer choices and actual seed and follow-on VM settings, then measure the
+booted guest and retain its package manifest, kernel, live Landlock ABI, and
+disk/checkpoint-chain identities. Freeze a measured offline disk for reuse
+only after the required checks. Reusing that frozen clone does not demonstrate
+a reproducible rebuild, register the image, establish containment, or establish
+G1. Record the actual follow-on VM resource settings rather than treating the
+bootstrap’s current 8/16/40 configuration as a registered profile.
+
+Disable shared folders and clipboard integration. The existing development VM
+and WSL remain component-test environments; they do not substitute for a
+registered clean guest.
 
 Provision in a connected maintenance phase before freezing the baseline. Use
 the existing bootstrap's pinned Go 1.27.1, Node 24.21.0 and Cosign 3.1.3,
