@@ -12,10 +12,14 @@
 - **Verifiable goals:** Define clear success criteria before implementation and verify outcomes
 
 ## Testing & Verification
-- Prefer **TDD (red → green → refactor)**
+- Prefer **TDD (red → green → refactor)**: reproduce the bug with a failing test first; add tests for new behavior
+- Verify in Linux/WSL with the pinned Go 1.27.1 (not Windows): `go build ./...`, `go vet -mod=readonly ./...`, `gofmt -l .`, `go test -race -mod=readonly -count=1 ./...` (private short TMPDIR, umask 077). Green locally must mean green in CI
+- Watch skips: a test that ran before and skips now is a regression. If the tests for your change are skipped here, it is **not verified** — say so, don't call it green
+- Test crashes/recovery in a fresh process (see `internal/audit/audit_test.go`); never assert recovery from the same in-memory state
+- Keep a receipt: exact command, exit code, and source hash. "Passed" without them is a story. Report unrun/skipped tests
+- **Green results never establish a claim** (`G1`/containment/`H1`); they verify code, not evidence
+- Keep tests focused and proportional. Run broader checks when risk warrants
 - Reproduce bugs with failing tests before fixing; add tests for new behavior
-- Keep tests focused and proportional to the change. Run broader checks when risk warrants
-- Never claim success without appropriate verification; report unrun tests
 
 ## Execution Efficiency
 - Search before reading full files; expand only when necessary
