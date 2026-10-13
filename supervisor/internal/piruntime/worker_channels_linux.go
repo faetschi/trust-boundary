@@ -1118,6 +1118,48 @@ func bindD09BootstrapSourceEvidence(bootstrap *PiWorkerBootstrap, evidence D09Wo
 	return nil
 }
 
+// bindD09ConsumerViewProof accepts consumer identity only when it matches the
+// launcher-captured entrypoint proof and the Store/runtime evidence already
+// bound to the admitted runtime. The production caller supplies the proof
+// returned by the exact launched Process; this helper does not create authority.
+func bindD09ConsumerViewProof(bootstrap *PiWorkerBootstrap, runtime HostRuntimeBindings,
+	launcherPID int, proof D09TCBProof) error {
+	source, assets := runtime.D09SourceEvidence, runtime.D09RuntimeAssetEvidence
+	if bootstrap == nil || source.validateShape() != nil || assets.validateShape() != nil ||
+		launcherPID <= 0 || proof.LauncherProcessPID != launcherPID ||
+		proof.Schema != "tbound-pi-entrypoint/v1" || proof.ContainerName == "" ||
+		proof.LeaderPID <= 0 || proof.ContainerLeaderPID != 1 ||
+		!validDigest(proof.ImageDigest) || !strings.HasSuffix(proof.ImageRef, "@"+proof.ImageDigest) ||
+		proof.TemplateDigest != assets.NamespaceProfileDigest ||
+		!proof.ConsumerMountsVerified || !proof.RawSourceFDsClosed ||
+		proof.WorkerMountID == 0 || proof.RuntimeMountID == 0 ||
+		proof.ConsumerWorkerMountID != proof.WorkerMountID ||
+		proof.ConsumerRuntimeMountID != proof.RuntimeMountID ||
+		proof.WorkerDevice != source.SourceDevice || proof.WorkerInode != source.SourceInode ||
+		proof.SourceGenerationID != source.GenerationID || proof.SourceTreeDigest != source.TreeDigest ||
+		proof.SourceManifestDigest != source.ManifestDigest ||
+		proof.SourceBindingDigest != source.SourceBindingDigest ||
+		proof.SourceProvenanceDigest != source.ProvenanceDigest ||
+		proof.SourceIdentityDigest != source.SourceIdentityDigest ||
+		proof.SourceStoreAuditHead != source.StoreAuditHead ||
+		proof.SourceStoreAuditCount != source.StoreAuditRecordCount ||
+		proof.SourceDevice != source.SourceDevice || proof.SourceInode != source.SourceInode ||
+		proof.SourceMountID != source.SourceMountID ||
+		proof.RuntimeDevice != assets.Device || proof.RuntimeInode != assets.Inode ||
+		bootstrap.SourceBindingDigest != source.SourceBindingDigest ||
+		bootstrap.SourceProvenanceDigest != source.ProvenanceDigest ||
+		bootstrap.SourceGenerationID != source.GenerationID ||
+		bootstrap.SourceTreeDigest != source.TreeDigest ||
+		bootstrap.SourceManifestDigest != source.ManifestDigest ||
+		bootstrap.WorkerViewIdentity != "" || bootstrap.WorkerMountID != 0 {
+		return fmt.Errorf("%w: D09 entrypoint consumer proof does not match the launched process and admitted source/runtime evidence", ErrHostBindingsMissing)
+	}
+	bootstrap.WorkerViewIdentity = DigestBytes([]byte(fmt.Sprintf("tbound-d09-consumer-view/v1\x00%d:%d:%d",
+		proof.WorkerDevice, proof.WorkerInode, proof.ConsumerWorkerMountID)))
+	bootstrap.WorkerMountID = proof.ConsumerWorkerMountID
+	return nil
+}
+
 // LaunchD09PiSDKWorker preserves the previous API as a fail-closed alias.
 func LaunchD09PiSDKWorker(ctx context.Context, capability *AdmissionCapability,
 	channels *D09PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error) {
@@ -1422,14 +1464,12 @@ func launchPiCLIWorker(ctx context.Context, profile HostProfile, runtime HostRun
 	}
 	if runtime.D09Source != nil {
 		proof, ok := process.LaunchProof().(D09TCBProof)
-		if !ok || !proof.ConsumerMountsVerified || !proof.RawSourceFDsClosed ||
-			proof.ConsumerWorkerMountID == 0 || proof.ConsumerWorkerMountID != proof.WorkerMountID ||
-			proof.SourceIdentityDigest != runtime.D09SourceEvidence.SourceIdentityDigest {
+		if !ok {
 			return nil, stopFailedPiLaunch(process, channels, fmt.Errorf("D09 entrypoint did not provide separate source and consumer proof"))
 		}
-		bootstrap.WorkerViewIdentity = DigestBytes([]byte(fmt.Sprintf("tbound-d09-consumer-view/v1\x00%d:%d:%d",
-			proof.WorkerDevice, proof.WorkerInode, proof.ConsumerWorkerMountID)))
-		bootstrap.WorkerMountID = proof.ConsumerWorkerMountID
+		if err := bindD09ConsumerViewProof(&bootstrap, runtime, process.PID(), proof); err != nil {
+			return nil, stopFailedPiLaunch(process, channels, err)
+		}
 		if err := channels.writeBootstrap(profile, bootstrap); err != nil {
 			return nil, stopFailedPiLaunch(process, channels, err)
 		}
