@@ -1,0 +1,98 @@
+{
+  "schema_version": "tbound-webchat-document/v1",
+  "snapshot": {
+    "schema_version": "tbound-webchat-observation/v1",
+    "epoch": "replay-8b04",
+    "cursor": "replay-8b04:2",
+    "source": "replay",
+    "verification_scope": "unverified-input",
+    "generated_at": "2026-10-13T10:02:00Z",
+    "session": {
+      "session_id": "session-replay-01",
+      "workflow_id": "wf-replay-recovery",
+      "title": "Retained recovery observation",
+      "status": "unknown",
+      "created_at": "2026-10-13T09:55:00Z",
+      "updated_at": "2026-10-13T10:02:00Z",
+      "turn_count": 1
+    },
+    "panels": {
+      "governance": {
+        "allow_count": 1,
+        "deny_count": 0,
+        "unknown_count": 1,
+        "note": "Retained decision counts. UNKNOWN is not a success."
+      },
+      "provenance": {
+        "available": false,
+        "note": "Retained observations are caller-supplied input; provenance is not verified here."
+      },
+      "publication": {
+        "state": "quarantined",
+        "detail": "Publication is quarantined pending recovery inspection."
+      },
+      "recovery": {
+        "state": "quarantined",
+        "generation": "g1",
+        "last_completed_sequence": 1,
+        "detail": "An effect lease released without a terminal outcome. Recovery must inspect and must not replay."
+      },
+      "qualification": {
+        "g1": false,
+        "h1": "unexecuted",
+        "containment": "not-established",
+        "claim_bearing": false,
+        "note": "G1=false; H1 unexecuted; containment not-established."
+      }
+    },
+    "streams": [
+      {
+        "id": "retained-replay",
+        "label": "retained observation replay",
+        "health": "gap",
+        "available": true,
+        "reason": "retained window has a continuity gap"
+      }
+    ],
+    "items": [
+      {
+        "schema_version": "tbound-webchat-observation/v1",
+        "id": "msg-replay-user",
+        "type": "message",
+        "turn_id": "turn-replay-01",
+        "occurred_at": "2026-10-13T09:55:04Z",
+        "authority": "diagnostic",
+        "verification_scope": "unverified-input",
+        "role": "user",
+        "text": "Run the migration and report the result."
+      },
+      {
+        "schema_version": "tbound-webchat-observation/v1",
+        "id": "res-replay-unknown",
+        "type": "result",
+        "turn_id": "turn-replay-01",
+        "occurred_at": "2026-10-13T09:59:41Z",
+        "authority": "diagnostic",
+        "verification_scope": "unverified-input",
+        "tool": "bash",
+        "tool_call_id": "call-replay-01",
+        "state": "unknown",
+        "lossy": true,
+        "summary": "no durable terminal outcome; effect must be inspected, not replayed"
+      }
+    ],
+    "gaps": [
+      {
+        "id": "gap-replay-01",
+        "reason": "history_evicted",
+        "first_missing": 2,
+        "last_missing": 6,
+        "recorded_at": "2026-10-13T10:01:12Z",
+        "detail": "Five retained elements are outside the bounded window. Missing evidence is not a negative finding and no success is inferred."
+      }
+    ],
+    "warnings": [
+      "Retained replay input. It is not authenticated production evidence."
+    ]
+  }
+}

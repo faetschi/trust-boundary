@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>tbound · Pi chat workspace</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#timeline">Skip to transcript</a>
+
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">tb</span>
+        <span class="brand-text">
+          <strong>tbound</strong>
+          <span>Pi chat workspace</span>
+        </span>
+      </div>
+      <div class="topbar-meta">
+        <span id="source-badge" class="badge badge-source" data-source="unavailable">unavailable</span>
+        <span id="connection" class="badge badge-conn" data-state="connecting" role="status" aria-live="polite">connecting…</span>
+        <button id="inspector-toggle" class="ghost-button" type="button" aria-expanded="false" aria-controls="inspector">
+          Governance
+        </button>
+      </div>
+    </header>
+
+    <div id="claim-strip" class="claim-strip" role="note">
+      <span class="claim-item"><em>G1</em> <b id="claim-g1">false</b></span>
+      <span class="claim-sep" aria-hidden="true">·</span>
+      <span class="claim-item"><em>H1</em> <b id="claim-h1">unexecuted</b></span>
+      <span class="claim-sep" aria-hidden="true">·</span>
+      <span class="claim-item"><em>containment</em> <b id="claim-containment">not-established</b></span>
+      <span class="claim-sep" aria-hidden="true">·</span>
+      <span class="claim-item"><em>claim-bearing</em> <b id="claim-bearing">false</b></span>
+      <span class="claim-note">Presentation only — the supervisor retains policy, effect, and publication authority.</span>
+    </div>
+
+    <div id="notices" class="notices" aria-live="polite"></div>
+
+    <main class="layout" id="layout">
+      <nav class="rail" aria-label="Sessions">
+        <h2 class="rail-title">Sessions</h2>
+        <ul id="sessions" class="session-list"></ul>
+        <div class="rail-streams">
+          <h3 class="rail-subtitle">Observation streams</h3>
+          <ul id="streams" class="stream-list"></ul>
+        </div>
+        <p class="rail-foot">
+          Read-only projection. No launch, cancel, approve, or execute controls exist in this client.
+        </p>
+      </nav>
+
+      <section class="conversation" aria-label="Conversation">
+        <div class="conversation-head">
+          <div>
+            <h1 id="session-title" class="session-title">Loading…</h1>
+            <p id="session-sub" class="session-sub"></p>
+          </div>
+          <span id="session-status" class="badge badge-state pending">pending</span>
+        </div>
+
+        <div id="timeline" class="timeline" tabindex="-1" aria-label="Transcript and tool activity"></div>
+
+        <form id="composer" class="composer" aria-label="Composer (read-only)">
+          <label class="sr-only" for="prompt">Prompt</label>
+          <textarea id="prompt" name="prompt" rows="3" placeholder="Submitting turns is not available in this build." disabled></textarea>
+          <div class="composer-actions">
+            <button id="send" type="button" disabled>Send</button>
+            <button id="cancel" type="button" class="ghost-button" disabled>Cancel turn</button>
+          </div>
+          <p class="composer-note">
+            Disabled: submitting a turn or requesting cancellation requires the authenticated supervisor
+            session service, which is not implemented yet. The gateway is an untrusted client.
+          </p>
+        </form>
+      </section>
+
+      <aside id="inspector" class="inspector" aria-label="Governance inspector">
+        <h2 class="inspector-title">Governance</h2>
+        <section class="panel" aria-labelledby="panel-decision">
+          <h3 id="panel-decision">Policy decisions</h3>
+          <div id="panel-decisions" class="kv"></div>
+        </section>
+        <section class="panel" aria-labelledby="panel-prov">
+          <h3 id="panel-prov">Provenance</h3>
+          <div id="panel-provenance" class="kv"></div>
+        </section>
+        <section class="panel" aria-labelledby="panel-pub">
+          <h3 id="panel-pub">Publication</h3>
+          <div id="panel-publication" class="kv"></div>
+        </section>
+        <section class="panel" aria-labelledby="panel-rec">
+          <h3 id="panel-rec">Recovery</h3>
+          <div id="panel-recovery" class="kv"></div>
+        </section>
+        <section class="panel" aria-labelledby="panel-qual">
+          <h3 id="panel-qual">Qualification</h3>
+          <div id="panel-qualification" class="kv"></div>
+        </section>
+        <section class="panel" aria-labelledby="panel-warnings">
+          <h3 id="panel-warnings">Warnings</h3>
+          <ul id="panel-warnings-list" class="warning-list"></ul>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="/static/app.mjs"></script>
+  </body>
+</html>
