@@ -232,12 +232,22 @@ The gateway is loopback-only and read-only by construction:
 - `Host` must match the bound address (or be loopback); any non-empty `Origin`
   must equal the configured origin.
 - `GET` only; any request with a body (`Content-Length != 0` or a transfer
-  encoding) is rejected `400` rather than read, removing the slow-body surface.
-  `Content-Security-Policy` is strict and does **not** allow inline script or
-  style (`script-src 'self'; style-src 'self'`), with `default-src 'none'`,
-  `frame-ancestors 'none'`, `base-uri 'none'`.
+  encoding) is rejected `400` rather than read. The rejection is
+  **timeout-bounded**, not drain-free: `net/http` may still consume a bounded
+  amount of an unread body while closing, and the server's `ReadTimeout` is what
+  prevents an unbounded stall. `Content-Security-Policy` is strict and does
+  **not** allow inline script or style (`script-src 'self'; style-src 'self'`),
+  with `default-src 'none'`, `frame-ancestors 'none'`, `base-uri 'none'`.
 - Static assets are an exact allowlist; there is no directory serving.
 - Each SSE/data write is bounded by a deadline that also covers the socket flush.
+- Identifiers are a strict character set (no path separators), display text
+  rejects control characters, and receipt provenance/status values are echoed
+  only when they are bounded identifiers. **Residual risk, stated plainly:** the
+  projection *bounds* operator-supplied prose (transcript text, summaries,
+  details, notes) but does **not** content-redact it, so a fixture or receipt the
+  operator chooses to load can echo sensitive free text. A production projection
+  must emit structured safe summaries upstream; the gateway cannot infer which
+  prose is sensitive.
 
 Remote/multi-user deployment is explicitly out of scope here: it would require
 browser authentication, session ownership, and CSRF/origin protection, none of
@@ -270,10 +280,27 @@ become a success display"), and the gateway exposes no control route
 | A session/panel update could be lost across a reconnect | The client re-fetches a fresh snapshot on stream re-open and `UpdateStream` notifies subscribers | `handler.go`/`store.go`; verified in the running workspace |
 | Store state could be mutated through a returned snapshot/event | Panels (including the observation-time pointer) are deep-copied on ingress and egress; events are cloned per subscriber | `TestStoreDeduplicatesAndBroadcasts` |
 | Unbounded client history | The client history is capped at `MAX_CLIENT_ITEMS` with oldest-first eviction | `jstest/store.test.mjs` |
-| Over-limit subscribers still received a full replay | The over-limit subscription returns no replay window | `TestSSESubscriberBoundClosesAdmissionWithGap` |
+| Over-limit subscribers still received a full replay | The over-limit subscription returns no replay window | `TestSubscriberLimitWithholdsReplay` |
 | Dead session button, always-set `aria-expanded`, focus loss on resize | The current session is a non-interactive row; `aria-expanded` is set only while collapsible; focus leaves the panel before it is made inert; a dedicated status region announces gaps once | `jstest/render.test.mjs`, keyboard audits |
 
-## 8. Reuse of the governance companion
+### 7.2 Fixes from the third review
+
+| Finding | Fix |
+|---|---|
+| A reconnect snapshot could overwrite newer live events | Recovery on re-open closes the stream first, so its snapshot cannot race events; gap announcements are keyed by gap identity instead of array length |
+| A cursor could disagree with the item sequence | `ValidateSnapshot` refuses a cursor that does not match the last provided sequence |
+| Client eviction was silent | The notices region and the filter summary both disclose the retained window and the evicted count |
+| Identifiers admitted path separators; text admitted control characters | Identifiers use a stricter pattern (no `/`); display text rejects control characters; receipt `disposition` and settlement/publication values are echoed only when they are bounded identifiers |
+| LOSSY results were invisible to the Unknown filter; `pending` was counted as unknown | `lossy` is matched and counted independently; `pending` has its own posture count |
+| The filter summary called context elements "matches" | It now reports `N matches · M of T shown (context included)` |
+| An uncorrelated activity could be dropped by a filter | Activities must carry a `tool_call_id`, so every tool block is correlatable |
+| Stream health was not carried on session events | Session events include the stream projection and the client applies it |
+| A production receipt could borrow the development Bash settlement field | `bash_settlement` is read only for the dev/native shapes |
+| A subscription shared the store's panel pointer | Subscription panels are deep-copied on egress |
+| `subscriber_limit` could trigger a reconnect loop | The client treats it as terminal and reports it instead of retrying |
+| "Closed without draining" overstated the guarantee | The rejection is documented as timeout-bounded, not drain-free |
+| Noisy live regions | The filter summary is no longer a live region; connection changes are announced once |
+| The desktop Governance control had no effect | It is hidden above the breakpoint, where the panel is always visible |
 
 The typed viewer in the sibling `codex/tbound-governance-companion` worktree
 informed this contract and validation/store design (bounded records, closed
@@ -372,7 +399,7 @@ Focused checks on the pinned Go 1.27.1 in Linux:
 - `go vet ./internal/webchat/... ./cmd/tbound-webchat/...` — exit 0.
 - `go test -count=1 ./internal/webchat/... ./cmd/tbound-webchat/...` — ok.
 - `go test -race -count=1 ./internal/webchat/... ./cmd/tbound-webchat/...` — ok.
-- `node --test` (browser modules) — 38 tests pass.
+- `node --test` (browser modules) — 40 tests pass.
 - The **real** development CLI fixture receipt was imported with
   `--receipt` and rendered in the running workspace: source `replay`, session
   `unknown`, four tool cards (two reported `succeeded`, two `unknown`),

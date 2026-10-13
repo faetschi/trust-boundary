@@ -8,6 +8,7 @@ import {
   createWorkspace,
   groupTurn,
   noteGap,
+  MAX_CLIENT_ITEMS,
   turnsOf,
 } from "../assets/store.mjs";
 

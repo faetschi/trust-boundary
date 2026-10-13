@@ -197,8 +197,7 @@ func (s *Store) UpdatePanels(panels Panels) error {
 	stored := clonePanels(panels)
 	s.base.Panels = stored
 	s.rev++
-	header := s.base.Session
-	s.broadcastLocked(Event{SchemaVersion: ContractVersion, Cursor: formatCursor(s.epoch, s.next), Kind: "session", Session: &header, Panels: &stored})
+	s.broadcastLocked(s.sessionEvent())
 	return nil
 }
 
@@ -225,9 +224,7 @@ func (s *Store) UpdateStream(stream StreamStatus) error {
 	}
 	// Stream health is part of the projected state, so notify subscribers.
 	s.rev++
-	header := s.base.Session
-	panels := s.base.Panels
-	s.broadcastLocked(Event{SchemaVersion: ContractVersion, Cursor: formatCursor(s.epoch, s.next), Kind: "session", Session: &header, Panels: &panels})
+	s.broadcastLocked(s.sessionEvent())
 	return nil
 }
 
@@ -294,7 +291,7 @@ func (s *Store) SubscribeAfter(cursor string) (*Subscription, *ReplayGap) {
 	s.nextSub++
 	channel := make(chan Event, SubscriberQueueSize)
 	s.subs[s.nextSub] = channel
-	result := &Subscription{Initial: s.currentItemsLocked(), Session: s.base.Session, Panels: s.base.Panels, Streams: append([]StreamStatus(nil), s.base.Streams...), Events: channel, store: s, id: s.nextSub}
+	result := &Subscription{Initial: s.currentItemsLocked(), Session: s.base.Session, Panels: clonePanels(s.base.Panels), Streams: append([]StreamStatus(nil), s.base.Streams...), Events: channel, store: s, id: s.nextSub}
 	if cursor == "" {
 		return result, nil
 	}
@@ -385,6 +382,22 @@ func cloneItem(item Item) Item { return item }
 // Store is rejected by the handler rather than panicking on first use.
 func (s *Store) initialized() bool {
 	return s != nil && s.epoch != "" && s.seen != nil && s.subs != nil && s.items != nil
+}
+
+// sessionEvent builds a session event that carries the full non-item projection
+// (session, panels and stream health), so a subscriber never sees stale state.
+func (s *Store) sessionEvent() Event {
+	header := s.base.Session
+	panels := clonePanels(s.base.Panels)
+	streams := append([]StreamStatus(nil), s.base.Streams...)
+	return Event{
+		SchemaVersion: ContractVersion,
+		Cursor:        formatCursor(s.epoch, s.next),
+		Kind:          "session",
+		Session:       &header,
+		Panels:        &panels,
+		Streams:       streams,
+	}
 }
 
 // clonePanels deep-copies the panel projection, including the ObservedAt

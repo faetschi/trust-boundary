@@ -322,6 +322,92 @@ func TestEpochAndSequenceAreValidated(t *testing.T) {
 	}
 }
 
+func TestCursorSequenceAndActivityRules(t *testing.T) {
+	// A cursor that disagrees with the provided item sequence would let the store
+	// normalize away a discontinuity, so it is refused.
+	mismatched := validSnapshot()
+	mismatched.Items = []Item{
+		{SchemaVersion: ContractVersion, Sequence: 1, ID: "i1", Type: ItemMessage, OccurredAt: time.Now().UTC(), Authority: AuthorityDiagnostic, Verification: VerificationUnverifiedInput, Role: RoleUser, Text: "a"},
+	}
+	mismatched.Cursor = mismatched.Epoch + ":9"
+	if err := ValidateSnapshot(mismatched); err == nil {
+		t.Fatal("a cursor that does not match the item sequence must be refused")
+	}
+
+	// A tool activity must be correlatable, so a filter can always retain it
+	// beside its decision and result.
+	uncorrelated := validSnapshot()
+	uncorrelated.Items = []Item{
+		{SchemaVersion: ContractVersion, ID: "a1", Type: ItemActivity, OccurredAt: time.Now().UTC(), Authority: AuthorityDiagnostic, Verification: VerificationUnverifiedInput, Kind: "proposal", Tool: ToolRead, Summary: "read", State: ResultPending},
+	}
+	if err := ValidateSnapshot(uncorrelated); err == nil {
+		t.Fatal("an activity without a tool call id must be refused")
+	}
+
+	// A session id must be an identifier, so a relative path cannot masquerade as
+	// one.
+	pathLike := validSnapshot()
+	pathLike.Session.SessionID = "home/alice/.ssh/id_rsa"
+	if err := ValidateSnapshot(pathLike); err == nil {
+		t.Fatal("a path-like session id must be refused")
+	}
+
+	// Control characters are refused in display text.
+	control := validSnapshot()
+	control.Session.Title = "esc\x1b[31m"
+	if err := ValidateSnapshot(control); err == nil {
+		t.Fatal("display text containing control characters must be refused")
+	}
+}
+
+func TestSubscriptionPanelsAreIsolated(t *testing.T) {
+	store, err := NewFixtureStore()
+	if err != nil {
+		t.Fatalf("NewFixtureStore: %v", err)
+	}
+	subscription, gap := store.SubscribeAfter("")
+	if gap != nil {
+		t.Fatalf("unexpected gap: %+v", gap)
+	}
+	defer subscription.Close()
+	before := store.Snapshot().Panels.Governance.AllowCount
+	// A subscriber must not be able to mutate retained store state.
+	panels := subscription.Panels
+	panels.Governance.AllowCount = 999
+	after := store.Snapshot().Panels.Governance.AllowCount
+	if after != before {
+		t.Fatalf("mutating a subscription's panels changed store state: %d -> %d", before, after)
+	}
+}
+
+func TestSubscriberLimitWithholdsReplay(t *testing.T) {
+	store, err := NewFixtureStore()
+	if err != nil {
+		t.Fatalf("NewFixtureStore: %v", err)
+	}
+	var held []*Subscription
+	defer func() {
+		for _, subscription := range held {
+			subscription.Close()
+		}
+	}()
+	for index := 0; index < MaxSubscribers; index += 1 {
+		subscription, gap := store.SubscribeAfter("")
+		if gap != nil {
+			t.Fatalf("subscription %d refused early: %+v", index, gap)
+		}
+		held = append(held, subscription)
+	}
+	over, gap := store.SubscribeAfter("")
+	if gap == nil || gap.Reason != "subscriber_limit" {
+		t.Fatalf("expected a subscriber_limit gap, got %+v", gap)
+	}
+	if len(over.Initial) != 0 {
+		t.Fatalf("an over-limit subscriber must receive no replay, got %d items", len(over.Initial))
+	}
+	over.Close()
+}
+
 func TestSubscribeAfterGaps(t *testing.T) {
 	store, err := NewFixtureStore()
 	if err != nil {

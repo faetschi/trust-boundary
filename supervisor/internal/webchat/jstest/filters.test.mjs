@@ -67,6 +67,22 @@ test("counts match the number of matching elements", () => {
   assert.equal(countFilter(timeline, "failed"), 1);
 });
 
+test("a LOSSY result is surfaced under Unknown and counted independently", () => {
+  const lossy = item({ id: "r-lossy", state: "succeeded", lossy: true });
+  assert.equal(matchesFilter(lossy, "unknown"), true, "lossy output is not terminal evidence and must be reviewable");
+  const counts = governanceCounts([lossy], () => false);
+  assert.equal(counts.reported, 1);
+  assert.equal(counts.lossy, 1);
+});
+
+test("a pending result is neither unknown nor a finding", () => {
+  const pending = item({ id: "r-pending", state: "pending" });
+  assert.equal(matchesFilter(pending, "unknown"), false);
+  const counts = governanceCounts([pending], () => false);
+  assert.equal(counts.pendingResults, 1);
+  assert.equal(counts.unknownResults, 0);
+});
+
 test("governanceCounts splits verified from reported successes", () => {
   const counts = governanceCounts(timeline, () => false);
   assert.equal(counts.allow, 2);

@@ -125,6 +125,10 @@ func ProjectReceipt(raw []byte, observedAt time.Time) (Snapshot, error) {
 		if receipt.SchemaVersion != productionReceiptSchema {
 			return Snapshot{}, fmt.Errorf("unsupported production receipt schema %q", receipt.SchemaVersion)
 		}
+		// The production receipt records tool names and top-level worker exit
+		// fields; the nested development bash settlement does not belong to it, so
+		// a production-shaped receipt cannot invent a per-tool outcome through it.
+		receipt.BashSettlement = nil
 	case "dev-fixture", "native-fixture":
 	default:
 		return Snapshot{}, fmt.Errorf("unsupported receipt mode %q", receipt.Mode)
@@ -401,20 +405,17 @@ func lifecycleText(receipt runReceipt) string {
 }
 
 func settlementText(receipt runReceipt) string {
-	settlement := boundedText(receipt.Settlement)
+	settlement := keepIdentifier(receipt.Settlement)
 	if settlement == "" {
 		settlement = "not reported"
 	}
 	parts := []string{"Settlement " + settlement + "."}
-	if receipt.PublicationStatus != "" || receipt.Publication != "" {
-		status := receipt.PublicationStatus
-		if status == "" {
-			status = receipt.Publication
-		}
-		parts = append(parts, "Publication "+boundedText(status)+".")
+	status := receipt.PublicationStatus
+	if status == "" {
+		status = receipt.Publication
 	}
-	if receipt.Disposition != "" {
-		parts = append(parts, "Disposition "+boundedText(receipt.Disposition)+".")
+	if publication := keepIdentifier(status); publication != "" {
+		parts = append(parts, "Publication "+publication+".")
 	}
 	parts = append(parts, "An UNKNOWN settlement is inspected and never blindly replayed.")
 	return strings.Join(parts, " ")
@@ -486,8 +487,10 @@ func publicationFromReceipt(receipt runReceipt) PublicationPanel {
 
 func recoveryFromReceipt(receipt runReceipt, keepReference func(name, value string) string) RecoveryPanel {
 	detail := ""
-	if receipt.Disposition != "" {
-		detail = "Disposition " + boundedText(receipt.Disposition) + ". "
+	// A disposition is a bounded label, not free text: it is dropped if it is not
+	// a plain identifier rather than echoed.
+	if disposition := keepIdentifier(receipt.Disposition); disposition != "" {
+		detail = "Disposition " + disposition + ". "
 	}
 	panel := RecoveryPanel{
 		Generation: keepReference("receipt final generation", receipt.FinalGeneration),
@@ -534,6 +537,16 @@ func boundedText(value string) string {
 		value = value[:MaxLabelBytes]
 	}
 	return strings.ToValidUTF8(value, "")
+}
+
+// keepIdentifier returns a value only when it is a bounded identifier. Unlike
+// boundedText it never echoes free text, so a receipt field cannot smuggle a
+// path, credential or wrapper text into the projection.
+func keepIdentifier(value string) string {
+	if value == "" || !identifierPattern.MatchString(value) {
+		return ""
+	}
+	return value
 }
 
 func readBoundedReceipt(path string) ([]byte, time.Time, error) {

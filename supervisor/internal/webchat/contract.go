@@ -358,4 +358,5 @@ type Event struct {
 	Item          *Item          `json:"item,omitempty"`
 	Session       *SessionHeader `json:"session,omitempty"`
 	Panels        *Panels        `json:"panels,omitempty"`
+	Streams       []StreamStatus `json:"streams,omitempty"`
 }

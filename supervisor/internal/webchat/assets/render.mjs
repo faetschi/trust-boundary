@@ -98,8 +98,10 @@ function renderToolbar(refs, state) {
       [counts.reported, `reported ${counts.reported}`, "reported", "successes reported but not independently verified"],
       [counts.denied, `denied ${counts.denied}`, "deny", "denied results"],
       [counts.failed, `failed ${counts.failed}`, "deny", "failed results"],
+      [counts.pendingResults, `pending ${counts.pendingResults}`, "pending", "results still pending"],
       [counts.unknownResults, `unknown result ${counts.unknownResults}`, "unknown", "results with no retained terminal outcome"],
-      [counts.lost, `lossy ${counts.lost}`, "unknown", "LOSSY results"],
+      [counts.lost, `lost ${counts.lost}`, "unknown", "results whose state is LOST"],
+      [counts.lossy, `lossy ${counts.lossy}`, "unknown", "results flagged LOSSY; lossy output is not terminal evidence"],
     ];
     for (const entry of badges) {
       const [value, label, variant, hint] = entry;
@@ -129,12 +131,17 @@ function renderToolbar(refs, state) {
   }
 
   if (refs.filterSummary) {
-    const shown = filterItems(state.items, state.filter).length;
     const total = state.items.length;
+    const shown = filterItems(state.items, state.filter).length;
+    const matches = countFilter(state.items, state.filter);
     const active = FILTERS.find((entry) => entry.id === state.filter);
+    const label = active ? active.label : state.filter;
+    const evicted = state.evicted ? ` · ${state.evicted} older element(s) evicted` : "";
+    // Distinguish the number of matching elements from the number of elements
+    // shown, because a kept tool block also displays its context.
     refs.filterSummary.textContent = state.filter === "all"
-      ? `${total} projected element(s)`
-      : `${shown} of ${total} element(s) match “${active ? active.label : state.filter}”`;
+      ? `${total} element(s) in the retained window${evicted}`
+      : `${matches} match${matches === 1 ? "" : "es"} · ${shown} of ${total} element(s) shown for “${label}” (context included)${evicted}`;
   }
 }
 
@@ -163,6 +170,15 @@ function renderNotices(container, state) {
   clear(container);
   if (state.error) {
     container.appendChild(notice("error", "projection error", state.error));
+  }
+  // Retained-window disclosure: eviction must never be silent, or a finding could
+  // disappear from the review without notice.
+  if (state.evicted > 0) {
+    container.appendChild(notice(
+      "info",
+      "retained window",
+      `${state.evicted} older element(s) were evicted from the bounded client window. Counts and filters describe the retained window only.`,
+    ));
   }
   for (const gap of state.gaps) {
     const isRange = typeof gap.first_missing === "number";

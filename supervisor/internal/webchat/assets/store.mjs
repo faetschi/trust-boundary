@@ -90,9 +90,10 @@ export function applyItem(state, item) {
   return "applied";
 }
 
-export function applySession(state, session, panels) {
+export function applySession(state, session, panels, streams) {
   if (session) state.session = session;
   if (panels) state.panels = panels;
+  if (Array.isArray(streams)) state.streams = streams;
 }
 
 export function noteGap(state, gap) {

@@ -74,16 +74,23 @@ function render() {
 }
 
 // The notices list is rebuilt on every render, so it is not a live region. A
-// separate status region announces each change exactly once.
-let announcedGaps = 0;
+// separate status region announces each gap exactly once, keyed by identity
+// rather than by array length, so a recovered snapshot cannot silently drop a
+// pending announcement or repeat one.
+const announcedGaps = new Set();
 let announcedConnection = "";
+
+function gapKey(gap) {
+  return gap.id || `${gap.reason || "unknown"}:${gap.requested_cursor || ""}`;
+}
 
 function announce(state) {
   const node = refs.statusAnnouncer;
   if (!node) return;
-  if (state.gaps.length > announcedGaps) {
-    const gap = state.gaps[state.gaps.length - 1];
-    announcedGaps = state.gaps.length;
+  const fresh = state.gaps.filter((gap) => !announcedGaps.has(gapKey(gap)));
+  if (fresh.length) {
+    for (const gap of fresh) announcedGaps.add(gapKey(gap));
+    const gap = fresh[fresh.length - 1];
     node.textContent = `Continuity gap (${humanize(gap.reason || "unknown")}). Recovered from a snapshot; no success is inferred.`;
     return;
   }
@@ -154,10 +161,18 @@ function subscribe() {
       }
     },
     onSession: (event) => {
-      applySession(state, event && event.session, event && event.panels);
+      applySession(state, event && event.session, event && event.panels, event && event.streams);
       render();
     },
     onGap: (gap) => {
+      // The subscriber limit is terminal, not a continuity gap to retry: with
+      // every slot occupied an immediate resubscribe would loop.
+      if (gap && gap.reason === "subscriber_limit") {
+        setError(state, "the gateway is at its subscriber limit; this workspace will not retry automatically");
+        setConnection(state, "error");
+        render();
+        return;
+      }
       recover({ ...(gap || {}), reason: (gap && gap.reason) || "replay_gap" });
     },
     onConnection: (value) => {
@@ -165,9 +180,10 @@ function subscribe() {
       render();
       if (value === "open") {
         streamOpens += 1;
-        // A reconnect can have missed a session/panel change, so recover the
-        // whole state from a fresh snapshot rather than trusting continuity.
-        if (streamOpens > 1) refreshSnapshot();
+        // Recover from a fresh snapshot on a *re*open, so a session/panel/stream
+        // update that happened while disconnected cannot be missed. recover()
+        // closes the stream first, so its snapshot cannot race live events.
+        if (streamOpens > 1) recover({ reason: "reconnect" });
       }
     },
     onError: (error) => {
@@ -177,17 +193,13 @@ function subscribe() {
   });
 }
 
-// refreshSnapshot re-fetches the bounded snapshot without resubscribing; used on
-// stream (re)open so a silent session/panel update cannot be missed.
+// refreshSnapshot re-fetches the bounded snapshot without resubscribing. It is
+// used by recover() (which closes the stream first), so a snapshot response can
+// never race live events.
 async function refreshSnapshot() {
-  try {
-    const snapshot = await fetchSnapshot();
-    applySnapshot(state, snapshot);
-    render();
-  } catch (error) {
-    setError(state, error && error.message ? error.message : String(error));
-    render();
-  }
+  const snapshot = await fetchSnapshot();
+  applySnapshot(state, snapshot);
+  render();
 }
 
 async function recover(gap) {
@@ -245,10 +257,14 @@ function syncInspector() {
     refs.inspector.removeAttribute("inert");
     refs.inspector.removeAttribute("aria-hidden");
   }
-  // aria-expanded only means something while the panel is collapsible.
+  // aria-expanded only means something while the panel is collapsible. Above the
+  // breakpoint the panel is always visible, so the toggle is hidden rather than
+  // left as a control with no effect.
   if (narrow) {
+    refs.inspectorToggle.removeAttribute("hidden");
     refs.inspectorToggle.setAttribute("aria-expanded", String(open));
   } else {
+    refs.inspectorToggle.setAttribute("hidden", "");
     refs.inspectorToggle.removeAttribute("aria-expanded");
   }
 }

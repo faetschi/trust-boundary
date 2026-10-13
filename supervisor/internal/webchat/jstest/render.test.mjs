@@ -5,7 +5,7 @@ import { createRefs, installDom } from "./dom.mjs";
 
 installDom();
 const { renderAll } = await import("../assets/render.mjs");
-const { applySnapshot, createWorkspace, setFilter } = await import("../assets/store.mjs");
+const { applySnapshot, createWorkspace, setFilter, MAX_CLIENT_ITEMS } = await import("../assets/store.mjs");
 
 const REF_NAMES = [
   "sourceBadge",
@@ -156,7 +156,7 @@ test("toolbar renders the filter toggle group with pressed state and counts", ()
   assert.equal(buttons[1].getAttribute("aria-pressed"), "false");
   assert.equal(buttons[0].children[1].textContent, "7", "the All count is the element count");
   assert.equal(buttons[1].children[1].textContent, "2", "the Denied count counts DENY decisions and denied results");
-  assert.match(refs.filterSummary.textContent, /projected element/);
+  assert.match(refs.filterSummary.textContent, /in the retained window/);
 });
 
 test("toolbar posture separates policy ALLOW from reported execution", () => {
@@ -178,7 +178,8 @@ test("selecting the denied filter hides non-matching blocks and messages", () =>
   assert.ok(!refs.timeline.textContent.includes("go test"), "non-matching tool blocks are hidden");
   const active = refs.timelineFilters.children.find((button) => button.getAttribute("aria-pressed") === "true");
   assert.equal(active.dataset.filter, "denied");
-  assert.match(refs.filterSummary.textContent, /of 7 element/);
+  // The summary must distinguish matches from shown elements (context included).
+  assert.match(refs.filterSummary.textContent, /2 matches · 3 of 7 element/);
 });
 
 test("a filter with no matches renders the empty-filter state", () => {
@@ -186,5 +187,5 @@ test("a filter with no matches renders the empty-filter state", () => {
   setFilter(state, "failed");
   renderAll(refs, state);
   assert.match(refs.timeline.textContent, /No failed findings/);
-  assert.match(refs.filterSummary.textContent, /0 of 7 element/);
+  assert.match(refs.filterSummary.textContent, /0 matches · 0 of 7 element/);
 });

@@ -11,10 +11,12 @@ import (
 	"time"
 )
 
-// referencePattern bounds identifier-like references (IDs, digests, profile
-// names). It deliberately excludes whitespace, quotes and control characters.
-// A `/` is permitted only because base64-shaped digests use it; values are never
-// treated as paths, and a reference never reaches the filesystem.
+// identifierPattern bounds an identifier. Unlike a digest reference it admits no
+// slash, so a relative path cannot masquerade as a session or generation ID.
+var identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+
+// referencePattern bounds a digest-like reference, which may be base64-shaped.
+// Values are never treated as paths and never reach the filesystem.
 var referencePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:+=/-]{0,191}$`)
 
 // reasonCodePattern bounds a supervisor reason code such as policy_rule_deny.
@@ -146,8 +148,30 @@ func validateText(name, value string, limit int, allowEmpty bool) error {
 	if len(value) > limit {
 		return fmt.Errorf("%s exceeds %d bytes", name, limit)
 	}
-	if strings.IndexByte(value, 0) >= 0 {
-		return fmt.Errorf("%s contains NUL", name)
+	// Display text is single-line: reject control characters so a value cannot
+	// smuggle terminal escapes or line structure into the projection. Newline and
+	// tab are the only permitted whitespace controls.
+	for _, r := range value {
+		if r < 0x20 && r != '\n' && r != '\t' {
+			return fmt.Errorf("%s contains a control character", name)
+		}
+		if r == 0x7f {
+			return fmt.Errorf("%s contains a control character", name)
+		}
+	}
+	return nil
+}
+
+// validateIdentifier bounds an identifier-like value: no path separators.
+func validateIdentifier(name, value string, allowEmpty bool) error {
+	if value == "" {
+		if allowEmpty {
+			return nil
+		}
+		return fmt.Errorf("%s is required", name)
+	}
+	if !identifierPattern.MatchString(value) {
+		return fmt.Errorf("%s is not a bounded identifier", name)
 	}
 	return nil
 }
@@ -215,13 +239,13 @@ func validateItem(item Item, expectedSource SourceClass, expectedScope Verificat
 	if item.SchemaVersion != ContractVersion {
 		return fmt.Errorf("item %q has unsupported schema version", item.ID)
 	}
-	if err := validateReference("item id", item.ID, false); err != nil {
+	if err := validateIdentifier("item id", item.ID, false); err != nil {
 		return err
 	}
 	if err := validateItemType(item.Type); err != nil {
 		return err
 	}
-	if err := validateReference("turn id", item.TurnID, true); err != nil {
+	if err := validateIdentifier("turn id", item.TurnID, true); err != nil {
 		return err
 	}
 	if err := validateAuthority(item.Authority); err != nil {
@@ -280,7 +304,9 @@ func validateItem(item Item, expectedSource SourceClass, expectedScope Verificat
 		if err := validateText("activity detail", item.Detail, MaxDetailBytes, true); err != nil {
 			return fmt.Errorf("item %q: %w", item.ID, err)
 		}
-		if err := validateReference("tool call id", item.ToolCallID, true); err != nil {
+		// A tool activity must be correlatable so a filter can always retain it
+		// beside its decision and result.
+		if err := validateIdentifier("activity tool call id", item.ToolCallID, false); err != nil {
 			return fmt.Errorf("item %q: %w", item.ID, err)
 		}
 		if err := forbiddenField(item, "role", "text", "verdict", "reason_code", "policy_digest", "lossy", "digest"); err != nil {
@@ -290,7 +316,7 @@ func validateItem(item Item, expectedSource SourceClass, expectedScope Verificat
 		if err := validateTool(item.Tool); err != nil {
 			return fmt.Errorf("item %q: %w", item.ID, err)
 		}
-		if err := validateReference("tool call id", item.ToolCallID, false); err != nil {
+		if err := validateIdentifier("tool call id", item.ToolCallID, false); err != nil {
 			return fmt.Errorf("item %q: %w", item.ID, err)
 		}
 		if err := validateVerdict(item.Verdict); err != nil {
@@ -335,7 +361,7 @@ func validateItem(item Item, expectedSource SourceClass, expectedScope Verificat
 }
 
 func validateStream(stream StreamStatus) error {
-	if err := validateReference("stream id", stream.ID, false); err != nil {
+	if err := validateIdentifier("stream id", stream.ID, false); err != nil {
 		return err
 	}
 	if err := validateText("stream label", stream.Label, MaxLabelBytes, false); err != nil {
@@ -354,7 +380,7 @@ func validateStream(stream StreamStatus) error {
 }
 
 func validateGap(gap GapRecord) error {
-	if err := validateReference("gap id", gap.ID, false); err != nil {
+	if err := validateIdentifier("gap id", gap.ID, false); err != nil {
 		return err
 	}
 	if err := validateReasonCode("gap reason", gap.Reason); err != nil {
@@ -456,6 +482,15 @@ func ValidateSnapshot(snapshot Snapshot) error {
 	if err := validateCursor(snapshot.Cursor, snapshot.Epoch); err != nil {
 		return err
 	}
+	if cursorEpoch, cursorSequence, ok := parseCursor(snapshot.Cursor); ok && cursorEpoch == snapshot.Epoch {
+		// When sequences are provided they must agree with the cursor, otherwise
+		// the store would silently normalize away a real discontinuity.
+		if len(snapshot.Items) > 0 {
+			if last := snapshot.Items[len(snapshot.Items)-1].Sequence; last != 0 && cursorSequence != last {
+				return errors.New("snapshot cursor does not match the item sequence")
+			}
+		}
+	}
 	if snapshot.GeneratedAt.IsZero() {
 		return errors.New("snapshot generated_at is required")
 	}
@@ -521,10 +556,10 @@ func ValidateSnapshot(snapshot Snapshot) error {
 }
 
 func validateSession(session SessionHeader) error {
-	if err := validateReference("session id", session.SessionID, true); err != nil {
+	if err := validateIdentifier("session id", session.SessionID, true); err != nil {
 		return err
 	}
-	if err := validateReference("workflow id", session.WorkflowID, true); err != nil {
+	if err := validateIdentifier("workflow id", session.WorkflowID, true); err != nil {
 		return err
 	}
 	if err := validateText("session title", session.Title, MaxLabelBytes, true); err != nil {
@@ -533,10 +568,10 @@ func validateSession(session SessionHeader) error {
 	if err := validateSessionStatus(session.Status); err != nil {
 		return err
 	}
-	if err := validateReference("session profile", session.Profile, true); err != nil {
+	if err := validateIdentifier("session profile", session.Profile, true); err != nil {
 		return err
 	}
-	if err := validateReference("session pi version", session.PiVersion, true); err != nil {
+	if err := validateIdentifier("session pi version", session.PiVersion, true); err != nil {
 		return err
 	}
 	if session.TurnCount < 0 {

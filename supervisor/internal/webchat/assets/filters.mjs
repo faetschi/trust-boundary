@@ -20,6 +20,7 @@ export function matchesFilter(item, filter) {
     case "unknown":
       return (
         (item.type === "decision" && item.verdict === "UNKNOWN") ||
+        item.lossy === true ||
         item.state === "unknown" ||
         item.state === "lost"
       );
@@ -70,8 +71,10 @@ export function governanceCounts(items, isVerifiedItem) {
     reported: 0,
     denied: 0,
     failed: 0,
+    pendingResults: 0,
     unknownResults: 0,
     lost: 0,
+    lossy: 0,
   };
   for (const item of items) {
     if (item.type === "decision") {
@@ -80,6 +83,9 @@ export function governanceCounts(items, isVerifiedItem) {
       else counts.unknownDecisions += 1;
     }
     if (item.type === "result") {
+      // The lossy flag is independent of the state: a succeeded-but-LOSSY result
+      // is reported as lossy output and must also appear under Unknown.
+      if (item.lossy === true) counts.lossy += 1;
       switch (item.state) {
         case "succeeded":
           if (typeof isVerifiedItem === "function" && isVerifiedItem(item)) counts.verified += 1;
@@ -93,6 +99,9 @@ export function governanceCounts(items, isVerifiedItem) {
           break;
         case "lost":
           counts.lost += 1;
+          break;
+        case "pending":
+          counts.pendingResults += 1;
           break;
         default:
           counts.unknownResults += 1;
