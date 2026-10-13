@@ -302,3 +302,32 @@ are preparation only. Media custody and exact ABI checks precede registration.
   tests. Docs updated (docs/web-chat.md sections 4.3 and 8.1).
 - QA: fresh screenshots including fixture-denied-filter, refreshed keyboard audits
   with the filter and arrow-key checks and a self-describing viewport record.
+
+## Web chat increment 4: second-review fixes (2026-10-13)
+
+- Fail-open success verification closed: every item must declare a verification
+  scope and the store no longer defaults it; a new `observed` authority is the
+  only value a live projection may carry and it is refused for fixture/replay/
+  receipt sources; the client gate now requires the exact pair
+  (authority=observed AND verification_scope=structural-audit-only), so an empty,
+  unavailable or unexpected value is never treated as verified.
+- Untrusted claims now carry explicit textual trust labels (panel trust rows, a
+  session "reported" marker, and a "reported, not verified" marker beside an
+  unverified success chip), not colour alone.
+- Receipt importer no longer invents per-tool success: only a settled Bash exit
+  maps to succeeded; other calls stay UNKNOWN with the recorded generation
+  transition as context. Adds STOPPED settlement mapping and a tool_sequence
+  fallback for the production receipt shape.
+- Robustness/security: bounded server ReadTimeout plus close-without-drain for
+  body-bearing requests; deep-copied panel observation-time on ingress/egress and
+  per-subscriber event clones; over-limit subscribers no longer receive a replay;
+  input item sequences must be contiguous and the epoch is character-restricted
+  (it is interpolated into the SSE id line); the client history is capped.
+- UX/a11y: the current session is a non-interactive row; aria-expanded is set only
+  while the panel is collapsible; focus leaves the panel before it is made inert;
+  a dedicated status region announces gaps once; contrast uses the coss
+  muted/warning token pair.
+- Verified: gofmt clean, build/vet green, focused unit+race green, Node suite 38
+  tests green; deterministic keyboard audits on both viewports (window-sized
+  Chrome, self-describing innerWidth); full race suite green except the known
+  evaluationindex docs-path environment failure.

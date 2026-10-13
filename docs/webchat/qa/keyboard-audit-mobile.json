@@ -3,8 +3,8 @@
  "viewport": {
   "width": 420,
   "height": 900,
-  "innerWidth": 420,
-  "innerHeight": 900
+  "innerWidth": 500,
+  "innerHeight": 805
  },
  "narrowQueryMatches": true,
  "initial": {
@@ -109,9 +109,9 @@
  "inertAfterOpen": false,
  "inertAfterClose": true,
  "filterFocus": "focused",
- "filterPressed": "false",
- "filterSummary": "18 projected element(s)",
- "filterFocusAfterRender": null,
- "filterTimeline": "turn-0118 element(s)user · 11:12:04 · unverifiedAdd a /healthz endpoint to the service and run the test suite.assistant · 11:12:09 · unverifiedI will inspect the service entrypoint, add the endpoint, ",
- "arrowTarget": null
+ "filterPressed": "true",
+ "filterSummary": "3 of 18 element(s) match “Denied”",
+ "filterFocusAfterRender": "denied",
+ "filterTimeline": "turn-013 element(s)$bashbash: curl -s https://example.com/healthzDENYdeniedunverifiedrequestbash: curl -s https://example.com/healthz 11:12:31policyDENY policy_rule_deny sha256:9f2…e0f3a6command cell ",
+ "arrowTarget": "unknown"
 }
