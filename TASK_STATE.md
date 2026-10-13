@@ -272,6 +272,11 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   Focused checks pass. Full Linux unit/race/vet and focused ten-race repetitions,
   plus Windows unit/vet running; fresh applied review
   tbound-owned-stdout-applied-critical-review-20261013-r12 pending. No launch commit.
+  r12 held remaining cleanup observation: workerClose predicate lacked observed
+  exit/nil Session error (now corrected); failed-command Wait cached errors were
+  discarded; cleanupFailedLaunch ignored pidfd-close errors and deleted ownership.
+  Exact code/tests prepared by tbound-launch-cleanup-observation-repair-20261013-r13.
+  Prior919-pass snapshot precedes these corrections; new checks required.
   Integrated owned-stdout snapshot now passes full Linux unit/race each919 tests,
   zero failures, seven skips; vet clean, focused race10 passes. Windows281 passes,
   zero failures, 13 skips; vet clean. All ten piruntime Go hashes match the tested
@@ -322,7 +327,20 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   conformance. Normative patch preparation tbound-recovery-amendment-corrected-patch-20261013-r6.
   Audit regression deemed valid for process-crash/no-replay by r5; each helper
   now has its own ten-second deadline. Ten race repetitions, audit package unit
-  and vet pass after that adjustment. Narrow test commit checkpoint follows.
+  and vet pass after that adjustment. Narrow test committed as ace9592; receipt
+  recovery-marker-receipt-ace9592.json binds the tested source hash and scope.
+  The separate clean thesis repo now uses codex/tbound-recovery-protocol for
+  draft amendments; main content remains unchanged. Prototype branch remains
+  codex/tbound-prototype. Corrected six-document draft now applied: proposed51,
+  durable Store authorization cross-binding, Bash-only lease terminology,
+  preserved internal-commit/publication gates, read/checkpoint distinction,
+  mandatory pre-effect sync conformance and unimplemented end-to-end hook flags.
+  Both repos pass diff checks; manifest section9 follows complete8. Final review
+  r7 accepted proposed51 consistency but held two wording issues, now corrected:
+  isolated post-operation delta gate is normative and not established by the
+  existing final-publication gate; status describes historical/current proposals.
+  Thesis draft committed as 2c7bf4d on codex/tbound-recovery-protocol. Prototype
+  companion draft commit follows; no freeze or registration.
   External main-branch thesis repository remains untouched and unfrozen.
   Code gap identified: audit crash fixture currently exits before making any
   external effect; add an observable-effect-before-outcome regression and

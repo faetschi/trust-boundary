@@ -1,6 +1,6 @@
 # Current status
 
-Updated 2026-10-12. This page records the current implementation and blockers;
+Updated 2026-10-13. This page records the current implementation and blockers;
 it is not a qualification report.
 
 ## Claim boundary
@@ -46,10 +46,13 @@ it is not a qualification report.
    settlement, live publication, and recovery with independent workspace,
    process, and network observers.
 5. **Research protocol:** prepare and freeze the task corpus, oracle matrix,
-   calibration pairs, and analysis plan before any registered experiment. The
-   selected recovery denominator is 48 trials (16 scenarios × 3). The proposed
-   classification of the eighth crash point as separate E07 conformance must be
-   reconciled in a dated protocol amendment before registration.
+   calibration pairs, and analysis plan before any registered experiment. A
+   draft amendment proposes 51 recovery trials (17 scenarios × 3: eight
+   lifecycle cases and nine incident cases). It is not approved, adopted,
+   frozen, registered, or executed. E07 publication conformance remains
+   separate. The draft corrects the cross-journal atomicity claim, specifies
+   the store authorization binding, and marks lifecycle hooks as not
+   implemented end to end.
 
 ## What has passed
 
@@ -75,10 +78,13 @@ A fresh capability probe on the VM reported 13 PASS, 0 FAIL, and 2 UNVERIFIED;
 its native SSH exit was 2 for the unverified cgroup.kill write and uidmap-helper
 behavior. Landlock ABI 4 is a separate unmet requirement for the ABI 8 profile.
 These checks are development evidence and do not close any gate above.
-For detailed implementation state and the agreed recovery denominator, see
+For implementation state, the historical denominator decision and current proposal, see
 [`TASK_STATE.md`](../TASK_STATE.md). For historical source identities and
 immutable evidence, use the [historical source map](evidence/historical-sources.json)
 and its [guide](evidence/README.md).
 
-The worker migration and recovery-denominator choice are recorded in the
-[2026-10-12 CLI reproduction decision](decisions/2026-10-12-cli-reproduction.md).
+The worker migration and historical recovery-denominator choice are recorded
+in the [2026-10-12 CLI reproduction decision](decisions/2026-10-12-cli-reproduction.md).
+The proposed recovery amendment is in
+[`2026-10-13-recovery-boundary-amendment.md`](decisions/2026-10-13-recovery-boundary-amendment.md);
+it supersedes the older recovery count only if adopted after review.

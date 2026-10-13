@@ -155,6 +155,35 @@ be reconciled in a separate, reviewed change.
 
 ---
 
+## 9. Recovery amendment candidate — not frozen
+
+The recovery amendment is a draft candidate only. It freezes no scenario,
+injector, VM, oracle, or analysis rule and registers no trial. The proposed
+denominator is 51 (eight lifecycle scenarios plus nine incidents, each
+repeated three times). Scenario labels and required dispositions are in
+[`2026-10-13-recovery-boundary-amendment.md`](decisions/2026-10-13-recovery-boundary-amendment.md).
+
+| Proposed hook | Current prototype status |
+|---|---|
+| `LC-01-RECEIPT` | **NOT IMPLEMENTED** as a recovery injector. Provider exchange capture exists; host-controlled lineage retirement is not established. `RETIRED_UNEXECUTED` remains proposed. |
+| `LC-02-DECISION` | **NOT IMPLEMENTED** as an end-to-end crash injector; provider decision journaling exists. |
+| `LC-03-BEFORE-EFFECT-INTENT` | **NOT IMPLEMENTED** as an end-to-end injector; durable store authorization and in-memory consumption precede effect-intent persistence. |
+| `LC-04-AFTER-EFFECT-INTENT` | **NOT IMPLEMENTED** as an end-to-end injector at the post-sync/pre-callback boundary. |
+| `LC-05-CALLBACK-ENTRY` | **NOT IMPLEMENTED** as a distinct end-to-end injector. It counts separately from LC-04 only if the injector distinguishes the boundaries. |
+| `LC-06-EFFECT-BEFORE-OUTCOME` | **NOT IMPLEMENTED** as an end-to-end lifecycle injector. The journal-level process-crash/no-replay regression is component evidence, not production-oracle recovery. |
+| `LC-07-OUTCOME-BEFORE-CHECKPOINT` | **NOT IMPLEMENTED** as a single end-to-end lifecycle injection. Component fixtures do not constitute the proposed trial. |
+| `LC-08-AFTER-CHECKPOINT` | **NOT IMPLEMENTED** as an end-to-end lifecycle injection; provider-result delivery remains separate conformance. |
+| `IC-01`–`IC-09` | **NOT IMPLEMENTED** as the proposed incident suite. |
+
+The mandatory pre-effect intent write/synchronization-failure case remains
+separate conformance outside the 51-trial proposal; disk-full writing does
+not cover a synchronization failure. No run has been performed for these
+proposed labels. `G1=false` and `H1` unexecuted remain the status. E07
+publication, exact provider-result delivery, source/commit lineage,
+cancellation, and filesystem durability remain separate obligations.
+
+---
+
 ### Provenance
 
 - Primary prototype sources: `supervisor/internal/podman/podman_linux.go`,
