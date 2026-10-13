@@ -36,6 +36,8 @@ func run(args []string, stdout, stderr *os.File) error {
 	demo := flags.Bool("demo", false, "serve the embedded non-claim-bearing development fixture")
 	fixture := flags.String("fixture", "", "serve a development fixture document (non-claim-bearing)")
 	replay := flags.String("replay", "", "serve retained observations from a replay document")
+	receipt := flags.String("receipt", "", "import a retained post-run Pi receipt (development or production)")
+	receiptDemo := flags.Bool("receipt-demo", false, "import the embedded synthetic example receipt")
 	live := flags.Bool("live", false, "serve a live projection (requires the supervisor session/stream service; not implemented)")
 	if err := flags.Parse(args); err != nil {
 		return err
@@ -45,20 +47,20 @@ func run(args []string, stdout, stderr *os.File) error {
 	}
 
 	selected := 0
-	for _, enabled := range []bool{*demo, *fixture != "", *replay != "", *live} {
+	for _, enabled := range []bool{*demo, *fixture != "", *replay != "", *receipt != "", *receiptDemo, *live} {
 		if enabled {
 			selected++
 		}
 	}
 	if selected > 1 {
-		return errors.New("--demo, --fixture, --replay and --live are mutually exclusive")
+		return errors.New("--demo, --fixture, --replay, --receipt, --receipt-demo and --live are mutually exclusive")
 	}
 
 	if err := validateLoopbackAddress(*address); err != nil {
 		return err
 	}
 
-	if !*demo && *fixture == "" && *replay == "" && !*live {
+	if !*demo && *fixture == "" && *replay == "" && *receipt == "" && !*receiptDemo && !*live {
 		fmt.Fprintln(stderr, "note: no source selected; serving the unavailable projection (pass --demo for the labelled fixture)")
 	}
 
@@ -76,6 +78,10 @@ func run(args []string, stdout, stderr *os.File) error {
 		store, err = webchat.NewFixtureStoreFromPath(*fixture)
 	case *replay != "":
 		store, err = webchat.NewReplayStoreFromPath(*replay)
+	case *receipt != "":
+		store, err = webchat.NewReceiptStoreFromPath(*receipt)
+	case *receiptDemo:
+		store, err = webchat.NewReceiptDemoStore()
 	case *demo:
 		store, err = webchat.NewFixtureStore()
 	default:

@@ -125,6 +125,13 @@ is a prerequisite, not an optional hardening step.
 The receipt carries no `G1`/`H1` qualification fields; those require separate
 authoritative provenance and must not be synthesized by the projection.
 
+The receipt importer in §4.2 of the [workspace document](web-chat.md) already
+consumes the **real** development receipt, so this mapping is exercised against
+an actual artifact rather than a fixture. It also demonstrates the boundary the
+service must preserve: the terminal receipt carries no per-tool verdicts and no
+per-item timestamps, so those must be published by the projection service when
+they become available, and must never be inferred.
+
 ## 6. Open questions for the core thread
 
 1. Should the projection be served over the existing authenticated Unix socket

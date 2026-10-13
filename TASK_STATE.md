@@ -224,3 +224,52 @@ are preparation only. Media custody and exact ABI checks precede registration.
   be applied in a follow-up commit. Milestones 2-3 (read and interactive
   integration) need supervisor service changes owned by the core thread; the
   gateway consumes the proposed projection and implements none of it.
+
+## Web chat increment 2: receipt importer + coss/ui design system (2026-10-13)
+
+- Round-1 Luna max review was cancelled before producing findings (user stop);
+  round 2 was started against this state with the original brief and the new
+  commit range.
+- Added the typed post-run receipt importer (supervisor/internal/webchat/receipt.go,
+  --receipt / --receipt-demo). It reads only declared fields from the production,
+  dev-fixture and native-fixture receipt shapes and projects a bounded replay
+  observation. It refuses claim_bearing=true, established containment,
+  unrecognized mode/schema, unregistered tools and trailing JSON. A per-tool
+  result is succeeded only with a retained terminal outcome (observed Bash exit
+  code or a generation-advancing approved delta); everything else is unknown and
+  surfaced as a per-tool-outcome stream gap plus a warning. Transcript stays
+  unavailable and no per-tool verdicts are fabricated. Real dev receipt import
+  verified end to end in the running UI with no console errors.
+- Adopted the coss/ui design-token vocabulary and component conventions in the
+  workspace CSS (shadcn/Cal.com tokens incl. destructive/info/success/warning,
+  Card/Badge/Alert/Empty/Skeleton/Kbd/Sidebar patterns). React, Base UI and
+  Tailwind are deliberately NOT used: the thesis defers browser clients and
+  requires a minimal web service, so the client stays zero-build ESM + CSS with
+  tokens in :root for a future coss/ui adoption. No webfont is fetched.
+- Accessibility fixes verified by DevTools keyboard audits: full tab order,
+  Enter toggles a tool disclosure, Enter/Escape open and close the governance
+  drawer, and the closed narrow-viewport drawer is inert + aria-hidden.
+- Verified with pinned Go 1.27.1 in Linux: gofmt clean, build exit 0, vet exit 0,
+  focused unit and race tests pass, node --test 22/22, full race suite green
+  except the known evaluationindex docs-path environment failure. These are
+  component/UI checks; they establish no claim.
+- Follow-up increment: typed post-run receipt importer (receipt.go) with
+  `--receipt <path>` and `--receipt-demo`. It projects the real development CLI
+  fixture receipt (dev-fixture), the native-runtime fixture line and the
+  production receipt schema into a bounded replay observation. A per-tool result
+  is `succeeded` only where the receipt retains a terminal outcome (observed Bash
+  exit, or an approved delta that advanced the shallow generation); other calls
+  stay UNKNOWN and are surfaced as a per-tool-outcome stream gap. It refuses
+  claim_bearing/containment claims, unknown modes/schemas and unregistered tools.
+  Verified by importing the actual retained development receipt in the running
+  workspace.
+- coss/ui adopted as the presentation design system only (token vocabulary,
+  badge/card/alert/empty/skeleton/kbd/sidebar conventions, labelled role="log"
+  chat with aria-live off). React 19 + Tailwind 4 + Base UI is deliberately not
+  added: the browser client stays a deferred non-claim-bearing demonstrator and
+  the web service stays minimal (zero-build ESM + Go gateway).
+- Re-verified: gofmt clean, build/vet green, focused tests and race green, 22
+  Node tests green (adds receipt-importer Go tests and render/gap/loading tests).
+  Screenshots and keyboard audits retained in docs/webchat/qa/.
+- Second Luna max review round (tbwc-m1-review-2) running; round 1
+  (tbwc-m1-review-1) was cancelled before producing findings.

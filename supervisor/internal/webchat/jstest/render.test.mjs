@@ -105,6 +105,16 @@ test("snapshot continuity gaps are surfaced as explicit notices", () => {
   renderAll(refs, state);
   assert.match(refs.notices.textContent, /continuity gap/);
   assert.match(refs.notices.textContent, /No success is inferred/);
+  assert.equal(refs.notices.querySelectorAll("span.notice-icon").length, 1, "a notice must render its alert icon");
+});
+
+test("loading state renders a spinner and skeleton rows", () => {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  renderAll(refs, state);
+  assert.match(refs.timeline.textContent, /Loading projection/);
+  assert.equal(refs.timeline.querySelectorAll("span.spinner").length, 1);
+  assert.equal(refs.timeline.querySelectorAll("div.skeleton").length, 2);
 });
 
 test("unavailable source renders an explicit empty state, not fabricated rows", () => {
@@ -112,5 +122,6 @@ test("unavailable source renders an explicit empty state, not fabricated rows", 
   const state = createWorkspace();
   renderAll(refs, state);
   assert.match(refs.timeline.textContent, /Loading projection/);
+  assert.ok(refs.timeline.querySelectorAll("span.spinner").length > 0, "loading state should show a spinner");
   assert.match(refs.sessions.textContent, /No session projection/);
 });

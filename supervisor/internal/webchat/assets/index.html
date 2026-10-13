@@ -62,7 +62,7 @@
           <span id="session-status" class="badge badge-state pending">pending</span>
         </div>
 
-        <div id="timeline" class="timeline" tabindex="-1" aria-label="Transcript and tool activity"></div>
+        <div id="timeline" class="timeline" tabindex="-1" role="log" aria-live="off" aria-label="Transcript and tool activity"></div>
 
         <form id="composer" class="composer" aria-label="Composer (read-only)">
           <label class="sr-only" for="prompt">Prompt</label>
@@ -74,6 +74,7 @@
           <p class="composer-note">
             Disabled: submitting a turn or requesting cancellation requires the authenticated supervisor
             session service, which is not implemented yet. The gateway is an untrusted client.
+            Press <kbd class="kbd">Esc</kbd> to close the governance panel.
           </p>
         </form>
       </section>

@@ -41,7 +41,9 @@ because submission requires the authenticated supervisor session service.
 
 | Capability | State |
 |---|---|
-| Bounded read-only projection (snapshot + cursor SSE) | Implemented (fixture / replay / unavailable sources) |
+| Bounded read-only projection (snapshot + cursor SSE) | Implemented (fixture / replay / receipt / unavailable sources) |
+| Typed post-run receipt import of a real development or production receipt | Implemented (`--receipt`, `--receipt-demo`) |
+| Typed post-run Pi receipt import (dev, native-fixture, production shapes) | Implemented (`--receipt`, `--receipt-demo`) |
 | Chat transcript rendering (user/assistant messages) | Implemented |
 | Tool activity with policy verdict, reason code, and result state | Implemented |
 | Governance / provenance / publication / recovery / qualification panels | Implemented |
@@ -129,6 +131,47 @@ Two independent guards enforce this:
 This is the fix for the previously reviewed "unverified replay success
 presentation" defect; see §7.
 
+### 4.2 Typed post-run receipt projection
+
+`--receipt <path>` imports a **retained Pi run receipt** — the real terminal
+artifact a governed run produces — and projects it into the same bounded
+observation contract with `source: replay`. This is the intermediate demo the
+handoff anticipated: the original fixture loader could not import the actual
+development receipt.
+
+Supported receipt shapes (only these declared fields are read; every other field
+in the artifact is ignored and never projected):
+
+- the production receipt (`supervisor/cmd/tbound/production_session_linux.go`,
+  `schema_version: tbound-production-pi-receipt/v1`, `mode: production`);
+- the development CLI fixture receipt (`mode: dev-fixture`);
+- the native-runtime fixture line (`mode: native-fixture`).
+
+The importer **refuses** a receipt that claims `claim_bearing: true`, claims
+established containment, uses an unrecognized mode or production schema, records
+an unregistered tool, or contains trailing JSON. It reports rather than
+fabricates:
+
+- one `system` message summarising the lifecycle counts the receipt records
+  (worker ready, prompt admitted, turn completed, proposals, provider turns,
+  tool calls/results, generation range);
+- one `activity` and one `result` per tool-lineage entry. A result is
+  `succeeded` only where the receipt retains a terminal outcome (an observed Bash
+  exit code, or an approved delta that advanced the sealed generation); otherwise
+  it is `unknown`, with the reason stated in the item. A missing terminal outcome
+  is never inferred as success and is surfaced as a `per-tool-outcome` stream
+  `gap` plus a warning: missing evidence is not a negative finding;
+- panels from the receipt's settlement, publication, generation and provenance
+  fields. Provenance stays `available: false` (the gateway has not verified it),
+  and the qualification panel keeps the fixed truth
+  (`g1=false`, `H1 unexecuted`, `containment not-established`,
+  `claim_bearing=false`) that no receipt can change.
+
+The receipt carries no per-tool timestamps, so the file's modification time is
+used as the observation time and this is stated in a warning. The terminal
+receipt records no per-tool policy verdicts, so no decision counts are projected.
+The raw `command_runner_profile` blob is deliberately not projected.
+
 ## 5. API endpoints
 
 All routes are `GET`-only and reject any request body.
@@ -201,6 +244,23 @@ claim-boundary strip, and explicit source/verified/gap labelling. No file from
 that checkout was copied verbatim except the platform-specific
 safe-no-follow document opener, which is retained unchanged.
 
+## 8. Presentation design system
+
+The visual language follows the **coss/ui design-token vocabulary** (the
+Cal.com/shadcn-compatible CSS variables, including the extra
+`--destructive-foreground` and `--info`/`--success`/`--warning` tokens) plus coss
+component conventions: `Card`-style bounded surfaces, outline and semantic
+`Badge`/chip variants, `Alert`-style notices with an icon, `Empty`/`Skeleton`
+loading states, `Kbd`, and a sidebar with muted hover/active rows.
+
+The React/Base UI/Tailwind implementation is **not** used, deliberately: the
+thesis treats a browser client as a deferred, non-claim-bearing demonstrator and
+requires the web service to stay minimal, so this workspace remains a zero-build
+ESM + CSS client served by the Go gateway. The tokens are defined in `:root` so a
+later coss/ui adoption can reuse them. Fonts degrade to local Inter / Geist Mono
+when installed and otherwise fall back to system stacks; no webfont is fetched,
+which keeps the strict `font-src 'self'` policy and offline operation intact.
+
 ## 9. Running it
 
 Requires the pinned Go toolchain (module `tbound/supervisor`).
@@ -215,12 +275,15 @@ node --test internal/webchat/jstest/format.test.mjs \
 go run ./cmd/tbound-webchat --demo                 # embedded fixture, port 8791
 go run ./cmd/tbound-webchat                         # unavailable projection
 go run ./cmd/tbound-webchat --replay path.json      # retained observations
+go run ./cmd/tbound-webchat --receipt path.json     # import a real run receipt
+go run ./cmd/tbound-webchat --receipt-demo          # embedded example receipt
 go run ./cmd/tbound-webchat --live                  # refused: supervisor service absent
 ```
 
-`--demo`, `--fixture <path>`, `--replay <path>` and `--live` are mutually
-exclusive. The startup banner prints the source class and the claim boundary; it
-never prints fixture paths, controls, or secrets.
+`--demo`, `--fixture <path>`, `--replay <path>`, `--receipt <path>`,
+`--receipt-demo` and `--live` are mutually exclusive. The startup banner prints
+the source class and the claim boundary; it never prints fixture paths, controls,
+or secrets.
 
 ### 9.1 Demo modes and labels
 
@@ -229,13 +292,21 @@ never prints fixture paths, controls, or secrets.
   `FIXTURE` and `unverified`.
 - `--replay fixtures/replay-gap.json` — a retained observation with a `CONTINUITY
   GAP` notice and an `UNKNOWN` result.
+- `--receipt <path>` — a **real** retained run receipt. Pointing it at the
+  development CLI fixture receipt produced by the pinned supervised run renders
+  the lifecycle summary, four tool cards (`edit` and `bash` reported as
+  `succeeded`, both `read`s as `unknown` because the receipt retains no terminal
+  outcome), a `per-tool-outcome` stream `gap`, `unknown` settlement, a
+  `not-attempted` publication, and the fixed claim boundary.
+- `--receipt-demo` — the embedded synthetic example receipt (`fixtures/example-receipt.json`).
 - no flag — the `UNAVAILABLE` projection: no fabricated rows, no stream.
 
 ### 9.2 Visual QA and keyboard receipts
 
 Screenshots (captured with headless Chrome against the running gateway) are in
 [`webchat/qa/`](webchat/qa/): `fixture-desktop`, `fixture-expanded-tools`,
-`replay-continuity-gap`, `unavailable-desktop`, `mobile-conversation`,
+`replay-continuity-gap`, `receipt-real-desktop`,
+`receipt-real-expanded-tools`, `unavailable-desktop`, `mobile-conversation`,
 `mobile-inspector`. Keyboard audits driven over the DevTools protocol are in
 `webchat/qa/keyboard-audit-desktop.json` and `keyboard-audit-mobile.json`; they
 verify tab order (skip link → governance toggle → session → each tool disclosure),
@@ -254,7 +325,12 @@ Focused checks on the pinned Go 1.27.1 in Linux:
 - `go vet ./internal/webchat/... ./cmd/tbound-webchat/...` — exit 0.
 - `go test -count=1 ./internal/webchat/... ./cmd/tbound-webchat/...` — ok.
 - `go test -race -count=1 ./internal/webchat/... ./cmd/tbound-webchat/...` — ok.
-- `node --test` (browser modules) — 20 tests pass.
+- `node --test` (browser modules) — 22 tests pass.
+- The **real** development CLI fixture receipt was imported with
+  `--receipt` and rendered in the running workspace: source `replay`, session
+  `unknown`, four tool cards (two reported `succeeded`, two `unknown`),
+  `per-tool-outcome` stream `gap`, publication `not-attempted`, recovery
+  `unknown`, and no browser console errors.
 - `go test -race -count=1 ./...` — all packages pass except
   `internal/evaluationindex`, which fails only because the private Linux copy
   excluded the repository `docs/` tree (it passes from within the full checkout).

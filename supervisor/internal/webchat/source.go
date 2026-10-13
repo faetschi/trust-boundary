@@ -3,6 +3,7 @@ package webchat
 import (
 	_ "embed"
 	"errors"
+	"time"
 )
 
 // ErrLiveUnavailable is returned when a live projection is requested. A live
@@ -15,6 +16,9 @@ var demoFixture []byte
 
 //go:embed fixtures/replay-gap.json
 var replayGapFixture []byte
+
+//go:embed fixtures/example-receipt.json
+var exampleReceipt []byte
 
 func newDocumentStore(raw []byte, source SourceClass, capacity int) (*Store, error) {
 	snapshot, err := decodeDocument(raw, source)
@@ -48,6 +52,26 @@ func NewFixtureStoreFromPath(path string) (*Store, error) {
 // NewReplayStoreFromPath loads retained observations from disk.
 func NewReplayStoreFromPath(path string) (*Store, error) {
 	snapshot, err := LoadReplay(path)
+	if err != nil {
+		return nil, err
+	}
+	return NewStore(snapshot, DefaultItemCapacity)
+}
+
+// NewReceiptStoreFromPath imports a retained post-run Pi receipt and projects it
+// into a bounded replay observation. It consumes the terminal receipt only.
+func NewReceiptStoreFromPath(path string) (*Store, error) {
+	snapshot, err := ImportReceipt(path)
+	if err != nil {
+		return nil, err
+	}
+	return NewStore(snapshot, DefaultItemCapacity)
+}
+
+// NewReceiptDemoStore projects the embedded synthetic example receipt so the
+// receipt importer can be demonstrated without an external artifact.
+func NewReceiptDemoStore() (*Store, error) {
+	snapshot, err := ProjectReceipt(exampleReceipt, time.Time{})
 	if err != nil {
 		return nil, err
 	}

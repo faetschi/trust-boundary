@@ -22,8 +22,14 @@ func TestValidateLoopbackAddressRejectsRemoteAndNames(t *testing.T) {
 }
 
 func TestSourceFlagsAreMutuallyExclusive(t *testing.T) {
-	if err := run([]string{"--demo", "--replay", "x.json"}, os.Stdout, os.Stderr); err == nil {
-		t.Fatal("--demo with --replay should be refused")
+	for _, args := range [][]string{
+		{"--demo", "--replay", "x.json"},
+		{"--receipt", "r.json", "--receipt-demo"},
+		{"--receipt-demo", "--live"},
+	} {
+		if err := run(args, os.Stdout, os.Stderr); err == nil {
+			t.Fatalf("args %v should be refused", args)
+		}
 	}
 }
 

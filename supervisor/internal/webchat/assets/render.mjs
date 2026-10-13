@@ -101,8 +101,13 @@ function renderNotices(container, state) {
 function notice(variant, kind, text) {
   const node = el("div", "notice");
   node.dataset.variant = variant;
-  node.appendChild(el("span", "notice-kind", kind));
-  node.appendChild(el("span", "notice-text", text));
+  const icon = el("span", "notice-icon", variant === "error" ? "!" : variant === "info" ? "i" : "!");
+  icon.setAttribute("aria-hidden", "true");
+  node.appendChild(icon);
+  const body = el("div");
+  body.appendChild(el("span", "notice-kind", kind));
+  body.appendChild(el("span", "notice-text", text));
+  node.appendChild(body);
   return node;
 }
 
@@ -158,7 +163,7 @@ function renderConversation(refs, state) {
   clear(timeline);
 
   if (!state.loaded) {
-    timeline.appendChild(emptyState("Loading projection…", "Fetching a bounded snapshot from the gateway."));
+    timeline.appendChild(loadingState());
     return;
   }
   if (!state.items.length) {
@@ -177,10 +182,31 @@ function renderConversation(refs, state) {
   }
 }
 
-function emptyState(title, message) {
-  const node = el("div", "empty-state");
+function emptyState(title, message, variant) {
+  const node = el("div", variant === "error" ? "error-state" : "empty-state");
+  const icon = el("span", "empty-icon", variant === "error" ? "!" : "∅");
+  icon.setAttribute("aria-hidden", "true");
+  node.appendChild(icon);
   node.appendChild(el("h3", null, title));
   node.appendChild(el("p", null, message));
+  return node;
+}
+
+// Loading state: a spinner plus skeleton rows, matching the coss Empty/Skeleton
+// convention without any framework.
+function loadingState() {
+  const node = el("div", "empty-state");
+  const spinner = el("span", "spinner");
+  spinner.setAttribute("aria-hidden", "true");
+  node.appendChild(spinner);
+  node.appendChild(el("h3", null, "Loading projection"));
+  node.appendChild(el("p", null, "Fetching a bounded snapshot from the gateway."));
+  const first = el("div", "skeleton");
+  const second = el("div", "skeleton skeleton-sm");
+  const row = el("div", "skeleton-row");
+  row.appendChild(first);
+  row.appendChild(second);
+  node.appendChild(row);
   return node;
 }
 
