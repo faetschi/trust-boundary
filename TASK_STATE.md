@@ -331,3 +331,24 @@ are preparation only. Media custody and exact ABI checks precede registration.
   tests green; deterministic keyboard audits on both viewports (window-sized
   Chrome, self-describing innerWidth); full race suite green except the known
   evaluationindex docs-path environment failure.
+
+## Web chat increment 5: third-review fixes (2026-10-13)
+
+- Third Luna max review confirmed the fail-closed gate, textual trust markers,
+  session row and uninitialised-store guard as fixed, and found 14 further gaps.
+  All were addressed in 480e235: reconnect snapshot/event race (recovery closes
+  the stream first), gap announcements keyed by identity, cursor/sequence
+  consistency, retained-window/eviction disclosure, stricter identifier and
+  control-character rules, lossy/pending classification, filter-summary wording
+  (matches vs shown), correlatable activities, stream health on session events,
+  production receipt no longer accepts the development bash_settlement field,
+  subscription panel isolation, subscriber_limit treated as terminal, honest
+  "timeout-bounded not drain-free" wording, filter summary no longer a live
+  region, and the desktop Governance control hidden where it would be a no-op.
+- Residual risk stated in docs/web-chat.md §6: the projection bounds
+  operator-supplied prose but does not content-redact it; a production
+  projection must emit structured safe summaries.
+- Verified: Node suite now 40 tests; Go adds cursor/sequence, correlation,
+  path-like-id, control-character, subscription-isolation and subscriber-limit
+  tests; gofmt/build/vet/focused/race green; full race green except the known
+  evaluationindex docs-path environment failure.

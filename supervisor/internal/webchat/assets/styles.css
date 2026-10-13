@@ -237,6 +237,11 @@ h3 {
 
 /* ---------- button ---------- */
 
+.ghost-button[hidden],
+.toggle-item[hidden] {
+  display: none !important;
+}
+
 .ghost-button {
   display: inline-flex;
   align-items: center;
