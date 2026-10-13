@@ -150,12 +150,12 @@ func validateText(name, value string, limit int, allowEmpty bool) error {
 	}
 	// Display text is single-line: reject control characters so a value cannot
 	// smuggle terminal escapes or line structure into the projection. Newline and
-	// tab are the only permitted whitespace controls.
+	// tab are the only permitted whitespace controls; the C1 range is rejected too.
 	for _, r := range value {
 		if r < 0x20 && r != '\n' && r != '\t' {
 			return fmt.Errorf("%s contains a control character", name)
 		}
-		if r == 0x7f {
+		if r >= 0x7f && r <= 0x9f {
 			return fmt.Errorf("%s contains a control character", name)
 		}
 	}
@@ -289,9 +289,6 @@ func validateItem(item Item, expectedSource SourceClass, expectedScope Verificat
 			return err
 		}
 	case ItemActivity:
-		if err := validateText("activity kind", item.Kind, 128, false); err != nil {
-			return fmt.Errorf("item %q: %w", item.ID, err)
-		}
 		if err := validateTool(item.Tool); err != nil {
 			return fmt.Errorf("item %q: %w", item.ID, err)
 		}
@@ -338,7 +335,7 @@ func validateItem(item Item, expectedSource SourceClass, expectedScope Verificat
 		if err := validateTool(item.Tool); err != nil {
 			return fmt.Errorf("item %q: %w", item.ID, err)
 		}
-		if err := validateReference("tool call id", item.ToolCallID, false); err != nil {
+		if err := validateIdentifier("tool call id", item.ToolCallID, false); err != nil {
 			return fmt.Errorf("item %q: %w", item.ID, err)
 		}
 		if err := validateResultState(item.State); err != nil {
@@ -407,16 +404,22 @@ func validatePanels(panels Panels) error {
 	}
 
 	for name, value := range map[string]string{
-		"provenance profile id":       panels.Provenance.ProfileID,
 		"provenance profile hash":     panels.Provenance.ProfileHash,
 		"provenance source digest":    panels.Provenance.SourceDigest,
-		"provenance containment":      panels.Provenance.ContainmentProfile,
 		"provenance containment hash": panels.Provenance.ContainmentDigest,
-		"provenance provider":         panels.Provenance.ProviderProfile,
-		"provenance runtime closure":  panels.Provenance.RuntimeClosure,
 		"provenance tcb digest":       panels.Provenance.TCBProofDigest,
 	} {
 		if err := validateReference(name, value, true); err != nil {
+			return err
+		}
+	}
+	for name, value := range map[string]string{
+		"provenance profile id":      panels.Provenance.ProfileID,
+		"provenance containment":     panels.Provenance.ContainmentProfile,
+		"provenance provider":        panels.Provenance.ProviderProfile,
+		"provenance runtime closure": panels.Provenance.RuntimeClosure,
+	} {
+		if err := validateIdentifier(name, value, true); err != nil {
 			return err
 		}
 	}

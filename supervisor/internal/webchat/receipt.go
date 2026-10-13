@@ -259,10 +259,18 @@ func projectReceipt(receipt runReceipt, observedAt time.Time) Snapshot {
 		warnings = append(warnings, fmt.Sprintf("%d tool call(s) have no terminal outcome recorded in the receipt; missing evidence is not a negative finding and is shown as UNKNOWN.", missingOutcomes))
 	}
 	if len(receipt.Generations) > 0 {
-		warnings = append(warnings, "Generations observed: "+boundedText(strings.Join(receipt.Generations, ", "))+".")
+		generations := make([]string, 0, len(receipt.Generations))
+		for _, generation := range receipt.Generations {
+			if value := keepIdentifier(generation); value != "" {
+				generations = append(generations, value)
+			}
+		}
+		if len(generations) > 0 {
+			warnings = append(warnings, "Generations observed: "+strings.Join(generations, ", ")+".")
+		}
 	}
-	if receipt.Settlement != "" {
-		warnings = append(warnings, "Receipt settlement: "+boundedText(receipt.Settlement)+".")
+	if settlement := keepIdentifier(receipt.Settlement); settlement != "" {
+		warnings = append(warnings, "Receipt settlement: "+settlement+".")
 	}
 
 	return Snapshot{
@@ -480,7 +488,10 @@ func publicationFromReceipt(receipt runReceipt) PublicationPanel {
 		panel.Detail = "publication is reported as pending"
 	default:
 		panel.State = PublicationUnknown
-		panel.Detail = "unrecognized publication state " + boundedText(status)
+		panel.Detail = "unrecognized publication state"
+		if value := keepIdentifier(status); value != "" {
+			panel.Detail += " " + value
+		}
 	}
 	return panel
 }
@@ -511,7 +522,10 @@ func recoveryFromReceipt(receipt runReceipt, keepReference func(name, value stri
 		panel.Detail += "The receipt does not report a settlement."
 	default:
 		panel.State = RecoveryUnknown
-		panel.Detail += "Unrecognized settlement " + boundedText(receipt.Settlement) + "."
+		panel.Detail += "Unrecognized settlement."
+		if value := keepIdentifier(receipt.Settlement); value != "" {
+			panel.Detail = strings.TrimSuffix(panel.Detail, ".") + " (" + value + ")."
+		}
 	}
 	return panel
 }

@@ -360,23 +360,51 @@ func TestCursorSequenceAndActivityRules(t *testing.T) {
 	}
 }
 
+func TestProductionReceiptIgnoresDevBashSettlement(t *testing.T) {
+	// The development bash settlement does not belong to the production schema;
+	// a production-shaped receipt must not be able to invent a per-tool success
+	// through it.
+	raw := `{"schema_version":"tbound-production-pi-receipt/v1","mode":"production","run_id":"run-p","claim_bearing":false,"settlement":"STOPPED","success":true,"tool_sequence":["bash"],"bash_settlement":{"tool_call_id":"receipt-call-01","generation_to":"g1","exit_code":0,"exit_observed":true}}`
+	snapshot, err := ProjectReceipt([]byte(raw), receiptTestTime)
+	if err != nil {
+		t.Fatalf("ProjectReceipt(production+bash_settlement): %v", err)
+	}
+	for _, item := range snapshot.Items {
+		if item.Type == ItemResult && item.State == ResultSucceeded {
+			t.Fatalf("production receipt projected an invented per-tool success: %q", item.ID)
+		}
+	}
+}
+
 func TestSubscriptionPanelsAreIsolated(t *testing.T) {
 	store, err := NewFixtureStore()
 	if err != nil {
 		t.Fatalf("NewFixtureStore: %v", err)
+	}
+	observedAt := time.Date(2026, 10, 13, 9, 0, 0, 0, time.UTC)
+	panels := store.Snapshot().Panels
+	panels.Publication.ObservedAt = &observedAt
+	if err := store.UpdatePanels(panels); err != nil {
+		t.Fatalf("UpdatePanels: %v", err)
 	}
 	subscription, gap := store.SubscribeAfter("")
 	if gap != nil {
 		t.Fatalf("unexpected gap: %+v", gap)
 	}
 	defer subscription.Close()
-	before := store.Snapshot().Panels.Governance.AllowCount
-	// A subscriber must not be able to mutate retained store state.
-	panels := subscription.Panels
-	panels.Governance.AllowCount = 999
-	after := store.Snapshot().Panels.Governance.AllowCount
-	if after != before {
-		t.Fatalf("mutating a subscription's panels changed store state: %d -> %d", before, after)
+	if subscription.Panels.Publication.ObservedAt == nil {
+		t.Fatal("expected an observed time on the subscription")
+	}
+	// Mutate *through* the pointer: a shared pointer would corrupt store state.
+	*subscription.Panels.Publication.ObservedAt = observedAt.Add(time.Hour)
+	after := store.Snapshot().Panels.Publication.ObservedAt
+	if after == nil || !after.Equal(observedAt) {
+		t.Fatalf("mutating a subscription changed store state: %v", after)
+	}
+	// A plain value field must not leak either.
+	subscription.Panels.Governance.AllowCount = 999
+	if got := store.Snapshot().Panels.Governance.AllowCount; got == 999 {
+		t.Fatal("mutating a subscription's value field leaked into the store")
 	}
 }
 

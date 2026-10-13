@@ -352,3 +352,10 @@ are preparation only. Media custody and exact ABI checks precede registration.
   path-like-id, control-character, subscription-isolation and subscriber-limit
   tests; gofmt/build/vet/focused/race green; full race green except the known
   evaluationindex docs-path environment failure.
+- A fourth verification round found residual gaps in these fixes (a reconnect
+  refetch loop, an uncloned stream slice, a reset eviction count, and remaining
+  reference-validated ids). Those were fixed in the follow-up commit: the client
+  refetches on re-open without resubscribing and buffers events during the fetch,
+  `subscriber_limit` closes the stream, `cloneEvent` copies the stream slice,
+  `evicted` is monotonic, and result/provenance identifiers use the strict
+  pattern.

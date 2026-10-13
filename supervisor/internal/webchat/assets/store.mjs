@@ -58,7 +58,6 @@ export function applySnapshot(state, snapshot) {
   state.items = [];
   state.itemsById = new Map();
   state.lastSequence = 0;
-  state.evicted = 0;
   for (const item of snapshot.items || []) {
     if (state.itemsById.has(item.id)) continue;
     state.items.push(item);

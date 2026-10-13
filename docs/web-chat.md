@@ -261,7 +261,7 @@ custom control plane.
 |---|---|---|
 | (a) Unverified replay success presented as confirmed success | Go downgrade + client `isVerified`/`isVerifiedProjection` gate rendering `reported` chips | `TestFixtureStoreDowngradesToUnverifiedDiagnostic`, `TestDocumentRefusals`, `jstest/render.test.mjs` ("unverified success never renders with the confirmed-success chip", "unverified publication is presented as reported") |
 | (b) SSE deadline cleared before flush, so a write could outlive it | `boundedWrite` sets the deadline, writes, **flushes**, then clears | `TestBoundedWriteFlushesBeforeClearingDeadline` (asserts order `set → write → flush → clear`) |
-| (c) Unbounded/slow GET request bodies | Bodies are rejected outright; no request body is ever read | `TestHandlerRejectsMethodsOriginsAndBodies` |
+| (c) Unbounded/slow GET request bodies | A body-bearing request is rejected without being parsed, and the server's read timeout bounds the stall | `TestHandlerRejectsMethodsOriginsAndBodies` |
 
 Three further properties are locked by tests: per-type field smuggling is refused
 (`TestPerTypeFieldSmugglingRefused`), a gap or duplicate cannot invent success
@@ -290,7 +290,7 @@ become a success display"), and the gateway exposes no control route
 | A reconnect snapshot could overwrite newer live events | Recovery on re-open closes the stream first, so its snapshot cannot race events; gap announcements are keyed by gap identity instead of array length |
 | A cursor could disagree with the item sequence | `ValidateSnapshot` refuses a cursor that does not match the last provided sequence |
 | Client eviction was silent | The notices region and the filter summary both disclose the retained window and the evicted count |
-| Identifiers admitted path separators; text admitted control characters | Identifiers use a stricter pattern (no `/`); display text rejects control characters; receipt `disposition` and settlement/publication values are echoed only when they are bounded identifiers |
+| Identifiers admitted path separators; text admitted control characters | Identifiers (item/turn/tool-call/session/workflow/profile/stream/gap and provenance labels) use a stricter pattern with no `/`; digests keep the wider reference pattern; display text rejects C0 and C1 control characters; receipt `disposition` and settlement/publication/generation values are echoed only when they are bounded identifiers |
 | LOSSY results were invisible to the Unknown filter; `pending` was counted as unknown | `lossy` is matched and counted independently; `pending` has its own posture count |
 | The filter summary called context elements "matches" | It now reports `N matches · M of T shown (context included)` |
 | An uncorrelated activity could be dropped by a filter | Activities must carry a `tool_call_id`, so every tool block is correlatable |

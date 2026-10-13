@@ -51,7 +51,12 @@ const refs = {
 const state = createWorkspace();
 let stream = null;
 let recovering = false;
-let streamOpens = 0;
+// True while a reconnect snapshot refetch is in flight; live events are
+// buffered during that window and replayed afterwards.
+let refreshing = false;
+let bufferedHandlers = [];
+// Set when an open stream drops, so the next open triggers one refetch.
+let streamDropped = false;
 
 // Rendering must never block data loading. A render error is surfaced without
 // discarding the projection the client already holds.
@@ -149,7 +154,7 @@ function subscribe() {
   closeStream();
   stream = openEventStream({
     cursor: state.cursor,
-    onItem: (event) => {
+    onItem: (event) => deferWhileRefreshing(() => {
       const item = event && event.item;
       const outcome = applyItem(state, item);
       if (outcome === "applied") {
@@ -159,15 +164,16 @@ function subscribe() {
       if (outcome === "gap") {
         recover({ reason: "sequence_gap", requested_cursor: state.cursor, latest: item && item.sequence });
       }
-    },
-    onSession: (event) => {
+    }),
+    onSession: (event) => deferWhileRefreshing(() => {
       applySession(state, event && event.session, event && event.panels, event && event.streams);
       render();
-    },
+    }),
     onGap: (gap) => {
-      // The subscriber limit is terminal, not a continuity gap to retry: with
-      // every slot occupied an immediate resubscribe would loop.
+      // The subscriber limit is terminal, not a continuity gap: the stream is
+      // closed and not retried, because every slot is occupied.
       if (gap && gap.reason === "subscriber_limit") {
+        closeStream();
         setError(state, "the gateway is at its subscriber limit; this workspace will not retry automatically");
         setConnection(state, "error");
         render();
@@ -179,11 +185,17 @@ function subscribe() {
       setConnection(state, value);
       render();
       if (value === "open") {
-        streamOpens += 1;
-        // Recover from a fresh snapshot on a *re*open, so a session/panel/stream
-        // update that happened while disconnected cannot be missed. recover()
-        // closes the stream first, so its snapshot cannot race live events.
-        if (streamOpens > 1) recover({ reason: "reconnect" });
+        // A re-open after a drop may have missed a session/panel/stream update.
+        // Refetch the snapshot in place: the stream is already re-connected, so
+        // there is no resubscribe and therefore no recovery loop.
+        if (streamDropped) {
+          streamDropped = false;
+          refreshSnapshot();
+        }
+        return;
+      }
+      if (value === "reconnecting" || value === "closed" || value === "error") {
+        streamDropped = true;
       }
     },
     onError: (error) => {
@@ -193,13 +205,34 @@ function subscribe() {
   });
 }
 
-// refreshSnapshot re-fetches the bounded snapshot without resubscribing. It is
-// used by recover() (which closes the stream first), so a snapshot response can
-// never race live events.
+// Live events that arrive while a snapshot refetch is in flight are buffered and
+// replayed afterwards, so a snapshot response can never overwrite a newer event.
+function deferWhileRefreshing(handler) {
+  if (refreshing) {
+    bufferedHandlers.push(handler);
+    return;
+  }
+  handler();
+}
+
+// refreshSnapshot re-fetches the bounded snapshot without resubscribing, used on
+// stream re-open. Events that arrive during the fetch are buffered.
 async function refreshSnapshot() {
-  const snapshot = await fetchSnapshot();
-  applySnapshot(state, snapshot);
-  render();
+  if (refreshing) return;
+  refreshing = true;
+  bufferedHandlers = [];
+  try {
+    const snapshot = await fetchSnapshot();
+    applySnapshot(state, snapshot);
+  } catch (error) {
+    setError(state, error && error.message ? error.message : String(error));
+  } finally {
+    const pending = bufferedHandlers;
+    bufferedHandlers = [];
+    refreshing = false;
+    for (const handler of pending) handler();
+    render();
+  }
 }
 
 async function recover(gap) {
@@ -207,6 +240,7 @@ async function recover(gap) {
   recovering = true;
   try {
     closeStream();
+    streamDropped = false;
     const snapshot = await fetchSnapshot();
     applySnapshot(state, snapshot);
     noteGap(state, gap);

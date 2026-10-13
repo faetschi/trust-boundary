@@ -181,7 +181,7 @@ func (s *Store) UpdateSession(header SessionHeader) error {
 	defer s.mu.Unlock()
 	s.base.Session = header
 	s.rev++
-	s.broadcastLocked(Event{SchemaVersion: ContractVersion, Cursor: formatCursor(s.epoch, s.next), Kind: "session", Session: &header, Panels: panelsPointer(s.base.Panels)})
+	s.broadcastLocked(s.sessionEvent())
 	return nil
 }
 
@@ -414,6 +414,7 @@ func clonePanels(panels Panels) Panels {
 
 func cloneEvent(event Event) Event {
 	out := event
+	out.Streams = append([]StreamStatus(nil), event.Streams...)
 	if event.Item != nil {
 		item := cloneItem(*event.Item)
 		out.Item = &item

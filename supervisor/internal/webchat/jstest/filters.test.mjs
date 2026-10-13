@@ -83,6 +83,12 @@ test("a pending result is neither unknown nor a finding", () => {
   assert.equal(counts.unknownResults, 0);
 });
 
+test("a verified but lossy result counts as both verified and lossy", () => {
+  const counts = governanceCounts([item({ id: "r", state: "succeeded", lossy: true })], () => true);
+  assert.equal(counts.verified, 1);
+  assert.equal(counts.lossy, 1);
+});
+
 test("governanceCounts splits verified from reported successes", () => {
   const counts = governanceCounts(timeline, () => false);
   assert.equal(counts.allow, 2);
