@@ -141,3 +141,55 @@ are preparation only. Media custody and exact ABI checks precede registration.
   tool-result text/post-run receipt can support a labelled offline visual demo.
 - external_review_alignment evaluates user's WP0-WP6 and qualification sequence,
   including exact recovery and H1 counts. No research denominator is frozen.
+## Review evaluation / frontend direction
+
+- Governed crash test committed0e39619, receipt governed-crash-receipt-0e39619.json.
+  Narrow offline authority/result-release process-crash coverage accepted; all
+  required Linux checks green with seven unchanged environment-dependent skips.
+- External review broadly agrees: components implemented != G0/G1/G2/G3/G4
+  qualification. WP6 writing underway; empirical analysis awaits data. Draft51
+  recovery proposal conflicts with stale48 roadmap/concept; neither registered.
+  H1 adversarial299 is separate and needs paired calibration +100 compliant cohort.
+- Frontend is demonstrator/product work, not a claim gate. Active branch has no
+  UI; Pi remains headless RPC. No human override/per-tool approval conversion.
+- READ-ONLY frontend_existing_companion_review inspects sibling installer viewer
+  as a design reference; no sibling modifications or global Git trust changes.
+  frontend_surface_inventory prepares a bounded local receipt viewer first:
+  post-run import of actual sanitized typed receipt, explicit offline/non-claim-
+  bearing/UNKNOWN state; no HTTP/control endpoints/raw journal or secret exposure.
+  Live governance projection and authenticated stream remain future integration.
+## PR10 reuse integration (user-authorized)
+
+- Draft https://github.com/faetschi/trust-boundary/pull/10 linked to this thread.
+  Source installer worktree branch feat/tbound-distribution b6ee58f; target
+  codex/tbound-prototype pushed through0e39619. No merge/published qualification.
+- User asked reuse instead of duplicate frontend. New static viewer preparation
+  stopped. Existing browser companion is shared-history code removed by target;
+  this source PR alone does not restore it. Exact reviewed restoration pending.
+- Isolated checkout ../trust-boundary-pr10 branch codex/tbound-distribution-pr10
+  merges target into source; only Makefile/docs/install.md conflict. Original
+  installer checkout untouched. Native READ-ONLY Luna reviewers prepare conflict
+  files, installer safety assessment and minimum frontend reuse file set.
+- Preserve new user file docs-next-work.txt; no blanket staging/reset.
+
+## Priority and product direction (2026-10-13)
+
+- User prioritizes docs-next-work.txt: complete governed lifecycle/crash cuts,
+  reconcile recovery protocol documents, qualify an exact-ABI8 clean guest,
+  complete signed Pi closure/service admission, then independent publication/
+  containment evidence and research registration. G1=false; H1 unexecuted.
+- Frontend product target is an interactive web chat wrapper around the official
+  Pi CLI/RPC harness, with transcript/tool activity and tbound policy, provenance,
+  publication and recovery observations. Existing authenticated governance must
+  own chat/session actions. No second effect authority or per-tool approval path.
+- User requests a new presentation design from scratch. Existing typed viewer
+  backend may be reused; its current read-only page is groundwork, not the final
+  product frontend. Work is secondary to the core priorities above.
+- Companion preparation remains isolated on codex/tbound-governance-companion.
+  Review blocks unverified replay success presentation and two HTTP boundedness
+  gaps (SSE flush deadline and request bodies). No companion commit/PR yet.
+- Installer PR10 remains draft/conflicting with security blockers. No install,
+  merge, clean-host qualification or public production launch occurred.
+- Frontend-only agent handoff: docs/frontend-product-agent.md. User will start
+  a separate thread/worktree on codex/tbound-web-chat; this thread stays on core
+  docs-next-work priorities. No new top-level thread was launched here.
