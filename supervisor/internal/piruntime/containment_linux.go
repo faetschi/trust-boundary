@@ -416,10 +416,17 @@ func (l *D09PodmanCrunLauncher) isClosed() bool {
 func (*D09PodmanCrunLauncher) requirePerLaunchProof() {}
 
 type d09LaunchRecord struct {
-	proof     D09TCBProof
-	pidfd     *os.File
-	proofRead bool
-	settled   bool
+	proof          D09TCBProof
+	pidfd          *os.File
+	stdout         io.ReadCloser
+	proofRead      bool
+	settled        bool
+	waitDone       chan struct{}
+	waitErr        error
+	ownerMu        sync.Mutex
+	stdoutClosed   bool
+	stdoutCloseErr error
+	pidfdCloseErr  error
 }
 
 // NewD09PodmanCrunLauncher builds a launcher bound to the real host exec runner.
@@ -1605,7 +1612,7 @@ type D09TCBProof struct {
 // TCB proof in addition to the process. It refuses to return a launched cell
 // unless the entrypoint proved every measured postcondition on the dedicated
 // proof pipe.
-func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, request ExecutableLaunchRequest) (*exec.Cmd, D09TCBProof, error) {
+func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, request ExecutableLaunchRequest) (returnedCommand *exec.Cmd, returnedProof D09TCBProof, returnedErr error) {
 	if ctx == nil || l == nil || l.runner == nil || l.scope == nil {
 		return nil, D09TCBProof{}, ErrProductionLauncherUnavailable
 	}
@@ -1623,15 +1630,22 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	launchSucceeded := false
 	var launchCmd *exec.Cmd
 	var launchName, launchPodman string
+	var stdoutPipe *ownedStdoutPipe
 	defer func() {
-		if !launchSucceeded {
-			if launchCmd != nil {
-				l.cleanupFailedContainer(launchCmd, launchPodman, launchName)
-			}
-			l.proofMu.Lock()
-			l.launchInProg = false
-			l.proofMu.Unlock()
+		if launchSucceeded {
+			return
 		}
+		if launchCmd != nil && launchCmd.Process != nil {
+			returnedErr = errors.Join(returnedErr,
+				l.cleanupFailedContainer(launchCmd, launchPodman, launchName))
+			return
+		}
+		if stdoutPipe != nil {
+			returnedErr = errors.Join(returnedErr, stdoutPipe.CloseWriter(), stdoutPipe.CloseReader())
+		}
+		l.proofMu.Lock()
+		l.launchInProg = false
+		l.proofMu.Unlock()
 	}()
 	profile, err := l.validateD09LaunchRequest(ctx, request)
 	if err != nil {
@@ -1742,20 +1756,28 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	launchCmd, launchName, launchPodman = command, name, report.PodmanPath
 	command.Env = d09ProbeEnv()
 	command.Stdin = request.Stdin
-	command.Stdout = request.Stdout
 	command.Stderr = request.Stderr
 	command.ExtraFiles = extraFiles
-	if err := command.Start(); err != nil {
+	// StartVerified is the D09 Pi-worker path. Preserve this exact command's
+	// JSONL stdout for its Process; it is transferred only after proof validation.
+	stdoutPipe, err = attachOwnedStdout(command)
+	if err != nil {
 		_ = proofWrite.Close()
-		l.cleanupCell()
-		return nil, D09TCBProof{}, fmt.Errorf("start D09 rootless Podman/crun cell: %w", err)
+		return nil, D09TCBProof{}, fmt.Errorf("capture D09 Pi RPC stdout: %w", err)
+	}
+	startErr := stdoutPipe.Start()
+	if command.Process != nil {
+		// Keep the reader reachable even before the entrypoint proof arrives.
+		// If proof or settlement becomes uncertain, this record retains ownership.
+		l.storePendingLaunch(command, stdoutPipe.reader)
+	}
+	if startErr != nil {
+		_ = proofWrite.Close()
+		return nil, D09TCBProof{}, fmt.Errorf("start D09 rootless Podman/crun cell: %w", startErr)
 	}
 	_ = proofWrite.Close()
 	cid, err := readD09CIDFifo(ctx, cidFile, d09CommandStartTimeout)
 	if err != nil {
-		_ = command.Process.Kill()
-		l.cleanupContainer(report.PodmanPath, name)
-		l.cleanupCell()
 		return nil, D09TCBProof{}, fmt.Errorf("observe D09 worker container id: %w", err)
 	}
 	inspectCtx, cancelInspect := context.WithTimeout(ctx, d09WorkerProofTimeout)
@@ -1763,17 +1785,12 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	cancelInspect()
 	if err != nil || containerState.State.Status != "running" || containerState.State.PID <= 0 ||
 		strings.TrimPrefix(containerState.Name, "/") != name {
-		_ = command.Process.Kill()
-		l.cleanupContainer(report.PodmanPath, name)
-		l.cleanupCell()
 		return nil, D09TCBProof{}, errors.Join(fmt.Errorf("D09 worker container identity/state is not running as the requested cell"), err)
 	}
 	startupProofCtx, cancelStartupProof := context.WithTimeout(ctx, d09WorkerProofTimeout)
 	proof, err := readD09TCBProofContext(startupProofCtx, proofRead)
 	cancelStartupProof()
 	if err != nil {
-		_ = command.Process.Kill()
-		l.cleanupCell()
 		return nil, D09TCBProof{}, fmt.Errorf("captured TCB proof is missing or invalid: %w", err)
 	}
 	proof.ContainerName = name
@@ -1798,23 +1815,16 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		proof.ConsumerRuntimeMountID = proof.RuntimeMountID
 	}
 	if proof.ContainerLeaderPID != 1 {
-		_ = command.Process.Kill()
-		l.cleanupContainer(report.PodmanPath, name)
-		l.cleanupCell()
 		return nil, D09TCBProof{}, errors.New("D09 worker entrypoint is not PID1 inside the private namespace")
 	}
 	if err := verifyD09HostProcessIDMaps(proof.LeaderPID, proof.UserNSInode, config,
 		proof.UIDMap, proof.GIDMap); err != nil {
-		_ = command.Process.Kill()
-		l.cleanupFailedContainer(command, report.PodmanPath, name)
 		return nil, D09TCBProof{}, fmt.Errorf("verify exact host-visible D09 uid/gid map before launch admission: %w", err)
 	}
 	if !proof.ConsumerMountsVerified || !proof.RawSourceFDsClosed ||
 		proof.WorkerDevice != workerDevice || proof.WorkerInode != workerInode ||
 		proof.RuntimeDevice != runtimeEvidence.Device || proof.RuntimeInode != runtimeEvidence.Inode ||
 		proof.WorkerMountID == 0 || proof.RuntimeMountID == 0 {
-		_ = command.Process.Kill()
-		l.cleanupCell()
 		return nil, D09TCBProof{}, fmt.Errorf("%w: consumer-view mount proof does not match the verified D06/runtime handles", ErrHostBindingsMissing)
 	}
 	if request.admission.runtime.D09Source != nil {
@@ -1830,35 +1840,25 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 			proof.SourceDevice != request.admission.runtime.D09SourceEvidence.SourceDevice ||
 			proof.SourceInode != request.admission.runtime.D09SourceEvidence.SourceInode ||
 			proof.SourceMountID != request.admission.runtime.D09SourceEvidence.SourceMountID {
-			_ = command.Process.Kill()
-			l.cleanupCell()
 			return nil, D09TCBProof{}, fmt.Errorf("%w: host source evidence and entrypoint consumer mount proof are not distinct and bound", ErrHostBindingsMissing)
 		}
 	}
 	if err := validateD09NamespaceProof(proof, config.HostNamespaces); err != nil {
-		_ = command.Process.Kill()
-		l.cleanupFailedContainer(command, report.PodmanPath, name)
 		return nil, D09TCBProof{}, err
 	}
 	contains, err := l.scope.ContainsPID(proof.LeaderPID)
 	if err != nil || !contains {
-		_ = command.Process.Kill()
-		l.cleanupCell()
 		return nil, D09TCBProof{}, errors.Join(fmt.Errorf("%w: entrypoint leader is not in the held D09 cgroup scope", ErrProductionLauncherUnavailable), err)
 	}
 	pidfd, err := openPidfd(proof.LeaderPID)
 	if err != nil {
-		_ = command.Process.Kill()
-		l.cleanupCell()
 		return nil, D09TCBProof{}, fmt.Errorf("entrypoint leader PID %d has no host pidfd: %w", proof.LeaderPID, err)
 	}
 	if err := validateD09TCBProof(proof, config); err != nil {
 		_ = syscall.Close(pidfd)
-		_ = command.Process.Kill()
-		l.cleanupCell()
 		return nil, D09TCBProof{}, err
 	}
-	l.storeLaunchProof(command, proof, os.NewFile(uintptr(pidfd), "d09-worker-pidfd"))
+	l.storeLaunchProof(command, proof, os.NewFile(uintptr(pidfd), "d09-worker-pidfd"), stdoutPipe.reader)
 	launchSucceeded = true
 	return command, proof, nil
 }
@@ -1881,7 +1881,7 @@ func descriptorPathForMount(file *os.File) (string, error) {
 
 // storeLaunchProof registers the captured, validated proof against the exact
 // launched command so it can be retrieved once and never for a different launch.
-func (l *D09PodmanCrunLauncher) storeLaunchProof(cmd *exec.Cmd, proof D09TCBProof, pidfd *os.File) {
+func (l *D09PodmanCrunLauncher) storeLaunchProof(cmd *exec.Cmd, proof D09TCBProof, pidfd *os.File, stdout io.ReadCloser) {
 	if l == nil || cmd == nil {
 		return
 	}
@@ -1890,7 +1890,46 @@ func (l *D09PodmanCrunLauncher) storeLaunchProof(cmd *exec.Cmd, proof D09TCBProo
 	if l.proofs == nil {
 		l.proofs = make(map[*exec.Cmd]*d09LaunchRecord)
 	}
-	l.proofs[cmd] = &d09LaunchRecord{proof: proof, pidfd: pidfd}
+	record := l.proofs[cmd]
+	if record == nil {
+		record = &d09LaunchRecord{}
+		l.proofs[cmd] = record
+	}
+	record.proof = proof
+	record.pidfd = pidfd
+	record.stdout = stdout
+}
+
+func (l *D09PodmanCrunLauncher) storePendingLaunch(cmd *exec.Cmd, stdout io.ReadCloser) {
+	if l == nil || cmd == nil {
+		return
+	}
+	l.proofMu.Lock()
+	defer l.proofMu.Unlock()
+	if l.proofs == nil {
+		l.proofs = make(map[*exec.Cmd]*d09LaunchRecord)
+	}
+	record := l.proofs[cmd]
+	if record == nil {
+		record = &d09LaunchRecord{}
+		l.proofs[cmd] = record
+	}
+	record.stdout = stdout
+}
+
+// processStdoutFor returns a reader only after the proof for this exact
+// command has been taken by StartChild.
+func (l *D09PodmanCrunLauncher) processStdoutFor(cmd *exec.Cmd) io.ReadCloser {
+	if l == nil || cmd == nil {
+		return nil
+	}
+	l.proofMu.Lock()
+	defer l.proofMu.Unlock()
+	record := l.proofs[cmd]
+	if record == nil || !record.proofRead {
+		return nil
+	}
+	return record.stdout
 }
 
 // TakeLaunchProof returns the captured, validated TCB proof exactly once for
@@ -1977,14 +2016,22 @@ func (s d09LaunchSettler) Settle(ctx context.Context) (bool, error) {
 		s.launcher.proofMu.Unlock()
 		return false, fmt.Errorf("%w: per-launch pidfd/cgroup settlement evidence is incomplete", ErrProductionLauncherUnavailable)
 	}
+	record.ownerMu.Lock()
+	defer record.ownerMu.Unlock()
 	s.launcher.proofMu.Lock()
+	if s.launcher.proofs[s.command] != record {
+		s.launcher.proofMu.Unlock()
+		return false, ErrUnknownSettlement
+	}
+	if closeErr := closeLaunchPidfdLocked(record); closeErr != nil {
+		record.settled = false
+		s.launcher.proofMu.Unlock()
+		return false, errors.Join(ErrUnknownSettlement,
+			fmt.Errorf("close D09 launch pidfd: %w", closeErr))
+	}
 	delete(s.launcher.proofs, s.command)
 	s.launcher.launchInProg = false
 	s.launcher.proofMu.Unlock()
-	if record.pidfd != nil {
-		_ = record.pidfd.Close()
-		record.pidfd = nil
-	}
 	return true, nil
 }
 
@@ -2167,28 +2214,130 @@ func (l *D09PodmanCrunLauncher) cleanupCell() {
 	_, _ = l.scope.Settle(cleanupCtx)
 }
 
-func (l *D09PodmanCrunLauncher) cleanupFailedContainer(command *exec.Cmd, podmanPath, name string) {
+// closeLaunchPidfdLocked records close failures and clears the descriptor only
+// after a successful Close. The caller must hold record.ownerMu.
+func closeLaunchPidfdLocked(record *d09LaunchRecord) error {
+	if record == nil {
+		return nil
+	}
+	if record.pidfd != nil {
+		err := record.pidfd.Close()
+		record.pidfdCloseErr = errors.Join(record.pidfdCloseErr, err)
+		if err == nil {
+			record.pidfd = nil
+		}
+	}
+	return record.pidfdCloseErr
+}
+
+// finishFailedLaunchRecord releases a failed launch's owners only after each
+// close succeeds and the exact record is still registered.
+func (l *D09PodmanCrunLauncher) finishFailedLaunchRecord(command *exec.Cmd, record *d09LaunchRecord) error {
+	if l == nil || command == nil || record == nil {
+		return errors.Join(ErrUnknownSettlement, errors.New("failed launch record is unavailable"))
+	}
+	record.ownerMu.Lock()
+	defer record.ownerMu.Unlock()
+
+	var closeErr error
+	if record.stdout != nil && !record.stdoutClosed {
+		err := record.stdout.Close()
+		record.stdoutCloseErr = errors.Join(record.stdoutCloseErr, err)
+		if err == nil {
+			record.stdoutClosed = true
+		}
+	}
+	if record.stdoutCloseErr != nil {
+		closeErr = errors.Join(closeErr,
+			fmt.Errorf("close failed-launch stdout owner: %w", record.stdoutCloseErr))
+	}
+	if err := closeLaunchPidfdLocked(record); err != nil {
+		closeErr = errors.Join(closeErr, fmt.Errorf("close D09 launch pidfd: %w", err))
+	}
+	if closeErr != nil {
+		return errors.Join(ErrUnknownSettlement, closeErr)
+	}
+
+	l.proofMu.Lock()
+	defer l.proofMu.Unlock()
+	if l.proofs[command] != record {
+		return errors.Join(ErrUnknownSettlement, errors.New("failed launch record ownership changed"))
+	}
+	delete(l.proofs, command)
+	l.launchInProg = false
+	return nil
+}
+
+func (l *D09PodmanCrunLauncher) cleanupFailedContainer(command *exec.Cmd, podmanPath, name string) error {
+	if command == nil || command.Process == nil {
+		return nil
+	}
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), d09CleanupTimeout)
 	defer cancel()
-	if command != nil && command.Process != nil {
-		_ = command.Process.Kill()
-	}
+	_ = command.Process.Kill()
 	if podmanPath != "" && name != "" {
 		l.cleanupContainer(podmanPath, name)
 	}
-	if command != nil && command.Process != nil {
-		waited := make(chan struct{})
+	l.proofMu.Lock()
+	record := l.proofs[command]
+	l.proofMu.Unlock()
+	if record == nil {
+		l.storePendingLaunch(command, nil)
+		l.proofMu.Lock()
+		record = l.proofs[command]
+		l.proofMu.Unlock()
+	}
+	waitErr := l.waitFailedCommand(cleanupCtx, command, record)
+	if l.scope == nil {
+		return errors.Join(ErrUnknownSettlement, waitErr)
+	}
+	settled, settleErr := l.scope.Settle(cleanupCtx)
+	if !settled || settleErr != nil || waitErr != nil {
+		return errors.Join(ErrUnknownSettlement, settleErr, waitErr)
+	}
+	return l.finishFailedLaunchRecord(command, record)
+}
+
+// waitFailedCommand owns the single Wait call for a failed, exact launch.
+// Further cleanup attempts observe the same completion instead of racing Wait.
+func failedCommandWaitResult(waitErr error) error {
+	if waitErr == nil {
+		return nil
+	}
+	if _, ok := waitErr.(*exec.ExitError); ok {
+		return nil
+	}
+	return errors.Join(ErrUnknownSettlement, waitErr)
+}
+
+func (l *D09PodmanCrunLauncher) waitFailedCommand(ctx context.Context, command *exec.Cmd, record *d09LaunchRecord) error {
+	l.proofMu.Lock()
+	if record.waitDone == nil {
+		record.waitDone = make(chan struct{})
+		done := record.waitDone
+		l.proofMu.Unlock()
 		go func() {
-			_ = command.Wait()
-			close(waited)
+			waitErr := command.Wait()
+			l.proofMu.Lock()
+			record.waitErr = waitErr
+			close(done)
+			l.proofMu.Unlock()
 		}()
+	} else {
+		done := record.waitDone
+		l.proofMu.Unlock()
 		select {
-		case <-waited:
-		case <-cleanupCtx.Done():
+		case <-done:
+			return failedCommandWaitResult(record.waitErr)
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
-	if l.scope != nil {
-		_, _ = l.scope.Settle(cleanupCtx)
+	select {
+	case <-record.waitDone:
+		return failedCommandWaitResult(record.waitErr)
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
@@ -2218,6 +2367,9 @@ func (l *D09PodmanCrunLauncher) cleanupFailedLaunch(cmd *exec.Cmd) bool {
 	if record == nil || record.proof.LeaderPID <= 0 || record.pidfd == nil {
 		return false
 	}
+	if cmd.Process == nil {
+		return false
+	}
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), d09CleanupTimeout)
 	defer cancel()
 	if record.proof.ContainerName != "" {
@@ -2228,19 +2380,10 @@ func (l *D09PodmanCrunLauncher) cleanupFailedLaunch(cmd *exec.Cmd) bool {
 	if err != nil || !evidence.PidfdObserved || !evidence.CgroupKilled || !evidence.PopulatedZero {
 		return false
 	}
-	waited := make(chan struct{})
-	go func() { _ = cmd.Wait(); close(waited) }()
-	select {
-	case <-waited:
-	case <-cleanupCtx.Done():
+	if l.waitFailedCommand(cleanupCtx, cmd, record) != nil {
 		return false
 	}
-	l.proofMu.Lock()
-	delete(l.proofs, cmd)
-	l.launchInProg = false
-	l.proofMu.Unlock()
-	_ = record.pidfd.Close()
-	return true
+	return l.finishFailedLaunchRecord(cmd, record) == nil
 }
 
 // d09ContainerArguments builds the exact hardened `podman run` vector for one

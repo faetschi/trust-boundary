@@ -953,6 +953,11 @@ type PiCLIWorker struct {
 	eventsDrop        uint64
 	eventsBytes       uint64
 	gapReturned       bool
+
+	stdoutCloseMu  sync.Mutex
+	stdoutCloser   io.Closer
+	stdoutCloseErr error
+	stdoutClosed   bool
 }
 
 type PiSDKWorker = PiCLIWorker
@@ -1026,6 +1031,9 @@ func LaunchD09PiCLIWorker(ctx context.Context, capability *AdmissionCapability,
 		if channels == nil {
 			return nil, err
 		}
+		if retainD09LaunchOwners(err) {
+			return nil, err
+		}
 		return nil, errors.Join(err, channels.Close())
 	}
 	if channels == nil || channels.channels == nil {
@@ -1063,10 +1071,7 @@ func LaunchD09PiCLIWorker(ctx context.Context, capability *AdmissionCapability,
 		return reject(fmt.Errorf("D09 Pi launch refused: %w", err))
 	}
 
-	// The full launch/proof/readiness/settlement chain is not enabled by this
-	// preflight increment. Keep production execution refused until that chain
-	// has its own complete tests and review.
-	return reject(errors.New("D09 Pi launch refused: production launch proof chain is not enabled"))
+	return launchPiCLIWorker(ctx, profile, runtime, capability, channels.channels, bootstrap, false, "", "")
 }
 
 func validateD09PiChannelBindings(channels *D09PiWorkerChannels, runtime HostRuntimeBindings) error {
@@ -1160,7 +1165,7 @@ func bindD09ConsumerViewProof(bootstrap *PiWorkerBootstrap, runtime HostRuntimeB
 	return nil
 }
 
-// LaunchD09PiSDKWorker preserves the previous API as a fail-closed alias.
+// LaunchD09PiSDKWorker preserves the previous API as a guarded CLI alias.
 func LaunchD09PiSDKWorker(ctx context.Context, capability *AdmissionCapability,
 	channels *D09PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error) {
 	return LaunchD09PiCLIWorker(ctx, capability, channels, bootstrap)
@@ -1402,9 +1407,7 @@ func launchPiCLIWorker(ctx context.Context, profile HostProfile, runtime HostRun
 	keepChannels := false
 	defer func() {
 		if !keepChannels {
-			var launchErr *PiWorkerLaunchError
-			if runtime.D09Source != nil && (errors.Is(resultErr, ErrUnknownSettlement) ||
-				(errors.As(resultErr, &launchErr) && launchErr.Settlement.State == SettlementUnknown)) {
+			if runtime.D09Source != nil && retainD09LaunchOwners(resultErr) {
 				// The caller retains channels/source/capability with its cleanup
 				// stack until a later exact scope settlement.
 				return
@@ -1502,6 +1505,9 @@ func launchPiCLIWorker(ctx context.Context, profile HostProfile, runtime HostRun
 	worker.rpc, err = newPiCLIWorkerRPC(profile, process.stdout, channels.RPCWriter())
 	if err != nil {
 		return nil, stopFailedPiLaunch(process, channels, err)
+	}
+	if closer, ok := process.stdout.(io.Closer); ok {
+		worker.stdoutCloser = closer
 	}
 	go worker.pumpEvents()
 	keepChannels = true
@@ -1724,6 +1730,37 @@ func (w *PiCLIWorker) NextEvent(ctx context.Context) (PiWorkerEvent, error) {
 	}
 }
 
+func (w *PiCLIWorker) waitForOutputDrain(ctx context.Context) error {
+	if w.readerDone == nil {
+		return errors.New("Pi worker output pump is not configured")
+	}
+	select {
+	case <-w.readerDone:
+		return nil
+	default:
+	}
+	select {
+	case <-w.readerDone:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (w *PiCLIWorker) closeOwnedStdout() error {
+	w.stdoutCloseMu.Lock()
+	defer w.stdoutCloseMu.Unlock()
+	if w.stdoutCloser == nil || w.stdoutClosed {
+		return w.stdoutCloseErr
+	}
+	err := w.stdoutCloser.Close()
+	w.stdoutCloseErr = errors.Join(w.stdoutCloseErr, err)
+	if err == nil {
+		w.stdoutClosed = true
+	}
+	return w.stdoutCloseErr
+}
+
 // Close cancels/drains active prompt leases, kills the direct worker if needed,
 // and returns only the host scope's measured settlement. Missing or unavailable
 // descendant proof remains UNKNOWN.
@@ -1739,30 +1776,95 @@ func (w *PiCLIWorker) Close(ctx context.Context) (Settlement, error) {
 		closeErr = w.rpc.CloseInput()
 	}
 	settlement, err := w.Session.Close(ctx)
-	err = errors.Join(closeErr, err)
-	if w.Channels != nil && settlement.State == SettlementStopped && settlement.DescendantsSettled {
-		err = errors.Join(err, w.Channels.Close())
+	if w.Channels != nil && settlement.State == SettlementStopped && settlement.ExitObserved && settlement.DescendantsSettled && err == nil {
+		if drainErr := w.waitForOutputDrain(ctx); drainErr != nil {
+			return settlement, errors.Join(closeErr, err,
+				fmt.Errorf("wait for Pi worker RPC/event output drain: %w", drainErr))
+		}
+		closeErr = errors.Join(closeErr, w.closeOwnedStdout())
+		closeErr = errors.Join(closeErr, w.Channels.Close())
 	}
-	select {
-	case <-w.readerDone:
-	case <-ctx.Done():
-		settlement.State = SettlementUnknown
-		settlement.Detail = errors.Join(errors.New("worker event pump did not settle"), ctx.Err()).Error()
-		err = errors.Join(err, ctx.Err())
-	}
-	return settlement, err
+	return settlement, errors.Join(closeErr, err)
 }
 
 type PiWorkerLaunchError struct {
 	Cause      error
 	Settlement Settlement
 	CleanupErr error
+
+	// processOwner keeps an unsettled launch's stdout reader reachable. It is
+	// released only with this error/owner; UNKNOWN cleanup never closes it.
+	processOwner *Process
 }
 
 func (e *PiWorkerLaunchError) Error() string {
 	return fmt.Sprintf("launch governed Pi worker: %v (settlement=%s)", e.Cause, e.Settlement.State)
 }
 func (e *PiWorkerLaunchError) Unwrap() error { return e.Cause }
+
+func piLaunchSettlementComplete(err *PiWorkerLaunchError) bool {
+	return err != nil && err.Settlement.State == SettlementStopped &&
+		err.Settlement.ExitObserved && err.Settlement.DescendantsSettled &&
+		err.CleanupErr == nil
+}
+
+func containsIncompletePiLaunchError(err error) bool {
+	if err == nil {
+		return false
+	}
+	switch current := err.(type) {
+	case *PiWorkerLaunchError:
+		if current == nil {
+			return false
+		}
+		if !piLaunchSettlementComplete(current) {
+			return true
+		}
+		return containsIncompletePiLaunchError(current.Cause)
+	case interface{ Unwrap() []error }:
+		for _, nested := range current.Unwrap() {
+			if containsIncompletePiLaunchError(nested) {
+				return true
+			}
+		}
+	case interface{ Unwrap() error }:
+		return containsIncompletePiLaunchError(current.Unwrap())
+	}
+	return false
+}
+
+// An UNKNOWN inside a complete typed launch error is resolved by that error's
+// exact settlement. Separate joined branches remain independently unresolved.
+func hasUnresolvedLaunchUnknown(err error, suppressCauseUnknown bool) bool {
+	if err == nil {
+		return false
+	}
+	switch current := err.(type) {
+	case *PiWorkerLaunchError:
+		if current == nil {
+			return false
+		}
+		if piLaunchSettlementComplete(current) {
+			return hasUnresolvedLaunchUnknown(current.Cause, true)
+		}
+		return false // Incomplete typed settlements are handled above.
+	case interface{ Unwrap() []error }:
+		for _, nested := range current.Unwrap() {
+			if hasUnresolvedLaunchUnknown(nested, false) {
+				return true
+			}
+		}
+	case interface{ Unwrap() error }:
+		return hasUnresolvedLaunchUnknown(current.Unwrap(), suppressCauseUnknown)
+	default:
+		return !suppressCauseUnknown && errors.Is(err, ErrUnknownSettlement)
+	}
+	return false
+}
+
+func retainD09LaunchOwners(err error) bool {
+	return containsIncompletePiLaunchError(err) || hasUnresolvedLaunchUnknown(err, false)
+}
 
 func boundedStartupContext(parent context.Context) (context.Context, context.CancelFunc) {
 	if deadline, ok := parent.Deadline(); ok && time.Until(deadline) < piWorkerStartupTimeout {
@@ -1804,10 +1906,20 @@ func stopFailedPiLaunch(process *Process, channels *PiWorkerChannels, cause erro
 	defer cancel()
 	settlement, cleanupErr := process.Stop(cleanupCtx)
 	var closeErr error
-	if settlement.State == SettlementStopped && settlement.DescendantsSettled {
-		closeErr = channels.Close()
+	if settlement.State == SettlementStopped && settlement.ExitObserved && settlement.DescendantsSettled && cleanupErr == nil {
+		if closer, ok := process.stdout.(io.Closer); ok {
+			closeErr = errors.Join(closeErr, closer.Close())
+		}
+		closeErr = errors.Join(closeErr, channels.Close())
 	}
-	return &PiWorkerLaunchError{Cause: cause, Settlement: settlement, CleanupErr: errors.Join(cleanupErr, closeErr)}
+	result := &PiWorkerLaunchError{
+		Cause: cause, Settlement: settlement, CleanupErr: errors.Join(cleanupErr, closeErr),
+	}
+	if settlement.State != SettlementStopped || !settlement.ExitObserved ||
+		!settlement.DescendantsSettled || result.CleanupErr != nil {
+		result.processOwner = process
+	}
+	return result
 }
 
 type developmentUnknownSettler struct{}

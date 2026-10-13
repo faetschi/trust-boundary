@@ -86,8 +86,10 @@ func BindProductionPiWorkerBindings(
 }
 
 // BindProductionPiWorkerBindingsWithSource assembles the D09 source-stage
-// binding for the signed official Pi CLI RPC profile. It remains only a
-// contract scaffold: production launch still refuses the current profile.
+// binding for the official Pi CLI RPC profile admitted by the caller. It checks
+// the fixed in-cell argv and environment digests before exporting descriptors.
+// Profile authentication and runtime-asset validation happen in admission;
+// this binder does not establish upstream publisher custody for those bytes.
 // The source wrapper is never passed through VerifiedWorkerExposure, and
 // the strict runtime source is never passed through VerifiedWorkerRuntimeAssets.
 // The returned D09PiWorkerChannels owns the one exported fd4 and runtime-bundle

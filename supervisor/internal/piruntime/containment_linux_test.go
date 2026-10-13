@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -849,13 +850,23 @@ func TestD09TakeLaunchProofIsPerCommand(t *testing.T) {
 		Schema: "tbound-pi-entrypoint/v1", ContainerName: "cell-a", LeaderPID: 1, LauncherProcessPID: 2,
 		ImageDigest: DigestBytes([]byte("image")), TemplateDigest: DigestBytes([]byte("template")),
 	}
-	launcher.storeLaunchProof(cmdA, proof, proofRead)
+	stdoutA := io.NopCloser(strings.NewReader(`{"id":"request-a","type":"response","command":"prompt","success":true}` + "\n"))
+	launcher.storeLaunchProof(cmdA, proof, proofRead, stdoutA)
 	if _, ok := launcher.TakeLaunchProof(cmdB); ok {
 		t.Fatal("a foreign command was returned a proof")
+	}
+	if got := launcher.processStdoutFor(cmdB); got != nil {
+		t.Fatal("a foreign command was returned a stdout reader")
+	}
+	if got := launcher.processStdoutFor(cmdA); got != nil {
+		t.Fatal("stdout was exposed before the exact launch proof was taken")
 	}
 	got, ok := launcher.TakeLaunchProof(cmdA)
 	if !ok {
 		t.Fatal("the stored proof was not returned for its own command")
+	}
+	if got := launcher.processStdoutFor(cmdA); got != stdoutA {
+		t.Fatal("the exact command did not receive its stored stdout reader")
 	}
 	typed, ok := got.(D09TCBProof)
 	if !ok || typed.ContainerName != "cell-a" || typed.LeaderPID != 1 {
@@ -873,6 +884,115 @@ func TestD09TakeLaunchProofIsPerCommand(t *testing.T) {
 	}
 	if _, ok := launcher.TakeLaunchProof(nil); ok {
 		t.Fatal("a nil command was returned a proof")
+	}
+}
+
+func TestD09UnknownFailedLaunchRetainsPendingStdoutOwner(t *testing.T) {
+	command := exec.Command("sleep", "30")
+	stdout, err := attachOwnedStdout(command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := stdout.Start(); err != nil {
+		t.Fatalf("start child for pending stdout ownership: %v", err)
+	}
+	launcher := &D09PodmanCrunLauncher{
+		config: D09Config{}.normalized(),
+		proofs: make(map[*exec.Cmd]*d09LaunchRecord),
+	}
+	launcher.storePendingLaunch(command, stdout.reader)
+
+	err = launcher.cleanupFailedContainer(command, "", "")
+	if !errors.Is(err, ErrUnknownSettlement) {
+		t.Fatalf("cleanup without cgroup settlement = %v, want UNKNOWN", err)
+	}
+	launcher.proofMu.Lock()
+	record := launcher.proofs[command]
+	launcher.proofMu.Unlock()
+	if record == nil || record.stdout != stdout.reader {
+		t.Fatal("UNKNOWN cleanup did not retain the pending stdout owner")
+	}
+	if err := stdout.CloseReader(); err != nil {
+		t.Fatalf("close retained test stdout owner: %v", err)
+	}
+}
+
+func TestD09FailedCommandWaitRequiresExitAndCachesResult(t *testing.T) {
+	waitFailure := errors.New("wait did not observe process exit")
+	tests := []struct {
+		name        string
+		waitErr     error
+		wantUnknown bool
+	}{
+		{name: "nil wait result"},
+		{name: "observed nonzero exit", waitErr: &exec.ExitError{}},
+		{name: "non-exit wait error", waitErr: waitFailure, wantUnknown: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			command := exec.Command("/bin/true")
+			stdout := io.NopCloser(strings.NewReader("pending launch stdout"))
+			launcher := &D09PodmanCrunLauncher{
+				proofs: make(map[*exec.Cmd]*d09LaunchRecord),
+			}
+			launcher.storePendingLaunch(command, stdout)
+
+			launcher.proofMu.Lock()
+			record := launcher.proofs[command]
+			record.waitDone = make(chan struct{})
+			record.waitErr = test.waitErr
+			close(record.waitDone)
+			launcher.proofMu.Unlock()
+
+			for attempt := 0; attempt < 2; attempt++ {
+				err := launcher.waitFailedCommand(context.Background(), command, record)
+				if test.wantUnknown {
+					if !errors.Is(err, ErrUnknownSettlement) || !errors.Is(err, waitFailure) {
+						t.Fatalf("cached non-exit wait result = %v, want UNKNOWN and wait error", err)
+					}
+				} else if err != nil {
+					t.Fatalf("cached observed-exit result = %v, want nil", err)
+				}
+			}
+			if launcher.proofs[command] != record || record.stdout != stdout {
+				t.Fatal("wait result discarded the pending launch stdout owner")
+			}
+		})
+	}
+}
+
+func TestD09FailedLaunchCloseErrorRetainsOwnedRecord(t *testing.T) {
+	pidfd, peer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+	if err := pidfd.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	command := exec.Command("/bin/true")
+	stdout := &retryCloseReader{reader: strings.NewReader("")}
+	record := &d09LaunchRecord{pidfd: pidfd, stdout: stdout}
+	launcher := &D09PodmanCrunLauncher{
+		proofs:       map[*exec.Cmd]*d09LaunchRecord{command: record},
+		launchInProg: true,
+	}
+
+	for attempt := 0; attempt < 2; attempt++ {
+		err := launcher.finishFailedLaunchRecord(command, record)
+		if !errors.Is(err, ErrUnknownSettlement) || !errors.Is(err, os.ErrClosed) {
+			t.Fatalf("failed launch close result = %v, want UNKNOWN and closed-file error", err)
+		}
+		launcher.proofMu.Lock()
+		retained := launcher.proofs[command] == record && launcher.launchInProg
+		launcher.proofMu.Unlock()
+		if !retained || record.pidfd != pidfd || record.stdout != stdout {
+			t.Fatal("close failure discarded the launch record or an owned resource reference")
+		}
+	}
+	if got := stdout.calls.Load(); got != 1 {
+		t.Fatalf("successful stdout close calls across pidfd retries = %d, want 1", got)
 	}
 }
 

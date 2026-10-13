@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -405,15 +406,76 @@ func TestPiWorkerEventPumpConsumerCancellationDoesNotStopOrConsumeEvents(t *test
 	}
 }
 
-func TestPiCLIProductionAndD09LaunchRemainRefused(t *testing.T) {
+func TestPiCLIProductionAndD09LaunchRequireProductionAdmission(t *testing.T) {
 	if _, err := LaunchPiCLIWorker(context.Background(), nil, nil, nil, nil, PiWorkerBootstrap{}); err == nil || !strings.Contains(err.Error(), "production Pi launch refused") {
-		t.Fatalf("production CLI launch was not refused before profile migration: %v", err)
+		t.Fatalf("generic production CLI launch was not refused: %v", err)
 	}
 	if _, err := LaunchD09PiCLIWorker(context.Background(), nil, nil, PiWorkerBootstrap{}); err == nil || !strings.Contains(err.Error(), "D09 Pi launch refused") {
-		t.Fatalf("D09 CLI launch was not refused before profile migration: %v", err)
+		t.Fatalf("D09 launch without capability/channels was not refused: %v", err)
 	}
 }
 
+func TestPublicD09LaunchRejectsSimulatedLauncherBeforeStartAndClosesOwner(t *testing.T) {
+	_, capability, channels, launcher, _, _ := newSimulatedD09LaunchHelperFixture(t, func(*D09TCBProof) {})
+	bootstrap := PiWorkerBootstrap{
+		SessionID: "session-1", WorkflowID: "workflow-1", ConversationID: "conversation-1",
+	}
+	worker, err := LaunchD09PiCLIWorker(context.Background(), capability, channels, bootstrap)
+	if worker != nil || !errors.Is(err, ErrProductionLauncherUnavailable) {
+		t.Fatalf("public D09 launch returned worker=%v err=%v, want simulated-launcher refusal", worker, err)
+	}
+	if start, take, validate := launcher.callCounts(); start != 0 || take != 0 || validate != 0 {
+		t.Fatalf("simulated launcher calls start=%d take=%d validate=%d, want zero", start, take, validate)
+	}
+	channels.channels.mu.Lock()
+	closed := channels.channels.closed
+	channels.channels.mu.Unlock()
+	if !closed {
+		t.Fatal("public preflight refusal did not close the channel owner")
+	}
+}
+
+func TestD09LaunchOwnerRetentionRequiresUnresolvedSettlement(t *testing.T) {
+	stopped := Settlement{State: SettlementStopped, ExitObserved: true, DescendantsSettled: true}
+	completeWithUnknownCause := &PiWorkerLaunchError{Cause: ErrUnknownSettlement, Settlement: stopped}
+	incomplete := &PiWorkerLaunchError{
+		Cause:      errors.New("launch failed"),
+		Settlement: Settlement{State: SettlementStopped, DescendantsSettled: true},
+	}
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"ordinary error", errors.New("preflight refusal"), false},
+		{"complete typed error", &PiWorkerLaunchError{Cause: errors.New("readiness failed"), Settlement: stopped}, false},
+		{"wrapped complete typed error", fmt.Errorf("outer: %w", completeWithUnknownCause), false},
+		{"complete typed error with UNKNOWN cause", completeWithUnknownCause, false},
+		{"bare UNKNOWN sentinel", ErrUnknownSettlement, true},
+		{"wrapped UNKNOWN sentinel", fmt.Errorf("outer: %w", ErrUnknownSettlement), true},
+		{"joined separate UNKNOWN", errors.Join(completeWithUnknownCause, ErrUnknownSettlement), true},
+		{"joined incomplete typed error", errors.Join(completeWithUnknownCause, incomplete), true},
+		{"missing exit observation", incomplete, true},
+		{"missing descendants", &PiWorkerLaunchError{
+			Cause:      errors.New("launch failed"),
+			Settlement: Settlement{State: SettlementStopped, ExitObserved: true},
+		}, true},
+		{"cleanup error", &PiWorkerLaunchError{
+			Cause: errors.New("launch failed"), Settlement: stopped, CleanupErr: errors.New("close failed"),
+		}, true},
+		{"nested incomplete typed cause", &PiWorkerLaunchError{
+			Cause: fmt.Errorf("outer cause: %w", incomplete), Settlement: stopped,
+		}, true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := retainD09LaunchOwners(test.err); got != test.want {
+				t.Fatalf("retainD09LaunchOwners(%v) = %t, want %t", test.err, got, test.want)
+			}
+		})
+	}
+}
 func TestDevelopmentPiCLIProfileValidatesFixtureOnlyInvariants(t *testing.T) {
 	plan := DeveloperPiCLIPlan{
 		PiPath: "/opt/pi/cli.js", PiSHA256: DigestBytes([]byte("Pi CLI entry")),

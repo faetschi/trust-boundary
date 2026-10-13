@@ -446,6 +446,11 @@ func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
 	}
 	process := newProcess(cmd, childSettler, writers, true)
 	process.launchProof = launchProof
+	if stdoutLauncher, ok := bound.launcher.(interface {
+		processStdoutFor(*exec.Cmd) io.ReadCloser
+	}); ok {
+		process.stdout = stdoutLauncher.processStdoutFor(cmd)
+	}
 	return process, nil
 }
 

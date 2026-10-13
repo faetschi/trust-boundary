@@ -175,6 +175,11 @@ func TestProductionLaunchFailureAdmissionUsesRealPublicationLease(t *testing.T) 
 		{"joined unknown typed failure", errors.Join(errors.New("other launch error"), &piruntime.PiWorkerLaunchError{Cause: errors.New("probe"), Settlement: unknown}), true},
 		{"wrapped unknown sentinel", fmt.Errorf("launch: %w", piruntime.ErrUnknownSettlement), true},
 		{"joined unknown sentinel", errors.Join(errors.New("other launch error"), piruntime.ErrUnknownSettlement), true},
+		{"complete typed UNKNOWN cause", &piruntime.PiWorkerLaunchError{Cause: piruntime.ErrUnknownSettlement, Settlement: stopped}, false},
+		{"wrapped complete typed UNKNOWN cause", fmt.Errorf("launch: %w", &piruntime.PiWorkerLaunchError{Cause: piruntime.ErrUnknownSettlement, Settlement: stopped}), false},
+		{"joined sibling UNKNOWN after complete typed cause", errors.Join(
+			&piruntime.PiWorkerLaunchError{Cause: piruntime.ErrUnknownSettlement, Settlement: stopped},
+			piruntime.ErrUnknownSettlement), true},
 		{"ordinary prelaunch error", errors.New("worker was not started"), false},
 		{"typed STOPPED missing exit", &piruntime.PiWorkerLaunchError{Cause: errors.New("launch rejected"), Settlement: piruntime.Settlement{State: piruntime.SettlementStopped, DescendantsSettled: true}}, true},
 		{"typed STOPPED missing descendants", &piruntime.PiWorkerLaunchError{Cause: errors.New("launch rejected"), Settlement: piruntime.Settlement{State: piruntime.SettlementStopped, ExitObserved: true}}, true},

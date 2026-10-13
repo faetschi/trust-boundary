@@ -695,6 +695,60 @@ func productionWorkerSettlementAllowsPublication(settlement piruntime.Settlement
 	return settlement.State == piruntime.SettlementStopped && settlement.ExitObserved && settlement.DescendantsSettled && closeErr == nil
 }
 
+func incompleteProductionLaunchFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	switch current := err.(type) {
+	case *piruntime.PiWorkerLaunchError:
+		if current == nil {
+			return false
+		}
+		if !productionWorkerSettlementAllowsPublication(current.Settlement, current.CleanupErr) {
+			return true
+		}
+		return incompleteProductionLaunchFailure(current.Cause)
+	case interface{ Unwrap() []error }:
+		for _, nested := range current.Unwrap() {
+			if incompleteProductionLaunchFailure(nested) {
+				return true
+			}
+		}
+	case interface{ Unwrap() error }:
+		return incompleteProductionLaunchFailure(current.Unwrap())
+	}
+	return false
+}
+
+// A complete typed launch settlement resolves its own UNKNOWN cause. A
+// separately joined UNKNOWN branch still requires admission retention.
+func unresolvedProductionLaunchUnknown(err error, suppressCauseUnknown bool) bool {
+	if err == nil {
+		return false
+	}
+	switch current := err.(type) {
+	case *piruntime.PiWorkerLaunchError:
+		if current == nil {
+			return false
+		}
+		if productionWorkerSettlementAllowsPublication(current.Settlement, current.CleanupErr) {
+			return unresolvedProductionLaunchUnknown(current.Cause, true)
+		}
+		return false // Incomplete typed settlements are handled above.
+	case interface{ Unwrap() []error }:
+		for _, nested := range current.Unwrap() {
+			if unresolvedProductionLaunchUnknown(nested, false) {
+				return true
+			}
+		}
+	case interface{ Unwrap() error }:
+		return unresolvedProductionLaunchUnknown(current.Unwrap(), suppressCauseUnknown)
+	default:
+		return !suppressCauseUnknown && errors.Is(err, piruntime.ErrUnknownSettlement)
+	}
+	return false
+}
+
 // releaseProductionSessionAdmissionIfSafe retains admission if launch or worker
 // teardown did not prove complete settlement. A plain prelaunch error remains
 // safe to release; typed launch failures must carry the same complete evidence
@@ -706,12 +760,8 @@ func releaseProductionSessionAdmissionIfSafe(
 	settlement piruntime.Settlement,
 	closeErr error,
 ) bool {
-	if errors.Is(launchErr, piruntime.ErrUnknownSettlement) {
-		return false
-	}
-	var launchFailure *piruntime.PiWorkerLaunchError
-	if errors.As(launchErr, &launchFailure) &&
-		!productionWorkerSettlementAllowsPublication(launchFailure.Settlement, launchFailure.CleanupErr) {
+	if incompleteProductionLaunchFailure(launchErr) ||
+		unresolvedProductionLaunchUnknown(launchErr, false) {
 		return false
 	}
 	if workerClosed && !productionWorkerSettlementAllowsPublication(settlement, closeErr) {

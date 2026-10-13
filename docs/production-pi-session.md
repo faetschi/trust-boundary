@@ -10,10 +10,12 @@ on a live Linux host with the real signed profile.
 
 **Worker migration:** the Pi worker API names in this implementation record
 refer to the former embedded SDK composition. The selected design is the official Pi 0.87.1 CLI in RPC mode with a TBound
-extension. The offline development route is implemented, but production
-profile/launcher migration remains pending and the current
-`LaunchD09PiCLIWorker` entrypoint refuses launch. This document does not qualify
-a production CLI launch.
+extension. The public D09 entrypoint revalidates admission, source/runtime
+bindings, and Store source evidence before calling the guarded launch helper.
+The lower-helper integration exercises bootstrap, readiness, one correlated RPC
+failure, and settled close with a simulated launcher. Public launch success,
+H1, G1, signed host admission, authentic proof capture, containment, and host
+qualification remain unverified.
 See the [CLI reproduction decision](decisions/2026-10-12-cli-reproduction.md).
 
 ## CLI entry point
@@ -54,29 +56,33 @@ service owns those inputs and is expected to start through socket activation.
    `NewLinuxCgroupScope`, `NewD09PodmanCrunLauncher`, `BindManagedLiveRoot`, then
    `BindCgroupScope`.
 6. Worker channels/bindings via A's
-   `piruntime.BindProductionPiWorkerBindings(ctx, profile, exposure, assets,
-   launcher, scope)`.
+   `piruntime.BindProductionPiWorkerBindingsWithSource(ctx, profile, source,
+   sourceCapability, assets, launcher, settler)`. The binder checks the fixed
+   official CLI argv and in-cell environment digests before exporting
+   descriptors. Admission validates the profile and runtime assets. The binder
+   does not establish upstream publisher custody.
 7. Protected publication roots: live root, publication state root, shared
    lifecycle journal (distinct from the store/provider journals).
 8. A run-unique command journal contains one versioned record binding the live
    D09 receipt snapshot to the actual Store `OperationEvidence`, provider call,
    full approved transition/delta, and run/session/workflow/conversation identity.
 
-The following describes the legacy, unqualified SDK-worker path; it is not an
-admissible production route. That path re-verifies through
-`OpenLinuxHostProfileVerifier` + `AdmitProduction`, launches the pre-migration
-SDK worker with `LaunchPiSDKWorker`, durably journals the exact per-launch TCB proof
-before admitting the registered task via `SendAdmittedPrompt` (single admission),
-drives both governed loops, then attempts finalization. The official CLI dev/RPC
-route is implemented, while production profile/launcher migration remains pending
-and `LaunchD09PiCLIWorker` refuses production launch. Handles are released in
-reverse order only after observed worker/loop/command settlement. UNKNOWN cleanup
-intentionally retains the managed live-root lease, lifecycle journal lock, and
-session/cgroup handles until process exit/recovery rather than closing resources
-that may still have writers. A new run acquires the same registered writer
-domain, completes `RootLedger.RecoverBeforeAdmission`, and only then records
-reconciliation of earlier owner epochs; unresolved/UNKNOWN root transactions or
-changed root/cgroup identity refuse admission.
+The service composition uses the public `LaunchD09PiCLIWorker` route. The D09
+launcher captures proof for the exact process; `StartChild` transfers that
+command's stdout reader and wait ownership to its `Process`. The worker binds
+the proof to the admitted source/runtime evidence before writing bootstrap and
+accepting readiness. The service must durably bind the exact proof before task
+admission. Launch failures retain D09 owners when typed settlement is
+incomplete, cleanup failed, or an UNKNOWN branch remains unresolved. A complete
+STOPPED settlement requires observed process exit and settled descendants.
+
+The positive lower-helper integration uses a static test attestor, simulated
+per-command proof, and a bounded native protocol child. Its conversation is a
+static admission stub. It verifies actual bootstrap/event/RPC channels and
+single `Process` wait ownership; it does not verify authentic entrypoint proof,
+provider admission, public launch success, signed host admission, or containment.
+UNKNOWN cleanup retains the managed live-root lease, lifecycle journal lock,
+and session/cgroup handles until process exit/recovery.
 
 ## Bash command runner
 
@@ -212,9 +218,14 @@ following symlinks, and on a read-only filesystem; a writable checkout plus
 
 ## Tests
 
+* From `supervisor/`, `go test ./internal/piruntime`: exercises the lower-helper
+  bootstrap/readiness/RPC/settled-close integration with a simulated launcher,
+  plus the negative public simulated-launcher refusal and retention cases. It
+  does not qualify public production launch.
 * `go test ./cmd/tbound`: production refuses on an unprovisioned host without
   starting a worker; self-signed profile cannot root-admit; dev fixtures stay
   mutually exclusive; the production runner refuses legacy/unregistered Bash;
+  this command-package test does not run the `piruntime` package tests;
   invalid/foreign/missing launch proof, running worker, pending command, unknown
   settlement, missing containment evidence, and unverified live-root quiescence
   all fail closed; the E05 authority resolves and the versioned publication
@@ -243,10 +254,12 @@ are integrated. C calls `TakeCommandReceipt` once immediately after a successful
 run, and cleanup calls launcher `Close` only after worker/command settlement and
 successful C-owned `scope.Remove`; uncertain cleanup retains both authorities.
 
-**Operator prerequisites (positive path UNVERIFIED here):** install the fixed
-profile public key; signed production profile/template whose
+**Operator prerequisites (positive path UNVERIFIED here):** provision the
+existing fixed, root-owned admin public key at `/etc/tbound/pi-host-profile.pub`
+and the signed production profile/template whose
 `managed_live_root_registration_digest` matches the fixed-anchor registration;
 the protected service and mount units; dedicated non-login service account;
 registered managed live filesystem; pinned runner and D09 image/toolchain; and
-protected Git approval. The positive tagged run was not performed here; no host
-provisioning or privileged operation was attempted.
+protected Git approval. The positive tagged run was not performed here. G1
+remains false and H1 remains unexecuted; no provider trial, signing, host
+provisioning, privileged operation, or containment qualification was performed.

@@ -23,9 +23,11 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   sealed generations, independent evidence, validated host publication and
   UNKNOWN/quarantine recovery. D06 remains conformance-only until independently
   qualified. Publication is per-object reconciliation, not global atomicity.
-- Recovery denominator48 (16 scenarios x3); eighth crash point belongs to E07
-  conformance. Carry this dated decision into registration; old conflicting
-  snapshots remain historical.
+- Reviewed recovery draft proposes51 (17 scenarios x3: eight lifecycle cases
+  and nine incidents), not frozen or registered. E07 conformance is separate.
+  The historical 48-count decision remains history; adopt/freeze the explicit
+  boundary mapping before registration. Prototype draft b2be8ec; thesis draft
+  2c7bf4d on codex/tbound-recovery-protocol; thesis main remains unchanged.
 
 ## Current batch
 
@@ -277,6 +279,13 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   discarded; cleanupFailedLaunch ignored pidfd-close errors and deleted ownership.
   Exact code/tests prepared by tbound-launch-cleanup-observation-repair-20261013-r13.
   Prior919-pass snapshot precedes these corrections; new checks required.
+  Corrected snapshot now passes full Linux unit/race each925 tests, zero failures,
+  seven skips and25 packages; vet clean; focused race10 passes. All12 launch Go
+  hashes match the tested copy. Windows281 passes/13 skips and vet clean on the
+  same shared Go source (latest corrections are Linux-only). Final review r14
+  ACCEPT safety/integration/claims; launch commit checkpoint follows. Public D09
+  wiring is guarded by concrete launcher, signed admission and proof chain;
+  real public success/containment/qualification remain unexecuted, G1false/H1unexecuted.
   Integrated owned-stdout snapshot now passes full Linux unit/race each919 tests,
   zero failures, seven skips; vet clean, focused race10 passes. Windows281 passes,
   zero failures, 13 skips; vet clean. All ten piruntime Go hashes match the tested

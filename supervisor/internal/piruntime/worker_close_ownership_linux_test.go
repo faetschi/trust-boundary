@@ -32,6 +32,20 @@ func TestPiWorkerReadinessPreservesChildCloseError(t *testing.T) {
 	waitWorkerEventPump(t, worker)
 }
 
+type retryCloseReader struct {
+	reader   *strings.Reader
+	calls    atomic.Int32
+	firstErr error
+}
+
+func (r *retryCloseReader) Read(p []byte) (int, error) { return r.reader.Read(p) }
+func (r *retryCloseReader) Close() error {
+	if r.calls.Add(1) == 1 {
+		return r.firstErr
+	}
+	return nil
+}
+
 type countedCloseWriter struct {
 	calls    atomic.Int32
 	closeErr error
@@ -201,12 +215,140 @@ func TestPiCLIWorkerCloseSharesRPCCloseAndReturnsCloseError(t *testing.T) {
 	}
 }
 
+func TestPiCLIWorkerCloseWaitsForDrainAndRetriesStdoutClose(t *testing.T) {
+	completion := make(chan struct{})
+	close(completion)
+	process := &Process{
+		cmd:        &exec.Cmd{Process: &os.Process{}},
+		settler:    stoppedTestSettler{},
+		completion: completion,
+	}
+	session, err := NewSession(process)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settlement, err := session.Close(context.Background()); err != nil ||
+		settlement.State != SettlementStopped || !settlement.DescendantsSettled {
+		t.Fatalf("prepare settled worker: settlement=%+v err=%v", settlement, err)
+	}
+
+	closeFailure := errors.New("stdout close failed")
+	stdout := &retryCloseReader{reader: strings.NewReader(""), firstErr: closeFailure}
+	readerDone := make(chan struct{})
+	channels := &PiWorkerChannels{}
+	worker := &PiCLIWorker{
+		Session: session, Channels: channels, readerDone: readerDone,
+		stdoutCloser: stdout,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	settlement, err := worker.Close(ctx)
+	if settlement.State != SettlementStopped || !settlement.DescendantsSettled {
+		t.Fatalf("timed-out drain changed process settlement: %+v", settlement)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("close before output drain = %v, want deadline error", err)
+	}
+	if got := stdout.calls.Load(); got != 0 {
+		t.Fatalf("stdout close calls before output drain = %d, want 0", got)
+	}
+	if channels.closed {
+		t.Fatal("channels closed before output drain completed")
+	}
+
+	close(readerDone)
+	_, err = worker.Close(context.Background())
+	if !errors.Is(err, closeFailure) {
+		t.Fatalf("retry did not preserve stdout close error: %v", err)
+	}
+	if got := stdout.calls.Load(); got != 1 {
+		t.Fatalf("stdout close attempts after retry = %d, want 1", got)
+	}
+
+	_, err = worker.Close(context.Background())
+	if !errors.Is(err, closeFailure) {
+		t.Fatalf("repeated close lost sticky stdout close error: %v", err)
+	}
+	if got := stdout.calls.Load(); got != 2 {
+		t.Fatalf("stdout close attempts after retry succeeded = %d, want 2", got)
+	}
+}
+
+func TestPiCLIWorkerCloseRetainsOwnersWhenStoppedSessionReturnsError(t *testing.T) {
+	sessionFailure := errors.New("session cleanup reported an observation error")
+	completion := make(chan struct{})
+	close(completion)
+	process := &Process{
+		cmd:        &exec.Cmd{Process: &os.Process{}},
+		settler:    stoppedTestSettler{},
+		completion: completion,
+		waitResult: waitResult{observationErr: sessionFailure},
+	}
+	session, err := NewSession(process)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stdout := &retryCloseReader{reader: strings.NewReader("")}
+	readerDone := make(chan struct{})
+	close(readerDone)
+	channels := &PiWorkerChannels{}
+	worker := &PiCLIWorker{
+		Session: session, Channels: channels, readerDone: readerDone,
+		stdoutCloser: stdout,
+	}
+
+	settlement, err := worker.Close(context.Background())
+	if settlement.State != SettlementStopped || !settlement.ExitObserved ||
+		!settlement.DescendantsSettled {
+		t.Fatalf("session did not report measured STOPPED: %+v", settlement)
+	}
+	if !errors.Is(err, sessionFailure) {
+		t.Fatalf("worker close lost session error: %v", err)
+	}
+	if got := stdout.calls.Load(); got != 0 {
+		t.Fatalf("stdout close calls after session error = %d, want 0", got)
+	}
+	channels.mu.Lock()
+	closed := channels.closed
+	channels.mu.Unlock()
+	if closed {
+		t.Fatal("channels closed despite the session cleanup error")
+	}
+}
+
+func TestStopFailedPiLaunchClosesStdoutOnlyAfterSettlement(t *testing.T) {
+	completion := make(chan struct{})
+	close(completion)
+	stdout := &retryCloseReader{reader: strings.NewReader("")}
+	process := &Process{
+		cmd:        &exec.Cmd{Process: &os.Process{}},
+		stdout:     stdout,
+		settler:    stoppedTestSettler{},
+		completion: completion,
+	}
+
+	err := stopFailedPiLaunch(process, &PiWorkerChannels{}, errors.New("startup failed"))
+	var launchErr *PiWorkerLaunchError
+	if !errors.As(err, &launchErr) || launchErr.Settlement.State != SettlementStopped {
+		t.Fatalf("failed launch did not preserve settled result: %v", err)
+	}
+	if got := stdout.calls.Load(); got != 1 {
+		t.Fatalf("settled failed-launch stdout close calls = %d, want 1", got)
+	}
+}
+
 func TestPiWorkerFailedLaunchUnknownRetainsChannels(t *testing.T) {
 	worker := newPiWorkerEventPumpFixture(t, 1)
-	launchErr := stopFailedPiLaunch(&Process{}, worker.Channels, errors.New("startup failed"))
+	stdout := &retryCloseReader{reader: strings.NewReader("")}
+	launchErr := stopFailedPiLaunch(&Process{stdout: stdout}, worker.Channels, errors.New("startup failed"))
 	var typed *PiWorkerLaunchError
 	if !errors.As(launchErr, &typed) || typed.Settlement.State != SettlementUnknown {
 		t.Fatalf("failed launch did not retain UNKNOWN settlement: %v", launchErr)
+	}
+	if typed.processOwner == nil || stdout.calls.Load() != 0 {
+		t.Fatal("UNKNOWN launch did not retain its stdout owner without closing it")
 	}
 	worker.Channels.mu.Lock()
 	closed := worker.Channels.closed
