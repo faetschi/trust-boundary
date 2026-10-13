@@ -112,10 +112,22 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   integration checkpoint (the new RPC client is required). Review completed;
   178acdd includes the intentional ELF untracking without deleting local
   binaries and excludes the five preexisting doc deletions. Commit each increment.
-- Next read-only Luna max task prepares D09 source-bootstrap/channel binding
-  and gate tests; retain launch refusal until all remaining code gates are
-  reviewed and tested. Automatic continuation task:
-  `node:delegated-task:command%3Amcp%3A33dd25f5-74bf-4617-850e-3c26a7d50cf8%3Adelegate-task%3Atbound-d09-gate-tests-20261013-r2`.
+- D09 preflight increment applied: exact source-stage channel/capability/asset
+  evidence and descriptor binding helpers, Store-only bootstrap evidence, and
+  refusal cleanup even for nil context. Closed/child-closed channels are
+  rejected under the channel mutex; consumer view/mount fields remain unproved
+  and cannot be prefilled. Production execution is still always refused after
+  preflight; no process, bootstrap or readiness is released.
+  Focused tests passed; an isolated red test against the committed baseline
+  reproduced the nil-context owned-descriptor leak. Linux full unit/race each
+  853 passes, zero failures, seven skips; vet clean; focused gate race count30
+  passed. Critical reviewer accepted safety, preflight scope and thesis alignment
+  without required fixes. These are preflight tests, not full launch proofs;
+  Windows was not rerun for this Linux-only increment (last pass 280/13 skips).
+- Next read-only Luna max task prepares the guarded launch/proof/readiness/
+  settlement chain with meaningful gate tests. Keep final refusal until the
+  complete chain is separately implemented, reviewed and tested. Automatic task:
+  `node:delegated-task:command%3Amcp%3A33dd25f5-74bf-4617-850e-3c26a7d50cf8%3Adelegate-task%3Atbound-d09-proof-launch-chain-20261013-r3`.
 
 - Baseline archive, initial working-tree patch and tracked-file SHA-256 manifest:
   ../review-artifacts/tbound-baseline-2026-10-12/. Includes the five document

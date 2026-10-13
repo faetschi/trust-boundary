@@ -1022,8 +1022,100 @@ func LaunchPiSDKWorker(ctx context.Context, capability *AdmissionCapability, exp
 // raw source FD. Bootstrap/readiness is released only after that proof exists.
 func LaunchD09PiCLIWorker(ctx context.Context, capability *AdmissionCapability,
 	channels *D09PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error) {
-	return nil, errors.New("D09 Pi launch refused: current signed profile does not attest the official Pi CLI executable, RPC arguments, extension and transitive closure")
+	reject := func(err error) (*PiCLIWorker, error) {
+		if channels == nil {
+			return nil, err
+		}
+		return nil, errors.Join(err, channels.Close())
+	}
+	if channels == nil || channels.channels == nil {
+		return reject(errors.New("D09 Pi launch refused: source-stage channels are required"))
+	}
+	if ctx == nil {
+		return reject(errors.New("D09 Pi launch refused: context is required"))
+	}
+	if err := ctx.Err(); err != nil {
+		return reject(fmt.Errorf("D09 Pi launch refused: %w", err))
+	}
+	if capability == nil || !capability.valid() ||
+		capability.profile.Mode != ModeProduction ||
+		capability.profile.ContainmentProfile != D09ContainmentProfile ||
+		capability.profile.SettlementProfile != D09SettlementProfile {
+		return reject(fmt.Errorf("D09 Pi launch refused: %w", ErrChildCapabilityMissing))
+	}
+	profile, runtime := capability.profile, capability.runtime
+	if err := profile.Validate(); err != nil {
+		return reject(fmt.Errorf("D09 Pi launch refused: %w", err))
+	}
+	if _, ok := runtime.Launcher.(*D09PodmanCrunLauncher); !ok {
+		return reject(fmt.Errorf("D09 Pi launch refused: %w", ErrProductionLauncherUnavailable))
+	}
+	if err := runtime.validate(profile); err != nil {
+		return reject(fmt.Errorf("D09 Pi launch refused: %w", err))
+	}
+	if err := validateD09PiChannelBindings(channels, runtime); err != nil {
+		return reject(fmt.Errorf("D09 Pi launch refused: %w", err))
+	}
+	if err := verifyD09HostRuntimeSources(ctx, runtime); err != nil {
+		return reject(fmt.Errorf("D09 Pi launch refused: %w", err))
+	}
+	if err := bindD09BootstrapSourceEvidence(&bootstrap, runtime.D09SourceEvidence); err != nil {
+		return reject(fmt.Errorf("D09 Pi launch refused: %w", err))
+	}
 
+	// The full launch/proof/readiness/settlement chain is not enabled by this
+	// preflight increment. Keep production execution refused until that chain
+	// has its own complete tests and review.
+	return reject(errors.New("D09 Pi launch refused: production launch proof chain is not enabled"))
+}
+
+func validateD09PiChannelBindings(channels *D09PiWorkerChannels, runtime HostRuntimeBindings) error {
+	if channels == nil || channels.channels == nil {
+		return fmt.Errorf("%w: D09 source-stage channels are missing", ErrHostBindingsMissing)
+	}
+	channels.channels.mu.Lock()
+	defer channels.channels.mu.Unlock()
+	if channels.channels.closed || channels.channels.childClosed ||
+		!channels.channels.ownedSourceFDs ||
+		isNilBinding(channels.source) ||
+		isNilBinding(channels.sourceCapability) ||
+		isNilBinding(channels.assets) ||
+		!sameBinding(channels.source, runtime.D09Source) ||
+		!sameBinding(channels.sourceCapability, runtime.D09SourceCapability) ||
+		!sameBinding(channels.assets, runtime.D09RuntimeAssetSource) ||
+		!sameD09SourceEvidence(runtime.D09SourceEvidence, channels.sourceEvidence) ||
+		channels.assetEvidence != runtime.D09RuntimeAssetEvidence ||
+		channels.channels.workerExposure != nil ||
+		channels.channels.exposureEvidence != (WorkerExposureEvidence{}) ||
+		channels.channels.workerAssets != nil ||
+		channels.channels.assetEvidence != (WorkerRuntimeAssetEvidence{}) ||
+		!sameBinding(channels.channels.workingDirectory, runtime.D09SourceHandle) ||
+		!sameBinding(channels.channels.runtimeBundle, runtime.PiRuntimeBundleHandle) ||
+		!sameBinding(channels.channels.ChildStdin(), runtime.Stdin) ||
+		!sameInheritedDescriptors(channels.channels.DescriptorBindings(), runtime.Descriptors) {
+		return fmt.Errorf("%w: source-stage channels do not match the admitted D09 handles, evidence, and descriptors", ErrHostBindingsMissing)
+	}
+	return nil
+}
+
+// Bind only Store-issued source evidence here. Consumer view identity and mount
+// ID become available after the entrypoint proves its distinct read-only mount.
+func bindD09BootstrapSourceEvidence(bootstrap *PiWorkerBootstrap, evidence D09WorkerSourceEvidence) error {
+	if bootstrap == nil || evidence.validateShape() != nil ||
+		(bootstrap.SourceBindingDigest != "" && bootstrap.SourceBindingDigest != evidence.SourceBindingDigest) ||
+		(bootstrap.SourceProvenanceDigest != "" && bootstrap.SourceProvenanceDigest != evidence.ProvenanceDigest) ||
+		(bootstrap.SourceGenerationID != "" && bootstrap.SourceGenerationID != evidence.GenerationID) ||
+		(bootstrap.SourceTreeDigest != "" && bootstrap.SourceTreeDigest != evidence.TreeDigest) ||
+		(bootstrap.SourceManifestDigest != "" && bootstrap.SourceManifestDigest != evidence.ManifestDigest) ||
+		bootstrap.WorkerViewIdentity != "" || bootstrap.WorkerMountID != 0 {
+		return fmt.Errorf("%w: D09 bootstrap source or consumer-view identity is inconsistent", ErrHostBindingsMissing)
+	}
+	bootstrap.SourceBindingDigest = evidence.SourceBindingDigest
+	bootstrap.SourceProvenanceDigest = evidence.ProvenanceDigest
+	bootstrap.SourceGenerationID = evidence.GenerationID
+	bootstrap.SourceTreeDigest = evidence.TreeDigest
+	bootstrap.SourceManifestDigest = evidence.ManifestDigest
+	return nil
 }
 
 // LaunchD09PiSDKWorker preserves the previous API as a fail-closed alias.
