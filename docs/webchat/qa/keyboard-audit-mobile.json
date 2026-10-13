@@ -106,11 +106,12 @@
  "drawerOpened": "true",
  "drawerClosed": "false",
  "inertInitially": true,
+ "toggleHidden": false,
  "inertAfterOpen": false,
  "inertAfterClose": true,
  "filterFocus": "focused",
  "filterPressed": "true",
- "filterSummary": "3 of 18 element(s) match “Denied”",
+ "filterSummary": "2 matches · 3 of 18 element(s) shown for “Denied” (context included)",
  "filterFocusAfterRender": "denied",
  "filterTimeline": "turn-013 element(s)$bashbash: curl -s https://example.com/healthzDENYdeniedunverifiedrequestbash: curl -s https://example.com/healthz 11:12:31policyDENY policy_rule_deny sha256:9f2…e0f3a6command cell ",
  "arrowTarget": "unknown"
