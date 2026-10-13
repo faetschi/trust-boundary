@@ -244,7 +244,7 @@ claim-boundary strip, and explicit source/verified/gap labelling. No file from
 that checkout was copied verbatim except the platform-specific
 safe-no-follow document opener, which is retained unchanged.
 
-## 8. Presentation design system
+#### 8.1 Presentation design system
 
 The visual language follows the **coss/ui design-token vocabulary** (the
 Cal.com/shadcn-compatible CSS variables, including the extra
