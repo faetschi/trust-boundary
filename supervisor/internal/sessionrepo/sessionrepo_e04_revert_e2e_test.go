@@ -288,7 +288,7 @@ func grantedDelete(t *testing.T, authority *e2eReceiptAuthority, input *Generati
 	t.Helper()
 	operation, decision := proposal(id), allow(id)
 	authority.grant(OperationRequest{Tool: "delete", Operation: operation, Decision: decision,
-		InputGeneration: input.ID(), InputTreeDigest: input.TreeDigest(), ArgumentDigest: deleteArgumentsDigestForTest(path)})
+		InputGeneration: input.ID(), InputTreeDigest: input.TreeDigest(), ArgumentDigest: deleteArgumentsDigestForTest(path), OutputScopePaths: []string{path}})
 }
 
 func deleteArgumentsDigestForTest(path string) string {
@@ -306,7 +306,7 @@ func deleteAndAssert(t *testing.T, store *Store, input *Generation, authority *e
 	operation, decision := proposal(id), allow(id)
 	argumentDigest := deleteArgumentsDigestForTest(path)
 	request := OperationRequest{Tool: "delete", Operation: operation, Decision: decision,
-		InputGeneration: input.ID(), InputTreeDigest: input.TreeDigest(), ArgumentDigest: argumentDigest}
+		InputGeneration: input.ID(), InputTreeDigest: input.TreeDigest(), ArgumentDigest: argumentDigest, OutputScopePaths: []string{path}}
 	authority.grant(request)
 	authority.grantBinding(decision.ID, exactBinding(input.snapshot, expected, request, sequence))
 	result, err := store.Delete(context.Background(), input, operation, decision, path)

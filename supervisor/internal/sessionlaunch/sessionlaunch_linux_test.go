@@ -279,7 +279,7 @@ func TestMeasuredDevelopmentRunnerUsesDurableDisposableCommandView(t *testing.T)
 	mutation, err := managed.Store().RunBash(context.Background(), g0,
 		delta.OperationIdentity{Kind: delta.OperationLease, LeaseID: leaseID},
 		delta.PolicyDecision{ID: "fixture-decision", Outcome: delta.PolicyAllow, PolicyDigest: policyDigest, MetadataPolicyDigest: metadataDigest},
-		sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", "printf 'after\\n' > task.txt"}}, runner)
+		sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", "printf 'after\\n' > task.txt"}, DeclaredOutputPaths: []string{"task.txt"}}, runner)
 	if err != nil {
 		t.Fatalf("sandbox command/sessionrepo operation: %v", err)
 	}

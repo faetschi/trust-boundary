@@ -69,7 +69,7 @@ func TestSyntheticProviderAuditBindsRealE05StoreAndLeaseOrigin(t *testing.T) {
 	}
 	defer providerJournal.Close()
 	authority, err := NewSessionOperationAuthority(journal, providerJournal, workflowID, conversationID, profileID, gatePolicy,
-		storePolicyDigest, metadataPolicyDigest, runner)
+		storePolicyDigest, metadataPolicyDigest, runner, []string{"task.txt"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestSyntheticProviderAuditBindsRealE05StoreAndLeaseOrigin(t *testing.T) {
 	}
 	durable, err := NewDurableExecutor(DurableExecutorConfig{
 		Store: store, Tip: g0, CallIssuer: governedCallIssuer,
-		PolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest, CommandRunner: runner,
+		PolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest, BashOutputPaths: []string{"task.txt"}, CommandRunner: runner,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -643,7 +643,7 @@ func TestSyntheticProviderConversationAuditDrivesActualDurableE05Executor(t *tes
 	}
 	defer providerJournal.Close()
 	authority, err := NewSessionOperationAuthority(journal, providerJournal, workflowID, conversationID, providerProfileID, policy,
-		storePolicyDigest, metadataPolicyDigest, runner)
+		storePolicyDigest, metadataPolicyDigest, runner, []string{"task.txt"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -704,7 +704,7 @@ func TestSyntheticProviderConversationAuditDrivesActualDurableE05Executor(t *tes
 	}
 	durable, err := NewDurableExecutor(DurableExecutorConfig{
 		Store: store, Tip: g0, CallIssuer: governedCallIssuer,
-		PolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest, CommandRunner: runner,
+		PolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest, BashOutputPaths: []string{"task.txt"}, CommandRunner: runner,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -276,7 +276,7 @@ func TestRealProviderDurableLinux(t *testing.T) {
 	if err != nil || chain.TransitionCount != 1 || chain.BaselineGeneration != "g0" || chain.SealedGeneration != "g1" {
 		t.Fatalf("session repository verification failed: chain=%+v err=%v", chain, err)
 	}
-	evidence, err := store.Evidence()
+	evidence, err := store.EvidenceBundle()
 	if err != nil {
 		t.Fatalf("build session repository evidence: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestRealProviderDurableLinux(t *testing.T) {
 	if effects := countWriteEffects(t, reopenedTrace); effects != 1 {
 		t.Fatalf("reopened audit journal contains %d durable write effects; want exactly one", effects)
 	}
-	recoveredEvidence, err := recovered.Evidence()
+	recoveredEvidence, err := recovered.EvidenceBundle()
 	if err != nil {
 		t.Fatalf("build recovered session repository evidence: %v", err)
 	}
@@ -504,7 +504,7 @@ func TestSyntheticDurableEvidenceAssertionsLinux(t *testing.T) {
 	if _, err := store.Verify(); err != nil {
 		t.Fatalf("verify synthetic session repository: %v", err)
 	}
-	evidence, err := store.Evidence()
+	evidence, err := store.EvidenceBundle()
 	if err != nil {
 		t.Fatalf("build synthetic session repository evidence: %v", err)
 	}
@@ -643,7 +643,7 @@ func assertRealProviderDurableAudit(t *testing.T, trace audit.Trace, proposal pr
 
 func assertRealProviderDurableEvidence(
 	t *testing.T,
-	evidence sessionrepo.EvidenceArtifact,
+	evidence sessionrepo.EvidenceBundle,
 	trace audit.Trace,
 	transcript transcriptEntry,
 	result durableMutationSummaryPayload,
@@ -728,11 +728,41 @@ func assertRealProviderDurableEvidence(
 		operationEvidence.ResultDigest != durableContentDigest(durableEffect.Result) {
 		t.Fatal("effect ID or result digest does not match the successful audit outcome")
 	}
-	var operationRequest sessionrepo.OperationRequest
-	if err := json.Unmarshal(durableEffect.Intent, &operationRequest); err != nil ||
-		operationRequest.Tool != "write" || operationRequest.Operation != operation ||
-		operationRequest.ArgumentDigest != sessionrepoArgumentDigest || operationRequest.EffectID != result.EffectID {
-		t.Fatal("durable effect intent does not preserve the normalized write operation binding")
+	if disposition, err := sessionrepo.Reconstruct(evidence); err != nil || disposition.Quarantined {
+		t.Fatalf("durable evidence bundle is not independently reconstructable: %+v err=%v", disposition, err)
+	}
+	var intent struct {
+		SchemaVersion string                       `json:"schema_version"`
+		Request       sessionrepo.OperationRequest `json:"request"`
+		Path          string                       `json:"path"`
+		MaxBytes      int64                        `json:"max_bytes"`
+		Command       sessionrepo.CommandSpec      `json:"command"`
+		RunnerProfile string                       `json:"runner_profile"`
+	}
+	if err := unmarshalGovernedJSON(durableEffect.Intent, &intent); err != nil {
+		t.Fatal(err)
+	}
+	canonicalIntent, err := json.Marshal(intent)
+	if err != nil || !bytes.Equal(canonicalIntent, durableEffect.Intent) ||
+		intent.SchemaVersion != sessionrepo.OperationIntentSchemaVersion || intent.Path != path || intent.MaxBytes != 0 ||
+		!reflect.DeepEqual(intent.Command, sessionrepo.CommandSpec{}) || intent.RunnerProfile != "" ||
+		!sameDurableOutputScopePaths(intent.Request.OutputScopePaths, []string{path}) ||
+		intent.Request.Tool != "write" || intent.Request.Operation != operation ||
+		intent.Request.ArgumentDigest != sessionrepoArgumentDigest || intent.Request.EffectID != result.EffectID {
+		t.Fatal("durable v2 intent does not preserve the normalized write operation and exact output scope")
+	}
+	var mutation struct {
+		Transition delta.Transition               `json:"transition"`
+		Admission  sessionrepo.AdmissionReference `json:"admission"`
+	}
+	if err := unmarshalGovernedJSON(durableEffect.Result, &mutation); err != nil {
+		t.Fatal(err)
+	}
+	canonicalResult, err := json.Marshal(mutation)
+	if err != nil || !bytes.Equal(canonicalResult, durableEffect.Result) || !reflect.DeepEqual(mutation.Transition, transition) ||
+		operationEvidence.Admission == nil || mutation.Admission != *operationEvidence.Admission ||
+		mutation.Admission.Outcome != "allow" || mutation.Admission.IntentDigest != digestBytes(durableEffect.Intent) {
+		t.Fatal("durable mutation result does not retain the verified transition and exact post-operation admission")
 	}
 	return operation, operationEvidence.ResultDigest, sessionrepoArgumentDigest
 }
@@ -759,7 +789,7 @@ func logRealProviderDurableSummary(
 	capturedCall openrouter.ToolCall,
 	proposalID, capturedCanonicalDigest, sessionrepoArgumentDigest string,
 	result durableMutationSummaryPayload,
-	evidence sessionrepo.EvidenceArtifact,
+	evidence sessionrepo.EvidenceBundle,
 	resultDigest string,
 ) {
 	t.Helper()

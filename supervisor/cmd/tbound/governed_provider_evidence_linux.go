@@ -99,6 +99,10 @@ func (a *SessionOperationAuthority) VerifyOrigin(bundle sessionrepo.EvidenceBund
 			return ErrGovernedSessionEvidence
 		}
 	}
+	expectedOutputScopePaths, scopeErr := governedOperationOutputScope(proof.proposal, a.bashOutputPaths)
+	if scopeErr != nil {
+		return errors.Join(ErrGovernedSessionEvidence, scopeErr)
+	}
 	var operationAdmission *governedOperationAdmissionRecord
 	var operationAdmissionSequence uint64
 	for _, record := range storeTrace.Records {
@@ -115,10 +119,11 @@ func (a *SessionOperationAuthority) VerifyOrigin(bundle sessionrepo.EvidenceBund
 		operationAdmission = &candidate
 		operationAdmissionSequence = record.Sequence
 	}
-	if operationAdmission == nil || operationAdmission.SchemaVersion != "tbound-governed-operation-admission/v1" ||
+	if operationAdmission == nil || operationAdmission.SchemaVersion != "tbound-governed-operation-admission/v2" ||
 		operationAdmission.WorkflowID != a.workflowID || operationAdmission.ConversationID != a.conversationID ||
 		operationAdmission.ProviderProfileID != a.providerProfileID || operationAdmission.DecisionID != decision.ID ||
 		operationAdmission.Operation != operation || operationAdmission.Tool != result.Tool ||
+		!sameDurableOutputScopePaths(operationAdmission.OutputScopePaths, expectedOutputScopePaths) ||
 		operationAdmission.TypedArgumentDigest != typedDigest || operationAdmission.InputGeneration != result.GenerationFrom ||
 		operationAdmission.InputTreeDigest != result.TreeDigestFrom || operationAdmission.GatePolicyDigest != a.gatePolicyDigest ||
 		operationAdmission.ProviderDecisionSequence != proof.decisionSequence ||

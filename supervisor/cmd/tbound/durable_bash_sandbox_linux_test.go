@@ -62,7 +62,8 @@ func TestDurableBashSandboxEndToEnd(t *testing.T) {
 	durable, err := NewDurableExecutor(DurableExecutorConfig{
 		Store: store, Tip: g0, CallIssuer: durableCallIssuer,
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
-		CommandRunner: executor.New(leaseID),
+		CommandRunner:   executor.New(leaseID),
+		BashOutputPaths: []string{"created-by-bash.txt"},
 	})
 	if err != nil {
 		t.Fatalf("construct durable executor: %v", err)

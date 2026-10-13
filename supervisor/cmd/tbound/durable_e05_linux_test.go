@@ -279,7 +279,8 @@ func TestDurableE05TwoGenerationWorkflow(t *testing.T) {
 	durable, err := NewDurableExecutor(DurableExecutorConfig{
 		Store: store, Tip: g0, CallIssuer: durableCallIssuer,
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
-		CommandRunner: runner,
+		CommandRunner:   runner,
+		BashOutputPaths: []string{e05BashOutput},
 	})
 	if err != nil {
 		t.Fatal(err)

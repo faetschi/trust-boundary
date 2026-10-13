@@ -63,11 +63,12 @@ type productionD09CommandSettledEvent struct {
 }
 
 type productionD09CommandEffectResult struct {
-	Transition    delta.Transition              `json:"transition"`
-	Command       sessionrepo.CommandResult     `json:"command"`
-	Settlement    sessionrepo.CommandSettlement `json:"settlement"`
-	Spec          sessionrepo.CommandSpec       `json:"spec"`
-	RunnerProfile string                        `json:"runner_profile"`
+	Admission     sessionrepo.AdmissionReference `json:"admission"`
+	Transition    delta.Transition               `json:"transition"`
+	Command       sessionrepo.CommandResult      `json:"command"`
+	Settlement    sessionrepo.CommandSettlement  `json:"settlement"`
+	Spec          sessionrepo.CommandSpec        `json:"spec"`
+	RunnerProfile string                         `json:"runner_profile"`
 }
 
 type productionD09CommandInvoker interface {
@@ -118,14 +119,19 @@ func (r *productionD09BashRunner) Run(ctx context.Context, view *sessionrepo.Com
 	if r == nil || r.inner == nil || r.journal == nil || ctx == nil || view == nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrProductionBashRunnerUnavailable
 	}
-	result, settlement, err := r.inner.Run(ctx, view, spec)
+	authorizedSpec := cloneProductionD09CommandSpec(spec)
+	runnerSpec := cloneProductionD09CommandSpec(authorizedSpec)
+	result, settlement, err := r.inner.Run(ctx, view, runnerSpec)
 	if err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 	}
 	// Consume the exact runtime-issued proof receipt before any further work or
 	// result release. TakeCommandReceipt is one-use and validates this view,
 	// canonical spec, actual result, and actual settlement against the invocation.
-	runtimeReceipt, err := r.inner.TakeCommandReceipt(view, spec, result, settlement)
+	if !reflect.DeepEqual(runnerSpec, authorizedSpec) {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(ErrProductionCommandEvidence, errors.New("D09 runner modified the authorized command spec"))
+	}
+	runtimeReceipt, err := r.inner.TakeCommandReceipt(view, runnerSpec, result, settlement)
 	if err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(ErrProductionCommandEvidence, err)
 	}
@@ -145,7 +151,7 @@ func (r *productionD09BashRunner) Run(ctx context.Context, view *sessionrepo.Com
 		runtimeReceipt.ExitCode != result.ExitCode || !result.ExitObserved {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrProductionCommandEvidence
 	}
-	if err := validateProductionD09ReceiptInvocation(view, spec, result, settlement, runtimeReceipt, r.profile, r.template); err != nil {
+	if err := validateProductionD09ReceiptInvocation(view, runnerSpec, result, settlement, runtimeReceipt, r.profile, r.template); err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(ErrProductionCommandEvidence, err)
 	}
 	if settlement.LeaseID != r.leaseID || settlement.ViewID != view.ID() || !settlement.ExitObserved ||
@@ -310,10 +316,75 @@ func marshalProductionD09CommandEvent(r *productionD09BashRunner, providerCall d
 	})
 }
 
+func cloneProductionD09CommandSpec(spec sessionrepo.CommandSpec) sessionrepo.CommandSpec {
+	if spec.Args != nil {
+		args := make([]string, len(spec.Args))
+		copy(args, spec.Args)
+		spec.Args = args
+	}
+	spec.DeclaredOutputPaths = cloneProductionD09Paths(spec.DeclaredOutputPaths)
+	return spec
+}
+
+func cloneProductionD09Paths(paths []string) []string {
+	if paths == nil {
+		return nil
+	}
+	cloned := make([]string, len(paths))
+	copy(cloned, paths)
+	return cloned
+}
+
+// The caller first validates the entire bundle with Store replay. This decoder
+// extracts the already-validated intent and restores the scope omitted from
+// the execution-only CommandSpec JSON used by D09 receipts.
+func decodeProductionD09CommandIntent(raw []byte) (sessionrepo.OperationRequest, sessionrepo.CommandSpec, string, error) {
+	if len(raw) == 0 || len(raw) > audit.MaxRecordBytes {
+		return sessionrepo.OperationRequest{}, sessionrepo.CommandSpec{}, "", errors.New("Bash intent exceeds the audit record bound")
+	}
+	var intent struct {
+		SchemaVersion string                       `json:"schema_version"`
+		Request       sessionrepo.OperationRequest `json:"request"`
+		Path          string                       `json:"path"`
+		MaxBytes      int64                        `json:"max_bytes"`
+		Command       sessionrepo.CommandSpec      `json:"command"`
+		RunnerProfile string                       `json:"runner_profile"`
+	}
+	if err := unmarshalGovernedJSON(raw, &intent); err != nil {
+		return sessionrepo.OperationRequest{}, sessionrepo.CommandSpec{}, "", err
+	}
+	if intent.SchemaVersion != sessionrepo.OperationIntentSchemaVersion || intent.Request.Tool != "bash" ||
+		intent.Path != "" || intent.MaxBytes != 0 || intent.RunnerProfile != piruntime.D09CommandRunnerProfile {
+		return sessionrepo.OperationRequest{}, sessionrepo.CommandSpec{}, "", errors.New("primary intent is not a production D09 Bash v2 intent")
+	}
+	intent.Command.DeclaredOutputPaths = cloneProductionD09Paths(intent.Request.OutputScopePaths)
+	if _, err := sessionrepo.CommandArgumentsDigest(intent.Command); err != nil {
+		return sessionrepo.OperationRequest{}, sessionrepo.CommandSpec{}, "", err
+	}
+	return intent.Request, intent.Command, intent.RunnerProfile, nil
+}
+
 func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, transition delta.Transition,
 	operation sessionrepo.OperationEvidence, receipt piruntime.D09CommandReceipt) error {
+	disposition, err := sessionrepo.Reconstruct(bundle)
+	if err != nil || disposition.Quarantined {
+		return errors.Join(ErrProductionCommandEvidence, err)
+	}
+	matchedOperations := 0
+	for _, candidate := range disposition.Operations {
+		if candidate.EffectID != operation.EffectID {
+			continue
+		}
+		if !reflect.DeepEqual(candidate, operation) {
+			return ErrProductionCommandEvidence
+		}
+		matchedOperations++
+	}
+	if matchedOperations != 1 {
+		return ErrProductionCommandEvidence
+	}
 	if operation.Tool != "bash" || operation.Operation.Kind != delta.OperationLease || operation.Operation.LeaseID != receipt.LeaseID ||
-		operation.ViewID != receipt.ViewID || operation.ArgumentDigest != receipt.CommandSpecDigest || operation.ExitCode == nil ||
+		operation.ViewID != receipt.ViewID || operation.Admission == nil || operation.ExitCode == nil ||
 		*operation.ExitCode != receipt.ExitCode || operation.CommandContainmentStatus != "not-established" ||
 		operation.CommandRunnerProfile != piruntime.D09CommandRunnerProfile || operation.Outcome != "success" ||
 		operation.EffectID == "" || operation.AuditSequence == 0 || !validDigestText(operation.ResultDigest) ||
@@ -347,15 +418,35 @@ func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, tra
 		digestBytes(effect.Result) != operation.ResultDigest {
 		return ErrProductionCommandEvidence
 	}
+	request, intentSpec, intentProfile, err := decodeProductionD09CommandIntent(effect.Intent)
+	if err != nil {
+		return errors.Join(ErrProductionCommandEvidence, err)
+	}
 	var commandResult productionD09CommandEffectResult
 	if err := unmarshalGovernedJSON(effect.Result, &commandResult); err != nil {
 		return errors.Join(ErrProductionCommandEvidence, err)
 	}
+	effectSpec := commandResult.Spec
+	effectSpec.DeclaredOutputPaths = cloneProductionD09Paths(intentSpec.DeclaredOutputPaths)
 	commandBytes, commandErr := json.Marshal(commandResult.Command)
 	settlementBytes, settlementErr := json.Marshal(commandResult.Settlement)
-	specBytes, specErr := json.Marshal(commandResult.Spec)
+	specBytes, specErr := json.Marshal(effectSpec)
+	argumentDigest, argumentErr := sessionrepo.CommandArgumentsDigest(intentSpec)
 	if commandErr != nil || settlementErr != nil || specErr != nil ||
 		!reflect.DeepEqual(commandResult.Transition, transition) || commandResult.RunnerProfile != piruntime.D09CommandRunnerProfile ||
+		intentProfile != commandResult.RunnerProfile || !reflect.DeepEqual(effectSpec, intentSpec) ||
+		request.Tool != operation.Tool || request.Tool != transition.Tool || request.EffectID != operation.EffectID ||
+		request.Operation != operation.Operation || request.Operation != transition.Operation ||
+		request.Decision != transition.Decision || request.Decision.ID != operation.DecisionID ||
+		request.ArgumentDigest != operation.ArgumentDigest || request.ArgumentDigest != transition.ArgumentDigest ||
+		argumentErr != nil || argumentDigest != request.ArgumentDigest ||
+		request.ViewID != operation.ViewID || request.ViewID != transition.ViewID ||
+		request.ExecutionContextDigest != operation.ExecutionContextDigest || request.ExecutionContextDigest != transition.ExecutionContextDigest ||
+		request.InputGeneration != operation.InputGeneration || request.InputGeneration != transition.InputGeneration ||
+		request.InputTreeDigest != operation.InputTreeDigest || request.InputTreeDigest != transition.InputTreeDigest ||
+		!sessionrepo.OutputScopeCoversChanges(request.OutputScopePaths, transition.Changes) ||
+		commandResult.Admission != *operation.Admission || commandResult.Admission.Outcome != "allow" ||
+		commandResult.Admission.IntentDigest != digestBytes(effect.Intent) ||
 		commandResult.Command.ExitCode != receipt.ExitCode || !commandResult.Command.ExitObserved ||
 		digestBytes(commandBytes) != receipt.ResultDigest || digestBytes(settlementBytes) != receipt.SettlementDigest ||
 		digestBytes(specBytes) != receipt.CommandSpecDigest || commandResult.Settlement != receipt.Settlement {
@@ -423,7 +514,7 @@ func (r *productionD09BashRunner) verifyProductionBashEvent(ctx context.Context,
 		!reflect.DeepEqual(operation, retained.operation) || !reflect.DeepEqual(transition, retained.transition) ||
 		!reflect.DeepEqual(providerCall, retained.providerCall) || operation.ViewID != retained.viewID ||
 		operation.Operation.Kind != delta.OperationLease || operation.Operation.LeaseID != retained.leaseID ||
-		operation.ArgumentDigest != retained.receipt.CommandSpecDigest || operation.ExitCode == nil ||
+		operation.ExitCode == nil ||
 		*operation.ExitCode != retained.receipt.ExitCode || operation.CommandContainmentStatus != "not-established" ||
 		operation.CommandRunnerProfile != piruntime.D09CommandRunnerProfile || retained.receipt.LeaseID != retained.leaseID ||
 		retained.receipt.ViewID != retained.viewID || retained.receipt.ReceiptDigest != retained.receiptDigest {

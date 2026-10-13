@@ -35,7 +35,7 @@ import (
 )
 
 const (
-	bundleSchemaVersion      = "tbound-sessionrepo-evidence-bundle/v1"
+	bundleSchemaVersion      = "tbound-sessionrepo-evidence-bundle/v2"
 	dispositionSchemaVersion = "tbound-sessionrepo-disposition/v1"
 	// maxEvidenceJournalBytes bounds the retained raw journal so an untrusted
 	// bundle cannot force unbounded verification work or allocation.
@@ -65,14 +65,17 @@ type EvidenceBundle struct {
 	// AuditJournal is the exact newline-delimited canonical audit journal. It
 	// verifies with audit.Verify and is byte-identical to the on-disk journal
 	// when that journal was framed canonically.
-	AuditJournal        []byte               `json:"audit_journal"`
-	AuditRecordCount    uint64               `json:"audit_record_count"`
-	AuditHeadHash       string               `json:"audit_head_hash"`
-	Baseline            GenerationEvidence   `json:"baseline"`
-	Generations         []GenerationEvidence `json:"generations"`
-	ApprovedDeltaLedger []delta.Transition   `json:"approved_delta_ledger"`
-	Operations          []OperationEvidence  `json:"operations"`
-	ValidatedChain      delta.Result         `json:"validated_chain"`
+	AuditJournal         []byte               `json:"audit_journal"`
+	AuditRecordCount     uint64               `json:"audit_record_count"`
+	AuditHeadHash        string               `json:"audit_head_hash"`
+	AdmissionJournal     []byte               `json:"admission_journal"`
+	AdmissionRecordCount uint64               `json:"admission_record_count"`
+	AdmissionHeadHash    string               `json:"admission_head_hash"`
+	Baseline             GenerationEvidence   `json:"baseline"`
+	Generations          []GenerationEvidence `json:"generations"`
+	ApprovedDeltaLedger  []delta.Transition   `json:"approved_delta_ledger"`
+	Operations           []OperationEvidence  `json:"operations"`
+	ValidatedChain       delta.Result         `json:"validated_chain"`
 }
 
 // EvidenceBundle returns a self-contained reconstruction bundle for the
@@ -109,6 +112,17 @@ func (s *Store) EvidenceBundle() (EvidenceBundle, error) {
 	if err != nil {
 		return EvidenceBundle{}, err
 	}
+	admissionTrace, err := s.admissionJournal.Trace()
+	if err != nil {
+		return EvidenceBundle{}, fmt.Errorf("verify evidence admission journal: %w", err)
+	}
+	admissionJournal, err := marshalAuditJournal(admissionTrace.Records)
+	if err != nil {
+		return EvidenceBundle{}, err
+	}
+	if len(journal)+len(admissionJournal) > maxEvidenceJournalBytes {
+		return EvidenceBundle{}, ErrOperationOutputLimit
+	}
 	generations := make([]GenerationEvidence, 0, len(s.generations))
 	for _, generation := range s.generations {
 		generations = append(generations, GenerationEvidence{
@@ -116,9 +130,16 @@ func (s *Store) EvidenceBundle() (EvidenceBundle, error) {
 			Manifest: cloneManifest(generation.snapshot.Manifest),
 		})
 	}
+	if _, err := validateAdmissionEvidence(trace, admissionTrace, s.options.PolicyDigest, s.options.MetadataPolicyDigest, generations); err != nil {
+		return EvidenceBundle{}, err
+	}
 	var auditHead string
 	if len(trace.Records) > 0 {
 		auditHead = trace.Records[len(trace.Records)-1].Hash
+	}
+	var admissionHead string
+	if len(admissionTrace.Records) > 0 {
+		admissionHead = admissionTrace.Records[len(admissionTrace.Records)-1].Hash
 	}
 	return EvidenceBundle{
 		SchemaVersion:        bundleSchemaVersion,
@@ -129,6 +150,9 @@ func (s *Store) EvidenceBundle() (EvidenceBundle, error) {
 		AuditJournal:             journal,
 		AuditRecordCount:         uint64(len(trace.Records)),
 		AuditHeadHash:            auditHead,
+		AdmissionJournal:         admissionJournal,
+		AdmissionRecordCount:     uint64(len(admissionTrace.Records)),
+		AdmissionHeadHash:        admissionHead,
 		Baseline:                 generations[0],
 		Generations:              generations,
 		ApprovedDeltaLedger:      cloneTransitions(s.transitions),
@@ -201,8 +225,8 @@ func Reconstruct(bundle EvidenceBundle) (Disposition, error) {
 	if bundle.SchemaVersion != bundleSchemaVersion {
 		return Disposition{}, invalidBundle("unknown bundle schema %q", bundle.SchemaVersion)
 	}
-	if len(bundle.AuditJournal) > maxEvidenceJournalBytes {
-		return Disposition{}, invalidBundle("audit journal exceeds the retained-byte bound")
+	if len(bundle.AuditJournal)+len(bundle.AdmissionJournal) > maxEvidenceJournalBytes {
+		return Disposition{}, invalidBundle("retained journals exceed the total-byte bound")
 	}
 	if !validSHA256(bundle.PolicyDigest) || !validSHA256(bundle.MetadataPolicyDigest) {
 		return Disposition{}, invalidBundle("policy commitments are not SHA-256 digests")
@@ -221,13 +245,32 @@ func Reconstruct(bundle EvidenceBundle) (Disposition, error) {
 	if auditHead != bundle.AuditHeadHash {
 		return Disposition{}, invalidBundle("retained audit head hash does not match the journal")
 	}
+	admissionTrace, err := audit.Verify(bytes.NewReader(bundle.AdmissionJournal))
+	if err != nil {
+		return Disposition{}, invalidBundle("verify retained admission journal: %v", err)
+	}
+	if uint64(len(admissionTrace.Records)) != bundle.AdmissionRecordCount {
+		return Disposition{}, invalidBundle("retained admission record count does not match the journal")
+	}
+	var admissionHead string
+	if len(admissionTrace.Records) > 0 {
+		admissionHead = admissionTrace.Records[len(admissionTrace.Records)-1].Hash
+	}
+	if admissionHead != bundle.AdmissionHeadHash {
+		return Disposition{}, invalidBundle("retained admission head hash does not match the journal")
+	}
 	generations, err := verifyBundleGenerations(bundle)
+	if err != nil {
+		return Disposition{}, err
+	}
+	admissions, err := validateAdmissionEvidence(trace, admissionTrace, bundle.PolicyDigest, bundle.MetadataPolicyDigest, generations)
 	if err != nil {
 		return Disposition{}, err
 	}
 
 	state := &reconstruction{
 		bundle: bundle, generations: generations,
+		admissions:     admissions,
 		byID:           make(map[string]GenerationEvidence, len(generations)),
 		chainDecisions: make(map[string]delta.PolicyDecision),
 		usedOps:        make(map[delta.OperationIdentity]struct{}),
@@ -314,6 +357,7 @@ type reconstruction struct {
 	bundle      EvidenceBundle
 	generations []GenerationEvidence
 	byID        map[string]GenerationEvidence
+	admissions  map[string]retainedAdmission
 
 	chainDecisions map[string]delta.PolicyDecision
 	usedOps        map[delta.OperationIdentity]struct{}
@@ -507,22 +551,24 @@ func (state *reconstruction) reconstructMutation(effect audit.EffectTrace, reque
 		return invalidBundle("effect %q is not based on the committed tip", effect.ID)
 	}
 	outputIndex := state.generationEffectCount
-	if outputIndex >= len(state.generations) {
-		return invalidBundle("effect %q produces an unretained generation", effect.ID)
-	}
-	output := state.generations[outputIndex]
 	outputID := fmt.Sprintf("g%d", outputIndex)
-	if output.ID != outputID {
+	var output GenerationEvidence
+	if outputIndex < len(state.generations) {
+		output = state.generations[outputIndex]
+	}
+	if outputIndex < len(state.generations) && output.ID != outputID {
 		return invalidBundle("effect %q output generation label mismatch", effect.ID)
 	}
 	var transition delta.Transition
 	var command *CommandResult
+	var admission AdmissionReference
 	if request.Tool == "bash" {
 		var result commandEffectResult
 		if err := json.Unmarshal(effect.Result, &result); err != nil {
 			return invalidBundle("effect %q decode command result: %v", effect.ID, err)
 		}
-		transition, command = result.Transition, &result.Command
+		result.Spec.DeclaredOutputPaths = cloneOutputScopePaths(request.OutputScopePaths)
+		transition, command, admission = result.Transition, &result.Command, result.Admission
 		if int64(len(command.Stdout)) > maxCommandOutputBytes || int64(len(command.Stderr)) > maxCommandOutputBytes || !command.ExitObserved {
 			return invalidBundle("effect %q command result exceeds the output bound", effect.ID)
 		}
@@ -537,11 +583,17 @@ func (state *reconstruction) reconstructMutation(effect audit.EffectTrace, reque
 			return invalidBundle("effect %q command settlement is not reconstructable", effect.ID)
 		}
 	} else if request.Tool == "write" || request.Tool == "edit" || request.Tool == "delete" {
-		if err := json.Unmarshal(effect.Result, &transition); err != nil {
+		var result mutationEffectResult
+		if err := json.Unmarshal(effect.Result, &result); err != nil {
 			return invalidBundle("effect %q decode mutation transition: %v", effect.ID, err)
 		}
+		transition, admission = result.Transition, result.Admission
 	} else {
 		return invalidBundle("effect %q has an unsupported committed tool %q", effect.ID, request.Tool)
+	}
+	retained, exists := state.admissions[effect.ID]
+	if !exists || admission != retained.reference || !sameTransition(transition, retained.record.Candidate) {
+		return invalidBundle("effect %q does not match its retained admission record", effect.ID)
 	}
 	if transition.InputGeneration != input.ID || transition.OutputGeneration != outputID ||
 		transition.InputTreeDigest != input.TreeDigest || transition.Operation != request.Operation ||
@@ -552,6 +604,33 @@ func (state *reconstruction) reconstructMutation(effect audit.EffectTrace, reque
 	}
 	if transition.Sequence != uint64(len(state.transitions)+1) || transition.ID != fmt.Sprintf("transition-%06d", transition.Sequence) {
 		return invalidBundle("effect %q transition identity is not the next ordered transition", effect.ID)
+	}
+	if retained.record.Outcome == "deny" {
+		if admission.Outcome != "deny" {
+			return invalidBundle("effect %q has a non-denial admission reference for a denied candidate", effect.ID)
+		}
+		state.denials++
+		state.operations = append(state.operations, OperationEvidence{
+			AuditSequence: effect.OutcomeSequence, Tool: request.Tool, EffectID: effect.ID, Operation: request.Operation,
+			DecisionID: request.Decision.ID, ArgumentDigest: request.ArgumentDigest,
+			ViewID: request.ViewID, ExecutionContextDigest: request.ExecutionContextDigest,
+			InputGeneration: input.ID, InputTreeDigest: input.TreeDigest,
+			ResultDigest: digestBytes(effect.Result), Outcome: "denied_after_effect", Admission: &admission,
+		})
+		if command != nil {
+			code := command.ExitCode
+			operation := &state.operations[len(state.operations)-1]
+			operation.ExitCode = &code
+			operation.CommandContainmentStatus = "not-established"
+			operation.CommandRunnerProfile = scope.RunnerProfile
+		}
+		return nil
+	}
+	if retained.record.Outcome != "allow" || admission.Outcome != "allow" {
+		return invalidBundle("effect %q has an unsupported admission outcome %q", effect.ID, retained.record.Outcome)
+	}
+	if outputIndex >= len(state.generations) {
+		return invalidBundle("effect %q produces an unretained generation", effect.ID)
 	}
 	if transition.OutputTreeDigest != output.TreeDigest {
 		return invalidBundle("effect %q transition binds the wrong output tree digest", effect.ID)
@@ -568,7 +647,7 @@ func (state *reconstruction) reconstructMutation(effect audit.EffectTrace, reque
 		ViewID: request.ViewID, ExecutionContextDigest: request.ExecutionContextDigest,
 		InputGeneration: input.ID, InputTreeDigest: input.TreeDigest,
 		OutputGeneration: output.ID, OutputTreeDigest: output.TreeDigest,
-		ResultDigest: digestBytes(effect.Result), Outcome: "success",
+		ResultDigest: digestBytes(effect.Result), Outcome: "success", Admission: &admission,
 	}
 	if command != nil {
 		code := command.ExitCode
@@ -729,6 +808,12 @@ func sameOperationSlices(left, right []OperationEvidence) bool {
 }
 
 func sameOperationEvidence(left, right OperationEvidence) bool {
+	if (left.Admission == nil) != (right.Admission == nil) {
+		return false
+	}
+	if left.Admission != nil && *left.Admission != *right.Admission {
+		return false
+	}
 	if left.AuditSequence != right.AuditSequence || left.Tool != right.Tool || left.EffectID != right.EffectID ||
 		left.Operation != right.Operation || left.DecisionID != right.DecisionID || left.ArgumentDigest != right.ArgumentDigest ||
 		left.ViewID != right.ViewID || left.ExecutionContextDigest != right.ExecutionContextDigest ||

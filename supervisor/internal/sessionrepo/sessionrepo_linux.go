@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -24,11 +25,12 @@ import (
 )
 
 const (
-	maxReadBytes          = 1 << 20
-	maxCommandOutputBytes = 1 << 20
-	maxEditReplacements   = 1024
-	maxRepositoryState    = 32 << 20
-	repositoryStateName   = "repository-state.json"
+	OperationIntentSchemaVersion = "tbound-sessionrepo-operation-intent/v2"
+	maxReadBytes                 = 1 << 20
+	maxCommandOutputBytes        = 1 << 20
+	maxEditReplacements          = 1024
+	maxRepositoryState           = 32 << 20
+	repositoryStateName          = "repository-state.json"
 )
 
 // linuxOPath is Linux O_PATH, which is not exposed by syscall on all Go versions.
@@ -55,6 +57,9 @@ var (
 	ErrViewGeneration       = errors.New("command view is not based on the current generation")
 	ErrAudit                = errors.New("durable audit recording failed")
 	ErrOperationOutputLimit = errors.New("operation output exceeds its configured limit")
+	ErrOutputScopeRequired  = errors.New("Bash operation requires an explicitly declared output scope")
+	ErrInvalidOutputScope   = errors.New("operation output scope is invalid or non-canonical")
+	ErrDeltaDenied          = errors.New("candidate transition was denied by output-scope admission")
 )
 
 // Options pins the policy and metadata identities used by every manifest.
@@ -98,6 +103,7 @@ type OperationRequest struct {
 	ViewID                 string                  `json:"view_id,omitempty"`
 	ExecutionContextDigest string                  `json:"execution_context_digest,omitempty"`
 	EffectID               string                  `json:"effect_id"`
+	OutputScopePaths       []string                `json:"output_scope_paths"`
 }
 
 // Replacement is one exact text replacement against the original file bytes.
@@ -146,9 +152,10 @@ type CommandRunnerProfile interface {
 // CommandSpec is the exact executable, argument vector, and optional relative
 // working directory authorized for one command lease.
 type CommandSpec struct {
-	Executable       string   `json:"executable"`
-	Args             []string `json:"args"`
-	WorkingDirectory string   `json:"working_directory,omitempty"`
+	Executable          string   `json:"executable"`
+	Args                []string `json:"args"`
+	WorkingDirectory    string   `json:"working_directory,omitempty"`
+	DeclaredOutputPaths []string `json:"-"`
 }
 
 // CommandRunnerFunc adapts a function to CommandRunner.
@@ -163,11 +170,12 @@ func (CommandRunnerFunc) Profile() string { return "direct-uncontained-fixture" 
 // MutationResult binds an output generation to its exact approved transition.
 // Command is set for a Bash operation.
 type MutationResult struct {
-	Generation *Generation      `json:"-"`
-	Transition delta.Transition `json:"transition"`
-	Command    *CommandResult   `json:"command,omitempty"`
-	EffectID   string           `json:"effect_id"`
-	Outcome    string           `json:"outcome"`
+	Generation *Generation         `json:"-"`
+	Transition delta.Transition    `json:"transition"`
+	Command    *CommandResult      `json:"command,omitempty"`
+	EffectID   string              `json:"effect_id"`
+	Outcome    string              `json:"outcome"`
+	Admission  *AdmissionReference `json:"admission,omitempty"`
 }
 
 // OperationEvidence records a durable released result. ResultDigest commits to
@@ -187,6 +195,7 @@ type OperationEvidence struct {
 	OutputTreeDigest         string                  `json:"output_tree_digest,omitempty"`
 	ResultDigest             string                  `json:"result_digest"`
 	Outcome                  string                  `json:"outcome"`
+	Admission                *AdmissionReference     `json:"admission,omitempty"`
 	ExitCode                 *int                    `json:"exit_code,omitempty"`
 	CommandContainmentStatus string                  `json:"command_containment_status,omitempty"`
 	CommandRunnerProfile     string                  `json:"command_runner_profile,omitempty"`
@@ -229,6 +238,7 @@ type Store struct {
 	genDir            *os.File
 	viewDir           *os.File
 	exposedDir        *os.File
+	admissionJournal  *audit.Journal
 	rootPath          string
 	options           Options
 	baseline          *Generation
@@ -343,6 +353,15 @@ func Create(root *os.File, options Options) (*Store, error) {
 			}
 			return nil, fmt.Errorf("private %s directory is not empty", item.name)
 		}
+	}
+	if err := createAdmissionJournalAt(rootCopy); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	store.admissionJournal, err = audit.Open(filepath.Join(store.rootPath, admissionJournalName))
+	if err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("open session admission journal: %w", err)
 	}
 	if err := syncDirectory(rootCopy); err != nil {
 		_ = store.Close()
@@ -503,7 +522,7 @@ func (s *Store) Edit(ctx context.Context, input *Generation, operation delta.Ope
 	if err != nil {
 		return MutationResult{}, err
 	}
-	return s.mutate(ctx, input, "edit", operation, decision, argumentDigest, func(root *os.File) error {
+	return s.mutate(ctx, input, "edit", operation, decision, argumentDigest, path, func(root *os.File) error {
 		original, mode, err := readRegularAt(root, path, s.options.Limits.MaxFileBytes)
 		if err != nil {
 			return err
@@ -535,7 +554,7 @@ func (s *Store) Write(ctx context.Context, input *Generation, operation delta.Op
 	if err != nil {
 		return MutationResult{}, err
 	}
-	return s.mutate(ctx, input, "write", operation, decision, argumentDigest, func(root *os.File) error {
+	return s.mutate(ctx, input, "write", operation, decision, argumentDigest, path, func(root *os.File) error {
 		executableBits := uint32(0)
 		if existingExecutableBits, exists, err := regularModeAt(root, path); err != nil {
 			return err
@@ -563,7 +582,7 @@ func (s *Store) Delete(ctx context.Context, input *Generation, operation delta.O
 	if err != nil {
 		return MutationResult{}, err
 	}
-	return s.mutate(ctx, input, "delete", operation, decision, argumentDigest, func(root *os.File) error {
+	return s.mutate(ctx, input, "delete", operation, decision, argumentDigest, path, func(root *os.File) error {
 		return removeRegularAt(root, path)
 	})
 }
@@ -579,6 +598,9 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 	// Keep the authorized command immutable even if the caller reuses or
 	// modifies its argument slice after this call begins.
 	spec = cloneCommandSpec(spec)
+	if err := validateCommandSpec(spec); err != nil {
+		return MutationResult{}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.checkUsableLocked(); err != nil {
@@ -619,6 +641,7 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 	}
 	request := OperationRequest{Tool: "bash", Operation: operation, Decision: decision, InputGeneration: input.id,
 		InputTreeDigest: input.snapshot.TreeDigest, ArgumentDigest: argumentDigest, ViewID: view.id,
+		OutputScopePaths:       cloneOutputScopePaths(spec.DeclaredOutputPaths),
 		ExecutionContextDigest: contextDigest, EffectID: effectID}
 	if err := s.authorizeLocked(request); err != nil {
 		return MutationResult{}, s.discardUnstartedViewLocked(view, err)
@@ -630,11 +653,8 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 			runnerProfile = profile
 		}
 	}
-	intent, err := json.Marshal(struct {
-		Request       OperationRequest `json:"request"`
-		Command       CommandSpec      `json:"command"`
-		RunnerProfile string           `json:"runner_profile"`
-	}{request, spec, runnerProfile})
+	intent, err := json.Marshal(readIntent{SchemaVersion: OperationIntentSchemaVersion,
+		Request: request, Command: spec, RunnerProfile: runnerProfile})
 	if err != nil {
 		return MutationResult{}, s.discardUnstartedViewLocked(view, err)
 	}
@@ -670,8 +690,11 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 			return nil, err
 		}
 		keepStage := false
+		stageClosed := false
 		defer func() {
-			_ = stage.Close()
+			if !stageClosed {
+				_ = stage.Close()
+			}
 			if !keepStage {
 				_ = removeTreeAt(int(s.genDir.Fd()), stageName)
 			}
@@ -683,6 +706,36 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 		transition, _, err := s.transitionLocked(input, outputID, request, snapshot)
 		if err != nil {
 			return nil, err
+		}
+		reference, err := AppendAdmission(s.admissionJournal, request, intent,
+			s.options.PolicyDigest, s.options.MetadataPolicyDigest,
+			input.snapshot.Manifest, snapshot.Manifest, transition)
+		if err != nil {
+			return nil, err
+		}
+		committed = MutationResult{
+			Transition: transition, Command: cloneCommandResult(&commandResult),
+			EffectID: effectID, Outcome: "success", Admission: &reference,
+		}
+		payload, err := json.Marshal(commandEffectResult{
+			Transition: transition, Admission: reference, Command: commandResult,
+			Settlement: settlement, Spec: spec, RunnerProfile: runnerProfile,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if reference.Outcome == "deny" {
+			committed.Outcome = "denied_after_effect"
+			stageClosed = true
+			keepStage = true
+			cleanupErr := errors.Join(stage.Close(), removeTreeAt(int(s.genDir.Fd()), stageName))
+			if cleanupErr == nil {
+				cleanupErr = syncDirectory(s.genDir)
+			}
+			if cleanupErr != nil {
+				return nil, fmt.Errorf("clean denied candidate stage: %w", cleanupErr)
+			}
+			return payload, nil
 		}
 		if err := syncTreeDirectories(stage); err != nil {
 			return nil, fmt.Errorf("sync command generation directories: %w", err)
@@ -698,11 +751,7 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 		if err != nil {
 			return nil, err
 		}
-		committed = MutationResult{Generation: generation, Transition: transition, Command: cloneCommandResult(&commandResult), EffectID: effectID, Outcome: "success"}
-		payload, err := json.Marshal(commandEffectResult{Transition: transition, Command: commandResult, Settlement: settlement, Spec: spec, RunnerProfile: runnerProfile})
-		if err != nil {
-			return nil, err
-		}
+		committed.Generation = generation
 		return payload, nil
 	})
 	if effectErr != nil {
@@ -715,6 +764,21 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 	if len(resultBytes) == 0 {
 		s.quarantined = true
 		return MutationResult{}, fmt.Errorf("%w: empty durable command result", ErrAudit)
+	}
+	if committed.Admission != nil && committed.Admission.Outcome == "deny" {
+		if err := s.discardViewLocked(view); err != nil {
+			s.quarantined = true
+			return MutationResult{}, fmt.Errorf("discard denied command view: %w", err)
+		}
+		if err := s.recordOperationLocked("bash", effectID, operation, decision,
+			request.ArgumentDigest, request.ViewID, request.ExecutionContextDigest,
+			runnerProfile, input, nil, resultBytes, committed.Command, *committed.Admission); err != nil {
+			s.quarantined = true
+			return MutationResult{}, fmt.Errorf("%w: record denied command: %w", ErrAudit, err)
+		}
+		// Retain command output in audit evidence, but withhold it from the caller.
+		committed.Command = nil
+		return committed, ErrDeltaDenied
 	}
 	if committed.Generation == nil {
 		s.quarantined = true
@@ -737,7 +801,7 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 	s.generations = candidateGenerations
 	s.generationEffects = candidateEffects
 	if err := s.recordOperationLocked("bash", effectID, operation, decision, request.ArgumentDigest, request.ViewID,
-		request.ExecutionContextDigest, runnerProfile, input, committed.Generation, resultBytes, committed.Command); err != nil {
+		request.ExecutionContextDigest, runnerProfile, input, committed.Generation, resultBytes, committed.Command, *committed.Admission); err != nil {
 		s.quarantined = true
 		return MutationResult{}, fmt.Errorf("%w: record Bash outcome evidence: %w", ErrAudit, err)
 	}
@@ -761,6 +825,9 @@ func (s *Store) Verify() (delta.Result, error) {
 			return delta.Result{}, err
 		}
 	}
+	if err := s.validateAdmissionReferencesLocked(); err != nil {
+		return delta.Result{}, err
+	}
 	return s.validateChainLocked(s.generations[len(s.generations)-1].snapshot)
 }
 
@@ -779,6 +846,9 @@ func (s *Store) Evidence() (EvidenceArtifact, error) {
 		if err := s.verifyGenerationLocked(generation); err != nil {
 			return EvidenceArtifact{}, err
 		}
+	}
+	if err := s.validateAdmissionReferencesLocked(); err != nil {
+		return EvidenceArtifact{}, err
 	}
 	chain, err := s.validateChainLocked(s.generations[len(s.generations)-1].snapshot)
 	if err != nil {
@@ -800,7 +870,7 @@ func (s *Store) Evidence() (EvidenceArtifact, error) {
 		})
 	}
 	artifact := EvidenceArtifact{
-		SchemaVersion:        "tbound-sessionrepo-evidence/v1",
+		SchemaVersion:        "tbound-sessionrepo-evidence/v2",
 		RealProviderExchange: false, PiAdapterWired: false,
 		CommandContainmentStatus: "not-established",
 		AuditRecordCount:         uint64(len(trace.Records)), AuditHeadHash: auditHead,
@@ -851,6 +921,9 @@ func (s *Store) Close() error {
 			delete(s.exposedViews, view.name)
 		}
 	}
+	if s.admissionJournal != nil {
+		closeErrors = append(closeErrors, s.admissionJournal.Close())
+	}
 	for _, file := range []*os.File{s.exposedDir, s.viewDir, s.genDir, s.root} {
 		if file != nil {
 			closeErrors = append(closeErrors, file.Close())
@@ -860,11 +933,12 @@ func (s *Store) Close() error {
 }
 
 type commandEffectResult struct {
-	Transition    delta.Transition  `json:"transition"`
-	Command       CommandResult     `json:"command"`
-	Settlement    CommandSettlement `json:"settlement"`
-	Spec          CommandSpec       `json:"spec"`
-	RunnerProfile string            `json:"runner_profile"`
+	Transition    delta.Transition   `json:"transition"`
+	Admission     AdmissionReference `json:"admission"`
+	Command       CommandResult      `json:"command"`
+	Settlement    CommandSettlement  `json:"settlement"`
+	Spec          CommandSpec        `json:"spec"`
+	RunnerProfile string             `json:"runner_profile"`
 }
 
 type durableRepositoryState struct {

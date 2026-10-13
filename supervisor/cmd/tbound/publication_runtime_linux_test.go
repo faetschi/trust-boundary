@@ -844,7 +844,7 @@ func newPublicationRuntimeFixture(t *testing.T, inject publication.FaultInjector
 	}
 	commandRunner := &runtimeFixtureCommandRunner{leaseID: bashOperation.LeaseID}
 	executor, err := NewDurableExecutor(DurableExecutorConfig{Store: store, Tip: baseline, CallIssuer: durableCallIssuer,
-		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest, CommandRunner: commandRunner})
+		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest, BashOutputPaths: []string{"build/result.txt"}, CommandRunner: commandRunner})
 	if err != nil {
 		t.Fatal(err)
 	}

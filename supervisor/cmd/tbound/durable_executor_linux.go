@@ -48,6 +48,9 @@ type DurableExecutorConfig struct {
 	CallIssuer           string
 	PolicyDigest         string
 	MetadataPolicyDigest string
+	// BashOutputPaths is the trusted exact-path output scope. Nil disables Bash;
+	// an explicit empty slice permits no changed paths.
+	BashOutputPaths []string
 	// CommandRunner is the trusted command runner used for the bash lease. It
 	// is optional: a nil runner is valid at construction and makes every bash
 	// ALLOW fail closed at Execute time rather than running uncontained.
@@ -69,6 +72,7 @@ type DurableExecutor struct {
 	policyDigest         string
 	metadataPolicyDigest string
 	commandRunner        sessionrepo.CommandRunner
+	bashOutputPaths      []string
 	quarantined          bool
 }
 
@@ -82,6 +86,27 @@ type productionBashEvidenceBinder interface {
 
 // NewDurableExecutor validates and constructs a DurableExecutor. The caller
 // retains ownership of the store, the journal, and the tip generation.
+func cloneDurableOutputScopePaths(paths []string) []string {
+	if paths == nil {
+		return nil
+	}
+	cloned := make([]string, len(paths))
+	copy(cloned, paths)
+	return cloned
+}
+
+func sameDurableOutputScopePaths(left, right []string) bool {
+	if (left == nil) != (right == nil) || len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
 func NewDurableExecutor(config DurableExecutorConfig) (*DurableExecutor, error) {
 	if config.Store == nil || config.Tip == nil {
 		return nil, errors.New("durable executor requires a store and a current tip generation")
@@ -92,10 +117,15 @@ func NewDurableExecutor(config DurableExecutorConfig) (*DurableExecutor, error) 
 	if !validBareSHA256(config.PolicyDigest) || !validBareSHA256(config.MetadataPolicyDigest) {
 		return nil, errors.New("durable executor policy commitments must be bare sha256:<lowercase hex>")
 	}
+	if config.BashOutputPaths != nil {
+		if err := sessionrepo.ValidateOutputScopePaths(config.BashOutputPaths); err != nil {
+			return nil, fmt.Errorf("durable executor Bash output scope: %w", err)
+		}
+	}
 	return &DurableExecutor{
 		store: config.Store, tip: config.Tip, callIssuer: config.CallIssuer,
 		policyDigest: config.PolicyDigest, metadataPolicyDigest: config.MetadataPolicyDigest,
-		commandRunner: config.CommandRunner,
+		commandRunner: config.CommandRunner, bashOutputPaths: cloneDurableOutputScopePaths(config.BashOutputPaths),
 	}, nil
 }
 
@@ -176,6 +206,9 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 			return nil, fmt.Errorf("durable edit: %w", err)
 		}
 	case "bash":
+		if e.bashOutputPaths == nil {
+			return nil, sessionrepo.ErrOutputScopeRequired
+		}
 		// Fail closed before touching the store when no trusted runner is
 		// configured: an unrunnable ALLOW must withhold the result, not run
 		// an uncontained command or fabricate a settlement.
@@ -192,7 +225,8 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 		// adapter's bash semantics) and -c (run the single command string).
 		// Nothing from the proposal is interpolated into argv except the
 		// strictly decoded command, so the authorized spec is byte-stable.
-		spec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", command}}
+		spec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", command},
+			DeclaredOutputPaths: cloneDurableOutputScopePaths(e.bashOutputPaths)}
 		mutation, err = e.store.RunBash(ctx, e.tip, operation, policyDecision, spec, e.commandRunner)
 		if err != nil {
 			return nil, fmt.Errorf("durable bash: %w", err)

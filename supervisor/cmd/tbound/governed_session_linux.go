@@ -126,6 +126,7 @@ type governedOperationAdmissionRecord struct {
 	DecisionID                 string                  `json:"decision_id"`
 	Operation                  delta.OperationIdentity `json:"operation"`
 	Tool                       string                  `json:"tool"`
+	OutputScopePaths           []string                `json:"output_scope_paths"`
 	TypedArgumentDigest        string                  `json:"typed_argument_digest"`
 	InputGeneration            string                  `json:"input_generation"`
 	InputTreeDigest            string                  `json:"input_tree_digest"`
@@ -150,6 +151,7 @@ type SessionOperationAuthority struct {
 	gatePolicyDigest     string
 	storePolicyDigest    string
 	metadataPolicyDigest string
+	bashOutputPaths      []string
 	store                *sessionrepo.Store
 	managedStore         *sessionlaunch.ManagedStore
 	baseline             *sessionrepo.Generation
@@ -188,11 +190,23 @@ type governedBashEvidenceOriginVerifier interface {
 }
 
 func NewSessionOperationAuthority(storeJournal, providerJournal *audit.Journal, workflowID, conversationID, providerProfileID string, gatePolicy gate.Policy,
-	storePolicyDigest, metadataPolicyDigest string, runner governedCommandRunner) (*SessionOperationAuthority, error) {
+	storePolicyDigest, metadataPolicyDigest string, runner governedCommandRunner, bashOutputPaths ...[]string) (*SessionOperationAuthority, error) {
+	if len(bashOutputPaths) > 1 {
+		return nil, errors.New("governed session authority accepts at most one Bash output scope")
+	}
 	if storeJournal == nil || providerJournal == nil || storeJournal == providerJournal ||
 		!validIdentityText(workflowID) || !validIdentityText(conversationID) || !validIdentityText(providerProfileID) ||
 		gatePolicy.Digest() == "" || !validBareSHA256(storePolicyDigest) || !validBareSHA256(metadataPolicyDigest) {
 		return nil, errors.New("governed session authority requires distinct protected Store/provider journals and fixed profile identities")
+	}
+	var configuredBashOutputPaths []string
+	if len(bashOutputPaths) == 1 {
+		configuredBashOutputPaths = cloneDurableOutputScopePaths(bashOutputPaths[0])
+		if configuredBashOutputPaths != nil {
+			if err := sessionrepo.ValidateOutputScopePaths(configuredBashOutputPaths); err != nil {
+				return nil, fmt.Errorf("governed session Bash output scope: %w", err)
+			}
+		}
 	}
 	return &SessionOperationAuthority{
 		storeJournal: storeJournal, providerJournal: providerJournal,
@@ -200,6 +214,7 @@ func NewSessionOperationAuthority(storeJournal, providerJournal *audit.Journal, 
 		providerProfileID: providerProfileID,
 		gatePolicyDigest:  gatePolicy.Digest(), storePolicyDigest: storePolicyDigest,
 		metadataPolicyDigest: metadataPolicyDigest, runner: runner,
+		bashOutputPaths: configuredBashOutputPaths,
 		operationProofs: make(map[delta.OperationIdentity]governedOperationProof),
 	}, nil
 }
@@ -287,6 +302,10 @@ func (a *SessionOperationAuthority) AuthorizeOperation(request sessionrepo.Opera
 	if err != nil {
 		return err
 	}
+	expectedOutputScopePaths, err := governedOperationOutputScope(proof.proposal, a.bashOutputPaths)
+	if err != nil || !sameDurableOutputScopePaths(request.OutputScopePaths, expectedOutputScopePaths) {
+		return errors.Join(ErrGovernedSessionEvidence, err)
+	}
 	if request.Tool != proof.proposal.Tool || request.Operation != operation || request.Decision != decision ||
 		request.InputGeneration != proof.generation || request.InputTreeDigest != proof.treeDigest ||
 		request.ArgumentDigest != typedDigest || request.EffectID == "" {
@@ -300,6 +319,7 @@ func (a *SessionOperationAuthority) AuthorizeOperation(request sessionrepo.Opera
 	} else if request.ViewID != "" || request.ExecutionContextDigest != "" {
 		return ErrGovernedSessionEvidence
 	}
+	request.OutputScopePaths = cloneDurableOutputScopePaths(request.OutputScopePaths)
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.operationProofs) >= maxGovernedOperationProofs {
@@ -309,10 +329,11 @@ func (a *SessionOperationAuthority) AuthorizeOperation(request sessionrepo.Opera
 		return errors.New("governed operation identity was already admitted")
 	}
 	admission := governedOperationAdmissionRecord{
-		SchemaVersion: "tbound-governed-operation-admission/v1", WorkflowID: a.workflowID,
+		SchemaVersion: "tbound-governed-operation-admission/v2", WorkflowID: a.workflowID,
 		ConversationID: a.conversationID, ProviderProfileID: a.providerProfileID,
 		EffectID: request.EffectID, DecisionID: request.Decision.ID, Operation: operation,
-		Tool: request.Tool, TypedArgumentDigest: typedDigest, InputGeneration: request.InputGeneration,
+		Tool: request.Tool, OutputScopePaths: cloneDurableOutputScopePaths(request.OutputScopePaths),
+		TypedArgumentDigest: typedDigest, InputGeneration: request.InputGeneration,
 		InputTreeDigest: request.InputTreeDigest, GatePolicyDigest: a.gatePolicyDigest,
 		ProviderDecisionSequence: proof.decisionSequence, ProviderDecisionRecordHash: proof.decisionHash,
 		GateDecision: proof.decision,
@@ -336,6 +357,34 @@ func (a *SessionOperationAuthority) AuthorizeOperation(request sessionrepo.Opera
 	return nil
 }
 
+func governedOperationOutputScope(proposal protocol.Proposal, bashOutputPaths []string) ([]string, error) {
+	var paths []string
+	switch proposal.Tool {
+	case "read":
+		return nil, nil
+	case "write":
+		path, _, err := durableWriteArguments(proposal.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		paths = []string{path}
+	case "edit":
+		path, _, err := durableEditArguments(proposal.Arguments)
+		if err != nil {
+			return nil, err
+		}
+		paths = []string{path}
+	case "bash":
+		if bashOutputPaths == nil {
+			return nil, sessionrepo.ErrOutputScopeRequired
+		}
+		paths = cloneDurableOutputScopePaths(bashOutputPaths)
+	default:
+		return nil, errors.New("unsupported governed output-scope tool")
+	}
+	return paths, sessionrepo.ValidateOutputScopePaths(paths)
+}
+
 func (a *SessionOperationAuthority) VerifyDecision(decision delta.PolicyDecision, binding delta.TransitionBinding) error {
 	if a == nil || decision.Outcome != delta.PolicyAllow || decision.PolicyDigest != a.storePolicyDigest ||
 		decision.MetadataPolicyDigest != a.metadataPolicyDigest {
@@ -349,6 +398,10 @@ func (a *SessionOperationAuthority) VerifyDecision(decision delta.PolicyDecision
 		return ErrGovernedSessionEvidence
 	}
 	proof := authorization.capture
+	expectedOutputScopePaths, scopeErr := governedOperationOutputScope(proof.proposal, a.bashOutputPaths)
+	if scopeErr != nil || !sameDurableOutputScopePaths(authorization.request.OutputScopePaths, expectedOutputScopePaths) {
+		return errors.Join(ErrGovernedSessionEvidence, scopeErr)
+	}
 	if authorization.record.Sequence == 0 || authorization.record.Event.Kind != governedOperationAuthorizationKind ||
 		authorization.record.Event.ID != "governed-operation:"+authorization.request.EffectID ||
 		authorization.request.Decision != decision || authorization.request.Operation != binding.Operation ||
@@ -358,10 +411,11 @@ func (a *SessionOperationAuthority) VerifyDecision(decision delta.PolicyDecision
 	}
 	var admitted governedOperationAdmissionRecord
 	if unmarshalGovernedJSON(authorization.record.Event.Data, &admitted) != nil ||
-		admitted.SchemaVersion != "tbound-governed-operation-admission/v1" || admitted.WorkflowID != a.workflowID ||
+		admitted.SchemaVersion != "tbound-governed-operation-admission/v2" || admitted.WorkflowID != a.workflowID ||
 		admitted.ConversationID != a.conversationID || admitted.ProviderProfileID != a.providerProfileID ||
 		admitted.EffectID != authorization.request.EffectID || admitted.DecisionID != decision.ID ||
 		admitted.Operation != binding.Operation || admitted.Tool != binding.Tool ||
+		!sameDurableOutputScopePaths(admitted.OutputScopePaths, authorization.request.OutputScopePaths) ||
 		admitted.TypedArgumentDigest != binding.ArgumentDigest || admitted.InputGeneration != binding.InputGeneration ||
 		admitted.InputTreeDigest != binding.InputTreeDigest || admitted.GatePolicyDigest != a.gatePolicyDigest ||
 		admitted.ProviderDecisionSequence != proof.decisionSequence || admitted.ProviderDecisionRecordHash != proof.decisionHash ||
@@ -389,9 +443,6 @@ func (a *SessionOperationAuthority) VerifyDecision(decision delta.PolicyDecision
 		proof.result.GenerationFrom != binding.InputGeneration || proof.result.GenerationTo != binding.OutputGeneration ||
 		proof.result.TreeDigestFrom != binding.InputTreeDigest || proof.result.TreeDigestTo != binding.OutputTreeDigest) {
 		return ErrGovernedSessionEvidence
-	}
-	if err := validateToolChangeScope(proof.proposal, binding); err != nil {
-		return err
 	}
 	return nil
 }
@@ -619,11 +670,11 @@ func (a *SessionOperationAuthority) bindOperation(proof governedCapture) (delta.
 	if err != nil {
 		return delta.OperationIdentity{}, delta.PolicyDecision{}, "", err
 	}
-	argumentDigest, err := sessionrepoArgumentDigest(proof.proposal)
+	argumentDigest, err := sessionrepoArgumentDigest(proof.proposal, a.bashOutputPaths)
 	return operation, decision, argumentDigest, err
 }
 
-func sessionrepoArgumentDigest(proposal protocol.Proposal) (string, error) {
+func sessionrepoArgumentDigest(proposal protocol.Proposal, bashOutputPaths []string) (string, error) {
 	var value any
 	switch proposal.Tool {
 	case "read":
@@ -663,7 +714,8 @@ func sessionrepoArgumentDigest(proposal protocol.Proposal) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		value = sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", command}}
+		return sessionrepo.CommandArgumentsDigest(sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", command},
+			DeclaredOutputPaths: cloneDurableOutputScopePaths(bashOutputPaths)})
 	default:
 		return "", errors.New("unsupported governed session tool")
 	}
@@ -710,10 +762,12 @@ func NewGovernedSupervisor(server *ipc.Server, broker *providerbridge.Conversati
 	}
 	authority.mu.Lock()
 	store, baseline, gateDigest, ownedConversation := authority.store, authority.baseline, authority.gatePolicyDigest, authority.conversation
+	bashOutputPaths := cloneDurableOutputScopePaths(authority.bashOutputPaths)
 	authority.mu.Unlock()
 	tip := durable.Tip()
 	if broker != ownedConversation || policy.Digest() != gateDigest || durable.store != store || baseline == nil || tip == nil ||
-		tip.ID() != baseline.ID() || tip.TreeDigest() != baseline.TreeDigest() {
+		tip.ID() != baseline.ID() || tip.TreeDigest() != baseline.TreeDigest() ||
+		!sameDurableOutputScopePaths(durable.bashOutputPaths, bashOutputPaths) {
 		return nil, errors.New("governed supervisor policy or durable executor tip differs from admitted session profile")
 	}
 	resultingExecutor, err := providerbridge.NewExecutor(broker, durable)
@@ -789,57 +843,16 @@ func (a *SessionOperationAuthority) CreateStore(root *os.File, limits workspace.
 	return managed, nil
 }
 
-func governedSessionrepoArgumentDigest(proposal protocol.Proposal) (string, error) {
-	var args any
-	switch proposal.Tool {
-	case "read":
-		path, err := durableReadArguments(proposal.Arguments)
-		if err != nil {
-			return "", err
-		}
-		args = struct {
-			Path     string `json:"path"`
-			MaxBytes int64  `json:"max_bytes"`
-		}{path, durableReadMaxBytes}
-	case "write":
-		path, content, err := durableWriteArguments(proposal.Arguments)
-		if err != nil {
-			return "", err
-		}
-		args = struct {
-			Path          string `json:"path"`
-			ContentDigest string `json:"content_digest"`
-			ContentBytes  int    `json:"content_bytes"`
-		}{path, durableContentDigest(content), len(content)}
-	case "edit":
-		path, edits, err := durableEditArguments(proposal.Arguments)
-		if err != nil {
-			return "", err
-		}
-		replacements := make([]sessionrepo.Replacement, len(edits))
-		for i, edit := range edits {
-			replacements[i] = sessionrepo.Replacement{OldText: edit.OldText, NewText: edit.NewText}
-		}
-		args = struct {
-			Path  string                    `json:"path"`
-			Edits []sessionrepo.Replacement `json:"edits"`
-		}{path, replacements}
-	case "bash":
-		command, err := durableBashArguments(proposal.Arguments)
-		if err != nil {
-			return "", err
-		}
-		args = sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", command}}
-	default:
-		return "", errors.New("unsupported durable session tool")
+func governedSessionrepoArgumentDigest(proposal protocol.Proposal, bashOutputPaths ...[]string) (string, error) {
+	if len(bashOutputPaths) > 1 {
+		return "", errors.New("governed argument digest accepts at most one Bash output scope")
 	}
-	encoded, err := json.Marshal(args)
-	if err != nil {
-		return "", err
+	var paths []string
+	if len(bashOutputPaths) == 1 {
+		paths = bashOutputPaths[0]
 	}
-	return digestBytes(encoded), nil
+	return sessionrepoArgumentDigest(proposal, paths)
 }
-
 func providerCaptureKey(response, call string) string { return response + "\x00" + call }
 
 func validGovernedViewID(view string) bool {
@@ -983,32 +996,6 @@ func governedExecutionContextDigest(viewID, treeDigest, leaseID string) string {
 		return ""
 	}
 	return digestBytes(encoded)
-}
-
-func validateToolChangeScope(proposal protocol.Proposal, binding delta.TransitionBinding) error {
-	switch proposal.Tool {
-	case "write":
-		path, _, err := durableWriteArguments(proposal.Arguments)
-		if err != nil {
-			return err
-		}
-		for _, change := range binding.Changes {
-			if change.Path != path {
-				return ErrGovernedSessionEvidence
-			}
-		}
-	case "edit":
-		path, _, err := durableEditArguments(proposal.Arguments)
-		if err != nil {
-			return err
-		}
-		for _, change := range binding.Changes {
-			if change.Path != path {
-				return ErrGovernedSessionEvidence
-			}
-		}
-	}
-	return nil
 }
 
 func sameManifest(a, b delta.TreeManifest) bool { return reflect.DeepEqual(a, b) }

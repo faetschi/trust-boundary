@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"syscall"
@@ -78,10 +79,21 @@ func Open(root *os.File, options Options) (*Store, error) {
 	for _, name := range rootNames {
 		rootEntries[name] = true
 	}
-	if len(rootNames) < 3 || len(rootNames) > 4 || !rootEntries["generations"] || !rootEntries["views"] || !rootEntries["exposed"] ||
-		(len(rootNames) == 4 && !rootEntries[repositoryStateName]) {
+	if (len(rootNames) != 4 && len(rootNames) != 5) ||
+		!rootEntries["generations"] || !rootEntries["views"] || !rootEntries["exposed"] ||
+		!rootEntries[admissionJournalName] ||
+		(len(rootNames) == 5 && !rootEntries[repositoryStateName]) {
 		_ = store.Close()
 		return nil, errors.New("repository root contains an unknown entry")
+	}
+	if err := requireAdmissionJournal(rootCopy); err != nil {
+		_ = store.Close()
+		return nil, err
+	}
+	store.admissionJournal, err = audit.Open(filepath.Join(store.rootPath, admissionJournalName))
+	if err != nil {
+		_ = store.Close()
+		return nil, fmt.Errorf("open session admission journal: %w", err)
 	}
 	if err := store.recoverLocked(); err != nil {
 		store.quarantined = true
@@ -96,6 +108,19 @@ func (s *Store) recoverLocked() error {
 	if err != nil {
 		return err
 	}
+	admissionTrace, err := s.admissionJournal.Trace()
+	if err != nil {
+		return fmt.Errorf("verify admission journal: %w", err)
+	}
+	admissions := &admissionRecovery{records: admissionTrace.Records, consumed: make(map[uint64]struct{})}
+	for _, record := range admissions.records {
+		if record.Event.Kind != admissionEventKind || record.Event.Outcome != "" {
+			return fmt.Errorf("unexpected admission journal record %d", record.Sequence)
+		}
+		if _, err := decodeAdmissionRecord(record.Event.Data); err != nil {
+			return err
+		}
+	}
 	for _, effect := range trace.Effects {
 		if effect.Unresolved || effect.Outcome != "success" {
 			return fmt.Errorf("audit effect %q has unresolved or unknown outcome", effect.ID)
@@ -109,9 +134,12 @@ func (s *Store) recoverLocked() error {
 		if !validSupervisorEffectID(effect.ID) {
 			return fmt.Errorf("invalid supervisor effect ID %q", effect.ID)
 		}
-		if err := s.recoverEffectLocked(effect); err != nil {
+		if err := s.recoverEffectLocked(effect, admissions); err != nil {
 			return fmt.Errorf("reconcile effect %s: %w", effect.ID, err)
 		}
+	}
+	if len(admissions.consumed) != len(admissions.records) {
+		return fmt.Errorf("%w: admission journal has unreferenced records", ErrInvalidAdmission)
 	}
 	for _, record := range trace.Records {
 		if record.Event.Kind != "operation_denied" {
@@ -172,7 +200,7 @@ func (s *Store) recoverLocked() error {
 	return nil
 }
 
-func (s *Store) recoverEffectLocked(effect audit.EffectTrace) error {
+func (s *Store) recoverEffectLocked(effect audit.EffectTrace, admissions *admissionRecovery) error {
 	var action struct {
 		Action string `json:"action"`
 	}
@@ -215,7 +243,7 @@ func (s *Store) recoverEffectLocked(effect audit.EffectTrace) error {
 	if _, exists := s.usedOperations[request.Operation]; exists {
 		return ErrOperationReplay
 	}
-	if err := s.options.AuthorizeOperation(request); err != nil {
+	if err := s.options.AuthorizeOperation(cloneOperationRequest(request)); err != nil {
 		return fmt.Errorf("revalidate trusted operation receipt: %w", err)
 	}
 	s.usedDecisions[request.Decision.ID] = struct{}{}
@@ -227,7 +255,43 @@ func (s *Store) recoverEffectLocked(effect audit.EffectTrace) error {
 	if request.Tool == "read" {
 		return s.recoverReadLocked(effect, request, readScope, input)
 	}
-	return s.recoverMutationLocked(effect, request, input, readScope.Command, readScope.RunnerProfile)
+	return s.recoverMutationLocked(effect, request, input, readScope.Command, readScope.RunnerProfile, admissions)
+}
+
+type admissionRecovery struct {
+	records  []audit.Record
+	consumed map[uint64]struct{}
+}
+
+func (s *Store) recoverAdmissionLocked(admissions *admissionRecovery, effect audit.EffectTrace, request OperationRequest,
+	input *Generation, transition delta.Transition, reference AdmissionReference) (admissionRecord, error) {
+	if reference.Sequence == 0 || reference.Sequence > uint64(len(admissions.records)) {
+		return admissionRecord{}, ErrInvalidAdmission
+	}
+	if _, exists := admissions.consumed[reference.Sequence]; exists {
+		return admissionRecord{}, fmt.Errorf("%w: admission reference is reused", ErrInvalidAdmission)
+	}
+	if err := VerifyAdmission(s.admissionJournal, reference, effect.Intent,
+		s.options.PolicyDigest, s.options.MetadataPolicyDigest); err != nil {
+		return admissionRecord{}, err
+	}
+	appended := admissions.records[reference.Sequence-1]
+	record, err := decodeAdmissionRecord(appended.Event.Data)
+	if err != nil {
+		return admissionRecord{}, err
+	}
+	requestJSON, _ := json.Marshal(request)
+	recordRequestJSON, _ := json.Marshal(record.Request)
+	transitionJSON, _ := json.Marshal(transition)
+	candidateJSON, _ := json.Marshal(record.Candidate)
+	if appended.Sequence != reference.Sequence ||
+		!bytes.Equal(requestJSON, recordRequestJSON) ||
+		!bytes.Equal(transitionJSON, candidateJSON) ||
+		!sameManifest(record.Input, input.snapshot.Manifest) {
+		return admissionRecord{}, fmt.Errorf("%w: admission does not match its primary effect", ErrInvalidAdmission)
+	}
+	admissions.consumed[reference.Sequence] = struct{}{}
+	return record, nil
 }
 
 func (s *Store) recoverSeedLocked(effect audit.EffectTrace) error {
@@ -290,11 +354,13 @@ func (s *Store) recoverReadLocked(effect audit.EffectTrace, request OperationReq
 	return nil
 }
 
-func (s *Store) recoverMutationLocked(effect audit.EffectTrace, request OperationRequest, input *Generation, requestedSpec CommandSpec, runnerProfile string) error {
+func (s *Store) recoverMutationLocked(effect audit.EffectTrace, request OperationRequest, input *Generation,
+	requestedSpec CommandSpec, runnerProfile string, admissions *admissionRecovery) error {
 	if len(s.generations) == 0 || input != s.generations[len(s.generations)-1] {
 		return ErrStaleGeneration
 	}
 	outputID := fmt.Sprintf("g%d", len(s.generations))
+	var reference AdmissionReference
 	var transition delta.Transition
 	var command *CommandResult
 	if request.Tool == "bash" {
@@ -302,6 +368,8 @@ func (s *Store) recoverMutationLocked(effect audit.EffectTrace, request Operatio
 		if err := json.Unmarshal(effect.Result, &result); err != nil {
 			return fmt.Errorf("decode command effect result: %w", err)
 		}
+		result.Spec.DeclaredOutputPaths = cloneOutputScopePaths(request.OutputScopePaths)
+		reference = result.Admission
 		transition, command = result.Transition, &result.Command
 		if int64(len(command.Stdout)) > maxCommandOutputBytes || int64(len(command.Stderr)) > maxCommandOutputBytes || !command.ExitObserved {
 			return ErrOperationOutputLimit
@@ -319,9 +387,11 @@ func (s *Store) recoverMutationLocked(effect audit.EffectTrace, request Operatio
 			return fmt.Errorf("revalidate command settlement: %w", err)
 		}
 	} else if request.Tool == "write" || request.Tool == "edit" || request.Tool == "delete" {
-		if err := json.Unmarshal(effect.Result, &transition); err != nil {
+		var result mutationEffectResult
+		if err := json.Unmarshal(effect.Result, &result); err != nil {
 			return fmt.Errorf("decode mutation transition: %w", err)
 		}
+		transition, reference = result.Transition, result.Admission
 	} else {
 		return fmt.Errorf("unsupported committed tool %q", request.Tool)
 	}
@@ -332,18 +402,43 @@ func (s *Store) recoverMutationLocked(effect audit.EffectTrace, request Operatio
 		!samePolicyDecision(transition.Decision, request.Decision) {
 		return errors.New("transition does not match its durable operation request")
 	}
-	actual, err := s.scanGenerationLocked(outputID)
+	admission, err := s.recoverAdmissionLocked(admissions, effect, request, input, transition, reference)
 	if err != nil {
 		return err
 	}
-	if transition.OutputTreeDigest != actual.TreeDigest || !sameChanges(transition.Changes, diffManifests(input.snapshot.Manifest, actual.Manifest)) {
-		return errors.New("transition does not match the complete output manifest")
+	outputDigest, err := delta.ComputeTreeDigest(admission.Output)
+	if err != nil || admission.Output.Generation != outputID ||
+		transition.OutputTreeDigest != outputDigest ||
+		!sameChanges(transition.Changes, diffManifests(input.snapshot.Manifest, admission.Output)) {
+		return fmt.Errorf("%w: candidate does not match its complete output manifest", ErrInvalidAdmission)
 	}
 	candidate := append(cloneTransitions(s.transitions), transition)
-	if _, err := s.validateChainForLocked(actual, candidate); err != nil {
+	output := workspace.Snapshot{Manifest: cloneManifest(admission.Output), TreeDigest: outputDigest}
+	if reference.Outcome == "allow" {
+		actual, err := s.scanGenerationLocked(outputID)
+		if err != nil {
+			return err
+		}
+		if actual.TreeDigest != outputDigest || !sameManifest(actual.Manifest, admission.Output) {
+			return errors.New("promoted generation does not match its admission manifest")
+		}
+		output = actual
+	} else if reference.Outcome != "deny" {
+		return ErrInvalidAdmission
+	}
+	if _, err := s.validateChainForLocked(output, candidate); err != nil {
 		return err
 	}
-	generation, err := s.openGenerationLocked(outputID, actual)
+	if reference.Outcome == "deny" {
+		var recordedCommand *CommandResult
+		if command != nil {
+			recordedCommand = cloneCommandResult(command)
+		}
+		return s.recordOperationLocked(request.Tool, effect.ID, request.Operation, request.Decision,
+			request.ArgumentDigest, request.ViewID, request.ExecutionContextDigest, runnerProfile,
+			input, nil, effect.Result, recordedCommand, reference)
+	}
+	generation, err := s.openGenerationLocked(outputID, output)
 	if err != nil {
 		return err
 	}
@@ -355,10 +450,11 @@ func (s *Store) recoverMutationLocked(effect audit.EffectTrace, request Operatio
 		recordedCommand = cloneCommandResult(command)
 	}
 	return s.recordOperationLocked(request.Tool, effect.ID, request.Operation, request.Decision, request.ArgumentDigest,
-		request.ViewID, request.ExecutionContextDigest, runnerProfile, input, generation, effect.Result, recordedCommand)
+		request.ViewID, request.ExecutionContextDigest, runnerProfile, input, generation, effect.Result, recordedCommand, reference)
 }
 
 type readIntent struct {
+	SchemaVersion string           `json:"schema_version"`
 	Request       OperationRequest `json:"request"`
 	Path          string           `json:"path"`
 	MaxBytes      int64            `json:"max_bytes"`
@@ -371,18 +467,67 @@ func decodeOperationIntent(data []byte) (OperationRequest, readIntent, error) {
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return OperationRequest{}, readIntent{}, err
 	}
-	if _, exists := envelope["request"]; exists {
-		var read readIntent
-		if err := json.Unmarshal(data, &read); err != nil {
-			return OperationRequest{}, readIntent{}, err
-		}
-		return read.Request, read, nil
+	required := []string{"schema_version", "request", "path", "max_bytes", "command", "runner_profile"}
+	if envelope == nil || len(envelope) != len(required) {
+		return OperationRequest{}, readIntent{}, errors.New("operation intent is not the versioned v2 envelope")
 	}
-	var request OperationRequest
-	if err := json.Unmarshal(data, &request); err != nil {
+	for _, key := range required {
+		if _, exists := envelope[key]; !exists {
+			return OperationRequest{}, readIntent{}, fmt.Errorf("operation intent omits %q", key)
+		}
+	}
+	var requestFields map[string]json.RawMessage
+	if err := json.Unmarshal(envelope["request"], &requestFields); err != nil || requestFields == nil {
+		return OperationRequest{}, readIntent{}, errors.New("operation intent request is invalid")
+	}
+	if _, exists := requestFields["output_scope_paths"]; !exists {
+		return OperationRequest{}, readIntent{}, errors.New("operation intent request omits output scope")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var intent readIntent
+	if err := decoder.Decode(&intent); err != nil {
 		return OperationRequest{}, readIntent{}, err
 	}
-	return request, readIntent{}, nil
+	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return OperationRequest{}, readIntent{}, errors.New("operation intent has trailing JSON")
+		}
+		return OperationRequest{}, readIntent{}, err
+	}
+	if intent.SchemaVersion != OperationIntentSchemaVersion {
+		return OperationRequest{}, readIntent{}, errors.New("unsupported operation intent schema version")
+	}
+	switch intent.Request.Tool {
+	case "read":
+		if intent.Request.OutputScopePaths != nil || validateRelativePath(intent.Path) != nil ||
+			intent.MaxBytes <= 0 || intent.MaxBytes > maxReadBytes || intent.RunnerProfile != "" ||
+			!sameCommandSpec(intent.Command, CommandSpec{}) {
+			return OperationRequest{}, readIntent{}, errors.New("invalid read operation intent")
+		}
+	case "write", "edit", "delete":
+		if ValidateOutputScopePaths(intent.Request.OutputScopePaths) != nil || len(intent.Request.OutputScopePaths) != 1 ||
+			intent.Path != intent.Request.OutputScopePaths[0] || intent.MaxBytes != 0 || intent.RunnerProfile != "" ||
+			!sameCommandSpec(intent.Command, CommandSpec{}) {
+			return OperationRequest{}, readIntent{}, errors.New("invalid mutation operation intent")
+		}
+	case "bash":
+		if ValidateOutputScopePaths(intent.Request.OutputScopePaths) != nil || intent.Path != "" || intent.MaxBytes != 0 ||
+			!validIdentity(intent.RunnerProfile) {
+			return OperationRequest{}, readIntent{}, errors.New("invalid Bash operation intent")
+		}
+		intent.Command.DeclaredOutputPaths = cloneOutputScopePaths(intent.Request.OutputScopePaths)
+		if err := validateCommandSpec(intent.Command); err != nil {
+			return OperationRequest{}, readIntent{}, fmt.Errorf("invalid Bash command scope: %w", err)
+		}
+	default:
+		return OperationRequest{}, readIntent{}, errors.New("unsupported operation intent tool")
+	}
+	canonical, err := json.Marshal(intent)
+	if err != nil || !bytes.Equal(canonical, data) {
+		return OperationRequest{}, readIntent{}, errors.New("operation intent is not canonical v2 JSON")
+	}
+	return intent.Request, intent, nil
 }
 
 func (s *Store) reconcileDirectoryContentsLocked() error {
@@ -648,7 +793,8 @@ func samePolicyDecision(left, right delta.PolicyDecision) bool {
 
 func sameCommandSpec(left, right CommandSpec) bool {
 	if left.Executable != right.Executable || left.WorkingDirectory != right.WorkingDirectory ||
-		len(left.Args) != len(right.Args) || (left.Args == nil) != (right.Args == nil) {
+		len(left.Args) != len(right.Args) || (left.Args == nil) != (right.Args == nil) ||
+		!sameOutputScopePaths(left.DeclaredOutputPaths, right.DeclaredOutputPaths) {
 		return false
 	}
 	for index := range left.Args {
@@ -665,5 +811,6 @@ func cloneCommandSpec(spec CommandSpec) CommandSpec {
 		copy(arguments, spec.Args)
 		spec.Args = arguments
 	}
+	spec.DeclaredOutputPaths = cloneOutputScopePaths(spec.DeclaredOutputPaths)
 	return spec
 }

@@ -203,7 +203,8 @@ func TestDurableExecutorWithholdsResultAndQuarantinesWhenD09EvidenceJournalFails
 	runner := &failingProductionEvidenceBinder{inner: durableConsistentBashRunner(leaseID), err: journalErr}
 	executor, err := NewDurableExecutor(DurableExecutorConfig{Store: store, Tip: baseline,
 		CallIssuer: durableCallIssuer, PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
-		CommandRunner: runner})
+		BashOutputPaths: []string{},
+		CommandRunner:   runner})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -360,7 +360,7 @@ func TestProductionD09OperationBundleBindsActualBashAuditAndTreeDelta(t *testing
 	if operation.Tool != "bash" || transition.Tool != "bash" || operation.Operation.Kind != delta.OperationLease {
 		t.Fatalf("fixture terminal operation is not Bash lease evidence: op=%+v transition=%+v", operation, transition)
 	}
-	spec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", "true"}}
+	spec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", "true"}, DeclaredOutputPaths: []string{"task.txt"}}
 	result := sessionrepo.CommandResult{ExitCode: 0, ExitObserved: true, Stdout: []byte("ok\n")}
 	settlement := sessionrepo.CommandSettlement{LeaseID: operation.Operation.LeaseID, ViewID: operation.ViewID,
 		ExitObserved: true, ExitCode: 0, ProcessScopeEmpty: true, WritersStopped: true, MountDetached: true,
@@ -380,6 +380,10 @@ func TestProductionD09OperationBundleBindsActualBashAuditAndTreeDelta(t *testing
 	receipt := piruntime.D09CommandReceipt{LeaseID: operation.Operation.LeaseID, ViewID: operation.ViewID,
 		CommandSpecDigest: digestBytes(specBytes), ResultDigest: digestBytes(resultBytes),
 		SettlementDigest: digestBytes(settlementBytes), ExitCode: result.ExitCode, Settlement: settlement}
+	storeDigest, err := sessionrepo.CommandArgumentsDigest(spec)
+	if err != nil || storeDigest != operation.ArgumentDigest || receipt.CommandSpecDigest == storeDigest {
+		t.Fatalf("execution receipt and scope-inclusive Store digest are not distinct: receipt=%q Store=%q operation=%q err=%v", receipt.CommandSpecDigest, storeDigest, operation.ArgumentDigest, err)
+	}
 	if err := validateProductionD09OperationBundle(bundle, transition, operation, receipt); err != nil {
 		t.Fatalf("actual durable command effect/OperationEvidence/transition bundle was refused: %v", err)
 	}
@@ -399,6 +403,21 @@ func TestProductionD09OperationBundleBindsActualBashAuditAndTreeDelta(t *testing
 			receipt *piruntime.D09CommandReceipt) {
 			operation.ArgumentDigest = "sha256:" + stringsOf('e', 64)
 			receipt.CommandSpecDigest = operation.ArgumentDigest
+		},
+		"wrong Store scope digest": func(_ *sessionrepo.EvidenceBundle, transition *delta.Transition, operation *sessionrepo.OperationEvidence, _ *piruntime.D09CommandReceipt) {
+			otherSpec := cloneProductionD09CommandSpec(spec)
+			otherSpec.DeclaredOutputPaths = []string{"other.txt"}
+			digest, err := sessionrepo.CommandArgumentsDigest(otherSpec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			operation.ArgumentDigest, transition.ArgumentDigest = digest, digest
+		},
+		"receipt uses Store digest": func(_ *sessionrepo.EvidenceBundle, _ *delta.Transition, operation *sessionrepo.OperationEvidence, receipt *piruntime.D09CommandReceipt) {
+			receipt.CommandSpecDigest = operation.ArgumentDigest
+		},
+		"wrong admission reference": func(_ *sessionrepo.EvidenceBundle, _ *delta.Transition, operation *sessionrepo.OperationEvidence, _ *piruntime.D09CommandReceipt) {
+			operation.Admission.Sequence++
 		},
 		"wrong result": func(_ *sessionrepo.EvidenceBundle, _ *delta.Transition, operation *sessionrepo.OperationEvidence,
 			receipt *piruntime.D09CommandReceipt) {
@@ -445,6 +464,10 @@ func TestProductionD09OperationBundleBindsActualBashAuditAndTreeDelta(t *testing
 			candidateBundle := bundle
 			candidateBundle.AuditJournal = append([]byte(nil), bundle.AuditJournal...)
 			candidateOperation := operation
+			if operation.Admission != nil {
+				reference := *operation.Admission
+				candidateOperation.Admission = &reference
+			}
 			if operation.ExitCode != nil {
 				candidateOperation.ExitCode = intPointer(*operation.ExitCode)
 			}
@@ -544,7 +567,7 @@ func managedRootTestSession(t *testing.T) (*sessionrepo.Store, *sessionrepo.Gene
 	bashOperation := delta.OperationIdentity{Kind: delta.OperationLease, LeaseID: leaseID}
 	bashDecision := delta.PolicyDecision{ID: "managed-test-bash-decision", Outcome: delta.PolicyAllow,
 		PolicyDigest: managedRootTestPolicy, MetadataPolicyDigest: managedRootTestMetadata}
-	bashSpec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", "true"}}
+	bashSpec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", "true"}, DeclaredOutputPaths: []string{"task.txt"}}
 	bashMutation, err := store.RunBash(context.Background(), mutation.Generation, bashOperation, bashDecision,
 		bashSpec, managedRootD09CommandFixture{leaseID: leaseID})
 	if err != nil {

@@ -188,11 +188,8 @@ func (s *Store) read(ctx context.Context, generation *Generation, operation delt
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	intent, err := json.Marshal(struct {
-		Request  OperationRequest `json:"request"`
-		Path     string           `json:"path"`
-		MaxBytes int64            `json:"max_bytes"`
-	}{request, path, maxBytes})
+	intent, err := json.Marshal(readIntent{SchemaVersion: OperationIntentSchemaVersion,
+		Request: request, Path: path, MaxBytes: maxBytes})
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +226,12 @@ func (s *Store) read(ctx context.Context, generation *Generation, operation delt
 	return append([]byte(nil), result...), nil
 }
 
-func (s *Store) mutate(ctx context.Context, input *Generation, tool string, operation delta.OperationIdentity, decision delta.PolicyDecision, argumentDigest string, apply func(*os.File) error) (MutationResult, error) {
+type mutationEffectResult struct {
+	Transition delta.Transition   `json:"transition"`
+	Admission  AdmissionReference `json:"admission"`
+}
+
+func (s *Store) mutate(ctx context.Context, input *Generation, tool string, operation delta.OperationIdentity, decision delta.PolicyDecision, argumentDigest, outputPath string, apply func(*os.File) error) (MutationResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if err := s.checkUsableLocked(); err != nil {
@@ -245,7 +247,7 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 	if err != nil {
 		return MutationResult{}, err
 	}
-	request := OperationRequest{Tool: tool, Operation: operation, Decision: decision, InputGeneration: input.id, InputTreeDigest: input.snapshot.TreeDigest, ArgumentDigest: argumentDigest, EffectID: effectID}
+	request := OperationRequest{Tool: tool, Operation: operation, Decision: decision, InputGeneration: input.id, InputTreeDigest: input.snapshot.TreeDigest, ArgumentDigest: argumentDigest, EffectID: effectID, OutputScopePaths: []string{outputPath}}
 	if err := s.authorizeLocked(request); err != nil {
 		return MutationResult{}, err
 	}
@@ -253,7 +255,7 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 		return MutationResult{}, err
 	}
 	outputID := fmt.Sprintf("g%d", len(s.generations))
-	intent, err := json.Marshal(request)
+	intent, err := json.Marshal(readIntent{SchemaVersion: OperationIntentSchemaVersion, Request: request, Path: outputPath})
 	if err != nil {
 		return MutationResult{}, err
 	}
@@ -271,8 +273,11 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 			return nil, err
 		}
 		keepStage := false
+		stageClosed := false
 		defer func() {
-			_ = stage.Close()
+			if !stageClosed {
+				_ = stage.Close()
+			}
 			if !keepStage {
 				_ = removeTreeAt(int(s.genDir.Fd()), stageName)
 			}
@@ -291,9 +296,32 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 		if err != nil {
 			return nil, err
 		}
-		payload, err := json.Marshal(transition)
+		reference, err := AppendAdmission(s.admissionJournal, request, intent,
+			s.options.PolicyDigest, s.options.MetadataPolicyDigest,
+			input.snapshot.Manifest, snapshot.Manifest, transition)
 		if err != nil {
 			return nil, err
+		}
+		committed = MutationResult{
+			Transition: transition, EffectID: effectID, Admission: &reference,
+			Outcome: "success",
+		}
+		payload, err := json.Marshal(mutationEffectResult{Transition: transition, Admission: reference})
+		if err != nil {
+			return nil, err
+		}
+		if reference.Outcome == "deny" {
+			committed.Outcome = "denied_after_effect"
+			stageClosed = true
+			keepStage = true
+			cleanupErr := errors.Join(stage.Close(), removeTreeAt(int(s.genDir.Fd()), stageName))
+			if cleanupErr == nil {
+				cleanupErr = syncDirectory(s.genDir)
+			}
+			if cleanupErr != nil {
+				return nil, fmt.Errorf("clean denied candidate stage: %w", cleanupErr)
+			}
+			return payload, nil
 		}
 		if err := syncTreeDirectories(stage); err != nil {
 			return nil, fmt.Errorf("sync mutation generation directories: %w", err)
@@ -309,7 +337,7 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 		if err != nil {
 			return nil, err
 		}
-		committed = MutationResult{Generation: generation, Transition: transition, EffectID: effectID, Outcome: "success"}
+		committed.Generation = generation
 		return payload, nil
 	})
 	if err != nil {
@@ -322,6 +350,14 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 	if len(resultBytes) == 0 {
 		s.quarantined = true
 		return MutationResult{}, fmt.Errorf("%w: empty durable transition", ErrAudit)
+	}
+	if committed.Admission != nil && committed.Admission.Outcome == "deny" {
+		if err := s.recordOperationLocked(tool, effectID, operation, decision,
+			request.ArgumentDigest, "", "", "", input, nil, resultBytes, nil, *committed.Admission); err != nil {
+			s.quarantined = true
+			return MutationResult{}, fmt.Errorf("%w: record denied mutation: %w", ErrAudit, err)
+		}
+		return committed, ErrDeltaDenied
 	}
 	if committed.Generation == nil {
 		s.quarantined = true
@@ -338,7 +374,7 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 	s.transitions = candidateTransitions
 	s.generations = candidateGenerations
 	s.generationEffects = candidateEffects
-	if err := s.recordOperationLocked(tool, effectID, operation, decision, request.ArgumentDigest, "", "", "", input, committed.Generation, resultBytes, nil); err != nil {
+	if err := s.recordOperationLocked(tool, effectID, operation, decision, request.ArgumentDigest, "", "", "", input, committed.Generation, resultBytes, nil, *committed.Admission); err != nil {
 		s.quarantined = true
 		return MutationResult{}, fmt.Errorf("%w: record mutation outcome evidence: %w", ErrAudit, err)
 	}
@@ -348,6 +384,9 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 func (s *Store) authorizeLocked(request OperationRequest) error {
 	if err := validateOperation(request.Operation); err != nil {
 		return err
+	}
+	if err := validateRequestOutputScope(request); err != nil {
+		return s.denyLocked(request, err)
 	}
 	if !validSupervisorEffectID(request.EffectID) || !validSHA256(request.ArgumentDigest) ||
 		request.Decision.Outcome != delta.PolicyAllow || request.Decision.PolicyDigest != s.options.PolicyDigest ||
@@ -360,7 +399,7 @@ func (s *Store) authorizeLocked(request OperationRequest) error {
 	if _, exists := s.usedOperations[request.Operation]; exists {
 		return s.denyLocked(request, ErrOperationReplay)
 	}
-	if err := s.options.AuthorizeOperation(request); err != nil {
+	if err := s.options.AuthorizeOperation(cloneOperationRequest(request)); err != nil {
 		return s.denyLocked(request, err)
 	}
 	s.usedDecisions[request.Decision.ID] = struct{}{}
@@ -557,7 +596,7 @@ func (s *Store) discardUnstartedViewLocked(view *CommandView, cause error) error
 }
 
 func (s *Store) recordOperationLocked(tool string, effectID string, operation delta.OperationIdentity, decision delta.PolicyDecision,
-	argumentDigest, viewID, executionContextDigest, runnerProfile string, input, output *Generation, result []byte, command *CommandResult) error {
+	argumentDigest, viewID, executionContextDigest, runnerProfile string, input, output *Generation, result []byte, command *CommandResult, admission ...AdmissionReference) error {
 	trace, err := s.options.Journal.Trace()
 	if err != nil {
 		return err
@@ -587,6 +626,13 @@ func (s *Store) recordOperationLocked(tool string, effectID string, operation de
 		evidence.ExitCode = &code
 		evidence.CommandContainmentStatus = "not-established"
 		evidence.CommandRunnerProfile = runnerProfile
+	}
+	if len(admission) != 0 {
+		reference := admission[0]
+		evidence.Admission = &reference
+		if reference.Outcome == "deny" {
+			evidence.Outcome = "denied_after_effect"
+		}
 	}
 	s.operations = append(s.operations, evidence)
 	return nil
@@ -624,11 +670,94 @@ func argumentsDigest(arguments any) (string, error) {
 	return digestBytes(encoded), nil
 }
 
-func commandArgumentsDigest(spec CommandSpec) (string, error) {
+func CommandArgumentsDigest(spec CommandSpec) (string, error) {
 	if err := validateCommandSpec(spec); err != nil {
 		return "", err
 	}
-	return argumentsDigest(spec)
+	return argumentsDigest(struct {
+		Command          CommandSpec `json:"command"`
+		OutputScopePaths []string    `json:"output_scope_paths"`
+	}{spec, spec.DeclaredOutputPaths})
+}
+
+func cloneOperationRequest(request OperationRequest) OperationRequest {
+	request.OutputScopePaths = cloneOutputScopePaths(request.OutputScopePaths)
+	return request
+}
+
+func validateRequestOutputScope(request OperationRequest) error {
+	switch request.Tool {
+	case "read":
+		if request.OutputScopePaths != nil {
+			return ErrInvalidOutputScope
+		}
+		return nil
+	case "write", "edit", "delete":
+		if err := ValidateOutputScopePaths(request.OutputScopePaths); err != nil || len(request.OutputScopePaths) != 1 {
+			return ErrInvalidOutputScope
+		}
+		return nil
+	case "bash":
+		return ValidateOutputScopePaths(request.OutputScopePaths)
+	default:
+		return ErrInvalidOutputScope
+	}
+}
+
+// ValidateOutputScopePaths requires an explicit, canonical exact-path scope.
+// An empty slice permits no changes; nil means no scope was supplied.
+func ValidateOutputScopePaths(paths []string) error {
+	if paths == nil {
+		return ErrOutputScopeRequired
+	}
+	if len(paths) > 128 {
+		return ErrInvalidOutputScope
+	}
+	for index, path := range paths {
+		if validateRelativePath(path) != nil || index > 0 && paths[index-1] >= path {
+			return ErrInvalidOutputScope
+		}
+	}
+	return nil
+}
+
+// OutputScopeCoversChanges never treats parent paths or runner labels as authority.
+func OutputScopeCoversChanges(paths []string, changes []delta.ObjectChange) bool {
+	if ValidateOutputScopePaths(paths) != nil {
+		return false
+	}
+	for _, change := range changes {
+		index := sort.SearchStrings(paths, change.Path)
+		if index == len(paths) || paths[index] != change.Path {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneOutputScopePaths(paths []string) []string {
+	if paths == nil {
+		return nil
+	}
+	cloned := make([]string, len(paths))
+	copy(cloned, paths)
+	return cloned
+}
+
+func sameOutputScopePaths(left, right []string) bool {
+	if (left == nil) != (right == nil) || len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func commandArgumentsDigest(spec CommandSpec) (string, error) {
+	return CommandArgumentsDigest(spec)
 }
 
 func commandExecutionContextDigest(viewID, viewTreeDigest, leaseID string) (string, error) {
@@ -659,6 +788,9 @@ func validViewID(id string) bool {
 }
 
 func validateCommandSpec(spec CommandSpec) error {
+	if err := ValidateOutputScopePaths(spec.DeclaredOutputPaths); err != nil {
+		return err
+	}
 	if !validIdentity(spec.Executable) || !filepath.IsAbs(spec.Executable) || filepath.Clean(spec.Executable) != spec.Executable || len(spec.Args) > 128 {
 		return ErrInvalidOptions
 	}
@@ -817,6 +949,10 @@ func cloneTransitions(transitions []delta.Transition) []delta.Transition {
 func cloneOperations(operations []OperationEvidence) []OperationEvidence {
 	cloned := append([]OperationEvidence(nil), operations...)
 	for index := range cloned {
+		if operations[index].Admission != nil {
+			reference := *operations[index].Admission
+			cloned[index].Admission = &reference
+		}
 		if operations[index].ExitCode != nil {
 			code := *operations[index].ExitCode
 			cloned[index].ExitCode = &code

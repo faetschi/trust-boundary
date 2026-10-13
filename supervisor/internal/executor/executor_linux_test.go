@@ -144,8 +144,9 @@ func TestStoreRunBashIntegration(t *testing.T) {
 		PolicyDigest: policyDigest, MetadataPolicyDigest: metadataDigest,
 	}
 	spec := sessionrepo.CommandSpec{
-		Executable: "/bin/bash",
-		Args:       []string{"-c", "printf 'command output\\n' > build/result.txt && printf 'command completed\\n'"},
+		Executable:          "/bin/bash",
+		Args:                []string{"-c", "printf 'command output\\n' > build/result.txt && printf 'command completed\\n'"},
+		DeclaredOutputPaths: []string{"build/result.txt"},
 	}
 	mutation, err := store.RunBash(context.Background(), g0, lease, decision, spec, New(lease.LeaseID))
 	if err != nil {

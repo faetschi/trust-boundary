@@ -164,7 +164,8 @@ func TestDurableBashDecisionPath(t *testing.T) {
 	executor, err := NewDurableExecutor(DurableExecutorConfig{
 		Store: store, Tip: g0, CallIssuer: durableCallIssuer,
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
-		CommandRunner: runner,
+		CommandRunner:   runner,
+		BashOutputPaths: []string{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -200,7 +201,7 @@ func TestDurableBashDecisionPath(t *testing.T) {
 	wantSpec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", command}}
 	if runner.lastSpec.Executable != wantSpec.Executable || len(runner.lastSpec.Args) != len(wantSpec.Args) ||
 		runner.lastSpec.Args[0] != wantSpec.Args[0] || runner.lastSpec.Args[1] != wantSpec.Args[1] ||
-		runner.lastSpec.WorkingDirectory != "" {
+		runner.lastSpec.WorkingDirectory != "" || runner.lastSpec.DeclaredOutputPaths == nil || len(runner.lastSpec.DeclaredOutputPaths) != 0 {
 		t.Fatalf("durable bash argv = %+v, want %+v", runner.lastSpec, wantSpec)
 	}
 	if runner.lastView != "" && !strings.HasPrefix(runner.lastView, "view-") {
@@ -263,7 +264,8 @@ func TestDurableBashRejectsInconsistentSettlement(t *testing.T) {
 	executor, err := NewDurableExecutor(DurableExecutorConfig{
 		Store: store, Tip: g0, CallIssuer: durableCallIssuer,
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
-		CommandRunner: runner,
+		CommandRunner:   runner,
+		BashOutputPaths: []string{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -283,6 +285,50 @@ func TestDurableBashRejectsInconsistentSettlement(t *testing.T) {
 
 // TestDurableBashWithoutRunnerFailsClosed proves a bash ALLOW with no configured
 // runner is withheld before the store is touched.
+func TestDurableBashRequiresOutputScopeBeforeStore(t *testing.T) {
+	store, _, _, g0 := durableBashFixture(t)
+	proposal, decision := durableBashProposal(`{"command":"true"}`)
+	leaseID, err := durableTrustedIdentity("lease", proposal, decision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := durableConsistentBashRunner(leaseID)
+	executor, err := NewDurableExecutor(DurableExecutorConfig{
+		Store: store, Tip: g0, CallIssuer: durableCallIssuer,
+		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
+		CommandRunner: runner,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := executor.Execute(context.Background(), proposal, decision); !errors.Is(err, sessionrepo.ErrOutputScopeRequired) {
+		t.Fatalf("nil-scope Bash error = %v, want output scope required", err)
+	}
+	if runner.calls != 0 || executor.Tip() == nil || executor.Tip().ID() != "g0" {
+		t.Fatalf("nil-scope Bash reached runner or advanced tip: calls=%d tip=%v", runner.calls, executor.Tip())
+	}
+	if chain, err := store.Verify(); err != nil || chain.TransitionCount != 0 || chain.SealedGeneration != "g0" {
+		t.Fatalf("nil-scope Bash touched Store: chain=%+v err=%v", chain, err)
+	}
+}
+
+func TestDurableExecutorClonesBashOutputScope(t *testing.T) {
+	store, _, _, g0 := durableBashFixture(t)
+	paths := []string{"task.txt"}
+	executor, err := NewDurableExecutor(DurableExecutorConfig{
+		Store: store, Tip: g0, CallIssuer: durableCallIssuer,
+		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
+		BashOutputPaths: paths,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths[0] = "forged.txt"
+	if !sameDurableOutputScopePaths(executor.bashOutputPaths, []string{"task.txt"}) {
+		t.Fatalf("executor scope aliased caller config: %q", executor.bashOutputPaths)
+	}
+}
+
 func TestDurableBashWithoutRunnerFailsClosed(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("durable session-repository integration runs only on Linux")
@@ -292,6 +338,7 @@ func TestDurableBashWithoutRunnerFailsClosed(t *testing.T) {
 	executor, err := NewDurableExecutor(DurableExecutorConfig{
 		Store: store, Tip: g0, CallIssuer: durableCallIssuer,
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
+		BashOutputPaths: []string{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -320,7 +367,8 @@ func TestDurableBashRejectsMalformedArguments(t *testing.T) {
 	executor, err := NewDurableExecutor(DurableExecutorConfig{
 		Store: store, Tip: g0, CallIssuer: durableCallIssuer,
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
-		CommandRunner: runner,
+		CommandRunner:   runner,
+		BashOutputPaths: []string{},
 	})
 	if err != nil {
 		t.Fatal(err)

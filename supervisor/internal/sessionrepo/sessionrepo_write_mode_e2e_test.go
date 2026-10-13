@@ -122,7 +122,7 @@ func writeAndAssertMode(t *testing.T, store *Store, input *Generation, authority
 	operation, decision := proposal(id), allow(id)
 	argumentDigest := writeArgumentsDigestForTest(path, content)
 	request := OperationRequest{Tool: "write", Operation: operation, Decision: decision,
-		InputGeneration: input.ID(), InputTreeDigest: input.TreeDigest(), ArgumentDigest: argumentDigest}
+		InputGeneration: input.ID(), InputTreeDigest: input.TreeDigest(), ArgumentDigest: argumentDigest, OutputScopePaths: []string{path}}
 	authority.grant(request)
 	authority.grantBinding(decision.ID, exactBinding(input.snapshot, expected, request, sequence))
 	result, err := store.Write(context.Background(), input, operation, decision, path, content)

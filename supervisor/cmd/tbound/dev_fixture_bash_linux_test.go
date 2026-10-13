@@ -76,8 +76,9 @@ func TestDevFixtureCommandRunnerSettlesDurableBash(t *testing.T) {
 		PolicyDigest: devFixtureStorePolicy, MetadataPolicyDigest: devFixtureMetadataPolicy,
 	}
 	spec := sessionrepo.CommandSpec{
-		Executable: "/bin/bash",
-		Args:       []string{"-lc", "umask 022; printf bash > task.txt"},
+		Executable:          "/bin/bash",
+		Args:                []string{"-lc", "umask 022; printf bash > task.txt"},
+		DeclaredOutputPaths: []string{"task.txt"},
 	}
 	mutation, err := store.RunBash(context.Background(), g0, operation, decision, spec, commands)
 	if err != nil {

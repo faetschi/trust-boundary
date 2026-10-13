@@ -52,7 +52,7 @@ func TestSessionRepositoryLifecycleE2E(t *testing.T) {
 		Path  string        `json:"path"`
 		Edits []Replacement `json:"edits"`
 	}{"README.md", edits})
-	editRequest := OperationRequest{Tool: "edit", Operation: editOp, Decision: editDecision, InputGeneration: g0.ID(), InputTreeDigest: g0.TreeDigest(), ArgumentDigest: editArgs}
+	editRequest := OperationRequest{Tool: "edit", Operation: editOp, Decision: editDecision, InputGeneration: g0.ID(), InputTreeDigest: g0.TreeDigest(), ArgumentDigest: editArgs, OutputScopePaths: []string{"README.md"}}
 	authority.grant(editRequest)
 	expectedG1 := fixtureSnapshot(t, "g1", "approved text\n", "baseline result\n")
 	authority.grantBinding(editDecision.ID, exactBinding(g0.snapshot, expectedG1, editRequest, 1))
@@ -79,12 +79,12 @@ func TestSessionRepositoryLifecycleE2E(t *testing.T) {
 
 	bashOp, bashDecision := lease("bash-g2"), allow("bash-g2")
 	expectedG2 := fixtureSnapshot(t, "g2", "approved text\n", "command output\n")
-	commandSpec := CommandSpec{Executable: "/bin/bash", Args: []string{"-c", "printf 'command output\\n' > build/result.txt && printf 'command completed\\n'"}}
+	commandSpec := CommandSpec{Executable: "/bin/bash", Args: []string{"-c", "printf 'command output\\n' > build/result.txt && printf 'command completed\\n'"}, DeclaredOutputPaths: []string{"build/result.txt"}}
 	viewID := reserveTestViewID(t, store)
 	bashArgs, _ := commandArgumentsDigest(commandSpec)
 	contextDigest, _ := commandExecutionContextDigest(viewID, g1.TreeDigest(), bashOp.LeaseID)
 	bashRequest := OperationRequest{Tool: "bash", Operation: bashOp, Decision: bashDecision, InputGeneration: g1.ID(),
-		InputTreeDigest: g1.TreeDigest(), ArgumentDigest: bashArgs, ViewID: viewID, ExecutionContextDigest: contextDigest}
+		InputTreeDigest: g1.TreeDigest(), ArgumentDigest: bashArgs, ViewID: viewID, OutputScopePaths: []string{"build/result.txt"}, ExecutionContextDigest: contextDigest}
 	authority.grant(bashRequest)
 	authority.grantBinding(bashDecision.ID, exactBinding(g1.snapshot, expectedG2, bashRequest, 2))
 	// This direct local Bash fixture validates data flow only. The settlement
@@ -300,6 +300,7 @@ func TestSessionRepositoryBindsReceiptToToolAndExactArgumentsE2E(t *testing.T) {
 	editRequest := OperationRequest{
 		Tool: "edit", Operation: operation, Decision: decision,
 		InputGeneration: g0.ID(), InputTreeDigest: g0.TreeDigest(), ArgumentDigest: editDigest,
+		OutputScopePaths: []string{"README.md"},
 	}
 	authority.grant(editRequest)
 	expectedG1 := fixtureSnapshot(t, "g1", "approved text\n", "baseline result\n")
@@ -346,7 +347,7 @@ func TestSessionRepositoryRejectsMismatchedBashContextBeforeRunnerE2E(t *testing
 		t.Fatal(err)
 	}
 	operation, decision := lease("mismatched-bash-context"), allow("mismatched-bash-context")
-	spec := CommandSpec{Executable: "/bin/bash", Args: []string{"-c", "true"}}
+	spec := CommandSpec{Executable: "/bin/bash", Args: []string{"-c", "true"}, DeclaredOutputPaths: []string{}}
 	actualViewID := reserveTestViewID(t, store)
 	wrongViewID := "view-ffffffffffffffffffffffffffffffffffffffffffffffff"
 	wrongContext, err := commandExecutionContextDigest(wrongViewID, g0.TreeDigest(), operation.LeaseID)
@@ -359,7 +360,7 @@ func TestSessionRepositoryRejectsMismatchedBashContextBeforeRunnerE2E(t *testing
 	}
 	authority.grant(OperationRequest{Tool: "bash", Operation: operation, Decision: decision,
 		InputGeneration: g0.ID(), InputTreeDigest: g0.TreeDigest(), ArgumentDigest: argumentDigest,
-		ViewID: wrongViewID, ExecutionContextDigest: wrongContext})
+		ViewID: wrongViewID, OutputScopePaths: []string{}, ExecutionContextDigest: wrongContext})
 	var runnerCalled bool
 	_, err = store.RunBash(context.Background(), g0, operation, decision, spec, CommandRunnerFunc(
 		func(context.Context, *CommandView, CommandSpec) (CommandResult, CommandSettlement, error) {
@@ -426,7 +427,7 @@ func TestSessionRepositorySnapshotsAuthorizedEditAndBashArgumentsE2E(t *testing.
 			Path  string        `json:"path"`
 			Edits []Replacement `json:"edits"`
 		}{"README.md", edits})
-		request := OperationRequest{Tool: "edit", Operation: operation, Decision: decision, InputGeneration: g0.ID(), InputTreeDigest: g0.TreeDigest(), ArgumentDigest: editDigest}
+		request := OperationRequest{Tool: "edit", Operation: operation, Decision: decision, InputGeneration: g0.ID(), InputTreeDigest: g0.TreeDigest(), ArgumentDigest: editDigest, OutputScopePaths: []string{"README.md"}}
 		authority.grant(request)
 		expected := fixtureSnapshot(t, "g1", "approved text\n", "baseline result\n")
 		authority.grantBinding(decision.ID, exactBinding(g0.snapshot, expected, request, 1))
@@ -462,7 +463,7 @@ func TestSessionRepositorySnapshotsAuthorizedEditAndBashArgumentsE2E(t *testing.
 			t.Fatal(err)
 		}
 		operation, decision := lease("snapshot-bash-input"), allow("snapshot-bash-input")
-		commandSpec := CommandSpec{Executable: "/bin/bash", Args: []string{"-c", "printf 'command output\\n' > build/result.txt"}}
+		commandSpec := CommandSpec{Executable: "/bin/bash", Args: []string{"-c", "printf 'command output\\n' > build/result.txt"}, DeclaredOutputPaths: []string{"build/result.txt"}}
 		authorizedSpec := cloneCommandSpec(commandSpec)
 		viewID := reserveTestViewID(t, store)
 		argumentDigest, err := commandArgumentsDigest(authorizedSpec)
@@ -474,7 +475,7 @@ func TestSessionRepositorySnapshotsAuthorizedEditAndBashArgumentsE2E(t *testing.
 			t.Fatal(err)
 		}
 		request := OperationRequest{Tool: "bash", Operation: operation, Decision: decision, InputGeneration: g0.ID(),
-			InputTreeDigest: g0.TreeDigest(), ArgumentDigest: argumentDigest, ViewID: viewID, ExecutionContextDigest: contextDigest}
+			InputTreeDigest: g0.TreeDigest(), ArgumentDigest: argumentDigest, ViewID: viewID, OutputScopePaths: []string{"build/result.txt"}, ExecutionContextDigest: contextDigest}
 		authority.grant(request)
 		expected := fixtureSnapshot(t, "g1", "baseline text\n", "command output\n")
 		authority.grantBinding(decision.ID, exactBinding(g0.snapshot, expected, request, 1))
@@ -490,7 +491,7 @@ func TestSessionRepositorySnapshotsAuthorizedEditAndBashArgumentsE2E(t *testing.
 		result, err := store.RunBash(context.Background(), g0, operation, decision,
 			commandSpec,
 			CommandRunnerFunc(func(ctx context.Context, view *CommandView, spec CommandSpec) (CommandResult, CommandSettlement, error) {
-				runnerSawAuthorizedSpec = sameCommandSpec(spec, CommandSpec{Executable: "/bin/bash", Args: []string{"-c", "printf 'command output\\n' > build/result.txt"}})
+				runnerSawAuthorizedSpec = sameCommandSpec(spec, CommandSpec{Executable: "/bin/bash", Args: []string{"-c", "printf 'command output\\n' > build/result.txt"}, DeclaredOutputPaths: []string{"build/result.txt"}})
 				cmd := exec.CommandContext(ctx, spec.Executable, spec.Args...)
 				cmd.Dir = view.testPath()
 				var stdout, stderr bytes.Buffer
@@ -574,7 +575,7 @@ func TestSessionRepositoryRecoversCommittedPrefixAndQuarantinesOrphanViewE2E(t *
 		Path  string        `json:"path"`
 		Edits []Replacement `json:"edits"`
 	}{"README.md", edits})
-	request := OperationRequest{Tool: "edit", Operation: operation, Decision: decision, InputGeneration: g0.ID(), InputTreeDigest: g0.TreeDigest(), ArgumentDigest: argumentDigest}
+	request := OperationRequest{Tool: "edit", Operation: operation, Decision: decision, InputGeneration: g0.ID(), InputTreeDigest: g0.TreeDigest(), ArgumentDigest: argumentDigest, OutputScopePaths: []string{"README.md"}}
 	authority.grant(request)
 	expectedG1 := fixtureSnapshot(t, "g1", "approved text\n", "baseline result\n")
 	authority.grantBinding(decision.ID, exactBinding(g0.snapshot, expectedG1, request, 1))
@@ -629,7 +630,7 @@ func TestSessionRepositoryUnknownEffectDoesNotAdvanceHeadE2E(t *testing.T) {
 		Path  string        `json:"path"`
 		Edits []Replacement `json:"edits"`
 	}{"task.txt", edits})
-	authority.grant(OperationRequest{Tool: "edit", Operation: operation, Decision: decision, InputGeneration: g0.ID(), InputTreeDigest: g0.TreeDigest(), ArgumentDigest: argumentDigest})
+	authority.grant(OperationRequest{Tool: "edit", Operation: operation, Decision: decision, InputGeneration: g0.ID(), InputTreeDigest: g0.TreeDigest(), ArgumentDigest: argumentDigest, OutputScopePaths: []string{"task.txt"}})
 	if _, err := store.Edit(context.Background(), g0, operation, decision, "task.txt", edits); !errors.Is(err, ErrAudit) {
 		t.Fatalf("failed edit returned %v, want unknown audited effect", err)
 	}
@@ -788,7 +789,7 @@ func (authority *e2eReceiptAuthority) authorize(request OperationRequest) error 
 	if !ok || !validSupervisorEffectID(request.EffectID) || expected.Tool != request.Tool ||
 		expected.Operation != request.Operation || !samePolicyDecision(expected.Decision, request.Decision) ||
 		expected.InputGeneration != request.InputGeneration || expected.InputTreeDigest != request.InputTreeDigest ||
-		expected.ArgumentDigest != request.ArgumentDigest || expected.ViewID != request.ViewID ||
+		expected.ArgumentDigest != request.ArgumentDigest || !sameOutputScopePaths(expected.OutputScopePaths, request.OutputScopePaths) || expected.ViewID != request.ViewID ||
 		expected.ExecutionContextDigest != request.ExecutionContextDigest {
 		return fmt.Errorf("no trusted test receipt exactly covers this request")
 	}

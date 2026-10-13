@@ -45,10 +45,14 @@ it is not a qualification report.
    profile, including independent effect oracles. The reference VM currently
    reports Landlock ABI 4; the entrypoint requires ABI 8. Later HWE boots reached
    userspace but remain unqualified.
-4. **Post-operation delta admission:** a separate decision on the verified
-   resulting delta is required before accepting a generation. Existing
-   pre-operation and final-publication checks do not establish this gate.
-   Its policy contract, durable decision and recovery integration remain pending.
+4. **Post-operation delta admission:** Store now records a separate decision on
+   the verified candidate before promoting a generation. The policy requires
+   canonical exact output paths, retains both candidate manifests, and binds
+   the primary outcome to a protected admission journal. Recovery and bundle
+   replay verify those bindings; UNKNOWN remains quarantined without replay.
+   Operator-facing Bash scope configuration is the next integration step.
+   See [the admission contract](delta-admission.md). Component checks do not
+   qualify production containment or publication.
 5. **Publication and provenance:** exercise sealed-source provenance, command
    settlement, live publication, and recovery with independent workspace,
    process, and network observers.
