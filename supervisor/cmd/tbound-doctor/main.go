@@ -190,24 +190,29 @@ func lookPathCheck(name, reason string) check {
 }
 
 func signedProfileCheck() check {
+	return signedProfileCheckAt("/etc/tbound")
+}
+
+func signedProfileCheckAt(directory string) check {
 	candidates := []string{
-		"/etc/tbound/pi-host-profile.json",
-		"/etc/tbound/pi-host-profile.ed25519",
-		"/etc/tbound/pi-host-profile.pub",
+		filepath.Join(directory, "pi-host-profile.json"),
+		filepath.Join(directory, "pi-host-profile.ed25519"),
+		filepath.Join(directory, "pi-host-profile.pub"),
 	}
 	var missing []string
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err != nil {
-			missing = append(missing, filepath.Base(p))
+			missing = append(missing, p)
 		}
 	}
 	if len(missing) == 0 {
-		return check{Name: "signed-profile", Status: pass, Detail: "/etc/tbound profile present"}
+		return check{Name: "signed-profile", Status: pass,
+			Detail: fmt.Sprintf("required profile paths exist under %s; tbound-doctor does not verify file type, ownership, signature, or runtime admission", directory)}
 	}
 	return check{
 		Name: "signed-profile", Status: warn,
 		Detail:      "missing: " + strings.Join(missing, ", "),
-		Remediation: "governed serve --pi is refused until a signed root-owned host profile exists (Phase 2); dev runs do not need it",
+		Remediation: fmt.Sprintf("A host operator must provision the root-owned signed profile and fixed public key under %s; see docs/governed-setup.md section 4. Re-run tbound-doctor. Development runs do not need these files.", directory),
 	}
 }
 

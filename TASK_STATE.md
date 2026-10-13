@@ -230,8 +230,19 @@ bridge and full caller integration still required before acceptance.
   Four tested doctor source hashes match the working tree.
 - Store DENY replay regression reproduced acceptance of forged next generation
   and transition order. Shared validation now runs before DENY return; Store
-  package race and vet passed. Independent re-review is pending.
+  package race and vet passed. Independent Luna max re-review accepted; DENY preserves next generation/transition slots.
 - T3 host/D09 patch tasks r7/r8 were interrupted by the user after repeated
   approval prompts; they returned no patches. Replaced by native READ-ONLY
   Luna max host_scope_resume and digest_bridge_resume; parent owns edits/tests.
   Current scope/admission gate remains uncommitted until whole-product checks.
+## Product operator profile guidance increment (2026-10-13)
+
+- Doctor now reports full missing signed-profile paths in stable order and
+  points operators to governed-setup section 4. PASS explicitly means path
+  presence only, without file-type/ownership/signature/admission validation.
+- Temporary-directory missing/present tests passed on Windows and Linux;
+  both platform vet checks and Linux doctor race checks passed. Tested doctor
+  source hashes match. Independent native Luna max review accepted no blockers.
+- Parent applied host-scope and D09 digest-domain source integration; Linux CLI
+  compiles. Whole-product fixture migration and security review are in progress;
+  this core gate is still uncommitted and no qualification claims changed.

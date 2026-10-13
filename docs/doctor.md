@@ -18,7 +18,9 @@ On Linux it also reports the live Landlock ABI, cgroup-v2, Podman, crun,
 Cosign, and signed-profile prerequisites. D09 requires exactly Landlock ABI 8;
 a mismatch reports the observed ABI and the next host/profile step. These checks
 are advisory. A matching ABI or present binary/profile file does not qualify a
-host or prove containment.
+host or prove containment. The signed-profile check confirms path presence
+only; it does not verify file type, ownership, signature, or runtime admission.
+For the operator-owned profile paths, see [governed host setup, section 4](governed-setup.md#4-signed-host-profile).
 
 The JSON report includes `dev_ready`, `governed_ready`,
 `governed_prereqs_advisory`, and individual checks. `governed_ready` is

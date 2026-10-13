@@ -5,10 +5,39 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/piinstall"
 )
+
+func TestSignedProfileCheckReportsFullMissingPaths(t *testing.T) {
+	directory := t.TempDir()
+	got := signedProfileCheckAt(directory)
+	want := "missing: " + filepath.Join(directory, "pi-host-profile.json") + ", " +
+		filepath.Join(directory, "pi-host-profile.ed25519") + ", " + filepath.Join(directory, "pi-host-profile.pub")
+	if got.Name != "signed-profile" || got.Status != warn || got.Detail != want {
+		t.Fatalf("signed-profile check = %+v, want missing paths %q", got, want)
+	}
+	if !strings.Contains(got.Remediation, "docs/governed-setup.md section 4") || !strings.Contains(got.Remediation, directory) {
+		t.Fatalf("signed-profile remediation is not actionable: %q", got.Remediation)
+	}
+}
+
+func TestSignedProfileCheckReportsPresenceOnly(t *testing.T) {
+	directory := t.TempDir()
+	for _, name := range []string{"pi-host-profile.json", "pi-host-profile.ed25519", "pi-host-profile.pub"} {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte("fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := signedProfileCheckAt(directory)
+	want := "required profile paths exist under " + directory +
+		"; tbound-doctor does not verify file type, ownership, signature, or runtime admission"
+	if got.Name != "signed-profile" || got.Status != pass || got.Detail != want || got.Remediation != "" {
+		t.Fatalf("signed-profile presence report = %+v, want presence-only PASS", got)
+	}
+}
 
 func TestLandlockCheckRequiresExactD09ABI(t *testing.T) {
 	for _, tc := range []struct {
