@@ -14,9 +14,9 @@
     Flow:
       1. Preflight (Hyper-V, elevation, collisions, free space, image hash, SSH key).
       2. Image analysis:
-         - CloudVhdx: locate the disk inside the Ubuntu 24.04 cloud image
-           archive (or accept a .vhd/.vhdx directly). The cloud image ships
-           the linux-azure 7.0 kernel (Landlock ABI 8).
+          - CloudVhdx: compatibility mode for cloud-layout inputs supported by
+            their publisher on local Hyper-V. Ubuntu Azure VHDs are unsupported
+            outside Azure; this mode does not establish image compatibility.
          - GoldenVhdx: accept a golden .vhdx, or a checkpoint-chain leaf
            .avhdx (a base .vhdx under an active chain is stale state; the leaf
            is merged into a standalone VHDX before use).
@@ -40,8 +40,8 @@
     follow infra/guest/README.md for the offline phase.
 
 .EXAMPLE
-    .\bootstrap-hyperv-windows.ps1 -ImageKind CloudVhdx `
-        -ImageSourcePath F:\TBoundAssets\ubuntu-24.04-server-cloudimg-amd64-azure.vhd.tar.gz `
+    .\bootstrap-hyperv-windows.ps1 -ImageKind GoldenVhdx `
+        -ImageSourcePath '<verified generic Ubuntu Server install VHDX>' `
         -ExpectedImageSha256 <64-hex> -PublicKeyFile $env:USERPROFILE\.ssh\id_ed25519.pub
 
 .NOTES
@@ -202,9 +202,10 @@ if (-not $RepoRoot) {
 }
 $RepoRoot = [IO.Path]::GetFullPath($RepoRoot)
 $bootstrapLinux = Join-Path $RepoRoot 'infra\repro\bootstrap-linux.sh'
+$landlockProfileGate = Join-Path $RepoRoot 'infra\repro\landlock-profile-gate.sh'
 $setupUbuntu = Join-Path $RepoRoot 'infra\guest\setup-ubuntu-24.04.sh'
 $probeCapabilities = Join-Path $RepoRoot 'infra\guest\probe-capabilities.sh'
-foreach ($file in @($bootstrapLinux, $setupUbuntu, $probeCapabilities)) {
+foreach ($file in @($bootstrapLinux, $landlockProfileGate, $setupUbuntu, $probeCapabilities)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
         throw "Required script not found: $file (run from a checkout containing infra/repro and infra/guest)"
     }
@@ -797,6 +798,7 @@ $scpExe = (Get-Command scp.exe -ErrorAction Stop).Source
 $scpBase = @('-P', $SshPort, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', ('UserKnownHostsFile={0}' -f $knownHostsFile.FullName), '-i', $resolvedKeyPath)
 foreach ($pair in @(
         @{ src = $bootstrapLinux; dst = '~/tbound-infra/repro/bootstrap-linux.sh' },
+        @{ src = $landlockProfileGate; dst = '~/tbound-infra/repro/landlock-profile-gate.sh' },
         @{ src = $setupUbuntu; dst = '~/tbound-infra/guest/setup-ubuntu-24.04.sh' },
         @{ src = $probeCapabilities; dst = '~/tbound-infra/guest/probe-capabilities.sh' })) {
     $scpArgs = @($scpBase) + @($pair.src, ('{0}:{1}' -f $sshTarget, $pair.dst))
@@ -811,7 +813,7 @@ $remoteCmd = 'sudo TBOUND_ASSUME_YES=1 bash ~/tbound-infra/repro/bootstrap-linux
 & cmd.exe /c ('"{0}" {1} "{2}" "{3}" 2>&1' -f $sshExe, ($sshBase -join ' '), $sshTarget, $remoteCmd)
 $bootstrapExit = $LASTEXITCODE
 if ($bootstrapExit -ne 0) {
-    Write-Warning ('bootstrap-linux.sh exited {0}. Meanings: 1 probe FAIL, 2 precondition error, 3 Landlock ABI < 8 (HWE fix printed), 4 unexpected UNVERIFIED.' -f $bootstrapExit)
+    Write-Warning ('bootstrap-linux.sh exited {0}. Meanings: 1 probe FAIL (takes precedence), 2 precondition error, 3 sole exact D09 Landlock ABI mismatch, 4 unexpected UNVERIFIED without a FAIL.' -f $bootstrapExit)
     Write-Warning "The temporary NOPASSWD provisioning rule /etc/sudoers.d/90-tbound-$GuestUser remains so you can finish provisioning. Remove it before any untrusted evaluation: sudo rm -f /etc/sudoers.d/90-tbound-$GuestUser"
     throw "Guest bootstrap failed with exit $bootstrapExit; the guest keeps the staged scripts under ~/tbound-infra/ for a manual re-run."
 }
@@ -874,5 +876,5 @@ Write-Host "       Disconnect-VMNetworkAdapter -VMName $VmName"
 Write-Host "       Checkpoint-VM -Name $VmName -SnapshotName 'tbound-golden-baseline'"
 Write-Host '  3. Re-run the capability probe offline (as the trial user) and save the report:'
 Write-Host "       .\infra\repro\probe-host.ps1 -Target Ssh -HostName $guestIp -UserName $GuestUser -KeyFile $resolvedKeyPath -OutFile offline-report.txt"
-Write-Host '  4. For the GA 6.8 golden image only: install linux-generic-hwe-24.04 (kernel 7.0 = Landlock ABI 8), reboot, re-probe, and record before/after versions for the profile freeze.'
+Write-Host '  4. If the measured ABI is below 8, Ubuntu 24.04 HWE may provide ABI 8; reboot and re-probe. The D09 profile requires exactly ABI 8, so reconcile a later ABI explicitly.'
 Write-Host '  5. Keep the NIC disconnected for every untrusted run; see docs/reproducible-setup.md for the claim boundary.'

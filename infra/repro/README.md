@@ -19,6 +19,10 @@ profile. It is not production hardening, and a passing probe is a capability
 snapshot — not containment evidence and not G1 (see
 [../../docs/reproducible-setup.md](../../docs/reproducible-setup.md)).
 
+Bootstrap prepares a candidate host and records capability results; a zero
+exit does not register or qualify a clean guest, prove containment, or
+establish G1.
+
 These are new setup scripts: syntax and fixture checks have passed, but neither
 path has been end-to-end qualified on a clean host. Treat them as review-needed
 prototype tooling until that qualification is completed.
@@ -35,7 +39,11 @@ the default VM name already exists.
 - **Path B:** Windows 10/11 or Windows Server with Hyper-V enabled and its
   PowerShell module; the OpenSSH client (`ssh.exe`, optional feature); a
   default WSL2 distro (used only for the offline SSH-key injection step);
-  an Ubuntu 24.04 cloud image VHD or a golden VHDX, plus its SHA-256.
+  a generic install VHDX prepared from authenticated Ubuntu Server media, plus
+  its SHA-256. See
+  [CLEAN-GUEST-QUALIFICATION.md](CLEAN-GUEST-QUALIFICATION.md) for the
+  artifact-verification and qualification guidance. The local ISO-to-VHDX
+  procedure is being prepared separately; `GoldenVhdx` reuses an existing disk.
 - **Both paths:** the `infra/guest/probe-capabilities.sh` script from this
   repository (the bootstrap resolves it relative to its own location, so copy
   the whole `infra/` tree, not just `infra/repro/`).
@@ -75,24 +83,28 @@ What it does, in order, and what each step verifies:
     AppArmor restriction; prefer a scoped AppArmor profile on shared or daily-
     driver hosts, and use the sysctl only on a dedicated evaluation machine.
 5. **cgroup v2 and Landlock prechecks** — verifies a cgroup v2 mount and
-   reports the Landlock ABI (the tbound entrypoint expects ABI 8 =
-   `LANDLOCK_RESTRICT_SELF_TSYNC`; Linux 7.0; Ubuntu 24.04 gets it from the
-   `linux-generic-hwe-24.04` HWE stack + reboot).
+   reports broad Landlock availability plus a separate exact D09 profile
+   result. Production source freezes D09 to ABI 8
+   (`LANDLOCK_RESTRICT_SELF_TSYNC`); other positive ABI values remain generic
+   capability evidence only.
 6. **Capability probe** — runs `infra/guest/probe-capabilities.sh` as the
    trial user and prints a plain-language fix footer for any FAIL.
 
-Exit codes: `0` complete; `1` probe FAIL; `2` precondition error; `3` Landlock
-ABI below 8 (HWE fix printed); `4` UNVERIFIED items beyond the two by-design
-ones. `UNVERIFIED is not success`; `cgroup.kill-write` and `uidmap-helpers`
-are UNVERIFIED by design of the read-only probe.
+Exit codes: `0` complete with no FAIL and no unexpected UNVERIFIED; `1` any
+probe FAIL (this keeps precedence over UNVERIFIED); `2` precondition error;
+`3` the sole FAIL is a measured ABI mismatch with the exact D09 ABI 8 profile,
+with no unexpected UNVERIFIED; `4` unexpected UNVERIFIED when there is no
+FAIL. HWE may provide ABI 8 on an older GA installation, but the live ABI must
+be measured after reboot. `cgroup.kill-write` and `uidmap-helpers` are
+UNVERIFIED by design of the read-only probe.
 
 ## Path B: Hyper-V VM from Windows
 
 ```powershell
-# elevated PowerShell, from the checkout
+# elevated PowerShell, from the checkout; generic VHDX from authenticated media
 .\infra\repro\bootstrap-hyperv-windows.ps1 `
-  -ImageKind CloudVhdx `
-  -ImageSourcePath F:\TBoundAssets\ubuntu-24.04-server-cloudimg-amd64-azure.vhd.tar.gz `
+  -ImageKind GoldenVhdx `
+  -ImageSourcePath '<verified generic Ubuntu Server install VHDX>' `
   -ExpectedImageSha256 <64-hex-sha256-of-the-image> `
   -PublicKeyFile $env:USERPROFILE\.ssh\id_ed25519.pub
 ```
@@ -127,20 +139,21 @@ What it does, in order:
 5. **Report** — prints next steps: disconnect the NIC, create the golden
    baseline, and re-run the probe offline per the guest runbook.
 
-For the two Hyper-V image sources:
+For the two Hyper-V image modes:
 
-- **CloudVhdx** — Ubuntu 24.04 cloud image VHD for Hyper-V, e.g. the dated
-  release asset `ubuntu-24.04-server-cloudimg-amd64-azure.vhd.tar.gz` from
-  `https://cloud-images.ubuntu.com/releases/noble/release/` (a single 30 GiB
-  VHD; verified against `SHA256SUMS` 2026-10-11). The script converts it to
-  VHDX, resizes to 40 GiB, grows the root filesystem offline, and injects the
-  trial user and SSH key via WSL (the image's cloud-init `datasource_list` is
-  `[ Azure ]`, so a NoCloud seed disk would be ignored). It ships the
-  `linux-azure` 7.0 kernel, so Landlock ABI 8 is satisfied without HWE.
+- **CloudVhdx** — compatibility mode for cloud-layout VHD/VHDX inputs. Ubuntu's
+  Azure VHD artifacts are Azure-only and do not function on local Hyper-V.
+  Do not use the Azure `.vhd.tar.gz` artifact in this mode for a local guest.
+  The mode is retained for inputs whose publisher explicitly supports local
+  Hyper-V; the script warns that its SHA-256 check proves byte equality, not
+  publisher support.
 - **GoldenVhdx** — a copy of an existing verified VM disk. Pass the leaf
   `.avhdx` if the source VM has checkpoints: the script merges the chain into
   a standalone VHDX (`Merge-VHD`) before use, because a base `.vhdx` under an
-  active checkpoint chain is stale state.
+  active checkpoint chain is stale state. For a local install, create a generic
+  VHDX from supported authenticated media, then pass it through this mode.
+  [CLEAN-GUEST-QUALIFICATION.md](CLEAN-GUEST-QUALIFICATION.md) describes input
+  verification and qualification limits; an ISO installation recipe is pending.
 
 After provisioning, produce the capability report from Windows any time:
 

@@ -90,6 +90,11 @@ It prints `PASS`, `FAIL`, or `UNVERIFIED` for each check. Exit status is 0 when 
 
 ## Probe interpretation and kernel choice
 
+`landlock-abi` reports broad availability for any positive ABI.
+`d09-landlock-profile` separately requires exactly ABI 8, matching the current
+production host gate. Any FAIL takes exit precedence over UNVERIFIED; a passing
+capability report does not register a guest or establish containment.
+
 A kernel feature passes only when the probe calls its syscall or observes its live kernel interface. A package name or binary on disk alone never earns a capability `PASS`. `cgroup.kill-interface: PASS` means the current non-root cgroup exposes the kernel control file; `cgroup-domain: PASS` means its current `cgroup.type` reads exactly `domain`. `cgroup.kill-write` remains `UNVERIFIED` by design because writing it kills processes. If a control is inaccessible through the current cgroup namespace or delegated subtree, the result is `UNVERIFIED`, not an inferred pass.
 
 Do not install an HWE kernel preemptively. First save the probe output and current `uname -r`. If a required kernel feature fails on the live guest and the Ubuntu GA kernel lacks that feature, return to the provisioning phase and consider Ubuntu's supported `linux-generic-hwe-24.04` package. Reboot, rerun the probe, record the kernel and package versions, then disconnect the NIC again. Ubuntu documents HWE as an option for Server installations; its kernel track changes over the life of the LTS release, so record the actual installed build.

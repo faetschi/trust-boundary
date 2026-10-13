@@ -1,15 +1,56 @@
 # Candidate clean Linux guest qualification
 
 Preparation template only: this is not image registration, containment evidence,
-or a G1 manifest. G1 remains false and H1 remains unexecuted.
+or a G1 manifest. G1 remains false and H1 remains unexecuted. Keep the related
+[candidate experiment manifest](../../docs/experiment-manifest.md) as the
+existing cross-reference; this worksheet does not create registration evidence.
 
 ## Prepare and identify the candidate
 
-Use a new dedicated amd64 Ubuntu 24.04 guest, recording the exact media revision
-and publisher-authenticated source SHA-256. Follow the existing native/Hyper-V
-bootstrap procedure. Record hypervisor settings, filesystem/mount options and
-the final offline disk/checkpoint-chain identity. Disable shared folders and
-clipboard integration. The existing development VM and WSL are component-test
+Use a new dedicated amd64 Ubuntu 24.04 guest. Before bootstrap, authenticate
+the selected base artifact against Ubuntu's signed SHA256SUMS. Select and record
+the exact release serial and versioned publisher URL; do not record the mutable
+`noble/release/` alias as the immutable input. Preserve the artifact filename
+and format, signed checksum and signature files, signing-key fingerprint and
+trust source, signature-verification result, and the artifact SHA-256 from the
+authenticated checksum list. For an archive, also record the extracted disk
+SHA-256 and its relation to that archive. A bootstrap's caller-supplied
+`ExpectedImageSha256` check establishes equality to that value, not publisher
+authenticity.
+
+Verification instructions (run later in a trusted Ubuntu environment; keep the
+selected artifact and checksum files in the same directory):
+
+```sh
+set -eu
+BASE_URL='<exact versioned Ubuntu release URL selected for this build>'
+ARTIFACT='<exact artifact filename supported by the chosen hypervisor>'
+curl -fSLO "$BASE_URL/SHA256SUMS"
+curl -fSLO "$BASE_URL/SHA256SUMS.gpg"
+curl -fSLO "$BASE_URL/$ARTIFACT"
+gpg --no-default-keyring \
+  --keyring /usr/share/keyrings/ubuntu-cloudimage-keyring.gpg \
+  --list-keys --with-fingerprint
+gpg --no-default-keyring --status-fd 1 \
+  --verify --keyring /usr/share/keyrings/ubuntu-cloudimage-keyring.gpg \
+  SHA256SUMS.gpg SHA256SUMS
+test "$(awk -v f="$ARTIFACT" \
+  '$2 == f || $2 == "*" f {n++} END {print n+0}' SHA256SUMS)" -eq 1
+sha256sum --check --ignore-missing SHA256SUMS
+sha256sum "$ARTIFACT"
+```
+
+Record the actual signing fingerprint and verification output; do not fill them
+from an example or assume the keyring is trusted without recording its trust
+source. Consult Ubuntu's [artifact reference](https://ubuntu.com/docs/public-images/public-images-reference/artifacts/)
+and [checksum verification guide](https://ubuntu.com/docs/public-images/public-images-how-to/verify-image-checksum/).
+Azure VHD archives are intended for Azure and are not supported for local
+Hyper-V by that reference. The existing CloudVhdx path is not a qualified local
+guest recipe; choose supported installation media or validate a generic-image
+conversion separately before using it. Follow the applicable bootstrap procedure. Record
+hypervisor settings, filesystem/mount options and the final offline
+disk/checkpoint-chain identity. Disable shared folders and clipboard
+integration. The existing development VM and WSL are component-test
 environments and cannot substitute for the registered clean guest.
 
 Provision in a connected maintenance phase before freezing the baseline. Use
@@ -23,9 +64,12 @@ npm --version
 command -v node npm
 npm_config_prefix="$HOME/.local" npm install --global --ignore-scripts @earendil-works/pi-coding-agent@0.87.1
 ```
-APT holds prevent later upgrades but do not pin the initial dependency resolver.
-Record the full installed package manifest; repeatability requires a frozen
-package source or the exact qualified offline image digest.
+APT holds applied after installation prevent later upgrades; they do not pin
+the initial dependency resolver. Record the package source configuration,
+resolver inputs and full installed package manifest with the other guest
+measurements. Reproducing the build requires frozen package sources and pinned
+inputs. Repeating deployment from the exact qualified, frozen offline disk
+reuses that measured image; it does not demonstrate a reproducible rebuild.
 
 Create a non-root trial account with a subordinate-ID range of at least 65,536
 IDs for each UID and GID mapping and start a fresh login session. Review the bootstrap's system-wide

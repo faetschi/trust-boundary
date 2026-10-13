@@ -172,7 +172,8 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   isolated copy; logs d09-admission-retention-* in resume review-artifacts.
   Critical reviewer accepted the bounded repair. Nonblocking limitation: the
   typed-error check observes the first PiWorkerLaunchError; current launch paths
-  produce only one typed launch failure. Commit checkpoint follows. The session
+  produce only one typed launch failure. Committed as 2b5673e; receipt
+  d09-admission-retention-receipt-2b5673e.json records hashes/results. The session
   wrapper now reaches the binder's guarded quarantine on unsafe cleanup.
   Guest runbook audit
   also found >=8 bootstrap/positive-ABI probe inconsistencies against the exact
@@ -181,14 +182,58 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   requested ruleset ABI. Prepared guest patch preserves broad Landlock
   availability and proposes a separate exact D09 row. Critical review
   found the proposed special exit 3 could mask unexpected UNVERIFIED rows.
-  Guest patch remains unapplied; complete cross-layer regression/exit candidate
-  prepared by tbound-guest-abi-gates-complete-repair-20261013-r2. Final scope and
-  report integration review precedes application.
+  Guest candidate is applied for verification. Fixed parsed PowerShell rows to
+  remain a mutable list for subsequent tool checks. Linux offline Python/shell
+  regressions pass (five methods, one PowerShell skip); Windows PowerShell
+  cases pass separately. Bash syntax and four PowerShell parser checks pass.
+  No VM/provisioning commands ran. Review held the guest increment: Hyper-V
+  did not stage the new shell helper and invocation errors mapped to FAIL.
+  Helper staging/preflight and exit-2 classification are corrected; integration
+  regressions now pass (Linux six methods, one PowerShell skip; required Windows
+  PowerShell cases pass separately). Invalid/contradictory invocation results
+  use exit 2; actual FAIL retains precedence. Applied review r7 held missing or
+  duplicate gate rows that could falsely pass. Added exact row completeness and
+  consistency checks plus shell/PowerShell regressions. Duplicate rows without
+  a final newline initially exposed a shell read-loop omission; both loops now
+  process the final line. Checks pass again; fresh critical review:
+  r8 held unset shell variables under strict mode and Cosign UNVERIFIED being
+  expected on live targets. Initialized parsed ABI variables; shell regressions
+  now run with production set -eu; Cosign exception now applies only to File.
+  Required Windows cases include live-versus-saved Cosign behavior. Tests,
+  syntax/parser checks pass; r9 accepted code safety and thesis claims, held only
+  an inaccurate README promise of an ISO recipe. Corrected that reference to
+  artifact verification/qualification guidance; the recipe remains a separate
+  increment. Guest gate commit checkpoint follows.
+  Input custody worksheet now distinguishes signed image metadata from caller
+  checksum equality and frozen-image deployment from reproducible rebuild.
+  Official Ubuntu artifact guidance excludes Azure VHDs on local Hyper-V;
+  removed that unsupported example. Local guest media/recipe still needs review.
+  Read-only supported local recipe preparation:
+  tbound-local-hyperv-supported-guest-recipe-20261013-r1.
+  User also requested a parallel evaluation of a simpler Windows-hosted image
+  alongside Ubuntu. Read-only task tbound-linux-guest-options-evaluation-20261013-r1
+  compares component-test convenience with D09 qualification requirements.
+  Evaluation completed: keep existing WSL2 for component loops and prefer a
+  minimal Ubuntu Server guest for qualification. Linux runtime is not inherently
+  Ubuntu-specific, but current provisioning/offline verification require Noble;
+  Debian/Alpine would add porting and remeasurement work rather than a shortcut.
+  Local ISO/GoldenVhdx recipe candidate remains unapplied pending review
+  tbound-local-guest-recipe-critical-review-20261013-r2 found unsupported
+  Stop-VM -Shutdown, shutdown/hash ordering, assumed NIC/account identities and
+  oversized installer seed. Corrections prepared by
+  tbound-local-supported-recipe-repair-20261013-r3; larger recipe still unapplied.
+  Prior guest review r4 and launch/input-custody tasks failed at provider usage
+  limit without results. Fresh read-only tasks use delegate prefix
+  node:delegated-task:command%3Amcp%3A6561c5c6-604c-45e4-8da9-aacc905e367f%3Adelegate-task%3A
+  with guest review tbound-guest-abi-complete-candidate-review-20261013-r5.
   Launch completion map confirms the existing guarded core can serve D09 after
   admission ownership repair; public D09 wiring/contract-doc patch preparation
-  tbound-guarded-d09-launch-patch-20261013-r1 must retain concrete launcher and
+  tbound-guarded-d09-complete-files-20261013-r3 must retain concrete launcher and
   signed profile/closure checks. ABI/profile registration and independent
   qualification remain environmental gates, not simulated test results.
+  Additional guest input custody/reproducibility documentation preparation:
+  tbound-guest-input-custody-repro-plan-20261013-r2 (publisher-authenticated base
+  image and recorded resolver/frozen template distinctions; no host mutations).
 
 - Baseline archive, initial working-tree patch and tracked-file SHA-256 manifest:
   ../review-artifacts/tbound-baseline-2026-10-12/. Includes the five document

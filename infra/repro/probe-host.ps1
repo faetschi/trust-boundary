@@ -22,9 +22,10 @@
     .\probe-host.ps1 -Target Ssh -HostName 172.30.32.185 -UserName tboundadmin -OutFile host-report.txt
 
 .NOTES
-    Exit codes: 0 all PASS (at most the two by-design UNVERIFIED items);
-    1 a FAIL was reported; 2 tool or invocation error; 3 Landlock ABI < 8;
-    4 UNVERIFIED items beyond the two by-design ones.
+    Exit codes: 0 no FAIL and no unexpected UNVERIFIED; 1 a FAIL (including
+    mixed FAIL/UNVERIFIED); 2 tool or invocation error; 3 the sole FAIL is a
+    measured exact D09 ABI mismatch with no unexpected UNVERIFIED; 4 unexpected
+    UNVERIFIED when there is no FAIL.
 #>
 [CmdletBinding()]
 param(
@@ -46,6 +47,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'landlock-profile-gate.ps1')
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 # ---------------------------------------------------------------------------
@@ -152,24 +154,11 @@ switch ($Target) {
 # Parse probe output
 # ---------------------------------------------------------------------------
 
-$rows = New-Object System.Collections.Generic.List[object]
-$observedHeader = $null
-$probeSummaryLine = $null
-foreach ($line in ($probeOutputText -split "`r?`n")) {
-    if ($line -match '^(PASS|FAIL|UNVERIFIED)\s+([A-Za-z0-9_.-]+):\s?(.*)$') {
-        $rows.Add([pscustomobject]@{
-                Status = $Matches[1]
-                Name   = $Matches[2]
-                Detail = $Matches[3]
-            })
-    }
-    elseif ($line -match '^Observed:\s+(.*)$') {
-        $observedHeader = $Matches[1].Trim()
-    }
-    elseif ($line -match '^Summary:\s+(.*)$') {
-        $probeSummaryLine = $Matches[1].Trim()
-    }
-}
+$parsedProbe = ConvertFrom-TBoundProbeOutput -Text $probeOutputText
+$rows = New-Object 'System.Collections.Generic.List[object]'
+foreach ($row in $parsedProbe.Rows) { $rows.Add($row) }
+$observedHeader = $parsedProbe.ObservedHeader
+$probeSummaryLine = $parsedProbe.ProbeSummaryLine
 if ($rows.Count -eq 0) {
     throw ((("No PASS/FAIL/UNVERIFIED rows were found in the probe output for {0}. " +
             "Raw output start: {1}") -f $targetDescription, ($probeOutputText.Trim().Substring(0, [Math]::Min(200, $probeOutputText.Trim().Length)))))
@@ -242,10 +231,12 @@ function Get-Remediation {
             return 'Inspect the detail line; unshare must succeed for the non-root trial user.'
         }
         'landlock-abi' {
-            return ('Landlock is unavailable or too old on this kernel. The tbound entrypoint expects ABI 8 ' +
-                    '(LANDLOCK_RESTRICT_SELF_TSYNC, Linux 7.0). On Ubuntu 24.04 install the HWE stack ' +
-                    '("sudo apt-get install --install-recommends linux-generic-hwe-24.04", currently kernel 7.0), ' +
-                    'reboot, and re-run the probe. Save this report first; record the kernel before and after.')
+            return 'The live Landlock ABI query did not establish availability; inspect the measured result and query error.'
+        }
+        'd09-landlock-profile' {
+            return ('The registered D09 profile requires exactly Landlock ABI 8. Ubuntu 24.04 HWE may provide ABI 8 ' +
+                    'on an older GA installation; record and measure the running system after reboot. A later ABI ' +
+                    'requires explicit protocol/profile reconciliation.')
         }
         'pidfd' { return 'Kernel too old for pidfd_open; upgrade the kernel (on Ubuntu 24.04: the HWE stack).' }
         'seccomp-filter' { return 'Kernel lacks seccomp filter mode; check kernel configuration or upgrade (HWE).' }
@@ -324,16 +315,17 @@ else {
     foreach ($fix in $fixes) { [void]$report.AppendLine($fix) }
 }
 [void]$report.AppendLine('')
-[void]$report.AppendLine('Landlock ABI requirement: the tbound entrypoint expects ABI 8 (LANDLOCK_RESTRICT_SELF_TSYNC).')
-$landlockRow = $rows | Where-Object { $_.Name -eq 'landlock-abi' } | Select-Object -First 1
-$landlockAbi = $null
-if ($landlockRow -and $landlockRow.Detail -match 'ABI (\d+)') { $landlockAbi = [int]$Matches[1] }
+$landlockAbi = Get-TBoundLandlockAbi -Rows $rows
+[void]$report.AppendLine('D09 Landlock profile requirement: exactly ABI 8 (LANDLOCK_RESTRICT_SELF_TSYNC).')
 if ($null -ne $landlockAbi) {
-    if ($landlockAbi -ge 8) {
-        [void]$report.AppendLine("Observed ABI $landlockAbi satisfies the requirement.")
+    if ($landlockAbi -eq '8') {
+        [void]$report.AppendLine('Observed ABI 8 matches the exact D09 profile requirement.')
+    }
+    elseif ($landlockAbi -match '^[1-7]$') {
+        [void]$report.AppendLine("Observed ABI $landlockAbi is below the exact requirement; HWE may provide ABI 8 on this installation. Measure again after reboot.")
     }
     else {
-        [void]$report.AppendLine("Observed ABI $landlockAbi is below the requirement; follow the HWE fix above and re-run after reboot.")
+        [void]$report.AppendLine("Observed ABI $landlockAbi does not match the exact requirement; reconcile a later ABI with the protocol/profile.")
     }
 }
 else {
@@ -354,13 +346,5 @@ if ($OutFile) {
 # Exit status
 # ---------------------------------------------------------------------------
 
-$byDesignUnverified = @('cgroup.kill-write', 'uidmap-helpers')
-$unexpectedUnverified = @($rows | Where-Object { $_.Status -eq 'UNVERIFIED' -and $_.Name -notin $byDesignUnverified -and $_.Name -ne 'cosign-cli' })
-if ($Target -eq 'File' -and @($rows | Where-Object Name -eq 'cosign-cli').Count -gt 0) {
-    # cosign-cli UNVERIFIED in File mode is a reporting gap, not a host condition.
-    $unexpectedUnverified = @($unexpectedUnverified | Where-Object Name -ne 'cosign-cli')
-}
-if ($failCount -gt 0) { exit 1 }
-if ($null -ne $landlockAbi -and $landlockAbi -lt 8) { exit 3 }
-if ($unexpectedUnverified.Count -gt 0) { exit 4 }
-exit 0
+$exitCode = Get-TBoundProbeExitCode -Rows $rows -Target $Target -ProbeExitCode $probeExitCode
+exit $exitCode

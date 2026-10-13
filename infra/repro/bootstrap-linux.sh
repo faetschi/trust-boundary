@@ -22,8 +22,7 @@
 #   1  the capability probe reported at least one FAIL (fix footer printed)
 #   2  precondition or environment error before or during bootstrap (mirrors
 #      setup-ubuntu-24.04.sh)
-#   3  probe passed but Landlock ABI < 8: the tbound entrypoint expects ABI 8
-#      (LANDLOCK_RESTRICT_SELF_TSYNC); an HWE kernel upgrade is required
+#   3  the only FAIL is a measured mismatch with the exact D09 ABI 8 profile
 #   4  the probe reported UNVERIFIED items beyond the two by-design ones
 set -Eeuo pipefail
 umask 077
@@ -97,6 +96,10 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 PROBE_SCRIPT="$SCRIPT_DIR/../guest/probe-capabilities.sh"
 SETUP_SCRIPT="$SCRIPT_DIR/../guest/setup-ubuntu-24.04.sh"
 [[ -r "$PROBE_SCRIPT" ]] || die "probe script not readable at $PROBE_SCRIPT; copy the whole infra/ directory to this host"
+PROFILE_GATE="$SCRIPT_DIR/landlock-profile-gate.sh"
+[[ -r "$PROFILE_GATE" ]] || die "Landlock profile gate not readable at $PROFILE_GATE"
+# shellcheck source=landlock-profile-gate.sh
+source "$PROFILE_GATE"
 [[ -r "$SETUP_SCRIPT" ]] || die "setup script not readable at $SETUP_SCRIPT; copy the whole infra/ directory to this host"
 
 . /etc/os-release
@@ -367,14 +370,10 @@ else:
     print(f'ERR {ctypes.get_errno()}')
 PY
 ) || die 'the Landlock ABI precheck could not run (python3 required)'
-case "$LANDLOCK_ABI" in
-  ''|*[!0-9]*) LANDLOCK_ABI_OK=0 ;;
-  *) if (( LANDLOCK_ABI >= 8 )); then LANDLOCK_ABI_OK=1; else LANDLOCK_ABI_OK=0; fi ;;
-esac
 if [[ "$LANDLOCK_ABI" == ERR* ]]; then
   say "Landlock ABI query failed: $LANDLOCK_ABI"
 else
-  say "Landlock ABI $LANDLOCK_ABI detected (tbound entrypoint expects ABI 8 = LANDLOCK_RESTRICT_SELF_TSYNC)."
+  say "Landlock ABI $LANDLOCK_ABI detected (registered D09 profile requires exactly ABI 8 = LANDLOCK_RESTRICT_SELF_TSYNC)."
 fi
 
 # ---------------------------------------------------------------------------
@@ -404,7 +403,10 @@ explain_fail() {
       say '  - user-namespace: apply the sysctl fix from Step 4 (kernel.apparmor_restrict_unprivileged_userns=0), then re-run.'
       ;;
     landlock-abi)
-      say '  - landlock-abi: kernel lacks Landlock; a newer kernel (HWE) is required.'
+      say '  - landlock-abi: the Landlock ABI query failed or the kernel reports Landlock unavailable; inspect the detail above.'
+      ;;
+    d09-landlock-profile)
+      say '  - d09-landlock-profile: the registered D09 profile requires exactly Landlock ABI 8; inspect the measured ABI and profile.'
       ;;
     podman-rootless-crun|podman-subid-maps|subuid|subgid|uidmap-helpers)
       say "  - $name: install podman/crun/uidmap (Step 2 path) and the subordinate ID ranges (Step 1), then log the trial user out and in again."
@@ -430,22 +432,26 @@ explain_fail() {
   esac
 }
 
-UNEXPECTED_UNVERIFIED=0
-if [[ "$PROBE_RC" -eq 2 ]]; then
-  while IFS= read -r line; do
-    name=${line#*  }
-    name=${name#"${name%%[! ]*}"}
-    name=${name%%:*}
-    if ! printf '%s\n' "$name" | grep -qE '^(cgroup\.kill-write|uidmap-helpers)$'; then
-      UNEXPECTED_UNVERIFIED=1
-    fi
-  done < <(grep '^UNVERIFIED  ' "$PROBE_OUTPUT" || true)
-fi
+PROBE_DECISION=$(tbound_classify_probe_report "$PROBE_OUTPUT" "$PROBE_RC")
+REPORTED_LANDLOCK_ABI=$(tbound_report_landlock_abi "$PROBE_OUTPUT" 2>/dev/null || true)
 
-if [[ "$PROBE_RC" -eq 0 ]]; then
+if [[ "$PROBE_DECISION" == 3 ]]; then
   say ''
-  say 'RESULT: all probe checks PASS. This host satisfies the capability floor.'
-elif [[ "$PROBE_RC" -eq 1 ]]; then
+  say 'RESULT: measured Landlock ABI does not match the exact D09 profile.'
+  say "  Observed: ${REPORTED_LANDLOCK_ABI:-unknown}; required: exactly ABI 8 (LANDLOCK_RESTRICT_SELF_TSYNC)."
+  if [[ "$REPORTED_LANDLOCK_ABI" =~ ^[1-7]$ ]]; then
+    say '  Ubuntu 24.04 HWE may provide ABI 8 on this installation. After reviewing the host, install the HWE stack and reboot:'
+    say '    sudo apt-get install --install-recommends linux-generic-hwe-24.04'
+    say '    sudo reboot'
+    say '  Re-run the probe and record the running kernel, ABI, and package versions.'
+  else
+    say '  A later ABI is not accepted by this registered profile. Reconcile the protocol and profile explicitly.'
+    say '  Record the measured ABI; do not infer it from the kernel version or installed packages.'
+  fi
+  rm -f -- "$PROBE_OUTPUT"; PROBE_OUTPUT=
+  printf 'Bootstrap finished with exit 3 (exact D09 Landlock ABI mismatch) at %s\n' "$(date -Is)"
+  exit 3
+elif [[ "$PROBE_DECISION" == 1 ]]; then
   say ''
   say 'RESULT: the probe reported FAIL items. Plain-language fixes:'
   while IFS= read -r line; do
@@ -457,38 +463,24 @@ elif [[ "$PROBE_RC" -eq 1 ]]; then
   rm -f -- "$PROBE_OUTPUT"; PROBE_OUTPUT=
   printf 'Bootstrap finished with exit 1 (probe FAIL items remain) at %s\n' "$(date -Is)"
   exit 1
-elif [[ "$PROBE_RC" -eq 2 ]]; then
+elif [[ "$PROBE_DECISION" == 4 ]]; then
   say ''
   say 'RESULT: the probe reported UNVERIFIED items. UNVERIFIED is not success.'
   say 'By design of the read-only probe, two items are always UNVERIFIED here:'
   say '  - cgroup.kill-write: never written (writing it SIGKILLs the cgroup subtree)'
   say '  - uidmap-helpers: presence is checked, mapping behavior is not inferred'
-  if [[ "$UNEXPECTED_UNVERIFIED" == "1" ]]; then
-    say 'Additional UNVERIFIED items beyond those two were found; inspect the output above.'
-    rm -f -- "$PROBE_OUTPUT"; PROBE_OUTPUT=
-    printf 'Bootstrap finished with exit 4 (unexpected UNVERIFIED items) at %s\n' "$(date -Is)"
-    exit 4
-  fi
-  say 'Only the two by-design items were UNVERIFIED; record them in the host report.'
+  say 'Additional UNVERIFIED items beyond those two were found; inspect the output above.'
+  rm -f -- "$PROBE_OUTPUT"; PROBE_OUTPUT=
+  printf 'Bootstrap finished with exit 4 (unexpected UNVERIFIED items) at %s\n' "$(date -Is)"
+  exit 4
+elif [[ "$PROBE_DECISION" != 0 ]]; then
+  printf 'The probe output could not be classified (probe exit %s)\n' "$PROBE_RC" >&2
+  exit 2
 else
-  printf 'The probe exited with unexpected code %s\n' "$PROBE_RC" >&2
-  exit 1
+  say ''
+  say 'RESULT: all required capability checks PASS; only by-design UNVERIFIED rows remain, if present.'
 fi
 rm -f -- "$PROBE_OUTPUT"; PROBE_OUTPUT=
-
-if [[ "$LANDLOCK_ABI_OK" == "0" ]]; then
-  say ''
-  say 'RESULT: Landlock ABI is below the profile requirement.'
-  say "  Observed: ${LANDLOCK_ABI:-unknown}; required: ABI 8 (LANDLOCK_RESTRICT_SELF_TSYNC)."
-  say '  Fix (Ubuntu 24.04, documented): install the HWE stack and reboot, then re-run this bootstrap:'
-  say '    sudo apt-get install --install-recommends linux-generic-hwe-24.04'
-  say '    sudo reboot'
-  say '  The 24.04 HWE track currently provides kernel 7.0, which reports Landlock ABI 8.'
-  say '  After rebooting, re-run this bootstrap (or the probe) and record the new kernel and'
-  say '  package versions before freezing the profile.'
-  printf 'Bootstrap finished with exit 3 (Landlock ABI below requirement) at %s\n' "$(date -Is)"
-  exit 3
-fi
 
 say ''
 say '=== Bootstrap complete ==='

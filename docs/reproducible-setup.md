@@ -43,8 +43,13 @@ has not been qualified on a clean host.
 The capability probe reports host mechanisms and tool availability. It does
 not test the TBound process boundary, the signed runtime profile, service
 admission, external effects, or a Pi/provider exchange. The current reference
-VM reports Landlock ABI 4; the cell entrypoint requires ABI 8. Later HWE boots
-reached userspace but are not qualified.
+VM reports Landlock ABI 4. Production source freezes D09 to exactly ABI 8:
+`D09LandlockABI` is 8, template validation requires equality, and the cell
+entrypoint rejects other requested ABIs. The generic sandbox diagnostic reports
+Landlock availability from ABI 1 onward; that broader signal is not the D09
+profile gate. Later HWE boots reached userspace but are not qualified. Measure
+the running ABI directly; do not infer it from a kernel version or installed
+package.
 
 For offline verification inside the dedicated guest, follow
 [infra/guest/README.md](../infra/guest/README.md). An offline PASS covers its
