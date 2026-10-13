@@ -231,12 +231,19 @@ never prints fixture paths, controls, or secrets.
   GAP` notice and an `UNKNOWN` result.
 - no flag — the `UNAVAILABLE` projection: no fabricated rows, no stream.
 
-### 9.2 Visual QA receipts
+### 9.2 Visual QA and keyboard receipts
 
 Screenshots (captured with headless Chrome against the running gateway) are in
 [`webchat/qa/`](webchat/qa/): `fixture-desktop`, `fixture-expanded-tools`,
 `replay-continuity-gap`, `unavailable-desktop`, `mobile-conversation`,
-`mobile-inspector`.
+`mobile-inspector`. Keyboard audits driven over the DevTools protocol are in
+`webchat/qa/keyboard-audit-desktop.json` and `keyboard-audit-mobile.json`; they
+verify tab order (skip link → governance toggle → session → each tool disclosure),
+`Enter` toggling a tool disclosure, `Enter` opening the governance drawer, and
+`Escape` closing it. At narrow widths the closed drawer is `inert` +
+`aria-hidden` so keyboard focus cannot reach off-canvas content, and becomes
+focusable only when opened. Rendering preserves keyboard focus on the tool
+disclosure a user was reading, and a render error cannot block data loading.
 
 ## 10. Verification receipts
 

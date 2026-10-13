@@ -1,0 +1,105 @@
+{
+ "url": "http://127.0.0.1:8791/",
+ "viewport": {
+  "width": 420,
+  "height": 900
+ },
+ "initial": {
+  "tag": "BODY",
+  "id": null,
+  "cls": null,
+  "text": "Skip to transcript\n\n    \n      \n        "
+ },
+ "tabStops": [
+  {
+   "tag": "A",
+   "id": null,
+   "cls": "skip-link",
+   "text": "Skip to transcript"
+  },
+  {
+   "tag": "BUTTON",
+   "id": "inspector-toggle",
+   "cls": "ghost-button",
+   "text": "Governance"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "session-button",
+   "text": "Add /healthz and run testscompleted · 1 "
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "Rreadread service/entrypoint.goALLOWsucc"
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "Eeditedit service/entrypoint.goALLOWsucc"
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "$bashbash: curl -s https://example.com/h"
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "$bashbash: go test ./...ALLOWsucceededun"
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "$bashbash: go test -race ./...ALLOWunkno"
+  },
+  {
+   "tag": "BODY",
+   "id": null,
+   "cls": null,
+   "text": "Skip to transcript\n\n    \n      \n        "
+  },
+  {
+   "tag": "A",
+   "id": null,
+   "cls": "skip-link",
+   "text": "Skip to transcript"
+  },
+  {
+   "tag": "BUTTON",
+   "id": "inspector-toggle",
+   "cls": "ghost-button",
+   "text": "Governance"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "session-button",
+   "text": "Add /healthz and run testscompleted · 1 "
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "Rreadread service/entrypoint.goALLOWsucc"
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "Eeditedit service/entrypoint.goALLOWsucc"
+  }
+ ],
+ "disclosureOpened": true,
+ "drawerOpened": "true",
+ "drawerClosed": "false",
+ "inertInitially": true,
+ "inertAfterOpen": false,
+ "inertAfterClose": true
+}

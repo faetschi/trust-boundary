@@ -48,6 +48,7 @@ let recovering = false;
 // Rendering must never block data loading. A render error is surfaced without
 // discarding the projection the client already holds.
 function render() {
+  const focusKey = captureToolFocus();
   try {
     renderAll(refs, state);
   } catch (error) {
@@ -58,6 +59,27 @@ function render() {
       renderAll(refs, state);
     } catch {
       // A second failure is reported through the first notice only.
+    }
+  }
+  restoreToolFocus(focusKey);
+}
+
+// Tool disclosures are rebuilt on every render (content is append-only). Keep
+// keyboard focus on the disclosure the user was reading.
+function captureToolFocus() {
+  const active = document.activeElement;
+  if (!active || active.tagName !== "SUMMARY") return null;
+  const details = active.closest("details.tool");
+  return details ? details.dataset.key : null;
+}
+
+function restoreToolFocus(key) {
+  if (!key || document.activeElement !== document.body) return;
+  for (const details of refs.timeline.querySelectorAll("details.tool")) {
+    if (details.dataset.key === key) {
+      const summary = details.querySelector("summary");
+      if (summary) summary.focus();
+      return;
     }
   }
 }
@@ -138,9 +160,20 @@ async function start() {
   }
 }
 
-// Governance inspector drawer for narrow viewports.
+// Governance inspector drawer for narrow viewports. When the drawer is off
+// canvas it is made inert so keyboard focus cannot reach hidden content.
+const narrowViewport = window.matchMedia("(max-width: 1180px)");
+
 function syncInspector() {
   const open = refs.inspector.dataset.open === "true";
+  const hidden = narrowViewport.matches && !open;
+  if (hidden) {
+    refs.inspector.setAttribute("inert", "");
+    refs.inspector.setAttribute("aria-hidden", "true");
+  } else {
+    refs.inspector.removeAttribute("inert");
+    refs.inspector.removeAttribute("aria-hidden");
+  }
   refs.inspectorToggle.setAttribute("aria-expanded", String(open));
 }
 
@@ -149,6 +182,10 @@ refs.inspectorToggle.addEventListener("click", () => {
   refs.inspector.dataset.open = String(!open);
   syncInspector();
 });
+
+if (typeof narrowViewport.addEventListener === "function") {
+  narrowViewport.addEventListener("change", syncInspector);
+}
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && refs.inspector.dataset.open === "true") {

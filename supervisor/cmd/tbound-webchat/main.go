@@ -17,7 +17,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"time"
 
 	"tbound/supervisor/internal/webchat"
@@ -142,9 +141,6 @@ func validateLoopbackAddress(address string) error {
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
 		return fmt.Errorf("address %q must be a literal loopback IP (for example 127.0.0.1)", address)
-	}
-	if strings.TrimSpace(ip.String()) == "" {
-		return errors.New("address must be a literal loopback IP")
 	}
 	return nil
 }
