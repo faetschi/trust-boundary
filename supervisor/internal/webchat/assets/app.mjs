@@ -179,7 +179,8 @@ function subscribe() {
         render();
         return;
       }
-      recover({ ...(gap || {}), reason: (gap && gap.reason) || "replay_gap" });
+      // Buffer a gap while a refresh is in flight so recovery cannot race it.
+      deferWhileRefreshing(() => recover({ ...(gap || {}), reason: (gap && gap.reason) || "replay_gap" }));
     },
     onConnection: (value) => {
       setConnection(state, value);
@@ -188,10 +189,7 @@ function subscribe() {
         // A re-open after a drop may have missed a session/panel/stream update.
         // Refetch the snapshot in place: the stream is already re-connected, so
         // there is no resubscribe and therefore no recovery loop.
-        if (streamDropped) {
-          streamDropped = false;
-          refreshSnapshot();
-        }
+        if (streamDropped) refreshSnapshot();
         return;
       }
       if (value === "reconnecting" || value === "closed" || value === "error") {
@@ -220,6 +218,7 @@ function deferWhileRefreshing(handler) {
 async function refreshSnapshot() {
   if (refreshing) return;
   refreshing = true;
+  streamDropped = false;
   bufferedHandlers = [];
   try {
     const snapshot = await fetchSnapshot();

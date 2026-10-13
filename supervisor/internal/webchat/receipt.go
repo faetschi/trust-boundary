@@ -355,8 +355,8 @@ func receiptItems(receipt runReceipt, observedAt time.Time) ([]Item, int) {
 				result.State = ResultFailed
 				result.Summary = fmt.Sprintf("command cell settled with exit code %d", settlement.ExitCode)
 			}
-			if settlement.CommandContainmentStatus != "" {
-				result.Summary += "; containment " + boundedText(settlement.CommandContainmentStatus)
+			if status := keepIdentifier(settlement.CommandContainmentStatus); status != "" {
+				result.Summary += "; containment " + status
 			}
 		default:
 			// The terminal receipt records no per-tool verdict or terminal outcome
@@ -504,7 +504,7 @@ func recoveryFromReceipt(receipt runReceipt, keepReference func(name, value stri
 		detail = "Disposition " + disposition + ". "
 	}
 	panel := RecoveryPanel{
-		Generation: keepReference("receipt final generation", receipt.FinalGeneration),
+		Generation: keepIdentifier(receipt.FinalGeneration),
 		Detail:     detail,
 	}
 	switch receipt.Settlement {
@@ -531,10 +531,14 @@ func recoveryFromReceipt(receipt runReceipt, keepReference func(name, value stri
 }
 
 func generationLabel(value string) string {
+	// A generation is an identifier such as g2; free text is never echoed.
 	if value == "" {
 		return "unknown"
 	}
-	return boundedText(value)
+	if identifier := keepIdentifier(value); identifier != "" {
+		return identifier
+	}
+	return "unknown"
 }
 
 func boolToInt(value bool) int {

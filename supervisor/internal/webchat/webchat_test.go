@@ -358,6 +358,22 @@ func TestCursorSequenceAndActivityRules(t *testing.T) {
 	if err := ValidateSnapshot(control); err == nil {
 		t.Fatal("display text containing control characters must be refused")
 	}
+
+	// An activity kind is bounded text: an empty or control-bearing kind is
+	// refused.
+	badKind := validSnapshot()
+	badKind.Items = []Item{
+		{SchemaVersion: ContractVersion, ID: "a1", Type: ItemActivity, OccurredAt: time.Now().UTC(), Authority: AuthorityDiagnostic, Verification: VerificationUnverifiedInput, Kind: "bad\x1b", Tool: ToolRead, ToolCallID: "call-1", Summary: "read", State: ResultPending},
+	}
+	if err := ValidateSnapshot(badKind); err == nil {
+		t.Fatal("an activity kind containing control characters must be refused")
+	}
+	emptyKind := validSnapshot()
+	emptyKind.Items = badKind.Items
+	emptyKind.Items[0].Kind = ""
+	if err := ValidateSnapshot(emptyKind); err == nil {
+		t.Fatal("an empty activity kind must be refused")
+	}
 }
 
 func TestProductionReceiptIgnoresDevBashSettlement(t *testing.T) {
@@ -645,11 +661,15 @@ func TestSSEReplaysItemsAfterCursor(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer response.Body.Close()
-	lines := readSSELines(t, response, 4)
+	// ready + a session event (id/event/data) + one item event (id/event/data).
+	lines := readSSELines(t, response, 7)
 	if !strings.Contains(lines[0], ": ready") {
 		t.Fatalf("first SSE line=%q, want ready comment", lines[0])
 	}
 	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "event: session") {
+		t.Fatalf("a subscription must send its session projection before items: %q", joined)
+	}
 	if !strings.Contains(joined, "event: item") {
 		t.Fatalf("no item event was streamed: %q", joined)
 	}

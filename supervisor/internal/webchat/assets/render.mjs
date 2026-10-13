@@ -216,7 +216,10 @@ function renderSessions(container, state) {
   const row = el("div", "session-row");
   row.setAttribute("aria-current", "true");
   row.appendChild(el("span", "st", session.title || "Untitled session"));
-  row.appendChild(el("span", "sm", `${humanize(session.status)} · ${session.turn_count || 0} turn(s)`));
+  // The rail must carry the same trust marker as the main status badge: without
+  // it a replay's "completed" would appear unqualified.
+  const verified = isVerifiedProjection(state);
+  row.appendChild(el("span", "sm", `${humanize(session.status)}${verified ? "" : " · reported"} · ${session.turn_count || 0} turn(s)`));
   li.appendChild(row);
   li.appendChild(el("p", "session-note", "Current session. Switching sessions requires the supervisor session service (not implemented)."));
   container.appendChild(li);

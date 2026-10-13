@@ -46,6 +46,7 @@ export function setFilter(state, value) {
 }
 
 export function applySnapshot(state, snapshot) {
+  const previouslyRetained = new Set(state.items.map((item) => item.id));
   state.source = snapshot.source;
   state.verification = snapshot.verification_scope;
   state.epoch = snapshot.epoch;
@@ -62,8 +63,13 @@ export function applySnapshot(state, snapshot) {
     if (state.itemsById.has(item.id)) continue;
     state.items.push(item);
     state.itemsById.set(item.id, item);
+    previouslyRetained.delete(item.id);
     if (item.sequence > state.lastSequence) state.lastSequence = item.sequence;
   }
+  // Elements the client retained but the new snapshot omits were dropped by the
+  // source window. Count them as evicted so the retained-window disclosure stays
+  // truthful instead of silently shrinking the record.
+  state.evicted += previouslyRetained.size;
   enforceClientCap(state);
   state.loaded = true;
   state.error = null;

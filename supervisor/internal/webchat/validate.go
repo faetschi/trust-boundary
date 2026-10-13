@@ -289,6 +289,9 @@ func validateItem(item Item, expectedSource SourceClass, expectedScope Verificat
 			return err
 		}
 	case ItemActivity:
+		if err := validateText("activity kind", item.Kind, 128, false); err != nil {
+			return fmt.Errorf("item %q: %w", item.ID, err)
+		}
 		if err := validateTool(item.Tool); err != nil {
 			return fmt.Errorf("item %q: %w", item.ID, err)
 		}
@@ -440,7 +443,7 @@ func validatePanels(panels Panels) error {
 	if err := validateRecoveryState(panels.Recovery.State); err != nil {
 		return err
 	}
-	if err := validateReference("recovery generation", panels.Recovery.Generation, true); err != nil {
+	if err := validateIdentifier("recovery generation", panels.Recovery.Generation, true); err != nil {
 		return err
 	}
 	if err := validateText("recovery detail", panels.Recovery.Detail, MaxTextBytes, true); err != nil {

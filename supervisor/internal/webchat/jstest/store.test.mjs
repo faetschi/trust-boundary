@@ -81,6 +81,15 @@ test("a missing terminal result cannot become a success display", () => {
   assert.equal(result, undefined, "no result element may appear after a gap");
 });
 
+test("a snapshot that omits retained items counts them as evicted", () => {
+  const state = createWorkspace();
+  applySnapshot(state, snapshot([item("a", 1), item("b", 2), item("c", 3)]));
+  assert.equal(state.evicted, 0);
+  applySnapshot(state, snapshot([item("c", 3)]));
+  assert.equal(state.items.length, 1);
+  assert.equal(state.evicted, 2, "items dropped by the new snapshot must be disclosed");
+});
+
 test("applySession updates session and panels", () => {
   const state = createWorkspace();
   applySnapshot(state, snapshot([]));

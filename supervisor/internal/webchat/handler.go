@@ -189,6 +189,22 @@ func streamEvents(store *Store, writer http.ResponseWriter, request *http.Reques
 			return
 		}
 	}
+	// Send the non-item projection captured at subscription time before the item
+	// replay, so a session/panel/stream change that happened between the client's
+	// snapshot fetch and this subscription cannot be missed.
+	header := subscription.Session
+	panels := subscription.Panels
+	streams := append([]StreamStatus(nil), subscription.Streams...)
+	if writeEvent(writer, Event{
+		SchemaVersion: ContractVersion,
+		Cursor:        formatCursor(store.epoch, 0),
+		Kind:          "session",
+		Session:       &header,
+		Panels:        &panels,
+		Streams:       streams,
+	}) != nil {
+		return
+	}
 	for _, item := range subscription.Initial {
 		if request.Context().Err() != nil {
 			return

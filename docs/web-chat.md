@@ -295,10 +295,10 @@ become a success display"), and the gateway exposes no control route
 
 | Finding | Fix |
 |---|---|
-| A reconnect snapshot could overwrite newer live events | Recovery on re-open closes the stream first, so its snapshot cannot race events; gap announcements are keyed by gap identity instead of array length |
+| A reconnect snapshot could overwrite newer live events | The client refreshes in place on a re-open (the stream is already re-established, so there is no resubscribe and no loop) and buffers live events during the fetch; gap announcements are keyed by gap identity |
 | A cursor could disagree with the item sequence | `ValidateSnapshot` refuses a cursor that does not match the last provided sequence |
 | Client eviction was silent | The notices region and the filter summary both disclose the retained window and the evicted count |
-| Identifiers admitted path separators; text admitted control characters | Identifiers (item/turn/tool-call/session/workflow/profile/stream/gap and provenance labels) use a stricter pattern with no `/`; digests keep the wider reference pattern; display text rejects C0 and C1 control characters; receipt `disposition` and settlement/publication/generation values are echoed only when they are bounded identifiers |
+| Identifiers admitted path separators; text admitted control characters | Identifiers (item/turn/tool-call/session/workflow/profile/stream/gap and provenance labels) use a stricter pattern with no `/`; digests keep the wider reference pattern; display text rejects control characters other than LF/TAB, including the C1 range; receipt disposition, settlement/publication status, generation labels and command containment status are echoed only when they are bounded identifiers |
 | LOSSY results were invisible to the Unknown filter; `pending` was counted as unknown | `lossy` is matched and counted independently; `pending` has its own posture count |
 | The filter summary called context elements "matches" | It now reports `N matches · M of T shown (context included)` |
 | An uncorrelated activity could be dropped by a filter | Activities must carry a `tool_call_id`, so every tool block is correlatable |

@@ -112,6 +112,12 @@ test("unverified panel and session claims carry an explicit textual trust label"
   assert.match(refs.sessionStatus.textContent, /reported/);
 });
 
+test("the sessions rail carries the unverified marker", () => {
+  const { refs } = renderFixture();
+  // The rail must not show a replay's "completed" unqualified.
+  assert.match(refs.sessions.textContent, /reported/);
+});
+
 test("the current session is a non-interactive row, not a dead control", () => {
   const { refs } = renderFixture();
   assert.equal(refs.sessions.querySelectorAll("button").length, 0, "no dead session button may be rendered");
