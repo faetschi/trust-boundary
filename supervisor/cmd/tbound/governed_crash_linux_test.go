@@ -179,15 +179,64 @@ func TestGovernedWriteCrashWithholdsProviderResult(t *testing.T) {
 			t.Fatalf("recovery changed %s: %v", filepath.Base(path), err)
 		}
 	}
+
+	// A second cut is after the real Store outcome is durable but before the
+	// ResultingExecutor can append or release its provider result. This exercises
+	// the same refusal helper as the constructor, not production session resume.
+	postRoot := privateGovernedTestRoot(t)
+	governedCrashProcess(t, "write-after-outcome", postRoot, governedCrashExit)
+	postMarkerPath := filepath.Join(postRoot, "crash.marker")
+	postMarker, err := os.ReadFile(postMarkerPath)
+	if err != nil || string(postMarker) != "durable-outcome:g1\n" {
+		t.Fatalf("post-outcome crash marker=%q err=%v", postMarker, err)
+	}
+	postPrimaryPath := filepath.Join(postRoot, "session-audit.jsonl")
+	postProviderPath := filepath.Join(postRoot, "provider-audit.jsonl")
+	postAdmissionPath := filepath.Join(postRoot, "store", "delta-admission.jsonl")
+	postPrimary, postTrace := governedCrashReadTrace(t, postPrimaryPath)
+	postProvider, postProviderTrace := governedCrashReadTrace(t, postProviderPath)
+	postAdmissions, postAdmissionTrace := governedCrashReadTrace(t, postAdmissionPath)
+	if len(postTrace.Effects) != 2 || postTrace.Effects[0].Outcome != "success" || postTrace.Effects[0].Unresolved ||
+		postTrace.Effects[1].Outcome != "success" || postTrace.Effects[1].Unresolved ||
+		postTrace.Effects[1].OutcomeSequence <= postTrace.Effects[1].IntentSequence {
+		t.Fatalf("post-outcome crash effects=%+v", postTrace.Effects)
+	}
+	if len(postProviderTrace.Records) != 3 || len(postAdmissionTrace.Records) != 1 {
+		t.Fatalf("post-outcome provider/admission records=%d/%d, want 3/1", len(postProviderTrace.Records), len(postAdmissionTrace.Records))
+	}
+	for index, kind := range []string{"provider_user_admitted", "provider_exchange", "provider_gate_decision"} {
+		if postProviderTrace.Records[index].Event.Kind != kind {
+			t.Fatalf("post-outcome provider record[%d]=%q want %q", index, postProviderTrace.Records[index].Event.Kind, kind)
+		}
+	}
+	if data, err := os.ReadFile(filepath.Join(postRoot, "store", "generations", "g1", "task.txt")); err != nil || string(data) != "after\n" {
+		t.Fatalf("post-outcome g1 bytes=%q err=%v", data, err)
+	}
+	governedCrashProcess(t, "recover-after-outcome", postRoot, 0)
+	if _, err := os.Stat(filepath.Join(postRoot, "recovery-callback.marker")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("post-outcome recovery invoked effect lifecycle: %v", err)
+	}
+	for path, before := range map[string][]byte{
+		postPrimaryPath: postPrimary, postProviderPath: postProvider,
+		postAdmissionPath: postAdmissions, postMarkerPath: postMarker,
+	} {
+		after, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(before, after) {
+			t.Fatalf("post-outcome recovery changed %s: %v", filepath.Base(path), err)
+		}
+	}
 }
 
 func governedCrashChild(t *testing.T) {
 	phase, root := os.Getenv(governedCrashPhase), os.Getenv(governedCrashRoot)
-	if phase != "write" && phase != "recover" || root == "" {
+	if phase != "write" && phase != "recover" && phase != "write-after-outcome" && phase != "recover-after-outcome" || root == "" {
 		t.Fatal("invalid child inputs")
 	}
-	if phase == "recover" {
-		journal, err := audit.Open(filepath.Join(root, "session-audit.jsonl"))
+	if phase == "recover" || phase == "recover-after-outcome" {
+		journal, err := audit.OpenWithLifecycleHook(filepath.Join(root, "session-audit.jsonl"), func(audit.EffectBoundary) error {
+			markerErr := governedCrashWriteSynced(filepath.Join(root, "recovery-callback.marker"), []byte("unexpected recovery effect lifecycle\n"))
+			return errors.Join(errors.New("recovery attempted an effect lifecycle"), markerErr)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -195,16 +244,47 @@ func governedCrashChild(t *testing.T) {
 		called := func() error {
 			return errors.Join(errors.New("forbidden recovery callback"), governedCrashWriteSynced(filepath.Join(root, "recovery-callback.marker"), []byte("called\n")))
 		}
+		authorizeOperation := func(sessionrepo.OperationRequest) error { return called() }
+		verifyDecision := func(delta.PolicyDecision, delta.TransitionBinding) error { return called() }
+		verifySettlement := func(sessionrepo.CommandSettlement, string, string) error { return called() }
+		if phase == "recover-after-outcome" {
+			// These test-only verifiers permit revalidation of retained evidence.
+			// The audit lifecycle sentinel above refuses any new effect execution.
+			authorizeOperation = func(sessionrepo.OperationRequest) error { return nil }
+			verifyDecision = func(delta.PolicyDecision, delta.TransitionBinding) error { return nil }
+			verifySettlement = func(sessionrepo.CommandSettlement, string, string) error { return nil }
+		}
 		options := sessionrepo.Options{PolicyDigest: governedCrashPolicy, MetadataPolicyDigest: governedCrashMetadata, Limits: workspace.DefaultLimits(),
 			XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedCrashXattr, Complete: true}, Journal: journal,
-			AuthorizeOperation: func(sessionrepo.OperationRequest) error { return called() }, VerifyDecision: func(delta.PolicyDecision, delta.TransitionBinding) error { return called() },
-			VerifySettlement: func(sessionrepo.CommandSettlement, string, string) error { return called() }}
+			AuthorizeOperation: authorizeOperation, VerifyDecision: verifyDecision, VerifySettlement: verifySettlement}
 		dir, err := os.Open(filepath.Join(root, "store"))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer dir.Close()
 		store, err := sessionrepo.Open(dir, options)
+		if phase == "recover-after-outcome" {
+			if err != nil || store == nil {
+				t.Fatalf("fresh post-outcome Store reopen=(%v,%v)", store, err)
+			}
+			defer store.Close()
+			bundle, err := store.EvidenceBundle()
+			if err != nil || len(bundle.Generations) != 2 || bundle.Generations[1].ID != "g1" {
+				t.Fatalf("fresh post-outcome Store generations=%+v err=%v", bundle.Generations, err)
+			}
+			if data, err := os.ReadFile(filepath.Join(root, "store", "generations", "g1", "task.txt")); err != nil || string(data) != "after\n" {
+				t.Fatalf("fresh post-outcome g1 bytes=%q err=%v", data, err)
+			}
+			providerJournal, err := audit.Open(filepath.Join(root, "provider-audit.jsonl"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer providerJournal.Close()
+			if err := requireFreshProviderConversation(providerJournal); !errors.Is(err, ErrProviderRecoveryRequired) {
+				t.Fatalf("fresh conversation guard err=%v, want recovery required", err)
+			}
+			return
+		}
 		if store != nil {
 			store.Close()
 		}
@@ -228,7 +308,7 @@ func governedCrashChild(t *testing.T) {
 	}
 	armed := false
 	journal, err := audit.OpenWithLifecycleHook(filepath.Join(root, "session-audit.jsonl"), func(boundary audit.EffectBoundary) error {
-		if !armed || boundary != audit.EffectBoundaryAfterCallbackReturn {
+		if phase != "write" || !armed || boundary != audit.EffectBoundaryAfterCallbackReturn {
 			return nil
 		}
 		data, err := os.ReadFile(filepath.Join(root, "store", "generations", "g1", "task.txt"))
@@ -344,7 +424,11 @@ func governedCrashChild(t *testing.T) {
 	if err := conversation.RecordDecision(ctx, proposal, decision); err != nil {
 		t.Fatal(err)
 	}
-	executor, err := providerbridge.NewExecutor(conversation, durable)
+	var inner providerbridge.Executor = durable
+	if phase == "write-after-outcome" {
+		inner = governedCrashAfterDurableExecutor{inner: durable, root: root}
+	}
+	executor, err := providerbridge.NewExecutor(conversation, inner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -390,6 +474,27 @@ func governedCrashReadTrace(t *testing.T, path string) ([]byte, audit.Trace) {
 		t.Fatal(err)
 	}
 	return raw, trace
+}
+
+type governedCrashAfterDurableExecutor struct {
+	inner providerbridge.Executor
+	root  string
+}
+
+func (e governedCrashAfterDurableExecutor) Execute(ctx context.Context, proposal protocol.Proposal, decision gate.Decision) (json.RawMessage, error) {
+	output, err := e.inner.Execute(ctx, proposal, decision)
+	if err != nil {
+		return nil, err
+	}
+	var summary durableMutationSummaryPayload
+	if err := unmarshalGovernedJSON(output, &summary); err != nil || summary.Tool != "write" || summary.Outcome != "success" || summary.Generation.ID != "g1" {
+		return nil, errors.Join(errors.New("durable executor did not return successful g1"), err)
+	}
+	if err := governedCrashWriteSynced(filepath.Join(e.root, "crash.marker"), []byte("durable-outcome:g1\n")); err != nil {
+		return nil, err
+	}
+	os.Exit(governedCrashExit)
+	return output, nil
 }
 
 func governedCrashWriteSynced(path string, data []byte) error {
