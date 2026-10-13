@@ -21,9 +21,9 @@
     "panels": {
       "governance": {
         "policy_digest": "sha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6",
-        "allow_count": 3,
+        "allow_count": 4,
         "deny_count": 1,
-        "unknown_count": 1,
+        "unknown_count": 0,
         "note": "Counts of decisions observed in this fixture session."
       },
       "provenance": {

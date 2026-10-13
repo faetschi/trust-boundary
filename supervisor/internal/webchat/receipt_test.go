@@ -66,16 +66,25 @@ func TestProjectDevelopmentReceiptIsHonest(t *testing.T) {
 	if results["example-call-bash-g1"] != ResultSucceeded {
 		t.Fatalf("bash result=%q, want succeeded", results["example-call-bash-g1"])
 	}
-	if results["example-call-edit-g0"] != ResultSucceeded {
-		t.Fatalf("edit result=%q, want succeeded", results["example-call-edit-g0"])
+	// The receipt retains no per-tool terminal outcome for the edit or the reads,
+	// so none of them may be reported as succeeded.
+	if results["example-call-edit-g0"] != ResultUnknown {
+		t.Fatalf("edit result=%q, want unknown without a retained terminal outcome", results["example-call-edit-g0"])
 	}
-	// A read has no retained terminal outcome and must stay UNKNOWN.
 	if results["example-call-read-g0"] != ResultUnknown || results["example-call-read-g2"] != ResultUnknown {
 		t.Fatalf("read results=%q/%q, want unknown", results["example-call-read-g0"], results["example-call-read-g2"])
 	}
+	for _, item := range snapshot.Items {
+		if item.Type == ItemResult && item.State == ResultSucceeded && item.ToolCallID != "example-call-bash-g1" {
+			t.Fatalf("only the settled Bash call may be reported as succeeded; got %q", item.ToolCallID)
+		}
+		if strings.Contains(item.Summary, "approved") {
+			t.Fatalf("item %q must not claim per-tool approval: %q", item.ID, item.Summary)
+		}
+	}
 
 	joined := strings.Join(snapshot.Warnings, " | ")
-	if !strings.Contains(joined, "2 tool call(s) have no terminal outcome") {
+	if !strings.Contains(joined, "3 tool call(s) have no terminal outcome") {
 		t.Fatalf("warnings did not surface the missing outcomes: %s", joined)
 	}
 	if !strings.Contains(joined, "not a qualification result") {
@@ -203,6 +212,46 @@ func TestProjectNativeFixtureReceiptShape(t *testing.T) {
 	}
 	if snapshot.Session.TurnCount != 0 {
 		t.Fatalf("turn count=%d, want 0 for a receipt with no turn fields", snapshot.Session.TurnCount)
+	}
+}
+
+func TestReceiptToolSequenceFallback(t *testing.T) {
+	// The production receipt records a tool_sequence and top-level exit fields
+	// rather than a lineage. The importer must still project the calls, and a
+	// STOPPED settlement (the producer's successful settlement) must map to
+	// not-required recovery.
+	raw := `{
+      "schema_version": "tbound-production-pi-receipt/v1",
+      "mode": "production",
+      "run_id": "run-seq-1",
+      "claim_bearing": false,
+      "settlement": "STOPPED",
+      "success": true,
+      "tool_sequence": ["read", "bash"],
+      "exit_observed": true,
+      "exit_code": 0
+    }`
+	snapshot, err := ProjectReceipt([]byte(raw), receiptTestTime)
+	if err != nil {
+		t.Fatalf("ProjectReceipt(tool_sequence): %v", err)
+	}
+	activities := 0
+	for _, item := range snapshot.Items {
+		if item.Type == ItemActivity {
+			activities++
+		}
+		if item.Type == ItemResult && item.State == ResultSucceeded {
+			t.Fatalf("a tool call without a retained per-tool outcome must not be succeeded: %q", item.ID)
+		}
+	}
+	if activities != 2 {
+		t.Fatalf("projected %d activities, want 2 from the tool sequence", activities)
+	}
+	if snapshot.Panels.Recovery.State != RecoveryNotRequired {
+		t.Fatalf("recovery=%q, want not-required for a STOPPED settlement", snapshot.Panels.Recovery.State)
+	}
+	if snapshot.Session.Status != SessionCompleted {
+		t.Fatalf("session status=%q, want completed for an explicit STOPPED receipt", snapshot.Session.Status)
 	}
 }
 

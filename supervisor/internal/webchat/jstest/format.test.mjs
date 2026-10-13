@@ -22,6 +22,17 @@ test("only a non-diagnostic, non-unverified item is treated as verified", () => 
   assert.equal(stateChipClass("succeeded", isVerified(live)), "succeeded");
 });
 
+test("the verification gate fails closed", () => {
+  // A missing or unexpected scope must never read as verified, and the observed
+  // authority is required alongside the structural-audit scope.
+  assert.equal(isVerified({ authority: "unknown", verification_scope: "", state: "succeeded" }), false);
+  assert.equal(isVerified({ authority: "observed", verification_scope: "", state: "succeeded" }), false);
+  assert.equal(isVerified({ authority: "observed", verification_scope: "unavailable", state: "succeeded" }), false);
+  assert.equal(isVerified({ authority: "diagnostic", verification_scope: "structural-audit-only", state: "succeeded" }), false);
+  assert.equal(isVerified({ authority: "authoritative", verification_scope: "structural-audit-only", state: "succeeded" }), false);
+  assert.equal(stateChipClass("succeeded", isVerified({ authority: "observed", verification_scope: "" })), "reported");
+});
+
 test("negative and unknown states are never restyled as success", () => {
   assert.equal(stateChipClass("denied", true), "denied");
   assert.equal(stateChipClass("failed", true), "failed");

@@ -62,6 +62,7 @@ type runReceipt struct {
 	Success                  bool   `json:"success"`
 
 	ToolLineage    []receiptToolLineage   `json:"tool_lineage"`
+	ToolSequence   []string               `json:"tool_sequence"`
 	BashSettlement *receiptBashSettlement `json:"bash_settlement"`
 }
 
@@ -137,7 +138,25 @@ func ProjectReceipt(raw []byte, observedAt time.Time) (Snapshot, error) {
 	if receipt.Containment == "established" {
 		return Snapshot{}, errors.New("receipt claims established containment; refused")
 	}
-	for _, entry := range receipt.ToolLineage {
+	// The production receipt records a tool_sequence rather than a lineage. Fall
+	// back to it so a real production receipt still projects its tool calls; the
+	// synthesized ids are bounded and clearly derived.
+	if len(receipt.ToolLineage) == 0 && len(receipt.ToolSequence) > 0 {
+		if len(receipt.ToolSequence) > 64 {
+			return Snapshot{}, errors.New("receipt tool sequence exceeds the projection bound")
+		}
+		lineage := make([]receiptToolLineage, 0, len(receipt.ToolSequence))
+		for index, tool := range receipt.ToolSequence {
+			lineage = append(lineage, receiptToolLineage{
+				Sequence:   uint64(index + 1),
+				Tool:       tool,
+				ToolCallID: fmt.Sprintf("receipt-call-%02d", index+1),
+			})
+		}
+		receipt.ToolLineage = lineage
+	}
+
+	for _, entry := range effectiveLineage(receipt) {
 		switch Tool(entry.Tool) {
 		case ToolRead, ToolWrite, ToolEdit, ToolBash:
 		default:
@@ -150,6 +169,21 @@ func ProjectReceipt(raw []byte, observedAt time.Time) (Snapshot, error) {
 		return Snapshot{}, fmt.Errorf("validate projected receipt: %w", err)
 	}
 	return cloneSnapshot(snapshot), nil
+}
+
+func effectiveLineage(receipt runReceipt) []receiptToolLineage {
+	// A production receipt carries only tool names in tool_sequence. Synthesize
+	// bounded call IDs so its tool calls are still projected.
+	if len(receipt.ToolLineage) == 0 {
+		for index, tool := range receipt.ToolSequence {
+			receipt.ToolLineage = append(receipt.ToolLineage, receiptToolLineage{
+				Sequence:   uint64(index + 1),
+				Tool:       tool,
+				ToolCallID: fmt.Sprintf("receipt-call-%02d", index+1),
+			})
+		}
+	}
+	return receipt.ToolLineage
 }
 
 func projectReceipt(receipt runReceipt, observedAt time.Time) Snapshot {
@@ -178,7 +212,7 @@ func projectReceipt(receipt runReceipt, observedAt time.Time) Snapshot {
 	if sessionID == "" {
 		sessionID = "receipt-" + receipt.Mode
 	}
-	hasTurn := len(receipt.ToolLineage) > 0 || receipt.TurnCompleted || receipt.PromptAdmitted || receipt.TaskAdmitted || receipt.WorkerReady
+	hasTurn := len(receipt.ToolLineage) > 0 || len(receipt.ToolSequence) > 0 || receipt.TurnCompleted || receipt.PromptAdmitted || receipt.TaskAdmitted
 
 	items, missingOutcomes := receiptItems(receipt, observedAt)
 	epoch := newEpoch()
@@ -253,7 +287,8 @@ func projectReceipt(receipt runReceipt, observedAt time.Time) Snapshot {
 // result per recorded tool call. A result is UNKNOWN exactly when the receipt
 // does not retain a terminal outcome for that call.
 func receiptItems(receipt runReceipt, observedAt time.Time) ([]Item, int) {
-	items := make([]Item, 0, 1+2*len(receipt.ToolLineage)+1)
+	lineage := effectiveLineage(receipt)
+	items := make([]Item, 0, 1+2*len(lineage)+1)
 	base := func(id string, kind ItemType) Item {
 		return Item{
 			SchemaVersion: ContractVersion,
@@ -311,11 +346,14 @@ func receiptItems(receipt runReceipt, observedAt time.Time) ([]Item, int) {
 			if settlement.CommandContainmentStatus != "" {
 				result.Summary += "; containment " + boundedText(settlement.CommandContainmentStatus)
 			}
-		case (entry.Tool == string(ToolWrite) || entry.Tool == string(ToolEdit)) && entry.GenerationTo != "" && entry.GenerationTo != entry.GenerationFrom:
-			result.State = ResultSucceeded
-			result.Summary = fmt.Sprintf("approved delta advanced the sealed generation %s to %s", generationLabel(entry.GenerationFrom), generationLabel(entry.GenerationTo))
 		default:
+			// The terminal receipt records no per-tool verdict or terminal outcome
+			// for any other call, so nothing is claimed as success. The recorded
+			// generation transition is reported as context only.
 			missing++
+			if entry.GenerationTo != "" && entry.GenerationTo != entry.GenerationFrom {
+				result.Summary = fmt.Sprintf("receipt records generation %s to %s for this call; no per-tool outcome is retained", generationLabel(entry.GenerationFrom), generationLabel(entry.GenerationTo))
+			}
 		}
 		items = append(items, result)
 	}
@@ -396,7 +434,7 @@ func receiptTitle(receipt runReceipt) string {
 func sessionStatusFromReceipt(receipt runReceipt, hasTurn bool) SessionStatus {
 	switch receipt.Mode {
 	case "production":
-		if receipt.Success && receipt.Settlement == "SUCCEEDED" {
+		if receipt.Success && (receipt.Settlement == "SUCCEEDED" || receipt.Settlement == "STOPPED") {
 			return SessionCompleted
 		}
 		if receipt.Settlement == "FAILED" || receipt.Settlement == "DENIED" {
@@ -404,8 +442,13 @@ func sessionStatusFromReceipt(receipt runReceipt, hasTurn bool) SessionStatus {
 		}
 		return SessionUnknown
 	default:
-		if hasTurn && receipt.TurnCompleted && receipt.Settlement != "" && receipt.Settlement != "UNKNOWN" {
+		// A completed turn plus an explicitly successful settlement is the only
+		// combination reported as completed. Anything else stays UNKNOWN.
+		if hasTurn && receipt.TurnCompleted && (receipt.Settlement == "SUCCEEDED" || receipt.Settlement == "STOPPED") {
 			return SessionCompleted
+		}
+		if hasTurn && (receipt.Settlement == "FAILED" || receipt.Settlement == "DENIED") {
+			return SessionFailed
 		}
 		return SessionUnknown
 	}
@@ -451,9 +494,9 @@ func recoveryFromReceipt(receipt runReceipt, keepReference func(name, value stri
 		Detail:     detail,
 	}
 	switch receipt.Settlement {
-	case "SUCCEEDED":
+	case "SUCCEEDED", "STOPPED":
 		panel.State = RecoveryNotRequired
-		panel.Detail += "Settlement SUCCEEDED as reported by the receipt."
+		panel.Detail += "Settlement " + boundedText(receipt.Settlement) + " as reported by the receipt."
 	case "FAILED", "DENIED":
 		panel.State = RecoveryRequired
 		panel.Detail += "Settlement " + boundedText(receipt.Settlement) + "; recovery must inspect state and must not replay an unsettled effect."

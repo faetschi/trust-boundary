@@ -14,8 +14,10 @@ import {
   noteGap,
   setConnection,
   setError,
+  setFilter,
 } from "./store.mjs";
 import { renderAll } from "./render.mjs";
+import { humanize } from "./format.mjs";
 
 const refs = {
   sourceBadge: document.getElementById("source-badge"),
@@ -25,12 +27,17 @@ const refs = {
   claimContainment: document.getElementById("claim-containment"),
   claimBearing: document.getElementById("claim-bearing"),
   notices: document.getElementById("notices"),
+  statusAnnouncer: document.getElementById("status-announcer"),
   sessions: document.getElementById("sessions"),
   streams: document.getElementById("streams"),
   sessionTitle: document.getElementById("session-title"),
   sessionSub: document.getElementById("session-sub"),
   sessionStatus: document.getElementById("session-status"),
   timeline: document.getElementById("timeline"),
+  statusAnnouncer: document.getElementById("status-announcer"),
+  posture: document.getElementById("posture"),
+  timelineFilters: document.getElementById("timeline-filters"),
+  filterSummary: document.getElementById("filter-summary"),
   panelDecisions: document.getElementById("panel-decisions"),
   panelProvenance: document.getElementById("panel-provenance"),
   panelPublication: document.getElementById("panel-publication"),
@@ -44,11 +51,12 @@ const refs = {
 const state = createWorkspace();
 let stream = null;
 let recovering = false;
+let streamOpens = 0;
 
 // Rendering must never block data loading. A render error is surfaced without
 // discarding the projection the client already holds.
 function render() {
-  const focusKey = captureToolFocus();
+  const focusKey = captureFocus();
   try {
     renderAll(refs, state);
   } catch (error) {
@@ -61,22 +69,61 @@ function render() {
       // A second failure is reported through the first notice only.
     }
   }
-  restoreToolFocus(focusKey);
+  restoreFocus(focusKey);
+  announce(state);
 }
 
-// Tool disclosures are rebuilt on every render (content is append-only). Keep
-// keyboard focus on the disclosure the user was reading.
-function captureToolFocus() {
+// The notices list is rebuilt on every render, so it is not a live region. A
+// separate status region announces each change exactly once.
+let announcedGaps = 0;
+let announcedConnection = "";
+
+function announce(state) {
+  const node = refs.statusAnnouncer;
+  if (!node) return;
+  if (state.gaps.length > announcedGaps) {
+    const gap = state.gaps[state.gaps.length - 1];
+    announcedGaps = state.gaps.length;
+    node.textContent = `Continuity gap (${humanize(gap.reason || "unknown")}). Recovered from a snapshot; no success is inferred.`;
+    return;
+  }
+  if (state.connection !== announcedConnection) {
+    announcedConnection = state.connection;
+    node.textContent = state.connection === "open" ? "Stream connected." : `Stream ${state.connection}.`;
+  }
+}
+
+// The timeline and toolbar are rebuilt on every render (content is
+// append-only). Keep keyboard focus on the control the user was operating:
+// a tool disclosure or a timeline filter button.
+function captureFocus() {
   const active = document.activeElement;
-  if (!active || active.tagName !== "SUMMARY") return null;
-  const details = active.closest("details.tool");
-  return details ? details.dataset.key : null;
+  if (!active) return null;
+  if (active.tagName === "SUMMARY") {
+    const details = active.closest("details.tool");
+    return details ? { kind: "tool", value: details.dataset.key } : null;
+  }
+  if (active.tagName === "BUTTON" && active.dataset && active.dataset.filter) {
+    return { kind: "filter", value: active.dataset.filter };
+  }
+  return null;
 }
 
-function restoreToolFocus(key) {
-  if (!key || document.activeElement !== document.body) return;
+function restoreFocus(target) {
+  if (!target) return;
+  // Skip when the DOM already holds focus, or when the user moved it elsewhere.
+  if (document.activeElement && document.activeElement !== document.body) return;
+  if (target.kind === "filter") {
+    for (const button of refs.timelineFilters.querySelectorAll("button[data-filter]")) {
+      if (button.dataset.filter === target.value) {
+        button.focus();
+        return;
+      }
+    }
+    return;
+  }
   for (const details of refs.timeline.querySelectorAll("details.tool")) {
-    if (details.dataset.key === key) {
+    if (details.dataset.key === target.value) {
       const summary = details.querySelector("summary");
       if (summary) summary.focus();
       return;
@@ -116,12 +163,31 @@ function subscribe() {
     onConnection: (value) => {
       setConnection(state, value);
       render();
+      if (value === "open") {
+        streamOpens += 1;
+        // A reconnect can have missed a session/panel change, so recover the
+        // whole state from a fresh snapshot rather than trusting continuity.
+        if (streamOpens > 1) refreshSnapshot();
+      }
     },
     onError: (error) => {
       setError(state, error && error.message ? error.message : String(error));
       render();
     },
   });
+}
+
+// refreshSnapshot re-fetches the bounded snapshot without resubscribing; used on
+// stream (re)open so a silent session/panel update cannot be missed.
+async function refreshSnapshot() {
+  try {
+    const snapshot = await fetchSnapshot();
+    applySnapshot(state, snapshot);
+    render();
+  } catch (error) {
+    setError(state, error && error.message ? error.message : String(error));
+    render();
+  }
 }
 
 async function recover(gap) {
@@ -165,8 +231,13 @@ async function start() {
 const narrowViewport = window.matchMedia("(max-width: 1180px)");
 
 function syncInspector() {
+  const narrow = narrowViewport.matches;
   const open = refs.inspector.dataset.open === "true";
-  const hidden = narrowViewport.matches && !open;
+  const hidden = narrow && !open;
+  // Never hide the panel out from under keyboard focus.
+  if (hidden && refs.inspector.contains(document.activeElement)) {
+    refs.inspectorToggle.focus();
+  }
   if (hidden) {
     refs.inspector.setAttribute("inert", "");
     refs.inspector.setAttribute("aria-hidden", "true");
@@ -174,8 +245,42 @@ function syncInspector() {
     refs.inspector.removeAttribute("inert");
     refs.inspector.removeAttribute("aria-hidden");
   }
-  refs.inspectorToggle.setAttribute("aria-expanded", String(open));
+  // aria-expanded only means something while the panel is collapsible.
+  if (narrow) {
+    refs.inspectorToggle.setAttribute("aria-expanded", String(open));
+  } else {
+    refs.inspectorToggle.removeAttribute("aria-expanded");
+  }
 }
+
+// Timeline filter: a coss-style toggle group where each button carries its own
+// count and pressed state. Clicking, or pressing Enter/Space on a focused item,
+// selects a filter; Left/Right arrows move between items (roving focus).
+// Selecting a filter only narrows what is displayed; it never changes the
+// projection, an observation, or a governance decision.
+function selectFilter(value) {
+  if (!value) return;
+  setFilter(state, value);
+  render();
+}
+
+refs.timelineFilters.addEventListener("click", (event) => {
+  const target = event.target;
+  const button = target && target.closest ? target.closest("button[data-filter]") : null;
+  if (button) selectFilter(button.dataset.filter);
+});
+
+refs.timelineFilters.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  const buttons = Array.from(refs.timelineFilters.querySelectorAll("button[data-filter]"));
+  const index = buttons.indexOf(document.activeElement);
+  if (index < 0) return;
+  const next = event.key === "ArrowRight"
+    ? (index + 1) % buttons.length
+    : (index - 1 + buttons.length) % buttons.length;
+  event.preventDefault();
+  buttons[next].focus();
+});
 
 refs.inspectorToggle.addEventListener("click", () => {
   const open = refs.inspector.dataset.open === "true";

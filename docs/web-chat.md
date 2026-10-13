@@ -46,6 +46,7 @@ because submission requires the authenticated supervisor session service.
 | Typed post-run Pi receipt import (dev, native-fixture, production shapes) | Implemented (`--receipt`, `--receipt-demo`) |
 | Chat transcript rendering (user/assistant messages) | Implemented |
 | Tool activity with policy verdict, reason code, and result state | Implemented |
+| Timeline finding filters and an observed posture summary | Implemented |
 | Governance / provenance / publication / recovery / qualification panels | Implemented |
 | Explicit source labels (`fixture`/`live`/`replay`/`unavailable`) and unverified markers | Implemented |
 | Continuity-gap recovery from a snapshot (no invented success) | Implemented |
@@ -113,20 +114,26 @@ result into a decision.
 
 ### 4.1 Success never renders as confirmed unless it is verified
 
-Two independent guards enforce this:
+Two independent guards enforce this, and both fail closed:
 
-1. **Go boundary.** Any observation loaded from a document (fixture or replay) is
-   forced to `authority=diagnostic` and `verification_scope=unverified-input`;
-   provenance `available` and qualification (`g1`/`claim_bearing`) are forced
-   false; a document that claims containment qualification or an executed research
-   protocol is refused. `authority=authoritative` is refused at the presentation
-   boundary, and `live` can never be loaded from a file.
-2. **Client gate.** A success state (`succeeded`/`completed`/`published`/`ready`)
-   is rendered with the confirmed-success chip only when the item is *not*
-   diagnostic and *not* unverified input (`isVerified`), and panel success only
-   when the projection is `live` with non-unverified scope (`isVerifiedProjection`).
-   Otherwise success renders as an amber, dashed **`reported`** chip next to an
-   explicit `unverified` marker.
+1. **Go boundary.** Every item must declare its verification scope; the store
+   never defaults it, because a defaulted scope could later read as verified. A
+   document (fixture/replay/receipt) is forced to `authority=diagnostic` +
+   `verification_scope=unverified-input`; the `observed` authority — "projected
+   from the supervisor's durable transition" — is refused outside a live
+   projection; `authoritative` is refused outright; a document that claims
+   containment qualification or an executed research protocol is refused; and
+   `live` can never be loaded from a file. An item sequence that is provided must
+   be complete and contiguous from 1, so an input discontinuity is refused rather
+   than silently renumbered, and the stream epoch is restricted to a safe
+   character set because it is interpolated into the SSE `id` line.
+2. **Client gate.** `isVerified` requires the exact pair `authority=observed`
+   **and** `verification_scope=structural-audit-only`; an empty, `unavailable` or
+   otherwise unexpected value is not verified. Panel success additionally
+   requires `isVerifiedProjection` (`live` + `structural-audit-only`). An
+   unverified success renders as an amber, dashed **`reported`** chip next to an
+   explicit textual `unverified`/`reported, not verified` marker, so the claim is
+   legible to assistive technology and to copy-paste, not only by colour.
 
 This is the fix for the previously reviewed "unverified replay success
 presentation" defect; see §7.
@@ -171,6 +178,25 @@ The receipt carries no per-tool timestamps, so the file's modification time is
 used as the observation time and this is stated in a warning. The terminal
 receipt records no per-tool policy verdicts, so no decision counts are projected.
 The raw `command_runner_profile` blob is deliberately not projected.
+
+### 4.3 Reviewing a run: posture and finding filters
+
+The conversation toolbar answers the primary governance question — *what was not
+a clean allow?* — without re-reading the whole transcript.
+
+- **Posture** badges summarise what the projection observed. Policy verdicts
+  (`ALLOW` / `DENY` / `unknown decision`) and execution results (`verified` /
+  `reported` / `denied` / `failed` / `unknown result` / `lossy`) are counted
+  separately, because a policy `ALLOW` is not a successful execution. An
+  unverified success is counted and labelled `reported`, never `verified`.
+- **Filters** narrow the timeline to `All`, `Denied`, `Unknown` or `Failed`.
+  Each button carries its own count and an `aria-pressed` state. A filter keeps
+  the correlated tool block (activity + decision + result) together, so a matched
+  finding is never shown without its execution context, and transcript messages
+  are hidden while a finding filter is active. A filter with no matches renders an
+  explicit empty state rather than a blank timeline.
+- Filtering is presentation-only: it never changes the projection, an
+  observation, a verdict or an effect, and it never relabels an `UNKNOWN`.
 
 ## 5. API endpoints
 
@@ -233,6 +259,20 @@ Three further properties are locked by tests: per-type field smuggling is refuse
 become a success display"), and the gateway exposes no control route
 (`TestHandlerRejectsMethodsOriginsAndBodies`).
 
+### 7.1 Additional fixes from the second review
+
+| Finding | Fix | Locking test |
+|---|---|---|
+| Success verification could fail open on a missing scope | Store requires an explicit scope and never defaults it; the client gate requires the exact `observed` + `structural-audit-only` pair | `TestAppendItemRequiresExplicitVerificationScope`, `TestValidateSnapshotRefusesObservedAuthorityOutsideLive`, `jstest/format.test.mjs` ("the verification gate fails closed") |
+| Unverified panel/session success was labelled only by colour | Publication and recovery render an explicit `trust` row; the session badge and success chips carry textual `reported`/`not verified` markers | `jstest/render.test.mjs` ("unverified panel and session claims carry an explicit textual trust label") |
+| Receipt projection invented per-tool success/approval | Only a settled Bash exit maps to success; other calls stay `UNKNOWN` with a factual summary; `STOPPED` is recognised and `tool_sequence` is supported | `receipt_test.go` (`TestProjectDevelopmentReceiptIsHonest`, `TestReceiptToolSequenceFallback`) |
+| Slow/incomplete GET bodies could still stall a connection | A bounded `ReadTimeout` is set and a body-bearing request is closed rather than drained | `TestHandlerRejectsMethodsOriginsAndBodies` |
+| A session/panel update could be lost across a reconnect | The client re-fetches a fresh snapshot on stream re-open and `UpdateStream` notifies subscribers | `handler.go`/`store.go`; verified in the running workspace |
+| Store state could be mutated through a returned snapshot/event | Panels (including the observation-time pointer) are deep-copied on ingress and egress; events are cloned per subscriber | `TestStoreDeduplicatesAndBroadcasts` |
+| Unbounded client history | The client history is capped at `MAX_CLIENT_ITEMS` with oldest-first eviction | `jstest/store.test.mjs` |
+| Over-limit subscribers still received a full replay | The over-limit subscription returns no replay window | `TestSSESubscriberBoundClosesAdmissionWithGap` |
+| Dead session button, always-set `aria-expanded`, focus loss on resize | The current session is a non-interactive row; `aria-expanded` is set only while collapsible; focus leaves the panel before it is made inert; a dedicated status region announces gaps once | `jstest/render.test.mjs`, keyboard audits |
+
 ## 8. Reuse of the governance companion
 
 The typed viewer in the sibling `codex/tbound-governance-companion` worktree
@@ -251,7 +291,9 @@ Cal.com/shadcn-compatible CSS variables, including the extra
 `--destructive-foreground` and `--info`/`--success`/`--warning` tokens) plus coss
 component conventions: `Card`-style bounded surfaces, outline and semantic
 `Badge`/chip variants, `Alert`-style notices with an icon, `Empty`/`Skeleton`
-loading states, `Kbd`, and a sidebar with muted hover/active rows.
+loading states, `Kbd`, and a sidebar with muted hover/active rows. The timeline
+filter is a segmented Toggle Group built from `aria-pressed` buttons with roving
+arrow-key focus, and the posture row uses the badge/chip shapes.
 
 The React/Base UI/Tailwind implementation is **not** used, deliberately: the
 thesis treats a browser client as a deferred, non-claim-bearing demonstrator and
@@ -271,6 +313,7 @@ go vet ./internal/webchat/... ./cmd/tbound-webchat/...
 go test ./internal/webchat/... ./cmd/tbound-webchat/...
 node --test internal/webchat/jstest/format.test.mjs \
             internal/webchat/jstest/store.test.mjs \
+            internal/webchat/jstest/filters.test.mjs \
             internal/webchat/jstest/render.test.mjs
 go run ./cmd/tbound-webchat --demo                 # embedded fixture, port 8791
 go run ./cmd/tbound-webchat                         # unavailable projection
@@ -305,16 +348,20 @@ or secrets.
 
 Screenshots (captured with headless Chrome against the running gateway) are in
 [`webchat/qa/`](webchat/qa/): `fixture-desktop`, `fixture-expanded-tools`,
-`replay-continuity-gap`, `receipt-real-desktop`,
+`fixture-denied-filter`, `replay-continuity-gap`, `receipt-real-desktop`,
 `receipt-real-expanded-tools`, `unavailable-desktop`, `mobile-conversation`,
 `mobile-inspector`. Keyboard audits driven over the DevTools protocol are in
-`webchat/qa/keyboard-audit-desktop.json` and `keyboard-audit-mobile.json`; they
-verify tab order (skip link → governance toggle → session → each tool disclosure),
-`Enter` toggling a tool disclosure, `Enter` opening the governance drawer, and
-`Escape` closing it. At narrow widths the closed drawer is `inert` +
+`webchat/qa/keyboard-audit-desktop.json` and `keyboard-audit-mobile.json`. They
+verify tab order (skip link → governance toggle → session → timeline filters →
+each tool disclosure), `Enter` toggling a tool disclosure, `Enter` opening the
+governance drawer and `Escape` closing it, `Enter` selecting a timeline filter
+with focus surviving the re-render, and `ArrowRight` moving within the toggle
+group. The audits also record the live `innerWidth` and the media-query result so
+each receipt is self-describing. At narrow widths the closed drawer is `inert` +
 `aria-hidden` so keyboard focus cannot reach off-canvas content, and becomes
 focusable only when opened. Rendering preserves keyboard focus on the tool
-disclosure a user was reading, and a render error cannot block data loading.
+disclosure or filter button a user was operating, and a render error cannot block
+data loading.
 
 ## 10. Verification receipts
 
@@ -325,7 +372,7 @@ Focused checks on the pinned Go 1.27.1 in Linux:
 - `go vet ./internal/webchat/... ./cmd/tbound-webchat/...` — exit 0.
 - `go test -count=1 ./internal/webchat/... ./cmd/tbound-webchat/...` — ok.
 - `go test -race -count=1 ./internal/webchat/... ./cmd/tbound-webchat/...` — ok.
-- `node --test` (browser modules) — 22 tests pass.
+- `node --test` (browser modules) — 38 tests pass.
 - The **real** development CLI fixture receipt was imported with
   `--receipt` and rendered in the running workspace: source `replay`, session
   `unknown`, four tool cards (two reported `succeeded`, two `unknown`),

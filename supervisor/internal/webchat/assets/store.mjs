@@ -5,6 +5,8 @@
 // replay gap forces the caller to recover from a fresh snapshot instead of
 // assuming continuity.
 
+export const MAX_CLIENT_ITEMS = 512;
+
 export function createWorkspace() {
   return {
     source: "unavailable",
@@ -23,7 +25,24 @@ export function createWorkspace() {
     loaded: false,
     error: null,
     gapNotice: null,
+    filter: "all",
+    evicted: 0,
   };
+}
+
+// The client keeps a bounded history. The server ring is bounded too, and an
+// unbounded client would grow without limit once live events are appended.
+function enforceClientCap(state) {
+  if (state.items.length <= MAX_CLIENT_ITEMS) return;
+  const overflow = state.items.length - MAX_CLIENT_ITEMS;
+  const removed = state.items.splice(0, overflow);
+  for (const item of removed) state.itemsById.delete(item.id);
+  state.evicted += removed.length;
+}
+
+export function setFilter(state, value) {
+  state.filter = value;
+  return state;
 }
 
 export function applySnapshot(state, snapshot) {
@@ -39,12 +58,14 @@ export function applySnapshot(state, snapshot) {
   state.items = [];
   state.itemsById = new Map();
   state.lastSequence = 0;
+  state.evicted = 0;
   for (const item of snapshot.items || []) {
     if (state.itemsById.has(item.id)) continue;
     state.items.push(item);
     state.itemsById.set(item.id, item);
     if (item.sequence > state.lastSequence) state.lastSequence = item.sequence;
   }
+  enforceClientCap(state);
   state.loaded = true;
   state.error = null;
   state.gapNotice = null;
@@ -65,6 +86,7 @@ export function applyItem(state, item) {
   state.itemsById.set(item.id, item);
   state.lastSequence = item.sequence;
   state.cursor = `${state.epoch}:${item.sequence}`;
+  enforceClientCap(state);
   return "applied";
 }
 

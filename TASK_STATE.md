@@ -224,6 +224,17 @@ are preparation only. Media custody and exact ABI checks precede registration.
   be applied in a follow-up commit. Milestones 2-3 (read and interactive
   integration) need supervisor service changes owned by the core thread; the
   gateway consumes the proposed projection and implements none of it.
+- Increment 3 (2026-10-13): timeline finding filters (All/Denied/Unknown/Failed
+  with per-filter counts and coss Toggle Group semantics), an observed-posture
+  summary that separates policy ALLOW from execution success (an unverified
+  success is counted and labelled "reported", never "verified"), and an explicit
+  empty state when a filter matches nothing. Filtering is presentation-only.
+  Adds filters.mjs with Node tests, render/toolbar tests and toolbar CSS.
+- Verified: gofmt clean, build/vet green, focused tests and race green, 35 Node
+  tests green (9 filter tests + 13 render tests). Screenshots and deterministic
+  keyboard audits (tab order, Enter/Escape, filter selection with focus
+  retention, ArrowRight within the group, live innerWidth) retained in
+  docs/webchat/qa; both viewports verified.
 
 ## Web chat increment 2: receipt importer + coss/ui design system (2026-10-13)
 
@@ -273,3 +284,21 @@ are preparation only. Media custody and exact ABI checks precede registration.
   Screenshots and keyboard audits retained in docs/webchat/qa/.
 - Second Luna max review round (tbwc-m1-review-2) running; round 1
   (tbwc-m1-review-1) was cancelled before producing findings.
+
+## Web chat increment 3: finding filters and posture summary (2026-10-13)
+
+- Added a timeline finding filter (All / Denied / Unknown / Failed) as a coss
+  Toggle Group convention: aria-pressed segmented buttons with per-filter counts,
+  Left/Right roving arrow-key focus, focus preserved across the re-render, a
+  filter summary ("3 of 18 element(s) match Denied") and an explicit empty state
+  when nothing matches. A filter keeps the correlated tool block together and
+  hides transcript messages, so a matched finding always keeps its context; it
+  never changes a projection, verdict or effect.
+- Added an observed-posture row that separates policy verdicts (ALLOW/DENY/unknown
+  decision) from execution results (verified/reported/denied/failed/unknown/
+  lossy). An unverified success counts as "reported", never "verified".
+- New pure module assets/filters.mjs with Node tests; render tests extended for
+  the toolbar, the filtered view and the empty-filter state. Node suite is now 35
+  tests. Docs updated (docs/web-chat.md sections 4.3 and 8.1).
+- QA: fresh screenshots including fixture-denied-filter, refreshed keyboard audits
+  with the filter and arrow-key checks and a self-describing viewport record.

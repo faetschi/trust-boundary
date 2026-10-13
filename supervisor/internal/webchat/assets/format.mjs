@@ -19,18 +19,20 @@ export function humanize(value) {
     .trim();
 }
 
-// A projection element is only "verified" when it is not caller-supplied
-// unverified input and does not carry diagnostic authority. Fixtures and
-// replays are always unverified, so their success states never render as
-// confirmed success.
+// A projection element is only "verified" when it was observed from the
+// supervisor's durable transition under a claim-sufficient scope. An
+// `authoritative` value is never produced by the gateway, an `observed` value is
+// refused for fixture/replay/receipt sources by the Go boundary, and an
+// `unavailable` or unverified scope never counts. This gate fails closed: a
+// missing or unexpected value is not verified.
 export function isVerified(item) {
   if (!item) return false;
-  return item.authority !== "diagnostic" && item.verification_scope !== "unverified-input";
+  return item.authority === "observed" && item.verification_scope === "structural-audit-only";
 }
 
 export function isVerifiedProjection(state) {
   if (!state) return false;
-  return state.source === "live" && state.verification !== "unverified-input";
+  return state.source === "live" && state.verification === "structural-audit-only";
 }
 
 // Chip class for a state value, downgrading unverified success to "reported".

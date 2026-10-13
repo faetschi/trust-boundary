@@ -12,12 +12,17 @@ import (
 )
 
 // referencePattern bounds identifier-like references (IDs, digests, profile
-// names). It deliberately excludes whitespace, quotes, slashes and control
-// characters so a reference can never be a path or an injected fragment.
+// names). It deliberately excludes whitespace, quotes and control characters.
+// A `/` is permitted only because base64-shaped digests use it; values are never
+// treated as paths, and a reference never reaches the filesystem.
 var referencePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:+=/-]{0,191}$`)
 
 // reasonCodePattern bounds a supervisor reason code such as policy_rule_deny.
 var reasonCodePattern = regexp.MustCompile(`^[a-z][a-z0-9_.-]{0,63}$`)
+
+// epochPattern bounds a stream epoch. The epoch is interpolated into the SSE
+// `id:` line, so it must not contain CR, LF, spaces or colons.
+var epochPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 func validateSourceClass(source SourceClass) error {
 	switch source {
@@ -30,7 +35,7 @@ func validateSourceClass(source SourceClass) error {
 
 func validateAuthority(authority Authority) error {
 	switch authority {
-	case AuthorityAuthoritative, AuthorityDiagnostic, AuthorityUnknown:
+	case AuthorityAuthoritative, AuthorityObserved, AuthorityDiagnostic, AuthorityUnknown:
 		return nil
 	default:
 		return fmt.Errorf("unsupported authority %q", authority)
@@ -225,10 +230,17 @@ func validateItem(item Item, expectedSource SourceClass, expectedScope Verificat
 	if item.Authority == AuthorityAuthoritative {
 		return fmt.Errorf("item %q authoritative authority is unavailable to this presentation contract", item.ID)
 	}
-	scope := item.Verification
-	if scope == "" {
-		scope = defaultVerification(expectedSource)
+	// Only a live projection may carry the observed authority. A fixture, replay
+	// or receipt that claims it would be able to pass the client's verified gate.
+	if item.Authority == AuthorityObserved && expectedSource != SourceLive {
+		return fmt.Errorf("item %q cannot claim observed authority outside a live projection", item.ID)
 	}
+	// The scope is required rather than defaulted: defaulting here would let an
+	// item be stored with an empty scope and later read as verified.
+	if item.Verification == "" {
+		return fmt.Errorf("item %q verification scope is required", item.ID)
+	}
+	scope := item.Verification
 	if err := validateVerification(scope); err != nil {
 		return err
 	}
@@ -438,7 +450,7 @@ func ValidateSnapshot(snapshot Snapshot) error {
 	if snapshot.Source == SourceUnavailable && scope != VerificationUnavailable {
 		return errors.New("unavailable snapshot must use unavailable verification scope")
 	}
-	if snapshot.Epoch == "" || len(snapshot.Epoch) > 128 || strings.Contains(snapshot.Epoch, ":") {
+	if !epochPattern.MatchString(snapshot.Epoch) {
 		return errors.New("snapshot epoch is invalid")
 	}
 	if err := validateCursor(snapshot.Cursor, snapshot.Epoch); err != nil {
@@ -475,6 +487,25 @@ func ValidateSnapshot(snapshot Snapshot) error {
 			return fmt.Errorf("duplicate item %q", item.ID)
 		}
 		seenItems[item.ID] = struct{}{}
+	}
+	// A provided sequence must be complete and contiguous from 1. The store
+	// renumbers input items, so a partial or gapped sequence would otherwise be
+	// silently "repaired" and an input discontinuity erased.
+	provided := 0
+	for _, item := range snapshot.Items {
+		if item.Sequence != 0 {
+			provided++
+		}
+	}
+	if provided > 0 {
+		if provided != len(snapshot.Items) {
+			return errors.New("item sequence must be either unset for every element or set for every element")
+		}
+		for index, item := range snapshot.Items {
+			if item.Sequence != uint64(index+1) {
+				return errors.New("item sequence must be contiguous from 1")
+			}
+		}
 	}
 	for _, gap := range snapshot.Gaps {
 		if err := validateGap(gap); err != nil {

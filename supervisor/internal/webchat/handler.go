@@ -34,20 +34,21 @@ type staticRoute struct {
 // staticRoutes is a closed allowlist. Only these exact paths are served; there
 // is no directory listing, path joining, or filesystem access.
 var staticRoutes = map[string]staticRoute{
-	"/":                  {"assets/index.html", "text/html; charset=utf-8"},
-	"/static/styles.css": {"assets/styles.css", "text/css; charset=utf-8"},
-	"/static/app.mjs":    {"assets/app.mjs", "text/javascript; charset=utf-8"},
-	"/static/api.mjs":    {"assets/api.mjs", "text/javascript; charset=utf-8"},
-	"/static/store.mjs":  {"assets/store.mjs", "text/javascript; charset=utf-8"},
-	"/static/render.mjs": {"assets/render.mjs", "text/javascript; charset=utf-8"},
-	"/static/format.mjs": {"assets/format.mjs", "text/javascript; charset=utf-8"},
+	"/":                   {"assets/index.html", "text/html; charset=utf-8"},
+	"/static/styles.css":  {"assets/styles.css", "text/css; charset=utf-8"},
+	"/static/app.mjs":     {"assets/app.mjs", "text/javascript; charset=utf-8"},
+	"/static/api.mjs":     {"assets/api.mjs", "text/javascript; charset=utf-8"},
+	"/static/store.mjs":   {"assets/store.mjs", "text/javascript; charset=utf-8"},
+	"/static/render.mjs":  {"assets/render.mjs", "text/javascript; charset=utf-8"},
+	"/static/filters.mjs": {"assets/filters.mjs", "text/javascript; charset=utf-8"},
+	"/static/format.mjs":  {"assets/format.mjs", "text/javascript; charset=utf-8"},
 }
 
 // NewHandler exposes GET-only snapshots, retained projected items, and cursor
 // SSE. It has no session-control, launch, cancel, approval, filesystem, or
 // provider routes, and it never reads a request body.
 func NewHandler(store *Store, options HandlerOptions) http.Handler {
-	if store == nil {
+	if store == nil || !store.initialized() {
 		fallback, err := NewUnavailableStore()
 		if err != nil {
 			panic(fmt.Sprintf("webchat: unavailable store: %v", err))
@@ -144,6 +145,9 @@ func authorizeRequest(writer http.ResponseWriter, request *http.Request, options
 		return false
 	}
 	if request.ContentLength != 0 || len(request.TransferEncoding) > 0 {
+		// Close the connection instead of letting net/http drain an unread body,
+		// so a slow body cannot hold the handler open.
+		writer.Header().Set("Connection", "close")
 		http.Error(writer, "request body not allowed", http.StatusBadRequest)
 		return false
 	}

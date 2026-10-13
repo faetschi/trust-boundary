@@ -37,11 +37,8 @@ func NewStore(snapshot Snapshot, capacity int) (*Store, error) {
 	if snapshot.Verification == "" {
 		snapshot.Verification = defaultVerification(snapshot.Source)
 	}
-	for index := range snapshot.Items {
-		if snapshot.Items[index].Verification == "" {
-			snapshot.Items[index].Verification = snapshot.Verification
-		}
-	}
+	// Each item's verification scope is required and validated above; it is never
+	// defaulted here, because a defaulted scope could later read as verified.
 	if capacity <= 0 {
 		capacity = DefaultItemCapacity
 	}
@@ -197,10 +194,11 @@ func (s *Store) UpdatePanels(panels Panels) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.base.Panels = panels
+	stored := clonePanels(panels)
+	s.base.Panels = stored
 	s.rev++
 	header := s.base.Session
-	s.broadcastLocked(Event{SchemaVersion: ContractVersion, Cursor: formatCursor(s.epoch, s.next), Kind: "session", Session: &header, Panels: &panels})
+	s.broadcastLocked(Event{SchemaVersion: ContractVersion, Cursor: formatCursor(s.epoch, s.next), Kind: "session", Session: &header, Panels: &stored})
 	return nil
 }
 
@@ -211,16 +209,25 @@ func (s *Store) UpdateStream(stream StreamStatus) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	replaced := false
 	for index := range s.base.Streams {
 		if s.base.Streams[index].ID == stream.ID {
 			s.base.Streams[index] = stream
-			return nil
+			replaced = true
+			break
 		}
 	}
-	if len(s.base.Streams) >= MaxStreams {
-		return fmt.Errorf("stream count exceeds %d", MaxStreams)
+	if !replaced {
+		if len(s.base.Streams) >= MaxStreams {
+			return fmt.Errorf("stream count exceeds %d", MaxStreams)
+		}
+		s.base.Streams = append(s.base.Streams, stream)
 	}
-	s.base.Streams = append(s.base.Streams, stream)
+	// Stream health is part of the projected state, so notify subscribers.
+	s.rev++
+	header := s.base.Session
+	panels := s.base.Panels
+	s.broadcastLocked(Event{SchemaVersion: ContractVersion, Cursor: formatCursor(s.epoch, s.next), Kind: "session", Session: &header, Panels: &panels})
 	return nil
 }
 
@@ -247,8 +254,10 @@ func (s *Store) RecordGap(gap GapRecord) error {
 
 func (s *Store) broadcastLocked(event Event) {
 	for id, subscriber := range s.subs {
+		// Every subscriber receives its own clone so a reader cannot mutate
+		// store state through a delivered event.
 		select {
-		case subscriber <- event:
+		case subscriber <- cloneEvent(event):
 		default:
 			delete(s.subs, id)
 			close(subscriber)
@@ -278,7 +287,9 @@ func (s *Store) SubscribeAfter(cursor string) (*Subscription, *ReplayGap) {
 	if len(s.subs) >= MaxSubscribers {
 		closed := make(chan Event)
 		close(closed)
-		return &Subscription{Initial: s.currentItemsLocked(), Events: closed, store: s}, &ReplayGap{SchemaVersion: GapVersion, Reason: "subscriber_limit", RequestedCursor: truncate(cursor, 256), Epoch: s.epoch, Latest: s.next}
+		// Return no replay buffer: an over-limit subscriber must not trigger a
+		// full retained-window replay.
+		return &Subscription{Events: closed, store: s}, &ReplayGap{SchemaVersion: GapVersion, Reason: "subscriber_limit", RequestedCursor: truncate(cursor, 256), Epoch: s.epoch, Latest: s.next}
 	}
 	s.nextSub++
 	channel := make(chan Event, SubscriberQueueSize)
@@ -364,14 +375,50 @@ func itemPointer(item Item) *Item {
 }
 
 func panelsPointer(panels Panels) *Panels {
-	copy := panels
+	copy := clonePanels(panels)
 	return &copy
 }
 
 func cloneItem(item Item) Item { return item }
 
+// initialized reports whether a Store was produced by NewStore. A zero-value
+// Store is rejected by the handler rather than panicking on first use.
+func (s *Store) initialized() bool {
+	return s != nil && s.epoch != "" && s.seen != nil && s.subs != nil && s.items != nil
+}
+
+// clonePanels deep-copies the panel projection, including the ObservedAt
+// pointer, so a caller cannot mutate retained store state through a returned
+// snapshot or a delivered event.
+func clonePanels(panels Panels) Panels {
+	out := panels
+	if panels.Publication.ObservedAt != nil {
+		observed := *panels.Publication.ObservedAt
+		out.Publication.ObservedAt = &observed
+	}
+	return out
+}
+
+func cloneEvent(event Event) Event {
+	out := event
+	if event.Item != nil {
+		item := cloneItem(*event.Item)
+		out.Item = &item
+	}
+	if event.Session != nil {
+		session := *event.Session
+		out.Session = &session
+	}
+	if event.Panels != nil {
+		panels := clonePanels(*event.Panels)
+		out.Panels = &panels
+	}
+	return out
+}
+
 func cloneSnapshot(snapshot Snapshot) Snapshot {
 	copy := snapshot
+	copy.Panels = clonePanels(snapshot.Panels)
 	copy.Streams = append([]StreamStatus(nil), snapshot.Streams...)
 	copy.Gaps = append([]GapRecord(nil), snapshot.Gaps...)
 	copy.Warnings = append([]string(nil), snapshot.Warnings...)

@@ -53,14 +53,16 @@ const (
 	SourceUnavailable SourceClass = "unavailable"
 )
 
-// Authority distinguishes a durable supervisor transition from caller-supplied
-// or gateway-supplied display data. The gateway cannot mint authority: the
-// authoritative value is defined here only so that it can be rejected at the
-// presentation boundary.
+// Authority distinguishes a projection element that was observed from the
+// supervisor's durable transition from caller-supplied or gateway-supplied
+// display data. The gateway cannot mint authority: `authoritative` is defined
+// only so that it can be rejected at the presentation boundary, and `observed`
+// may be carried only by a live projection.
 type Authority string
 
 const (
 	AuthorityAuthoritative Authority = "authoritative"
+	AuthorityObserved      Authority = "observed"
 	AuthorityDiagnostic    Authority = "diagnostic"
 	AuthorityUnknown       Authority = "unknown"
 )

@@ -95,6 +95,7 @@ func TestValidateSnapshotRefusesAuthoritativeAuthority(t *testing.T) {
 		Type:          ItemMessage,
 		OccurredAt:    time.Now().UTC(),
 		Authority:     AuthorityAuthoritative,
+		Verification:  VerificationUnverifiedInput,
 		Role:          RoleUser,
 		Text:          "hello",
 	}}
@@ -135,6 +136,7 @@ func TestPerTypeFieldSmugglingRefused(t *testing.T) {
 		},
 	}
 	for name, item := range cases {
+		item.Verification = VerificationUnverifiedInput
 		snapshot := validSnapshot()
 		snapshot.Items = []Item{item}
 		if err := ValidateSnapshot(snapshot); err == nil {
@@ -203,6 +205,7 @@ func TestStoreDeduplicatesAndBroadcasts(t *testing.T) {
 		TurnID:        "turn-01",
 		OccurredAt:    time.Now().UTC(),
 		Authority:     AuthorityDiagnostic,
+		Verification:  VerificationUnverifiedInput,
 		Role:          RoleAssistant,
 		Text:          "new projection element",
 	}
@@ -216,6 +219,106 @@ func TestStoreDeduplicatesAndBroadcasts(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("subscriber did not receive the appended item")
+	}
+}
+
+func TestAppendItemRequiresExplicitVerificationScope(t *testing.T) {
+	store, err := NewFixtureStore()
+	if err != nil {
+		t.Fatalf("NewFixtureStore: %v", err)
+	}
+	// An item with no verification scope must fail closed: defaulting it here
+	// would let a later reader treat an empty scope as verified.
+	item := Item{
+		SchemaVersion: ContractVersion,
+		ID:            "msg-no-scope",
+		Type:          ItemMessage,
+		OccurredAt:    time.Now().UTC(),
+		Authority:     AuthorityUnknown,
+		Role:          RoleAssistant,
+		Text:          "no scope",
+	}
+	if err := store.AppendItem(item); err == nil {
+		t.Fatal("an item without an explicit verification scope must be refused")
+	}
+}
+
+func TestValidateSnapshotRefusesObservedAuthorityOutsideLive(t *testing.T) {
+	// `observed` means "projected from the supervisor's durable transition". A
+	// fixture or replay observation must never carry it.
+	snapshot := validSnapshot()
+	snapshot.Items = []Item{{
+		SchemaVersion: ContractVersion,
+		ID:            "res-observed",
+		Type:          ItemResult,
+		OccurredAt:    time.Now().UTC(),
+		Authority:     AuthorityObserved,
+		Verification:  VerificationStructuralAudit,
+		Tool:          ToolRead,
+		ToolCallID:    "call-1",
+		State:         ResultSucceeded,
+	}}
+	if err := ValidateSnapshot(snapshot); err == nil {
+		t.Fatal("a non-live observation must not claim observed authority")
+	}
+}
+
+func TestLiveObservedSnapshotValidates(t *testing.T) {
+	// The live seam: an observed item under a structural-audit scope is the only
+	// thing the client will render as confirmed success.
+	now := time.Now().UTC()
+	snapshot := Snapshot{
+		SchemaVersion: ContractVersion,
+		Epoch:         "live-epoch-01",
+		Cursor:        "live-epoch-01:1",
+		Source:        SourceLive,
+		Verification:  VerificationStructuralAudit,
+		GeneratedAt:   now,
+		Session:       SessionHeader{SessionID: "session-live-1", Status: SessionRunning},
+		Panels: Panels{
+			Publication:   PublicationPanel{State: PublicationPending},
+			Recovery:      RecoveryPanel{State: RecoveryNotRequired},
+			Qualification: QualificationPanel{G1: false, H1: "unexecuted", Containment: "not-established", ClaimBearing: false},
+		},
+		Items: []Item{{
+			SchemaVersion: ContractVersion,
+			ID:            "res-live",
+			Type:          ItemResult,
+			OccurredAt:    now,
+			Authority:     AuthorityObserved,
+			Verification:  VerificationStructuralAudit,
+			Tool:          ToolRead,
+			ToolCallID:    "call-live-1",
+			State:         ResultSucceeded,
+		}},
+	}
+	if err := ValidateSnapshot(snapshot); err != nil {
+		t.Fatalf("live observed snapshot must validate: %v", err)
+	}
+	if _, err := NewStore(snapshot, DefaultItemCapacity); err != nil {
+		t.Fatalf("live observed snapshot must be storable: %v", err)
+	}
+}
+
+func TestEpochAndSequenceAreValidated(t *testing.T) {
+	// The epoch is interpolated into the SSE id line, so control characters and
+	// separators must be refused.
+	bad := validSnapshot()
+	bad.Epoch = "epoch\r:id"
+	bad.Cursor = "epoch\r:id:0"
+	if err := ValidateSnapshot(bad); err == nil {
+		t.Fatal("an epoch containing control characters or a colon must be refused")
+	}
+
+	// A caller-provided sequence that is not contiguous would be silently
+	// renumbered by the store, erasing an input discontinuity.
+	gapped := validSnapshot()
+	gapped.Items = []Item{
+		{SchemaVersion: ContractVersion, Sequence: 3, ID: "i1", Type: ItemMessage, OccurredAt: time.Now().UTC(), Authority: AuthorityDiagnostic, Verification: VerificationUnverifiedInput, Role: RoleUser, Text: "a"},
+		{SchemaVersion: ContractVersion, Sequence: 4, ID: "i2", Type: ItemMessage, OccurredAt: time.Now().UTC(), Authority: AuthorityDiagnostic, Verification: VerificationUnverifiedInput, Role: RoleAssistant, Text: "b"},
+	}
+	if err := ValidateSnapshot(gapped); err == nil {
+		t.Fatal("a non-contiguous input sequence must be refused rather than renumbered")
 	}
 }
 

@@ -2,8 +2,11 @@
  "url": "http://127.0.0.1:8791/",
  "viewport": {
   "width": 1460,
-  "height": 1000
+  "height": 1000,
+  "innerWidth": 1444,
+  "innerHeight": 905
  },
+ "narrowQueryMatches": false,
  "initial": {
   "tag": "BODY",
   "id": null,
@@ -26,8 +29,26 @@
   {
    "tag": "BUTTON",
    "id": null,
-   "cls": "session-button",
-   "text": "Add /healthz and run testscompleted · 1 "
+   "cls": "toggle-item",
+   "text": "All18"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "toggle-item",
+   "text": "Denied2"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "toggle-item",
+   "text": "Unknown1"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "toggle-item",
+   "text": "Failed0"
   },
   {
    "tag": "SUMMARY",
@@ -76,30 +97,21 @@
    "id": null,
    "cls": "skip-link",
    "text": "Skip to transcript"
-  },
-  {
-   "tag": "BUTTON",
-   "id": "inspector-toggle",
-   "cls": "ghost-button",
-   "text": "Governance"
-  },
-  {
-   "tag": "BUTTON",
-   "id": null,
-   "cls": "session-button",
-   "text": "Add /healthz and run testscompleted · 1 "
-  },
-  {
-   "tag": "SUMMARY",
-   "id": null,
-   "cls": null,
-   "text": "Rreadread service/entrypoint.goALLOWsucc"
   }
  ],
+ "disclosureFocus": "focused",
+ "disclosureFocusHeld": true,
  "disclosureOpened": true,
+ "toggleFocus": "focused",
  "drawerOpened": "true",
  "drawerClosed": "false",
  "inertInitially": false,
  "inertAfterOpen": false,
- "inertAfterClose": false
+ "inertAfterClose": false,
+ "filterFocus": "focused",
+ "filterPressed": "true",
+ "filterSummary": "3 of 18 element(s) match “Denied”",
+ "filterFocusAfterRender": "denied",
+ "filterTimeline": "turn-013 element(s)$bashbash: curl -s https://example.com/healthzDENYdeniedunverifiedrequestbash: curl -s https://example.com/healthz 11:12:31policyDENY policy_rule_deny sha256:9f2…e0f3a6command cell ",
+ "arrowTarget": "unknown"
 }

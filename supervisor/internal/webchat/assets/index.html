@@ -21,7 +21,7 @@
       <div class="topbar-meta">
         <span id="source-badge" class="badge badge-source" data-source="unavailable">unavailable</span>
         <span id="connection" class="badge badge-conn" data-state="connecting" role="status" aria-live="polite">connecting…</span>
-        <button id="inspector-toggle" class="ghost-button" type="button" aria-expanded="false" aria-controls="inspector">
+        <button id="inspector-toggle" class="ghost-button" type="button" aria-controls="inspector">
           Governance
         </button>
       </div>
@@ -38,7 +38,8 @@
       <span class="claim-note">Presentation only — the supervisor retains policy, effect, and publication authority.</span>
     </div>
 
-    <div id="notices" class="notices" aria-live="polite"></div>
+    <div id="notices" class="notices" aria-live="off"></div>
+    <p id="status-announcer" class="sr-only" role="status" aria-live="polite"></p>
 
     <main class="layout" id="layout">
       <nav class="rail" aria-label="Sessions">
@@ -60,6 +61,14 @@
             <p id="session-sub" class="session-sub"></p>
           </div>
           <span id="session-status" class="badge badge-state pending">pending</span>
+        </div>
+
+        <div class="toolbar">
+          <div id="posture" class="posture" aria-label="Observed governance posture"></div>
+          <div class="toolbar-right">
+            <span id="filter-summary" class="filter-summary" aria-live="polite"></span>
+            <div id="timeline-filters" class="toggle-group" role="group" aria-label="Filter timeline"></div>
+          </div>
         </div>
 
         <div id="timeline" class="timeline" tabindex="-1" role="log" aria-live="off" aria-label="Transcript and tool activity"></div>

@@ -100,11 +100,13 @@ func run(args []string, stdout, stderr *os.File) error {
 	server := &http.Server{
 		Handler:           webchat.NewHandler(store, webchat.HandlerOptions{AllowedHost: bound, AllowedOrigin: "http://" + bound}),
 		ReadHeaderTimeout: 5 * time.Second,
-		IdleTimeout:       60 * time.Second,
-		MaxHeaderBytes:    16 << 10,
-		// No ReadTimeout or WriteTimeout is configured. Request bodies are
-		// rejected outright, and each response write is bounded with an
-		// explicit deadline that also covers the flush.
+		// A read timeout bounds a slow/stalled request even though no body is ever
+		// read; body-bearing requests are additionally closed without draining.
+		ReadTimeout:    15 * time.Second,
+		IdleTimeout:    60 * time.Second,
+		MaxHeaderBytes: 16 << 10,
+		// No WriteTimeout is configured: SSE responses are long-lived and each
+		// response write carries its own explicit deadline that covers the flush.
 	}
 
 	source := store.Snapshot().Source

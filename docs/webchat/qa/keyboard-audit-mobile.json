@@ -2,8 +2,11 @@
  "url": "http://127.0.0.1:8791/",
  "viewport": {
   "width": 420,
-  "height": 900
+  "height": 900,
+  "innerWidth": 420,
+  "innerHeight": 900
  },
+ "narrowQueryMatches": true,
  "initial": {
   "tag": "BODY",
   "id": null,
@@ -26,8 +29,26 @@
   {
    "tag": "BUTTON",
    "id": null,
-   "cls": "session-button",
-   "text": "Add /healthz and run testscompleted · 1 "
+   "cls": "toggle-item",
+   "text": "All18"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "toggle-item",
+   "text": "Denied2"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "toggle-item",
+   "text": "Unknown1"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "toggle-item",
+   "text": "Failed0"
   },
   {
    "tag": "SUMMARY",
@@ -76,30 +97,21 @@
    "id": "inspector-toggle",
    "cls": "ghost-button",
    "text": "Governance"
-  },
-  {
-   "tag": "BUTTON",
-   "id": null,
-   "cls": "session-button",
-   "text": "Add /healthz and run testscompleted · 1 "
-  },
-  {
-   "tag": "SUMMARY",
-   "id": null,
-   "cls": null,
-   "text": "Rreadread service/entrypoint.goALLOWsucc"
-  },
-  {
-   "tag": "SUMMARY",
-   "id": null,
-   "cls": null,
-   "text": "Eeditedit service/entrypoint.goALLOWsucc"
   }
  ],
+ "disclosureFocus": "focused",
+ "disclosureFocusHeld": true,
  "disclosureOpened": true,
+ "toggleFocus": "focused",
  "drawerOpened": "true",
  "drawerClosed": "false",
  "inertInitially": true,
  "inertAfterOpen": false,
- "inertAfterClose": true
+ "inertAfterClose": true,
+ "filterFocus": "focused",
+ "filterPressed": "false",
+ "filterSummary": "18 projected element(s)",
+ "filterFocusAfterRender": null,
+ "filterTimeline": "turn-0118 element(s)user · 11:12:04 · unverifiedAdd a /healthz endpoint to the service and run the test suite.assistant · 11:12:09 · unverifiedI will inspect the service entrypoint, add the endpoint, ",
+ "arrowTarget": null
 }

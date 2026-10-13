@@ -2,16 +2,19 @@
 // values can never become markup.
 
 import {
+  SUCCESS_STATES,
   formatClock,
   humanize,
   isVerified,
   isVerifiedProjection,
   shortDigest,
+  slug,
   stateChipClass,
   toolGlyph,
   verdictChipClass,
 } from "./format.mjs";
 import { groupTurn, turnsOf } from "./store.mjs";
+import { FILTERS, countFilter, filterItems, governanceCounts } from "./filters.mjs";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -26,6 +29,23 @@ function clear(node) {
 
 function chip(label, variant) {
   return el("span", `chip chip-${variant}`, label);
+}
+
+// trustValue renders a state chip with an explicit, visible trust marker. A
+// success the projection has not verified must never read as confirmed success,
+// including for assistive technology and copy-paste, so the marker is text, not
+// only styling.
+function trustValue(value, verified) {
+  const variant = stateChipClass(value, verified);
+  if (verified || !SUCCESS_STATES.has(slug(value))) {
+    return chip(value, variant);
+  }
+  const wrap = el("span", "trust-value");
+  const node = chip(value, variant);
+  node.setAttribute("aria-label", `${value}, reported, not verified`);
+  wrap.appendChild(node);
+  wrap.appendChild(el("span", "trust-marker", "reported, not verified"));
+  return wrap;
 }
 
 function kv(container, key, valueNode) {
@@ -59,8 +79,63 @@ export function renderAll(refs, state) {
   renderNotices(refs.notices, state);
   renderSessions(refs.sessions, state);
   renderStreams(refs.streams, state);
+  renderToolbar(refs, state);
   renderConversation(refs, state);
   renderInspector(refs, state);
+}
+
+// renderToolbar draws the observed posture badges and the timeline filter
+// toggle group (coss Toggle Group convention: aria-pressed segmented buttons).
+function renderToolbar(refs, state) {
+  if (refs.posture) {
+    clear(refs.posture);
+    const counts = governanceCounts(state.items, isVerified);
+    const badges = [
+      [counts.allow, `ALLOW ${counts.allow}`, "allow", "policy ALLOW decisions"],
+      [counts.deny, `DENY ${counts.deny}`, "deny", "policy DENY decisions"],
+      [counts.unknownDecisions, `unknown verdict ${counts.unknownDecisions}`, "unknown", "decisions with an unknown verdict"],
+      [counts.verified, `verified ${counts.verified}`, "allow", "successful executions confirmed by the projection"],
+      [counts.reported, `reported ${counts.reported}`, "reported", "successes reported but not independently verified"],
+      [counts.denied, `denied ${counts.denied}`, "deny", "denied results"],
+      [counts.failed, `failed ${counts.failed}`, "deny", "failed results"],
+      [counts.unknownResults, `unknown result ${counts.unknownResults}`, "unknown", "results with no retained terminal outcome"],
+      [counts.lost, `lossy ${counts.lost}`, "unknown", "LOSSY results"],
+    ];
+    for (const entry of badges) {
+      const [value, label, variant, hint] = entry;
+      if (!value) continue;
+      const badge = el("span", `chip chip-${variant}`, label);
+      badge.title = hint;
+      refs.posture.appendChild(badge);
+    }
+    if (!refs.posture.children.length) {
+      refs.posture.appendChild(el("span", "posture-empty", "no decisions or results projected"));
+    }
+  }
+
+  if (refs.timelineFilters) {
+    clear(refs.timelineFilters);
+    for (const filter of FILTERS) {
+      const button = el("button", "toggle-item");
+      button.type = "button";
+      button.dataset.filter = filter.id;
+      button.setAttribute("aria-pressed", String(state.filter === filter.id));
+      button.setAttribute("aria-label", `${filter.label} (${filter.hint})`);
+      button.appendChild(el("span", null, filter.label));
+      const count = countFilter(state.items, filter.id);
+      button.appendChild(el("span", "toggle-count", String(count)));
+      refs.timelineFilters.appendChild(button);
+    }
+  }
+
+  if (refs.filterSummary) {
+    const shown = filterItems(state.items, state.filter).length;
+    const total = state.items.length;
+    const active = FILTERS.find((entry) => entry.id === state.filter);
+    refs.filterSummary.textContent = state.filter === "all"
+      ? `${total} projected element(s)`
+      : `${shown} of ${total} element(s) match “${active ? active.label : state.filter}”`;
+  }
 }
 
 function renderHeader(refs, state) {
@@ -119,12 +194,15 @@ function renderSessions(container, state) {
     return;
   }
   const li = el("li", "session-item");
-  const button = el("button", "session-button");
-  button.type = "button";
-  button.setAttribute("aria-current", "true");
-  button.appendChild(el("span", "st", session.title || "Untitled session"));
-  button.appendChild(el("span", "sm", `${humanize(session.status)} · ${session.turn_count || 0} turn(s)`));
-  li.appendChild(button);
+  // The current session is shown as a non-interactive row: selecting another
+  // session is not implemented, so an enabled button would imply a capability
+  // the product does not have.
+  const row = el("div", "session-row");
+  row.setAttribute("aria-current", "true");
+  row.appendChild(el("span", "st", session.title || "Untitled session"));
+  row.appendChild(el("span", "sm", `${humanize(session.status)} · ${session.turn_count || 0} turn(s)`));
+  li.appendChild(row);
+  li.appendChild(el("p", "session-note", "Current session. Switching sessions requires the supervisor session service (not implemented)."));
   container.appendChild(li);
 }
 
@@ -153,7 +231,10 @@ function renderConversation(refs, state) {
   refs.sessionSub.textContent = [session.session_id, session.workflow_id, session.pi_version ? `Pi ${session.pi_version}` : null]
     .filter(Boolean)
     .join(" · ") || "—";
-  refs.sessionStatus.textContent = humanize(session.status || "unknown");
+  const verified = isVerifiedProjection(state);
+  refs.sessionStatus.textContent = verified
+    ? humanize(session.status || "unknown")
+    : `${humanize(session.status || "unknown")} · reported`;
   refs.sessionStatus.dataset.state = session.status || "unknown";
 
   const timeline = refs.timeline;
@@ -174,7 +255,17 @@ function renderConversation(refs, state) {
     return;
   }
 
-  for (const turn of turnsOf(state.items)) {
+  const visible = filterItems(state.items, state.filter);
+  if (!visible.length) {
+    const active = FILTERS.find((entry) => entry.id === state.filter);
+    timeline.appendChild(emptyState(
+      `No ${active ? active.label.toLowerCase() : state.filter} findings`,
+      "No projected element matches this filter. Adjust the filter to review the whole timeline.",
+    ));
+    return;
+  }
+
+  for (const turn of turnsOf(visible)) {
     timeline.appendChild(renderTurn(turn));
   }
   for (const node of timeline.querySelectorAll("details.tool")) {
@@ -338,7 +429,8 @@ function renderInspector(refs, state) {
   const publication = refs.panelPublication;
   clear(publication);
   const pub = panels.publication || {};
-  kv(publication, "state", chip(pub.state || "unavailable", stateChipClass(pub.state || "unavailable", verified)));
+  kv(publication, "state", trustValue(pub.state || "unavailable", verified));
+  kv(publication, "trust", verified ? "verified by the gateway" : "reported by the source, not independently verified");
   if (pub.transaction_id) kv(publication, "transaction", monoNode(pub.transaction_id));
   if (pub.observed_at) kv(publication, "observed", formatClock(pub.observed_at));
   if (pub.detail) noteRow(publication, pub.detail);
@@ -346,7 +438,8 @@ function renderInspector(refs, state) {
   const recovery = refs.panelRecovery;
   clear(recovery);
   const rec = panels.recovery || {};
-  kv(recovery, "state", chip(rec.state || "unavailable", stateChipClass(rec.state || "unavailable", verified)));
+  kv(recovery, "state", trustValue(rec.state || "unavailable", verified));
+  kv(recovery, "trust", verified ? "verified by the gateway" : "reported by the source, not independently verified");
   if (rec.generation) kv(recovery, "generation", monoNode(rec.generation));
   if (typeof rec.last_completed_sequence === "number") kv(recovery, "last completed seq", String(rec.last_completed_sequence));
   if (rec.detail) noteRow(recovery, rec.detail);
