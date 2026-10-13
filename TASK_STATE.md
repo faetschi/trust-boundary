@@ -359,3 +359,12 @@ are preparation only. Media custody and exact ABI checks precede registration.
   `subscriber_limit` closes the stream, `cloneEvent` copies the stream slice,
   `evicted` is monotonic, and result/provenance identifiers use the strict
   pattern.
+- Rounds 5 and 6 completed the loop: restored the activity-kind check (lost in a
+  refactor), buffered gaps during a refresh, counted snapshot-omitted elements as
+  evicted, routed receipt generation/containment text through identifier
+  filtering, emitted the subscription session projection before the item replay,
+  carried the "reported" marker in the sessions rail, made activity kinds strict
+  tokens, gave the subscription session event the current cursor (avoiding a
+  false history_evicted gap on reconnect), asserted SSE event ordering, and
+  stopped rendering stream health in the success colour. No round found a path
+  that renders an unverified or unavailable observation as confirmed success.
