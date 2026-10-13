@@ -82,22 +82,41 @@ type productionOperatorArtifacts struct {
 var ErrProductionSourceNotQuiescent = errors.New("production source is not a protected read-only filesystem snapshot")
 var ErrProductionXattrVisibilityUnavailable = errors.New("registered D09 template xattr-visibility profile does not match a protected source filesystem and scanning privilege")
 
-var productionCleanupQuarantine struct {
+type productionCleanupQuarantineState struct {
 	sync.Mutex
 	holds [][]func() error
 }
+
+var productionCleanupQuarantine productionCleanupQuarantineState
 
 // retainProductionCleanup keeps the exact held descriptors/owners reachable
 // after an UNKNOWN teardown failure. It does not retry with broader authority or
 // declare success; the durable cgroup/source identities remain available to a
 // later recovery implementation while this process remains alive.
 func retainProductionCleanup(closers []func() error) {
+	productionCleanupQuarantine.retain(closers)
+}
+
+func (q *productionCleanupQuarantineState) retain(closers []func() error) {
 	if len(closers) == 0 {
 		return
 	}
-	productionCleanupQuarantine.Lock()
-	productionCleanupQuarantine.holds = append(productionCleanupQuarantine.holds, append([]func() error(nil), closers...))
-	productionCleanupQuarantine.Unlock()
+	q.Lock()
+	q.holds = append(q.holds, append([]func() error(nil), closers...))
+	q.Unlock()
+}
+
+func retainProductionCleanupIfUnsafe(
+	quarantine *productionCleanupQuarantineState,
+	evidence productionLifecycleSnapshot,
+	runner *productionCommandRunner,
+	closers []func() error,
+) bool {
+	if productionCleanupSafe(evidence, runner) {
+		return false
+	}
+	quarantine.retain(closers)
+	return true
 }
 
 // productionBinder is the concrete productionRuntimeBinder for a provisioned
@@ -451,13 +470,17 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	var closeErr error
 	session.Close = func() error {
 		closeOnce.Do(func() {
-			if !productionCleanupSafe(session.Lifecycle.snapshot(), session.ProductionCommandRunner) {
+			if retainProductionCleanupIfUnsafe(
+				&productionCleanupQuarantine,
+				session.Lifecycle.snapshot(),
+				session.ProductionCommandRunner,
+				closers,
+			) {
 				// Keep the held D09 cgroup, worker views, Store/Git/admin handles, and
 				// command-scope receipts available to process-level recovery when the
 				// worker/cell settlement is UNKNOWN. Process exit closes descriptors;
 				// this function must not pretend it safely reclaimed a live scope.
 				closeErr = ErrProductionLifecycleUnsettled
-				retainProductionCleanup(closers)
 				return
 			}
 			var errs []error

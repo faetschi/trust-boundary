@@ -158,11 +158,37 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   d09-unknown-retention-race30.log and d09-unknown-retention-vet.log in the
   resume review-artifacts directory. Critical reviewer accepted this bounded
   increment: single Wait ownership, bounded probe, proof-before-bootstrap
-  rejection and UNKNOWN channel retention. Commit checkpoint follows.
+  rejection and UNKNOWN channel retention. Committed as 11da49b; receipt
+  d09-unknown-retention-receipt-11da49b.json binds tested source hashes/results.
   Separate production-session admission lease retention gap is being prepared
   before enabling launch. Public refusal unchanged. Active read-only task:
-  `tbound-d09-preworker-admission-retention-20261013-r1` (next repair), using
-  the same delegated-task prefix as recorded above.
+  `tbound-d09-admission-applied-critical-review-20261013-r3` (next repair), using
+  the same delegated-task prefix as recorded above. Candidate review rejected a
+  state-only typed launch-error check: complete STOPPED/exit/descendant evidence
+  and nil CleanupErr are required. Actual BeginSession lease and binder owner
+  quarantine tests now pass after the corrected three-file repair was applied.
+  Focused race count10 passed; full Linux unit/race each 891 passes, zero
+  failures, seven skips; vet clean. All three Go source hashes match the tested
+  isolated copy; logs d09-admission-retention-* in resume review-artifacts.
+  Critical reviewer accepted the bounded repair. Nonblocking limitation: the
+  typed-error check observes the first PiWorkerLaunchError; current launch paths
+  produce only one typed launch failure. Commit checkpoint follows. The session
+  wrapper now reaches the binder's guarded quarantine on unsafe cleanup.
+  Guest runbook audit
+  also found >=8 bootstrap/positive-ABI probe inconsistencies against the exact
+  ABI 8 profile. Production host probe explicitly compares observed ABI against
+  the exact registered value (containment_linux.go); this is not merely a
+  requested ruleset ABI. Prepared guest patch preserves broad Landlock
+  availability and proposes a separate exact D09 row. Critical review
+  found the proposed special exit 3 could mask unexpected UNVERIFIED rows.
+  Guest patch remains unapplied; complete cross-layer regression/exit candidate
+  prepared by tbound-guest-abi-gates-complete-repair-20261013-r2. Final scope and
+  report integration review precedes application.
+  Launch completion map confirms the existing guarded core can serve D09 after
+  admission ownership repair; public D09 wiring/contract-doc patch preparation
+  tbound-guarded-d09-launch-patch-20261013-r1 must retain concrete launcher and
+  signed profile/closure checks. ABI/profile registration and independent
+  qualification remain environmental gates, not simulated test results.
 
 - Baseline archive, initial working-tree patch and tracked-file SHA-256 manifest:
   ../review-artifacts/tbound-baseline-2026-10-12/. Includes the five document

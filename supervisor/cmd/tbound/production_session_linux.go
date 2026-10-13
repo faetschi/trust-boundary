@@ -388,10 +388,9 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	session.Publication = publicationRuntime
 	previousClose := session.Close
 	session.Close = func() error {
-		if !productionCleanupSafe(session.Lifecycle.snapshot(), session.ProductionCommandRunner) {
-			// Do not release the publication live-root owner or any session/cgroup
-			// handles while a child, loop, or command scope may still be active.
-			return ErrProductionLifecycleUnsettled
+		if err := productionSessionCloseIfUnsafe(
+			session.Lifecycle.snapshot(), session.ProductionCommandRunner, previousClose); err != nil {
+			return err
 		}
 		lifecycle := session.Lifecycle.snapshot()
 		if !lifecycle.taskAdmitted && session.ManagedLiveRootLease != nil {
@@ -417,6 +416,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	var settlement piruntime.Settlement
 	var workerCloseErr error
 	workerClosed := false
+	var workerLaunchErr error
 	sessionAdmissionHeld := true
 	releaseAdmission := func() {
 		if sessionAdmissionHeld {
@@ -425,13 +425,8 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		}
 	}
 	defer func() {
-		// A launched worker with incomplete settlement retains the active
-		// publication admission lease. This prevents replay or a second writer
-		// while the lifecycle/managed-root cleanup guards retain authority.
-		if workerClosed && !productionWorkerSettlementAllowsPublication(settlement, workerCloseErr) {
-			return
-		}
-		releaseAdmission()
+		releaseProductionSessionAdmissionIfSafe(
+			releaseAdmission, workerLaunchErr, workerClosed, settlement, workerCloseErr)
 	}()
 
 	bootstrap := piruntime.PiWorkerBootstrap{
@@ -442,6 +437,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	session.Lifecycle.markWorkerLaunchAttempted()
 	worker, err := piruntime.LaunchD09PiSDKWorker(ctx, capability, session.D09Channels, bootstrap)
 	if err != nil {
+		workerLaunchErr = err
 		return fmt.Errorf("launch admitted production Pi worker: %w", err)
 	}
 	session.Lifecycle.markWorkerLaunched(worker.PID())
@@ -697,6 +693,50 @@ var ErrProductionWorkerSettlementIncomplete = errors.New("production publication
 
 func productionWorkerSettlementAllowsPublication(settlement piruntime.Settlement, closeErr error) bool {
 	return settlement.State == piruntime.SettlementStopped && settlement.ExitObserved && settlement.DescendantsSettled && closeErr == nil
+}
+
+// releaseProductionSessionAdmissionIfSafe retains admission if launch or worker
+// teardown did not prove complete settlement. A plain prelaunch error remains
+// safe to release; typed launch failures must carry the same complete evidence
+// required by the publication gate.
+func releaseProductionSessionAdmissionIfSafe(
+	release func(),
+	launchErr error,
+	workerClosed bool,
+	settlement piruntime.Settlement,
+	closeErr error,
+) bool {
+	if errors.Is(launchErr, piruntime.ErrUnknownSettlement) {
+		return false
+	}
+	var launchFailure *piruntime.PiWorkerLaunchError
+	if errors.As(launchErr, &launchFailure) &&
+		!productionWorkerSettlementAllowsPublication(launchFailure.Settlement, launchFailure.CleanupErr) {
+		return false
+	}
+	if workerClosed && !productionWorkerSettlementAllowsPublication(settlement, closeErr) {
+		return false
+	}
+	if release != nil {
+		release()
+	}
+	return true
+}
+
+// productionSessionCloseIfUnsafe lets the binder's own Close guard run when
+// the session lifecycle is unsafe, so it can retain its owners in quarantine.
+func productionSessionCloseIfUnsafe(
+	evidence productionLifecycleSnapshot,
+	runner *productionCommandRunner,
+	previousClose func() error,
+) error {
+	if productionCleanupSafe(evidence, runner) {
+		return nil
+	}
+	if previousClose != nil {
+		return errors.Join(ErrProductionLifecycleUnsettled, previousClose())
+	}
+	return ErrProductionLifecycleUnsettled
 }
 
 // runProductionPublicationAfterWorkerSettlement is the single gate around the

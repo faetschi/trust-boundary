@@ -8,11 +8,13 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/piruntime"
 )
@@ -143,5 +145,133 @@ func TestProductionPublicationAttemptRequiresCompleteWorkerSettlement(t *testing
 	}
 	if attempts != 1 {
 		t.Fatalf("fully settled worker publication callback count=%d, want 1", attempts)
+	}
+}
+
+func assertProductionSessionLease(t *testing.T, runtime *PublicationRuntime, wantHeld bool) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Millisecond)
+	defer cancel()
+	err := runtime.finalizer.Admission().CloseAndWait(ctx)
+	if wantHeld && !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("admission drain error = %v, want deadline while the session lease is held", err)
+	}
+	if !wantHeld && err != nil {
+		t.Fatalf("admission drain error = %v, want released session lease", err)
+	}
+}
+
+func TestProductionLaunchFailureAdmissionUsesRealPublicationLease(t *testing.T) {
+	stopped := piruntime.Settlement{
+		State: piruntime.SettlementStopped, ExitObserved: true, DescendantsSettled: true,
+	}
+	unknown := piruntime.Settlement{State: piruntime.SettlementUnknown}
+	tests := []struct {
+		name      string
+		launchErr error
+		wantHeld  bool
+	}{
+		{"wrapped unknown typed failure", fmt.Errorf("launch: %w", &piruntime.PiWorkerLaunchError{Cause: errors.New("probe"), Settlement: unknown}), true},
+		{"joined unknown typed failure", errors.Join(errors.New("other launch error"), &piruntime.PiWorkerLaunchError{Cause: errors.New("probe"), Settlement: unknown}), true},
+		{"wrapped unknown sentinel", fmt.Errorf("launch: %w", piruntime.ErrUnknownSettlement), true},
+		{"joined unknown sentinel", errors.Join(errors.New("other launch error"), piruntime.ErrUnknownSettlement), true},
+		{"ordinary prelaunch error", errors.New("worker was not started"), false},
+		{"typed STOPPED missing exit", &piruntime.PiWorkerLaunchError{Cause: errors.New("launch rejected"), Settlement: piruntime.Settlement{State: piruntime.SettlementStopped, DescendantsSettled: true}}, true},
+		{"typed STOPPED missing descendants", &piruntime.PiWorkerLaunchError{Cause: errors.New("launch rejected"), Settlement: piruntime.Settlement{State: piruntime.SettlementStopped, ExitObserved: true}}, true},
+		{"typed STOPPED cleanup error", &piruntime.PiWorkerLaunchError{Cause: errors.New("launch rejected"), Settlement: stopped, CleanupErr: errors.New("cleanup failed")}, true},
+		{"typed complete settlement", &piruntime.PiWorkerLaunchError{Cause: errors.New("launch rejected"), Settlement: stopped}, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newPublicationRuntimeFixture(t, nil, nil)
+			release, err := fixture.runtime.BeginSession(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+
+			released := releaseProductionSessionAdmissionIfSafe(release, tc.launchErr, false, piruntime.Settlement{}, nil)
+			if released == tc.wantHeld {
+				t.Fatalf("release decision = %t, want release=%t", released, !tc.wantHeld)
+			}
+			assertProductionSessionLease(t, fixture.runtime, tc.wantHeld)
+			// For retained cases, release only after proving the real lease held
+			// admission, so the fixture can finish teardown without shared state.
+			if tc.wantHeld {
+				release()
+			}
+		})
+	}
+}
+
+func TestProductionUnknownWorkerSettlementBlocksGateAndRetainsRealLease(t *testing.T) {
+	tests := []struct {
+		name       string
+		settlement piruntime.Settlement
+		closeErr   error
+	}{
+		{"unknown stop", piruntime.Settlement{State: piruntime.SettlementUnknown}, nil},
+		{"unknown close", piruntime.Settlement{State: piruntime.SettlementStopped, ExitObserved: true, DescendantsSettled: true}, piruntime.ErrUnknownSettlement},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newPublicationRuntimeFixture(t, nil, nil)
+			release, err := fixture.runtime.BeginSession(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+
+			attempts := 0
+			err = runProductionPublicationAfterWorkerSettlement(tc.settlement, tc.closeErr, func() error {
+				attempts++
+				return nil
+			})
+			if !errors.Is(err, ErrProductionWorkerSettlementIncomplete) || attempts != 0 {
+				t.Fatalf("publication gate error=%v callback count=%d; want incomplete settlement and no callback", err, attempts)
+			}
+			if releaseProductionSessionAdmissionIfSafe(release, nil, true, tc.settlement, tc.closeErr) {
+				t.Fatal("incompletely settled worker released production admission")
+			}
+			assertProductionSessionLease(t, fixture.runtime, true)
+			// This test cleanup release occurs after the retention assertion; the
+			// production defer would intentionally leave this lease for recovery.
+			release()
+		})
+	}
+}
+
+func TestProductionUnsafeSessionCloseReachesBinderQuarantine(t *testing.T) {
+	evidence := productionLifecycleSnapshot{workerLaunchAttempted: true}
+	runner := newProductionCommandRunner(nil)
+	var quarantine productionCleanupQuarantineState
+	closeCalls := 0
+	owners := []func() error{func() error {
+		closeCalls++
+		return nil
+	}}
+	binderClose := func() error {
+		if retainProductionCleanupIfUnsafe(&quarantine, evidence, runner, owners) {
+			return ErrProductionLifecycleUnsettled
+		}
+		return nil
+	}
+
+	err := productionSessionCloseIfUnsafe(evidence, runner, binderClose)
+	if !errors.Is(err, ErrProductionLifecycleUnsettled) {
+		t.Fatalf("unsafe session close = %v, want unsettled refusal", err)
+	}
+	if closeCalls != 0 {
+		t.Fatalf("unsafe close ran %d owner closers, want none", closeCalls)
+	}
+	quarantine.Lock()
+	held := len(quarantine.holds)
+	heldClosers := 0
+	if held != 0 {
+		heldClosers = len(quarantine.holds[0])
+	}
+	quarantine.Unlock()
+	if held != 1 || heldClosers != len(owners) {
+		t.Fatalf("quarantine holds=%d closers=%d, want one hold with %d owner closers", held, heldClosers, len(owners))
 	}
 }
