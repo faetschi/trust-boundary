@@ -7,7 +7,7 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
 
 - Branch codex/tbound-prototype; pre-cleanup HEAD29196d664316886e929c963ce2a404a876e4c6cf.
   Reviewed Windows ACL increment committed as a281699; the coherent CLI
-  prototype checkpoint is reviewed and verified for incremental commit.
+  prototype checkpoint committed as 178acdd. Production remains unqualified.
   User explicitly requested incremental
   commits on 2026-10-13; commit reviewed, verified, coherent scopes.
 - User authorized reductions, normal Linux/adapter CI, clearer documentation,
@@ -67,11 +67,11 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   official CLI profiles; production no longer misses its RPC client due to a
   developer-only guard. Legacy profiles rejected; production launch refusal
   unchanged. Critical reviewer accepted this bounded increment.
-- Final Go source checks: Linux unit/race each 820 passes, zero failures, seven
+- Earlier accepted Go checks: Linux unit/race each 820 passes, zero failures, seven
   skips; Windows 278 passes, zero failures, 13 skips; vet clean on both platforms.
   Final actual Go offline CLI fixture passed. Scratch verifier is only in the
-  isolated WSL copy; original source gofmt is clean. Combined batch acceptance
-  commit pending; the independent ACL fix is committed.
+  isolated WSL copy; original source gofmt is clean. These checks preceded the
+  later closure checks below; both accepted code increments are committed.
 - Remaining critical review finding: failed RPC responses in pumpEvents must
   match command=prompt and the active request ID; a late abort response must
   not settle another prompt. Correlation fix applied: only failed prompt
@@ -90,8 +90,7 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   remains aligned; host qualification is a separate gate.
   Preserve every unproved admission gate. The saved 313-file acceptance
   checkpoint predates the new correlation regression test.
-  Correlation implementation and critical-review tasks completed. Closure patch
-  preparation completed; its independent critical review remains active below.
+  Correlation and closure implementation/review tasks completed and committed.
 - RPC input-close code passed critical safety review. Atomic closed state and
   once-only closure avoid writeMu; old code reproduced 16 underlying closes.
   Required test fixes applied: bounded failure cleanup and explicit sticky
@@ -111,8 +110,12 @@ docs/status.md. Historical sources: docs/evidence/historical-sources.json.
   they are not claimed as fresh full checks of that final correction.
 - Commit-boundary audit found the remaining CLI cleanup is a coherent first
   integration checkpoint (the new RPC client is required). Review completed;
-  include the intentional staged ELF removal without deleting local binaries,
-  but exclude the five preexisting doc deletions. Then commit each increment.
+  178acdd includes the intentional ELF untracking without deleting local
+  binaries and excludes the five preexisting doc deletions. Commit each increment.
+- Next read-only Luna max task prepares D09 source-bootstrap/channel binding
+  and gate tests; retain launch refusal until all remaining code gates are
+  reviewed and tested. Automatic continuation task:
+  `node:delegated-task:command%3Amcp%3A33dd25f5-74bf-4617-850e-3c26a7d50cf8%3Adelegate-task%3Atbound-d09-gate-tests-20261013-r2`.
 
 - Baseline archive, initial working-tree patch and tracked-file SHA-256 manifest:
   ../review-artifacts/tbound-baseline-2026-10-12/. Includes the five document
