@@ -135,6 +135,7 @@ func buildReport(ctx context.Context, version, prefix string, opts piinstall.Opt
 		rep.Checks = append(rep.Checks, lookPathCheck("crun", "needed for governed containment (Phase 2)"))
 		rep.Checks = append(rep.Checks, lookPathCheck("cosign", "needed to verify the signed cell image (Phase 2)"))
 		rep.Checks = append(rep.Checks, signedProfileCheck())
+		rep.Checks = append(rep.Checks, landlockCheck())
 	} else {
 		rep.Checks = append(rep.Checks, check{Name: "containment", Status: warn, Detail: "containment checks are Linux-only", Remediation: "use the declared Linux evaluation host for governed runs"})
 	}
@@ -168,6 +169,17 @@ func cgroupCheck() check {
 		return check{Name: "cgroup-v2", Status: warn, Detail: "cgroup v2 present but no controllers delegated", Remediation: "delegate a cgroup v2 subtree with memory/pids and writable cgroup.kill"}
 	}
 	return check{Name: "cgroup-v2", Status: pass, Detail: "controllers: " + controllers}
+}
+
+func landlockCheckForABI(abi int, err error, requiredABI int) check {
+	remediation := fmt.Sprintf("Use the declared D09 host/profile with exactly ABI %d; see infra/repro/CLEAN-GUEST-QUALIFICATION.md and re-run tbound-doctor after boot.", requiredABI)
+	if err != nil {
+		return check{Name: "landlock-abi", Status: warn, Detail: fmt.Sprintf("Landlock ABI query failed: %v", err), Remediation: remediation}
+	}
+	if abi != requiredABI {
+		return check{Name: "landlock-abi", Status: warn, Detail: fmt.Sprintf("kernel reports ABI %d; D09 requires exactly ABI %d", abi, requiredABI), Remediation: remediation}
+	}
+	return check{Name: "landlock-abi", Status: pass, Detail: fmt.Sprintf("kernel reports ABI %d (matches the exact D09 requirement)", abi)}
 }
 
 func lookPathCheck(name, reason string) check {
