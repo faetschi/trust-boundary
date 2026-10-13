@@ -31,6 +31,15 @@
 - [Governed Linux adoption plan](governed-linux-adoption.md)
 - [Release and packaging](release.md)
 
+## Presentation / frontend
+
+- [Pi web chat workspace](web-chat.md): untrusted, read-only chat workspace for
+  the Pi CLI/RPC harness; claim boundary, projection contract, security posture,
+  and the fixes for the previously reviewed frontend defects.
+- [Web chat projection service contract](web-chat-contract.md): proposed
+  supervisor-owned projection/stream API needed for live read and interactive
+  integration.
+
 These documents describe code or intended contracts. Read the current status
 page before treating any design or fixture as a qualified production result.
 

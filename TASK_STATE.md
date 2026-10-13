@@ -193,3 +193,34 @@ are preparation only. Media custody and exact ABI checks precede registration.
 - Frontend-only agent handoff: docs/frontend-product-agent.md. User will start
   a separate thread/worktree on codex/tbound-web-chat; this thread stays on core
   docs-next-work priorities. No new top-level thread was launched here.
+
+## Web chat frontend increment (2026-10-13, codex/tbound-web-chat)
+
+- Frontend thread delivers milestone 1: a new untrusted, read-only Pi web chat
+  workspace. Additive only; no authority-owned file is edited. New code:
+  supervisor/internal/webchat (bounded contract, validation, bounded gateway
+  store, GET-only/loopback HTTP+SSE handler, embedded workspace assets,
+  fixtures) and supervisor/cmd/tbound-webchat (loopback-only entrypoint).
+  Docs: docs/web-chat.md and the proposed service contract
+  docs/web-chat-contract.md. QA screenshots: docs/webchat/qa/.
+- Claim boundary unchanged: G1=false, containment not-established, H1
+  unexecuted, claim-bearing=false. Fixtures are non-claim-bearing and clearly
+  labelled FIXTURE/REPLAY/UNAVAILABLE. Live projection, persistent multi-turn
+  sessions, turn submission, cancellation, and browser authentication are NOT
+  implemented; --live fails closed and the composer is disabled and labelled.
+- Success is never presented as confirmed unless verified: documents are
+  downgraded to diagnostic/unverified-input, authoritative authority is refused,
+  and the client gates success styling on verification (unverified success
+  renders as a "reported" chip plus an explicit unverified marker).
+- The three previously reviewed companion defects are fixed and test-locked:
+  unverified replay success presentation; SSE write deadline cleared before
+  flush; unbounded/slow GET request bodies (bodies are rejected, never read).
+- Verified in Linux with pinned Go 1.27.1: gofmt clean, build ./... exit 0, vet
+  exit 0, focused unit and race tests pass, node --test 20/20 pass. Full
+  go test -race ./... passes except internal/evaluationindex, which only fails
+  because the private Linux copy excluded the repository docs/ tree (passes from
+  the full checkout). These are component/UI checks; they establish no claim.
+- Critical Luna max review delegated (async) against the increment; findings to
+  be applied in a follow-up commit. Milestones 2-3 (read and interactive
+  integration) need supervisor service changes owned by the core thread; the
+  gateway consumes the proposed projection and implements none of it.
