@@ -26,5 +26,11 @@ repeat effects. Intent, evidence and bundle schemas are version 2; legacy roots
 without the required admission journal are refused rather than assigned
 invented decisions.
 
+A native subprocess regression cuts a typed write after the admitted candidate
+has been promoted and synced, before the primary outcome is durable. It checks
+the actual candidate files and admission manifest, then verifies quarantine in
+a fresh recovery process and bundle replay, with no accepted transition or
+journal changes. This is process-crash coverage; it does not simulate power loss.
+
 These component guarantees do not establish a qualified production host, G1,
 registered recovery trials or H1. See [current status](status.md).

@@ -30,6 +30,8 @@ Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
 | 18c9e0c | Installer rejects incomplete updates before replacing tools |
 | abb32ce | Doctor reports live exact-ABI prerequisite |
 | 5293d2c | Actionable full profile paths and presence-only diagnostics |
+| da09eea | Durable scoped post-operation admission and cross-journal replay |
+| b1ff84c | Operator scope flags through authenticated service requests |
 
 RPC failures require prompt command and exact active request ID. Close failures
 remain observable. UNKNOWN retains cleanup/admission owners and blocks
@@ -63,9 +65,10 @@ are preparation only. Media custody and exact ABI checks precede registration.
 - Store/host and final independent Luna max safety/integration/thesis reviews
   accepted. Final reviewer checked versioned origin/test consumers; stale
   status documentation has been reconciled.
-- Operator --bash-output / --bash-no-outputs wiring is applied and verified;
+- Operator --bash-output / --bash-no-outputs wiring is committed b1ff84c;
   Linux CLI unit/race each230 passes,0 failures,2 skips; vet clean. Seven
-  tested source files hash-match. Windows source is unchanged from da09eea. Scope travels through signed-UID-authenticated service
+  tested source files hash-match; operator-scope-receipt-b1ff84c.json retained.
+  Windows compiled source is unchanged from da09eea. Scope travels through signed-UID-authenticated service
   requests and payload journal; the provider cannot set it. Nil disables Bash.
   Independent Luna max review accepted. Focused race tests plus same-ID/different-
   scope socket conflict test pass with no rerun or journal change. CLI docs synced.
@@ -73,7 +76,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
 ## Remaining milestones
 
 1. Admission gate checkpoint completed as da09eea.
-2. Checkpoint verified operator-scope wiring; advance the next recovery milestone.
+2. Implement a native Store crash cut after admitted candidate promotion/sync
+   but before primary outcome durability; fresh-process quarantine/no-replay oracle.
 3. Complete trusted lifecycle/provider/Store/checkpoint cuts and independent
    oracles. LC04/05/06 remain incomplete end to end; hooks are component evidence.
 4. Qualify clean registered ABI8 host, signed CLI closure/profile, service/source
@@ -96,8 +100,20 @@ are preparation only. Media custody and exact ABI checks precede registration.
   docs/tbound-readiness-status-2026-10-08.md,
   docs/thesis-gap-ledger-2026-10-05.md, docs/verifier-blockers-2026-10-05.md.
 
-## Active next-milestone review
+## Current Store crash-boundary increment
 
-Native READ-ONLY Luna max next_milestone_thesis_check is checking trajectory
-against authoritative thesis MDs and selecting one concrete next recovery/product
-increment. No thesis freeze, experiment, host provisioning or key use is authorized.
+- Native typed-write helper exits73 after actual ALLOW candidate promotion/sync
+  but before primary outcome append. Independent synced marker, g1 bytes/scan,
+  primary unresolved intent and full admitted manifests bind the actual cut.
+- Fresh recovery subprocess returns no usable Store and ErrQuarantined; primary/
+  admission journals and marker stay unchanged. Replay uses accepted seed g0
+  plus actual journals, no invented candidate ledger, and returns quarantine with
+  no accepted transition or operation. Minimal child environment avoids credentials.
+- Focused race x3 passed; Store package unit/race each85 passed, zero failures/
+  skips; vet clean. Test source matches isolated Linux copy. Independent Luna
+  review accepted; stronger callback-dispatch sentinels adopted and verified.
+  Final small re-review accepted with no blockers. This test-only change does not affect Windows.
+- Thesis status sync accepted and committed03e74e5 on existing
+  codex/tbound-recovery-protocol; main ea543c5 unchanged. G1/H1 and draft51 claims
+  unchanged. No power-loss, registered-trial or qualified-host evidence claimed.
+- store_crash_patch now selects one concrete next lifecycle recovery slice.
