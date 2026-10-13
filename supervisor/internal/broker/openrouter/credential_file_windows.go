@@ -38,6 +38,12 @@ type credentialACEHeader struct {
 	AceSize  uint16
 }
 
+const credentialSIDOffset = unsafe.Sizeof(credentialACEHeader{}) + unsafe.Sizeof(uint32(0))
+
+func credentialACEHasCompleteSID(aceSize uint16, subAuthorityCount byte) bool {
+	return subAuthorityCount <= 15 && uintptr(aceSize) >= credentialSIDOffset+8+uintptr(subAuthorityCount)*unsafe.Sizeof(uint32(0))
+}
+
 func readSecureCredentialFile(path string) ([]byte, error) {
 	name, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
@@ -124,21 +130,21 @@ func verifyCredentialFileOwnerAndDACL(handle syscall.Handle) error {
 		return syscall.GetLastError()
 	}
 	for index := uint32(0); index < aclInfo.AceCount; index++ {
-		var ace uintptr
+		var ace unsafe.Pointer
 		result, _, _ = procGetACE.Call(dacl, uintptr(index), uintptr(unsafe.Pointer(&ace)))
-		if result == 0 || ace == 0 {
+		if result == 0 || ace == nil {
 			return os.ErrPermission
 		}
-		header := (*credentialACEHeader)(unsafe.Pointer(ace))
+		header := (*credentialACEHeader)(ace)
 		switch header.AceType {
 		case accessDeniedACEType:
 			continue
 		case accessAllowedACEType:
-			const sidOffset = unsafe.Sizeof(credentialACEHeader{}) + unsafe.Sizeof(uint32(0))
+			const sidOffset = credentialSIDOffset
 			if uintptr(header.AceSize) < sidOffset+8 {
 				return os.ErrPermission
 			}
-			mask := *(*uint32)(unsafe.Pointer(ace + unsafe.Sizeof(credentialACEHeader{})))
+			mask := *(*uint32)(unsafe.Add(ace, unsafe.Sizeof(credentialACEHeader{})))
 			const (
 				genericAll     = 0x10000000
 				genericExecute = 0x20000000
@@ -147,7 +153,11 @@ func verifyCredentialFileOwnerAndDACL(handle syscall.Handle) error {
 			if mask&(genericAll|genericExecute|fileExecute) != 0 {
 				return os.ErrPermission
 			}
-			aceSID := (*syscall.SID)(unsafe.Pointer(ace + sidOffset))
+			subAuthorityCount := *(*byte)(unsafe.Add(ace, sidOffset+1))
+			if !credentialACEHasCompleteSID(header.AceSize, subAuthorityCount) {
+				return os.ErrPermission
+			}
+			aceSID := (*syscall.SID)(unsafe.Add(ace, sidOffset))
 			aceSIDString, err := aceSID.String()
 			if err != nil || aceSIDString != currentSID {
 				return os.ErrPermission
