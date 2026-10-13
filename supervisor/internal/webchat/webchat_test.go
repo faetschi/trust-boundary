@@ -667,11 +667,16 @@ func TestSSEReplaysItemsAfterCursor(t *testing.T) {
 		t.Fatalf("first SSE line=%q, want ready comment", lines[0])
 	}
 	joined := strings.Join(lines, "\n")
-	if !strings.Contains(joined, "event: session") {
-		t.Fatalf("a subscription must send its session projection before items: %q", joined)
+	sessionIndex := strings.Index(joined, "event: session")
+	itemIndex := strings.Index(joined, "event: item")
+	if sessionIndex < 0 {
+		t.Fatalf("a subscription must send its session projection: %q", joined)
 	}
-	if !strings.Contains(joined, "event: item") {
+	if itemIndex < 0 {
 		t.Fatalf("no item event was streamed: %q", joined)
+	}
+	if sessionIndex > itemIndex {
+		t.Fatalf("the session projection must precede the item replay: %q", joined)
 	}
 	last := store.Snapshot().Items[len(store.Snapshot().Items)-1]
 	if !strings.Contains(joined, last.ID) {

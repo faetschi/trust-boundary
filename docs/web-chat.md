@@ -249,13 +249,13 @@ The gateway is loopback-only and read-only by construction:
 - Static assets are an exact allowlist; there is no directory serving.
 - Each SSE/data write is bounded by a deadline that also covers the socket flush.
 - Identifiers are a strict character set (no path separators), display text
-  rejects control characters, and receipt provenance/status values are echoed
-  only when they are bounded identifiers. **Residual risk, stated plainly:** the
-  projection *bounds* operator-supplied prose (transcript text, summaries,
-  details, notes) but does **not** content-redact it, so a fixture or receipt the
-  operator chooses to load can echo sensitive free text. A production projection
-  must emit structured safe summaries upstream; the gateway cannot infer which
-  prose is sensitive.
+  rejects control characters other than LF/TAB (including the C1 range), and
+  receipt provenance/status values are echoed only when they are bounded
+  identifiers. **Residual risk, stated plainly:** the projection *bounds*
+  operator-supplied prose (transcript text, summaries, details, notes) but does
+  **not** content-redact it, so a fixture or receipt the operator chooses to load
+  can echo sensitive free text. A production projection must emit structured safe
+  summaries upstream; the gateway cannot infer which prose is sensitive.
 
 Remote/multi-user deployment is explicitly out of scope here: it would require
 browser authentication, session ownership, and CSRF/origin protection, none of

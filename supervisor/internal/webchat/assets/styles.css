@@ -453,9 +453,11 @@ h3 {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+/* Stream health is an observation about the projection, not an effect outcome:
+   it deliberately does not use the success colour. */
 .stream-health[data-health="observing"],
 .stream-health[data-health="complete"] {
-  color: var(--success-foreground);
+  color: var(--info-foreground);
 }
 .stream-health[data-health="gap"] {
   color: var(--warning-foreground);

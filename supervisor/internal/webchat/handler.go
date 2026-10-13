@@ -197,7 +197,7 @@ func streamEvents(store *Store, writer http.ResponseWriter, request *http.Reques
 	streams := append([]StreamStatus(nil), subscription.Streams...)
 	if writeEvent(writer, Event{
 		SchemaVersion: ContractVersion,
-		Cursor:        formatCursor(store.epoch, 0),
+		Cursor:        formatCursor(store.epoch, store.next),
 		Kind:          "session",
 		Session:       &header,
 		Panels:        &panels,

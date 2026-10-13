@@ -289,7 +289,9 @@ func validateItem(item Item, expectedSource SourceClass, expectedScope Verificat
 			return err
 		}
 	case ItemActivity:
-		if err := validateText("activity kind", item.Kind, 128, false); err != nil {
+		// A kind is a machine token, not prose: it must not contain whitespace or
+		// control characters at all.
+		if err := validateIdentifier("activity kind", item.Kind, false); err != nil {
 			return fmt.Errorf("item %q: %w", item.ID, err)
 		}
 		if err := validateTool(item.Tool); err != nil {
