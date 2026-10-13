@@ -138,6 +138,14 @@ Two independent guards enforce this, and both fail closed:
 This is the fix for the previously reviewed "unverified replay success
 presentation" defect; see §7.
 
+`lossy` is deliberately **not** part of the success gate. It describes the
+completeness of bulky output (stdout/stderr, timings, indexes), not the terminal
+outcome: a verified `succeeded` result whose *output* was truncated is still a
+succeeded terminal outcome, and the UI renders a `lossy` chip beside it so the
+reader knows the output is incomplete. A `LOSSY` result is also counted and
+matched under the `Unknown` filter, because lossy output cannot substitute for
+terminal evidence.
+
 ### 4.2 Typed post-run receipt projection
 
 `--receipt <path>` imports a **retained Pi run receipt** — the real terminal
