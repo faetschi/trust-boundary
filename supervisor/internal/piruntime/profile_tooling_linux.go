@@ -11,40 +11,38 @@ import (
 	"strings"
 )
 
-// This file is the single source of truth shared by the Linux host-profile
-// verifier and the offline `tbound-profile` tooling. The signing bytes, the
-// digest, and the fixed in-cell identities of the governed Pi worker are
-// derived here so the generator, the signer, and the verifier cannot drift.
+// This file retains the signing format and generates an unsigned official Pi
+// CLI RPC profile scaffold. Its measured identities remain placeholders, and
+// the production launcher still refuses this contract pending runtime closure
+// packaging and host qualification.
 //
 // None of these helpers print, log, or return private key material.
 
 const (
-	// PiWorkerCellArgumentsProfile labels the fixed in-cell argv digest.
-	PiWorkerCellArgumentsProfile = "governed-pi-sdk-worker-argv/v1"
-	// PiWorkerCellEnvironmentProfile labels the fixed minimal in-cell
-	// environment digest.
-	PiWorkerCellEnvironmentProfile = "governed-pi-sdk-cell-env/v1"
+	// PiWorkerCellArgumentsProfile labels the exact official Pi CLI RPC argv.
+	PiWorkerCellArgumentsProfile = PiCLIProductionArgumentsProfile
+	// PiWorkerCellEnvironmentProfile labels the fixed minimal in-cell env.
+	PiWorkerCellEnvironmentProfile = PiCLIProductionEnvironmentProfile
 	// PiWorkerCellExecutable is the in-cell Node executable path recorded in a
-	// signed production profile. The D09 launcher runs it inside the frozen
-	// cell; the host-side runtime bundle provides the bytes.
-	PiWorkerCellExecutable = "/usr/local/bin/node"
+	// signed production profile. The frozen cell supplies the pinned Node bytes.
+	PiWorkerCellExecutable = PiCLIProductionExecutable
 	// PiWorkerCellWorkdir is the in-cell mount point of the sealed worker
 	// exposure. It is deliberately a fixed in-cell path, never a live host path.
 	PiWorkerCellWorkdir = "/work"
 	// PiWorkerCellHome and PiWorkerCellTemp are private in-cell tmpfs locations;
 	// neither points into the sealed, read-only source view.
-	PiWorkerCellHome = "/tmp/home"
-	PiWorkerCellTemp = "/tmp/tbound-tmp"
+	PiWorkerCellHome = PiCLIProductionHome
+	PiWorkerCellTemp = PiCLIProductionTemp
 	// PiWorkerCellDefaultWorkingDirectory is the host-side working directory a
 	// generated production profile records. The launcher binds exactly this
 	// path into the cell at PiWorkerCellWorkdir.
 	PiWorkerCellDefaultWorkingDirectory = "/var/lib/tbound/pi-worker"
 	// PiWorkerCellRuntimeBundleRoot is the host-side runtime bundle root a
 	// generated production profile records.
-	PiWorkerCellRuntimeBundleRoot = "/var/lib/tbound/runtime"
+	PiWorkerCellRuntimeBundleRoot = PiCLIProductionRuntimeBundleRoot
 	// PiWorkerCellNodeVersion is the pinned Node version recorded in a
 	// generated production profile.
-	PiWorkerCellNodeVersion = "v24.15.0"
+	PiWorkerCellNodeVersion = PiCLIProductionNodeVersion
 	// LinuxHostProfileTemplateID marks a generated, placeholder-only template.
 	// Admission refuses this identity so an unedited template can never be
 	// mistaken for a frozen production profile.
@@ -55,17 +53,17 @@ const (
 	LinuxHostProfileProtectedPublicKeyPath = linuxTrustedProfileKeyPath
 )
 
-// PiWorkerCellArguments returns a copy of the fixed argv of the in-cell
-// governed Pi worker. The caller cannot mutate the shared identity.
+// PiWorkerCellArguments returns the exact Node argv for the pinned official Pi
+// CLI entry and RPC extension. The bundle digest separately pins CLI contents.
 func PiWorkerCellArguments() []string {
-	return []string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"}
+	return productionPiCLIArguments()
 }
 
 // PiWorkerCellEnvironment returns a copy of the fixed minimal in-cell
 // environment of the governed Pi worker. The caller cannot mutate the shared
 // identity.
 func PiWorkerCellEnvironment() []string {
-	return []string{"HOME=" + PiWorkerCellHome, "LANG=C.UTF-8", "PI_OFFLINE=1", "TMPDIR=" + PiWorkerCellTemp}
+	return productionPiCLIEnvironment()
 }
 
 // LinuxHostProfileSigningBytes returns the exact domain-prefixed canonical
@@ -231,11 +229,10 @@ func placeholderDigest(label string) string {
 	return DigestBytes([]byte("PLACEHOLDER/UNVERIFIED/" + label))
 }
 
-// DefaultLinuxHostProfileTemplate returns a structurally complete, unsigned
-// production HostProfile template. Every required field is populated, paths are
-// absolute, and the descriptor/argument/environment digests are derived from
-// the fixed in-cell Pi worker identities so a signed template verifies
-// end-to-end. Digest is empty: run the signer to freeze the profile identity.
+// DefaultLinuxHostProfileTemplate returns an unsigned official Pi CLI RPC
+// profile scaffold. All host-measured identities remain placeholders, so
+// signing this template alone cannot satisfy production qualification or
+// bypass the refused CLI launcher.
 //
 // The executable, runtime-bundle, cgroup, source-provenance, offline-verifier,
 // and provider digests are labelled placeholders and MUST be replaced with the
@@ -251,14 +248,16 @@ func DefaultLinuxHostProfileTemplate() HostProfile {
 		ChildArgumentsDigest:     DigestArguments(PiWorkerCellArguments()),
 		WorkingDirectory:         PiWorkerCellDefaultWorkingDirectory,
 		WorkingDirectoryDigest:   DigestBytes([]byte(PiWorkerCellDefaultWorkingDirectory)),
-		StdinProfile:             "governed-session-control/fd0/v1",
-		StdinDigest:              DigestBytes([]byte("governed-session-control/fd0/v1")),
+		StdinProfile:             PiCLIProductionStdinProfile,
+		StdinDigest:              DigestBytes([]byte(PiCLIProductionStdinProfile)),
+		StdoutProfile:            PiCLIProductionStdoutProfile,
+		StdoutProfileDigest:      DigestBytes([]byte(PiCLIProductionStdoutProfile)),
 		ChildEnvironment:         PiWorkerCellEnvironmentProfile,
 		ChildEnvironmentDigest:   DigestEnvironment(PiWorkerCellEnvironment()),
-		IPCProfile:               "tbound-ipc/v1/fd6",
-		IPCProfileDigest:         DigestBytes([]byte("tbound-ipc/v1/fd6")),
-		TerminalProfile:          "sdk-worker-no-terminal/v1",
-		TerminalProfileDigest:    DigestBytes([]byte("sdk-worker-no-terminal/v1")),
+		IPCProfile:               PiCLIProductionIPCProfile,
+		IPCProfileDigest:         DigestBytes([]byte(PiCLIProductionIPCProfile)),
+		TerminalProfile:          PiCLIProductionTerminalProfile,
+		TerminalProfileDigest:    DigestBytes([]byte(PiCLIProductionTerminalProfile)),
 		ContainmentProfile:       D09ContainmentProfile,
 		ContainmentProfileDigest: DigestBytes([]byte(D09ContainmentProfile)),
 		CgroupRootDigest:         placeholderDigest("cgroup-root"),

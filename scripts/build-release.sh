@@ -93,11 +93,11 @@ mkdir -p "$STAGE_OUT"
 # Runtime bundle shared by every platform (source + pinned dependency manifest).
 RUNTIME="$WORK/runtime"
 mkdir -p "$RUNTIME"
-cp "$ROOT/adapter/package.json" "$RUNTIME/package.json"
-[ -f "$ROOT/adapter/package-lock.json" ] && cp "$ROOT/adapter/package-lock.json" "$RUNTIME/package-lock.json"
-[ -f "$ROOT/adapter/tsconfig.json" ] && cp "$ROOT/adapter/tsconfig.json" "$RUNTIME/tsconfig.json"
+cp "$ROOT/adapter/pi-runtime-package.json" "$RUNTIME/package.json"
 mkdir -p "$RUNTIME/src"
-cp "$ROOT"/adapter/src/*.ts "$RUNTIME/src/"
+for runtime_source in tbound-cli-extension.ts broker-provider.ts proxy-tools.ts ipc-transport.ts; do
+  cp "$ROOT/adapter/src/$runtime_source" "$RUNTIME/src/$runtime_source"
+done
 
 ENTRY_SHA=""
 ENTRY_TARGET=""

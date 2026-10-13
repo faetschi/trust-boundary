@@ -1,0 +1,138 @@
+name: linux-ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    env:
+      TBOUND_REQUIRE_PI_CLI_INTEGRATION: "1"
+      TBOUND_PI_CLI_BIN: ${{ runner.temp }}/tbound-pi-cli/bin/pi
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+          cache-dependency-path: supervisor/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: adapter/package-lock.json
+
+      - name: Prepare private temporary directory
+        run: |
+          umask 077
+          TMPDIR="$(mktemp -d "$HOME/tb-ci.XXXXXXXX")"
+          chmod 700 "$TMPDIR"
+          test "$(stat -c '%a' "$TMPDIR")" = 700
+          python3 - "$TMPDIR" <<'PY'
+          import os
+          import stat
+          import sys
+
+          path = os.path.realpath(sys.argv[1])
+          while True:
+              mode = os.stat(path).st_mode
+              assert not mode & (stat.S_IWGRP | stat.S_IWOTH), path
+              if path == "/":
+                  break
+              path = os.path.dirname(path)
+          PY
+          printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
+
+      - name: Official Pi runtime closure regressions
+        run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
+
+      - name: Install and verify official Pi CLI
+        run: |
+          umask 077
+          install -d -m 700 "$RUNNER_TEMP/tbound-pi-cli"
+          npm_config_prefix="$RUNNER_TEMP/tbound-pi-cli" npm install --global \
+            --ignore-scripts --no-audit --no-fund \
+            @earendil-works/pi-coding-agent@0.87.1
+          test -x "$TBOUND_PI_CLI_BIN"
+          pi_version="$("$TBOUND_PI_CLI_BIN" --version)"
+          test "$pi_version" = "0.87.1"
+
+      - name: Go unit suite
+        working-directory: supervisor
+        run: umask 077; go test -mod=readonly -count=1 ./...
+
+      - name: Go race suite
+        working-directory: supervisor
+        run: umask 077; go test -race -mod=readonly -count=1 ./...
+
+      - name: Go vet
+        working-directory: supervisor
+        run: umask 077; go vet -mod=readonly ./...
+
+      - name: Adapter checks
+        working-directory: adapter
+        run: |
+          umask 077
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run check
+
+      - name: Offline official Pi CLI development fixture (non-claim-bearing)
+        working-directory: supervisor
+        run: |
+          set -euo pipefail
+          umask 077
+          fixture_bin="$RUNNER_TEMP/tbound-dev-fixture"
+          fixture_root="$RUNNER_TEMP/tbound-dev-fixture-root"
+          fixture_home="$RUNNER_TEMP/tbound-dev-fixture-home"
+          receipt="$RUNNER_TEMP/tbound-dev-fixture.json"
+          node_bin="$(command -v node)"
+          install -d -m 700 "$fixture_root" "$fixture_home"
+          go build -mod=readonly -o "$fixture_bin" ./cmd/tbound
+          env -i \
+            PATH="$PATH" \
+            HOME="$fixture_home" \
+            TMPDIR="$TMPDIR" \
+            LANG=C.UTF-8 \
+            TBOUND_DEV_FIXTURE_PI="$TBOUND_PI_CLI_BIN" \
+            TBOUND_DEV_FIXTURE_NODE="$node_bin" \
+            TBOUND_DEV_FIXTURE_ADAPTER="$GITHUB_WORKSPACE/adapter" \
+            TBOUND_DEV_FIXTURE_ROOT="$fixture_root" \
+            "$fixture_bin" serve --pi --dev-fixture > "$receipt"
+          python3 - "$receipt" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as stream:
+              receipt = json.load(stream)
+
+          assert receipt["mode"] == "dev-fixture", receipt
+          assert receipt["worker_ready"] is True, receipt
+          assert receipt["prompt_admitted"] is True, receipt
+          assert receipt["turn_completed"] is True, receipt
+          assert receipt["provider_turns"] == 5, receipt
+          assert receipt["proposal_count"] == 4, receipt
+          assert receipt["tool_call_count"] == 4, receipt
+          assert receipt["tool_result_count"] == 4, receipt
+          assert receipt["initial_generation"] == "g0", receipt
+          assert receipt["generations"] == ["g0", "g1", "g2"], receipt
+          assert receipt["final_generation"] == "g2", receipt
+          lineage = [(item["tool"], item["generation_from"], item["generation_to"])
+                     for item in receipt["tool_lineage"]]
+          assert lineage == [
+              ("read", "g0", "g0"),
+              ("edit", "g0", "g1"),
+              ("bash", "g1", "g2"),
+              ("read", "g2", "g2"),
+          ], receipt
+          assert receipt["claim_bearing"] is False, receipt
+          assert receipt["provider_exchange"] is False, receipt
+          assert receipt["containment"] == "not-established", receipt
+          assert receipt["publication"] == "not-attempted", receipt
+          assert receipt["settlement"] == "UNKNOWN", receipt
+          print("PASS: offline Pi CLI fixture completed; non-claim-bearing, settlement UNKNOWN")
+          PY

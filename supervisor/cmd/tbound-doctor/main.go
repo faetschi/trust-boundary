@@ -1,7 +1,7 @@
 // Command tbound-doctor is a standalone preflight ("doctor") for a tbound user
 // install. It reports whether the machine is ready to run the tbound Pi workflow
-// and explains how to fix each problem. It never changes system state, never
-// requires sudo, and never installs anything unless --install-pi is passed.
+// and explains how to fix each problem. It never changes system state and
+// never installs Pi.
 //
 // It is deliberately a separate binary from tbound, which stays focused on the
 // supervisor runtime.
@@ -63,10 +63,8 @@ func run(args []string) error {
 	fs := flag.NewFlagSet("tbound-doctor", flag.ContinueOnError)
 	version := fs.String("version", "dev", "version label to report")
 	prefix := fs.String("prefix", defaultPrefix(), "tbound data prefix")
-	node := fs.String("node", "", "explicit path to a Node binary")
-	pi := fs.String("pi", "", "existing node_modules directory that contains Pi")
+	pi := fs.String("pi", "", "explicit path to the installed official Pi CLI")
 	jsonOut := fs.Bool("json", false, "emit JSON instead of text")
-	installPi := fs.Bool("install-pi", false, "install the pinned Pi packages into the prefix (needs network)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -75,24 +73,9 @@ func run(args []string) error {
 	}
 
 	ctx := context.Background()
-	opts := piinstall.Options{
-		Prefix:       *prefix,
-		ExplicitNode: *node,
-		GOOS:         runtime.GOOS,
-		Run:          realRun,
-		LookPath:     exec.LookPath,
-	}
+	opts := piinstall.Options{ExplicitPi: *pi, Run: realRun, LookPath: exec.LookPath}
 
-	if *installPi {
-		if err := piinstall.InstallPinnedPackages(ctx, opts, true); err != nil {
-			return fmt.Errorf("install pinned Pi packages: %w", err)
-		}
-		if err := piinstall.LinkRuntimeNodeModules(*prefix); err != nil {
-			return fmt.Errorf("link runtime node_modules: %w", err)
-		}
-	}
-
-	rep := buildReport(ctx, *version, *prefix, *pi, opts)
+	rep := buildReport(ctx, *version, *prefix, opts)
 
 	if *jsonOut {
 		enc := json.NewEncoder(os.Stdout)
@@ -110,7 +93,7 @@ func run(args []string) error {
 	return nil
 }
 
-func buildReport(ctx context.Context, version, prefix, explicitPi string, opts piinstall.Options) report {
+func buildReport(ctx context.Context, version, prefix string, opts piinstall.Options) report {
 	rep := report{Version: version, GOOS: runtime.GOOS, GOARCH: runtime.GOARCH, Prefix: prefix}
 
 	rep.Checks = append(rep.Checks, check{Name: "os", Status: pass, Detail: runtime.GOOS + "/" + runtime.GOARCH})
@@ -138,42 +121,11 @@ func buildReport(ctx context.Context, version, prefix, explicitPi string, opts p
 		})
 	}
 
-	// Node.
-	nodeInfo, nodeErr := piinstall.DiscoverNode(ctx, opts)
-	switch {
-	case nodeErr != nil:
-		rep.Checks = append(rep.Checks, check{
-			Name: "node", Status: fail, Detail: nodeErr.Error(),
-			Remediation: fmt.Sprintf("install Node >= %d.%d, or pass --node /path/to/node", piinstall.MinNodeMajor, piinstall.MinNodeMinor),
-		})
-	case !nodeInfo.Satisfies():
-		rep.Checks = append(rep.Checks, check{
-			Name: "node", Status: fail,
-			Detail:      fmt.Sprintf("%s (%s) is older than required %d.%d", nodeInfo.Version, nodeInfo.Path, piinstall.MinNodeMajor, piinstall.MinNodeMinor),
-			Remediation: fmt.Sprintf("upgrade Node to >= %d.%d", piinstall.MinNodeMajor, piinstall.MinNodeMinor),
-		})
-	default:
-		rep.Checks = append(rep.Checks, check{Name: "node", Status: pass, Detail: fmt.Sprintf("%s (%s, %s)", nodeInfo.Version, nodeInfo.Path, nodeInfo.Source)})
-	}
-
-	// Pi.
-	piModules := explicitPi
-	if piModules == "" {
-		piModules = piinstall.PrefixPIModules(prefix)
-	}
-	if v, ok := piinstall.DetectNodeModulesPi(piModules); ok {
-		st := pass
-		detail := fmt.Sprintf("%s in %s", v, piModules)
-		if v != piinstall.PinnedPiVersion {
-			st = warn
-			detail += fmt.Sprintf(" — pinned version is %s", piinstall.PinnedPiVersion)
-		}
-		rep.Checks = append(rep.Checks, check{Name: "pi", Status: st, Detail: detail})
+	piInfo, piErr := piinstall.DiscoverPi(ctx, opts)
+	if piErr != nil {
+		rep.Checks = append(rep.Checks, check{Name: "pi", Status: fail, Detail: piErr.Error(), Remediation: "install the official Pi CLI version 0.87.1 separately or pass --pi /path/to/pi"})
 	} else {
-		rep.Checks = append(rep.Checks, check{
-			Name: "pi", Status: warn, Detail: "no Pi packages found at " + piModules,
-			Remediation: "run `tbound-doctor --install-pi` (side-by-side install, needs network) or point --pi at an existing node_modules",
-		})
+		rep.Checks = append(rep.Checks, check{Name: "pi", Status: pass, Detail: fmt.Sprintf("%s (%s; sha256:%s)", piInfo.Version, piInfo.Path, piInfo.SHA256)})
 	}
 
 	// Linux-only capability checks.
@@ -195,9 +147,9 @@ func buildReport(ctx context.Context, version, prefix, explicitPi string, opts p
 			rep.WarnCount++
 		}
 	}
-	// Dev-ready needs a usable Node and a detectable Pi; governed additionally
+	// Dev-ready needs the pinned installed Pi CLI; governed additionally
 	// needs the Linux containment stack and a signed profile.
-	rep.DevReady = nodeErr == nil && nodeInfo.Satisfies()
+	rep.DevReady = piErr == nil
 	// governed_ready stays false until the production composition exists. The
 	// Linux checks are advisory prerequisites, not an admission result, and this
 	// tool must not become a parallel, weaker authority to the runtime verifier.

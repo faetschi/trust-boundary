@@ -1,18 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Duplex } from "node:stream";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
-import {
-  createAgentSession,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
-import type { JsonObject, Model } from "@earendil-works/pi-ai";
-import { createProxyTools, type ProposalSender, type ToolProposal } from "./proxy-tools.ts";
-import { LockedResourceLoader } from "./locked-resource-loader.ts";
+import { createAssistantMessageEventStream, type JsonObject } from "@earendil-works/pi-ai";
 import {
   BROKER_API,
   BROKER_CHANNEL_VERSION,
@@ -108,114 +97,9 @@ function makeTurn(sequence: number, responseID: string, toolCall?: { id: string;
   };
 }
 
-test("real Pi SDK consumes Go broker projections without forwarding SDK history", async () => {
-  const [clientDuplex, serverDuplex] = duplexPair();
-  const providerBridge = createBrokerProvider(clientDuplex);
-  const requests: Record<string, unknown>[] = [];
-  const reader = new FrameReader(serverDuplex);
-  let serverError: unknown;
-  const server = (async () => {
-    for (let index = 0; index < 2; index += 1) {
-      const request = await reader.next();
-      requests.push(request);
-      assert.deepEqual(Object.keys(request).sort(), ["kind", "request_id", "sequence", "version"]);
-      assert.equal(request.version, BROKER_CHANNEL_VERSION);
-      assert.equal(request.kind, "next");
-      assert.equal(request.sequence, index + 1);
-      const turn = index === 0
-        ? makeTurn(1, "response-sdk-1", { id: "provider-tool-1", name: "read", arguments: { path: "fixture.txt" } })
-        : makeTurn(2, "response-sdk-2");
-      await writeFrame(serverDuplex, {
-        version: BROKER_CHANNEL_VERSION,
-        sequence: index + 1,
-        kind: "turn",
-        request_id: request.request_id,
-        turn,
-      });
-    }
-  })().catch((error: unknown) => { serverError = error; });
-
-  const credentials = {
-    async read() { return undefined; },
-    async list() { return []; },
-    async modify(_providerID: string, update: (current: undefined) => Promise<undefined>) { return update(undefined); },
-    async delete() {},
-  };
-  const modelRuntime = await ModelRuntime.create({
-    credentials,
-    modelsPath: null,
-    allowModelNetwork: false,
-    refreshOnCreate: false,
-  });
-  modelRuntime.registerNativeProvider(providerBridge.provider);
-  assert.deepEqual(modelRuntime.getRegisteredProviderIds(), [BROKER_PROVIDER_ID]);
-  const model = modelRuntime.getModel(BROKER_PROVIDER_ID, BROKER_MODEL_ID) as Model<typeof BROKER_API> | undefined;
-  assert.ok(model);
-  const cwd = await mkdtemp(join(tmpdir(), "tbound-broker-provider-"));
-  let proposals = 0;
-  const sender: ProposalSender = {
-    async send(proposal: ToolProposal) {
-      proposals += 1;
-      assert.equal(proposal.tool, "read");
-      assert.deepEqual(proposal.arguments, { path: "fixture.txt" });
-      return {
-        schema_version: "tbound-result/v1",
-        response_id: { issuer: "fixture-response", opaque: "response-sdk-1" },
-        tool_call_id: proposal.tool_call_id,
-        tool: proposal.tool,
-        sequence: 1,
-        verdict: "ALLOW",
-        reason_code: "policy_rule_allow",
-        policy_digest: "fixture-policy/v1",
-        output: { source: "executor-fixture", content: "fixture data" },
-      };
-    },
-  };
-  const settingsManager = SettingsManager.inMemory({
-    defaultTools: [], extensions: [], packages: [], skills: [], prompts: [], themes: [],
-    enableSkillCommands: false, enableAnalytics: false, enableInstallTelemetry: false,
-    cacheWarming: "off", compaction: { enabled: false }, retry: { enabled: false },
-  });
-  const sessionManager = SessionManager.inMemory(cwd);
-  const resourceLoader = new LockedResourceLoader();
-  const created = await createAgentSession({
-    cwd,
-    agentDir: resolve(cwd, ".tbound-broker-provider-test"),
-    modelRuntime,
-    model,
-    thinkingLevel: "off",
-    settingsManager,
-    sessionManager,
-    resourceLoader,
-    noTools: "builtin",
-    tools: ["read", "write", "edit", "bash"],
-    customTools: createProxyTools(sender),
-  });
-
-  try {
-    await created.session.prompt("UNTRUSTED_CONTEXT_SENTINEL");
-    assert.equal(proposals, 1, "Pi SDK did not execute the captured proxy tool");
-    assert.deepEqual(requests.map((request) => Object.keys(request).sort()), [
-      ["kind", "request_id", "sequence", "version"],
-      ["kind", "request_id", "sequence", "version"],
-    ]);
-    assert.equal(JSON.stringify(requests).includes("UNTRUSTED_CONTEXT_SENTINEL"), false,
-      "Pi history/prompt crossed the inherited provider channel");
-    assert.equal(JSON.stringify(requests).includes("api_key"), false);
-    assert.equal(JSON.stringify(requests).includes("headers"), false);
-  } finally {
-    created.session.dispose();
-    providerBridge.client.close();
-    serverDuplex.destroy();
-    await server;
-    await rm(cwd, { recursive: true, force: true });
-  }
-  if (serverError) throw serverError;
-});
-
 test("Go turn projection must match its fixed model and finish/call shape", async () => {
   const [clientDuplex, serverDuplex] = duplexPair();
-  const runtime = createBrokerProvider(clientDuplex);
+  const runtime = createBrokerProvider(clientDuplex, { createAssistantMessageEventStream });
   const reader = new FrameReader(serverDuplex);
   const requestPromise = reader.next();
   const model = runtime.model;
@@ -238,7 +122,7 @@ test("Go turn projection must match its fixed model and finish/call shape", asyn
 
 test("provider cancellation sends only the matching bounded cancel frame", async () => {
   const [clientDuplex, serverDuplex] = duplexPair();
-  const client = createBrokerProvider(clientDuplex).client;
+  const client = createBrokerProvider(clientDuplex, { createAssistantMessageEventStream }).client;
   const reader = new FrameReader(serverDuplex);
   const abort = new AbortController();
   const turn = client.next(abort.signal);

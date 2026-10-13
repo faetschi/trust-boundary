@@ -1,90 +1,190 @@
 # TBound task state
 
-Concise summary of current tbound state. Make sure not to bloat this file or accumulate outdated information. Always update this file and remove old information so it stays focused and concise
+Updated 2026-10-13. Keep current state concise. User documentation: README.md and
+docs/status.md. Historical sources: docs/evidence/historical-sources.json.
 
-Updated 2026-10-12. Current-state tracker only; keep short, remove stale items.
+## Scope and claim boundary
 
-## Claim boundary (do not overstate)
+- Branch codex/tbound-prototype; pre-cleanup HEAD29196d664316886e929c963ce2a404a876e4c6cf.
+  Reviewed Windows ACL increment committed as a281699; the coherent CLI
+  prototype checkpoint is reviewed and verified for incremental commit.
+  User explicitly requested incremental
+  commits on 2026-10-13; commit reviewed, verified, coherent scopes.
+- User authorized reductions, normal Linux/adapter CI, clearer documentation,
+  orchestration/fixture separation and qualification work.
+- User replaced embedded/private Pi SDK installation with the official Linux Pi
+  CLI beside tbound. Pin CLI0.87.1; RPC plus explicit mediation extension.
+  No SDK or unmediated CLI fallback may be described as governed execution.
+- G1=false; containment not established; H1 not executed. Component/fixture,
+  packaging and capability checks are not thesis or containment results.
+- CLI-first sequential read/write/edit/bash. Browser/chat/TUI experiments are
+  outside the default thesis artifact.
+- Preserve broker lineage, deterministic gate, durable authority before effects,
+  sealed generations, independent evidence, validated host publication and
+  UNKNOWN/quarantine recovery. D06 remains conformance-only until independently
+  qualified. Publication is per-object reconciliation, not global atomicity.
+- Recovery denominator48 (16 scenarios x3); eighth crash point belongs to E07
+  conformance. Carry this dated decision into registration; old conflicting
+  snapshots remain historical.
 
-- `G1=false`; containment `not-established`; Linux `serve --pi` is now a managed-service client. M1 source-capture code is present; production admission remains unverified pending host provisioning and validation of the real signed-profile path.
-- Component/fixture/offline passes are NOT H1/G1, containment, provider, or thesis evidence.
-- No stock CLI/SDK fallback, no invented profile. Pi keeps conversation/tool/UI behavior; TBound owns launch, broker/tool authority, lifecycle, durable generations, publication, evidence.
-- D15: CLI-first claim-bearing path. Native TUI/companion UI are optional.
-- D06: private-Git primitive is conformance-only; prototype waiver stays until trusted integration + independent proof.
-- Publication is per-object durable reconciliation (no global atomicity, no blind replay).
-- E07 conformance vs. secondary recovery study: user selected 48 recovery trials (16 scenarios × 3); the 8th crash point is E07 conformance, not part of that denominator. Needs dated protocol amendment before registration/execution.
+## Current batch
 
-## Status
+- Resumed on codex/tbound-prototype; no branch change. Fresh component
+  records: ../review-artifacts/tbound-resume-2026-10-13/. Linux Go 1.27.1 on WSL
+  ext4: unit/race each 812 passes, zero failures, seven skips; vet/gofmt clean;
+  nine staging regressions passed. Use a short private 0700 TMPDIR: long paths
+  exceeded AF_UNIX limits in three service socket subtests (logs preserved).
+  This Linux snapshot precedes the Windows-only ACL and documentation updates.
+  Post-fix Windows full Go tests and vet passed. Isolated Node 24.21.0/Pi 0.87.1
+  adapter check passed all 17; actual Go offline CLI fixture passed. Real provider and host-containment
+  checks remain skipped/unqualified; these are component results only.
+- Windows credential ACL parsing now retains GetAce pointers and checks the
+  complete SID length and maximum 15 subauthorities before conversion; boundary
+  tests added. Critical reviewer accepted this bounded increment; committed
+  as a281699 with only the two ACL files. Tests do not
+  exercise live DACL APIs. Architecture/decision text now agrees with the
+  implemented official CLI argv contract and retained production refusal.
+- User authorized preparing a reproducible ABI 8 guest setup. Preparation is
+  not image registration or qualification. Hyper-V inspection is denied to the
+  current process; current SSH address is not recoverable from saved preflights.
+- Actual isolated runtime staging passed (14,103 files). The unchanged production
+  tree verifier accepted its read-only bind mount inside a private WSL mount
+  namespace: sha256:f6f1900633a22071fad7ecfcb4c2f21ef6046c6820231bab3d22c75d9b3a21fd.
+  This is a component tree check, not signed-profile/D09 source admission or
+  containment. The staged closure remains user-owned, unsealed and unadmitted.
+  Candidate clean-guest worksheet: infra/repro/CLEAN-GUEST-QUALIFICATION.md;
+  reviewed with pinned tool paths and exact ABI gate. No clean VM was created or registered.
+- Added `tbound-profile runtime-bundle-digest --root` using the unchanged
+  read-only production tree verifier. Focused refusal tests and positive
+  staged-tree command check passed; critical review accepted the increment.
+  A new Windows full run failed intermittently in
+  TestSessionCloseDeadlineRetriesSharedCleanup with TerminateProcess access
+  denied and UNKNOWN settlement, after earlier full passes. Fixed exit-vs-Kill
+  race by waiting for actual completion within caller context before settlement;
+  UNKNOWN remains without exit evidence. Deterministic delayed-exit/deadline/
+  retry tests passed; reviewer accepted. Original failing run remains recorded.
+- Production/dev CLI RPC initialization now validates and permits exactly the
+  official CLI profiles; production no longer misses its RPC client due to a
+  developer-only guard. Legacy profiles rejected; production launch refusal
+  unchanged. Critical reviewer accepted this bounded increment.
+- Final Go source checks: Linux unit/race each 820 passes, zero failures, seven
+  skips; Windows 278 passes, zero failures, 13 skips; vet clean on both platforms.
+  Final actual Go offline CLI fixture passed. Scratch verifier is only in the
+  isolated WSL copy; original source gofmt is clean. Combined batch acceptance
+  commit pending; the independent ACL fix is committed.
+- Remaining critical review finding: failed RPC responses in pumpEvents must
+  match command=prompt and the active request ID; a late abort response must
+  not settle another prompt. Correlation fix applied: only failed prompt
+  responses matching an active request ID emit a worker error. Corrected the
+  regression fixture's missing error string while retaining pipe-controlled
+  response delivery after lease initialization. Red reproduced all three
+  wrong-response cases; green and 30 race-enabled repetitions passed. Linux
+  piruntime package unit/race/vet passed. Critical reviewer accepted safety,
+  integration scope and thesis alignment; original
+  bad-fixture and corrected red/green logs are retained with the checkpoint.
+  D09 launcher candidate preparation finished, but the proposed replacement of
+  the refusal stub is NOT applied. Independent critical review rejected safety
+  and integration: failed-response correlation, ignored/sticky child-end close
+  errors, double RPC-input closure, nil-context cleanup and insufficient full
+  launch/proof/settlement tests must be resolved first. Thesis claim boundary
+  remains aligned; host qualification is a separate gate.
+  Preserve every unproved admission gate. The saved 313-file acceptance
+  checkpoint predates the new correlation regression test.
+  Correlation implementation and critical-review tasks completed. Closure patch
+  preparation completed; its independent critical review remains active below.
+- RPC input-close code passed critical safety review. Atomic closed state and
+  once-only closure avoid writeMu; old code reproduced 16 underlying closes.
+  Required test fixes applied: bounded failure cleanup and explicit sticky
+  retry. Windows count30, Linux race count30 and package unit/vet passed.
+- Shared endpoint owner/readiness patch applied after repairing the proposals:
+  close before c.mu to unblock sendControl, retain shared/child/full close
+  errors, stop failed launch before readiness, and propagate RPC close errors.
+  No raw-FD fault injection or ownership-reference clearing. Focused tests and
+  race count30 passed. Full Linux unit/race each 834 passes, zero failures,
+  seven skips; Windows 280 passes, zero failures, 13 skips; both vet clean.
+  Actual pinned offline Go CLI fixture passed after these changes.
+  Critical review required joining partial-constructor cleanup errors; all
+  six failure paths now join c.Close(), with ipcParent.Close() also joined on
+  IPC initialization failure. Post-correction package unit/race/vet passed.
+  Final reviewer accepted safety, prototype integration and thesis alignment.
+  Full-suite/actual-CLI results above precede the small constructor correction;
+  they are not claimed as fresh full checks of that final correction.
+- Commit-boundary audit found the remaining CLI cleanup is a coherent first
+  integration checkpoint (the new RPC client is required). Review completed;
+  include the intentional staged ELF removal without deleting local binaries,
+  but exclude the five preexisting doc deletions. Then commit each increment.
 
-- Reviewed and committed foundations: `8d2e478` (docs `640cf30`). Central review: component code accepted; integration NOT ready; thesis alignment open.
-- Working branch: `feature/tbound-runtime-batch` (PR #7 is the persistence target).
-- WIP checkpoint: `87e969a` (all prior unstaged state). Not pushed, not an acceptance commit. Do not reset/discard it.
-- Freeze 2026-10-11 (user-authorized): commit `fdfbd38` preserves the 39-file runtime/service-handoff/sealed-source overlay. Pre-commit checks on Windows: `go build ./...` pass (explicit private `-o`), `GOOS=linux go build ./...` pass (earlier reported `internal/protocol` break no longer exists in the owner's current file), `gofmt -l` clean after formatting 5 overlay files, `go vet` shows only the 3 documented pre-existing `unsafe.Pointer` diagnostics in `broker/openrouter/credential_file_windows.go`. Full Windows `go test -count=1 ./...` passes including `internal/piruntime` — the five previously failing pipe-identity tests are fixed by the new `descriptor_identity_*` files. This is a preservation commit, not an acceptance commit; central review gate still applies.
-- Not yet established: a provisioned positive governed launch; a real provider turn; a usable production `serve --pi` path.
-- User authorizations (2026-10-11): freeze/commit granted; Hyper-V Ubuntu VM on this machine authorized for Linux experiments (must also work natively on Linux); real OpenRouter key at `F:\TBoundAssets\secrets` authorized with $1 spend budget; M1 (CLI thesis path) primary, M2 (product/packaging) parallel.
-- Protocol reconciliation decision (user-delegated, adjustable later): recovery suite stays at 48 registered trials (16 scenarios × 3); the 8th enumerated crash point belongs to the E07 publication-conformance fault set, not the recovery denominator. Record as a dated protocol amendment before any registration/execution; never silently change counts.
+- Baseline archive, initial working-tree patch and tracked-file SHA-256 manifest:
+  ../review-artifacts/tbound-baseline-2026-10-12/. Includes the five document
+  deletions preceding this work; preserve them.
+- Removed optional explorer/governance viewer dependency bundle, fixture chat/
+  sessioncontrol and unused legacy internal/podman. Actual OCI runtime and used
+  internal/sandbox remain. Removed tracked closure output. ELF supervisor/tbound
+  is untracked but preserved locally; never overwrite it or tbound.exe.
+- README/setup/status consolidation and dated phase-document retirement landed.
+  Evidence receipts/index remain immutable; history map resolves retired sources.
+- Normal CI/test entrypoints and same-package orchestration splits landed.
+  Official Pi CLI dev route is implemented; final3 Linux and Windows component
+  checks pass (scoped results below).
+- Publication settlement now requires STOPPED, process exit, descendant quiescence
+  and no close error before evidence/publication; admission stays retained otherwise.
+- Private SDK installer replaced by exact-version official CLI discovery. The
+  profile scaffold and runtime bindings describe CLI RPC; this review follow-up
+  aligns D09 and legacy argv guards with `PiWorkerCellArguments()`. The D09
+  launch refusal remains, and production is unqualified; signing alone is not
+  sufficient. The stager now binds installed dependency versions to exact
+  shrinkwrap locations, records the lock digest from verified staged bytes, and
+  materializes in-package file links as regular files; directory and escaping
+  links remain refused. The production verifier still rejects symlinks. No
+  profile freeze, registration, signing or headline trial.
 
-## Open code gates (product)
+## Available Linux environment and qualification gates
 
-1. Real Pi launch through one CLI-owned session: protected profile -> Pi -> Go broker -> durable executor -> `read->edit->bash->read`, with result and generation lineage.
-2. Managed service handoff — characterization (2026-10-11, commit `fdfbd38`): protocol, socket activation, kernel-credential auth, journaling/idempotency, and both endpoints EXIST (`serve --pi` with `--task-id/--task-request-id/--task` is the client; `--service` is the systemd-activated server). Residual work, in dependency order: (a) service-mode source capture — code now qualifies the current managed-RW root under the recovered C lease, brackets baseline import with source revalidation, leaves `ExposureBinder` unset in service mode, and durably binds the qualification to g0/tree/manifest digests; focused empty-ledger, qualified-receipt, and pre/post-seed refusal tests were added. A post-seed mismatch emits a durable refusal record, retains g0 only in the private per-run Store for audit, and returns no generation to the caller (no worker/D09 exposure); cleanup/reconciliation of that retained Store is follow-up work. Linux `GOOS=linux GOARCH=amd64 go test -c` compiles both `./cmd/tbound` and `./internal/piruntime` test binaries, and Linux-target `go vet ./cmd/tbound ./internal/piruntime` passes; focused Linux race tests now pass on the existing private ext4 guest with `go test -race -mod=readonly -count=1 -run 'TestManagedSource|TestManagedLiveRootQualificationIssuesWorkspaceXattrAttestation|TestD09XattrEnumeration' ./cmd/tbound ./internal/piruntime`, covering empty-ledger recovery evidence, g0 receipt binding, pre/post-seed refusal, and xattr qualification. The first exact-source run exposed raw audit-hash formatting rejected by typed evidence validation and a test expecting an EvidenceBundle despite no baseline; both are fixed. The real signed-profile source path is also unverified. Xattr qualification inventories paths, metadata, and xattr names rather than file contents, so host provisioning must establish that the dedicated service UID has no other source-tree writers; the lease only serializes cooperating TBound sessions. (b) host provisioning tooling (units, service account, `tbound-pi-clients` group, `/run/tbound` tmpfs mount, config, measure/sign sequence) — no code authors any of it; (c) tests for the systemd listener, end-to-end client↔server, cross-restart journal replay, and the untested cmd/tbound unit validators (parallel duplicate of tested piruntime validators — drift hazard, e.g. duplicated config path constants); (d) client UX (request-ID generation, status/receipt command, error surfacing). Note: on Linux, production refusal is now "service unavailable", not the old unconditional design refusal.
-3. Rootless UID/GID maps must be signed and proof-bound. Use distinct host service IDs; the map contract is `--uidmap CellUID:0:1` / `--gidmap CellGID:0:1` with no `--userns`.
-4. Exact service state-write allowlist — largely pinned by the unit validator (`ReadWritePaths` == 8 registered paths, 7-entry StateDirectory); needs provisioning + tests.
-5. D06 sealed source: export/consumer-view chain implemented through the cell entrypoint (`rebindConsumerFD` with same-inode + ro-mount checks); only ever exercised against fixtures — needs a real Podman/crun environment.
-6. Publication: managed-root lease/epoch/permit machinery implemented; per-command D09 receipts minted, validated, and journal-bound, but NOT surfaced to the CLI (final receipt carries only counts/digest). Bash-lease terminal origin resolves via `ResolveTerminalLeaseOrigin`.
-7. Cleanup: effective crun/seccomp binding; owned scope/cgroup cleanup; UNKNOWN keeps references and authority.
-8. Xattr visibility needs independent operator qualification, not scanner metrics alone.
-9. Packaging: canonical MIT text is included in release tarballs and generated npm root/platform packages, with metadata digest and offline layout assertions. On the existing Ubuntu VM, strict release layout passed 73/73, npm package checks 27/27, and synthetic DEB/RPM layout passed. Actual RPM, Homebrew, and container builds remain unverified.
+- Existing authorized Hyper-V VM TBound-Ubuntu-2404 is running and reachable via
+  strict SSH as tboundadmin. Dynamic IP is not a product configuration.
+- Go1.27.1 and Node24.21.0 available under /opt/tbound/toolchains.
+  Official Pi CLI0.87.1 installed by npm --global --ignore-scripts in user .local
+  prefix and version-checked. No global Pi/Node changes on Windows.
+- Fresh repository probe: PASS13 / FAIL0 / UNVERIFIED2, exit2 (native SSH status).
+  Kernel6.8.0-146-generic; LandlockABI4, below requiredABI8.
+  cgroup.kill write/cleanup and UID-map helper behavior remain unverified.
+- Existing development guest has prior boot/provisioning history, not a clean
+  registered image. No boot/disk/kernel/account/systemd/trust/signing change in
+  this batch. Noninteractive sudo unavailable to the SSH account.
+- Signed CLI executable/extension closure and managed-service profile/admission,
+  source exposure, D09 containment/settlement and independent effect observations
+  require qualification. Registered corpus/calibration/analysis artifacts are
+  absent from this repository. Do not freeze or execute H1 ahead of these gates.
+- Preserved Final3 Linux records from before this review follow-up: source hash
+  readback 306/306; Go unit and race each 781 passed, 0 failed, 7 skipped; vet
+  and gofmt clean; npm ci and the required actual-CLI check exited 0; native and
+  actual Go CLI offline fixtures passed. Windows supervisor go test
+  -mod=readonly -count=1 ./... passed. These are prior component/offline results,
+  not fresh full validation of this follow-up. Nine focused Python staging
+  regressions passed in an isolated copy under local WSL. Linux-only Go argv
+  tests and the full Linux suite were not run against this follow-up. Saved
+  review logs include passing publication-recovery tests in one run and a
+  separate run that stopped at the audit-journal guard because a temp ancestor
+  was mode 0777; that run did not reach recovery. The logs support a test-temp
+  setup failure, not a publication code defect, and do not establish a
+  concurrent-state collision. Rerun Linux checks with a private 0700 TMPDIR
+  under HOME and umask 077. Component/offline checks do not qualify production
+  launch or containment; the actual-CLI check remains gated in CI.
+- Local validation records: ../review-artifacts/tbound-cleanup-2026-10-12/.
 
-## Environment limits
+## Verification and preservation rules
 
-- WSL lacks Podman/crun/Cosign and a usable delegated cgroup. Direct cgroup launcher is not the D09 profile.
-- Linux Node: `/home/jeli2k/node-v24.15.0-linux-x64/bin/node`. Go: `/home/jeli2k/go-sdk/go/bin`.
-- Windows: baseline `60631d0` had 5 pipe-alias test failures and 3 `unsafe.Pointer` vet diagnostics. UPDATE 2026-10-11 on `fdfbd38`: the five pipe-identity tests pass (`descriptor_identity_*`); suite passes with only the 3 pre-existing vet diagnostics. UPDATE 2026-10-12: full `go test -count=1 ./...` passed on rerun; first run had a transient piruntime cleanup `TerminateProcess: Access is denied`, and the targeted piruntime rerun passed. Windows tests do not execute Linux-tagged M1 code.
-- Linux verification (2026-10-12): a 233-file source/fixture snapshot matching the current Windows working tree was SHA-256 checked in the existing VM. Go 1.27.1 full `go test -mod=readonly -count=1 ./...`, full `go test -race -mod=readonly -count=1 ./...`, and `go vet -mod=readonly ./...` passed with umask 077 and a private 0700 ext4 TMPDIR. A private-output build and `serve --pi --native-fixture` also passed (non-claim-bearing). These are component and fixture checks; native bare-metal setup, provisioned managed-service admission, real provider exchange, D09 containment, and G1 remain unverified.
-- Hyper-V VM `TBound-Ubuntu-2404` (authorized for experiments 2026-10-11): on 2026-10-12, `CodexSandboxUsers` established strict SSH as `tboundadmin` to `192.168.251.23/20` after operator console login; the ED25519 host fingerprint matched `infra/hyperv/INSTALLATION-RECORD.md`. DHCP address is dynamic. The Hyper-V ACL still denies `Get-VM` to this execution context and the host alias does not resolve. Help-sheet IP `172.19.193.190` was unreachable. Root is LVM (`ubuntu-vg/ubuntu-lv`); checkpoints and a two-AVHDX chain exist. Resume with elevated `Get-VM` / `Start-VM` / `vmconnect.exe`; shut down gracefully with guest `sudo poweroff`.
-- Fresh guest probe (`infra/guest/probe-capabilities.sh`, 2026-10-12): **PASS=13 / FAIL=0 / UNVERIFIED=2**, exit 2 for the two UNVERIFIED rows. SSH reported `192.168.251.23/20`, kernel `6.8.0-146-generic`, and Landlock ABI 4. Installed HWE 7.0.0-38 reached userspace on repeated boots for minutes; inspected journal tails showed no panic/oops, but reboot cause remains unknown and HWE is unqualified. G1 remains false; the probe is not containment or G1 evidence. PASS: cgroup v2 domain, `cgroup.kill` interface (write behavior remains untested), pidfd, seccomp, subuid/subgid >=65536, user namespace creation, rootless Podman/crun 1.14.1, Node 24.21.0, Go 1.27.1. A separate direct check previously reported Podman 4.9.3; the probe's Podman-version observation was `unknown` on this run. `kernel.apparmor_restrict_unprivileged_userns=0` applied; this system-wide change needs an explicit security warning. Cosign v3.1.3 is at `~/.local/bin/cosign` (may not be on non-login SSH PATH). An offline recovery edit changed `/boot/grub/grub.cfg` kernel references back to 6.8; backup is `/boot/grub/grub.cfg.tbound-bootfix-bak`; this is not a clean G1 image. No more offline disk edits; inspect via console and restore/qualify boot selection before any G1 freeze.
-- Researcher setup UX WIP: `infra/repro/{bootstrap-linux.sh,bootstrap-hyperv-windows.ps1,probe-host.ps1,README.md}` and `docs/reproducible-setup.md` are uncommitted, syntax/fixture checked but not end-to-end qualified on a clean native host or new Hyper-V VM. Root `README.md` now documents start/resume and setup options plus actual VM/probe status. Review before acceptance.
-
-## Commands
-
-```sh
-cd supervisor
-go build -o /tmp/tbound ./cmd/tbound
-/tmp/tbound serve --pi --native-fixture   # exit 0, claim_bearing=false (fixture, no Pi)
-/tmp/tbound serve --pi                     # managed-service client; currently unavailable without registration
-```
-
-Opt-in Go<->Node<->Pi dev test (needs `TBOUND_GOVERNED_PI_NODE`, `TBOUND_GOVERNED_PI_NODE_MODULES`, `TBOUND_GOVERNED_PI_TEST_ROOT` = private 0700 ext4):
-`go test -mod=readonly -run TestDevelopmentPiSDKWorkerInheritedFDProcessRoundTrip -v ./internal/piruntime`
-
-Companion (read-only): `cd supervisor && go run ./cmd/tbound-governance --addr 127.0.0.1:8790`
-
-Build outputs must use explicit private `-o` paths. Never overwrite `supervisor/tbound` (tracked ELF) or `supervisor/tbound.exe` (untracked, SHA-256 `2a49661c91aeae671b1d2c3d1b463fedb00091955618f2fa8077796dfe221089`).
-
-## Rules
-
-- Central review gate before any acceptance or commit: freeze all combined changes, run a central read-only review, and get separate verdicts for code safety, integration readiness, and thesis alignment. Re-verify after fixes. Individual passes do not count.
-- Verification evidence needs: full Linux race suite (private ext4, 0700 TMPDIR), vet/gofmt, Windows build, npm check if adapter touched, and unchanged-source readback. Report unrun checks.
-- Commit only explicit paths after acceptance, with tested-byte comparison. Coordinator alone commits. No blanket staging.
-- Preserve all unrelated dirty work (user docs, Hyper-V infra, `docs/frontend-observability-plan.md`, `docs/dev-launch.md`). Never adopt wholesale.
-- Never access `vm_start.txt` or inspect/log/copy key material. No provider credentials in fixtures or ambient env.
-- No reset/discard, new worktree, dependency/lock change, or broad deletion without explicit coordination.
-- No VM, kernel, package, systemd, account, mount, network, provider, trust, or signing operations without explicit operator authorization. Provisioned launch is a separate gate.
-- Keep ownership disjoint. Do not poll or duplicate dispatch to running workers.
-- Stop and report when the high-level product goal (real Pi + four governed tools + observed cleanup + validated publication + usable install) is reached or blocked.
-
-## Next step
-
-1. Review/freeze researcher setup UX; validate scripts on a disposable clean host before claiming reproducibility.
-2. Keep this reference VM on reachable kernel 6.8 for development; inspect HWE boot behavior from console/logs before any further disk edits. Landlock ABI 8 remains a G1 blocker.
-3. Resume M1 code gates: qualify the signed managed-source registration/calibration and provisioned service path on Linux; then run the authorized real-provider E05 within the $1 cap, a positive D09 session, and independent effect oracles. Central review before acceptance; passing component tests and capability probes are not G1/H1 evidence.
-
-## Source references
-
-- `../MSE_MA_Thesis/agentic-harness/AH-technical/10-decision-register.md` (decisions)
-- `../MSE_MA_Thesis/agentic-harness/AH-technical/11-evidence-contract.md` (evidence)
-- `../MSE_MA_Thesis/agentic-harness/AH-technical/02-1-recovery-and-continuation.md` (recovery)
-- `../MSE_MA_Thesis/agentic-harness/AH-technical/02-process-model.md`
-- `../MSE_MA_Thesis/agentic-harness/AH-technical/00-roadmap.md`
-- `docs/central-review-corrections-2026-10-07.md`, `docs/production-candidate-verification-2026-10-10.md`
+- Coordinator owns combined review/final state; disjoint worker ownership.
+  No blanket staging, reset/discard or unrelated edits.
+- Before acceptance, central read-only review must return separate code-safety,
+  integration-readiness and thesis-alignment verdicts; reverify fixes.
+- Relevant gates: full Linux tests/race (private0700 ext4 TMPDIR, umask077), vet/
+  gofmt, Windows build/tests, intended adapter checks, installation checks and
+  source-hash readback. Report skipped/unrun checks explicitly.
+- Explicit temporary -o build paths; never overwrite preserved local binaries.
+  Preserve immutable receipts/index bytes and pinned Git source identities.
+- Never access vm_start.txt or inspect/log/copy provider key material.
+  No real provider use in this batch; prior $1 authorization is not qualification.
+- User now requested incremental commits; commit coherent verified scopes after
+  critical review, preserving unrelated changes. Keep failures and unresolved
+  gates visible; component passes do not imply readiness.

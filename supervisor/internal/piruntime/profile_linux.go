@@ -127,6 +127,7 @@ func (v *LinuxHostProfileVerifier) Attest(ctx context.Context, requested HostPro
 		ExecutableDigest: p.ExecutableDigest, NodeVersion: p.NodeVersion,
 		ChildArgumentsDigest:   p.ChildArgumentsDigest,
 		WorkingDirectoryDigest: p.WorkingDirectoryDigest, StdinDigest: p.StdinDigest,
+		StdoutDigest:           p.StdoutProfileDigest,
 		ChildEnvironmentDigest: p.ChildEnvironmentDigest, IPCProfileDigest: p.IPCProfileDigest,
 		TerminalDigest: p.TerminalProfileDigest, ContainmentDigest: p.ContainmentProfileDigest,
 		CgroupRootDigest: p.CgroupRootDigest,

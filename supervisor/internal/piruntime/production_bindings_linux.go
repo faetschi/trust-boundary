@@ -12,15 +12,10 @@ import (
 	"tbound/supervisor/internal/sessionrepo"
 )
 
-// BindProductionPiWorkerBindings assembles the exact production Pi worker
-// runtime bindings and channels from the verified sealed exposure/assets and the
-// verified D09 launcher. It is the stable API the CLI composition (worker C) and
-// the session-launch owner (worker B) consume; it exposes no fictional seam.
-//
-// The returned bindings carry the same owned descriptors the channels hold (not
-// re-exported copies), the fixed in-cell argv/environment, the fixed descriptor
-// role map (D09ChildRoleMap), and the supplied verified launcher and cgroup
-// settler. The caller then calls AdmitProduction and LaunchPiSDKWorker.
+// BindProductionPiWorkerBindings validates and assembles the fixed official Pi
+// CLI RPC profile for the generic sealed consumer view. It deliberately refuses
+// the D09 production profile; this binding helper does not launch or admit a
+// production worker.
 func BindProductionPiWorkerBindings(
 	ctx context.Context,
 	profile HostProfile,
@@ -63,6 +58,7 @@ func BindProductionPiWorkerBindings(
 		WorkerRuntimeAssets:    assets,
 		RuntimeAssetEvidence:   channels.assetEvidence,
 		StdinProfile:           profile.StdinProfile,
+		StdoutProfile:          profile.StdoutProfile,
 		ChildEnvironment:       profile.ChildEnvironment,
 		IPCProfile:             profile.IPCProfile,
 		TerminalProfile:        profile.TerminalProfile,
@@ -89,8 +85,10 @@ func BindProductionPiWorkerBindings(
 	return runtime, channels, nil
 }
 
-// BindProductionPiWorkerBindingsWithSource is the D09 production-only staging
-// API. The source wrapper is never passed through VerifiedWorkerExposure, and
+// BindProductionPiWorkerBindingsWithSource assembles the D09 source-stage
+// binding for the signed official Pi CLI RPC profile. It remains only a
+// contract scaffold: production launch still refuses the current profile.
+// The source wrapper is never passed through VerifiedWorkerExposure, and
 // the strict runtime source is never passed through VerifiedWorkerRuntimeAssets.
 // The returned D09PiWorkerChannels owns the one exported fd4 and runtime-bundle
 // descriptor; it does not own source/capability lifetimes. PreparedSession must
@@ -136,7 +134,7 @@ func BindProductionPiWorkerBindingsWithSource(
 		PiRuntimeBundleRoot: profile.PiRuntimeBundleRoot, PiRuntimeBundleDigest: profile.PiRuntimeBundleDigest,
 		PiRuntimeBundleHandle: channels.channels.runtimeBundle,
 		D09RuntimeAssetSource: assets, D09RuntimeAssetEvidence: channels.assetEvidence,
-		StdinProfile: profile.StdinProfile, ChildEnvironment: profile.ChildEnvironment,
+		StdinProfile: profile.StdinProfile, StdoutProfile: profile.StdoutProfile, ChildEnvironment: profile.ChildEnvironment,
 		IPCProfile: profile.IPCProfile, TerminalProfile: profile.TerminalProfile,
 		ContainmentProfile: profile.ContainmentProfile, SettlementProfile: profile.SettlementProfile,
 		ObservationProfile: profile.ObservationProfile, DescriptorProfile: profile.DescriptorProfile,

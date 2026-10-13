@@ -177,6 +177,9 @@ summary rather than treating the raw exit code alone as a capability result.
 
 ## Files
 
+- [CLEAN-GUEST-QUALIFICATION.md](CLEAN-GUEST-QUALIFICATION.md) — candidate
+  image identity and offline qualification worksheet; not a G1 registration.
+
 - `bootstrap-linux.sh` — native Linux bootstrap (idempotent, fail-closed).
 - `bootstrap-hyperv-windows.ps1` — Hyper-V VM creation and guest provisioning.
 - `probe-host.ps1` — one-command capability report (SSH / WSL / saved capture).

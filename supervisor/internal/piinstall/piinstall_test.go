@@ -2,6 +2,8 @@ package piinstall
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,161 +11,76 @@ import (
 	"testing"
 )
 
-func TestParseNodeVersion(t *testing.T) {
-	cases := []struct {
-		in           string
-		major, minor int
-		ok           bool
+func TestParsePiVersion(t *testing.T) {
+	for _, tc := range []struct {
+		input, want string
+		ok          bool
 	}{
-		{"v24.15.0", 24, 15, true},
-		{"22.19.1", 22, 19, true},
-		{"v20.11.0\n", 20, 11, true},
-		{"garbage", 0, 0, false},
-	}
-	for _, c := range cases {
-		major, minor, ok := ParseNodeVersion(c.in)
-		if ok != c.ok || major != c.major || minor != c.minor {
-			t.Fatalf("ParseNodeVersion(%q) = %d,%d,%v; want %d,%d,%v", c.in, major, minor, ok, c.major, c.minor, c.ok)
+		{"0.87.1", "0.87.1", true}, {"v0.87.1", "0.87.1", true}, {"pi 0.87.1", "0.87.1", true}, {"unknown", "", false},
+	} {
+		got, ok := ParsePiVersion(tc.input)
+		if got != tc.want || ok != tc.ok {
+			t.Fatalf("ParsePiVersion(%q) = %q,%v", tc.input, got, ok)
 		}
 	}
 }
 
-func TestNodeSatisfies(t *testing.T) {
-	if !(NodeInfo{Major: 22, Minor: 19}).Satisfies() {
-		t.Fatal("22.19 should satisfy")
+func TestDiscoverPiPinsVersionAndFingerprintsExecutable(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "pi")
+	contents := []byte("pinned cli bytes")
+	if err := os.WriteFile(path, contents, 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if (NodeInfo{Major: 22, Minor: 18}).Satisfies() {
-		t.Fatal("22.18 should not satisfy")
-	}
-	if !(NodeInfo{Major: 24, Minor: 0}).Satisfies() {
-		t.Fatal("24.0 should satisfy")
-	}
-}
-
-func TestDiscoverNodePrefersExplicit(t *testing.T) {
-	o := Options{
-		Run: func(_ context.Context, _ string, name string, _ ...string) ([]byte, error) {
-			if name == "/opt/node/bin/node" {
-				return []byte("v24.15.0\n"), nil
-			}
-			return nil, errors.New("unexpected node " + name)
-		},
-		LookPath:     func(string) (string, error) { return "/usr/bin/node", nil },
-		ExplicitNode: "/opt/node/bin/node",
-	}
-	n, err := DiscoverNode(context.Background(), o)
+	opts := Options{ExplicitPi: path, Run: func(_ context.Context, _ string, _ string, args ...string) ([]byte, error) {
+		if len(args) != 1 || args[0] != "--version" {
+			t.Fatalf("unexpected CLI args: %v", args)
+		}
+		return []byte("0.87.1\n"), nil
+	}}
+	got, err := DiscoverPi(context.Background(), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n.Path != "/opt/node/bin/node" || n.Source != "explicit" || !n.Satisfies() {
-		t.Fatalf("got %+v", n)
+	want := sha256.Sum256(contents)
+	if got.Version != PinnedPiVersion || got.SHA256 != hex.EncodeToString(want[:]) {
+		t.Fatalf("unexpected Pi fingerprint: %+v", got)
 	}
 }
 
-func TestDiscoverNodeSkipsBrokenCandidate(t *testing.T) {
-	o := Options{
-		Run: func(_ context.Context, _ string, name string, _ ...string) ([]byte, error) {
-			if name == "/broken/node" {
-				return nil, errors.New("not executable")
-			}
-			return []byte("v22.19.0"), nil
-		},
-		LookPath:     func(string) (string, error) { return "/usr/bin/node", nil },
-		ExplicitNode: "/broken/node",
+func TestDiscoverPiRejectsOtherVersions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "pi")
+	if err := os.WriteFile(path, []byte("cli"), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	n, err := DiscoverNode(context.Background(), o)
+	_, err := DiscoverPi(context.Background(), Options{ExplicitPi: path, Run: func(context.Context, string, string, ...string) ([]byte, error) { return []byte("1.0.0"), nil }})
+	if err == nil {
+		t.Fatal("accepted an unpinned Pi CLI")
+	}
+}
+
+func TestDiscoverPiRequiresInstalledCLI(t *testing.T) {
+	_, err := DiscoverPi(context.Background(), Options{LookPath: func(string) (string, error) { return "", errors.New("missing") }, Run: func(context.Context, string, string, ...string) ([]byte, error) { return nil, nil }})
+	if err == nil {
+		t.Fatal("missing CLI passed discovery")
+	}
+}
+
+func TestGovernedRPCArgsUsePinnedIsolationFlags(t *testing.T) {
+	extensionPath := filepath.Join(t.TempDir(), "tbound-cli-extension.ts")
+	args, err := GovernedRPCArgs(extensionPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n.Path != "/usr/bin/node" || n.Source != "path" {
-		t.Fatalf("got %+v", n)
+	joined := strings.Join(args, " ")
+	for _, required := range []string{"--mode rpc", "--no-session", "--no-extensions", "--no-builtin-tools", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve", "--offline", "--extension " + extensionPath, "--provider tbound-go-broker", "--model tbound-go-broker/nvidia/nemotron-3.5-lightning:free"} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("arguments %q omit %q", joined, required)
+		}
 	}
-}
-
-func TestDiscoverNodeNoneFound(t *testing.T) {
-	o := Options{
-		Run:      func(context.Context, string, string, ...string) ([]byte, error) { return nil, errors.New("no") },
-		LookPath: func(string) (string, error) { return "", errors.New("not found") },
+	if strings.Contains(joined, "--no-mcp") || strings.Contains(joined, "--print") {
+		t.Fatalf("unsupported or unmediated route in arguments: %q", joined)
 	}
-	if _, err := DiscoverNode(context.Background(), o); err == nil {
-		t.Fatal("expected error when no node is found")
-	}
-}
-
-func TestDetectNodeModulesPi(t *testing.T) {
-	dir := t.TempDir()
-	modules := filepath.Join(dir, "node_modules")
-	pkgDir := filepath.Join(modules, PiCodingAgentPkg)
-	if err := os.MkdirAll(pkgDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(pkgDir, "package.json"), []byte(`{"name":"`+PiCodingAgentPkg+`","version":"0.87.1"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if v, ok := DetectNodeModulesPi(modules); !ok || v != "0.87.1" {
-		t.Fatalf("DetectNodeModulesPi = %q,%v", v, ok)
-	}
-	if _, ok := DetectNodeModulesPi(filepath.Join(dir, "missing")); ok {
-		t.Fatal("missing modules should not be detected")
-	}
-}
-
-func TestInstallPinnedPackagesRequiresNetworkOptIn(t *testing.T) {
-	err := InstallPinnedPackages(context.Background(), Options{Prefix: t.TempDir()}, false)
-	if !errors.Is(err, ErrNetworkRequired) {
-		t.Fatalf("want ErrNetworkRequired, got %v", err)
-	}
-}
-
-func TestInstallWritesLowercaseManifest(t *testing.T) {
-	prefix := t.TempDir()
-	var manifest string
-	o := Options{
-		Prefix:       prefix,
-		ExplicitNode: "/usr/bin/node",
-		Run: func(_ context.Context, _ string, _ string, args ...string) ([]byte, error) {
-			if len(args) == 1 && args[0] == "--version" {
-				return []byte("v24.15.0"), nil
-			}
-			b, _ := os.ReadFile(filepath.Join(prefix, "pi", "package.json"))
-			manifest = string(b)
-			pkgDir := filepath.Join(PrefixPIModules(prefix), PiCodingAgentPkg)
-			if err := os.MkdirAll(pkgDir, 0o700); err != nil {
-				return nil, err
-			}
-			return nil, os.WriteFile(filepath.Join(pkgDir, "package.json"), []byte(`{"version":"0.87.1"}`), 0o600)
-		},
-	}
-	if err := InstallPinnedPackages(context.Background(), o, true); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(manifest, `"Name"`) || strings.Contains(manifest, `"Dependencies"`) {
-		t.Fatalf("manifest uses non-npm (uppercase) keys: %s", manifest)
-	}
-	if !strings.Contains(manifest, `"dependencies"`) || !strings.Contains(manifest, `"name"`) {
-		t.Fatalf("manifest missing lowercase npm fields: %s", manifest)
-	}
-}
-
-func TestInstallPinnedPackagesVerifiesVersion(t *testing.T) {
-	prefix := t.TempDir()
-	node := filepath.Join(prefix, "node", "bin", "node")
-	o := Options{
-		Prefix:       prefix,
-		ExplicitNode: node,
-		Run: func(_ context.Context, dir string, name string, args ...string) ([]byte, error) {
-			if len(args) == 1 && args[0] == "--version" {
-				return []byte("v24.15.0"), nil
-			}
-			// Simulate npm creating the pinned package.
-			pkgDir := filepath.Join(PrefixPIModules(prefix), PiCodingAgentPkg)
-			if err := os.MkdirAll(pkgDir, 0o700); err != nil {
-				return nil, err
-			}
-			return nil, os.WriteFile(filepath.Join(pkgDir, "package.json"), []byte(`{"version":"0.87.1"}`), 0o600)
-		},
-	}
-	if err := InstallPinnedPackages(context.Background(), o, true); err != nil {
-		t.Fatal(err)
+	if _, err := GovernedRPCArgs("relative.ts"); err == nil {
+		t.Fatal("relative extension path accepted")
 	}
 }

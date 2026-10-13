@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -169,8 +170,8 @@ func TestAdmissionCapabilityBindsExactChildEnvironment(t *testing.T) {
 	if bound.capability == nil || bound.capability.bound == nil || bound.capability.bound.launcher != launcher {
 		t.Fatal("bound child did not retain the admitted launcher capability")
 	}
-	if got := bound.Env; got == nil {
-		t.Fatal("bound child converted the exact empty environment back to nil")
+	if got := bound.Env; got == nil || !equalStrings(got, productionPiCLIEnvironment()) {
+		t.Fatalf("bound child did not retain the exact Pi CLI environment: %#v", got)
 	}
 	if _, err := capability.BindChild(spec, &countingLauncher{}); !errors.Is(err, ErrChildCapabilityMissing) {
 		t.Fatalf("unadmitted launcher was accepted: %v", err)
@@ -181,13 +182,36 @@ func TestAdmissionCapabilityBindsExactChildEnvironment(t *testing.T) {
 	}
 }
 
+func TestProductionProfileAndBindingsBindPiRPCStdout(t *testing.T) {
+	profile, attestation := testHostProfile()
+	if err := ValidateHostAdmission(profile, attestation); err != nil {
+		t.Fatalf("exact signed Pi RPC stdout profile did not validate: %v", err)
+	}
+
+	wrongAttestation := attestation
+	wrongAttestation.StdoutDigest = DigestBytes([]byte("silent-worker-stdout/v1"))
+	if err := ValidateHostAdmission(profile, wrongAttestation); !errors.Is(err, ErrHostProfileMismatch) {
+		t.Fatalf("silent stdout attestation matched the RPC stdout profile: %v", err)
+	}
+
+	bindings := testRuntimeBindings(profile, &countingLauncher{})
+	bindings.StdoutProfile = "silent-worker-stdout/v1"
+	if err := bindings.validate(profile); !errors.Is(err, ErrHostBindingsMissing) {
+		t.Fatalf("silent stdout binding matched the signed Pi RPC profile: %v", err)
+	}
+
+	bindings = testRuntimeBindings(profile, &countingLauncher{})
+	bindings.Arguments = []string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"}
+	if err := bindings.validate(profile); !errors.Is(err, ErrHostBindingsMissing) {
+		t.Fatalf("legacy SDK argv binding matched the signed Pi RPC profile: %v", err)
+	}
+}
+
 func TestAdmissionCapabilityCopiesExactEnvironmentVector(t *testing.T) {
 	profile, attestation := testHostProfile()
 	launcher := &countingLauncher{}
 	bindings := testRuntimeBindings(profile, launcher)
-	bindings.Environment = []string{"TBOUND_RUNTIME=offline"}
-	profile.ChildEnvironmentDigest = DigestEnvironment(bindings.Environment)
-	attestation.ChildEnvironmentDigest = profile.ChildEnvironmentDigest
+	expectedEnvironment := append([]string{}, bindings.Environment...)
 	capability, err := AdmitProduction(context.Background(), profile, staticHostAttestor{attestation: attestation, bindings: bindings})
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +227,7 @@ func TestAdmissionCapabilityCopiesExactEnvironmentVector(t *testing.T) {
 		t.Fatal("test launcher unexpectedly returned a process")
 	}
 	request := launcher.Request()
-	if len(request.Env) != 1 || request.Env[0] != "TBOUND_RUNTIME=offline" {
+	if !equalStrings(request.Env, expectedEnvironment) {
 		t.Fatalf("launcher did not receive the immutable exact environment: %#v", request.Env)
 	}
 }
@@ -247,7 +271,9 @@ func TestBoundChildIgnoresPostBindAuthorityFieldSwaps(t *testing.T) {
 		t.Fatalf("trusted post-bind settlement was not retained: settlement=%+v err=%v", settlement, err)
 	}
 	request := launcher.Request()
-	if request.Path != profile.ChildExecutable || request.Digest != profile.ExecutableDigest || request.Env == nil || len(request.Env) != 0 ||
+	expectedEnvironment := productionPiCLIEnvironment()
+	if request.Path != profile.ChildExecutable || request.Digest != profile.ExecutableDigest || request.Env == nil ||
+		!equalStrings(request.Env, expectedEnvironment) ||
 		!equalStrings(request.Args, expectedArguments) || request.Dir != profile.WorkingDirectory ||
 		!sameBinding(request.WorkerExposureHandle, testWorkingDirectoryHandle) || !sameBinding(request.Stdin, spec.Stdin) {
 		t.Fatalf("post-bind mutation changed trusted launch request: %+v", request)
@@ -741,17 +767,27 @@ func TestSilentWorkerModeDiscardsStdoutAndStderr(t *testing.T) {
 }
 
 func testHostProfile() (HostProfile, HostAttestation) {
+	childExecutable := PiCLIProductionExecutable
+	runtimeBundleRoot := PiCLIProductionRuntimeBundleRoot
+	if runtime.GOOS != "linux" {
+		// These common tests run on Windows too; the production verifier and
+		// signed Linux CLI profile checks are Linux-only.
+		childExecutable = testExecutablePath()
+		runtimeBundleRoot = testRuntimeBundleRoot
+	}
 	profile := HostProfile{
 		ID: "profile-v1", Digest: DigestBytes([]byte("profile-v1")), Mode: ModeProduction,
-		ChildExecutable: testExecutablePath(), NodeVersion: "v24.15.0", ChildEnvironment: "env-v1", ChildEnvironmentDigest: DigestEnvironment(nil),
-		ChildArgumentsProfile: "args-v1", ChildArgumentsDigest: DigestArguments([]string{"--native-tbound-host"}),
+		ChildExecutable: childExecutable, NodeVersion: PiCLIProductionNodeVersion,
+		ChildEnvironment: PiCLIProductionEnvironmentProfile, ChildEnvironmentDigest: DigestEnvironment(productionPiCLIEnvironment()),
+		ChildArgumentsProfile: PiCLIProductionArgumentsProfile, ChildArgumentsDigest: DigestArguments(productionPiCLIArguments()),
 		WorkingDirectory: os.TempDir(), WorkingDirectoryDigest: DigestBytes([]byte(os.TempDir())),
-		StdinProfile: "terminal-input-v1", StdinDigest: DigestBytes([]byte("terminal-input-v1")),
-		IPCProfile: "ipc-v1", TerminalProfile: "terminal-v1", ContainmentProfile: "containment-v1",
+		StdinProfile: PiCLIProductionStdinProfile, StdinDigest: DigestBytes([]byte(PiCLIProductionStdinProfile)),
+		StdoutProfile: PiCLIProductionStdoutProfile, StdoutProfileDigest: DigestBytes([]byte(PiCLIProductionStdoutProfile)),
+		IPCProfile: PiCLIProductionIPCProfile, TerminalProfile: PiCLIProductionTerminalProfile, ContainmentProfile: "containment-v1",
 		CgroupRootDigest:  DigestBytes([]byte("test cgroup root identity")),
 		SettlementProfile: "settlement-v1", ObservationProfile: "observation-v1", SourceProvenance: "source-v1",
 		DescriptorProfile:   PiWorkerDescriptorProfile,
-		PiRuntimeBundleRoot: testRuntimeBundleRoot, PiRuntimeBundleDigest: DigestBytes([]byte("test runtime bundle")),
+		PiRuntimeBundleRoot: runtimeBundleRoot, PiRuntimeBundleDigest: DigestBytes([]byte("test runtime bundle")),
 		OfflineVerifier: "verifier-v1", ProviderProfile: "provider-v1",
 	}
 	profile.ExecutableDigest = DigestBytes([]byte("pi"))
@@ -768,6 +804,7 @@ func testHostProfile() (HostProfile, HostAttestation) {
 		HostID: "host-v1", ProfileID: profile.ID, ProfileDigest: profile.Digest,
 		ExecutableDigest: profile.ExecutableDigest, NodeVersion: profile.NodeVersion, ChildArgumentsDigest: profile.ChildArgumentsDigest,
 		WorkingDirectoryDigest: profile.WorkingDirectoryDigest, StdinDigest: profile.StdinDigest,
+		StdoutDigest:           profile.StdoutProfileDigest,
 		ChildEnvironmentDigest: profile.ChildEnvironmentDigest,
 		IPCProfileDigest:       profile.IPCProfileDigest, TerminalDigest: profile.TerminalProfileDigest,
 		ContainmentDigest: profile.ContainmentProfileDigest, SettlementDigest: profile.SettlementProfileDigest,
@@ -798,7 +835,6 @@ func (a staticHostAttestor) BindRuntime(context.Context, HostProfile) (HostRunti
 func (staticHostAttestor) trustedHostProfileVerifier() {}
 
 func testRuntimeBindings(profile HostProfile, launcher ExecutableLauncher) HostRuntimeBindings {
-	arguments := []string{"--native-tbound-host"}
 	return HostRuntimeBindings{
 		ChildExecutable: profile.ChildExecutable, NodeVersion: profile.NodeVersion, ChildArgumentsProfile: profile.ChildArgumentsProfile,
 		WorkingDirectory: profile.WorkingDirectory, WorkerExposureHandle: testWorkingDirectoryHandle,
@@ -808,9 +844,9 @@ func testRuntimeBindings(profile HostProfile, launcher ExecutableLauncher) HostR
 		PiRuntimeBundleDigest: profile.PiRuntimeBundleDigest,
 		WorkerRuntimeAssets:   testWorkerRuntimeAssets{file: testRuntimeBundleHandle, evidence: testWorkerRuntimeEvidence(profile)},
 		RuntimeAssetEvidence:  testWorkerRuntimeEvidence(profile),
-		StdinProfile:          profile.StdinProfile,
-		Arguments:             arguments, Stdin: bytes.NewReader(nil), ChildEnvironment: profile.ChildEnvironment,
-		Environment: []string{},
+		StdinProfile:          profile.StdinProfile, StdoutProfile: profile.StdoutProfile,
+		Arguments: productionPiCLIArguments(), Stdin: bytes.NewReader(nil), ChildEnvironment: profile.ChildEnvironment,
+		Environment: productionPiCLIEnvironment(),
 		IPCProfile:  profile.IPCProfile, TerminalProfile: profile.TerminalProfile,
 		ContainmentProfile: profile.ContainmentProfile, SettlementProfile: profile.SettlementProfile,
 		ObservationProfile: profile.ObservationProfile, SourceProvenance: profile.SourceProvenance,

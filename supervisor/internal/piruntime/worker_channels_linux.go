@@ -5,7 +5,9 @@ package piruntime
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,10 +26,11 @@ import (
 
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/ipc"
+	"tbound/supervisor/internal/piinstall"
 )
 
 const (
-	PiWorkerSchemaVersion    = "governed-pi-sdk-worker/v1"
+	PiWorkerSchemaVersion    = "governed-pi-cli/v1"
 	PiWorkerModelID          = "nvidia/nemotron-3.5-lightning:free"
 	PiWorkerProviderID       = "tbound-go-broker"
 	PiWorkerMaxFrameBytes    = 1 << 20
@@ -99,6 +102,7 @@ type PiWorkerChannels struct {
 	bootstrapWriter  *os.File
 	childControl     *os.File
 	controlWriter    net.Conn
+	controlInput     *closeOnceWriter
 	childIPC         *os.File
 	ipcServer        *ipc.Server
 	childProvider    *os.File
@@ -110,10 +114,13 @@ type PiWorkerChannels struct {
 	assetEvidence    WorkerRuntimeAssetEvidence
 	ownedSourceFDs   bool
 
-	bindingToken string
-	controlSeq   uint64
-	closed       bool
-	childClosed  bool
+	bindingToken  string
+	controlSeq    uint64
+	closed        bool
+	childClosed   bool
+	childCloseErr error
+	closeDone     chan struct{}
+	closeErr      error
 
 	events        chan PiWorkerEvent
 	eventsDone    chan struct{}
@@ -122,6 +129,33 @@ type PiWorkerChannels struct {
 	eventsDropped uint64
 	eventsBytes   uint64
 	gapReturned   bool
+}
+
+// closeOnceWriter is the shared close owner for the RPC client and channels.
+// Closing the underlying connection interrupts concurrent blocked writes.
+type closeOnceWriter struct {
+	writer io.Writer
+	closer io.Closer
+	once   sync.Once
+	err    error
+}
+
+func (w *closeOnceWriter) Write(p []byte) (int, error) {
+	return w.writer.Write(p)
+}
+
+func (w *closeOnceWriter) Close() error {
+	if w == nil {
+		return nil
+	}
+	w.once.Do(func() {
+		if w.closer == nil {
+			w.err = errors.New("Pi worker control input does not support close")
+			return
+		}
+		w.err = w.closer.Close()
+	})
+	return w.err
 }
 
 type piWorkerBootstrapWire struct {
@@ -215,39 +249,33 @@ func newPiWorkerChannels(workerExposure, runtimeAssets *os.File) (*PiWorkerChann
 		events:           make(chan PiWorkerEvent, PiWorkerEventQueue),
 		eventsDone:       make(chan struct{}),
 	}
-	cleanup := func() { _ = c.Close() }
+	cleanup := func(cause error) error { return errors.Join(cause, c.Close()) }
 	if c.childBootstrap, c.bootstrapWriter, err = os.Pipe(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("create Pi bootstrap pipe: %w", err)
+		return nil, cleanup(fmt.Errorf("create Pi bootstrap pipe: %w", err))
 	}
 	controlParent, controlChild, err := newPiWorkerSocketPair("pi-worker-control")
 	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("create Pi control socketpair: %w", err)
+		return nil, cleanup(fmt.Errorf("create Pi control socketpair: %w", err))
 	}
 	c.controlWriter, c.childControl = controlParent, controlChild
+	c.controlInput = &closeOnceWriter{writer: controlParent, closer: controlParent}
 	ipcParent, ipcChild, err := newPiWorkerSocketPair("pi-worker-ipc")
 	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("create Pi proposal IPC socketpair: %w", err)
+		return nil, cleanup(fmt.Errorf("create Pi proposal IPC socketpair: %w", err))
 	}
 	c.childIPC = ipcChild
 	c.ipcServer, err = ipc.NewServer(ipcParent, token)
 	if err != nil {
-		_ = ipcParent.Close()
-		cleanup()
-		return nil, fmt.Errorf("initialize Pi proposal IPC server: %w", err)
+		return nil, cleanup(errors.Join(fmt.Errorf("initialize Pi proposal IPC server: %w", err), ipcParent.Close()))
 	}
 	providerParent, providerChild, err := newPiWorkerSocketPair("pi-worker-provider")
 	if err != nil {
-		cleanup()
-		return nil, fmt.Errorf("create Go provider bridge socketpair: %w", err)
+		return nil, cleanup(fmt.Errorf("create Go provider bridge socketpair: %w", err))
 	}
 	c.childProvider = providerChild
 	c.providerChannel = providerParent
 	if c.eventReader, c.childEvents, err = os.Pipe(); err != nil {
-		cleanup()
-		return nil, fmt.Errorf("create Pi worker event pipe: %w", err)
+		return nil, cleanup(fmt.Errorf("create Pi worker event pipe: %w", err))
 	}
 	go c.readEvents()
 	return c, nil
@@ -320,6 +348,13 @@ func (c *PiWorkerChannels) ProviderChannel() io.ReadWriteCloser {
 		return nil
 	}
 	return c.providerChannel
+}
+
+func (c *PiWorkerChannels) RPCWriter() io.Writer {
+	if c == nil {
+		return nil
+	}
+	return c.controlInput
 }
 
 func (c *PiWorkerChannels) BindingToken() string {
@@ -467,20 +502,26 @@ func (c *PiWorkerChannels) sendControl(ctx context.Context, frame PiWorkerContro
 	defer stopCancellation()
 	defer writer.SetWriteDeadline(time.Time{})
 	if err := writePiAll(writer, prefix[:]); err != nil {
-		_ = writer.Close()
+		var closeErr error
+		if c.controlInput != nil {
+			closeErr = c.controlInput.Close()
+		}
 		c.controlWriter = nil
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return errors.Join(ctx.Err(), err, closeErr)
 		}
-		return err
+		return errors.Join(err, closeErr)
 	}
 	if err := writePiAll(writer, encoded); err != nil {
-		_ = writer.Close()
+		var closeErr error
+		if c.controlInput != nil {
+			closeErr = c.controlInput.Close()
+		}
 		c.controlWriter = nil
 		if ctx.Err() != nil {
-			return ctx.Err()
+			return errors.Join(ctx.Err(), err, closeErr)
 		}
-		return err
+		return errors.Join(err, closeErr)
 	}
 	c.controlSeq++
 	return nil
@@ -752,7 +793,7 @@ func (c *PiWorkerChannels) CloseChildEnds() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.childClosed {
-		return nil
+		return c.childCloseErr
 	}
 	c.childClosed = true
 	var joined error
@@ -772,27 +813,43 @@ func (c *PiWorkerChannels) CloseChildEnds() error {
 		joined = errors.Join(joined, c.childControl.Close())
 		c.childControl = nil
 	}
-	return joined
+	c.childCloseErr = joined
+	return c.childCloseErr
 }
 
 func (c *PiWorkerChannels) Close() error {
 	if c == nil {
 		return nil
 	}
+
+	// Do this before taking c.mu: sendControl holds that mutex during Write,
+	// and closing the endpoint is what interrupts a blocked write.
+	var inputCloseErr error
+	if c.controlInput != nil {
+		inputCloseErr = c.controlInput.Close()
+	}
+
 	c.mu.Lock()
 	if c.closed {
+		done := c.closeDone
 		c.mu.Unlock()
-		return nil
+		if done != nil {
+			<-done
+		}
+		c.mu.Lock()
+		err := c.closeErr
+		c.mu.Unlock()
+		return err
 	}
 	c.closed = true
+	done := make(chan struct{})
+	c.closeDone = done
 	c.mu.Unlock()
+
 	var joined error
-	joined = errors.Join(joined, c.CloseChildEnds())
+	joined = errors.Join(joined, inputCloseErr, c.CloseChildEnds())
 	if c.bootstrapWriter != nil {
 		joined = errors.Join(joined, c.bootstrapWriter.Close())
-	}
-	if c.controlWriter != nil {
-		joined = errors.Join(joined, c.controlWriter.Close())
 	}
 	if c.ipcServer != nil {
 		joined = errors.Join(joined, c.ipcServer.Close())
@@ -803,7 +860,18 @@ func (c *PiWorkerChannels) Close() error {
 	if c.eventReader != nil {
 		joined = errors.Join(joined, c.eventReader.Close())
 	}
+	c.mu.Lock()
+	c.closeErr = joined
+	close(done)
+	c.mu.Unlock()
 	return joined
+}
+
+func closePiWorkerChildEndsForReadiness(channels *PiWorkerChannels) error {
+	if err := channels.CloseChildEnds(); err != nil {
+		return fmt.Errorf("close Pi worker child descriptor ends before readiness: %w", err)
+	}
+	return nil
 }
 
 func workerValidIdentity(value string, maxBytes int) bool {
@@ -864,25 +932,30 @@ func validateMinimalWorkerEnvironment(environment []string) error {
 	return nil
 }
 
-type PiSDKWorker struct {
+type PiCLIWorker struct {
 	Session     *Session
 	Channels    *PiWorkerChannels
 	development bool
+	rpc         *PiRPCClient
 
 	// launchProof is the captured, validated per-launch D09 TCB proof, bound to
 	// this worker's exact process. It is nil for development workers.
 	launchProof any
 
-	mu          sync.Mutex
-	leases      map[string]*workerPromptLease
-	closed      bool
-	events      chan PiWorkerEvent
-	readerDone  chan struct{}
-	eventsErr   error
-	eventsDrop  uint64
-	eventsBytes uint64
-	gapReturned bool
+	mu                sync.Mutex
+	leases            map[string]*workerPromptLease
+	closed            bool
+	events            chan PiWorkerEvent
+	readerDone        chan struct{}
+	rpcReader         io.Reader
+	eventsErr         error
+	eventsErrReturned bool
+	eventsDrop        uint64
+	eventsBytes       uint64
+	gapReturned       bool
 }
+
+type PiSDKWorker = PiCLIWorker
 
 type workerPromptLease struct {
 	lease *Lease
@@ -891,7 +964,7 @@ type workerPromptLease struct {
 
 // Admission returns the session's close-and-drain gate. Effect supervisors
 // should acquire a lease before executing a proposal and release it on result.
-func (w *PiSDKWorker) Admission() *Admission {
+func (w *PiCLIWorker) Admission() *Admission {
 	if w == nil || w.Session == nil {
 		return nil
 	}
@@ -900,7 +973,7 @@ func (w *PiSDKWorker) Admission() *Admission {
 
 // PID is the actual direct Node worker pid; it is diagnostic/process-scope
 // binding only and does not establish descendant settlement.
-func (w *PiSDKWorker) PID() int {
+func (w *PiCLIWorker) PID() int {
 	if w == nil || w.Session == nil || w.Session.child == nil {
 		return 0
 	}
@@ -911,7 +984,7 @@ func (w *PiSDKWorker) PID() int {
 // exact launch, bound to the launched command identity. Production callers MUST
 // journal it before releasing any prompt or effect; a missing proof returns
 // false and no prompt may be released. Development workers always return false.
-func (w *PiSDKWorker) D09LaunchProof() (D09TCBProof, bool) {
+func (w *PiCLIWorker) D09LaunchProof() (D09TCBProof, bool) {
 	if w == nil || w.launchProof == nil {
 		return D09TCBProof{}, false
 	}
@@ -931,141 +1004,72 @@ func (w *PiSDKWorker) D09LaunchProof() (D09TCBProof, bool) {
 	return proof, true
 }
 
-func LaunchPiSDKWorker(ctx context.Context, capability *AdmissionCapability, exposure VerifiedWorkerExposure, assets VerifiedWorkerRuntimeAssets, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiSDKWorker, error) {
-	if ctx == nil || capability == nil || !capability.valid() || capability.profile.Mode != ModeProduction || channels == nil {
-		return nil, ErrChildCapabilityMissing
-	}
-	if capability.profile.ContainmentProfile == D09ContainmentProfile || capability.runtime.D09Source != nil {
-		return nil, fmt.Errorf("%w: D09 production requires LaunchD09PiSDKWorker and its source-stage capability", ErrHostBindingsMissing)
-	}
-	if isNilBinding(exposure) || isNilBinding(assets) ||
-		!sameBinding(exposure, capability.runtime.WorkerExposure) || !sameBinding(assets, capability.runtime.WorkerRuntimeAssets) ||
-		!sameBinding(exposure, channels.workerExposure) || !sameBinding(assets, channels.workerAssets) {
-		return nil, errors.New("production Pi worker requires the capability-bound sealed workspace and runtime-asset views")
-	}
-	if err := exposure.VerifyWorkerExposure(ctx, capability.runtime.WorkerExposureEvidence); err != nil {
-		return nil, fmt.Errorf("reverify sealed worker exposure and D06 provenance: %w", err)
-	}
-	if err := assets.VerifyWorkerRuntimeAssets(ctx, capability.runtime.RuntimeAssetEvidence); err != nil {
-		return nil, fmt.Errorf("reverify worker runtime-asset exposure: %w", err)
-	}
-	if err := validateWorkerExposureDescriptor(channels.workingDirectory, capability.runtime.WorkerExposureEvidence); err != nil {
-		return nil, err
-	}
-	if err := validateRuntimeAssetDescriptor(channels.runtimeBundle, capability.runtime.RuntimeAssetEvidence); err != nil {
-		return nil, err
-	}
-	bootstrap.SourceBindingDigest = capability.runtime.WorkerExposureEvidence.BindingDigest
-	bootstrap.SourceProvenanceDigest = capability.runtime.WorkerExposureEvidence.ProvenanceDigest
-	bootstrap.SourceGenerationID = capability.runtime.WorkerExposureEvidence.GenerationID
-	bootstrap.SourceTreeDigest = capability.runtime.WorkerExposureEvidence.TreeDigest
-	bootstrap.SourceManifestDigest = capability.runtime.WorkerExposureEvidence.ManifestDigest
-	bootstrap.WorkerViewIdentity = capability.runtime.WorkerExposureEvidence.ViewIdentity
-	bootstrap.WorkerMountID = capability.runtime.WorkerExposureEvidence.MountID
-	if !sameInheritedDescriptors(channels.DescriptorBindings(), capability.runtime.Descriptors) ||
-		channels.ChildStdin() != capability.runtime.Stdin || capability.runtime.DescriptorProfile != PiWorkerDescriptorProfile ||
-		!sameBinding(channels.workingDirectory, capability.runtime.WorkerExposureHandle) ||
-		!sameBinding(channels.runtimeBundle, capability.runtime.PiRuntimeBundleHandle) {
-		return nil, ErrHostBindingsMissing
-	}
-	if _, directHostExec := capability.runtime.Launcher.(*LinuxExecutableLauncher); directHostExec {
-		return nil, ErrProductionLauncherUnavailable
-	}
-	return launchPiSDKWorker(ctx, capability.profile, capability.runtime, capability, channels, bootstrap, false, "", "")
+func LaunchPiCLIWorker(ctx context.Context, capability *AdmissionCapability, exposure VerifiedWorkerExposure, assets VerifiedWorkerRuntimeAssets, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error) {
+	return nil, errors.New("production Pi launch refused: admitted profiles must attest the official Pi CLI executable, RPC arguments, extension and transitive closure")
+
 }
 
-// LaunchD09PiSDKWorker launches from a source-stage binding. The Store-issued
+// LaunchPiSDKWorker preserves the old source-level entrypoint as a fail-closed
+// alias while callers migrate to LaunchPiCLIWorker.
+func LaunchPiSDKWorker(ctx context.Context, capability *AdmissionCapability, exposure VerifiedWorkerExposure, assets VerifiedWorkerRuntimeAssets, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error) {
+	return LaunchPiCLIWorker(ctx, capability, exposure, assets, channels, bootstrap)
+}
+
+// LaunchD09PiCLIWorker launches from a source-stage binding. The Store-issued
 // capability and source evidence are revalidated without treating the host O_PATH
 // descriptor as a consumer view; StartVerified returns only after the trusted
 // entrypoint has proved the distinct read-only consumer mount and replaced the
 // raw source FD. Bootstrap/readiness is released only after that proof exists.
+func LaunchD09PiCLIWorker(ctx context.Context, capability *AdmissionCapability,
+	channels *D09PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error) {
+	return nil, errors.New("D09 Pi launch refused: current signed profile does not attest the official Pi CLI executable, RPC arguments, extension and transitive closure")
+
+}
+
+// LaunchD09PiSDKWorker preserves the previous API as a fail-closed alias.
 func LaunchD09PiSDKWorker(ctx context.Context, capability *AdmissionCapability,
-	channels *D09PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiSDKWorker, error) {
-	if ctx == nil || capability == nil || !capability.valid() || capability.profile.Mode != ModeProduction ||
-		capability.profile.ContainmentProfile != D09ContainmentProfile ||
-		channels == nil || channels.channels == nil || capability.runtime.D09Source == nil ||
-		channels.sourceCapability == nil || channels.sourceCapability != capability.runtime.D09SourceCapability ||
-		!sameBinding(channels.source, capability.runtime.D09Source) ||
-		!sameBinding(channels.assets, capability.runtime.D09RuntimeAssetSource) ||
-		!sameBinding(channels.channels.workingDirectory, capability.runtime.D09SourceHandle) ||
-		!sameD09SourceEvidence(capability.runtime.D09SourceEvidence, channels.sourceEvidence) ||
-		!sameBinding(channels.channels.runtimeBundle, capability.runtime.PiRuntimeBundleHandle) {
-		return nil, ErrHostBindingsMissing
-	}
-	if err := verifyD09HostRuntimeSources(ctx, capability.runtime); err != nil {
-		return nil, err
-	}
-	bootstrap.SourceBindingDigest = channels.sourceEvidence.SourceBindingDigest
-	bootstrap.SourceProvenanceDigest = channels.sourceEvidence.ProvenanceDigest
-	bootstrap.SourceGenerationID = channels.sourceEvidence.GenerationID
-	bootstrap.SourceTreeDigest = channels.sourceEvidence.TreeDigest
-	bootstrap.SourceManifestDigest = channels.sourceEvidence.ManifestDigest
-	// These identify source provenance only. Consumer identity/mount are filled
-	// from the captured entrypoint proof after StartChild has returned.
-	bootstrap.WorkerViewIdentity = ""
-	bootstrap.WorkerMountID = 0
-	return launchPiSDKWorker(ctx, capability.profile, capability.runtime, capability,
-		channels.channels, bootstrap, false, "", "")
+	channels *D09PiWorkerChannels, bootstrap PiWorkerBootstrap) (*PiCLIWorker, error) {
+	return LaunchD09PiCLIWorker(ctx, capability, channels, bootstrap)
 }
 
-type DeveloperPiWorkerPlan struct {
-	NodePath       string
-	NodeVersion    string
-	BundleRoot     string
-	DependencyRoot string
-	BundleDigest   string
-	BundleHandle   *os.File
-	WorkerPath     string
-	WorkingDir     string
-	WorkingHandle  *os.File
-	Home           string
-	TempDir        string
-	SessionID      string
-	WorkflowID     string
-	ConversationID string
+// DeveloperPiCLIPlan describes a real official Pi CLI subprocess and an
+// isolated extension source snapshot. No adapter node_modules are accepted.
+type DeveloperPiCLIPlan struct {
+	PiPath, PiSHA256, NodePath, NodeVersion string
+	BundleRoot, BundleDigest, ExtensionPath string
+	BundleHandle, WorkingHandle             *os.File
+	WorkingDir, Home, TempDir               string
+	SessionID, WorkflowID, ConversationID   string
 }
 
-// StartDevelopmentPiSDKWorker runs the actual Pi SDK and inherited Go/Node
-// channels with the explicit direct Linux Node binary and existing dependency
-// assets. It bypasses production admission, has no containment claim, and its
-// settler always reports UNKNOWN after direct-child exit.
-func StartDevelopmentPiSDKWorker(ctx context.Context, plan DeveloperPiWorkerPlan) (*PiSDKWorker, error) {
-	if ctx == nil || !filepath.IsAbs(plan.NodePath) || !filepath.IsAbs(plan.BundleRoot) || !filepath.IsAbs(plan.DependencyRoot) ||
-		!filepath.IsAbs(plan.WorkerPath) || !filepath.IsAbs(plan.WorkingDir) ||
+func StartDevelopmentPiCLIWorker(ctx context.Context, plan DeveloperPiCLIPlan) (*PiCLIWorker, error) {
+	if ctx == nil || !filepath.IsAbs(plan.PiPath) || !validDigest(plan.PiSHA256) || !filepath.IsAbs(plan.NodePath) ||
+		!filepath.IsAbs(plan.BundleRoot) || !filepath.IsAbs(plan.ExtensionPath) || !filepath.IsAbs(plan.WorkingDir) ||
 		!filepath.IsAbs(plan.Home) || !filepath.IsAbs(plan.TempDir) || plan.BundleHandle == nil || plan.WorkingHandle == nil {
-		return nil, errors.New("developer Pi worker requires explicit absolute Node/source/HOME/CWD paths and held directory handles")
+		return nil, errors.New("Pi CLI fixture requires explicit executable, extension, private directory paths, and held handles")
 	}
-	if filepath.Clean(plan.WorkerPath) != filepath.Join(filepath.Clean(plan.BundleRoot), "src", "governed-pi-worker.ts") ||
-		plan.NodeVersion == "" || !validIdentity(plan.SessionID) || !validIdentity(plan.WorkflowID) || !validIdentity(plan.ConversationID) {
-		return nil, errors.New("developer Pi worker plan is incomplete")
+	if plan.ExtensionPath != filepath.Join(plan.BundleRoot, "src", "tbound-cli-extension.ts") ||
+		!validIdentity(plan.NodeVersion) || !validIdentity(plan.SessionID) || !validIdentity(plan.WorkflowID) || !validIdentity(plan.ConversationID) {
+		return nil, errors.New("Pi CLI fixture plan is incomplete")
 	}
-	if err := validateMinimalWorkerEnvironment(minimalWorkerEnvironment(plan.Home, plan.TempDir)); err != nil {
+	if err := validatePiCLIEnvironment(piCLIEnvironment(plan)); err != nil {
 		return nil, err
 	}
 	channels, err := newPiWorkerChannels(plan.WorkingHandle, plan.BundleHandle)
 	if err != nil {
 		return nil, err
 	}
-	bundleDigest, err := DigestDeveloperPiSDKBundle(plan.BundleHandle, plan.DependencyRoot)
+	bundleDigest, err := DigestDeveloperPiCLIBundle(plan.BundleHandle)
 	if err != nil {
 		_ = channels.Close()
 		return nil, err
 	}
 	if plan.BundleDigest != "" && plan.BundleDigest != bundleDigest {
 		_ = channels.Close()
-		return nil, errors.New("developer Pi bundle digest differs from explicit plan")
+		return nil, errors.New("Pi CLI extension bundle digest differs from explicit plan")
 	}
-	nodeDigest, err := digestLinuxExecutable(plan.NodePath)
-	if err != nil {
-		_ = channels.Close()
-		return nil, err
-	}
-	profile := developmentPiWorkerProfile(plan, nodeDigest, bundleDigest)
-	bootstrap := PiWorkerBootstrap{
-		SessionID:      plan.SessionID,
-		WorkflowID:     plan.WorkflowID,
-		ConversationID: plan.ConversationID,
-	}
+	profile := developmentPiCLIProfile(plan, bundleDigest, channels)
+	bootstrap := PiWorkerBootstrap{SessionID: plan.SessionID, WorkflowID: plan.WorkflowID, ConversationID: plan.ConversationID}
 	sourceEvidence, err := developmentWorkerSourceEvidence(plan.WorkingHandle)
 	if err != nil {
 		_ = channels.Close()
@@ -1078,97 +1082,186 @@ func StartDevelopmentPiSDKWorker(ctx context.Context, plan DeveloperPiWorkerPlan
 	bootstrap.SourceManifestDigest = sourceEvidence.SourceManifestDigest
 	bootstrap.WorkerViewIdentity = sourceEvidence.WorkerViewIdentity
 	bootstrap.WorkerMountID = sourceEvidence.WorkerMountID
-	runtime := developmentPiWorkerBindings(profile, plan, channels)
-	return launchPiSDKWorker(ctx, profile, runtime, nil, channels, bootstrap, true, plan.NodePath, plan.DependencyRoot)
+	runtime := developmentPiCLIWorkerBindings(profile, plan, channels)
+	return launchPiCLIWorkerCore(ctx, profile, runtime, channels, bootstrap, plan)
 }
 
-func developmentPiWorkerProfile(plan DeveloperPiWorkerPlan, nodeDigest, bundleDigest string) HostProfile {
-	environment := minimalWorkerEnvironment(plan.Home, plan.TempDir)
+func developmentPiCLIProfile(plan DeveloperPiCLIPlan, bundleDigest string, channels *PiWorkerChannels) HostProfile {
+	env := piCLIEnvironment(plan)
+	args, _ := piinstall.GovernedRPCArgs("/proc/self/fd/9/src/tbound-cli-extension.ts")
 	profile := HostProfile{
-		ID: "developer-uncontained-nonclaiming", Digest: DigestBytes([]byte("developer-uncontained-nonclaiming")),
-		Mode: ModeFixture, ChildExecutable: plan.NodePath, ExecutableDigest: nodeDigest, NodeVersion: plan.NodeVersion,
-		ChildArgumentsProfile: "developer-governed-pi-sdk-worker-v1",
-		ChildArgumentsDigest:  DigestArguments([]string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"}),
-		WorkingDirectory:      plan.WorkingDir, WorkingDirectoryDigest: DigestBytes([]byte(plan.WorkingDir)),
-		StdinProfile: "governed-session-control/fd0/v1", StdinDigest: DigestBytes([]byte("governed-session-control/fd0/v1")),
-		ChildEnvironment: "developer-minimal-offline/v1", ChildEnvironmentDigest: DigestEnvironment(environment),
+		ID: developerPiCLIProfileID, Digest: DigestBytes([]byte(developerPiCLIProfileID)),
+		Mode: ModeFixture, ChildExecutable: plan.PiPath, ExecutableDigest: plan.PiSHA256, NodeVersion: plan.NodeVersion,
+		ChildArgumentsProfile: developerPiCLIArgumentsProfile, ChildArgumentsDigest: DigestArguments(args),
+		WorkingDirectory: plan.WorkingDir, WorkingDirectoryDigest: DigestBytes([]byte(plan.WorkingDir)),
+		StdinProfile: "pi-rpc-jsonl-stdin/v0.87.1", StdinDigest: DigestBytes([]byte("pi-rpc-jsonl-stdin/v0.87.1")),
+		ChildEnvironment: developerPiCLIEnvironmentProfile, ChildEnvironmentDigest: DigestEnvironment(env),
 		IPCProfile: "tbound-ipc/v1/fd6", IPCProfileDigest: DigestBytes([]byte("tbound-ipc/v1/fd6")),
-		TerminalProfile: "sdk-worker-no-terminal/v1", TerminalProfileDigest: DigestBytes([]byte("sdk-worker-no-terminal/v1")),
-		ContainmentProfile: "developer-uncontained", ContainmentProfileDigest: DigestBytes([]byte("developer-uncontained")),
-		SettlementProfile: "direct-child-only-unknown", SettlementProfileDigest: DigestBytes([]byte("direct-child-only-unknown")),
-		ObservationProfile: "worker-events/fd8/v1", ObservationProfileDigest: DigestBytes([]byte("worker-events/fd8/v1")),
+		TerminalProfile: "pi-rpc-no-terminal/v1", TerminalProfileDigest: DigestBytes([]byte("pi-rpc-no-terminal/v1")),
+		ContainmentProfile: developerPiCLIContainmentProfile, ContainmentProfileDigest: DigestBytes([]byte(developerPiCLIContainmentProfile)),
+		SettlementProfile: developerPiCLISettlementProfile, SettlementProfileDigest: DigestBytes([]byte(developerPiCLISettlementProfile)),
+		ObservationProfile: developerPiCLIObservationProfile, ObservationProfileDigest: DigestBytes([]byte(developerPiCLIObservationProfile)),
 		DescriptorProfile: PiWorkerDescriptorProfile, DescriptorProfileDigest: DigestBytes([]byte(PiWorkerDescriptorProfile)),
 		PiRuntimeBundleRoot: plan.BundleRoot, PiRuntimeBundleDigest: bundleDigest,
-		SourceProvenance: "DEVELOPMENT/UNKNOWN", SourceProvenanceDigest: DigestBytes([]byte("DEVELOPMENT/UNKNOWN")),
-		OfflineVerifier: "none-developer-only", OfflineVerifierDigest: DigestBytes([]byte("none-developer-only")),
-		ProviderProfile: "go-providerbridge-synthetic-peer-nonclaiming", ProviderProfileDigest: DigestBytes([]byte("go-providerbridge-synthetic-peer-nonclaiming")),
+		SourceProvenance: developerPiCLISourceProvenance, SourceProvenanceDigest: DigestBytes([]byte(developerPiCLISourceProvenance)),
+		OfflineVerifier: developerPiCLIOfflineVerifier, OfflineVerifierDigest: DigestBytes([]byte(developerPiCLIOfflineVerifier)),
+		ProviderProfile: developerPiCLIProviderProfile, ProviderProfileDigest: DigestBytes([]byte(developerPiCLIProviderProfile)),
 	}
+	_ = channels
 	return profile
 }
 
-func developmentPiWorkerBindings(profile HostProfile, plan DeveloperPiWorkerPlan, channels *PiWorkerChannels) HostRuntimeBindings {
-	return HostRuntimeBindings{
-		ChildExecutable: profile.ChildExecutable, NodeVersion: profile.NodeVersion,
-		ChildArgumentsProfile: profile.ChildArgumentsProfile,
-		WorkingDirectory:      profile.WorkingDirectory, WorkerExposureHandle: plan.WorkingHandle,
-		PiRuntimeBundleRoot: profile.PiRuntimeBundleRoot, PiRuntimeBundleDigest: profile.PiRuntimeBundleDigest,
-		PiRuntimeBundleHandle: plan.BundleHandle, StdinProfile: profile.StdinProfile,
-		ChildEnvironment: profile.ChildEnvironment, IPCProfile: profile.IPCProfile,
+func developmentPiCLIWorkerBindings(profile HostProfile, plan DeveloperPiCLIPlan, channels *PiWorkerChannels) HostRuntimeBindings {
+	args, _ := piinstall.GovernedRPCArgs("/proc/self/fd/9/src/tbound-cli-extension.ts")
+	return HostRuntimeBindings{ChildExecutable: profile.ChildExecutable, NodeVersion: profile.NodeVersion,
+		ChildArgumentsProfile: profile.ChildArgumentsProfile, WorkingDirectory: profile.WorkingDirectory,
+		WorkerExposureHandle: plan.WorkingHandle, PiRuntimeBundleRoot: profile.PiRuntimeBundleRoot,
+		PiRuntimeBundleDigest: profile.PiRuntimeBundleDigest, PiRuntimeBundleHandle: plan.BundleHandle,
+		StdinProfile: profile.StdinProfile, ChildEnvironment: profile.ChildEnvironment, IPCProfile: profile.IPCProfile,
 		TerminalProfile: profile.TerminalProfile, ContainmentProfile: profile.ContainmentProfile,
 		SettlementProfile: profile.SettlementProfile, ObservationProfile: profile.ObservationProfile,
 		DescriptorProfile: profile.DescriptorProfile, SourceProvenance: profile.SourceProvenance,
 		OfflineVerifier: profile.OfflineVerifier, ProviderProfile: profile.ProviderProfile,
-		Arguments:   []string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"},
-		Environment: minimalWorkerEnvironment(plan.Home, plan.TempDir), Stdin: channels.ChildStdin(),
-		Terminal: io.Discard, Observation: discardObservationSink{}, Descriptors: channels.DescriptorBindings(),
-	}
+		Arguments: args, Environment: piCLIEnvironment(plan), Stdin: channels.ChildStdin(), Terminal: io.Discard,
+		Observation: discardObservationSink{}, Descriptors: channels.DescriptorBindings()}
 }
 
-func developmentPiWorkerRuntimeLauncher(ctx context.Context, nodePath, dependencyRoot string, profile HostProfile, runtime HostRuntimeBindings) (*Process, error) {
-	if ctx == nil || !filepath.IsAbs(nodePath) || nodePath != runtime.ChildExecutable {
-		return nil, errors.New("developer Node path differs from explicit worker plan")
+func piCLIEnvironment(plan DeveloperPiCLIPlan) []string {
+	return []string{"HOME=" + plan.Home, "TMPDIR=" + plan.TempDir, "LANG=C.UTF-8", "PI_OFFLINE=1",
+		"PATH=" + filepath.Dir(plan.NodePath), "TBOUND_PI_CLI_ENTRY=" + plan.PiPath}
+}
+
+func validatePiCLIEnvironment(environment []string) error {
+	values := make(map[string]string, len(environment))
+	for _, entry := range environment {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok || key == "" {
+			return errors.New("Pi CLI environment entry is malformed")
+		}
+		values[key] = value
 	}
-	if err := validateMinimalWorkerEnvironment(runtime.Environment); err != nil {
+	if len(values) != 6 || values["PI_OFFLINE"] != "1" || values["LANG"] != "C.UTF-8" ||
+		!filepath.IsAbs(values["HOME"]) || !filepath.IsAbs(values["TMPDIR"]) || !filepath.IsAbs(values["PATH"]) || !filepath.IsAbs(values["TBOUND_PI_CLI_ENTRY"]) {
+		return errors.New("Pi CLI environment must be exactly private HOME/TMPDIR, fixed PATH, entry path, LANG and PI_OFFLINE")
+	}
+	for _, name := range []string{"HOME", "TMPDIR"} {
+		info, err := os.Lstat(values[name])
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o700 {
+			return fmt.Errorf("Pi CLI %s is not an existing private mode-0700 directory", name)
+		}
+	}
+	return nil
+}
+
+func launchPiCLIWorkerCore(ctx context.Context, profile HostProfile, runtime HostRuntimeBindings, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap, plan DeveloperPiCLIPlan) (*PiCLIWorker, error) {
+	return launchPiCLIWorker(ctx, profile, runtime, nil, channels, bootstrap, true, plan.PiPath, "")
+}
+
+func developmentPiCLIRuntimeLauncher(ctx context.Context, plan DeveloperPiCLIPlan, profile HostProfile, runtime HostRuntimeBindings) (*Process, error) {
+	if ctx == nil || plan.PiPath != runtime.ChildExecutable || !filepath.IsAbs(plan.PiPath) {
+		return nil, errors.New("Pi CLI path differs from fixture plan")
+	}
+	if err := validatePiCLIEnvironment(runtime.Environment); err != nil {
 		return nil, err
 	}
-	bundleDigest, err := DigestDeveloperPiSDKBundle(runtime.PiRuntimeBundleHandle, dependencyRoot)
+	bundleDigest, err := DigestDeveloperPiCLIBundle(runtime.PiRuntimeBundleHandle)
 	if err != nil || bundleDigest != profile.PiRuntimeBundleDigest {
 		return nil, errors.Join(ErrRuntimeBundleRefused, err)
 	}
-	node, err := openVerifiedExecutable(nodePath, profile.ExecutableDigest)
+	cli, err := openVerifiedPiCLIEntry(plan.PiPath, plan.PiSHA256)
 	if err != nil {
 		return nil, err
 	}
-	info, err := node.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
-		_ = node.Close()
-		return nil, errors.New("developer Node is not an explicit regular executable")
-	}
 	if !tryAcquireSettlementWorker() {
-		_ = node.Close()
+		_ = cli.Close()
 		return nil, ErrSettlementCapacity
 	}
 	command := exec.CommandContext(ctx, "/proc/self/fd/3", runtime.Arguments...)
-	// os/exec applies Dir before ExtraFiles are installed. The governed worker
-	// compares actual cwd identity to inherited FD 4 before announcing ready.
-	command.Dir = runtime.WorkingDirectory
-	command.Env = append([]string{}, runtime.Environment...)
-	command.Stdin = runtime.Stdin
-	command.Stdout, command.Stderr = io.Discard, io.Discard
-	command.ExtraFiles = []*os.File{node}
+	command.Dir, command.Env, command.Stdin = runtime.WorkingDirectory, append([]string{}, runtime.Environment...), runtime.Stdin
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		_ = cli.Close()
+		releaseSettlementWorker()
+		return nil, err
+	}
+	command.Stderr = io.Discard
+	command.ExtraFiles = []*os.File{cli}
 	for _, descriptor := range cloneInheritedDescriptors(runtime.Descriptors) {
 		command.ExtraFiles = append(command.ExtraFiles, descriptor.File)
 	}
 	if err := command.Start(); err != nil {
-		_ = node.Close()
+		_ = cli.Close()
 		releaseSettlementWorker()
 		return nil, err
 	}
-	_ = node.Close()
-	return newProcess(command, developmentUnknownSettler{}, nil, true), nil
+	_ = cli.Close()
+	process := newProcess(command, developmentUnknownSettler{}, nil, true)
+	process.stdout = stdout
+	return process, nil
 }
 
-func launchPiSDKWorker(ctx context.Context, profile HostProfile, runtime HostRuntimeBindings, capability *AdmissionCapability, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap, development bool, nodePath, dependencyRoot string) (resultWorker *PiSDKWorker, resultErr error) {
+// openVerifiedPiCLIEntry verifies the exact executable JavaScript entrypoint
+// selected by the CLI installation. Node itself remains independently pinned
+// and validated as a native ELF binary by DevelopmentNodeVersion.
+func openVerifiedPiCLIEntry(path, expectedDigest string) (*os.File, error) {
+	if !filepath.IsAbs(path) || !validDigest(expectedDigest) {
+		return nil, ErrLinuxLauncherRefused
+	}
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, fmt.Errorf("open Pi CLI entrypoint without following symlinks: %w", err)
+	}
+	file := os.NewFile(uintptr(fd), path)
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 || info.Size() < 20 {
+		_ = file.Close()
+		return nil, errors.New("Pi CLI entrypoint is not a regular executable script")
+	}
+	var shebang [20]byte
+	if _, err := file.ReadAt(shebang[:], 0); err != nil || !bytes.HasPrefix(shebang[:], []byte("#!/usr/bin/env node")) {
+		_ = file.Close()
+		return nil, errors.New("Pi CLI entrypoint does not use the pinned Node interpreter")
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	if "sha256:"+hex.EncodeToString(hash.Sum(nil)) != expectedDigest {
+		_ = file.Close()
+		return nil, errors.New("held Pi CLI entrypoint digest differs from the admitted profile")
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		_ = file.Close()
+		return nil, err
+	}
+	return file, nil
+}
+
+func validatePiCLIWorkerRPCProfile(profile HostProfile) error {
+	if err := profile.Validate(); err != nil {
+		return err
+	}
+	switch profile.ChildArgumentsProfile {
+	case PiCLIProductionArgumentsProfile, developerPiCLIArgumentsProfile:
+		return nil
+	default:
+		return errors.New("Pi worker requires the fixed official CLI RPC profile")
+	}
+}
+
+func newPiCLIWorkerRPC(profile HostProfile, stdout io.Reader, stdin io.Writer) (*PiRPCClient, error) {
+	if err := validatePiCLIWorkerRPCProfile(profile); err != nil {
+		return nil, err
+	}
+	return NewPiRPCClient(stdout, stdin)
+}
+
+func launchPiCLIWorker(ctx context.Context, profile HostProfile, runtime HostRuntimeBindings, capability *AdmissionCapability, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap, development bool, nodePath, dependencyRoot string) (resultWorker *PiCLIWorker, resultErr error) {
 	if ctx == nil || channels == nil {
 		return nil, errors.New("governed Pi worker requires context and channels")
 	}
@@ -1185,13 +1278,15 @@ func launchPiSDKWorker(ctx context.Context, profile HostProfile, runtime HostRun
 			resultErr = errors.Join(resultErr, channels.Close())
 		}
 	}()
+	if err := validatePiCLIWorkerRPCProfile(profile); err != nil {
+		return nil, err
+	}
 	if !validDigest(bootstrap.SourceBindingDigest) || !validDigest(bootstrap.SourceProvenanceDigest) || !validIdentity(bootstrap.SessionID) || !validIdentity(bootstrap.WorkflowID) || !validIdentity(bootstrap.ConversationID) {
 		return nil, errors.New("Pi worker bootstrap identity/source binding is invalid")
 	}
 	if profile.DescriptorProfile != PiWorkerDescriptorProfile || profile.DescriptorProfileDigest != DigestBytes([]byte(PiWorkerDescriptorProfile)) ||
 		profile.PiRuntimeBundleRoot == "" || !validDigest(profile.PiRuntimeBundleDigest) ||
-		profile.ChildArgumentsDigest != DigestArguments([]string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"}) ||
-		!equalStrings(runtime.Arguments, []string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"}) ||
+		profile.ChildArgumentsDigest != DigestArguments(runtime.Arguments) || len(runtime.Arguments) == 0 ||
 		!sameInheritedDescriptors(channels.DescriptorBindings(), runtime.Descriptors) || channels.ChildStdin() != runtime.Stdin ||
 		(runtime.D09Source != nil && (!sameBinding(channels.workingDirectory, runtime.D09SourceHandle) ||
 			!sameBinding(channels.runtimeBundle, runtime.PiRuntimeBundleHandle))) {
@@ -1206,7 +1301,12 @@ func launchPiSDKWorker(ctx context.Context, profile HostProfile, runtime HostRun
 	var process *Process
 	var err error
 	if development {
-		process, err = developmentPiWorkerRuntimeLauncher(ctx, nodePath, dependencyRoot, profile, runtime)
+		if profile.ChildArgumentsProfile == "developer-pi-cli-rpc-v1" {
+			process, err = developmentPiCLIRuntimeLauncher(ctx, DeveloperPiCLIPlan{PiPath: nodePath, PiSHA256: profile.ExecutableDigest}, profile, runtime)
+		} else {
+			_ = channels.Close()
+			return nil, errors.New("embedded Pi SDK worker is retired; development launches require the official CLI RPC profile")
+		}
 	} else {
 		if capability == nil || !capability.valid() || capability.profile.Mode != ModeProduction {
 			_ = channels.Close()
@@ -1242,7 +1342,9 @@ func launchPiSDKWorker(ctx context.Context, profile HostProfile, runtime HostRun
 			return nil, stopFailedPiLaunch(process, channels, err)
 		}
 	}
-	_ = channels.CloseChildEnds()
+	if err := closePiWorkerChildEndsForReadiness(channels); err != nil {
+		return nil, stopFailedPiLaunch(process, channels, err)
+	}
 	startupCtx, cancel := boundedStartupContext(ctx)
 	defer cancel()
 	for {
@@ -1265,7 +1367,11 @@ func launchPiSDKWorker(ctx context.Context, profile HostProfile, runtime HostRun
 	if err != nil {
 		return nil, stopFailedPiLaunch(process, channels, err)
 	}
-	worker := &PiSDKWorker{Session: session, Channels: channels, development: development, launchProof: process.LaunchProof(), leases: make(map[string]*workerPromptLease), events: make(chan PiWorkerEvent, PiWorkerEventQueue), readerDone: make(chan struct{})}
+	worker := &PiCLIWorker{Session: session, Channels: channels, development: development, launchProof: process.LaunchProof(), leases: make(map[string]*workerPromptLease), events: make(chan PiWorkerEvent, PiWorkerEventQueue), readerDone: make(chan struct{})}
+	worker.rpc, err = newPiCLIWorkerRPC(profile, process.stdout, channels.RPCWriter())
+	if err != nil {
+		return nil, stopFailedPiLaunch(process, channels, err)
+	}
 	go worker.pumpEvents()
 	keepChannels = true
 	return worker, nil
@@ -1278,7 +1384,7 @@ type GoPromptConversation interface {
 	Close()
 }
 
-func (w *PiSDKWorker) SendAdmittedPrompt(ctx context.Context, conversation GoPromptConversation, taskID, requestID, prompt string) error {
+func (w *PiCLIWorker) SendAdmittedPrompt(ctx context.Context, conversation GoPromptConversation, taskID, requestID, prompt string) error {
 	if w == nil || w.Session == nil || w.Channels == nil || conversation == nil || ctx == nil {
 		return errors.New("governed Pi prompt requires an active session, Go conversation, and context")
 	}
@@ -1291,7 +1397,7 @@ func (w *PiSDKWorker) SendAdmittedPrompt(ctx context.Context, conversation GoPro
 
 // SendDevelopmentPrompt is a development-only process-test seam. It has no Go
 // provider Conversation and therefore makes no provider-history or G1 claim.
-func (w *PiSDKWorker) SendDevelopmentPrompt(ctx context.Context, taskID, requestID, prompt string) error {
+func (w *PiCLIWorker) SendDevelopmentPrompt(ctx context.Context, taskID, requestID, prompt string) error {
 	if w == nil || !w.development || ctx == nil {
 		return errors.New("direct prompt control is available only in the explicit developer worker")
 	}
@@ -1302,7 +1408,10 @@ func (w *PiSDKWorker) SendDevelopmentPrompt(ctx context.Context, taskID, request
 	return w.sendPromptControl(ctx, nil, taskID, requestID, prompt)
 }
 
-func (w *PiSDKWorker) sendPromptControl(ctx context.Context, conversation GoPromptConversation, taskID, requestID, prompt string) error {
+func (w *PiCLIWorker) sendPromptControl(ctx context.Context, conversation GoPromptConversation, taskID, requestID, prompt string) error {
+	if w.rpc == nil {
+		return errors.New("official Pi CLI RPC is required; embedded SDK worker is not an admitted fallback")
+	}
 	lease, err := w.Session.Acquire(ctx)
 	if err != nil {
 		return err
@@ -1325,18 +1434,18 @@ func (w *PiSDKWorker) sendPromptControl(ctx context.Context, conversation GoProm
 		return errors.New("production Pi prompt has no Go-owned conversation admission")
 	}
 	stopCancel := context.AfterFunc(lease.Context(), func() {
-		abortCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_ = w.Channels.Abort(abortCtx, requestID)
+		_ = w.rpc.Abort(requestID)
 	})
 	w.mu.Lock()
 	if active := w.leases[requestID]; active != nil {
 		active.stop = stopCancel
 	}
 	w.mu.Unlock()
-	controlCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	if err := w.Channels.sendControl(controlCtx, PiWorkerControl{Type: "prompt", RequestID: requestID, TaskID: taskID, Text: prompt}); err != nil {
+	if err := ctx.Err(); err != nil {
+		w.releasePromptLease(requestID)
+		return err
+	}
+	if err := w.rpc.SendPrompt(requestID, prompt); err != nil {
 		if conversation != nil {
 			conversation.Close()
 		}
@@ -1349,7 +1458,7 @@ func (w *PiSDKWorker) sendPromptControl(ctx context.Context, conversation GoProm
 	return nil
 }
 
-func (w *PiSDKWorker) releasePromptLease(requestID string) {
+func (w *PiCLIWorker) releasePromptLease(requestID string) {
 	w.mu.Lock()
 	active := w.leases[requestID]
 	delete(w.leases, requestID)
@@ -1363,17 +1472,66 @@ func (w *PiSDKWorker) releasePromptLease(requestID string) {
 	active.lease.Release()
 }
 
-func (w *PiSDKWorker) pumpEvents() {
+func (w *PiCLIWorker) pumpEvents() {
 	defer close(w.readerDone)
 	defer close(w.events)
-	for {
-		event, err := w.Channels.NextEvent(context.Background())
-		if err != nil {
-			w.mu.Lock()
-			w.eventsErr = err
-			w.mu.Unlock()
+	combined := make(chan PiWorkerEvent, PiWorkerEventQueue)
+	readerDone := make(chan struct{}, 2)
+	go func() {
+		defer func() { readerDone <- struct{}{} }()
+		for {
+			event, err := w.Channels.NextEvent(context.Background())
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					w.mu.Lock()
+					w.eventsErr = errors.Join(w.eventsErr, err)
+					w.mu.Unlock()
+				}
+				return
+			}
+			combined <- event
+		}
+	}()
+	go func() {
+		defer func() { readerDone <- struct{}{} }()
+		if w.rpc == nil {
 			return
 		}
+		for {
+			record, err := w.rpc.ReadRecord()
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					w.mu.Lock()
+					w.eventsErr = errors.Join(w.eventsErr, err)
+					w.mu.Unlock()
+				}
+				return
+			}
+			switch record.Type {
+			case "agent_settled":
+				w.mu.Lock()
+				var requestID string
+				for id := range w.leases {
+					requestID = id
+					break
+				}
+				w.mu.Unlock()
+				if requestID != "" {
+					combined <- PiWorkerEvent{Type: "turn_end", RequestID: requestID}
+				}
+			case "response":
+				if record.Command == "prompt" && record.Success != nil && !*record.Success {
+					w.mu.Lock()
+					active := w.leases[record.ID] != nil
+					w.mu.Unlock()
+					if active {
+						combined <- PiWorkerEvent{Type: "worker_error", RequestID: record.ID, Code: "rpc_command_failed"}
+					}
+				}
+			}
+		}
+	}()
+	forwardEvent := func(event PiWorkerEvent) {
 		if event.Type == "turn_end" || event.Type == "worker_error" {
 			if event.RequestID != "" {
 				w.releasePromptLease(event.RequestID)
@@ -1389,11 +1547,30 @@ func (w *PiSDKWorker) pumpEvents() {
 			w.mu.Unlock()
 		}
 	}
+	for readers := 0; readers < 2; {
+		select {
+		case <-readerDone:
+			readers++
+		case event := <-combined:
+			forwardEvent(event)
+		}
+	}
+	// Each reader signals completion after its final send. The merged queue is
+	// stable here, so drain it before closing events and exposing EOF.
+	close(combined)
+	for event := range combined {
+		forwardEvent(event)
+	}
 }
 
-func (w *PiSDKWorker) NextEvent(ctx context.Context) (PiWorkerEvent, error) {
+func (w *PiCLIWorker) NextEvent(ctx context.Context) (PiWorkerEvent, error) {
 	if w == nil || ctx == nil {
 		return PiWorkerEvent{}, errors.New("Pi worker event channel is unavailable")
+	}
+	// Cancellation stops only this wait; it does not cancel the worker's shared
+	// event pump or consume an event that is already buffered.
+	if err := ctx.Err(); err != nil {
+		return PiWorkerEvent{}, err
 	}
 	select {
 	case event, ok := <-w.events:
@@ -1406,7 +1583,8 @@ func (w *PiSDKWorker) NextEvent(ctx context.Context) (PiWorkerEvent, error) {
 			w.gapReturned = true
 			return PiWorkerEvent{Type: "observation_gap", DroppedEvents: w.eventsDrop, DroppedBytes: w.eventsBytes}, nil
 		}
-		if w.eventsErr != nil {
+		if w.eventsErr != nil && !w.eventsErrReturned {
+			w.eventsErrReturned = true
 			return PiWorkerEvent{}, w.eventsErr
 		}
 		return PiWorkerEvent{}, io.EOF
@@ -1418,14 +1596,19 @@ func (w *PiSDKWorker) NextEvent(ctx context.Context) (PiWorkerEvent, error) {
 // Close cancels/drains active prompt leases, kills the direct worker if needed,
 // and returns only the host scope's measured settlement. Missing or unavailable
 // descendant proof remains UNKNOWN.
-func (w *PiSDKWorker) Close(ctx context.Context) (Settlement, error) {
+func (w *PiCLIWorker) Close(ctx context.Context) (Settlement, error) {
 	if w == nil || w.Session == nil || ctx == nil {
 		return Settlement{State: SettlementUnknown, Detail: "Pi worker session is not configured"}, ErrUnknownSettlement
 	}
 	w.mu.Lock()
 	w.closed = true
 	w.mu.Unlock()
+	var closeErr error
+	if w.rpc != nil {
+		closeErr = w.rpc.CloseInput()
+	}
 	settlement, err := w.Session.Close(ctx)
+	err = errors.Join(closeErr, err)
 	if w.Channels != nil && settlement.State == SettlementStopped && settlement.DescendantsSettled {
 		err = errors.Join(err, w.Channels.Close())
 	}

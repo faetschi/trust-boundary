@@ -20,8 +20,8 @@ help:
 	@echo "  deb          build a .deb from the linux-amd64 tarball (needs dpkg-deb)"
 	@echo "  rpm          build an RPM from the linux-amd64 tarball (needs rpmbuild)"
 	@echo "  container    build the container image (needs podman or docker)"
-	@echo "  test         run the Go unit tests for the doctor and Pi bootstrap"
-	@echo "  fmt          gofmt the doctor and Pi bootstrap packages"
+	@echo "  test         run all Go module tests"
+	@echo "  fmt          gofmt all Go packages"
 	@echo "  clean        remove dist/"
 
 build:
@@ -49,10 +49,10 @@ container:
 	@scripts/build-container.sh $(VERSION)
 
 test:
-	cd supervisor && $(GO) test ./internal/piinstall ./cmd/tbound-doctor
+	cd supervisor && $(GO) test ./...
 
 fmt:
-	cd supervisor && $(GO) fmt ./internal/piinstall ./cmd/tbound-doctor
+	cd supervisor && $(GO) fmt ./...
 
 clean:
 	rm -rf dist

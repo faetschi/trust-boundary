@@ -414,7 +414,25 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	if err != nil {
 		return fmt.Errorf("recover publication lifecycle and activate session admission before D09 launch: %w", err)
 	}
-	defer releaseSessionAdmission()
+	var settlement piruntime.Settlement
+	var workerCloseErr error
+	workerClosed := false
+	sessionAdmissionHeld := true
+	releaseAdmission := func() {
+		if sessionAdmissionHeld {
+			sessionAdmissionHeld = false
+			releaseSessionAdmission()
+		}
+	}
+	defer func() {
+		// A launched worker with incomplete settlement retains the active
+		// publication admission lease. This prevents replay or a second writer
+		// while the lifecycle/managed-root cleanup guards retain authority.
+		if workerClosed && !productionWorkerSettlementAllowsPublication(settlement, workerCloseErr) {
+			return
+		}
+		releaseAdmission()
+	}()
 
 	bootstrap := piruntime.PiWorkerBootstrap{
 		SessionID:      session.SessionID,
@@ -427,9 +445,6 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		return fmt.Errorf("launch admitted production Pi worker: %w", err)
 	}
 	session.Lifecycle.markWorkerLaunched(worker.PID())
-	var settlement piruntime.Settlement
-	var workerCloseErr error
-	workerClosed := false
 	closeWorker := func() piruntime.Settlement {
 		if workerClosed {
 			return settlement
@@ -546,61 +561,69 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		cancelRun()
 		return errors.New("governed production channels did not settle after the worker exited")
 	}
-	releaseSessionAdmission()
-
 	publicationStatus := "UNAVAILABLE"
 	disposition := "UNKNOWN"
 	publicationTx := ""
 	var publishErr error
-	bundle, bundleErr := session.Store.EvidenceBundle()
-	if bundleErr != nil {
-		publishErr = fmt.Errorf("read production session generation/tool receipt: %w", bundleErr)
-		publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
-	} else if !bundleHasChanges(bundle) {
-		publicationStatus, disposition = "NO_DIFF", "NO_DIFF"
-		if session.Publication != nil {
-			if err := session.Publication.Close(); err != nil {
-				publishErr = fmt.Errorf("close no-diff publication session: %w", err)
-			}
-		}
-		if session.ManagedLiveRootLease != nil {
-			if err := session.ManagedLiveRootLease.markNoPublication(); err != nil {
-				publishErr = errors.Join(publishErr, fmt.Errorf("release no-diff managed live-root authority: %w", err))
-				publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
-			}
-		}
-	} else if session.Publication == nil {
-		publishErr = errors.New("production publication runtime is unavailable")
-		publicationStatus, disposition = "UNAVAILABLE", "UNKNOWN"
-	} else {
-		result, finalizeErr := session.Publication.Finalize(ctx)
-		publicationStatus = string(result.Status)
-		if publicationStatus == "" {
-			publicationStatus = "UNKNOWN"
-		}
-		publicationTx = result.TransactionID
-		if result.Status == publication.StatusSucceeded || result.Status == publication.StatusFailed {
-			if err := session.ManagedLiveRootLease.recordDurableTerminal(ctx, session.PublicationJournal, result.Status, result.TransactionID); err != nil {
-				finalizeErr = errors.Join(finalizeErr, fmt.Errorf("verify durable managed-root terminal lifecycle record: %w", err))
-				publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
-			}
-		}
-		if finalizeErr == nil && result.Status == publication.StatusSucceeded && len(result.Objects) == 0 {
+	var bundle sessionrepo.EvidenceBundle
+	var bundleErr error
+	settled := productionWorkerSettlementAllowsPublication(settlement, workerCloseErr)
+	publicationAttemptErr := runProductionPublicationAfterWorkerSettlement(settlement, workerCloseErr, func() error {
+		releaseAdmission()
+		bundle, bundleErr = session.Store.EvidenceBundle()
+		if bundleErr != nil {
+			publishErr = fmt.Errorf("read production session generation/tool receipt: %w", bundleErr)
+			publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
+		} else if !bundleHasChanges(bundle) {
 			publicationStatus, disposition = "NO_DIFF", "NO_DIFF"
-		} else if finalizeErr == nil && result.Status == publication.StatusSucceeded {
-			disposition = "PUBLISHED"
+			if session.Publication != nil {
+				if err := session.Publication.Close(); err != nil {
+					publishErr = fmt.Errorf("close no-diff publication session: %w", err)
+				}
+			}
+			if session.ManagedLiveRootLease != nil {
+				if err := session.ManagedLiveRootLease.markNoPublication(); err != nil {
+					publishErr = errors.Join(publishErr, fmt.Errorf("release no-diff managed live-root authority: %w", err))
+					publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
+				}
+			}
+		} else if session.Publication == nil {
+			publishErr = errors.New("production publication runtime is unavailable")
+			publicationStatus, disposition = "UNAVAILABLE", "UNKNOWN"
 		} else {
-			disposition = "PUBLICATION_" + string(result.Status)
-			if finalizeErr == nil {
-				finalizeErr = fmt.Errorf("production publication did not succeed: %s", publicationStatus)
+			result, finalizeErr := session.Publication.Finalize(ctx)
+			publicationStatus = string(result.Status)
+			if publicationStatus == "" {
+				publicationStatus = "UNKNOWN"
+			}
+			publicationTx = result.TransactionID
+			if result.Status == publication.StatusSucceeded || result.Status == publication.StatusFailed {
+				if err := session.ManagedLiveRootLease.recordDurableTerminal(ctx, session.PublicationJournal, result.Status, result.TransactionID); err != nil {
+					finalizeErr = errors.Join(finalizeErr, fmt.Errorf("verify durable managed-root terminal lifecycle record: %w", err))
+					publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
+				}
+			}
+			if finalizeErr == nil && result.Status == publication.StatusSucceeded && len(result.Objects) == 0 {
+				publicationStatus, disposition = "NO_DIFF", "NO_DIFF"
+			} else if finalizeErr == nil && result.Status == publication.StatusSucceeded {
+				disposition = "PUBLISHED"
+			} else {
+				disposition = "PUBLICATION_" + string(result.Status)
+				if finalizeErr == nil {
+					finalizeErr = fmt.Errorf("production publication did not succeed: %s", publicationStatus)
+				}
+			}
+			if finalizeErr != nil {
+				publishErr = fmt.Errorf("finalize registered production session (%s): %w", publicationStatus, finalizeErr)
 			}
 		}
-		if finalizeErr != nil {
-			publishErr = fmt.Errorf("finalize registered production session (%s): %w", publicationStatus, finalizeErr)
-		}
+		return nil
+	})
+	if publicationAttemptErr != nil {
+		bundleErr = publicationAttemptErr
+		publishErr = errors.Join(publishErr, publicationAttemptErr)
+		publicationStatus, disposition = "UNAVAILABLE", "UNKNOWN"
 	}
-
-	settled := settlement.State == piruntime.SettlementStopped && settlement.ExitObserved && settlement.DescendantsSettled
 	lifecycle := session.Lifecycle.snapshot()
 	lifecycleOK := validateProductionLifecycle(lifecycle, session.RunID, session.ProductionCommandRunner) == nil &&
 		verifyProductionLaunchProofJournal(session.StoreJournal, lifecycle, session.Profile, session.D09Template, session.RunID,
@@ -668,6 +691,31 @@ func bundleHasChanges(bundle sessionrepo.EvidenceBundle) bool {
 		}
 	}
 	return false
+}
+
+var ErrProductionWorkerSettlementIncomplete = errors.New("production publication requires a fully observed STOPPED worker settlement")
+
+func productionWorkerSettlementAllowsPublication(settlement piruntime.Settlement, closeErr error) bool {
+	return settlement.State == piruntime.SettlementStopped && settlement.ExitObserved && settlement.DescendantsSettled && closeErr == nil
+}
+
+// runProductionPublicationAfterWorkerSettlement is the single gate around the
+// production evidence/publication path. Callers cannot inspect the mutable tip,
+// release publication admission, mark no-diff, or finalize until direct-child
+// exit and descendant settlement have both been observed without close error.
+func runProductionPublicationAfterWorkerSettlement(
+	settlement piruntime.Settlement,
+	closeErr error,
+	attempt func() error,
+) error {
+	if attempt == nil {
+		return errors.New("production publication attempt is unavailable")
+	}
+	if !productionWorkerSettlementAllowsPublication(settlement, closeErr) {
+		return fmt.Errorf("%w: state=%s exit_observed=%t descendants_settled=%t close_error=%t",
+			ErrProductionWorkerSettlementIncomplete, settlement.State, settlement.ExitObserved, settlement.DescendantsSettled, closeErr != nil)
+	}
+	return attempt()
 }
 
 func productionCommandRunnerProfile(runner sessionrepo.CommandRunner) string {

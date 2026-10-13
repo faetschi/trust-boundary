@@ -330,6 +330,161 @@ func TestPiWorkerEventPumpDeliversTerminalEOFErrorAndObservationGap(t *testing.T
 	})
 }
 
+func TestPiWorkerEventPumpDrainsQueuedEventsGapAndTerminalErrorBeforeEOF(t *testing.T) {
+	rpc, err := NewPiRPCClient(strings.NewReader("not-json\n"), io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := newPiWorkerEventPumpFixture(t, 2, rpc)
+	for _, event := range []PiWorkerEvent{
+		{Type: "turn_end", Sequence: 1, RequestID: "request-gap"},
+		{Type: "worker_error", Sequence: 2, RequestID: "request-gap", Code: "rpc_command_failed"},
+		{Type: "turn_end", Sequence: 3, RequestID: "request-gap"},
+	} {
+		body, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := writePiFrame(worker.Channels.childEvents, body); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := worker.Channels.childEvents.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitWorkerEventPump(t, worker)
+
+	for _, expected := range []struct {
+		typeName string
+		sequence uint64
+	}{
+		{typeName: "turn_end", sequence: 1},
+		{typeName: "worker_error", sequence: 2},
+	} {
+		got, err := worker.NextEvent(context.Background())
+		if err != nil || got.Type != expected.typeName || got.Sequence != expected.sequence {
+			t.Fatalf("queued event=%+v err=%v, want %s sequence %d", got, err, expected.typeName, expected.sequence)
+		}
+	}
+	gap, err := worker.NextEvent(context.Background())
+	if err != nil || gap.Type != "observation_gap" || gap.DroppedEvents != 1 || gap.DroppedBytes == 0 {
+		t.Fatalf("observation gap=%+v err=%v", gap, err)
+	}
+	if _, err := worker.NextEvent(context.Background()); err == nil || errors.Is(err, io.EOF) {
+		t.Fatalf("terminal RPC error was not delivered after queued events and gap: %v", err)
+	}
+	if _, err := worker.NextEvent(context.Background()); !errors.Is(err, io.EOF) {
+		t.Fatalf("worker EOF after terminal RPC error=%v", err)
+	}
+}
+
+func TestPiWorkerEventPumpConsumerCancellationDoesNotStopOrConsumeEvents(t *testing.T) {
+	worker := newPiWorkerEventPumpFixture(t, 1)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := worker.NextEvent(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled event wait = %v, want context.Canceled", err)
+	}
+	body, err := json.Marshal(PiWorkerEvent{Type: "turn_end", Sequence: 1, RequestID: "request-cancel"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writePiFrame(worker.Channels.childEvents, body); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.Channels.childEvents.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitWorkerEventPump(t, worker)
+	got, err := worker.NextEvent(context.Background())
+	if err != nil || got.Type != "turn_end" || got.Sequence != 1 {
+		t.Fatalf("event after cancelled wait=%+v err=%v", got, err)
+	}
+	if _, err := worker.NextEvent(context.Background()); !errors.Is(err, io.EOF) {
+		t.Fatalf("worker EOF after cancellation test=%v", err)
+	}
+}
+
+func TestPiCLIProductionAndD09LaunchRemainRefused(t *testing.T) {
+	if _, err := LaunchPiCLIWorker(context.Background(), nil, nil, nil, nil, PiWorkerBootstrap{}); err == nil || !strings.Contains(err.Error(), "production Pi launch refused") {
+		t.Fatalf("production CLI launch was not refused before profile migration: %v", err)
+	}
+	if _, err := LaunchD09PiCLIWorker(context.Background(), nil, nil, PiWorkerBootstrap{}); err == nil || !strings.Contains(err.Error(), "D09 Pi launch refused") {
+		t.Fatalf("D09 CLI launch was not refused before profile migration: %v", err)
+	}
+}
+
+func TestDevelopmentPiCLIProfileValidatesFixtureOnlyInvariants(t *testing.T) {
+	plan := DeveloperPiCLIPlan{
+		PiPath: "/opt/pi/cli.js", PiSHA256: DigestBytes([]byte("Pi CLI entry")),
+		NodeVersion: PiCLIProductionNodeVersion, WorkingDir: "/work", Home: "/home/fixture", TempDir: "/tmp/fixture",
+		BundleRoot: "/runtime/extension",
+	}
+	profile := developmentPiCLIProfile(plan, DigestBytes([]byte("fixture bundle")), nil)
+	if err := profile.Validate(); err != nil {
+		t.Fatalf("valid non-production development profile rejected: %v", err)
+	}
+	if err := ValidateHostAdmission(profile, HostAttestation{}); !errors.Is(err, ErrHostAdmissionRefused) {
+		t.Fatalf("fixture profile entered production admission: %v", err)
+	}
+
+	mutations := []struct {
+		name   string
+		mutate func(*HostProfile)
+	}{
+		{"profile identity", func(p *HostProfile) { p.ID = "other-fixture"; p.Digest = DigestBytes([]byte(p.ID)) }},
+		{"relative executable", func(p *HostProfile) { p.ChildExecutable = "cli.js" }},
+		{"executable digest", func(p *HostProfile) { p.ExecutableDigest = "" }},
+		{"Node pin", func(p *HostProfile) { p.NodeVersion = "v24.15.0" }},
+		{"RPC argv profile", func(p *HostProfile) { p.ChildArgumentsProfile = "unreviewed-cli-argv" }},
+		{"working directory binding", func(p *HostProfile) { p.WorkingDirectory = "/other" }},
+		{"stdin profile", func(p *HostProfile) {
+			p.StdinProfile = "interactive"
+			p.StdinDigest = DigestBytes([]byte(p.StdinProfile))
+		}},
+		{"environment profile", func(p *HostProfile) { p.ChildEnvironment = "inherited" }},
+		{"fixture stdout omission", func(p *HostProfile) {
+			p.StdoutProfile = PiCLIProductionStdoutProfile
+			p.StdoutProfileDigest = DigestBytes([]byte(p.StdoutProfile))
+		}},
+		{"production cgroup claim", func(p *HostProfile) { p.CgroupRootDigest = DigestBytes([]byte("cgroup")) }},
+		{"containment claim", func(p *HostProfile) {
+			p.ContainmentProfile = "containerized"
+			p.ContainmentProfileDigest = DigestBytes([]byte(p.ContainmentProfile))
+		}},
+		{"settlement claim", func(p *HostProfile) {
+			p.SettlementProfile = "descendants-settled"
+			p.SettlementProfileDigest = DigestBytes([]byte(p.SettlementProfile))
+		}},
+		{"descriptor profile", func(p *HostProfile) {
+			p.DescriptorProfile = "other-descriptors"
+			p.DescriptorProfileDigest = DigestBytes([]byte(p.DescriptorProfile))
+		}},
+		{"runtime root", func(p *HostProfile) { p.PiRuntimeBundleRoot = "relative-runtime" }},
+		{"source claim", func(p *HostProfile) {
+			p.SourceProvenance = "verified"
+			p.SourceProvenanceDigest = DigestBytes([]byte(p.SourceProvenance))
+		}},
+		{"offline verifier claim", func(p *HostProfile) {
+			p.OfflineVerifier = "verified"
+			p.OfflineVerifierDigest = DigestBytes([]byte(p.OfflineVerifier))
+		}},
+		{"provider claim", func(p *HostProfile) {
+			p.ProviderProfile = "live-provider"
+			p.ProviderProfileDigest = DigestBytes([]byte(p.ProviderProfile))
+		}},
+	}
+	for _, mutation := range mutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			candidate := profile
+			mutation.mutate(&candidate)
+			if err := candidate.Validate(); !errors.Is(err, ErrHostProfileMissing) {
+				t.Fatalf("invalid fixture mutation was accepted: %v", err)
+			}
+		})
+	}
+}
+
 func TestPiWorkerChannelsCloseOwnedSourcesButBorrowDevelopmentSources(t *testing.T) {
 	newChannels := func(t *testing.T) (*PiWorkerChannels, *os.File, *os.File) {
 		t.Helper()
@@ -391,7 +546,7 @@ func TestPiWorkerChannelsCloseOwnedSourcesButBorrowDevelopmentSources(t *testing
 	})
 }
 
-func newPiWorkerEventPumpFixture(t *testing.T, queueSize int) *PiSDKWorker {
+func newPiWorkerEventPumpFixture(t *testing.T, queueSize int, rpcClients ...*PiRPCClient) *PiSDKWorker {
 	t.Helper()
 	cwdHandle, err := os.Open(makePrivateTestDirectory(t, "worker-cwd"))
 	if err != nil {
@@ -413,7 +568,13 @@ func newPiWorkerEventPumpFixture(t *testing.T, queueSize int) *PiSDKWorker {
 		_ = cwdHandle.Close()
 		_ = bundleHandle.Close()
 	})
+	if len(rpcClients) > 1 {
+		t.Fatal("event pump fixture accepts at most one RPC client")
+	}
 	worker := &PiSDKWorker{Channels: channels, events: make(chan PiWorkerEvent, queueSize), readerDone: make(chan struct{})}
+	if len(rpcClients) == 1 {
+		worker.rpc = rpcClients[0]
+	}
 	go worker.pumpEvents()
 	return worker
 }

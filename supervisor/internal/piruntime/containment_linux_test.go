@@ -443,6 +443,10 @@ func TestD09ContainerArgumentsComposeFrozenCell(t *testing.T) {
 	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
 	args := d09ContainerArguments(config, "tbound-pi-cell-deadbeef",
 		"localhost/tbound/pi-cell@"+fakeD09Digest, PiWorkerCellEnvironment(), PiWorkerCellArguments())
+	workerArguments := PiWorkerCellArguments()
+	if len(args) < len(workerArguments) || !equalStrings(args[len(args)-len(workerArguments):], workerArguments) {
+		t.Fatalf("D09 container argv does not end with the exact frozen Pi CLI argv: %q", args)
+	}
 	joined := strings.Join(args, " ")
 	for _, want := range []string{
 		"run --name tbound-pi-cell-deadbeef",
@@ -472,7 +476,6 @@ func TestD09ContainerArgumentsComposeFrozenCell(t *testing.T) {
 		"localhost/tbound/pi-cell@" + fakeD09Digest,
 		"/usr/local/bin/tbound-pi-entrypoint",
 		"/proc/self/fd/3",
-		"--experimental-strip-types /proc/self/fd/9/src/governed-pi-worker.ts",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("container argument vector is missing %q:\n%s", want, joined)

@@ -330,6 +330,7 @@ type waitResult struct {
 // is independent of every caller context; a timeout cannot poison later waits.
 type Process struct {
 	cmd     *exec.Cmd
+	stdout  io.Reader
 	settler DescendantSettler
 	writers []*observationWriter
 
@@ -720,11 +721,14 @@ func (p *Process) Stop(ctx context.Context) (Settlement, error) {
 		err := p.stopErr
 		p.stopMu.Unlock()
 		if err != nil {
-			select {
-			case <-p.completion:
+			// A child can exit between the initial completion check and Kill.
+			// Consume actual exit evidence within the caller's deadline before
+			// deciding whether a termination error leaves settlement unknown.
+			result, observed := p.wait(ctx)
+			if observed {
 				return p.Settle(ctx)
-			default:
 			}
+			err = errors.Join(err, result.err)
 			return p.unknownWithDetail(err.Error()), err
 		}
 		return p.Settle(ctx)

@@ -1,9 +1,0 @@
-{
-  "schema_version": "tbound-go-test-run/v1",
-  "run_id": "fixture-run-1",
-  "state": "running",
-  "started_at": "2026-10-05T10:00:00Z",
-  "go_version": "go1.21.0",
-  "module": "example.test/project",
-  "packages": ["example.test/project/pkg", "example.test/project/empty"]
-}

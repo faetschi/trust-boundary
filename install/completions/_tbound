@@ -23,10 +23,8 @@ _tbound() {
 _tbound_doctor() {
   _arguments \
     '--json[JSON output]' \
-    '--install-pi[install pinned Pi packages into the prefix]' \
     '--prefix[tbound prefix]:dir:_files -/' \
-    '--node[explicit Node binary]:file:_files' \
-    '--pi[existing node_modules containing Pi]:dir:_files -/' \
+    '--pi[pinned Pi CLI executable]:file:_files' \
     '--version[version label]:version:'
 }
 

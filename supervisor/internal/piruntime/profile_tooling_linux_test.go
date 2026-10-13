@@ -11,19 +11,77 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"tbound/supervisor/internal/piinstall"
 )
 
 func TestPiWorkerCellIdentitiesAreStable(t *testing.T) {
-	if got, want := DigestArguments(PiWorkerCellArguments()), DigestArguments([]string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"}); got != want {
-		t.Fatalf("in-cell argv digest drifted: got %s want %s", got, want)
+	cliArgs, err := piinstall.GovernedRPCArgs(PiCLIProductionExtensionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantArguments := append([]string{PiCLIProductionEntryPath}, cliArgs...)
+	if got, want := PiWorkerCellArguments(), wantArguments; !equalStrings(got, want) {
+		t.Fatalf("in-cell argv drifted: got %#v want %#v", got, want)
 	}
 	if got, want := DigestEnvironment(PiWorkerCellEnvironment()), DigestEnvironment([]string{"HOME=" + PiWorkerCellHome, "LANG=C.UTF-8", "PI_OFFLINE=1", "TMPDIR=" + PiWorkerCellTemp}); got != want {
 		t.Fatalf("in-cell environment digest drifted: got %s want %s", got, want)
+	}
+	if PiWorkerCellNodeVersion != "v24.21.0" || PiWorkerCellExecutable != "/usr/local/bin/node" ||
+		PiWorkerCellRuntimeBundleRoot != "/var/lib/tbound/runtime" {
+		t.Fatalf("in-cell executable/runtime identity drifted: node=%s executable=%s bundle=%s",
+			PiWorkerCellNodeVersion, PiWorkerCellExecutable, PiWorkerCellRuntimeBundleRoot)
 	}
 	if err := DefaultLinuxHostProfileTemplate().Validate(); err != nil {
 		// Digest is intentionally empty; validate the rest of the template by
 		// signing it and checking the signed profile.
 		t.Logf("unsigned template validate (expected missing Digest): %v", err)
+	}
+}
+
+func TestProductionPiCLIProfileRejectsLegacyOrMalformedContracts(t *testing.T) {
+	legacySDKArguments := []string{"--experimental-strip-types", "/proc/self/fd/9/src/governed-pi-worker.ts"}
+	tests := []struct {
+		name   string
+		mutate func(*HostProfile)
+	}{
+		{"legacy-sdk-argv", func(profile *HostProfile) {
+			profile.ChildArgumentsProfile = "governed-pi-sdk-worker-argv/v1"
+			profile.ChildArgumentsDigest = DigestArguments(legacySDKArguments)
+		}},
+		{"unreviewed-cli-argv", func(profile *HostProfile) {
+			profile.ChildArgumentsDigest = DigestArguments([]string{PiCLIProductionEntryPath, "--mode", "rpc", "--approve-all"})
+		}},
+		{"legacy-node", func(profile *HostProfile) { profile.NodeVersion = "v24.15.0" }},
+		{"legacy-stdin", func(profile *HostProfile) {
+			profile.StdinProfile = "governed-session-control/fd0/v1"
+			profile.StdinDigest = DigestBytes([]byte(profile.StdinProfile))
+		}},
+		{"silent-stdout", func(profile *HostProfile) {
+			profile.StdoutProfile = "silent-worker-stdout/v1"
+			profile.StdoutProfileDigest = DigestBytes([]byte(profile.StdoutProfile))
+		}},
+		{"legacy-profile-without-stdout", func(profile *HostProfile) {
+			profile.StdoutProfile = ""
+			profile.StdoutProfileDigest = ""
+		}},
+		{"terminal-enabled", func(profile *HostProfile) {
+			profile.TerminalProfile = "pi-cli-terminal-enabled/v1"
+			profile.TerminalProfileDigest = DigestBytes([]byte(profile.TerminalProfile))
+		}},
+		{"inherited-environment", func(profile *HostProfile) {
+			profile.ChildEnvironmentDigest = DigestEnvironment(append(PiWorkerCellEnvironment(), "TBOUND_SENTINEL=1"))
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			profile := DefaultLinuxHostProfileTemplate()
+			profile.Digest = DigestBytes([]byte("synthetic signed-profile digest"))
+			test.mutate(&profile)
+			if err := profile.Validate(); !errors.Is(err, ErrHostProfileMissing) {
+				t.Fatalf("malformed production Pi contract was accepted: %v", err)
+			}
+		})
 	}
 }
 
@@ -46,6 +104,13 @@ func TestLinuxHostProfileSignVerifyRoundTrip(t *testing.T) {
 	}
 	if decoded.ContainmentProfile != D09ContainmentProfile || decoded.SettlementProfile != D09SettlementProfile {
 		t.Fatalf("verified profile does not name the D09 profile: %+v", decoded)
+	}
+	if decoded.ChildExecutable != PiCLIProductionExecutable || decoded.NodeVersion != "v24.21.0" ||
+		decoded.ChildArgumentsProfile != PiCLIProductionArgumentsProfile ||
+		decoded.ChildArgumentsDigest != DigestArguments(PiWorkerCellArguments()) ||
+		decoded.StdoutProfile != PiCLIProductionStdoutProfile || decoded.StdoutProfileDigest != DigestBytes([]byte(PiCLIProductionStdoutProfile)) ||
+		decoded.TerminalProfile != PiCLIProductionTerminalProfile {
+		t.Fatalf("signed profile does not bind the fixed Pi CLI RPC process contract: %+v", decoded)
 	}
 	if decoded.Digest != DigestBytes(mustSigningBytes(t, profile)) {
 		t.Fatalf("signed digest is not the verifier digest: %s", decoded.Digest)

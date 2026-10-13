@@ -2103,8 +2103,7 @@ func (l *D09PodmanCrunLauncher) validateD09LaunchRequest(ctx context.Context, re
 		DigestBytes([]byte(request.Dir)) != request.WorkingDirectoryDigest {
 		return HostProfile{}, ErrHostProfileMismatch
 	}
-	if len(request.Args) != 2 || request.Args[0] != "--experimental-strip-types" ||
-		request.Args[1] != "/proc/self/fd/9/src/governed-pi-worker.ts" {
+	if !equalStrings(request.Args, PiWorkerCellArguments()) {
 		return HostProfile{}, ErrHostProfileMismatch
 	}
 	workerSourceHandle := request.WorkerExposureHandle

@@ -82,6 +82,16 @@ The `tbound-profile` tool is the single source of truth for the signature
 domain, the canonical digest, and the fixed in-cell worker identities. It never
 prints or copies private key material.
 
+After installing the reviewed Pi runtime at `/var/lib/tbound/runtime` on its
+final read-only mount, measure it with
+`"$PRIVATE/tbound-profile" runtime-bundle-digest --root /var/lib/tbound/runtime`.
+Build the tool first as shown below. Copy the printed `sha256:…` into the
+profile's `PiRuntimeBundleDigest` before signing. This is the Go whole-tree
+digest, which differs from the stager's `closure-manifest.sha256`. The command
+requires the existing production tree verifier's read-only mount checks; it
+does not verify profile signatures or host trust bindings and does not admit
+or launch the worker.
+
 ```sh
 # 1. Generate the canonical unsigned host profile template (placeholders).
 go build -o "$PRIVATE/tbound-profile" ./cmd/tbound-profile
@@ -245,17 +255,17 @@ The launcher also settles through a held, verified `LinuxCgroupScope`:
 `cgroup.kill`, recursive `populated=0` with a deadline, and pidfd, with owned
 finite-context cleanup on every start/run error or cancellation.
 
-> **Remaining code blocker (not just provisioning):** the launcher, template
-> binding, trust root, and settlement are implemented, but the **sealed session
-> composition** (VerifiedWorkerExposure / VerifiedWorkerRuntimeAssets from
-> `sessionlaunch`, plus the CLI composition) is owned by separate workstreams and
-> is not yet wired. Until it is, `tbound serve --pi` refuses rather than launching
-> a half-wired worker, and no G1 claim is made.
+> **Remaining production blocker:** the sealed exposure binder and production
+> session composition exist, and the official Pi CLI dev/RPC route is implemented
+> and offline-tested. The production profile/launcher migration that connects an
+> admissible signed profile to that CLI path remains pending. The current
+> production entrypoint `LaunchD09PiCLIWorker` refuses launch; no G1 claim is made.
 
-### 4c. Runtime wiring contract (session-launch + CLI owners)
+### 4c. Existing binder/session APIs and production CLI wiring
 
-`piruntime` publishes the exact production API; no fictional seam and no injected
-runner is exposed.
+The sealed binder/session APIs exist. SDK-worker APIs shown below are legacy,
+unqualified, and inadmissible for production; the official Pi CLI dev/RPC route
+is implemented, while production profile/launcher migration remains pending.
 
 ```go
 // Assemble bindings + channels from verified sealed inputs (worker C/B):
@@ -304,14 +314,16 @@ There is intentionally no caller-facing `AdmitProfile(profile)` method:
 calls the package-private D09 admission gate while constructing the trusted
 verifier. A D09 command runner cannot be constructed before that admission.
 
-MED3 wiring for C: `LaunchPiSDKWorker` -> `StartChild` -> `StartVerified` no longer drops
+**Legacy SDK-worker proof wiring (reference only; unqualified and inadmissible for
+production):** `LaunchPiSDKWorker` -> `StartChild` -> `StartVerified` no longer drops
 the proof. The launcher registers the validated proof against the exact `*exec.Cmd`;
 `StartChild` attaches it to the `*Process`; `LaunchPiSDKWorker` attaches it to the
 `*PiSDKWorker`. C calls `worker.D09LaunchProof()` and MUST journal the returned
 `D09TCBProof` before releasing any prompt/effect; a `false` return means no proof
 (development, or a failed launch) and no release is permitted.
 
-Wiring sequence (worker C): load + verify the signed profile; load the registered
+Legacy SDK-worker wiring sequence (reference only, not production-admissible):
+load + verify the signed profile; load the registered
 template and require `profile.ContainmentProfileDigest == template digest`;
 construct the held `LinuxCgroupScope` and `BindCgroupScope`; build the
 `HostRuntimeBindings`/channels via `BindProductionPiWorkerBindings`; admit through
@@ -399,7 +411,7 @@ reconciliation.
 
 **TCB proof journaling:** `StartVerifiedWithProof` returns a `D09TCBProof` bound to
 the exact container name, leader pid, image ref/digest, template digest, and
-consumer-mount proof. The actual `LaunchPiSDKWorker` -> `StartChild` ->
+consumer-mount proof. The legacy SDK-worker `LaunchPiSDKWorker` -> `StartChild` ->
 `StartVerified` path attaches it to that worker; C reads it with
 `worker.D09LaunchProof()`. C **must append it as a durable TCB record before
 releasing any worker prompt or effect**; a missing proof or failed journal must

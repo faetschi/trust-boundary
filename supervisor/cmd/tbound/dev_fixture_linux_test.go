@@ -67,7 +67,7 @@ func TestServePiDevFixtureConflictsWithNativeHostProfile(t *testing.T) {
 // production refusal. With the explicit paths absent it must name the missing
 // opt-in variables and produce no receipt.
 func TestServePiDevFixtureRequiresExplicitEnvironment(t *testing.T) {
-	for _, name := range []string{devFixtureNodeEnv, devFixtureAdapterEnv, devFixtureNodeModulesEnv, devFixtureRootEnv} {
+	for _, name := range []string{devFixturePiEnv, devFixtureNodeEnv, devFixtureAdapterEnv, devFixtureRootEnv} {
 		t.Setenv(name, "")
 	}
 	var transcript bytes.Buffer
@@ -84,16 +84,16 @@ func TestServePiDevFixtureRequiresExplicitEnvironment(t *testing.T) {
 }
 
 // TestServePiDevFixtureLaunchesActualPinnedPiOffline is opt-in. It runs the
-// actual pinned Pi SDK worker through the explicit development composition and
+// actual pinned official Pi CLI RPC worker through the explicit development composition and
 // asserts the bounded, non-claim-bearing receipt with the observed four-tool
 // E05 lineage read -> edit -> bash -> read over g0/g1/g2, including the Bash
 // settlement field. It is skipped unless the same explicit Linux Node/
-// pinned-dependency/private-root environment the opt-in process tests use.
+// CLI/Node/extension/private-root environment the opt-in process tests use.
 func TestServePiDevFixtureLaunchesActualPinnedPiOffline(t *testing.T) {
-	for _, name := range []string{devFixtureNodeEnv, devFixtureAdapterEnv, devFixtureNodeModulesEnv, devFixtureRootEnv} {
+	for _, name := range []string{devFixturePiEnv, devFixtureNodeEnv, devFixtureAdapterEnv, devFixtureRootEnv} {
 		if os.Getenv(name) == "" {
-			t.Skipf("set %s/%s/%s/%s to run the actual offline development Pi fixture",
-				devFixtureNodeEnv, devFixtureAdapterEnv, devFixtureNodeModulesEnv, devFixtureRootEnv)
+			t.Skipf("set %s/%s/%s/%s to run the actual offline development Pi CLI fixture",
+				devFixturePiEnv, devFixtureNodeEnv, devFixtureAdapterEnv, devFixtureRootEnv)
 		}
 	}
 	var transcript bytes.Buffer

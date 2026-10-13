@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -574,9 +573,7 @@ func (l *LinuxExecutableLauncher) StartVerified(ctx context.Context, request Exe
 		DigestBytes([]byte(request.Dir)) != request.WorkingDirectoryDigest || !minimalPiWorkerEnvironment(request.Env) {
 		return nil, ErrHostProfileMismatch
 	}
-	if len(request.Args) != 2 || request.Args[0] != "--experimental-strip-types" ||
-		request.Args[1] != "/proc/self/fd/9/src/governed-pi-worker.ts" ||
-		request.Path == "" || request.NodeVersion == "" {
+	if !equalStrings(request.Args, PiWorkerCellArguments()) || request.Path == "" || request.NodeVersion == "" {
 		return nil, ErrHostProfileMismatch
 	}
 	if err := validatePrivateDirectory(request.Env); err != nil {
@@ -857,26 +854,13 @@ func VerifyLinuxPiRuntimeBundle(root *os.File) (string, error) {
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-// DeveloperPiSDKAdapterSourceFiles is the fixed, bounded adapter source set the
-// governed Pi SDK worker imports at runtime. It is the single source of truth
-// shared by the development bundle staging step and the developer bundle digest
-// so the two cannot drift.
-var DeveloperPiSDKAdapterSourceFiles = []string{
-	"package.json", "package-lock.json",
-	"src/governed-pi-worker.ts", "src/broker-provider.ts", "src/proxy-tools.ts",
-	"src/ipc-transport.ts", "src/locked-resource-loader.ts",
-}
-
-// DigestDeveloperPiSDKBundle binds the small adapter source snapshot and lock
-// metadata used by the offline Linux worker test, plus the explicit existing
-// dependency-link target and pinned package manifests. It is development-only:
-// it does not hash every dependency byte or produce a production receipt.
-func DigestDeveloperPiSDKBundle(root *os.File, pinnedNodeModules string) (string, error) {
-	if root == nil || !filepath.IsAbs(pinnedNodeModules) {
-		return "", errors.New("developer bundle handle and explicit pinned dependency root are required")
+// DigestDeveloperPiCLIBundle fingerprints the source-only extension snapshot.
+func DigestDeveloperPiCLIBundle(root *os.File) (string, error) {
+	if root == nil {
+		return "", errors.New("Pi CLI extension bundle handle is required")
 	}
-	rootInfo, err := root.Stat()
-	if err != nil || !rootInfo.IsDir() {
+	info, err := root.Stat()
+	if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
 		return "", ErrRuntimeBundleRefused
 	}
 	rootPath, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", root.Fd()))
@@ -884,53 +868,20 @@ func DigestDeveloperPiSDKBundle(root *os.File, pinnedNodeModules string) (string
 		return "", ErrRuntimeBundleRefused
 	}
 	pathInfo, err := os.Lstat(rootPath)
-	if err != nil || pathInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(rootInfo, pathInfo) {
+	if err != nil || pathInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(info, pathInfo) {
 		return "", ErrRuntimeBundleRefused
 	}
-	rootStat, ok := rootInfo.Sys().(*syscall.Stat_t)
-	if !ok || rootStat.Uid != uint32(os.Geteuid()) || rootInfo.Mode().Perm() != 0o700 {
-		return "", errors.New("developer source bundle root must be owned mode 0700")
-	}
-	linkPath := filepath.Join(rootPath, "node_modules")
-	linkInfo, err := os.Lstat(linkPath)
-	if err != nil || linkInfo.Mode()&os.ModeSymlink == 0 {
-		return "", errors.New("developer runtime requires an explicit symlink to existing pinned dependencies")
-	}
-	linkTarget, err := filepath.EvalSymlinks(linkPath)
-	if err != nil || filepath.Clean(linkTarget) != filepath.Clean(pinnedNodeModules) {
-		return "", errors.New("developer dependency symlink target differs from the explicit pinned path")
-	}
-	if info, err := os.Stat(linkTarget); err != nil || !info.IsDir() {
-		return "", errors.New("developer pinned dependencies are unavailable")
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != uint32(os.Geteuid()) {
+		return "", errors.New("Pi CLI extension bundle is not owned by the current UID")
 	}
 	hash := sha256.New()
-	if err := writeDigestField(hash, "node_modules-link", []byte(filepath.Clean(linkTarget))); err != nil {
-		return "", err
-	}
-	for _, relative := range DeveloperPiSDKAdapterSourceFiles {
+	for _, relative := range DeveloperPiCLIAdapterSourceFiles {
 		data, err := readRegularBounded(filepath.Join(rootPath, filepath.FromSlash(relative)), 16<<20)
 		if err != nil {
-			return "", fmt.Errorf("read developer Pi runtime file %s: %w", relative, err)
+			return "", fmt.Errorf("read Pi CLI extension source %s: %w", relative, err)
 		}
 		if err := writeDigestField(hash, relative, data); err != nil {
-			return "", err
-		}
-	}
-	for _, dependency := range []struct{ name, version string }{
-		{"@earendil-works/pi-coding-agent", "0.87.1"},
-		{"@earendil-works/pi-ai", "0.87.1"},
-		{"@earendil-works/pi-tui", "0.87.1"},
-		{"typebox", "1.3.27"},
-	} {
-		data, err := readRegularBounded(filepath.Join(linkTarget, filepath.FromSlash(dependency.name), "package.json"), 1<<20)
-		if err != nil {
-			return "", fmt.Errorf("read dependency manifest %s: %w", dependency.name, err)
-		}
-		var manifest struct{ Name, Version string }
-		if err := json.Unmarshal(data, &manifest); err != nil || manifest.Name != dependency.name || manifest.Version != dependency.version {
-			return "", fmt.Errorf("dependency manifest identity/version mismatch: %s", dependency.name)
-		}
-		if err := writeDigestField(hash, "node_modules/"+dependency.name+"/package.json", data); err != nil {
 			return "", err
 		}
 	}

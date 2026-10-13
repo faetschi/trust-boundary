@@ -7,21 +7,22 @@
 import { randomUUID } from "node:crypto";
 import { Socket } from "node:net";
 import type { Duplex } from "node:stream";
-import {
-  createAssistantMessageEventStream,
-  type Api,
-  type AssistantMessage,
-  type AssistantMessageEventStream,
-  type JsonObject,
-  type JsonValue,
-  type Model,
-  type Provider,
-  type SimpleStreamOptions,
-  type StreamOptions,
-  type ToolCall,
-  type TranscriptContext,
-  type Usage,
+import type {
+  Api,
+  AssistantMessage,
+  AssistantMessageEventStream,
+  JsonObject,
+  JsonValue,
+  Model,
+  Provider,
+  SimpleStreamOptions,
+  StreamOptions,
+  ToolCall,
+  TranscriptContext,
+  Usage,
 } from "@earendil-works/pi-ai";
+
+type PiAIEventFactory = Pick<typeof import("@earendil-works/pi-ai"), "createAssistantMessageEventStream">;
 
 export const BROKER_PROVIDER_ID = "tbound-go-broker" as const;
 export const BROKER_API = "tbound-provider-bridge/v1" as const;
@@ -197,7 +198,7 @@ export type BrokerProviderRuntime = {
 };
 
 /** Constructs the real Pi SDK provider; no process/network provider fallback exists. */
-export function createBrokerProvider(channel: Duplex): BrokerProviderRuntime {
+export function createBrokerProvider(channel: Duplex, piAI: PiAIEventFactory): BrokerProviderRuntime {
   const client = new BrokerChannelClient(channel);
   const model: Model<typeof BROKER_API> = {
     id: BROKER_MODEL_ID,
@@ -225,21 +226,21 @@ export function createBrokerProvider(channel: Duplex): BrokerProviderRuntime {
     },
     getModels: () => [model],
     stream: (_requestedModel: Model<typeof BROKER_API>, _untrustedTranscript: TranscriptContext, options?: StreamOptions) =>
-      streamFromBroker(client, model, options?.signal),
+      streamFromBroker(client, model, options?.signal, piAI),
     streamSimple: (_requestedModel: Model<typeof BROKER_API>, _untrustedTranscript: TranscriptContext, options?: SimpleStreamOptions) =>
-      streamFromBroker(client, model, options?.signal),
+      streamFromBroker(client, model, options?.signal, piAI),
   };
   return { provider, model, client };
 }
 
 /** Binds the fixed inherited fd used by the host composition; it opens no socket. */
-export function createBrokerProviderFromFD(fd = 3): BrokerProviderRuntime {
+export function createBrokerProviderFromFD(piAI: PiAIEventFactory, fd = 3): BrokerProviderRuntime {
   if (!Number.isInteger(fd) || fd < 3) throw new Error("provider bridge must use a host-inherited descriptor >= 3");
-  return createBrokerProvider(new Socket({ fd, readable: true, writable: true, allowHalfOpen: true }));
+  return createBrokerProvider(new Socket({ fd, readable: true, writable: true, allowHalfOpen: true }), piAI);
 }
 
-function streamFromBroker(client: BrokerChannelClient, model: Model<typeof BROKER_API>, signal?: AbortSignal): AssistantMessageEventStream {
-  const stream = createAssistantMessageEventStream();
+function streamFromBroker(client: BrokerChannelClient, model: Model<typeof BROKER_API>, signal: AbortSignal | undefined, piAI: PiAIEventFactory): AssistantMessageEventStream {
+  const stream = piAI.createAssistantMessageEventStream();
   void (async () => {
     try {
       const turn = await client.next(signal);

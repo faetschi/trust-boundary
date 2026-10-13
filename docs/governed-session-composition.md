@@ -1,18 +1,26 @@
-# Governed session and D06 composition — 2026-10-08
+# Governed session and D06 composition
+
+**Worker migration:** this document retains implementation details from the
+former embedded Pi SDK worker. The selected worker is the official Pi 0.87.1
+CLI in RPC mode with the TBound extension. The offline CLI/RPC fixture and
+isolated extension have passed development checks; SDK worker names and test
+receipts below do not qualify production.
+See the [CLI reproduction decision](decisions/2026-10-12-cli-reproduction.md)
+and [current status](status.md).
 
 ## Status and claim boundary
 
 This increment adds a concrete sessionrepo→D06 source-binding→private-Git
 composition and a provider-audit-backed callback set for the existing
-`DurableExecutor`. It is **not** a claim-bearing TBound release, actual Pi/Node
-launch, real provider exchange, D09/D10/D11 host profile, G1 publication, or
+`DurableExecutor`. It is **not** a claim-bearing TBound release, production
+Pi/Node launch, real provider exchange, D09/D10/D11 host profile, G1 publication, or
 thesis acceptance. The current Linux test injects a synthetic audit prefix and
 uses the measured `dev-wsl-non-claim-bearing` command sandbox. It does not use
 credentials or contact OpenRouter.
 
 Production `tbound serve --pi` must remain refusal-only until the D09 path proves
-both trusted source staging and the actual read-only consumer mount before Node
-starts. A host O_PATH descriptor is not itself a read-only view. The CLI must
+both trusted source staging and the actual read-only consumer mount before the
+Pi CLI starts. A host O_PATH descriptor is not itself a read-only view. The CLI must
 never pass `privategit.Repository.Root`, `AdminParent.root`, the Store root or
 parent, or a live-root descriptor to Pi. The D09 source capability below is
 Go/TCB-only staging material; the entrypoint must relocate FD 4 into the private
@@ -111,16 +119,13 @@ provider protocol and does not read provider credentials. The configured
 the exact result bytes and updating canonical provider history only after its
 journal append succeeds.
 
-The explicit `tbound serve --pi --dev-fixture` route (see `docs/dev-launch.md`)
-does not use `SessionOperationAuthority` or D06 provenance. It launches the real
-pinned Pi worker offline and drives `read(g0) -> edit(g1) -> bash(g2) ->
-read(g2)` through the real `DurableExecutor`. Its Bash step prefers the reviewed
-`sessionlaunch.DevelopmentCommandRunner` (the measured `dev-wsl-non-claim-bearing`
-sandbox cell) and falls back to a bounded, explicitly **non-contained**
-development runner only when that sandbox cannot be established. The receipt
-records the exact runner profile; it keeps `containment="not-established"`,
-`settlement="UNKNOWN"`, `provider_exchange=false`, and
-`publication="not-attempted"`.
+The offline `--dev-fixture` now launches the official Pi CLI/RPC worker and
+TBound extension against a scripted provider. It completed four mediated tool
+turns and five provider turns on the existing VM, but reports
+`provider_exchange=false`, `settlement=UNKNOWN`,
+`containment=not-established`, and `claim_bearing=false`; it does not qualify
+the production CLI profile or launcher. The separate `--native-fixture` is
+Go-only and does not start Pi; see [launch](launch.md).
 
 `SessionOperationAuthority.AdmitPrompt` verifies D06/store identity and that
 the current `DurableExecutor.Tip()` matches the verified latest Store generation
@@ -178,7 +183,7 @@ this component test.
 
 ## Remaining vertical-slice contracts
 
-- The launcher has published `NewPiWorkerChannels`, `LaunchPiSDKWorker`,
+- The pre-migration SDK launcher published `NewPiWorkerChannels`, `LaunchPiSDKWorker`,
   `Admission`, `PID`, `NextEvent`, `SendAdmittedPrompt`, and `Close`. The generic
   `VerifiedWorkerExposure` still means a pre-established consumer read-only view;
   B's `VerifiedD09ExposureSource` is deliberately a separate source-staging API
@@ -203,13 +208,12 @@ this component test.
 - The current providerbridge tests intentionally use a synthetic Doer; this
   increment makes no real provider call and does not load credentials. Operator
   approval and the secure loader are separate prerequisites.
-- A separate coordinator compatibility snapshot reports that the Pi SDK
-  `AgentSession` ran with the installed Linux Node 24.15 executable and already
-  present pinned package assets. That is WSL development compatibility only; it
-  does not bind those bytes to an admitted profile or provide the missing
-  launcher/descriptor-role integration.
-- No CLI fallback to the Go-only fixture, stock unrestricted Pi CLI, Windows
-  Node binary, or direct host command execution is introduced.
+- A previous compatibility snapshot reports that the embedded Pi SDK
+  `AgentSession` ran with Linux Node 24.15 and pre-existing package assets.
+  This historical result does not bind the official CLI or extension to an
+  admitted profile.
+- The official CLI path must not fall back to the Go-only fixture, an
+  unrestricted stock Pi tool surface, Windows Node, or direct host execution.
 
 ## Verification
 

@@ -5,6 +5,7 @@ vm_start.txt
 
 # Build and generated artifacts
 supervisor/tbound.exe
+supervisor/tbound
 supervisor/internal/sessionrepo/artifacts/
 
 # Generated release outputs (QW-2, additive). scripts/build-release.sh,
@@ -22,6 +23,5 @@ supervisor/internal/sessionrepo/artifacts/
 # Ad-hoc local build binaries produced by running `go build ./cmd/...` inside
 # supervisor/ (e.g. supervisor/tbound-doctor, supervisor/tbound-doctor.exe).
 # Narrowly scoped to the supervisor root and to dash-suffixed tbound names:
-# this never matches the tracked supervisor/tbound ELF (no dash) nor the
-# retained supervisor/tbound.exe pattern above.
+# this does not match the retained supervisor/tbound.exe pattern above.
 supervisor/tbound-*

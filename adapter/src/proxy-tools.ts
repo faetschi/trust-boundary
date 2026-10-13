@@ -1,4 +1,4 @@
-import { Type, type Static } from "typebox";
+import type { Static, TSchema } from "typebox";
 import type { ToolDefinition } from "@earendil-works/pi-coding-agent";
 import type { IpcClient, IpcProposal, IpcResult } from "./ipc-transport.ts";
 
@@ -30,6 +30,9 @@ export class IpcProposalSender implements ProposalSender {
   }
 }
 
+type TypeboxBuilder = typeof import("typebox").Type;
+
+export function createProxyParameters(Type: TypeboxBuilder) {
 const readParameters = Type.Object({
   path: Type.String({ description: "Path to the file to read (relative or absolute)" }),
   offset: Type.Optional(Type.Number({ description: "Line number to start reading from (1-indexed)" })),
@@ -69,15 +72,18 @@ const bashParameters = Type.Object({
   timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
 });
 
-export const proxyParameters = {
+const proxyParameters = {
   read: readParameters,
   write: writeParameters,
   edit: editParameters,
   bash: bashParameters,
 } as const;
 
-function makeProxyTool<TName extends DeclaredToolName, TParams extends typeof proxyParameters[TName]>(
-  name: TName,
+return proxyParameters;
+}
+
+function makeProxyTool<TParams extends TSchema>(
+	name: DeclaredToolName,
   schema: TParams,
   description: string,
   sender: ProposalSender,
@@ -106,35 +112,36 @@ function makeProxyTool<TName extends DeclaredToolName, TParams extends typeof pr
   };
 }
 
-export function createProxyTools(sender: ProposalSender): ToolDefinition[] {
+export function createProxyTools(sender: ProposalSender, Type: TypeboxBuilder): ToolDefinition[] {
+  const proxyParameters = createProxyParameters(Type);
   return [
     makeProxyTool(
       "read",
-      readParameters,
+      proxyParameters.read,
       "Read the contents of a file. Supports text files and images. Requests are forwarded to tbound.",
       sender,
     ),
     makeProxyTool(
       "write",
-      writeParameters,
+      proxyParameters.write,
       "Write content to a file. Requests are forwarded to tbound.",
       sender,
     ),
     makeProxyTool(
       "edit",
-      editParameters,
+      proxyParameters.edit,
       "Edit a single file using exact text replacements. Requests are forwarded to tbound.",
       sender,
     ),
     makeProxyTool(
       "bash",
-      bashParameters,
+      proxyParameters.bash,
       "Execute a bash command. Requests are forwarded to tbound.",
       sender,
     ),
   ];
 }
 
-export function createIpcProxyTools(client: IpcClient): ToolDefinition[] {
-  return createProxyTools(new IpcProposalSender(client));
+export function createIpcProxyTools(client: IpcClient, Type: TypeboxBuilder): ToolDefinition[] {
+  return createProxyTools(new IpcProposalSender(client), Type);
 }

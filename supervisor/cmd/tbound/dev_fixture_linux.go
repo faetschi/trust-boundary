@@ -9,20 +9,22 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/piinstall"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workspace"
 )
 
-// The explicit development fixture route launches the actual pinned Pi SDK
-// worker over the real inherited-FD channels and the real provider conversation
+// The explicit development fixture route launches the actual pinned Pi CLI RPC
+// process over the real inherited-FD channels and provider conversation
 // bridge. It is deliberately non-claim-bearing: the provider transport is a
 // scripted offline doer, the session repository uses non-claiming development
 // callbacks, containment is not established, and settlement is UNKNOWN. The
@@ -32,10 +34,10 @@ import (
 // reaches for provider credentials, the network, host containment, or the
 // production serve --pi admission path, and it does not publish.
 const (
-	devFixtureNodeEnv        = "TBOUND_DEV_FIXTURE_NODE"
-	devFixtureAdapterEnv     = "TBOUND_DEV_FIXTURE_ADAPTER"
-	devFixtureNodeModulesEnv = "TBOUND_DEV_FIXTURE_NODE_MODULES"
-	devFixtureRootEnv        = "TBOUND_DEV_FIXTURE_ROOT"
+	devFixtureNodeEnv    = "TBOUND_DEV_FIXTURE_NODE"
+	devFixturePiEnv      = "TBOUND_DEV_FIXTURE_PI"
+	devFixtureAdapterEnv = "TBOUND_DEV_FIXTURE_ADAPTER"
+	devFixtureRootEnv    = "TBOUND_DEV_FIXTURE_ROOT"
 
 	devFixtureSessionID      = "dev-fixture-session"
 	devFixtureWorkflowID     = "dev-fixture-workflow"
@@ -56,7 +58,7 @@ const (
 )
 
 // developmentFixtureTurns is the fixed offline provider script. It drives the
-// real Pi SDK through the E05-shaped four proxy-tool turns
+// real Pi CLI through the E05-shaped four proxy-tool turns
 // (read(g0) -> edit(g1) -> bash(g2) -> read(g2)) and one final assistant text
 // turn. The arguments are exactly what the durable session repository will
 // apply to its synthetic source. The bash command mutates the private command
@@ -70,10 +72,10 @@ var developmentFixtureTurns = []providerbridge.DevelopmentProviderTurn{
 }
 
 type developmentFixtureConfig struct {
-	nodePath       string
-	adapterRoot    string
-	dependencyRoot string
-	privateRoot    string
+	nodePath    string
+	piPath      string
+	adapterRoot string
+	privateRoot string
 }
 
 type developmentFixtureReceipt struct {
@@ -152,7 +154,7 @@ func runDevelopmentPiFixture(ctx context.Context, output io.Writer) error {
 			return err
 		}
 	}
-	bundleRoot, err := piruntime.StageDevelopmentPiWorkerBundle(base, config.adapterRoot, config.dependencyRoot)
+	bundleRoot, err := piruntime.StageDevelopmentPiCLIBundle(base, config.adapterRoot)
 	if err != nil {
 		return err
 	}
@@ -164,6 +166,15 @@ func runDevelopmentPiFixture(ctx context.Context, output io.Writer) error {
 		return fmt.Errorf("development fixture requires pinned Node %s; found %q", piruntime.DevelopmentPiNodeVersion, nodeVersion)
 	}
 
+	piInfo, err := piinstall.DiscoverPi(ctx, piinstall.Options{ExplicitPi: config.piPath, Run: func(runCtx context.Context, _ string, executable string, args ...string) ([]byte, error) {
+		command := exec.CommandContext(runCtx, executable, args...)
+		command.Dir = workingDirectory
+		command.Env = []string{"HOME=" + workerHome, "TMPDIR=" + workerTemp, "PATH=" + filepath.Dir(config.nodePath), "PI_OFFLINE=1", "LANG=C.UTF-8"}
+		return command.Output()
+	}})
+	if err != nil {
+		return fmt.Errorf("discover official Pi CLI: %w", err)
+	}
 	workingHandle, err := os.Open(workingDirectory)
 	if err != nil {
 		return err
@@ -174,16 +185,15 @@ func runDevelopmentPiFixture(ctx context.Context, output io.Writer) error {
 		return err
 	}
 	defer bundleHandle.Close()
-	worker, err := piruntime.StartDevelopmentPiSDKWorker(ctx, piruntime.DeveloperPiWorkerPlan{
-		NodePath: config.nodePath, NodeVersion: nodeVersion,
-		BundleRoot: bundleRoot, DependencyRoot: config.dependencyRoot, BundleHandle: bundleHandle,
-		WorkerPath: filepath.Join(bundleRoot, "src", "governed-pi-worker.ts"),
+	worker, err := piruntime.StartDevelopmentPiCLIWorker(ctx, piruntime.DeveloperPiCLIPlan{
+		PiPath: piInfo.Path, PiSHA256: "sha256:" + piInfo.SHA256, NodePath: config.nodePath, NodeVersion: nodeVersion,
+		BundleRoot: bundleRoot, BundleHandle: bundleHandle, ExtensionPath: filepath.Join(bundleRoot, "src", "tbound-cli-extension.ts"),
 		WorkingDir: workingDirectory, WorkingHandle: workingHandle,
 		Home: workerHome, TempDir: workerTemp,
 		SessionID: devFixtureSessionID, WorkflowID: devFixtureWorkflowID, ConversationID: devFixtureConversationID,
 	})
 	if err != nil {
-		return fmt.Errorf("launch actual pinned Pi SDK worker: %w", err)
+		return fmt.Errorf("launch official Pi CLI RPC worker: %w", err)
 	}
 	var settlement piruntime.Settlement
 	workerClosed := false
@@ -279,15 +289,13 @@ func runDevelopmentPiFixture(ctx context.Context, output io.Writer) error {
 
 func loadDevelopmentFixtureConfig() (developmentFixtureConfig, error) {
 	config := developmentFixtureConfig{
-		nodePath:       os.Getenv(devFixtureNodeEnv),
-		adapterRoot:    os.Getenv(devFixtureAdapterEnv),
-		dependencyRoot: os.Getenv(devFixtureNodeModulesEnv),
-		privateRoot:    os.Getenv(devFixtureRootEnv),
+		nodePath: os.Getenv(devFixtureNodeEnv), piPath: os.Getenv(devFixturePiEnv),
+		adapterRoot: os.Getenv(devFixtureAdapterEnv), privateRoot: os.Getenv(devFixtureRootEnv),
 	}
 	missing := make([]string, 0, 4)
 	for name, value := range map[string]string{
-		devFixtureNodeEnv: config.nodePath, devFixtureAdapterEnv: config.adapterRoot,
-		devFixtureNodeModulesEnv: config.dependencyRoot, devFixtureRootEnv: config.privateRoot,
+		devFixtureNodeEnv: config.nodePath, devFixturePiEnv: config.piPath,
+		devFixtureAdapterEnv: config.adapterRoot, devFixtureRootEnv: config.privateRoot,
 	} {
 		if value == "" {
 			missing = append(missing, name)
@@ -297,8 +305,8 @@ func loadDevelopmentFixtureConfig() (developmentFixtureConfig, error) {
 		return config, fmt.Errorf("development fixture is opt-in: set %s", strings.Join(missing, ", "))
 	}
 	for name, value := range map[string]string{
-		devFixtureNodeEnv: config.nodePath, devFixtureAdapterEnv: config.adapterRoot,
-		devFixtureNodeModulesEnv: config.dependencyRoot, devFixtureRootEnv: config.privateRoot,
+		devFixtureNodeEnv: config.nodePath, devFixturePiEnv: config.piPath,
+		devFixtureAdapterEnv: config.adapterRoot, devFixtureRootEnv: config.privateRoot,
 	} {
 		if !filepath.IsAbs(value) {
 			return config, fmt.Errorf("%s must be an absolute path", name)
@@ -393,7 +401,7 @@ func setupDevelopmentFixtureStore(base string, commands devFixtureRunner) (*sess
 	return store, durable, storeJournal, providerJournal, closeAll, nil
 }
 
-func waitDevelopmentTurnEnd(ctx context.Context, worker *piruntime.PiSDKWorker, requestID string) error {
+func waitDevelopmentTurnEnd(ctx context.Context, worker *piruntime.PiCLIWorker, requestID string) error {
 	for {
 		event, err := worker.NextEvent(ctx)
 		if err != nil {

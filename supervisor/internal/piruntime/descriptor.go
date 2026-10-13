@@ -19,7 +19,7 @@ const (
 	DescriptorWorkerEvents   DescriptorRole = "worker-events"
 	DescriptorRuntimeBundle  DescriptorRole = "runtime-bundle"
 
-	PiWorkerDescriptorProfile = "tbound-pi-sdk-fdmap/v1;exec=3;exposure=4;bootstrap=5;ipc=6;provider=7;events=8;bundle=9;control=0"
+	PiWorkerDescriptorProfile = "tbound-pi-cli-fdmap/v1;exec=3;exposure=4;bootstrap=5;ipc=6;provider=7;events=8;bundle=9;control=0"
 )
 
 // WorkerExposureEvidence binds the exact sealed sessionrepo generation/view

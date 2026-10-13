@@ -103,3 +103,45 @@ func TestProductionServeRequiresBoundedTaskRequestIdentity(t *testing.T) {
 		t.Fatalf("bounded task request identity refused: %v", err)
 	}
 }
+
+func TestProductionPublicationAttemptRequiresCompleteWorkerSettlement(t *testing.T) {
+	valid := piruntime.Settlement{
+		State: piruntime.SettlementStopped, ExitObserved: true, DescendantsSettled: true,
+	}
+	cases := []struct {
+		name       string
+		settlement piruntime.Settlement
+		closeErr   error
+	}{
+		{name: "unknown", settlement: piruntime.Settlement{State: piruntime.SettlementUnknown, ExitObserved: true, DescendantsSettled: true}},
+		{name: "exit not observed", settlement: piruntime.Settlement{State: piruntime.SettlementStopped, DescendantsSettled: true}},
+		{name: "descendants not settled", settlement: piruntime.Settlement{State: piruntime.SettlementStopped, ExitObserved: true}},
+		{name: "close failed", settlement: valid, closeErr: errors.New("worker close observation failed")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			attempts := 0
+			err := runProductionPublicationAfterWorkerSettlement(tc.settlement, tc.closeErr, func() error {
+				attempts++ // represents the actual evidence/finalize callback
+				return nil
+			})
+			if !errors.Is(err, ErrProductionWorkerSettlementIncomplete) {
+				t.Fatalf("publication gate error = %v, want incomplete-settlement refusal", err)
+			}
+			if attempts != 0 {
+				t.Fatalf("publication callback ran %d times for incomplete settlement", attempts)
+			}
+		})
+	}
+
+	attempts := 0
+	if err := runProductionPublicationAfterWorkerSettlement(valid, nil, func() error {
+		attempts++
+		return nil
+	}); err != nil {
+		t.Fatalf("fully settled worker did not allow publication callback: %v", err)
+	}
+	if attempts != 1 {
+		t.Fatalf("fully settled worker publication callback count=%d, want 1", attempts)
+	}
+}

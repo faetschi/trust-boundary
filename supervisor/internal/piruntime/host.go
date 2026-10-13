@@ -12,8 +12,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"unicode/utf8"
+
+	"tbound/supervisor/internal/piinstall"
 )
 
 var (
@@ -29,7 +32,58 @@ var (
 const (
 	ModeProduction = "production"
 	ModeFixture    = "fixture"
+
+	developerPiCLIProfileID          = "developer-official-pi-cli-uncontained"
+	developerPiCLIArgumentsProfile   = "developer-pi-cli-rpc-v1"
+	developerPiCLIEnvironmentProfile = "developer-pi-cli-isolated/v1"
+	developerPiCLIContainmentProfile = "developer-uncontained"
+	developerPiCLISettlementProfile  = "direct-child-only-unknown"
+	developerPiCLIObservationProfile = "worker-events/fd8/v1"
+	developerPiCLISourceProvenance   = "DEVELOPMENT/UNKNOWN"
+	developerPiCLIOfflineVerifier    = "none-developer-only"
+	developerPiCLIProviderProfile    = "go-providerbridge-synthetic-peer-nonclaiming"
 )
+
+// The production profile pins the official Pi CLI RPC contract. The CLI and
+// extension are read from the verified runtime bundle mounted at /runtime;
+// fd 9 remains the separately held host-side bundle descriptor.
+const (
+	PiCLIProductionArgumentsProfile   = "governed-pi-cli-rpc-argv/0.87.1"
+	PiCLIProductionEnvironmentProfile = "governed-pi-cli-cell-env/v1"
+	PiCLIProductionStdinProfile       = "pi-rpc-jsonl-stdin/v0.87.1"
+	PiCLIProductionStdoutProfile      = "pi-rpc-jsonl-stdout/v0.87.1"
+	PiCLIProductionTerminalProfile    = "pi-rpc-no-terminal/v1"
+	PiCLIProductionIPCProfile         = "tbound-ipc/v1/fd6"
+	PiCLIProductionNodeVersion        = "v24.21.0"
+	PiCLIProductionExecutable         = "/usr/local/bin/node"
+	PiCLIProductionRuntimeBundleRoot  = "/var/lib/tbound/runtime"
+	PiCLIProductionEntryPath          = "/runtime/cli/node_modules/@earendil-works/pi-coding-agent/dist/bundle/cli.js"
+	PiCLIProductionExtensionPath      = "/runtime/extension/src/tbound-cli-extension.ts"
+	PiCLIProductionHome               = "/tmp/home"
+	PiCLIProductionTemp               = "/tmp/tbound-tmp"
+)
+
+// productionPiCLIArguments is the single signed argv vector for Node running
+// the official Pi 0.87.1 CLI in RPC mode. The CLI entry and extension path are
+// inside the read-only runtime bundle mounted at /runtime.
+func productionPiCLIArguments() []string {
+	flags := []string{
+		"--mode", "rpc", "--no-session", "--no-extensions", "--no-builtin-tools",
+		"--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files",
+		"--no-approve", "--offline", "--extension", PiCLIProductionExtensionPath,
+		"--provider", piinstall.PinnedPiProvider, "--model", piinstall.PinnedPiProvider + "/" + piinstall.PinnedPiModel,
+	}
+	return append([]string{PiCLIProductionEntryPath}, flags...)
+}
+
+func productionPiCLIEnvironment() []string {
+	return []string{
+		"HOME=" + PiCLIProductionHome,
+		"LANG=C.UTF-8",
+		"PI_OFFLINE=1",
+		"TMPDIR=" + PiCLIProductionTemp,
+	}
+}
 
 // HostProfile is trusted host configuration. It is not decoded from Pi IPC or
 // browser JSON. Digest is the reviewed identity of the complete runtime
@@ -47,6 +101,8 @@ type HostProfile struct {
 	WorkingDirectoryDigest   string
 	StdinProfile             string
 	StdinDigest              string
+	StdoutProfile            string
+	StdoutProfileDigest      string
 	ChildEnvironment         string
 	ChildEnvironmentDigest   string
 	IPCProfile               string
@@ -84,6 +140,7 @@ type HostAttestation struct {
 	ChildArgumentsDigest   string
 	WorkingDirectoryDigest string
 	StdinDigest            string
+	StdoutDigest           string
 	ChildEnvironmentDigest string
 	IPCProfileDigest       string
 	TerminalDigest         string
@@ -141,6 +198,7 @@ type HostRuntimeBindings struct {
 	D09RuntimeAssetSource   any
 	D09RuntimeAssetEvidence WorkerRuntimeAssetEvidence
 	StdinProfile            string
+	StdoutProfile           string
 	ChildEnvironment        string
 	IPCProfile              string
 	TerminalProfile         string
@@ -201,6 +259,9 @@ func (b HostRuntimeBindings) validate(profile HostProfile) error {
 		DigestBytes([]byte(b.StdinProfile)) != profile.StdinDigest || b.ChildEnvironment != profile.ChildEnvironment ||
 		DigestEnvironment(b.Environment) != profile.ChildEnvironmentDigest {
 		return fmt.Errorf("%w: stdin or exact child environment differs from signed profile", ErrHostBindingsMissing)
+	}
+	if profile.Mode == ModeProduction && b.StdoutProfile != profile.StdoutProfile {
+		return fmt.Errorf("%w: Pi RPC stdout profile differs from signed profile", ErrHostBindingsMissing)
 	}
 	if b.IPCProfile != profile.IPCProfile || b.TerminalProfile != profile.TerminalProfile ||
 		b.ContainmentProfile != profile.ContainmentProfile || b.SettlementProfile != profile.SettlementProfile ||
@@ -263,14 +324,20 @@ func (p HostProfile) Validate() error {
 	if !validIdentity(p.ID) || !validDigest(p.Digest) || p.Mode == "" {
 		return ErrHostProfileMissing
 	}
-	if p.Mode != ModeProduction && p.Mode != ModeFixture {
+	switch p.Mode {
+	case ModeFixture:
+		return p.validateFixture()
+	case ModeProduction:
+		// Continue through the production-only profile checks below.
+	default:
 		return ErrHostProfileMissing
 	}
-	if p.Mode == ModeProduction && (!validIdentity(p.ChildExecutable) || !filepath.IsAbs(p.ChildExecutable) ||
+	if !validIdentity(p.ChildExecutable) || !filepath.IsAbs(p.ChildExecutable) ||
 		!validDigest(p.ExecutableDigest) || !validIdentity(p.NodeVersion) || !validIdentity(p.ChildArgumentsProfile) ||
 		!validDigest(p.ChildArgumentsDigest) || !validIdentity(p.WorkingDirectory) ||
 		!filepath.IsAbs(p.WorkingDirectory) || !validDigest(p.WorkingDirectoryDigest) ||
-		!validIdentity(p.StdinProfile) || !validDigest(p.StdinDigest) || !validIdentity(p.ChildEnvironment) ||
+		!validIdentity(p.StdinProfile) || !validDigest(p.StdinDigest) || !validIdentity(p.StdoutProfile) ||
+		!validDigest(p.StdoutProfileDigest) || !validIdentity(p.ChildEnvironment) ||
 		!validDigest(p.ChildEnvironmentDigest) || !validIdentity(p.IPCProfile) ||
 		!validDigest(p.IPCProfileDigest) || !validIdentity(p.TerminalProfile) ||
 		!validDigest(p.TerminalProfileDigest) || !validIdentity(p.ContainmentProfile) ||
@@ -283,7 +350,50 @@ func (p HostProfile) Validate() error {
 		!validIdentity(p.SourceProvenance) ||
 		!validDigest(p.SourceProvenanceDigest) || !validIdentity(p.OfflineVerifier) ||
 		!validDigest(p.OfflineVerifierDigest) || !validIdentity(p.ProviderProfile) ||
-		!validDigest(p.ProviderProfileDigest)) {
+		!validDigest(p.ProviderProfileDigest) {
+		return ErrHostProfileMissing
+	}
+	if runtime.GOOS == "linux" {
+		if p.ChildExecutable != PiCLIProductionExecutable || p.NodeVersion != PiCLIProductionNodeVersion ||
+			p.ChildArgumentsProfile != PiCLIProductionArgumentsProfile ||
+			p.ChildArgumentsDigest != DigestArguments(productionPiCLIArguments()) ||
+			p.StdinProfile != PiCLIProductionStdinProfile || p.StdinDigest != DigestBytes([]byte(PiCLIProductionStdinProfile)) ||
+			p.StdoutProfile != PiCLIProductionStdoutProfile || p.StdoutProfileDigest != DigestBytes([]byte(PiCLIProductionStdoutProfile)) ||
+			p.ChildEnvironment != PiCLIProductionEnvironmentProfile ||
+			p.ChildEnvironmentDigest != DigestEnvironment(productionPiCLIEnvironment()) ||
+			p.IPCProfile != PiCLIProductionIPCProfile || p.IPCProfileDigest != DigestBytes([]byte(PiCLIProductionIPCProfile)) ||
+			p.TerminalProfile != PiCLIProductionTerminalProfile ||
+			p.TerminalProfileDigest != DigestBytes([]byte(PiCLIProductionTerminalProfile)) ||
+			p.PiRuntimeBundleRoot != PiCLIProductionRuntimeBundleRoot {
+			return ErrHostProfileMissing
+		}
+	}
+	return nil
+}
+
+func (p HostProfile) validateFixture() error {
+	arguments, err := piinstall.GovernedRPCArgs("/proc/self/fd/9/src/tbound-cli-extension.ts")
+	if runtime.GOOS != "linux" || err != nil ||
+		p.ID != developerPiCLIProfileID || p.Digest != DigestBytes([]byte(developerPiCLIProfileID)) ||
+		!validIdentity(p.ChildExecutable) || !filepath.IsAbs(p.ChildExecutable) || !validDigest(p.ExecutableDigest) ||
+		p.NodeVersion != PiCLIProductionNodeVersion ||
+		p.ChildArgumentsProfile != developerPiCLIArgumentsProfile || p.ChildArgumentsDigest != DigestArguments(arguments) ||
+		!validIdentity(p.WorkingDirectory) || !filepath.IsAbs(p.WorkingDirectory) ||
+		p.WorkingDirectoryDigest != DigestBytes([]byte(p.WorkingDirectory)) ||
+		p.StdinProfile != PiCLIProductionStdinProfile || p.StdinDigest != DigestBytes([]byte(PiCLIProductionStdinProfile)) ||
+		p.StdoutProfile != "" || p.StdoutProfileDigest != "" ||
+		p.ChildEnvironment != developerPiCLIEnvironmentProfile || !validDigest(p.ChildEnvironmentDigest) ||
+		p.IPCProfile != PiCLIProductionIPCProfile || p.IPCProfileDigest != DigestBytes([]byte(PiCLIProductionIPCProfile)) ||
+		p.TerminalProfile != PiCLIProductionTerminalProfile || p.TerminalProfileDigest != DigestBytes([]byte(PiCLIProductionTerminalProfile)) ||
+		p.ContainmentProfile != developerPiCLIContainmentProfile || p.ContainmentProfileDigest != DigestBytes([]byte(developerPiCLIContainmentProfile)) ||
+		p.CgroupRootDigest != "" ||
+		p.SettlementProfile != developerPiCLISettlementProfile || p.SettlementProfileDigest != DigestBytes([]byte(developerPiCLISettlementProfile)) ||
+		p.ObservationProfile != developerPiCLIObservationProfile || p.ObservationProfileDigest != DigestBytes([]byte(developerPiCLIObservationProfile)) ||
+		p.DescriptorProfile != PiWorkerDescriptorProfile || p.DescriptorProfileDigest != DigestBytes([]byte(PiWorkerDescriptorProfile)) ||
+		!validIdentity(p.PiRuntimeBundleRoot) || !filepath.IsAbs(p.PiRuntimeBundleRoot) || !validDigest(p.PiRuntimeBundleDigest) ||
+		p.SourceProvenance != developerPiCLISourceProvenance || p.SourceProvenanceDigest != DigestBytes([]byte(developerPiCLISourceProvenance)) ||
+		p.OfflineVerifier != developerPiCLIOfflineVerifier || p.OfflineVerifierDigest != DigestBytes([]byte(developerPiCLIOfflineVerifier)) ||
+		p.ProviderProfile != developerPiCLIProviderProfile || p.ProviderProfileDigest != DigestBytes([]byte(developerPiCLIProviderProfile)) {
 		return ErrHostProfileMissing
 	}
 	return nil
@@ -293,7 +403,7 @@ func (a HostAttestation) Validate() error {
 	if !validIdentity(a.HostID) || !validIdentity(a.ProfileID) ||
 		!validDigest(a.ProfileDigest) || !validDigest(a.ExecutableDigest) || !validIdentity(a.NodeVersion) ||
 		!validDigest(a.ChildArgumentsDigest) || !validDigest(a.WorkingDirectoryDigest) ||
-		!validDigest(a.StdinDigest) ||
+		!validDigest(a.StdinDigest) || !validDigest(a.StdoutDigest) ||
 		!validDigest(a.ChildEnvironmentDigest) || !validDigest(a.IPCProfileDigest) ||
 		!validDigest(a.TerminalDigest) || !validDigest(a.ContainmentDigest) || !validDigest(a.CgroupRootDigest) ||
 		!validDigest(a.SettlementDigest) || !validDigest(a.ObservationDigest) ||
@@ -308,6 +418,9 @@ func (a HostAttestation) Validate() error {
 // ValidateHostAdmission checks only structural binding. It is not an
 // authorization operation; production callers must use AdmitProduction.
 func ValidateHostAdmission(profile HostProfile, attestation HostAttestation) error {
+	if profile.Mode == ModeFixture {
+		return ErrHostAdmissionRefused
+	}
 	if err := profile.Validate(); err != nil {
 		return err
 	}
@@ -322,6 +435,7 @@ func ValidateHostAdmission(profile HostProfile, attestation HostAttestation) err
 		attestation.ChildArgumentsDigest != profile.ChildArgumentsDigest ||
 		attestation.WorkingDirectoryDigest != profile.WorkingDirectoryDigest ||
 		attestation.StdinDigest != profile.StdinDigest ||
+		attestation.StdoutDigest != profile.StdoutProfileDigest ||
 		attestation.ChildEnvironmentDigest != profile.ChildEnvironmentDigest ||
 		attestation.IPCProfileDigest != profile.IPCProfileDigest ||
 		attestation.TerminalDigest != profile.TerminalProfileDigest ||
@@ -345,6 +459,9 @@ func ValidateHostAdmission(profile HostProfile, attestation HostAttestation) err
 func AdmitProduction(ctx context.Context, profile HostProfile, attestor HostAttestor) (*AdmissionCapability, error) {
 	if ctx == nil || isNilBinding(attestor) {
 		return nil, ErrHostAttestationMissing
+	}
+	if profile.Mode == ModeFixture {
+		return nil, ErrHostAdmissionRefused
 	}
 	if err := profile.Validate(); err != nil {
 		return nil, err

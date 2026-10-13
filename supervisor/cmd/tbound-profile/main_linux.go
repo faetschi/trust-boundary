@@ -37,6 +37,7 @@ usage:
                                  --out-sig <signature.ed25519> --out-pub <public.pub>
                                  [--out-profile <signed.json>]
   tbound-profile verify          --profile <profile.json> --sig <signature.ed25519> --pub <public.pub>
+  tbound-profile runtime-bundle-digest --root <read-only-runtime-bundle>
   tbound-profile template-init   --out <d09-cell.json> [--force]
   tbound-profile template-digest --template <d09-cell.json>
   tbound-profile xattr-measure   --source <protected-read-only-directory>
@@ -96,6 +97,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runSign(args[1:], stdout, stderr)
 	case "verify":
 		return runVerify(args[1:], stdout, stderr)
+	case "runtime-bundle-digest":
+		return runRuntimeBundleDigest(args[1:], stdout, stderr)
 	case "template-init":
 		return runTemplateInit(args[1:], stdout, stderr)
 	case "template-digest":
@@ -240,6 +243,29 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+func runRuntimeBundleDigest(args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("tbound-profile runtime-bundle-digest", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	rootPath := flags.String("root", "", "read-only runtime bundle root")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || strings.TrimSpace(*rootPath) == "" || !filepath.IsAbs(*rootPath) {
+		return errors.New("--root must be an absolute path")
+	}
+	root, err := os.Open(*rootPath)
+	if err != nil {
+		return fmt.Errorf("open Pi runtime bundle: %w", err)
+	}
+	defer root.Close()
+	digest, err := piruntime.VerifyLinuxPiRuntimeBundle(root)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(stdout, "Pi runtime bundle tree digest: %s\nTree identity only; this command does not verify profile signature or host trust bindings.\n", digest)
+	return err
 }
 
 func runTemplateInit(args []string, stdout, stderr io.Writer) error {

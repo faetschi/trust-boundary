@@ -27,9 +27,10 @@ host profile and containment described in [`../../docs/governed-setup.md`](../..
 
 - The image runs as the non-root `node` user shipped by the base image; the prefix
   `/var/lib/tbound` is owned by that user and declared as a volume.
-- `npm install --omit=dev` in the image installs the pinned Pi packages
-  (`@earendil-works/pi-*` 0.87.1 + `typebox` 1.3.27) — the same pins as the host
-  install, so the runtime matches.
+- `npm install --omit=dev` installs only TBound's production Node dependencies;
+  it does not install Pi development dependencies. Production packaging of the
+  official installed Pi CLI and verification of its executable/extension closure
+  are pending. No private embedded Pi SDK is packaged.
 - The build context is narrowed by `.dockerignore`/`.containerignore`.
 - Base images are currently **not digest-pinned**; pin `golang:1.27-*` and
   `node:24-*` digests before claiming a pinned runtime.

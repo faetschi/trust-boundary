@@ -15,7 +15,58 @@ import (
 // DevelopmentPiNodeVersion is the pinned Linux Node release the adapter source
 // snapshot under adapter/ was validated against. The development launcher does
 // not discover a Node binary: the caller must provide this exact release.
-const DevelopmentPiNodeVersion = "v24.15.0"
+const DevelopmentPiNodeVersion = "v24.21.0"
+
+var DeveloperPiCLIAdapterSourceFiles = []string{
+	"src/tbound-cli-extension.ts", "src/broker-provider.ts",
+	"src/proxy-tools.ts", "src/ipc-transport.ts",
+}
+
+// StageDevelopmentPiCLIBundle stages only TBound's mediated extension source.
+// Pi API packages are resolved from the installed official CLI, never from an
+// adapter node_modules tree.
+func StageDevelopmentPiCLIBundle(bundleParent, adapterRoot string) (string, error) {
+	if !filepath.IsAbs(bundleParent) || !filepath.IsAbs(adapterRoot) {
+		return "", errors.New("Pi CLI staging requires absolute paths")
+	}
+	root := filepath.Join(bundleParent, "pi-cli-extension")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		return "", err
+	}
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.RemoveAll(root)
+		}
+	}()
+	if err := os.Mkdir(filepath.Join(root, "src"), 0o700); err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(root, "package.json"), []byte(`{"private":true,"type":"module"}`), 0o600); err != nil {
+		return "", err
+	}
+	for _, relative := range DeveloperPiCLIAdapterSourceFiles {
+		if relative == "src/tbound-cli-extension.ts" {
+			data, err := readRegularBounded(filepath.Join(adapterRoot, filepath.FromSlash(relative)), 16<<20)
+			if err != nil {
+				return "", fmt.Errorf("read Pi CLI extension source %s: %w", relative, err)
+			}
+			if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), data, 0o600); err != nil {
+				return "", err
+			}
+			continue
+		}
+		data, err := readRegularBounded(filepath.Join(adapterRoot, filepath.FromSlash(relative)), 16<<20)
+		if err != nil {
+			return "", fmt.Errorf("read Pi CLI extension source %s: %w", relative, err)
+		}
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), data, 0o600); err != nil {
+			return "", err
+		}
+	}
+	cleanup = false
+	return root, nil
+}
 
 // ValidateDevelopmentPrivateDirectory enforces the private development-root
 // precondition the opt-in development tests and the explicit development CLI
@@ -53,51 +104,4 @@ func DevelopmentNodeVersion(nodePath, home, tempDir string) (string, error) {
 		return "", fmt.Errorf("run explicit development Node --version: %w", err)
 	}
 	return strings.TrimSpace(string(output)), nil
-}
-
-// StageDevelopmentPiWorkerBundle copies the pinned adapter source snapshot into a
-// fresh private mode-0700 bundle under bundleParent and links the pre-existing
-// pinned dependency tree. It is the shared staging step used by both the opt-in
-// development process test and the explicit development CLI route; neither
-// installs or mutates node_modules. The returned path is the runtime bundle root
-// consumed by StartDevelopmentPiSDKWorker.
-func StageDevelopmentPiWorkerBundle(bundleParent, adapterRoot, dependencyRoot string) (string, error) {
-	if !filepath.IsAbs(bundleParent) || !filepath.IsAbs(adapterRoot) || !filepath.IsAbs(dependencyRoot) {
-		return "", errors.New("development Pi bundle staging requires absolute parent, adapter, and dependency paths")
-	}
-	dependencyInfo, err := os.Lstat(dependencyRoot)
-	if err != nil || !dependencyInfo.IsDir() || dependencyInfo.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("development pinned dependency root must be an existing non-symlink directory")
-	}
-	bundleRoot := filepath.Join(bundleParent, "adapter")
-	if err := os.Mkdir(bundleRoot, 0o700); err != nil {
-		return "", fmt.Errorf("create development bundle root: %w", err)
-	}
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = os.RemoveAll(bundleRoot)
-		}
-	}()
-	if err := os.Chmod(bundleRoot, 0o700); err != nil {
-		return "", err
-	}
-	workerDir := filepath.Join(bundleRoot, "src")
-	if err := os.Mkdir(workerDir, 0o700); err != nil {
-		return "", err
-	}
-	if err := os.Symlink(dependencyRoot, filepath.Join(bundleRoot, "node_modules")); err != nil {
-		return "", fmt.Errorf("link existing pinned dependencies into private development bundle: %w", err)
-	}
-	for _, relative := range DeveloperPiSDKAdapterSourceFiles {
-		data, err := readRegularBounded(filepath.Join(adapterRoot, filepath.FromSlash(relative)), 16<<20)
-		if err != nil {
-			return "", fmt.Errorf("read development adapter source %s: %w", relative, err)
-		}
-		if err := os.WriteFile(filepath.Join(bundleRoot, filepath.FromSlash(relative)), data, 0o600); err != nil {
-			return "", fmt.Errorf("stage development adapter source %s: %w", relative, err)
-		}
-	}
-	cleanup = false
-	return bundleRoot, nil
 }

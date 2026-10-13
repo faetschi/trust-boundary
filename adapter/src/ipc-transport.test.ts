@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Type } from "typebox";
 import {
   IPC_MAX_MESSAGE_BYTES,
   IPC_WIRE_VERSION,
@@ -206,7 +207,7 @@ test("checks token, sequence, replay, and message direction", async (t) => {
 
 test("proxy tools each round-trip one proposal and return its correlated result", async () => {
   const { client, server } = createInMemoryIpcPair(TOKEN);
-  const tools = createIpcProxyTools(client);
+  const tools = createIpcProxyTools(client, Type);
   assert.deepEqual(tools.map((tool) => tool.name), [...declaredToolNames]);
 
   const args: Record<(typeof declaredToolNames)[number], Record<string, unknown>> = {

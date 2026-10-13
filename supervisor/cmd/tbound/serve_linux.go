@@ -26,7 +26,7 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	pi := flags.Bool("pi", false, "run the native Pi harness")
 	serviceMode := flags.Bool("service", false, "internal socket-activated Pi service mode")
 	nativeFixture := flags.Bool("native-fixture", false, "run the explicit non-claim-bearing native lifecycle fixture")
-	devFixture := flags.Bool("dev-fixture", false, "launch the actual pinned Pi SDK worker through the offline non-claim-bearing development composition")
+	devFixture := flags.Bool("dev-fixture", false, "launch official Pi CLI 0.87.1 over RPC through the offline non-claim-bearing development composition")
 	nativeHostProfile := flags.String("native-host-profile", "", "protected authorized signed host profile path; empty uses the root-owned /etc/tbound trust root")
 	workspace := flags.String("workspace", "", "protected source workspace directory for the governed production session")
 	source := flags.String("source", "", "protected source snapshot directory for the governed production session")

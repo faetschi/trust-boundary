@@ -8,6 +8,14 @@ document describes the service-side session composition, not a standalone
 user launch command. The service and source-capture path have not been qualified
 on a live Linux host with the real signed profile.
 
+**Worker migration:** the Pi worker API names in this implementation record
+refer to the former embedded SDK composition. The selected design is the official Pi 0.87.1 CLI in RPC mode with a TBound
+extension. The offline development route is implemented, but production
+profile/launcher migration remains pending and the current
+`LaunchD09PiCLIWorker` entrypoint refuses launch. This document does not qualify
+a production CLI launch.
+See the [CLI reproduction decision](decisions/2026-10-12-cli-reproduction.md).
+
 ## CLI entry point
 
 The client sends a registered task ID, request ID, and task text to the local
@@ -54,10 +62,14 @@ service owns those inputs and is expected to start through socket activation.
    D09 receipt snapshot to the actual Store `OperationEvidence`, provider call,
    full approved transition/delta, and run/session/workflow/conversation identity.
 
-The CLI re-verifies through `OpenLinuxHostProfileVerifier` + `AdmitProduction`,
-launches with `LaunchPiSDKWorker`, durably journals the exact per-launch TCB proof
+The following describes the legacy, unqualified SDK-worker path; it is not an
+admissible production route. That path re-verifies through
+`OpenLinuxHostProfileVerifier` + `AdmitProduction`, launches the pre-migration
+SDK worker with `LaunchPiSDKWorker`, durably journals the exact per-launch TCB proof
 before admitting the registered task via `SendAdmittedPrompt` (single admission),
-drives both governed loops, then attempts finalization. Handles are released in
+drives both governed loops, then attempts finalization. The official CLI dev/RPC
+route is implemented, while production profile/launcher migration remains pending
+and `LaunchD09PiCLIWorker` refuses production launch. Handles are released in
 reverse order only after observed worker/loop/command settlement. UNKNOWN cleanup
 intentionally retains the managed live-root lease, lifecycle journal lock, and
 session/cgroup handles until process exit/recovery rather than closing resources
@@ -68,9 +80,8 @@ changed root/cgroup identity refuse admission.
 
 ## Bash command runner
 
-`productionCommandRunner` **never** uses the legacy `internal/podman` Alpine
-profile (`guest-podman-rootless-non-claim-bearing`) or the development sandbox.
-The concrete factory binds one fresh Runtime A `piruntime.D09CommandRunner` to
+`productionCommandRunner` binds one fresh Runtime A
+`piruntime.D09CommandRunner` to
 each authenticated lease/view. It consumes only the writable disposable
 `CommandView` descriptor. Immediately after that exact `inner.Run` succeeds, the
 wrapper calls `TakeCommandReceipt(view, spec, result, settlement)`, requires the
@@ -148,10 +159,10 @@ Legacy v1 proposal-call journals keep their original digest/decoder path. The
 read->write->edit->bash regression publishes with the Bash proposal identity,
 without a fake final write or caller-supplied origin string.
 
-## Per-launch TCB proof (implemented; host verification pending)
+## Legacy SDK-worker TCB proof (not the current CLI dev path)
 
-The receipt carries `tcb_proof_digest` / `tcb_proof_journal_sequence`. The CLI
-retrieves `PiSDKWorker.D09LaunchProof()` after the launcher captured and validated
+The legacy SDK-worker implementation retrieves
+`PiSDKWorker.D09LaunchProof()` after the launcher captured and validated
 the entrypoint's proof pipe on `D09ProofChildFD` (fd10), then appends a
 run/profile/image/template-bound `production_tcb_proof` event to the durable Store
 journal **before** constructing/admitting the task prompt or releasing control
