@@ -19,6 +19,7 @@ import (
 
 var errInjectedDiskFull = errors.New("ENOSPC: injected disk full")
 var errInjectedSync = errors.New("injected fsync failure")
+var errInjectedLifecycleHook = errors.New("injected lifecycle observer failure")
 
 type faultFile struct {
 	data          []byte
@@ -94,6 +95,11 @@ func testJournal(file *faultFile) *Journal {
 func TestRunEffectCompletesShortWritesAndReconstructsTrace(t *testing.T) {
 	file := &faultFile{maxWrite: 5}
 	journal := testJournal(file)
+	var observed []EffectBoundary
+	journal.lifecycleHook = func(boundary EffectBoundary) error {
+		observed = append(observed, boundary)
+		return nil
+	}
 	result, err := journal.RunEffect("effect-1", []byte("intent"), func() ([]byte, error) {
 		return []byte("result"), nil
 	})
@@ -115,12 +121,105 @@ func TestRunEffectCompletesShortWritesAndReconstructsTrace(t *testing.T) {
 		!bytes.Equal(effect.Intent, []byte("intent")) || !bytes.Equal(effect.Result, []byte("result")) {
 		t.Fatalf("unexpected reconstructed effect: %+v", effect)
 	}
+	if want := []EffectBoundary{
+		EffectBoundaryAfterIntentSync,
+		EffectBoundaryAfterCallbackReturn,
+	}; !reflect.DeepEqual(observed, want) {
+		t.Fatalf("lifecycle observations = %v, want %v", observed, want)
+	}
 	journalTrace, err := journal.Trace()
 	if err != nil {
 		t.Fatalf("Journal.Trace: %v", err)
 	}
 	if !reflect.DeepEqual(journalTrace, trace) {
 		t.Fatalf("Journal.Trace differs from verified bytes: got %+v, want %+v", journalTrace, trace)
+	}
+}
+
+func TestLifecycleHookFailureLeavesIntentUnresolved(t *testing.T) {
+	boundaries := []EffectBoundary{
+		EffectBoundaryAfterIntentSync,
+		EffectBoundaryAfterCallbackReturn,
+	}
+	for _, boundary := range boundaries {
+		for _, panicObserver := range []bool{false, true} {
+			name := strconv.Itoa(int(boundary)) + "/error"
+			if panicObserver {
+				name = strconv.Itoa(int(boundary)) + "/panic"
+			}
+			t.Run(name, func(t *testing.T) {
+				file := &faultFile{}
+				journal := testJournal(file)
+				journal.lifecycleHook = func(observed EffectBoundary) error {
+					if observed != boundary {
+						return nil
+					}
+					if panicObserver {
+						panic("injected observer panic")
+					}
+					return errInjectedLifecycleHook
+				}
+				calls := 0
+				_, err := journal.RunEffect("hook-failure", nil, func() ([]byte, error) {
+					calls++
+					return []byte("result"), nil
+				})
+				if !errors.Is(err, ErrOutcomeUnknown) || !errors.Is(err, ErrLifecycleHook) {
+					t.Fatalf("RunEffect error = %v, want unresolved lifecycle-hook failure", err)
+				}
+				wantCalls := 0
+				if boundary == EffectBoundaryAfterCallbackReturn {
+					wantCalls = 1
+				}
+				if calls != wantCalls {
+					t.Fatalf("callback calls = %d, want %d", calls, wantCalls)
+				}
+				trace, err := Verify(bytes.NewReader(file.data))
+				if err != nil {
+					t.Fatalf("Verify: %v", err)
+				}
+				if len(trace.Records) != 1 || len(trace.Effects) != 1 ||
+					!trace.Effects[0].Unresolved || trace.Effects[0].Outcome != "" {
+					t.Fatalf("hook failure wrote an outcome or lost its intent: %+v", trace)
+				}
+				if _, err := journal.RunEffect("hook-failure", nil, func() ([]byte, error) {
+					t.Fatal("unresolved effect was replayed")
+					return nil, nil
+				}); !errors.Is(err, ErrUnresolvedEffect) {
+					t.Fatalf("retry error = %v, want ErrUnresolvedEffect", err)
+				}
+			})
+		}
+	}
+}
+
+func TestAfterCallbackHookFailurePreservesCallbackError(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	callbackErr := errors.New("effect may have partially completed")
+	journal.lifecycleHook = func(boundary EffectBoundary) error {
+		if boundary == EffectBoundaryAfterCallbackReturn {
+			return errInjectedLifecycleHook
+		}
+		return nil
+	}
+	calls := 0
+	result, err := journal.RunEffect("callback-error-hook-failure", nil, func() ([]byte, error) {
+		calls++
+		return []byte("withheld result"), callbackErr
+	})
+	if calls != 1 || result != nil ||
+		!errors.Is(err, ErrOutcomeUnknown) || !errors.Is(err, ErrLifecycleHook) ||
+		!errors.Is(err, errInjectedLifecycleHook) || !errors.Is(err, callbackErr) {
+		t.Fatalf("calls=%d result=%q error=%v; want unresolved hook failure retaining callback cause", calls, result, err)
+	}
+	trace, err := Verify(bytes.NewReader(file.data))
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if len(trace.Records) != 1 || len(trace.Effects) != 1 ||
+		!trace.Effects[0].Unresolved || trace.Effects[0].Outcome != "" {
+		t.Fatalf("hook failure wrote an outcome or lost its intent: %+v", trace)
 	}
 }
 
@@ -161,13 +260,20 @@ func TestWriteFailureBeforeEffectPoisonsJournal(t *testing.T) {
 func TestIntentSyncFailurePreventsEffect(t *testing.T) {
 	file := &faultFile{failSyncCall: 1, failSync: errInjectedSync}
 	journal := testJournal(file)
+	observerCalls := 0
+	journal.lifecycleHook = func(EffectBoundary) error {
+		observerCalls++
+		return nil
+	}
 	called := false
 	_, err := journal.RunEffect("effect-1", []byte("intent"), func() ([]byte, error) {
 		called = true
 		return []byte("should not run"), nil
 	})
-	if err == nil || called || !errors.Is(err, ErrDurability) || !errors.Is(err, ErrPoisoned) || !errors.Is(err, errInjectedSync) {
-		t.Fatalf("RunEffect error=%v callbackCalled=%t; want fail-closed sync error before effect", err, called)
+	if err == nil || called || observerCalls != 0 ||
+		!errors.Is(err, ErrDurability) || !errors.Is(err, ErrPoisoned) || !errors.Is(err, errInjectedSync) {
+		t.Fatalf("RunEffect error=%v callbackCalled=%t observerCalls=%d; want fail-closed sync error before effect or observer",
+			err, called, observerCalls)
 	}
 }
 
@@ -463,44 +569,68 @@ func TestOpenRejectsBroadPermissionsAndLeafSymlink(t *testing.T) {
 	}
 }
 
-func TestProcessExitReleasesLockButIntentStillQuarantines(t *testing.T) {
+type journalCrashCut string
+
+const (
+	crashCutAfterIntentSync     journalCrashCut = "after-intent-sync"
+	crashCutCallbackBodyEntry   journalCrashCut = "callback-body-entry"
+	crashCutInsideEffectVisible journalCrashCut = "inside-effect-after-visible"
+	crashCutAfterCallbackReturn journalCrashCut = "after-callback-return"
+)
+
+func TestAuditAndCallbackFixtureCrashCutsNeverReplay(t *testing.T) {
 	requireLinuxJournalOpen(t)
-	path := filepath.Join(privateJournalTestDir(t), "journal.jsonl")
-	markerPath := filepath.Join(filepath.Dir(path), "external-effect.txt")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestJournalCrashHelper$")
-	command.Env = append(os.Environ(),
-		"TB_AUDIT_CRASH_HELPER_PATH="+path,
-		"TB_AUDIT_CRASH_MARKER_PATH="+markerPath,
-	)
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("crash helper: %v\n%s", err, output)
+	for _, cut := range []journalCrashCut{
+		crashCutAfterIntentSync, crashCutCallbackBodyEntry,
+		crashCutInsideEffectVisible, crashCutAfterCallbackReturn,
+	} {
+		t.Run(string(cut), func(t *testing.T) {
+			path := filepath.Join(privateJournalTestDir(t), "journal.jsonl")
+			markerPath := filepath.Join(filepath.Dir(path), "external-effect.txt")
+			callbackEntryMarkerPath := filepath.Join(filepath.Dir(path), "callback-entered.txt")
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestJournalCrashHelper$")
+			command.Env = append(os.Environ(),
+				"TB_AUDIT_CRASH_HELPER_PATH="+path,
+				"TB_AUDIT_CRASH_MARKER_PATH="+markerPath,
+				"TB_AUDIT_CRASH_CALLBACK_ENTRY_MARKER_PATH="+callbackEntryMarkerPath,
+				"TB_AUDIT_CRASH_CUT="+string(cut),
+			)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("crash helper: %v\n%s", err, output)
+			}
+			assertMarker := func(path, want string, shouldExist bool) {
+				t.Helper()
+				got, err := os.ReadFile(path)
+				if !shouldExist {
+					if !os.IsNotExist(err) {
+						t.Fatalf("marker %q = %q, err=%v; want absent", path, got, err)
+					}
+					return
+				}
+				if err != nil || string(got) != want {
+					t.Fatalf("marker %q = %q, err=%v; want %q", path, got, err, want)
+				}
+			}
+			assertMarkers := func() {
+				t.Helper()
+				callbackEntered := cut != crashCutAfterIntentSync
+				effectVisible := cut == crashCutInsideEffectVisible || cut == crashCutAfterCallbackReturn
+				assertMarker(callbackEntryMarkerPath, "callback-entered\n", callbackEntered)
+				assertMarker(markerPath, "effect-visible\n", effectVisible)
+			}
+			assertMarkers()
+			recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer recoveryCancel()
+			recovery := exec.CommandContext(recoveryCtx, os.Args[0], "-test.run=^TestJournalRecoveryHelper$")
+			recovery.Env = append(os.Environ(), "TB_AUDIT_RECOVERY_HELPER_PATH="+path)
+			if output, err := recovery.CombinedOutput(); err != nil {
+				t.Fatalf("fresh recovery helper: %v\n%s", err, output)
+			}
+			assertMarkers()
+		})
 	}
-
-	assertEffectMarkerOnce := func() {
-		t.Helper()
-		got, err := os.ReadFile(markerPath)
-		if err != nil {
-			t.Fatalf("read external effect marker: %v", err)
-		}
-		if string(got) != "effect-visible\n" {
-			t.Fatalf("external effect marker = %q, want exactly one effect", got)
-		}
-	}
-	assertEffectMarkerOnce()
-
-	recoveryCtx, recoveryCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer recoveryCancel()
-	recovery := exec.CommandContext(recoveryCtx, os.Args[0], "-test.run=^TestJournalRecoveryHelper$")
-	recovery.Env = append(os.Environ(),
-		"TB_AUDIT_RECOVERY_HELPER_PATH="+path,
-		"TB_AUDIT_CRASH_MARKER_PATH="+markerPath,
-	)
-	if output, err := recovery.CombinedOutput(); err != nil {
-		t.Fatalf("fresh recovery helper: %v\n%s", err, output)
-	}
-	assertEffectMarkerOnce()
 }
 
 func TestJournalCrashHelper(t *testing.T) {
@@ -512,33 +642,61 @@ func TestJournalCrashHelper(t *testing.T) {
 	if markerPath == "" {
 		t.Fatal("crash helper requires an external effect marker path")
 	}
-	journal, err := Open(path)
+	callbackEntryMarkerPath := os.Getenv("TB_AUDIT_CRASH_CALLBACK_ENTRY_MARKER_PATH")
+	if callbackEntryMarkerPath == "" {
+		t.Fatal("crash helper requires a callback-entry marker path")
+	}
+	cut := journalCrashCut(os.Getenv("TB_AUDIT_CRASH_CUT"))
+	switch cut {
+	case crashCutAfterIntentSync, crashCutCallbackBodyEntry, crashCutInsideEffectVisible, crashCutAfterCallbackReturn:
+	default:
+		t.Fatalf("unregistered crash cut %q", cut)
+	}
+	journal, err := OpenWithLifecycleHook(path, func(observed EffectBoundary) error {
+		if (cut == crashCutAfterIntentSync && observed == EffectBoundaryAfterIntentSync) ||
+			(cut == crashCutAfterCallbackReturn && observed == EffectBoundaryAfterCallbackReturn) {
+			os.Exit(0)
+		}
+		return nil
+	})
 	if err != nil {
 		t.Fatalf("Open in crash helper: %v", err)
 	}
 	_, err = journal.RunEffect("crashed-effect", []byte("durable intent"), func() ([]byte, error) {
-		marker, err := os.OpenFile(markerPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-		if err != nil {
+		if err := writeSyncedCrashMarker(callbackEntryMarkerPath, "callback-entered\n"); err != nil {
 			return nil, err
 		}
-		n, err := marker.WriteString("effect-visible\n")
-		if err == nil && n != len("effect-visible\n") {
-			err = io.ErrShortWrite
+		if cut == crashCutCallbackBodyEntry {
+			os.Exit(0)
 		}
-		if err == nil {
-			err = marker.Sync()
-		}
-		closeErr := marker.Close()
-		if err == nil {
-			err = closeErr
-		}
-		if err != nil {
+		if err := writeSyncedCrashMarker(markerPath, "effect-visible\n"); err != nil {
 			return nil, err
 		}
-		os.Exit(0) // Simulate process death after intent Sync and before outcome.
-		return nil, nil
+		if cut == crashCutInsideEffectVisible {
+			os.Exit(0)
+		}
+		return []byte("result"), nil
 	})
-	t.Fatalf("RunEffect returned after os.Exit callback: %v", err)
+	t.Fatalf("RunEffect returned after crash cut %q: %v", cut, err)
+}
+
+func writeSyncedCrashMarker(path, value string) error {
+	marker, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return err
+	}
+	n, err := marker.WriteString(value)
+	if err == nil && n != len(value) {
+		err = io.ErrShortWrite
+	}
+	if err == nil {
+		err = marker.Sync()
+	}
+	closeErr := marker.Close()
+	if err == nil {
+		err = closeErr
+	}
+	return err
 }
 
 func TestJournalRecoveryHelper(t *testing.T) {
@@ -546,14 +704,22 @@ func TestJournalRecoveryHelper(t *testing.T) {
 	if path == "" {
 		return
 	}
-	if os.Getenv("TB_AUDIT_CRASH_MARKER_PATH") == "" {
-		t.Fatal("recovery helper requires the external effect marker path")
-	}
+
 	journal, err := Open(path)
 	if err != nil {
 		t.Fatalf("Open in fresh recovery helper: %v", err)
 	}
 	defer journal.Close()
+
+	trace, err := journal.Trace()
+	if err != nil {
+		t.Fatalf("Trace in fresh recovery helper: %v", err)
+	}
+	if len(trace.Effects) != 1 || trace.Effects[0].ID != "crashed-effect" ||
+		!trace.Effects[0].Unresolved || trace.Effects[0].Outcome != "" ||
+		trace.Effects[0].OutcomeSequence != 0 {
+		t.Fatalf("recovered effect = %+v, want unresolved intent without terminal outcome", trace.Effects)
+	}
 
 	oldCalled := false
 	if _, err := journal.RunEffect("crashed-effect", nil, func() ([]byte, error) {

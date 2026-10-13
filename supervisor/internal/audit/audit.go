@@ -40,6 +40,7 @@ var (
 	ErrRecordTooLarge      = errors.New("audit record exceeds the configured record limit")
 	ErrDurability          = errors.New("audit record was not confirmed durable")
 	ErrOutcomeUnknown      = errors.New("effect may have occurred; durable outcome is unavailable")
+	ErrLifecycleHook       = errors.New("audit lifecycle observer failed")
 	ErrDuplicateEffect     = errors.New("effect ID has already been used")
 	ErrUnresolvedEffect    = errors.New("effect ID has an unresolved prior attempt")
 	ErrQuarantined         = errors.New("audit journal is quarantined by an unresolved effect")
@@ -61,6 +62,21 @@ type Event struct {
 	Outcome string `json:"outcome,omitempty"`
 	Data    []byte `json:"data,omitempty"`
 }
+
+// EffectBoundary is a trusted-host observation point in RunEffect. Its values
+// are deliberately an enum: provider messages and profile strings cannot
+// select arbitrary journal behavior.
+type EffectBoundary uint8
+
+const (
+	EffectBoundaryAfterIntentSync EffectBoundary = iota + 1
+	EffectBoundaryAfterCallbackReturn
+)
+
+// LifecycleHook is an optional trusted-host test/observation hook. It must not
+// be configured from provider RPC or untrusted profile data. It runs under
+// the journal writer lock and must not call methods on that journal.
+type LifecycleHook func(EffectBoundary) error
 
 // Record is one entry in the append-only hash chain. Hash commits to the
 // version, sequence, previous hash, and complete event value.
@@ -111,15 +127,16 @@ const (
 // also prevents another cooperating process from opening the same file for
 // writing. The target filesystem must honor flock semantics.
 type Journal struct {
-	mu        sync.Mutex
-	file      syncFile
-	lockFile  *os.File
-	directory *os.File
-	sequence  uint64
-	head      string
-	effects   map[string]effectState
-	poisoned  bool
-	closed    bool
+	mu            sync.Mutex
+	file          syncFile
+	lockFile      *os.File
+	directory     *os.File
+	sequence      uint64
+	head          string
+	effects       map[string]effectState
+	lifecycleHook LifecycleHook
+	poisoned      bool
+	closed        bool
 }
 
 // Open opens an existing journal or creates a new one with mode 0600. On Linux,
@@ -132,6 +149,14 @@ type Journal struct {
 // containing directory; this is fail-closed prototype behavior, not a
 // qualification of the target filesystem.
 func Open(path string) (*Journal, error) {
+	return OpenWithLifecycleHook(path, nil)
+}
+
+// OpenWithLifecycleHook opens a journal with an optional trusted-host-only
+// lifecycle observer. Production callers should use Open; this seam is for
+// host-controlled recovery harnesses and must never be populated from provider
+// or profile input.
+func OpenWithLifecycleHook(path string, hook LifecycleHook) (*Journal, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("%w: empty path", ErrInvalidEvent)
 	}
@@ -188,7 +213,10 @@ func Open(path string) (*Journal, error) {
 		return closeOnError(fmt.Errorf("seek audit journal end: %w", err))
 	}
 
-	j := &Journal{file: file, lockFile: file, directory: directory, effects: make(map[string]effectState)}
+	j := &Journal{
+		file: file, lockFile: file, directory: directory,
+		effects: make(map[string]effectState), lifecycleHook: hook,
+	}
 	if n := len(trace.Records); n > 0 {
 		last := trace.Records[n-1]
 		j.sequence, j.head = last.Sequence, last.Hash
@@ -284,10 +312,18 @@ func (j *Journal) RunEffect(id string, intent []byte, effect func() ([]byte, err
 	}
 	j.effects[id] = effectPending
 
+	if err := j.observeLifecycle(EffectBoundaryAfterIntentSync); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrOutcomeUnknown, err)
+	}
+
 	// Keep the writer lock through the callback so no concurrent audit write can
 	// fail after intent durability but before this effect is released. Callbacks
 	// must not call back into this Journal.
 	result, effectErr := effect()
+	if err := j.observeLifecycle(EffectBoundaryAfterCallbackReturn); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrOutcomeUnknown, errors.Join(err, effectErr))
+	}
+
 	outcome := "success"
 	if effectErr != nil {
 		outcome = outcomeUnknown
@@ -304,6 +340,21 @@ func (j *Journal) RunEffect(id string, intent []byte, effect func() ([]byte, err
 		return nil, fmt.Errorf("%w: callback reported an error: %w", ErrOutcomeUnknown, effectErr)
 	}
 	return cloneBytes(result), nil
+}
+
+func (j *Journal) observeLifecycle(boundary EffectBoundary) (err error) {
+	if j.lifecycleHook == nil {
+		return nil
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("%w at boundary %d: observer panic: %v", ErrLifecycleHook, boundary, recovered)
+		}
+	}()
+	if err := j.lifecycleHook(boundary); err != nil {
+		return fmt.Errorf("%w at boundary %d: %w", ErrLifecycleHook, boundary, err)
+	}
+	return nil
 }
 
 // Close closes the journal. It does not add a record; all successful mutating

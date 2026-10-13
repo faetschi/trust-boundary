@@ -31,9 +31,12 @@ it is not a qualification report.
    verified staged lockfile. It materializes in-package file symlinks as
    regular files to match the production verifier's unchanged no-symlink policy;
    directory and escaping symlinks are refused. The output remains unsigned.
-   Production is unqualified, and `LaunchD09PiCLIWorker` still refuses launch.
-   Signing a profile alone will not enable it. Pi 0.87.1 was verified on this VM
-   only.
+   Commit `47a6d73` wires the guarded public D09 CLI route through the
+   concrete launcher, admission, and proof checks. The route revalidates
+   source/runtime bindings and launch proof before task release. Its committed
+   tests cover component and simulated lower-helper paths; no positive public
+   host launch, authentic signed host admission, or production qualification
+   has occurred. Signing alone does not qualify a profile.
 2. **Managed Linux service:** provision and validate the service account,
    systemd socket activation, source registration, signed profile, client/server
    handoff, and restart recovery. Source-capture code exists but the real signed
@@ -42,10 +45,14 @@ it is not a qualification report.
    profile, including independent effect oracles. The reference VM currently
    reports Landlock ABI 4; the entrypoint requires ABI 8. Later HWE boots reached
    userspace but remain unqualified.
-4. **Publication and provenance:** exercise sealed-source provenance, command
+4. **Post-operation delta admission:** a separate decision on the verified
+   resulting delta is required before accepting a generation. Existing
+   pre-operation and final-publication checks do not establish this gate.
+   Its policy contract, durable decision and recovery integration remain pending.
+5. **Publication and provenance:** exercise sealed-source provenance, command
    settlement, live publication, and recovery with independent workspace,
    process, and network observers.
-5. **Research protocol:** prepare and freeze the task corpus, oracle matrix,
+6. **Research protocol:** prepare and freeze the task corpus, oracle matrix,
    calibration pairs, and analysis plan before any registered experiment. A
    draft amendment proposes 51 recovery trials (17 scenarios × 3: eight
    lifecycle cases and nine incident cases). It is not approved, adopted,
@@ -56,28 +63,28 @@ it is not a qualification report.
 
 ## What has passed
 
-The recorded final Linux component checks on the existing reference VM passed
-before the review follow-up described above: source hash readback matched
-306/306 files; Go unit and race runs each reported 781
-passed, 0 failed, and 7 skipped; go vet and gofmt were clean; npm ci, the
-required actual-CLI check, the native fixture, and the actual Go CLI offline
-fixtures passed. The full Windows supervisor Go test suite also passed. The native
-fixture records four proposals/results, five scripted provider turns, and
-generations g0→g1→g2, with no real provider exchange. These component and offline checks predate the review follow-up and do not
-establish H1, G1, production launch, provider behavior, or containment. The
-Nine focused Python staging regressions passed against an isolated copy under
-local WSL. Linux-only D09 and launcher Go tests and the full Linux suite have not
-been run against this follow-up, so no fresh full-validation claim is made.
-Saved logs show publication-recovery tests passing in one run; another run
-stopped at the audit-journal guard because a temp ancestor was mode 0777, before
-recovery logic ran. This indicates a test-temp setup failure, not a
-demonstrated publication defect; the logs do not establish a concurrent-state
-collision. Rerun Linux checks under a private 0700 TMPDIR beneath HOME and
-umask 077.
-A fresh capability probe on the VM reported 13 PASS, 0 FAIL, and 2 UNVERIFIED;
-its native SSH exit was 2 for the unverified cgroup.kill write and uidmap-helper
-behavior. Landlock ABI 4 is a separate unmet requirement for the ABI 8 profile.
-These checks are development evidence and do not close any gate above.
+The guarded launch checkpoint `47a6d73` passed Linux unit and race suites
+with 925 tests each, seven skips, and clean vet; Windows passed 281 tests with
+13 skips and clean vet. Its source bindings are in the
+[guarded launch receipt](../../review-artifacts/tbound-resume-2026-10-13/guarded-d09-launch-receipt-47a6d73.json).
+
+The reviewed recovery increment adds trusted journal observation hooks and
+four native crash fixtures: durable intent, actual callback body entry, visible
+effect inside the callback, and callback return before durable outcome.
+Independent marker checks and fresh-process recovery verify no replay.
+Corrected Linux unit and race suites each passed 935 tests with seven skips;
+focused race checks passed 36 test events over three repetitions.
+Windows passed 287 tests with 13 skips; vet was clean on both platforms.
+These are component checks. The eight lifecycle scenarios remain unimplemented
+end to end; none has been registered or executed as a headline trial.
+
+The development VM reports Landlock ABI4; D09 requires exactly ABI8.
+WSL component testing reports ABI1. A development capability probe reported
+13 PASS, zero FAIL and two UNVERIFIED; cgroup.kill write and UID-map helper
+behavior remain unverified. The reproducible guest recipe is prepared, but no
+clean guest has been registered or qualified. These checks do not establish
+a successful public production launch, provider exchange, containment, G1 or H1.
+
 For implementation state, the historical denominator decision and current proposal, see
 [`TASK_STATE.md`](../TASK_STATE.md). For historical source identities and
 immutable evidence, use the [historical source map](evidence/historical-sources.json)
