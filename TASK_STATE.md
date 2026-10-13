@@ -58,20 +58,22 @@ are preparation only. Media custody and exact ABI checks precede registration.
 - Final full Linux unit/race: each972 passes, 0 failures, 7 skips, 25 packages
   passed; vet clean. Windows294 passes, 0 failures,13 skips; vet clean.
   Logs: delta-admission-final-{unit,race}.jsonl / -vet.txt in isolated Linux logs;
-  Windows log in review-artifacts. All 28 tested core source files hash-match the WSL copy; commit receipt follows.
+  Windows log in review-artifacts. All 28 tested source files hash-match the WSL copy; committed da09eea.
+  Receipt: delta-admission-receipt-da09eea.json.
 - Store/host and final independent Luna max safety/integration/thesis reviews
   accepted. Final reviewer checked versioned origin/test consumers; stale
   status documentation has been reconciled.
-- Production Bash currently has no supplied scope and remains disabled. Next
-  bounded increment wires operator CLI scope through authenticated service
-  requests (signed AllowedClientUIDs plus request payload journal), with no
-  provider-controlled scope. Native host_scope_resume returned source/test
-  patches; they are not applied yet.
+- Operator --bash-output / --bash-no-outputs wiring is applied and verified;
+  Linux CLI unit/race each230 passes,0 failures,2 skips; vet clean. Seven
+  tested source files hash-match. Windows source is unchanged from da09eea. Scope travels through signed-UID-authenticated service
+  requests and payload journal; the provider cannot set it. Nil disables Bash.
+  Independent Luna max review accepted. Focused race tests plus same-ID/different-
+  scope socket conflict test pass with no rerun or journal change. CLI docs synced.
 
 ## Remaining milestones
 
-1. Checkpoint the reviewed, verified admission gate; then operator configuration.
-2. Apply/review/test operator --bash-output / --bash-no-outputs wiring and docs.
+1. Admission gate checkpoint completed as da09eea.
+2. Checkpoint verified operator-scope wiring; advance the next recovery milestone.
 3. Complete trusted lifecycle/provider/Store/checkpoint cuts and independent
    oracles. LC04/05/06 remain incomplete end to end; hooks are component evidence.
 4. Qualify clean registered ABI8 host, signed CLI closure/profile, service/source
@@ -93,3 +95,9 @@ are preparation only. Media custody and exact ABI checks precede registration.
   docs/next-evaluation-unlocks-2026-10-07.md,
   docs/tbound-readiness-status-2026-10-08.md,
   docs/thesis-gap-ledger-2026-10-05.md, docs/verifier-blockers-2026-10-05.md.
+
+## Active next-milestone review
+
+Native READ-ONLY Luna max next_milestone_thesis_check is checking trajectory
+against authoritative thesis MDs and selecting one concrete next recovery/product
+increment. No thesis freeze, experiment, host provisioning or key use is authorized.

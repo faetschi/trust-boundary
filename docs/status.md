@@ -50,7 +50,8 @@ it is not a qualification report.
    canonical exact output paths, retains both candidate manifests, and binds
    the primary outcome to a protected admission journal. Recovery and bundle
    replay verify those bindings; UNKNOWN remains quarantined without replay.
-   Operator-facing Bash scope configuration is the next integration step.
+   Operator-facing `--bash-output` and `--bash-no-outputs` flags carry scope
+   through the authenticated service request to the authority and executor.
    See [the admission contract](delta-admission.md). Component checks do not
    qualify production containment or publication.
 5. **Publication and provenance:** exercise sealed-source provenance, command

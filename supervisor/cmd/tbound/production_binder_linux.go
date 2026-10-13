@@ -293,7 +293,7 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	session.CommandRunner, session.ProductionCommandRunner = runner, runner
 	authority, err := NewSessionOperationAuthority(storeJournal, providerJournal,
 		workflowID, conversationID, profile.ProviderProfile, policy,
-		storePolicyDigest, metadataPolicyDigest, runner)
+		storePolicyDigest, metadataPolicyDigest, runner, cloneDurableOutputScopePaths(config.BashOutputPaths))
 	if err != nil {
 		return fail(err)
 	}

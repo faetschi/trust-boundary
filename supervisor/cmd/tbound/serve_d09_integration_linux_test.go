@@ -37,7 +37,8 @@ func TestRealGovernedServeRoute(t *testing.T) {
 		Workspace:   os.Getenv("TBOUND_D09_WORKSPACE"),
 		Source:      os.Getenv("TBOUND_D09_SOURCE"),
 		TaskID:      "d09-integration-task", TaskRequestID: "d09-integration-request-1",
-		TaskPrompt: "Use the proxy tools in order: read task.txt, edit the word ready to done in task.txt, use bash only to append executed to task.txt, then read task.txt and summarize.",
+		TaskPrompt:      "Use the proxy tools in order: read task.txt, edit the word ready to done in task.txt, use bash only to append executed to task.txt, then read task.txt and summarize.",
+		BashOutputPaths: []string{"task.txt"},
 	}
 	if config.Source == "" || config.Workspace == "" {
 		t.Fatal("opted into D09 integration but TBOUND_D09_SOURCE and TBOUND_D09_WORKSPACE are required")

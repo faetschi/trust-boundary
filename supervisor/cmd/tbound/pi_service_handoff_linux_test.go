@@ -157,10 +157,29 @@ func TestPiServiceUnixSocketHandoffUsesKernelPeerAndReplaysTerminal(t *testing.T
 			first, replay, server.calls.Load())
 	}
 	conflict := request
+	scopedPaths := []string{"task.txt"}
+	scopeConflict := request
+	scopeConflict.BashOutputPaths = &scopedPaths
+	scopeRefused := roundTripPiServiceRequest(t, server.path, scopeConflict)
+	if scopeRefused.Status != "refused" || scopeRefused.ErrorCode != "request-id-conflict" || server.calls.Load() != 1 {
+		t.Fatalf("changed Bash scope was not refused: response=%+v calls=%d", scopeRefused, server.calls.Load())
+	}
 	conflict.Prompt = "different payload"
 	refused := roundTripPiServiceRequest(t, server.path, conflict)
 	if refused.Status != "refused" || refused.ErrorCode != "request-id-conflict" || server.calls.Load() != 1 {
 		t.Fatalf("request ID payload conflict was not refused: response=%+v calls=%d", refused, server.calls.Load())
+	}
+	trace, err := server.journal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trace.Records) != 2 || trace.Records[0].Event.Kind != "pi_service_request_accepted" ||
+		trace.Records[1].Event.Kind != "pi_service_request_terminal" || server.calls.Load() != 1 {
+		t.Fatalf("scope conflict changed the journal or reran work: records=%+v calls=%d", trace.Records, server.calls.Load())
+	}
+	var accepted piServiceRequestAcceptedEvent
+	if err := unmarshalGovernedJSON(trace.Records[0].Event.Data, &accepted); err != nil || accepted.PayloadDigest != mustPiServicePayloadDigest(t, request) {
+		t.Fatalf("journal lost the accepted payload binding: %+v err=%v", accepted, err)
 	}
 }
 

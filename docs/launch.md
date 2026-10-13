@@ -47,15 +47,34 @@ production CLI profile, containment, or qualification. See
 ## Managed Linux client
 
 On Linux, ordinary `serve --pi` sends a task request to a registered local
-managed service. For example:
+managed service. The task must be host-admitted, and the connecting client UID
+must be allowed by its signed registration. Only operator-trusted clients should
+have that permission. The provider/model cannot set the output scope.
+
+Bash is disabled when neither scope option is supplied. To permit exact paths
+to change, repeat `--bash-output`:
 
 ```sh
 tbound serve --pi --task-id TASK_ID \
   --task-request-id UNIQUE_REQUEST_ID \
+  --bash-output task.txt \
+  --bash-output build/result.txt \
   --task "approved task text"
 ```
 
-The task ID must be registered and admitted by the host. The client currently
+Paths are exact relative paths, with at most 128 entries. The CLI sorts them and
+rejects invalid or duplicate entries. Include every changed object, including a
+directory if Bash creates it; paths do not authorize a whole directory subtree.
+Use `--bash-no-outputs` to permit Bash only when no paths change. The two scope
+options cannot be combined. They affect Bash only; read/write/edit keep their
+typed paths and existing gate checks.
+
+After settlement, Store checks the actual delta against this scope. A change
+outside it is denied, its candidate is not promoted, and its result is withheld.
+Scope does not define shell-content or external-effect policy; supplying it
+does not qualify the host or establish G1/H1. See [delta admission](delta-admission.md).
+
+The client currently
 returns `service unavailable` if the service is absent. The internal
 `--service` mode is for the systemd socket-activated server; it is not a
 standalone user launch. Provisioning, real signed-profile source qualification,

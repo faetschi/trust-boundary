@@ -78,8 +78,9 @@ type productionServeConfig struct {
 	TaskID              string
 	TaskRequestID       string
 	TaskPrompt          string
-	ServiceMode         bool   // set only by the fixed socket-activated service entrypoint
-	ManagedLiveRootPath string // set only from A's verified signed registration in service mode
+	ServiceMode         bool     // set only by the fixed socket-activated service entrypoint
+	ManagedLiveRootPath string   // set only from A's verified signed registration in service mode
+	BashOutputPaths     []string // operator-declared exact output scope; nil disables Bash
 }
 
 func (c productionServeConfig) validate() error {
@@ -89,6 +90,11 @@ func (c productionServeConfig) validate() error {
 	}
 	if !c.ServiceMode && c.ManagedLiveRootPath != "" {
 		return errors.New("managed live-root service path is internal and cannot be supplied by a client")
+	}
+	if c.BashOutputPaths != nil {
+		if err := sessionrepo.ValidateOutputScopePaths(c.BashOutputPaths); err != nil {
+			return fmt.Errorf("invalid production Bash output scope: %w", err)
+		}
 	}
 	if strings.TrimSpace(c.ProfilePath) != "" && !filepath.IsAbs(c.ProfilePath) {
 		return errors.New("--native-host-profile must be an absolute protected path")
@@ -376,7 +382,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	durable, err := NewDurableExecutor(DurableExecutorConfig{
 		Store: session.Store, Tip: session.Generation, CallIssuer: session.CallIssuer,
 		PolicyDigest: session.StorePolicyDigest, MetadataPolicyDigest: session.MetadataPolicyDigest,
-		CommandRunner: session.CommandRunner,
+		CommandRunner: session.CommandRunner, BashOutputPaths: cloneDurableOutputScopePaths(config.BashOutputPaths),
 	})
 	if err != nil {
 		return fmt.Errorf("construct production durable executor: %w", err)

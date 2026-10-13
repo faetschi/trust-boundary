@@ -26,6 +26,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/sessionrepo"
 )
 
 const (
@@ -54,9 +55,10 @@ var (
 )
 
 type piServiceRequest struct {
-	RequestID string `json:"request_id"`
-	TaskID    string `json:"task_id"`
-	Prompt    string `json:"prompt"`
+	RequestID       string    `json:"request_id"`
+	TaskID          string    `json:"task_id"`
+	Prompt          string    `json:"prompt"`
+	BashOutputPaths *[]string `json:"bash_output_paths,omitempty"`
 }
 
 type piServiceResponse struct {
@@ -1083,10 +1085,15 @@ func readPiServiceRequest(conn *net.UnixConn) (piServiceRequest, error) {
 	if err := protocol.ValidateStrictJSON(data); err != nil {
 		return request, errors.Join(ErrPiServiceRefused, err)
 	}
-	if err := unmarshalGovernedJSON(data, &request); err != nil ||
-		!boundedProductionIdentity(request.RequestID, productionRequestMaxBytes) ||
-		!boundedProductionIdentity(request.TaskID, productionTaskIDMaxBytes) || !boundedProductionPrompt(request.Prompt) {
+	if err := unmarshalGovernedJSON(data, &request); err != nil {
 		return piServiceRequest{}, errors.Join(ErrPiServiceRefused, err)
+	}
+	if err := validatePiServiceRequest(request); err != nil {
+		return piServiceRequest{}, err
+	}
+	if request.BashOutputPaths != nil {
+		cloned := cloneDurableOutputScopePaths(*request.BashOutputPaths)
+		request.BashOutputPaths = &cloned
 	}
 	return request, nil
 }
@@ -1409,6 +1416,11 @@ func validatePiServiceRequest(request piServiceRequest) error {
 		!boundedProductionIdentity(request.TaskID, productionTaskIDMaxBytes) || !boundedProductionPrompt(request.Prompt) {
 		return ErrPiServiceRefused
 	}
+	if request.BashOutputPaths != nil {
+		if err := sessionrepo.ValidateOutputScopePaths(*request.BashOutputPaths); err != nil {
+			return errors.Join(ErrPiServiceRefused, err)
+		}
+	}
 	return nil
 }
 
@@ -1529,8 +1541,12 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 		return err
 	}
 	runTask := func(taskCtx context.Context, request piServiceRequest) (json.RawMessage, error) {
+		var bashOutputPaths []string
+		if request.BashOutputPaths != nil {
+			bashOutputPaths = cloneDurableOutputScopePaths(*request.BashOutputPaths)
+		}
 		config := productionServeConfig{ServiceMode: true, ManagedLiveRootPath: registration.RootPath,
-			TaskID: request.TaskID, TaskRequestID: request.RequestID, TaskPrompt: request.Prompt}
+			TaskID: request.TaskID, TaskRequestID: request.RequestID, TaskPrompt: request.Prompt, BashOutputPaths: bashOutputPaths}
 		var receipt bytes.Buffer
 		runErr := runProductionPiServe(taskCtx, &receipt, config, newProductionBinder())
 		encoded := bytes.TrimSpace(receipt.Bytes())

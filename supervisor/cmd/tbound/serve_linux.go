@@ -6,10 +6,14 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"os/signal"
+	"sort"
 	"syscall"
+
+	"tbound/supervisor/internal/sessionrepo"
 )
 
 // runServe implements the native Pi routes. The default production route now
@@ -33,7 +37,17 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	taskID := flags.String("task-id", "", "registered, host-admitted production task identity")
 	taskRequestID := flags.String("task-request-id", "", "bounded production prompt request identity")
 	task := flags.String("task", "", "bounded plain production task prompt (host-admitted control, never a model or key hint)")
+	var rawBashOutputPaths []string
+	flags.Func("bash-output", "operator-declared exact relative path Bash may change (repeatable)", func(path string) error {
+		rawBashOutputPaths = append(rawBashOutputPaths, path)
+		return nil
+	})
+	bashNoOutputs := flags.Bool("bash-no-outputs", false, "explicitly allow Bash only when it changes no paths")
 	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	bashOutputPaths, err := canonicalServeBashOutputPaths(rawBashOutputPaths, *bashNoOutputs)
+	if err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
@@ -51,6 +65,9 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	if *devFixture && *nativeHostProfile != "" {
 		return errors.New("--dev-fixture and --native-host-profile are mutually exclusive")
 	}
+	if (*devFixture || *nativeFixture) && bashOutputPaths != nil {
+		return errors.New("Bash output scope is available only through the production Pi service client")
+	}
 	if *devFixture {
 		return runDevelopmentPiFixture(context.Background(), transcript)
 	}
@@ -60,17 +77,40 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if *serviceMode {
-		if *nativeHostProfile != "" || *workspace != "" || *source != "" || *taskID != "" || *taskRequestID != "" || *task != "" {
-			return errors.New("internal --service mode accepts no task, profile, workspace, or source arguments")
+		if *nativeHostProfile != "" || *workspace != "" || *source != "" || *taskID != "" || *taskRequestID != "" || *task != "" || bashOutputPaths != nil {
+			return errors.New("internal --service mode accepts no task, profile, workspace, source, or Bash output scope arguments")
 		}
 		return runProductionPiService(ctx, transcript)
 	}
 	if *nativeHostProfile != "" || *workspace != "" || *source != "" {
 		return errors.New("ordinary `serve --pi` is a local service client; profile/source/workspace are service-owned and cannot be selected by the client")
 	}
+	var bashOutputScope *[]string
+	if bashOutputPaths != nil {
+		cloned := cloneDurableOutputScopePaths(bashOutputPaths)
+		bashOutputScope = &cloned
+	}
 	return runProductionPiServiceClient(ctx, transcript, piServiceRequest{
-		RequestID: *taskRequestID, TaskID: *taskID, Prompt: *task,
+		RequestID: *taskRequestID, TaskID: *taskID, Prompt: *task, BashOutputPaths: bashOutputScope,
 	})
+}
+
+func canonicalServeBashOutputPaths(raw []string, allowNoOutputs bool) ([]string, error) {
+	if allowNoOutputs {
+		if len(raw) != 0 {
+			return nil, errors.New("--bash-no-outputs cannot be combined with --bash-output")
+		}
+		return []string{}, nil
+	}
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	paths := append([]string(nil), raw...)
+	sort.Strings(paths)
+	if err := sessionrepo.ValidateOutputScopePaths(paths); err != nil {
+		return nil, fmt.Errorf("invalid --bash-output scope: %w", err)
+	}
+	return paths, nil
 }
 
 // runGovernedPiServe is the CLI production entry point. It performs the CLI-side
