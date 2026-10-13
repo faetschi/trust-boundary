@@ -4,6 +4,10 @@ Paste the instruction below into a new agent thread. Select a **new worktree**
 based on `codex/tbound-prototype`, with branch `codex/tbound-web-chat`. Keep the
 core implementation thread on `codex/tbound-prototype`. Do not share checkouts.
 
+This plan incorporates the final findings from
+[Frontend Existing Companion Review](t3-thread://v1/thread:provider:codex:native-thread:01a1369f-2715-79e1-aaac-10b6d7462593).
+That review was read-only; it did not implement or test the proposed chat service.
+
 ## Instruction for the new thread
 
 Implement the **frontend product side of tbound** in this thread. The other
@@ -38,6 +42,13 @@ local Unix socket. It does not yet expose browser authentication, persistent
 multi-turn sessions, history, cancellation or transcript streaming. Pi event
 processing currently discards most transcript/tool events. Do not present those
 capabilities as already implemented.
+
+The review's integration sequence is **persistent multi-turn service and
+cancellation -> authenticated snapshot/history/event streaming -> live web chat**.
+Contract work and explicitly labelled mock UI can proceed in parallel. A typed
+post-run receipt importer can provide an intermediate demo; the existing fixture
+loader cannot import the actual development receipt, and that receipt supplies
+no G1/H1 qualification fields. Those require separate authoritative provenance.
 
 Useful source locations:
 
@@ -78,6 +89,10 @@ Useful source locations:
   effects/cleanup remain UNKNOWN. Do not retry effects automatically on reconnect.
 - Project only allowlisted bounded fields. Do not serve raw journals, credentials,
   provider payloads, arbitrary paths or unrestricted tool arguments/output.
+  The projection should include session/turn IDs, sequence, transcript text,
+  sanitized tool summaries, decision reason codes, result states, source/profile
+  and generation status, timestamps, and explicit gap/unknown states. Publish
+  observations after the corresponding authoritative durable transition.
 - Current status: G1=false, H1 unexecuted; no qualified public production launch.
   Development fixtures remain non-claim-bearing. Green UI/tests do not change this.
 - Research trial counts/registration are owned by the core/thesis thread.
@@ -103,3 +118,8 @@ Linux/WSL Go 1.27.1 checks per AGENTS for Go changes and suitable frontend check
 Inspect the running UI with the collaborative browser; retain screenshots and
 source/command/exit-code receipts. Request a critical Luna max review between
 milestones and address its findings. Link any PR you create to your thread.
+
+Reference patterns from the review: [OpenChamber client](https://github.com/openchamber/openchamber/blob/main/packages/ui/src/lib/opencode/client.ts),
+[sync model](https://github.com/openchamber/openchamber/blob/main/packages/ui/src/sync/DOCUMENTATION.md),
+and [OpenCode API](https://dev.opencode.ai/v2/docs/api). Verify current upstream
+documentation before using it. OpenCode APIs are not tbound APIs.
