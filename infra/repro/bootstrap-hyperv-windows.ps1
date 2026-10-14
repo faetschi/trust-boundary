@@ -75,6 +75,24 @@ $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
 
 $script:stepsDone = New-Object System.Collections.Generic.List[string]
+$script:WindowsDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+$script:SystemDirectory = Join-Path $script:WindowsDirectory 'System32'
+$script:OpenSshDirectory = Join-Path $script:SystemDirectory 'OpenSSH'
+$script:TrustedWindowsOwner = 'NT SERVICE\TrustedInstaller'
+$script:WslExePath = Join-Path $script:SystemDirectory 'wsl.exe'
+$script:CmdExePath = Join-Path $script:SystemDirectory 'cmd.exe'
+$script:SshExePath = Join-Path $script:OpenSshDirectory 'ssh.exe'
+$script:SshKeyscanExePath = Join-Path $script:OpenSshDirectory 'ssh-keyscan.exe'
+$script:SshKeygenExePath = Join-Path $script:OpenSshDirectory 'ssh-keygen.exe'
+$script:ScpExePath = Join-Path $script:OpenSshDirectory 'scp.exe'
+$script:ExpectedWindowsToolSha256 = @{
+    'wsl.exe' = '4e589e3883229b7a74a4acdb878689dcec94e2539fcad1c194f415b149c337a9'
+    'cmd.exe' = 'badf4752413cb0cbdc03fb95820ca167f0cdc63b597ccdb5ef43111180e088b0'
+    'ssh.exe' = 'c9a80ae8af88aa0ff7a08a7e65dbad0d408854d757a433c6a78ab46d8d38aad1'
+    'ssh-keyscan.exe' = 'bfb8caae4c31698c09686ae208dc204941bc185fa282f3973c4e0a44087cc08a'
+    'ssh-keygen.exe' = '539ae392c61a53fadddf0bbb152126f3e0bc042e8a4ed50718ab16fbf872cbcc'
+    'scp.exe' = '29328a55ab58bfcbfe0a7361fff2dc7a50fb28975e8e641b69e9a97ba1840fc8'
+}
 
 function Write-Step {
     param([Parameter(Mandatory)][string]$Message)
@@ -107,6 +125,51 @@ function Assert-NoReparsePathComponents {
             throw "Storage path contains a reparse point, junction, or symbolic link: $currentPath"
         }
     }
+}
+
+function Assert-TrustedWindowsExecutable {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ExpectedSha256,
+        [Parameter(Mandatory)][string[]]$TrustedDirectories
+    )
+    $fullPath = [IO.Path]::GetFullPath($Path)
+    Assert-NoReparsePathComponents -Path $fullPath
+    foreach ($directory in $TrustedDirectories) {
+        $directoryItem = Get-Item -LiteralPath $directory -Force -ErrorAction Stop
+        if (($directoryItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+            (Get-Acl -LiteralPath $directory -ErrorAction Stop).Owner -cne $script:TrustedWindowsOwner) {
+            throw "Trusted Windows tool directory is a reparse point or is not owned by $($script:TrustedWindowsOwner): $directory"
+        }
+    }
+    $item = Get-Item -LiteralPath $fullPath -Force -ErrorAction Stop
+    if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        (Get-Acl -LiteralPath $fullPath -ErrorAction Stop).Owner -cne $script:TrustedWindowsOwner) {
+        throw "Windows executable is not a regular file owned by $($script:TrustedWindowsOwner): $fullPath"
+    }
+    $actualSha256 = (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+    if ($actualSha256 -cne $ExpectedSha256) { throw "Pinned Windows executable SHA-256 mismatch: $fullPath" }
+    $signature = Get-AuthenticodeSignature -FilePath $fullPath -ErrorAction Stop
+    if ($signature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
+        $signature.SignerCertificate.Subject -notmatch '^CN=Microsoft Windows, O=Microsoft Corporation,') {
+        throw "Windows executable lacks a valid Microsoft Windows signature: $fullPath"
+    }
+    return $actualSha256
+}
+
+function Protect-CurrentUserOnlyFile {
+    param([Parameter(Mandatory)][string]$Path)
+    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User
+    $acl = New-Object Security.AccessControl.FileSecurity
+    $acl.SetOwner($sid)
+    $acl.SetAccessRuleProtection($true, $false)
+    $rule = New-Object Security.AccessControl.FileSystemAccessRule(
+        $sid,
+        [Security.AccessControl.FileSystemRights]::FullControl,
+        [Security.AccessControl.AccessControlType]::Allow
+    )
+    $null = $acl.AddAccessRule($rule)
+    Set-Acl -LiteralPath $Path -AclObject $acl -ErrorAction Stop
 }
 
 function ConvertTo-WslPath {
@@ -163,7 +226,7 @@ function Invoke-WslCommand {
     $allArgs = @()
     if ($WslDistro) { $allArgs += @('-d', $WslDistro) }
     $allArgs += $WslArguments
-    $output = (& wsl.exe @allArgs 2>&1 | Out-String)
+    $output = (& $script:WslExePath @allArgs 2>&1 | Out-String)
     $code = $LASTEXITCODE
     if ($ThrowOnError -and $code -ne 0) {
         throw ("WSL command failed (exit {0}): wsl {1}`n{2}" -f $code, ($allArgs -join ' '), ($output.Trim() -replace "`0", ''))
@@ -211,8 +274,31 @@ foreach ($file in @($bootstrapLinux, $landlockProfileGate, $setupUbuntu, $probeC
     }
 }
 
-if (-not (Get-Command ssh.exe -ErrorAction SilentlyContinue) -or -not (Get-Command scp.exe -ErrorAction SilentlyContinue)) {
-    throw 'The OpenSSH client (ssh.exe / scp.exe) is required. Install the Windows optional feature "OpenSSH Client".'
+$toolHashes = @{}
+if (-not $SkipWslInjection) {
+    $toolHashes['wsl.exe'] = Assert-TrustedWindowsExecutable -Path $script:WslExePath -ExpectedSha256 $script:ExpectedWindowsToolSha256['wsl.exe'] -TrustedDirectories @($script:WindowsDirectory, $script:SystemDirectory)
+}
+$toolHashes['cmd.exe'] = Assert-TrustedWindowsExecutable -Path $script:CmdExePath -ExpectedSha256 $script:ExpectedWindowsToolSha256['cmd.exe'] -TrustedDirectories @($script:WindowsDirectory, $script:SystemDirectory)
+foreach ($tool in @(
+        @{ Name = 'ssh.exe'; Path = $script:SshExePath },
+        @{ Name = 'ssh-keyscan.exe'; Path = $script:SshKeyscanExePath },
+        @{ Name = 'ssh-keygen.exe'; Path = $script:SshKeygenExePath },
+        @{ Name = 'scp.exe'; Path = $script:ScpExePath })) {
+    $toolHashes[$tool.Name] = Assert-TrustedWindowsExecutable -Path $tool.Path -ExpectedSha256 $script:ExpectedWindowsToolSha256[$tool.Name] -TrustedDirectories @($script:WindowsDirectory, $script:SystemDirectory, $script:OpenSshDirectory)
+}
+$script:VerifiedWindowsToolHashes = $toolHashes
+Write-Host 'Pinned Windows host tools verified (SHA-256):'
+foreach ($toolName in @('cmd.exe', 'ssh.exe', 'ssh-keyscan.exe', 'ssh-keygen.exe', 'scp.exe')) {
+    Write-Host ("  {0}: {1}" -f $toolName, $script:VerifiedWindowsToolHashes[$toolName])
+}
+if ($script:VerifiedWindowsToolHashes.ContainsKey('wsl.exe')) {
+    Write-Host ("  wsl.exe: {0}" -f $script:VerifiedWindowsToolHashes['wsl.exe'])
+}
+$wslToolHashSummary = if ($script:VerifiedWindowsToolHashes.ContainsKey('wsl.exe')) {
+    $script:VerifiedWindowsToolHashes['wsl.exe']
+}
+else {
+    'not used because -SkipWslInjection was supplied'
 }
 
 $existingVms = @(Get-VM -ErrorAction Stop)
@@ -422,6 +508,7 @@ catch {
 # Step 4: offline injection via WSL (VM is off)
 # ---------------------------------------------------------------------------
 
+$offlineGuestHostKeyFingerprint = $null
 if (-not $SkipWslInjection) {
     Write-Step 'Step 4/6: offline SSH-key injection via WSL (VM is off)'
     if ((Get-VM -Name $VmName -ErrorAction Stop).State -ne 'Off') {
@@ -610,6 +697,11 @@ NETPLAN
   else
     say 'Kept existing SSH host keys (-KeepSshHostKeys).'
   fi
+  if [[ "$MODE" == "golden" ]]; then
+    HOST_FP=$(chroot "$MNT" ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256 | awk 'NR == 1 { print $2 }')
+    [[ "$HOST_FP" =~ ^SHA256:[A-Za-z0-9+/]{43}$ ]] || die 'could not establish one ED25519 host-key fingerprint from the offline-injected copy'
+    say "TBOUND_GUEST_HOST_KEY_FINGERPRINT=$HOST_FP"
+  fi
   : > "$MNT/etc/machine-id"
   rm -f "$MNT/var/lib/dbus/machine-id"
   say 'Cleared machine-id (regenerated on next boot).'
@@ -656,6 +748,16 @@ say 'Offline injection complete; disk released.'
                 $diskDevName, [string][long]$diskBytes, $GuestUser, $injectMode, $pubKeyWslPath, $keepKeysFlag)
             $injectResult = Invoke-WslCommand -WslArguments $wslArgs -ThrowOnError
             Write-Host $injectResult.Output.Trim()
+            if ($injectMode -eq 'golden') {
+                $hostFingerprintMatches = [regex]::Matches(
+                    $injectResult.Output,
+                    '(?m)^TBOUND_GUEST_HOST_KEY_FINGERPRINT=(?<Fingerprint>SHA256:[A-Za-z0-9+/]{43})\r?$'
+                )
+                if ($hostFingerprintMatches.Count -ne 1) {
+                    throw 'Offline injection did not return exactly one ED25519 host-key fingerprint; refusing an unverified SSH connection.'
+                }
+                $offlineGuestHostKeyFingerprint = $hostFingerprintMatches[0].Groups['Fingerprint'].Value
+            }
             $script:stepsDone.Add('Offline SSH-key injection complete')
         }
         finally {
@@ -735,8 +837,16 @@ if (-not [System.Net.IPAddress]::TryParse($guestIpInput, [ref]$parsedGuestIp) -o
 $guestIp = $parsedGuestIp.ToString()
 Write-Host "Guest IP: $guestIp"
 
-$sshKeyscanExe = (Get-Command ssh-keyscan.exe -ErrorAction Stop).Source
-$sshKeygenExe = (Get-Command ssh-keygen.exe -ErrorAction Stop).Source
+$sshKeyscanExe = $script:SshKeyscanExePath
+$sshKeygenExe = $script:SshKeygenExePath
+if ($GuestHostKeyFingerprint -and $offlineGuestHostKeyFingerprint -and
+    $GuestHostKeyFingerprint -cne $offlineGuestHostKeyFingerprint) {
+    throw 'The supplied guest host-key fingerprint does not match the public key generated by offline injection.'
+}
+if (-not $GuestHostKeyFingerprint -and $offlineGuestHostKeyFingerprint) {
+    $GuestHostKeyFingerprint = $offlineGuestHostKeyFingerprint
+    Write-Host 'Expected ED25519 host-key fingerprint came from the powered-off disk after offline injection.'
+}
 if (-not $GuestHostKeyFingerprint) {
     Write-Host "In VMConnect, run: ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256"
     $GuestHostKeyFingerprint = Read-Host 'Enter the guest console ED25519 SHA256 fingerprint'
@@ -745,16 +855,37 @@ if ($GuestHostKeyFingerprint -notmatch '^SHA256:[A-Za-z0-9+/]{43}$') {
     throw 'A valid guest-console ED25519 SHA256 fingerprint is required before SSH provisioning.'
 }
 $knownHostsFile = New-TemporaryFile
+$sshConfigFile = New-TemporaryFile
+foreach ($temporaryInput in @($knownHostsFile, $sshConfigFile)) {
+    Assert-NoReparsePathComponents -Path $temporaryInput.FullName
+    $temporaryItem = Get-Item -LiteralPath $temporaryInput.FullName -Force -ErrorAction Stop
+    if ($temporaryItem.PSIsContainer -or ($temporaryItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "SSH temporary input is not a regular file: $($temporaryInput.FullName)"
+    }
+}
+[IO.File]::WriteAllText($sshConfigFile.FullName, '', [Text.Encoding]::ASCII)
+Protect-CurrentUserOnlyFile -Path $sshConfigFile.FullName
+$sshConfigLock = [IO.File]::Open($sshConfigFile.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+if ($sshConfigLock.Length -ne 0) { throw 'Task-specific SSH configuration must remain empty.' }
+$knownHostsLock = $null
+$knownHostsHost = if ($SshPort -eq 22) { $guestIp } else { '[{0}]:{1}' -f $guestIp, $SshPort }
 $keyscanDeadline = (Get-Date).AddSeconds($BootTimeoutSeconds)
 $hostKeyVerified = $false
 while ((Get-Date) -lt $keyscanDeadline) {
-    $hostKeyLines = @(& $sshKeyscanExe -p $SshPort -t ed25519 $guestIp 2>$null | Where-Object { $_ -match '^[^#].* ssh-ed25519 ' })
+    $scanOutput = @(& $sshKeyscanExe -p $SshPort -t ed25519 $guestIp 2>$null)
+    $hostKeyLines = @($scanOutput | Where-Object {
+        $fields = ([string]$_).Trim() -split '\s+'
+        $fields.Count -eq 3 -and $fields[0] -ceq $knownHostsHost -and
+            $fields[1] -ceq 'ssh-ed25519' -and $fields[2] -match '^[A-Za-z0-9+/=]+$'
+    })
     if ($hostKeyLines.Count -eq 1) {
         Set-Content -LiteralPath $knownHostsFile.FullName -Value $hostKeyLines[0] -Encoding Ascii
         $fingerprintLine = & $sshKeygenExe -lf $knownHostsFile.FullName -E sha256 2>$null
         if ($LASTEXITCODE -ne 0) { throw 'Could not calculate the scanned SSH host-key fingerprint.' }
         if ($fingerprintLine -match '(SHA256:[A-Za-z0-9+/]{43})' -and $Matches[1] -eq $GuestHostKeyFingerprint) {
             $hostKeyVerified = $true
+            Protect-CurrentUserOnlyFile -Path $knownHostsFile.FullName
+            $knownHostsLock = [IO.File]::Open($knownHostsFile.FullName, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
             break
         }
         throw "SSH host key for $guestIp does not match the guest-console fingerprint. Provisioning stopped."
@@ -764,8 +895,24 @@ while ((Get-Date) -lt $keyscanDeadline) {
 if (-not $hostKeyVerified) { throw "Could not obtain exactly one ED25519 SSH host key from $guestIp before timeout." }
 Write-Host "Guest ED25519 host key matches $GuestHostKeyFingerprint."
 
-$sshExe = (Get-Command ssh.exe -ErrorAction Stop).Source
-$sshBase = @('-p', $SshPort, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', ('UserKnownHostsFile="{0}"' -f $knownHostsFile.FullName), '-o', 'ConnectTimeout=8')
+$sshExe = $script:SshExePath
+$sshBase = @(
+    '-F', ('"{0}"' -f $sshConfigFile.FullName),
+    '-p', $SshPort,
+    '-o', 'BatchMode=yes',
+    '-o', 'StrictHostKeyChecking=yes',
+    '-o', ('UserKnownHostsFile="{0}"' -f $knownHostsFile.FullName),
+    '-o', 'GlobalKnownHostsFile=none',
+    '-o', 'KnownHostsCommand=none',
+    '-o', 'IdentitiesOnly=yes',
+    '-o', 'IdentityAgent=none',
+    '-o', 'ProxyCommand=none',
+    '-o', 'ProxyJump=none',
+    '-o', 'PermitLocalCommand=no',
+    '-o', 'ClearAllForwardings=yes',
+    '-o', 'PreferredAuthentications=publickey',
+    '-o', 'ConnectTimeout=8'
+)
 if ($resolvedKeyPath) {
     $sshBase += @('-i', ('"{0}"' -f $resolvedKeyPath))
 }
@@ -782,7 +929,7 @@ $sshDeadline = (Get-Date).AddSeconds($BootTimeoutSeconds)
 $sshReady = $false
 while ((Get-Date) -lt $sshDeadline) {
     $probeCmd = '"{0}" {1} "{2}" true 2>&1' -f $sshExe, ($sshBase -join ' '), $sshTarget
-    $null = & cmd.exe /c $probeCmd
+    $null = & $script:CmdExePath /c $probeCmd
     if ($LASTEXITCODE -eq 0) { $sshReady = $true; break }
     Start-Sleep -Seconds 5
 }
@@ -798,11 +945,28 @@ $script:stepsDone.Add("SSH ready at $sshTarget")
 # ---------------------------------------------------------------------------
 
 Write-Step 'Step 6/6: guest provisioning via SSH (infra/repro/bootstrap-linux.sh inside the guest)'
-$null = & cmd.exe /c ('"{0}" {1} "{2}" "mkdir -p ~/tbound-infra/repro ~/tbound-infra/guest" 2>&1' -f $sshExe, ($sshBase -join ' '), $sshTarget)
+$null = & $script:CmdExePath /c ('"{0}" {1} "{2}" "mkdir -p ~/tbound-infra/repro ~/tbound-infra/guest" 2>&1' -f $sshExe, ($sshBase -join ' '), $sshTarget)
 if ($LASTEXITCODE -ne 0) { throw "Creating the remote staging directories failed (exit $LASTEXITCODE)." }
 
-$scpExe = (Get-Command scp.exe -ErrorAction Stop).Source
-$scpBase = @('-P', $SshPort, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', ('UserKnownHostsFile={0}' -f $knownHostsFile.FullName), '-i', $resolvedKeyPath)
+$scpExe = $script:ScpExePath
+$scpBase = @(
+    '-S', $script:SshExePath,
+    '-F', $sshConfigFile.FullName,
+    '-P', $SshPort,
+    '-o', 'BatchMode=yes',
+    '-o', 'StrictHostKeyChecking=yes',
+    '-o', ('UserKnownHostsFile={0}' -f $knownHostsFile.FullName),
+    '-o', 'GlobalKnownHostsFile=none',
+    '-o', 'KnownHostsCommand=none',
+    '-o', 'IdentitiesOnly=yes',
+    '-o', 'IdentityAgent=none',
+    '-o', 'ProxyCommand=none',
+    '-o', 'ProxyJump=none',
+    '-o', 'PermitLocalCommand=no',
+    '-o', 'ClearAllForwardings=yes',
+    '-o', 'PreferredAuthentications=publickey',
+    '-i', $resolvedKeyPath
+)
 foreach ($pair in @(
         @{ src = $bootstrapLinux; dst = '~/tbound-infra/repro/bootstrap-linux.sh' },
         @{ src = $landlockProfileGate; dst = '~/tbound-infra/repro/landlock-profile-gate.sh' },
@@ -817,7 +981,7 @@ $script:stepsDone.Add('Scripts staged in the guest')
 
 Write-Host "Running bootstrap-linux.sh as '$GuestUser' via sudo (TBOUND_ASSUME_YES=1; this is the provisioning plan you confirmed with ShouldProcess)..."
 $remoteCmd = 'sudo TBOUND_ASSUME_YES=1 bash ~/tbound-infra/repro/bootstrap-linux.sh {0}' -f $GuestUser
-& cmd.exe /c ('"{0}" {1} "{2}" "{3}" 2>&1' -f $sshExe, ($sshBase -join ' '), $sshTarget, $remoteCmd)
+& $script:CmdExePath /c ('"{0}" {1} "{2}" "{3}" 2>&1' -f $sshExe, ($sshBase -join ' '), $sshTarget, $remoteCmd)
 $bootstrapExit = $LASTEXITCODE
 if ($bootstrapExit -ne 0) {
     Write-Warning ('bootstrap-linux.sh exited {0}. Meanings: 1 probe FAIL (takes precedence), 2 precondition error, 3 sole exact D09 Landlock ABI mismatch, 4 unexpected UNVERIFIED without a FAIL.' -f $bootstrapExit)
@@ -833,11 +997,16 @@ $script:stepsDone.Add('Guest bootstrap completed')
 Write-Host "Removing temporary NOPASSWD provisioning rule for '$GuestUser'..."
 $sudoersPath = '/etc/sudoers.d/90-tbound-{0}' -f $GuestUser
 $removeGrantCmd = 'sudo rm -f {0} && test ! -e {0} && echo TBOUND_PROVISIONING_SUDO_REMOVED' -f $sudoersPath
-& cmd.exe /c ('"{0}" {1} "{2}" "{3}" 2>&1' -f $sshExe, ($sshBase -join ' '), $sshTarget, $removeGrantCmd)
+& $script:CmdExePath /c ('"{0}" {1} "{2}" "{3}" 2>&1' -f $sshExe, ($sshBase -join ' '), $sshTarget, $removeGrantCmd)
 if ($LASTEXITCODE -ne 0) {
     throw "Could not remove temporary provisioning sudo rule $sudoersPath; do not run untrusted workloads until it is removed."
 }
 $script:stepsDone.Add('Temporary provisioning sudo rule removed')
+
+if ($null -ne $knownHostsLock) { $knownHostsLock.Dispose() }
+$sshConfigLock.Dispose()
+Remove-Item -LiteralPath $knownHostsFile.FullName -Force -ErrorAction Stop
+Remove-Item -LiteralPath $sshConfigFile.FullName -Force -ErrorAction Stop
 
 # Restore the reference integration policy: KVP was enabled only for IP
 # reporting during provisioning.
@@ -863,6 +1032,12 @@ $summaryLines = @(
     "Image source:   $resolvedImage",
     "Image SHA-256:  $((Get-Sha256Hex -Path $resolvedImage))",
     "Image kind:     $ImageKind",
+    "Host tool SHA-256 (cmd.exe): $($script:VerifiedWindowsToolHashes['cmd.exe'])",
+    "Host tool SHA-256 (ssh.exe): $($script:VerifiedWindowsToolHashes['ssh.exe'])",
+    "Host tool SHA-256 (scp.exe): $($script:VerifiedWindowsToolHashes['scp.exe'])",
+    "Host tool SHA-256 (ssh-keyscan.exe): $($script:VerifiedWindowsToolHashes['ssh-keyscan.exe'])",
+    "Host tool SHA-256 (ssh-keygen.exe): $($script:VerifiedWindowsToolHashes['ssh-keygen.exe'])",
+    "Host tool SHA-256 (wsl.exe): $wslToolHashSummary",
     "Guest user:     $GuestUser (record the actual non-root UID in the guest)",
     "Guest IP:       $guestIp (Default Switch DHCP; changes across reboots)",
     "Switch:         $SwitchName (adapter CONNECTED - disconnect before untrusted runs)",

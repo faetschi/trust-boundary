@@ -58,6 +58,12 @@ Use the versioned
 For a later point release, record its exact filename and versioned release
 URL. Do not substitute a mutable series or `latest` alias.
 
+The authenticated local copy for this qualification is
+`F:\TBoundAssets\ubuntu-24.04.5\ubuntu-24.04.5-live-server-amd64.iso`.
+Its recorded length is 4,080,486,400 bytes and SHA-256 is
+`97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8`.
+The versioned subdirectory is part of the path.
+
 Run the following in a trusted Ubuntu environment with `ubuntu-keyring`
 installed. Ubuntu’s image-signing key is included in the trusted
 `/usr/share/keyrings/ubuntu-archive-keyring.gpg` keyring. Record the
@@ -84,107 +90,117 @@ sha256sum --check --ignore-missing SHA256SUMS
 sha256sum "$ARTIFACT"
 ```
 
-Create a **seed VM** in elevated PowerShell. The seed is installer-only:
-2 vCPUs, fixed 4 GiB RAM and a 40 GiB disk. The bootstrap’s existing
-follow-on VM configuration remains 8 vCPUs, fixed 16 GiB RAM and a 40 GiB
-disk; those settings are not qualified by this recipe. Ubuntu Server’s
-[Hyper-V guide](https://ubuntu.com/server/docs/how-to/virtualisation/ubuntu-on-hyper-v/)
-and Microsoft’s [support matrix](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/supported-ubuntu-virtual-machines-on-hyper-v)
-document Ubuntu Server installation and Ubuntu 24.04 Hyper-V support.
+Install xorriso in the WSL Ubuntu distribution if it is not already available.
+The qualification helper fails closed when the tool is missing:
 
-```powershell
-$BaseRoot = 'F:\TBoundAssets\TBound-Ubuntu-ISO-Seed'
-$BaseVmName = 'TBound-Ubuntu-ISO-Seed'
-$VhdPath = Join-Path $BaseRoot 'ubuntu-24.04.5-server.vhdx'
-$IsoPath = 'F:\TBoundAssets\ubuntu-24.04.5-live-server-amd64.iso'
-$SwitchName = 'Default Switch'
+~~~powershell
+wsl.exe --distribution Ubuntu --user root -- apt-get update
+wsl.exe --distribution Ubuntu --user root -- apt-get install -y xorriso
+~~~
 
-if (Get-VM -Name $BaseVmName -ErrorAction SilentlyContinue) {
-  throw "Seed VM already exists: $BaseVmName"
-}
-New-Item -ItemType Directory -Force -Path $BaseRoot | Out-Null
-if (Test-Path -LiteralPath $VhdPath) {
-  throw "Seed disk already exists: $VhdPath"
-}
-New-VHD -Path $VhdPath -SizeBytes 40GB -Dynamic | Out-Null
-New-VM -Name $BaseVmName -Generation 2 -MemoryStartupBytes 4GB `
-  -NoVHD -Path $BaseRoot -SwitchName $SwitchName | Out-Null
-Set-VMProcessor -VMName $BaseVmName -Count 2
-Set-VMMemory -VMName $BaseVmName -DynamicMemoryEnabled $false `
-  -StartupBytes 4GB
-Set-VM -VMName $BaseVmName -AutomaticCheckpointsEnabled $false `
-  -CheckpointType ProductionOnly
-Add-VMHardDiskDrive -VMName $BaseVmName -Path $VhdPath | Out-Null
-$Dvd = Add-VMDvdDrive -VMName $BaseVmName -Path $IsoPath -PassThru
-Set-VMFirmware -VMName $BaseVmName -EnableSecureBoot On `
-  -SecureBootTemplate MicrosoftUEFICertificateAuthority `
-  -FirstBootDevice $Dvd
-Start-VM -Name $BaseVmName
-vmconnect.exe localhost $BaseVmName
-```
+Run the unattended staging helper through the fixed source-pinned UAC launcher
+from Windows PowerShell 5.1. The launcher accepts only `WhatIf` or `Create`;
+it pins the candidate script and installed Hyper-V module before requesting
+elevation. First run the bounded read-only preflight and review its per-run
+receipt. Then request creation once:
 
-In the installer, use the whole 40 GiB disk and create the first account with
-the same name passed later as `-GuestUser` (default `tboundadmin`). Select
-OpenSSH Server. At the installer reboot prompt, eject the ISO and boot the
-installed disk. Record `id -u tboundadmin` from the guest; the bootstrap
-requires a non-root account and does not require UID 1000. The offline
-injector will replace the installer’s network configuration with DHCP matched
-to the Hyper-V network driver, so the recipe does not assume an interface name
-such as `eth0`.
+~~~powershell
+.\infra\repro\launch-reviewed-abi8-candidate-elevated.ps1 -Action WhatIf
+.\infra\repro\launch-reviewed-abi8-candidate-elevated.ps1 -Action Create
+~~~
 
-Shut down the seed through the guest OS, wait for `Off`, and reject checkpoints
-or a parent-linked disk before hashing or cloning. `Stop-VM` without `-Force`
-requests guest shutdown. The bounded wait below refuses to continue if that
-does not complete; it never forces power-off.
+The launcher reports the UAC child's PID and unique Desktop run directory
+before waiting on that same process handle. `Create` uses the seed helper's
+120-minute installer limit plus bounded setup slack. The helper never kills
+the VM or removes partial files on timeout. Do not rerun while the child is
+active or a partial seed exists. The candidate source pin in the launcher must
+match the reviewed `new-abi8-hyperv-candidate.ps1`; a mismatch fails closed.
 
-```powershell
-Stop-VM -Name $BaseVmName
-$StopDeadline = (Get-Date).AddMinutes(10)
-while ((Get-VM -Name $BaseVmName -ErrorAction Stop).State -ne 'Off' -and
-       (Get-Date) -lt $StopDeadline) {
-  Start-Sleep -Seconds 2
-}
-if ((Get-VM -Name $BaseVmName -ErrorAction Stop).State -ne 'Off') {
-  throw 'Seed VM did not shut down; refusing to hash or copy its disk.'
-}
-if (@(Get-VMSnapshot -VMName $BaseVmName -ErrorAction Stop).Count -ne 0) {
-  throw 'Seed VM has checkpoints; refusing to hash or copy its disk.'
-}
-$BaseDisks = @(Get-VMHardDiskDrive -VMName $BaseVmName -ErrorAction Stop)
-if ($BaseDisks.Count -ne 1) {
-  throw "Expected one seed disk; found $($BaseDisks.Count)."
-}
-$SeedVhdx = $BaseDisks[0].Path
-$SeedVhdInfo = Get-VHD -Path $SeedVhdx -ErrorAction Stop
-if ($SeedVhdInfo.ParentPath) {
-  throw "Seed disk has a parent; refusing to hash or copy it: $SeedVhdx"
-}
-$SeedSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $SeedVhdx).Hash
+It verifies the exact ISO length and SHA-256 above, checks the expected 24.04.5
+GRUB layout, and writes only under
+F:\TBoundAssets\abi8-qualification-2026-10-14 and
+%LOCALAPPDATA%\TBound\abi8-qualification. The private Ed25519 key is created
+with an ACL for the current Windows identity; its contents are never printed
+or placed in the repository. The NoCloud seed contains an ephemeral random
+password hash and that key's public key. SSH password authentication is
+disabled in the installed guest.
 
-.\infra\repro\bootstrap-hyperv-windows.ps1 `
-  -ImageKind GoldenVhdx `
-  -ImageSourcePath $SeedVhdx `
-  -ExpectedImageSha256 $SeedSha256 `
-  -PublicKeyFile "$env:USERPROFILE\.ssh\id_ed25519.pub" `
-  -VmName 'TBound-Ubuntu-2404-ISO' `
-  -VmRoot 'F:\TBoundAssets\TBound-Ubuntu-2404-ISO' `
-  -SwitchName $SwitchName
-```
+The helper derives ubuntu-24.04.5-autoinstall.iso from the authenticated
+Canonical ISO, adding the autoinstall and local NoCloud arguments to both
+installer boot entries. It leaves the signed EFI boot files intact and replays
+the source ISO boot metadata with xorriso. The derived ISO is a local
+modification, so Canonical's signature does not cover it; its SHA-256,
+xorriso version, and relation to the verified source are recorded in the
+receipt. The helper creates a separate TBound-Ubuntu-ABI8-Seed installer VM
+(Generation 2, 2 vCPUs, fixed 4 GiB RAM, dynamic 40 GiB VHDX, Default Switch,
+Secure Boot with the Microsoft UEFI Certificate Authority template, no
+automatic checkpoints). Its disposable root uses the installer's `direct`
+storage layout, producing a plain ext4 root partition and avoiding LVM-volume
+activation during read-only report extraction. The installer selects the
+Ubuntu 24.04 HWE kernel and powers off automatically. The helper waits up to
+120 minutes, never forces
+poweroff, detaches the DVD after a successful poweroff, rejects checkpoints or
+a parent-linked disk, and records the standalone VHDX hash in
+F:\TBoundAssets\abi8-qualification-2026-10-14\abi8-seed-receipt.json.
+A failed run leaves its partial state for inspection; it does not clean up
+files or VMs. It does not touch TBound-Ubuntu-2404.
 
-This is manual image preparation, not a scripted ISO rebuild. Record the
-installer choices and actual seed and follow-on VM settings, then measure the
-booted guest and retain its package manifest, kernel, live Landlock ABI, and
-disk/checkpoint-chain identities. Freeze a measured offline disk for reuse
-only after the required checks. Reusing that frozen clone does not demonstrate
-a reproducible rebuild, register the image, establish containment, or establish
-G1. Record the actual follow-on VM resource settings rather than treating the
-bootstrap’s current 8/16/40 configuration as a registered profile.
+The HWE kernel selector follows Ubuntu's linux-generic-hwe-24.04 track. As
+of this procedure date, Ubuntu lists HWE 7.0 in Noble updates
+([Ubuntu Noble HWE 7.0 source package](https://packages.ubuntu.com/en/source/noble-updates/linux-meta-hwe-7.0)).
+Package candidates can change. Record the installed package version, running
+kernel, kernel config digest, and package manifest. Neither the HWE label nor
+kernel release establishes Landlock ABI 8. The guest must be live-probed and
+the D09 contract requires exactly ABI 8.
 
-Disable shared folders and clipboard integration. The existing development VM
-and WSL remain component-test environments; they do not substitute for a
-registered clean guest.
+After the helper completes successfully, create the fresh final candidate by
+cloning the recorded powered-off seed through the existing guarded bootstrap.
+The bootstrap verifies the Windows WSL, command-shell, and OpenSSH executables
+against pinned SHA-256 values, TrustedInstaller ownership, and Microsoft
+signatures. It uses a locked empty SSH configuration and checks the network
+host key against a fingerprint generated from the powered-off disk after the
+offline injector creates fresh guest SSH host keys. The host-tool pins describe
+the current Windows image and require review if a Windows update changes them.
+This removes the guest-console fingerprint prompt while keeping strict host-key
+checking.
 
-Provision in a connected maintenance phase before freezing the baseline. Use
+~~~powershell
+$SeedVhdx = 'F:\TBoundAssets\abi8-qualification-2026-10-14\seed-vm\Virtual Hard Disks\TBound-Ubuntu-ABI8-Seed.vhdx'
+$SeedSha256 = (Get-FileHash -LiteralPath $SeedVhdx -Algorithm SHA256).Hash
+$PublicKeyFile = Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519.pub'
+.\infra\repro\bootstrap-hyperv-windows.ps1 -ImageKind GoldenVhdx -ImageSourcePath $SeedVhdx -ExpectedImageSha256 $SeedSha256 -PublicKeyFile $PublicKeyFile -VmName 'TBound-Ubuntu-2404-ABI8' -VmRoot 'F:\TBoundVMs\TBound-Ubuntu-2404-ABI8' -SwitchName 'Default Switch'
+~~~
+
+The clone uses the existing bootstrap's final profile of Generation 2,
+8 vCPUs, fixed 16 GiB RAM, and a 40 GiB disk. It performs the offline
+trial-user/SSH injection, boots the candidate for online maintenance, runs
+bootstrap-linux.sh, and captures the guest capability probe.
+
+Preserve the bootstrap output and its exit code. The bootstrap runs the full
+capability probe and requires the exact D09 ABI. For an independent live ABI
+measurement, use the reported guest IPv4 address and the ED25519 fingerprint
+printed after the offline injection:
+
+~~~powershell
+.\infra\repro\probe-live-landlock-abi8-ssh.ps1 -HostName '<reported guest IPv4>' -GuestHostKeyFingerprint '<SHA256 fingerprint printed by bootstrap>'
+~~~
+
+This probe uses strict host-key checking against that offline fingerprint and
+uses the pinned Windows OpenSSH client with an empty task-specific SSH
+configuration. It exits successfully only when the live Landlock VERSION
+query returns exactly ABI 8. Retain its output with the bootstrap capability
+report.
+
+Require the landlock-abi row to report ABI 8 and the d09-landlock-profile
+row to pass. Any other ABI fails the registered profile and requires protocol
+reconciliation; do not weaken the exact-equality check. Keep the connected
+network only for this maintenance phase. Complete the independent offline
+preflight below before freezing the candidate. The old development VM remains
+available until the replacement has passed its required measurements and
+needed artifacts have been preserved.
+
+During that connected maintenance phase, install the pinned toolchains before
+freezing the baseline. Use
 the existing bootstrap's pinned Go 1.27.1, Node 24.21.0 and Cosign 3.1.3,
 retaining artifact digests and checksum/signature verification records. Install
 Pi separately during maintenance using the [installation guide](../../docs/install.md):
@@ -239,10 +255,25 @@ checksum and offline disk identity.
 
 ## Offline preflight
 
+The current unattended identity has a random local password that is not
+retained, and SSH password authentication is disabled. The bootstrap injects a
+key for `tboundadmin`, but the offline steps below require running commands
+after the virtual NIC is disconnected. They cannot be performed through that
+SSH key once the NIC is disconnected, and the current workflow does not create
+a console login. Keep the candidate unfrozen until a guest-side offline runner
+has been prepared during the connected maintenance phase and its report can be
+retrieved after the disconnected run. Do not mark the offline preflight passed
+based on the live SSH probe.
+
+The shell commands below are the bounded payload for that guest-side runner;
+they are not a console-login procedure. The runner should execute them as the
+trial account, retain output and exit codes on the guest disk, and power off
+when finished so the host can collect the report before freezing the image.
+
 Prepare module/npm caches first. Shut down, disconnect every virtual NIC at the
-hypervisor, boot from the candidate baseline, and use the guest console as the
-credential-free trial account. Set `TBOUND_TREE` to the identified source tree.
-Do not pass provider variables, pull images or call a provider.
+hypervisor, then run the bounded guest-side offline audit. Set `TBOUND_TREE` to
+the identified source tree in that audit. Do not pass provider variables, pull
+images or call a provider.
 
 ```sh
 set -eu

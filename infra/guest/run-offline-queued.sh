@@ -6,6 +6,8 @@ POLL_SECONDS=5
 MAX_WAIT_SECONDS=600
 STATUS=STARTING
 OUTPUT_DIR=
+launcher_sha256=
+verifier_sha256=
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -18,7 +20,124 @@ finish() {
   if [[ -n ${OUTPUT_DIR:-} && -d $OUTPUT_DIR && ! -e $OUTPUT_DIR/completed ]]; then
     printf '%s\n' "${STATUS:-LAUNCHER_FAIL}" >"$OUTPUT_DIR/status" 2>/dev/null || true
     printf '%s\n' "$exit_status" >"$OUTPUT_DIR/launcher.exit-code" 2>/dev/null || true
-    date -Is >"$OUTPUT_DIR/completed" 2>/dev/null || true
+    /usr/bin/python3 -I - "$OUTPUT_DIR" "$launcher_path" "$runner_path" "$exit_status" \
+      "${launcher_sha256:-}" "${verifier_sha256:-}" <<'PY' 2>/dev/null || true
+import datetime
+import hashlib
+import json
+import os
+import stat
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+launcher = Path(sys.argv[2])
+verifier = Path(sys.argv[3])
+launcher_exit = int(sys.argv[4])
+expected_launcher_hash = sys.argv[5]
+expected_verifier_hash = sys.argv[6]
+if root.is_symlink() or not root.is_dir() or stat.S_IMODE(root.lstat().st_mode) != 0o700:
+    raise SystemExit(1)
+
+def regular_hash(path):
+    if path.is_symlink() or not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+status_path = root / "status"
+try:
+    status = status_path.read_text(encoding="utf-8").strip()
+except OSError:
+    status = "MISSING"
+
+artifacts = {}
+for name in (
+    "status", "launcher.exit-code", "runner.exit-code", "launcher.log",
+    "verification.json", "verification.stderr",
+):
+    digest = regular_hash(root / name)
+    if digest is not None:
+        artifacts[name] = digest
+
+report_status = None
+report_path = root / "verification.json"
+if regular_hash(report_path) is not None:
+    try:
+        report_status = json.loads(report_path.read_text(encoding="utf-8")).get("status")
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        report_status = "INVALID"
+
+try:
+    runner_exit = int((root / "runner.exit-code").read_text(encoding="ascii").strip())
+except (OSError, ValueError, UnicodeError):
+    runner_exit = None
+
+actual_source_hashes = {
+    "run-offline-queued.sh": regular_hash(launcher),
+    "verify-offline.py": regular_hash(verifier),
+}
+expected_source_hashes = {
+    "run-offline-queued.sh": expected_launcher_hash,
+    "verify-offline.py": expected_verifier_hash,
+}
+source_unchanged = (
+    all(len(value) == 64 and all(char in "0123456789abcdef" for char in value)
+        for value in expected_source_hashes.values())
+    and actual_source_hashes == expected_source_hashes
+)
+
+completion = {
+    "schema": "tbound-offline-queued-completion/v1",
+    "completed_at_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "run_directory": str(root),
+    "status": status,
+    "launcher_exit_code": launcher_exit,
+    "runner_exit_code": runner_exit,
+    "verification_status": report_status,
+    "pass": status == "PASS" and launcher_exit == 0 and runner_exit == 0 and report_status == "PASS" and source_unchanged,
+    "source_sha256": expected_source_hashes,
+    "source_unchanged_at_completion": source_unchanged,
+    "source_sha256_at_completion": actual_source_hashes,
+    "artifact_sha256": artifacts,
+}
+if None in completion["source_sha256"].values() or "status" not in artifacts:
+    raise SystemExit(1)
+
+temporary = root / "completion.json.tmp"
+destination = root / "completion.json"
+if temporary.exists() or destination.exists():
+    raise SystemExit(1)
+with temporary.open("x", encoding="utf-8", newline="\n") as output:
+    json.dump(completion, output, sort_keys=True, separators=(",", ":"))
+    output.write("\n")
+    output.flush()
+    os.fsync(output.fileno())
+os.replace(temporary, destination)
+directory_fd = os.open(root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+try:
+    os.fsync(directory_fd)
+finally:
+    os.close(directory_fd)
+
+completed_tmp = root / "completed.tmp"
+completed = root / "completed"
+if completed_tmp.exists() or completed.exists():
+    raise SystemExit(1)
+with completed_tmp.open("x", encoding="ascii", newline="\n") as output:
+    output.write(completion["completed_at_utc"] + "\n")
+    output.flush()
+    os.fsync(output.fileno())
+os.replace(completed_tmp, completed)
+directory_fd = os.open(root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+try:
+    os.fsync(directory_fd)
+finally:
+    os.close(directory_fd)
+PY
   fi
 }
 
@@ -55,6 +174,13 @@ if [[ ! -f $runner_path || -L $runner_path ]]; then
 fi
 if [[ ! -x /usr/bin/python3 ]]; then
   fail "system Python 3 is required"
+fi
+launcher_hash_output=$(/usr/bin/sha256sum -- "$launcher_path") || fail "could not hash the queued launcher"
+launcher_sha256=${launcher_hash_output%% *}
+verifier_hash_output=$(/usr/bin/sha256sum -- "$runner_path") || fail "could not hash verify-offline.py"
+verifier_sha256=${verifier_hash_output%% *}
+if [[ ! $launcher_sha256 =~ ^[a-f0-9]{64}$ || ! $verifier_sha256 =~ ^[a-f0-9]{64}$ ]]; then
+  fail "source SHA-256 output was malformed"
 fi
 
 if [[ -z ${HOME:-} || $HOME != /* || ! -d $HOME || -L $HOME ]]; then
@@ -158,7 +284,24 @@ while true; do
 done
 
 STATUS=RUNNING
-log "guest offline gate observed; starting the reviewed verifier as the trial user"
+log "guest offline gate observed; rechecking queued source hashes"
+current_launcher_hash=$(/usr/bin/sha256sum -- "$launcher_path") || {
+  STATUS=SOURCE_UNREADABLE
+  log "could not recheck queued launcher bytes; refusing to start the verifier"
+  exit 1
+}
+current_launcher_hash=${current_launcher_hash%% *}
+current_verifier_hash=$(/usr/bin/sha256sum -- "$runner_path") || {
+  STATUS=SOURCE_UNREADABLE
+  log "could not recheck verifier bytes; refusing to start the verifier"
+  exit 1
+}
+if [[ $current_launcher_hash != "$launcher_sha256" || $current_verifier_hash != "$verifier_sha256" ]]; then
+  STATUS=SOURCE_CHANGED
+  log "queued source bytes changed while waiting; refusing to start the verifier"
+  exit 1
+fi
+log "queued source hashes match; starting the verifier as the trial user"
 if /usr/bin/python3 -I "$runner_path" --host-adapter-disconnected \
     >"$OUTPUT_DIR/verification.json" 2>"$OUTPUT_DIR/verification.stderr"; then
   runner_exit_code=0
