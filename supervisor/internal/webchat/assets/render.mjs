@@ -107,6 +107,11 @@ function applyView(refs, state) {
       button.className = active ? "view-tab tab is-active" : "view-tab tab";
     }
   }
+  // The skip link must target the view that is actually visible.
+  if (refs.skipLink) {
+    refs.skipLink.setAttribute("href", view === "chat" ? "#chat-view" : "#trajectory-view");
+    refs.skipLink.textContent = view === "chat" ? "Skip to transcript" : "Skip to record ledger";
+  }
   if (refs.chatView) toggleHidden(refs.chatView, view !== "chat");
   if (refs.trajectoryView) toggleHidden(refs.trajectoryView, view !== "trajectory");
 }
@@ -126,7 +131,7 @@ function renderToolbar(refs, state) {
       [counts.allow, `ALLOW ${counts.allow}`, "allow", "policy ALLOW decisions"],
       [counts.deny, `DENY ${counts.deny}`, "deny", "policy DENY decisions"],
       [counts.unknownDecisions, `unknown verdict ${counts.unknownDecisions}`, "unknown", "decisions with an unknown verdict"],
-      [counts.verified, `verified ${counts.verified}`, "allow", "successful executions confirmed by the projection"],
+      [counts.verified, `verified ${counts.verified}`, "succeeded", "successful executions confirmed by the projection"],
       [counts.reported, `reported ${counts.reported}`, "reported", "successes reported but not independently verified"],
       [counts.denied, `denied ${counts.denied}`, "deny", "denied results"],
       [counts.failed, `failed ${counts.failed}`, "deny", "failed results"],
@@ -566,14 +571,21 @@ function renderTrajectory(refs, state) {
     clear(refs.sequenceRail);
     if (!state.loaded) {
       refs.sequenceRail.appendChild(el("p", "rail-note", "Loading projection…"));
-    } else if (!view.items.length) {
+    } else if (!state.items.length) {
       refs.sequenceRail.appendChild(el("p", "rail-note", "No records to chart."));
     } else {
-      const rail = sequenceLanes(view.items);
+      // The rail is built from every retained record, not the search result: a
+      // search narrows the ledger and must never hide a DENY from the rail.
+      const rail = sequenceLanes(state.items);
       for (const lane of rail.lanes) {
         const row = el("div", `lane lane-${lane.id}`);
         row.appendChild(el("span", "lane-label", lane.label));
         const track = el("span", "lane-track");
+        track.setAttribute("role", "img");
+        track.setAttribute(
+          "aria-label",
+          `${lane.label} lane: ${lane.segments.map((segment) => `${segment.weight} ${segment.tone}`).join(", ")}`,
+        );
         for (const segment of lane.segments) {
           const node = el("span", `seg seg-${segment.tone} ${weightClass(segment.weight)}`);
           node.title = `${lane.label}: ${segment.weight} record(s), ${segment.tone}`;
@@ -582,7 +594,12 @@ function renderTrajectory(refs, state) {
         row.appendChild(track);
         refs.sequenceRail.appendChild(row);
       }
-      const axis = el("p", "rail-axis", rail.note);
+      const searching = Boolean(String(state.query || "").trim());
+      const axis = el(
+        "p",
+        "rail-axis",
+        searching ? `${rail.note} The rail always shows all ${state.items.length} retained records; search only narrows the ledger.` : rail.note,
+      );
       axis.dataset.ordinal = "true";
       refs.sequenceRail.appendChild(axis);
     }

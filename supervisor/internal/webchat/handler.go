@@ -34,14 +34,14 @@ type staticRoute struct {
 // staticRoutes is a closed allowlist. Only these exact paths are served; there
 // is no directory listing, path joining, or filesystem access.
 var staticRoutes = map[string]staticRoute{
-	"/":                   {"assets/index.html", "text/html; charset=utf-8"},
-	"/static/styles.css":  {"assets/styles.css", "text/css; charset=utf-8"},
-	"/static/app.mjs":     {"assets/app.mjs", "text/javascript; charset=utf-8"},
-	"/static/api.mjs":     {"assets/api.mjs", "text/javascript; charset=utf-8"},
-	"/static/store.mjs":   {"assets/store.mjs", "text/javascript; charset=utf-8"},
-	"/static/render.mjs":  {"assets/render.mjs", "text/javascript; charset=utf-8"},
-	"/static/filters.mjs": {"assets/filters.mjs", "text/javascript; charset=utf-8"},
-	"/static/format.mjs":  {"assets/format.mjs", "text/javascript; charset=utf-8"},
+	"/":                      {"assets/index.html", "text/html; charset=utf-8"},
+	"/static/styles.css":     {"assets/styles.css", "text/css; charset=utf-8"},
+	"/static/app.mjs":        {"assets/app.mjs", "text/javascript; charset=utf-8"},
+	"/static/api.mjs":        {"assets/api.mjs", "text/javascript; charset=utf-8"},
+	"/static/store.mjs":      {"assets/store.mjs", "text/javascript; charset=utf-8"},
+	"/static/render.mjs":     {"assets/render.mjs", "text/javascript; charset=utf-8"},
+	"/static/filters.mjs":    {"assets/filters.mjs", "text/javascript; charset=utf-8"},
+	"/static/format.mjs":     {"assets/format.mjs", "text/javascript; charset=utf-8"},
 	"/static/trajectory.mjs": {"assets/trajectory.mjs", "text/javascript; charset=utf-8"},
 }
 

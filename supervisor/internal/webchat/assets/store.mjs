@@ -73,6 +73,9 @@ function enforceClientCap(state) {
   const removed = state.items.splice(0, overflow);
   for (const item of removed) state.itemsById.delete(item.id);
   state.evicted += removed.length;
+  // An evicted record must not stay selected: the inspector would show nothing
+  // and the next Escape would be swallowed dismissing a dangling selection.
+  if (state.selectedId && !state.itemsById.has(state.selectedId)) state.selectedId = null;
 }
 
 export function setFilter(state, value) {

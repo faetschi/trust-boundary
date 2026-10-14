@@ -73,6 +73,10 @@
   --dot-deny: var(--destructive);
   --dot-pending: var(--muted-foreground);
   --dot-reported: var(--warning);
+  /* A policy ALLOW is a permission, not an outcome: it has its own neutral tone
+     and never shares the success colour. */
+  --allow: var(--source-system);
+  --dot-allow: var(--allow);
 
   /* Geometry declared once, so the three-region shell has one source of truth. */
   --rail-width: 15rem;
@@ -704,6 +708,12 @@ h3 {
 .seg-deny {
   background: var(--destructive);
 }
+.seg-allow {
+  background: var(--allow);
+}
+.seg-idle {
+  background: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
+}
 .seg-reported {
   background: var(--warning);
 }
@@ -815,6 +825,11 @@ h3 {
   flex: none;
 }
 .dot-ok { background: var(--dot-ok); }
+.dot-allow {
+  background: transparent;
+  border-color: var(--dot-allow);
+  box-shadow: inset 0 0 0 1px var(--dot-allow);
+}
 .dot-deny { background: var(--dot-deny); }
 .dot-lost { background: var(--dot-deny); }
 .dot-pending {
@@ -1129,7 +1144,6 @@ h3 {
   text-transform: uppercase;
   white-space: nowrap;
 }
-.chip-allow,
 .chip-succeeded,
 .chip-completed,
 .chip-published,
@@ -1137,6 +1151,11 @@ h3 {
   color: var(--success-foreground);
   border-color: color-mix(in oklch, var(--success) 40%, transparent);
   background: color-mix(in oklch, var(--success) 12%, transparent);
+}
+.chip-allow {
+  color: var(--allow);
+  border-color: color-mix(in oklch, var(--allow) 45%, transparent);
+  background: color-mix(in oklch, var(--allow) 12%, transparent);
 }
 .chip-deny,
 .chip-denied,

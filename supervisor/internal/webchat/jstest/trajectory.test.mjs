@@ -112,7 +112,8 @@ test("an unverified success is reported, never confirmed", () => {
 });
 
 test("the status dot never claims more than the chip", () => {
-  const CONFIRMED = new Set(["allow", "succeeded", "completed", "published", "ready"]);
+  // A policy ALLOW is a permission, not an outcome, so it is not a confirmed tone.
+  const CONFIRMED = new Set(["succeeded", "completed", "published", "ready"]);
   const NEGATIVE = new Set(["deny", "denied", "failed", "cancelled", "lost"]);
   for (const record of ALL) {
     const dot = recordDot(record);
@@ -288,4 +289,42 @@ test("a record exposes only the fields the ledger and inspector need", () => {
   assert.equal(record.label, "bash · reviewed");
   assert.equal(recordOf(prompt).label, "prompt");
   assert.equal(recordOf(systemNote).label, "system note");
+});
+
+const verifiedSuccess = item({ id: "v1", sequence: 9, type: "result", tool: "bash", tool_call_id: "c9", state: "succeeded", authority: "observed", verification_scope: "structural-audit-only" });
+const unknownDecision = item({ id: "u1", sequence: 10, type: "decision", tool: "bash", tool_call_id: "c10", verdict: "UNKNOWN", reason_code: "decision_lost" });
+const unknownResult = item({ id: "u2", sequence: 11, type: "result", tool: "bash", tool_call_id: "c10", state: "unknown" });
+
+test("a policy ALLOW is never styled as a successful execution", () => {
+  assert.equal(recordDot(allowDecision), "allow");
+  for (const record of ALL) {
+    if (record.type === "decision") assert.notEqual(recordDot(record), "ok", `${record.id}: a verdict is not an outcome`);
+  }
+  // ALLOW next to a lost result: the policy lane must not be green beside a red tools lane.
+  const rail = sequenceLanes([allowDecision, lostResult]);
+  const policy = rail.lanes.find((lane) => lane.id === "policy");
+  assert.ok(policy.segments.some((segment) => segment.tone === "allow"));
+  assert.ok(!rail.lanes.some((lane) => lane.segments.some((segment) => segment.tone === "ok")));
+});
+
+test("only a verified, complete success takes the ok tone", () => {
+  assert.equal(recordDot(verifiedSuccess), "ok");
+  assert.equal(recordDot({ ...verifiedSuccess, lossy: true }), "unknown", "lossy output is not terminal evidence");
+  assert.equal(recordDot(succeededResult), "reported");
+});
+
+test("UNKNOWN verdicts and results stay unknown and are never promoted", () => {
+  assert.equal(recordDot(unknownDecision), "unknown");
+  assert.equal(recordDot(unknownResult), "unknown");
+  assert.ok(recordChips(unknownDecision).some((chip) => chip.label === "UNKNOWN" && chip.variant === "unknown"));
+  const rail = sequenceLanes([unknownDecision, unknownResult]);
+  for (const lane of rail.lanes) {
+    for (const segment of lane.segments) assert.ok(!["ok", "allow"].includes(segment.tone), "UNKNOWN is not drawn as success or permission");
+  }
+});
+
+test("a message is drawn distinctly from a lane that did not act", () => {
+  const rail = sequenceLanes([prompt, allowDecision]);
+  const model = rail.lanes.find((lane) => lane.id === "model");
+  assert.deepEqual(model.segments.map((segment) => segment.tone), ["idle", "muted"]);
 });

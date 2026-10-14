@@ -83,8 +83,9 @@ export function preview(text, max = MAX_PREVIEW) {
 
 // The status dot mirrors the chip tone exactly, so the two can never disagree
 // about the same record. An unverified success is "reported", never "ok".
+// A policy ALLOW is a permission, not an outcome, so it never maps to "ok".
 const DOT_BY_VARIANT = {
-  allow: "ok",
+  allow: "allow",
   succeeded: "ok",
   completed: "ok",
   published: "ok",
@@ -105,7 +106,9 @@ export function recordDot(item) {
   if (!item) return "unknown";
   if (item.type === "decision") return DOT_BY_VARIANT[verdictChipClass(item.verdict)] || "unknown";
   if (item.type === "result" || item.type === "activity") {
-    return DOT_BY_VARIANT[stateChipClass(item.state, isVerified(item))] || "unknown";
+    const dot = DOT_BY_VARIANT[stateChipClass(item.state, isVerified(item))] || "unknown";
+    // Lossy output is incomplete and is not terminal evidence of success.
+    return dot === "ok" && item.lossy ? "unknown" : dot;
   }
   return "idle";
 }
@@ -224,8 +227,12 @@ function toneOf(item) {
   const dot = recordDot(item);
   if (dot === "deny" || dot === "lost") return "deny";
   if (dot === "ok") return "ok";
+  if (dot === "allow") return "allow";
   if (dot === "reported") return "reported";
   if (dot === "pending") return "pending";
+  // A message is recorded but carries no verdict or outcome: it is drawn as
+  // "idle", distinct from the "muted" span of a lane that did not act at all.
+  if (dot === "idle") return "idle";
   return "muted";
 }
 

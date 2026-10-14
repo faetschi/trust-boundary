@@ -406,3 +406,24 @@ are preparation only. Media custody and exact ABI checks precede registration.
   and screenshots for both viewports refreshed in docs/webchat/qa/ (the mobile
   audit is run at a real 390 px window, because the CDP metrics override does not
   take effect here).
+
+## Trajectory review round (2026-10-14)
+
+- Haiku 5.5 xhigh review of 14a1772 found 10 issues; all substantiated ones are
+  fixed: policy ALLOW now has its own neutral tone (never the success colour),
+  lossy output never takes `ok`, the sequence rail is built from all retained
+  records (search narrows only the ledger), the inspector drawer opens on record
+  select at <=1180 px, Close/Escape return focus to the row, eviction clears a
+  dangling selection, `role=list` removed, rail lanes labelled, skip link follows
+  the visible view. A verified decision still carries no marker (latent: no
+  production path emits `observed` yet).
+- Tests added for verified success, UNKNOWN verdict/result, ALLOW beside lost,
+  rail vs search, skip link, eviction. Node 72/72; Go 1.27.1 build/vet/gofmt clean
+  and `-race` green for internal/webchat and cmd/tbound-webchat only (full
+  `./...` not re-run). `handler.go` gofmt drift from 14a1772 fixed.
+- Browser QA (fixture mode, Chrome over CDP): all six checks pass at 1440/1024;
+  evidence and hashes in docs/webchat/qa/fixture-trajectory-capture.json. Caveat:
+  Close was focused programmatically, not reached by Tab.
+- Harness client survey recorded as Appendix B of docs/web-chat-ui-plan.md.
+- Known: `/favicon.ico` 404 (no route); a stale `tbound-webchat.exe` (older
+  build) holds port 8791 outside this worktree.

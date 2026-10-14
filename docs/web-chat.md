@@ -225,20 +225,27 @@ endpoint was needed to build it.
 - **Status dot.** The dot mirrors the record's chip tone exactly, so the two can
   never disagree. An unverified execution outcome takes the `reported` tone, never
   the confirmed `ok` tone; `lost`, `denied`, `pending` and `unknown` are distinct.
-  A policy verdict keeps its verdict tone (as the timeline renders it) and always
-  carries an explicit `unverified` marker when the projection did not verify it.
+  A policy ALLOW is a permission, not an outcome: it has its own neutral `allow`
+  tone and is never drawn in the success colour, so an ALLOW beside a `lost`
+  result cannot look like a success. Lossy output never takes the `ok` tone. A
+  verdict carries an explicit `unverified` marker when the projection did not
+  verify it.
 - **Sequence rail.** A three-lane overview (`Model` / `Policy` / `Tools`) whose
   axis is the **record sequence, not time**. The projection records a timestamp
   and never a duration, so no span is drawn as one and the axis says so. Segment
   widths are bucketed CSS classes, not inline styles (the CSP allows no inline
-  style).
+  style). The rail is always built from every retained record: a search narrows
+  the ledger and never hides a DENY from the rail. A message is drawn `idle`,
+  distinct from the `muted` span of a lane that did not act at that position.
 - **Record inspector.** Selecting a record shows its bounded fields:
   `Summary`, `Payload`, `Decision` (verdict, reason code, policy digest),
   `Result` (state, lossy, digest), `Evidence` (authority, verification scope and
   an explicit "independently verified: no") and `Timing`. The Timing section is
   always present and always states that a duration is unavailable, because none
-  was recorded. `Escape` clears the selection; the session-scoped governance
-  panels return.
+  was recorded. `Escape` or **Close** clears the selection and returns focus to
+  the row; the session-scoped governance panels return. Below 1180 px the
+  inspector is an off-canvas drawer: selecting a record opens it, and dismissing
+  the record closes it.
 - **Search** reads only allowlisted bounded fields (`id`, `text`, `summary`,
   `detail`, `tool`, `kind`, `state`, `verdict`, `reason_code`, `tool_call_id`,
   `turn_id`). Raw paths, arguments and result bytes are not in the projection and

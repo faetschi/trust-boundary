@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
-    <a class="skip-link" href="#chat-view">Skip to transcript</a>
+    <a id="skip-link" class="skip-link" href="#chat-view">Skip to transcript</a>
 
     <main class="layout" id="layout">
       <nav class="rail" aria-label="Sessions">
@@ -146,9 +146,9 @@
             </div>
           </div>
 
-          <div id="sequence-rail" class="sequence-rail" aria-label="Record sequence rail"></div>
+          <div id="sequence-rail" class="sequence-rail" role="group" aria-label="Record sequence rail"></div>
 
-          <div id="ledger" class="ledger" role="list"></div>
+          <div id="ledger" class="ledger"></div>
         </section>
 
         <div id="foot-stats" class="foot-stats" aria-label="Observed session metrics"></div>

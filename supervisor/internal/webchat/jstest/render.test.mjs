@@ -232,8 +232,13 @@ test("the ledger never renders an unverified success as confirmed", () => {
   assert.ok(dots.some((value) => value.includes("dot-reported")), "the dot matches the chip's trust tone");
   assert.equal(
     dots.filter((value) => value.includes("dot-ok")).length,
+    0,
+    "no unverified record, and no policy ALLOW, carries the ok tone",
+  );
+  assert.equal(
+    dots.filter((value) => value.includes("dot-allow")).length,
     1,
-    "only the ALLOW decision carries the ok tone",
+    "the ALLOW decision has its own permission tone",
   );
 });
 
@@ -321,4 +326,28 @@ test("switching to the trajectory view leaves the projection untouched", () => {
   setQuery(state, "deny");
   assert.equal(state.items.length, before);
   assert.equal(state.filter, "all", "view and search never change the finding filter");
+});
+
+test("search narrows the ledger but never the governance rail", () => {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  applySnapshot(state, fixtureSnapshot());
+  setView(state, "trajectory");
+  setQuery(state, "curl");
+  renderAll(refs, state);
+  const policy = refs.sequenceRail.querySelectorAll("div.lane").find((lane) => lane.className.includes("lane-policy"));
+  const tones = policy.querySelectorAll("span.seg").map((seg) => seg.className);
+  assert.ok(tones.some((value) => value.includes("seg-deny")), "the DENY stays on the rail while a search narrows the ledger");
+  assert.match(refs.sequenceRail.textContent, /always shows all 7 retained records/);
+});
+
+test("the skip link follows the visible view", () => {
+  const refs = createRefs([...REF_NAMES, "skipLink"]);
+  const state = createWorkspace();
+  applySnapshot(state, fixtureSnapshot());
+  renderAll(refs, state);
+  assert.equal(refs.skipLink.getAttribute("href"), "#chat-view");
+  setView(state, "trajectory");
+  renderAll(refs, state);
+  assert.equal(refs.skipLink.getAttribute("href"), "#trajectory-view");
 });

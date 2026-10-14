@@ -52,6 +52,7 @@ const refs = {
   inspector: document.getElementById("inspector"),
   inspectorToggle: document.getElementById("inspector-toggle"),
   viewTabs: document.getElementById("view-tabs"),
+  skipLink: document.getElementById("skip-link"),
   chatView: document.getElementById("chat-view"),
   trajectoryView: document.getElementById("trajectory-view"),
   trajectoryGroups: document.getElementById("trajectory-groups"),
@@ -430,15 +431,34 @@ refs.ledger.addEventListener("click", (event) => {
   const row = target && target.closest ? target.closest("button.record-row") : null;
   if (!row) return;
   selectRecord(state, row.dataset.id);
+  // Below the breakpoint the inspector is an off-canvas drawer that stays inert
+  // until opened, so selecting a record must reveal it or the fields are
+  // unreachable.
+  if (narrowViewport.matches) refs.inspector.dataset.open = "true";
   render();
+  syncInspector();
 });
+
+// Dismiss the record inspector and hand focus back to the row that opened it,
+// so keyboard users do not lose their place in the ledger.
+function dismissRecord() {
+  const id = state.selectedId;
+  clearRecord(state);
+  if (narrowViewport.matches) refs.inspector.dataset.open = "false";
+  render();
+  syncInspector();
+  if (!id) return;
+  for (const row of refs.ledger.querySelectorAll("button.record-row")) {
+    if (row.dataset.id === id) {
+      row.focus();
+      return;
+    }
+  }
+}
 
 refs.recordInspector.addEventListener("click", (event) => {
   const target = event.target;
-  if (target && target.dataset && target.dataset.action === "clear-record") {
-    clearRecord(state);
-    render();
-  }
+  if (target && target.dataset && target.dataset.action === "clear-record") dismissRecord();
 });
 
 refs.inspectorToggle.addEventListener("click", () => {
@@ -455,8 +475,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   // A record selection is the innermost dismissable state.
   if (state.selectedId) {
-    clearRecord(state);
-    render();
+    dismissRecord();
     return;
   }
   if (refs.inspector.dataset.open === "true") {

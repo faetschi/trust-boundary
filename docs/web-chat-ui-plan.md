@@ -354,3 +354,35 @@ still our own new plugin rather than something we inherit.
 
 Whatever is chosen, **BRAND_GUIDELINES.md is not ours**: copy patterns and tokens, never the
 harness name, logo or trade dress.
+
+## Appendix B — Patterns worth borrowing piecemeal from the harness client
+
+A read-only survey of `packages/client` (upstream `d743267`, MIT; read in source unless
+marked otherwise) found small patterns that fit the vanilla, Go-authoritative design.
+None of them changes the Appendix A decision. Effort is an estimate for a vanilla ES-module port.
+
+| Pattern | Upstream file | Use here | Effort |
+|---|---|---|---|
+| Stable-prefix streaming markdown (re-parse only the tail blocks, fence-aware) | `ui-primitives/src/markdown/incremental.ts` | Streaming transcript (milestone 2) | M |
+| No HTML parser in markdown; URL scheme allowlist (http, https, mailto) | `ui-primitives/src/markdown/render.tsx:333-335,53` | Keep zero `innerHTML`; build DOM with `createElement`/`createTextNode` only | S–M |
+| Capped exponential backoff with jitter; slow-connect warning that does not cancel | `connection/src/client/connection.ts:139-150`, `recovery-config.ts` | Reconnect; a resync replaces the whole loaded window | S |
+| Explicit "history not loaded" window gap marker | `ui-conversation/.../assembler.ts:27,769` | Gap rendering | S |
+| Two-press Escape cancel bound to session/turn/generation; skips IME and key repeat | `ui-conversation/src/client/stop-sequence.ts` | Cancel is a request; the UI still waits for the settled result | S |
+| Visually hidden text beside colour-only status | `ui-tool/.../ToolRow.tsx:104-114` | Accessibility | S |
+| Anchored tail window (pin the tail at open, extend forward) | `ui-trajectory/src/client/TrajectoryView.tsx:163-177` | Needs a snapshot `anchor` cursor field | M |
+
+Avoid: authority-bearing UI (`ui-approval`, `ui-permission-presets`, terminal/browser
+sidebars; judged from package descriptions only); the `preparing|running|ok|error|stopped`
+tool vocabulary (`ok` has no verification gate and there is no `unknown`/`denied`/`lost`);
+zero-width spans for null durations (we render `unavailable: <reason>`); `aria-live="polite"`
+on the ledger; any `innerHTML` sink; and search over full message bodies (index bounded fields only).
+
+Not verified: transitive licences (`diff`, `micromark`, `shiki`, `dompurify`, virtual-list);
+no upstream build or test was run; the scroll-follow and attempt-history behaviours rest on
+the README only.
+
+**Gateway fence before any POST route (milestone 3).** Upstream refuses
+`Sec-Fetch-Site: cross-site` and the literal `null` Origin but accepts an absent Origin;
+our `handler.go` is GET-only and also accepts an absent Origin. Before POST routes land,
+add the `Sec-Fetch-Site` refusal and a JSON-only content-type requirement, and decide
+whether to require `Origin` on POST (stricter than upstream).

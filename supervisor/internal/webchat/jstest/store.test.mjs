@@ -6,6 +6,7 @@ import {
   applySession,
   applySnapshot,
   createWorkspace,
+  selectRecord,
   groupTurn,
   noteGap,
   MAX_CLIENT_ITEMS,
@@ -126,4 +127,16 @@ test("turnsOf groups by turn in first-seen order", () => {
   assert.deepEqual(turns[0].items.map((entry) => entry.id), ["a", "c"]);
   assert.equal(turns[1].id, "turn-2");
   assert.deepEqual(turns[1].items.map((entry) => entry.id), ["b"]);
+});
+
+test("evicting the selected record clears the selection", () => {
+  const state = createWorkspace();
+  const items = [];
+  for (let i = 1; i <= MAX_CLIENT_ITEMS; i += 1) items.push(item(`i${i}`, i));
+  applySnapshot(state, snapshot(items));
+  selectRecord(state, "i1");
+  assert.equal(state.selectedId, "i1");
+  assert.equal(applyItem(state, item("next", MAX_CLIENT_ITEMS + 1)), "applied");
+  assert.equal(state.itemsById.has("i1"), false);
+  assert.equal(state.selectedId, null, "a dangling selection must not survive eviction");
 });
