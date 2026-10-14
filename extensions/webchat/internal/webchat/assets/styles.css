@@ -1,11 +1,12 @@
 /*
  * tbound Pi chat workspace — presentation styles.
  *
- * Design system: the coss/ui token vocabulary (Cal.com/shadcn-compatible CSS
- * variables, including the extra --destructive-foreground and --info/--success/
- * --warning tokens) applied to this zero-build workspace. No React, Tailwind, or
- * bundler is used; the service stays minimal. Tokens live in :root so a future
- * coss/ui adoption can reuse them.
+ * Design system: token names follow the coss/ui vocabulary (Cal.com/shadcn-
+ * compatible CSS variables, including the extra --destructive-foreground and
+ * --info/--success/--warning tokens). This is a naming reference only; no
+ * coss/ui code or package is a dependency. The current workspace is zero-build
+ * (the planned change is recorded in extensions/webchat/docs/
+ * adr-0001-optional-extension.md). Tokens live in :root.
  */
 
 :root {

@@ -25,7 +25,7 @@ Steps 1–2 are supervisor-owned.
 ## 2. The projection the gateway already consumes
 
 The gateway is built around this shape and validates it strictly
-(`supervisor/internal/webchat/contract.go`). A live projection should produce the
+(`extensions/webchat/internal/webchat/contract.go`). A live projection should produce the
 same shape, with `source: "live"` and `verification_scope:
 "structural-audit-only"` (values already defined).
 

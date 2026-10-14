@@ -33,12 +33,15 @@
 
 ## Presentation / frontend
 
-- [Pi web chat workspace](web-chat.md): untrusted, read-only chat workspace for
+- [Pi web chat workspace](../extensions/webchat/docs/web-chat.md): untrusted, read-only chat workspace for
   the Pi CLI/RPC harness; claim boundary, projection contract, security posture,
   and the fixes for the previously reviewed frontend defects.
-- [Web chat projection service contract](web-chat-contract.md): proposed
+- [Web chat projection service contract](../extensions/webchat/docs/web-chat-contract.md): proposed
   supervisor-owned projection/stream API needed for live read and interactive
   integration.
+- [Web chat extension decision record (ADR-0001)](../extensions/webchat/docs/adr-0001-optional-extension.md):
+  the web chat is an optional standalone extension in `extensions/webchat/`; the
+  core neither requires nor imports it.
 
 These documents describe code or intended contracts. Read the current status
 page before treating any design or fixture as a qualified production result.

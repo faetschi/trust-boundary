@@ -1,0 +1,55 @@
+name: webchat-extension
+
+# Optional extension only. Path-filtered so core-only changes never run it, and
+# no core job depends on it (see extensions/webchat/README.md).
+on:
+  push:
+    paths:
+      - "extensions/webchat/**"
+      - ".github/workflows/webchat-extension.yml"
+  pull_request:
+    paths:
+      - "extensions/webchat/**"
+      - ".github/workflows/webchat-extension.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  webchat:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/webchat
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+          cache: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.21.0"
+
+      - name: Prepare private temporary directory
+        run: |
+          umask 077
+          TMPDIR="$(mktemp -d "$HOME/tw-ci.XXXXXXXX")"
+          chmod 700 "$TMPDIR"
+          printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
+
+      - name: gofmt
+        run: |
+          umask 077
+          test -z "$(gofmt -l .)"
+
+      - name: Go vet
+        run: umask 077; go vet -mod=readonly ./...
+
+      - name: Go race suite
+        run: umask 077; go test -race -mod=readonly -count=1 ./...
+
+      - name: Node tests (browser-side pure modules and DOM stubs)
+        run: umask 077; node --test internal/webchat/jstest/*.test.mjs

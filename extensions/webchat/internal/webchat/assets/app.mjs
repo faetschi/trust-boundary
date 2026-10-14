@@ -387,7 +387,8 @@ function syncInspector() {
   }
 }
 
-// Timeline filter: a coss-style toggle group where each button carries its own
+// Timeline filter: a toggle group (coss/ui naming reference, not a dependency)
+// where each button carries its own
 // count and pressed state. Clicking, or pressing Enter/Space on a focused item,
 // selects a filter; Left/Right arrows move between items (roving focus).
 // Selecting a filter only narrows what is displayed; it never changes the

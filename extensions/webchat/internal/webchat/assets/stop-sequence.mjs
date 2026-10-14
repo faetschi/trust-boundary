@@ -6,9 +6,10 @@
 // core thread. No module imports this file, the shell and app do not reference
 // it, and handler.go does not allowlist it.
 //
-// The pattern comes from the harness client (docs/web-chat-ui-plan.md,
-// Appendix B); no code is copied. Cancel is a request. The wording below never
-// claims that a turn was cancelled, stopped or settled: the settled result comes
+// The pattern comes from the harness client (extensions/webchat/docs/
+// web-chat-ui-plan.md, Appendix B); no code is copied. Cancel is a request. The
+// wording below never claims that a turn was cancelled, stopped or settled: the
+// settled result comes
 // from the supervisor, and an uncertain effect stays UNKNOWN.
 //
 // The module creates no timers and reads no clock. The caller stamps every event

@@ -19,7 +19,7 @@ import (
 	"os/signal"
 	"time"
 
-	"tbound/supervisor/internal/webchat"
+	"tbound/webchat/internal/webchat"
 )
 
 func main() {

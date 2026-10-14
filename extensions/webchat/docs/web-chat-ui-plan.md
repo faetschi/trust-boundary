@@ -129,8 +129,8 @@ This is the part that decides the design. Evidence, not opinion:
 
 | Gap | Evidence | Consequence |
 |---|---|---|
-| **No wall-clock time in the durable log** | `audit.Event`/`audit.Record` have no time field (`internal/audit/audit.go:59-89`); no provider/operation evidence struct, `CapturedResponse`, `ExchangeRecord` or the receipt carries one. The only clock value in the whole webchat path is the receipt file's mtime (`internal/webchat/receipt.go`). | No duration, no TTFT, no tok/s, no true left-to-right timing. **A timing lane would be fabricated.** |
-| **Pi RPC forwards lifecycle only** | `pumpEvents` maps `agent_settled → turn_end` and failed `prompt → worker_error`; assistant text, tool calls, results and usage are read and dropped (`internal/piruntime/worker_channels_linux.go:1612-1701`). | No live transcript, no live tool rows. |
+| **No wall-clock time in the durable log** | `audit.Event`/`audit.Record` have no time field (`supervisor/internal/audit/audit.go:59-89`); no provider/operation evidence struct, `CapturedResponse`, `ExchangeRecord` or the receipt carries one. The only clock value in the whole webchat path is the receipt file's mtime (`extensions/webchat/internal/webchat/receipt.go`). | No duration, no TTFT, no tok/s, no true left-to-right timing. **A timing lane would be fabricated.** |
+| **Pi RPC forwards lifecycle only** | `pumpEvents` maps `agent_settled → turn_end` and failed `prompt → worker_error`; assistant text, tool calls, results and usage are read and dropped (`supervisor/internal/piruntime/worker_channels_linux.go:1612-1701`). | No live transcript, no live tool rows. |
 | **Turn boundaries are partial** | `providerExchangeEvidence.turn` is a monotonic counter with no start/end record and no turn id; the live `turn_end` is never journalled. | Turn grouping is approximate; "Step" does not exist at all. |
 | **Usage is untyped** | Token counts live only inside raw `provider_exchange.response` bytes. | Token/cache metrics cannot be shown as values. |
 | **Raw payloads are unbounded and sensitive** | The journal durably holds full request bodies, response bodies and tool result bytes; the webchat contract bounds display text to 4096/8192 B and our docs already record that prose is bounded but **not** content-redacted. | The browser must show **bounded previews + digests**, not raw payloads. |
@@ -149,8 +149,11 @@ ordinal rail, not a timing chart, and says so in the UI.
 
 ## 4. Target design
 
-Keep: zero-build ESM + CSS, `role="log"`/`aria-live="off"`, keyboard audits, the
-no-success-without-verification gate, the `.mjs` module split, and the coss/ui token vocabulary.
+Keep: `role="log"`/`aria-live="off"`, keyboard audits, the
+no-success-without-verification gate, the `.mjs` module split (ported to TypeScript
+in ADR-0001 P2), and the coss/ui-style token names (a naming reference only, not a
+dependency). The zero-build ESM + CSS build is superseded for Phase 1 onward by
+[ADR-0001](adr-0001-optional-extension.md).
 Borrow the harness's **layout, density and row anatomy**; do not import React/Tailwind/virtualizer.
 
 ### 4.1 Shell
@@ -245,7 +248,7 @@ Each phase is independently shippable and testable. No phase may be described as
   source declares one.
 
 ### Phase 4 — Supervisor-owned data (core-thread dependency)
-Proposed in `docs/web-chat-contract.md`; not implementable in this repo alone:
+Proposed in `extensions/webchat/docs/web-chat-contract.md`; not implementable in this repo alone:
 1. a timestamp on durable records (a hash-chained record-format change, or an agreed sidecar);
 2. explicit turn/step records with ids;
 3. typed token usage;
@@ -285,6 +288,12 @@ browser show transcript text.
 Measured on a shallow sparse checkout of `deepseek-harness` at `d743267`
 (`release-0.2.1-alpha.2`), and on the npm registry.
 
+> **Status (ADR-0001, 2026-10-14).** The zero-build element of the recommendation
+> in A.4 is superseded for Phase 1 onward by
+> [ADR-0001](adr-0001-optional-extension.md). The rejection of adopting the harness
+> runtime and the authority analysis still stand. Corrections made in this revision
+> are marked as such inline.
+
 ### A.1 What was measured
 
 | Fact | Value |
@@ -296,7 +305,9 @@ Measured on a shallow sparse checkout of `deepseek-harness` at `d743267`
 | `ui-theme` alone | 23 KB `design-platform.css` + CSS-module components + 3 Montserrat `.woff2` + a JS theme applier |
 | `ui-trajectory` alone | 58 files, ~650 KB, 45 source files |
 | Everything in the client requires | React 18, `@deepseek-ai/cordis` 4, CSS modules, and a `tsdown`/bundler build |
-| Published to npm? | **Yes**, but client packages are `0.0.1-rc.1` while the CLI is `0.2.0-rc.2` |
+| `ui-primitives` peer-depends on | `@deepseek-ai/cordis`. *Corrected in review; reported, not reproduced: `@deepseek-ai/ui-primitives` returned 404 from the npm registry on 2026-10-14, and the unscoped `ui-primitives` on npm is an unrelated package.* |
+| CSP (`style-src 'self'`) | **Incompatible as shipped.** The CSS-module and theme injection, and the settled shiki output, write styles at runtime, which `style-src 'self'` blocks. *Reported in review; not tested in a browser under this policy.* |
+| Published to npm? | Client packages are **`0.2.1-alpha.2`** (*corrected from `0.0.1-rc.1`*). The CLI `@deepseek-ai/dsh` is `0.2.0-rc.2` on the registry (checked 2026-10-14). The client-package names are not confirmed on npm (see the row above). |
 | `ui-trajectory` declares it must co-mount with | `dsh-api-session-controller`, `dsh-client-locale`, `ui-conversation`, `ui-renderer`, `ui-session` |
 | `ui-conversation` peer-requires | ~17 more packages, including `dsh-agent`, `dsh-tools`, `dsh-llm-retry`, `dsh-client-connection`, `ui-slots`, `ui-primitives` |
 | Host side, if running dsh's own server | `@deepseek-ai/dsh` has ~90 direct dependencies, including `dsh-tool-bash`, `dsh-tool-subagent`, `dsh-plugin-manager`, `dsh-mcp-client`, `dsh-hooks-codex`, `dsh-experimental-auto-review`, `dsh-schedule` |
@@ -327,7 +338,7 @@ they are installable outside the monorepo. The blocker is not packaging.
 2. **Their ledger is not governance-aware.** There is no verdict, reason code, policy digest,
    generation transition, containment status, effect id, or UNKNOWN state anywhere in its record
    vocabulary. Every tbound-specific row, chip and inspector tab is **new code we would write as a
-   client plugin against `0.0.1-rc.1` internals**, in TypeScript, against APIs the project
+   client plugin against `0.2.1-alpha.2` internals**, in TypeScript, against APIs the project
    explicitly warns are breaking-change-prone.
 3. **The trust direction inverts.** Today the browser is an untrusted client of a loopback Go
    gateway. Under adoption, the browser is served by a Node host whose product ships tool

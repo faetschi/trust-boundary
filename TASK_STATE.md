@@ -198,11 +198,11 @@ are preparation only. Media custody and exact ABI checks precede registration.
 
 - Frontend thread delivers milestone 1: a new untrusted, read-only Pi web chat
   workspace. Additive only; no authority-owned file is edited. New code:
-  supervisor/internal/webchat (bounded contract, validation, bounded gateway
+  extensions/webchat/internal/webchat (bounded contract, validation, bounded gateway
   store, GET-only/loopback HTTP+SSE handler, embedded workspace assets,
-  fixtures) and supervisor/cmd/tbound-webchat (loopback-only entrypoint).
-  Docs: docs/web-chat.md and the proposed service contract
-  docs/web-chat-contract.md. QA screenshots: docs/webchat/qa/.
+  fixtures) and extensions/webchat/cmd/tbound-webchat (loopback-only entrypoint).
+  Docs: extensions/webchat/docs/web-chat.md and the proposed service contract
+  extensions/webchat/docs/web-chat-contract.md. QA screenshots: extensions/webchat/docs/webchat/qa/.
 - Claim boundary unchanged: G1=false, containment not-established, H1
   unexecuted, claim-bearing=false. Fixtures are non-claim-bearing and clearly
   labelled FIXTURE/REPLAY/UNAVAILABLE. Live projection, persistent multi-turn
@@ -234,14 +234,14 @@ are preparation only. Media custody and exact ABI checks precede registration.
   tests green (9 filter tests + 13 render tests). Screenshots and deterministic
   keyboard audits (tab order, Enter/Escape, filter selection with focus
   retention, ArrowRight within the group, live innerWidth) retained in
-  docs/webchat/qa; both viewports verified.
+  extensions/webchat/docs/webchat/qa; both viewports verified.
 
 ## Web chat increment 2: receipt importer + coss/ui design system (2026-10-13)
 
 - Round-1 Luna max review was cancelled before producing findings (user stop);
   round 2 was started against this state with the original brief and the new
   commit range.
-- Added the typed post-run receipt importer (supervisor/internal/webchat/receipt.go,
+- Added the typed post-run receipt importer (extensions/webchat/internal/webchat/receipt.go,
   --receipt / --receipt-demo). It reads only declared fields from the production,
   dev-fixture and native-fixture receipt shapes and projects a bounded replay
   observation. It refuses claim_bearing=true, established containment,
@@ -281,7 +281,7 @@ are preparation only. Media custody and exact ABI checks precede registration.
   the web service stays minimal (zero-build ESM + Go gateway).
 - Re-verified: gofmt clean, build/vet green, focused tests and race green, 22
   Node tests green (adds receipt-importer Go tests and render/gap/loading tests).
-  Screenshots and keyboard audits retained in docs/webchat/qa/.
+  Screenshots and keyboard audits retained in extensions/webchat/docs/webchat/qa/.
 - Second Luna max review round (tbwc-m1-review-2) running; round 1
   (tbwc-m1-review-1) was cancelled before producing findings.
 
@@ -299,7 +299,7 @@ are preparation only. Media custody and exact ABI checks precede registration.
   lossy). An unverified success counts as "reported", never "verified".
 - New pure module assets/filters.mjs with Node tests; render tests extended for
   the toolbar, the filtered view and the empty-filter state. Node suite is now 35
-  tests. Docs updated (docs/web-chat.md sections 4.3 and 8.1).
+  tests. Docs updated (extensions/webchat/docs/web-chat.md sections 4.3 and 8.1).
 - QA: fresh screenshots including fixture-denied-filter, refreshed keyboard audits
   with the filter and arrow-key checks and a self-describing viewport record.
 
@@ -345,7 +345,7 @@ are preparation only. Media custody and exact ABI checks precede registration.
   subscription panel isolation, subscriber_limit treated as terminal, honest
   "timeout-bounded not drain-free" wording, filter summary no longer a live
   region, and the desktop Governance control hidden where it would be a no-op.
-- Residual risk stated in docs/web-chat.md §6: the projection bounds
+- Residual risk stated in extensions/webchat/docs/web-chat.md §6: the projection bounds
   operator-supplied prose but does not content-redact it; a production
   projection must emit structured safe summaries.
 - Verified: Node suite now 40 tests; Go adds cursor/sequence, correlation,
@@ -373,7 +373,7 @@ are preparation only. Media custody and exact ABI checks precede registration.
 
 - Design reference: the DeepSeek Harness trajectory view
   (packages/client/ui-trajectory) was analysed in full
-  (docs/web-chat-ui-plan.md). The harness client is 63 packages / 1,918 files /
+  (extensions/webchat/docs/web-chat-ui-plan.md). The harness client is 63 packages / 1,918 files /
   581 `.tsx` components over React 18, Cordis 4 and a CSS-module bundler, and its
   trajectory tab is a leaf of that composed runtime, so adopting it would have
   moved the web server onto a Node host and inverted the trust direction. Its
@@ -403,7 +403,7 @@ are preparation only. Media custody and exact ABI checks precede registration.
 - Verified: gofmt/build/vet clean; focused unit and race green; Node 65/65; full
   `go test -race ./...` green except the pre-existing `internal/evaluationindex`
   docs-path failure of a copied `supervisor/` tree. Deterministic keyboard audits
-  and screenshots for both viewports refreshed in docs/webchat/qa/ (the mobile
+  and screenshots for both viewports refreshed in extensions/webchat/docs/webchat/qa/ (the mobile
   audit is run at a real 390 px window, because the CDP metrics override does not
   take effect here).
 
@@ -422,15 +422,15 @@ are preparation only. Media custody and exact ABI checks precede registration.
   and `-race` green for internal/webchat and cmd/tbound-webchat only (full
   `./...` not re-run). `handler.go` gofmt drift from 14a1772 fixed.
 - Browser QA (fixture mode, Chrome over CDP): all six checks pass at 1440/1024;
-  evidence and hashes in docs/webchat/qa/fixture-trajectory-capture.json. Caveat:
+  evidence and hashes in extensions/webchat/docs/webchat/qa/fixture-trajectory-capture.json. Caveat:
   Close was focused programmatically, not reached by Tab.
-- Harness client survey recorded as Appendix B of docs/web-chat-ui-plan.md.
+- Harness client survey recorded as Appendix B of extensions/webchat/docs/web-chat-ui-plan.md.
 - Known: `/favicon.ico` 404 (no route); a stale `tbound-webchat.exe` (older
   build) holds port 8791 outside this worktree.
 
 ## Harness-survey increment (2026-10-14)
 
-- Implemented from docs/web-chat-ui-plan.md App. B (patterns only, MIT upstream,
+- Implemented from extensions/webchat/docs/web-chat-ui-plan.md App. B (patterns only, MIT upstream,
   nothing copied): safe stable-prefix assistant markdown (markdown.mjs: DOM-only,
   no HTML parsing, http/https/mailto only, 64 KiB/512 blocks/depth 4, indexed
   look-ahead so adversarial input is linear); snapshot-first reconnect (stream.mjs
@@ -444,8 +444,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
 - stop-sequence.mjs (two-press Escape cancel) is a pure state machine and is NOT
   wired: there is no cancel API (milestone 3). Wording never says cancelled/stopped/settled.
 - Deferred: diff viewer (no bounded diff field in the projection; contract needs
-  listed in docs/web-chat.md s12); slash-menu listbox (no composer). Proposal for
-  the core thread: additive snapshot `anchor` (docs/web-chat-contract.md s8).
+  listed in extensions/webchat/docs/web-chat.md s12); slash-menu listbox (no composer). Proposal for
+  the core thread: additive snapshot `anchor` (extensions/webchat/docs/web-chat-contract.md s8).
 - Two Haiku 5.5 xhigh review/fix rounds: 6 defects found in 9aaa789 (ReDoS-like
   emphasis scan, hung snapshot, gap-storm reconnects, id-less item dropped, windowGap
   cleared without contiguity, offline flag), all fixed test-first.
@@ -454,7 +454,7 @@ are preparation only. Media custody and exact ABI checks precede registration.
   Not browser-verified: markdown styling, online/offline listeners, tail/jump button.
 - Known: hung EventSource handshake (after the snapshot) is not timed out.
 - Browser QA of 3146d1b (Chrome 155 over CDP, fixture/demo server, evidence in
-  docs/webchat/qa/fixture-increment2-capture.json): 27 PASS, 0 FAIL — markdown
+  extensions/webchat/docs/webchat/qa/fixture-increment2-capture.json): 27 PASS, 0 FAIL — markdown
   (16 hostile payloads, no sinks, CSP clean), tail/jump (simulated fake EventSource:
   the demo has no live events), reconnect backoff/offline/slow-handshake, toolbar and
   ledger labels. Not verified: real streaming end to end, screen reader, non-Chrome,
@@ -462,3 +462,29 @@ are preparation only. Media custody and exact ABI checks precede registration.
   (render.mjs:234), unreachable gateway shows "projection error: Failed to fetch"
   (render.mjs:226), the jump pill can cover the last code block, record rows lack
   roving tabindex.
+
+## Web chat Phase 0: optional extension extraction (2026-10-14, codex/tbound-web-chat)
+
+- The web chat is an optional standalone extension. Moved with `git mv` (renames
+  staged, history kept, nothing committed): `extensions/webchat/` is module
+  `tbound/webchat` (`go 1.21`, no dependencies). Code is in
+  `extensions/webchat/internal/webchat/` and `extensions/webchat/cmd/tbound-webchat/`;
+  docs are in `extensions/webchat/docs/`. QA JSON receipts keep their original
+  paths and hashes (they describe the pre-move tree).
+- Core isolation: `supervisor/` lost exactly the two webchat packages (28 -> 26).
+  gofmt, build and vet are clean; `go test -race ./...` passes with the same 7
+  environment skips and no FAIL. PASS count fell by 30, the webchat count.
+- Extension: gofmt, vet and `go test -race` green (30 Go PASS, 0 skip). Node
+  `--test` 258/258, 0 skip. Node v24.15.0 in WSL; CI pins 24.21.0.
+- Boundary guard `scripts/check-extension-boundary.sh` (`--self-test`: 8 cases)
+  runs in core `make test`. Separate CI workflows: `webchat-extension.yml`
+  (path-filtered to `extensions/webchat/**`) and `extension-boundary.yml`
+  (unfiltered). `ci.yml` is unchanged.
+- ADR-0001 (`extensions/webchat/docs/adr-0001-optional-extension.md`) records the
+  dependency rule and the Phase 1+ direction (React + TypeScript, own components,
+  CSS Modules, committed Vite build). P1 has not started.
+- Verification caveat: the pinned Go toolchain's private TMPDIR must be under
+  `$HOME`, not `/tmp`. Under `/tmp` the audit-journal ancestor check fails 7
+  core packages (mode 0777 ancestor). The `make` binary is not installed in WSL,
+  so the Makefile recipes were run verbatim under `sh`.
+- Claim boundary unchanged: G1=false; containment not-established; H1 unexecuted.

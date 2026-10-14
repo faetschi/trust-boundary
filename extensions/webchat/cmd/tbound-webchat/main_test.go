@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"tbound/supervisor/internal/webchat"
+	"tbound/webchat/internal/webchat"
 )
 
 func TestValidateLoopbackAddressRejectsRemoteAndNames(t *testing.T) {

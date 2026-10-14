@@ -8,7 +8,7 @@ UNAME_S := $(shell uname -s 2>/dev/null)
 HOST_OS := $(if $(filter Linux,$(UNAME_S)),linux,$(if $(filter Darwin,$(UNAME_S)),darwin,windows))
 HOST_ARCH := $(shell uname -m 2>/dev/null | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
 
-.PHONY: help build release verify test fmt clean deb rpm container npm-packages publish
+.PHONY: help build release verify test boundary extension-webchat fmt clean deb rpm container npm-packages publish
 
 help:
 	@echo "tbound make targets:"
@@ -20,7 +20,9 @@ help:
 	@echo "  deb          build a .deb from the linux-amd64 tarball (needs dpkg-deb)"
 	@echo "  rpm          build an RPM from the linux-amd64 tarball (needs rpmbuild)"
 	@echo "  container    build the container image (needs podman or docker)"
-	@echo "  test         run all Go module tests"
+	@echo "  test         run the extension boundary guard, then all core Go module tests (no Node)"
+	@echo "  boundary     check that core never imports the optional extensions/webchat (pure sh)"
+	@echo "  extension-webchat  gofmt, vet, race tests and Node tests for the optional web chat extension (needs Node)"
 	@echo "  fmt          gofmt all Go packages"
 	@echo "  clean        remove dist/"
 
@@ -48,8 +50,19 @@ rpm:
 container:
 	@scripts/build-container.sh $(VERSION)
 
-test:
+test: boundary
 	cd supervisor && $(GO) test ./...
+
+# The core gate must stay free of the optional extension and of Node: boundary
+# is pure sh and grep, and the core test target never invokes Node.
+boundary:
+	@sh scripts/check-extension-boundary.sh
+	@sh scripts/check-extension-boundary.sh --self-test
+
+# Optional extension only (extensions/webchat). Not a prerequisite of any core
+# target; it needs Node for the browser-side tests.
+extension-webchat:
+	cd extensions/webchat && gofmt -l . | (! grep .) && $(GO) vet -mod=readonly ./... && $(GO) test -race -mod=readonly -count=1 ./... && node --test internal/webchat/jstest/*.test.mjs
 
 fmt:
 	cd supervisor && $(GO) fmt ./...

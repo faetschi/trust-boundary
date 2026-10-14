@@ -12,7 +12,7 @@ authority. The relationship to OpenChamber-for-OpenCode is the *product concept*
 (a better presentation layer for a harness), not a visual or backend template.
 
 Related: [web chat service contract proposal](web-chat-contract.md),
-[architecture](architecture.md), [status](status.md).
+[architecture](../../../docs/architecture.md), [status](../../../docs/status.md).
 
 ## 1. Authority boundary
 
@@ -84,9 +84,12 @@ browser (untrusted)  ──HTTP/SSE (loopback)──▶  tbound-webchat gateway 
 
 New, additive code (no authority-owned file is modified):
 
-- `supervisor/internal/webchat/` — the bounded projection contract, validation,
-  the gateway store, the HTTP/SSE handler, and the embedded workspace assets.
-- `supervisor/cmd/tbound-webchat/` — the loopback-only gateway entrypoint.
+- `extensions/webchat/internal/webchat/` — the bounded projection contract,
+  validation, the gateway store, the HTTP/SSE handler, and the embedded workspace
+  assets. This is an optional extension: the core never imports it (see
+  `extensions/webchat/README.md`).
+- `extensions/webchat/cmd/tbound-webchat/` — the loopback-only gateway
+  entrypoint.
 
 ## 4. Projection contract
 
@@ -481,29 +484,34 @@ stable connection.
 
 ### 8.1 Presentation design system
 
-The visual language follows the **coss/ui design-token vocabulary** (the
-Cal.com/shadcn-compatible CSS variables, including the extra
-`--destructive-foreground` and `--info`/`--success`/`--warning` tokens) plus coss
-component conventions: `Card`-style bounded surfaces, outline and semantic
+The token names and component shapes follow the **coss/ui naming and pattern
+vocabulary** (the Cal.com/shadcn-compatible CSS variable names, including the
+extra `--destructive-foreground` and `--info`/`--success`/`--warning` tokens, and
+the component conventions). This is a naming and pattern reference only: no
+coss/ui code, CSS or package is a dependency or is copied. The conventions are
+`Card`-style bounded surfaces, outline and semantic
 `Badge`/chip variants, `Alert`-style notices with an icon, `Empty`/`Skeleton`
 loading states, `Kbd`, and a sidebar with muted hover/active rows. The timeline
 filter is a segmented Toggle Group built from `aria-pressed` buttons with roving
 arrow-key focus, and the posture row uses the badge/chip shapes.
 
-The React/Base UI/Tailwind implementation is **not** used, deliberately: the
-thesis treats a browser client as a deferred, non-claim-bearing demonstrator and
-requires the web service to stay minimal, so this workspace remains a zero-build
-ESM + CSS client served by the Go gateway. The tokens are defined in `:root` so a
-later coss/ui adoption can reuse them. Fonts degrade to local Inter / Geist Mono
+No React, Base UI or Tailwind is used in the current build. The thesis treats a
+browser client as a deferred, non-claim-bearing demonstrator and requires the web
+service to stay minimal, so the current workspace is a zero-build ESM + CSS client
+served by the Go gateway. [ADR-0001](adr-0001-optional-extension.md) supersedes
+that zero-build rule for Phase 1 onward: React and TypeScript with the project's
+own components, CSS Modules compiled to same-origin CSS, and a committed Vite
+build. The tokens are defined in `:root`. Fonts degrade to local Inter / Geist Mono
 when installed and otherwise fall back to system stacks; no webfont is fetched,
 which keeps the strict `font-src 'self'` policy and offline operation intact.
 
 ## 9. Running it
 
-Requires the pinned Go toolchain (module `tbound/supervisor`).
+Requires the pinned Go toolchain (module `tbound/webchat`, in
+`extensions/webchat/`) and Node for the browser-side tests.
 
 ```sh
-cd supervisor
+cd extensions/webchat
 go vet ./internal/webchat/... ./cmd/tbound-webchat/...
 go test ./internal/webchat/... ./cmd/tbound-webchat/...
 node --test internal/webchat/jstest/*.test.mjs
@@ -557,7 +565,8 @@ data loading.
 
 ## 10. Verification receipts
 
-Focused checks on the pinned Go 1.27.1 in Linux:
+Focused checks on the pinned Go 1.27.1 in Linux, run from `extensions/webchat/`
+(entries from before the extraction ran from `supervisor/`):
 
 - `gofmt -l .` — no output.
 - `go build ./...` — exit 0.

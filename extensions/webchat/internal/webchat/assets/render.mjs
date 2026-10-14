@@ -133,7 +133,8 @@ function toggleHidden(node, hidden) {
 }
 
 // renderToolbar draws the observed posture badges and the timeline filter
-// toggle group (coss Toggle Group convention: aria-pressed segmented buttons).
+// toggle group of aria-pressed segmented buttons. "coss" in this file names a
+// pattern reference only; no coss/ui code or package is a dependency.
 function renderToolbar(refs, state) {
   if (refs.posture) {
     clear(refs.posture);
@@ -369,8 +370,8 @@ function emptyState(title, message, variant) {
   return node;
 }
 
-// Loading state: a spinner plus skeleton rows, matching the coss Empty/Skeleton
-// convention without any framework.
+// Loading state: a spinner plus skeleton rows. The coss/ui Empty/Skeleton is a
+// naming and pattern reference only; there is no framework or dependency.
 function loadingState() {
   const node = el("div", "empty-state");
   const spinner = el("span", "spinner");
