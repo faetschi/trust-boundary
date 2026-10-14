@@ -21,6 +21,10 @@ import {
   weightClass,
 } from "./trajectory";
 
+// The projection every existing case is judged in: a live structural projection, where the record
+// judgement agrees with the legacy item-only one. Cases outside it are below ("The claim gate in the model").
+const LIVE_PROJECTION = { source: "live", verification: "structural-audit-only" } as const;
+
 function item(overrides: ItemView): ItemView {
   return {
     id: "x1",
@@ -108,11 +112,11 @@ test("every item type maps to a source chip, and no context chip is invented", (
 });
 
 test("an unverified success is reported, never confirmed", () => {
-  const chips = recordChips(succeededResult);
+  const chips = recordChips(succeededResult, LIVE_PROJECTION);
   const state = chips.find((entry) => entry.label === "succeeded");
   assert.ok(state, "the result state must be chipped");
   assert.equal(state.variant, "reported", "an unverified success uses the reported variant");
-  assert.equal(recordDot(succeededResult), "reported");
+  assert.equal(recordDot(succeededResult, LIVE_PROJECTION), "reported");
   assert.ok(chips.some((entry) => entry.label === "unverified"));
 });
 
@@ -121,8 +125,8 @@ test("the status dot never claims more than the chip", () => {
   const CONFIRMED = new Set(["succeeded", "completed", "published", "ready"]);
   const NEGATIVE = new Set(["deny", "denied", "failed", "cancelled", "lost"]);
   for (const record of ALL) {
-    const dot = recordDot(record);
-    const chips = recordChips(record);
+    const dot = recordDot(record, LIVE_PROJECTION);
+    const chips = recordChips(record, LIVE_PROJECTION);
     const has = (set: Set<string>) => chips.some((entry) => set.has(entry.variant));
     if (dot === "ok") {
       assert.ok(has(CONFIRMED), `${record.id}: an ok dot requires a confirmed chip`);
@@ -158,15 +162,15 @@ test("an unverified outcome never takes the ok tone", () => {
   for (const record of ALL) {
     if (record.type !== "result") continue;
     if (record.state !== "succeeded") continue;
-    assert.notEqual(recordDot(record), "ok", "an unverified success is reported, never ok");
+    assert.notEqual(recordDot(record, LIVE_PROJECTION), "ok", "an unverified success is reported, never ok");
   }
 });
 
 test("a lost result is distinguishable from a denial and from success", () => {
-  assert.equal(recordDot(lostResult), "lost");
-  assert.notEqual(recordDot(lostResult), "deny");
-  assert.notEqual(recordDot(lostResult), "ok");
-  assert.equal(recordChips(lostResult).find((entry) => entry.label === "lost")?.variant, "lost");
+  assert.equal(recordDot(lostResult, LIVE_PROJECTION), "lost");
+  assert.notEqual(recordDot(lostResult, LIVE_PROJECTION), "deny");
+  assert.notEqual(recordDot(lostResult, LIVE_PROJECTION), "ok");
+  assert.equal(recordChips(lostResult, LIVE_PROJECTION).find((entry) => entry.label === "lost")?.variant, "lost");
 });
 
 test("no record can produce a duration, and timing states why", () => {
@@ -182,7 +186,7 @@ test("no record can produce a duration, and timing states why", () => {
 });
 
 test("the record inspector always states that duration is unavailable", () => {
-  const sections = recordDetail(deniedDecision);
+  const sections = recordDetail(deniedDecision, LIVE_PROJECTION);
   const timing = sections.find((section) => section.id === "timing");
   assert.ok(timing, "the Timing section is always present");
   const duration = timing.rows.find((row) => row[0] === "duration");
@@ -191,20 +195,20 @@ test("the record inspector always states that duration is unavailable", () => {
 });
 
 test("a decision record carries its governance lens", () => {
-  const sections = recordDetail(allowDecision);
+  const sections = recordDetail(allowDecision, LIVE_PROJECTION);
   const decision = sections.find((section) => section.id === "decision");
   assert.ok(decision, "a decision record has a Decision section");
   const keys = decision.rows.map((row) => row[0]);
   assert.deepEqual(keys, ["verdict", "reason code", "policy digest"]);
   assert.equal(recordPayload(allowDecision), "reason policy_rule_allow · policy sha256:aaaa");
   // A message has no decision or result section.
-  const messageSections = recordDetail(prompt).map((section) => section.id);
+  const messageSections = recordDetail(prompt, LIVE_PROJECTION).map((section) => section.id);
   assert.ok(!messageSections.includes("decision"));
   assert.ok(!messageSections.includes("result"));
 });
 
 test("the sequence rail is ordinal and shares one axis across lanes", () => {
-  const rail = sequenceLanes(ALL);
+  const rail = sequenceLanes(ALL, LIVE_PROJECTION);
   assert.equal(rail.ordinal, true);
   assert.equal(rail.axis, "record sequence");
   assert.match(rail.note, /not time/);
@@ -243,18 +247,18 @@ test("search reads only allowlisted bounded fields", () => {
 test("grouping covers turn, tool and verdict", () => {
   assert.deepEqual(RECORD_GROUPS.map((entry) => entry.id), ["turn", "tool", "verdict"]);
 
-  const byTurn = visibleRecords({ items: ALL, group: "turn", query: "" });
+  const byTurn = visibleRecords({ items: ALL, group: "turn", query: "" , projection: LIVE_PROJECTION });
   assert.equal(byTurn.groups.length, 1);
   assert.equal(byTurn.groups[0]?.title, "Turn t1");
   assert.equal(byTurn.groups[0]?.records.length, ALL.length);
 
-  const byTool = visibleRecords({ items: ALL, group: "tool", query: "" });
+  const byTool = visibleRecords({ items: ALL, group: "tool", query: "" , projection: LIVE_PROJECTION });
   const toolIds = byTool.groups.map((group) => group.id);
   assert.ok(toolIds.includes("c1") && toolIds.includes("c2") && toolIds.includes("__messages"));
   const c1 = byTool.groups.find((group) => group.id === "c1");
   assert.equal(c1?.records.length, 3, "a tool call's activity, decision and result group together");
 
-  const byVerdict = visibleRecords({ items: ALL, group: "verdict", query: "" });
+  const byVerdict = visibleRecords({ items: ALL, group: "verdict", query: "" , projection: LIVE_PROJECTION });
   const allow = byVerdict.groups.find((group) => group.title === "ALLOW");
   const deny = byVerdict.groups.find((group) => group.title === "DENY");
   const none = byVerdict.groups.find((group) => group.title === "No verdict");
@@ -274,13 +278,13 @@ test("grouping covers turn, tool and verdict", () => {
 test("the trajectory ignores the timeline finding filter", () => {
   // The filter narrows the transcript; it must not silently narrow the audit
   // ledger, and a search must never change a filter outcome.
-  const state = { items: ALL, group: "turn", query: "", filter: "denied" };
+  const state = { items: ALL, group: "turn", query: "", filter: "denied", projection: LIVE_PROJECTION };
   assert.equal(visibleRecords(state).items.length, ALL.length);
-  assert.equal(visibleRecords({ ...state, query: "go test" }).items.length, 1);
+  assert.equal(visibleRecords({ ...state, query: "go test" , projection: LIVE_PROJECTION }).items.length, 1);
 });
 
 test("a record exposes only the fields the ledger and inspector need", () => {
-  const record = recordOf(allowDecision);
+  const record = recordOf(allowDecision, LIVE_PROJECTION);
   assert.deepEqual(Object.keys(record).sort(), [
     "chips",
     "detail",
@@ -293,8 +297,8 @@ test("a record exposes only the fields the ledger and inspector need", () => {
     "source",
   ]);
   assert.equal(record.label, "bash · reviewed");
-  assert.equal(recordOf(prompt).label, "prompt");
-  assert.equal(recordOf(systemNote).label, "system note");
+  assert.equal(recordOf(prompt, LIVE_PROJECTION).label, "prompt");
+  assert.equal(recordOf(systemNote, LIVE_PROJECTION).label, "system note");
 });
 
 const verifiedSuccess = item({ id: "v1", sequence: 9, type: "result", tool: "bash", tool_call_id: "c9", state: "succeeded", authority: "observed", verification_scope: "structural-audit-only" });
@@ -302,35 +306,35 @@ const unknownDecision = item({ id: "u1", sequence: 10, type: "decision", tool: "
 const unknownResult = item({ id: "u2", sequence: 11, type: "result", tool: "bash", tool_call_id: "c10", state: "unknown" });
 
 test("a policy ALLOW is never styled as a successful execution", () => {
-  assert.equal(recordDot(allowDecision), "allow");
+  assert.equal(recordDot(allowDecision, LIVE_PROJECTION), "allow");
   for (const record of ALL) {
-    if (record.type === "decision") assert.notEqual(recordDot(record), "ok", `${record.id}: a verdict is not an outcome`);
+    if (record.type === "decision") assert.notEqual(recordDot(record, LIVE_PROJECTION), "ok", `${record.id}: a verdict is not an outcome`);
   }
   // ALLOW next to a lost result: the policy lane must not be green beside a red tools lane.
-  const rail = sequenceLanes([allowDecision, lostResult]);
+  const rail = sequenceLanes([allowDecision, lostResult], LIVE_PROJECTION);
   const policy = rail.lanes.find((lane) => lane.id === "policy");
   assert.ok(policy?.segments.some((segment) => segment.tone === "allow"));
   assert.ok(!rail.lanes.some((lane) => lane.segments.some((segment) => segment.tone === "ok")));
 });
 
 test("only a verified, complete success takes the ok tone", () => {
-  assert.equal(recordDot(verifiedSuccess), "ok");
-  assert.equal(recordDot({ ...verifiedSuccess, lossy: true }), "unknown", "lossy output is not terminal evidence");
-  assert.equal(recordDot(succeededResult), "reported");
+  assert.equal(recordDot(verifiedSuccess, LIVE_PROJECTION), "ok");
+  assert.equal(recordDot({ ...verifiedSuccess, lossy: true }, LIVE_PROJECTION), "unknown", "lossy output is not terminal evidence");
+  assert.equal(recordDot(succeededResult, LIVE_PROJECTION), "reported");
 });
 
 test("UNKNOWN verdicts and results stay unknown and are never promoted", () => {
-  assert.equal(recordDot(unknownDecision), "unknown");
-  assert.equal(recordDot(unknownResult), "unknown");
-  assert.ok(recordChips(unknownDecision).some((chip) => chip.label === "UNKNOWN" && chip.variant === "unknown"));
-  const rail = sequenceLanes([unknownDecision, unknownResult]);
+  assert.equal(recordDot(unknownDecision, LIVE_PROJECTION), "unknown");
+  assert.equal(recordDot(unknownResult, LIVE_PROJECTION), "unknown");
+  assert.ok(recordChips(unknownDecision, LIVE_PROJECTION).some((chip) => chip.label === "UNKNOWN" && chip.variant === "unknown"));
+  const rail = sequenceLanes([unknownDecision, unknownResult], LIVE_PROJECTION);
   for (const lane of rail.lanes) {
     for (const segment of lane.segments) assert.ok(!["ok", "allow"].includes(segment.tone), "UNKNOWN is not drawn as success or permission");
   }
 });
 
 test("a message is drawn distinctly from a lane that did not act", () => {
-  const rail = sequenceLanes([prompt, allowDecision]);
+  const rail = sequenceLanes([prompt, allowDecision], LIVE_PROJECTION);
   const model = rail.lanes.find((lane) => lane.id === "model");
   assert.deepEqual(model?.segments.map((segment) => segment.tone), ["idle", "muted"]);
 });
@@ -344,35 +348,35 @@ test("a message is drawn distinctly from a lane that did not act", () => {
 const verifiedItem: ItemView = { authority: "observed", verification_scope: "structural-audit-only" };
 
 test("a policy ALLOW is stated as a permission, never as an outcome", () => {
-  const text = statusText(allowDecision);
+  const text = statusText(allowDecision, LIVE_PROJECTION);
   assert.equal(text, "Policy verdict: ALLOW (permission, not an outcome), not independently verified");
   assert.doesNotMatch(text, /\bsuccess\b/i);
 });
 
 test("an unverified success is stated as reported, and only a verified one reads as succeeded, verified", () => {
-  assert.equal(statusText(succeededResult), "Result: succeeded, reported, not independently verified");
-  assert.equal(statusText(verifiedSuccess), "Result: succeeded, verified");
-  assert.equal(statusText({ ...verifiedSuccess, ...verifiedItem, state: "succeeded" }), "Result: succeeded, verified");
+  assert.equal(statusText(succeededResult, LIVE_PROJECTION), "Result: succeeded, reported, not independently verified");
+  assert.equal(statusText(verifiedSuccess, LIVE_PROJECTION), "Result: succeeded, verified");
+  assert.equal(statusText({ ...verifiedSuccess, ...verifiedItem, state: "succeeded" }, LIVE_PROJECTION), "Result: succeeded, verified");
 });
 
 test("UNKNOWN, LOST and denied results say they are not success, and lossy output is named", () => {
-  assert.equal(statusText(unknownResult), "Result: UNKNOWN, not success");
-  assert.equal(statusText(item({ id: "l", type: "result", tool: "bash", state: "lost" })), "Result: LOST, not success");
-  assert.equal(statusText(item({ id: "d", type: "result", tool: "bash", state: "denied" })), "Result: denied, not success");
+  assert.equal(statusText(unknownResult, LIVE_PROJECTION), "Result: UNKNOWN, not success");
+  assert.equal(statusText(item({ id: "l", type: "result", tool: "bash", state: "lost" }), LIVE_PROJECTION), "Result: LOST, not success");
+  assert.equal(statusText(item({ id: "d", type: "result", tool: "bash", state: "denied" }), LIVE_PROJECTION), "Result: denied, not success");
   assert.equal(
-    statusText({ ...verifiedSuccess, lossy: true }),
+    statusText({ ...verifiedSuccess, lossy: true }, LIVE_PROJECTION),
     "Result: succeeded, output lossy, not counted as confirmed",
     "a lossy success is not drawn with the ok tone, and its text says so",
   );
 });
 
 test("a pending activity and a message state their status in words too", () => {
-  assert.equal(statusText(item({ id: "p", type: "activity", tool: "bash", state: "pending" })), "Activity: pending, no outcome yet");
-  assert.equal(statusText(prompt), "Message: no verdict or outcome recorded");
+  assert.equal(statusText(item({ id: "p", type: "activity", tool: "bash", state: "pending" }), LIVE_PROJECTION), "Activity: pending, no outcome yet");
+  assert.equal(statusText(prompt, LIVE_PROJECTION), "Message: no verdict or outcome recorded");
 });
 
 test("the rail names every tone in words, and an UNKNOWN record is not drawn as a lane that did not act", () => {
-  const rail = sequenceLanes([unknownDecision, unknownResult]);
+  const rail = sequenceLanes([unknownDecision, unknownResult], LIVE_PROJECTION);
   const policy = rail.lanes.find((lane) => lane.id === "policy");
   const tools = rail.lanes.find((lane) => lane.id === "tools");
   assert.deepEqual(policy?.segments.map((segment) => segment.tone), ["unknown", "muted"]);
@@ -381,4 +385,64 @@ test("the rail names every tone in words, and an UNKNOWN record is not drawn as 
   assert.equal(toneText("allow"), "ALLOW, a permission not an outcome");
   assert.equal(toneText("reported"), "succeeded, reported, not independently verified");
   assert.doesNotMatch(toneText("allow"), /\bsuccess\b/i);
+});
+
+/* ---------------------------------------------------------------------------
+ * The claim gate in the model (TypeScript only). Every judgement takes the projection, so a record that
+ * is observed and structurally audited still reads as unverified outside a live structural projection.
+ * ------------------------------------------------------------------------- */
+
+const NON_LIVE_PROJECTIONS = [
+  { source: "fixture", verification: "unverified-input" },
+  { source: "fixture", verification: "structural-audit-only" },
+  { source: "replay", verification: "unverified-input" },
+  { source: "replay", verification: "structural-audit-only" },
+  { source: "live", verification: "unverified-input" },
+  { source: "unavailable", verification: "unavailable" },
+] as const;
+
+function claimedSuccess(): ItemView {
+  return {
+    id: "r1",
+    sequence: 1,
+    type: "result",
+    turn_id: "t1",
+    occurred_at: "2026-10-13T10:00:00Z",
+    tool: "bash",
+    tool_call_id: "c1",
+    state: "succeeded",
+    authority: "observed",
+    verification_scope: "structural-audit-only",
+  };
+}
+
+test("the same observed structural success is ok in a live structural projection, and never outside it", () => {
+  const record = claimedSuccess();
+  assert.equal(recordDot(record, LIVE_PROJECTION), "ok", "the positive control: verified in its projection");
+  for (const projection of NON_LIVE_PROJECTIONS) {
+    assert.notEqual(recordDot(record, projection), "ok", JSON.stringify(projection));
+  }
+});
+
+test("outside a live structural projection no record model function reads the success as verified", () => {
+  for (const projection of NON_LIVE_PROJECTIONS) {
+    const label = JSON.stringify(projection);
+    const record = claimedSuccess();
+    assert.doesNotMatch(statusText(record, projection), /, verified/, label);
+    assert.equal(
+      recordChips(record, projection).some((chip) => chip.variant === "succeeded"),
+      false,
+      `${label}: no chip carries the verified success class`,
+    );
+    assert.equal(JSON.stringify(recordDetail(record, projection)).includes('"chip":"succeeded"'), false, label);
+    assert.notEqual(recordOf(record, projection).dot, "ok", label);
+    const tones = sequenceLanes([record], projection).lanes.flatMap((lane) => lane.segments.map((segment) => segment.tone));
+    assert.equal(tones.includes("ok"), false, `${label}: the rail draws no verified segment`);
+    const visible = visibleRecords({ items: [record], query: "", group: "turn", projection });
+    assert.equal(
+      visible.groups.every((group) => group.records.every((view) => view.dot !== "ok")),
+      true,
+      `${label}: the ledger draws no verified row`,
+    );
+  }
 });

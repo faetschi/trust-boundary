@@ -11,7 +11,10 @@ import type { Item, Snapshot } from "./contract";
 import { parseJsonText } from "./validate";
 import { ContractError, parseDocument, parseEvent, parseReplayGap, parseSnapshot, utf8Length } from "./validate";
 import { recordDot, statusText } from "./trajectory";
-import { verifyItem } from "./format";
+import { verifyIn } from "./verification";
+
+// The fixture document is a fixture projection, so every record in it is judged there.
+const DEMO = { source: "fixture", verification: "unverified-input" } as const;
 
 // A fixed clock for occurred_at checks: 2026-10-14, after every fixture timestamp.
 const NOW = Date.parse("2026-10-14T00:00:00Z");
@@ -248,7 +251,7 @@ describe("downgrade: a document can claim less than the supervisor's, never more
     const claimed = setIn(copy(demo), ["snapshot", "items", 4, "verification_scope"], "structural-audit-only");
     const parsed = parseDocument(claimed, "fixture", options);
     expect(parsed.snapshot.items[4]?.verification_scope).toBe("unverified-input");
-    expect(verifyItem(parsed.snapshot.items[4])).toBeNull();
+    expect(verifyIn({ source: parsed.snapshot.source, verification: parsed.snapshot.verification_scope }, parsed.snapshot.items[4])).toBeNull();
   });
 
   test("provenance availability and the g1 and claim_bearing flags are forced false", () => {
@@ -269,13 +272,15 @@ describe("downgrade: a document can claim less than the supervisor's, never more
 });
 
 describe("events and gaps", () => {
+  // A demo document establishes a fixture projection; its streamed items are judged in it.
+  const eventOptions = { ...options, projection: { source: "fixture", verification: "unverified-input" } as const };
   test("an item event and a session event parse, and an item event may not carry a session", () => {
     const first = demo.snapshot.items[0];
     if (first === undefined) throw new Error("the demo fixture has no items");
     const item = { ...first, sequence: 1 };
     const itemEvent = parseEvent(
       { schema_version: "tbound-webchat-observation/v1", cursor: "fixture-2f1c:1", kind: "item", item },
-      options,
+      eventOptions,
     );
     expect(itemEvent.kind).toBe("item");
 
@@ -286,7 +291,7 @@ describe("events and gaps", () => {
         kind: "session",
         session: { status: "completed", turn_count: 1 },
       },
-      options,
+      eventOptions,
     );
     expect(sessionEvent.kind).toBe("session");
 
@@ -299,11 +304,11 @@ describe("events and gaps", () => {
           item,
           session: { status: "completed", turn_count: 1 },
         },
-        options,
+        eventOptions,
       ),
     ).toThrow(/an item event carries only an item/);
     expect(() =>
-      parseEvent({ schema_version: "tbound-webchat-observation/v1", cursor: "fixture-2f1c:1", kind: "panel" }, options),
+      parseEvent({ schema_version: "tbound-webchat-observation/v1", cursor: "fixture-2f1c:1", kind: "panel" }, eventOptions),
     ).toThrow(/unsupported value "panel"/);
   });
 
@@ -333,19 +338,19 @@ describe("claim boundary on presentation: ALLOW is not success, unverified succe
     const edit = itemById("res-02-edit");
     if (edit.type !== "result") throw new Error("res-02-edit is not a result");
     expect(edit.state).toBe("succeeded");
-    expect(recordDot(edit)).toBe("reported");
-    expect(statusText(edit)).toContain("reported, not independently verified");
+    expect(recordDot(edit, DEMO)).toBe("reported");
+    expect(statusText(edit, DEMO)).toContain("reported, not independently verified");
   });
 
   test("a policy ALLOW is a permission: its dot is allow, not ok", () => {
-    expect(recordDot(itemById("dec-01-read"))).toBe("allow");
-    expect(recordDot(itemById("dec-03-bash-egress"))).toBe("deny");
+    expect(recordDot(itemById("dec-01-read"), DEMO)).toBe("allow");
+    expect(recordDot(itemById("dec-03-bash-egress"), DEMO)).toBe("deny");
   });
 
   test("an UNKNOWN result stays unknown, and a lossy result is never ok", () => {
-    expect(recordDot(itemById("res-05-bash-race"))).toBe("unknown");
+    expect(recordDot(itemById("res-05-bash-race"), DEMO)).toBe("unknown");
     const lossySuccess = { ...itemById("res-01-read"), lossy: true };
-    expect(recordDot(lossySuccess)).toBe("reported");
+    expect(recordDot(lossySuccess, DEMO)).toBe("reported");
   });
 
   test("only a verified success earns the ok tone, and only with verification evidence", () => {
@@ -354,8 +359,9 @@ describe("claim boundary on presentation: ALLOW is not success, unverified succe
       authority: "observed" as const,
       verification_scope: "structural-audit-only" as const,
     };
-    expect(verifyItem(verified)).not.toBeNull();
-    expect(recordDot(verified)).toBe("ok");
-    expect(recordDot({ ...verified, lossy: true })).toBe("unknown");
+    const LIVE = { source: "live", verification: "structural-audit-only" } as const;
+    expect(verifyIn(LIVE, verified)).not.toBeNull();
+    expect(recordDot(verified, LIVE)).toBe("ok");
+    expect(recordDot({ ...verified, lossy: true }, LIVE)).toBe("unknown");
   });
 });

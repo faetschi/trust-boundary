@@ -133,6 +133,30 @@ describe("notices: one copy of each in the whole app", () => {
   });
 });
 
+describe("notices: each condition has one notice, and each notice has its own name", () => {
+  it("names the continuity gap, the window and the eviction as three different notices", async () => {
+    const source = render(snapshotOf({ items: messages(1, 5) }));
+    await settle();
+    openStream();
+    await settle();
+    const recovered = snapshotOf({
+      items: messages(1, 3),
+      gaps: [{ id: "g1", reason: "history_evicted", first_missing: 4, last_missing: 5, recorded_at: "2026-10-13T09:12:04Z" }],
+    });
+    source.reply = { ok: true, status: 200, body: JSON.parse(JSON.stringify(recovered)) };
+    act(() => {
+      source.sources[0]?.emit("gap", { schema_version: GAP_VERSION, reason: "history_evicted", epoch: "e1", latest: 9 });
+    });
+    await settle();
+    const names = Array.from(mounted?.container.querySelectorAll("main [role='note']") ?? []).map((note) =>
+      note.getAttribute("aria-label"),
+    );
+    expect(names).toEqual(["Continuity gap", "History not loaded", "Records no longer retained"]);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).not.toContain("Retained window");
+  });
+});
+
 describe("the new-record count across a view switch", () => {
   it("carries the count into the trajectory view and back, and clears it at the tail", async () => {
     const page: Page = { scroll: 5000, view: 500 };

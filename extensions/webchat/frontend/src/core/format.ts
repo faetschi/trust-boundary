@@ -1,22 +1,13 @@
 // format.ts — pure, side-effect-free presentation helpers (port of format.mjs).
 // Only allowlisted bounded fields are read here.
 //
-// The verified gate is a type as well as a predicate. A success may be shown as
-// `ok` only with a VerifiedEvidence value, and verifyItem is the only function that
-// makes one. A caller that holds only a state string gets `reported`.
+// The verified gate lives in verification.ts. A success may be shown as `ok` only with a VerifiedEvidence
+// value, which verifyIn (verification.ts) is the only function that makes. A caller that holds only a
+// state string gets `reported`.
 
-import type { ItemView } from "./contract";
+import type { VerifiedEvidence } from "./verification";
 
-const evidenceBrand: unique symbol = Symbol("verified-evidence");
-
-// Proof that a projection element was observed from the supervisor's durable
-// transition under a claim-sufficient scope. It carries no data beyond the element's
-// identity, and it cannot be built outside verifyItem.
-export type VerifiedEvidence = {
-  readonly [evidenceBrand]: true;
-  readonly id: string | undefined;
-  readonly sequence: number | undefined;
-};
+export { isVerifiedProjection } from "./verification";
 
 export const SUCCESS_STATES: ReadonlySet<string> = new Set(["succeeded", "completed", "published", "ready"]);
 
@@ -39,31 +30,6 @@ export function humanize(value: unknown): string {
   return String(value ?? "")
     .replace(/[-_]/g, " ")
     .trim();
-}
-
-// A projection element is only "verified" when it was observed from the supervisor's
-// durable transition under a claim-sufficient scope. An `authoritative` value is never
-// produced by the gateway, an `observed` value is refused for fixture/replay/receipt
-// sources by the Go boundary, and an `unavailable` or unverified scope never counts.
-// This gate fails closed: a missing or unexpected value is not verified.
-// The gate takes any string, because it must fail closed on values the contract does not admit.
-export function isVerified(
-  item: { readonly authority?: string; readonly verification_scope?: string; readonly [field: string]: unknown } | null | undefined,
-): boolean {
-  if (!item) return false;
-  return item.authority === "observed" && item.verification_scope === "structural-audit-only";
-}
-
-// The evidence for an element that isVerified accepts, or null. This is the only way to
-// obtain a VerifiedEvidence.
-export function verifyItem(item: ItemView | null | undefined): VerifiedEvidence | null {
-  if (!item || !isVerified(item)) return null;
-  return { [evidenceBrand]: true, id: item.id, sequence: item.sequence };
-}
-
-export function isVerifiedProjection(state: { source?: string; verification?: string } | null | undefined): boolean {
-  if (!state) return false;
-  return state.source === "live" && state.verification === "structural-audit-only";
 }
 
 // Chip class for a state value, downgrading unverified success to "reported".

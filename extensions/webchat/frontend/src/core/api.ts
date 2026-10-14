@@ -13,6 +13,7 @@
 
 import type { ItemEvent, ReplayGap, SessionEvent, Snapshot } from "./contract";
 import { ContractError, parseEvent, parseJsonText, parseReplayGap, parseSnapshot } from "./validate";
+import type { ProjectionContext } from "./verification";
 
 export interface AbortSignalLike {
   readonly aborted: boolean;
@@ -75,13 +76,15 @@ export interface RawEventHandlers {
   onItem(payload: unknown): void;
   onSession(payload: unknown): void;
   onGap(payload: unknown): void;
+  // An item payload that does not decode as JSON. It is reported to onError as well.
+  onInvalidItem?(error: unknown): void;
   onConnection?(value: "open" | "closed"): void;
   onError?(error: unknown): void;
 }
 
 // The event stream, with the decoded payloads passed through unvalidated (legacy api.mjs).
 export function openEventStream(factory: EventSourceFactory, options: RawEventHandlers): EventStreamHandle {
-  const { cursor, onItem, onSession, onGap, onConnection, onError } = options;
+  const { cursor, onItem, onSession, onGap, onConnection, onError, onInvalidItem } = options;
   const url = cursor ? `/api/v1/events?cursor=${encodeURIComponent(cursor)}` : "/api/v1/events";
   const source = factory(url);
   const decode = (handler: (payload: unknown) => void) => (event: { readonly data?: string }) => {
@@ -91,7 +94,23 @@ export function openEventStream(factory: EventSourceFactory, options: RawEventHa
       if (onError) onError(error);
     }
   };
-  source.addEventListener("item", decode(onItem));
+  // An item that cannot be read is an invalid item: the caller recovers from a snapshot, so it is never dropped silently.
+  const decodeItem = (event: { readonly data?: string }) => {
+    let payload: unknown;
+    try {
+      payload = parseJsonText(String(event.data));
+    } catch (error) {
+      if (onError) onError(error);
+      if (onInvalidItem) onInvalidItem(error);
+      return;
+    }
+    try {
+      onItem(payload);
+    } catch (error) {
+      if (onError) onError(error);
+    }
+  };
+  source.addEventListener("item", decodeItem);
   source.addEventListener("session", decode(onSession));
   source.addEventListener("gap", decode(onGap));
   source.addEventListener("open", () => {
@@ -113,9 +132,13 @@ export function openEventStream(factory: EventSourceFactory, options: RawEventHa
 export interface ValidatedEventOptions {
   readonly cursor?: string;
   readonly nowMs: () => number;
+  // The projection the stream is bound to. A stream is opened after each snapshot, so it judges every item against one.
+  readonly projection: ProjectionContext;
   onItem(event: ItemEvent): void;
   onSession(event: SessionEvent): void;
   onGap(gap: ReplayGap): void;
+  // An item that is not admitted by its projection, or that fails the contract. The item is not delivered to onItem.
+  onInvalid(error: unknown): void;
   onConnection?(value: "open" | "closed"): void;
   onError?(error: unknown): void;
 }
@@ -126,16 +149,27 @@ export function openValidatedEventStream(factory: EventSourceFactory, options: V
   return openEventStream(factory, {
     cursor: options.cursor,
     onItem: (payload) => {
-      const event = parseEvent(payload, { nowMs: options.nowMs() });
-      if (event.kind !== "item") throw new ContractError("item channel carried a non-item event");
+      let event: ItemEvent;
+      try {
+        const parsed = parseEvent(payload, { nowMs: options.nowMs(), projection: options.projection });
+        if (parsed.kind !== "item") throw new ContractError("item channel carried a non-item event");
+        event = parsed;
+      } catch (error) {
+        // Reported as before, and handed to onInvalid too: the caller recovers from a snapshot, so the gap is
+        // disclosed rather than silently dropped.
+        options.onError?.(error);
+        options.onInvalid(error);
+        return;
+      }
       options.onItem(event);
     },
     onSession: (payload) => {
-      const event = parseEvent(payload, { nowMs: options.nowMs() });
+      const event = parseEvent(payload, { nowMs: options.nowMs(), projection: options.projection });
       if (event.kind !== "session") throw new ContractError("session channel carried a non-session event");
       options.onSession(event);
     },
     onGap: (payload) => options.onGap(parseReplayGap(payload)),
+    onInvalidItem: options.onInvalid,
     onConnection: options.onConnection,
     onError: options.onError,
   });

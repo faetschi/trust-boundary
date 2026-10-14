@@ -13,13 +13,16 @@
 //   2. No measurement is fabricated. `timingOf` reports availability explicitly and never
 //      returns a duration, because the projection records a timestamp and not a duration.
 //      The sequence rail is ordinal for the same reason.
+//   3. A record is verified only in its projection. Every judgement takes the projection
+//      (verification.ts), so the record alone never decides.
 //
 // This module deliberately has no import of the finding filter: narrowing the timeline and
 // searching the trajectory are separate concerns, and a search must never be able to change
 // a projection, a verdict, or a filter outcome.
 
 import type { ItemView, Tone } from "./contract";
-import { formatClock, humanize, isVerified, shortDigest, slug, stateChipClass, verdictChipClass, verifyItem } from "./format";
+import { formatClock, humanize, shortDigest, slug, stateChipClass, verdictChipClass } from "./format";
+import { isVerifiedIn, verifyIn, type ProjectionState } from "./verification";
 import { turnsOf } from "./store";
 
 export interface RecordGroupDef {
@@ -109,20 +112,20 @@ const DOT_BY_VARIANT: Readonly<Record<string, Tone>> = {
   unverified: "unknown",
 };
 
-export function recordDot(item: ItemView | null | undefined): Tone {
+export function recordDot(item: ItemView | null | undefined, projection: ProjectionState | null | undefined): Tone {
   if (!item) return "unknown";
   if (item.type === "decision") return DOT_BY_VARIANT[verdictChipClass(item.verdict)] || "unknown";
   if (item.type === "result" || item.type === "activity") {
     // The evidence is the only route to "ok": without it a success reads as reported.
-    const dot = DOT_BY_VARIANT[successChip(item)] || "unknown";
+    const dot = DOT_BY_VARIANT[successChip(item, projection)] || "unknown";
     // Lossy output is incomplete and is not terminal evidence of success.
     return dot === "ok" && item.lossy ? "unknown" : dot;
   }
   return "idle";
 }
 
-function successChip(item: ItemView): string {
-  return stateChipClass(item.state, verifyItem(item) !== null);
+function successChip(item: ItemView, projection: ProjectionState | null | undefined): string {
+  return stateChipClass(item.state, verifyIn(projection, item) !== null);
 }
 
 // The status as words. The dot is decorative for assistive technology, so the same state is
@@ -159,15 +162,15 @@ function outcomeWords(item: ItemView, tone: Tone): string {
   }
 }
 
-export function statusText(item: ItemView | null | undefined): string {
+export function statusText(item: ItemView | null | undefined, projection: ProjectionState | null | undefined): string {
   if (!item) return "Status not recorded";
   if (item.type === "message") return "Message: no verdict or outcome recorded";
   if (item.type === "decision") {
     const verdict = VERDICT_WORDS[verdictChipClass(item.verdict)];
-    return `Policy verdict: ${verdict}${isVerified(item) ? "" : NOT_VERIFIED}`;
+    return `Policy verdict: ${verdict}${isVerifiedIn(projection, item) ? "" : NOT_VERIFIED}`;
   }
   const label = item.type === "result" ? "Result" : "Activity";
-  return `${label}: ${outcomeWords(item, recordDot(item))}`;
+  return `${label}: ${outcomeWords(item, recordDot(item, projection))}`;
 }
 
 export function recordLabel(item: ItemView | null | undefined): string {
@@ -223,7 +226,7 @@ export interface RecordChip {
   readonly hint: string;
 }
 
-export function recordChips(item: ItemView | null | undefined): RecordChip[] {
+export function recordChips(item: ItemView | null | undefined, projection: ProjectionState | null | undefined): RecordChip[] {
   if (!item) return [];
   const chips: RecordChip[] = [];
   if (item.type === "decision") {
@@ -234,7 +237,7 @@ export function recordChips(item: ItemView | null | undefined): RecordChip[] {
     });
   }
   if ((item.type === "result" || item.type === "activity") && item.state) {
-    const verified = isVerified(item);
+    const verified = isVerifiedIn(projection, item);
     chips.push({
       label: item.state,
       variant: stateChipClass(item.state, verified),
@@ -248,7 +251,7 @@ export function recordChips(item: ItemView | null | undefined): RecordChip[] {
       hint: "output is incomplete; lossy output is not terminal evidence",
     });
   }
-  if (!isVerified(item)) {
+  if (!isVerifiedIn(projection, item)) {
     chips.push({
       label: "unverified",
       variant: "unverified",
@@ -301,8 +304,8 @@ const LANES: readonly LaneDef[] = [
 // A rail segment's tone: a record tone, or `muted` for a lane that did not act here.
 export type RailTone = Tone | "muted";
 
-function toneOf(item: ItemView): RailTone {
-  const dot = recordDot(item);
+function toneOf(item: ItemView, projection: ProjectionState | null | undefined): RailTone {
+  const dot = recordDot(item, projection);
   if (dot === "deny" || dot === "lost") return "deny";
   if (dot === "ok") return "ok";
   if (dot === "allow") return "allow";
@@ -361,12 +364,12 @@ export interface RailModel {
 // sequenceLanes builds the ordinal rail. Every lane walks the same record order, so the
 // three lanes share one x-axis (the record sequence) and a lane's muted spans show what it
 // did *not* touch at that position. No span is a duration.
-export function sequenceLanes(items: readonly ItemView[]): RailModel {
+export function sequenceLanes(items: readonly ItemView[], projection: ProjectionState | null | undefined): RailModel {
   const lanes: RailLane[] = [];
   for (const lane of LANES) {
     const segments: RailSegment[] = [];
     for (const item of items) {
-      const tone: RailTone = lane.match(item) ? toneOf(item) : "muted";
+      const tone: RailTone = lane.match(item) ? toneOf(item, projection) : "muted";
       const last = segments[segments.length - 1];
       if (last && last.tone === tone) last.weight += 1;
       else segments.push({ tone, weight: 1 });
@@ -431,22 +434,22 @@ export interface RecordGroup {
   readonly records: RecordView[];
 }
 
-export function groupRecords(items: readonly ItemView[], mode: string): RecordGroup[] {
-  if (mode === "tool") return groupByTool(items);
-  if (mode === "verdict") return groupByVerdict(items);
-  return groupByTurn(items);
+export function groupRecords(items: readonly ItemView[], mode: string, projection: ProjectionState | null | undefined): RecordGroup[] {
+  if (mode === "tool") return groupByTool(items, projection);
+  if (mode === "verdict") return groupByVerdict(items, projection);
+  return groupByTurn(items, projection);
 }
 
-function groupByTurn(items: readonly ItemView[]): RecordGroup[] {
+function groupByTurn(items: readonly ItemView[], projection: ProjectionState | null | undefined): RecordGroup[] {
   return turnsOf(items).map((turn) => ({
     id: turn.id,
     title: turn.id === "__untagged" ? "Turn (not tagged)" : `Turn ${turn.id}`,
     meta: `${turn.items.length} record(s)`,
-    records: turn.items.map((item) => recordOf(item)),
+    records: turn.items.map((item) => recordOf(item, projection)),
   }));
 }
 
-function groupByTool(items: readonly ItemView[]): RecordGroup[] {
+function groupByTool(items: readonly ItemView[], projection: ProjectionState | null | undefined): RecordGroup[] {
   const groups: RecordGroup[] = [];
   const byKey = new Map<string | undefined, RecordGroup>();
   for (const item of items) {
@@ -456,7 +459,7 @@ function groupByTool(items: readonly ItemView[]): RecordGroup[] {
         messages = { id: "__messages", title: "Messages", meta: "", appends: true, records: [] };
         groups.push(messages);
       }
-      messages.records.push(recordOf(item));
+      messages.records.push(recordOf(item, projection));
       continue;
     }
     const key = item.tool_call_id || item.id;
@@ -466,7 +469,7 @@ function groupByTool(items: readonly ItemView[]): RecordGroup[] {
       byKey.set(key, group);
       groups.push(group);
     }
-    group.records.push(recordOf(item));
+    group.records.push(recordOf(item, projection));
   }
   for (const group of groups) {
     group.meta =
@@ -475,7 +478,7 @@ function groupByTool(items: readonly ItemView[]): RecordGroup[] {
   return groups;
 }
 
-function groupByVerdict(items: readonly ItemView[]): RecordGroup[] {
+function groupByVerdict(items: readonly ItemView[], projection: ProjectionState | null | undefined): RecordGroup[] {
   const verdictByCall = new Map<string | undefined, string>();
   for (const item of items) {
     if (item.type === "decision") {
@@ -491,7 +494,7 @@ function groupByVerdict(items: readonly ItemView[]): RecordGroup[] {
       byId.set(id, group);
       order.push(group);
     }
-    group.records.push(recordOf(item));
+    group.records.push(recordOf(item, projection));
   };
   for (const item of items) {
     if (item.type === "message") {
@@ -525,7 +528,7 @@ export interface DetailSection {
 // The record inspector's sections. Only the sections a record type can actually carry are
 // produced, and the Timing section is always present so the absence of a duration is always
 // stated rather than left to inference.
-export function recordDetail(item: ItemView | null | undefined): DetailSection[] {
+export function recordDetail(item: ItemView | null | undefined, projection: ProjectionState | null | undefined): DetailSection[] {
   if (!item) return [];
   const sections: DetailSection[] = [];
 
@@ -568,7 +571,7 @@ export function recordDetail(item: ItemView | null | undefined): DetailSection[]
   }
 
   if (item.type === "result") {
-    const rows: DetailRow[] = [["state", item.state || "unknown", { chip: stateChipClass(item.state, isVerified(item)) }]];
+    const rows: DetailRow[] = [["state", item.state || "unknown", { chip: stateChipClass(item.state, isVerifiedIn(projection, item)) }]];
     if (item.lossy) rows.push(["lossy", "yes — output completeness is not a terminal outcome"]);
     rows.push(["digest", item.digest || "—", { digest: true }]);
     sections.push({ id: "result", title: "Result", rows });
@@ -580,7 +583,7 @@ export function recordDetail(item: ItemView | null | undefined): DetailSection[]
     rows: [
       ["authority", item.authority || "unknown", { mono: true }],
       ["verification", item.verification_scope || "unavailable", { mono: true }],
-      ["independently verified", isVerified(item) ? "yes" : "no"],
+      ["independently verified", isVerifiedIn(projection, item) ? "yes" : "no"],
     ],
   });
 
@@ -595,16 +598,16 @@ export function recordDetail(item: ItemView | null | undefined): DetailSection[]
   return sections;
 }
 
-export function recordOf(item: ItemView): RecordView {
+export function recordOf(item: ItemView, projection: ProjectionState | null | undefined): RecordView {
   return {
     id: item.id,
     sequence: item.sequence,
     source: recordSource(item),
     label: recordLabel(item),
     payload: recordPayload(item),
-    dot: recordDot(item),
-    chips: recordChips(item),
-    detail: recordDetail(item),
+    dot: recordDot(item, projection),
+    chips: recordChips(item, projection),
+    detail: recordDetail(item, projection),
     item,
   };
 }
@@ -613,6 +616,8 @@ export interface TrajectoryInput {
   readonly items?: readonly ItemView[];
   readonly query?: string;
   readonly group?: string;
+  // The projection the records are judged in. Required: a record is verified only in its projection.
+  readonly projection: ProjectionState | null | undefined;
 }
 
 // The ledger's visible records and their groups. The timeline's finding filter is
@@ -620,5 +625,5 @@ export interface TrajectoryInput {
 // the only narrowing control here.
 export function visibleRecords(state: TrajectoryInput): { items: ItemView[]; groups: RecordGroup[] } {
   const items = searchRecords(state.items || [], state.query || "");
-  return { items, groups: groupRecords(items, state.group || "turn") };
+  return { items, groups: groupRecords(items, state.group || "turn", state.projection) };
 }

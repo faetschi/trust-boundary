@@ -245,7 +245,9 @@
   margin: 0;
 }
 
-/* Below the drawer breakpoint: the inspector leaves the grid and the toggle appears. */
+/* Below the drawer breakpoint: the inspector leaves the grid and the toggle appears. The body is the drawer's
+   containing block, and it starts below the header, so an open drawer never covers the header controls.
+   overflow-x: clip stops the closed drawer, which is translated past the edge, from widening the page. */
 @media (max-width: 1180px) {
   .drawerToggle {
     display: inline-flex;
@@ -254,6 +256,8 @@
 
   .body {
     grid-template-columns: var(--rail-width) minmax(0, 1fr);
+    position: relative;
+    overflow-x: clip;
   }
 }
 

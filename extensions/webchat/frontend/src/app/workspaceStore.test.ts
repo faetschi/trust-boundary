@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { CONTRACT_VERSION, GAP_VERSION } from "../core/contract";
-import { messageItem, snapshotOf } from "../core/testing/builders";
+import { messageItem, resultItem, snapshotOf } from "../core/testing/builders";
 import { createWorkspaceStore } from "./workspaceStore";
+import { isVerifiedIn } from "./verification";
 import { flush, fakeWorkspace } from "../test-support/fakes";
 
 function itemEvent(sequence: number, epoch = "e1") {
@@ -179,5 +180,59 @@ describe("workspace store: presentation actions", () => {
     actions.selectRecord("m1");
     actions.clearRecord();
     expect(store.getSnapshot().selectedId).toBeNull();
+  });
+});
+
+// A streamed observed, structurally audited success: it passes the item-only rule, and only its projection can refuse it.
+function observedResult(sequence: number) {
+  return resultItem({ id: `r${sequence}`, sequence, tool: "bash", tool_call_id: `c${sequence}`, state: "succeeded", authority: "observed", verification_scope: "structural-audit-only" });
+}
+
+describe("workspace store: the claim gate end to end", () => {
+  it("refuses a streamed observed record in a fixture projection, recovers, and never shows it as verified", async () => {
+    const fake = fakeWorkspace(snapshotOf({ items: [messageItem({ id: "m1", sequence: 1 })] }));
+    const store = createWorkspaceStore(fake.deps);
+    store.start();
+    await flush();
+    fake.sources[0]?.open();
+    fake.sources[0]?.emit("item", { schema_version: CONTRACT_VERSION, cursor: "e1:2", kind: "item", item: observedResult(2) });
+    await flush();
+    const model = store.getSnapshot();
+    expect(fake.fetchUrls).toHaveLength(2);
+    expect(model.gapNotice?.reason).toBe("invalid_item");
+    expect(model.items.map((item) => item.id)).toEqual(["m1"]);
+    expect(model.items.some((item) => isVerifiedIn(model, item))).toBe(false);
+  });
+
+  it("admits the same record in a live structural projection, where it reads as verified", async () => {
+    const fake = fakeWorkspace(snapshotOf({ source: "live", verification_scope: "structural-audit-only", items: [] }));
+    const store = createWorkspaceStore(fake.deps);
+    store.start();
+    await flush();
+    fake.sources[0]?.open();
+    fake.sources[0]?.emit("item", { schema_version: CONTRACT_VERSION, cursor: "e1:1", kind: "item", item: observedResult(1) });
+    const model = store.getSnapshot();
+    expect(model.items.map((item) => item.id)).toEqual(["r1"]);
+    expect(isVerifiedIn(model, model.items[0])).toBe(true);
+  });
+
+  it("judges each streamed record in the projection of the snapshot its stream opened after", async () => {
+    const fake = fakeWorkspace(snapshotOf({ source: "live", verification_scope: "structural-audit-only", items: [] }));
+    const store = createWorkspaceStore(fake.deps);
+    store.start();
+    await flush();
+    fake.sources[0]?.open();
+    fake.sources[0]?.emit("item", { schema_version: CONTRACT_VERSION, cursor: "e1:1", kind: "item", item: observedResult(1) });
+    expect(isVerifiedIn(store.getSnapshot(), store.getSnapshot().items[0])).toBe(true);
+    // The gateway now serves a fixture projection, and the stream reconnects to it.
+    fake.reply = { ok: true, status: 200, body: snapshotOf({ source: "fixture", items: [messageItem({ id: "m0", sequence: 1 })] }) };
+    fake.sources[0]?.emit("gap", { schema_version: GAP_VERSION, reason: "history_evicted", epoch: "e1", latest: 1 });
+    await flush();
+    fake.sources[1]?.open();
+    fake.sources[1]?.emit("item", { schema_version: CONTRACT_VERSION, cursor: "e1:2", kind: "item", item: observedResult(2) });
+    const model = store.getSnapshot();
+    expect(model.source).toBe("fixture");
+    expect(model.items.map((item) => item.id)).toEqual(["m0"]);
+    expect(model.items.some((item) => isVerifiedIn(model, item))).toBe(false);
   });
 });

@@ -11,7 +11,7 @@ import {
   type RecordView,
 } from "../../core/trajectory";
 import { Chip } from "../../ui/Chip";
-import { isVerifiedIn, judgedItem, type ProjectionState } from "../verification";
+import { isVerifiedIn, type ProjectionState } from "../verification";
 import { chipToneOf, sourceRole, stateWord } from "./recordChip";
 import styles from "./RecordInspector.module.css";
 
@@ -20,8 +20,7 @@ import styles from "./RecordInspector.module.css";
 // the sections are the core's (recordDetail), so the Timing section is always there. Verification is
 // judged by the shared gate (verification.ts); the Evidence section states the record's own evidence.
 export function RecordInspector({ record, projection }: { readonly record: Item; readonly projection: ProjectionState }) {
-  const judged = judgedItem(projection, record);
-  const view = recordOf(judged);
+  const view = recordOf(record, projection);
   const position = `sequence ${view.sequence}${record.turn_id ? ` · turn ${record.turn_id}` : ""}`;
   const sections = view.detail.map((section) => (section.id === "evidence" ? evidenceSection(record, projection) : section));
   return (
@@ -30,7 +29,7 @@ export function RecordInspector({ record, projection }: { readonly record: Item;
         <Chip source={sourceRole(view.source)}>{sourceLabel(view.source)}</Chip>
         <span className={styles.position}>{position}</span>
       </div>
-      <p className={styles.status}>{statusText(judged)}</p>
+      <p className={styles.status}>{statusText(record, projection)}</p>
       {sections.map((section) => (
         <Section key={section.id} section={section} view={view} />
       ))}

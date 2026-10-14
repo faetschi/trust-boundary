@@ -238,6 +238,26 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
     expect(chips()).toContainEqual(["succeeded", "ok"]);
   });
 
+  it("gives a verified lossy success in a mixed view a neutral evidence marker, never the green verified chip", () => {
+    renderModel(
+      modelOf(
+        [
+          messageItem({ id: "m1", sequence: 1, role: "user", text: "hello" }),
+          observed(
+            resultItem({ id: "r1", sequence: 2, tool: "bash", tool_call_id: "c1", state: "succeeded", lossy: true, summary: "exit 0" }),
+          ),
+        ],
+        { source: "live", verification: "structural-audit-only" },
+      ),
+    );
+    expect(chips()).toContainEqual(["succeeded (output lossy, not confirmed)", "unknown"]);
+    expect(chips()).toContainEqual(["verified evidence, output lossy", "idle"]);
+    expect(chips()).not.toContainEqual(["verified", "ok"]);
+    expect(chips().some(([, tone]) => tone === "ok")).toBe(false);
+    // The card's accessible name carries the same reading, so a screen reader hears the lossy output too.
+    expect(qa("summary")[0]?.textContent).toContain("verified evidence, output lossy");
+  });
+
   it("states once that a verified projection is verified, with no per-item marker", async () => {
     await renderLive(
       verifiedSnapshot([

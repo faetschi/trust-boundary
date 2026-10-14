@@ -127,6 +127,11 @@ describe("provenance and qualification", () => {
     ]);
     expect(qualificationRows(undefined).every(([, reading]) => reading.kind === "unavailable")).toBe(true);
   });
+
+  it("reads the qualification as unavailable with the caller's reason before a projection loads, never as a literal", () => {
+    const rows = qualificationRows(undefined, NO_PROJECTION);
+    expect(rows.map(([, reading]) => reading)).toEqual(Array(4).fill({ kind: "unavailable", reason: NO_PROJECTION }));
+  });
 });
 
 describe("warnings", () => {

@@ -1,5 +1,6 @@
 import { useId, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { RecordGroup } from "../../../core/trajectory";
+import type { ProjectionState } from "../../../core/verification";
 import { EmptyState, ErrorState, LoadingState } from "../../../ui/StateMessage";
 import type { ProjectionPhase } from "../../status";
 import { RecordRow } from "./RecordRow";
@@ -19,13 +20,15 @@ interface LedgerProps {
   // The row elements by record id. The owner uses them to return focus to a row.
   readonly rows: Map<string, HTMLButtonElement>;
   readonly onSelect: (id: string, row: HTMLButtonElement) => void;
+  // The projection the records are judged in, passed to each row.
+  readonly projection: ProjectionState;
 }
 
 // The record ledger: the visible records in groups, each a button row. One row is in the tab order
 // (a roving tab stop), so Tab crosses the ledger in one stop. ArrowUp and ArrowDown move between
 // rows, across group boundaries; Home and End go to the ends. Enter or Space selects the focused
 // row, as a button does. The container is a named region, not a list: each group names itself.
-export function Ledger({ phase, failure, source, total, groups, selectedId, ledgerRef, rows, onSelect }: LedgerProps) {
+export function Ledger({ phase, failure, source, total, groups, selectedId, ledgerRef, rows, onSelect, projection }: LedgerProps) {
   const [lastFocused, setLastFocused] = useState<string | null>(null);
   const ids = groups.flatMap((group) => group.records.map((record) => record.id ?? ""));
   const stop = pickStop(ids, lastFocused, selectedId);
@@ -100,6 +103,7 @@ export function Ledger({ phase, failure, source, total, groups, selectedId, ledg
                 rowRef={registerRow}
                 onSelect={onSelect}
                 onFocusRow={setLastFocused}
+                projection={projection}
               />
             ))}
           </LedgerGroup>

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { ItemView } from "../../../core/contract";
 import { weightClass } from "../../../core/trajectory";
+import type { ProjectionState } from "../../../core/verification";
 import { cx } from "../../../ui/cx";
 import type { ProjectionPhase } from "../../status";
 import { railLanes, railToneText } from "./rail";
@@ -11,13 +12,15 @@ interface SequenceRailProps {
   readonly items: readonly ItemView[];
   readonly phase: ProjectionPhase;
   readonly searching: boolean;
+  // The projection the records are judged in. The rail draws only what that projection verifies.
+  readonly projection: ProjectionState;
 }
 
 // The sequence rail: three lanes (Model, Policy, Tools) over every retained record. Its axis is the
 // record sequence, not time, and the note says so. Each lane is an image whose name states the
 // tone of each segment in words, because the segments are colour and shape only.
-export function SequenceRail({ items, phase, searching }: SequenceRailProps) {
-  const rail = useMemo(() => railLanes(items), [items]);
+export function SequenceRail({ items, phase, searching, projection }: SequenceRailProps) {
+  const rail = useMemo(() => railLanes(items, projection), [items, projection]);
   if (phase === "loading") return <p className={styles.railNote}>Loading projection…</p>;
   if (phase === "failed") return <p className={styles.railNote}>Projection not loaded; nothing to chart.</p>;
   if (items.length === 0) return <p className={styles.railNote}>No records to chart.</p>;

@@ -1,6 +1,9 @@
 // @vitest-environment happy-dom
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { Snapshot } from "../core/contract";
 import { decisionItem, messageItem, panelsDefault, resultItem, snapshotOf } from "../core/testing/builders";
 import { Shell } from "./Shell";
 import { WorkspaceProvider } from "./WorkspaceProvider";
@@ -25,9 +28,9 @@ let shim: MatchMediaShim | null = null;
 let mounted: Mounted | null = null;
 let fake: FakeWorkspace;
 
-function renderShell(width: number): void {
+function renderShell(width: number, snapshot: Snapshot = fixtureSnapshot()): void {
   shim = installMatchMedia(width);
-  fake = fakeWorkspace(fixtureSnapshot());
+  fake = fakeWorkspace(snapshot);
   mounted = mount(
     <WorkspaceProvider deps={fake.deps}>
       <Shell version="0.1.0" />
@@ -39,6 +42,34 @@ function q<T extends Element = HTMLElement>(selector: string): T {
   const element = mounted?.container.querySelector<T>(selector);
   if (!element) throw new Error(`no element for ${selector}`);
   return element;
+}
+
+function boundary(): HTMLElement {
+  return q("[role='note'][aria-label='Claim boundary']");
+}
+
+// The value of each claim in the header, in order: the first element of each definition, before any warning chip.
+function claimValues(): string[] {
+  return Array.from(boundary().querySelectorAll("dd")).map((dd) => dd.firstElementChild?.textContent ?? "");
+}
+
+// The text of the first @media block for `query`, brace-matched, or "" when the sheet has none.
+function mediaBlock(css: string, query: string): string {
+  const start = css.indexOf(query);
+  if (start < 0) return "";
+  const open = css.indexOf("{", start);
+  let depth = 0;
+  for (let i = open; i < css.length; i++) {
+    if (css[i] === "{") depth++;
+    if (css[i] === "}" && --depth === 0) return css.slice(open + 1, i);
+  }
+  return "";
+}
+
+// The declarations of the first rule for `selector` in a stylesheet fragment.
+function declarationsOf(css: string, selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[\\s},])${escaped}\\s*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
 }
 
 function byLabel(text: string): HTMLElement {
@@ -92,14 +123,41 @@ describe("Shell: landmarks and headings", () => {
 });
 
 describe("Shell: the claim boundary and the source are always visible", () => {
-  it("shows the claim boundary before any snapshot arrives", () => {
+  it("shows the claim boundary before any snapshot arrives, with each value unavailable and never a literal", () => {
     renderShell(1440);
-    const boundary = q("[role='note'][aria-label='Claim boundary']");
-    expect(boundary.textContent).toContain("Presentation only");
-    expect(boundary.textContent).toContain("G1");
-    expect(boundary.textContent).toContain("unexecuted");
-    expect(boundary.textContent).toContain("not-established");
-    expect(boundary.textContent).toContain("claim-bearing");
+    expect(boundary().textContent).toContain("Presentation only");
+    expect(boundary().textContent).toContain(
+      "Display only: these values are copied from the projection and are not evidence.",
+    );
+    expect(claimValues()).toEqual(Array(4).fill("unavailable (no projection loaded)"));
+    expect(boundary().textContent).not.toMatch(/unexecuted|not-established|\bfalse\b/);
+  });
+
+  it("reads each claim value from the projection, exactly as projected, with no warning", async () => {
+    renderShell(1440);
+    await settle();
+    expect(claimValues()).toEqual(["false", "unexecuted", "not-established", "false"]);
+    expect(boundary().querySelector("[data-tone]")).toBeNull();
+  });
+
+  it("never shows a projected true as a pass: an unverified projection that says true carries a warning chip", async () => {
+    renderShell(
+      1440,
+      snapshotOf({
+        panels: {
+          ...panelsDefault(),
+          qualification: { g1: true, h1: "unexecuted", containment: "not-established", claim_bearing: true },
+        },
+      }),
+    );
+    await settle();
+    expect(claimValues()).toEqual(["true", "unexecuted", "not-established", "true"]);
+    const warnings = Array.from(boundary().querySelectorAll("[data-tone]"));
+    expect(warnings.map((chip) => chip.textContent)).toEqual([
+      "unverified projection claims true",
+      "unverified projection claims true",
+    ]);
+    expect(warnings.some((chip) => chip.getAttribute("data-tone") === "ok")).toBe(false);
   });
 
   it("shows no session and no rows before a projection is loaded", () => {
@@ -264,6 +322,46 @@ describe("Shell: the drawer at the narrow breakpoint", () => {
     shim?.setWidth(1000);
     expect(q("aside").getAttribute("data-open")).toBe("false");
     expect(q("aside").hasAttribute("inert")).toBe(true);
+  });
+});
+
+describe("Shell: the open drawer never covers the header controls", () => {
+  // Why this is a contract and not a hit-test: happy-dom has no layout engine, so it cannot say which element
+  // is at a point. The layering is therefore asserted by geometry-independent facts: the header precedes the
+  // workspace body in the DOM, the drawer lives in that body, and the stylesheet positions the open drawer at
+  // the top of the body (not the viewport) at the narrow breakpoint. The browser hit-test is recorded in
+  // docs/phase3-parity.md (A3).
+  it("places the drawer in the body that follows the header, positioned at the top of that body", async () => {
+    renderShell(1024);
+    await settle();
+    click(byLabel("Governance"));
+    const header = q("header");
+    const aside = q("aside");
+    const body = aside.parentElement as HTMLElement;
+    expect(header.compareDocumentPosition(aside) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(body.previousElementSibling).toBe(header);
+    const shellCss = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
+    const inspectorCss = readFileSync(resolve(process.cwd(), "src/app/Inspector.module.css"), "utf8");
+    const narrowBody = declarationsOf(mediaBlock(shellCss, "@media (max-width: 1180px)"), ".body");
+    expect(narrowBody).toMatch(/position:\s*relative;/);
+    // The closed drawer is translated past the body's right edge; clipping keeps it from widening the page.
+    expect(narrowBody).toMatch(/overflow-x:\s*clip;/);
+    const drawer = declarationsOf(mediaBlock(inspectorCss, "@media (max-width: 1180px)"), ".inspector");
+    expect(drawer).toMatch(/position:\s*absolute;/);
+    expect(drawer).toMatch(/top:\s*0;/);
+    expect(drawer).not.toMatch(/position:\s*fixed/);
+  });
+
+  it("keeps the toggle and the theme control in the header, ahead of the drawer, and the toggle announced with aria-expanded", async () => {
+    renderShell(1024);
+    await settle();
+    const toggle = byLabel("Governance");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.compareDocumentPosition(q("aside")) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(q("header").contains(toggle)).toBe(true);
+    expect(q("header").contains(byLabel("Dark"))).toBe(true);
+    click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
 });
 

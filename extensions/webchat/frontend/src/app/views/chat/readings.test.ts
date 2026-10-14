@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 import type { GovernanceCounts } from "../../../core/filters";
 import {
   EMPTY_TOOL_SUMMARY,
+  LOSSY_EVIDENCE_READING,
   LOSSY_READING,
   UNVERIFIED_READING,
+  VERIFIED_READING,
   filterSummaryText,
   firstSummary,
   postureEntries,
@@ -108,6 +110,15 @@ describe("states: a success is reported unless it is verified", () => {
   it("marks an unverified item with the explicit unverified label", () => {
     expect(UNVERIFIED_READING.label).toBe("unverified");
     expect(UNVERIFIED_READING.tone).not.toBe("ok");
+  });
+
+  it("marks a verified lossy success as verified evidence with lossy output, on the neutral tone and never the success tone", () => {
+    expect(LOSSY_EVIDENCE_READING.label).toBe("verified evidence, output lossy");
+    expect(LOSSY_EVIDENCE_READING.tone).toBe("idle");
+    expect(LOSSY_EVIDENCE_READING.tone).not.toBe("ok");
+    expect(LOSSY_EVIDENCE_READING.note).toMatch(/not confirmed/);
+    // A complete verified success keeps the success marker: only the lossy case changes.
+    expect(VERIFIED_READING.tone).toBe("ok");
   });
 });
 

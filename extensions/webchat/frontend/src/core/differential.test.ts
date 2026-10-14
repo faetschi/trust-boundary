@@ -16,6 +16,7 @@ import * as formatTs from "./format";
 import * as filtersTs from "./filters";
 import * as storeTs from "./store";
 import * as trajectoryTs from "./trajectory";
+import * as gateTs from "./verification";
 import * as anchorTs from "./anchor";
 import * as backoffTs from "./backoff";
 import * as stopTs from "./stop-sequence";
@@ -129,7 +130,6 @@ const legacyFormat = await legacy<typeof formatTs>("format.mjs", [
   "TOOL_GLYPH",
   "slug",
   "humanize",
-  "isVerified",
   "isVerifiedProjection",
   "stateChipClass",
   "verdictChipClass",
@@ -164,6 +164,10 @@ const legacyStore = await legacy<typeof storeTs>("store.mjs", [
   "groupTurn",
   "turnsOf",
 ]);
+// The legacy item-only predicate. The port names it isItemEvidenceOnly (verification.ts): the same judgement, renamed so
+// that nothing outside the differential suite can mistake it for the verified gate.
+const legacyItemOnly = await legacy<{ isVerified: (item: unknown) => boolean }>("format.mjs", ["isVerified"]);
+
 const legacyTrajectory = await legacy<typeof trajectoryTs>("trajectory.mjs", [
   "RECORD_GROUPS",
   "MAX_PREVIEW",
@@ -232,11 +236,11 @@ describe("differential: format helpers", () => {
     const scopes: (string | undefined)[] = ["structural-audit-only", "unverified-input", "unavailable", "", "x", undefined];
     for (let i = 0; i < 2000; i += 1) {
       const item = { authority: rng.pick(authorities), verification_scope: rng.pick(scopes) };
-      same("isVerified", legacyFormat.isVerified(item), formatTs.isVerified(item));
+      same("isItemEvidenceOnly", legacyItemOnly.isVerified(item), gateTs.isItemEvidenceOnly(item));
       tally("format");
     }
-    same("isVerified(null)", legacyFormat.isVerified(null), formatTs.isVerified(null));
-    same("isVerified(undefined)", legacyFormat.isVerified(undefined), formatTs.isVerified(undefined));
+    same("isItemEvidenceOnly(null)", legacyItemOnly.isVerified(null), gateTs.isItemEvidenceOnly(null));
+    same("isItemEvidenceOnly(undefined)", legacyItemOnly.isVerified(undefined), gateTs.isItemEvidenceOnly(undefined));
     tally("format", 2);
 
     for (let i = 0; i < 1000; i += 1) {
@@ -551,6 +555,11 @@ describe("differential: store reducers", () => {
 // ---------------------------------------------------------------------------------------------
 // D. trajectory projections
 // ---------------------------------------------------------------------------------------------
+// The projection the corpus is judged in. Inside it the legacy item-only judgement and the port agree exactly; outside it
+// the port is stricter, and section F holds that difference (D1). The legacy modules take no projection: they receive the
+// same argument, ignore it, and judge the item alone, which is the judgement the live projection makes identical.
+const LIVE = { source: "live", verification: "structural-audit-only" } as const;
+
 describe("differential: trajectory projections", () => {
   test("every projection returns the legacy result on seeded item lists", () => {
     const rng = new Rng(0x5eed0005);
@@ -572,14 +581,14 @@ describe("differential: trajectory projections", () => {
 
       for (const item of items) {
         same("recordSource", legacyTrajectory.recordSource(item), trajectoryTs.recordSource(item));
-        same("recordDot", legacyTrajectory.recordDot(item), trajectoryTs.recordDot(item));
-        same("statusText", legacyTrajectory.statusText(item), trajectoryTs.statusText(item));
+        same("recordDot", legacyTrajectory.recordDot(item, LIVE), trajectoryTs.recordDot(item, LIVE));
+        same("statusText", legacyTrajectory.statusText(item, LIVE), trajectoryTs.statusText(item, LIVE));
         same("recordLabel", legacyTrajectory.recordLabel(item), trajectoryTs.recordLabel(item));
         same("recordPayload", legacyTrajectory.recordPayload(item), trajectoryTs.recordPayload(item));
-        same("recordChips", legacyTrajectory.recordChips(item), trajectoryTs.recordChips(item));
+        same("recordChips", legacyTrajectory.recordChips(item, LIVE), trajectoryTs.recordChips(item, LIVE));
         same("timingOf", legacyTrajectory.timingOf(item), trajectoryTs.timingOf(item));
-        same("recordDetail", legacyTrajectory.recordDetail(item), trajectoryTs.recordDetail(item));
-        same("recordOf", legacyTrajectory.recordOf(item), trajectoryTs.recordOf(item));
+        same("recordDetail", legacyTrajectory.recordDetail(item, LIVE), trajectoryTs.recordDetail(item, LIVE));
+        same("recordOf", legacyTrajectory.recordOf(item, LIVE), trajectoryTs.recordOf(item, LIVE));
         tally("trajectory", 9);
       }
       for (const source of sources) {
@@ -600,16 +609,17 @@ describe("differential: trajectory projections", () => {
         same("weightClass", legacyTrajectory.weightClass(weight), trajectoryTs.weightClass(weight));
         tally("trajectory");
       }
-      same("sequenceLanes", legacyTrajectory.sequenceLanes(items), trajectoryTs.sequenceLanes(items));
+      same("sequenceLanes", legacyTrajectory.sequenceLanes(items, LIVE), trajectoryTs.sequenceLanes(items, LIVE));
       same("searchRecords", legacyTrajectory.searchRecords(items, query), trajectoryTs.searchRecords(items, query));
       tally("trajectory", 2);
       for (const groupMode of ["turn", "tool", "verdict", "other"]) {
-        same(`groupRecords ${groupMode}`, legacyTrajectory.groupRecords(items, groupMode), trajectoryTs.groupRecords(items, groupMode));
+        same(`groupRecords ${groupMode}`, legacyTrajectory.groupRecords(items, groupMode, LIVE), trajectoryTs.groupRecords(items, groupMode, LIVE));
         tally("trajectory");
       }
       // The view's query is a string or absent; null is covered through searchRecords above.
       const view = { items, query: typeof query === "string" ? query : undefined, group: mode };
-      same("visibleRecords", legacyTrajectory.visibleRecords(view), trajectoryTs.visibleRecords(view));
+      const judged = { ...view, projection: LIVE };
+      same("visibleRecords", legacyTrajectory.visibleRecords(judged), trajectoryTs.visibleRecords(judged));
       tally("trajectory");
     }
   });
@@ -797,6 +807,43 @@ describe("differential: corpus", () => {
     console.log(`differential store coverage: ${JSON.stringify(coverage)}`);
     for (const branch of ["item:applied", "item:duplicate", "item:gap", "item:invalid", "windowGap:server", "windowGap:client", "evicted", "window-at-cap"]) {
       expect(coverage[branch] ?? 0, branch).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// F. deliberate deviations: where the TypeScript port is stricter than the legacy module
+// ---------------------------------------------------------------------------------------------
+// Each deviation is listed in phase2-parity.md ("Deliberate deviations") with the same name. The corpus above
+// is constrained to the live structural projection, where the legacy item-only judgement and the port agree.
+// Everywhere else the port is stricter, and this block holds that difference to account.
+describe("differential: deliberate deviations (stricter than legacy)", () => {
+  const NON_LIVE_PROJECTIONS = [
+    { source: "fixture", verification: "unverified-input" },
+    { source: "fixture", verification: "structural-audit-only" },
+    { source: "replay", verification: "structural-audit-only" },
+    { source: "unavailable", verification: "unavailable" },
+  ] as const;
+
+  test("D1: a record the legacy item-only judgement reads as verified is not verified outside a live structural projection", () => {
+    // Legacy trajectory.mjs judges a record from the record alone, so an observed structural success is "ok" wherever
+    // it appears. The port asks the projection too. Evidence: trajectory.test.ts ("outside a live structural projection").
+    const record = {
+      id: "r1",
+      sequence: 1,
+      type: "result" as const,
+      turn_id: "t1",
+      occurred_at: "2026-10-13T10:00:00Z",
+      tool: "bash" as const,
+      tool_call_id: "c1",
+      state: "succeeded" as const,
+      authority: "observed" as const,
+      verification_scope: "structural-audit-only" as const,
+    };
+    assert.equal(legacyTrajectory.recordDot(record, LIVE), "ok", "legacy: the record alone decides");
+    assert.equal(trajectoryTs.recordDot(record, { source: "live", verification: "structural-audit-only" }), "ok", "agreement inside a live structural projection");
+    for (const projection of NON_LIVE_PROJECTIONS) {
+      assert.notEqual(trajectoryTs.recordDot(record, projection), "ok", `port, ${projection.source}/${projection.verification}`);
     }
   });
 });

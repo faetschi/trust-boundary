@@ -4,7 +4,8 @@
 import { describe, expect, it } from "vitest";
 import { resultItem } from "../core/testing/builders";
 import type { Item } from "../core/contract";
-import { confirmedIn, isVerifiedIn, judgedItem } from "./verification";
+import { statusText } from "../core/trajectory";
+import { confirmedIn, isVerifiedIn } from "./verification";
 
 const live = { source: "live", verification: "structural-audit-only" } as const;
 const fixture = { source: "fixture", verification: "unverified-input" } as const;
@@ -47,29 +48,29 @@ describe("isVerifiedIn: the one gate", () => {
   });
 });
 
-describe("judgedItem: the record as the core judges it", () => {
-  it("returns a record that is verified in its projection unchanged", () => {
-    const item = succeeded();
-    expect(judgedItem(live, item)).toBe(item);
+// judgedItem is retired. Its guarantee, that the core cannot judge a fixture record verified, now holds in the
+// model itself: each model function takes the projection, so the record is judged where it is shown.
+describe("the model judges a record in the projection it is shown in", () => {
+  it("reads a record verified in its projection as verified", () => {
+    expect(statusText(succeeded(), live)).toBe("Result: succeeded, verified");
   });
 
-  it("demotes an observed record in a fixture projection, so no core helper can judge it verified", () => {
-    const item = succeeded();
-    const judged = judgedItem(fixture, item);
-    expect(isVerifiedIn(fixture, judged)).toBe(false);
-    expect(judged.verification_scope).toBe("unverified-input");
-    expect(judged.id).toBe(item.id);
+  it("does not read the same observed record as verified in a fixture projection", () => {
+    const text = statusText(succeeded(), fixture);
+    expect(text).toBe("Result: succeeded, reported, not independently verified");
+    expect(isVerifiedIn(fixture, succeeded())).toBe(false);
   });
 
   it("never edits the record it was given", () => {
     const item = succeeded();
-    judgedItem(fixture, item);
+    statusText(item, fixture);
     expect(item.verification_scope).toBe("structural-audit-only");
   });
 
-  it("leaves a record that was never verified as it is", () => {
+  it("reads a record that was never verified as reported, in every projection", () => {
     const item = succeeded({ verification_scope: "unverified-input" });
-    expect(judgedItem(fixture, item)).toBe(item);
+    expect(statusText(item, live)).toBe("Result: succeeded, reported, not independently verified");
+    expect(statusText(item, fixture)).toBe("Result: succeeded, reported, not independently verified");
   });
 });
 

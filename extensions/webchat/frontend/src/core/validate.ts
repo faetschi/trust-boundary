@@ -9,7 +9,10 @@
 //   - An unknown enum value is refused. It is never mapped to a default.
 //   - Text is bounded in UTF-8 bytes and single-line; identifiers and references
 //     match the Go patterns; a reason code matches its pattern.
-//   - authoritative is refused. observed is refused outside a live projection.
+//   - authoritative is refused. observed is refused outside a live projection. Each
+//     item's scope must equal its snapshot's. The rule (verification.ts) applies to a
+//     served snapshot's items and to a streamed item, which is judged in the projection
+//     its stream is bound to. A streamed item is never judged by a weaker rule.
 //   - A document is downgraded before it is checked (decodeDocument): authority
 //     becomes diagnostic and verification becomes unverified-input. Its qualification
 //     panel is normalized, and a document that claims containment or an executed
@@ -56,7 +59,14 @@ import {
   type Snapshot,
   type SourceClass,
   type StreamStatus,
+  type VerificationScope,
 } from "./contract";
+import {
+  authorityFault,
+  scopeFault,
+  type AdmissionFault,
+  type ProjectionContext,
+} from "./verification";
 
 export interface ValidateOptions {
   // The caller's clock, in milliseconds since the epoch. occurred_at may not be more
@@ -69,6 +79,29 @@ export class ContractError extends Error {
     super(message);
     this.name = "ContractError";
   }
+}
+
+// An item the projection does not admit (verification.ts). It is a ContractError, so every caller that catches the
+// contract catches it too, and it carries the typed fault for a caller that needs the reason.
+export class AdmissionError extends ContractError {
+  readonly fault: AdmissionFault;
+
+  constructor(message: string, fault: AdmissionFault) {
+    super(message);
+    this.name = "AdmissionError";
+    this.fault = fault;
+  }
+}
+
+// The wording of each refused claim. The fault is the typed reason; the message is for people.
+const ADMISSION_MESSAGES: Readonly<Record<AdmissionFault, string>> = {
+  authoritative: "authoritative authority is unavailable to this presentation contract",
+  "observed-outside-live": "observed authority is refused outside a live projection",
+  "scope-mismatch": "verification scope does not match the snapshot",
+};
+
+function admission(path: string, fault: AdmissionFault): AdmissionError {
+  return new AdmissionError(`${path}: ${ADMISSION_MESSAGES[fault]}`, fault);
 }
 
 // Go's zero time.Time ("0001-01-01T00:00:00Z") in milliseconds.
@@ -237,12 +270,12 @@ const ITEM_KEYS: Readonly<Record<ItemType, readonly string[]>> = {
 };
 
 export interface ItemContext {
-  // The snapshot's source, or null for an SSE event, whose payload does not carry it.
-  readonly source: SourceClass | null;
-  // The verification scope the snapshot declares. Every item must match it.
-  readonly scope: string | null;
+  // The source and scope of the projection the item is judged in: its snapshot, or for a
+  // streamed item the snapshot its stream is bound to. The rule is verification.ts.
+  readonly source: SourceClass;
+  readonly scope: VerificationScope;
   readonly nowMs: number;
-  // served: sequence is >= 1. document: sequence is 0 for every item, or 1..N for all.
+  // served: sequence is >= 1. document: sequence is 0 for every item, or 1..N for all. event: sequence >= 1.
   readonly sequenceMode: "served" | "document" | "event";
 }
 
@@ -260,14 +293,12 @@ export function assertItem(path: string, value: unknown, context: ItemContext): 
   if (occurredMs === ZERO_TIME_MS) fail(`${path}.occurred_at`, "is invalid: zero time");
   if (occurredMs > context.nowMs + FUTURE_SKEW_MS) fail(`${path}.occurred_at`, "is in the future");
   const authority = oneOf(`${path}.authority`, AUTHORITIES, required(path, record, "authority"));
-  if (authority === "authoritative") fail(path, "authoritative authority is unavailable to this presentation contract");
-  if (authority === "observed" && context.source !== null && context.source !== "live") {
-    fail(path, "observed authority is refused outside a live projection");
-  }
+  // The claim rule (verification.ts) in the Go validator's order: authority first, then the scope it must match.
+  const refusedAuthority = authorityFault(context.source, authority);
+  if (refusedAuthority !== null) throw admission(path, refusedAuthority);
   const scope = oneOf(`${path}.verification_scope`, VERIFICATION_SCOPES, required(path, record, "verification_scope"));
-  if (context.scope !== null && scope !== context.scope) {
-    fail(path, "verification scope does not match the snapshot");
-  }
+  const refusedScope = scopeFault(scope, context.scope);
+  if (refusedScope !== null) throw admission(path, refusedScope);
   // A document may omit sequence: decodeDocument reads it as 0 (unset) and the store numbers
   // the item later. A served item always has it.
   const sequenceValue = optional(path, record, "sequence");
@@ -631,8 +662,14 @@ function downgradeDocument(snapshot: Rec, rawItems: readonly unknown[]): Rec {
   };
 }
 
+// The options of an SSE payload: the clock, and the projection the stream is bound to. A streamed item is judged in
+// that projection, as a snapshot item is judged in its own. The stream supplies it from the snapshot it opened after.
+export interface EventOptions extends ValidateOptions {
+  readonly projection: ProjectionContext;
+}
+
 // An SSE payload: an `item` event or a `session` event (validate.go; the Event struct).
-export function parseEvent(value: unknown, options: ValidateOptions): ItemEvent | SessionEvent {
+export function parseEvent(value: unknown, options: EventOptions): ItemEvent | SessionEvent {
   const record = asRecord("event", value);
   closedKeys("event", record, ["schema_version", "cursor", "kind", "item", "session", "panels", "streams"]);
   if (record.schema_version !== CONTRACT_VERSION) fail("event", "unsupported schema version");
@@ -644,9 +681,14 @@ export function parseEvent(value: unknown, options: ValidateOptions): ItemEvent 
       fail("event", "an item event carries only an item");
     }
     const itemValue = required("event", record, "item");
-    // An event does not carry its snapshot's source, so the observed refusal is not
-    // applied here. Snapshot validation applies it to every item it accepts.
-    assertItem("event.item", itemValue, { source: null, scope: null, nowMs: options.nowMs, sequenceMode: "event" });
+    // The event does not carry its snapshot's source or scope. The stream supplies them, so a streamed item is
+    // refused by the rule a snapshot item meets (Store.AppendItem checks it against the base snapshot the same way).
+    assertItem("event.item", itemValue, {
+      source: options.projection.source,
+      scope: options.projection.verification,
+      nowMs: options.nowMs,
+      sequenceMode: "event",
+    });
     return { schema_version: CONTRACT_VERSION, cursor, kind: "item", item: itemValue };
   }
   if (kind === "session") {

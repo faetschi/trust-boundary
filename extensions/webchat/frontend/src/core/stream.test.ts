@@ -607,3 +607,37 @@ test("repeated malformed items wait under the backoff policy, as repeated gaps d
   h.clock.advance(500);
   assert.equal(h.fetches.length, 1, "it recovers after the base delay");
 });
+
+/* ---------------------------------------------------------------------------
+ * Projection binding and refused items (TypeScript only: the claim gate's context)
+ * ------------------------------------------------------------------------- */
+
+test("each stream is bound to the projection of the snapshot it opened after, and a reconnect rebinds it", async () => {
+  const h = harness();
+  h.stream.start();
+  await h.answer([1]);
+  assert.deepEqual(entry(h.streams, 0).handlers.projection, { source: "fixture", verification: "unverified-input" });
+  entry(h.streams, 0).handlers.onGap({ reason: "history_evicted", requested_cursor: "e1:1" });
+  takeNext(h.fetches).resolve(snapshotOf({ source: "live", verification_scope: "structural-audit-only", items: [messageAt(1)] }));
+  await flush();
+  assert.deepEqual(entry(h.streams, 1).handlers.projection, { source: "live", verification: "structural-audit-only" });
+  assert.deepEqual(
+    entry(h.streams, 0).handlers.projection,
+    { source: "fixture", verification: "unverified-input" },
+    "the earlier stream keeps the projection it was opened with",
+  );
+});
+
+test("an item the projection refuses recovers from a snapshot with an invalid_item notice, and its stream closes", async () => {
+  const h = harness();
+  h.stream.start();
+  await h.answer([1]);
+  entry(h.streams, 0).handlers.onConnection("open");
+  entry(h.streams, 0).handlers.onInvalid(new Error("item e2 is refused in its projection"));
+  assert.equal(h.log.at(-1), "snapshot", "a refused item triggers a snapshot recovery");
+  await h.answer([1, 2]);
+  assert.deepEqual(h.log.slice(-2), ["snapshot", "open:e1:2"]);
+  assert.equal(h.state.gapNotice?.reason, "invalid_item", "the notice names the reason");
+  assert.equal(h.streams.length, 2, "the refused stream is closed and a fresh one opens from the recovery snapshot");
+  assert.equal(entry(h.streams, 0).closed, true, "no later event from the refusing stream is applied");
+});

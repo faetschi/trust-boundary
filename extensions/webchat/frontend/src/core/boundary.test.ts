@@ -4,11 +4,16 @@ import { describe, expect, test } from "vitest";
 
 import { fetchValidatedSnapshot, openValidatedEventStream, type EventSourceLike, type FetchLike, type FetchResponseLike } from "./api";
 import { CONTRACT_VERSION, GAP_VERSION, type ItemEvent, type ReplayGap, type SessionEvent } from "./contract";
-import { ContractError } from "./validate";
-import { messageItem, snapshotOf } from "./testing/builders";
+import { AdmissionError, ContractError } from "./validate";
+import { messageItem, resultItem, snapshotOf } from "./testing/builders";
+import type { ProjectionContext } from "./verification";
 
 // A fixed clock, after every builder timestamp (2026-10-13).
 const NOW = Date.parse("2026-10-14T00:00:00Z");
+
+// The projection a stream opened after a fixture snapshot binds to, and the live one.
+const FIXTURE: ProjectionContext = { source: "fixture", verification: "unverified-input" };
+const LIVE: ProjectionContext = { source: "live", verification: "structural-audit-only" };
 
 // A stand-in for the browser's EventSource that records its listeners and lets a test dispatch.
 class FakeEventSource implements EventSourceLike {
@@ -64,31 +69,76 @@ describe("validated snapshot boundary", () => {
 });
 
 describe("validated event stream boundary", () => {
-  function open(): {
+  function open(projection: ProjectionContext = FIXTURE): {
     source: FakeEventSource;
     items: ItemEvent[];
     sessions: SessionEvent[];
     gaps: ReplayGap[];
     errors: unknown[];
+    invalid: unknown[];
   } {
     const source = new FakeEventSource();
     const items: ItemEvent[] = [];
     const sessions: SessionEvent[] = [];
     const gaps: ReplayGap[] = [];
     const errors: unknown[] = [];
+    const invalid: unknown[] = [];
     openValidatedEventStream(
       () => source,
       {
         cursor: "e1:0",
         nowMs: () => NOW,
+        projection,
         onItem: (event) => items.push(event),
         onSession: (event) => sessions.push(event),
         onGap: (gap) => gaps.push(gap),
         onError: (error) => errors.push(error),
+        onInvalid: (error) => invalid.push(error),
       },
     );
-    return { source, items, sessions, gaps, errors };
+    return { source, items, sessions, gaps, errors, invalid };
   }
+
+  test("a streamed observed item in a fixture projection is refused, reported, and handed to onInvalid", () => {
+    // The item passes the item-only rule (observed, structurally audited). Only the projection it arrives in refuses it.
+    const { source, items, errors, invalid } = open(FIXTURE);
+    const observed = resultItem({ id: "r1", sequence: 1, tool: "bash", tool_call_id: "c1", state: "succeeded", authority: "observed", verification_scope: "structural-audit-only" });
+    source.dispatch("item", JSON.stringify({ schema_version: CONTRACT_VERSION, cursor: "e1:1", kind: "item", item: observed }));
+    expect(items).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(AdmissionError);
+    expect(invalid).toHaveLength(1);
+    expect(invalid[0]).toBe(errors[0]);
+  });
+
+  test("the same streamed observed item is admitted in a live structural projection", () => {
+    const { source, items, errors, invalid } = open(LIVE);
+    const observed = resultItem({ id: "r1", sequence: 1, tool: "bash", tool_call_id: "c1", state: "succeeded", authority: "observed", verification_scope: "structural-audit-only" });
+    source.dispatch("item", JSON.stringify({ schema_version: CONTRACT_VERSION, cursor: "e1:1", kind: "item", item: observed }));
+    expect(errors).toEqual([]);
+    expect(invalid).toEqual([]);
+    expect(items.map((event) => event.item.id)).toEqual(["r1"]);
+  });
+
+  test("an item payload that is not JSON is reported and handed to onInvalid too, so the stream recovers rather than dropping it", () => {
+    const { source, items, errors, invalid } = open(FIXTURE);
+    source.dispatch("item", "{not json");
+    expect(items).toHaveLength(0);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toBeInstanceOf(SyntaxError);
+    expect(invalid).toEqual(errors);
+  });
+
+  test("an admitted item never reaches onInvalid, and a contract failure reaches it as well as onError", () => {
+    const { source, items, errors, invalid } = open(FIXTURE);
+    source.dispatch("item", JSON.stringify({ schema_version: CONTRACT_VERSION, cursor: "e1:1", kind: "item", item: messageItem({ id: "m1", sequence: 1, text: "hi" }) }));
+    expect(items).toHaveLength(1);
+    expect(invalid).toEqual([]);
+    source.dispatch("item", JSON.stringify({ schema_version: CONTRACT_VERSION, cursor: "e1:2", kind: "item", item: { ...messageItem({ id: "m2", sequence: 2 }), extra: 1 } }));
+    expect(errors).toHaveLength(1);
+    expect(invalid).toHaveLength(1);
+    expect(invalid[0]).toBeInstanceOf(ContractError);
+  });
 
   test("a valid item event reaches onItem as a typed ItemEvent", () => {
     const { source, items, errors } = open();

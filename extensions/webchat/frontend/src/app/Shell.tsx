@@ -13,9 +13,17 @@ import { ShellContext, type ShellControls } from "./shellContext";
 import { Rail } from "./Rail";
 import { Footer } from "./Footer";
 import { INSPECTOR_ID, Inspector } from "./Inspector";
+import { ClaimBoundary } from "./ClaimBoundary";
 import { ChatView } from "./views/ChatView";
 import { TrajectoryView } from "./views/TrajectoryView";
-import { evictedText, gapText, WINDOW_GAP_TEXT, type ConnectionStatus } from "./status";
+import {
+  EVICTED_LABEL,
+  evictedText,
+  gapText,
+  WINDOW_GAP_LABEL,
+  WINDOW_GAP_TEXT,
+  type ConnectionStatus,
+} from "./status";
 import type { WorkspaceModel } from "./workspaceStore";
 import styles from "./Shell.module.css";
 
@@ -169,29 +177,7 @@ export function Shell({ version }: { readonly version: string }) {
             />
           </div>
           <div className={styles.claimRow}>
-            <Notice label="Claim boundary" tone="claim">
-              <p className={styles.claimText}>
-                Presentation only: the supervisor retains policy, effect and publication authority.
-              </p>
-              <dl className={styles.claim}>
-                <div>
-                  <dt>G1</dt>
-                  <dd>false</dd>
-                </div>
-                <div>
-                  <dt>H1</dt>
-                  <dd>unexecuted</dd>
-                </div>
-                <div>
-                  <dt>containment</dt>
-                  <dd>not-established</dd>
-                </div>
-                <div>
-                  <dt>claim-bearing</dt>
-                  <dd>false</dd>
-                </div>
-              </dl>
-            </Notice>
+            <ClaimBoundary model={model} />
           </div>
         </header>
         <div className={styles.body}>
@@ -205,12 +191,12 @@ export function Shell({ version }: { readonly version: string }) {
                   </Notice>
                 ) : null}
                 {model.windowGap ? (
-                  <Notice label="Retained window" tone="warning">
+                  <Notice label={WINDOW_GAP_LABEL} tone="warning">
                     {WINDOW_GAP_TEXT}
                   </Notice>
                 ) : null}
                 {model.evicted > 0 ? (
-                  <Notice label="Retained window" tone="info">
+                  <Notice label={EVICTED_LABEL} tone="info">
                     {evictedText(model.evicted)}
                   </Notice>
                 ) : null}

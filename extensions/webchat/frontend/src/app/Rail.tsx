@@ -6,18 +6,27 @@ import { isVerifiedProjection } from "../core/format";
 import type { StreamHealth, StreamStatus } from "../core/contract";
 import styles from "./Shell.module.css";
 
+// A stream that completed is not a verified outcome: the source did not claim completeness. So "complete" is
+// neutral in its dot and its words, and never the success tone.
 const HEALTH_TONES: Readonly<Record<StreamHealth, ChipTone>> = {
-  complete: "ok",
+  complete: "idle",
   observing: "pending",
   gap: "unknown",
   unavailable: "idle",
+};
+
+const HEALTH_WORDS: Readonly<Record<StreamHealth, string>> = {
+  complete: "complete (source did not claim completeness)",
+  observing: "observing",
+  gap: "gap",
+  unavailable: "unavailable",
 };
 
 // A stream's state in words. The dot is decorative; this text carries the meaning.
 function streamText(stream: StreamStatus): string {
   const reason = stream.reason ? ` (${stream.reason})` : "";
   const availability = stream.available ? "" : ", not available";
-  return `${stream.label}: ${stream.health}${reason}${availability}`;
+  return `${stream.label}: ${HEALTH_WORDS[stream.health] ?? stream.health}${reason}${availability}`;
 }
 
 // The turn count, or why there is none. A count the session header does not carry is unavailable.

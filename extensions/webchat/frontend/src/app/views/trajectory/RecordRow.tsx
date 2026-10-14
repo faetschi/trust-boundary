@@ -3,6 +3,7 @@ import { timingOf, sourceLabel, statusText, type RecordView } from "../../../cor
 import { Chip } from "../../../ui/Chip";
 import { StateDot } from "../../../ui/StateDot";
 import { cx } from "../../../ui/cx";
+import type { ProjectionState } from "../../../core/verification";
 import { chipToneOf, sourceRole, stateWord } from "../../inspector/recordChip";
 import styles from "./Trajectory.module.css";
 
@@ -15,15 +16,17 @@ interface RecordRowProps {
   readonly rowRef: (id: string, element: HTMLButtonElement | null) => void;
   readonly onSelect: (id: string, row: HTMLButtonElement) => void;
   readonly onFocusRow: (id: string) => void;
+  // The projection the record is judged in: its status words say what that projection confirms.
+  readonly projection: ProjectionState;
 }
 
 // One projected record, as a button. Its accessible name states the status in words: the status
 // dot and the chips are decorative for assistive technology, so the name carries the state once.
-export function RecordRow({ record, selected, stop, rowRef, onSelect, onFocusRow }: RecordRowProps) {
+export function RecordRow({ record, selected, stop, rowRef, onSelect, onFocusRow, projection }: RecordRowProps) {
   const id = record.id ?? "";
   const name = [
     `${sourceLabel(record.source)} record ${record.sequence}: ${record.label}.`,
-    `${statusText(record.item)}.`,
+    `${statusText(record.item, projection)}.`,
     record.payload,
   ]
     .filter(Boolean)

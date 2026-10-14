@@ -80,6 +80,14 @@ export const VERIFIED_READING: ChipReading = {
   note: "verified by the gateway.",
 };
 
+// The marker of a verified success whose output is lossy. Its evidence is verified, but the output is
+// incomplete, so it is not confirmed: the marker is neutral and never the success tone.
+export const LOSSY_EVIDENCE_READING: ChipReading = {
+  label: "verified evidence, output lossy",
+  tone: "idle",
+  note: "verified by the gateway; its output is lossy, so it is not confirmed.",
+};
+
 export interface PostureEntry {
   readonly key: string;
   readonly text: string;

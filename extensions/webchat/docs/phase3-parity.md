@@ -128,3 +128,36 @@ fix) and the file that now holds it. The GREEN run is `gate.ps1 -Task verify` (W
 
 The LiveRegion scan that allows `role="log"` only with `aria-live="off"` was changed in commit 57bcd95,
 not in the review pass. Its self-test is in `ui/LiveRegion.test.tsx`.
+
+## Fidelity-check fixes, A3 (2026-10-14)
+
+Rows for the six defects the v3 fidelity check found. Each names the test that reproduced the defect (RED, before the fix) and the file that now holds the fix. The receipts are at the end of this section.
+
+| # | Defect | Test (RED before the fix) | Fix now in |
+|---|---|---|---|
+| A3-1 | At 1180 px and below, the open governance drawer covered the header's theme switch and the Governance toggle. | `app/Shell.test.tsx` "places the drawer in the body that follows the header, positioned at the top of that body": the body had no `position: relative`. Happy-dom has no layout, so the browser hit-test is in the receipts. | `app/Shell.module.css`: at the narrow breakpoint the workspace body is the drawer's containing block, and it clips the closed drawer. `app/Inspector.module.css`: the open drawer is absolute at the body's top, which is the header's bottom edge. |
+| A3-2 | The rail showed a completed stream with the success dot and the word "complete". | `app/Rail.test.tsx` "reads a complete stream as complete (source did not claim completeness), on the neutral tone…", for fixture, replay and live (RED: the wording and the dot). | `app/Rail.tsx`: `complete` takes the `idle` tone and reads "complete (source did not claim completeness)". |
+| A3-3 | The header claim strip hard-coded G1, H1, containment and claim-bearing. | `app/ClaimBoundary.test.tsx` (before load, loaded, mismatch, absent panel, missing field); `app/Shell.test.tsx` "never shows a projected true as a pass…" (RED: literal values, no display-only line). | `app/ClaimBoundary.tsx` (new): the four values from `qualificationRows`, unavailable with a reason, the display-only line, and the "unverified projection claims true" chip on a true G1 or claim-bearing value from an unverified projection. `app/panels.ts`: `qualificationRows` takes the reason for an absent panel. |
+| A3-4 | Two notices shared the label "Retained window": the window gap and the eviction count. | `app/Shell.views.test.tsx` "names the continuity gap, the window and the eviction as three different notices" (RED: both named "Retained window"). | `app/status.ts`: `WINDOW_GAP_LABEL` "History not loaded" and `EVICTED_LABEL` "Records no longer retained". `app/Shell.tsx` uses both. |
+| A3-5 | In a mixed view, a verified lossy success showed a green "verified" chip beside "succeeded (output lossy, not confirmed)". | `app/views/ChatView.test.tsx` "gives a verified lossy success in a mixed view a neutral evidence marker, never the green verified chip" (RED: `["verified", "ok"]` present). `app/views/chat/readings.test.ts` "marks a verified lossy success as verified evidence…" (RED: no such reading). | `app/views/chat/readings.ts`: `LOSSY_EVIDENCE_READING`, "verified evidence, output lossy", on the idle tone. `app/views/chat/ToolCard.tsx` uses it when the result is lossy. |
+| A3-6 | Every page load requested `/favicon.ico` and logged a 404. | `internal/webchat/favicon_test.go`, "TestFaviconAnswersNoContentForGetAndHead" (RED: GET 404, HEAD 405). | `internal/webchat/handler.go`: `/favicon.ico` answers 204 to GET and HEAD, with the same security headers and Host/Origin pinning. Other methods get 405 with `Allow: GET, HEAD`. |
+
+### What a reader will notice
+
+- The header claim values use the drawer's labels: "Containment" and "Claim-bearing". The literal values are gone. Before the first projection, each value reads `unavailable (no projection loaded)`.
+- The open drawer is anchored to the workspace body, not the viewport, so it scrolls with the page. This is a behaviour change, and it was not checked with the page scrolled.
+- `App.test.tsx` (first paint) now asserts the unavailable reading instead of `not-established`. That file was outside the A3 list; the change follows from A3-3.
+- The favicon allowance in `extensions/webchat/scripts/csp-smoke.mjs` (`isAllowedFavicon404`) is now dead. Remove it in a later pass.
+- Unchanged: the toggle's `aria-expanded`, Escape closing the drawer with focus returned to the toggle, and the focus order. The existing tests cover them.
+
+### Receipts (2026-10-14)
+
+- Windows, `gate.ps1 -Task verify`: exit 0. Typecheck clean. Vitest: 60 files, 896 tests passed, 0 skipped (the run reports no skip count). `check:sinks`: 0 findings. `check:deps`: OK. The run includes A1's edits as they stood at that time.
+- Windows, `gate.ps1 -Task go`: exit 0. `go vet` clean, both packages `ok`, `gofmt -l` empty.
+- WSL, go1.27.1 linux/amd64, `TMPDIR=$HOME/tmp-tbwc-a3`, umask 077: `go build ./...` exit 0; `go vet -mod=readonly ./...` exit 0; `gofmt -l .` empty; `go test -race -mod=readonly -count=1 -v ./...` exit 0, 132 PASS, 0 FAIL, 0 SKIP. The four favicon tests pass. sha256: `internal/webchat/handler.go` 4046cbefaa1b99f0cc8ec07157c43b4de19016ba2f9bff40af4b7b1641119158; `internal/webchat/favicon_test.go` 97e1a083bde2d8dc883753ccadec17ea492e17b28d54fd293dd5fa4078ef1372.
+- Browser, Windows (preview tool, not a test): a Vite dev server from the gate's scratch copy, with no gateway and no `dist/`. At 1024×768 with the drawer open, `elementFromPoint` at the centre of Governance, Light, Dark and System returns each control, and the drawer top equals the header bottom (165 px). With the old placement forced in the page (`position: fixed; top: 0`), the same probe found the drawer over all four. At 700×800 the drawer top equals the header bottom (225 px), and there is no horizontal overflow with the drawer closed or open.
+
+### Not done in this pass
+
+- The v3 mockups refresh and the `dist/` rebuild, which belong to other passes.
+- Stale HEAD wording: `extensions/webchat/README.md` line 30 and `extensions/webchat/docs/web-chat.md` lines 337 and 343 say only `/` answers HEAD. `/favicon.ico` now does too. Not edited here.

@@ -13,7 +13,8 @@
 import type { ItemEvent, ReplayGap, SessionEvent, Snapshot } from "./contract";
 import { createBackoff, createScheduler, type TimerHost } from "./backoff";
 import type { AbortSignalLike, EventStreamHandle } from "./api";
-import { applyItem, applySession, applySnapshot, noteGap, setConnection, setError, type Workspace } from "./store";
+import { applyItem, applySession, applySnapshot, noteGap, projectionOf, setConnection, setError, type Workspace } from "./store";
+import type { ProjectionContext } from "./verification";
 
 // After this long without an open stream the status shows a warning. The warning never cancels the
 // attempt.
@@ -36,9 +37,13 @@ export interface AbortControllerLike {
 // The handlers the stream gives its event source. Each carries a validated contract value.
 export interface StreamEventHandlers {
   readonly cursor: string;
+  // The projection every item of this stream is judged in: the snapshot it opened after.
+  readonly projection: ProjectionContext;
   onItem(event: ItemEvent): void;
   onSession(event: SessionEvent): void;
   onGap(gap: ReplayGap): void;
+  // A streamed item the projection refuses, or the contract rejects. It is not applied.
+  onInvalid(error: unknown): void;
   onConnection(value: "open" | "closed"): void;
   onError(error: unknown): void;
 }
@@ -207,8 +212,12 @@ export function createStream({
     const guard = <A>(handler: (value: A) => void) => (value: A) => {
       if (current === token) handler(value);
     };
+    // Read once, here, after the snapshot was applied: this stream judges every item against that snapshot, and a
+    // later snapshot opens a new stream with its own projection.
+    const projection = projectionOf(state);
     source = openEventStream({
       cursor: state.cursor,
+      projection,
       onItem: guard((event) => {
         const item = event && event.item;
         const outcome = applyItem(state, item);
@@ -226,6 +235,11 @@ export function createStream({
       onSession: guard((event) => {
         applySession(state, event && event.session, event && event.panels, event && event.streams);
         changed();
+      }),
+      onInvalid: guard(() => {
+        // The item is not applied and the stream stops, as for a gap: the client recovers from a fresh snapshot, and the
+        // notice says why, as it does for a malformed item.
+        recover({ reason: "invalid_item", requested_cursor: state.cursor });
       }),
       onGap: guard((gap) => {
         // The subscriber limit is terminal: every slot is taken, so a retry would only churn.

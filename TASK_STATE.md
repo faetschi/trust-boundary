@@ -618,3 +618,22 @@ Export of HEAD 58492c5 into WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under $
   observed record in a fixture/replay projection is refused by validate.ts only for snapshots);
   core isVerified(item) judges from the item alone (the app compensates with judgedItem).
 - Not browser-checked: LOST shapes, 1024 px drawer, StrictMode; no screen-reader testing.
+
+## Core claim gate + v3-check fixes + React default (2026-10-14)
+
+- React UI is the default at / (302 to /app/; legacy at /legacy/ with a deprecation notice; if the
+  React build is unavailable / serves the legacy page). v3 mockup committed (6d03657); legacy and v2
+  kept until sign-off.
+- Core (A1): streamed items are admitted against the snapshot's source exactly as the Go validator
+  does (24-row table); refusals trigger snapshot recovery with an invalid_item notice; one
+  isVerifiedIn gate (legacy item-only check renamed isItemEvidenceOnly and grep-guarded). Deviations
+  D1-D3 recorded in docs/phase2-parity.md. Closes the two open Phase 3 review items.
+- UI fixes (A3): the open drawer no longer covers header controls; stream 'complete' is neutral;
+  header claim values come from the projection ('unavailable' when absent; display-only line;
+  warning chip for a non-live projection claiming true); three distinct notice labels; a lossy
+  success never shows a green verified chip; /favicon.ico answers 204.
+- Verified on LINUX: vitest 896/896 (60 files), go -race 54 PASS 0 SKIP (extension), legacy node
+  258/258, sinks/deps + self-tests, boundary guard, Linux rebuild == the Windows-built dist.
+- Known leftovers: dead favicon allowance in csp-smoke.mjs; stale 'only / answers HEAD' wording in
+  README and web-chat.md; the narrow drawer scrolls with the page (not pinned); stream 'complete'
+  wording is a decision for the owner; no screen-reader testing.

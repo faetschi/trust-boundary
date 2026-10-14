@@ -1,7 +1,8 @@
 /*
  * The inspector. A column at wide widths. Below 1180 px (DRAWER_BREAKPOINT_PX in layout.ts)
- * it is an off-canvas drawer: fixed to the right edge, off-screen until data-open is "true".
- * Colours are alias tokens only.
+ * it is an off-canvas drawer, anchored to the top right of the workspace body (see .body in
+ * Shell.module.css): the body starts below the header, so the drawer never covers the header.
+ * It is off-screen until data-open is "true". Colours are alias tokens only.
  */
 
 .inspector {
@@ -113,7 +114,7 @@
 
 @media (max-width: 1180px) {
   .inspector {
-    position: fixed;
+    position: absolute;
     top: 0;
     right: 0;
     bottom: 0;

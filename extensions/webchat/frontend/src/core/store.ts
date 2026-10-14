@@ -23,6 +23,7 @@ import type {
   VerificationScope,
 } from "./contract";
 import type { FilterId } from "./filters";
+import type { ProjectionContext } from "./verification";
 
 export const MAX_CLIENT_ITEMS = 512;
 
@@ -75,6 +76,12 @@ export interface Workspace {
 }
 
 export type ApplyOutcome = "applied" | "duplicate" | "gap" | "invalid";
+
+// The projection a stream judges its items in: the source and scope of the snapshot the workspace holds. A stream reads
+// it once, when it opens after a snapshot, so every item it delivers is judged against that snapshot.
+export function projectionOf(state: Workspace): ProjectionContext {
+  return { source: state.source, verification: state.verification };
+}
 
 export function createWorkspace(): Workspace {
   return {

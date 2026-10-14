@@ -12,7 +12,14 @@ import type { ItemView } from "../../../core/contract";
 import type { ToolBlock } from "../../../core/store";
 import type { Marker } from "./provenance";
 import { headlineSummary } from "./headline";
-import { LOSSY_READING, UNVERIFIED_READING, VERIFIED_READING, stateReading, verdictReading } from "./readings";
+import {
+  LOSSY_EVIDENCE_READING,
+  LOSSY_READING,
+  UNVERIFIED_READING,
+  VERIFIED_READING,
+  stateReading,
+  verdictReading,
+} from "./readings";
 import styles from "./Chat.module.css";
 
 // Whether an item is verified in its projection: the shared gate (app verification.ts isVerifiedIn). Only a
@@ -36,6 +43,8 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
     : null;
   const verdict = decision ? verdictReading(decision.verdict) : null;
   const marker = primary ? markOf(primary) : null;
+  // A verified lossy result keeps its evidence marker, neutral: the output is not confirmed, so it is never green.
+  const evidence = result?.lossy === true ? LOSSY_EVIDENCE_READING : VERIFIED_READING;
   // The name is drawn once, here; the summary follows it without a repeat of the name.
   const headline = headlineSummary(tool, summaryOf(block));
   // A uniform view states "unverified" once, above the transcript, so the card carries the word for
@@ -55,7 +64,7 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
         {verdict ? <Chip tone={verdict.tone}>{verdict.label}</Chip> : null}
         {stateReadingOf ? <Chip tone={stateReadingOf.tone}>{stateReadingOf.label}</Chip> : null}
         {marker === "unverified" ? <Chip tone={UNVERIFIED_READING.tone}>{UNVERIFIED_READING.label}</Chip> : null}
-        {marker === "verified" ? <Chip tone={VERIFIED_READING.tone}>{VERIFIED_READING.label}</Chip> : null}
+        {marker === "verified" ? <Chip tone={evidence.tone}>{evidence.label}</Chip> : null}
       </span>
     </span>
   );

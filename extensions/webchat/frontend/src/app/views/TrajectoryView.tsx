@@ -3,7 +3,6 @@ import { jumpLabel } from "../../core/anchor";
 import { visibleRecords } from "../../core/trajectory";
 import { failureText, projectionPhase } from "../status";
 import { useShell } from "../shellContext";
-import { judgedItem } from "../verification";
 import type { WorkspaceModel } from "../workspaceStore";
 import { Ledger } from "./trajectory/Ledger";
 import { SequenceRail } from "./trajectory/SequenceRail";
@@ -21,14 +20,11 @@ export function TrajectoryView({ model }: { readonly model: WorkspaceModel }) {
   const ledgerRef = useRef<HTMLDivElement | null>(null);
   const [rows] = useState(() => new Map<string, HTMLButtonElement>());
   const phase = projectionPhase(model);
-  // Every record as the shared gate judges it: the rail, the ledger and the inspector all read these.
-  const judged = useMemo(
-    () => model.items.map((item) => judgedItem(model, item)),
-    [model.items, model.source, model.verification],
-  );
+  // Every record is judged in the projection the model holds (core verification.ts): the rail, the ledger and the
+  // inspector read the same judgement, so none of them can call a record verified that the projection does not.
   const visible = useMemo(
-    () => visibleRecords({ items: judged, query: model.query, group: model.group }),
-    [judged, model.query, model.group],
+    () => visibleRecords({ items: model.items, query: model.query, group: model.group, projection: model }),
+    [model.items, model.query, model.group, model.source, model.verification],
   );
   const searching = model.query.trim() !== "";
   const tail = useTailWindow({ actions, pending: model.tailPending, count: model.items.length, ledgerRef });
@@ -63,7 +59,7 @@ export function TrajectoryView({ model }: { readonly model: WorkspaceModel }) {
         onGroup={actions.setGroup}
         onQuery={actions.setQuery}
       />
-      <SequenceRail items={judged} phase={phase} searching={searching} />
+      <SequenceRail items={model.items} phase={phase} searching={searching} projection={model} />
       <Ledger
         phase={phase}
         failure={failureText(model.error, model.status)}
@@ -74,6 +70,7 @@ export function TrajectoryView({ model }: { readonly model: WorkspaceModel }) {
         ledgerRef={ledgerRef}
         rows={rows}
         onSelect={(id, row) => shell.selectRecord(id, row)}
+        projection={model}
       />
       {tail.pending > 0 ? (
         <button type="button" className={styles.jump} onClick={tail.jump}>

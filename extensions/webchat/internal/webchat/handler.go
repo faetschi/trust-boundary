@@ -39,8 +39,9 @@ type staticRoute struct {
 // workspace only when that app is unavailable. /legacy/ is the deprecated legacy
 // workspace. Both are handled in newHandler, not in staticRoutes.
 const (
-	rootPath   = "/"
-	legacyPath = "/legacy/"
+	rootPath    = "/"
+	legacyPath  = "/legacy/"
+	faviconPath = "/favicon.ico"
 )
 
 // staticRoutes is a closed allowlist of the legacy workspace's assets. Only these
@@ -91,6 +92,11 @@ func newHandler(store *Store, options HandlerOptions, app *appBundle) http.Handl
 			return
 		case legacyPath:
 			serveLegacy(writer, app)
+			return
+		case faviconPath:
+			// No body and no Content-Type: the base security headers are already set
+			// above for every response.
+			writer.WriteHeader(http.StatusNoContent)
 			return
 		}
 		if route, ok := staticRoutes[path]; ok {
@@ -444,11 +450,12 @@ func boundedWrite(writer http.ResponseWriter, write func() error) error {
 	return err
 }
 
-// allowedMethods is the method policy for a path. Only "/" also answers HEAD, so a
-// HEAD probe of the entry point sees the same redirect or fallback as GET. HEAD is
-// refused everywhere else, so it cannot open the event stream.
+// allowedMethods is the method policy for a path. "/" and /favicon.ico also answer
+// HEAD, so a HEAD probe sees the same answer as GET: the redirect or fallback at "/",
+// and the 204 at /favicon.ico. HEAD is refused everywhere else, so it cannot open the
+// event stream.
 func allowedMethods(escaped string) []string {
-	if escaped == rootPath {
+	if escaped == rootPath || escaped == faviconPath {
 		return []string{http.MethodGet, http.MethodHead}
 	}
 	return []string{http.MethodGet}

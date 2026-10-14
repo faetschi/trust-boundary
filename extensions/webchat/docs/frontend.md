@@ -1,10 +1,9 @@
 # Web chat frontend (React scaffold, Phase 1)
 
-Status: **Phase 1 (scaffold) and Phase 2 (typed logic port) are committed.
-Phase 3 is pending. Not the product UI.** The React client is served
-under `/app/`, next to the vanilla UI. The vanilla UI is still the default at
-`/`. Phase 3 is the first point where the React client can replace it. The
-decision is in `adr-0001-optional-extension.md`.
+Status: **the React client is the default UI.** `/` redirects to `/app/`, and the
+vanilla UI is deprecated at `/legacy/` until sign-off (see the last section).
+Phase 1 (scaffold) and Phase 2 (typed logic port) are committed. The decision is
+in `adr-0001-optional-extension.md`.
 
 The scaffold renders one placeholder heading and the build version, and it
 proves the toolchain: TSX, CSS Modules extracted to a static `.css` file, a
@@ -155,11 +154,11 @@ and `/app` without the slash. The shell is served at `/app/` only, not at
 `/app/index.html`.
 
 When derivation fails, `/app/` answers 503 with the reason. Every other path
-under `/app/` is 404. The vanilla UI, the API and the fixture routes keep
-working. `tbound-webchat` prints a `note:` on stderr with the same reason at
-startup.
+under `/app/` is 404. `/` then serves the legacy workspace with a fallback notice
+instead of redirecting (see the last section), and the API keeps working.
+`tbound-webchat` prints a `note:` on stderr with the same reason at startup.
 
-The response headers are the same as for the vanilla UI. The
+The response headers are the same on every route. The
 Content-Security-Policy string is unchanged:
 
 ```
@@ -274,22 +273,28 @@ Each run, in order:
    canary is the only negative control in the tree. An earlier throwaway control,
    which also covered `onclick=`, `console.error` and a thrown exception, is not
    in the tree, and this check does not claim it.
-2. **Header probes.** Over plain HTTP, seven responses must carry the policy and
-   the expected status: `GET /`, `GET /api/v1/contract`, `GET /app/`, a missing
-   `/app/` asset (404), `POST /app/` (405), `GET /` with a foreign `Host` (403),
-   and `GET /app/` with a foreign `Origin` (403). The policy is read from the
-   `contentSecurityPolicy` constant in `handler.go`.
-3. **Browser audit of `/app/` and `/`.** For each page, the Document response's
+2. **Header probes.** Over plain HTTP, sixteen responses must carry the policy, the
+   expected status and the expected `Location`. `GET`, `HEAD` and `GET /?x=//evil.com`
+   on `/` are 302 to `/app/`, and no other probe is a redirect. The rest are
+   `POST /` (405), `GET /api/v1/contract`, `GET /app/` (200), a missing `/app/`
+   asset (404), `POST /app/` (405), `GET /legacy/` (200), `POST /legacy/` (405), an
+   unknown path (404), and a foreign `Host` or `Origin` (403) on `/`, `/app/` and
+   `/legacy/`. The policy is read from the `contentSecurityPolicy` constant in
+   `handler.go`. `routes_test.go` checks that the routes this script audits are the
+   Go route table, with the same kind and landing.
+3. **Browser audit of `/`, `/app/` and `/legacy/`.** `/` must land on `/app/`. For
+   each page, the Document response's
    `Content-Security-Policy`, as the browser received it, must equal the policy.
    There must be zero CSP violations (from `securitypolicyviolation` events and
    `security`-source console entries), zero console errors and zero uncaught
    exceptions, except one 404 for `/favicon.ico`. The pages have no favicon link,
    so the browser asks for the default icon. The count of allowed favicon 404s is
    printed. There must be zero `style` attributes and zero `on*` attributes.
-   `/app/` must render its banner with a CSS Modules class whose computed
-   background differs from a default probe element, and a linked stylesheet. `/`
-   must have its title, the claim strip, the chat view, and the chat and
-   trajectory tabs.
+   `/app/` (and `/`, which lands there) must render its banner with a CSS Modules
+   class whose computed background differs from a default probe element, and a
+   linked stylesheet. `/legacy/` must show the "Deprecated: legacy workspace" notice,
+   and have its title, the claim strip, the chat view, and the chat and trajectory
+   tabs.
 
 Exit codes: `0` PASS; `1` a check failed; `2` usage error (including port 8791,
 which is a stale build); `3` `NOT VERIFIED: no browser`; `4` `NOT VERIFIED`: the
@@ -313,7 +318,9 @@ The mutation runs and the live run are recorded with their commands in
 - **Phase 3:** replace `render.mjs` and `app.mjs` with React components, with
   native `<dialog>`, Popover and `<details>` for overlays. Parity is shown by the
   browser QA captures and the CSP smoke before `/` switches to the React client.
-  The vanilla assets are removed only after that switch.
+  The switch is done (see the last section): `/` redirects to `/app/`. The vanilla
+  assets stay under `/static/` and `/legacy/` until sign-off, and are removed only
+  after it.
 
 ## Claim boundary
 
@@ -362,7 +369,7 @@ evidence and the parity table are in `phase2-parity.md`.
   check.
 - **Claim boundary.** `UNKNOWN` stays `UNKNOWN`. A policy `ALLOW` is a permission and
   is never shown as a success. An unverified success is shown as `reported`, and
-  verified success needs a `VerifiedEvidence` value that only `verifyItem` creates.
+  verified success needs a `VerifiedEvidence` value that only `verifyIn` creates (core `verification.ts`).
 
 ## Phase 3a: the React foundation (2026-10-14)
 
@@ -441,7 +448,7 @@ vanilla UI.
 
 - ALLOW has the `allow` tone and a note that says it is a permission. It is never the
   `ok` tone.
-- A success reads `succeeded` only with `VerifiedEvidence` from `verifyItem`, in a live
+- A success reads `succeeded` only with `VerifiedEvidence` from `verifyIn`, in a live
   structural-audit projection. Otherwise it reads `reported`.
 - UNKNOWN, lost, unknown, pending, failed and denied each keep their own label, and none
   of them is in the success tone.
@@ -803,13 +810,12 @@ finding was run and failed (RED) before its fix, then the suite was run again (G
 are Windows (`gate.ps1`); WSL was not used. Core (`src/core/`), markdown, Go, scripts and the
 legacy UI are unchanged.
 
-**One verification gate.** `app/verification.ts` holds `isVerifiedIn(projection, item)`: a record
-is verified only in a live, structurally audited projection, and only with its own observed
-evidence. `confirmedIn` adds "not lossy". `judgedItem` hands the core a record whose scope is
-demoted when it is not verified in its projection, because `core/trajectory.ts` judges from the
-record alone. The record itself is not edited, and the Evidence section states the record's own
-authority and scope. Chat, the trajectory rows and rail, the inspector, the posture and the footer
-all ask this gate. No announcement carries a verification claim.
+**One verification gate.** The gate is core `verification.ts`: `isVerifiedIn(projection, item)` is
+true only in a live, structurally audited projection, and only for a record with its own observed
+evidence. `app/verification.ts` re-exports it, and `confirmedIn` adds "not lossy". The record model
+takes the projection, so the record alone never decides (see the claim gate section below). The
+Evidence section states the record's own authority and scope. Chat, the trajectory rows and rail,
+the inspector, the posture and the footer all ask this gate. No announcement carries a verification claim.
 
 1. **Verified gate inconsistent (fixed).** A streamed observed success in a fixture projection
    read `succeeded, verified` in the Trajectory view while Chat read it `reported`. The stream
@@ -896,13 +902,8 @@ Source tree: `frontend/src`, 146 files, the sha256 of the sorted per-file sha256
 changed tests.
 
 **Not done, or deliberately deferred.**
-- **Core still judges from the item.** `core/trajectory.ts` and `core/format.ts` take verification
-  from the record alone, and the app works around it with `judgedItem`. The core owner should take
-  the projection gate as an input. Core was out of scope here, so it is unchanged.
-- **Stream path versus snapshot.** The TypeScript validator refuses an observed record outside a live
-  snapshot, but `parseEvent` in `core/validate.ts` does not check an item event's source. The Go
-  boundary is the authority, so that check belongs there. Until then, a fixture snapshot followed by
-  an observed event is accepted by this client.
+- **Core judged from the item.** Closed in the claim gate section below (2026-10-14): the record model takes the projection.
+- **Stream path versus snapshot.** Closed in the claim gate section below (2026-10-14): a streamed item is judged in its bound projection, as Go's `Store.AppendItem` judges it.
 - **Footer.** The footer shows no verification-dependent count, so the gate has nothing to decide
   there. The footer changed only in its unavailable-before-load reading.
 - **Posture.** A verified lossy success is counted under `reported`, with a hint that says so. A
@@ -913,3 +914,76 @@ changed tests.
   double border, the drawer at 1024 px and the StrictMode announcements are checked in happy-dom and
   in the CSS source only. The shape contrast is checked by the token table, not on screen.
   Screen-reader output is not tested.
+
+## Claim gate in the core (2026-10-14)
+
+The two open items of the Phase 3 review are closed. The gate is now in the typed core, and a view cannot ask a record alone.
+
+- **Admission at the boundary.** `core/verification.ts` holds the admission rule, mirrored from the Go validator (`validateItem` and `Store.AppendItem`): an `authoritative` element is never admitted; an `observed` element only from a live source; an element's scope must equal its snapshot's. `core/validate.ts` applies it to served snapshot items and to streamed items. A streamed item is judged in the projection its stream is bound to. The stream reads that projection once, when it opens after a snapshot (`projectionOf`), so a reconnect to another source rebinds it atomically. A refused item is an `AdmissionError` (a `ContractError` with a typed `fault`).
+- **Recovery, not silence.** A refused or malformed streamed item is reported to `onError` and handed to `onInvalid`. The stream recovers from a snapshot with an `invalid_item` gap notice, the same notice a malformed item gets. The item is not applied.
+- **One gate.** `isVerifiedIn(projection, item)` is the only verified predicate. It is true only in a live structural projection, for an element that is observed and structurally audited. `isItemEvidenceOnly` is the element's own declaration, renamed from the legacy `isVerified` for the differential suite. `verifyIn(projection, item)` is the only producer of `VerifiedEvidence`.
+- **The record model takes the projection.** `recordDot`, `statusText`, `recordChips`, `recordDetail`, `recordOf`, `sequenceLanes`, `groupRecords` and `visibleRecords` take it. The app's `judgedItem` is deleted, and no file under `src/app` may name `isItemEvidenceOnly`, `isVerified` or `judgedItem` (`verification.gate.test.ts`). `app/verification.ts` re-exports the core gate.
+- **Surfaces.** `TrajectoryView`, `Ledger`, `RecordRow`, `SequenceRail` (`railLanes`) and `RecordInspector` pass the projection they are shown in. No view-level logic was added.
+- **Deviations.** D1 to D3, with their evidence tests, are in `phase2-parity.md` §4b.
+
+The property test (`app/verification.property.test.ts`) runs 160 seeded sequences of snapshots and streamed events through the same typed boundary the stream uses. After every step, every model function the views use is asked about every retained record. Outside a live structural projection, none reads a record as verified. The run also counts its own coverage (verified, refused and accepted), so it cannot pass vacuously.
+
+## Default UI switch: React at `/`, legacy at `/legacy/` (2026-10-14)
+
+The React client is now the default UI, as directed. The vanilla workspace stays as
+a deprecated page at `/legacy/` until the owner signs off its removal. Nothing legacy
+was deleted or edited.
+
+- **Routes.** `GET` or `HEAD /` is `302` to `/app/`. The target is a constant, and the
+  query string is ignored. `GET /legacy/` is the vanilla workspace with a deprecation
+  notice above `<main>`. Its shell and modules are unchanged and still served from
+  `/static/`. Other methods on `/` get `405` with `Allow: GET, HEAD`, and every other
+  route stays GET-only. Spellings that are not the exact `/` (`//`, `/%2f`, `/.`,
+  `/index.html`, `/static/..`) and `/legacy` are `404`, never a redirect. Host and
+  Origin pinning are unchanged.
+- **Fallback decision.** If the Vite manifest is missing or corrupt, `/app/` still
+  answers `503` with the reason. `/` and `/legacy/` then serve the legacy workspace
+  (`200`) with a "Fallback: legacy workspace" notice that names the reason, escaped for
+  HTML. `/` never redirects into a `503`: that would put the error on the entry point.
+- **Notices.** Both notices reuse the gateway's `notice` classes, so they need no inline
+  style and `styles.css` is unchanged. The served legacy page differs from
+  `assets/index.html` only by the notice, and a test checks that.
+- **Startup banner.** `tbound-webchat` prints `UI: http://host:port/ (React app at
+  /app/)` first, then the deprecated `/legacy/` URL. If the app is unavailable, the first
+  line says the legacy page is the fallback, and stderr gives the reason.
+- **Smoke.** `csp-smoke.mjs` audits `/` (it must land on `/app/`), `/app/` and `/legacy/`.
+  It sends 16 header probes, including the redirect's status and exact `Location`,
+  `HEAD /`, the 405s, a 404, and foreign Host and Origin 403s. Its `GATEWAY_ROUTES` list
+  is checked against the Go route table by `routes_test.go`. The canary, the policy
+  source and the exit codes are unchanged.
+- **Tests.** New `internal/webchat/routes_test.go` (10 tests). The foreign Host and Origin
+  test in `app_test.go` now also covers `/`, `/legacy/` and the fallback. New
+  `cmd/tbound-webchat` startup-banner test.
+
+Verification, in WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under `$HOME`):
+
+| Gate | Command | Exit | Result |
+|---|---|---|---|
+| gofmt | `gofmt -l .` in `extensions/webchat` | 0 | no output |
+| vet | `go vet -mod=readonly ./...` | 0 | clean |
+| Go | `go test -race -mod=readonly -count=1 -v ./...` | 0 | 50 PASS, 0 SKIP, 0 FAIL (39 before, +11 new) |
+| Node | `node --test internal/webchat/jstest/*.test.mjs` | 0 | 258 pass, 0 fail, 0 skipped (unchanged) |
+| Boundary | `sh scripts/check-extension-boundary.sh` at the repo root | 0 | OK |
+| Core | `cd supervisor && go build ./... && go vet ./...` | 0 | clean |
+| Mutation | skip `authorizeRequest` for `/` in a throwaway copy | 1 | `TestAppRefusesForeignHostAndOrigin` and `TestRootRejectsOtherMethodsAndAdvertisesGetAndHead` fail |
+| Browser | `node scripts/csp-smoke.mjs --url http://127.0.0.1:18832` (Windows Node, Chrome 155) | 0 | PASS: 16 header probes; `/` lands on `/app/`; `/app/` and `/legacy/` clean; observer live (4 canary violations) |
+
+The browser run used a gateway built in WSL from the final tree (binary SHA-256
+prefix `8fffae34084d5ef7`). Source SHA-256 prefixes: `handler.go` `757ab08b184e0a52`,
+`app.go` `7c872c8cb17f35d8`, `app_test.go` `5df9a8a15f3faced`, `routes_test.go`
+`3e64716e9016fbdc`, `cmd/tbound-webchat/main.go` `932a5e82e0a58d93`,
+`cmd/tbound-webchat/main_test.go` `9790f5ae161024e5`, `scripts/csp-smoke.mjs`
+`4240751741e565a5`. The legacy `assets/index.html` is unchanged.
+
+These are component and UI checks. They establish no claim: G1=false, containment
+not-established, H1 unexecuted.
+
+Not done: the legacy assets, the legacy tests and `/legacy/` are not removed; that
+waits for sign-off. The fallback path has Go tests only, with no browser check. `/app`
+without a trailing slash is still `404`. Screen-reader behaviour of the notices is not
+tested.

@@ -34,6 +34,11 @@ export function connectionStatus(state: ConnectionState, warning: string, error:
 
 export const WINDOW_GAP_TEXT = "Earlier history not loaded. No success is inferred for it.";
 
+// The accessible names of the two window notices. The window gap says the history is not complete; the
+// eviction count says how many records left the window. Each names its own fact, so no two share a name.
+export const WINDOW_GAP_LABEL = "History not loaded";
+export const EVICTED_LABEL = "Records no longer retained";
+
 // A continuity gap that the client recovered from a snapshot. The text says so, because
 // a recovered gap is not a failure, and it never implies that a missing element succeeded.
 export function gapText(gap: StoredGap): string {

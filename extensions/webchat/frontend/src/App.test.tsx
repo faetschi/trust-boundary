@@ -12,7 +12,10 @@ describe("App: first render", () => {
     expect(html).toContain("tbound web chat");
     expect(html).toContain("build 0.1.0");
     expect(html).toContain("Presentation only");
-    expect(html).toContain("not-established");
+    expect(html).toContain("Display only: these values are copied from the projection and are not evidence.");
+    // Before a projection loads, a claim value is unavailable, never a literal copied into the page.
+    expect(html).toContain("unavailable (no projection loaded)");
+    expect(html).not.toContain("not-established");
   });
 
   it("has no inline style, no event-handler attribute and no script element", () => {

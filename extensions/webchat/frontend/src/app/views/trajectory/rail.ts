@@ -1,12 +1,12 @@
 // The sequence rail's lanes and their words. Pure: no DOM, no React.
 //
 // Core sequenceLanes folds a LOST outcome into DENY. LOST is uncertain, not a refusal, so the rail keeps
-// the record's own tone (core recordDot) and states each tone in its own words. The records are the ones
-// the shared gate judges (verification.ts judgedItem), so a fixture projection never draws a success as
-// verified.
+// the record's own tone (core recordDot) and states each tone in its own words. Each record is judged in the
+// projection the rail is drawn from (core verification.ts), so a fixture projection never draws a success as verified.
 
 import type { ItemView } from "../../../core/contract";
 import { recordDot, type RailTone } from "../../../core/trajectory";
+import type { ProjectionState } from "../../../core/verification";
 
 export interface RailSegment {
   readonly tone: RailTone;
@@ -60,12 +60,12 @@ export function railToneText(tone: string): string {
 // The lanes over every retained record, in record order. Every lane walks the same order, so the three
 // share one axis, and a lane's muted spans show what it did not touch at that position. No span is a
 // duration.
-export function railLanes(items: readonly ItemView[]): RailModel {
+export function railLanes(items: readonly ItemView[], projection: ProjectionState | null | undefined): RailModel {
   const lanes: RailLane[] = [];
   for (const lane of LANES) {
     const segments: RailSegment[] = [];
     for (const item of items) {
-      const tone: RailTone = lane.match(item) ? recordDot(item) : "muted";
+      const tone: RailTone = lane.match(item) ? recordDot(item, projection) : "muted";
       const last = segments[segments.length - 1];
       if (last && last.tone === tone) last.weight += 1;
       else segments.push({ tone, weight: 1 });

@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
-// One verification gate on every surface (verification.ts). The same observed, structurally audited
-// records are streamed into a fixture projection and into a live one. The stream does not refuse an
-// observed record against the snapshot's source (only the snapshot is checked), so a fixture
-// projection can hold one. In that projection every surface must read it as reported, and only a
-// live structural-audit projection may read it as verified. Mounted in the real shell and store.
+// One verification gate on every surface (verification.ts). A fixture or replay projection never presents a
+// streamed record as verified. An observed, structurally audited record streamed into one is refused at the typed
+// boundary (core validate.ts): it never reaches a surface, and the reader is told why. A record the projection
+// does admit (diagnostic, unverified) reads as reported on every surface. Only a live structural-audit projection
+// may read the observed records as verified. Mounted in the real shell and store.
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CONTRACT_VERSION, type Item, type Snapshot } from "../core/contract";
@@ -27,7 +27,16 @@ function observedRecords(): Item[] {
   ];
 }
 
-async function open(snapshot: Snapshot): Promise<void> {
+// The same two records as a fixture or replay projection may carry them: diagnostic and unverified.
+function diagnosticRecords(): Item[] {
+  const evidence = { authority: "diagnostic", verification_scope: "unverified-input" } as const;
+  return [
+    decisionItem({ id: "d1", sequence: 2, tool: "bash", tool_call_id: "c1", verdict: "ALLOW", ...evidence }),
+    resultItem({ id: "r1", sequence: 3, tool: "bash", tool_call_id: "c1", state: "succeeded", ...evidence }),
+  ];
+}
+
+async function open(snapshot: Snapshot, records: Item[] = observedRecords()): Promise<void> {
   shim = installMatchMedia(1440);
   fake = fakeWorkspace(snapshot);
   mounted = mount(
@@ -37,7 +46,7 @@ async function open(snapshot: Snapshot): Promise<void> {
   );
   await settle();
   act(() => fake.sources[0]?.open());
-  for (const item of observedRecords()) {
+  for (const item of records) {
     act(() => {
       fake.sources[0]?.emit("item", { schema_version: CONTRACT_VERSION, cursor: `e1:${item.sequence}`, kind: "item", item });
     });
@@ -100,17 +109,22 @@ describe(`one verification gate on every surface: a ${source} projection never r
   const fixture = () =>
     snapshotOf({ source, items: [messageItem({ id: "m1", sequence: 1, role: "user", text: "list files" })] });
 
-  it("the chat chips, the posture and the announcer read the streamed success as reported", async () => {
+  it("refuses a streamed observed success at the boundary: no surface shows it, and the reader is told why", async () => {
     await open(fixture());
+    expect(root().textContent).toContain("Continuity gap (invalid item)");
+    expect(root().querySelector("button[data-record-row][data-id='r1']")).toBeNull();
+    expect(chatChips().some(([text]) => text === "succeeded" || text === "reported")).toBe(false);
+    expect(postureText()).not.toMatch(/verified|reported|ALLOW|DENY/);
+    expect(root().querySelector("[role='status']")?.textContent ?? "").not.toMatch(/succeeded|verified/);
+  });
+
+  it("a success the projection admits reads as reported on every surface, never verified", async () => {
+    await open(fixture(), diagnosticRecords());
     expect(chatChips()).toContainEqual(["reported", "reported"]);
     expect(chatChips().some(([text]) => text === "succeeded")).toBe(false);
     expect(postureText()).toMatch(/reported 1/);
     expect(postureText()).not.toMatch(/verified 1/);
     expect(root().querySelector("[role='status']")?.textContent ?? "").not.toMatch(/succeeded|verified/);
-  });
-
-  it("the trajectory row, its dot and the sequence rail read the streamed success as reported, never ok", async () => {
-    await open(fixture());
     trajectory();
     const row = rowOf("r1");
     expect(row.getAttribute("aria-label")).toMatch(/Result: succeeded, reported, not independently verified/);
@@ -120,18 +134,16 @@ describe(`one verification gate on every surface: a ${source} projection never r
     const tools = root().querySelector("[role='img'][aria-label^='Tools lane']");
     expect(tools?.getAttribute("aria-label")).toMatch(/succeeded, reported, not independently verified/);
     expect(tools?.getAttribute("aria-label")).not.toMatch(/succeeded, verified/);
-  });
-
-  it("the record inspector reads independently verified: no, with the state as reported", async () => {
-    await open(fixture());
-    trajectory();
     click(rowOf("r1"));
     expect(evidenceValue("independently verified")).toBe("no");
     const state = root().querySelector("aside [data-section='result'] [data-tone]");
     expect(state?.textContent).toBe("reported");
   });
+});
+}
 
-  it("a live structural-audit projection reads the same records as verified, on every surface", async () => {
+describe("one verification gate on every surface: a live structural-audit projection", () => {
+  it("reads the same observed records as verified, on every surface", async () => {
     const live = snapshotOf({
       source: "live",
       verification_scope: "structural-audit-only",
@@ -149,4 +161,3 @@ describe(`one verification gate on every surface: a ${source} projection never r
     expect(evidenceValue("independently verified")).toBe("yes");
   });
 });
-}

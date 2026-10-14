@@ -61,7 +61,8 @@ const NO_GOVERNANCE = "the snapshot carries no governance panel";
 const NO_PUBLICATION = "the snapshot carries no publication panel";
 const NO_RECOVERY = "the snapshot carries no recovery panel";
 const NO_PROVENANCE = "the snapshot carries no provenance panel";
-const NO_QUALIFICATION = "the snapshot carries no qualification panel";
+export const NO_QUALIFICATION = "the snapshot carries no qualification panel";
+const NOT_PROJECTED = "not projected by the source";
 
 export function governanceRows(panel: GovernancePanel | null | undefined): Array<readonly [string, Reading]> {
   return [
@@ -168,12 +169,18 @@ export function provenanceRows(
 }
 
 
-export function qualificationRows(panel: QualificationPanel | null | undefined): Array<readonly [string, Reading]> {
+// The qualification values as the projection states them. A panel that is absent gives `absentReason`; a
+// present panel that does not carry a value gives that value as not projected. Nothing here is a default.
+export function qualificationRows(
+  panel: QualificationPanel | null | undefined,
+  absentReason: string = NO_QUALIFICATION,
+): Array<readonly [string, Reading]> {
+  const missing = panel ? NOT_PROJECTED : absentReason;
   return [
-    ["G1", flagReading(panel?.g1, NO_QUALIFICATION)],
-    ["H1", textReading(panel?.h1, NO_QUALIFICATION)],
-    ["Containment", textReading(panel?.containment, NO_QUALIFICATION)],
-    ["Claim-bearing", flagReading(panel?.claim_bearing, NO_QUALIFICATION)],
+    ["G1", flagReading(panel?.g1, missing)],
+    ["H1", textReading(panel?.h1, missing)],
+    ["Containment", textReading(panel?.containment, missing)],
+    ["Claim-bearing", flagReading(panel?.claim_bearing, missing)],
   ];
 }
 

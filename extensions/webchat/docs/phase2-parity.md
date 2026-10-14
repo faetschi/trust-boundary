@@ -15,7 +15,7 @@ never as verified. Green tests here verify code only.
 
 | Legacy module (`internal/webchat/assets/`) | Ported to (`frontend/src/core/`) | Notes |
 |---|---|---|
-| `format.mjs` | `format.ts` | `isVerified` takes any string and fails closed. `verifyItem` is the only way to make the `VerifiedEvidence` brand. |
+| `format.mjs` | `format.ts`, `verification.ts` | `isVerified` is `isItemEvidenceOnly` (`verification.ts`): the item-only judgement, renamed, and it fails closed on any string. `verifyIn(projection, item)` is the only way to make the `VerifiedEvidence` brand. |
 | `filters.mjs` | `filters.ts` | Read model: takes partial items (`ItemView`). |
 | `store.mjs` | `store.ts` | Takes validated contract values. Legacy defensive checks kept. |
 | `trajectory.mjs` | `trajectory.ts` | Read model: takes partial items (`ItemView`). |
@@ -101,7 +101,7 @@ contents included) is compared after every step.
 
 | Corpus | Seed | Comparisons (each a deep-equal of two outputs) |
 |---|---|---:|
-| format helpers (`slug`, `humanize`, `isVerified`, `isVerifiedProjection`, `stateChipClass`, `verdictChipClass`, `toolGlyph`, `shortDigest`, `formatClock`, `formatStamp`, constants) | `0x5eed0001` | 23,364 |
+| format helpers (`slug`, `humanize`, `isItemEvidenceOnly`, `isVerifiedProjection`, `stateChipClass`, `verdictChipClass`, `toolGlyph`, `shortDigest`, `formatClock`, `formatStamp`, constants) | `0x5eed0001` | 23,364 |
 | filters (`matchesFilter`, `filterItems`, `countFilter`, `governanceCounts`, `FILTERS`) | `0x5eed0002` | 50,634 |
 | store reducers: 120 runs × 250 steps, plus 3 long runs × 1,400 steps (run 0 has no snapshots, so the client cap trims with no earlier server loss); `groupTurn`/`turnsOf` every 10 steps | `0x5eed0003`, `0x5eed0004` | 40,200 |
 | trajectory (every projection, `visibleRecords`, `sequenceLanes`, `searchRecords`, `groupRecords`) | `0x5eed0005` | 48,359 |
@@ -162,18 +162,36 @@ legacy tests and the differential exercise is identical.
    returns decoded JSON unchanged, because `api.test.mjs` depends on it. The
    validated wrappers (`fetchValidatedSnapshot`, `openValidatedEventStream`) run the
    strict validator at the JSON boundary, and a payload that fails rejects or goes to
-   `onError`. Phase 3 wiring should use the validated wrappers.
+   `onError`. A streamed item the projection refuses or the contract rejects also goes
+   to `onInvalid`, and the stream recovers from it (§4b, D3). Phase 3 wiring uses the
+   validated wrappers.
 3. **Read model vs boundary types.** `format`, `filters` and `trajectory` take
    `ItemView` (`Partial<ItemFields>`), because the legacy tests and the read model
    handle partial elements. `store` and `stream` take the validated `Item` and
    `Snapshot`.
 4. **Verified gate as a type.** A success is `ok` only with a `VerifiedEvidence`
-   value, which only `verifyItem` creates. `successChipClass` reads `reported`
-   without one.
+   value, which only `verifyIn(projection, item)` creates (`verification.ts`). The
+   gate also takes the projection, so `successChipClass` reads `reported` without
+   one, and the record model (`recordDot`, `statusText`, ...) takes the projection
+   too: see §4b, D1.
 5. **`setFilter` takes `FilterId`.** The legacy accepted any value. Runtime behaviour
    for a value outside the set is unchanged, but the type refuses it.
 6. **Strict validator.** `validate.ts` is a TypeScript mirror of `validate.go`
    (§5). Where it is stricter than Go, the difference is listed there.
+
+## 4b. Deliberate deviations (stricter than the legacy modules)
+
+Added 2026-10-14 with the claim gate (`verification.ts`). Each row is a place where the port gives a different answer from the baseline in the "Before" column, for an input that baseline accepted. The baseline is the legacy module where one exists, and otherwise the port before this change (the legacy stream has no contract validator). Every row names the test that holds the new behaviour. Where Go already refused the case, the port now matches Go, and the Go rule is named.
+
+| ID | What differs | Before | Port | Why | Evidence test |
+|---|---|---|---|---|---|
+| D1 | A record's verified judgement in the record model | `recordDot`, `statusText`, `recordChips`, `recordDetail`, `recordOf`, `sequenceLanes`, `groupRecords` and `visibleRecords` judge the record alone. An observed, structurally audited success is `ok` in any projection | Each takes the projection. `ok` and the verified words appear only in a live structural projection | A claim must hold where it is shown. The item-only judgement is what made the app's `judgedItem` compensation necessary | `differential.test.ts` §F (D1); `trajectory.test.ts` "outside a live structural projection..."; `verification.property.test.ts` |
+| D2 | Admission of a streamed item | `applyItem` takes any item with a valid sequence. Nothing checks a streamed item against its snapshot | `parseEvent` judges each streamed item in the projection its stream is bound to. `authoritative` is refused everywhere, `observed` outside a live source, and the scope must equal the snapshot's. This is the rule of Go's `validateItem` and `Store.AppendItem`, which the port did not apply to events | An observed record streamed into a fixture or replay projection could read as verified. It was the open item of the Phase 3 review | `admission.test.ts` (a 24-row table: fixture, replay and live, times four authorities, times two scopes; each row through a served snapshot and a streamed item; and the typed faults); `boundary.test.ts` "refused, reported, and handed to onInvalid"; `workspaceStore.test.ts` "claim gate end to end"; `verification.surfaces.test.tsx` |
+| D3 | A streamed item that the contract or the projection refuses, or whose payload is not JSON | Reported to `onError` and dropped. The stream keeps going, so the gap is silent until a later sequence check | Reported to `onError` as before, and also handed to `onInvalid`. The stream recovers from a snapshot with an `invalid_item` notice, as it does for a malformed item | A dropped item must be disclosed, not left as a hole in the window | `stream.test.ts` "an item the projection refuses recovers from a snapshot..."; `boundary.test.ts` "an admitted item never reaches onInvalid, and a contract failure reaches it as well as onError" and "an item payload that is not JSON is reported and handed to onInvalid too" |
+
+Renames, with no change of behaviour: `isVerified` is now `isItemEvidenceOnly`, and `verifyItem` is now `verifyIn(projection, item)`. The single verified predicate is `isVerifiedIn(projection, item)`. `src/app` may not name the item-only predicate or `judgedItem` (`verification.gate.test.ts`).
+
+The differential suite is not weakened to pass. Its trajectory corpus is judged in the live structural projection, where the legacy item-only judgement and the port agree exactly. `differential.test.ts` §F holds D1 outside that projection.
 
 ## 5. Validator vs `validate.go` (strictness only)
 
@@ -212,6 +230,22 @@ by the agent that made it:
 - One documented boundary cast: `differential.test.ts`, the legacy loader (`mod as T`
   after each export is checked at run time). No `any`, no `as unknown as`, no
   `@ts-ignore` anywhere in `src/core`.
+
+### Claim gate changes (2026-10-14, A1)
+
+Every existing assertion is kept, with the one exception listed under "replaced". Each change is a new argument, a rename, or a new case.
+
+- `trajectory.test.ts`: the record model takes the projection. Every existing call passes `LIVE_PROJECTION`, a live structural projection, where the judgement is the legacy one. A block at the end, "The claim gate in the model", is new.
+- `fixtures.test.ts`: `parseEvent` takes a bound projection (a fixture, for the demo's streamed items). The demo's claim-boundary checks pass the fixture projection. `verifyItem` becomes `verifyIn`, and the "ok" case passes a live projection.
+- `format.test.ts`: `isVerified` is renamed `isItemEvidenceOnly`. The assertions are the same.
+- `differential.test.ts`: the legacy `isVerified` is compared with `isItemEvidenceOnly`. The trajectory comparisons run in the live structural projection (see §4b). Section F adds D1.
+- `boundary.test.ts`: the validated-stream helper takes a projection (default: the fixture projection, which admits the existing items) and an `onInvalid` handler. Four tests are new. No existing assertion is changed.
+- `stream.test.ts`: two TypeScript-only tests are appended. No ported legacy test is changed.
+- `admission.test.ts` and `verification.test.ts` are new.
+- `app/verification.test.ts`: the four `judgedItem` cases are replaced by four model-level cases on `statusText`. The function they called is deleted. The same guarantees are asserted: verified in a live projection; not verified in a fixture projection; the record is not edited; a record never verified reads as reported.
+- `app/verification.surfaces.test.tsx`: the fixture and replay cases changed. These are the one replaced expectations, because they encoded the hole. A streamed observed record in a fixture or replay projection is now refused at the boundary. The test asserts that no surface shows it and that the gap notice says so ("Continuity gap (invalid item)"). The "reads as reported on every surface" assertions (chips, posture, announcer, trajectory row, rail, inspector) are kept, on a diagnostic, unverified success that the projection admits. The live case is unchanged, and moved out of the per-source loop, where it ran twice with identical assertions.
+- `app/workspaceStore.test.ts`: three end-to-end claim-gate cases are appended.
+- `app/verification.gate.test.ts` and `app/verification.property.test.ts` are new.
 
 ## 7. Legacy behaviour found while porting (reported, not fixed)
 
@@ -288,3 +322,29 @@ Worktree note. At the time of the run, other uncommitted work shared this worktr
 used those files as they were, and they passed. `internal/webchat/assets/`,
 `jstest/`, `package.json`, the lockfile, `vite.config.ts` and `tsconfig.json` are
 unchanged by this phase.
+
+## 10. Claim gate receipts (2026-10-14, A1)
+
+Frontend directory: `extensions/webchat/frontend`. All gates ran on Windows through `gate.ps1`, which copies `extensions/webchat` into a scratch directory with Windows `node_modules` and runs there. WSL was not used. Exit codes are from the run named.
+
+| Command | Exit | Result |
+|---|---:|---|
+| `gate.ps1 -Task verify`, before the change (baseline) | 0 | 54 files, 802 passed, 0 skipped |
+| `gate.ps1 -Task test`, after the new tests and before the code (red) | 1 | 9 files failed, 18 tests failed, 849 passed of 867. Every failure is a claim-gate case |
+| `gate.ps1 -Task verify`, final | 0 | `tsc` clean; vitest 58 files, 879 passed, 0 skipped; `check:sinks` 0 findings; `check:deps` OK |
+| `gate.ps1 -Task go`, final | 0 | `go vet` clean; `go test -mod=readonly -count=1` ok for `cmd/tbound-webchat` and `internal/webchat`; gofmt clean. This is the shared worktree, so it includes other uncommitted Go changes |
+| mutation M1, admit an observed record outside a live source (private copy) | 1 | 13 of 176 tests fail: the admission table, `verification.test`, `boundary`, the property |
+| mutation M2, the record model judges from the record alone (private copy) | 1 | 5 fail: the property, the app `verification.test`, differential D1, two trajectory cases |
+| mutation M3, no recovery on a refused streamed item (private copy) | 1 | 4 fail: two surfaces refusal cases, the store end-to-end case, the stream recovery case |
+| mutation M4, no hand-off to `onInvalid` for an item payload that is not JSON (private copy) | 1 | 1 fails: the new `boundary` case |
+
+Mutations were applied to a private copy under the temporary directory. The shared gate scratch and the worktree were not changed by them.
+
+Property totals (`verification.property.test.ts`, seeds 1 to 160, 40 steps each): 10,101 non-live record checks; 381 verified records in a live structural projection; 535 refused snapshots; 2,618 refused events; 2,475 accepted events.
+
+Source hash. `frontend/src` has 151 files (30 under `core/`, 53 under `app/`). Each file's sha256 is listed by path, sorted; the hash of that list is `cf6de707d1c60f5d61f573eebfced8034cea129b81dd8beaa4f4e66f3269ca46`. It was computed after the last source edit, on the tree the final verify and go runs used.
+
+Not run here:
+- `npm run build`, by instruction (the build owner rebuilds `dist/`). So `npm run repro` is expected to fail until `dist/` is rebuilt and committed, and the served `/app/` bundle is the pre-change one until then.
+- Go `-race` and the WSL/Linux gates, which AGENTS.md requires for a final verification. These results are Windows only.
+- The csp-smoke browser check.

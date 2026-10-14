@@ -213,9 +213,11 @@ export function createWorkspaceStore(deps: WorkspaceDeps): WorkspaceStore {
         return openValidatedEventStream(deps.openSource, {
           cursor: handlers.cursor,
           nowMs: deps.nowMs,
+          projection: handlers.projection,
           onItem: handlers.onItem,
           onSession: handlers.onSession,
           onGap: handlers.onGap,
+          onInvalid: handlers.onInvalid,
           onConnection: handlers.onConnection,
           onError: handlers.onError,
         });
