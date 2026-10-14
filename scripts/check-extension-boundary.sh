@@ -84,7 +84,7 @@ check_tree() {
 		report "(c) extension imports a core or foreign tbound package:"
 		cat "$SCRATCH/c" >&2
 	fi
-	if grep -n 'tbound/' "$root/extensions/webchat/go.mod" | grep -v -E '^[0-9]+:module tbound/webchat$' >/dev/null; then
+	if grep -n 'tbound/' "$root/extensions/webchat/go.mod" | grep -v -E '^[0-9]+:module tbound/webchat[[:space:]]*$' >/dev/null; then
 		report "(c) extensions/webchat/go.mod names a tbound module other than tbound/webchat"
 	fi
 

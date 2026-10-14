@@ -541,3 +541,18 @@ are preparation only. Media custody and exact ABI checks precede registration.
 - Fixed a flaky wall-clock bound in the markdown streaming perf test (work counter is now
   the real assertion).
 - Environment: the WSL VM hung (wsl --shutdown also hangs; vmmem not killable without admin).
+
+## Linux re-verification of Phase 3a (2026-10-14, after WSL was restarted)
+
+Export of HEAD 58492c5 into WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under $HOME):
+- extensions/webchat: gofmt clean, vet 0, `go test -race -count=1 -v` 39 PASS 0 FAIL 0 SKIP;
+  legacy node suite 258/258 0 skipped.
+- frontend: `npm ci --ignore-scripts` 0 vulnerabilities; tsc 0; vitest 513/513 (43 files);
+  check:sinks and check:deps with self-tests OK; a clean Linux rebuild of dist/ is byte-identical
+  to the committed dist/ (which was built on Windows), so the Windows/Linux builds agree.
+- core supervisor: gofmt clean, build 0, vet 0, `go test -race -v ./...` 487 PASS, 7 SKIP (same set
+  as before), only FAIL = internal/evaluationindex on the git-archive export (it reads
+  ../../../docs/...json, which the export omits); the same package passes (ok, 1.1s) in the real
+  worktree.
+- Boundary guard rule (c) now tolerates a trailing CR in go.mod (a Windows autocrlf checkout or
+  `git archive` export produces CRLF); self-test 8/8.
