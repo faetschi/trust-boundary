@@ -16,13 +16,14 @@ import (
 func TestCatalogOwnerDrainRequiresCleanupReceiptOrLiveScope(t *testing.T) {
 	root := t.TempDir()
 	digest := "sha256:" + strings.Repeat("a", 64)
+	bareDigest := strings.Repeat("a", 64)
 	workflow := "workflow-test"
 	entry := piServiceWorkflowEntry{
 		AdmissionRecordHash: digest, WorkflowID: workflow, CheckpointBound: true,
 	}
 	incarnation := workflowrecovery.OwnerIncarnation{
-		Digest: digest, BootID: "different-boot", PID: 424242, StartTimeTicks: 1,
-		PIDNamespaceInode: 1, EffectiveUID: uint32(os.Geteuid()), CgroupIdentityDigest: digest,
+		Digest: bareDigest, BootID: "different-boot", PID: 424242, StartTimeTicks: 1,
+		PIDNamespaceInode: 1, EffectiveUID: uint32(os.Geteuid()), CgroupIdentityDigest: bareDigest,
 	}
 	owner := workflowrecovery.OwnerEpochIdentity{Epoch: 1, Incarnation: incarnation}
 	catalog := &piServiceWorkflowCatalog{entries: map[string]piServiceWorkflowEntry{digest: entry}}

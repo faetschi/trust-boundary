@@ -172,8 +172,8 @@ func openPiServiceWorkflowCatalog(path string) (*piServiceWorkflowCatalog, error
 			catalog.byHostAdmissionID[event.Entry.HostAdmissionID] = event.AdmissionHash
 		case "pi_workflow_fresh_authorized":
 			if record.Event.ID != workflowCatalogEventID("fresh", event.AdmissionHash) || !exists || entry.FreshAuthorizationUsed ||
-				event.OwnerEpoch != 1 || !validDigestText(event.Digest) || !validDigestText(event.RootIdentity) ||
-				!validDigestText(event.StoreIdentity.Digest) || event.StoreIdentity.Path != entry.OwnerDBPath ||
+				event.OwnerEpoch != 1 || !validBareWorkflowDigest(event.Digest) || !validBareWorkflowDigest(event.RootIdentity) ||
+				!validBareWorkflowDigest(event.StoreIdentity.Digest) || event.StoreIdentity.Path != entry.OwnerDBPath ||
 				!validWorkflowOwnerIncarnation(event.Incarnation) {
 				_ = journal.Close()
 				return nil, ErrPiWorkflowCatalog
@@ -195,7 +195,7 @@ func openPiServiceWorkflowCatalog(path string) (*piServiceWorkflowCatalog, error
 			catalog.entries[event.AdmissionHash] = entry
 		case "pi_workflow_checkpoint_advanced":
 			if record.Event.ID != workflowCatalogEventID("advance", event.AdmissionHash) || !exists ||
-				!entry.CheckpointBound || !validDigestText(event.Digest) || event.Digest == entry.LatestCheckpointDigest {
+				!entry.CheckpointBound || !validBareWorkflowDigest(event.Digest) || event.Digest == entry.LatestCheckpointDigest {
 				_ = journal.Close()
 				return nil, ErrPiWorkflowCatalog
 			}
@@ -457,9 +457,9 @@ func (a *productionWorkflowAdmission) CloseOwner() error {
 func (c *piServiceWorkflowCatalog) AuthorizeFreshWorkflow(ctx context.Context, workflow string, ownerEpoch uint64,
 	initialDigest string, incarnation workflowrecovery.OwnerIncarnation, deadline time.Time, rootIdentity string,
 	store workflowrecovery.OwnerStoreIdentity) error {
-	if c == nil || ctx == nil || ctx.Err() != nil || ownerEpoch != 1 || !validDigestText(initialDigest) ||
-		deadline.IsZero() || deadline.Location() != time.UTC || !validDigestText(rootIdentity) || !validWorkflowOwnerIncarnation(incarnation) ||
-		!validDigestText(store.Digest) || store.Path == "" {
+	if c == nil || ctx == nil || ctx.Err() != nil || ownerEpoch != 1 || !validBareWorkflowDigest(initialDigest) ||
+		deadline.IsZero() || deadline.Location() != time.UTC || !validBareWorkflowDigest(rootIdentity) || !validWorkflowOwnerIncarnation(incarnation) ||
+		!validBareWorkflowDigest(store.Digest) || store.Path == "" {
 		return errors.Join(workflowrecovery.ErrFreshAuthorization, ErrPiWorkflowCatalog)
 	}
 	c.mu.Lock()
@@ -495,7 +495,7 @@ func (c *piServiceWorkflowCatalog) BindInitialCheckpoint(admission *productionWo
 	receipt workflowrecovery.Receipt) error {
 	if c == nil || admission == nil || admission.Catalog != c || admission.Mode != "fresh" ||
 		receipt.WorkflowID() != admission.Entry.WorkflowID ||
-		receipt.SessionID() != admission.Entry.SessionID || !validDigestText(receipt.CheckpointDigest()) {
+		receipt.SessionID() != admission.Entry.SessionID || !validBareWorkflowDigest(receipt.CheckpointDigest()) {
 		return ErrPiWorkflowCatalog
 	}
 	c.mu.Lock()
@@ -516,7 +516,8 @@ func (c *piServiceWorkflowCatalog) BindInitialCheckpoint(admission *productionWo
 }
 
 func (c *piServiceWorkflowCatalog) MarkCheckpoint(admissionHash, previousDigest, nextDigest string) error {
-	if c == nil || !validDigestText(admissionHash) || !validDigestText(previousDigest) || !validDigestText(nextDigest) || previousDigest == nextDigest {
+	if c == nil || !validDigestText(admissionHash) || !validBareWorkflowDigest(previousDigest) ||
+		!validBareWorkflowDigest(nextDigest) || previousDigest == nextDigest {
 		return ErrPiWorkflowCatalog
 	}
 	c.mu.Lock()
@@ -535,7 +536,7 @@ func (c *piServiceWorkflowCatalog) MarkCheckpoint(admissionHash, previousDigest,
 }
 
 func (c *piServiceWorkflowCatalog) MarkTerminal(admissionHash, checkpointDigest string) error {
-	if c == nil || !validDigestText(admissionHash) || !validDigestText(checkpointDigest) {
+	if c == nil || !validDigestText(admissionHash) || !validBareWorkflowDigest(checkpointDigest) {
 		return ErrPiWorkflowCatalog
 	}
 	c.mu.Lock()
@@ -954,8 +955,9 @@ func workflowEnvelopeMatchesRequest(config piServiceConfig, request piServiceReq
 }
 
 func validWorkflowOwnerIncarnation(value workflowrecovery.OwnerIncarnation) bool {
-	return value.Digest != "" && value.BootID != "" && value.PID > 0 && value.StartTimeTicks > 0 &&
-		value.PIDNamespaceInode > 0 && value.EffectiveUID == uint32(os.Geteuid()) && value.CgroupIdentityDigest != ""
+	return validBareWorkflowDigest(value.Digest) && value.BootID != "" && value.PID > 0 && value.StartTimeTicks > 0 &&
+		value.PIDNamespaceInode > 0 && value.EffectiveUID == uint32(os.Geteuid()) &&
+		validBareWorkflowDigest(value.CgroupIdentityDigest)
 }
 
 func workflowCatalogEventID(kind, admissionHash string) string {

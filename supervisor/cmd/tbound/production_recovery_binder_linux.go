@@ -583,7 +583,8 @@ func productionRecoveryGitPin(trace audit.Trace, pins workflowrecovery.Pins) (se
 		}
 		selected = &ready
 	}
-	if selected == nil || !validDigestText(pins.D06ProvenanceDigest) || !validDigestText(pins.PrivateGitIdentityDigest) {
+	if selected == nil || !validBareWorkflowDigest(pins.D06ProvenanceDigest) ||
+		!validBareWorkflowDigest(pins.PrivateGitIdentityDigest) {
 		return sessionlaunch.RecoveryGitPin{}, workflowrecovery.ErrMissing
 	}
 	return sessionlaunch.RecoveryGitPin{

@@ -47,9 +47,6 @@ func initializeProductionFreshWorkflow(ctx context.Context, config productionSer
 		entry.Limits.Deadline.IsZero() {
 		return nil, ErrPiWorkflowCatalog
 	}
-	if err := verifyWorkflowDeadline(ctx, admission.Owner, entry.WorkflowID, entry.Limits.Deadline); err != nil {
-		return nil, errors.Join(workflowrecovery.ErrDeadline, err)
-	}
 	storeTrace, err := storeJournal.Trace()
 	if err != nil {
 		return nil, err
@@ -149,6 +146,9 @@ func initializeProductionFreshWorkflow(ctx context.Context, config productionSer
 	if err != nil {
 		return nil, fmt.Errorf("pin immutable production runtime before fresh workflow initialization: %w", err)
 	}
+	if !validBareWorkflowDigest(runtimeDigest) {
+		return nil, errors.New("production runtime binding returned a malformed bare SHA-256 digest")
+	}
 	identityPins, err := collectGovernedRecoveryIdentityPins(request)
 	if err != nil {
 		return nil, err
@@ -164,7 +164,7 @@ func initializeProductionFreshWorkflow(ctx context.Context, config productionSer
 		AdminIdentityDigest: identityPins.AdminIdentityDigest,
 		TaskDigest:          bareWorkflowDigest(entry.TaskDigest), PromptDigest: bareWorkflowDigest(entry.PromptDigest),
 		PolicyDigest: barePolicyDigest(policy.Digest()), ProfileDigest: bareWorkflowDigest(profile.Digest),
-		ImageDigest: bareWorkflowDigest(template.ExpectedImageDigest), RuntimeDigest: bareWorkflowDigest(runtimeDigest),
+		ImageDigest: bareWorkflowDigest(template.ExpectedImageDigest), RuntimeDigest: runtimeDigest,
 		D06ProvenanceDigest:       bareWorkflowDigest(d06ProvenanceDigest),
 		PrivateGitIdentityDigest:  bareWorkflowDigest(privateGitIdentityDigest),
 		StoreBaselineGenerationID: baseline.ID(), StoreBaselineTreeDigest: bareStoreTreeDigest(baseline.TreeDigest()),
@@ -306,7 +306,7 @@ func (v productionInitialTranscriptProgressVerifier) VerifyProgress(ctx context.
 		return errors.Join(workflowrecovery.ErrObservation, err)
 	}
 	runtimeDigest, err := governedRecoveryRuntimeDigest(v.request)
-	if err != nil || bareWorkflowDigest(runtimeDigest) != next.RuntimeDigest {
+	if err != nil || !validBareWorkflowDigest(runtimeDigest) || runtimeDigest != next.RuntimeDigest {
 		return errors.Join(workflowrecovery.ErrObservation, err)
 	}
 	return nil

@@ -1,0 +1,95 @@
+{
+  "schema": "tbound-production-pin-composition-receipt/v1",
+  "recorded_at_utc": "2026-10-14T20:13:35Z",
+  "source": {
+    "branch": "codex/tbound-prototype",
+    "head": "778ca31f7c0e7af29c43a840c085207fcfe92d8d",
+    "state": "working-tree sources over HEAD; hashes are recorded in the manifest",
+    "hash_manifest": "../review-artifacts/tbound-completion-2026-10-14/production-pins/source-hash-manifest.txt",
+    "hash_manifest_sha256": "39b8e975cc159bc6b97c2310b586f0f48cc4ec31ccc9032af7e9fa36ac5f07f3"
+  },
+  "artifact_base": "repository root",
+  "fixture": {
+    "test": "TestProductionFreshAndRecoveryDigestComposition",
+    "platform": "Ubuntu WSL2, linux/amd64",
+    "go": "go1.27.1",
+    "credential_handling": "isolated child environment contains a fixed dummy API key and the approved model; parent test environment clears provider credential variables",
+    "provider_exchange_called": false,
+    "provider_journal_after_construction": {
+      "records": 0,
+      "effects": 0
+    }
+  },
+  "baseline_red": {
+    "commit": "778ca31f7c0e7af29c43a840c085207fcfe92d8d",
+    "test_source_sha256": "b4bd0f1513786ead9d4725a7fc63ae10f37c92883dfba45b20b9f967e00ff7dd",
+    "command_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/baseline-red.command.txt",
+    "exit_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/baseline-red.exit",
+    "exit_code": 1,
+    "log_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/baseline-red.log",
+    "log_sha256": "6edeae428197d25cdf24e0c2cc625d54d85ae50054d698699a6d01d86353d7ae",
+    "observed_failure": "The base initializer checks the deadline before a fresh protected clock anchor exists; the positive roundtrip fails with ErrDeadline. Its recovery Git-pin validator also rejects the bare D06/private-Git digests."
+  },
+  "working_tree_regression": {
+    "command_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/focused-green.command.txt",
+    "exit_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/focused-green.exit",
+    "exit_code": 0,
+    "log_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/focused-green.log",
+    "log_sha256": "568db696796262fae0b539cd55c9db996fe6ed5c96fceb44bd52f0973829fa5e",
+    "cases": [
+      "roundtrip: real initializer returns a production conversation, persists the initial checkpoint and transcript pin, preserves bare runtime and D06/private-Git digests, and leaves the provider journal empty",
+      "expired-deadline: rejects a past deadline without a checkpoint or provider effect",
+      "uncertain-boundary-authorization: fails closed when the fixture policy returns ErrClockUncertain"
+    ]
+  },
+  "checks": [
+    {
+      "command_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/cmd-unit.command.txt",
+      "exit_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/cmd-unit.exit",
+      "exit_code": 0,
+      "log_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/cmd-unit.log"
+    },
+    {
+      "command_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/cmd-race.command.txt",
+      "exit_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/cmd-race.exit",
+      "exit_code": 0,
+      "log_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/cmd-race.log"
+    },
+    {
+      "command_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/build-all.command.txt",
+      "exit_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/build-all.exit",
+      "exit_code": 0,
+      "log_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/build-all.log"
+    },
+    {
+      "command_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/cmd-build-private.command.txt",
+      "exit_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/cmd-build-private.exit",
+      "exit_code": 0,
+      "log_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/cmd-build-private.log"
+    },
+    {
+      "command_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/vet-all.command.txt",
+      "exit_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/vet-all.exit",
+      "exit_code": 0,
+      "log_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/vet-all.log"
+    },
+    {
+      "command_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/gofmt.command.txt",
+      "exit_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/gofmt.exit",
+      "exit_code": 0,
+      "log_file": "../review-artifacts/tbound-completion-2026-10-14/production-pins/gofmt.log"
+    }
+  ],
+  "verification_environment": {
+    "module_network": "disabled with GOPROXY=off and GOSUMDB=off",
+    "temp_and_build_cache": "private per-run TMPDIR and GOCACHE under /tmp, created with umask 077",
+    "provider_credentials": "TBOUND_OPENROUTER_API_KEY, TBOUND_OPENROUTER_API_KEY_FILE, and TBOUND_OPENROUTER_MODEL were unset for suite runs"
+  },
+  "limitations": [
+    "This is a production fresh-initializer pin-composition regression, not qualification of the complete production recovery binder.",
+    "Prior owner-cell drain remains a fixture stub; host and guest qualification were not performed.",
+    "Clock uncertainty is injected through a policy stub, not an operating-system clock fault."
+  ],
+  "raw_artifact_hashes": "../review-artifacts/tbound-completion-2026-10-14/production-pins/artifact-sha256.txt",
+  "raw_artifact_hashes_sha256": "b578bbcbe48960ee8bdbb532080844a653371e9bd394810782a1e53e162ce85b"
+}
