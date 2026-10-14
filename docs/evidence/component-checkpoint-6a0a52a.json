@@ -1,0 +1,115 @@
+{
+  "schema": "tbound.component-verification.v1",
+  "verifiedAt": "2026-10-14",
+  "commit": "6a0a52a8af1d830ca20a3c8142dc9ae5a3dbab1b",
+  "tree": "81173e3f998195f9f394ff1e7153e554a13202a5",
+  "toolchain": "go1.27.1 linux/amd64",
+  "evidenceClass": "Component regression only; not G1, containment, production recovery or H1 qualification",
+  "export": {
+    "command": "git archive --format=tar 6a0a52a supervisor docs/evaluation-evidence-index-2026-10-07.json",
+    "archiveSha256": "433a0ee57ef0cab0ac0b6697b9e55681e7a7a80fbb09abfed5ee3cf827900b28",
+    "scope": "All committed supervisor files plus the evidence-index document required by its tests; not the prior 368-file whole-repository manifest"
+  },
+  "commands": [
+    {
+      "command": "go build -mod=readonly ./...",
+      "exit": 0
+    },
+    {
+      "command": "go vet -mod=readonly ./...",
+      "exit": 0
+    },
+    {
+      "command": "gofmt -l .",
+      "exit": 0,
+      "outputEmpty": true
+    },
+    {
+      "command": "go test -mod=readonly -json -count=1 ./...",
+      "exit": 0,
+      "tests": {
+        "pass": 1126,
+        "skip": 7,
+        "fail": 0
+      },
+      "packages": {
+        "pass": 26,
+        "skip": 1,
+        "fail": 0
+      }
+    },
+    {
+      "command": "go test -race -mod=readonly -json -count=1 ./...",
+      "exit": 0,
+      "tests": {
+        "pass": 1126,
+        "skip": 7,
+        "fail": 0
+      },
+      "packages": {
+        "pass": 26,
+        "skip": 1,
+        "fail": 0
+      }
+    }
+  ],
+  "skips": [
+    {
+      "test": "TestLandlockTSYNCReachesEnforcement",
+      "reason": "WSL kernel ABI1; exact ABI8 TSYNC required"
+    },
+    {
+      "test": "TestD09CellTemplateDraftIsNotAdmissible",
+      "reason": "D09 xattr scanner requires zero effective capabilities and NoNewPrivs=1"
+    },
+    {
+      "test": "TestRealOpenRouterExchange",
+      "reason": "Real-provider opt-in unset"
+    },
+    {
+      "test": "TestRealProviderDurableLinux",
+      "reason": "Real-provider opt-in unset"
+    },
+    {
+      "test": "TestServePiDevFixtureLaunchesActualPinnedPiOffline",
+      "reason": "Pi/Node/adapter/private-root fixture environment unset"
+    },
+    {
+      "test": "TestOpenRejectsUntrustedOwnership",
+      "reason": "Root ownership change required"
+    },
+    {
+      "test": "TestCgroupLimitsOrExplicitSkip",
+      "reason": "Delegated cgroup v2 unavailable"
+    }
+  ],
+  "integrity": {
+    "command": "sha256sum --quiet -c source-before.sha256",
+    "exit": 0,
+    "existingExportedSupervisorFilesUnchanged": true,
+    "generatedReports": [
+      "supervisor/e2e/artifacts/correlation-e2e-report.json",
+      "supervisor/internal/sessionrepo/artifacts/sessionrepo-e2e-report.json"
+    ],
+    "runnerExit": 1,
+    "runnerExitReason": "All gates exited 0; the original whole-directory manifest equality check rejected the two added reports. Explicit existing-source hash verification then exited 0."
+  },
+  "logs": {
+    "linuxRoot": "/home/jeli2k/tbcomplete-baseline.6v84uU/logs",
+    "localRoot": "../review-artifacts/tbound-completion-2026-10-14/baseline-6a0a52a-logs",
+    "sha256": {
+      "identity.txt": "229963b5ce2d6e577a289755c899c60ca45adea3599e7f22141c64b978f3d64d",
+      "race.stdout": "7141fdc58fdad0f54a237e17aa07e608517e1b83c3c06bea3f58e6a8e7bdbf12",
+      "source-after.sha256": "670cbf93f257c2e70c7f447404833676fe6455cd1771d1ca038117774e2ce383",
+      "source-before.sha256": "f494b1ed61ac2888a938ac0d02b8afc49d638fdebb27a5622f74d26ff2421c08",
+      "toolchain.txt": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c",
+      "unit.stdout": "e4526f28fa2ceba31fc471e207fe9cf8500335ec5925ab2995a40889ad15e65c"
+    }
+  },
+  "setupCorrection": "The first export omitted the required evidence-index document and had 1125 passes, seven skips, one missing-fixture failure. The corrected export supplied that committed document; logs above are the corrected run.",
+  "limitations": [
+    "Known restart/retry stale-receipt defect remains in this committed source.",
+    "No tests rerun here with a real provider, ABI8 host, root privileges or delegated cgroups.",
+    "This receipt freshly verifies the counts; it does not recover or validate the historical handoff run."
+  ]
+}
