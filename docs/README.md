@@ -42,6 +42,9 @@
 - [Web chat extension decision record (ADR-0001)](../extensions/webchat/docs/adr-0001-optional-extension.md):
   the web chat is an optional standalone extension in `extensions/webchat/`; the
   core neither requires nor imports it.
+- [Modular architecture vision](modular-architecture-vision.md): VISION / FUTURE-WORK, not
+  part of the thesis claim. A trust-tiered plugin/extension model, the headless CLI direction
+  (`serve --headless` is future work), and decision records for the open questions.
 
 These documents describe code or intended contracts. Read the current status
 page before treating any design or fixture as a qualified production result.

@@ -488,3 +488,9 @@ are preparation only. Media custody and exact ABI checks precede registration.
   core packages (mode 0777 ancestor). The `make` binary is not installed in WSL,
   so the Makefile recipes were run verbatim under `sh`.
 - Claim boundary unchanged: G1=false; containment not-established; H1 unexecuted.
+
+## Vision, design spec and extraction (2026-10-14)
+
+- Web chat is an optional standalone extension (18f71e6): extensions/webchat, own Go module, boundary guard + CI; core gates need no Node and no extension.
+- docs/modular-architecture-vision.md: VISION/FUTURE-WORK only. Headless/remote serve is post-thesis (02-1 s4.1 and 06-1 put service-manager modes out of scope; a surviving-owner design is needed). SO_PEERCRED over forwarded sockets is UNVERIFIED (experiment protocol written, not run). Cancel = request; the settled result comes from the supervisor. To reconcile with the core thread: web-chat-contract.md s1 orders turns/cancel before snapshot/streaming; the extension keeps read-first.
+- extensions/webchat/docs/design: DeepSeek-like design language (structure only, no brand), computed WCAG AA table (calculation, not a browser render).
