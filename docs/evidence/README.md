@@ -43,6 +43,10 @@ receipt describes the pre-CLI implementation and does not qualify the CLI migrat
   the real initializer returned a production conversation and left the provider
   journal empty. This covers fresh-initializer pin composition only; the complete
   recovery binder and actual owner-cell drain remain unqualified.
+- [Fixture-route CLI flag rejection](fixture-route-cli-flags-20261014.json) records
+  baseline-red/current-green coverage for explicit fixture-route rejection of
+  production profile, workspace, and source inputs, plus the `cmd/tbound` package
+  checks. It does not qualify the production launch or broader operator CLI lifecycle.
 
 The dated `../evaluation-evidence-index-2026-10-07.json` is an immutable structural
 ledger. Its original source references may name documents retired from active

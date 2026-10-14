@@ -155,11 +155,11 @@ it is not a qualification report.
   exist as components; provider-history replay and continuation through the production
   route remain unqualified.
 - **Protocol authority:** the AH02-1 authority conflict is unresolved.
-- **CLI fixture routes:** `--native-fixture` ignores `--native-host-profile`,
-  `--workspace`, and `--source`, and `--dev-fixture` ignores `--workspace` and
-  `--source`. The production client and `--service` routes reject them. This was read
-  from `supervisor/cmd/tbound/serve_linux.go` and not executed. A test-first code change
-  is needed; this documentation review made none.
+- **CLI fixture input scope:** both fixture routes reject explicitly supplied
+  `--native-host-profile`, `--workspace`, and `--source`, including empty values.
+  The [bounded receipt](evidence/fixture-route-cli-flags-20261014.json) records the
+  red/green regression and package checks. Broader cancel/history/doctor CLI work
+  remains open.
 
 ## Priorities
 

@@ -68,10 +68,10 @@ historical baseline. Claims, receipts, and open gates live in [docs/status.md](d
      authorized by the [2026-10-14 decision](docs/decisions/2026-10-14-qualification-and-research-procedure.md),
      not yet performed), signed Pi CLI closure and host profile, and managed-service
      admission and recovery.
-  5. Operator CLI: the fixture routes ignore `--workspace` and `--source`, and
-     `--native-fixture` also ignores `--native-host-profile` (see
-     [governed host setup](docs/governed-setup.md#cli-routes-and-exit-codes)). The
-     documentation consolidation does not change this.
+  5. Operator CLI: both fixture routes now reject explicitly supplied
+     `--native-host-profile`, `--workspace`, and `--source` inputs; the bounded
+     [receipt](docs/evidence/fixture-route-cli-flags-20261014.json) records the
+     source-bound checks. Broader cancel/history/doctor CLI work remains open.
 - **Protocol:** protocol 48 is historical. Protocol 51 is a draft, not frozen or
   registered. The AH02-1 authority conflict is unresolved. E07 remains separate.
 
@@ -108,8 +108,8 @@ historical baseline. Claims, receipts, and open gates live in [docs/status.md](d
 
 1. Verify the full production recovery binder, then qualify actual owner-cell drain
    and interrupted activation in the D20 recovery path.
-2. Decide the fixture-route flag handling (reject or document) through a test-first
-   code change.
+2. Continue the remaining operator CLI lifecycle work, including cancel, history,
+   and doctor paths.
 3. Complete remaining D14 capacity, filesystem, corruption, and platform-fault work.
 4. Before any paid provider evaluation, freeze DeepSeek V4.1 Flash routing, request and
    token limits, current price ceilings, and a full-trial cost estimate inside the

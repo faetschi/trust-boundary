@@ -62,8 +62,14 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	if *serviceMode && (*devFixture || *nativeFixture) {
 		return errors.New("--service is mutually exclusive with development/native fixtures")
 	}
-	if *devFixture && *nativeHostProfile != "" {
-		return errors.New("--dev-fixture and --native-host-profile are mutually exclusive")
+	if *devFixture || *nativeFixture {
+		fixtureFlag := "--native-fixture"
+		if *devFixture {
+			fixtureFlag = "--dev-fixture"
+		}
+		if err := rejectFixtureProductionInputs(flags, fixtureFlag); err != nil {
+			return err
+		}
 	}
 	if (*devFixture || *nativeFixture) && bashOutputPaths != nil {
 		return errors.New("Bash output scope is available only through the production Pi service client")
@@ -93,6 +99,19 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	return runProductionPiServiceClient(ctx, transcript, piServiceRequest{
 		RequestID: *taskRequestID, TaskID: *taskID, Prompt: *task, BashOutputPaths: bashOutputScope,
 	})
+}
+
+func rejectFixtureProductionInputs(flags *flag.FlagSet, fixtureFlag string) error {
+	provided := make(map[string]bool, 3)
+	flags.Visit(func(option *flag.Flag) {
+		provided[option.Name] = true
+	})
+	for _, name := range []string{"native-host-profile", "workspace", "source"} {
+		if provided[name] {
+			return fmt.Errorf("%s does not accept --%s; omit production service inputs for this offline fixture", fixtureFlag, name)
+		}
+	}
+	return nil
 }
 
 func canonicalServeBashOutputPaths(raw []string, allowNoOutputs bool) ([]string, error) {

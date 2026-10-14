@@ -53,11 +53,41 @@ func TestServePiDevFixtureConflictsWithNativeHostProfile(t *testing.T) {
 	for _, profile := range []string{"x", "/no/such/attested/profile"} {
 		var transcript bytes.Buffer
 		err := run([]string{"serve", "--pi", "--dev-fixture", "--native-host-profile", profile}, &transcript, io.Discard)
-		if err == nil || !strings.Contains(err.Error(), "mutually exclusive") {
-			t.Fatalf("dev-fixture + native-host-profile(%q) = %v, want a mutual-exclusion refusal", profile, err)
+		if err == nil || !strings.Contains(err.Error(), "--dev-fixture does not accept --native-host-profile") {
+			t.Fatalf("dev-fixture + native-host-profile(%q) = %v, want an explicit fixture-input refusal", profile, err)
 		}
 		if transcript.Len() != 0 {
 			t.Fatalf("conflicting dev-fixture/native-host-profile flags wrote a receipt: %q", transcript.String())
+		}
+	}
+}
+
+func TestServePiFixturesRejectProductionServiceInputs(t *testing.T) {
+	usePrivateFixtureTemp(t)
+	for _, name := range []string{devFixturePiEnv, devFixtureNodeEnv, devFixtureAdapterEnv, devFixtureRootEnv} {
+		t.Setenv(name, "")
+	}
+	for _, fixture := range []string{"--native-fixture", "--dev-fixture"} {
+		for _, option := range []struct {
+			name  string
+			value string
+		}{
+			{name: "--native-host-profile", value: "/tmp/profile"},
+			{name: "--native-host-profile", value: ""},
+			{name: "--workspace", value: "/tmp/workspace"},
+			{name: "--workspace", value: ""},
+			{name: "--source", value: "/tmp/source"},
+			{name: "--source", value: ""},
+		} {
+			args := []string{"serve", "--pi", fixture, option.name + "=" + option.value}
+			var transcript bytes.Buffer
+			err := run(args, &transcript, io.Discard)
+			if err == nil || !strings.Contains(err.Error(), fixture+" does not accept "+option.name) {
+				t.Fatalf("%v error = %v, want explicit fixture rejection for %s", args, err, option.name)
+			}
+			if transcript.Len() != 0 {
+				t.Fatalf("%v wrote a receipt while rejecting a production input: %q", args, transcript.String())
+			}
 		}
 	}
 }
