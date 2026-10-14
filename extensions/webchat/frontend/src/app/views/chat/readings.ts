@@ -31,10 +31,19 @@ export function verdictReading(verdict: Verdict): ChipReading {
   }
 }
 
-// `evidenced` is true only for a success with VerifiedEvidence (core format.ts verifyItem).
-export function stateReading(state: ResultState, evidenced: boolean): ChipReading {
+// `evidenced` is true only for a success that the shared gate verified (app verification.ts). A lossy
+// success never takes the success tone: its output is incomplete, so it is not confirmed, whatever its
+// verification.
+export function stateReading(state: ResultState, evidenced: boolean, lossy = false): ChipReading {
   switch (state) {
     case "succeeded":
+      if (evidenced && lossy) {
+        return {
+          label: "succeeded (output lossy, not confirmed)",
+          tone: "unknown",
+          note: "verified, but its output is lossy: not counted as confirmed; lossy output is not terminal evidence.",
+        };
+      }
       if (evidenced) return { label: "succeeded", tone: "ok", note: "verified by the gateway." };
       return { label: "reported", tone: "reported", note: "reported by the source, not independently verified." };
     case "denied":
@@ -85,7 +94,13 @@ export function postureEntries(counts: GovernanceCounts): PostureEntry[] {
     ["deny", counts.deny, "DENY", "deny", "policy DENY decisions"],
     ["unknown-verdict", counts.unknownDecisions, "unknown verdict", "unknown", "decisions with an UNKNOWN verdict"],
     ["verified", counts.verified, "verified", "ok", "successful executions confirmed by the projection"],
-    ["reported", counts.reported, "reported", "reported", "successes reported but not independently verified"],
+    [
+      "reported",
+      counts.reported,
+      "reported",
+      "reported",
+      "successes not confirmed: reported but not independently verified, or verified with lossy output",
+    ],
     ["denied", counts.denied, "denied", "deny", "denied results"],
     ["failed", counts.failed, "failed", "deny", "failed results"],
     ["pending", counts.pendingResults, "pending", "pending", "results still pending"],

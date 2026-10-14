@@ -44,6 +44,27 @@ export function evictedText(count: number): string {
   return `${count} earlier ${count === 1 ? "record" : "records"} no longer retained in this window. Counts describe the retained window only.`;
 }
 
+// What a view shows of the projection, one state at a time: loading, failed or loaded. A recovery fetch
+// in flight is "connecting", so it shows loading only while there is no data; a failure replaces the
+// loading skeleton. Once a projection has loaded, a later failure is a notice beside the data.
+export type ProjectionPhase = "loading" | "failed" | "loaded";
+
+export function projectionPhase(input: {
+  readonly loaded: boolean;
+  readonly error: string | null;
+  readonly connection: ConnectionState;
+}): ProjectionPhase {
+  if (input.loaded) return "loaded";
+  if (input.connection === "connecting") return "loading";
+  if (input.error !== null || input.connection === "offline" || input.connection === "error") return "failed";
+  return "loading";
+}
+
+// The sentence that replaces the loading skeleton on a first-load failure: the error, and the status in words.
+export function failureText(error: string | null, status: ConnectionStatus): string {
+  return `${error ?? "The projection could not be loaded."} Status: ${status.label}.`;
+}
+
 export interface AnnouncementBasis {
   readonly status: ConnectionStatus;
   readonly gapNotice: StoredGap | null;

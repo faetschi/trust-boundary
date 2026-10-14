@@ -63,6 +63,13 @@ describe("states: a success is reported unless it is verified", () => {
     expect(reading.note).toMatch(/not independently verified/);
   });
 
+  it("shows a verified lossy success on the unknown tone, never the success tone", () => {
+    const reading = stateReading("succeeded", true, true);
+    expect(reading.label).toBe("succeeded (output lossy, not confirmed)");
+    expect(reading.tone).toBe("unknown");
+    expect(reading.note).toMatch(/not counted as confirmed/);
+  });
+
   it("shows a verified success as succeeded in the success tone", () => {
     const reading = stateReading("succeeded", true);
     expect(reading.label).toBe("succeeded");

@@ -416,6 +416,22 @@ describe("honesty rules on the transcript (web-chat.md sections 4.1 and 4.3)", (
     expect(card.textContent).not.toContain("reported");
   });
 
+  it("never gives a verified lossy success the ok tone: it reads succeeded (output lossy, not confirmed) on the unknown tone", async () => {
+    await renderLive(
+      verifiedSnapshot([
+        observed(decisionItem({ id: "d1", sequence: 1, tool: "bash", tool_call_id: "c1", verdict: "ALLOW" })),
+        observed(resultItem({ id: "r1", sequence: 2, tool: "bash", tool_call_id: "c1", state: "succeeded", lossy: true })),
+      ]),
+    );
+    const found = chips();
+    expect(found).toContainEqual(["succeeded (output lossy, not confirmed)", "unknown"]);
+    expect(found.some(([, tone]) => tone === "ok")).toBe(false);
+    const summary = q("[data-anchor='c1'] summary").textContent ?? "";
+    expect(summary).toContain("succeeded (output lossy, not confirmed)");
+    expect(summary).not.toMatch(/\bsucceeded\b(?! \(output lossy)/);
+    expect(q("[role='group'][aria-label='Observed posture']").textContent).not.toMatch(/verified 1/);
+  });
+
   it("states a lossy result in text, and keeps its state, which lossy output does not change", async () => {
     await renderLive(
       fixtureSnapshot([resultItem({ id: "r1", sequence: 1, tool: "bash", tool_call_id: "c1", state: "succeeded", lossy: true })]),

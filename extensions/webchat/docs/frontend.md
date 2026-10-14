@@ -445,7 +445,9 @@ vanilla UI.
   structural-audit projection. Otherwise it reads `reported`.
 - UNKNOWN, lost, unknown, pending, failed and denied each keep their own label, and none
   of them is in the success tone.
-- Lossy output is a chip, and it leaves the state chip as it is.
+- Lossy output is a chip. A verified lossy success reads `succeeded (output lossy, not
+  confirmed)` on the unknown tone, never the success tone (corrected in the 2026-10-14
+  review fixes; the first 3b build drew it in the success tone).
 - An unverified record is marked explicitly. A uniformly unverified view says so once, and a
   mixed view marks each record (Phase 3 polish).
 - The tail count comes only from `store.applied`. Gaps, duplicates and snapshot loads
@@ -462,7 +464,9 @@ vanilla UI.
    decisions and denied results. `governanceCounts` feeds the posture badges.
 3. The verified gate needs the projection (live and structural-audit) and the item's
    evidence. This is stricter than the legacy item-only check, and it makes no difference
-   to the demo.
+   to the demo. Corrected in the 2026-10-14 review fixes: the Trajectory view applied only
+   the item's evidence, so a fixture projection with a streamed observed record read it as
+   verified. Every view now asks the one gate in `app/verification.ts`.
 4. The gap, window and eviction notices render inside the transcript. The Shell also
    renders the same three notices above the tabs, so two copies appear. (Resolved in Phase 3
    polish: one copy, above the tabs, and a pointer at the top of the transcript.)
@@ -473,9 +477,9 @@ vanilla UI.
 
 - Duplicate notices, as in decision 4. Resolved in Phase 3 polish (below).
 - `ui/LiveRegion.test.tsx`, "is the only aria-live or live role in the application
-  source", fails. The transcript uses `role="log"` with `aria-live="off"`, as the brief
-  requires. Either the scan has to allow that, or the transcript has to stop using the
-  log role. The test lives in `src/ui/`, which this change does not edit.
+  source", failed at the 3b build. Resolved in the 3b/3c pass (commit 57bcd95): the scan
+  allows `role="log"` only in the same tag as `aria-live="off"`, and that exemption has its
+  own self-test in the same file. See the gates note under Phase 3c.
 - The Jump control was not exercised in Chrome. The demo has no live arrivals, so its
   count could not be shown. It is covered in happy-dom with stubbed page metrics only.
 - This file has no Phase 3a section, although `phase3-parity.md` refers to one. Resolved:
@@ -532,9 +536,12 @@ finding filter. The rules are the ones in `web-chat.md` §4.4 and §4.5.
   boundaries, and Home and End go to the ends. Enter and Space select, as native buttons
   do. The container is a named region, not a list.
 - **Chips and dots.** An unverified success reads `reported` in its chip, never the
-  confirmed word. A lossy success reads `not confirmed` on the unknown tone, and the
-  record's name adds `output lossy, not counted as confirmed`. Other states read as the
-  core names them. A policy ALLOW is never drawn in the success tone.
+  confirmed word. A verified lossy success reads `succeeded (output lossy, not confirmed)`
+  on the unknown tone, and the record's name adds `output lossy, not counted as confirmed`
+  (corrected in the 2026-10-14 review fixes; the 3c build read `not confirmed` alone). LOST
+  is drawn in the unknown family with its own shape, never as a DENY (also a review fix:
+  the 3c rail and chip drew it in the deny tone). Other states read as the core names them.
+  A policy ALLOW is never drawn in the success tone.
 - **Tail.** `N new record(s) · Jump to latest` sits at the bottom of the view. Its count
   comes only from `store.applied` through `core/anchor.ts`. The pin moves only while the
   reader is at the tail, and the first load does not follow. A settled burst is announced
@@ -557,9 +564,8 @@ finding filter. The rules are the ones in `web-chat.md` §4.4 and §4.5.
 
 These are behaviour changes, not gaps.
 
-1. The aside keeps the shell's name, `Governance inspector`, while a record is shown.
-   The legacy name was `Record inspector`. Resolved in Phase 3 polish: the aside is named
-   `Record inspector` while a record is shown.
+1. The aside is named `Record inspector` while a record is shown, as the legacy UI names
+   it. The 3c build kept `Governance inspector` there; Phase 3 polish changed it.
 2. The group hints are visible text. The toggle primitive has no per-button name, so the
    legacy per-button label is not reproduced.
 3. The ledger has one tab stop (a roving stop), not one per row.
@@ -599,7 +605,11 @@ Each line is a Windows run at this tree. Exit codes are from `gate.ps1` or the c
 The one failing test is `ui/LiveRegion.test.tsx` ("is the only aria-live or live role in
 the application source"). It flags `app/views/ChatView.tsx`, which has `role="log"` with
 `aria-live="off"`, and `app/views/chat/Transcript.tsx`, whose `data-role={…}` matches the
-guard's regex as a live role. Neither file is Phase 3c's. The test was not changed.
+guard's regex as a live role. Neither file is Phase 3c's. The table above was taken before
+the scan was changed. The change is in commit 57bcd95, not in the 2026-10-14 review fixes: the
+scan now allows `role="log"` only in the same tag as `aria-live="off"`, and its self-test is
+in `ui/LiveRegion.test.tsx` ("the silent-log exemption accepts only role=log together with
+aria-live=off"). On the current tree the test passes (see "Phase 3 review fixes").
 
 ### Visual and keyboard QA (Chrome 155, demo gateway on 8822)
 
@@ -746,10 +756,9 @@ scrolled to the top. The script that produced them is not in the repository.
   0 findings; `check:deps` OK; legacy `node --test` 258/258, 0 skipped. The source hash of
   `frontend/src` (90 files) matches the QA receipt, and the Linux rebuild of `dist/` is
   byte-identical to the Windows build. Logs are in WSL under `~/tbwc-verify/logs/`.
-- The CI repro gate (`npm run repro`) is RED on this working tree: exit 1. HEAD's committed
-  `dist/` predates this pass, and the clean rebuild of the current source differs from it. The
-  gate should pass once the rebuilt `dist/` is committed, but that has not been run. The CI
-  check "committed dist matches working tree" fails for the same reason.
+- The CI repro gate (`npm run repro`) was RED on this working tree before the commit: exit 1,
+  because HEAD's committed `dist/` predated this pass. Resolved by the commit below, which
+  carries the rebuilt `dist/`.
 - csp-smoke first ran on Windows only, against a gateway built with Windows `go`. It has since
   been re-run against a Linux-built gateway hosted in WSL (see the next section).
 - `TASK_STATE.md` records this pass in its "Phase 3 polish" section.
@@ -786,3 +795,121 @@ This tunnel path was reasoned from the Host pin and an earlier proxy experiment;
 been run over a real SSH connection. Binding the gateway to a public interface is not
 supported and would need the authenticated, origin-protected design that
 docs/modular-architecture-vision.md lists as future work.
+
+## Phase 3 review fixes: the claim boundary (2026-10-14)
+
+Eight findings from the Phase 3 review were fixed under strict TDD. Each test that reproduces a
+finding was run and failed (RED) before its fix, then the suite was run again (GREEN). The gates
+are Windows (`gate.ps1`); WSL was not used. Core (`src/core/`), markdown, Go, scripts and the
+legacy UI are unchanged.
+
+**One verification gate.** `app/verification.ts` holds `isVerifiedIn(projection, item)`: a record
+is verified only in a live, structurally audited projection, and only with its own observed
+evidence. `confirmedIn` adds "not lossy". `judgedItem` hands the core a record whose scope is
+demoted when it is not verified in its projection, because `core/trajectory.ts` judges from the
+record alone. The record itself is not edited, and the Evidence section states the record's own
+authority and scope. Chat, the trajectory rows and rail, the inspector, the posture and the footer
+all ask this gate. No announcement carries a verification claim.
+
+1. **Verified gate inconsistent (fixed).** A streamed observed success in a fixture projection
+   read `succeeded, verified` in the Trajectory view while Chat read it `reported`. The stream
+   does not refuse an observed record against the snapshot's source (only the snapshot is
+   checked), so the fixture projection can hold one. Tests: `app/verification.surfaces.test.tsx`
+   "the trajectory row, its dot and the sequence rail read the streamed success as reported,
+   never ok" and "the record inspector reads independently verified: no, with the state as
+   reported" (RED: the row read `succeeded, verified`; the inspector read `yes`). "a live
+   structural-audit projection reads the same records as verified, on every surface" stays
+   green. `app/verification.test.ts` (RED: module missing).
+2. **Verified lossy success green in Chat (fixed).** A verified lossy success reads
+   `succeeded (output lossy, not confirmed)` on the unknown tone in Chat, the Trajectory chip and
+   the inspector, and its accessible name says the same. The posture does not count it as
+   `verified`; it counts it under `reported`, whose hint now reads "not confirmed: reported, or
+   verified with lossy output". Tests: `app/views/ChatView.test.tsx` "never gives a verified lossy
+   success the ok tone" (RED: `succeeded` in the ok tone), `app/views/TrajectoryView.test.tsx`
+   (chip text), `app/inspector/recordChip.test.ts`, `app/inspector/RecordInspector.test.tsx` and
+   `app/views/chat/readings.test.ts` (RED).
+3. **LOST drawn as DENY (fixed).** LOST is in the unknown family. The rail draws it as a hatched
+   segment in the unknown colour, the dot as a solid diamond, and the chip as a double border on the
+   unknown ink and tint. Its words are `LOST, not success`. Under forced colours it is a double
+   outline, and the diamond is a clip-path, so the shape holds without colour. The rail no longer
+   folds LOST into DENY: `views/trajectory/rail.ts` builds the lanes from the core's record dot. The
+   legacy UI already drew LOST in the unknown tone (`internal/webchat/assets/render.mjs`, the posture
+   count). Tests: `app/views/TrajectoryView.test.tsx` "a LOST result beside a DENY differs by tone and
+   by words" and the rail-words test (RED); `ui/StateDot.test.tsx` "draws LOST in the unknown family
+   with a diamond of its own" (RED); `ui/Chip.test.tsx` "LOST is in the unknown family, with a shape
+   of its own" (RED); two contrast rows in `styles/tokens.test.ts` for the LOST chip and diamond
+   (both pass; they use the unknown family's pairs).
+4. **Drawer reopened (fixed).** Leaving the narrow layout closes the drawer and forgets its request,
+   so a later narrow layout starts closed. Narrowing with the drawer closed moves focus out of the
+   inert inspector to the toggle. Tests: `app/Shell.test.tsx` "does not reopen after a widen and a
+   narrow again" and "a record selected at narrow width opens the drawer; after a widen and a narrow
+   the drawer is closed and focus is not in it" (RED: `data-open` was `true`). "never opens by itself
+   when the viewport narrows" is a control and passed before the fix.
+5. **Loading and error together (fixed).** `status.ts` `projectionPhase` gives one state: loading
+   (before the first snapshot, or a recovery fetch in flight with no data), failed (a failure with no
+   data, or offline or terminal), or loaded. A failure replaces the skeleton, and it names the
+   reconnect status in words. After data, a failure is a notice beside the data. The chat, and the
+   trajectory's rail and ledger, follow the same rule. Tests: `app/Shell.views.test.tsx`, describe
+   "projection states: loading, failure and recovery are never shown together" (four tests). Before
+   the fix, the first-load failure showed `['error', 'loading']`, as the review's probe did.
+6. **Absent reads "no" (fixed), and the audit.** Absence is "unavailable" with its reason in every
+   panel, footer, rail and inspector row. The provenance panel's "Independently verified" read `no`
+   when the panel was absent; it is now unavailable, and `yes` needs both the panel's availability and
+   the projection's verification. Before the first snapshot, the footer counts, the rail's streams,
+   the warnings, the posture, the chat summary and the trajectory count read `unavailable (no
+   projection loaded)`, not zero or none. A record with no authority or scope has an unavailable
+   Evidence row. The recovery panel no longer throws when its panel is missing. Tests:
+   `app/panels.test.ts` "absent input reads unavailable, never no, zero, none, complete or ok"
+   (table-driven), `app/Footer.test.ts`, `app/Shell.test.tsx` "before the first snapshot, every panel,
+   rail and footer value reads unavailable", `app/Shell.views.test.tsx` "before the first snapshot, no
+   count reads as zero", and `app/inspector/RecordInspector.test.tsx` "reads absent authority and
+   verification as unavailable".
+7. **StrictMode announces twice (fixed).** Under StrictMode the effect is torn down and started again.
+   The teardown made the core report `offline`, and the store announced `Stream offline.` before
+   `Stream connected.`. A stream that is no longer current now publishes nothing. Test:
+   `app/WorkspaceProvider.test.tsx` "speaks the connection exactly once under StrictMode" (RED: the
+   announcer's serial was 2). The non-StrictMode control and the listener-removal test pass.
+8. **Docs.** The LiveRegion note above, the 3b and 3c statements the review changed, the "Open" item
+   on LiveRegion, and the repro note in the polish receipts are corrected in place, each with its
+   date. The LiveRegion scan change is in commit 57bcd95 (the 3b/3c commit), not in this review pass,
+   and this pass did not touch `ui/LiveRegion.test.tsx`.
+
+**Corrections to my own RED tests before GREEN.** Three expectations written for the RED run were
+wrong, and they were fixed before the GREEN run (the RED log keeps them as they were): the rail-words
+assertion for a lane that held only a LOST result (it has no DENY words); a row-text assertion that
+expected the uppercase `LOST` where the chip reads `lost`; and the "failure after data" test, which
+used `fail()`. That event is a dropped stream. The core reports it as `reconnecting` with no error, so
+the test now uses a gap whose recovery snapshot fails.
+
+**Receipts (Windows `gate.ps1`).**
+
+| Gate | Command | Exit | Result |
+|---|---|---|---|
+| RED | `gate.ps1 -Task test`, before the fixes | 1 | 14 files failed, 31 tests failed, 756 passed (787 run; `verification.test.ts` failed on import). Log outside the worktree, `tbwc-y/red1-test.log` |
+| GREEN | `gate.ps1 -Task verify` | 0 | tsc: no errors; 54 files, 802 passed, 0 failed, 0 skipped; sinks self-test OK, 0 findings in 86 files; deps self-test OK, check OK |
+| Go | `gate.ps1 -Task go` | 0 | `go vet -mod=readonly` and `go test -mod=readonly -count=1` ok for both packages; `gofmt -l` empty |
+| build | `gate.ps1 -Task build` | 0 | one fresh `dist/` copied back. SHA-256: `index.html` 82f6558c…, `.vite/manifest.json` a9abffdb…, `assets/index-C9-CX8a8.js` b243413f…, `assets/index-OkJ8tcKX.css` eadcc378…. These replace `index-K5jt8CUl.js` and `index-DaIzfvv8.css`. |
+| Go, after the build | `gate.ps1 -Task go` | 0 | re-run because the embedded `dist/` changed; same result as above |
+
+Source tree: `frontend/src`, 146 files, the sha256 of the sorted per-file sha256 list starts
+`bb7eb8a7c5f5ab6b` (computed after the last source edit, before the build). The baseline before this pass was 752 frontend tests in 52 files, 0 skipped. The 50 more are new or
+changed tests.
+
+**Not done, or deliberately deferred.**
+- **Core still judges from the item.** `core/trajectory.ts` and `core/format.ts` take verification
+  from the record alone, and the app works around it with `judgedItem`. The core owner should take
+  the projection gate as an input. Core was out of scope here, so it is unchanged.
+- **Stream path versus snapshot.** The TypeScript validator refuses an observed record outside a live
+  snapshot, but `parseEvent` in `core/validate.ts` does not check an item event's source. The Go
+  boundary is the authority, so that check belongs there. Until then, a fixture snapshot followed by
+  an observed event is accepted by this client.
+- **Footer.** The footer shows no verification-dependent count, so the gate has nothing to decide
+  there. The footer changed only in its unavailable-before-load reading.
+- **Posture.** A verified lossy success is counted under `reported`, with a hint that says so. A
+  separate entry would change the posture's shape, which is a choice for the owner.
+- **Repro gate not run.** `npm run repro` compares the committed `dist/` with a rebuild. The new
+  `dist/` is not committed by this pass, so the check has not been run on it.
+- **Not verified here.** No browser pass was run for this change. The LOST diamond, hatch and
+  double border, the drawer at 1024 px and the StrictMode announcements are checked in happy-dom and
+  in the CSS source only. The shape contrast is checked by the token table, not on screen.
+  Screen-reader output is not tested.

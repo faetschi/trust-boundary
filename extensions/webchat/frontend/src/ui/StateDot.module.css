@@ -50,10 +50,13 @@
   border-color: var(--state-idle);
 }
 
+/* LOST is uncertain, not a refusal: a solid diamond in the unknown family's colour, never the deny
+   square. The diamond is its own shape, so it reads apart from every other tone without colour. */
 .dot[data-tone="lost"] {
-  background: transparent;
-  border: 2px solid var(--state-deny);
-  border-radius: 2px;
+  background: var(--state-unknown);
+  border-color: var(--state-unknown);
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
 }
 
 /* Forced colours remove backgrounds. Filled shapes keep their fill by opting out of the
@@ -61,7 +64,8 @@
 @media (forced-colors: active) {
   .dot[data-tone="ok"],
   .dot[data-tone="deny"],
-  .dot[data-tone="idle"] {
+  .dot[data-tone="idle"],
+  .dot[data-tone="lost"] {
     forced-color-adjust: none;
     background-color: CanvasText;
     border-color: CanvasText;
@@ -70,8 +74,7 @@
   .dot[data-tone="allow"],
   .dot[data-tone="pending"],
   .dot[data-tone="reported"],
-  .dot[data-tone="unknown"],
-  .dot[data-tone="lost"] {
+  .dot[data-tone="unknown"] {
     forced-color-adjust: none;
     border-color: CanvasText;
   }

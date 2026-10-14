@@ -39,9 +39,9 @@ describe("stateWord: the state chip's word", () => {
     expect(stateWord(item, "reported")).toBe("reported");
   });
 
-  it("reads a lossy success as not confirmed, on the unknown tone", () => {
+  it("reads a lossy success as succeeded (output lossy, not confirmed), on the unknown tone", () => {
     const item = resultItem({ id: "r1", sequence: 1, tool: "bash", tool_call_id: "c1", state: "succeeded", lossy: true, authority: "observed", verification_scope: "structural-audit-only" });
-    expect(stateWord(item, "unknown")).toBe("not confirmed");
+    expect(stateWord(item, "unknown")).toBe("succeeded (output lossy, not confirmed)");
   });
 
   it("reads other states as the projection names them", () => {

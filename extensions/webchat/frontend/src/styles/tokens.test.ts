@@ -167,6 +167,10 @@ const ROWS: readonly Row[] = [
   { label: "pending hollow ring", kind: "nontext", fg: "pending", on: SURF },
   { label: "reported dashed border", kind: "nontext", fg: "warn-line", on: SURF },
   { label: "unknown dotted border", kind: "nontext", fg: "warn-line", on: SURF },
+  // LOST is in the unknown family: a chip with the unknown ink and tint (double border), and a
+  // solid diamond on the unknown line. Neither uses the deny pair.
+  { label: "chip ink lost (unknown family, double border)", kind: "chip", fg: "warn-ink", tint: "warn-line", on: CHIP_SURF },
+  { label: "dot lost diamond fill", kind: "nontext", fg: "warn-line", on: SURF },
   { label: "idle filled dot", kind: "nontext", fg: "idle", on: SURF },
   { label: "focus ring", kind: "nontext", fg: "focus", on: SURF },
   { label: "control boundary (input)", kind: "nontext", fg: "edge", on: ["canvas", "sidebar", "raised"] },

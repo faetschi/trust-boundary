@@ -193,6 +193,13 @@ export function createWorkspaceStore(deps: WorkspaceDeps): WorkspaceStore {
     for (const listener of listeners) listener();
   }
 
+  // A stream is current until the store stops it. A stopped stream still runs its own teardown (the core
+  // reports the stop as an offline change), and that teardown is not a change the reader can see: it must
+  // not be announced or published. Under StrictMode the effect is torn down and started again on purpose.
+  function isCurrent(candidate: StreamController): boolean {
+    return stream === candidate;
+  }
+
   function start(): void {
     stop();
     const controller = createStream({
@@ -202,7 +209,7 @@ export function createWorkspaceStore(deps: WorkspaceDeps): WorkspaceStore {
       // the snapshot is applied. Publishing here is therefore the notice for the snapshot (and for
       // any gap noted with it), before the stream reports open.
       openEventStream: (handlers) => {
-        publish();
+        if (isCurrent(controller)) publish();
         return openValidatedEventStream(deps.openSource, {
           cursor: handlers.cursor,
           nowMs: deps.nowMs,
@@ -217,7 +224,9 @@ export function createWorkspaceStore(deps: WorkspaceDeps): WorkspaceStore {
       setTimer: deps.setTimer,
       clearTimer: deps.clearTimer,
       createAbortController: deps.createAbortController,
-      onChange: () => publish(),
+      onChange: () => {
+        if (isCurrent(controller)) publish();
+      },
       random: deps.random,
       connectWarnMs: deps.connectWarnMs,
       stableOpenMs: deps.stableOpenMs,

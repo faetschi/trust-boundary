@@ -32,15 +32,16 @@
   --local-tint: var(--state-allow);
 }
 
-.chip[data-tone="deny"],
-.chip[data-tone="lost"] {
+.chip[data-tone="deny"] {
   --local-ink: var(--state-deny-ink);
   --local-tint: var(--state-deny);
 }
 
+/* LOST is uncertain, not a refusal: the unknown family's ink and tint, never the deny pair. */
 .chip[data-tone="reported"],
 .chip[data-tone="unknown"],
-.chip[data-tone="pending"] {
+.chip[data-tone="pending"],
+.chip[data-tone="lost"] {
   --local-ink: var(--state-reported-ink);
   --local-tint: var(--state-reported);
 }
@@ -51,6 +52,12 @@
 
 .chip[data-tone="unknown"] {
   border-style: dotted;
+}
+
+/* Its own shape: a double border, which no other tone draws. */
+.chip[data-tone="lost"] {
+  border-style: double;
+  border-width: 3px;
 }
 
 .chip[data-tone="idle"] {

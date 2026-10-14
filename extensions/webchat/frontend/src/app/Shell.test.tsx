@@ -105,8 +105,21 @@ describe("Shell: the claim boundary and the source are always visible", () => {
   it("shows no session and no rows before a projection is loaded", () => {
     renderShell(1440);
     expect(q("nav").textContent).toContain("No session projection");
-    expect(q("nav").textContent).toContain("No streams projected.");
-    expect(q("aside").textContent).toContain("No warnings projected.");
+    expect(q("nav").textContent).toContain("unavailable (no projection loaded)");
+    expect(q("aside").textContent).toContain("unavailable (no projection loaded)");
+    expect(q("aside").textContent).not.toContain("No warnings projected.");
+  });
+
+  it("before the first snapshot, every panel, rail and footer value reads unavailable, never no, zero, none or ok", () => {
+    renderShell(1440);
+    const values = Array.from(mounted?.container.querySelectorAll("aside dd, aside li, footer dd") ?? []).map(
+      (el) => el.textContent?.trim() ?? "",
+    );
+    expect(values.length).toBeGreaterThan(10);
+    for (const value of values) expect(value, value).toMatch(/^unavailable/);
+    expect(q("section[aria-labelledby='panel-provenance']").textContent).not.toMatch(/Independently verified\s*no\b/);
+    expect(q("nav").textContent).not.toMatch(/No streams projected/);
+    expect(q("[role='group'][aria-label='Observed posture']").textContent).not.toContain("no decisions or results projected");
   });
 
   it("keeps the rail read-only: it has no buttons, links or controls", async () => {
@@ -215,6 +228,42 @@ describe("Shell: the drawer at the narrow breakpoint", () => {
     expect(q("aside").hasAttribute("inert")).toBe(true);
     shim?.setWidth(1440);
     expect(q("aside").hasAttribute("inert")).toBe(false);
+  });
+
+  it("does not reopen after a widen and a narrow again: leaving the narrow layout closes the drawer", async () => {
+    renderShell(1000);
+    await settle();
+    click(byLabel("Governance"));
+    expect(q("aside").getAttribute("data-open")).toBe("true");
+    shim?.setWidth(1440);
+    shim?.setWidth(1000);
+    expect(q("aside").getAttribute("data-open")).toBe("false");
+    expect(q("aside").hasAttribute("inert")).toBe(true);
+    expect(q("aside").getAttribute("aria-hidden")).toBe("true");
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("false");
+    expect(q("aside").contains(document.activeElement)).toBe(false);
+  });
+
+  it("a record selected at narrow width opens the drawer; after a widen and a narrow the drawer is closed and focus is not in it", async () => {
+    renderShell(1000);
+    await settle();
+    click(byLabel("Trajectory"));
+    click(q("button[data-record-row][data-id='d1']"));
+    expect(q("aside").getAttribute("data-open")).toBe("true");
+    expect(q("aside").contains(document.activeElement)).toBe(true);
+    shim?.setWidth(1440);
+    shim?.setWidth(1000);
+    expect(q("aside").getAttribute("data-open")).toBe("false");
+    expect(q("aside").hasAttribute("inert")).toBe(true);
+    expect(q("aside").contains(document.activeElement)).toBe(false);
+  });
+
+  it("never opens by itself when the viewport narrows", async () => {
+    renderShell(1440);
+    await settle();
+    shim?.setWidth(1000);
+    expect(q("aside").getAttribute("data-open")).toBe("false");
+    expect(q("aside").hasAttribute("inert")).toBe(true);
   });
 });
 

@@ -6,6 +6,8 @@ import { messageItem, snapshotOf } from "../core/testing/builders";
 import { mount, settle, type Mounted } from "../test-support/dom";
 import { fakeWorkspace, type FakeWorkspace } from "../test-support/fakes";
 import { useWorkspace, WorkspaceProvider } from "./WorkspaceProvider";
+import { useAnnouncer } from "../ui/LiveRegion";
+import type { Announcer } from "../ui/announcer";
 
 let mounted: Mounted | null = null;
 
@@ -77,5 +79,61 @@ describe("WorkspaceProvider: lifecycle", () => {
     act(() => window.dispatchEvent(new Event("online")));
     await settle();
     expect(fake.fetchUrls.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// Announcements over a mount. Under StrictMode the effect runs, is torn down and runs again. That
+// teardown is not the browser going offline, so it must not be spoken: the page speaks its connection once.
+describe("WorkspaceProvider: announcements", () => {
+  function AnnouncerProbe({ into }: { readonly into: { current: Announcer | null } }) {
+    into.current = useAnnouncer();
+    return null;
+  }
+
+  it("speaks the connection exactly once under StrictMode", async () => {
+    const fake = fakeWorkspace(snapshot());
+    const into: { current: Announcer | null } = { current: null };
+    mounted = mount(
+      <StrictMode>
+        <WorkspaceProvider deps={fake.deps}>
+          <AnnouncerProbe into={into} />
+        </WorkspaceProvider>
+      </StrictMode>,
+    );
+    await settle();
+    act(() => fake.sources[fake.sources.length - 1]?.open());
+    expect(into.current?.getSnapshot()).toEqual({ serial: 1, text: "Stream connected." });
+  });
+
+  it("speaks the connection exactly once without StrictMode, as the control", async () => {
+    const fake = fakeWorkspace(snapshot());
+    const into: { current: Announcer | null } = { current: null };
+    mounted = mount(
+      <WorkspaceProvider deps={fake.deps}>
+        <AnnouncerProbe into={into} />
+      </WorkspaceProvider>,
+    );
+    await settle();
+    act(() => fake.sources[fake.sources.length - 1]?.open());
+    expect(into.current?.getSnapshot()).toEqual({ serial: 1, text: "Stream connected." });
+  });
+
+  it("removes its online and offline listeners on unmount, so no later browser event starts or stops a stream", async () => {
+    const fake = fakeWorkspace(snapshot());
+    mounted = mount(
+      <WorkspaceProvider deps={fake.deps}>
+        <Probe />
+      </WorkspaceProvider>,
+    );
+    await settle();
+    const requests = fake.fetchUrls.length;
+    const sources = fake.sources.length;
+    mounted.unmount();
+    mounted = null;
+    window.dispatchEvent(new Event("online"));
+    window.dispatchEvent(new Event("offline"));
+    await settle();
+    expect(fake.fetchUrls.length).toBe(requests);
+    expect(fake.sources.length).toBe(sources);
   });
 });

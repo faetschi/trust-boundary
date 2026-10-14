@@ -30,12 +30,12 @@ export function sourceRole(source: RecordSource): SourceRole {
   return source === "unknown" ? "message" : source;
 }
 
-// The state chip's word. An unverified success reads "reported", and a lossy success reads "not
-// confirmed", so no chip shows the confirmed word for either. Other states read as the
-// projection names them.
+// The state chip's word. An unverified success reads "reported". A lossy success reads as the success
+// it is, but that it is not confirmed (the ledger's words), so no chip shows the confirmed word for it.
+// Other states read as the projection names them.
 export function stateWord(item: ItemView, dot: Tone): string {
   const state = item.state ?? "unknown";
   if (dot === "reported") return "reported";
-  if (dot === "unknown" && item.lossy && SUCCESS_STATES.has(slug(state))) return "not confirmed";
+  if (dot === "unknown" && item.lossy && SUCCESS_STATES.has(slug(state))) return `${state} (output lossy, not confirmed)`;
   return state;
 }

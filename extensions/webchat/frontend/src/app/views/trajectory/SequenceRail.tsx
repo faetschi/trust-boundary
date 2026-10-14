@@ -1,22 +1,25 @@
 import { useMemo } from "react";
 import type { ItemView } from "../../../core/contract";
-import { sequenceLanes, toneText, weightClass } from "../../../core/trajectory";
+import { weightClass } from "../../../core/trajectory";
 import { cx } from "../../../ui/cx";
+import type { ProjectionPhase } from "../../status";
+import { railLanes, railToneText } from "./rail";
 import styles from "./Trajectory.module.css";
 
 interface SequenceRailProps {
-  // Every retained record. The rail is never built from the search result.
+  // Every retained record, as the shared gate judges it. The rail is never built from the search result.
   readonly items: readonly ItemView[];
-  readonly loaded: boolean;
+  readonly phase: ProjectionPhase;
   readonly searching: boolean;
 }
 
 // The sequence rail: three lanes (Model, Policy, Tools) over every retained record. Its axis is the
 // record sequence, not time, and the note says so. Each lane is an image whose name states the
 // tone of each segment in words, because the segments are colour and shape only.
-export function SequenceRail({ items, loaded, searching }: SequenceRailProps) {
-  const rail = useMemo(() => sequenceLanes(items), [items]);
-  if (!loaded) return <p className={styles.railNote}>Loading projection…</p>;
+export function SequenceRail({ items, phase, searching }: SequenceRailProps) {
+  const rail = useMemo(() => railLanes(items), [items]);
+  if (phase === "loading") return <p className={styles.railNote}>Loading projection…</p>;
+  if (phase === "failed") return <p className={styles.railNote}>Projection not loaded; nothing to chart.</p>;
   if (items.length === 0) return <p className={styles.railNote}>No records to chart.</p>;
   const note = searching
     ? `${rail.note} The rail always shows all ${items.length} retained records; search only narrows the ledger.`
@@ -30,7 +33,7 @@ export function SequenceRail({ items, loaded, searching }: SequenceRailProps) {
             role="img"
             className={styles.track}
             aria-label={`${lane.label} lane: ${lane.segments
-              .map((segment) => `${segment.weight} record(s), ${toneText(segment.tone)}`)
+              .map((segment) => `${segment.weight} record(s), ${railToneText(segment.tone)}`)
               .join("; ")}`}
           >
             {lane.segments.map((segment, index) => (

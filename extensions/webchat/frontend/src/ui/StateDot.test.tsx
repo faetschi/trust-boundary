@@ -8,16 +8,23 @@ import { mount } from "../test-support/dom";
 // Run from the frontend directory (npm run test), so the path is plain.
 const css = readFileSync(resolve(process.cwd(), "src/ui/StateDot.module.css"), "utf8");
 
+// The rule body for one tone, read from the stylesheet. A tone can share a rule with others, so the
+// first rule whose selector names the tone is the one that carries its own shape.
+function ruleOf(tone: string): string {
+  const match = new RegExp(String.raw`\.dot\[data-tone="${tone}"\]\s*\{([^}]*)\}`).exec(css);
+  if (!match || match[1] === undefined) throw new Error(`no rule for ${tone}`);
+  return match[1];
+}
+
 // The shape rule for each tone, read from the stylesheet. A tone's shape must differ from
 // every other tone's, so the dot carries its state without colour.
 function shapeOf(tone: string): string {
-  const match = new RegExp(String.raw`\.dot\[data-tone="${tone}"\]\s*\{([^}]*)\}`).exec(css);
-  if (!match || match[1] === undefined) throw new Error(`no rule for ${tone}`);
-  const body = match[1];
+  const body = ruleOf(tone);
   const border = /border:\s*([^;]+);/.exec(body)?.[1] ?? "";
   const radius = /border-radius:\s*([^;]+);/.exec(body)?.[1] ?? "50%";
   const fill = /background:\s*([^;]+);/.exec(body)?.[1] ?? "";
-  return [border, radius, fill.includes("transparent") ? "hollow" : "solid"].join("|");
+  const clip = /clip-path:\s*([^;]+);/.exec(body)?.[1] ?? "";
+  return [border, radius, fill.includes("transparent") ? "hollow" : "solid", clip].join("|");
 }
 
 describe("StateDot", () => {
@@ -43,7 +50,15 @@ describe("StateDot", () => {
     const shapes = tones.map(shapeOf);
     expect(new Set(shapes).size).toBe(tones.length);
     expect(shapeOf("idle")).toBe(shapeOf("ok"));
-    expect(shapeOf("idle")).toBe("|50%|solid");
+    expect(shapeOf("idle")).toBe("|50%|solid|");
+  });
+
+  it("draws LOST in the unknown family with a diamond of its own, never in the deny colour or shape", () => {
+    expect(ruleOf("lost")).toMatch(/var\(--state-unknown\)/);
+    expect(ruleOf("lost")).not.toMatch(/--state-deny/);
+    expect(ruleOf("lost")).toMatch(/clip-path:\s*polygon\(/);
+    expect(shapeOf("lost")).not.toBe(shapeOf("deny"));
+    expect(shapeOf("lost")).not.toBe(shapeOf("unknown"));
   });
 
   it("keeps the shape under forced colours by drawing borders, with system colours only", () => {

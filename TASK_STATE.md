@@ -601,3 +601,20 @@ Export of HEAD 58492c5 into WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under $
   that commit.
 - Not committed: commit needs the user's go-ahead. Then re-run `npm run repro`.
 - Open: no screen-reader test; Jump-to-latest only in happy-dom (no live arrivals in the demo).
+
+## Phase 3 review fixes (2026-10-14)
+
+- Fixed (test-first): one shared verification gate (live + structural-audit projection AND item
+  evidence) used by Chat, ledger, rail, inspector; a lossy success never takes the ok tone;
+  LOST uses the unknown family with a diamond (distinct from DENY by shape and words); drawer no
+  longer reopens on widen-then-narrow; loading and error no longer render together; absent
+  provenance/panel data reads 'unavailable' not 'no'/0; StrictMode no longer duplicates the
+  connection announcement.
+- Verified on LINUX (working-tree copy, WSL): vitest 802/802 (54 files, 0 skipped), tsc 0,
+  sinks/deps + self-tests, go -race 39 PASS 0 SKIP, legacy node 258/258, boundary guard, Linux
+  rebuild == committed dist; csp-smoke PASS against a Linux-built gateway hosted in WSL (Chrome 155
+  on Windows, observer live).
+- Open for the core/boundary owner: parseEvent does not check the snapshot source (a streamed
+  observed record in a fixture/replay projection is refused by validate.ts only for snapshots);
+  core isVerified(item) judges from the item alone (the app compensates with judgedItem).
+- Not browser-checked: LOST shapes, 1024 px drawer, StrictMode; no screen-reader testing.

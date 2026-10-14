@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { panelsDefault } from "../core/testing/builders";
-import type { Panels } from "../core/contract";
+import type { GovernancePanel, Panels, ProvenancePanel } from "../core/contract";
 import {
   governanceRows,
+  NO_PROJECTION,
   NO_WARNINGS,
   provenanceRows,
   publicationReading,
@@ -100,14 +101,19 @@ describe("governance counts: absent is unavailable, never zero", () => {
 });
 
 describe("provenance and qualification", () => {
-  it("reports independently verified as yes only when the panel says available", () => {
-    expect(valueOf(provenanceRows({ available: true })[0]?.[1])).toBe("yes");
-    expect(valueOf(provenanceRows({ available: false })[0]?.[1])).toBe("no");
-    expect(valueOf(provenanceRows(undefined)[0]?.[1])).toBe("no");
+  it("reports independently verified as yes only when the panel says available and the projection is verified", () => {
+    expect(valueOf(provenanceRows({ available: true }, true)[0]?.[1])).toBe("yes");
+    expect(valueOf(provenanceRows({ available: true }, false)[0]?.[1])).toBe("no");
+    expect(valueOf(provenanceRows({ available: false }, true)[0]?.[1])).toBe("no");
+  });
+
+  it("reads an absent provenance panel as unavailable with its reason, never as no", () => {
+    expect(provenanceRows(undefined, false)[0]?.[1]).toEqual({ kind: "unavailable", reason: "the snapshot carries no provenance panel" });
+    expect(provenanceRows(null, true)[0]?.[1].kind).toBe("unavailable");
   });
 
   it("marks an absent provenance field unavailable, with the panel's note as the reason", () => {
-    const rows = provenanceRows({ available: false, note: "not verified here" });
+    const rows = provenanceRows({ available: false, note: "not verified here" }, false);
     expect(rows[1]?.[1]).toEqual({ kind: "unavailable", reason: "not verified here" });
   });
 
@@ -125,10 +131,41 @@ describe("provenance and qualification", () => {
 
 describe("warnings", () => {
   it("says so when no warnings were projected", () => {
-    expect(warningLines([])).toEqual([NO_WARNINGS]);
+    expect(warningLines([], true)).toEqual([NO_WARNINGS]);
+  });
+
+  it("reads the warnings as unavailable before a projection is loaded, never as none", () => {
+    expect(warningLines([], false)).toEqual([`unavailable (${NO_PROJECTION})`]);
+    expect(warningLines(undefined, false)).toEqual([`unavailable (${NO_PROJECTION})`]);
   });
 
   it("lists each projected warning", () => {
-    expect(warningLines(["a", "b"])).toEqual(["a", "b"]);
+    expect(warningLines(["a", "b"], true)).toEqual(["a", "b"]);
+  });
+});
+
+// Absent input reads as unavailable with its reason. Absence is never zero, none, no, complete or ok.
+describe("absent input reads unavailable, never no, zero, none, complete or ok", () => {
+  it("every governance, provenance and qualification row is unavailable when its panel is absent", () => {
+    for (const panel of [undefined, null] as const) {
+      const rows = [...governanceRows(panel), ...provenanceRows(panel, true), ...qualificationRows(panel)];
+      expect(rows.length).toBeGreaterThan(10);
+      for (const [label, reading] of rows) expect(reading.kind, label).toBe("unavailable");
+    }
+  });
+
+  it("a present panel that cannot state a field reads that field as unavailable", () => {
+    const provenance = provenanceRows({ available: "yes" } as unknown as ProvenancePanel, true);
+    expect(provenance[0]?.[1].kind).toBe("unavailable");
+    const governance = governanceRows({ allow_count: "3", deny_count: 0, unknown_count: 0 } as unknown as GovernancePanel);
+    expect(governance[0]?.[1].kind).toBe("unavailable");
+    expect(governance[1]?.[1]).toEqual({ kind: "value", text: "0" });
+  });
+
+  it("an absent publication, recovery or session state reads unavailable, and an empty state is not a label", () => {
+    expect(publicationReading(undefined, true).label).toBe("unavailable");
+    expect(recoveryReading(null, true).label).toBe("unavailable");
+    expect(sessionReading(null, true).label).toBe("unavailable");
+    expect(stateReading("", true, {}).label).toBe("unavailable");
   });
 });

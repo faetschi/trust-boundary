@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { jumpLabel } from "../../core/anchor";
 import { visibleRecords } from "../../core/trajectory";
+import { failureText, projectionPhase } from "../status";
 import { useShell } from "../shellContext";
+import { judgedItem } from "../verification";
 import type { WorkspaceModel } from "../workspaceStore";
 import { Ledger } from "./trajectory/Ledger";
 import { SequenceRail } from "./trajectory/SequenceRail";
@@ -18,9 +20,15 @@ export function TrajectoryView({ model }: { readonly model: WorkspaceModel }) {
   const { actions } = model;
   const ledgerRef = useRef<HTMLDivElement | null>(null);
   const [rows] = useState(() => new Map<string, HTMLButtonElement>());
+  const phase = projectionPhase(model);
+  // Every record as the shared gate judges it: the rail, the ledger and the inspector all read these.
+  const judged = useMemo(
+    () => model.items.map((item) => judgedItem(model, item)),
+    [model.items, model.source, model.verification],
+  );
   const visible = useMemo(
-    () => visibleRecords({ items: model.items, query: model.query, group: model.group }),
-    [model.items, model.query, model.group],
+    () => visibleRecords({ items: judged, query: model.query, group: model.group }),
+    [judged, model.query, model.group],
   );
   const searching = model.query.trim() !== "";
   const tail = useTailWindow({ actions, pending: model.tailPending, count: model.items.length, ledgerRef });
@@ -49,14 +57,16 @@ export function TrajectoryView({ model }: { readonly model: WorkspaceModel }) {
       <TrajectoryToolbar
         group={model.group}
         query={model.query}
+        loaded={phase === "loaded"}
         shown={visible.items.length}
         total={model.items.length}
         onGroup={actions.setGroup}
         onQuery={actions.setQuery}
       />
-      <SequenceRail items={model.items} loaded={model.loaded} searching={searching} />
+      <SequenceRail items={judged} phase={phase} searching={searching} />
       <Ledger
-        loaded={model.loaded}
+        phase={phase}
+        failure={failureText(model.error, model.status)}
         source={model.source}
         total={model.items.length}
         groups={visible.groups}

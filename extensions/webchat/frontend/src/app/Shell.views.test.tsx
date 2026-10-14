@@ -210,3 +210,106 @@ describe("the inspector's name", () => {
     expect(aside().getAttribute("aria-label")).toBe("Governance inspector");
   });
 });
+
+// The projection states. Loading and failure are one state at a time: a first-load failure replaces
+// the loading skeleton, a failure after data keeps the data, and a recovery shows the skeleton only
+// while its fetch is in flight with no data.
+describe("projection states: loading, failure and recovery are never shown together", () => {
+  const failing = { ok: false, status: 500, body: null };
+  const loaded = () =>
+    snapshotOf({ items: [messageItem({ id: "m1", sequence: 1, role: "user", text: "list the files" })] });
+
+  function renderWith(reply?: { ok: boolean; status: number; body: unknown }): FakeWorkspace {
+    shim = installMatchMedia(1440);
+    const source = fakeWorkspace(loaded());
+    if (reply) source.reply = reply;
+    fake = source;
+    mounted = mount(
+      <WorkspaceProvider deps={source.deps}>
+        <Shell version="0.1.0" />
+      </WorkspaceProvider>,
+    );
+    return source;
+  }
+
+  function dataStates(): string[] {
+    return Array.from(mounted?.container.querySelectorAll("[data-state]") ?? []).map((el) => el.getAttribute("data-state") ?? "");
+  }
+
+  function logText(): string {
+    return mounted?.container.querySelector("[role='log']")?.textContent ?? "";
+  }
+
+  it("a first-load failure shows the error in place of the loading skeleton, with the reconnect status", async () => {
+    renderWith(failing);
+    await settle();
+    expect(dataStates()).toEqual(["error"]);
+    expect(mounted?.container.querySelector("[data-state='error']")?.textContent).toMatch(/reconnecting…/);
+    expect(mounted?.container.querySelector("[aria-busy='true']")).toBeNull();
+  });
+
+  it("a failure after data keeps the data, and shows the error without a loading skeleton", async () => {
+    const source = renderWith();
+    await settle();
+    act(() => source.sources[0]?.open());
+    // A gap recovers from a fresh snapshot; that snapshot fails, so the data stays and the error shows.
+    source.reply = failing;
+    act(() => {
+      source.sources[0]?.emit("gap", { schema_version: GAP_VERSION, reason: "history_evicted", epoch: "e1", latest: 9 });
+    });
+    await settle();
+    expect(dataStates()).not.toContain("loading");
+    expect(dataStates()).toEqual(["error"]);
+    expect(logText()).toContain("list the files");
+  });
+
+  it("a recovery shows the skeleton while its fetch is in flight with no data, then the data", async () => {
+    const source = renderWith(failing);
+    await settle();
+    expect(dataStates()).toEqual(["error"]);
+    source.reply = { ok: true, status: 200, body: loaded() };
+    act(() => {
+      source.fireTimer();
+    });
+    expect(dataStates()).toEqual(["loading"]);
+    expect(dataStates()).not.toContain("error");
+    await settle();
+    expect(dataStates()).toEqual([]);
+    expect(logText()).toContain("list the files");
+  });
+
+  it("the trajectory shows its first-load failure in place of the loading text, not beside it", async () => {
+    renderWith(failing);
+    await settle();
+    const tab = Array.from(mounted?.container.querySelectorAll<HTMLButtonElement>("[role='tab']") ?? []).find(
+      (button) => button.textContent === "Trajectory",
+    );
+    if (!tab) throw new Error("no Trajectory tab");
+    click(tab);
+    await settle();
+    const panel = mounted?.container.querySelector("#view-panel-trajectory");
+    expect(panel?.textContent ?? "").not.toContain("Loading projection…");
+    expect(Array.from(panel?.querySelectorAll("[data-state]") ?? []).map((el) => el.getAttribute("data-state"))).toEqual(["error"]);
+  });
+});
+
+describe("before the first snapshot, no count reads as zero", () => {
+  it("the chat and trajectory summaries say unavailable, never 0 elements or 0 records", async () => {
+    shim = installMatchMedia(1440);
+    fake = fakeWorkspace(snapshotOf({ items: [messageItem({ id: "m1", sequence: 1 })] }));
+    mounted = mount(
+      <WorkspaceProvider deps={fake.deps}>
+        <Shell version="0.1.0" />
+      </WorkspaceProvider>,
+    );
+    const chat = mounted.container.querySelector("#view-panel-chat")?.textContent ?? "";
+    expect(chat).not.toContain("0 element(s)");
+    expect(chat).toContain("unavailable (no projection loaded)");
+    const tab = Array.from(mounted.container.querySelectorAll<HTMLButtonElement>("[role='tab']")).find((b) => b.textContent === "Trajectory");
+    if (!tab) throw new Error("no Trajectory tab");
+    click(tab);
+    const trajectory = mounted.container.querySelector("#view-panel-trajectory")?.textContent ?? "";
+    expect(trajectory).not.toContain("0 record(s)");
+    expect(trajectory).toContain("unavailable (no projection loaded)");
+  });
+});

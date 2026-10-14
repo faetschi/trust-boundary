@@ -75,7 +75,7 @@ export function GovernancePanels({ model }: { readonly model: WorkspaceModel }) 
         <p className={styles.note}>{POLICY_NOTE}</p>
       </PanelSection>
       <PanelSection id="panel-provenance" title="Provenance">
-        <Rows rows={provenanceRows(panels?.provenance)} />
+        <Rows rows={provenanceRows(panels?.provenance, verified)} />
       </PanelSection>
       <PanelSection id="panel-publication" title="Publication">
         <StateLine reading={publicationReading(publication, verified)} />
@@ -83,7 +83,7 @@ export function GovernancePanels({ model }: { readonly model: WorkspaceModel }) 
       </PanelSection>
       <PanelSection id="panel-recovery" title="Recovery">
         <StateLine reading={recoveryReading(panels?.recovery, verified)} />
-        {panels?.recovery.detail ? <p className={styles.note}>{panels.recovery.detail}</p> : null}
+        {panels?.recovery?.detail ? <p className={styles.note}>{panels.recovery.detail}</p> : null}
       </PanelSection>
       <PanelSection id="panel-qualification" title="Qualification">
         <Rows rows={qualificationRows(panels?.qualification)} />
@@ -91,7 +91,7 @@ export function GovernancePanels({ model }: { readonly model: WorkspaceModel }) 
       </PanelSection>
       <PanelSection id="panel-warnings" title="Warnings">
         <ul className={styles.warnings}>
-          {warningLines(model.warnings).map((line) => (
+          {warningLines(model.warnings, model.loaded).map((line) => (
             <li key={line}>{line}</li>
           ))}
         </ul>

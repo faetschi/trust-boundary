@@ -1,6 +1,6 @@
 import { Chip, type ChipTone } from "../ui/Chip";
 import { StateDot } from "../ui/StateDot";
-import { sessionReading } from "./panels";
+import { countReading, NO_PROJECTION, sessionReading, unavailableWords } from "./panels";
 import type { WorkspaceModel } from "./workspaceStore";
 import { isVerifiedProjection } from "../core/format";
 import type { StreamHealth, StreamStatus } from "../core/contract";
@@ -20,6 +20,12 @@ function streamText(stream: StreamStatus): string {
   return `${stream.label}: ${stream.health}${reason}${availability}`;
 }
 
+// The turn count, or why there is none. A count the session header does not carry is unavailable.
+function turnsText(value: unknown): string {
+  const reading = countReading(value, "the session header carries no turn count");
+  return reading.kind === "value" ? reading.text : unavailableWords(reading.reason);
+}
+
 export function Rail({ model }: { readonly model: WorkspaceModel }) {
   const { session } = model;
   const reading = sessionReading(session, isVerifiedProjection(model));
@@ -36,7 +42,7 @@ export function Rail({ model }: { readonly model: WorkspaceModel }) {
               <Chip tone={reading.tone}>{reading.label}</Chip>
               {reading.trust ? <span className={styles.trust}> {reading.trust}</span> : null}
             </p>
-            <p className={styles.line}>Turns: {session.turn_count}</p>
+            <p className={styles.line}>Turns: {turnsText(session.turn_count)}</p>
           </>
         ) : (
           <p className={styles.line}>No session projection</p>
@@ -50,11 +56,13 @@ export function Rail({ model }: { readonly model: WorkspaceModel }) {
         <h2 id="rail-streams" className={styles.heading}>
           Observation streams
         </h2>
-        {model.streams.length > 0 ? (
+        {!model.loaded ? (
+          <p className={styles.line}>{unavailableWords(NO_PROJECTION)}</p>
+        ) : model.streams.length > 0 ? (
           <ul className={styles.streams}>
             {model.streams.map((stream) => (
               <li key={stream.id} className={styles.stream}>
-                <StateDot tone={HEALTH_TONES[stream.health]} />
+                <StateDot tone={HEALTH_TONES[stream.health] ?? "unknown"} />
                 <span>{streamText(stream)}</span>
               </li>
             ))}

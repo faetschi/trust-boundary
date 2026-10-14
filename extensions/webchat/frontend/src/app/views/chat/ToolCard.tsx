@@ -15,8 +15,8 @@ import { headlineSummary } from "./headline";
 import { LOSSY_READING, UNVERIFIED_READING, VERIFIED_READING, stateReading, verdictReading } from "./readings";
 import styles from "./Chat.module.css";
 
-// Whether an item is verified: the projection is live and structurally audited, and the item has
-// VerifiedEvidence. Only a verified success is shown as succeeded.
+// Whether an item is verified in its projection: the shared gate (app verification.ts isVerifiedIn). Only a
+// verified success is shown as succeeded, and a lossy one never is.
 export type Verifier = (item: ItemView) => boolean;
 
 interface ToolCardProps {
@@ -31,7 +31,9 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
   const primary = result ?? activity ?? decision;
   const stateItem = result ?? activity;
   const tool = primary?.tool ?? "tool";
-  const stateReadingOf = stateItem ? stateReading(stateItem.state, verifiedOf(stateItem)) : null;
+  const stateReadingOf = stateItem
+    ? stateReading(stateItem.state, verifiedOf(stateItem), stateItem.type === "result" && stateItem.lossy === true)
+    : null;
   const verdict = decision ? verdictReading(decision.verdict) : null;
   const marker = primary ? markOf(primary) : null;
   // The name is drawn once, here; the summary follows it without a repeat of the name.

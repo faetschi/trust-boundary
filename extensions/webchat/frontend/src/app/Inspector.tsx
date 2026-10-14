@@ -43,7 +43,7 @@ export function Inspector({ model, narrow, open, headingRef, onClose }: Inspecto
           </button>
         ) : null}
       </div>
-      {record ? <RecordInspector record={record} /> : <GovernancePanels model={model} />}
+      {record ? <RecordInspector record={record} projection={model} /> : <GovernancePanels model={model} />}
     </aside>
   );
 }

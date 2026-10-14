@@ -157,6 +157,12 @@
   border: 2px dotted var(--state-unknown);
 }
 
+/* LOST is uncertain, not a refusal: the unknown family's colour, hatched, so it never reads as the solid
+   deny bar. Under forced colours it is a double outline, a shape no other tone uses. */
+.seg[data-tone="lost"] {
+  background: repeating-linear-gradient(135deg, var(--state-unknown) 0 2px, transparent 2px 6px);
+}
+
 .seg[data-tone="idle"] {
   background: var(--state-idle);
 }
@@ -179,6 +185,11 @@
   .seg[data-tone="unknown"] {
     forced-color-adjust: none;
     border-color: CanvasText;
+  }
+
+  .seg[data-tone="lost"] {
+    forced-color-adjust: none;
+    border: 4px double CanvasText;
   }
 }
 

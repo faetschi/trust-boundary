@@ -10,8 +10,16 @@ const DIGEST = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef012345678
 
 let mounted: Mounted | null = null;
 
-function inspect(record: Parameters<typeof RecordInspector>[0]["record"]): HTMLElement {
-  mounted = mount(<RecordInspector record={record} />);
+// The projection the record is shown in. Live with a structural audit by default, so an observed and
+// audited record is verified; the fixture cases pass FIXTURE.
+const LIVE = { source: "live", verification: "structural-audit-only" } as const;
+const FIXTURE = { source: "fixture", verification: "unverified-input" } as const;
+
+function inspect(
+  record: Parameters<typeof RecordInspector>[0]["record"],
+  projection: Parameters<typeof RecordInspector>[0]["projection"] = LIVE,
+): HTMLElement {
+  mounted = mount(<RecordInspector record={record} projection={projection} />);
   return mounted.container;
 }
 
@@ -81,11 +89,11 @@ describe("the Result section: an unverified success is reported, never confirmed
     expect(view.querySelectorAll("[data-tone='ok']")).toHaveLength(0);
   });
 
-  it("shows a lossy success as not confirmed, on the unknown tone", () => {
+  it("shows a lossy success as succeeded (output lossy, not confirmed), on the unknown tone", () => {
     const view = inspect(
       resultItem({ id: "r1", sequence: 4, tool: "bash", tool_call_id: "c1", state: "succeeded", lossy: true, authority: "observed", verification_scope: "structural-audit-only" }),
     );
-    expect(valueOf(view, "result", "state").textContent).toBe("not confirmed");
+    expect(valueOf(view, "result", "state").textContent).toBe("succeeded (output lossy, not confirmed)");
     expect(valueOf(view, "result", "state").querySelector("[data-tone]")?.getAttribute("data-tone")).toBe("unknown");
   });
 
@@ -113,6 +121,27 @@ describe("the Evidence section and the Timing section", () => {
       decisionItem({ id: "d2", sequence: 4, tool: "bash", tool_call_id: "c2", verdict: "ALLOW", authority: "observed", verification_scope: "structural-audit-only" }),
     );
     expect(valueOf(verified, "evidence", "independently verified").textContent).toBe("yes");
+  });
+
+  it("in a fixture projection, a streamed observed success reads reported and independently verified: no, and keeps its own evidence", () => {
+    const view = inspect(
+      resultItem({ id: "r1", sequence: 4, tool: "bash", tool_call_id: "c1", state: "succeeded", authority: "observed", verification_scope: "structural-audit-only" }),
+      FIXTURE,
+    );
+    expect(valueOf(view, "result", "state").textContent).toBe("reported");
+    expect(valueOf(view, "evidence", "independently verified").textContent).toBe("no");
+    expect(valueOf(view, "evidence", "authority").textContent).toBe("observed");
+    expect(valueOf(view, "evidence", "verification").textContent).toBe("structural-audit-only");
+  });
+
+  it("reads absent authority and verification as unavailable, never as no or unknown", () => {
+    const bare: Record<string, unknown> = { ...decisionItem({ id: "d1", sequence: 3, tool: "bash", tool_call_id: "c1", verdict: "ALLOW" }) };
+    delete bare.authority;
+    delete bare.verification_scope;
+    const view = inspect(bare as unknown as Parameters<typeof RecordInspector>[0]["record"]);
+    expect(valueOf(view, "evidence", "independently verified").textContent).toBe("unavailable — the record carries no authority or verification scope");
+    expect(valueOf(view, "evidence", "authority").textContent).toBe("unavailable");
+    expect(valueOf(view, "evidence", "verification").textContent).toBe("unavailable");
   });
 
   it("always has a Timing section, which states that no duration is recorded", () => {

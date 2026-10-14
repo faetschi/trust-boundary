@@ -2,13 +2,15 @@ import { useRef, type ReactNode } from "react";
 import { jumpLabel } from "../../core/anchor";
 import type { ItemView } from "../../core/contract";
 import { FILTERS, countFilter, filterItems, governanceCounts } from "../../core/filters";
-import { isVerifiedProjection, verifyItem } from "../../core/format";
 import { turnsOf } from "../../core/store";
 import { Chip } from "../../ui/Chip";
 import { useAnnouncer } from "../../ui/LiveRegion";
 import { ToggleGroup, type ToggleItem } from "../../ui/ToggleGroup";
 import { EmptyState, ErrorState, LoadingState } from "../../ui/StateMessage";
+import { NO_PROJECTION, unavailableWords } from "../panels";
+import { failureText, projectionPhase } from "../status";
 import type { WorkspaceModel } from "../workspaceStore";
+import { confirmedIn, isVerifiedIn } from "../verification";
 import { filterSummaryText, postureEntries } from "./chat/readings";
 import { markerFor, provenanceOf } from "./chat/provenance";
 import { TurnView } from "./chat/Transcript";
@@ -27,9 +29,11 @@ export const TRANSCRIPT_NOTICE_POINTER = "Notices for this transcript are above 
 export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   const announcer = useAnnouncer();
   const logRef = useRef<HTMLDivElement | null>(null);
-  const projectionVerified = isVerifiedProjection(model);
-  // A success is verified only in a live, structurally audited projection, and only with evidence.
-  const verifiedOf: Verifier = (item) => projectionVerified && verifyItem(item) !== null;
+  const phase = projectionPhase(model);
+  // The shared gate: a record is verified only in a live, structurally audited projection, and only with
+  // its own observed evidence. The posture counts a success as confirmed only when it is verified and not lossy.
+  const verifiedOf: Verifier = (item) => isVerifiedIn(model, item);
+  const confirmedOf = (item: ItemView) => confirmedIn(model, item);
   const tail = useTailWindow({
     region: logRef,
     actions: model.actions,
@@ -44,20 +48,22 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   const markOf = (item: ItemView) => markerFor(provenance, verifiedOf(item));
   const activeFilter = FILTERS.find((entry) => entry.id === model.filter);
   const filterLabel = activeFilter ? activeFilter.label : model.filter;
-  const posture = postureEntries(governanceCounts(model.items, verifiedOf));
+  const posture = postureEntries(governanceCounts(model.items, confirmedOf));
   const filters: ToggleItem[] = FILTERS.map((entry) => ({
     value: entry.id,
     label: entry.label,
     count: countFilter(model.items, entry.id),
   }));
-  const summary = filterSummaryText({
-    filter: model.filter,
-    label: filterLabel,
-    total: model.items.length,
-    matches: countFilter(model.items, model.filter),
-    shown: visible.length,
-    evicted: model.evicted,
-  });
+  const summary = model.loaded
+    ? filterSummaryText({
+        filter: model.filter,
+        label: filterLabel,
+        total: model.items.length,
+        matches: countFilter(model.items, model.filter),
+        shown: visible.length,
+        evicted: model.evicted,
+      })
+    : unavailableWords(NO_PROJECTION);
 
   function choose(value: string): void {
     const next = FILTERS.find((entry) => entry.id === value);
@@ -69,7 +75,9 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   return (
     <div className={styles.view}>
       <div className={styles.posture} role="group" aria-label="Observed posture">
-        {posture.length > 0 ? (
+        {!model.loaded ? (
+          <span className={styles.postureEmpty}>{unavailableWords(NO_PROJECTION)}</span>
+        ) : posture.length > 0 ? (
           posture.map((entry) => (
             <span key={entry.key} title={entry.hint}>
               <Chip tone={entry.tone}>{entry.text}</Chip>
@@ -89,7 +97,7 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
       <div role="log" aria-label="Transcript" aria-live="off" tabIndex={-1} ref={logRef} className={styles.log}>
         {hasNotice ? <p className={styles.note}>{TRANSCRIPT_NOTICE_POINTER}</p> : null}
         {provenance.kind === "uniform" ? <p className={styles.note}>{provenance.text}</p> : null}
-        {model.error ? <ErrorState title="Projection error">{model.error}</ErrorState> : null}
+        {phase === "loaded" && model.error !== null ? <ErrorState title="Projection error">{model.error}</ErrorState> : null}
         {transcript()}
       </div>
 
@@ -101,9 +109,13 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
     </div>
   );
 
-  // Loading, empty, no-match and the transcript itself. Each state is text, never colour alone.
+  // Loading, failure, empty, no-match and the transcript itself. One state at a time, and each is text,
+  // never colour alone. A failure before the first snapshot replaces the loading skeleton.
   function transcript(): ReactNode {
-    if (!model.loaded) return <LoadingState label="Loading projection…" />;
+    if (phase === "loading") return <LoadingState label="Loading projection…" />;
+    if (phase === "failed") {
+      return <ErrorState title="Projection not loaded">{failureText(model.error, model.status)}</ErrorState>;
+    }
     if (model.items.length === 0) {
       return (
         <EmptyState title="Nothing to display">

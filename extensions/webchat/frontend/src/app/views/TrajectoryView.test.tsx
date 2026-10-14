@@ -230,7 +230,27 @@ describe("the ledger: one row per record, a source chip, a dot and its status", 
     const policy = laneTrack("Policy");
     expect(policy.querySelector("[data-tone='allow']")).not.toBeNull();
     expect(policy.getAttribute("aria-label")).not.toMatch(/succeeded|verified,/);
-    expect(laneTrack("Tools").getAttribute("aria-label")).toMatch(/DENY, denied, failed or lost, not success/);
+    expect(laneTrack("Tools").getAttribute("aria-label")).toMatch(/LOST, not success/);
+    expect(laneTrack("Tools").querySelector("[data-tone='lost']")).not.toBeNull();
+    expect(laneTrack("Tools").querySelector("[data-tone='deny']")).toBeNull();
+  });
+
+  it("a LOST result beside a DENY differs by tone and by words, and a LOST outcome never reads as a refusal", async () => {
+    await openTrajectory([
+      decisionItem({ id: "d1", sequence: 1, tool: "bash", tool_call_id: "c1", verdict: "DENY" }),
+      resultItem({ id: "r1", sequence: 2, tool: "bash", tool_call_id: "c1", state: "lost" }),
+      decisionItem({ id: "d2", sequence: 3, tool: "bash", tool_call_id: "c2", verdict: "DENY" }),
+      resultItem({ id: "r2", sequence: 4, tool: "bash", tool_call_id: "c2", state: "denied" }),
+    ]);
+    const dot = (id: string) => rowFor(id).querySelector("span[aria-hidden='true']")?.getAttribute("data-tone");
+    expect(dot("r1")).toBe("lost");
+    expect(dot("r2")).toBe("deny");
+    expect(rowFor("r1").getAttribute("aria-label")).toMatch(/Result: LOST, not success/);
+    expect(rowFor("r1").getAttribute("aria-label")).not.toMatch(/\bDENY\b|denied/);
+    expect(rowFor("r1").textContent).toContain("lost");
+    const tools = laneTrack("Tools");
+    expect(tools.querySelectorAll("[data-tone='lost']")).toHaveLength(1);
+    expect(tools.querySelectorAll("[data-tone='deny']")).toHaveLength(1);
   });
 
   it("UNKNOWN verdict and UNKNOWN result stay unknown and are never promoted", async () => {
@@ -258,8 +278,10 @@ describe("the ledger: one row per record, a source chip, a dot and its status", 
     const lossy = rowFor("lossy1");
     expect(lossy.querySelector("span[aria-hidden='true']")?.getAttribute("data-tone")).toBe("unknown");
     expect(lossy.getAttribute("aria-label")).toMatch(/succeeded, output lossy, not counted as confirmed/);
-    expect(lossy.textContent).toContain("not confirmed");
+    expect(lossy.textContent).toContain("succeeded (output lossy, not confirmed)");
     expect(lossy.textContent).toContain("lossy");
+    expect(lossy.querySelector("[data-tone='ok']")).toBeNull();
+    expect(lossy.querySelector("[data-tone='unknown']")).not.toBeNull();
   });
 
   it("marks an unverified verdict with an explicit unverified marker", async () => {
@@ -304,7 +326,8 @@ describe("the sequence rail: three lanes over every retained record", () => {
     const tools = laneTrack("Tools");
     expect(tools.getAttribute("aria-label")).toMatch(/pending, no outcome yet/);
     expect(tools.getAttribute("aria-label")).toMatch(/succeeded, reported, not independently verified/);
-    expect(tools.getAttribute("aria-label")).toMatch(/DENY, denied, failed or lost, not success/);
+    expect(tools.getAttribute("aria-label")).toMatch(/DENY, denied or failed, not success/);
+    expect(tools.getAttribute("aria-label")).not.toMatch(/lost/);
   });
 
   it("gives an UNKNOWN result its own unknown segment, named in words, never a lane that did not act", async () => {

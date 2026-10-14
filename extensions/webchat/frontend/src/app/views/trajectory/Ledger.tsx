@@ -1,11 +1,14 @@
 import { useId, useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import type { RecordGroup } from "../../../core/trajectory";
-import { EmptyState, LoadingState } from "../../../ui/StateMessage";
+import { EmptyState, ErrorState, LoadingState } from "../../../ui/StateMessage";
+import type { ProjectionPhase } from "../../status";
 import { RecordRow } from "./RecordRow";
 import styles from "./Trajectory.module.css";
 
 interface LedgerProps {
-  readonly loaded: boolean;
+  readonly phase: ProjectionPhase;
+  // Why the projection failed to load, shown in place of the ledger when it did.
+  readonly failure: string;
   readonly source: string;
   // Records retained by the projection, before any search.
   readonly total: number;
@@ -22,7 +25,7 @@ interface LedgerProps {
 // (a roving tab stop), so Tab crosses the ledger in one stop. ArrowUp and ArrowDown move between
 // rows, across group boundaries; Home and End go to the ends. Enter or Space selects the focused
 // row, as a button does. The container is a named region, not a list: each group names itself.
-export function Ledger({ loaded, source, total, groups, selectedId, ledgerRef, rows, onSelect }: LedgerProps) {
+export function Ledger({ phase, failure, source, total, groups, selectedId, ledgerRef, rows, onSelect }: LedgerProps) {
   const [lastFocused, setLastFocused] = useState<string | null>(null);
   const ids = groups.flatMap((group) => group.records.map((record) => record.id ?? ""));
   const stop = pickStop(ids, lastFocused, selectedId);
@@ -69,8 +72,10 @@ export function Ledger({ loaded, source, total, groups, selectedId, ledgerRef, r
       className={styles.ledger}
       onKeyDown={onKeyDown}
     >
-      {!loaded ? (
+      {phase === "loading" ? (
         <LoadingState label="Loading projection…" />
+      ) : phase === "failed" ? (
+        <ErrorState title="Projection not loaded">{failure}</ErrorState>
       ) : total === 0 ? (
         <EmptyState title="No records">
           <p>

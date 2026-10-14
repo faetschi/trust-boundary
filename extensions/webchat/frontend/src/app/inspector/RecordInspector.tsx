@@ -11,27 +11,47 @@ import {
   type RecordView,
 } from "../../core/trajectory";
 import { Chip } from "../../ui/Chip";
+import { isVerifiedIn, judgedItem, type ProjectionState } from "../verification";
 import { chipToneOf, sourceRole, stateWord } from "./recordChip";
 import styles from "./RecordInspector.module.css";
 
 // The record inspector body: the bounded fields of one projected record. The shell owns the aside,
 // its heading and the Close control (shellContext.ts). Every value is the projection's own, and
-// the sections are the core's (recordDetail), so the Timing section is always there.
-export function RecordInspector({ record }: { readonly record: Item }) {
-  const view = recordOf(record);
+// the sections are the core's (recordDetail), so the Timing section is always there. Verification is
+// judged by the shared gate (verification.ts); the Evidence section states the record's own evidence.
+export function RecordInspector({ record, projection }: { readonly record: Item; readonly projection: ProjectionState }) {
+  const judged = judgedItem(projection, record);
+  const view = recordOf(judged);
   const position = `sequence ${view.sequence}${record.turn_id ? ` · turn ${record.turn_id}` : ""}`;
+  const sections = view.detail.map((section) => (section.id === "evidence" ? evidenceSection(record, projection) : section));
   return (
     <div className={styles.body}>
       <div className={styles.head}>
         <Chip source={sourceRole(view.source)}>{sourceLabel(view.source)}</Chip>
         <span className={styles.position}>{position}</span>
       </div>
-      <p className={styles.status}>{statusText(record)}</p>
-      {view.detail.map((section) => (
+      <p className={styles.status}>{statusText(judged)}</p>
+      {sections.map((section) => (
         <Section key={section.id} section={section} view={view} />
       ))}
     </div>
   );
+}
+
+// The Evidence rows, read from the record: its authority and scope as it carried them, and whether the
+// shared gate verified it. A record that lacks either field is unavailable, never no.
+function evidenceSection(record: Item, projection: ProjectionState): DetailSection {
+  const declared = record.authority !== undefined && record.verification_scope !== undefined;
+  const verdict = isVerifiedIn(projection, record) ? "yes" : "no";
+  return {
+    id: "evidence",
+    title: "Evidence",
+    rows: [
+      ["authority", record.authority ?? "unavailable", { mono: true }],
+      ["verification", record.verification_scope ?? "unavailable", { mono: true }],
+      ["independently verified", declared ? verdict : "unavailable — the record carries no authority or verification scope"],
+    ],
+  };
 }
 
 function Section({ section, view }: { readonly section: DetailSection; readonly view: RecordView }) {

@@ -5,8 +5,9 @@
 //   - UNKNOWN stays UNKNOWN, and a state the client does not know is UNKNOWN;
 //   - an absent value is "unavailable" with a reason, never zero, never empty.
 //
-// Verification is a property of the projection (core format.ts isVerifiedProjection): a
-// live source with a structural audit scope. Anything else is not verified.
+// Verification is judged by the shared gate (verification.ts). A panel reading uses its projection half
+// (core format.ts isVerifiedProjection): a live source with a structural audit scope. Anything else is
+// not verified, and a value the panel does not carry is unavailable, never no.
 
 import { SUCCESS_STATES, humanize } from "../core/format";
 import type {
@@ -29,6 +30,14 @@ export interface StateReading {
   readonly tone: ChipTone;
   // A plain sentence about how the state was established. Empty when there is nothing to add.
   readonly trust: string;
+}
+
+// Why a value has no reading before the first snapshot. Shown as unavailable, never as zero or none.
+export const NO_PROJECTION = "no projection loaded";
+
+// The words of an unavailable value, for text that is not a reading (a summary line, a list item).
+export function unavailableWords(reason: string): string {
+  return `unavailable (${reason})`;
 }
 
 export function countReading(value: unknown, reason: string): Reading {
@@ -101,7 +110,7 @@ export function stateReading(
   verified: boolean,
   tones: Readonly<Record<string, ChipTone>>,
 ): StateReading {
-  if (state === undefined) {
+  if (state === undefined || state === "") {
     return { label: "unavailable", tone: "idle", trust: "not projected by the source" };
   }
   if (SUCCESS_STATES.has(state)) {
@@ -129,11 +138,24 @@ export function sessionReading(session: SessionHeader | null, verified: boolean)
 
 
 
-export function provenanceRows(panel: ProvenancePanel | null | undefined): Array<readonly [string, Reading]> {
+// "Independently verified" is yes only when the panel says it is available and the projection is
+// verified. An absent panel, or one that does not state availability, is unavailable, never no.
+function independentlyVerified(panel: ProvenancePanel | null | undefined, verified: boolean): Reading {
+  if (!panel) return { kind: "unavailable", reason: NO_PROVENANCE };
+  if (typeof panel.available !== "boolean") {
+    return { kind: "unavailable", reason: "the provenance panel does not state availability" };
+  }
+  return { kind: "value", text: panel.available && verified ? "yes" : "no" };
+}
+
+export function provenanceRows(
+  panel: ProvenancePanel | null | undefined,
+  verified: boolean,
+): Array<readonly [string, Reading]> {
   const unverified = panel?.note ?? "the gateway has not verified provenance";
   const field = (value: unknown): Reading => textReading(value, panel ? unverified : NO_PROVENANCE);
   return [
-    ["Independently verified", { kind: "value", text: panel?.available === true ? "yes" : "no" }],
+    ["Independently verified", independentlyVerified(panel, verified)],
     ["Profile", field(panel?.profile_id)],
     ["Profile hash", field(panel?.profile_hash)],
     ["Source digest", field(panel?.source_digest)],
@@ -157,6 +179,10 @@ export function qualificationRows(panel: QualificationPanel | null | undefined):
 
 export const NO_WARNINGS = "No warnings projected.";
 
-export function warningLines(warnings: readonly string[]): string[] {
+// The warnings of the snapshot. Before the first snapshot there are none to show, and that is unavailable,
+// not "none": the empty list is a statement only once a projection has loaded.
+export function warningLines(warnings: readonly string[] | null | undefined, loaded: boolean): string[] {
+  if (!loaded) return [unavailableWords(NO_PROJECTION)];
+  if (!Array.isArray(warnings)) return [unavailableWords("the snapshot carries no warnings")];
   return warnings.length > 0 ? [...warnings] : [NO_WARNINGS];
 }

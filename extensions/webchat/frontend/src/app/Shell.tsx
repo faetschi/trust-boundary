@@ -77,6 +77,22 @@ export function Shell({ version }: { readonly version: string }) {
     }
   }, [drawerOpen]);
 
+  // The drawer belongs to the narrow layout only. Leaving that layout forgets the request, so a later
+  // narrow layout starts closed and never reopens by itself. Entering it with the drawer closed moves
+  // focus out of the inspector, because the inspector is inert while closed.
+  useEffect(() => {
+    if (!narrow) {
+      setDrawerRequested(false);
+      returnRef.current = null;
+      focusHeadingOnOpen.current = false;
+      return;
+    }
+    const active = document.activeElement;
+    if (!drawerRequested && active instanceof HTMLElement && active.closest(`#${INSPECTOR_ID}`)) {
+      toggleRef.current?.focus();
+    }
+  }, [narrow]);
+
   const clearRecord = useCallback(() => {
     actions.clearRecord();
     if (drawerOpen) closeInspector();

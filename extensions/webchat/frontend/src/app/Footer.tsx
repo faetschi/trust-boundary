@@ -1,20 +1,27 @@
 import { governanceCounts } from "../core/filters";
-import { countReading, type Reading } from "./panels";
+import { countReading, NO_PROJECTION, type Reading } from "./panels";
 import type { WorkspaceModel } from "./workspaceStore";
 import styles from "./Shell.module.css";
 
 // The footer metrics. A metric the projection does not carry is "unavailable" with its
-// reason, never a zero. The policy counts describe the retained window only.
-export function footerMetrics(model: Pick<WorkspaceModel, "session" | "items" | "evicted">): Array<readonly [string, Reading]> {
+// reason, never a zero: before the first snapshot the retained-window counts are unavailable too,
+// because an empty window is only a statement once a projection has loaded. The policy counts
+// describe the retained window only.
+export function footerMetrics(
+  model: Pick<WorkspaceModel, "session" | "items" | "evicted" | "loaded">,
+): Array<readonly [string, Reading]> {
   const counts = governanceCounts(model.items);
   const evicted = model.evicted > 0 ? ` · ${model.evicted} earlier evicted` : "";
+  const retained: Reading = model.loaded
+    ? { kind: "value", text: `${model.items.length}${evicted}` }
+    : { kind: "unavailable", reason: NO_PROJECTION };
+  const policy: Reading = model.loaded
+    ? { kind: "value", text: `ALLOW ${counts.allow} · DENY ${counts.deny} · UNKNOWN ${counts.unknownDecisions}` }
+    : { kind: "unavailable", reason: NO_PROJECTION };
   return [
     ["Turns", countReading(model.session?.turn_count, "no session projection")],
-    ["Records retained", { kind: "value", text: `${model.items.length}${evicted}` }],
-    [
-      "Policy, retained window",
-      { kind: "value", text: `ALLOW ${counts.allow} · DENY ${counts.deny} · UNKNOWN ${counts.unknownDecisions}` },
-    ],
+    ["Records retained", retained],
+    ["Policy, retained window", policy],
     ["Token usage", { kind: "unavailable", reason: "the projection records no token usage" }],
     ["Duration", { kind: "unavailable", reason: "the projection records no duration" }],
   ];
