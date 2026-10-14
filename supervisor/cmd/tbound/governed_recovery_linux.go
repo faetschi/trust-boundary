@@ -291,7 +291,7 @@ func prepareGovernedRecovery(ctx context.Context, request governedRecoveryReques
 		return nil, fmt.Errorf("verify retained Store authorization/effect/command facts: %w", err)
 	}
 	projection, pendingVerifier, err := ReplayGovernedHistoryForRecovery(previewOptions.Journal, store,
-		request.Transcripts, commandVerifier)
+		request.Transcripts, recoveryCommandVerifiers(commandVerifier)...)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +315,7 @@ func prepareGovernedRecovery(ctx context.Context, request governedRecoveryReques
 				request.Transcripts[lastIndex].Journal, request.Transcripts[lastIndex].Replay.Provider, pendingVerifier); err != nil {
 				return nil, fmt.Errorf("append externally verified retirement for the idle provider boundary: %w", err)
 			}
-			projection, err = ReplayGovernedHistory(previewOptions.Journal, store, request.Transcripts, commandVerifier)
+			projection, err = ReplayGovernedHistory(previewOptions.Journal, store, request.Transcripts, recoveryCommandVerifiers(commandVerifier)...)
 			if err != nil {
 				return nil, fmt.Errorf("strictly replay the retired provider lineage and all Store cross-links: %w", err)
 			}
@@ -384,7 +384,14 @@ func prepareGovernedRecovery(ctx context.Context, request governedRecoveryReques
 	next.PreviousRecoveryLineageDigest = previous.RecoveryLineageDigest
 	next.RecoveryLineageDigest = ""
 	next.RecoveryLineageDigest = workflowrecovery.ComputeRecoveryLineageDigest(checkpointHead, previous, next)
-	receipt, err := ledger.ReserveCleanRestart(ctx, observation, next)
+	// A retired unleased call charges its pre-effect retry in the same checkpoint
+	// as the clean restart, so the receipt is final before any activation step.
+	needsPreEffectRetry := hasUnleasedRetiredCall(projection)
+	reserve := ledger.ReserveCleanRestart
+	if needsPreEffectRetry {
+		reserve = ledger.ReserveCleanRestartWithPreEffectRetry
+	}
+	receipt, err := reserve(ctx, observation, next)
 	if err != nil {
 		_ = gitCandidate.Close()
 		return nil, err
@@ -399,7 +406,7 @@ func prepareGovernedRecovery(ctx context.Context, request governedRecoveryReques
 		previousHead: checkpointHead, observed: observed, next: next, receipt: receipt,
 		projection: projection, managed: managed, admin: admin, gitCandidate: gitCandidate,
 		historical: historical, commandHistory: commandVerifier, commandStable: commandStable,
-		needsPreEffectRetry: hasUnleasedRetiredCall(projection),
+		needsPreEffectRetry: needsPreEffectRetry,
 	}, nil
 }
 
@@ -415,11 +422,6 @@ func (c *governedRecoveryCandidate) Activate(ctx context.Context) (*governedReco
 	}
 	request := c.request
 	storeJournal := request.StoreOptions.Journal
-	if c.needsPreEffectRetry {
-		if _, err := c.ledger.ReservePreEffectRetry(ctx); err != nil {
-			return nil, fmt.Errorf("charge the workflow-wide retry for the explicitly retired unleased call before new authority: %w", err)
-		}
-	}
 	authority, err := NewSessionOperationAuthority(storeJournal, request.FreshProviderJournal,
 		c.next.WorkflowID, request.NewConversationID, request.ProviderProfile.ID,
 		request.GatePolicy, request.StorePolicyDigest, request.MetadataPolicyDigest,
@@ -513,10 +515,15 @@ func (c *governedRecoveryCandidate) revalidateAfterReservation(ctx context.Conte
 	}
 	checkpoint, checkpointHead, exists, err := c.owner.LoadCheckpoint(ctx, c.next.WorkflowID)
 	reserved, reservedHead := c.ledger.Snapshot()
+	retryCharge := uint64(0)
+	if c.needsPreEffectRetry {
+		retryCharge = 1
+	}
 	if err != nil || !exists || !reflect.DeepEqual(checkpoint, reserved) || checkpointHead != reservedHead ||
 		checkpoint.Pins.SessionID != c.next.SessionID || checkpoint.Pins.OwnerEpoch != c.next.OwnerEpoch ||
 		checkpoint.Pins.RecoveryGeneration != c.next.RecoveryGeneration ||
 		checkpoint.Counters.CleanRestarts != c.previousCP.Counters.CleanRestarts+1 ||
+		checkpoint.Counters.PreEffectRetries != c.previousCP.Counters.PreEffectRetries+retryCharge ||
 		checkpoint.ComputedCheckpointDigest != checkpointHead {
 		return errors.Join(workflowrecovery.ErrRollback, err)
 	}
@@ -692,6 +699,7 @@ func observedRecoveryPins(previous workflowrecovery.Pins, previousHead string,
 	observed := cloneWorkflowPins(previous)
 	var latestHostCall *providerbridge.HostCallBinding
 	var latestHostCallOutcome string
+	var unleasedCall *providerbridge.ProviderCallRetirementBinding
 	for index, transcript := range transcripts {
 		old := previous.ProviderTranscripts[index]
 		actual := transcript.Pin
@@ -724,6 +732,9 @@ func observedRecoveryPins(previous workflowrecovery.Pins, previousHead string,
 				return workflowrecovery.Pins{}, errors.New("active provider transcript lacks an explicit externally verified lineage retirement")
 			}
 			actual.Disposition = workflowrecovery.DispositionRetired
+			if retiredCall {
+				unleasedCall = projected.RetiredCall
+			}
 		}
 		actual.JournalCount = projected.ProviderJournalRecordCount
 		actual.JournalHead = projected.ProviderJournalHead
@@ -785,6 +796,27 @@ func observedRecoveryPins(previous workflowrecovery.Pins, previousHead string,
 				observed.PendingCallDisposition = workflowrecovery.PendingCallTerminal
 			}
 		}
+	}
+	if unleasedCall != nil {
+		// The host has externally retired an unleased captured call. Its retirement
+		// digest commits to the exact retirement binding, and the pending-call
+		// lineage becomes retired rather than terminal.
+		reservation := observed.HostCallReservation
+		if reservation == nil || reservation.Disposition != workflowrecovery.HostCallTerminal ||
+			reservation.CapturedCall == nil || reservation.CapturedCall.Disposition != workflowrecovery.CapturedCallAvailable ||
+			reservation.CapturedCall.ConversationID != unleasedCall.ConversationID ||
+			reservation.CapturedCall.ToolCallID != unleasedCall.ToolCallID {
+			return workflowrecovery.Pins{}, workflowrecovery.ErrObservation
+		}
+		// cloneWorkflowPins is shallow, so build fresh reservation values rather than
+		// mutating the retained checkpoint that the caller still holds.
+		captured := *reservation.CapturedCall
+		captured.Disposition = workflowrecovery.CapturedCallRetired
+		captured.RetirementDigest = recoveryIdentityDigest(*unleasedCall)
+		retired := *reservation
+		retired.CapturedCall = &captured
+		observed.HostCallReservation = &retired
+		observed.PendingCallDisposition = workflowrecovery.PendingCallRetired
 	}
 	_ = previousHead // The ledger observation proof binds this exact predecessor digest.
 	return observed, nil
@@ -1027,6 +1059,15 @@ func openRecoveryCommandVerifier(request governedRecoveryRequest) (governedRecov
 	return verifier, verifier, nil
 }
 
+// recoveryCommandVerifiers passes no verifier when the retained history has no
+// command journal; a nil interface must never reach the variadic replay.
+func recoveryCommandVerifiers(verifier governedRecoveryCommandVerifier) []governedRecoveryCommandVerifier {
+	if verifier == nil {
+		return nil
+	}
+	return []governedRecoveryCommandVerifier{verifier}
+}
+
 func recoveryDirectoryIdentityDigest(root *os.File) (string, error) {
 	if root == nil {
 		return "", ErrGovernedRecoveryUnavailable
@@ -1039,13 +1080,19 @@ func recoveryDirectoryIdentityDigest(root *os.File) (string, error) {
 	if !ok || !info.IsDir() || info.Mode().Perm() != 0o700 || stat.Uid != uint32(os.Geteuid()) || stat.Gid != uint32(os.Getegid()) {
 		return "", ErrGovernedRecoveryUnavailable
 	}
+	return recoveryDirectoryStatIdentity(stat), nil
+}
+
+// recoveryDirectoryStatIdentity is the one directory identity shape. Held
+// descriptors and retained paths both use it; link counts are file-only identity.
+func recoveryDirectoryStatIdentity(stat *syscall.Stat_t) string {
 	return recoveryIdentityDigest(struct {
 		Device uint64 `json:"device"`
 		Inode  uint64 `json:"inode"`
 		Mode   uint32 `json:"mode"`
 		UID    uint32 `json:"uid"`
 		GID    uint32 `json:"gid"`
-	}{uint64(stat.Dev), stat.Ino, stat.Mode, stat.Uid, stat.Gid}), nil
+	}{uint64(stat.Dev), stat.Ino, stat.Mode, stat.Uid, stat.Gid})
 }
 
 func recoveryFileIdentityDigest(path string, directory bool) (string, error) {
@@ -1064,7 +1111,10 @@ func recoveryFileIdentityDigest(path string, directory bool) (string, error) {
 		if !info.IsDir() || info.Mode().Perm() != 0o700 {
 			return "", ErrGovernedRecoveryUnavailable
 		}
-	} else if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 || stat.Nlink != 1 {
+		// A retained directory is matched by the same identity its held descriptor reports.
+		return recoveryDirectoryStatIdentity(stat), nil
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm() != 0o600 || stat.Nlink != 1 {
 		return "", ErrGovernedRecoveryUnavailable
 	}
 	return recoveryIdentityDigest(struct {

@@ -394,6 +394,7 @@ const (
 	reservationPreEffectRetry
 	reservationHostCall
 	reservationEffect
+	reservationCleanRestartPreEffectRetry
 )
 
 // VerifiedRecoveryObservation is a read-only, verifier-approved append-only
@@ -612,6 +613,18 @@ func InitializeFresh(ctx context.Context, owner Owner, pins Pins, limits Limits)
 // new host-generated session/recovery lineage before any fresh worker,
 // provider conversation, or authority is opened.
 func (l *Ledger) ReserveCleanRestart(ctx context.Context, observation VerifiedRecoveryObservation, nextPins Pins) (Receipt, error) {
+	return l.reserveCleanRestart(ctx, observation, nextPins, false)
+}
+
+// ReserveCleanRestartWithPreEffectRetry atomically consumes one clean restart and
+// one pre-effect retry for a verified retired-unexecuted provider call. Both
+// allowances and the new lineage commit in one checkpoint; the returned receipt
+// is bound to that final checkpoint, so no later reservation can stale it.
+func (l *Ledger) ReserveCleanRestartWithPreEffectRetry(ctx context.Context, observation VerifiedRecoveryObservation, nextPins Pins) (Receipt, error) {
+	return l.reserveCleanRestart(ctx, observation, nextPins, true)
+}
+
+func (l *Ledger) reserveCleanRestart(ctx context.Context, observation VerifiedRecoveryObservation, nextPins Pins, chargeRetry bool) (Receipt, error) {
 	if l == nil || ctx == nil {
 		return Receipt{}, fmt.Errorf("%w: nil ledger or context", ErrInvalid)
 	}
@@ -621,6 +634,9 @@ func (l *Ledger) ReserveCleanRestart(ctx context.Context, observation VerifiedRe
 		return Receipt{}, err
 	}
 	if l.checkpoint.Counters.CleanRestarts >= l.checkpoint.Limits.MaxCleanRestarts {
+		return Receipt{}, ErrExhausted
+	}
+	if chargeRetry && l.checkpoint.Counters.PreEffectRetries >= l.checkpoint.Limits.MaxPreEffectRetries {
 		return Receipt{}, ErrExhausted
 	}
 	if err := validatePins(nextPins); err != nil {
@@ -644,10 +660,19 @@ func (l *Ledger) ReserveCleanRestart(ctx context.Context, observation VerifiedRe
 	if err := validateRestartPins(proof.observedPins, nextPins, l.digest); err != nil {
 		return Receipt{}, err
 	}
+	if chargeRetry {
+		if !retiredUnleasedCallObserved(proof.observedPins) {
+			return Receipt{}, fmt.Errorf("%w: pre-effect retry requires an observed retired unleased call", ErrObservation)
+		}
+		proof.reservation = reservationCleanRestartPreEffectRetry
+	}
 	proof.targetPins = clonePins(nextPins)
 	next := l.checkpoint
 	next.Pins = clonePins(nextPins)
 	next.Counters.CleanRestarts++
+	if chargeRetry {
+		next.Counters.PreEffectRetries++
+	}
 	next.PreviousCheckpointDigest = l.digest
 	next.ObservationDigest = proof.proofDigest
 	next.ComputedCheckpointDigest = ""
@@ -1505,6 +1530,9 @@ func validateOwnerTransition(previous Checkpoint, previousDigest string, priorEx
 		next.Counters.HostCalls < previous.Counters.HostCalls || next.Counters.Tokens < previous.Counters.Tokens {
 		return ErrRollback
 	}
+	if proof.reservation == reservationCleanRestartPreEffectRetry {
+		return validateCleanRestartPreEffectRetryTransition(proof, previousDigest, previous, next)
+	}
 	if next.Pins.WorkflowID != previous.Pins.WorkflowID ||
 		next.Counters.PreEffectRetries-previous.Counters.PreEffectRetries+
 			next.Counters.CleanRestarts-previous.Counters.CleanRestarts+
@@ -1613,6 +1641,42 @@ func validateReservationProof(proof TransitionProof, kind reservationKind, previ
 		return ErrObservation
 	}
 	return nil
+}
+
+// validateCleanRestartPreEffectRetryTransition accepts exactly one atomic
+// recovery that consumes one clean restart and one pre-effect retry. The retry
+// is justified only by an observed retirement of an unexecuted captured call;
+// every other counter and the host-call/token budget must be unchanged.
+func validateCleanRestartPreEffectRetryTransition(proof TransitionProof, previousDigest string, previous, next Checkpoint) error {
+	if previous.Pins.RecoveryGeneration == ^uint64(0) || next.Pins.WorkflowID != previous.Pins.WorkflowID ||
+		next.Pins.RecoveryGeneration != previous.Pins.RecoveryGeneration+1 ||
+		next.Pins.OwnerEpoch <= previous.Pins.OwnerEpoch || next.Pins.SessionID == previous.Pins.SessionID ||
+		next.Counters.CleanRestarts != previous.Counters.CleanRestarts+1 ||
+		next.Counters.PreEffectRetries != previous.Counters.PreEffectRetries+1 ||
+		next.Counters.HostCalls != previous.Counters.HostCalls || next.Counters.Tokens != previous.Counters.Tokens {
+		return ErrRollback
+	}
+	if proof.kind != transitionRecovery || proof.previousDigest != previousDigest ||
+		!reflect.DeepEqual(proof.previousPins, previous.Pins) || !reflect.DeepEqual(proof.targetPins, next.Pins) ||
+		proof.proofDigest != next.ObservationDigest ||
+		proof.proofDigest != digestObservation(transitionRecovery, previousDigest, previous.Pins, proof.observedPins) ||
+		!retiredUnleasedCallObserved(proof.observedPins) {
+		return ErrObservation
+	}
+	if err := validateObservationAdvance(previous.Pins, proof.observedPins); err != nil {
+		return err
+	}
+	return validateRestartPins(proof.observedPins, next.Pins, previousDigest)
+}
+
+// retiredUnleasedCallObserved is the only observation that can justify charging a
+// pre-effect retry: the provider lineage is retired and its captured call was
+// retired without execution, with a commitment to that retirement.
+func retiredUnleasedCallObserved(p Pins) bool {
+	return p.ProviderDisposition == DispositionRetired && p.PendingCallDisposition == PendingCallRetired &&
+		p.HostCallReservation != nil && p.HostCallReservation.CapturedCall != nil &&
+		p.HostCallReservation.CapturedCall.Disposition == CapturedCallRetired &&
+		validDigest(p.HostCallReservation.CapturedCall.RetirementDigest)
 }
 
 func validateRestartPins(old, next Pins, previousCheckpointDigest string) error {

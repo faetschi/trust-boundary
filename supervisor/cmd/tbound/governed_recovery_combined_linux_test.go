@@ -1,0 +1,784 @@
+//go:build linux
+
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/broker"
+	"tbound/supervisor/internal/broker/openrouter"
+	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/gate"
+	"tbound/supervisor/internal/providerbridge"
+	"tbound/supervisor/internal/sessionlaunch"
+	"tbound/supervisor/internal/sessionrepo"
+	"tbound/supervisor/internal/workflowrecovery"
+	"tbound/supervisor/internal/workspace"
+)
+
+// These tests drive the production prepareGovernedRecovery/Activate pair across
+// fresh processes. Each process reopens the real SQLite owner, retained Store,
+// private Git identity, and provider journals; no test reuses in-memory ledger
+// state from the process that created the checkpoint.
+
+const (
+	combinedRecoveryPhaseEnv    = "TBOUND_COMBINED_RECOVERY_PHASE"
+	combinedRecoveryRootEnv     = "TBOUND_COMBINED_RECOVERY_ROOT"
+	combinedRecoveryStepEnv     = "TBOUND_COMBINED_RECOVERY_STEP"
+	combinedRecoveryScenarioEnv = "TBOUND_COMBINED_RECOVERY_SCENARIO"
+	combinedRecoveryCrashExit   = 74
+	combinedRecoveryWorkflow    = "combined-recovery-workflow"
+	combinedRecoveryProfile     = "combined-recovery-profile"
+	combinedRecoveryTaskID      = "combined-recovery-task"
+	combinedRecoveryPrompt      = "Read the pinned fixture file once."
+	combinedRecoveryTokens      = uint64(1024)
+)
+
+type combinedRecoveryScenario struct {
+	maxPreEffectRetries uint64
+	maxCleanRestarts    uint64
+	deadline            time.Duration
+}
+
+var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
+	"two-cycles":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute},
+	"retry-exhausted": {maxPreEffectRetries: 0, maxCleanRestarts: 2, deadline: 10 * time.Minute},
+	"deadline":        {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 8 * time.Second},
+}
+
+type combinedRecoveryPaths struct {
+	root, source, store, admin, recoveryRoot, ownerStore string
+	rootDB, ownerDB, storeJournal, admission, evidence   string
+}
+
+func combinedRecoveryPathsFor(root string) combinedRecoveryPaths {
+	return combinedRecoveryPaths{
+		root: root, source: filepath.Join(root, "source"), store: filepath.Join(root, "store"),
+		admin: filepath.Join(root, "admin"), recoveryRoot: filepath.Join(root, "recovery-root"),
+		ownerStore:   filepath.Join(root, "owner-store"),
+		rootDB:       filepath.Join(root, "recovery-root", "workflow-root.sqlite"),
+		ownerDB:      filepath.Join(root, "owner-store", "workflow.sqlite"),
+		storeJournal: filepath.Join(root, "store-audit.jsonl"),
+		admission:    filepath.Join(root, "store", "delta-admission.jsonl"),
+		evidence:     filepath.Join(root, "crash-evidence.json"),
+	}
+}
+
+// providerJournal returns the held provider transcript path for a workflow
+// ordinal. Ordinal 1 is the original conversation; later ordinals are the
+// clean conversations created by each recovery.
+func (p combinedRecoveryPaths) providerJournal(ordinal uint64) string {
+	if ordinal == 1 {
+		return filepath.Join(p.root, "provider-audit.jsonl")
+	}
+	return filepath.Join(p.root, fmt.Sprintf("provider-audit-ord%d.jsonl", ordinal))
+}
+
+// combinedRecoveryDrain stands in for the host cell-drain proof. The superseded
+// owner in these tests is a process that has already exited.
+type combinedRecoveryDrain struct{}
+
+func (combinedRecoveryDrain) VerifyOwnerCellsDrained(context.Context, string, []workflowrecovery.OwnerEpochIdentity) error {
+	return nil
+}
+
+type combinedRecoveryGitName struct {
+	RepositoryName string `json:"repository_name"`
+}
+
+type combinedRecoveryFileEvidence struct {
+	Size   int64  `json:"size"`
+	SHA256 string `json:"sha256"`
+}
+
+type combinedRecoveryResult struct {
+	Step               string                    `json:"step"`
+	PrepareError       string                    `json:"prepare_error,omitempty"`
+	ActivateError      string                    `json:"activate_error,omitempty"`
+	Activated          bool                      `json:"activated"`
+	Captured           bool                      `json:"captured"`
+	RetainedError      string                    `json:"retained_error,omitempty"`
+	Deadline           time.Time                 `json:"deadline"`
+	OwnerEpoch         uint64                    `json:"owner_epoch"`
+	RecoveryGeneration uint64                    `json:"recovery_generation"`
+	Counters           workflowrecovery.Counters `json:"counters"`
+	Transcripts        int                       `json:"transcripts"`
+	StoreEffects       int                       `json:"store_effects"`
+}
+
+func combinedRecoveryFileDigest(path string, limit int64) (combinedRecoveryFileEvidence, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return combinedRecoveryFileEvidence{}, err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	size, err := io.CopyN(hash, file, limit)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return combinedRecoveryFileEvidence{}, err
+	}
+	return combinedRecoveryFileEvidence{Size: size, SHA256: hex.EncodeToString(hash.Sum(nil))}, nil
+}
+
+func combinedRecoveryWriteJSON(t *testing.T, path string, value any) {
+	t.Helper()
+	data, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func combinedRecoveryPolicy(t *testing.T) gate.Policy {
+	t.Helper()
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion,
+		Rules: []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return policy
+}
+
+func combinedRecoveryProviderConfig(conversationID, generationID, treeDigest string) providerbridge.Config {
+	return providerbridge.Config{WorkflowID: combinedRecoveryWorkflow, ConversationID: conversationID,
+		ProfileID: combinedRecoveryProfile, InitialGenerationID: generationID, InitialTreeDigest: treeDigest,
+		SystemPrompt: governedReplaySystem, DeveloperPrompt: governedReplayDeveloper}
+}
+
+func combinedRecoveryProviderProfile(generationID string) broker.Profile {
+	systemPrompt, developerPrompt := governedReplaySystem, governedReplayDeveloper
+	return broker.Profile{ID: combinedRecoveryProfile, Model: providerbridge.ApprovedModel,
+		Messages: []openrouter.Message{{Role: openrouter.System, Content: &systemPrompt},
+			{Role: openrouter.Developer, Content: &developerPrompt}},
+		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
+		ResponseIDIssuer: governedResponseIssuer, Generation: generationID}
+}
+
+func combinedRecoveryReadCallTurns(prefix string) []providerbridge.DevelopmentProviderTurn {
+	return []providerbridge.DevelopmentProviderTurn{{ResponseID: prefix + "-response", CallID: prefix + "-tool-call",
+		Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)}}
+}
+
+// combinedRecoveryRunChild re-executes this test binary as a fresh process for
+// one phase and returns the result that phase recorded before exiting.
+func combinedRecoveryRunChild(t *testing.T, root, scenario, phase, step string, wantExit int) combinedRecoveryResult {
+	t.Helper()
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitPath, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(executable, "-test.run=^TestGovernedRecoveryCombinedChildEntry$")
+	// This explicit environment contains no inherited credentials or Git config.
+	cmd.Env = []string{combinedRecoveryPhaseEnv + "=" + phase, combinedRecoveryRootEnv + "=" + root,
+		combinedRecoveryStepEnv + "=" + step, combinedRecoveryScenarioEnv + "=" + scenario,
+		"TMPDIR=" + os.TempDir(), "PATH=" + filepath.Dir(gitPath)}
+	output, err := cmd.CombinedOutput()
+	code := 0
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		code = exit.ExitCode()
+	} else if err != nil {
+		t.Fatalf("%s child: %v\n%s", step, err, output)
+	}
+	var result combinedRecoveryResult
+	data, readErr := os.ReadFile(filepath.Join(root, "result-"+step+".json"))
+	if readErr == nil {
+		if err := json.Unmarshal(data, &result); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code != wantExit {
+		t.Fatalf("%s child exit=%d want %d result=%+v\n%s", step, code, wantExit, result, output)
+	}
+	if readErr != nil {
+		t.Fatalf("%s child result: %v\n%s", step, readErr, output)
+	}
+	return result
+}
+
+// combinedRecoveryTemplate carries the request fields that determine the
+// retained runtime and identity pins. The original checkpoint is derived from it
+// with the same functions recovery uses, so no protected digest is hand-copied.
+func combinedRecoveryTemplate(t *testing.T, p combinedRecoveryPaths, owner workflowrecovery.Owner,
+	policy gate.Policy, gitPin sessionlaunch.RecoveryGitPin) governedRecoveryRequest {
+	t.Helper()
+	storeRoot, err := openExistingPrivateRecoveryDirectory(p.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = storeRoot.Close() })
+	adminRoot, err := openExistingPrivateRecoveryDirectory(p.admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = adminRoot.Close() })
+	return governedRecoveryRequest{
+		Owner: owner, WorkflowID: combinedRecoveryWorkflow,
+		StoreRoot: storeRoot, StoreJournalPath: p.storeJournal, AdminRoot: adminRoot,
+		StoreOptions: sessionrepo.Options{PolicyDigest: governedReplayStorePolicy,
+			MetadataPolicyDigest: governedReplayMetaPolicy, Limits: workspace.DefaultLimits(),
+			XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Complete: true}},
+		GitPin: gitPin, GatePolicy: policy,
+		ProviderProfileDigest: digestBytes([]byte("combined-recovery-provider-profile/v1")),
+		ImageDigest:           digestBytes([]byte("combined-recovery-image/v1")),
+		RuntimeProfileDigest:  digestBytes([]byte("combined-recovery-runtime/v1")),
+		SystemPrompt:          governedReplaySystem, DeveloperPrompt: governedReplayDeveloper,
+		StorePolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
+		BashOutputPaths: []string{"task.txt"},
+	}
+}
+
+func TestGovernedRecoveryCombinedChildEntry(t *testing.T) {
+	phase := os.Getenv(combinedRecoveryPhaseEnv)
+	if phase == "" {
+		return
+	}
+	root, step, scenario := os.Getenv(combinedRecoveryRootEnv), os.Getenv(combinedRecoveryStepEnv), os.Getenv(combinedRecoveryScenarioEnv)
+	if _, ok := combinedRecoveryScenarios[scenario]; !ok || root == "" || step == "" {
+		t.Fatal("invalid combined recovery child inputs")
+	}
+	switch phase {
+	case "original":
+		combinedRecoveryOriginal(t, root, step, combinedRecoveryScenarios[scenario])
+	case "recover", "recover-capture":
+		combinedRecoveryRecover(t, root, step, phase == "recover-capture")
+	default:
+		t.Fatalf("unknown combined recovery phase %q", phase)
+	}
+}
+
+// combinedRecoveryOriginal creates the retained workflow, starts one provider
+// call, records the captured-but-unexecuted state, and crashes before any gate
+// decision, Store effect, or provider result.
+func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecoveryScenario) {
+	t.Helper()
+	ctx := context.Background()
+	p := combinedRecoveryPathsFor(root)
+	for _, dir := range []string{p.source, p.store, p.admin, p.recoveryRoot, p.ownerStore} {
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(p.source, "task.txt"), []byte("combined recovery fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	storeJournal, err := audit.Open(p.storeJournal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerPath := p.providerJournal(1)
+	providerJournal, err := audit.Open(providerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := combinedRecoveryPolicy(t)
+	runner := newDevelopmentFixtureCommandRunner()
+	authority, err := NewSessionOperationAuthority(storeJournal, providerJournal,
+		combinedRecoveryWorkflow, "combined-recovery-conversation-g1", combinedRecoveryProfile,
+		policy, governedReplayStorePolicy, governedReplayMetaPolicy, runner, []string{"task.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeRoot, err := os.Open(p.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(),
+		workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Complete: true}, nil)
+	_ = storeRoot.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := managed.Store()
+	source, err := os.Open(p.source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g0, err := store.Seed(source, sessionrepo.RootAttestation{Quiescent: true})
+	_ = source.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := authority.BindBaseline(store, g0); err != nil {
+		t.Fatal(err)
+	}
+	adminRoot, err := os.Open(p.admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := sessionlaunch.OpenAdminParent(adminRoot)
+	_ = adminRoot.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	git, gitProfile := pinGovernedTestGit(t)
+	prepared, err := sessionlaunch.Prepare(ctx, managed, g0, admin, git, gitProfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := authority.BindPreparedSession(prepared); err != nil {
+		t.Fatal(err)
+	}
+	durable, err := NewDurableExecutor(DurableExecutorConfig{
+		Store: store, Tip: g0, CallIssuer: governedCallIssuer,
+		PolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
+		BashOutputPaths: []string{"task.txt"}, CommandRunner: runner,
+		AfterDurableOperation: authority.SettleDurableOperation,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d06Digest, gitIdentity, repositoryName, err := prepared.RecoveryIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	combinedRecoveryWriteJSON(t, filepath.Join(root, "git-identity.json"), combinedRecoveryGitName{RepositoryName: repositoryName})
+
+	deadline := time.Now().UTC().Add(sc.deadline).Round(0)
+	freshPolicy := &verticalFreshWorkflowPolicy{workflow: combinedRecoveryWorkflow, deadline: deadline}
+	boundary, err := workflowrecovery.NewLinuxHostBoundary(p.ownerStore, uint32(os.Geteuid()), verticalNoPriorOwnerDrain{}, freshPolicy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	protectedRoot, err := workflowrecovery.CreateFreshProtectedRoot(p.rootDB, p.ownerStore, boundary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := workflowrecovery.CreateFreshSQLiteOwner(p.ownerDB, protectedRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerStoreIdentity, err := owner.OwnerStoreIdentity(ctx, combinedRecoveryWorkflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	freshPolicy.root = owner.TrustedRootIdentityDigest()
+	freshPolicy.incarnation = owner.OwnerIncarnation()
+	freshPolicy.store = ownerStoreIdentity
+	if _, err := protectedRoot.NextOwnerEpoch(ctx, combinedRecoveryWorkflow); err != nil {
+		t.Fatal(err)
+	}
+
+	gitPin := sessionlaunch.RecoveryGitPin{RepositoryName: repositoryName,
+		ProvenanceDigest:         sha256DigestFromBarePin(bareWorkflowDigest(d06Digest)),
+		RepositoryIdentityDigest: sha256DigestFromBarePin(bareWorkflowDigest(gitIdentity))}
+	template := combinedRecoveryTemplate(t, p, owner, policy, gitPin)
+	identityPins, err := collectGovernedRecoveryIdentityPins(template)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeDigest, err := governedRecoveryRuntimeDigest(template)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storeTrace, err := storeJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := store.EvidenceBundle()
+	if err != nil {
+		t.Fatal(err)
+	}
+	admissionAudit, err := audit.Verify(strings.NewReader(string(bundle.AdmissionJournal)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	providerIdentity, err := recoveryFileIdentityDigest(providerPath, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taskDigest := digestBytes([]byte("combined recovery task source identity"))
+	limits := workflowrecovery.Limits{MaxPreEffectRetries: sc.maxPreEffectRetries, MaxCleanRestarts: sc.maxCleanRestarts,
+		MaxHostCalls: 8, MaxTokens: 8 * combinedRecoveryTokens, Deadline: deadline}
+	pins := workflowrecovery.Pins{
+		WorkflowID: combinedRecoveryWorkflow, SessionID: "combined-recovery-session-g1",
+		RecoveryGeneration: 1, OwnerEpoch: 1,
+		OwnerIncarnationDigest: owner.OwnerIncarnationDigest(), RootIdentityDigest: owner.TrustedRootIdentityDigest(),
+		StoreIdentityDigest: identityPins.StoreIdentityDigest, AdmissionIdentityDigest: identityPins.AdmissionIdentityDigest,
+		CommandIdentityDigest: identityPins.CommandIdentityDigest, AdminIdentityDigest: identityPins.AdminIdentityDigest,
+		TaskDigest: bareWorkflowDigest(taskDigest), PromptDigest: bareWorkflowDigest(digestBytes([]byte(combinedRecoveryPrompt))),
+		PolicyDigest: barePolicyDigest(policy.Digest()), ProfileDigest: bareWorkflowDigest(template.ProviderProfileDigest),
+		ImageDigest: bareWorkflowDigest(template.ImageDigest), RuntimeDigest: runtimeDigest,
+		D06ProvenanceDigest: bareWorkflowDigest(d06Digest), PrivateGitIdentityDigest: bareWorkflowDigest(gitIdentity),
+		StoreBaselineGenerationID: g0.ID(), StoreBaselineTreeDigest: strings.TrimPrefix(g0.TreeDigest(), delta.TreeDigestProfile),
+		StoreTipGenerationID: g0.ID(), StoreTipTreeDigest: strings.TrimPrefix(g0.TreeDigest(), delta.TreeDigestProfile),
+		StoreJournalHead: auditHeadHash(storeTrace.Records), StoreJournalCount: uint64(len(storeTrace.Records)),
+		AdmissionJournalHead: auditHeadHash(admissionAudit.Records), AdmissionJournalCount: uint64(len(admissionAudit.Records)),
+		ProviderProjectionDigest: workflowrecovery.TranscriptPinsDigest(nil),
+		ProviderDisposition:      workflowrecovery.DispositionNone, PendingCallDisposition: workflowrecovery.PendingCallNone,
+	}
+	pins.RecoveryLineageDigest = workflowrecovery.ComputeRecoveryLineageDigest("", workflowrecovery.Pins{}, pins)
+	if _, err := workflowrecovery.InitializeFresh(ctx, owner, pins, limits); err != nil {
+		t.Fatalf("initialize the original checkpoint: %v", err)
+	}
+	ledger, err := workflowrecovery.Open(ctx, owner, workflowrecovery.OpenOptions{
+		WorkflowID: combinedRecoveryWorkflow, OwnerEpoch: 1, RetainedPins: pins, Limits: limits,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	transcript := workflowrecovery.TranscriptPin{Ordinal: 1, ConversationID: "combined-recovery-conversation-g1",
+		JournalIdentityDigest: providerIdentity, Disposition: workflowrecovery.DispositionAwaitingHostPrompt}
+	if _, err := ledger.RegisterInitialTranscript(ctx, verticalInitialTranscriptProgress{
+		pins: pins, transcript: transcript, store: store, storeJournal: storeJournal,
+		providerJournal: providerJournal, baseline: g0,
+	}, transcript); err != nil {
+		t.Fatalf("register the original provider transcript: %v", err)
+	}
+	checkpoint, _ := ledger.Snapshot()
+	if err := authority.BindWorkflowLedger(ledger, checkpoint.Pins, combinedRecoveryTokens); err != nil {
+		t.Fatal(err)
+	}
+	if err := authority.BindInitialWorkflowPrompt(combinedRecoveryTaskID, combinedRecoveryPrompt, taskDigest); err != nil {
+		t.Fatal(err)
+	}
+	config := combinedRecoveryProviderConfig("combined-recovery-conversation-g1", g0.ID(), g0.TreeDigest())
+	conversation, err := authority.newProviderConversation(config, func(config providerbridge.Config,
+		journal *audit.Journal) (*providerbridge.Conversation, error) {
+		return providerbridge.NewDevelopmentOfflineConversation(config, journal, combinedRecoveryReadCallTurns("combined-original"))
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := authority.AdmitPrompt(conversation, durable, combinedRecoveryTaskID, combinedRecoveryPrompt); err != nil {
+		t.Fatal(err)
+	}
+	turn, err := conversation.NextTurn(ctx)
+	if err != nil || turn.ToolCall == nil || turn.ToolCall.Name != "read" {
+		t.Fatalf("original provider turn did not capture its read: turn=%+v err=%v", turn, err)
+	}
+	// The crash marker is the byte-level state that must survive every recovery.
+	evidence := map[string]combinedRecoveryFileEvidence{}
+	for name, path := range map[string]string{"store-audit.jsonl": p.storeJournal,
+		"store/delta-admission.jsonl": p.admission, "provider-audit.jsonl": providerPath} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		digest, err := combinedRecoveryFileDigest(path, info.Size())
+		if err != nil {
+			t.Fatal(err)
+		}
+		evidence[name] = digest
+	}
+	combinedRecoveryWriteJSON(t, p.evidence, evidence)
+	combinedRecoveryWriteJSON(t, filepath.Join(root, "result-"+step+".json"), combinedRecoveryResult{
+		Step: step, Deadline: deadline, OwnerEpoch: 1, RecoveryGeneration: 1, Captured: true,
+		Counters: checkpoint.Counters, Transcripts: 1, StoreEffects: len(storeTrace.Effects),
+	})
+	os.Exit(combinedRecoveryCrashExit)
+}
+
+// combinedRecoveryRecover runs one fresh recovery process. It verifies the
+// retained crash evidence, performs the production prepare/activate sequence,
+// and records the durable checkpoint it observes.
+func combinedRecoveryRecover(t *testing.T, root, step string, capture bool) {
+	t.Helper()
+	ctx := context.Background()
+	p := combinedRecoveryPathsFor(root)
+	boundary, err := workflowrecovery.NewLinuxHostBoundary(p.ownerStore, uint32(os.Geteuid()), combinedRecoveryDrain{}, &verticalFreshWorkflowPolicy{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	protectedRoot, err := workflowrecovery.OpenExistingProtectedRoot(p.rootDB, p.ownerStore, boundary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer protectedRoot.Close()
+	owner, err := workflowrecovery.OpenExistingSQLiteOwner(p.ownerDB, protectedRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	before, _, exists, err := owner.LoadCheckpoint(ctx, combinedRecoveryWorkflow)
+	if err != nil || !exists {
+		// The protected boundary refuses checkpoint loads after the original deadline.
+		// The refusal is recorded before any reservation is attempted.
+		combinedRecoveryWriteJSON(t, filepath.Join(root, "result-"+step+".json"), combinedRecoveryResult{Step: step,
+			PrepareError:  fmt.Sprintf("load retained checkpoint: exists=%v err=%v", exists, err),
+			RetainedError: combinedRecoveryRetainedError(root)})
+		return
+	}
+	storeRoot, err := openExistingPrivateRecoveryDirectory(p.store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer storeRoot.Close()
+	storeJournal, err := openExistingRecoveryJournal(p.storeJournal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer storeJournal.Close()
+	storeTrace, err := storeJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// productionRecoveryGitPin validates the bare checkpoint digests with the
+	// sha256:-prefixed validator and so cannot resolve them. The test takes the
+	// repository name the original process retained and lets prepare verify the
+	// identity against the checkpoint and the Store's private Git provenance.
+	var gitName combinedRecoveryGitName
+	gitData, err := os.ReadFile(filepath.Join(root, "git-identity.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(gitData, &gitName); err != nil {
+		t.Fatal(err)
+	}
+	gitPin := sessionlaunch.RecoveryGitPin{RepositoryName: gitName.RepositoryName,
+		ProvenanceDigest:         sha256DigestFromBarePin(before.Pins.D06ProvenanceDigest),
+		RepositoryIdentityDigest: sha256DigestFromBarePin(before.Pins.PrivateGitIdentityDigest)}
+	policy := combinedRecoveryPolicy(t)
+	adminRoot, err := openExistingPrivateRecoveryDirectory(p.admin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adminRoot.Close()
+	g0ID, g0Tree := before.Pins.StoreBaselineGenerationID, delta.TreeDigestProfile+before.Pins.StoreBaselineTreeDigest
+	transcripts := make([]GovernedRecoveryTranscript, 0, len(before.Pins.ProviderTranscripts))
+	for _, pin := range before.Pins.ProviderTranscripts {
+		path := p.providerJournal(pin.Ordinal)
+		journal, err := openExistingRecoveryJournal(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer journal.Close()
+		identity, err := recoveryFileIdentityDigest(path, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		replay := GovernedReplayPins{
+			Provider: providerbridge.RecoveryPins{Config: combinedRecoveryProviderConfig(pin.ConversationID, g0ID, g0Tree),
+				Model: providerbridge.ApprovedModel, Policy: policy},
+			Profile:           combinedRecoveryProviderProfile(g0ID),
+			StorePolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
+			BashOutputPaths: []string{"task.txt"},
+		}
+		transcripts = append(transcripts, GovernedRecoveryTranscript{Journal: journal, JournalPath: path,
+			IdentityDigest: identity, Pin: pin, Replay: replay})
+	}
+	gen := before.Pins.RecoveryGeneration + 1
+	newConversation := fmt.Sprintf("%s-conversation-g%d", combinedRecoveryWorkflow, gen)
+	newPath := p.providerJournal(uint64(len(before.Pins.ProviderTranscripts)) + 1)
+	freshJournal, err := openNewRecoveryJournal(newPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer freshJournal.Close()
+	freshIdentity, err := recoveryFileIdentityDigest(newPath, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner := newDevelopmentFixtureCommandRunner()
+	turns := []providerbridge.DevelopmentProviderTurn(nil)
+	if capture {
+		turns = combinedRecoveryReadCallTurns(fmt.Sprintf("combined-recovered-g%d", gen))
+	}
+	providerProfile := combinedRecoveryProviderProfile("")
+	request := governedRecoveryRequest{
+		Owner: owner, WorkflowID: combinedRecoveryWorkflow, NewOwnerEpoch: before.Pins.OwnerEpoch + 1,
+		NewSessionID: fmt.Sprintf("%s-session-g%d", combinedRecoveryWorkflow, gen), NewConversationID: newConversation,
+		Limits: before.Limits, StoreRoot: storeRoot, StoreJournalPath: p.storeJournal,
+		StoreOptions: sessionrepo.Options{PolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
+			Limits: workspace.DefaultLimits(), XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Complete: true},
+			Journal: storeJournal},
+		AdminRoot: adminRoot, GitPin: gitPin, Transcripts: transcripts,
+		ProviderProfile: providerProfile, ProviderProfileDigest: digestBytes([]byte("combined-recovery-provider-profile/v1")),
+		ImageDigest: digestBytes([]byte("combined-recovery-image/v1")), RuntimeProfileDigest: digestBytes([]byte("combined-recovery-runtime/v1")),
+		SystemPrompt: governedReplaySystem, DeveloperPrompt: governedReplayDeveloper,
+		StorePolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
+		BashOutputPaths: []string{"task.txt"}, GatePolicy: policy,
+		CommandRunner: runner, GovernedCommandRunner: runner, ProviderTokenUpperBound: combinedRecoveryTokens,
+		FreshProviderJournal: freshJournal, FreshProviderJournalPath: newPath, FreshJournalIdentity: freshIdentity,
+		ConversationFactory: func(config providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
+			return providerbridge.NewDevelopmentOfflineConversation(config, journal, turns)
+		},
+	}
+	result := combinedRecoveryResult{Step: step, Deadline: before.Limits.Deadline, Transcripts: len(transcripts),
+		StoreEffects: len(storeTrace.Effects)}
+	candidate, err := prepareGovernedRecovery(ctx, request)
+	if err != nil {
+		result.PrepareError = err.Error()
+	} else {
+		session, activateErr := candidate.Activate(ctx)
+		if activateErr != nil {
+			result.ActivateError = activateErr.Error()
+			_ = candidate.Close()
+		} else {
+			result.Activated = true
+			if capture {
+				if err := session.Authority.AdmitPrompt(session.Conversation, session.Durable,
+					session.RecoveryPromptTask, session.RecoveryPrompt); err != nil {
+					t.Fatal(err)
+				}
+				turn, err := session.Conversation.NextTurn(ctx)
+				if err != nil || turn.ToolCall == nil {
+					t.Fatalf("recovered provider turn did not capture its read: turn=%+v err=%v", turn, err)
+				}
+				result.Captured = true
+			}
+			defer session.Close()
+		}
+	}
+	// Observe the durable checkpoint and the retained crash evidence from this fresh process.
+	result.RetainedError = combinedRecoveryRetainedError(root)
+	after, _, _, err := owner.LoadCheckpoint(ctx, combinedRecoveryWorkflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result.OwnerEpoch, result.RecoveryGeneration, result.Counters = after.Pins.OwnerEpoch, after.Pins.RecoveryGeneration, after.Counters
+	combinedRecoveryWriteJSON(t, filepath.Join(root, "result-"+step+".json"), result)
+	if result.Captured {
+		os.Exit(combinedRecoveryCrashExit)
+	}
+}
+
+// combinedRecoveryRetainedError checks that every crash-time evidence prefix is
+// still byte-identical. Recovery may append its own records, never rewrite these.
+func combinedRecoveryRetainedError(root string) string {
+	data, err := os.ReadFile(filepath.Join(root, "crash-evidence.json"))
+	if err != nil {
+		return err.Error()
+	}
+	var evidence map[string]combinedRecoveryFileEvidence
+	if err := json.Unmarshal(data, &evidence); err != nil {
+		return err.Error()
+	}
+	for name, want := range evidence {
+		got, digestErr := combinedRecoveryFileDigest(filepath.Join(root, name), want.Size)
+		if digestErr != nil || got != want {
+			return fmt.Sprintf("%s retained prefix changed (err=%v)", name, digestErr)
+		}
+	}
+	return ""
+}
+
+func combinedRecoveryRequireCounters(t *testing.T, got combinedRecoveryResult, want workflowrecovery.Counters) {
+	t.Helper()
+	if got.Counters != want {
+		t.Fatalf("%s durable counters = %+v, want %+v (prepare=%q activate=%q)",
+			got.Step, got.Counters, want, got.PrepareError, got.ActivateError)
+	}
+}
+
+// TestGovernedRecoveryCombinedRestartRetryTwoCyclesExhaustsFreshProcess exercises
+// the production prepare/activate path for two retired provider calls and then a
+// refused third recovery. Each recovery that retires a captured call must charge
+// exactly one clean restart and exactly one pre-effect retry, and the refused
+// recovery must charge nothing.
+func TestGovernedRecoveryCombinedRestartRetryTwoCyclesExhaustsFreshProcess(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "two-cycles"
+	original := combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	first := combinedRecoveryRunChild(t, root, scenario, "recover-capture", "r1", combinedRecoveryCrashExit)
+	if first.PrepareError != "" || first.ActivateError != "" || !first.Activated || !first.Captured {
+		t.Fatalf("first recovery did not activate and capture a new call: prepare=%q activate=%q captured=%v",
+			first.PrepareError, first.ActivateError, first.Captured)
+	}
+	if first.StoreEffects != original.StoreEffects {
+		t.Fatalf("first recovery changed Store effect history: before=%d after=%d", original.StoreEffects, first.StoreEffects)
+	}
+	combinedRecoveryRequireCounters(t, first, workflowrecovery.Counters{PreEffectRetries: 1, CleanRestarts: 1,
+		HostCalls: 2, Tokens: 2 * combinedRecoveryTokens})
+	if first.RetainedError != "" {
+		t.Fatalf("first recovery changed retained crash evidence: %s", first.RetainedError)
+	}
+	second := combinedRecoveryRunChild(t, root, scenario, "recover-capture", "r2", combinedRecoveryCrashExit)
+	if second.PrepareError != "" || second.ActivateError != "" || !second.Activated || !second.Captured {
+		t.Fatalf("second recovery did not activate and capture a new call: prepare=%q activate=%q captured=%v",
+			second.PrepareError, second.ActivateError, second.Captured)
+	}
+	combinedRecoveryRequireCounters(t, second, workflowrecovery.Counters{PreEffectRetries: 2, CleanRestarts: 2,
+		HostCalls: 3, Tokens: 3 * combinedRecoveryTokens})
+	third := combinedRecoveryRunChild(t, root, scenario, "recover", "r3", 0)
+	if third.PrepareError == "" || third.Activated {
+		t.Fatalf("third recovery was not refused by the exhausted restart allowance: prepare=%q activate=%q",
+			third.PrepareError, third.ActivateError)
+	}
+	if !strings.Contains(third.PrepareError, workflowrecovery.ErrExhausted.Error()) {
+		t.Fatalf("third recovery refusal = %q, want exhausted restart allowance", third.PrepareError)
+	}
+	combinedRecoveryRequireCounters(t, third, second.Counters)
+}
+
+// TestGovernedRecoveryDirectoryPathIdentityMatchesHeldDescriptor pins the
+// identity contract that every production recovery open depends on: a retained
+// private directory opened by path must compare equal to the held descriptor.
+func TestGovernedRecoveryDirectoryPathIdentityMatchesHeldDescriptor(t *testing.T) {
+	dir := filepath.Join(privateGovernedTestRoot(t), "private-store")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	pathIdentity, err := recoveryFileIdentityDigest(dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := openExistingPrivateRecoveryDirectory(dir)
+	if err != nil {
+		t.Fatalf("open retained private directory by path: %v", err)
+	}
+	defer file.Close()
+	descriptorIdentity, err := recoveryDirectoryIdentityDigest(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pathIdentity != descriptorIdentity {
+		t.Fatalf("path identity %s differs from held descriptor identity %s", pathIdentity, descriptorIdentity)
+	}
+}
+
+// TestGovernedRecoveryCombinedRetryExhaustionChargesNoRestart checks atomicity:
+// when the workflow-wide pre-effect retry allowance is exhausted, recovery must
+// refuse before consuming a clean restart or activating a new session.
+func TestGovernedRecoveryCombinedRetryExhaustionChargesNoRestart(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "retry-exhausted"
+	combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	result := combinedRecoveryRunChild(t, root, scenario, "recover", "r1", 0)
+	if result.Activated || (result.PrepareError == "" && result.ActivateError == "") {
+		t.Fatalf("recovery activated with the retry allowance exhausted: prepare=%q activate=%q",
+			result.PrepareError, result.ActivateError)
+	}
+	combinedRecoveryRequireCounters(t, result, workflowrecovery.Counters{HostCalls: 1, Tokens: combinedRecoveryTokens})
+}
+
+// TestGovernedRecoveryCombinedDeadlineChargesNothing checks that recovery after
+// the original deadline is refused by the protected boundary before any ledger
+// reservation, and that the retained crash evidence is unchanged. The durable
+// counters are unreadable after the deadline, so the refusal path is the proof.
+func TestGovernedRecoveryCombinedDeadlineChargesNothing(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "deadline"
+	original := combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	if wait := time.Until(original.Deadline) + 500*time.Millisecond; wait > 0 {
+		time.Sleep(wait)
+	}
+	result := combinedRecoveryRunChild(t, root, scenario, "recover", "r1", 0)
+	if result.Activated || !strings.HasPrefix(result.PrepareError, "load retained checkpoint:") ||
+		!strings.Contains(result.PrepareError, "deadline") {
+		t.Fatalf("recovery after the workflow deadline was not refused before reservation: prepare=%q activate=%q",
+			result.PrepareError, result.ActivateError)
+	}
+	if result.RetainedError != "" {
+		t.Fatalf("deadline refusal changed retained crash evidence: %s", result.RetainedError)
+	}
+}
