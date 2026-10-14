@@ -34,6 +34,17 @@ G1 and H1 stay unestablished until their relevant evidence has been executed and
 reviewed. OpenRouter is the intended provider route; define and record the model,
 request/token limits and monetary budget before provider evaluation runs.
 
+The user subsequently fixed the total OpenRouter spend at **US$5 maximum** and
+selected **DeepSeek V4.1 Flash**, model ID `deepseek/deepseek-v4.1-flash`.
+The [OpenRouter model page](https://openrouter.ai/deepseek/deepseek-v4.1-flash)
+confirmed that ID on 2026-10-14. Freeze provider routing, current price ceilings,
+request/token limits and the complete trial cost estimate before paid execution.
+Reserve each request's worst-case cost against the shared durable budget before
+sending it; retain uncertain charges across restart. Include pilot, retry,
+calibration and evaluation calls in the US$5 total. If the complete protocol
+cannot fit, report the unfinished evidence rather than reduce its denominator
+or exceed the cap. No paid runs have been executed under this decision.
+
 ## Delegation
 
 Allow the current Claude Haiku tasks to finish. All subsequent delegated work uses
