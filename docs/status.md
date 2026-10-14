@@ -1,6 +1,6 @@
 # Current status
 
-Updated 2026-10-14. Branch `codex/tbound-prototype`; implementation head `d29a0ff`.
+Updated 2026-10-14. Branch `codex/tbound-prototype`; implementation head `8e9293d`.
 The source checkpoint `6a0a52a` and its component receipt in `5051759` are a
 historical baseline. This working status records implementation state and blockers;
 it is not a qualification report.
@@ -13,8 +13,9 @@ it is not a qualification report.
 - Component tests, offline fixtures, package checks, capability probes, and
   development receipts do not establish G1, H1, containment, production provider
   behavior, or thesis evidence. The D20 prepare/activate component tests do not
-  exercise the production fresh initializer or binder. Development and fixture routes
-  report `claim_bearing: false`.
+  exercise the production entrypoint or full recovery binder. The separate production
+  pin-composition receipt covers the fresh initializer only. Development and fixture
+  routes report `claim_bearing: false`.
 
 ## Current checkpoint and validation
 
@@ -46,6 +47,12 @@ it is not a qualification report.
   and crash-time evidence prefixes remain unchanged. The source archive uses base
   `296957b` plus the four D20 files. This does not qualify actual owner-cell drain: the
   test's drain verifier is a stub.
+- **Production pin composition:** [receipt](evidence/production-pin-composition-20261014.json),
+  committed in `8e9293d`, records a baseline-red/current-green fresh-initializer
+  regression and Go 1.27.1 WSL unit/race, build, vet, and format checks. The real
+  initializer returns a production conversation with a dummy test credential; the
+  provider journal remains empty. This does not qualify the full recovery binder or
+  actual owner-cell drain.
 - **D14-S2 terminal accounting:** [receipt](evidence/sqlite-terminal-faults-20261014.json),
   committed in `ad2479f`, records 71 verbose PASS events in each workflowrecovery unit
   and race run. Its composed source overlay contains the D20 workflowrecovery ledger
@@ -68,13 +75,16 @@ it is not a qualification report.
   listing that showed `Stopped` is historical to its observation time, not a claim
   about current state. The earlier `Ubuntu/bintrue` timeout (prefix `85cec`) is also
   historical. The read-only Hyper-V [inventory](evidence/host-inventory-20261014.json),
-  committed in `8756cca`, records `TBound-Ubuntu-2404` Running with 8 vCPUs, 16 GiB
-  fixed RAM, and a 40 GiB disk. It had no guest channel; guest kernel and ABI were not
+  committed in `8756cca`, is a historical snapshot that recorded `TBound-Ubuntu-2404`
+  Running with 8 vCPUs, 16 GiB fixed RAM, and a 40 GiB disk. It had no guest channel;
+  guest kernel and ABI were not
   probed. ABI 4 is the last observed development-guest value and is unmeasured now.
-  D09 requires ABI 8. No clean guest has been registered or qualified. The
+  D09 requires ABI 8. Replacement preflight (`WhatIf`) is verified. Two guest-creation
+  attempts failed after preflight; the current host fix is prepared, with installation
+  pending. No replacement guest has been created or qualified. The
   [2026-10-14 decision](decisions/2026-10-14-qualification-and-research-procedure.md)
   authorizes disposing of the development VM and replacing it with a fresh disposable
-  guest of similar resources. Replacement remains pending.
+  guest of similar resources.
 - **Documentation checks:** relative links, the 27-record historical source map, and
   `git diff --check`; this documentation pass does not run Go or adapter tests.
 
@@ -86,10 +96,11 @@ it is not a qualification report.
    The guarded public D09 route is wired (commit `47a6d73`), but there is no authentic
    signed host admission and no positive public host launch.
 2. **Recovery entrypoints and managed Linux service:** D20's atomic reservation is
-   tested through the prepare/activate component path, but production fresh
-   initialization has clock-anchor ordering and bare-digest defects; the binder also mishandles bare digests. Their separate
-   fix and end-to-end verification are in progress. Then provision and validate the
-   dedicated service account, socket activation, source registration, signed profile,
+   tested through the prepare/activate component path. Fresh-initializer and catalog
+   digest fixes are recorded by the production pin-composition receipt; the full
+   recovery binder and actual owner-cell drain remain unqualified. Then provision and
+   validate the dedicated service account, socket activation, source registration,
+   signed profile,
    client/server handoff, and restart recovery. A real signed-profile path, positive
    service launch, and actual owner-cell drain remain unqualified; the D20 drain verifier
    is a no-op stub.
@@ -122,10 +133,10 @@ it is not a qualification report.
 
 - **D20 production recovery (partial):** the atomic restart+retry reservation before
   activation is implemented in `d29a0ff`; its bounded receipt records the failing-before
-  case and positive fresh-process prepare/activate path. Production fresh initializer
-  has clock-anchor ordering and bare-digest defects, and the binder mishandles bare digests; their separate fix and end-to-end entrypoint
-  verification are in progress. The test drain verifier is a stub, so actual owner-cell
-  drain and interrupted-activation qualification remain open.
+  case and positive fresh-process prepare/activate path. Fresh-initializer pin
+  composition fixes are recorded in the `8e9293d` receipt. Full recovery-binder
+  verification, actual owner-cell drain, and interrupted-activation qualification
+  remain open; the D20 drain verifier is a stub.
 - **D14 durability (partial):** `0ab8b9f` preserves SQLite error causes and adds
   five real reservation-path fault cases with separate fresh-process verification.
   Kernel EFBIG/SQLite IOERR and engine-limited SQLITE_FULL were exercised; package
@@ -136,9 +147,9 @@ it is not a qualification report.
   events. S2 uses synthetic Store pins/verifier and an fsynced test marker, with no
   production `RunEffect` or real external effect.
   The earlier private test `19c2919c…` was replaced after it faulted the wrong
-  store and used weak recovery checks. Terminal accounting, reserved audit capacity,
-  filesystem ENOSPC, genuine fsync faults, corruption and declared-platform power-loss
-  evidence remain open.
+  store and used weak recovery checks. Terminal accounting is partial; reserved audit
+  capacity is unimplemented. Filesystem ENOSPC, genuine fsync faults, corruption, and
+  declared-platform power-loss evidence remain open.
 - **Recovery continuity:** the fresh provider constructor refuses retained nonempty
   journals. Inert history, checkpoint/budget recovery, and ManagedStore/D06 binding
   exist as components; provider-history replay and continuation through the production
@@ -154,8 +165,8 @@ it is not a qualification report.
 
 These checked-in priorities follow the implementation order. Research claims are last.
 
-1. **Core engineering:** close the production D20 fresh-initializer/binder defects and
-   qualify actual owner-cell drain; continue the remaining D14 capacity/fault work;
+1. **Core engineering:** qualify the full production D20 recovery binder and actual
+   owner-cell drain; continue the remaining D14 capacity/fault work;
    complete LC-04 and LC-05 end to end with independent oracles; collect publication,
    provenance, and observer evidence.
 2. **Deployment engineering:** preserve required artifacts before disposing of the

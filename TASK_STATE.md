@@ -1,6 +1,6 @@
 # TBound task state
 
-Updated 2026-10-14. Branch `codex/tbound-prototype`; implementation head `d29a0ff`.
+Updated 2026-10-14. Branch `codex/tbound-prototype`; implementation head `8e9293d`.
 The `6a0a52a` source checkpoint and its `5051759` component receipt remain a
 historical baseline. Claims, receipts, and open gates live in [docs/status.md](docs/status.md).
 
@@ -22,9 +22,16 @@ historical baseline. Claims, receipts, and open gates live in [docs/status.md](d
   [bounded receipt](docs/evidence/governed-combined-recovery-20261014.json) records
   positive fresh-process preparation/activation across two cycles and refusal at the
   restart cap, with retry-exhaustion and deadline guards. The tested archive overlays
-  all four D20 files on `296957b`; this component result does not close production
-  initialization/binding or actual drain. D14-S2 terminal-accounting characterization
-  is committed in `ad2479f`; its [receipt](docs/evidence/sqlite-terminal-faults-20261014.json)
+  all four D20 files on `296957b`; this component result does not exercise the
+  production entrypoint, full recovery binding, or actual drain. The production
+  pin-composition
+  [receipt](docs/evidence/production-pin-composition-20261014.json), committed in
+  `8e9293d`, records fixed fresh-initializer/catalog digest pin composition and a
+  successful production conversation return with a dummy test credential and zero
+  provider HTTP exchanges. Source-bound Go 1.27.1 WSL unit/race, build, vet, and format
+  checks passed; this does not qualify the full recovery binder or actual drain.
+  D14-S2 terminal-accounting characterization is committed in `ad2479f`; its
+  [receipt](docs/evidence/sqlite-terminal-faults-20261014.json)
   reports 71 verbose PASS events in each unit/race run on a distinct overlay containing
   the D20 workflowrecovery ledger files plus the S2 test. Its synthetic marker and Store
   pins do not exercise production `RunEffect` or a real provider/Store effect.
@@ -35,22 +42,26 @@ historical baseline. Claims, receipts, and open gates live in [docs/status.md](d
   the probe implicitly starts the distribution if it is stopped. Any earlier `Stopped`
   listing is historical to its observation time, not a current-state claim. The
   read-only [Hyper-V inventory](docs/evidence/host-inventory-20261014.json), committed
-  in `8756cca`, records `TBound-Ubuntu-2404` Running (8 vCPUs, 16 GiB fixed RAM,
+  in `8756cca`, is a historical snapshot that recorded `TBound-Ubuntu-2404` Running
+  (8 vCPUs, 16 GiB fixed RAM,
   40 GiB disk) and no guest channel or ABI probe. ABI 4 is the last observed
   development-guest value and is unmeasured now. D09 requires ABI 8. The user has
   authorized replacing the development VM with a fresh disposable guest of similar
-  resources; replacement remains pending.
+  resources. Replacement preflight (`WhatIf`) is verified. Two guest-creation attempts
+  failed after preflight; the current host fix is prepared, with installation pending.
+  No replacement guest has been created or qualified.
 - **Blockers, in order:**
   1. Production recovery: the D20 atomic prepare/activate increment is committed,
-     but the production fresh initializer has clock-anchor ordering and bare-digest defects, and the binder mishandles bare digests; a
-     separate fix and end-to-end verification are in progress. The D20 drain verifier
-     is a test stub, so actual owner-cell drain remains unqualified.
+     and the fresh-initializer/catalog digest pin fixes are recorded by the production
+     pin-composition receipt. The full recovery binder, actual owner-cell drain, and
+     interrupted-activation qualification remain open; the D20 drain verifier is a
+     test stub.
   2. D14 remains partial. `0ab8b9f` covers five reservation-path faults with
      fresh-process checks; `ad2479f` adds three terminal-persistence fault cases and
      fresh-process verification. The S2 Store pins/verifier and fsynced effect marker
-     are synthetic, and production `RunEffect` is not called. Reserved capacity,
-     filesystem ENOSPC, genuine fsync faults, corruption, and declared-platform
-     power-loss evidence remain open.
+     are synthetic, and production `RunEffect` is not called. Reserved audit capacity
+     is unimplemented; filesystem ENOSPC, genuine fsync faults, corruption, and
+     declared-platform power-loss evidence remain open.
   3. Governed lifecycle: LC-04 and LC-05 are offline component cuts. ManagedStore/D06
      authority binding and provider-history replay through the production route remain open.
   4. Deployment: a fresh ABI-8 qualification guest (replacing the development VM is
@@ -66,8 +77,8 @@ historical baseline. Claims, receipts, and open gates live in [docs/status.md](d
 
 ### Milestones
 
-1. **Core engineering:** close the D20 fresh-initializer/binder digest defects and
-   qualify actual owner-cell drain. Complete remaining D14 capacity/fault work and
+1. **Core engineering:** qualify the full production D20 recovery binder and actual
+   owner-cell drain. Complete remaining D14 capacity/fault work and
    LC-04/LC-05 end to end with independent oracles; collect publication, provenance,
    and observer evidence.
 2. **Deployment engineering:** preserve required artifacts before disposing of the
@@ -95,8 +106,8 @@ historical baseline. Claims, receipts, and open gates live in [docs/status.md](d
 
 ### Next steps
 
-1. Finish and verify the production initializer/binder fixes, then qualify actual
-   owner-cell drain and interrupted activation in the D20 recovery path.
+1. Verify the full production recovery binder, then qualify actual owner-cell drain
+   and interrupted activation in the D20 recovery path.
 2. Decide the fixture-route flag handling (reject or document) through a test-first
    code change.
 3. Complete remaining D14 capacity, filesystem, corruption, and platform-fault work.

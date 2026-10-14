@@ -34,9 +34,15 @@ receipt describes the pre-CLI implementation and does not qualify the CLI migrat
   by refusal at the restart cap. Its isolated source archive overlays all four D20
   files on base `296957b`; its 39 top-level / 66 verbose workflowrecovery counts and
   15 top-level / 34 verbose cmd/tbound counts are distinct from the S2 composite run.
-  Production fresh initializer/binder bare-digest defects and actual owner-cell drain
-  remain open; the D20 test uses a no-op drain verifier. Neither receipt establishes
-  G1, H1, containment, or D14 completion.
+  Full production recovery-binder verification and actual owner-cell drain remain
+  open; the D20 test uses a no-op drain verifier. Neither receipt establishes G1, H1,
+  containment, or D14 completion.
+- [Production pin composition](production-pin-composition-20261014.json), committed
+  in `8e9293d`, records a baseline-red/current-green fresh-initializer regression and
+  Go 1.27.1 WSL unit/race, build, vet, and format checks. With a dummy test credential,
+  the real initializer returned a production conversation and left the provider
+  journal empty. This covers fresh-initializer pin composition only; the complete
+  recovery binder and actual owner-cell drain remain unqualified.
 
 The dated `../evaluation-evidence-index-2026-10-07.json` is an immutable structural
 ledger. Its original source references may name documents retired from active

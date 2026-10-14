@@ -1503,10 +1503,12 @@ func validateCapturedCallPin(p Pins) error {
 	return nil
 }
 
-// validateOwnerTransition replays the durable owner history. Reservations may
-// only consume one allowance at a time; progress commits may change verified
-// pins without changing budgets; clean restarts advance exactly one generation
-// and consume exactly one workflow-wide restart.
+// validateOwnerTransition replays the durable owner history. Reservations
+// consume one allowance at a time, except that retirement of an unexecuted
+// captured call may atomically consume one clean restart and one pre-effect retry.
+// Progress commits may change verified pins without changing budgets; clean
+// restarts advance exactly one generation and consume exactly one workflow-wide
+// restart.
 func validateOwnerTransition(previous Checkpoint, previousDigest string, priorExists bool, next Checkpoint, expected string, proof TransitionProof) error {
 	if err := validateCheckpoint(next, next.ComputedCheckpointDigest); err != nil {
 		return err
