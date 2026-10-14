@@ -11,9 +11,10 @@ That review was read-only; it did not implement or test the proposed chat servic
 ## Instruction for the new thread
 
 Implement the **frontend product side of tbound** in this thread. The other
-thread owns the core priorities in `docs-next-work.txt`, containment/profile
-qualification, governed lifecycle/recovery, publication evidence and research
-registration. Coordinate API needs with that thread; do not duplicate its work.
+thread owns the core priorities in [TASK_STATE.md](../TASK_STATE.md) and
+[status.md](status.md), containment/profile qualification, governed lifecycle and
+recovery, publication evidence and research claims. Coordinate API needs with that
+thread; do not duplicate its work.
 
 ### Product goal
 
@@ -108,8 +109,9 @@ Existing typed viewer preparation is isolated in sibling
 uncommitted files. Reuse its contract/validation/store ideas when useful; replace
 the visual design. Its review identified unverified replay success presentation,
 SSE deadlines cleared before flush, and unbounded GET-body handling. Fix and test
-those before adopting the affected code. Do not overwrite that checkout or the
-user's `docs-next-work.txt`. Preserve historical binaries and avoid credential files.
+those before adopting the affected code. Do not overwrite that checkout; use the
+checked-in [task state](../TASK_STATE.md) and [current priorities](status.md). Preserve
+historical binaries and avoid credential files.
 
 Keep changes in your new worktree. Propose a small API contract to the core thread
 before modifying authority-owned files; prefer additive client/projection files.
