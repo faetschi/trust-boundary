@@ -1,7 +1,7 @@
 # Phase 2b: assistant markdown as a typed AST
 
 Status: the parser, the typed AST, the incremental parser and the differential net
-are implemented in `extensions/webchat/frontend/src/markdown/`. They are not wired
+are implemented and committed (`4700ca5`) in `extensions/webchat/frontend/src/markdown/`. They are not wired
 into the app. The legacy renderer (`internal/webchat/assets/markdown.mjs`) still
 serves the page, and it is unchanged. Phase 3 replaces it with React views that map
 this AST. Behaviour is the legacy renderer's (web-chat.md §4.6), including its
@@ -196,8 +196,8 @@ behaviour so that parity holds, and each finding is a decision for the owner.
   hostile table, the 31 golden rows and the streaming sample, extracted from the legacy
   test file by a one-off script outside the repository. The 31 digests match the
   legacy values, so a transcription error would fail `golden.test.ts`.
-- **Not updated:** `TASK_STATE.md` and the phase status table in the ADR. Both are
-  outside the scope of this change.
+- **Not updated by this change:** `TASK_STATE.md` and the phase status table in the
+  ADR. Both were outside its scope. The ADR table now records Phase 2 as committed.
 
 ## Receipts
 

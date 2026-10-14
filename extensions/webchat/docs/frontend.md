@@ -1,6 +1,7 @@
 # Web chat frontend (React scaffold, Phase 1)
 
-Status: **Phase 1 scaffold. Not the product UI.** The React client is served
+Status: **Phase 1 (scaffold) and Phase 2 (typed logic port) are committed.
+Phase 3 is pending. Not the product UI.** The React client is served
 under `/app/`, next to the vanilla UI. The vanilla UI is still the default at
 `/`. Phase 3 is the first point where the React client can replace it. The
 decision is in `adr-0001-optional-extension.md`.
@@ -72,8 +73,9 @@ Build inputs are LF on every checkout platform. `frontend/.gitattributes` sets
 CRLF case is real and was reproduced: with `core.autocrlf=true` and no source
 attributes, a clone's `npm ci && npm run repro` exited 1, because CRLF sources
 changed the built asset names and contents. With the attributes committed, the
-same clone reproduced the committed `dist/` (ADR receipts). The ADR also records
-one Windows build of the same sources that matched byte for byte.
+same clone reproduced the committed `dist/` (ADR receipts). The P1 record in the
+ADR at `263b6ca` also recorded one Windows build of the same sources that matched
+byte for byte.
 
 ## Version pins
 
@@ -299,12 +301,13 @@ The mutation runs and the live run are recorded with their commands in
 
 ## Phase plan
 
-- **Phase 1 (this change):** the scaffold, the manifest-derived `/app/` route,
+- **Phase 1 (committed in `263b6ca`, review fixes in `2583f5a`):** the scaffold, the manifest-derived `/app/` route,
   the tests, the reproducibility gate, and the opt-in CSP smoke. No product UI.
   The vanilla UI is unchanged and remains the default.
-- **Phase 2:** port the pure logic to TypeScript: `store`, `stream`, `backoff`,
-  `markdown`, `filters`, `trajectory`, `anchor`, `format` and `stop-sequence`.
-  The existing 258 Node tests are the parity net, and behaviour may not change.
+- **Phase 2 (committed in `4700ca5`):** port the pure logic to TypeScript: `store`,
+  `stream`, `backoff`, `markdown`, `filters`, `trajectory`, `anchor`, `format` and
+  `stop-sequence`. The existing 258 Node tests are the parity net, and behaviour
+  may not change. Evidence: `phase2-parity.md` and `phase2-markdown.md`.
   The Go allowlist keeps deriving from the manifest, so no hand-written route is
   added.
 - **Phase 3:** replace `render.mjs` and `app.mjs` with React components, with
@@ -322,8 +325,10 @@ verify code and UI wiring only.
 ## Verification receipts
 
 The exact commands, exit codes and hashes for Phase 1 are in
-`adr-0001-optional-extension.md`, §(v), the P1 status table. The GitHub Actions
-jobs have not run yet.
+`adr-0001-optional-extension.md`, §(v), the P1 status table. The Phase 2 receipts
+are in `phase2-parity.md` §9 and `phase2-markdown.md`. On GitHub, the `webchat`
+and `frontend` jobs succeeded at `4700ca5` (run 38580790848). The dispatch-only
+`csp-smoke` job has not run there.
 
 ## Phase 2a addendum: `src/core/` (DOM-free logic)
 

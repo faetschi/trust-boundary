@@ -1,5 +1,6 @@
-// Throwaway WCAG 2.2 contrast check for the tbound palette proposal (read-only analysis).
-// oklch -> sRGB via Ottosson's matrices (out-of-gamut channels are clipped and flagged).
+// WCAG 2.2 contrast check for the tbound palette proposal (read-only analysis). Run it with
+// `node contrast.mjs`; contrast-output.txt in this folder is its output (see design-language.md).
+// oklch -> sRGB via Ottosson's matrices (out-of-gamut colours are chroma-reduced to fit, and flagged with * in the printed hex).
 // Translucent colours are composited over the actual surface in gamma-encoded sRGB, which is
 // how browsers blend color-mix(... transparent) layers. Each element is checked against the
 // WORST surface it may sit on. Text needs 4.5:1, non-text UI needs 3:1 (WCAG 2.2 1.4.3, 1.4.11).

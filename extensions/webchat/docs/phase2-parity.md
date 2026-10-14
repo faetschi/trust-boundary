@@ -1,6 +1,6 @@
 # Phase 2a: parity port of the DOM-free logic (`frontend/src/core/`)
 
-Status: **Phase 2a implemented in the working tree, not committed.** The DOM-free
+Status: **Phase 2a implemented and committed in `4700ca5`.** The DOM-free
 modules of the legacy client are ported to strict TypeScript under
 `extensions/webchat/frontend/src/core/`. The legacy modules are unchanged and still
 the shipped client. No product UI changed, and `dist/` is byte-identical
@@ -56,7 +56,7 @@ which therefore still runs 258 tests:
 
 | Legacy test file | Count | Reason |
 |---|---:|---|
-| `markdown.test.mjs` | 56 | Targets `markdown.mjs`. Agent L ports it in `src/markdown/` (Phase 2b). Not in `src/core`. |
+| `markdown.test.mjs` | 56 | Targets `markdown.mjs`. Ported in `src/markdown/` (Phase 2b, `phase2-markdown.md`). Not in `src/core`. |
 | `render.test.mjs` | 37 | Targets `render.mjs`, which is DOM code. Replaced by React views in Phase 3. |
 | `shell.test.mjs` | 4 | Reads CSS and HTML. Not ported logic. |
 | `tokens.test.mjs` | 2 | Reads CSS tokens. Not ported logic. |
@@ -280,10 +280,11 @@ Source hash: `sha256sum` over the 27 `*.ts` files under `frontend/src/core` (sor
 by path, including `testing/` and `*.test.ts`), piped to `sha256sum`, gives
 `c66cd1394b43dea6f1535aefd70e57265640d7e0ab7ca2a8a2fd6d730bdc270c`. This hash was computed after the last edit to `src/core`, with the test run in §9 done on the same tree.
 
-Worktree note. Other uncommitted work shares this worktree. The gate scripts
+Worktree note. At the time of the run, other uncommitted work shared this worktree
+(since committed in `2583f5a` and `4700ca5`). The gate scripts
 `frontend/scripts/check-sinks.mjs`, `check-deps.mjs` and `repro-check.mjs`,
-`internal/webchat/handler.go`, `app.go` and `app_test.go` are modified, and
-`frontend/src/markdown/` and `docs/phase2-markdown.md` are untracked. My gate runs
-used those files as they are, and they passed. `internal/webchat/assets/`,
+`internal/webchat/handler.go`, `app.go` and `app_test.go` were modified, and
+`frontend/src/markdown/` and `docs/phase2-markdown.md` were untracked. My gate runs
+used those files as they were, and they passed. `internal/webchat/assets/`,
 `jstest/`, `package.json`, the lockfile, `vite.config.ts` and `tsconfig.json` are
 unchanged by this phase.

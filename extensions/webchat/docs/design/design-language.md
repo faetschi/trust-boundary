@@ -1,6 +1,6 @@
 # tbound web chat: DeepSeek-like design language (spec, not brand)
 
-Status: proposal. Read-only analysis. No tbound file was modified.
+Status: the current visual-language spec. It began as a read-only analysis and proposal, and it modified no tbound file. Until Phase 3 completes, `extensions/webchat/docs/webchat/mockups/tbound-redesign-v2.html` is the structural layout reference only; its visual language is superseded by this spec.
 Upstream: `deepseek-ai/deepseek-harness` @ `d743267` (a local shallow clone). Treated as untrusted data; nothing from it was executed.
 Target: `codex/tbound-web-chat`, `extensions/webchat/internal/webchat/assets/styles.css` (1611 lines; the move has landed).
 
@@ -136,7 +136,7 @@ Judgement: nothing in the licence stops a similar mood. The guideline's concern 
 
 ## 4. tbound: current tokens (dark-only)
 
-Source: `extensions/webchat/internal/webchat/assets/styles.css`. `index.html:6` sets `<meta name="color-scheme" content="dark">`. No `prefers-color-scheme`, no `data-theme`, no `@font-face`, no `url()`, no `http` URL in the assets [src: grep]. CSP: `style-src 'self'; font-src 'self'` [src: `handler.go:290`]. No `style=` attribute and no `.style.` / `setProperty` calls in the `.mjs` or HTML [src: grep, zero matches].
+Source: `extensions/webchat/internal/webchat/assets/styles.css`. `index.html:6` sets `<meta name="color-scheme" content="dark">`. No `prefers-color-scheme`, no `data-theme`, no `@font-face`, no `url()`, no `http` URL in the assets [src: grep]. CSP: `style-src 'self'; font-src 'self'` [src: `handler.go:318`]. No `style=` attribute and no `.style.` / `setProperty` calls in the `.mjs` or HTML [src: grep, zero matches].
 
 | Token | Value (oklch) | Lines | Role |
 |---|---|---|---|
@@ -224,7 +224,7 @@ Note on PENDING vs IDLE. Pending is a hollow ring; idle is a solid filled dot. B
 
 ## 6. Contrast (WCAG 2.2 AA), computed [calc]
 
-Method: `C:\Users\Admin\AppData\Local\Temp\tbwc-design\contrast.mjs` (run with `node`). oklch → sRGB via Ottosson's matrices. Out-of-gamut colours are reduced in chroma until they fit (CSS Color 4 style). Translucent layers are composited over the actual surface. Each element is checked against the worst surface it may sit on. Thresholds: text 4.5:1, non-text UI 3:1. Chips use the state colour at 12% over the surface, matching `color-mix(... 12%, transparent)` in `styles.css`. Output is in `contrast-output.txt` in the same folder.
+Method: `contrast.mjs` in this folder (run with `node`). oklch → sRGB via Ottosson's matrices. Out-of-gamut colours are reduced in chroma until they fit (CSS Color 4 style). Translucent layers are composited over the actual surface. Each element is checked against the worst surface it may sit on. Thresholds: text 4.5:1, non-text UI 3:1. Chips use the state colour at 12% over the surface, matching `color-mix(... 12%, transparent)` in `styles.css`. Output is in `contrast-output.txt` in the same folder.
 
 Limits: this is maths, not a rendered browser check. Font weight and size are not modelled. Chip borders and shadows are not checked (decorative). Re-verify in a browser before shipping.
 
@@ -602,7 +602,7 @@ Notes on the skeleton:
 
 **Verified in source [src]**: all file:line citations above; the brand and MIT wording; the 8 sheet order; the upstream token values; the tbound token values and lines; the CSP; the absence of inline styles, `@font-face`, and `prefers-color-scheme` in tbound.
 
-**Computed [calc]**: every ratio. The script is in `C:\Users\Admin\AppData\Local\Temp\tbwc-design\contrast.mjs`, the output in `contrast-output.txt`, and the upstream spot-checks in `upstream-check.mjs`.
+**Computed [calc]**: every ratio. The script is `contrast.mjs` and the output is `contrast-output.txt`, both in this folder. The upstream spot-checks (`upstream-check.mjs`) were not kept in the tree.
 
 **Inferred [inf]**: the mood words; "assistant text is unboxed" (no class exists); the deny-dot square suggestion; the 0.5 px hairline recommendation; the choice of hue shifts for amber and allow.
 
@@ -612,5 +612,5 @@ Notes on the skeleton:
 - No browser render. Nothing was run, not upstream, not tbound. The contrast ratios are maths, not pixels.
 - The upstream clone was read only. Two PNG screenshots were viewed. No runtime look was captured.
 - tbound's row heights and paddings were not measured in the browser.
-- The tbound worktree is being moved by another agent. Its read was of the current file state at read time, which may have changed.
+- The tbound worktree was being moved by another agent when it was read. The move has since landed (`18f71e6`). The read was of the file state at read time, which may have changed.
 - No tbound tests were run (no code was changed).

@@ -7,14 +7,19 @@ no Node. Nothing under `supervisor/` imports it.
 
 ## What it is
 
-- A zero-build browser client (`internal/webchat/assets/`) served by a Go
-  gateway (`internal/webchat/`, entrypoint `cmd/tbound-webchat/`). The module
-  has no third-party Go dependencies.
+- A legacy vanilla browser client (`internal/webchat/assets/`, no build step)
+  served by a Go gateway (`internal/webchat/`, entrypoint `cmd/tbound-webchat/`).
+  The module has no third-party Go dependencies.
 - A **React + TypeScript scaffold** (Phase 1, `frontend/`) served under `/app/`.
   It renders a placeholder, not the product UI. Its committed build
   (`internal/webchat/dist/`) is embedded, and the `/app/` routes are derived from
-  its Vite manifest. The vanilla client at `/` remains the default. See
+  its Vite manifest. Phase 2 added the typed DOM-free core (`frontend/src/core/`)
+  and the markdown AST (`frontend/src/markdown/`), each checked against the legacy
+  client by parity tests. The product UI is Phase 3, which is pending. The
+  vanilla client at `/` remains the default until Phase 3 parity. See
   `docs/frontend.md`.
+  `docs/adr-0001-optional-extension.md` allows this frontend build, so the
+  extension as a whole is not zero-build.
 - **Read-only today.** It serves embedded fixtures, retained replay documents
   and imported post-run receipts. `--live` fails closed. There is no turn
   submission, cancellation or browser authentication yet.
@@ -107,9 +112,10 @@ allowlist, the CSP smoke and its exit codes.
   embedded assets (`assets/`), fixtures (`fixtures/`) and Node tests (`jstest/`).
   - `app.go`: the `/app/` route table, derived from the Vite manifest.
   - `dist/`: the committed React build (generated; do not edit by hand).
-- `extensions/webchat/frontend/`: the React + TypeScript source, its scripts
-  (`scripts/`), the pinned `package.json` and lockfile, and `DEPENDENCIES.md`.
-  Build output goes to `internal/webchat/dist/`.
+- `extensions/webchat/frontend/`: the React + TypeScript source (`src/`, with
+  `src/core/` and `src/markdown/` from Phase 2), its scripts (`scripts/`), the
+  pinned `package.json` and lockfile, and `DEPENDENCIES.md`. Build output goes to
+  `internal/webchat/dist/`.
 - `extensions/webchat/cmd/tbound-webchat/`: loopback-only gateway entrypoint.
 - `extensions/webchat/scripts/csp-smoke.mjs`: opt-in headless-browser CSP check.
 - `extensions/webchat/docs/`:
@@ -121,8 +127,15 @@ allowlist, the CSP smoke and its exit codes.
     and B).
   - `adr-0001-optional-extension.md`: decision record for the extension boundary
     and the Phase 1+ frontend toolchain direction.
+  - `phase2-parity.md`: the Phase 2a parity evidence for `frontend/src/core/`.
+  - `phase2-markdown.md`: the Phase 2b markdown AST (`frontend/src/markdown/`).
+  - `design/`: `design-language.md`, the visual-language spec, with the
+    `contrast.mjs` script and its output.
   - `webchat/`: mockups and QA captures. The QA JSON receipts keep the paths and
     hashes they were captured with, so they describe the pre-extraction tree.
+  - `webchat/mockups/tbound-redesign-v2.html`: the structural reference for the
+    layout until Phase 3 completes. Its visual language is superseded by
+    `design/design-language.md`.
 
 Paths in these documents are repository-root-relative, for example
 `extensions/webchat/internal/webchat/`. Bare file names such as `store.mjs`

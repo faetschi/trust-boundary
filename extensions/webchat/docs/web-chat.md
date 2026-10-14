@@ -339,6 +339,7 @@ All routes are `GET`-only and reject any request body.
 |---|---|
 | `GET /` | The workspace shell (embedded assets). |
 | `GET /static/*.css`, `/static/*.mjs` | Closed allowlist of embedded modules. |
+| `GET /app/`, `/app/*` | The optional React client build ([frontend.md](frontend.md)). Exact files come from the committed Vite manifest; `503` if the table cannot be derived. `/` stays the legacy workspace. |
 | `GET /api/v1/snapshot` | Bounded observation snapshot (recovery point for a gap). |
 | `GET /api/v1/contract` | Bounded contract descriptor (schemas, enums, limits, `read_only: true`, `controls: []`). |
 | `GET /api/v1/items/{id}` | One retained projected item by bounded ID. |
@@ -495,10 +496,11 @@ loading states, `Kbd`, and a sidebar with muted hover/active rows. The timeline
 filter is a segmented Toggle Group built from `aria-pressed` buttons with roving
 arrow-key focus, and the posture row uses the badge/chip shapes.
 
-No React, Base UI or Tailwind is used in the current build. The thesis treats a
-browser client as a deferred, non-claim-bearing demonstrator and requires the web
-service to stay minimal, so the current workspace is a zero-build ESM + CSS client
-served by the Go gateway. [ADR-0001](adr-0001-optional-extension.md) supersedes
+No React, Base UI or Tailwind is used in the legacy workspace served at `/`. The
+thesis treats a browser client as a deferred, non-claim-bearing demonstrator and
+requires the web service to stay minimal, so the legacy workspace is a zero-build
+ESM + CSS client served by the Go gateway; it stays the default until Phase 3
+parity. [ADR-0001](adr-0001-optional-extension.md) supersedes
 that zero-build rule for Phase 1 onward: React and TypeScript with the project's
 own components, CSS Modules compiled to same-origin CSS, and a committed Vite
 build. The tokens are defined in `:root`. Fonts degrade to local Inter / Geist Mono
@@ -577,7 +579,8 @@ Focused checks on the pinned Go 1.27.1 in Linux, run from `extensions/webchat/`
   `go test -race -count=1 ./internal/webchat/... ./cmd/tbound-webchat/...` on Go 1.27.1
   (WSL) all exit 0, with no skipped tests. `TestStaticAssetsAreClosedAndComplete`
   passes with the new `anchor.mjs` route.
-- `node --test internal/webchat/jstest/*.test.mjs` — 229 pass, 0 skipped. These cover
+- `node --test internal/webchat/jstest/*.test.mjs` — 258 pass, 0 skipped at HEAD
+  `4700ca5` (229 at the tail-window increment, `3146d1b`). These cover
   the pure modules and the DOM-stub renderer; browser scroll, focus and keyboard
   behaviour is not covered by them.
 - The **real** development CLI fixture receipt was imported with
@@ -585,7 +588,7 @@ Focused checks on the pinned Go 1.27.1 in Linux, run from `extensions/webchat/`
   `unknown`, four tool cards (two reported `succeeded`, two `unknown`),
   `per-tool-outcome` stream `gap`, publication `not-attempted`, recovery
   `unknown`, and no browser console errors.
-- `go test -race -count=1 ./...` — all packages pass except
+- Before the extraction, from `supervisor/`: `go test -race -count=1 ./...` — all packages pass except
   `internal/evaluationindex`, which fails only because the private Linux copy
   excluded the repository `docs/` tree (it passes from within the full checkout).
 

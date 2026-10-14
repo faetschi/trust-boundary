@@ -1,9 +1,18 @@
 # tbound web workspace — UI redesign and Trajectory view: analysis and plan
 
 Status: **Phase 0 and Phase 1 implemented; Phase 2 partly implemented; Phase 3 present
-in its ordinal form only.** See §5 for exactly what shipped. Nothing in this document is
+in its ordinal form only.** See the implementation status below for exactly what shipped. Nothing in this document is
 claim-bearing. It describes changes to a presentation-only, untrusted client. G1=false,
 H1 unexecuted, containment not-established, claim-bearing=false.
+
+> **Scope and phase naming (HEAD `4700ca5`, 2026-10-14).** "Phase 0" to "Phase 4" in this
+> plan are this redesign's own phases, not the ADR-0001 phases P1 to P3. What shipped is in
+> the legacy vanilla UI (`assets/`), which stays the default at `/` until ADR-0001 Phase 3
+> parity. ADR-0001 P1 (scaffold, `263b6ca`, review fixes `2583f5a`) and P2 (typed core port
+> and markdown AST, `4700ca5`) are committed; P3 is pending. The mockup
+> `webchat/mockups/tbound-redesign-v2.html` is the structural layout reference until P3
+> completes; its visual language is superseded by
+> [design/design-language.md](design/design-language.md).
 
 > **Implementation status (this worktree).**
 > Shipped: the three-region shell (rail / workspace / inspector), the `Chat | Trajectory`
@@ -15,8 +24,8 @@ H1 unexecuted, containment not-established, claim-bearing=false.
 > duration), and every item in §5 Phase 4 (supervisor-owned).
 > Deviation from the mockup: the record inspector renders its sections **stacked** rather
 > than tabbed, so an audit never hides a field behind a click. The mockup's `CONTEXT` row
-> was removed from both the mockup and the implementation because the projection has no
-> context item type.
+> was removed from the implementation (the mockup file still draws it) because the
+> projection has no context item type.
 
 Reference analysed: DeepSeek Harness (`deepseek-ai/deepseek-harness`), `packages/client/ui-trajectory`
 and the surrounding web client, from the package READMEs, the architecture document, and
@@ -154,7 +163,7 @@ no-success-without-verification gate, the `.mjs` module split (ported to TypeScr
 in ADR-0001 P2), and the coss/ui-style token names (a naming reference only, not a
 dependency). The zero-build ESM + CSS build is superseded for Phase 1 onward by
 [ADR-0001](adr-0001-optional-extension.md).
-Borrow the harness's **layout, density and row anatomy**; do not import React/Tailwind/virtualizer.
+Borrow the harness's **layout, density and row anatomy**; do not import the harness's React/Tailwind/virtualizer.
 
 ### 4.1 Shell
 
@@ -270,7 +279,8 @@ browser show transcript text.
 - **No fabricated metrics.** See §4.4. This is the same rule as our success gate, applied to
   measurement rather than outcome.
 - **No claim inflation.** The view is presentation; it never asserts G1, H1 or containment.
-- **No new client dependencies.** Patterns borrowed; stack not.
+- **No harness or coss/ui dependency.** Patterns borrowed; stack not. The project's own
+  React + TypeScript + Vite build is allowed by [ADR-0001](adr-0001-optional-extension.md).
 
 ## 7. Open questions for the core thread
 

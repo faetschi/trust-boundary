@@ -3,8 +3,9 @@
 - Status: **accepted** for the extension boundary (Phase 0). The Phase 1+
   toolchain direction is accepted as a direction. **Phase 1 (scaffold) is
   implemented and committed in `263b6ca`.** The review fixes made after that
-  commit are in the working tree and are not committed. §(v) lists them with their
-  done criteria and receipts. Phases 2 and 3 have not started.
+  commit are committed in `2583f5a`. §(v) lists them with their done criteria and
+  receipts. **Phase 2 (typed core port and markdown AST) is committed in
+  `4700ca5`.** Phase 3 is pending.
 - Date: 2026-10-14
 - Scope: `extensions/webchat/` and its relation to `supervisor/`.
 - Claim boundary: this is an engineering decision. It establishes no `G1`,
@@ -87,7 +88,7 @@ ones marked *not re-verified* were not re-measured in this change.
 ("zero-build ESM + CSS"), the "Keep" list in `extensions/webchat/docs/web-chat-ui-plan.md` §4, the
 "no build step" recommendation in Appendix A.4, and the design-system header in
 `extensions/webchat/internal/webchat/assets/styles.css`. The zero-build client remains the shipped
-state until P1 lands.
+default until P3 reaches parity.
 
 **Kept, unchanged by this decision:**
 
@@ -125,17 +126,17 @@ Status (2026-10-14). Each phase is verified only by the receipts listed here.
 | Phase | Status | Done criteria | Receipts |
 |---|---|---|---|
 | P0 extraction | done, committed `18f71e6` | extension boundary, guard, CI job | `scripts/check-extension-boundary.sh` (see README) |
-| **P1 scaffold** | **implemented and committed in `263b6ca`; review fixes in the working tree, not committed; one criterion partly met** | see below | see below |
-| P2 port pure logic | not started | — | — |
-| P3 React views | not started | — | — |
+| **P1 scaffold** | **implemented and committed in `263b6ca`; review fixes committed in `2583f5a`; one criterion partly met** | see below | see below |
+| P2 port pure logic | implemented and committed in `4700ca5` | `src/core` and `src/markdown` port the logic; legacy parity nets | `phase2-parity.md` §9; `phase2-markdown.md`, Receipts |
+| P3 React views | pending, not committed | — | — |
 
 P1 done criteria, each with its evidence:
 
 - **Vite, React, TypeScript, CSS Modules scaffold.** Met. `npm run verify`
   (typecheck, Vitest, build, and the sink and dependency gates, each with its
   self-test) exits 0 in the final run below. The Vitest count there (24 files,
-  313 tests) includes the uncommitted `src/core` and `src/markdown` tests of
-  another work stream, which the same chain typechecks and scans.
+  313 tests) includes the `src/core` and `src/markdown` tests of the Phase 2 work
+  (committed since in `4700ca5`), which the same chain typechecks and scans.
 - **`dist/` committed with a manifest; Go allowlist derived from it and tested.**
   Met. `app.go` derives the `/app/` routes from `.vite/manifest.json`, and the
   shell is read by a tokenizer that fails closed. Eight `TestApp*` tests and
@@ -152,19 +153,20 @@ P1 done criteria, each with its evidence:
   below). It is opt-in and manual (CI `workflow_dispatch` job). No gate requires
   it, and it is not run on each push.
 - **CI check that rebuilding `dist/` reproduces the committed output with the
-  pinned Node and Vite.** Met locally, CI unobserved. The `frontend` job in
+  pinned Node and Vite.** Met locally; the `frontend` job also succeeded on
+  GitHub at `4700ca5` (run 38580790848). The `frontend` job in
   `webchat-extension.yml` runs `npm run repro` before any build, then
   `npm run verify`, then `git status` on `dist/`. The repro reads the committed
   `dist/` from git HEAD, so it cannot compare a build with itself. Node is read
-  from `frontend/.nvmrc` (24.15.0) in every job, and Vite is 8.3.4. The job has
-  not run on GitHub. Local evidence is below.
+  from `frontend/.nvmrc` (24.15.0) in every job, and Vite is 8.3.4. Local
+  evidence is below.
 
 Receipts (exact commands; exit codes; the working tree at the time of the run;
 Node 24.15.0; npm 11.12.1 in WSL):
 
 | Command | Where | Exit | Result |
 |---|---|---|---|
-Review fixes in the working tree, not yet committed:
+Review fixes (committed in `2583f5a`):
 
 - The `/app/` shell is read by a tokenizer that fails closed (single, unquoted and
   spaced attributes, `srcset`, comments, raw text, `<base>`, `<meta http-equiv>`,
@@ -229,9 +231,9 @@ only read. Each row's command was run from the stated directory, with
 | `node scripts/csp-smoke.mjs` (no browser on PATH) | WSL | 3 | `NOT VERIFIED: no browser` |
 | `node scripts/csp-smoke.mjs --chrome /bin/true` with a `go` 1.26.0 first on PATH | WSL | 4 | `the gateway build needs the pinned Go 1.27.x; PATH has "go version go1.26.0 linux/amd64"` |
 | `node scripts/csp-smoke.mjs --chrome /bin/true --url http://127.0.0.1:8793` (nothing listening) | WSL | 4 | `NOT VERIFIED: no gateway answered` |
-| `.github/workflows/webchat-extension.yml` parsed (Python `yaml.safe_load`) | WSL | 0 | jobs `webchat`, `frontend`, `csp-smoke`; all 8 `uses:` references pinned to full commit SHAs: `actions/checkout` v4.4.0 `11d5960a…`, `actions/setup-go` v5.6.0 `40f1582b…`, `actions/setup-node` v4.4.0 `49933ea5…`; `permissions: contents: read`. The GitHub run is not observed. |
+| `.github/workflows/webchat-extension.yml` parsed (Python `yaml.safe_load`) | WSL | 0 | jobs `webchat`, `frontend`, `csp-smoke`; all 8 `uses:` references pinned to full commit SHAs: `actions/checkout` v4.4.0 `11d5960a…`, `actions/setup-go` v5.6.0 `40f1582b…`, `actions/setup-node` v4.4.0 `49933ea5…`; `permissions: contents: read`. Observed later: the `webchat` and `frontend` jobs succeeded on GitHub at `4700ca5` (run 38580790848); `csp-smoke` is dispatch-only and has not run. |
 | `make …` targets | — | not run | `make` is not installed in WSL or Windows. The Makefile edits were checked by reading them and by line endings (86 of 86 CRLF lines kept). |
-| `npm audit`, `npm audit --omit=dev`; `go build ./... && go vet ./...` in `supervisor/` | — | not rerun | not rerun in this pass. The P1 record above is the last run. No dependency changed in this pass. |
+| `npm audit`, `npm audit --omit=dev`; `go build ./... && go vet ./...` in `supervisor/` | — | not rerun | not rerun in this pass. The P1 record in this file at `263b6ca` (git history) is the last run. No dependency changed in this pass. |
 
 Source hashes (sha256, at the time of the runs above):
 
@@ -251,7 +253,8 @@ f95687b5ccd880025e1c9f374ba2f1809d0dd5bf8c12f1ccdd0ec8b0f654e48f  extensions/web
 5039168c6e86801b005206e3ffe70138b515a9d43513469f19f98b6743849830  extensions/webchat/frontend/DEPENDENCIES.md
 ```
 
-Not verified here: the GitHub Actions runs; `make` (not installed, so the Makefile
+Not verified here: the GitHub Actions runs (since observed at `4700ca5`: `webchat`
+and `frontend` succeeded; the `csp-smoke` job has never run); `make` (not installed, so the Makefile
 targets were not run); an npm audit and the supervisor build (not rerun in this
 pass); a browser other than Chrome 155, and Chrome only on Windows (WSL has no
 browser); a build under Node versions other than 24.15.0; a macOS install of

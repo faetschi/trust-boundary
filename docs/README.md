@@ -42,6 +42,10 @@
 - [Web chat extension decision record (ADR-0001)](../extensions/webchat/docs/adr-0001-optional-extension.md):
   the web chat is an optional standalone extension in `extensions/webchat/`; the
   core neither requires nor imports it.
+- [Web chat frontend](../extensions/webchat/docs/frontend.md): the React + TypeScript client
+  under `/app/`; Phase 1 and Phase 2 are committed, Phase 3 is pending, and the vanilla UI stays the default.
+- [Web chat design language](../extensions/webchat/docs/design/design-language.md): the current
+  visual-language spec; the mockup `tbound-redesign-v2.html` stays the structural layout reference until Phase 3 completes.
 - [Modular architecture vision](modular-architecture-vision.md): VISION / FUTURE-WORK, not
   part of the thesis claim. A trust-tiered plugin/extension model, the headless CLI direction
   (`serve --headless` is future work), and decision records for the open questions.
