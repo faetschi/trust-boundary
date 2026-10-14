@@ -507,3 +507,20 @@ are preparation only. Media custody and exact ABI checks precede registration.
   broken-page negative control FAILS as it should. Not a required gate (manual CI job).
 - Go: 36 PASS, 0 SKIP (+6 app tests); Node 258/258. make targets not executed (no make here);
   CI workflows parsed but not run on GitHub.
+
+## Phase 2a: DOM-free logic ported to strict TypeScript (2026-10-14, uncommitted)
+
+- frontend/src/core: contract.ts (closed vocabularies from contract.go/validate.go), validate.ts
+  (strict mirror of validate.go; the only JSON-to-typed boundary), and ports of format, filters,
+  store, trajectory, anchor, backoff, stream, stop-sequence, api. Not imported by main.tsx.
+- Parity net: 159 legacy tests ported 1:1 (same names and assertions; counts in phase2-parity.md),
+  plus 55 new (fixtures 36, boundary 8, differential 9, purity 2). Core 214 tests, 0 skipped.
+- Differential: 505,366 comparisons on seeded corpora, 0 mismatches. Mutation proof: a window-gap
+  mutant in a /tmp copy is caught (store run 77 step 169); an equivalent mutant is not, as it should not be.
+- Legacy bugs found, not fixed: prototype keys read inherited properties (recordDot 'constructor');
+  preview() can leave a lone surrogate. Go: decodeDocument downgrades authoritative/observed instead
+  of refusing them, which contradicts web-chat.md 4.1.
+- Gates (WSL): npm run verify 0; npm run repro 0 (tree 85f7686c...); npm run test 313/313;
+  legacy node --test 258/258; Go build/vet/gofmt/test -race 0.
+- Not done: UI port (Phase 3); markdown.test.mjs (56) is agent L's Phase 2b. Other uncommitted
+  work in this worktree (handler.go, app.go, gate scripts) was left as found.

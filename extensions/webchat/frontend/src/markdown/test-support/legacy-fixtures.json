@@ -1,0 +1,203 @@
+{
+  "hostile": [
+    [
+      "script tag",
+      "<script>alert(1)</script>"
+    ],
+    [
+      "img with onerror",
+      "<img src=x onerror=\"alert(1)\">"
+    ],
+    [
+      "iframe",
+      "<iframe src=\"https://evil.example\"></iframe>"
+    ],
+    [
+      "style block",
+      "<style>body{display:none}</style>"
+    ],
+    [
+      "event handler attribute",
+      "<div onmouseover=\"alert(1)\">hover</div>"
+    ],
+    [
+      "raw anchor with javascript href",
+      "<a href=\"javascript:alert(1)\">x</a>"
+    ],
+    [
+      "javascript link",
+      "[click](javascript:alert(1))"
+    ],
+    [
+      "mixed-case javascript scheme",
+      "[click](JaVaScRiPt:alert(1))"
+    ],
+    [
+      "tab inside the scheme",
+      "[click](java\tscript:alert(1))"
+    ],
+    [
+      "newline inside the scheme",
+      "[click](java\nscript:alert(1))"
+    ],
+    [
+      "data url",
+      "[click](data:text/html,<script>alert(1)</script>)"
+    ],
+    [
+      "vbscript link",
+      "[click](vbscript:msgbox(1))"
+    ],
+    [
+      "file link",
+      "[click](file:///etc/passwd)"
+    ],
+    [
+      "protocol-relative link",
+      "[click](//evil.example/x)"
+    ],
+    [
+      "relative link",
+      "[click](/settings)"
+    ],
+    [
+      "image with a script source",
+      "![x](javascript:alert(1))"
+    ],
+    [
+      "markdown image",
+      "![alt](https://example.com/p.png)"
+    ],
+    [
+      "unclosed link",
+      "[docs](https://exam"
+    ]
+  ],
+  "ordinary": [
+    [
+      "Plain sentence with no markup at all.",
+      "e7ad54c0a9bc923b"
+    ],
+    [
+      "# Plan\n\nFirst **point** with `code`.\n\n- one\n- two",
+      "a12e2203b20c3c5f"
+    ],
+    [
+      "Use **bold**, *em*, `a*b*c`, and ~~not strike~~.",
+      "bdeba6d7b9f4ffbe"
+    ],
+    [
+      "snake_case_name and __strong__ and _em_ words.",
+      "daec6c13621f44c6"
+    ],
+    [
+      "Escaped \\*literal\\* and \\_under\\_ and \\[no link\\].",
+      "ac83db362989478b"
+    ],
+    [
+      "A [docs link](https://example.com/docs) and [mail](mailto:a@example.com) here.",
+      "ec1a4cb2a7e94700"
+    ],
+    [
+      "An ![image](https://example.com/p.png) stays text. And [bad](javascript:alert(1)).",
+      "7a635c29930b1bfb"
+    ],
+    [
+      "Nested *emphasis with **strong** inside* and **bold with *em* inside**.",
+      "a5277db0bb3aa45e"
+    ],
+    [
+      "Code span ``with `tick` inside`` and `  padded  ` and `` `x` ``.",
+      "4d18b43e40501571"
+    ],
+    [
+      "Unclosed *emphasis and a closed one *here* after.",
+      "1486e711499cf51c"
+    ],
+    [
+      "Price is 5 * 3 * 2 = 30 and a_b_c stays.",
+      "c0c074313ccc7284"
+    ],
+    [
+      "```js\nconst a = 1;\n\nconst b = [a];\n```\n\nAfter the fence.",
+      "da73c449d2cce4eb"
+    ],
+    [
+      "~~~\nplain fence with **markup**\n~~~",
+      "bca33e33d9f8ffce"
+    ],
+    [
+      "> quoted **bold**\n> second line\n\nBetween.",
+      "7edcd4017da2166c"
+    ],
+    [
+      "1. first *item*\n2. second [link](https://a.example/x)\n3. third",
+      "52816be6fe9a5fe4"
+    ],
+    [
+      "- a\n  - nested **deep**\n    - deeper `code`\n- c",
+      "6db0548088b2b8c8"
+    ],
+    [
+      "- one\nlazy continuation of one",
+      "cfdec79b381ae136"
+    ],
+    [
+      "Line one\nline two with `code`\nline three",
+      "0b841008ea1fd84b"
+    ],
+    [
+      "## Heading with *em*\n\nParagraph after.",
+      "95b9ced2deb022e1"
+    ],
+    [
+      "Tabs\tand nbsp and unicode café — naïve “quotes”.",
+      "ebd679b7d8148fc5"
+    ],
+    [
+      "Link label with *emph* [a *b* c](https://example.com/?q=1&r=2) tail.",
+      "d772f1dbbe4ec4d1"
+    ],
+    [
+      "Brackets [not a link] and (parens) and [x]( spaced url ) text.",
+      "6253aedfa03cb7fe"
+    ],
+    [
+      "Mixed _underscore *star* nesting_ and **double *inner* close**.",
+      "8f4f5cda0d8a6db5"
+    ],
+    [
+      "A ` lone backtick and ``` a triple run without closer.",
+      "53ca49b0710a54a3"
+    ],
+    [
+      "Emphasis that crosses a line *first\nsecond* ends here.",
+      "834c3dbe09512e7b"
+    ],
+    [
+      "Emphasis with a trailing space in * this is not emphasis*.",
+      "88e3c1046207296a"
+    ],
+    [
+      "Word_with_underscores_ and _leading underscore word_.",
+      "c56045330d5bb19b"
+    ],
+    [
+      "Empty link [](https://example.com) and text [label]() end.",
+      "4339b33c328f9423"
+    ],
+    [
+      "Nested link in emphasis *[label](https://example.com/e)*.",
+      "55cc0274e8992e84"
+    ],
+    [
+      "Long run: a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b end.",
+      "17365ed6fd940efe"
+    ],
+    [
+      "Close *after the window: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx* yes.",
+      "f8c62576ac50fef6"
+    ]
+  ],
+  "stream": "# Plan\n\nFirst **point** with `code`.\n\n- one\n- two\n\n```js\nconst a = 1;\n\nconst b = [a];\n```\n\n> quoted line\n> second\n\nTail with [link](https://example.com/x) and *emphasis*."
+}
