@@ -2,7 +2,7 @@
 
 Every direct dependency is pinned to an exact version in `package.json` and
 resolved in `package-lock.json`. Nothing is installed with `^` or `~`. The
-policy and the gate that enforces it are in `docs/frontend.md`.
+policy and the gate that enforces it are in `../docs/frontend.md`.
 
 Checked on 2026-10-14 with Node 24.15.0 on Linux (WSL) and with `npm` 11.12.1.
 The registry metadata was read with `npm view`.
@@ -32,8 +32,8 @@ Runtime is `react` and `react-dom` only. `react-dom` pulls in `scheduler`
   packages (`lightningcss-*`, `@rolldown/binding-*`, `@typescript/typescript-*`,
   and `fsevents`). npm does not install them on this platform.
 
-Licence census across all 88 locked packages, read from each package's
-metadata:
+Licence census across all 97 locked packages, from the `license` field that
+`package-lock.json` records for each one:
 
 | Licence | Count |
 |---|---|
@@ -71,12 +71,13 @@ built bundle contains no `lightningcss` code: a search of the committed
 ## Why these and not others
 
 - No component library and no CSS-in-JS. That was decided in
-  `docs/adr-0001-optional-extension.md`: the CSP is `style-src 'self'`.
+  `../docs/adr-0001-optional-extension.md`: the CSP is `style-src 'self'`.
 - `happy-dom` 21.0.1 is the one DOM library, a dev dependency for the component
   tests (Phase 3a). The keyboard, focus, drawer and announcer behaviour cannot be
   tested with `react-dom/server` strings. It has no install script, and it adds
-  nine locked packages: `ws`, `entities` (BSD-2-Clause), `whatwg-mimetype`,
-  `buffer-image-size`, `undici-types`, `@types/node`, `@types/ws` and
+  nine locked packages: `happy-dom` itself and its eight dependencies, `ws`,
+  `entities` (BSD-2-Clause), `whatwg-mimetype`, `buffer-image-size`,
+  `undici-types` (through `@types/node`), `@types/node`, `@types/ws` and
   `@types/whatwg-mimetype`. None is in the shipped bundle: Vite bundles only what
   `src/` imports, and the tests are not in `src/`'s production graph. jsdom was
   not chosen because its tree is considerably larger.
@@ -87,6 +88,8 @@ built bundle contains no `lightningcss` code: a search of the committed
 ## Updating
 
 Change a pin deliberately in `package.json`, run `npm install --ignore-scripts`
-with the pinned Node, then run `npm run verify` and `npm run repro`. Commit the
+with the pinned Node, then run `npm run repro` and then `npm run verify`. Repro
+runs first, as in the `extension-webchat-frontend-verify` make target, so it
+compares two clean rebuilds with the `dist/` committed at HEAD. Commit the
 lockfile, this file and the rebuilt `dist/` together. Re-check `npm audit` and
 the licence census.

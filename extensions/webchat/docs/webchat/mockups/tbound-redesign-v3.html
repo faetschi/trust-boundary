@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'sha256-7lQT5Cs4m8kqw448lf+4m9DN/oFyQUmETGDp1wAP6n4='; script-src 'sha256-7VOuxtGvH9mI1jdI3GooDWdrXiPq1R+Xzc3esafEqXo='; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; media-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'sha256-db4OKQcUHZV2SIKSDnsWC3NygcWmQIq+QJJf78AUq6I='; script-src 'sha256-h471AdQ8h5bBuXXQJHhBE3xbTzcEOP1MMEULUpwU9mg='; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; media-src 'none'">
 <title>tbound web chat: static design mockup v3</title>
 <link rel="icon" href="data:,">
 <style>
@@ -673,7 +673,9 @@ textarea {
   margin: 0;
 }
 
-/* Below the drawer breakpoint: the inspector leaves the grid and the toggle appears. */
+/* Below the drawer breakpoint: the inspector leaves the grid and the toggle appears. The body is the drawer's
+   containing block, and it starts below the header, so an open drawer never covers the header controls.
+   overflow-x: clip stops the closed drawer, which is translated past the edge, from widening the page. */
 @media (max-width: 1180px) {
   .sh-drawerToggle {
     display: inline-flex;
@@ -682,6 +684,8 @@ textarea {
 
   .sh-body {
     grid-template-columns: var(--rail-width) minmax(0, 1fr);
+    position: relative;
+    overflow-x: clip;
   }
 }
 
@@ -813,7 +817,7 @@ textarea {
 
 @media (max-width: 1180px) {
   .in-inspector {
-    position: fixed;
+    position: absolute;
     top: 0;
     right: 0;
     bottom: 0;
@@ -2107,11 +2111,12 @@ textarea {
     <div class="sh-claimRow">
       <div class="nt-notice" role="note" aria-label="Claim boundary" data-tone="claim">
         <p class="sh-claimText">Presentation only: the supervisor retains policy, effect and publication authority.</p>
+        <p class="sh-claimText">Display only: these values are copied from the projection and are not evidence.</p>
         <dl class="sh-claim">
-          <div><dt>G1</dt><dd>false</dd></div>
-          <div><dt>H1</dt><dd>unexecuted</dd></div>
-          <div><dt>containment</dt><dd>not-established</dd></div>
-          <div><dt>claim-bearing</dt><dd>false</dd></div>
+          <div><dt>G1</dt><dd><span>false</span></dd></div>
+          <div><dt>H1</dt><dd><span>unexecuted</span></dd></div>
+          <div><dt>Containment</dt><dd><span>not-established</span></dd></div>
+          <div><dt>Claim-bearing</dt><dd><span>false</span></dd></div>
         </dl>
       </div>
     </div>
@@ -2129,7 +2134,7 @@ textarea {
       <section class="sh-railSection" aria-labelledby="rail-streams">
         <h2 class="sh-heading" id="rail-streams">Observation streams</h2>
         <ul class="sh-streams">
-          <li class="sh-stream"><span class="sd-dot" data-tone="ok" aria-hidden="true"></span><span>development fixture transcript: complete (non-claim-bearing development fixture)</span></li>
+          <li class="sh-stream"><span class="sd-dot" data-tone="idle" aria-hidden="true"></span><span>development fixture transcript: complete (source did not claim completeness) (non-claim-bearing development fixture)</span></li>
           <li class="sh-stream"><span class="sd-dot" data-tone="idle" aria-hidden="true"></span><span>production supervisor projection: unavailable (no authenticated live projection source is registered), not available</span></li>
         </ul>
       </section>
@@ -2138,7 +2143,7 @@ textarea {
     <main class="sh-main" aria-label="Workspace">
       <div class="sh-notices">
         <p class="mk-tag">mock sample: the demo fixture has no gap marker</p>
-        <div class="nt-notice" role="note" aria-label="Retained window" data-tone="warning">Earlier history not loaded. No success is inferred for it.</div>
+        <div class="nt-notice" role="note" aria-label="History not loaded" data-tone="warning">Earlier history not loaded. No success is inferred for it.</div>
       </div>
       <div class="tb-tablist" role="tablist" aria-label="Workspace view">
         <button type="button" role="tab" id="view-tab-chat" class="tb-tab" aria-selected="true" aria-controls="view-panel-chat" tabindex="0">Chat</button>
@@ -2164,7 +2169,7 @@ textarea {
             <p class="cv-summary">18 element(s) in the retained window</p>
           </div>
           <div class="cv-log" role="log" aria-label="Transcript" aria-live="off" tabindex="-1">
-            <p class="cv-note">Notices for this transcript are above the tabs.</p>
+            <p class="cv-note" data-sample="notices">Notices for this transcript are above the tabs.</p>
             <p class="cv-note">All 18 records in this view are unverified · source: fixture</p>
             <section class="cv-turn" aria-label="turn-01">
               <div class="cv-turnHead"><span>turn-01</span><span>18 element(s)</span></div>
@@ -2373,7 +2378,7 @@ textarea {
                     <span class="cv-glyph" aria-hidden="true">$</span>
                     <span class="cv-name">bash</span>
                     <span class="cv-summaryText">sample: go test ./... with lossy output</span>
-                    <span class="cv-chips"><span class="ch-chip" data-tone="allow">ALLOW</span><span class="ch-chip" data-tone="unknown">succeeded (output lossy, not confirmed)</span><span class="ch-chip" data-tone="ok">verified</span></span>
+                    <span class="cv-chips"><span class="ch-chip" data-tone="allow">ALLOW</span><span class="ch-chip" data-tone="unknown">succeeded (output lossy, not confirmed)</span><span class="ch-chip" data-tone="idle">verified evidence, output lossy</span></span>
                   </span>
                 </summary>
                 <div class="ds-body">
@@ -2451,7 +2456,7 @@ textarea {
                 <button type="button" class="tv-row" data-record-row data-id="dec-02-edit" data-anchor="dec-02-edit" data-source="decision" aria-pressed="false" aria-label="Decision record 7: edit · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6" tabindex="-1"><span class="sd-dot" data-tone="allow" aria-hidden="true"></span><span class="ch-chip" data-source="decision">Decision</span><span class="tv-label">edit · reviewed</span><span class="tv-payload" title="reason policy_rule_allow · policy sha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6">reason policy_rule_allow · policy sha256:9f2…e0f3a6</span><span class="tv-clock">11:12:19</span><span class="tv-chips"><span class="tv-chipWrap" title="policy verdict as reported by the source"><span class="ch-chip" data-tone="allow">ALLOW</span></span><span class="tv-unverified" title="the projection does not independently verify this record">unverified</span></span></button>
                 <button type="button" class="tv-row" data-record-row data-id="res-02-edit" data-anchor="res-02-edit" data-source="result" aria-pressed="false" aria-label="Result record 8: edit. Result: succeeded, reported, not independently verified. staged generation g1 with 1 approved file change · digest sha256:bb2…33aa44" tabindex="-1"><span class="sd-dot" data-tone="reported" aria-hidden="true"></span><span class="ch-chip" data-source="result">Result</span><span class="tv-label">edit</span><span class="tv-payload" title="staged generation g1 with 1 approved file change · digest sha256:bb22cc33dd44ee55ff6600112233445566778899aabbccddeeff00112233aa44">staged generation g1 with 1 approved file change · digest sha256:bb2…33aa44</span><span class="tv-clock">11:12:21</span><span class="tv-chips"><span class="tv-chipWrap" title="reported by the source, not independently verified"><span class="ch-chip" data-tone="reported">reported</span></span><span class="tv-unverified" title="the projection does not independently verify this record">unverified</span></span></button>
                 <button type="button" class="tv-row" data-record-row data-id="act-03-bash-egress" data-anchor="act-03-bash-egress" data-source="tool" aria-pressed="false" aria-label="Tool record 9: proposal. Activity: pending, no outcome yet. bash: curl -s https://example.com/healthz" tabindex="-1"><span class="sd-dot" data-tone="pending" aria-hidden="true"></span><span class="ch-chip" data-source="tool">Tool</span><span class="tv-label">proposal</span><span class="tv-payload" title="bash: curl -s https://example.com/healthz">bash: curl -s https://example.com/healthz</span><span class="tv-clock">11:12:31</span><span class="tv-chips"><span class="tv-chipWrap" title="the activity has no recorded outcome yet"><span class="ch-chip" data-tone="pending">pending</span></span><span class="tv-unverified" title="the projection does not independently verify this record">unverified</span></span></button>
-                <button type="button" class="tv-row tv-selected" data-record-row data-id="dec-03-bash-egress" data-anchor="dec-03-bash-egress" data-source="decision" aria-pressed="true" aria-label="Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6" tabindex="0"><span class="sd-dot" data-tone="deny" aria-hidden="true"></span><span class="ch-chip" data-source="decision">Decision</span><span class="tv-label">bash · reviewed</span><span class="tv-payload" title="reason policy_rule_deny · policy sha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6">reason policy_rule_deny · policy sha256:9f2…e0f3a6</span><span class="tv-clock">11:12:31</span><span class="tv-chips"><span class="tv-chipWrap" title="policy verdict as reported by the source"><span class="ch-chip" data-tone="deny">DENY</span></span><span class="tv-unverified" title="the projection does not independently verify this record">unverified</span></span></button>
+                <button type="button" class="tv-row" data-record-row data-id="dec-03-bash-egress" data-anchor="dec-03-bash-egress" data-source="decision" aria-pressed="false" aria-label="Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6" tabindex="0"><span class="sd-dot" data-tone="deny" aria-hidden="true"></span><span class="ch-chip" data-source="decision">Decision</span><span class="tv-label">bash · reviewed</span><span class="tv-payload" title="reason policy_rule_deny · policy sha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6">reason policy_rule_deny · policy sha256:9f2…e0f3a6</span><span class="tv-clock">11:12:31</span><span class="tv-chips"><span class="tv-chipWrap" title="policy verdict as reported by the source"><span class="ch-chip" data-tone="deny">DENY</span></span><span class="tv-unverified" title="the projection does not independently verify this record">unverified</span></span></button>
                 <button type="button" class="tv-row" data-record-row data-id="res-03-bash-egress" data-anchor="res-03-bash-egress" data-source="result" aria-pressed="false" aria-label="Result record 11: bash. Result: denied, not success. denial was durable before it was returned" tabindex="-1"><span class="sd-dot" data-tone="deny" aria-hidden="true"></span><span class="ch-chip" data-source="result">Result</span><span class="tv-label">bash</span><span class="tv-payload" title="denial was durable before it was returned">denial was durable before it was returned</span><span class="tv-clock">11:12:31</span><span class="tv-chips"><span class="tv-chipWrap" title="the result is recorded as denied"><span class="ch-chip" data-tone="deny">denied</span></span><span class="tv-unverified" title="the projection does not independently verify this record">unverified</span></span></button>
                 <button type="button" class="tv-row" data-record-row data-id="act-04-bash-test" data-anchor="act-04-bash-test" data-source="tool" aria-pressed="false" aria-label="Tool record 12: proposal. Activity: pending, no outcome yet. bash: go test ./..." tabindex="-1"><span class="sd-dot" data-tone="pending" aria-hidden="true"></span><span class="ch-chip" data-source="tool">Tool</span><span class="tv-label">proposal</span><span class="tv-payload" title="bash: go test ./...">bash: go test ./...</span><span class="tv-clock">11:12:44</span><span class="tv-chips"><span class="tv-chipWrap" title="the activity has no recorded outcome yet"><span class="ch-chip" data-tone="pending">pending</span></span><span class="tv-unverified" title="the projection does not independently verify this record">unverified</span></span></button>
                 <button type="button" class="tv-row" data-record-row data-id="dec-04-bash-test" data-anchor="dec-04-bash-test" data-source="decision" aria-pressed="false" aria-label="Decision record 13: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6" tabindex="-1"><span class="sd-dot" data-tone="allow" aria-hidden="true"></span><span class="ch-chip" data-source="decision">Decision</span><span class="tv-label">bash · reviewed</span><span class="tv-payload" title="reason policy_rule_allow · policy sha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6">reason policy_rule_allow · policy sha256:9f2…e0f3a6</span><span class="tv-clock">11:12:44</span><span class="tv-chips"><span class="tv-chipWrap" title="policy verdict as reported by the source"><span class="ch-chip" data-tone="allow">ALLOW</span></span><span class="tv-unverified" title="the projection does not independently verify this record">unverified</span></span></button>
@@ -2541,11 +2546,11 @@ textarea {
           <h3 class="ri-title" id="ri-summary">Summary</h3>
           <dl class="ri-rows">
             <div class="ri-row"><dt>source</dt><dd>Decision</dd></div>
-            <div class="ri-row"><dt>record id</dt><dd><span class="ri-mono">dec-03-bash-egress</span></dd></div>
+            <div class="ri-row"><dt>record id</dt><dd><span class="ri-text">dec-03-bash-egress</span></dd></div>
             <div class="ri-row"><dt>sequence</dt><dd>10</dd></div>
             <div class="ri-row"><dt>turn</dt><dd>turn-01</dd></div>
             <div class="ri-row"><dt>tool</dt><dd>bash</dd></div>
-            <div class="ri-row"><dt>tool call</dt><dd><span class="ri-mono">call-03</span></dd></div>
+            <div class="ri-row"><dt>tool call</dt><dd><span class="ri-text">call-03</span></dd></div>
           </dl>
         </section>
         <section class="ri-section" aria-labelledby="ri-payload" data-section="payload">
@@ -2659,12 +2664,26 @@ textarea {
         </dl>
         <p class="mk-muted">A missing value reads "unavailable" with a reason. Zero is a real count and is printed as 0.</p>
       </div>
+      <div class="mk-card">
+        <h3>Claim warning and absent values</h3>
+        <dl class="sh-claim">
+          <div><dt>G1</dt><dd><span>true</span><span class="ch-chip" data-tone="unknown">unverified projection claims true</span></dd></div>
+          <div><dt>Containment</dt><dd><span>unavailable (not projected by the source)</span></dd></div>
+        </dl>
+        <p class="mk-muted">Only G1 and Claim-bearing carry the warning, and only from a projection that is not verified. An absent value reads unavailable with its reason, never a literal. A verified live projection shows no warning.</p>
+      </div>
+      <div class="mk-card">
+        <h3>Notices</h3>
+        <div class="nt-notice" role="note" aria-label="Records no longer retained" data-tone="info">1 earlier record no longer retained in this window. Counts describe the retained window only.</div>
+        <div class="nt-notice" role="note" aria-label="Continuity gap" data-tone="warning">Continuity gap (cursor ahead). Recovered from a snapshot; no success is inferred.</div>
+        <p class="mk-muted">Three distinct labels: History not loaded (above the tabs in the frame), Records no longer retained, and the continuity gap. Notices are role="note", not live regions; the one status region announces changes.</p>
+      </div>
     </div>
   </section>
 
   <section class="mk-section" aria-labelledby="mk-result-inspector">
     <h2 id="mk-result-inspector">Record inspector: result record</h2>
-    <p class="mk-muted">The Trajectory opens on the DENY decision, which has no Result section. This static copy shows the Result section for the UNKNOWN, lossy result (sequence 17), with the wording the running UI renders for that record.</p>
+    <p class="mk-muted">Selecting the DENY decision (sequence 10) opens its record inspector, which has no Result section. This static copy shows the Result section for the UNKNOWN, lossy result (sequence 17), with the wording the running UI renders for that record.</p>
     <div class="mk-frame mk-inspector">
       <div class="mk-frame-body">
         <div class="ri-body">
@@ -2674,11 +2693,11 @@ textarea {
             <h3 class="ri-title" id="mk-ri-summary">Summary</h3>
             <dl class="ri-rows">
               <div class="ri-row"><dt>source</dt><dd>Result</dd></div>
-              <div class="ri-row"><dt>record id</dt><dd><span class="ri-mono">res-05-bash-race</span></dd></div>
+              <div class="ri-row"><dt>record id</dt><dd><span class="ri-text">res-05-bash-race</span></dd></div>
               <div class="ri-row"><dt>sequence</dt><dd>17</dd></div>
               <div class="ri-row"><dt>turn</dt><dd>turn-01</dd></div>
               <div class="ri-row"><dt>tool</dt><dd>bash</dd></div>
-              <div class="ri-row"><dt>tool call</dt><dd><span class="ri-mono">call-05</span></dd></div>
+              <div class="ri-row"><dt>tool call</dt><dd><span class="ri-text">call-05</span></dd></div>
             </dl>
           </section>
           <section class="ri-section" aria-labelledby="mk-ri-payload" data-section="payload">
@@ -2723,8 +2742,8 @@ textarea {
     <table class="mk-table">
       <thead><tr><th scope="col">Width</th><th scope="col">What changes (measured in the running UI or set in CSS)</th><th scope="col">Screenshot</th></tr></thead>
       <tbody>
-        <tr><td>1440 × 900</td><td>Three columns: rail (210 px), workspace and governance inspector (301 px). The Governance toggle is hidden.</td><td><code>v3-mockup-1440-light.png</code>, <code>-dark.png</code>, trajectory variants</td></tr>
-        <tr><td>1024 × 768</td><td>Below 1180 px the inspector is a fixed right drawer. The Governance button in the header opens it (<code>aria-expanded</code>); a closed drawer is <code>inert</code> and <code>aria-hidden</code>. Escape closes it.</td><td><code>v3-mockup-1024-light.png</code>, <code>-dark.png</code>, <code>v3-mockup-drawer-1024-light.png</code></td></tr>
+        <tr><td>1440 × 900</td><td>Three columns: rail (210 px), workspace and governance inspector (301 px). The Governance toggle is hidden.</td><td><code>v3-mockup-1440-light.png</code>, <code>-dark.png</code>, <code>v3-mockup-trajectory-1440-light.png</code>, <code>-dark.png</code>, <code>v3-mockup-trajectory-selected-1440-light.png</code></td></tr>
+        <tr><td>1024 × 768</td><td>Below 1180 px the inspector is a right drawer positioned in the workspace body, which starts below the header, so an open drawer leaves the Governance and Theme controls uncovered. The Governance button opens it (<code>aria-expanded</code>); a closed drawer is <code>inert</code> and <code>aria-hidden</code>. Escape closes it. Drawer demo: open <code>#theme=light&amp;drawer=open</code> at 1024 px.</td><td><code>v3-mockup-1024-light.png</code>, <code>-dark.png</code>, <code>v3-mockup-drawer-1024-light.png</code></td></tr>
         <tr><td>390 × 844</td><td>Below 760 px the rail stacks above the workspace. The drawer behaviour stays the same.</td><td><code>v3-mockup-390-light.png</code>, <code>-dark.png</code></td></tr>
       </tbody>
     </table>
@@ -2735,8 +2754,18 @@ textarea {
     <p><strong>Token tiers.</strong> Tier 1 is the static ramp per theme (<code>--tb-s-*</code>; components never read it). Tier 2 is the alias layer that components read (<code>--background</code>, <code>--state-*</code>, <code>--source-*</code>). Tier 3 is theme-free geometry (<code>--space-*</code>, <code>--radius-*</code>, <code>--text-*</code>). The values are copied verbatim from <code>styles/tokens.css</code>. Light is the default, dark follows the OS or <code>data-theme="dark"</code>, and System removes the attribute.</p>
     <p><strong>Type and shape.</strong> System font stacks only, with no webfonts. Body text is 14/22, secondary 13/20, small 12/18 and micro 11/14. Radii step 4, 8, 12, 16, 20 and 28. Hairline borders come before shadows. Colour is reserved for state and source.</p>
     <p><strong>Contrast.</strong> The palette values are the proposed values checked by <code>docs/design/contrast.mjs</code>. Re-running it reproduces <code>docs/design/contrast-output.txt</code> exactly: 24 text and non-text pairs per theme, with 0 proposed failures. That is a calculation from the palette, not a browser measurement. Pairs that are not in that table are not claimed.</p>
-    <p><strong>Mock versus running UI.</strong> This file is static. The running UI is <code>/app/</code>. The CSS modules are copied unchanged, with class names prefixed per module (for example <code>cv-</code> for the chat view and <code>tv-</code> for the trajectory) so one stylesheet can hold them. Markup and wording mirror the running UI's DOM, which was read in a capture. Times are the capture's local time (UTC+2), while the running UI shows the viewer's time zone.</p>
-    <p><strong>Differences from the running UI (intentional).</strong> The mock samples listed above are not in the demo. The trajectory opens with the DENY record selected and its record inspector shown, while the running UI shows governance until a row is clicked. The Chat transcript expands the go-test card to show its decision and result steps, so the turn is taller here (791 px against 507 px in the running UI, where cards start collapsed). The sample jump pill sits in the sample flow, where the running UI's pill is sticky. The running UI mounts only the selected panel; this file keeps both panels in the DOM and hides one. Filters, grouping and search are not wired.</p>
+    <p><strong>Mock versus running UI.</strong> This file is static. The running UI is <code>/app/</code>. The CSS modules are copied from the React sources at 57e6406, with class names prefixed per module (for example <code>cv-</code> for the chat view and <code>tv-</code> for the trajectory) so one stylesheet can hold them. Markup and wording mirror the running UI's DOM, which was read in the M3b capture of the 57e6406 build served from a Linux gateway. Times are the capture's local time (UTC+2), while the running UI shows the viewer's time zone. With the sample elements and the documentation wrapper hidden, seven captured states (1440 and 1024 widths; light and dark; drawer open; a record selected) are pixel-identical to the running UI's screenshots of the same states (<code>qa/v3-mockup-receipt.json</code>). That covers one browser and the frame only; it is not a screen-reader check.</p>
+    <p><strong>Differences from the running UI (intentional).</strong> The mock samples listed above are not in the demo. The trajectory opens with no record selected and the governance column shown, as the running UI does; selecting the DENY record opens its record inspector. The Chat transcript expands the go-test card to show its decision and result steps, so the turn is taller here (791 px against 507 px in the running UI, where cards start collapsed). The sample jump pill sits in the sample flow, where the running UI's pill is sticky. The running UI mounts only the selected panel; this file keeps both panels in the DOM and hides one. Filters, grouping and search are not wired.</p>
+    <p><strong>What changed since the first v3 mockup</strong> (the running UI at commit 57e6406):</p>
+    <ol>
+      <li>Drawer below 1180 px: the open governance drawer starts below the header, scrolls with the page, and leaves the Governance and Theme controls reachable.</li>
+      <li>Stream health: "complete" is a neutral idle dot with the text "complete (source did not claim completeness)".</li>
+      <li>Header claim strip: values come from the projection, with the "Display only" line, the labels Containment and Claim-bearing, "unavailable (reason)" when absent, and a warning chip when a non-live projection claims true.</li>
+      <li>Three distinct notice labels: "History not loaded", "Records no longer retained", and the continuity-gap notice.</li>
+      <li>A verified success with lossy output shows the neutral marker "verified evidence, output lossy", never a green verified chip.</li>
+      <li>/favicon.ico answers 204, so the running UI logs no console error. The mock makes no requests.</li>
+      <li>Core gate: records from a non-live projection never read as verified. The mock's fixture is non-live, so every record here reads unverified.</li>
+    </ol>
     <p><strong>Accessibility.</strong> Named landmarks (header, nav, main, aside, footer). Tabs use roving focus with arrow keys. The theme control is a toolbar with <code>aria-pressed</code>. The Governance toggle carries <code>aria-controls</code> and <code>aria-expanded</code>. The live region is <code>role="status"</code>. Focus is a 2 px ring. Reduced motion is switched off globally in <code>base.css</code>. Under forced colours the state shapes keep their borders, and the diamond and square keep their shapes.</p>
   </section>
 </div>
@@ -2756,7 +2785,7 @@ textarea {
   var panels = Array.prototype.slice.call(document.querySelectorAll('[role="tabpanel"]'));
   var themeButtons = Array.prototype.slice.call(document.querySelectorAll('[data-theme-choice]'));
   var row = document.querySelector('[data-id="dec-03-bash-egress"]');
-  var state = { theme: 'system', view: 'chat', mode: 'governance', drawerRequested: false, recordOpen: true };
+  var state = { theme: 'system', view: 'chat', mode: 'governance', drawerRequested: false, recordOpen: false };
 
   function nextIndex(key, index, count) {
     if (key === 'ArrowRight') return (index + 1) % count;

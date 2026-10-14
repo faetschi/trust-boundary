@@ -16,6 +16,32 @@ Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
   ../MSE_MA_Thesis; main unchanged. Draft51 recovery trials (8 lifecycle plus
   9 incidents, x3) is not frozen/registered; E07 conformance remains separate.
 
+## Current state of the web chat extension (as of 57e6406)
+
+- Exists: optional module `extensions/webchat/` (`tbound/webchat`, moved in 18f71e6). The core never
+  imports it; `scripts/check-extension-boundary.sh` guards that (`make test`; CI `extension-boundary.yml`).
+- Go gateway (`internal/webchat`, `cmd/tbound-webchat`): read-only, loopback. GET and HEAD on `/` (302)
+  and `/favicon.ico` (204); other routes GET-only; other methods `405` with `Allow`. `--live` refused.
+- React client at `/app/` (`frontend/`): P1 `263b6ca`, P2 `4700ca5`, P3 `58492c5`..`57e6406`. Default since
+  `6d03657`: `/` is `302` to `/app/`. `/legacy/` is deprecated and serves `/` only if the React build fails.
+- Run: `cd extensions/webchat && go run ./cmd/tbound-webchat --demo`, open `http://127.0.0.1:8791/`.
+  Frontend gate: `make extension-webchat-frontend-verify` (Node 24.15.0).
+- Last verified, Linux (WSL, Go 1.27.1, Node 24.15.0): vitest 896/896 (60 files, 0 skipped); extension Go
+  `-race` 54 top-level PASS, 0 SKIP (132 incl. subtests, `-v` run in `phase3-parity.md`); legacy node
+  258/258; sink and dependency gates; boundary guard; Linux rebuild equals committed `dist/`.
+- Open: no screen-reader test; narrow drawer scrolls with the page; Jump-to-latest only in happy-dom;
+  LOST shapes and the 1024 px drawer not browser-checked; dead favicon allowance in
+  `extensions/webchat/scripts/csp-smoke.mjs` (at HEAD). No live projection, submission or browser auth.
+- Decisions awaiting the user:
+  1. Legacy removal (`/legacy/`, `assets/`, legacy tests) after sign-off.
+  2. Lossy posture entry: a separate posture entry for verified lossy successes (today counted under
+     `reported` with a hint; `frontend.md`, "Phase 3 review fixes").
+  3. Stream `complete` wording (owner decision).
+  4. PR #11 (`codex/tbound-web-chat`) is still a draft (checked 2026-10-14).
+- Not verified here: GitHub Actions after `4700ca5` (none recorded); the `csp-smoke` job (dispatch-only,
+  never run); browsers other than Chrome 155.
+- Older sections marked "(superseded by the block at the top)" keep their receipts.
+
 ## Completed increments
 
 | Commit | Scope |
@@ -196,6 +222,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
 
 ## Web chat frontend increment (2026-10-13, codex/tbound-web-chat)
 
+(superseded by the block at the top)
+
 - Frontend thread delivers milestone 1: a new untrusted, read-only Pi web chat
   workspace. Additive only; no authority-owned file is edited. New code:
   extensions/webchat/internal/webchat (bounded contract, validation, bounded gateway
@@ -237,6 +265,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
   extensions/webchat/docs/webchat/qa; both viewports verified.
 
 ## Web chat increment 2: receipt importer + coss/ui design system (2026-10-13)
+
+(superseded by the block at the top)
 
 - Round-1 Luna max review was cancelled before producing findings (user stop);
   round 2 was started against this state with the original brief and the new
@@ -287,6 +317,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
 
 ## Web chat increment 3: finding filters and posture summary (2026-10-13)
 
+(superseded by the block at the top)
+
 - Added a timeline finding filter (All / Denied / Unknown / Failed) as a coss
   Toggle Group convention: aria-pressed segmented buttons with per-filter counts,
   Left/Right roving arrow-key focus, focus preserved across the re-render, a
@@ -304,6 +336,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
   with the filter and arrow-key checks and a self-describing viewport record.
 
 ## Web chat increment 4: second-review fixes (2026-10-13)
+
+(superseded by the block at the top)
 
 - Fail-open success verification closed: every item must declare a verification
   scope and the store no longer defaults it; a new `observed` authority is the
@@ -333,6 +367,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
   evaluationindex docs-path environment failure.
 
 ## Web chat increment 5: third-review fixes (2026-10-13)
+
+(superseded by the block at the top)
 
 - Third Luna max review confirmed the fail-closed gate, textual trust markers,
   session row and uninitialised-store guard as fixed, and found 14 further gaps.
@@ -370,6 +406,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
   that renders an unverified or unavailable observation as confirmed success.
 
 ## Web chat increment 6: Trajectory view (2026-10-14, codex/tbound-web-chat)
+
+(superseded by the block at the top)
 
 - Design reference: the DeepSeek Harness trajectory view
   (packages/client/ui-trajectory) was analysed in full
@@ -409,6 +447,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
 
 ## Trajectory review round (2026-10-14)
 
+(superseded by the block at the top)
+
 - Haiku 5.5 xhigh review of 14a1772 found 10 issues; all substantiated ones are
   fixed: policy ALLOW now has its own neutral tone (never the success colour),
   lossy output never takes `ok`, the sequence rail is built from all retained
@@ -429,6 +469,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
   build) holds port 8791 outside this worktree.
 
 ## Harness-survey increment (2026-10-14)
+
+(superseded by the block at the top)
 
 - Implemented from extensions/webchat/docs/web-chat-ui-plan.md App. B (patterns only, MIT upstream,
   nothing copied): safe stable-prefix assistant markdown (markdown.mjs: DOM-only,
@@ -465,6 +507,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
 
 ## Web chat Phase 0: optional extension extraction (2026-10-14, codex/tbound-web-chat)
 
+(superseded by the block at the top)
+
 - The web chat is an optional standalone extension. Moved with `git mv` (renames
   staged, history kept, nothing committed): `extensions/webchat/` is module
   `tbound/webchat` (`go 1.21`, no dependencies). Code is in
@@ -491,11 +535,15 @@ are preparation only. Media custody and exact ABI checks precede registration.
 
 ## Vision, design spec and extraction (2026-10-14)
 
+(superseded by the block at the top)
+
 - Web chat is an optional standalone extension (18f71e6): extensions/webchat, own Go module, boundary guard + CI; core gates need no Node and no extension.
 - docs/modular-architecture-vision.md: VISION/FUTURE-WORK only. Headless/remote serve is post-thesis (02-1 s4.1 and 06-1 put service-manager modes out of scope; a surviving-owner design is needed). SO_PEERCRED over forwarded sockets is UNVERIFIED (experiment protocol written, not run). Cancel = request; the settled result comes from the supervisor. To reconcile with the core thread: web-chat-contract.md s1 orders turns/cancel before snapshot/streaming; the extension keeps read-first.
 - extensions/webchat/docs/design: DeepSeek-like design language (structure only, no brand), computed WCAG AA table (calculation, not a browser render).
 
 ## Phase 1 React/TypeScript scaffold (2026-10-14)
+
+(superseded by the block at the top)
 
 - extensions/webchat/frontend: Vite 8.3.4, React 19.3.0, TypeScript 7.0.2, Vitest 5.0.4, exact pins,
   88 locked packages (3 runtime), ignore-scripts, 0 npm audit findings; sole install-script
@@ -509,6 +557,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
   CI workflows parsed but not run on GitHub.
 
 ## Phase 2a: DOM-free logic ported to strict TypeScript (2026-10-14, uncommitted)
+
+(superseded by the block at the top)
 
 - frontend/src/core: contract.ts (closed vocabularies from contract.go/validate.go), validate.ts
   (strict mirror of validate.go; the only JSON-to-typed boundary), and ports of format, filters,
@@ -527,6 +577,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
 
 ## Phase 3a foundation (2026-10-14)
 
+(superseded by the block at the top)
+
 - React shell under /app/: tokens (light/dark/system, design-language.md), primitives
   (Chip, StateDot with shape+text, Tabs, ToggleGroup, Disclosure, LiveRegion, ...),
   WorkspaceProvider (snapshot-first stream, reconnect, gaps), shell, governance panels,
@@ -544,6 +596,8 @@ are preparation only. Media custody and exact ABI checks precede registration.
 
 ## Linux re-verification of Phase 3a (2026-10-14, after WSL was restarted)
 
+(superseded by the block at the top)
+
 Export of HEAD 58492c5 into WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under $HOME):
 - extensions/webchat: gofmt clean, vet 0, `go test -race -count=1 -v` 39 PASS 0 FAIL 0 SKIP;
   legacy node suite 258/258 0 skipped.
@@ -558,6 +612,8 @@ Export of HEAD 58492c5 into WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under $
   `git archive` export produces CRLF); self-test 8/8.
 
 ## Phase 3b/3c: Chat view, Trajectory view, record inspector (2026-10-14)
+
+(superseded by the block at the top)
 
 - Chat (3b): React markdown mapper over the AST (no innerHTML; HTML-equal to the legacy
   serializer on the golden/hostile corpora), transcript role=log with aria-live=off,
@@ -578,6 +634,8 @@ Export of HEAD 58492c5 into WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under $
   no live arrivals).
 
 ## Phase 3 polish (2026-10-14, uncommitted)
+
+(superseded by the block at the top)
 
 - Items: one notice copy, above the tabs, with a pointer in the transcript; repeated tool-name
   words removed (`chat/headline.ts`); one provenance line for uniform views and per-record marks
@@ -603,6 +661,8 @@ Export of HEAD 58492c5 into WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under $
 - Open: no screen-reader test; Jump-to-latest only in happy-dom (no live arrivals in the demo).
 
 ## Phase 3 review fixes (2026-10-14)
+
+(superseded by the block at the top)
 
 - Fixed (test-first): one shared verification gate (live + structural-audit projection AND item
   evidence) used by Chat, ledger, rail, inspector; a lossy success never takes the ok tone;

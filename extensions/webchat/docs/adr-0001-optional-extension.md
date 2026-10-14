@@ -2,10 +2,12 @@
 
 - Status: **accepted** for the extension boundary (Phase 0). The Phase 1+
   toolchain direction is accepted as a direction. **Phase 1 (scaffold) is
-  implemented and committed in `263b6ca`.** The review fixes made after that
-  commit are committed in `2583f5a`. §(v) lists them with their done criteria and
-  receipts. **Phase 2 (typed core port and markdown AST) is committed in
-  `4700ca5`.** Phase 3 is pending.
+  committed in `263b6ca`**, with its review fixes in `2583f5a`. **Phase 2 (typed
+  core port and markdown AST) is committed in `4700ca5`.** **Phase 3 (React views)
+  is committed in `58492c5`, `57bcd95`, `a2aaf30`, `60ca5b0`, `6d03657` and
+  `57e6406`.** The React client is the default UI at `/` (`6d03657`). The legacy
+  client stays at `/legacy/`, deprecated, until the owner signs off its removal.
+  §(v) has the phase table and the receipts. Status as of HEAD `57e6406`.
 - Date: 2026-10-14
 - Scope: `extensions/webchat/` and its relation to `supervisor/`.
 - Claim boundary: this is an engineering decision. It establishes no `G1`,
@@ -88,7 +90,8 @@ ones marked *not re-verified* were not re-measured in this change.
 ("zero-build ESM + CSS"), the "Keep" list in `extensions/webchat/docs/web-chat-ui-plan.md` §4, the
 "no build step" recommendation in Appendix A.4, and the design-system header in
 `extensions/webchat/internal/webchat/assets/styles.css`. The zero-build client remains the shipped
-default until P3 reaches parity.
+default until P3 reaches parity. *(Superseded by `6d03657`, 2026-10-14: the React client is the
+default at `/`, and the zero-build client is deprecated at `/legacy/` until sign-off.)*
 
 **Kept, unchanged by this decision:**
 
@@ -99,7 +102,8 @@ default until P3 reaches parity.
 - The closed asset allowlist test. In P1 its inputs come from the manifest.
 - Zero `innerHTML` sinks, and the decision not to adopt the harness runtime
   (Appendix A.4).
-- GET-only, literal-loopback gateway until the authenticated service exists.
+- GET-only, literal-loopback gateway until the authenticated service exists. HEAD is also
+  answered on `/` (a redirect) and `/favicon.ico` (`204`); see `frontend.md`.
 
 ### (v) Phase plan
 
@@ -107,7 +111,7 @@ Each phase is shippable on its own. No phase may be called verified without a
 receipt (command, exit code, source hash). The extension phases (P) are separate
 from the UI phases in `extensions/webchat/docs/web-chat-ui-plan.md` §5.
 
-- **P0 — extraction (this change).** Move the web chat to `extensions/webchat/`,
+- **P0 — extraction (committed in `18f71e6`).** Move the web chat to `extensions/webchat/`,
   add the boundary guard and the CI jobs, and record this ADR. No behaviour
   change.
 - **P1 — scaffold.** Add the Vite, React, TypeScript and CSS Modules skeleton.
@@ -128,7 +132,7 @@ Status (2026-10-14). Each phase is verified only by the receipts listed here.
 | P0 extraction | done, committed `18f71e6` | extension boundary, guard, CI job | `scripts/check-extension-boundary.sh` (see README) |
 | **P1 scaffold** | **implemented and committed in `263b6ca`; review fixes committed in `2583f5a`; one criterion partly met** | see below | see below |
 | P2 port pure logic | implemented and committed in `4700ca5` | `src/core` and `src/markdown` port the logic; legacy parity nets | `phase2-parity.md` §9; `phase2-markdown.md`, Receipts |
-| P3 React views | pending, not committed | — | — |
+| P3 React views | **committed**: shell and governance panels `58492c5` (3a); Chat and Trajectory views and record inspector `57bcd95` (3b/3c); polish `a2aaf30`; review fixes `60ca5b0`; React default at `/` with `/legacy/` deprecated `6d03657`; claim gate at the stream boundary and v3-check fixes `57e6406` | Replace `render.mjs` and `app.mjs` with React components; each legacy test mapped to a React test (`phase3-parity.md`); browser QA captures (Chrome 155) | `frontend.md`, Phase 3 sections and "Default UI switch"; `phase3-parity.md`; `webchat/qa/p3*-receipt.json` |
 
 P1 done criteria, each with its evidence:
 
@@ -164,8 +168,40 @@ P1 done criteria, each with its evidence:
 Receipts (exact commands; exit codes; the working tree at the time of the run;
 Node 24.15.0; npm 11.12.1 in WSL):
 
+The rows below are the P1 receipts as recorded at `263b6ca`, restored verbatim from git history after the review pass had removed them. They are historical. The receipts for the later passes follow.
+
 | Command | Where | Exit | Result |
 |---|---|---|---|
+| `npm ci --ignore-scripts` | WSL, `frontend/`, clean `node_modules` | 0 | 88 locked packages |
+| `npm run verify` | WSL | 0 | typecheck ok; test 2/2; build; `check:sinks` 0 sinks; `check:deps` 0 install scripts, 1 platform-gated exception (fsevents) |
+| `npm run repro` | WSL | 0 | two clean builds identical; committed `dist/` identical; tree sha256 `85f7686c45dca416c00df825623098c7687492fd08982125dfb105ecf401add8` (4 files) |
+| same build on Windows | Windows Node 24.15.0, temp copy | 0 | all 4 files identical by sha256 |
+| `npm audit`, `npm audit --omit=dev` | WSL | 0, 0 | 0 vulnerabilities |
+| `gofmt -l .` | WSL, `extensions/webchat` | 0 | no output |
+| `go build ./...` | WSL | 0 | — |
+| `go vet -mod=readonly ./...` | WSL | 0 | — |
+| `go test -race -mod=readonly -count=1 -v ./...` | WSL | 0 | 36 top-level PASS (30 existing + 6 new), 0 FAIL, 0 SKIP |
+| `node --test internal/webchat/jstest/*.test.mjs` | WSL | 0 | 258 pass, 0 fail, 0 skipped |
+| `sh scripts/check-extension-boundary.sh` | WSL, repo root | 0 | boundary OK |
+| `… --self-test` | WSL | 0 | 8 of 8 cases |
+| `go build ./... && go vet ./...` | WSL, `supervisor/` | 0, 0 | — |
+| `node scripts/csp-smoke.mjs --url http://127.0.0.1:8793` | Windows Node 24.15.0 → Chrome 155.0.8059.79; gateway in WSL `--demo`, built from the final source | 0 | PASS `/app/` and `/`: 0 CSP violations, 0 console errors (favicon 404 allowed), 0 `style` attributes, 0 `on*` attributes; banner CSS Module class applied |
+| `node scripts/csp-smoke.mjs` (no `--url`) | WSL (no browser installed) | 3 | `NOT VERIFIED: no browser` |
+| negative control (throwaway server, same CSP header, deliberately broken pages) | Windows | 1 | FAIL on both pages: CSP violations, `style=`, `onclick=`, console error, uncaught exception |
+| `make …` targets | — | not run | `make` is not installed in WSL or Windows; each target's command was run directly above |
+
+Source hashes (sha256 of the Go files at the time of the `go test` run above):
+
+```
+2213858f23934a37bb3def22c69f847e7274402441d97fa30f462ff3064024f1  internal/webchat/app.go
+09c5c95b11831505bf58d9db0cdc5dca570a5e00f10b96b1a7267622ae6b0011  internal/webchat/app_test.go
+7ce9a693874aa509d5ea18c2143c7af4dc1e794dc3f222f4c0378563025382e1  internal/webchat/handler.go
+7edf7fc4c9020430636afc8f17826be98e43c2601634022c8ad8868a45ba83dd  cmd/tbound-webchat/main.go
+```
+
+Not verified here: the GitHub Actions runs, a browser other than Chrome 155, and
+the reproducibility of a build under Node versions other than 24.15.0.
+
 Review fixes (committed in `2583f5a`):
 
 - The `/app/` shell is read by a tokenizer that fails closed (single, unquoted and

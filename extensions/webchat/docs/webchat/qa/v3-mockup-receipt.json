@@ -1,701 +1,2349 @@
 {
-  "receipt": "v3 static design mockup (tbound-redesign-v3.html)",
-  "generatedAt": "2026-10-14T19:29:58.645Z",
-  "mockup": {
+  "receipt": "v3 static design mockup (tbound-redesign-v3.html), refreshed for the running UI at commit 57e6406 (M3b)",
+  "generatedAt": "2026-10-14T20:23:27.233Z",
+  "mock": {
     "path": "extensions/webchat/docs/webchat/mockups/tbound-redesign-v3.html",
-    "bytes": 122548,
-    "sha256": "ac8fce888f309415f70ccfd9773ccdb60cff32390670a39726a4b4cfc2bdc26f"
+    "bytes": 126328,
+    "sha256": "716b0af0bff841c2962f2a42c330d994cebe1cd5a4aa25c65892382ffeb8c6d0",
+    "sampleHideForComparisons": ".mk-tag, .mk-samples, .cv-jump, .sh-notices, [data-sample], .mk-review { display: none !important; }"
   },
   "v2Unchanged": {
     "path": "extensions/webchat/docs/webchat/mockups/tbound-redesign-v2.html",
     "sha256": "0e4b70aaa566ff1114d6a5f682a77cbeb7e8b49b7bdf6f5788024773c84f2dd2",
-    "expectedFromBeforeEdits": "0e4b70aaa566ff1114d6a5f682a77cbeb7e8b49b7bdf6f5788024773c84f2dd2"
+    "expectedFromBeforeEdits": "0e4b70aaa566ff1114d6a5f682a77cbeb7e8b49b7bdf6f5788024773c84f2dd2",
+    "identical": true
+  },
+  "csp": {
+    "policy": "default-src 'none'; img-src data:; style-src 'sha256-db4OKQcUHZV2SIKSDnsWC3NygcWmQIq+QJJf78AUq6I='; script-src 'sha256-h471AdQ8h5bBuXXQJHhBE3xbTzcEOP1MMEULUpwU9mg='; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; media-src 'none'",
+    "styleHash": "sha256-db4OKQcUHZV2SIKSDnsWC3NygcWmQIq+QJJf78AUq6I=",
+    "scriptHash": "sha256-h471AdQ8h5bBuXXQJHhBE3xbTzcEOP1MMEULUpwU9mg="
+  },
+  "realApp": {
+    "capture": "extensions/webchat/docs/webchat/qa/v3-real-app-capture.json",
+    "sha256": "7a7ee20ccba2c66b3223b8ea2d8511b43859ec856be5d91538ba4df13ab8b5ce"
   },
   "chrome": {
-    "version": "Chrome/155.0.8059.79",
     "binary": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-    "mode": "headless=new, CDP over 127.0.0.1"
+    "method": "headless=new, CDP over 127.0.0.1"
   },
-  "viewports": [
-    {
-      "size": "1440x900",
-      "states": [
-        "chat light",
-        "chat dark",
-        "trajectory light",
-        "trajectory dark",
-        "full page light (captureBeyondViewport)"
-      ]
-    },
-    {
-      "size": "1024x768",
-      "states": [
-        "chat light",
-        "chat dark",
-        "drawer open light"
-      ]
-    },
-    {
-      "size": "390x844",
-      "states": [
-        "chat light",
-        "chat dark"
-      ]
-    }
-  ],
   "screenshots": [
     {
-      "name": "v3-mockup-1440-light.png",
+      "name": "light-chat",
+      "file": "v3-mockup-1440-light.png",
       "viewport": "1440x900",
       "hash": "#theme=light",
-      "scheme": "light",
-      "bytes": 113138,
-      "sha256": "20a466d96b7a8a53fbadd9fa0d382aa3aa5513fe4edd45a7584b45db1ebef55e",
-      "matchesCaptureLog": true
-    },
-    {
-      "name": "v3-mockup-1440-dark.png",
-      "viewport": "1440x900",
-      "hash": "#theme=dark",
-      "scheme": "dark",
-      "bytes": 115831,
-      "sha256": "b7d3a5e6b56e37953944ada6b2f8b9c9562a59144d8dd5f11adbc0d05e0788dd",
-      "matchesCaptureLog": true
-    },
-    {
-      "name": "v3-mockup-1024-light.png",
-      "viewport": "1024x768",
-      "hash": "#theme=light",
-      "scheme": "light",
-      "bytes": 73523,
-      "sha256": "7fa08802b4760b3cbdf6ef32cd95938fd4283d0bd3c0495ba04fcae41d4d0d68",
-      "matchesCaptureLog": true
-    },
-    {
-      "name": "v3-mockup-1024-dark.png",
-      "viewport": "1024x768",
-      "hash": "#theme=dark",
-      "scheme": "dark",
-      "bytes": 74047,
-      "sha256": "c994fe731531403af917ee5308f533ff00dffa7c89d5e92d0bb9eb4032166456",
-      "matchesCaptureLog": true
-    },
-    {
-      "name": "v3-mockup-390-light.png",
-      "viewport": "390x844",
-      "hash": "#theme=light",
-      "scheme": "light",
-      "bytes": 41283,
-      "sha256": "da7f04862a2f260118b510273b525b49b818b648ffb1a314226f790c8ef75173",
-      "matchesCaptureLog": true
-    },
-    {
-      "name": "v3-mockup-390-dark.png",
-      "viewport": "390x844",
-      "hash": "#theme=dark",
-      "scheme": "dark",
-      "bytes": 41909,
-      "sha256": "b86ed2272dd81274b3d50c0951d99f7566315a0a4dc1f44787ceaf64d28c151c",
-      "matchesCaptureLog": true
-    },
-    {
-      "name": "v3-mockup-trajectory-1440-light.png",
-      "viewport": "1440x900",
-      "hash": "#view=trajectory&theme=light",
-      "scheme": "light",
-      "bytes": 124315,
-      "sha256": "3ea7e976a94ec47d871b545d60864c56ef6ff3f0d6368e91b73cc94d625b12ec",
-      "matchesCaptureLog": true
-    },
-    {
-      "name": "v3-mockup-trajectory-1440-dark.png",
-      "viewport": "1440x900",
-      "hash": "#view=trajectory&theme=dark",
-      "scheme": "dark",
-      "bytes": 126522,
-      "sha256": "f26ee0a708572331fb17221ddd519282be45505e579cedac9535ae6a2094c037",
-      "matchesCaptureLog": true
-    },
-    {
-      "name": "v3-mockup-drawer-1024-light.png",
-      "viewport": "1024x768",
-      "hash": "#theme=light&drawer=open",
-      "scheme": "light",
-      "bytes": 93143,
-      "sha256": "15de93f6aa2e7082756b3df8fb10a237c5deb021704b36b575670f8aefbdd2e2",
-      "matchesCaptureLog": true
-    },
-    {
-      "name": "v3-mockup-1440-light-fullpage.png",
-      "viewport": "1440x900 (full page 5749px)",
-      "hash": "#theme=light",
-      "scheme": "light",
-      "bytes": 454844,
-      "sha256": "11a2ec25261bfb0d03d2efa7cfdac7cc1b6f22058923a01c9b06e9c6b5111280",
-      "matchesCaptureLog": true
-    }
-  ],
-  "realAppScreenshots": {
-    "note": "Captured from the running /app/ by the capture agent (Chrome 155, localStorage theme); see v3-real-app-capture.json",
-    "files": [
-      {
-        "name": "v3-real-app-1440-light-chat.png",
-        "sha256": "b0c4ada1f5a459e2a88c7578d672c8f91447061653cda171976b808910dd533e",
-        "bytes": 110129
-      },
-      {
-        "name": "v3-real-app-1440-light-trajectory.png",
-        "sha256": "e473aefd46c6e3651ceaaa6f7fc7a7018dc070ba86dab902f4e1f15bc8089244",
-        "bytes": 137415
-      },
-      {
-        "name": "v3-real-app-1440-light-trajectory-selected.png",
-        "sha256": "14949f96df1a321609bbed74bdec8eef59f4d427cc55e8db85746398409a32be",
-        "bytes": 128347
-      },
-      {
-        "name": "v3-real-app-1440-dark-chat.png",
-        "sha256": "78495468796536fad9db66d2689b61c86e9f354dff908fa0ae510a967d9f8550",
-        "bytes": 112323
-      },
-      {
-        "name": "v3-real-app-1440-dark-trajectory.png",
-        "sha256": "cf3a5ca0fabdb3f801ccad73649fbbd961823062a731e0524f6cb5be133a12aa",
-        "bytes": 139756
-      },
-      {
-        "name": "v3-real-app-1024-light-chat.png",
-        "sha256": "0017a6ab26f3496d3131c54cbbb8ca637aab2f5d8291118856b7fb6e7f99938d",
-        "bytes": 75188
-      }
-    ]
-  },
-  "sourceHashes": {
-    "globalSheets": [
-      {
-        "file": "frontend/src/styles/base.css",
-        "sha256": "1e8396cb059ee28bcc8a76a8bb36a830542d81fe65b9c30d3b4bc17c3c28bac0"
-      },
-      {
-        "file": "frontend/src/markdown/markdown.css",
-        "sha256": "d22af27da91a52d04260850ae1738b27c14c196b37ce118be7020eb3d908b64a"
-      },
-      {
-        "file": "frontend/src/styles/tokens.css",
-        "sha256": "21229e83b69eea53103a090396ba0d97e5b87a0e91c2bcb8e95512f716dba33f"
-      }
-    ],
-    "cssModules": [
-      {
-        "file": "frontend/src/app/Shell.module.css",
-        "prefix": "sh",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "cac449cfb1fe4ba78a65f72ffc8a54f0705c9051437cdc5a742052a89ae1cccf"
-      },
-      {
-        "file": "frontend/src/app/Inspector.module.css",
-        "prefix": "in",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "72df11163c735bf9c4694084b6a9be88e80e50b972139ef274e987060788399c"
-      },
-      {
-        "file": "frontend/src/app/inspector/RecordInspector.module.css",
-        "prefix": "ri",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "523a6b448836729ed158540089b17d755cdd9062ee93311a00ccd0b3d87a0225"
-      },
-      {
-        "file": "frontend/src/ui/Chip.module.css",
-        "prefix": "ch",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "c06c59248a1f9468f06ac340a719d405ab1713fbc128159c4534f7430ce0b2c7"
-      },
-      {
-        "file": "frontend/src/ui/StateDot.module.css",
-        "prefix": "sd",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "4131a6166817818d5d11d4af91d911d79f562d6dd7c8fd09ccab0d2cab2e5dee"
-      },
-      {
-        "file": "frontend/src/ui/ToggleGroup.module.css",
-        "prefix": "tg",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "37c17df52567d53c4a2184525fc19c7fdd3b8399a3738dd17379e8996c279b2c"
-      },
-      {
-        "file": "frontend/src/ui/Tabs.module.css",
-        "prefix": "tb",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "84dfebacd3b850cb54f76454ebcd764fd99a3ea534e839141d1d0cf58e60e2c9"
-      },
-      {
-        "file": "frontend/src/ui/Notice.module.css",
-        "prefix": "nt",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "374f28d5f852b512f2fa6972409c33541fc86d7d481e595a8e791d6a5925a7c1"
-      },
-      {
-        "file": "frontend/src/ui/StateMessage.module.css",
-        "prefix": "sm",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "e770e28b74f59f3326eed163fe7261f362ff2a22edea65476aad1f71b961be4a"
-      },
-      {
-        "file": "frontend/src/ui/Disclosure.module.css",
-        "prefix": "ds",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "11960943ac0d98c776d6823345bc63e7e19a4c2d74f875ad7fe74ea6cf3486c6"
-      },
-      {
-        "file": "frontend/src/ui/VisuallyHidden.module.css",
-        "prefix": "vh",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "8a571d0ab1ec59c1ec8c41b0a63f80de14bc7b1cb5683b9a32e3883e7d37c4c9"
-      },
-      {
-        "file": "frontend/src/ui/LiveRegion.module.css",
-        "prefix": "lr",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "5225a88afb81b29e4b0f6b42a8e5a09586b352c3e0424d0cdde7b1724593cba8"
-      },
-      {
-        "file": "frontend/src/app/views/chat/Chat.module.css",
-        "prefix": "cv",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "8f779e910a4989e7ae4f0a9284ac1a4a427646a00d7448b40060541a5f816ed4"
-      },
-      {
-        "file": "frontend/src/app/views/trajectory/Trajectory.module.css",
-        "prefix": "tv",
-        "preexistingPrefixedTokens": 0,
-        "reversible": true,
-        "sha256": "becbb807de3a8217c48f2858b2579c3de70d12eea5193ceeec13f802dc6963d2"
-      }
-    ],
-    "contrastOutput": {
-      "path": "extensions/webchat/docs/design/contrast-output.txt",
-      "sha256": "06ffacc2986a638388883dd2cb6fc3be5f9ca08ed1236aac79d3104e1cbadfd9"
-    },
-    "designLanguage": {
-      "path": "extensions/webchat/docs/design/design-language.md",
-      "sha256": "1030730c48394f7ed909f042fd74738cf2ac39322128ef7581beb09c7437cb93"
-    }
-  },
-  "commands": [
-    {
-      "cmd": "node assemble.mjs (builds the single HTML file from the parts and the real CSS modules)",
-      "exit": 0
-    },
-    {
-      "cmd": "node check.mjs (tag balance, class/CSS coverage, ids and aria references, http(s) occurrences, forbidden constructs)",
-      "exit": 0
-    },
-    {
-      "cmd": "node mock-capture.mjs (10 PNGs, behaviour checks, console and network logs)",
-      "exit": 0
-    },
-    {
-      "cmd": "node fidelity.mjs (landmark geometry, mock samples hidden, against real-measure-1440-light.json)",
-      "exit": 0
-    },
-    {
-      "cmd": "node text-compare.mjs (rendered text and accessible names against real-text-1440-light.json)",
-      "exit": 0
-    },
-    {
-      "cmd": "node checks2.mjs (drawer hit-test on real and mock at 1024; forced-colors computed styles)",
-      "exit": 0
-    },
-    {
-      "cmd": "node contrast.mjs > contrast-rerun.txt; diff with contrast-output.txt",
-      "exit": 0,
-      "result": "identical"
-    }
-  ],
-  "staticChecks": {
-    "problems": [],
-    "ariaAndForReferences": "25 of 25 resolve",
-    "duplicateIds": 0,
-    "inlineStyleAttributes": 0,
-    "externalRequests": 0,
-    "networkRequestsTotal": 13,
-    "httpOccurrences": "six, all https://example.com/healthz: five are the demo fixture curl command text (card call-03 summary and request; ledger row 9 aria-label, title and text), one is the href of the sample markdown link; the network log shows no request to any of them"
-  },
-  "consoleEntries": 0,
-  "behaviour": {
-    "initial": {
-      "theme": null,
-      "chatSelected": "true",
-      "trajectoryHidden": true,
-      "asideMode": "governance",
-      "drawerToggleExpanded": null
-    },
-    "themeDark": {
-      "theme": "dark",
-      "pressed": "true",
-      "systemPressed": "false"
-    },
-    "themeSystem": {
-      "theme": null
-    },
-    "tabTrajectory": {
-      "trajSelected": "true",
-      "trajPanelHidden": false,
-      "chatPanelHidden": true,
-      "asideMode": "record",
-      "asideLabel": "Record inspector",
-      "heading": "Record",
-      "closeText": "Close record",
-      "closeHidden": false
-    },
-    "tabArrowLeft": {
-      "chatSelected": "true",
-      "focused": "view-tab-chat"
-    },
-    "tabArrowRightWrap": {
-      "trajSelected": "true"
-    },
-    "recordClose": {
-      "asideMode": "governance",
-      "heading": "Governance",
-      "rowPressed": "false",
-      "rowSelectedClass": false
-    },
-    "recordReopen": {
-      "asideMode": "record",
-      "rowPressed": "true"
-    },
-    "narrowClosed": {
-      "dataOpen": "false",
-      "ariaHidden": "true",
-      "inert": true,
-      "toggleExpanded": "false",
-      "toggleControls": "governance-inspector",
-      "toggleDisplay": "flex",
-      "asideRight": 1371,
-      "viewport": 1024
-    },
-    "narrowOpen": {
-      "dataOpen": "true",
-      "ariaHidden": null,
-      "inert": false,
-      "toggleExpanded": "true",
-      "headingFocused": true,
-      "asideRight": 1014,
-      "closeText": "Close governance"
-    },
-    "narrowEscape": {
-      "dataOpen": "false",
-      "ariaHidden": "true",
-      "inert": true,
-      "toggleExpanded": "false"
-    },
-    "narrowCloseWithButton": {
-      "dataOpen": "false"
-    },
-    "wideAfterResize": {
-      "dataOpen": "false",
-      "ariaHidden": null,
-      "inert": false,
-      "toggleDisplay": "none",
-      "asideLeft": 1129,
-      "asideWidth": 301
-    },
-    "geometry": {
-      "header": {
-        "x": 0,
-        "y": 0,
-        "w": 1430,
-        "h": 113
-      },
-      "rail": {
-        "x": 0,
-        "y": 113,
-        "w": 210,
-        "h": 1602
-      },
-      "main": {
-        "x": 210,
-        "y": 113,
-        "w": 919,
-        "h": 1602
-      },
-      "aside": {
-        "x": 1129,
-        "y": 113,
-        "w": 301,
-        "h": 1602
-      },
-      "footer": {
-        "x": 0,
-        "y": 1715,
-        "w": 1430,
-        "h": 39
-      },
-      "docScrollHeight": 5749
-    },
-    "ariaNames": {
-      "landmarks": [
-        "header::Workspace header",
-        "div:toolbar:Theme",
-        "div:note:Claim boundary",
-        "nav::Sessions and streams",
-        "main::Workspace",
-        "div:note:Retained window",
-        "div:tablist:Workspace view",
-        "div:toolbar:Timeline filters",
-        "div:log:Transcript",
-        "pre:region:Code block, go",
-        "div:toolbar:Group records by",
-        "span:img:Model lane: 2 record(s), message, no verdict or outcome; 15 record(s), no record in this lane; 1 record(s), message, no verdict or outcome",
-        "span:img:Policy lane: 3 record(s), no record in this lane; 1 record(s), ALLOW, a permission not an outcome; 2 record(s), no record in this lane; 1 record(s), ALLOW, a permission not an outcome; 2 record(s), no record in this lane; 1 record(s), DENY, denied or failed, not success; 2 record(s), no record in this lane; 1 record(s), ALLOW, a permission not an outcome; 2 record(s), no record in this lane; 1 record(s), ALLOW, a permission not an outcome; 2 record(s), no record in this lane",
-        "span:img:Tools lane: 2 record(s), no record in this lane; 1 record(s), pending, no outcome yet; 1 record(s), no record in this lane; 1 record(s), succeeded, reported, not independently verified; 1 record(s), pending, no outcome yet; 1 record(s), no record in this lane; 1 record(s), succeeded, reported, not independently verified; 1 record(s), pending, no outcome yet; 1 record(s), no record in this lane; 1 record(s), DENY, denied or failed, not success; 1 record(s), pending, no outcome yet; 1 record(s), no record in this lane; 1 record(s), succeeded, reported, not independently verified; 1 record(s), pending, no outcome yet; 1 record(s), no record in this lane; 1 record(s), UNKNOWN, not success; 1 record(s), no record in this lane",
-        "div:region:Record ledger",
-        "aside::Governance inspector",
-        "footer::Observed session metrics",
-        "div:status:"
-      ],
-      "rowsWithName": 18,
-      "rowsTotal": 18,
-      "headings": [
-        "H1:tbound web chat",
-        "H2:Session",
-        "H2:Observation streams",
-        "H3:Plan",
-        "H2:Governance",
-        "H3:Policy decisions",
-        "H3:Provenance",
-        "H3:Publication",
-        "H3:Recovery",
-        "H3:Qualification",
-        "H3:Warnings",
-        "H3:Summary",
-        "H3:Payload",
-        "H3:Decision",
-        "H3:Evidence",
-        "H3:Timing",
-        "H2:Static design mockup v3",
-        "H2:State vocabulary",
-        "H2:States gallery",
-        "H3:Loading",
-        "H3:Empty",
-        "H3:Error and reconnecting",
-        "H3:Offline",
-        "H3:Slow handshake",
-        "H3:Unavailable, never zero",
-        "H2:Record inspector: result record",
-        "H3:Summary",
-        "H3:Payload",
-        "H3:Result",
-        "H3:Evidence",
-        "H3:Timing",
-        "H2:Responsive",
-        "H2:Design notes"
-      ]
-    },
-    "styleAttributes": 0,
-    "visibleTextFirst": "tbound web chat\n\nPi chat workspace\n\nsource: fixture · unverified\nconnected\nSystem\nLight\nDark\n\nPresentation only: the supervisor retains policy, effect and publication authority.\n\nG1\nfalse\nH1\nunexecute"
-  },
-  "fidelity": {
-    "method": "landmark rectangles of the real /app/ (1440x900, light) against the mock with samples hidden; elements matched by tag, role, label and text",
-    "chat": {
-      "realLandmarks": 22,
-      "matched": 22,
-      "geometryDiffs": [
-        "section||turn-01|#1: h 507->791"
-      ],
-      "realOnly": 0
-    },
-    "trajectory": {
-      "realLandmarks": 23,
-      "matched": 23,
-      "geometryDiffs": 0,
-      "realOnly": 0
-    },
-    "scrollHeight": {
-      "realChat": 1754,
-      "mockChat": 5745,
-      "note": "mock is taller because the review sections sit below the app frame"
-    }
-  },
-  "textCompare": {
-    "passed": 16,
-    "total": 16,
-    "failed": [],
-    "covers": [
-      "header",
-      "rail",
-      "footer",
-      "expanded go-test card",
-      "collapsed DENY and UNKNOWN cards",
-      "trajectory summary and group head",
-      "rail accessible labels (3 lanes)",
-      "ledger rows (18) rendered text",
-      "ledger row accessible names and data-source (18)",
-      "governance aside (trajectory and chat)",
-      "record inspector for the DENY decision",
-      "row accessible name"
-    ]
-  },
-  "forcedColorsAndHitTests": {
-    "forcedColorsMedia": true,
-    "legendShapes": [
-      {
-        "tone": "ok",
-        "borderStyle": "solid",
-        "borderWidth": "1px",
-        "radius": "50%",
-        "clipPath": "none",
-        "bgTransparent": false
-      },
-      {
-        "tone": "allow",
-        "borderStyle": "solid",
-        "borderWidth": "2px",
-        "radius": "50%",
-        "clipPath": "none",
-        "bgTransparent": true
-      },
-      {
-        "tone": "deny",
-        "borderStyle": "solid",
-        "borderWidth": "1px",
-        "radius": "2px",
-        "clipPath": "none",
-        "bgTransparent": false
-      },
-      {
-        "tone": "reported",
-        "borderStyle": "dashed",
-        "borderWidth": "2px",
-        "radius": "50%",
-        "clipPath": "none",
-        "bgTransparent": true
-      },
-      {
-        "tone": "unknown",
-        "borderStyle": "dotted",
-        "borderWidth": "2px",
-        "radius": "50%",
-        "clipPath": "none",
-        "bgTransparent": true
-      },
-      {
-        "tone": "lost",
-        "borderStyle": "solid",
-        "borderWidth": "1px",
-        "radius": "0px",
-        "clipPath": "set",
-        "bgTransparent": false
-      },
-      {
-        "tone": "pending",
-        "borderStyle": "solid",
-        "borderWidth": "1px",
-        "radius": "50%",
-        "clipPath": "none",
-        "bgTransparent": true
-      },
-      {
-        "tone": "idle",
-        "borderStyle": "solid",
-        "borderWidth": "1px",
-        "radius": "50%",
-        "clipPath": "none",
-        "bgTransparent": false
-      }
-    ],
-    "realDrawerOverlap1024": {
-      "before": {
-        "hitsDark": true,
-        "hitTag": "button",
-        "inAside": false
-      },
-      "afterOpen": {
-        "darkCenter": [
-          969,
-          33
+      "view": "chat",
+      "action": null,
+      "captureBeyondViewport": false,
+      "bytes": 115680,
+      "pngWidth": 1440,
+      "pngHeight": 900,
+      "sha256": "bfb6d3fdb70a4c1766b4afad4d1910d0f7e358a08d46358b7701aea9628209a6",
+      "committedSha256": "20a466d96b7a8a53fbadd9fa0d382aa3aa5513fe4edd45a7584b45db1ebef55e",
+      "samplesVisible": true,
+      "samplesHiddenSha256": "bc1ae84595a37e1579e3fc79eab7713e8abea3b180bd5d9e9156945a3f2ff7b1",
+      "regionsSamplesHidden": {
+        "header": {
+          "rect": [
+            0,
+            0,
+            1430,
+            113
+          ],
+          "innerText": "tbound web chat\n\nPi chat workspace\n\nsource: fixture · unverified\nconnected\nSystem\nLight\nDark\n\nPresentation only: the supervisor retains policy, effect and publication authority.\n\nDisplay only: these values are copied from the projection and are not evidence.\n\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            113,
+            210,
+            1602
+          ],
+          "innerText": "Session\n\nAdd /healthz and run tests\n\nreported\nreported by the source, not independently verified\n\nTurns: 1\n\nRead-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are supervisor authority.\n\nObservation streams\ndevelopment fixture transcript: complete (source did not claim completeness) (non-claim-bearing development fixture)\nproduction supervisor projection: unavailable (no authenticated live projection source is registered), not available"
+        },
+        "main": {
+          "rect": [
+            210,
+            113,
+            919,
+            1602
+          ],
+          "innerText": "Chat\nTrajectory\nALLOW 4\nDENY 1\nreported 3\ndenied 1\nunknown result 1\nlossy 1\nAll 18\nDenied 2\nUnknown 1\nFailed 0\n\n18 element(s) in the retained window\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\n·\n11:12:04\n\nAdd a /healthz endpoint to the service and run the test suite.\n\nASSISTANT\n·\n11:12:09\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\nR\nread\nservice/entrypoint.go\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nunverified\nALLOW\nunknown\n\nASSISTANT\n·\n11:14:30\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either."
+        },
+        "footer": {
+          "rect": [
+            0,
+            1715,
+            1430,
+            39
+          ],
+          "innerText": "Turns\n1\nRecords retained\n18\nPolicy, retained window\nALLOW 4 · DENY 1 · UNKNOWN 0\nToken usage\nunavailable (the projection records no token usage)\nDuration\nunavailable (the projection records no duration)\n\nbuild 0.1.0"
+        },
+        "governanceInspector": {
+          "rect": [
+            1129,
+            113,
+            301,
+            1602
+          ],
+          "innerText": "Governance\nPolicy decisions\nAllowed (ALLOW)\n4\nDenied (DENY)\n1\nUnknown\n0\nPolicy digest\nsha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6\n\nA policy ALLOW is a permission, not an outcome.\n\nProvenance\nIndependently verified\nno\nProfile\npi-cli-dev-profile\nProfile hash\nsha256:0b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f90\nSource digest\nsha256:1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809\nContainment profile\nd09-dev-profile\nContainment digest\nsha256:2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a\nProvider profile\nbroker-template-v1\nRuntime closure\nunsigned\nLaunch proof digest\nunavailable (Illustrative development identities. Provenance is not independently verified and is not claim-bearing.)\nPublication\nnot attempted\n\nLive publication is not attempted by this development session.\n\nRecovery\nunknown\n\nOne effect lease released without a durable terminal outcome; recovery would inspect workspace, process, and commit-token state and must not replay.\n\nQualification\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse\n\nThese values are fixed for this build. No receipt can change them.\n\nWarnings\nDevelopment fixture. It is not production evidence and establishes no claim.\nThe browser gateway is an untrusted presentation client and holds no policy, effect, or publication authority."
+        },
+        "recordInspector": null,
+        "inspectorAttributes": {
+          "ariaLabel": "Governance inspector",
+          "dataOpen": "false"
+        },
+        "governanceToggle": {
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "ariaExpanded": null
+        },
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "false"
+          }
         ],
-        "hitsDark": false,
-        "hitTag": "button",
-        "hitInsideAside": true,
-        "asideDataOpen": "true"
+        "selectedRows": 0,
+        "ledgerRows": 18,
+        "ledgerLabels": [
+          "User record 1: prompt. Message: no verdict or outcome recorded. Add a /healthz endpoint to the service and run the test suite.",
+          "Assistant record 2: message. Message: no verdict or outcome recorded. I will inspect the service entrypoint, add the endpoint, then run the tests.",
+          "Tool record 3: proposal. Activity: pending, no outcome yet. read service/entrypoint.go",
+          "Decision record 4: read · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 5: read. Result: succeeded, reported, not independently verified. returned 58 lines from the staging view · digest sha256:aa1…112233",
+          "Tool record 6: proposal. Activity: pending, no outcome yet. edit service/entrypoint.go",
+          "Decision record 7: edit · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 8: edit. Result: succeeded, reported, not independently verified. staged generation g1 with 1 approved file change · digest sha256:bb2…33aa44",
+          "Tool record 9: proposal. Activity: pending, no outcome yet. bash: curl -s https://example.com/healthz",
+          "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6",
+          "Result record 11: bash. Result: denied, not success. denial was durable before it was returned",
+          "Tool record 12: proposal. Activity: pending, no outcome yet. bash: go test ./...",
+          "Decision record 13: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 14: bash. Result: succeeded, reported, not independently verified. command cell settled; exit code 0 · digest sha256:cc3…44bb55",
+          "Tool record 15: proposal. Activity: pending, no outcome yet. bash: go test -race ./...",
+          "Decision record 16: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 17: bash. Result: UNKNOWN, not success; output lossy. lease released; no durable terminal outcome observed · output lossy",
+          "Assistant record 18: message. Message: no verdict or outcome recorded. Added /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either."
+        ],
+        "selectedRowLabel": null,
+        "viewport": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "documentHeight": 1754
+        },
+        "htmlDataTheme": "light"
       }
     },
-    "mockDrawerOverlap1024": {
-      "darkCenter": [
-        969,
-        33
-      ],
-      "hitsDark": false,
-      "hitTag": "button",
-      "hitInsideAside": true,
-      "asideDataOpen": "true"
+    {
+      "name": "dark-chat",
+      "file": "v3-mockup-1440-dark.png",
+      "viewport": "1440x900",
+      "hash": "#theme=dark",
+      "view": "chat",
+      "action": null,
+      "captureBeyondViewport": false,
+      "bytes": 118429,
+      "pngWidth": 1440,
+      "pngHeight": 900,
+      "sha256": "7b7897a44483bcfca63c23334f842fb372aea202c82158f8cf97fed1cdf8df17",
+      "committedSha256": "b7d3a5e6b56e37953944ada6b2f8b9c9562a59144d8dd5f11adbc0d05e0788dd",
+      "samplesVisible": true,
+      "samplesHiddenSha256": "f04e3720ff88aa29a062de35d46f9e2df2cc0405114dbb29784af5d273443744",
+      "regionsSamplesHidden": {
+        "header": {
+          "rect": [
+            0,
+            0,
+            1430,
+            113
+          ],
+          "innerText": "tbound web chat\n\nPi chat workspace\n\nsource: fixture · unverified\nconnected\nSystem\nLight\nDark\n\nPresentation only: the supervisor retains policy, effect and publication authority.\n\nDisplay only: these values are copied from the projection and are not evidence.\n\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            113,
+            210,
+            1602
+          ],
+          "innerText": "Session\n\nAdd /healthz and run tests\n\nreported\nreported by the source, not independently verified\n\nTurns: 1\n\nRead-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are supervisor authority.\n\nObservation streams\ndevelopment fixture transcript: complete (source did not claim completeness) (non-claim-bearing development fixture)\nproduction supervisor projection: unavailable (no authenticated live projection source is registered), not available"
+        },
+        "main": {
+          "rect": [
+            210,
+            113,
+            919,
+            1602
+          ],
+          "innerText": "Chat\nTrajectory\nALLOW 4\nDENY 1\nreported 3\ndenied 1\nunknown result 1\nlossy 1\nAll 18\nDenied 2\nUnknown 1\nFailed 0\n\n18 element(s) in the retained window\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\n·\n11:12:04\n\nAdd a /healthz endpoint to the service and run the test suite.\n\nASSISTANT\n·\n11:12:09\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\nR\nread\nservice/entrypoint.go\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nunverified\nALLOW\nunknown\n\nASSISTANT\n·\n11:14:30\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either."
+        },
+        "footer": {
+          "rect": [
+            0,
+            1715,
+            1430,
+            39
+          ],
+          "innerText": "Turns\n1\nRecords retained\n18\nPolicy, retained window\nALLOW 4 · DENY 1 · UNKNOWN 0\nToken usage\nunavailable (the projection records no token usage)\nDuration\nunavailable (the projection records no duration)\n\nbuild 0.1.0"
+        },
+        "governanceInspector": {
+          "rect": [
+            1129,
+            113,
+            301,
+            1602
+          ],
+          "innerText": "Governance\nPolicy decisions\nAllowed (ALLOW)\n4\nDenied (DENY)\n1\nUnknown\n0\nPolicy digest\nsha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6\n\nA policy ALLOW is a permission, not an outcome.\n\nProvenance\nIndependently verified\nno\nProfile\npi-cli-dev-profile\nProfile hash\nsha256:0b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f90\nSource digest\nsha256:1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809\nContainment profile\nd09-dev-profile\nContainment digest\nsha256:2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a\nProvider profile\nbroker-template-v1\nRuntime closure\nunsigned\nLaunch proof digest\nunavailable (Illustrative development identities. Provenance is not independently verified and is not claim-bearing.)\nPublication\nnot attempted\n\nLive publication is not attempted by this development session.\n\nRecovery\nunknown\n\nOne effect lease released without a durable terminal outcome; recovery would inspect workspace, process, and commit-token state and must not replay.\n\nQualification\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse\n\nThese values are fixed for this build. No receipt can change them.\n\nWarnings\nDevelopment fixture. It is not production evidence and establishes no claim.\nThe browser gateway is an untrusted presentation client and holds no policy, effect, or publication authority."
+        },
+        "recordInspector": null,
+        "inspectorAttributes": {
+          "ariaLabel": "Governance inspector",
+          "dataOpen": "false"
+        },
+        "governanceToggle": {
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "ariaExpanded": null
+        },
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "false"
+          }
+        ],
+        "selectedRows": 0,
+        "ledgerRows": 18,
+        "ledgerLabels": [
+          "User record 1: prompt. Message: no verdict or outcome recorded. Add a /healthz endpoint to the service and run the test suite.",
+          "Assistant record 2: message. Message: no verdict or outcome recorded. I will inspect the service entrypoint, add the endpoint, then run the tests.",
+          "Tool record 3: proposal. Activity: pending, no outcome yet. read service/entrypoint.go",
+          "Decision record 4: read · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 5: read. Result: succeeded, reported, not independently verified. returned 58 lines from the staging view · digest sha256:aa1…112233",
+          "Tool record 6: proposal. Activity: pending, no outcome yet. edit service/entrypoint.go",
+          "Decision record 7: edit · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 8: edit. Result: succeeded, reported, not independently verified. staged generation g1 with 1 approved file change · digest sha256:bb2…33aa44",
+          "Tool record 9: proposal. Activity: pending, no outcome yet. bash: curl -s https://example.com/healthz",
+          "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6",
+          "Result record 11: bash. Result: denied, not success. denial was durable before it was returned",
+          "Tool record 12: proposal. Activity: pending, no outcome yet. bash: go test ./...",
+          "Decision record 13: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 14: bash. Result: succeeded, reported, not independently verified. command cell settled; exit code 0 · digest sha256:cc3…44bb55",
+          "Tool record 15: proposal. Activity: pending, no outcome yet. bash: go test -race ./...",
+          "Decision record 16: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 17: bash. Result: UNKNOWN, not success; output lossy. lease released; no durable terminal outcome observed · output lossy",
+          "Assistant record 18: message. Message: no verdict or outcome recorded. Added /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either."
+        ],
+        "selectedRowLabel": null,
+        "viewport": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "documentHeight": 1754
+        },
+        "htmlDataTheme": "dark"
+      }
+    },
+    {
+      "name": "light-chat-fullpage",
+      "file": "v3-mockup-1440-light-fullpage.png",
+      "viewport": "1440x900",
+      "hash": "#theme=light",
+      "view": "chat",
+      "action": null,
+      "captureBeyondViewport": true,
+      "bytes": 538644,
+      "pngWidth": 1430,
+      "pngHeight": 6703,
+      "sha256": "f8c5665c764af40b417d3e6396978ec2cf39c6410f13a4171ff4b8b21cba92e5",
+      "committedSha256": "11a2ec25261bfb0d03d2efa7cfdac7cc1b6f22058923a01c9b06e9c6b5111280",
+      "samplesVisible": true
+    },
+    {
+      "name": "light-chat-1024",
+      "file": "v3-mockup-1024-light.png",
+      "viewport": "1024x768",
+      "hash": "#theme=light",
+      "view": "chat",
+      "action": null,
+      "captureBeyondViewport": false,
+      "bytes": 73834,
+      "pngWidth": 1024,
+      "pngHeight": 768,
+      "sha256": "0eb8523586247b26ef1a9fb7169b87cdc2db907a774da243972e26670c43b4e9",
+      "committedSha256": "7fa08802b4760b3cbdf6ef32cd95938fd4283d0bd3c0495ba04fcae41d4d0d68",
+      "samplesVisible": true,
+      "samplesHiddenSha256": "dfa94e464ef53a9805523fe2e93e72492eb72ed5ccf1f6ca93fc087b3d9642fa",
+      "regionsSamplesHidden": {
+        "header": {
+          "rect": [
+            0,
+            0,
+            1014,
+            141
+          ],
+          "innerText": "tbound web chat\n\nPi chat workspace\n\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\n\nPresentation only: the supervisor retains policy, effect and publication authority.\n\nDisplay only: these values are copied from the projection and are not evidence.\n\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            141,
+            210,
+            706
+          ],
+          "innerText": "Session\n\nAdd /healthz and run tests\n\nreported\nreported by the source, not independently verified\n\nTurns: 1\n\nRead-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are supervisor authority.\n\nObservation streams\ndevelopment fixture transcript: complete (source did not claim completeness) (non-claim-bearing development fixture)\nproduction supervisor projection: unavailable (no authenticated live projection source is registered), not available"
+        },
+        "main": {
+          "rect": [
+            210,
+            141,
+            804,
+            706
+          ],
+          "innerText": "Chat\nTrajectory\nALLOW 4\nDENY 1\nreported 3\ndenied 1\nunknown result 1\nlossy 1\nAll 18\nDenied 2\nUnknown 1\nFailed 0\n\n18 element(s) in the retained window\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\n·\n11:12:04\n\nAdd a /healthz endpoint to the service and run the test suite.\n\nASSISTANT\n·\n11:12:09\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\nR\nread\nservice/entrypoint.go\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nunverified\nALLOW\nunknown\n\nASSISTANT\n·\n11:14:30\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either."
+        },
+        "footer": {
+          "rect": [
+            0,
+            847,
+            1014,
+            95
+          ],
+          "innerText": "Turns\n1\nRecords retained\n18\nPolicy, retained window\nALLOW 4 · DENY 1 · UNKNOWN 0\nToken usage\nunavailable (the projection records no token usage)\nDuration\nunavailable (the projection records no duration)\n\nbuild 0.1.0"
+        },
+        "governanceInspector": {
+          "rect": [
+            1021,
+            141,
+            350,
+            706
+          ],
+          "innerText": "Governance\nClose governance\nPolicy decisions\nAllowed (ALLOW)\n4\nDenied (DENY)\n1\nUnknown\n0\nPolicy digest\nsha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6\n\nA policy ALLOW is a permission, not an outcome.\n\nProvenance\nIndependently verified\nno\nProfile\npi-cli-dev-profile\nProfile hash\nsha256:0b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f90\nSource digest\nsha256:1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809\nContainment profile\nd09-dev-profile\nContainment digest\nsha256:2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a\nProvider profile\nbroker-template-v1\nRuntime closure\nunsigned\nLaunch proof digest\nunavailable (Illustrative development identities. Provenance is not independently verified and is not claim-bearing.)\nPublication\nnot attempted\n\nLive publication is not attempted by this development session.\n\nRecovery\nunknown\n\nOne effect lease released without a durable terminal outcome; recovery would inspect workspace, process, and commit-token state and must not replay.\n\nQualification\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse\n\nThese values are fixed for this build. No receipt can change them.\n\nWarnings\nDevelopment fixture. It is not production evidence and establishes no claim.\nThe browser gateway is an untrusted presentation client and holds no policy, effect, or publication authority."
+        },
+        "recordInspector": null,
+        "inspectorAttributes": {
+          "ariaLabel": "Governance inspector",
+          "dataOpen": "false"
+        },
+        "governanceToggle": {
+          "rect": [
+            708,
+            17,
+            99,
+            32
+          ],
+          "ariaExpanded": "false"
+        },
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "false"
+          }
+        ],
+        "selectedRows": 0,
+        "ledgerRows": 18,
+        "ledgerLabels": [
+          "User record 1: prompt. Message: no verdict or outcome recorded. Add a /healthz endpoint to the service and run the test suite.",
+          "Assistant record 2: message. Message: no verdict or outcome recorded. I will inspect the service entrypoint, add the endpoint, then run the tests.",
+          "Tool record 3: proposal. Activity: pending, no outcome yet. read service/entrypoint.go",
+          "Decision record 4: read · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 5: read. Result: succeeded, reported, not independently verified. returned 58 lines from the staging view · digest sha256:aa1…112233",
+          "Tool record 6: proposal. Activity: pending, no outcome yet. edit service/entrypoint.go",
+          "Decision record 7: edit · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 8: edit. Result: succeeded, reported, not independently verified. staged generation g1 with 1 approved file change · digest sha256:bb2…33aa44",
+          "Tool record 9: proposal. Activity: pending, no outcome yet. bash: curl -s https://example.com/healthz",
+          "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6",
+          "Result record 11: bash. Result: denied, not success. denial was durable before it was returned",
+          "Tool record 12: proposal. Activity: pending, no outcome yet. bash: go test ./...",
+          "Decision record 13: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 14: bash. Result: succeeded, reported, not independently verified. command cell settled; exit code 0 · digest sha256:cc3…44bb55",
+          "Tool record 15: proposal. Activity: pending, no outcome yet. bash: go test -race ./...",
+          "Decision record 16: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 17: bash. Result: UNKNOWN, not success; output lossy. lease released; no durable terminal outcome observed · output lossy",
+          "Assistant record 18: message. Message: no verdict or outcome recorded. Added /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either."
+        ],
+        "selectedRowLabel": null,
+        "viewport": {
+          "innerWidth": 1024,
+          "innerHeight": 768,
+          "documentHeight": 942
+        },
+        "htmlDataTheme": "light"
+      }
+    },
+    {
+      "name": "dark-chat-1024",
+      "file": "v3-mockup-1024-dark.png",
+      "viewport": "1024x768",
+      "hash": "#theme=dark",
+      "view": "chat",
+      "action": null,
+      "captureBeyondViewport": false,
+      "bytes": 74354,
+      "pngWidth": 1024,
+      "pngHeight": 768,
+      "sha256": "2b743bbcb720d473ff2ad351d04d3d1a1d9f6b4b81f27fd0b10ab635dc6f3613",
+      "committedSha256": "c994fe731531403af917ee5308f533ff00dffa7c89d5e92d0bb9eb4032166456",
+      "samplesVisible": true
+    },
+    {
+      "name": "light-chat-390",
+      "file": "v3-mockup-390-light.png",
+      "viewport": "390x844",
+      "hash": "#theme=light",
+      "view": "chat",
+      "action": null,
+      "captureBeyondViewport": false,
+      "bytes": 41711,
+      "pngWidth": 390,
+      "pngHeight": 844,
+      "sha256": "db710be9315fe0a16ed8767ee565b9caf84a344d85f87a9814e70209b7323f8b",
+      "committedSha256": "da7f04862a2f260118b510273b525b49b818b648ffb1a314226f790c8ef75173",
+      "samplesVisible": true
+    },
+    {
+      "name": "dark-chat-390",
+      "file": "v3-mockup-390-dark.png",
+      "viewport": "390x844",
+      "hash": "#theme=dark",
+      "view": "chat",
+      "action": null,
+      "captureBeyondViewport": false,
+      "bytes": 42254,
+      "pngWidth": 390,
+      "pngHeight": 844,
+      "sha256": "cd59f4b23f016aa459a54001ae14522a44eca179493c3e1bb7a938be02e01a7b",
+      "committedSha256": "b86ed2272dd81274b3d50c0951d99f7566315a0a4dc1f44787ceaf64d28c151c",
+      "samplesVisible": true
+    },
+    {
+      "name": "light-drawer-1024",
+      "file": "v3-mockup-drawer-1024-light.png",
+      "viewport": "1024x768",
+      "hash": "#theme=light",
+      "view": "chat",
+      "action": "drawer",
+      "captureBeyondViewport": false,
+      "bytes": 93271,
+      "pngWidth": 1024,
+      "pngHeight": 768,
+      "sha256": "bb14b5f1166d45128ab17ba2a10257441abdb0930151bb94c5ba91b09261fcbc",
+      "committedSha256": "15de93f6aa2e7082756b3df8fb10a237c5deb021704b36b575670f8aefbdd2e2",
+      "samplesVisible": true,
+      "samplesHiddenSha256": "c782aa91d9f873f5fd50ae0851196efe1d767c41c4fd7f4173383c727eb66f41",
+      "regionsSamplesHidden": {
+        "header": {
+          "rect": [
+            0,
+            0,
+            1014,
+            141
+          ],
+          "innerText": "tbound web chat\n\nPi chat workspace\n\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\n\nPresentation only: the supervisor retains policy, effect and publication authority.\n\nDisplay only: these values are copied from the projection and are not evidence.\n\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            141,
+            210,
+            706
+          ],
+          "innerText": "Session\n\nAdd /healthz and run tests\n\nreported\nreported by the source, not independently verified\n\nTurns: 1\n\nRead-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are supervisor authority.\n\nObservation streams\ndevelopment fixture transcript: complete (source did not claim completeness) (non-claim-bearing development fixture)\nproduction supervisor projection: unavailable (no authenticated live projection source is registered), not available"
+        },
+        "main": {
+          "rect": [
+            210,
+            141,
+            804,
+            706
+          ],
+          "innerText": "Chat\nTrajectory\nALLOW 4\nDENY 1\nreported 3\ndenied 1\nunknown result 1\nlossy 1\nAll 18\nDenied 2\nUnknown 1\nFailed 0\n\n18 element(s) in the retained window\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\n·\n11:12:04\n\nAdd a /healthz endpoint to the service and run the test suite.\n\nASSISTANT\n·\n11:12:09\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\nR\nread\nservice/entrypoint.go\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nunverified\nALLOW\nunknown\n\nASSISTANT\n·\n11:14:30\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either."
+        },
+        "footer": {
+          "rect": [
+            0,
+            847,
+            1014,
+            95
+          ],
+          "innerText": "Turns\n1\nRecords retained\n18\nPolicy, retained window\nALLOW 4 · DENY 1 · UNKNOWN 0\nToken usage\nunavailable (the projection records no token usage)\nDuration\nunavailable (the projection records no duration)\n\nbuild 0.1.0"
+        },
+        "governanceInspector": {
+          "rect": [
+            664,
+            141,
+            350,
+            706
+          ],
+          "innerText": "Governance\nClose governance\nPolicy decisions\nAllowed (ALLOW)\n4\nDenied (DENY)\n1\nUnknown\n0\nPolicy digest\nsha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6\n\nA policy ALLOW is a permission, not an outcome.\n\nProvenance\nIndependently verified\nno\nProfile\npi-cli-dev-profile\nProfile hash\nsha256:0b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f90\nSource digest\nsha256:1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809\nContainment profile\nd09-dev-profile\nContainment digest\nsha256:2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a\nProvider profile\nbroker-template-v1\nRuntime closure\nunsigned\nLaunch proof digest\nunavailable (Illustrative development identities. Provenance is not independently verified and is not claim-bearing.)\nPublication\nnot attempted\n\nLive publication is not attempted by this development session.\n\nRecovery\nunknown\n\nOne effect lease released without a durable terminal outcome; recovery would inspect workspace, process, and commit-token state and must not replay.\n\nQualification\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse\n\nThese values are fixed for this build. No receipt can change them.\n\nWarnings\nDevelopment fixture. It is not production evidence and establishes no claim.\nThe browser gateway is an untrusted presentation client and holds no policy, effect, or publication authority."
+        },
+        "recordInspector": null,
+        "inspectorAttributes": {
+          "ariaLabel": "Governance inspector",
+          "dataOpen": "true"
+        },
+        "governanceToggle": {
+          "rect": [
+            708,
+            17,
+            99,
+            32
+          ],
+          "ariaExpanded": "true"
+        },
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "false"
+          }
+        ],
+        "selectedRows": 0,
+        "ledgerRows": 18,
+        "ledgerLabels": [
+          "User record 1: prompt. Message: no verdict or outcome recorded. Add a /healthz endpoint to the service and run the test suite.",
+          "Assistant record 2: message. Message: no verdict or outcome recorded. I will inspect the service entrypoint, add the endpoint, then run the tests.",
+          "Tool record 3: proposal. Activity: pending, no outcome yet. read service/entrypoint.go",
+          "Decision record 4: read · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 5: read. Result: succeeded, reported, not independently verified. returned 58 lines from the staging view · digest sha256:aa1…112233",
+          "Tool record 6: proposal. Activity: pending, no outcome yet. edit service/entrypoint.go",
+          "Decision record 7: edit · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 8: edit. Result: succeeded, reported, not independently verified. staged generation g1 with 1 approved file change · digest sha256:bb2…33aa44",
+          "Tool record 9: proposal. Activity: pending, no outcome yet. bash: curl -s https://example.com/healthz",
+          "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6",
+          "Result record 11: bash. Result: denied, not success. denial was durable before it was returned",
+          "Tool record 12: proposal. Activity: pending, no outcome yet. bash: go test ./...",
+          "Decision record 13: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 14: bash. Result: succeeded, reported, not independently verified. command cell settled; exit code 0 · digest sha256:cc3…44bb55",
+          "Tool record 15: proposal. Activity: pending, no outcome yet. bash: go test -race ./...",
+          "Decision record 16: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 17: bash. Result: UNKNOWN, not success; output lossy. lease released; no durable terminal outcome observed · output lossy",
+          "Assistant record 18: message. Message: no verdict or outcome recorded. Added /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either."
+        ],
+        "selectedRowLabel": null,
+        "viewport": {
+          "innerWidth": 1024,
+          "innerHeight": 768,
+          "documentHeight": 942
+        },
+        "htmlDataTheme": "light"
+      }
+    },
+    {
+      "name": "light-trajectory",
+      "file": "v3-mockup-trajectory-1440-light.png",
+      "viewport": "1440x900",
+      "hash": "#theme=light",
+      "view": "trajectory",
+      "action": null,
+      "captureBeyondViewport": false,
+      "bytes": 135153,
+      "pngWidth": 1440,
+      "pngHeight": 900,
+      "sha256": "678492873a32e4712809674802c0fb61fb7fc4d5b696e2d82a1f74c250acdda6",
+      "committedSha256": "3ea7e976a94ec47d871b545d60864c56ef6ff3f0d6368e91b73cc94d625b12ec",
+      "samplesVisible": true,
+      "samplesHiddenSha256": "dc9d5daae57860289e25467e56e07a5486c373c52d4669ea400b9546c40ffcd3",
+      "regionsSamplesHidden": {
+        "header": {
+          "rect": [
+            0,
+            0,
+            1430,
+            113
+          ],
+          "innerText": "tbound web chat\n\nPi chat workspace\n\nsource: fixture · unverified\nconnected\nSystem\nLight\nDark\n\nPresentation only: the supervisor retains policy, effect and publication authority.\n\nDisplay only: these values are copied from the projection and are not evidence.\n\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            113,
+            210,
+            1602
+          ],
+          "innerText": "Session\n\nAdd /healthz and run tests\n\nreported\nreported by the source, not independently verified\n\nTurns: 1\n\nRead-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are supervisor authority.\n\nObservation streams\ndevelopment fixture transcript: complete (source did not claim completeness) (non-claim-bearing development fixture)\nproduction supervisor projection: unavailable (no authenticated live projection source is registered), not available"
+        },
+        "main": {
+          "rect": [
+            210,
+            113,
+            919,
+            1602
+          ],
+          "innerText": "Chat\nTrajectory\nTurn\nTool\nVerdict\n\nTurn: group records by their recorded turn.\n\nSearch records\n\n18 record(s) · grouped by Turn\n\nModel\nPolicy\nTools\n\nThe axis is record sequence, not time: the projection records no duration, so no span here is drawn as one.\n\nTurn turn-01\n18 record(s)\nUser\nprompt\nAdd a /healthz endpoint to the service and run the test suite.\n11:12:04\nunverified\nAssistant\nmessage\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n11:12:09\nunverified\nTool\nproposal\nread service/entrypoint.go\n11:12:11\npending\nunverified\nDecision\nread · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:12:11\nALLOW\nunverified\nResult\nread\nreturned 58 lines from the staging view · digest sha256:aa1…112233\n11:12:12\nreported\nunverified\nTool\nproposal\nedit service/entrypoint.go\n11:12:19\npending\nunverified\nDecision\nedit · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:12:19\nALLOW\nunverified\nResult\nedit\nstaged generation g1 with 1 approved file change · digest sha256:bb2…33aa44\n11:12:21\nreported\nunverified\nTool\nproposal\nbash: curl -s https://example.com/healthz\n11:12:31\npending\nunverified\nDecision\nbash · reviewed\nreason policy_rule_deny · policy sha256:9f2…e0f3a6\n11:12:31\nDENY\nunverified\nResult\nbash\ndenial was durable before it was returned\n11:12:31\ndenied\nunverified\nTool\nproposal\nbash: go test ./...\n11:12:44\npending\nunverified\nDecision\nbash · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:12:44\nALLOW\nunverified\nResult\nbash\ncommand cell settled; exit code 0 · digest sha256:cc3…44bb55\n11:13:58\nreported\nunverified\nTool\nproposal\nbash: go test -race ./...\n11:14:02\npending\nunverified\nDecision\nbash · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:14:02\nALLOW\nunverified\nResult\nbash\nlease released; no durable terminal outcome observed · output lossy\n11:14:29\nunknown\nlossy\nunverified\nAssistant\nmessage\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n11:14:30\nunverified"
+        },
+        "footer": {
+          "rect": [
+            0,
+            1715,
+            1430,
+            39
+          ],
+          "innerText": "Turns\n1\nRecords retained\n18\nPolicy, retained window\nALLOW 4 · DENY 1 · UNKNOWN 0\nToken usage\nunavailable (the projection records no token usage)\nDuration\nunavailable (the projection records no duration)\n\nbuild 0.1.0"
+        },
+        "governanceInspector": {
+          "rect": [
+            1129,
+            113,
+            301,
+            1602
+          ],
+          "innerText": "Governance\nPolicy decisions\nAllowed (ALLOW)\n4\nDenied (DENY)\n1\nUnknown\n0\nPolicy digest\nsha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6\n\nA policy ALLOW is a permission, not an outcome.\n\nProvenance\nIndependently verified\nno\nProfile\npi-cli-dev-profile\nProfile hash\nsha256:0b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f90\nSource digest\nsha256:1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809\nContainment profile\nd09-dev-profile\nContainment digest\nsha256:2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a\nProvider profile\nbroker-template-v1\nRuntime closure\nunsigned\nLaunch proof digest\nunavailable (Illustrative development identities. Provenance is not independently verified and is not claim-bearing.)\nPublication\nnot attempted\n\nLive publication is not attempted by this development session.\n\nRecovery\nunknown\n\nOne effect lease released without a durable terminal outcome; recovery would inspect workspace, process, and commit-token state and must not replay.\n\nQualification\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse\n\nThese values are fixed for this build. No receipt can change them.\n\nWarnings\nDevelopment fixture. It is not production evidence and establishes no claim.\nThe browser gateway is an untrusted presentation client and holds no policy, effect, or publication authority."
+        },
+        "recordInspector": null,
+        "inspectorAttributes": {
+          "ariaLabel": "Governance inspector",
+          "dataOpen": "false"
+        },
+        "governanceToggle": {
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "ariaExpanded": null
+        },
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "false"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "true"
+          }
+        ],
+        "selectedRows": 0,
+        "ledgerRows": 18,
+        "ledgerLabels": [
+          "User record 1: prompt. Message: no verdict or outcome recorded. Add a /healthz endpoint to the service and run the test suite.",
+          "Assistant record 2: message. Message: no verdict or outcome recorded. I will inspect the service entrypoint, add the endpoint, then run the tests.",
+          "Tool record 3: proposal. Activity: pending, no outcome yet. read service/entrypoint.go",
+          "Decision record 4: read · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 5: read. Result: succeeded, reported, not independently verified. returned 58 lines from the staging view · digest sha256:aa1…112233",
+          "Tool record 6: proposal. Activity: pending, no outcome yet. edit service/entrypoint.go",
+          "Decision record 7: edit · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 8: edit. Result: succeeded, reported, not independently verified. staged generation g1 with 1 approved file change · digest sha256:bb2…33aa44",
+          "Tool record 9: proposal. Activity: pending, no outcome yet. bash: curl -s https://example.com/healthz",
+          "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6",
+          "Result record 11: bash. Result: denied, not success. denial was durable before it was returned",
+          "Tool record 12: proposal. Activity: pending, no outcome yet. bash: go test ./...",
+          "Decision record 13: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 14: bash. Result: succeeded, reported, not independently verified. command cell settled; exit code 0 · digest sha256:cc3…44bb55",
+          "Tool record 15: proposal. Activity: pending, no outcome yet. bash: go test -race ./...",
+          "Decision record 16: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 17: bash. Result: UNKNOWN, not success; output lossy. lease released; no durable terminal outcome observed · output lossy",
+          "Assistant record 18: message. Message: no verdict or outcome recorded. Added /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either."
+        ],
+        "selectedRowLabel": null,
+        "viewport": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "documentHeight": 1754
+        },
+        "htmlDataTheme": "light"
+      }
+    },
+    {
+      "name": "dark-trajectory",
+      "file": "v3-mockup-trajectory-1440-dark.png",
+      "viewport": "1440x900",
+      "hash": "#theme=dark",
+      "view": "trajectory",
+      "action": null,
+      "captureBeyondViewport": false,
+      "bytes": 136682,
+      "pngWidth": 1440,
+      "pngHeight": 900,
+      "sha256": "f9164621bd405d77f9eb6dc54189c19902e845fc20aa101c19ccec82420467b9",
+      "committedSha256": "f26ee0a708572331fb17221ddd519282be45505e579cedac9535ae6a2094c037",
+      "samplesVisible": true,
+      "samplesHiddenSha256": "65c0d50b46870bef2dd50a18b43e462e8e8634145d69a2121d9188aa36213ae8",
+      "regionsSamplesHidden": {
+        "header": {
+          "rect": [
+            0,
+            0,
+            1430,
+            113
+          ],
+          "innerText": "tbound web chat\n\nPi chat workspace\n\nsource: fixture · unverified\nconnected\nSystem\nLight\nDark\n\nPresentation only: the supervisor retains policy, effect and publication authority.\n\nDisplay only: these values are copied from the projection and are not evidence.\n\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            113,
+            210,
+            1602
+          ],
+          "innerText": "Session\n\nAdd /healthz and run tests\n\nreported\nreported by the source, not independently verified\n\nTurns: 1\n\nRead-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are supervisor authority.\n\nObservation streams\ndevelopment fixture transcript: complete (source did not claim completeness) (non-claim-bearing development fixture)\nproduction supervisor projection: unavailable (no authenticated live projection source is registered), not available"
+        },
+        "main": {
+          "rect": [
+            210,
+            113,
+            919,
+            1602
+          ],
+          "innerText": "Chat\nTrajectory\nTurn\nTool\nVerdict\n\nTurn: group records by their recorded turn.\n\nSearch records\n\n18 record(s) · grouped by Turn\n\nModel\nPolicy\nTools\n\nThe axis is record sequence, not time: the projection records no duration, so no span here is drawn as one.\n\nTurn turn-01\n18 record(s)\nUser\nprompt\nAdd a /healthz endpoint to the service and run the test suite.\n11:12:04\nunverified\nAssistant\nmessage\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n11:12:09\nunverified\nTool\nproposal\nread service/entrypoint.go\n11:12:11\npending\nunverified\nDecision\nread · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:12:11\nALLOW\nunverified\nResult\nread\nreturned 58 lines from the staging view · digest sha256:aa1…112233\n11:12:12\nreported\nunverified\nTool\nproposal\nedit service/entrypoint.go\n11:12:19\npending\nunverified\nDecision\nedit · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:12:19\nALLOW\nunverified\nResult\nedit\nstaged generation g1 with 1 approved file change · digest sha256:bb2…33aa44\n11:12:21\nreported\nunverified\nTool\nproposal\nbash: curl -s https://example.com/healthz\n11:12:31\npending\nunverified\nDecision\nbash · reviewed\nreason policy_rule_deny · policy sha256:9f2…e0f3a6\n11:12:31\nDENY\nunverified\nResult\nbash\ndenial was durable before it was returned\n11:12:31\ndenied\nunverified\nTool\nproposal\nbash: go test ./...\n11:12:44\npending\nunverified\nDecision\nbash · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:12:44\nALLOW\nunverified\nResult\nbash\ncommand cell settled; exit code 0 · digest sha256:cc3…44bb55\n11:13:58\nreported\nunverified\nTool\nproposal\nbash: go test -race ./...\n11:14:02\npending\nunverified\nDecision\nbash · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:14:02\nALLOW\nunverified\nResult\nbash\nlease released; no durable terminal outcome observed · output lossy\n11:14:29\nunknown\nlossy\nunverified\nAssistant\nmessage\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n11:14:30\nunverified"
+        },
+        "footer": {
+          "rect": [
+            0,
+            1715,
+            1430,
+            39
+          ],
+          "innerText": "Turns\n1\nRecords retained\n18\nPolicy, retained window\nALLOW 4 · DENY 1 · UNKNOWN 0\nToken usage\nunavailable (the projection records no token usage)\nDuration\nunavailable (the projection records no duration)\n\nbuild 0.1.0"
+        },
+        "governanceInspector": {
+          "rect": [
+            1129,
+            113,
+            301,
+            1602
+          ],
+          "innerText": "Governance\nPolicy decisions\nAllowed (ALLOW)\n4\nDenied (DENY)\n1\nUnknown\n0\nPolicy digest\nsha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6\n\nA policy ALLOW is a permission, not an outcome.\n\nProvenance\nIndependently verified\nno\nProfile\npi-cli-dev-profile\nProfile hash\nsha256:0b1c2d3e4f5061728394a5b6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f90\nSource digest\nsha256:1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f809\nContainment profile\nd09-dev-profile\nContainment digest\nsha256:2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e7f8091a\nProvider profile\nbroker-template-v1\nRuntime closure\nunsigned\nLaunch proof digest\nunavailable (Illustrative development identities. Provenance is not independently verified and is not claim-bearing.)\nPublication\nnot attempted\n\nLive publication is not attempted by this development session.\n\nRecovery\nunknown\n\nOne effect lease released without a durable terminal outcome; recovery would inspect workspace, process, and commit-token state and must not replay.\n\nQualification\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse\n\nThese values are fixed for this build. No receipt can change them.\n\nWarnings\nDevelopment fixture. It is not production evidence and establishes no claim.\nThe browser gateway is an untrusted presentation client and holds no policy, effect, or publication authority."
+        },
+        "recordInspector": null,
+        "inspectorAttributes": {
+          "ariaLabel": "Governance inspector",
+          "dataOpen": "false"
+        },
+        "governanceToggle": {
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "ariaExpanded": null
+        },
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "false"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "true"
+          }
+        ],
+        "selectedRows": 0,
+        "ledgerRows": 18,
+        "ledgerLabels": [
+          "User record 1: prompt. Message: no verdict or outcome recorded. Add a /healthz endpoint to the service and run the test suite.",
+          "Assistant record 2: message. Message: no verdict or outcome recorded. I will inspect the service entrypoint, add the endpoint, then run the tests.",
+          "Tool record 3: proposal. Activity: pending, no outcome yet. read service/entrypoint.go",
+          "Decision record 4: read · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 5: read. Result: succeeded, reported, not independently verified. returned 58 lines from the staging view · digest sha256:aa1…112233",
+          "Tool record 6: proposal. Activity: pending, no outcome yet. edit service/entrypoint.go",
+          "Decision record 7: edit · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 8: edit. Result: succeeded, reported, not independently verified. staged generation g1 with 1 approved file change · digest sha256:bb2…33aa44",
+          "Tool record 9: proposal. Activity: pending, no outcome yet. bash: curl -s https://example.com/healthz",
+          "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6",
+          "Result record 11: bash. Result: denied, not success. denial was durable before it was returned",
+          "Tool record 12: proposal. Activity: pending, no outcome yet. bash: go test ./...",
+          "Decision record 13: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 14: bash. Result: succeeded, reported, not independently verified. command cell settled; exit code 0 · digest sha256:cc3…44bb55",
+          "Tool record 15: proposal. Activity: pending, no outcome yet. bash: go test -race ./...",
+          "Decision record 16: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 17: bash. Result: UNKNOWN, not success; output lossy. lease released; no durable terminal outcome observed · output lossy",
+          "Assistant record 18: message. Message: no verdict or outcome recorded. Added /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either."
+        ],
+        "selectedRowLabel": null,
+        "viewport": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "documentHeight": 1754
+        },
+        "htmlDataTheme": "dark"
+      }
+    },
+    {
+      "name": "light-trajectory-selected",
+      "file": "v3-mockup-trajectory-selected-1440-light.png",
+      "viewport": "1440x900",
+      "hash": "#theme=light",
+      "view": "trajectory",
+      "action": "select",
+      "captureBeyondViewport": false,
+      "bytes": 127104,
+      "pngWidth": 1440,
+      "pngHeight": 900,
+      "sha256": "79d271c35dc70171c812e7c1097844721a0ba8e0fec6a65cebb33dff902eb47a",
+      "committedSha256": null,
+      "samplesVisible": true,
+      "samplesHiddenSha256": "b98daa8997799022ed33d78ef842b35dc2dec7e49b0051030b343667ac2a36be",
+      "regionsSamplesHidden": {
+        "header": {
+          "rect": [
+            0,
+            0,
+            1430,
+            113
+          ],
+          "innerText": "tbound web chat\n\nPi chat workspace\n\nsource: fixture · unverified\nconnected\nSystem\nLight\nDark\n\nPresentation only: the supervisor retains policy, effect and publication authority.\n\nDisplay only: these values are copied from the projection and are not evidence.\n\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            113,
+            210,
+            1104
+          ],
+          "innerText": "Session\n\nAdd /healthz and run tests\n\nreported\nreported by the source, not independently verified\n\nTurns: 1\n\nRead-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are supervisor authority.\n\nObservation streams\ndevelopment fixture transcript: complete (source did not claim completeness) (non-claim-bearing development fixture)\nproduction supervisor projection: unavailable (no authenticated live projection source is registered), not available"
+        },
+        "main": {
+          "rect": [
+            210,
+            113,
+            919,
+            1104
+          ],
+          "innerText": "Chat\nTrajectory\nTurn\nTool\nVerdict\n\nTurn: group records by their recorded turn.\n\nSearch records\n\n18 record(s) · grouped by Turn\n\nModel\nPolicy\nTools\n\nThe axis is record sequence, not time: the projection records no duration, so no span here is drawn as one.\n\nTurn turn-01\n18 record(s)\nUser\nprompt\nAdd a /healthz endpoint to the service and run the test suite.\n11:12:04\nunverified\nAssistant\nmessage\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n11:12:09\nunverified\nTool\nproposal\nread service/entrypoint.go\n11:12:11\npending\nunverified\nDecision\nread · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:12:11\nALLOW\nunverified\nResult\nread\nreturned 58 lines from the staging view · digest sha256:aa1…112233\n11:12:12\nreported\nunverified\nTool\nproposal\nedit service/entrypoint.go\n11:12:19\npending\nunverified\nDecision\nedit · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:12:19\nALLOW\nunverified\nResult\nedit\nstaged generation g1 with 1 approved file change · digest sha256:bb2…33aa44\n11:12:21\nreported\nunverified\nTool\nproposal\nbash: curl -s https://example.com/healthz\n11:12:31\npending\nunverified\nDecision\nbash · reviewed\nreason policy_rule_deny · policy sha256:9f2…e0f3a6\n11:12:31\nDENY\nunverified\nResult\nbash\ndenial was durable before it was returned\n11:12:31\ndenied\nunverified\nTool\nproposal\nbash: go test ./...\n11:12:44\npending\nunverified\nDecision\nbash · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:12:44\nALLOW\nunverified\nResult\nbash\ncommand cell settled; exit code 0 · digest sha256:cc3…44bb55\n11:13:58\nreported\nunverified\nTool\nproposal\nbash: go test -race ./...\n11:14:02\npending\nunverified\nDecision\nbash · reviewed\nreason policy_rule_allow · policy sha256:9f2…e0f3a6\n11:14:02\nALLOW\nunverified\nResult\nbash\nlease released; no durable terminal outcome observed · output lossy\n11:14:29\nunknown\nlossy\nunverified\nAssistant\nmessage\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n11:14:30\nunverified"
+        },
+        "footer": {
+          "rect": [
+            0,
+            1217,
+            1430,
+            39
+          ],
+          "innerText": "Turns\n1\nRecords retained\n18\nPolicy, retained window\nALLOW 4 · DENY 1 · UNKNOWN 0\nToken usage\nunavailable (the projection records no token usage)\nDuration\nunavailable (the projection records no duration)\n\nbuild 0.1.0"
+        },
+        "governanceInspector": null,
+        "recordInspector": {
+          "rect": [
+            1129,
+            113,
+            301,
+            1104
+          ],
+          "innerText": "Record\nClose record\nDecision\nsequence 10 · turn turn-01\n\nPolicy verdict: DENY (refusal, not an outcome), not independently verified\n\nSummary\nsource\nDecision\nrecord id\ndec-03-bash-egress\nsequence\n10\nturn\nturn-01\ntool\nbash\ntool call\ncall-03\nPayload\nsummary\ncommand cell has no network access\nDecision\nverdict\nDENY\nreason code\npolicy_rule_deny\npolicy digest\nsha256:9f2…e0f3a6\nEvidence\nauthority\ndiagnostic\nverification\nunverified-input\nindependently verified\nno\nTiming\nrecorded at\n11:12:31 — a clock reading, not a duration\nduration\nunavailable — the projection records no duration\nrecorded timestamp\n2026-10-13T09:12:31Z\n\nthe projection records a timestamp, not a duration; no elapsed time is shown because none was recorded"
+        },
+        "inspectorAttributes": {
+          "ariaLabel": "Record inspector",
+          "dataOpen": "false"
+        },
+        "governanceToggle": {
+          "rect": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "ariaExpanded": null
+        },
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "false"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "true"
+          }
+        ],
+        "selectedRows": 1,
+        "ledgerRows": 18,
+        "ledgerLabels": [
+          "User record 1: prompt. Message: no verdict or outcome recorded. Add a /healthz endpoint to the service and run the test suite.",
+          "Assistant record 2: message. Message: no verdict or outcome recorded. I will inspect the service entrypoint, add the endpoint, then run the tests.",
+          "Tool record 3: proposal. Activity: pending, no outcome yet. read service/entrypoint.go",
+          "Decision record 4: read · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 5: read. Result: succeeded, reported, not independently verified. returned 58 lines from the staging view · digest sha256:aa1…112233",
+          "Tool record 6: proposal. Activity: pending, no outcome yet. edit service/entrypoint.go",
+          "Decision record 7: edit · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 8: edit. Result: succeeded, reported, not independently verified. staged generation g1 with 1 approved file change · digest sha256:bb2…33aa44",
+          "Tool record 9: proposal. Activity: pending, no outcome yet. bash: curl -s https://example.com/healthz",
+          "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6",
+          "Result record 11: bash. Result: denied, not success. denial was durable before it was returned",
+          "Tool record 12: proposal. Activity: pending, no outcome yet. bash: go test ./...",
+          "Decision record 13: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 14: bash. Result: succeeded, reported, not independently verified. command cell settled; exit code 0 · digest sha256:cc3…44bb55",
+          "Tool record 15: proposal. Activity: pending, no outcome yet. bash: go test -race ./...",
+          "Decision record 16: bash · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified. reason policy_rule_allow · policy sha256:9f2…e0f3a6",
+          "Result record 17: bash. Result: UNKNOWN, not success; output lossy. lease released; no durable terminal outcome observed · output lossy",
+          "Assistant record 18: message. Message: no verdict or outcome recorded. Added /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either."
+        ],
+        "selectedRowLabel": "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6",
+        "viewport": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "documentHeight": 1256
+        },
+        "htmlDataTheme": "light"
+      }
+    }
+  ],
+  "comparisons": {
+    "text": {
+      "light-chat": {
+        "real": "light-chat",
+        "mock": "light-chat",
+        "regions": {
+          "header": {
+            "rect": {
+              "real": [
+                0,
+                0,
+                1430,
+                113
+              ],
+              "mock": [
+                0,
+                0,
+                1430,
+                113
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 17,
+              "mock": 17,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "nav": {
+            "rect": {
+              "real": [
+                0,
+                113,
+                210,
+                1602
+              ],
+              "mock": [
+                0,
+                113,
+                210,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 9,
+              "mock": 9,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "main": {
+            "rect": {
+              "real": [
+                210,
+                113,
+                919,
+                1602
+              ],
+              "mock": [
+                210,
+                113,
+                919,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 58,
+              "mock": 58,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "footer": {
+            "rect": {
+              "real": [
+                0,
+                1715,
+                1430,
+                39
+              ],
+              "mock": [
+                0,
+                1715,
+                1430,
+                39
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 11,
+              "mock": 11,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "governanceInspector": {
+            "rect": {
+              "real": [
+                1129,
+                113,
+                301,
+                1602
+              ],
+              "mock": [
+                1129,
+                113,
+                301,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 49,
+              "mock": 49,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "recordInspector": "absent in both"
+        },
+        "ledgerLabels": "real ledger not mounted (chat view)",
+        "toggle": {
+          "real": {
+            "rect": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "ariaExpanded": null
+          },
+          "mock": {
+            "rect": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "ariaExpanded": null
+          }
+        },
+        "tabs": {
+          "real": [
+            {
+              "text": "Chat",
+              "selected": "true"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "false"
+            }
+          ],
+          "mock": [
+            {
+              "text": "Chat",
+              "selected": "true"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "false"
+            }
+          ]
+        },
+        "selectedRowLabel": {
+          "real": null,
+          "mock": null
+        },
+        "viewport": {
+          "real": {
+            "innerWidth": 1440,
+            "innerHeight": 900,
+            "documentHeight": 1754
+          },
+          "mock": {
+            "innerWidth": 1440,
+            "innerHeight": 900,
+            "documentHeight": 1754
+          }
+        }
+      },
+      "dark-chat": {
+        "real": "dark-chat",
+        "mock": "dark-chat",
+        "regions": {
+          "header": {
+            "rect": {
+              "real": [
+                0,
+                0,
+                1430,
+                113
+              ],
+              "mock": [
+                0,
+                0,
+                1430,
+                113
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 17,
+              "mock": 17,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "nav": {
+            "rect": {
+              "real": [
+                0,
+                113,
+                210,
+                1602
+              ],
+              "mock": [
+                0,
+                113,
+                210,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 9,
+              "mock": 9,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "main": {
+            "rect": {
+              "real": [
+                210,
+                113,
+                919,
+                1602
+              ],
+              "mock": [
+                210,
+                113,
+                919,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 58,
+              "mock": 58,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "footer": {
+            "rect": {
+              "real": [
+                0,
+                1715,
+                1430,
+                39
+              ],
+              "mock": [
+                0,
+                1715,
+                1430,
+                39
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 11,
+              "mock": 11,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "governanceInspector": {
+            "rect": {
+              "real": [
+                1129,
+                113,
+                301,
+                1602
+              ],
+              "mock": [
+                1129,
+                113,
+                301,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 49,
+              "mock": 49,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "recordInspector": "absent in both"
+        },
+        "ledgerLabels": "real ledger not mounted (chat view)",
+        "toggle": {
+          "real": {
+            "rect": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "ariaExpanded": null
+          },
+          "mock": {
+            "rect": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "ariaExpanded": null
+          }
+        },
+        "tabs": {
+          "real": [
+            {
+              "text": "Chat",
+              "selected": "true"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "false"
+            }
+          ],
+          "mock": [
+            {
+              "text": "Chat",
+              "selected": "true"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "false"
+            }
+          ]
+        },
+        "selectedRowLabel": {
+          "real": null,
+          "mock": null
+        },
+        "viewport": {
+          "real": {
+            "innerWidth": 1440,
+            "innerHeight": 900,
+            "documentHeight": 1754
+          },
+          "mock": {
+            "innerWidth": 1440,
+            "innerHeight": 900,
+            "documentHeight": 1754
+          }
+        }
+      },
+      "light-chat-1024": {
+        "real": "light-chat-1024",
+        "mock": "light-chat-1024",
+        "regions": {
+          "header": {
+            "rect": {
+              "real": [
+                0,
+                0,
+                1014,
+                141
+              ],
+              "mock": [
+                0,
+                0,
+                1014,
+                141
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 18,
+              "mock": 18,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "nav": {
+            "rect": {
+              "real": [
+                0,
+                141,
+                210,
+                706
+              ],
+              "mock": [
+                0,
+                141,
+                210,
+                706
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 9,
+              "mock": 9,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "main": {
+            "rect": {
+              "real": [
+                210,
+                141,
+                804,
+                706
+              ],
+              "mock": [
+                210,
+                141,
+                804,
+                706
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 58,
+              "mock": 58,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "footer": {
+            "rect": {
+              "real": [
+                0,
+                847,
+                1014,
+                95
+              ],
+              "mock": [
+                0,
+                847,
+                1014,
+                95
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 11,
+              "mock": 11,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "governanceInspector": {
+            "rect": {
+              "real": [
+                1021,
+                141,
+                350,
+                706
+              ],
+              "mock": [
+                1021,
+                141,
+                350,
+                706
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 50,
+              "mock": 50,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "recordInspector": "absent in both"
+        },
+        "ledgerLabels": "real ledger not mounted (chat view)",
+        "toggle": {
+          "real": {
+            "rect": [
+              708,
+              17,
+              99,
+              32
+            ],
+            "ariaExpanded": "false"
+          },
+          "mock": {
+            "rect": [
+              708,
+              17,
+              99,
+              32
+            ],
+            "ariaExpanded": "false"
+          }
+        },
+        "tabs": {
+          "real": [
+            {
+              "text": "Chat",
+              "selected": "true"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "false"
+            }
+          ],
+          "mock": [
+            {
+              "text": "Chat",
+              "selected": "true"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "false"
+            }
+          ]
+        },
+        "selectedRowLabel": {
+          "real": null,
+          "mock": null
+        },
+        "viewport": {
+          "real": {
+            "innerWidth": 1024,
+            "innerHeight": 768,
+            "documentHeight": 942
+          },
+          "mock": {
+            "innerWidth": 1024,
+            "innerHeight": 768,
+            "documentHeight": 942
+          }
+        }
+      },
+      "light-drawer-1024": {
+        "real": "light-drawer-1024",
+        "mock": "light-drawer-1024",
+        "regions": {
+          "header": {
+            "rect": {
+              "real": [
+                0,
+                0,
+                1014,
+                141
+              ],
+              "mock": [
+                0,
+                0,
+                1014,
+                141
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 18,
+              "mock": 18,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "nav": {
+            "rect": {
+              "real": [
+                0,
+                141,
+                210,
+                706
+              ],
+              "mock": [
+                0,
+                141,
+                210,
+                706
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 9,
+              "mock": 9,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "main": {
+            "rect": {
+              "real": [
+                210,
+                141,
+                804,
+                706
+              ],
+              "mock": [
+                210,
+                141,
+                804,
+                706
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 58,
+              "mock": 58,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "footer": {
+            "rect": {
+              "real": [
+                0,
+                847,
+                1014,
+                95
+              ],
+              "mock": [
+                0,
+                847,
+                1014,
+                95
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 11,
+              "mock": 11,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "governanceInspector": {
+            "rect": {
+              "real": [
+                664,
+                141,
+                350,
+                706
+              ],
+              "mock": [
+                664,
+                141,
+                350,
+                706
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 50,
+              "mock": 50,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "recordInspector": "absent in both"
+        },
+        "ledgerLabels": "real ledger not mounted (chat view)",
+        "toggle": {
+          "real": {
+            "rect": [
+              708,
+              17,
+              99,
+              32
+            ],
+            "ariaExpanded": "true"
+          },
+          "mock": {
+            "rect": [
+              708,
+              17,
+              99,
+              32
+            ],
+            "ariaExpanded": "true"
+          }
+        },
+        "tabs": {
+          "real": [
+            {
+              "text": "Chat",
+              "selected": "true"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "false"
+            }
+          ],
+          "mock": [
+            {
+              "text": "Chat",
+              "selected": "true"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "false"
+            }
+          ]
+        },
+        "selectedRowLabel": {
+          "real": null,
+          "mock": null
+        },
+        "viewport": {
+          "real": {
+            "innerWidth": 1024,
+            "innerHeight": 768,
+            "documentHeight": 942
+          },
+          "mock": {
+            "innerWidth": 1024,
+            "innerHeight": 768,
+            "documentHeight": 942
+          }
+        }
+      },
+      "light-trajectory": {
+        "real": "light-trajectory",
+        "mock": "light-trajectory",
+        "regions": {
+          "header": {
+            "rect": {
+              "real": [
+                0,
+                0,
+                1430,
+                113
+              ],
+              "mock": [
+                0,
+                0,
+                1430,
+                113
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 17,
+              "mock": 17,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "nav": {
+            "rect": {
+              "real": [
+                0,
+                113,
+                210,
+                1602
+              ],
+              "mock": [
+                0,
+                113,
+                210,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 9,
+              "mock": 9,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "main": {
+            "rect": {
+              "real": [
+                210,
+                113,
+                919,
+                1602
+              ],
+              "mock": [
+                210,
+                113,
+                919,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 120,
+              "mock": 120,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "footer": {
+            "rect": {
+              "real": [
+                0,
+                1715,
+                1430,
+                39
+              ],
+              "mock": [
+                0,
+                1715,
+                1430,
+                39
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 11,
+              "mock": 11,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "governanceInspector": {
+            "rect": {
+              "real": [
+                1129,
+                113,
+                301,
+                1602
+              ],
+              "mock": [
+                1129,
+                113,
+                301,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 49,
+              "mock": 49,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "recordInspector": "absent in both"
+        },
+        "ledgerLabels": {
+          "real": 18,
+          "mock": 18,
+          "mismatches": []
+        },
+        "toggle": {
+          "real": {
+            "rect": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "ariaExpanded": null
+          },
+          "mock": {
+            "rect": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "ariaExpanded": null
+          }
+        },
+        "tabs": {
+          "real": [
+            {
+              "text": "Chat",
+              "selected": "false"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "true"
+            }
+          ],
+          "mock": [
+            {
+              "text": "Chat",
+              "selected": "false"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "true"
+            }
+          ]
+        },
+        "selectedRowLabel": {
+          "real": null,
+          "mock": null
+        },
+        "viewport": {
+          "real": {
+            "innerWidth": 1440,
+            "innerHeight": 900,
+            "documentHeight": 1754
+          },
+          "mock": {
+            "innerWidth": 1440,
+            "innerHeight": 900,
+            "documentHeight": 1754
+          }
+        }
+      },
+      "dark-trajectory": {
+        "real": "dark-trajectory",
+        "mock": "dark-trajectory",
+        "regions": {
+          "header": {
+            "rect": {
+              "real": [
+                0,
+                0,
+                1430,
+                113
+              ],
+              "mock": [
+                0,
+                0,
+                1430,
+                113
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 17,
+              "mock": 17,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "nav": {
+            "rect": {
+              "real": [
+                0,
+                113,
+                210,
+                1602
+              ],
+              "mock": [
+                0,
+                113,
+                210,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 9,
+              "mock": 9,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "main": {
+            "rect": {
+              "real": [
+                210,
+                113,
+                919,
+                1602
+              ],
+              "mock": [
+                210,
+                113,
+                919,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 120,
+              "mock": 120,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "footer": {
+            "rect": {
+              "real": [
+                0,
+                1715,
+                1430,
+                39
+              ],
+              "mock": [
+                0,
+                1715,
+                1430,
+                39
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 11,
+              "mock": 11,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "governanceInspector": {
+            "rect": {
+              "real": [
+                1129,
+                113,
+                301,
+                1602
+              ],
+              "mock": [
+                1129,
+                113,
+                301,
+                1602
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 49,
+              "mock": 49,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "recordInspector": "absent in both"
+        },
+        "ledgerLabels": {
+          "real": 18,
+          "mock": 18,
+          "mismatches": []
+        },
+        "toggle": {
+          "real": {
+            "rect": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "ariaExpanded": null
+          },
+          "mock": {
+            "rect": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "ariaExpanded": null
+          }
+        },
+        "tabs": {
+          "real": [
+            {
+              "text": "Chat",
+              "selected": "false"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "true"
+            }
+          ],
+          "mock": [
+            {
+              "text": "Chat",
+              "selected": "false"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "true"
+            }
+          ]
+        },
+        "selectedRowLabel": {
+          "real": null,
+          "mock": null
+        },
+        "viewport": {
+          "real": {
+            "innerWidth": 1440,
+            "innerHeight": 900,
+            "documentHeight": 1754
+          },
+          "mock": {
+            "innerWidth": 1440,
+            "innerHeight": 900,
+            "documentHeight": 1754
+          }
+        }
+      },
+      "light-trajectory-selected": {
+        "real": "light-trajectory-selected",
+        "mock": "light-trajectory-selected",
+        "regions": {
+          "header": {
+            "rect": {
+              "real": [
+                0,
+                0,
+                1430,
+                113
+              ],
+              "mock": [
+                0,
+                0,
+                1430,
+                113
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 17,
+              "mock": 17,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "nav": {
+            "rect": {
+              "real": [
+                0,
+                113,
+                210,
+                1104
+              ],
+              "mock": [
+                0,
+                113,
+                210,
+                1104
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 9,
+              "mock": 9,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "main": {
+            "rect": {
+              "real": [
+                210,
+                113,
+                919,
+                1104
+              ],
+              "mock": [
+                210,
+                113,
+                919,
+                1104
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 120,
+              "mock": 120,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "footer": {
+            "rect": {
+              "real": [
+                0,
+                1217,
+                1430,
+                39
+              ],
+              "mock": [
+                0,
+                1217,
+                1430,
+                39
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 11,
+              "mock": 11,
+              "differing": 0
+            },
+            "differingLines": []
+          },
+          "governanceInspector": "absent in both",
+          "recordInspector": {
+            "rect": {
+              "real": [
+                1129,
+                113,
+                301,
+                1104
+              ],
+              "mock": [
+                1129,
+                113,
+                301,
+                1104
+              ],
+              "equal": true
+            },
+            "textLines": {
+              "real": 43,
+              "mock": 43,
+              "differing": 0
+            },
+            "differingLines": []
+          }
+        },
+        "ledgerLabels": {
+          "real": 18,
+          "mock": 18,
+          "mismatches": []
+        },
+        "toggle": {
+          "real": {
+            "rect": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "ariaExpanded": null
+          },
+          "mock": {
+            "rect": [
+              0,
+              0,
+              0,
+              0
+            ],
+            "ariaExpanded": null
+          }
+        },
+        "tabs": {
+          "real": [
+            {
+              "text": "Chat",
+              "selected": "false"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "true"
+            }
+          ],
+          "mock": [
+            {
+              "text": "Chat",
+              "selected": "false"
+            },
+            {
+              "text": "Trajectory",
+              "selected": "true"
+            }
+          ]
+        },
+        "selectedRowLabel": {
+          "real": "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6",
+          "mock": "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified. reason policy_rule_deny · policy sha256:9f2…e0f3a6"
+        },
+        "viewport": {
+          "real": {
+            "innerWidth": 1440,
+            "innerHeight": 900,
+            "documentHeight": 1256
+          },
+          "mock": {
+            "innerWidth": 1440,
+            "innerHeight": 900,
+            "documentHeight": 1256
+          }
+        }
+      }
     }
   },
-  "pixelCompare": {
-    "method": "mock (samples hidden; expanded go-test card collapsed; record closed; pointer on the Trajectory tab) against the real /app/ 1440x900 light screenshots, per pixel, maximum channel difference reported. Overlays: v3-diff-*.png (mock dimmed, differing pixels red).",
-    "chat": {
-      "differingPixels": 1882,
+  "pixelComparisons": {
+    "light-chat": {
+      "size": {
+        "real": [
+          1440,
+          900
+        ],
+        "mock": [
+          1440,
+          900
+        ]
+      },
+      "differingPixels": 0,
       "totalPixels": 1296000,
-      "percent": 0.15,
-      "bbox": [
-        1432,
-        146,
-        1437,
-        460
-      ],
-      "maxChannelDelta": 49
+      "percent": 0,
+      "bbox": null,
+      "maxChannelDelta": 0,
+      "hotCells": [],
+      "mockSource": "light-chat (samples hidden)",
+      "realSource": "v3-real-app-1440-light-chat.png",
+      "overlay": {
+        "file": "v3-diff-chat-1440-light.png",
+        "bytes": 165379,
+        "sha256": "ec8a91521afd83464dd706eb55a459000fdff0cba21a20fde857254f0a14b037"
+      }
     },
-    "trajectory": {
-      "differingPixels": 1882,
+    "dark-chat": {
+      "size": {
+        "real": [
+          1440,
+          900
+        ],
+        "mock": [
+          1440,
+          900
+        ]
+      },
+      "differingPixels": 0,
       "totalPixels": 1296000,
-      "percent": 0.15,
-      "bbox": [
-        1432,
-        146,
-        1437,
-        460
-      ],
-      "maxChannelDelta": 49
+      "percent": 0,
+      "bbox": null,
+      "maxChannelDelta": 0,
+      "hotCells": [],
+      "mockSource": "dark-chat (samples hidden)",
+      "realSource": "v3-real-app-1440-dark-chat.png",
+      "overlay": null
     },
-    "note": "Every differing pixel in both states lies at x 1432-1437: the vertical scrollbar thumb. The mock document is taller than the real one (5745 px against 1754 px, measured with samples hidden) because the review sections sit below the app frame, so the thumb is smaller. Earlier runs showed two more differences, a sub-pixel \"D\" in the filter row (fixed by matching the count span markup) and the Trajectory tab hover state (the real capture was taken with the pointer over the tab; reproduced by moving the pointer)."
+    "light-chat-1024": {
+      "size": {
+        "real": [
+          1024,
+          768
+        ],
+        "mock": [
+          1024,
+          768
+        ]
+      },
+      "differingPixels": 0,
+      "totalPixels": 786432,
+      "percent": 0,
+      "bbox": null,
+      "maxChannelDelta": 0,
+      "hotCells": [],
+      "mockSource": "light-chat-1024 (samples hidden)",
+      "realSource": "v3-real-app-1024-light-chat.png",
+      "overlay": null
+    },
+    "light-drawer-1024": {
+      "size": {
+        "real": [
+          1024,
+          768
+        ],
+        "mock": [
+          1024,
+          768
+        ]
+      },
+      "differingPixels": 0,
+      "totalPixels": 786432,
+      "percent": 0,
+      "bbox": null,
+      "maxChannelDelta": 0,
+      "hotCells": [],
+      "mockSource": "light-drawer-1024 (samples hidden)",
+      "realSource": "v3-real-app-1024-light-drawer.png",
+      "overlay": null
+    },
+    "light-trajectory": {
+      "size": {
+        "real": [
+          1440,
+          900
+        ],
+        "mock": [
+          1440,
+          900
+        ]
+      },
+      "differingPixels": 0,
+      "totalPixels": 1296000,
+      "percent": 0,
+      "bbox": null,
+      "maxChannelDelta": 0,
+      "hotCells": [],
+      "mockSource": "light-trajectory (samples hidden)",
+      "realSource": "v3-real-app-1440-light-trajectory.png",
+      "overlay": {
+        "file": "v3-diff-trajectory-1440-light.png",
+        "bytes": 194512,
+        "sha256": "5aaf5b4547d508c87b18acbf21bf7970d234db733f2e68238eab9a8b7e9ce3ba"
+      }
+    },
+    "dark-trajectory": {
+      "size": {
+        "real": [
+          1440,
+          900
+        ],
+        "mock": [
+          1440,
+          900
+        ]
+      },
+      "differingPixels": 0,
+      "totalPixels": 1296000,
+      "percent": 0,
+      "bbox": null,
+      "maxChannelDelta": 0,
+      "hotCells": [],
+      "mockSource": "dark-trajectory (samples hidden)",
+      "realSource": "v3-real-app-1440-dark-trajectory.png",
+      "overlay": null
+    },
+    "light-trajectory-selected": {
+      "size": {
+        "real": [
+          1440,
+          900
+        ],
+        "mock": [
+          1440,
+          900
+        ]
+      },
+      "differingPixels": 0,
+      "totalPixels": 1296000,
+      "percent": 0,
+      "bbox": null,
+      "maxChannelDelta": 0,
+      "hotCells": [],
+      "mockSource": "light-trajectory-selected (samples hidden)",
+      "realSource": "v3-real-app-1440-light-trajectory-selected.png",
+      "overlay": null
+    }
   },
-  "intentionalDifferences": [
-    "Mock samples, absent from the demo fixture and labelled in the file: the \"Earlier history not loaded\" notice (a Retained window notice, which also brings the \"Notices for this transcript are above the tabs.\" pointer), the LOST card, the lossy-success card (verified, which needs a live structurally audited projection), the markdown assistant message, and the \"2 new records · Jump to latest\" pill.",
-    "The jump pill is static in the mock (position: static inside the sample flow); the running UI pill is sticky, and would cover the transcript in a static capture.",
-    "The go-test card is expanded in the mock (its decision and result steps show); the running UI starts all cards collapsed. turn-01 is 791 px here against 507 px in the running UI, the only geometry difference in the Chat landmarks.",
-    "The Trajectory opens with the DENY record (row 10) selected, so the record inspector shows; the running UI shows governance until a row is clicked.",
-    "Both tab panels stay in the DOM with one hidden; the running UI mounts only the selected panel.",
-    "Times are the capture environment local time (UTC+2) as rendered by the running UI; the viewer time zone will differ in the running UI.",
-    "Only theme, tabs, Governance drawer, Escape, Close record and reopen (row 10) are wired. Filters, grouping, search and other rows are static.",
-    "The Result section of the record inspector is shown as a static copy in the review section (sequence 17, UNKNOWN and lossy; its rendered text is checked against the inspector the running UI renders for that record), because the trajectory opens on the DENY decision, which has no Result section.",
-    "The running UI requests /favicon.ico and gets a 404 on every load (7 console errors in the capture); the mock uses an inline data: icon and makes no requests."
-  ],
-  "observations": [
-    "At 1024 px with the drawer open, the drawer (fixed, full height) covers the header theme switch and the Governance toggle. Verified on the running UI and on the mock (checks2).",
-    "The running UI shows the transcript stream \"complete\" with the ok (green) dot although the stream is non-claim-bearing; the mock reproduces this faithfully and it is flagged for review.",
-    "Claim-banner values (G1, H1, containment, claim-bearing) are literals in Shell.tsx:178-191, not projection values; the mock copies them.",
-    "Two notices share the label \"Retained window\" (window gap and evicted records); the mock shows one of them."
-  ],
-  "notVerified": [
-    "Chat and trajectory markup were mapped from frontend/src at HEAD 60ca5b0. Other agents have uncommitted edits to some trajectory, inspector and core TSX files (git status). The mock was checked against the rendered build served from the committed internal/webchat/dist, not against the working-tree source.",
-    "No Linux or WSL run and no frontend test suite run: no source or Go file was changed, and the mock is HTML and CSS only.",
-    "Forced colours were checked through emulated media and computed styles; no screenshot was taken under forced colours.",
-    "The contrast values are computed from the palette (contrast.mjs); no rendered pixel sampling was done.",
-    "Mobile emulation was not used (mobile: false); 390 px is a viewport width."
-  ]
+  "consoleErrorsAndWarnings": [],
+  "requests": {
+    "total": 12,
+    "nonFile": []
+  },
+  "errors": []
 }

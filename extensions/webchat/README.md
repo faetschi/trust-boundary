@@ -27,8 +27,9 @@ no Node. Nothing under `supervisor/` imports it.
   journals and publication stay in `supervisor/`. The browser and this gateway
   hold no effect authority. Success is shown only where verification exists.
 - **Loopback-only.** The gateway binds a literal loopback address (default
-  `127.0.0.1:8791`), serves GET only (plus HEAD on `/`, which only redirects) and
-  rejects request bodies.
+  `127.0.0.1:8791`). It answers GET and HEAD on `/` (a redirect to `/app/`) and on
+  `/favicon.ico` (`204`); every other route is GET-only. Other methods get `405` with
+  an `Allow` header, and request bodies are rejected.
 
 ## Run the demo
 
@@ -123,8 +124,8 @@ the manifest-derived `/app/` allowlist, the CSP smoke and its exit codes.
 - `extensions/webchat/cmd/tbound-webchat/`: loopback-only gateway entrypoint.
 - `extensions/webchat/scripts/csp-smoke.mjs`: opt-in headless-browser CSP check.
 - `extensions/webchat/docs/`:
-  - `frontend.md`: the React scaffold, pins, committed build, the `/app/`
-    allowlist, the CSP smoke, and the Phase 2 and 3 plan.
+  - `frontend.md`: the React client: status, pins, committed build, the `/app/`
+    allowlist, the CSP smoke, the phase plan and receipts.
   - `web-chat.md`: design, authority and claim boundary, verification log.
   - `web-chat-contract.md`: proposed supervisor-owned service contract.
   - `web-chat-ui-plan.md`: design analysis and the harness survey (Appendix A
@@ -137,10 +138,10 @@ the manifest-derived `/app/` allowlist, the CSP smoke and its exit codes.
     `contrast.mjs` script and its output.
   - `webchat/`: mockups and QA captures. The QA JSON receipts keep the paths and
     hashes they were captured with, so they describe the pre-extraction tree.
-  - `webchat/mockups/tbound-redesign-v2.html`: the structural reference for the
-    layout until Phase 3 completes. Its visual language is superseded by
-    `design/design-language.md`.
-  - `webchat/mockups/tbound-redesign-v3.html`: the current static design mockup (demo fixture data, offline; the running UI is `/app/`). `tbound-redesign-v2.html` is historical.
+  - `webchat/mockups/tbound-redesign-v2.html`: the earlier layout mockup, kept until
+    sign-off. Its visual language is superseded by `design/design-language.md`.
+  - `webchat/mockups/tbound-redesign-v3.html`: the current static design mockup (demo
+    fixture data, offline; the running UI is `/app/`).
 
 Paths in these documents are repository-root-relative, for example
 `extensions/webchat/internal/webchat/`. Bare file names such as `store.mjs`

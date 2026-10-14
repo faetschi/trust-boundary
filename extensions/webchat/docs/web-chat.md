@@ -3,7 +3,9 @@
 Status: **development increment, non-claim-bearing.** `G1=false`; containment is
 `not-established`; `H1` is `unexecuted`. No qualified public production launch has
 occurred. A green workspace, green tests, or a loaded fixture establishes none of
-these.
+these. The React client at `/app/` is the default UI, and `/` redirects there. The
+legacy workspace at `/legacy/` is deprecated until sign-off. See
+[frontend.md](frontend.md) for the client's status.
 
 This document describes the first frontend product increment for tbound: a new,
 untrusted web chat workspace for the official Pi CLI/RPC harness, wrapped by
@@ -43,8 +45,7 @@ because submission requires the authenticated supervisor session service.
 |---|---|
 | Bounded read-only projection (snapshot + cursor SSE) | Implemented (fixture / replay / receipt / unavailable sources) |
 | Default UI: the React client at `/app/`, with `/` redirecting there | Implemented. The legacy UI at `/legacy/` is deprecated, and `/` serves it only when the React app is unavailable |
-| Typed post-run receipt import of a real development or production receipt | Implemented (`--receipt`, `--receipt-demo`) |
-| Typed post-run Pi receipt import (dev, native-fixture, production shapes) | Implemented (`--receipt`, `--receipt-demo`) |
+| Typed post-run Pi receipt import (development, native-fixture and production shapes) | Implemented (`--receipt`, `--receipt-demo`) |
 | Chat transcript rendering (user/assistant messages) | Implemented |
 | Tool activity with policy verdict, reason code, and result state | Implemented |
 | Timeline finding filters and an observed posture summary | Implemented |
@@ -56,7 +57,7 @@ because submission requires the authenticated supervisor session service.
 | Assistant messages as a bounded markdown subset, no HTML parsing (§4.6) | Implemented |
 | Tail window: records that arrive while scrolled away are counted on a `Jump to latest` control (§4.5) | Implemented, client-only |
 | Diff viewer | **Deferred** (§12) |
-| Two-press cancel state machine (`stop-sequence.mjs`) | Written, **not wired** (§4.7) |
+| Two-press cancel state machine (legacy `stop-sequence.mjs`; typed port in `frontend/src/core/stop-sequence.ts`) | Written and ported, **not wired** into either UI (§4.7) |
 | Live projection from the supervisor | **Not implemented** (`--live` fails closed) |
 | Persistent multi-turn sessions and history | **Not implemented** (supervisor-owned) |
 | Turn submission / cancellation | **Not implemented** (composer disabled) |
@@ -86,9 +87,13 @@ browser (untrusted)  ──HTTP/SSE (loopback)──▶  tbound-webchat gateway 
 New, additive code (no authority-owned file is modified):
 
 - `extensions/webchat/internal/webchat/` — the bounded projection contract,
-  validation, the gateway store, the HTTP/SSE handler, and the embedded workspace
-  assets. This is an optional extension: the core never imports it (see
-  `extensions/webchat/README.md`).
+  validation, the gateway store, the HTTP/SSE handler, the receipt importer, the
+  legacy workspace assets (`assets/`, deprecated), and the committed React build
+  (`dist/`, served under `/app/`). This is an optional extension: the core never
+  imports it (see `extensions/webchat/README.md`).
+- `extensions/webchat/frontend/` — the React and TypeScript client: `src/` (with the
+  DOM-free `core/` and the `markdown/` AST), its scripts, and the pinned lockfile
+  (see `frontend/DEPENDENCIES.md`).
 - `extensions/webchat/cmd/tbound-webchat/` — the loopback-only gateway
   entrypoint.
 
@@ -334,13 +339,15 @@ for the caller to send. Nothing is re-sent on a reconnect, and nothing is retrie
 
 ## 5. API endpoints
 
-All routes are `GET`-only, except that `/` also answers `HEAD`, and they reject any
-request body. Any other method gets `405` with an `Allow` header. A foreign `Host`
+`GET` and `HEAD` are answered on `/` and `/favicon.ico`; every other route is `GET`-only.
+The routes reject any request body. Any other method gets `405` with an `Allow` header
+(`Allow: GET, HEAD` on `/` and `/favicon.ico`, `Allow: GET` elsewhere). A foreign `Host`
 or `Origin` gets `403` on every route.
 
 | Route | Purpose |
 |---|---|
 | `GET` or `HEAD /` | `302` to `/app/`. The target is a constant: the query string and the rest of the request never reach `Location`, so it is not an open redirect. If the React app cannot be derived, `/` serves the legacy workspace (`200`) with a fallback notice instead. |
+| `GET` or `HEAD /favicon.ico` | `204`, with no body and no `Content-Type`. |
 | `GET /legacy/` | The deprecated legacy workspace, with a deprecation notice above its content. It is removed after sign-off. |
 | `GET /static/*.css`, `/static/*.mjs` | Closed allowlist of the legacy workspace's modules. |
 | `GET /app/`, `/app/*` | The React client build ([frontend.md](frontend.md)). Exact files come from the committed Vite manifest; `503` if the table cannot be derived. |
@@ -487,6 +494,13 @@ stable connection.
   It is cleared only by a snapshot that restores an element at or before the
   earliest lost one and declares no eviction. A live item never clears it.
 
+## 8. Presentation
+
+The current visual spec is [design/design-language.md](design/design-language.md). The
+current static design mockup is `webchat/mockups/tbound-redesign-v3.html` (demo data,
+offline). The running UI is `/app/`. The subsection below records the earlier token and
+component vocabulary.
+
 ### 8.1 Presentation design system
 
 The token names and component shapes follow the **coss/ui naming and pattern
@@ -553,8 +567,10 @@ or secrets.
 
 ### 9.2 Visual QA and keyboard receipts
 
-Screenshots (captured with headless Chrome against the running gateway) are in
-[`webchat/qa/`](webchat/qa/): `fixture-desktop`, `fixture-expanded-tools`,
+These captures were made while `/` still served the legacy workspace (before `6d03657`).
+The React client's captures and receipts (`p3-polish-*`, `p3b-*`, `p3c-*`, `v3-real-app-*`)
+are listed in [frontend.md](frontend.md). Screenshots (captured with headless Chrome against
+the running gateway) are in [`webchat/qa/`](webchat/qa/): `fixture-desktop`, `fixture-expanded-tools`,
 `fixture-denied-filter`, `replay-continuity-gap`, `receipt-real-desktop`,
 `receipt-real-expanded-tools`, `unavailable-desktop`, `mobile-conversation`,
 `mobile-inspector`. Keyboard audits driven over the DevTools protocol are in
@@ -571,6 +587,12 @@ disclosure or filter button a user was operating, and a render error cannot bloc
 data loading.
 
 ## 10. Verification receipts
+
+Current numbers at HEAD `57e6406` (Linux, WSL, Go 1.27.1, Node 24.15.0): vitest 896 passed in
+60 files, 0 skipped; extension Go `-race` 54 top-level tests PASS, 0 SKIP (132 PASS including
+subtests, from the `-v` run recorded in [phase3-parity.md](phase3-parity.md)); legacy node
+tests 258 pass, 0 skipped; boundary guard OK. The receipts below are the historical record of
+earlier increments. The React client's receipts are in [frontend.md](frontend.md).
 
 Focused checks on the pinned Go 1.27.1 in Linux, run from `extensions/webchat/`
 (entries from before the extraction ran from `supervisor/`):

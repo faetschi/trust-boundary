@@ -20,8 +20,10 @@
 //      the React client, and /legacy/ is the deprecated legacy workspace, which must show
 //      its deprecation notice. For each page, the Document response's
 //      Content-Security-Policy as the browser received it must equal the policy. There
-//      must be zero CSP violations, zero console errors and zero uncaught exceptions,
-//      except one favicon.ico 404; zero style attributes; and zero on* attributes. The
+//      must be zero CSP violations, zero console errors and zero uncaught exceptions.
+//      There is no favicon exception: /favicon.ico answers 204 (handler.go, pinned by
+//      favicon_test.go), so a favicon 404 is a console error and fails the run. There
+//      must also be zero style attributes and zero on* attributes. The
 //      React pages must render their banner with a CSS Modules class whose computed
 //      background differs from a default probe, and a linked stylesheet. /legacy/ must
 //      have its title, the claim strip, the chat view, and the chat and trajectory tabs.
@@ -37,8 +39,8 @@
 //   --chrome PATH, or CHROME_BIN, selects the browser. Otherwise the usual Chrome,
 //   Chromium and Edge install paths and PATH are searched.
 //
-// Exit codes: 0 PASS. 1 FAIL: a check failed. 2 usage error. 3 NOT VERIFIED: no
-// browser. 4 NOT VERIFIED: gateway, toolchain or DevTools unavailable or timed out.
+// Exit codes: 0 PASS. 1 FAIL: a check failed, including any console error (a favicon
+// 404 included). 2 usage error. 3 NOT VERIFIED: no browser. 4 NOT VERIFIED: gateway, toolchain or DevTools unavailable or timed out.
 // 5 FAIL: the observer is blind (the canary produced no CSP violation).
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -516,10 +518,6 @@ class Cdp {
   }
 }
 
-function isAllowedFavicon404(entry) {
-  return entry.source === 'network' && /\/favicon\.ico$/.test(entry.url ?? '') && /status of 404/.test(entry.text ?? '');
-}
-
 function headerValue(headers, name) {
   const entry = Object.entries(headers ?? {}).find(([key]) => key.toLowerCase() === name);
   return entry ? String(entry[1]) : null;
@@ -531,11 +529,10 @@ async function auditTargets(base, targets) {
   const cdp = new Cdp(await pageSocketUrl(base));
   await cdp.open();
   try {
-    const state = { csp: [], errors: [], exceptions: [], favicon404: 0, documents: [] };
+    const state = { csp: [], errors: [], exceptions: [], documents: [] };
     cdp.on('Log.entryAdded', ({ entry }) => {
       if (entry.level !== 'error') return;
       if (entry.source === 'security') state.csp.push(entry.text);
-      else if (isAllowedFavicon404(entry)) state.favicon404 += 1;
       else state.errors.push(`${entry.source}: ${entry.text} ${entry.url ?? ''}`.trim());
     });
     cdp.on('Runtime.consoleAPICalled', ({ type, args }) => {
@@ -553,7 +550,7 @@ async function auditTargets(base, targets) {
 
     const results = [];
     for (const target of targets) {
-      Object.assign(state, { csp: [], errors: [], exceptions: [], favicon404: 0, documents: [] });
+      Object.assign(state, { csp: [], errors: [], exceptions: [], documents: [] });
       const loaded = cdp.once('Page.loadEventFired', 20000);
       const navigation = await cdp.send('Page.navigate', { url: target.url });
       if (navigation.errorText) throw new Stop(CODE.notVerified, `navigation to ${target.url} failed: ${navigation.errorText}`);
@@ -569,7 +566,7 @@ async function auditTargets(base, targets) {
         target,
         audit,
         documentCsp: documentEntry ? documentEntry.csp : undefined,
-        state: { csp: [...state.csp], errors: [...state.errors], exceptions: [...state.exceptions], favicon404: state.favicon404 },
+        state: { csp: [...state.csp], errors: [...state.errors], exceptions: [...state.exceptions] },
       });
     }
     return results;
@@ -695,7 +692,7 @@ function judgePage({ target, audit, state, documentCsp }, policy) {
 function summarise({ target, audit, state }) {
   const parts = [
     `${state.csp.length + audit.cspCaptured} CSP violations`,
-    `${state.errors.length + state.exceptions.length} console errors/exceptions (favicon 404 allowed: ${state.favicon404})`,
+    `${state.errors.length + state.exceptions.length} console errors/exceptions`,
     `${audit.inlineStyles} style attributes`,
     `${audit.eventAttributes} on* attributes`,
   ];

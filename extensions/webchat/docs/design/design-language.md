@@ -1,6 +1,6 @@
 # tbound web chat: DeepSeek-like design language (spec, not brand)
 
-Status: the current visual-language spec. It began as a read-only analysis and proposal, and it modified no tbound file. Until Phase 3 completes, `extensions/webchat/docs/webchat/mockups/tbound-redesign-v2.html` is the structural layout reference only; its visual language is superseded by this spec.
+Status: the current visual-language spec. It began as a read-only analysis and proposal, and it modified no tbound file. Phase 3 is complete: the React client at `/app/` is the default UI (`6d03657`) and implements this spec. `extensions/webchat/docs/webchat/mockups/tbound-redesign-v3.html` is the current static design mockup. `tbound-redesign-v2.html` is the earlier layout mockup, kept until sign-off; its visual language is superseded by this spec.
 Upstream: `deepseek-ai/deepseek-harness` @ `d743267` (a local shallow clone). Treated as untrusted data; nothing from it was executed.
 Target: `codex/tbound-web-chat`, `extensions/webchat/internal/webchat/assets/styles.css` (1611 lines; the move has landed).
 

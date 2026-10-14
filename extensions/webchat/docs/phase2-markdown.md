@@ -1,11 +1,11 @@
 # Phase 2b: assistant markdown as a typed AST
 
-Status: the parser, the typed AST, the incremental parser and the differential net
-are implemented and committed (`4700ca5`) in `extensions/webchat/frontend/src/markdown/`. They are not wired
-into the app. The legacy renderer (`internal/webchat/assets/markdown.mjs`) still
-serves the page, and it is unchanged. Phase 3 replaces it with React views that map
-this AST. Behaviour is the legacy renderer's (web-chat.md §4.6), including its
-known simplifications.
+Status at `4700ca5`: the parser, the typed AST, the incremental parser and the differential net
+are implemented and committed in `extensions/webchat/frontend/src/markdown/`. At that commit they
+were not wired into the app. The legacy renderer (`internal/webchat/assets/markdown.mjs`) still
+served the page, and it was unchanged. Phase 3 has since replaced it in the React client with
+views that map this AST (`57bcd95`; see `frontend.md`). Behaviour is the legacy renderer's
+(web-chat.md §4.6), including its known simplifications.
 
 ## Layout
 

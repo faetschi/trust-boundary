@@ -1,13 +1,27 @@
-# Web chat frontend (React scaffold, Phase 1)
+# Web chat frontend (React client)
 
-Status: **the React client is the default UI.** `/` redirects to `/app/`, and the
-vanilla UI is deprecated at `/legacy/` until sign-off (see the last section).
-Phase 1 (scaffold) and Phase 2 (typed logic port) are committed. The decision is
-in `adr-0001-optional-extension.md`.
+Status at HEAD `57e6406` (2026-10-14):
 
-The scaffold renders one placeholder heading and the build version, and it
-proves the toolchain: TSX, CSS Modules extracted to a static `.css` file, a
-build-time version string, and the no-inline-style rule.
+- **The React client is the default UI.** `/` answers `302` to `/app/` (GET and HEAD).
+  The vanilla UI is deprecated at `/legacy/` until the owner signs off its removal.
+  `/` serves the legacy page only if the React build cannot be loaded (see the last section).
+- **Phases 1 to 3 are committed.** P1 scaffold `263b6ca` (review fixes `2583f5a`); P2 typed
+  logic port `4700ca5`; P3 React views `58492c5`, `57bcd95`, `a2aaf30`, `60ca5b0`, `6d03657`
+  and `57e6406`. The decision is in `adr-0001-optional-extension.md`.
+- **Verified on Linux (WSL, Go 1.27.1, Node 24.15.0):** vitest 896/896 (60 files, 0 skipped);
+  extension Go `-race` 54 top-level PASS, 0 SKIP; legacy node tests 258/258; sink and
+  dependency gates with their self-tests; boundary guard; the Linux rebuild equals the
+  committed `dist/`. Receipts: "Claim gate in the core" and "Default UI switch" below.
+- **Open:** no screen-reader testing; the narrow drawer scrolls with the page (not pinned);
+  stream `complete` wording (owner decision); legacy removal (owner sign-off); the dead
+  favicon allowance in `extensions/webchat/scripts/csp-smoke.mjs` (present at HEAD).
+- Sections below that say "scaffold" or "not committed" describe the state when they were
+  written. Where a later commit changed that state, the section says so.
+
+The Phase 1 scaffold rendered one placeholder heading and the build version, and it proved
+the toolchain: TSX, CSS Modules extracted to a static `.css` file, a build-time version
+string, and the no-inline-style rule. *(Superseded by `58492c5`: the placeholder is replaced
+by the Phase 3a shell. The toolchain checks still apply.)*
 
 ## Layout
 
@@ -308,34 +322,41 @@ The mutation runs and the live run are recorded with their commands in
 
 - **Phase 1 (committed in `263b6ca`, review fixes in `2583f5a`):** the scaffold, the manifest-derived `/app/` route,
   the tests, the reproducibility gate, and the opt-in CSP smoke. No product UI.
-  The vanilla UI is unchanged and remains the default.
+  The vanilla UI was unchanged and remained the default. *(Superseded by `6d03657`:
+  the React client is the default at `/`.)*
 - **Phase 2 (committed in `4700ca5`):** port the pure logic to TypeScript: `store`,
   `stream`, `backoff`, `markdown`, `filters`, `trajectory`, `anchor`, `format` and
   `stop-sequence`. The existing 258 Node tests are the parity net, and behaviour
   may not change. Evidence: `phase2-parity.md` and `phase2-markdown.md`.
   The Go allowlist keeps deriving from the manifest, so no hand-written route is
   added.
-- **Phase 3:** replace `render.mjs` and `app.mjs` with React components, with
-  native `<dialog>`, Popover and `<details>` for overlays. Parity is shown by the
-  browser QA captures and the CSP smoke before `/` switches to the React client.
-  The switch is done (see the last section): `/` redirects to `/app/`. The vanilla
+- **Phase 3 (committed in `58492c5`, `57bcd95`, `a2aaf30`, `60ca5b0`, `6d03657` and
+  `57e6406`):** replace `render.mjs` and `app.mjs` with React components, with native
+  `<dialog>`, Popover and `<details>` for overlays. Parity is shown by the browser QA
+  captures and the CSP smoke before `/` switches to the React client. The switch is
+  done in `6d03657` (see "Default UI switch"): `/` redirects to `/app/`. The vanilla
   assets stay under `/static/` and `/legacy/` until sign-off, and are removed only
   after it.
 
 ## Claim boundary
 
-This is an engineering scaffold. It establishes no `G1`, containment or `H1`
+This is an engineering client. It establishes no `G1`, containment or `H1`
 result. `G1=false`, containment is `not-established`, and `H1` is unexecuted. The
-placeholder shows no policy, effect or publication result. Passing checks here
+UI shows no policy, effect or publication result that the projection does not
+carry, and fixtures and replays are labelled non-claim-bearing. Passing checks here
 verify code and UI wiring only.
 
 ## Verification receipts
 
 The exact commands, exit codes and hashes for Phase 1 are in
-`adr-0001-optional-extension.md`, §(v), the P1 status table. The Phase 2 receipts
-are in `phase2-parity.md` §9 and `phase2-markdown.md`. On GitHub, the `webchat`
-and `frontend` jobs succeeded at `4700ca5` (run 38580790848). The dispatch-only
-`csp-smoke` job has not run there.
+`adr-0001-optional-extension.md`, §(v), the P1 status table (the restored `263b6ca`
+rows are historical). The Phase 2 receipts are in `phase2-parity.md` §9 and
+`phase2-markdown.md`. The Phase 3 receipts are in the Phase 3 sections of this file
+and in `phase3-parity.md`. On GitHub, the `webchat` and `frontend` jobs succeeded at
+`4700ca5` (run 38580790848). The dispatch-only `csp-smoke` job has not run there.
+No GitHub Actions run for the later commits (`58492c5` to `57e6406`) is recorded in
+these docs, so the Linux and Windows receipts in the sections below are the
+verification of record.
 
 ## Phase 2a addendum: `src/core/` (DOM-free logic)
 
@@ -374,7 +395,7 @@ evidence and the parity table are in `phase2-parity.md`.
 ## Phase 3a: the React foundation (2026-10-14)
 
 The foundation is the shell that the Chat and Trajectory views (3b, 3c) sit in. `/` still
-serves the vanilla UI.
+served the vanilla UI at this commit. *(Superseded by `6d03657`: `/` now redirects to `/app/`.)*
 
 **What it contains.**
 
@@ -427,7 +448,7 @@ cover forced colours, and no no-flash check is recorded. Screen-reader output is
 
 The Chat view replaces its placeholder, and the markdown AST has a React mapping. The
 Shell and the Trajectory view are not part of this change, and `/` still serves the
-vanilla UI.
+vanilla UI. *(Superseded by `6d03657`: `/` now redirects to `/app/`.)*
 
 **Built.**
 
@@ -765,7 +786,8 @@ scrolled to the top. The script that produced them is not in the repository.
   byte-identical to the Windows build. Logs are in WSL under `~/tbwc-verify/logs/`.
 - The CI repro gate (`npm run repro`) was RED on this working tree before the commit: exit 1,
   because HEAD's committed `dist/` predated this pass. Resolved by the commit below, which
-  carries the rebuilt `dist/`.
+  carries the rebuilt `dist/`. *(Superseded by `57e6406`, which commits the rebuilt `dist/`;
+  the Linux rebuild equals it.)*
 - csp-smoke first ran on Windows only, against a gateway built with Windows `go`. It has since
   been re-run against a Linux-built gateway hosted in WSL (see the next section).
 - `TASK_STATE.md` records this pass in its "Phase 3 polish" section.
@@ -909,7 +931,8 @@ changed tests.
 - **Posture.** A verified lossy success is counted under `reported`, with a hint that says so. A
   separate entry would change the posture's shape, which is a choice for the owner.
 - **Repro gate not run.** `npm run repro` compares the committed `dist/` with a rebuild. The new
-  `dist/` is not committed by this pass, so the check has not been run on it.
+  `dist/` is not committed by this pass, so the check has not been run on it. *(Superseded
+  by `57e6406`, which commits the rebuilt `dist/`; the Linux rebuild equals it.)*
 - **Not verified here.** No browser pass was run for this change. The LOST diamond, hatch and
   double border, the drawer at 1024 px and the StrictMode announcements are checked in happy-dom and
   in the CSS source only. The shape contrast is checked by the token table, not on screen.
@@ -987,3 +1010,102 @@ Not done: the legacy assets, the legacy tests and `/legacy/` are not removed; th
 waits for sign-off. The fallback path has Go tests only, with no browser check. `/app`
 without a trailing slash is still `404`. Screen-reader behaviour of the notices is not
 tested.
+
+## Final browser QA (2026-10-14)
+
+This pass drove the finished React client (`/app/`), the redirect, `/legacy/` and the live
+stream in Chrome, against a Linux-hosted demo gateway. `scripts/ui-qa.mjs` is new: opt-in,
+Node built-ins only, and it exits non-zero on any failed check. `scripts/csp-smoke.mjs` lost
+its favicon allowance: `/favicon.ico` answers 204 (pinned by `favicon_test.go`), so any console
+error fails the run. No product code, dist, mockup or Go file changed. Neither did this pass
+change the open item "the dead favicon allowance" in the list at the top of this file: this
+pass closes it.
+
+Environment (`docs/webchat/qa/p4-ui-qa-receipt.json` holds every hash):
+
+- Gateway: `go build -mod=readonly -o /home/jeli2k/tbwc-gw-q2 ./cmd/tbound-webchat` in WSL2,
+  Go 1.27.1, exit 0. Binary SHA-256 `a9dd1067669ea9372a55eaeae9e39c5383f15c678b17cb83260c442f6c1cf7bc`.
+  Started from Windows with `Start-Process wsl.exe -ArgumentList '-d','Ubuntu','-e',
+  '/home/jeli2k/tbwc-gw-q2','--demo','--addr','127.0.0.1:8861' -WindowStyle Hidden`.
+- Dist: `internal/webchat/dist` (4 files), tree SHA-256 `875bcee7e8528ea8a61eb09c14e5befe2d88982e41c03261936d71dc6c4892f3`.
+  The served `/app/` HTML and its two assets matched the committed files byte for byte (B).
+- Browser: Chrome 155.0.8059.79, `chrome.exe` SHA-256 `e2b66159abacb9d42669364e87252f0eb8a0e3bb443f84763b06d44a98997744`,
+  headless, a temporary profile and its own DevTools port. Node v24.15.0 on Windows.
+- Repository HEAD `57e6406`. `scripts/ui-qa.mjs` SHA-256 `3c2feff114bc63a0a8ea6e44f91f4b6cc7f92ffdcf51b07a4d9543f9fb179389`;
+  `scripts/csp-smoke.mjs` SHA-256 `b0e9125e702bc7542d4fb97501d77827f442d084c291eedbd384a30d1d9b20d0`.
+- Command (exit 1; log in `docs/webchat/qa/p4-ui-qa-run.txt`): `node scripts/ui-qa.mjs --url
+  http://127.0.0.1:8861 --gateway-sha256 a9dd10…f7bc --gateway-stop '<stop>' --gateway-start '<start>'`.
+  The stop command ends the `wsl.exe` client that runs the gateway and `pkill`s the gateway. The
+  start command is the `Start-Process` line above.
+
+| Check | Result | Key evidence |
+|---|---|---|
+| A csp-smoke without the favicon allowance | PASS | exit 0; 0 console errors on `/`, `/app/`, `/legacy/`; observer live (4 canary violations) |
+| B redirect, legacy notice, served assets | PASS | HEAD and GET `/` are 302 to `/app/`; `/` ends on `/app/` with the React header; `/legacy/` shows "Deprecated: legacy workspace"; served HTML and assets equal the dist |
+| C keyboard walk at 1440 | PASS | chat order: skip link, System, Chat tab, All, 5 tool cards, end. Trajectory: one roving stop for grouping, one for the search, one for the ledger. 0 focus stops without a ring. Arrows, Home and End work on the tabs, theme and filters; Enter presses; ArrowUp, ArrowDown, Home and End move through the ledger; Enter selects; Escape and Close record return focus to the row; the skip link follows the view |
+| D responsive | PASS | 1024: the toggle has `aria-expanded`; the closed drawer is `inert` and `aria-hidden`; the open drawer starts at the header's bottom edge; the header controls are hit-testable while it is open; Escape returns focus to the toggle; widening then narrowing leaves it closed. 390: no horizontal overflow, `scrollY` 0 on first show of both views, no visible chip overflow. 13 screenshots (12 for 1440/1024/390 × light/dark × chat/trajectory, plus the open drawer) |
+| E theme | **FAIL** | Dark, Light and System persist across reloads: PASS. With `localStorage` throwing, the page renders, defaults to system and applies a choice for the session, with no console error: PASS. **First paint: FAIL**, see defect 1 |
+| F live stream | **FAIL** | LOST: a `lost` chip, "LOST, not success", a diamond dot (clip-path polygon) distinct from DENY's square. Lossy and UNKNOWN never carry the success tone, and the fixture has no `ok` tone at all. ALLOW has tone `allow`. "unavailable" is shown. An observed item is refused: "Continuity gap (invalid item)" and a recovery snapshot, count back to 18. A duplicate: 0 snapshot fetches, count unchanged. A gap: one "Continuity gap (sequence gap)" notice, count 18, the gapped record not applied, no success added. Three records while scrolled away: "3 new records · Jump to latest", `scrollY` 260 before and after, one announcement, Jump lands at the bottom with focus on the log. **Lossy wording: FAIL**, see defect 2 |
+| G reconnect and offline | PASS | badge: connected, reconnecting, connecting, cycling. Seven retry attempts, waits 609, 1672, 3540, 7978, 5147, 9296 ms (cap 10 s), see observation 3. After the restart, `connected` appears only after the snapshot and the event stream's 200. Offline: 0 gateway requests; the retry starts 2 ms after going back online |
+| H forced colours and reduced motion | PASS | `matchMedia` reports both preferences. 6 of 6 ledger state shapes are distinct by computed border style, width, radius and clip-path. Under reduced motion, 0 animations run; the control without the preference shows the drawer's 0.3 s transition |
+| I console, CSP, network | PASS | 0 CSP violations. 0 console errors or warnings outside G. Inside G, 8 network failures while the gateway was down or killed: 6 `ERR_CONNECTION_REFUSED`, 1 `ERR_EMPTY_RESPONSE`, 1 `ERR_INCOMPLETE_CHUNKED_ENCODING`. 0 requests off the gateway origin, out of 352 |
+
+Defects (found, not fixed):
+
+1. **The first paint shows the OS scheme when a stored choice differs** (E3). Repro: set
+   `localStorage["tbound-webchat-theme"] = "light"` on the gateway origin, emulate
+   `prefers-color-scheme: dark`, load `/app/`. The first animation frame's computed
+   `documentElement` background is `oklch(0.18 0 0)` (dark). At `DOMContentLoaded` it is
+   `oklch(1 0 0)` (light). Stored dark with an OS light scheme flashes the other way. Five of
+   five loads flashed in each case. With nothing stored, nothing flashes. Cause: the explicit
+   choice is applied by a deferred module (`frontend/index.html:12`, `type="module"`;
+   `frontend/src/theme/bootstrap.ts:8`, imported first by `frontend/src/main.tsx:3`). Until it
+   runs, the stylesheet's `prefers-color-scheme` query decides the canvas. The comments at
+   `bootstrap.ts:2-5` and `main.tsx:1-2` say the attribute is set while the document is still
+   being evaluated, and the measurement says the first frame can paint before that. The CSP
+   (`script-src 'self'`) forbids an inline script, so a fix needs a render-blocking same-origin
+   classic script in `<head>`, or a hash for a tiny inline one. That choice is the owner's.
+   Limit: the first frame is sampled in `requestAnimationFrame`, not from a first-paint screenshot.
+2. **The lossy wording differs from the QA expectation** (F). The exact phrase "output lossy,
+   not counted as confirmed" is produced only by the `default` branch of
+   `frontend/src/core/trajectory.ts:158-160`, which a lossy success with the unknown tone reaches.
+   The fixture's lossy success takes the `reported` branch (`trajectory.ts:151-152`) and reads
+   "succeeded, reported, not independently verified; output lossy". The record is not green, and
+   its chat chip reads "lossy" with the unknown tone. Both readings are defensible, so the owner
+   should choose one. Low severity.
+
+Observations (not defects):
+
+3. **Reconnect timing.** After a dropped stream the client reconnects at once (about 160 ms
+   later). Its waits then run one backoff step later than `backoff.ts:37-38` computes for
+   attempt 0 (which would give 0.25–0.5 s). The observed waits are 0.5–1 s, 1–2 s, 2–4 s,
+   4–8 s, then 5–10 s, all under the cap. The spec's "from about 500 ms, cap 10 s" holds. I did
+   not trace the drop path, so the cause of the extra step is unverified.
+4. **A recovery snapshot replaces the store.** Records pushed by the stream that the gateway's
+   snapshot does not contain disappear. Here records 19 to 22 vanished after the refusal. That
+   follows from the snapshot-first design; a QA stream should expect it.
+5. **ALLOW and pending dots differ only in border width** (2 px and 1 px). Reported is dashed and
+   unknown is dotted. The computed shapes are distinct under forced colours, but I did not check
+   them at 1x on a Windows high-contrast theme.
+6. **Stale text, not changed here.** The "Open" list at the top of this file still names the
+   favicon allowance, and the "Opt-in browser CSP smoke" section still says "except one 404 for
+   `/favicon.ico`" (about lines 304 to 305). This pass makes both wrong. Only this section was edited.
+
+Not verified:
+
+- Screen readers and other assistive technology. ARIA names were checked as DOM strings only.
+- Windows high-contrast themes. Forced colours were emulated with CDP `Emulation.setEmulatedMedia`.
+- Pointer and touch input. Clicks used `element.click()`, keys went through CDP input, and the
+  hit test used `elementFromPoint`.
+- Browsers other than Chrome 155, a native Linux browser, and the SSH-forward remote path.
+- Real network loss. The outage was a killed WSL process; offline was CDP network emulation.
+- Live records. They were injected through a fake `EventSource` built from the wire shapes in
+  `handler.go` and `core/validate.ts`. The gateway served only its fixture.
+- The favicon change was not mutation-tested, because no gateway serves a 404 favicon.
+- Of the 17 screenshots, two were looked at (the open drawer at 1024 and the 390 px chat). The
+  rest are hashed in the receipt, not reviewed.
+- Go gates (`go test`, `go vet`, `gofmt`) were not run in this pass. `TASK_STATE.md` was not
+  updated, because it is outside the permitted edits.
+
+Claim boundary: these are browser checks of presentation and behaviour. They establish no
+claim: G1=false, containment not-established, H1 unexecuted.

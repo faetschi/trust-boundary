@@ -5,14 +5,15 @@ in its ordinal form only.** See the implementation status below for exactly what
 claim-bearing. It describes changes to a presentation-only, untrusted client. G1=false,
 H1 unexecuted, containment not-established, claim-bearing=false.
 
-> **Scope and phase naming (HEAD `4700ca5`, 2026-10-14).** "Phase 0" to "Phase 4" in this
-> plan are this redesign's own phases, not the ADR-0001 phases P1 to P3. What shipped is in
-> the legacy vanilla UI (`assets/`), which stays the default at `/` until ADR-0001 Phase 3
-> parity. ADR-0001 P1 (scaffold, `263b6ca`, review fixes `2583f5a`) and P2 (typed core port
-> and markdown AST, `4700ca5`) are committed; P3 is pending. The mockup
-> `webchat/mockups/tbound-redesign-v2.html` is the structural layout reference until P3
-> completes; its visual language is superseded by
-> [design/design-language.md](design/design-language.md).
+> **Scope and phase naming (written at HEAD `4700ca5`, 2026-10-14; status updated at `57e6406`).**
+> "Phase 0" to "Phase 4" in this plan are this redesign's own phases, not the ADR-0001 phases P1
+> to P3. What shipped first is the legacy vanilla UI (`assets/`). It was the default at `/` until
+> the React client became the default in `6d03657`; it is now deprecated at `/legacy/` until
+> sign-off. ADR-0001 P1 (scaffold, `263b6ca`, review fixes `2583f5a`), P2 (typed core port and
+> markdown AST, `4700ca5`) and P3 (React views, `58492c5` to `57e6406`) are committed. The mockup
+> `webchat/mockups/tbound-redesign-v2.html` is the earlier layout mockup, kept until sign-off; its
+> visual language is superseded by [design/design-language.md](design/design-language.md). The
+> current static design mockup is `webchat/mockups/tbound-redesign-v3.html`.
 
 > **Implementation status (this worktree).**
 > Shipped: the three-region shell (rail / workspace / inspector), the `Chat | Trajectory`
