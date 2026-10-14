@@ -351,3 +351,148 @@ test("the skip link follows the visible view", () => {
   renderAll(refs, state);
   assert.equal(refs.skipLink.getAttribute("href"), "#trajectory-view");
 });
+
+/* ---------------------------------------------------------------------------
+ * Assistant markdown
+ * ------------------------------------------------------------------------- */
+
+// markdownSnapshot adds one assistant and one user message with the same text.
+function markdownSnapshot(assistantText = "**Done.** See [docs](https://example.com/docs).") {
+  const snapshot = fixtureSnapshot();
+  snapshot.cursor = "e1:9";
+  snapshot.items.push(
+    { id: "m2", sequence: 8, type: "message", turn_id: "t1", occurred_at: "2026-10-13T10:00:04Z", authority: "diagnostic", verification_scope: "unverified-input", role: "assistant", text: assistantText },
+    { id: "m3", sequence: 9, type: "message", turn_id: "t1", occurred_at: "2026-10-13T10:00:05Z", authority: "diagnostic", verification_scope: "unverified-input", role: "user", text: "**Done.** See [docs](https://example.com/docs)." },
+  );
+  return snapshot;
+}
+
+// messageNode finds a rendered message by role and, when given, by a snippet of
+// its text, because the fixture also holds a user message of its own.
+function messageNode(refs, role, snippet = "") {
+  return refs.timeline
+    .querySelectorAll("div.msg")
+    .find((node) => node.dataset.role === role && node.textContent.includes(snippet));
+}
+
+test("assistant text renders markdown while the same text from the user stays literal", () => {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  applySnapshot(state, markdownSnapshot());
+  renderAll(refs, state);
+
+  const assistant = messageNode(refs, "assistant");
+  const links = assistant.querySelectorAll("a");
+  assert.equal(assistant.querySelectorAll("strong").length, 1);
+  assert.equal(links.length, 1);
+  assert.equal(links[0].getAttribute("href"), "https://example.com/docs");
+  assert.equal(links[0].getAttribute("rel"), "noopener noreferrer nofollow");
+
+  const user = messageNode(refs, "user", "**Done.**");
+  assert.ok(user, "the user message with the same text is rendered");
+  assert.equal(user.querySelectorAll("strong").length, 0, "user text is never formatted");
+  assert.equal(user.querySelectorAll("a").length, 0, "user text never becomes a link");
+  assert.match(user.textContent, /\*\*Done\.\*\* See \[docs\]\(https:\/\/example\.com\/docs\)\./);
+});
+
+test("assistant markup from the model is literal, not a link or element", () => {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  applySnapshot(state, markdownSnapshot("<script>alert(1)</script> [x](javascript:alert(1))"));
+  renderAll(refs, state);
+
+  const assistant = messageNode(refs, "assistant");
+  assert.equal(assistant.querySelectorAll("script").length, 0);
+  assert.equal(assistant.querySelectorAll("a").length, 0);
+  assert.match(assistant.textContent, /<script>alert\(1\)<\/script> \[x\]\(javascript:alert\(1\)\)/);
+});
+
+test("a streaming assistant message keeps its completed blocks across conversation renders", () => {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  applySnapshot(state, markdownSnapshot("# Plan\n\nFirst paragraph.\n\nSecond"));
+  renderAll(refs, state);
+
+  const body = refs.timeline.querySelectorAll("div.md-body")[0];
+  const [heading, first] = body.children;
+
+  // The retained item grows as tokens arrive; the timeline is rebuilt on each pass.
+  state.items.find((item) => item.id === "m2").text = "# Plan\n\nFirst paragraph.\n\nSecond paragraph grows.";
+  renderAll(refs, state);
+
+  const grown = refs.timeline.querySelectorAll("div.md-body")[0];
+  assert.equal(grown, body, "the message container is reused across renders");
+  assert.equal(grown.children[0], heading, "the heading node is untouched");
+  assert.equal(grown.children[1], first, "the completed paragraph node is untouched");
+  assert.match(grown.textContent, /Second paragraph grows\./);
+});
+
+test("the markdown container is pruned once its message leaves the retained window", () => {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  applySnapshot(state, markdownSnapshot());
+  renderAll(refs, state);
+  assert.equal(refs.timeline.querySelectorAll("div.md-body").length, 1);
+
+  state.items = state.items.filter((item) => item.id !== "m2");
+  renderAll(refs, state);
+  assert.equal(refs.timeline.querySelectorAll("div.md-body").length, 0);
+});
+
+test("a window replaced without provable continuity shows an explicit history-not-loaded notice", () => {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  applySnapshot(state, fixtureSnapshot());
+  applySnapshot(state, { ...fixtureSnapshot(), items: [] });
+  assert.ok(state.windowGap, "the replacement dropped retained elements");
+  renderAll(refs, state);
+  assert.match(refs.notices.textContent, /Earlier history not loaded/);
+  assert.match(refs.notices.textContent, /No success is inferred/);
+  const labels = refs.notices.querySelectorAll("span.notice-kind").map((node) => node.textContent);
+  assert.ok(labels.includes("history not loaded"), "the marker is labelled in text, not only by its position");
+});
+
+test("a history_evicted gap states the earlier-history fact in its own notice, without a duplicate", () => {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  const snapshot = fixtureSnapshot();
+  snapshot.gaps = [{ id: "gap-1", reason: "history_evicted", first_missing: 1, last_missing: 1, recorded_at: "2026-10-14T10:00:00Z" }];
+  applySnapshot(state, snapshot);
+  renderAll(refs, state);
+  assert.match(refs.notices.textContent, /Earlier history not loaded/);
+  assert.equal(refs.notices.querySelectorAll("span.notice-icon").length, 1, "one eviction gap is one notice");
+});
+
+test("a loaded window with continuity shows no history-not-loaded notice", () => {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  applySnapshot(state, fixtureSnapshot());
+  renderAll(refs, state);
+  assert.doesNotMatch(refs.notices.textContent, /Earlier history not loaded/);
+});
+
+test("the connection status reads connected only when open, and the slow note is text", () => {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  applySnapshot(state, fixtureSnapshot());
+  state.connection = "connecting";
+  state.connectionWarning = "slow handshake: still connecting";
+  renderAll(refs, state);
+  assert.equal(refs.connection.textContent, "connecting… · slow handshake: still connecting");
+  assert.doesNotMatch(refs.connection.textContent, /connected/);
+
+  state.connection = "open";
+  state.connectionWarning = "";
+  renderAll(refs, state);
+  assert.equal(refs.connection.textContent, "connected");
+});
+
+test("an offline stream is labelled offline in text", () => {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  applySnapshot(state, fixtureSnapshot());
+  state.connection = "offline";
+  renderAll(refs, state);
+  assert.equal(refs.connection.textContent, "offline");
+  assert.equal(refs.connection.dataset.state, "offline");
+});

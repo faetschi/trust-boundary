@@ -1,12 +1,31 @@
 // dom.mjs — a minimal DOM stub for exercising the renderer under Node.
-// It implements only the surface render.mjs uses: createElement, className,
-// textContent, dataset, appendChild/removeChild, firstChild, setAttribute,
-// querySelector(All) for the three selector shapes the renderer needs, plus the
-// `Node` global used by `valueNode instanceof Node`.
+// It implements only the surface render.mjs and markdown.mjs use: createElement,
+// createTextNode, className, textContent, dataset, appendChild/removeChild,
+// firstChild, setAttribute, querySelector(All) for the three selector shapes the
+// renderer needs, plus the `Node` global used by `valueNode instanceof Node`.
+// Markup sinks (innerHTML, outerHTML, insertAdjacentHTML) throw, so a renderer
+// that reaches for them fails the suite instead of writing unparsed markup.
 
-class DomNode {}
+export class DomNode {}
 
-class DomElement extends DomNode {
+export class DomText extends DomNode {
+  constructor(data) {
+    super();
+    this.data = String(data);
+    this.children = [];
+    this.parentNode = null;
+  }
+
+  get textContent() {
+    return this.data;
+  }
+
+  set textContent(value) {
+    this.data = String(value);
+  }
+}
+
+export class DomElement extends DomNode {
   constructor(tagName) {
     super();
     this.tagName = String(tagName).toUpperCase();
@@ -44,7 +63,21 @@ class DomElement extends DomNode {
     return this.children.length ? this.children[0] : null;
   }
 
+  set innerHTML(value) {
+    throw new Error(`markup sinks are not allowed in the webchat client (innerHTML, ${String(value).length} chars)`);
+  }
+
+  set outerHTML(value) {
+    throw new Error(`markup sinks are not allowed in the webchat client (outerHTML, ${String(value).length} chars)`);
+  }
+
+  insertAdjacentHTML(position) {
+    throw new Error(`markup sinks are not allowed in the webchat client (insertAdjacentHTML ${position})`);
+  }
+
   appendChild(node) {
+    // As in the DOM, appending a node that already has a parent moves it.
+    if (node.parentNode) node.parentNode.removeChild(node);
     node.parentNode = this;
     this.children.push(node);
     return node;
@@ -114,6 +147,9 @@ export function installDom() {
   globalThis.document = {
     createElement(tagName) {
       return new DomElement(tagName);
+    },
+    createTextNode(data) {
+      return new DomText(data);
     },
   };
 }

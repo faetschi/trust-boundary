@@ -7,20 +7,15 @@
 
 import { fetchSnapshot, openEventStream } from "./api.mjs";
 import {
-  applyItem,
-  applySession,
-  applySnapshot,
   clearRecord,
   createWorkspace,
-  noteGap,
   selectRecord,
-  setConnection,
-  setError,
   setFilter,
   setGroup,
   setQuery,
   setView,
 } from "./store.mjs";
+import { createStream } from "./stream.mjs";
 import { renderAll } from "./render.mjs";
 import { humanize } from "./format.mjs";
 
@@ -65,14 +60,6 @@ const refs = {
 };
 
 const state = createWorkspace();
-let stream = null;
-let recovering = false;
-// True while a reconnect snapshot refetch is in flight; live events are
-// buffered during that window and replayed afterwards.
-let refreshing = false;
-let bufferedHandlers = [];
-// Set when an open stream drops, so the next open triggers one refetch.
-let streamDropped = false;
 
 // Rendering must never block data loading. A render error is surfaced without
 // discarding the projection the client already holds.
@@ -105,14 +92,26 @@ function gapKey(gap) {
   return gap.id || `${gap.reason || "unknown"}:${gap.requested_cursor || ""}`;
 }
 
+function windowKey(windowGap) {
+  return `window:${windowGap.kind}:${windowGap.reason}:${windowGap.since}`;
+}
+
 function announce(state) {
   const node = refs.statusAnnouncer;
   if (!node) return;
   const fresh = state.gaps.filter((gap) => !announcedGaps.has(gapKey(gap)));
+  const parts = [];
   if (fresh.length) {
     for (const gap of fresh) announcedGaps.add(gapKey(gap));
     const gap = fresh[fresh.length - 1];
-    node.textContent = `Continuity gap (${humanize(gap.reason || "unknown")}). Recovered from a snapshot; no success is inferred.`;
+    parts.push(`Continuity gap (${humanize(gap.reason || "unknown")}). Recovered from a snapshot; no success is inferred.`);
+  }
+  if (state.windowGap && !announcedGaps.has(windowKey(state.windowGap))) {
+    announcedGaps.add(windowKey(state.windowGap));
+    parts.push("Earlier history not loaded. No success is inferred for it.");
+  }
+  if (parts.length) {
+    node.textContent = parts.join(" ");
     return;
   }
   if (state.connection !== announcedConnection) {
@@ -183,133 +182,17 @@ function restoreFocus(target) {
   }
 }
 
-function closeStream() {
-  if (stream) {
-    stream.close();
-    stream = null;
-  }
-}
+// The stream lifecycle lives in stream.mjs. Every connection is snapshot-first,
+// and retries follow the backoff policy. This module only wires it to the page.
+const stream = createStream({
+  state,
+  fetchSnapshot,
+  openEventStream,
+  onChange: render,
+});
 
-function subscribe() {
-  closeStream();
-  stream = openEventStream({
-    cursor: state.cursor,
-    onItem: (event) => deferWhileRefreshing(() => {
-      const item = event && event.item;
-      const outcome = applyItem(state, item);
-      if (outcome === "applied") {
-        render();
-        return;
-      }
-      if (outcome === "gap") {
-        recover({ reason: "sequence_gap", requested_cursor: state.cursor, latest: item && item.sequence });
-      }
-    }),
-    onSession: (event) => deferWhileRefreshing(() => {
-      applySession(state, event && event.session, event && event.panels, event && event.streams);
-      render();
-    }),
-    onGap: (gap) => {
-      // The subscriber limit is terminal, not a continuity gap: the stream is
-      // closed and not retried, because every slot is occupied.
-      if (gap && gap.reason === "subscriber_limit") {
-        closeStream();
-        setError(state, "the gateway is at its subscriber limit; this workspace will not retry automatically");
-        setConnection(state, "error");
-        render();
-        return;
-      }
-      // Buffer a gap while a refresh is in flight so recovery cannot race it.
-      deferWhileRefreshing(() => recover({ ...(gap || {}), reason: (gap && gap.reason) || "replay_gap" }));
-    },
-    onConnection: (value) => {
-      setConnection(state, value);
-      render();
-      if (value === "open") {
-        // A re-open after a drop may have missed a session/panel/stream update.
-        // Refetch the snapshot in place: the stream is already re-connected, so
-        // there is no resubscribe and therefore no recovery loop.
-        if (streamDropped) refreshSnapshot();
-        return;
-      }
-      if (value === "reconnecting" || value === "closed" || value === "error") {
-        streamDropped = true;
-      }
-    },
-    onError: (error) => {
-      setError(state, error && error.message ? error.message : String(error));
-      render();
-    },
-  });
-}
-
-// Live events that arrive while a snapshot refetch is in flight are buffered and
-// replayed afterwards, so a snapshot response can never overwrite a newer event.
-function deferWhileRefreshing(handler) {
-  if (refreshing) {
-    bufferedHandlers.push(handler);
-    return;
-  }
-  handler();
-}
-
-// refreshSnapshot re-fetches the bounded snapshot without resubscribing, used on
-// stream re-open. Events that arrive during the fetch are buffered.
-async function refreshSnapshot() {
-  if (refreshing) return;
-  refreshing = true;
-  streamDropped = false;
-  bufferedHandlers = [];
-  try {
-    const snapshot = await fetchSnapshot();
-    applySnapshot(state, snapshot);
-  } catch (error) {
-    setError(state, error && error.message ? error.message : String(error));
-  } finally {
-    const pending = bufferedHandlers;
-    bufferedHandlers = [];
-    refreshing = false;
-    for (const handler of pending) handler();
-    render();
-  }
-}
-
-async function recover(gap) {
-  if (recovering) return;
-  recovering = true;
-  try {
-    closeStream();
-    streamDropped = false;
-    const snapshot = await fetchSnapshot();
-    applySnapshot(state, snapshot);
-    noteGap(state, gap);
-    setConnection(state, "reconnecting");
-    render();
-    subscribe();
-  } catch (error) {
-    setError(state, error && error.message ? error.message : String(error));
-    setConnection(state, "error");
-    render();
-  } finally {
-    recovering = false;
-  }
-}
-
-async function start() {
-  render();
-  try {
-    closeStream();
-    const snapshot = await fetchSnapshot();
-    applySnapshot(state, snapshot);
-    setConnection(state, "connecting");
-    render();
-    subscribe();
-  } catch (error) {
-    setError(state, error && error.message ? error.message : String(error));
-    setConnection(state, "error");
-    render();
-  }
-}
+window.addEventListener("online", () => stream.goOnline());
+window.addEventListener("offline", () => stream.goOffline());
 
 // Governance inspector drawer for narrow viewports. When the drawer is off
 // canvas it is made inert so keyboard focus cannot reach hidden content.
@@ -486,4 +369,5 @@ document.addEventListener("keydown", (event) => {
 });
 
 syncInspector();
-start();
+render();
+stream.start();

@@ -23,6 +23,7 @@ import {
   visibleRecords,
   weightClass,
 } from "./trajectory.mjs";
+import { createIncrementalRenderer } from "./markdown.mjs";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -190,10 +191,13 @@ function renderHeader(refs, state) {
     open: "connected",
     connecting: "connecting…",
     reconnecting: "reconnecting…",
+    offline: "offline",
     closed: "stream closed",
     error: "stream error",
   };
-  refs.connection.textContent = connectionLabels[state.connection] || state.connection;
+  const label = connectionLabels[state.connection] || state.connection;
+  // The slow-handshake note is text, not colour, and only accompanies "connecting".
+  refs.connection.textContent = state.connectionWarning ? `${label} · ${state.connectionWarning}` : label;
   refs.connection.dataset.state = state.connection;
 
   const qualification = (state.panels && state.panels.qualification) || {};
@@ -222,8 +226,20 @@ function renderNotices(container, state) {
     const detail = isRange
       ? `elements ${gap.first_missing}–${gap.last_missing} · ${humanize(gap.reason)}. No success is inferred for missing elements.`
       : `cursor ${gap.requested_cursor || "—"} · ${humanize(gap.reason)}. Recovered from a snapshot; no success is inferred for missing elements.`;
-    container.appendChild(notice("gap", "continuity gap", detail));
+    // A history_evicted gap is itself the "earlier history not loaded" marker.
+    const text = gap.reason === "history_evicted" ? `Earlier history not loaded · ${detail}` : detail;
+    container.appendChild(notice("gap", "continuity gap", text));
   }
+  // A loaded window replaced or trimmed without provable continuity. An eviction
+  // gap notice already states the same fact, so it is not repeated.
+  if (state.windowGap && !state.gaps.some((gap) => gap.reason === "history_evicted")) {
+    container.appendChild(notice("gap", "history not loaded", windowGapText(state.windowGap)));
+  }
+}
+
+function windowGapText(windowGap) {
+  const origin = windowGap.kind === "client" ? "the bounded client window" : "the source window";
+  return `Earlier history not loaded: continuity is not proven from element ${windowGap.since} (${humanize(windowGap.reason)}, ${origin}). No success is inferred for elements not loaded.`;
 }
 
 function notice(variant, kind, text) {
@@ -282,6 +298,7 @@ function renderStreams(container, state) {
 }
 
 function renderConversation(refs, state) {
+  pruneAssistantBodies(state.items);
   const session = state.session || {};
   refs.sessionTitle.textContent = session.title || "No session";
   refs.sessionSub.textContent = [session.session_id, session.workflow_id, session.pi_version ? `Pi ${session.pi_version}` : null]
@@ -386,9 +403,39 @@ function renderMessage(item) {
     roleLine.appendChild(chip("unverified", "unverified"));
   }
   node.appendChild(roleLine);
-  node.appendChild(el("p", "msg-text", item.text || "(empty)"));
+  node.appendChild(messageText(item));
   if (item.text_truncated) node.appendChild(el("p", "step-detail", "Transcript text truncated by the projection."));
   return node;
+}
+
+// Assistant text is rendered as markdown. User and system text stays literal, so
+// a prompt that quotes markup can never display as formatting.
+function messageText(item) {
+  if (item.role !== "assistant" || !item.text) return el("p", "msg-text", item.text || "(empty)");
+  return assistantBody(item);
+}
+
+// Each assistant message keeps one markdown container across conversation
+// passes, so a streaming message reuses the DOM of its completed blocks (see
+// markdown.mjs). Entries are pruned to the retained window on every pass.
+const assistantBodies = new Map();
+
+function assistantBody(item) {
+  let entry = assistantBodies.get(item.id);
+  if (!entry) {
+    const container = el("div", "msg-text md-body");
+    entry = { container, renderer: createIncrementalRenderer(container) };
+    assistantBodies.set(item.id, entry);
+  }
+  entry.renderer.update(item.text);
+  return entry.container;
+}
+
+function pruneAssistantBodies(items) {
+  const live = new Set(items.map((item) => item.id));
+  for (const id of assistantBodies.keys()) {
+    if (!live.has(id)) assistantBodies.delete(id);
+  }
 }
 
 function renderTool(block) {

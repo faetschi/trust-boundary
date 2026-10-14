@@ -25,6 +25,11 @@ export function createWorkspace() {
     loaded: false,
     error: null,
     gapNotice: null,
+    // windowGap says the loaded window is not provably complete from `since` onward:
+    // { kind: "server" | "client", reason, since }. It is null when continuity holds.
+    windowGap: null,
+    // Set only while a connection attempt is slow; never a connection state itself.
+    connectionWarning: "",
     filter: "all",
     evicted: 0,
     // Trajectory view state. Presentation only: none of these fields can alter a
@@ -67,8 +72,9 @@ export function clearRecord(state) {
 
 // The client keeps a bounded history. The server ring is bounded too, and an
 // unbounded client would grow without limit once live events are appended.
+// Returns the elements it trimmed, oldest first.
 function enforceClientCap(state) {
-  if (state.items.length <= MAX_CLIENT_ITEMS) return;
+  if (state.items.length <= MAX_CLIENT_ITEMS) return [];
   const overflow = state.items.length - MAX_CLIENT_ITEMS;
   const removed = state.items.splice(0, overflow);
   for (const item of removed) state.itemsById.delete(item.id);
@@ -76,6 +82,45 @@ function enforceClientCap(state) {
   // An evicted record must not stay selected: the inspector would show nothing
   // and the next Escape would be swallowed dismissing a dangling selection.
   if (state.selectedId && !state.itemsById.has(state.selectedId)) state.selectedId = null;
+  return removed;
+}
+
+// Gap reasons that say the source no longer retains earlier history.
+const EVICTION_REASONS = new Set(["history_evicted"]);
+
+// The first loss opens the marker and keeps its kind and reason. A later loss can
+// only move `since` earlier, because the earliest lost element bounds the history.
+function noteWindowLoss(state, kind, reason, since) {
+  const prior = state.windowGap;
+  state.windowGap = prior
+    ? { ...prior, since: Math.min(prior.since, since) }
+    : { kind, reason, since };
+}
+
+// A snapshot proves continuity only when it declares no eviction, drops nothing
+// the client held, trims nothing, and restores an element at or before the
+// earliest lost one. Anything less leaves the marker in place.
+function updateWindowGap(state, { evictions, dropped, trimmed }) {
+  if (evictions.length) {
+    const gap = evictions[0];
+    const since = typeof gap.first_missing === "number" ? gap.first_missing : firstLoadedSequence(state);
+    noteWindowLoss(state, "server", gap.reason, since);
+  }
+  if (dropped.length) {
+    noteWindowLoss(state, "server", "history_evicted", Math.min(...dropped.map((item) => item.sequence)));
+  }
+  if (trimmed.length) {
+    noteWindowLoss(state, "client", "retained_window", trimmed[0].sequence);
+  }
+  if (!state.windowGap || evictions.length || dropped.length || trimmed.length) return;
+  const oldest = state.items.length ? state.items[0].sequence : Infinity;
+  if (oldest <= state.windowGap.since) state.windowGap = null;
+}
+
+// Where an eviction gap has no numeric range, the loss is taken to start at the
+// oldest element the window holds, or at the first sequence when it holds none.
+function firstLoadedSequence(state) {
+  return state.items.length ? state.items[0].sequence : 1;
 }
 
 export function setFilter(state, value) {
@@ -84,7 +129,7 @@ export function setFilter(state, value) {
 }
 
 export function applySnapshot(state, snapshot) {
-  const previouslyRetained = new Set(state.items.map((item) => item.id));
+  const priorItems = state.items;
   state.source = snapshot.source;
   state.verification = snapshot.verification_scope;
   state.epoch = snapshot.epoch;
@@ -101,17 +146,19 @@ export function applySnapshot(state, snapshot) {
     if (state.itemsById.has(item.id)) continue;
     state.items.push(item);
     state.itemsById.set(item.id, item);
-    previouslyRetained.delete(item.id);
     if (item.sequence > state.lastSequence) state.lastSequence = item.sequence;
   }
   // Elements the client retained but the new snapshot omits were dropped by the
   // source window. Count them as evicted so the retained-window disclosure stays
   // truthful instead of silently shrinking the record.
-  state.evicted += previouslyRetained.size;
-  enforceClientCap(state);
+  const dropped = priorItems.filter((item) => !state.itemsById.has(item.id));
+  state.evicted += dropped.length;
+  const trimmed = enforceClientCap(state);
   // A selection that the new window no longer contains must not survive as a
   // dangling reference: the inspector would keep showing an evicted record.
   if (state.selectedId && !state.itemsById.has(state.selectedId)) state.selectedId = null;
+  const evictions = state.gaps.filter((gap) => EVICTION_REASONS.has(gap.reason));
+  updateWindowGap(state, { evictions, dropped, trimmed });
   state.loaded = true;
   state.error = null;
   state.gapNotice = null;
@@ -132,7 +179,8 @@ export function applyItem(state, item) {
   state.itemsById.set(item.id, item);
   state.lastSequence = item.sequence;
   state.cursor = `${state.epoch}:${item.sequence}`;
-  enforceClientCap(state);
+  const trimmed = enforceClientCap(state);
+  if (trimmed.length) noteWindowLoss(state, "client", "retained_window", trimmed[0].sequence);
   return "applied";
 }
 

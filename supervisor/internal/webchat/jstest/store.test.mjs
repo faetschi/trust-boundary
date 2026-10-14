@@ -140,3 +140,81 @@ test("evicting the selected record clears the selection", () => {
   assert.equal(state.itemsById.has("i1"), false);
   assert.equal(state.selectedId, null, "a dangling selection must not survive eviction");
 });
+
+// windowGap records that the loaded window is not provably complete from `since`
+// onward. Only a snapshot that restores the lost elements clears it.
+function windowedSnapshot(sequences, overrides = {}) {
+  return { ...snapshot(sequences.map((sequence) => item(`e${sequence}`, sequence))), ...overrides };
+}
+
+test("a snapshot that drops retained elements sets a server windowGap at the first lost element", () => {
+  const state = createWorkspace();
+  applySnapshot(state, windowedSnapshot([1, 2, 3]));
+  assert.equal(state.windowGap, null, "a complete first load claims no missing history");
+  applySnapshot(state, windowedSnapshot([3]));
+  assert.deepEqual(state.windowGap, { kind: "server", reason: "history_evicted", since: 1 });
+});
+
+test("a snapshot-declared history_evicted gap sets a windowGap from its first missing element", () => {
+  const state = createWorkspace();
+  applySnapshot(
+    state,
+    windowedSnapshot([4, 5], {
+      gaps: [{ id: "g1", reason: "history_evicted", first_missing: 1, last_missing: 3, recorded_at: "2026-10-14T10:00:00Z" }],
+    }),
+  );
+  assert.deepEqual(state.windowGap, { kind: "server", reason: "history_evicted", since: 1 });
+});
+
+test("a client-side trim sets a client windowGap at the oldest trimmed element", () => {
+  const state = createWorkspace();
+  const sequences = Array.from({ length: MAX_CLIENT_ITEMS }, (_, index) => index + 1);
+  applySnapshot(state, windowedSnapshot(sequences));
+  assert.equal(state.windowGap, null);
+  assert.equal(applyItem(state, item("next", MAX_CLIENT_ITEMS + 1)), "applied");
+  assert.deepEqual(state.windowGap, { kind: "client", reason: "retained_window", since: 1 });
+});
+
+test("a live item never clears a windowGap", () => {
+  const state = createWorkspace();
+  applySnapshot(state, windowedSnapshot([1, 2, 3]));
+  applySnapshot(state, windowedSnapshot([3]));
+  assert.ok(state.windowGap);
+  assert.equal(applyItem(state, item("e4", 4)), "applied");
+  assert.ok(state.windowGap, "appending a live element does not prove the lost history is back");
+});
+
+test("a windowGap is cleared only by a snapshot that restores the lost elements", () => {
+  const state = createWorkspace();
+  applySnapshot(state, windowedSnapshot([1, 2, 3]));
+  applySnapshot(state, windowedSnapshot([3]));
+  applySnapshot(state, windowedSnapshot([3, 4]));
+  assert.deepEqual(state.windowGap, { kind: "server", reason: "history_evicted", since: 1 }, "a snapshot that still starts after the loss keeps the gap");
+  applySnapshot(state, windowedSnapshot([1, 2, 3, 4]));
+  assert.equal(state.windowGap, null, "a snapshot restoring the lost elements proves continuity");
+});
+
+test("a snapshot that still declares an eviction gap does not clear the windowGap", () => {
+  const state = createWorkspace();
+  const declared = [{ id: "g1", reason: "history_evicted", first_missing: 1, last_missing: 1, recorded_at: "2026-10-14T10:00:00Z" }];
+  applySnapshot(state, windowedSnapshot([1, 2], { gaps: declared }));
+  assert.deepEqual(state.windowGap, { kind: "server", reason: "history_evicted", since: 1 });
+  applySnapshot(state, windowedSnapshot([1, 2], { gaps: declared }));
+  assert.ok(state.windowGap, "a snapshot that still declares the eviction cannot prove continuity");
+});
+
+test("a client trim that recurs on each snapshot keeps the windowGap set", () => {
+  const state = createWorkspace();
+  const sequences = Array.from({ length: MAX_CLIENT_ITEMS + 10 }, (_, index) => index + 1);
+  applySnapshot(state, windowedSnapshot(sequences));
+  assert.equal(state.windowGap.kind, "client");
+  applySnapshot(state, windowedSnapshot(sequences));
+  assert.equal(state.windowGap.kind, "client", "the same over-limit window cannot prove continuity");
+});
+
+test("a resync that loses nothing claims no missing history", () => {
+  const state = createWorkspace();
+  applySnapshot(state, windowedSnapshot([1, 2, 3]));
+  applySnapshot(state, windowedSnapshot([1, 2, 3, 4, 5]));
+  assert.equal(state.windowGap, null, "a complete replacement must not display history as not loaded");
+});

@@ -28,7 +28,12 @@ export function openEventStream({ cursor, onItem, onSession, onGap, onConnection
   source.addEventListener("session", decode(onSession));
   source.addEventListener("gap", decode(onGap));
   source.addEventListener("open", () => onConnection && onConnection("open"));
-  source.addEventListener("error", () => onConnection && onConnection("reconnecting"));
+  source.addEventListener("error", () => {
+    // Close rather than let the browser retry on its own fixed schedule. The
+    // stream controller owns reconnect timing and recovers from a snapshot first.
+    source.close();
+    if (onConnection) onConnection("closed");
+  });
   return {
     close() {
       source.close();
