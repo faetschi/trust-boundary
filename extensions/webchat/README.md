@@ -10,6 +10,11 @@ no Node. Nothing under `supervisor/` imports it.
 - A zero-build browser client (`internal/webchat/assets/`) served by a Go
   gateway (`internal/webchat/`, entrypoint `cmd/tbound-webchat/`). The module
   has no third-party Go dependencies.
+- A **React + TypeScript scaffold** (Phase 1, `frontend/`) served under `/app/`.
+  It renders a placeholder, not the product UI. Its committed build
+  (`internal/webchat/dist/`) is embedded, and the `/app/` routes are derived from
+  its Vite manifest. The vanilla client at `/` remains the default. See
+  `docs/frontend.md`.
 - **Read-only today.** It serves embedded fixtures, retained replay documents
   and imported post-run receipts. `--live` fails closed. There is no turn
   submission, cancellation or browser authentication yet.
@@ -33,7 +38,8 @@ go run ./cmd/tbound-webchat --live        # refused: supervisor service absent
 
 The flags `--demo`, `--fixture`, `--replay`, `--receipt`, `--receipt-demo` and
 `--live` are mutually exclusive. The startup banner states the source class and
-the claim boundary. Open `http://127.0.0.1:8791/`.
+the claim boundary. Open `http://127.0.0.1:8791/` (vanilla UI) or
+`http://127.0.0.1:8791/app/` (React scaffold, Phase 1).
 
 ## Test
 
@@ -51,6 +57,22 @@ Node is needed only for the last one and for `make extension-webchat`. The core
 `make test` target does not run them. The CI workflow
 `.github/workflows/webchat-extension.yml` runs them for changes under
 `extensions/webchat/**`.
+
+The React frontend has its own gate. It needs Node 24.15.0 (`frontend/.nvmrc`):
+
+```sh
+make extension-webchat-frontend-verify       # npm ci --ignore-scripts, verify, dist reproducibility
+```
+
+The CSP smoke is opt-in and needs a Chrome or Chromium binary. It is not part of
+any gate. Point it at a demo gateway on a fresh port:
+
+```sh
+make extension-webchat-csp CSP_URL=http://127.0.0.1:8793
+```
+
+`docs/frontend.md` covers the build, the pins, the manifest-derived `/app/`
+allowlist, the CSP smoke and its exit codes.
 
 ## Claim boundary
 
@@ -83,8 +105,16 @@ Node is needed only for the last one and for `make extension-webchat`. The core
 - `extensions/webchat/internal/webchat/`: bounded projection contract,
   validation, gateway store, HTTP/SSE handler, post-run receipt importer,
   embedded assets (`assets/`), fixtures (`fixtures/`) and Node tests (`jstest/`).
+  - `app.go`: the `/app/` route table, derived from the Vite manifest.
+  - `dist/`: the committed React build (generated; do not edit by hand).
+- `extensions/webchat/frontend/`: the React + TypeScript source, its scripts
+  (`scripts/`), the pinned `package.json` and lockfile, and `DEPENDENCIES.md`.
+  Build output goes to `internal/webchat/dist/`.
 - `extensions/webchat/cmd/tbound-webchat/`: loopback-only gateway entrypoint.
+- `extensions/webchat/scripts/csp-smoke.mjs`: opt-in headless-browser CSP check.
 - `extensions/webchat/docs/`:
+  - `frontend.md`: the React scaffold, pins, committed build, the `/app/`
+    allowlist, the CSP smoke, and the Phase 2 and 3 plan.
   - `web-chat.md`: design, authority and claim boundary, verification log.
   - `web-chat-contract.md`: proposed supervisor-owned service contract.
   - `web-chat-ui-plan.md`: design analysis and the harness survey (Appendix A

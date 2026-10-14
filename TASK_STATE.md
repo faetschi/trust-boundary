@@ -494,3 +494,16 @@ are preparation only. Media custody and exact ABI checks precede registration.
 - Web chat is an optional standalone extension (18f71e6): extensions/webchat, own Go module, boundary guard + CI; core gates need no Node and no extension.
 - docs/modular-architecture-vision.md: VISION/FUTURE-WORK only. Headless/remote serve is post-thesis (02-1 s4.1 and 06-1 put service-manager modes out of scope; a surviving-owner design is needed). SO_PEERCRED over forwarded sockets is UNVERIFIED (experiment protocol written, not run). Cancel = request; the settled result comes from the supervisor. To reconcile with the core thread: web-chat-contract.md s1 orders turns/cancel before snapshot/streaming; the extension keeps read-first.
 - extensions/webchat/docs/design: DeepSeek-like design language (structure only, no brand), computed WCAG AA table (calculation, not a browser render).
+
+## Phase 1 React/TypeScript scaffold (2026-10-14)
+
+- extensions/webchat/frontend: Vite 8.3.4, React 19.3.0, TypeScript 7.0.2, Vitest 5.0.4, exact pins,
+  88 locked packages (3 runtime), ignore-scripts, 0 npm audit findings; sole install-script
+  entry is the darwin-only optional fsevents (accepted explicitly in check-deps.mjs).
+- dist/ committed and reproducible (clean WSL rebuild == committed, tree sha256 85f7686c...;
+  Windows build byte-identical). The new UI is served under /app/ from a route table derived
+  from dist/.vite/manifest.json; the vanilla UI remains the default at /.
+- CSP header unchanged. Opt-in csp-smoke (Chrome 155 over CDP): PASS on / and /app/, and a
+  broken-page negative control FAILS as it should. Not a required gate (manual CI job).
+- Go: 36 PASS, 0 SKIP (+6 app tests); Node 258/258. make targets not executed (no make here);
+  CI workflows parsed but not run on GitHub.

@@ -115,6 +115,9 @@ func run(args []string, stdout, stderr *os.File) error {
 	if source != webchat.SourceLive {
 		fmt.Fprintln(stdout, "claim boundary: G1=false; H1 unexecuted; containment not-established; claim-bearing=false")
 	}
+	if err := webchat.AppStatus(); err != nil {
+		fmt.Fprintf(stderr, "note: /app/ is unavailable: %v (the vanilla UI at / is unaffected)\n", err)
+	}
 
 	errCh := make(chan error, 1)
 	go func() {

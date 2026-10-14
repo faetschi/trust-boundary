@@ -8,7 +8,7 @@ UNAME_S := $(shell uname -s 2>/dev/null)
 HOST_OS := $(if $(filter Linux,$(UNAME_S)),linux,$(if $(filter Darwin,$(UNAME_S)),darwin,windows))
 HOST_ARCH := $(shell uname -m 2>/dev/null | sed -e 's/x86_64/amd64/' -e 's/aarch64/arm64/')
 
-.PHONY: help build release verify test boundary extension-webchat fmt clean deb rpm container npm-packages publish
+.PHONY: help build release verify test boundary extension-webchat extension-webchat-frontend-verify extension-webchat-csp fmt clean deb rpm container npm-packages publish
 
 help:
 	@echo "tbound make targets:"
@@ -23,6 +23,8 @@ help:
 	@echo "  test         run the extension boundary guard, then all core Go module tests (no Node)"
 	@echo "  boundary     check that core never imports the optional extensions/webchat (pure sh)"
 	@echo "  extension-webchat  gofmt, vet, race tests and Node tests for the optional web chat extension (needs Node)"
+	@echo "  extension-webchat-frontend-verify  npm ci --ignore-scripts, frontend verify, and dist reproducibility (needs Node; not a core gate)"
+	@echo "  extension-webchat-csp  opt-in headless-browser CSP smoke; CSP_URL=http://127.0.0.1:PORT targets a running demo gateway (needs Chrome; not a core gate)"
 	@echo "  fmt          gofmt all Go packages"
 	@echo "  clean        remove dist/"
 
@@ -63,6 +65,19 @@ boundary:
 # target; it needs Node for the browser-side tests.
 extension-webchat:
 	cd extensions/webchat && gofmt -l . | (! grep .) && $(GO) vet -mod=readonly ./... && $(GO) test -race -mod=readonly -count=1 ./... && node --test internal/webchat/jstest/*.test.mjs
+
+# React frontend of the optional extension (extensions/webchat/frontend). Node is
+# needed only to change the UI; the Go gateway embeds the committed build. Installs
+# ignore scripts. The last step rebuilds from clean twice and compares the output
+# with the committed dist/ (the pre-commit equivalent of git diff --exit-code).
+extension-webchat-frontend-verify:
+	cd extensions/webchat/frontend && npm ci --ignore-scripts && npm run verify && npm run repro
+
+# Opt-in headless-browser CSP smoke. Not part of extension-webchat or any core
+# target. With CSP_URL it checks a demo gateway already running on a fresh
+# 127.0.0.1 port (never 8791); without it, the script builds and starts one.
+extension-webchat-csp:
+	cd extensions/webchat && node scripts/csp-smoke.mjs $(if $(CSP_URL),--url $(CSP_URL))
 
 fmt:
 	cd supervisor && $(GO) fmt ./...

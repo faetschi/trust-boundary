@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"strings"
@@ -53,6 +54,10 @@ var staticRoutes = map[string]staticRoute{
 // SSE. It has no session-control, launch, cancel, approval, filesystem, or
 // provider routes, and it never reads a request body.
 func NewHandler(store *Store, options HandlerOptions) http.Handler {
+	return newHandler(store, options, embeddedApp())
+}
+
+func newHandler(store *Store, options HandlerOptions, app *appBundle) http.Handler {
 	if store == nil || !store.initialized() {
 		fallback, err := NewUnavailableStore()
 		if err != nil {
@@ -68,6 +73,10 @@ func NewHandler(store *Store, options HandlerOptions) http.Handler {
 		path := request.URL.Path
 		if route, ok := staticRoutes[path]; ok {
 			serveAsset(writer, route)
+			return
+		}
+		if escaped := request.URL.EscapedPath(); escaped == "/app" || strings.HasPrefix(escaped, appPrefix) {
+			serveApp(writer, request, app, escaped)
 			return
 		}
 		switch {
@@ -96,12 +105,37 @@ func NewHandler(store *Store, options HandlerOptions) http.Handler {
 }
 
 func serveAsset(writer http.ResponseWriter, route staticRoute) {
-	content, err := assetsFS.ReadFile(route.asset)
+	serveFile(writer, assetsFS, route.asset, route.contentType)
+}
+
+// serveApp serves /app/ only from the manifest-derived table. The lookup uses the
+// escaped path, so a percent-encoded spelling of an app path is not a route.
+// When the table could not be derived, /app/ answers 503 with the reason; every
+// other path under /app is 404.
+func serveApp(writer http.ResponseWriter, request *http.Request, app *appBundle, escaped string) {
+	if app.err != nil {
+		if escaped == appPrefix {
+			http.Error(writer, "web chat app unavailable: "+app.err.Error(), http.StatusServiceUnavailable)
+			return
+		}
+		http.NotFound(writer, request)
+		return
+	}
+	route, ok := app.routes[escaped]
+	if !ok {
+		http.NotFound(writer, request)
+		return
+	}
+	serveFile(writer, app.source, route.name, route.contentType)
+}
+
+func serveFile(writer http.ResponseWriter, source fs.FS, name, contentType string) {
+	content, err := fs.ReadFile(source, name)
 	if err != nil {
 		http.Error(writer, "embedded asset unavailable", http.StatusInternalServerError)
 		return
 	}
-	setSecurityHeaders(writer, route.contentType)
+	setSecurityHeaders(writer, contentType)
 	_ = boundedWrite(writer, func() error {
 		_, err := writer.Write(content)
 		return err

@@ -3,6 +3,7 @@ name: webchat-extension
 # Optional extension only. Path-filtered so core-only changes never run it, and
 # no core job depends on it (see extensions/webchat/README.md).
 on:
+  workflow_dispatch:
   push:
     paths:
       - "extensions/webchat/**"
@@ -53,3 +54,82 @@ jobs:
 
       - name: Node tests (browser-side pure modules and DOM stubs)
         run: umask 077; node --test internal/webchat/jstest/*.test.mjs
+
+  # React frontend (extensions/webchat/frontend). Installs run without install
+  # scripts. The build is committed, so the job also proves it is reproducible.
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/webchat/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: extensions/webchat/frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: extensions/webchat/frontend/package-lock.json
+
+      - name: Prepare private temporary directory
+        run: |
+          umask 077
+          TMPDIR="$(mktemp -d "$HOME/tw-ci.XXXXXXXX")"
+          chmod 700 "$TMPDIR"
+          printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
+
+      - name: Install without install scripts
+        run: umask 077; npm ci --ignore-scripts
+
+      - name: Verify (typecheck, tests, build, sink and dependency gates)
+        run: umask 077; npm run verify
+
+      - name: Reproducibility (two clean builds, compared with the committed dist/)
+        run: umask 077; npm run repro
+
+      - name: Committed dist/ matches the rebuild
+        working-directory: ${{ github.workspace }}
+        run: |
+          changes="$(git status --porcelain --untracked-files=all -- extensions/webchat/internal/webchat/dist)"
+          if [ -n "$changes" ]; then
+            echo "$changes"
+            echo "dist/ differs from the committed build: rebuild and commit it" >&2
+            exit 1
+          fi
+
+  # Manual only (workflow_dispatch). Opt-in browser CSP smoke against a demo
+  # gateway on a fresh port (never 8791). No gate depends on it.
+  csp-smoke:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extensions/webchat
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.1"
+          cache: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: extensions/webchat/frontend/.nvmrc
+
+      - name: Build and start the demo gateway
+        run: |
+          umask 077
+          go build -mod=readonly -o "$RUNNER_TEMP/tbound-webchat" ./cmd/tbound-webchat
+          "$RUNNER_TEMP/tbound-webchat" --demo --addr 127.0.0.1:18791 > "$RUNNER_TEMP/gateway.log" 2>&1 &
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:18791/api/v1/contract > /dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/gateway.log"
+          exit 1
+
+      - name: CSP smoke (system Chrome)
+        env:
+          CHROME_BIN: /usr/bin/google-chrome
+        run: node scripts/csp-smoke.mjs --url http://127.0.0.1:18791
