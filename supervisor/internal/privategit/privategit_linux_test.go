@@ -12,10 +12,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"syscall"
 	"testing"
+
+	"tbound/supervisor/internal/delta"
 )
 
 const testDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -69,7 +72,8 @@ func TestCreateInitializesIndependentPrivateGitRepository(t *testing.T) {
 		t.Fatalf("unsafe private config: %q", config)
 	}
 	provenance := repository.Provenance()
-	if provenance.SourceTreeDigest == "" || provenance.SourceBindingDigest != testDigest || provenance.GitExecutableDigest == "" || provenance.GitExecutionBoundary == "" || provenance.Digest() == "" || provenance.InitialBranch != "main" || provenance.FilterPolicy != "workspace-reserved-git/v1" {
+	if provenance.SchemaVersion != "tbound-private-git/v2" || !validRepositoryName(provenance.RepositoryName) || provenance.PrivateParentDevice == 0 || provenance.PrivateParentInode == 0 ||
+		provenance.SourceTreeDigest == "" || provenance.SourceBindingDigest != testDigest || provenance.GitExecutableDigest == "" || provenance.GitExecutionBoundary == "" || provenance.Digest() == "" || provenance.InitialBranch != "main" || provenance.FilterPolicy != "workspace-reserved-git/v1" {
 		t.Fatalf("incomplete provenance: %+v", provenance)
 	}
 	if provenance.MetadataPolicyDigest != testDigest || provenance.SourceManifest.MetadataPolicyDigest != testDigest {
@@ -87,6 +91,517 @@ func TestCreateInitializesIndependentPrivateGitRepository(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("bounded Destroy left parent entries: %+v", entries)
+	}
+}
+
+func TestReopenVerifiesPinnedSnapshotWithoutRestoringAuthorityOrMutatingEvidence(t *testing.T) {
+	parentPath := privateTestDirectory(t, "parent")
+	sourcePath := privateTestDirectory(t, "source")
+	writePrivateFile(t, filepath.Join(sourcePath, "README.md"), "snapshot bytes\n", 0o600)
+	parent := openPrivateTestDirectory(t, parentPath)
+	source := openPrivateTestDirectory(t, sourcePath)
+	git := testPinnedGit(t)
+	repository, err := Create(context.Background(), parent, testSource(source), testOptions(git))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	approval := approvalForRepository(t, parent, repository)
+	if err := repository.Close(); err != nil {
+		t.Fatalf("close original repository descriptors: %v", err)
+	}
+	if err := git.Close(); err != nil {
+		t.Fatalf("close pinned Git executable before reopen: %v", err)
+	}
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	journalPath := filepath.Join(parentPath, "retained-d06-journal.jsonl")
+	journalBytes := []byte("retained authenticated-owner evidence is outside this API\n")
+	writePrivateFile(t, journalPath, string(journalBytes), 0o600)
+	entriesBefore, err := os.ReadDir(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := Reopen(parent, approval)
+	if err != nil {
+		t.Fatalf("Reopen: %v", err)
+	}
+	if err := verified.Verify(); err != nil {
+		t.Fatalf("Verify reopened repository: %v", err)
+	}
+	if got := verified.Snapshot(); !reflect.DeepEqual(got, approval.Snapshot) {
+		t.Fatalf("reopened snapshot changed: got=%+v want=%+v", got, approval.Snapshot)
+	}
+	if got := verified.Provenance(); !reflect.DeepEqual(got, approval.Provenance) {
+		t.Fatalf("reopened provenance changed: got=%+v want=%+v", got, approval.Provenance)
+	}
+	if err := verified.Close(); err != nil {
+		t.Fatalf("close verification handle: %v", err)
+	}
+	entriesAfter, err := os.ReadDir(parentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(entryNames(entriesAfter), entryNames(entriesBefore)) {
+		t.Fatalf("reopen/close changed parent entries: before=%v after=%v", entryNames(entriesBefore), entryNames(entriesAfter))
+	}
+	if got, err := os.ReadFile(journalPath); err != nil || !reflect.DeepEqual(got, journalBytes) {
+		t.Fatalf("reopen/close changed retained D06 journal: got=%q err=%v", got, err)
+	}
+	if _, err := os.Stat(filepath.Join(parentPath, approval.Name, "README.md")); err != nil {
+		t.Fatalf("retained repository was removed on Close: %v", err)
+	}
+}
+
+func TestReopenRejectsMissingOrForgedTrustedIdentityAndWrongAnchors(t *testing.T) {
+	parentPath := privateTestDirectory(t, "parent")
+	otherParentPath := privateTestDirectory(t, "other-parent")
+	sourcePath := privateTestDirectory(t, "source")
+	writePrivateFile(t, filepath.Join(sourcePath, "README.md"), "snapshot bytes\n", 0o600)
+	parent := openPrivateTestDirectory(t, parentPath)
+	otherParent := openPrivateTestDirectory(t, otherParentPath)
+	source := openPrivateTestDirectory(t, sourcePath)
+	repository, err := Create(context.Background(), parent, testSource(source), testOptions(testPinnedGit(t)))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	approval := approvalForRepository(t, parent, repository)
+	if err := repository.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	missingVerifier := cloneReopenApproval(approval)
+	missingVerifier.TrustedVerifier = nil
+	if _, err := Reopen(parent, missingVerifier); !errors.Is(err, ErrReopenBinding) {
+		t.Fatalf("Reopen without external trusted pin = %v, want ErrReopenBinding", err)
+	}
+
+	wrongName := cloneReopenApproval(approval)
+	wrongName.Name = "staging-00000000000000000000000000000000"
+	if _, err := Reopen(parent, wrongName); !errors.Is(err, ErrReopenBinding) {
+		t.Fatalf("Reopen with journal-style discovered/wrong name = %v, want ErrReopenBinding", err)
+	}
+
+	wrongParent := cloneReopenApproval(approval)
+	if _, err := Reopen(otherParent, wrongParent); !errors.Is(err, ErrReopenBinding) {
+		t.Fatalf("Reopen through another parent descriptor = %v, want ErrReopenBinding", err)
+	}
+
+	forged := cloneReopenApproval(approval)
+	forged.Provenance.PrivateGitInode++
+	forgedIdentity, err := repositoryIdentity(parent, forged.Name, forged.Provenance, forged.Snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged.ExpectedIdentityDigest = forgedIdentity.Digest()
+	if _, err := Reopen(parent, forged); !errors.Is(err, ErrReopenBinding) {
+		t.Fatalf("Reopen with self-rehashed local identity = %v, want external pin rejection", err)
+	}
+
+	legacy := cloneReopenApproval(approval)
+	legacy.Provenance.SchemaVersion = "tbound-private-git/v1"
+	legacyIdentity, err := repositoryIdentity(parent, legacy.Name, legacy.Provenance, legacy.Snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.ExpectedIdentityDigest = legacyIdentity.Digest()
+	if _, err := Reopen(parent, legacy); !errors.Is(err, ErrReopenBinding) {
+		t.Fatalf("Reopen historical v1 provenance = %v, want explicit refusal", err)
+	}
+	if _, err := os.Stat(filepath.Join(parentPath, approval.Name, "README.md")); err != nil {
+		t.Fatalf("rejected reopen removed retained repository: %v", err)
+	}
+}
+
+func TestReopenRejectsRootNameSymlinkAndModeChangesWithoutCleanup(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		tamper func(t *testing.T, parentPath string, approval ReopenApproval)
+	}{
+		{name: "root-name-symlink", tamper: func(t *testing.T, parentPath string, approval ReopenApproval) {
+			root := filepath.Join(parentPath, approval.Name)
+			moved := filepath.Join(parentPath, "retained-after-rename")
+			if err := os.Rename(root, moved); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(moved, root); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "parent-mode", tamper: func(t *testing.T, parentPath string, _ ReopenApproval) {
+			if err := os.Chmod(parentPath, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "root-mode", tamper: func(t *testing.T, parentPath string, approval ReopenApproval) {
+			if err := os.Chmod(filepath.Join(parentPath, approval.Name), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			parentPath := privateTestDirectory(t, "parent")
+			sourcePath := privateTestDirectory(t, "source")
+			writePrivateFile(t, filepath.Join(sourcePath, "README.md"), "snapshot bytes\n", 0o600)
+			parent := openPrivateTestDirectory(t, parentPath)
+			source := openPrivateTestDirectory(t, sourcePath)
+			repository, err := Create(context.Background(), parent, testSource(source), testOptions(testPinnedGit(t)))
+			if err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			approval := approvalForRepository(t, parent, repository)
+			if err := repository.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := source.Close(); err != nil {
+				t.Fatal(err)
+			}
+			test.tamper(t, parentPath, approval)
+			if _, err := Reopen(parent, approval); !errors.Is(err, ErrReopenBinding) && !errors.Is(err, ErrGitMetadata) {
+				t.Fatalf("Reopen after %s tamper = %v, want fail-closed identity/metadata error", test.name, err)
+			}
+			if _, err := os.Lstat(filepath.Join(parentPath, approval.Name)); err != nil {
+				t.Fatalf("rejected reopen removed/replaced retained name: %v", err)
+			}
+		})
+	}
+}
+
+func TestReopenRechecksParentNameAfterFullScan(t *testing.T) {
+	parentPath := privateTestDirectory(t, "parent")
+	sourcePath := privateTestDirectory(t, "source")
+	writePrivateFile(t, filepath.Join(sourcePath, "README.md"), "snapshot bytes\n", 0o600)
+	parent := openPrivateTestDirectory(t, parentPath)
+	source := openPrivateTestDirectory(t, sourcePath)
+	repository, err := Create(context.Background(), parent, testSource(source), testOptions(testPinnedGit(t)))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	approval := approvalForRepository(t, parent, repository)
+	if err := repository.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
+	moved := filepath.Join(parentPath, "moved-retained-root")
+	oldHook := beforeRepositoryNameVerifyForTests
+	var injected bool
+	beforeRepositoryNameVerifyForTests = func(_ *os.File, _ *os.File, name string) {
+		if injected {
+			return
+		}
+		injected = true
+		if err := os.Rename(filepath.Join(parentPath, name), moved); err != nil {
+			t.Errorf("rename retained root during verification: %v", err)
+			return
+		}
+		if err := os.Mkdir(filepath.Join(parentPath, name), 0o700); err != nil {
+			t.Errorf("install replacement root during verification: %v", err)
+		}
+	}
+	defer func() { beforeRepositoryNameVerifyForTests = oldHook }()
+	if _, err := Reopen(parent, approval); !errors.Is(err, ErrGitMetadata) {
+		t.Fatalf("Reopen after name substitution = %v, want ErrGitMetadata", err)
+	}
+	if !injected {
+		t.Fatal("name substitution hook did not run")
+	}
+	if _, err := os.Stat(filepath.Join(moved, "README.md")); err != nil {
+		t.Fatalf("rejected reopen deleted or lost the retained root: %v", err)
+	}
+}
+
+func TestReopenRechecksGitAdminAfterFullScan(t *testing.T) {
+	parentPath := privateTestDirectory(t, "parent")
+	sourcePath := privateTestDirectory(t, "source")
+	writePrivateFile(t, filepath.Join(sourcePath, "README.md"), "snapshot bytes\n", 0o600)
+	parent := openPrivateTestDirectory(t, parentPath)
+	source := openPrivateTestDirectory(t, sourcePath)
+	repository, err := Create(context.Background(), parent, testSource(source), testOptions(testPinnedGit(t)))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	approval := approvalForRepository(t, parent, repository)
+	if err := repository.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Close(); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(parentPath, approval.Name)
+	moved := filepath.Join(root, ".git-retained-after-swap")
+	oldHook := beforeRepositoryNameVerifyForTests
+	var injected bool
+	beforeRepositoryNameVerifyForTests = func(_ *os.File, _ *os.File, _ string) {
+		if injected {
+			return
+		}
+		injected = true
+		if err := os.Rename(filepath.Join(root, ".git"), moved); err != nil {
+			t.Errorf("rename private Git admin during verification: %v", err)
+			return
+		}
+		if err := os.Mkdir(filepath.Join(root, ".git"), 0o700); err != nil {
+			t.Errorf("install replacement private Git admin during verification: %v", err)
+		}
+	}
+	defer func() { beforeRepositoryNameVerifyForTests = oldHook }()
+	if _, err := Reopen(parent, approval); !errors.Is(err, ErrGitMetadata) {
+		t.Fatalf("Reopen after .git substitution = %v, want ErrGitMetadata", err)
+	}
+	if !injected {
+		t.Fatal(".git substitution hook did not run")
+	}
+	if _, err := os.Stat(filepath.Join(moved, "config")); err != nil {
+		t.Fatalf("rejected reopen deleted or lost retained .git admin: %v", err)
+	}
+}
+
+func TestReopenAndVerifyRecheckAfterOwnerAssertionCallback(t *testing.T) {
+	for _, stage := range []string{"Reopen", "Verify"} {
+		for _, mutation := range []string{"repository-name", "git-admin", "worktree-content"} {
+			t.Run(stage+"/"+mutation, func(t *testing.T) {
+				parentPath := privateTestDirectory(t, "parent")
+				sourcePath := privateTestDirectory(t, "source")
+				writePrivateFile(t, filepath.Join(sourcePath, "README.md"), "snapshot bytes\n", 0o600)
+				parent := openPrivateTestDirectory(t, parentPath)
+				source := openPrivateTestDirectory(t, sourcePath)
+				repository, err := Create(context.Background(), parent, testSource(source), testOptions(testPinnedGit(t)))
+				if err != nil {
+					t.Fatalf("Create: %v", err)
+				}
+				approval := approvalForRepository(t, parent, repository)
+				if err := repository.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if err := source.Close(); err != nil {
+					t.Fatal(err)
+				}
+
+				ownerCheck := approval.VerifyExclusiveParent
+				calls := 0
+				trigger := 3 // Reopen's post-scan owner assertion.
+				if stage == "Verify" {
+					trigger = -1
+				}
+				approval.VerifyExclusiveParent = func(file *os.File, expected DirectoryIdentity) error {
+					calls++
+					if err := ownerCheck(file, expected); err != nil {
+						return err
+					}
+					if calls == trigger {
+						injectOwnerCallbackMutation(t, parentPath, approval.Name, mutation)
+					}
+					return nil
+				}
+
+				verified, err := Reopen(parent, approval)
+				if stage == "Reopen" {
+					if !errors.Is(err, ErrGitMetadata) {
+						t.Fatalf("Reopen after owner callback %s mutation = %v, want ErrGitMetadata", mutation, err)
+					}
+					assertOwnerCallbackMutationRetained(t, parentPath, approval.Name, mutation)
+					return
+				}
+				if err != nil {
+					t.Fatalf("Reopen before later Verify mutation: %v", err)
+				}
+				trigger = calls + 2 // Verify's post-scan owner assertion.
+				if err := verified.Verify(); !errors.Is(err, ErrGitMetadata) {
+					t.Fatalf("Verify after owner callback %s mutation = %v, want ErrGitMetadata", mutation, err)
+				}
+				if err := verified.Close(); err != nil {
+					t.Fatal(err)
+				}
+				assertOwnerCallbackMutationRetained(t, parentPath, approval.Name, mutation)
+			})
+		}
+	}
+}
+
+func injectOwnerCallbackMutation(t *testing.T, parentPath, name, mutation string) {
+	t.Helper()
+	root := filepath.Join(parentPath, name)
+	switch mutation {
+	case "repository-name":
+		moved := filepath.Join(parentPath, "retained-after-owner-callback")
+		if err := os.Rename(root, moved); err != nil {
+			t.Errorf("rename retained root from owner callback: %v", err)
+			return
+		}
+		if err := os.Mkdir(root, 0o700); err != nil {
+			t.Errorf("install replacement root from owner callback: %v", err)
+		}
+	case "git-admin":
+		moved := filepath.Join(root, ".git-retained-after-owner-callback")
+		if err := os.Rename(filepath.Join(root, ".git"), moved); err != nil {
+			t.Errorf("rename retained .git from owner callback: %v", err)
+			return
+		}
+		if err := os.Mkdir(filepath.Join(root, ".git"), 0o700); err != nil {
+			t.Errorf("install replacement .git from owner callback: %v", err)
+		}
+	case "worktree-content":
+		if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("changed from owner callback\n"), 0o600); err != nil {
+			t.Errorf("change retained worktree from owner callback: %v", err)
+		}
+	default:
+		t.Errorf("unknown owner callback mutation %q", mutation)
+	}
+}
+
+func assertOwnerCallbackMutationRetained(t *testing.T, parentPath, name, mutation string) {
+	t.Helper()
+	root := filepath.Join(parentPath, name)
+	switch mutation {
+	case "repository-name":
+		if _, err := os.Stat(filepath.Join(parentPath, "retained-after-owner-callback", "README.md")); err != nil {
+			t.Fatalf("rejected owner callback deleted retained root: %v", err)
+		}
+	case "git-admin":
+		if _, err := os.Stat(filepath.Join(root, ".git-retained-after-owner-callback", "config")); err != nil {
+			t.Fatalf("rejected owner callback deleted retained Git admin: %v", err)
+		}
+	case "worktree-content":
+		if got, err := os.ReadFile(filepath.Join(root, "README.md")); err != nil || string(got) != "changed from owner callback\n" {
+			t.Fatalf("rejected owner callback changed retained evidence: got=%q err=%v", got, err)
+		}
+	}
+}
+
+func TestReopenRejectsWorktreeAndGitAdminTampering(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		tamper func(t *testing.T, root string)
+	}{
+		{name: "worktree-content", tamper: func(t *testing.T, root string) {
+			if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("tampered bytes\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "git-config", tamper: func(t *testing.T, root string) {
+			path := filepath.Join(root, ".git", "config")
+			config, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			config = append(config, []byte("[include]\n\tpath = /outside/config\n")...)
+			if err := os.WriteFile(path, config, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "git-admin-replacement", tamper: func(t *testing.T, root string) {
+			if err := os.Rename(filepath.Join(root, ".git"), filepath.Join(root, ".git-retained")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(filepath.Join(root, ".git"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			parentPath := privateTestDirectory(t, "parent")
+			sourcePath := privateTestDirectory(t, "source")
+			writePrivateFile(t, filepath.Join(sourcePath, "README.md"), "snapshot bytes\n", 0o600)
+			parent := openPrivateTestDirectory(t, parentPath)
+			source := openPrivateTestDirectory(t, sourcePath)
+			repository, err := Create(context.Background(), parent, testSource(source), testOptions(testPinnedGit(t)))
+			if err != nil {
+				t.Fatalf("Create: %v", err)
+			}
+			approval := approvalForRepository(t, parent, repository)
+			if err := repository.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if err := source.Close(); err != nil {
+				t.Fatal(err)
+			}
+			root := filepath.Join(parentPath, approval.Name)
+			test.tamper(t, root)
+			if _, err := Reopen(parent, approval); !errors.Is(err, ErrGitMetadata) {
+				t.Fatalf("Reopen after %s tamper = %v, want ErrGitMetadata", test.name, err)
+			}
+			if _, err := os.Stat(filepath.Join(root, "README.md")); err != nil {
+				t.Fatalf("rejected reopen deleted retained worktree content: %v", err)
+			}
+			if test.name == "git-admin-replacement" {
+				if _, err := os.Stat(filepath.Join(root, ".git-retained", "config")); err != nil {
+					t.Fatalf("rejected reopen deleted retained Git admin: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestRepositoryIdentityDigestBindsD06ProfileAndAnchoredNodes(t *testing.T) {
+	parentPath := privateTestDirectory(t, "parent")
+	sourcePath := privateTestDirectory(t, "source")
+	writePrivateFile(t, filepath.Join(sourcePath, "README.md"), "snapshot bytes\n", 0o600)
+	parent := openPrivateTestDirectory(t, parentPath)
+	source := openPrivateTestDirectory(t, sourcePath)
+	repository, err := Create(context.Background(), parent, testSource(source), testOptions(testPinnedGit(t)))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	base, err := repository.ReopenIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	provenance := repository.Provenance()
+	snapshot := repository.Snapshot()
+	mutations := []struct {
+		name   string
+		mutate func(*Provenance, *Snapshot, *string)
+	}{
+		{name: "child-name", mutate: func(p *Provenance, _ *Snapshot, name *string) {
+			p.RepositoryName = "staging-00000000000000000000000000000000"
+			*name = p.RepositoryName
+		}},
+		{name: "parent-device", mutate: func(p *Provenance, _ *Snapshot, _ *string) { p.PrivateParentDevice++ }},
+		{name: "parent-inode", mutate: func(p *Provenance, _ *Snapshot, _ *string) { p.PrivateParentInode++ }},
+		{name: "root-device", mutate: func(p *Provenance, _ *Snapshot, _ *string) { p.PrivateRootDevice++ }},
+		{name: "root-inode", mutate: func(p *Provenance, _ *Snapshot, _ *string) { p.PrivateRootInode++ }},
+		{name: "git-admin-device", mutate: func(p *Provenance, _ *Snapshot, _ *string) { p.PrivateGitDevice++ }},
+		{name: "git-admin-inode", mutate: func(p *Provenance, _ *Snapshot, _ *string) { p.PrivateGitInode++ }},
+		{name: "baseline-tree", mutate: func(p *Provenance, _ *Snapshot, _ *string) {
+			p.SourceTreeDigest = delta.TreeDigestProfile + strings.Repeat("1", 64)
+		}},
+		{name: "metadata-profile", mutate: func(p *Provenance, _ *Snapshot, _ *string) {
+			p.MetadataPolicyDigest = "sha256:" + strings.Repeat("b", 64)
+		}},
+		{name: "xattr-profile", mutate: func(p *Provenance, _ *Snapshot, _ *string) {
+			p.XattrProfileDigest = "sha256:" + strings.Repeat("b", 64)
+		}},
+		{name: "source-binding-profile", mutate: func(p *Provenance, _ *Snapshot, _ *string) {
+			p.SourceBindingDigest = "sha256:" + strings.Repeat("b", 64)
+		}},
+		{name: "capture-limits", mutate: func(p *Provenance, _ *Snapshot, _ *string) { p.CaptureLimits.MaxObjects++ }},
+		{name: "git-executable-profile", mutate: func(p *Provenance, _ *Snapshot, _ *string) {
+			p.GitExecutableDigest = "sha256:" + strings.Repeat("b", 64)
+		}},
+	}
+	for _, mutation := range mutations {
+		t.Run(mutation.name, func(t *testing.T) {
+			candidateProvenance := cloneProvenance(provenance)
+			candidateSnapshot := cloneSnapshot(snapshot)
+			candidateName := provenance.RepositoryName
+			mutation.mutate(&candidateProvenance, &candidateSnapshot, &candidateName)
+			candidate, err := repositoryIdentity(parent, candidateName, candidateProvenance, candidateSnapshot)
+			if err != nil {
+				t.Fatalf("compute candidate identity: %v", err)
+			}
+			if candidate.Digest() == base.Digest() {
+				t.Fatal("identity digest did not bind changed trusted input")
+			}
+		})
+	}
+	if err := repository.Destroy(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -614,6 +1129,45 @@ func testSource(root *os.File) SourceDescriptor {
 		XattrVisibility: XattrVisibilityAttestation{ProfileDigest: testDigest, Complete: true},
 		Binding:         testSourceVerifier{},
 	}
+}
+
+func approvalForRepository(t *testing.T, parent *os.File, repository *Repository) ReopenApproval {
+	t.Helper()
+	identity, err := repository.ReopenIdentity()
+	if err != nil {
+		t.Fatalf("derive trusted external reopen pin: %v", err)
+	}
+	provenance := repository.Provenance()
+	snapshot := repository.Snapshot()
+	pin := identity.Digest()
+	if pin == "" {
+		t.Fatal("repository produced an empty external identity digest")
+	}
+	approval := ReopenApproval{
+		Name:                   provenance.RepositoryName,
+		ParentIdentity:         identity.Parent,
+		Provenance:             provenance,
+		Snapshot:               snapshot,
+		ExpectedIdentityDigest: pin,
+		TrustedVerifier: func(candidate RepositoryIdentity) error {
+			if candidate != identity || candidate.Digest() != pin {
+				return errors.New("candidate identity differs from the test's trusted host pin")
+			}
+			return nil
+		},
+		VerifyExclusiveParent: func(file *os.File, expected DirectoryIdentity) error {
+			info, err := statFile(file)
+			if err != nil || uint64(info.Dev) != expected.Device || uint64(info.Ino) != expected.Inode ||
+				validatePrivateDirectory(file) != nil {
+				return errors.New("test host owner rejected parent descriptor or owner lock")
+			}
+			return nil
+		},
+	}
+	if err := validateReopenApproval(parent, approval); err != nil {
+		t.Fatalf("create valid reopen approval: %v (identity=%+v digest=%q provenance=%+v)", err, identity, pin, provenance)
+	}
+	return approval
 }
 
 func testOptions(git PinnedGit) Options {

@@ -168,8 +168,8 @@ repeated three times). Scenario labels and required dispositions are in
 | `LC-01-RECEIPT` | **NOT IMPLEMENTED** as a recovery injector. Provider exchange capture exists; host-controlled lineage retirement is not established. `RETIRED_UNEXECUTED` remains proposed. |
 | `LC-02-DECISION` | **NOT IMPLEMENTED** as an end-to-end crash injector; provider decision journaling exists. |
 | `LC-03-BEFORE-EFFECT-INTENT` | **NOT IMPLEMENTED** as an end-to-end injector; durable store authorization and in-memory consumption precede effect-intent persistence. |
-| `LC-04-AFTER-EFFECT-INTENT` | **NOT IMPLEMENTED end to end**; the audit component provides a host-only post-sync/pre-callback crash cut. |
-| `LC-05-CALLBACK-ENTRY` | **NOT IMPLEMENTED end to end**; a host-only audit-test callback fixture writes a separate entry marker before a crash cut inside the callback body. |
+| `LC-04-AFTER-EFFECT-INTENT` | **NOT IMPLEMENTED as the proposed recovery injector**; an offline governed process-crash regression now crosses provider capture, correlated ALLOW, v2 operation authorization, and synchronized Store effect intent, then exits before callback entry. A fresh process verifies quarantine, replay refusal, and unchanged journals. |
+| `LC-05-CALLBACK-ENTRY` | **NOT IMPLEMENTED end to end**; an offline governed Bash fixture reaches the test `CommandRunner.Run` entry, validates the authorized view/lease and exact command/output scope, syncs view/lease/command digests, then exits before launching Bash. A positive control proves that exact command would create an independent external-action marker, which remains absent after the process crash. This is not Bash process entry or production D09 runner evidence. |
 | `LC-06-EFFECT-BEFORE-OUTCOME` | **NOT IMPLEMENTED end to end**; the audit component provides a post-callback/pre-outcome cut with an independent marker oracle. |
 | `LC-07-OUTCOME-BEFORE-CHECKPOINT` | **NOT IMPLEMENTED** as a single end-to-end lifecycle injection. Component fixtures do not constitute the proposed trial. |
 | `LC-08-AFTER-CHECKPOINT` | **NOT IMPLEMENTED** as an end-to-end lifecycle injection; provider-result delivery remains separate conformance. |
@@ -177,15 +177,20 @@ repeated three times). Scenario labels and required dispositions are in
 
 The mandatory pre-effect intent write/synchronization-failure case remains
 separate conformance outside the 51-trial proposal; disk-full writing does
-not cover a synchronization failure. No run has been performed for these
-proposed labels. `G1=false` and `H1` unexecuted remain the status. E07
-publication, exact provider-result delivery, source/commit lineage,
+not cover a synchronization failure. No proposed lifecycle or incident label
+has been run as a registered trial. `G1=false` and `H1` unexecuted remain the
+status. E07 publication, exact provider-result delivery, source/commit lineage,
 cancellation, and filesystem durability remain separate obligations.
 
-The audit hooks and subprocess callback-fixture marker checks are component-level
-evidence only. They do not inject the provider exchange, correlated decision,
-store authorization, checkpoint, or provider-result delivery boundaries; they
-do not register an LC case or establish production-oracle recovery.
+The audit hooks and governed subprocess regressions provide component-level
+evidence only. LC-04 crosses provider capture, correlated decision, Store
+authorization, and effect intent, then crashes before callback entry. The LC-05
+fixture reaches test `CommandRunner.Run` entry, records the authorized view and
+command binding, and crashes before launching the command; its positive control
+verifies the command's independent marker oracle. Neither implements the
+proposed end-to-end recovery harness, production independent-oracle recovery,
+power-loss testing, checkpoint recovery, or provider-result delivery. Neither
+registers an LC case.
 
 ---
 

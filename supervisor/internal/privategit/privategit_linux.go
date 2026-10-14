@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	"unicode"
 	"unsafe"
 
+	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/workspace"
 )
 
@@ -111,6 +113,10 @@ func Create(ctx context.Context, parent *os.File, source SourceDescriptor, optio
 	}
 	if err := validatePrivateDirectory(parent); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrUntrustedParent, err)
+	}
+	parentInfo, err := statFile(parent)
+	if err != nil {
+		return nil, fmt.Errorf("stat private Git parent descriptor: %w", err)
 	}
 	if err := contextErr(ctx); err != nil {
 		return nil, err
@@ -254,7 +260,8 @@ func Create(ctx context.Context, parent *os.File, source SourceDescriptor, optio
 		root: root, parent: parentCopy, name: name,
 		snapshot: Snapshot{Manifest: imported.Manifest, TreeDigest: imported.TreeDigest, Objects: imported.Objects, Bytes: imported.Bytes},
 		provenance: Provenance{
-			SchemaVersion:    "tbound-private-git/v1",
+			SchemaVersion:    "tbound-private-git/v2",
+			RepositoryName:   name,
 			Transfer:         "descriptor-relative-filtered-byte-copy",
 			FilterPolicy:     "workspace-reserved-git/v1",
 			SourceGeneration: source.Generation, SourceTreeDigest: imported.TreeDigest,
@@ -265,6 +272,7 @@ func Create(ctx context.Context, parent *os.File, source SourceDescriptor, optio
 			InitialBranch:        options.InitialBranch,
 			SourceRootDevice:     uint64(sourceInfo.Dev), SourceRootInode: uint64(sourceInfo.Ino),
 			PrivateRootDevice: uint64(rootInfo.Dev), PrivateRootInode: uint64(rootInfo.Ino),
+			PrivateParentDevice: uint64(parentInfo.Dev), PrivateParentInode: uint64(parentInfo.Ino),
 			PrivateGitDevice: uint64(gitAdminInfo.Dev), PrivateGitInode: uint64(gitAdminInfo.Ino),
 			XattrProfileDigest: source.XattrVisibility.ProfileDigest, CaptureLimits: source.Limits,
 		},
@@ -273,6 +281,140 @@ func Create(ctx context.Context, parent *os.File, source SourceDescriptor, optio
 		limits:   source.Limits, xattr: source.XattrVisibility, boundary: options.CleanupBoundary,
 	}
 	return repository, nil
+}
+
+// Reopen verifies a retained private Git snapshot through an already-open,
+// host-supplied parent descriptor and exact child name. The approval must be
+// authenticated by a surviving trusted owner; local D06/privateGit journal
+// content is never used to discover the child or establish the expected
+// identity. The returned handle exposes only verification, immutable evidence,
+// and descriptor close. It does not create Store or PreparedSession authority.
+func Reopen(parent *os.File, approval ReopenApproval) (*VerifiedRepository, error) {
+	approval = cloneReopenApproval(approval)
+	if err := validateReopenApproval(parent, approval); err != nil {
+		return nil, err
+	}
+	parentInfo, err := statFile(parent)
+	if err != nil {
+		return nil, errors.Join(ErrReopenBinding, err)
+	}
+	if err := validatePrivateDirectory(parent); err != nil {
+		return nil, fmt.Errorf("%w: private Git parent changed: %v", ErrReopenBinding, err)
+	}
+	parentIdentity := DirectoryIdentity{Device: uint64(parentInfo.Dev), Inode: uint64(parentInfo.Ino)}
+	if parentIdentity != approval.ParentIdentity || parentIdentity.Device != approval.Provenance.PrivateParentDevice ||
+		parentIdentity.Inode != approval.Provenance.PrivateParentInode {
+		return nil, ErrReopenBinding
+	}
+	identity, err := repositoryIdentity(parent, approval.Name, approval.Provenance, approval.Snapshot)
+	if err != nil || identity.Digest() != approval.ExpectedIdentityDigest {
+		return nil, errors.Join(ErrReopenBinding, err)
+	}
+	if err := approval.TrustedVerifier(identity); err != nil {
+		return nil, fmt.Errorf("%w: trusted identity verifier: %v", ErrReopenBinding, err)
+	}
+	if err := approval.VerifyExclusiveParent(parent, parentIdentity); err != nil {
+		return nil, fmt.Errorf("%w: exclusive parent owner: %v", ErrReopenBinding, err)
+	}
+
+	root, err := openDirectoryAt(parent, approval.Name)
+	if err != nil {
+		return nil, fmt.Errorf("%w: open retained private Git root: %v", ErrGitMetadata, err)
+	}
+	closeRoot := true
+	defer func() {
+		if closeRoot {
+			_ = root.Close()
+		}
+	}()
+	rootInfo, err := statFile(root)
+	if err != nil {
+		return nil, fmt.Errorf("%w: stat retained private Git root: %v", ErrGitMetadata, err)
+	}
+	if err := validatePrivateDirectory(root); err != nil {
+		return nil, fmt.Errorf("%w: retained private Git root: %v", ErrGitMetadata, err)
+	}
+	rootMount, err := mountID(root)
+	if err != nil || checkMount(parent, rootMount, "private parent") != nil {
+		return nil, fmt.Errorf("%w: retained root is not anchored to the supplied parent", ErrGitMetadata)
+	}
+	gitAdminInfo, err := openGitAdmin(root)
+	if err != nil {
+		return nil, err
+	}
+	parentCopy, err := duplicateDirectory(parent, "reopened-private-git-parent")
+	if err != nil {
+		return nil, fmt.Errorf("%w: retain private Git parent descriptor: %v", ErrGitMetadata, err)
+	}
+	repository := &Repository{
+		root: root, parent: parentCopy, name: approval.Name,
+		snapshot: cloneSnapshot(approval.Snapshot), provenance: cloneProvenance(approval.Provenance),
+		identity: nodeIdentityFromStat(rootInfo), gitAdmin: nodeIdentityFromStat(gitAdminInfo),
+		limits:   approval.Provenance.CaptureLimits,
+		xattr:    XattrVisibilityAttestation{ProfileDigest: approval.Provenance.XattrProfileDigest, Complete: true},
+		readOnly: true,
+	}
+	closeRoot = false
+	verified := &VerifiedRepository{repository: repository, approval: approval}
+	if _, err := verified.verifyLocked(); err != nil {
+		_ = repository.Close()
+		return nil, fmt.Errorf("%w: retained private Git snapshot failed verification: %w", ErrGitMetadata, err)
+	}
+	return verified, nil
+}
+
+func validateReopenApproval(parent *os.File, approval ReopenApproval) error {
+	provenance := approval.Provenance
+	if parent == nil || approval.Name == "" || !validRepositoryName(approval.Name) || approval.Name != provenance.RepositoryName ||
+		provenance.SchemaVersion != "tbound-private-git/v2" || provenance.Transfer != "descriptor-relative-filtered-byte-copy" ||
+		provenance.FilterPolicy != "workspace-reserved-git/v1" || provenance.SourceGeneration == "" ||
+		!validTreeDigest(provenance.SourceTreeDigest) || !validSHA256(provenance.MetadataPolicyDigest) ||
+		!validSHA256(provenance.SourceBindingDigest) || !validSHA256(provenance.XattrProfileDigest) ||
+		!validSHA256(provenance.GitExecutableDigest) || strings.TrimSpace(provenance.GitExecutionBoundary) == "" ||
+		provenance.InitialBranch != "main" || provenance.SourceRootDevice == 0 || provenance.SourceRootInode == 0 ||
+		provenance.PrivateParentDevice == 0 || provenance.PrivateParentInode == 0 || provenance.PrivateRootDevice == 0 ||
+		provenance.PrivateRootInode == 0 || provenance.PrivateGitDevice == 0 || provenance.PrivateGitInode == 0 ||
+		provenance.CaptureLimits.MaxObjects <= 0 || provenance.CaptureLimits.MaxDepth <= 0 ||
+		provenance.CaptureLimits.MaxFileBytes <= 0 || provenance.CaptureLimits.MaxTotalBytes < provenance.CaptureLimits.MaxFileBytes ||
+		!validSHA256(approval.ExpectedIdentityDigest) || approval.TrustedVerifier == nil || approval.VerifyExclusiveParent == nil ||
+		provenance.Digest() == "" || approval.Snapshot.TreeDigest != provenance.SourceTreeDigest ||
+		approval.Snapshot.Manifest.MetadataPolicyDigest != provenance.MetadataPolicyDigest ||
+		!reflect.DeepEqual(approval.Snapshot.Manifest, provenance.SourceManifest) {
+		return ErrReopenBinding
+	}
+	return nil
+}
+
+func validTreeDigest(value string) bool {
+	if len(value) != len(delta.TreeDigestProfile)+64 || !strings.HasPrefix(value, delta.TreeDigestProfile) {
+		return false
+	}
+	_, err := hex.DecodeString(value[len(delta.TreeDigestProfile):])
+	return err == nil
+}
+
+func repositoryIdentity(parent *os.File, name string, provenance Provenance, snapshot Snapshot) (RepositoryIdentity, error) {
+	parentInfo, err := statFile(parent)
+	if err != nil {
+		return RepositoryIdentity{}, err
+	}
+	provenanceDigest := provenance.Digest()
+	snapshotEncoded, err := json.Marshal(snapshot)
+	if err != nil {
+		return RepositoryIdentity{}, err
+	}
+	snapshotHash := sha256.Sum256(append([]byte("tbound-private-git-snapshot/v1\x00"), snapshotEncoded...))
+	identity := RepositoryIdentity{
+		SchemaVersion:    "tbound-private-git-reopen-identity/v1",
+		Parent:           DirectoryIdentity{Device: uint64(parentInfo.Dev), Inode: uint64(parentInfo.Ino)},
+		RepositoryName:   name,
+		ProvenanceDigest: provenanceDigest,
+		SnapshotDigest:   "sha256:" + hex.EncodeToString(snapshotHash[:]),
+	}
+	if identity.Digest() == "" {
+		return RepositoryIdentity{}, ErrReopenBinding
+	}
+	return identity, nil
 }
 
 func validateOptions(source SourceDescriptor, options Options) error {
@@ -594,6 +736,7 @@ func (b *boundedBuffer) Write(data []byte) (int, error) {
 
 var beforeGitStartForTests func(root, template *os.File)
 var beforeCleanupUnlinkForTests func(parent *os.File, name string)
+var beforeRepositoryNameVerifyForTests func(parent, root *os.File, name string)
 
 func runGit(ctx context.Context, git PinnedGit, root, template *os.File, args []string) ([]byte, error) {
 	if err := verifyPinnedGit(git); err != nil {
@@ -1298,11 +1441,27 @@ func destroyRepositoryLocked(repository *Repository) error {
 }
 
 func verifyRepositoryLocked(repository *Repository) error {
+	if repository.parent == nil || !validRepositoryName(repository.name) || repository.name != repository.provenance.RepositoryName ||
+		repository.provenance.SchemaVersion != "tbound-private-git/v2" {
+		return ErrGitMetadata
+	}
+	parentInfo, err := statFile(repository.parent)
+	if err != nil || uint64(parentInfo.Dev) != repository.provenance.PrivateParentDevice ||
+		uint64(parentInfo.Ino) != repository.provenance.PrivateParentInode || validatePrivateDirectory(repository.parent) != nil {
+		return ErrGitMetadata
+	}
 	info, err := statFile(repository.root)
 	if err != nil || uint64(info.Dev) != repository.identity.Device || uint64(info.Ino) != repository.identity.Inode || uint64(info.Dev) != repository.provenance.PrivateRootDevice || uint64(info.Ino) != repository.provenance.PrivateRootInode {
 		return ErrGitMetadata
 	}
 	if err := validatePrivateDirectory(repository.root); err != nil {
+		return ErrGitMetadata
+	}
+	rootMount, err := mountID(repository.root)
+	if err != nil || checkMount(repository.parent, rootMount, "private parent") != nil {
+		return ErrGitMetadata
+	}
+	if err := verifyNamedDirectory(repository.parent, repository.name, info, rootMount); err != nil {
 		return ErrGitMetadata
 	}
 	options := workspace.Options{
@@ -1337,7 +1496,28 @@ func verifyRepositoryLocked(repository *Repository) error {
 	if err != nil || uint64(gitAdminInfo.Dev) != repository.gitAdmin.Device || uint64(gitAdminInfo.Ino) != repository.gitAdmin.Inode {
 		return ErrGitMetadata
 	}
-	return verifyGitAdmin(repository.root, repository.provenance.InitialBranch)
+	if err := verifyGitAdmin(repository.root, repository.provenance.InitialBranch); err != nil {
+		return err
+	}
+	if beforeRepositoryNameVerifyForTests != nil {
+		beforeRepositoryNameVerifyForTests(repository.parent, repository.root, repository.name)
+	}
+	gitAdminAfter, gitAdminErr := openGitAdmin(repository.root)
+	if gitAdminErr != nil || uint64(gitAdminAfter.Dev) != repository.gitAdmin.Device || uint64(gitAdminAfter.Ino) != repository.gitAdmin.Inode {
+		return ErrGitMetadata
+	}
+	if err := verifyGitAdmin(repository.root, repository.provenance.InitialBranch); err != nil {
+		return err
+	}
+	parentAfter, parentErr := statFile(repository.parent)
+	rootAfter, rootErr := statFile(repository.root)
+	if parentErr != nil || rootErr != nil || uint64(parentAfter.Dev) != repository.provenance.PrivateParentDevice ||
+		uint64(parentAfter.Ino) != repository.provenance.PrivateParentInode || uint64(rootAfter.Dev) != repository.identity.Device ||
+		uint64(rootAfter.Ino) != repository.identity.Inode || validatePrivateDirectory(repository.parent) != nil ||
+		verifyNamedDirectory(repository.parent, repository.name, rootAfter, rootMount) != nil {
+		return ErrGitMetadata
+	}
+	return nil
 }
 
 func nodeIdentityFromStat(info syscall.Stat_t) nodeIdentity {

@@ -15,7 +15,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"tbound/supervisor/internal/delta"
@@ -31,6 +33,8 @@ var (
 	ErrSourceBinding       = errors.New("source descriptor lacks trusted binding evidence")
 	ErrCleanupIncomplete   = errors.New("private Git cleanup was incomplete")
 	ErrClosed              = errors.New("private Git repository is closed")
+	ErrReadOnlyRepository  = errors.New("reopened private Git repository is verification-only")
+	ErrReopenBinding       = errors.New("private Git reopen lacks an authenticated pinned identity")
 	ErrUnsupportedPlatform = errors.New("private Git staging is unsupported on this platform")
 )
 
@@ -185,6 +189,7 @@ type Snapshot struct {
 // workspace reference.
 type Provenance struct {
 	SchemaVersion        string             `json:"schema_version"`
+	RepositoryName       string             `json:"repository_name"`
 	Transfer             string             `json:"transfer"`
 	FilterPolicy         string             `json:"filter_policy"`
 	SourceGeneration     string             `json:"source_generation"`
@@ -200,10 +205,174 @@ type Provenance struct {
 	SourceRootInode      uint64             `json:"source_root_inode"`
 	PrivateRootDevice    uint64             `json:"private_root_device"`
 	PrivateRootInode     uint64             `json:"private_root_inode"`
+	PrivateParentDevice  uint64             `json:"private_parent_device"`
+	PrivateParentInode   uint64             `json:"private_parent_inode"`
 	PrivateGitDevice     uint64             `json:"private_git_device"`
 	PrivateGitInode      uint64             `json:"private_git_inode"`
 	XattrProfileDigest   string             `json:"xattr_profile_digest"`
 	CaptureLimits        Limits             `json:"capture_limits"`
+}
+
+// DirectoryIdentity is the device/inode pair of a descriptor-anchored
+// supervisor-owned directory.
+type DirectoryIdentity struct {
+	Device uint64 `json:"device"`
+	Inode  uint64 `json:"inode"`
+}
+
+// RepositoryIdentity is the externally pinnable identity of a private Git
+// snapshot. Its digest binds the parent handle, exact child name, complete
+// privateGit provenance, and the immutable source snapshot.
+type RepositoryIdentity struct {
+	SchemaVersion    string            `json:"schema_version"`
+	Parent           DirectoryIdentity `json:"parent"`
+	RepositoryName   string            `json:"repository_name"`
+	ProvenanceDigest string            `json:"provenance_digest"`
+	SnapshotDigest   string            `json:"snapshot_digest"`
+}
+
+// Digest returns a domain-separated hash suitable for pinning by a trusted
+// host checkpoint or surviving session owner. The digest is not itself an
+// authenticator; callers must authenticate it outside local mutable journals.
+func (i RepositoryIdentity) Digest() string {
+	if i.SchemaVersion != "tbound-private-git-reopen-identity/v1" || i.Parent.Device == 0 || i.Parent.Inode == 0 ||
+		!validRepositoryName(i.RepositoryName) || !validPrivateDigest(i.ProvenanceDigest) || !validPrivateDigest(i.SnapshotDigest) {
+		return ""
+	}
+	encoded, err := json.Marshal(i)
+	if err != nil {
+		return ""
+	}
+	digest := sha256.Sum256(append([]byte("tbound-private-git-reopen-identity/v1\x00"), encoded...))
+	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+// ReopenApproval must be assembled by the trusted recovery owner from an
+// authenticated pin that survived independently of the local D06/privateGit
+// journal. In particular, Name and ParentIdentity must come from that owner;
+// Reopen never discovers a repository by reading or scanning local records.
+// TrustedVerifier authenticates the complete identity digest against the
+// surviving pin. A local digest chain alone is not sufficient.
+//
+// VerifyExclusiveParent is a host TCB assertion that the caller holds the
+// exclusive owner lock for this namespace. It is checked around scans but is
+// not kernel-enforced and does not protect against another same-UID writer if
+// the host violates that precondition. Reopen makes no independent
+// immutability or containment claim.
+type ReopenApproval struct {
+	Name                   string
+	ParentIdentity         DirectoryIdentity
+	Provenance             Provenance
+	Snapshot               Snapshot
+	ExpectedIdentityDigest string
+	TrustedVerifier        func(RepositoryIdentity) error
+	VerifyExclusiveParent  func(*os.File, DirectoryIdentity) error
+}
+
+func validPrivateDigest(value string) bool {
+	if len(value) != len("sha256:")+64 || !strings.HasPrefix(value, "sha256:") {
+		return false
+	}
+	_, err := hex.DecodeString(value[len("sha256:"):])
+	return err == nil
+}
+
+func validRepositoryName(name string) bool {
+	if !strings.HasPrefix(name, "staging-") || len(name) != len("staging-")+32 {
+		return false
+	}
+	suffix := strings.TrimPrefix(name, "staging-")
+	decoded, err := hex.DecodeString(suffix)
+	return err == nil && hex.EncodeToString(decoded) == suffix
+}
+
+// VerifiedRepository exposes only revalidation and evidence reads after a
+// trusted reopen. It deliberately has no root-descriptor or cleanup method.
+type VerifiedRepository struct {
+	mu         sync.Mutex
+	repository *Repository
+	approval   ReopenApproval
+}
+
+func (r *VerifiedRepository) Verify() error {
+	if r == nil || r.repository == nil {
+		return ErrClosed
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, err := r.verifyLocked()
+	return err
+}
+
+func (r *VerifiedRepository) verifyLocked() (RepositoryIdentity, error) {
+	parent := r.repository.parent
+	if err := r.approval.VerifyExclusiveParent(parent, r.approval.ParentIdentity); err != nil {
+		return RepositoryIdentity{}, errors.Join(ErrReopenBinding, err)
+	}
+	identity, err := r.repository.ReopenIdentity()
+	if err != nil {
+		return RepositoryIdentity{}, err
+	}
+	if identity.Digest() != r.approval.ExpectedIdentityDigest {
+		return RepositoryIdentity{}, ErrReopenBinding
+	}
+	if err := r.approval.TrustedVerifier(identity); err != nil {
+		return RepositoryIdentity{}, fmt.Errorf("%w: trusted identity verifier: %v", ErrReopenBinding, err)
+	}
+	if err := r.approval.VerifyExclusiveParent(parent, r.approval.ParentIdentity); err != nil {
+		return RepositoryIdentity{}, errors.Join(ErrReopenBinding, err)
+	}
+	// The owner assertion is host code. Recheck the anchored tree after it so a
+	// callback that fails to preserve the exclusive-lock precondition cannot
+	// leave a namespace substitution between verification and return.
+	identity, err = r.repository.ReopenIdentity()
+	if err != nil {
+		return RepositoryIdentity{}, err
+	}
+	if identity.Digest() != r.approval.ExpectedIdentityDigest {
+		return RepositoryIdentity{}, ErrReopenBinding
+	}
+	return identity, nil
+}
+
+func (r *VerifiedRepository) Snapshot() Snapshot {
+	if r == nil || r.repository == nil {
+		return Snapshot{}
+	}
+	return r.repository.Snapshot()
+}
+
+func (r *VerifiedRepository) Provenance() Provenance {
+	if r == nil || r.repository == nil {
+		return Provenance{}
+	}
+	return r.repository.Provenance()
+}
+
+func (r *VerifiedRepository) ReopenIdentity() (RepositoryIdentity, error) {
+	if r == nil || r.repository == nil {
+		return RepositoryIdentity{}, ErrClosed
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.verifyLocked()
+}
+
+// Close releases the anchored descriptors. It never deletes or rewrites the
+// retained repository, D06 journal, admin parent, or cleanup records.
+func (r *VerifiedRepository) Close() error {
+	if r == nil || r.repository == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.repository.Close()
+}
+
+func cloneReopenApproval(approval ReopenApproval) ReopenApproval {
+	approval.Provenance = cloneProvenance(approval.Provenance)
+	approval.Snapshot = cloneSnapshot(approval.Snapshot)
+	return approval
 }
 
 // Digest returns the content digest of the canonical JSON provenance record.
@@ -231,6 +400,7 @@ type Repository struct {
 	limits     Limits
 	xattr      XattrVisibilityAttestation
 	boundary   CleanupBoundary
+	readOnly   bool
 	closed     bool
 	destroyed  bool
 }
@@ -243,6 +413,9 @@ func (r *Repository) Root() *os.File {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed || r.destroyed {
+		return nil
+	}
+	if r.readOnly {
 		return nil
 	}
 	return r.root
@@ -265,9 +438,7 @@ func (r *Repository) Provenance() Provenance {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	p := r.provenance
-	p.SourceManifest.Objects = append([]delta.ManifestObject(nil), p.SourceManifest.Objects...)
-	return p
+	return cloneProvenance(r.provenance)
 }
 
 // Verify re-checks the private Git administration boundary. It is useful to
@@ -283,6 +454,24 @@ func (r *Repository) Verify() error {
 		return ErrClosed
 	}
 	return verifyRepositoryLocked(r)
+}
+
+// ReopenIdentity returns the identity that a trusted external owner may pin
+// for a later verification-only reopen. It is derived from the held parent
+// descriptor, exact child name, provenance, and source snapshot.
+func (r *Repository) ReopenIdentity() (RepositoryIdentity, error) {
+	if r == nil {
+		return RepositoryIdentity{}, ErrClosed
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed || r.destroyed || r.parent == nil {
+		return RepositoryIdentity{}, ErrClosed
+	}
+	if err := verifyRepositoryLocked(r); err != nil {
+		return RepositoryIdentity{}, err
+	}
+	return repositoryIdentity(r.parent, r.name, r.provenance, r.snapshot)
 }
 
 // Close releases descriptors without deleting the repository. Destroy is the
@@ -318,6 +507,9 @@ func (r *Repository) Destroy() error {
 	if r.destroyed {
 		return nil
 	}
+	if r.readOnly {
+		return ErrReadOnlyRepository
+	}
 	if r.closed {
 		return ErrClosed
 	}
@@ -332,4 +524,9 @@ func (r *Repository) Destroy() error {
 func cloneSnapshot(snapshot Snapshot) Snapshot {
 	snapshot.Manifest.Objects = append([]delta.ManifestObject(nil), snapshot.Manifest.Objects...)
 	return snapshot
+}
+
+func cloneProvenance(provenance Provenance) Provenance {
+	provenance.SourceManifest.Objects = append([]delta.ManifestObject(nil), provenance.SourceManifest.Objects...)
+	return provenance
 }

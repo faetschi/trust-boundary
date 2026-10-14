@@ -16,9 +16,9 @@ The JSON receipt marks `claim_bearing=false` and
 ## Offline Pi CLI fixture
 
 This development route launches the official Pi 0.87.1 CLI over RPC, the
-isolated TBound extension, and a scripted offline provider. It requires
-absolute paths and an existing owned mode-0700 directory on ext4. From the
-repository root, set:
+isolated TBound extension, and a scripted offline provider, replacing the
+former embedded-SDK development fixture. It requires absolute paths and an
+existing owned mode-0700 directory on ext4. From the repository root, set:
 
 ```sh
 export TBOUND_DEV_FIXTURE_PI="$(realpath "$(command -v pi)")"

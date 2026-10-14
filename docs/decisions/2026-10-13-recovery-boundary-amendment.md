@@ -91,9 +91,17 @@ distinguishes post-sync/pre-entry from callback-entry/pre-effect.
 The mandatory pre-effect intent write/synchronization-failure conformance
 case remains outside the proposed 51-trial denominator. IC-01 disk-full write
 does not cover synchronization failure. The existing journal-level
-process-crash/no-replay regression is component evidence only; it is not the
-proposed lifecycle harness, production independent-oracle recovery, or a
-power-loss test.
+process-crash/no-replay checks and the newer offline governed LC-04/LC-05 cuts
+are component evidence only. LC-04 crosses provider capture, correlated ALLOW,
+Store authorization, and synchronized effect intent before a fresh-process
+quarantine and replay-refusal check. The LC-05 test fixture reaches the
+governed Bash `CommandRunner.Run` callback, verifies the registered view/lease
+and exact command/scope, records the binding, then crashes before launching
+Bash; an exact-command positive control verifies an independent action marker
+that remains absent after the crash. This runner-entry fixture is not Bash
+process entry, production D09 runner evidence, a callback inside the launched
+command, or the proposed end-to-end lifecycle hook. Neither cut establishes
+production independent-oracle recovery or power-loss behavior.
 
 The proposed targets, if adopted and registered, are 51/51 for recovery
 action, evidence completeness, checkpoint restoration, retry bounds, and
