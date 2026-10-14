@@ -3,19 +3,19 @@
 .SYNOPSIS
   Runs the fixed ABI-8 seed helper through a source-checked UAC child.
 .DESCRIPTION
-  The only accepted operation is a read-only WhatIf or creation of the one
-  predeclared disposable seed. No paths, VM names, switches, or commands are
-  accepted from the caller. Candidate and bootstrap bytes and the installed
-  Hyper-V module are pinned before elevation and rechecked before a
-  ScriptBlock is created.
-  Create is bounded by the seed helper's 120-minute installer limit plus ten
-  minutes of setup slack. A timeout is recorded without deleting or powering
-  off a partially created VM.
+  Accepted operations are a read-only WhatIf, creation of the one predeclared
+  disposable seed, or continuation using the fixed already-pinned ISO and task
+  key. No paths, VM names, switches, or commands are accepted from the caller.
+  Candidate and bootstrap bytes and the installed Hyper-V module are pinned
+  before elevation and rechecked before a ScriptBlock is created.
+  Create and Resume are bounded by the seed helper's 120-minute installer limit
+  plus ten minutes of setup slack. A timeout is recorded without deleting or
+  powering off a partially created VM.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('WhatIf', 'Create')]
+    [ValidateSet('WhatIf', 'Create', 'Resume')]
     [string]$Action
 )
 
@@ -120,7 +120,7 @@ function Assert-TrustedSystemTool {
     }
 }
 
-$expectedCandidateSha256 = '2459D66DEBFB6067198B7DBFB264936599F8B064A016D9D0E39835E863FA8541'
+$expectedCandidateSha256 = '668494F0CF495C14926234E43659738A4F605AB6C635A3C0B22E284057C38A93'
 $expectedHyperVManifestSha256 = 'C5F845C5BA7A4960D876DB46D1E63905CD9AC8EFEF650CB3EC9DBBD8B713F4CC'
 $expectedHyperVBinarySha256 = '0FD7A8B2CB8C15E9DA691726C1F1F71F3EC4F853837FD099BA3F9EB2E9399316'
 $expectedWslExeSha256 = '4e589e3883229b7a74a4acdb878689dcec94e2539fcad1c194f415b149c337a9'
@@ -345,6 +345,9 @@ try {
   elseif ($action -ceq 'Create') {
     $captured = @(& $candidateBlock -AssetRoot $assetRoot -InstallTimeoutMinutes 120 -MinimumFreeGb 120 -Confirm:$false *>&1)
   }
+  elseif ($action -ceq 'Resume') {
+    $captured = @(& $candidateBlock -AssetRoot $assetRoot -InstallTimeoutMinutes 120 -MinimumFreeGb 120 -ResumeVerifiedMedia -Confirm:$false *>&1)
+  }
   else { throw 'Action is not one of the fixed reviewed operations.' }
   $capturedText = @($captured | ForEach-Object { [string]$_ })
   $capturedUtf8 = [Text.Encoding]::UTF8.GetBytes(($capturedText -join [Environment]::NewLine) + [Environment]::NewLine)
@@ -368,6 +371,8 @@ try {
         $receipt.sourceMedia.sha256 -cne '97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8' -or
         $receipt.derivedMedia.canonicalSignatureCoversDerivedMedia -ne $false -or
         $receipt.derivedMedia.xorrisoVersion -notmatch '^xorriso 1\.5\.6' -or
+        ($action -ceq 'Resume' -and ($receipt.derivedMedia.sha256 -cne '1ec771177b5c8e347ea6829f40744cc9505a79d6faf79b3f7a3eda74b2f84e76' -or $receipt.derivedMedia.reusedExistingMedia -ne $true)) -or
+        ($action -ceq 'Create' -and $receipt.derivedMedia.reusedExistingMedia -ne $false) -or
         $receipt.provisioningKey.privateKeyPath -ine (Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519') -or
         $receipt.provisioningKey.privateKeyMaterialIncluded -ne $false -or
         $receipt.seedVm.name -cne 'TBound-Ubuntu-ABI8-Seed' -or
@@ -535,7 +540,7 @@ $status = 'elevation-request-rejected-or-canceled'
 $childExitCode = $null
 $waitCompleted = $false
 $rawLaunchError = $null
-$deadlineMinutes = if ($Action -ceq 'Create') { 130 } else { 10 }
+$deadlineMinutes = if ($Action -in @('Create', 'Resume')) { 130 } else { 10 }
 try {
     $child = Start-Process -FilePath $launchPowerShellPath -ArgumentList $argumentString -Verb RunAs -WindowStyle Hidden -PassThru
     $launchRecord.childProcessId = $child.Id

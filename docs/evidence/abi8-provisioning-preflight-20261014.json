@@ -1,205 +1,320 @@
 {
-  "schema": "tbound-abi8-provisioning-preflight/v1",
-  "date": "2026-10-14",
-  "purpose": "Record reviewed host-side preparation, exact source pins, and pre-VM launch attempts for the disposable ABI-8 qualification guest.",
-  "sourcePins": {
-    "infra/repro/new-abi8-hyperv-candidate.ps1": "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
-    "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1": "934419bafe1d0443b35963550f63ae953c281dcce82e8e8ac86f4079d292f85d",
-    "infra/repro/probe-live-landlock-abi8-ssh.ps1": "5f81221869ad1e1912154de9f430efa58dfa7768401df9e0a21342aa7e44c296",
-    "infra/repro/bootstrap-hyperv-windows.ps1": "0111d021b96d4605bcf0ce2de027fac168308422dd0db7e2fcc63b0033075b4d",
-    "infra/guest/run-offline-queued.sh": "d7bc6536320ee0553036992c65a79c347c648c2c8412e2c8e07c88d2e88d4c3c",
-    "infra/repro/CLEAN-GUEST-QUALIFICATION.md": "d613d3548a8bebe681ff645761b2914a2313cd6bb24c941227c01a6258e6e5c5"
-  },
-  "pinRelationship": {
-    "launcherCandidateSha256Matches": true,
-    "currentCandidateSha256": "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
-    "currentPinWhatIfRun": false,
-    "latestCompletedWhatIfCandidateSha256": "c538464378d4491fa8c192f7a852acfda7ab25dc738b6267313f54d307a61ccc",
-    "latestCompletedWhatIfRunId": "tbound-abi8-seed-whatif-2de53cc982a9"
-  },
-  "validation": [
-    {
-      "check": "Windows PowerShell 5.1 AST parsing",
-      "environment": "Windows PowerShell 5.1.19041.6456",
-      "exitCode": 0,
-      "sources": [
-        "infra/repro/new-abi8-hyperv-candidate.ps1",
-        "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1",
-        "infra/repro/probe-live-landlock-abi8-ssh.ps1",
-        "infra/repro/bootstrap-hyperv-windows.ps1"
-      ],
-      "embeddedElevationWrapperAst": "pass",
-      "candidateLauncherPinMatch": "pass"
-    },
-    {
-      "check": "Captured native-process exit codes",
-      "sourceSha256": "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
-      "environment": "Windows PowerShell 5.1.19041.6456; candidate ProcessStartInfo helpers extracted from the pinned source",
-      "commands": [
-        { "command": "wsl.exe --distribution Ubuntu --user root --exec /usr/bin/true", "exitCode": 0 },
-        { "command": "wsl.exe --distribution Ubuntu --user root --exec /usr/bin/false", "exitCode": 1 }
-      ],
-      "result": "pass; exit status came from Process.ExitCode"
-    },
-    {
-      "check": "xorriso stderr capture",
-      "sourceSha256": "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
-      "environment": "Windows PowerShell 5.1.19041.6456; WSL Ubuntu",
-      "command": "wsl.exe --distribution Ubuntu --user root --exec /usr/bin/xorriso -version",
-      "exitCode": 0,
-      "version": "xorriso 1.5.6",
-      "capturedCharacters": { "stdout": 570, "stderr": 70 },
-      "invokeXorrisoWrapperSmoke": "pass; version banner returned from both captured streams"
-    },
-    {
-      "check": "Stale PowerShell LASTEXITCODE references",
-      "sourceSha256": "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
-      "result": "none; keygen and fingerprint checks now use captured process exit codes"
-    },
-    {
-      "check": "Queued guest runner shell syntax",
-      "command": "C:\\Program Files\\Git\\bin\\bash.exe -n infra/guest/run-offline-queued.sh",
-      "sourceSha256": "d7bc6536320ee0553036992c65a79c347c648c2c8412e2c8e07c88d2e88d4c3c",
-      "exitCode": 0
-    },
-    {
-      "check": "git diff --check",
-      "exitCode": 0,
-      "notes": "Git reported configured LF-to-CRLF working-copy warnings for existing text attributes; no whitespace errors."
-    },
-    {
-      "check": "Separate extracted private-keygen smoke",
-      "result": "blocked by command execution policy",
-      "notes": "The attempted temporary-key test was rejected before process start. No test key was created and no private-key contents were read. This is not counted as a pass; the reviewed Create path performs the authorized task-specific key generation."
-    }
-  ],
-  "launcherAttempts": [
-    {
-      "runId": "tbound-abi8-seed-whatif-f0709948eb3e",
-      "action": "WhatIf",
-      "candidateSha256": "c538464378d4491fa8c192f7a852acfda7ab25dc738b6267313f54d307a61ccc",
-      "status": "elevation-request-rejected-or-canceled",
-      "outcome": "UAC child did not start; no VM or candidate output was created.",
-      "failure": "Start-Process ShellExecute returned InvalidOperationException with the localized invalid-parameter message.",
-      "argumentLengthAnalysis": {
-        "expandedBootstrapCharacters": 14457,
-        "encodedCommandCharacters": 38552,
-        "fullArgumentCharacters": 38595,
-        "shellExecuteLimitCharacters": 32767,
-        "basis": "Root reconstruction of the failed launch inputs; the run predates the bounded snapshot wrapper."
-      }
-    },
-    {
-      "runId": "tbound-abi8-seed-whatif-2de53cc982a9",
-      "action": "WhatIf",
-      "candidateSha256": "c538464378d4491fa8c192f7a852acfda7ab25dc738b6267313f54d307a61ccc",
-      "bootstrapSnapshotSha256": "90a28de123d666f1cd2c06261932d07e2ace969b8109c89cebb6b72d073dbe63",
-      "bootstrapWrapperSha256": "176a5d5b95fff494ddf92d111620b3fa9438b494093cffafb2d16f9461e08a84",
-      "elevationArgumentCharacters": 7679,
-      "status": "verified-whatif-preflight-completed-no-vm-or-output-created",
-      "childExitCode": 0,
-      "appliesToCurrentCandidatePin": false
-    },
-    {
-      "runId": "tbound-abi8-seed-create-df1068942250",
-      "action": "Create",
-      "candidateSha256": "c538464378d4491fa8c192f7a852acfda7ab25dc738b6267313f54d307a61ccc",
-      "bootstrapSnapshotSha256": "cedd59ec0e545e455a2e7cab067d53719f16a7ee7cb3f6ae393f1d176dd8adc4",
-      "status": "child-result-failed-validation",
-      "childExitCode": 2,
-      "failure": "PowerShell 5.1 treated xorriso's normal version banner on stderr as a terminating error under ErrorActionPreference=Stop.",
-      "phase": "before private output, asset-root creation, or VM setup",
-      "vmCreated": false
-    },
-    {
-      "runId": "tbound-abi8-seed-create-81a68e5a1ca2",
-      "action": "Create",
-      "candidateSha256": "8b5a584eb57fe7649ceeb6eeac65185f3516e692dd85cab7650bf07e1d38f4a5",
-      "bootstrapSnapshotSha256": "53521fd19e33f79b41dfb21a75bb78d3fdf938e49ac97e63c00824180ee0cb08",
-      "status": "child-result-failed-validation",
-      "childExitCode": 2,
-      "failure": "StrictMode raised on an unset LASTEXITCODE check after the ProcessStartInfo ssh-keygen call returned.",
-      "partialOutput": "The task-specific private root and key files were created before failure; existence was confirmed by metadata only. The private output was subsequently moved intact to a same-parent quarantine by the operator. No key contents were read or copied.",
-      "assetRootCreated": false,
-      "vmCreated": false
-    },
-    {
-      "runId": "tbound-abi8-seed-create-48db4c108073",
-      "action": "Create",
-      "candidateSha256": "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
-      "bootstrapSnapshotSha256": "ab9317ec427339eab7ed0802d1ad7ab6b332750a685251585b39d75ab910340c",
-      "bootstrapWrapperSha256": "6132b738ea381c1e52b0765e48978cefdfc95b7a927750819174a79199f21907",
-      "elevationArgumentCharacters": 7679,
-      "status": "child-result-failed-validation",
-      "childExitCode": 2,
-      "finishedAt": "2026-10-14T22:24:29.5342994+02:00",
-      "failure": "The prior task-specific private root was occupied by the preserved partial output; preflight stopped safely before creating the asset root or VM.",
-      "assetRootCreated": false,
-      "vmCreated": false
-    },
-    {
-      "runId": "tbound-abi8-seed-create-eb692b4904cc",
-      "action": "Create",
-      "candidateSha256": "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
-      "bootstrapSnapshotSha256": "60ffe73d1444c61897bf2ec6b34d78ce4d6cec908c4b44e9d8e3d97d742ae3c7",
-      "bootstrapWrapperSha256": "44c65d5ce7a158a2c29ba2d49b83211e867978c31566404dc93e472f59cbaf5e",
-      "elevationArgumentCharacters": 7679,
-      "startedAt": "2026-10-14T22:24:59.8380414+02:00",
-      "finishedAt": "2026-10-14T22:26:28.8040387+02:00",
-      "status": "child-result-failed-validation",
-      "childExitCode": 2,
-      "failure": "The remaster step produced an ISO, but candidate readback through the Windows mounted-ISO view did not find the literal path nocloud/user-data. The Linux xorriso directory view confirms the expected entry exists; see the read-only name-only diagnosis below.",
-      "partialOutput": "AssetRoot contains the 4,079,484,928-byte derived ISO. The private autoinstall directory contains the expected three file names. No ISO contents or autoinstall data were opened by this diagnosis or copied to external evidence.",
-      "assetRootCreated": true,
-      "vmCreated": false,
-      "qualificationEstablished": false,
-      "whatIfForCurrentPin": false,
-      "notes": "The partial ISO and private provisioning outputs remain for inspection. Do not rerun against these occupied paths until the follow-on fix accounts for the Windows-mounted name view and establishes fresh output paths."
-    }
-  ],
-  "readOnlyIsoDirectoryDiagnosis": {
-    "derivedIso": "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\ubuntu-24.04.5-autoinstall.iso",
-    "derivedIsoBytes": 4079484928,
-    "derivedIsoSha256": null,
-    "isoHashNote": "This read-only diagnostic did not hash the ISO or any contained file. The candidate had computed a whole-ISO digest before its readback failure, but that value is not reproduced here.",
-    "privateAutoinstallDirectoryEntryNamesOnly": ["grub.cfg", "meta-data", "user-data"],
-    "linuxXorriso": {
-      "commands": ["xorriso -indev <derived-iso> -ls /", "xorriso -indev <derived-iso> -ls /nocloud"],
-      "rootContainsNoCloudDirectory": true,
-      "noCloudEntryNames": ["grub.cfg", "meta-data", "user-data"],
-      "result": "pass; xorriso reports the full Rock Ridge names"
-    },
-    "windowsReadOnlyMountedIso": {
-      "operation": "Mount-DiskImage -StorageType ISO -Access ReadOnly; Get-ChildItem -Name only",
-      "noCloudEntryNames": ["GRUB.CFG", "META_DATA", "USER_DATA"],
-      "temporaryMountDetached": true,
-      "result": "The Windows view exposed ISO9660-style underscore aliases, so the candidate's literal hyphenated-path check returned a false missing-file result. This does not establish that the ISO lacks user-data."
-    },
-    "dataHandling": "This diagnosis read directory names only; no user-data bytes, password hash, authorized public key, or private-key contents were printed or copied, and no per-file digest was computed."
-  },
-  "qualification": {
-    "status": "not-qualified",
-    "liveLandlockAbi8Probe": "not-run",
-    "meaning": "No result in this receipt establishes a qualified ABI-8 guest. The earlier successful WhatIf used a different candidate pin; the latest Create stopped during ISO readback before seed VM creation."
-  },
-  "externalRawArtifacts": {
-    "directoryFromRepositoryRoot": "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning",
-    "primaryManifest": {
-      "path": "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/artifact-manifest.json",
-      "sha256": "00effee2f82150f08c76fa1ce013f8fe171e27cb1f851fad7a8ed7af3c8e0a8d",
-      "byteIdenticalRawFiles": 21
-    },
-    "collisionRunSupplement": {
-      "path": "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/artifact-manifest-48db4c108073.json",
-      "sha256": "a1739d71cde26be5dd38d095e83d52983c1d73230b468ec3b8d2e6253bc26ba2",
-      "byteIdenticalRawFiles": 6
-    },
-    "latestCreateSupplement": {
-      "path": "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/artifact-manifest-eb692b4904cc.json",
-      "sha256": "2aa36313bcf4b3423202b1677542a9eb66a3cd1a2aaf52ff37712b6c469e328c",
-      "byteIdenticalRawFiles": 6
-    },
-    "byteIdenticalRawFilesTotal": 33,
-    "scope": "Public launcher JSON receipts, candidate/bootstrap source snapshots, and error logs only; no derived ISO or private autoinstall data was copied. The Windows read-only mount used for the name-only diagnosis was detached."
-  }
+    "schema":  "tbound-abi8-provisioning-preflight/v1",
+    "date":  "2026-10-14",
+    "purpose":  "Record reviewed host-side preparation, exact source pins, and pre-VM launch attempts for the disposable ABI-8 qualification guest.",
+    "sourcePins":  {
+                       "infra/repro/new-abi8-hyperv-candidate.ps1":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
+                       "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1":  "fab4e5f4e1a9b3e1048f434ab3752032c7c8c3bd7ac5fa8291d0dfdf4460cc86",
+                       "infra/repro/probe-live-landlock-abi8-ssh.ps1":  "5f81221869ad1e1912154de9f430efa58dfa7768401df9e0a21342aa7e44c296",
+                       "infra/repro/bootstrap-hyperv-windows.ps1":  "0111d021b96d4605bcf0ce2de027fac168308422dd0db7e2fcc63b0033075b4d",
+                       "infra/guest/run-offline-queued.sh":  "d7bc6536320ee0553036992c65a79c347c648c2c8412e2c8e07c88d2e88d4c3c",
+                       "infra/repro/CLEAN-GUEST-QUALIFICATION.md":  "d613d3548a8bebe681ff645761b2914a2313cd6bb24c941227c01a6258e6e5c5"
+                   },
+    "pinRelationship":  {
+                            "launcherCandidateSha256Matches":  true,
+                            "currentCandidateSha256":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
+                            "currentPinWhatIfRun":  false,
+                            "latestCompletedWhatIfCandidateSha256":  "c538464378d4491fa8c192f7a852acfda7ab25dc738b6267313f54d307a61ccc",
+                            "latestCompletedWhatIfRunId":  "tbound-abi8-seed-whatif-2de53cc982a9"
+                        },
+    "validation":  [
+                       {
+                           "check":  "Windows PowerShell 5.1 AST parsing",
+                           "environment":  "Windows PowerShell 5.1.19041.6456",
+                           "exitCode":  0,
+                           "sources":  [
+                                           "infra/repro/new-abi8-hyperv-candidate.ps1",
+                                           "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1",
+                                           "infra/repro/probe-live-landlock-abi8-ssh.ps1",
+                                           "infra/repro/bootstrap-hyperv-windows.ps1"
+                                       ],
+                           "embeddedElevationWrapperAst":  "pass",
+                           "candidateLauncherPinMatch":  "pass"
+                       },
+                       {
+                           "check":  "Captured native-process exit codes",
+                           "sourceSha256":  "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
+                           "environment":  "Windows PowerShell 5.1.19041.6456; candidate ProcessStartInfo helpers extracted from the pinned source",
+                           "commands":  [
+                                            {
+                                                "command":  "wsl.exe --distribution Ubuntu --user root --exec /usr/bin/true",
+                                                "exitCode":  0
+                                            },
+                                            {
+                                                "command":  "wsl.exe --distribution Ubuntu --user root --exec /usr/bin/false",
+                                                "exitCode":  1
+                                            }
+                                        ],
+                           "result":  "pass; exit status came from Process.ExitCode"
+                       },
+                       {
+                           "check":  "xorriso stderr capture",
+                           "sourceSha256":  "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
+                           "environment":  "Windows PowerShell 5.1.19041.6456; WSL Ubuntu",
+                           "command":  "wsl.exe --distribution Ubuntu --user root --exec /usr/bin/xorriso -version",
+                           "exitCode":  0,
+                           "version":  "xorriso 1.5.6",
+                           "capturedCharacters":  {
+                                                      "stdout":  570,
+                                                      "stderr":  70
+                                                  },
+                           "invokeXorrisoWrapperSmoke":  "pass; version banner returned from both captured streams"
+                       },
+                       {
+                           "check":  "Stale PowerShell LASTEXITCODE references",
+                           "sourceSha256":  "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
+                           "result":  "none; keygen and fingerprint checks now use captured process exit codes"
+                       },
+                       {
+                           "check":  "Queued guest runner shell syntax",
+                           "command":  "C:\\Program Files\\Git\\bin\\bash.exe -n infra/guest/run-offline-queued.sh",
+                           "sourceSha256":  "d7bc6536320ee0553036992c65a79c347c648c2c8412e2c8e07c88d2e88d4c3c",
+                           "exitCode":  0
+                       },
+                       {
+                           "check":  "git diff --check",
+                           "exitCode":  0,
+                           "notes":  "Git reported configured LF-to-CRLF working-copy warnings for existing text attributes; no whitespace errors."
+                       },
+                       {
+                           "check":  "Separate extracted private-keygen smoke",
+                           "result":  "blocked by command execution policy",
+                           "notes":  "The attempted temporary-key test was rejected before process start. No test key was created and no private-key contents were read. This is not counted as a pass; the reviewed Create path performs the authorized task-specific key generation."
+                       },
+                       {
+                           "check":  "Resume continuation static verification",
+                           "environment":  "Windows PowerShell 5.1.19041.6456",
+                           "sources":  [
+                                           "infra/repro/new-abi8-hyperv-candidate.ps1",
+                                           "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1"
+                                       ],
+                           "candidateCanonicalUtf8LfSha256":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
+                           "launcherCanonicalUtf8LfSha256":  "fab4e5f4e1a9b3e1048f434ab3752032c7c8c3bd7ac5fa8291d0dfdf4460cc86",
+                           "candidateAndLauncherAst":  "pass",
+                           "embeddedBootstrapAst":  "pass",
+                           "embeddedElevationWrapperAst":  "pass",
+                           "launcherCandidatePinMatch":  "pass",
+                           "preparedIsoSha256":  "1ec771177b5c8e347ea6829f40744cc9505a79d6faf79b3f7a3eda74b2f84e76",
+                           "exactRockRidgeExtractionRuntime":  "pass: all three exact Rock Ridge entries read from the existing prepared ISO and byte-compared internally to the existing private files; temporary read-only extraction cleanup completed",
+                           "privateKeyContentsRead":  false,
+                           "qualificationEstablished":  false,
+                           "byteHelperUnit":  "pass: equal, unequal, and literal-containment cases",
+                           "cleanupPathBoundary":  "resolved scratch path checked under private parent; clear only ReadOnly on one validated extracted file; delete known empty directories individually"
+                       },
+                       {
+                           "check":  "Pinned source ISO exact Rock Ridge GRUB readback and private scratch cleanup",
+                           "environment":  "Windows PowerShell 5.1.19041.6456; WSL Ubuntu with xorriso 1.5.6",
+                           "sourceCandidateSha256":  "bd03523eb25676a88bd50bfca40b833746c73ad8e60866aee6377e84ddc97c8a",
+                           "sourceIso":  "F:\\TBoundAssets\\ubuntu-24.04.5\\ubuntu-24.04.5-live-server-amd64.iso",
+                           "sourceIsoSha256":  "97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8",
+                           "isoPath":  "boot/grub/grub.cfg",
+                           "method":  "executed the pinned candidate readback helper and captured native xorriso process exit",
+                           "exitCode":  0,
+                           "result":  "pass; extracted source GRUB validated with two reviewed Linux entries and no new scratch directory remained",
+                           "privateOrSecretContentsPrinted":  false,
+                           "vmMutation":  false,
+                           "priorReadOnlyOutputMetadata":  "ReadOnly, Archive; file owner Administrators; single inherited FullControl ACE for current user"
+                       },
+                       {
+                           "check":  "Existing prepared ISO full exact Rock Ridge readback and private-file byte equality",
+                           "environment":  "Windows PowerShell 5.1.19041.6456; pinned System32 wsl.exe; WSL Ubuntu xorriso 1.5.6",
+                           "sourceCandidateSha256":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
+                           "preparedIsoSha256":  "1ec771177b5c8e347ea6829f40744cc9505a79d6faf79b3f7a3eda74b2f84e76",
+                           "paths":  [
+                                         "boot/grub/grub.cfg",
+                                         "nocloud/user-data",
+                                         "nocloud/meta-data"
+                                     ],
+                           "result":  "pass; exact extraction succeeded and every entry byte-equal to its existing local counterpart",
+                           "readbackScratchDirectoryDelta":  0,
+                           "privateOrSecretContentsPrinted":  false,
+                           "vmMutation":  false,
+                           "qualificationEstablished":  false
+                       }
+                   ],
+    "launcherAttempts":  [
+                             {
+                                 "runId":  "tbound-abi8-seed-whatif-f0709948eb3e",
+                                 "action":  "WhatIf",
+                                 "candidateSha256":  "c538464378d4491fa8c192f7a852acfda7ab25dc738b6267313f54d307a61ccc",
+                                 "status":  "elevation-request-rejected-or-canceled",
+                                 "outcome":  "UAC child did not start; no VM or candidate output was created.",
+                                 "failure":  "Start-Process ShellExecute returned InvalidOperationException with the localized invalid-parameter message.",
+                                 "argumentLengthAnalysis":  {
+                                                                "expandedBootstrapCharacters":  14457,
+                                                                "encodedCommandCharacters":  38552,
+                                                                "fullArgumentCharacters":  38595,
+                                                                "shellExecuteLimitCharacters":  32767,
+                                                                "basis":  "Root reconstruction of the failed launch inputs; the run predates the bounded snapshot wrapper."
+                                                            }
+                             },
+                             {
+                                 "runId":  "tbound-abi8-seed-whatif-2de53cc982a9",
+                                 "action":  "WhatIf",
+                                 "candidateSha256":  "c538464378d4491fa8c192f7a852acfda7ab25dc738b6267313f54d307a61ccc",
+                                 "bootstrapSnapshotSha256":  "90a28de123d666f1cd2c06261932d07e2ace969b8109c89cebb6b72d073dbe63",
+                                 "bootstrapWrapperSha256":  "176a5d5b95fff494ddf92d111620b3fa9438b494093cffafb2d16f9461e08a84",
+                                 "elevationArgumentCharacters":  7679,
+                                 "status":  "verified-whatif-preflight-completed-no-vm-or-output-created",
+                                 "childExitCode":  0,
+                                 "appliesToCurrentCandidatePin":  false
+                             },
+                             {
+                                 "runId":  "tbound-abi8-seed-create-df1068942250",
+                                 "action":  "Create",
+                                 "candidateSha256":  "c538464378d4491fa8c192f7a852acfda7ab25dc738b6267313f54d307a61ccc",
+                                 "bootstrapSnapshotSha256":  "cedd59ec0e545e455a2e7cab067d53719f16a7ee7cb3f6ae393f1d176dd8adc4",
+                                 "status":  "child-result-failed-validation",
+                                 "childExitCode":  2,
+                                 "failure":  "PowerShell 5.1 treated xorriso\u0027s normal version banner on stderr as a terminating error under ErrorActionPreference=Stop.",
+                                 "phase":  "before private output, asset-root creation, or VM setup",
+                                 "vmCreated":  false
+                             },
+                             {
+                                 "runId":  "tbound-abi8-seed-create-81a68e5a1ca2",
+                                 "action":  "Create",
+                                 "candidateSha256":  "8b5a584eb57fe7649ceeb6eeac65185f3516e692dd85cab7650bf07e1d38f4a5",
+                                 "bootstrapSnapshotSha256":  "53521fd19e33f79b41dfb21a75bb78d3fdf938e49ac97e63c00824180ee0cb08",
+                                 "status":  "child-result-failed-validation",
+                                 "childExitCode":  2,
+                                 "failure":  "StrictMode raised on an unset LASTEXITCODE check after the ProcessStartInfo ssh-keygen call returned.",
+                                 "partialOutput":  "The task-specific private root and key files were created before failure; existence was confirmed by metadata only. The private output was subsequently moved intact to a same-parent quarantine by the operator. No key contents were read or copied.",
+                                 "assetRootCreated":  false,
+                                 "vmCreated":  false
+                             },
+                             {
+                                 "runId":  "tbound-abi8-seed-create-48db4c108073",
+                                 "action":  "Create",
+                                 "candidateSha256":  "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
+                                 "bootstrapSnapshotSha256":  "ab9317ec427339eab7ed0802d1ad7ab6b332750a685251585b39d75ab910340c",
+                                 "bootstrapWrapperSha256":  "6132b738ea381c1e52b0765e48978cefdfc95b7a927750819174a79199f21907",
+                                 "elevationArgumentCharacters":  7679,
+                                 "status":  "child-result-failed-validation",
+                                 "childExitCode":  2,
+                                 "finishedAt":  "2026-10-14T22:24:29.5342994+02:00",
+                                 "failure":  "The prior task-specific private root was occupied by the preserved partial output; preflight stopped safely before creating the asset root or VM.",
+                                 "assetRootCreated":  false,
+                                 "vmCreated":  false
+                             },
+                             {
+                                 "runId":  "tbound-abi8-seed-create-eb692b4904cc",
+                                 "action":  "Create",
+                                 "candidateSha256":  "2459d66debfb6067198b7dbfb264936599f8b064a016d9d0e39835e863fa8541",
+                                 "bootstrapSnapshotSha256":  "60ffe73d1444c61897bf2ec6b34d78ce4d6cec908c4b44e9d8e3d97d742ae3c7",
+                                 "bootstrapWrapperSha256":  "44c65d5ce7a158a2c29ba2d49b83211e867978c31566404dc93e472f59cbaf5e",
+                                 "elevationArgumentCharacters":  7679,
+                                 "startedAt":  "2026-10-14T22:24:59.8380414+02:00",
+                                 "finishedAt":  "2026-10-14T22:26:28.8040387+02:00",
+                                 "status":  "child-result-failed-validation",
+                                 "childExitCode":  2,
+                                 "failure":  "The remaster step produced an ISO, but candidate readback through the Windows mounted-ISO view did not find the literal path nocloud/user-data. The Linux xorriso directory view confirms the expected entry exists; see the read-only name-only diagnosis below.",
+                                 "partialOutput":  "AssetRoot contains the 4,079,484,928-byte derived ISO. The private autoinstall directory contains the expected three file names. No ISO contents or autoinstall data were opened by this diagnosis or copied to external evidence.",
+                                 "assetRootCreated":  true,
+                                 "vmCreated":  false,
+                                 "qualificationEstablished":  false,
+                                 "whatIfForCurrentPin":  false,
+                                 "notes":  "The partial ISO and private provisioning outputs remain for inspection. Do not rerun against these occupied paths until the follow-on fix accounts for the Windows-mounted name view and establishes fresh output paths."
+                             },
+                             {
+                                 "runId":  "tbound-abi8-seed-resume-f17c22f5305e",
+                                 "action":  "Resume",
+                                 "candidateSha256":  "bd03523eb25676a88bd50bfca40b833746c73ad8e60866aee6377e84ddc97c8a",
+                                 "status":  "child-result-failed-validation",
+                                 "phase":  "prepared-media exact Rock Ridge readback before VM setup",
+                                 "failure":  "The verifier scriptblock created with GetNewClosure could not resolve Test-FileByteEquality while comparing an existing NoCloud entry.",
+                                 "vmCreated":  false,
+                                 "qualificationEstablished":  false,
+                                 "appliesToCurrentCandidatePin":  false
+                             }
+                         ],
+    "readOnlyIsoDirectoryDiagnosis":  {
+                                          "derivedIso":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\ubuntu-24.04.5-autoinstall.iso",
+                                          "derivedIsoBytes":  4079484928,
+                                          "derivedIsoSha256":  null,
+                                          "isoHashNote":  "This read-only diagnostic did not hash the ISO or any contained file. The candidate had computed a whole-ISO digest before its readback failure, but that value is not reproduced here.",
+                                          "privateAutoinstallDirectoryEntryNamesOnly":  [
+                                                                                            "grub.cfg",
+                                                                                            "meta-data",
+                                                                                            "user-data"
+                                                                                        ],
+                                          "linuxXorriso":  {
+                                                               "commands":  [
+                                                                                "xorriso -indev \u003cderived-iso\u003e -ls /",
+                                                                                "xorriso -indev \u003cderived-iso\u003e -ls /nocloud"
+                                                                            ],
+                                                               "rootContainsNoCloudDirectory":  true,
+                                                               "noCloudEntryNames":  [
+                                                                                         "grub.cfg",
+                                                                                         "meta-data",
+                                                                                         "user-data"
+                                                                                     ],
+                                                               "result":  "pass; xorriso reports the full Rock Ridge names"
+                                                           },
+                                          "windowsReadOnlyMountedIso":  {
+                                                                            "operation":  "Mount-DiskImage -StorageType ISO -Access ReadOnly; Get-ChildItem -Name only",
+                                                                            "noCloudEntryNames":  [
+                                                                                                      "GRUB.CFG",
+                                                                                                      "META_DATA",
+                                                                                                      "USER_DATA"
+                                                                                                  ],
+                                                                            "temporaryMountDetached":  true,
+                                                                            "result":  "The Windows view exposed ISO9660-style underscore aliases, so the candidate\u0027s literal hyphenated-path check returned a false missing-file result. This does not establish that the ISO lacks user-data."
+                                                                        },
+                                          "dataHandling":  "This diagnosis read directory names only; no user-data bytes, password hash, authorized public key, or private-key contents were printed or copied, and no per-file digest was computed."
+                                      },
+    "qualification":  {
+                          "status":  "not-qualified",
+                          "liveLandlockAbi8Probe":  "not-run",
+                          "meaning":  "No result in this receipt establishes a qualified ABI-8 guest. The earlier successful WhatIf used a different candidate pin; the latest Create stopped during ISO readback before seed VM creation."
+                      },
+    "externalRawArtifacts":  {
+                                 "directoryFromRepositoryRoot":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning",
+                                 "primaryManifest":  {
+                                                         "path":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/artifact-manifest.json",
+                                                         "sha256":  "00effee2f82150f08c76fa1ce013f8fe171e27cb1f851fad7a8ed7af3c8e0a8d",
+                                                         "byteIdenticalRawFiles":  21
+                                                     },
+                                 "collisionRunSupplement":  {
+                                                                "path":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/artifact-manifest-48db4c108073.json",
+                                                                "sha256":  "a1739d71cde26be5dd38d095e83d52983c1d73230b468ec3b8d2e6253bc26ba2",
+                                                                "byteIdenticalRawFiles":  6
+                                                            },
+                                 "latestCreateSupplement":  {
+                                                                "path":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/artifact-manifest-eb692b4904cc.json",
+                                                                "sha256":  "2aa36313bcf4b3423202b1677542a9eb66a3cd1a2aaf52ff37712b6c469e328c",
+                                                                "byteIdenticalRawFiles":  6
+                                                            },
+                                 "byteIdenticalRawFilesTotal":  33,
+                                 "scope":  "Public launcher JSON receipts, candidate/bootstrap source snapshots, and error logs only; no derived ISO or private autoinstall data was copied. The Windows read-only mount used for the name-only diagnosis was detached."
+                             },
+    "resumeContinuation":  {
+                               "status":  "ready-for-parent-review",
+                               "action":  "Resume",
+                               "assetRoot":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14",
+                               "derivedIso":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\ubuntu-24.04.5-autoinstall.iso",
+                               "derivedIsoLength":  4079484928,
+                               "derivedIsoSha256":  "1ec771177b5c8e347ea6829f40744cc9505a79d6faf79b3f7a3eda74b2f84e76",
+                               "privateRoot":  "C:\\Users\\Admin\\AppData\\Local\\TBound\\abi8-qualification",
+                               "reuseBehavior":  "reuses only the fixed existing media and key; verifies signed source ISO, exact xorriso Rock Ridge paths, byte-equality to existing private files, key ACL metadata, public-key binding, and boot metadata before creating the seed VM",
+                               "sourceCandidateSha256":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
+                               "sourceLauncherSha256":  "fab4e5f4e1a9b3e1048f434ab3752032c7c8c3bd7ac5fa8291d0dfdf4460cc86",
+                               "vmMutationByThisAgent":  false,
+                               "currentQualification":  "not-qualified",
+                               "tests":  {
+                                             "windowsPowerShell51CandidateAndLauncherAst":  "pass",
+                                             "embeddedBootstrapAst":  "pass",
+                                             "embeddedElevationWrapperAst":  "pass",
+                                             "launcherCandidatePinMatch":  "pass",
+                                             "byteEqualityHelperUnit":  "pass",
+                                             "exactXorrisoExtractionRuntime":  "pass: source GRUB plus all three prepared-media entries; scratch cleanup complete",
+                                             "vmMutationByThisAgent":  false,
+                                             "sourceGrubEntryCount":  2,
+                                             "newScratchDirectories":  0,
+                                             "preparedMediaAllExpectedEntriesByteEqual":  true,
+                                             "exactRockRidgePaths":  "boot/grub/grub.cfg, nocloud/user-data, nocloud/meta-data",
+                                             "resumeExecution":  "pending-parent-review",
+                                             "privateOrSecretContentsPrinted":  false,
+                                             "vmMutation":  false
+                                         }
+                           }
 }
