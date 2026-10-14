@@ -453,3 +453,12 @@ are preparation only. Media custody and exact ABI checks precede registration.
   for internal/webchat and cmd/tbound-webchat (30 PASS, 0 SKIP). Full ./... not re-run.
   Not browser-verified: markdown styling, online/offline listeners, tail/jump button.
 - Known: hung EventSource handshake (after the snapshot) is not timed out.
+- Browser QA of 3146d1b (Chrome 155 over CDP, fixture/demo server, evidence in
+  docs/webchat/qa/fixture-increment2-capture.json): 27 PASS, 0 FAIL — markdown
+  (16 hostile payloads, no sinks, CSP clean), tail/jump (simulated fake EventSource:
+  the demo has no live events), reconnect backoff/offline/slow-handshake, toolbar and
+  ledger labels. Not verified: real streaming end to end, screen reader, non-Chrome,
+  mobile. Open low items: gap wording "evicted from the bounded client window"
+  (render.mjs:234), unreachable gateway shows "projection error: Failed to fetch"
+  (render.mjs:226), the jump pill can cover the last code block, record rows lack
+  roving tabindex.

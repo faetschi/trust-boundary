@@ -311,6 +311,7 @@ Known simplifications:
 - fenced code inside a list or a blockquote is split out of its container;
 - a loose list (blank lines between items) is split into separate lists;
 - there is no autolink: a bare URL is text, not a link.
+- headings are demoted so they sit below the page headings: `#` renders as `h3` and `##` as `h4`.
 
 While a message streams, only the blocks whose source changed are re-rendered.
 
