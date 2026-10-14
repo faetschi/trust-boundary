@@ -1,6 +1,6 @@
 # Current status
 
-Updated 2026-10-14. Branch `codex/tbound-prototype`; implementation head `8e9293d`.
+Updated 2026-10-14. Branch `codex/tbound-prototype`; implementation head `2e88ee8`.
 The source checkpoint `6a0a52a` and its component receipt in `5051759` are a
 historical baseline. This working status records implementation state and blockers;
 it is not a qualification report.
@@ -79,9 +79,10 @@ it is not a qualification report.
   Running with 8 vCPUs, 16 GiB fixed RAM, and a 40 GiB disk. It had no guest channel;
   guest kernel and ABI were not
   probed. ABI 4 is the last observed development-guest value and is unmeasured now.
-  D09 requires ABI 8. Replacement preflight (`WhatIf`) is verified. Two guest-creation
-  attempts failed after preflight; the current host fix is prepared, with installation
-  pending. No replacement guest has been created or qualified. The
+  D09 requires ABI 8. Replacement preflight (`WhatIf`) is verified as preflight only.
+  Resume validation has failed before VM creation; ISO readback and comparison fixes
+  are being tested. The development VM remains untouched; no replacement guest
+  has been created or qualified. The
   [2026-10-14 decision](decisions/2026-10-14-qualification-and-research-procedure.md)
   authorizes disposing of the development VM and replacing it with a fresh disposable
   guest of similar resources.
