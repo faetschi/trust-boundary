@@ -750,12 +750,11 @@ scrolled to the top. The script that produced them is not in the repository.
   `dist/` predates this pass, and the clean rebuild of the current source differs from it. The
   gate should pass once the rebuilt `dist/` is committed, but that has not been run. The CI
   check "committed dist matches working tree" fails for the same reason.
-- csp-smoke ran on Windows only. The gateway was built with Windows `go`, not go1.27.1, so the
-  toolchain check did not run ("toolchain not checked: the gateway was supplied with --url").
-  There is no Chrome in WSL, so the smoke was not re-run on Linux.
+- csp-smoke first ran on Windows only, against a gateway built with Windows `go`. It has since
+  been re-run against a Linux-built gateway hosted in WSL (see the next section).
 - `TASK_STATE.md` records this pass in its "Phase 3 polish" section.
-- Not committed. The rebuilt `dist/` and the source changes need a commit before the CI repro
-  gate can pass.
+- Committed as a2aaf30; `npm run repro` was re-run on Linux on that commit and passes (tree
+  sha256 22f06f14...).
 
 ## Browser check against a Linux-hosted gateway (2026-10-14)
 
