@@ -932,7 +932,7 @@ func (o *SQLiteOwner) CompareAndSwapCheckpoint(ctx context.Context, workflow str
 	}
 	if err := tx.Commit(); err != nil {
 		o.poisoned = true
-		return "", fmt.Errorf("%w: commit workflow recovery compare-and-swap: %v", ErrOwnerStore, err)
+		return "", fmt.Errorf("%w: commit workflow recovery compare-and-swap: %w", ErrOwnerStore, err)
 	}
 	committed = true
 	if err := syncSQLiteDirectory(o.path); err != nil {
@@ -1236,7 +1236,7 @@ func writeNextCheckpoint(ctx context.Context, tx *sql.Tx, previous Checkpoint, p
 		int64(next.Counters.HostCalls), int64(next.Counters.Tokens), next.Limits.Deadline.Format(time.RFC3339Nano),
 		next.Pins.WorkflowID, int64(previous.Pins.OwnerEpoch), expectedDigest)
 	if err != nil {
-		return fmt.Errorf("%w: update workflow recovery checkpoint row: %v", ErrOwnerStore, err)
+		return fmt.Errorf("%w: update workflow recovery checkpoint row: %w", ErrOwnerStore, err)
 	}
 	rowsChanged, err := result.RowsAffected()
 	if err != nil || rowsChanged != 1 {
@@ -1246,7 +1246,7 @@ func writeNextCheckpoint(ctx context.Context, tx *sql.Tx, previous Checkpoint, p
 		workflow_id,sequence,owner_epoch,expected_digest,checkpoint_digest,checkpoint_json,proof_json
 	) VALUES(?,?,?,?,?,?,?)`, next.Pins.WorkflowID, sequence, int64(next.Pins.OwnerEpoch), previousDigest,
 		next.ComputedCheckpointDigest, encodedCheckpoint, encodedProof); err != nil {
-		return fmt.Errorf("%w: append workflow recovery event: %v", ErrOwnerStore, err)
+		return fmt.Errorf("%w: append workflow recovery event: %w", ErrOwnerStore, err)
 	}
 	return nil
 }
