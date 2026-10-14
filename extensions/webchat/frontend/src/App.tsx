@@ -1,18 +1,17 @@
-import styles from './App.module.css';
+import { Shell } from "./app/Shell";
+import { WorkspaceProvider } from "./app/WorkspaceProvider";
 
 export interface AppProps {
-  version: string;
+  // The build version, injected at build time from package.json.
+  readonly version: string;
 }
 
-// Phase 1 placeholder. It proves the toolchain (TSX, CSS Modules, build-time
-// version) and renders no product UI. Styling is by className only.
+// The product root: the workspace store and the shell. The vanilla UI at / is unaffected;
+// this client is served under /app/.
 export function App({ version }: AppProps) {
   return (
-    <main className={styles.shell}>
-      <section className={styles.banner} data-scaffold="banner">
-        <h1 className={styles.title}>tbound web chat — React scaffold (Phase 1, not the product UI)</h1>
-        <p className={styles.meta}>build {version} · served under /app/ · read-only placeholder</p>
-      </section>
-    </main>
+    <WorkspaceProvider>
+      <Shell version={version} />
+    </WorkspaceProvider>
   );
 }

@@ -1,0 +1,130 @@
+/*
+ * The inspector. A column at wide widths. Below 1180 px (DRAWER_BREAKPOINT_PX in layout.ts)
+ * it is an off-canvas drawer: fixed to the right edge, off-screen until data-open is "true".
+ * Colours are alias tokens only.
+ */
+
+.inspector {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+  border-left: 1px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.heading {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.close {
+  min-height: var(--row-h-toolbar);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.panels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.panelTitle {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1h);
+  margin: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 40%) minmax(0, 1fr);
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.row dt {
+  color: var(--muted-foreground);
+}
+
+.row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.unavailable {
+  color: var(--muted-foreground);
+}
+
+.reason,
+.note,
+.trust {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.note {
+  line-height: var(--lh-xs);
+}
+
+.stateLine {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.trust {
+  margin: 0;
+}
+
+.warnings {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 1180px) {
+  .inspector {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-overlay);
+    width: min(25rem, 92vw);
+    transform: translateX(102%);
+    transition: transform var(--dur-slow) var(--ease-std);
+    box-shadow: var(--shadow-panel);
+  }
+
+  .inspector[data-open="true"] {
+    transform: translateX(0);
+  }
+}

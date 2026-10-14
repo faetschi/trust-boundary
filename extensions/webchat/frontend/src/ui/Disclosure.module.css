@@ -1,0 +1,18 @@
+.disclosure {
+  min-width: 0;
+  border-top: 1px solid var(--border);
+}
+
+.summary {
+  min-height: var(--row-h-button);
+  display: flex;
+  align-items: center;
+  padding: var(--space-2) 0;
+  cursor: pointer;
+  font-weight: 600;
+  list-style-position: outside;
+}
+
+.body {
+  padding: 0 0 var(--space-3);
+}

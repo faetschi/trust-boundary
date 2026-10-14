@@ -51,7 +51,7 @@ const HANDLER_SOURCE = join(webchatRoot, 'internal', 'webchat', 'handler.go');
 const isWindows = process.platform === 'win32';
 const exe = (name) => (isWindows ? `${name}.exe` : name);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const APP_TITLE = 'tbound web chat (React scaffold, Phase 1)';
+const APP_TITLE = 'tbound web chat';
 const VANILLA_TITLE = 'tbound · Pi chat workspace';
 
 class Stop extends Error {
@@ -117,16 +117,16 @@ const CANARY_PAGE = [
 
 const AUDIT = `(() => {
   const all = Array.from(document.querySelectorAll('*'));
-  const banner = document.querySelector('[data-scaffold="banner"]');
+  const banner = document.querySelector('header[aria-label="Workspace header"]');
   let scaffold = null;
   if (banner) {
-    const probe = document.createElement('section');
+    const probe = document.createElement('header');
     document.body.appendChild(probe);
-    const defaultBackground = getComputedStyle(probe).backgroundColor;
+    const defaultBackground = getComputedStyle(probe).borderBottomWidth;
     probe.remove();
     scaffold = {
       className: banner.getAttribute('class') || '',
-      background: getComputedStyle(banner).backgroundColor,
+      background: getComputedStyle(banner).borderBottomWidth,
       defaultBackground,
       text: banner.textContent || '',
     };
@@ -538,7 +538,7 @@ async function auditTargets(base, targets) {
       if (navigation.errorText) throw new Stop(CODE.notVerified, `navigation to ${target.url} failed: ${navigation.errorText}`);
       await loaded;
       if (target.kind === 'app') {
-        await poll(async () => (await evaluate(cdp, 'Boolean(document.querySelector("[data-scaffold]"))')) === true, 10000);
+        await poll(async () => (await evaluate(cdp, 'Boolean(document.querySelector("header[aria-label=\\"Workspace header\\"]"))')) === true, 10000);
       }
       await sleep(target.kind === 'vanilla' ? 1500 : 500);
       const audit = await evaluate(cdp, AUDIT);
@@ -632,14 +632,14 @@ function judgePage({ target, audit, state, documentCsp }, policy) {
   if (target.kind === 'app') {
     if (audit.title !== APP_TITLE) failures.push(`title is ${JSON.stringify(audit.title)}, expected ${JSON.stringify(APP_TITLE)}`);
     if (!audit.scaffold) {
-      failures.push('no [data-scaffold="banner"] element on /app/');
+      failures.push('no header[aria-label="Workspace header"] element on /app/ (the React shell did not render)');
     } else {
-      if (audit.scaffold.className === '') failures.push('banner has no class (CSS Modules not applied)');
+      if (audit.scaffold.className === '') failures.push('header has no class (CSS Modules not applied)');
       if (audit.scaffold.background === audit.scaffold.defaultBackground) {
-        failures.push(`banner background ${audit.scaffold.background} equals the default: CSS Module not applied`);
+        failures.push(`header bottom border ${audit.scaffold.background} equals the unstyled default: CSS Module not applied`);
       }
-      if (!audit.scaffold.text.includes('React scaffold (Phase 1, not the product UI)')) {
-        failures.push('banner text is not the Phase 1 scaffold heading');
+      if (!/G1/.test(audit.scaffold.text) || !/H1/.test(audit.scaffold.text)) {
+        failures.push('the header does not show the claim boundary (G1 / H1)');
       }
     }
     if (audit.stylesheetLinks < 1) failures.push('no stylesheet link on /app/');
@@ -664,7 +664,7 @@ function summarise({ target, audit, state }) {
     `${audit.eventAttributes} on* attributes`,
   ];
   if (target.kind === 'app' && audit.scaffold) {
-    parts.push(`CSS Module class "${audit.scaffold.className}" applied (background ${audit.scaffold.background}, default ${audit.scaffold.defaultBackground})`);
+    parts.push(`CSS Module class "${audit.scaffold.className}" applied (header bottom border ${audit.scaffold.background}, unstyled default ${audit.scaffold.defaultBackground})`);
   }
   return parts.join('; ');
 }

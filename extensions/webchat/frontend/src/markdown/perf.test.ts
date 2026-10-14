@@ -9,7 +9,13 @@ import { MAX_MARKDOWN_CHARS, parseMarkdown, scanWork } from "./parse";
 import { ADVERSARIAL } from "./test-support/corpus";
 
 const MAX_WORK_PER_CHARACTER = 64;
-const TIME_BACKSTOP_MS = 1500;
+// The work counter is the real assertion. The clock is only a hang backstop: a tight
+// wall-clock bound flaked once under the parallel full-suite load (1648 ms vs 1500 ms).
+const TIME_BACKSTOP_MS = 10_000;
+// Streaming re-parses the open tail block on every update, so total work is O(n^2) by
+// design (legacy: about 16.8M positions for 4096 characters). Anything well above n^2
+// would be a regression.
+const MAX_STREAM_WORK_FACTOR = 1.25;
 
 describe("performance: linear-time look-ahead", () => {
   it("pathological delimiter runs stay within the work and time bounds", () => {
@@ -41,11 +47,15 @@ describe("performance: linear-time look-ahead", () => {
   it("a 4096-character adversarial message streamed one character at a time stays within the time bound", () => {
     const text = "*".repeat(4096);
     const parser = createIncrementalParser();
+    scanWork.steps = 0;
     const started = performance.now();
     let last = parser.update("");
     for (let end = 1; end <= text.length; end++) last = parser.update(text.slice(0, end));
     const elapsed = performance.now() - started;
-    console.info(`[perf] 4096-character stream: ${elapsed.toFixed(0)} ms`);
+    console.info(`[perf] 4096-character stream: ${elapsed.toFixed(0)} ms, ${scanWork.steps} positions`);
+    expect(scanWork.steps, `examined ${scanWork.steps} positions while streaming ${text.length} characters`).toBeLessThanOrEqual(
+      text.length * text.length * MAX_STREAM_WORK_FACTOR,
+    );
     expect(last.blocks, "the final stream equals a fresh parse of the same text").toStrictEqual(parseMarkdown(text).blocks);
     expect(elapsed, `streaming took ${elapsed.toFixed(0)} ms`).toBeLessThan(TIME_BACKSTOP_MS);
   });

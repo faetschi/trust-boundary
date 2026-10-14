@@ -1,0 +1,79 @@
+/*
+ * Reset and base rules. Static CSS only. Colours come from the alias tier (tokens.css);
+ * this file names no colour value. The test in tokens.test.ts enforces that.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font: 400 var(--text-body) / var(--lh-body) var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+dl,
+dd {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+/* The HTML hidden attribute must win over a component's display rule. */
+[hidden] {
+  display: none !important;
+}
+
+/* Focus: a 2 px ring in the neutral ink colour, offset outside the control. The ring
+   contrast (3:1 or better in both themes) is in the token test. */
+:focus-visible {
+  outline: var(--focus-width) solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Scrollbars: thin and neutral, on the standard path only. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* Reduced motion: a global kill switch for transitions and animations. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Forced colours: backgrounds and box shadows are replaced by the system palette, so
+   every state is also drawn with a border (see StateDot.module.css). The focus ring
+   uses outline, which the system keeps. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline-color: CanvasText;
+  }
+}

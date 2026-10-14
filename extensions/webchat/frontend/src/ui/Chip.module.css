@@ -1,0 +1,90 @@
+/*
+ * Chips: the state colour at 12% over the surface, the ink for text. The ink and tint
+ * pairs are the ones docs/design/contrast.mjs checks. Component-local properties
+ * (--local-*) read only alias tokens; tokens.test.ts enforces that.
+ */
+
+.chip {
+  --local-ink: var(--foreground);
+  --local-tint: var(--muted-foreground);
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 20px;
+  padding: 0 var(--space-1h);
+  border: 1px solid color-mix(in oklch, var(--local-ink) 40%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--local-tint) 12%, transparent);
+  color: var(--local-ink);
+  font: 500 var(--text-xs) / var(--lh-xs) var(--font-sans);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip[data-tone="ok"] {
+  --local-ink: var(--state-ok-ink);
+  --local-tint: var(--state-ok);
+}
+
+.chip[data-tone="allow"] {
+  --local-ink: var(--state-allow);
+  --local-tint: var(--state-allow);
+}
+
+.chip[data-tone="deny"],
+.chip[data-tone="lost"] {
+  --local-ink: var(--state-deny-ink);
+  --local-tint: var(--state-deny);
+}
+
+.chip[data-tone="reported"],
+.chip[data-tone="unknown"],
+.chip[data-tone="pending"] {
+  --local-ink: var(--state-reported-ink);
+  --local-tint: var(--state-reported);
+}
+
+.chip[data-tone="reported"] {
+  border-style: dashed;
+}
+
+.chip[data-tone="unknown"] {
+  border-style: dotted;
+}
+
+.chip[data-tone="idle"] {
+  --local-ink: var(--state-muted);
+  --local-tint: var(--state-idle);
+}
+
+.chip[data-source="system"] {
+  --local-ink: var(--source-system);
+  --local-tint: var(--source-system);
+}
+
+.chip[data-source="user"] {
+  --local-ink: var(--source-user);
+  --local-tint: var(--source-user);
+}
+
+.chip[data-source="assistant"] {
+  --local-ink: var(--source-assistant);
+  --local-tint: var(--source-assistant);
+}
+
+.chip[data-source="tool"] {
+  --local-ink: var(--source-tool);
+  --local-tint: var(--source-tool);
+}
+
+.chip[data-source="decision"] {
+  --local-ink: var(--source-decision);
+  --local-tint: var(--source-decision);
+}
+
+.chip[data-source="result"],
+.chip[data-source="message"] {
+  --local-ink: var(--source-result);
+  --local-tint: var(--source-result);
+}

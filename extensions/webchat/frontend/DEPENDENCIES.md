@@ -7,7 +7,7 @@ policy and the gate that enforces it are in `docs/frontend.md`.
 Checked on 2026-10-14 with Node 24.15.0 on Linux (WSL) and with `npm` 11.12.1.
 The registry metadata was read with `npm view`.
 
-## Direct dependencies (8)
+## Direct dependencies (9)
 
 | Package | Pinned | Licence | Role | Shipped in `dist/` |
 |---|---|---|---|---|
@@ -19,15 +19,16 @@ The registry metadata was read with `npm view`.
 | `typescript` | 7.0.2 | Apache-2.0 | type checker, `tsc --noEmit` (check only) | no |
 | `@types/react` | 19.3.0 | MIT | types (check only) | no |
 | `@types/react-dom` | 19.3.0 | MIT | types (check only) | no |
+| `happy-dom` | 21.0.1 | MIT | DOM for the component tests, added in Phase 3a (test only) | no |
 
 Runtime is `react` and `react-dom` only. `react-dom` pulls in `scheduler`
 0.28.0 (MIT). Everything else is build, test or type tooling.
 
-## Locked packages (88)
+## Locked packages (97)
 
 - Runtime (not dev-only): 3 (`react`, `react-dom`, `scheduler`).
-- Dev-only: 85.
-- Installed on Linux x64: 44. The other 44 are optional, platform-gated native
+- Dev-only: 94.
+- Installed on Linux x64: 53. The other 44 are optional, platform-gated native
   packages (`lightningcss-*`, `@rolldown/binding-*`, `@typescript/typescript-*`,
   and `fsevents`). npm does not install them on this platform.
 
@@ -36,11 +37,12 @@ metadata:
 
 | Licence | Count |
 |---|---|
-| MIT | 51 |
+| MIT | 59 |
 | Apache-2.0 | 23 |
 | MPL-2.0 | 12 |
 | ISC | 1 |
 | BSD-3-Clause | 1 |
+| BSD-2-Clause | 1 |
 
 The MPL-2.0 packages are all `lightningcss` builds, a dev-time CSS tool. The
 built bundle contains no `lightningcss` code: a search of the committed
@@ -70,10 +72,14 @@ built bundle contains no `lightningcss` code: a search of the committed
 
 - No component library and no CSS-in-JS. That was decided in
   `docs/adr-0001-optional-extension.md`: the CSP is `style-src 'self'`.
-- No DOM test library (jsdom or happy-dom). The Phase 1 component test renders
-  to a string with `react-dom/server` in Vitest's node environment. Either DOM
-  library would add its own transitive tree, and one is needed only once there
-  is interaction to test (Phase 2 or 3).
+- `happy-dom` 21.0.1 is the one DOM library, a dev dependency for the component
+  tests (Phase 3a). The keyboard, focus, drawer and announcer behaviour cannot be
+  tested with `react-dom/server` strings. It has no install script, and it adds
+  nine locked packages: `ws`, `entities` (BSD-2-Clause), `whatwg-mimetype`,
+  `buffer-image-size`, `undici-types`, `@types/node`, `@types/ws` and
+  `@types/whatwg-mimetype`. None is in the shipped bundle: Vite bundles only what
+  `src/` imports, and the tests are not in `src/`'s production graph. jsdom was
+  not chosen because its tree is considerably larger.
 - No ESLint. The sink and style checks are small Node scripts
   (`scripts/check-sinks.mjs`). Adding ESLint would bring a large tree for two
   grep-level rules.

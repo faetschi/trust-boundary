@@ -1,0 +1,30 @@
+.tablist {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  min-height: var(--row-h-button);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--foreground);
+  color: var(--foreground);
+}
+
+.tab:hover {
+  background: var(--accent);
+}
+
+.panel {
+  min-width: 0;
+  outline-offset: -2px;
+}

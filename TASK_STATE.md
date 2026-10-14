@@ -524,3 +524,20 @@ are preparation only. Media custody and exact ABI checks precede registration.
   legacy node --test 258/258; Go build/vet/gofmt/test -race 0.
 - Not done: UI port (Phase 3); markdown.test.mjs (56) is agent L's Phase 2b. Other uncommitted
   work in this worktree (handler.go, app.go, gate scripts) was left as found.
+
+## Phase 3a foundation (2026-10-14)
+
+- React shell under /app/: tokens (light/dark/system, design-language.md), primitives
+  (Chip, StateDot with shape+text, Tabs, ToggleGroup, Disclosure, LiveRegion, ...),
+  WorkspaceProvider (snapshot-first stream, reconnect, gaps), shell, governance panels,
+  inspector drawer. Chat and Trajectory view bodies are still placeholders (3b/3c).
+- Verified on WINDOWS (WSL hung, see below), not Linux: vitest 513/513 (43 files, 0 skipped),
+  tsc clean, check:sinks/check:deps + self-tests, Go build/vet/test for extensions/webchat
+  and core build, legacy node suite 258/258, boundary guard, csp-smoke PASS against the
+  React shell in Chrome 155 (canary produced 4 violations; 7 header probes). dist/ built
+  on Windows and byte-identical to P's Linux-built JS/CSS/manifest; the Linux repro and
+  Go -race gates must be RE-RUN once WSL is back before calling this green per AGENTS.md.
+- New dev dependency: happy-dom 21.0.1 (pinned, 97 locked packages, 0 audit findings).
+- Fixed a flaky wall-clock bound in the markdown streaming perf test (work counter is now
+  the real assertion).
+- Environment: the WSL VM hung (wsl --shutdown also hangs; vmmem not killable without admin).

@@ -1,0 +1,78 @@
+/*
+ * Status dots. Shape carries the state; colour is the second cue. Each dot is decorative
+ * (aria-hidden) and its owner names the state in text.
+ */
+
+.dot {
+  display: inline-block;
+  flex: none;
+  box-sizing: border-box;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 50%;
+}
+
+.dot[data-tone="ok"] {
+  background: var(--state-ok);
+  border-color: var(--state-ok);
+}
+
+.dot[data-tone="deny"] {
+  /* Square, so a deny dot is never colour-only against the round ok dot. */
+  background: var(--state-deny);
+  border-color: var(--state-deny);
+  border-radius: 2px;
+}
+
+.dot[data-tone="allow"] {
+  background: transparent;
+  border: 2px solid var(--state-allow);
+}
+
+.dot[data-tone="pending"] {
+  background: transparent;
+  border-color: var(--state-pending-mark);
+}
+
+.dot[data-tone="reported"] {
+  background: transparent;
+  border: 2px dashed var(--state-reported);
+}
+
+.dot[data-tone="unknown"] {
+  background: transparent;
+  border: 2px dotted var(--state-unknown);
+}
+
+.dot[data-tone="idle"] {
+  background: var(--state-idle);
+  border-color: var(--state-idle);
+}
+
+.dot[data-tone="lost"] {
+  background: transparent;
+  border: 2px solid var(--state-deny);
+  border-radius: 2px;
+}
+
+/* Forced colours remove backgrounds. Filled shapes keep their fill by opting out of the
+   adjustment, with system colours only, and every other shape keeps its border style. */
+@media (forced-colors: active) {
+  .dot[data-tone="ok"],
+  .dot[data-tone="deny"],
+  .dot[data-tone="idle"] {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+    border-color: CanvasText;
+  }
+
+  .dot[data-tone="allow"],
+  .dot[data-tone="pending"],
+  .dot[data-tone="reported"],
+  .dot[data-tone="unknown"],
+  .dot[data-tone="lost"] {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+  }
+}
