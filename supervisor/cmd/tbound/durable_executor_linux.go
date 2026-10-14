@@ -55,6 +55,9 @@ type DurableExecutorConfig struct {
 	// is optional: a nil runner is valid at construction and makes every bash
 	// ALLOW fail closed at Execute time rather than running uncontained.
 	CommandRunner sessionrepo.CommandRunner
+	// AfterDurableOperation settles a consumed workflow effect reservation from
+	// the actual Store/admission journal tail before a provider result is released.
+	AfterDurableOperation func(context.Context, protocol.Proposal, gate.Decision) error
 }
 
 // DurableExecutor is the production-shaped Executor for cmd/tbound. It maps one
@@ -65,15 +68,16 @@ type DurableExecutorConfig struct {
 // no containment, publication, or provider claim: those remain unresolved in
 // the session repository evidence.
 type DurableExecutor struct {
-	mu                   sync.Mutex
-	store                *sessionrepo.Store
-	tip                  *sessionrepo.Generation
-	callIssuer           string
-	policyDigest         string
-	metadataPolicyDigest string
-	commandRunner        sessionrepo.CommandRunner
-	bashOutputPaths      []string
-	quarantined          bool
+	mu                    sync.Mutex
+	store                 *sessionrepo.Store
+	tip                   *sessionrepo.Generation
+	callIssuer            string
+	policyDigest          string
+	metadataPolicyDigest  string
+	commandRunner         sessionrepo.CommandRunner
+	bashOutputPaths       []string
+	afterDurableOperation func(context.Context, protocol.Proposal, gate.Decision) error
+	quarantined           bool
 }
 
 // productionBashEvidenceBinder is implemented only by the CLI's concrete D09
@@ -126,6 +130,7 @@ func NewDurableExecutor(config DurableExecutorConfig) (*DurableExecutor, error) 
 		store: config.Store, tip: config.Tip, callIssuer: config.CallIssuer,
 		policyDigest: config.PolicyDigest, metadataPolicyDigest: config.MetadataPolicyDigest,
 		commandRunner: config.CommandRunner, bashOutputPaths: cloneDurableOutputScopePaths(config.BashOutputPaths),
+		afterDurableOperation: config.AfterDurableOperation,
 	}, nil
 }
 
@@ -186,6 +191,11 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 		if err != nil {
 			return nil, fmt.Errorf("durable read: %w", err)
 		}
+		if e.afterDurableOperation != nil {
+			if err := e.afterDurableOperation(ctx, proposal, decision); err != nil {
+				return nil, fmt.Errorf("settle durable read against workflow owner before result release: %w", err)
+			}
+		}
 		return durableReadSummary(path, e.tip, content)
 	case "write":
 		path, content, err := durableWriteArguments(proposal.Arguments)
@@ -242,6 +252,11 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 		if err := e.bindProductionBashEvidence(ctx, proposal, decision, mutation); err != nil {
 			e.quarantined = true
 			return nil, fmt.Errorf("bind and reverify D09 proof with durable Bash operation before result release: %w", err)
+		}
+	}
+	if e.afterDurableOperation != nil {
+		if err := e.afterDurableOperation(ctx, proposal, decision); err != nil {
+			return nil, fmt.Errorf("settle durable Store operation against workflow owner before result release: %w", err)
 		}
 	}
 	return durableMutationSummary(proposal.Tool, mutation, e.commandRunner)

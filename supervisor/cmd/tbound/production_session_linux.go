@@ -78,9 +78,11 @@ type productionServeConfig struct {
 	TaskID              string
 	TaskRequestID       string
 	TaskPrompt          string
-	ServiceMode         bool     // set only by the fixed socket-activated service entrypoint
-	ManagedLiveRootPath string   // set only from A's verified signed registration in service mode
-	BashOutputPaths     []string // operator-declared exact output scope; nil disables Bash
+	ServiceMode         bool                         // set only by the fixed socket-activated service entrypoint
+	ManagedLiveRootPath string                       // set only from A's verified signed registration in service mode
+	BashOutputPaths     []string                     // operator-declared exact output scope; nil disables Bash
+	workflowRecovery    *governedRecoveryRequest     // set only by a trusted host recovery loader; never client parsed
+	workflowAdmission   *productionWorkflowAdmission // set only by the authenticated service + host catalog
 }
 
 func (c productionServeConfig) validate() error {
@@ -154,14 +156,18 @@ type productionPiSession struct {
 	CommandRunner           sessionrepo.CommandRunner
 	ProductionCommandRunner *productionCommandRunner
 
-	SessionID                   string
-	RunID                       string
-	WorkflowID                  string
-	ConversationID              string
-	ProviderProfileID           string
-	SystemPrompt                string
-	DeveloperPrompt             string
-	offlineProviderConversation *providerbridge.Conversation // integration-test fixture only; never set by CLI parsing
+	SessionID                     string
+	RunID                         string
+	WorkflowID                    string
+	ConversationID                string
+	ProviderProfileID             string
+	SystemPrompt                  string
+	DeveloperPrompt               string
+	offlineProviderConversation   *providerbridge.Conversation // integration-test fixture only; never set by CLI parsing
+	recoveredProviderConversation *providerbridge.Conversation
+	recoveryPromptTaskID          string
+	recoveryPromptRequestID       string
+	recoveryPrompt                string
 
 	// Publication finalizes the registered session after settlement. The binder
 	// supplies the protected live root, publication state root/journal, owner
@@ -383,6 +389,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		Store: session.Store, Tip: session.Generation, CallIssuer: session.CallIssuer,
 		PolicyDigest: session.StorePolicyDigest, MetadataPolicyDigest: session.MetadataPolicyDigest,
 		CommandRunner: session.CommandRunner, BashOutputPaths: cloneDurableOutputScopePaths(config.BashOutputPaths),
+		AfterDurableOperation: session.Authority.SettleDurableOperation,
 	})
 	if err != nil {
 		return fmt.Errorf("construct production durable executor: %w", err)
@@ -476,7 +483,15 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 
 	conversation := session.offlineProviderConversation
 	providerExchange := conversation == nil
-	if conversation == nil {
+	if conversation == nil && session.recoveredProviderConversation != nil {
+		conversation = session.recoveredProviderConversation
+		session.Authority.mu.Lock()
+		ownedConversation := session.Authority.conversation
+		session.Authority.mu.Unlock()
+		if ownedConversation != conversation {
+			return errors.New("recovered provider conversation is not bound to the fresh workflow authority")
+		}
+	} else if conversation == nil {
 		conversation, err = session.Authority.NewProviderConversation(providerbridge.Config{
 			ConversationID:  session.ConversationID,
 			WorkflowID:      session.WorkflowID,
@@ -539,7 +554,11 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	}()
 
 	promptAdmission := authorityPromptAdmission{authority: session.Authority, conversation: conversation, durable: durable}
-	if err := worker.SendAdmittedPrompt(ctx, promptAdmission, config.TaskID, config.TaskRequestID, config.TaskPrompt); err != nil {
+	taskID, taskRequestID, taskPrompt := config.TaskID, config.TaskRequestID, config.TaskPrompt
+	if session.recoveryPrompt != "" {
+		taskID, taskRequestID, taskPrompt = session.recoveryPromptTaskID, session.recoveryPromptRequestID, session.recoveryPrompt
+	}
+	if err := worker.SendAdmittedPrompt(ctx, promptAdmission, taskID, taskRequestID, taskPrompt); err != nil {
 		cancelRun()
 		return fmt.Errorf("admit and forward registered production prompt to actual Pi: %w", err)
 	}

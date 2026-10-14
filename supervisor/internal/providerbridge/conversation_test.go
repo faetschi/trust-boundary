@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -245,6 +246,70 @@ func TestConversationOwnsFourToolE05TranscriptAndDurableResults(t *testing.T) {
 	assertRequestTranscript(t, doer.requests[4], 11, "tool", "call-read-g2")
 }
 
+func TestHostCallReservationBindsPerRequestCapBeforeTransport(t *testing.T) {
+	doer := &fixtureDoer{responses: []fixtureResponse{{responseID: "response-budget", text: "bounded"}}}
+	journal := &memoryJournal{}
+	var order []string
+	const completionCap = uint64(73)
+	var reserved HostCallBinding
+	c, err := newWithDoer(Config{
+		ConversationID: "conversation-budget", WorkflowID: "workflow-budget", ProfileID: "profile-budget",
+		InitialGenerationID: "g0", InitialTreeDigest: "tree-g0",
+		SystemPrompt: "Fixture system prompt.", DeveloperPrompt: "Fixture developer profile.",
+		SelectCompletionTokenLimit: func(context.Context) (uint64, error) {
+			order = append(order, "select")
+			return completionCap, nil
+		},
+		ReserveHostCall: func(_ context.Context, request broker.RequestRecord, cap uint64) (HostCallBinding, error) {
+			order = append(order, "reserve")
+			if len(doer.requests) != 0 || cap != completionCap {
+				return HostCallBinding{}, errors.New("reservation did not precede transport with the selected cap")
+			}
+			var body struct {
+				MaxCompletionTokens uint64 `json:"max_completion_tokens"`
+			}
+			if err := json.Unmarshal(request.Body(), &body); err != nil || body.MaxCompletionTokens != completionCap {
+				return HostCallBinding{}, errors.Join(errors.New("outbound request omitted its exact completion cap"), err)
+			}
+			reserved = HostCallBinding{CallID: "host-call-budget", RequestDigest: broker.DigestRequestRecord(request), TokenUpperBound: cap}
+			return reserved, nil
+		},
+		CompleteHostCall: func(_ context.Context, completed HostCallCompletion) error {
+			order = append(order, "settle")
+			if completed.Binding != reserved || len(completed.OutcomeDigest) != 64 {
+				return errors.New("settlement does not name the exact reserved request/outcome")
+			}
+			events := journal.snapshot()
+			if len(events) < 3 || events[len(events)-2].Kind != "provider_host_call_reserved" ||
+				events[len(events)-1].Kind != "provider_exchange" {
+				return errors.New("provider outcome was settled before its exact exchange was journaled")
+			}
+			return nil
+		},
+	}, ApprovedModel, doer, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.AdmitPrompt("task-budget", "bounded request"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.NextTurn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(order, []string{"select", "reserve", "settle"}) {
+		t.Fatalf("host-call callback order=%v", order)
+	}
+	if len(doer.requests) != 1 {
+		t.Fatalf("transport request count=%d want=1", len(doer.requests))
+	}
+	var body struct {
+		MaxCompletionTokens uint64 `json:"max_completion_tokens"`
+	}
+	if err := json.Unmarshal(doer.requests[0], &body); err != nil || body.MaxCompletionTokens != completionCap {
+		t.Fatalf("transport body cap=%d err=%v want=%d", body.MaxCompletionTokens, err, completionCap)
+	}
+}
+
 func TestConversationWithholdsExchangeOnJournalFailure(t *testing.T) {
 	journal := &memoryJournal{failKind: "provider_exchange"}
 	doer := &fixtureDoer{responses: []fixtureResponse{{responseID: "response-1", callID: "call-1", tool: "read", arguments: json.RawMessage(`{"path":"x"}`)}}}
@@ -257,6 +322,41 @@ func TestConversationWithholdsExchangeOnJournalFailure(t *testing.T) {
 	}
 	if _, err := c.NextTurn(context.Background()); !errors.Is(err, ErrClosed) {
 		t.Fatalf("conversation did not close after result withholding: %v", err)
+	}
+}
+
+func TestConversationReservesBeforeProviderDispatch(t *testing.T) {
+	journal := &memoryJournal{}
+	doer := &fixtureDoer{responses: []fixtureResponse{{
+		responseID: "response-reserved", callID: "call-reserved", tool: "read",
+		arguments: json.RawMessage(`{"path":"x"}`),
+	}}}
+	conversation := newFixtureConversation(t, journal, doer, "g0", "tree-g0")
+	reserveErr := errors.New("workflow allowance exhausted")
+	var reservations atomic.Int32
+	conversation.cfg.BeforeExchange = func(context.Context) error {
+		reservations.Add(1)
+		return reserveErr
+	}
+	if err := conversation.AdmitPrompt("task-1", "synthetic"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conversation.NextTurn(context.Background()); !errors.Is(err, reserveErr) {
+		t.Fatalf("NextTurn err=%v, want durable reservation error", err)
+	}
+	if got := reservations.Load(); got != 1 {
+		t.Fatalf("pre-dispatch reservations=%d want=1", got)
+	}
+	doer.mu.Lock()
+	requestCount := len(doer.requests)
+	doer.mu.Unlock()
+	if requestCount != 0 {
+		t.Fatalf("provider received %d request(s) after reservation failed", requestCount)
+	}
+	for _, event := range journal.snapshot() {
+		if event.Kind == "provider_exchange" || event.Kind == "provider_exchange_unknown" {
+			t.Fatalf("provider exchange was journaled after reservation failure: %s", event.Kind)
+		}
 	}
 }
 

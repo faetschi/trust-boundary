@@ -13,6 +13,24 @@ import (
 	"testing"
 )
 
+func testD09ManagedPiServiceConfig() D09ManagedPiServiceConfig {
+	return D09ManagedPiServiceConfig{
+		SchemaVersion: D09ManagedPiServiceConfigSchema, SourcePolicy: "current-managed-live-root/v1",
+		WorkflowAdmissionMode: "fresh", WorkflowAdmissionID: "host-task-2026-10-14",
+		WorkflowTaskID: "approved-task", WorkflowPrompt: "Read the approved host task.",
+		WorkflowCatalogPath: D09ManagedPiWorkflowCatalogPath, WorkflowRootDBPath: D09ManagedPiWorkflowRootDBPath,
+		WorkflowOwnerStoreRoot: D09ManagedPiOwnerStoreRoot, WorkflowMaxPreEffectRetries: 2,
+		WorkflowMaxCleanRestarts: 2, WorkflowMaxHostCalls: 4, WorkflowMaxTokens: 10000,
+		WorkflowDurationSeconds: 1200,
+		PodmanHome:              D09ManagedPiPodmanHome, PodmanGraphroot: D09ManagedPiPodmanGraphroot,
+		PodmanRunroot: D09ManagedPiPodmanRunroot, XDGRuntimeDir: D09ManagedPiRuntimeDir,
+		XDGConfigHome: D09ManagedPiPodmanConfigHome, XDGDataHome: D09ManagedPiPodmanDataHome,
+		XDGCacheHome: D09ManagedPiPodmanCacheHome, TmpDir: D09ManagedPiTempDir,
+		ContainersConfPath: D09ManagedPiContainersConfPath, ContainersConfDigest: DigestBytes([]byte("containers")),
+		StorageConfPath: D09ManagedPiStorageConfPath, StorageConfDigest: DigestBytes([]byte("storage")),
+	}
+}
+
 func validManagedLiveRootRegistration() D09ManagedLiveRootRegistration {
 	rootOptions := DigestBytes([]byte("rw,nosuid,nodev,relatime\x00ext4\x00/dev/test"))
 	parentOptions := DigestBytes([]byte("ro,nosuid,nodev,relatime\x00ext4\x00/dev/test"))
@@ -120,15 +138,7 @@ Options=rw,nosuid,nodev
 }
 
 func TestD09ManagedPiServiceUnitsPinCleanupAndNarrowWritablePaths(t *testing.T) {
-	config := D09ManagedPiServiceConfig{
-		SchemaVersion: D09ManagedPiServiceConfigSchema, SourcePolicy: "current-managed-live-root/v1",
-		PodmanHome: D09ManagedPiPodmanHome, PodmanGraphroot: D09ManagedPiPodmanGraphroot,
-		PodmanRunroot: D09ManagedPiPodmanRunroot, XDGRuntimeDir: D09ManagedPiRuntimeDir,
-		XDGConfigHome: D09ManagedPiPodmanConfigHome, XDGDataHome: D09ManagedPiPodmanDataHome,
-		XDGCacheHome: D09ManagedPiPodmanCacheHome, TmpDir: D09ManagedPiTempDir,
-		ContainersConfPath: D09ManagedPiContainersConfPath, ContainersConfDigest: DigestBytes([]byte("containers")),
-		StorageConfPath: D09ManagedPiStorageConfPath, StorageConfDigest: DigestBytes([]byte("storage")),
-	}
+	config := testD09ManagedPiServiceConfig()
 	paths := d09ManagedPiServiceWritablePaths()
 	unit := []byte("[Unit]\nDescription=tbound-pi\n[Service]\n" +
 		"User=tbound-pi\nGroup=tbound-pi\nExecStart=/usr/local/bin/tbound serve --pi --service\n" +
@@ -168,15 +178,7 @@ func TestD09ManagedPiServiceUnitsPinCleanupAndNarrowWritablePaths(t *testing.T) 
 }
 
 func TestD09ManagedPiServiceAndSocketUnitsAreExact(t *testing.T) {
-	serviceConfig := D09ManagedPiServiceConfig{
-		SchemaVersion: D09ManagedPiServiceConfigSchema, SourcePolicy: "current-managed-live-root/v1",
-		PodmanHome: D09ManagedPiPodmanHome, PodmanGraphroot: D09ManagedPiPodmanGraphroot,
-		PodmanRunroot: D09ManagedPiPodmanRunroot, XDGRuntimeDir: D09ManagedPiRuntimeDir,
-		XDGConfigHome: D09ManagedPiPodmanConfigHome, XDGDataHome: D09ManagedPiPodmanDataHome,
-		XDGCacheHome: D09ManagedPiPodmanCacheHome, TmpDir: D09ManagedPiTempDir,
-		ContainersConfPath: D09ManagedPiContainersConfPath, ContainersConfDigest: DigestBytes([]byte("containers")),
-		StorageConfPath: D09ManagedPiStorageConfPath, StorageConfDigest: DigestBytes([]byte("storage")),
-	}
+	serviceConfig := testD09ManagedPiServiceConfig()
 	serviceUnit := []byte(`[Unit]
 Description=TBound Pi service
 [Service]

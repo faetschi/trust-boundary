@@ -41,6 +41,7 @@ var (
 	ErrUntrustedRoot        = errors.New("session repository root is not private and supervisor-owned")
 	ErrNotEmpty             = errors.New("session repository root is not empty")
 	ErrClosed               = errors.New("session repository is closed")
+	ErrRecoveryPreview      = errors.New("session repository is a read-only recovery preview")
 	ErrQuarantined          = errors.New("session repository is quarantined")
 	ErrNoBaseline           = errors.New("session repository has no baseline generation")
 	ErrBaselineExists       = errors.New("session repository baseline already exists")
@@ -233,28 +234,37 @@ type EvidenceArtifact struct {
 // remain private to the supervisor; untrusted workers receive only mount
 // sources selected by the trusted runtime layer.
 type Store struct {
-	mu                sync.Mutex
-	root              *os.File
-	genDir            *os.File
-	viewDir           *os.File
-	exposedDir        *os.File
-	admissionJournal  *audit.Journal
-	rootPath          string
-	options           Options
-	baseline          *Generation
-	generations       []*Generation
-	generationEffects []string
-	transitions       []delta.Transition
-	operations        []OperationEvidence
-	usedDecisions     map[string]struct{}
-	usedOperations    map[delta.OperationIdentity]struct{}
-	usedViewIDs       map[string]struct{}
-	views             map[string]*CommandView
-	exposedViews      map[string]*ExposedView
-	sealedSources     map[*VerifiedSealedSource]struct{}
-	viewIDGenerator   func() (string, error)
-	closed            bool
-	quarantined       bool
+	mu                           sync.Mutex
+	root                         *os.File
+	genDir                       *os.File
+	viewDir                      *os.File
+	exposedDir                   *os.File
+	admissionJournal             *audit.Journal
+	rootPath                     string
+	options                      Options
+	baseline                     *Generation
+	generations                  []*Generation
+	generationEffects            []string
+	transitions                  []delta.Transition
+	operations                   []OperationEvidence
+	usedDecisions                map[string]struct{}
+	usedOperations               map[delta.OperationIdentity]struct{}
+	usedViewIDs                  map[string]struct{}
+	historicalAuthorizations     map[string]historicalAuthorizationEvidence
+	usedHistoricalAuthorizations map[string]struct{}
+	views                        map[string]*CommandView
+	exposedViews                 map[string]*ExposedView
+	sealedSources                map[*VerifiedSealedSource]struct{}
+	viewIDGenerator              func() (string, error)
+	recoveryPreview              bool
+	previewJournalHead           string
+	previewJournalCount          uint64
+	previewAdmissionHead         string
+	previewAdmissionCount        uint64
+	previewState                 durableRepositoryState
+	previewStateExists           bool
+	closed                       bool
+	quarantined                  bool
 }
 
 // Generation is an immutable logical snapshot held by a Store. Its directory
@@ -376,7 +386,7 @@ func Create(root *os.File, options Options) (*Store, error) {
 func (s *Store) Seed(source *os.File, attestation RootAttestation) (*Generation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.checkUsableLocked(); err != nil {
+	if err := s.checkMutableLocked(); err != nil {
 		return nil, err
 	}
 	if s.baseline != nil {
@@ -485,7 +495,7 @@ func (g *Generation) ReadOnlyMountSource() (*os.File, error) {
 	}
 	g.store.mu.Lock()
 	defer g.store.mu.Unlock()
-	if err := g.store.checkUsableLocked(); err != nil {
+	if err := g.store.checkMutableLocked(); err != nil {
 		return nil, err
 	}
 	if err := g.store.verifyGenerationLocked(g); err != nil {
@@ -496,6 +506,18 @@ func (g *Generation) ReadOnlyMountSource() (*os.File, error) {
 		return nil, fmt.Errorf("open sealed generation mount source: %w", err)
 	}
 	return os.NewFile(uintptr(fd), "sealed-generation-mount-source"), nil
+}
+
+// IsRecoveryPreview reports whether this Store has been reconstructed for
+// read-only validation but has not yet been activated by the trusted recovery
+// composition. It conveys no authority by itself.
+func (s *Store) IsRecoveryPreview() bool {
+	if s == nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.recoveryPreview
 }
 
 // Edit applies exact non-overlapping replacements against the original file
@@ -603,7 +625,7 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.checkUsableLocked(); err != nil {
+	if err := s.checkMutableLocked(); err != nil {
 		return MutationResult{}, err
 	}
 	if err := s.requireTipLocked(input); err != nil {
@@ -829,6 +851,37 @@ func (s *Store) Verify() (delta.Result, error) {
 		return delta.Result{}, err
 	}
 	return s.validateChainLocked(s.generations[len(s.generations)-1].snapshot)
+}
+
+// BaselineGeneration returns the retained immutable generation that anchors
+// this Store's verified history. The returned handle grants only the existing
+// sealed-generation read APIs; it does not expose the Store root or any
+// writable path.
+func (s *Store) BaselineGeneration() *Generation {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.quarantined {
+		return nil
+	}
+	return s.baseline
+}
+
+// TipGeneration returns the current immutable generation after a successful
+// Store create/open. Callers must still call Verify before using the handle as
+// recovery authority; this accessor only exposes the Store's reconstructed tip.
+func (s *Store) TipGeneration() *Generation {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.quarantined || len(s.generations) == 0 {
+		return nil
+	}
+	return s.generations[len(s.generations)-1]
 }
 
 // Evidence returns defensive copies of all manifests, transitions, operation

@@ -412,7 +412,7 @@ func TestPiServiceBusyDisconnectAndUnresolvedReplay(t *testing.T) {
 	_ = conn.Close()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		state, exists, err := server.requests.lookup(os.Geteuid(), request, mustPiServicePayloadDigest(t, request))
+		state, exists, err := server.requests.lookup(piServicePeerCredentials{UID: os.Geteuid(), GID: os.Getegid(), PID: os.Getpid()}, request, mustPiServicePayloadDigest(t, request))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -421,7 +421,7 @@ func TestPiServiceBusyDisconnectAndUnresolvedReplay(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	state, exists, err := server.requests.lookup(os.Geteuid(), request, mustPiServicePayloadDigest(t, request))
+	state, exists, err := server.requests.lookup(piServicePeerCredentials{UID: os.Geteuid(), GID: os.Getegid(), PID: os.Getpid()}, request, mustPiServicePayloadDigest(t, request))
 	if err != nil || !exists || state.terminal == nil {
 		t.Fatalf("disconnect canceled or lost the accepted request: state=%+v exists=%v err=%v", state, exists, err)
 	}

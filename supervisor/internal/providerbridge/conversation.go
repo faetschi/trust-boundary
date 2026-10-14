@@ -61,6 +61,39 @@ type Config struct {
 	InitialTreeDigest   string
 	SystemPrompt        string
 	DeveloperPrompt     string
+	// BeforeExchange durably reserves host/provider allowance immediately
+	// before each outbound request. A failure closes the conversation without
+	// dispatching the request; the reservation must never be refunded.
+	BeforeExchange func(context.Context) error
+	// SelectCompletionTokenLimit chooses the host-owned per-request upper bound
+	// from the remaining workflow budget. Production authority overwrites this
+	// callback and binds its positive result into max_completion_tokens.
+	SelectCompletionTokenLimit func(context.Context) (uint64, error)
+	// ReserveHostCall binds the exact encoded request and token cap before the
+	// HTTP transport sees them. CompleteHostCall settles only after the exact
+	// response has been durably captured in the provider journal.
+	ReserveHostCall  func(context.Context, broker.RequestRecord, uint64) (HostCallBinding, error)
+	CompleteHostCall func(context.Context, HostCallCompletion) error
+	// AdvanceProgress persists the exact provider/Store projection after a
+	// complete tool result is journaled and before that result is released to
+	// the adapter. It is supplied only by the governed workflow authority.
+	AdvanceProgress func(context.Context) error
+}
+
+// HostCallBinding is the providerbridge view of a workflowrecovery reservation.
+// The packages stay independently testable; the production authority converts
+// it to the owner package's typed binding.
+type HostCallBinding struct {
+	CallID          string `json:"call_id"`
+	RequestDigest   string `json:"request_digest"`
+	TokenUpperBound uint64 `json:"token_upper_bound"`
+}
+
+// HostCallCompletion names the exact durable provider exchange that settles a
+// prior host-call reservation. OutcomeDigest is the provider audit record hash.
+type HostCallCompletion struct {
+	Binding       HostCallBinding `json:"binding"`
+	OutcomeDigest string          `json:"outcome_digest"`
 }
 
 type Conversation struct {
@@ -157,6 +190,16 @@ type exchangeEvidence struct {
 	ResponseID       string              `json:"response_id"`
 	Model            string              `json:"model"`
 	ToolCall         *ToolCallProjection `json:"tool_call,omitempty"`
+	HostCall         *HostCallBinding    `json:"host_call,omitempty"`
+}
+
+type hostCallReservationEvidence struct {
+	WorkflowID     string          `json:"workflow_id"`
+	ConversationID string          `json:"conversation_id"`
+	ProfileID      string          `json:"profile_id"`
+	Turn           uint64          `json:"turn"`
+	Binding        HostCallBinding `json:"binding"`
+	Request        requestEvidence `json:"request"`
 }
 
 type promptEvidence struct {
@@ -237,6 +280,11 @@ func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJo
 	if !validPromptText(cfg.SystemPrompt, openrouter.MaxAssistantTextBytes) ||
 		!validPromptText(cfg.DeveloperPrompt, openrouter.MaxAssistantTextBytes) {
 		return nil, errors.New("registered system/developer prompts must be bounded nonempty text")
+	}
+	managedCallReservation := cfg.SelectCompletionTokenLimit != nil || cfg.ReserveHostCall != nil || cfg.CompleteHostCall != nil
+	if managedCallReservation && (cfg.SelectCompletionTokenLimit == nil || cfg.ReserveHostCall == nil ||
+		cfg.CompleteHostCall == nil || cfg.BeforeExchange != nil) {
+		return nil, errors.New("host-call accounting requires a complete selector, reservation, and settlement binding")
 	}
 	stream, err := protocol.NewStream(callIssuer, responseIssuer)
 	if err != nil {
@@ -324,14 +372,50 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 	if err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("construct registered provider broker: %w", err))
 	}
-	captured, exchangeErr := requestBroker.Exchange(ctx)
+	completionLimit := uint64(0)
+	if c.cfg.SelectCompletionTokenLimit != nil {
+		completionLimit, err = c.cfg.SelectCompletionTokenLimit(ctx)
+		if err != nil || completionLimit == 0 {
+			return Turn{}, c.failLocked(errors.Join(errors.New("host selected no positive provider completion-token cap"), err))
+		}
+	} else if c.cfg.BeforeExchange != nil {
+		if err := c.cfg.BeforeExchange(ctx); err != nil {
+			return Turn{}, c.failLocked(fmt.Errorf("reserve durable provider allowance before dispatch: %w", err))
+		}
+	}
+	var hostCallBinding *HostCallBinding
+	captured, exchangeErr := requestBroker.ExchangeWithCompletionLimit(ctx, completionLimit, func(request broker.RequestRecord) error {
+		if c.cfg.ReserveHostCall == nil {
+			return nil
+		}
+		binding, reserveErr := c.cfg.ReserveHostCall(ctx, request, completionLimit)
+		if reserveErr != nil {
+			return reserveErr
+		}
+		if binding.CallID == "" || len(binding.RequestDigest) != 64 || binding.RequestDigest != broker.DigestRequestRecord(request) ||
+			binding.TokenUpperBound != completionLimit {
+			return errors.New("host-call reservation does not bind the exact outbound request and completion cap")
+		}
+		hostCallBinding = &binding
+		reservation := hostCallReservationEvidence{WorkflowID: c.cfg.WorkflowID,
+			ConversationID: c.cfg.ConversationID, ProfileID: c.cfg.ProfileID,
+			Turn: c.turns + 1, Binding: binding, Request: requestEvidenceFromBroker(request)}
+		encoded, marshalErr := json.Marshal(reservation)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		if _, appendErr := c.appendLocked("provider_host_call_reserved", "host-call-reserved", encoded); appendErr != nil {
+			return fmt.Errorf("persist exact host-call reservation before HTTP dispatch: %w", appendErr)
+		}
+		return nil
+	})
 	records := requestBroker.Records()
 	if exchangeErr != nil {
-		persistErr := c.persistFailedExchangeLocked(records, exchangeErr)
+		persistErr := c.persistFailedExchangeLocked(records, exchangeErr, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("registered provider exchange failed; response withheld: %w", exchangeErr), persistErr))
 	}
 	if err := ctx.Err(); err != nil {
-		persistErr := c.persistFailedExchangeLocked(records, err)
+		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider exchange canceled; response withheld: %w", err), persistErr))
 	}
 	if len(records) != 1 || !records[0].HasResponse() {
@@ -370,14 +454,10 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 	requestRecord := records[0].Request()
 	evidence := exchangeEvidence{
 		WorkflowID: c.cfg.WorkflowID, Turn: c.turns + 1,
-		Request: requestEvidence{
-			ProfileID: requestRecord.ProfileID(), Method: requestRecord.Method(), URL: requestRecord.URL(),
-			Host: requestRecord.Host(), ContentLength: requestRecord.ContentLength(),
-			Headers: httpHeaders(requestRecord.Header()), Body: requestRecord.Body(),
-		},
+		Request:    requestEvidenceFromBroker(requestRecord),
 		StatusCode: records[0].StatusCode(), Response: records[0].ResponseBody(),
 		ResponseIDIssuer: responseIssuer, ToolCallIDIssuer: callIssuer,
-		ResponseID: captured.ResponseID(), Model: captured.Model(), ToolCall: projection.ToolCall,
+		ResponseID: captured.ResponseID(), Model: captured.Model(), ToolCall: projection.ToolCall, HostCall: hostCallBinding,
 	}
 	encodedEvidence, err := json.Marshal(evidence)
 	if err != nil {
@@ -420,7 +500,20 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 	} else {
 		c.state = stateNeedsPrompt
 	}
+	if hostCallBinding != nil {
+		if err := c.cfg.CompleteHostCall(ctx, HostCallCompletion{Binding: *hostCallBinding, OutcomeDigest: journalRecord.Hash}); err != nil {
+			return Turn{}, c.failLocked(fmt.Errorf("settle exact provider exchange reservation before result release: %w", err))
+		}
+	}
 	return projection, nil
+}
+
+func requestEvidenceFromBroker(record broker.RequestRecord) requestEvidence {
+	return requestEvidence{
+		ProfileID: record.ProfileID(), Method: record.Method(), URL: record.URL(),
+		Host: record.Host(), ContentLength: record.ContentLength(),
+		Headers: httpHeaders(record.Header()), Body: record.Body(),
+	}
 }
 
 // Correlate is the piruntime.Broker method. It accepts only the strict Pi
@@ -500,6 +593,11 @@ func (c *Conversation) RecordDecision(ctx context.Context, proposal protocol.Pro
 		result := resultFor(proposal, decision, nil)
 		if err := c.appendToolResultLocked(result, "", c.treeDigest, 0); err != nil {
 			return c.failLocked(fmt.Errorf("persist denied tool result; result withheld: %w", err))
+		}
+		if c.cfg.AdvanceProgress != nil {
+			if err := c.cfg.AdvanceProgress(ctx); err != nil {
+				return c.failLocked(fmt.Errorf("advance workflow checkpoint after denied provider result: %w", err))
+			}
 		}
 		return nil
 	}
@@ -586,6 +684,11 @@ func (e *ResultingExecutor) Execute(ctx context.Context, proposal protocol.Propo
 		c.transitionSequence = transitionSequence
 		c.transitionIDs[transitionID] = struct{}{}
 		c.effectIDs[effectID] = struct{}{}
+	}
+	if c.cfg.AdvanceProgress != nil {
+		if err := c.cfg.AdvanceProgress(ctx); err != nil {
+			return nil, c.failLocked(fmt.Errorf("advance workflow checkpoint after durable provider result: %w", err))
+		}
 	}
 	return append(json.RawMessage(nil), output...), nil
 }
@@ -742,22 +845,21 @@ func (c *Conversation) appendLocked(kind, id string, data []byte) (audit.Record,
 	return record, nil
 }
 
-func (c *Conversation) persistFailedExchangeLocked(records []broker.ExchangeRecord, failure error) error {
+func (c *Conversation) persistFailedExchangeLocked(records []broker.ExchangeRecord, failure error,
+	hostCall *HostCallBinding) error {
 	if len(records) == 0 {
 		return nil
 	}
 	record := records[len(records)-1]
 	evidence := struct {
-		WorkflowID string          `json:"workflow_id"`
-		Request    requestEvidence `json:"request"`
-		StatusCode int             `json:"status_code"`
-		Response   []byte          `json:"response"`
-		Failure    string          `json:"failure"`
-	}{WorkflowID: c.cfg.WorkflowID, Request: requestEvidence{
-		ProfileID: record.Request().ProfileID(), Method: record.Request().Method(), URL: record.Request().URL(),
-		Host: record.Request().Host(), ContentLength: record.Request().ContentLength(),
-		Headers: httpHeaders(record.Request().Header()), Body: record.Request().Body(),
-	}, StatusCode: record.StatusCode(), Response: record.ResponseBody(), Failure: safeFailure(failure)}
+		WorkflowID string           `json:"workflow_id"`
+		Request    requestEvidence  `json:"request"`
+		StatusCode int              `json:"status_code"`
+		Response   []byte           `json:"response"`
+		Failure    string           `json:"failure"`
+		HostCall   *HostCallBinding `json:"host_call,omitempty"`
+	}{WorkflowID: c.cfg.WorkflowID, Request: requestEvidenceFromBroker(record.Request()),
+		StatusCode: record.StatusCode(), Response: record.ResponseBody(), Failure: safeFailure(failure), HostCall: hostCall}
 	data, err := json.Marshal(evidence)
 	if err != nil {
 		return err

@@ -64,12 +64,13 @@ type functionTool struct {
 	Function fnSchema `json:"function"`
 }
 type request struct {
-	Model             string         `json:"model"`
-	Messages          []Message      `json:"messages"`
-	Tools             []functionTool `json:"tools"`
-	Stream            bool           `json:"stream"`
-	ParallelToolCalls bool           `json:"parallel_tool_calls"`
-	ToolChoice        string         `json:"tool_choice"`
+	Model               string         `json:"model"`
+	Messages            []Message      `json:"messages"`
+	Tools               []functionTool `json:"tools"`
+	Stream              bool           `json:"stream"`
+	ParallelToolCalls   bool           `json:"parallel_tool_calls"`
+	ToolChoice          string         `json:"tool_choice"`
+	MaxCompletionTokens uint64         `json:"max_completion_tokens,omitempty"`
 }
 
 const schemaRead = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read (relative or absolute)"},"offset":{"type":"number","description":"Line number to start reading from (1-indexed)"},"limit":{"type":"number","description":"Maximum number of lines to read"}},"required":["path"]}`
@@ -91,8 +92,19 @@ func tools() []functionTool {
 // configuration/history. The future runtime must source system/developer text
 // from broker configuration, never from Pi IPC.
 func BuildRequest(modelID string, messages []Message) (BuiltRequest, error) {
+	return BuildRequestWithCompletionLimit(modelID, messages, 0)
+}
+
+// BuildRequestWithCompletionLimit builds the fixed broker request with an
+// optional host-selected completion cap. A positive cap is included in the
+// exact outbound JSON body as max_completion_tokens and is therefore covered
+// by provider-request digests and workflow token reservations.
+func BuildRequestWithCompletionLimit(modelID string, messages []Message, completionLimit uint64) (BuiltRequest, error) {
 	if !validText(modelID, maxText) {
 		return BuiltRequest{}, errors.New("invalid trusted model ID")
+	}
+	if completionLimit > math.MaxInt32 {
+		return BuiltRequest{}, errors.New("completion-token cap is outside the supported request range")
 	}
 	if len(messages) == 0 || len(messages) > MaxSSEEvents {
 		return BuiltRequest{}, errors.New("invalid message count")
@@ -107,7 +119,7 @@ func BuildRequest(modelID string, messages []Message) (BuiltRequest, error) {
 	if err != nil {
 		return BuiltRequest{}, fmt.Errorf("encode fixed tool schemas: %w", err)
 	}
-	expectedSize, err := preflightRequestSize(modelID, messages, toolsJSON)
+	expectedSize, err := preflightRequestSize(modelID, messages, toolsJSON, completionLimit)
 	if err != nil {
 		return BuiltRequest{}, err
 	}
@@ -118,7 +130,8 @@ func BuildRequest(modelID string, messages []Message) (BuiltRequest, error) {
 			}
 		}
 	}
-	body, err := json.Marshal(request{modelID, messages, fixedTools, true, false, "auto"})
+	body, err := json.Marshal(request{Model: modelID, Messages: messages, Tools: fixedTools, Stream: true,
+		ParallelToolCalls: false, ToolChoice: "auto", MaxCompletionTokens: completionLimit})
 	if err != nil {
 		return BuiltRequest{}, err
 	}
@@ -127,7 +140,7 @@ func BuildRequest(modelID string, messages []Message) (BuiltRequest, error) {
 	}
 	return BuiltRequest{body}, nil
 }
-func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte) (int, error) {
+func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte, completionLimit uint64) (int, error) {
 	size := 0
 	add := func(amount int) error {
 		if amount < 0 || amount > MaxRequestBytes-size {
@@ -225,12 +238,23 @@ func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte) 
 			return 0, err
 		}
 	}
-	for _, literal := range []string{`],"tools":`, `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto"}`} {
+	for _, literal := range []string{`],"tools":`, `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto"`} {
 		if err := add(len(literal)); err != nil {
 			return 0, err
 		}
 	}
 	if err := add(len(toolsJSON)); err != nil {
+		return 0, err
+	}
+	if completionLimit > 0 {
+		if err := add(len(`,"max_completion_tokens":`)); err != nil {
+			return 0, err
+		}
+		if err := add(len(strconv.FormatUint(completionLimit, 10))); err != nil {
+			return 0, err
+		}
+	}
+	if err := add(1); err != nil { // closes request object
 		return 0, err
 	}
 	return size, nil

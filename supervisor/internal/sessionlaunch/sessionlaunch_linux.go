@@ -22,6 +22,7 @@ import (
 	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/sandbox"
 	"tbound/supervisor/internal/sessionrepo"
+	"tbound/supervisor/internal/workflowrecovery"
 	"tbound/supervisor/internal/workspace"
 )
 
@@ -36,14 +37,15 @@ const (
 )
 
 var (
-	ErrInvalidSource        = errors.New("invalid sealed session source")
-	ErrSourceChanged        = errors.New("sealed session source changed during private snapshot preparation")
-	ErrSourceEvidence       = errors.New("sealed session source does not match durable session evidence")
-	ErrAuditJournalMismatch = errors.New("sessionlaunch journal is not the store's exact verified audit journal")
-	ErrPrivateParent        = errors.New("private Git admin parent lacks an exclusive supervisor-owned boundary")
-	ErrProvenanceMissing    = errors.New("durable D06 provenance is incomplete")
-	ErrWorkerExposure       = errors.New("worker exposure is unavailable or not bound to a verified sealed generation")
-	ErrDevelopmentSandbox   = errors.New("measured development sandbox profile is unavailable")
+	ErrInvalidSource              = errors.New("invalid sealed session source")
+	ErrSourceChanged              = errors.New("sealed session source changed during private snapshot preparation")
+	ErrSourceEvidence             = errors.New("sealed session source does not match durable session evidence")
+	ErrAuditJournalMismatch       = errors.New("sessionlaunch journal is not the store's exact verified audit journal")
+	ErrPrivateParent              = errors.New("private Git admin parent lacks an exclusive supervisor-owned boundary")
+	ErrProvenanceMissing          = errors.New("durable D06 provenance is incomplete")
+	ErrWorkerExposure             = errors.New("worker exposure is unavailable or not bound to a verified sealed generation")
+	ErrDevelopmentSandbox         = errors.New("measured development sandbox profile is unavailable")
+	ErrRecoveryActivationRequired = errors.New("recovery preview requires a durable clean-restart reservation before activation")
 )
 
 var (
@@ -85,15 +87,76 @@ type ManagedStore struct {
 }
 
 func CreateStore(root *os.File, options sessionrepo.Options) (*ManagedStore, error) {
-	if options.Journal == nil || options.AuthorizeOperation == nil || options.VerifyDecision == nil || options.VerifySettlement == nil {
-		return nil, errors.New("sessionlaunch store requires explicit operation, decision and settlement authorities")
+	if err := validateManagedStoreOptions(options); err != nil {
+		return nil, err
 	}
 	store, err := sessionrepo.Create(root, options)
 	if err != nil {
 		return nil, err
 	}
+	return newManagedStore(store, options), nil
+}
+
+// OpenStore is intentionally unavailable: recovery must use the explicit
+// read-only preview and clean-restart activation path below.
+func OpenStore(root *os.File, options sessionrepo.Options) (*ManagedStore, error) {
+	return nil, ErrRecoveryActivationRequired
+}
+
+// OpenRecoveryPreview reconstructs an existing Store using only its exact
+// retained Store/effect/admission facts. It invokes no caller-supplied live or
+// historical authority callbacks, performs no repository-state repair, and
+// keeps mutation, source, and exposure APIs disabled until owner receipt.
+func OpenRecoveryPreview(root *os.File, options sessionrepo.Options) (*ManagedStore, error) {
+	if options.Journal == nil {
+		return nil, errors.New("sessionlaunch recovery preview requires the retained Store journal")
+	}
+	store, err := sessionrepo.OpenRecoveryPreview(root, options)
+	if err != nil {
+		return nil, err
+	}
+	return newManagedStore(store, options), nil
+}
+
+// ActivateRecovery applies deferred Store-state repair only under the exact,
+// latest owner-authenticated clean-restart receipt. The expected pins are
+// checked both here and by the owner-backed receipt verifier; this API never
+// treats an arbitrary callback returning nil as restart authority.
+func (s *ManagedStore) ActivateRecovery(ctx context.Context, ledger *workflowrecovery.Ledger,
+	receipt workflowrecovery.Receipt, pins workflowrecovery.Pins, options sessionrepo.Options) error {
+	if s == nil || ctx == nil || ledger == nil || !receipt.IsCleanRestart() {
+		return ErrRecoveryActivationRequired
+	}
+	if err := ledger.VerifyCleanRestartReceipt(ctx, receipt, pins); err != nil {
+		return errors.Join(ErrRecoveryActivationRequired, err)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.store == nil || s.prepared > 1 {
+		return ErrRecoveryActivationRequired
+	}
+	if err := verifyManagedStoreRecoveryPins(s.store, pins, options); err != nil {
+		return err
+	}
+	if err := s.store.ActivateRecovery(ctx, ledger, receipt, pins, options); err != nil {
+		return err
+	}
+	if err := ledger.VerifyCleanRestartReceipt(ctx, receipt, pins); err != nil {
+		return errors.Join(ErrRecoveryActivationRequired, err)
+	}
+	return verifyManagedStoreRecoveryPins(s.store, pins, options)
+}
+
+func validateManagedStoreOptions(options sessionrepo.Options) error {
+	if options.Journal == nil || options.AuthorizeOperation == nil || options.VerifyDecision == nil || options.VerifySettlement == nil {
+		return errors.New("sessionlaunch store requires explicit operation, decision and settlement authorities")
+	}
+	return nil
+}
+
+func newManagedStore(store *sessionrepo.Store, options sessionrepo.Options) *ManagedStore {
 	return &ManagedStore{store: store, journal: options.Journal,
-		profile: SourceProfile{Limits: options.Limits, XattrVisibility: options.XattrVisibility}}, nil
+		profile: SourceProfile{Limits: options.Limits, XattrVisibility: options.XattrVisibility}}
 }
 
 func (s *ManagedStore) Store() *sessionrepo.Store {
@@ -128,14 +191,15 @@ func (s *ManagedStore) Close() error {
 // administration. It retains the exact directory and lock-file descriptors.
 // Worker APIs in this package never return this parent or the Repository.Root.
 type AdminParent struct {
-	mu        sync.Mutex
-	root      *os.File
-	guard     *os.File
-	rootID    nodeID
-	guardID   nodeID
-	closed    bool
-	prepared  int
-	preparing bool
+	mu           sync.Mutex
+	root         *os.File
+	guard        *os.File
+	rootID       nodeID
+	guardID      nodeID
+	recoveryName string
+	closed       bool
+	prepared     int
+	preparing    bool
 }
 
 type nodeID struct{ device, inode uint64 }
@@ -199,6 +263,65 @@ func OpenAdminParent(root *os.File) (*AdminParent, error) {
 		guardID: nodeID{device: guardStat.device, inode: guardStat.inode}}, nil
 }
 
+// OpenAdminParentForRecovery acquires the retained private-admin owner lock
+// without creating or repairing any entry. The exact repository name must come
+// from an independently authenticated host checkpoint; this function never
+// discovers a retained repository by scanning the parent.
+func OpenAdminParentForRecovery(root *os.File, repositoryName string) (*AdminParent, error) {
+	if root == nil || !validPrivateGitName(repositoryName) {
+		return nil, ErrPrivateParent
+	}
+	rootCopy, err := duplicateFile(root, "sessionlaunch-recovery-admin-parent")
+	if err != nil {
+		return nil, err
+	}
+	rootStat, err := statNode(rootCopy)
+	if err != nil || rootStat.mode&syscall.S_IFMT != syscall.S_IFDIR || rootStat.uid != uint32(syscall.Geteuid()) ||
+		rootStat.gid != uint32(syscall.Getegid()) || rootStat.mode&0o7777 != 0o700 {
+		_ = rootCopy.Close()
+		return nil, errors.Join(ErrPrivateParent, err)
+	}
+	fd, err := syscall.Openat(int(rootCopy.Fd()), ".tbound-sessionlaunch.lock", syscall.O_RDWR|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		_ = rootCopy.Close()
+		return nil, errors.Join(ErrPrivateParent, err)
+	}
+	guard := os.NewFile(uintptr(fd), "sessionlaunch-recovery-private-parent-lock")
+	if guard == nil {
+		_ = syscall.Close(fd)
+		_ = rootCopy.Close()
+		return nil, ErrPrivateParent
+	}
+	guardStat, err := statNode(guard)
+	if err != nil || guardStat.mode&syscall.S_IFMT != syscall.S_IFREG || guardStat.uid != uint32(syscall.Geteuid()) ||
+		guardStat.gid != uint32(syscall.Getegid()) || guardStat.mode&0o7777 != 0o600 || guardStat.links != 1 {
+		_ = guard.Close()
+		_ = rootCopy.Close()
+		return nil, errors.Join(ErrPrivateParent, err)
+	}
+	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = guard.Close()
+		_ = rootCopy.Close()
+		return nil, fmt.Errorf("acquire exclusive retained private parent lock: %w", err)
+	}
+	cleanup := func(cause error) (*AdminParent, error) {
+		_ = syscall.Flock(fd, syscall.LOCK_UN)
+		_ = guard.Close()
+		_ = rootCopy.Close()
+		return nil, cause
+	}
+	if err := writeGuardIdentity(rootCopy, guard); err != nil {
+		return cleanup(err)
+	}
+	if err := requireRecoveredAdminParent(rootCopy, guard, ".tbound-sessionlaunch.lock", repositoryName); err != nil {
+		return cleanup(err)
+	}
+	return &AdminParent{root: rootCopy, guard: guard,
+		rootID:       nodeID{device: rootStat.device, inode: rootStat.inode},
+		guardID:      nodeID{device: guardStat.device, inode: guardStat.inode},
+		recoveryName: repositoryName}, nil
+}
+
 func (p *AdminParent) Close() error {
 	if p == nil {
 		return nil
@@ -252,20 +375,263 @@ type Provenance struct {
 // provenance. The retained sessionrepo store remains the only worker-visible
 // source of sealed read-only generations and disposable command views.
 type PreparedSession struct {
+	mu              sync.Mutex
+	managed         *ManagedStore
+	store           *sessionrepo.Store
+	generation      *sessionrepo.Generation
+	journal         *audit.Journal
+	admin           *AdminParent
+	git             privateGitHandle
+	destroyGit      bool
+	profile         SourceProfile
+	provenance      Provenance
+	basePrefix      []byte
+	recoveryPending bool
+	closed          bool
+	closing         bool
+	views           map[*WorkerView]struct{}
+	sources         map[*VerifiedD09ExposureSource]struct{}
+}
+
+type privateGitHandle interface {
+	Verify() error
+	Snapshot() privategit.Snapshot
+	Provenance() privategit.Provenance
+	ReopenIdentity() (privategit.RepositoryIdentity, error)
+	Close() error
+}
+
+type privateGitDestroyer interface {
+	Destroy() error
+}
+
+// RecoveryGitPin is the independently authenticated D06/private-Git identity
+// required to rebind a retained private Git tree. VerifyIdentity must compare
+// the complete candidate identity with host-owned checkpoint state.
+type RecoveryGitPin struct {
+	RepositoryName           string
+	ProvenanceDigest         string
+	RepositoryIdentityDigest string
+	VerifyIdentity           func(privategit.RepositoryIdentity) error
+}
+
+// RecoveryCandidate retains verified D06 evidence without exposing worker
+// source authority. Only Activate can turn it into a PreparedSession, after the
+// trusted workflow recovery composition has completed its owner, transcript,
+// and cumulative-budget checks.
+type RecoveryCandidate struct {
 	mu         sync.Mutex
 	managed    *ManagedStore
-	store      *sessionrepo.Store
-	generation *sessionrepo.Generation
-	journal    *audit.Journal
-	admin      *AdminParent
-	git        *privategit.Repository
-	profile    SourceProfile
-	provenance Provenance
-	basePrefix []byte
-	closed     bool
-	closing    bool
-	views      map[*WorkerView]struct{}
-	sources    map[*VerifiedD09ExposureSource]struct{}
+	prepared   *PreparedSession
+	activating bool
+	consumed   bool
+}
+
+// VerifyPreview repeats the read-only Store/D06/private-Git checks immediately
+// before the workflow owner observes and reserves the monotonic recovery tail.
+// It does not activate the Store or create worker/source authority.
+func (c *RecoveryCandidate) VerifyPreview(pins workflowrecovery.Pins, options sessionrepo.Options) error {
+	if c == nil {
+		return ErrProvenanceMissing
+	}
+	c.mu.Lock()
+	if c.consumed || c.activating || c.prepared == nil {
+		c.mu.Unlock()
+		return ErrProvenanceMissing
+	}
+	prepared := c.prepared
+	c.mu.Unlock()
+	prepared.mu.Lock()
+	if prepared.closed || prepared.closing || !prepared.recoveryPending || prepared.store == nil || prepared.generation == nil {
+		prepared.mu.Unlock()
+		return ErrProvenanceMissing
+	}
+	store, baseline, journal, git := prepared.store, prepared.generation, prepared.journal, prepared.git
+	prepared.mu.Unlock()
+	if err := prepared.VerifySourceBinding(store, baseline, journal); err != nil {
+		return err
+	}
+	if tip := store.TipGeneration(); tip == nil {
+		return sessionrepo.ErrNoBaseline
+	} else if err := verifyPreparedRecoveryPins(store, prepared, baseline, tip, pins, options); err != nil {
+		return err
+	}
+	if git == nil {
+		return ErrProvenanceMissing
+	}
+	return git.Verify()
+}
+
+// Activate requires the opaque receipt returned by the durable workflow owner.
+// The caller must first have completed the read-only full-history verifier;
+// the owner only issues a clean-restart receipt from its verified observation.
+// This method independently rechecks the receipt, exact retained Store heads,
+// D06 provenance, private Git identity, and Store tip before enabling exposure.
+func (c *RecoveryCandidate) Activate(ctx context.Context, ledger *workflowrecovery.Ledger,
+	receipt workflowrecovery.Receipt, pins workflowrecovery.Pins, options sessionrepo.Options) (*PreparedSession, error) {
+	if c == nil || ctx == nil || ledger == nil || !receipt.IsCleanRestart() {
+		return nil, ErrProvenanceMissing
+	}
+	if err := ledger.VerifyCleanRestartReceipt(ctx, receipt, pins); err != nil {
+		return nil, errors.Join(ErrRecoveryActivationRequired, err)
+	}
+	c.mu.Lock()
+	if c.consumed || c.activating || c.prepared == nil {
+		c.mu.Unlock()
+		return nil, ErrProvenanceMissing
+	}
+	c.activating = true
+	prepared := c.prepared
+	c.mu.Unlock()
+	finishFailure := func(err error) (*PreparedSession, error) {
+		c.mu.Lock()
+		c.activating = false
+		c.mu.Unlock()
+		return nil, err
+	}
+
+	prepared.mu.Lock()
+	if prepared.closed || prepared.closing || !prepared.recoveryPending || prepared.store == nil || prepared.generation == nil {
+		prepared.mu.Unlock()
+		return finishFailure(ErrProvenanceMissing)
+	}
+	store, baseline, journal := prepared.store, prepared.generation, prepared.journal
+	prepared.mu.Unlock()
+	if err := prepared.VerifySourceBinding(store, baseline, journal); err != nil {
+		return finishFailure(err)
+	}
+	tip := store.TipGeneration()
+	if tip == nil {
+		return finishFailure(sessionrepo.ErrNoBaseline)
+	}
+	if err := verifyPreparedRecoveryPins(store, prepared, baseline, tip, pins, options); err != nil {
+		return finishFailure(err)
+	}
+	if err := c.managed.ActivateRecovery(ctx, ledger, receipt, pins, options); err != nil {
+		return finishFailure(err)
+	}
+	chain, err := store.Verify()
+	if err != nil {
+		return finishFailure(err)
+	}
+	if err := prepared.VerifySourceBinding(store, baseline, journal); err != nil {
+		return finishFailure(err)
+	}
+	tipAfter := store.TipGeneration()
+	if tipAfter == nil || tipAfter.ID() != tip.ID() || tipAfter.TreeDigest() != tip.TreeDigest() ||
+		chain.SealedGeneration != tip.ID() || chain.SealedTreeDigest != tip.TreeDigest() {
+		return finishFailure(errors.New("retained Store tip changed during recovery activation"))
+	}
+	if err := verifyPreparedRecoveryPins(store, prepared, baseline, tipAfter, pins, options); err != nil {
+		return finishFailure(err)
+	}
+	prepared.mu.Lock()
+	if prepared.closed || prepared.closing || !prepared.recoveryPending {
+		prepared.mu.Unlock()
+		return finishFailure(ErrProvenanceMissing)
+	}
+	prepared.recoveryPending = false
+	prepared.mu.Unlock()
+	c.mu.Lock()
+	c.consumed, c.activating, c.prepared = true, false, nil
+	c.mu.Unlock()
+	return prepared, nil
+}
+
+func verifyPreparedRecoveryPins(store *sessionrepo.Store, prepared *PreparedSession,
+	baseline, tip *sessionrepo.Generation, pins workflowrecovery.Pins, options sessionrepo.Options) error {
+	if store == nil || prepared == nil || baseline == nil || tip == nil ||
+		pins.WorkflowID == "" || pins.SessionID == "" || pins.RecoveryGeneration == 0 || pins.OwnerEpoch == 0 {
+		return ErrProvenanceMissing
+	}
+	if err := verifyManagedStoreRecoveryPins(store, pins, options); err != nil {
+		return err
+	}
+	bundle, err := store.EvidenceBundle()
+	if err != nil {
+		return err
+	}
+	provenance := prepared.Provenance()
+	provenanceDigest, err := canonicalDigest(provenance)
+	if err != nil || workflowRecoveryDigest(pins.D06ProvenanceDigest) != workflowRecoveryDigest(provenanceDigest) ||
+		provenance.SourceGeneration != baseline.ID() || provenance.SourceTreeDigest != baseline.TreeDigest() ||
+		!bundleContainsGeneration(bundle, baseline) || pins.StoreBaselineGenerationID != baseline.ID() ||
+		pins.StoreBaselineTreeDigest != workflowTreeDigest(baseline.TreeDigest()) ||
+		pins.StoreTipGenerationID != tip.ID() || pins.StoreTipTreeDigest != workflowTreeDigest(tip.TreeDigest()) {
+		return errors.Join(ErrProvenanceMissing, err)
+	}
+	identity, err := prepared.git.ReopenIdentity()
+	if err != nil || workflowRecoveryDigest(pins.PrivateGitIdentityDigest) != workflowRecoveryDigest(identity.Digest()) {
+		return errors.Join(ErrProvenanceMissing, err)
+	}
+	return nil
+}
+
+func verifyManagedStoreRecoveryPins(store *sessionrepo.Store, pins workflowrecovery.Pins, options sessionrepo.Options) error {
+	if store == nil || options.Journal == nil || options.PolicyDigest == "" || options.MetadataPolicyDigest == "" {
+		return ErrProvenanceMissing
+	}
+	bundle, err := store.EvidenceBundle()
+	if err != nil {
+		return err
+	}
+	storeTrace, err := options.Journal.Trace()
+	if err != nil {
+		return err
+	}
+	storeHead, storeCount := traceHead(storeTrace)
+	admissionTrace, err := audit.Verify(bytes.NewReader(bundle.AdmissionJournal))
+	if err != nil {
+		return err
+	}
+	admissionHead, admissionCount := traceHead(admissionTrace)
+	if bundle.PolicyDigest != options.PolicyDigest || bundle.MetadataPolicyDigest != options.MetadataPolicyDigest ||
+		storeCount != pins.StoreJournalCount || workflowRecoveryDigest(storeHead) != workflowRecoveryDigest(pins.StoreJournalHead) ||
+		admissionCount != pins.AdmissionJournalCount || workflowRecoveryDigest(admissionHead) != workflowRecoveryDigest(pins.AdmissionJournalHead) ||
+		bundle.Baseline.ID != pins.StoreBaselineGenerationID ||
+		workflowTreeDigest(bundle.Baseline.TreeDigest) != pins.StoreBaselineTreeDigest ||
+		len(bundle.Generations) == 0 || bundle.Generations[len(bundle.Generations)-1].ID != pins.StoreTipGenerationID ||
+		workflowTreeDigest(bundle.Generations[len(bundle.Generations)-1].TreeDigest) != pins.StoreTipTreeDigest {
+		return ErrSourceEvidence
+	}
+	return nil
+}
+
+func traceHead(trace audit.Trace) (string, uint64) {
+	if len(trace.Records) == 0 {
+		return "", 0
+	}
+	last := trace.Records[len(trace.Records)-1]
+	return last.Hash, last.Sequence
+}
+
+func workflowRecoveryDigest(value string) string {
+	value = strings.TrimPrefix(value, "sha256:")
+	return value
+}
+
+func workflowTreeDigest(value string) string {
+	return strings.TrimPrefix(value, delta.TreeDigestProfile)
+}
+
+// Close discards a not-yet-activated candidate. The verification-only
+// privateGit.Close path closes descriptors and does not clean retained data.
+func (c *RecoveryCandidate) Close() error {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	if c.activating {
+		c.mu.Unlock()
+		return errors.New("recovery candidate activation is in progress")
+	}
+	prepared := c.prepared
+	c.prepared, c.consumed = nil, true
+	c.mu.Unlock()
+	if prepared != nil {
+		return prepared.Close()
+	}
+	return nil
 }
 
 // WorkerView wraps a sessionrepo read-only exposure. Descriptor returns only a
@@ -468,7 +834,7 @@ func Prepare(ctx context.Context, managed *ManagedStore, generation *sessionrepo
 	}
 	store, journal, profile := managed.store, managed.journal, managed.profile
 	admin.mu.Lock()
-	if admin.closed || admin.root == nil || admin.guard == nil || admin.prepared != 0 || admin.preparing {
+	if admin.closed || admin.root == nil || admin.guard == nil || admin.recoveryName != "" || admin.prepared != 0 || admin.preparing {
 		admin.mu.Unlock()
 		return nil, ErrPrivateParent
 	}
@@ -631,11 +997,182 @@ func Prepare(ctx context.Context, managed *ManagedStore, generation *sessionrepo
 	managed.prepared++
 	return &PreparedSession{
 		managed: managed, store: store, generation: generation, journal: journal, admin: admin, git: created,
-		profile: profile, provenance: provenance,
+		destroyGit: true,
+		profile:    profile, provenance: provenance,
 		basePrefix: appendRecordBytes(appendRecordBytes(append([]byte(nil), bundle.AuditJournal...), sourceRecord), readyRecord),
 		views:      make(map[*WorkerView]struct{}),
 		sources:    make(map[*VerifiedD09ExposureSource]struct{}),
 	}, nil
+}
+
+// Rebind verifies the original D06 records and attaches the retained
+// verification-only private Git handle to an already-opened Store. It does not
+// create new D06 records or produce worker authority by itself. The caller must
+// still complete transcript cross-linking, owner fencing, cumulative budget
+// reservation, and fresh-session admission before exposing any operation.
+func Rebind(managed *ManagedStore, admin *AdminParent, pin RecoveryGitPin) (*RecoveryCandidate, error) {
+	if managed == nil || admin == nil || !validPrivateGitName(pin.RepositoryName) ||
+		!validDigest(pin.ProvenanceDigest) || !validDigest(pin.RepositoryIdentityDigest) || pin.VerifyIdentity == nil {
+		return nil, ErrProvenanceMissing
+	}
+	managed.mu.Lock()
+	if managed.closed || managed.store == nil || managed.journal == nil {
+		managed.mu.Unlock()
+		return nil, sessionrepo.ErrClosed
+	}
+	store, journal, profile := managed.store, managed.journal, managed.profile
+	managed.mu.Unlock()
+	if !store.IsRecoveryPreview() {
+		return nil, ErrRecoveryActivationRequired
+	}
+
+	admin.mu.Lock()
+	if admin.closed || admin.root == nil || admin.guard == nil || admin.recoveryName != pin.RepositoryName ||
+		admin.prepared != 0 || admin.preparing {
+		admin.mu.Unlock()
+		return nil, ErrPrivateParent
+	}
+	adminStat, err := statNode(admin.root)
+	guardStat, guardErr := statNode(admin.guard)
+	if err != nil || guardErr != nil || admin.rootID != (nodeID{device: adminStat.device, inode: adminStat.inode}) ||
+		admin.guardID != (nodeID{device: guardStat.device, inode: guardStat.inode}) {
+		admin.mu.Unlock()
+		return nil, errors.Join(ErrPrivateParent, err, guardErr)
+	}
+	admin.preparing = true
+	admin.prepared++
+	admin.mu.Unlock()
+	keepAdminReservation := false
+	defer func() {
+		admin.mu.Lock()
+		admin.preparing = false
+		if !keepAdminReservation {
+			admin.prepared--
+		}
+		admin.mu.Unlock()
+	}()
+
+	if profile.Limits.MaxObjects <= 0 || profile.Limits.MaxDepth <= 0 || profile.Limits.MaxFileBytes <= 0 ||
+		profile.Limits.MaxTotalBytes < profile.Limits.MaxFileBytes || !profile.XattrVisibility.Complete ||
+		!validDigest(profile.XattrVisibility.ProfileDigest) {
+		return nil, ErrProvenanceMissing
+	}
+	verified, err := store.Verify()
+	if err != nil {
+		return nil, fmt.Errorf("verify retained Store before D06 rebind: %w", err)
+	}
+	bundle, err := store.EvidenceBundle()
+	if err != nil {
+		return nil, fmt.Errorf("obtain retained Store evidence before D06 rebind: %w", err)
+	}
+	if !reflect.DeepEqual(verified, bundle.ValidatedChain) {
+		return nil, ErrSourceEvidence
+	}
+	if err := validateJournalSnapshot(journal, bundle); err != nil {
+		return nil, err
+	}
+	trace := mustAuditTrace(bundle.AuditJournal)
+	for _, effect := range trace.Effects {
+		if effect.Unresolved {
+			return nil, fmt.Errorf("D06 rebind refuses unresolved session effect %q", effect.ID)
+		}
+	}
+	baseline := store.BaselineGeneration()
+	if baseline == nil || !bundleContainsGeneration(bundle, baseline) {
+		return nil, sessionrepo.ErrNoBaseline
+	}
+	provenance, snapshot, err := retainedD06Evidence(trace.Records)
+	if err != nil {
+		return nil, err
+	}
+	provenanceDigest, err := canonicalDigest(provenance)
+	if err != nil || provenanceDigest != pin.ProvenanceDigest ||
+		provenance.PrivateGitDigest != provenance.PrivateGit.Digest() ||
+		provenance.SourceGeneration != baseline.ID() || provenance.SourceTreeDigest != baseline.TreeDigest() ||
+		provenance.PolicyDigest != bundle.PolicyDigest || provenance.MetadataPolicyDigest != bundle.MetadataPolicyDigest ||
+		provenance.XattrProfileDigest != profile.XattrVisibility.ProfileDigest ||
+		provenance.GitExecutableDigest != provenance.PrivateGit.GitExecutableDigest ||
+		provenance.GitExecutionBoundary != provenance.PrivateGit.GitExecutionBoundary {
+		return nil, errors.Join(ErrProvenanceMissing, err)
+	}
+	if err := verifyPersistedD06Records(bundle.AuditJournal, provenance); err != nil {
+		return nil, err
+	}
+
+	admin.mu.Lock()
+	if admin.closed || admin.root == nil || admin.guard == nil || admin.recoveryName != pin.RepositoryName {
+		admin.mu.Unlock()
+		return nil, ErrPrivateParent
+	}
+	parentStat, parentErr := statNode(admin.root)
+	if parentErr != nil || parentStat.mode&syscall.S_IFMT != syscall.S_IFDIR {
+		admin.mu.Unlock()
+		return nil, errors.Join(ErrPrivateParent, parentErr)
+	}
+	parentIdentity := privategit.DirectoryIdentity{Device: parentStat.device, Inode: parentStat.inode}
+	verifyOwner := func(parent *os.File, expected privategit.DirectoryIdentity) error {
+		admin.mu.Lock()
+		defer admin.mu.Unlock()
+		if admin.closed || admin.root == nil || admin.guard == nil || admin.prepared != 1 ||
+			admin.recoveryName != pin.RepositoryName || expected != parentIdentity {
+			return ErrPrivateParent
+		}
+		rootStat, rootErr := statNode(admin.root)
+		candidateStat, candidateErr := statNode(parent)
+		guardStat, guardErr := statNode(admin.guard)
+		if rootErr != nil || candidateErr != nil || guardErr != nil ||
+			candidateStat.device != rootStat.device || candidateStat.inode != rootStat.inode ||
+			(parentStat.device != rootStat.device || parentStat.inode != rootStat.inode) ||
+			admin.rootID != (nodeID{device: rootStat.device, inode: rootStat.inode}) ||
+			admin.guardID != (nodeID{device: guardStat.device, inode: guardStat.inode}) {
+			return errors.Join(ErrPrivateParent, rootErr, candidateErr, guardErr)
+		}
+		return requireRecoveredAdminParent(admin.root, admin.guard, ".tbound-sessionlaunch.lock", pin.RepositoryName)
+	}
+	admin.mu.Unlock()
+
+	git, err := privategit.Reopen(admin.root, privategit.ReopenApproval{
+		Name: pin.RepositoryName, ParentIdentity: parentIdentity, Provenance: provenance.PrivateGit,
+		Snapshot: snapshot, ExpectedIdentityDigest: pin.RepositoryIdentityDigest,
+		TrustedVerifier: func(identity privategit.RepositoryIdentity) error {
+			if identity.Digest() != pin.RepositoryIdentityDigest {
+				return privategit.ErrReopenBinding
+			}
+			return pin.VerifyIdentity(identity)
+		},
+		VerifyExclusiveParent: verifyOwner,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("verify pinned retained private Git snapshot: %w", err)
+	}
+	if err := git.Verify(); err != nil {
+		_ = git.Close()
+		return nil, fmt.Errorf("revalidate retained private Git snapshot: %w", err)
+	}
+	if err := verifyPersistedD06Records(bundle.AuditJournal, provenance); err != nil {
+		_ = git.Close()
+		return nil, err
+	}
+	basePrefix, err := retainedD06Prefix(trace.Records, provenance)
+	if err != nil {
+		_ = git.Close()
+		return nil, err
+	}
+	managed.mu.Lock()
+	if managed.closed || managed.store != store || managed.journal != journal {
+		managed.mu.Unlock()
+		_ = git.Close()
+		return nil, errors.New("managed Store changed during D06 recovery rebind")
+	}
+	managed.prepared++
+	managed.mu.Unlock()
+	keepAdminReservation = true
+	prepared := &PreparedSession{
+		managed: managed, store: store, generation: baseline, journal: journal, admin: admin, git: git,
+		profile: profile, provenance: provenance, basePrefix: basePrefix, recoveryPending: true,
+		views: make(map[*WorkerView]struct{}), sources: make(map[*VerifiedD09ExposureSource]struct{}),
+	}
+	return &RecoveryCandidate{managed: managed, prepared: prepared}, nil
 }
 
 type sourceBindingRecord struct {
@@ -691,7 +1228,7 @@ func (p *PreparedSession) ExposeReadOnly(generation *sessionrepo.Generation, mod
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.closed || p.closing || p.git == nil || p.admin == nil || p.admin.root == nil {
+	if p.closed || p.closing || p.recoveryPending || p.git == nil || p.admin == nil || p.admin.root == nil {
 		return nil, ErrWorkerExposure
 	}
 	if err := p.git.Verify(); err != nil {
@@ -812,6 +1349,35 @@ func (p *PreparedSession) Provenance() Provenance {
 	return copy
 }
 
+// RecoveryIdentity returns the canonical D06 provenance digest, the current
+// verified private-Git repository identity digest, and the retained repository
+// name. These values let the host checkpoint bind the exact prepared source
+// before worker exposure; callers cannot derive them from the worker or a
+// client-supplied path.
+func (p *PreparedSession) RecoveryIdentity() (provenanceDigest, repositoryIdentityDigest, repositoryName string, err error) {
+	if p == nil {
+		return "", "", "", ErrProvenanceMissing
+	}
+	p.mu.Lock()
+	if p.closed || p.closing || p.git == nil {
+		p.mu.Unlock()
+		return "", "", "", ErrProvenanceMissing
+	}
+	provenance := p.provenance
+	provenance.PrivateGit.SourceManifest.Objects = append([]delta.ManifestObject(nil), p.provenance.PrivateGit.SourceManifest.Objects...)
+	git := p.git
+	p.mu.Unlock()
+	provenanceDigest, err = canonicalDigest(provenance)
+	if err != nil {
+		return "", "", "", errors.Join(ErrProvenanceMissing, err)
+	}
+	identity, err := git.ReopenIdentity()
+	if err != nil || identity.Digest() == "" || provenance.PrivateGit.RepositoryName == "" {
+		return "", "", "", errors.Join(ErrProvenanceMissing, err)
+	}
+	return provenanceDigest, identity.Digest(), provenance.PrivateGit.RepositoryName, nil
+}
+
 // VerifySourceBinding proves this PreparedSession belongs to the exact
 // sessionrepo Store, retained Generation and audit Journal supplied by the
 // composition root. It re-verifies the complete chain, journal bytes, D06
@@ -924,10 +1490,23 @@ func (p *PreparedSession) Close() error {
 		return closeErr
 	}
 	p.mu.Lock()
-	git, admin, managed := p.git, p.admin, p.managed
+	git, admin, managed, destroyGit := p.git, p.admin, p.managed, p.destroyGit
 	p.mu.Unlock()
 	if git != nil {
-		if err := git.Destroy(); err != nil {
+		var err error
+		if destroyGit {
+			destroyer, ok := git.(privateGitDestroyer)
+			if !ok {
+				p.mu.Lock()
+				p.closing = false
+				p.mu.Unlock()
+				return errors.New("owned private Git repository has no bounded destroy operation")
+			}
+			err = destroyer.Destroy()
+		} else {
+			err = git.Close()
+		}
+		if err != nil {
 			p.mu.Lock()
 			p.closing = false
 			p.mu.Unlock()
@@ -938,6 +1517,7 @@ func (p *PreparedSession) Close() error {
 	p.closed = true
 	p.closing = false
 	p.git, p.admin, p.managed = nil, nil, nil
+	p.destroyGit = false
 	p.mu.Unlock()
 	if admin != nil {
 		admin.mu.Lock()
@@ -1069,15 +1649,26 @@ func verifyPersistedD06Records(journalBytes []byte, provenance Provenance) error
 	if err != nil {
 		return err
 	}
+	if provenance.SourceRecord == 0 || provenance.PrivateGitRecord != provenance.SourceRecord+1 ||
+		provenance.StoreAuditRecords+1 != provenance.SourceRecord {
+		return ErrProvenanceMissing
+	}
 	var sourceSeen, gitSeen bool
 	for _, record := range trace.Records {
 		switch record.Event.Kind {
 		case sourceBindingEventKind:
 			var source sourceBindingRecord
 			if unmarshalNoUnknown(record.Event.Data, &source) != nil || record.Sequence != provenance.SourceRecord ||
+				source.Provenance.StoreAuditRecords != provenance.StoreAuditRecords ||
+				source.Provenance.StoreAuditHead != provenance.StoreAuditHead ||
 				source.Provenance.BindingDigest != provenance.BindingDigest || source.Provenance.SourceGeneration != provenance.SourceGeneration ||
 				source.Provenance.SourceTreeDigest != provenance.SourceTreeDigest || source.Provenance.PrivateGitDigest != "" ||
 				!reflect.DeepEqual(source.SourceManifest, provenance.PrivateGit.SourceManifest) {
+				return ErrProvenanceMissing
+			}
+			if provenance.StoreAuditRecords > uint64(len(trace.Records)) ||
+				(provenance.StoreAuditRecords == 0 && provenance.StoreAuditHead != "") ||
+				(provenance.StoreAuditRecords > 0 && trace.Records[provenance.StoreAuditRecords-1].Hash != provenance.StoreAuditHead) {
 				return ErrProvenanceMissing
 			}
 			sourceSeen = true
@@ -1100,6 +1691,47 @@ func verifyPersistedD06Records(journalBytes []byte, provenance Provenance) error
 		return ErrProvenanceMissing
 	}
 	return nil
+}
+
+func retainedD06Evidence(records []audit.Record) (Provenance, privategit.Snapshot, error) {
+	var provenance Provenance
+	var snapshot privategit.Snapshot
+	var sourceCount, readyCount int
+	for _, record := range records {
+		switch record.Event.Kind {
+		case sourceBindingEventKind:
+			sourceCount++
+		case privateGitEventKind:
+			readyCount++
+			var ready struct {
+				SchemaVersion string              `json:"schema_version"`
+				Provenance    Provenance          `json:"provenance"`
+				Snapshot      privategit.Snapshot `json:"snapshot"`
+			}
+			if unmarshalNoUnknown(record.Event.Data, &ready) != nil || ready.SchemaVersion != provenanceSchema {
+				return Provenance{}, privategit.Snapshot{}, ErrProvenanceMissing
+			}
+			provenance, snapshot = ready.Provenance, ready.Snapshot
+		}
+	}
+	if sourceCount != 1 || readyCount != 1 || provenance.SchemaVersion != provenanceSchema ||
+		provenance.PrivateGitRecord == 0 || snapshot.TreeDigest == "" ||
+		!reflect.DeepEqual(snapshot.Manifest, provenance.PrivateGit.SourceManifest) ||
+		snapshot.TreeDigest != provenance.SourceTreeDigest {
+		return Provenance{}, privategit.Snapshot{}, ErrProvenanceMissing
+	}
+	return provenance, snapshot, nil
+}
+
+func retainedD06Prefix(records []audit.Record, provenance Provenance) ([]byte, error) {
+	if provenance.PrivateGitRecord == 0 || provenance.PrivateGitRecord > uint64(len(records)) {
+		return nil, ErrProvenanceMissing
+	}
+	var prefix []byte
+	for index := uint64(0); index < provenance.PrivateGitRecord; index++ {
+		prefix = appendRecordBytes(prefix, records[index])
+	}
+	return prefix, nil
 }
 
 func bindingDigest(bundle sessionrepo.EvidenceBundle, generation *sessionrepo.Generation, stat nodeStat, profile SourceProfile) (string, error) {
@@ -1321,4 +1953,60 @@ func requireFreshAdminParent(root, guard *os.File, lockName string) error {
 		return errors.Join(ErrPrivateParent, statErr, guardErr)
 	}
 	return nil
+}
+
+func requireRecoveredAdminParent(root, guard *os.File, lockName, repositoryName string) error {
+	if !validPrivateGitName(repositoryName) {
+		return ErrPrivateParent
+	}
+	fd, err := syscall.Openat(int(root.Fd()), ".", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return fmt.Errorf("open retained private admin directory for exact-entry check: %w", err)
+	}
+	directory := os.NewFile(uintptr(fd), "sessionlaunch-recovery-admin-enumeration")
+	entries, err := directory.ReadDir(-1)
+	closeErr := directory.Close()
+	if err != nil || closeErr != nil {
+		return errors.Join(ErrPrivateParent, err, closeErr)
+	}
+	if len(entries) != 2 {
+		return fmt.Errorf("%w: retained private admin parent has unexpected entry count", ErrPrivateParent)
+	}
+	seenLock, seenRepository := false, false
+	for _, entry := range entries {
+		switch entry.Name() {
+		case lockName:
+			seenLock = true
+		case repositoryName:
+			seenRepository = true
+		default:
+			return fmt.Errorf("%w: retained private admin parent contains an unexpected entry", ErrPrivateParent)
+		}
+	}
+	if !seenLock || !seenRepository {
+		return fmt.Errorf("%w: retained private admin parent is missing a pinned entry", ErrPrivateParent)
+	}
+	lockFD, err := syscall.Openat(int(root.Fd()), lockName, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return errors.Join(ErrPrivateParent, err)
+	}
+	lockFile := os.NewFile(uintptr(lockFD), "verified-sessionlaunch-recovery-lock")
+	lockStat, statErr := statNode(lockFile)
+	guardStat, guardErr := statNode(guard)
+	_ = lockFile.Close()
+	if statErr != nil || guardErr != nil || lockStat.mode&syscall.S_IFMT != syscall.S_IFREG ||
+		lockStat.mode&0o7777 != 0o600 || lockStat.links != 1 ||
+		lockStat.device != guardStat.device || lockStat.inode != guardStat.inode {
+		return errors.Join(ErrPrivateParent, statErr, guardErr)
+	}
+	return nil
+}
+
+func validPrivateGitName(name string) bool {
+	if len(name) != len("staging-")+32 || !strings.HasPrefix(name, "staging-") || strings.ToLower(name) != name {
+		return false
+	}
+	suffix := strings.TrimPrefix(name, "staging-")
+	decoded, err := hex.DecodeString(suffix)
+	return err == nil && hex.EncodeToString(decoded) == suffix
 }

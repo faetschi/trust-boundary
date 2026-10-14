@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"unicode/utf8"
 
 	"tbound/supervisor/internal/broker/protocol"
 )
@@ -28,11 +29,14 @@ const (
 	D09ManagedLiveRootWriterPolicy      = "managed-nonlogin-single-service-writer/v1"
 	D09ManagedPiServiceSocketSchema     = "tbound-managed-pi-service-socket/v1"
 	D09ManagedPiServiceSocketMode       = "systemd-socket-activation-single-task/v1"
-	D09ManagedPiServiceConfigSchema     = "tbound-pi-service-config/v1"
+	D09ManagedPiServiceConfigSchema     = "tbound-pi-service-config/v2"
 	D09ManagedPiServiceConfigPath       = "/etc/tbound/serve-pi-service.json"
 	D09ManagedPiServiceSocketPath       = "/run/tbound/serve-pi.sock"
 	D09ManagedPiSocketUnitPath          = "/etc/systemd/system/tbound-pi.socket"
 	D09ManagedPiServiceUnitPath         = "/etc/systemd/system/tbound-pi.service"
+	D09ManagedPiWorkflowCatalogPath     = "/var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl"
+	D09ManagedPiWorkflowRootDBPath      = "/var/lib/tbound/private-admin/workflow-recovery/root.db"
+	D09ManagedPiOwnerStoreRoot          = "/var/lib/tbound/sessions/workflow-owners"
 	D09ManagedPiServiceCgroupPath       = "/system.slice/tbound-pi.service"
 	D09ManagedPiServiceName             = "tbound-pi"
 	D09ManagedPiServiceGroup            = "tbound-pi"
@@ -110,24 +114,46 @@ func (s D09ManagedPiServiceSocket) Validate(serviceUID, serviceGID int) error {
 // It contains no task, project, source path, profile, environment, or credential
 // values. The registration pins the file digest and runtime verifies every path.
 type D09ManagedPiServiceConfig struct {
-	SchemaVersion        string `json:"schema_version"`
-	SourcePolicy         string `json:"source_policy"`
-	PodmanHome           string `json:"podman_home"`
-	PodmanGraphroot      string `json:"podman_graphroot"`
-	PodmanRunroot        string `json:"podman_runroot"`
-	XDGConfigHome        string `json:"xdg_config_home"`
-	XDGDataHome          string `json:"xdg_data_home"`
-	XDGCacheHome         string `json:"xdg_cache_home"`
-	XDGRuntimeDir        string `json:"xdg_runtime_dir"`
-	TmpDir               string `json:"tmp_dir"`
-	ContainersConfPath   string `json:"containers_conf_path"`
-	ContainersConfDigest string `json:"containers_conf_digest"`
-	StorageConfPath      string `json:"storage_conf_path"`
-	StorageConfDigest    string `json:"storage_conf_digest"`
+	SchemaVersion               string   `json:"schema_version"`
+	SourcePolicy                string   `json:"source_policy"`
+	WorkflowAdmissionMode       string   `json:"workflow_admission_mode"`
+	WorkflowAdmissionID         string   `json:"workflow_admission_id"`
+	WorkflowTaskID              string   `json:"workflow_task_id"`
+	WorkflowPrompt              string   `json:"workflow_prompt"`
+	WorkflowBashOutputPaths     []string `json:"workflow_bash_output_paths"`
+	WorkflowCatalogPath         string   `json:"workflow_catalog_path"`
+	WorkflowRootDBPath          string   `json:"workflow_root_db_path"`
+	WorkflowOwnerStoreRoot      string   `json:"workflow_owner_store_root"`
+	WorkflowMaxPreEffectRetries uint64   `json:"workflow_max_pre_effect_retries"`
+	WorkflowMaxCleanRestarts    uint64   `json:"workflow_max_clean_restarts"`
+	WorkflowMaxHostCalls        uint64   `json:"workflow_max_host_calls"`
+	WorkflowMaxTokens           uint64   `json:"workflow_max_tokens"`
+	WorkflowDurationSeconds     uint64   `json:"workflow_duration_seconds"`
+	PodmanHome                  string   `json:"podman_home"`
+	PodmanGraphroot             string   `json:"podman_graphroot"`
+	PodmanRunroot               string   `json:"podman_runroot"`
+	XDGConfigHome               string   `json:"xdg_config_home"`
+	XDGDataHome                 string   `json:"xdg_data_home"`
+	XDGCacheHome                string   `json:"xdg_cache_home"`
+	XDGRuntimeDir               string   `json:"xdg_runtime_dir"`
+	TmpDir                      string   `json:"tmp_dir"`
+	ContainersConfPath          string   `json:"containers_conf_path"`
+	ContainersConfDigest        string   `json:"containers_conf_digest"`
+	StorageConfPath             string   `json:"storage_conf_path"`
+	StorageConfDigest           string   `json:"storage_conf_digest"`
 }
 
 func (c D09ManagedPiServiceConfig) Validate() error {
 	if c.SchemaVersion != D09ManagedPiServiceConfigSchema || c.SourcePolicy != "current-managed-live-root/v1" ||
+		(c.WorkflowAdmissionMode != "fresh" && c.WorkflowAdmissionMode != "resume") ||
+		!validIdentity(c.WorkflowAdmissionID) || len(c.WorkflowAdmissionID) > 256 ||
+		!validIdentity(c.WorkflowTaskID) || len(c.WorkflowTaskID) > 256 ||
+		len(c.WorkflowPrompt) == 0 || len(c.WorkflowPrompt) > 16<<10 || !utf8.ValidString(c.WorkflowPrompt) || strings.TrimSpace(c.WorkflowPrompt) == "" ||
+		!validD09WorkflowBashPaths(c.WorkflowBashOutputPaths) ||
+		c.WorkflowCatalogPath != D09ManagedPiWorkflowCatalogPath || c.WorkflowRootDBPath != D09ManagedPiWorkflowRootDBPath ||
+		c.WorkflowOwnerStoreRoot != D09ManagedPiOwnerStoreRoot || c.WorkflowMaxPreEffectRetries > 2 ||
+		c.WorkflowMaxCleanRestarts > 2 || c.WorkflowMaxHostCalls == 0 || c.WorkflowMaxTokens == 0 ||
+		c.WorkflowDurationSeconds == 0 || c.WorkflowDurationSeconds > 1200 ||
 		c.PodmanHome != D09ManagedPiPodmanHome || c.PodmanGraphroot != D09ManagedPiPodmanGraphroot ||
 		c.PodmanRunroot != D09ManagedPiPodmanRunroot || c.XDGRuntimeDir != D09ManagedPiRuntimeDir ||
 		c.XDGConfigHome != D09ManagedPiPodmanConfigHome || c.XDGDataHome != D09ManagedPiPodmanDataHome ||
@@ -137,6 +163,23 @@ func (c D09ManagedPiServiceConfig) Validate() error {
 		return ErrD09ManagedLiveRootRefused
 	}
 	return nil
+}
+
+func validD09WorkflowBashPaths(paths []string) bool {
+	if paths == nil {
+		return true
+	}
+	if len(paths) > 128 {
+		return false
+	}
+	for index, path := range paths {
+		if path == "" || filepath.IsAbs(path) || filepath.Clean(path) != path || strings.ContainsAny(path, "\\\x00") ||
+			path == "." || path == ".." || strings.HasPrefix(path, "../") || strings.Contains(path, "/../") ||
+			index > 0 && paths[index-1] >= path {
+			return false
+		}
+	}
+	return true
 }
 
 // D09ManagedLiveRootMeasurementOptions contains explicit client authorization

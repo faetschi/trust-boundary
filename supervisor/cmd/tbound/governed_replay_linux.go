@@ -21,6 +21,7 @@ import (
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionrepo"
+	"tbound/supervisor/internal/workflowrecovery"
 )
 
 // GovernedReplayPins are all host-owned inputs needed by the inert join. The
@@ -35,6 +36,41 @@ type GovernedReplayPins struct {
 	StorePolicyDigest    string
 	MetadataPolicyDigest string
 	BashOutputPaths      []string
+}
+
+// GovernedRecoveryTranscript binds one retained provider conversation to the
+// workflow checkpoint's ordered transcript pin. JournalIdentityDigest is
+// supplied by the trusted host opener and is never inferred from the journal's
+// contents or pathname.
+type GovernedRecoveryTranscript struct {
+	Journal        *audit.Journal
+	JournalPath    string
+	IdentityDigest string
+	Pin            workflowrecovery.TranscriptPin
+	Replay         GovernedReplayPins
+}
+
+// GovernedRecoveryProjection is a sanitized, ordered full-workflow replay.
+// It contains no provider prompt, response, tool argument, output, or raw
+// Store bytes.
+type GovernedRecoveryProjection struct {
+	Transcripts    []GovernedTranscriptProjection `json:"transcripts"`
+	StoreTip       string                         `json:"store_tip_generation"`
+	StoreTree      string                         `json:"store_tip_tree_digest"`
+	StoreHead      string                         `json:"store_journal_head"`
+	StoreCount     uint64                         `json:"store_journal_record_count"`
+	AdmissionHead  string                         `json:"admission_journal_head"`
+	AdmissionCount uint64                         `json:"admission_journal_record_count"`
+	Digest         string                         `json:"projection_digest"`
+}
+
+type governedRecoveryCommandVerifier interface {
+	VerifyStoreBundle(sessionrepo.EvidenceBundle) error
+	VerifyGovernedVerifier(*governedStoreReplayVerifier) error
+	VerifySettlement(sessionrepo.CommandSettlement, string, string) error
+	VerifyUnleasedProviderCallRetirement(providerbridge.ProviderCallRetirementBinding) error
+	VerifyIdleProviderLineageRetirement(string, string, uint64, uint64, uint64) error
+	VerifyUnchanged() error
 }
 
 // GovernedTranscriptProjection keeps provider and Store tips separate. It
@@ -138,6 +174,7 @@ type governedStoreReplayVerifier struct {
 	disposition                               sessionrepo.Disposition
 	providerRecords                           map[uint64]audit.Record
 	authByDecision                            map[governedReplayDecisionKey]audit.Record
+	authByEffect                              map[string]audit.Record
 	effectByID                                map[string]audit.EffectTrace
 	operationByEffect                         map[string]sessionrepo.OperationEvidence
 	transitionByID                            map[string]delta.Transition
@@ -145,6 +182,7 @@ type governedStoreReplayVerifier struct {
 	decisions                                 map[governedReplayDecisionKey]*governedReplayDecisionEvidence
 	providerTipGeneration                     string
 	providerTipTree                           string
+	initialAuthorizationSequence              uint64
 	lastAuthSequence                          uint64
 	called                                    bool
 }
@@ -158,85 +196,95 @@ type governedStoreReplayVerifier struct {
 // budgets, process containment, or permission to reopen or resume anything.
 func ReplayGovernedTranscript(providerJournal, storeJournal *audit.Journal, store *sessionrepo.Store,
 	pins GovernedReplayPins) (GovernedTranscriptProjection, error) {
+	projection, _, err := replayGovernedTranscript(providerJournal, storeJournal, store, pins, 0, true)
+	return projection, err
+}
+
+func replayGovernedTranscript(providerJournal, storeJournal *audit.Journal, store *sessionrepo.Store,
+	pins GovernedReplayPins, priorAuthorizationSequence uint64, requireStoreTip bool) (GovernedTranscriptProjection, *governedStoreReplayVerifier, error) {
 	if providerJournal == nil || storeJournal == nil || store == nil {
-		return GovernedTranscriptProjection{}, errors.New("governed replay requires held provider/Store journals and the concrete Store")
+		return GovernedTranscriptProjection{}, nil, errors.New("governed replay requires held provider/Store journals and the concrete Store")
 	}
 	if err := validateGovernedReplayPins(pins); err != nil {
-		return GovernedTranscriptProjection{}, err
+		return GovernedTranscriptProjection{}, nil, err
 	}
 	bundle, err := store.EvidenceBundle()
 	if err != nil {
-		return GovernedTranscriptProjection{}, fmt.Errorf("snapshot concrete Store evidence: %w", err)
+		return GovernedTranscriptProjection{}, nil, fmt.Errorf("snapshot concrete Store evidence: %w", err)
 	}
 	providerTrace, err := providerJournal.Trace()
 	if err != nil {
-		return GovernedTranscriptProjection{}, err
+		return GovernedTranscriptProjection{}, nil, err
 	}
 	storeTrace, err := storeJournal.Trace()
 	if err != nil {
-		return GovernedTranscriptProjection{}, err
+		return GovernedTranscriptProjection{}, nil, err
 	}
 	if !traceMatchesBundle(storeTrace, bundle.AuditJournal, bundle.AuditRecordCount, bundle.AuditHeadHash) {
-		return GovernedTranscriptProjection{}, errors.New("held Store journal differs from the retained canonical bundle")
+		return GovernedTranscriptProjection{}, nil, errors.New("held Store journal differs from the retained canonical bundle")
 	}
 	admissionTrace, err := audit.Verify(bytes.NewReader(bundle.AdmissionJournal))
 	if err != nil || uint64(len(admissionTrace.Records)) != bundle.AdmissionRecordCount || auditHeadHash(admissionTrace.Records) != bundle.AdmissionHeadHash {
-		return GovernedTranscriptProjection{}, errors.Join(errors.New("Store admission snapshot differs from its protected count/head"), err)
+		return GovernedTranscriptProjection{}, nil, errors.Join(errors.New("Store admission snapshot differs from its protected count/head"), err)
 	}
 	disposition, err := sessionrepo.Reconstruct(bundle)
 	if err != nil {
-		return GovernedTranscriptProjection{}, fmt.Errorf("reconstruct retained Store evidence: %w", err)
+		return GovernedTranscriptProjection{}, nil, fmt.Errorf("reconstruct retained Store evidence: %w", err)
 	}
 	if disposition.Quarantined || disposition.Unknowns != 0 || disposition.Successes != disposition.Attempts {
-		return GovernedTranscriptProjection{}, errors.New("Store evidence is unresolved or quarantined")
+		return GovernedTranscriptProjection{}, nil, errors.New("Store evidence is unresolved or quarantined")
 	}
 	if bundle.Baseline.ID != pins.Baseline.ID || bundle.Baseline.TreeDigest != pins.Baseline.TreeDigest ||
 		!sameManifest(bundle.Baseline.Manifest, pins.Baseline.Manifest) ||
-		bundle.Baseline.ID != pins.Provider.Config.InitialGenerationID ||
-		bundle.Baseline.TreeDigest != pins.Provider.Config.InitialTreeDigest ||
 		bundle.PolicyDigest != pins.StorePolicyDigest || bundle.MetadataPolicyDigest != pins.MetadataPolicyDigest {
-		return GovernedTranscriptProjection{}, errors.New("provider initial state or Store policy pins differ from verified baseline evidence")
+		return GovernedTranscriptProjection{}, nil, errors.New("Store policy or D06 baseline pins differ from verified Store evidence")
+	}
+	if _, ok := findGovernedGeneration(bundle, pins.Provider.Config.InitialGenerationID, pins.Provider.Config.InitialTreeDigest); !ok {
+		return GovernedTranscriptProjection{}, nil, errors.New("provider conversation starts from a generation outside the verified Store history")
 	}
 	verifier, err := newGovernedStoreReplayVerifier(pins, providerTrace, storeTrace, admissionTrace, bundle, disposition)
 	if err != nil {
-		return GovernedTranscriptProjection{}, err
+		return GovernedTranscriptProjection{}, nil, err
 	}
+	verifier.lastAuthSequence = priorAuthorizationSequence
+	verifier.initialAuthorizationSequence = priorAuthorizationSequence
 	projection, err := providerbridge.ReplayTranscript(providerJournal, pins.Provider, verifier)
 	if err != nil {
-		return GovernedTranscriptProjection{}, err
+		return GovernedTranscriptProjection{}, nil, err
 	}
 	if verifier.called && projection.VerificationScope != providerbridge.ProjectionScopeStoreCrosslink {
-		return GovernedTranscriptProjection{}, errors.New("provider replay did not record successful Store cross-link verification")
+		return GovernedTranscriptProjection{}, nil, errors.New("provider replay did not record successful Store cross-link verification")
 	}
 	if !verifier.called && projection.VerificationScope != providerbridge.ProjectionScopeProviderOnly {
-		return GovernedTranscriptProjection{}, errors.New("provider replay claimed a Store callback that did not run")
+		return GovernedTranscriptProjection{}, nil, errors.New("provider replay claimed a Store callback that did not run")
 	}
-	if err := verifier.finish(projection); err != nil {
-		return GovernedTranscriptProjection{}, err
+	if err := verifier.finish(projection, requireStoreTip); err != nil {
+		return GovernedTranscriptProjection{}, nil, err
 	}
 	providerAfter, err := providerJournal.Trace()
 	if err != nil {
-		return GovernedTranscriptProjection{}, err
+		return GovernedTranscriptProjection{}, nil, err
 	}
 	storeAfter, err := storeJournal.Trace()
 	if err != nil {
-		return GovernedTranscriptProjection{}, err
+		return GovernedTranscriptProjection{}, nil, err
 	}
 	bundleAfter, bundleErr := store.EvidenceBundle()
 	if bundleErr != nil {
-		return GovernedTranscriptProjection{}, bundleErr
+		return GovernedTranscriptProjection{}, nil, bundleErr
 	}
 	if !reflect.DeepEqual(providerTrace, providerAfter) || !reflect.DeepEqual(storeTrace, storeAfter) ||
 		!reflect.DeepEqual(bundle, bundleAfter) {
-		return GovernedTranscriptProjection{}, errors.New("a held audit journal changed during governed replay")
+		return GovernedTranscriptProjection{}, nil, errors.New("a held audit journal changed during governed replay")
 	}
+	storeOperationCount, storeEffectCount := verifier.scopedStoreCounts()
 	result := GovernedTranscriptProjection{
 		SchemaVersion:     governedTranscriptProjectionSchema,
 		VerificationScope: "store_crosslinked",
 		Provider:          projection, BaselineGeneration: bundle.Baseline.ID, BaselineTreeDigest: bundle.Baseline.TreeDigest,
 		StoreHeadGeneration: disposition.Sealed, StoreHeadTreeDigest: bundle.Generations[len(bundle.Generations)-1].TreeDigest,
 		StorePolicyDigest: bundle.PolicyDigest, MetadataPolicyDigest: bundle.MetadataPolicyDigest,
-		StoreOperationCount: uint64(len(disposition.Operations)), StoreEffectCount: uint64(disposition.Effects),
+		StoreOperationCount: storeOperationCount, StoreEffectCount: storeEffectCount,
 		StoreAuditRecordCount: bundle.AuditRecordCount, StoreAuditHead: bundle.AuditHeadHash,
 		AdmissionRecordCount: bundle.AdmissionRecordCount, AdmissionJournalHead: bundle.AdmissionHeadHash,
 		StoreDispositionQuarantined: disposition.Quarantined,
@@ -245,7 +293,17 @@ func ReplayGovernedTranscript(providerJournal, storeJournal *audit.Journal, stor
 		result.VerificationScope = "baseline_crosslinked"
 	}
 	result.ProjectionDigest = governedTranscriptProjectionDigest(result)
-	return result, nil
+	return result, verifier, nil
+}
+
+func (v *governedStoreReplayVerifier) resetForReadOnlyReplay() {
+	if v == nil {
+		return
+	}
+	v.usedAuth = make(map[governedReplayDecisionKey]bool)
+	v.decisions = make(map[governedReplayDecisionKey]*governedReplayDecisionEvidence)
+	v.lastAuthSequence = v.initialAuthorizationSequence
+	v.called = false
 }
 
 // VerifyGovernedTranscriptProjectionCommitment checks the domain-separated
@@ -268,6 +326,206 @@ func governedTranscriptProjectionDigest(projection GovernedTranscriptProjection)
 	_, _ = h.Write([]byte{0})
 	_, _ = h.Write(encoded)
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
+}
+
+// ReplayGovernedHistory verifies every retained provider conversation, in
+// order, against the same concrete Store history. Earlier conversations must
+// end at the next conversation's pinned starting generation; the last must
+// end at the current Store tip. No raw history or operation output is returned.
+func ReplayGovernedHistory(storeJournal *audit.Journal, store *sessionrepo.Store,
+	transcripts []GovernedRecoveryTranscript, commandVerifiers ...governedRecoveryCommandVerifier) (GovernedRecoveryProjection, error) {
+	projection, _, err := replayGovernedHistory(storeJournal, store, transcripts, false, commandVerifiers...)
+	return projection, err
+}
+
+// ReplayGovernedHistoryForRecovery permits only a final captured call that is
+// still waiting for its first gate decision. The returned verifier is fresh
+// and read-only, and is used solely to append an externally verified lineage
+// retirement before the strict full replay and checkpoint observation.
+func ReplayGovernedHistoryForRecovery(storeJournal *audit.Journal, store *sessionrepo.Store,
+	transcripts []GovernedRecoveryTranscript, commandVerifiers ...governedRecoveryCommandVerifier) (GovernedRecoveryProjection, *governedStoreReplayVerifier, error) {
+	return replayGovernedHistory(storeJournal, store, transcripts, true, commandVerifiers...)
+}
+
+func replayGovernedHistory(storeJournal *audit.Journal, store *sessionrepo.Store,
+	transcripts []GovernedRecoveryTranscript, allowPendingLatest bool,
+	commandVerifiers ...governedRecoveryCommandVerifier) (GovernedRecoveryProjection, *governedStoreReplayVerifier, error) {
+	if storeJournal == nil || store == nil {
+		return GovernedRecoveryProjection{}, nil, errors.New("full recovery replay requires the held Store journal and read-only Store preview")
+	}
+	if len(commandVerifiers) > 1 {
+		return GovernedRecoveryProjection{}, nil, errors.New("full recovery replay accepts at most one old command-journal verifier")
+	}
+	bundle, err := store.EvidenceBundle()
+	if err != nil {
+		return GovernedRecoveryProjection{}, nil, err
+	}
+	storeTrace, err := storeJournal.Trace()
+	if err != nil {
+		return GovernedRecoveryProjection{}, nil, err
+	}
+	if !traceMatchesBundle(storeTrace, bundle.AuditJournal, bundle.AuditRecordCount, bundle.AuditHeadHash) {
+		return GovernedRecoveryProjection{}, nil, errors.New("full recovery replay Store journal differs from its read-only evidence bundle")
+	}
+	disposition, err := sessionrepo.Reconstruct(bundle)
+	if err != nil || disposition.Quarantined || disposition.Unknowns != 0 || disposition.Successes != disposition.Attempts {
+		return GovernedRecoveryProjection{}, nil, errors.Join(errors.New("full recovery replay refuses unresolved Store effects"), err)
+	}
+	if len(bundle.Generations) == 0 {
+		return GovernedRecoveryProjection{}, nil, sessionrepo.ErrNoBaseline
+	}
+	hasSuccessfulBash := false
+	for _, operation := range disposition.Operations {
+		if operation.Tool == "bash" && operation.Outcome == "success" {
+			hasSuccessfulBash = true
+		}
+	}
+	if hasSuccessfulBash && len(commandVerifiers) != 1 {
+		return GovernedRecoveryProjection{}, nil, errors.New("historical Bash effects require their independently held old command context")
+	}
+	if len(transcripts) == 0 {
+		if len(disposition.Operations) != 0 || disposition.Sealed != bundle.Baseline.ID {
+			return GovernedRecoveryProjection{}, nil, errors.New("Store activity has no retained provider transcript to authorize it")
+		}
+	}
+	projections := make([]GovernedTranscriptProjection, 0, len(transcripts))
+	seen := make(map[string]struct{}, len(transcripts))
+	expectedGeneration, expectedTree := bundle.Baseline.ID, bundle.Baseline.TreeDigest
+	var priorAuthorizationSequence uint64
+	var replayedOperations, replayedEffects uint64
+	workflowID := ""
+	var lastVerifier *governedStoreReplayVerifier
+	for index, transcript := range transcripts {
+		replayPins := transcript.Replay
+		if replayPins.Provider.Config.InitialGenerationID == "" {
+			replayPins.Provider.Config.InitialGenerationID = expectedGeneration
+		}
+		if replayPins.Provider.Config.InitialTreeDigest == "" {
+			replayPins.Provider.Config.InitialTreeDigest = expectedTree
+		}
+		if replayPins.Profile.Generation == "" {
+			replayPins.Profile.Generation = expectedGeneration
+		}
+		transcript.Replay = replayPins
+		if transcript.Journal == nil || transcript.JournalPath == "" || transcript.IdentityDigest == "" ||
+			transcript.IdentityDigest != transcript.Pin.JournalIdentityDigest ||
+			transcript.Pin.Ordinal != uint64(index+1) || transcript.Pin.ConversationID == "" ||
+			transcript.Replay.Provider.Config.WorkflowID == "" ||
+			transcript.Replay.Provider.Config.ConversationID != transcript.Pin.ConversationID ||
+			transcript.Replay.Provider.Config.InitialGenerationID != expectedGeneration ||
+			transcript.Replay.Provider.Config.InitialTreeDigest != expectedTree {
+			return GovernedRecoveryProjection{}, nil, fmt.Errorf("retained provider transcript %d is missing a host pin or breaks the ordered Store lineage", index)
+		}
+		journalIdentity, err := recoveryFileIdentityDigest(transcript.JournalPath, false)
+		if err != nil || journalIdentity != transcript.IdentityDigest {
+			return GovernedRecoveryProjection{}, nil, errors.Join(fmt.Errorf("provider transcript %d journal identity differs from its trusted pin", index), err)
+		}
+		if workflowID == "" {
+			workflowID = transcript.Replay.Provider.Config.WorkflowID
+		} else if workflowID != transcript.Replay.Provider.Config.WorkflowID {
+			return GovernedRecoveryProjection{}, nil, errors.New("ordered recovery transcripts cross workflow identities")
+		}
+		if _, duplicate := seen[transcript.Pin.ConversationID]; duplicate {
+			return GovernedRecoveryProjection{}, nil, errors.New("recovery transcript repeats a conversation identity")
+		}
+		seen[transcript.Pin.ConversationID] = struct{}{}
+		journalTrace, err := transcript.Journal.Trace()
+		if err != nil {
+			return GovernedRecoveryProjection{}, nil, fmt.Errorf("verify retained provider transcript %d: %w", index, err)
+		}
+		if transcript.Pin.JournalCount > uint64(len(journalTrace.Records)) ||
+			(transcript.Pin.JournalCount == 0 && transcript.Pin.JournalHead != "") ||
+			(transcript.Pin.JournalCount > 0 && journalTrace.Records[transcript.Pin.JournalCount-1].Hash != transcript.Pin.JournalHead) {
+			return GovernedRecoveryProjection{}, nil, fmt.Errorf("provider transcript %d does not retain its checkpointed journal prefix", index)
+		}
+		if transcript.Pin.ProjectionCount > uint64(len(journalTrace.Records)) ||
+			(transcript.Pin.ProjectionCount == 0 && (transcript.Pin.ProjectionDigest != "" || transcript.Pin.ProjectionHead != "")) ||
+			(transcript.Pin.ProjectionCount > 0 && journalTrace.Records[transcript.Pin.ProjectionCount-1].Hash != transcript.Pin.ProjectionHead) {
+			return GovernedRecoveryProjection{}, nil, fmt.Errorf("provider transcript %d projection head is not a retained journal prefix", index)
+		}
+		transcript.Replay.Baseline = bundle.Baseline
+		projection, verifier, err := replayGovernedTranscript(transcript.Journal, storeJournal, store,
+			transcript.Replay, priorAuthorizationSequence, index == len(transcripts)-1)
+		if err != nil {
+			return GovernedRecoveryProjection{}, nil, fmt.Errorf("cross-link retained provider transcript %d: %w", index, err)
+		}
+		lastVerifier = verifier
+		if len(commandVerifiers) == 1 {
+			if err := commandVerifiers[0].VerifyGovernedVerifier(verifier); err != nil {
+				return GovernedRecoveryProjection{}, nil, fmt.Errorf("cross-link retained Bash authority for transcript %d: %w", index, err)
+			}
+		}
+		if projection.Provider.ProviderJournalRecordCount != uint64(len(journalTrace.Records)) ||
+			projection.Provider.ProviderJournalHead != transcript.Pin.JournalHead &&
+				transcript.Pin.JournalCount == uint64(len(journalTrace.Records)) ||
+			projection.Provider.EventCount < transcript.Pin.ProjectionCount ||
+			(projection.Provider.EventCount == transcript.Pin.ProjectionCount &&
+				transcript.Pin.ProjectionCount > 0 &&
+				(bareWorkflowDigest(projection.Provider.ProjectionDigest) != transcript.Pin.ProjectionDigest ||
+					projection.Provider.ProviderJournalHead != transcript.Pin.ProjectionHead)) {
+			return GovernedRecoveryProjection{}, nil, fmt.Errorf("provider transcript %d differs from its exact checkpointed projection", index)
+		}
+		pendingLatest := allowPendingLatest && index == len(transcripts)-1 &&
+			projection.Provider.Disposition == providerbridge.DispositionAwaitingGateDecision && projection.Provider.PendingCall != nil
+		if projection.Provider.Disposition == providerbridge.DispositionPendingProviderResult ||
+			(projection.Provider.Disposition == providerbridge.DispositionAwaitingGateDecision && !pendingLatest) {
+			return GovernedRecoveryProjection{}, nil, workflowrecovery.ErrPendingUnknown
+		}
+		retiredUnexecuted := projection.Provider.Disposition == providerbridge.DispositionRetiredUnexecuted &&
+			projection.Provider.RetiredCall != nil && projection.Provider.PendingCall == nil
+		if projection.Provider.DecisionCount != projection.Provider.ResultCount ||
+			(!pendingLatest && !retiredUnexecuted && projection.Provider.CapturedCallCount != projection.Provider.DecisionCount) ||
+			((pendingLatest || retiredUnexecuted) && projection.Provider.CapturedCallCount != projection.Provider.DecisionCount+1) {
+			return GovernedRecoveryProjection{}, nil, fmt.Errorf("provider transcript %d contains an unaccounted captured call", index)
+		}
+		if !VerifyGovernedTranscriptProjectionCommitment(projection) {
+			return GovernedRecoveryProjection{}, nil, errors.New("provider transcript projection commitment is invalid")
+		}
+		projections = append(projections, projection)
+		replayedOperations += projection.StoreOperationCount
+		replayedEffects += projection.StoreEffectCount
+		if verifier.lastAuthSequence > priorAuthorizationSequence {
+			priorAuthorizationSequence = verifier.lastAuthSequence
+		}
+		expectedGeneration, expectedTree = projection.Provider.ProviderGenerationID, projection.Provider.ProviderTreeDigest
+	}
+	if expectedGeneration != disposition.Sealed || expectedTree != bundle.Generations[len(bundle.Generations)-1].TreeDigest ||
+		replayedOperations != uint64(len(disposition.Operations)) || replayedEffects != uint64(len(disposition.Operations)) {
+		return GovernedRecoveryProjection{}, nil, errors.New("full provider transcript set does not account for the exact current Store tip and operations")
+	}
+	if len(commandVerifiers) == 1 {
+		if err := commandVerifiers[0].VerifyStoreBundle(bundle); err != nil {
+			return GovernedRecoveryProjection{}, nil, fmt.Errorf("verify all retained D09 command settlements against Store evidence: %w", err)
+		}
+	}
+	admissionTrace, err := audit.Verify(bytes.NewReader(bundle.AdmissionJournal))
+	if err != nil {
+		return GovernedRecoveryProjection{}, nil, err
+	}
+	storeHead := auditHeadHash(storeTrace.Records)
+	admissionHead := auditHeadHash(admissionTrace.Records)
+	result := GovernedRecoveryProjection{
+		Transcripts: projections, StoreTip: disposition.Sealed,
+		StoreTree: bundle.Generations[len(bundle.Generations)-1].TreeDigest,
+		StoreHead: storeHead, StoreCount: uint64(len(storeTrace.Records)),
+		AdmissionHead: admissionHead, AdmissionCount: uint64(len(admissionTrace.Records)),
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		return GovernedRecoveryProjection{}, nil, err
+	}
+	h := sha256.Sum256(append([]byte("tbound-governed-recovery-projection/v1\x00"), encoded...))
+	result.Digest = "sha256:" + hex.EncodeToString(h[:])
+	return result, lastVerifier, nil
+}
+
+func findGovernedGeneration(bundle sessionrepo.EvidenceBundle, id, treeDigest string) (sessionrepo.GenerationEvidence, bool) {
+	for _, generation := range bundle.Generations {
+		if generation.ID == id && generation.TreeDigest == treeDigest {
+			return generation, true
+		}
+	}
+	return sessionrepo.GenerationEvidence{}, false
 }
 
 func validateGovernedReplayPins(pins GovernedReplayPins) error {
@@ -305,10 +563,12 @@ func newGovernedStoreReplayVerifier(pins GovernedReplayPins, providerTrace, stor
 		pins: pins, providerTrace: providerTrace, storeTrace: storeTrace, admissionTrace: admissionTrace,
 		bundle: bundle, disposition: disposition,
 		providerRecords: make(map[uint64]audit.Record), authByDecision: make(map[governedReplayDecisionKey]audit.Record),
-		effectByID: make(map[string]audit.EffectTrace), operationByEffect: make(map[string]sessionrepo.OperationEvidence),
+		authByEffect: make(map[string]audit.Record),
+		effectByID:   make(map[string]audit.EffectTrace), operationByEffect: make(map[string]sessionrepo.OperationEvidence),
 		transitionByID: make(map[string]delta.Transition), usedAuth: make(map[governedReplayDecisionKey]bool),
 		decisions:             make(map[governedReplayDecisionKey]*governedReplayDecisionEvidence),
-		providerTipGeneration: bundle.Baseline.ID, providerTipTree: bundle.Baseline.TreeDigest,
+		providerTipGeneration: pins.Provider.Config.InitialGenerationID,
+		providerTipTree:       pins.Provider.Config.InitialTreeDigest,
 	}
 	for _, record := range providerTrace.Records {
 		v.providerRecords[record.Sequence] = record
@@ -347,7 +607,11 @@ func newGovernedStoreReplayVerifier(pins GovernedReplayPins, providerTrace, stor
 		if _, duplicate := v.authByDecision[key]; duplicate {
 			return nil, errors.New("provider gate decision has duplicate Store authorizations")
 		}
+		if _, duplicate := v.authByEffect[auth.EffectID]; duplicate {
+			return nil, errors.New("Store effect has duplicate governed authorizations")
+		}
 		v.authByDecision[key] = record
+		v.authByEffect[auth.EffectID] = record
 	}
 	for _, op := range disposition.Operations {
 		if op.Outcome != "success" {
@@ -854,27 +1118,64 @@ func mustMarshalProtocolResult(result protocol.Result) []byte {
 	return encoded
 }
 
-func (v *governedStoreReplayVerifier) finish(projection providerbridge.TranscriptProjection) error {
+func (v *governedStoreReplayVerifier) finish(projection providerbridge.TranscriptProjection, requireStoreTip bool) error {
 	if v == nil || !providerbridge.VerifyTranscriptProjectionCommitment(projection) {
 		return errors.New("provider projection commitment is invalid")
 	}
+	conversationID := v.pins.Provider.Config.ConversationID
+	scopedAuthorizationCount, scopedOperationCount := 0, 0
+	for _, record := range v.authByEffect {
+		var authorization governedOperationAdmissionRecord
+		if decodeCanonicalGoverned(record.Event.Data, &authorization) != nil {
+			return errors.New("Store authorization cannot be decoded during scoped history verification")
+		}
+		if authorization.ConversationID == conversationID {
+			scopedAuthorizationCount++
+		}
+	}
+	for effectID := range v.authByEffect {
+		if entry, ok := v.operationByEffect[effectID]; ok {
+			if authRecord, exists := v.authByEffect[effectID]; exists {
+				var authorization governedOperationAdmissionRecord
+				if decodeCanonicalGoverned(authRecord.Event.Data, &authorization) != nil {
+					return errors.New("Store operation authorization cannot be decoded")
+				}
+				if authorization.ConversationID == conversationID && entry.EffectID == effectID {
+					scopedOperationCount++
+				}
+			}
+		}
+	}
 	if !v.called {
 		if projection.VerificationScope != providerbridge.ProjectionScopeProviderOnly || projection.DecisionCount != 0 ||
-			len(v.authByDecision) != 0 || len(v.operationByEffect) != 0 || len(v.bundle.Generations) != 1 ||
-			projection.ProviderGenerationID != v.bundle.Baseline.ID || projection.ProviderTreeDigest != v.bundle.Baseline.TreeDigest ||
-			v.disposition.Sealed != v.bundle.Baseline.ID {
-			return errors.New("callback-free prefix is not a baseline-only Store state with no operation evidence")
+			scopedAuthorizationCount != 0 || scopedOperationCount != 0 {
+			return errors.New("callback-free transcript contains Store authorization or operation evidence")
+		}
+		if _, ok := findGovernedGeneration(v.bundle, projection.ProviderGenerationID, projection.ProviderTreeDigest); !ok {
+			return errors.New("callback-free provider tip is outside the verified Store generation history")
 		}
 		return nil
 	}
 	if projection.VerificationScope != providerbridge.ProjectionScopeStoreCrosslink {
 		return errors.New("Store callback ran but provider projection does not claim Store cross-link verification")
 	}
-	if len(v.usedAuth) != len(v.authByDecision) {
-		return errors.New("Store authorization exists without one provider ALLOW decision")
+	usedScopedAuth := 0
+	for key := range v.usedAuth {
+		if record, ok := v.authByDecision[key]; ok {
+			var authorization governedOperationAdmissionRecord
+			if decodeCanonicalGoverned(record.Event.Data, &authorization) != nil {
+				return errors.New("Store authorization cannot be decoded")
+			}
+			if authorization.ConversationID == conversationID {
+				usedScopedAuth++
+			}
+		}
 	}
-	if len(v.operationByEffect) != len(v.authByDecision) {
-		return errors.New("Store operation evidence is not one-to-one with provider ALLOW authorization")
+	if usedScopedAuth != scopedAuthorizationCount {
+		return errors.New("Store authorization for this conversation has no unique provider ALLOW decision")
+	}
+	if scopedOperationCount != scopedAuthorizationCount {
+		return errors.New("Store operation evidence is not one-to-one with this conversation's provider ALLOW authorization")
 	}
 	for _, decision := range v.decisions {
 		if decision.binding.GateDecision.Verdict == gate.Allow && decision.output == nil && decision.resultSeen {
@@ -895,22 +1196,53 @@ func (v *governedStoreReplayVerifier) finish(projection providerbridge.Transcrip
 			return errors.New("pending provider result does not preserve the last released provider generation")
 		}
 		if lastDecision.binding.GateDecision.Verdict == gate.Allow {
-			if lastDecision.toGen == "" || lastDecision.toTree == "" || storeHead != lastDecision.toGen || storeTree != lastDecision.toTree {
+			if lastDecision.toGen == "" || lastDecision.toTree == "" ||
+				(requireStoreTip && (storeHead != lastDecision.toGen || storeTree != lastDecision.toTree)) {
 				return errors.New("pending ALLOW has no matching completed Store head; provider result remains withheld")
 			}
-		} else if storeHead != projection.ProviderGenerationID || storeTree != projection.ProviderTreeDigest {
+		} else if requireStoreTip && (storeHead != projection.ProviderGenerationID || storeTree != projection.ProviderTreeDigest) {
 			return errors.New("pending DENY unexpectedly has Store authorization or an advanced Store head")
 		}
-	} else if storeHead != projection.ProviderGenerationID || storeTree != projection.ProviderTreeDigest {
-		return errors.New("released provider tip differs from the independently reconstructed Store head")
+	} else {
+		if _, ok := findGovernedGeneration(v.bundle, projection.ProviderGenerationID, projection.ProviderTreeDigest); !ok {
+			return errors.New("released provider tip is outside the verified Store generation history")
+		}
+		if requireStoreTip && (storeHead != projection.ProviderGenerationID || storeTree != projection.ProviderTreeDigest) {
+			return errors.New("released provider tip differs from the independently reconstructed Store head")
+		}
 	}
 	// Every provider ALLOW must have one callback and every Store operation must
 	// be accounted for. DENY callbacks intentionally have no Store authorization.
 	for key, record := range v.authByDecision {
+		var authorization governedOperationAdmissionRecord
+		if decodeCanonicalGoverned(record.Event.Data, &authorization) != nil || authorization.ConversationID != conversationID {
+			continue
+		}
 		decision := v.decisions[key]
 		if decision == nil || decision.binding.GateDecision.Verdict != gate.Allow || record.Sequence == 0 || !v.usedAuth[key] {
 			return errors.New("Store authorization is not joined to one provider ALLOW decision")
 		}
 	}
 	return nil
+}
+
+func (v *governedStoreReplayVerifier) scopedStoreCounts() (uint64, uint64) {
+	if v == nil {
+		return 0, 0
+	}
+	conversationID := v.pins.Provider.Config.ConversationID
+	var operations, effects uint64
+	for effectID, record := range v.authByEffect {
+		var authorization governedOperationAdmissionRecord
+		if decodeCanonicalGoverned(record.Event.Data, &authorization) != nil || authorization.ConversationID != conversationID {
+			continue
+		}
+		if _, ok := v.operationByEffect[effectID]; ok {
+			operations++
+		}
+		if effect, ok := v.effectByID[effectID]; ok && !effect.Unresolved && effect.Outcome == "success" {
+			effects++
+		}
+	}
+	return operations, effects
 }

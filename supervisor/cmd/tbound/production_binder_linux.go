@@ -144,23 +144,80 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	if err != nil {
 		return nil, err
 	}
+	var workflowAdmission *productionWorkflowAdmission
+	if config.ServiceMode {
+		workflowAdmission = config.workflowAdmission
+		if workflowAdmission == nil || workflowAdmission.Catalog == nil ||
+			(workflowAdmission.Mode != "fresh" && workflowAdmission.Mode != "resume") {
+			return nil, ErrPiWorkflowCatalog
+		}
+		if err := requireWorkflowCatalogPath(workflowAdmission.Entry, piServiceConfig{
+			WorkflowOwnerStoreRoot: piServiceOwnerStoreRoot,
+		}); err != nil {
+			return nil, err
+		}
+		if workflowAdmission.Mode == "resume" {
+			if err := openProductionWorkflowOwner(ctx, workflowAdmission, piServiceConfig{
+				WorkflowRootDBPath: piServiceWorkflowRootDBPath, WorkflowOwnerStoreRoot: piServiceOwnerStoreRoot,
+			}, template, profile); err != nil {
+				return nil, fmt.Errorf("open host-fenced retained workflow owner before recovery inspection: %w", err)
+			}
+			recovered, err := bindProductionPiRecoverySession(ctx, config, profile, template, artifacts, workflowAdmission)
+			if err != nil {
+				_ = workflowAdmission.CloseOwner()
+				return nil, err
+			}
+			return recovered, nil
+		}
+		if err := openProductionWorkflowOwner(ctx, workflowAdmission, piServiceConfig{
+			WorkflowRootDBPath: piServiceWorkflowRootDBPath, WorkflowOwnerStoreRoot: piServiceOwnerStoreRoot,
+		}, template, profile); err != nil {
+			return nil, fmt.Errorf("open host-fenced fresh workflow owner before allocating production session state: %w", err)
+		}
+	}
+	workflowOwnerAttached := false
+	defer func() {
+		if workflowAdmission != nil && !workflowOwnerAttached {
+			_ = workflowAdmission.CloseOwner()
+		}
+	}()
 
-	runToken, err := productionToken()
-	if err != nil {
-		return nil, err
-	}
-	runID := "production-run-" + runToken
-	workflowID := "tbound-workflow-" + runToken
-	conversationID := "tbound-conversation-" + runToken
-	publicationID := "production-publication-" + runToken
-	storeRootPath, err := createPrivateRunDirectory(artifacts.StoreRoot, "session-"+runToken)
-	if err != nil {
-		return nil, fmt.Errorf("create unique protected session Store directory: %w", err)
-	}
-	adminRootPath, err := createPrivateRunDirectory(artifacts.AdminRoot, "admin-"+runToken)
-	if err != nil {
-		_ = os.Remove(storeRootPath)
-		return nil, fmt.Errorf("create unique protected private-admin directory: %w", err)
+	var runID, workflowID, conversationID, publicationID, storeRootPath, adminRootPath string
+	if workflowAdmission != nil {
+		entry := workflowAdmission.Entry
+		runID, workflowID, conversationID = entry.RunID, entry.WorkflowID, entry.ConversationID
+		publicationID = "production-publication-" + entry.WorkflowID
+		storeRootPath, adminRootPath = entry.StoreRootPath, entry.AdminRootPath
+		if err := requireProductionWorkflowFreshLayout(entry, artifacts); err != nil {
+			return nil, err
+		}
+		storeRootPath, err = createPrivateRunDirectory(artifacts.StoreRoot, filepath.Base(storeRootPath))
+		if err != nil {
+			return nil, fmt.Errorf("create catalog-bound protected session Store directory: %w", err)
+		}
+		adminRootPath, err = createPrivateRunDirectory(artifacts.AdminRoot, filepath.Base(adminRootPath))
+		if err != nil {
+			_ = os.Remove(storeRootPath)
+			return nil, fmt.Errorf("create catalog-bound protected private-admin directory: %w", err)
+		}
+	} else {
+		runToken, tokenErr := productionToken()
+		if tokenErr != nil {
+			return nil, tokenErr
+		}
+		runID = "production-run-" + runToken
+		workflowID = "tbound-workflow-" + runToken
+		conversationID = "tbound-conversation-" + runToken
+		publicationID = "production-publication-" + runToken
+		storeRootPath, err = createPrivateRunDirectory(artifacts.StoreRoot, "session-"+runToken)
+		if err != nil {
+			return nil, fmt.Errorf("create unique protected session Store directory: %w", err)
+		}
+		adminRootPath, err = createPrivateRunDirectory(artifacts.AdminRoot, "admin-"+runToken)
+		if err != nil {
+			_ = os.Remove(storeRootPath)
+			return nil, fmt.Errorf("create unique protected private-admin directory: %w", err)
+		}
 	}
 	session := &productionPiSession{
 		Profile: profile, RunID: runID, SessionID: runID, WorkflowID: workflowID,
@@ -170,7 +227,11 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 		Lifecycle: &productionLifecycleEvidence{},
 	}
 	closers := make([]func() error, 0, 24)
+	if workflowAdmission != nil {
+		closers = append(closers, workflowAdmission.CloseOwner)
+	}
 	storeCreated := false
+	ownerScopeBound := false
 	closers = append(closers, func() error {
 		if storeCreated {
 			return nil
@@ -185,6 +246,14 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 		return os.Remove(adminRootPath)
 	})
 	fail := func(err error) (*productionPiSession, error) {
+		if session.Authority != nil {
+			session.Authority.mu.Lock()
+			conversation := session.Authority.conversation
+			session.Authority.mu.Unlock()
+			if conversation != nil {
+				conversation.Close()
+			}
+		}
 		if session.ManagedLiveRootLease != nil && !session.Lifecycle.snapshot().taskAdmitted {
 			if abortErr := session.ManagedLiveRootLease.abortBeforeTask(session.Lifecycle.snapshot(), session.ProductionCommandRunner); abortErr != nil {
 				err = errors.Join(err, abortErr)
@@ -197,6 +266,13 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 				cleanupErrors = append(cleanupErrors, cleanupErr)
 				retainProductionCleanup(closers[:index+1])
 				break
+			}
+		}
+		if workflowAdmission != nil && !ownerScopeBound && len(cleanupErrors) == 0 {
+			if drainErr := workflowAdmission.Catalog.MarkOwnerUnexposedDrained(
+				workflowAdmission.Entry.AdmissionRecordHash, workflowID,
+				workflowAdmission.CandidateEpoch, workflowAdmission.OwnerIncarnation, filepath.Clean(template.CgroupsPath)); drainErr != nil {
+				cleanupErrors = append(cleanupErrors, drainErr)
 			}
 		}
 		return nil, errors.Join(append([]error{err}, cleanupErrors...)...)
@@ -401,6 +477,18 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 		return fail(fmt.Errorf("bind durable D06 provenance before worker exposure: %w", err))
 	}
 	session.Prepared = prepared
+	if workflowAdmission != nil {
+		conversation, err := initializeProductionFreshWorkflow(ctx, config, workflowAdmission, profile, template,
+			storePolicyDigest, metadataPolicyDigest, managed, storeRoot, adminRoot,
+			storeJournal, providerJournal, commandJournal, prepared, g0,
+			sessionrepo.Options{PolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest,
+				Limits: workspace.DefaultLimits(), XattrVisibility: xattrVisibility, Journal: storeJournal},
+			runner, authority, productionSystemPrompt, productionDeveloperPrompt)
+		if err != nil {
+			return fail(fmt.Errorf("initialize the host-authorized production workflow before worker exposure: %w", err))
+		}
+		session.recoveredProviderConversation = conversation
+	}
 
 	// Sealed worker exposure and read-only runtime assets.
 	source, err := prepared.OpenVerifiedD09ExposureSource(ctx, g0)
@@ -423,14 +511,41 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 
 	// Launcher-owned D09 cell: verified cgroup scope + rootless Podman/crun
 	// launcher bound to it.
-	scope, scopePath, err := openProductionCgroupScope(ctx, template, profile)
+	var scope *piruntime.LinuxCgroupScope
+	var scopePath string
+	if workflowAdmission != nil {
+		scope, scopePath, err = openProductionCgroupScopeNamed(ctx, template, profile,
+			workflowOwnerScopeName(workflowAdmission.Entry.WorkflowID, workflowAdmission.CandidateEpoch))
+	} else {
+		scope, scopePath, err = openProductionCgroupScope(ctx, template, profile)
+	}
 	if err != nil {
 		return fail(err)
+	}
+	scopeIdentity := scope.IdentityDigest()
+	if !validDigestText(scopeIdentity) {
+		return fail(errors.New("created owner cgroup has no stable host identity"))
 	}
 	removeScope := func() error {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		return scope.Remove(cleanupCtx)
+		if err := scope.Remove(cleanupCtx); err != nil {
+			return err
+		}
+		if workflowAdmission != nil && ownerScopeBound {
+			return workflowAdmission.Catalog.MarkOwnerScopeDrained(workflowAdmission.Entry.AdmissionRecordHash,
+				workflowAdmission.Entry.WorkflowID, workflowAdmission.CandidateEpoch, workflowAdmission.OwnerIncarnation,
+				filepath.Clean(template.CgroupsPath), "session_cleanup_complete")
+		}
+		return nil
+	}
+	closers = append(closers, removeScope)
+	if workflowAdmission != nil {
+		if err := workflowAdmission.Catalog.BindOwnerScope(workflowAdmission, workflowAdmission.CandidateEpoch,
+			workflowAdmission.OwnerIncarnation, scopePath, scopeIdentity); err != nil {
+			return fail(fmt.Errorf("bind exact owner cgroup identity to the host workflow catalog: %w", err))
+		}
+		ownerScopeBound = true
 	}
 	launcherConfig := template.Config()
 	launcherConfig.CgroupsPath = scopePath
@@ -443,7 +558,13 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	// Append in reverse execution order: C removes its own cgroup scope first,
 	// then closes A's launcher-owned registration clone. The lifecycle guard runs
 	// before this stack; a failed scope removal stops cleanup and retains both.
-	closers = append(closers, closeLauncher, removeScope)
+	// Insert the launcher after the scope remover in acquisition order so
+	// reverse cleanup removes the cell scope before releasing the launcher's
+	// registration clone.
+	scopeCloserIndex := len(closers) - 1
+	closers = append(closers, nil)
+	copy(closers[scopeCloserIndex+1:], closers[scopeCloserIndex:])
+	closers[scopeCloserIndex] = closeLauncher
 	if err := managedRootLease.bindLauncher(launcher); err != nil {
 		return fail(fmt.Errorf("bind fixed-registration managed live root into D09 launcher admission: %w", err))
 	}
@@ -503,7 +624,21 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 		})
 		return closeErr
 	}
+	workflowOwnerAttached = workflowAdmission != nil
 	return session, nil
+}
+
+func requireProductionWorkflowFreshLayout(entry piServiceWorkflowEntry, artifacts productionOperatorArtifacts) error {
+	if entry.RunID == "" || entry.WorkflowID == "" || entry.SessionID != entry.RunID || entry.ConversationID == "" ||
+		entry.OwnerDBPath != filepath.Join(piServiceOwnerStoreRoot, entry.WorkflowID+".sqlite") ||
+		entry.StoreRootPath != filepath.Join(artifacts.StoreRoot, filepath.Base(entry.StoreRootPath)) ||
+		entry.AdminRootPath != filepath.Join(artifacts.AdminRoot, filepath.Base(entry.AdminRootPath)) ||
+		entry.StoreJournalPath != filepath.Join(artifacts.AuditRoot, entry.RunID+"-session-audit.jsonl") ||
+		entry.ProviderJournalPath != filepath.Join(artifacts.AuditRoot, entry.RunID+"-provider-audit.jsonl") ||
+		entry.CommandJournalPath != filepath.Join(artifacts.AuditRoot, entry.RunID+"-command-audit.jsonl") {
+		return ErrPiWorkflowCatalog
+	}
+	return nil
 }
 
 // productionXattrVisibility turns the root-owned, profile-bound D09 template's
@@ -731,16 +866,24 @@ func openProductionCgroupScope(ctx context.Context, template piruntime.D09CellTe
 	if ctx == nil {
 		return nil, "", errors.New("production cgroup scope requires a context")
 	}
-	rootPath := filepath.Clean(strings.TrimSpace(template.CgroupsPath))
 	token, err := productionToken()
 	if err != nil {
 		return nil, "", err
 	}
+	return openProductionCgroupScopeNamed(ctx, template, profile, "pi-"+token)
+}
+
+func openProductionCgroupScopeNamed(ctx context.Context, template piruntime.D09CellTemplate,
+	profile piruntime.HostProfile, childName string) (*piruntime.LinuxCgroupScope, string, error) {
+	if ctx == nil || childName == "" || strings.ContainsAny(childName, "/\\\x00") || childName == "." || childName == ".." {
+		return nil, "", errors.New("production cgroup scope requires a context and one direct-child name")
+	}
+	rootPath := filepath.Clean(strings.TrimSpace(template.CgroupsPath))
 	rootHandle, err := os.Open(rootPath)
 	if err != nil {
 		return nil, "", fmt.Errorf("open delegated cgroup root: %w", err)
 	}
-	scope, err := piruntime.CreateLinuxCgroupScope(rootHandle, "pi-"+token, profile.ContainmentProfile, profile.SettlementProfile)
+	scope, err := piruntime.CreateLinuxCgroupScope(rootHandle, childName, profile.ContainmentProfile, profile.SettlementProfile)
 	rootCloseErr := rootHandle.Close()
 	if err != nil {
 		return nil, "", errors.Join(fmt.Errorf("create and verify descriptor-relative delegated cgroup child: %w", err), rootCloseErr)

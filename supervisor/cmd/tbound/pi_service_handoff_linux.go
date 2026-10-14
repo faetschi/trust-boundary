@@ -30,21 +30,24 @@ import (
 )
 
 const (
-	piServiceSocketPath         = "/run/tbound/serve-pi.sock"
-	piServiceSocketUnitPath     = "/etc/systemd/system/tbound-pi.socket"
-	piServiceUnitPath           = "/etc/systemd/system/tbound-pi.service"
-	piServiceConfigPath         = "/etc/tbound/serve-pi-service.json"
-	piServiceRequestJournalPath = "/var/lib/tbound/audit/serve-pi-requests.jsonl"
-	piServiceResponseSchema     = "tbound-pi-service-response/v1"
-	piServiceConfigSchema       = "tbound-pi-service-config/v1"
-	piServiceSocketSchema       = "tbound-managed-pi-service-socket/v1"
-	piServiceSocketMode         = "systemd-socket-activation-single-task/v1"
-	piServiceSourcePolicy       = "current-managed-live-root/v1"
-	piServiceClientMaxBytes     = 16 << 10
-	piServiceResponseMaxBytes   = 64 << 10
-	piServiceReadTimeout        = 5 * time.Second
-	piServiceWriteTimeout       = 10 * time.Second
-	piServiceLinuxOPath         = 0x200000
+	piServiceSocketPath          = "/run/tbound/serve-pi.sock"
+	piServiceSocketUnitPath      = "/etc/systemd/system/tbound-pi.socket"
+	piServiceUnitPath            = "/etc/systemd/system/tbound-pi.service"
+	piServiceConfigPath          = "/etc/tbound/serve-pi-service.json"
+	piServiceRequestJournalPath  = "/var/lib/tbound/audit/serve-pi-requests.jsonl"
+	piServiceResponseSchema      = "tbound-pi-service-response/v1"
+	piServiceConfigSchema        = "tbound-pi-service-config/v2"
+	piServiceSocketSchema        = "tbound-managed-pi-service-socket/v1"
+	piServiceSocketMode          = "systemd-socket-activation-single-task/v1"
+	piServiceSourcePolicy        = "current-managed-live-root/v1"
+	piServiceWorkflowCatalogPath = "/var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl"
+	piServiceWorkflowRootDBPath  = "/var/lib/tbound/private-admin/workflow-recovery/root.db"
+	piServiceOwnerStoreRoot      = "/var/lib/tbound/sessions/workflow-owners"
+	piServiceClientMaxBytes      = 16 << 10
+	piServiceResponseMaxBytes    = 64 << 10
+	piServiceReadTimeout         = 5 * time.Second
+	piServiceWriteTimeout        = 10 * time.Second
+	piServiceLinuxOPath          = 0x200000
 )
 
 var (
@@ -102,20 +105,33 @@ type piServiceRegistrationContract struct {
 }
 
 type piServiceConfig struct {
-	SchemaVersion          string `json:"schema_version"`
-	SourcePolicy           string `json:"source_policy"`
-	PodmanHome             string `json:"podman_home"`
-	PodmanGraphRoot        string `json:"podman_graphroot"`
-	PodmanRunRoot          string `json:"podman_runroot"`
-	XDGRuntimeDir          string `json:"xdg_runtime_dir"`
-	XDGConfigHome          string `json:"xdg_config_home"`
-	XDGDataHome            string `json:"xdg_data_home"`
-	XDGCacheHome           string `json:"xdg_cache_home"`
-	TMPDir                 string `json:"tmp_dir"`
-	ContainersConfigPath   string `json:"containers_conf_path"`
-	ContainersConfigDigest string `json:"containers_conf_digest"`
-	StorageConfigPath      string `json:"storage_conf_path"`
-	StorageConfigDigest    string `json:"storage_conf_digest"`
+	SchemaVersion               string   `json:"schema_version"`
+	SourcePolicy                string   `json:"source_policy"`
+	WorkflowAdmissionMode       string   `json:"workflow_admission_mode"`
+	WorkflowAdmissionID         string   `json:"workflow_admission_id"`
+	WorkflowTaskID              string   `json:"workflow_task_id"`
+	WorkflowPrompt              string   `json:"workflow_prompt"`
+	WorkflowBashOutputPaths     []string `json:"workflow_bash_output_paths"`
+	WorkflowCatalogPath         string   `json:"workflow_catalog_path"`
+	WorkflowRootDBPath          string   `json:"workflow_root_db_path"`
+	WorkflowOwnerStoreRoot      string   `json:"workflow_owner_store_root"`
+	WorkflowMaxPreEffectRetries uint64   `json:"workflow_max_pre_effect_retries"`
+	WorkflowMaxCleanRestarts    uint64   `json:"workflow_max_clean_restarts"`
+	WorkflowMaxHostCalls        uint64   `json:"workflow_max_host_calls"`
+	WorkflowMaxTokens           uint64   `json:"workflow_max_tokens"`
+	WorkflowDurationSeconds     uint64   `json:"workflow_duration_seconds"`
+	PodmanHome                  string   `json:"podman_home"`
+	PodmanGraphRoot             string   `json:"podman_graphroot"`
+	PodmanRunRoot               string   `json:"podman_runroot"`
+	XDGRuntimeDir               string   `json:"xdg_runtime_dir"`
+	XDGConfigHome               string   `json:"xdg_config_home"`
+	XDGDataHome                 string   `json:"xdg_data_home"`
+	XDGCacheHome                string   `json:"xdg_cache_home"`
+	TMPDir                      string   `json:"tmp_dir"`
+	ContainersConfigPath        string   `json:"containers_conf_path"`
+	ContainersConfigDigest      string   `json:"containers_conf_digest"`
+	StorageConfigPath           string   `json:"storage_conf_path"`
+	StorageConfigDigest         string   `json:"storage_conf_digest"`
 }
 
 type piServiceSocketFDIdentity struct {
@@ -217,8 +233,9 @@ type piServiceRequestTerminalEvent struct {
 }
 
 type piServiceRequestState struct {
-	accepted piServiceRequestAcceptedEvent
-	terminal *piServiceResponse
+	accepted       piServiceRequestAcceptedEvent
+	acceptedRecord audit.Record
+	terminal       *piServiceResponse
 }
 
 type piServiceRequestJournal struct {
@@ -228,6 +245,32 @@ type piServiceRequestJournal struct {
 }
 
 type piServiceTaskRunner func(context.Context, piServiceRequest) (json.RawMessage, error)
+
+type piServiceAdmissionContext struct {
+	Peer           piServicePeerCredentials
+	CurrentPeer    piServicePeerCredentials
+	Request        piServiceRequest
+	PayloadDigest  string
+	Accepted       piServiceRequestAcceptedEvent
+	AcceptedRecord audit.Record
+	IsReplay       bool
+	ConfigDigest   string
+	RegistrationID string
+}
+
+type piServiceAdmissionContextKey struct{}
+
+func withPiServiceAdmission(ctx context.Context, admission piServiceAdmissionContext) context.Context {
+	return context.WithValue(ctx, piServiceAdmissionContextKey{}, admission)
+}
+
+func piServiceAdmissionFromContext(ctx context.Context) (piServiceAdmissionContext, bool) {
+	if ctx == nil {
+		return piServiceAdmissionContext{}, false
+	}
+	admission, ok := ctx.Value(piServiceAdmissionContextKey{}).(piServiceAdmissionContext)
+	return admission, ok
+}
 
 func validatePiServiceSocketRegistration(reg piServiceSocketRegistration, serviceUID, serviceGID int) error {
 	if reg.SchemaVersion != piServiceSocketSchema || reg.Mode != piServiceSocketMode ||
@@ -591,6 +634,15 @@ func readProductionPiServiceConfig(path, expectedDigest string) (piServiceConfig
 		return piServiceConfig{}, errors.Join(ErrPiServiceUnavailable, err)
 	}
 	if config.SchemaVersion != piServiceConfigSchema || config.SourcePolicy != piServiceSourcePolicy ||
+		(config.WorkflowAdmissionMode != "fresh" && config.WorkflowAdmissionMode != "resume") ||
+		!boundedProductionIdentity(config.WorkflowAdmissionID, productionRequestMaxBytes) ||
+		!boundedProductionIdentity(config.WorkflowTaskID, productionTaskIDMaxBytes) ||
+		!boundedProductionPrompt(config.WorkflowPrompt) ||
+		sessionrepo.ValidateOutputScopePaths(config.WorkflowBashOutputPaths) != nil ||
+		config.WorkflowCatalogPath != piServiceWorkflowCatalogPath || config.WorkflowRootDBPath != piServiceWorkflowRootDBPath ||
+		config.WorkflowOwnerStoreRoot != piServiceOwnerStoreRoot || config.WorkflowMaxPreEffectRetries > 2 ||
+		config.WorkflowMaxCleanRestarts > 2 || config.WorkflowMaxHostCalls == 0 || config.WorkflowMaxTokens == 0 ||
+		config.WorkflowDurationSeconds == 0 || config.WorkflowDurationSeconds > uint64(productionSessionMaxRuntime/time.Second) ||
 		config.PodmanHome != "/var/lib/tbound/podman-home" || config.PodmanGraphRoot != "/var/lib/tbound/podman-storage/graphroot" ||
 		config.PodmanRunRoot != "/run/tbound-pi/podman-runroot" || config.XDGRuntimeDir != "/run/tbound-pi" ||
 		config.XDGConfigHome != "/etc/tbound/podman-config" || config.XDGDataHome != "/var/lib/tbound/podman-home/data" ||
@@ -945,7 +997,7 @@ func newPiServiceRequestJournal(journal *audit.Journal) (*piServiceRequestJourna
 			if record.Event.ID != key || requestJournal.entries[key].accepted.RequestID != "" {
 				return nil, ErrPiServiceUnavailable
 			}
-			requestJournal.entries[key] = piServiceRequestState{accepted: accepted}
+			requestJournal.entries[key] = piServiceRequestState{accepted: accepted, acceptedRecord: record}
 		case "pi_service_request_terminal":
 			var terminal piServiceRequestTerminalEvent
 			if err := unmarshalGovernedJSON(record.Event.Data, &terminal); err != nil ||
@@ -969,45 +1021,47 @@ func newPiServiceRequestJournal(journal *audit.Journal) (*piServiceRequestJourna
 	return requestJournal, nil
 }
 
-func (j *piServiceRequestJournal) lookup(clientUID int, request piServiceRequest, payloadDigest string) (piServiceRequestState,
+func (j *piServiceRequestJournal) lookup(peer piServicePeerCredentials, request piServiceRequest, payloadDigest string) (piServiceRequestState,
 	bool, error) {
 	if j == nil {
 		return piServiceRequestState{}, false, ErrPiServiceUnavailable
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	state, exists := j.entries[piServiceRequestKey(clientUID, request.RequestID)]
+	state, exists := j.entries[piServiceRequestKey(peer.UID, request.RequestID)]
 	if !exists {
 		return piServiceRequestState{}, false, nil
 	}
-	if state.accepted.PayloadDigest != payloadDigest || state.accepted.TaskID != request.TaskID {
+	if state.accepted.PayloadDigest != payloadDigest || state.accepted.TaskID != request.TaskID ||
+		state.accepted.ClientUID != peer.UID || state.accepted.ClientGID != peer.GID {
 		return state, true, ErrPiServiceRequestConflict
 	}
 	return state, true, nil
 }
 
-func (j *piServiceRequestJournal) begin(peer piServicePeerCredentials, request piServiceRequest, payloadDigest string) error {
+func (j *piServiceRequestJournal) begin(peer piServicePeerCredentials, request piServiceRequest, payloadDigest string) (audit.Record, error) {
 	if j == nil {
-		return ErrPiServiceUnavailable
+		return audit.Record{}, ErrPiServiceUnavailable
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	key := piServiceRequestKey(peer.UID, request.RequestID)
 	if _, exists := j.entries[key]; exists {
-		return ErrPiServiceRequestConflict
+		return audit.Record{}, ErrPiServiceRequestConflict
 	}
 	accepted := piServiceRequestAcceptedEvent{SchemaVersion: "tbound-pi-service-request-accepted/v1",
 		ClientUID: peer.UID, ClientGID: peer.GID, ClientPID: peer.PID, RequestID: request.RequestID,
 		TaskID: request.TaskID, PayloadDigest: payloadDigest}
 	data, err := json.Marshal(accepted)
 	if err != nil {
-		return err
+		return audit.Record{}, err
 	}
-	if _, err := j.journal.Append(audit.Event{Kind: "pi_service_request_accepted", ID: key, Data: data}); err != nil {
-		return err
+	record, err := j.journal.Append(audit.Event{Kind: "pi_service_request_accepted", ID: key, Data: data})
+	if err != nil {
+		return audit.Record{}, err
 	}
-	j.entries[key] = piServiceRequestState{accepted: accepted}
-	return nil
+	j.entries[key] = piServiceRequestState{accepted: accepted, acceptedRecord: record}
+	return record, nil
 }
 
 func (j *piServiceRequestJournal) complete(clientUID int, request piServiceRequest, payloadDigest string,
@@ -1227,20 +1281,15 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			_ = unixConn.Close()
 			continue
 		}
-		prior, exists, lookupErr := journal.lookup(peer.UID, request, payloadDigest)
+		prior, exists, lookupErr := journal.lookup(peer, request, payloadDigest)
 		if lookupErr != nil {
 			_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
 				RequestID: request.RequestID, Status: "refused", ErrorCode: "request-id-conflict"})
 			_ = unixConn.Close()
 			continue
 		}
-		if exists {
-			response := piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
-				Status: "unknown", ErrorCode: "accepted-outcome-unresolved"}
-			if prior.terminal != nil {
-				response = *prior.terminal
-			}
-			_ = writePiServiceFrame(unixConn, response)
+		if exists && prior.terminal != nil {
+			_ = writePiServiceFrame(unixConn, *prior.terminal)
 			_ = unixConn.Close()
 			continue
 		}
@@ -1250,12 +1299,20 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			_ = unixConn.Close()
 			continue
 		}
-		if err := journal.begin(peer, request, payloadDigest); err != nil {
-			active.Store(false)
-			_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
-				RequestID: request.RequestID, Status: "refused", ErrorCode: "request-journal-unavailable"})
-			_ = unixConn.Close()
-			continue
+		acceptedRecord := prior.acceptedRecord
+		acceptedEvent := prior.accepted
+		if !exists {
+			acceptedRecord, err = journal.begin(peer, request, payloadDigest)
+			if err != nil {
+				active.Store(false)
+				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
+					RequestID: request.RequestID, Status: "refused", ErrorCode: "request-journal-unavailable"})
+				_ = unixConn.Close()
+				continue
+			}
+			acceptedEvent = piServiceRequestAcceptedEvent{SchemaVersion: "tbound-pi-service-request-accepted/v1",
+				ClientUID: peer.UID, ClientGID: peer.GID, ClientPID: peer.PID,
+				RequestID: request.RequestID, TaskID: request.TaskID, PayloadDigest: payloadDigest}
 		}
 		if validateListener != nil {
 			if err := validateListener(); err != nil {
@@ -1267,25 +1324,34 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			}
 		}
 		tasks.Add(1)
-		go func(conn *net.UnixConn, peer piServicePeerCredentials, request piServiceRequest, payloadDigest string) {
+		go func(conn *net.UnixConn, peer piServicePeerCredentials, request piServiceRequest, payloadDigest string,
+			acceptedEvent piServiceRequestAcceptedEvent, acceptedRecord audit.Record, isReplay bool) {
 			defer tasks.Done()
 			defer active.Store(false)
 			defer conn.Close()
 			taskCtx, cancel := context.WithTimeout(ctx, productionSessionMaxRuntime)
 			defer cancel()
-			receipt, runErr := run(taskCtx, request)
+			originalPeer := piServicePeerCredentials{PID: acceptedEvent.ClientPID, UID: acceptedEvent.ClientUID, GID: acceptedEvent.ClientGID}
+			admission := piServiceAdmissionContext{Peer: originalPeer, CurrentPeer: peer, Request: request, PayloadDigest: payloadDigest,
+				Accepted: acceptedEvent, AcceptedRecord: acceptedRecord, IsReplay: isReplay}
+			receipt, runErr := run(withPiServiceAdmission(taskCtx, admission), request)
 			status, errorCode := "completed", ""
 			if len(receipt) == 0 || runErr != nil {
 				status, errorCode = "unknown", "task-outcome-unknown"
 			}
 			response := piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
 				Status: status, ErrorCode: errorCode, Receipt: append(json.RawMessage(nil), receipt...)}
-			if err := journal.complete(peer.UID, request, payloadDigest, response); err != nil {
+			if isReplay && runErr != nil {
+				// A failed host recovery attempt remains unresolved. It cannot be
+				// converted to a fresh workflow or a terminal success by retrying.
+				response = piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
+					Status: "unknown", ErrorCode: "retained-workflow-recovery-unresolved"}
+			} else if err := journal.complete(peer.UID, request, payloadDigest, response); err != nil {
 				response = piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
 					Status: "unknown", ErrorCode: "terminal-journal-unavailable"}
 			}
 			_ = writePiServiceFrame(conn, response) // disconnect never cancels accepted work
-		}(unixConn, peer, request, payloadDigest)
+		}(unixConn, peer, request, payloadDigest, acceptedEvent, acceptedRecord, exists)
 	}
 }
 
@@ -1540,13 +1606,37 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	if err != nil {
 		return err
 	}
+	workflowCatalog, err := openPiServiceWorkflowCatalog(serviceConfig.WorkflowCatalogPath)
+	if err != nil {
+		return fmt.Errorf("open host-provisioned workflow admission catalog: %w", err)
+	}
+	defer workflowCatalog.Close()
+	registrationID := piServiceRegistrationIdentity(registration, socket, contract)
+	if !validDigestText(registrationID) {
+		return ErrPiServiceUnavailable
+	}
 	runTask := func(taskCtx context.Context, request piServiceRequest) (json.RawMessage, error) {
+		requestAdmission, ok := piServiceAdmissionFromContext(taskCtx)
+		if !ok {
+			return nil, errors.New("authenticated Pi service admission is missing from task context")
+		}
+		requestAdmission.ConfigDigest = contract.ServiceConfigDigest
+		requestAdmission.RegistrationID = registrationID
+		workflowAdmission, err := workflowCatalog.ResolveAdmission(requestAdmission, serviceConfig,
+			contract.ServiceConfigDigest, registrationID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve host-provisioned workflow admission: %w", err)
+		}
+		if err := requireWorkflowCatalogPath(workflowAdmission.Entry, serviceConfig); err != nil {
+			return nil, err
+		}
 		var bashOutputPaths []string
 		if request.BashOutputPaths != nil {
 			bashOutputPaths = cloneDurableOutputScopePaths(*request.BashOutputPaths)
 		}
 		config := productionServeConfig{ServiceMode: true, ManagedLiveRootPath: registration.RootPath,
-			TaskID: request.TaskID, TaskRequestID: request.RequestID, TaskPrompt: request.Prompt, BashOutputPaths: bashOutputPaths}
+			TaskID: request.TaskID, TaskRequestID: request.RequestID, TaskPrompt: request.Prompt,
+			BashOutputPaths: bashOutputPaths, workflowAdmission: workflowAdmission}
 		var receipt bytes.Buffer
 		runErr := runProductionPiServe(taskCtx, &receipt, config, newProductionBinder())
 		encoded := bytes.TrimSpace(receipt.Bytes())

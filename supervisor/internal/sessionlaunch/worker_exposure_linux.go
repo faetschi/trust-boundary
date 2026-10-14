@@ -19,7 +19,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
-	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/sessionrepo"
 )
 
@@ -51,7 +50,7 @@ type VerifiedD09ExposureSource struct {
 	store      *sessionrepo.Store
 	journal    *audit.Journal
 	generation *sessionrepo.Generation
-	git        *privategit.Repository
+	git        privateGitHandle
 	profile    SourceProfile
 	provenance Provenance
 	capability *sessionrepo.VerifiedSealedSource
@@ -131,7 +130,7 @@ func (p *PreparedSession) OpenVerifiedD09ExposureSource(ctx context.Context,
 type verifiedD09SourceAnchors struct {
 	store      *sessionrepo.Store
 	journal    *audit.Journal
-	git        *privategit.Repository
+	git        privateGitHandle
 	profile    SourceProfile
 	provenance Provenance
 }
@@ -147,7 +146,7 @@ func (p *PreparedSession) verifyD06SourceForGeneration(ctx context.Context,
 		return verifiedD09SourceAnchors{}, ErrD09ExposureSource
 	}
 	p.mu.Lock()
-	if p.closed || p.closing || p.store == nil || p.journal == nil || p.git == nil ||
+	if p.closed || p.closing || p.recoveryPending || p.store == nil || p.journal == nil || p.git == nil ||
 		generation == nil || generation.ID() == "" {
 		p.mu.Unlock()
 		return verifiedD09SourceAnchors{}, ErrD09ExposureSource

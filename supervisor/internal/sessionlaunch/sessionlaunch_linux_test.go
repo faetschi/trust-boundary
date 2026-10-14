@@ -3,6 +3,7 @@
 package sessionlaunch
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -19,6 +20,7 @@ import (
 	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/sandbox"
 	"tbound/supervisor/internal/sessionrepo"
+	"tbound/supervisor/internal/workflowrecovery"
 	"tbound/supervisor/internal/workspace"
 )
 
@@ -76,6 +78,153 @@ func TestPreparePersistsVerifiedGenerationAndPrivateGitBeforeExposure(t *testing
 	}
 	if err := fixture.managed.Close(); err != nil {
 		t.Fatalf("close managed store after D06 teardown: %v", err)
+	}
+}
+
+func TestRebindRequiresExplicitRecoveryActivationAndNeverDestroysRetainedGit(t *testing.T) {
+	fixture := newSessionFixture(t, false)
+	prepared, err := Prepare(context.Background(), fixture.managed, fixture.g0, fixture.admin, fixture.git, fixture.gitProfile)
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	provenance := prepared.Provenance()
+	repository, ok := prepared.git.(*privategit.Repository)
+	if !ok {
+		t.Fatal("fresh preparation did not retain the concrete privateGit repository")
+	}
+	identity, err := repository.ReopenIdentity()
+	if err != nil {
+		t.Fatalf("pin retained privateGit identity: %v", err)
+	}
+	provenanceDigest, err := canonicalDigest(provenance)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityDigest := identity.Digest()
+	retainedPath := filepath.Join(fixture.adminPath, provenance.PrivateGit.RepositoryName)
+	journalBytes, err := os.ReadFile(fixture.journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate process death: release descriptors and locks without calling
+	// PreparedSession.Close, whose fresh-owner contract intentionally destroys
+	// the private Git tree.
+	if err := prepared.git.Close(); err != nil {
+		t.Fatalf("release old verification descriptors: %v", err)
+	}
+	if err := fixture.git.Close(); err != nil {
+		t.Fatalf("release pinned Git executable: %v", err)
+	}
+	fixture.admin.mu.Lock()
+	fixture.admin.prepared = 0
+	fixture.admin.mu.Unlock()
+	if err := fixture.admin.Close(); err != nil {
+		t.Fatalf("release old admin owner lock: %v", err)
+	}
+	fixture.managed.mu.Lock()
+	fixture.managed.prepared = 0
+	fixture.managed.mu.Unlock()
+	if err := fixture.managed.Close(); err != nil {
+		t.Fatalf("release old session Store: %v", err)
+	}
+	if err := fixture.journal.Close(); err != nil {
+		t.Fatalf("release old Store journal: %v", err)
+	}
+
+	journal, err := audit.Open(fixture.journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = journal.Close() })
+	options := sessionrepo.Options{
+		PolicyDigest:         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		MetadataPolicyDigest: provenance.MetadataPolicyDigest, Limits: workspace.DefaultLimits(),
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: provenance.XattrProfileDigest, Complete: true},
+		Journal:         journal, AuthorizeOperation: func(sessionrepo.OperationRequest) error { return errors.New("fixture has no operation authority") },
+		VerifyDecision: func(delta.PolicyDecision, delta.TransitionBinding) error {
+			return errors.New("fixture has no decision authority")
+		},
+		VerifySettlement: func(sessionrepo.CommandSettlement, string, string) error {
+			return errors.New("fixture has no settlement authority")
+		},
+	}
+	liveOptions := options
+	previewOptions := options
+	previewOptions.AuthorizeOperation = nil
+	previewOptions.VerifyDecision = nil
+	previewOptions.VerifySettlement = nil
+	storeRoot, err := os.Open(fixture.storeRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenStore(storeRoot, previewOptions); !errors.Is(err, ErrRecoveryActivationRequired) {
+		t.Fatalf("ordinary OpenStore bypassed the recovery preview path: %v", err)
+	}
+	managed, err := OpenRecoveryPreview(storeRoot, previewOptions)
+	_ = storeRoot.Close()
+	if err != nil {
+		t.Fatalf("OpenRecoveryPreview: %v", err)
+	}
+	t.Cleanup(func() { _ = managed.Close() })
+	adminRoot, err := os.Open(fixture.adminPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := OpenAdminParentForRecovery(adminRoot, provenance.PrivateGit.RepositoryName)
+	_ = adminRoot.Close()
+	if err != nil {
+		t.Fatalf("OpenAdminParentForRecovery: %v", err)
+	}
+	t.Cleanup(func() { _ = admin.Close() })
+	candidate, err := Rebind(managed, admin, RecoveryGitPin{
+		RepositoryName: provenance.PrivateGit.RepositoryName, ProvenanceDigest: provenanceDigest,
+		RepositoryIdentityDigest: identityDigest,
+		VerifyIdentity: func(actual privategit.RepositoryIdentity) error {
+			if actual != identity || actual.Digest() != identityDigest {
+				return privategit.ErrReopenBinding
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("Rebind: %v", err)
+	}
+	t.Cleanup(func() { _ = candidate.Close() })
+	if !managed.Store().IsRecoveryPreview() {
+		t.Fatal("reopened Store was not held in recovery preview")
+	}
+	previewStore := managed.Store()
+	previewBaseline := previewStore.BaselineGeneration()
+	if _, err := previewBaseline.ReadOnlyMountSource(); !errors.Is(err, sessionrepo.ErrRecoveryPreview) {
+		t.Fatalf("recovery preview exposed a generation source: %v", err)
+	}
+	if _, err := previewBaseline.Read(context.Background(), delta.OperationIdentity{}, delta.PolicyDecision{}, "task.txt", 128); !errors.Is(err, sessionrepo.ErrRecoveryPreview) {
+		t.Fatalf("recovery preview admitted a read operation: %v", err)
+	}
+	if _, err := previewStore.Write(context.Background(), previewBaseline, delta.OperationIdentity{}, delta.PolicyDecision{}, "task.txt", []byte("blocked")); !errors.Is(err, sessionrepo.ErrRecoveryPreview) {
+		t.Fatalf("recovery preview admitted a write operation: %v", err)
+	}
+	if _, err := previewBaseline.Expose(sessionrepo.ViewRecreated); !errors.Is(err, sessionrepo.ErrRecoveryPreview) {
+		t.Fatalf("recovery preview created an exposed view: %v", err)
+	}
+	if _, err := candidate.prepared.OpenVerifiedD09ExposureSource(context.Background(), fixture.g0); !errors.Is(err, ErrD09ExposureSource) {
+		t.Fatalf("pending recovery candidate exposed worker source: %v", err)
+	}
+	if _, err := candidate.Activate(context.Background(), nil, workflowrecovery.Receipt{}, workflowrecovery.Pins{}, liveOptions); !errors.Is(err, ErrProvenanceMissing) {
+		t.Fatalf("candidate activated without an opaque owner receipt: %v", err)
+	}
+	if err := managed.ActivateRecovery(context.Background(), nil, workflowrecovery.Receipt{}, workflowrecovery.Pins{}, liveOptions); !errors.Is(err, ErrRecoveryActivationRequired) {
+		t.Fatalf("ManagedStore activated without an opaque owner receipt: %v", err)
+	}
+	if !managed.Store().IsRecoveryPreview() {
+		t.Fatal("rejected receipt attempt activated the read-only Store preview")
+	}
+	if _, err := os.Stat(filepath.Join(retainedPath, ".git")); err != nil {
+		t.Fatalf("rejected recovery attempt changed retained private Git data: %v", err)
+	}
+	if after, err := os.ReadFile(fixture.journalPath); err != nil || !bytes.Equal(after, journalBytes) {
+		t.Fatalf("D06 rebind changed historical audit bytes: err=%v", err)
 	}
 }
 

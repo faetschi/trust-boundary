@@ -13,6 +13,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workspace"
 )
@@ -269,7 +270,11 @@ func TestVerifiedD09ExposureSourceDetectsPrivateGitSnapshotTamper(t *testing.T) 
 	if err != nil {
 		t.Fatalf("ExportD09WorkerSource: %v", err)
 	}
-	directory := prepared.git.Root()
+	ownedRepository, ok := prepared.git.(*privategit.Repository)
+	if !ok {
+		t.Fatal("fresh test fixture does not own a mutable private Git repository")
+	}
+	directory := ownedRepository.Root()
 	if directory == nil {
 		t.Fatal("prepared private Git root missing")
 	}

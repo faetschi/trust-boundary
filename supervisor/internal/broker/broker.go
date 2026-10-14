@@ -6,6 +6,9 @@ package broker
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -74,6 +77,26 @@ func (r RequestRecord) ContentLength() int64 { return r.contentLength }
 func (r RequestRecord) Header() http.Header  { return r.header.Clone() }
 func (r RequestRecord) Body() []byte         { return append([]byte(nil), r.body...) }
 
+// DigestRequestRecord commits to the exact fixed-profile request metadata and
+// bytes presented to the injected transport. The digest is lowercase hex with
+// no prefix, matching workflowrecovery's canonical digest format.
+func DigestRequestRecord(r RequestRecord) string {
+	encoded, err := json.Marshal(struct {
+		ProfileID     string      `json:"profile_id"`
+		Method        string      `json:"method"`
+		URL           string      `json:"url"`
+		Host          string      `json:"host"`
+		ContentLength int64       `json:"content_length"`
+		Headers       http.Header `json:"headers"`
+		Body          []byte      `json:"body"`
+	}{r.profileID, r.method, r.url, r.host, r.contentLength, r.header.Clone(), append([]byte(nil), r.body...)})
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(append([]byte("tbound-provider-request/v1\n"), encoded...))
+	return hex.EncodeToString(sum[:])
+}
+
 // ExchangeRecord retains the exact request and, when received, the bounded raw
 // response bytes. Records are process-local and are not durable audit evidence.
 type ExchangeRecord struct {
@@ -133,6 +156,14 @@ func New(profile Profile, doer HTTPDoer) (*Broker, error) {
 // provider response. A captured tool call is registered for a later Pi
 // proposal; a transport or provider-protocol failure closes this broker stream.
 func (b *Broker) Exchange(ctx context.Context) (openrouter.CapturedResponse, error) {
+	return b.ExchangeWithCompletionLimit(ctx, 0, nil)
+}
+
+// ExchangeWithCompletionLimit uses the exact host-selected completion cap in
+// the outbound request. beforeDispatch runs after the request is fixed and
+// recorded, but before the transport can see it.
+func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimit uint64,
+	beforeDispatch func(RequestRecord) error) (openrouter.CapturedResponse, error) {
 	if b == nil {
 		return openrouter.CapturedResponse{}, errors.New("nil provider broker")
 	}
@@ -152,7 +183,7 @@ func (b *Broker) Exchange(ctx context.Context) (openrouter.CapturedResponse, err
 		return openrouter.CapturedResponse{}, err
 	}
 
-	built, err := openrouter.BuildRequest(b.profile.Model, b.profile.Messages)
+	built, err := openrouter.BuildRequestWithCompletionLimit(b.profile.Model, b.profile.Messages, completionLimit)
 	if err != nil {
 		return openrouter.CapturedResponse{}, b.failLocked(-1, fmt.Errorf("build registered provider request: %w", err))
 	}
@@ -177,6 +208,11 @@ func (b *Broker) Exchange(ctx context.Context) (openrouter.CapturedResponse, err
 	recordIndex := len(b.records)
 	b.records = append(b.records, ExchangeRecord{request: requestRecord})
 	b.recorded += requestBytes
+	if beforeDispatch != nil {
+		if err := beforeDispatch(cloneRequestRecord(requestRecord)); err != nil {
+			return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("host refused provider dispatch: %w", err))
+		}
+	}
 
 	response, doErr := b.doer.Do(request)
 	_ = request.Body.Close()

@@ -35,6 +35,14 @@ const (
 	DispositionAwaitingProviderExchange RecoveryDisposition = "awaiting_provider_exchange"
 	DispositionAwaitingGateDecision     RecoveryDisposition = "awaiting_gate_decision"
 	DispositionPendingProviderResult    RecoveryDisposition = "pending_provider_result"
+	DispositionRetired                  RecoveryDisposition = "retired"
+	DispositionRetiredUnexecuted        RecoveryDisposition = "retired_unexecuted"
+)
+
+const (
+	retirementEventKind = "provider_lineage_retired"
+	retirementKind      = "host_unleased_before_gate/v1"
+	idleRetirementKind  = "host_idle_lineage_retired/v1"
 )
 
 const (
@@ -49,9 +57,74 @@ const (
 // profile artifact or close over all runtime/transport configuration. The
 // caller must supply the immutable host profile and its exact prompt inputs.
 type RecoveryPins struct {
-	Config Config
-	Model  string
-	Policy gate.Policy
+	Config                      Config
+	Model                       string
+	Policy                      gate.Policy
+	PreviousOwnerEpoch          uint64
+	RetirementOwnerEpoch        uint64
+	CheckpointRecordCount       uint64
+	CheckpointRecordHead        string
+	RetirementVerifier          UnleasedProviderCallRetirementVerifier
+	IdleRetirementVerifier      IdleProviderLineageRetirementVerifier
+	RequireHostCallReservations bool
+}
+
+// ProviderCallRetirementBinding is the content-free identity of one captured
+// call that is retired before any gate decision, Store authorization, effect,
+// or lease. The verifier must establish absence of all matching authority and
+// effect facts from the concrete retained Store/command records.
+type ProviderCallRetirementBinding struct {
+	WorkflowID             string
+	ConversationID         string
+	ProfileID              string
+	OwnerEpoch             uint64
+	RetirementKind         string
+	ProviderSequence       uint64
+	ResponseIDIssuer       string
+	ResponseID             string
+	ToolCallIDIssuer       string
+	ToolCallID             string
+	ToolName               string
+	ArgumentsDigest        string
+	ExchangeRecordSequence uint64
+	ExchangeRecordHash     string
+	PreviousRecordSequence uint64
+	PreviousRecordHash     string
+}
+
+// UnleasedProviderCallRetirementVerifier is a concrete host-only join. It must
+// reject any prior Store authorization, effect, or command lease for the call.
+type UnleasedProviderCallRetirementVerifier interface {
+	VerifyUnleasedProviderCallRetirement(ProviderCallRetirementBinding) error
+}
+
+// IdleProviderLineageRetirementVerifier proves that a transcript with no
+// captured pending call has no unresolved provider, Store, or D09 lease state.
+// The concrete host implementation is read-only and separately relies on the
+// owner fence/drain proof before allowing this transition.
+type IdleProviderLineageRetirementVerifier interface {
+	VerifyIdleProviderLineageRetirement(workflowID, conversationID string, providerSequence,
+		previousOwnerEpoch, retirementOwnerEpoch uint64) error
+}
+
+type lineageRetirementEvidence struct {
+	SchemaVersion          string `json:"schema_version"`
+	WorkflowID             string `json:"workflow_id"`
+	ConversationID         string `json:"conversation_id"`
+	OwnerEpoch             uint64 `json:"owner_epoch"`
+	PreviousOwnerEpoch     uint64 `json:"previous_owner_epoch"`
+	RetirementKind         string `json:"retirement_kind"`
+	ProviderSequence       uint64 `json:"provider_sequence"`
+	ResponseIDIssuer       string `json:"response_id_issuer,omitempty"`
+	ResponseID             string `json:"response_id,omitempty"`
+	ToolCallIDIssuer       string `json:"tool_call_id_issuer,omitempty"`
+	ToolCallID             string `json:"tool_call_id,omitempty"`
+	ToolName               string `json:"tool_name,omitempty"`
+	ArgumentsDigest        string `json:"arguments_digest,omitempty"`
+	ExchangeRecordSequence uint64 `json:"exchange_record_sequence,omitempty"`
+	ExchangeRecordHash     string `json:"exchange_record_hash,omitempty"`
+	PreviousRecordSequence uint64 `json:"previous_record_sequence"`
+	PreviousRecordHash     string `json:"previous_record_hash,omitempty"`
 }
 
 // ProviderDecisionBinding is supplied only to a trusted read-only Store
@@ -121,30 +194,34 @@ type StoreReplayVerifier interface {
 // providerbridge does not journal the adapter's actual proposal bytes, so the
 // projection cannot attest those exact IPC bytes.
 type TranscriptProjection struct {
-	SchemaVersion              string              `json:"schema_version"`
-	VerificationScope          string              `json:"verification_scope"`
-	WorkflowID                 string              `json:"workflow_id"`
-	ConversationID             string              `json:"conversation_id"`
-	ProfileID                  string              `json:"profile_id"`
-	Model                      string              `json:"model"`
-	PolicyDigest               string              `json:"policy_digest"`
-	SystemPromptDigest         string              `json:"system_prompt_digest"`
-	DeveloperPromptDigest      string              `json:"developer_prompt_digest"`
-	InitialGenerationID        string              `json:"initial_generation_id"`
-	InitialTreeDigest          string              `json:"initial_tree_digest"`
-	ProviderGenerationID       string              `json:"provider_generation_id"`
-	ProviderTreeDigest         string              `json:"provider_tree_digest"`
-	ProviderSequence           uint64              `json:"provider_sequence"`
-	EventCount                 uint64              `json:"event_count"`
-	ProviderJournalRecordCount uint64              `json:"provider_journal_record_count"`
-	ExchangeCount              uint64              `json:"exchange_count"`
-	CapturedCallCount          uint64              `json:"captured_call_count"`
-	DecisionCount              uint64              `json:"decision_count"`
-	ResultCount                uint64              `json:"result_count"`
-	ProviderJournalHead        string              `json:"provider_journal_head"`
-	HistoryDigest              string              `json:"history_digest"`
-	Disposition                RecoveryDisposition `json:"disposition"`
-	ProjectionDigest           string              `json:"projection_digest"`
+	SchemaVersion              string                         `json:"schema_version"`
+	VerificationScope          string                         `json:"verification_scope"`
+	WorkflowID                 string                         `json:"workflow_id"`
+	ConversationID             string                         `json:"conversation_id"`
+	ProfileID                  string                         `json:"profile_id"`
+	Model                      string                         `json:"model"`
+	PolicyDigest               string                         `json:"policy_digest"`
+	SystemPromptDigest         string                         `json:"system_prompt_digest"`
+	DeveloperPromptDigest      string                         `json:"developer_prompt_digest"`
+	InitialGenerationID        string                         `json:"initial_generation_id"`
+	InitialTreeDigest          string                         `json:"initial_tree_digest"`
+	ProviderGenerationID       string                         `json:"provider_generation_id"`
+	ProviderTreeDigest         string                         `json:"provider_tree_digest"`
+	ProviderSequence           uint64                         `json:"provider_sequence"`
+	EventCount                 uint64                         `json:"event_count"`
+	ProviderJournalRecordCount uint64                         `json:"provider_journal_record_count"`
+	ExchangeCount              uint64                         `json:"exchange_count"`
+	CapturedCallCount          uint64                         `json:"captured_call_count"`
+	DecisionCount              uint64                         `json:"decision_count"`
+	ResultCount                uint64                         `json:"result_count"`
+	ProviderJournalHead        string                         `json:"provider_journal_head"`
+	HistoryDigest              string                         `json:"history_digest"`
+	Disposition                RecoveryDisposition            `json:"disposition"`
+	PendingCall                *ProviderCallRetirementBinding `json:"pending_call,omitempty"`
+	RetiredCall                *ProviderCallRetirementBinding `json:"retired_call,omitempty"`
+	HostCall                   *HostCallBinding               `json:"host_call,omitempty"`
+	HostCallOutcomeDigest      string                         `json:"host_call_outcome_digest,omitempty"`
+	ProjectionDigest           string                         `json:"projection_digest"`
 }
 
 const transcriptProjectionSchema = "tbound-provider-transcript-projection/v1"
@@ -161,6 +238,7 @@ const (
 	replayAwaitExchange
 	replayAwaitDecision
 	replayAwaitResult
+	replayRetired
 )
 
 // ReplayTranscript verifies the protected provider journal and deterministically
@@ -181,6 +259,14 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	if err != nil {
 		return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 	}
+	if pins.CheckpointRecordCount == 0 {
+		if pins.CheckpointRecordHead != "" {
+			return TranscriptProjection{}, replayError("empty checkpointed provider prefix has a non-empty head")
+		}
+	} else if pins.CheckpointRecordCount > uint64(len(trace.Records)) || pins.CheckpointRecordHead == "" ||
+		trace.Records[pins.CheckpointRecordCount-1].Hash != pins.CheckpointRecordHead {
+		return TranscriptProjection{}, replayError("provider journal does not retain its exact authenticated checkpoint prefix")
+	}
 	if len(trace.Effects) != 0 {
 		return TranscriptProjection{}, replayError("provider journal unexpectedly contains effect traces")
 	}
@@ -200,8 +286,12 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	currentGeneration, currentTree := cfg.InitialGenerationID, cfg.InitialTreeDigest
 	state := replayAwaitPrompt
 	var pending *replayDecision
+	var pendingHostCall *hostCallReservationEvidence
+	var lastHostCall *HostCallBinding
+	var lastHostCallOutcomeDigest string
 	var exchangeRecord audit.Record
 	var exchangeSequence uint64
+	var retiredCall *ProviderCallRetirementBinding
 	var ordinal, providerSequence, exchangeCount, callCount, decisionCount, resultCount uint64
 	var storeDecisionChecks uint64
 	responses := make(map[string]struct{})
@@ -234,6 +324,24 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			}
 			state = replayAwaitExchange
 
+		case "provider_host_call_reserved":
+			if state != replayAwaitExchange || pendingHostCall != nil || providerSequence >= MaxTranscriptTurns {
+				return TranscriptProjection{}, replayError("provider host-call reservation is out of order")
+			}
+			var evidence hostCallReservationEvidence
+			if err := unmarshalCanonicalEvent(record.Event.Data, &evidence); err != nil ||
+				evidence.WorkflowID != cfg.WorkflowID || evidence.ConversationID != cfg.ConversationID ||
+				evidence.ProfileID != cfg.ProfileID || evidence.Turn != providerSequence+1 ||
+				!validHostCallBinding(evidence.Binding) ||
+				verifyReplayEventID(record, cfg.ConversationID, "host-call-reserved", ordinal) != nil {
+				return TranscriptProjection{}, replayError("provider host-call reservation identity is invalid")
+			}
+			if err := verifyReplayRequestWithCompletionLimit(evidence.Request, cfg.ProfileID, model, history,
+				evidence.Binding.TokenUpperBound); err != nil || requestEvidenceDigest(evidence.Request) != evidence.Binding.RequestDigest {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, errors.New("provider host-call reservation does not bind the exact request"), err)
+			}
+			pendingHostCall = &evidence
+
 		case "provider_exchange":
 			if state != replayAwaitExchange || providerSequence >= MaxTranscriptTurns || exchangeCount == math.MaxUint64 {
 				return TranscriptProjection{}, replayError("provider exchange is out of order or exceeds sequence bounds")
@@ -246,7 +354,17 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				verifyReplayEventID(record, cfg.ConversationID, "exchange", ordinal) != nil {
 				return TranscriptProjection{}, replayError("provider exchange metadata or event identity is invalid")
 			}
-			if err := verifyReplayRequest(evidence.Request, cfg.ProfileID, model, history); err != nil {
+			completionLimit := uint64(0)
+			if pendingHostCall != nil {
+				completionLimit = pendingHostCall.Binding.TokenUpperBound
+				if evidence.HostCall == nil || *evidence.HostCall != pendingHostCall.Binding ||
+					!reflect.DeepEqual(evidence.Request, pendingHostCall.Request) {
+					return TranscriptProjection{}, replayError("provider exchange differs from its reserved host request")
+				}
+			} else if evidence.HostCall != nil || pins.RequireHostCallReservations {
+				return TranscriptProjection{}, replayError("provider exchange has no matching host-call reservation")
+			}
+			if err := verifyReplayRequestWithCompletionLimit(evidence.Request, cfg.ProfileID, model, history, completionLimit); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
 			captured, err := openrouter.CaptureSSE(bytes.NewReader(evidence.Response))
@@ -291,6 +409,12 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			providerSequence++
 			exchangeCount++
 			exchangeRecord = record
+			if pendingHostCall != nil {
+				binding := pendingHostCall.Binding
+				lastHostCall = &binding
+				lastHostCallOutcomeDigest = record.Hash
+				pendingHostCall = nil
+			}
 			if hasCall {
 				exchangeSequence = providerSequence
 				pending = &replayDecision{call: toolCall}
@@ -389,12 +513,89 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			state = replayAwaitExchange
 			resultCount++
 
+		case retirementEventKind:
+			if pins.PreviousOwnerEpoch == 0 {
+				return TranscriptProjection{}, replayError("provider lineage retirement lacks a retained predecessor owner")
+			}
+			var retirement lineageRetirementEvidence
+			if unmarshalCanonicalEvent(record.Event.Data, &retirement) != nil {
+				return TranscriptProjection{}, replayError("provider lineage retirement is not canonical evidence")
+			}
+			checkpointed := record.Sequence <= pins.CheckpointRecordCount
+			retirementEpochValid := checkpointed && pins.CheckpointRecordCount > 0 &&
+				retirement.PreviousOwnerEpoch > 0 && retirement.OwnerEpoch > retirement.PreviousOwnerEpoch &&
+				retirement.OwnerEpoch <= pins.PreviousOwnerEpoch
+			if !checkpointed {
+				retirementEpochValid = pins.PreviousOwnerEpoch > 0 &&
+					pins.RetirementOwnerEpoch > pins.PreviousOwnerEpoch &&
+					retirement.PreviousOwnerEpoch == pins.PreviousOwnerEpoch &&
+					retirement.OwnerEpoch > pins.PreviousOwnerEpoch &&
+					retirement.OwnerEpoch <= pins.RetirementOwnerEpoch
+			}
+			if !retirementEpochValid || retirement.SchemaVersion != "tbound-provider-lineage-retirement/v1" ||
+				retirement.WorkflowID != cfg.WorkflowID || retirement.ConversationID != cfg.ConversationID ||
+				verifyReplayEventID(record, cfg.ConversationID, "lineage_retired", ordinal) != nil {
+				return TranscriptProjection{}, replayError("provider lineage retirement has an invalid owner pair or event identity")
+			}
+			switch retirement.RetirementKind {
+			case retirementKind:
+				if state != replayAwaitDecision || pending == nil || pins.RetirementVerifier == nil {
+					return TranscriptProjection{}, replayError("unleased call retirement has no captured pending call or host verifier")
+				}
+				binding, err := providerCallRetirementBinding(cfg.WorkflowID, cfg.ConversationID, cfg.ProfileID,
+					providerSequence, exchangeSequence, exchangeRecord, pending.call, trace.Records, record.Sequence)
+				if err != nil {
+					return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+				}
+				if retirement.ProviderSequence != binding.ProviderSequence ||
+					retirement.ResponseIDIssuer != binding.ResponseIDIssuer || retirement.ResponseID != binding.ResponseID ||
+					retirement.ToolCallIDIssuer != binding.ToolCallIDIssuer || retirement.ToolCallID != binding.ToolCallID ||
+					retirement.ToolName != binding.ToolName || retirement.ArgumentsDigest != binding.ArgumentsDigest ||
+					retirement.ExchangeRecordSequence != binding.ExchangeRecordSequence ||
+					retirement.ExchangeRecordHash != binding.ExchangeRecordHash ||
+					retirement.PreviousRecordSequence != binding.PreviousRecordSequence ||
+					retirement.PreviousRecordHash != binding.PreviousRecordHash {
+					return TranscriptProjection{}, replayError("provider lineage retirement does not bind the exact captured call and journal prefix")
+				}
+				if err := pins.RetirementVerifier.VerifyUnleasedProviderCallRetirement(binding); err != nil {
+					return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, fmt.Errorf("verify no Store authorization, effect, or command lease for retired call: %w", err))
+				}
+				binding.OwnerEpoch = retirement.OwnerEpoch
+				binding.RetirementKind = retirement.RetirementKind
+				retiredCall = &binding
+				pending = nil
+				state = replayRetired
+			case idleRetirementKind:
+				if (state != replayAwaitPrompt && state != replayAwaitExchange) || pending != nil || pins.IdleRetirementVerifier == nil ||
+					retirement.ProviderSequence != providerSequence || retirement.ResponseIDIssuer != "" || retirement.ResponseID != "" ||
+					retirement.ToolCallIDIssuer != "" || retirement.ToolCallID != "" || retirement.ToolName != "" ||
+					retirement.ArgumentsDigest != "" || retirement.ExchangeRecordSequence != 0 || retirement.ExchangeRecordHash != "" {
+					return TranscriptProjection{}, replayError("idle lineage retirement is not an idle provider boundary")
+				}
+				lastIndex := len(trace.Records) - 2
+				if lastIndex < 0 || retirement.PreviousRecordSequence != trace.Records[lastIndex].Sequence ||
+					retirement.PreviousRecordHash != trace.Records[lastIndex].Hash {
+					return TranscriptProjection{}, replayError("idle lineage retirement does not bind its exact journal predecessor")
+				}
+				if err := pins.IdleRetirementVerifier.VerifyIdleProviderLineageRetirement(cfg.WorkflowID,
+					cfg.ConversationID, providerSequence, retirement.PreviousOwnerEpoch, retirement.OwnerEpoch); err != nil {
+					return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, fmt.Errorf("verify idle lineage has no unresolved authority or command lease: %w", err))
+				}
+				pending = nil
+				state = replayRetired
+			default:
+				return TranscriptProjection{}, replayError("provider lineage retirement uses an unsupported disposition")
+			}
+
 		case "provider_tool_result_unknown", "provider_exchange_unknown":
 			return TranscriptProjection{}, replayError("provider journal contains an unresolved UNKNOWN provider exchange or effect result")
 
 		default:
 			return TranscriptProjection{}, replayError("provider journal contains an unsupported event kind")
 		}
+	}
+	if pendingHostCall != nil {
+		return TranscriptProjection{}, replayError("provider journal ends with an unsettled host-call reservation")
 	}
 
 	request, err := openrouter.BuildRequest(model, history)
@@ -411,7 +612,19 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 		ProviderGenerationID: currentGeneration, ProviderTreeDigest: currentTree,
 		ProviderSequence: providerSequence, EventCount: ordinal, ProviderJournalRecordCount: uint64(len(trace.Records)), ExchangeCount: exchangeCount,
 		CapturedCallCount: callCount, DecisionCount: decisionCount, ResultCount: resultCount,
-		HistoryDigest: digestDomain("tbound/provider-history/v1", request.Body()), Disposition: dispositionForReplayState(state),
+		HistoryDigest: digestDomain("tbound/provider-history/v1", request.Body()), Disposition: dispositionForReplayState(state, retiredCall != nil),
+		HostCall: lastHostCall, HostCallOutcomeDigest: lastHostCallOutcomeDigest,
+	}
+	if state == replayAwaitDecision && pending != nil {
+		binding, err := providerCallRetirementBinding(cfg.WorkflowID, cfg.ConversationID, cfg.ProfileID,
+			providerSequence, exchangeSequence, exchangeRecord, pending.call, trace.Records, 0)
+		if err != nil {
+			return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+		}
+		projection.PendingCall = &binding
+	}
+	if retiredCall != nil {
+		projection.RetiredCall = retiredCall
 	}
 	if storeDecisionChecks > 0 {
 		projection.VerificationScope = ProjectionScopeStoreCrosslink
@@ -437,7 +650,12 @@ func validateRecoveryPins(pins RecoveryPins) error {
 }
 
 func verifyReplayRequest(request requestEvidence, profileID, model string, history []openrouter.Message) error {
-	built, err := openrouter.BuildRequest(model, history)
+	return verifyReplayRequestWithCompletionLimit(request, profileID, model, history, 0)
+}
+
+func verifyReplayRequestWithCompletionLimit(request requestEvidence, profileID, model string,
+	history []openrouter.Message, completionLimit uint64) error {
+	built, err := openrouter.BuildRequestWithCompletionLimit(model, history, completionLimit)
 	if err != nil {
 		return err
 	}
@@ -452,6 +670,35 @@ func verifyReplayRequest(request requestEvidence, profileID, model string, histo
 		return errors.New("recorded provider request does not byte-match the pinned broker history and fixed HTTP profile")
 	}
 	return nil
+}
+
+func validHostCallBinding(binding HostCallBinding) bool {
+	return validText(binding.CallID, MaxIdentityBytes) && validLowerHexDigest(binding.RequestDigest) && binding.TokenUpperBound > 0
+}
+
+func validLowerHexDigest(value string) bool {
+	if len(value) != sha256.Size*2 || strings.ToLower(value) != value {
+		return false
+	}
+	decoded, err := hex.DecodeString(value)
+	return err == nil && len(decoded) == sha256.Size
+}
+
+func requestEvidenceDigest(request requestEvidence) string {
+	encoded, err := json.Marshal(struct {
+		ProfileID     string      `json:"profile_id"`
+		Method        string      `json:"method"`
+		URL           string      `json:"url"`
+		Host          string      `json:"host"`
+		ContentLength int64       `json:"content_length"`
+		Headers       httpHeaders `json:"headers"`
+		Body          []byte      `json:"body"`
+	}{request.ProfileID, request.Method, request.URL, request.Host, request.ContentLength, request.Headers, request.Body})
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(append([]byte("tbound-provider-request/v1\n"), encoded...))
+	return hex.EncodeToString(sum[:])
 }
 
 // sameReplayToolCallProjection compares the redundant event projection using
@@ -585,7 +832,7 @@ func verifyReplayEventID(record audit.Record, conversationID, suffix string, ord
 	return nil
 }
 
-func dispositionForReplayState(state replayState) RecoveryDisposition {
+func dispositionForReplayState(state replayState, hasRetiredCall bool) RecoveryDisposition {
 	switch state {
 	case replayAwaitPrompt:
 		return DispositionAwaitingHostPrompt
@@ -593,9 +840,174 @@ func dispositionForReplayState(state replayState) RecoveryDisposition {
 		return DispositionAwaitingProviderExchange
 	case replayAwaitDecision:
 		return DispositionAwaitingGateDecision
+	case replayRetired:
+		if hasRetiredCall {
+			return DispositionRetiredUnexecuted
+		}
+		return DispositionRetired
 	default:
 		return DispositionPendingProviderResult
 	}
+}
+
+// AppendUnleasedProviderCallRetirement writes one explicit host-observed
+// retirement for a captured call that has no gate decision. The verifier runs
+// before append, and replay runs again after the durable write. It must be a
+// read-only verifier; this function never settles or authorizes an operation.
+func AppendUnleasedProviderCallRetirement(journal *audit.Journal, pins RecoveryPins,
+	verifier StoreReplayVerifier) (TranscriptProjection, error) {
+	if journal == nil || pins.PreviousOwnerEpoch == 0 || pins.RetirementOwnerEpoch <= pins.PreviousOwnerEpoch ||
+		pins.RetirementVerifier == nil {
+		return TranscriptProjection{}, replayError("host retirement requires a strictly newer acquired owner and a concrete no-authority verifier")
+	}
+	projection, err := ReplayTranscript(journal, pins, verifier)
+	if err != nil {
+		return TranscriptProjection{}, err
+	}
+	if projection.Disposition != DispositionAwaitingGateDecision || projection.PendingCall == nil || projection.RetiredCall != nil {
+		return TranscriptProjection{}, replayError("only one captured call awaiting its first gate decision can be retired")
+	}
+	binding := *projection.PendingCall
+	if err := pins.RetirementVerifier.VerifyUnleasedProviderCallRetirement(binding); err != nil {
+		return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, fmt.Errorf("prove captured call has no Store authorization, effect, or command lease: %w", err))
+	}
+	trace, err := journal.Trace()
+	if err != nil || len(trace.Records) == 0 || trace.Records[len(trace.Records)-1].Sequence != projection.ProviderJournalRecordCount {
+		return TranscriptProjection{}, errors.Join(replayError("provider journal changed before retirement append"), err)
+	}
+	last := trace.Records[len(trace.Records)-1]
+	evidence := lineageRetirementEvidence{
+		SchemaVersion: "tbound-provider-lineage-retirement/v1", WorkflowID: binding.WorkflowID,
+		ConversationID: binding.ConversationID, OwnerEpoch: pins.RetirementOwnerEpoch,
+		PreviousOwnerEpoch: pins.PreviousOwnerEpoch, RetirementKind: retirementKind,
+		ProviderSequence: binding.ProviderSequence, ResponseIDIssuer: binding.ResponseIDIssuer,
+		ResponseID: binding.ResponseID, ToolCallIDIssuer: binding.ToolCallIDIssuer,
+		ToolCallID: binding.ToolCallID, ToolName: binding.ToolName, ArgumentsDigest: binding.ArgumentsDigest,
+		ExchangeRecordSequence: binding.ExchangeRecordSequence, ExchangeRecordHash: binding.ExchangeRecordHash,
+		PreviousRecordSequence: last.Sequence, PreviousRecordHash: last.Hash,
+	}
+	data, err := json.Marshal(evidence)
+	if err != nil {
+		return TranscriptProjection{}, err
+	}
+	ordinal := projection.EventCount + 1
+	if ordinal == 0 {
+		return TranscriptProjection{}, replayError("provider journal sequence exhausted")
+	}
+	retirementRecord, err := journal.Append(audit.Event{Kind: retirementEventKind,
+		ID: fmt.Sprintf("%s:lineage_retired:%d", binding.ConversationID, ordinal), Data: data})
+	if err != nil {
+		return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+	}
+	trace, err = journal.Trace()
+	if err != nil || retirementRecord.Sequence != ordinal || uint64(len(trace.Records)) != ordinal ||
+		trace.Records[len(trace.Records)-1].Hash != retirementRecord.Hash {
+		return TranscriptProjection{}, errors.Join(replayError("durable retirement append did not preserve the exact journal head"), err)
+	}
+	verified, err := ReplayTranscript(journal, pins, verifier)
+	if err != nil || verified.Disposition != DispositionRetiredUnexecuted || verified.PendingCall != nil ||
+		verified.RetiredCall == nil || verified.RetiredCall.OwnerEpoch != pins.RetirementOwnerEpoch ||
+		verified.RetiredCall.ToolCallID != binding.ToolCallID ||
+		verified.ProviderJournalRecordCount != ordinal || verified.ProviderJournalHead != retirementRecord.Hash {
+		return TranscriptProjection{}, errors.Join(replayError("durable retirement did not replay to the exact retired call"), err)
+	}
+	return verified, nil
+}
+
+// AppendIdleProviderLineageRetirement records a clean host boundary for an
+// active transcript with no captured call pending. Full provider/Store replay
+// and the concrete old-owner drain are still required before invocation.
+func AppendIdleProviderLineageRetirement(journal *audit.Journal, pins RecoveryPins,
+	verifier StoreReplayVerifier) (TranscriptProjection, error) {
+	if journal == nil || pins.PreviousOwnerEpoch == 0 || pins.RetirementOwnerEpoch <= pins.PreviousOwnerEpoch ||
+		pins.IdleRetirementVerifier == nil {
+		return TranscriptProjection{}, replayError("idle retirement requires a strictly newer acquired owner and concrete host verifier")
+	}
+	projection, err := ReplayTranscript(journal, pins, verifier)
+	if err != nil {
+		return TranscriptProjection{}, err
+	}
+	if (projection.Disposition != DispositionAwaitingHostPrompt && projection.Disposition != DispositionAwaitingProviderExchange) ||
+		projection.PendingCall != nil || projection.RetiredCall != nil {
+		return TranscriptProjection{}, replayError("only an idle provider boundary with no captured call can be retired as idle")
+	}
+	if err := pins.IdleRetirementVerifier.VerifyIdleProviderLineageRetirement(projection.WorkflowID,
+		projection.ConversationID, projection.ProviderSequence, pins.PreviousOwnerEpoch, pins.RetirementOwnerEpoch); err != nil {
+		return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, fmt.Errorf("verify old idle lineage has no unresolved authority or command lease: %w", err))
+	}
+	trace, err := journal.Trace()
+	if err != nil || len(trace.Records) == 0 || trace.Records[len(trace.Records)-1].Sequence != projection.ProviderJournalRecordCount {
+		return TranscriptProjection{}, errors.Join(replayError("provider journal changed before idle retirement append"), err)
+	}
+	last := trace.Records[len(trace.Records)-1]
+	evidence := lineageRetirementEvidence{
+		SchemaVersion: "tbound-provider-lineage-retirement/v1", WorkflowID: projection.WorkflowID,
+		ConversationID: projection.ConversationID, OwnerEpoch: pins.RetirementOwnerEpoch,
+		PreviousOwnerEpoch: pins.PreviousOwnerEpoch, RetirementKind: idleRetirementKind,
+		ProviderSequence: projection.ProviderSequence, PreviousRecordSequence: last.Sequence,
+		PreviousRecordHash: last.Hash,
+	}
+	data, err := json.Marshal(evidence)
+	if err != nil {
+		return TranscriptProjection{}, err
+	}
+	ordinal := projection.EventCount + 1
+	if ordinal == 0 {
+		return TranscriptProjection{}, replayError("provider journal sequence exhausted")
+	}
+	retirementRecord, err := journal.Append(audit.Event{Kind: retirementEventKind,
+		ID: fmt.Sprintf("%s:lineage_retired:%d", projection.ConversationID, ordinal), Data: data})
+	if err != nil {
+		return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+	}
+	trace, err = journal.Trace()
+	if err != nil || retirementRecord.Sequence != ordinal || uint64(len(trace.Records)) != ordinal ||
+		trace.Records[len(trace.Records)-1].Hash != retirementRecord.Hash {
+		return TranscriptProjection{}, errors.Join(replayError("durable idle retirement append did not preserve the exact journal head"), err)
+	}
+	projection.Disposition = DispositionRetired
+	projection.EventCount = ordinal
+	projection.ProviderJournalRecordCount = ordinal
+	projection.ProviderJournalHead = retirementRecord.Hash
+	projection.ProjectionDigest = transcriptProjectionDigest(projection)
+	return projection, nil
+}
+
+func providerCallRetirementBinding(workflowID, conversationID, profileID string, providerSequence,
+	exchangeSequence uint64, exchange audit.Record, call openrouter.ToolCall, records []audit.Record,
+	retirementSequence uint64) (ProviderCallRetirementBinding, error) {
+	if workflowID == "" || conversationID == "" || profileID == "" || providerSequence == 0 ||
+		exchangeSequence != providerSequence || exchange.Sequence == 0 || exchange.Hash == "" || len(call.RawArguments) == 0 ||
+		call.ID == "" || call.Name == "" || len(records) == 0 {
+		return ProviderCallRetirementBinding{}, errors.New("captured call retirement identity is incomplete")
+	}
+	if retirementSequence != 0 && (retirementSequence != uint64(len(records)) || retirementSequence <= exchange.Sequence) {
+		return ProviderCallRetirementBinding{}, errors.New("retirement record does not follow the captured call's exact journal prefix")
+	}
+	previousIndex := len(records) - 1
+	if retirementSequence != 0 {
+		previousIndex--
+	}
+	if previousIndex < 0 {
+		return ProviderCallRetirementBinding{}, errors.New("captured call has no preceding journal record")
+	}
+	previous := records[previousIndex]
+	if previous.Sequence == 0 || previous.Hash == "" || previous.Sequence != uint64(previousIndex+1) {
+		return ProviderCallRetirementBinding{}, errors.New("captured call does not have a contiguous authenticated journal prefix")
+	}
+	responseID := capturedResponseID(exchange)
+	if responseID == "" {
+		return ProviderCallRetirementBinding{}, errors.New("captured call has no response identity")
+	}
+	return ProviderCallRetirementBinding{
+		WorkflowID: workflowID, ConversationID: conversationID, ProfileID: profileID,
+		RetirementKind: retirementKind, ProviderSequence: providerSequence,
+		ResponseIDIssuer: responseIssuer, ResponseID: responseID,
+		ToolCallIDIssuer: callIssuer, ToolCallID: call.ID, ToolName: call.Name,
+		ArgumentsDigest: digestBytes(call.RawArguments), ExchangeRecordSequence: exchange.Sequence,
+		ExchangeRecordHash: exchange.Hash, PreviousRecordSequence: previous.Sequence,
+		PreviousRecordHash: previous.Hash,
+	}, nil
 }
 
 func capturedResponseID(record audit.Record) string {

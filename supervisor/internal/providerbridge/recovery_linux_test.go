@@ -24,6 +24,32 @@ type replayVerifierFixture struct {
 	err       error
 }
 
+type retirementVerifierFixture struct {
+	bindings []ProviderCallRetirementBinding
+	err      error
+}
+
+type idleRetirementVerifierFixture struct {
+	workflowID, conversationID string
+	providerSequence           uint64
+	previousEpoch, newEpoch    uint64
+	calls                      uint64
+	err                        error
+}
+
+func (v *retirementVerifierFixture) VerifyUnleasedProviderCallRetirement(binding ProviderCallRetirementBinding) error {
+	v.bindings = append(v.bindings, binding)
+	return v.err
+}
+
+func (v *idleRetirementVerifierFixture) VerifyIdleProviderLineageRetirement(workflowID, conversationID string,
+	providerSequence, previousOwnerEpoch, retirementOwnerEpoch uint64) error {
+	v.workflowID, v.conversationID = workflowID, conversationID
+	v.providerSequence, v.previousEpoch, v.newEpoch = providerSequence, previousOwnerEpoch, retirementOwnerEpoch
+	v.calls++
+	return v.err
+}
+
 func (v *replayVerifierFixture) VerifyDecision(binding ProviderDecisionBinding) error {
 	v.decisions = append(v.decisions, cloneDecisionBinding(binding))
 	return v.err
@@ -166,6 +192,145 @@ func TestReplayTranscriptPendingAllowKeepsProviderPredecessorTip(t *testing.T) {
 	}
 	if projection.VerificationScope != ProjectionScopeStoreCrosslink {
 		t.Fatalf("pending projection omitted Store verifier scope: %+v", projection)
+	}
+}
+
+func TestAppendUnleasedProviderCallRetirementRequiresNewEpochAndPinsExactCall(t *testing.T) {
+	cfg := recoveryTestConfig()
+	path := filepath.Join(t.TempDir(), "provider-retirement.audit")
+	journal := openRecoveryTestJournal(t, path)
+	conversation, err := newWithDoer(cfg, ApprovedModel, &fixtureDoer{responses: []fixtureResponse{
+		{responseID: "response-retire", callID: "call-retire", tool: "write", arguments: json.RawMessage(`{"path":"secret.txt","content":"never execute"}`)},
+	}}, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AdmitPrompt("task-retire", "write the secret"); err != nil {
+		t.Fatal(err)
+	}
+	turn, err := conversation.NextTurn(context.Background())
+	if err != nil || turn.ToolCall == nil {
+		t.Fatalf("captured call=%+v err=%v", turn, err)
+	}
+	policy := recoveryTestPolicy(t, true)
+	retirementVerifier := &retirementVerifierFixture{}
+	pins := RecoveryPins{Config: cfg, Model: ApprovedModel, Policy: policy,
+		PreviousOwnerEpoch: 6, RetirementOwnerEpoch: 9, RetirementVerifier: retirementVerifier}
+	projection, err := AppendUnleasedProviderCallRetirement(journal, pins, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.Disposition != DispositionRetiredUnexecuted || projection.PendingCall != nil || projection.RetiredCall == nil ||
+		projection.RetiredCall.OwnerEpoch != 9 || projection.RetiredCall.RetirementKind != retirementKind ||
+		projection.RetiredCall.WorkflowID != cfg.WorkflowID || projection.RetiredCall.ConversationID != cfg.ConversationID ||
+		projection.RetiredCall.ProfileID != cfg.ProfileID || projection.RetiredCall.ToolCallID != "call-retire" ||
+		projection.RetiredCall.ArgumentsDigest != digestBytes([]byte(`{"path":"secret.txt","content":"never execute"}`)) ||
+		len(retirementVerifier.bindings) != 2 {
+		t.Fatalf("retirement projection=%+v verifier=%+v", projection, retirementVerifier)
+	}
+	if projection.ProviderGenerationID != cfg.InitialGenerationID || projection.ProviderTreeDigest != cfg.InitialTreeDigest ||
+		projection.DecisionCount != 0 || projection.ResultCount != 0 || projection.EventCount != 3 {
+		t.Fatalf("retirement advanced provider/store execution state: %+v", projection)
+	}
+	trace, err := journal.Trace()
+	if err != nil || len(trace.Records) != 3 || trace.Records[2].Event.Kind != retirementEventKind ||
+		trace.Records[2].Event.ID != cfg.ConversationID+":lineage_retired:3" {
+		t.Fatalf("retirement journal=%+v err=%v", trace, err)
+	}
+	for _, secret := range []string{"never execute", "secret.txt", "write the secret"} {
+		encoded, _ := json.Marshal(projection)
+		if strings.Contains(string(encoded), secret) {
+			t.Fatalf("retirement projection leaked raw content %q", secret)
+		}
+	}
+
+	// Once the exact retirement event is covered by the externally authenticated
+	// checkpoint prefix, future owners replay its recorded epoch pair while still
+	// rechecking that no Store/effect/lease fact ever appeared for the call.
+	pinned := pins
+	pinned.PreviousOwnerEpoch = 9
+	pinned.RetirementOwnerEpoch = 11
+	pinned.CheckpointRecordCount = projection.ProviderJournalRecordCount
+	pinned.CheckpointRecordHead = projection.ProviderJournalHead
+	replayed, err := ReplayTranscript(journal, pinned, nil)
+	if err != nil || replayed.Disposition != DispositionRetiredUnexecuted || replayed.RetiredCall == nil ||
+		replayed.RetiredCall.OwnerEpoch != 9 || len(retirementVerifier.bindings) != 3 {
+		t.Fatalf("checkpointed retirement replay=%+v verifier=%+v err=%v", replayed, retirementVerifier, err)
+	}
+}
+
+func TestAppendUnleasedProviderCallRetirementRejectsMissingDrainEpochOrAuthorityEvidence(t *testing.T) {
+	cfg := recoveryTestConfig()
+	journal := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "provider-retirement-refused.audit"))
+	conversation, err := newWithDoer(cfg, ApprovedModel, &fixtureDoer{responses: []fixtureResponse{
+		{responseID: "response-retire-refused", callID: "call-retire-refused", tool: "write", arguments: json.RawMessage(`{"path":"x","content":"x"}`)},
+	}}, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AdmitPrompt("task-retire-refused", "write x"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conversation.NextTurn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	policy := recoveryTestPolicy(t, true)
+	verifier := &retirementVerifierFixture{err: errors.New("retained Store has an authorization or effect for this call")}
+	pins := RecoveryPins{Config: cfg, Model: ApprovedModel, Policy: policy,
+		PreviousOwnerEpoch: 7, RetirementOwnerEpoch: 8, RetirementVerifier: verifier}
+	before, err := journal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := AppendUnleasedProviderCallRetirement(journal, pins, nil); !errors.Is(err, ErrTranscriptReplay) {
+		t.Fatalf("retirement accepted unverified authority absence: %v", err)
+	}
+	trace, err := journal.Trace()
+	if err != nil || len(trace.Records) != len(before.Records) ||
+		len(trace.Records) == 0 || trace.Records[len(trace.Records)-1].Hash != before.Records[len(before.Records)-1].Hash {
+		t.Fatalf("failed retirement changed the provider journal: before=%d after=%d err=%v", len(before.Records), len(trace.Records), err)
+	}
+	pins.RetirementOwnerEpoch = pins.PreviousOwnerEpoch
+	if _, err := AppendUnleasedProviderCallRetirement(journal, pins, nil); !errors.Is(err, ErrTranscriptReplay) {
+		t.Fatalf("retirement accepted an unchanged owner epoch: %v", err)
+	}
+}
+
+func TestAppendIdleProviderLineageRetirementRequiresNoPendingCall(t *testing.T) {
+	cfg := recoveryTestConfig()
+	journal := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "provider-idle-retirement.audit"))
+	conversation, err := newWithDoer(cfg, ApprovedModel, &fixtureDoer{}, journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conversation.AdmitPrompt("task-idle-retirement", "a task with no provider exchange yet"); err != nil {
+		t.Fatal(err)
+	}
+	policy := recoveryTestPolicy(t, true)
+	idleVerifier := &idleRetirementVerifierFixture{}
+	pins := RecoveryPins{Config: cfg, Model: ApprovedModel, Policy: policy,
+		PreviousOwnerEpoch: 4, RetirementOwnerEpoch: 7, IdleRetirementVerifier: idleVerifier}
+	projection, err := AppendIdleProviderLineageRetirement(journal, pins, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.Disposition != DispositionRetired || projection.RetiredCall != nil || projection.PendingCall != nil ||
+		projection.CapturedCallCount != 0 || idleVerifier.workflowID != cfg.WorkflowID || idleVerifier.conversationID != cfg.ConversationID ||
+		idleVerifier.providerSequence != 0 || idleVerifier.previousEpoch != 4 || idleVerifier.newEpoch != 7 || idleVerifier.calls != 1 {
+		t.Fatalf("idle lineage projection=%+v verifier=%+v", projection, idleVerifier)
+	}
+	trace, err := journal.Trace()
+	if err != nil || len(trace.Records) != 2 || trace.Records[1].Event.Kind != retirementEventKind {
+		t.Fatalf("idle retirement journal=%+v err=%v", trace, err)
+	}
+	pinned := pins
+	pinned.PreviousOwnerEpoch = 7
+	pinned.RetirementOwnerEpoch = 8
+	pinned.CheckpointRecordCount = projection.ProviderJournalRecordCount
+	pinned.CheckpointRecordHead = projection.ProviderJournalHead
+	replayed, err := ReplayTranscript(journal, pinned, nil)
+	if err != nil || replayed.Disposition != DispositionRetired || replayed.RetiredCall != nil || idleVerifier.calls != 2 {
+		t.Fatalf("checkpointed idle retirement replay=%+v verifier=%+v err=%v", replayed, idleVerifier, err)
 	}
 }
 

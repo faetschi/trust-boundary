@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
@@ -477,6 +478,125 @@ func TestSyntheticProviderAuditBindsRealE05StoreAndLeaseOrigin(t *testing.T) {
 	}
 	if err := managedLease.close(); err != nil {
 		t.Fatalf("release managed root after known durable terminal: %v", err)
+	}
+}
+
+func TestResolveFromTraceRequiresImmediateBoundProviderReservation(t *testing.T) {
+	const (
+		workflowID     = "resolver-workflow"
+		conversationID = "resolver-conversation"
+		profileID      = "resolver-profile"
+	)
+	providerURL, err := url.Parse(openrouter.Endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := &SessionOperationAuthority{
+		workflowID: workflowID, conversationID: conversationID, providerProfileID: profileID,
+		initialGeneration: "g0", initialTreeDigest: "sha256:" + strings.Repeat("a", 64), baselineBound: true,
+	}
+	request := providerRequestEvidence{
+		ProfileID: profileID, Method: "POST", URL: openrouter.Endpoint, Host: providerURL.Host,
+		ContentLength: int64(len("exact request bytes")), Headers: map[string][]string{"content-type": {"application/json"}},
+		Body: []byte("exact request bytes"),
+	}
+	binding := providerbridge.HostCallBinding{CallID: "host-call-1", RequestDigest: providerRequestEvidenceDigest(request), TokenUpperBound: 73}
+	reservation := providerHostCallReservationEvidence{WorkflowID: workflowID, ConversationID: conversationID,
+		ProfileID: profileID, Turn: 1, Binding: binding, Request: request}
+	exchange := providerExchangeEvidence{WorkflowID: workflowID, Turn: 1, Request: request,
+		StatusCode: 200, Response: []byte("offline response"), ResponseIDIssuer: governedResponseIssuer,
+		ToolCallIDIssuer: governedCallIssuer, ResponseID: "response-1", Model: providerbridge.ApprovedModel,
+		HostCall: &binding}
+
+	buildTrace := func(events ...struct {
+		kind  string
+		label string
+		data  any
+	}) audit.Trace {
+		t.Helper()
+		records := make([]audit.Record, 0, len(events))
+		for index, event := range events {
+			encoded, err := json.Marshal(event.data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			sequence := uint64(index + 1)
+			records = append(records, audit.Record{Version: 1, Sequence: sequence,
+				Event: audit.Event{Kind: event.kind,
+					ID: fmt.Sprintf("%s:%s:%d", conversationID, event.label, sequence), Data: encoded},
+				Hash: fmt.Sprintf("record-hash-%d", sequence)})
+		}
+		return audit.Trace{Records: records}
+	}
+	type event struct {
+		kind  string
+		label string
+		data  any
+	}
+	call := func(trace audit.Trace) error {
+		t.Helper()
+		_, err := authority.resolveFromTrace(trace, "unused-decision")
+		return err
+	}
+	validTrace := buildTrace(event{"provider_host_call_reserved", "host-call-reserved", reservation},
+		event{"provider_exchange", "exchange", exchange})
+	if err := call(validTrace); err == nil || !strings.Contains(err.Error(), "maps to 0 provider captures") {
+		t.Fatalf("valid immediate request reservation did not reach the empty-capture result: %v", err)
+	}
+	idleExchange := providerExchangeEvidence{WorkflowID: workflowID, Turn: 1, Request: request,
+		StatusCode: 200, Response: []byte("assistant text"), ResponseIDIssuer: governedResponseIssuer,
+		ToolCallIDIssuer: governedCallIssuer, ResponseID: "response-idle", Model: providerbridge.ApprovedModel}
+	idlePrefix := buildTrace(
+		event{"provider_user_admitted", "user", providerPromptEvidence{WorkflowID: workflowID,
+			ConversationID: conversationID, TaskID: "task", Generation: "g0", Prompt: "prompt"}},
+		event{"provider_exchange", "exchange", idleExchange})
+	idleRetirement := providerLineageRetirementEvidence{SchemaVersion: "tbound-provider-lineage-retirement/v1",
+		WorkflowID: workflowID, ConversationID: conversationID, OwnerEpoch: 2, PreviousOwnerEpoch: 1,
+		RetirementKind: "host_idle_lineage_retired/v1", ProviderSequence: 1,
+		PreviousRecordSequence: 2, PreviousRecordHash: idlePrefix.Records[1].Hash}
+	retiredIdleTrace := buildTrace(
+		event{"provider_user_admitted", "user", providerPromptEvidence{WorkflowID: workflowID,
+			ConversationID: conversationID, TaskID: "task", Generation: "g0", Prompt: "prompt"}},
+		event{"provider_exchange", "exchange", idleExchange},
+		event{"provider_lineage_retired", "lineage_retired", idleRetirement})
+	if err := call(retiredIdleTrace); err == nil || !strings.Contains(err.Error(), "maps to 0 provider captures") {
+		t.Fatalf("valid idle lineage retirement was not accepted as a terminal history record: %v", err)
+	}
+
+	mutatedRequest := request
+	mutatedRequest.Body = []byte("mutated request bytes")
+	mutatedExchange := exchange
+	mutatedExchange.Request = mutatedRequest
+	mutations := []struct {
+		name  string
+		trace audit.Trace
+	}{
+		{name: "orphan managed exchange", trace: buildTrace(event{"provider_exchange", "exchange", exchange})},
+		{name: "duplicate reservation", trace: buildTrace(event{"provider_host_call_reserved", "host-call-reserved", reservation},
+			event{"provider_host_call_reserved", "host-call-reserved", reservation})},
+		{name: "interleaved reservation", trace: buildTrace(event{"provider_host_call_reserved", "host-call-reserved", reservation},
+			event{"provider_user_admitted", "user", providerPromptEvidence{WorkflowID: workflowID,
+				ConversationID: conversationID, TaskID: "task", Generation: "g0", Prompt: "prompt"}})},
+		{name: "wrong next turn", trace: buildTrace(event{"provider_host_call_reserved", "host-call-reserved", func() providerHostCallReservationEvidence {
+			wrong := reservation
+			wrong.Turn = 2
+			return wrong
+		}()})},
+		{name: "mutated exchange request", trace: buildTrace(event{"provider_host_call_reserved", "host-call-reserved", reservation},
+			event{"provider_exchange", "exchange", mutatedExchange})},
+		{name: "reservation digest does not recompute", trace: buildTrace(event{"provider_host_call_reserved", "host-call-reserved", func() providerHostCallReservationEvidence {
+			wrong := reservation
+			wrong.Binding.RequestDigest = strings.Repeat("f", 64)
+			return wrong
+		}()})},
+		{name: "unknown event kind", trace: buildTrace(event{"provider_unrecognized", "unknown", struct{}{}})},
+	}
+	for _, test := range mutations {
+		t.Run(test.name, func(t *testing.T) {
+			if err := call(test.trace); err == nil || strings.Contains(err.Error(), "maps to 0 provider captures") {
+				t.Fatalf("resolver accepted malformed provider protocol history: %v", err)
+			}
+		})
 	}
 }
 

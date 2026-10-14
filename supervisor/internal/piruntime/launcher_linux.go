@@ -52,6 +52,11 @@ type LinuxCgroupScope struct {
 }
 
 func NewLinuxCgroupScope(delegatedRoot, directory *os.File, containmentProfile, settlementProfile string) (*LinuxCgroupScope, error) {
+	return newLinuxCgroupScope(delegatedRoot, directory, containmentProfile, settlementProfile, true)
+}
+
+func newLinuxCgroupScope(delegatedRoot, directory *os.File, containmentProfile, settlementProfile string,
+	requireEmpty bool) (*LinuxCgroupScope, error) {
 	if delegatedRoot == nil || directory == nil || !validIdentity(containmentProfile) || !validIdentity(settlementProfile) {
 		return nil, ErrCgroupScopeRefused
 	}
@@ -86,7 +91,7 @@ func NewLinuxCgroupScope(delegatedRoot, directory *os.File, containmentProfile, 
 	if err != nil || !info.IsDir() {
 		return nil, ErrCgroupScopeRefused
 	}
-	if err := validateCgroupDirectory(directory); err != nil {
+	if err := validateCgroupDirectoryState(directory, requireEmpty); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrCgroupScopeRefused, err)
 	}
 	directoryStat, ok := info.Sys().(*syscall.Stat_t)
@@ -99,6 +104,42 @@ func NewLinuxCgroupScope(delegatedRoot, directory *os.File, containmentProfile, 
 		return nil, err
 	}
 	return &LinuxCgroupScope{root: delegatedRoot, file: directory, rootDigest: rootDigest, containment: containmentProfile, settlement: settlementProfile}, nil
+}
+
+// OpenLinuxCgroupScopeForDrain reopens one exact, direct-child D09 scope using
+// the held delegated-root descriptor. It permits populated state only so the
+// caller can immediately revoke it through Remove; it never enables controllers
+// or launches a process. expectedIdentity binds the exact retained child inode.
+func OpenLinuxCgroupScopeForDrain(delegatedRoot *os.File, childName, containmentProfile,
+	settlementProfile, expectedIdentity string) (*LinuxCgroupScope, error) {
+	if delegatedRoot == nil || !validIdentity(childName) || strings.ContainsAny(childName, "/\\\x00") {
+		return nil, ErrCgroupScopeRefused
+	}
+	rootFD, err := syscall.Openat(int(delegatedRoot.Fd()), ".",
+		syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, errors.Join(ErrCgroupScopeRefused, err)
+	}
+	root := os.NewFile(uintptr(rootFD), "tbound-cgroup-drain-root")
+	childFD, err := syscall.Openat(int(root.Fd()), childName,
+		syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		_ = root.Close()
+		return nil, errors.Join(ErrCgroupScopeRefused, err)
+	}
+	child := os.NewFile(uintptr(childFD), "tbound-cgroup-drain-child")
+	scope, err := newLinuxCgroupScope(root, child, containmentProfile, settlementProfile, false)
+	if err != nil {
+		_ = child.Close()
+		_ = root.Close()
+		return nil, err
+	}
+	identity := scope.IdentityDigest()
+	if identity == "" || expectedIdentity != "" && identity != expectedIdentity {
+		_ = scope.Close()
+		return nil, ErrCgroupScopeRefused
+	}
+	return scope, nil
 }
 
 // CreateLinuxCgroupScope creates a unique direct-child cgroup using the held
@@ -266,6 +307,28 @@ func (s *LinuxCgroupScope) RootDigest() string {
 	return s.rootDigest
 }
 
+// IdentityDigest commits to the held delegated-root identity and the exact
+// direct-child cgroup path/device/inode tuple.
+func (s *LinuxCgroupScope) IdentityDigest() string {
+	if s == nil || s.root == nil || s.file == nil {
+		return ""
+	}
+	path, err := cgroupDescriptorPath(s.file)
+	if err != nil {
+		return ""
+	}
+	info, err := s.file.Stat()
+	if err != nil {
+		return ""
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat == nil {
+		return ""
+	}
+	return DigestBytes([]byte(fmt.Sprintf("tbound-d09-cgroup-scope/v1\x00%s\x00%s\x00%d\x00%d",
+		s.rootDigest, path, stat.Dev, stat.Ino)))
+}
+
 // Path returns the identity path of this held, verified cgroup-v2 scope.
 // Callers must use this path only to place a child under this descriptor-bound
 // scope; it is not a substitute for retaining the scope handle.
@@ -411,6 +474,10 @@ func (s *LinuxCgroupScope) Settle(ctx context.Context) (bool, error) {
 }
 
 func validateCgroupDirectory(directory *os.File) error {
+	return validateCgroupDirectoryState(directory, true)
+}
+
+func validateCgroupDirectoryState(directory *os.File, requireEmpty bool) error {
 	stat, err := directory.Stat()
 	if err != nil || !stat.IsDir() {
 		return errors.New("cgroup handle is not a directory")
@@ -442,7 +509,7 @@ func validateCgroupDirectory(directory *os.File) error {
 		return errors.New("cgroup cpu, memory and pids controllers are not delegated")
 	}
 	populated, err := readCgroupPopulated(directory)
-	if err != nil || populated {
+	if err != nil || requireEmpty && populated {
 		return errors.New("new Pi worker cgroup must be observable and empty before launch")
 	}
 	killFD, err := syscall.Openat(int(directory.Fd()), "cgroup.kill", syscall.O_WRONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)

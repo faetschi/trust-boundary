@@ -27,8 +27,16 @@ import (
 )
 
 func validateOptions(options Options) error {
-	if !validSHA256(options.PolicyDigest) || !validSHA256(options.MetadataPolicyDigest) ||
-		options.Journal == nil || options.AuthorizeOperation == nil || options.VerifyDecision == nil || options.VerifySettlement == nil {
+	return validateOptionProfile(options, true)
+}
+
+func validateRecoveryPreviewOptions(options Options) error {
+	return validateOptionProfile(options, false)
+}
+
+func validateOptionProfile(options Options, requireAuthorities bool) error {
+	if !validSHA256(options.PolicyDigest) || !validSHA256(options.MetadataPolicyDigest) || options.Journal == nil ||
+		(requireAuthorities && (options.AuthorizeOperation == nil || options.VerifyDecision == nil || options.VerifySettlement == nil)) {
 		return ErrInvalidOptions
 	}
 	if options.Limits.MaxObjects <= 0 || options.Limits.MaxDepth <= 0 ||
@@ -69,6 +77,19 @@ func (s *Store) checkUsableLocked() error {
 	}
 	if s.quarantined {
 		return ErrQuarantined
+	}
+	return nil
+}
+
+// checkMutableLocked keeps a reconstructed recovery preview limited to
+// evidence validation. Preview callbacks must not be able to turn historical
+// reconstruction into a new operation or source/exposure capability.
+func (s *Store) checkMutableLocked() error {
+	if err := s.checkUsableLocked(); err != nil {
+		return err
+	}
+	if s.recoveryPreview {
+		return ErrRecoveryPreview
 	}
 	return nil
 }
@@ -160,7 +181,7 @@ func (s *Store) read(ctx context.Context, generation *Generation, operation delt
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.checkUsableLocked(); err != nil {
+	if err := s.checkMutableLocked(); err != nil {
 		return nil, err
 	}
 	if err := s.verifyGenerationLocked(generation); err != nil {
@@ -234,7 +255,7 @@ type mutationEffectResult struct {
 func (s *Store) mutate(ctx context.Context, input *Generation, tool string, operation delta.OperationIdentity, decision delta.PolicyDecision, argumentDigest, outputPath string, apply func(*os.File) error) (MutationResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.checkUsableLocked(); err != nil {
+	if err := s.checkMutableLocked(); err != nil {
 		return MutationResult{}, err
 	}
 	if err := s.requireTipLocked(input); err != nil {
@@ -474,7 +495,11 @@ func (s *Store) validateChainForLocked(sealed workspace.Snapshot, transitions []
 		ExpectedSealedTreeDigest:   sealed.TreeDigest,
 		PolicyDigest:               s.options.PolicyDigest, MetadataPolicyDigest: s.options.MetadataPolicyDigest,
 	}
-	return delta.ValidateChain(spec, transitions, s.options.VerifyDecision)
+	verify := s.options.VerifyDecision
+	if s.recoveryPreview {
+		verify = s.verifyRecoveryPreviewDecision
+	}
+	return delta.ValidateChain(spec, transitions, verify)
 }
 
 func (s *Store) newViewLocked(input *Generation) (*CommandView, error) {

@@ -105,7 +105,7 @@ func (g *Generation) Expose(mode ViewMode) (*ExposedView, error) {
 	s := g.store
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := s.checkUsableLocked(); err != nil {
+	if err := s.checkMutableLocked(); err != nil {
 		return nil, err
 	}
 	if s.options.ExposureBinder == nil {
@@ -180,7 +180,7 @@ func (v *ExposedView) Refresh(next *Generation) error {
 	if v.closed || s.exposedViews[v.name] != v {
 		return ErrExposureClosed
 	}
-	if err := s.checkUsableLocked(); err != nil {
+	if err := s.checkMutableLocked(); err != nil {
 		return err
 	}
 	if next == nil || next.store != s || !s.containsGenerationLocked(next) {
@@ -259,7 +259,7 @@ func (v *ExposedView) ReadOnlyMountSource() (*os.File, error) {
 	if v.closed || s.exposedViews[v.name] != v || v.selected == nil || v.activeTarget == "" {
 		return nil, ErrExposureClosed
 	}
-	if err := s.checkUsableLocked(); err != nil {
+	if err := s.checkMutableLocked(); err != nil {
 		return nil, err
 	}
 	if err := s.verifyGenerationLocked(v.selected); err != nil {

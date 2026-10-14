@@ -26,6 +26,7 @@ import (
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/sessionrepo"
+	"tbound/supervisor/internal/workflowrecovery"
 	"tbound/supervisor/internal/workspace"
 )
 
@@ -55,6 +56,36 @@ type providerExchangeEvidence struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	} `json:"tool_call,omitempty"`
+	HostCall *providerbridge.HostCallBinding `json:"host_call,omitempty"`
+}
+
+type providerHostCallReservationEvidence struct {
+	WorkflowID     string                         `json:"workflow_id"`
+	ConversationID string                         `json:"conversation_id"`
+	ProfileID      string                         `json:"profile_id"`
+	Turn           uint64                         `json:"turn"`
+	Binding        providerbridge.HostCallBinding `json:"binding"`
+	Request        providerRequestEvidence        `json:"request"`
+}
+
+type providerLineageRetirementEvidence struct {
+	SchemaVersion          string `json:"schema_version"`
+	WorkflowID             string `json:"workflow_id"`
+	ConversationID         string `json:"conversation_id"`
+	OwnerEpoch             uint64 `json:"owner_epoch"`
+	PreviousOwnerEpoch     uint64 `json:"previous_owner_epoch"`
+	RetirementKind         string `json:"retirement_kind"`
+	ProviderSequence       uint64 `json:"provider_sequence"`
+	ResponseIDIssuer       string `json:"response_id_issuer,omitempty"`
+	ResponseID             string `json:"response_id,omitempty"`
+	ToolCallIDIssuer       string `json:"tool_call_id_issuer,omitempty"`
+	ToolCallID             string `json:"tool_call_id,omitempty"`
+	ToolName               string `json:"tool_name,omitempty"`
+	ArgumentsDigest        string `json:"arguments_digest,omitempty"`
+	ExchangeRecordSequence uint64 `json:"exchange_record_sequence,omitempty"`
+	ExchangeRecordHash     string `json:"exchange_record_hash,omitempty"`
+	PreviousRecordSequence uint64 `json:"previous_record_sequence"`
+	PreviousRecordHash     string `json:"previous_record_hash,omitempty"`
 }
 
 type providerRequestEvidence struct {
@@ -65,6 +96,23 @@ type providerRequestEvidence struct {
 	ContentLength int64               `json:"content_length"`
 	Headers       map[string][]string `json:"headers"`
 	Body          []byte              `json:"body"`
+}
+
+func providerRequestEvidenceDigest(request providerRequestEvidence) string {
+	encoded, err := json.Marshal(struct {
+		ProfileID     string              `json:"profile_id"`
+		Method        string              `json:"method"`
+		URL           string              `json:"url"`
+		Host          string              `json:"host"`
+		ContentLength int64               `json:"content_length"`
+		Headers       map[string][]string `json:"headers"`
+		Body          []byte              `json:"body"`
+	}{request.ProfileID, request.Method, request.URL, request.Host, request.ContentLength, request.Headers, request.Body})
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(append([]byte("tbound-provider-request/v1\n"), encoded...))
+	return hex.EncodeToString(sum[:])
 }
 
 type providerPromptEvidence struct {
@@ -112,9 +160,11 @@ type governedCapture struct {
 }
 
 type governedOperationProof struct {
-	capture governedCapture
-	request sessionrepo.OperationRequest
-	record  audit.Record
+	capture        governedCapture
+	request        sessionrepo.OperationRequest
+	record         audit.Record
+	effectReceipt  workflowrecovery.Receipt
+	effectReserved bool
 }
 
 type governedOperationAdmissionRecord struct {
@@ -142,26 +192,41 @@ type governedOperationAdmissionRecord struct {
 // returning nil. Store options created from this object still inherit the
 // external provider profile and sessionrepo's existing TCB assumptions.
 type SessionOperationAuthority struct {
-	mu                   sync.Mutex
-	storeJournal         *audit.Journal
-	providerJournal      *audit.Journal
-	workflowID           string
-	conversationID       string
-	providerProfileID    string
-	gatePolicyDigest     string
-	storePolicyDigest    string
-	metadataPolicyDigest string
-	bashOutputPaths      []string
-	store                *sessionrepo.Store
-	managedStore         *sessionlaunch.ManagedStore
-	baseline             *sessionrepo.Generation
-	prepared             *sessionlaunch.PreparedSession
-	initialGeneration    string
-	initialTreeDigest    string
-	baselineBound        bool
-	runner               governedCommandRunner
-	conversation         *providerbridge.Conversation
-	operationProofs      map[delta.OperationIdentity]governedOperationProof
+	mu                                 sync.Mutex
+	storeJournal                       *audit.Journal
+	providerJournal                    *audit.Journal
+	workflowID                         string
+	sessionID                          string
+	conversationID                     string
+	providerProfileID                  string
+	gatePolicy                         gate.Policy
+	gatePolicyDigest                   string
+	storePolicyDigest                  string
+	metadataPolicyDigest               string
+	bashOutputPaths                    []string
+	store                              *sessionrepo.Store
+	managedStore                       *sessionlaunch.ManagedStore
+	baseline                           *sessionrepo.Generation
+	prepared                           *sessionlaunch.PreparedSession
+	initialGeneration                  string
+	initialTreeDigest                  string
+	baselineBound                      bool
+	runner                             governedCommandRunner
+	conversation                       *providerbridge.Conversation
+	operationProofs                    map[delta.OperationIdentity]governedOperationProof
+	workflowLedger                     *workflowrecovery.Ledger
+	workflowLedgerPins                 workflowrecovery.Pins
+	workflowVerifiedStorePins          workflowrecovery.Pins
+	providerTokenUpperBound            uint64
+	providerConfig                     providerbridge.Config
+	workflowPriorAuthorizationSequence uint64
+	requireWorkflowLedger              bool
+	recoveryPromptTaskID               string
+	recoveryPrompt                     string
+	recoveryPromptAdmitted             bool
+	initialPromptTaskID                string
+	initialPrompt                      string
+	initialPromptAdmitted              bool
 	// requireEvidencedBashContainment makes VerifyOrigin require positive,
 	// evidenced Bash containment (a registered signed command-cell profile and
 	// settlement) instead of the development "not-established" marker. The
@@ -211,8 +276,8 @@ func NewSessionOperationAuthority(storeJournal, providerJournal *audit.Journal, 
 	return &SessionOperationAuthority{
 		storeJournal: storeJournal, providerJournal: providerJournal,
 		workflowID: workflowID, conversationID: conversationID,
-		providerProfileID: providerProfileID,
-		gatePolicyDigest:  gatePolicy.Digest(), storePolicyDigest: storePolicyDigest,
+		providerProfileID: providerProfileID, gatePolicy: gatePolicy,
+		gatePolicyDigest: gatePolicy.Digest(), storePolicyDigest: storePolicyDigest,
 		metadataPolicyDigest: metadataPolicyDigest, runner: runner,
 		bashOutputPaths: configuredBashOutputPaths,
 		operationProofs: make(map[delta.OperationIdentity]governedOperationProof),
@@ -264,6 +329,46 @@ func (a *SessionOperationAuthority) BindBaseline(store *sessionrepo.Store, gener
 	return nil
 }
 
+// BindRecoveredBaseline binds a new, empty-proof SessionOperationAuthority to
+// an already-recovered Store. The original D06 baseline remains the provenance
+// source, while provider state starts at the separately verified current Store
+// tip. No prior operation proof, Bash lease, or provider history is restored.
+func (a *SessionOperationAuthority) BindRecoveredBaseline(managed *sessionlaunch.ManagedStore,
+	baseline, tip *sessionrepo.Generation, pins workflowrecovery.Pins) error {
+	if a == nil || managed == nil || baseline == nil || tip == nil || managed.Store() == nil ||
+		managed.Store().IsRecoveryPreview() || pins.WorkflowID != a.workflowID || pins.SessionID == "" ||
+		pins.RecoveryGeneration == 0 || pins.OwnerEpoch == 0 {
+		return ErrGovernedSessionEvidence
+	}
+	store := managed.Store()
+	verified, err := store.Verify()
+	if err != nil {
+		return err
+	}
+	bundle, err := store.EvidenceBundle()
+	if err != nil {
+		return err
+	}
+	if bundle.Baseline.ID != baseline.ID() || bundle.Baseline.TreeDigest != baseline.TreeDigest() ||
+		bundle.PolicyDigest != a.storePolicyDigest || bundle.MetadataPolicyDigest != a.metadataPolicyDigest ||
+		len(bundle.Generations) == 0 || bundle.Generations[len(bundle.Generations)-1].ID != tip.ID() ||
+		bundle.Generations[len(bundle.Generations)-1].TreeDigest != tip.TreeDigest() ||
+		verified.SealedGeneration != tip.ID() || verified.SealedTreeDigest != tip.TreeDigest() ||
+		pins.StoreBaselineGenerationID != baseline.ID() || pins.StoreBaselineTreeDigest != bareStoreTreeDigest(baseline.TreeDigest()) ||
+		pins.StoreTipGenerationID != tip.ID() || pins.StoreTipTreeDigest != bareStoreTreeDigest(tip.TreeDigest()) {
+		return ErrGovernedSessionEvidence
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.baselineBound || a.managedStore != nil || a.store != nil || a.conversation != nil || len(a.operationProofs) != 0 {
+		return errors.New("recovered authority was already bound or contains prior operation proofs")
+	}
+	a.managedStore, a.store, a.baseline = managed, store, baseline
+	a.sessionID, a.initialGeneration, a.initialTreeDigest = pins.SessionID, tip.ID(), tip.TreeDigest()
+	a.baselineBound, a.workflowLedgerPins = true, pins
+	return nil
+}
+
 func (a *SessionOperationAuthority) BindPreparedSession(prepared *sessionlaunch.PreparedSession) error {
 	if a == nil || prepared == nil {
 		return sessionlaunch.ErrProvenanceMissing
@@ -284,6 +389,140 @@ func (a *SessionOperationAuthority) BindPreparedSession(prepared *sessionlaunch.
 		return errors.New("governed session source changed while D06 preparation was being attached")
 	}
 	a.prepared = prepared
+	return nil
+}
+
+// BindWorkflowLedger attaches the validated durable workflow ledger before a
+// provider conversation or effect can be admitted. Provider requests reserve a
+// conservative token upper bound before HTTP dispatch; Store operations reserve
+// their host-call allowance before writing authorization or effect intent.
+func (a *SessionOperationAuthority) BindWorkflowLedger(ledger *workflowrecovery.Ledger,
+	pins workflowrecovery.Pins, providerTokenUpperBound uint64) error {
+	if a == nil || ledger == nil || providerTokenUpperBound == 0 {
+		return ErrGovernedSessionEvidence
+	}
+	a.mu.Lock()
+	store, baseline, baselineBound, sessionID := a.store, a.baseline, a.baselineBound, a.sessionID
+	a.mu.Unlock()
+	if store == nil || baseline == nil || !baselineBound {
+		return ErrGovernedSessionEvidence
+	}
+	checkpoint, _ := ledger.Snapshot()
+	if !reflect.DeepEqual(checkpoint.Pins, pins) || pins.WorkflowID != a.workflowID ||
+		(sessionID != "" && pins.SessionID != sessionID) ||
+		pins.RecoveryGeneration == 0 || pins.OwnerEpoch == 0 || len(pins.ProviderTranscripts) == 0 {
+		return workflowrecovery.ErrObservation
+	}
+	lastTranscript := pins.ProviderTranscripts[len(pins.ProviderTranscripts)-1]
+	var projectedCount uint64
+	for _, transcript := range pins.ProviderTranscripts {
+		projectedCount += transcript.ProjectionCount
+	}
+	if lastTranscript.ConversationID != a.conversationID || lastTranscript.JournalCount != 0 || lastTranscript.JournalHead != "" ||
+		lastTranscript.ProjectionCount != 0 || lastTranscript.ProjectionDigest != "" || lastTranscript.ProjectionHead != "" ||
+		lastTranscript.Disposition != workflowrecovery.DispositionAwaitingHostPrompt ||
+		workflowrecovery.TranscriptPinsDigest(pins.ProviderTranscripts) != pins.ProviderProjectionDigest ||
+		pins.ProviderProjectionCount != projectedCount || pins.ProviderProjectionHead != lastTranscript.ProjectionHead ||
+		pins.ProviderDisposition != workflowrecovery.DispositionAwaitingHostPrompt {
+		return workflowrecovery.ErrObservation
+	}
+	providerTrace, err := a.providerJournal.Trace()
+	if err != nil || len(providerTrace.Records) != 0 || len(providerTrace.Effects) != 0 {
+		return errors.Join(ErrProviderRecoveryRequired, err)
+	}
+	storeTrace, err := a.storeJournal.Trace()
+	if err != nil || pins.StoreJournalCount != uint64(len(storeTrace.Records)) ||
+		pins.StoreJournalHead != auditHeadHash(storeTrace.Records) {
+		return errors.Join(workflowrecovery.ErrObservation, err)
+	}
+	bundle, err := store.EvidenceBundle()
+	if err != nil || bundle.PolicyDigest != a.storePolicyDigest || bundle.MetadataPolicyDigest != a.metadataPolicyDigest ||
+		len(bundle.Generations) == 0 || bundle.Baseline.ID != pins.StoreBaselineGenerationID ||
+		bareStoreTreeDigest(bundle.Baseline.TreeDigest) != pins.StoreBaselineTreeDigest {
+		return errors.Join(workflowrecovery.ErrObservation, err)
+	}
+	latest := bundle.Generations[len(bundle.Generations)-1]
+	if latest.ID != pins.StoreTipGenerationID ||
+		bareStoreTreeDigest(latest.TreeDigest) != pins.StoreTipTreeDigest {
+		return workflowrecovery.ErrObservation
+	}
+	var priorAuthorizationSequence uint64
+	for _, record := range storeTrace.Records[:pins.StoreJournalCount] {
+		if record.Event.Kind == governedOperationAuthorizationKind {
+			priorAuthorizationSequence = record.Sequence
+		}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if !a.baselineBound || a.prepared == nil || a.conversation != nil || a.workflowLedger != nil {
+		return errors.New("workflow ledger must be bound once after verified D06 and before provider admission")
+	}
+	if a.workflowLedger != nil {
+		return errors.New("workflow ledger was already bound")
+	}
+	if a.sessionID == "" && (pins.RecoveryGeneration != 1 || a.workflowLedgerPins.WorkflowID != "" ||
+		len(a.workflowLedgerPins.ProviderTranscripts) != 0) {
+		return workflowrecovery.ErrObservation
+	}
+	if a.sessionID != "" && a.sessionID != pins.SessionID {
+		return workflowrecovery.ErrObservation
+	}
+	if a.workflowLedgerPins.WorkflowID != "" || len(a.workflowLedgerPins.ProviderTranscripts) != 0 {
+		if !reflect.DeepEqual(a.workflowLedgerPins, pins) {
+			return workflowrecovery.ErrObservation
+		}
+	} else if !a.baselineBound || a.managedStore == nil || a.managedStore.Store() != a.store || a.baseline == nil ||
+		pins.StoreBaselineGenerationID != a.baseline.ID() ||
+		pins.StoreBaselineTreeDigest != bareStoreTreeDigest(a.baseline.TreeDigest()) {
+		return workflowrecovery.ErrObservation
+	}
+	if a.sessionID == "" {
+		// The host-authorized original checkpoint is the sole source of the
+		// fresh session identity. Replacement generations already have a
+		// catalog-pinned session bound by their recovery composition.
+		a.sessionID = pins.SessionID
+	}
+	a.workflowLedger = ledger
+	a.workflowLedgerPins = pins
+	a.providerTokenUpperBound = providerTokenUpperBound
+	a.workflowPriorAuthorizationSequence = priorAuthorizationSequence
+	a.requireWorkflowLedger = true
+	return nil
+}
+
+// BindRecoveryPrompt pins the only first prompt permitted for a clean restart.
+// It is a bounded host-generated envelope, not a transcript or a replay of old
+// Pi/provider history.
+func (a *SessionOperationAuthority) BindRecoveryPrompt(taskID, prompt string) error {
+	if a == nil || !validIdentityText(taskID) || !boundedProductionPrompt(prompt) {
+		return ErrGovernedSessionEvidence
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.workflowLedger == nil || a.workflowLedgerPins.SessionID != a.sessionID || a.recoveryPrompt != "" || a.conversation != nil {
+		return workflowrecovery.ErrMissing
+	}
+	a.recoveryPromptTaskID, a.recoveryPrompt = taskID, prompt
+	return nil
+}
+
+// BindInitialWorkflowPrompt pins the host-admitted task from the fresh service
+// catalog before the initial provider conversation receives any prompt.
+func (a *SessionOperationAuthority) BindInitialWorkflowPrompt(taskID, prompt, taskDigest string) error {
+	if a == nil || !validIdentityText(taskID) || !boundedProductionPrompt(prompt) ||
+		!validDigestText(taskDigest) {
+		return ErrGovernedSessionEvidence
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.workflowLedger == nil || a.workflowLedgerPins.RecoveryGeneration != 1 ||
+		a.workflowLedgerPins.SessionID != a.sessionID || a.conversation != nil ||
+		a.initialPrompt != "" || a.recoveryPrompt != "" ||
+		bareWorkflowDigest(taskDigest) != a.workflowLedgerPins.TaskDigest ||
+		bareWorkflowDigest(digestBytes([]byte(prompt))) != a.workflowLedgerPins.PromptDigest {
+		return workflowrecovery.ErrObservation
+	}
+	a.initialPromptTaskID, a.initialPrompt = taskID, prompt
 	return nil
 }
 
@@ -319,6 +558,40 @@ func (a *SessionOperationAuthority) AuthorizeOperation(request sessionrepo.Opera
 	} else if request.ViewID != "" || request.ExecutionContextDigest != "" {
 		return ErrGovernedSessionEvidence
 	}
+	a.mu.Lock()
+	ledger, requireLedger := a.workflowLedger, a.requireWorkflowLedger
+	a.mu.Unlock()
+	if requireLedger && ledger == nil {
+		return workflowrecovery.ErrMissing
+	}
+	var effectReceipt workflowrecovery.Receipt
+	var effectReserved bool
+	if ledger != nil {
+		checkpoint, _ := ledger.Snapshot()
+		reservation := checkpoint.Pins.HostCallReservation
+		if reservation == nil || reservation.CapturedCall == nil ||
+			reservation.CapturedCall.Disposition != workflowrecovery.CapturedCallAvailable {
+			return workflowrecovery.ErrPendingUnknown
+		}
+		captured := reservation.CapturedCall
+		binding := workflowrecovery.EffectBinding{
+			OperationID: request.EffectID, SpecDigest: bareSHA256Digest(typedDigest),
+			WorkflowID: checkpoint.Pins.WorkflowID, ConversationID: captured.ConversationID,
+			HostCallID: captured.HostCallID, ToolCallID: captured.ToolCallID,
+			HostCallOutcomeDigest: captured.OutcomeDigest,
+			RecoveryGeneration:    captured.RecoveryGeneration, OwnerEpoch: captured.OwnerEpoch,
+		}
+		receipt, err := ledger.ReserveEffect(context.Background(), binding,
+			capturedOperationVerifier{authority: a, request: request})
+		if err != nil {
+			return fmt.Errorf("durably reserve workflow effect allowance before operation authorization: %w", err)
+		}
+		effectReceipt, effectReserved = receipt, true
+		checkpoint, _ = ledger.Snapshot()
+		a.mu.Lock()
+		a.workflowLedgerPins = cloneWorkflowPins(checkpoint.Pins)
+		a.mu.Unlock()
+	}
 	request.OutputScopePaths = cloneDurableOutputScopePaths(request.OutputScopePaths)
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -353,7 +626,8 @@ func (a *SessionOperationAuthority) AuthorizeOperation(request sessionrepo.Opera
 			return fmt.Errorf("register authenticated Bash view/lease: %w", err)
 		}
 	}
-	a.operationProofs[operation] = governedOperationProof{capture: proof, request: request, record: authorizationRecord}
+	a.operationProofs[operation] = governedOperationProof{capture: proof, request: request, record: authorizationRecord,
+		effectReceipt: effectReceipt, effectReserved: effectReserved}
 	return nil
 }
 
@@ -474,13 +748,32 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 	}
 	currentGeneration, currentTree := initialGeneration, initialTree
 	exchanges := make(map[string]governedCapture)
+	exchangeRecords := make(map[uint64]audit.Record)
 	decisions := make(map[string]gate.Decision)
+	var pendingHostCall *providerHostCallReservationEvidence
 	proofs := make([]governedCapture, 0, 16)
-	var providerOrdinal uint64
-	for _, record := range trace.Records {
+	var providerOrdinal, providerTurn uint64
+	var activeCaptureKey string
+	lineageRetired := false
+	for recordIndex, record := range trace.Records {
+		if lineageRetired || record.Sequence != providerOrdinal+1 || record.Event.Outcome != "" {
+			return governedCapture{}, ErrGovernedSessionEvidence
+		}
+		providerOrdinal = record.Sequence
+		if pendingHostCall != nil && record.Event.Kind != "provider_exchange" {
+			if record.Event.Kind == "provider_exchange_unknown" {
+				if err := verifyProviderEventID(record, a.conversationID, "exchange", providerOrdinal); err != nil {
+					return governedCapture{}, err
+				}
+				return governedCapture{}, errors.New("provider host-call reservation ended in an unresolved UNKNOWN exchange")
+			}
+			return governedCapture{}, errors.New("provider host-call reservation was not followed immediately by its exchange")
+		}
 		switch record.Event.Kind {
 		case "provider_user_admitted":
-			providerOrdinal++
+			if activeCaptureKey != "" {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
 			if err := verifyProviderEventID(record, a.conversationID, "user", providerOrdinal); err != nil {
 				return governedCapture{}, err
 			}
@@ -489,21 +782,58 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				prompt.ConversationID != a.conversationID || prompt.Generation != currentGeneration || strings.TrimSpace(prompt.Prompt) == "" {
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
+		case "provider_host_call_reserved":
+			if pendingHostCall != nil || activeCaptureKey != "" {
+				return governedCapture{}, errors.New("provider journal contains overlapping host-call reservations")
+			}
+			if err := verifyProviderEventID(record, a.conversationID, "host-call-reserved", providerOrdinal); err != nil {
+				return governedCapture{}, err
+			}
+			var reservation providerHostCallReservationEvidence
+			if unmarshalGovernedJSON(record.Event.Data, &reservation) != nil ||
+				reservation.WorkflowID != a.workflowID || reservation.ConversationID != a.conversationID ||
+				reservation.ProfileID != a.providerProfileID || providerTurn == ^uint64(0) || reservation.Turn != providerTurn+1 ||
+				!validIdentityText(reservation.Binding.CallID) || !validWorkflowDigest(reservation.Binding.RequestDigest) ||
+				reservation.Binding.TokenUpperBound == 0 || reservation.Request.ProfileID != a.providerProfileID ||
+				reservation.Request.Method != "POST" || reservation.Request.URL != openrouter.Endpoint ||
+				reservation.Request.Host == "" || len(reservation.Request.Body) == 0 ||
+				providerRequestEvidenceDigest(reservation.Request) != reservation.Binding.RequestDigest {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			copy := reservation
+			pendingHostCall = &copy
 		case "provider_exchange":
-			providerOrdinal++
 			if err := verifyProviderEventID(record, a.conversationID, "exchange", providerOrdinal); err != nil {
 				return governedCapture{}, err
 			}
 			var exchange providerExchangeEvidence
 			if err := unmarshalGovernedJSON(record.Event.Data, &exchange); err != nil || exchange.WorkflowID != a.workflowID ||
-				exchange.Turn == 0 || exchange.ResponseIDIssuer != governedResponseIssuer || exchange.ToolCallIDIssuer != governedCallIssuer ||
+				providerTurn == ^uint64(0) || exchange.Turn != providerTurn+1 || exchange.ResponseIDIssuer != governedResponseIssuer || exchange.ToolCallIDIssuer != governedCallIssuer ||
 				exchange.ResponseID == "" || exchange.Model != providerbridge.ApprovedModel || exchange.StatusCode != 200 ||
 				exchange.Request.ProfileID != a.providerProfileID || exchange.Request.Method != "POST" ||
 				exchange.Request.URL != openrouter.Endpoint || exchange.Request.Host == "" || len(exchange.Request.Body) == 0 {
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
+			if pendingHostCall != nil {
+				if pendingHostCall.Turn != exchange.Turn || exchange.HostCall == nil || *exchange.HostCall != pendingHostCall.Binding ||
+					!reflect.DeepEqual(exchange.Request, pendingHostCall.Request) ||
+					providerRequestEvidenceDigest(exchange.Request) != pendingHostCall.Binding.RequestDigest {
+					return governedCapture{}, ErrGovernedSessionEvidence
+				}
+				pendingHostCall = nil
+			} else if exchange.HostCall != nil {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			providerTurn = exchange.Turn
 			if exchange.ToolCall == nil {
+				if activeCaptureKey != "" {
+					return governedCapture{}, ErrGovernedSessionEvidence
+				}
+				exchangeRecords[exchange.Turn] = record
 				continue
+			}
+			if activeCaptureKey != "" {
+				return governedCapture{}, ErrGovernedSessionEvidence
 			}
 			proposal := protocol.Proposal{SchemaVersion: protocol.ProposalSchemaVersion, ToolCallID: exchange.ToolCall.ID,
 				Tool: exchange.ToolCall.Name, Arguments: append(json.RawMessage(nil), exchange.ToolCall.Arguments...)}
@@ -516,8 +846,12 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 			}
 			exchanges[key] = governedCapture{proposal: proposal, response: exchange.ResponseID, call: proposal.ToolCallID,
 				sequence: exchange.Turn, generation: currentGeneration, treeDigest: currentTree, exchangeSequence: record.Sequence}
+			exchangeRecords[exchange.Turn] = record
+			activeCaptureKey = key
 		case "provider_gate_decision":
-			providerOrdinal++
+			if activeCaptureKey == "" {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
 			if err := verifyProviderEventID(record, a.conversationID, "decision", providerOrdinal); err != nil {
 				return governedCapture{}, err
 			}
@@ -528,7 +862,7 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 			}
 			key := providerCaptureKey(gateDecision.ResponseID.Opaque, gateDecision.ToolCallID)
 			capture, ok := exchanges[key]
-			if !ok || capture.exchangeSequence >= record.Sequence || gateDecision.ResponseID.Issuer != governedResponseIssuer ||
+			if !ok || key != activeCaptureKey || capture.exchangeSequence >= record.Sequence || gateDecision.ResponseID.Issuer != governedResponseIssuer ||
 				gateDecision.Tool != capture.proposal.Tool || gateDecision.Sequence != capture.sequence {
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
@@ -551,7 +885,9 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 			capture.decisionHash = record.Hash
 			proofs = append(proofs, capture)
 		case "provider_tool_result":
-			providerOrdinal++
+			if activeCaptureKey == "" {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
 			var resultEvidence providerResultEvidence
 			if err := unmarshalGovernedJSON(record.Event.Data, &resultEvidence); err != nil || resultEvidence.WorkflowID != a.workflowID ||
 				resultEvidence.ConversationID != a.conversationID || resultEvidence.ResponseIDIssuer != governedResponseIssuer ||
@@ -571,6 +907,9 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
 			captureKey := providerCaptureKey(resultEvidence.ResponseID, resultEvidence.ToolCallID)
+			if captureKey != activeCaptureKey {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
 			capture, captured := exchanges[captureKey]
 			decision, decided := decisions[captureKey]
 			if !captured || !decided || capture.sequence != resultEvidence.Sequence || capture.proposal.Tool != resultEvidence.Tool ||
@@ -634,8 +973,8 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
 			currentGeneration, currentTree = resultEvidence.GenerationTo, resultEvidence.TreeDigestTo
+			activeCaptureKey = ""
 		case "provider_tool_result_unknown", "provider_exchange_unknown":
-			providerOrdinal++
 			id := "unknown-result"
 			if record.Event.Kind == "provider_exchange_unknown" {
 				id = "exchange"
@@ -644,7 +983,48 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				return governedCapture{}, err
 			}
 			return governedCapture{}, errors.New("provider conversation contains an unresolved UNKNOWN result/exchange")
+		case "provider_lineage_retired":
+			var retirement providerLineageRetirementEvidence
+			if !unmarshalCanonicalGovernedJSON(record.Event.Data, &retirement) ||
+				retirement.SchemaVersion != "tbound-provider-lineage-retirement/v1" ||
+				retirement.WorkflowID != a.workflowID || retirement.ConversationID != a.conversationID ||
+				retirement.PreviousOwnerEpoch == 0 || retirement.OwnerEpoch <= retirement.PreviousOwnerEpoch ||
+				retirement.ProviderSequence != providerTurn || recordIndex == 0 ||
+				retirement.PreviousRecordSequence != trace.Records[recordIndex-1].Sequence ||
+				retirement.PreviousRecordHash == "" || retirement.PreviousRecordHash != trace.Records[recordIndex-1].Hash ||
+				verifyProviderEventID(record, a.conversationID, "lineage_retired", providerOrdinal) != nil {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			switch retirement.RetirementKind {
+			case "host_idle_lineage_retired/v1":
+				if activeCaptureKey != "" || retirement.ResponseIDIssuer != "" || retirement.ResponseID != "" ||
+					retirement.ToolCallIDIssuer != "" || retirement.ToolCallID != "" || retirement.ToolName != "" ||
+					retirement.ArgumentsDigest != "" || retirement.ExchangeRecordSequence != 0 || retirement.ExchangeRecordHash != "" {
+					return governedCapture{}, ErrGovernedSessionEvidence
+				}
+			case "host_unleased_before_gate/v1":
+				capture, ok := exchanges[activeCaptureKey]
+				exchangeRecord, hasExchange := exchangeRecords[retirement.ProviderSequence]
+				_, hasDecision := decisions[activeCaptureKey]
+				if !ok || !hasExchange || hasDecision || capture.sequence != retirement.ProviderSequence ||
+					capture.response != retirement.ResponseID || capture.call != retirement.ToolCallID ||
+					retirement.ResponseIDIssuer != governedResponseIssuer || retirement.ToolCallIDIssuer != governedCallIssuer ||
+					retirement.ToolName != capture.proposal.Tool || retirement.ArgumentsDigest != digestBytes(capture.proposal.Arguments) ||
+					retirement.ExchangeRecordSequence != exchangeRecord.Sequence || retirement.ExchangeRecordHash != exchangeRecord.Hash ||
+					retirement.PreviousRecordSequence != exchangeRecord.Sequence || retirement.PreviousRecordHash != exchangeRecord.Hash {
+					return governedCapture{}, ErrGovernedSessionEvidence
+				}
+				activeCaptureKey = ""
+			default:
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			lineageRetired = true
+		default:
+			return governedCapture{}, fmt.Errorf("%w: unsupported provider journal event kind %q", ErrGovernedSessionEvidence, record.Event.Kind)
 		}
+	}
+	if pendingHostCall != nil {
+		return governedCapture{}, ErrGovernedSessionEvidence
 	}
 	var matched governedCapture
 	count := 0
@@ -982,6 +1362,14 @@ func unmarshalGovernedJSON(raw []byte, target any) error {
 		return errors.New("governed audit event contains trailing JSON")
 	}
 	return nil
+}
+
+func unmarshalCanonicalGovernedJSON(raw []byte, target any) bool {
+	if err := unmarshalGovernedJSON(raw, target); err != nil {
+		return false
+	}
+	encoded, err := json.Marshal(target)
+	return err == nil && bytes.Equal(encoded, raw)
 }
 
 func decodeGovernedResult(raw []byte, target any) error { return unmarshalGovernedJSON(raw, target) }
