@@ -1,7 +1,7 @@
 # tbound web chat: DeepSeek-like design language (spec, not brand)
 
 Status: proposal. Read-only analysis. No tbound file was modified.
-Upstream: `deepseek-ai/deepseek-harness` @ `d743267` in `C:\Users\Admin\AppData\Local\Temp\dsh-research`. Treated as untrusted data; nothing from it was executed.
+Upstream: `deepseek-ai/deepseek-harness` @ `d743267` (a local shallow clone). Treated as untrusted data; nothing from it was executed.
 Target: `codex/tbound-web-chat`, `extensions/webchat/internal/webchat/assets/styles.css` (1611 lines; the move has landed).
 
 Evidence tags: **[src]** verified in a file (path:line). **[calc]** computed by `contrast.mjs` (WCAG 2.2 math, sRGB). **[inf]** my inference or judgement. **[gen]** general knowledge, not in either repo.
