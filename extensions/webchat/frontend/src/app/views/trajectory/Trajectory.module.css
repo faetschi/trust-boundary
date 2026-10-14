@@ -1,0 +1,348 @@
+/*
+ * The Trajectory view: toolbar, sequence rail, record ledger and the tail control. Colours are
+ * alias tokens only (tokens.test.ts enforces it). Rail widths are bucketed weight classes, not
+ * inline styles, because the CSP allows no inline style (core/trajectory.ts weightClass).
+ */
+
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/* Toolbar: the grouping toggles and the search field, then the summary line. */
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.groupRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.search {
+  display: flex;
+  flex: 0 1 18rem;
+  min-width: 12rem;
+}
+
+.searchInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--row-h-input);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+
+.summary {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+/* Sequence rail: three lanes over every retained record. The axis is the record sequence. */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1h);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+}
+
+.lane {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.laneLabel {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.track {
+  display: flex;
+  min-width: 0;
+  height: 0.75rem;
+  overflow: hidden;
+  border-radius: var(--radius-xs);
+}
+
+.seg {
+  flex-basis: 0;
+  min-width: 2px;
+  box-sizing: border-box;
+}
+
+.seg-w1 {
+  flex-grow: 1;
+}
+
+.seg-w2 {
+  flex-grow: 2;
+}
+
+.seg-w3 {
+  flex-grow: 3;
+}
+
+.seg-w4 {
+  flex-grow: 4;
+}
+
+.seg-w5 {
+  flex-grow: 5;
+}
+
+.seg-w6 {
+  flex-grow: 6;
+}
+
+.seg-w7 {
+  flex-grow: 7;
+}
+
+.seg-w8 {
+  flex-grow: 8;
+}
+
+/* Tones: a shape carries the state as well as the colour, as the status dots do. */
+
+.seg[data-tone="ok"] {
+  background: var(--state-ok);
+}
+
+.seg[data-tone="allow"] {
+  background: color-mix(in oklch, var(--state-allow) 22%, transparent);
+  box-shadow: inset 0 0 0 2px var(--state-allow);
+}
+
+.seg[data-tone="deny"] {
+  background: var(--state-deny);
+}
+
+.seg[data-tone="reported"] {
+  border: 2px dashed var(--state-reported);
+}
+
+.seg[data-tone="pending"] {
+  border: 2px solid var(--state-pending-mark);
+}
+
+.seg[data-tone="unknown"] {
+  border: 2px dotted var(--state-unknown);
+}
+
+.seg[data-tone="idle"] {
+  background: var(--state-idle);
+}
+
+.seg[data-tone="muted"] {
+  background: var(--muted);
+}
+
+@media (forced-colors: active) {
+  .seg[data-tone="ok"],
+  .seg[data-tone="deny"],
+  .seg[data-tone="idle"] {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+
+  .seg[data-tone="allow"],
+  .seg[data-tone="reported"],
+  .seg[data-tone="pending"],
+  .seg[data-tone="unknown"] {
+    forced-color-adjust: none;
+    border-color: CanvasText;
+  }
+}
+
+.axis {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
+
+.railNote {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+/* Ledger: groups of record rows. The container is a focus target for the tail control. */
+
+.ledger {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1h);
+}
+
+.groupHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.groupTitle {
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.groupMeta {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.groupBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1h) var(--space-2);
+  width: 100%;
+  min-height: var(--row-h-cell);
+  padding: var(--space-1h) var(--row-pad-x);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--foreground);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.row:hover {
+  background: var(--accent);
+}
+
+.selected,
+.row[aria-pressed="true"] {
+  background: var(--accent);
+  box-shadow: inset 3px 0 0 var(--foreground);
+}
+
+.label {
+  min-width: 0;
+  max-width: 16rem;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payload {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clock {
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.chipWrap {
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.unverified {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 var(--space-1h);
+  border: 1px dotted var(--muted-foreground);
+  border-radius: var(--radius-xs);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+/* The tail control stays in view while the reader is away from the tail. */
+
+.jump {
+  position: sticky;
+  bottom: var(--space-3);
+  z-index: var(--z-sticky);
+  align-self: center;
+  min-height: var(--row-h-button);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: var(--shadow-panel);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 760px) {
+  .search {
+    flex-basis: 100%;
+  }
+
+  .lane {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+  }
+
+  .label {
+    max-width: 100%;
+  }
+}

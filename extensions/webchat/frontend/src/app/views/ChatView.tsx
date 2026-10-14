@@ -1,12 +1,129 @@
-import { EmptyState } from "../../ui/StateMessage";
+import { useRef, type ReactNode } from "react";
+import { jumpLabel } from "../../core/anchor";
+import { FILTERS, countFilter, filterItems, governanceCounts } from "../../core/filters";
+import { isVerifiedProjection, verifyItem } from "../../core/format";
+import { turnsOf } from "../../core/store";
+import { Chip } from "../../ui/Chip";
+import { Notice } from "../../ui/Notice";
+import { useAnnouncer } from "../../ui/LiveRegion";
+import { ToggleGroup, type ToggleItem } from "../../ui/ToggleGroup";
+import { EmptyState, ErrorState, LoadingState } from "../../ui/StateMessage";
+import { evictedText, gapText, WINDOW_GAP_TEXT } from "../status";
 import type { WorkspaceModel } from "../workspaceStore";
+import { filterSummaryText, postureEntries } from "./chat/readings";
+import { TurnView } from "./chat/Transcript";
+import type { Verifier } from "./chat/ToolCard";
+import { useTailWindow } from "./chat/tail";
+import styles from "./chat/Chat.module.css";
 
-// Phase 3b placeholder. Agent Q replaces this body with the transcript, the posture and the
-// filter toolbar. It already receives the typed model, so it needs no new plumbing.
+// The Chat view: the posture of the retained window, the finding filters, the transcript, and the
+// tail window. Presentation only. Counts come from the store's items and its applied count, and a
+// success is shown as succeeded only with verified evidence (web-chat.md sections 4.1, 4.3 and 4.5).
 export function ChatView({ model }: { readonly model: WorkspaceModel }) {
+  const announcer = useAnnouncer();
+  const logRef = useRef<HTMLDivElement | null>(null);
+  const projectionVerified = isVerifiedProjection(model);
+  // A success is verified only in a live, structurally audited projection, and only with evidence.
+  const verifiedOf: Verifier = (item) => projectionVerified && verifyItem(item) !== null;
+  const tail = useTailWindow({ region: logRef, pinKey: model.actions, applied: model.applied, announcer });
+
+  const visible = filterItems(model.items, model.filter);
+  const activeFilter = FILTERS.find((entry) => entry.id === model.filter);
+  const filterLabel = activeFilter ? activeFilter.label : model.filter;
+  const posture = postureEntries(governanceCounts(model.items, verifiedOf));
+  const filters: ToggleItem[] = FILTERS.map((entry) => ({
+    value: entry.id,
+    label: entry.label,
+    count: countFilter(model.items, entry.id),
+  }));
+  const summary = filterSummaryText({
+    filter: model.filter,
+    label: filterLabel,
+    total: model.items.length,
+    matches: countFilter(model.items, model.filter),
+    shown: visible.length,
+    evicted: model.evicted,
+  });
+
+  function choose(value: string): void {
+    const next = FILTERS.find((entry) => entry.id === value);
+    if (next) model.actions.setFilter(next.id);
+  }
+
+  const hasNotice = model.gapNotice !== null || model.windowGap !== null || model.evicted > 0;
+
   return (
-    <EmptyState title="Chat transcript: Phase 3b">
-      <p>The transcript renders here in Phase 3b. Retained records: {model.items.length}.</p>
-    </EmptyState>
+    <div className={styles.view}>
+      <div className={styles.posture} role="group" aria-label="Observed posture">
+        {posture.length > 0 ? (
+          posture.map((entry) => (
+            <span key={entry.key} title={entry.hint}>
+              <Chip tone={entry.tone}>{entry.text}</Chip>
+            </span>
+          ))
+        ) : (
+          <span className={styles.postureEmpty}>no decisions or results projected</span>
+        )}
+      </div>
+
+      <div className={styles.toolbar}>
+        <ToggleGroup label="Timeline filters" items={filters} pressed={model.filter} onPress={choose} />
+        <p className={styles.summary}>{summary}</p>
+      </div>
+
+      {hasNotice ? (
+        <div className={styles.notices}>
+          {model.gapNotice ? (
+            <Notice label="Continuity gap" tone="warning">
+              {gapText(model.gapNotice)}
+            </Notice>
+          ) : null}
+          {model.windowGap ? (
+            <Notice label="Earlier history not loaded" tone="warning">
+              {WINDOW_GAP_TEXT}
+            </Notice>
+          ) : null}
+          {model.evicted > 0 ? (
+            <Notice label="Retained window" tone="info">
+              {evictedText(model.evicted)}
+            </Notice>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* aria-live is off: the single polite announcer lives in the shell (LiveRegion). */}
+      <div role="log" aria-label="Transcript" aria-live="off" tabIndex={-1} ref={logRef} className={styles.log}>
+        {model.error ? <ErrorState title="Projection error">{model.error}</ErrorState> : null}
+        {transcript()}
+      </div>
+
+      {tail.pending > 0 ? (
+        <button type="button" className={styles.jump} onClick={tail.jump}>
+          {jumpLabel(tail.pending)}
+        </button>
+      ) : null}
+    </div>
   );
+
+  // Loading, empty, no-match and the transcript itself. Each state is text, never colour alone.
+  function transcript(): ReactNode {
+    if (!model.loaded) return <LoadingState label="Loading projection…" />;
+    if (model.items.length === 0) {
+      return (
+        <EmptyState title="Nothing to display">
+          {model.source === "unavailable"
+            ? "Production observations are unavailable. No live Pi/session source is registered."
+            : "No transcript or activity has been projected yet."}
+        </EmptyState>
+      );
+    }
+    if (visible.length === 0) {
+      return (
+        <EmptyState title={`No ${filterLabel.toLowerCase()} findings`}>
+          No projected element matches this filter. Adjust the filter to review the whole timeline.
+        </EmptyState>
+      );
+    }
+    return turnsOf(visible).map((turn) => <TurnView key={turn.id} turn={turn} verifiedOf={verifiedOf} />);
+  }
 }

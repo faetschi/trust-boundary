@@ -135,7 +135,7 @@ describe("Shell: views and the skip link", () => {
     expect(q("#view-panel-chat").hidden).toBe(true);
     expect(q("a").getAttribute("href")).toBe("#view-panel-trajectory");
     expect(q("a").textContent).toBe("Skip to the trajectory ledger");
-    expect(q("#view-panel-trajectory").textContent).toContain("Phase 3c");
+    expect(q("#view-panel-trajectory [role='region'][aria-label='Record ledger']")).toBeTruthy();
   });
 
   it("moves between views with the arrow keys", async () => {

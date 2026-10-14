@@ -1,0 +1,251 @@
+/*
+ * The Chat view: posture, filter toolbar, transcript and tool cards. Colour comes from the alias
+ * tier only, and state colour comes from the Chip and StateDot primitives, never from here.
+ * Geometry and type come from the tier-3 tokens.
+ */
+
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.posture {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.postureEmpty {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+}
+
+.summary {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.turn {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--card-foreground);
+  overflow: hidden;
+}
+
+.turnHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1h) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  font: 500 var(--text-2xs) / var(--lh-2xs) var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.turnBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+}
+
+.msg {
+  max-width: 72ch;
+  min-width: 0;
+}
+
+.msgRole {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  font: 500 var(--text-2xs) / var(--lh-2xs) var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.msgText {
+  margin: var(--space-1) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.msg[data-role="user"] .msgText {
+  padding: var(--space-2) var(--space-2h);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--secondary);
+}
+
+.msg[data-role="system"] .msgText {
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--border);
+  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+}
+
+.assistant {
+  margin-top: var(--space-1);
+  min-width: 0;
+}
+
+.note {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+
+.card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+}
+
+.head {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.glyph {
+  flex: none;
+  width: 1.25em;
+  text-align: center;
+  font-family: var(--font-mono);
+  color: var(--muted-foreground);
+}
+
+.name {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.summaryText {
+  flex: 1 1 10rem;
+  min-width: 0;
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.chips {
+  display: inline-flex;
+  flex: 0 1 auto;
+  max-width: 100%;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+}
+
+.step {
+  display: grid;
+  grid-template-columns: 4.25rem minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: baseline;
+  font-size: var(--text-sm);
+}
+
+.stepLabel {
+  font: 500 var(--text-2xs) / var(--lh-2xs) var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.stepBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--muted-foreground);
+}
+
+.line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
+.digest {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.detail {
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--border);
+  font-size: var(--text-xs);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted-foreground);
+}
+
+.time {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--muted-foreground);
+}
+
+.jump {
+  position: sticky;
+  bottom: var(--space-3);
+  align-self: center;
+  min-height: var(--row-h-button);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--foreground);
+  font: 600 var(--text-xs) / var(--lh-xs) var(--font-sans);
+  cursor: pointer;
+}
+
+.jump:hover {
+  background: var(--accent);
+}

@@ -50,7 +50,8 @@ describe("Inspector: the drawer and the record slot", () => {
     const onClose = vi.fn();
     const view = mount(<Inspector model={model} narrow={false} open={false} headingRef={createRef()} onClose={onClose} />);
     expect(view.container.querySelector("h2")?.textContent).toBe("Record");
-    expect(view.container.textContent).toContain("Record 2 (decision)");
+    expect(view.container.querySelector("[data-section='decision']")).not.toBeNull();
+    expect(view.container.textContent).toContain("sequence 2");
     click(view.container.querySelector("button") as HTMLButtonElement);
     expect(onClose).toHaveBeenCalledTimes(1);
     view.unmount();

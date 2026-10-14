@@ -556,3 +556,24 @@ Export of HEAD 58492c5 into WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under $
   worktree.
 - Boundary guard rule (c) now tolerates a trailing CR in go.mod (a Windows autocrlf checkout or
   `git archive` export produces CRLF); self-test 8/8.
+
+## Phase 3b/3c: Chat view, Trajectory view, record inspector (2026-10-14)
+
+- Chat (3b): React markdown mapper over the AST (no innerHTML; HTML-equal to the legacy
+  serializer on the golden/hostile corpora), transcript role=log with aria-live=off,
+  tool-call cards (ALLOW is a permission chip; unverified success is 'reported'; UNKNOWN/lost
+  distinct; lossy chip), legacy filter set, posture badges, tail window.
+- Trajectory (3c): toolbar, search over allowlisted fields, sequence rail built from ALL
+  records, ledger with status in words and a roving tab stop, record inspector with the
+  always-present Timing 'unavailable' section; drawer + focus return.
+- LiveRegion source scan now allows role=log only together with aria-live=off in the same tag
+  (self-tested); data-role no longer false-positives.
+- Verified on LINUX (WSL restarted): vitest 721/721 (49 files), tsc 0, sinks/deps + self-tests,
+  go test -race 39 PASS 0 SKIP, legacy node 258/258, boundary guard, Linux rebuild == committed
+  dist. Windows: csp-smoke PASS twice (Chrome 155, observer live), QA screenshots p3b/p3c at
+  1440/1024/390 light+dark with receipts in docs/webchat/qa/.
+- Known polish items: duplicate gap/window/eviction notices (Shell above tabs + inline in
+  Chat), repeated words in tool summaries, per-message 'unverified' chip noise, tail count not
+  carried across view switches (TabPanel unmounts), the aside keeps the name 'Governance
+  inspector' while a record is open, first load at 390 px starts scrolled (scrollY 825).
+  Jump-to-latest is covered only in happy-dom (the demo has no live arrivals).

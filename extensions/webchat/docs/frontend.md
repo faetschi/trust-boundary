@@ -363,3 +363,205 @@ evidence and the parity table are in `phase2-parity.md`.
 - **Claim boundary.** `UNKNOWN` stays `UNKNOWN`. A policy `ALLOW` is a permission and
   is never shown as a success. An unverified success is shown as `reported`, and
   verified success needs a `VerifiedEvidence` value that only `verifyItem` creates.
+
+## Phase 3b: the React Chat view (2026-10-14)
+
+The Chat view replaces its placeholder, and the markdown AST has a React mapping. The
+Shell and the Trajectory view are not part of this change, and `/` still serves the
+vanilla UI.
+
+**Built.**
+
+- `src/markdown/react.tsx`: the AST to React mapping. It is an exhaustive switch that
+  ends in `assertNever`, with no raw-HTML property and no style value. A link is an
+  anchor only for a `SafeHref`, and its scheme is checked again. Each top-level block
+  is memoised and keyed by position, so a block whose node object is unchanged is not
+  rendered again. The classes `md-body`, `md-code` and `md-truncated` are global
+  (`src/markdown/markdown.css`), because the parity test pins them.
+- `src/app/views/ChatView.tsx` with `src/app/views/chat/`: the posture badges, the filter
+  toolbar, the notices, the `role="log"` transcript with `aria-live="off"`, the loading,
+  error, empty and no-match states, and the Jump control. `readings.ts` holds the
+  wording and tones, `tail.ts` the tail window, `Transcript.tsx` and `ToolCard.tsx` the
+  records, and `Chat.module.css` the styles.
+
+**Honesty rules,** asserted on the DOM in `ChatView.test.tsx` and on the readings in
+`chat/readings.test.ts`:
+
+- ALLOW has the `allow` tone and a note that says it is a permission. It is never the
+  `ok` tone.
+- A success reads `succeeded` only with `VerifiedEvidence` from `verifyItem`, in a live
+  structural-audit projection. Otherwise it reads `reported`.
+- UNKNOWN, lost, unknown, pending, failed and denied each keep their own label, and none
+  of them is in the success tone.
+- Lossy output is a chip, and it leaves the state chip as it is.
+- An unverified item carries an explicit `unverified` chip.
+- The tail count comes only from `store.applied`. Gaps, duplicates and snapshot loads
+  add nothing to it.
+- The tail pin is kept per store, in a `WeakMap` keyed by the store's actions, so a
+  return from the Trajectory view keeps the count.
+- Announcements: one debounced announcement of 400 ms, through the shell's announcer.
+
+**Decisions to confirm.**
+
+1. The filters are the four legacy ones: All, Denied, Unknown and Failed. "Reported"
+   in the brief is a posture badge, not a filter.
+2. Filter counts use `countFilter`, which has the legacy meaning. Denied counts DENY
+   decisions and denied results. `governanceCounts` feeds the posture badges.
+3. The verified gate needs the projection (live and structural-audit) and the item's
+   evidence. This is stricter than the legacy item-only check, and it makes no difference
+   to the demo.
+4. The gap, window and eviction notices render inside the transcript. The Shell also
+   renders the same three notices above the tabs, so two copies appear.
+5. A tool card's `data-anchor` is on its wrapper, not on the disclosure element.
+6. Turn sections are regions, not headings, so the Shell's heading order is unchanged.
+
+**Open.**
+
+- Duplicate notices, as in decision 4. The fix belongs to `Shell.tsx`, which this
+  change does not edit.
+- `ui/LiveRegion.test.tsx`, "is the only aria-live or live role in the application
+  source", fails. The transcript uses `role="log"` with `aria-live="off"`, as the brief
+  requires. Either the scan has to allow that, or the transcript has to stop using the
+  log role. The test lives in `src/ui/`, which this change does not edit.
+- The Jump control was not exercised in Chrome. The demo has no live arrivals, so its
+  count could not be shown. It is covered in happy-dom with stubbed page metrics only.
+- This file has no Phase 3a section, although `phase3-parity.md` refers to one.
+
+**Receipts (Windows; WSL was not used).** The rows are in `phase3-parity.md`.
+
+- Typecheck: `tsc` exit 0. Vitest: 720 tests, 719 passing, 1 failing (the LiveRegion
+  scan), 0 skipped. Sinks: self-test OK, 0 findings in 82 files. Deps: OK.
+- The 3b suites: `markdown/react.test.tsx` 80, `app/views/chat/readings.test.ts` 19 and
+  `app/views/ChatView.test.tsx` 39. All pass, with 0 skipped.
+- Go: `vet` and `test` exit 0, gofmt clean.
+- `node scripts/csp-smoke.mjs --url http://127.0.0.1:8821`: PASS, with the observer
+  live. Chrome 155.0.8059.79.
+- Screenshots: `docs/webchat/qa/p3b-chat-{1440,1024,390}-{light,dark}.png`, all with a
+  tool card expanded. Their hashes and the source and dist tree hashes are in
+  `docs/webchat/qa/p3b-chat-receipt.json`.
+- Keyboard, in Chrome, at 1440 light: the Tab order runs skip link, theme, view tab,
+  filter, then the transcript. Enter opens a disclosure and Space closes it. Arrow keys
+  move between the filters without changing the pressed one, and Enter presses it. The
+  receipt records no CSP violation, and the only console error is the favicon 404, which
+  is allowed.
+
+## Phase 3c: the React Trajectory view and the record inspector (2026-10-14)
+
+The Trajectory view is a React view over the same bounded window as Chat. Grouping and
+search are presentation: they never change the projection, a verdict or the timeline's
+finding filter. The rules are the ones in `web-chat.md` §4.4 and §4.5.
+
+- **Files.** `app/views/TrajectoryView.tsx` (the composition, the focus contract, the
+  drawer). `app/views/trajectory/`: `Toolbar.tsx`, `SequenceRail.tsx`, `Ledger.tsx`,
+  `RecordRow.tsx`, `useTailWindow.ts`, `Trajectory.module.css`. `app/inspector/`:
+  `RecordInspector.tsx` and its CSS, and `recordChip.ts` (the chip tone and status-word
+  rules, pure). The shell files, `Inspector.tsx` and the chat view are unchanged. Two
+  existing assertions in `app/Shell.test.tsx` and `app/Inspector.test.tsx` checked the
+  Phase 3c placeholder text, so they now check the real view and body.
+- **Tests.** `app/views/TrajectoryView.test.tsx` (37 tests, mounted in the real shell and
+  its store), `app/inspector/RecordInspector.test.tsx` (13) and
+  `app/inspector/recordChip.test.ts` (7). The parity rows are in `phase3-parity.md`.
+- **Toolbar.** Turn, Tool and Verdict form the shared toggle group (one tab stop, arrows
+  move focus, Enter presses). The legacy hint for the pressed group is visible text under
+  it. The search field is labelled and reads only the allowlisted fields of
+  `core/trajectory.searchRecords`. The summary reads `N of M record(s) matching …` while
+  a search is active.
+- **Sequence rail.** Built from every retained record, never from the search result. Its
+  three lanes are Model, Policy and Tools. Each track is an image whose name states the
+  tone of every segment in words. Segments are weight classes, not inline styles. The
+  axis note says the axis is record sequence, not time, and while a search is active it
+  says the rail shows all N retained records.
+- **Ledger.** Groups are named regions. Each row is a button with `aria-pressed`. Its
+  accessible name carries the status in words (the dot is decorative), followed by the
+  payload preview. The ledger has one tab stop, on the last row that had focus, else the
+  selected row, else the first. ArrowUp and ArrowDown move between rows across group
+  boundaries, and Home and End go to the ends. Enter and Space select, as native buttons
+  do. The container is a named region, not a list.
+- **Chips and dots.** An unverified success reads `reported` in its chip, never the
+  confirmed word. A lossy success reads `not confirmed` on the unknown tone, and the
+  record's name adds `output lossy, not counted as confirmed`. Other states read as the
+  core names them. A policy ALLOW is never drawn in the success tone.
+- **Tail.** `N new record(s) · Jump to latest` sits at the bottom of the view. Its count
+  comes only from `store.applied` through `core/anchor.ts`. The pin moves only while the
+  reader is at the tail, and the first load does not follow. A settled burst is announced
+  once through the status region, after 400 ms. Jump scrolls to the end and moves focus
+  to the ledger.
+- **Focus contract.** A row calls `selectRecord(id, row)`. At the drawer breakpoint the
+  shell opens the drawer and moves focus into it. Escape and Close return focus to the
+  row. At wide widths the shell has no return target, so the view returns focus to the
+  row when the selection is cleared and no live element holds focus. When a record is
+  evicted, the store clears the selection and the view moves focus to the ledger, or
+  closes an open drawer through the shell.
+- **Record inspector.** A header with the source chip and the position, then the status
+  in words, then the core's sections: Summary, Payload (when the record has one),
+  Decision, Result, Evidence and Timing. Timing is always present and says that no
+  duration is recorded. A policy digest is shown shortened, with the full value in its
+  `title`. Close is the shell's `Close record` control in the aside's head, so the body
+  has no second Close control.
+
+### Deviations from the legacy UI
+
+These are behaviour changes, not gaps.
+
+1. The aside keeps the shell's name, `Governance inspector`, while a record is shown.
+   The legacy name was `Record inspector`. The name is set in `Inspector.tsx`, which
+   Phase 3c does not own.
+2. The group hints are visible text. The toggle primitive has no per-button name, so the
+   legacy per-button label is not reproduced.
+3. The ledger has one tab stop (a roving stop), not one per row.
+4. A row's accessible name includes its payload preview. The legacy name omitted it, so a
+   screen reader heard the status but not the payload.
+5. The digest's full value is in its `title` only. There is no hidden copy.
+6. The tail pin does not survive a view switch. `TabPanel` unmounts the inactive view
+   (`ui/Tabs.tsx`), so records applied while Chat is showing are not counted when
+   Trajectory reopens. The legacy kept a pin per view. Keeping it needs the pin in the
+   store or the shell, and neither is Phase 3c's file.
+
+### Not verified here
+
+- The happy-dom tests do not turn Enter into a click on a button, so they assert the click
+  path. The browser walk below did press Enter.
+- Scroll anchoring for records that arrive while the reader is away is left to the browser's
+  own anchoring. The browser walk did not drive a live stream, so the tail count was
+  checked by the unit tests only.
+- Screen-reader output is not tested.
+- On first load of `/app/` at 390 px the page starts at `scrollY` 825, with the Chat view
+  showing. The trajectory view does not cause that: switching to it leaves `scrollY`
+  unchanged. The 390 px captures scroll to the top before the capture.
+
+### Gates (Windows gate runner; WSL not used)
+
+Each line is a Windows run at this tree. Exit codes are from `gate.ps1` or the command shown.
+
+| Gate | Command | Exit | Result |
+|---|---|---|---|
+| typecheck | `gate.ps1 -Task typecheck` | 0 | `tsc --noEmit` clean |
+| app tests | `gate.ps1 -Task test -Filter src/app` | 0 | 184 passed, 0 skipped |
+| full tests | `gate.ps1 -Task test` | 1 | 719 passed, 1 failed, 0 skipped (below) |
+| sinks | `gate.ps1 -Task sinks` | 0 | 0 findings, 82 files |
+| verify | `gate.ps1 -Task verify` | 1 | typecheck, sinks and deps pass; `test` fails as below |
+| build | `gate.ps1 -Task build` | 0 | one fresh `dist/` copied back; its hashes are in the QA receipt |
+| go | `gate.ps1 -Task go` | 0 | `go vet`, `go test` ok for both packages, `gofmt -l` empty |
+| CSP smoke | `node scripts/csp-smoke.mjs --url http://127.0.0.1:8822` | 0 | PASS: 7 header probes, the observer live |
+
+The one failing test is `ui/LiveRegion.test.tsx` ("is the only aria-live or live role in
+the application source"). It flags `app/views/ChatView.tsx`, which has `role="log"` with
+`aria-live="off"`, and `app/views/chat/Transcript.tsx`, whose `data-role={…}` matches the
+guard's regex as a live role. Neither file is Phase 3c's. The test was not changed.
+
+### Visual and keyboard QA (Chrome 155, demo gateway on 8822)
+
+- Captures: `docs/webchat/qa/p3c-trajectory-{1440,1024,390}-{light,dark}.png`. At 1440 and
+  1024 the DENY decision `dec-03-bash-egress` is selected, so the inspector shows it, and
+  at 1024 the drawer is open. At 390 the ledger is shown with no selection. The hashes,
+  the Chrome version, the gateway hash, the `dist/` hashes and the source tree hash are in
+  `docs/webchat/qa/p3c-trajectory-qa-receipt.json`.
+- Keyboard walk at 1440, light: Tab goes skip link, theme (Light pressed), Trajectory tab,
+  group toolbar (Turn), search, first row, then leaves the page. ArrowRight moves focus
+  inside the group toolbar and changes no grouping. Enter presses Tool. ArrowDown, End and
+  Home move through the ledger. Enter selects the focused record, and Escape clears it and
+  returns focus to that row. At 1024, Enter on a row opens the drawer and moves focus to its
+  heading, and Escape closes it and returns focus to the row.
+- The page has zero CSP violations, zero console errors except the favicon 404 (allowed),
+  zero uncaught exceptions, and no `style` or `on*` attribute.
+- These checks verify UI wiring only. They establish no `G1`, containment or `H1` result.
