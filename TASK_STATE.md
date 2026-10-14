@@ -1,8 +1,8 @@
 # TBound task state
 
-Updated 2026-10-14. Branch `codex/tbound-prototype`; source checkpoint `6a0a52a`;
-component receipt committed in `5051759`. Claims, receipts, and gates live in
-[docs/status.md](docs/status.md). Verify against current code before acting on an item here.
+Updated 2026-10-14. Branch `codex/tbound-prototype`; implementation head `d29a0ff`.
+The `6a0a52a` source checkpoint and its `5051759` component receipt remain a
+historical baseline. Claims, receipts, and open gates live in [docs/status.md](docs/status.md).
 
 ## Current state (2026-10-14)
 
@@ -10,13 +10,24 @@ component receipt committed in `5051759`. Claims, receipts, and gates live in
   governed production `serve --pi` launch, authentic signed-profile admission, or
   provider exchange through that route has occurred. Research claims are the last
   milestone, after core, deployment, and operations engineering.
-- **Checkpoint:** `6a0a52a` (tree `81173e3f…`) is a local persistence checkpoint, not
-  a verified release. The receipt committed in `5051759`,
+- **Historical baseline:** `6a0a52a` (tree `81173e3f…`) is a local persistence
+  checkpoint, not a verified release or the current source head. The receipt committed in `5051759`,
   [docs/evidence/component-checkpoint-6a0a52a.json](docs/evidence/component-checkpoint-6a0a52a.json),
   records Go 1.27.1 linux/amd64 build, vet, formatting, unit, and race commands with
   exit 0; each test suite reports 1,126 passed, 7 skipped, and 0 failed. This is
   component regression evidence only. The earlier handoff's matching figure remains
   unverified; the older 1,041/7/0 result is from a 349-file snapshot.
+- **Current increments:** D20's atomic clean-restart plus pre-effect-retry
+  reservation is committed in `d29a0ff`. Its
+  [bounded receipt](docs/evidence/governed-combined-recovery-20261014.json) records
+  positive fresh-process preparation/activation across two cycles and refusal at the
+  restart cap, with retry-exhaustion and deadline guards. The tested archive overlays
+  all four D20 files on `296957b`; this component result does not close production
+  initialization/binding or actual drain. D14-S2 terminal-accounting characterization
+  is committed in `ad2479f`; its [receipt](docs/evidence/sqlite-terminal-faults-20261014.json)
+  reports 71 verbose PASS events in each unit/race run on a distinct overlay containing
+  the D20 workflowrecovery ledger files plus the S2 test. Its synthetic marker and Store
+  pins do not exercise production `RunEffect` or a real provider/Store effect.
 - **Historical manifest:** `/home/jeli2k/tbcand-81173e3f9981/candidate-files.sha256.tsv`
   has 368 entries. The count was verified; per-file hashes were not recomputed or
   compared. See the [status audit](../review-artifacts/tbound-status-audit-2026-10-14.md).
@@ -30,16 +41,18 @@ component receipt committed in `5051759`. Claims, receipts, and gates live in
   authorized replacing the development VM with a fresh disposable guest of similar
   resources; replacement remains pending.
 - **Blockers, in order:**
-  1. D20 stale receipt: `ReservePreEffectRetry` advances the owner/root head before
-     activation, so `sessionlaunch.RecoveryCandidate.Activate` rejects the prior
-     clean-restart receipt. The atomic correction is in progress on this branch;
-     its final verification and commit are pending.
-  2. D14 reservation faults are partially covered by `0ab8b9f`: five real fault
-     cases with fresh-process checks; package unit/race each 63 passed, no skips or
-     failures. Terminal accounting, reserved capacity, fsync, corruption and
-     declared-platform power-loss evidence remain open.
-  3. Governed lifecycle: LC-04 and LC-05 are offline component cuts. Production
-     recovery, ManagedStore/D06 authority binding, and provider-history replay are open.
+  1. Production recovery: the D20 atomic prepare/activate increment is committed,
+     but the production fresh initializer has clock-anchor ordering and bare-digest defects, and the binder mishandles bare digests; a
+     separate fix and end-to-end verification are in progress. The D20 drain verifier
+     is a test stub, so actual owner-cell drain remains unqualified.
+  2. D14 remains partial. `0ab8b9f` covers five reservation-path faults with
+     fresh-process checks; `ad2479f` adds three terminal-persistence fault cases and
+     fresh-process verification. The S2 Store pins/verifier and fsynced effect marker
+     are synthetic, and production `RunEffect` is not called. Reserved capacity,
+     filesystem ENOSPC, genuine fsync faults, corruption, and declared-platform
+     power-loss evidence remain open.
+  3. Governed lifecycle: LC-04 and LC-05 are offline component cuts. ManagedStore/D06
+     authority binding and provider-history replay through the production route remain open.
   4. Deployment: a fresh ABI-8 qualification guest (replacing the development VM is
      authorized by the [2026-10-14 decision](docs/decisions/2026-10-14-qualification-and-research-procedure.md),
      not yet performed), signed Pi CLI closure and host profile, and managed-service
@@ -53,10 +66,10 @@ component receipt committed in `5051759`. Claims, receipts, and gates live in
 
 ### Milestones
 
-1. **Core engineering:** apply the atomic D20 fix with failing-before and
-   fixed-after regressions through preparation and activation. Execute and integrate
-   the D14 fault work. Complete LC-04 and LC-05 end to end with independent oracles.
-   Publication, provenance, and observer evidence.
+1. **Core engineering:** close the D20 fresh-initializer/binder digest defects and
+   qualify actual owner-cell drain. Complete remaining D14 capacity/fault work and
+   LC-04/LC-05 end to end with independent oracles; collect publication, provenance,
+   and observer evidence.
 2. **Deployment engineering:** preserve required artifacts before disposing of the
    development VM; qualify a fresh ABI-8 guest and verify its live ABI, filesystem,
    runtime closure, and service profile. Freeze the signed closure and profile. Admit the
@@ -73,25 +86,30 @@ component receipt committed in `5051759`. Claims, receipts, and gates live in
    external registration. Freeze corpus, oracle matrix, calibration and scoring
    locally before execution. Perform the clean-machine G4 reproduction and execute
    H1, retaining the raw results and subsequent review records.
+   The user-set provider is DeepSeek V4.1 Flash with a US$5 total spend cap; request,
+   token, routing, and current price/cost limits still need to be frozen and enforced
+   with durable worst-case reservation before any paid call. No paid run has occurred.
    Independent runtime/effect oracles and the engineering, security, calibration, and
    friction acceptance criteria remain requirements; see the
    [audit acceptance](../review-artifacts/tbound-status-audit-2026-10-14.md).
 
 ### Next steps
 
-1. Implement the D20 atomic fix on this branch test-first, then run pinned Linux
-   verification.
+1. Finish and verify the production initializer/binder fixes, then qualify actual
+   owner-cell drain and interrupted activation in the D20 recovery path.
 2. Decide the fixture-route flag handling (reject or document) through a test-first
    code change.
-3. Before any paid provider evaluation, define and record the OpenRouter model, request
-   and token limits, and monetary budget.
+3. Complete remaining D14 capacity, filesystem, corruption, and platform-fault work.
+4. Before any paid provider evaluation, freeze DeepSeek V4.1 Flash routing, request and
+   token limits, current price ceilings, and a full-trial cost estimate inside the
+   US$5 total cap; enforce worst-case reservation per request. Do not reduce the
+   protocol denominator if the approved budget cannot cover it.
 
 ### Rules
 
 - Never read, print, copy, or commit `vm_start.txt`, provider or admin credentials, or
   real signing keys.
-- The fresh disposable VM replacement is authorized by the 2026-10-14 decision. Define
-  and record a budget before any paid provider evaluation.
+- The fresh disposable VM replacement is authorized by the 2026-10-14 decision.
 - Preserve `supervisor/tbound` and `tbound.exe`. Build only to explicit private paths.
 - Commit reviewed, verified increments with explicit staging. No blanket reset.
 - Green results never establish G1, containment, or H1.

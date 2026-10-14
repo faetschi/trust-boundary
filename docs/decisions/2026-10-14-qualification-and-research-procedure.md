@@ -47,5 +47,4 @@ or exceed the cap. No paid runs have been executed under this decision.
 
 ## Delegation
 
-Allow the current Claude Haiku tasks to finish. All subsequent delegated work uses
-GPT 6 Luna with reasoning `max`, superseding the earlier Haiku preference.
+All subsequent delegated work uses GPT 6 Luna with reasoning `max` as subagents.

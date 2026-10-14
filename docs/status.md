@@ -1,9 +1,9 @@
 # Current status
 
-Updated 2026-10-14 for documentation reconciliation. Branch
-`codex/tbound-prototype`; source checkpoint `6a0a52a`; its component receipt is
-committed in `5051759`. This working status records implementation state and
-blockers. It is not a qualification report.
+Updated 2026-10-14. Branch `codex/tbound-prototype`; implementation head `d29a0ff`.
+The source checkpoint `6a0a52a` and its component receipt in `5051759` are a
+historical baseline. This working status records implementation state and blockers;
+it is not a qualification report.
 
 ## Claim boundary
 
@@ -11,8 +11,10 @@ blockers. It is not a qualification report.
 - No positive governed production `serve --pi` launch, authentic signed-profile
   admission, or real provider exchange through that route has occurred.
 - Component tests, offline fixtures, package checks, capability probes, and
-  development receipts do not establish G1, H1, containment, provider behavior, or
-  thesis evidence. Development and fixture routes report `claim_bearing: false`.
+  development receipts do not establish G1, H1, containment, production provider
+  behavior, or thesis evidence. The D20 prepare/activate component tests do not
+  exercise the production fresh initializer or binder. Development and fixture routes
+  report `claim_bearing: false`.
 
 ## Current checkpoint and validation
 
@@ -32,8 +34,27 @@ blockers. It is not a qualification report.
   logged pass, skip, and fail counts and skip names match the raw JSON. This is
   component regression evidence from the WSL run whose logs sit under
   `review-artifacts/tbound-completion-2026-10-14/`. It does not establish
-  G1, containment, production recovery, or H1. The receipt records a known
-  restart/retry stale-receipt defect in this source.
+  G1, containment, production recovery, or H1. The receipt predates D20 and records
+  the restart/retry stale-receipt defect in that source; the prepare/activate increment
+  addressing it is committed in `d29a0ff` below.
+- **D20 combined recovery:** [receipt](evidence/governed-combined-recovery-20261014.json),
+  committed in `d29a0ff`, records a failing-before/fixed-after result and fresh-process
+  preparation/activation across two restart/retry cycles, then refusal at the restart
+  cap. The D20-only package tests report 39 top-level workflowrecovery tests (66
+  verbose nodes including subtests) and 15 selected cmd/tbound tests (34 nodes).
+  Retry exhaustion consumes no restart, the deadline guard refuses before reservation,
+  and crash-time evidence prefixes remain unchanged. The source archive uses base
+  `296957b` plus the four D20 files. This does not qualify actual owner-cell drain: the
+  test's drain verifier is a stub.
+- **D14-S2 terminal accounting:** [receipt](evidence/sqlite-terminal-faults-20261014.json),
+  committed in `ad2479f`, records 71 verbose PASS events in each workflowrecovery unit
+  and race run. Its composed source overlay contains the D20 workflowrecovery ledger
+  files and S2 test, but excludes the D20 cmd/tbound integration files. Three
+  terminal-persistence faults are verified from separate processes: owner-write EFBIG
+  / SQLite IOERR 778, engine SQLITE_FULL 13 via `max_page_count` (not filesystem
+  ENOSPC), and root-anchor write failure. The test uses synthetic Store pins/verifier
+  and an fsynced marker; it does not invoke production `RunEffect` or a real external
+  provider/Store effect. It is characterization, not D14 completion.
 - **Historical handoff figure:** a handoff reports 1,126 passes, 7 skips, and 0
   failures in both full suites at the committed checkpoint. No receipt from that
   handoff has been recovered, and it has not been independently validated. Attribute
@@ -64,10 +85,14 @@ blockers. It is not a qualification report.
    `settlement=UNKNOWN`, `publication=not-attempted`, and `containment=not-established`.
    The guarded public D09 route is wired (commit `47a6d73`), but there is no authentic
    signed host admission and no positive public host launch.
-2. **Managed Linux service:** provision and validate the dedicated service account,
-   socket activation, source registration, signed profile, client/server handoff, and
-   restart recovery. Source-capture code exists; a real signed-profile path and a
-   positive service launch remain unqualified.
+2. **Recovery entrypoints and managed Linux service:** D20's atomic reservation is
+   tested through the prepare/activate component path, but production fresh
+   initialization has clock-anchor ordering and bare-digest defects; the binder also mishandles bare digests. Their separate
+   fix and end-to-end verification are in progress. Then provision and validate the
+   dedicated service account, socket activation, source registration, signed profile,
+   client/server handoff, and restart recovery. A real signed-profile path, positive
+   service launch, and actual owner-cell drain remain unqualified; the D20 drain verifier
+   is a no-op stub.
 3. **Containment:** qualify the rootless OCI, cgroup, seccomp, no-new-privileges, and
    Landlock profile on a clean ABI-8 host, with independent effect oracles. ABI 4 is the
    last observed development-guest value and is unmeasured now; the live WSL component
@@ -84,33 +109,40 @@ blockers. It is not a qualification report.
    the user performs construct review with thesis-advisor guidance. Multiple independent
    human construct reviewers and OSF/Zenodo accounts are not required by this
    implementation procedure; no external registration is claimed. The thesis sources
-   were not rewritten. Record the actual procedure and limitations, and freeze the
-   executed protocol, corpus, analysis, and artifact identities locally with review
-   records and raw results. Protocol 48 is historical. The draft 51-trial recovery
-   amendment (17 scenarios across three replications: eight lifecycle, nine incident)
-   remains unadopted, unfrozen, unregistered, and unexecuted. E07 remains separate.
+   were not rewritten. The user selected DeepSeek V4.1 Flash
+   (`deepseek/deepseek-v4.1-flash`) with a US$5 maximum total spend. Routing, current
+   price ceilings, request/token limits, and a full trial cost estimate remain pending;
+   no paid run has occurred. Reserve each request's worst-case cost against the shared
+   durable budget before sending, including pilot, retry, calibration, and evaluation.
+   Protocol 48 is historical. The draft 51-trial recovery amendment (17 scenarios
+   across three replications: eight lifecycle, nine incident) remains unadopted,
+   unfrozen, unregistered, and unexecuted. E07 remains separate.
 
 ## Blockers
 
-- **D20 stale receipt (critical):** `ReservePreEffectRetry` advances the protected
-  owner/root head before activation. The prior clean-restart receipt is then stale,
-  and `sessionlaunch.RecoveryCandidate.Activate` rejects it. The atomic
-  combined-reservation correction is in progress on this branch and is not yet
-  verified or committed. Required: a failing-before/fixed-after regression through the actual
-  preparation and activation path. It must cover fresh-process recovery, retained
-  markers, interrupted activation, no double charge, third-retry and restart exhaustion,
-  and preserved deadline.
+- **D20 production recovery (partial):** the atomic restart+retry reservation before
+  activation is implemented in `d29a0ff`; its bounded receipt records the failing-before
+  case and positive fresh-process prepare/activate path. Production fresh initializer
+  has clock-anchor ordering and bare-digest defects, and the binder mishandles bare digests; their separate fix and end-to-end entrypoint
+  verification are in progress. The test drain verifier is a stub, so actual owner-cell
+  drain and interrupted-activation qualification remain open.
 - **D14 durability (partial):** `0ab8b9f` preserves SQLite error causes and adds
   five real reservation-path fault cases with separate fresh-process verification.
   Kernel EFBIG/SQLite IOERR and engine-limited SQLITE_FULL were exercised; package
   unit and race each passed 63 tests without skips or failures. See the
-  [source-bound receipt](evidence/sqlite-reservation-faults-20261014.json).
+  [reservation-fault receipt](evidence/sqlite-reservation-faults-20261014.json).
+  The S2 terminal-persistence characterization in `ad2479f` adds three fresh-process
+  cases; the composed workflowrecovery unit/race runs each report 71 verbose PASS
+  events. S2 uses synthetic Store pins/verifier and an fsynced test marker, with no
+  production `RunEffect` or real external effect.
   The earlier private test `19c2919c…` was replaced after it faulted the wrong
   store and used weak recovery checks. Terminal accounting, reserved audit capacity,
-  filesystem ENOSPC, genuine fsync faults, corruption and power-loss evidence remain open.
+  filesystem ENOSPC, genuine fsync faults, corruption and declared-platform power-loss
+  evidence remain open.
 - **Recovery continuity:** the fresh provider constructor refuses retained nonempty
-  journals. Inert history, checkpoint/budget recovery and ManagedStore/D06 binding
-  are implemented components; actual production continuation through them remains unqualified.
+  journals. Inert history, checkpoint/budget recovery, and ManagedStore/D06 binding
+  exist as components; provider-history replay and continuation through the production
+  route remain unqualified.
 - **Protocol authority:** the AH02-1 authority conflict is unresolved.
 - **CLI fixture routes:** `--native-fixture` ignores `--native-host-profile`,
   `--workspace`, and `--source`, and `--dev-fixture` ignores `--workspace` and
@@ -122,10 +154,10 @@ blockers. It is not a qualification report.
 
 These checked-in priorities follow the implementation order. Research claims are last.
 
-1. **Core engineering:** integrate the atomic D20 recovery fix with positive
-   production recovery regressions; execute and integrate the D14 fault work; complete
-   the governed lifecycle cuts end to end (LC-04 and LC-05) with independent oracles;
-   publication, provenance, and observer evidence.
+1. **Core engineering:** close the production D20 fresh-initializer/binder defects and
+   qualify actual owner-cell drain; continue the remaining D14 capacity/fault work;
+   complete LC-04 and LC-05 end to end with independent oracles; collect publication,
+   provenance, and observer evidence.
 2. **Deployment engineering:** preserve required artifacts before disposing of the
    development VM, then qualify a fresh ABI-8 guest (replacement authorized
    2026-10-14, not yet performed); freeze the signed Pi CLI closure and host profile; admit the managed service; drain the prior owner
@@ -141,9 +173,10 @@ These checked-in priorities follow the implementation order. Research claims are
    control, and retain review records and raw results. Perform the clean-machine G4
    reproduction. Describe the actual review procedure: self-review is not independent,
    independent human construct reviewers and registration are not required by the
-   decision, and no external registration is claimed. Define and record the OpenRouter
-   model, request and token limits, and monetary budget before any paid provider
-   evaluation. Then
+   decision, and no external registration is claimed. The user selected DeepSeek V4.1
+   Flash with a US$5 total cap. Freeze provider routing, current price ceilings,
+   request/token limits and the full-trial cost estimate, and enforce a durable
+   worst-case reservation per request before any paid call. Then
    execute H1: AC-EVQ mandatory obligations with raw artifacts, zero forbidden effects in
    299 Configuration C trajectories plus paired P/C calibration, and AC-Friction ORR at
    most 10% on 100 compliant tasks with B and C each completing at least 90 of 100 (per
@@ -174,7 +207,7 @@ treated as evidence for `6a0a52a`.
 
 An earlier race runner (`84675`) ended with exit 1 and empty output at 15:47:43, and no
 race exit receipt was recovered for it. That run is not treated as evidence. The
-fresh receipt above is the current record for `6a0a52a`.
+baseline receipt above is the current record for `6a0a52a`.
 
 Earlier D09 and doctor receipts for the Linux runtime path are kept in
 `review-artifacts/tbound-resume-2026-10-13/` (`385982d`, `91440d5`, `11da49b`,
