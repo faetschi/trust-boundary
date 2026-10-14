@@ -1,0 +1,82 @@
+{
+  "schema": "tbound.sqlite-corruption-verification.v1",
+  "date": "2026-10-14",
+  "evidenceClass": "Partial D14 SQLite corruption classification evidence; not full effect-drain, capacity-reservation, G1, or H1 qualification.",
+  "capturedSource": {
+    "baseCommit": "2effea581da114c0ee49caf995cf9f09ab6624c1",
+    "baseArchive": "Git archive of the supervisor source at baseCommit",
+    "baseArchiveSha256": "22db130b52ca4979167b3e00e66d6f2bd6ed9b010c092a412ee3b3a3d50cbb46",
+    "includedOverlay": [
+      "supervisor/internal/workflowrecovery/sqlite_linux.go",
+      "supervisor/internal/workflowrecovery/sqlite_corruption_linux_test.go"
+    ],
+    "excludedConcurrentWorktreePaths": [
+      "supervisor/internal/workflowrecovery/reserved_capacity_linux_test.go"
+    ],
+    "testSourceSha256": "982c11bf18ec6a4f30de8f1c371956caf6b988af1d56ea394e1a0e6b3f8a44bc",
+    "productionSourceSha256": "c249266fa27f28530a3fd0e672e4fd2cbe539a7c155278e11b5f07fe19728cad",
+    "greenSourceManifest": "../review-artifacts/tbound-completion-2026-10-14/sqlite-corruption/source-manifest.green.txt",
+    "greenSourceManifestSha256": "d0e44e0c85cb93efeb1d8b88f89e091f62aaed3e151ff2503d736521989b3eb9",
+    "redSourceManifest": "../review-artifacts/tbound-completion-2026-10-14/sqlite-corruption/source-manifest.baseline-red.txt",
+    "redSourceManifestSha256": "b1bf7293dabcb7a5841d165d292b7829f827f7cb35dd4c72d9f769759e534fdc",
+    "sourceManifestScope": "Workflow recovery package files from the private base archive plus the two owned overlays, along with base archive, go.mod, and go.sum hashes."
+  },
+  "change": "Wrap SQLite PingContext/open failures with ErrOwnerStore while preserving the underlying SQLite error via multiple %w. The shared open path covers both the SQLite owner and protected root.",
+  "test": {
+    "name": "TestSQLiteOwnerRealCorruptionFailsClosedAfterReservedEffect",
+    "file": "supervisor/internal/workflowrecovery/sqlite_corruption_linux_test.go",
+    "toolchain": "go1.27.1 linux/amd64",
+    "host": "WSL Ubuntu, linux/amd64",
+    "cases": [
+      {
+        "target": "owner database",
+        "seed": "A child process creates and initializes the real protected root and SQLite owner, registers the initial transcript, durably reserves an effect, checkpoints both databases, and exits.",
+        "positiveControl": "A separate child reopens the intact files, observes the pending reservation, and verifies that the next ReserveEffect returns ErrPendingUnknown with the test-local grant callback count at zero.",
+        "fault": "After checkpoint and close, mutate byte zero of the owner database header from S to X; require no WAL sidecar that could recover or hide the corruption.",
+        "freshProcessResult": "A new child confirms PRAGMA quick_check returns an actual SQLite error with primary code 26 (SQLITE_NOTADB), then requires open rejection classified by ErrOwnerStore or ErrRollback while preserving the SQLite error for errors.As. No grant callback runs."
+      },
+      {
+        "target": "protected-root database",
+        "seed": "Same durable reserved-effect fixture and clean-reopen control.",
+        "fault": "After checkpoint and close, mutate byte zero of the protected-root database header from S to X; require no WAL sidecar that could recover or hide the corruption.",
+        "freshProcessResult": "A new child confirms PRAGMA quick_check returns an actual SQLite error with primary code 26 (SQLITE_NOTADB), then requires protected-root/owner open rejection classified by ErrOwnerStore or ErrRollback while preserving the SQLite error for errors.As. No grant callback runs."
+      }
+    ],
+    "limitations": [
+      "The callback counter is a test-local next-grant gate; the test does not invoke production RunEffect, a full binder/drain flow, or a real external effect/provider.",
+      "This evidence validates corruption rejection and typed error classification only. It does not establish D14 completion, reserved-capacity behavior, genuine fsync failure, power-loss behavior, or host qualification."
+    ]
+  },
+  "verification": {
+    "redBaseline": {
+      "exit": 1,
+      "result": "On the base production source with the same regression test overlay, both real-corruption cases fail because open returns the raw SQLite NOTADB error without ErrOwnerStore/ErrRollback classification. The positive controls pass and SQLite reports primary code 26.",
+      "log": "../review-artifacts/tbound-completion-2026-10-14/sqlite-corruption/baseline-red-final.log",
+      "logSha256": "c5213ff4c2f2fdd4df7f81b14bb10a1e448c17f73683271e9f65e2276b5ef486"
+    },
+    "workflowRecoveryUnit": {
+      "command": "See commands-and-exits.txt",
+      "exit": 0,
+      "log": "../review-artifacts/tbound-completion-2026-10-14/sqlite-corruption/package-unit-isolated.log",
+      "logSha256": "5795332cdd2115ba56308d098ba7ec6ee4bd96fe0bf354b43a44ae9bb894d2f4"
+    },
+    "workflowRecoveryRace": {
+      "command": "See commands-and-exits.txt",
+      "exit": 0,
+      "log": "../review-artifacts/tbound-completion-2026-10-14/sqlite-corruption/package-race-isolated.log",
+      "logSha256": "51f7d00320521676547311d3a4275247876e42a077d7cd80e16cbdffd9bd2ccc"
+    },
+    "vetExit": 0,
+    "vetLog": "../review-artifacts/tbound-completion-2026-10-14/sqlite-corruption/package-vet-isolated.log",
+    "vetLogSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "formatExit": 0,
+    "formatLog": "../review-artifacts/tbound-completion-2026-10-14/sqlite-corruption/gofmt-final2.log",
+    "formatLogSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "commandsAndExits": "../review-artifacts/tbound-completion-2026-10-14/sqlite-corruption/commands-and-exits.txt",
+    "commandsAndExitsSha256": "76cf01dfd2c2d814d574d0ff702bf2fea0753e4b5c50398aeda10c2668b71884"
+  },
+  "environment": {
+    "moduleNetwork": "GOPROXY=off and GOSUMDB=off; private GOCACHE and TMPDIR were used.",
+    "sourceIsolation": "Runs used a private Git archive of baseCommit plus only the two listed owned overlays; concurrent capacity work was excluded."
+  }
+}

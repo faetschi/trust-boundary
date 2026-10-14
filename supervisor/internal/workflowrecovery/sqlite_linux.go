@@ -236,7 +236,7 @@ func openOwnerDatabase(path string) (*sql.DB, error) {
 	defer cancel()
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("connect workflow recovery SQLite owner: %w", err)
+		return nil, fmt.Errorf("%w: connect workflow recovery SQLite owner: %w", ErrOwnerStore, err)
 	}
 	return db, nil
 }
