@@ -42,6 +42,7 @@ var staticRoutes = map[string]staticRoute{
 	"/static/render.mjs":  {"assets/render.mjs", "text/javascript; charset=utf-8"},
 	"/static/filters.mjs": {"assets/filters.mjs", "text/javascript; charset=utf-8"},
 	"/static/format.mjs":  {"assets/format.mjs", "text/javascript; charset=utf-8"},
+	"/static/trajectory.mjs": {"assets/trajectory.mjs", "text/javascript; charset=utf-8"},
 }
 
 // NewHandler exposes GET-only snapshots, retained projected items, and cursor

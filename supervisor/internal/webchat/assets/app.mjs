@@ -10,11 +10,16 @@ import {
   applyItem,
   applySession,
   applySnapshot,
+  clearRecord,
   createWorkspace,
   noteGap,
+  selectRecord,
   setConnection,
   setError,
   setFilter,
+  setGroup,
+  setQuery,
+  setView,
 } from "./store.mjs";
 import { renderAll } from "./render.mjs";
 import { humanize } from "./format.mjs";
@@ -46,6 +51,16 @@ const refs = {
   panelWarnings: document.getElementById("panel-warnings-list"),
   inspector: document.getElementById("inspector"),
   inspectorToggle: document.getElementById("inspector-toggle"),
+  viewTabs: document.getElementById("view-tabs"),
+  chatView: document.getElementById("chat-view"),
+  trajectoryView: document.getElementById("trajectory-view"),
+  trajectoryGroups: document.getElementById("trajectory-groups"),
+  trajectorySearch: document.getElementById("trajectory-search"),
+  trajectorySummary: document.getElementById("trajectory-summary"),
+  sequenceRail: document.getElementById("sequence-rail"),
+  ledger: document.getElementById("ledger"),
+  recordInspector: document.getElementById("record-inspector"),
+  footStats: document.getElementById("foot-stats"),
 };
 
 const state = createWorkspace();
@@ -118,6 +133,12 @@ function captureFocus() {
   if (active.tagName === "BUTTON" && active.dataset && active.dataset.filter) {
     return { kind: "filter", value: active.dataset.filter };
   }
+  if (active.tagName === "BUTTON" && active.dataset && active.dataset.group) {
+    return { kind: "group", value: active.dataset.group };
+  }
+  if (active.tagName === "BUTTON" && active.dataset && active.dataset.id) {
+    return { kind: "record", value: active.dataset.id };
+  }
   return null;
 }
 
@@ -125,6 +146,24 @@ function restoreFocus(target) {
   if (!target) return;
   // Skip when the DOM already holds focus, or when the user moved it elsewhere.
   if (document.activeElement && document.activeElement !== document.body) return;
+  if (target.kind === "group") {
+    for (const button of refs.trajectoryGroups.querySelectorAll("button.group-tab")) {
+      if (button.dataset.group === target.value) {
+        button.focus();
+        return;
+      }
+    }
+    return;
+  }
+  if (target.kind === "record") {
+    for (const row of refs.ledger.querySelectorAll("button.record-row")) {
+      if (row.dataset.id === target.value) {
+        row.focus();
+        return;
+      }
+    }
+    return;
+  }
   if (target.kind === "filter") {
     for (const button of refs.timelineFilters.querySelectorAll("button[data-filter]")) {
       if (button.dataset.filter === target.value) {
@@ -331,6 +370,77 @@ refs.timelineFilters.addEventListener("keydown", (event) => {
   buttons[next].focus();
 });
 
+// View ring: Chat and Trajectory are two projections of the same bounded window.
+// Switching views is presentation only.
+function selectView(value) {
+  setView(state, value);
+  render();
+}
+
+refs.viewTabs.addEventListener("click", (event) => {
+  const target = event.target;
+  const button = target && target.closest ? target.closest("button.view-tab") : null;
+  if (button) selectView(button.dataset.view);
+});
+
+refs.viewTabs.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  const buttons = Array.from(refs.viewTabs.querySelectorAll("button.view-tab"));
+  const index = buttons.indexOf(document.activeElement);
+  if (index < 0) return;
+  const next = event.key === "ArrowRight"
+    ? (index + 1) % buttons.length
+    : (index - 1 + buttons.length) % buttons.length;
+  event.preventDefault();
+  buttons[next].focus();
+  selectView(buttons[next].dataset.view);
+});
+
+// Trajectory grouping is a presentation choice, exactly like the timeline filter.
+refs.trajectoryGroups.addEventListener("click", (event) => {
+  const target = event.target;
+  const button = target && target.closest ? target.closest("button.group-tab") : null;
+  if (!button) return;
+  setGroup(state, button.dataset.group);
+  render();
+});
+
+refs.trajectoryGroups.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  const buttons = Array.from(refs.trajectoryGroups.querySelectorAll("button.group-tab"));
+  const index = buttons.indexOf(document.activeElement);
+  if (index < 0) return;
+  const next = event.key === "ArrowRight"
+    ? (index + 1) % buttons.length
+    : (index - 1 + buttons.length) % buttons.length;
+  event.preventDefault();
+  buttons[next].focus();
+});
+
+// Search narrows what the ledger shows. It reads only allowlisted bounded fields
+// and can never change a projection, a verdict, or a filter outcome.
+refs.trajectorySearch.addEventListener("input", () => {
+  setQuery(state, refs.trajectorySearch.value);
+  render();
+});
+
+// Selecting a record opens the record inspector for that record only.
+refs.ledger.addEventListener("click", (event) => {
+  const target = event.target;
+  const row = target && target.closest ? target.closest("button.record-row") : null;
+  if (!row) return;
+  selectRecord(state, row.dataset.id);
+  render();
+});
+
+refs.recordInspector.addEventListener("click", (event) => {
+  const target = event.target;
+  if (target && target.dataset && target.dataset.action === "clear-record") {
+    clearRecord(state);
+    render();
+  }
+});
+
 refs.inspectorToggle.addEventListener("click", () => {
   const open = refs.inspector.dataset.open === "true";
   refs.inspector.dataset.open = String(!open);
@@ -342,7 +452,14 @@ if (typeof narrowViewport.addEventListener === "function") {
 }
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape" && refs.inspector.dataset.open === "true") {
+  if (event.key !== "Escape") return;
+  // A record selection is the innermost dismissable state.
+  if (state.selectedId) {
+    clearRecord(state);
+    render();
+    return;
+  }
+  if (refs.inspector.dataset.open === "true") {
     refs.inspector.dataset.open = "false";
     refs.inspectorToggle.focus();
     syncInspector();

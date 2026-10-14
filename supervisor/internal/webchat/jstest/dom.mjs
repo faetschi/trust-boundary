@@ -67,6 +67,10 @@ class DomElement extends DomNode {
     return Object.prototype.hasOwnProperty.call(this.attributes, name) ? this.attributes[name] : null;
   }
 
+  removeAttribute(name) {
+    delete this.attributes[name];
+  }
+
   querySelector(selector) {
     return this.querySelectorAll(selector)[0] || null;
   }

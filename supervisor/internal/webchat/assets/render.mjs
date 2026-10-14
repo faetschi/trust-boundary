@@ -15,6 +15,14 @@ import {
 } from "./format.mjs";
 import { groupTurn, turnsOf } from "./store.mjs";
 import { FILTERS, countFilter, filterItems, governanceCounts } from "./filters.mjs";
+import {
+  RECORD_GROUPS,
+  recordOf,
+  sequenceLanes,
+  sourceLabel,
+  visibleRecords,
+  weightClass,
+} from "./trajectory.mjs";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -79,9 +87,33 @@ export function renderAll(refs, state) {
   renderNotices(refs.notices, state);
   renderSessions(refs.sessions, state);
   renderStreams(refs.streams, state);
+  applyView(refs, state);
   renderToolbar(refs, state);
   renderConversation(refs, state);
+  renderTrajectory(refs, state);
+  renderRecordInspector(refs, state);
+  renderFootStats(refs, state);
   renderInspector(refs, state);
+}
+
+// The view ring is presentation only: switching between Chat and Trajectory
+// changes what is shown, never what is held or claimed.
+function applyView(refs, state) {
+  const view = state.view === "trajectory" ? "trajectory" : "chat";
+  if (refs.viewTabs) {
+    for (const button of refs.viewTabs.querySelectorAll("button.view-tab")) {
+      const active = button.dataset.view === view;
+      button.setAttribute("aria-selected", String(active));
+      button.className = active ? "view-tab tab is-active" : "view-tab tab";
+    }
+  }
+  if (refs.chatView) toggleHidden(refs.chatView, view !== "chat");
+  if (refs.trajectoryView) toggleHidden(refs.trajectoryView, view !== "trajectory");
+}
+
+function toggleHidden(node, hidden) {
+  if (hidden) node.setAttribute("hidden", "");
+  else node.removeAttribute("hidden");
 }
 
 // renderToolbar draws the observed posture badges and the timeline filter
@@ -476,4 +508,242 @@ function renderInspector(refs, state) {
   clear(warnings);
   const list = state.warnings.length ? state.warnings : ["No warnings projected."];
   for (const warning of list) warnings.appendChild(el("li", null, warning));
+}
+
+/* ---------------------------------------------------------------------------
+ * Trajectory view
+ *
+ * The ledger is a second projection of the same bounded items: a turn-aware
+ * record list with a governance lens. It cannot alter a projection, a verdict,
+ * or a filter outcome, and it never renders a measurement the projection did not
+ * record.
+ * ------------------------------------------------------------------------- */
+
+function dotNode(tone) {
+  const node = el("span", `dot dot-${tone}`);
+  node.setAttribute("aria-hidden", "true");
+  node.title = `status: ${tone}`;
+  return node;
+}
+
+function sourceChip(source) {
+  return chip(sourceLabel(source), `source-${source}`);
+}
+
+function renderTrajectory(refs, state) {
+  const view = visibleRecords(state);
+  const group = RECORD_GROUPS.find((entry) => entry.id === (state.group || "turn"));
+
+  if (refs.trajectoryGroups) {
+    clear(refs.trajectoryGroups);
+    for (const entry of RECORD_GROUPS) {
+      const button = el("button", "toggle-item group-tab");
+      button.type = "button";
+      button.dataset.group = entry.id;
+      button.setAttribute("aria-pressed", String((state.group || "turn") === entry.id));
+      button.setAttribute("aria-label", `Group records by ${entry.label} (${entry.hint})`);
+      button.appendChild(el("span", null, entry.label));
+      refs.trajectoryGroups.appendChild(button);
+    }
+  }
+
+  // Never overwrite the search box while the reader is typing in it.
+  if (
+    refs.trajectorySearch &&
+    refs.trajectorySearch.value !== state.query &&
+    document.activeElement !== refs.trajectorySearch
+  ) {
+    refs.trajectorySearch.value = state.query || "";
+  }
+
+  if (refs.trajectorySummary) {
+    const searching = Boolean(String(state.query || "").trim());
+    const narrowed = searching ? `${view.items.length} of ${state.items.length} record(s) matching “${state.query}”` : `${view.items.length} record(s)`;
+    refs.trajectorySummary.textContent = `${narrowed} · grouped by ${group ? group.label : "Turn"}`;
+  }
+
+  if (refs.sequenceRail) {
+    clear(refs.sequenceRail);
+    if (!state.loaded) {
+      refs.sequenceRail.appendChild(el("p", "rail-note", "Loading projection…"));
+    } else if (!view.items.length) {
+      refs.sequenceRail.appendChild(el("p", "rail-note", "No records to chart."));
+    } else {
+      const rail = sequenceLanes(view.items);
+      for (const lane of rail.lanes) {
+        const row = el("div", `lane lane-${lane.id}`);
+        row.appendChild(el("span", "lane-label", lane.label));
+        const track = el("span", "lane-track");
+        for (const segment of lane.segments) {
+          const node = el("span", `seg seg-${segment.tone} ${weightClass(segment.weight)}`);
+          node.title = `${lane.label}: ${segment.weight} record(s), ${segment.tone}`;
+          track.appendChild(node);
+        }
+        row.appendChild(track);
+        refs.sequenceRail.appendChild(row);
+      }
+      const axis = el("p", "rail-axis", rail.note);
+      axis.dataset.ordinal = "true";
+      refs.sequenceRail.appendChild(axis);
+    }
+  }
+
+  const ledger = refs.ledger;
+  if (!ledger) return;
+  clear(ledger);
+  if (!state.loaded) {
+    ledger.appendChild(loadingState());
+    return;
+  }
+  if (!state.items.length) {
+    ledger.appendChild(emptyState(
+      "No records",
+      state.source === "unavailable"
+        ? "Production observations are unavailable. No live Pi/session source is registered."
+        : "No record has been projected yet.",
+    ));
+    return;
+  }
+  if (!view.items.length) {
+    ledger.appendChild(emptyState(
+      "No matching records",
+      "No record matches the current search. Clear the search to review the whole trajectory.",
+    ));
+    return;
+  }
+  for (const entry of view.groups) {
+    ledger.appendChild(renderRecordGroup(state, entry));
+  }
+}
+
+function renderRecordGroup(state, group) {
+  const node = el("div", "record-group");
+  node.setAttribute("role", "group");
+  node.setAttribute("aria-label", group.title);
+  const head = el("div", "group-head");
+  head.appendChild(el("span", "group-title", group.title));
+  if (group.meta) head.appendChild(el("span", "group-meta", group.meta));
+  node.appendChild(head);
+  const body = el("div", "group-body");
+  for (const record of group.records) body.appendChild(renderRecordRow(state, record));
+  node.appendChild(body);
+  return node;
+}
+
+function renderRecordRow(state, record) {
+  const selected = state.selectedId === record.id;
+  const row = el("button", selected ? "record-row is-selected" : "record-row");
+  row.type = "button";
+  row.dataset.id = record.id;
+  row.dataset.source = record.source;
+  row.setAttribute("aria-pressed", String(selected));
+  const chips = record.chips.map((entry) => entry.label).join(", ");
+  row.setAttribute(
+    "aria-label",
+    `${sourceLabel(record.source)} record ${record.sequence}: ${record.label}${chips ? `. ${chips}` : ""}`,
+  );
+  row.appendChild(dotNode(record.dot));
+  row.appendChild(sourceChip(record.source));
+  row.appendChild(el("span", "record-label", record.label));
+  const payload = el("span", "record-payload mono", record.payload);
+  if (record.payload) payload.title = record.payload;
+  row.appendChild(payload);
+  const tail = el("span", "record-tail");
+  for (const entry of record.chips) {
+    const node = chip(entry.label, entry.variant);
+    if (entry.hint) node.title = entry.hint;
+    tail.appendChild(node);
+  }
+  row.appendChild(tail);
+  return row;
+}
+
+// The record inspector shares the aside with the session-scoped governance
+// panels. It is only shown for a selected record in the Trajectory view; the
+// panels remain the default so the claim boundary is never hidden.
+function renderRecordInspector(refs, state) {
+  const item = state.selectedId && state.itemsById ? state.itemsById.get(state.selectedId) : null;
+  const record = item ? recordOf(item) : null;
+  const mode = state.view === "trajectory" && record ? "record" : "governance";
+  if (refs.inspector) {
+    refs.inspector.dataset.mode = mode;
+    refs.inspector.setAttribute(
+      "aria-label",
+      mode === "record" ? "Record inspector" : "Governance inspector",
+    );
+  }
+  const container = refs.recordInspector;
+  if (!container) return;
+  clear(container);
+  if (!record) {
+    if (state.view === "trajectory") {
+      container.appendChild(el(
+        "p",
+        "rail-note",
+        "Select a record in the ledger to inspect its bounded fields. The session-scoped governance panels are shown below.",
+      ));
+    }
+    return;
+  }
+
+  const head = el("div", "record-inspector-head");
+  head.appendChild(sourceChip(record.source));
+  head.appendChild(el(
+    "span",
+    "record-inspector-pos",
+    `sequence ${record.sequence}${item.turn_id ? ` · turn ${item.turn_id}` : ""}`,
+  ));
+  const close = el("button", "ghost-button record-close", "Close");
+  close.type = "button";
+  close.dataset.action = "clear-record";
+  head.appendChild(close);
+  container.appendChild(head);
+
+  for (const section of record.detail) {
+    const block = el("section", "record-section");
+    block.appendChild(el("h3", null, section.title));
+    const grid = el("div", "kv");
+    for (const row of section.rows) {
+      const key = row[0];
+      const value = row[1];
+      const options = row[2] || {};
+      grid.appendChild(el("span", "k", key));
+      const cell = el("span", "v");
+      if (options.chip) cell.appendChild(chip(String(value), options.chip));
+      else if (options.digest) cell.appendChild(digestNode(value === "—" ? null : value));
+      else if (options.mono) cell.appendChild(monoNode(String(value)));
+      else cell.textContent = String(value);
+      grid.appendChild(cell);
+    }
+    block.appendChild(grid);
+    if (section.note) block.appendChild(el("p", "record-note", section.note));
+    container.appendChild(block);
+  }
+}
+
+// The footer states what was observed and marks every metric the projection does
+// not carry as unavailable. It never renders a zero where the value is unknown.
+function renderFootStats(refs, state) {
+  const container = refs.footStats;
+  if (!container) return;
+  clear(container);
+  const counts = governanceCounts(state.items, isVerified);
+  const session = state.session || {};
+  const stats = [
+    `${session.turn_count || 0} turn(s) · ${state.items.length} record(s)`,
+    `policy ${counts.allow} allow / ${counts.deny} deny / ${counts.unknownDecisions} unknown`,
+    `${counts.reported} reported${counts.verified ? ` · ${counts.verified} verified` : ""}`,
+    "token usage unavailable",
+    "duration unavailable",
+  ];
+  for (const text of stats) {
+    if (container.children.length) {
+      const separator = el("span", "foot-sep", "·");
+      separator.setAttribute("aria-hidden", "true");
+      container.appendChild(separator);
+    }
+    const node = el("span", "foot-stat", text);
+    if (/unavailable/.test(text)) node.dataset.unavailable = "true";
+    container.appendChild(node);
+  }
 }

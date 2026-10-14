@@ -54,6 +54,30 @@
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
   --font-heading: var(--font-sans);
+
+  /*
+   * Record-source palette. Borrowed in spirit from the DeepSeek Harness
+   * trajectory view, where each record carries a colour-coded source chip. A
+   * chip always carries its text as well, so colour is never the only carrier.
+   */
+  --source-system: oklch(0.72 0.13 250);
+  --source-user: oklch(0.78 0.12 210);
+  --source-assistant: oklch(0.76 0.14 300);
+  --source-tool: oklch(0.81 0.14 65);
+  --source-decision: oklch(0.83 0.13 92);
+  --source-result: oklch(0.78 0.04 250);
+  --source-message: oklch(0.78 0.04 250);
+
+  /* Ledger status dots, one per trust tone. */
+  --dot-ok: var(--success);
+  --dot-deny: var(--destructive);
+  --dot-pending: var(--muted-foreground);
+  --dot-reported: var(--warning);
+
+  /* Geometry declared once, so the three-region shell has one source of truth. */
+  --rail-width: 15rem;
+  --inspector-width: 21.5rem;
+  --row-pad-x: 0.625rem;
 }
 
 * {
@@ -119,15 +143,8 @@ h3 {
 
 /* ---------- top bar ---------- */
 
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.625rem 1rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--background);
-}
+/* The top bar's rules live with the workspace head below, where the title,
+   badges and the view ring are described together. */
 
 .brand {
   display: flex;
@@ -355,11 +372,27 @@ h3 {
 
 /* ---------- layout ---------- */
 
+/*
+ * Three regions, one source of truth for their widths: rail, workspace,
+ * inspector. The layout mirrors the Harness web client's shell, which keeps a
+ * single foreground surface beside a persistent left rail and a right inspector.
+ */
 .layout {
   display: grid;
-  grid-template-columns: 16rem minmax(0, 1fr) 21.5rem;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--inspector-width);
   align-items: start;
-  min-height: calc(100vh - 7.25rem);
+  min-height: 100vh;
+}
+
+.workspace {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The `hidden` attribute must win over an author display rule. */
+[hidden] {
+  display: none !important;
 }
 
 /* ---------- sidebar ---------- */
@@ -368,10 +401,18 @@ h3 {
   background: var(--sidebar);
   color: var(--sidebar-foreground);
   border-right: 1px solid var(--sidebar-border);
-  padding: 1rem 0.875rem;
+  padding: 0.875rem 0.75rem;
   position: sticky;
   top: 0;
-  align-self: stretch;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.rail .brand {
+  padding: 0 0.25rem;
 }
 .rail-title,
 .inspector-title {
@@ -550,30 +591,365 @@ h3 {
   font-size: 0.6875rem;
 }
 
-/* ---------- conversation ---------- */
+/* ---------- workspace head, view ring, views ---------- */
 
-.conversation {
-  min-width: 0;
-  padding: 1rem 1.25rem 2.5rem;
-}
-.conversation-head {
+.topbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 0.875rem;
+  gap: 1rem;
+  padding: 0.625rem 1rem;
   border-bottom: 1px solid var(--border);
-  padding-bottom: 0.75rem;
-  margin-bottom: 1rem;
+}
+.topbar-title {
+  min-width: 0;
 }
 .session-title {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 0.9375rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .session-sub {
-  margin: 0.25rem 0 0;
+  margin: 0.125rem 0 0;
   color: var(--muted-foreground);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The view ring. Chat and Trajectory are two projections of one bounded window:
+   switching views never changes what is held or claimed. */
+.tabring {
+  display: flex;
+  gap: 1.25rem;
+  padding: 0 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0.5rem 0 0.5rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--foreground);
+}
+.tab.is-active {
+  color: var(--foreground);
+  border-bottom-color: var(--info-foreground);
+}
+
+.view {
+  min-width: 0;
+  padding: 0.875rem 1rem 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- ledger (Trajectory view) ---------- */
+
+.sequence-rail {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--card) 55%, var(--background));
+  padding: 0.625rem 0.75rem;
+  margin-bottom: 0.875rem;
+}
+.lane {
+  display: grid;
+  grid-template-columns: 3.75rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 0.3125rem;
+}
+.lane:last-of-type {
+  margin-bottom: 0;
+}
+.lane-label {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted-foreground);
+}
+.lane-track {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 1rem;
+}
+.seg {
+  height: 0.5rem;
+  min-width: 6px;
+  border-radius: 0.1875rem;
+  flex: 1 1 0;
+}
+.seg-muted {
+  background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
+}
+.seg-ok {
+  background: var(--success);
+}
+.seg-deny {
+  background: var(--destructive);
+}
+.seg-reported {
+  background: var(--warning);
+}
+.seg-pending {
+  background: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+}
+.seg-w1 { flex-grow: 1; }
+.seg-w2 { flex-grow: 2; }
+.seg-w3 { flex-grow: 3; }
+.seg-w4 { flex-grow: 4; }
+.seg-w5 { flex-grow: 5; }
+.seg-w6 { flex-grow: 6; }
+.seg-w7 { flex-grow: 7; }
+.seg-w8 { flex-grow: 8; }
+
+.rail-note {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+.rail-axis {
+  margin: 0.5rem 0 0;
+  padding-top: 0.4375rem;
+  border-top: 1px dashed var(--border);
+  color: var(--warning-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  line-height: 1.5;
+}
+
+.ledger {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding-bottom: 1rem;
+}
+.record-group {
+  display: flex;
+  flex-direction: column;
+}
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  margin-bottom: 0.125rem;
+}
+.group-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.group-meta {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--muted-foreground);
+}
+.group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.record-row {
+  display: grid;
+  grid-template-columns: 0.75rem 4.75rem 7.5rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 4px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0.3125rem var(--row-pad-x);
+  cursor: pointer;
+}
+.record-row:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+.record-row.is-selected {
+  background: color-mix(in oklch, var(--info) 12%, transparent);
+  border-color: color-mix(in oklch, var(--info) 36%, transparent);
+}
+.record-label {
+  font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-payload {
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.record-tail {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex: none;
+}
+
+.dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  flex: none;
+}
+.dot-ok { background: var(--dot-ok); }
+.dot-deny { background: var(--dot-deny); }
+.dot-lost { background: var(--dot-deny); }
+.dot-pending {
+  background: transparent;
+  border-color: var(--dot-pending);
+}
+.dot-reported {
+  background: transparent;
+  border-color: var(--dot-reported);
+  border-style: dashed;
+}
+.dot-unknown {
+  background: transparent;
+  border-color: var(--dot-reported);
+  border-style: dotted;
+}
+.dot-idle {
+  background: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+}
+
+/* Source chips: a record's provenance is always legible as text, and the tone
+   only reinforces it. */
+.chip-source-system { color: var(--source-system); border-color: color-mix(in oklch, var(--source-system) 40%, transparent); background: color-mix(in oklch, var(--source-system) 12%, transparent); }
+.chip-source-user { color: var(--source-user); border-color: color-mix(in oklch, var(--source-user) 40%, transparent); background: color-mix(in oklch, var(--source-user) 12%, transparent); }
+.chip-source-assistant { color: var(--source-assistant); border-color: color-mix(in oklch, var(--source-assistant) 40%, transparent); background: color-mix(in oklch, var(--source-assistant) 12%, transparent); }
+.chip-source-tool { color: var(--source-tool); border-color: color-mix(in oklch, var(--source-tool) 40%, transparent); background: color-mix(in oklch, var(--source-tool) 12%, transparent); }
+.chip-source-decision { color: var(--source-decision); border-color: color-mix(in oklch, var(--source-decision) 40%, transparent); background: color-mix(in oklch, var(--source-decision) 12%, transparent); }
+.chip-source-result { color: var(--source-result); border-color: color-mix(in oklch, var(--source-result) 40%, transparent); background: color-mix(in oklch, var(--source-result) 12%, transparent); }
+.chip-source-message,
+.chip-source-unknown { color: var(--muted-foreground); }
+
+/* ---------- search field ---------- */
+
+.search-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
+  padding: 0.1875rem 0.5rem;
+  min-width: 15rem;
+}
+.search-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.125rem 0;
+}
+.search-field input::placeholder {
+  color: var(--muted-foreground);
+}
+
+/* ---------- record inspector ---------- */
+
+.record-inspector:empty {
+  display: none;
+}
+.record-inspector-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.record-inspector-pos {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+}
+.record-close {
+  margin-left: auto;
+  font-size: 0.75rem;
+  padding: 0.1875rem 0.5rem;
+}
+.record-section {
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.record-section:last-child {
+  border-bottom: 0;
+}
+.record-section h3 {
+  margin: 0 0 0.375rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.record-note {
+  grid-column: 1 / -1;
+  margin: 0.375rem 0 0;
+  color: var(--warning-foreground);
+  font-size: 0.6875rem;
+  line-height: 1.45;
+}
+
+/*
+ * The aside shows the record inspector for a selected record and the
+ * session-scoped governance panels otherwise. The panels are never both hidden
+ * and unreachable: they stay visible whenever no record is selected, so the
+ * claim boundary is always on screen.
+ */
+.inspector[data-mode="governance"] .record-inspector {
+  display: none;
+}
+.inspector[data-mode="record"] .panel-set {
+  display: none;
+}
+
+/* ---------- footer metrics ---------- */
+
+.foot-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.875rem;
+  padding: 0.5rem 1rem 0.875rem;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  color: var(--muted-foreground);
+}
+.foot-stat[data-unavailable="true"] {
+  color: var(--warning-foreground);
+}
+.foot-sep {
+  opacity: 0.45;
 }
 
 .timeline {
@@ -1033,7 +1409,7 @@ h3 {
 
 @media (max-width: 1180px) {
   .layout {
-    grid-template-columns: 14rem minmax(0, 1fr);
+    grid-template-columns: var(--rail-width) minmax(0, 1fr);
   }
   .inspector {
     position: fixed;
@@ -1061,13 +1437,27 @@ h3 {
     position: static;
     border-right: 0;
     border-bottom: 1px solid var(--sidebar-border);
+    height: auto;
+    overflow-y: visible;
   }
   .claim-note {
     margin-left: 0;
     flex-basis: 100%;
   }
-  .conversation {
-    padding: 0.875rem 0.875rem 2rem;
+  .view {
+    padding: 0.75rem 0.75rem 0;
+  }
+  .search-field {
+    min-width: 0;
+    flex: 1;
+  }
+  /* The ledger drops the inline label first; the source chip, the payload
+     preview and the trust chips are the parts a reviewer needs. */
+  .record-row {
+    grid-template-columns: 0.75rem 4.75rem minmax(0, 1fr) auto;
+  }
+  .record-label {
+    display: none;
   }
   .step {
     grid-template-columns: minmax(0, 1fr);

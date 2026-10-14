@@ -27,7 +27,42 @@ export function createWorkspace() {
     gapNotice: null,
     filter: "all",
     evicted: 0,
+    // Trajectory view state. Presentation only: none of these fields can alter a
+    // projection, a verdict, or a filter outcome.
+    view: "chat",
+    group: "turn",
+    query: "",
+    selectedId: null,
   };
+}
+
+export const VIEWS = ["chat", "trajectory"];
+
+export function setView(state, value) {
+  state.view = VIEWS.includes(value) ? value : "chat";
+  return state;
+}
+
+export function setGroup(state, value) {
+  state.group = typeof value === "string" && value ? value : "turn";
+  return state;
+}
+
+export function setQuery(state, value) {
+  state.query = value === undefined || value === null ? "" : String(value);
+  return state;
+}
+
+// Selecting a record is a local inspection action. Selecting the selected record
+// again clears the selection.
+export function selectRecord(state, id) {
+  state.selectedId = id && state.selectedId !== id ? id : null;
+  return state;
+}
+
+export function clearRecord(state) {
+  state.selectedId = null;
+  return state;
 }
 
 // The client keeps a bounded history. The server ring is bounded too, and an
@@ -71,6 +106,9 @@ export function applySnapshot(state, snapshot) {
   // truthful instead of silently shrinking the record.
   state.evicted += previouslyRetained.size;
   enforceClientCap(state);
+  // A selection that the new window no longer contains must not survive as a
+  // dangling reference: the inspector would keep showing an evicted record.
+  if (state.selectedId && !state.itemsById.has(state.selectedId)) state.selectedId = null;
   state.loaded = true;
   state.error = null;
   state.gapNotice = null;

@@ -368,3 +368,41 @@ are preparation only. Media custody and exact ABI checks precede registration.
   false history_evicted gap on reconnect), asserted SSE event ordering, and
   stopped rendering stream health in the success colour. No round found a path
   that renders an unverified or unavailable observation as confirmed success.
+
+## Web chat increment 6: Trajectory view (2026-10-14, codex/tbound-web-chat)
+
+- Design reference: the DeepSeek Harness trajectory view
+  (packages/client/ui-trajectory) was analysed in full
+  (docs/web-chat-ui-plan.md). The harness client is 63 packages / 1,918 files /
+  581 `.tsx` components over React 18, Cordis 4 and a CSS-module bundler, and its
+  trajectory tab is a leaf of that composed runtime, so adopting it would have
+  moved the web server onto a Node host and inverted the trust direction. Its
+  *design* was ported instead; the client stays zero-build ESM/CSS over the
+  loopback Go gateway. Appendix A of that document records the measurement.
+- Implemented: the three-region shell (rail / workspace / inspector), the
+  `Chat | Trajectory` view ring, source + density tokens, the grouped record
+  ledger (`Turn`/`Tool`/`Verdict`), the record inspector (Summary / Payload /
+  Decision / Result / Evidence / Timing), search over allowlisted bounded fields,
+  the ordinal sequence rail, and an honest footer. New pure module
+  `assets/trajectory.mjs` with 20 unit tests.
+- Honesty rules enforced in code and covered by tests: the status dot mirrors the
+  chip tone so the two cannot disagree; an unverified execution outcome takes the
+  `reported` tone, never `ok`; `timingOf` can never return a duration; the rail's
+  axis is the record sequence and says so; segment widths are bucketed CSS
+  classes because the CSP forbids inline styles; the footer marks unrecorded
+  metrics `unavailable` instead of zero; search reads only allowlisted bounded
+  fields, so raw paths and result bytes are unmatchable; the trajectory ignores
+  the timeline finding filter and cannot change it. No `Context` chip is rendered
+  because the projection has no context item type.
+- The trajectory view consumes the existing `tbound-webchat-observation/v1`
+  contract unchanged: no new field, endpoint or supervisor capability was
+  required.
+- Added `TestStaticAssetsAreClosedAndComplete`, which checks the shell, the
+  module graph and the closed asset allowlist against each other (the check that
+  would have caught a missing `/static/trajectory.mjs` route).
+- Verified: gofmt/build/vet clean; focused unit and race green; Node 65/65; full
+  `go test -race ./...` green except the pre-existing `internal/evaluationindex`
+  docs-path failure of a copied `supervisor/` tree. Deterministic keyboard audits
+  and screenshots for both viewports refreshed in docs/webchat/qa/ (the mobile
+  audit is run at a real 390 px window, because the CDP metrics override does not
+  take effect here).

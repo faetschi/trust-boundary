@@ -5,7 +5,8 @@ import { createRefs, installDom } from "./dom.mjs";
 
 installDom();
 const { renderAll } = await import("../assets/render.mjs");
-const { applySnapshot, createWorkspace, setFilter, MAX_CLIENT_ITEMS } = await import("../assets/store.mjs");
+const { applySnapshot, createWorkspace, selectRecord, setFilter, setGroup, setQuery, setView, MAX_CLIENT_ITEMS } =
+  await import("../assets/store.mjs");
 
 const REF_NAMES = [
   "sourceBadge",
@@ -31,6 +32,17 @@ const REF_NAMES = [
   "panelRecovery",
   "panelQualification",
   "panelWarnings",
+  "inspector",
+  "viewTabs",
+  "chatView",
+  "trajectoryView",
+  "trajectoryGroups",
+  "trajectorySearch",
+  "trajectorySummary",
+  "sequenceRail",
+  "ledger",
+  "recordInspector",
+  "footStats",
 ];
 
 // fixtureSnapshot carries two correlated tool blocks: one policy ALLOW with a
@@ -194,4 +206,119 @@ test("a filter with no matches renders the empty-filter state", () => {
   renderAll(refs, state);
   assert.match(refs.timeline.textContent, /No failed findings/);
   assert.match(refs.filterSummary.textContent, /0 matches · 0 of 7 element/);
+});
+
+/* ---------------------------------------------------------------------------
+ * Trajectory view
+ * ------------------------------------------------------------------------- */
+
+test("the ledger renders one record row per projected element, with a source chip", () => {
+  const { refs } = renderFixture();
+  const rows = refs.ledger.querySelectorAll("button.record-row");
+  assert.equal(rows.length, 7, "every projected element becomes exactly one record");
+  const sources = rows.map((row) => row.dataset.source);
+  assert.deepEqual(sources, ["user", "tool", "decision", "result", "tool", "decision", "result"]);
+  assert.equal(refs.ledger.querySelectorAll("span.dot").length, 7, "every record carries a status dot");
+  assert.match(refs.ledger.textContent, /reason policy_rule_deny/);
+  assert.match(refs.ledger.textContent, /go test/);
+});
+
+test("the ledger never renders an unverified success as confirmed", () => {
+  const { refs } = renderFixture();
+  const classes = refs.ledger.querySelectorAll("span.chip").map((chip) => chip.className);
+  assert.ok(classes.some((value) => value.includes("chip-reported")), "an unverified success is 'reported'");
+  assert.ok(!classes.some((value) => value.includes("chip-succeeded")), "never the confirmed-success chip");
+  const dots = refs.ledger.querySelectorAll("span.dot").map((dot) => dot.className);
+  assert.ok(dots.some((value) => value.includes("dot-reported")), "the dot matches the chip's trust tone");
+  assert.equal(
+    dots.filter((value) => value.includes("dot-ok")).length,
+    1,
+    "only the ALLOW decision carries the ok tone",
+  );
+});
+
+test("selecting a record swaps the aside to the record inspector for that record", () => {
+  const { refs, state } = renderFixture();
+  assert.equal(refs.inspector.dataset.mode, "governance", "the governance panels are the default");
+  setView(state, "trajectory");
+  selectRecord(state, "d2");
+  renderAll(refs, state);
+  assert.equal(refs.inspector.dataset.mode, "record");
+  assert.equal(refs.inspector.getAttribute("aria-label"), "Record inspector");
+  assert.match(refs.recordInspector.textContent, /argument|policy_rule_deny/);
+  assert.match(refs.recordInspector.textContent, /Decision/);
+  // The inspector states the absence of a duration rather than omitting it.
+  assert.match(refs.recordInspector.textContent, /unavailable — the projection records no duration/);
+  const selected = refs.ledger.querySelectorAll("button.record-row").filter((row) => row.className.includes("is-selected"));
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].dataset.id, "d2");
+});
+
+test("the sequence rail declares itself ordinal and never draws a duration", () => {
+  const { refs } = renderFixture();
+  const lanes = refs.sequenceRail.querySelectorAll("div.lane");
+  assert.equal(lanes.length, 3, "one lane each for model, policy and tools");
+  assert.match(refs.sequenceRail.textContent, /not time/);
+  assert.match(refs.sequenceRail.textContent, /no span here is drawn as one/);
+  const segments = refs.sequenceRail.querySelectorAll("span.seg");
+  assert.ok(segments.length > 0);
+  for (const segment of segments) {
+    assert.equal(segment.attributes.style, undefined, "segment widths never use an inline style (CSP)");
+    assert.match(segment.className, /seg-w[1-8]/);
+  }
+});
+
+test("the footer marks unrecorded metrics unavailable instead of zero", () => {
+  const { refs } = renderFixture();
+  assert.match(refs.footStats.textContent, /1 turn\(s\) · 7 record\(s\)/);
+  assert.match(refs.footStats.textContent, /policy 1 allow \/ 1 deny \/ 0 unknown/);
+  assert.match(refs.footStats.textContent, /token usage unavailable/);
+  assert.match(refs.footStats.textContent, /duration unavailable/);
+  const unavailable = refs.footStats.children.filter((node) => node.dataset.unavailable === "true");
+  assert.equal(unavailable.length, 2);
+});
+
+test("the ledger ignores the timeline finding filter but honours the search", () => {
+  const { refs, state } = renderFixture();
+  setFilter(state, "denied");
+  renderAll(refs, state);
+  assert.equal(
+    refs.ledger.querySelectorAll("button.record-row").length,
+    7,
+    "the audit ledger is not narrowed by the transcript filter",
+  );
+  setQuery(state, "curl");
+  renderAll(refs, state);
+  assert.equal(refs.ledger.querySelectorAll("button.record-row").length, 1);
+  assert.match(refs.trajectorySummary.textContent, /1 of 7 record\(s\) matching “curl”/);
+});
+
+test("grouping by tool and verdict reorganises the same records", () => {
+  const { refs, state } = renderFixture();
+  setGroup(state, "verdict");
+  renderAll(refs, state);
+  assert.match(refs.ledger.textContent, /ALLOW/);
+  assert.match(refs.ledger.textContent, /DENY/);
+  assert.equal(refs.ledger.querySelectorAll("button.record-row").length, 7, "grouping never drops a record");
+
+  const buttons = refs.trajectoryGroups.children;
+  assert.equal(buttons.length, 3);
+  assert.equal(buttons[0].dataset.group, "turn");
+  assert.equal(buttons[0].getAttribute("aria-pressed"), "false");
+  assert.equal(buttons[2].getAttribute("aria-pressed"), "true");
+
+  setGroup(state, "tool");
+  renderAll(refs, state);
+  assert.match(refs.ledger.textContent, /Messages/);
+  assert.equal(refs.ledger.querySelectorAll("button.record-row").length, 7);
+});
+
+test("switching to the trajectory view leaves the projection untouched", () => {
+  const { state } = renderFixture();
+  const before = state.items.length;
+  setView(state, "trajectory");
+  setGroup(state, "verdict");
+  setQuery(state, "deny");
+  assert.equal(state.items.length, before);
+  assert.equal(state.filter, "all", "view and search never change the finding filter");
 });

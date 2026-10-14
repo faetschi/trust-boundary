@@ -47,6 +47,7 @@ because submission requires the authenticated supervisor session service.
 | Chat transcript rendering (user/assistant messages) | Implemented |
 | Tool activity with policy verdict, reason code, and result state | Implemented |
 | Timeline finding filters and an observed posture summary | Implemented |
+| Trajectory view: grouped record ledger, ordinal sequence rail, and a per-record inspector | Implemented (read-only; see §4.4) |
 | Governance / provenance / publication / recovery / qualification panels | Implemented |
 | Explicit source labels (`fixture`/`live`/`replay`/`unavailable`) and unverified markers | Implemented |
 | Continuity-gap recovery from a snapshot (no invented success) | Implemented |
@@ -205,6 +206,46 @@ a clean allow?* — without re-reading the whole transcript.
   explicit empty state rather than a blank timeline.
 - Filtering is presentation-only: it never changes the projection, an
   observation, a verdict or an effect, and it never relabels an `UNKNOWN`.
+
+### 4.4 The Trajectory view: a record ledger with a governance lens
+
+The workspace has two views of one bounded window — `Chat` and `Trajectory`. The
+view ring and the trajectory's own controls are presentation-only: neither can
+change a projection, an observation, a verdict, an effect, or a filter outcome.
+The trajectory view consumes the **existing** contract unchanged; no new field or
+endpoint was needed to build it.
+
+- **Ledger.** One row per projected element, in sequence order, grouped by
+  `Turn`, `Tool` or `Verdict`. Each row carries a **source chip**
+  (`System` / `User` / `Assistant` / `Tool` / `Decision` / `Result`), a **status
+  dot**, a bounded payload preview, and the record's trust chips. Grouping and
+  search are presentation choices and never drop or reorder the projection.
+  There is deliberately **no `Context` chip**: the projection has no context item
+  type, and rendering one would present a capability the service does not have.
+- **Status dot.** The dot mirrors the record's chip tone exactly, so the two can
+  never disagree. An unverified execution outcome takes the `reported` tone, never
+  the confirmed `ok` tone; `lost`, `denied`, `pending` and `unknown` are distinct.
+  A policy verdict keeps its verdict tone (as the timeline renders it) and always
+  carries an explicit `unverified` marker when the projection did not verify it.
+- **Sequence rail.** A three-lane overview (`Model` / `Policy` / `Tools`) whose
+  axis is the **record sequence, not time**. The projection records a timestamp
+  and never a duration, so no span is drawn as one and the axis says so. Segment
+  widths are bucketed CSS classes, not inline styles (the CSP allows no inline
+  style).
+- **Record inspector.** Selecting a record shows its bounded fields:
+  `Summary`, `Payload`, `Decision` (verdict, reason code, policy digest),
+  `Result` (state, lossy, digest), `Evidence` (authority, verification scope and
+  an explicit "independently verified: no") and `Timing`. The Timing section is
+  always present and always states that a duration is unavailable, because none
+  was recorded. `Escape` clears the selection; the session-scoped governance
+  panels return.
+- **Search** reads only allowlisted bounded fields (`id`, `text`, `summary`,
+  `detail`, `tool`, `kind`, `state`, `verdict`, `reason_code`, `tool_call_id`,
+  `turn_id`). Raw paths, arguments and result bytes are not in the projection and
+  can never be matched.
+- **Footer** states what was observed (`turns`, `records`, policy counts) and
+  marks every metric the projection does not carry as `unavailable` rather than
+  rendering a zero.
 
 ## 5. API endpoints
 
