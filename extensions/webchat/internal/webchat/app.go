@@ -1,8 +1,10 @@
 package webchat
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"regexp"
@@ -28,9 +30,22 @@ const (
 // CSS under assets/. Any other file the manifest names fails the derivation.
 var appFilePattern = regexp.MustCompile(`^assets/[A-Za-z0-9][A-Za-z0-9._-]*\.(js|css)$`)
 
-// appShellReference matches the URL attributes of the shell. Each one must name
-// a derived route.
-var appShellReference = regexp.MustCompile(`\b(?:src|href)="([^"]*)"`)
+// shellURLAttributes are the attributes whose whole value the browser resolves
+// as one URL. srcset and imagesrcset hold several candidates and are split
+// separately. A value with more than one URL (ping, archive) is not admitted.
+var shellURLAttributes = map[string]bool{
+	"action": true, "archive": true, "background": true, "cite": true, "classid": true,
+	"codebase": true, "data": true, "dynsrc": true, "formaction": true, "href": true,
+	"icon": true, "longdesc": true, "lowsrc": true, "manifest": true, "ping": true,
+	"poster": true, "src": true, "usemap": true, "xlink:href": true,
+}
+
+// shellRawTextElements hold text, not markup, up to their end tag. Neither the
+// browser nor the derivation reads tags inside them.
+var shellRawTextElements = map[string]bool{
+	"iframe": true, "noembed": true, "noframes": true, "noscript": true,
+	"script": true, "style": true, "textarea": true, "title": true, "xmp": true,
+}
 
 // viteManifestEntry is the part of a Vite manifest entry that the route table is
 // derived from. Every other field is ignored.
@@ -165,11 +180,8 @@ func deriveAppRoutes(source fs.FS) (map[string]appRoute, error) {
 	if err != nil {
 		return nil, fmt.Errorf("app shell %s is missing: %w", appIndex, err)
 	}
-	for _, match := range appShellReference.FindAllSubmatch(shell, -1) {
-		reference := string(match[1])
-		if _, ok := routes[reference]; !ok {
-			return nil, fmt.Errorf("app shell references %q, which the manifest does not derive", reference)
-		}
+	if err := admitShell(shell, routes); err != nil {
+		return nil, err
 	}
 	return routes, nil
 }
@@ -195,4 +207,218 @@ func appContentType(name string) (string, error) {
 	default:
 		return "", fmt.Errorf("app manifest lists %q, which has an unsupported type", name)
 	}
+}
+
+// admitShell is the shell's allowlist. Every URL the browser would load from the
+// shell must be an admitted route. A <base> element, a <meta http-equiv>, an
+// inline <script>, and any tag the tokenizer cannot read are refused: each can
+// change what is loaded, or hides what is loaded from the check.
+func admitShell(shell []byte, routes map[string]appRoute) error {
+	tags, err := parseShellTags(shell)
+	if err != nil {
+		return err
+	}
+	admit := func(reference string) error {
+		if _, ok := routes[reference]; !ok {
+			return fmt.Errorf("app shell references %q, which the manifest does not derive", reference)
+		}
+		return nil
+	}
+	for _, tag := range tags {
+		switch tag.name {
+		case "base":
+			return errors.New("app shell has a <base> element, which is not admitted")
+		case "script":
+			if strings.TrimSpace(tag.body) != "" {
+				return errors.New("app shell has an inline <script> body")
+			}
+		}
+		hasSource := false
+		for _, attr := range tag.attrs {
+			switch {
+			case tag.name == "meta" && attr.name == "http-equiv":
+				return errors.New("app shell has a <meta http-equiv>, which is not admitted")
+			case attr.name == "srcset" || attr.name == "imagesrcset":
+				for _, candidate := range strings.Split(attr.value, ",") {
+					if fields := strings.Fields(candidate); len(fields) > 0 {
+						if err := admit(fields[0]); err != nil {
+							return err
+						}
+					}
+				}
+			case shellURLAttributes[attr.name]:
+				if err := admit(strings.Trim(attr.value, " \t\n\f\r")); err != nil {
+					return err
+				}
+			}
+			if tag.name == "script" && attr.name == "src" {
+				hasSource = true
+			}
+		}
+		if tag.name == "script" && !hasSource {
+			return errors.New("app shell has an inline <script> (no src)")
+		}
+	}
+	return nil
+}
+
+// shellTag is one start tag of the app shell. Names are lower-cased. Attribute
+// values are raw: character references are not decoded, so an encoded URL is
+// not an admitted route.
+type shellTag struct {
+	name  string
+	attrs []shellAttr
+	body  string // the text of a raw-text element, such as a <script>
+}
+
+type shellAttr struct {
+	name  string
+	value string
+}
+
+// parseShellTags reads the shell the way the browser reads it for the parts that
+// decide what is loaded. Comments and declarations are skipped, raw-text bodies
+// are not read as markup, and every start tag is returned with its attributes.
+// Anything it cannot read is an error, so the caller fails closed.
+func parseShellTags(shell []byte) ([]shellTag, error) {
+	var tags []shellTag
+	i := 0
+	for {
+		offset := bytes.IndexByte(shell[i:], '<')
+		if offset < 0 {
+			return tags, nil
+		}
+		i += offset
+		rest := shell[i:]
+		switch {
+		case bytes.HasPrefix(rest, []byte("<!--")):
+			end := bytes.Index(rest[len("<!--"):], []byte("-->"))
+			if end < 0 {
+				return nil, errors.New("app shell has an unterminated HTML comment")
+			}
+			i += len("<!--") + end + len("-->")
+		case len(rest) > 1 && (rest[1] == '!' || rest[1] == '?' || rest[1] == '/'):
+			end := bytes.IndexByte(rest, '>')
+			if end < 0 {
+				return nil, errors.New("app shell has an unterminated declaration or end tag")
+			}
+			i += end + 1
+		case len(rest) > 1 && isASCIIAlpha(rest[1]):
+			tag, next, err := parseShellStartTag(shell, i)
+			if err != nil {
+				return nil, err
+			}
+			i = next
+			if shellRawTextElements[tag.name] {
+				body, end, err := rawTextBody(shell, i, tag.name)
+				if err != nil {
+					return nil, err
+				}
+				tag.body = body
+				i = end
+			}
+			tags = append(tags, tag)
+		default:
+			i++
+		}
+	}
+}
+
+// parseShellStartTag reads the start tag at start. Quotes, unquoted values,
+// whitespace and '/' between attributes follow the browser's tokenizer.
+func parseShellStartTag(shell []byte, start int) (shellTag, int, error) {
+	i := start + 1
+	nameStart := i
+	for i < len(shell) && isTagNameByte(shell[i]) {
+		i++
+	}
+	tag := shellTag{name: strings.ToLower(string(shell[nameStart:i]))}
+	for {
+		for i < len(shell) && (isHTMLSpace(shell[i]) || shell[i] == '/') {
+			i++
+		}
+		if i >= len(shell) {
+			return shellTag{}, 0, fmt.Errorf("app shell has an unterminated <%s> tag", tag.name)
+		}
+		if shell[i] == '>' {
+			return tag, i + 1, nil
+		}
+		nameStart = i
+		for i < len(shell) && !isHTMLSpace(shell[i]) && shell[i] != '/' && shell[i] != '>' && shell[i] != '=' {
+			if shell[i] == '"' || shell[i] == '\'' || shell[i] == '<' {
+				return shellTag{}, 0, fmt.Errorf("app shell has a malformed attribute name in <%s>", tag.name)
+			}
+			i++
+		}
+		if i == nameStart {
+			return shellTag{}, 0, fmt.Errorf("app shell has a malformed attribute in <%s>", tag.name)
+		}
+		attr := shellAttr{name: strings.ToLower(string(shell[nameStart:i]))}
+		next := i
+		for next < len(shell) && isHTMLSpace(shell[next]) {
+			next++
+		}
+		if next < len(shell) && shell[next] == '=' {
+			next++
+			for next < len(shell) && isHTMLSpace(shell[next]) {
+				next++
+			}
+			if next >= len(shell) {
+				return shellTag{}, 0, fmt.Errorf("app shell has an unterminated <%s> tag", tag.name)
+			}
+			if quote := shell[next]; quote == '"' || quote == '\'' {
+				end := bytes.IndexByte(shell[next+1:], quote)
+				if end < 0 {
+					return shellTag{}, 0, fmt.Errorf("app shell has an unterminated quoted attribute in <%s>", tag.name)
+				}
+				attr.value = string(shell[next+1 : next+1+end])
+				i = next + 1 + end + 1
+			} else {
+				valueStart := next
+				for next < len(shell) && !isHTMLSpace(shell[next]) && shell[next] != '>' {
+					if bytes.IndexByte([]byte("\"'<=`"), shell[next]) >= 0 {
+						return shellTag{}, 0, fmt.Errorf("app shell has a malformed unquoted attribute in <%s>", tag.name)
+					}
+					next++
+				}
+				attr.value = string(shell[valueStart:next])
+				i = next
+			}
+		}
+		tag.attrs = append(tag.attrs, attr)
+	}
+}
+
+// rawTextBody returns the text from `from` up to the end tag of a raw-text
+// element, and the index of that end tag.
+func rawTextBody(shell []byte, from int, name string) (string, int, error) {
+	lower := bytes.ToLower(shell[from:])
+	needle := []byte("</" + name)
+	search := 0
+	for {
+		offset := bytes.Index(lower[search:], needle)
+		if offset < 0 {
+			return "", 0, fmt.Errorf("app shell has an unterminated <%s> element", name)
+		}
+		at := search + offset
+		end := at + len(needle)
+		if end < len(lower) && (isHTMLSpace(lower[end]) || lower[end] == '/' || lower[end] == '>') {
+			return string(shell[from : from+at]), from + at, nil
+		}
+		search = end
+	}
+}
+
+func isASCIIAlpha(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
+}
+
+// isTagNameByte reports whether b can be part of a tag name. The browser ends a
+// name only at whitespace, '/' or '>'.
+func isTagNameByte(b byte) bool {
+	return !isHTMLSpace(b) && b != '/' && b != '>'
+}
+
+func isHTMLSpace(b byte) bool {
+	return b == ' ' || b == '\t' || b == '\n' || b == '\f' || b == '\r'
 }

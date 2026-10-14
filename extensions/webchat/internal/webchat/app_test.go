@@ -15,6 +15,15 @@ import (
 // The React client needs no new source, so this string must not change.
 const wantCSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'"
 
+// The smoke script reads contentSecurityPolicy from handler.go. This pins that
+// constant to the shipped string, so a change to the policy is a deliberate
+// change here as well.
+func TestContentSecurityPolicyConstantIsPinned(t *testing.T) {
+	if contentSecurityPolicy != wantCSP {
+		t.Fatalf("contentSecurityPolicy = %q, want %q", contentSecurityPolicy, wantCSP)
+	}
+}
+
 // reachableFixture is a small build. assets/orphan.js is in the build but no
 // manifest entry reaches it. chunk.js is reached through a static import and
 // dyn.js through a dynamic import.
@@ -109,6 +118,8 @@ func TestAppServesManifestDerivedFilesWithTypesAndHeaders(t *testing.T) {
 	}
 	if recorder := appTestRequest(t, handler, http.MethodPost, "/app/"); recorder.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST /app/ status=%d, want 405", recorder.Code)
+	} else {
+		assertSecurityHeaders(t, "POST /app/", recorder)
 	}
 }
 
@@ -150,6 +161,7 @@ func TestAppServesExactlyTheManifestReachableFiles(t *testing.T) {
 		if recorder.Code != http.StatusNotFound {
 			t.Errorf("GET %s status=%d, want 404", target, recorder.Code)
 		}
+		assertSecurityHeaders(t, target, recorder)
 		if strings.Contains(recorder.Body.String(), "console.log") || strings.Contains(recorder.Body.String(), "not part of the build") {
 			t.Errorf("GET %s leaked build content", target)
 		}
@@ -244,12 +256,15 @@ func TestAppUnavailableWithClearErrorWhileTheRestOfTheServerWorks(t *testing.T) 
 			if recorder.Code != http.StatusServiceUnavailable {
 				t.Errorf("GET /app/ status=%d, want 503", recorder.Code)
 			}
+			assertSecurityHeaders(t, "/app/ (unavailable)", recorder)
 			if !strings.Contains(recorder.Body.String(), "web chat app unavailable") || !strings.Contains(recorder.Body.String(), tc.wantReason) {
 				t.Errorf("GET /app/ body %q does not explain the failure", recorder.Body.String())
 			}
 			for _, target := range []string{"/app/assets/app.js", "/app/index.html"} {
 				if recorder := appTestRequest(t, handler, http.MethodGet, target); recorder.Code != http.StatusNotFound {
 					t.Errorf("GET %s status=%d, want 404 while the app is unavailable", target, recorder.Code)
+				} else {
+					assertSecurityHeaders(t, target, recorder)
 				}
 			}
 			if recorder := appTestRequest(t, handler, http.MethodGet, "/"); recorder.Code != http.StatusOK {
@@ -263,13 +278,8 @@ func TestAppUnavailableWithClearErrorWhileTheRestOfTheServerWorks(t *testing.T) 
 }
 
 var (
-	scriptElement   = regexp.MustCompile(`(?is)<script\b([^>]*)>(.*?)</script>`)
-	scriptSource    = regexp.MustCompile(`\ssrc="(/app/[^"]+)"`)
-	inlineStyleAttr = regexp.MustCompile(`(?i)\sstyle\s*=`)
-	eventAttr       = regexp.MustCompile(`(?i)\son[a-z]+\s*=`)
-	urlAttr         = regexp.MustCompile(`(?i)\b(?:src|href)\s*=\s*"([^"]*)"`)
-	cssImport       = regexp.MustCompile(`(?i)@import\b`)
-	cssExternalURL  = regexp.MustCompile(`(?i)url\(\s*['"]?\s*(https?:|data:|//|javascript:)`)
+	cssImport      = regexp.MustCompile(`(?i)@import\b`)
+	cssExternalURL = regexp.MustCompile(`(?i)url\(\s*['"]?\s*(https?:|data:|//|javascript:)`)
 )
 
 func TestAppShellAndStylesHaveNoInlineOrExternalReferences(t *testing.T) {
@@ -303,38 +313,59 @@ func TestAppShellAndStylesHaveNoInlineOrExternalReferences(t *testing.T) {
 	}
 }
 
+// checkShell reads the shell with the same tokenizer as the derivation, so the
+// test and the gateway agree on what the browser loads.
 func checkShell(t *testing.T, target, text string, routes map[string]appRoute) {
 	t.Helper()
-	lower := strings.ToLower(text)
-	scripts := scriptElement.FindAllStringSubmatch(text, -1)
-	if strings.Count(lower, "<script") != len(scripts) {
-		t.Errorf("%s has a <script> that is not a closed element", target)
+	tags, err := parseShellTags([]byte(text))
+	if err != nil {
+		t.Errorf("%s: %v", target, err)
+		return
 	}
-	for _, match := range scripts {
-		if strings.TrimSpace(match[2]) != "" {
-			t.Errorf("%s has an inline <script> body", target)
+	if strings.Contains(strings.ToLower(text), "javascript:") {
+		t.Errorf("%s has a javascript: URL", target)
+	}
+	for _, tag := range tags {
+		if tag.name == "style" {
+			t.Errorf("%s has an inline <style> element", target)
 		}
-		if !scriptSource.MatchString(match[1]) {
-			t.Errorf("%s has a <script> without a same-origin /app/ src", target)
+		hasAppSource := false
+		for _, attr := range tag.attrs {
+			if attr.name == "style" {
+				t.Errorf("%s has a style= attribute", target)
+			}
+			if strings.HasPrefix(attr.name, "on") {
+				t.Errorf("%s has an inline event handler %s=", target, attr.name)
+			}
+			var references []string
+			switch {
+			case attr.name == "srcset" || attr.name == "imagesrcset":
+				for _, candidate := range strings.Split(attr.value, ",") {
+					if fields := strings.Fields(candidate); len(fields) > 0 {
+						references = append(references, fields[0])
+					}
+				}
+			case shellURLAttributes[attr.name]:
+				references = []string{attr.value}
+			}
+			for _, reference := range references {
+				if !strings.HasPrefix(reference, appPrefix) || strings.HasPrefix(reference, "//") {
+					t.Errorf("%s references %q, which is not a same-origin /app/ path", target, reference)
+					continue
+				}
+				if _, ok := routes[reference]; !ok {
+					t.Errorf("%s references %q, which is not a derived route", target, reference)
+				}
+				hasAppSource = hasAppSource || (tag.name == "script" && attr.name == "src")
+			}
 		}
-	}
-	if strings.Contains(lower, "<style") {
-		t.Errorf("%s has an inline <style> element", target)
-	}
-	if inlineStyleAttr.MatchString(text) {
-		t.Errorf("%s has a style= attribute", target)
-	}
-	if eventAttr.MatchString(text) || strings.Contains(lower, "javascript:") {
-		t.Errorf("%s has an inline event handler or javascript: URL", target)
-	}
-	for _, match := range urlAttr.FindAllStringSubmatch(text, -1) {
-		reference := match[1]
-		if !strings.HasPrefix(reference, appPrefix) || strings.HasPrefix(reference, "//") {
-			t.Errorf("%s references %q, which is not a same-origin /app/ path", target, reference)
-			continue
-		}
-		if _, ok := routes[reference]; !ok {
-			t.Errorf("%s references %q, which is not a derived route", target, reference)
+		if tag.name == "script" {
+			if strings.TrimSpace(tag.body) != "" {
+				t.Errorf("%s has an inline <script> body", target)
+			}
+			if !hasAppSource {
+				t.Errorf("%s has a <script> without a same-origin /app/ src", target)
+			}
 		}
 	}
 }
@@ -362,5 +393,138 @@ func TestAppBuildHasNoUnreachableFiles(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("walk dist: %v", err)
+	}
+}
+
+// fixtureWithShell is reachableFixture with index.html replaced.
+func fixtureWithShell(shell string) fstest.MapFS {
+	source := reachableFixture()
+	source["index.html"] = &fstest.MapFile{Data: []byte(shell)}
+	return source
+}
+
+// appTestRequestFrom is appTestRequest with Host and Origin under the caller's
+// control. An empty origin sends no Origin header.
+func appTestRequestFrom(t *testing.T, handler http.Handler, target, host, origin string) *httptest.ResponseRecorder {
+	t.Helper()
+	request := httptest.NewRequest(http.MethodGet, target, nil)
+	request.Host = host
+	if origin != "" {
+		request.Header.Set("Origin", origin)
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	return recorder
+}
+
+// authorizeRequest runs before the /app/ route. A foreign Host or Origin must be
+// refused on every app path, with the gateway's security headers. Mutation
+// check: skipping authorizeRequest for /app/ must fail this test.
+func TestAppRefusesForeignHostAndOrigin(t *testing.T) {
+	fixture := newHandler(appTestStore(t), HandlerOptions{}, loadAppBundle(reachableFixture()))
+	embedded := newHandler(appTestStore(t), HandlerOptions{}, embeddedApp())
+	targets := []struct {
+		name    string
+		handler http.Handler
+		target  string
+	}{
+		{"fixture shell", fixture, "/app/"},
+		{"fixture asset", fixture, "/app/assets/app.js"},
+		{"fixture stylesheet", fixture, "/app/assets/app.css"},
+		{"fixture unreachable file", fixture, "/app/assets/orphan.js"},
+		{"embedded shell", embedded, "/app/"},
+	}
+	refused := []struct {
+		name, host, origin string
+	}{
+		{"foreign Host", "evil.example", ""},
+		{"loopback-looking Host", "127.0.0.1.evil.example", ""},
+		{"foreign Origin", "127.0.0.1:8791", "http://evil.example"},
+		{"null Origin", "127.0.0.1:8791", "null"},
+		{"foreign Origin with loopback Host", "localhost:8791", "https://127.0.0.1:8791"},
+	}
+	for _, tc := range targets {
+		for _, r := range refused {
+			t.Run(tc.name+" with "+r.name, func(t *testing.T) {
+				recorder := appTestRequestFrom(t, tc.handler, tc.target, r.host, r.origin)
+				if recorder.Code != http.StatusForbidden {
+					t.Errorf("GET %s with %s status=%d, want 403", tc.target, r.name, recorder.Code)
+				}
+				assertSecurityHeaders(t, tc.target, recorder)
+			})
+		}
+	}
+
+	configured := newHandler(appTestStore(t), HandlerOptions{AllowedHost: "127.0.0.1:8791", AllowedOrigin: "http://127.0.0.1:8791"}, loadAppBundle(reachableFixture()))
+	if recorder := appTestRequestFrom(t, configured, "/app/assets/app.js", "127.0.0.1:8791", "http://127.0.0.1:8791"); recorder.Code != http.StatusOK {
+		t.Errorf("configured host and origin: GET /app/assets/app.js status=%d, want 200", recorder.Code)
+	}
+	for _, r := range []struct{ host, origin string }{{"127.0.0.1:9999", ""}, {"127.0.0.1:8791", "http://evil.example"}} {
+		recorder := appTestRequestFrom(t, configured, "/app/assets/app.js", r.host, r.origin)
+		if recorder.Code != http.StatusForbidden {
+			t.Errorf("configured gateway: host %q origin %q status=%d, want 403", r.host, r.origin, recorder.Code)
+		}
+		assertSecurityHeaders(t, "/app/assets/app.js", recorder)
+	}
+}
+
+// The shell's URLs are read by a tokenizer that follows the browser's rules for
+// quotes, unquoted values, whitespace around '=', srcset and comments. Anything
+// the browser could load that is not an admitted route, and any tag the
+// derivation cannot classify, must fail the derivation. Nothing is skipped.
+func TestAppShellFailsClosedOnAnyUnadmittedURL(t *testing.T) {
+	const notAdmitted = "which the manifest does not derive"
+	cases := []struct {
+		name  string
+		shell string
+		want  string
+	}{
+		{"single-quoted evil script", `<script type="module" src='https://evil.example/x.js'></script>`, notAdmitted},
+		{"unquoted evil script", `<script type=module src=https://evil.example/x.js></script>`, notAdmitted},
+		{"whitespace around equals", `<script type="module" src = "/app/assets/evil.js"></script>`, notAdmitted},
+		{"uppercase attribute name", `<script type="module" SRC="/app/assets/evil.js"></script>`, notAdmitted},
+		{"duplicate src, evil second", `<script type="module" src="/app/assets/app.js" src="https://evil.example/x.js"></script>`, notAdmitted},
+		{"slash before attribute", `<script/src="https://evil.example/x.js"></script>`, notAdmitted},
+		{"srcset with evil candidate", `<img srcset="/app/assets/app.css 1x, //evil.example/x.png 2x">`, notAdmitted},
+		{"modulepreload of unlisted file", `<link rel="modulepreload" href="/app/assets/evil.js">`, notAdmitted},
+		{"entity-encoded path", `<script type="module" src="&#47;app&#47;assets&#47;evil.js"></script>`, notAdmitted},
+		{"single-quoted javascript URL", `<a href='javascript:alert(1)'>x</a>`, notAdmitted},
+		{"base element", `<base href="https://evil.example/">`, "has a <base> element"},
+		{"meta refresh", `<meta http-equiv="refresh" content="0;url=https://evil.example/">`, "has a <meta http-equiv>"},
+		{"inline script body", `<script type="module" src="/app/assets/app.js">alert(1)</script>`, "has an inline <script>"},
+		{"script without src", `<script type="module">alert(1)</script>`, "has an inline <script>"},
+		{"data-src is not src", `<script type="module" data-src="/app/assets/app.js"></script>`, "has an inline <script>"},
+		{"unterminated start tag", `<script src="/app/assets/app.js"`, "unterminated"},
+		{"unterminated quoted value", `<script src="/app/assets/app.js></script>`, "unterminated"},
+		{"unterminated comment", `<!-- <script src="/app/assets/app.js"></script>`, "unterminated"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := loadAppBundle(fixtureWithShell(tc.shell))
+			if app.err == nil {
+				t.Fatalf("shell should fail closed; it derived %d routes", len(app.routes))
+			}
+			if !strings.Contains(app.err.Error(), tc.want) {
+				t.Fatalf("error %q does not say %q", app.err, tc.want)
+			}
+		})
+	}
+
+	admitted := []struct {
+		name  string
+		shell string
+	}{
+		{"double-quoted", `<script type="module" src="/app/assets/app.js"></script><link rel="stylesheet" href="/app/assets/app.css">`},
+		{"single-quoted", `<script type='module' src='/app/assets/app.js'></script><link rel='stylesheet' href='/app/assets/app.css'>`},
+		{"unquoted and whitespace around equals", `<script type=module src = /app/assets/app.js></script><link rel=stylesheet href=/app/assets/app.css>`},
+		{"srcset and modulepreload of admitted files", `<script type="module" src="/app/assets/app.js"></script><link rel="stylesheet" href="/app/assets/app.css"><link rel="modulepreload" href="/app/assets/chunk.js"><img srcset="/app/assets/app.css 1x, /app/assets/dyn.js 2x">`},
+		{"evil markup inside a comment is inert", `<!-- <script src="https://evil.example/x.js"></script> --><script type="module" src="/app/assets/app.js"></script><link rel="stylesheet" href="/app/assets/app.css">`},
+	}
+	for _, tc := range admitted {
+		t.Run("admits "+tc.name, func(t *testing.T) {
+			if app := loadAppBundle(fixtureWithShell(tc.shell)); app.err != nil {
+				t.Fatalf("admitted shell rejected: %v", app.err)
+			}
+		})
 	}
 }

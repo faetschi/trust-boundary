@@ -13,7 +13,8 @@ build-time version string, and the no-inline-style rule.
 
 - `extensions/webchat/frontend/`: the source (`src/`), the scripts
   (`scripts/`), the pinned `package.json` and `package-lock.json`, `.npmrc`
-  (`ignore-scripts=true`), `.nvmrc` (24.15.0) and `DEPENDENCIES.md`.
+  (`ignore-scripts=true`), `.nvmrc` (24.15.0), `.gitattributes` (LF for every
+  build input) and `DEPENDENCIES.md`.
 - `extensions/webchat/internal/webchat/dist/`: the committed build output. The
   Go gateway embeds it with `//go:embed all:dist`, including the `.vite/`
   manifest.
@@ -26,8 +27,16 @@ Run from `extensions/webchat/frontend/` with Node 24.15.0 (`.nvmrc`):
 ```sh
 npm ci --ignore-scripts      # install exactly the lockfile, no install scripts
 npm run verify               # typecheck, tests, build, sink check, dependency check
-npm run repro                # two clean builds, compared with each other and with the committed dist/
+npm run repro                # two clean builds, compared with each other and with the dist/ committed at HEAD
 ```
+
+`npm run repro` reads the committed `dist/` from git HEAD before it builds
+anything. So `npm run verify && npm run repro` cannot compare a build with
+itself: verify's build overwrites `dist/`, and HEAD is never overwritten. Run
+`repro` first, as CI does. A WSL worktree of a Windows checkout cannot be read by
+WSL git, because the `.git` file points at a Windows path. There, set
+`GIT_DIR` and `GIT_WORK_TREE` to the worktree's git directory. If git cannot read
+HEAD, the gate exits 1 and says so.
 
 From the repository root, the same chain runs as one target:
 
@@ -53,13 +62,18 @@ go test -race -mod=readonly -count=1 ./...
 - The reviewed bytes are the bytes that are served. A reviewer reads
   `internal/webchat/dist/` in the diff.
 - The reproducibility gate (`npm run repro`, also the CI job) fails when a clean
-  rebuild does not match the committed output. A stale or hand-edited file
-  cannot pass unnoticed.
+  rebuild does not match the `dist/` committed at git HEAD. A stale or
+  hand-edited file cannot pass unnoticed. Its caveat: the gate checks HEAD, not
+  the working tree. A `dist/` change must be committed before the gate can pass.
+  An uncommitted `dist/` is reported as a note, not as a failure.
 
-Build on Linux (WSL or CI) is canonical. In the Phase 1 run, a Windows build of
-the same sources with the same Node version produced byte-identical files (see
-the ADR receipts). `internal/webchat/.gitattributes` pins `dist/**` to LF, so a
-clone with `core.autocrlf=true` does not change the bytes.
+Build inputs are LF on every checkout platform. `frontend/.gitattributes` sets
+`* text eol=lf`, and `internal/webchat/.gitattributes` pins `dist/**` to LF. The
+CRLF case is real and was reproduced: with `core.autocrlf=true` and no source
+attributes, a clone's `npm ci && npm run repro` exited 1, because CRLF sources
+changed the built asset names and contents. With the attributes committed, the
+same clone reproduced the committed `dist/` (ADR receipts). The ADR also records
+one Windows build of the same sources that matched byte for byte.
 
 ## Version pins
 
@@ -75,8 +89,10 @@ licence census are in `frontend/DEPENDENCIES.md`.
 | typescript | 7.0.2 (native compiler, `tsc`) |
 | @types/react, @types/react-dom | 19.3.0 |
 
-Node: `.nvmrc` 24.15.0. `engines` in `package.json` is
-`^22.12.0 || ^24.0.0 || >=26.0.0`, which is what Vite 8 and Vitest 5 require.
+Node: `.nvmrc` 24.15.0, read by every CI job. `engines` in `package.json` is
+`^22.12.0 || ^24.0.0 || >=26.0.0`, which is Vitest 5's range. The lock entry for
+Vite 8.3.4 requires `^20.19.0 || >=22.12.0`. The `.nvmrc` version satisfies both
+ranges, and `engines` is not changed here.
 
 ## Vite configuration and what it guarantees
 
@@ -91,7 +107,8 @@ allowlist and the CSP.
 - `build.modulePreload.polyfill: false`: Vite emits no inline `<script>`.
 - `build.sourcemap: false`: no `.map` files are produced or served.
 - `__APP_VERSION__` comes from `package.json`, never a timestamp. The output
-  therefore depends only on the inputs.
+  depends only on the source bytes, which `frontend/.gitattributes` keeps LF,
+  and on the pinned toolchain.
 
 The generated `index.html` has one `<script type="module" src="/app/assets/…">`
 and one `<link rel="stylesheet" href="/app/assets/…">`, with no inline script or
@@ -114,7 +131,15 @@ The route table is built once at startup (`internal/webchat/app.go`,
 5. Every admitted file must exist in the build. Its type comes from the
    extension: `text/html`, `text/javascript` or `text/css`, all with
    `charset=utf-8`.
-6. Every URL in `index.html` must be an admitted route.
+6. Every URL attribute in `index.html` must be an admitted route. The shell is
+   read with a tokenizer that follows the browser's rules for quoted, single-quoted
+   and unquoted values, whitespace around `=`, repeated attributes, `srcset`,
+   comments and raw-text bodies. Each `src`, `href` and other URL attribute is
+   checked, and `srcset` is checked candidate by candidate. Derivation fails on
+   an unadmitted URL, on a tag the tokenizer cannot read, on a `<base>`, on a
+   `<meta http-equiv>`, and on an inline `<script>` (no `src`, or a body). A
+   `data-src` is not a `src`. `on*` and `style` attributes are not checked here.
+   The test checks them.
 
 Files outside that set are never served. A file present in `dist/` but not
 reachable from the manifest is not served. A test enforces this, and a second
@@ -139,14 +164,21 @@ Content-Security-Policy string is unchanged:
 default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'
 ```
 
-`app_test.go` pins that string.
+The string is the `contentSecurityPolicy` constant in `handler.go`, and every
+response sets it. `app_test.go` pins the constant, and `csp-smoke.mjs` reads it
+from `handler.go`, so a change to the policy is one edit in one place.
 
 ## Tests
 
 Go, in `internal/webchat/app_test.go`:
 
 - manifest-derived routes are served with the exact content type, the full
-  header set, and the exact file bytes; POST is still 405;
+  header set, and the exact file bytes; POST is still 405, and the 404, 405 and
+  503 answers carry the full header set too;
+- a foreign Host or Origin is 403 on `/app/`, on every app file and on the
+  embedded shell, with the full header set. A mutation that skips
+  `authorizeRequest` for `/app/` fails this test;
+- the policy constant in `handler.go` equals the pinned string;
 - a synthetic build serves only the manifest-reachable files, and the
   unreachable `assets/orphan.js`, the manifest itself and other files are 404;
 - traversal, dot-segment, percent-encoding and double-encoding attempts are 404,
@@ -154,8 +186,15 @@ Go, in `internal/webchat/app_test.go`:
 - missing, corrupt, dangling, unsupported and traversing manifests, and a shell
   that references an unlisted file, make `/app/` 503 with the reason while `/`
   and `/api/v1/contract` still return 200;
+- a shell with an unadmitted URL in any spelling fails the derivation: single
+  quotes, no quotes, whitespace around `=`, uppercase names, a duplicate `src`, a
+  slash before an attribute, `srcset`, an entity-encoded path, a `javascript:`
+  URL, a `<base>`, a `<meta http-equiv>`, an inline `<script>` (with a body, or
+  with `data-src` instead of `src`), an unterminated tag, quote or comment. The
+  same URLs inside a comment are inert, and admitted URLs in each spelling pass;
 - the shell has no inline `<script>` body, no `<style>`, no `style=`, no `on*=`
-  handler and no `javascript:` URL, and every URL is a same-origin `/app/` route;
+  handler and no `javascript:` URL, and every URL is a same-origin `/app/` route.
+  The test reads the shell with the same tokenizer as the derivation;
 - the stylesheet has no `@import` and no external or `data:` `url(`;
 - every file in the embedded build is served or is the manifest.
 
@@ -163,21 +202,47 @@ Frontend, in `frontend/src/`: `App.test.tsx` renders the component to a string
 with `react-dom/server` and checks the heading, the build version, that the
 banner has a class, and that there is no `style=` or `on*=` attribute.
 
-Checks outside the tests: `scripts/check-sinks.mjs` fails on `innerHTML`,
-`outerHTML`, `insertAdjacentHTML`, `document.write`, `dangerouslySetInnerHTML`,
-`style={`, a `style=` attribute, `<style`, `eval` or `new Function` in `src/`,
-or on an inline `<script>` in `index.html`. Test files are excluded because
-they assert on those strings. `scripts/check-deps.mjs` fails on a non-exact
-pin, a missing `ignore-scripts`, a lock entry that does not resolve from the
-registry, an install script (with the one darwin-only `fsevents` exception), or
-an installed package that declares one.
+Checks outside the tests:
+
+- `scripts/check-sinks.mjs` reads every non-test file under `src/` (`.ts`,
+  `.tsx`, `.js`, `.jsx`, `.mjs`, `.cjs`, `.css`, `.html`) and `index.html`,
+  whole-file, so a sink split over lines is found. It fails on `innerHTML`,
+  `outerHTML`, `insertAdjacentHTML`, `setHTMLUnsafe`, `parseFromString`,
+  `document.write`, `srcdoc`, a `style` attribute in any quoting, `style={`, a
+  style object, `el.style.x` or `el.style =` writes, `cssText`, `<style>`,
+  `<iframe>`, `<object>`, `<base>` and `<script>` elements (and the same tags
+  passed to `createElement`), `setAttribute` with a name that is not a string
+  literal or is `style`, `srcdoc` or `on*`, `eval`, `new Function`, a string
+  passed to a timer, `javascript:` and `vbscript:` URLs, `target="_blank"`
+  without `noopener` on the same element, a computed key built from string
+  literals that spells a sink (`el['inner' + 'HTML']`), and in `index.html` a
+  `<script>` without a non-empty `src`, a `<script>` with a body, a `style` or
+  `on*` attribute, and a `<base>`. Excluded, and printed in the output: files named
+  `*.test.*`, and files under `src/**/test-support/`, which are test fixtures and
+  DOM shims. A guard fails the scan if any other file imports from `test-support`.
+  The self-test runs first, in `npm run verify`. It proves each rule on a
+  violating fixture and a clean file. The limit: a key built from a variable at
+  run time is not analysed.
+- `scripts/check-deps.mjs` fails on a non-exact pin, a missing `ignore-scripts`,
+  a root that does not match `package.json`, a lock entry that is not a
+  registry tarball of its own name (an alias, a `resolved` URL other than the
+  exact tarball URL, or no sha512), an install script except the pinned
+  darwin-only `fsevents` (see `frontend/DEPENDENCIES.md`), and an installed
+  package whose name or version differs from the lock, that declares an install
+  hook, that is not in the lock, or that is a symbolic link. Its self-test builds
+  26 simulated trees: nothing installed, the pinned fsevents installed, and
+  tampered variants. Each tampered variant must fail, and each clean one must pass.
 
 ## Opt-in browser CSP smoke
 
 `scripts/csp-smoke.mjs` is not part of `go test`, `make test` or any core gate.
 It uses Node built-ins only and Node 22 or later for the global WebSocket. It
-drives a headless Chrome or Chromium over the DevTools protocol, with a temporary
-profile.
+drives a headless Chrome, Chromium or Edge over the DevTools protocol, with a
+temporary profile. The browser and its temporary directories are removed when the
+run ends, on success and on failure (both checked). SIGINT, SIGTERM and SIGHUP run
+the same cleanup, but no run exercised them. Every DevTools command has a
+15-second deadline, so a browser that stops answering ends the run as NOT
+VERIFIED. No run forced a timeout either.
 
 ```sh
 # against a demo gateway already running on a fresh port (not 8791)
@@ -187,34 +252,50 @@ make extension-webchat-csp CSP_URL=http://127.0.0.1:8793
 make extension-webchat-csp
 ```
 
+Without `CSP_URL`, the script builds the gateway with `go` from `PATH`. That must
+be the pinned go1.27.x, and the script prints the `go version` line it used. Any
+other version stops the run as NOT VERIFIED.
+
 The browser comes from `CHROME_BIN`, then `--chrome`, then the usual Chrome,
 Chromium and Edge install paths and `PATH`. It must be a Chromium-family binary.
-A WSL checkout has no browser by default: run the smoke from Windows against a
-gateway running in WSL, which is reachable at `127.0.0.1` through WSL's localhost
-forwarding.
+A WSL checkout has no browser by default. Run the smoke from Windows, either
+against a gateway running in WSL (reachable at `127.0.0.1` through WSL's localhost
+forwarding) or with its own build, as in the recorded runs.
 
-For each of `/app/` and `/`, the script asserts:
+Each run, in order:
 
-- zero CSP violations, from both `securitypolicyviolation` events and
-  `security`-source console entries;
-- zero console errors and zero uncaught exceptions, except a 404 for
-  `/favicon.ico`. The pages have no favicon link, so the browser asks for the
-  default icon. The count of allowed favicon 404s is printed; it was 1 for
-  `/app/` and 0 for `/` in the recorded run;
-- zero elements with a `style` attribute and zero `on*` attributes;
-- for `/app/`, a CSS Modules class on the banner, a computed background that
-  differs from a default probe element, and a linked stylesheet.
+1. **Observer self-test: the negative control, committed.** The script serves a
+   canary page with the gateway's policy. The page has an inline `<script>` and an
+   inline `style` attribute, and the policy must refuse both. The browser must
+   report at least one CSP violation for it. If it reports none, the observer is
+   blind, and the run stops with exit `5` before any gateway page is judged. The
+   canary is the only negative control in the tree. An earlier throwaway control,
+   which also covered `onclick=`, `console.error` and a thrown exception, is not
+   in the tree, and this check does not claim it.
+2. **Header probes.** Over plain HTTP, seven responses must carry the policy and
+   the expected status: `GET /`, `GET /api/v1/contract`, `GET /app/`, a missing
+   `/app/` asset (404), `POST /app/` (405), `GET /` with a foreign `Host` (403),
+   and `GET /app/` with a foreign `Origin` (403). The policy is read from the
+   `contentSecurityPolicy` constant in `handler.go`.
+3. **Browser audit of `/app/` and `/`.** For each page, the Document response's
+   `Content-Security-Policy`, as the browser received it, must equal the policy.
+   There must be zero CSP violations (from `securitypolicyviolation` events and
+   `security`-source console entries), zero console errors and zero uncaught
+   exceptions, except one 404 for `/favicon.ico`. The pages have no favicon link,
+   so the browser asks for the default icon. The count of allowed favicon 404s is
+   printed. There must be zero `style` attributes and zero `on*` attributes.
+   `/app/` must render its banner with a CSS Modules class whose computed
+   background differs from a default probe element, and a linked stylesheet. `/`
+   must have its title, the claim strip, the chat view, and the chat and
+   trajectory tabs.
 
 Exit codes: `0` PASS; `1` a check failed; `2` usage error (including port 8791,
-which is a stale build); `3` `NOT VERIFIED: no browser`; `4` `NOT VERIFIED`
-because the gateway or the DevTools connection was unavailable. A PASS is printed
-only when every check passed.
+which is a stale build); `3` `NOT VERIFIED: no browser`; `4` `NOT VERIFIED`: the
+gateway, the Go toolchain or the DevTools connection was unavailable; `5` `FAIL:
+observer is blind`. A PASS is printed only when every check passed.
 
-The script was exercised against a negative control: a throwaway server with the
-same CSP header that serves a page with an inline `style=`, an `onclick=`, an
-inline script the CSP blocks, a same-origin script that calls `console.error`,
-and a same-origin script that throws. It exited `1` and reported each category on
-both pages.
+The mutation runs and the live run are recorded with their commands in
+`adr-0001-optional-extension.md`, §(v).
 
 ## Phase plan
 
@@ -243,3 +324,37 @@ verify code and UI wiring only.
 The exact commands, exit codes and hashes for Phase 1 are in
 `adr-0001-optional-extension.md`, §(v), the P1 status table. The GitHub Actions
 jobs have not run yet.
+
+## Phase 2a addendum: `src/core/` (DOM-free logic)
+
+`frontend/src/core/` holds the pure logic ported from `internal/webchat/assets/`
+in strict TypeScript. Nothing imports it yet, so `dist/` is unchanged. The
+evidence and the parity table are in `phase2-parity.md`.
+
+- **Contents.** `contract.ts` (typed observation contract and closed vocabularies),
+  `validate.ts` (the strict runtime check that mirrors `validate.go`; the only
+  place untrusted JSON becomes a typed value), and the ports of `format`, `filters`,
+  `store`, `trajectory`, `anchor`, `backoff`, `stream`, `stop-sequence` and `api`.
+  `testing/` holds test-only helpers. `markdown` is not here; it lives in
+  `src/markdown/`.
+- **Purity rule.** No file in `src/core` imports `react` or `react-dom`, or references
+  `document`, `window`, `navigator` or storage as a value. Modules do not call browser
+  or timer globals directly (`setTimeout`, `fetch`, `EventSource`,
+  `AbortController`); those come in through injected interfaces. `check-purity.test.ts`
+  enforces this on every `npm run test`.
+- **Commands** (from `frontend/`, Node 24.15.0):
+
+  ```sh
+  npm run typecheck    # tsc over src/, including src/core, strict + noUncheckedIndexedAccess
+  npm run test         # vitest run: src/core parity, fixtures, boundary, purity, differential
+  npx vitest run src/core   # the core alone
+  ```
+
+- **Parity net.** The legacy suite still runs (`node --test internal/webchat/jstest/*.test.mjs`,
+  258 tests). The core suite ports its 159 tests for the ported modules. The
+  differential test loads the legacy modules and compares them with the ports on
+  seeded corpora. `VITE_WEBCHAT_LEGACY_ASSETS` points it at another copy for a mutation
+  check.
+- **Claim boundary.** `UNKNOWN` stays `UNKNOWN`. A policy `ALLOW` is a permission and
+  is never shown as a success. An unverified success is shown as `reported`, and
+  verified success needs a `VerifiedEvidence` value that only `verifyItem` creates.

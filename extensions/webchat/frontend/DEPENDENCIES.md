@@ -50,10 +50,17 @@ built bundle contains no `lightningcss` code: a search of the committed
 
 - `.npmrc` sets `ignore-scripts=true`. CI and the make target install with
   `npm ci --ignore-scripts`.
-- The lockfile has one `hasInstallScript` entry: `fsevents`, which is
-  darwin-only and is not installed on Linux or Windows. It is the only
-  exception that `scripts/check-deps.mjs` accepts. It requires the entry to be
-  darwin-only and not installed.
+- The lockfile has one `hasInstallScript` entry: `node_modules/fsevents` 2.3.3,
+  darwin-only and optional, with an install script (`node-gyp rebuild`). It is the
+  only install-script exception that `scripts/check-deps.mjs` accepts. The gate
+  pins its name, version, sha512 integrity, `os` and scripts, and it decides on
+  the lock entry, not on whether fsevents is installed. An installed fsevents
+  whose manifest differs from the pinned one fails the gate.
+- Every locked package has a sha512 integrity, and a `resolved` URL that is
+  exactly `https://registry.npmjs.org/<name>/-/<basename>-<version>.tgz`. An
+  alias (a lock name that differs from its path), a link, a git, file or http
+  source, and an installed package whose name or version differs from the lock
+  all fail the gate. `check-deps.mjs --self-test` proves each of these cases.
 - `prepare` scripts in `lightningcss` and `tinyexec` are not install scripts. npm
   does not run `prepare` for registry tarballs, so they are not checked.
 - `npm audit` at the time of this record reported **0 vulnerabilities** for

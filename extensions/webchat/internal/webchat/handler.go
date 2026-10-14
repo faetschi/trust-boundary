@@ -312,6 +312,11 @@ func setSecurityHeaders(writer http.ResponseWriter, contentType string) {
 	writer.Header().Set("Content-Type", contentType)
 }
 
+// contentSecurityPolicy is sent on every response, including the /app/ shell and
+// the 403, 404, 405 and 503 answers. scripts/csp-smoke.mjs reads this line from
+// this file as its expected value, and app_test.go pins it.
+const contentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'"
+
 // setSecurityHeadersBase applies a strict, no-inline policy: the client is a set
 // of same-origin static modules with no inline script or style.
 func setSecurityHeadersBase(writer http.ResponseWriter) {
@@ -321,7 +326,7 @@ func setSecurityHeadersBase(writer http.ResponseWriter) {
 	writer.Header().Set("Cache-Control", "no-store")
 	writer.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 	writer.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
-	writer.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'")
+	writer.Header().Set("Content-Security-Policy", contentSecurityPolicy)
 }
 
 func writeJSON(writer http.ResponseWriter, value any) {

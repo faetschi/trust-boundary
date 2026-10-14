@@ -68,10 +68,10 @@ extension-webchat:
 
 # React frontend of the optional extension (extensions/webchat/frontend). Node is
 # needed only to change the UI; the Go gateway embeds the committed build. Installs
-# ignore scripts. The last step rebuilds from clean twice and compares the output
-# with the committed dist/ (the pre-commit equivalent of git diff --exit-code).
+# ignore scripts. repro runs before verify, so it compares two clean rebuilds with
+# the dist/ committed at HEAD (the pre-commit equivalent of git diff --exit-code).
 extension-webchat-frontend-verify:
-	cd extensions/webchat/frontend && npm ci --ignore-scripts && npm run verify && npm run repro
+	cd extensions/webchat/frontend && npm ci --ignore-scripts && npm run repro && npm run verify
 
 # Opt-in headless-browser CSP smoke. Not part of extension-webchat or any core
 # target. With CSP_URL it checks a demo gateway already running on a fresh

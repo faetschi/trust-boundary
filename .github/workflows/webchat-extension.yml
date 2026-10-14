@@ -2,6 +2,10 @@ name: webchat-extension
 
 # Optional extension only. Path-filtered so core-only changes never run it, and
 # no core job depends on it (see extensions/webchat/README.md).
+#
+# Action references are pinned to full commit SHAs; the release tag is in a
+# comment. Node is read from extensions/webchat/frontend/.nvmrc in every job, so
+# the Go job and the frontend job cannot drift apart.
 on:
   workflow_dispatch:
   push:
@@ -23,16 +27,16 @@ jobs:
       run:
         working-directory: extensions/webchat
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.27.1"
           cache: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: "24.21.0"
+          node-version-file: extensions/webchat/frontend/.nvmrc
 
       - name: Prepare private temporary directory
         run: |
@@ -57,15 +61,17 @@ jobs:
 
   # React frontend (extensions/webchat/frontend). Installs run without install
   # scripts. The build is committed, so the job also proves it is reproducible.
+  # repro runs before verify: it compares two clean rebuilds with the dist/
+  # committed at HEAD, and nothing has rebuilt the tree when it starts.
   frontend:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: extensions/webchat/frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: extensions/webchat/frontend/.nvmrc
           cache: npm
@@ -81,13 +87,13 @@ jobs:
       - name: Install without install scripts
         run: umask 077; npm ci --ignore-scripts
 
+      - name: Reproducibility before any build (two clean builds, compared with the dist/ committed at HEAD)
+        run: umask 077; npm run repro
+
       - name: Verify (typecheck, tests, build, sink and dependency gates)
         run: umask 077; npm run verify
 
-      - name: Reproducibility (two clean builds, compared with the committed dist/)
-        run: umask 077; npm run repro
-
-      - name: Committed dist/ matches the rebuild
+      - name: Committed dist/ matches the working tree after verify
         working-directory: ${{ github.workspace }}
         run: |
           changes="$(git status --porcelain --untracked-files=all -- extensions/webchat/internal/webchat/dist)"
@@ -106,14 +112,14 @@ jobs:
       run:
         working-directory: extensions/webchat
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: "1.27.1"
           cache: false
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: extensions/webchat/frontend/.nvmrc
 
