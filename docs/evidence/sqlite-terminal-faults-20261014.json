@@ -1,0 +1,143 @@
+﻿{
+  "schema": "tbound.sqlite-terminal-fault-verification.v1",
+  "date": "2026-10-14",
+  "status": "Partial D14-S2 component characterization; does not establish D14 completion, G1, power-loss, or H1 qualification.",
+  "capturedSource": {
+    "baseCommit": "296957b39b7fcdfc7eaa0571d60a12ab2bdc40bd",
+    "baseTree": "b5cae78f3798e50adffff1145bb1e3feb24ba719",
+    "includedWorktreeOverlay": [
+      "supervisor/internal/workflowrecovery/recovery.go (D20)",
+      "supervisor/internal/workflowrecovery/recovery_combined_linux_test.go (D20)",
+      "supervisor/internal/workflowrecovery/sqlite_terminal_fault_linux_test.go (D14-S2)"
+    ],
+    "excludedConcurrentWorktreePaths": [
+      "supervisor/cmd/tbound/governed_recovery_linux.go",
+      "supervisor/cmd/tbound/governed_recovery_combined_linux_test.go",
+      "infra/repro/CLEAN-GUEST-QUALIFICATION.md",
+      "infra/repro/bootstrap-hyperv-windows.ps1",
+      "infra/repro/new-abi8-hyperv-candidate.ps1",
+      "infra/repro/probe-live-landlock-abi8-ssh.ps1"
+    ],
+    "worktreeOverlayWasNotInBaseCommit": true,
+    "sourceManifest": "../review-artifacts/tbound-completion-2026-10-14/d14-terminal/full-workflowrecovery-source.sha256",
+    "sourceManifestSha256": "88708cb0552c557f63059b9013ddb9e632652032d60cefcb6737ebe2819cbfdb",
+    "sourceContext": "../review-artifacts/tbound-completion-2026-10-14/d14-terminal/source-context.txt",
+    "sourceContextSha256": "a4f58dbee724f91011db8965daf54ed531fe00b7fc7ec7489b0d9ffc5251d6fb",
+    "testSourceSha256": "ff103c82fed4092b64f3d084feb58845de530c5aedaf002b66277020b552b9da",
+    "sourceManifestRecheckedAfterUnitAndRaceRuns": true
+  },
+  "test": {
+    "name": "TestSQLiteOwnerTerminalEffectRealPersistenceFault",
+    "file": "supervisor/internal/workflowrecovery/sqlite_terminal_fault_linux_test.go",
+    "toolchain": "go1.27.1 linux/amd64",
+    "host": "WSL Linux amd64",
+    "actualEffect": "The isolated test writes and fsyncs an O_EXCL marker exactly once after verifying both the owner checkpoint and protected-root anchor contain the durable reserved effect. It then invokes SQLiteOwner through Ledger.RecordTerminalEffectOutcome; faults arm at the actual terminal-owner or protected-root persistence boundary.",
+    "freshProcess": "Each fault helper exits before a separate verifier process reopens the protected root and SQLite owner. The verifier checks the exact anchored reservation or rejects the unanchored local terminal head, then checks the next-admission boundary where applicable.",
+    "cases": [
+      {
+        "name": "owner-commit-ioerr",
+        "fault": "A real RLIMIT_FSIZE/EFBIG fault is armed after the second successful VerifyTerminalEffectOwner call, immediately before the owner SQLite terminal write.",
+        "sqliteExtendedCode": 778,
+        "memoryStateAtFailure": "Owner is poisoned; protected root remains unpoisoned; in-memory checkpoint stays at the exact reservation.",
+        "freshProcessResult": "Exact durable reservation remains anchored and unresolved. ReserveEffect returns ErrPendingUnknown. The branch that represents the downstream second-effect callback remains at zero calls; the original single marker remains intact.",
+        "successReceiptReturned": false
+      },
+      {
+        "name": "owner-commit-full",
+        "fault": "SQLite max_page_count is lowered after the actual marker and durable reservation exist, before RecordTerminalEffectOutcome. The test observes the second successful terminal-owner verification before the actual owner write is rejected.",
+        "sqliteCode": 13,
+        "classification": "SQLite engine SQLITE_FULL; this is not filesystem ENOSPC.",
+        "memoryStateAtFailure": "The owner transaction rolls back; neither owner nor protected root is poisoned; in-memory checkpoint stays at the exact reservation.",
+        "freshProcessResult": "Exact durable reservation remains anchored and unresolved. ReserveEffect returns ErrPendingUnknown. The branch that represents the downstream second-effect callback remains at zero calls; the original single marker remains intact.",
+        "successReceiptReturned": false
+      },
+      {
+        "name": "root-anchor-ioerr",
+        "fault": "A real RLIMIT_FSIZE/EFBIG fault is armed before CompareAndSwapTerminalCheckpoint, after the local owner terminal commit.",
+        "sqliteCode": 0,
+        "codeNote": "The returned wrapper error preserves the disk I/O fault text and ErrCAS but does not expose the nested SQLite extended code through errors.As.",
+        "memoryStateAtFailure": "Owner and protected root are both poisoned after the owner-local terminal commit; the owner row contains terminal pins, but the root still anchors the exact reservation.",
+        "freshProcessResult": "The local terminal head is unanchored and LoadCheckpoint rejects it with ErrRollback; the protected root still verifies the reservation digest. This case does not claim the owner-commit predecessor outcome.",
+        "successReceiptReturned": false
+      }
+    ],
+    "limitations": [
+      "The test characterizes the real SQLiteOwner terminal persistence method and real protected-root verification/CAS boundary, but terminal Store/admission pins and the verifier are synthetic. The test does not invoke production RunEffect integration or an actual provider/Store effect implementation.",
+      "The effect is a durable test marker, not a real external host effect.",
+      "The engine FULL case uses SQLite max_page_count; no filesystem ENOSPC condition was induced.",
+      "No genuine fsync failure, disk corruption, kernel power-loss behavior, or declared-platform power-loss qualification was executed."
+    ]
+  },
+  "verification": {
+    "focusedRace": {
+      "command": "/home/jeli2k/tbd14t/workflowrecovery-race.test -test.run=^TestSQLiteOwnerTerminalEffectRealPersistenceFault$ -test.v -test.count=1",
+      "exit": 0,
+      "passed": 4,
+      "skipped": 0,
+      "failed": 0,
+      "log": "../review-artifacts/tbound-completion-2026-10-14/d14-terminal/logs/terminal-fault-focused-race.log",
+      "logSha256": "cbbd8b15583533c53475fea5d1c4b8ea982b5375913e13b4dd5ba32380703ab2"
+    },
+    "workflowRecoveryUnit": {
+      "buildCommand": "go test -c -mod=readonly -o /home/jeli2k/tbd14t/workflowrecovery-unit.test ./internal/workflowrecovery",
+      "buildExit": 0,
+      "runCommand": "/home/jeli2k/tbd14t/workflowrecovery-unit.test -test.v -test.count=1",
+      "exit": 0,
+      "passed": 71,
+      "skipped": 0,
+      "failed": 0,
+      "log": "../review-artifacts/tbound-completion-2026-10-14/d14-terminal/logs/workflowrecovery-unit.log",
+      "logSha256": "d9cc03e2e6cd3d5ae4e413ea6c59dc66a09b5f421694e94f0d84682f30d92bdd"
+    },
+    "workflowRecoveryRace": {
+      "buildCommand": "go test -c -race -mod=readonly -o /home/jeli2k/tbd14t/workflowrecovery-race.test ./internal/workflowrecovery",
+      "buildExit": 0,
+      "runCommand": "/home/jeli2k/tbd14t/workflowrecovery-race.test -test.v -test.count=1",
+      "exit": 0,
+      "passed": 71,
+      "skipped": 0,
+      "failed": 0,
+      "log": "../review-artifacts/tbound-completion-2026-10-14/d14-terminal/logs/workflowrecovery-race.log",
+      "logSha256": "2a2e897ac8738c4906b6f8e9647ddc8321b8c7966cdb987795c4393ef5437c5a"
+    },
+    "build": {
+      "command": "go build -mod=readonly -o /home/jeli2k/tbd14t/workflowrecovery.a ./internal/workflowrecovery",
+      "exit": 0,
+      "artifactSha256": "7f0a0d3a4dfbde6dafb3b59dcbcc8d0bb9b62565694e00c6f40dbb44b4a5941e"
+    },
+    "vet": {
+      "command": "go vet -mod=readonly ./internal/workflowrecovery",
+      "exit": 0
+    },
+    "format": {
+      "command": "gofmt -l supervisor/internal/workflowrecovery/sqlite_terminal_fault_linux_test.go",
+      "exit": 0,
+      "output": ""
+    },
+    "executables": {
+      "unitTest": {
+        "path": "/home/jeli2k/tbd14t/workflowrecovery-unit.test",
+        "sha256": "081d3efcb5b77dcfaca986dc9d1a1cb54e53c591a1053d3202069ac7409793f6"
+      },
+      "raceTest": {
+        "path": "/home/jeli2k/tbd14t/workflowrecovery-race.test",
+        "sha256": "58e49607abb3f3ac355b8330c912552e06473b225a6a8805ab0cf658814c1b7c"
+      }
+    },
+    "commandsAndExits": "../review-artifacts/tbound-completion-2026-10-14/d14-terminal/commands-and-exits.txt",
+    "commandsAndExitsSha256": "b0c87f7fb4848cf4d93bc6593d743a6a0f2b4e6ee3d097f2921756c603d5071d"
+  },
+  "capacityDesignProposal": {
+    "requirement": "Reserve capacity before dispatch for the unresolved post-effect interval; do not substitute ErrPendingUnknown, a runbook, or fail-closed recovery after exhaustion for guaranteed room to write terminal evidence.",
+    "boundedInputsAlreadyEnforced": {
+      "sqliteCheckpointAndProofJsonEachBytes": 16777216,
+      "auditEncodedRecordFrameBytesIncludingNewline": 8388608,
+      "sqliteOwnerAndProtectedRoot": "Separate SQLite databases use WAL and synchronous=FULL; WAL auto-checkpoint is 1000 pages. The protected root and owner-store root are separate protected directories, but current APIs do not allocate reserved capacity across the database and audit paths."
+    },
+    "proposedMechanism": "Add a protected-root-owned, volume-scoped reservation allocator. Before a side effect can be dispatched, it atomically acquires and durably binds a capacity token to the effect reservation. The token covers one maximum terminal audit frame, the worst-case owner checkpoint/proof/event transaction growth including SQLite page/overflow/WAL/checkpoint geometry, and the protected-root anchor write plus filesystem allocation/metadata margin. Keep the token charged across crashes and unknown outcomes; release only after the terminal audit evidence, owner terminal checkpoint and root anchor are all verified durable, or after an independent resolution proves no effect occurred.",
+    "globalBound": "Account for every unresolved effect sharing the protected volume, not just one Ledger. A single unresolved slot per allocator domain can reduce the multiplier only if a central allocator serializes all workflows and refuses new side effects while occupied. The per-effect size must be derived from enforced serialized-size caps and actual SQLite schema/page behavior; the required total is N times the per-effect worst-case bound plus fixed startup and metadata reserve. This receipt does not choose an arbitrary byte count.",
+    "deploymentBoundary": "Put protected root DB, owner DBs, audit journal and reserve pool on a dedicated service-owned filesystem or strict project quota with a volume-wide allocator. Provision using real block reservations and verify the target filesystem's allocation/quota semantics at startup. Refuse effect admission on unsupported filesystems, missing quota/preallocation guarantees, changed device identity, or insufficient tokens. A lower reserve is feasible only after introducing enforced lower checkpoint/proof/audit bounds and recomputing the worst-case database growth; it cannot be inferred from current workflow-count limits.",
+    "sqliteAndCowPitfalls": "WAL auto-checkpointing and WAL recycling are not reserves: terminal writes and checkpoints may need both WAL and main-database blocks, and a reset/reused WAL can grow. Sparse truncate/fallocate semantics and statfs watermarks are insufficient unless the exact filesystem and quota honor a real reservation. Copy-on-write snapshots or overlay filesystems can allocate copy-up blocks or metadata late; fail closed unless their reservation behavior is proven. Do not let an unanchored sidecar stand in for protected-root authentication; any emergency slot lane must be bound into the root's authenticated recovery protocol.",
+    "nextValidation": "Measure/derive worst-case deltas for audit append, owner transaction/WAL/checkpoint and root CAS at enforced serialized maxima on each declared filesystem; test token persistence, contention, crash retention, exhaustion-before-effect rejection, and release only after all three durable records agree."
+  }
+}
