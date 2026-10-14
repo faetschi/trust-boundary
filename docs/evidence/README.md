@@ -14,6 +14,9 @@ receipt describes the pre-CLI implementation and does not qualify the CLI migrat
   records a read-only inventory sourced from `5051759`: `TBound-Ubuntu-2404` was
   Running with 8 vCPUs, 16 GiB startup RAM, and a 40 GiB disk. It had no guest channel;
   guest kernel and Landlock ABI were not probed. It is not host qualification evidence.
+- [SQLite reservation faults](sqlite-reservation-faults-20261014.json), committed
+  in `0ab8b9f`, records five real fault cases and fresh-process recovery checks;
+  package unit/race each passed 63 tests with no skips or failures. D14 remains partial.
 
 The dated `../evaluation-evidence-index-2026-10-07.json` is an immutable structural
 ledger. Its original source references may name documents retired from active

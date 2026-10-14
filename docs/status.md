@@ -95,20 +95,22 @@ blockers. It is not a qualification report.
 - **D20 stale receipt (critical):** `ReservePreEffectRetry` advances the protected
   owner/root head before activation. The prior clean-restart receipt is then stale,
   and `sessionlaunch.RecoveryCandidate.Activate` rejects it. The atomic
-  combined-reservation fix is in a private tree, is not in this checkpoint, and is not
-  runtime-verified. Required: a failing-before/fixed-after regression through the actual
+  combined-reservation correction is in progress on this branch and is not yet
+  verified or committed. Required: a failing-before/fixed-after regression through the actual
   preparation and activation path. It must cover fresh-process recovery, retained
   markers, interrupted activation, no double charge, third-retry and restart exhaustion,
   and preserved deadline.
-- **D14 durability:** SQLite IOERR/FULL, fsync, capacity exhaustion, corruption,
-  reserved audit capacity, and declared-platform power-loss evidence are open. The
-  two-file SQLite fault increment is a private tree (test SHA-256
-  `19c2919c…`, production SHA-256 `a7987783…`). It has static review and Windows
-  cross-compilation only, and its fault test has not run on Linux. Reconcile the
-  preflight baseline differences before trusting source equivalence.
-- **Recovery continuity:** the fresh provider constructor still refuses a retained
-  nonempty journal. Production recovery does not yet bind ManagedStore/D06 authority,
-  restore checkpoints and budgets, or replay provider history.
+- **D14 durability (partial):** `0ab8b9f` preserves SQLite error causes and adds
+  five real reservation-path fault cases with separate fresh-process verification.
+  Kernel EFBIG/SQLite IOERR and engine-limited SQLITE_FULL were exercised; package
+  unit and race each passed 63 tests without skips or failures. See the
+  [source-bound receipt](evidence/sqlite-reservation-faults-20261014.json).
+  The earlier private test `19c2919c…` was replaced after it faulted the wrong
+  store and used weak recovery checks. Terminal accounting, reserved audit capacity,
+  filesystem ENOSPC, genuine fsync faults, corruption and power-loss evidence remain open.
+- **Recovery continuity:** the fresh provider constructor refuses retained nonempty
+  journals. Inert history, checkpoint/budget recovery and ManagedStore/D06 binding
+  are implemented components; actual production continuation through them remains unqualified.
 - **Protocol authority:** the AH02-1 authority conflict is unresolved.
 - **CLI fixture routes:** `--native-fixture` ignores `--native-host-profile`,
   `--workspace`, and `--source`, and `--dev-fixture` ignores `--workspace` and

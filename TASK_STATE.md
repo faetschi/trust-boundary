@@ -34,8 +34,10 @@ component receipt committed in `5051759`. Claims, receipts, and gates live in
      activation, so `sessionlaunch.RecoveryCandidate.Activate` rejects the prior
      clean-restart receipt. The atomic correction is in progress on this branch;
      its final verification and commit are pending.
-  2. D14 SQLite fault acceptance, reserved capacity and power-loss evidence remain
-     open. Fault integration and targeted Linux verification are in progress.
+  2. D14 reservation faults are partially covered by `0ab8b9f`: five real fault
+     cases with fresh-process checks; package unit/race each 63 passed, no skips or
+     failures. Terminal accounting, reserved capacity, fsync, corruption and
+     declared-platform power-loss evidence remain open.
   3. Governed lifecycle: LC-04 and LC-05 are offline component cuts. Production
      recovery, ManagedStore/D06 authority binding, and provider-history replay are open.
   4. Deployment: a fresh ABI-8 qualification guest (replacing the development VM is
