@@ -12,7 +12,9 @@ const {
   searchRecords,
   sequenceLanes,
   sourceLabel,
+  statusText,
   timingOf,
+  toneText,
   visibleRecords,
   weightClass,
 } = await import("../assets/trajectory.mjs");
@@ -327,4 +329,52 @@ test("a message is drawn distinctly from a lane that did not act", () => {
   const rail = sequenceLanes([prompt, allowDecision]);
   const model = rail.lanes.find((lane) => lane.id === "model");
   assert.deepEqual(model.segments.map((segment) => segment.tone), ["idle", "muted"]);
+});
+
+/* ---------------------------------------------------------------------------
+ * Status as text: the colour dot is decorative, so its state is also stated in
+ * words on the record. Wording never calls a policy ALLOW or an unverified
+ * success a success.
+ * ------------------------------------------------------------------------- */
+
+const verifiedItem = { authority: "observed", verification_scope: "structural-audit-only" };
+
+test("a policy ALLOW is stated as a permission, never as an outcome", () => {
+  const text = statusText(allowDecision);
+  assert.equal(text, "Policy verdict: ALLOW (permission, not an outcome), not independently verified");
+  assert.doesNotMatch(text, /\bsuccess\b/i);
+});
+
+test("an unverified success is stated as reported, and only a verified one reads as succeeded, verified", () => {
+  assert.equal(statusText(succeededResult), "Result: succeeded, reported, not independently verified");
+  assert.equal(statusText(verifiedSuccess), "Result: succeeded, verified");
+  assert.equal(statusText({ ...verifiedSuccess, ...verifiedItem, state: "succeeded" }), "Result: succeeded, verified");
+});
+
+test("UNKNOWN, LOST and denied results say they are not success, and lossy output is named", () => {
+  assert.equal(statusText(unknownResult), "Result: UNKNOWN, not success");
+  assert.equal(statusText(item({ id: "l", type: "result", tool: "bash", state: "lost" })), "Result: LOST, not success");
+  assert.equal(statusText(item({ id: "d", type: "result", tool: "bash", state: "denied" })), "Result: denied, not success");
+  assert.equal(
+    statusText({ ...verifiedSuccess, lossy: true }),
+    "Result: succeeded, output lossy, not counted as confirmed",
+    "a lossy success is not drawn with the ok tone, and its text says so",
+  );
+});
+
+test("a pending activity and a message state their status in words too", () => {
+  assert.equal(statusText(item({ id: "p", type: "activity", tool: "bash", state: "pending" })), "Activity: pending, no outcome yet");
+  assert.equal(statusText(prompt), "Message: no verdict or outcome recorded");
+});
+
+test("the rail names every tone in words, and an UNKNOWN record is not drawn as a lane that did not act", () => {
+  const rail = sequenceLanes([unknownDecision, unknownResult]);
+  const policy = rail.lanes.find((lane) => lane.id === "policy");
+  const tools = rail.lanes.find((lane) => lane.id === "tools");
+  assert.deepEqual(policy.segments.map((segment) => segment.tone), ["unknown", "muted"]);
+  assert.deepEqual(tools.segments.map((segment) => segment.tone), ["muted", "unknown"]);
+  assert.equal(toneText("unknown"), "UNKNOWN, not success");
+  assert.equal(toneText("allow"), "ALLOW, a permission not an outcome");
+  assert.equal(toneText("reported"), "succeeded, reported, not independently verified");
+  assert.doesNotMatch(toneText("allow"), /\bsuccess\b/i);
 });

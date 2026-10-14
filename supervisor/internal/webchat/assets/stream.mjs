@@ -16,6 +16,9 @@ export const CONNECT_WARN_MS = 3000;
 // A connection must stay open this long before the retry counter resets, so a
 // server that accepts and immediately drops does not keep resetting the backoff.
 export const STABLE_OPEN_MS = 5000;
+// A snapshot request that has not settled by now is abandoned and retried. A browser
+// request has no deadline of its own, so a hung response would hold the attempt forever.
+export const ATTEMPT_TIMEOUT_MS = 15000;
 
 const SLOW_HANDSHAKE_NOTE = "slow handshake: still connecting";
 const TERMINAL_LIMIT_NOTE = "the gateway is at its subscriber limit; this workspace will not retry automatically";
@@ -31,19 +34,31 @@ export function createStream({
   random = Math.random,
   connectWarnMs = CONNECT_WARN_MS,
   stableOpenMs = STABLE_OPEN_MS,
+  attemptTimeoutMs = ATTEMPT_TIMEOUT_MS,
 }) {
   const backoff = createBackoff({ random });
   const retryTimer = createScheduler({ setTimer, clearTimer });
   const warnTimer = createScheduler({ setTimer, clearTimer });
   const stableTimer = createScheduler({ setTimer, clearTimer });
+  const attemptTimer = createScheduler({ setTimer, clearTimer });
 
   let source = null;
   // Each opened stream takes a token. A callback from a stream that has since
   // been closed or replaced is ignored, so a late event cannot touch current state.
   let token = 0;
-  let attempting = false;
+  // The snapshot request in flight, if any. Only the attempt still in flight may
+  // settle, so a request that was superseded, timed out or abandoned is ignored.
+  let inflight = null;
   let open = false;
   let terminal = false;
+  // Set by goOffline and cleared by goOnline. It is checked after every await, so an
+  // attempt that lands after the app went offline cannot open a stream, even while
+  // the browser still reports online.
+  let offlineRequested = false;
+  // The first gap after a stable open recovers at once. The allowance is spent until
+  // the connection has stayed open, so a server that answers every open with a gap
+  // cannot drive a snapshot request per event. Later gaps wait under the backoff policy.
+  let immediateGapAvailable = true;
   // A gap whose recovery has not yet landed. It is noted once a snapshot is applied.
   let pendingGap = null;
 
@@ -63,8 +78,29 @@ export function createStream({
     }
   }
 
+  // abandon ends the attempt in flight, if there is one: its timeout is disarmed and
+  // its request aborted. Whatever that request later does is then ignored.
+  function abandon() {
+    attemptTimer.cancel();
+    if (!inflight) return;
+    const { controller } = inflight;
+    inflight = null;
+    controller.abort();
+  }
+
+  // claim takes the outcome of an attempt, but only while that attempt is the one in
+  // flight. A superseded, timed-out or abandoned request has no outcome to take.
+  function claim(attempt) {
+    if (inflight !== attempt) return false;
+    inflight = null;
+    attemptTimer.cancel();
+    attempt.claimed = true;
+    return true;
+  }
+
   function suspend() {
     retryTimer.cancel();
+    abandon();
     closeSource();
     setConnection(state, "offline");
     changed();
@@ -97,6 +133,20 @@ export function createStream({
     changed();
   }
 
+  // recover handles a gap. The gapped stream is closed at once, so no later event
+  // from it is applied, and the client then recovers from a fresh snapshot.
+  function recover(gap) {
+    pendingGap = gap;
+    closeSource();
+    if (immediateGapAvailable) {
+      immediateGapAvailable = false;
+      connect();
+    } else {
+      scheduleRetry();
+    }
+    changed();
+  }
+
   function openStream() {
     const current = ++token;
     const guard = (handler) => (event) => {
@@ -112,7 +162,10 @@ export function createStream({
           return;
         }
         if (outcome === "gap") {
-          connect({ reason: "sequence_gap", requested_cursor: state.cursor, latest: item && item.sequence });
+          recover({ reason: "sequence_gap", requested_cursor: state.cursor, latest: item.sequence });
+        } else if (outcome === "invalid") {
+          // An item with no usable id or sequence cannot be placed, so it is recovered like a gap.
+          recover({ reason: "invalid_item", requested_cursor: state.cursor });
         }
       }),
       onSession: guard((event) => {
@@ -124,13 +177,14 @@ export function createStream({
         if (gap && gap.reason === "subscriber_limit") {
           terminal = true;
           retryTimer.cancel();
+          abandon();
           closeSource();
           setError(state, TERMINAL_LIMIT_NOTE);
           setConnection(state, "error");
           changed();
           return;
         }
-        connect({ ...(gap || {}), reason: (gap && gap.reason) || "replay_gap" });
+        recover({ ...(gap || {}), reason: (gap && gap.reason) || "replay_gap" });
       }),
       onConnection: guard((value) => {
         if (value === "open") {
@@ -138,8 +192,12 @@ export function createStream({
           warnTimer.cancel();
           state.connectionWarning = "";
           setConnection(state, "open");
-          // Only a connection that stays open resets the retry counter.
-          stableTimer.schedule(stableOpenMs, () => backoff.reset());
+          // Only a connection that stays open resets the retry counter, and with it the
+          // immediate gap recovery.
+          stableTimer.schedule(stableOpenMs, () => {
+            backoff.reset();
+            immediateGapAvailable = true;
+          });
           changed();
           return;
         }
@@ -152,15 +210,17 @@ export function createStream({
     });
   }
 
-  async function connect(gap) {
-    if (terminal || attempting) return;
-    if (gap) pendingGap = gap;
+  async function connect() {
+    if (terminal) return;
     retryTimer.cancel();
-    if (!isOnline()) {
+    // A new attempt supersedes one still in flight, so a hung request cannot hold the state.
+    abandon();
+    if (offlineRequested || !isOnline()) {
       suspend();
       return;
     }
-    attempting = true;
+    const attempt = { controller: new AbortController(), claimed: false };
+    inflight = attempt;
     closeSource();
     setConnection(state, "connecting");
     // The warning describes the attempt only. It never cancels it.
@@ -168,23 +228,27 @@ export function createStream({
       state.connectionWarning = SLOW_HANDSHAKE_NOTE;
       changed();
     });
+    attemptTimer.schedule(attemptTimeoutMs, () => {
+      abandon();
+      fail(new Error("snapshot request timed out"));
+    });
     changed();
     try {
-      const snapshot = await fetchSnapshot();
+      const snapshot = await fetchSnapshot(attempt.controller.signal);
+      if (!claim(attempt)) return;
       applySnapshot(state, snapshot);
       if (pendingGap) {
         noteGap(state, pendingGap);
         pendingGap = null;
       }
-      if (!isOnline()) {
+      if (offlineRequested || !isOnline()) {
         suspend();
         return;
       }
       openStream();
     } catch (error) {
-      fail(error);
-    } finally {
-      attempting = false;
+      // An error after the attempt was claimed is still this attempt's failure.
+      if (attempt.claimed || claim(attempt)) fail(error);
     }
   }
 
@@ -192,15 +256,18 @@ export function createStream({
     start() {
       return connect();
     },
-    // Coming back online resumes at once: the retry delay was for a network that
-    // is now known to be back. An open stream is left alone.
+    // Coming back online resumes at once: the retry delay was for a network that is now
+    // known to be back, and an attempt still in flight is superseded. An open stream is
+    // left alone.
     goOnline() {
+      offlineRequested = false;
       if (terminal || open) return undefined;
       backoff.reset();
       return connect();
     },
     goOffline() {
       if (terminal) return;
+      offlineRequested = true;
       suspend();
     },
     get attempts() {

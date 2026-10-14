@@ -94,7 +94,7 @@
             <div id="posture" class="posture" aria-label="Observed governance posture"></div>
             <div class="toolbar-right">
               <span id="filter-summary" class="filter-summary"></span>
-              <div id="timeline-filters" class="toggle-group" role="group" aria-label="Filter timeline"></div>
+              <div id="timeline-filters" class="toggle-group" role="toolbar" aria-label="Filter timeline"></div>
             </div>
           </div>
 
@@ -120,6 +120,8 @@
               Press <kbd class="kbd">Esc</kbd> to close the governance panel.
             </p>
           </form>
+
+          <button id="chat-jump" class="jump-latest" type="button" hidden>Jump to latest</button>
         </section>
 
         <section
@@ -130,7 +132,7 @@
           hidden
         >
           <div class="toolbar">
-            <div id="trajectory-groups" class="toggle-group" role="group" aria-label="Group records by"></div>
+            <div id="trajectory-groups" class="toggle-group" role="toolbar" aria-label="Group records by"></div>
             <div class="toolbar-right">
               <span id="trajectory-summary" class="filter-summary"></span>
               <label class="search-field" for="trajectory-search">
@@ -148,7 +150,8 @@
 
           <div id="sequence-rail" class="sequence-rail" role="group" aria-label="Record sequence rail"></div>
 
-          <div id="ledger" class="ledger"></div>
+          <div id="ledger" class="ledger" tabindex="-1"></div>
+          <button id="trajectory-jump" class="jump-latest" type="button" hidden>Jump to latest</button>
         </section>
 
         <div id="foot-stats" class="foot-stats" aria-label="Observed session metrics"></div>

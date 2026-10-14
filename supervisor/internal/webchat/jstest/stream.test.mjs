@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { CONNECT_WARN_MS, STABLE_OPEN_MS, createStream } from "../assets/stream.mjs";
+import { ATTEMPT_TIMEOUT_MS, CONNECT_WARN_MS, STABLE_OPEN_MS, createStream } from "../assets/stream.mjs";
 import { createWorkspace } from "../assets/store.mjs";
 import { createFakeTimers } from "./fake-timers.mjs";
 
@@ -33,19 +33,24 @@ function snapshotOf(sequences) {
 
 // The harness records every snapshot request and every stream open, in order, so a
 // test can assert the snapshot-before-resume ordering directly.
-function harness({ online = true, random = () => 1, connectWarnMs, stableOpenMs } = {}) {
+function harness({ online = true, random = () => 1, connectWarnMs, stableOpenMs, attemptTimeoutMs } = {}) {
   const clock = createFakeTimers();
   const state = createWorkspace();
   const log = [];
   const fetches = [];
+  // Every request ever made, in order, with its signal and the time it was made. Unlike
+  // fetches, this list is never shifted, so a test can inspect superseded requests too.
+  const requests = [];
   const streams = [];
   let onlineNow = online;
   let changes = 0;
 
-  const fetchSnapshot = () =>
+  const fetchSnapshot = (signal) =>
     new Promise((resolve, reject) => {
       log.push("snapshot");
-      fetches.push({ resolve, reject });
+      const request = { resolve, reject, signal, at: clock.now };
+      fetches.push(request);
+      requests.push(request);
     });
   const openEventStream = ({ cursor, ...handlers }) => {
     const record = {
@@ -74,6 +79,7 @@ function harness({ online = true, random = () => 1, connectWarnMs, stableOpenMs 
     random,
     connectWarnMs,
     stableOpenMs,
+    attemptTimeoutMs,
   });
 
   return {
@@ -81,6 +87,7 @@ function harness({ online = true, random = () => 1, connectWarnMs, stableOpenMs 
     clock,
     log,
     fetches,
+    requests,
     streams,
     stream,
     get changes() {
@@ -388,4 +395,177 @@ test("goOffline during an attempt is re-checked before the stream opens", async 
   await h.answer([1]);
   assert.equal(h.streams.length, 0, "an attempt that lands while offline must not open a stream");
   assert.equal(h.state.connection, "offline");
+});
+
+/* ---------------------------------------------------------------------------
+ * A snapshot request that never settles
+ * ------------------------------------------------------------------------- */
+
+test("a snapshot request that never settles is abandoned at the attempt timeout and retried", async () => {
+  const h = harness();
+  h.stream.start();
+  h.clock.advance(ATTEMPT_TIMEOUT_MS - 1);
+  assert.equal(h.state.connection, "connecting", "the attempt is still in flight before its deadline");
+  assert.equal(h.requests[0].signal.aborted, false);
+
+  h.clock.advance(1);
+  assert.equal(h.requests[0].signal.aborted, true, "the hung request is aborted at the deadline");
+  assert.equal(h.state.connection, "reconnecting");
+  assert.match(h.state.error, /timed out/);
+
+  h.clock.advance(500);
+  assert.equal(h.requests.length, 2, "the retry follows the backoff policy");
+  assert.equal(h.requests[1].at, ATTEMPT_TIMEOUT_MS + 500);
+});
+
+test("the attempt timeout honours an injected value", async () => {
+  const h = harness({ attemptTimeoutMs: 100 });
+  h.stream.start();
+  h.clock.advance(100);
+  assert.equal(h.state.connection, "reconnecting");
+  assert.match(h.state.error, /timed out/);
+});
+
+test("a snapshot that arrives after its attempt timed out cannot open a stream or apply", async () => {
+  const h = harness();
+  h.stream.start();
+  h.clock.advance(ATTEMPT_TIMEOUT_MS);
+  h.requests[0].resolve(snapshotOf([1, 2]));
+  await flush();
+  assert.equal(h.streams.length, 0, "a superseded attempt cannot open a stream");
+  assert.equal(h.state.loaded, false, "nor apply its snapshot");
+});
+
+test("going offline during a hung attempt, then back online, resumes at once", async () => {
+  const h = harness();
+  h.stream.start();
+  h.setOnline(false);
+  h.stream.goOffline();
+  assert.equal(h.requests[0].signal.aborted, true, "going offline aborts the request in flight");
+  h.setOnline(true);
+  h.stream.goOnline();
+  assert.equal(h.requests.length, 2, "coming back online starts a new attempt at once");
+  assert.equal(h.state.connection, "connecting");
+
+  h.requests[1].resolve(snapshotOf([1]));
+  await flush();
+  assert.deepEqual(h.log.slice(-2), ["snapshot", "open:e1:1"]);
+});
+
+test("going online supersedes an attempt that is still in flight", async () => {
+  const h = harness();
+  h.stream.start();
+  h.clock.advance(CONNECT_WARN_MS);
+  assert.match(h.state.connectionWarning, /slow/);
+
+  h.stream.goOnline();
+  assert.equal(h.requests.length, 2, "the new attempt starts now, not after the hung one settles");
+  assert.equal(h.requests[0].signal.aborted, true, "the superseded request is aborted");
+  assert.equal(h.state.connectionWarning, "", "the warning describes the new attempt only");
+
+  h.requests[0].resolve(snapshotOf([1, 2, 3]));
+  await flush();
+  assert.equal(h.streams.length, 0, "the superseded snapshot cannot open a stream");
+  assert.equal(h.state.loaded, false, "nor be applied");
+
+  h.requests[1].resolve(snapshotOf([1]));
+  await flush();
+  assert.deepEqual(h.log.slice(-1), ["open:e1:1"]);
+  assert.equal(h.state.cursor, "e1:1", "only the current attempt's snapshot is applied");
+});
+
+test("going offline during an attempt holds even when the browser still reports online", async () => {
+  const h = harness();
+  h.stream.start();
+  h.stream.goOffline();
+  h.requests[0].resolve(snapshotOf([1]));
+  await flush();
+  assert.equal(h.streams.length, 0, "an attempt that lands after goOffline must not open a stream");
+  assert.equal(h.state.connection, "offline");
+});
+
+test("going online clears the offline request, so the next attempt may open", async () => {
+  const h = harness();
+  h.stream.start();
+  h.stream.goOffline();
+  h.stream.goOnline();
+  h.requests[1].resolve(snapshotOf([1]));
+  await flush();
+  assert.deepEqual(h.log.slice(-1), ["open:e1:1"]);
+});
+
+/* ---------------------------------------------------------------------------
+ * Gap storms
+ * ------------------------------------------------------------------------- */
+
+// A server that answers every open with a gap. Each answered request is followed by
+// an open and then a gap on that stream. Requests pending at an instant are answered
+// before the clock moves on, and the clock advances in 10 ms steps.
+async function gapStorm(h, untilMs) {
+  while (h.requests.length < 50) {
+    for (let guard = 0; guard < 20 && h.fetches.length; guard++) {
+      await h.answer([1]);
+      const current = h.streams.at(-1);
+      current.handlers.onConnection("open");
+      current.handlers.onItem({ item: message(3) });
+    }
+    if (h.clock.now >= untilMs) break;
+    h.clock.advance(10);
+  }
+}
+
+test("a server that answers every open with a gap is bounded and increasingly spaced", async () => {
+  const h = harness({ random: () => 1 });
+  h.stream.start();
+  await gapStorm(h, 60000);
+
+  const times = h.requests.map((request) => request.at);
+  assert.ok(times.length <= 12, `${times.length} snapshot requests in 60 s`);
+  const spacing = times.slice(1).map((at, index) => at - times[index]);
+  assert.deepEqual(
+    spacing.slice(0, 6),
+    [0, 500, 1000, 2000, 4000, 8000],
+    "the first gap recovers at once, then each repeated gap waits longer under the backoff policy",
+  );
+  assert.equal(spacing[6], 10000, "the delay reaches the policy cap");
+});
+
+test("every stream open in a gap storm follows a snapshot", async () => {
+  const h = harness({ random: () => 1 });
+  h.stream.start();
+  await gapStorm(h, 20000);
+  h.log.forEach((entry, index) => {
+    if (entry.startsWith("open:")) assert.equal(h.log[index - 1], "snapshot", `open at log ${index} has no snapshot before it`);
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * Malformed items
+ * ------------------------------------------------------------------------- */
+
+test("an item without an id recovers from a snapshot and is disclosed, not dropped", async () => {
+  const h = harness();
+  h.stream.start();
+  await h.answer([1, 2]);
+  h.streams[0].handlers.onConnection("open");
+  h.streams[0].handlers.onItem({ item: { sequence: 3, type: "message", text: "no id" } });
+  assert.equal(h.log.at(-1), "snapshot", "the malformed item triggers a snapshot recovery");
+  await h.answer([1, 2, 3]);
+  assert.deepEqual(h.log.slice(-2), ["snapshot", "open:e1:3"]);
+  assert.equal(h.state.gaps.at(-1).reason, "invalid_item");
+  assert.equal(h.state.gapNotice.reason, "invalid_item", "the notice names the reason");
+});
+
+test("repeated malformed items wait under the backoff policy, as repeated gaps do", async () => {
+  const h = harness({ random: () => 1 });
+  h.stream.start();
+  await h.answer([1]);
+  h.streams[0].handlers.onConnection("open");
+  h.streams[0].handlers.onItem({ item: { sequence: 2, type: "message" } });
+  await h.answer([1]);
+  h.streams[1].handlers.onConnection("open");
+  h.streams[1].handlers.onItem({ item: { sequence: 2, type: "message" } });
+  assert.equal(h.fetches.length, 0, "the second malformed item waits rather than recovering at once");
+  h.clock.advance(500);
+  assert.equal(h.fetches.length, 1, "it recovers after the base delay");
 });

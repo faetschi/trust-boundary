@@ -427,3 +427,29 @@ are preparation only. Media custody and exact ABI checks precede registration.
 - Harness client survey recorded as Appendix B of docs/web-chat-ui-plan.md.
 - Known: `/favicon.ico` 404 (no route); a stale `tbound-webchat.exe` (older
   build) holds port 8791 outside this worktree.
+
+## Harness-survey increment (2026-10-14)
+
+- Implemented from docs/web-chat-ui-plan.md App. B (patterns only, MIT upstream,
+  nothing copied): safe stable-prefix assistant markdown (markdown.mjs: DOM-only,
+  no HTML parsing, http/https/mailto only, 64 KiB/512 blocks/depth 4, indexed
+  look-ahead so adversarial input is linear); snapshot-first reconnect (stream.mjs
+  and backoff.mjs: 500 ms x2 cap 10 s, 50-100% jitter, STABLE_OPEN_MS 5 s, 3 s
+  non-cancelling slow-handshake text, 15 s attempt timeout with abort, offline
+  suspend, gap storms backed off); explicit windowGap cleared only by a
+  contiguous covering snapshot; invalid items trigger recovery, never "duplicate";
+  roving toolbars and status words in aria-labels; `--state-*` alias token tier
+  (36/36 computed colours identical, tokens.test.mjs); anchored tail (anchor.mjs,
+  client-only "N new records" from applied events only); UNKNOWN has its own rail tone.
+- stop-sequence.mjs (two-press Escape cancel) is a pure state machine and is NOT
+  wired: there is no cancel API (milestone 3). Wording never says cancelled/stopped/settled.
+- Deferred: diff viewer (no bounded diff field in the projection; contract needs
+  listed in docs/web-chat.md s12); slash-menu listbox (no composer). Proposal for
+  the core thread: additive snapshot `anchor` (docs/web-chat-contract.md s8).
+- Two Haiku 5.5 xhigh review/fix rounds: 6 defects found in 9aaa789 (ReDoS-like
+  emphasis scan, hung snapshot, gap-storm reconnects, id-less item dropped, windowGap
+  cleared without contiguity, offline flag), all fixed test-first.
+- Verified: Node 258/258, 0 skipped; Go 1.27.1 build/vet/gofmt clean, -race green
+  for internal/webchat and cmd/tbound-webchat (30 PASS, 0 SKIP). Full ./... not re-run.
+  Not browser-verified: markdown styling, online/offline listeners, tail/jump button.
+- Known: hung EventSource handshake (after the snapshot) is not timed out.

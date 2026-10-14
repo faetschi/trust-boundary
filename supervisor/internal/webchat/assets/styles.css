@@ -68,15 +68,27 @@
   --source-result: oklch(0.78 0.04 250);
   --source-message: oklch(0.78 0.04 250);
 
-  /* Ledger status dots, one per trust tone. */
-  --dot-ok: var(--success);
-  --dot-deny: var(--destructive);
-  --dot-pending: var(--muted-foreground);
-  --dot-reported: var(--warning);
-  /* A policy ALLOW is a permission, not an outcome: it has its own neutral tone
-     and never shares the success colour. */
-  --allow: var(--source-system);
-  --dot-allow: var(--allow);
+  /*
+   * State alias tier. Static palette tokens feed these aliases, and the state chip,
+   * dot and segment components read only the aliases, so a palette value is
+   * retuned in one place. The "-ink" aliases are chip text colours; the others are
+   * the state's own colour. A policy ALLOW is a permission, not an outcome: it has
+   * its own neutral tone and never shares the success colour.
+   */
+  --state-ok: var(--success);
+  --state-ok-ink: var(--success-foreground);
+  --state-allow: var(--source-system);
+  --state-deny: var(--destructive);
+  --state-deny-ink: var(--destructive-foreground);
+  --state-reported: var(--warning);
+  --state-reported-ink: var(--warning-foreground);
+  --state-pending: var(--warning);
+  --state-pending-ink: var(--warning-foreground);
+  /* A pending dot and segment are grey marks; a pending chip is amber. */
+  --state-pending-mark: var(--muted-foreground);
+  --state-unknown: var(--warning);
+  --state-idle: var(--muted-foreground);
+  --state-muted: var(--muted-foreground);
 
   /* Geometry declared once, so the three-region shell has one source of truth. */
   --rail-width: 15rem;
@@ -661,6 +673,28 @@ h3 {
   flex-direction: column;
 }
 
+/* "Jump to latest": shown only to a reader scrolled away from the tail, pinned to
+   the bottom of the view so the count of records below stays in reach. */
+.jump-latest {
+  position: sticky;
+  bottom: 0.75rem;
+  align-self: center;
+  margin: 0.75rem 0 0;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 2px);
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.375rem 0.875rem;
+  cursor: pointer;
+  box-shadow: 0 4px 16px color-mix(in oklch, var(--background) 60%, transparent);
+}
+.jump-latest:hover {
+  background: var(--accent);
+}
+
 /* ---------- ledger (Trajectory view) ---------- */
 
 .sequence-rail {
@@ -700,25 +734,29 @@ h3 {
   flex: 1 1 0;
 }
 .seg-muted {
-  background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
+  background: color-mix(in oklch, var(--state-muted) 14%, transparent);
 }
 .seg-ok {
-  background: var(--success);
+  background: var(--state-ok);
 }
 .seg-deny {
-  background: var(--destructive);
+  background: var(--state-deny);
 }
 .seg-allow {
-  background: var(--allow);
+  background: var(--state-allow);
 }
 .seg-idle {
-  background: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
+  background: color-mix(in oklch, var(--state-idle) 40%, transparent);
 }
 .seg-reported {
-  background: var(--warning);
+  background: var(--state-reported);
 }
 .seg-pending {
-  background: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+  background: color-mix(in oklch, var(--state-pending-mark) 55%, transparent);
+}
+/* UNKNOWN is its own tone: an uncertain outcome is never drawn as a lane that did not act. */
+.seg-unknown {
+  background: color-mix(in oklch, var(--state-unknown) 55%, transparent);
 }
 .seg-w1 { flex-grow: 1; }
 .seg-w2 { flex-grow: 2; }
@@ -824,30 +862,30 @@ h3 {
   border: 1px solid transparent;
   flex: none;
 }
-.dot-ok { background: var(--dot-ok); }
+.dot-ok { background: var(--state-ok); }
 .dot-allow {
   background: transparent;
-  border-color: var(--dot-allow);
-  box-shadow: inset 0 0 0 1px var(--dot-allow);
+  border-color: var(--state-allow);
+  box-shadow: inset 0 0 0 1px var(--state-allow);
 }
-.dot-deny { background: var(--dot-deny); }
-.dot-lost { background: var(--dot-deny); }
+.dot-deny { background: var(--state-deny); }
+.dot-lost { background: var(--state-deny); }
 .dot-pending {
   background: transparent;
-  border-color: var(--dot-pending);
+  border-color: var(--state-pending-mark);
 }
 .dot-reported {
   background: transparent;
-  border-color: var(--dot-reported);
+  border-color: var(--state-reported);
   border-style: dashed;
 }
 .dot-unknown {
   background: transparent;
-  border-color: var(--dot-reported);
+  border-color: var(--state-unknown);
   border-style: dotted;
 }
 .dot-idle {
-  background: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
+  background: color-mix(in oklch, var(--state-idle) 55%, transparent);
 }
 
 /* Source chips: a record's provenance is always legible as text, and the tone
@@ -1148,28 +1186,28 @@ h3 {
 .chip-completed,
 .chip-published,
 .chip-ready {
-  color: var(--success-foreground);
-  border-color: color-mix(in oklch, var(--success) 40%, transparent);
-  background: color-mix(in oklch, var(--success) 12%, transparent);
+  color: var(--state-ok-ink);
+  border-color: color-mix(in oklch, var(--state-ok) 40%, transparent);
+  background: color-mix(in oklch, var(--state-ok) 12%, transparent);
 }
 .chip-allow {
-  color: var(--allow);
-  border-color: color-mix(in oklch, var(--allow) 45%, transparent);
-  background: color-mix(in oklch, var(--allow) 12%, transparent);
+  color: var(--state-allow);
+  border-color: color-mix(in oklch, var(--state-allow) 45%, transparent);
+  background: color-mix(in oklch, var(--state-allow) 12%, transparent);
 }
 .chip-deny,
 .chip-denied,
 .chip-failed,
 .chip-cancelled,
 .chip-lost {
-  color: var(--destructive-foreground);
-  border-color: color-mix(in oklch, var(--destructive) 40%, transparent);
-  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+  color: var(--state-deny-ink);
+  border-color: color-mix(in oklch, var(--state-deny) 40%, transparent);
+  background: color-mix(in oklch, var(--state-deny) 12%, transparent);
 }
 .chip-pending {
-  color: var(--warning-foreground);
-  border-color: color-mix(in oklch, var(--warning) 40%, transparent);
-  background: color-mix(in oklch, var(--warning) 12%, transparent);
+  color: var(--state-pending-ink);
+  border-color: color-mix(in oklch, var(--state-pending) 40%, transparent);
+  background: color-mix(in oklch, var(--state-pending) 12%, transparent);
 }
 .chip-unknown,
 .chip-unavailable {
@@ -1180,13 +1218,13 @@ h3 {
  * "reported" variant and sits next to an explicit unverified marker.
  */
 .chip-reported {
-  color: var(--warning-foreground);
-  border-color: color-mix(in oklch, var(--warning) 45%, transparent);
+  color: var(--state-reported-ink);
+  border-color: color-mix(in oklch, var(--state-reported) 45%, transparent);
   border-style: dashed;
-  background: color-mix(in oklch, var(--warning) 10%, transparent);
+  background: color-mix(in oklch, var(--state-reported) 10%, transparent);
 }
 .chip-unverified {
-  color: var(--muted-foreground);
+  color: var(--state-muted);
   border-style: dashed;
   font-size: 0.5625rem;
 }

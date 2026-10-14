@@ -16,8 +16,16 @@ import {
   setView,
 } from "./store.mjs";
 import { createStream } from "./stream.mjs";
-import { renderAll } from "./render.mjs";
+import { renderAll, setRovingTabStop } from "./render.mjs";
 import { humanize } from "./format.mjs";
+import {
+  isAtTail,
+  jumpLabel,
+  maxScrollTop,
+  pendingSince,
+  restoredScrollTop,
+  tailAnnouncement,
+} from "./anchor.mjs";
 
 const refs = {
   sourceBadge: document.getElementById("source-badge"),
@@ -57,14 +65,144 @@ const refs = {
   ledger: document.getElementById("ledger"),
   recordInspector: document.getElementById("record-inspector"),
   footStats: document.getElementById("foot-stats"),
+  chatJump: document.getElementById("chat-jump"),
+  trajectoryJump: document.getElementById("trajectory-jump"),
 };
 
 const state = createWorkspace();
+
+// The tail window. The page is the scroller. A reader at the tail keeps following
+// new records. A reader scrolled away keeps their place, and the records applied
+// meanwhile are counted on that view's "Jump to latest" control. The arithmetic
+// lives in anchor.mjs; this section only reads the page and writes to it.
+//
+// Each view keeps a pin: the applied-record count when the reader was last at the
+// tail, or first saw the view. The count of new records is the distance from it.
+const pins = { chat: 0, trajectory: 0 };
+// A view's pin starts when the reader first sees it. A return visit keeps the pin,
+// so records applied while they were in the other view are still counted here.
+const visited = { chat: false, trajectory: false };
+// Records in the view at the last render. A view with nothing in it yet is not
+// followed, so the first load opens at the top of the transcript.
+let renderedRecords = 0;
+let announcedRecords = 0;
+let announceTimer = null;
+// Stream bursts re-render once per record; one announcement covers the burst.
+const TAIL_ANNOUNCE_DELAY_MS = 400;
+
+function scrollRoot() {
+  return document.scrollingElement || document.documentElement;
+}
+
+function scrollMetrics() {
+  const root = scrollRoot();
+  return { scrollTop: root.scrollTop, clientHeight: root.clientHeight, scrollHeight: root.scrollHeight };
+}
+
+function visibleView() {
+  return refs.trajectoryView && !refs.trajectoryView.hasAttribute("hidden") ? "trajectory" : "chat";
+}
+
+function viewSection(view) {
+  return view === "trajectory" ? refs.trajectoryView : refs.chatView;
+}
+
+// Taken before a re-render. A reader away from the tail is pinned to the first
+// record visible at the top of the viewport, and to its offset from that top.
+function captureTail(view) {
+  const metrics = scrollMetrics();
+  const capture = { atTail: renderedRecords > 0 && isAtTail(metrics), capturedScrollTop: metrics.scrollTop };
+  if (capture.atTail) return capture;
+  for (const node of viewSection(view).querySelectorAll("[data-anchor]")) {
+    const rect = node.getBoundingClientRect();
+    if (rect.bottom > 0) {
+      capture.anchor = node.dataset.anchor;
+      capture.capturedOffset = rect.top;
+      break;
+    }
+  }
+  return capture;
+}
+
+// Taken after a re-render, for a view that was already visible. A reader at the
+// tail is moved to the new bottom; a reader away is moved so the pinned record
+// stays where it was.
+function settleScroll(view, capture) {
+  if (capture.atTail) {
+    window.scrollTo(0, maxScrollTop(scrollMetrics()));
+    return;
+  }
+  let nextOffset;
+  if (capture.anchor) {
+    const node = Array.from(viewSection(view).querySelectorAll("[data-anchor]"))
+      .find((candidate) => candidate.dataset.anchor === capture.anchor);
+    if (node) nextOffset = node.getBoundingClientRect().top;
+  }
+  const metrics = scrollMetrics();
+  window.scrollTo(0, restoredScrollTop({
+    capturedScrollTop: capture.capturedScrollTop,
+    capturedOffset: capture.capturedOffset,
+    currentScrollTop: metrics.scrollTop,
+    nextOffset,
+  }, metrics));
+}
+
+// Shows the view's control only while the reader is away and records are waiting.
+function updateTail(view) {
+  const atTail = isAtTail(scrollMetrics());
+  if (atTail) pins[view] = state.applied;
+  const pending = pendingSince(state.applied, pins[view]);
+  const controls = { chat: refs.chatJump, trajectory: refs.trajectoryJump };
+  for (const name of Object.keys(controls)) {
+    const control = controls[name];
+    if (!control) continue;
+    if (name === view && pending > 0 && !atTail) {
+      // The page scrolls often; rewrite the label only when the count changes.
+      const label = jumpLabel(pending);
+      if (control.textContent !== label) control.textContent = label;
+      control.removeAttribute("hidden");
+    } else {
+      control.setAttribute("hidden", "");
+    }
+  }
+}
+
+// Announces the waiting count once a burst of arrivals settles. Nothing is said
+// while the reader is at the tail, and the count is reset when they return to it.
+function announceTail(view) {
+  const pending = pendingSince(state.applied, pins[view]);
+  if (pending === 0) {
+    announcedRecords = 0;
+    return;
+  }
+  if (pending <= announcedRecords) return;
+  clearTimeout(announceTimer);
+  announceTimer = setTimeout(() => {
+    const now = pendingSince(state.applied, pins[visibleView()]);
+    const text = tailAnnouncement(announcedRecords, now);
+    if (!text) return;
+    announcedRecords = now;
+    refs.statusAnnouncer.textContent = text;
+  }, TAIL_ANNOUNCE_DELAY_MS);
+}
+
+function jumpToLatest() {
+  const view = visibleView();
+  window.scrollTo(0, maxScrollTop(scrollMetrics()));
+  pins[view] = state.applied;
+  announcedRecords = 0;
+  updateTail(view);
+  // The control is about to disappear, so focus moves to the list it was for.
+  const list = view === "trajectory" ? refs.ledger : refs.timeline;
+  list.focus({ preventScroll: true });
+}
 
 // Rendering must never block data loading. A render error is surfaced without
 // discarding the projection the client already holds.
 function render() {
   const focusKey = captureFocus();
+  const before = visibleView();
+  const capture = captureTail(before);
   try {
     renderAll(refs, state);
   } catch (error) {
@@ -77,8 +215,18 @@ function render() {
       // A second failure is reported through the first notice only.
     }
   }
+  const view = visibleView();
+  renderedRecords = state.items.length;
   restoreFocus(focusKey);
+  if (!visited[view]) {
+    visited[view] = true;
+    pins[view] = state.applied;
+  }
+  // A view switch leaves the browser's own scroll position alone.
+  if (view === before) settleScroll(view, capture);
+  updateTail(view);
   announce(state);
+  announceTail(view);
 }
 
 // The notices list is rebuilt on every render, so it is not a live region. A
@@ -142,17 +290,36 @@ function captureFocus() {
   return null;
 }
 
+// A toolbar is one tab stop. Focusing a button moves the stop onto it.
+function focusToolbarButton(container, selector, matches) {
+  const buttons = Array.from(container.querySelectorAll(selector));
+  const index = buttons.findIndex(matches);
+  if (index < 0) return;
+  setRovingTabStop(buttons, index);
+  buttons[index].focus();
+}
+
+// Left and Right move focus along a toolbar, wrapping at either end. Selecting a
+// button stays a separate action (Enter or Space), so arrowing never changes state.
+function moveToolbarFocus(event, container, selector) {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  const buttons = Array.from(container.querySelectorAll(selector));
+  const index = buttons.indexOf(document.activeElement);
+  if (index < 0) return;
+  const next = event.key === "ArrowRight"
+    ? (index + 1) % buttons.length
+    : (index - 1 + buttons.length) % buttons.length;
+  event.preventDefault();
+  setRovingTabStop(buttons, next);
+  buttons[next].focus();
+}
+
 function restoreFocus(target) {
   if (!target) return;
   // Skip when the DOM already holds focus, or when the user moved it elsewhere.
   if (document.activeElement && document.activeElement !== document.body) return;
   if (target.kind === "group") {
-    for (const button of refs.trajectoryGroups.querySelectorAll("button.group-tab")) {
-      if (button.dataset.group === target.value) {
-        button.focus();
-        return;
-      }
-    }
+    focusToolbarButton(refs.trajectoryGroups, "button.group-tab", (button) => button.dataset.group === target.value);
     return;
   }
   if (target.kind === "record") {
@@ -165,12 +332,7 @@ function restoreFocus(target) {
     return;
   }
   if (target.kind === "filter") {
-    for (const button of refs.timelineFilters.querySelectorAll("button[data-filter]")) {
-      if (button.dataset.filter === target.value) {
-        button.focus();
-        return;
-      }
-    }
+    focusToolbarButton(refs.timelineFilters, "button[data-filter]", (button) => button.dataset.filter === target.value);
     return;
   }
   for (const details of refs.timeline.querySelectorAll("details.tool")) {
@@ -243,15 +405,7 @@ refs.timelineFilters.addEventListener("click", (event) => {
 });
 
 refs.timelineFilters.addEventListener("keydown", (event) => {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-  const buttons = Array.from(refs.timelineFilters.querySelectorAll("button[data-filter]"));
-  const index = buttons.indexOf(document.activeElement);
-  if (index < 0) return;
-  const next = event.key === "ArrowRight"
-    ? (index + 1) % buttons.length
-    : (index - 1 + buttons.length) % buttons.length;
-  event.preventDefault();
-  buttons[next].focus();
+  moveToolbarFocus(event, refs.timelineFilters, "button[data-filter]");
 });
 
 // View ring: Chat and Trajectory are two projections of the same bounded window.
@@ -290,15 +444,7 @@ refs.trajectoryGroups.addEventListener("click", (event) => {
 });
 
 refs.trajectoryGroups.addEventListener("keydown", (event) => {
-  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-  const buttons = Array.from(refs.trajectoryGroups.querySelectorAll("button.group-tab"));
-  const index = buttons.indexOf(document.activeElement);
-  if (index < 0) return;
-  const next = event.key === "ArrowRight"
-    ? (index + 1) % buttons.length
-    : (index - 1 + buttons.length) % buttons.length;
-  event.preventDefault();
-  buttons[next].focus();
+  moveToolbarFocus(event, refs.trajectoryGroups, "button.group-tab");
 });
 
 // Search narrows what the ledger shows. It reads only allowlisted bounded fields
@@ -367,6 +513,11 @@ document.addEventListener("keydown", (event) => {
     syncInspector();
   }
 });
+
+// Reaching the tail by scrolling clears the waiting count, as the jump control does.
+refs.chatJump.addEventListener("click", jumpToLatest);
+refs.trajectoryJump.addEventListener("click", jumpToLatest);
+window.addEventListener("scroll", () => updateTail(visibleView()), { passive: true });
 
 syncInspector();
 render();

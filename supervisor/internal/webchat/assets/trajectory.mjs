@@ -113,6 +113,51 @@ export function recordDot(item) {
   return "idle";
 }
 
+// The status as words. The dot is decorative for assistive technology, so the same
+// state is carried on the record's accessible name, once. The words match the dot's
+// tone: a policy ALLOW is a permission, an unverified success is "reported", and
+// nothing is called a success that the projection did not confirm.
+const NOT_VERIFIED = ", not independently verified";
+
+const VERDICT_WORDS = {
+  allow: "ALLOW (permission, not an outcome)",
+  deny: "DENY (refusal, not an outcome)",
+  unknown: "UNKNOWN (neither permission nor refusal)",
+};
+
+const STATE_WORDS = { unknown: "UNKNOWN", lost: "LOST" };
+
+function outcomeWords(item, tone) {
+  const word = STATE_WORDS[slug(item.state)] || humanize(item.state);
+  const lossy = item.lossy ? "; output lossy" : "";
+  switch (tone) {
+    case "ok":
+      return `${word}, verified${lossy}`;
+    case "reported":
+      return `${word}, reported${NOT_VERIFIED}${lossy}`;
+    case "deny":
+    case "lost":
+      return `${word}, not success${lossy}`;
+    case "pending":
+      return `${word}, no outcome yet${lossy}`;
+    default:
+      // Lossy output takes the unknown tone, so the words must not call it confirmed.
+      if (item.lossy && slug(item.state) !== "unknown") return `${word}, output lossy, not counted as confirmed`;
+      return `${word}, not success${lossy}`;
+  }
+}
+
+export function statusText(item) {
+  if (!item) return "Status not recorded";
+  if (item.type === "message") return "Message: no verdict or outcome recorded";
+  if (item.type === "decision") {
+    const verdict = VERDICT_WORDS[verdictChipClass(item.verdict)];
+    return `Policy verdict: ${verdict}${isVerified(item) ? "" : NOT_VERIFIED}`;
+  }
+  const label = item.type === "result" ? "Result" : "Activity";
+  return `${label}: ${outcomeWords(item, recordDot(item))}`;
+}
+
 export function recordLabel(item) {
   if (!item) return "record";
   switch (item.type) {
@@ -230,10 +275,30 @@ function toneOf(item) {
   if (dot === "allow") return "allow";
   if (dot === "reported") return "reported";
   if (dot === "pending") return "pending";
+  // An UNKNOWN outcome is drawn as itself: it is not a lane that did not act.
+  if (dot === "unknown") return "unknown";
   // A message is recorded but carries no verdict or outcome: it is drawn as
   // "idle", distinct from the "muted" span of a lane that did not act at all.
   if (dot === "idle") return "idle";
   return "muted";
+}
+
+// The rail's accessible name states each tone in words, because segments are
+// colour only. Wording matches statusText and never calls a verdict or an
+// unverified outcome a success.
+const TONE_WORDS = {
+  allow: "ALLOW, a permission not an outcome",
+  ok: "succeeded, verified",
+  reported: "succeeded, reported, not independently verified",
+  deny: "DENY, denied, failed or lost, not success",
+  pending: "pending, no outcome yet",
+  unknown: "UNKNOWN, not success",
+  idle: "message, no verdict or outcome",
+  muted: "no record in this lane",
+};
+
+export function toneText(tone) {
+  return TONE_WORDS[tone] || TONE_WORDS.muted;
 }
 
 // Segment weights are bucketed into classes rather than inline styles: the

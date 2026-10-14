@@ -154,3 +154,41 @@ they become available, and must never be inferred.
 This is a proposal. The gateway currently ships `fixture`, `replay`, and
 `unavailable` sources only; `--live` fails closed. No shared service file was
 edited.
+
+## 8. PROPOSAL, not implemented: a tail `anchor` on the snapshot
+
+**Status: proposal for the core thread. Nothing in the gateway or the client
+sends, reads or validates this field.**
+
+Today the snapshot's `cursor` already carries the last provided sequence
+(`epoch:sequence`). The client keeps its own tail pin, so a reader's place is lost
+when the window is replaced, and records a reconnect snapshot delivers are not
+counted as new. The proposal adds one additive, optional field that names the tail
+at snapshot time:
+
+```json
+"anchor": { "epoch": "e1", "sequence": 7, "item_id": "r2" }
+```
+
+- `anchor` is the last provided item at snapshot time. It is omitted, or `null`,
+  when the snapshot has no items.
+- `sequence` and `epoch` must match the snapshot's `cursor` and the last item's
+  sequence. `item_id` names that item. The gateway would refuse a mismatch the same
+  way it refuses a cursor that disagrees with the item sequence today.
+- It is a locator, not an authority. It grants no success, verification or ordering
+  that the items do not already carry.
+- With it, a client that pinned the tail can count the records that arrive by
+  snapshot as new, by sequence after the pinned item, and can find the pinned record
+  by `item_id` in a new window. Today those records are not counted.
+
+What it needs before any producer can send it:
+
+- `contract.go` must declare and validate the field on `Snapshot`. The document
+  decoder (fixture, replay, receipt) refuses unknown fields. No live snapshot decoder
+  exists yet, so how it treats an unknown field is still open.
+- The gateway client must read it and keep its pin by identity. Until then the
+  field is inert.
+
+Open questions for the core thread: whether `item_id` should be required once a
+window has been trimmed (the pinned record may be evicted first), and whether the
+anchor should also ride on `session` events.

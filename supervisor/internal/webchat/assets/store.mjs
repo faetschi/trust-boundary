@@ -21,6 +21,9 @@ export function createWorkspace() {
     items: [],
     itemsById: new Map(),
     lastSequence: 0,
+    // Counts records applied through applyItem, in order. The tail window measures
+    // "new" records from this count, so gaps, duplicates and snapshot loads never add to it.
+    applied: 0,
     connection: "connecting",
     loaded: false,
     error: null,
@@ -113,8 +116,19 @@ function updateWindowGap(state, { evictions, dropped, trimmed }) {
     noteWindowLoss(state, "client", "retained_window", trimmed[0].sequence);
   }
   if (!state.windowGap || evictions.length || dropped.length || trimmed.length) return;
-  const oldest = state.items.length ? state.items[0].sequence : Infinity;
-  if (oldest <= state.windowGap.since) state.windowGap = null;
+  if (holdsFrom(state, state.windowGap.since)) state.windowGap = null;
+}
+
+// holdsFrom says whether the window holds every element from `since` through the
+// last one, with no hole. Only then does a snapshot prove the lost history is back.
+function holdsFrom(state, since) {
+  const span = state.lastSequence - since + 1;
+  if (!state.items.length || span < 1 || span > state.items.length) return false;
+  const present = new Set(state.items.map((item) => item.sequence));
+  for (let sequence = since; sequence <= state.lastSequence; sequence++) {
+    if (!present.has(sequence)) return false;
+  }
+  return true;
 }
 
 // Where an eviction gap has no numeric range, the loss is taken to start at the
@@ -165,13 +179,13 @@ export function applySnapshot(state, snapshot) {
   return state;
 }
 
-// Returns "applied", "duplicate", or "gap".
+// Returns "applied", "duplicate", "gap", or "invalid". An item with no string id or
+// no integer sequence cannot be placed, so it is reported rather than dropped as a
+// duplicate: the caller recovers from it and discloses that it did.
 export function applyItem(state, item) {
-  if (!item || typeof item.id !== "string") return "duplicate";
+  if (!item || typeof item.id !== "string" || !Number.isInteger(item.sequence)) return "invalid";
   if (state.itemsById.has(item.id)) return "duplicate";
-  if (typeof item.sequence !== "number" || item.sequence <= state.lastSequence) {
-    return "duplicate";
-  }
+  if (item.sequence <= state.lastSequence) return "duplicate";
   if (item.sequence !== state.lastSequence + 1) {
     return "gap";
   }
@@ -179,6 +193,7 @@ export function applyItem(state, item) {
   state.itemsById.set(item.id, item);
   state.lastSequence = item.sequence;
   state.cursor = `${state.epoch}:${item.sequence}`;
+  state.applied += 1;
   const trimmed = enforceClientCap(state);
   if (trimmed.length) noteWindowLoss(state, "client", "retained_window", trimmed[0].sequence);
   return "applied";

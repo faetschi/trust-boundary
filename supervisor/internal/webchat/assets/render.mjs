@@ -20,6 +20,8 @@ import {
   recordOf,
   sequenceLanes,
   sourceLabel,
+  statusText,
+  toneText,
   visibleRecords,
   weightClass,
 } from "./trajectory.mjs";
@@ -81,6 +83,14 @@ function digestNode(value) {
 
 function monoNode(value) {
   return el("span", "mono", value);
+}
+
+// A toolbar is one tab stop: the pressed button is the stop, and Left/Right move
+// focus between the others (app.mjs).
+export function setRovingTabStop(buttons, index) {
+  buttons.forEach((button, position) => {
+    button.setAttribute("tabindex", position === index ? "0" : "-1");
+  });
 }
 
 export function renderAll(refs, state) {
@@ -155,6 +165,7 @@ function renderToolbar(refs, state) {
 
   if (refs.timelineFilters) {
     clear(refs.timelineFilters);
+    const buttons = [];
     for (const filter of FILTERS) {
       const button = el("button", "toggle-item");
       button.type = "button";
@@ -164,8 +175,10 @@ function renderToolbar(refs, state) {
       button.appendChild(el("span", null, filter.label));
       const count = countFilter(state.items, filter.id);
       button.appendChild(el("span", "toggle-count", String(count)));
+      buttons.push(button);
       refs.timelineFilters.appendChild(button);
     }
+    setRovingTabStop(buttons, Math.max(0, FILTERS.findIndex((entry) => entry.id === state.filter)));
   }
 
   if (refs.filterSummary) {
@@ -394,6 +407,7 @@ function renderTurn(turn) {
 function renderMessage(item) {
   const node = el("div", "msg");
   node.dataset.role = item.role;
+  node.dataset.anchor = item.id;
   const roleLine = el("div", "msg-role");
   roleLine.appendChild(el("span", null, item.role || "message"));
   roleLine.appendChild(el("span", null, " · "));
@@ -441,6 +455,7 @@ function pruneAssistantBodies(items) {
 function renderTool(block) {
   const details = el("details", "tool");
   details.dataset.key = block.key;
+  details.dataset.anchor = block.key;
   const activity = block.activity;
   const decision = block.decision;
   const result = block.result;
@@ -588,6 +603,7 @@ function renderTrajectory(refs, state) {
 
   if (refs.trajectoryGroups) {
     clear(refs.trajectoryGroups);
+    const buttons = [];
     for (const entry of RECORD_GROUPS) {
       const button = el("button", "toggle-item group-tab");
       button.type = "button";
@@ -595,8 +611,11 @@ function renderTrajectory(refs, state) {
       button.setAttribute("aria-pressed", String((state.group || "turn") === entry.id));
       button.setAttribute("aria-label", `Group records by ${entry.label} (${entry.hint})`);
       button.appendChild(el("span", null, entry.label));
+      buttons.push(button);
       refs.trajectoryGroups.appendChild(button);
     }
+    const pressed = RECORD_GROUPS.findIndex((entry) => entry.id === (state.group || "turn"));
+    setRovingTabStop(buttons, Math.max(0, pressed));
   }
 
   // Never overwrite the search box while the reader is typing in it.
@@ -631,7 +650,7 @@ function renderTrajectory(refs, state) {
         track.setAttribute("role", "img");
         track.setAttribute(
           "aria-label",
-          `${lane.label} lane: ${lane.segments.map((segment) => `${segment.weight} ${segment.tone}`).join(", ")}`,
+          `${lane.label} lane: ${lane.segments.map((segment) => `${segment.weight} record(s), ${toneText(segment.tone)}`).join("; ")}`,
         );
         for (const segment of lane.segments) {
           const node = el("span", `seg seg-${segment.tone} ${weightClass(segment.weight)}`);
@@ -699,13 +718,11 @@ function renderRecordRow(state, record) {
   const row = el("button", selected ? "record-row is-selected" : "record-row");
   row.type = "button";
   row.dataset.id = record.id;
+  row.dataset.anchor = record.id;
   row.dataset.source = record.source;
   row.setAttribute("aria-pressed", String(selected));
-  const chips = record.chips.map((entry) => entry.label).join(", ");
-  row.setAttribute(
-    "aria-label",
-    `${sourceLabel(record.source)} record ${record.sequence}: ${record.label}${chips ? `. ${chips}` : ""}`,
-  );
+  // The status is stated in words here, once. The dot beside it is decorative.
+  row.setAttribute("aria-label", `${sourceLabel(record.source)} record ${record.sequence}: ${record.label}. ${statusText(record.item)}.`);
   row.appendChild(dotNode(record.dot));
   row.appendChild(sourceChip(record.source));
   row.appendChild(el("span", "record-label", record.label));

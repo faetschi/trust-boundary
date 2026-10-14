@@ -51,6 +51,11 @@ because submission requires the authenticated supervisor session service.
 | Governance / provenance / publication / recovery / qualification panels | Implemented |
 | Explicit source labels (`fixture`/`live`/`replay`/`unavailable`) and unverified markers | Implemented |
 | Continuity-gap recovery from a snapshot (no invented success) | Implemented |
+| Snapshot-first reconnect: capped, jittered backoff, offline suspend, slow-handshake warning (§7.3) | Implemented |
+| Assistant messages as a bounded markdown subset, no HTML parsing (§4.6) | Implemented |
+| Tail window: records that arrive while scrolled away are counted on a `Jump to latest` control (§4.5) | Implemented, client-only |
+| Diff viewer | **Deferred** (§12) |
+| Two-press cancel state machine (`stop-sequence.mjs`) | Written, **not wired** (§4.7) |
 | Live projection from the supervisor | **Not implemented** (`--live` fails closed) |
 | Persistent multi-turn sessions and history | **Not implemented** (supervisor-owned) |
 | Turn submission / cancellation | **Not implemented** (composer disabled) |
@@ -141,11 +146,14 @@ presentation" defect; see §7.
 
 `lossy` is deliberately **not** part of the success gate. It describes the
 completeness of bulky output (stdout/stderr, timings, indexes), not the terminal
-outcome: a verified `succeeded` result whose *output* was truncated is still a
-succeeded terminal outcome, and the UI renders a `lossy` chip beside it so the
-reader knows the output is incomplete. A `LOSSY` result is also counted and
-matched under the `Unknown` filter, because lossy output cannot substitute for
-terminal evidence.
+outcome: a verified `succeeded` result whose *output* was truncated keeps its
+reported `succeeded` state chip, and the UI renders a `lossy` chip beside it so
+the reader knows the output is incomplete. Because lossy output cannot substitute
+for terminal evidence, such a result is also counted and matched under the
+`Unknown` filter, and the Trajectory ledger draws its dot and rail segment in the
+conservative `unknown` tone (never `ok`), with the accessible text "output lossy,
+not counted as confirmed". The chip states what was reported; the dot never claims
+more than the evidence supports.
 
 ### 4.2 Typed post-run receipt projection
 
@@ -199,7 +207,9 @@ a clean allow?* — without re-reading the whole transcript.
   separately, because a policy `ALLOW` is not a successful execution. An
   unverified success is counted and labelled `reported`, never `verified`.
 - **Filters** narrow the timeline to `All`, `Denied`, `Unknown` or `Failed`.
-  Each button carries its own count and an `aria-pressed` state. A filter keeps
+  Each button carries its own count and an `aria-pressed` state. The group is a
+  labelled `toolbar` with one tab stop, on the pressed filter; Left and Right move
+  between filters and Enter or Space selects one. A filter keeps
   the correlated tool block (activity + decision + result) together, so a matched
   finding is never shown without its execution context, and transcript messages
   are hidden while a finding filter is active. A filter with no matches renders an
@@ -222,21 +232,30 @@ endpoint was needed to build it.
   search are presentation choices and never drop or reorder the projection.
   There is deliberately **no `Context` chip**: the projection has no context item
   type, and rendering one would present a capability the service does not have.
-- **Status dot.** The dot mirrors the record's chip tone exactly, so the two can
-  never disagree. An unverified execution outcome takes the `reported` tone, never
+- **Status dot.** The dot and the chip share one tone name, so they cannot disagree
+  about a record's state. Their colours are not identical for every tone: a pending
+  chip is amber, while a pending dot is a grey mark. An unverified execution outcome takes the `reported` tone, never
   the confirmed `ok` tone; `lost`, `denied`, `pending` and `unknown` are distinct.
   A policy ALLOW is a permission, not an outcome: it has its own neutral `allow`
   tone and is never drawn in the success colour, so an ALLOW beside a `lost`
   result cannot look like a success. Lossy output never takes the `ok` tone. A
   verdict carries an explicit `unverified` marker when the projection did not
   verify it.
+- **Status in words.** The dot is decorative for assistive technology. The
+  record's accessible name carries its status instead, for example `Policy verdict:
+  ALLOW (permission, not an outcome), not independently verified` or `Result:
+  succeeded, reported, not independently verified`, and an UNKNOWN or LOST result
+  reads `not success`. Each rail lane's name states its tones the same way. Each
+  status is announced once: the dot and the segments carry no separate label.
 - **Sequence rail.** A three-lane overview (`Model` / `Policy` / `Tools`) whose
   axis is the **record sequence, not time**. The projection records a timestamp
   and never a duration, so no span is drawn as one and the axis says so. Segment
   widths are bucketed CSS classes, not inline styles (the CSP allows no inline
   style). The rail is always built from every retained record: a search narrows
   the ledger and never hides a DENY from the rail. A message is drawn `idle`,
-  distinct from the `muted` span of a lane that did not act at that position.
+  distinct from the `muted` span of a lane that did not act at that position. An
+  UNKNOWN outcome has its own `unknown` tone; it is never drawn as a lane that did
+  not act.
 - **Record inspector.** Selecting a record shows its bounded fields:
   `Summary`, `Payload`, `Decision` (verdict, reason code, policy digest),
   `Result` (state, lossy, digest), `Evidence` (authority, verification scope and
@@ -253,6 +272,60 @@ endpoint was needed to build it.
 - **Footer** states what was observed (`turns`, `records`, policy counts) and
   marks every metric the projection does not carry as `unavailable` rather than
   rendering a zero.
+
+### 4.5 Following the tail (client-only)
+
+The transcript and the ledger scroll with the page. A reader within 40 px of the
+bottom keeps following new records. A reader who has scrolled away keeps their
+place: the first record visible at the top of the viewport is held across each
+re-render. Records applied while they are away are counted on a `N new records ·
+Jump to latest` control in that view, which moves them to the tail and moves focus
+to the list. The count comes only from records the store applied in order from the
+stream; a gap, a duplicate or a snapshot load never adds to it. A burst of arrivals
+is announced once, through the status region, after it settles. The first load
+opens at the top of the transcript.
+
+Limits, stated plainly: the count is exact only for live arrivals. Records that a
+reconnect snapshot delivers are not counted, so after a reconnect the count is a
+lower bound. Trimming the oldest records while the reader is away moves the content
+shown, and the held record keeps its place only if it is still in the window. The
+arithmetic is covered by `jstest/anchor.test.mjs`; the scroll and focus behaviour is
+browser-only and is not covered by the Node tests.
+
+### 4.6 Assistant messages as markdown
+
+Only assistant text is rendered as markdown; user and system text stays literal.
+The parser is a bounded subset built without an HTML parser: source text is never
+parsed as markup, and the DOM is made only with `createElement` and
+`createTextNode`. Supported: paragraphs, ATX headings, fenced code, inline code,
+bold, italic, bulleted and ordered lists, blockquotes and `[text](url)` links. A
+link is created only for `http`, `https` or `mailto`; other schemes stay as text,
+and an image renders as its source text.
+
+Bounds: 64 KiB of source, 512 top-level blocks, and a nesting depth of 4 for
+blockquotes and lists. When the text is cut, the message carries a notice such as
+`Message truncated for display: …`.
+
+Known simplifications:
+
+- fenced code inside a list or a blockquote is split out of its container;
+- a loose list (blank lines between items) is split into separate lists;
+- there is no autolink: a bare URL is text, not a link.
+
+While a message streams, only the blocks whose source changed are re-rendered.
+
+### 4.7 Stop sequence (written, not wired)
+
+`stop-sequence.mjs` is a pure two-press Escape state machine: a first press arms a
+request for the turn on screen, and a second press within 2 s confirms it. It is
+**not wired**. No module imports it, the shell does not reference it, and
+`handler.go` does not serve it. It waits for the milestone-3 cancel API, which the
+core thread owns.
+
+Its wording is fixed. It never says a turn was cancelled, stopped or settled.
+Cancellation is a request; the settled result comes from the supervisor, and an
+uncertain effect stays `UNKNOWN`. A confirmed press yields a cancel-request intent
+for the caller to send. Nothing is re-sent on a reconnect, and nothing is retried.
 
 ## 5. API endpoints
 
@@ -343,7 +416,7 @@ become a success display"), and the gateway exposes no control route
 
 | Finding | Fix |
 |---|---|
-| A reconnect snapshot could overwrite newer live events | The client refreshes in place on a re-open (the stream is already re-established, so there is no resubscribe and no loop) and buffers live events during the fetch; gap announcements are keyed by gap identity |
+| A reconnect snapshot could overwrite newer live events | Superseded by the snapshot-first policy in §7.3: each connection closes the old stream, applies a fresh snapshot, then opens from that snapshot's cursor. Events from a replaced stream are ignored. Gap announcements are keyed by gap identity |
 | A cursor could disagree with the item sequence | `ValidateSnapshot` refuses a cursor that does not match the last provided sequence |
 | Client eviction was silent | The notices region and the filter summary both disclose the retained window and the evicted count |
 | Identifiers admitted path separators; text admitted control characters | Identifiers (item/turn/tool-call/session/workflow/profile/stream/gap and provenance labels) use a stricter pattern with no `/`; digests keep the wider reference pattern; display text rejects control characters other than LF/TAB, including the C1 range; receipt disposition, settlement/publication status, generation labels and command containment status are echoed only when they are bounded identifiers |
@@ -366,6 +439,44 @@ workspace with a transcript/tool timeline, a governance inspector, a persistent
 claim-boundary strip, and explicit source/verified/gap labelling. No file from
 that checkout was copied verbatim except the platform-specific
 safe-no-follow document opener, which is retained unchanged.
+
+### 7.3 Reconnect policy (snapshot-first, implemented)
+
+`stream.mjs` holds the connection lifecycle as a DOM-free state machine, and
+`backoff.mjs` holds the timing. The browser's own EventSource retry is not used,
+so the delay can be capped, jittered, suspended offline, and reset only after a
+stable connection.
+
+- **Snapshot first.** Every connection closes any open stream, fetches a snapshot,
+  applies it, and only then opens the stream from the snapshot's cursor. A
+  reconnect never resumes from a cursor the client has not just verified, and
+  nothing retries an effect. Events from a stream that has since been replaced are
+  ignored.
+- **Backoff.** The delay is `500 ms × 2^attempt`, capped at 10 s, and jittered
+  uniformly into 50–100% of that value. Clients that lost the gateway together do
+  not retry in lockstep, and no delay exceeds the cap.
+- **Stable open resets the counter.** The attempt counter resets only after the
+  stream has stayed open for 5 s (`STABLE_OPEN_MS`). A server that accepts and then
+  drops at once does not reset the backoff.
+- **Slow handshake.** After 3 s (`CONNECT_WARN_MS`) the status reads
+  `slow handshake: still connecting`. The warning never cancels the attempt.
+- **Offline.** When the browser reports offline, retries are suspended and no timer
+  runs; the status reads `offline`. On `online` the client reconnects at once with
+  the backoff reset. An open stream is left alone.
+- **Subscriber limit is terminal.** The gateway's subscriber limit is reported and
+  never retried automatically.
+- **Window gaps.** A gap recovery alone does **not** set `windowGap`. A complete
+  snapshot restores the window, and the notice says the gap was recovered.
+  `windowGap` (the `Earlier history not loaded` marker) is set only when:
+  1. a replacement snapshot drops retained elements (source window, from the first
+     dropped sequence);
+  2. the client cap trims the oldest retained elements (client window, from the
+     first trimmed sequence); or
+  3. the snapshot itself declares `history_evicted` (source window, from its first
+     missing element).
+
+  It is cleared only by a snapshot that restores an element at or before the
+  earliest lost one and declares no eviction. A live item never clears it.
 
 ### 8.1 Presentation design system
 
@@ -394,10 +505,7 @@ Requires the pinned Go toolchain (module `tbound/supervisor`).
 cd supervisor
 go vet ./internal/webchat/... ./cmd/tbound-webchat/...
 go test ./internal/webchat/... ./cmd/tbound-webchat/...
-node --test internal/webchat/jstest/format.test.mjs \
-            internal/webchat/jstest/store.test.mjs \
-            internal/webchat/jstest/filters.test.mjs \
-            internal/webchat/jstest/render.test.mjs
+node --test internal/webchat/jstest/*.test.mjs
 go run ./cmd/tbound-webchat --demo                 # embedded fixture, port 8791
 go run ./cmd/tbound-webchat                         # unavailable projection
 go run ./cmd/tbound-webchat --replay path.json      # retained observations
@@ -455,7 +563,13 @@ Focused checks on the pinned Go 1.27.1 in Linux:
 - `go vet ./internal/webchat/... ./cmd/tbound-webchat/...` — exit 0.
 - `go test -count=1 ./internal/webchat/... ./cmd/tbound-webchat/...` — ok.
 - `go test -race -count=1 ./internal/webchat/... ./cmd/tbound-webchat/...` — ok.
-- `node --test` (browser modules) — 40 tests pass.
+- Tail-window and status-in-words increment: `gofmt -l` (no output), `go vet`, and
+  `go test -race -count=1 ./internal/webchat/... ./cmd/tbound-webchat/...` on Go 1.27.1
+  (WSL) all exit 0, with no skipped tests. `TestStaticAssetsAreClosedAndComplete`
+  passes with the new `anchor.mjs` route.
+- `node --test internal/webchat/jstest/*.test.mjs` — 229 pass, 0 skipped. These cover
+  the pure modules and the DOM-stub renderer; browser scroll, focus and keyboard
+  behaviour is not covered by them.
 - The **real** development CLI fixture receipt was imported with
   `--receipt` and rendered in the running workspace: source `replay`, session
   `unknown`, four tool cards (two reported `succeeded`, two `unknown`),
@@ -477,3 +591,20 @@ snapshots and cursor events matching §4 and the
 [contract proposal](web-chat-contract.md). Milestone 2 (read integration) and
 Milestone 3 (interactive integration) require supervisor service changes that are
 owned by the core thread; this gateway will consume them, not implement them.
+
+## 12. Deferred from the harness survey
+
+The harness survey ([UI plan, Appendix B](web-chat-ui-plan.md)) named two items this
+increment does not build.
+
+- **Diff viewer: deferred.** The projection has no bounded diff field, so there is
+  nothing safe to render. A contract change would need: bounded patch hunks, each
+  with a per-hunk size cap; an explicit truncation flag per file and per hunk; and a
+  path allowlist with redaction, decided by the supervisor rather than the browser.
+  Until those exist, a file change is shown only as its bounded summary.
+- **Slash-command listbox: no target.** A `/` listbox needs a composer and a command
+  menu. Neither exists: the composer is disabled and there is no command set. No
+  listbox is built, and none is a claim this client makes.
+
+The survey's other "avoid" items are also not adopted: `aria-live="polite"` on the
+ledger, any `innerHTML` sink, and search over full message bodies.

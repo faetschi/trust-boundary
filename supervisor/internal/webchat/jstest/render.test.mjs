@@ -496,3 +496,91 @@ test("an offline stream is labelled offline in text", () => {
   assert.equal(refs.connection.textContent, "offline");
   assert.equal(refs.connection.dataset.state, "offline");
 });
+
+/* ---------------------------------------------------------------------------
+ * Status as text, toolbar tab stops and tail anchors
+ * ------------------------------------------------------------------------- */
+
+// statusSnapshot carries one record for each status the trajectory must name.
+function statusSnapshot() {
+  const base = {
+    turn_id: "t1",
+    occurred_at: "2026-10-13T10:00:00Z",
+    authority: "diagnostic",
+    verification_scope: "unverified-input",
+  };
+  const verified = { authority: "observed", verification_scope: "structural-audit-only" };
+  return {
+    ...fixtureSnapshot(),
+    items: [
+      { ...base, id: "allow", sequence: 1, type: "decision", tool: "bash", tool_call_id: "c1", verdict: "ALLOW", reason_code: "policy_rule_allow" },
+      { ...base, id: "reported", sequence: 2, type: "result", tool: "bash", tool_call_id: "c1", state: "succeeded", summary: "exit 0" },
+      { ...base, ...verified, id: "verified", sequence: 3, type: "result", tool: "read", tool_call_id: "c2", state: "succeeded", summary: "read ok" },
+      { ...base, id: "deny", sequence: 4, type: "decision", tool: "bash", tool_call_id: "c3", verdict: "DENY", reason_code: "policy_rule_deny" },
+      { ...base, id: "unknown", sequence: 5, type: "result", tool: "edit", tool_call_id: "c4", state: "unknown", summary: "no terminal outcome" },
+      { ...base, id: "lost", sequence: 6, type: "result", tool: "bash", tool_call_id: "c5", state: "lost", summary: "result lost" },
+    ],
+  };
+}
+
+function statusRows() {
+  const refs = createRefs(REF_NAMES);
+  const state = createWorkspace();
+  applySnapshot(state, statusSnapshot());
+  setView(state, "trajectory");
+  renderAll(refs, state);
+  const rows = new Map(refs.ledger.querySelectorAll("button.record-row").map((row) => [row.dataset.id, row]));
+  return { refs, rows };
+}
+
+test("every ledger row states its status in text, and never calls an ALLOW or an unverified success a success", () => {
+  const { rows } = statusRows();
+  const label = (id) => rows.get(id).getAttribute("aria-label");
+  assert.match(label("allow"), /Policy verdict: ALLOW \(permission, not an outcome\)/);
+  assert.match(label("deny"), /Policy verdict: DENY \(refusal, not an outcome\)/);
+  assert.match(label("reported"), /Result: succeeded, reported, not independently verified/);
+  assert.match(label("verified"), /Result: succeeded, verified/);
+  assert.match(label("unknown"), /Result: UNKNOWN, not success/);
+  assert.match(label("lost"), /Result: LOST, not success/);
+  for (const id of ["allow", "reported"]) {
+    assert.doesNotMatch(label(id), /\bsuccess\b/i, `${id} must not be called a success`);
+  }
+  // The dot stays decorative: its state is announced once, on the row's name.
+  for (const row of rows.values()) {
+    assert.equal(row.querySelectorAll("span.dot")[0].getAttribute("aria-hidden"), "true");
+  }
+});
+
+test("each rail lane names its segment tones in text, including an UNKNOWN segment", () => {
+  const { refs } = statusRows();
+  const track = (id) => refs.sequenceRail.querySelectorAll("div.lane").find((node) => node.className.includes(`lane-${id}`)).querySelectorAll("span.lane-track")[0];
+  const policy = track("policy").getAttribute("aria-label");
+  assert.match(policy, /ALLOW, a permission not an outcome/);
+  const allowSegment = policy.split("; ").find((part) => part.includes("ALLOW"));
+  assert.doesNotMatch(allowSegment, /success/i, "the ALLOW segment is never called a success");
+  assert.match(track("tools").getAttribute("aria-label"), /succeeded, reported, not independently verified/);
+  assert.match(track("tools").getAttribute("aria-label"), /UNKNOWN, not success/);
+  assert.ok(
+    track("tools").querySelectorAll("span.seg").some((segment) => segment.className.includes("seg-unknown")),
+    "UNKNOWN has its own segment tone",
+  );
+});
+
+test("each toolbar is a single tab stop on its pressed button", () => {
+  const { refs, state } = renderFixture();
+  const tabStops = (container) => container.children.map((button) => button.getAttribute("tabindex"));
+  assert.deepEqual(tabStops(refs.timelineFilters), ["0", "-1", "-1", "-1"]);
+  setFilter(state, "denied");
+  renderAll(refs, state);
+  assert.deepEqual(tabStops(refs.timelineFilters), ["-1", "0", "-1", "-1"], "the pressed filter is the stop");
+  setGroup(state, "verdict");
+  renderAll(refs, state);
+  assert.deepEqual(tabStops(refs.trajectoryGroups), ["-1", "-1", "0"]);
+});
+
+test("transcript messages, tool blocks and ledger rows carry the anchor key the tail window pins to", () => {
+  const { refs } = renderFixture();
+  assert.deepEqual(refs.timeline.querySelectorAll("div.msg").map((node) => node.dataset.anchor), ["m1"]);
+  assert.deepEqual(refs.timeline.querySelectorAll("details.tool").map((node) => node.dataset.anchor), ["c1", "c2"]);
+  assert.equal(refs.ledger.querySelectorAll("button.record-row")[0].dataset.anchor, "m1");
+});

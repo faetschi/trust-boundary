@@ -13,6 +13,9 @@
 
 export const MAX_MARKDOWN_CHARS = 65536;
 export const MAX_BLOCKS = 512;
+// Work counter: the positions examined by look-ahead searches. Rendering never
+// reads it; the tests read it to bound the cost of adversarial input.
+export const scanWork = { steps: 0 };
 
 const MAX_DEPTH = 4; // blockquote and list nesting
 const MAX_INLINE_DEPTH = 2; // emphasis inside emphasis
@@ -147,7 +150,13 @@ function truncationMessage(bounded, blockCount) {
     parts.push(`the first ${bounded.text.length} of ${bounded.total} characters are shown`);
   }
   if (blockCount > MAX_BLOCKS) {
-    parts.push(`the first ${MAX_BLOCKS} of ${blockCount} blocks are shown`);
+    // A count taken from cut text is of that text, not of the whole input, so the
+    // notice says which it counts.
+    parts.push(
+      bounded.truncated
+        ? `the first ${MAX_BLOCKS} of the ${blockCount} blocks in the shown text are rendered`
+        : `the first ${MAX_BLOCKS} of ${blockCount} blocks are shown`,
+    );
   }
   return parts.length ? `Message truncated for display: ${parts.join("; ")}.` : "";
 }
@@ -362,6 +371,7 @@ function inlineNodes(text, depth) {
     if (plain) nodes.push(document.createTextNode(plain));
     plain = "";
   };
+  const look = lookahead(text);
 
   let i = 0;
   while (i < text.length) {
@@ -375,7 +385,7 @@ function inlineNodes(text, depth) {
 
     if (ch === "`") {
       const run = runLength(text, i, "`");
-      const close = findRun(text, i + run, "`", run);
+      const close = look.run(i + run, run);
       if (close !== -1) {
         flush();
         nodes.push(el("code", null, codeSpanText(text.slice(i + run, close))));
@@ -388,7 +398,7 @@ function inlineNodes(text, depth) {
     }
 
     if (ch === "!" && text[i + 1] === "[") {
-      const image = parseLink(text, i + 1);
+      const image = parseLink(text, i + 1, look);
       if (image) {
         // Images are not rendered; their source stays visible as text.
         plain += text.slice(i, image.end);
@@ -398,7 +408,7 @@ function inlineNodes(text, depth) {
     }
 
     if (ch === "[") {
-      const link = parseLink(text, i);
+      const link = parseLink(text, i, look);
       if (link) {
         flush();
         const href = safeHref(link.url);
@@ -410,7 +420,7 @@ function inlineNodes(text, depth) {
     }
 
     if ((ch === "*" || ch === "_") && depth < MAX_INLINE_DEPTH) {
-      const emphasis = parseEmphasis(text, i);
+      const emphasis = parseEmphasis(text, i, look);
       if (emphasis) {
         flush();
         const node = el(emphasis.strong ? "strong" : "em");
@@ -430,36 +440,27 @@ function inlineNodes(text, depth) {
 
 // parseLink reads `[label](url)` starting at the "[" at `open`. A URL may not
 // contain whitespace, so a tab or newline inside a scheme never forms a link.
-function parseLink(text, open) {
-  const labelEnd = findChar(text, "]", open + 1, MAX_SPAN);
+function parseLink(text, open, look) {
+  const labelEnd = look.next("]", open + 1, MAX_SPAN);
   if (labelEnd === -1 || text[labelEnd + 1] !== "(") return null;
-  const urlEnd = findChar(text, ")", labelEnd + 2, MAX_URL_CHARS);
+  const urlEnd = look.next(")", labelEnd + 2, MAX_URL_CHARS);
   if (urlEnd === -1) return null;
   const raw = text.slice(labelEnd + 2, urlEnd).trim();
   if (/\s/.test(raw)) return null;
   return { label: text.slice(open + 1, labelEnd), url: raw, end: urlEnd + 1 };
 }
 
-function parseEmphasis(text, i) {
+function parseEmphasis(text, i, look) {
   const mark = text[i];
   const strong = text[i + 1] === mark;
   const delimiter = strong ? mark + mark : mark;
   const start = i + delimiter.length;
-  if (start >= text.length || /\s/.test(text[start])) return null;
+  if (start >= text.length || isSpace(text[start])) return null;
   if (mark === "_" && i > 0 && WORD.test(text[i - 1])) return null;
 
-  const limit = Math.min(text.length, start + MAX_SPAN);
-  for (let j = start + 1; j + delimiter.length <= limit; j++) {
-    if (!text.startsWith(delimiter, j)) continue;
-    const before = text[j - 1];
-    const after = text[j + delimiter.length];
-    if (/\s/.test(before)) continue;
-    // The closer must end its run: a longer run of the same mark is not a closer.
-    if (strong ? after === mark : before === mark || after === mark) continue;
-    if (mark === "_" && WORD.test(after || "")) continue;
-    return { strong, inner: text.slice(start, j), end: j + delimiter.length };
-  }
-  return null;
+  const close = look.closer(mark, strong, start);
+  if (close === -1) return null;
+  return { strong, inner: text.slice(start, close), end: close + delimiter.length };
 }
 
 // As in CommonMark, one space is removed from each side when both are present
@@ -475,25 +476,114 @@ function runLength(text, i, mark) {
   return j - i;
 }
 
-// findRun returns the index of the next run of exactly `length` marks at or
-// after `from`, within the look-ahead window, or -1.
-function findRun(text, from, mark, length) {
-  const limit = Math.min(text.length, from + MAX_SPAN);
-  for (let j = from; j < limit; j++) {
-    if (text[j] !== mark) continue;
-    const run = runLength(text, j, mark);
-    if (run === length) return j;
-    j += run - 1;
-  }
-  return -1;
+// lookahead answers the bounded forward searches of inline parsing. Each kind of
+// position is indexed once per text, on first use, and each search is a binary
+// search of that index. A window scan repeated at every delimiter cost up to
+// MAX_SPAN steps per delimiter, so an unclosed run of delimiters cost the square of
+// its length; this costs one linear index plus O(log n) per search. Each answer is
+// the one the window scan would give.
+function lookahead(text) {
+  const marks = new Map();
+  const closers = new Map();
+  let runs = null;
+  return {
+    // next returns the first `mark` at or after `from` and within `span`, or -1.
+    next(mark, from, span) {
+      if (!marks.has(mark)) marks.set(mark, positionsOf(text, mark));
+      const j = firstAtOrAfter(marks.get(mark), from);
+      return j !== -1 && j < from + span ? j : -1;
+    },
+    // closer returns the first position after the opener at `start` where its
+    // delimiter may close, when that closer ends within MAX_SPAN of the opener, or -1.
+    closer(mark, strong, start) {
+      const length = strong ? 2 : 1;
+      if (!closers.has(mark)) closers.set(mark, [null, null]);
+      const byLength = closers.get(mark);
+      if (!byLength[length - 1]) byLength[length - 1] = closerPositions(text, mark, strong);
+      const j = firstAtOrAfter(byLength[length - 1], start + 1);
+      return j !== -1 && j + length <= start + MAX_SPAN ? j : -1;
+    },
+    // run returns the start of the first backtick run of exactly `length` at or
+    // after `from` and within MAX_SPAN, or -1. `from` always follows a whole run.
+    run(from, length) {
+      if (!runs) runs = backtickRuns(text);
+      const j = firstAtOrAfter(runs.get(length) || [], from);
+      return j !== -1 && j < from + MAX_SPAN ? j : -1;
+    },
+  };
 }
 
-function findChar(text, mark, from, span) {
-  const limit = Math.min(text.length, from + span);
-  for (let j = from; j < limit; j++) {
-    if (text[j] === mark) return j;
+// closerPositions lists, in order, the positions where the delimiter of `mark`
+// (doubled when strong) may close. Each test depends only on the text at that
+// position, never on where a span opened, which is what lets one list serve every
+// opener.
+function closerPositions(text, mark, strong) {
+  scanWork.steps += text.length;
+  const found = [];
+  for (let j = 0; j < text.length; j++) {
+    if (text[j] === mark && closesEmphasis(text, j, mark, strong)) found.push(j);
   }
-  return -1;
+  return found;
+}
+
+// closesEmphasis is called where `mark` occurs at j. It rejects a closer that does
+// not end its run: a longer run of the same mark is not a closer.
+function closesEmphasis(text, j, mark, strong) {
+  if (strong && text[j + 1] !== mark) return false;
+  const before = text[j - 1];
+  const after = text[j + (strong ? 2 : 1)];
+  if (isSpace(before)) return false;
+  if (strong ? after === mark : before === mark || after === mark) return false;
+  if (mark === "_" && WORD.test(after || "")) return false;
+  return true;
+}
+
+// positionsOf lists the positions of the character `mark`, in order.
+function positionsOf(text, mark) {
+  scanWork.steps += text.length;
+  const found = [];
+  for (let j = 0; j < text.length; j++) {
+    if (text[j] === mark) found.push(j);
+  }
+  return found;
+}
+
+// isSpace is /\s/ for one character, with a fast path for ASCII.
+function isSpace(ch) {
+  if (ch === undefined) return false;
+  const code = ch.charCodeAt(0);
+  return code < 128 ? code === 32 || (code >= 9 && code <= 13) : /\s/.test(ch);
+}
+
+// backtickRuns maps each run length to the start of every backtick run of that length.
+function backtickRuns(text) {
+  scanWork.steps += text.length;
+  const runs = new Map();
+  for (let j = 0; j < text.length; ) {
+    if (text[j] !== "`") {
+      j += 1;
+      continue;
+    }
+    const length = runLength(text, j, "`");
+    if (!runs.has(length)) runs.set(length, []);
+    runs.get(length).push(j);
+    j += length;
+  }
+  return runs;
+}
+
+// firstAtOrAfter returns the first entry of a sorted list that is at or after
+// `from`, or -1.
+function firstAtOrAfter(sorted, from) {
+  let low = 0;
+  let high = sorted.length;
+  while (low < high) {
+    scanWork.steps += 1;
+    const middle = (low + high) >> 1;
+    if (sorted[middle] < from) low = middle + 1;
+    else high = middle;
+  }
+  return low < sorted.length ? sorted[low] : -1;
 }
 
 /* ---------------------------------------------------------------------------

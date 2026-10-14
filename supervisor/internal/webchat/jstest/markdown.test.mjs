@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
 import { DomElement, DomText, installDom } from "./dom.mjs";
 
 installDom();
-const { MAX_BLOCKS, MAX_MARKDOWN_CHARS, createIncrementalRenderer, safeHref, splitBlocks } = await import(
+const { MAX_BLOCKS, MAX_MARKDOWN_CHARS, createIncrementalRenderer, safeHref, scanWork, splitBlocks } = await import(
   "../assets/markdown.mjs"
 );
 
@@ -408,8 +409,119 @@ test("block count is bounded with a visible marker", () => {
   assert.match(container.children[container.children.length - 1].textContent, /truncated/i);
 });
 
-test("pathological delimiter runs stay fast", () => {
-  const started = Date.now();
-  fresh(`${"[".repeat(30000)}${"*a ".repeat(10000)}${"`".repeat(5000)}${"_b".repeat(5000)}`);
-  assert.ok(Date.now() - started < 2000, "rendering must stay linear-ish");
+test("a block count in the notice is the count of the original input when only blocks are cut", () => {
+  const text = Array.from({ length: MAX_BLOCKS + 5 }, (_, index) => `para ${index}`).join("\n\n");
+  const shown = fresh(text);
+  const notice = shown.children[shown.children.length - 1].textContent;
+  assert.equal(notice, `Message truncated for display: the first ${MAX_BLOCKS} of ${MAX_BLOCKS + 5} blocks are shown.`);
+});
+
+test("a block count in the notice says which text it counts when the characters are cut too", () => {
+  const text = "a\n\n".repeat(40000);
+  const shown = splitBlocks(text.slice(0, MAX_MARKDOWN_CHARS)).length;
+  const rendered = fresh(text);
+  const notice = rendered.children[rendered.children.length - 1].textContent;
+  assert.ok(shown > MAX_BLOCKS, "the shown text must itself exceed the block bound for this test to mean anything");
+  assert.equal(
+    notice,
+    `Message truncated for display: the first ${MAX_MARKDOWN_CHARS} of ${text.length} characters are shown; ` +
+      `the first ${MAX_BLOCKS} of the ${shown} blocks in the shown text are rendered.`,
+  );
+});
+
+// Each adversarial message is 4096 characters and is built from the delimiters that
+// start a look-ahead search. Cost is judged by scanWork, the count of positions the
+// look-ahead examined, so the bound cannot flake on a slow machine. The clock is a
+// generous backstop only.
+const ADVERSARIAL = [
+  "*".repeat(4096),
+  "_".repeat(4096),
+  "[".repeat(4096),
+  "[a](".repeat(1024),
+  "*_[`".repeat(1024),
+  "`a".repeat(2048),
+];
+const MAX_WORK_PER_CHARACTER = 64;
+const TIME_BACKSTOP_MS = 1500;
+
+test("pathological delimiter runs stay within the work and time bounds", () => {
+  const text = `${"[".repeat(30000)}${"*a ".repeat(10000)}${"`".repeat(5000)}${"_b".repeat(5000)}`;
+  scanWork.steps = 0;
+  const started = performance.now();
+  fresh(text);
+  const elapsed = performance.now() - started;
+  const rendered = Math.min(text.length, MAX_MARKDOWN_CHARS);
+  assert.ok(scanWork.steps <= rendered * MAX_WORK_PER_CHARACTER, `examined ${scanWork.steps} positions for ${rendered} characters`);
+  assert.ok(elapsed < TIME_BACKSTOP_MS, `took ${elapsed.toFixed(0)} ms`);
+});
+
+test("512 adversarial 4096-character messages stay within the work and time bounds", () => {
+  scanWork.steps = 0;
+  const started = performance.now();
+  for (let index = 0; index < 512; index++) fresh(ADVERSARIAL[index % ADVERSARIAL.length]);
+  const elapsed = performance.now() - started;
+  const characters = 512 * 4096;
+  assert.ok(scanWork.steps <= characters * MAX_WORK_PER_CHARACTER, `examined ${scanWork.steps} positions for ${characters} characters`);
+  assert.ok(elapsed < TIME_BACKSTOP_MS, `took ${elapsed.toFixed(0)} ms`);
+});
+
+test("a 4096-character adversarial message streamed one character at a time stays within the time bound", () => {
+  const text = "*".repeat(4096);
+  const container = document.createElement("div");
+  const renderer = createIncrementalRenderer(container);
+  const started = performance.now();
+  for (let end = 1; end <= text.length; end++) renderer.update(text.slice(0, end));
+  const elapsed = performance.now() - started;
+  assert.equal(serializeChildren(container), serializeChildren(fresh(text)), "the final stream equals a fresh render of the same text");
+  assert.ok(elapsed < TIME_BACKSTOP_MS, `streaming took ${elapsed.toFixed(0)} ms`);
+});
+
+/* ---------------------------------------------------------------------------
+ * Ordinary markdown is unchanged
+ * ------------------------------------------------------------------------- */
+
+// Digests of the DOM each input rendered to before the look-ahead rewrite. Any
+// change to ordinary output shows up here by name.
+const ORDINARY = [
+  ["Plain sentence with no markup at all.", "e7ad54c0a9bc923b"],
+  ["# Plan\n\nFirst **point** with `code`.\n\n- one\n- two", "a12e2203b20c3c5f"],
+  ["Use **bold**, *em*, `a*b*c`, and ~~not strike~~.", "bdeba6d7b9f4ffbe"],
+  ["snake_case_name and __strong__ and _em_ words.", "daec6c13621f44c6"],
+  ["Escaped \\*literal\\* and \\_under\\_ and \\[no link\\].", "ac83db362989478b"],
+  ["A [docs link](https://example.com/docs) and [mail](mailto:a@example.com) here.", "ec1a4cb2a7e94700"],
+  ["An ![image](https://example.com/p.png) stays text. And [bad](javascript:alert(1)).", "7a635c29930b1bfb"],
+  ["Nested *emphasis with **strong** inside* and **bold with *em* inside**.", "a5277db0bb3aa45e"],
+  ["Code span ``with `tick` inside`` and `  padded  ` and `` `x` ``.", "4d18b43e40501571"],
+  ["Unclosed *emphasis and a closed one *here* after.", "1486e711499cf51c"],
+  ["Price is 5 * 3 * 2 = 30 and a_b_c stays.", "c0c074313ccc7284"],
+  ["```js\nconst a = 1;\n\nconst b = [a];\n```\n\nAfter the fence.", "da73c449d2cce4eb"],
+  ["~~~\nplain fence with **markup**\n~~~", "bca33e33d9f8ffce"],
+  ["> quoted **bold**\n> second line\n\nBetween.", "7edcd4017da2166c"],
+  ["1. first *item*\n2. second [link](https://a.example/x)\n3. third", "52816be6fe9a5fe4"],
+  ["- a\n  - nested **deep**\n    - deeper `code`\n- c", "6db0548088b2b8c8"],
+  ["- one\nlazy continuation of one", "cfdec79b381ae136"],
+  ["Line one\nline two with `code`\nline three", "0b841008ea1fd84b"],
+  ["## Heading with *em*\n\nParagraph after.", "95b9ced2deb022e1"],
+  ["Tabs\tand nbsp and unicode café — naïve “quotes”.", "ebd679b7d8148fc5"],
+  ["Link label with *emph* [a *b* c](https://example.com/?q=1&r=2) tail.", "d772f1dbbe4ec4d1"],
+  ["Brackets [not a link] and (parens) and [x]( spaced url ) text.", "6253aedfa03cb7fe"],
+  ["Mixed _underscore *star* nesting_ and **double *inner* close**.", "8f4f5cda0d8a6db5"],
+  ["A ` lone backtick and ``` a triple run without closer.", "53ca49b0710a54a3"],
+  ["Emphasis that crosses a line *first\nsecond* ends here.", "834c3dbe09512e7b"],
+  ["Emphasis with a trailing space in * this is not emphasis*.", "88e3c1046207296a"],
+  ["Word_with_underscores_ and _leading underscore word_.", "c56045330d5bb19b"],
+  ["Empty link [](https://example.com) and text [label]() end.", "4339b33c328f9423"],
+  ["Nested link in emphasis *[label](https://example.com/e)*.", "55cc0274e8992e84"],
+  ["Long run: a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b a*b end.", "17365ed6fd940efe"],
+  ["Close *after the window: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx* yes.", "f8c62576ac50fef6"],
+];
+
+function digest(node) {
+  return createHash("sha256").update(serializeChildren(node)).digest("hex").slice(0, 16);
+}
+
+test("ordinary markdown renders the same DOM as before the look-ahead rewrite", () => {
+  for (const [text, expected] of ORDINARY) {
+    assert.equal(digest(fresh(text)), expected, `digest of ${JSON.stringify(text)}`);
+  }
 });

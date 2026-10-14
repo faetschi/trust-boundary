@@ -218,3 +218,48 @@ test("a resync that loses nothing claims no missing history", () => {
   applySnapshot(state, windowedSnapshot([1, 2, 3, 4, 5]));
   assert.equal(state.windowGap, null, "a complete replacement must not display history as not loaded");
 });
+
+test("applied counts only records applyItem applied in order, never gaps, duplicates or snapshot loads", () => {
+  const state = createWorkspace();
+  applySnapshot(state, snapshot([item("a", 1)]));
+  assert.equal(state.applied, 0, "a snapshot replaces the window; it is not a live application");
+  assert.equal(applyItem(state, item("b", 2)), "applied");
+  assert.equal(applyItem(state, item("b", 2)), "duplicate");
+  assert.equal(applyItem(state, item("d", 4)), "gap");
+  assert.equal(state.applied, 1);
+});
+
+test("an item without a string id is invalid, not a duplicate, so it is never dropped silently", () => {
+  const state = createWorkspace();
+  applySnapshot(state, snapshot([item("a", 1)]));
+  assert.equal(applyItem(state, { sequence: 2, type: "message" }), "invalid");
+  assert.equal(applyItem(state, { id: 7, sequence: 2, type: "message" }), "invalid", "a numeric id is not a string id");
+  assert.equal(applyItem(state, null), "invalid");
+  assert.equal(state.lastSequence, 1, "an invalid item never advances the sequence");
+  assert.equal(state.items.length, 1);
+});
+
+test("an item without a numeric sequence is invalid", () => {
+  const state = createWorkspace();
+  applySnapshot(state, snapshot([item("a", 1)]));
+  assert.equal(applyItem(state, { id: "b", type: "message" }), "invalid");
+  assert.equal(applyItem(state, item("c", "3")), "invalid", "a string sequence is not a sequence");
+  assert.equal(state.lastSequence, 1);
+});
+
+test("a windowGap clears only when the snapshot holds every element from the lost point on", () => {
+  const state = createWorkspace();
+  applySnapshot(
+    state,
+    windowedSnapshot([3, 4], {
+      gaps: [{ id: "g1", reason: "history_evicted", first_missing: 5, last_missing: 9, recorded_at: "2026-10-14T10:00:00Z" }],
+    }),
+  );
+  assert.deepEqual(state.windowGap, { kind: "server", reason: "history_evicted", since: 5 });
+
+  applySnapshot(state, windowedSnapshot([3, 4, 10, 11, 12, 20]));
+  assert.ok(state.windowGap, "the oldest element is before the loss, but 5 through 9 are missing, so continuity is not proven");
+
+  applySnapshot(state, windowedSnapshot(Array.from({ length: 18 }, (_, index) => index + 3)));
+  assert.equal(state.windowGap, null, "a snapshot holding 3 through 20 with no hole proves continuity");
+});
