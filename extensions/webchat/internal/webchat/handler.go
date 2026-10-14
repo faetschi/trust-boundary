@@ -1,14 +1,17 @@
 package webchat
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 )
@@ -32,10 +35,18 @@ type staticRoute struct {
 	contentType string
 }
 
-// staticRoutes is a closed allowlist. Only these exact paths are served; there
-// is no directory listing, path joining, or filesystem access.
+// Document routes. "/" redirects to the React app at /app/, and serves the legacy
+// workspace only when that app is unavailable. /legacy/ is the deprecated legacy
+// workspace. Both are handled in newHandler, not in staticRoutes.
+const (
+	rootPath   = "/"
+	legacyPath = "/legacy/"
+)
+
+// staticRoutes is a closed allowlist of the legacy workspace's assets. Only these
+// exact paths are served; there is no directory listing, path joining, or
+// filesystem access.
 var staticRoutes = map[string]staticRoute{
-	"/":                      {"assets/index.html", "text/html; charset=utf-8"},
 	"/static/styles.css":     {"assets/styles.css", "text/css; charset=utf-8"},
 	"/static/app.mjs":        {"assets/app.mjs", "text/javascript; charset=utf-8"},
 	"/static/api.mjs":        {"assets/api.mjs", "text/javascript; charset=utf-8"},
@@ -71,11 +82,22 @@ func newHandler(store *Store, options HandlerOptions, app *appBundle) http.Handl
 			return
 		}
 		path := request.URL.Path
+		// The document routes match the escaped path, as /app/ does, so a
+		// percent-encoded spelling of "/" or "/legacy/" is not a route.
+		escaped := request.URL.EscapedPath()
+		switch escaped {
+		case rootPath:
+			serveRoot(writer, request, app)
+			return
+		case legacyPath:
+			serveLegacy(writer, app)
+			return
+		}
 		if route, ok := staticRoutes[path]; ok {
 			serveAsset(writer, route)
 			return
 		}
-		if escaped := request.URL.EscapedPath(); escaped == "/app" || strings.HasPrefix(escaped, appPrefix) {
+		if escaped == "/app" || strings.HasPrefix(escaped, appPrefix) {
 			serveApp(writer, request, app, escaped)
 			return
 		}
@@ -106,6 +128,65 @@ func newHandler(store *Store, options HandlerOptions, app *appBundle) http.Handl
 
 func serveAsset(writer http.ResponseWriter, route staticRoute) {
 	serveFile(writer, assetsFS, route.asset, route.contentType)
+}
+
+// serveRoot answers "/". When the React app derives, it redirects to appPrefix.
+// That target is a constant: no part of the request (query, path, Host, Origin)
+// reaches Location, so "/" cannot be an open redirect. When the app does not
+// derive, "/" serves the legacy workspace with a fallback notice instead of a
+// redirect into the app's 503.
+func serveRoot(writer http.ResponseWriter, request *http.Request, app *appBundle) {
+	if app.err != nil {
+		serveLegacy(writer, app)
+		return
+	}
+	http.Redirect(writer, request, appPrefix, http.StatusFound)
+}
+
+// serveLegacy serves the deprecated legacy workspace. The shipped assets do not
+// change: the page is served with a notice inserted above <main>, so the legacy
+// tests keep reading exactly the files on disk.
+func serveLegacy(writer http.ResponseWriter, app *appBundle) {
+	page, err := legacyPage(app)
+	if err != nil {
+		http.Error(writer, "legacy UI unavailable", http.StatusInternalServerError)
+		return
+	}
+	setSecurityHeaders(writer, "text/html; charset=utf-8")
+	_ = boundedWrite(writer, func() error {
+		_, err := writer.Write(page)
+		return err
+	})
+}
+
+// legacyAnchor is where the legacy notice is inserted. It must occur exactly once
+// in the shipped shell; legacyPage refuses to serve the page otherwise.
+const legacyAnchor = `<main class="layout" id="layout">`
+
+func legacyPage(app *appBundle) ([]byte, error) {
+	shell, err := fs.ReadFile(assetsFS, "assets/index.html")
+	if err != nil {
+		return nil, err
+	}
+	if bytes.Count(shell, []byte(legacyAnchor)) != 1 {
+		return nil, errors.New("the legacy shell has no unique insertion point for its notice")
+	}
+	return bytes.Replace(shell, []byte(legacyAnchor), []byte(legacyNotice(app)+legacyAnchor), 1), nil
+}
+
+// The notices reuse the gateway's notice classes, so they need no inline style
+// under the Content-Security-Policy. Only the reason in the fallback is variable,
+// and it is escaped before it is inserted.
+const (
+	legacyDeprecatedNotice = `<div class="notices legacy-notice"><div class="notice" data-variant="gap" role="note"><span class="notice-icon" aria-hidden="true">!</span><span><span class="notice-kind">Deprecated: legacy workspace — use /app/</span><span class="notice-text">This page stays until the React workspace is signed off, then it is removed. <a href="/app/">Open the React app</a>.</span></span></div></div>`
+	legacyFallbackNotice   = `<div class="notices legacy-notice"><div class="notice" data-variant="error" role="note"><span class="notice-icon" aria-hidden="true">!</span><span><span class="notice-kind">Fallback: legacy workspace</span><span class="notice-text">The React app at /app/ is unavailable (%s). This deprecated page is the fallback until the app is restored.</span></span></div></div>`
+)
+
+func legacyNotice(app *appBundle) string {
+	if app.err != nil {
+		return fmt.Sprintf(legacyFallbackNotice, html.EscapeString(app.err.Error()))
+	}
+	return legacyDeprecatedNotice
 }
 
 // serveApp serves /app/ only from the manifest-derived table. The lookup uses the
@@ -179,8 +260,8 @@ func authorizeRequest(writer http.ResponseWriter, request *http.Request, options
 			return false
 		}
 	}
-	if request.Method != http.MethodGet {
-		methodNotAllowed(writer)
+	if methods := allowedMethods(request.URL.EscapedPath()); !slices.Contains(methods, request.Method) {
+		methodNotAllowed(writer, methods)
 		return false
 	}
 	if request.ContentLength != 0 || len(request.TransferEncoding) > 0 {
@@ -312,9 +393,10 @@ func setSecurityHeaders(writer http.ResponseWriter, contentType string) {
 	writer.Header().Set("Content-Type", contentType)
 }
 
-// contentSecurityPolicy is sent on every response, including the /app/ shell and
-// the 403, 404, 405 and 503 answers. scripts/csp-smoke.mjs reads this line from
-// this file as its expected value, and app_test.go pins it.
+// contentSecurityPolicy is sent on every response, including the /app/ shell, the
+// / redirect, the /legacy/ page and the 403, 404, 405 and 503 answers.
+// scripts/csp-smoke.mjs reads this line from this file as its expected value, and
+// app_test.go pins it.
 const contentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'"
 
 // setSecurityHeadersBase applies a strict, no-inline policy: the client is a set
@@ -362,7 +444,17 @@ func boundedWrite(writer http.ResponseWriter, write func() error) error {
 	return err
 }
 
-func methodNotAllowed(writer http.ResponseWriter) {
-	writer.Header().Set("Allow", http.MethodGet)
+// allowedMethods is the method policy for a path. Only "/" also answers HEAD, so a
+// HEAD probe of the entry point sees the same redirect or fallback as GET. HEAD is
+// refused everywhere else, so it cannot open the event stream.
+func allowedMethods(escaped string) []string {
+	if escaped == rootPath {
+		return []string{http.MethodGet, http.MethodHead}
+	}
+	return []string{http.MethodGet}
+}
+
+func methodNotAllowed(writer http.ResponseWriter, methods []string) {
+	writer.Header().Set("Allow", strings.Join(methods, ", "))
 	http.Error(writer, "method not allowed", http.StatusMethodNotAllowed)
 }

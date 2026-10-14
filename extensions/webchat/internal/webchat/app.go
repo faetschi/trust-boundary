@@ -85,7 +85,8 @@ func embeddedApp() *appBundle {
 }
 
 // AppStatus reports why /app/ cannot be served from the embedded build, or nil
-// when it can. The vanilla UI at / is not affected by this status.
+// when it can. When it is non-nil, / serves the legacy workspace as a fallback;
+// /legacy/ is not affected by this status.
 func AppStatus() error {
 	return embeddedApp().err
 }

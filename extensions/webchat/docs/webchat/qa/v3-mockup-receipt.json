@@ -1,0 +1,701 @@
+{
+  "receipt": "v3 static design mockup (tbound-redesign-v3.html)",
+  "generatedAt": "2026-10-14T19:29:58.645Z",
+  "mockup": {
+    "path": "extensions/webchat/docs/webchat/mockups/tbound-redesign-v3.html",
+    "bytes": 122548,
+    "sha256": "ac8fce888f309415f70ccfd9773ccdb60cff32390670a39726a4b4cfc2bdc26f"
+  },
+  "v2Unchanged": {
+    "path": "extensions/webchat/docs/webchat/mockups/tbound-redesign-v2.html",
+    "sha256": "0e4b70aaa566ff1114d6a5f682a77cbeb7e8b49b7bdf6f5788024773c84f2dd2",
+    "expectedFromBeforeEdits": "0e4b70aaa566ff1114d6a5f682a77cbeb7e8b49b7bdf6f5788024773c84f2dd2"
+  },
+  "chrome": {
+    "version": "Chrome/155.0.8059.79",
+    "binary": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "mode": "headless=new, CDP over 127.0.0.1"
+  },
+  "viewports": [
+    {
+      "size": "1440x900",
+      "states": [
+        "chat light",
+        "chat dark",
+        "trajectory light",
+        "trajectory dark",
+        "full page light (captureBeyondViewport)"
+      ]
+    },
+    {
+      "size": "1024x768",
+      "states": [
+        "chat light",
+        "chat dark",
+        "drawer open light"
+      ]
+    },
+    {
+      "size": "390x844",
+      "states": [
+        "chat light",
+        "chat dark"
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "v3-mockup-1440-light.png",
+      "viewport": "1440x900",
+      "hash": "#theme=light",
+      "scheme": "light",
+      "bytes": 113138,
+      "sha256": "20a466d96b7a8a53fbadd9fa0d382aa3aa5513fe4edd45a7584b45db1ebef55e",
+      "matchesCaptureLog": true
+    },
+    {
+      "name": "v3-mockup-1440-dark.png",
+      "viewport": "1440x900",
+      "hash": "#theme=dark",
+      "scheme": "dark",
+      "bytes": 115831,
+      "sha256": "b7d3a5e6b56e37953944ada6b2f8b9c9562a59144d8dd5f11adbc0d05e0788dd",
+      "matchesCaptureLog": true
+    },
+    {
+      "name": "v3-mockup-1024-light.png",
+      "viewport": "1024x768",
+      "hash": "#theme=light",
+      "scheme": "light",
+      "bytes": 73523,
+      "sha256": "7fa08802b4760b3cbdf6ef32cd95938fd4283d0bd3c0495ba04fcae41d4d0d68",
+      "matchesCaptureLog": true
+    },
+    {
+      "name": "v3-mockup-1024-dark.png",
+      "viewport": "1024x768",
+      "hash": "#theme=dark",
+      "scheme": "dark",
+      "bytes": 74047,
+      "sha256": "c994fe731531403af917ee5308f533ff00dffa7c89d5e92d0bb9eb4032166456",
+      "matchesCaptureLog": true
+    },
+    {
+      "name": "v3-mockup-390-light.png",
+      "viewport": "390x844",
+      "hash": "#theme=light",
+      "scheme": "light",
+      "bytes": 41283,
+      "sha256": "da7f04862a2f260118b510273b525b49b818b648ffb1a314226f790c8ef75173",
+      "matchesCaptureLog": true
+    },
+    {
+      "name": "v3-mockup-390-dark.png",
+      "viewport": "390x844",
+      "hash": "#theme=dark",
+      "scheme": "dark",
+      "bytes": 41909,
+      "sha256": "b86ed2272dd81274b3d50c0951d99f7566315a0a4dc1f44787ceaf64d28c151c",
+      "matchesCaptureLog": true
+    },
+    {
+      "name": "v3-mockup-trajectory-1440-light.png",
+      "viewport": "1440x900",
+      "hash": "#view=trajectory&theme=light",
+      "scheme": "light",
+      "bytes": 124315,
+      "sha256": "3ea7e976a94ec47d871b545d60864c56ef6ff3f0d6368e91b73cc94d625b12ec",
+      "matchesCaptureLog": true
+    },
+    {
+      "name": "v3-mockup-trajectory-1440-dark.png",
+      "viewport": "1440x900",
+      "hash": "#view=trajectory&theme=dark",
+      "scheme": "dark",
+      "bytes": 126522,
+      "sha256": "f26ee0a708572331fb17221ddd519282be45505e579cedac9535ae6a2094c037",
+      "matchesCaptureLog": true
+    },
+    {
+      "name": "v3-mockup-drawer-1024-light.png",
+      "viewport": "1024x768",
+      "hash": "#theme=light&drawer=open",
+      "scheme": "light",
+      "bytes": 93143,
+      "sha256": "15de93f6aa2e7082756b3df8fb10a237c5deb021704b36b575670f8aefbdd2e2",
+      "matchesCaptureLog": true
+    },
+    {
+      "name": "v3-mockup-1440-light-fullpage.png",
+      "viewport": "1440x900 (full page 5749px)",
+      "hash": "#theme=light",
+      "scheme": "light",
+      "bytes": 454844,
+      "sha256": "11a2ec25261bfb0d03d2efa7cfdac7cc1b6f22058923a01c9b06e9c6b5111280",
+      "matchesCaptureLog": true
+    }
+  ],
+  "realAppScreenshots": {
+    "note": "Captured from the running /app/ by the capture agent (Chrome 155, localStorage theme); see v3-real-app-capture.json",
+    "files": [
+      {
+        "name": "v3-real-app-1440-light-chat.png",
+        "sha256": "b0c4ada1f5a459e2a88c7578d672c8f91447061653cda171976b808910dd533e",
+        "bytes": 110129
+      },
+      {
+        "name": "v3-real-app-1440-light-trajectory.png",
+        "sha256": "e473aefd46c6e3651ceaaa6f7fc7a7018dc070ba86dab902f4e1f15bc8089244",
+        "bytes": 137415
+      },
+      {
+        "name": "v3-real-app-1440-light-trajectory-selected.png",
+        "sha256": "14949f96df1a321609bbed74bdec8eef59f4d427cc55e8db85746398409a32be",
+        "bytes": 128347
+      },
+      {
+        "name": "v3-real-app-1440-dark-chat.png",
+        "sha256": "78495468796536fad9db66d2689b61c86e9f354dff908fa0ae510a967d9f8550",
+        "bytes": 112323
+      },
+      {
+        "name": "v3-real-app-1440-dark-trajectory.png",
+        "sha256": "cf3a5ca0fabdb3f801ccad73649fbbd961823062a731e0524f6cb5be133a12aa",
+        "bytes": 139756
+      },
+      {
+        "name": "v3-real-app-1024-light-chat.png",
+        "sha256": "0017a6ab26f3496d3131c54cbbb8ca637aab2f5d8291118856b7fb6e7f99938d",
+        "bytes": 75188
+      }
+    ]
+  },
+  "sourceHashes": {
+    "globalSheets": [
+      {
+        "file": "frontend/src/styles/base.css",
+        "sha256": "1e8396cb059ee28bcc8a76a8bb36a830542d81fe65b9c30d3b4bc17c3c28bac0"
+      },
+      {
+        "file": "frontend/src/markdown/markdown.css",
+        "sha256": "d22af27da91a52d04260850ae1738b27c14c196b37ce118be7020eb3d908b64a"
+      },
+      {
+        "file": "frontend/src/styles/tokens.css",
+        "sha256": "21229e83b69eea53103a090396ba0d97e5b87a0e91c2bcb8e95512f716dba33f"
+      }
+    ],
+    "cssModules": [
+      {
+        "file": "frontend/src/app/Shell.module.css",
+        "prefix": "sh",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "cac449cfb1fe4ba78a65f72ffc8a54f0705c9051437cdc5a742052a89ae1cccf"
+      },
+      {
+        "file": "frontend/src/app/Inspector.module.css",
+        "prefix": "in",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "72df11163c735bf9c4694084b6a9be88e80e50b972139ef274e987060788399c"
+      },
+      {
+        "file": "frontend/src/app/inspector/RecordInspector.module.css",
+        "prefix": "ri",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "523a6b448836729ed158540089b17d755cdd9062ee93311a00ccd0b3d87a0225"
+      },
+      {
+        "file": "frontend/src/ui/Chip.module.css",
+        "prefix": "ch",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "c06c59248a1f9468f06ac340a719d405ab1713fbc128159c4534f7430ce0b2c7"
+      },
+      {
+        "file": "frontend/src/ui/StateDot.module.css",
+        "prefix": "sd",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "4131a6166817818d5d11d4af91d911d79f562d6dd7c8fd09ccab0d2cab2e5dee"
+      },
+      {
+        "file": "frontend/src/ui/ToggleGroup.module.css",
+        "prefix": "tg",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "37c17df52567d53c4a2184525fc19c7fdd3b8399a3738dd17379e8996c279b2c"
+      },
+      {
+        "file": "frontend/src/ui/Tabs.module.css",
+        "prefix": "tb",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "84dfebacd3b850cb54f76454ebcd764fd99a3ea534e839141d1d0cf58e60e2c9"
+      },
+      {
+        "file": "frontend/src/ui/Notice.module.css",
+        "prefix": "nt",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "374f28d5f852b512f2fa6972409c33541fc86d7d481e595a8e791d6a5925a7c1"
+      },
+      {
+        "file": "frontend/src/ui/StateMessage.module.css",
+        "prefix": "sm",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "e770e28b74f59f3326eed163fe7261f362ff2a22edea65476aad1f71b961be4a"
+      },
+      {
+        "file": "frontend/src/ui/Disclosure.module.css",
+        "prefix": "ds",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "11960943ac0d98c776d6823345bc63e7e19a4c2d74f875ad7fe74ea6cf3486c6"
+      },
+      {
+        "file": "frontend/src/ui/VisuallyHidden.module.css",
+        "prefix": "vh",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "8a571d0ab1ec59c1ec8c41b0a63f80de14bc7b1cb5683b9a32e3883e7d37c4c9"
+      },
+      {
+        "file": "frontend/src/ui/LiveRegion.module.css",
+        "prefix": "lr",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "5225a88afb81b29e4b0f6b42a8e5a09586b352c3e0424d0cdde7b1724593cba8"
+      },
+      {
+        "file": "frontend/src/app/views/chat/Chat.module.css",
+        "prefix": "cv",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "8f779e910a4989e7ae4f0a9284ac1a4a427646a00d7448b40060541a5f816ed4"
+      },
+      {
+        "file": "frontend/src/app/views/trajectory/Trajectory.module.css",
+        "prefix": "tv",
+        "preexistingPrefixedTokens": 0,
+        "reversible": true,
+        "sha256": "becbb807de3a8217c48f2858b2579c3de70d12eea5193ceeec13f802dc6963d2"
+      }
+    ],
+    "contrastOutput": {
+      "path": "extensions/webchat/docs/design/contrast-output.txt",
+      "sha256": "06ffacc2986a638388883dd2cb6fc3be5f9ca08ed1236aac79d3104e1cbadfd9"
+    },
+    "designLanguage": {
+      "path": "extensions/webchat/docs/design/design-language.md",
+      "sha256": "1030730c48394f7ed909f042fd74738cf2ac39322128ef7581beb09c7437cb93"
+    }
+  },
+  "commands": [
+    {
+      "cmd": "node assemble.mjs (builds the single HTML file from the parts and the real CSS modules)",
+      "exit": 0
+    },
+    {
+      "cmd": "node check.mjs (tag balance, class/CSS coverage, ids and aria references, http(s) occurrences, forbidden constructs)",
+      "exit": 0
+    },
+    {
+      "cmd": "node mock-capture.mjs (10 PNGs, behaviour checks, console and network logs)",
+      "exit": 0
+    },
+    {
+      "cmd": "node fidelity.mjs (landmark geometry, mock samples hidden, against real-measure-1440-light.json)",
+      "exit": 0
+    },
+    {
+      "cmd": "node text-compare.mjs (rendered text and accessible names against real-text-1440-light.json)",
+      "exit": 0
+    },
+    {
+      "cmd": "node checks2.mjs (drawer hit-test on real and mock at 1024; forced-colors computed styles)",
+      "exit": 0
+    },
+    {
+      "cmd": "node contrast.mjs > contrast-rerun.txt; diff with contrast-output.txt",
+      "exit": 0,
+      "result": "identical"
+    }
+  ],
+  "staticChecks": {
+    "problems": [],
+    "ariaAndForReferences": "25 of 25 resolve",
+    "duplicateIds": 0,
+    "inlineStyleAttributes": 0,
+    "externalRequests": 0,
+    "networkRequestsTotal": 13,
+    "httpOccurrences": "six, all https://example.com/healthz: five are the demo fixture curl command text (card call-03 summary and request; ledger row 9 aria-label, title and text), one is the href of the sample markdown link; the network log shows no request to any of them"
+  },
+  "consoleEntries": 0,
+  "behaviour": {
+    "initial": {
+      "theme": null,
+      "chatSelected": "true",
+      "trajectoryHidden": true,
+      "asideMode": "governance",
+      "drawerToggleExpanded": null
+    },
+    "themeDark": {
+      "theme": "dark",
+      "pressed": "true",
+      "systemPressed": "false"
+    },
+    "themeSystem": {
+      "theme": null
+    },
+    "tabTrajectory": {
+      "trajSelected": "true",
+      "trajPanelHidden": false,
+      "chatPanelHidden": true,
+      "asideMode": "record",
+      "asideLabel": "Record inspector",
+      "heading": "Record",
+      "closeText": "Close record",
+      "closeHidden": false
+    },
+    "tabArrowLeft": {
+      "chatSelected": "true",
+      "focused": "view-tab-chat"
+    },
+    "tabArrowRightWrap": {
+      "trajSelected": "true"
+    },
+    "recordClose": {
+      "asideMode": "governance",
+      "heading": "Governance",
+      "rowPressed": "false",
+      "rowSelectedClass": false
+    },
+    "recordReopen": {
+      "asideMode": "record",
+      "rowPressed": "true"
+    },
+    "narrowClosed": {
+      "dataOpen": "false",
+      "ariaHidden": "true",
+      "inert": true,
+      "toggleExpanded": "false",
+      "toggleControls": "governance-inspector",
+      "toggleDisplay": "flex",
+      "asideRight": 1371,
+      "viewport": 1024
+    },
+    "narrowOpen": {
+      "dataOpen": "true",
+      "ariaHidden": null,
+      "inert": false,
+      "toggleExpanded": "true",
+      "headingFocused": true,
+      "asideRight": 1014,
+      "closeText": "Close governance"
+    },
+    "narrowEscape": {
+      "dataOpen": "false",
+      "ariaHidden": "true",
+      "inert": true,
+      "toggleExpanded": "false"
+    },
+    "narrowCloseWithButton": {
+      "dataOpen": "false"
+    },
+    "wideAfterResize": {
+      "dataOpen": "false",
+      "ariaHidden": null,
+      "inert": false,
+      "toggleDisplay": "none",
+      "asideLeft": 1129,
+      "asideWidth": 301
+    },
+    "geometry": {
+      "header": {
+        "x": 0,
+        "y": 0,
+        "w": 1430,
+        "h": 113
+      },
+      "rail": {
+        "x": 0,
+        "y": 113,
+        "w": 210,
+        "h": 1602
+      },
+      "main": {
+        "x": 210,
+        "y": 113,
+        "w": 919,
+        "h": 1602
+      },
+      "aside": {
+        "x": 1129,
+        "y": 113,
+        "w": 301,
+        "h": 1602
+      },
+      "footer": {
+        "x": 0,
+        "y": 1715,
+        "w": 1430,
+        "h": 39
+      },
+      "docScrollHeight": 5749
+    },
+    "ariaNames": {
+      "landmarks": [
+        "header::Workspace header",
+        "div:toolbar:Theme",
+        "div:note:Claim boundary",
+        "nav::Sessions and streams",
+        "main::Workspace",
+        "div:note:Retained window",
+        "div:tablist:Workspace view",
+        "div:toolbar:Timeline filters",
+        "div:log:Transcript",
+        "pre:region:Code block, go",
+        "div:toolbar:Group records by",
+        "span:img:Model lane: 2 record(s), message, no verdict or outcome; 15 record(s), no record in this lane; 1 record(s), message, no verdict or outcome",
+        "span:img:Policy lane: 3 record(s), no record in this lane; 1 record(s), ALLOW, a permission not an outcome; 2 record(s), no record in this lane; 1 record(s), ALLOW, a permission not an outcome; 2 record(s), no record in this lane; 1 record(s), DENY, denied or failed, not success; 2 record(s), no record in this lane; 1 record(s), ALLOW, a permission not an outcome; 2 record(s), no record in this lane; 1 record(s), ALLOW, a permission not an outcome; 2 record(s), no record in this lane",
+        "span:img:Tools lane: 2 record(s), no record in this lane; 1 record(s), pending, no outcome yet; 1 record(s), no record in this lane; 1 record(s), succeeded, reported, not independently verified; 1 record(s), pending, no outcome yet; 1 record(s), no record in this lane; 1 record(s), succeeded, reported, not independently verified; 1 record(s), pending, no outcome yet; 1 record(s), no record in this lane; 1 record(s), DENY, denied or failed, not success; 1 record(s), pending, no outcome yet; 1 record(s), no record in this lane; 1 record(s), succeeded, reported, not independently verified; 1 record(s), pending, no outcome yet; 1 record(s), no record in this lane; 1 record(s), UNKNOWN, not success; 1 record(s), no record in this lane",
+        "div:region:Record ledger",
+        "aside::Governance inspector",
+        "footer::Observed session metrics",
+        "div:status:"
+      ],
+      "rowsWithName": 18,
+      "rowsTotal": 18,
+      "headings": [
+        "H1:tbound web chat",
+        "H2:Session",
+        "H2:Observation streams",
+        "H3:Plan",
+        "H2:Governance",
+        "H3:Policy decisions",
+        "H3:Provenance",
+        "H3:Publication",
+        "H3:Recovery",
+        "H3:Qualification",
+        "H3:Warnings",
+        "H3:Summary",
+        "H3:Payload",
+        "H3:Decision",
+        "H3:Evidence",
+        "H3:Timing",
+        "H2:Static design mockup v3",
+        "H2:State vocabulary",
+        "H2:States gallery",
+        "H3:Loading",
+        "H3:Empty",
+        "H3:Error and reconnecting",
+        "H3:Offline",
+        "H3:Slow handshake",
+        "H3:Unavailable, never zero",
+        "H2:Record inspector: result record",
+        "H3:Summary",
+        "H3:Payload",
+        "H3:Result",
+        "H3:Evidence",
+        "H3:Timing",
+        "H2:Responsive",
+        "H2:Design notes"
+      ]
+    },
+    "styleAttributes": 0,
+    "visibleTextFirst": "tbound web chat\n\nPi chat workspace\n\nsource: fixture · unverified\nconnected\nSystem\nLight\nDark\n\nPresentation only: the supervisor retains policy, effect and publication authority.\n\nG1\nfalse\nH1\nunexecute"
+  },
+  "fidelity": {
+    "method": "landmark rectangles of the real /app/ (1440x900, light) against the mock with samples hidden; elements matched by tag, role, label and text",
+    "chat": {
+      "realLandmarks": 22,
+      "matched": 22,
+      "geometryDiffs": [
+        "section||turn-01|#1: h 507->791"
+      ],
+      "realOnly": 0
+    },
+    "trajectory": {
+      "realLandmarks": 23,
+      "matched": 23,
+      "geometryDiffs": 0,
+      "realOnly": 0
+    },
+    "scrollHeight": {
+      "realChat": 1754,
+      "mockChat": 5745,
+      "note": "mock is taller because the review sections sit below the app frame"
+    }
+  },
+  "textCompare": {
+    "passed": 16,
+    "total": 16,
+    "failed": [],
+    "covers": [
+      "header",
+      "rail",
+      "footer",
+      "expanded go-test card",
+      "collapsed DENY and UNKNOWN cards",
+      "trajectory summary and group head",
+      "rail accessible labels (3 lanes)",
+      "ledger rows (18) rendered text",
+      "ledger row accessible names and data-source (18)",
+      "governance aside (trajectory and chat)",
+      "record inspector for the DENY decision",
+      "row accessible name"
+    ]
+  },
+  "forcedColorsAndHitTests": {
+    "forcedColorsMedia": true,
+    "legendShapes": [
+      {
+        "tone": "ok",
+        "borderStyle": "solid",
+        "borderWidth": "1px",
+        "radius": "50%",
+        "clipPath": "none",
+        "bgTransparent": false
+      },
+      {
+        "tone": "allow",
+        "borderStyle": "solid",
+        "borderWidth": "2px",
+        "radius": "50%",
+        "clipPath": "none",
+        "bgTransparent": true
+      },
+      {
+        "tone": "deny",
+        "borderStyle": "solid",
+        "borderWidth": "1px",
+        "radius": "2px",
+        "clipPath": "none",
+        "bgTransparent": false
+      },
+      {
+        "tone": "reported",
+        "borderStyle": "dashed",
+        "borderWidth": "2px",
+        "radius": "50%",
+        "clipPath": "none",
+        "bgTransparent": true
+      },
+      {
+        "tone": "unknown",
+        "borderStyle": "dotted",
+        "borderWidth": "2px",
+        "radius": "50%",
+        "clipPath": "none",
+        "bgTransparent": true
+      },
+      {
+        "tone": "lost",
+        "borderStyle": "solid",
+        "borderWidth": "1px",
+        "radius": "0px",
+        "clipPath": "set",
+        "bgTransparent": false
+      },
+      {
+        "tone": "pending",
+        "borderStyle": "solid",
+        "borderWidth": "1px",
+        "radius": "50%",
+        "clipPath": "none",
+        "bgTransparent": true
+      },
+      {
+        "tone": "idle",
+        "borderStyle": "solid",
+        "borderWidth": "1px",
+        "radius": "50%",
+        "clipPath": "none",
+        "bgTransparent": false
+      }
+    ],
+    "realDrawerOverlap1024": {
+      "before": {
+        "hitsDark": true,
+        "hitTag": "button",
+        "inAside": false
+      },
+      "afterOpen": {
+        "darkCenter": [
+          969,
+          33
+        ],
+        "hitsDark": false,
+        "hitTag": "button",
+        "hitInsideAside": true,
+        "asideDataOpen": "true"
+      }
+    },
+    "mockDrawerOverlap1024": {
+      "darkCenter": [
+        969,
+        33
+      ],
+      "hitsDark": false,
+      "hitTag": "button",
+      "hitInsideAside": true,
+      "asideDataOpen": "true"
+    }
+  },
+  "pixelCompare": {
+    "method": "mock (samples hidden; expanded go-test card collapsed; record closed; pointer on the Trajectory tab) against the real /app/ 1440x900 light screenshots, per pixel, maximum channel difference reported. Overlays: v3-diff-*.png (mock dimmed, differing pixels red).",
+    "chat": {
+      "differingPixels": 1882,
+      "totalPixels": 1296000,
+      "percent": 0.15,
+      "bbox": [
+        1432,
+        146,
+        1437,
+        460
+      ],
+      "maxChannelDelta": 49
+    },
+    "trajectory": {
+      "differingPixels": 1882,
+      "totalPixels": 1296000,
+      "percent": 0.15,
+      "bbox": [
+        1432,
+        146,
+        1437,
+        460
+      ],
+      "maxChannelDelta": 49
+    },
+    "note": "Every differing pixel in both states lies at x 1432-1437: the vertical scrollbar thumb. The mock document is taller than the real one (5745 px against 1754 px, measured with samples hidden) because the review sections sit below the app frame, so the thumb is smaller. Earlier runs showed two more differences, a sub-pixel \"D\" in the filter row (fixed by matching the count span markup) and the Trajectory tab hover state (the real capture was taken with the pointer over the tab; reproduced by moving the pointer)."
+  },
+  "intentionalDifferences": [
+    "Mock samples, absent from the demo fixture and labelled in the file: the \"Earlier history not loaded\" notice (a Retained window notice, which also brings the \"Notices for this transcript are above the tabs.\" pointer), the LOST card, the lossy-success card (verified, which needs a live structurally audited projection), the markdown assistant message, and the \"2 new records · Jump to latest\" pill.",
+    "The jump pill is static in the mock (position: static inside the sample flow); the running UI pill is sticky, and would cover the transcript in a static capture.",
+    "The go-test card is expanded in the mock (its decision and result steps show); the running UI starts all cards collapsed. turn-01 is 791 px here against 507 px in the running UI, the only geometry difference in the Chat landmarks.",
+    "The Trajectory opens with the DENY record (row 10) selected, so the record inspector shows; the running UI shows governance until a row is clicked.",
+    "Both tab panels stay in the DOM with one hidden; the running UI mounts only the selected panel.",
+    "Times are the capture environment local time (UTC+2) as rendered by the running UI; the viewer time zone will differ in the running UI.",
+    "Only theme, tabs, Governance drawer, Escape, Close record and reopen (row 10) are wired. Filters, grouping, search and other rows are static.",
+    "The Result section of the record inspector is shown as a static copy in the review section (sequence 17, UNKNOWN and lossy; its rendered text is checked against the inspector the running UI renders for that record), because the trajectory opens on the DENY decision, which has no Result section.",
+    "The running UI requests /favicon.ico and gets a 404 on every load (7 console errors in the capture); the mock uses an inline data: icon and makes no requests."
+  ],
+  "observations": [
+    "At 1024 px with the drawer open, the drawer (fixed, full height) covers the header theme switch and the Governance toggle. Verified on the running UI and on the mock (checks2).",
+    "The running UI shows the transcript stream \"complete\" with the ok (green) dot although the stream is non-claim-bearing; the mock reproduces this faithfully and it is flagged for review.",
+    "Claim-banner values (G1, H1, containment, claim-bearing) are literals in Shell.tsx:178-191, not projection values; the mock copies them.",
+    "Two notices share the label \"Retained window\" (window gap and evicted records); the mock shows one of them."
+  ],
+  "notVerified": [
+    "Chat and trajectory markup were mapped from frontend/src at HEAD 60ca5b0. Other agents have uncommitted edits to some trajectory, inspector and core TSX files (git status). The mock was checked against the rendered build served from the committed internal/webchat/dist, not against the working-tree source.",
+    "No Linux or WSL run and no frontend test suite run: no source or Go file was changed, and the mock is HTML and CSS only.",
+    "Forced colours were checked through emulated media and computed styles; no screenshot was taken under forced colours.",
+    "The contrast values are computed from the palette (contrast.mjs); no rendered pixel sampling was done.",
+    "Mobile emulation was not used (mobile: false); 390 px is a viewport width."
+  ]
+}

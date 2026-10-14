@@ -9,19 +9,23 @@
 //      refuse. The browser must report at least one CSP violation for it. If it
 //      reports none, the observer is blind: the run stops with exit 5 before any
 //      gateway page is judged.
-//   2. Header probes (plain HTTP). For /, /api/v1/contract, /app/, a missing /app/
-//      asset (404), POST /app/ (405), a foreign Host (403) and a foreign Origin
-//      (403), the Content-Security-Policy header must equal the policy exactly. The
-//      policy is read from contentSecurityPolicy in internal/webchat/handler.go, the
-//      single source; app_test.go pins that constant to the shipped string.
-//   3. Browser audit of /app/ (React) and / (vanilla UI). For each page, the Document
-//      response's Content-Security-Policy as the browser received it must equal the
-//      policy. There must be zero CSP violations, zero console errors and zero
-//      uncaught exceptions, except one favicon.ico 404; zero style attributes; and
-//      zero on* attributes. /app/ must render its banner with a CSS Modules class
-//      whose computed background differs from a default probe, and a linked
-//      stylesheet. / must have its title, the claim strip, the chat view, and the
-//      chat and trajectory tabs.
+//   2. Header probes (plain HTTP). Every response must carry the Content-Security-Policy
+//      header exactly, and its status and Location must match. GET and HEAD / are 302 to
+//      /app/ (also with a query string); /app/ and /legacy/ are 200; POST on /, /app/ and
+//      /legacy/ is 405; an unknown path and a missing /app/ asset are 404; a foreign Host
+//      or Origin is 403 on /, /app/ and /legacy/. The policy is read from
+//      contentSecurityPolicy in internal/webchat/handler.go, the single source;
+//      app_test.go pins that constant to the shipped string.
+//   3. Browser audit of GATEWAY_ROUTES. / must land on /app/ (the React shell), /app/ is
+//      the React client, and /legacy/ is the deprecated legacy workspace, which must show
+//      its deprecation notice. For each page, the Document response's
+//      Content-Security-Policy as the browser received it must equal the policy. There
+//      must be zero CSP violations, zero console errors and zero uncaught exceptions,
+//      except one favicon.ico 404; zero style attributes; and zero on* attributes. The
+//      React pages must render their banner with a CSS Modules class whose computed
+//      background differs from a default probe, and a linked stylesheet. /legacy/ must
+//      have its title, the claim strip, the chat view, and the chat and trajectory tabs.
+//      internal/webchat/routes_test.go checks GATEWAY_ROUTES against the Go route table.
 //
 // Usage, from extensions/webchat/:
 //   node scripts/csp-smoke.mjs
@@ -79,21 +83,35 @@ for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]
   process.once(signal, () => process.exit(code));
 }
 
-const GATEWAY_TARGETS = [
-  { kind: 'app', path: '/app/', label: '/app/ (React)' },
-  { kind: 'vanilla', path: '/', label: '/ (vanilla)' },
+// The document routes the browser audit covers. internal/webchat/routes_test.go
+// reads these entries and fails if the paths, kinds or landings differ from the Go
+// route table.
+const GATEWAY_ROUTES = [
+  { path: '/', kind: 'app', landing: '/app/', label: '/ (redirect, lands on /app/)' },
+  { path: '/app/', kind: 'app', landing: '/app/', label: '/app/ (React)' },
+  { path: '/legacy/', kind: 'legacy', landing: '/legacy/', label: '/legacy/ (deprecated legacy workspace)' },
 ];
 
 // Plain HTTP probes. Host and Origin are set by hand, so the gateway's refusals
-// are reached and checked, not just the 200 responses.
+// are reached and checked, not just the 200 responses. A probe with a location
+// must redirect there exactly; any other probe must carry no Location.
 const PROBES = [
-  { label: 'GET /', path: '/', status: 200 },
+  { label: 'GET /', path: '/', status: 302, location: '/app/' },
+  { label: 'HEAD /', method: 'HEAD', path: '/', status: 302, location: '/app/' },
+  { label: 'GET /?x=//evil.com', path: '/?x=//evil.com', status: 302, location: '/app/' },
+  { label: 'POST /', method: 'POST', path: '/', status: 405 },
   { label: 'GET /api/v1/contract', path: '/api/v1/contract', status: 200 },
   { label: 'GET /app/', path: '/app/', status: 200 },
   { label: 'GET /app/assets/missing.js', path: '/app/assets/missing.js', status: 404 },
   { label: 'POST /app/', method: 'POST', path: '/app/', status: 405 },
+  { label: 'GET /legacy/', path: '/legacy/', status: 200 },
+  { label: 'POST /legacy/', method: 'POST', path: '/legacy/', status: 405 },
+  { label: 'GET /no-such-route', path: '/no-such-route', status: 404 },
   { label: 'GET / with a foreign Host', path: '/', headers: { host: 'evil.example' }, status: 403 },
+  { label: 'GET /legacy/ with a foreign Host', path: '/legacy/', headers: { host: 'evil.example' }, status: 403 },
+  { label: 'GET / with a foreign Origin', path: '/', headers: { origin: 'http://evil.example' }, status: 403 },
   { label: 'GET /app/ with a foreign Origin', path: '/app/', headers: { origin: 'http://evil.example' }, status: 403 },
+  { label: 'GET /legacy/ with a foreign Origin', path: '/legacy/', headers: { origin: 'http://evil.example' }, status: 403 },
 ];
 
 // Installed before any page script runs. It only listens, so it cannot change
@@ -135,8 +153,11 @@ const AUDIT = `(() => {
     const element = document.getElementById(id);
     return element ? { id, role: element.getAttribute('role') } : null;
   });
+  const notice = document.querySelector('.legacy-notice');
   return {
     title: document.title,
+    location: window.location.pathname,
+    legacyNotice: notice ? notice.textContent : null,
     elements: all.length,
     inlineStyles: all.filter((el) => el.hasAttribute('style')).length,
     eventAttributes: all.reduce((n, el) => n + Array.from(el.attributes).filter((a) => a.name.toLowerCase().startsWith('on')).length, 0),
@@ -540,9 +561,10 @@ async function auditTargets(base, targets) {
       if (target.kind === 'app') {
         await poll(async () => (await evaluate(cdp, 'Boolean(document.querySelector("header[aria-label=\\"Workspace header\\"]"))')) === true, 10000);
       }
-      await sleep(target.kind === 'vanilla' ? 1500 : 500);
+      await sleep(target.kind === 'legacy' ? 1500 : 500);
       const audit = await evaluate(cdp, AUDIT);
-      const documentEntry = [...state.documents].reverse().find((entry) => entry.url === target.url);
+      // The document is the one the browser ended on, after any redirect.
+      const documentEntry = [...state.documents].reverse().find((entry) => entry.url === target.finalUrl);
       results.push({
         target,
         audit,
@@ -591,7 +613,13 @@ function probe(gatewayUrl, { method = 'GET', path, headers = {} }) {
   return new Promise((resolve, reject) => {
     const request = httpRequest({ hostname, port, path, method, headers, timeout: 5000 }, (response) => {
       response.resume();
-      response.on('end', () => resolve({ status: response.statusCode, csp: response.headers['content-security-policy'] ?? null }));
+      response.on('end', () =>
+        resolve({
+          status: response.statusCode,
+          csp: response.headers['content-security-policy'] ?? null,
+          location: response.headers.location ?? null,
+        }),
+      );
     });
     request.on('timeout', () => request.destroy(new Error(`${method} ${path} timed out`)));
     request.on('error', reject);
@@ -602,11 +630,15 @@ function probe(gatewayUrl, { method = 'GET', path, headers = {} }) {
 async function checkHeaders(gatewayUrl, policy) {
   const failures = [];
   for (const item of PROBES) {
-    const { status, csp } = await probe(gatewayUrl, item);
+    const { status, csp, location } = await probe(gatewayUrl, item);
     if (csp !== policy) {
       failures.push(`${item.label}: Content-Security-Policy is ${csp === null ? 'absent' : JSON.stringify(csp)}, not the gateway policy`);
     }
     if (status !== item.status) failures.push(`${item.label}: status ${status}, expected ${item.status}`);
+    const wantLocation = item.location ?? null;
+    if (location !== wantLocation) {
+      failures.push(`${item.label}: Location is ${location === null ? 'absent' : JSON.stringify(location)}, expected ${wantLocation === null ? 'none' : JSON.stringify(wantLocation)}`);
+    }
   }
   return failures;
 }
@@ -622,6 +654,7 @@ function judgePage({ target, audit, state, documentCsp }, policy) {
   } else if (documentCsp !== policy) {
     failures.push(`document Content-Security-Policy is ${documentCsp === null ? 'absent' : JSON.stringify(documentCsp)}, not the gateway policy`);
   }
+  if (audit.location !== target.landing) failures.push(`the page ended on ${JSON.stringify(audit.location)}, expected ${JSON.stringify(target.landing)}`);
   if (state.csp.length > 0) failures.push(`${state.csp.length} CSP violation log entr(ies): ${state.csp.join(' | ')}`);
   if (audit.cspCaptured > 0) failures.push(`${audit.cspCaptured} securitypolicyviolation event(s) captured`);
   if (state.errors.length > 0) failures.push(`console errors: ${state.errors.join(' | ')}`);
@@ -645,6 +678,9 @@ function judgePage({ target, audit, state, documentCsp }, policy) {
     if (audit.stylesheetLinks < 1) failures.push('no stylesheet link on /app/');
   } else {
     if (audit.title !== VANILLA_TITLE) failures.push(`title is ${JSON.stringify(audit.title)}, expected ${JSON.stringify(VANILLA_TITLE)}`);
+    if (audit.legacyNotice === null || !audit.legacyNotice.includes('Deprecated: legacy workspace')) {
+      failures.push('no "Deprecated: legacy workspace" notice on the legacy page');
+    }
     if (!audit.vanilla.claimStrip) failures.push('no #claim-strip (the claim boundary strip)');
     if (!audit.vanilla.chatView) failures.push('no #chat-view');
     for (const id of ['tab-chat', 'tab-trajectory']) {
@@ -712,11 +748,15 @@ async function main(argv) {
 
     const probeFailures = await checkHeaders(gatewayUrl, policy);
     for (const failure of probeFailures) console.log(`FAIL header probe: ${failure}`);
-    if (probeFailures.length === 0) console.log(`PASS header probes: ${PROBES.length} responses carry the gateway policy with the expected status`);
+    if (probeFailures.length === 0) console.log(`PASS header probes: ${PROBES.length} responses carry the gateway policy with the expected status and Location`);
 
     const results = await auditTargets(
       browser.base,
-      GATEWAY_TARGETS.map((target) => ({ ...target, url: `${gatewayUrl}${target.path}` })),
+      GATEWAY_ROUTES.map((route) => ({
+        ...route,
+        url: `${gatewayUrl}${route.path}`,
+        finalUrl: `${gatewayUrl}${route.landing}`,
+      })),
     );
     let failed = probeFailures.length > 0 ? 1 : 0;
     for (const result of results) {

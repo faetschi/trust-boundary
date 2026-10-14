@@ -42,6 +42,7 @@ because submission requires the authenticated supervisor session service.
 | Capability | State |
 |---|---|
 | Bounded read-only projection (snapshot + cursor SSE) | Implemented (fixture / replay / receipt / unavailable sources) |
+| Default UI: the React client at `/app/`, with `/` redirecting there | Implemented. The legacy UI at `/legacy/` is deprecated, and `/` serves it only when the React app is unavailable |
 | Typed post-run receipt import of a real development or production receipt | Implemented (`--receipt`, `--receipt-demo`) |
 | Typed post-run Pi receipt import (dev, native-fixture, production shapes) | Implemented (`--receipt`, `--receipt-demo`) |
 | Chat transcript rendering (user/assistant messages) | Implemented |
@@ -333,13 +334,16 @@ for the caller to send. Nothing is re-sent on a reconnect, and nothing is retrie
 
 ## 5. API endpoints
 
-All routes are `GET`-only and reject any request body.
+All routes are `GET`-only, except that `/` also answers `HEAD`, and they reject any
+request body. Any other method gets `405` with an `Allow` header. A foreign `Host`
+or `Origin` gets `403` on every route.
 
 | Route | Purpose |
 |---|---|
-| `GET /` | The workspace shell (embedded assets). |
-| `GET /static/*.css`, `/static/*.mjs` | Closed allowlist of embedded modules. |
-| `GET /app/`, `/app/*` | The optional React client build ([frontend.md](frontend.md)). Exact files come from the committed Vite manifest; `503` if the table cannot be derived. `/` stays the legacy workspace. |
+| `GET` or `HEAD /` | `302` to `/app/`. The target is a constant: the query string and the rest of the request never reach `Location`, so it is not an open redirect. If the React app cannot be derived, `/` serves the legacy workspace (`200`) with a fallback notice instead. |
+| `GET /legacy/` | The deprecated legacy workspace, with a deprecation notice above its content. It is removed after sign-off. |
+| `GET /static/*.css`, `/static/*.mjs` | Closed allowlist of the legacy workspace's modules. |
+| `GET /app/`, `/app/*` | The React client build ([frontend.md](frontend.md)). Exact files come from the committed Vite manifest; `503` if the table cannot be derived. |
 | `GET /api/v1/snapshot` | Bounded observation snapshot (recovery point for a gap). |
 | `GET /api/v1/contract` | Bounded contract descriptor (schemas, enums, limits, `read_only: true`, `controls: []`). |
 | `GET /api/v1/items/{id}` | One retained projected item by bounded ID. |
@@ -496,11 +500,12 @@ loading states, `Kbd`, and a sidebar with muted hover/active rows. The timeline
 filter is a segmented Toggle Group built from `aria-pressed` buttons with roving
 arrow-key focus, and the posture row uses the badge/chip shapes.
 
-No React, Base UI or Tailwind is used in the legacy workspace served at `/`. The
-thesis treats a browser client as a deferred, non-claim-bearing demonstrator and
+No React, Base UI or Tailwind is used in the legacy workspace served at `/legacy/`.
+The thesis treats a browser client as a deferred, non-claim-bearing demonstrator and
 requires the web service to stay minimal, so the legacy workspace is a zero-build
-ESM + CSS client served by the Go gateway; it stays the default until Phase 3
-parity. [ADR-0001](adr-0001-optional-extension.md) supersedes
+ESM + CSS client served by the Go gateway. It was the default until the React client
+became the default (2026-10-14); it is now deprecated and will be removed after
+sign-off. [ADR-0001](adr-0001-optional-extension.md) supersedes
 that zero-build rule for Phase 1 onward: React and TypeScript with the project's
 own components, CSS Modules compiled to same-origin CSS, and a committed Vite
 build. The tokens are defined in `:root`. Fonts degrade to local Inter / Geist Mono
@@ -517,7 +522,7 @@ cd extensions/webchat
 go vet ./internal/webchat/... ./cmd/tbound-webchat/...
 go test ./internal/webchat/... ./cmd/tbound-webchat/...
 node --test internal/webchat/jstest/*.test.mjs
-go run ./cmd/tbound-webchat --demo                 # embedded fixture, port 8791
+go run ./cmd/tbound-webchat --demo                 # embedded fixture, port 8791; open / (React), /legacy/ is deprecated
 go run ./cmd/tbound-webchat                         # unavailable projection
 go run ./cmd/tbound-webchat --replay path.json      # retained observations
 go run ./cmd/tbound-webchat --receipt path.json     # import a real run receipt

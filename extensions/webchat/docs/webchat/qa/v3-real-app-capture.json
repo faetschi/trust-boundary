@@ -1,0 +1,504 @@
+{
+  "script": "C:\\Users\\Admin\\AppData\\Local\\Temp\\m3-cdp\\capture.mjs",
+  "gateway": "http://127.0.0.1:8841",
+  "chrome": {
+    "path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "version": {
+      "product": "Chrome/155.0.8059.79",
+      "revision": "@a49e2e3d4addfd84e765b52afe230bedb81096db",
+      "jsVersion": "15.5.35.23",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36"
+    }
+  },
+  "themeMechanism": {
+    "storageKey": "tbound-webchat-theme",
+    "values": [
+      "system",
+      "light",
+      "dark"
+    ],
+    "source": "frontend/src/theme/theme.ts and bootstrap.ts: stored choice is applied as data-theme on <html> before the first render; system removes the attribute and tokens.css prefers-color-scheme decides",
+    "method": "localStorage set to light or dark on the 127.0.0.1:8841 origin, then page reloaded. prefers-color-scheme was NOT emulated."
+  },
+  "captureOnlyCss": "*,*::before,*::after{transition:none!important;animation:none!important}",
+  "selectors": {
+    "header": "header[aria-label=\"Workspace header\"]",
+    "footer": "footer[aria-label=\"Observed session metrics\"]",
+    "chatPanel": "#view-panel-chat",
+    "trajectoryPanel": "#view-panel-trajectory",
+    "viewTabs": "[role='tab'] (matched by trimmed textContent 'Chat' or 'Trajectory')",
+    "ledgerRow": "button[data-record-row] (first in DOM order)",
+    "inspector": "aside[aria-label=\"Record inspector\" | \"Governance inspector\"]"
+  },
+  "initialProbe": {
+    "url": "http://127.0.0.1:8841/app/",
+    "innerWidth": 1424,
+    "innerHeight": 805,
+    "htmlDataTheme": null,
+    "htmlAttributes": [
+      "lang=en"
+    ],
+    "htmlClassName": "",
+    "bodyClassName": "",
+    "bodyBackgroundColor": "oklch(0.18 0 0)",
+    "bodyColor": "oklch(0.97 0 0)",
+    "prefersDarkMatches": true,
+    "storedTheme": null,
+    "chatPanelHidden": false,
+    "trajectoryPanelHidden": true,
+    "tabs": [
+      {
+        "text": "Chat",
+        "selected": "true"
+      },
+      {
+        "text": "Trajectory",
+        "selected": "false"
+      }
+    ],
+    "inspectorLabel": "Governance inspector",
+    "ledgerRowCount": 0,
+    "selectedRowCount": 0,
+    "adoptedSheets": 1
+  },
+  "pageText": {
+    "capture": "light-chat",
+    "headerInnerText": "tbound web chat\n\nPi chat workspace\n\nsource: fixture · unverified\nconnected\nSystem\nLight\nDark\n\nPresentation only: the supervisor retains policy, effect and publication authority.\n\nG1\nfalse\nH1\nunexecuted\ncontainment\nnot-established\nclaim-bearing\nfalse",
+    "footerInnerText": "Turns\n1\nRecords retained\n18\nPolicy, retained window\nALLOW 4 · DENY 1 · UNKNOWN 0\nToken usage\nunavailable (the projection records no token usage)\nDuration\nunavailable (the projection records no duration)\n\nbuild 0.1.0",
+    "chatFirst600": "ALLOW 4\nDENY 1\nreported 3\ndenied 1\nunknown result 1\nlossy 1\nAll 18\nDenied 2\nUnknown 1\nFailed 0\n\n18 element(s) in the retained window\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\n·\n11:12:04\n\nAdd a /healthz endpoint to the service and run the test suite.\n\nASSISTANT\n·\n11:12:09\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\nR\nread\nservice/entrypoint.go\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nunv",
+    "selectors": {
+      "header": "header[aria-label=\"Workspace header\"]",
+      "footer": "footer[aria-label=\"Observed session metrics\"]",
+      "chatPanel": "#view-panel-chat",
+      "trajectoryPanel": "#view-panel-trajectory",
+      "viewTabs": "[role='tab'] (matched by trimmed textContent 'Chat' or 'Trajectory')",
+      "ledgerRow": "button[data-record-row] (first in DOM order)",
+      "inspector": "aside[aria-label=\"Record inspector\" | \"Governance inspector\"]"
+    }
+  },
+  "consoleErrorsAndWarnings": [
+    {
+      "capture": "initial-system",
+      "source": "log.network",
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "url": "http://127.0.0.1:8841/favicon.ico"
+    },
+    {
+      "capture": "light-chat",
+      "source": "log.network",
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "url": "http://127.0.0.1:8841/favicon.ico"
+    },
+    {
+      "capture": "light-trajectory",
+      "source": "log.network",
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "url": "http://127.0.0.1:8841/favicon.ico"
+    },
+    {
+      "capture": "dark-chat",
+      "source": "log.network",
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "url": "http://127.0.0.1:8841/favicon.ico"
+    },
+    {
+      "capture": "dark-trajectory",
+      "source": "log.network",
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "url": "http://127.0.0.1:8841/favicon.ico"
+    },
+    {
+      "capture": "light-chat-1024",
+      "source": "log.network",
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "url": "http://127.0.0.1:8841/favicon.ico"
+    },
+    {
+      "capture": "light-trajectory-selected",
+      "source": "log.network",
+      "level": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+      "url": "http://127.0.0.1:8841/favicon.ico"
+    }
+  ],
+  "externalRequests": [],
+  "failedOrErrorResponses": [
+    {
+      "capture": "initial-system",
+      "url": "http://127.0.0.1:8841/favicon.ico",
+      "status": 404,
+      "resourceType": "Other"
+    },
+    {
+      "capture": "light-chat",
+      "url": "http://127.0.0.1:8841/favicon.ico",
+      "status": 404,
+      "resourceType": "Other"
+    },
+    {
+      "capture": "light-trajectory",
+      "url": "http://127.0.0.1:8841/favicon.ico",
+      "status": 404,
+      "resourceType": "Other"
+    },
+    {
+      "capture": "dark-chat",
+      "url": "http://127.0.0.1:8841/favicon.ico",
+      "status": 404,
+      "resourceType": "Other"
+    },
+    {
+      "capture": "dark-trajectory",
+      "url": "http://127.0.0.1:8841/favicon.ico",
+      "status": 404,
+      "resourceType": "Other"
+    },
+    {
+      "capture": "light-chat-1024",
+      "url": "http://127.0.0.1:8841/favicon.ico",
+      "status": 404,
+      "resourceType": "Other"
+    },
+    {
+      "capture": "light-trajectory-selected",
+      "url": "http://127.0.0.1:8841/favicon.ico",
+      "status": 404,
+      "resourceType": "Other"
+    }
+  ],
+  "settle": [
+    {
+      "capture": "initial-system",
+      "networkQuiet": true,
+      "waitedMs": 1163
+    },
+    {
+      "capture": "light-chat",
+      "networkQuiet": true,
+      "waitedMs": 1049
+    },
+    {
+      "capture": "light-trajectory",
+      "networkQuiet": true,
+      "waitedMs": 1045
+    },
+    {
+      "capture": "tab-trajectory",
+      "networkQuiet": true,
+      "waitedMs": 513
+    },
+    {
+      "capture": "dark-chat",
+      "networkQuiet": true,
+      "waitedMs": 1049
+    },
+    {
+      "capture": "dark-trajectory",
+      "networkQuiet": true,
+      "waitedMs": 1040
+    },
+    {
+      "capture": "tab-trajectory",
+      "networkQuiet": true,
+      "waitedMs": 500
+    },
+    {
+      "capture": "light-chat-1024",
+      "networkQuiet": true,
+      "waitedMs": 1048
+    },
+    {
+      "capture": "light-trajectory-selected",
+      "networkQuiet": true,
+      "waitedMs": 1042
+    },
+    {
+      "capture": "tab-trajectory",
+      "networkQuiet": true,
+      "waitedMs": 514
+    },
+    {
+      "capture": "light-trajectory-selected-row",
+      "networkQuiet": true,
+      "waitedMs": 511
+    }
+  ],
+  "captures": [
+    {
+      "name": "light-chat",
+      "file": "C:\\Users\\Admin\\.t3\\worktrees\\trust-boundary\\codex-tbound-web-chat\\extensions\\webchat\\docs\\webchat\\qa\\v3-real-app-1440-light-chat.png",
+      "bytes": 110129,
+      "pngWidth": 1440,
+      "pngHeight": 900,
+      "sha256": "b0c4ada1f5a459e2a88c7578d672c8f91447061653cda171976b808910dd533e",
+      "requestedTheme": "light",
+      "requestedView": "chat",
+      "selectedFirstRow": null,
+      "probe": {
+        "url": "http://127.0.0.1:8841/app/",
+        "innerWidth": 1440,
+        "innerHeight": 900,
+        "htmlDataTheme": "light",
+        "htmlAttributes": [
+          "lang=en",
+          "data-theme=light"
+        ],
+        "htmlClassName": "",
+        "bodyClassName": "",
+        "bodyBackgroundColor": "oklch(1 0 0)",
+        "bodyColor": "oklch(0.2 0 0)",
+        "prefersDarkMatches": true,
+        "storedTheme": "light",
+        "chatPanelHidden": false,
+        "trajectoryPanelHidden": true,
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "false"
+          }
+        ],
+        "inspectorLabel": "Governance inspector",
+        "ledgerRowCount": 0,
+        "selectedRowCount": 0,
+        "adoptedSheets": 1
+      }
+    },
+    {
+      "name": "light-trajectory",
+      "file": "C:\\Users\\Admin\\.t3\\worktrees\\trust-boundary\\codex-tbound-web-chat\\extensions\\webchat\\docs\\webchat\\qa\\v3-real-app-1440-light-trajectory.png",
+      "bytes": 137415,
+      "pngWidth": 1440,
+      "pngHeight": 900,
+      "sha256": "e473aefd46c6e3651ceaaa6f7fc7a7018dc070ba86dab902f4e1f15bc8089244",
+      "requestedTheme": "light",
+      "requestedView": "trajectory",
+      "selectedFirstRow": null,
+      "probe": {
+        "url": "http://127.0.0.1:8841/app/",
+        "innerWidth": 1440,
+        "innerHeight": 900,
+        "htmlDataTheme": "light",
+        "htmlAttributes": [
+          "lang=en",
+          "data-theme=light"
+        ],
+        "htmlClassName": "",
+        "bodyClassName": "",
+        "bodyBackgroundColor": "oklch(1 0 0)",
+        "bodyColor": "oklch(0.2 0 0)",
+        "prefersDarkMatches": true,
+        "storedTheme": "light",
+        "chatPanelHidden": true,
+        "trajectoryPanelHidden": false,
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "false"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "true"
+          }
+        ],
+        "inspectorLabel": "Governance inspector",
+        "ledgerRowCount": 18,
+        "selectedRowCount": 0,
+        "adoptedSheets": 1
+      }
+    },
+    {
+      "name": "dark-chat",
+      "file": "C:\\Users\\Admin\\.t3\\worktrees\\trust-boundary\\codex-tbound-web-chat\\extensions\\webchat\\docs\\webchat\\qa\\v3-real-app-1440-dark-chat.png",
+      "bytes": 112323,
+      "pngWidth": 1440,
+      "pngHeight": 900,
+      "sha256": "78495468796536fad9db66d2689b61c86e9f354dff908fa0ae510a967d9f8550",
+      "requestedTheme": "dark",
+      "requestedView": "chat",
+      "selectedFirstRow": null,
+      "probe": {
+        "url": "http://127.0.0.1:8841/app/",
+        "innerWidth": 1440,
+        "innerHeight": 900,
+        "htmlDataTheme": "dark",
+        "htmlAttributes": [
+          "lang=en",
+          "data-theme=dark"
+        ],
+        "htmlClassName": "",
+        "bodyClassName": "",
+        "bodyBackgroundColor": "oklch(0.18 0 0)",
+        "bodyColor": "oklch(0.97 0 0)",
+        "prefersDarkMatches": true,
+        "storedTheme": "dark",
+        "chatPanelHidden": false,
+        "trajectoryPanelHidden": true,
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "false"
+          }
+        ],
+        "inspectorLabel": "Governance inspector",
+        "ledgerRowCount": 0,
+        "selectedRowCount": 0,
+        "adoptedSheets": 1
+      }
+    },
+    {
+      "name": "dark-trajectory",
+      "file": "C:\\Users\\Admin\\.t3\\worktrees\\trust-boundary\\codex-tbound-web-chat\\extensions\\webchat\\docs\\webchat\\qa\\v3-real-app-1440-dark-trajectory.png",
+      "bytes": 139756,
+      "pngWidth": 1440,
+      "pngHeight": 900,
+      "sha256": "cf3a5ca0fabdb3f801ccad73649fbbd961823062a731e0524f6cb5be133a12aa",
+      "requestedTheme": "dark",
+      "requestedView": "trajectory",
+      "selectedFirstRow": null,
+      "probe": {
+        "url": "http://127.0.0.1:8841/app/",
+        "innerWidth": 1440,
+        "innerHeight": 900,
+        "htmlDataTheme": "dark",
+        "htmlAttributes": [
+          "lang=en",
+          "data-theme=dark"
+        ],
+        "htmlClassName": "",
+        "bodyClassName": "",
+        "bodyBackgroundColor": "oklch(0.18 0 0)",
+        "bodyColor": "oklch(0.97 0 0)",
+        "prefersDarkMatches": true,
+        "storedTheme": "dark",
+        "chatPanelHidden": true,
+        "trajectoryPanelHidden": false,
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "false"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "true"
+          }
+        ],
+        "inspectorLabel": "Governance inspector",
+        "ledgerRowCount": 18,
+        "selectedRowCount": 0,
+        "adoptedSheets": 1
+      }
+    },
+    {
+      "name": "light-chat-1024",
+      "file": "C:\\Users\\Admin\\.t3\\worktrees\\trust-boundary\\codex-tbound-web-chat\\extensions\\webchat\\docs\\webchat\\qa\\v3-real-app-1024-light-chat.png",
+      "bytes": 75188,
+      "pngWidth": 1024,
+      "pngHeight": 768,
+      "sha256": "0017a6ab26f3496d3131c54cbbb8ca637aab2f5d8291118856b7fb6e7f99938d",
+      "requestedTheme": "light",
+      "requestedView": "chat",
+      "selectedFirstRow": null,
+      "probe": {
+        "url": "http://127.0.0.1:8841/app/",
+        "innerWidth": 1024,
+        "innerHeight": 768,
+        "htmlDataTheme": "light",
+        "htmlAttributes": [
+          "lang=en",
+          "data-theme=light"
+        ],
+        "htmlClassName": "",
+        "bodyClassName": "",
+        "bodyBackgroundColor": "oklch(1 0 0)",
+        "bodyColor": "oklch(0.2 0 0)",
+        "prefersDarkMatches": true,
+        "storedTheme": "light",
+        "chatPanelHidden": false,
+        "trajectoryPanelHidden": true,
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "false"
+          }
+        ],
+        "inspectorLabel": "Governance inspector",
+        "ledgerRowCount": 0,
+        "selectedRowCount": 0,
+        "adoptedSheets": 1
+      }
+    },
+    {
+      "name": "light-trajectory-selected",
+      "file": "C:\\Users\\Admin\\.t3\\worktrees\\trust-boundary\\codex-tbound-web-chat\\extensions\\webchat\\docs\\webchat\\qa\\v3-real-app-1440-light-trajectory-selected.png",
+      "bytes": 128347,
+      "pngWidth": 1440,
+      "pngHeight": 900,
+      "sha256": "14949f96df1a321609bbed74bdec8eef59f4d427cc55e8db85746398409a32be",
+      "requestedTheme": "light",
+      "requestedView": "trajectory",
+      "selectedFirstRow": "UserpromptAdd a /healthz endpoint to the service and run the test suite.11:12:04",
+      "probe": {
+        "url": "http://127.0.0.1:8841/app/",
+        "innerWidth": 1440,
+        "innerHeight": 900,
+        "htmlDataTheme": "light",
+        "htmlAttributes": [
+          "lang=en",
+          "data-theme=light"
+        ],
+        "htmlClassName": "",
+        "bodyClassName": "",
+        "bodyBackgroundColor": "oklch(1 0 0)",
+        "bodyColor": "oklch(0.2 0 0)",
+        "prefersDarkMatches": true,
+        "storedTheme": "light",
+        "chatPanelHidden": true,
+        "trajectoryPanelHidden": false,
+        "tabs": [
+          {
+            "text": "Chat",
+            "selected": "false"
+          },
+          {
+            "text": "Trajectory",
+            "selected": "true"
+          }
+        ],
+        "inspectorLabel": "Record inspector",
+        "ledgerRowCount": 18,
+        "selectedRowCount": 1,
+        "adoptedSheets": 1
+      }
+    }
+  ],
+  "receipts": {
+    "gatewayExeSha256": "c794de6d1b6b454123956522b1b76b4a2ecea42259424d696c67a384adec37fb",
+    "servedIndexHtmlSha256": "82f6558cee33b7f0618a940bd76662893fe0c73eab85fd2db6956b4c519e6dd0",
+    "servedManifestSha256": "a9abffdb714ca1784d42d2c286bafcf2520f21bc9d1b271f9b52a9178309b608"
+  },
+  "errors": [],
+  "summary": {
+    "consoleErrors": 7,
+    "consoleWarnings": 0,
+    "externalRequestCount": 0,
+    "failedOrErrorResponseCount": 7
+  }
+}

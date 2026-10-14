@@ -417,12 +417,14 @@ func appTestRequestFrom(t *testing.T, handler http.Handler, target, host, origin
 	return recorder
 }
 
-// authorizeRequest runs before the /app/ route. A foreign Host or Origin must be
-// refused on every app path, with the gateway's security headers. Mutation
-// check: skipping authorizeRequest for /app/ must fail this test.
+// authorizeRequest runs before routing. A foreign Host or Origin must be refused on
+// every document route (/, /app/ and /legacy/), with the gateway's security
+// headers. Mutation check: skipping authorizeRequest for any of them must fail
+// this test.
 func TestAppRefusesForeignHostAndOrigin(t *testing.T) {
 	fixture := newHandler(appTestStore(t), HandlerOptions{}, loadAppBundle(reachableFixture()))
 	embedded := newHandler(appTestStore(t), HandlerOptions{}, embeddedApp())
+	fallback := newHandler(appTestStore(t), HandlerOptions{}, loadAppBundle(fixtureWithManifest(`{`)))
 	targets := []struct {
 		name    string
 		handler http.Handler
@@ -433,6 +435,10 @@ func TestAppRefusesForeignHostAndOrigin(t *testing.T) {
 		{"fixture stylesheet", fixture, "/app/assets/app.css"},
 		{"fixture unreachable file", fixture, "/app/assets/orphan.js"},
 		{"embedded shell", embedded, "/app/"},
+		{"root redirect", embedded, "/"},
+		{"root fallback", fallback, "/"},
+		{"legacy", embedded, "/legacy/"},
+		{"legacy fallback", fallback, "/legacy/"},
 	}
 	refused := []struct {
 		name, host, origin string

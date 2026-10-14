@@ -3,10 +3,25 @@ package main
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"tbound/webchat/internal/webchat"
 )
+
+func TestStartupBannerPrintsTheReactUrlFirst(t *testing.T) {
+	lines := startupBanner("127.0.0.1:8791", nil)
+	if len(lines) < 2 || lines[0] != "UI: http://127.0.0.1:8791/ (React app at /app/)" {
+		t.Fatalf("banner = %q, want the React URL on the first line", lines)
+	}
+	if !strings.Contains(lines[1], "http://127.0.0.1:8791/legacy/") || !strings.Contains(lines[1], "deprecated") {
+		t.Errorf("second banner line %q should name the deprecated /legacy/ URL", lines[1])
+	}
+	fallback := startupBanner("127.0.0.1:8791", errors.New("app manifest is missing"))
+	if !strings.HasPrefix(fallback[0], "UI: http://127.0.0.1:8791/ (fallback") {
+		t.Errorf("fallback banner first line = %q", fallback[0])
+	}
+}
 
 func TestValidateLoopbackAddressRejectsRemoteAndNames(t *testing.T) {
 	for _, address := range []string{"0.0.0.0:8791", "192.168.1.20:8791", "localhost:8791", "127.0.0.1", ":8791"} {

@@ -109,14 +109,17 @@ func run(args []string, stdout, stderr *os.File) error {
 		// response write carries its own explicit deadline that covers the flush.
 	}
 
+	appErr := webchat.AppStatus()
+	for _, line := range startupBanner(bound, appErr) {
+		fmt.Fprintln(stdout, line)
+	}
 	source := store.Snapshot().Source
-	fmt.Fprintf(stdout, "tbound-webchat listening on http://%s\n", bound)
 	fmt.Fprintf(stdout, "source: %s (read-only projection; no launch, cancel, approve, or execute controls)\n", source)
 	if source != webchat.SourceLive {
 		fmt.Fprintln(stdout, "claim boundary: G1=false; H1 unexecuted; containment not-established; claim-bearing=false")
 	}
-	if err := webchat.AppStatus(); err != nil {
-		fmt.Fprintf(stderr, "note: /app/ is unavailable: %v (the vanilla UI at / is unaffected)\n", err)
+	if appErr != nil {
+		fmt.Fprintf(stderr, "note: /app/ is unavailable: %v (/ serves the legacy workspace as a fallback)\n", appErr)
 	}
 
 	errCh := make(chan error, 1)
@@ -138,6 +141,20 @@ func run(args []string, stdout, stderr *os.File) error {
 		shutdownContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return server.Shutdown(shutdownContext)
+	}
+}
+
+// startupBanner lists the URLs to open, with the React app first. When the app is
+// unavailable, the first line says that / is serving the legacy fallback.
+func startupBanner(bound string, appErr error) []string {
+	ui := fmt.Sprintf("UI: http://%s/ (React app at /app/)", bound)
+	if appErr != nil {
+		ui = fmt.Sprintf("UI: http://%s/ (fallback: the React app is unavailable, so the legacy workspace is served here)", bound)
+	}
+	return []string{
+		ui,
+		fmt.Sprintf("legacy UI (deprecated; removed after sign-off): http://%s/legacy/", bound),
+		fmt.Sprintf("tbound-webchat listening on http://%s", bound),
 	}
 }
 

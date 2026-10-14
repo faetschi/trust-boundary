@@ -7,19 +7,19 @@ no Node. Nothing under `supervisor/` imports it.
 
 ## What it is
 
-- A legacy vanilla browser client (`internal/webchat/assets/`, no build step)
-  served by a Go gateway (`internal/webchat/`, entrypoint `cmd/tbound-webchat/`).
-  The module has no third-party Go dependencies.
-- A **React + TypeScript scaffold** (Phase 1, `frontend/`) served under `/app/`.
-  It renders a placeholder, not the product UI. Its committed build
+- A **React + TypeScript web app** (`frontend/`), served under `/app/`. It is the
+  default UI: `/` redirects to `/app/`. Its committed build
   (`internal/webchat/dist/`) is embedded, and the `/app/` routes are derived from
   its Vite manifest. Phase 2 added the typed DOM-free core (`frontend/src/core/`)
   and the markdown AST (`frontend/src/markdown/`), each checked against the legacy
-  client by parity tests. The product UI is Phase 3, which is pending. The
-  vanilla client at `/` remains the default until Phase 3 parity. See
-  `docs/frontend.md`.
+  client by parity tests. See `docs/frontend.md`.
   `docs/adr-0001-optional-extension.md` allows this frontend build, so the
   extension as a whole is not zero-build.
+- A legacy vanilla browser client (`internal/webchat/assets/`, no build step), now
+  **deprecated**. It is served at `/legacy/`, and `/` serves it only when the React
+  app cannot be loaded. It will be removed after sign-off. The Go gateway
+  (`internal/webchat/`, entrypoint `cmd/tbound-webchat/`) serves both. The module
+  has no third-party Go dependencies.
 - **Read-only today.** It serves embedded fixtures, retained replay documents
   and imported post-run receipts. `--live` fails closed. There is no turn
   submission, cancellation or browser authentication yet.
@@ -27,7 +27,8 @@ no Node. Nothing under `supervisor/` imports it.
   journals and publication stay in `supervisor/`. The browser and this gateway
   hold no effect authority. Success is shown only where verification exists.
 - **Loopback-only.** The gateway binds a literal loopback address (default
-  `127.0.0.1:8791`), serves GET only and rejects request bodies.
+  `127.0.0.1:8791`), serves GET only (plus HEAD on `/`, which only redirects) and
+  rejects request bodies.
 
 ## Run the demo
 
@@ -43,8 +44,8 @@ go run ./cmd/tbound-webchat --live        # refused: supervisor service absent
 
 The flags `--demo`, `--fixture`, `--replay`, `--receipt`, `--receipt-demo` and
 `--live` are mutually exclusive. The startup banner states the source class and
-the claim boundary. Open `http://127.0.0.1:8791/` (vanilla UI) or
-`http://127.0.0.1:8791/app/` (React scaffold, Phase 1).
+the claim boundary. Open `http://127.0.0.1:<port>/` — React UI (it redirects to
+`/app/`); `/legacy/` is deprecated and will be removed after sign-off.
 
 ## Test
 
@@ -76,8 +77,9 @@ any gate. Point it at a demo gateway on a fresh port:
 make extension-webchat-csp CSP_URL=http://127.0.0.1:8793
 ```
 
-`docs/frontend.md` covers the build, the pins, the manifest-derived `/app/`
-allowlist, the CSP smoke and its exit codes.
+It checks `/` (which must land on `/app/`), `/app/` and `/legacy/`, and the
+header responses for each route. `docs/frontend.md` covers the build, the pins,
+the manifest-derived `/app/` allowlist, the CSP smoke and its exit codes.
 
 ## Claim boundary
 
@@ -110,6 +112,8 @@ allowlist, the CSP smoke and its exit codes.
 - `extensions/webchat/internal/webchat/`: bounded projection contract,
   validation, gateway store, HTTP/SSE handler, post-run receipt importer,
   embedded assets (`assets/`), fixtures (`fixtures/`) and Node tests (`jstest/`).
+  - `handler.go`: the document routes (`/` redirect or legacy fallback,
+    `/legacy/`), the legacy `/static/` assets and the read-only API.
   - `app.go`: the `/app/` route table, derived from the Vite manifest.
   - `dist/`: the committed React build (generated; do not edit by hand).
 - `extensions/webchat/frontend/`: the React + TypeScript source (`src/`, with
@@ -136,6 +140,7 @@ allowlist, the CSP smoke and its exit codes.
   - `webchat/mockups/tbound-redesign-v2.html`: the structural reference for the
     layout until Phase 3 completes. Its visual language is superseded by
     `design/design-language.md`.
+  - `webchat/mockups/tbound-redesign-v3.html`: the current static design mockup (demo fixture data, offline; the running UI is `/app/`). `tbound-redesign-v2.html` is historical.
 
 Paths in these documents are repository-root-relative, for example
 `extensions/webchat/internal/webchat/`. Bare file names such as `store.mjs`
