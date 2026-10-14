@@ -2,6 +2,9 @@
 
 # Local-only / never commit
 vm_start.txt
+# Private planning notes, not project authority; tracked priorities live in docs/status.md
+docs-next-work.txt
+docs-scratchpad.txt
 
 # Build and generated artifacts
 supervisor/tbound.exe

@@ -13,7 +13,7 @@
 
 ## Testing & Verification
 - Prefer **TDD (red → green → refactor)**: reproduce the bug with a failing test first; add tests for new behavior
-- Verify in Linux/WSL with the pinned Go 1.27.1 (not Windows): `go build ./...`, `go vet -mod=readonly ./...`, `gofmt -l .`, `go test -race -mod=readonly -count=1 ./...` (private short TMPDIR, umask 077). Green locally must mean green in CI
+- Verify in Linux/WSL with the pinned Go 1.27.1 (not Windows), from `supervisor/`: `go build ./...`, `go vet -mod=readonly ./...`, `gofmt -l .`, `go test -race -mod=readonly -count=1 ./...` (private short TMPDIR, umask 077). Green locally must mean green in CI
 - Watch skips: a test that ran before and skips now is a regression. If the tests for your change are skipped here, it is **not verified** — say so, don't call it green
 - Test crashes/recovery in a fresh process (see `internal/audit/audit_test.go`); never assert recovery from the same in-memory state
 - Keep a receipt: exact command, exit code, and source hash. "Passed" without them is a story. Report unrun/skipped tests
@@ -27,6 +27,10 @@
 - Reuse findings; avoid redundant searches, reads, and checks
 - Batch related independent operations while preserving errors and exit statuses
 - Stop exploration once sufficient evidence exists. Avoid unrelated work
+
+## Operating rules
+
+1. **Default to parallel.** A prompt that expects exactly one answer back is a mistake. If a task can be tried two ways, try both and compare. Two competing attempts that an eval can score is the best reason to fan out.
 
 ## Task State (`TASK_STATE.md`)
 - Read at session start if relevant; verify against current code
