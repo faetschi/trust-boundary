@@ -227,8 +227,16 @@ evidence only. They do not establish the separate private-Git invariant,
 end-to-end CLI/supervisor admission, power-loss semantics, or arbitrary-host-
 writer race safety.
 
-Normative references: `02-process-model.md` §§3.1, 5.4 and 6;
-`02-1-recovery-and-continuation.md` §§2, 4, 6.6 and 8; and
-`11-evidence-contract.md` E07. The thesis's recoverable per-object publication
-contract governs here; old all-or-nothing/idempotent language is not an
-implementation promise.
+Reference basis for this note: `02-process-model.md` §§3.1, 5.4 and 6, and
+`11-evidence-contract.md` E07. The AH technical README lists
+`02-1-recovery-and-continuation.md` in its authoritative-document reading
+order, while that file's own review header labels the recovery-boundary and
+denominator amendment "draft" and says "not adopted or registered." For
+AH-02-1, the README's authoritative reading-order entry and the file's
+review-header status conflict; this authority-status conflict remains
+unresolved pending reconciliation. The amendment and proposed recovery
+scenarios are cited here as draft context only; this note makes no determination
+about their AH-wide authority and does not treat them as normative or registered
+requirements. This note does not amend the AH authority record. The thesis's
+recoverable per-object publication contract governs here; old
+all-or-nothing/idempotent language is not an implementation promise.

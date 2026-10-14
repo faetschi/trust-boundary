@@ -6,7 +6,7 @@
 
 OpenRouter documents `POST https://openrouter.ai/api/v1/chat/completions`, an API key in `Authorization: Bearer`, a Chat Completions `messages` body, and both streaming and non-streaming operation. Its streaming guide describes SSE delivery. See the [Chat Completions API](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion) and [streaming quickstart](https://openrouter.ai/docs/cookbook/get-started/quickstart).
 
-The current first code slice defines a fixed OpenRouter profile, builds a request, and parses bounded SSE while rejecting unknown fields. It does not make HTTP requests, load or attach credentials, or wire Pi to the broker. No provider call or end-to-end exchange has been verified.
+The committed broker now constructs the fixed-profile HTTP request and executes it through the OpenRouter transport, and OpenRouter `LoadCredentials` loads configured model and key inputs. The [2026-10-05 real-provider evidence record](evidence/real-provider-durable-2026-10-05.json) reports a successful exchange and successful IPC delivery, broker correlation, gate/audit ordering, durable write, and store/reopen verification in a WSL2 Ubuntu development-only run. It also records `pi_adapter_wired: false`, `command_containment_status: not-established`, `g1_durability_established: false`, and `sessionrepo_provider_exchange_claimed: false`; it does not establish Pi composition, a sessionrepo-owned provider exchange, or production qualification.
 
 ## Optional test profile: OpenCode Go
 
@@ -23,7 +23,7 @@ Go usage limits are model-specific: 20% of the model's monthly allowance in a fi
 ## Broker and evidence constraints
 
 - A finite trusted broker/operator-owned approved profile selects provider, endpoint, protocol, and exact model ID. Pi may submit a logical request, but cannot choose a URL, host, provider, model, or arbitrary upstream headers.
-- Provider keys belong only in the trusted broker on the guest. They must never enter Pi, its tool cell, transcripts, prompts, request bodies, audit records, or logs. The broker's protected credential handle and secret-loading path are pending; this document does not define a private path or secret interface.
+- Committed OpenRouter `LoadCredentials` requires `TBOUND_OPENROUTER_MODEL` and accepts the API key from `TBOUND_OPENROUTER_API_KEY` or `TBOUND_OPENROUTER_API_KEY_FILE`; `NewHTTPDoer` passes the key to the transport through a closure, and the captured request record does not include its Authorization header. These code and development-evidence facts do not establish production secret provisioning or Pi/runtime wiring. Provider keys must never enter Pi, its tool cell, transcripts, prompts, request bodies, audit records, or logs.
 - Keep the exact validated request body separate from credentials. Treat the profile ID, exact model ID, runtime/build versions, `User-Agent`, and `x-opencode-session` as non-secret request metadata. Freeze the selected model and runtime in the evaluation profile before a trial; keep the Go session ID stable for that conversation.
 - OpenRouter and OpenCode Go calls reach hosted services. Report them as hosted-provider tests. An offline verifier run or a self-hosted test does not establish a hosted provider exchange, and a hosted exchange does not establish an offline run.
 

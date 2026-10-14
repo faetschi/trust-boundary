@@ -3,17 +3,21 @@ status: prototype-increment
 authority: implementation note for D06 staging
 ---
 
-# Private Git staging (D06 next increment)
+# Private Git staging (D06 integration status)
 
-`supervisor/internal/privategit` is a new, Linux-focused internal primitive. It
-is **not wired into runtime, Pi, publication, containment, or the evaluation
-runner**. The existing prototype waiver remains in force; this package is not
-production containment or G1/private-Git compliance evidence.
+`supervisor/internal/privategit` is a Linux-focused primitive used by the
+committed production-binder and `sessionlaunch` preparation path. The binder
+pins an approved Git executable with `PinGitExecutable`; `sessionlaunch.Prepare`
+creates and verifies the private repository and persists its provenance before
+D09 source exposure. The existing prototype waiver remains in force: this
+implementation is not production containment or G1/private-Git compliance
+evidence.
 
-This increment is API-conformance and fixture evidence only. It makes no D06
-deployment claim until the trusted source binding, immutable/approved Git
-execution boundary, exclusive cleanup namespace, durable provenance writer, and
-worker isolation are supplied by runtime integration.
+The committed path supplies Store-backed source binding, an approved Git
+executable and execution boundary, an exclusive private-admin cleanup
+boundary, and durable provenance records. This is integrated prototype
+implementation evidence; it does not claim a qualified D06 deployment or close
+the remaining production-containment and G1 questions.
 
 ## Contract and required trusted inputs
 
@@ -35,12 +39,13 @@ operation or leaves a failed tree for trusted quarantine via
 `ErrCleanupIncomplete`.
 
 The source `Quiescent`, generation, and xattr fields are shape checks and caller
-assertions only. They are not authentic sealed-source evidence. The required
-`SourceBindingVerifier` must bind the held descriptor to the exact trusted
-generation/metadata/xattr evidence. Runtime/session-repository integration must
-provide that verifier from its registered generation descriptor and durable
-evidence; the binding digest is retained in provenance. This prototype does not
-invent or durably persist that binding.
+assertions only. They are not authentic sealed-source evidence. In committed
+`sessionlaunch.Prepare`, `verifiedSourceBinding` validates the held descriptor
+against the retained Store generation, manifest, metadata/xattr policy, and
+durable Store/journal evidence before it is passed to `privategit.Create`.
+The binding digest and private-Git provenance are appended to session audit
+records before `Prepare` returns. This is implementation evidence, not proof
+of qualified deployment or G1.
 
 The package never accepts a source pathname, Git directory, clone URL,
 arbitrary Git arguments, arbitrary child environment, hook/template path, or
@@ -100,13 +105,14 @@ barrier proves the second check fails closed and preserves the replacement.
 The final unlink remains conditional on the explicit exclusive-parent boundary.
 No broad path cleanup is attempted.
 
-Provenance includes the source root identity, private root identity, exact
-source manifest/tree digest, source-binding digest, metadata-policy digest,
-xattr profile digest, capture limits, Git executable digest/version and
-execution-boundary label, filter identity, and branch.
-It is returned in memory only. Durable provenance write, fsync, and binding to
-the session state are deferred to integration, so this increment makes no
-durable D06 evidence claim.
+`privategit` returns provenance for the source root, private root, source
+manifest/tree, binding and metadata policy, xattr profile, capture limits, Git
+executable/version and execution boundary, filter identity, and branch. The
+committed `sessionlaunch.Prepare` path incorporates it in `sessionlaunch.Provenance`
+and persists source-binding and private-Git-ready records in the audit journal.
+`PreparedSession` rechecks those records and the repository before D09 source
+export. This is durable implementation evidence, not production qualification
+or G1 compliance evidence.
 
 ## Evidence boundary and tests
 
@@ -130,9 +136,12 @@ privileged host integration fixture is still required for end-to-end mount
 insertion/replacement coverage. Tests should run with a private ext4 `TMPDIR`
 mode 0700, for example `/home/jeli2k/tbound-privategit-test`.
 
-The package has no claim about process/mount settlement, read-only sealed
-generations, approved-delta attribution, publication safety, network
-isolation, worker `.git` exposure, or a production host profile. The exact
-worker-exposure blocker is still runtime integration: no worker may receive the
-private root or a Git handle unless the deployment supplies enforceable worker
-isolation and the supervisor retains the descriptor/provenance binding.
+The package itself makes no claim about process/mount settlement, read-only
+consumer mounts, approved-delta attribution, publication safety, network
+isolation, or a production host profile. The committed production binder keeps
+the private repository in `PreparedSession`; its worker APIs do not return the
+private parent or `Repository.Root`. The D09 path can issue a verified Store
+source capability, but consumer-side read-only mount verification and
+production containment remain separate and unqualified. No worker-facing Git
+tool is created here, and this note does not establish G1 or a production
+no-`.git`-exposure guarantee.
