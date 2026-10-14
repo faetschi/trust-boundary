@@ -1,5 +1,7 @@
-// The theme bootstrap is imported first, so the data-theme attribute is set before the
-// first React render. The stylesheets follow, tokens before base.
+// The theme bootstrap is imported first, so the stored choice is re-applied before the first
+// React render. The first paint already has it: public/theme-boot.js, a classic script in
+// index.html's <head>, sets it before the page is painted. The stylesheets follow, tokens
+// before base.
 import "./theme/bootstrap";
 import "./styles/tokens.css";
 import "./styles/base.css";

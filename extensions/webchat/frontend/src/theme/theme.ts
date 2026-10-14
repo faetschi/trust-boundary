@@ -2,7 +2,8 @@
 // <html>, which tokens.css reads. "system" removes the attribute, so the OS query decides.
 // Storage is optional: a browser that refuses storage, or throws on access, keeps the
 // choice for the session and falls back to "system" on the next load. Nothing here
-// throws.
+// throws. public/theme-boot.js repeats this read and apply for the first paint, before
+// any module runs; boot.test.ts checks that the two agree for every stored value.
 
 export type ThemeChoice = "system" | "light" | "dark";
 

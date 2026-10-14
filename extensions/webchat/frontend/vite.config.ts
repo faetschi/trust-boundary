@@ -8,6 +8,8 @@ import pkg from './package.json' with { type: 'json' };
 //   - base '/app/': the app is served under /app/ and nowhere else.
 //   - assetsInlineLimit 0: no data: URLs are generated.
 //   - modulePreload.polyfill false: no inline <script> in index.html.
+//   - public/theme-boot.js is copied unchanged (no hash, no transform). index.html loads it
+//     first as a classic script; the gateway admits exactly that load (admitBootScript).
 //   - sourcemap false: no .map files are served.
 //   - __APP_VERSION__ comes from package.json, never a timestamp, so the output
 //     is reproducible.

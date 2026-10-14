@@ -1,0 +1,1267 @@
+{
+  "receipt": "p4-ui-qa",
+  "generatedAt": "2026-10-14T20:30:32.132Z",
+  "outcome": "FAIL",
+  "selectedChecks": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I"
+  ],
+  "git": {
+    "head": "57e6406"
+  },
+  "script": {
+    "path": "extensions/webchat/scripts/ui-qa.mjs",
+    "sha256": "3c2feff114bc63a0a8ea6e44f91f4b6cc7f92ffdcf51b07a4d9543f9fb179389"
+  },
+  "cspSmoke": {
+    "path": "extensions/webchat/scripts/csp-smoke.mjs",
+    "sha256": "b0e9125e702bc7542d4fb97501d77827f442d084c291eedbd384a30d1d9b20d0"
+  },
+  "node": "v24.15.0",
+  "platform": "win32 x64",
+  "browser": {
+    "product": "Chrome/155.0.8059.79",
+    "binary": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+    "binarySha256": "e2b66159abacb9d42669364e87252f0eb8a0e3bb443f84763b06d44a98997744"
+  },
+  "gateway": {
+    "origin": "http://127.0.0.1:8861",
+    "binarySha256": "a9dd1067669ea9372a55eaeae9e39c5383f15c678b17cb83260c442f6c1cf7bc",
+    "binarySha256Source": "supplied by the operator with --gateway-sha256 (sha256sum in WSL); not verified by this script"
+  },
+  "dist": {
+    "path": "internal/webchat/dist",
+    "files": 4,
+    "sha256": "875bcee7e8528ea8a61eb09c14e5befe2d88982e41c03261936d71dc6c4892f3",
+    "hashes": {
+      ".vite/manifest.json": "5c3f228debcfe2ae7e38faf738166e9a48f256241e3067904302baa3cb0f0854",
+      "assets/index-C6sBC3VL.js": "b0823fb6ecaacd2fa8658da43e306534728818eb88546eee5e7aa4af566051f4",
+      "assets/index-CSIKyxbK.css": "03d18169be6826c06ce7b30fdd3f093200a5e1cec70b1ad9d95487e1ae67a7a6",
+      "index.html": "fa587d31ea84dc1648f94ab9c3754cb867a27211764e5e72a7a9047bde97e087"
+    }
+  },
+  "checks": [
+    {
+      "id": "A",
+      "name": "csp-smoke without the favicon allowance",
+      "status": "PASS",
+      "ms": 4540,
+      "summary": "csp-smoke exit 0; 3 pages with 0 console errors/exceptions; no favicon allowance in its output",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "command": "node scripts/csp-smoke.mjs --url http://127.0.0.1:8861 --chrome <browser>",
+        "exitCode": 0,
+        "output": "p4-csp-smoke-output.txt",
+        "summary": "csp-smoke exit 0; 3 pages with 0 console errors/exceptions; no favicon allowance in its output"
+      }
+    },
+    {
+      "id": "B",
+      "name": "redirect, legacy notice, served assets",
+      "status": "PASS",
+      "ms": 817,
+      "summary": "HEAD / 302 to /app/; GET / ended on /app/ with the React header; /legacy/ shows \"!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.\"; 2 served assets equal dist",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "HEAD /": {
+          "status": 302,
+          "location": "/app/"
+        },
+        "GET /": {
+          "status": 302,
+          "location": "/app/"
+        },
+        "GET / in the browser": {
+          "endedOn": "/app/",
+          "title": "tbound web chat",
+          "reactHeader": true
+        },
+        "/legacy/ notice": "!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.",
+        "servedAssetSha256": {
+          "/app/assets/index-C6sBC3VL.js": "b0823fb6ecaacd2fa8658da43e306534728818eb88546eee5e7aa4af566051f4",
+          "/app/assets/index-CSIKyxbK.css": "03d18169be6826c06ce7b30fdd3f093200a5e1cec70b1ad9d95487e1ae67a7a6"
+        },
+        "summary": "HEAD / 302 to /app/; GET / ended on /app/ with the React header; /legacy/ shows \"!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.\"; 2 served assets equal dist"
+      }
+    },
+    {
+      "id": "C",
+      "name": "keyboard-only walk at 1440",
+      "status": "PASS",
+      "ms": 11846,
+      "summary": "chat Tab order: 10 stops, document end; trajectory: 4 stops, document end; 0 stops without a ring",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "skipLink": "a \"Skip to the chat transcript\"",
+        "skipTarget": "div#view-panel-chat role=tabpanel \"ALLOW 4DENY 1reported 3denied \"",
+        "chatTabOrder": [
+          "a \"Skip to the chat transcript\"",
+          "button \"System\" pressed=true",
+          "button#view-tab-chat role=tab \"Chat\" selected=true",
+          "button \"All 18\" pressed=true",
+          "summary \"Rreadservice/entrypoint.gounve\" open=false",
+          "summary \"Eeditservice/entrypoint.gounve\" open=false",
+          "summary \"$bashcurl -s https://example.c\" open=false",
+          "summary \"$bashgo test ./...unverifiedAL\" open=false",
+          "summary \"$bashgo test -race ./...unveri\" open=false",
+          "BODY"
+        ],
+        "summaryStops": 5,
+        "themeToolbarArrows": {
+          "arrowRight": "Light",
+          "twice": "Dark",
+          "home": "System",
+          "pressedAfterArrows": [
+            [
+              "System",
+              "true"
+            ],
+            [
+              "Light",
+              "false"
+            ],
+            [
+              "Dark",
+              "false"
+            ]
+          ]
+        },
+        "tabs": {
+          "arrowMovesFocusTo": "view-tab-trajectory",
+          "selectedAfterArrow": "true",
+          "selectedAfterEnter": "true",
+          "trajectoryPanelVisible": true
+        },
+        "filters": {
+          "before": [
+            [
+              "All 18",
+              "true"
+            ],
+            [
+              "Denied 2",
+              "false"
+            ],
+            [
+              "Unknown 1",
+              "false"
+            ],
+            [
+              "Failed 0",
+              "false"
+            ]
+          ],
+          "afterArrow": [
+            [
+              "All 18",
+              "true"
+            ],
+            [
+              "Denied 2",
+              "false"
+            ],
+            [
+              "Unknown 1",
+              "false"
+            ],
+            [
+              "Failed 0",
+              "false"
+            ]
+          ],
+          "afterEnter": [
+            [
+              "All 18",
+              "false"
+            ],
+            [
+              "Denied 2",
+              "true"
+            ],
+            [
+              "Unknown 1",
+              "false"
+            ],
+            [
+              "Failed 0",
+              "false"
+            ]
+          ],
+          "countAfterDenied": "2 matches · 3 of 18 element(s) shown for “Denied” (context included)"
+        },
+        "toolCard": {
+          "label": "Rreadservice/entrypoint.gounverifiedALLOWreported",
+          "openBefore": false,
+          "openAfterEnter": true,
+          "openAfterSpace": false
+        },
+        "grouping": {
+          "afterArrow": [
+            [
+              "Turn",
+              "true"
+            ],
+            [
+              "Tool",
+              "false"
+            ],
+            [
+              "Verdict",
+              "false"
+            ]
+          ],
+          "afterEnterTool": [
+            [
+              "Turn",
+              "false"
+            ],
+            [
+              "Tool",
+              "true"
+            ],
+            [
+              "Verdict",
+              "false"
+            ]
+          ],
+          "restored": [
+            [
+              "Turn",
+              "true"
+            ],
+            [
+              "Tool",
+              "false"
+            ],
+            [
+              "Verdict",
+              "false"
+            ]
+          ]
+        },
+        "ledgerKeys": {
+          "down1": "Assistant record 2: message. Message: no verdict or outcome recorded. I will inspect the service entrypoint, add the endpoint, then run the tests.",
+          "down2": "Tool record 3: proposal. Activity: pending, no outcome yet. read service/entrypoint.go",
+          "end": "Assistant record 18: message. Message: no verdict or outcome recorded. Added /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.",
+          "home": "User record 1: prompt. Message: no verdict or outcome recorded. Add a /healthz endpoint to the service and run the test suite."
+        },
+        "ledgerSelect": {
+          "focusedAfterEnter": "button label=\"Assistant record 2: message. Message: no\" \"AssistantmessageI will inspect\" pressed=true",
+          "pressed": "true",
+          "inspector": {
+            "closeButtons": [
+              "Close record"
+            ],
+            "dialogs": []
+          }
+        },
+        "afterEscape": "button label=\"Assistant record 2: message. Message: no\" \"AssistantmessageI will inspect\" pressed=false",
+        "closeRecord": {
+          "focusedAfterClose": "button label=\"Assistant record 2: message. Message: no\" \"AssistantmessageI will inspect\" pressed=false",
+          "pressed": "false"
+        },
+        "selectedTabOrder": [
+          "button \"Close record\"",
+          "a \"Skip to the trajectory ledger\"",
+          "button \"System\" pressed=true",
+          "button#view-tab-trajectory role=tab \"Trajectory\" selected=true",
+          "button \"Turn\" pressed=true",
+          "input",
+          "button label=\"Assistant record 2: message. Message: no\" \"AssistantmessageI will inspect\" pressed=true"
+        ],
+        "trajectorySkipLink": "a \"Skip to the trajectory ledger\"",
+        "trajectoryTabOrder": [
+          "button \"Turn\" pressed=true",
+          "input",
+          "button label=\"User record 1: prompt. Message: no verdi\" \"UserpromptAdd a /healthz endpo\" pressed=false",
+          "BODY"
+        ],
+        "summary": "chat Tab order: 10 stops, document end; trajectory: 4 stops, document end; 0 stops without a ring"
+      }
+    },
+    {
+      "id": "D",
+      "name": "responsive: drawer, overflow, screenshots",
+      "status": "PASS",
+      "ms": 11546,
+      "summary": "1024 px drawer: aria-expanded and inert track the state, hit-testable header, Escape returns focus; 390 px: no overflow, scrollY 0; 12 screenshots",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "drawer1024Closed": {
+          "innerWidth": 1024,
+          "clientWidth": 1014,
+          "toggleVisible": true,
+          "expanded": "false",
+          "inert": true,
+          "ariaHidden": "true",
+          "dataOpen": "false",
+          "asideLeft": 1021,
+          "asideTop": 141,
+          "headerBottom": 141,
+          "activeIsToggle": false,
+          "activeText": "Skip to the chat transcripttbo"
+        },
+        "drawer1024Open": {
+          "innerWidth": 1024,
+          "clientWidth": 1014,
+          "toggleVisible": true,
+          "expanded": "true",
+          "inert": false,
+          "ariaHidden": null,
+          "dataOpen": "true",
+          "asideLeft": 664,
+          "asideTop": 141,
+          "headerBottom": 141,
+          "activeIsToggle": false,
+          "activeText": "Governance"
+        },
+        "headerHitTestWhileOpen": [
+          {
+            "label": "System",
+            "hit": true
+          },
+          {
+            "label": "Light",
+            "hit": true
+          },
+          {
+            "label": "Dark",
+            "hit": true
+          }
+        ],
+        "phoneFirstLoadChat": {
+          "innerWidth": 390,
+          "clientWidth": 380,
+          "scrollWidth": 380,
+          "scrollY": 0,
+          "chips": 28,
+          "overflowingChips": []
+        },
+        "phoneFirstShowTrajectory": {
+          "innerWidth": 390,
+          "clientWidth": 380,
+          "scrollWidth": 380,
+          "scrollY": 0,
+          "chips": 17,
+          "overflowingChips": []
+        },
+        "screenshots": [
+          "p4-1440-light-chat.png",
+          "p4-1440-light-trajectory.png",
+          "p4-1024-light-chat.png",
+          "p4-1024-light-trajectory.png",
+          "p4-390-light-chat.png",
+          "p4-390-light-trajectory.png",
+          "p4-1440-dark-chat.png",
+          "p4-1440-dark-trajectory.png",
+          "p4-1024-dark-chat.png",
+          "p4-1024-dark-trajectory.png",
+          "p4-390-dark-chat.png",
+          "p4-390-dark-trajectory.png"
+        ],
+        "summary": "1024 px drawer: aria-expanded and inert track the state, hit-testable header, Escape returns focus; 390 px: no overflow, scrollY 0; 12 screenshots"
+      }
+    },
+    {
+      "id": "E",
+      "name": "theme: persistence, blocked storage, first paint",
+      "status": "FAIL",
+      "ms": 12543,
+      "summary": "Dark, Light and System persist across reloads; with storage blocked the page renders on system; first frames match the final canvas in 4 cases",
+      "failures": [
+        "stored light, OS dark: 5 of 5 loads painted a background other than the final oklch(1 0 0) before the theme applied (firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0))",
+        "stored dark, OS light: 5 of 5 loads painted a background other than the final oklch(0.18 0 0) before the theme applied (firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0))"
+      ],
+      "unverified": [],
+      "evidence": {
+        "choices": {
+          "dark": {
+            "dataTheme": "dark",
+            "stored": "dark",
+            "pressed": [
+              "System=false",
+              "Light=false",
+              "Dark=true"
+            ],
+            "canvas": "oklch(0.18 0 0)"
+          },
+          "light": {
+            "dataTheme": "light",
+            "stored": "light",
+            "pressed": [
+              "System=false",
+              "Light=true",
+              "Dark=false"
+            ],
+            "canvas": "oklch(1 0 0)"
+          },
+          "system": {
+            "dataTheme": null,
+            "stored": "system",
+            "pressed": [
+              "System=true",
+              "Light=false",
+              "Dark=false"
+            ],
+            "canvas": "oklch(1 0 0)"
+          }
+        },
+        "blockedStorage": {
+          "shell": {
+            "header": true,
+            "chat": true
+          },
+          "theme": {
+            "dataTheme": null,
+            "stored": "throws: SecurityError",
+            "pressed": [
+              "System=true",
+              "Light=false",
+              "Dark=false"
+            ],
+            "canvas": "oklch(1 0 0)"
+          }
+        },
+        "firstPaintSamples": [
+          {
+            "case": "stored light, OS dark",
+            "final": "oklch(1 0 0)",
+            "trials": 5,
+            "flashed": 5,
+            "samples": [
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0)"
+            ]
+          },
+          {
+            "case": "stored dark, OS light",
+            "final": "oklch(0.18 0 0)",
+            "trials": 5,
+            "flashed": 5,
+            "samples": [
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0)"
+            ]
+          },
+          {
+            "case": "nothing stored, OS dark",
+            "final": "oklch(0.18 0 0)",
+            "trials": 5,
+            "flashed": 0,
+            "samples": [
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)"
+            ]
+          },
+          {
+            "case": "nothing stored, OS light",
+            "final": "oklch(1 0 0)",
+            "trials": 5,
+            "flashed": 0,
+            "samples": [
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)"
+            ]
+          }
+        ],
+        "summary": "Dark, Light and System persist across reloads; with storage blocked the page renders on system; first frames match the final canvas in 4 cases"
+      }
+    },
+    {
+      "id": "F",
+      "name": "live stream: admission, refusal, gaps, pill",
+      "status": "FAIL",
+      "ms": 7943,
+      "summary": "LOST chip and \"LOST, not success\" row; lossy row reads \"output lossy, not counted as confirmed\"; DENY, UNKNOWN and ALLOW tones distinct; observed item refused (invalid item) with recovery; duplicate no-op; gap recovers once; pill \"3 new records\" with scroll kept, one announcement, Jump works",
+      "failures": [
+        "the lossy row reads \"Result record 20: bash. Result: succeeded, reported, not independently verified; output lossy. QA lossy output · output lossy\", not \"output lossy, not counted as confirmed\". That phrase is the default branch at src/core/trajectory.ts:160 (a lossy success with the unknown tone); this unverified fixture takes the reported branch at trajectory.ts:152"
+      ],
+      "unverified": [],
+      "evidence": {
+        "snapshot": {
+          "epoch": "fixture-2f1c",
+          "cursor": "fixture-2f1c:18",
+          "source": "fixture",
+          "items": 18,
+          "lastSequence": 18
+        },
+        "countAtStart": 18,
+        "chatChips": [
+          "ALLOW 4:allow",
+          "DENY 2:deny",
+          "unknown verdict 1:unknown",
+          "reported 4:reported",
+          "denied 1:deny",
+          "unknown result 1:unknown",
+          "lost 1:lost",
+          "lossy 2:unknown",
+          "ALLOW:allow",
+          "reported:reported",
+          "DENY:deny",
+          "denied:deny",
+          "unknown:unknown",
+          "lossy:unknown",
+          "lost:lost",
+          "UNKNOWN:unknown"
+        ],
+        "ledgerRows": {
+          "lost": "Result record 19: bash. Result: LOST, not success. QA outcome not recorded",
+          "lossy": "Result record 20: bash. Result: succeeded, reported, not independently verified; output lossy. QA lossy output · output lossy"
+        },
+        "dotShapes": {
+          "lost": {
+            "borderStyle": "solid",
+            "borderWidth": "1px",
+            "radius": "0px",
+            "clipPath": "polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%)",
+            "boxShadow": "none",
+            "background": "oklch(0.6 0.15 70)"
+          },
+          "deny": {
+            "borderStyle": "solid",
+            "borderWidth": "1px",
+            "radius": "2px",
+            "clipPath": "none",
+            "boxShadow": "none",
+            "background": "oklch(0.52 0.19 27)"
+          },
+          "unknown": {
+            "borderStyle": "dotted",
+            "borderWidth": "2px",
+            "radius": "50%",
+            "clipPath": "none",
+            "boxShadow": "none",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "allow": {
+            "borderStyle": "solid",
+            "borderWidth": "2px",
+            "radius": "50%",
+            "clipPath": "none",
+            "boxShadow": "none",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "reported": {
+            "borderStyle": "dashed",
+            "borderWidth": "2px",
+            "radius": "50%",
+            "clipPath": "none",
+            "boxShadow": "none",
+            "background": "rgba(0, 0, 0, 0)"
+          },
+          "pending": {
+            "borderStyle": "solid",
+            "borderWidth": "1px",
+            "radius": "50%",
+            "clipPath": "none",
+            "boxShadow": "none",
+            "background": "rgba(0, 0, 0, 0)"
+          }
+        },
+        "refusal": {
+          "notices": [
+            "Continuity gap (invalid item). Recovered from a snapshot; no success is inferred."
+          ],
+          "count": 18
+        },
+        "gap": {
+          "notices": [
+            "Continuity gap (sequence gap). Recovered from a snapshot; no success is inferred."
+          ],
+          "count": 18,
+          "duplicateSnapshotFetches": 0
+        },
+        "pill": {
+          "text": "3 new records · Jump to latest",
+          "scrollBefore": 260,
+          "scrollAfter": 260,
+          "announcements": [
+            "3 new records below. Jump to latest is available."
+          ]
+        },
+        "afterJump": {
+          "y": 854,
+          "h": 1754,
+          "inner": 900,
+          "focusRole": "log",
+          "pill": false
+        },
+        "summary": "LOST chip and \"LOST, not success\" row; lossy row reads \"output lossy, not counted as confirmed\"; DENY, UNKNOWN and ALLOW tones distinct; observed item refused (invalid item) with recovery; duplicate no-op; gap recovers once; pill \"3 new records\" with scroll kept, one announcement, Jump works"
+      }
+    },
+    {
+      "id": "G",
+      "name": "reconnect and offline",
+      "status": "PASS",
+      "ms": 41234,
+      "summary": "7 retry attempts, backoffs 609, 1672, 3540, 7978, 5147, 9296 ms; connected only after the event stream answered; 0 requests while offline; first request 2 ms after online",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "badgeAtStart": "connected",
+        "stopCommandStatus": 0,
+        "retryAttempts": 7,
+        "backoffMs": [
+          609,
+          1672,
+          3540,
+          7978,
+          5147,
+          9296
+        ],
+        "attemptDurationMs": [
+          1,
+          0,
+          1,
+          1,
+          0,
+          0,
+          1
+        ],
+        "outageBadgeStates": [
+          "reconnecting|reconnecting…",
+          "connecting|connecting…"
+        ],
+        "startCommandStatus": 0,
+        "recovery": {
+          "snapshotFetchesAfterRestart": 1,
+          "eventsResponseIndex": 4,
+          "connectedBadgeIndex": 5
+        },
+        "requestsWhileOffline": 0,
+        "firstRequestAfterOnlineMs": 2,
+        "summary": "7 retry attempts, backoffs 609, 1672, 3540, 7978, 5147, 9296 ms; connected only after the event stream answered; 0 requests while offline; first request 2 ms after online"
+      }
+    },
+    {
+      "id": "H",
+      "name": "forced colours and reduced motion",
+      "status": "PASS",
+      "ms": 3570,
+      "summary": "forced colours: 6 of 6 ledger shapes distinct; reduced motion: 0 running animation(s), control transition 0.3s",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "emulationActive": {
+          "forcedColors": true,
+          "reducedMotion": true
+        },
+        "normalShapes": {
+          "allow": "solid | 2px | 50% | none",
+          "deny": "solid | 1px | 2px | none",
+          "reported": "dashed | 2px | 50% | none",
+          "unknown": "dotted | 2px | 50% | none",
+          "lost": "solid | 1px | 0px | polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%)",
+          "pending": "solid | 1px | 50% | none"
+        },
+        "forcedShapes": {
+          "allow": "solid | 2px | 50% | none",
+          "deny": "solid | 1px | 2px | none",
+          "reported": "dashed | 2px | 50% | none",
+          "unknown": "dotted | 2px | 50% | none",
+          "lost": "solid | 1px | 0px | polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%)",
+          "pending": "solid | 1px | 50% | none"
+        },
+        "reducedMotion": {
+          "runningAnimations": 0,
+          "animatedElements": 0,
+          "animatedSample": [],
+          "asideTransition": "0s",
+          "asideTransform": "matrix(1, 0, 0, 1, 0, 0)",
+          "dataOpen": "true"
+        },
+        "motionControl": {
+          "runningAnimations": 0,
+          "animatedElements": 1,
+          "animatedSample": [
+            "aside#governance-inspector"
+          ],
+          "asideTransition": "0.3s",
+          "asideTransform": "matrix(1, 0, 0, 1, 0, 0)",
+          "dataOpen": "true"
+        },
+        "summary": "forced colours: 6 of 6 ledger shapes distinct; reduced motion: 0 running animation(s), control transition 0.3s"
+      }
+    },
+    {
+      "id": "I",
+      "name": "console, CSP and network",
+      "status": "PASS",
+      "ms": 1,
+      "summary": "0 CSP violations; 0 console errors or warnings outside check G; 8 inside G's outage and offline window; 0 requests off the gateway origin (352 requests in all)",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "requests": {
+          "total": 352,
+          "toGateway": 352,
+          "external": 0
+        },
+        "consoleErrorsAndWarnings": {
+          "outsideGOutage": 0,
+          "inGOutage": 8,
+          "inGOutageSamples": [
+            "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+            "Failed to load resource: net::ERR_EMPTY_RESPONSE",
+            "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+          ]
+        },
+        "cspViolations": 0,
+        "summary": "0 CSP violations; 0 console errors or warnings outside check G; 8 inside G's outage and offline window; 0 requests off the gateway origin (352 requests in all)"
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "p4-drawer-1024-open.png",
+      "sha256": "19700dd8351fa11b78d2838491c5ccfabbc1e4d97c902dbb7242ccc9026df131",
+      "bytes": 104314,
+      "check": "D"
+    },
+    {
+      "file": "p4-1440-light-chat.png",
+      "sha256": "bc1ae84595a37e1579e3fc79eab7713e8abea3b180bd5d9e9156945a3f2ff7b1",
+      "bytes": 112597,
+      "check": "D"
+    },
+    {
+      "file": "p4-1440-light-trajectory.png",
+      "sha256": "cad745dc9356cabe858397f8712d45b1733240d828bce52ab81f1b425cc0f431",
+      "bytes": 139781,
+      "check": "D"
+    },
+    {
+      "file": "p4-1024-light-chat.png",
+      "sha256": "6fd8df6d3665b5f6a6611573c577b525994c15f77a0eac7562dcef4c1c368afb",
+      "bytes": 85856,
+      "check": "D"
+    },
+    {
+      "file": "p4-1024-light-trajectory.png",
+      "sha256": "33ccf2a71b7d6f07cbec46002aebe2c9fcf55dd18add906faa127fdb5e2a3a45",
+      "bytes": 102643,
+      "check": "D"
+    },
+    {
+      "file": "p4-390-light-chat.png",
+      "sha256": "3addf9546ad32bcc443a5c3c8d1ff0c433f0148e61e78aea2fe80e94e03cd935",
+      "bytes": 42206,
+      "check": "D"
+    },
+    {
+      "file": "p4-390-light-trajectory.png",
+      "sha256": "8c8a1a53e93f5cb756fe596ee41d377791ce3779373fe97bbb0b61d7c9ce37f6",
+      "bytes": 36439,
+      "check": "D"
+    },
+    {
+      "file": "p4-1440-dark-chat.png",
+      "sha256": "f04e3720ff88aa29a062de35d46f9e2df2cc0405114dbb29784af5d273443744",
+      "bytes": 114722,
+      "check": "D"
+    },
+    {
+      "file": "p4-1440-dark-trajectory.png",
+      "sha256": "85af4355229e6c211577ee6357cbe32149e9953e86c762ece2e9b6abbf13e81c",
+      "bytes": 141949,
+      "check": "D"
+    },
+    {
+      "file": "p4-1024-dark-chat.png",
+      "sha256": "3d3941b6c63758006dafb9d7d78f1c802345a878036cc4a130b6735644721495",
+      "bytes": 86892,
+      "check": "D"
+    },
+    {
+      "file": "p4-1024-dark-trajectory.png",
+      "sha256": "403bd9a480b247d0dd723ef35f81227b20b0e1fb936eef19dc88e75b40652e26",
+      "bytes": 104132,
+      "check": "D"
+    },
+    {
+      "file": "p4-390-dark-chat.png",
+      "sha256": "149ff82ac55227c4ce71ca16ce9f6b26e7884c780c6abdd3181380f7a79433c8",
+      "bytes": 42905,
+      "check": "D"
+    },
+    {
+      "file": "p4-390-dark-trajectory.png",
+      "sha256": "2a8ad7b3daeb9eaabe24396554487255be85b48b5aaf8055aa15eb134bad67d1",
+      "bytes": 36919,
+      "check": "D"
+    },
+    {
+      "file": "p4-states-light.png",
+      "sha256": "ed8b9cc7c6093fad9ed5faf0c6a9c0e65f5d7c5c92e84cd978ae9790bff2422c",
+      "bytes": 53287,
+      "check": "F"
+    },
+    {
+      "file": "p4-states-dark.png",
+      "sha256": "b2870bd8841832316f577346cf16f14ad9df4f23920ab5035991fd1fdab230a5",
+      "bytes": 54454,
+      "check": "F"
+    },
+    {
+      "file": "p4-pill-away.png",
+      "sha256": "2b27aaa112a7e0c46d9a55fa3646c51b20037c0286a23577cae7b143344d5b7b",
+      "bytes": 109099,
+      "check": "F"
+    },
+    {
+      "file": "p4-forced-colors-trajectory.png",
+      "sha256": "d62617a83626f37c12c1bfb9dd0178957999a2418115b0591d8433886abe6742",
+      "bytes": 120847,
+      "check": "H"
+    }
+  ],
+  "observation": {
+    "timelineG": [
+      {
+        "kind": "request",
+        "at": 49961,
+        "url": "/app/"
+      },
+      {
+        "kind": "response",
+        "at": 49964,
+        "url": "/app/",
+        "status": 200
+      },
+      {
+        "kind": "request",
+        "at": 49981,
+        "url": "/app/assets/index-C6sBC3VL.js"
+      },
+      {
+        "kind": "request",
+        "at": 49981,
+        "url": "/app/assets/index-CSIKyxbK.css"
+      },
+      {
+        "kind": "response",
+        "at": 49981,
+        "url": "/app/assets/index-CSIKyxbK.css",
+        "status": 200
+      },
+      {
+        "kind": "response",
+        "at": 49984,
+        "url": "/app/assets/index-C6sBC3VL.js",
+        "status": 200
+      },
+      {
+        "kind": "request",
+        "at": 49994,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "request",
+        "at": 49994,
+        "url": "/favicon.ico"
+      },
+      {
+        "kind": "response",
+        "at": 49996,
+        "url": "/api/v1/snapshot",
+        "status": 200
+      },
+      {
+        "kind": "response",
+        "at": 50003,
+        "url": "/favicon.ico",
+        "status": 204
+      },
+      {
+        "kind": "request",
+        "at": 50004,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "kind": "response",
+        "at": 50010,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
+        "status": 200
+      },
+      {
+        "kind": "badge",
+        "at": 50293,
+        "state": "open|connected"
+      },
+      {
+        "kind": "badge",
+        "at": 51118,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 51118,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "kind": "request",
+        "at": 51277,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 51277,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 51278,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 51279,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 51887,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 51887,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 51887,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 51889,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 53560,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 53560,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 53560,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 53563,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 57101,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 57101,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 57101,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 57103,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 65079,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 65079,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 65079,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 65081,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 70226,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 70226,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 70226,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 70228,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 79522,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 79522,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 79523,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 79525,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 84794,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 84795,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "response",
+        "at": 84796,
+        "url": "/api/v1/snapshot",
+        "status": 200
+      },
+      {
+        "kind": "request",
+        "at": 84798,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "kind": "response",
+        "at": 84801,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
+        "status": 200
+      },
+      {
+        "kind": "badge",
+        "at": 84801,
+        "state": "open|connected"
+      },
+      {
+        "kind": "badge",
+        "at": 84860,
+        "state": "offline|offline"
+      },
+      {
+        "kind": "failed",
+        "at": 84860,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "kind": "request",
+        "at": 90868,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 90868,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "response",
+        "at": 90870,
+        "url": "/api/v1/snapshot",
+        "status": 200
+      },
+      {
+        "kind": "request",
+        "at": 90872,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "kind": "response",
+        "at": 90875,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
+        "status": 200
+      },
+      {
+        "kind": "badge",
+        "at": 90875,
+        "state": "open|connected"
+      }
+    ],
+    "requests": 352,
+    "gatewayRequests": 352,
+    "externalRequests": [],
+    "consoleErrorsAndWarnings": [
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+        "url": "http://127.0.0.1:8861/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_EMPTY_RESPONSE",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+      }
+    ],
+    "cspViolations": [],
+    "failedRequests": [
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:8861/api/v1/events?cursor=fixture-2f1c%3A18",
+        "type": "EventSource",
+        "errorText": "net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+        "t": 8454.033215
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_EMPTY_RESPONSE",
+        "t": 8454.38336
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 8454.993037
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 8456.665966
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 8460.206823
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 8468.184402
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 8473.331923
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 8482.628655
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:8861/api/v1/events?cursor=fixture-2f1c%3A18",
+        "type": "EventSource",
+        "errorText": "net::ERR_ABORTED",
+        "t": 8487.965848
+      }
+    ]
+  }
+}

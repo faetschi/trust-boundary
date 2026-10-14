@@ -1,0 +1,16 @@
+﻿ui-qa: browser Chrome/155.0.8059.79 (C:\Program Files\Google\Chrome\Application\chrome.exe)
+ui-qa: gateway http://127.0.0.1:8861; checks A,B,C,D,E,F,G,H,I
+PASS A csp-smoke without the favicon allowance: csp-smoke exit 0; 3 pages with 0 console errors/exceptions; no favicon allowance in its output
+PASS B redirect, legacy notice, served assets: HEAD / 302 to /app/; GET / ended on /app/ with the React header; /legacy/ shows "!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app."; 2 served assets equal dist
+PASS C keyboard-only walk at 1440: chat Tab order: 10 stops, document end; trajectory: 4 stops, document end; 0 stops without a ring
+PASS D responsive: drawer, overflow, screenshots: 1024 px drawer: aria-expanded and inert track the state, hit-testable header, Escape returns focus; 390 px: no overflow, scrollY 0; 12 screenshots
+FAIL E theme: persistence, blocked storage, first paint: Dark, Light and System persist across reloads; with storage blocked the page renders on system; first frames match the final canvas in 4 cases
+  - stored light, OS dark: 5 of 5 loads painted a background other than the final oklch(1 0 0) before the theme applied (firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0))
+  - stored dark, OS light: 5 of 5 loads painted a background other than the final oklch(0.18 0 0) before the theme applied (firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0))
+FAIL F live stream: admission, refusal, gaps, pill: LOST chip and "LOST, not success" row; lossy row reads "output lossy, not counted as confirmed"; DENY, UNKNOWN and ALLOW tones distinct; observed item refused (invalid item) with recovery; duplicate no-op; gap recovers once; pill "3 new records" with scroll kept, one announcement, Jump works
+  - the lossy row reads "Result record 20: bash. Result: succeeded, reported, not independently verified; output lossy. QA lossy output · output lossy", not "output lossy, not counted as confirmed". That phrase is the default branch at src/core/trajectory.ts:160 (a lossy success with the unknown tone); this unverified fixture takes the reported branch at trajectory.ts:152
+PASS G reconnect and offline: 7 retry attempts, backoffs 609, 1672, 3540, 7978, 5147, 9296 ms; connected only after the event stream answered; 0 requests while offline; first request 2 ms after online
+PASS H forced colours and reduced motion: forced colours: 6 of 6 ledger shapes distinct; reduced motion: 0 running animation(s), control transition 0.3s
+PASS I console, CSP and network: 0 CSP violations; 0 console errors or warnings outside check G; 8 inside G's outage and offline window; 0 requests off the gateway origin (352 requests in all)
+ui-qa: receipt C:\Users\Admin\.t3\worktrees\trust-boundary\codex-tbound-web-chat\extensions\webchat\docs\webchat\qa\p4-ui-qa-receipt.json
+ui-qa: FAIL (2 failed, 0 not verified)

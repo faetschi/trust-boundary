@@ -534,3 +534,110 @@ func TestAppShellFailsClosedOnAnyUnadmittedURL(t *testing.T) {
 		})
 	}
 }
+
+// The theme script is the one file outside the manifest that the shell may load. The browser runs it before the
+// first paint, so the shell may load it only as its first script: a bare classic script in <head>, before any
+// module script.
+const (
+	themeBootTag   = `<script src="/app/theme-boot.js"></script>`
+	themeModuleTag = `<script type="module" crossorigin src="/app/assets/app.js"></script>`
+	themeBootShell = `<!doctype html><html><head>` + themeBootTag + themeModuleTag +
+		`<link rel="stylesheet" crossorigin href="/app/assets/app.css"></head><body><div id="root"></div></body></html>`
+	themeBootBody = "(function () {})();"
+)
+
+// themeFixture is the fixture with the theme script in the build, as the frontend emits it.
+func themeFixture(shell string) fstest.MapFS {
+	source := fixtureWithShell(shell)
+	source["theme-boot.js"] = &fstest.MapFile{Data: []byte(themeBootBody)}
+	return source
+}
+
+// Mutation check: admitting the theme script wherever a shell names it, or whenever the file is in the build, must
+// fail the refusals in this test.
+func TestAppAdmitsTheThemeScriptOnlyAsTheFirstClassicScript(t *testing.T) {
+	app := loadAppBundle(themeFixture(themeBootShell))
+	if app.err != nil {
+		t.Fatalf("a first, classic theme script should derive: %v", app.err)
+	}
+	handler := newHandler(appTestStore(t), HandlerOptions{}, app)
+	recorder := appTestRequest(t, handler, http.MethodGet, "/app/theme-boot.js")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("GET /app/theme-boot.js status=%d, want 200", recorder.Code)
+	}
+	if got := recorder.Header().Get("Content-Type"); got != "text/javascript; charset=utf-8" {
+		t.Errorf("GET /app/theme-boot.js content-type=%q, want text/javascript", got)
+	}
+	if !bytes.Equal(recorder.Body.Bytes(), []byte(themeBootBody)) {
+		t.Error("GET /app/theme-boot.js does not serve the build file")
+	}
+	assertSecurityHeaders(t, "/app/theme-boot.js", recorder)
+
+	const notFirst = "loads /app/theme-boot.js other than as its first, classic script before <body>"
+	refused := []struct{ name, shell, want string }{
+		{"after the module script", `<script type="module" src="/app/assets/app.js"></script>` + themeBootTag, notFirst},
+		{"as a module", `<script type="module" src="/app/theme-boot.js"></script>` + themeModuleTag, notFirst},
+		{"deferred", `<script defer src="/app/theme-boot.js"></script>` + themeModuleTag, notFirst},
+		{"async", `<script async src="/app/theme-boot.js"></script>` + themeModuleTag, notFirst},
+		{"nomodule", `<script nomodule src="/app/theme-boot.js"></script>` + themeModuleTag, notFirst},
+		{"with a type attribute", `<script type="text/javascript" src="/app/theme-boot.js"></script>` + themeModuleTag, notFirst},
+		{"with an extra attribute", `<script data-x="1" src="/app/theme-boot.js"></script>` + themeModuleTag, notFirst},
+		{"src first, then defer", `<script src="/app/theme-boot.js" defer></script>` + themeModuleTag, notFirst},
+		{"src first, then async", `<script src="/app/theme-boot.js" async></script>` + themeModuleTag, notFirst},
+		{"src first, then nomodule", `<script src="/app/theme-boot.js" nomodule></script>` + themeModuleTag, notFirst},
+		{"src first, then a type", `<script src="/app/theme-boot.js" type="text/javascript"></script>` + themeModuleTag, notFirst},
+		{"src first, then an extra attribute", `<script src="/app/theme-boot.js" data-x="1"></script>` + themeModuleTag, notFirst},
+		{"after <body>", `<body>` + themeBootTag + themeModuleTag + `</body>`, notFirst},
+		{"as a preload, not a script", `<link rel="preload" as="script" href="/app/theme-boot.js">` + themeBootTag + themeModuleTag, notFirst},
+		{"entity-encoded", `<script src="&#47;app&#47;theme-boot.js"></script>` + themeModuleTag, "which the manifest does not derive"},
+	}
+	for _, tc := range refused {
+		t.Run("refuses the theme script "+tc.name, func(t *testing.T) {
+			app := loadAppBundle(themeFixture(tc.shell))
+			if app.err == nil {
+				t.Fatal("the shell should fail closed")
+			}
+			if !strings.Contains(app.err.Error(), tc.want) {
+				t.Fatalf("error %q does not say %q", app.err, tc.want)
+			}
+		})
+	}
+	t.Run("refuses a theme script that the build does not contain", func(t *testing.T) {
+		err := loadAppBundle(fixtureWithShell(themeBootShell)).err
+		if err == nil || !strings.Contains(err.Error(), "theme-boot.js, which is missing from the build") {
+			t.Fatalf("err=%v, want a missing theme script", err)
+		}
+	})
+}
+
+// Admitting the theme script opens no neighbour: a file beside it, a path under it or a case variant stays 404, and
+// so does the script itself when the shell does not load it.
+func TestAppThemeScriptAdmissionOpensNoNeighbours(t *testing.T) {
+	source := themeFixture(themeBootShell)
+	source["theme-boot.js.map"] = &fstest.MapFile{Data: []byte("neighbour")}
+	source["theme-boot-copy.js"] = &fstest.MapFile{Data: []byte("neighbour")}
+	source["assets/theme-boot.js"] = &fstest.MapFile{Data: []byte("neighbour")}
+	handler := newHandler(appTestStore(t), HandlerOptions{}, loadAppBundle(source))
+	for _, target := range []string{
+		"/app/theme-boot.js.map", "/app/theme-boot-copy.js", "/app/assets/theme-boot.js",
+		"/app/theme-boot.js/", "/app/theme-boot.js%00", "/app/theme-boot.JS", "/theme-boot.js",
+	} {
+		recorder := appTestRequest(t, handler, http.MethodGet, target)
+		if recorder.Code != http.StatusNotFound {
+			t.Errorf("GET %s status=%d, want 404", target, recorder.Code)
+		}
+		if strings.Contains(recorder.Body.String(), "neighbour") {
+			t.Errorf("GET %s leaked a neighbour", target)
+		}
+	}
+
+	unloaded := reachableFixture()
+	unloaded["theme-boot.js"] = &fstest.MapFile{Data: []byte(themeBootBody)}
+	app := loadAppBundle(unloaded)
+	if app.err != nil {
+		t.Fatalf("a build with an unloaded theme script should still derive: %v", app.err)
+	}
+	if recorder := appTestRequest(t, newHandler(appTestStore(t), HandlerOptions{}, app), http.MethodGet, "/app/theme-boot.js"); recorder.Code != http.StatusNotFound {
+		t.Errorf("GET /app/theme-boot.js status=%d, want 404: the shell does not load it", recorder.Code)
+	}
+}

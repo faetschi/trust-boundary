@@ -164,6 +164,7 @@ const ROWS: readonly Row[] = [
   { label: "dot ok fill", kind: "nontext", fg: "ok-line", on: SURF },
   { label: "dot deny fill", kind: "nontext", fg: "deny-line", on: SURF },
   { label: "dot allow ring", kind: "nontext", fg: "allow", on: SURF },
+  { label: "dot allow bullseye centre", kind: "nontext", fg: "allow", on: SURF },
   { label: "pending hollow ring", kind: "nontext", fg: "pending", on: SURF },
   { label: "reported dashed border", kind: "nontext", fg: "warn-line", on: SURF },
   { label: "unknown dotted border", kind: "nontext", fg: "warn-line", on: SURF },

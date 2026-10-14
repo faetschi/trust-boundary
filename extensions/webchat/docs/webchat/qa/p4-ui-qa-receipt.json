@@ -1,7 +1,7 @@
 {
   "receipt": "p4-ui-qa",
-  "generatedAt": "2026-10-14T20:30:32.132Z",
-  "outcome": "FAIL",
+  "generatedAt": "2026-10-14T21:06:33.043Z",
+  "outcome": "PASS",
   "selectedChecks": [
     "A",
     "B",
@@ -14,11 +14,11 @@
     "I"
   ],
   "git": {
-    "head": "57e6406"
+    "head": "caae3af"
   },
   "script": {
     "path": "extensions/webchat/scripts/ui-qa.mjs",
-    "sha256": "3c2feff114bc63a0a8ea6e44f91f4b6cc7f92ffdcf51b07a4d9543f9fb179389"
+    "sha256": "222e9993db1f41ef35d8820d8e058bc478b71e4a2d5d9b9010bcdc206d6ab7ed"
   },
   "cspSmoke": {
     "path": "extensions/webchat/scripts/csp-smoke.mjs",
@@ -32,19 +32,20 @@
     "binarySha256": "e2b66159abacb9d42669364e87252f0eb8a0e3bb443f84763b06d44a98997744"
   },
   "gateway": {
-    "origin": "http://127.0.0.1:8861",
-    "binarySha256": "a9dd1067669ea9372a55eaeae9e39c5383f15c678b17cb83260c442f6c1cf7bc",
+    "origin": "http://127.0.0.1:8862",
+    "binarySha256": "1a783855971e46a12df761d5e05768d7a81a9f6d498097a8d5dc6a5f7aac6bbc",
     "binarySha256Source": "supplied by the operator with --gateway-sha256 (sha256sum in WSL); not verified by this script"
   },
   "dist": {
     "path": "internal/webchat/dist",
-    "files": 4,
-    "sha256": "875bcee7e8528ea8a61eb09c14e5befe2d88982e41c03261936d71dc6c4892f3",
+    "files": 5,
+    "sha256": "0e352aebe1eaafb51914a852069bb34658215ed102802e63bbdb6551de20ca55",
     "hashes": {
-      ".vite/manifest.json": "5c3f228debcfe2ae7e38faf738166e9a48f256241e3067904302baa3cb0f0854",
-      "assets/index-C6sBC3VL.js": "b0823fb6ecaacd2fa8658da43e306534728818eb88546eee5e7aa4af566051f4",
-      "assets/index-CSIKyxbK.css": "03d18169be6826c06ce7b30fdd3f093200a5e1cec70b1ad9d95487e1ae67a7a6",
-      "index.html": "fa587d31ea84dc1648f94ab9c3754cb867a27211764e5e72a7a9047bde97e087"
+      ".vite/manifest.json": "17b3bb2c4973637dff18f5e57c7dcad2e71d6228a62396b047bc3b8648aeaa62",
+      "assets/index-CFJRJdII.js": "d1754ab10becd9b1d777c6a2c91e40996666156d7ffeaa59a0adb6e916488ab0",
+      "assets/index-DV_e83aP.css": "0b1fa7d3b491bcfb1355366325cfeb73c2a43d5c3479144d22533d6c6afbe2c7",
+      "index.html": "9d015d5bb1ea4f730c71453b20daaae16a9cd0a00d68d85c0e4493610148b249",
+      "theme-boot.js": "542ca16fff4a9c977662ee3936c122745ea1c1586b98f7167f99b28a70f0981c"
     }
   },
   "checks": [
@@ -52,12 +53,12 @@
       "id": "A",
       "name": "csp-smoke without the favicon allowance",
       "status": "PASS",
-      "ms": 4540,
+      "ms": 4586,
       "summary": "csp-smoke exit 0; 3 pages with 0 console errors/exceptions; no favicon allowance in its output",
       "failures": [],
       "unverified": [],
       "evidence": {
-        "command": "node scripts/csp-smoke.mjs --url http://127.0.0.1:8861 --chrome <browser>",
+        "command": "node scripts/csp-smoke.mjs --url http://127.0.0.1:8862 --chrome <browser>",
         "exitCode": 0,
         "output": "p4-csp-smoke-output.txt",
         "summary": "csp-smoke exit 0; 3 pages with 0 console errors/exceptions; no favicon allowance in its output"
@@ -67,7 +68,7 @@
       "id": "B",
       "name": "redirect, legacy notice, served assets",
       "status": "PASS",
-      "ms": 817,
+      "ms": 797,
       "summary": "HEAD / 302 to /app/; GET / ended on /app/ with the React header; /legacy/ shows \"!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.\"; 2 served assets equal dist",
       "failures": [],
       "unverified": [],
@@ -87,8 +88,8 @@
         },
         "/legacy/ notice": "!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.",
         "servedAssetSha256": {
-          "/app/assets/index-C6sBC3VL.js": "b0823fb6ecaacd2fa8658da43e306534728818eb88546eee5e7aa4af566051f4",
-          "/app/assets/index-CSIKyxbK.css": "03d18169be6826c06ce7b30fdd3f093200a5e1cec70b1ad9d95487e1ae67a7a6"
+          "/app/assets/index-CFJRJdII.js": "d1754ab10becd9b1d777c6a2c91e40996666156d7ffeaa59a0adb6e916488ab0",
+          "/app/assets/index-DV_e83aP.css": "0b1fa7d3b491bcfb1355366325cfeb73c2a43d5c3479144d22533d6c6afbe2c7"
         },
         "summary": "HEAD / 302 to /app/; GET / ended on /app/ with the React header; /legacy/ shows \"!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.\"; 2 served assets equal dist"
       }
@@ -97,7 +98,7 @@
       "id": "C",
       "name": "keyboard-only walk at 1440",
       "status": "PASS",
-      "ms": 11846,
+      "ms": 12193,
       "summary": "chat Tab order: 10 stops, document end; trajectory: 4 stops, document end; 0 stops without a ring",
       "failures": [],
       "unverified": [],
@@ -293,7 +294,7 @@
       "id": "D",
       "name": "responsive: drawer, overflow, screenshots",
       "status": "PASS",
-      "ms": 11546,
+      "ms": 11588,
       "summary": "1024 px drawer: aria-expanded and inert track the state, hit-testable header, Escape returns focus; 390 px: no overflow, scrollY 0; 12 screenshots",
       "failures": [],
       "unverified": [],
@@ -376,13 +377,10 @@
     {
       "id": "E",
       "name": "theme: persistence, blocked storage, first paint",
-      "status": "FAIL",
-      "ms": 12543,
+      "status": "PASS",
+      "ms": 12863,
       "summary": "Dark, Light and System persist across reloads; with storage blocked the page renders on system; first frames match the final canvas in 4 cases",
-      "failures": [
-        "stored light, OS dark: 5 of 5 loads painted a background other than the final oklch(1 0 0) before the theme applied (firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0))",
-        "stored dark, OS light: 5 of 5 loads painted a background other than the final oklch(0.18 0 0) before the theme applied (firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0))"
-      ],
+      "failures": [],
       "unverified": [],
       "evidence": {
         "choices": {
@@ -438,26 +436,26 @@
             "case": "stored light, OS dark",
             "final": "oklch(1 0 0)",
             "trials": 5,
-            "flashed": 5,
+            "flashed": 0,
             "samples": [
-              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0)",
-              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0)",
-              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0)",
-              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0)",
-              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(1 0 0)"
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)"
             ]
           },
           {
             "case": "stored dark, OS light",
             "final": "oklch(0.18 0 0)",
             "trials": 5,
-            "flashed": 5,
+            "flashed": 0,
             "samples": [
-              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0)",
-              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0)",
-              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0)",
-              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0)",
-              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(0.18 0 0)"
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)"
             ]
           },
           {
@@ -482,7 +480,7 @@
               "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
               "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
               "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
-              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "DOMContentLoaded=oklch(1 0 0) firstFrame=oklch(1 0 0)",
               "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)"
             ]
           }
@@ -493,12 +491,10 @@
     {
       "id": "F",
       "name": "live stream: admission, refusal, gaps, pill",
-      "status": "FAIL",
-      "ms": 7943,
+      "status": "PASS",
+      "ms": 7890,
       "summary": "LOST chip and \"LOST, not success\" row; lossy row reads \"output lossy, not counted as confirmed\"; DENY, UNKNOWN and ALLOW tones distinct; observed item refused (invalid item) with recovery; duplicate no-op; gap recovers once; pill \"3 new records\" with scroll kept, one announcement, Jump works",
-      "failures": [
-        "the lossy row reads \"Result record 20: bash. Result: succeeded, reported, not independently verified; output lossy. QA lossy output · output lossy\", not \"output lossy, not counted as confirmed\". That phrase is the default branch at src/core/trajectory.ts:160 (a lossy success with the unknown tone); this unverified fixture takes the reported branch at trajectory.ts:152"
-      ],
+      "failures": [],
       "unverified": [],
       "evidence": {
         "snapshot": {
@@ -529,7 +525,7 @@
         ],
         "ledgerRows": {
           "lost": "Result record 19: bash. Result: LOST, not success. QA outcome not recorded",
-          "lossy": "Result record 20: bash. Result: succeeded, reported, not independently verified; output lossy. QA lossy output · output lossy"
+          "lossy": "Result record 20: bash. Result: succeeded, reported, not independently verified; output lossy, not counted as confirmed. QA lossy output · output lossy"
         },
         "dotShapes": {
           "lost": {
@@ -538,7 +534,8 @@
             "radius": "0px",
             "clipPath": "polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%)",
             "boxShadow": "none",
-            "background": "oklch(0.6 0.15 70)"
+            "background": "oklch(0.6 0.15 70)",
+            "mark": "none"
           },
           "deny": {
             "borderStyle": "solid",
@@ -546,7 +543,8 @@
             "radius": "2px",
             "clipPath": "none",
             "boxShadow": "none",
-            "background": "oklch(0.52 0.19 27)"
+            "background": "oklch(0.52 0.19 27)",
+            "mark": "none"
           },
           "unknown": {
             "borderStyle": "dotted",
@@ -554,7 +552,8 @@
             "radius": "50%",
             "clipPath": "none",
             "boxShadow": "none",
-            "background": "rgba(0, 0, 0, 0)"
+            "background": "rgba(0, 0, 0, 0)",
+            "mark": "none"
           },
           "allow": {
             "borderStyle": "solid",
@@ -562,7 +561,8 @@
             "radius": "50%",
             "clipPath": "none",
             "boxShadow": "none",
-            "background": "rgba(0, 0, 0, 0)"
+            "background": "rgba(0, 0, 0, 0)",
+            "mark": "absolute 2px oklch(0.44 0.09 250)"
           },
           "reported": {
             "borderStyle": "dashed",
@@ -570,7 +570,8 @@
             "radius": "50%",
             "clipPath": "none",
             "boxShadow": "none",
-            "background": "rgba(0, 0, 0, 0)"
+            "background": "rgba(0, 0, 0, 0)",
+            "mark": "none"
           },
           "pending": {
             "borderStyle": "solid",
@@ -578,7 +579,8 @@
             "radius": "50%",
             "clipPath": "none",
             "boxShadow": "none",
-            "background": "rgba(0, 0, 0, 0)"
+            "background": "rgba(0, 0, 0, 0)",
+            "mark": "none"
           }
         },
         "refusal": {
@@ -616,8 +618,8 @@
       "id": "G",
       "name": "reconnect and offline",
       "status": "PASS",
-      "ms": 41234,
-      "summary": "7 retry attempts, backoffs 609, 1672, 3540, 7978, 5147, 9296 ms; connected only after the event stream answered; 0 requests while offline; first request 2 ms after online",
+      "ms": 43697,
+      "summary": "7 retry attempts, backoffs 516, 1846, 2664, 5904, 7722, 9781 ms; connected only after the event stream answered; 0 requests while offline; first request 3 ms after online",
       "failures": [],
       "unverified": [],
       "evidence": {
@@ -625,20 +627,20 @@
         "stopCommandStatus": 0,
         "retryAttempts": 7,
         "backoffMs": [
-          609,
-          1672,
-          3540,
-          7978,
-          5147,
-          9296
+          516,
+          1846,
+          2664,
+          5904,
+          7722,
+          9781
         ],
         "attemptDurationMs": [
+          2,
           1,
-          0,
           1,
           1,
-          0,
-          0,
+          1,
+          1,
           1
         ],
         "outageBadgeStates": [
@@ -652,15 +654,15 @@
           "connectedBadgeIndex": 5
         },
         "requestsWhileOffline": 0,
-        "firstRequestAfterOnlineMs": 2,
-        "summary": "7 retry attempts, backoffs 609, 1672, 3540, 7978, 5147, 9296 ms; connected only after the event stream answered; 0 requests while offline; first request 2 ms after online"
+        "firstRequestAfterOnlineMs": 3,
+        "summary": "7 retry attempts, backoffs 516, 1846, 2664, 5904, 7722, 9781 ms; connected only after the event stream answered; 0 requests while offline; first request 3 ms after online"
       }
     },
     {
       "id": "H",
       "name": "forced colours and reduced motion",
       "status": "PASS",
-      "ms": 3570,
+      "ms": 3571,
       "summary": "forced colours: 6 of 6 ledger shapes distinct; reduced motion: 0 running animation(s), control transition 0.3s",
       "failures": [],
       "unverified": [],
@@ -670,20 +672,20 @@
           "reducedMotion": true
         },
         "normalShapes": {
-          "allow": "solid | 2px | 50% | none",
-          "deny": "solid | 1px | 2px | none",
-          "reported": "dashed | 2px | 50% | none",
-          "unknown": "dotted | 2px | 50% | none",
-          "lost": "solid | 1px | 0px | polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%)",
-          "pending": "solid | 1px | 50% | none"
+          "allow": "solid | 2px | 50% | none | absolute 2px oklch(0.44 0.09 250)",
+          "deny": "solid | 1px | 2px | none | none",
+          "reported": "dashed | 2px | 50% | none | none",
+          "unknown": "dotted | 2px | 50% | none | none",
+          "lost": "solid | 1px | 0px | polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%) | none",
+          "pending": "solid | 1px | 50% | none | none"
         },
         "forcedShapes": {
-          "allow": "solid | 2px | 50% | none",
-          "deny": "solid | 1px | 2px | none",
-          "reported": "dashed | 2px | 50% | none",
-          "unknown": "dotted | 2px | 50% | none",
-          "lost": "solid | 1px | 0px | polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%)",
-          "pending": "solid | 1px | 50% | none"
+          "allow": "solid | 2px | 50% | none | absolute 2px rgb(255, 255, 255)",
+          "deny": "solid | 1px | 2px | none | none",
+          "reported": "dashed | 2px | 50% | none | none",
+          "unknown": "dotted | 2px | 50% | none | none",
+          "lost": "solid | 1px | 0px | polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%) | none",
+          "pending": "solid | 1px | 50% | none | none"
         },
         "reducedMotion": {
           "runningAnimations": 0,
@@ -711,13 +713,13 @@
       "name": "console, CSP and network",
       "status": "PASS",
       "ms": 1,
-      "summary": "0 CSP violations; 0 console errors or warnings outside check G; 8 inside G's outage and offline window; 0 requests off the gateway origin (352 requests in all)",
+      "summary": "0 CSP violations; 0 console errors or warnings outside check G; 8 inside G's outage and offline window; 0 requests off the gateway origin (406 requests in all)",
       "failures": [],
       "unverified": [],
       "evidence": {
         "requests": {
-          "total": 352,
-          "toGateway": 352,
+          "total": 406,
+          "toGateway": 406,
           "external": 0
         },
         "consoleErrorsAndWarnings": {
@@ -725,12 +727,11 @@
           "inGOutage": 8,
           "inGOutageSamples": [
             "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
-            "Failed to load resource: net::ERR_EMPTY_RESPONSE",
             "Failed to load resource: net::ERR_CONNECTION_REFUSED"
           ]
         },
         "cspViolations": 0,
-        "summary": "0 CSP violations; 0 console errors or warnings outside check G; 8 inside G's outage and offline window; 0 requests off the gateway origin (352 requests in all)"
+        "summary": "0 CSP violations; 0 console errors or warnings outside check G; 8 inside G's outage and offline window; 0 requests off the gateway origin (406 requests in all)"
       }
     }
   ],
@@ -749,8 +750,8 @@
     },
     {
       "file": "p4-1440-light-trajectory.png",
-      "sha256": "cad745dc9356cabe858397f8712d45b1733240d828bce52ab81f1b425cc0f431",
-      "bytes": 139781,
+      "sha256": "f6255d70878099fe3f11b417289b81ebf748fd90f5574b489245ce58c85c19df",
+      "bytes": 139789,
       "check": "D"
     },
     {
@@ -761,8 +762,8 @@
     },
     {
       "file": "p4-1024-light-trajectory.png",
-      "sha256": "33ccf2a71b7d6f07cbec46002aebe2c9fcf55dd18add906faa127fdb5e2a3a45",
-      "bytes": 102643,
+      "sha256": "6e0e41e6ec6e3950ebdbdaba02c9b98f2f18940d91ef2038523497f7861c48c7",
+      "bytes": 102654,
       "check": "D"
     },
     {
@@ -785,8 +786,8 @@
     },
     {
       "file": "p4-1440-dark-trajectory.png",
-      "sha256": "85af4355229e6c211577ee6357cbe32149e9953e86c762ece2e9b6abbf13e81c",
-      "bytes": 141949,
+      "sha256": "b3c44e81bd5f1755696a561b35a65c1f10078f8fb38b4564698307e05de44ed1",
+      "bytes": 141929,
       "check": "D"
     },
     {
@@ -797,8 +798,8 @@
     },
     {
       "file": "p4-1024-dark-trajectory.png",
-      "sha256": "403bd9a480b247d0dd723ef35f81227b20b0e1fb936eef19dc88e75b40652e26",
-      "bytes": 104132,
+      "sha256": "7f52e154fa99e5d6874e0198bf5a1d47c81cc3bb2d1d26fd962019a240521a4d",
+      "bytes": 104115,
       "check": "D"
     },
     {
@@ -827,14 +828,14 @@
     },
     {
       "file": "p4-pill-away.png",
-      "sha256": "2b27aaa112a7e0c46d9a55fa3646c51b20037c0286a23577cae7b143344d5b7b",
-      "bytes": 109099,
+      "sha256": "a9c6046b30b6d7ea0f5ddee0635aec36ece95af0288b824734c4ed68ca6d8854",
+      "bytes": 109304,
       "check": "F"
     },
     {
       "file": "p4-forced-colors-trajectory.png",
-      "sha256": "d62617a83626f37c12c1bfb9dd0178957999a2418115b0591d8433886abe6742",
-      "bytes": 120847,
+      "sha256": "fc83996c52297d1028bb5a5ba55c48aec2db9a7d1efb832ffbe7e8e9746115d3",
+      "bytes": 120859,
       "check": "H"
     }
   ],
@@ -842,302 +843,313 @@
     "timelineG": [
       {
         "kind": "request",
-        "at": 49961,
+        "at": 50917,
         "url": "/app/"
       },
       {
         "kind": "response",
-        "at": 49964,
+        "at": 50920,
         "url": "/app/",
         "status": 200
       },
       {
         "kind": "request",
-        "at": 49981,
-        "url": "/app/assets/index-C6sBC3VL.js"
+        "at": 50930,
+        "url": "/app/theme-boot.js"
       },
       {
         "kind": "request",
-        "at": 49981,
-        "url": "/app/assets/index-CSIKyxbK.css"
+        "at": 50930,
+        "url": "/app/assets/index-CFJRJdII.js"
+      },
+      {
+        "kind": "request",
+        "at": 50930,
+        "url": "/app/assets/index-DV_e83aP.css"
       },
       {
         "kind": "response",
-        "at": 49981,
-        "url": "/app/assets/index-CSIKyxbK.css",
+        "at": 50931,
+        "url": "/app/assets/index-DV_e83aP.css",
         "status": 200
       },
       {
         "kind": "response",
-        "at": 49984,
-        "url": "/app/assets/index-C6sBC3VL.js",
+        "at": 50931,
+        "url": "/app/theme-boot.js",
+        "status": 200
+      },
+      {
+        "kind": "response",
+        "at": 50933,
+        "url": "/app/assets/index-CFJRJdII.js",
         "status": 200
       },
       {
         "kind": "request",
-        "at": 49994,
+        "at": 50942,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "request",
-        "at": 49994,
+        "at": 50943,
         "url": "/favicon.ico"
       },
       {
         "kind": "response",
-        "at": 49996,
+        "at": 50944,
         "url": "/api/v1/snapshot",
         "status": 200
       },
       {
         "kind": "response",
-        "at": 50003,
+        "at": 50952,
         "url": "/favicon.ico",
         "status": 204
       },
       {
         "kind": "request",
-        "at": 50004,
+        "at": 50952,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "kind": "response",
-        "at": 50010,
+        "at": 50961,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
         "status": 200
       },
       {
         "kind": "badge",
-        "at": 50293,
+        "at": 51253,
         "state": "open|connected"
       },
       {
         "kind": "badge",
-        "at": 51118,
+        "at": 52288,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "failed",
-        "at": 51118,
+        "at": 52288,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "kind": "request",
-        "at": 51277,
+        "at": 52402,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 51277,
+        "at": 52403,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 51278,
+        "at": 52404,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 51279,
+        "at": 52405,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 51887,
+        "at": 52921,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 51887,
+        "at": 52921,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 51887,
+        "at": 52921,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 51889,
+        "at": 52923,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 53560,
+        "at": 54768,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 53560,
+        "at": 54768,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 53560,
+        "at": 54768,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 53563,
+        "at": 54770,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 57101,
+        "at": 57433,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 57101,
+        "at": 57433,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 57101,
+        "at": 57433,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 57103,
+        "at": 57435,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 65079,
+        "at": 63337,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 65079,
+        "at": 63337,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 65079,
+        "at": 63338,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 65081,
+        "at": 63340,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 70226,
+        "at": 71060,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 70226,
+        "at": 71060,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 70226,
+        "at": 71060,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 70228,
+        "at": 71062,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 79522,
+        "at": 80842,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 79522,
+        "at": 80842,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 79523,
+        "at": 80842,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 79525,
+        "at": 80844,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 84794,
+        "at": 88234,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 84795,
+        "at": 88235,
         "state": "connecting|connecting…"
       },
       {
         "kind": "response",
-        "at": 84796,
+        "at": 88236,
         "url": "/api/v1/snapshot",
         "status": 200
       },
       {
         "kind": "request",
-        "at": 84798,
+        "at": 88239,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "kind": "response",
-        "at": 84801,
+        "at": 88244,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
         "status": 200
       },
       {
         "kind": "badge",
-        "at": 84801,
+        "at": 88244,
         "state": "open|connected"
       },
       {
         "kind": "badge",
-        "at": 84860,
+        "at": 88266,
         "state": "offline|offline"
       },
       {
         "kind": "failed",
-        "at": 84860,
+        "at": 88266,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "kind": "request",
-        "at": 90868,
+        "at": 94275,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 90868,
+        "at": 94275,
         "state": "connecting|connecting…"
       },
       {
         "kind": "response",
-        "at": 90870,
+        "at": 94277,
         "url": "/api/v1/snapshot",
         "status": 200
       },
       {
         "kind": "request",
-        "at": 90872,
+        "at": 94279,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "kind": "response",
-        "at": 90875,
+        "at": 94282,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
         "status": 200
       },
       {
         "kind": "badge",
-        "at": 90875,
+        "at": 94282,
         "state": "open|connected"
       }
     ],
-    "requests": 352,
-    "gatewayRequests": 352,
+    "requests": 406,
+    "gatewayRequests": 406,
     "externalRequests": [],
     "consoleErrorsAndWarnings": [
       {
@@ -1145,122 +1157,122 @@
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
-        "url": "http://127.0.0.1:8861/api/v1/events?cursor=fixture-2f1c%3A18"
-      },
-      {
-        "phase": "G",
-        "level": "error",
-        "source": "network",
-        "text": "Failed to load resource: net::ERR_EMPTY_RESPONSE",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+        "url": "http://127.0.0.1:8862/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+        "url": "http://127.0.0.1:8862/api/v1/snapshot"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+        "url": "http://127.0.0.1:8862/api/v1/snapshot"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+        "url": "http://127.0.0.1:8862/api/v1/snapshot"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+        "url": "http://127.0.0.1:8862/api/v1/snapshot"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+        "url": "http://127.0.0.1:8862/api/v1/snapshot"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot"
+        "url": "http://127.0.0.1:8862/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:8862/api/v1/snapshot"
       }
     ],
     "cspViolations": [],
     "failedRequests": [
       {
         "phase": "G",
-        "url": "http://127.0.0.1:8861/api/v1/events?cursor=fixture-2f1c%3A18",
+        "url": "http://127.0.0.1:8862/api/v1/events?cursor=fixture-2f1c%3A18",
         "type": "EventSource",
         "errorText": "net::ERR_INCOMPLETE_CHUNKED_ENCODING",
-        "t": 8454.033215
+        "t": 10612.689881
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot",
-        "type": "Fetch",
-        "errorText": "net::ERR_EMPTY_RESPONSE",
-        "t": 8454.38336
-      },
-      {
-        "phase": "G",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "url": "http://127.0.0.1:8862/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 8454.993037
+        "t": 10613.009725
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "url": "http://127.0.0.1:8862/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 8456.665966
+        "t": 10613.527705
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "url": "http://127.0.0.1:8862/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 8460.206823
+        "t": 10615.37474
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "url": "http://127.0.0.1:8862/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 8468.184402
+        "t": 10618.039807
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "url": "http://127.0.0.1:8862/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 8473.331923
+        "t": 10623.944071
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:8861/api/v1/snapshot",
+        "url": "http://127.0.0.1:8862/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 8482.628655
+        "t": 10631.666742
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:8861/api/v1/events?cursor=fixture-2f1c%3A18",
+        "url": "http://127.0.0.1:8862/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 10641.448741
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:8862/api/v1/events?cursor=fixture-2f1c%3A18",
         "type": "EventSource",
         "errorText": "net::ERR_ABORTED",
-        "t": 8487.965848
+        "t": 10648.872261
       }
     ]
   }

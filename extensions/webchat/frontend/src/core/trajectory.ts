@@ -21,7 +21,7 @@
 // a projection, a verdict, or a filter outcome.
 
 import type { ItemView, Tone } from "./contract";
-import { formatClock, humanize, shortDigest, slug, stateChipClass, verdictChipClass } from "./format";
+import { formatClock, humanize, SUCCESS_STATES, shortDigest, slug, stateChipClass, verdictChipClass } from "./format";
 import { isVerifiedIn, verifyIn, type ProjectionState } from "./verification";
 import { turnsOf } from "./store";
 
@@ -142,8 +142,15 @@ const VERDICT_WORDS: Readonly<Record<string, string>> = {
 
 const STATE_WORDS: Readonly<Record<string, string>> = { unknown: "UNKNOWN", lost: "LOST" };
 
+// Lossy output is incomplete, so a lossy success is never counted as confirmed. Each of its
+// branches ends in this clause, whatever the tone.
+const LOSSY_NOT_CONFIRMED = "output lossy, not counted as confirmed";
+
 function outcomeWords(item: ItemView, tone: Tone): string {
   const word = STATE_WORDS[slug(item.state)] || humanize(item.state);
+  if (item.lossy && SUCCESS_STATES.has(slug(item.state))) {
+    return tone === "reported" ? `${word}, reported${NOT_VERIFIED}; ${LOSSY_NOT_CONFIRMED}` : `${word}, ${LOSSY_NOT_CONFIRMED}`;
+  }
   const lossy = item.lossy ? "; output lossy" : "";
   switch (tone) {
     case "ok":
@@ -157,7 +164,7 @@ function outcomeWords(item: ItemView, tone: Tone): string {
       return `${word}, no outcome yet${lossy}`;
     default:
       // Lossy output takes the unknown tone, so the words must not call it confirmed.
-      if (item.lossy && slug(item.state) !== "unknown") return `${word}, output lossy, not counted as confirmed`;
+      if (item.lossy && slug(item.state) !== "unknown") return `${word}, ${LOSSY_NOT_CONFIRMED}`;
       return `${word}, not success${lossy}`;
   }
 }

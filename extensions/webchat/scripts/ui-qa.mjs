@@ -1071,6 +1071,8 @@ const DOT_SHAPES = (tones) => `(() => {
       continue;
     }
     const cs = getComputedStyle(dot);
+    // The centred mark of a bullseye is a pseudo-element (::after). Its computed box is part of the shape.
+    const mark = getComputedStyle(dot, '::after');
     out[tone] = {
       borderStyle: cs.borderTopStyle,
       borderWidth: cs.borderTopWidth,
@@ -1078,6 +1080,7 @@ const DOT_SHAPES = (tones) => `(() => {
       clipPath: cs.clipPath,
       boxShadow: cs.boxShadow,
       background: cs.backgroundColor,
+      mark: mark.content === 'none' || mark.content === 'normal' ? 'none' : [mark.position, mark.width, mark.backgroundColor].join(' '),
     };
   }
   return out;
@@ -1613,9 +1616,10 @@ async function checkG(ctx) {
     ctx.note('retryAttempts', attempts.length);
     ctx.note('backoffMs', backoffs);
     ctx.note('attemptDurationMs', durations);
-    // Base 500 ms, factor 2, cap 10 s, jitter in [50%, 100%] (backoff.ts). The first wait after an
-    // immediate reconnect is one step later than backoff.ts's first step, as the timeline shows (see the
-    // receipt's timelineG); the bands below are the observed steps, and the spec's "from ~500 ms, cap 10 s" holds.
+    // Base 500 ms, factor 2, cap 10 s, jitter in [50%, 100%] (backoff.ts:37-39). Step n waits 500 ms x 2^n, capped
+    // at 10 s and scaled into [50%, 100%]. A drop schedules step 0 (250-500 ms) before the first request, and no gap
+    // is measured before that request. Each failed retry then schedules the next step, so gap k (0-based) is step k+1,
+    // and the bands below start at step 1 (500-1000 ms). They allow 150 ms below and 350 ms above.
     const bound = (step) => Math.min(10000, 500 * 2 ** step);
     const outside = backoffs
       .map((g, k) => ({ k, g, lo: Math.round(bound(k + 1) * 0.5 - 150), hi: bound(k + 1) + 350 }))
@@ -1682,12 +1686,13 @@ async function checkH(ctx) {
     const media = await evaluate(`({ forcedColors: matchMedia('(forced-colors: active)').matches, reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches })`);
     ctx.note('emulationActive', media);
     if (!media.forcedColors || !media.reducedMotion) ctx.unverify(`the page does not report the emulation (forced-colors ${media.forcedColors}, reduced-motion ${media.reducedMotion})`);
-    const signature = (s) => (s ? [s.borderStyle, s.borderWidth, s.radius, s.clipPath].join(' | ') : 'missing');
+    const signature = (s) => (s ? [s.borderStyle, s.borderWidth, s.radius, s.clipPath, s.mark].join(' | ') : 'missing');
     const forcedSignatures = Object.fromEntries(TONES.map((t) => [t, signature(forced[t])]));
     ctx.note('normalShapes', Object.fromEntries(TONES.map((t) => [t, signature(normal[t])])));
     ctx.note('forcedShapes', forcedSignatures);
     const distinct = new Set(Object.values(forcedSignatures)).size;
     ctx.expect(!Object.values(forcedSignatures).includes('missing') && distinct === TONES.length, `under forced colours the ${TONES.length} ledger states share shapes (${distinct} distinct): ${JSON.stringify(forcedSignatures)}`);
+    ctx.expect(forced.allow?.mark !== 'none' && forced.pending?.mark === 'none', `under forced colours ALLOW must keep its centred dot and PENDING must not have one: allow=${forced.allow?.mark} pending=${forced.pending?.mark}`);
     await capture('p4-forced-colors-trajectory.png');
 
     // Reduced motion: the drawer transition must not run. A control without the preference must show one.

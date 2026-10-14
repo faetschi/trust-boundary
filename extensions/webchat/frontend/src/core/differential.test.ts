@@ -560,6 +560,18 @@ describe("differential: store reducers", () => {
 // same argument, ignore it, and judge the item alone, which is the judgement the live projection makes identical.
 const LIVE = { source: "live", verification: "structural-audit-only" } as const;
 
+// D4 (phase2-parity.md): a lossy success that is reported adds ", not counted as confirmed" to the legacy
+// words, which stop at "output lossy". Every other status text must equal the legacy text exactly.
+const D4_CLAUSE = ", not counted as confirmed";
+function expectedStatusText(item: ItemView): string {
+  const legacy = legacyTrajectory.statusText(item, LIVE);
+  const reportedLossySuccess =
+    item.lossy === true && formatTs.SUCCESS_STATES.has(formatTs.slug(item.state)) && legacyTrajectory.recordDot(item, LIVE) === "reported";
+  if (!reportedLossySuccess) return legacy;
+  assert.ok(legacy.endsWith("; output lossy"), `D4 applies only to the legacy lossy clause: ${legacy}`);
+  return `${legacy}${D4_CLAUSE}`;
+}
+
 describe("differential: trajectory projections", () => {
   test("every projection returns the legacy result on seeded item lists", () => {
     const rng = new Rng(0x5eed0005);
@@ -582,7 +594,7 @@ describe("differential: trajectory projections", () => {
       for (const item of items) {
         same("recordSource", legacyTrajectory.recordSource(item), trajectoryTs.recordSource(item));
         same("recordDot", legacyTrajectory.recordDot(item, LIVE), trajectoryTs.recordDot(item, LIVE));
-        same("statusText", legacyTrajectory.statusText(item, LIVE), trajectoryTs.statusText(item, LIVE));
+        same("statusText", expectedStatusText(item), trajectoryTs.statusText(item, LIVE));
         same("recordLabel", legacyTrajectory.recordLabel(item), trajectoryTs.recordLabel(item));
         same("recordPayload", legacyTrajectory.recordPayload(item), trajectoryTs.recordPayload(item));
         same("recordChips", legacyTrajectory.recordChips(item, LIVE), trajectoryTs.recordChips(item, LIVE));
@@ -845,5 +857,33 @@ describe("differential: deliberate deviations (stricter than legacy)", () => {
     for (const projection of NON_LIVE_PROJECTIONS) {
       assert.notEqual(trajectoryTs.recordDot(record, projection), "ok", `port, ${projection.source}/${projection.verification}`);
     }
+  });
+
+  test("D4: a lossy success that is reported says it is not counted as confirmed; the legacy words stop at 'output lossy'", () => {
+    // Legacy trajectory.mjs words an unverified lossy success "reported ...; output lossy". The port adds the clause
+    // that check F of ui-qa.mjs expects. Evidence: trajectory.test.ts ("a lossy success says it is not counted as
+    // confirmed in the reported branch as well as the verified one"). The corpus above applies this clause through
+    // expectedStatusText, and nothing else.
+    const record = {
+      id: "r4",
+      sequence: 4,
+      type: "result" as const,
+      turn_id: "t1",
+      occurred_at: "2026-10-13T10:00:00Z",
+      tool: "bash" as const,
+      tool_call_id: "c4",
+      state: "succeeded" as const,
+      lossy: true,
+    };
+    assert.equal(legacyTrajectory.statusText(record, LIVE), "Result: succeeded, reported, not independently verified; output lossy", "legacy");
+    assert.equal(
+      trajectoryTs.statusText(record, LIVE),
+      "Result: succeeded, reported, not independently verified; output lossy, not counted as confirmed",
+      "port",
+    );
+    // A verified lossy success is on the unknown tone in both, and both words are identical: no deviation there.
+    const verified = { ...record, authority: "observed" as const, verification_scope: "structural-audit-only" as const };
+    assert.equal(legacyTrajectory.statusText(verified, LIVE), trajectoryTs.statusText(verified, LIVE), "verified lossy: no deviation");
+    assert.equal(trajectoryTs.statusText(verified, LIVE), "Result: succeeded, output lossy, not counted as confirmed");
   });
 });

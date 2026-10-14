@@ -26,6 +26,10 @@ const (
 	appManifest = ".vite/manifest.json"
 )
 
+// appBootScript is the theme script the shell loads before the first paint. Vite copies
+// frontend/public/ unchanged, so the manifest does not name it. admitBootScript admits it instead.
+const appBootScript = "theme-boot.js"
+
 // appFilePattern admits only the file shapes this build emits: JavaScript and
 // CSS under assets/. Any other file the manifest names fails the derivation.
 var appFilePattern = regexp.MustCompile(`^assets/[A-Za-z0-9][A-Za-z0-9._-]*\.(js|css)$`)
@@ -98,8 +102,9 @@ func loadAppBundle(source fs.FS) *appBundle {
 
 // deriveAppRoutes is the closed allowlist for /app/. It starts from index.html and
 // the manifest entries marked isEntry, follows css, assets, imports and dynamic
-// imports, and admits exactly those files. Every admitted file must exist and be
-// a permitted type, and every URL in the shell must be admitted.
+// imports, and admits exactly those files, plus the theme script when the shell loads
+// it first (admitBootScript). Every admitted file must exist and be a permitted type,
+// and every URL in the shell must be admitted.
 func deriveAppRoutes(source fs.FS) (map[string]appRoute, error) {
 	raw, err := fs.ReadFile(source, appManifest)
 	if err != nil {
@@ -181,10 +186,60 @@ func deriveAppRoutes(source fs.FS) (map[string]appRoute, error) {
 	if err != nil {
 		return nil, fmt.Errorf("app shell %s is missing: %w", appIndex, err)
 	}
+	if err := admitBootScript(shell, source, routes); err != nil {
+		return nil, err
+	}
 	if err := admitShell(shell, routes); err != nil {
 		return nil, err
 	}
 	return routes, nil
+}
+
+// admitBootScript admits the theme script when the shell loads it, and refuses every other way of loading it. The
+// browser runs the script before the first paint, so the shell may load it only as its first <script>: a classic
+// script whose only attribute is src (no type, defer, async or nomodule), before <body>, and as its only reference.
+// A shell that does not name it admits nothing, so the file stays unserved.
+func admitBootScript(shell []byte, source fs.FS, routes map[string]appRoute) error {
+	tags, err := parseShellTags(shell)
+	if err != nil {
+		return err
+	}
+	const bootURL = appPrefix + appBootScript
+	references := 0
+	var first *shellTag
+	bodyFirst := false
+	for i := range tags {
+		tag := &tags[i]
+		if first == nil && tag.name == "body" {
+			bodyFirst = true
+		}
+		if first == nil && tag.name == "script" {
+			first = tag
+		}
+		for _, attr := range tag.attrs {
+			for _, url := range shellAttrURLs(attr) {
+				if url == bootURL {
+					references++
+				}
+			}
+		}
+	}
+	if references == 0 {
+		return nil
+	}
+	notFirst := fmt.Errorf("app shell loads %s other than as its first, classic script before <body>", bootURL)
+	if first == nil || bodyFirst || references != 1 {
+		return notFirst
+	}
+	if len(first.attrs) != 1 || first.attrs[0].name != "src" || strings.Trim(first.attrs[0].value, " \t\n\f\r") != bootURL {
+		return notFirst
+	}
+	info, err := fs.Stat(source, appBootScript)
+	if err != nil || !info.Mode().IsRegular() {
+		return fmt.Errorf("app shell loads %s, which is missing from the build", bootURL)
+	}
+	routes[bootURL] = appRoute{name: appBootScript, contentType: "text/javascript; charset=utf-8"}
+	return nil
 }
 
 // appPath is the request path under which a derived file is served.
@@ -236,19 +291,11 @@ func admitShell(shell []byte, routes map[string]appRoute) error {
 		}
 		hasSource := false
 		for _, attr := range tag.attrs {
-			switch {
-			case tag.name == "meta" && attr.name == "http-equiv":
+			if tag.name == "meta" && attr.name == "http-equiv" {
 				return errors.New("app shell has a <meta http-equiv>, which is not admitted")
-			case attr.name == "srcset" || attr.name == "imagesrcset":
-				for _, candidate := range strings.Split(attr.value, ",") {
-					if fields := strings.Fields(candidate); len(fields) > 0 {
-						if err := admit(fields[0]); err != nil {
-							return err
-						}
-					}
-				}
-			case shellURLAttributes[attr.name]:
-				if err := admit(strings.Trim(attr.value, " \t\n\f\r")); err != nil {
+			}
+			for _, reference := range shellAttrURLs(attr) {
+				if err := admit(reference); err != nil {
 					return err
 				}
 			}
@@ -259,6 +306,24 @@ func admitShell(shell []byte, routes map[string]appRoute) error {
 		if tag.name == "script" && !hasSource {
 			return errors.New("app shell has an inline <script> (no src)")
 		}
+	}
+	return nil
+}
+
+// shellAttrURLs returns the URLs an attribute names, as the browser reads them: each candidate of a srcset, and
+// the whole value of a URL attribute. Any other attribute names no URL.
+func shellAttrURLs(attr shellAttr) []string {
+	switch {
+	case attr.name == "srcset" || attr.name == "imagesrcset":
+		var urls []string
+		for _, candidate := range strings.Split(attr.value, ",") {
+			if fields := strings.Fields(candidate); len(fields) > 0 {
+				urls = append(urls, fields[0])
+			}
+		}
+		return urls
+	case shellURLAttributes[attr.name]:
+		return []string{strings.Trim(attr.value, " \t\n\f\r")}
 	}
 	return nil
 }

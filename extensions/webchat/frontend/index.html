@@ -2,6 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- A classic, render-blocking script, first in <head>: it applies the stored theme before the first paint. -->
+    <script src="/theme-boot.js"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <!-- Before the stylesheet paints, so the canvas matches the theme in both schemes. -->
     <meta name="color-scheme" content="light dark" />

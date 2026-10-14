@@ -1,6 +1,6 @@
 csp-smoke: browser Chrome/155.0.8059.79 (C:\Program Files\Google\Chrome\Application\chrome.exe)
 csp-smoke: toolchain not checked: the gateway was supplied with --url
-csp-smoke: gateway http://127.0.0.1:8861 (demo fixture, read-only); policy from handler.go
+csp-smoke: gateway http://127.0.0.1:8862 (demo fixture, read-only); policy from handler.go
 csp-smoke: observer live: the canary produced 4 CSP violation(s)
 PASS header probes: 16 responses carry the gateway policy with the expected status and Location
 PASS / (redirect, lands on /app/): 0 CSP violations; 0 console errors/exceptions; 0 style attributes; 0 on* attributes; CSS Module class "_header_1rhv9_32" applied (header bottom border 1px, unstyled default 0px)

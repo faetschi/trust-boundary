@@ -8,13 +8,16 @@ Status at HEAD `57e6406` (2026-10-14):
 - **Phases 1 to 3 are committed.** P1 scaffold `263b6ca` (review fixes `2583f5a`); P2 typed
   logic port `4700ca5`; P3 React views `58492c5`, `57bcd95`, `a2aaf30`, `60ca5b0`, `6d03657`
   and `57e6406`. The decision is in `adr-0001-optional-extension.md`.
+- **Final QA fix round (2026-10-14, uncommitted):** the Final browser QA's findings are addressed. First paint and
+  the lossy wording are fixed, the ALLOW shape and the stale lines are fixed, and the backoff timing is confirmed. The
+  browser QA passes 9 of 9 against a Linux-built gateway. See the last section.
 - **Verified on Linux (WSL, Go 1.27.1, Node 24.15.0):** vitest 896/896 (60 files, 0 skipped);
   extension Go `-race` 54 top-level PASS, 0 SKIP; legacy node tests 258/258; sink and
   dependency gates with their self-tests; boundary guard; the Linux rebuild equals the
   committed `dist/`. Receipts: "Claim gate in the core" and "Default UI switch" below.
 - **Open:** no screen-reader testing; the narrow drawer scrolls with the page (not pinned);
-  stream `complete` wording (owner decision); legacy removal (owner sign-off); the dead
-  favicon allowance in `extensions/webchat/scripts/csp-smoke.mjs` (present at HEAD).
+  stream `complete` wording (owner decision); legacy removal (owner sign-off). The favicon
+  allowance is closed: the final QA fix round removed it (see its section below).
 - Sections below that say "scaffold" or "not committed" describe the state when they were
   written. Where a later commit changed that state, the section says so.
 
@@ -121,13 +124,17 @@ allowlist and the CSP.
 - `build.assetsInlineLimit: 0`: no assets are inlined as `data:` URLs.
 - `build.modulePreload.polyfill: false`: Vite emits no inline `<script>`.
 - `build.sourcemap: false`: no `.map` files are produced or served.
+- `frontend/public/theme-boot.js` is copied unchanged to `dist/theme-boot.js`. Vite
+  rewrites the shell's `src="/theme-boot.js"` to `/app/theme-boot.js`. The gateway admits
+  that one load (see step 7 of the allowlist).
 - `__APP_VERSION__` comes from `package.json`, never a timestamp. The output
   depends only on the source bytes, which `frontend/.gitattributes` keeps LF,
   and on the pinned toolchain.
 
-The generated `index.html` has one `<script type="module" src="/app/assets/…">`
-and one `<link rel="stylesheet" href="/app/assets/…">`, with no inline script or
-style. CSS Modules compile to hashed class names in the static `.css` file.
+The generated `index.html` has one classic `<script src="/app/theme-boot.js">` first in
+`<head>`, then one `<script type="module" src="/app/assets/…">` and one
+`<link rel="stylesheet" href="/app/assets/…">`, with no inline script or style. CSS Modules
+compile to hashed class names in the static `.css` file.
 
 ## The /app/ allowlist is derived from the manifest
 
@@ -155,6 +162,14 @@ The route table is built once at startup (`internal/webchat/app.go`,
    `<meta http-equiv>`, and on an inline `<script>` (no `src`, or a body). A
    `data-src` is not a `src`. `on*` and `style` attributes are not checked here.
    The test checks them.
+7. The theme script is the one file outside the manifest. It is `theme-boot.js`,
+   copied from `public/`, and the browser runs it before the first paint. The
+   derivation admits `/app/theme-boot.js` only when the shell loads it as its first
+   `<script>`: a classic script whose only attribute is `src`, before `<body>`, and
+   as its only reference (`admitBootScript`). The file must be a regular file in the
+   build. Any other load of it fails the derivation, and so does a missing file. A
+   file beside it, or a path under it, stays 404, and so does the script itself when
+   the shell does not load it.
 
 Files outside that set are never served. A file present in `dist/` but not
 reachable from the manifest is not served. A test enforces this, and a second
@@ -301,9 +316,10 @@ Each run, in order:
    `Content-Security-Policy`, as the browser received it, must equal the policy.
    There must be zero CSP violations (from `securitypolicyviolation` events and
    `security`-source console entries), zero console errors and zero uncaught
-   exceptions, except one 404 for `/favicon.ico`. The pages have no favicon link,
-   so the browser asks for the default icon. The count of allowed favicon 404s is
-   printed. There must be zero `style` attributes and zero `on*` attributes.
+   exceptions. There is no favicon allowance. *(Superseded: this text allowed one 404
+   for `/favicon.ico`. The final QA fix round removed that allowance. `/favicon.ico`
+   answers 204, so a favicon 404 is a console error and fails the run.)* There must be
+   zero `style` attributes and zero `on*` attributes.
    `/app/` (and `/`, which lands there) must render its banner with a CSS Modules
    class whose computed background differs from a default probe element, and a
    linked stylesheet. `/legacy/` must show the "Deprecated: legacy workspace" notice,
@@ -1050,7 +1066,7 @@ Environment (`docs/webchat/qa/p4-ui-qa-receipt.json` holds every hash):
 | H forced colours and reduced motion | PASS | `matchMedia` reports both preferences. 6 of 6 ledger state shapes are distinct by computed border style, width, radius and clip-path. Under reduced motion, 0 animations run; the control without the preference shows the drawer's 0.3 s transition |
 | I console, CSP, network | PASS | 0 CSP violations. 0 console errors or warnings outside G. Inside G, 8 network failures while the gateway was down or killed: 6 `ERR_CONNECTION_REFUSED`, 1 `ERR_EMPTY_RESPONSE`, 1 `ERR_INCOMPLETE_CHUNKED_ENCODING`. 0 requests off the gateway origin, out of 352 |
 
-Defects (found, not fixed):
+Defects (found at `57e6406`; their status is in the fix round below):
 
 1. **The first paint shows the OS scheme when a stored choice differs** (E3). Repro: set
    `localStorage["tbound-webchat-theme"] = "light"` on the gateway origin, emulate
@@ -1065,14 +1081,14 @@ Defects (found, not fixed):
    being evaluated, and the measurement says the first frame can paint before that. The CSP
    (`script-src 'self'`) forbids an inline script, so a fix needs a render-blocking same-origin
    classic script in `<head>`, or a hash for a tiny inline one. That choice is the owner's.
-   Limit: the first frame is sampled in `requestAnimationFrame`, not from a first-paint screenshot.
+   Limit: the first frame is sampled in `requestAnimationFrame`, not from a first-paint screenshot. *Superseded: fixed in the fix round below (`theme-boot.js`).*
 2. **The lossy wording differs from the QA expectation** (F). The exact phrase "output lossy,
    not counted as confirmed" is produced only by the `default` branch of
    `frontend/src/core/trajectory.ts:158-160`, which a lossy success with the unknown tone reaches.
    The fixture's lossy success takes the `reported` branch (`trajectory.ts:151-152`) and reads
    "succeeded, reported, not independently verified; output lossy". The record is not green, and
    its chat chip reads "lossy" with the unknown tone. Both readings are defensible, so the owner
-   should choose one. Low severity.
+   should choose one. Low severity. *Superseded: fixed in the fix round below (D4).*
 
 Observations (not defects):
 
@@ -1080,16 +1096,16 @@ Observations (not defects):
    later). Its waits then run one backoff step later than `backoff.ts:37-38` computes for
    attempt 0 (which would give 0.25–0.5 s). The observed waits are 0.5–1 s, 1–2 s, 2–4 s,
    4–8 s, then 5–10 s, all under the cap. The spec's "from about 500 ms, cap 10 s" holds. I did
-   not trace the drop path, so the cause of the extra step is unverified.
+   not trace the drop path, so the cause of the extra step is unverified. *Superseded: the drop path is traced in the fix round below. The 160 ms reading is retired, and the backoff is unchanged.*
 4. **A recovery snapshot replaces the store.** Records pushed by the stream that the gateway's
    snapshot does not contain disappear. Here records 19 to 22 vanished after the refusal. That
    follows from the snapshot-first design; a QA stream should expect it.
 5. **ALLOW and pending dots differ only in border width** (2 px and 1 px). Reported is dashed and
    unknown is dotted. The computed shapes are distinct under forced colours, but I did not check
-   them at 1x on a Windows high-contrast theme.
+   them at 1x on a Windows high-contrast theme. *Superseded: ALLOW is now a bullseye, distinct by shape (fix round below).*
 6. **Stale text, not changed here.** The "Open" list at the top of this file still names the
    favicon allowance, and the "Opt-in browser CSP smoke" section still says "except one 404 for
-   `/favicon.ico`" (about lines 304 to 305). This pass makes both wrong. Only this section was edited.
+   `/favicon.ico`" (about lines 304 to 305). This pass makes both wrong. Only this section was edited. *Superseded: both lines are corrected in the fix round below.*
 
 Not verified:
 
@@ -1109,3 +1125,159 @@ Not verified:
 
 Claim boundary: these are browser checks of presentation and behaviour. They establish no
 claim: G1=false, containment not-established, H1 unexecuted.
+
+## Final QA fix round (2026-10-14)
+
+This round addresses the five items that the Final browser QA recorded at `57e6406`, and re-runs that QA. The numbering
+below follows this round: items 1 and 2 are the QA's defects 1 and 2; item 3 is the QA's observation 5; item 4 is the
+QA's observation 6; item 5 is the QA's observation 3. Items 1 to 4 change code or docs. Item 5 is confirmed and documented,
+with no code change. Nothing is
+committed. The tree tested is HEAD `caae3af` plus the files under "Files changed", with `frontend/src/app/` at HEAD.
+
+**The shared worktree is not the tested tree.** Another pipeline is editing `frontend/src/app/` in this same worktree.
+At the last check, 15 non-test files and 10 new non-test files there differed from HEAD, besides test files. The
+worktree's own test run was red in five files: `Rail`, `Shell`, `Shell.views`, `TrajectoryView`, and the token test's
+alias-tier check of `app/Shell.module.css`. None of those files is part of this round. So every verification below ran
+on an overlay: HEAD (from `git archive`) plus this round's files. The overlay's code files are byte-identical to the
+worktree's, and its `dist/` is byte-identical to the worktree's `dist/`. The committed tree must not pick up the other
+pipeline's work, and the committed `dist/` corresponds to HEAD's `src/app` plus this round.
+
+### Defects
+
+1. **First paint (E3): fixed.** The explicit choice was applied by a deferred module, so the first frame painted the
+   OS scheme. Now `frontend/public/theme-boot.js` is a classic script, first in `<head>` (`index.html`). Vite copies it
+   unchanged to `dist/theme-boot.js` and rewrites `src="/theme-boot.js"` to `/app/theme-boot.js`, with no warning. It
+   reads the stored choice inside `try`/`catch` and sets `data-theme` as `theme.ts` does. Invalid, system and throwing
+   storage keep the system choice. The script is external, so the CSP is unchanged: `script-src 'self'`, no inline
+   script, no `unsafe-inline`. `meta color-scheme` stays. The manifest does not name this file, so `app.go` admits it
+   by its own rule, `admitBootScript`. The shell must load it as its first `<script>`, a classic tag whose only
+   attribute is `src`, before `<body>`, as its only reference, and the file must be in the build. Every other load
+   fails the derivation. Its neighbours stay 404. Rejected: a hashed inline script (it would widen the CSP), and a
+   Vite-emitted classic bundle (Vite does not emit classic scripts from `index.html`). `bootstrap.ts` and `main.tsx`
+   now say that the module is only a fallback.
+
+2. **Lossy wording (F): fixed, deviation D4.** Every lossy success now ends in `output lossy, not counted as
+   confirmed`, in every branch. The reported branch reads `succeeded, reported, not independently verified; output
+   lossy, not counted as confirmed`. The verified branch reads `succeeded, output lossy, not counted as confirmed`. No
+   lossy success takes the ok tone, which was already true. The legacy module still says `...; output lossy`, so the
+   difference is recorded as D4 in `phase2-parity.md`. The differential corpus adds the clause to a reported lossy
+   success and nothing else, and `differential.test.ts` §F pins the exact strings. Not changed: the chat readings
+   (`src/app/views/chat/readings.ts`) and the inspector state chip (`src/app/inspector/recordChip.ts`) say
+   `succeeded (output lossy, not confirmed)`. Those files are not owned by this round. If the owner wants the exact
+   phrase on every surface, they need the same change.
+
+3. **ALLOW vs PENDING (observation 5): fixed.** ALLOW is a bullseye: its 2 px ring with a centred 2 px dot (`::after`,
+   `inset: 0; margin: auto`). Under forced colours the dot keeps a system colour (`forced-color-adjust: none;
+   background-color: CanvasText`). PENDING is a thin 1 px hollow ring. The two now differ by the centred mark, not by
+   border width alone. The change uses CSS Modules and alias tokens only, with no inline style.
+
+4. **Stale lines: fixed.** The Open list no longer names the favicon allowance. The CSP-smoke section no longer allows
+   a 404 for `/favicon.ico`. `phase3-parity.md` line 150 is marked superseded. The old defect list above carries
+   "superseded" notes instead of being rewritten, so its receipts stay.
+
+5. **Reconnect backoff: confirmed, not changed.** `backoff.ts:37-39` computes `min(10 s, 500 ms × 2^n)`, scaled by a
+   factor in [0.5, 1). Step 0 is 250–500 ms, step 1 is 500–1000 ms, step 2 is 1–2 s, step 3 is 2–4 s, step 4 is 4–8 s,
+   and later steps are 5–10 s. A drop schedules step 0 (`stream.ts`, `drop` → `scheduleRetry`). Each failed retry
+   schedules the next step (`fail` → `scheduleRetry`). G's first measured gap runs from its first failed request, so
+   that gap is step 1. The first measured gap of this run was 516 ms, which is in band. The "about 160 ms" in the
+   earlier observation was the time between the `reconnecting` badge and the first request in the receipt's timeline.
+   Step 0 cannot be shorter than 250 ms, so that figure is not a backoff wait, and it is retired. G's bands were
+   already right. Only the comment that explained them was wrong, and it is corrected.
+
+### Files changed
+
+- Frontend: `index.html`; `public/theme-boot.js` (new); `vite.config.ts`; `src/main.tsx`; `src/theme/bootstrap.ts`;
+  `src/theme/theme.ts` (comment); `src/theme/boot.test.ts` (new); `src/theme/shell.test.ts` (new); `src/core/trajectory.ts`;
+  `src/core/trajectory.test.ts`; `src/core/differential.test.ts`; `src/ui/StateDot.tsx` (comment);
+  `src/ui/StateDot.module.css`; `src/ui/StateDot.test.tsx`; `src/styles/tokens.test.ts`.
+- Go: `internal/webchat/app.go`; `internal/webchat/app_test.go`.
+- Build: `internal/webchat/dist/` rebuilt. It holds `.vite/manifest.json`, `index.html`, `theme-boot.js` (new), and
+  `assets/index-CFJRJdII.js` and `assets/index-DV_e83aP.css`, which replace the two old assets.
+- QA: `scripts/ui-qa.mjs` (the G comment is corrected, and H also reads the centred mark's computed box under forced
+  colours; no band or expectation was relaxed). `docs/webchat/qa/` holds this run's receipt and log, and regenerated
+  screenshots. The first run's FAIL is kept as `p4-ui-qa-receipt-first-run.json` and `p4-ui-qa-run-first-run.txt`.
+- Docs: `docs/frontend.md`; `docs/phase2-parity.md` (D4 row); `docs/phase3-parity.md` (line 150, superseded).
+
+### Verification
+
+Red, then green, each observed:
+
+- Lossy wording: the two new `trajectory.test.ts` tests failed (2) before the change and pass after.
+- D4: with HEAD's `trajectory.ts`, 4 tests fail across `trajectory.test.ts` and `differential.test.ts` (the corpus, and
+  the D4 test). They pass with the change and the D4 annotation.
+- Bullseye: 3 `StateDot.test.tsx` tests failed before the CSS change (no centred mark; outline equal apart from the
+  mark; forced-colour centre). They pass after. The new token row for the centre passed at once, since no colour
+  changed, so it guards rather than drives.
+- First paint, logic: `boot.test.ts` fails while `public/theme-boot.js` is absent (the module cannot load). It runs the
+  shipped file in `node:vm` against stub storage, and it agrees with `theme.ts` for every stored value.
+- First paint, shell: `shell.test.ts` fails on the built `dist/index.html` before the build. It fails the source checks
+  (2) when the boot line is removed from `index.html`.
+- First paint, admission: `TestAppAdmitsTheThemeScriptOnlyAsTheFirstClassicScript` failed before `app.go` changed and
+  passes after. `TestAppThemeScriptAdmissionOpensNoNeighbours` passes before and after, as a guard.
+- Mutation check of the admission rule, in a throwaway copy of the module (`mutate.ps1`; the pristine copy passes):
+  M1, drop the before-`<body>` check: 2 tests fail. M2, drop the bare-`src` check: 6 tests fail. The first version of
+  M2 survived, because every refusal case put a rejected attribute first. Five "src first, then X" cases were added, and
+  M2 is now caught. M3, admit the file whenever it is in the build: 1 test fails.
+
+Final gates, on the overlay (exit codes as printed by the gate):
+
+- Windows `gate-overlay.ps1 -Task verify`: exit 0. vitest 62 files and 916 of 916 tests passed, with 0 skipped (HEAD
+  had 60 files and 896 tests). `tsc --noEmit` is clean. `check:sinks`: 88 files, 0 findings. `check:deps`: OK.
+- Windows `gate-overlay.ps1 -Task go`: exit 0. `go vet` is clean, `go test` is ok for `cmd/tbound-webchat` and
+  `internal/webchat`, and gofmt is clean.
+- WSL (Ubuntu, Node 24.15.0, Go 1.27.1, `umask 077`, private `TMPDIR`). The overlay was exported with `tar`, leaving
+  out `frontend/node_modules`. `npm ci --ignore-scripts`: exit 0. Typecheck 0. vitest 62 files and 916 of 916 tests
+  passed. `check:sinks` 0, `check:deps` 0, `npm run build` 0. `go vet -mod=readonly ./...` 0. `gofmt -l .` is empty.
+  `go test -race -mod=readonly -count=1 -v ./...`: 56 top-level PASS, 0 SKIP, 0 FAIL (150 at all levels, 0 SKIP, 0 FAIL).
+- Builds: the worktree was built once with `gate.ps1 -Task build`, which gives the shipped `dist/`. The overlay was built
+  once with `gate-overlay.ps1 -Task build`, to verify the overlay. WSL ran its own `npm run build`.
+
+Reproducibility: `dist/` has five files. Its tree digest, with one `name TAB sha256 LF` line per file in name order, is
+`0466e8828508c4a6e9801885a1d516d2c71054dffed0159bc69ea1422a8b5f83`. That digest is the same for the Windows overlay
+build, the worktree's `dist/` on Windows, and the WSL Linux build. The QA receipt uses its own form (`name SPACE sha256`,
+joined by LF), which gives `0e352aebe1eaafb51914a852069bb34658215ed102802e63bbdb6551de20ca55`.
+
+Gateway: a Linux ELF built in WSL from the export, with `go build -mod=readonly -o ~/tbwc-gw-q3 ./cmd/tbound-webchat`.
+Its SHA-256 is `1a783855971e46a12df761d5e05768d7a81a9f6d498097a8d5dc6a5f7aac6bbc`. It ran on `127.0.0.1:8862` with the
+demo fixture, started from Windows through `wsl.exe`. Port 8791 was not used.
+
+Source hashes (SHA-256 of the WSL export, which equals the overlay): `frontend/src` tree `f2b55e78…` (one `name TAB sha256`
+line per file, as in the dist form above); `internal/webchat/app.go` `08784f49…`; `app_test.go` `0af885d4…`;
+`frontend/public/theme-boot.js` `542ca16f…`; `frontend/index.html` `9a9632ae…`. `go build ./...` in WSL: exit 0.
+
+Browser QA: `node scripts/ui-qa.mjs --url http://127.0.0.1:8862 --gateway-sha256 1a7838…7aac6bbc --gateway-stop …
+--gateway-start …`, run with Windows Node 24.15.0 and Chrome 155.0.8059.79. Exit 0; `ui-qa: PASS (9 checks, 17 screenshots)`.
+
+| Check | Result | Key evidence |
+|---|---|---|
+| A csp-smoke without the favicon allowance | PASS | exit 0; 3 pages, 0 console errors |
+| B redirect, legacy notice, served assets | PASS | served assets equal `dist/` |
+| C keyboard walk at 1440 | PASS | chat 10 stops, trajectory 4; 0 stops without a ring |
+| D responsive | PASS | drawer; no overflow at 390 px; 12 screenshots |
+| E theme and first paint | PASS | first frames match the final canvas in 4 cases (first run: 5 of 5 loads flashed in each mismatched case) |
+| F live stream | PASS | lossy row reads "output lossy, not counted as confirmed" (first run: FAIL) |
+| G reconnect and offline | PASS | backoffs 516, 1846, 2664, 5904, 7722, 9781 ms; 0 requests while offline |
+| H forced colours and reduced motion | PASS | 6 of 6 ledger shapes distinct, the bullseye's mark counted; PENDING has no mark |
+| I console, CSP, network | PASS | 0 CSP violations; 0 requests off the gateway origin, of 406 |
+
+Receipt: `docs/webchat/qa/p4-ui-qa-receipt.json` (outcome PASS). Its `script.sha256` is `222e9993…` for the changed
+`ui-qa.mjs`, and its `dist` hashes are the ones above. Log: `docs/webchat/qa/p4-ui-qa-run.txt`. The receipt's `git.head`
+is still `caae3af`, which does not describe this uncommitted tree; the file and `dist` hashes do.
+
+Claim boundary: these are browser checks of presentation and behaviour. They establish no claim: G1=false, containment
+not-established, H1 unexecuted.
+
+### Not done, or disagreed with
+
+- `npm run repro` cannot pass yet. It compares the build with the `dist/` committed at HEAD, which predates this round.
+  Run it after the commit. The cross-platform part, Windows and Linux builds identical, was checked by digest above.
+- The shared worktree is red, as listed above. None of those files was touched. The worktree also holds two edits that
+  are not this round's: a line in `src/styles/tokens.css` (`--rail-collapsed-width`) and an edit to `docs/web-chat.md`.
+  Neither is in the verified tree or the shipped `dist/`. Do not commit them with this round.
+- Chat and inspector wording (`readings.ts`, `recordChip.ts`) is not owned here and is not changed. See defect 2.
+- The v3 mockup and the design notes still show the pre-bullseye ALLOW dot. Another agent refreshes them.
+- `TASK_STATE.md` is not updated, since it is outside the permitted edits.
+- The first run's screenshots were overwritten by this run. Only the first run's receipt and log are kept.
+- `ToggleGroup.test.tsx` prints "not wrapped in act(...)" warnings. They are pre-existing and were not touched.
+- Not verified, as before: screen readers; Windows high-contrast themes (forced colours were emulated with CDP);
+  pointer and touch input; browsers other than Chrome 155.

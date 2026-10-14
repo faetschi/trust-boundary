@@ -370,6 +370,23 @@ test("UNKNOWN, LOST and denied results say they are not success, and lossy outpu
   );
 });
 
+test("a lossy success says it is not counted as confirmed in the reported branch as well as the verified one", () => {
+  const lossyReported = { ...succeededResult, lossy: true };
+  assert.equal(
+    statusText(lossyReported, LIVE_PROJECTION),
+    "Result: succeeded, reported, not independently verified; output lossy, not counted as confirmed",
+  );
+  assert.equal(statusText(succeededResult, LIVE_PROJECTION), "Result: succeeded, reported, not independently verified");
+});
+
+test("no lossy success is ever green, and its words end in the not-confirmed clause whatever its verification", () => {
+  const lossy = { reported: { ...succeededResult, lossy: true }, verified: { ...verifiedSuccess, lossy: true } };
+  for (const [label, record] of Object.entries(lossy)) {
+    assert.notEqual(recordDot(record, LIVE_PROJECTION), "ok", label);
+    assert.match(statusText(record, LIVE_PROJECTION), /output lossy, not counted as confirmed$/, label);
+  }
+});
+
 test("a pending activity and a message state their status in words too", () => {
   assert.equal(statusText(item({ id: "p", type: "activity", tool: "bash", state: "pending" }), LIVE_PROJECTION), "Activity: pending, no outcome yet");
   assert.equal(statusText(prompt, LIVE_PROJECTION), "Message: no verdict or outcome recorded");
