@@ -756,3 +756,34 @@ scrolled to the top. The script that produced them is not in the repository.
 - `TASK_STATE.md` records this pass in its "Phase 3 polish" section.
 - Not committed. The rebuilt `dist/` and the source changes need a commit before the CI repro
   gate can pass.
+
+## Browser check against a Linux-hosted gateway (2026-10-14)
+
+tbound targets Linux (native or WSL), so the gateway under test should be the Linux build.
+`csp-smoke` can be pointed at it with `--url`; the browser may run on another OS.
+
+Verified once at HEAD a2aaf30: a Linux ELF built with Go 1.27.1 inside WSL2 (kernel 5.15,
+`--demo --addr 127.0.0.1:8831`), Chrome 155 on Windows reaching it over the WSL2 localhost
+forward: 7/7 header probes carry the policy, `/app/` and `/` have 0 CSP violations and 0
+console errors (favicon 404 allowed), the canary produced 4 violations (observer live), and
+the CSS Module class applied. `csp-smoke` still prints "toolchain not checked" for `--url`
+runs: it cannot see how the gateway was built; the receipt above is the evidence.
+
+Recipe (the pitfalls are real):
+- Build in WSL: `go build -mod=readonly -o ~/tbwc-gw-linux ./cmd/tbound-webchat`.
+- Start it from Windows with an ABSOLUTE path, not `$HOME` (Windows expands `$HOME` before
+  WSL sees it) and keep the `wsl.exe` client alive; a background job started inside a
+  short-lived `wsl -e bash -c` session is torn down when that session ends:
+  `Start-Process wsl.exe -ArgumentList '-d','Ubuntu','-e','/home/<user>/tbwc-gw-linux','--demo','--addr','127.0.0.1:8831' -WindowStyle Hidden`.
+- From Windows run `node scripts/csp-smoke.mjs --url http://127.0.0.1:8831`.
+- Stop it afterwards and never reuse port 8791 (a stale old-build gateway may hold it).
+
+Remote access. The gateway is loopback-only by design: it binds 127.0.0.1, pins the Host header
+to the bound address, and the CSP/Origin checks assume that origin. A user on another machine
+should reach it through an SSH local forward using the SAME port number
+(`ssh -L 8831:127.0.0.1:8831 host`), so the browser's Host stays `127.0.0.1:8831`. A forward
+to a different local port, or a reverse proxy that rewrites Host, is rejected (403) by design.
+This tunnel path was reasoned from the Host pin and an earlier proxy experiment; it has NOT
+been run over a real SSH connection. Binding the gateway to a public interface is not
+supported and would need the authenticated, origin-protected design that
+docs/modular-architecture-vision.md lists as future work.
