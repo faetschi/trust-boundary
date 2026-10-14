@@ -2,9 +2,9 @@
 
 ## Start here
 
-- [Architecture](architecture.md): intended authority boundaries and current
-  implementation limits.
-- [Status](status.md): current gates and what the available checks establish.
+- [Architecture](architecture.md): intended authority boundaries, runtime seams,
+  and current implementation limits.
+- [Status](status.md): current gates, checkpoint validation, and priorities.
 - [Install](install.md): install Pi inside Linux and build/install TBound.
 - [Launch](launch.md): Go-only and offline Pi CLI fixtures, managed-service
   behavior, and existing Hyper-V VM resume steps.
@@ -12,6 +12,8 @@
   instructions.
 - [Reproducibility setup](reproducible-setup.md): prototype native Linux and
   Hyper-V provisioning paths and their limits.
+- [Governed host setup](governed-setup.md): operator prerequisites, profile trust,
+  and CLI routes with exit codes for `serve --pi`.
 - [Doctor](doctor.md): local diagnostic behavior.
 - [CLI reproduction decision](decisions/2026-10-12-cli-reproduction.md):
   official Pi RPC/extension direction and its unqualified status.
@@ -27,8 +29,6 @@
 - [Provider conversation bridge](provider-conversation-bridge.md)
 - [Provider profiles](provider-profiles.md)
 - [Provider durable evidence](provider-durable-evidence.md)
-- [Native runtime composition](native-runtime-composition.md)
-- [Governed Linux adoption plan](governed-linux-adoption.md)
 - [Release and packaging](release.md)
 
 These documents describe code or intended contracts. Read the current status
@@ -44,5 +44,6 @@ page before treating any design or fixture as a qualified production result.
 
 The following records are retained as immutable history in Git, not as current
 status or setup authority: dated readiness reviews, blocker inventories,
-autonomous setup attempts, and engineering benchmark notes. The source map
-identifies their original Git paths and hashes.
+autonomous setup attempts, engineering benchmark notes, and superseded composition
+or plan snapshots. The [source map](evidence/historical-sources.json) identifies
+their original Git paths, blob IDs, and hashes.

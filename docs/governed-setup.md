@@ -18,6 +18,81 @@ development-only; they are not the confirmation profile. A capability probe, a
 `null` callback, or a boolean is never a substitute for the real profile, signed
 image, and containment evidence.
 
+## Adoption goals next to Pi
+
+1. **Install the application without altering global Pi/Node.** Use the local
+   release artifacts or reviewable packages; keep the pinned runtime side-by-side
+   under TBound's managed prefix. Existing Pi may be detected for compatibility,
+   but its mutable configuration/extensions cannot silently become an admitted profile.
+   A normal user-prefix installation does not create the trusted admission
+   authority, the dedicated non-login writer account, the managed live-root
+   registration, or the root-owned `/etc/tbound` trust material. Those are separate
+   privileged operator steps (see §4a and §4e).
+2. **Run the existing `tbound-doctor`.** Show application prerequisites separately
+   from governed-host prerequisites, with precise fixes. Doctor is advisory and
+   cannot grant admission; “files present” is not a valid signed/contained profile.
+3. **Make privileged setup a separate, explicit operator step.** Present a dry-run
+   list of packages, delegation settings, trust material and destinations before
+   the operator approves changes. Do not change Secure Boot, AppArmor, the kernel,
+   VM state or system services implicitly during normal install/launch.
+4. **Install one reviewed offline profile bundle.** Include image/runtime identities,
+   public verification material, entrypoint/static policies and protected host profile.
+   Signing keys and provider credentials never enter Pi or command cells. A local
+   self-signed file is not automatically trusted just because its signature verifies.
+5. **Launch normally once qualified.** The intended outcome is `tbound serve --pi`
+   selecting its protected installed default profile and launching actual Pi. Invalid,
+   stale or incomplete profiles refuse with actionable diagnostics, not a raw-host,
+   Docker or development fallback. Updates invalidate the prior admission evidence.
+
+There is no verified public `get.tbound.dev` service or published npm namespace
+in this work. Do not present example download channels as available installation.
+Development launch is useful but does not bypass these governed requirements.
+
+## Host selection and approval scope
+
+The thesis requires a dedicated pinned Linux evaluation environment; WSL is for
+development, not the sole confirmation host (D10).
+
+**2026-10-09 selection:** target the existing Hyper-V Ubuntu VM. That was approval
+of the setup plan only, not permission to install packages, update its kernel,
+start, stop, or reset the VM, change networking, or install trust anchors. Inspect
+and preserve its current work and baseline before a separately authorized setup.
+
+**2026-10-14 decision:** the user authorizes disposing of the existing development VM
+and replacing it with a fresh disposable qualification guest of similar attributes
+(8 vCPUs, 16 GiB fixed RAM, 40 GiB disk). See
+[the decision record](decisions/2026-10-14-qualification-and-research-procedure.md).
+Inspect and preserve required artifacts before disposal. Verify the replacement's
+live ABI, filesystem, runtime closure, and service profile before qualification.
+Keep private provisioning paths distinct and credentials out of source control. The
+decision asks the existing Hyper-V setup to provide the exact ABI 8 profile, and it
+authorizes the disposal-and-replacement path described here. This authorization does
+not itself perform either action. The 2026-10-09 limits on Windows, Secure Boot, and
+AppArmor remain in force.
+
+| Candidate | Evaluation |
+|---|---|
+| Existing Ubuntu 24.04 VM with an appropriate supported Canonical HWE kernel | Least disruptive candidate; requires operator approval for kernel changes, runtime ABI measurements and a fresh profile freeze |
+| Dedicated Ubuntu 26.04 LTS VM | Newer candidate; Canonical currently lists kernel 7.0 GA, but creating/replacing a VM is a separate operator decision |
+| Current WSL setup | Real Pi SDK/development tests work; the recorded inventory lacks the declared Podman/crun/Cosign and delegation profile. Not a production/confirmation fallback |
+
+Neither candidate is production-qualified by this research. The 2026-10-14 decision
+is the explicit approval for the replacement described above. Any further VM, kernel,
+network, or Secure Boot change needs separate approval. The old 6.8/ABI-4 guest
+observations are historical, not a fresh guest inspection.
+
+**ABI floor and profile.** The adopted thesis decision
+(`MSE_MA_Thesis/agentic-harness/AH-technical/06-1-language-decision.md`) records that
+`LANDLOCK_RESTRICT_SELF_TSYNC` can apply a ruleset to all threads from ABI 8, and
+that below ABI 8 `runtime.LockOSThread` does not cover sibling threads. The
+implementation profile is exactly ABI 8 (TSYNC). `D09LandlockABI = 8` in
+`supervisor/internal/piruntime/landlock_profile_linux.go` and the cell entrypoint
+require the same exact value. Choosing this profile is a freeze decision, not an
+amendment to the thesis. Measure the actual ABI and effective restrictions and never
+infer admission from a kernel version. A WSL ABI-1 result is not a qualified launch.
+
+Unless a separate authorization covers them, these are proposed setup duties, not permission to run sudo, install packages, operate the VM, generate signing keys, or invoke a real provider. A separately authorized setup must keep Secure Boot and existing AppArmor restrictions intact; use the supported confined runtime rather than disabling user-namespace protection.
+
 ## 1. Host and filesystem (D10)
 
 - A dedicated Linux VM/host with a recorded image, hypervisor, kernel/config,
@@ -38,6 +113,10 @@ image, and containment evidence.
   namespace with no egress; an unavailable namespace refuses rather than falling
   back to host networking.
 - A signed in-image entrypoint (one conforming entrypoint: Go or minimal Rust).
+- **Host Node for fd3:** the current FD3 model needs the profile-pinned Node
+  executable on the host: root-owned, protected, and on an immutable read-only
+  mount (see §4b). Node inside the signed image alone does not satisfy this.
+  Install the admitted copy side by side, and do not replace global Pi or Node.
 - No pulls at run time; identity drift must fail closed.
 - The image digest, entrypoint, static seccomp profile, Landlock ruleset,
   exact root-owned/read-only podman/crun/cosign paths+digests, `/bin/bash`
@@ -46,6 +125,10 @@ image, and containment evidence.
   cgroup root are recorded in the registered root-owned D09 cell template at
   `/etc/tbound/d09-cell.json` (see §4a). Each run passes the pinned crun path
   explicitly; production has no PATH runtime fallback.
+- Sigstore documents an on-disk image saved with `cosign save`, verified using
+  `cosign verify --key ... --local-image ...`. Test zero-network behavior and bind
+  the verified content to the local image that Podman actually starts; an
+  “offline” flag alone is not this evidence.
 
 ## 3. Containment composition (D11)
 
@@ -54,16 +137,20 @@ image, and containment evidence.
 - A fixed, non-threaded, **delegated cgroup v2 subtree** with the required
   controllers (cpu/memory/pids) and writable `cgroup.kill`, observable
   `cgroup.events:populated`, and recursive `populated=0` teardown.
+  Inspect a live approved scope; checking the filesystem root or a scope that has
+  already exited is not proof of delegation.
 - A surviving runner that owns TBound, Pi, and every cell and settles descendants;
   unresolved cleanup must report `UNKNOWN`, never fake `STOPPED`.
+- Reset/recovery procedure and independent process/filesystem/network observations.
+  `ready` from the untrusted harness is not containment proof.
 
 `scripts/check-governed-host.sh` inspects these read-only.
 
 ## 4. Signed host profile
 
 The production admission trust root is fixed and root-owned; the CLI can never
-choose its own trust root. `tbound serve --pi` discovers the default profile and
-the **fixed admin public key** at:
+choose its own trust root. The managed service (`tbound serve --pi --service`)
+discovers the default profile and the **fixed admin public key** at:
 
 ```
 /etc/tbound/pi-host-profile.json
@@ -71,10 +158,34 @@ the **fixed admin public key** at:
 /etc/tbound/pi-host-profile.pub      # the only admission trust root
 ```
 
-`--native-host-profile <path>` may select a **protected** (root-owned,
-non-group/world-writable) profile/signature pair, but the verification key is
-still read only from `/etc/tbound/pi-host-profile.pub`. An operator cannot point
-the CLI at their own adjacent `.pub` and self-sign their way to admission.
+The public CLI cannot choose the profile or the trust root. `tbound serve --pi`
+rejects `--native-host-profile`, `--workspace`, and `--source` with exit 2. The
+managed service loads the fixed pair `/etc/tbound/pi-host-profile.json` and
+`/etc/tbound/pi-host-profile.ed25519`, and an empty profile path resolves to that
+root-owned default. `piruntime` can derive a profile and signature pair from an
+explicit path, but no CLI route passes one. The verification key is always the
+fixed `/etc/tbound/pi-host-profile.pub`, so a self-signed adjacent `.pub` cannot
+gain admission.
+
+### CLI routes and exit codes
+
+Exit 0 means the route succeeded. Any returned error exits 2 (`supervisor/cmd/tbound/main.go`).
+
+| Command | Result |
+|---|---|
+| `tbound` with no arguments | Exit 2: provider broker, durable audit, and contained executor are not configured. |
+| `tbound --smoke-listen --socket-dir <private 0700 dir>` | Linux only. Synthetic, no-effect Unix-socket listener; not a native Pi claim. Exit 0 on success. |
+| `tbound serve --pi` | Ordinary local service client. Without a verified managed registration and a reachable service it exits 2 with `registered local Pi service is unavailable`. Rejects `--native-host-profile`, `--workspace`, and `--source`. |
+| `tbound serve --pi --service` | Internal socket-activated entrypoint. Accepts no task, profile, workspace, source, or Bash-output arguments. |
+| `tbound serve --pi --native-fixture` | Linux only. Non-claim-bearing fixture. Exit 0 only after the supervised IPC, durable, and publication fixture succeeds. It prints one receipt, `{"mode":"native-fixture","claim_bearing":false,"provider_exchange":false,"containment":"not-established",...}`. Failure exits 2. It does not launch Pi or contact a provider. |
+| `tbound serve --pi --dev-fixture` | Linux only. Offline development composition over the official Pi CLI 0.87.1 RPC route. Non-claim-bearing. Rejects `--native-host-profile`. |
+| `tbound serve --pi` on non-Linux | Refusal only: `native Pi host profile is missing; production --pi launch is refused`, exit 2. |
+
+Open CLI issue: the fixture routes return before the profile, workspace, and source
+checks in `supervisor/cmd/tbound/serve_linux.go`. `--native-fixture` ignores
+`--native-host-profile`, `--workspace`, and `--source`, and `--dev-fixture` ignores
+`--workspace` and `--source`. This was read from code and not executed. This
+document does not change that behavior.
 
 ### 4a. Signing workflow
 
@@ -99,12 +210,11 @@ go build -o "$PRIVATE/tbound-profile" ./cmd/tbound-profile
 
 # 2. Generate the registered D09 cell template and fill every measured identity
 #    (image digest, OCI layout, cosign public-key digest, seccomp digest,
-#    the `/usr/local/bin/node` executable bytes in the signed image must have the
-#    same measured digest as the root-owned/read-only host Node opened on fd3,
-#    Landlock ABI/ruleset, frozen
-#    empty capability set, entrypoint digest, cpu/memory/pids bounds, cgroup
-#    root) and the managed live-root registration digest. An unmeasured draft
-#    or missing registration digest is rejected.
+#    Landlock ABI/ruleset, frozen empty capability set, entrypoint digest,
+#    cpu/memory/pids bounds, cgroup root). The `/usr/local/bin/node` bytes in the
+#    signed image must match the measured digest of the root-owned, read-only host
+#    Node opened on fd3. Bind the managed live-root registration digest too. An
+#    unmeasured draft or missing registration digest is rejected.
 "$PRIVATE/tbound-profile" template-init --out d09-cell.json
 # Measure the exact managed writable root and its dedicated, non-login systemd
 # writer service/mount configuration on the prepared host. This measures policy
@@ -176,11 +286,14 @@ protected passwd/group/NSS and systemd service/mount configuration (`User`/`Grou
 cgroup path plus per-invocation device/inode/mount identity. `--workspace` only
 selects a candidate descriptor; it cannot grant registration or writer authority.
 The registration authenticates the installed writer-domain policy, not present
-quiescence. The CLI's separate opaque `ManagedLiveRootAuthority` must still
+quiescence. The CLI's separate managed live-root authority (`managedLiveRootAuthority`) must still
 acquire the writer epoch, drain/reconcile cells, and issue a one-use terminal
 publication permit. The host trust assumption is that only the registered
 trusted service uses the dedicated non-login writer UID; directory mode 0700
-alone is not exclusive against an arbitrary same-UID process. Missing or mismatched
+alone is not exclusive against an arbitrary same-UID process. A same-UID developer
+directory and an advisory lock alone cannot establish the exclusive-writer property; any
+future cooperative-workspace mode must say so explicitly rather than weakening the
+governed profile silently. Missing or mismatched
 registration causes a typed pre-launch refusal; there is no cooperative developer
 fallback in production mode.
 
@@ -239,10 +352,12 @@ a launched cell unless uid/gid, empty capabilities, `no_new_privs`, seccomp
 filter mode, `landlock_abi`, the ruleset digest, and cgroup-v2 are all proven.
 
 > **Kernel prerequisite (operator):** the evaluation VM must provide and record a
-> kernel with Landlock ABI `8` (TSYNC). ABI1 and ABI versions other than 8 are explicitly unsupported
-> and refuses; this is a runtime-measurement/approval prerequisite, not a silent
-> baseline. The opt-in integration test skips only on the unsupported-ABI case and
-> fails otherwise.
+> kernel that reports Landlock ABI exactly `8` (TSYNC). The registered template and
+> the cell entrypoint refuse any other ABI, including ABI 1 (WSL) and ABI 4 (the
+> historical development VM). There is no silent downgrade. This is a
+> runtime-measurement and approval prerequisite, not a baseline.
+> `TestLandlockTSYNCReachesEnforcement` skips only when its child process exits 3
+> because the kernel lacks the ABI-8 TSYNC profile, and fails otherwise.
 
 The source directories are handed in as **Go-only directory descriptors**
 (fd4/fd9), never as host paths; the signed in-image entrypoint
@@ -258,8 +373,10 @@ finite-context cleanup on every start/run error or cancellation.
 > **Remaining production blocker:** the sealed exposure binder and production
 > session composition exist, and the official Pi CLI dev/RPC route is implemented
 > and offline-tested. The production profile/launcher migration that connects an
-> admissible signed profile to that CLI path remains pending. The current
-> production entrypoint `LaunchD09PiCLIWorker` refuses launch; no G1 claim is made.
+> admissible signed profile to that CLI path remains pending. The guarded public
+> D09 route is wired (commit `47a6d73`). `LaunchD09PiCLIWorker` launches only from
+> source-stage channels and an admission capability. No authentic signed-profile
+> admission or positive host launch has been demonstrated, and no G1 claim is made.
 
 ### 4c. Existing binder/session APIs and production CLI wiring
 
@@ -451,14 +568,10 @@ live directory is service-owned UID/GID mode 0700 under a root-owned protected
 parent and a dedicated RW `nosuid,nodev` mount. The signed `service_cgroup_path`
 is stable policy; kernel cgroup device/inode/mount ID are freshly measured and
 held stable by the verified object for that service invocation. Missing or
-mismatched registration refuses before launch. The CLI-owned opaque
-`ManagedLiveRootAuthority` separately controls the session epoch, writer drain,
-command-cell settlement, and one-use publication permit; no piruntime
-registration API grants publication authority.
-
-
-
-
+mismatched registration refuses before launch. The CLI-owned managed live-root
+authority (`managedLiveRootAuthority` in `supervisor/cmd/tbound/managed_live_root_linux.go`)
+separately controls the session epoch, writer drain, command-cell settlement, and
+one-use publication permit; no piruntime registration API grants publication authority.
 
 ## 5. Provider
 
@@ -472,6 +585,20 @@ synthetic content. Genuine provider runs need separate approval.
   OCI + static seccomp source/digest, Landlock ABI/rights, rootless mappings,
   cgroup/pidfd behavior, entrypoint.
 - Retain source, image, runtime, observer, and result hashes per trial.
+
+### Release acceptance
+
+Keep three tests separate:
+
+1. Unit tests with injected commands prove argument construction and negative paths.
+2. Missing-prerequisite tests prove safe refusal and no worker/effect launch.
+3. An opt-in registered-host test must actually start pinned Pi in the approved cell,
+   reconcile broker/tool/generation lineage and durable publication, observe enforced
+   boundaries, and settle descendants or retain UNKNOWN with recovery ownership.
+
+Only the third can establish a provisioned governed launch. D06 provenance,
+worker/admin separation and bash-lease publication remain part of the integrated
+contract; a successful image verification or process spawn alone is not completion.
 
 ## Checklist
 
@@ -494,7 +621,22 @@ runtime verifier — not a probe — decides admission.
 > Cosign, local OCI layout, delegated cgroup) was available in the increment that
 > added this tooling. The probe/refusal and command-construction paths are
 > unit-tested with an injected runner, and an opt-in real test
-> (`go test -tags d09integration ./internal/piruntime ./cmd/tbound`) skips with
-> the exact refusal when the environment is absent. A real provisioned launch
+> (`go test -tags d09integration ./internal/piruntime ./cmd/tbound`) is skipped
+> unless `TBOUND_D09_INTEGRATION` is set. Once opted in, unmet prerequisites fail
+> rather than skip. A real provisioned launch
 > remains externally UNVERIFIED and needs separate operator approval; nothing
 > here establishes containment or G1.
+
+## Primary sources checked
+
+- [Thesis deployment/runtime design](../../MSE_MA_Thesis/agentic-harness/tbound-thesis.md)
+  and AH-technical D09/D10/D11, sandboxing decision and runtime-flow contracts.
+- [Canonical supported-kernel table](https://ubuntu.com/security/livepatch/docs/client/reference/platform/supported-kernels)
+  and [Ubuntu 26.04 release announcement](https://canonical.com/blog/canonical-releases-ubuntu-26-04-lts-resolute-raccoon).
+- [Landlock documentation](https://docs.kernel.org/userspace-api/landlock.html).
+- [systemd delegation](https://systemd.io/CGROUP_DELEGATION/)
+  and [rootless cgroup setup](https://rootlesscontaine.rs/getting-started/common/cgroup2/).
+- [Sigstore image verification](https://docs.sigstore.dev/cosign/verifying/verify/).
+
+Public documentation was checked on 2026-10-08. These sources establish supported
+design options, not the current configuration or measured safety of our VM.

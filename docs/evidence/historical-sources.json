@@ -225,6 +225,20 @@
       "bytes": 13338,
       "gitSource": "29196d664316886e929c963ce2a404a876e4c6cf:docs/governed-pi-launcher.md",
       "gitBlobObjectID": "292231ca10bb08301ea4d16ef9eceeae1e5fa25b"
+    },
+    {
+      "path": "docs/native-runtime-composition.md",
+      "sha256": "2192cad1e7061e8df87a89f686a02ed3c7db4e2a5204fe307e79d7edce39a7c2",
+      "bytes": 17908,
+      "gitSource": "29196d664316886e929c963ce2a404a876e4c6cf:docs/native-runtime-composition.md",
+      "gitBlobObjectID": "1c2fc7f293be02f244b41d62a8deb2f02be420cc"
+    },
+    {
+      "path": "docs/governed-linux-adoption.md",
+      "sha256": "ff61d19889e412902fba82de1513427d8a550bdaec434434e29279651359af2d",
+      "bytes": 9456,
+      "gitSource": "29196d664316886e929c963ce2a404a876e4c6cf:docs/governed-linux-adoption.md",
+      "gitBlobObjectID": "3579490d1e88377067e79a6ab474d32905c53a8a"
     }
   ],
   "identityBasis": "sha256 and bytes identify raw committed Git blob bytes (git cat-file blob), not a checkout or filtered archive export.",
