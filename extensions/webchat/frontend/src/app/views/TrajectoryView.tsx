@@ -23,7 +23,7 @@ export function TrajectoryView({ model }: { readonly model: WorkspaceModel }) {
     [model.items, model.query, model.group],
   );
   const searching = model.query.trim() !== "";
-  const tail = useTailWindow({ applied: model.applied, count: model.items.length, ledgerRef });
+  const tail = useTailWindow({ actions, pending: model.tailPending, count: model.items.length, ledgerRef });
 
   // Focus when the selection is cleared by something other than a focused control. If the focus is
   // still on a live element, it is left alone. Otherwise a narrow drawer closes (its own focus rule

@@ -3,24 +3,19 @@
 // writes to it. The page is the scroller (the shell has no inner scroll container), as in the legacy
 // client (web-chat.md section 4.5).
 //
-// The count of new records is the number of records the store applied since the reader's pin. It
-// never moves for gaps, duplicates or snapshot loads, because the store counts applied records only.
+// The count of new records is the store's `tailPending`: the records the store applied since the
+// reader's pin. The pin is kept by the store, so it survives a switch to the trajectory view and back.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import {
   isAtTail,
   maxScrollTop,
-  pendingSince,
   restoredScrollTop,
   tailAnnouncement,
   type ScrollMetrics,
 } from "../../../core/anchor";
 import type { Announcer } from "../../../ui/announcer";
 import type { WorkspaceActions } from "../../workspaceStore";
-
-// The pin of each store's chat view. It is keyed by the store's actions object, which lives as long
-// as the store. A return from the trajectory view keeps the count of records applied in between.
-const pins = new WeakMap<WorkspaceActions, number>();
 
 // A burst of arrivals is announced once, after it settles.
 export const TAIL_ANNOUNCE_DELAY_MS = 400;
@@ -72,35 +67,31 @@ export interface TailWindow {
 
 export function useTailWindow(options: {
   readonly region: RefObject<HTMLElement | null>;
-  // The store's actions object: the key of this store's pin.
-  readonly pinKey: WorkspaceActions;
-  readonly applied: number;
+  readonly actions: Pick<WorkspaceActions, "repinTail">;
+  // The store's count of records applied since the pin.
+  readonly pending: number;
+  // The records the view is showing. Used only to tell the first load from later arrivals.
+  readonly count: number;
   readonly announcer: Announcer;
 }): TailWindow {
-  const { region, pinKey, applied, announcer } = options;
-  const appliedRef = useRef(applied);
+  const { region, actions, pending, count, announcer } = options;
   const snapshot = useRef<Measure | null>(null);
-  const announced = useRef(0);
-  const [pending, setPending] = useState(() => pendingSince(applied, pins.get(pinKey) ?? applied));
+  // Set once the view has shown records. The first load does not follow: an empty page is short, so the
+  // reader is measured at the tail before the records arrive, and the records must not carry them down.
+  const shown = useRef(false);
+  const announced = useRef(pending);
 
-  // Keeps the pin at the applied count while the reader is at the tail, and reports the count since it.
-  const follow = useCallback(() => {
-    const current = appliedRef.current;
-    if (snapshot.current?.atTail) pins.set(pinKey, current);
-    setPending(pendingSince(current, pins.get(pinKey) ?? current));
-  }, [pinKey]);
+  // Pins the count to the applied records while the reader is at the tail. A reader away keeps the pin.
+  const follow = useCallback(() => actions.repinTail(snapshot.current?.atTail === true), [actions]);
 
   // After every commit: hold the reader's place, then measure the new position. A reader at the tail
   // moves to the new bottom. A reader away is moved so the first visible record keeps its offset.
   useLayoutEffect(() => {
-    appliedRef.current = applied;
-    // A view's pin starts when the reader first sees it (web-chat.md section 4.5). A return keeps it.
-    if (!pins.has(pinKey)) pins.set(pinKey, applied);
     const previous = snapshot.current;
     const element = region.current;
     if (previous) {
       const now = pageMetrics();
-      if (previous.atTail) {
+      if (previous.atTail && shown.current) {
         window.scrollTo(0, maxScrollTop(now));
       } else if (previous.anchorId !== null) {
         const target = restoredScrollTop(
@@ -115,6 +106,7 @@ export function useTailWindow(options: {
         if (target !== now.scrollTop) window.scrollTo(0, target);
       }
     }
+    if (count > 0) shown.current = true;
     snapshot.current = measure(element);
     follow();
   });
@@ -129,7 +121,8 @@ export function useTailWindow(options: {
     return () => window.removeEventListener("scroll", onScroll);
   }, [region, follow]);
 
-  // One announcement per burst: the count is spoken once it settles, and not again until it grows.
+  // One announcement per burst: the count is spoken once it settles, and not again until it grows. A view
+  // that mounts over a count already shown (after a switch) does not speak it again.
   useEffect(() => {
     if (pending === 0) {
       announced.current = 0;
@@ -149,9 +142,9 @@ export function useTailWindow(options: {
     window.scrollTo(0, maxScrollTop(pageMetrics()));
     announced.current = 0;
     snapshot.current = measure(region.current);
-    follow();
+    actions.repinTail(true);
     region.current?.focus({ preventScroll: true });
-  }, [region, follow]);
+  }, [region, actions]);
 
   return { pending, jump };
 }

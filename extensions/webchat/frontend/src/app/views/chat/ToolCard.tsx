@@ -10,13 +10,9 @@ import { VisuallyHidden } from "../../../ui/VisuallyHidden";
 import { formatClock, shortDigest, toolGlyph } from "../../../core/format";
 import type { ItemView } from "../../../core/contract";
 import type { ToolBlock } from "../../../core/store";
-import {
-  EMPTY_TOOL_SUMMARY,
-  LOSSY_READING,
-  UNVERIFIED_READING,
-  stateReading,
-  verdictReading,
-} from "./readings";
+import type { Marker } from "./provenance";
+import { headlineSummary } from "./headline";
+import { LOSSY_READING, UNVERIFIED_READING, VERIFIED_READING, stateReading, verdictReading } from "./readings";
 import styles from "./Chat.module.css";
 
 // Whether an item is verified: the projection is live and structurally audited, and the item has
@@ -26,15 +22,23 @@ export type Verifier = (item: ItemView) => boolean;
 interface ToolCardProps {
   readonly block: ToolBlock;
   readonly verifiedOf: Verifier;
+  // The item marker of a record in a mixed view (see provenance.ts). Null where the view states it once.
+  readonly markOf: (item: ItemView) => Marker | null;
 }
 
-export function ToolCard({ block, verifiedOf }: ToolCardProps) {
+export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
   const { activity, decision, result } = block;
   const primary = result ?? activity ?? decision;
   const stateItem = result ?? activity;
   const tool = primary?.tool ?? "tool";
   const stateReadingOf = stateItem ? stateReading(stateItem.state, verifiedOf(stateItem)) : null;
   const verdict = decision ? verdictReading(decision.verdict) : null;
+  const marker = primary ? markOf(primary) : null;
+  // The name is drawn once, here; the summary follows it without a repeat of the name.
+  const headline = headlineSummary(tool, summaryOf(block));
+  // A uniform view states "unverified" once, above the transcript, so the card carries the word for
+  // screen-reader users only. A mixed view draws the chip, which the name already includes.
+  const unverifiedWord = primary !== null && !verifiedOf(primary) && marker !== "unverified";
 
   // One wrapping line: at narrow widths the chips move under the summary, not past the card edge.
   const summary = (
@@ -43,11 +47,13 @@ export function ToolCard({ block, verifiedOf }: ToolCardProps) {
         {toolGlyph(tool)}
       </span>
       <span className={styles.name}>{tool}</span>
-      <span className={styles.summaryText}>{summaryOf(block)}</span>
+      <span className={styles.summaryText}>{headline}</span>
+      {unverifiedWord ? <VisuallyHidden>{UNVERIFIED_READING.label}</VisuallyHidden> : null}
       <span className={styles.chips}>
         {verdict ? <Chip tone={verdict.tone}>{verdict.label}</Chip> : null}
         {stateReadingOf ? <Chip tone={stateReadingOf.tone}>{stateReadingOf.label}</Chip> : null}
-        {primary && !verifiedOf(primary) ? <Chip tone={UNVERIFIED_READING.tone}>{UNVERIFIED_READING.label}</Chip> : null}
+        {marker === "unverified" ? <Chip tone={UNVERIFIED_READING.tone}>{UNVERIFIED_READING.label}</Chip> : null}
+        {marker === "verified" ? <Chip tone={VERIFIED_READING.tone}>{VERIFIED_READING.label}</Chip> : null}
       </span>
     </span>
   );
@@ -93,11 +99,11 @@ export function ToolCard({ block, verifiedOf }: ToolCardProps) {
 }
 
 // The first bounded summary, in the order the legacy transcript used: request, policy, result.
-function summaryOf(block: ToolBlock): string {
+function summaryOf(block: ToolBlock): string | undefined {
   for (const candidate of [block.activity, block.decision, block.result]) {
     if (candidate?.summary) return candidate.summary;
   }
-  return EMPTY_TOOL_SUMMARY;
+  return undefined;
 }
 
 interface StepProps {

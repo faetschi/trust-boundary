@@ -8,18 +8,21 @@ import { Markdown } from "../../../markdown/react";
 import { Chip } from "../../../ui/Chip";
 import { cx } from "../../../ui/cx";
 import { formatClock } from "../../../core/format";
-import type { Item, MessageItem } from "../../../core/contract";
+import type { Item, ItemView, MessageItem } from "../../../core/contract";
 import { groupTurn, type Turn } from "../../../core/store";
-import { turnLabel } from "./readings";
+import type { Marker } from "./provenance";
+import { UNVERIFIED_READING, VERIFIED_READING, turnLabel } from "./readings";
 import { ToolCard, type Verifier } from "./ToolCard";
 import styles from "./Chat.module.css";
 
 interface TurnViewProps {
   readonly turn: Turn<Item>;
   readonly verifiedOf: Verifier;
+  // The item marker of a record, or null when the view states its provenance once (see provenance.ts).
+  readonly markOf: (item: ItemView) => Marker | null;
 }
 
-export function TurnView({ turn, verifiedOf }: TurnViewProps) {
+export function TurnView({ turn, verifiedOf, markOf }: TurnViewProps) {
   const label = turnLabel(turn.id);
   return (
     <section className={styles.turn} aria-label={label}>
@@ -30,9 +33,9 @@ export function TurnView({ turn, verifiedOf }: TurnViewProps) {
       <div className={styles.turnBody}>
         {groupTurn(turn.items).map((block) =>
           block.kind === "message" ? (
-            <MessageView key={block.item.id} item={block.item} verified={verifiedOf(block.item)} />
+            <MessageView key={block.item.id} item={block.item} marker={markOf(block.item)} />
           ) : (
-            <ToolCard key={block.key} block={block} verifiedOf={verifiedOf} />
+            <ToolCard key={block.key} block={block} verifiedOf={verifiedOf} markOf={markOf} />
           ),
         )}
       </div>
@@ -42,10 +45,10 @@ export function TurnView({ turn, verifiedOf }: TurnViewProps) {
 
 interface MessageViewProps {
   readonly item: Item;
-  readonly verified: boolean;
+  readonly marker: Marker | null;
 }
 
-function MessageView({ item, verified }: MessageViewProps) {
+function MessageView({ item, marker }: MessageViewProps) {
   if (item.type !== "message") return null;
   return (
     <div className={styles.msg} data-role={item.role} data-anchor={item.id}>
@@ -53,10 +56,14 @@ function MessageView({ item, verified }: MessageViewProps) {
         <span>{item.role}</span>
         <span> · </span>
         <time dateTime={item.occurred_at}>{formatClock(item.occurred_at)}</time>
-        {verified ? null : (
+        {marker === null ? null : (
           <>
             <span> · </span>
-            <Chip tone="idle">unverified</Chip>
+            {marker === "verified" ? (
+              <Chip tone={VERIFIED_READING.tone}>{VERIFIED_READING.label}</Chip>
+            ) : (
+              <Chip tone={UNVERIFIED_READING.tone}>{UNVERIFIED_READING.label}</Chip>
+            )}
           </>
         )}
       </p>

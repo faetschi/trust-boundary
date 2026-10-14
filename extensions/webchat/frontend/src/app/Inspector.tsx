@@ -27,7 +27,7 @@ export function Inspector({ model, narrow, open, headingRef, onClose }: Inspecto
   return (
     <aside
       id={INSPECTOR_ID}
-      aria-label="Governance inspector"
+      aria-label={record ? "Record inspector" : "Governance inspector"}
       className={styles.inspector}
       data-open={open}
       inert={closed}

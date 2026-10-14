@@ -21,7 +21,7 @@ import { createAnnouncer, type Announcer } from "../../ui/announcer";
 import { WorkspaceProvider, useWorkspace } from "../WorkspaceProvider";
 import { createWorkspaceStore, type WorkspaceModel } from "../workspaceStore";
 import { WINDOW_GAP_TEXT } from "../status";
-import { ChatView } from "./ChatView";
+import { ChatView, TRANSCRIPT_NOTICE_POINTER } from "./ChatView";
 import { TAIL_ANNOUNCE_DELAY_MS } from "./chat/tail";
 
 let latest: WorkspaceModel | null = null;
@@ -200,10 +200,58 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
     expect(q("[role='log']").textContent).toContain("reported by the source, not independently verified");
   });
 
-  it("marks each unverified item with the explicit unverified label", async () => {
+  it("states once, for the whole view, that a uniformly unverified projection is unverified", async () => {
     await renderLive(fixtureSnapshot());
-    const markers = qa("[data-tone='idle']").filter((element) => element.textContent === "unverified");
-    expect(markers.length).toBeGreaterThan(0);
+    expect(q("[role='log']").textContent).toContain("All 7 records in this view are unverified · source: fixture");
+    expect(qa("[data-tone='idle']").filter((element) => element.textContent === "unverified")).toHaveLength(0);
+  });
+
+  it("says the tool name once in a tool card's headline, then the summary without its repeat", async () => {
+    await renderLive(fixtureSnapshot());
+    const headline = qa("summary")[0]?.textContent ?? "";
+    expect(headline.match(/bash/g)).toHaveLength(1);
+    expect(headline).toContain("go test");
+  });
+
+  it("keeps the unverified wording in each tool card's accessible name, though no chip is drawn", async () => {
+    await renderLive(fixtureSnapshot());
+    const summaries = qa("summary");
+    expect(summaries.length).toBeGreaterThan(0);
+    for (const summary of summaries) expect(summary.textContent).toContain("unverified");
+  });
+
+  it("marks each item of a mixed projection by its own verification, and states no view-level line", () => {
+    // The validator refuses a live projection that mixes unobserved and observed records, so the mixed
+    // state is rendered from a model: the view's own branch is what is under test.
+    renderModel(
+      modelOf(
+        [
+          messageItem({ id: "m1", sequence: 1, role: "user", text: "hello" }),
+          observed(resultItem({ id: "r1", sequence: 2, tool: "bash", tool_call_id: "c1", state: "succeeded", summary: "exit 0" })),
+        ],
+        { source: "live", verification: "structural-audit-only" },
+      ),
+    );
+    expect(q("[role='log']").textContent).not.toContain("in this view are");
+    expect(chips()).toContainEqual(["unverified", "idle"]);
+    expect(chips()).toContainEqual(["verified", "ok"]);
+    expect(chips()).toContainEqual(["succeeded", "ok"]);
+  });
+
+  it("states once that a verified projection is verified, with no per-item marker", async () => {
+    await renderLive(
+      verifiedSnapshot([
+        observed(messageItem({ id: "m1", sequence: 1, role: "user", text: "hello" })),
+        observed(resultItem({ id: "r1", sequence: 2, tool: "bash", tool_call_id: "c1", state: "succeeded", summary: "exit 0" })),
+      ]),
+    );
+    expect(q("[role='log']").textContent).toContain("All 2 records in this view are verified · source: live");
+    expect(chips().some(([text]) => text === "unverified" || text === "verified")).toBe(false);
+  });
+
+  it("states no provenance line for an empty projection", async () => {
+    await renderLive(snapshotOf({ items: [] }));
+    expect(q("[role='log']").textContent).not.toContain("in this view are");
   });
 
   it("renders the filter toolbar with pressed state and counts", async () => {
@@ -429,20 +477,30 @@ describe("tool disclosures", () => {
 });
 
 describe("notices and states", () => {
-  it("shows the earlier-history notice as text when the window has a gap", () => {
+  it("does not repeat the window notice in the transcript: the shell shows it above the tabs", () => {
     renderModel(modelOf(fixtureItems(), { windowGap: { kind: "server", reason: "cursor_ahead", since: 1 } }));
-    expect(q("[role='note'][aria-label='Earlier history not loaded']").textContent).toBe(WINDOW_GAP_TEXT);
+    expect(q("[role='log']").textContent).not.toContain(WINDOW_GAP_TEXT);
+    expect(qa("[role='note']")).toHaveLength(0);
   });
 
-  it("shows the retained-window count as text when records were evicted", () => {
+  it("does not repeat the eviction notice in the transcript, but the summary line still counts it", () => {
     renderModel(modelOf(fixtureItems(), { evicted: 3 }));
-    expect(q("[role='note'][aria-label='Retained window']").textContent).toMatch(/3 earlier records no longer retained/);
+    expect(q("[role='log']").textContent).not.toMatch(/earlier records? no longer retained/);
     expect(summaryLine()).toMatch(/ · 3 older element\(s\) evicted$/);
+  });
+
+  it("marks the top of the transcript with a pointer when a notice applies, and only then", () => {
+    renderModel(modelOf(fixtureItems(), { evicted: 3 }));
+    expect(qa("[role='log'] p").some((element) => element.textContent === TRANSCRIPT_NOTICE_POINTER)).toBe(true);
+    mounted?.unmount();
+    renderModel(modelOf(fixtureItems()));
+    expect(qa("[role='log'] p").some((element) => element.textContent === TRANSCRIPT_NOTICE_POINTER)).toBe(false);
   });
 
   it("shows no earlier-history notice for a loaded window with continuity", async () => {
     await renderLive(fixtureSnapshot());
     expect(qa("[role='note']").some((note) => note.textContent?.includes("Earlier history"))).toBe(false);
+    expect(q("[role='log']").textContent).not.toContain(TRANSCRIPT_NOTICE_POINTER);
   });
 
   it("shows a loading state until the projection is loaded", async () => {

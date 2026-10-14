@@ -364,6 +364,58 @@ evidence and the parity table are in `phase2-parity.md`.
   is never shown as a success. An unverified success is shown as `reported`, and
   verified success needs a `VerifiedEvidence` value that only `verifyItem` creates.
 
+## Phase 3a: the React foundation (2026-10-14)
+
+The foundation is the shell that the Chat and Trajectory views (3b, 3c) sit in. `/` still
+serves the vanilla UI.
+
+**What it contains.**
+
+- Tokens: `src/styles/tokens.css` (three tiers, `design/design-language.md` section 7) and
+  `src/styles/base.css` (reset only, no colour value). Theme: `src/theme/` writes a
+  `data-theme` attribute on `<html>`. `bootstrap.ts` applies a stored choice before the first
+  render. The choices are System, Light (the default) and Dark.
+- Primitives in `src/ui/`: `Chip`, `Disclosure`, `Kbd`, `Notice`, `StateDot`, `StateMessage`
+  (loading, empty and error states, none with a live role), `Tabs` (roving tab stop; a
+  `TabPanel` mounts only its selected children), `ToggleGroup`, `VisuallyHidden`,
+  `LiveRegion` with `announcer.ts` (the one polite announcer).
+- The workspace: `src/app/workspaceStore.ts` holds the core state and publishes an immutable
+  `WorkspaceModel` after each change. `WorkspaceProvider.tsx` owns one store for the page, and
+  the stream opens in an effect and closes on unmount. `browser.ts` is the only module that
+  reads browser globals.
+- The shell: `Shell.tsx` (skip link to the visible view, header with the source and connection
+  badges, the claim boundary, theme and governance controls, the sessions rail, the main
+  workspace, the inspector, the footer and the live region), with `Rail.tsx`, `Footer.tsx`,
+  `GovernancePanels.tsx` and `Inspector.tsx`. The inspector is a column at wide widths and an
+  off-canvas drawer at or below the breakpoint in `layout.ts`.
+- Pure readings: `panels.ts` (governance panel words and tones) and `status.ts` (connection
+  words, the gap and window notices, the announcement rules).
+
+**Hooks and props.**
+
+- `useWorkspace(): WorkspaceModel` re-renders only when the store publishes. `model.actions`
+  has `setView`, `setGroup`, `setQuery`, `setFilter`, `selectRecord`, `clearRecord` and
+  `repinTail` (see Phase 3 polish).
+- `useShell(): ShellControls` (`shellContext.ts`) gives `narrow`, `drawerOpen`,
+  `openInspector`, `closeInspector`, `selectRecord(id, row)` and `clearRecord`. Only the shell
+  provides it.
+- `useNarrow()` (`layout.ts`), `useAnnouncer()` (`ui/LiveRegion.tsx`) and
+  `useTheme()` (`theme/useTheme.ts`, which returns the choice and its setter).
+- `WorkspaceProvider({ deps? })` takes `WorkspaceDeps` (fetch, event source, timers, online
+  state, clock). The app omits it and gets `browserDeps()`. `<Shell version>` takes the build
+  version.
+
+**How to test.** The tests run in happy-dom under Vitest. `test-support/fakes.ts` provides
+`fakeWorkspace(snapshot)`: a fake fetch, event source, timer set and clock. Its
+`sources[0].emit(...)` sends stream events, and `reply` sets the next snapshot.
+`test-support/dom.tsx` provides `mount`, `click`, `settle` and `installMatchMedia(width)`.
+Run `npx vitest run src/app` in `frontend/`, or the Windows gate with `-Filter src/app`. The
+legacy test that each row covers is in `phase3-parity.md`.
+
+**Not verified by the tests.** Layout, focus rings on screen, forced colours and the no-flash
+theme start. The browser captures from 3b and 3c are the only layout evidence. They do not
+cover forced colours, and no no-flash check is recorded. Screen-reader output is not tested.
+
 ## Phase 3b: the React Chat view (2026-10-14)
 
 The Chat view replaces its placeholder, and the markdown AST has a React mapping. The
@@ -394,11 +446,12 @@ vanilla UI.
 - UNKNOWN, lost, unknown, pending, failed and denied each keep their own label, and none
   of them is in the success tone.
 - Lossy output is a chip, and it leaves the state chip as it is.
-- An unverified item carries an explicit `unverified` chip.
+- An unverified record is marked explicitly. A uniformly unverified view says so once, and a
+  mixed view marks each record (Phase 3 polish).
 - The tail count comes only from `store.applied`. Gaps, duplicates and snapshot loads
   add nothing to it.
-- The tail pin is kept per store, in a `WeakMap` keyed by the store's actions, so a
-  return from the Trajectory view keeps the count.
+- The tail pin is kept by the workspace store (`repinTail`, `tailPending`), so a switch to the
+  Trajectory view and back keeps the count (Phase 3 polish).
 - Announcements: one debounced announcement of 400 ms, through the shell's announcer.
 
 **Decisions to confirm.**
@@ -411,21 +464,22 @@ vanilla UI.
    evidence. This is stricter than the legacy item-only check, and it makes no difference
    to the demo.
 4. The gap, window and eviction notices render inside the transcript. The Shell also
-   renders the same three notices above the tabs, so two copies appear.
+   renders the same three notices above the tabs, so two copies appear. (Resolved in Phase 3
+   polish: one copy, above the tabs, and a pointer at the top of the transcript.)
 5. A tool card's `data-anchor` is on its wrapper, not on the disclosure element.
 6. Turn sections are regions, not headings, so the Shell's heading order is unchanged.
 
 **Open.**
 
-- Duplicate notices, as in decision 4. The fix belongs to `Shell.tsx`, which this
-  change does not edit.
+- Duplicate notices, as in decision 4. Resolved in Phase 3 polish (below).
 - `ui/LiveRegion.test.tsx`, "is the only aria-live or live role in the application
   source", fails. The transcript uses `role="log"` with `aria-live="off"`, as the brief
   requires. Either the scan has to allow that, or the transcript has to stop using the
   log role. The test lives in `src/ui/`, which this change does not edit.
 - The Jump control was not exercised in Chrome. The demo has no live arrivals, so its
   count could not be shown. It is covered in happy-dom with stubbed page metrics only.
-- This file has no Phase 3a section, although `phase3-parity.md` refers to one.
+- This file has no Phase 3a section, although `phase3-parity.md` refers to one. Resolved:
+  see "Phase 3a" above.
 
 **Receipts (Windows; WSL was not used).** The rows are in `phase3-parity.md`.
 
@@ -504,18 +558,16 @@ finding filter. The rules are the ones in `web-chat.md` §4.4 and §4.5.
 These are behaviour changes, not gaps.
 
 1. The aside keeps the shell's name, `Governance inspector`, while a record is shown.
-   The legacy name was `Record inspector`. The name is set in `Inspector.tsx`, which
-   Phase 3c does not own.
+   The legacy name was `Record inspector`. Resolved in Phase 3 polish: the aside is named
+   `Record inspector` while a record is shown.
 2. The group hints are visible text. The toggle primitive has no per-button name, so the
    legacy per-button label is not reproduced.
 3. The ledger has one tab stop (a roving stop), not one per row.
 4. A row's accessible name includes its payload preview. The legacy name omitted it, so a
    screen reader heard the status but not the payload.
 5. The digest's full value is in its `title` only. There is no hidden copy.
-6. The tail pin does not survive a view switch. `TabPanel` unmounts the inactive view
-   (`ui/Tabs.tsx`), so records applied while Chat is showing are not counted when
-   Trajectory reopens. The legacy kept a pin per view. Keeping it needs the pin in the
-   store or the shell, and neither is Phase 3c's file.
+6. The tail pin did not survive a view switch, because `TabPanel` unmounts the inactive view
+   (`ui/Tabs.tsx`). Resolved in Phase 3 polish: the pin is kept by the workspace store.
 
 ### Not verified here
 
@@ -525,9 +577,9 @@ These are behaviour changes, not gaps.
   own anchoring. The browser walk did not drive a live stream, so the tail count was
   checked by the unit tests only.
 - Screen-reader output is not tested.
-- On first load of `/app/` at 390 px the page starts at `scrollY` 825, with the Chat view
-  showing. The trajectory view does not cause that: switching to it leaves `scrollY`
-  unchanged. The 390 px captures scroll to the top before the capture.
+- On first load of `/app/` at 390 px the page started at `scrollY` 825, with the Chat view
+  showing. Resolved in Phase 3 polish (cause and receipt below). The 390 px captures from
+  3c scrolled to the top before the capture, which hid it.
 
 ### Gates (Windows gate runner; WSL not used)
 
@@ -565,3 +617,142 @@ guard's regex as a live role. Neither file is Phase 3c's. The test was not chang
 - The page has zero CSP violations, zero console errors except the favicon 404 (allowed),
   zero uncaught exceptions, and no `style` or `on*` attribute.
 - These checks verify UI wiring only. They establish no `G1`, containment or `H1` result.
+
+## Phase 3 polish (2026-10-14)
+
+A pass over the known polish items left by 3b and 3c. Each behaviour change was first a
+failing test, except where the table says otherwise. The Trajectory view is not changed,
+except for the tail pin and the inspector name.
+
+**1. Duplicate notices: one copy, above the tabs.** The gap, window and eviction notices
+render once, in the shell (`Shell.tsx`, unchanged). The Chat transcript no longer repeats
+them. The shell copy sits above the tabs, where a reader inside the transcript cannot see
+it, so the top of the transcript carries a short pointer, "Notices for this transcript are
+above the tabs.", whenever a notice applies. The pointer repeats no notice text. The
+Trajectory view had no inline notices, so it has no pointer. The announcer is unchanged:
+the store still announces each gap once.
+- Tests: `app/Shell.views.test.tsx` "shows a gap, a window gap and an eviction once each, in
+  the chat view and in the trajectory view" counts the notice text as shown. It leaves out
+  the live status region, which holds the last announcement. `app/views/ChatView.test.tsx`
+  "does not repeat the window notice…", "does not repeat the eviction notice…" and "marks the
+  top of the transcript with a pointer…".
+- Red: "does not repeat the window notice…" failed with one `role="note"` in the transcript
+  where none was wanted.
+
+**2. Tool headline: no repeated words.** `app/views/chat/headline.ts`,
+`headlineSummary(tool, summary)`, removes leading repeats of the tool name that end at a word
+boundary (space, colon, middle dot, dash; a hyphen is not one, so `bash -c` keeps its flag).
+It compares case-insensitively after NFC normalisation. A summary that is only the name
+gives an empty headline. A blank or absent summary gives the "no bounded summary" text.
+- Tests: `app/views/chat/headline.test.ts` (12) covers the fixture summaries, a repeat of a
+  repeat (`read read service/x` gives `service/x`), a longer word that starts with the name,
+  case, a flag, unicode, an empty summary and the tool name `tool`. `ChatView.test.tsx` "says
+  the tool name once in a tool card's headline".
+- Red: the DOM test read `bash`, `bash` (two occurrences) where one was wanted.
+
+**3. Unverified chips: one provenance line.** `app/views/chat/provenance.ts`:
+- Uniform (every visible record shares authority, verification scope and verification): one
+  line at the top of the transcript, for example "All 18 records in this view are unverified
+  · source: fixture". The singular reads "The one record in this view is …". No item marker.
+- Mixed: each record is marked. An unverified record has an `unverified` chip. A record with
+  verified evidence has a `verified` chip in the success tone. Both use the stricter gate:
+  the projection is live and audited, and the item has evidence.
+- Empty: no line.
+- A tool card that draws no unverified chip keeps "unverified" in its accessible name, as
+  hidden text.
+- Tests: `app/views/chat/provenance.test.ts` (9) covers uniform unverified, the singular,
+  uniform verified, a mix by verification, a mix by authority, a mix by scope, the marker
+  rule and the empty case. `ChatView.test.tsx` covers the uniform line, the accessible name,
+  the mixed view, the verified-only view and the empty projection.
+- The mixed-view DOM test renders from a model, not a live snapshot. The validator refuses
+  a live projection that mixes unobserved and observed records, so that state cannot come
+  from the stream.
+- Red: the uniform and verified-only DOM tests found no provenance line. The provenance
+  module's tests failed on import until it existed.
+
+**4. Tail count across view switches.** The pin moved from per-view state (a module
+`WeakMap` in the chat view, a per-mount ref in the trajectory view) into the workspace store.
+The store has `actions.repinTail(atTail)` and derives `model.tailPending`, which is
+`pendingSince(applied, pin)`. The count still comes only from `applied`. The pin follows the
+applied count while the reader is at the tail, and it clears when the reader reaches the tail
+or presses Jump. A count already on screen when a view mounts is not announced again.
+- Tests: `app/Shell.views.test.tsx` "carries the count into the trajectory view and back, and
+  clears it at the tail". It switches between the views, counts applied records in each, and
+  clears the count at the tail. The existing tail tests in `ChatView.test.tsx` and
+  `TrajectoryView.test.tsx` still pass.
+- Red: the test failed before any fix, on its first count (no count was shown before the
+  switch). I did not isolate that cause in the old code. The store-level pin passes the
+  test.
+
+**5. Inspector name.** `app/Inspector.tsx` names the aside `Record inspector` while a record
+is shown, and `Governance inspector` otherwise. Focus handling is unchanged.
+- Test: `app/Shell.views.test.tsx` "is 'Record inspector' while a record is shown…".
+- Red: "expected 'Governance inspector' to be 'Record inspector'".
+
+**6. First load scroll at 390 px.** Cause: the chat tail hook measured the page at the
+first commit, while the projection was still loading and the page was short. It therefore
+counted the reader as "at the tail". When the records arrived, it scrolled the page to its
+new bottom. The reported scroll of 825 px at 390 px implies a page of 1669 px (825 + 844).
+The trajectory view does not do this, because it waits until it has shown records. The chat
+view now waits in the same way. At 390 px the page is now 1708 px tall. The 39 px difference
+from the implied 1669 px is most likely the new provenance line. I did not measure the old
+build, so that attribution is not verified.
+- Test: `app/Shell.views.test.tsx` "starts at the top when the page grows on the first load…".
+- Red: `scrollTop` was 4500, and the test expects 0.
+- Chrome 155, light. At 390 × 844, `scrollY` was 0 after load, after switching to
+  Trajectory, and after switching back. At 1440 × 900 it was 0 after load. See the receipt
+  below.
+
+**7. The 3a section** is above, in "Phase 3a".
+
+**Parity rows.** `phase3-parity.md` rows 17, 29, 30, 31, S3 and the status line are updated.
+
+**Receipts (Windows `gate.ps1` unless marked Linux).**
+
+| Gate | Command | Exit | Result |
+|---|---|---|---|
+| test, baseline | not re-run in this pass; from the Linux run recorded in `TASK_STATE.md` (Phase 3b/3c) | n/a | 49 files, 721 passed, 0 skipped |
+| typecheck | `gate.ps1 -Task typecheck` | 0 | `tsc --noEmit` clean |
+| app tests | `gate.ps1 -Task test -Filter src/app` | 0 | 16 files, 215 passed, 0 skipped |
+| verify | `gate.ps1 -Task verify` | 0 | tsc clean; 52 files, 752 passed, 0 failed, 0 skipped; sinks self-test OK (12 rules) and 0 findings in 84 files; deps self-test OK (26 cases) and check OK |
+| build | `gate.ps1 -Task build` | 0 | one fresh `dist/` copied back |
+| go | `gate.ps1 -Task go` | 0 | `go vet` clean; `go test` ok for both packages; `gofmt -l` empty |
+| CSP smoke | `node scripts/csp-smoke.mjs --url http://127.0.0.1:8823` | 0 | PASS: 7 header probes; `/app/` and `/` with 0 CSP violations; the observer live (4 violations on the canary); Chrome 155.0.8059.79 |
+
+The 752 tests are 721 plus 31: 25 in the three new test files, and 6 net more in
+`ChatView.test.tsx`.
+
+The browser receipt is `docs/webchat/qa/p3-polish-qa-receipt.json`. It lists the scroll
+checks, the Chrome product, the gateway hash (demo gateway on 8823), the `dist/` hashes and
+the source tree hash. The screenshots are `p3-polish-390-light.png` and
+`p3-polish-1440-light.png`. The 390 and 1440 captures show the chat view as first loaded,
+scrolled to the top. The script that produced them is not in the repository.
+
+**Not done, or deliberately deferred.**
+- The Trajectory ledger's per-row "unverified" marker is unchanged. Item 3 is about the
+  transcript.
+- The Trajectory view has no notice pointer, because it never had inline notices.
+- Live arrivals and Jump to latest were not driven in Chrome. The demo has no live arrivals.
+  The count across view switches is covered in happy-dom only.
+- Screen-reader output is not tested.
+- Linux (WSL, Go 1.27.1, Node 24.15.0), run on the working tree of this pass: an export of
+  HEAD 57bcd95 plus the uncommitted changes, 606 files. Go: `go build`, `go vet -mod=readonly`,
+  `gofmt -l` empty, and `go test -race -mod=readonly -count=1 -v` in `extensions/webchat`
+  (39 PASS, 0 FAIL, 0 SKIP) and in `supervisor` (488 PASS, 0 FAIL, 7 SKIP). The seven are
+  environment skips. The count is one above the 487 recorded in `TASK_STATE.md`, and that +1 is
+  not reconciled test by test. `supervisor` has no changes in this pass. The boundary guard
+  self-test passes 8/8, and the guard passes. Frontend: `npm ci --ignore-scripts` reports 0
+  vulnerabilities; typecheck 0; vitest 52 files, 752 passed, 0 skipped; `check:sinks` 84 files,
+  0 findings; `check:deps` OK; legacy `node --test` 258/258, 0 skipped. The source hash of
+  `frontend/src` (90 files) matches the QA receipt, and the Linux rebuild of `dist/` is
+  byte-identical to the Windows build. Logs are in WSL under `~/tbwc-verify/logs/`.
+- The CI repro gate (`npm run repro`) is RED on this working tree: exit 1. HEAD's committed
+  `dist/` predates this pass, and the clean rebuild of the current source differs from it. The
+  gate should pass once the rebuilt `dist/` is committed, but that has not been run. The CI
+  check "committed dist matches working tree" fails for the same reason.
+- csp-smoke ran on Windows only. The gateway was built with Windows `go`, not go1.27.1, so the
+  toolchain check did not run ("toolchain not checked: the gateway was supplied with --url").
+  There is no Chrome in WSL, so the smoke was not re-run on Linux.
+- `TASK_STATE.md` records this pass in its "Phase 3 polish" section.
+- Not committed. The rebuilt `dist/` and the source changes need a commit before the CI repro
+  gate can pass.

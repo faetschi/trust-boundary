@@ -64,6 +64,13 @@ export const UNVERIFIED_READING: ChipReading = {
   note: "not independently verified.",
 };
 
+// The marker of a verified record in a mixed view. It has the success tone, as the verified posture does.
+export const VERIFIED_READING: ChipReading = {
+  label: "verified",
+  tone: "ok",
+  note: "verified by the gateway.",
+};
+
 export interface PostureEntry {
   readonly key: string;
   readonly text: string;

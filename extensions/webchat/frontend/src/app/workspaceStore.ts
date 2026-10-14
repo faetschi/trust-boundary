@@ -31,6 +31,7 @@ import {
   type WindowGap,
   type Workspace,
 } from "../core/store";
+import { pendingSince, repin } from "../core/anchor";
 import type { FilterId } from "../core/filters";
 import type { Item, Panels, SessionHeader, SourceClass, StreamStatus, VerificationScope } from "../core/contract";
 import { createAnnouncer, type Announcer } from "../ui/announcer";
@@ -58,6 +59,9 @@ export interface WorkspaceActions {
   // Selecting the selected record clears the selection, as the core defines it.
   selectRecord(id: string | null): void;
   clearRecord(): void;
+  // The tail pin (core/anchor.ts repin). A reader at the tail, or a store with no pin yet, pins the
+  // applied count; a reader away keeps the pin, so records applied meanwhile are counted.
+  repinTail(atTail: boolean): void;
 }
 
 // The immutable view of the workspace. Items and the id index are copies; the other
@@ -75,6 +79,9 @@ export interface WorkspaceModel {
   readonly itemsById: ReadonlyMap<string, Item>;
   readonly lastSequence: number;
   readonly applied: number;
+  // Records applied since the reader's tail pin: the count the Jump control shows. It is derived
+  // from `applied` alone, so gaps, duplicates and snapshot loads never add to it.
+  readonly tailPending: number;
   readonly evicted: number;
   readonly loaded: boolean;
   readonly error: string | null;
@@ -107,6 +114,8 @@ export function createWorkspaceStore(deps: WorkspaceDeps): WorkspaceStore {
   const announcer = createAnnouncer();
   const listeners = new Set<() => void>();
   let stream: StreamController | null = null;
+  // Kept here, not in a view, because a view unmounts when the other one is shown.
+  let tailPin: number | null = null;
 
   const actions: WorkspaceActions = {
     setView(view) {
@@ -133,6 +142,12 @@ export function createWorkspaceStore(deps: WorkspaceDeps): WorkspaceStore {
       clearRecordState(state);
       publish();
     },
+    repinTail(atTail) {
+      const next = tailPin === null ? state.applied : repin(state.applied, atTail, tailPin);
+      if (next === tailPin) return;
+      tailPin = next;
+      publish();
+    },
   };
 
   function build(): WorkspaceModel {
@@ -150,6 +165,7 @@ export function createWorkspaceStore(deps: WorkspaceDeps): WorkspaceStore {
       itemsById: new Map(state.itemsById),
       lastSequence: state.lastSequence,
       applied: state.applied,
+      tailPending: tailPin === null ? 0 : pendingSince(state.applied, tailPin),
       evicted: state.evicted,
       loaded: state.loaded,
       error: state.error,

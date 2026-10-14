@@ -1,6 +1,6 @@
 # TBound task state
 
-Updated 2026-10-13. Implementation branch: codex/tbound-prototype.
+Updated 2026-10-14. Implementation branch: codex/tbound-prototype.
 Commit reviewed, verified increments; use explicit staging, no blanket reset.
 Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
 
@@ -572,8 +572,32 @@ Export of HEAD 58492c5 into WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under $
   go test -race 39 PASS 0 SKIP, legacy node 258/258, boundary guard, Linux rebuild == committed
   dist. Windows: csp-smoke PASS twice (Chrome 155, observer live), QA screenshots p3b/p3c at
   1440/1024/390 light+dark with receipts in docs/webchat/qa/.
-- Known polish items: duplicate gap/window/eviction notices (Shell above tabs + inline in
-  Chat), repeated words in tool summaries, per-message 'unverified' chip noise, tail count not
-  carried across view switches (TabPanel unmounts), the aside keeps the name 'Governance
-  inspector' while a record is open, first load at 390 px starts scrolled (scrollY 825).
-  Jump-to-latest is covered only in happy-dom (the demo has no live arrivals).
+- Polish items found here (duplicate notices, repeated tool words, unverified chip noise,
+  tail count across view switches, inspector name, first-load scroll at 390 px) were addressed
+  in the Phase 3 polish pass below. Jump-to-latest is covered only in happy-dom (the demo has
+  no live arrivals).
+
+## Phase 3 polish (2026-10-14, uncommitted)
+
+- Items: one notice copy, above the tabs, with a pointer in the transcript; repeated tool-name
+  words removed (`chat/headline.ts`); one provenance line for uniform views and per-record marks
+  for mixed ones (`chat/provenance.ts`); the tail pin kept in the workspace store across view
+  switches; inspector named "Record inspector" while a record is shown; first-load scroll at
+  390 px fixed (chat waits for records, as trajectory does). Each has a test that was red first.
+  Details: `extensions/webchat/docs/frontend.md`, "Phase 3 polish".
+- Windows (`gate.ps1`): typecheck 0; `src/app` 215/215; verify 52 files, 752 passed, 0 skipped;
+  build 0; go 0; csp-smoke PASS, observer live (Chrome 155; the gateway was built with Windows
+  `go`, so the toolchain was not checked). Browser QA: `scrollY` 0 after load at 390 and 1440,
+  and after view switches. Receipt: `docs/webchat/qa/p3-polish-qa-receipt.json`.
+- Linux (WSL, Go 1.27.1, Node 24.15.0; export of the working tree, 606 files): webchat go test
+  -race 39 PASS, 0 SKIP; supervisor 488 PASS, 0 FAIL, 7 SKIP (the same environment skips;
+  488 is one above the recorded 487, not reconciled); vitest 752/752; sinks 0 findings; deps OK;
+  legacy node 258/258, 0 skipped; boundary guard 8/8 and OK; source hash of `frontend/src`
+  (90 files) matches the QA receipt; Linux `dist/` is byte-identical to the Windows build.
+- RED: `npm run repro` exits 1. HEAD's committed `dist/` (pre-polish) differs from the rebuild
+  of the current source, and the CI check "committed dist matches working tree" fails the same
+  way. Both should pass after the rebuilt `dist/` is committed (index.html `6e50d038…`,
+  manifest `b53e6afe…`, `index-K5jt8CUl.js` replaces `index-CRVk53EO.js`). Not yet run after
+  that commit.
+- Not committed: commit needs the user's go-ahead. Then re-run `npm run repro`.
+- Open: no screen-reader test; Jump-to-latest only in happy-dom (no live arrivals in the demo).

@@ -1,20 +1,25 @@
 import { useRef, type ReactNode } from "react";
 import { jumpLabel } from "../../core/anchor";
+import type { ItemView } from "../../core/contract";
 import { FILTERS, countFilter, filterItems, governanceCounts } from "../../core/filters";
 import { isVerifiedProjection, verifyItem } from "../../core/format";
 import { turnsOf } from "../../core/store";
 import { Chip } from "../../ui/Chip";
-import { Notice } from "../../ui/Notice";
 import { useAnnouncer } from "../../ui/LiveRegion";
 import { ToggleGroup, type ToggleItem } from "../../ui/ToggleGroup";
 import { EmptyState, ErrorState, LoadingState } from "../../ui/StateMessage";
-import { evictedText, gapText, WINDOW_GAP_TEXT } from "../status";
 import type { WorkspaceModel } from "../workspaceStore";
 import { filterSummaryText, postureEntries } from "./chat/readings";
+import { markerFor, provenanceOf } from "./chat/provenance";
 import { TurnView } from "./chat/Transcript";
 import type { Verifier } from "./chat/ToolCard";
 import { useTailWindow } from "./chat/tail";
 import styles from "./chat/Chat.module.css";
+
+// Shown at the top of the transcript while a notice applies. The notices themselves are shown once,
+// above the tabs, by the shell: they sit above this view, so a reader inside the transcript cannot see
+// them. Announcements are the shell's too, so this line is not live.
+export const TRANSCRIPT_NOTICE_POINTER = "Notices for this transcript are above the tabs.";
 
 // The Chat view: the posture of the retained window, the finding filters, the transcript, and the
 // tail window. Presentation only. Counts come from the store's items and its applied count, and a
@@ -25,9 +30,18 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   const projectionVerified = isVerifiedProjection(model);
   // A success is verified only in a live, structurally audited projection, and only with evidence.
   const verifiedOf: Verifier = (item) => projectionVerified && verifyItem(item) !== null;
-  const tail = useTailWindow({ region: logRef, pinKey: model.actions, applied: model.applied, announcer });
+  const tail = useTailWindow({
+    region: logRef,
+    actions: model.actions,
+    pending: model.tailPending,
+    count: model.items.length,
+    announcer,
+  });
 
   const visible = filterItems(model.items, model.filter);
+  // The provenance is stated once for the view when its records agree; a mixed view marks each record.
+  const provenance = provenanceOf(visible, verifiedOf, model.source);
+  const markOf = (item: ItemView) => markerFor(provenance, verifiedOf(item));
   const activeFilter = FILTERS.find((entry) => entry.id === model.filter);
   const filterLabel = activeFilter ? activeFilter.label : model.filter;
   const posture = postureEntries(governanceCounts(model.items, verifiedOf));
@@ -71,28 +85,10 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
         <p className={styles.summary}>{summary}</p>
       </div>
 
-      {hasNotice ? (
-        <div className={styles.notices}>
-          {model.gapNotice ? (
-            <Notice label="Continuity gap" tone="warning">
-              {gapText(model.gapNotice)}
-            </Notice>
-          ) : null}
-          {model.windowGap ? (
-            <Notice label="Earlier history not loaded" tone="warning">
-              {WINDOW_GAP_TEXT}
-            </Notice>
-          ) : null}
-          {model.evicted > 0 ? (
-            <Notice label="Retained window" tone="info">
-              {evictedText(model.evicted)}
-            </Notice>
-          ) : null}
-        </div>
-      ) : null}
-
       {/* aria-live is off: the single polite announcer lives in the shell (LiveRegion). */}
       <div role="log" aria-label="Transcript" aria-live="off" tabIndex={-1} ref={logRef} className={styles.log}>
+        {hasNotice ? <p className={styles.note}>{TRANSCRIPT_NOTICE_POINTER}</p> : null}
+        {provenance.kind === "uniform" ? <p className={styles.note}>{provenance.text}</p> : null}
         {model.error ? <ErrorState title="Projection error">{model.error}</ErrorState> : null}
         {transcript()}
       </div>
@@ -124,6 +120,8 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
         </EmptyState>
       );
     }
-    return turnsOf(visible).map((turn) => <TurnView key={turn.id} turn={turn} verifiedOf={verifiedOf} />);
+    return turnsOf(visible).map((turn) => (
+      <TurnView key={turn.id} turn={turn} verifiedOf={verifiedOf} markOf={markOf} />
+    ));
   }
 }
