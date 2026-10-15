@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -429,6 +430,315 @@ func TestPiServiceBusyDisconnectAndUnresolvedReplay(t *testing.T) {
 	if response.Status != "completed" || server.calls.Load() != 2 {
 		t.Fatalf("disconnect retry duplicated or lost the terminal response: response=%+v calls=%d", response, server.calls.Load())
 	}
+}
+
+func TestPiServiceJournalBlocksNewIDsAfterRestart(t *testing.T) {
+	for _, terminalStatus := range []string{"", "unknown", "completed"} {
+		name := terminalStatus
+		if name == "" {
+			name = "missing-terminal"
+		}
+		t.Run(name, func(t *testing.T) {
+			_, journalPath, _, _, _ := seedPiServiceRecoveryJournal(t, terminalStatus)
+			command := exec.Command(os.Args[0], "-test.run=^TestPiServiceJournalRecoveryProcessHelper$")
+			command.Env = append(os.Environ(), "TB_TBOUND_PI_RECOVERY_HELPER=begin-new",
+				"TB_TBOUND_PI_RECOVERY_JOURNAL="+journalPath,
+				"TB_TBOUND_PI_RECOVERY_UID="+strconv.Itoa(os.Geteuid()),
+				"TB_TBOUND_PI_RECOVERY_GID="+strconv.Itoa(os.Getegid()))
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("fresh-process new-ID admission: %v\n%s", err, output)
+			}
+			journal, err := audit.Open(journalPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			trace, traceErr := journal.Trace()
+			closeErr := journal.Close()
+			if traceErr != nil || closeErr != nil {
+				t.Fatalf("reopen request journal: trace=%v close=%v", traceErr, closeErr)
+			}
+			wantRecords := 1
+			if terminalStatus != "" {
+				wantRecords = 2
+			}
+			if len(trace.Records) != wantRecords {
+				t.Fatalf("refused fresh process appended admission: got %d records, want %d", len(trace.Records), wantRecords)
+			}
+		})
+	}
+}
+
+func TestPiServiceRequestJournalHashBindsWorkflowAdmission(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	requestAudit, err := audit.Open(filepath.Join(root, "requests.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests, err := newPiServiceRequestJournal(requestAudit)
+	if err != nil {
+		_ = requestAudit.Close()
+		t.Fatal(err)
+	}
+	defer requests.close()
+	peer := piServicePeerCredentials{PID: 424242, UID: os.Geteuid(), GID: os.Getegid()}
+	request := piServiceRequest{RequestID: "request-admission-hash", TaskID: "task-admission-hash", Prompt: "resume bound task"}
+	digest := mustPiServicePayloadDigest(t, request)
+	acceptedRecord, err := requests.begin(context.Background(), peer, request, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, exists, err := requests.lookup(peer, request, digest)
+	if err != nil || !exists || state.acceptedRecord.Hash != acceptedRecord.Hash ||
+		!validBareWorkflowDigest(acceptedRecord.Hash) || validDigestText(acceptedRecord.Hash) {
+		t.Fatalf("real request-journal hash domain changed: record=%+v state=%+v exists=%v err=%v", acceptedRecord, state, exists, err)
+	}
+
+	catalogAudit, err := audit.Open(filepath.Join(root, "workflow-catalog.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog := &piServiceWorkflowCatalog{journal: catalogAudit, entries: make(map[string]piServiceWorkflowEntry),
+		byHostAdmissionID: make(map[string]string), ownerScopes: make(map[string]piServiceWorkflowOwnerScope)}
+	defer catalog.Close()
+	config := piServiceConfig{WorkflowAdmissionMode: "fresh", WorkflowAdmissionID: "host-admission-regression",
+		WorkflowTaskID: request.TaskID, WorkflowPrompt: request.Prompt, WorkflowOwnerStoreRoot: filepath.Join(root, "owners"),
+		WorkflowDurationSeconds: 3600, WorkflowMaxPreEffectRetries: 1, WorkflowMaxCleanRestarts: 1,
+		WorkflowMaxHostCalls: 8, WorkflowMaxTokens: 1024}
+	configDigest := "sha256:" + strings.Repeat("a", 64)
+	registrationID := "sha256:" + strings.Repeat("b", 64)
+	admission := piServiceAdmissionContext{Peer: peer, CurrentPeer: peer, Request: request, PayloadDigest: digest,
+		Accepted: state.accepted, AcceptedRecord: state.acceptedRecord}
+	workflowAdmission, err := catalog.ResolveAdmission(admission, config, configDigest, registrationID)
+	if err != nil {
+		t.Fatalf("bind real request-journal record to workflow admission: %v", err)
+	}
+	if workflowAdmission.Entry.AdmissionRecordHash != acceptedRecord.Hash ||
+		workflowAdmission.Entry.AdmissionSequence != acceptedRecord.Sequence ||
+		!validWorkflowCatalogEntry(workflowAdmission.Entry) {
+		t.Fatalf("workflow catalog did not preserve the bare request-journal identity: %+v", workflowAdmission.Entry)
+	}
+	trace, err := catalogAudit.Trace()
+	if err != nil || len(trace.Records) != 1 {
+		t.Fatalf("workflow admission journal trace: records=%d err=%v", len(trace.Records), err)
+	}
+	var event piServiceWorkflowEvent
+	if err := unmarshalGovernedJSON(trace.Records[0].Event.Data, &event); err != nil ||
+		event.AdmissionHash != acceptedRecord.Hash || event.Entry.AdmissionRecordHash != acceptedRecord.Hash {
+		t.Fatalf("persisted workflow admission changed the journal hash domain: %+v err=%v", event, err)
+	}
+}
+
+func TestPiServiceJournalRecoversExactIDInFreshProcess(t *testing.T) {
+	root, journalPath, peer, request, acceptedRecord := seedPiServiceRecoveryJournal(t, "")
+	socketPath := filepath.Join(root, "recovery.sock")
+	var childOutput bytes.Buffer
+	command := exec.Command(os.Args[0], "-test.run=^TestPiServiceJournalRecoveryProcessHelper$")
+	command.Env = append(os.Environ(), "TB_TBOUND_PI_RECOVERY_HELPER=serve-replay",
+		"TB_TBOUND_PI_RECOVERY_JOURNAL="+journalPath,
+		"TB_TBOUND_PI_RECOVERY_SOCKET="+socketPath,
+		"TB_TBOUND_PI_RECOVERY_HASH="+acceptedRecord.Hash,
+		"TB_TBOUND_PI_RECOVERY_SEQUENCE="+strconv.FormatUint(acceptedRecord.Sequence, 10),
+		"TB_TBOUND_PI_RECOVERY_UID="+strconv.Itoa(peer.UID),
+		"TB_TBOUND_PI_RECOVERY_GID="+strconv.Itoa(peer.GID),
+		"TB_TBOUND_PI_RECOVERY_ORIGINAL_PID="+strconv.Itoa(peer.PID),
+		"TB_TBOUND_PI_RECOVERY_CURRENT_PID="+strconv.Itoa(os.Getpid()))
+	command.Stdout, command.Stderr = &childOutput, &childOutput
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	childDone := make(chan error, 1)
+	go func() { childDone <- command.Wait() }()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(socketPath); err == nil {
+			break
+		}
+		select {
+		case err := <-childDone:
+			t.Fatalf("fresh-process recovery service exited before listening: %v\n%s", err, childOutput.String())
+		case <-time.After(10 * time.Millisecond):
+			if time.Now().After(deadline) {
+				_ = command.Process.Kill()
+				<-childDone
+				t.Fatalf("fresh-process recovery service did not create its socket\n%s", childOutput.String())
+			}
+		}
+	}
+
+	newRequest := piServiceRequest{RequestID: "request-after-crash", TaskID: "task-new", Prompt: "new workflow"}
+	refused := roundTripPiServiceRequest(t, socketPath, newRequest)
+	if refused.Status != "refused" || refused.ErrorCode != "prior-workflow-unsettled" {
+		t.Fatalf("new ID was not blocked by unresolved journal: %+v", refused)
+	}
+	changed := request
+	changed.Prompt = "changed payload"
+	conflict := roundTripPiServiceRequest(t, socketPath, changed)
+	if conflict.Status != "refused" || conflict.ErrorCode != "request-id-conflict" {
+		t.Fatalf("mismatched exact ID was not denied: %+v", conflict)
+	}
+	response := roundTripPiServiceRequest(t, socketPath, request)
+	if response.Status != "completed" || response.RequestID != request.RequestID {
+		t.Fatalf("exact prior ID did not recover: %+v", response)
+	}
+	var authority struct {
+		IsReplay         bool   `json:"is_replay"`
+		OriginalPeerPID  int    `json:"original_peer_pid"`
+		CurrentPeerPID   int    `json:"current_peer_pid"`
+		AcceptedHash     string `json:"accepted_hash"`
+		AcceptedSequence uint64 `json:"accepted_sequence"`
+		AcceptedPayload  string `json:"accepted_payload"`
+	}
+	if err := unmarshalGovernedJSON(response.Receipt, &authority); err != nil || !authority.IsReplay ||
+		authority.OriginalPeerPID != peer.PID || authority.CurrentPeerPID != os.Getpid() ||
+		authority.AcceptedHash != acceptedRecord.Hash || authority.AcceptedSequence != acceptedRecord.Sequence ||
+		authority.AcceptedPayload != mustPiServicePayloadDigest(t, request) {
+		t.Fatalf("fresh-process recovery did not retain the exact original admission authority: %+v err=%v", authority, err)
+	}
+	if err := <-childDone; err != nil {
+		t.Fatalf("fresh-process recovery service: %v\n%s", err, childOutput.String())
+	}
+
+	journal, err := audit.Open(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trace, traceErr := journal.Trace()
+	closeErr := journal.Close()
+	if traceErr != nil || closeErr != nil {
+		t.Fatalf("reopen recovered request journal: trace=%v close=%v", traceErr, closeErr)
+	}
+	if len(trace.Records) != 2 || trace.Records[0].Event.Kind != "pi_service_request_accepted" ||
+		trace.Records[1].Event.Kind != "pi_service_request_terminal" {
+		t.Fatalf("recovery changed journal admission identity or appended a new ID: %+v", trace.Records)
+	}
+}
+
+func TestPiServiceJournalRecoveryProcessHelper(t *testing.T) {
+	mode := os.Getenv("TB_TBOUND_PI_RECOVERY_HELPER")
+	if mode == "" {
+		return
+	}
+	journalPath := os.Getenv("TB_TBOUND_PI_RECOVERY_JOURNAL")
+	uid, uidErr := strconv.Atoi(os.Getenv("TB_TBOUND_PI_RECOVERY_UID"))
+	gid, gidErr := strconv.Atoi(os.Getenv("TB_TBOUND_PI_RECOVERY_GID"))
+	if journalPath == "" || uidErr != nil || gidErr != nil {
+		t.Fatalf("invalid recovery helper environment: journal=%q uidErr=%v gidErr=%v", journalPath, uidErr, gidErr)
+	}
+	journal, err := audit.Open(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests, err := newPiServiceRequestJournal(journal)
+	if err != nil {
+		_ = journal.Close()
+		t.Fatal(err)
+	}
+	if mode == "begin-new" {
+		request := piServiceRequest{RequestID: "request-after-restart", TaskID: "task-after-restart", Prompt: "new workflow"}
+		digest := mustPiServicePayloadDigest(t, request)
+		_, err := requests.begin(context.Background(), piServicePeerCredentials{PID: os.Getpid(), UID: uid, GID: gid}, request, digest)
+		closeErr := requests.close()
+		if !errors.Is(err, ErrPiServiceUnresolvedPrior) || closeErr != nil {
+			t.Fatalf("new ID begin error=%v close=%v, want unresolved prior", err, closeErr)
+		}
+		return
+	}
+	if mode != "serve-replay" {
+		_ = requests.close()
+		t.Fatalf("unknown recovery helper mode %q", mode)
+	}
+	originalPID, originalErr := strconv.Atoi(os.Getenv("TB_TBOUND_PI_RECOVERY_ORIGINAL_PID"))
+	currentPID, currentErr := strconv.Atoi(os.Getenv("TB_TBOUND_PI_RECOVERY_CURRENT_PID"))
+	sequence, sequenceErr := strconv.ParseUint(os.Getenv("TB_TBOUND_PI_RECOVERY_SEQUENCE"), 10, 64)
+	acceptedHash := os.Getenv("TB_TBOUND_PI_RECOVERY_HASH")
+	if originalErr != nil || currentErr != nil || sequenceErr != nil || !validBareWorkflowDigest(acceptedHash) {
+		_ = requests.close()
+		t.Fatalf("invalid replay helper authority: original=%v current=%v sequence=%v", originalErr, currentErr, sequenceErr)
+	}
+	request := piServiceRequest{RequestID: "request-before-crash", TaskID: "task-before-crash", Prompt: "resume original workflow"}
+	digest := mustPiServicePayloadDigest(t, request)
+	originalPeer := piServicePeerCredentials{PID: originalPID, UID: uid, GID: gid}
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: os.Getenv("TB_TBOUND_PI_RECOVERY_SOCKET"), Net: "unix"})
+	if err != nil {
+		_ = requests.close()
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	run := func(ctx context.Context, _ piServiceRequest) (json.RawMessage, error) {
+		admission, ok := piServiceAdmissionFromContext(ctx)
+		if !ok || !admission.IsReplay || admission.Peer != originalPeer ||
+			admission.CurrentPeer.PID != currentPID || admission.CurrentPeer.UID != uid || admission.CurrentPeer.GID != gid ||
+			admission.AcceptedRecord.Hash != acceptedHash || admission.AcceptedRecord.Sequence != sequence ||
+			admission.Accepted.RequestID != request.RequestID || admission.Accepted.TaskID != request.TaskID ||
+			admission.Accepted.PayloadDigest != digest {
+			return nil, errors.New("recovered admission did not retain the original accepted authority")
+		}
+		return json.Marshal(struct {
+			IsReplay         bool   `json:"is_replay"`
+			OriginalPeerPID  int    `json:"original_peer_pid"`
+			CurrentPeerPID   int    `json:"current_peer_pid"`
+			AcceptedHash     string `json:"accepted_hash"`
+			AcceptedSequence uint64 `json:"accepted_sequence"`
+			AcceptedPayload  string `json:"accepted_payload"`
+		}{admission.IsReplay, admission.Peer.PID, admission.CurrentPeer.PID, admission.AcceptedRecord.Hash,
+			admission.AcceptedRecord.Sequence, admission.Accepted.PayloadDigest})
+	}
+	go func() {
+		for {
+			state, exists, lookupErr := requests.lookup(originalPeer, request, digest)
+			if lookupErr != nil || exists && state.terminal != nil {
+				cancel()
+				return
+			}
+			if ctx.Err() != nil {
+				return
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+	}()
+	serveErr := servePiServiceRequests(ctx, listener, piServiceSocketRegistration{
+		AllowedClientUIDs: []int{uid}, AllowedClientPrimaryGID: gid,
+	}, requests, nil, run)
+	closeErr := requests.close()
+	if serveErr != nil || closeErr != nil {
+		t.Fatalf("recovery service err=%v journal close=%v", serveErr, closeErr)
+	}
+}
+
+func seedPiServiceRecoveryJournal(t *testing.T, terminalStatus string) (string, string, piServicePeerCredentials,
+	piServiceRequest, audit.Record) {
+	t.Helper()
+	root := privateGovernedTestRoot(t)
+	path := filepath.Join(root, "requests.jsonl")
+	journal, err := audit.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	requests, err := newPiServiceRequestJournal(journal)
+	if err != nil {
+		_ = journal.Close()
+		t.Fatal(err)
+	}
+	peer := piServicePeerCredentials{PID: 424242, UID: os.Geteuid(), GID: os.Getegid()}
+	request := piServiceRequest{RequestID: "request-before-crash", TaskID: "task-before-crash", Prompt: "resume original workflow"}
+	digest := mustPiServicePayloadDigest(t, request)
+	acceptedRecord, err := requests.begin(context.Background(), peer, request, digest)
+	if err != nil {
+		_ = requests.close()
+		t.Fatal(err)
+	}
+	if terminalStatus != "" {
+		response := piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID, Status: terminalStatus}
+		if err := requests.complete(peer.UID, request, digest, response); err != nil {
+			_ = requests.close()
+			t.Fatal(err)
+		}
+	}
+	if err := requests.close(); err != nil {
+		t.Fatal(err)
+	}
+	return root, path, peer, request, acceptedRecord
 }
 
 type piServiceTestServer struct {

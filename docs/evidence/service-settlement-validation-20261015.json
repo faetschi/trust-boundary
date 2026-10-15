@@ -1,0 +1,187 @@
+{
+    "schema":  "tbound-component-validation/v1",
+    "date":  "2026-10-15",
+    "checkout":  "C:\\Users\\Admin\\Desktop\\FH\\Master Software Engineering\\MA Thesis\\trust-boundary",
+    "branch":  "codex/tbound-prototype",
+    "base_commit":  "c3a73e2f1a1b8978b4aca66b58aac76cf156404b",
+    "head_commit_at_validation":  "dadf0a018e44e2a03ff53b9e6a2ca712f2a9034a",
+    "runner_exit_code":  0,
+    "source_provenance":  "Service integration source is reconstructed WIP after a C: disk-full recovery, not byte-exact recovery. Hashes identify the exact files tested.",
+    "scope":  "Component validation only; not production qualification or a performance measurement.",
+    "settlement_gate":  "A completed receipt may settle a quiescent final AwaitingHostPrompt transcript only when it matches the current provider disposition and recovery-generation-derived conversation ID. Earlier transcripts must be Terminal or Retired; pending, unknown, and reserved authority remains refused.",
+    "validation_environment":  {
+                                   "distro":  "Ubuntu WSL",
+                                   "go":  "go1.27.1 linux/amd64",
+                                   "GOTOOLCHAIN":  "local",
+                                   "GOMAXPROCS":  2,
+                                   "go_parallelism":  2,
+                                   "GOPROXY":  "off",
+                                   "GOSUMDB":  "off",
+                                   "GOMODCACHE":  "/home/jeli2k/go/pkg/mod",
+                                   "GOCACHE":  "/home/jeli2k/.cache/go-build",
+                                   "TMPDIR":  "/tmp/tb-settlement.XNXMkR",
+                                   "umask":  "077",
+                                   "validation_script":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\validate-settlement-final-r3-20261015.sh",
+                                   "validation_script_sha256":  "1D1593E4FBDFA0CE672B5D6D30ACB13717F3564B17468FD4A08F1606BCB40E5D",
+                                   "validation_script_line_endings":  "LF",
+                                   "validation_script_utf8_bom":  false
+                               },
+    "results":  [
+                    {
+                        "command":  "gofmt -d cmd/tbound/pi_service_handoff_linux.go cmd/tbound/pi_service_handoff_linux_test.go cmd/tbound/production_workflow_catalog_linux.go cmd/tbound/production_workflow_catalog_linux_test.go",
+                        "exit_code":  0,
+                        "status":  "pass, empty diff",
+                        "skipped_tests":  [
+
+                                          ],
+                        "tmpdir":  "/tmp/tb-settlement.XNXMkR",
+                        "script":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\validate-settlement-final-r3-20261015.sh",
+                        "script_sha256":  "1D1593E4FBDFA0CE672B5D6D30ACB13717F3564B17468FD4A08F1606BCB40E5D",
+                        "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\gofmt-final-r3-20261015.log",
+                        "raw_log_sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+                    },
+                    {
+                        "command":  "go test -v -p=2 -mod=readonly -count=1 -run \u0027^(TestPiServiceJournalBlocksNewIDsAfterRestart|TestPiServiceJournalRecoversExactIDInFreshProcess|TestPiServiceRequestJournalHashBindsWorkflowAdmission|TestPiServiceWorkflowCatalogTerminalTupleIsExactAndIdempotent|TestCatalogOwnerDrainRequiresCleanupReceiptOrLiveScope|TestSettledServiceProfileRequiresExactLandlockABI|TestSettledServiceDispositionRejectsUnresolvedPins)$\u0027 ./cmd/tbound",
+                        "exit_code":  0,
+                        "status":  "pass, no skipped tests",
+                        "skipped_tests":  [
+
+                                          ],
+                        "tmpdir":  "/tmp/tb-settlement.XNXMkR",
+                        "script":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\validate-settlement-final-r3-20261015.sh",
+                        "script_sha256":  "1D1593E4FBDFA0CE672B5D6D30ACB13717F3564B17468FD4A08F1606BCB40E5D",
+                        "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\focused-final-r3-20261015.log",
+                        "raw_log_sha256":  "9CD0528FACC33F912E8F87792D657BD4896E016DF3EF93778872AB5963A573F7"
+                    },
+                    {
+                        "command":  "go test -race -v -p=2 -mod=readonly -count=1 -run \u0027^(TestPiServiceJournalBlocksNewIDsAfterRestart|TestPiServiceJournalRecoversExactIDInFreshProcess|TestPiServiceRequestJournalHashBindsWorkflowAdmission|TestPiServiceWorkflowCatalogTerminalTupleIsExactAndIdempotent|TestCatalogOwnerDrainRequiresCleanupReceiptOrLiveScope|TestSettledServiceProfileRequiresExactLandlockABI|TestSettledServiceDispositionRejectsUnresolvedPins)$\u0027 ./cmd/tbound",
+                        "exit_code":  0,
+                        "status":  "pass, no skipped tests",
+                        "skipped_tests":  [
+
+                                          ],
+                        "tmpdir":  "/tmp/tb-settlement.XNXMkR",
+                        "script":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\validate-settlement-final-r3-20261015.sh",
+                        "script_sha256":  "1D1593E4FBDFA0CE672B5D6D30ACB13717F3564B17468FD4A08F1606BCB40E5D",
+                        "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\focused-race-final-r3-20261015.log",
+                        "raw_log_sha256":  "276DB44712F837064FAC2B02223F99314D7A8252739B683D097D2FEDFAC1E728"
+                    },
+                    {
+                        "command":  "go build -mod=readonly -o /tmp/tb-settlement.XNXMkR/tbound ./cmd/tbound",
+                        "exit_code":  0,
+                        "status":  "pass",
+                        "skipped_tests":  [
+
+                                          ],
+                        "tmpdir":  "/tmp/tb-settlement.XNXMkR",
+                        "script":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\validate-settlement-final-r3-20261015.sh",
+                        "script_sha256":  "1D1593E4FBDFA0CE672B5D6D30ACB13717F3564B17468FD4A08F1606BCB40E5D",
+                        "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\package-build-final-r3-20261015.log",
+                        "raw_log_sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+                    },
+                    {
+                        "command":  "go test -p=2 -mod=readonly -run \u0027^$\u0027 ./cmd/tbound",
+                        "exit_code":  0,
+                        "status":  "pass, package compiled; no tests run",
+                        "skipped_tests":  [
+
+                                          ],
+                        "tmpdir":  "/tmp/tb-settlement.XNXMkR",
+                        "script":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\validate-settlement-final-r3-20261015.sh",
+                        "script_sha256":  "1D1593E4FBDFA0CE672B5D6D30ACB13717F3564B17468FD4A08F1606BCB40E5D",
+                        "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\package-compile-final-r3-20261015.log",
+                        "raw_log_sha256":  "BC1CFD3F821B4E845A39194EA98F1B1641E34A5DF83B02A5F2E392E0379EF47E"
+                    },
+                    {
+                        "command":  "go vet -p=2 -mod=readonly ./cmd/tbound",
+                        "exit_code":  0,
+                        "status":  "pass",
+                        "skipped_tests":  [
+
+                                          ],
+                        "tmpdir":  "/tmp/tb-settlement.XNXMkR",
+                        "script":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\validate-settlement-final-r3-20261015.sh",
+                        "script_sha256":  "1D1593E4FBDFA0CE672B5D6D30ACB13717F3564B17468FD4A08F1606BCB40E5D",
+                        "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\package-vet-final-r3-20261015.log",
+                        "raw_log_sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+                    }
+                ],
+    "source_sha256":  {
+                          "supervisor/cmd/tbound/pi_service_handoff_linux.go":  "A03F4359A8960B1AF81AA873605E9E708AC55239067979515B286100AAB30F41",
+                          "supervisor/cmd/tbound/pi_service_handoff_linux_test.go":  "EA905365083EA881EEA4A50004BF7DF8B1C1D80FD2215855D62111E380B685AA",
+                          "supervisor/cmd/tbound/production_workflow_catalog_linux.go":  "B1D01E64E88732305E44727A1262F91442DF924A43AD2EE2B75B16FCD956D145",
+                          "supervisor/cmd/tbound/production_workflow_catalog_linux_test.go":  "D14E2F59A67305DEC0CD4F79DE85A90C9D16565A4B503B582711E1660914035D"
+                      },
+    "prior_attempts":  [
+                           {
+                               "script":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\validate-settlement-final-20261015.sh",
+                               "script_sha256":  "4D2126A43A831E077CA47B0953BE5C3B5BF9EEC996F3609BC30F901B7361684C",
+                               "runner_exit_code":  1,
+                               "reason":  "Pinned gofmt found one test-literal alignment diff. The script stopped before Go tests; formatting was corrected with the pinned Go 1.27.1 gofmt before later runs.",
+                               "checks":  [
+                                              {
+                                                  "command":  "gofmt -d cmd/tbound/pi_service_handoff_linux.go cmd/tbound/pi_service_handoff_linux_test.go cmd/tbound/production_workflow_catalog_linux.go cmd/tbound/production_workflow_catalog_linux_test.go",
+                                                  "command_exit_code":  0,
+                                                  "status":  "nonempty formatting diff; runner correctly stopped",
+                                                  "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\gofmt-final-r1-20261015.log",
+                                                  "raw_log_sha256":  "989AA562C2CA2208E4EC5AF2875F02B6B5585C987EFC57A2DF0186C9FB41A411"
+                                              }
+                                          ]
+                           },
+                           {
+                               "script":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\validate-settlement-final-r2-20261015.sh",
+                               "script_sha256":  "9268A8FB4BE1548E3CB5E11F8D1CA9103E26CCCA0BB3B0EB08C349DA551E73B3",
+                               "runner_exit_code":  1,
+                               "reason":  "All validation commands returned exit 0, but the final source-hash command failed because the PowerShell-written CRLF script left a carriage return on the last test.go path. The LF-only r3 runner repeated all commands and completed the hash step.",
+                               "checks":  [
+                                              {
+                                                  "name":  "gofmt",
+                                                  "command_exit_code":  0,
+                                                  "status":  "pass, empty diff",
+                                                  "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\gofmt-final-r2-20261015.log",
+                                                  "raw_log_sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+                                              },
+                                              {
+                                                  "name":  "focused tests",
+                                                  "command_exit_code":  0,
+                                                  "status":  "pass",
+                                                  "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\focused-final-r2-20261015.log",
+                                                  "raw_log_sha256":  "C3DDF76538200275A86FEC934DA5E4748805E825ADBD576C314684BFB73F6F62"
+                                              },
+                                              {
+                                                  "name":  "focused race tests",
+                                                  "command_exit_code":  0,
+                                                  "status":  "pass",
+                                                  "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\focused-race-final-r2-20261015.log",
+                                                  "raw_log_sha256":  "116680A14F55FCC01124ED67A6769C1057E0BC8B4D3262260568FD273F20AFEE"
+                                              },
+                                              {
+                                                  "name":  "package build",
+                                                  "command_exit_code":  0,
+                                                  "status":  "pass",
+                                                  "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\package-build-final-r2-20261015.log",
+                                                  "raw_log_sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+                                              },
+                                              {
+                                                  "name":  "compile-only tests",
+                                                  "command_exit_code":  0,
+                                                  "status":  "pass; no tests run",
+                                                  "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\package-compile-final-r2-20261015.log",
+                                                  "raw_log_sha256":  "A9514A8E914FF7DB5751EF206344DA2A0C5139933A6290275265D75A88D0D1DF"
+                                              },
+                                              {
+                                                  "name":  "package vet",
+                                                  "command_exit_code":  0,
+                                                  "status":  "pass",
+                                                  "raw_log":  "F:\\TBoundAssets\\recovery-20261015\\settlement-WIP\\package-vet-final-r2-20261015.log",
+                                                  "raw_log_sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+                                              }
+                                          ]
+                           }
+                       ],
+    "limitations":  [
+                        "No positive end-to-end production settlement qualification fixture was available; no synthetic production qualification was introduced.",
+                        "Safe refusal remains for failed or otherwise non-completed prior outcomes without independent settlement evidence.",
+                        "These component checks do not qualify live production settlement, D14, containment, G1, or H1."
+                    ]
+}

@@ -55,6 +55,7 @@ var (
 	ErrPiServiceRefused         = errors.New("local Pi service refused the request")
 	ErrPiServiceFrameTooLarge   = errors.New("local Pi service frame exceeds its bound")
 	ErrPiServiceRequestConflict = errors.New("local Pi service request ID conflicts with a prior payload")
+	ErrPiServiceUnresolvedPrior = errors.New("a prior accepted Pi service workflow is not independently settled")
 )
 
 type piServiceRequest struct {
@@ -239,9 +240,10 @@ type piServiceRequestState struct {
 }
 
 type piServiceRequestJournal struct {
-	mu      sync.Mutex
-	journal *audit.Journal
-	entries map[string]piServiceRequestState
+	mu                 sync.Mutex
+	journal            *audit.Journal
+	entries            map[string]piServiceRequestState
+	settlementVerifier func(context.Context, piServiceRequestState) error
 }
 
 type piServiceTaskRunner func(context.Context, piServiceRequest) (json.RawMessage, error)
@@ -1039,8 +1041,12 @@ func (j *piServiceRequestJournal) lookup(peer piServicePeerCredentials, request 
 	return state, true, nil
 }
 
-func (j *piServiceRequestJournal) begin(peer piServicePeerCredentials, request piServiceRequest, payloadDigest string) (audit.Record, error) {
+func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerCredentials,
+	request piServiceRequest, payloadDigest string) (audit.Record, error) {
 	if j == nil {
+		return audit.Record{}, ErrPiServiceUnavailable
+	}
+	if ctx == nil {
 		return audit.Record{}, ErrPiServiceUnavailable
 	}
 	j.mu.Lock()
@@ -1048,6 +1054,17 @@ func (j *piServiceRequestJournal) begin(peer piServicePeerCredentials, request p
 	key := piServiceRequestKey(peer.UID, request.RequestID)
 	if _, exists := j.entries[key]; exists {
 		return audit.Record{}, ErrPiServiceRequestConflict
+	}
+	for _, prior := range j.entries {
+		if err := ctx.Err(); err != nil {
+			return audit.Record{}, err
+		}
+		if prior.terminal == nil || prior.terminal.Status != "completed" || j.settlementVerifier == nil {
+			return audit.Record{}, ErrPiServiceUnresolvedPrior
+		}
+		if err := j.settlementVerifier(ctx, prior); err != nil {
+			return audit.Record{}, fmt.Errorf("%w: %v", ErrPiServiceUnresolvedPrior, err)
+		}
 	}
 	accepted := piServiceRequestAcceptedEvent{SchemaVersion: "tbound-pi-service-request-accepted/v1",
 		ClientUID: peer.UID, ClientGID: peer.GID, ClientPID: peer.PID, RequestID: request.RequestID,
@@ -1302,11 +1319,15 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 		acceptedRecord := prior.acceptedRecord
 		acceptedEvent := prior.accepted
 		if !exists {
-			acceptedRecord, err = journal.begin(peer, request, payloadDigest)
+			acceptedRecord, err = journal.begin(ctx, peer, request, payloadDigest)
 			if err != nil {
 				active.Store(false)
+				errorCode := "request-journal-unavailable"
+				if errors.Is(err, ErrPiServiceUnresolvedPrior) {
+					errorCode = "prior-workflow-unsettled"
+				}
 				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
-					RequestID: request.RequestID, Status: "refused", ErrorCode: "request-journal-unavailable"})
+					RequestID: request.RequestID, Status: "refused", ErrorCode: errorCode})
 				_ = unixConn.Close()
 				continue
 			}
@@ -1614,6 +1635,18 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	registrationID := piServiceRegistrationIdentity(registration, socket, contract)
 	if !validDigestText(registrationID) {
 		return ErrPiServiceUnavailable
+	}
+	requests.settlementVerifier = func(settlementCtx context.Context, prior piServiceRequestState) error {
+		template, _, err := piruntime.LoadD09CellTemplate(settlementCtx)
+		if err != nil {
+			return errors.Join(ErrPiServiceUnresolvedPrior, err)
+		}
+		profile, err := piruntime.LoadLinuxSignedHostProfile("")
+		if err != nil {
+			return errors.Join(ErrPiServiceUnresolvedPrior, err)
+		}
+		return workflowCatalog.verifyCompletedServiceRequest(settlementCtx, prior, contract.ServiceConfigDigest,
+			registrationID, verified, template, profile)
 	}
 	runTask := func(taskCtx context.Context, request piServiceRequest) (json.RawMessage, error) {
 		requestAdmission, ok := piServiceAdmissionFromContext(taskCtx)
