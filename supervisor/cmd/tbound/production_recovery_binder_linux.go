@@ -65,10 +65,12 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 	if err := verifyWorkflowDeadline(ctx, admission.Owner, entry.WorkflowID, checkpoint.Limits.Deadline); err != nil {
 		return nil, errors.Join(workflowrecovery.ErrDeadline, err)
 	}
-	calibration, err := piruntime.LoadVerifiedD09XattrEnumerationCalibration(ctx)
-	if err != nil || calibration.Validate() != nil ||
-		calibration.SourceAccessProfile != piruntime.D09XattrManagedRWSourceProfile ||
-		calibration.VisibilityProfileDigest != template.XattrVisibilityProfileDigest {
+	registration, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(ctx)
+	if err != nil {
+		return nil, errors.Join(ErrProductionXattrVisibilityUnavailable, err)
+	}
+	calibration, err := piruntime.LoadVerifiedD09ManagedRWXattrCalibrationForRegistration(ctx, registration)
+	if err != nil {
 		return nil, errors.Join(ErrProductionXattrVisibilityUnavailable, err)
 	}
 	xattrVisibility := workspace.XattrVisibilityAttestation{ProfileDigest: calibration.Digest, Complete: true}

@@ -1,0 +1,286 @@
+{
+    "receipt":  "abi8-runtime-prerequisites-20261015-r8",
+    "decisionState":  "ABI8_RUNTIME_PREREQUISITE_CONFLICTS_CORRECTED_IN_SOURCE_LINUX_UNIT_TESTED_GUEST_UNVERIFIED_NOT_ADMITTED",
+    "scope":  "Repo-only correction of the production-equivalent D09 runtime prerequisites found by the R7 guest bootstrap (cgroup layout, two calibration roles, managed-RW digest binding). No VM change, no provider call, no secret or private-key read, no vm_start.txt read, no service start, no cell launch, no registration/calibration/template signature, no host profile install, no commit, no OVERVIEW/TASK_STATE edit. G1, containment, H1, D14 and D20 are not established.",
+    "base":  {
+                 "branch":  "codex/tbound-prototype",
+                 "headArchived":  "e40670384b7f68cb1198f651b587b34a8f28bdd8",
+                 "archiveCommand":  "git -c core.autocrlf=false archive --format=tar HEAD (private tree in WSL under /home/jeli2k/tbp-r8, removed on exit)",
+                 "excludedFromTree":  "other sessions\u0027 dirty workflowrecovery and cmd/tbound files, untracked production_no_change_catalog_linux_test.go, D14 WIP, untracked evidence JSON"
+             },
+    "ownedChangedFiles":  [
+                              {
+                                  "path":  "supervisor/internal/piruntime/managed_live_root_linux.go",
+                                  "headBlob":  "9050e9cb7b99d96b13aa4b974d530ad073afed3c",
+                                  "sha256":  "cd1bcb48a636b871011c1dcfda9b6ff9e94a36a059a10dc989f97dbf2eb92b5c"
+                              },
+                              {
+                                  "path":  "supervisor/internal/piruntime/managed_live_root_linux_test.go",
+                                  "headBlob":  "469aaef9245ad99c95f81b9f5fa4fa9f1667c312",
+                                  "sha256":  "6492d68d5ccbe99fac33b99e42e5dcfa597895ab6722e99273968d0b210db038"
+                              },
+                              {
+                                  "path":  "supervisor/internal/piruntime/xattr_profile_linux.go",
+                                  "headBlob":  "09d3114bfe9e910ce40a4e431b0129c6eb85ad93",
+                                  "sha256":  "1046f9dbb856bccb5c6c7585bdbcd51190dcc2a5feddd91f5e573ca01183c4a5"
+                              },
+                              {
+                                  "path":  "supervisor/internal/piruntime/xattr_profile_linux_test.go",
+                                  "headBlob":  "b51f8cd05a5af0a54f384231d052bc333cdd170a",
+                                  "sha256":  "7789d6d6371dd0a8d2864d70b1a85a5f625b9a97b312320afe33b9df34ea9b5e"
+                              },
+                              {
+                                  "path":  "supervisor/cmd/tbound/production_recovery_binder_linux.go",
+                                  "headBlob":  "6ac564efb9c40fedeae43336f054ed4b9b3324f1",
+                                  "sha256":  "af621c99a13d49b7c503aab9caab8bad0e3b3b7a9c3aad902da31de2532fcaab"
+                              },
+                              {
+                                  "path":  "supervisor/cmd/tbound-profile/main_linux.go",
+                                  "headBlob":  "3a29ab7d29ed2acdce255cddee6aa603fc0c16de",
+                                  "sha256":  "f2b14a53f660cb4abde3519276aa4e0fea6721bbcdac45e142f6bc317cfd7135"
+                              }
+                          ],
+    "changes":  {
+                    "cgroupLayout":  "tbound-pi.service must carry DelegateSubgroup=runner (validateD09ManagedPiServiceUnit and validateManagedSystemdPolicy require the exact key/value). The registered service parent /system.slice/tbound-pi.service must be a UID-owned domain with cpu/memory/pids enabled and cgroup.procs empty. The runner process must sit in exactly \u003cparent\u003e/runner (a UID-owned domain with controllers available) on the same cgroup2 mount as the parent. Cells must be exactly \u003cparent\u003e/cells (d09CellCgroupRootIsClosedSibling), never the parent, the runner, an ancestor, or a dotdot/nested form.",
+                    "calibrationRoles":  "Two closed fixed loaders: managed-RW /etc/tbound/d09-xattr-enumeration-calibration.{json,ed25519} (unchanged path) and read-only /etc/tbound/d09-xattr-enumeration-calibration-readonly.{json,ed25519} (new). Signature, strict JSON, trusted profile key and root-owned reads are unchanged. verifyD09XattrCalibrationForSource refuses a calibration whose SourceAccessProfile differs from the loader role.",
+                    "managedRWBinding":  "The managed-RW calibration no longer compares against the cell template\u0027s read-only VisibilityProfileDigest (managed_live_root_linux.go static policy, xattr_profile_linux.go MeasureD09ManagedLiveRootXattrs, production_recovery_binder_linux.go). verifyD09ManagedRWXattrCalibrationBinding recomputes the expected visibility digest from the signed registration (RootFilesystemMagic, RootMountOptionsDigest, ServiceUID/GID, closed scanner profile) and binds calibration.Digest to ManagedRootXattrCalibrationDigest. Descriptor, lease, profile and signature checks are retained.",
+                    "mountOptionsDigest":  "Unchanged (mountinfo root and mount point still bound). Runtime-source digest remains a parent decision (receipt O2/P4).",
+                    "authority":  "Unchanged. XattrVisibilityAuthority and Complete semantics are not extended. No complete-enumeration authority is granted."
+                },
+    "commands":  [
+                     {
+                         "id":  "C1",
+                         "command":  "git rev-parse HEAD; git status --short (repo, pre-edit snapshot)",
+                         "exit":  0,
+                         "result":  "HEAD e406703; 19 dirty/untracked lines (other sessions); owned paths clean"
+                     },
+                     {
+                         "id":  "C2",
+                         "command":  "git -c core.autocrlf=false archive --format=tar HEAD | wsl.exe -e bash -c \u0027tar -x -C $HOME/tbp-r8/src\u0027",
+                         "exit":  0,
+                         "result":  "private HEAD tree extracted"
+                     },
+                     {
+                         "id":  "C3",
+                         "command":  "RED overlay: managed_live_root_linux_test.go with TestD09ManagedPiServiceUnitRequiresClosedRunnerSubgroup, piped into WSL",
+                         "exit":  0,
+                         "result":  "overlay written"
+                     },
+                     {
+                         "id":  "C4",
+                         "command":  "RED: go test -count=1 -run TestD09ManagedPiServiceUnitRequiresClosedRunnerSubgroup ./internal/piruntime/ (HEAD code, GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly GOMAXPROCS=2 -p 2 umask 077)",
+                         "exit":  1,
+                         "result":  "FAIL: service unit with missing subgroup accepted (old code accepts a unit without DelegateSubgroup=runner)",
+                         "log":  "red-1-head-old-code.log"
+                     },
+                     {
+                         "id":  "C5",
+                         "command":  "copy six owned files into private tree; sha256sum vs worktree",
+                         "exit":  0,
+                         "result":  "all six WSL copies match worktree sha256"
+                     },
+                     {
+                         "id":  "C6",
+                         "command":  "gofmt -l internal/piruntime cmd/tbound cmd/tbound-profile",
+                         "exit":  0,
+                         "result":  "no output"
+                     },
+                     {
+                         "id":  "C7",
+                         "command":  "go build -mod=readonly ./...",
+                         "exit":  0,
+                         "log":  "build.log (empty)"
+                     },
+                     {
+                         "id":  "C8",
+                         "command":  "go vet -mod=readonly ./internal/piruntime/ ./cmd/tbound/ ./cmd/tbound-profile/",
+                         "exit":  0,
+                         "log":  "vet.log (empty)"
+                     },
+                     {
+                         "id":  "C9",
+                         "command":  "go test -race -p 2 -count=1 -v ./internal/piruntime/",
+                         "exit":  0,
+                         "result":  "123 PASS, 0 FAIL, 1 SKIP (TestD09CellTemplateDraftIsNotAdmissible, environmental, see skips)",
+                         "log":  "piruntime-race.log"
+                     },
+                     {
+                         "id":  "C10",
+                         "command":  "go test -race -c -o piruntime.test ./internal/piruntime/ then setpriv --no-new-privs -- piruntime.test -test.run \u0027TestD09CellTemplateDraftIsNotAdmissible|TestD09XattrAttestation\u0027 (as uid 1000, no root)",
+                         "exit":  0,
+                         "result":  "NoNewPrivs=1, CapEff=0, still SKIP: user jeli2k has 12 supplementary groups; profile needs empty groups and a privileged drop",
+                         "log":  "piruntime-nnp-skip.log"
+                     },
+                     {
+                         "id":  "C11",
+                         "command":  "sudo -n setpriv --reuid 1000 --regid 1000 --clear-groups ... (privileged drop attempt)",
+                         "exit":  1,
+                         "result":  "sudo: a password is required; no root available",
+                         "log":  "piruntime-privdrop-skip.log"
+                     },
+                     {
+                         "id":  "C12",
+                         "command":  "go test -race -p 2 -count=1 -v ./cmd/tbound-profile/",
+                         "exit":  0,
+                         "result":  "6 PASS, 0 FAIL, 0 SKIP",
+                         "log":  "cmd-tbound-profile-race.log"
+                     },
+                     {
+                         "id":  "C13",
+                         "command":  "go test -race -p 2 -count=1 -v -run \u0027Binder|Production|Recovery|Xattr|Managed|D09\u0027 ./cmd/tbound/",
+                         "exit":  0,
+                         "result":  "54 PASS, 0 FAIL, 0 SKIP (superseded by C14)",
+                         "log":  "cmd-tbound-binder-race.log"
+                     },
+                     {
+                         "id":  "C14",
+                         "command":  "timeout 540 go test -race -p 2 -count=1 -v ./cmd/tbound/",
+                         "exit":  0,
+                         "result":  "134 PASS, 0 FAIL, 2 SKIP (env-gated, see skips)",
+                         "log":  "cmd-tbound-full-race.log"
+                     },
+                     {
+                         "id":  "C15",
+                         "command":  "go vet -mod=readonly ./... (compiles every test file in the module)",
+                         "exit":  0,
+                         "log":  "vet-all.log (empty)"
+                     },
+                     {
+                         "id":  "C16",
+                         "command":  "gofmt -l . (whole private module)",
+                         "exit":  0,
+                         "result":  "no output"
+                     },
+                     {
+                         "id":  "C17",
+                         "command":  "HEAD baseline: git archive HEAD into $HOME/tbp-r8/head; go test -race -run TestD09CellTemplateDraftIsNotAdmissible ./internal/piruntime/",
+                         "exit":  0,
+                         "result":  "SKIP on unmodified HEAD too: pre-existing environmental skip, not a regression",
+                         "log":  "head-baseline-skip.log"
+                     }
+                 ],
+    "skips":  [
+                  {
+                      "test":  "piruntime TestD09CellTemplateDraftIsNotAdmissible",
+                      "reason":  "host does not provide the registered D09 xattr scanner privilege profile (requires empty supplementary groups and privileged drop to non-root 1000 with NNP). Environmental; also skips on unmodified HEAD (C17). Not verified by this round."
+                  },
+                  {
+                      "test":  "cmd/tbound TestServePiDevFixtureLaunchesActualPinnedPiOffline",
+                      "reason":  "env gate TBOUND_DEV_FIXTURE_PI/NODE/ADAPTER/ROOT not set"
+                  },
+                  {
+                      "test":  "cmd/tbound TestRealProviderDurableLinux",
+                      "reason":  "env gate TBOUND_RUN_REAL_PROVIDER_TESTS not set. No provider call was made."
+                  }
+              ],
+    "redEvidence":  {
+                        "behavioral":  "TestD09ManagedPiServiceUnitRequiresClosedRunnerSubgroup FAILED on HEAD (C4): a unit without DelegateSubgroup=runner was accepted.",
+                        "compileOnly":  "TestD09CellCgroupRootIsClosedSiblingOfRunner and TestD09XattrCalibrationRolesAreClosedAndManagedRWBindsRegistration reference new symbols (d09CellCgroupRootIsClosedSibling, d09ManagedRunnerCgroupPath, verifyD09XattrCalibrationForSource, verifyD09ManagedRWXattrCalibrationBinding). Their RED is a compile failure on HEAD, not a behavioral failure. They PASS on the changed tree (C9)."
+                    },
+    "snapshot":  {
+                     "preStatusFile":  "pre-status.txt (19 lines), pre-dirty-sha256.txt",
+                     "postStatusDiffVsPre":  [
+                                                 "owned: 6 files now M (the six listed above)",
+                                                 "other sessions, new since pre-snapshot, not touched by this round: docs/decisions/2026-10-14-qualification-and-research-procedure.md (M), supervisor/cmd/tbound/production_workflow_catalog_linux.go (M), docs/evidence/no-diff-catalog-20261015-r4.json (??), supervisor/cmd/tbound/production_no_change_catalog_linux_test.go (??)",
+                                                 "untouched non-owned pre-existing dirty files: 15 with identical sha256; changed by other sessions during this round: docs/design/d14-reserved-capacity.md, supervisor/internal/workflowrecovery/sqlite_linux.go, docs/evidence/d14-production-capacity-20261015.json, supervisor/internal/workflowrecovery/production_capacity_linux_test.go"
+                                             ],
+                     "headAfter":  "4a2d1d2dcc65ee6bff89c221b06dded7a90f1760. Another session committed 4a2d1d2 during this round. It changes no owned path, so the owned base blobs above still apply. This round made no commit. Its catalog files, committed by that session, leave the untracked list.",
+                     "generatedReports":  "This receipt only. No other evidence JSON was generated by this round."
+                 },
+    "logs":  {
+                 "directory":  "F:/TBoundAssets/recovery-20261015/abi8-runtime-prerequisites-r8",
+                 "sha256":  {
+                                "red-1-head-old-code.log":  "a2c29002889fc26ce61b42fbe4c20ba03e3a902d765c0e906181b56c28df5da7",
+                                "piruntime-race.log":  "42d46d70ab333eaf03f13ac77405512938076dbf11078547bb541a98bd0d9afd",
+                                "piruntime-nnp-skip.log":  "4a3970705f6623f640b6fb850859b225755d1027fb9410118541a5a73594167e",
+                                "piruntime-privdrop-skip.log":  "9b3a3b7a78f239c4473bb193476b1a860c91f1c2b4fab9c7639eceea414a60fb",
+                                "cmd-tbound-profile-race.log":  "75600e0c88c7e16f197541b256a9629290f49ee707c0861c35b62aa385cce7f3",
+                                "cmd-tbound-binder-race.log":  "85868c52d20d5840eaf32538eb31a7e54f7fe645d3a4dd9eeed35d9a20d072f4",
+                                "cmd-tbound-full-race.log":  "638ff0687fe14014ebc7c59bb8630b549606ccaf326faf5c6a7e963050e13622",
+                                "head-baseline-skip.log":  "7949a5982e7e5028aa385510e4a100b305683a3e69d741358372785f1faa63a4",
+                                "build.log, vet.log, vet-all.log, piruntime-test-build.log":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 (empty; success prints nothing, exit codes in C7, C8, C15)",
+                                "pre-status.txt":  "0b1998676207f068ceb0cb1d8ac2f229b4ced9589531ffe579451395dae31ab8",
+                                "pre-dirty-sha256.txt":  "cd954f0e23d17bcd9c232c0484519402c8a02b0fdc2009f30fb54008a88836bc"
+                            }
+             },
+    "seams":  [
+                  "Kernel-backed cgroup fixture NOT RUN. WSL kernel 5.15.153.1-microsoft-standard-WSL2 has no unified cgroup2 root (/sys/fs/cgroup/cgroup.controllers absent) and there is no root for throwaway cgroups. The layout was kernel-probed in the R7 guest (receipt abi8-bootstrap-calibration-20261015), not here.",
+                  "Cells directory creation: no code creates \u003cservice\u003e/cells. openProductionCgroupScopeNamed (cmd/tbound/production_binder_linux.go:881) uses os.Open and fails closed if it is absent. Creation policy (runner mkdir under its delegated parent, or provisioning) is a parent decision and is not implemented.",
+                  "Template default: d09_template_linux.go:202 still drafts /sys/fs/cgroup/tbound, which the new closed rule refuses. A signed template must carry /sys/fs/cgroup/system.slice/tbound-pi.service/cells. The default was left unchanged because signed values are a parent decision.",
+                  "Fresh production binder (production_binder_linux.go:389-411) is unchanged. Its RW identity (ServiceMode) and RO identity (ordinary mode) are selected by mode and are not compared with each other. The only RW==RW equality is production_recovery_binder_linux.go:339, consistent with its own calibration. A store created in ordinary mode is therefore not recoverable through the service path. That is intended, and the code fails closed.",
+                  "Binder-level fixtures not run: the binder and VerifyD09XattrVisibility read fixed root-owned /etc/tbound calibration paths, which cannot be provisioned in unit tests without root. Coverage is the helper-level signed-fixture test plus the binder compiling and passing its existing tests (C14)."
+              ],
+    "untested":  [
+                     "Systemd acceptance of DelegateSubgroup=runner on Ubuntu 24.04 (systemd 255). The receipt\u0027s earlier claim was not re-verified here. Guest check: systemd-analyze verify on the pinned unit.",
+                     "Runner leaf ownership: systemd may create the DelegateSubgroup leaf owned by root. The verifier requires UID 995 on the leaf (owner mismatch is a refusal, fail closed). Confirm on guest after a start probe.",
+                     "cgroupfs-level procs-empty check on the parent and controller/mount checks on the leaf: exercised by code reading only.",
+                     "RO positive end to end through VerifyD09XattrVisibility on a read-only mount: not run. The test asserts that the RO calibration digest equals the RO template visibility digest from the same fields.",
+                     "Combined tree with other sessions\u0027 uncommitted cmd/tbound changes (production_workflow_catalog_linux.go, production_no_change_catalog_linux_test.go): not compiled together. The private tree is HEAD plus the six owned files."
+                 ],
+    "authorityGaps":  [
+                          "Complete bit: VerifyD09XattrVisibility (xattr_profile_linux.go, end of function) returns Complete:true only when the RO source descriptor matches the signed template\u0027s xattr fields, the signed RO calibration matches, and the actual enumeration returns entries and directories under the calibrated scanner. validateD09CellTemplate requires XattrVisibilityAuthority = root-profile-measured-complete-enumeration/v1, and the template is unsigned. So this change grants no complete-enumeration authority.",
+                          "What the bit does not prove: the held corpus shows uid 995 cannot see trusted.tbound.probe, and user.* visibility does not prove trusted.* completeness. Whether a bounded, root-attested \u0027no hidden trusted.* attributes\u0027 claim under the host-admin trusted assumption is intended is a parent decision. It is not implemented here and is not claimed.",
+                          "Runtime-source visibility digest (mountinfo root and mount point in mountOptionsForID) is unchanged. Re-measuring the RO calibration in place through the exact runtime mount (/var/lib/tbound/runtime-src, mount digest 4ae60254...) is still required before the RO calibration can be signed."
+                      ],
+    "remainingBlockers":  [
+                              "B1 cells creation policy (seam 2). Without it, the first cell launch fails closed.",
+                              "B2 guest proof of the layout: systemd DelegateSubgroup acceptance, runner-leaf owner, kernel layout, measured with the new code. Requires the next provisioning ground.",
+                              "B3 parent signatures: read-only calibration at the new fixed path (measured in place through the runtime mount), managed-RW calibration on the live root, registration, and cell template carrying cgroups_path = /sys/fs/cgroup/system.slice/tbound-pi.service/cells.",
+                              "B4 binder-level test with fixed root-owned calibration files, run on the guest."
+                          ],
+    "claims":  {
+                   "G1":  false,
+                   "containment":  "not established",
+                   "H1":  "not executed",
+                   "providerCalls":  0,
+                   "paidSpendUsd":  0,
+                   "secretsRead":  0,
+                   "privateKeysRead":  0,
+                   "vmStartTxtRead":  false,
+                   "vmChanged":  false,
+                   "servicesStarted":  0,
+                   "cellsLaunched":  0,
+                   "registrationSigned":  false,
+                   "calibrationSigned":  false,
+                   "templateSigned":  false,
+                   "hostProfileInstalled":  false,
+                   "xattrVisibilityAuthorityApproved":  false,
+                   "committed":  false,
+                   "guestQualified":  false
+               },
+    "parentReview":  {
+                         "date":  "2026-10-15",
+                         "sourceHashesVerified":  6,
+                         "logHashesVerified":  14,
+                         "counts":  [
+                                        {
+                                            "log":  "piruntime-race.log",
+                                            "topLevelPass":  123,
+                                            "subtestPass":  143,
+                                            "skip":  1,
+                                            "fail":  0,
+                                            "race":  0
+                                        },
+                                        {
+                                            "log":  "cmd-tbound-profile-race.log",
+                                            "topLevelPass":  6,
+                                            "subtestPass":  0,
+                                            "skip":  0,
+                                            "fail":  0,
+                                            "race":  0
+                                        },
+                                        {
+                                            "log":  "cmd-tbound-full-race.log",
+                                            "topLevelPass":  134,
+                                            "subtestPass":  207,
+                                            "skip":  2,
+                                            "fail":  0,
+                                            "race":  0
+                                        }
+                                    ],
+                         "criticalReview":  "Parent checked exact runner leaf and same-mount/owner checks, empty controller-enabled parent, exact sibling cells path, fixed distinct calibration loaders with strict role/signature validation, and managed calibration recomputation from signed registration plus actual source/lease checks. Mount path binding retained. No xattr completeness authority granted.",
+                         "limitations":  "R8 tests cover an isolated committed base plus six overlays; no whole-tree post-run manifest or retained archive hash is supplied. Combined immutable full-module verification is still required. The D09 scanner-context test skipped and is not verified by R8.",
+                         "scannerCorrection":  "sudo -n refusal does not establish WSL root is unavailable. Parent previously used wsl.exe -d Ubuntu -u root with a privileged drop to nonroot, empty groups/caps and NNP. A targeted follow-up is executing that context; do not rewrite the R8 skip as a pass.",
+                         "nextWork":  "Actual systemd runner-leaf/cells creation and cgroup drain remain unproved. No extra ExecStartPre is authorized by the closed unit policy. A bounded wiring review is locating the minimal trusted startup/provisioning path. R9 owns actual-source metadata probes. Final signed registration and E2E remain open."
+                     }
+}

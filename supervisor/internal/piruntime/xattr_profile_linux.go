@@ -154,18 +154,48 @@ func VerifyD09XattrEnumerationCalibration(encoded, signature []byte, publicKey e
 	return calibration, nil
 }
 
-func LoadVerifiedD09XattrEnumerationCalibration(ctx context.Context) (D09XattrEnumerationCalibration, error) {
+// LoadVerifiedD09ManagedRWXattrEnumerationCalibration loads the fixed managed-RW
+// calibration. It proves signature, schema, and role; the live-root binding is
+// checked by LoadVerifiedD09ManagedRWXattrCalibrationForRegistration.
+func LoadVerifiedD09ManagedRWXattrEnumerationCalibration(ctx context.Context) (D09XattrEnumerationCalibration, error) {
+	return loadVerifiedD09XattrEnumerationCalibration(ctx, D09ManagedPiXattrCalibrationPath, D09ManagedPiXattrCalibrationSig,
+		D09XattrManagedRWSourceProfile)
+}
+
+// LoadVerifiedD09ReadonlyXattrEnumerationCalibration loads the fixed read-only
+// source calibration on which the cell template's visibility profile is measured.
+func LoadVerifiedD09ReadonlyXattrEnumerationCalibration(ctx context.Context) (D09XattrEnumerationCalibration, error) {
+	return loadVerifiedD09XattrEnumerationCalibration(ctx, D09ManagedPiROXattrCalibrationPath, D09ManagedPiROXattrCalibrationSig,
+		D09XattrReadonlySourceProfile)
+}
+
+// LoadVerifiedD09ManagedRWXattrCalibrationForRegistration is the production
+// managed-RW binding. The fixed signed calibration must match the signed
+// registration's live-root identity; the RO template digest is not a comparator.
+func LoadVerifiedD09ManagedRWXattrCalibrationForRegistration(ctx context.Context,
+	registration D09ManagedLiveRootRegistration) (D09XattrEnumerationCalibration, error) {
+	calibration, err := LoadVerifiedD09ManagedRWXattrEnumerationCalibration(ctx)
+	if err != nil {
+		return D09XattrEnumerationCalibration{}, err
+	}
+	if err := verifyD09ManagedRWXattrCalibrationBinding(calibration, registration); err != nil {
+		return D09XattrEnumerationCalibration{}, err
+	}
+	return calibration, nil
+}
+
+func loadVerifiedD09XattrEnumerationCalibration(ctx context.Context, path, signaturePath, sourceProfile string) (D09XattrEnumerationCalibration, error) {
 	if ctx == nil {
 		return D09XattrEnumerationCalibration{}, ErrD09TemplateInvalid
 	}
 	if err := ctx.Err(); err != nil {
 		return D09XattrEnumerationCalibration{}, err
 	}
-	encoded, err := readRootOwnedProfileFile(D09ManagedPiXattrCalibrationPath, 64<<10)
+	encoded, err := readRootOwnedProfileFile(path, 64<<10)
 	if err != nil {
 		return D09XattrEnumerationCalibration{}, errors.Join(ErrD09TemplateInvalid, err)
 	}
-	signature, err := readRootOwnedProfileFile(D09ManagedPiXattrCalibrationSig, ed25519.SignatureSize)
+	signature, err := readRootOwnedProfileFile(signaturePath, ed25519.SignatureSize)
 	if err != nil || len(signature) != ed25519.SignatureSize {
 		return D09XattrEnumerationCalibration{}, errors.Join(ErrD09TemplateInvalid, err)
 	}
@@ -173,7 +203,44 @@ func LoadVerifiedD09XattrEnumerationCalibration(ctx context.Context) (D09XattrEn
 	if err != nil {
 		return D09XattrEnumerationCalibration{}, errors.Join(ErrD09TemplateInvalid, err)
 	}
-	return VerifyD09XattrEnumerationCalibration(encoded, signature, ed25519.PublicKey(publicKey))
+	return verifyD09XattrCalibrationForSource(encoded, signature, ed25519.PublicKey(publicKey), sourceProfile)
+}
+
+// verifyD09XattrCalibrationForSource verifies a signed calibration and refuses it
+// unless it was measured for the requested source access profile. A managed-RW
+// calibration cannot be swapped into the read-only role, or the reverse.
+func verifyD09XattrCalibrationForSource(encoded, signature []byte, publicKey ed25519.PublicKey,
+	sourceProfile string) (D09XattrEnumerationCalibration, error) {
+	calibration, err := VerifyD09XattrEnumerationCalibration(encoded, signature, publicKey)
+	if err != nil {
+		return D09XattrEnumerationCalibration{}, err
+	}
+	if calibration.SourceAccessProfile != sourceProfile {
+		return D09XattrEnumerationCalibration{}, ErrD09TemplateInvalid
+	}
+	return calibration, nil
+}
+
+// verifyD09ManagedRWXattrCalibrationBinding binds the managed-RW calibration to
+// the signed registration. The expected visibility digest is recomputed from the
+// live-root filesystem magic, mount options, service UID/GID and the closed
+// scanner profile. It is not compared with the RO template digest: that digest
+// measures the read-only runtime mount, and a different mount has different
+// options, so the two digests are not expected to match.
+func verifyD09ManagedRWXattrCalibrationBinding(calibration D09XattrEnumerationCalibration,
+	registration D09ManagedLiveRootRegistration) error {
+	expected := DigestD09XattrVisibilityProfile(registration.RootFilesystemMagic, registration.RootMountOptionsDigest,
+		registration.ServiceUID, registration.ServiceGID, D09XattrScanPrivilegeProfile)
+	if calibration.Validate() != nil || calibration.Digest != registration.ManagedRootXattrCalibrationDigest ||
+		calibration.SourceAccessProfile != D09XattrManagedRWSourceProfile ||
+		calibration.FilesystemMagic != registration.RootFilesystemMagic ||
+		calibration.MountOptionsDigest != registration.RootMountOptionsDigest ||
+		calibration.ScanUID != registration.ServiceUID || calibration.ScanGID != registration.ServiceGID ||
+		calibration.ScanPrivilegeProfile != D09XattrScanPrivilegeProfile ||
+		calibration.VisibilityProfileDigest != expected {
+		return ErrD09TemplateInvalid
+	}
+	return nil
 }
 
 // D09ManagedSourceLeaseEvidence is a non-boolean C lease snapshot. Evidence is
@@ -822,13 +889,8 @@ func MeasureD09ManagedLiveRootXattrs(ctx context.Context, verified *VerifiedD09M
 	if err != nil {
 		return D09ManagedRootXattrEvidence{}, err
 	}
-	calibration, err := LoadVerifiedD09XattrEnumerationCalibration(ctx)
-	if err != nil || calibration.Digest != registration.ManagedRootXattrCalibrationDigest ||
-		calibration.SourceAccessProfile != D09XattrManagedRWSourceProfile ||
-		calibration.FilesystemMagic != registration.RootFilesystemMagic ||
-		calibration.MountOptionsDigest != registration.RootMountOptionsDigest ||
-		calibration.ScanUID != registration.ServiceUID || calibration.ScanGID != registration.ServiceGID ||
-		calibration.VisibilityProfileDigest != template.XattrVisibilityProfileDigest {
+	calibration, err := LoadVerifiedD09ManagedRWXattrCalibrationForRegistration(ctx, registration)
+	if err != nil {
 		return D09ManagedRootXattrEvidence{}, errors.Join(ErrD09ManagedLiveRootRefused, err,
 			errors.New("managed RW source lacks a matching separately signed enumeration calibration"))
 	}
@@ -1053,7 +1115,7 @@ func VerifyD09XattrVisibility(source *os.File, profile HostProfile, template D09
 	if expected != template.XattrVisibilityProfileDigest {
 		return workspace.XattrVisibilityAttestation{}, errors.New("registered xattr visibility profile digest is inconsistent")
 	}
-	calibration, err := LoadVerifiedD09XattrEnumerationCalibration(context.Background())
+	calibration, err := LoadVerifiedD09ReadonlyXattrEnumerationCalibration(context.Background())
 	if err != nil || calibration.SourceAccessProfile != D09XattrReadonlySourceProfile ||
 		calibration.VisibilityProfileDigest != expected || calibration.FilesystemMagic != observed.FilesystemMagic ||
 		calibration.MountOptionsDigest != observed.MountOptionsDigest || calibration.ScanUID != observed.ScanUID ||

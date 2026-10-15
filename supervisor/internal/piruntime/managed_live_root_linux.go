@@ -56,6 +56,10 @@ const (
 	D09ManagedPiStorageConfPath         = "/etc/tbound/podman-config/storage.conf"
 	D09ManagedPiXattrCalibrationPath    = "/etc/tbound/d09-xattr-enumeration-calibration.json"
 	D09ManagedPiXattrCalibrationSig     = "/etc/tbound/d09-xattr-enumeration-calibration.ed25519"
+	D09ManagedPiROXattrCalibrationPath  = "/etc/tbound/d09-xattr-enumeration-calibration-readonly.json"
+	D09ManagedPiROXattrCalibrationSig   = "/etc/tbound/d09-xattr-enumeration-calibration-readonly.ed25519"
+	D09ManagedPiRunnerCgroupLeaf        = "runner"
+	D09ManagedPiCellCgroupLeaf          = "cells"
 	D09ManagedPiServiceConfigMaxBytes   = 16 << 10
 	d09ManagedLiveRootSignatureDomain   = "tbound-managed-live-root-registration/v1\x00"
 	d09ManagedLiveRootMaximumBytes      = 64 << 10
@@ -1111,14 +1115,9 @@ func verifyD09StaticPolicyFiles(ctx context.Context, reg D09ManagedLiveRootRegis
 	if err != nil || DigestBytes(nsswitch) != reg.NSSwitchDigest || !localFilesOnlyNSSwitch(nsswitch) {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
-	calibration, err := LoadVerifiedD09XattrEnumerationCalibration(ctx)
-	if err != nil || calibration.Digest != reg.ManagedRootXattrCalibrationDigest ||
-		calibration.SourceAccessProfile != D09XattrManagedRWSourceProfile ||
-		calibration.FilesystemMagic != reg.RootFilesystemMagic || calibration.MountOptionsDigest != reg.RootMountOptionsDigest ||
-		calibration.ScanUID != reg.ServiceUID || calibration.ScanGID != reg.ServiceGID ||
-		calibration.VisibilityProfileDigest != template.XattrVisibilityProfileDigest {
+	if _, err := LoadVerifiedD09ManagedRWXattrCalibrationForRegistration(ctx, reg); err != nil {
 		return errors.Join(ErrD09ManagedLiveRootRefused,
-			errors.New("managed RW-root xattr calibration differs from signed registration/template/scanner identity"), err)
+			errors.New("managed RW-root xattr calibration differs from signed registration/scanner identity"), err)
 	}
 	return nil
 }
@@ -1132,15 +1131,22 @@ func verifyD09TemplateCgroupPath(ctx context.Context, registration D09ManagedLiv
 		return ErrD09ManagedLiveRootRefused
 	}
 	template, _, err := LoadD09CellTemplate(ctx)
-	if err != nil || (filepath.Clean(template.CgroupsPath) != serviceCgroup.hostPath &&
-		!strings.HasPrefix(filepath.Clean(template.CgroupsPath), serviceCgroup.hostPath+string(os.PathSeparator))) {
+	if err != nil || !d09CellCgroupRootIsClosedSibling(template.CgroupsPath, serviceCgroup.hostPath) {
 		return errors.Join(ErrD09ManagedLiveRootRefused,
-			errors.New("registered Podman cgroup root must be under the delegated managed service cgroup"), err)
+			errors.New("registered Podman cgroup root must be the cells sibling of the managed runner under the service parent"), err)
 	}
 	if template.ManagedLiveRootRegistrationDigest != registration.Digest {
 		return ErrD09ManagedLiveRootRefused
 	}
 	return nil
+}
+
+// d09CellCgroupRootIsClosedSibling accepts only <service-parent>/cells. Cells are
+// an independent sibling of the runner leaf, so the cell root can never be the
+// process-free service parent, the runner itself, an ancestor, or a dotdot form.
+func d09CellCgroupRootIsClosedSibling(cellRoot, serviceParent string) bool {
+	return canonicalAbsolutePath(cellRoot) && canonicalAbsolutePath(serviceParent) &&
+		cellRoot == serviceParent+"/"+D09ManagedPiCellCgroupLeaf
 }
 
 func verifyD09ManagedRootDescriptor(reg D09ManagedLiveRootRegistration, root *os.File) error {
@@ -1271,14 +1277,25 @@ func verifyD09ManagedWriterProcess(reg D09ManagedLiveRootRegistration) error {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
 	cgroup, err := currentUnifiedCgroupPath()
-	if err != nil || cgroup != reg.ServiceCgroupPath {
+	if err != nil || cgroup != d09ManagedRunnerCgroupPath(reg.ServiceCgroupPath) {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
-	cgroupIdentity, err := measureManagedServiceCgroup(reg.ServiceCgroupPath, reg.ServiceUID)
-	if err != nil || cgroupIdentity.inode == 0 || cgroupIdentity.mountID == 0 {
+	parentIdentity, err := measureManagedServiceCgroup(reg.ServiceCgroupPath, reg.ServiceUID)
+	if err != nil || parentIdentity.inode == 0 || parentIdentity.mountID == 0 {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	runnerIdentity, err := measureManagedRunnerCgroup(cgroup, reg.ServiceUID)
+	if err != nil || runnerIdentity.inode == 0 || runnerIdentity.mountID != parentIdentity.mountID ||
+		runnerIdentity.hostPath != filepath.Join(parentIdentity.hostPath, D09ManagedPiRunnerCgroupLeaf) {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
 	return nil
+}
+
+// d09ManagedRunnerCgroupPath is the only cgroup in which the managed runner may
+// run: the exact runner leaf of the registered, process-free service parent.
+func d09ManagedRunnerCgroupPath(servicePath string) string {
+	return servicePath + "/" + D09ManagedPiRunnerCgroupLeaf
 }
 
 func verifyD09ManagedServiceWritableDirectories(reg D09ManagedLiveRootRegistration) error {
@@ -1389,6 +1406,7 @@ func validateManagedSystemdPolicy(rootPath, serviceName, serviceGroup, runnerPat
 	privateTmp, privateTmpOK := oneUnitValue(service, "Service", "PrivateTmp")
 	readWritePaths, rwOK := oneUnitValue(service, "Service", "ReadWritePaths")
 	delegate, delegateOK := oneUnitValue(service, "Service", "Delegate")
+	delegateSubgroup, delegateSubgroupOK := oneUnitValue(service, "Service", "DelegateSubgroup")
 	killMode, killModeOK := oneUnitValue(service, "Service", "KillMode")
 	umask, umaskOK := oneUnitValue(service, "Service", "UMask")
 	startFields := strings.Fields(execStart)
@@ -1396,7 +1414,8 @@ func validateManagedSystemdPolicy(rootPath, serviceName, serviceGroup, runnerPat
 		!nnpOK || !strings.EqualFold(noNewPrivs, "yes") || !protectSystemOK || protectSystem != "strict" ||
 		!protectHomeOK || !strings.EqualFold(protectHome, "yes") || !privateTmpOK || !strings.EqualFold(privateTmp, "yes") ||
 		!rwOK || !containsExactPath(strings.Fields(readWritePaths), rootPath) ||
-		!delegateOK || !strings.EqualFold(delegate, "yes") || !killModeOK || killMode != "control-group" || !umaskOK || umask != "0077" {
+		!delegateOK || !strings.EqualFold(delegate, "yes") || !delegateSubgroupOK || delegateSubgroup != D09ManagedPiRunnerCgroupLeaf ||
+		!killModeOK || killMode != "control-group" || !umaskOK || umask != "0077" {
 		return fmt.Errorf("%w: protected service unit is not a single non-login managed-root writer with strict filesystem policy", ErrD09ManagedLiveRootRefused)
 	}
 	for _, key := range []string{"ExecStartPre", "ExecStartPost", "ExecCondition", "ExecReload", "ExecStop", "ExecStopPost",
@@ -1515,7 +1534,22 @@ type managedServiceCgroupIdentity struct {
 	hostPath string
 }
 
+// measureManagedServiceCgroup measures the registered delegated service parent.
+// The parent must be an empty UID-owned domain with controllers available and
+// enabled for children: the runner process lives only in its exact leaf, so the
+// kernel no-internal-process rule requires the parent to hold no processes.
 func measureManagedServiceCgroup(relative string, expectedUID int) (managedServiceCgroupIdentity, error) {
+	return measureManagedCgroup(relative, expectedUID, true)
+}
+
+// measureManagedRunnerCgroup measures the exact runner leaf below the registered
+// service parent. It is a UID-owned domain with controllers available; it has no
+// delegated children, so its own subtree_control is not required.
+func measureManagedRunnerCgroup(relative string, expectedUID int) (managedServiceCgroupIdentity, error) {
+	return measureManagedCgroup(relative, expectedUID, false)
+}
+
+func measureManagedCgroup(relative string, expectedUID int, servicePar bool) (managedServiceCgroupIdentity, error) {
 	var identity managedServiceCgroupIdentity
 	if expectedUID <= 0 || !filepath.IsAbs(relative) || filepath.Clean(relative) != relative {
 		return identity, ErrD09ManagedLiveRootRefused
@@ -1575,9 +1609,15 @@ func measureManagedServiceCgroup(relative string, expectedUID int) (managedServi
 	if err != nil || !hasCgroupController(available, "cpu") || !hasCgroupController(available, "memory") || !hasCgroupController(available, "pids") {
 		return identity, errors.Join(ErrD09ManagedLiveRootRefused, errors.New("managed service cgroup lacks required D09 controllers"), err)
 	}
-	enabled, err := readCgroupFile(file, "cgroup.subtree_control", 1024)
-	if err != nil || !hasCgroupController(enabled, "cpu") || !hasCgroupController(enabled, "memory") || !hasCgroupController(enabled, "pids") {
-		return identity, errors.Join(ErrD09ManagedLiveRootRefused, errors.New("managed service cgroup has not delegated required D09 controllers"), err)
+	if servicePar {
+		enabled, err := readCgroupFile(file, "cgroup.subtree_control", 1024)
+		if err != nil || !hasCgroupController(enabled, "cpu") || !hasCgroupController(enabled, "memory") || !hasCgroupController(enabled, "pids") {
+			return identity, errors.Join(ErrD09ManagedLiveRootRefused, errors.New("managed service cgroup has not delegated required D09 controllers"), err)
+		}
+		procs, err := readCgroupFile(file, "cgroup.procs", 1024)
+		if err != nil || len(strings.TrimSpace(string(procs))) != 0 {
+			return identity, errors.Join(ErrD09ManagedLiveRootRefused, errors.New("managed service parent cgroup must hold no processes"), err)
+		}
 	}
 	mountID, err := descriptorMountID(file.Fd())
 	if err != nil {
@@ -1771,6 +1811,7 @@ func validateD09ManagedPiServiceUnit(data []byte, serviceName, serviceGroup, run
 	protectHome, protectHomeOK := get("ProtectHome")
 	privateTmp, privateTmpOK := get("PrivateTmp")
 	delegate, delegateOK := get("Delegate")
+	delegateSubgroup, delegateSubgroupOK := get("DelegateSubgroup")
 	runtimeDirectory, runtimeDirectoryOK := get("RuntimeDirectory")
 	runtimeDirectoryMode, runtimeDirectoryModeOK := get("RuntimeDirectoryMode")
 	stateDirectories, stateDirectoriesOK := get("StateDirectory")
@@ -1784,7 +1825,8 @@ func validateD09ManagedPiServiceUnit(data []byte, serviceName, serviceGroup, run
 		!killOK || killMode != "control-group" || !umaskOK || umask != "0077" ||
 		!nnpOK || !strings.EqualFold(nnp, "yes") || !protectSystemOK || protectSystem != "strict" ||
 		!protectHomeOK || !strings.EqualFold(protectHome, "yes") || !privateTmpOK || !strings.EqualFold(privateTmp, "yes") ||
-		!delegateOK || !strings.EqualFold(delegate, "yes") || !runtimeDirectoryOK || runtimeDirectory != "tbound-pi" ||
+		!delegateOK || !strings.EqualFold(delegate, "yes") || !delegateSubgroupOK || delegateSubgroup != D09ManagedPiRunnerCgroupLeaf ||
+		!runtimeDirectoryOK || runtimeDirectory != "tbound-pi" ||
 		!runtimeDirectoryModeOK || runtimeDirectoryMode != "0700" || !stateDirectoriesOK ||
 		!equalSortedStringList(strings.Fields(stateDirectories), wantState) || !stateDirectoryModeOK || stateDirectoryMode != "0700" ||
 		!readWritePathsOK || !equalSortedStringList(strings.Fields(readWritePaths), writablePaths) ||

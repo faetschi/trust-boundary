@@ -115,6 +115,7 @@ ProtectHome=yes
 PrivateTmp=yes
 ReadWritePaths=/var/lib/tbound/live
 Delegate=yes
+DelegateSubgroup=runner
 KillMode=control-group
 UMask=0077
 `)
@@ -135,6 +136,35 @@ Options=rw,nosuid,nodev
 	if err := validateManagedSystemdPolicy("/var/lib/tbound/live", "tbound-writer", "tbound-writer", "/usr/local/bin/tbound", 0xef53, serviceUnit, []byte(unsafe)); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
 		t.Fatalf("unsafe live-root mount options accepted: %v", err)
 	}
+	unsafe = strings.Replace(string(serviceUnit), "DelegateSubgroup=runner\n", "", 1)
+	if err := validateManagedSystemdPolicy("/var/lib/tbound/live", "tbound-writer", "tbound-writer", "/usr/local/bin/tbound", 0xef53, []byte(unsafe), mountUnit); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+		t.Fatalf("service unit without the closed runner delegate subgroup accepted: %v", err)
+	}
+}
+
+func TestD09CellCgroupRootIsClosedSiblingOfRunner(t *testing.T) {
+	parent := "/sys/fs/cgroup/system.slice/tbound-pi.service"
+	if got := d09ManagedRunnerCgroupPath(parent); got != parent+"/runner" {
+		t.Fatalf("runner leaf = %q", got)
+	}
+	if !d09CellCgroupRootIsClosedSibling(parent+"/cells", parent) {
+		t.Fatal("closed cells sibling of the runner refused")
+	}
+	for name, cellRoot := range map[string]string{
+		"service parent itself":     parent,
+		"runner leaf":               parent + "/runner",
+		"runner descendant":         parent + "/runner/cells",
+		"nested below cells":        parent + "/cells/runner",
+		"dotdot into runner":        parent + "/cells/../runner",
+		"trailing slash":            parent + "/cells/",
+		"other child of the parent": parent + "/other",
+		"ancestor of the service":   "/sys/fs/cgroup/system.slice",
+		"unrelated cgroup":          "/sys/fs/cgroup/tbound",
+	} {
+		if d09CellCgroupRootIsClosedSibling(cellRoot, parent) {
+			t.Fatalf("cell root %s (%q) accepted", name, cellRoot)
+		}
+	}
 }
 
 func TestD09ManagedPiServiceUnitsPinCleanupAndNarrowWritablePaths(t *testing.T) {
@@ -143,7 +173,7 @@ func TestD09ManagedPiServiceUnitsPinCleanupAndNarrowWritablePaths(t *testing.T) 
 	unit := []byte("[Unit]\nDescription=tbound-pi\n[Service]\n" +
 		"User=tbound-pi\nGroup=tbound-pi\nExecStart=/usr/local/bin/tbound serve --pi --service\n" +
 		"KillMode=control-group\nUMask=0077\nNoNewPrivileges=yes\nProtectSystem=strict\n" +
-		"ProtectHome=yes\nPrivateTmp=yes\nDelegate=yes\nRuntimeDirectory=tbound-pi\n" +
+		"ProtectHome=yes\nPrivateTmp=yes\nDelegate=yes\nDelegateSubgroup=runner\nRuntimeDirectory=tbound-pi\n" +
 		"RuntimeDirectoryMode=0700\nStateDirectory=tbound/audit tbound/live tbound/podman-home tbound/podman-storage/graphroot tbound/private-admin tbound/publication-state tbound/sessions\n" +
 		"StateDirectoryMode=0700\nReadWritePaths=" + strings.Join(paths, " ") + "\n" +
 		"Environment=HOME=/var/lib/tbound/podman-home USER=tbound-pi LOGNAME=tbound-pi XDG_RUNTIME_DIR=/run/tbound-pi XDG_CONFIG_HOME=/etc/tbound/podman-config XDG_DATA_HOME=/var/lib/tbound/podman-home/data XDG_CACHE_HOME=/run/tbound-pi/cache TMPDIR=/run/tbound-pi/tmp CONTAINERS_CONF=/etc/tbound/podman-config/containers.conf CONTAINERS_STORAGE_CONF=/etc/tbound/podman-config/storage.conf LANG=C LC_ALL=C\n" +
@@ -177,6 +207,38 @@ func TestD09ManagedPiServiceUnitsPinCleanupAndNarrowWritablePaths(t *testing.T) 
 	}
 }
 
+func TestD09ManagedPiServiceUnitRequiresClosedRunnerSubgroup(t *testing.T) {
+	config := testD09ManagedPiServiceConfig()
+	paths := d09ManagedPiServiceWritablePaths()
+	unit := "[Unit]\nDescription=tbound-pi\n[Service]\n" +
+		"User=tbound-pi\nGroup=tbound-pi\nExecStart=/usr/local/bin/tbound serve --pi --service\n" +
+		"KillMode=control-group\nUMask=0077\nNoNewPrivileges=yes\nProtectSystem=strict\n" +
+		"ProtectHome=yes\nPrivateTmp=yes\nDelegate=yes\nDelegateSubgroup=runner\nRuntimeDirectory=tbound-pi\n" +
+		"RuntimeDirectoryMode=0700\nStateDirectory=tbound/audit tbound/live tbound/podman-home tbound/podman-storage/graphroot tbound/private-admin tbound/publication-state tbound/sessions\n" +
+		"StateDirectoryMode=0700\nReadWritePaths=" + strings.Join(paths, " ") + "\n" +
+		"Environment=HOME=/var/lib/tbound/podman-home USER=tbound-pi LOGNAME=tbound-pi XDG_RUNTIME_DIR=/run/tbound-pi XDG_CONFIG_HOME=/etc/tbound/podman-config XDG_DATA_HOME=/var/lib/tbound/podman-home/data XDG_CACHE_HOME=/run/tbound-pi/cache TMPDIR=/run/tbound-pi/tmp CONTAINERS_CONF=/etc/tbound/podman-config/containers.conf CONTAINERS_STORAGE_CONF=/etc/tbound/podman-config/storage.conf LANG=C LC_ALL=C\n" +
+		"UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS\n"
+	if err := validateD09ManagedPiServiceUnit([]byte(unit), D09ManagedPiServiceName, D09ManagedPiServiceGroup,
+		"/usr/local/bin/tbound", config, paths); err != nil {
+		t.Fatalf("closed runner-subgroup unit refused: %v", err)
+	}
+	// The main process must live in exactly <service>/runner. Omitting the
+	// subgroup leaves it in the service parent, which holds controllers and
+	// must stay empty; the cell subtree and any dotdot/nested form are also refused.
+	for name, mutated := range map[string]string{
+		"missing subgroup":          strings.Replace(unit, "DelegateSubgroup=runner\n", "", 1),
+		"empty subgroup":            strings.Replace(unit, "DelegateSubgroup=runner", "DelegateSubgroup=", 1),
+		"cell subtree as main leaf": strings.Replace(unit, "DelegateSubgroup=runner", "DelegateSubgroup=cells", 1),
+		"dotdot escape":             strings.Replace(unit, "DelegateSubgroup=runner", "DelegateSubgroup=../runner", 1),
+		"nested descendant":         strings.Replace(unit, "DelegateSubgroup=runner", "DelegateSubgroup=runner/child", 1),
+	} {
+		if err := validateD09ManagedPiServiceUnit([]byte(mutated), D09ManagedPiServiceName, D09ManagedPiServiceGroup,
+			"/usr/local/bin/tbound", config, paths); err == nil {
+			t.Fatalf("service unit with %s accepted", name)
+		}
+	}
+}
+
 func TestD09ManagedPiServiceAndSocketUnitsAreExact(t *testing.T) {
 	serviceConfig := testD09ManagedPiServiceConfig()
 	serviceUnit := []byte(`[Unit]
@@ -192,6 +254,7 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 Delegate=yes
+DelegateSubgroup=runner
 RuntimeDirectory=tbound-pi
 RuntimeDirectoryMode=0700
 StateDirectory=tbound/audit tbound/live tbound/podman-home tbound/podman-storage/graphroot tbound/private-admin tbound/publication-state tbound/sessions

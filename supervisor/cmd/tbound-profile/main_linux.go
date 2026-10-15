@@ -555,7 +555,7 @@ func runManagedRootMeasure(args []string, stdout, stderr io.Writer) error {
 	if err != nil || *allowedClientPrimaryGID <= 0 {
 		return errors.Join(errors.New("explicit sorted client UID list and positive primary GID are required"), err)
 	}
-	calibration, err := piruntime.LoadVerifiedD09XattrEnumerationCalibration(context.Background())
+	calibration, err := piruntime.LoadVerifiedD09ManagedRWXattrEnumerationCalibration(context.Background())
 	if err != nil {
 		return fmt.Errorf("load separately signed managed-root xattr calibration: %w", err)
 	}
