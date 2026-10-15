@@ -8,13 +8,13 @@
 # the registered /etc/tbound/d09-cell.json template. The image is never pulled
 # at run time (podman --pull=never) and is verified offline from a local OCI
 # layout. No secret or private signing key belongs in this image.
-FROM golang:1.27-bookworm AS entrypoint
+FROM golang:1.27.1-bookworm AS entrypoint
 WORKDIR /src
 COPY supervisor/ ./supervisor/
 RUN cd supervisor \
  && CGO_ENABLED=0 go build -trimpath -o /out/tbound-pi-entrypoint ./cmd/tbound-cell-entrypoint
 
-FROM node:24-bookworm-slim
+FROM node:24.21.0-bookworm-slim
 LABEL org.opencontainers.image.title="tbound-pi-cell" \
       org.opencontainers.image.description="Governed D09 Pi worker cell (non-claim-bearing until frozen and signed)" \
       org.opencontainers.image.licenses="MIT"
