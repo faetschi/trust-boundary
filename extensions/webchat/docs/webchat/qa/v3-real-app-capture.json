@@ -1,16 +1,16 @@
 {
-  "receipt": "v3 real-app capture (C3): the React /app/ served by the demo gateway built in WSL on 127.0.0.1:19051, one frame per state",
-  "script": "C:\\Users\\Admin\\AppData\\Local\\Temp\\tbwc-c3\\real-c3.mjs",
-  "gateway": "http://127.0.0.1:19051",
-  "commit": "d47290c (worktree HEAD) plus the uncommitted redesign; the built dist is frozen (distIndexHtmlSha256)",
+  "receipt": "v3 real-app capture (M3c): the React /app/ served by the demo gateway built in WSL on 127.0.0.1:8895, one frame per state",
+  "script": "C:\\Users\\Admin\\AppData\\Local\\Temp\\tbwc-m3c\\real-m3c.mjs",
+  "gateway": "http://127.0.0.1:8895",
+  "commit": "f59f491 (worktree HEAD; the working tree is clean except docs-next-work.txt); the committed dist is what the gateway embeds (distIndexHtmlSha256)",
   "gatewayBinary": {
-    "path": "/home/jeli2k/tbwc-c3-bin/tbound-webchat (built in WSL from a copy of extensions/webchat, go1.27.1 linux/amd64, --demo, --addr 127.0.0.1:19051)",
-    "sha256": "9f97bdce6c04da2df63d62a5e5641b61f7ac44116724bede058590f422964613"
+    "path": "/home/jeli2k/tbwc-gw-m3c (built in WSL from the worktree extensions/webchat at f59f491, go1.27.1 linux/amd64, --demo, --addr 127.0.0.1:8895)",
+    "sha256": "658041d7f4020b7da7ec187e1bcfaf57b633445f85054ec630702c338bb10311"
   },
-  "distIndexHtmlSha256": "7816cb65ba3f08d6a8ba295991dc3ef0340515850f7908996aa1eee190aefc02",
-  "distManifestSha256": "85dee5489a55bc90715717399ad4048654cfe8490f070fd5c53c336f87a8debd",
-  "distCssSha256": "dce5c00936f72d294b18f96790ad9ab01ed3b462f1386ca96dea5e07c1107f22",
-  "distJsSha256": "fb5122a6e7edcbf1578a253abf59b0e840a237011addf604a8176719c51b2d2a",
+  "distIndexHtmlSha256": "f1b22babc7422b9e79c460355eea186a7b26ab57d314bfbf7909793d94960cab",
+  "distManifestSha256": "8075f5d61f2c80d9dfc2117b4481d612f19d93d8f15d82beaa799e2856996432",
+  "distCssSha256": "8b1913902dcb8da5abe23881b5c1297920b1438cf36fe8989b5acd39923f8364",
+  "distJsSha256": "b032b44ba832173264364d6d9e8375a564eacd01ad7f35ba8cc188346396fdec",
   "chrome": {
     "path": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
     "product": "Chrome/155.0.8059.79",
@@ -34,7 +34,7 @@
       "light",
       "dark"
     ],
-    "method": "localStorage cleared and set on the 127.0.0.1:19051 origin, then reload; prefers-color-scheme emulated light; prefers-reduced-motion emulated reduce; collapse choices start from empty storage"
+    "method": "localStorage cleared and set on the 127.0.0.1:8895 origin, then reload; prefers-color-scheme emulated light; prefers-reduced-motion emulated reduce; collapse choices start from empty storage"
   },
   "captureOnlyCss": "*,*::before,*::after{transition:none!important;animation:none!important}",
   "selectors": {
@@ -61,9 +61,9 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "d8ef895f1ccdb97a6a311be72926529244e5a16d618871cf2b7d24797effb4a2",
-      "committedSha256": "bc1ae84595a37e1579e3fc79eab7713e8abea3b180bd5d9e9156945a3f2ff7b1",
-      "frameDomBytes": 26530,
-      "frameDomSha256": "e892e5b6bde136e77650b4cca0e2f095ef260c3559a8ce63ed943a84452934db",
+      "committedSha256": "d8ef895f1ccdb97a6a311be72926529244e5a16d618871cf2b7d24797effb4a2",
+      "frameDomBytes": 26661,
+      "frameDomSha256": "3e3318b27f61e88a7ee60c89684099cb505c0686ff00dd70e385a5947c3b3158",
       "pressed": [],
       "pointer": null,
       "regions": {
@@ -199,9 +199,9 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "295a6b0c63aac3fe7941f911f375cea7a82d0c0db3fc4257e5de1bc837bb0f28",
-      "committedSha256": "f04e3720ff88aa29a062de35d46f9e2df2cc0405114dbb29784af5d273443744",
-      "frameDomBytes": 26530,
-      "frameDomSha256": "a27df90a314f640c58e1e8a978fb24890b1e89cf7239aafe3fddf0f9519a88ba",
+      "committedSha256": "295a6b0c63aac3fe7941f911f375cea7a82d0c0db3fc4257e5de1bc837bb0f28",
+      "frameDomBytes": 26661,
+      "frameDomSha256": "aaf1d4d0c34f7c35192bfd01cd8684315b667b723b55e7c372653e3a24359164",
       "pressed": [],
       "pointer": null,
       "regions": {
@@ -332,14 +332,14 @@
       "actions": 0,
       "scrollFraction": null,
       "scrollY": null,
-      "shows": "Chat at 1024: inspector is a drawer (closed)",
+      "shows": "Chat at 1024: the inspector is a drawer (closed)",
       "bytes": 93860,
       "pngWidth": 1024,
       "pngHeight": 768,
       "sha256": "98b8c5c7fe7b9a4bdf48f2e07a89cf45da6500064fae4041697eacb2cd2ab9d0",
-      "committedSha256": "dfa94e464ef53a9805523fe2e93e72492eb72ed5ccf1f6ca93fc087b3d9642fa",
-      "frameDomBytes": 26420,
-      "frameDomSha256": "a3744385291dcda616853217d58dc84a683b4090e2c7b82721da2331c2451c75",
+      "committedSha256": "98b8c5c7fe7b9a4bdf48f2e07a89cf45da6500064fae4041697eacb2cd2ab9d0",
+      "frameDomBytes": 26551,
+      "frameDomSha256": "29e7f07bc566493baaf06c7cdbada07c4098a55c47f6000ab94401ca37a7af08",
       "pressed": [],
       "pointer": null,
       "regions": {
@@ -475,9 +475,9 @@
       "pngWidth": 1024,
       "pngHeight": 768,
       "sha256": "f244f15b5806b4894a655905524330e039cb33cb3bed57514c429036f97ec91f",
-      "committedSha256": null,
-      "frameDomBytes": 26420,
-      "frameDomSha256": "e7fe5a011955f641a07c097d33631674c0a9e31e6ee0179c0c916d2a9c4dd85b",
+      "committedSha256": "f244f15b5806b4894a655905524330e039cb33cb3bed57514c429036f97ec91f",
+      "frameDomBytes": 26551,
+      "frameDomSha256": "be4975ad74aee19e4a6f43b9be0c58d4f5f80c59d3432b20540583f6637fb166",
       "pressed": [],
       "pointer": null,
       "regions": {
@@ -613,9 +613,9 @@
       "pngWidth": 1024,
       "pngHeight": 768,
       "sha256": "4a6f049a522421e4b9f48a6c0e63e05665a52edbe61cb093d3a08d4048ae5f69",
-      "committedSha256": "c782aa91d9f873f5fd50ae0851196efe1d767c41c4fd7f4173383c727eb66f41",
-      "frameDomBytes": 26519,
-      "frameDomSha256": "e0856744ec0add553fb9f56500968ca857ba9530130f31cad655b9ed6b75e331",
+      "committedSha256": "4a6f049a522421e4b9f48a6c0e63e05665a52edbe61cb093d3a08d4048ae5f69",
+      "frameDomBytes": 26650,
+      "frameDomSha256": "aa42bf10fa35993a88cbb7e5bac49e3b5750cdc367cea18f5299bbacebc5f2c6",
       "pressed": [
         "Governance"
       ],
@@ -751,6 +751,157 @@
       }
     },
     {
+      "name": "chat-drawer-1024-dark",
+      "file": "v3-real-app-1024-dark-drawer.png",
+      "viewport": "1024x768",
+      "theme": "dark",
+      "fullpage": false,
+      "actions": 1,
+      "scrollFraction": null,
+      "scrollY": null,
+      "shows": "Governance drawer open at 1024, dark theme",
+      "bytes": 88186,
+      "pngWidth": 1024,
+      "pngHeight": 768,
+      "sha256": "5eee4ba8ee4e2ff509d23e27e47e9af5e5cc99671c3fa84da4e31de45852b517",
+      "committedSha256": null,
+      "frameDomBytes": 26650,
+      "frameDomSha256": "b3bfa574561429e451d7ba931a0fd77bc89a1720babb47504f475c40f8e9cbf3",
+      "pressed": [
+        "Governance"
+      ],
+      "pointer": {
+        "x": 767.59375,
+        "y": 29
+      },
+      "regions": {
+        "header": {
+          "rect": [
+            0,
+            0,
+            1024,
+            121
+          ],
+          "innerText": "tbound web chat\n\nPi chat workspace\n\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\n\nPresentation only: the supervisor retains policy, effect and publication authority.\n\nDisplay only: these values are copied from the projection and are not evidence.\n\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            121,
+            182,
+            647
+          ],
+          "innerText": "Sessions\n‹\n\nAdd /healthz and run tests\n\nPi 0.87.1 · 1 turn\n\ncompleted · reported, not verified\n\nOther Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.\n\nObservation streams\ndevelopment fixture transcript: complete (source did not claim completeness) (non-claim-bearing development fixture)\nproduction supervisor projection: unavailable (no authenticated live projection source is registered), not available\n\nRead-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are supervisor authority."
+        },
+        "main": {
+          "rect": [
+            182,
+            121,
+            842,
+            647
+          ],
+          "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
+        },
+        "footer": {
+          "rect": [
+            206,
+            730,
+            709,
+            22
+          ],
+          "innerText": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "composer": {
+          "rect": [
+            198,
+            601,
+            800,
+            114
+          ],
+          "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
+        },
+        "scrim": {
+          "rect": [
+            0,
+            0,
+            1024,
+            768
+          ],
+          "innerText": ""
+        },
+        "governanceInspector": {
+          "rect": [
+            583,
+            121,
+            441,
+            647
+          ],
+          "innerText": "Governance\nClose governance\nDecisions\nProvenance\nPublication\nRecovery\nQualification\n\nDecisions · 1 deny verdict\n\nPolicy decisions\n\npolicy verdicts 4 allow / 1 deny / 0 unknown\n\nPolicy digest\nsha256:9f2a41c0d5e7481ba6c3f0d9e7b2a5c8d1e4f7a0b3c6d9e2f5a8b1c4d7e0f3a6\n\nA policy ALLOW is a permission, not an outcome."
+        },
+        "inspectorAttributes": {
+          "ariaLabel": "Governance inspector",
+          "dataOpen": "true",
+          "dataCollapsed": "false"
+        },
+        "governanceToggle": {
+          "rect": [
+            718,
+            13,
+            99,
+            32
+          ],
+          "ariaExpanded": "true"
+        },
+        "railState": "expanded",
+        "tabs": [
+          {
+            "text": "Chat",
+            "label": null,
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "label": null,
+            "selected": "false"
+          },
+          {
+            "text": "Decisions",
+            "label": "Decisions, 1 deny verdict",
+            "selected": "true"
+          },
+          {
+            "text": "Provenance",
+            "label": "Provenance, unavailable",
+            "selected": "false"
+          },
+          {
+            "text": "Publication",
+            "label": "Publication, not attempted",
+            "selected": "false"
+          },
+          {
+            "text": "Recovery",
+            "label": "Recovery, unknown",
+            "selected": "false"
+          },
+          {
+            "text": "Qualification",
+            "label": "Qualification, not established, 2 warnings",
+            "selected": "false"
+          }
+        ],
+        "ledgerRows": 0,
+        "selectedRows": 0,
+        "closeRecord": null,
+        "viewport": {
+          "innerWidth": 1024,
+          "innerHeight": 768,
+          "documentHeight": 768
+        },
+        "htmlDataTheme": "dark"
+      }
+    },
+    {
       "name": "chat-light-390",
       "file": "v3-real-app-390-light-chat.png",
       "viewport": "390x844",
@@ -759,14 +910,14 @@
       "actions": 0,
       "scrollFraction": null,
       "scrollY": null,
-      "shows": "Phone: sessions and claim disclosure strips, transcript",
-      "bytes": 49660,
+      "shows": "Phone: Sessions and claim disclosure strips, the transcript",
+      "bytes": 51795,
       "pngWidth": 390,
       "pngHeight": 844,
-      "sha256": "2c7dbfeb5057fa72c66c0d6e9139720b589affb49854dc5a13562c3ee076b27c",
-      "committedSha256": null,
-      "frameDomBytes": 25032,
-      "frameDomSha256": "edbea13e484c4cb3c5a8cc146ea1b6a9bb0d9fed97416f78251f0dca05f6584d",
+      "sha256": "520b46e5d5e3359b3dcb8745fb6ce40b146230c026bd51f379c3dfe08f117e61",
+      "committedSha256": "2c7dbfeb5057fa72c66c0d6e9139720b589affb49854dc5a13562c3ee076b27c",
+      "frameDomBytes": 25163,
+      "frameDomSha256": "eb33a7f7c16b827c2a80fb015a6d9f3ae80f9b0dfcda4cb7397395b9af550bdf",
       "pressed": [],
       "pointer": null,
       "regions": {
@@ -775,14 +926,14 @@
             0,
             0,
             380,
-            184
+            172
           ],
           "innerText": "tbound web chat\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\nPresentation only · display only\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
         },
         "nav": {
           "rect": [
             0,
-            184,
+            172,
             380,
             53
           ],
@@ -791,26 +942,26 @@
         "main": {
           "rect": [
             0,
-            237,
+            225,
             380,
-            1376
+            1360
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
         "footer": {
           "rect": [
-            24,
-            297,
-            332,
+            20,
+            1511,
+            340,
             44
           ],
           "innerText": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
         },
         "composer": {
           "rect": [
-            16,
+            12,
             698,
-            348,
+            356,
             138
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
@@ -819,9 +970,9 @@
         "governanceInspector": {
           "rect": [
             396,
-            184,
+            172,
             362,
-            1429
+            1413
           ],
           "innerText": ""
         },
@@ -833,7 +984,7 @@
         "governanceToggle": {
           "rect": [
             12,
-            38,
+            32,
             99,
             44
           ],
@@ -883,7 +1034,7 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1613
+          "documentHeight": 1585
         },
         "htmlDataTheme": "light"
       }
@@ -897,14 +1048,14 @@
       "actions": 0,
       "scrollFraction": null,
       "scrollY": null,
-      "shows": "Phone, whole page: the read-only composer and its chips below the transcript",
-      "bytes": 91593,
+      "shows": "Phone, whole page: the transcript, the dock, then the footer",
+      "bytes": 92015,
       "pngWidth": 380,
-      "pngHeight": 1613,
-      "sha256": "404218cf893d9a34e22c2542d0a0452235b420deb244eb81ccda896bc3ecbf0d",
-      "committedSha256": null,
-      "frameDomBytes": 25032,
-      "frameDomSha256": "edbea13e484c4cb3c5a8cc146ea1b6a9bb0d9fed97416f78251f0dca05f6584d",
+      "pngHeight": 1585,
+      "sha256": "b3d3fa2bd91e6c755e962209a0ba2e6b7d73b9b3f0b244bdf9e17f6ac0733237",
+      "committedSha256": "404218cf893d9a34e22c2542d0a0452235b420deb244eb81ccda896bc3ecbf0d",
+      "frameDomBytes": 25163,
+      "frameDomSha256": "eb33a7f7c16b827c2a80fb015a6d9f3ae80f9b0dfcda4cb7397395b9af550bdf",
       "pressed": [],
       "pointer": null,
       "regions": {
@@ -913,14 +1064,14 @@
             0,
             0,
             380,
-            184
+            172
           ],
           "innerText": "tbound web chat\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\nPresentation only · display only\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
         },
         "nav": {
           "rect": [
             0,
-            184,
+            172,
             380,
             53
           ],
@@ -929,26 +1080,26 @@
         "main": {
           "rect": [
             0,
-            237,
+            225,
             380,
-            1376
+            1360
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
         "footer": {
           "rect": [
-            24,
-            297,
-            332,
+            20,
+            1511,
+            340,
             44
           ],
           "innerText": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
         },
         "composer": {
           "rect": [
-            16,
+            12,
             698,
-            348,
+            356,
             138
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
@@ -957,9 +1108,9 @@
         "governanceInspector": {
           "rect": [
             396,
-            184,
+            172,
             362,
-            1429
+            1413
           ],
           "innerText": ""
         },
@@ -971,7 +1122,7 @@
         "governanceToggle": {
           "rect": [
             12,
-            38,
+            32,
             99,
             44
           ],
@@ -1021,7 +1172,7 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1613
+          "documentHeight": 1585
         },
         "htmlDataTheme": "light"
       }
@@ -1036,13 +1187,13 @@
       "scrollFraction": null,
       "scrollY": null,
       "shows": "Phone, dark theme",
-      "bytes": 50465,
+      "bytes": 52613,
       "pngWidth": 390,
       "pngHeight": 844,
-      "sha256": "4fc009e7b11423d2aca5a5a92ca21a362d88517bf1c2aee954427966df0bfe37",
-      "committedSha256": null,
-      "frameDomBytes": 25032,
-      "frameDomSha256": "8f4204eb1c072518a89a180ff559a3c98eefabc2204b762c2d276c5fb8bab8ac",
+      "sha256": "dc8abc7ef41ae83bb0877e567dd62159c14704bf46e75a72fec38da2c6d2ce4a",
+      "committedSha256": "4fc009e7b11423d2aca5a5a92ca21a362d88517bf1c2aee954427966df0bfe37",
+      "frameDomBytes": 25163,
+      "frameDomSha256": "239a62c23b1d36644a91d9763cd62054996d16d30426e7919515a25a9afbd40c",
       "pressed": [],
       "pointer": null,
       "regions": {
@@ -1051,14 +1202,14 @@
             0,
             0,
             380,
-            184
+            172
           ],
           "innerText": "tbound web chat\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\nPresentation only · display only\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
         },
         "nav": {
           "rect": [
             0,
-            184,
+            172,
             380,
             53
           ],
@@ -1067,26 +1218,26 @@
         "main": {
           "rect": [
             0,
-            237,
+            225,
             380,
-            1376
+            1360
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
         "footer": {
           "rect": [
-            24,
-            297,
-            332,
+            20,
+            1511,
+            340,
             44
           ],
           "innerText": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
         },
         "composer": {
           "rect": [
-            16,
+            12,
             698,
-            348,
+            356,
             138
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
@@ -1095,9 +1246,9 @@
         "governanceInspector": {
           "rect": [
             396,
-            184,
+            172,
             362,
-            1429
+            1413
           ],
           "innerText": ""
         },
@@ -1109,7 +1260,7 @@
         "governanceToggle": {
           "rect": [
             12,
-            38,
+            32,
             99,
             44
           ],
@@ -1159,7 +1310,7 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1613
+          "documentHeight": 1585
         },
         "htmlDataTheme": "dark"
       }
@@ -1172,24 +1323,24 @@
       "fullpage": false,
       "actions": 0,
       "scrollFraction": 0.4,
-      "scrollY": 308,
-      "shows": "Phone, scrolled to mid-transcript: the composer dock is pinned to the viewport bottom edge and the transcript scrolls under it",
-      "bytes": 54209,
+      "scrollY": 296,
+      "shows": "Phone, scrolled to mid-transcript: the composer dock is pinned to the viewport bottom edge",
+      "bytes": 54576,
       "pngWidth": 390,
       "pngHeight": 844,
-      "sha256": "2332ee9e2d34d0f0feab8a48be108d588229edd165426acfc2e08d979c6e2b8f",
-      "committedSha256": null,
-      "frameDomBytes": 25032,
-      "frameDomSha256": "edbea13e484c4cb3c5a8cc146ea1b6a9bb0d9fed97416f78251f0dca05f6584d",
+      "sha256": "70b727edf608ae1cbe04c12c109e074a3c299739a124e89228d33c090e57e267",
+      "committedSha256": "2332ee9e2d34d0f0feab8a48be108d588229edd165426acfc2e08d979c6e2b8f",
+      "frameDomBytes": 25163,
+      "frameDomSha256": "eb33a7f7c16b827c2a80fb015a6d9f3ae80f9b0dfcda4cb7397395b9af550bdf",
       "pressed": [],
       "pointer": null,
       "regions": {
         "header": {
           "rect": [
             0,
-            -308,
+            -296,
             380,
-            184
+            172
           ],
           "innerText": "tbound web chat\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\nPresentation only · display only\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
         },
@@ -1207,24 +1358,24 @@
             0,
             -71,
             380,
-            1376
+            1360
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
         "footer": {
           "rect": [
-            24,
-            -11,
-            332,
+            20,
+            1215,
+            340,
             44
           ],
           "innerText": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
         },
         "composer": {
           "rect": [
-            16,
+            12,
             698,
-            348,
+            356,
             138
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
@@ -1235,7 +1386,7 @@
             396,
             -124,
             362,
-            1429
+            1413
           ],
           "innerText": ""
         },
@@ -1247,7 +1398,7 @@
         "governanceToggle": {
           "rect": [
             12,
-            -270,
+            -264,
             99,
             44
           ],
@@ -1297,7 +1448,7 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1613
+          "documentHeight": 1585
         },
         "htmlDataTheme": "light"
       }
@@ -1310,24 +1461,24 @@
       "fullpage": false,
       "actions": 0,
       "scrollFraction": 0.4,
-      "scrollY": 308,
-      "shows": "Phone, dark theme, scrolled to mid-transcript: the dock is pinned to the viewport bottom edge",
-      "bytes": 54657,
+      "scrollY": 296,
+      "shows": "Phone, dark theme, scrolled to mid-transcript: the dock is pinned",
+      "bytes": 55118,
       "pngWidth": 390,
       "pngHeight": 844,
-      "sha256": "87a6208a734322d9a65a3b2ce904a9358b2eadbecfb316de623a7bf541016644",
-      "committedSha256": null,
-      "frameDomBytes": 25032,
-      "frameDomSha256": "8f4204eb1c072518a89a180ff559a3c98eefabc2204b762c2d276c5fb8bab8ac",
+      "sha256": "d1c4e402e2d0edc59e694e30065652cec25ee918bcaab36e74f331c0698d048f",
+      "committedSha256": "87a6208a734322d9a65a3b2ce904a9358b2eadbecfb316de623a7bf541016644",
+      "frameDomBytes": 25163,
+      "frameDomSha256": "239a62c23b1d36644a91d9763cd62054996d16d30426e7919515a25a9afbd40c",
       "pressed": [],
       "pointer": null,
       "regions": {
         "header": {
           "rect": [
             0,
-            -308,
+            -296,
             380,
-            184
+            172
           ],
           "innerText": "tbound web chat\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\nPresentation only · display only\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
         },
@@ -1345,24 +1496,24 @@
             0,
             -71,
             380,
-            1376
+            1360
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
         "footer": {
           "rect": [
-            24,
-            -11,
-            332,
+            20,
+            1215,
+            340,
             44
           ],
           "innerText": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
         },
         "composer": {
           "rect": [
-            16,
+            12,
             698,
-            348,
+            356,
             138
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
@@ -1373,7 +1524,7 @@
             396,
             -124,
             362,
-            1429
+            1413
           ],
           "innerText": ""
         },
@@ -1385,7 +1536,7 @@
         "governanceToggle": {
           "rect": [
             12,
-            -270,
+            -264,
             99,
             44
           ],
@@ -1435,9 +1586,561 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1613
+          "documentHeight": 1585
         },
         "htmlDataTheme": "dark"
+      }
+    },
+    {
+      "name": "chat-light-390-dock-end",
+      "file": "v3-real-app-390-light-dock-end.png",
+      "viewport": "390x844",
+      "theme": "light",
+      "fullpage": false,
+      "actions": 0,
+      "scrollFraction": 1,
+      "scrollY": 741,
+      "shows": "Phone at the page end: the dock follows the last message and the footer is below the dock",
+      "bytes": 53040,
+      "pngWidth": 390,
+      "pngHeight": 844,
+      "sha256": "338dc98906b7fcf1c2ff181e5e8a8c558afad1e8fce4222a8a6595868a380f5d",
+      "committedSha256": null,
+      "frameDomBytes": 25163,
+      "frameDomSha256": "eb33a7f7c16b827c2a80fb015a6d9f3ae80f9b0dfcda4cb7397395b9af550bdf",
+      "pressed": [],
+      "pointer": null,
+      "regions": {
+        "header": {
+          "rect": [
+            0,
+            -741,
+            380,
+            172
+          ],
+          "innerText": "tbound web chat\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\nPresentation only · display only\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            -569,
+            380,
+            53
+          ],
+          "innerText": "Sessions · Add /healthz and run tests\n▾"
+        },
+        "main": {
+          "rect": [
+            0,
+            -516,
+            380,
+            1360
+          ],
+          "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
+        },
+        "footer": {
+          "rect": [
+            20,
+            770,
+            340,
+            44
+          ],
+          "innerText": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "composer": {
+          "rect": [
+            12,
+            615,
+            356,
+            138
+          ],
+          "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
+        },
+        "scrim": null,
+        "governanceInspector": {
+          "rect": [
+            396,
+            -569,
+            362,
+            1413
+          ],
+          "innerText": ""
+        },
+        "inspectorAttributes": {
+          "ariaLabel": "Governance inspector",
+          "dataOpen": "false",
+          "dataCollapsed": "false"
+        },
+        "governanceToggle": {
+          "rect": [
+            12,
+            -709,
+            99,
+            44
+          ],
+          "ariaExpanded": "false"
+        },
+        "railState": "collapsed",
+        "tabs": [
+          {
+            "text": "Chat",
+            "label": null,
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "label": null,
+            "selected": "false"
+          },
+          {
+            "text": "Decisions",
+            "label": "Decisions, 1 deny verdict",
+            "selected": "true"
+          },
+          {
+            "text": "Provenance",
+            "label": "Provenance, unavailable",
+            "selected": "false"
+          },
+          {
+            "text": "Publication",
+            "label": "Publication, not attempted",
+            "selected": "false"
+          },
+          {
+            "text": "Recovery",
+            "label": "Recovery, unknown",
+            "selected": "false"
+          },
+          {
+            "text": "Qualification",
+            "label": "Qualification, not established, 2 warnings",
+            "selected": "false"
+          }
+        ],
+        "ledgerRows": 0,
+        "selectedRows": 0,
+        "closeRecord": null,
+        "viewport": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "documentHeight": 1585
+        },
+        "htmlDataTheme": "light"
+      }
+    },
+    {
+      "name": "chat-dark-390-dock-end",
+      "file": "v3-real-app-390-dark-dock-end.png",
+      "viewport": "390x844",
+      "theme": "dark",
+      "fullpage": false,
+      "actions": 0,
+      "scrollFraction": 1,
+      "scrollY": 741,
+      "shows": "Phone, dark theme, at the page end: the dock, then the footer",
+      "bytes": 53196,
+      "pngWidth": 390,
+      "pngHeight": 844,
+      "sha256": "3802e7e0236618e8ad66b902325f4c0e0b48c0f9284a67189466c4d6441128d2",
+      "committedSha256": null,
+      "frameDomBytes": 25163,
+      "frameDomSha256": "239a62c23b1d36644a91d9763cd62054996d16d30426e7919515a25a9afbd40c",
+      "pressed": [],
+      "pointer": null,
+      "regions": {
+        "header": {
+          "rect": [
+            0,
+            -741,
+            380,
+            172
+          ],
+          "innerText": "tbound web chat\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\nPresentation only · display only\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            -569,
+            380,
+            53
+          ],
+          "innerText": "Sessions · Add /healthz and run tests\n▾"
+        },
+        "main": {
+          "rect": [
+            0,
+            -516,
+            380,
+            1360
+          ],
+          "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
+        },
+        "footer": {
+          "rect": [
+            20,
+            770,
+            340,
+            44
+          ],
+          "innerText": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "composer": {
+          "rect": [
+            12,
+            615,
+            356,
+            138
+          ],
+          "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
+        },
+        "scrim": null,
+        "governanceInspector": {
+          "rect": [
+            396,
+            -569,
+            362,
+            1413
+          ],
+          "innerText": ""
+        },
+        "inspectorAttributes": {
+          "ariaLabel": "Governance inspector",
+          "dataOpen": "false",
+          "dataCollapsed": "false"
+        },
+        "governanceToggle": {
+          "rect": [
+            12,
+            -709,
+            99,
+            44
+          ],
+          "ariaExpanded": "false"
+        },
+        "railState": "collapsed",
+        "tabs": [
+          {
+            "text": "Chat",
+            "label": null,
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "label": null,
+            "selected": "false"
+          },
+          {
+            "text": "Decisions",
+            "label": "Decisions, 1 deny verdict",
+            "selected": "true"
+          },
+          {
+            "text": "Provenance",
+            "label": "Provenance, unavailable",
+            "selected": "false"
+          },
+          {
+            "text": "Publication",
+            "label": "Publication, not attempted",
+            "selected": "false"
+          },
+          {
+            "text": "Recovery",
+            "label": "Recovery, unknown",
+            "selected": "false"
+          },
+          {
+            "text": "Qualification",
+            "label": "Qualification, not established, 2 warnings",
+            "selected": "false"
+          }
+        ],
+        "ledgerRows": 0,
+        "selectedRows": 0,
+        "closeRecord": null,
+        "viewport": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "documentHeight": 1585
+        },
+        "htmlDataTheme": "dark"
+      }
+    },
+    {
+      "name": "chat-light-360",
+      "file": "v3-real-app-360-light-chat.png",
+      "viewport": "360x640",
+      "theme": "light",
+      "fullpage": false,
+      "actions": 0,
+      "scrollFraction": null,
+      "scrollY": null,
+      "shows": "Phone at 360 x 640: the top of the transcript",
+      "bytes": 40313,
+      "pngWidth": 360,
+      "pngHeight": 640,
+      "sha256": "ea0fcf56b16f4a42a2e4654845672659d9a3959f482acb9e85c9c5c9198cfc19",
+      "committedSha256": null,
+      "frameDomBytes": 25163,
+      "frameDomSha256": "eb33a7f7c16b827c2a80fb015a6d9f3ae80f9b0dfcda4cb7397395b9af550bdf",
+      "pressed": [],
+      "pointer": null,
+      "regions": {
+        "header": {
+          "rect": [
+            0,
+            0,
+            350,
+            198
+          ],
+          "innerText": "tbound web chat\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\nPresentation only · display only\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            198,
+            350,
+            53
+          ],
+          "innerText": "Sessions · Add /healthz and run tests\n▾"
+        },
+        "main": {
+          "rect": [
+            0,
+            251,
+            350,
+            1360
+          ],
+          "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
+        },
+        "footer": {
+          "rect": [
+            20,
+            1537,
+            310,
+            44
+          ],
+          "innerText": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "composer": {
+          "rect": [
+            12,
+            494,
+            326,
+            138
+          ],
+          "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
+        },
+        "scrim": null,
+        "governanceInspector": {
+          "rect": [
+            366,
+            198,
+            332,
+            1413
+          ],
+          "innerText": ""
+        },
+        "inspectorAttributes": {
+          "ariaLabel": "Governance inspector",
+          "dataOpen": "false",
+          "dataCollapsed": "false"
+        },
+        "governanceToggle": {
+          "rect": [
+            12,
+            58,
+            99,
+            44
+          ],
+          "ariaExpanded": "false"
+        },
+        "railState": "collapsed",
+        "tabs": [
+          {
+            "text": "Chat",
+            "label": null,
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "label": null,
+            "selected": "false"
+          },
+          {
+            "text": "Decisions",
+            "label": "Decisions, 1 deny verdict",
+            "selected": "true"
+          },
+          {
+            "text": "Provenance",
+            "label": "Provenance, unavailable",
+            "selected": "false"
+          },
+          {
+            "text": "Publication",
+            "label": "Publication, not attempted",
+            "selected": "false"
+          },
+          {
+            "text": "Recovery",
+            "label": "Recovery, unknown",
+            "selected": "false"
+          },
+          {
+            "text": "Qualification",
+            "label": "Qualification, not established, 2 warnings",
+            "selected": "false"
+          }
+        ],
+        "ledgerRows": 0,
+        "selectedRows": 0,
+        "closeRecord": null,
+        "viewport": {
+          "innerWidth": 360,
+          "innerHeight": 640,
+          "documentHeight": 1611
+        },
+        "htmlDataTheme": "light"
+      }
+    },
+    {
+      "name": "chat-light-360-dock-end",
+      "file": "v3-real-app-360-light-dock-end.png",
+      "viewport": "360x640",
+      "theme": "light",
+      "fullpage": false,
+      "actions": 0,
+      "scrollFraction": 1,
+      "scrollY": 971,
+      "shows": "Phone at 360 x 640, at the page end: the dock, then the footer",
+      "bytes": 39117,
+      "pngWidth": 360,
+      "pngHeight": 640,
+      "sha256": "557b25a9ae28531b7d43969a1471b712641c2a7932dbf5cc4b399458ba3ed66f",
+      "committedSha256": null,
+      "frameDomBytes": 25163,
+      "frameDomSha256": "eb33a7f7c16b827c2a80fb015a6d9f3ae80f9b0dfcda4cb7397395b9af550bdf",
+      "pressed": [],
+      "pointer": null,
+      "regions": {
+        "header": {
+          "rect": [
+            0,
+            -971,
+            350,
+            198
+          ],
+          "innerText": "tbound web chat\nsource: fixture · unverified\nconnected\nGovernance\nSystem\nLight\nDark\nPresentation only · display only\nG1\nfalse\nH1\nunexecuted\nContainment\nnot-established\nClaim-bearing\nfalse"
+        },
+        "nav": {
+          "rect": [
+            0,
+            -773,
+            350,
+            53
+          ],
+          "innerText": "Sessions · Add /healthz and run tests\n▾"
+        },
+        "main": {
+          "rect": [
+            0,
+            -720,
+            350,
+            1360
+          ],
+          "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
+        },
+        "footer": {
+          "rect": [
+            20,
+            566,
+            310,
+            44
+          ],
+          "innerText": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "composer": {
+          "rect": [
+            12,
+            411,
+            326,
+            138
+          ],
+          "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
+        },
+        "scrim": null,
+        "governanceInspector": {
+          "rect": [
+            366,
+            -773,
+            332,
+            1413
+          ],
+          "innerText": ""
+        },
+        "inspectorAttributes": {
+          "ariaLabel": "Governance inspector",
+          "dataOpen": "false",
+          "dataCollapsed": "false"
+        },
+        "governanceToggle": {
+          "rect": [
+            12,
+            -913,
+            99,
+            44
+          ],
+          "ariaExpanded": "false"
+        },
+        "railState": "collapsed",
+        "tabs": [
+          {
+            "text": "Chat",
+            "label": null,
+            "selected": "true"
+          },
+          {
+            "text": "Trajectory",
+            "label": null,
+            "selected": "false"
+          },
+          {
+            "text": "Decisions",
+            "label": "Decisions, 1 deny verdict",
+            "selected": "true"
+          },
+          {
+            "text": "Provenance",
+            "label": "Provenance, unavailable",
+            "selected": "false"
+          },
+          {
+            "text": "Publication",
+            "label": "Publication, not attempted",
+            "selected": "false"
+          },
+          {
+            "text": "Recovery",
+            "label": "Recovery, unknown",
+            "selected": "false"
+          },
+          {
+            "text": "Qualification",
+            "label": "Qualification, not established, 2 warnings",
+            "selected": "false"
+          }
+        ],
+        "ledgerRows": 0,
+        "selectedRows": 0,
+        "closeRecord": null,
+        "viewport": {
+          "innerWidth": 360,
+          "innerHeight": 640,
+          "documentHeight": 1611
+        },
+        "htmlDataTheme": "light"
       }
     },
     {
@@ -1449,14 +2152,14 @@
       "actions": 1,
       "scrollFraction": null,
       "scrollY": null,
-      "shows": "Sessions rail collapsed to its 3.5 rem strip",
+      "shows": "Sessions rail collapsed to its strip",
       "bytes": 107415,
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "ae1f2f656bb5a9253a721ae59e89e1d133968747bb16ac35556fdda3340e7d2f",
-      "committedSha256": null,
-      "frameDomBytes": 25252,
-      "frameDomSha256": "37937529b51f05777d2fb458ef9347b4c478a7eb0fbfcb99c4caa4209bd9b403",
+      "committedSha256": "ae1f2f656bb5a9253a721ae59e89e1d133968747bb16ac35556fdda3340e7d2f",
+      "frameDomBytes": 25383,
+      "frameDomSha256": "21dd4902d5a1a36e9e52427304def637366941075c3134f0c85abac4608148c7",
       "pressed": [
         "‹"
       ],
@@ -1597,9 +2300,9 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "d7a3d63f43523a9fd761301999a0555592a07eecca252b96b39f492e2d9846cb",
-      "committedSha256": null,
-      "frameDomBytes": 25458,
-      "frameDomSha256": "c691ecd3c2cc86c2a8859879fc6509755ce434b904254b61cb6c7c32b2ac5319",
+      "committedSha256": "d7a3d63f43523a9fd761301999a0555592a07eecca252b96b39f492e2d9846cb",
+      "frameDomBytes": 25589,
+      "frameDomSha256": "901c729130c7f3bf54d3fb3537db234d46d9ba8854b074af569efc4b759626a4",
       "pressed": [
         "‹"
       ],
@@ -1715,9 +2418,9 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "99be17bc74f17d591860d4848d952509316b01c5a0c0eae50bc8f31270ef9975",
-      "committedSha256": null,
-      "frameDomBytes": 24180,
-      "frameDomSha256": "20c91331ef733b7ed0fd7bf417cdf87b5a197794f405b775b5686f05b7886a08",
+      "committedSha256": "99be17bc74f17d591860d4848d952509316b01c5a0c0eae50bc8f31270ef9975",
+      "frameDomBytes": 24311,
+      "frameDomSha256": "bfc9069d5d8f6fbb83ebc2323d0d5fb5f08dba39dc4298749fa2dee79d69301c",
       "pressed": [
         "‹",
         "‹"
@@ -1834,9 +2537,9 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "061abd93836ef29ba27f2609266d39e05b439220abb8bdc5ccc320f13abd15c5",
-      "committedSha256": null,
-      "frameDomBytes": 27330,
-      "frameDomSha256": "60947357d0ef6def41982b770199c7edf1185157ab03b46bac0dec3d06b4eda1",
+      "committedSha256": "061abd93836ef29ba27f2609266d39e05b439220abb8bdc5ccc320f13abd15c5",
+      "frameDomBytes": 27461,
+      "frameDomSha256": "dad11d46a9e95e6ff335fa09e1a1ccdb690dc4323a670d95b8577bd37da99aa4",
       "pressed": [
         "Provenance"
       ],
@@ -1973,13 +2676,13 @@
       "scrollFraction": null,
       "scrollY": null,
       "shows": "Governance tab: Publication",
-      "bytes": 130399,
+      "bytes": 130397,
       "pngWidth": 1440,
       "pngHeight": 900,
-      "sha256": "28d4f53763043d0e0102c43517b7ddb8238ad8349a1f34e14102a5369150963c",
-      "committedSha256": null,
-      "frameDomBytes": 26405,
-      "frameDomSha256": "9facb69c5519230c432a53b525ea4cb68cd217aee35875ef70483e2e0c617e71",
+      "sha256": "5c8bc0feca5a81db7744cd8b9091e83f281c637031db3b3bc52d86c49b5876aa",
+      "committedSha256": "28d4f53763043d0e0102c43517b7ddb8238ad8349a1f34e14102a5369150963c",
+      "frameDomBytes": 26536,
+      "frameDomSha256": "83391f77d8d3d0ba1505194261eb8de40257d7ab011b11fa2530a99ca9787132",
       "pressed": [
         "Publication"
       ],
@@ -2120,9 +2823,9 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "c059564bc7b3ced6d60e88fa494e0b3ec347c09204385e23485bb2a9f329b3b1",
-      "committedSha256": null,
-      "frameDomBytes": 26467,
-      "frameDomSha256": "6cf44056cdfa99886519a0f0329136e920a82326eae9dc622aff64559d5bad4e",
+      "committedSha256": "c059564bc7b3ced6d60e88fa494e0b3ec347c09204385e23485bb2a9f329b3b1",
+      "frameDomBytes": 26598,
+      "frameDomSha256": "91802e74acdac0588147deb7559bf240ba22a541ad0cb34bce9476f0e68481d1",
       "pressed": [
         "Recovery"
       ],
@@ -2263,9 +2966,9 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "45670246d4543ef344caafa0c37572d4bb609ac3086adf0dc4962b4ba1a3039a",
-      "committedSha256": null,
-      "frameDomBytes": 27032,
-      "frameDomSha256": "e92458c78c6e2ca8f3bb85fb1085d0ed889c93253148b333254d480a930441f2",
+      "committedSha256": "45670246d4543ef344caafa0c37572d4bb609ac3086adf0dc4962b4ba1a3039a",
+      "frameDomBytes": 27163,
+      "frameDomSha256": "785ce183a68e8736be0f6e2ef56274a47444d0a4a42257b7436927146282ffa8",
       "pressed": [
         "Qualification"
       ],
@@ -2401,14 +3104,14 @@
       "actions": 1,
       "scrollFraction": null,
       "scrollY": null,
-      "shows": "Record 2 selected: record bar between the tab strip and the body",
+      "shows": "Record 2 selected: the record bar between the tab strip and the body",
       "bytes": 153543,
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "d1a1d3a0d3093d0087f378c82d910a6ed32b99afde463280eaaf62fa62d426d2",
-      "committedSha256": null,
-      "frameDomBytes": 28631,
-      "frameDomSha256": "3d45c5d29bb0194092fac484b35ebd66cb0802f7cb0718d567a661a460822ad0",
+      "committedSha256": "d1a1d3a0d3093d0087f378c82d910a6ed32b99afde463280eaaf62fa62d426d2",
+      "frameDomBytes": 28762,
+      "frameDomSha256": "2cdd87fa5abeb6c42c4143b927090a556522d9344d755279f6335cbcbeabc574",
       "pressed": [
         "record 2"
       ],
@@ -2549,9 +3252,9 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "35a126684f0757d4c0000770d8ac1c3ac89470fc3407ba138325b27789b94449",
-      "committedSha256": null,
-      "frameDomBytes": 26609,
-      "frameDomSha256": "b03feb250629ce54b516a67d6802bc86f2b3acfbce12f1a6cb093daa6e153901",
+      "committedSha256": "35a126684f0757d4c0000770d8ac1c3ac89470fc3407ba138325b27789b94449",
+      "frameDomBytes": 26740,
+      "frameDomSha256": "d5a14e0c4c07b986b618db6b37c15b37006887710ad36da88b5fd44bb1f7d971",
       "pressed": [
         "Message Pi"
       ],
@@ -2692,9 +3395,9 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "25a866f44dd5d3e10b507172c9894b9aa311b2686519d7343fcb857ff4a2938f",
-      "committedSha256": "dc9d5daae57860289e25467e56e07a5486c373c52d4669ea400b9546c40ffcd3",
+      "committedSha256": "25a866f44dd5d3e10b507172c9894b9aa311b2686519d7343fcb857ff4a2938f",
       "frameDomBytes": 31793,
-      "frameDomSha256": "61bde6fbe4a8970dd4cab06b1725304df20119cb3d4f73487a2f5e97737bc8ff",
+      "frameDomSha256": "d79d37933fc01dcdd320783854f4c8260fe6660a993851cc4e858f88c7bc6fb3",
       "pressed": [
         "Trajectory"
       ],
@@ -2827,9 +3530,9 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "19b6d630d8a338bd648e78c90b46a4e55f09f4aac513a24628f44ab630526a9c",
-      "committedSha256": "65c0d50b46870bef2dd50a18b43e462e8e8634145d69a2121d9188aa36213ae8",
+      "committedSha256": "19b6d630d8a338bd648e78c90b46a4e55f09f4aac513a24628f44ab630526a9c",
       "frameDomBytes": 31793,
-      "frameDomSha256": "c5d41fcb26e0801d975a990c6149ca3a297228e075f48e7d451034eee2456c78",
+      "frameDomSha256": "495e07d925a6c898f0c7b119890e0a1e65a2be2b3b25d2a941b397c78e640e39",
       "pressed": [
         "Trajectory"
       ],
@@ -2962,9 +3665,9 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "82b0598f1ca78f0fa2ed7c2cd256b20d6067a56cced30f84b3466ed873ddba84",
-      "committedSha256": "b98daa8997799022ed33d78ef842b35dc2dec7e49b0051030b343667ac2a36be",
+      "committedSha256": "82b0598f1ca78f0fa2ed7c2cd256b20d6067a56cced30f84b3466ed873ddba84",
       "frameDomBytes": 34708,
-      "frameDomSha256": "6c29c078a3d2f94b000480d090b706ef3a4f8e29d80a25378735f488f6d2eae9",
+      "frameDomSha256": "c3bee810eb2d9d5137aa1a5f271faac7d0198052e710008d815d6370a08fbf3f",
       "pressed": [
         "Trajectory",
         "Decisionbash · reviewedreason policy_rule_deny · policy sha256:9f2…e0f3a611:12:31DENYunverified"
@@ -3089,276 +3792,375 @@
   "failedOrErrorResponses": [
     {
       "capture": "chat-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-dark-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-dark-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-light-1024",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-light-1024",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-dark-1024",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-dark-1024",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-drawer-1024-light",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-drawer-1024-light",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
+      "status": 204
+    },
+    {
+      "capture": "chat-drawer-1024-dark",
+      "url": "http://127.0.0.1:8895/favicon.ico",
+      "status": 204
+    },
+    {
+      "capture": "chat-drawer-1024-dark",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-light-390",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-light-390",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-light-390-fullpage",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-light-390-fullpage",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-dark-390",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-dark-390",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-light-390-dock-scrolled",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-light-390-dock-scrolled",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-dark-390-dock-scrolled",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "chat-dark-390-dock-scrolled",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
+      "status": 204
+    },
+    {
+      "capture": "chat-light-390-dock-end",
+      "url": "http://127.0.0.1:8895/favicon.ico",
+      "status": 204
+    },
+    {
+      "capture": "chat-light-390-dock-end",
+      "url": "http://127.0.0.1:8895/favicon.ico",
+      "status": 204
+    },
+    {
+      "capture": "chat-dark-390-dock-end",
+      "url": "http://127.0.0.1:8895/favicon.ico",
+      "status": 204
+    },
+    {
+      "capture": "chat-dark-390-dock-end",
+      "url": "http://127.0.0.1:8895/favicon.ico",
+      "status": 204
+    },
+    {
+      "capture": "chat-light-360",
+      "url": "http://127.0.0.1:8895/favicon.ico",
+      "status": 204
+    },
+    {
+      "capture": "chat-light-360",
+      "url": "http://127.0.0.1:8895/favicon.ico",
+      "status": 204
+    },
+    {
+      "capture": "chat-light-360-dock-end",
+      "url": "http://127.0.0.1:8895/favicon.ico",
+      "status": 204
+    },
+    {
+      "capture": "chat-light-360-dock-end",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "rail-collapsed-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "rail-collapsed-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "inspector-collapsed-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "inspector-collapsed-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "rail-inspector-collapsed-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "rail-inspector-collapsed-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "gov-provenance-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "gov-provenance-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "gov-publication-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "gov-publication-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "gov-recovery-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "gov-recovery-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "gov-qualification-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "gov-qualification-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "record-bar-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "record-bar-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "composer-focus-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "composer-focus-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "traj-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "traj-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "traj-dark-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "traj-dark-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "traj-selected-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     },
     {
       "capture": "traj-selected-light-1440",
-      "url": "http://127.0.0.1:19051/favicon.ico",
+      "url": "http://127.0.0.1:8895/favicon.ico",
       "status": 204
     }
   ],
   "externalRequests": [],
   "summary": {
-    "screenshots": 22,
+    "screenshots": 27,
     "consoleErrorsAndWarnings": 0,
     "externalRequests": 0,
     "nonOkResponses": [
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico",
-      "204 http://127.0.0.1:19051/favicon.ico"
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico",
+      "204 http://127.0.0.1:8895/favicon.ico"
     ]
   },
-  "errors": []
+  "errors": [],
+  "commands": [
+    {
+      "command": "TBWC_CHROME_EXTRA=--disable-lcd-text node real-m3c.mjs",
+      "exit": 0
+    },
+    {
+      "command": "node build-mock-m3c.mjs",
+      "exit": 0
+    },
+    {
+      "command": "TBWC_CHROME_EXTRA=--disable-lcd-text node mock-m3c.mjs",
+      "exit": 0
+    },
+    {
+      "command": "TBWC_CHROME_EXTRA=--disable-lcd-text node tabs-m3c.mjs",
+      "exit": 0
+    },
+    {
+      "command": "node verify-m3c.mjs",
+      "exit": 0
+    },
+    {
+      "command": "TBWC_CHROME_EXTRA=--disable-lcd-text node crops-m3c.mjs",
+      "exit": 0
+    },
+    {
+      "command": "node prune-m3c.mjs",
+      "exit": 0
+    },
+    {
+      "command": "node finalize-m3c.mjs",
+      "exit": 0,
+      "note": "written by this step; its own exit status is not in the log"
+    }
+  ],
+  "captureEnv": {
+    "TBWC_CHROME_EXTRA": "--disable-lcd-text",
+    "note": "set for both the live capture and the mockup comparison, as in the previous refresh"
+  }
 }
