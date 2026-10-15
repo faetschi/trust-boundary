@@ -5,13 +5,13 @@ Updated 2026-10-15. Work only on `codex/tbound-prototype`; implementation checkp
 ## Verified increments
 
 - `e0d48d0` durable new-workflow settlement gate; `ebbbbbc` fixes bare-root comparison, with a regression and focused Linux unit/race/build/vet evidence.
-- `89b76d0` D09 bare audit-head binding. Six source hashes and ten command-log hashes verified. Piruntime unit/race: 263 passes, one unchanged capability-profile skip, zero failures; focused changed paths have no skips.
+- `89b76d0` D09 bare audit-head binding. Hashes/logs match; piruntime unit/race recorded 263 passes, one capability-profile skip. Receipt is blocked by checkout changes; fixed committed-snapshot module/consumer validation is active.
 - These are component results, not production qualification or G1/H1 evidence. No positive end-to-end production settlement fixture exists yet.
 
 ## Next work
 
-1. Read final Haiku 5.5/max audit results. Resolve the current ABI 8 guest attachment blocker with one qualified local deployment and real Pi workflow. Original VM Saved; seed preserved; never blindly recreate an existing candidate.
-2. Enforce/qualify bounded D14 storage and retained D20 recovery/drain. Derive production reserve from enforced limits; synthetic 64 MiB experiment is insufficient.
+1. Resolve ABI 8 attachment (active detach/mount probe), then qualify one local deployment and real Pi workflow. Original VM Saved; seed preserved; never blindly recreate an existing candidate. Close D09 snapshot/consumer evidence gap (active).
+2. Enforce/qualify bounded D14 storage and retained D20 recovery/drain. SQLite geometry/ceilings are active; derive production reserve from enforced limits. Synthetic 64 MiB experiment is insufficient. Add positive production settlement evidence.
 3. Research Claims last: freeze deployment/protocol/corpus/oracles/calibration/scoring and costed OpenRouter DeepSeek V4.1 Flash plan within US$5. Use user/advisor construct review and independent runtime/effect oracles; do not invent results.
 4. Make occasional narrow cleanup only after checking references; preserve cited historical evidence and other-session changes.
 
