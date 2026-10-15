@@ -5,6 +5,7 @@
 
 import type { ReactNode } from "react";
 import { Chip } from "../../../ui/Chip";
+import { cx } from "../../../ui/cx";
 import { Disclosure } from "../../../ui/Disclosure";
 import { VisuallyHidden } from "../../../ui/VisuallyHidden";
 import { formatClock, shortDigest, toolGlyph } from "../../../core/format";
@@ -50,19 +51,26 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
   // A uniform view states "unverified" once, above the transcript, so the card carries the word for
   // screen-reader users only. A mixed view draws the chip, which the name already includes.
   const unverifiedWord = primary !== null && !verifiedOf(primary) && marker !== "unverified";
+  // A refused or denied record (a DENY verdict, or a result in the deny tone) takes the destructive tint of the card.
+  const refused = verdict?.tone === "deny" || stateReadingOf?.tone === "deny";
 
-  // One wrapping line: at narrow widths the chips move under the summary, not past the card edge.
+  // One wrapping line: at narrow widths the chips move under the summary, not past the card edge. The headline is the
+  // target, bold; the tool and the record are the detail line beneath it, in mono.
   const summary = (
     <span className={styles.head}>
       <span className={styles.glyph} aria-hidden="true">
         {toolGlyph(tool)}
       </span>
-      <span className={styles.name}>{tool}</span>
-      <span className={styles.summaryText} title={headline}>
-        {headline}
+      <span className={styles.titles}>
+        <span className={styles.summaryText} title={headline}>
+          {headline}
+        </span>
+        <span className={styles.byline}>
+          <span className={styles.name}>{tool}</span>
+          {/* The record the card is named for: the result, else the request, else the policy decision (sequence as projected). */}
+          {primary ? <span className={styles.recordRef}>{`record ${primary.sequence}`}</span> : null}
+        </span>
       </span>
-      {/* The record the card is named for: the result, else the request, else the policy decision (sequence as projected). */}
-      {primary ? <span className={styles.recordRef}>{`record ${primary.sequence}`}</span> : null}
       {unverifiedWord ? <VisuallyHidden>{UNVERIFIED_READING.label}</VisuallyHidden> : null}
       <span className={styles.chips}>
         {verdict ? <Chip tone={verdict.tone}>{verdict.label}</Chip> : null}
@@ -74,7 +82,7 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
   );
 
   return (
-    <div className={styles.card} data-anchor={block.key}>
+    <div className={cx(styles.card, refused && styles.refused)} data-anchor={block.key}>
       <Disclosure summary={summary}>
         <div className={styles.steps}>
           {activity ? (

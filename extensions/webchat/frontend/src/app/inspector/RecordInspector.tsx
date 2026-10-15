@@ -95,7 +95,7 @@ function Value({
   if (options.digest) {
     if (raw === "—") return <>{raw}</>;
     return (
-      <span className={styles.mono} title={raw}>
+      <span className={styles.digest} title={raw}>
         {shortDigest(raw)}
       </span>
     );

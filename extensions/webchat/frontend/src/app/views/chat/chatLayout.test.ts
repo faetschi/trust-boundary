@@ -46,6 +46,13 @@ describe("the transcript is the scroller at wide widths", () => {
     // while it is positioned; without it they overflow the column's scroll box and scroll the whole page.
     expect(declarationsOf(".logWrap")).toMatch(/position:\s*relative;/);
   });
+
+  it("makes the log the containing block of the labels inside it, so their overflow scrolls in the log and never widens the workspace", () => {
+    // The labels sit inside the log, so the wrapper is not their containing block: a positioned wrapper that does not clip
+    // lets them overflow the workspace's scroll box. Round 3 (check K at 844 by 390) measured the workspace's scroll range
+    // growing by 205 px for that reason. The log, a scroll container, is the containing block, so they scroll with it.
+    expect(declarationsOf(".log")).toMatch(/position:\s*relative;/);
+  });
 });
 
 describe("the tool card header is a row of parts with gaps", () => {
@@ -76,6 +83,22 @@ describe("the message meta is visible at rest on every device", () => {
 
   it("keeps Copy and the record label readable in the muted ink", () => {
     expect(declarationsOf(".copy,\n.recordButton")).toMatch(/color:\s*var\(--muted-foreground\);/);
+  });
+});
+
+describe("the transcript reads as a flow of quiet parts, not boxes", () => {
+  it("draws no box around a turn: no border and no ground", () => {
+    const turn = declarationsOf(".turn");
+    expect(turn).not.toMatch(/\bborder\s*:/);
+    expect(turn).not.toMatch(/\bbackground\s*:/);
+  });
+
+  it("right-aligns the user bubble, capped at 68% of the message column", () => {
+    expect(declarationsOf('.msg[data-role="user"] .msgText')).toMatch(/max-width:\s*68%;/);
+  });
+
+  it("gives a refused card the destructive tint, in its border and its ground", () => {
+    expect(declarationsOf(".refused")).toMatch(/var\(--destructive\)/);
   });
 });
 

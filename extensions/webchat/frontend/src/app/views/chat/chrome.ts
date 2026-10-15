@@ -25,8 +25,8 @@ export function roleLabel(role: Role): string {
   }
 }
 
-// The accessible name of a Copy control: the visible label first, so the words on screen are in the name, then the message
-// it copies. The speaker and the record number tell the controls apart. The record is unique in the transcript; a time is not.
+// The accessible name of a Copy control, which is an icon alone: the state word first, so a screen reader hears the state, then
+// the message it copies. The speaker and the record number tell the controls apart. The record is unique in the transcript; a time is not.
 export function copyName(label: string, role: Role, sequence: number): string {
   return `${label}: ${copyTargetOf(role, sequence)}`;
 }

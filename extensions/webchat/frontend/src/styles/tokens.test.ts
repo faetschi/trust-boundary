@@ -27,21 +27,22 @@ function ruleBody(css: string, header: RegExp): string {
   return match[1];
 }
 
-const lightBody = ruleBody(tokensCss, /:root,\s*:root\[data-theme="light"\]\s*\{([^}]*)\}/);
-const osDarkBody = ruleBody(tokensCss, /@media \(prefers-color-scheme: dark\)\s*\{\s*:root:not\(\[data-theme="light"\]\)\s*\{([^}]*)\}/);
-const attrDarkBody = ruleBody(tokensCss, /:root\[data-theme="dark"\]\s*\{([^}]*)\}/);
+// Dark is the default: its selector list names :root with no attribute, so it applies when nothing is chosen.
+const darkBody = ruleBody(tokensCss, /:root,\s*:root\[data-theme="dark"\]\s*\{([^}]*)\}/);
+const lightBody = ruleBody(tokensCss, /:root\[data-theme="light"\]\s*\{([^}]*)\}/);
+const osLightBody = ruleBody(tokensCss, /@media \(prefers-color-scheme: light\)\s*\{\s*:root:not\(\[data-theme="dark"\]\)\s*\{([^}]*)\}/);
 
 const LIGHT = declarations(lightBody);
-const DARK = declarations(osDarkBody);
+const DARK = declarations(darkBody);
 
-describe("static ramp: the dark block is identical in both forms", () => {
-  it("has the same static names and values in the OS query and the attribute", () => {
-    const attr = declarations(attrDarkBody);
-    const staticNames = [...DARK.keys()].filter((name) => name.startsWith("--tb-s-"));
+describe("static ramp: the default is dark, and the light block is identical in both forms", () => {
+  it("has the same static names and values in the attribute and the OS query for light", () => {
+    const osLight = declarations(osLightBody);
+    const staticNames = [...LIGHT.keys()].filter((name) => name.startsWith("--tb-s-"));
     expect(staticNames.length).toBeGreaterThan(20);
-    expect([...attr.keys()].filter((name) => name.startsWith("--tb-s-")).sort()).toEqual(staticNames.sort());
+    expect([...osLight.keys()].filter((name) => name.startsWith("--tb-s-")).sort()).toEqual(staticNames.sort());
     for (const name of staticNames) {
-      expect(attr.get(name), name).toBe(DARK.get(name));
+      expect(osLight.get(name), name).toBe(LIGHT.get(name));
     }
   });
 

@@ -1,7 +1,7 @@
 // The transcript: turns, messages and tool cards. Assistant text is markdown; user and system text is literal. A
 // message keeps its incremental parser for as long as it is mounted, so a streaming message re-renders only the blocks
-// whose source changed, and its state goes when it leaves the window. Each message is labelled by its role, carries its
-// reading from the gate, and has a meta row: its time, Copy, and the record it came from.
+// whose source changed, and its state goes when it leaves the window. Each message has a label row (its role, its reading
+// from the gate, a rule, and the record it came from), its text, and a meta row beneath: its time and an icon-only Copy.
 
 import { useEffect, useMemo, useState } from "react";
 import { createIncrementalParser } from "../../../markdown/incremental";
@@ -34,8 +34,9 @@ export function TurnView({ turn, verifiedOf, markOf, onRecord }: TurnViewProps) 
   return (
     <section className={styles.turn} aria-label={label}>
       <div className={styles.turnHead}>
-        <span>{label}</span>
-        <span>{turn.items.length} element(s)</span>
+        <span className={styles.turnLabel}>{label}</span>
+        <span className={styles.turnRule} aria-hidden="true" />
+        <span className={styles.turnCount}>{turn.items.length} element(s)</span>
       </div>
       <div className={styles.turnBody}>
         {groupTurn(turn.items).map((block) =>
@@ -66,11 +67,17 @@ function MessageView({ item, reading, onRecord }: MessageViewProps) {
   const truncated = item.text_truncated === true;
   return (
     <div className={styles.msg} data-role={item.role} data-anchor={item.id}>
-      <p className={styles.msgRole}>
-        <span>{roleLabel(item.role)}</span>
-        {item.role === "assistant" ? <VisuallyHidden>, assistant</VisuallyHidden> : null}{" "}
-        <Chip tone={reading.tone}>{reading.label}</Chip>
-      </p>
+      <div className={styles.msgHead}>
+        <p className={styles.msgRole}>
+          <span>{roleLabel(item.role)}</span>
+          {item.role === "assistant" ? <VisuallyHidden>, assistant</VisuallyHidden> : null}{" "}
+          <Chip tone={reading.tone}>{reading.label}</Chip>
+        </p>
+        <span className={styles.rule} aria-hidden="true" />
+        <button type="button" className={styles.recordButton} onClick={(event) => onRecord(item.id, event.currentTarget)}>
+          {`record ${item.sequence}`}
+        </button>
+      </div>
       <MessageText item={item} />
       {truncated ? <p className={styles.note}>Transcript text truncated by the projection.</p> : null}
       <div className={styles.meta}>
@@ -78,9 +85,6 @@ function MessageView({ item, reading, onRecord }: MessageViewProps) {
           {clockHm(item.occurred_at)}
         </time>
         {item.text ? <CopyButton text={item.text} truncated={truncated} role={item.role} sequence={item.sequence} /> : null}
-        <button type="button" className={styles.recordButton} onClick={(event) => onRecord(item.id, event.currentTarget)}>
-          {`record ${item.sequence}`}
-        </button>
       </div>
     </div>
   );
@@ -120,9 +124,9 @@ interface CopyButtonProps {
   readonly sequence: number;
 }
 
-// Copies the projected text. The label says what happened: Copied, or Copy unavailable when the page or the browser refuses,
-// and both read for the same second before the label returns. Each outcome is announced once, politely, through the shell's
-// announcer. The control's name ends with the message it copies, so each Copy control in the transcript has its own name.
+// Copies the projected text. The control is an icon alone: its glyph turns to a tick when copied and to a cross when the page
+// or the browser refuses, and both states read for the same second before the glyph returns. Its name carries the state word
+// and the message it copies, so a screen reader hears both. Each outcome is announced once, politely, through the shell's announcer.
 function CopyButton({ text, truncated, role, sequence }: CopyButtonProps) {
   const announcer = useAnnouncer();
   const [outcome, setOutcome] = useState<CopyOutcome>({ state: "idle", copies: 0 });
@@ -148,9 +152,40 @@ function CopyButton({ text, truncated, role, sequence }: CopyButtonProps) {
         : truncated
           ? COPY_TRUNCATED_LABEL
           : COPY_LABEL;
+  const name = copyName(label, role, sequence);
   return (
-    <button type="button" className={styles.copy} aria-label={copyName(label, role, sequence)} onClick={() => void copy()}>
-      {label}
+    <button type="button" className={styles.copy} aria-label={name} title={name} onClick={() => void copy()}>
+      <CopyGlyph state={outcome.state} />
     </button>
+  );
+}
+
+// The copy mark: two sheets; a tick once copied; a cross when the copy is refused. Drawn in the control's ink, and hidden from
+// assistive technology, which reads the control's name.
+function CopyGlyph({ state }: { readonly state: CopyState }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {state === "copied" ? (
+        <path d="M3 8.5l3 3 7-7" />
+      ) : state === "unavailable" ? (
+        <path d="M4 4l8 8M12 4l-8 8" />
+      ) : (
+        <>
+          <rect x="5.5" y="5.5" width="7.5" height="7.5" rx="1.5" />
+          <path d="M10.5 5.5V4A1.5 1.5 0 0 0 9 2.5H4A1.5 1.5 0 0 0 2.5 4v5A1.5 1.5 0 0 0 4 10.5h1.5" />
+        </>
+      )}
+    </svg>
   );
 }

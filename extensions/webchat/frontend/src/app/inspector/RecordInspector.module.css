@@ -37,10 +37,14 @@
   border-top: 1px solid var(--border);
 }
 
+/* A section heading is a field label: small, uppercase and muted. */
 .title {
   margin: 0;
-  font-size: var(--text-sm);
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
   font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .rows {
@@ -50,11 +54,13 @@
   margin: 0;
 }
 
+/* The key and value rows: a fixed label column, as the mockup's key and value grid. */
 .row {
   display: grid;
-  grid-template-columns: minmax(6.5rem, 40%) minmax(0, 1fr);
+  grid-template-columns: 6.5rem minmax(0, 1fr);
   align-items: start;
-  gap: var(--space-2);
+  gap: var(--space-1) var(--space-2h);
+  font-size: var(--text-xs);
 }
 
 .row dt {
@@ -76,13 +82,32 @@
   font-size: var(--text-xs);
 }
 
+/* A digest is a mono block: a sunken box that holds the shortened value, as the mockup's block does. */
+.digest {
+  display: inline-block;
+  max-width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
+
 .text {
   white-space: pre-wrap;
 }
 
+/* The unavailable timing: a dashed amber note, the mockup's notice. */
 .note {
   margin: 0;
-  color: var(--muted-foreground);
+  padding: var(--space-2) var(--space-2h);
+  border: 1px dashed color-mix(in oklab, var(--warning) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--warning) 8%, transparent);
+  color: var(--warning-foreground);
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
 }

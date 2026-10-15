@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Snapshot } from "../core/contract";
-import { decisionItem, messageItem, panelsDefault, resultItem, snapshotOf } from "../core/testing/builders";
+import { decisionItem, messageItem, panelsDefault, resultItem, sessionDefault, snapshotOf } from "../core/testing/builders";
 import { Shell } from "./Shell";
 import { WorkspaceProvider } from "./WorkspaceProvider";
 import { click, installMatchMedia, mount, press, settle, type MatchMediaShim, type Mounted } from "../test-support/dom";
@@ -33,6 +33,9 @@ function fixtureSnapshot() {
 let shim: MatchMediaShim | null = null;
 let mounted: Mounted | null = null;
 let fake: FakeWorkspace;
+
+// The desktop rail's collapse toggle: the header's brand-row button that controls the rail body.
+const RAIL_TOGGLE = "header button[aria-controls='rail-body']";
 
 function renderShell(width: number, snapshot: Snapshot = fixtureSnapshot()): void {
   shim = installMatchMedia(width);
@@ -198,10 +201,11 @@ describe("Shell: the claim boundary and the source are always visible", () => {
     expect(q("[role='group'][aria-label='Observed posture']").textContent).not.toContain("no decisions or results projected");
   });
 
-  it("keeps the rail to one control, the collapse toggle, with no link or field", async () => {
+  it("keeps the rail to no control, with no link or field, and draws its collapse toggle in the header's brand row", async () => {
     renderShell(1440);
     await settle();
-    expect(q("nav").querySelectorAll("button")).toHaveLength(1);
+    expect(q("nav").querySelectorAll("button")).toHaveLength(0);
+    expect(q("header > div:first-child").querySelector("button[aria-controls='rail-body']")).not.toBeNull();
     expect(q("nav").querySelectorAll("a, input, select, textarea")).toHaveLength(0);
   });
 
@@ -428,12 +432,13 @@ describe("Shell: the sessions rail", () => {
   it("keeps its collapse choice across a reload, in the one versioned key", async () => {
     renderShell(1440);
     await settle();
-    click(q("nav button"));
-    expect(q("nav button").getAttribute("aria-expanded")).toBe("false");
+    // The desktop toggle is the header's brand-row button that controls the rail (its locator moved with it).
+    click(q(RAIL_TOGGLE));
+    expect(q(RAIL_TOGGLE).getAttribute("aria-expanded")).toBe("false");
     expect(JSON.parse(window.localStorage.getItem(UI_PREFS_KEY) ?? "null")).toMatchObject({ railCollapsed: true });
     remount(1440);
     await settle();
-    expect(q("nav button").getAttribute("aria-expanded")).toBe("false");
+    expect(q(RAIL_TOGGLE).getAttribute("aria-expanded")).toBe("false");
   });
 
   it("clears a stored choice that is not valid, and shows the defaults", async () => {
@@ -441,7 +446,7 @@ describe("Shell: the sessions rail", () => {
     renderShell(1440);
     await settle();
     expect(window.localStorage.getItem(UI_PREFS_KEY)).toBeNull();
-    expect(q("nav button").getAttribute("aria-expanded")).toBe("true");
+    expect(q(RAIL_TOGGLE).getAttribute("aria-expanded")).toBe("true");
   });
 
   it("is a disclosure strip on a phone, collapsed by default, and its state is not persisted", async () => {
@@ -744,6 +749,48 @@ describe("Shell: on a phone the pinned composer is the page's last box", () => {
   it("adds no bottom padding to the column on a phone, so the composer's bottom edge is the page's end", () => {
     const shell = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
     expect(declarationsOf(mediaBlock(shell, "@media (max-width: 760px)"), ".main")).toMatch(/padding-bottom:\s*0;/);
+  });
+});
+
+describe("Shell: the theme switch is an overflow item in the header", () => {
+  it("holds the theme group in a closed disclosure named More options, so it is one Tab stop and opens from its summary", async () => {
+    renderShell(1440);
+    await settle();
+    const summary = q("header details > summary");
+    expect(summary.getAttribute("aria-label")).toBe("More options");
+    const disclosure = summary.parentElement as HTMLDetailsElement;
+    expect(disclosure.tagName).toBe("DETAILS");
+    expect(disclosure.hasAttribute("open")).toBe(false);
+    expect(disclosure.querySelector("[role='toolbar'][aria-label='Theme']")).not.toBeNull();
+  });
+});
+
+describe("Shell: the session title is the workspace heading, on the row with its chips", () => {
+  it("titles the session in the header row, as its h2, beside the source and connection chips", async () => {
+    const snapshot = snapshotOf({ items: fixtureSnapshot().items, session: { ...sessionDefault(), title: "Demo session" }, panels: panelsDefault() });
+    renderShell(1440, snapshot);
+    await settle();
+    const title = q("header h2");
+    expect(title.textContent).toBe("Demo session");
+    expect(title.parentElement?.contains(q("[data-source]"))).toBe(true);
+    expect(title.parentElement?.contains(q("[data-connection]"))).toBe(true);
+  });
+
+  it("reads an absent title as unavailable in the header, never as blank", async () => {
+    renderShell(1440, snapshotOf({ items: fixtureSnapshot().items, session: { ...sessionDefault(), title: undefined }, panels: panelsDefault() }));
+    await settle();
+    expect(q("header h2").textContent).toBe("Session title unavailable");
+  });
+
+  it("shows the Pi session heading before the first snapshot", () => {
+    shim = installMatchMedia(1440);
+    fake = fakeWorkspace(fixtureSnapshot());
+    mounted = mount(
+      <WorkspaceProvider deps={fake.deps}>
+        <Shell version="0.1.0" />
+      </WorkspaceProvider>,
+    );
+    expect(q("header h2").textContent).toBe("Pi session");
   });
 });
 

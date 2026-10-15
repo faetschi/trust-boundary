@@ -58,20 +58,23 @@ describe("theme-boot.js: the first-paint choice", () => {
     expect(runBoot(windowWith(storageWith({ [THEME_STORAGE_KEY]: "dark" }))).get("data-theme")).toBe("dark");
   });
 
-  it("leaves the system choice alone: no attribute for system, an invalid value, or nothing stored", () => {
+  it("removes the attribute for a stored system choice, so the OS scheme decides", () => {
     expect(runBoot(windowWith(storageWith({ [THEME_STORAGE_KEY]: "system" }))).size).toBe(0);
-    expect(runBoot(windowWith(storageWith({ [THEME_STORAGE_KEY]: "sepia" }))).size).toBe(0);
-    expect(runBoot(windowWith(storageWith({ [THEME_STORAGE_KEY]: "" }))).size).toBe(0);
-    expect(runBoot(windowWith(storageWith({}))).size).toBe(0);
-    expect(runBoot(windowWith(undefined))).toEqual(new Map());
   });
 
-  it("does not throw when storage throws on read, and keeps the system choice", () => {
-    expect(runBoot(windowWith(throwingStorage)).size).toBe(0);
+  it("sets dark for an invalid value, an empty value, or nothing stored: dark is the default", () => {
+    expect(runBoot(windowWith(storageWith({ [THEME_STORAGE_KEY]: "sepia" }))).get("data-theme")).toBe("dark");
+    expect(runBoot(windowWith(storageWith({ [THEME_STORAGE_KEY]: "" }))).get("data-theme")).toBe("dark");
+    expect(runBoot(windowWith(storageWith({}))).get("data-theme")).toBe("dark");
+    expect(runBoot(windowWith(undefined))).toEqual(new Map([["data-theme", "dark"]]));
   });
 
-  it("does not throw when the localStorage property itself is withheld, and keeps the system choice", () => {
-    expect(runBoot(windowWith(undefined, true)).size).toBe(0);
+  it("does not throw when storage throws on read, and keeps the dark default", () => {
+    expect(runBoot(windowWith(throwingStorage)).get("data-theme")).toBe("dark");
+  });
+
+  it("does not throw when the localStorage property itself is withheld, and keeps the dark default", () => {
+    expect(runBoot(windowWith(undefined, true)).get("data-theme")).toBe("dark");
   });
 
   it("sets the same attribute as the module path (theme.ts) for every stored value, and for blocked storage", () => {

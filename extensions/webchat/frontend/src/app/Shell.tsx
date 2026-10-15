@@ -10,12 +10,13 @@ import type { ViewId } from "../core/store";
 import { usePhone, useNarrow } from "./layout";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ShellContext, type ShellControls } from "./shellContext";
-import { Rail } from "./Rail";
+import { Rail, RailToggle } from "./Rail";
 import { Footer } from "./Footer";
 import { INSPECTOR_ID, Inspector } from "./Inspector";
 import { ClaimBoundary } from "./ClaimBoundary";
 import { focusableIn, trapTarget } from "./focusTrap";
 import { ChatView } from "./views/ChatView";
+import { conversationHead } from "./views/chat/identity";
 import { TrajectoryView } from "./views/TrajectoryView";
 import {
   EVICTED_LABEL,
@@ -234,36 +235,63 @@ export function Shell({ version }: { readonly version: string }) {
             header included, and under the drawer. It is hidden from assistive technology: keyboard users close the drawer with
             Escape or its own control. */}
         {drawerOpen ? <div data-testid="scrim" className={styles.scrim} aria-hidden="true" onClick={closeInspector} /> : null}
-        <header aria-label="Workspace header" className={styles.header} inert={drawerOpen}>
+        {/* The header shares the body's column template: the brand sits over the rail, the title row and the claim strip
+            over the workspace. It is the first header, and the body follows it (Shell.test.tsx). */}
+        <header
+          aria-label="Workspace header"
+          className={styles.header}
+          inert={drawerOpen}
+          data-rail={railExpanded ? "expanded" : "collapsed"}
+          data-inspector={inspectorCollapsed ? "collapsed" : "expanded"}
+        >
           <div className={styles.brand}>
-            <h1 className={styles.title}>tbound web chat</h1>
-            <p className={styles.subtitle}>Pi chat workspace</p>
-          </div>
-          <div className={styles.badges}>
-            <span className={styles.badge} data-source={model.source}>
-              {sourceText(model)}
+            <span className={styles.tile} aria-hidden="true">
+              tb
             </span>
-            <span className={styles.badge} data-connection={model.status.state}>
-              {connectionText(model.status)}
-            </span>
+            <div className={styles.brandText}>
+              <h1 className={styles.title}>tbound web chat</h1>
+              <p className={styles.subtitle}>Pi chat workspace</p>
+            </div>
+            {/* At a desktop width the rail's collapse toggle is in the brand row; a phone's rail has its own strip. */}
+            {phone ? null : <RailToggle expanded={railExpanded} onToggle={toggleRail} />}
           </div>
-          <div className={styles.controls}>
-            <button
-              ref={toggleRef}
-              type="button"
-              className={styles.drawerToggle}
-              aria-controls={INSPECTOR_ID}
-              aria-expanded={narrow ? drawerOpen : !inspectorCollapsed}
-              onClick={toggleInspector}
-            >
-              Governance
-            </button>
-            <ToggleGroup
-              label="Theme"
-              items={THEME_ITEMS}
-              pressed={theme}
-              onPress={(value) => setTheme(parseTheme(value))}
-            />
+          <div className={styles.titleRow}>
+            {/* The session title is the workspace heading, on the row with its source and connection chips. */}
+            <h2 className={styles.sessionTitle}>{conversationHead(model.session, model.loaded).title}</h2>
+            <div className={styles.badges}>
+              <span className={styles.badge} data-source={model.source}>
+                {sourceText(model)}
+              </span>
+              <span className={styles.badge} data-connection={model.status.state}>
+                {connectionText(model.status)}
+              </span>
+            </div>
+            <div className={styles.controls}>
+              <button
+                ref={toggleRef}
+                type="button"
+                className={styles.drawerToggle}
+                aria-controls={INSPECTOR_ID}
+                aria-expanded={narrow ? drawerOpen : !inspectorCollapsed}
+                onClick={toggleInspector}
+              >
+                Governance
+              </button>
+              {/* The theme switch is an overflow item: a native disclosure, so it is one Tab stop and opens with Enter or Space. */}
+              <details className={styles.more}>
+                <summary className={styles.moreSummary} aria-label="More options">
+                  <span aria-hidden="true">…</span>
+                </summary>
+                <div className={styles.moreBody}>
+                  <ToggleGroup
+                    label="Theme"
+                    items={THEME_ITEMS}
+                    pressed={theme}
+                    onPress={(value) => setTheme(parseTheme(value))}
+                  />
+                </div>
+              </details>
+            </div>
           </div>
           <div className={styles.claimRow}>
             <ClaimBoundary model={model} />

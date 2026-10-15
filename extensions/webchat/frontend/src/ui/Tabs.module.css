@@ -15,9 +15,11 @@
   cursor: pointer;
 }
 
+/* The selected tab takes the info tone on its underline (v2 .tab.is-active), and the text stays the foreground. */
 .tab[aria-selected="true"] {
-  border-bottom-color: var(--foreground);
+  border-bottom-color: var(--info);
   color: var(--foreground);
+  font-weight: 600;
 }
 
 .tab:hover {

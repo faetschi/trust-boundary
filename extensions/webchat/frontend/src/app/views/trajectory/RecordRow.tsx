@@ -47,7 +47,9 @@ export function RecordRow({ record, selected, stop, rowRef, onSelect, onFocusRow
       onFocus={() => onFocusRow(id)}
     >
       <StateDot tone={record.dot} />
-      <Chip source={sourceRole(record.source)}>{sourceLabel(record.source)}</Chip>
+      <span className={styles.kind}>
+        <Chip source={sourceRole(record.source)}>{sourceLabel(record.source)}</Chip>
+      </span>
       <span className={styles.label}>{record.label}</span>
       <span className={styles.payload} title={record.payload}>
         {record.payload}

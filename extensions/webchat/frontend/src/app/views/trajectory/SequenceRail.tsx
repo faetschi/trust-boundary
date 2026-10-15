@@ -35,6 +35,7 @@ export function SequenceRail({ items, phase, searching, projection }: SequenceRa
           <span
             role="img"
             className={styles.track}
+            data-lane={lane.id}
             aria-label={`${lane.label} lane: ${lane.segments
               .map((segment) => `${segment.weight} record(s), ${railToneText(segment.tone)}`)
               .join("; ")}`}

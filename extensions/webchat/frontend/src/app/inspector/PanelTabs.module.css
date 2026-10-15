@@ -3,10 +3,12 @@
  * own box when its tabs do not fit, and the ‹ and › controls step it for a pointer. Colours are alias tokens only.
  */
 
+/* The strip's row: the tabs sit on the header's gutter, under a rule that runs the full width. */
 .row {
   display: flex;
   align-items: stretch;
   min-width: 0;
+  padding: 0 var(--space-2);
   border-bottom: 1px solid var(--border);
 }
 
@@ -36,19 +38,22 @@
 }
 
 /* One line: the label and the dot, never wrapped. The tab's full words are in its name and title. */
+/* Five tabs with their dots fit the inspector without the step controls. The label is 11 px and the tab has a hairline of side
+   padding. Measured in the headless render: at 1440 px the strip is 323 px and the five tabs 316 px; in a 360 px phone's drawer
+   (332 px wide) the tabs overflow by 1 px, inside the step control's tolerance, so no arrows show. */
 .tab {
   display: inline-flex;
   flex: none;
   align-items: center;
-  gap: var(--space-1);
+  gap: 2px;
   min-height: var(--row-h-button);
-  padding: 0 var(--space-1);
+  padding: 0 1px;
   border: 0;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
   color: var(--muted-foreground);
-  font-size: var(--text-sm);
+  font-size: var(--text-2xs);
   white-space: nowrap;
   cursor: pointer;
 }
@@ -88,18 +93,20 @@
   cursor: default;
 }
 
-/* The line beneath the strip: the selected tab's words, or the record bar. */
+/* The line beneath the strip, on the header's gutter: the selected tab's words, or the record bar. */
 .status {
   min-width: 0;
+  padding: var(--space-2) var(--space-3) 0;
 }
 
-/* The one rendered panel: the body under the strip, which scrolls on its own. It is focusable, so that focus can move into it
-   from the strip's skip. */
+/* The one rendered panel: the body under the strip, which scrolls on its own, on the same gutter. It is focusable, so that
+   focus can move into it from the strip's skip. */
 .panel {
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
+  padding: var(--space-3);
   outline-offset: -2px;
 }
 
