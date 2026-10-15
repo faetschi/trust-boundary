@@ -24,7 +24,7 @@ Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
 - ui-qa edits are contract updates, not weakened checks: the theme walk opens the disclosure; E expects dark; D counts drawn header buttons; J follows the header; copy controls match by aria-label. Check G's stop is now asynchronous: the blocking `spawnSync` stop had stamped the first retries in one burst. The band is unchanged.
 - QA history: p6 failed 6 of 12 (K real, fixed; C, D, E stale; J a locator error; G timing); p7 failed G only; p8 passes and is the committed receipt. The p6 and p7 receipts are not in the repo.
 - Phone: out of scope per the owner. The phone sections of ui-qa (J and K) still run and pass; no phone design work.
-- Open: the v3 mockup (`tbound-redesign-v3.html`) still shows the pre-restyle UI; it is being regenerated from the restyled UI in a separate commit.
+- v3 mockup (`tbound-redesign-v3.html`) is regenerated from the restyled UI: 27 frames, 26 identical to live; `chat-light-360` differs by 34,861 px (cause not isolated; phone out of scope). Five frame definitions were rebuilt from recorded states because the original generator was lost. Details: `docs/frontend.md`.
 
 ## FX3 state of the web chat extension (2026-10-15; FX3 and FX4 are committed through 92a5927. Re-run `npm run repro` against the committed dist.)
 
