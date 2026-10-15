@@ -121,10 +121,10 @@ describe("the page reserves the dock's clearance on a phone, so keyboard focus n
   });
 
   it("declares the clearance in the theme-free geometry tier as the dock's tallest measured state plus one gap", () => {
-    // 188 px is the dock with its status line shown and its chips wrapped, the tallest state from 200 to 280 px (170 px at 300-390
-    // px). The status line appears on the first focus of the composer, and the dock grows upward when it does, so the gap keeps the
-    // last stop above the grown dock.
+    // 268 px is the dock with its status line shown, its reason and placeholder wrapped and its chips wrapped: the tallest state
+    // from 200 px up (250 at 240, 232 at 280, 214 at 320 to 360, 196 at 390, 172 at 412). The status line appears on the first
+    // focus of the composer, and the dock grows upward when it does, so the gap keeps the last stop above the grown dock.
     const geometry = tokens.slice(tokens.indexOf("── Tier 3"));
-    expect(geometry).toMatch(/--dock-clearance:\s*calc\(188px \+ var\(--space-2\)\);/);
+    expect(geometry).toMatch(/--dock-clearance:\s*calc\(268px \+ var\(--space-2\)\);/);
   });
 });

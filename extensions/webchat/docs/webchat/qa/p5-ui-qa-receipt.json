@@ -1,6 +1,6 @@
 {
   "receipt": "p5-ui-qa",
-  "generatedAt": "2026-10-15T05:37:13.616Z",
+  "generatedAt": "2026-10-15T06:45:09.457Z",
   "outcome": "PASS",
   "selectedChecks": [
     "A",
@@ -17,11 +17,11 @@
     "L"
   ],
   "git": {
-    "head": "7dc9555"
+    "head": "b7ec7e0"
   },
   "script": {
     "path": "extensions/webchat/scripts/ui-qa.mjs",
-    "sha256": "f3c58d2f523baa5e914e00407a7efc5ab281039102a92b248883d4076076a765"
+    "sha256": "1e271bb594c7a11cfba6cf864fb5d339cc15c399ac543099d4132f4775594540"
   },
   "cspSmoke": {
     "path": "extensions/webchat/scripts/csp-smoke.mjs",
@@ -35,19 +35,19 @@
     "binarySha256": "e2b66159abacb9d42669364e87252f0eb8a0e3bb443f84763b06d44a98997744"
   },
   "gateway": {
-    "origin": "http://127.0.0.1:19111",
-    "binarySha256": "658041d7f4020b7da7ec187e1bcfaf57b633445f85054ec630702c338bb10311",
+    "origin": "http://127.0.0.1:19141",
+    "binarySha256": "fb544902a942a787c63ba48051797aa075d8bc45df0575c60c553d943045ccbf",
     "binarySha256Source": "supplied by the operator with --gateway-sha256 (sha256sum in WSL); not verified by this script"
   },
   "dist": {
     "path": "internal/webchat/dist",
     "files": 5,
-    "sha256": "6b839ca0c94a164072e0d06c116c6e385a37af2e3982d7608892b89999e03d20",
+    "sha256": "0203340115a0a3c54a62be98f96dc8aba7011f02b20307d0b35ffe9a75e14335",
     "hashes": {
-      ".vite/manifest.json": "8075f5d61f2c80d9dfc2117b4481d612f19d93d8f15d82beaa799e2856996432",
-      "assets/index-BRePCEtU.js": "b032b44ba832173264364d6d9e8375a564eacd01ad7f35ba8cc188346396fdec",
-      "assets/index-LBAMbFfS.css": "8b1913902dcb8da5abe23881b5c1297920b1438cf36fe8989b5acd39923f8364",
-      "index.html": "f1b22babc7422b9e79c460355eea186a7b26ab57d314bfbf7909793d94960cab",
+      ".vite/manifest.json": "e174bf9f3296445d89d5dba653bb9ce5246a3329a44edff852fb5b4ffa5f39bf",
+      "assets/index-BslxGGpb.js": "9c7f40ed9a0f7b13a3e4b3a672f60cc5dbd2903d4466d434cade0de50d2a4ee0",
+      "assets/index-jsjcZe6r.css": "82ca961ad659c2b085e6477bb3f2706d3e2b09bcc6354e0bbf38ae43b4e103cc",
+      "index.html": "d55482f73e2773d237af2709d716bcc1aa1f2c0f2db2f48a9298fee7a8bccbe7",
       "theme-boot.js": "542ca16fff4a9c977662ee3936c122745ea1c1586b98f7167f99b28a70f0981c"
     }
   },
@@ -56,12 +56,12 @@
       "id": "A",
       "name": "csp-smoke without the favicon allowance",
       "status": "PASS",
-      "ms": 4449,
+      "ms": 4477,
       "summary": "csp-smoke exit 0; 3 pages with 0 console errors/exceptions; no favicon allowance in its output",
       "failures": [],
       "unverified": [],
       "evidence": {
-        "command": "node scripts/csp-smoke.mjs --url http://127.0.0.1:19111 --chrome <browser>",
+        "command": "node scripts/csp-smoke.mjs --url http://127.0.0.1:19141 --chrome <browser>",
         "exitCode": 0,
         "output": "p5-csp-smoke-output.txt",
         "summary": "csp-smoke exit 0; 3 pages with 0 console errors/exceptions; no favicon allowance in its output"
@@ -71,7 +71,7 @@
       "id": "B",
       "name": "redirect, legacy notice, served assets",
       "status": "PASS",
-      "ms": 800,
+      "ms": 799,
       "summary": "HEAD / 302 to /app/; GET / ended on /app/ with the React header; /legacy/ shows \"!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.\"; 2 served assets equal dist",
       "failures": [],
       "unverified": [],
@@ -91,8 +91,8 @@
         },
         "/legacy/ notice": "!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.",
         "servedAssetSha256": {
-          "/app/assets/index-BRePCEtU.js": "b032b44ba832173264364d6d9e8375a564eacd01ad7f35ba8cc188346396fdec",
-          "/app/assets/index-LBAMbFfS.css": "8b1913902dcb8da5abe23881b5c1297920b1438cf36fe8989b5acd39923f8364"
+          "/app/assets/index-BslxGGpb.js": "9c7f40ed9a0f7b13a3e4b3a672f60cc5dbd2903d4466d434cade0de50d2a4ee0",
+          "/app/assets/index-jsjcZe6r.css": "82ca961ad659c2b085e6477bb3f2706d3e2b09bcc6354e0bbf38ae43b4e103cc"
         },
         "summary": "HEAD / 302 to /app/; GET / ended on /app/ with the React header; /legacy/ shows \"!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.\"; 2 served assets equal dist"
       }
@@ -101,7 +101,7 @@
       "id": "C",
       "name": "keyboard-only walk at 1440",
       "status": "PASS",
-      "ms": 15656,
+      "ms": 15703,
       "summary": "chat Tab order: 22 stops, document end; trajectory: 6 stops, document end; 0 stops without a ring; a first Tab after load landed on the document 7 time(s)",
       "failures": [],
       "unverified": [],
@@ -315,7 +315,7 @@
       "id": "D",
       "name": "responsive: drawer, overflow, screenshots",
       "status": "PASS",
-      "ms": 12608,
+      "ms": 12680,
       "summary": "1024 px drawer: aria-expanded and inert track the state, hit-testable header, Escape returns focus; 390 px: no overflow, scrollY 0; 12 screenshots",
       "failures": [],
       "unverified": [],
@@ -414,7 +414,7 @@
       "id": "E",
       "name": "theme: persistence, blocked storage, first paint",
       "status": "PASS",
-      "ms": 12631,
+      "ms": 12630,
       "summary": "Dark, Light and System persist across reloads; with storage blocked the page renders on system; first frames match the final canvas in 4 cases",
       "failures": [],
       "unverified": [],
@@ -528,7 +528,7 @@
       "id": "F",
       "name": "live stream: admission, refusal, gaps, pill",
       "status": "PASS",
-      "ms": 8311,
+      "ms": 8038,
       "summary": "LOST chip and \"LOST, not success\" row; lossy row reads \"output lossy, not counted as confirmed\"; DENY, UNKNOWN and ALLOW tones distinct; observed item refused (invalid item) with recovery; duplicate no-op; gap recovers once; pill \"3 new records\" with scroll kept, one announcement, Jump works",
       "failures": [],
       "unverified": [],
@@ -658,8 +658,8 @@
       "id": "G",
       "name": "reconnect and offline",
       "status": "PASS",
-      "ms": 46560,
-      "summary": "7 retry attempts, backoffs 790, 1663, 2618, 4962, 6531, 5965 ms; connected only after the event stream answered; 0 requests while offline; first request 2 ms after online",
+      "ms": 43585,
+      "summary": "7 retry attempts, backoffs 756, 1821, 2977, 7597, 8690, 8846 ms; connected only after the event stream answered; 0 requests while offline; first request 3 ms after online",
       "failures": [],
       "unverified": [],
       "evidence": {
@@ -667,18 +667,18 @@
         "stopCommandStatus": 0,
         "retryAttempts": 7,
         "backoffMs": [
-          790,
-          1663,
-          2618,
-          4962,
-          6531,
-          5965
+          756,
+          1821,
+          2977,
+          7597,
+          8690,
+          8846
         ],
         "attemptDurationMs": [
           1,
           0,
           0,
-          1,
+          0,
           0,
           0,
           0
@@ -689,20 +689,20 @@
         ],
         "startCommandStatus": 0,
         "recovery": {
-          "snapshotFetchesAfterRestart": 2,
-          "eventsResponseIndex": 8,
-          "connectedBadgeIndex": 9
+          "snapshotFetchesAfterRestart": 1,
+          "eventsResponseIndex": 4,
+          "connectedBadgeIndex": 5
         },
         "requestsWhileOffline": 0,
-        "firstRequestAfterOnlineMs": 2,
-        "summary": "7 retry attempts, backoffs 790, 1663, 2618, 4962, 6531, 5965 ms; connected only after the event stream answered; 0 requests while offline; first request 2 ms after online"
+        "firstRequestAfterOnlineMs": 3,
+        "summary": "7 retry attempts, backoffs 756, 1821, 2977, 7597, 8690, 8846 ms; connected only after the event stream answered; 0 requests while offline; first request 3 ms after online"
       }
     },
     {
       "id": "H",
       "name": "forced colours and reduced motion",
       "status": "PASS",
-      "ms": 3591,
+      "ms": 3605,
       "summary": "forced colours: 6 of 6 ledger shapes distinct; reduced motion: 0 running animation(s), control transition 0.3s, 0s",
       "failures": [],
       "unverified": [],
@@ -755,18 +755,18 @@
       "name": "console, CSP and network",
       "status": "PASS",
       "ms": 1,
-      "summary": "0 CSP violations; 0 console errors or warnings outside check G; 9 inside G's outage and offline window; 0 requests off the gateway origin (407 requests in all)",
+      "summary": "0 CSP violations; 0 console errors or warnings outside check G; 8 inside G's outage and offline window; 0 requests off the gateway origin (406 requests in all)",
       "failures": [],
       "unverified": [],
       "evidence": {
         "requests": {
-          "total": 407,
-          "toGateway": 407,
+          "total": 406,
+          "toGateway": 406,
           "external": 0
         },
         "consoleErrorsAndWarnings": {
           "outsideGOutage": 0,
-          "inGOutage": 9,
+          "inGOutage": 8,
           "inGOutageSamples": [
             "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
             "Failed to load resource: net::ERR_EMPTY_RESPONSE",
@@ -774,14 +774,14 @@
           ]
         },
         "cspViolations": 0,
-        "summary": "0 CSP violations; 0 console errors or warnings outside check G; 9 inside G's outage and offline window; 0 requests off the gateway origin (407 requests in all)"
+        "summary": "0 CSP violations; 0 console errors or warnings outside check G; 8 inside G's outage and offline window; 0 requests off the gateway origin (406 requests in all)"
       }
     },
     {
       "id": "J",
       "name": "the user's three points at six widths, light and dark",
       "status": "PASS",
-      "ms": 43019,
+      "ms": 42990,
       "summary": "6 widths x 2 themes checked for the rail, the head, messages, the composer, the footer and the governance tabs or drawer",
       "failures": [],
       "unverified": [],
@@ -1420,11 +1420,139 @@
       "id": "K",
       "name": "phone dock: Tab and Shift+Tab walk at four sizes",
       "status": "PASS",
-      "ms": 20548,
+      "ms": 20493,
       "summary": "360x640: 20 stops forward and 20 backward, 0 under the dock; 390x844: 20 stops forward and 20 backward, 0 under the dock; 412x915: 20 stops forward and 20 backward, 0 under the dock; 844x390: 19 stops forward and 19 backward, 0 under the dock",
       "failures": [],
       "unverified": [],
       "evidence": {
+        "composer 360x640": {
+          "load": {
+            "reason": {
+              "scrollWidth": 300,
+              "clientWidth": 300,
+              "textOverflow": "clip",
+              "whiteSpace": "normal"
+            },
+            "placeholder": {
+              "need": 44,
+              "have": 44
+            },
+            "status": "",
+            "dock": 190,
+            "viewport": 640
+          },
+          "statusShown": {
+            "reason": {
+              "scrollWidth": 300,
+              "clientWidth": 300,
+              "textOverflow": "clip",
+              "whiteSpace": "normal"
+            },
+            "placeholder": {
+              "need": 44,
+              "have": 44
+            },
+            "status": "Not available: this page cannot submit turns.",
+            "dock": 214,
+            "viewport": 640
+          }
+        },
+        "composer 390x844": {
+          "load": {
+            "reason": {
+              "scrollWidth": 330,
+              "clientWidth": 330,
+              "textOverflow": "clip",
+              "whiteSpace": "normal"
+            },
+            "placeholder": {
+              "need": 22,
+              "have": 44
+            },
+            "status": "",
+            "dock": 172,
+            "viewport": 844
+          },
+          "statusShown": {
+            "reason": {
+              "scrollWidth": 330,
+              "clientWidth": 330,
+              "textOverflow": "clip",
+              "whiteSpace": "normal"
+            },
+            "placeholder": {
+              "need": 22,
+              "have": 44
+            },
+            "status": "Not available: this page cannot submit turns.",
+            "dock": 196,
+            "viewport": 844
+          }
+        },
+        "composer 412x915": {
+          "load": {
+            "reason": {
+              "scrollWidth": 352,
+              "clientWidth": 352,
+              "textOverflow": "clip",
+              "whiteSpace": "normal"
+            },
+            "placeholder": {
+              "need": 22,
+              "have": 44
+            },
+            "status": "",
+            "dock": 148,
+            "viewport": 915
+          },
+          "statusShown": {
+            "reason": {
+              "scrollWidth": 352,
+              "clientWidth": 352,
+              "textOverflow": "clip",
+              "whiteSpace": "normal"
+            },
+            "placeholder": {
+              "need": 22,
+              "have": 44
+            },
+            "status": "Not available: this page cannot submit turns.",
+            "dock": 172,
+            "viewport": 915
+          }
+        },
+        "composer 844x390": {
+          "load": {
+            "reason": {
+              "scrollWidth": 594,
+              "clientWidth": 594,
+              "textOverflow": "clip",
+              "whiteSpace": "normal"
+            },
+            "placeholder": {
+              "need": 22,
+              "have": 24
+            },
+            "status": "",
+            "dock": 132,
+            "viewport": 390
+          },
+          "statusShown": {
+            "reason": {
+              "scrollWidth": 594,
+              "clientWidth": 594,
+              "textOverflow": "clip",
+              "whiteSpace": "normal"
+            },
+            "placeholder": {
+              "need": 22,
+              "have": 24
+            },
+            "status": "Not available: this page cannot submit turns.",
+            "dock": 156,
+            "viewport": 390
+          }
+        },
         "walks": [
           {
             "size": "360x640",
@@ -1484,18 +1612,18 @@
             },
             "covered": 0,
             "end": {
-              "scrollY": 995,
-              "maxScroll": 995,
+              "scrollY": 1039,
+              "maxScroll": 1039,
               "mainScrollTop": 0,
               "mainMaxScroll": 0,
               "dock": [
-                387,
+                343,
                 557
               ],
               "dockFullyVisible": true,
               "lastMessage": [
-                -411,
-                379
+                -455,
+                335
               ],
               "lastMessageCovered": false,
               "footer": [
@@ -1565,18 +1693,18 @@
             },
             "covered": 0,
             "end": {
-              "scrollY": 765,
-              "maxScroll": 765,
+              "scrollY": 791,
+              "maxScroll": 791,
               "mainScrollTop": 0,
               "mainMaxScroll": 0,
               "dock": [
-                591,
+                565,
                 761
               ],
               "dockFullyVisible": true,
               "lastMessage": [
-                -207,
-                583
+                -233,
+                557
               ],
               "lastMessageCovered": false,
               "footer": [
@@ -1646,18 +1774,18 @@
             },
             "covered": 0,
             "end": {
-              "scrollY": 644,
-              "maxScroll": 644,
+              "scrollY": 670,
+              "maxScroll": 670,
               "mainScrollTop": 0,
               "mainMaxScroll": 0,
               "dock": [
-                686,
+                660,
                 832
               ],
               "dockFullyVisible": true,
               "lastMessage": [
-                -112,
-                678
+                -138,
+                652
               ],
               "lastMessageCovered": false,
               "footer": [
@@ -1756,7 +1884,7 @@
       "id": "L",
       "name": "claim boundary: lossy wording per surface; absent versus zero",
       "status": "PASS",
-      "ms": 4015,
+      "ms": 3966,
       "summary": "lossy wording read on the Chat card, the ledger row and the inspector; four absent and zero snapshots read from the page",
       "failures": [],
       "unverified": [],
@@ -1771,16 +1899,16 @@
             "QA lossy success for L · output lossy"
           ],
           "ledgerRowText": [
-            "ResultbashQA lossy success for L · output lossy07:37:10reported, output lossy, not counted as confirmedlossyunverified"
+            "ResultbashQA lossy success for L · output lossy08:45:06reported, output lossy, not counted as confirmedlossyunverified"
           ],
           "inspector": [
-            "output lossy, not counted as confirmedSummarysourceResultrecord idqa-l-lossysequence19turnturn-01toolbashtool callqa-call-l-lossyPayloadsummaryQA lossy success for LResultstatereported, output lossy, not counted as confirmedlossyyes — output completeness is not a terminal outcomedigest—Evidenceauthoritydiagnosticverificationunverified-inputindependently verifiednoTimingrecorded at07:37:10 — a clock reading, not a durationdurationunavailable — the projection records no durationrecorded timestamp2026-10-15T05:37:10"
+            "output lossy, not counted as confirmedSummarysourceResultrecord idqa-l-lossysequence19turnturn-01toolbashtool callqa-call-l-lossyPayloadsummaryQA lossy success for LResultstatereported, output lossy, not counted as confirmedlossyyes — output completeness is not a terminal outcomedigest—Evidenceauthoritydiagnosticverificationunverified-inputindependently verifiednoTimingrecorded at08:45:06 — a clock reading, not a durationdurationunavailable — the projection records no durationrecorded timestamp2026-10-15T06:45:06"
           ]
         },
-        "lossyChatCard": "$bashQA lossy success for Lrecord 19unverifiedreported, output lossy, not counted as confirmedresultreported, output lossy, not counted as confirmedlossy—no result digest projectedreported by the source, not independently verified; output lossy, not counted as confirmed.output is incomplete; lossy output is not terminal evidence.QA lossy success for L07:37:10",
+        "lossyChatCard": "$bashQA lossy success for Lrecord 19unverifiedreported, output lossy, not counted as confirmedresultreported, output lossy, not counted as confirmedlossy—no result digest projectedreported by the source, not independently verified; output lossy, not counted as confirmed.output is incomplete; lossy output is not terminal evidence.QA lossy success for L08:45:06",
         "lossyLedgerRow": {
           "label": "Result record 19: bash. Result: succeeded, reported, not independently verified; output lossy, not counted as confirmed. QA lossy success for L · output lossy",
-          "text": "ResultbashQA lossy success for L · output lossy07:37:10reported, output lossy, not counted as confirmedlossyunverified"
+          "text": "ResultbashQA lossy success for L · output lossy08:45:06reported, output lossy, not counted as confirmedlossyunverified"
         },
         "absent-zero true-zero-counts": {
           "label": "a true zero: policy counts 0, digest present, no verdict records",
@@ -1843,8 +1971,8 @@
     },
     {
       "file": "p5-390-light-chat.png",
-      "sha256": "a08f0d27b902050f184d2a435d0995e605cc2722a1d8995d973ed8c3c3d64e0e",
-      "bytes": 51257,
+      "sha256": "c758d28e71e98acc3333b9e1e11544679ff0a40b82c8725ac4e516d5d4e210e0",
+      "bytes": 50084,
       "check": "D"
     },
     {
@@ -1879,14 +2007,14 @@
     },
     {
       "file": "p5-390-dark-chat.png",
-      "sha256": "41ea2aaae7e09c884b317f701bb9268cdc5e36a9865ddd853b1def4297178e4f",
-      "bytes": 51921,
+      "sha256": "a4e460752f7ffe342b8efd77fcdeb109fa8d085a6d8209064d37a14f3a5b36a5",
+      "bytes": 50803,
       "check": "D"
     },
     {
       "file": "p5-390-dark-trajectory.png",
-      "sha256": "229c5e4450b783b0d25a90527b79e7a4310a66e7647077eb3b8d3beca17a804e",
-      "bytes": 46204,
+      "sha256": "b9d22dd8fd735285652522b43b18e38490db8b7ab7392704fa612ede1dd5da8a",
+      "bytes": 46201,
       "check": "D"
     },
     {
@@ -1957,26 +2085,26 @@
     },
     {
       "file": "p5-points-390-light.png",
-      "sha256": "aa74e56d0fadd3a69c4114135a78c8d365568479d98ca7f320cf2a6fa7665ba8",
-      "bytes": 47013,
+      "sha256": "de92a2bdd04b4ef15ab9b4f09789631cf866ea8fa0957336a42deed6abd11648",
+      "bytes": 47389,
       "check": "J"
     },
     {
       "file": "p5-drawer-390-light.png",
-      "sha256": "daeac3c1da3a068116f58b948ac0b09d8931cd2f588d9c5a4cbaca0f62db2351",
-      "bytes": 31574,
+      "sha256": "06926a9bff308d1b734e5acfc28e11405c8370b3b46f011c37e9e8a4120748c5",
+      "bytes": 31575,
       "check": "J"
     },
     {
       "file": "p5-points-360-light.png",
-      "sha256": "55a17bdc716a37ee3918d9ec40d9a4dabc761cf0bc0770219e6d6ff97e466177",
-      "bytes": 37652,
+      "sha256": "d7d40b53f331ee000c42000088e9faee7f691c4d6699c87e893c3e50033b1199",
+      "bytes": 36275,
       "check": "J"
     },
     {
       "file": "p5-drawer-360-light.png",
-      "sha256": "4ea5f27c61d3a2ba905454ca928e0eedd3a4b24ad205ac5e717cd63b0521996e",
-      "bytes": 29509,
+      "sha256": "d83512a4c685ff4a04c4ef56645a832493bc1713cda7a48fb0fd9d4ddf403318",
+      "bytes": 29371,
       "check": "J"
     },
     {
@@ -2023,62 +2151,62 @@
     },
     {
       "file": "p5-points-390-dark.png",
-      "sha256": "a80693bf4312cbd94ff10823d43ba90aa7aa1c75158cd89cb407d0e94fa503a4",
-      "bytes": 47676,
+      "sha256": "d988f087491c2e63d9685b7d7ab4f10d1169ad4ed74def7abe6ff708a7a7b421",
+      "bytes": 48063,
       "check": "J"
     },
     {
       "file": "p5-drawer-390-dark.png",
-      "sha256": "5d44c2010d3db8452e402c0a71f4f14bfe4afd408c3fc2c7f6aaa38d40d57906",
-      "bytes": 32097,
+      "sha256": "555ffb93983d99d04ce823a13e81521904ee5f8112bb16b3c0a9ee54efc591b8",
+      "bytes": 32095,
       "check": "J"
     },
     {
       "file": "p5-points-360-dark.png",
-      "sha256": "dc04ed96f2f0e6ec7b2b01ce0973f54d4909a63e8231e3a17c34042e55be9e1c",
-      "bytes": 38402,
+      "sha256": "ccc5c0da662b401fa84c46358d3495ca544e13d2100cb5b420c7686d3936d5ea",
+      "bytes": 36958,
       "check": "J"
     },
     {
       "file": "p5-drawer-360-dark.png",
-      "sha256": "029c668503019527dee8c7e7739ef28bcb46b648218a2a8fbc3076de61eec0e1",
-      "bytes": 30196,
+      "sha256": "768041eb2c9ef05bea607929e392ec695827fd79febd0b3559ea50ebea815962",
+      "bytes": 30105,
       "check": "J"
     },
     {
       "file": "p5-phone-360x640-dock-top.png",
-      "sha256": "dd735a2b0de5106dad59c1690a289df136b64f9742df027a289a4a5450d33330",
-      "bytes": 38818,
+      "sha256": "872e3efe57426422e7912eef54d8337fddf6ba42d519a4e3147161737a021cc9",
+      "bytes": 36139,
       "check": "K"
     },
     {
       "file": "p5-phone-360x640-dock-end.png",
-      "sha256": "6eba3e200748e86f2fb061567472ec53cf9cc44fc1204f3e491b17ab283b5b1b",
-      "bytes": 36022,
+      "sha256": "7c7b47c54a155d63cf7b333ebbcfa5b62d6165b705a52196b0c4f3c1caca4acc",
+      "bytes": 33870,
       "check": "K"
     },
     {
       "file": "p5-phone-390x844-dock-top.png",
-      "sha256": "fa152efbb28351160ab1716af19d79b6245a0348a139914f90a7a2b7fec785b5",
-      "bytes": 47305,
+      "sha256": "6ce7e1ef07599137d49035377fdd36794699d1a5a9ea873664866da7e27d3087",
+      "bytes": 47960,
       "check": "K"
     },
     {
       "file": "p5-phone-390x844-dock-end.png",
-      "sha256": "a36576d4a7e76478995c3d2222ccb0b41091c7cfb52b8b2792c33db13e27c645",
-      "bytes": 47336,
+      "sha256": "81375c8fa460bc8044c9fe885f570953d2c879e38679eca7b936e69b583c1228",
+      "bytes": 47518,
       "check": "K"
     },
     {
       "file": "p5-phone-412x915-dock-top.png",
-      "sha256": "54ce8a4e9c5adefd658cb7c90f2bee88ab510a4f50d9979a7e9a5728518f2186",
-      "bytes": 53498,
+      "sha256": "1a80701fe7018c2e08577551ba38e4f6c8f5917ac69329b5f94b8c93bc568cea",
+      "bytes": 54099,
       "check": "K"
     },
     {
       "file": "p5-phone-412x915-dock-end.png",
-      "sha256": "f548fefe3cd1a1625c7c2f3f3a4ea964a796cf271118b79a7ba1fe32407b00cf",
-      "bytes": 53372,
+      "sha256": "cfa208dcd46f5245ead802aae3db2bfb5e84d80f45ce68778a7c8f27f6d16a6b",
+      "bytes": 53872,
       "check": "K"
     },
     {
@@ -2104,333 +2232,313 @@
     "timelineG": [
       {
         "kind": "request",
-        "at": 55164,
+        "at": 55058,
         "url": "/app/"
       },
       {
         "kind": "response",
-        "at": 55166,
+        "at": 55061,
         "url": "/app/",
         "status": 200
       },
       {
         "kind": "request",
-        "at": 55174,
+        "at": 55069,
         "url": "/app/theme-boot.js"
       },
       {
         "kind": "request",
-        "at": 55174,
-        "url": "/app/assets/index-BRePCEtU.js"
+        "at": 55069,
+        "url": "/app/assets/index-BslxGGpb.js"
       },
       {
         "kind": "request",
-        "at": 55174,
-        "url": "/app/assets/index-LBAMbFfS.css"
+        "at": 55069,
+        "url": "/app/assets/index-jsjcZe6r.css"
       },
       {
         "kind": "response",
-        "at": 55175,
-        "url": "/app/assets/index-LBAMbFfS.css",
+        "at": 55070,
+        "url": "/app/assets/index-jsjcZe6r.css",
         "status": 200
       },
       {
         "kind": "response",
-        "at": 55175,
+        "at": 55070,
         "url": "/app/theme-boot.js",
         "status": 200
       },
       {
         "kind": "response",
-        "at": 55178,
-        "url": "/app/assets/index-BRePCEtU.js",
+        "at": 55073,
+        "url": "/app/assets/index-BslxGGpb.js",
         "status": 200
       },
       {
         "kind": "request",
-        "at": 55185,
+        "at": 55080,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "request",
-        "at": 55185,
+        "at": 55080,
         "url": "/favicon.ico"
       },
       {
         "kind": "response",
-        "at": 55186,
+        "at": 55081,
         "url": "/api/v1/snapshot",
         "status": 200
       },
       {
         "kind": "response",
-        "at": 55192,
+        "at": 55087,
         "url": "/favicon.ico",
         "status": 204
       },
       {
         "kind": "request",
-        "at": 55192,
+        "at": 55087,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "kind": "response",
-        "at": 55199,
+        "at": 55095,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
         "status": 200
       },
       {
         "kind": "badge",
-        "at": 55501,
+        "at": 55393,
         "state": "open|connected"
       },
       {
         "kind": "badge",
-        "at": 56201,
+        "at": 56075,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "failed",
-        "at": 56201,
+        "at": 56075,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "kind": "request",
-        "at": 56304,
+        "at": 56275,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 56305,
+        "at": 56275,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 56305,
+        "at": 56276,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 56307,
+        "at": 56278,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 57096,
+        "at": 57031,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 57096,
+        "at": 57032,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 57096,
+        "at": 57032,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 57097,
+        "at": 57033,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 58759,
+        "at": 58853,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 58759,
+        "at": 58853,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 58760,
+        "at": 58854,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 58761,
+        "at": 58855,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 61378,
+        "at": 61831,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 61378,
+        "at": 61831,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 61378,
+        "at": 61831,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 61379,
+        "at": 61833,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 66340,
+        "at": 69428,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 66341,
+        "at": 69428,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 66341,
+        "at": 69428,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 66342,
+        "at": 69429,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 72872,
+        "at": 78119,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 72872,
+        "at": 78119,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 72873,
+        "at": 78119,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 72874,
+        "at": 78120,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 78838,
+        "at": 86965,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 78838,
+        "at": 86965,
         "state": "connecting|connecting…"
       },
       {
         "kind": "failed",
-        "at": 78838,
+        "at": 86965,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 78839,
+        "at": 86967,
         "state": "reconnecting|reconnecting…"
       },
       {
         "kind": "request",
-        "at": 88678,
+        "at": 92191,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 88678,
-        "state": "connecting|connecting…"
-      },
-      {
-        "kind": "failed",
-        "at": 88678,
-        "url": "/api/v1/snapshot"
-      },
-      {
-        "kind": "badge",
-        "at": 88679,
-        "state": "reconnecting|reconnecting…"
-      },
-      {
-        "kind": "request",
-        "at": 95306,
-        "url": "/api/v1/snapshot"
-      },
-      {
-        "kind": "badge",
-        "at": 95306,
+        "at": 92191,
         "state": "connecting|connecting…"
       },
       {
         "kind": "response",
-        "at": 95308,
+        "at": 92193,
         "url": "/api/v1/snapshot",
         "status": 200
       },
       {
         "kind": "request",
-        "at": 95310,
+        "at": 92195,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "kind": "response",
-        "at": 95313,
+        "at": 92197,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
         "status": 200
       },
       {
         "kind": "badge",
-        "at": 95313,
+        "at": 92198,
         "state": "open|connected"
       },
       {
         "kind": "badge",
-        "at": 95384,
+        "at": 92301,
         "state": "offline|offline"
       },
       {
         "kind": "failed",
-        "at": 95384,
+        "at": 92301,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "kind": "request",
-        "at": 101391,
+        "at": 98311,
         "url": "/api/v1/snapshot"
       },
       {
         "kind": "badge",
-        "at": 101391,
+        "at": 98311,
         "state": "connecting|connecting…"
       },
       {
         "kind": "response",
-        "at": 101393,
+        "at": 98314,
         "url": "/api/v1/snapshot",
         "status": 200
       },
       {
         "kind": "request",
-        "at": 101395,
+        "at": 98316,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "kind": "response",
-        "at": 101397,
+        "at": 98319,
         "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
         "status": 200
       },
       {
         "kind": "badge",
-        "at": 101397,
+        "at": 98319,
         "state": "open|connected"
       }
     ],
-    "requests": 745,
-    "gatewayRequests": 745,
+    "requests": 744,
+    "gatewayRequests": 744,
     "externalRequests": [],
     "consoleErrorsAndWarnings": [
       {
@@ -2438,136 +2546,122 @@
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
-        "url": "http://127.0.0.1:19111/api/v1/events?cursor=fixture-2f1c%3A18"
+        "url": "http://127.0.0.1:19141/api/v1/events?cursor=fixture-2f1c%3A18"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_EMPTY_RESPONSE",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+        "url": "http://127.0.0.1:19141/api/v1/snapshot"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+        "url": "http://127.0.0.1:19141/api/v1/snapshot"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+        "url": "http://127.0.0.1:19141/api/v1/snapshot"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+        "url": "http://127.0.0.1:19141/api/v1/snapshot"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+        "url": "http://127.0.0.1:19141/api/v1/snapshot"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+        "url": "http://127.0.0.1:19141/api/v1/snapshot"
       },
       {
         "phase": "G",
         "level": "error",
         "source": "network",
         "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot"
-      },
-      {
-        "phase": "G",
-        "level": "error",
-        "source": "network",
-        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+        "url": "http://127.0.0.1:19141/api/v1/snapshot"
       }
     ],
     "cspViolations": [],
     "failedRequests": [
       {
         "phase": "G",
-        "url": "http://127.0.0.1:19111/api/v1/events?cursor=fixture-2f1c%3A18",
+        "url": "http://127.0.0.1:19141/api/v1/events?cursor=fixture-2f1c%3A18",
         "type": "EventSource",
         "errorText": "net::ERR_INCOMPLETE_CHUNKED_ENCODING",
-        "t": 41182.087778
+        "t": 45260.973807
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "url": "http://127.0.0.1:19141/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_EMPTY_RESPONSE",
-        "t": 41182.35342
+        "t": 45261.32819
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "url": "http://127.0.0.1:19141/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 41183.144319
+        "t": 45262.084222
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "url": "http://127.0.0.1:19141/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 41184.807889
+        "t": 45263.906095
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "url": "http://127.0.0.1:19141/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 41187.426266
+        "t": 45266.883734
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "url": "http://127.0.0.1:19141/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 41192.389207
+        "t": 45274.480902
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "url": "http://127.0.0.1:19141/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 41198.92085
+        "t": 45283.171661
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "url": "http://127.0.0.1:19141/api/v1/snapshot",
         "type": "Fetch",
         "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 41204.886515
+        "t": 45292.017963
       },
       {
         "phase": "G",
-        "url": "http://127.0.0.1:19111/api/v1/snapshot",
-        "type": "Fetch",
-        "errorText": "net::ERR_CONNECTION_REFUSED",
-        "t": 41214.726267
-      },
-      {
-        "phase": "G",
-        "url": "http://127.0.0.1:19111/api/v1/events?cursor=fixture-2f1c%3A18",
+        "url": "http://127.0.0.1:19141/api/v1/events?cursor=fixture-2f1c%3A18",
         "type": "EventSource",
         "errorText": "net::ERR_ABORTED",
-        "t": 41221.432533
+        "t": 45297.353764
       }
     ]
   }

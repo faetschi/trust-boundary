@@ -18,6 +18,7 @@ Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
 
 ## FX3 state of the web chat extension (2026-10-15, uncommitted)
 
+- FX4 (2026-10-15, uncommitted): the phone composer reason wraps and the phone field is two lines tall; dock clearance 268 px; QA 12 of 12; v3 mockup regenerated (25 of 27 frames identical; gov-recovery-light-1440 has a 5-px corner difference). See extensions/webchat/docs/frontend.md, "Redesign review fixes, FX4".
 - Footer: the last box of the workspace, under the composer, at every width (DOM order = drawn order; no CSS
   `order`). QA check J (chat head within 160 px of the header): 98 px at 390 and 360 (was 181), 53 px at 1440 to
   768 (was 98 to 144). Check K: 0 stops under the dock at 360x640, 390x844, 412x915 and 844x390.

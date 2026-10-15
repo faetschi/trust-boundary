@@ -33,7 +33,9 @@
 //      dark: the Sessions rail, the Pi identity and composer, the governance tabs and drawer;
 //      keyboard, persistence, the icon rail, the composer's inert behaviour and copy.
 //   K  (redesign) the phone dock: a Tab and a Shift+Tab walk at 360x640, 390x844, 412x915 and
-//      844x390; no focused element under the dock; the last message and footer not covered.
+//      844x390; no focused element under the dock; the last message and footer not covered; the
+//      composer's reason and placeholder read in full (not clipped), and a phone dock is at most 40%
+//      of the viewport height, at load and with the status line shown.
 //   L  (redesign) the claim boundary: the lossy-success wording on the Chat card, the ledger
 //      row and the inspector; absent versus zero counts, via a snapshot rewritten in the page.
 //
@@ -2272,6 +2274,43 @@ const DOCK_END = `(() => {
   };
 })()`;
 
+// The composer's reason and its placeholder must read in full, and a phone dock must stay a sane share of the viewport. A
+// textarea does not report the lines of its placeholder, so the placeholder is wrapped in a mirror of the field's text box
+// and the mirror's height is compared with the field's visible text box. The status line is read too: the dock is measured
+// in its tallest state, with the status line shown.
+const PHONE_DOCK_SHARE = 0.4;
+const COMPOSER_FIT = `(() => {
+  const composer = document.querySelector('[data-testid="composer"]');
+  const reason = document.getElementById('composer-reason');
+  const status = document.getElementById('composer-status');
+  const ta = composer ? composer.querySelector('textarea') : null;
+  const dock = document.querySelector('[class*="_dock_"]');
+  if (!composer || !reason || !status || !ta || !dock) return null;
+  const rs = getComputedStyle(reason);
+  const ts = getComputedStyle(ta);
+  const padX = parseFloat(ts.paddingLeft) + parseFloat(ts.paddingRight);
+  const padY = parseFloat(ts.paddingTop) + parseFloat(ts.paddingBottom);
+  const mirror = document.createElement('div');
+  mirror.style.position = 'absolute';
+  mirror.style.left = '-10000px';
+  mirror.style.visibility = 'hidden';
+  mirror.style.whiteSpace = 'pre-wrap';
+  mirror.style.overflowWrap = 'break-word';
+  mirror.style.width = (ta.clientWidth - padX) + 'px';
+  for (const p of ['fontFamily', 'fontSize', 'fontWeight', 'letterSpacing', 'lineHeight']) mirror.style[p] = ts[p];
+  mirror.textContent = ta.placeholder;
+  document.body.appendChild(mirror);
+  const need = mirror.getBoundingClientRect().height;
+  mirror.remove();
+  return {
+    reason: { scrollWidth: reason.scrollWidth, clientWidth: reason.clientWidth, textOverflow: rs.textOverflow, whiteSpace: rs.whiteSpace },
+    placeholder: { need: Math.round(need), have: Math.round(ta.clientHeight - padY) },
+    status: status.textContent.trim(),
+    dock: Math.round(dock.getBoundingClientRect().height),
+    viewport: window.innerHeight,
+  };
+})()`;
+
 // Presses Tab (or Shift+Tab) until focus leaves the document, and checks every stop against the dock. Headless Chrome
 // can also wrap from the first control straight to the last (no BODY stop between), so a return to the first stop ends
 // the walk as a cycle, as tabWalk does; without that the backward walk would repeat every stop.
@@ -2326,6 +2365,7 @@ async function checkK(ctx) {
     await viewport(width, height);
     await emulateMedia(LIGHT_OS);
     await navigate('/app/');
+    const loadFit = await evaluate(COMPOSER_FIT);
     const forward = await dockWalk(false);
     const backward = await dockWalk(true);
     await evaluate('window.scrollTo(0, 0)');
@@ -2339,6 +2379,8 @@ async function checkK(ctx) {
     await sleep(300);
     const end = await evaluate(DOCK_END);
     await capture(`phone-${key}-dock-end.png`);
+    const focusFit = await evaluate(COMPOSER_FIT);
+    ctx.note(`composer ${key}`, { load: loadFit, statusShown: focusFit });
     const covered = [...forward.covered, ...backward.covered];
     rows.push({ size: key, forward: { stops: forward.stops, measured: forward.measured, end: forward.end, list: forward.list }, backward: { stops: backward.stops, measured: backward.measured, end: backward.end, list: backward.list }, covered: covered.length, end });
     ctx.expect(forward.measured === forward.stops && backward.measured === backward.stops && end.dock !== null, `${key}: ${forward.measured} of ${forward.stops} forward and ${backward.measured} of ${backward.stops} backward stops were measured against the dock (dock found: ${end.dock !== null})`);
@@ -2347,6 +2389,13 @@ async function checkK(ctx) {
     ctx.expect(clean(forward.end) && clean(backward.end) && forward.stops === backward.stops, `${key}: the walks were ${forward.stops} stops ("${forward.end}") forward and ${backward.stops} stops ("${backward.end}") backward`);
     ctx.expect(!end.lastMessageCovered, `${key}: the dock covers the last message (${JSON.stringify(end.lastMessage)} against the dock ${JSON.stringify(end.dock)})`);
     ctx.expect(!end.footerCovered, `${key}: the dock covers the footer (${JSON.stringify(end.footer)} against the dock ${JSON.stringify(end.dock)})`);
+    for (const [when, fit] of [['at load', loadFit], ['with the status line shown', focusFit]]) {
+      const r = fit ? fit.reason : null;
+      ctx.expect(r !== null && r.scrollWidth <= r.clientWidth && r.textOverflow !== 'ellipsis' && r.whiteSpace !== 'nowrap', `${key} ${when}: the reason is clipped (scrollWidth ${r?.scrollWidth}, clientWidth ${r?.clientWidth}, text-overflow ${r?.textOverflow}, white-space ${r?.whiteSpace})`);
+      ctx.expect(fit !== null && fit.placeholder.need <= fit.placeholder.have + 0.5, `${key} ${when}: the placeholder needs ${fit?.placeholder.need} px and the field shows ${fit?.placeholder.have} px, so its last line is cut off`);
+      if (width <= 760) ctx.expect(fit !== null && fit.dock <= PHONE_DOCK_SHARE * fit.viewport, `${key} ${when}: the dock is ${fit?.dock} px, more than ${PHONE_DOCK_SHARE * 100}% of the ${fit?.viewport} px viewport`);
+    }
+    ctx.expect(focusFit !== null && focusFit.status !== '', `${key}: the status line was empty when the dock was measured, so the tallest state was not measured`);
     ctx.expect(end.overflowX === 0, `${key}: horizontal overflow ${end.overflowX} px`);
     if (wide) {
       ctx.expect(end.mainScrollTop > 0 && end.dockFullyVisible, `${key}: after the Workspace scrolls to its end the dock is ${end.dockFullyVisible ? 'visible' : 'not fully visible'} (dock ${JSON.stringify(end.dock)}, Workspace scrolled ${end.mainScrollTop} of ${end.mainMaxScroll})`);

@@ -25,14 +25,23 @@ function mediaBlockOf(query: string): string {
   return "";
 }
 
-describe("the composer on a phone: one line of reason, so the pinned bar stays compact", () => {
+describe("the composer's reason and placeholder read in full on a phone: they wrap, and the dock grows to hold them", () => {
   const phone = mediaBlockOf("max-width: 760px");
 
-  it("collapses the reason to one line with an ellipsis, and its full text stays in the DOM for the description", () => {
-    const reason = declarationsIn(phone, ".reason");
-    expect(reason).toMatch(/white-space:\s*nowrap;/);
-    expect(reason).toMatch(/overflow:\s*hidden;/);
-    expect(reason).toMatch(/text-overflow:\s*ellipsis;/);
+  it("never clips the reason: no nowrap, no ellipsis and no hidden overflow, at any width", () => {
+    // Every rule that styles the reason, at any width. It is the explanation of why submitting is unavailable, so it reads in full.
+    const reasonRules = [...css.matchAll(/([^{}]*\.reason[^{}]*)\{([^}]*)\}/g)].map((m) => m[2]);
+    expect(reasonRules.length).toBeGreaterThan(0);
+    for (const decls of reasonRules) {
+      expect(decls).not.toMatch(/white-space:\s*nowrap;/);
+      expect(decls).not.toMatch(/text-overflow:\s*ellipsis;/);
+      expect(decls).not.toMatch(/overflow:\s*hidden;/);
+    }
+  });
+
+  it("makes the field two lines tall on a phone, so the placeholder's wrapped second line is not cut off", () => {
+    // The textarea has one row (Composer.tsx), so its height comes from here: two lines of body text plus the field's padding.
+    expect(declarationsIn(phone, ".input")).toMatch(/min-height:\s*calc\(2 \* var\(--lh-body\) \+ 2 \* var\(--space-1\)\);/);
   });
 });
 

@@ -89,12 +89,12 @@
   display: none;
 }
 
-/* On a phone the reason is one line, so the pinned bar stays compact. Its full text is still the field's description. */
+/* On a phone the reason wraps onto as many lines as it needs, and the field is two lines tall, so the placeholder's wrapped
+   text shows in full: at 360 px it runs to two lines, and where it wraps depends on the platform font. The reason is never
+   cut off, so the dock grows to hold it, and the page's clearance follows (tokens.css, --dock-clearance). */
 @media (max-width: 760px) {
-  .reason {
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+  .input {
+    min-height: calc(2 * var(--lh-body) + 2 * var(--space-1));
   }
 }
 

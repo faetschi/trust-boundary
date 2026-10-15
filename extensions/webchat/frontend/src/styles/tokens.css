@@ -241,8 +241,8 @@
   --row-h-button: 36px;
   --row-h-input: 32px;
 
-  /* The phone composer dock's tallest measured state (status line shown, chips wrapped: 188 px from 200 to 280 px; 170 px at
-     300-390 px) plus one gap. The page reserves it under the viewport's foot on a phone (base.css), so keyboard focus and
-     anchor scrolls never land under the dock. */
-  --dock-clearance: calc(188px + var(--space-2));
+  /* The phone composer dock's tallest measured state (status line shown, reason and placeholder wrapped, chips wrapped: 268 px
+     at 200 px wide; 250 at 240; 232 at 280; 214 at 320-360; 196 at 390) plus one gap. The page reserves it under the viewport's
+     foot on a phone (base.css), so keyboard focus and anchor scrolls never land under the dock. */
+  --dock-clearance: calc(268px + var(--space-2));
 }

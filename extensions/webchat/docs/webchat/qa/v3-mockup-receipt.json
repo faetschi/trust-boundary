@@ -1,16 +1,16 @@
 {
-  "receipt": "v3 static design mockup (tbound-redesign-v3.html), M3c refresh: every frame re-captured from the running UI at f59f491 (FX3)",
-  "generatedAt": "2026-10-15T06:23:10.319Z",
+  "receipt": "v3 static design mockup (tbound-redesign-v3.html), M3c refresh: every frame re-captured from the running UI at b7ec7e0 plus the uncommitted FX4 working tree (FX4)",
+  "generatedAt": "2026-10-15T07:02:23.090Z",
   "method": {
-    "frames": "Each frame is the root DOM of the live /app/ state (demo gateway built in WSL at f59f491), serialised by serialize-root.js (innerHTML-like; two adjacent text nodes keep an empty comment between them). The frame sits under the built stylesheet of the same build (dist/assets/index-LBAMbFfS.css, verbatim). Its ids carry the frame prefix <name>-- (each id and each id reference, and nothing else). The governance panels are inert templates taken from the captured Decisions and provenance, publication, recovery and qualification frames (serialize-panel.js), and a script swaps them in place.",
+    "frames": "Each frame is the root DOM of the live /app/ state (demo gateway built in WSL from the FX4 working tree), serialised by serialize-root.js (innerHTML-like; two adjacent text nodes keep an empty comment between them). The frame sits under the built stylesheet of the same build (dist/assets/index-jsjcZe6r.css, verbatim). Its ids carry the frame prefix <name>-- (each id and each id reference, and nothing else). The governance panels are inert templates taken from the captured Decisions and provenance, publication, recovery and qualification frames (serialize-panel.js), and a script swaps them in place.",
     "build": "node build-mock-m3c.mjs (reads the frozen sources, the built CSS, the captured frame DOM, the panel parts and the two parts; writes only the mockup). CSP hashes are taken from the text between the tags, after the file is assembled.",
     "capture": "node real-m3c.mjs (live capture, Chrome headless over CDP, one frame per state, empty storage per state, theme by localStorage, actions as real pointer presses, scroll offsets from the page) and node mock-m3c.mjs (mockup at the same viewport, theme and emulation, the header note and review hidden from the first layout). The pointer is left where the live press ended, so :hover matches. Each live frame is read 1 s after its last pointer action.",
     "comparison": "Byte comparison of the PNG of each frame with the live PNG of the same state (sha256). Pixel statistics and an overlay (v3-diff-*.png, red where the two differ) from a canvas diff of the two PNGs. Text and rectangle diffs of the regions (header, nav, main, footer, composer, scrim, governance aside), read with the same expression on both sides."
   },
   "mock": {
     "path": "extensions/webchat/docs/webchat/mockups/tbound-redesign-v3.html",
-    "bytes": 859833,
-    "sha256": "8b4b99798e90f640d5c192e3244fa0b4eb3d6118ad76211c6b61982a847ca72c",
+    "bytes": 859982,
+    "sha256": "04851428752a649ecef8444ce619350c72919bd27338950493bf3f8acc1bd9bb",
     "sampleHideForComparisons": ".mk-top, .mk-review { display: none !important; }",
     "framesSampleFree": true
   },
@@ -21,17 +21,17 @@
     "identical": true
   },
   "csp": {
-    "policy": "default-src 'none'; img-src data:; style-src 'sha256-Hw9Oowybx2ySdJFmeDpr/qzGm8dfT7IzcizBosqMqU4='; script-src 'sha256-QZsWOZIGvaz2Ye1me3Zpj5LbedOIDworjKVbbgn2Ko4=' 'sha256-yry7pCDf1GlqGjmhvvJYXXlwesF7RW9LfRRuHPsr7D8='; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; media-src 'none'",
-    "styleHash": "sha256-Hw9Oowybx2ySdJFmeDpr/qzGm8dfT7IzcizBosqMqU4=",
+    "policy": "default-src 'none'; img-src data:; style-src 'sha256-YL+GT/clhhEGxu8jH3mKp300oqgH+sKDBfpyK/d8XbA='; script-src 'sha256-QZsWOZIGvaz2Ye1me3Zpj5LbedOIDworjKVbbgn2Ko4=' 'sha256-yry7pCDf1GlqGjmhvvJYXXlwesF7RW9LfRRuHPsr7D8='; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; media-src 'none'",
+    "styleHash": "sha256-YL+GT/clhhEGxu8jH3mKp300oqgH+sKDBfpyK/d8XbA=",
     "scriptHashes": "'sha256-QZsWOZIGvaz2Ye1me3Zpj5LbedOIDworjKVbbgn2Ko4=' 'sha256-yry7pCDf1GlqGjmhvvJYXXlwesF7RW9LfRRuHPsr7D8='"
   },
   "realApp": {
     "capture": "extensions/webchat/docs/webchat/qa/v3-real-app-capture.json",
-    "sha256": "a9560e202a342d5b67da640b248c1a74fe982907e782de289370390f09c4f945",
-    "gatewayBinarySha256": "658041d7f4020b7da7ec187e1bcfaf57b633445f85054ec630702c338bb10311",
-    "distIndexHtmlSha256": "f1b22babc7422b9e79c460355eea186a7b26ab57d314bfbf7909793d94960cab",
-    "distCssSha256": "8b1913902dcb8da5abe23881b5c1297920b1438cf36fe8989b5acd39923f8364",
-    "distJsSha256": "b032b44ba832173264364d6d9e8375a564eacd01ad7f35ba8cc188346396fdec"
+    "sha256": "ef2f29f96c98e044b562a14fc7131ea8dea4a007b12e0871cd76031d8220475b",
+    "gatewayBinarySha256": "fb544902a942a787c63ba48051797aa075d8bc45df0575c60c553d943045ccbf",
+    "distIndexHtmlSha256": "d55482f73e2773d237af2709d716bcc1aa1f2c0f2db2f48a9298fee7a8bccbe7",
+    "distCssSha256": "82ca961ad659c2b085e6477bb3f2706d3e2b09bcc6354e0bbf38ae43b4e103cc",
+    "distJsSha256": "9c7f40ed9a0f7b13a3e4b3a672f60cc5dbd2903d4466d434cade0de50d2a4ee0"
   },
   "chrome": {
     "binary": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
@@ -52,11 +52,12 @@
   },
   "summary": {
     "frames": 27,
-    "byteIdenticalToLive": 26,
+    "byteIdenticalToLive": 25,
     "framesDiffering": [
+      "gov-recovery-light-1440",
       "composer-focus-light-1440"
     ],
-    "differingPixelsTotal": 5
+    "differingPixelsTotal": 10
   },
   "screenshots": [
     {
@@ -70,7 +71,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "d8ef895f1ccdb97a6a311be72926529244e5a16d618871cf2b7d24797effb4a2",
-      "committedSha256": "a43909ac4bcfcd6cf28ddd5d0cc42210c89ee73fa82fdea19e5847e2da14d927",
+      "committedSha256": "d8ef895f1ccdb97a6a311be72926529244e5a16d618871cf2b7d24797effb4a2",
       "realSha256": "d8ef895f1ccdb97a6a311be72926529244e5a16d618871cf2b7d24797effb4a2",
       "realFile": "v3-real-app-1440-light-chat.png",
       "byteIdentical": true,
@@ -204,7 +205,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "295a6b0c63aac3fe7941f911f375cea7a82d0c0db3fc4257e5de1bc837bb0f28",
-      "committedSha256": "a72eebdd8ee114013425c4080c9de3eb6cd3b724fffa3a8d9314b45e5fe77ec2",
+      "committedSha256": "295a6b0c63aac3fe7941f911f375cea7a82d0c0db3fc4257e5de1bc837bb0f28",
       "realSha256": "295a6b0c63aac3fe7941f911f375cea7a82d0c0db3fc4257e5de1bc837bb0f28",
       "realFile": "v3-real-app-1440-dark-chat.png",
       "byteIdentical": true,
@@ -338,7 +339,7 @@
       "pngWidth": 1024,
       "pngHeight": 768,
       "sha256": "98b8c5c7fe7b9a4bdf48f2e07a89cf45da6500064fae4041697eacb2cd2ab9d0",
-      "committedSha256": "92996071749e6f47cce3e25267780fad76e16a68185619a613633ed66aba1499",
+      "committedSha256": "98b8c5c7fe7b9a4bdf48f2e07a89cf45da6500064fae4041697eacb2cd2ab9d0",
       "realSha256": "98b8c5c7fe7b9a4bdf48f2e07a89cf45da6500064fae4041697eacb2cd2ab9d0",
       "realFile": "v3-real-app-1024-light-chat.png",
       "byteIdentical": true,
@@ -472,7 +473,7 @@
       "pngWidth": 1024,
       "pngHeight": 768,
       "sha256": "f244f15b5806b4894a655905524330e039cb33cb3bed57514c429036f97ec91f",
-      "committedSha256": "8f59ce14608b38c7db3af4158ac212e7af92b441437917d110d860442438489a",
+      "committedSha256": "f244f15b5806b4894a655905524330e039cb33cb3bed57514c429036f97ec91f",
       "realSha256": "f244f15b5806b4894a655905524330e039cb33cb3bed57514c429036f97ec91f",
       "realFile": "v3-real-app-1024-dark-chat.png",
       "byteIdentical": true,
@@ -606,7 +607,7 @@
       "pngWidth": 1024,
       "pngHeight": 768,
       "sha256": "4a6f049a522421e4b9f48a6c0e63e05665a52edbe61cb093d3a08d4048ae5f69",
-      "committedSha256": "13dd753add7a733a6bd21cfadef782c786ef0a44bf14b2dc6f06c2b795424064",
+      "committedSha256": "4a6f049a522421e4b9f48a6c0e63e05665a52edbe61cb093d3a08d4048ae5f69",
       "realSha256": "4a6f049a522421e4b9f48a6c0e63e05665a52edbe61cb093d3a08d4048ae5f69",
       "realFile": "v3-real-app-1024-light-drawer.png",
       "byteIdentical": true,
@@ -748,7 +749,7 @@
       "pngWidth": 1024,
       "pngHeight": 768,
       "sha256": "5eee4ba8ee4e2ff509d23e27e47e9af5e5cc99671c3fa84da4e31de45852b517",
-      "committedSha256": null,
+      "committedSha256": "5eee4ba8ee4e2ff509d23e27e47e9af5e5cc99671c3fa84da4e31de45852b517",
       "realSha256": "5eee4ba8ee4e2ff509d23e27e47e9af5e5cc99671c3fa84da4e31de45852b517",
       "realFile": "v3-real-app-1024-dark-drawer.png",
       "byteIdentical": true,
@@ -886,12 +887,12 @@
       "theme": "light",
       "fullpage": false,
       "frameSource": "frames/chat-light-390.html",
-      "bytes": 51795,
+      "bytes": 52402,
       "pngWidth": 390,
       "pngHeight": 844,
-      "sha256": "520b46e5d5e3359b3dcb8745fb6ce40b146230c026bd51f379c3dfe08f117e61",
-      "committedSha256": "89f3497fc36e79987aa1cd42788039eb42f2c1ba80cd9b3958707c1c38886358",
-      "realSha256": "520b46e5d5e3359b3dcb8745fb6ce40b146230c026bd51f379c3dfe08f117e61",
+      "sha256": "9a652cc519ba527d7305ac1a8ad9e68c15d9fbfd2346de75a8a67564133ca43e",
+      "committedSha256": "520b46e5d5e3359b3dcb8745fb6ce40b146230c026bd51f379c3dfe08f117e61",
+      "realSha256": "9a652cc519ba527d7305ac1a8ad9e68c15d9fbfd2346de75a8a67564133ca43e",
       "realFile": "v3-real-app-390-light-chat.png",
       "byteIdentical": true,
       "regions": {
@@ -918,14 +919,14 @@
             0,
             225,
             380,
-            1360
+            1386
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
         "footer": {
           "rect": [
             20,
-            1511,
+            1537,
             340,
             44
           ],
@@ -934,9 +935,9 @@
         "composer": {
           "rect": [
             12,
-            698,
+            672,
             356,
-            138
+            164
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
         },
@@ -946,7 +947,7 @@
             396,
             172,
             362,
-            1413
+            1439
           ],
           "innerText": ""
         },
@@ -1008,7 +1009,7 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1585
+          "documentHeight": 1611
         },
         "htmlDataTheme": "light"
       }
@@ -1020,12 +1021,12 @@
       "theme": "light",
       "fullpage": true,
       "frameSource": "frames/chat-light-390-fullpage.html",
-      "bytes": 92015,
+      "bytes": 91405,
       "pngWidth": 380,
-      "pngHeight": 1585,
-      "sha256": "b3d3fa2bd91e6c755e962209a0ba2e6b7d73b9b3f0b244bdf9e17f6ac0733237",
-      "committedSha256": "404218cf893d9a34e22c2542d0a0452235b420deb244eb81ccda896bc3ecbf0d",
-      "realSha256": "b3d3fa2bd91e6c755e962209a0ba2e6b7d73b9b3f0b244bdf9e17f6ac0733237",
+      "pngHeight": 1611,
+      "sha256": "91c5a37bef9fccb4056811c2cce8bec41762f8294a1cfae911c36183724f725c",
+      "committedSha256": "b3d3fa2bd91e6c755e962209a0ba2e6b7d73b9b3f0b244bdf9e17f6ac0733237",
+      "realSha256": "91c5a37bef9fccb4056811c2cce8bec41762f8294a1cfae911c36183724f725c",
       "realFile": "v3-real-app-390-light-chat-fullpage.png",
       "byteIdentical": true,
       "regions": {
@@ -1052,14 +1053,14 @@
             0,
             225,
             380,
-            1360
+            1386
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
         "footer": {
           "rect": [
             20,
-            1511,
+            1537,
             340,
             44
           ],
@@ -1068,9 +1069,9 @@
         "composer": {
           "rect": [
             12,
-            698,
+            672,
             356,
-            138
+            164
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
         },
@@ -1080,7 +1081,7 @@
             396,
             172,
             362,
-            1413
+            1439
           ],
           "innerText": ""
         },
@@ -1142,7 +1143,7 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1585
+          "documentHeight": 1611
         },
         "htmlDataTheme": "light"
       }
@@ -1154,12 +1155,12 @@
       "theme": "dark",
       "fullpage": false,
       "frameSource": "frames/chat-dark-390.html",
-      "bytes": 52613,
+      "bytes": 53153,
       "pngWidth": 390,
       "pngHeight": 844,
-      "sha256": "dc8abc7ef41ae83bb0877e567dd62159c14704bf46e75a72fec38da2c6d2ce4a",
-      "committedSha256": "217919be44814a59d079b16258271d367b84b8836175252b5a2c425fa8e77b74",
-      "realSha256": "dc8abc7ef41ae83bb0877e567dd62159c14704bf46e75a72fec38da2c6d2ce4a",
+      "sha256": "4ee05f7cc76582c2e51d1cd6807a6b80a6c4052f6d1b3de77c7b9ded1c2eb8be",
+      "committedSha256": "dc8abc7ef41ae83bb0877e567dd62159c14704bf46e75a72fec38da2c6d2ce4a",
+      "realSha256": "4ee05f7cc76582c2e51d1cd6807a6b80a6c4052f6d1b3de77c7b9ded1c2eb8be",
       "realFile": "v3-real-app-390-dark-chat.png",
       "byteIdentical": true,
       "regions": {
@@ -1186,14 +1187,14 @@
             0,
             225,
             380,
-            1360
+            1386
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
         "footer": {
           "rect": [
             20,
-            1511,
+            1537,
             340,
             44
           ],
@@ -1202,9 +1203,9 @@
         "composer": {
           "rect": [
             12,
-            698,
+            672,
             356,
-            138
+            164
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
         },
@@ -1214,7 +1215,7 @@
             396,
             172,
             362,
-            1413
+            1439
           ],
           "innerText": ""
         },
@@ -1276,7 +1277,7 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1585
+          "documentHeight": 1611
         },
         "htmlDataTheme": "dark"
       }
@@ -1288,19 +1289,19 @@
       "theme": "light",
       "fullpage": false,
       "frameSource": "frames/chat-light-390-dock-scrolled.html",
-      "bytes": 54576,
+      "bytes": 55228,
       "pngWidth": 390,
       "pngHeight": 844,
-      "sha256": "70b727edf608ae1cbe04c12c109e074a3c299739a124e89228d33c090e57e267",
-      "committedSha256": "04dec2de0b027dd38cf4cf3a6d6462c95c8f6919ca4a6ae33487826d7a89329d",
-      "realSha256": "70b727edf608ae1cbe04c12c109e074a3c299739a124e89228d33c090e57e267",
+      "sha256": "067338e8b5da5e6a030b19752b700b11a7a84e9c947199813b35dda96e71d00b",
+      "committedSha256": "70b727edf608ae1cbe04c12c109e074a3c299739a124e89228d33c090e57e267",
+      "realSha256": "067338e8b5da5e6a030b19752b700b11a7a84e9c947199813b35dda96e71d00b",
       "realFile": "v3-real-app-390-light-dock-scrolled.png",
       "byteIdentical": true,
       "regions": {
         "header": {
           "rect": [
             0,
-            -296,
+            -307,
             380,
             172
           ],
@@ -1309,7 +1310,7 @@
         "nav": {
           "rect": [
             0,
-            -124,
+            -135,
             380,
             53
           ],
@@ -1318,16 +1319,16 @@
         "main": {
           "rect": [
             0,
-            -71,
+            -82,
             380,
-            1360
+            1386
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
         "footer": {
           "rect": [
             20,
-            1215,
+            1230,
             340,
             44
           ],
@@ -1336,9 +1337,9 @@
         "composer": {
           "rect": [
             12,
-            698,
+            672,
             356,
-            138
+            164
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
         },
@@ -1346,9 +1347,9 @@
         "governanceInspector": {
           "rect": [
             396,
-            -124,
+            -135,
             362,
-            1413
+            1439
           ],
           "innerText": ""
         },
@@ -1360,7 +1361,7 @@
         "governanceToggle": {
           "rect": [
             12,
-            -264,
+            -275,
             99,
             44
           ],
@@ -1410,7 +1411,7 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1585
+          "documentHeight": 1611
         },
         "htmlDataTheme": "light"
       }
@@ -1422,19 +1423,19 @@
       "theme": "dark",
       "fullpage": false,
       "frameSource": "frames/chat-dark-390-dock-scrolled.html",
-      "bytes": 55118,
+      "bytes": 55686,
       "pngWidth": 390,
       "pngHeight": 844,
-      "sha256": "d1c4e402e2d0edc59e694e30065652cec25ee918bcaab36e74f331c0698d048f",
-      "committedSha256": "42a8122f821919e0b8d3112a906573f4dbe74e3388314545941a2de95229d50d",
-      "realSha256": "d1c4e402e2d0edc59e694e30065652cec25ee918bcaab36e74f331c0698d048f",
+      "sha256": "1deb9f6f16af2b409871c141c1bc748f7b9ba33e149209891ce54dd15458c556",
+      "committedSha256": "d1c4e402e2d0edc59e694e30065652cec25ee918bcaab36e74f331c0698d048f",
+      "realSha256": "1deb9f6f16af2b409871c141c1bc748f7b9ba33e149209891ce54dd15458c556",
       "realFile": "v3-real-app-390-dark-dock-scrolled.png",
       "byteIdentical": true,
       "regions": {
         "header": {
           "rect": [
             0,
-            -296,
+            -307,
             380,
             172
           ],
@@ -1443,7 +1444,7 @@
         "nav": {
           "rect": [
             0,
-            -124,
+            -135,
             380,
             53
           ],
@@ -1452,16 +1453,16 @@
         "main": {
           "rect": [
             0,
-            -71,
+            -82,
             380,
-            1360
+            1386
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
         "footer": {
           "rect": [
             20,
-            1215,
+            1230,
             340,
             44
           ],
@@ -1470,9 +1471,9 @@
         "composer": {
           "rect": [
             12,
-            698,
+            672,
             356,
-            138
+            164
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
         },
@@ -1480,9 +1481,9 @@
         "governanceInspector": {
           "rect": [
             396,
-            -124,
+            -135,
             362,
-            1413
+            1439
           ],
           "innerText": ""
         },
@@ -1494,7 +1495,7 @@
         "governanceToggle": {
           "rect": [
             12,
-            -264,
+            -275,
             99,
             44
           ],
@@ -1544,7 +1545,7 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1585
+          "documentHeight": 1611
         },
         "htmlDataTheme": "dark"
       }
@@ -1556,19 +1557,19 @@
       "theme": "light",
       "fullpage": false,
       "frameSource": "frames/chat-light-390-dock-end.html",
-      "bytes": 53040,
+      "bytes": 52821,
       "pngWidth": 390,
       "pngHeight": 844,
-      "sha256": "338dc98906b7fcf1c2ff181e5e8a8c558afad1e8fce4222a8a6595868a380f5d",
-      "committedSha256": null,
-      "realSha256": "338dc98906b7fcf1c2ff181e5e8a8c558afad1e8fce4222a8a6595868a380f5d",
+      "sha256": "87a1feb50b2ab2a50767fe0d9732b48659168128609555be61311c66e6d5e2cf",
+      "committedSha256": "338dc98906b7fcf1c2ff181e5e8a8c558afad1e8fce4222a8a6595868a380f5d",
+      "realSha256": "87a1feb50b2ab2a50767fe0d9732b48659168128609555be61311c66e6d5e2cf",
       "realFile": "v3-real-app-390-light-dock-end.png",
       "byteIdentical": true,
       "regions": {
         "header": {
           "rect": [
             0,
-            -741,
+            -767,
             380,
             172
           ],
@@ -1577,7 +1578,7 @@
         "nav": {
           "rect": [
             0,
-            -569,
+            -595,
             380,
             53
           ],
@@ -1586,9 +1587,9 @@
         "main": {
           "rect": [
             0,
-            -516,
+            -542,
             380,
-            1360
+            1386
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
@@ -1604,9 +1605,9 @@
         "composer": {
           "rect": [
             12,
-            615,
+            589,
             356,
-            138
+            164
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
         },
@@ -1614,9 +1615,9 @@
         "governanceInspector": {
           "rect": [
             396,
-            -569,
+            -595,
             362,
-            1413
+            1439
           ],
           "innerText": ""
         },
@@ -1628,7 +1629,7 @@
         "governanceToggle": {
           "rect": [
             12,
-            -709,
+            -735,
             99,
             44
           ],
@@ -1678,7 +1679,7 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1585
+          "documentHeight": 1611
         },
         "htmlDataTheme": "light"
       }
@@ -1690,19 +1691,19 @@
       "theme": "dark",
       "fullpage": false,
       "frameSource": "frames/chat-dark-390-dock-end.html",
-      "bytes": 53196,
+      "bytes": 52967,
       "pngWidth": 390,
       "pngHeight": 844,
-      "sha256": "3802e7e0236618e8ad66b902325f4c0e0b48c0f9284a67189466c4d6441128d2",
-      "committedSha256": null,
-      "realSha256": "3802e7e0236618e8ad66b902325f4c0e0b48c0f9284a67189466c4d6441128d2",
+      "sha256": "cb72d02550db1a0ceec11a4121f56a56832e760c8230790011637259b4be89dc",
+      "committedSha256": "3802e7e0236618e8ad66b902325f4c0e0b48c0f9284a67189466c4d6441128d2",
+      "realSha256": "cb72d02550db1a0ceec11a4121f56a56832e760c8230790011637259b4be89dc",
       "realFile": "v3-real-app-390-dark-dock-end.png",
       "byteIdentical": true,
       "regions": {
         "header": {
           "rect": [
             0,
-            -741,
+            -767,
             380,
             172
           ],
@@ -1711,7 +1712,7 @@
         "nav": {
           "rect": [
             0,
-            -569,
+            -595,
             380,
             53
           ],
@@ -1720,9 +1721,9 @@
         "main": {
           "rect": [
             0,
-            -516,
+            -542,
             380,
-            1360
+            1386
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
@@ -1738,9 +1739,9 @@
         "composer": {
           "rect": [
             12,
-            615,
+            589,
             356,
-            138
+            164
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
         },
@@ -1748,9 +1749,9 @@
         "governanceInspector": {
           "rect": [
             396,
-            -569,
+            -595,
             362,
-            1413
+            1439
           ],
           "innerText": ""
         },
@@ -1762,7 +1763,7 @@
         "governanceToggle": {
           "rect": [
             12,
-            -709,
+            -735,
             99,
             44
           ],
@@ -1812,7 +1813,7 @@
         "viewport": {
           "innerWidth": 390,
           "innerHeight": 844,
-          "documentHeight": 1585
+          "documentHeight": 1611
         },
         "htmlDataTheme": "dark"
       }
@@ -1824,12 +1825,12 @@
       "theme": "light",
       "fullpage": false,
       "frameSource": "frames/chat-light-360.html",
-      "bytes": 40313,
+      "bytes": 39925,
       "pngWidth": 360,
       "pngHeight": 640,
-      "sha256": "ea0fcf56b16f4a42a2e4654845672659d9a3959f482acb9e85c9c5c9198cfc19",
-      "committedSha256": null,
-      "realSha256": "ea0fcf56b16f4a42a2e4654845672659d9a3959f482acb9e85c9c5c9198cfc19",
+      "sha256": "066d0fe52df08815e90ae046a8617a8552c86050b4966212d0f72366bf749367",
+      "committedSha256": "ea0fcf56b16f4a42a2e4654845672659d9a3959f482acb9e85c9c5c9198cfc19",
+      "realSha256": "066d0fe52df08815e90ae046a8617a8552c86050b4966212d0f72366bf749367",
       "realFile": "v3-real-app-360-light-chat.png",
       "byteIdentical": true,
       "regions": {
@@ -1856,14 +1857,14 @@
             0,
             251,
             350,
-            1360
+            1404
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
         "footer": {
           "rect": [
             20,
-            1537,
+            1581,
             310,
             44
           ],
@@ -1872,9 +1873,9 @@
         "composer": {
           "rect": [
             12,
-            494,
+            450,
             326,
-            138
+            182
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
         },
@@ -1884,7 +1885,7 @@
             366,
             198,
             332,
-            1413
+            1457
           ],
           "innerText": ""
         },
@@ -1946,7 +1947,7 @@
         "viewport": {
           "innerWidth": 360,
           "innerHeight": 640,
-          "documentHeight": 1611
+          "documentHeight": 1655
         },
         "htmlDataTheme": "light"
       }
@@ -1958,19 +1959,19 @@
       "theme": "light",
       "fullpage": false,
       "frameSource": "frames/chat-light-360-dock-end.html",
-      "bytes": 39117,
+      "bytes": 38045,
       "pngWidth": 360,
       "pngHeight": 640,
-      "sha256": "557b25a9ae28531b7d43969a1471b712641c2a7932dbf5cc4b399458ba3ed66f",
-      "committedSha256": null,
-      "realSha256": "557b25a9ae28531b7d43969a1471b712641c2a7932dbf5cc4b399458ba3ed66f",
+      "sha256": "af2a9bdb1d39a0cf68036748a305dac4da4309c96c4c824c759e34d7dbd801f7",
+      "committedSha256": "557b25a9ae28531b7d43969a1471b712641c2a7932dbf5cc4b399458ba3ed66f",
+      "realSha256": "af2a9bdb1d39a0cf68036748a305dac4da4309c96c4c824c759e34d7dbd801f7",
       "realFile": "v3-real-app-360-light-dock-end.png",
       "byteIdentical": true,
       "regions": {
         "header": {
           "rect": [
             0,
-            -971,
+            -1015,
             350,
             198
           ],
@@ -1979,7 +1980,7 @@
         "nav": {
           "rect": [
             0,
-            -773,
+            -817,
             350,
             53
           ],
@@ -1988,9 +1989,9 @@
         "main": {
           "rect": [
             0,
-            -720,
+            -764,
             350,
-            1360
+            1404
           ],
           "innerText": "Chat\nTrajectory\nAdd /healthz and run tests\n\n18 element(s) in the retained window\n\nPi 0.87.1 · session-demo-01 · wf-demo-healthz\n\ncompleted · reported, not verified\n\nallow verdict 4\ndeny verdict 1\nreported 3\ndenied result 1\nunresolved result 1\nlossy 1\nAll 18\nDenied (verdict or result) 2\nUnknown or lossy 1\nFailed result 0\n\nAll 18 records in this view are unverified · source: fixture\n\nTURN-01\n18 ELEMENT(S)\n\nUSER\nREPORTED, NOT VERIFIED\n\nAdd a /healthz endpoint to the service and run the test suite.\n\n11:12\nCopy message\nrecord 1\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nI will inspect the service entrypoint, add the endpoint, then run the tests.\n\n11:12\nCopy message\nrecord 2\nR\nread\nservice/entrypoint.go\nrecord 5\nunverified\nALLOW\nreported\nE\nedit\nservice/entrypoint.go\nrecord 8\nunverified\nALLOW\nreported\n$\nbash\ncurl -s https://example.com/healthz\nrecord 11\nunverified\nDENY\ndenied\n$\nbash\ngo test ./...\nrecord 14\nunverified\nALLOW\nreported\n$\nbash\ngo test -race ./...\nrecord 17\nunverified\nALLOW\nunknown\n\nPI\n, ASSISTANT\nREPORTED, NOT VERIFIED\n\nAdded /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.\n\n11:14\nCopy message\nrecord 18\n↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable\n1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable\n\nbuild 0.1.0"
         },
@@ -2006,9 +2007,9 @@
         "composer": {
           "rect": [
             12,
-            411,
+            367,
             326,
-            138
+            182
           ],
           "innerText": "↑\n\nRead-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.\n\nObserved only · no approvals\nPi 0.87.1 · tools unavailable"
         },
@@ -2016,9 +2017,9 @@
         "governanceInspector": {
           "rect": [
             366,
-            -773,
+            -817,
             332,
-            1413
+            1457
           ],
           "innerText": ""
         },
@@ -2030,7 +2031,7 @@
         "governanceToggle": {
           "rect": [
             12,
-            -913,
+            -957,
             99,
             44
           ],
@@ -2080,7 +2081,7 @@
         "viewport": {
           "innerWidth": 360,
           "innerHeight": 640,
-          "documentHeight": 1611
+          "documentHeight": 1655
         },
         "htmlDataTheme": "light"
       }
@@ -2096,7 +2097,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "ae1f2f656bb5a9253a721ae59e89e1d133968747bb16ac35556fdda3340e7d2f",
-      "committedSha256": "b05d16cf8db2af71e69e61af17241d5473643519dcec0fbc52b38672ee82ec5d",
+      "committedSha256": "ae1f2f656bb5a9253a721ae59e89e1d133968747bb16ac35556fdda3340e7d2f",
       "realSha256": "ae1f2f656bb5a9253a721ae59e89e1d133968747bb16ac35556fdda3340e7d2f",
       "realFile": "v3-real-app-1440-light-rail-collapsed.png",
       "byteIdentical": true,
@@ -2230,7 +2231,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "d7a3d63f43523a9fd761301999a0555592a07eecca252b96b39f492e2d9846cb",
-      "committedSha256": "f22fc4a010c923eae488c7a24b157f03012b12115a86f29b3fda6d3704b0a828",
+      "committedSha256": "d7a3d63f43523a9fd761301999a0555592a07eecca252b96b39f492e2d9846cb",
       "realSha256": "d7a3d63f43523a9fd761301999a0555592a07eecca252b96b39f492e2d9846cb",
       "realFile": "v3-real-app-1440-light-inspector-collapsed.png",
       "byteIdentical": true,
@@ -2339,7 +2340,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "99be17bc74f17d591860d4848d952509316b01c5a0c0eae50bc8f31270ef9975",
-      "committedSha256": "840af963e15f6efd19dbaa40683521d4f721e21e9eeaa151bda480a3a51f0b23",
+      "committedSha256": "99be17bc74f17d591860d4848d952509316b01c5a0c0eae50bc8f31270ef9975",
       "realSha256": "99be17bc74f17d591860d4848d952509316b01c5a0c0eae50bc8f31270ef9975",
       "realFile": "v3-real-app-1440-light-rail-inspector-collapsed.png",
       "byteIdentical": true,
@@ -2448,7 +2449,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "061abd93836ef29ba27f2609266d39e05b439220abb8bdc5ccc320f13abd15c5",
-      "committedSha256": "5878707649c329a406966aca1ae669cf69df1767e969cb910b12c1ad8a5d228d",
+      "committedSha256": "061abd93836ef29ba27f2609266d39e05b439220abb8bdc5ccc320f13abd15c5",
       "realSha256": "061abd93836ef29ba27f2609266d39e05b439220abb8bdc5ccc320f13abd15c5",
       "realFile": "v3-real-app-1440-light-gov-provenance.png",
       "byteIdentical": true,
@@ -2582,7 +2583,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "5c8bc0feca5a81db7744cd8b9091e83f281c637031db3b3bc52d86c49b5876aa",
-      "committedSha256": "5ec38887a09760cc1a5bc392dca1cd36c2c2460cee74389d9e5869db0879750e",
+      "committedSha256": "5c8bc0feca5a81db7744cd8b9091e83f281c637031db3b3bc52d86c49b5876aa",
       "realSha256": "5c8bc0feca5a81db7744cd8b9091e83f281c637031db3b3bc52d86c49b5876aa",
       "realFile": "v3-real-app-1440-light-gov-publication.png",
       "byteIdentical": true,
@@ -2716,10 +2717,10 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "c059564bc7b3ced6d60e88fa494e0b3ec347c09204385e23485bb2a9f329b3b1",
-      "committedSha256": "820691125b57f9acc96b7cc2091a3c36cc206c469037fce26994d4547d459fad",
-      "realSha256": "c059564bc7b3ced6d60e88fa494e0b3ec347c09204385e23485bb2a9f329b3b1",
+      "committedSha256": "c059564bc7b3ced6d60e88fa494e0b3ec347c09204385e23485bb2a9f329b3b1",
+      "realSha256": "38aadf92e21cf55b189a9ccee45b3fa3209a15028ed38a29df258041546b4a5e",
       "realFile": "v3-real-app-1440-light-gov-recovery.png",
-      "byteIdentical": true,
+      "byteIdentical": false,
       "regions": {
         "header": {
           "rect": [
@@ -2850,7 +2851,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "45670246d4543ef344caafa0c37572d4bb609ac3086adf0dc4962b4ba1a3039a",
-      "committedSha256": "1f16fe39c7d5f243a4c0a63093f4a87b62a81988dd42862b21347d76dbb95b89",
+      "committedSha256": "45670246d4543ef344caafa0c37572d4bb609ac3086adf0dc4962b4ba1a3039a",
       "realSha256": "45670246d4543ef344caafa0c37572d4bb609ac3086adf0dc4962b4ba1a3039a",
       "realFile": "v3-real-app-1440-light-gov-qualification.png",
       "byteIdentical": true,
@@ -2984,7 +2985,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "d1a1d3a0d3093d0087f378c82d910a6ed32b99afde463280eaaf62fa62d426d2",
-      "committedSha256": "0c80712c027c4e99ec44768278cfa4d0e9f18c622d8545826389c09e873da37a",
+      "committedSha256": "d1a1d3a0d3093d0087f378c82d910a6ed32b99afde463280eaaf62fa62d426d2",
       "realSha256": "d1a1d3a0d3093d0087f378c82d910a6ed32b99afde463280eaaf62fa62d426d2",
       "realFile": "v3-real-app-1440-light-record-bar.png",
       "byteIdentical": true,
@@ -3118,7 +3119,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "bd8956895853fa59493800e249aeed5c8714d30662a3129f62c2aee2d2e4982c",
-      "committedSha256": "8b7515134cd8eba4c665d42be5d8a69fc70bd6629fe2f155ce7117dc369363b6",
+      "committedSha256": "bd8956895853fa59493800e249aeed5c8714d30662a3129f62c2aee2d2e4982c",
       "realSha256": "35a126684f0757d4c0000770d8ac1c3ac89470fc3407ba138325b27789b94449",
       "realFile": "v3-real-app-1440-light-composer-focus.png",
       "byteIdentical": false,
@@ -3252,7 +3253,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "25a866f44dd5d3e10b507172c9894b9aa311b2686519d7343fcb857ff4a2938f",
-      "committedSha256": "ccc001795a6cc2097088a708b604a9f8732b9a12b8fda589ba485e6d3699fccb",
+      "committedSha256": "25a866f44dd5d3e10b507172c9894b9aa311b2686519d7343fcb857ff4a2938f",
       "realSha256": "25a866f44dd5d3e10b507172c9894b9aa311b2686519d7343fcb857ff4a2938f",
       "realFile": "v3-real-app-1440-light-trajectory.png",
       "byteIdentical": true,
@@ -3378,7 +3379,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "19b6d630d8a338bd648e78c90b46a4e55f09f4aac513a24628f44ab630526a9c",
-      "committedSha256": "6c99b0fb695226c62b2ed435f15b68426d719c7d048e1c179a12a75d9cadcc25",
+      "committedSha256": "19b6d630d8a338bd648e78c90b46a4e55f09f4aac513a24628f44ab630526a9c",
       "realSha256": "19b6d630d8a338bd648e78c90b46a4e55f09f4aac513a24628f44ab630526a9c",
       "realFile": "v3-real-app-1440-dark-trajectory.png",
       "byteIdentical": true,
@@ -3504,7 +3505,7 @@
       "pngWidth": 1440,
       "pngHeight": 900,
       "sha256": "82b0598f1ca78f0fa2ed7c2cd256b20d6067a56cced30f84b3466ed873ddba84",
-      "committedSha256": "9c80401494841b6aaac5e615b298ca7603d0a7f3e812990ea5bcd09fb45b82a2",
+      "committedSha256": "82b0598f1ca78f0fa2ed7c2cd256b20d6067a56cced30f84b3466ed873ddba84",
       "realSha256": "82b0598f1ca78f0fa2ed7c2cd256b20d6067a56cced30f84b3466ed873ddba84",
       "realFile": "v3-real-app-1440-light-trajectory-selected.png",
       "byteIdentical": true,
@@ -5354,13 +5355,13 @@
                 0,
                 225,
                 380,
-                1360
+                1386
               ],
               "mock": [
                 0,
                 225,
                 380,
-                1360
+                1386
               ],
               "equal": true
             },
@@ -5375,13 +5376,13 @@
             "rect": {
               "real": [
                 20,
-                1511,
+                1537,
                 340,
                 44
               ],
               "mock": [
                 20,
-                1511,
+                1537,
                 340,
                 44
               ],
@@ -5398,15 +5399,15 @@
             "rect": {
               "real": [
                 12,
-                698,
+                672,
                 356,
-                138
+                164
               ],
               "mock": [
                 12,
-                698,
+                672,
                 356,
-                138
+                164
               ],
               "equal": true
             },
@@ -5424,13 +5425,13 @@
                 396,
                 172,
                 362,
-                1413
+                1439
               ],
               "mock": [
                 396,
                 172,
                 362,
-                1413
+                1439
               ],
               "equal": true
             },
@@ -5561,12 +5562,12 @@
           "real": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           },
           "mock": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           }
         }
       },
@@ -5626,13 +5627,13 @@
                 0,
                 225,
                 380,
-                1360
+                1386
               ],
               "mock": [
                 0,
                 225,
                 380,
-                1360
+                1386
               ],
               "equal": true
             },
@@ -5647,13 +5648,13 @@
             "rect": {
               "real": [
                 20,
-                1511,
+                1537,
                 340,
                 44
               ],
               "mock": [
                 20,
-                1511,
+                1537,
                 340,
                 44
               ],
@@ -5670,15 +5671,15 @@
             "rect": {
               "real": [
                 12,
-                698,
+                672,
                 356,
-                138
+                164
               ],
               "mock": [
                 12,
-                698,
+                672,
                 356,
-                138
+                164
               ],
               "equal": true
             },
@@ -5696,13 +5697,13 @@
                 396,
                 172,
                 362,
-                1413
+                1439
               ],
               "mock": [
                 396,
                 172,
                 362,
-                1413
+                1439
               ],
               "equal": true
             },
@@ -5833,12 +5834,12 @@
           "real": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           },
           "mock": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           }
         }
       },
@@ -5898,13 +5899,13 @@
                 0,
                 225,
                 380,
-                1360
+                1386
               ],
               "mock": [
                 0,
                 225,
                 380,
-                1360
+                1386
               ],
               "equal": true
             },
@@ -5919,13 +5920,13 @@
             "rect": {
               "real": [
                 20,
-                1511,
+                1537,
                 340,
                 44
               ],
               "mock": [
                 20,
-                1511,
+                1537,
                 340,
                 44
               ],
@@ -5942,15 +5943,15 @@
             "rect": {
               "real": [
                 12,
-                698,
+                672,
                 356,
-                138
+                164
               ],
               "mock": [
                 12,
-                698,
+                672,
                 356,
-                138
+                164
               ],
               "equal": true
             },
@@ -5968,13 +5969,13 @@
                 396,
                 172,
                 362,
-                1413
+                1439
               ],
               "mock": [
                 396,
                 172,
                 362,
-                1413
+                1439
               ],
               "equal": true
             },
@@ -6105,12 +6106,12 @@
           "real": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           },
           "mock": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           }
         }
       },
@@ -6122,13 +6123,13 @@
             "rect": {
               "real": [
                 0,
-                -296,
+                -307,
                 380,
                 172
               ],
               "mock": [
                 0,
-                -296,
+                -307,
                 380,
                 172
               ],
@@ -6145,13 +6146,13 @@
             "rect": {
               "real": [
                 0,
-                -124,
+                -135,
                 380,
                 53
               ],
               "mock": [
                 0,
-                -124,
+                -135,
                 380,
                 53
               ],
@@ -6168,15 +6169,15 @@
             "rect": {
               "real": [
                 0,
-                -71,
+                -82,
                 380,
-                1360
+                1386
               ],
               "mock": [
                 0,
-                -71,
+                -82,
                 380,
-                1360
+                1386
               ],
               "equal": true
             },
@@ -6191,13 +6192,13 @@
             "rect": {
               "real": [
                 20,
-                1215,
+                1230,
                 340,
                 44
               ],
               "mock": [
                 20,
-                1215,
+                1230,
                 340,
                 44
               ],
@@ -6214,15 +6215,15 @@
             "rect": {
               "real": [
                 12,
-                698,
+                672,
                 356,
-                138
+                164
               ],
               "mock": [
                 12,
-                698,
+                672,
                 356,
-                138
+                164
               ],
               "equal": true
             },
@@ -6238,15 +6239,15 @@
             "rect": {
               "real": [
                 396,
-                -124,
+                -135,
                 362,
-                1413
+                1439
               ],
               "mock": [
                 396,
-                -124,
+                -135,
                 362,
-                1413
+                1439
               ],
               "equal": true
             },
@@ -6262,7 +6263,7 @@
           "real": {
             "rect": [
               12,
-              -264,
+              -275,
               99,
               44
             ],
@@ -6271,7 +6272,7 @@
           "mock": {
             "rect": [
               12,
-              -264,
+              -275,
               99,
               44
             ],
@@ -6377,12 +6378,12 @@
           "real": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           },
           "mock": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           }
         }
       },
@@ -6394,13 +6395,13 @@
             "rect": {
               "real": [
                 0,
-                -296,
+                -307,
                 380,
                 172
               ],
               "mock": [
                 0,
-                -296,
+                -307,
                 380,
                 172
               ],
@@ -6417,13 +6418,13 @@
             "rect": {
               "real": [
                 0,
-                -124,
+                -135,
                 380,
                 53
               ],
               "mock": [
                 0,
-                -124,
+                -135,
                 380,
                 53
               ],
@@ -6440,15 +6441,15 @@
             "rect": {
               "real": [
                 0,
-                -71,
+                -82,
                 380,
-                1360
+                1386
               ],
               "mock": [
                 0,
-                -71,
+                -82,
                 380,
-                1360
+                1386
               ],
               "equal": true
             },
@@ -6463,13 +6464,13 @@
             "rect": {
               "real": [
                 20,
-                1215,
+                1230,
                 340,
                 44
               ],
               "mock": [
                 20,
-                1215,
+                1230,
                 340,
                 44
               ],
@@ -6486,15 +6487,15 @@
             "rect": {
               "real": [
                 12,
-                698,
+                672,
                 356,
-                138
+                164
               ],
               "mock": [
                 12,
-                698,
+                672,
                 356,
-                138
+                164
               ],
               "equal": true
             },
@@ -6510,15 +6511,15 @@
             "rect": {
               "real": [
                 396,
-                -124,
+                -135,
                 362,
-                1413
+                1439
               ],
               "mock": [
                 396,
-                -124,
+                -135,
                 362,
-                1413
+                1439
               ],
               "equal": true
             },
@@ -6534,7 +6535,7 @@
           "real": {
             "rect": [
               12,
-              -264,
+              -275,
               99,
               44
             ],
@@ -6543,7 +6544,7 @@
           "mock": {
             "rect": [
               12,
-              -264,
+              -275,
               99,
               44
             ],
@@ -6649,12 +6650,12 @@
           "real": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           },
           "mock": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           }
         }
       },
@@ -6666,13 +6667,13 @@
             "rect": {
               "real": [
                 0,
-                -741,
+                -767,
                 380,
                 172
               ],
               "mock": [
                 0,
-                -741,
+                -767,
                 380,
                 172
               ],
@@ -6689,13 +6690,13 @@
             "rect": {
               "real": [
                 0,
-                -569,
+                -595,
                 380,
                 53
               ],
               "mock": [
                 0,
-                -569,
+                -595,
                 380,
                 53
               ],
@@ -6712,15 +6713,15 @@
             "rect": {
               "real": [
                 0,
-                -516,
+                -542,
                 380,
-                1360
+                1386
               ],
               "mock": [
                 0,
-                -516,
+                -542,
                 380,
-                1360
+                1386
               ],
               "equal": true
             },
@@ -6758,15 +6759,15 @@
             "rect": {
               "real": [
                 12,
-                615,
+                589,
                 356,
-                138
+                164
               ],
               "mock": [
                 12,
-                615,
+                589,
                 356,
-                138
+                164
               ],
               "equal": true
             },
@@ -6782,15 +6783,15 @@
             "rect": {
               "real": [
                 396,
-                -569,
+                -595,
                 362,
-                1413
+                1439
               ],
               "mock": [
                 396,
-                -569,
+                -595,
                 362,
-                1413
+                1439
               ],
               "equal": true
             },
@@ -6806,7 +6807,7 @@
           "real": {
             "rect": [
               12,
-              -709,
+              -735,
               99,
               44
             ],
@@ -6815,7 +6816,7 @@
           "mock": {
             "rect": [
               12,
-              -709,
+              -735,
               99,
               44
             ],
@@ -6921,12 +6922,12 @@
           "real": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           },
           "mock": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           }
         }
       },
@@ -6938,13 +6939,13 @@
             "rect": {
               "real": [
                 0,
-                -741,
+                -767,
                 380,
                 172
               ],
               "mock": [
                 0,
-                -741,
+                -767,
                 380,
                 172
               ],
@@ -6961,13 +6962,13 @@
             "rect": {
               "real": [
                 0,
-                -569,
+                -595,
                 380,
                 53
               ],
               "mock": [
                 0,
-                -569,
+                -595,
                 380,
                 53
               ],
@@ -6984,15 +6985,15 @@
             "rect": {
               "real": [
                 0,
-                -516,
+                -542,
                 380,
-                1360
+                1386
               ],
               "mock": [
                 0,
-                -516,
+                -542,
                 380,
-                1360
+                1386
               ],
               "equal": true
             },
@@ -7030,15 +7031,15 @@
             "rect": {
               "real": [
                 12,
-                615,
+                589,
                 356,
-                138
+                164
               ],
               "mock": [
                 12,
-                615,
+                589,
                 356,
-                138
+                164
               ],
               "equal": true
             },
@@ -7054,15 +7055,15 @@
             "rect": {
               "real": [
                 396,
-                -569,
+                -595,
                 362,
-                1413
+                1439
               ],
               "mock": [
                 396,
-                -569,
+                -595,
                 362,
-                1413
+                1439
               ],
               "equal": true
             },
@@ -7078,7 +7079,7 @@
           "real": {
             "rect": [
               12,
-              -709,
+              -735,
               99,
               44
             ],
@@ -7087,7 +7088,7 @@
           "mock": {
             "rect": [
               12,
-              -709,
+              -735,
               99,
               44
             ],
@@ -7193,12 +7194,12 @@
           "real": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           },
           "mock": {
             "innerWidth": 390,
             "innerHeight": 844,
-            "documentHeight": 1585
+            "documentHeight": 1611
           }
         }
       },
@@ -7258,13 +7259,13 @@
                 0,
                 251,
                 350,
-                1360
+                1404
               ],
               "mock": [
                 0,
                 251,
                 350,
-                1360
+                1404
               ],
               "equal": true
             },
@@ -7279,13 +7280,13 @@
             "rect": {
               "real": [
                 20,
-                1537,
+                1581,
                 310,
                 44
               ],
               "mock": [
                 20,
-                1537,
+                1581,
                 310,
                 44
               ],
@@ -7302,15 +7303,15 @@
             "rect": {
               "real": [
                 12,
-                494,
+                450,
                 326,
-                138
+                182
               ],
               "mock": [
                 12,
-                494,
+                450,
                 326,
-                138
+                182
               ],
               "equal": true
             },
@@ -7328,13 +7329,13 @@
                 366,
                 198,
                 332,
-                1413
+                1457
               ],
               "mock": [
                 366,
                 198,
                 332,
-                1413
+                1457
               ],
               "equal": true
             },
@@ -7465,12 +7466,12 @@
           "real": {
             "innerWidth": 360,
             "innerHeight": 640,
-            "documentHeight": 1611
+            "documentHeight": 1655
           },
           "mock": {
             "innerWidth": 360,
             "innerHeight": 640,
-            "documentHeight": 1611
+            "documentHeight": 1655
           }
         }
       },
@@ -7482,13 +7483,13 @@
             "rect": {
               "real": [
                 0,
-                -971,
+                -1015,
                 350,
                 198
               ],
               "mock": [
                 0,
-                -971,
+                -1015,
                 350,
                 198
               ],
@@ -7505,13 +7506,13 @@
             "rect": {
               "real": [
                 0,
-                -773,
+                -817,
                 350,
                 53
               ],
               "mock": [
                 0,
-                -773,
+                -817,
                 350,
                 53
               ],
@@ -7528,15 +7529,15 @@
             "rect": {
               "real": [
                 0,
-                -720,
+                -764,
                 350,
-                1360
+                1404
               ],
               "mock": [
                 0,
-                -720,
+                -764,
                 350,
-                1360
+                1404
               ],
               "equal": true
             },
@@ -7574,15 +7575,15 @@
             "rect": {
               "real": [
                 12,
-                411,
+                367,
                 326,
-                138
+                182
               ],
               "mock": [
                 12,
-                411,
+                367,
                 326,
-                138
+                182
               ],
               "equal": true
             },
@@ -7598,15 +7599,15 @@
             "rect": {
               "real": [
                 366,
-                -773,
+                -817,
                 332,
-                1413
+                1457
               ],
               "mock": [
                 366,
-                -773,
+                -817,
                 332,
-                1413
+                1457
               ],
               "equal": true
             },
@@ -7622,7 +7623,7 @@
           "real": {
             "rect": [
               12,
-              -913,
+              -957,
               99,
               44
             ],
@@ -7631,7 +7632,7 @@
           "mock": {
             "rect": [
               12,
-              -913,
+              -957,
               99,
               44
             ],
@@ -7737,12 +7738,12 @@
           "real": {
             "innerWidth": 360,
             "innerHeight": 640,
-            "documentHeight": 1611
+            "documentHeight": 1655
           },
           "mock": {
             "innerWidth": 360,
             "innerHeight": 640,
-            "documentHeight": 1611
+            "documentHeight": 1655
           }
         }
       },
@@ -11005,22 +11006,22 @@
       "live": "v3-real-app-390-light-chat.png",
       "mock": "v3-mockup-390-light.png",
       "comparedFile": "work/chat-light-390-comparison.png",
-      "comparedSha256": "520b46e5d5e3359b3dcb8745fb6ce40b146230c026bd51f379c3dfe08f117e61",
-      "liveSha256": "520b46e5d5e3359b3dcb8745fb6ce40b146230c026bd51f379c3dfe08f117e61"
+      "comparedSha256": "9a652cc519ba527d7305ac1a8ad9e68c15d9fbfd2346de75a8a67564133ca43e",
+      "liveSha256": "9a652cc519ba527d7305ac1a8ad9e68c15d9fbfd2346de75a8a67564133ca43e"
     },
     "chat-light-390-fullpage": {
       "size": {
         "live": [
           380,
-          1585
+          1611
         ],
         "mock": [
           380,
-          1585
+          1611
         ]
       },
       "differingPixels": 0,
-      "totalPixels": 602300,
+      "totalPixels": 612180,
       "percent": 0,
       "bbox": null,
       "maxChannelDelta": 0,
@@ -11028,8 +11029,8 @@
       "live": "v3-real-app-390-light-chat-fullpage.png",
       "mock": "v3-mockup-390-light-fullpage.png",
       "comparedFile": "work/chat-light-390-fullpage-comparison.png",
-      "comparedSha256": "b3d3fa2bd91e6c755e962209a0ba2e6b7d73b9b3f0b244bdf9e17f6ac0733237",
-      "liveSha256": "b3d3fa2bd91e6c755e962209a0ba2e6b7d73b9b3f0b244bdf9e17f6ac0733237"
+      "comparedSha256": "91c5a37bef9fccb4056811c2cce8bec41762f8294a1cfae911c36183724f725c",
+      "liveSha256": "91c5a37bef9fccb4056811c2cce8bec41762f8294a1cfae911c36183724f725c"
     },
     "chat-dark-390": {
       "size": {
@@ -11051,8 +11052,8 @@
       "live": "v3-real-app-390-dark-chat.png",
       "mock": "v3-mockup-390-dark.png",
       "comparedFile": "work/chat-dark-390-comparison.png",
-      "comparedSha256": "dc8abc7ef41ae83bb0877e567dd62159c14704bf46e75a72fec38da2c6d2ce4a",
-      "liveSha256": "dc8abc7ef41ae83bb0877e567dd62159c14704bf46e75a72fec38da2c6d2ce4a"
+      "comparedSha256": "4ee05f7cc76582c2e51d1cd6807a6b80a6c4052f6d1b3de77c7b9ded1c2eb8be",
+      "liveSha256": "4ee05f7cc76582c2e51d1cd6807a6b80a6c4052f6d1b3de77c7b9ded1c2eb8be"
     },
     "chat-light-390-dock-scrolled": {
       "size": {
@@ -11074,8 +11075,8 @@
       "live": "v3-real-app-390-light-dock-scrolled.png",
       "mock": "v3-mockup-390-light-dock-scrolled.png",
       "comparedFile": "work/chat-light-390-dock-scrolled-comparison.png",
-      "comparedSha256": "70b727edf608ae1cbe04c12c109e074a3c299739a124e89228d33c090e57e267",
-      "liveSha256": "70b727edf608ae1cbe04c12c109e074a3c299739a124e89228d33c090e57e267"
+      "comparedSha256": "067338e8b5da5e6a030b19752b700b11a7a84e9c947199813b35dda96e71d00b",
+      "liveSha256": "067338e8b5da5e6a030b19752b700b11a7a84e9c947199813b35dda96e71d00b"
     },
     "chat-dark-390-dock-scrolled": {
       "size": {
@@ -11097,8 +11098,8 @@
       "live": "v3-real-app-390-dark-dock-scrolled.png",
       "mock": "v3-mockup-390-dark-dock-scrolled.png",
       "comparedFile": "work/chat-dark-390-dock-scrolled-comparison.png",
-      "comparedSha256": "d1c4e402e2d0edc59e694e30065652cec25ee918bcaab36e74f331c0698d048f",
-      "liveSha256": "d1c4e402e2d0edc59e694e30065652cec25ee918bcaab36e74f331c0698d048f"
+      "comparedSha256": "1deb9f6f16af2b409871c141c1bc748f7b9ba33e149209891ce54dd15458c556",
+      "liveSha256": "1deb9f6f16af2b409871c141c1bc748f7b9ba33e149209891ce54dd15458c556"
     },
     "chat-light-390-dock-end": {
       "size": {
@@ -11120,8 +11121,8 @@
       "live": "v3-real-app-390-light-dock-end.png",
       "mock": "v3-mockup-390-light-dock-end.png",
       "comparedFile": "work/chat-light-390-dock-end-comparison.png",
-      "comparedSha256": "338dc98906b7fcf1c2ff181e5e8a8c558afad1e8fce4222a8a6595868a380f5d",
-      "liveSha256": "338dc98906b7fcf1c2ff181e5e8a8c558afad1e8fce4222a8a6595868a380f5d"
+      "comparedSha256": "87a1feb50b2ab2a50767fe0d9732b48659168128609555be61311c66e6d5e2cf",
+      "liveSha256": "87a1feb50b2ab2a50767fe0d9732b48659168128609555be61311c66e6d5e2cf"
     },
     "chat-dark-390-dock-end": {
       "size": {
@@ -11143,8 +11144,8 @@
       "live": "v3-real-app-390-dark-dock-end.png",
       "mock": "v3-mockup-390-dark-dock-end.png",
       "comparedFile": "work/chat-dark-390-dock-end-comparison.png",
-      "comparedSha256": "3802e7e0236618e8ad66b902325f4c0e0b48c0f9284a67189466c4d6441128d2",
-      "liveSha256": "3802e7e0236618e8ad66b902325f4c0e0b48c0f9284a67189466c4d6441128d2"
+      "comparedSha256": "cb72d02550db1a0ceec11a4121f56a56832e760c8230790011637259b4be89dc",
+      "liveSha256": "cb72d02550db1a0ceec11a4121f56a56832e760c8230790011637259b4be89dc"
     },
     "chat-light-360": {
       "size": {
@@ -11166,8 +11167,8 @@
       "live": "v3-real-app-360-light-chat.png",
       "mock": "v3-mockup-360-light.png",
       "comparedFile": "work/chat-light-360-comparison.png",
-      "comparedSha256": "ea0fcf56b16f4a42a2e4654845672659d9a3959f482acb9e85c9c5c9198cfc19",
-      "liveSha256": "ea0fcf56b16f4a42a2e4654845672659d9a3959f482acb9e85c9c5c9198cfc19"
+      "comparedSha256": "066d0fe52df08815e90ae046a8617a8552c86050b4966212d0f72366bf749367",
+      "liveSha256": "066d0fe52df08815e90ae046a8617a8552c86050b4966212d0f72366bf749367"
     },
     "chat-light-360-dock-end": {
       "size": {
@@ -11189,8 +11190,8 @@
       "live": "v3-real-app-360-light-dock-end.png",
       "mock": "v3-mockup-360-light-dock-end.png",
       "comparedFile": "work/chat-light-360-dock-end-comparison.png",
-      "comparedSha256": "557b25a9ae28531b7d43969a1471b712641c2a7932dbf5cc4b399458ba3ed66f",
-      "liveSha256": "557b25a9ae28531b7d43969a1471b712641c2a7932dbf5cc4b399458ba3ed66f"
+      "comparedSha256": "af2a9bdb1d39a0cf68036748a305dac4da4309c96c4c824c759e34d7dbd801f7",
+      "liveSha256": "af2a9bdb1d39a0cf68036748a305dac4da4309c96c4c824c759e34d7dbd801f7"
     },
     "rail-collapsed-light-1440": {
       "size": {
@@ -11318,17 +11319,37 @@
           900
         ]
       },
-      "differingPixels": 0,
+      "differingPixels": 5,
       "totalPixels": 1296000,
       "percent": 0,
-      "bbox": null,
-      "maxChannelDelta": 0,
-      "hotCells": [],
+      "bbox": [
+        206,
+        845,
+        208,
+        846
+      ],
+      "maxChannelDelta": 2,
+      "hotCells": [
+        {
+          "box": [
+            200,
+            840,
+            240,
+            880
+          ],
+          "pixels": 5
+        }
+      ],
       "live": "v3-real-app-1440-light-gov-recovery.png",
       "mock": "v3-mockup-1440-light-gov-recovery.png",
       "comparedFile": "work/gov-recovery-light-1440-comparison.png",
       "comparedSha256": "c059564bc7b3ced6d60e88fa494e0b3ec347c09204385e23485bb2a9f329b3b1",
-      "liveSha256": "c059564bc7b3ced6d60e88fa494e0b3ec347c09204385e23485bb2a9f329b3b1"
+      "liveSha256": "38aadf92e21cf55b189a9ccee45b3fa3209a15028ed38a29df258041546b4a5e",
+      "overlay": {
+        "file": "v3-diff-gov-recovery-light-1440.png",
+        "bytes": 161973,
+        "sha256": "cb8d620951ad18854df3bea224bb1a9e2de1cbb6d6ba06a2ba8bc4bd0d651537"
+      }
     },
     "gov-qualification-light-1440": {
       "size": {
@@ -11491,13 +11512,13 @@
   },
   "wholePage": {
     "file": "v3-mockup-page-1440-light.png",
-    "bytes": 701693,
+    "bytes": 703498,
     "pngSize": {
       "width": 1430,
-      "height": 6152
+      "height": 6151
     },
-    "sha256": "c37b13e42e5239e752e7ebd6441a5f4613401c44fe56c94f5d58333d05c37046",
-    "committedSha256": null
+    "sha256": "475aad588ed9157b2756fffb68a729bb674e45fac8fb3d9bc936afc82894f087",
+    "committedSha256": "c37b13e42e5239e752e7ebd6441a5f4613401c44fe56c94f5d58333d05c37046"
   },
   "consoleErrorsAndWarnings": [],
   "requests": {
@@ -11568,11 +11589,11 @@
     }
   ],
   "gateway": {
-    "url": "http://127.0.0.1:8895",
-    "binary": "/home/jeli2k/tbwc-gw-m3c",
-    "binarySha256": "658041d7f4020b7da7ec187e1bcfaf57b633445f85054ec630702c338bb10311",
-    "built": "go build -mod=readonly in WSL (go1.27.1 linux/amd64) from extensions/webchat at f59f491, --demo",
-    "started": "Start-Process wsl.exe -ArgumentList -d,Ubuntu,-e,/home/jeli2k/tbwc-gw-m3c,--demo,--addr,127.0.0.1:8895 -WindowStyle Hidden"
+    "url": "http://127.0.0.1:19141",
+    "binary": "/home/jeli2k/tbwc-gw-fx4",
+    "binarySha256": "fb544902a942a787c63ba48051797aa075d8bc45df0575c60c553d943045ccbf",
+    "built": "go build -mod=readonly in WSL (go1.27.1 linux/amd64) from extensions/webchat at b7ec7e0 plus the uncommitted FX4 working tree, --demo",
+    "started": "Start-Process wsl.exe -ArgumentList -d,Ubuntu,-e,/home/jeli2k/tbwc-gw-fx4,--demo,--addr,127.0.0.1:19141 -WindowStyle Hidden"
   },
   "captureEnv": {
     "TBWC_CHROME_EXTRA": "--disable-lcd-text",
@@ -11582,11 +11603,10 @@
     "script": "tabs-m3c.mjs",
     "summary": {
       "checks": 37,
-      "passed": 32,
+      "passed": 33,
       "failed": [
         "tab provenance: frame matches the live gov-provenance-light-1440 capture",
         "tab publication: frame matches the live gov-publication-light-1440 capture",
-        "tab recovery: frame matches the live gov-recovery-light-1440 capture",
         "tab qualification: frame matches the live gov-qualification-light-1440 capture",
         "tab decisions: frame matches the live chat-light-1440 capture"
       ]
@@ -11747,16 +11767,11 @@
       },
       {
         "name": "tab recovery: frame matches the live gov-recovery-light-1440 capture",
-        "ok": false,
+        "ok": true,
         "detail": {
-          "byteIdentical": false,
-          "differingPixels": 5,
-          "bbox": [
-            206,
-            845,
-            208,
-            846
-          ]
+          "byteIdentical": true,
+          "differingPixels": 0,
+          "bbox": null
         }
       },
       {
@@ -11967,16 +11982,11 @@
       },
       "recovery": {
         "live": "v3-real-app-1440-light-gov-recovery.png",
-        "liveSha256": "c059564bc7b3ced6d60e88fa494e0b3ec347c09204385e23485bb2a9f329b3b1",
+        "liveSha256": "38aadf92e21cf55b189a9ccee45b3fa3209a15028ed38a29df258041546b4a5e",
         "tabFrameSha256": "38aadf92e21cf55b189a9ccee45b3fa3209a15028ed38a29df258041546b4a5e",
-        "byteIdentical": false,
-        "count": 5,
-        "bbox": [
-          206,
-          845,
-          208,
-          846
-        ],
+        "byteIdentical": true,
+        "count": 0,
+        "bbox": null,
         "size": [
           1440,
           900,
@@ -12058,9 +12068,9 @@
         "ok": true,
         "detail": {
           "policy": [
-            "sha256-Hw9Oowybx2ySdJFmeDpr/qzGm8dfT7IzcizBosqMqU4="
+            "sha256-YL+GT/clhhEGxu8jH3mKp300oqgH+sKDBfpyK/d8XbA="
           ],
-          "computed": "sha256-Hw9Oowybx2ySdJFmeDpr/qzGm8dfT7IzcizBosqMqU4="
+          "computed": "sha256-YL+GT/clhhEGxu8jH3mKp300oqgH+sKDBfpyK/d8XbA="
         }
       },
       {
@@ -12233,13 +12243,18 @@
   "files": [
     {
       "file": "extensions/webchat/docs/webchat/mockups/tbound-redesign-v3.html",
-      "bytes": 859833,
-      "sha256": "8b4b99798e90f640d5c192e3244fa0b4eb3d6118ad76211c6b61982a847ca72c"
+      "bytes": 859982,
+      "sha256": "04851428752a649ecef8444ce619350c72919bd27338950493bf3f8acc1bd9bb"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-diff-composer-focus-light-1440.png",
       "bytes": 167922,
       "sha256": "82674dd65088fa66ae0ef9138b54ee264dcbb8e856e05a9eabba079a59292c05"
+    },
+    {
+      "file": "extensions/webchat/docs/webchat/qa/v3-diff-gov-recovery-light-1440.png",
+      "bytes": 161973,
+      "sha256": "cb8d620951ad18854df3bea224bb1a9e2de1cbb6d6ba06a2ba8bc4bd0d651537"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-1024-dark.png",
@@ -12308,48 +12323,48 @@
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-360-light-dock-end.png",
-      "bytes": 39117,
-      "sha256": "557b25a9ae28531b7d43969a1471b712641c2a7932dbf5cc4b399458ba3ed66f"
+      "bytes": 38045,
+      "sha256": "af2a9bdb1d39a0cf68036748a305dac4da4309c96c4c824c759e34d7dbd801f7"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-360-light.png",
-      "bytes": 40313,
-      "sha256": "ea0fcf56b16f4a42a2e4654845672659d9a3959f482acb9e85c9c5c9198cfc19"
+      "bytes": 39925,
+      "sha256": "066d0fe52df08815e90ae046a8617a8552c86050b4966212d0f72366bf749367"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-390-dark-dock-end.png",
-      "bytes": 53196,
-      "sha256": "3802e7e0236618e8ad66b902325f4c0e0b48c0f9284a67189466c4d6441128d2"
+      "bytes": 52967,
+      "sha256": "cb72d02550db1a0ceec11a4121f56a56832e760c8230790011637259b4be89dc"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-390-dark-dock-scrolled.png",
-      "bytes": 55118,
-      "sha256": "d1c4e402e2d0edc59e694e30065652cec25ee918bcaab36e74f331c0698d048f"
+      "bytes": 55686,
+      "sha256": "1deb9f6f16af2b409871c141c1bc748f7b9ba33e149209891ce54dd15458c556"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-390-dark.png",
-      "bytes": 52613,
-      "sha256": "dc8abc7ef41ae83bb0877e567dd62159c14704bf46e75a72fec38da2c6d2ce4a"
+      "bytes": 53153,
+      "sha256": "4ee05f7cc76582c2e51d1cd6807a6b80a6c4052f6d1b3de77c7b9ded1c2eb8be"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-390-light-dock-end.png",
-      "bytes": 53040,
-      "sha256": "338dc98906b7fcf1c2ff181e5e8a8c558afad1e8fce4222a8a6595868a380f5d"
+      "bytes": 52821,
+      "sha256": "87a1feb50b2ab2a50767fe0d9732b48659168128609555be61311c66e6d5e2cf"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-390-light-dock-scrolled.png",
-      "bytes": 54576,
-      "sha256": "70b727edf608ae1cbe04c12c109e074a3c299739a124e89228d33c090e57e267"
+      "bytes": 55228,
+      "sha256": "067338e8b5da5e6a030b19752b700b11a7a84e9c947199813b35dda96e71d00b"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-390-light-fullpage.png",
-      "bytes": 92015,
-      "sha256": "b3d3fa2bd91e6c755e962209a0ba2e6b7d73b9b3f0b244bdf9e17f6ac0733237"
+      "bytes": 91405,
+      "sha256": "91c5a37bef9fccb4056811c2cce8bec41762f8294a1cfae911c36183724f725c"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-390-light.png",
-      "bytes": 51795,
-      "sha256": "520b46e5d5e3359b3dcb8745fb6ce40b146230c026bd51f379c3dfe08f117e61"
+      "bytes": 52402,
+      "sha256": "9a652cc519ba527d7305ac1a8ad9e68c15d9fbfd2346de75a8a67564133ca43e"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-drawer-1024-dark.png",
@@ -12363,8 +12378,8 @@
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-page-1440-light.png",
-      "bytes": 701693,
-      "sha256": "c37b13e42e5239e752e7ebd6441a5f4613401c44fe56c94f5d58333d05c37046"
+      "bytes": 703498,
+      "sha256": "475aad588ed9157b2756fffb68a729bb674e45fac8fb3d9bc936afc82894f087"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-mockup-trajectory-1440-dark.png",
@@ -12438,8 +12453,8 @@
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-1440-light-gov-recovery.png",
-      "bytes": 132658,
-      "sha256": "c059564bc7b3ced6d60e88fa494e0b3ec347c09204385e23485bb2a9f329b3b1"
+      "bytes": 132659,
+      "sha256": "38aadf92e21cf55b189a9ccee45b3fa3209a15028ed38a29df258041546b4a5e"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-1440-light-inspector-collapsed.png",
@@ -12473,72 +12488,72 @@
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-360-light-chat.png",
-      "bytes": 40313,
-      "sha256": "ea0fcf56b16f4a42a2e4654845672659d9a3959f482acb9e85c9c5c9198cfc19"
+      "bytes": 39925,
+      "sha256": "066d0fe52df08815e90ae046a8617a8552c86050b4966212d0f72366bf749367"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-360-light-dock-end.png",
-      "bytes": 39117,
-      "sha256": "557b25a9ae28531b7d43969a1471b712641c2a7932dbf5cc4b399458ba3ed66f"
+      "bytes": 38045,
+      "sha256": "af2a9bdb1d39a0cf68036748a305dac4da4309c96c4c824c759e34d7dbd801f7"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-390-dark-chat.png",
-      "bytes": 52613,
-      "sha256": "dc8abc7ef41ae83bb0877e567dd62159c14704bf46e75a72fec38da2c6d2ce4a"
+      "bytes": 53153,
+      "sha256": "4ee05f7cc76582c2e51d1cd6807a6b80a6c4052f6d1b3de77c7b9ded1c2eb8be"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-390-dark-dock-end.png",
-      "bytes": 53196,
-      "sha256": "3802e7e0236618e8ad66b902325f4c0e0b48c0f9284a67189466c4d6441128d2"
+      "bytes": 52967,
+      "sha256": "cb72d02550db1a0ceec11a4121f56a56832e760c8230790011637259b4be89dc"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-390-dark-dock-scrolled.png",
-      "bytes": 55118,
-      "sha256": "d1c4e402e2d0edc59e694e30065652cec25ee918bcaab36e74f331c0698d048f"
+      "bytes": 55686,
+      "sha256": "1deb9f6f16af2b409871c141c1bc748f7b9ba33e149209891ce54dd15458c556"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-390-light-chat-fullpage.png",
-      "bytes": 92015,
-      "sha256": "b3d3fa2bd91e6c755e962209a0ba2e6b7d73b9b3f0b244bdf9e17f6ac0733237"
+      "bytes": 91405,
+      "sha256": "91c5a37bef9fccb4056811c2cce8bec41762f8294a1cfae911c36183724f725c"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-390-light-chat.png",
-      "bytes": 51795,
-      "sha256": "520b46e5d5e3359b3dcb8745fb6ce40b146230c026bd51f379c3dfe08f117e61"
+      "bytes": 52402,
+      "sha256": "9a652cc519ba527d7305ac1a8ad9e68c15d9fbfd2346de75a8a67564133ca43e"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-390-light-dock-end.png",
-      "bytes": 53040,
-      "sha256": "338dc98906b7fcf1c2ff181e5e8a8c558afad1e8fce4222a8a6595868a380f5d"
+      "bytes": 52821,
+      "sha256": "87a1feb50b2ab2a50767fe0d9732b48659168128609555be61311c66e6d5e2cf"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-390-light-dock-scrolled.png",
-      "bytes": 54576,
-      "sha256": "70b727edf608ae1cbe04c12c109e074a3c299739a124e89228d33c090e57e267"
+      "bytes": 55228,
+      "sha256": "067338e8b5da5e6a030b19752b700b11a7a84e9c947199813b35dda96e71d00b"
     },
     {
       "file": "extensions/webchat/docs/webchat/qa/v3-real-app-capture.json",
-      "bytes": 180438,
-      "sha256": "a9560e202a342d5b67da640b248c1a74fe982907e782de289370390f09c4f945"
+      "bytes": 180929,
+      "sha256": "ef2f29f96c98e044b562a14fc7131ea8dea4a007b12e0871cd76031d8220475b"
     }
   ],
   "source": {
-    "commit": "f59f491",
+    "commit": "b7ec7e0 (worktree HEAD) plus the uncommitted FX4 working tree (the FX4 changes are not committed)",
     "frontendSrcTree": {
       "method": "find extensions/webchat/frontend/src -type f | LC_ALL=C sort | xargs sha256sum -b | sha256sum (repo-root paths)",
-      "sha256": "a77f433ce819c5889b351c86d04658e090d3744c999d51744f7e9bc40d6e8056",
+      "sha256": "59e4b49aa2cf2993c0719e0adadddbe408604a9875ae2f41f846220c9d9db74c",
       "files": 180
     },
-    "distIndexHtmlSha256": "f1b22babc7422b9e79c460355eea186a7b26ab57d314bfbf7909793d94960cab",
-    "distCssSha256": "8b1913902dcb8da5abe23881b5c1297920b1438cf36fe8989b5acd39923f8364",
-    "distJsSha256": "b032b44ba832173264364d6d9e8375a564eacd01ad7f35ba8cc188346396fdec"
+    "distIndexHtmlSha256": "d55482f73e2773d237af2709d716bcc1aa1f2c0f2db2f48a9298fee7a8bccbe7",
+    "distCssSha256": "82ca961ad659c2b085e6477bb3f2706d3e2b09bcc6354e0bbf38ae43b4e103cc",
+    "distJsSha256": "9c7f40ed9a0f7b13a3e4b3a672f60cc5dbd2903d4466d434cade0de50d2a4ee0"
   },
   "tooling": {
-    "directory": "C:/Users/Admin/AppData/Local/Temp/tbwc-m3c (outside the repo, not committed)",
+    "directory": "C:/Users/Admin/AppData/Local/Temp/tbwc-fx4/m4 (outside the repo, not committed; copied from tbwc-m3c and patched for FX4 by tbwc-fx4/patch-m4.mjs)",
     "files": [
       {
         "file": "real-m3c.mjs",
-        "sha256": "a5d56bbc2f2b644b2aaebee490fcb1602ee335a69fd8726f75150da6ead1187a"
+        "sha256": "bd2f8cdb11d6ff78634ba3df561273808e7cec898d90383de9add894adaea47f"
       },
       {
         "file": "regions-m3c.mjs",
@@ -12554,35 +12569,35 @@
       },
       {
         "file": "build-mock-m3c.mjs",
-        "sha256": "2f5512d4281590b4a5ec5cd6e3fb9bbd0c422e4749c48b9e27b7c72a4a43d9ed"
+        "sha256": "b2e25308f93fb4cee14b923ee6d75aa34a3236df933e51ce587e6ea8a08b38ad"
       },
       {
         "file": "mock-m3c.mjs",
-        "sha256": "8fe2b432aaf53931fb8d63f42e849e377a5f410f49348b98b736d371c9ff83b3"
+        "sha256": "f618d318ae3c7cfa35d2f256d34ed1cb95c221c62ce4cf9ad3c5a469ac654040"
       },
       {
         "file": "tabs-m3c.mjs",
-        "sha256": "331c896f98134a9d3d1b00e4507cb3a628e5aeba7abac61260b4228fd14d98eb"
+        "sha256": "3373b159676a4291a50ca75c9cf3a7c3ac4063d4bd8525b3467f71621e47711c"
       },
       {
         "file": "verify-m3c.mjs",
-        "sha256": "9533e7bbf2611e72c25da49325e058eb1d75fcf24114567604c149b815ca928c"
+        "sha256": "56f93e4a71da2a2d2de947b64e62fa68666864e689e2c8b206c4186679febe94"
       },
       {
         "file": "crops-m3c.mjs",
-        "sha256": "d09476b61dca6b6418f14959f0bb3932a3a72f8bb32973d79c391077103d22b0"
+        "sha256": "190e3e78c679b07e30e3788426b7266a4e8dd0dfe06bebd463f39ee0ba9d5755"
       },
       {
         "file": "finalize-m3c.mjs",
-        "sha256": "efe6ffad1a09fe3f55b08abd9e0d9c668c9fc9f2d6a66d164827694483660f05"
+        "sha256": "1af57c0832d337db4d2e37f093d0de0ad176f5c54e03dea66f183b28da0842d9"
       },
       {
         "file": "prune-m3c.mjs",
         "sha256": "5e27364beabf260c23a36001e2e938da63f3843197b2eb548b3156ba198dc8b3"
       },
       {
-        "file": "run-final-m3c.sh",
-        "sha256": "6c9dc617f53c28289f82ccefae221888bdb7f169df79e601aaed4f7e70971a21"
+        "file": "run-final-m4.sh",
+        "sha256": "e72051c5cab33a6f033a8c393389309e12762a68a75932f789717546286f7fb2"
       },
       {
         "file": "cdp-lib.mjs",
@@ -12590,7 +12605,7 @@
       },
       {
         "file": "parts/review.html",
-        "sha256": "e2b9c06272e1cfaab1bf1a5efbe7d16b7716f1a15970bfed5294a210695b0677"
+        "sha256": "137a284bdb53064755a2c00c3a3dbbdb7d0cb6602a4c0f7a4a241b65c7b47a55"
       },
       {
         "file": "parts/mock-only.css",
