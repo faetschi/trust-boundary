@@ -1,0 +1,234 @@
+{
+  "receipt": "abi8-host-recovery-20261015",
+  "decisionState": "STOPPED_BEFORE_GUEST_KEY_INSTALL",
+  "lastElevatedStageUtc": "2026-10-15T16:06:04Z",
+  "requestedLocation": {
+    "requested": "MA Thesis/trust-boundary branch codex/tbound-prototype/tbound-prototype",
+    "resolvedTo": "C:/Users/Admin/Desktop/FH/Master Software Engineering/MA Thesis/trust-boundary (git worktree on branch codex/tbound-prototype)",
+    "note": "tbound-prototype is a branch name, not a directory. A second worktree of codex/tbound-web-chat under the T3 folder was inspected only to rule it out."
+  },
+  "repo": {
+    "headCommit": "a7ac97ef3196e804ff9547cfb473b30753dc3a03",
+    "committed": false,
+    "changedByThisWork": [
+      {
+        "path": "infra/repro/bootstrap-hyperv-windows.ps1",
+        "sha256Before": "5F04AC3E09238C551B568BEE261C354752A6E3AEB550C2480F6CC30913ED5978",
+        "sha256After": "303AE7287934EC244ED55A1C260406C9EE0837C9D2972EC87794C27B148DD6EE",
+        "diffStat": "9 insertions, 2 deletions in total across both files",
+        "change": "Finally-block WSL unmount (previously ignored $LASTEXITCODE) now calls Invoke-WslCommand with -ThrowOnError inside try/catch. $injectionComplete is initialized before the inner try and set after the injection finishes. The catch rethrows when the injection completed, so Start-VM is never reached. When an injection error is already propagating it emits Write-Warning and lets the original error propagate."
+      },
+      {
+        "path": "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1",
+        "sha256Before": "BE20B4E57492D78E7BA41CE2021373CA5F4B18B7202CD1B2A3FEA181863C5986",
+        "sha256After": "3590150AFE21114BF06193CA7C7709877B1D23F155E760E9A5C63D8795689F94",
+        "change": "bootstrapDependencyPins['infra/repro/bootstrap-hyperv-windows.ps1'] changed from 5F04AC3E... to 303AE728...; the value equals the file's SHA256 now."
+      },
+      {
+        "path": "docs/evidence/abi8-host-recovery-20261015.json",
+        "change": "new file (this receipt)"
+      }
+    ],
+    "patch": {
+      "path": "F:/TBoundAssets/recovery-20261015/host-resume/abi8-host-recovery-20261015.patch",
+      "sha256": "F9D4D5E63F09F5A1EC4919FC818E090BBE164ED29E5DFE12281A9EBA8742BD5D"
+    },
+    "ps5Verification": {
+      "psVersion": "5.1.19041.6456",
+      "parseExitCodes": {
+        "bootstrap-hyperv-windows.ps1": 0,
+        "launch-reviewed-abi8-candidate-elevated.ps1": 0
+      },
+      "sourcePin": {
+        "launcherPinEqualsBootstrapSha256": true,
+        "oldPinStillPresentInLauncher": false
+      }
+    },
+    "failurePathHarness": {
+      "script": "F:/TBoundAssets/recovery-20261015/host-resume/abi8-unmount-failclosed-check-20261015.ps1",
+      "sha256": "0310C6D95C419D9B1D757BD00AF74E84C324F93F466153A3639395343DE79BFF",
+      "method": "Parses the bootstrap with the PowerShell AST, extracts the real Invoke-WslCommand function and the real unmount finally statements, runs them against a fake wsl.cmd whose exit code is set per case, and counts Start-VM calls with a stub. Never invokes the real wsl.exe. Also checks the unmount call carries -ThrowOnError.",
+      "redRun": {
+        "target": "bootstrap as committed (sha256 5F04AC3E...)",
+        "exitCode": 1,
+        "verdict": "FAIL",
+        "resultFile": "F:/TBoundAssets/recovery-20261015/host-resume/abi8-unmount-failclosed-check-20261015.red.json",
+        "resultSha256": "998F525CEF5B2C7EBE03F0E06DD9C142CFEE7C1FF9E41D3FEA95F2ECD974BB6A",
+        "unmountCallHasThrowOnError": false,
+        "failingCase": "unmount-exit3-body-ok: unmount exit 3 with a successful injection body still called Start-VM (startVmCalls=1)"
+      },
+      "greenRun": {
+        "target": "bootstrap after fix (sha256 303AE728...)",
+        "exitCode": 0,
+        "verdict": "PASS",
+        "resultFile": "F:/TBoundAssets/recovery-20261015/host-resume/abi8-unmount-failclosed-check-20261015.green.json",
+        "resultSha256": "BA2A5747DF6CE351DE71B97C2E00ACD436562BBE371D3C1494C009B579CF1B72",
+        "unmountCallHasThrowOnError": true,
+        "selfCheckCode": 3,
+        "cases": [
+          { "name": "unmount-exit3-body-ok", "startVmCalls": 0, "unmountInvocations": 1, "result": "throws 'WSL command failed (exit 3)'" },
+          { "name": "unmount-exit0-body-ok", "startVmCalls": 1, "unmountInvocations": 1, "result": "no error, Start-VM reached" },
+          { "name": "unmount-exit3-body-throws", "startVmCalls": 0, "unmountInvocations": 1, "result": "original injection error preserved" },
+          { "name": "unmount-exit0-body-throws", "startVmCalls": 0, "unmountInvocations": 1, "result": "original injection error preserved" },
+          { "name": "unmount-exe-missing-body-ok", "startVmCalls": 0, "unmountInvocations": 0, "result": "throws (unknown unmount state fails closed)" }
+        ]
+      }
+    },
+    "otherSessionFilesNotTouched": "10 modified docs files (including docs/evidence/README.md) and 3 modified plus 1 untracked supervisor/internal/workflowrecovery files were not staged or edited. docs/evidence/abi8-wsl-attach-retry-20261015.json and docs/evidence/abi8-wsl-host-path-20261015.json still record the old bootstrap hash as historical evidence and were left unchanged. TASK_STATE.md item 2 was updated."
+  },
+  "host": {
+    "elevation": "Helpers were run elevated through hidden RunAs (ProcessStartInfo, Verb=runas, UseShellExecute, WindowStyle=Hidden). Native exit codes were read from the Process object. The session itself is not elevated.",
+    "vm": {
+      "name": "TBound-Ubuntu-2404-ABI8",
+      "id": "df4745b2-fd1b-48ed-b9b9-f36f34d3c19b",
+      "state": "Off",
+      "generation": 2,
+      "hardDrive": "F:/TBoundVMs/TBound-Ubuntu-2404-ABI8/Virtual Hard Disks/TBound-Ubuntu-2404-ABI8.vhdx at SCSI 0:0",
+      "firstBootDevice": "EFI SCSI Device (Scsi(0,0)), then EFI Network",
+      "secureBoot": "MicrosoftUEFICertificateAuthority / On (unchanged)",
+      "networkAdapter": "Netzwerkkarte on Default Switch, MAC 000000000000 (not yet assigned; assigned at first start)",
+      "started": false
+    },
+    "disk": {
+      "path": "F:/TBoundVMs/TBound-Ubuntu-2404-ABI8/Virtual Hard Disks/TBound-Ubuntu-2404-ABI8.vhdx",
+      "type": "Dynamic",
+      "parentPath": "",
+      "fileBytes": 6580862976,
+      "virtualBytes": 42949672960,
+      "lastWriteUtc": "2026-10-14T20:54:14.2556161Z",
+      "unchangedAfterReattachAndCopy": true,
+      "sha256": "EDF7AE59B39A8D80AFD5B74FC0D798D16DED5FC5E32F94CCD617897A3BAEEC00",
+      "sha256EqualsPinnedFinalizedSeedDiskSha256": true,
+      "sha256Note": "Equal to expectedSeedDiskSha256 pinned in launch-reviewed-abi8-candidate-elevated.ps1, so the disposable disk is byte-identical to the finalized seed disk."
+    },
+    "attachmentStateBeforeReattach": {
+      "verdict": "STRONG_NO_WINDOWS_OR_WSL_ATTACHMENT",
+      "helperSha256": "AD733E7D729E9B3C9E2BE72A40F121D0DA42E37A90991F44B29A9BBD27CA0D18",
+      "resultSha256": "C4FD845CE4F15678302A3B176CCF23B1A7CFF437E3DFD197697F2692B54E288D",
+      "launcherExitCode": 0,
+      "facts": {
+        "vhdAttached": false,
+        "diskImageAttached": false,
+        "exclusiveReadOpenSucceeded": true,
+        "otherVmReferences": [],
+        "vmIdInProcessCommandLines": 0,
+        "wslRunningDistros": ["Ubuntu"],
+        "wslLsblkBlockDevices": "sda 407298048 disk; sdb 8589938688 disk; sdc 1099511627776 disk",
+        "blockDevicesMatchingVhdxVirtualSize": 0,
+        "wslExeSha256": "4E589E3883229B7A74A4ACDB878689DCEC94E2539FCAD1C194F415B149C337A9"
+      }
+    },
+    "reattach": {
+      "helperSha256": "51F78A6D2ACBF7BBC1AD46E85BCA2F9016441602EBE8AF0A356013DD66A01662",
+      "resultSha256": "F6D400CDF285F4AE3BA9872B6B9634BC99F940B297976DE2D4E7AF95CC422063",
+      "launcherExitCode": 0,
+      "verdict": "PASS_REATTACHED_BOOT_ORDER_VERIFIED",
+      "utcRange": "2026-10-15T16:00:47Z to 2026-10-15T16:00:49Z",
+      "operations": [
+        "Add-VMHardDiskDrive -VMName TBound-Ubuntu-2404-ABI8 -ControllerType SCSI -ControllerNumber 0 -ControllerLocation 0 -Path <disposable VHDX>",
+        "Set-VMFirmware -VMName TBound-Ubuntu-2404-ABI8 -FirstBootDevice <that drive>, the same call the bootstrap makes at its provisioning step. SecureBoot settings were only read."
+      ],
+      "preflightChecks": "14 of 14 true, including Off state, zero drives before, file bytes and LastWriteUtc equal to the record, no attachment, exclusive open ok, no VM process, no WSL block device at the VHDX size"
+    },
+    "protectedAssetsUnchanged": {
+      "originalVm": { "name": "TBound-Ubuntu-2404", "id": "c676170c-31a1-48e3-aa74-1d845411d253", "state": "Saved", "drive": "F:/TBoundVMs/TBound-Ubuntu-2404/Virtual Hard Disks/TBound-Ubuntu-2404_9FFBDD2B-6FDF-48B3-B1D6-21AE1412CF17.avhdx SCSI 0:0", "unchanged": true },
+      "seedVm": { "name": "TBound-Ubuntu-ABI8-Seed", "id": "82ffce59-06bf-4c1b-b43a-d406489c6d7f", "state": "Off", "drive": "F:/TBoundAssets/abi8-qualification-2026-10-14/seed-vm/Virtual Hard Disks/TBound-Ubuntu-ABI8-Seed.vhdx SCSI 0:0", "unchanged": true },
+      "retiredCopy": { "path": "F:/TBoundVMs/TBound-Ubuntu-2404-ABI8-retired-82794afa", "topLevelEntries": ["TBound-Ubuntu-2404-ABI8", "Virtual Hard Disks"], "untouched": true }
+    },
+    "priorReceiptPreserved": {
+      "path": "F:/TBoundAssets/recovery-20261015/host-resume/abi8-disposable-mount-probe.json",
+      "sha256": "A91149FF3FC91C6B91270D204DDD0AF15E83F40F378C052E9485105FC6E9B318"
+    },
+    "notDoneInThisWork": [
+      "No Start-VM, Stop-VM, or VM boot",
+      "No wsl --mount, wsl --unmount, or HCS attach retry",
+      "No wsl --shutdown",
+      "No network installs (qemu-img is absent from the WSL distro; not installed)",
+      "No write to the disposable VHDX",
+      "No commit"
+    ]
+  },
+  "guest": {
+    "derivation": {
+      "copyMethod": "Hyper-V Convert-VHD -VHDType Fixed from the disposable VHDX to F:/TBoundAssets/recovery-20261015/host-resume/abi8-guest-ro-20261015/guest-ro-fixed.vhd (qemu-img was not available in WSL). The source was only read. The copy was deleted after inspection.",
+      "copyResultSha256": "EA55035522C38B2A196FDCF8ECAAEC4381C52997255099B850A580C2F072F179",
+      "copyBytes": 42949673472,
+      "copyBytesNote": "virtual size 42949672960 plus 512-byte VHD footer",
+      "copyLauncherExitCode": "not captured; the launcher returned before exit (exited=false at 55 s). The helper's own stage record is PASS_COPY_VERIFIED.",
+      "freeSpaceGiBOnFAfterDelete": 1205.51
+    },
+    "wslInspection": {
+      "mode": "losetup -r (read-only loop) of the copy, mount -o ro,noload of the ext4 root (p2). The first run (v1, exit 2) found no LVM PV and aborted; the v2 run succeeded.",
+      "partitions": "p1 vfat (EFI, 1127219200 bytes); p2 ext4 (root, 41820356608 bytes); no LVM",
+      "cleanup": "umount rc=0; losetup -d rc=0; afterwards no loop devices and no mounts under the task directory",
+      "scriptSha256": {
+        "toolsCheck": "0D506A957F10EE2997CF6C1A7C285D32FDEE1AE51278C8B7BE4DE213392A5F3C",
+        "inspectV1Aborted": "45B399A3996D714A9EEC284BE5717EF68E616F0D810DCF2F8DEC0A4D52736FBF",
+        "inspectV2": "B79FF742F9E5ECC933189DE1185E9BF8B6F6CD4E79DF6BCAFF862313B3A8F398",
+        "followupV3": "7DBB7686C6A6F501294BD2E6FED578177975DC158A2B318636158E215CAD970D"
+      },
+      "wslExitCodes": { "toolsCheck": 0, "inspectV2": 0, "followupV3": 0 },
+      "factsFile": { "path": "F:/TBoundAssets/recovery-20261015/host-resume/abi8-guest-ro-20261015/guest-readonly-facts.txt", "sha256": "6CCBE97D5E5C34D6524D7F8F73CF0C31BB071D5ED62D93C03431576466724CF8" },
+      "followupFile": { "path": "F:/TBoundAssets/recovery-20261015/host-resume/abi8-guest-ro-20261015/guest-readonly-followup.txt", "sha256": "C4598E018CD2D058BA61C6ED955B8BDC13E79FF678132128547BA56953EE1839" },
+      "fsckLog": { "path": "F:/TBoundAssets/recovery-20261015/host-resume/abi8-guest-ro-20261015/e2fsck-n.log", "sha256": "4C93324FCBDBB571A88B8EEF4ED3100D9F0ABA0D0C302746A62B469C19A993FC" }
+    },
+    "journal": "Filesystem state clean; has_journal; e2fsck -fn exit 0. A noload mount therefore shows the committed view.",
+    "osRelease": "Ubuntu 24.04 (VERSION_ID 24.04)",
+    "hostEd25519": {
+      "fingerprint": "SHA256:aUBbNs1vvCs3HMQMcdomRaDBjxvSBkYCUrMjZ5hkRAo",
+      "comment": "root@ubuntu-server",
+      "publicFileSha256": "F0EE4C69194A35FE1A6E9928333BDBFC8859458805CEFD7089DD55DA8D1FBC99",
+      "liveKeyVerified": false,
+      "liveKeyVerifiedNote": "Not verified live because the VM was not booted. The pin is offline-derived only."
+    },
+    "clientIdentity": {
+      "publicKeyFingerprint": "SHA256:w4LnyVmTMBKmrcKrMe3OdEoR8yY/n/tQXxAEXojCeOw",
+      "comment": "tbound-abi8-qualification-20261014",
+      "privateKeyRead": false
+    },
+    "authorizedKeys": {
+      "homeDirs": ["tboundadmin"],
+      "tboundadminSshDirectory": "absent",
+      "tboundadminAuthorizedKeys": "absent",
+      "sshdAuthorizedKeysFileDirective": "none set in /etc/ssh/sshd_config or sshd_config.d (default applies)",
+      "etcSshAuthorizedKeys": "absent",
+      "cloudInitStateDirectory": "absent (/var/lib/cloud)",
+      "clientKeyInAuthorizedKeys": false
+    }
+  },
+  "result": {
+    "increment1RepoFailClosedFix": "Done. Fix in place; PS5 parse 0; red FAIL then green PASS; launcher pin updated. Not committed. No repo-level regression test was added because the repo has no PowerShell behavioral harness. The harness lives in F:.",
+    "increment2GuestChannel": "Partially done. The disposable is reattached at SCSI 0:0 and boot order restored. Its guest host key is derived offline. The task client key is not authorized on the disk, so SSH is not possible yet. The guest was not booted, SSH was not attempted, and ABI 8 was not measured."
+  },
+  "limits": [
+    "The unmount argument form wsl.exe --unmount <path> returned ERROR_INVALID_NAME only after a failed mount, when nothing was attached. Its success-path behavior is unverified. The fix does not change the argument form. Do not treat the syntax as invalid on success.",
+    "The harness exercises a fake wsl command. The real wsl.exe success-path exit behavior under -ThrowOnError is not exercised.",
+    "A failed --mount still throws before the protected block, so no unmount is attempted after a failed mount. This is pre-existing and unchanged. An ambiguous attach after a failed mount is not covered.",
+    "Invoke-WslCommand uses 2>&1 under ErrorActionPreference Stop (PS5). Stderr from wsl.exe becomes a terminating error, which fails closed. Not changed.",
+    "The cause of the earlier wsl --mount HCS/E_ACCESSDENIED is not determined. The VHDX ACL grants the VM SID and Administrators Full/Write, the file opens exclusively, and the earlier probe ran elevated. WSL service logs were not read.",
+    "qemu-img was not installed in WSL, so a Hyper-V Fixed VHD copy was used instead of sparse RAW. The bytes are identical to the source plus footer, and the copy was deleted.",
+    "Non-elevated Get-VM is denied on this host. The final VM state comes from the elevated stage records at 2026-10-15T16:00:49Z and 16:03:34Z. Nothing that changes VM state ran after those records.",
+    "No live authentication of the guest host key or of any client login has occurred. The offline-derived host key is not yet proven against the running guest."
+  ],
+  "nextDecision": {
+    "blocker": "The disposable disk has no authorized key for the task identity, so no SSH login is possible. Reading cannot fix that. The key has to be written to the disk, or supplied another way.",
+    "options": [
+      {
+        "id": "A",
+        "action": "Diagnose the HCS E_ACCESSDENIED read-only (WSL and HCS logs, wsl --version). Then make one bounded, guarded retry of the bootstrap offline injection (wsl --mount --vhd --bare, read-write), with native exit codes captured through ProcessStartInfo.",
+        "risk": "The HCS error may recur. A retry must not be blind."
+      },
+      {
+        "id": "B",
+        "action": "Replace the disposable VHDX with a copy that carries the key.",
+        "risk": "Replaces disposable bytes. Not recommended."
+      },
+      {
+        "id": "C",
+        "action": "Attach a cidata NoCloud seed disk so cloud-init installs the key on first boot.",
+        "risk": "cloud-init presence is unverified. ssh_deletekeys must be false so the pinned host key survives. Adds a VM disk. Not tried."
+      }
+    ],
+    "recommendation": "A, after a read-only diagnosis of the HCS error. Stop and report if the retry fails."
+  }
+}

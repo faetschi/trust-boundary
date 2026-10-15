@@ -815,6 +815,7 @@ say 'Offline injection complete; disk released.'
         $devicesBefore = @(Invoke-WslCommand -WslArguments $listArgs -ThrowOnError).Output -split "`r?`n" | Where-Object { $_ }
         Write-Host 'Bare-mounting the provisioned disk into WSL (wsl --mount --vhd <path> --bare; never combined with Mount-VHD)...'
         $null = Invoke-WslCommand -WslArguments @('--mount', '--vhd', $vhdPath, '--bare') -ThrowOnError
+        $injectionComplete = $false
         try {
             $devicesAfter = @(Invoke-WslCommand -WslArguments $listArgs -ThrowOnError).Output -split "`r?`n" | Where-Object { $_ }
             $newDevices = @($devicesAfter | Where-Object { $_ -notin $devicesBefore })
@@ -841,10 +842,16 @@ say 'Offline injection complete; disk released.'
                 $offlineGuestHostKeyFingerprint = $hostFingerprintMatches[0].Groups['Fingerprint'].Value
             }
             $script:stepsDone.Add('Offline SSH-key injection complete')
+            $injectionComplete = $true
         }
         finally {
             Write-Host 'Unmounting the disk from WSL...'
-            $null = Invoke-WslCommand -WslArguments @('--unmount', $vhdPath)
+            # Fail closed: an unverified unmount must stop before Start-VM without masking an earlier injection error.
+            try { $null = Invoke-WslCommand -WslArguments @('--unmount', $vhdPath) -ThrowOnError }
+            catch {
+                if ($injectionComplete) { throw }
+                Write-Warning ('WSL unmount also failed while an earlier error propagates; the disk may still be attached to WSL: ' + $_.Exception.Message)
+            }
         }
     }
     finally {
