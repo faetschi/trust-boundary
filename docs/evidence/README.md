@@ -26,8 +26,8 @@ receipt describes the pre-CLI implementation and does not qualify the CLI migrat
   real SQLite owner/root persistence boundaries, but Store pins/verifier and the
   fsynced effect marker are synthetic: production `RunEffect` and a real external
   provider/Store effect are not exercised. SQLite `max_page_count` is not filesystem
-  ENOSPC; genuine fsync failure, corruption, reserved capacity, and declared-platform
-  power-loss evidence remain open.
+  ENOSPC. Later corruption and ENOSPC feasibility receipts below extend this
+  evidence without completing D14.
 - [Governed combined recovery](governed-combined-recovery-20261014.json), committed
   in `d29a0ff` (D20), records the atomic clean-restart plus pre-effect-retry
   reservation and separate-process prepare/activate checks across two cycles followed
@@ -47,6 +47,16 @@ receipt describes the pre-CLI implementation and does not qualify the CLI migrat
   baseline-red/current-green coverage for explicit fixture-route rejection of
   production profile, workspace, and source inputs, plus the `cmd/tbound` package
   checks. It does not qualify the production launch or broader operator CLI lifecycle.
+- [SQLite corruption](sqlite-corruption-20261014.json), committed in `c18a2b6`,
+  records owner/root header-corruption refusal in fresh processes and a root-open
+  error-cause fix, with focused Linux unit/race, vet, and formatting checks.
+- [Reserved-capacity ext4 experiment](reserved-capacity-ext4-experiment-20261014.json),
+  committed in `9fb5dd6`, records opt-in real filesystem ENOSPC, physical reserve
+  release, terminal persistence, and fresh-process checks. It does not implement a
+  production global capacity ticket or establish a worst-case storage guarantee.
+- [ABI8 provisioning](abi8-provisioning-preflight-20261014.json), updated in
+  `fdc31f2`, records finalization of the exact powered-off disposable seed and its
+  disk hash. The live ABI8 probe and governed-host qualification remain unrun.
 
 The dated `../evaluation-evidence-index-2026-10-07.json` is an immutable structural
 ledger. Its original source references may name documents retired from active

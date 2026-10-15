@@ -1,6 +1,6 @@
 # TBound task state
 
-Updated 2026-10-14. Branch `codex/tbound-prototype`; implementation head `2e88ee8`.
+Updated 2026-10-15. Branch `codex/tbound-prototype`; implementation head `fdc31f2`.
 See [docs/status.md](docs/status.md) for current implementation evidence, claims,
 environment state, blockers, priorities, and historical counts. This file keeps the
 action plan and execution rules.

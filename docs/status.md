@@ -1,6 +1,6 @@
 # Current status
 
-Updated 2026-10-14. Branch `codex/tbound-prototype`; implementation head `2e88ee8`.
+Updated 2026-10-15. Branch `codex/tbound-prototype`; implementation head `fdc31f2`.
 The source checkpoint `6a0a52a` and its component receipt in `5051759` are a
 historical baseline. This working status records implementation state and blockers;
 it is not a qualification report.
@@ -79,10 +79,12 @@ it is not a qualification report.
   Running with 8 vCPUs, 16 GiB fixed RAM, and a 40 GiB disk. It had no guest channel;
   guest kernel and ABI were not
   probed. ABI 4 is the last observed development-guest value and is unmeasured now.
-  D09 requires ABI 8. Replacement preflight (`WhatIf`) is verified as preflight only.
-  Resume validation has failed before VM creation; ISO readback and comparison fixes
-  are being tested. The development VM remains untouched; no replacement guest
-  has been created or qualified. The
+  D09 requires ABI 8. The disposable seed was finalized in `fdc31f2`: the exact
+  powered-off VM, standalone dynamic 40 GiB disk hash, Secure Boot, and absence of
+  checkpoints are recorded in the [provisioning receipt](evidence/abi8-provisioning-preflight-20261014.json).
+  This is candidate metadata; installation correctness and live ABI8 remain
+  unverified. The final 8-vCPU/16-GiB guest has not been cloned or qualified.
+  The development VM remains untouched. The
   [2026-10-14 decision](decisions/2026-10-14-qualification-and-research-procedure.md)
   authorizes disposing of the development VM and replacing it with a fresh disposable
   guest of similar resources.
@@ -147,10 +149,17 @@ it is not a qualification report.
   cases; the composed workflowrecovery unit/race runs each report 71 verbose PASS
   events. S2 uses synthetic Store pins/verifier and an fsynced test marker, with no
   production `RunEffect` or real external effect.
-  The earlier private test `19c2919c…` was replaced after it faulted the wrong
-  store and used weak recovery checks. Terminal accounting is partial; reserved audit
-  capacity is unimplemented. Filesystem ENOSPC, genuine fsync faults, corruption, and
-  declared-platform power-loss evidence remain open.
+  `c18a2b6` adds real owner/root SQLite header-corruption cases with separate-process
+  refusal checks and preserves the root-open error cause; see the
+  [corruption receipt](evidence/sqlite-corruption-20261014.json).
+  `9fb5dd6` adds an opt-in isolated ext4 experiment: real ENOSPC, release of a
+  physical 64 MiB reserve, an audit frame and terminal writes, and fresh-process
+  verification including refusal after a crash following reserve release. See the
+  [capacity experiment](evidence/reserved-capacity-ext4-experiment-20261014.json).
+  This is feasibility evidence, not a production capacity guarantee: a global
+  durable ticket, enforced worst-case bounds, exclusion of other protected-volume
+  writers, and declared-platform backing/power-loss qualification remain open.
+  Terminal accounting and fsync-failure qualification remain partial.
 - **Recovery continuity:** the fresh provider constructor refuses retained nonempty
   journals. Inert history, checkpoint/budget recovery, and ManagedStore/D06 binding
   exist as components; provider-history replay and continuation through the production
