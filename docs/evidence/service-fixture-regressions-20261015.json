@@ -1,0 +1,121 @@
+{
+  "schema": "tbound-service-fixture-regressions/v1",
+  "date": "2026-10-15",
+  "scope": "Two cmd/tbound test fixtures corrected. No production code changed. No commit. Logs and manifest on F: at TBoundAssets/recovery-20261015/service-fixture-regressions.",
+  "status": "Both fixtures fixed. Focused RED reproduced on the untouched committed snapshot; focused GREEN in normal and no-new-privs contexts; full cmd/tbound unit passed. Full cmd/tbound race failed once on attempt 1 with one intermittent test outside the owned files (cause not identified); the next two full race runs on the same validated tree passed. The first race attempt is therefore not green, and the race gate is not established by a single clean run.",
+  "base": {
+    "commit": "a7ac97ef3196e804ff9547cfb473b30753dc3a03",
+    "tree": "bf8ad949a58793b58ef1f724c41f10e53fdf0cc7",
+    "supervisor_tree": "f67af1102054df99eaa07802babfcb5c52223257",
+    "archive": "F:/TBoundAssets/recovery-20261015/d09-stable-snapshot/archive/tbound-a7ac97e-snapshot.tar",
+    "archive_sha256": "f786fcd261d26d5d275c85b1252bdb6dc18e39b19a653e0c187c94c6a71c7d3e"
+  },
+  "validated_tree": "Extracted a7ac97e tree (402 files; every blob id equal to git ls-tree -r a7ac97e, checked before and after overlay) with ONLY the two corrected test files overlaid. Uncommitted working-tree changes, including the concurrent D14 WIP under supervisor/internal/workflowrecovery, are excluded by construction. The repo status at run start is logs/p1-repo-status.log (56 entries).",
+  "fixes": [
+    {
+      "test": "TestPiServiceBusyDisconnectAndUnresolvedReplay",
+      "file": "supervisor/cmd/tbound/pi_service_handoff_linux_test.go",
+      "cause": "After request-blocking completed, the request journal's begin() refuses any new admission while a prior lacks independent settlement. The test server installs no settlementVerifier, so request-disconnect got ErrPiServiceUnresolvedPrior, was never durably accepted, and the test failed at line 427 ('disconnect canceled or lost the accepted request', exists=false).",
+      "change": "The disconnect case runs on a second newPiServiceTestServer with no prior work. The handler is shared through a runTask variable. Expected handler calls for the disconnect case change from 2 to 1. The busy refusal, the accepted and terminal wait, and the replay-without-rerun checks are unchanged. The gate is unchanged and no settlement fallback was added."
+    },
+    {
+      "test": "TestProductionFreshAndRecoveryDigestComposition",
+      "file": "supervisor/cmd/tbound/production_pin_composition_linux_test.go",
+      "cause": "The fixture set AdmissionRecordHash with digestBytes, which is sha256:-prefixed. validWorkflowCatalogEntry requires validBareWorkflowDigest (64 lowercase hex, the journal record hash domain), so the entry was rejected before any fresh, recovery, deadline or uncertain-authorization assertion ran ('fixture entry is not a valid production workflow catalog record'). The other digest fields are correctly prefixed (validDigestText) and were not changed.",
+      "change": "AdmissionRecordHash = bareWorkflowDigest(digestBytes(label)). All assertions are unchanged. No production code was changed; with the fixture corrected, all three subcases pass and print their markers."
+    }
+  ],
+  "other_changes": [
+    "docs/evidence/d09-stable-snapshot-validation-20261015.json: prose only, three fields. baseline_comparison skip_comparison.note now says the no-new-privs runs also SKIP TestD09CellTemplateDraftIsNotAdmissible. limitations: 'The D09 scope gates pass.' now says they do not pass (d09_scope_status failed, skip_focus_no_new_privs_passes false). The supplementary-groups sentence now says the registered profile does not register those groups, which is the skip reason. The phrase 'satisfies the xattr scanner profile' the brief named was not present in the file; the equivalent 'is not the profile the xattr check tests' claim was the one corrected. No hashes, results or statuses were changed.",
+    "docs/design/d14-reserved-capacity.md line 7: both links ../../../MSE_MA_Thesis/agentic-harness/AH-technical/ now point to ../../../MSE_MA_Thesis/tbound/AH-technical/. Both targets were verified to exist."
+  ],
+  "environment": {
+    "host": "WSL Ubuntu, user jeli2k, HOME=/home/jeli2k, umask 077",
+    "go": "go version go1.27.1 linux/amd64 at /home/jeli2k/go-sdk/go/bin/go (verified in preflight)",
+    "invocation": "env -i HOME=/home/jeli2k PATH=/home/jeli2k/go-sdk/go/bin:/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 GOMAXPROCS=2 GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOCACHE=/home/jeli2k/.cache/go-build GOMODCACHE=/home/jeli2k/go/pkg/mod TMPDIR=<private>/t CGO_ENABLED=1 timeout 1800",
+    "private_tree": "mktemp -d /home/jeli2k/.tb-svcfix.XXXXXX, with subdirectories s (source), t (TMPDIR) and out; removed by an EXIT trap, and the removal is confirmed in each cleanup.log",
+    "offline": "No network, no downloads, no live provider. All module and toolchain resolution is from the existing caches.",
+    "c_free_guard": "C: free-space guard at 5 GiB checked before every step. Lowest observed: 25 GiB.",
+    "no_new_privs": "setpriv --no-new-privs (/usr/bin/setpriv), focused runs only"
+  },
+  "source_hashes": {
+    "archive_sha256": "f786fcd261d26d5d275c85b1252bdb6dc18e39b19a653e0c187c94c6a71c7d3e",
+    "files": [
+      {
+        "path": "supervisor/cmd/tbound/pi_service_handoff_linux_test.go",
+        "before_blob": "249d9a0e70034c719acb972324ce7ff8e00d0543",
+        "before_sha256": "ea905365083ea881eea4a50004bf7df8b1c1d80fd2215855d62111e380b685aa",
+        "after_blob": "0d6489d4815ecbfd7eb59f488b123e150ab865e4",
+        "after_sha256": "78aa93c2282cdc5eeac32000ddeaee9a70dccf119a8484b59a86074640de3c89"
+      },
+      {
+        "path": "supervisor/cmd/tbound/production_pin_composition_linux_test.go",
+        "before_blob": "5864e8e6997732dd3477c808d1274f333eae82b5",
+        "before_sha256": "3f638b373802e321b665795cc22def5298d0acb25984727690b3bcaef7600439",
+        "after_blob": "9ab7f4a0cb1c6f9639786d49a2dccb1391149790",
+        "after_sha256": "246d16f7f9c6643384479e8375db2f3743891adf37f70a5afbb45db18a32a6e0"
+      }
+    ],
+    "after_equals_working_tree": "Both after_sha256 values equal the working-tree files at the time of the run (o1-overlay.log, flake-overlay/logs/overlay.txt)."
+  },
+  "steps": [
+    {"id": "p0-preflight", "exit": 0, "log": "logs/00-preflight.log", "sha256": "88d7bb670236a5ea56289ec094745e531f6418e6adc3253493c64bab72edddb5", "command": "archive sha256, go1.27.1 identity, commit type, gofmt present"},
+    {"id": "p1-repo-status-at-run", "exit": 0, "log": "logs/p1-repo-status.log", "sha256": "cac97af4a0f2ad17f7bf16dcc92092b5912d1a7ee1ff81e102b81923a4f6bebe", "command": "git --no-optional-locks status --porcelain=v1 (recorded, not validated)"},
+    {"id": "a1-extract-archive", "exit": 0, "log": "logs/a1-extract.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "command": "tar -xf <archive> -C <private>/s"},
+    {"id": "a2-verify-pre-overlay", "exit": 0, "log": "logs/a2-verify-pre.log", "sha256": "6c256237b8c1349c362e8466e93e033cb4bfccf9416f70a4d89b5efaefae8b23", "command": "blob ids of extracted tree == git ls-tree -r a7ac97e"},
+    {"id": "r1-focused-red-untouched", "exit": 1, "log": "logs/r1-focused-red-untouched.log", "sha256": "420fd7fe2410ddacd040aaf11062372368dafdc05926fa3dc76dcf414c98bc13", "command": "go test -p 2 -mod=readonly -count=1 -v -run '^(TestPiServiceBusyDisconnectAndUnresolvedReplay|TestProductionFreshAndRecoveryDigestComposition)$' ./cmd/tbound/ (untouched a7ac97e; both FAIL lines verified by the validator)"},
+    {"id": "o1-overlay-two-test-files", "exit": 0, "log": "logs/o1-overlay.log", "sha256": "5177c7a46d7e32b1c3cd1ac11c55fb05cf1672eb989bc1ec807fbb1cdf3daa04", "command": "cp + cmp working-tree copies of the two test files into the extracted tree"},
+    {"id": "a3-verify-post-overlay", "exit": 0, "log": "logs/a3-verify-post-overlay.log", "sha256": "c803d43d8982184423fad4e3ad36ea11e37457452723cc8da349778bc613986b", "command": "only the two overlaid paths differ from a7ac97e; each equals its working-tree blob"},
+    {"id": "b1-build-cmd-tbound-private", "exit": 0, "log": "logs/b1-build-cmd-tbound.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "command": "go build -mod=readonly -o <private>/out/tbound ./cmd/tbound"},
+    {"id": "b2-build-module", "exit": 0, "log": "logs/b2-build-module.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "command": "go build -mod=readonly ./..."},
+    {"id": "v1-vet-module", "exit": 0, "log": "logs/v1-vet-module.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "command": "go vet -mod=readonly ./..."},
+    {"id": "f1-gofmt-module", "exit": 0, "log": "logs/f1-gofmt-module.log", "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "command": "gofmt -l . (empty output required and verified)"},
+    {"id": "g1-focused-green-normal", "exit": 0, "log": "logs/g1-focused-green-normal.log", "sha256": "7f02a66b6d6dc9b649ea9e54cd056e5c7d8da318370d14bd002fb63f612ef128", "command": "go test -p 2 -mod=readonly -count=1 -v -run '^(TestPiServiceBusyDisconnectAndUnresolvedReplay|TestProductionFreshAndRecoveryDigestComposition)$' ./cmd/tbound/"},
+    {"id": "g2-focused-green-no-new-privs", "exit": 0, "log": "logs/g2-focused-green-nnp.log", "sha256": "e541c442b913c036efddd511c3c775efdce060902ae58249e129a74469f5444b", "command": "setpriv --no-new-privs go test -p 2 -mod=readonly -count=1 -v -run '^(TestPiServiceBusyDisconnectAndUnresolvedReplay|TestProductionFreshAndRecoveryDigestComposition)$' ./cmd/tbound/"},
+    {"id": "u1-unit-cmd-tbound", "exit": 0, "log": "logs/u1-unit-cmd-tbound.log", "sha256": "cf7ec26743fbadff2704e3252d4c2a4ad14b7e7dff141c06a799d0b2d94124a0", "command": "go test -p 2 -mod=readonly -count=1 -v ./cmd/tbound/"},
+    {"id": "r2-race-cmd-tbound (attempt 1)", "exit": 1, "log": "logs/r2-race-cmd-tbound.log", "sha256": "a71a0f530b03b404943f3e95cc59722966488f49d1c5fa30b6c3394cfc1cfd14", "command": "go test -race -p 2 -mod=readonly -count=1 -v ./cmd/tbound/ (intermittent FAIL, see intermittent_failure)"},
+    {"id": "c1-compare-skip-lists", "exit": 1, "log": "logs/c1-compare-skip-lists.log", "sha256": "f20309d6f571b10d5f86e15a3ea51e2b40e488eba9108949e12ce0106d1527eb", "command": "scripts/compare-skips.sh: validator compare() re-run after its stop at r2. Unit identical; race exit 1 from the attempt-1 FAIL lines"},
+    {"id": "flake-overlay-focused-race-x10", "exit": 0, "log": "flake-overlay/logs/focused-race-x10.log", "sha256": "d2456fdce587a379962e37ad51dda571db4c5b76f3b9a1c36ee6256a074b0cbb", "command": "go test -race -p 2 -mod=readonly -count=10 -v -run '^TestGovernedRecoveryCombinedRestartRetryTwoCyclesExhaustsFreshProcess$' ./cmd/tbound/ (overlay tree)"},
+    {"id": "flake-overlay-full-race-1", "exit": 0, "log": "flake-overlay/logs/full-race-1.log", "sha256": "f299d8dd18e11e3330e66f021ba804aeb4e07c121fd7a77043d217a0e53b610b", "command": "go test -race -p 2 -mod=readonly -count=1 -v ./cmd/tbound/ (overlay tree, rerun)"},
+    {"id": "flake-overlay-full-race-2", "exit": 0, "log": "flake-overlay/logs/full-race-2.log", "sha256": "411dcfc4caa47ac54c605977d0a348b4d1a42dc48668315b0867c91dc65e0e8c", "command": "go test -race -p 2 -mod=readonly -count=1 -v ./cmd/tbound/ (overlay tree, rerun)"},
+    {"id": "flake-untouched-focused-race-x10", "exit": 0, "log": "flake-untouched/logs/focused-race-x10.log", "sha256": "3e0e174dc5d0e5be5c0636ddcd57d969d2ac979cb93e0f1200d6b5d95a1cdcff", "command": "same as flake-overlay-focused-race-x10 on the untouched a7ac97e tree"},
+    {"id": "flake-untouched-full-race-1", "exit": 1, "log": "flake-untouched/logs/full-race-1.log", "sha256": "0a0d410de455b1e579d3a4142d3e23d43c217c9eac3416f39459a37076be6a1a", "command": "go test -race -p 2 -mod=readonly -count=1 -v ./cmd/tbound/ (untouched a7ac97e). Exit 1 with 8 FAIL lines, the D09 baseline pattern"},
+    {"id": "flake-compare", "exit": 0, "log": "logs/flake-compare.txt", "sha256": "f183acae148f3ecd3085ded8f7d1bf4a9aff0e30ae1f1f01d9afd0c5aca58480", "command": "scripts/compare-flake.sh: status sets of the four race logs against D09 06"}
+  ],
+  "results": {
+    "focused_red_untouched_a7ac97e": {"exit": 1, "fail": ["TestPiServiceBusyDisconnectAndUnresolvedReplay", "TestProductionFreshAndRecoveryDigestComposition with subtests roundtrip, expired-deadline, uncertain-boundary-authorization"]},
+    "focused_green_normal": {"exit": 0},
+    "focused_green_no_new_privs": {"exit": 0},
+    "build_vet_gofmt": {"build_cmd_tbound_private": 0, "build_module": 0, "vet_module": 0, "gofmt_l": "empty"},
+    "unit_cmd_tbound": {"exit": 0, "pass": 313, "fail": 0, "skip": 2, "skip_list_identical_to_d09_unit_log_05": true, "d09_unit_baseline": {"pass": 308, "fail": 8, "skip": 2}},
+    "race_cmd_tbound": [
+      {"attempt": 1, "log": "logs/r2-race-cmd-tbound.log", "exit": 1, "pass": 312, "fail": 2, "skip": 2, "fail_lines": ["TestGovernedRecoveryCombinedRestartRetryTwoCyclesExhaustsFreshProcess", "TestGovernedRecoveryCombinedChildEntry (child output printed inside the same failure)"]},
+      {"attempt": 2, "log": "flake-overlay/logs/full-race-1.log", "exit": 0, "pass": 313, "fail": 0, "skip": 2},
+      {"attempt": 3, "log": "flake-overlay/logs/full-race-2.log", "exit": 0, "pass": 313, "fail": 0, "skip": 2}
+    ],
+    "race_skip_list_identical_to_d09_race_log_06": true,
+    "race_status_vs_d09_race_log_06": "In clean runs the only changes from D09 06 are FAIL to PASS for TestPiServiceBusyDisconnectAndUnresolvedReplay and the three TestProductionFreshAndRecoveryDigestComposition levels. Attempt 1 adds the two FAIL lines of the intermittent failure.",
+    "untouched_full_race_check": {"log": "flake-untouched/logs/full-race-1.log", "exit": 1, "pass": 308, "fail": 8, "skip": 2, "status_identical_to_d09_race_log_06": true}
+  },
+  "intermittent_failure": {
+    "test": "TestGovernedRecoveryCombinedRestartRetryTwoCyclesExhaustsFreshProcess",
+    "file": "supervisor/cmd/tbound/governed_recovery_combined_linux_test.go (not owned, not modified)",
+    "observed": "Attempt 1 only. The recover child r1 exited 1, expected 74. Its error was ErrOwnerFence 'owner process incarnation changed', raised at internal/workflowrecovery/sqlite_linux.go:1126 in the committed snapshot. revalidate compares currentProcessIncarnation() with the stored owner incarnation.",
+    "ordering": "Runs at line 120 of the attempt-1 log, before the owned pi test (line 318) and pin test (line 436), so the overlaid tests do not run before it in that process.",
+    "executions_in_record": 29,
+    "failures_in_record": 1,
+    "history": "PASS in D09 logs 05 (unit), 06 (race), 07 (unit, no-new-privs) and 08 (race, no-new-privs); PASS in the unit run of this validation (u1).",
+    "reruns": "Validated tree: focused race x10 10/10 PASS; full race x2 PASS, 0 FAIL, 0 DATA RACE. Untouched a7ac97e: focused race x10 10/10 PASS; full race x1 with a status set identical to D09 06.",
+    "assessment": "Intermittent, not reproduced in 13 focused and 3 full race reruns. Cause not identified. currentProcessIncarnation reads boot id, start time, PID-namespace inode, euid and a cgroup digest, and none of these is visibly nondeterministic within one process. Not shown to come from the owned edits, but not proven unrelated.",
+    "follow_up": "Owner of internal/workflowrecovery: loop the test under -race with a large count and log the failing child's incarnation against the stored one to see which field diverges."
+  },
+  "limitations": [
+    "The full cmd/tbound race gate is not clean on the first attempt. Two clean reruns on the same validated tree followed. The intermittent failure is unexplained and is recorded as such, not as green.",
+    "Validated tree = committed a7ac97e plus the two test files only. The uncommitted working tree, including the concurrent D14 WIP, was not validated.",
+    "No-new-privs: focused runs only, for the two repaired tests. No full no-new-privs module run was repeated. The D09 no-new-privs skip of TestD09CellTemplateDraftIsNotAdmissible is unchanged and still SKIPs in both contexts.",
+    "Tests run: cmd/tbound only (unit, race, and no-new-privs for the two repaired tests), plus module-wide build, vet and gofmt. The other 25 packages were not re-run; these edits do not touch them.",
+    "validate-service-fixtures.sh stopped at r2 (exit 11) before its compare and facts steps. The compare was re-run through scripts/compare-skips.sh and facts.tsv was written from git, both using the validator's own logic.",
+    "Green results verify code only. They are not G1, containment, H1, host ABI 8 or WSL ABI 1 evidence.",
+    "No commit. supervisor/tbound and supervisor/tbound.exe were not touched. No other session's dirty files were modified."
+  ]
+}

@@ -186,7 +186,8 @@ func runProductionPinFixtureHelper(t *testing.T) {
 	}
 	limits := workflowrecovery.Limits{MaxPreEffectRetries: 2, MaxCleanRestarts: 2,
 		MaxHostCalls: 4, MaxTokens: 4096, Deadline: deadline}
-	admissionHash := digestBytes([]byte("production-pin-roundtrip-admission"))
+	// AdmissionRecordHash is a bare journal-record digest (validBareWorkflowDigest), not sha256: digest text.
+	admissionHash := bareWorkflowDigest(digestBytes([]byte("production-pin-roundtrip-admission")))
 	entry := piServiceWorkflowEntry{
 		SchemaVersion: workflowCatalogSchema, HostAdmissionID: "production-pin-admission",
 		AdmissionRecordHash: admissionHash, AdmissionSequence: 1,

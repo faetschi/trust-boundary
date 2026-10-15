@@ -12,7 +12,7 @@ Updated 2026-10-15. Work only on `codex/tbound-prototype`.
 
 ## Active / next
 
-1. Fixture corrections/receipts are ready: unit and two full package race reruns pass; one prior incarnation refusal remains unexplained. A private diagnostic task will capture changed identity fields. Then combined module gate and separate reviewed commits. Positive production settlement remains next.
+1. Fixture corrections/receipts are persisted independently: unit and two full package race reruns pass; one prior incarnation refusal remains unexplained. Private identity diagnostics are active. Corrected storage changes still need a combined module gate before their commit. Positive production settlement remains next.
 2. Host task: disposable GUID `df4745b2-fd1b-48ed-b9b9-f36f34d3c19b` Off, SCSI 0:0 and boot order restored. Trusted disk lacks client authorization. Parent authorized public-key injection on a copy, preserving old disk; recover pinned SSH, then measure/install exact ABI 8. Original Saved; seed preserved. No blind HCS retry/recreation.
 3. Storage review confirmed RW geometry refusal checkpoints a retained WAL. RO precheck + fresh-process owner/root regression task is active. The 128 MiB cap lacks maximal-path headroom; review counted only part of callback writes, so its 256 MiB/24,664-page proposal is not adopted. Complete callback/audit/root/WAL bounds, then reserve integration and D14/D20 qualification. WSL root is available for isolated ext4 tests.
 4. Research Claims last: reconcile thesis; complete gates; freeze protocol/corpus/oracles/calibration/scoring and costed OpenRouter DeepSeek V4.1 Flash plan within US$5. User/advisor construct review and independent runtime/effect oracles; no invented outcomes.

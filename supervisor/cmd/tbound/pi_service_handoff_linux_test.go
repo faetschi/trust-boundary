@@ -372,9 +372,10 @@ func testPiServiceResponseServer(t *testing.T, path string, request piServiceReq
 func TestPiServiceBusyDisconnectAndUnresolvedReplay(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
-	server := newPiServiceTestServer(t, piServiceSocketRegistration{
+	registration := piServiceSocketRegistration{
 		AllowedClientUIDs: []int{os.Geteuid()}, AllowedClientPrimaryGID: os.Getegid(),
-	}, func(ctx context.Context, request piServiceRequest) (json.RawMessage, error) {
+	}
+	runTask := func(ctx context.Context, request piServiceRequest) (json.RawMessage, error) {
 		if request.RequestID == "request-blocking" {
 			close(started)
 			select {
@@ -384,7 +385,8 @@ func TestPiServiceBusyDisconnectAndUnresolvedReplay(t *testing.T) {
 			}
 		}
 		return json.RawMessage(`{"success":true,"request_id":"` + request.RequestID + `"}`), nil
-	})
+	}
+	server := newPiServiceTestServer(t, registration, runTask)
 	firstRequest := piServiceRequest{RequestID: "request-blocking", TaskID: "task-1", Prompt: "work"}
 	firstResult := make(chan piServiceResponse, 1)
 	go func() { firstResult <- roundTripPiServiceRequest(t, server.path, firstRequest) }()
@@ -402,6 +404,11 @@ func TestPiServiceBusyDisconnectAndUnresolvedReplay(t *testing.T) {
 	if response := <-firstResult; response.Status != "completed" {
 		t.Fatalf("first task did not complete: %+v", response)
 	}
+
+	// Production refuses any new admission while a prior request lacks independent settlement
+	// (ErrPiServiceUnresolvedPrior). This fixture has no settlement verifier, so the disconnect case
+	// runs on a fresh service with no prior work; its accepted, terminal, and replay checks are unchanged.
+	server = newPiServiceTestServer(t, registration, runTask)
 
 	// Simulate a client disconnect after the service durably accepts the task.
 	conn := dialPiServiceTest(t, server.path)
@@ -427,7 +434,7 @@ func TestPiServiceBusyDisconnectAndUnresolvedReplay(t *testing.T) {
 		t.Fatalf("disconnect canceled or lost the accepted request: state=%+v exists=%v err=%v", state, exists, err)
 	}
 	response := roundTripPiServiceRequest(t, server.path, request)
-	if response.Status != "completed" || server.calls.Load() != 2 {
+	if response.Status != "completed" || server.calls.Load() != 1 {
 		t.Fatalf("disconnect retry duplicated or lost the terminal response: response=%+v calls=%d", response, server.calls.Load())
 	}
 }

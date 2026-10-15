@@ -1,0 +1,592 @@
+{
+    "schema_version":  "tbound-d09-stable-snapshot-validation-receipt/v1",
+    "recorded_date":  "2026-10-15",
+    "status":  "failed",
+    "status_detail":  "D09 scope gates: failed. Module-wide gates (AGENTS.md): failed. Failing module tests: TestPiServiceBusyDisconnectAndUnresolvedReplay, TestProductionFreshAndRecoveryDigestComposition, TestProductionFreshAndRecoveryDigestComposition/expired-deadline, TestProductionFreshAndRecoveryDigestComposition/roundtrip, TestProductionFreshAndRecoveryDigestComposition/uncertain-boundary-authorization. The same set fails at the pre-D09 parent f157bd9 (True), so it is not introduced by the D09 commit. Not fixed here. TestD09CellTemplateDraftIsNotAdmissible still skips under setpriv --no-new-privs (host does not provide the registered D09 xattr scanner privilege profile: xattr scanner has unregistered supplementary groups); not verified in this environment.",
+    "d09_scope_status":  "failed",
+    "module_gate_status":  "failed",
+    "gate_failures":  {
+                          "d09_scope":  [
+                                            "skip_focus_no_new_privs_passes"
+                                        ],
+                          "module":  [
+                                         "unit_module_normal_passes",
+                                         "race_module_normal_passes",
+                                         "unit_module_no_new_privs_passes",
+                                         "race_module_no_new_privs_passes"
+                                     ]
+                      },
+    "supersedes":  {
+                       "receipt":  "docs/evidence/d09-audit-head-binding-20261015.json",
+                       "historical_status":  "blocked",
+                       "historical_problem":  [
+                                                  "git status changed during the run"
+                                              ],
+                       "historical_head":  "f157bd922a47bd235bb4da300580e362e90f2ec9",
+                       "treatment":  "Historical receipt is not rewritten. This receipt supersedes its evidence scope by validating an exact committed snapshot at the head below instead of the mutable working tree."
+                   },
+    "scope":  "piruntime D09 audit-head binding (bare lowercase SHA-256 audit journal head accepted at the source descriptor, sealed source evidence shape, and captured launch proof call sites) on the committed snapshot below, plus module-wide gofmt, build, vet, unit and race including the cmd/tbound production consumer. Code verification only.",
+    "claims_not_made":  [
+                            "G1",
+                            "containment",
+                            "H1",
+                            "host ABI 8",
+                            "WSL ABI 1"
+                        ],
+    "grants_g1_containment_or_h1":  false,
+    "repository":  {
+                       "root_label":  "trust-boundary",
+                       "branch":  "codex/tbound-prototype",
+                       "head":  "a7ac97ef3196e804ff9547cfb473b30753dc3a03",
+                       "head_at_preflight":  "a7ac97ef3196e804ff9547cfb473b30753dc3a03",
+                       "head_after_run":  "a7ac97ef3196e804ff9547cfb473b30753dc3a03",
+                       "head_unchanged_during_run":  true,
+                       "brief_parent_head":  "2cba584",
+                       "brief_note":  "The brief named 2cba584 as parent HEAD. Preflight found HEAD at a7ac97e, which has 2cba584 as its parent. supervisor/ is identical at a7ac97e and ebbbbbc. The snapshot uses the HEAD recorded at preflight.",
+                       "tree":  "bf8ad949a58793b58ef1f724c41f10e53fdf0cc7",
+                       "supervisor_tree":  "f67af1102054df99eaa07802babfcb5c52223257",
+                       "d09_commit":  "89b76d0",
+                       "settlement_correction_commit":  "ebbbbbc",
+                       "commit_created":  false,
+                       "working_tree_dirty_entries_before":  46,
+                       "working_tree_dirty_entries_after":  50,
+                       "working_tree_note":  "Informational. Execution used the git archive of the requested head, so other sessions dirty docs and any D14 working tree changes are not inputs. Those files were not read, edited or staged by this run."
+                   },
+    "snapshot":  {
+                     "method":  "git -c core.autocrlf=false archive --format=tar \u003chead\u003e, extracted into a private directory under /home/jeli2k (not /tmp), then every extracted file verified against its git blob id (git hash-object --no-filters); removed by the EXIT trap together with TMPDIR.",
+                     "archive_copy":  "F:\\TBoundAssets\\recovery-20261015\\d09-stable-snapshot\\archive\\tbound-a7ac97e-snapshot.tar",
+                     "archive_sha256":  "f786fcd261d26d5d275c85b1252bdb6dc18e39b19a653e0c187c94c6a71c7d3e",
+                     "archive_bytes":  6615040,
+                     "tracked_files":  402,
+                     "blob_verification":  "match",
+                     "symlinks":  0,
+                     "excluded_from_archive":  [
+
+                                               ],
+                     "not_in_archive":  [
+                                            "untracked files, including vm_start.txt (untracked in HEAD and never opened by this run), and the .git directory"
+                                        ],
+                     "manifest_copy":  "F:\\TBoundAssets\\recovery-20261015\\d09-stable-snapshot\\manifest\\tracked-manifest-a7ac97e.tsv",
+                     "manifest_rows":  402,
+                     "manifest_sha256":  "5a98a8c62a76d59315b8c664b579015a6449816d1348120d85859f5eae923570",
+                     "owned_files":  [
+                                         {
+                                             "path":  "supervisor/internal/piruntime/d09_source_linux.go",
+                                             "git_blob_sha1":  "e02d64f1059647c81ec8d10b465247a11ae3d157",
+                                             "snapshot_sha256":  "35ffd9abda5565c28b949b28629334398f3c1a66a3967cf1dcaff8d27595c13d",
+                                             "historical_receipt_sha256":  "35ffd9abda5565c28b949b28629334398f3c1a66a3967cf1dcaff8d27595c13d",
+                                             "matches_historical_receipt":  true
+                                         },
+                                         {
+                                             "path":  "supervisor/internal/piruntime/descriptor.go",
+                                             "git_blob_sha1":  "7c01dae2f52ec43c00a6529acff8ef9ddff79b34",
+                                             "snapshot_sha256":  "b84a63d3faf2d70ee9e653eda9e6945d863f81f2d92b08d3c1af17a92b66a23c",
+                                             "historical_receipt_sha256":  "b84a63d3faf2d70ee9e653eda9e6945d863f81f2d92b08d3c1af17a92b66a23c",
+                                             "matches_historical_receipt":  true
+                                         },
+                                         {
+                                             "path":  "supervisor/internal/piruntime/host.go",
+                                             "git_blob_sha1":  "f6f7092bee6f8addf2ef1813f216cee2d3cef5fe",
+                                             "snapshot_sha256":  "c05d4fa5eb52b06f0a573ce52010f92ab062f31c46980467a4d103e5692e797d",
+                                             "historical_receipt_sha256":  "c05d4fa5eb52b06f0a573ce52010f92ab062f31c46980467a4d103e5692e797d",
+                                             "matches_historical_receipt":  true
+                                         },
+                                         {
+                                             "path":  "supervisor/internal/piruntime/worker_channels_linux.go",
+                                             "git_blob_sha1":  "859a32c2521f8c91808725528ea597cd9da83a45",
+                                             "snapshot_sha256":  "0a435215eaeb88807b845d89415bf8ad0d077108da8595f6d2cc03f851b5aa0a",
+                                             "historical_receipt_sha256":  "0a435215eaeb88807b845d89415bf8ad0d077108da8595f6d2cc03f851b5aa0a",
+                                             "matches_historical_receipt":  true
+                                         },
+                                         {
+                                             "path":  "supervisor/internal/piruntime/d09_channel_preflight_linux_test.go",
+                                             "git_blob_sha1":  "e7d44852591d73fba3989dce862f6b6d4b308857",
+                                             "snapshot_sha256":  "fc46f346c18c8e11a39f3760168d90a5ed404306d1be10edc1b39da9b92d6ee4",
+                                             "historical_receipt_sha256":  "fc46f346c18c8e11a39f3760168d90a5ed404306d1be10edc1b39da9b92d6ee4",
+                                             "matches_historical_receipt":  true
+                                         },
+                                         {
+                                             "path":  "supervisor/internal/piruntime/d09_audit_head_linux_test.go",
+                                             "git_blob_sha1":  "8d0d308d64402a991001f89523d2ada49da50133",
+                                             "snapshot_sha256":  "5d15592b067a394c51e75ebb411876d32c0c77f2c86f1e545718386447319d10",
+                                             "historical_receipt_sha256":  "5d15592b067a394c51e75ebb411876d32c0c77f2c86f1e545718386447319d10",
+                                             "matches_historical_receipt":  true
+                                         }
+                                     ]
+                 },
+    "execution":  {
+                      "launcher":  "wsl.exe -d Ubuntu -- /usr/bin/env -i HOME=/home/jeli2k PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin LANG=C.UTF-8 /bin/bash /mnt/f/TBoundAssets/recovery-20261015/d09-stable-snapshot/scripts/run-snapshot-checks.sh \u003chead\u003e",
+                      "runner":  "F:\\TBoundAssets\\recovery-20261015\\d09-stable-snapshot\\scripts\\run-snapshot-checks.sh",
+                      "runner_sha256":  "669c0fe72040e36f89478bde1b3a998ab4a73d805228672ab9dcd387160b9cf4",
+                      "baseline_runner":  "F:\\TBoundAssets\\recovery-20261015\\d09-stable-snapshot\\scripts\\run-baseline-cmd-tbound.sh",
+                      "baseline_runner_sha256":  "51f19e8a05c67c267b8320e6aa24ca806d466df450dbb8a91c7f3d52fd123c88",
+                      "receipt_builder":  "F:\\TBoundAssets\\recovery-20261015\\d09-stable-snapshot\\scripts\\build-receipt.ps1",
+                      "receipt_builder_sha256":  "867b76d5225c79f26f3749457fe5b7599d6f5227ce1b8dc1d0b11a5418537e6f",
+                      "platform":  "Linux amd64 under WSL2 Ubuntu 24.04",
+                      "working_directory":  "private snapshot \u003cprivate\u003e/s/supervisor (ephemeral, removed on exit)",
+                      "go_executable":  "/home/jeli2k/go-sdk/go/bin/go",
+                      "go_version":  "go1.27.1 linux/amd64 (from logs/00-preflight.log)",
+                      "gofmt_executable":  "/home/jeli2k/go-sdk/go/bin/gofmt",
+                      "gcc":  "gcc 13.3.0 (cgo for -race)",
+                      "git":  "git 2.43.0",
+                      "user":  "jeli2k (uid 1000, non-root)",
+                      "environment":  "env -i HOME=/home/jeli2k PATH=/home/jeli2k/go-sdk/go/bin:/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 GOMAXPROCS=2 GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOCACHE=/home/jeli2k/.cache/go-build GOMODCACHE=/home/jeli2k/go/pkg/mod TMPDIR=\u003cprivate\u003e/t CGO_ENABLED=1; umask 077; go build/vet/test with -p 2; every command wrapped in timeout 1800",
+                      "no_new_privs_context":  {
+                                                   "command":  "setpriv --no-new-privs (util-linux, /usr/bin/setpriv) around the same go command, as uid 1000",
+                                                   "availability":  "setpriv present with --no-new-privs in /usr/bin/setpriv",
+                                                   "probe_nnp_on":  true,
+                                                   "probe_cap_eff_zero":  true,
+                                                   "probe_log":  "logs/00c-probe-nnp.log",
+                                                   "supplementary_groups_probe":  "logs/probe-groups.txt",
+                                                   "supplementary_groups_probe_result":  "setpriv --clear-groups and setpriv --groups 1000 both fail with setgroups failed: Operation not permitted as uid 1000 (no CAP_SETGID). uid 1000 holds 12 supplementary groups plus its primary group."
+                                               },
+                      "cleanup_log":  "logs/cleanup.log",
+                      "cleanup_text":  "cleanup ok: removed private snapshot and TMPDIR /home/jeli2k/.tb-d09s.BXiso6",
+                      "private_root":  "/home/jeli2k/.tb-d09s.BXiso6",
+                      "private_root_absent_after_exit":  true
+                  },
+    "disk":  {
+                 "drive":  "C:",
+                 "guard_bytes":  5368709120,
+                 "c_avail_before_bytes":  26154270720,
+                 "c_avail_after_bytes":  26937163776
+             },
+    "gates":  {
+                  "d09_scope":  {
+                                    "archive_and_extract_exit_zero":  true,
+                                    "blob_verification_match":  true,
+                                    "no_symlinks_in_snapshot":  true,
+                                    "head_unchanged_during_run":  true,
+                                    "gofmt_clean":  true,
+                                    "build_exit_zero":  true,
+                                    "vet_exit_zero":  true,
+                                    "module_list_includes_cmd_tbound":  true,
+                                    "piruntime_package_ok_normal":  true,
+                                    "piruntime_package_ok_no_new_privs":  true,
+                                    "skip_focus_normal_skips":  true,
+                                    "skip_focus_no_new_privs_passes":  false,
+                                    "no_new_privs_probe_zero_caps":  true,
+                                    "d09_named_tests_have_no_failures":  true,
+                                    "cleanup_removed_private_tree":  true,
+                                    "disk_guard_held":  true,
+                                    "manifest_and_archive_copies_match_runner":  true
+                                },
+                  "module":  {
+                                 "unit_module_normal_passes":  false,
+                                 "race_module_normal_passes":  false,
+                                 "unit_module_no_new_privs_passes":  false,
+                                 "race_module_no_new_privs_passes":  false
+                             }
+              },
+    "results":  {
+                    "module_unit_normal":  {
+                                               "step":  "05-unit-module",
+                                               "context":  "normal",
+                                               "command":  "go test -p 2 -mod=readonly -count=1 -v ./...",
+                                               "exit_code":  1,
+                                               "log":  "05-unit-module.log",
+                                               "log_sha256":  "b917b7d933bf3196f9b02b9ce5570563bd1a391c1b76d627bf00de70aaea8494",
+                                               "pass":  1210,
+                                               "fail":  8,
+                                               "skip":  8,
+                                               "skipped":  [
+                                                               "TestServePiDevFixtureLaunchesActualPinnedPiOffline | set TBOUND_DEV_FIXTURE_PI/TBOUND_DEV_FIXTURE_NODE/TBOUND_DEV_FIXTURE_ADAPTER/TBOUND_DEV_FIXTURE_ROOT to run the actual offline development Pi CLI fixture",
+                                                               "TestRealProviderDurableLinux | set TBOUND_RUN_REAL_PROVIDER_TESTS=1 to enable provider/network tests",
+                                                               "TestLandlockTSYNCReachesEnforcement | kernel lacks the registered Landlock ABI8 TSYNC profile; explicit unsupported skip: landlock ABI 8 (TSYNC) is required exactly, kernel reports 1",
+                                                               "TestOpenRejectsUntrustedOwnership | changing file ownership requires root",
+                                                               "TestRealOpenRouterExchange | set TBOUND_RUN_REAL_PROVIDER_TESTS=1 to enable provider/network tests",
+                                                               "TestD09CellTemplateDraftIsNotAdmissible | host does not provide the registered D09 xattr scanner privilege profile: xattr scanner requires zero effective capabilities and NoNewPrivs=1",
+                                                               "TestCgroupLimitsOrExplicitSkip | cgroup v2 memory/pids limits are NOT established on this host (cgroup2 mount=true, delegated=false, unsupported=[cgroup: not delegated]); this is an explicit unsupported skip, not a silent pass",
+                                                               "TestReservedCapacityFilesystemExperiment | D14 ext4 capacity experiment is opt-in; set TBOUND_TEST_EXT4_CAPACITY=1 to run"
+                                                           ],
+                                               "package_ok":  25,
+                                               "package_fail":  [
+                                                                    "tbound/supervisor/cmd/tbound"
+                                                                ],
+                                               "no_test_files":  1,
+                                               "data_race_warnings":  0,
+                                               "panics":  0
+                                           },
+                    "module_race_normal":  {
+                                               "step":  "06-race-module",
+                                               "context":  "normal",
+                                               "command":  "go test -race -p 2 -mod=readonly -count=1 -v ./...",
+                                               "exit_code":  1,
+                                               "log":  "06-race-module.log",
+                                               "log_sha256":  "7ab76654d417085b5f797dc5b7fd30048d53f9ca5bf0639feee6dfaa9fb7e4c5",
+                                               "pass":  1210,
+                                               "fail":  8,
+                                               "skip":  8,
+                                               "skipped":  [
+                                                               "TestServePiDevFixtureLaunchesActualPinnedPiOffline | set TBOUND_DEV_FIXTURE_PI/TBOUND_DEV_FIXTURE_NODE/TBOUND_DEV_FIXTURE_ADAPTER/TBOUND_DEV_FIXTURE_ROOT to run the actual offline development Pi CLI fixture",
+                                                               "TestRealProviderDurableLinux | set TBOUND_RUN_REAL_PROVIDER_TESTS=1 to enable provider/network tests",
+                                                               "TestLandlockTSYNCReachesEnforcement | kernel lacks the registered Landlock ABI8 TSYNC profile; explicit unsupported skip: landlock ABI 8 (TSYNC) is required exactly, kernel reports 1",
+                                                               "TestOpenRejectsUntrustedOwnership | changing file ownership requires root",
+                                                               "TestRealOpenRouterExchange | set TBOUND_RUN_REAL_PROVIDER_TESTS=1 to enable provider/network tests",
+                                                               "TestD09CellTemplateDraftIsNotAdmissible | host does not provide the registered D09 xattr scanner privilege profile: xattr scanner requires zero effective capabilities and NoNewPrivs=1",
+                                                               "TestCgroupLimitsOrExplicitSkip | cgroup v2 memory/pids limits are NOT established on this host (cgroup2 mount=true, delegated=false, unsupported=[cgroup: not delegated]); this is an explicit unsupported skip, not a silent pass",
+                                                               "TestReservedCapacityFilesystemExperiment | D14 ext4 capacity experiment is opt-in; set TBOUND_TEST_EXT4_CAPACITY=1 to run"
+                                                           ],
+                                               "package_ok":  25,
+                                               "package_fail":  [
+                                                                    "tbound/supervisor/cmd/tbound"
+                                                                ],
+                                               "no_test_files":  1,
+                                               "data_race_warnings":  0,
+                                               "panics":  0
+                                           },
+                    "module_unit_no_new_privs":  {
+                                                     "step":  "07-unit-module-nnp",
+                                                     "context":  "no-new-privs-zero-cap",
+                                                     "command":  "setpriv --no-new-privs go test -p 2 -mod=readonly -count=1 -v ./...",
+                                                     "exit_code":  1,
+                                                     "log":  "07-unit-module-nnp.log",
+                                                     "log_sha256":  "33632a17b2f21e2ef8beaed144c8f9b470721fa04b1cfab18c473cad33dc7663",
+                                                     "pass":  1210,
+                                                     "fail":  8,
+                                                     "skip":  8,
+                                                     "skipped":  [
+                                                                     "TestServePiDevFixtureLaunchesActualPinnedPiOffline | set TBOUND_DEV_FIXTURE_PI/TBOUND_DEV_FIXTURE_NODE/TBOUND_DEV_FIXTURE_ADAPTER/TBOUND_DEV_FIXTURE_ROOT to run the actual offline development Pi CLI fixture",
+                                                                     "TestRealProviderDurableLinux | set TBOUND_RUN_REAL_PROVIDER_TESTS=1 to enable provider/network tests",
+                                                                     "TestLandlockTSYNCReachesEnforcement | kernel lacks the registered Landlock ABI8 TSYNC profile; explicit unsupported skip: landlock ABI 8 (TSYNC) is required exactly, kernel reports 1",
+                                                                     "TestOpenRejectsUntrustedOwnership | changing file ownership requires root",
+                                                                     "TestRealOpenRouterExchange | set TBOUND_RUN_REAL_PROVIDER_TESTS=1 to enable provider/network tests",
+                                                                     "TestD09CellTemplateDraftIsNotAdmissible | host does not provide the registered D09 xattr scanner privilege profile: xattr scanner has unregistered supplementary groups",
+                                                                     "TestCgroupLimitsOrExplicitSkip | cgroup v2 memory/pids limits are NOT established on this host (cgroup2 mount=true, delegated=false, unsupported=[cgroup: not delegated]); this is an explicit unsupported skip, not a silent pass",
+                                                                     "TestReservedCapacityFilesystemExperiment | D14 ext4 capacity experiment is opt-in; set TBOUND_TEST_EXT4_CAPACITY=1 to run"
+                                                                 ],
+                                                     "package_ok":  25,
+                                                     "package_fail":  [
+                                                                          "tbound/supervisor/cmd/tbound"
+                                                                      ],
+                                                     "no_test_files":  1,
+                                                     "data_race_warnings":  0,
+                                                     "panics":  0
+                                                 },
+                    "module_race_no_new_privs":  {
+                                                     "step":  "08-race-module-nnp",
+                                                     "context":  "no-new-privs-zero-cap",
+                                                     "command":  "setpriv --no-new-privs go test -race -p 2 -mod=readonly -count=1 -v ./...",
+                                                     "exit_code":  1,
+                                                     "log":  "08-race-module-nnp.log",
+                                                     "log_sha256":  "6a26ee7268ebec168e9540e5e1c5294c5d387296925502e3ab3ad2e7d52321f1",
+                                                     "pass":  1210,
+                                                     "fail":  8,
+                                                     "skip":  8,
+                                                     "skipped":  [
+                                                                     "TestServePiDevFixtureLaunchesActualPinnedPiOffline | set TBOUND_DEV_FIXTURE_PI/TBOUND_DEV_FIXTURE_NODE/TBOUND_DEV_FIXTURE_ADAPTER/TBOUND_DEV_FIXTURE_ROOT to run the actual offline development Pi CLI fixture",
+                                                                     "TestRealProviderDurableLinux | set TBOUND_RUN_REAL_PROVIDER_TESTS=1 to enable provider/network tests",
+                                                                     "TestLandlockTSYNCReachesEnforcement | kernel lacks the registered Landlock ABI8 TSYNC profile; explicit unsupported skip: landlock ABI 8 (TSYNC) is required exactly, kernel reports 1",
+                                                                     "TestOpenRejectsUntrustedOwnership | changing file ownership requires root",
+                                                                     "TestRealOpenRouterExchange | set TBOUND_RUN_REAL_PROVIDER_TESTS=1 to enable provider/network tests",
+                                                                     "TestD09CellTemplateDraftIsNotAdmissible | host does not provide the registered D09 xattr scanner privilege profile: xattr scanner has unregistered supplementary groups",
+                                                                     "TestCgroupLimitsOrExplicitSkip | cgroup v2 memory/pids limits are NOT established on this host (cgroup2 mount=true, delegated=false, unsupported=[cgroup: not delegated]); this is an explicit unsupported skip, not a silent pass",
+                                                                     "TestReservedCapacityFilesystemExperiment | D14 ext4 capacity experiment is opt-in; set TBOUND_TEST_EXT4_CAPACITY=1 to run"
+                                                                 ],
+                                                     "package_ok":  25,
+                                                     "package_fail":  [
+                                                                          "tbound/supervisor/cmd/tbound"
+                                                                      ],
+                                                     "no_test_files":  1,
+                                                     "data_race_warnings":  0,
+                                                     "panics":  0
+                                                 },
+                    "skip_focus_normal":  {
+                                              "step":  "09-skip-focus-normal",
+                                              "context":  "normal",
+                                              "command":  "go test -p 2 -mod=readonly -count=1 -v -run \u0027^TestD09CellTemplateDraftIsNotAdmissible$\u0027 ./internal/piruntime",
+                                              "exit_code":  0,
+                                              "log":  "09-skip-focus-normal.log",
+                                              "log_sha256":  "a85a48917546a87162b3ac2281acc3d97a28193a1f1fd182bb30d3406e94a4b2",
+                                              "pass":  0,
+                                              "fail":  0,
+                                              "skip":  1,
+                                              "skipped":  [
+                                                              "TestD09CellTemplateDraftIsNotAdmissible | host does not provide the registered D09 xattr scanner privilege profile: xattr scanner requires zero effective capabilities and NoNewPrivs=1"
+                                                          ],
+                                              "package_ok":  1,
+                                              "package_fail":  [
+
+                                                               ],
+                                              "no_test_files":  0,
+                                              "data_race_warnings":  0,
+                                              "panics":  0
+                                          },
+                    "skip_focus_no_new_privs":  {
+                                                    "step":  "10-skip-focus-nnp",
+                                                    "context":  "no-new-privs-zero-cap",
+                                                    "command":  "setpriv --no-new-privs go test -p 2 -mod=readonly -count=1 -v -run \u0027^TestD09CellTemplateDraftIsNotAdmissible$\u0027 ./internal/piruntime",
+                                                    "exit_code":  0,
+                                                    "log":  "10-skip-focus-nnp.log",
+                                                    "log_sha256":  "e2eba696108315d808fd8ae99f0d7990019e1cd6dc718469f0fe36ebe898c55b",
+                                                    "pass":  0,
+                                                    "fail":  0,
+                                                    "skip":  1,
+                                                    "skipped":  [
+                                                                    "TestD09CellTemplateDraftIsNotAdmissible | host does not provide the registered D09 xattr scanner privilege profile: xattr scanner has unregistered supplementary groups"
+                                                                ],
+                                                    "package_ok":  1,
+                                                    "package_fail":  [
+
+                                                                     ],
+                                                    "no_test_files":  0,
+                                                    "data_race_warnings":  0,
+                                                    "panics":  0
+                                                }
+                },
+    "d09_named_tests":  {
+                            "module_unit_normal":  {
+                                                       "top_level_pass":  47,
+                                                       "fail_lines":  0,
+                                                       "skipped":  [
+                                                                       "TestD09CellTemplateDraftIsNotAdmissible"
+                                                                   ]
+                                                   },
+                            "module_race_normal":  {
+                                                       "top_level_pass":  47,
+                                                       "fail_lines":  0,
+                                                       "skipped":  [
+                                                                       "TestD09CellTemplateDraftIsNotAdmissible"
+                                                                   ]
+                                                   },
+                            "module_unit_no_new_privs":  {
+                                                             "top_level_pass":  47,
+                                                             "fail_lines":  0,
+                                                             "skipped":  [
+                                                                             "TestD09CellTemplateDraftIsNotAdmissible"
+                                                                         ]
+                                                         },
+                            "module_race_no_new_privs":  {
+                                                             "top_level_pass":  47,
+                                                             "fail_lines":  0,
+                                                             "skipped":  [
+                                                                             "TestD09CellTemplateDraftIsNotAdmissible"
+                                                                         ]
+                                                         }
+                        },
+    "baseline_comparison":  {
+                                "module_failing_tests_at_head":  [
+                                                                     "TestPiServiceBusyDisconnectAndUnresolvedReplay",
+                                                                     "TestProductionFreshAndRecoveryDigestComposition",
+                                                                     "TestProductionFreshAndRecoveryDigestComposition/expired-deadline",
+                                                                     "TestProductionFreshAndRecoveryDigestComposition/roundtrip",
+                                                                     "TestProductionFreshAndRecoveryDigestComposition/uncertain-boundary-authorization"
+                                                                 ],
+                                "baseline_runs":  {
+                                                      "pre-d09-f157bd9":  {
+                                                                              "commit":  "f157bd922a47bd235bb4da300580e362e90f2ec9",
+                                                                              "blob_verification":  "match",
+                                                                              "command":  "go test -p 2 -mod=readonly -count=1 -v ./cmd/tbound/ (normal context, same pinned Go and environment)",
+                                                                              "exit_code":  1,
+                                                                              "log":  "baseline/pre-d09-f157bd9/logs/01-test-cmd-tbound-normal.log",
+                                                                              "log_sha256":  "54953f177d657dfd51e0fbc67412f03f3d421003c0f62d5e66f2c7adb59041b7",
+                                                                              "package_result":  "FAIL\ttbound/supervisor/cmd/tbound\t24.155s",
+                                                                              "failing_tests":  [
+                                                                                                    "TestPiServiceBusyDisconnectAndUnresolvedReplay",
+                                                                                                    "TestProductionFreshAndRecoveryDigestComposition",
+                                                                                                    "TestProductionFreshAndRecoveryDigestComposition/expired-deadline",
+                                                                                                    "TestProductionFreshAndRecoveryDigestComposition/roundtrip",
+                                                                                                    "TestProductionFreshAndRecoveryDigestComposition/uncertain-boundary-authorization"
+                                                                                                ],
+                                                                              "pass":  307,
+                                                                              "fail":  8,
+                                                                              "skip":  2
+                                                                          },
+                                                      "d09-89b76d0":  {
+                                                                          "commit":  "89b76d02251db1443b6d88210cceb0ccca792536",
+                                                                          "blob_verification":  "match",
+                                                                          "command":  "go test -p 2 -mod=readonly -count=1 -v ./cmd/tbound/ (normal context, same pinned Go and environment)",
+                                                                          "exit_code":  1,
+                                                                          "log":  "baseline/d09-89b76d0/logs/01-test-cmd-tbound-normal.log",
+                                                                          "log_sha256":  "909c705ea347053bc21ffedff12de66dd159b17be0f39e92ccc82b8484fcb98d",
+                                                                          "package_result":  "FAIL\ttbound/supervisor/cmd/tbound\t23.675s",
+                                                                          "failing_tests":  [
+                                                                                                "TestPiServiceBusyDisconnectAndUnresolvedReplay",
+                                                                                                "TestProductionFreshAndRecoveryDigestComposition",
+                                                                                                "TestProductionFreshAndRecoveryDigestComposition/expired-deadline",
+                                                                                                "TestProductionFreshAndRecoveryDigestComposition/roundtrip",
+                                                                                                "TestProductionFreshAndRecoveryDigestComposition/uncertain-boundary-authorization"
+                                                                                            ],
+                                                                          "pass":  307,
+                                                                          "fail":  8,
+                                                                          "skip":  2
+                                                                      }
+                                                  },
+                                "same_failing_set_as_pre_d09_parent":  true,
+                                "same_failing_set_as_d09_commit":  true,
+                                "conclusion":  "The two cmd/tbound tests that fail at the snapshot head fail with the same names and messages at the pre-D09 parent f157bd9 (before both the D09 commit 89b76d0 and the settlement correction ebbbbbc). The failing predicate in the fixture is validWorkflowCatalogEntry (production_workflow_catalog_linux.go:1440, requires a bare AdmissionRecordHash), which the fixture does not satisfy because digestBytes returns a sha256:-prefixed value. That line is unchanged since f157bd9. These failures are pre-existing, not introduced by the D09 change, and were not fixed in this run.",
+                                "skip_reason":  {
+                                                    "historical_skip":  "TestD09CellTemplateDraftIsNotAdmissible",
+                                                    "historical_skip_reason":  "host does not provide the registered D09 xattr scanner privilege profile: xattr scanner requires zero effective capabilities and NoNewPrivs=1",
+                                                    "current_normal_skip_reason":  "host does not provide the registered D09 xattr scanner privilege profile: xattr scanner requires zero effective capabilities and NoNewPrivs=1",
+                                                    "skip_reason_same_as_historical":  true,
+                                                    "no_new_privs_skip_reason":  "host does not provide the registered D09 xattr scanner privilege profile: xattr scanner has unregistered supplementary groups",
+                                                    "no_new_privs_skip_reason_note":  "Under setpriv --no-new-privs NoNewPrivs=1 and CapEff=0 are met. The remaining blocker is unregistered supplementary groups of uid 1000, and setgroups is not permitted without CAP_SETGID, so the groups cannot be cleared as non-root.",
+                                                    "note":  "The normal-context skip is expected and is not verification. The no-new-privs runs (skip_focus_no_new_privs and the module suites) also SKIP that test, so it is unverified in both contexts."
+                                                }
+                            },
+    "commands":  [
+                     {
+                         "step":  "a1-git-archive",
+                         "context":  "normal",
+                         "exit_code":  0,
+                         "log":  "a1-git-archive.log",
+                         "command":  "timeout 300 git -C \u003crepo\u003e -c core.autocrlf=false archive --format=tar a7ac97ef3196e804ff9547cfb473b30753dc3a03",
+                         "log_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                         "log_lines":  0
+                     },
+                     {
+                         "step":  "a2-extract",
+                         "context":  "normal",
+                         "exit_code":  0,
+                         "log":  "a2-extract.log",
+                         "command":  "tar -xf snapshot.tar -C \u003cprivate\u003e/s",
+                         "log_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                         "log_lines":  0
+                     },
+                     {
+                         "step":  "a3-verify",
+                         "context":  "normal",
+                         "exit_code":  0,
+                         "log":  "a3-verify.log",
+                         "command":  "blob ids of extracted files == git ls-tree -r (git hash-object --no-filters)",
+                         "log_sha256":  "31ae0318f8db9b637a9c0515ee3fe16c347c5def1eea6e27bcf8ab269ba067d1",
+                         "log_lines":  6
+                     },
+                     {
+                         "step":  "00a-probe-normal",
+                         "context":  "normal",
+                         "exit_code":  0,
+                         "log":  "00a-probe-normal.log",
+                         "command":  "grep /proc/self/status Uid NoNewPrivs CapEff",
+                         "log_sha256":  "ce0316b6a40e39ac5d0f1b26d535a18f16c2676482508a183db32183e2c61141",
+                         "log_lines":  3
+                     },
+                     {
+                         "step":  "00b-go-env",
+                         "context":  "normal",
+                         "exit_code":  0,
+                         "log":  "00b-go-env.log",
+                         "command":  "go env GOVERSION GOROOT GOTOOLCHAIN GOPROXY GOSUMDB GOFLAGS GOCACHE GOMODCACHE GOMAXPROCS",
+                         "log_sha256":  "1832ee0341d2f83f790a95ea04bfe9536916ee3cfdd69c7411b1f07fcd7582d6",
+                         "log_lines":  9
+                     },
+                     {
+                         "step":  "00c-probe-nnp",
+                         "context":  "no-new-privs-zero-cap",
+                         "exit_code":  0,
+                         "log":  "00c-probe-nnp.log",
+                         "command":  "setpriv --no-new-privs /bin/sh -c grep /proc/self/status Uid NoNewPrivs CapEff",
+                         "log_sha256":  "b2d64b1fa9c152289389a6d47bce36c3dca86cf1f875c7ea0d6e27fcf6c8ccbb",
+                         "log_lines":  3
+                     },
+                     {
+                         "step":  "01-gofmt",
+                         "context":  "normal",
+                         "exit_code":  0,
+                         "log":  "01-gofmt.log",
+                         "command":  "gofmt -l .",
+                         "log_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                         "log_lines":  0
+                     },
+                     {
+                         "step":  "02-build",
+                         "context":  "normal",
+                         "exit_code":  0,
+                         "log":  "02-build.log",
+                         "command":  "go build -p 2 ./...",
+                         "log_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                         "log_lines":  0
+                     },
+                     {
+                         "step":  "03-vet",
+                         "context":  "normal",
+                         "exit_code":  0,
+                         "log":  "03-vet.log",
+                         "command":  "go vet -p 2 -mod=readonly ./...",
+                         "log_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                         "log_lines":  0
+                     },
+                     {
+                         "step":  "04-list",
+                         "context":  "normal",
+                         "exit_code":  0,
+                         "log":  "04-list.log",
+                         "command":  "go list ./...",
+                         "log_sha256":  "ea0222d140ca65b9e63b4e6b27d111cec366aba45825600e9c54185a9e68482f",
+                         "log_lines":  27
+                     },
+                     {
+                         "step":  "05-unit-module",
+                         "context":  "normal",
+                         "exit_code":  1,
+                         "log":  "05-unit-module.log",
+                         "command":  "go test -p 2 -mod=readonly -count=1 -v ./...",
+                         "log_sha256":  "b917b7d933bf3196f9b02b9ce5570563bd1a391c1b76d627bf00de70aaea8494",
+                         "log_lines":  2592
+                     },
+                     {
+                         "step":  "06-race-module",
+                         "context":  "normal",
+                         "exit_code":  1,
+                         "log":  "06-race-module.log",
+                         "command":  "go test -race -p 2 -mod=readonly -count=1 -v ./...",
+                         "log_sha256":  "7ab76654d417085b5f797dc5b7fd30048d53f9ca5bf0639feee6dfaa9fb7e4c5",
+                         "log_lines":  2592
+                     },
+                     {
+                         "step":  "07-unit-module-nnp",
+                         "context":  "no-new-privs-zero-cap",
+                         "exit_code":  1,
+                         "log":  "07-unit-module-nnp.log",
+                         "command":  "setpriv --no-new-privs go test -p 2 -mod=readonly -count=1 -v ./...",
+                         "log_sha256":  "33632a17b2f21e2ef8beaed144c8f9b470721fa04b1cfab18c473cad33dc7663",
+                         "log_lines":  2592
+                     },
+                     {
+                         "step":  "08-race-module-nnp",
+                         "context":  "no-new-privs-zero-cap",
+                         "exit_code":  1,
+                         "log":  "08-race-module-nnp.log",
+                         "command":  "setpriv --no-new-privs go test -race -p 2 -mod=readonly -count=1 -v ./...",
+                         "log_sha256":  "6a26ee7268ebec168e9540e5e1c5294c5d387296925502e3ab3ad2e7d52321f1",
+                         "log_lines":  2592
+                     },
+                     {
+                         "step":  "09-skip-focus-normal",
+                         "context":  "normal",
+                         "exit_code":  0,
+                         "log":  "09-skip-focus-normal.log",
+                         "command":  "go test -p 2 -mod=readonly -count=1 -v -run \u0027^TestD09CellTemplateDraftIsNotAdmissible$\u0027 ./internal/piruntime",
+                         "log_sha256":  "a85a48917546a87162b3ac2281acc3d97a28193a1f1fd182bb30d3406e94a4b2",
+                         "log_lines":  5
+                     },
+                     {
+                         "step":  "10-skip-focus-nnp",
+                         "context":  "no-new-privs-zero-cap",
+                         "exit_code":  0,
+                         "log":  "10-skip-focus-nnp.log",
+                         "command":  "setpriv --no-new-privs go test -p 2 -mod=readonly -count=1 -v -run \u0027^TestD09CellTemplateDraftIsNotAdmissible$\u0027 ./internal/piruntime",
+                         "log_sha256":  "e2eba696108315d808fd8ae99f0d7990019e1cd6dc718469f0fe36ebe898c55b",
+                         "log_lines":  5
+                     }
+                 ],
+    "not_run":  [
+                    "Windows, Hyper-V, Podman and containment runs; any G1, containment or H1 evidence",
+                    "Other architectures and OSes; only Linux amd64 under WSL2 Ubuntu 24.04",
+                    "Provider calls, credentials, keys and network or module downloads (GOPROXY=off, GOSUMDB=off, GOTOOLCHAIN=local)",
+                    "Race-mode baseline for cmd/tbound; the baseline comparison uses the normal-context unit run only",
+                    "Baseline runs for other packages; they passed at HEAD, so no baseline was needed",
+                    "Uncommitted working tree state of any session, including D14 changes; excluded by design",
+                    "Other CI jobs in .github/workflows/ci.yml beyond the module-wide gofmt, build, vet, unit and race commands in AGENTS.md"
+                ],
+    "limitations":  [
+                        "Verified only the committed snapshot at the head above. Uncommitted work, including D14, is not validated.",
+                        "The module-wide AGENTS.md gate is not green at this head: two cmd/tbound tests fail in both contexts. The same tests fail at the pre-D09 parent, so this is pre-existing and not a D09 regression. The D09 scope gates do not pass (d09_scope_status failed): TestD09CellTemplateDraftIsNotAdmissible is SKIPPED in both contexts, so skip_focus_no_new_privs_passes is false.",
+                        "The snapshot has no .git directory. Tests that need the real repository metadata would fail here; none of the module results indicated such a dependency.",
+                        "The no-new-privs context (setpriv --no-new-privs as uid 1000, NoNewPrivs=1, CapEff=0) does not un-skip TestD09CellTemplateDraftIsNotAdmissible. The xattr scanner profile also requires no unregistered supplementary groups, and uid 1000 holds 12. setgroups needs CAP_SETGID, so the test stays unverified in this environment. That is an environment limit, not a code failure. It was not worked around (no root, no account change).",
+                        "uid 1000 is a member of the sudo, adm and docker groups. Group membership is not a capability and was not altered by this run. The registered xattr scanner profile does not register these groups, which is the skip reason 'xattr scanner has unregistered supplementary groups'.",
+                        "The -v flag was added to go test for skip accounting. It does not change test selection.",
+                        "Passing tests here verify code only. They are not G1, containment, H1, host ABI 8 or WSL ABI 1 evidence."
+                    ]
+}
