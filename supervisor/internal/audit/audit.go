@@ -286,6 +286,19 @@ func (j *Journal) Trace() (Trace, error) {
 // same Journal. A callback error attempts to persist an unknown outcome and
 // leaves the journal globally quarantined whether or not that append succeeds.
 func (j *Journal) RunEffect(id string, intent []byte, effect func() ([]byte, error)) ([]byte, error) {
+	return j.RunEffectWithBeforeOutcome(id, intent, effect, nil)
+}
+
+// RunEffectWithBeforeOutcome durably records an intent before calling effect,
+// then invokes beforeOutcome after the callback and before writing the
+// terminal outcome. Capacity-backed callers use this boundary to release and
+// sync their reserved blocks while the intent is still unresolved. If the
+// hook fails, no outcome is written: the callback may have run, so the intent
+// stays unresolved and the journal is poisoned until independent recovery.
+// The hook runs under the journal writer lock and must not call methods on the
+// same Journal.
+func (j *Journal) RunEffectWithBeforeOutcome(id string, intent []byte,
+	effect func() ([]byte, error), beforeOutcome func() error) ([]byte, error) {
 	if strings.TrimSpace(id) == "" || effect == nil {
 		return nil, fmt.Errorf("%w: effect ID and callback are required", ErrInvalidEvent)
 	}
@@ -323,6 +336,12 @@ func (j *Journal) RunEffect(id string, intent []byte, effect func() ([]byte, err
 	if err := j.observeLifecycle(EffectBoundaryAfterCallbackReturn); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrOutcomeUnknown, errors.Join(err, effectErr))
 	}
+	if beforeOutcome != nil {
+		if err := invokeBeforeOutcome(beforeOutcome); err != nil {
+			j.poisoned = true
+			return nil, fmt.Errorf("%w: pre-outcome hook: %w", ErrOutcomeUnknown, errors.Join(err, effectErr))
+		}
+	}
 
 	outcome := "success"
 	if effectErr != nil {
@@ -340,6 +359,15 @@ func (j *Journal) RunEffect(id string, intent []byte, effect func() ([]byte, err
 		return nil, fmt.Errorf("%w: callback reported an error: %w", ErrOutcomeUnknown, effectErr)
 	}
 	return cloneBytes(result), nil
+}
+
+func invokeBeforeOutcome(hook func() error) (err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = fmt.Errorf("pre-outcome hook panic: %v", recovered)
+		}
+	}()
+	return hook()
 }
 
 func (j *Journal) observeLifecycle(boundary EffectBoundary) (err error) {

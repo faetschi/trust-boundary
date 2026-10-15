@@ -1,0 +1,78 @@
+{
+  "schema": "tbound.audit-pre-outcome-hook-verification.v1",
+  "date": "2026-10-15",
+  "status": "Audit ordering seam only. No capacity reserve, global ticket, protected-volume writer gate, or D14 guarantee is implemented by this receipt.",
+  "capturedSource": {
+    "baseCommit": "e32da62567959a390dda5a383ed06f50b601fa8b",
+    "basis": "Immutable git archive of supervisor/go.mod, supervisor/go.sum, and supervisor/internal/audit from baseCommit, with only the two listed audit source files overlaid.",
+    "sourceArchive": "../review-artifacts/d14-audit-preoutcome-20261015/source-head-e32da625.tar",
+    "sourceArchiveSha256": "5b7c9676cb46347990847ae90e4cb318bb5415377f8f724e972ba7d735dd076a",
+    "overlay": [
+      {
+        "path": "supervisor/internal/audit/audit.go",
+        "artifact": "../review-artifacts/d14-audit-preoutcome-20261015/overlay/audit.go",
+        "sha256": "23dabc55b63e81bb6d948db5775eefbf92a6188be680a9cff4609ea5b3806ba3"
+      },
+      {
+        "path": "supervisor/internal/audit/audit_test.go",
+        "artifact": "../review-artifacts/d14-audit-preoutcome-20261015/overlay/audit_test.go",
+        "sha256": "04e76f0648074dad206eb31988cfe099803876c75e55941c6c45a6b0e9d791d8"
+      }
+    ],
+    "isolation": "Tests ran from a private /tmp extraction, not the mutable checkout. Go module cache was read-only via GOPROXY=off, GOSUMDB=off, GOFLAGS=-mod=readonly."
+  },
+  "change": {
+    "api": "Journal.RunEffectWithBeforeOutcome invokes a supplied hook after the callback returns and before appending its outcome; hook failure or panic poisons the journal, withholds callback result bytes, and leaves the durable intent unresolved.",
+    "orderingRegression": "Inside the hook, the test verifies the synced trace has exactly one unresolved intent, no outcome sequence, and exactly one sync. It also checks callback-before-hook and the eventual successful outcome.",
+    "failureRegression": "Coverage includes hook error, hook panic, callback error, and reopening the unresolved intent in a fresh test process, which refuses replay and later effects."
+  },
+  "environment": {
+    "host": "WSL2 Ubuntu; Linux 5.15.153.1-microsoft-standard-WSL2 x86_64; uid 1000",
+    "toolchain": "go1.27.1 linux/amd64",
+    "goBinary": "/home/jeli2k/go-sdk/go/bin/go"
+  },
+  "verification": {
+    "focusedNewTests": {
+      "command": "go test -race -mod=readonly -count=1 -run '^TestRunEffectBeforeOutcome' -v ./internal/audit",
+      "exit": 0,
+      "passed": 5,
+      "skipped": 0,
+      "failed": 0,
+      "includesFreshProcessTest": "TestRunEffectBeforeOutcomeFailureSurvivesFreshProcess passed; it starts a second test process that rejects replay and any later effect while the intent remains unresolved.",
+      "log": "../review-artifacts/d14-audit-preoutcome-20261015/logs/go-test-race-new-hook-tests.log",
+      "logSha256": "652ea000e18a2cf8265b8a00a50b5978701613719b3dd3f1e049ac186546fd30",
+      "commandsAndExit": "../review-artifacts/d14-audit-preoutcome-20261015/logs/new-hook-tests-and-exits.txt",
+      "commandsAndExitSha256": "ab872ffd653e970de58e2793cb4774d9eae142425fd00b11294851297d59288f"
+    },
+    "packageRace": {
+      "command": "go test -race -mod=readonly -count=1 ./internal/audit",
+      "exit": 0,
+      "log": "../review-artifacts/d14-audit-preoutcome-20261015/logs/go-test-race-audit.log",
+      "logSha256": "57dd5935a7580776c079696e45d2a71c3548cd3c176bd50d35b882567010901f"
+    },
+    "vet": {
+      "command": "go vet -mod=readonly ./internal/audit",
+      "exit": 0,
+      "log": "../review-artifacts/d14-audit-preoutcome-20261015/logs/go-vet-audit.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "format": {
+      "command": "gofmt -l internal/audit/audit.go internal/audit/audit_test.go",
+      "exit": 0,
+      "output": "",
+      "log": "../review-artifacts/d14-audit-preoutcome-20261015/logs/gofmt-audit.log",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "sourceMetadata": "../review-artifacts/d14-audit-preoutcome-20261015/logs/source-metadata.txt",
+    "sourceMetadataSha256": "f400cc52ee5f2f9d1dfdd72f7b4297eb3638d42e874f9b903902fd6a8d0b48ad",
+    "packageCommandsAndExits": "../review-artifacts/d14-audit-preoutcome-20261015/logs/commands-and-exits.txt",
+    "packageCommandsAndExitsSha256": "ececccba172330b24246567ba0cd8b1c2f7f1d96b917857999ea80b6454849de",
+    "sourceIsolationScript": "../review-artifacts/d14-audit-preoutcome-20261015/run-audit-linux.sh",
+    "focusedTestsScript": "../review-artifacts/d14-audit-preoutcome-20261015/run-audit-newtests-linux.sh"
+  },
+  "limitations": [
+    "This verifies audit-journal ordering and failure semantics only.",
+    "No root-protected global ticket, physical reserve allocator, validated capacity profile, terminal settlement protocol, all-writer gate, production effect-route integration, filesystem qualification, or host backing-space guarantee is established.",
+    "The receipt does not claim D14 completion or production qualification."
+  ]
+}

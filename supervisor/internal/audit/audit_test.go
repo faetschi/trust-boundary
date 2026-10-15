@@ -136,6 +136,158 @@ func TestRunEffectCompletesShortWritesAndReconstructsTrace(t *testing.T) {
 	}
 }
 
+func TestRunEffectBeforeOutcomeHookOrdersReleaseBeforeOutcome(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	callbackReturned := false
+	var order []string
+	result, err := journal.RunEffectWithBeforeOutcome("effect-capacity", []byte("intent"), func() ([]byte, error) {
+		order = append(order, "callback")
+		callbackReturned = true
+		return []byte("result"), nil
+	}, func() error {
+		if !callbackReturned {
+			t.Fatal("pre-outcome hook ran before callback returned")
+		}
+		trace, verifyErr := Verify(bytes.NewReader(file.data))
+		if verifyErr != nil || len(trace.Records) != 1 || len(trace.Effects) != 1 ||
+			!trace.Effects[0].Unresolved || trace.Effects[0].OutcomeSequence != 0 || file.syncCalls != 1 {
+			t.Fatalf("inside pre-outcome hook trace=%+v verifyErr=%v syncCalls=%d; want only the synced unresolved intent", trace, verifyErr, file.syncCalls)
+		}
+		order = append(order, "release")
+		return nil
+	})
+	if err != nil || !bytes.Equal(result, []byte("result")) {
+		t.Fatalf("RunEffectWithBeforeOutcome result=%q err=%v", result, err)
+	}
+	if !reflect.DeepEqual(order, []string{"callback", "release"}) {
+		t.Fatalf("callback/release order = %v", order)
+	}
+	trace, err := Verify(bytes.NewReader(file.data))
+	if err != nil || len(trace.Records) != 2 || trace.Effects[0].Unresolved || trace.Effects[0].Outcome != "success" {
+		t.Fatalf("verified outcome trace=%+v err=%v", trace, err)
+	}
+}
+
+func TestRunEffectBeforeOutcomeFailureLeavesUnresolvedIntent(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	effectRan := false
+	hookErr := errors.New("reserve release failed")
+	result, err := journal.RunEffectWithBeforeOutcome("effect-release-failure", []byte("intent"), func() ([]byte, error) {
+		effectRan = true
+		return []byte("must remain withheld"), nil
+	}, func() error { return hookErr })
+	if !effectRan || result != nil || !errors.Is(err, ErrOutcomeUnknown) || !errors.Is(err, hookErr) {
+		t.Fatalf("result=%q effectRan=%t err=%v", result, effectRan, err)
+	}
+	trace, verifyErr := Verify(bytes.NewReader(file.data))
+	if verifyErr != nil || len(trace.Records) != 1 || len(trace.Effects) != 1 || !trace.Effects[0].Unresolved {
+		t.Fatalf("trace after failed pre-outcome hook=%+v verifyErr=%v", trace, verifyErr)
+	}
+	if _, err := journal.RunEffect("later", nil, func() ([]byte, error) {
+		t.Fatal("poisoned journal invoked another effect")
+		return nil, nil
+	}); !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("later effect error=%v, want ErrPoisoned", err)
+	}
+}
+
+func TestRunEffectBeforeOutcomeHookRunsAfterCallbackError(t *testing.T) {
+	journal := testJournal(&faultFile{})
+	callbackErr := errors.New("callback could not verify its result")
+	hookCalled := false
+	_, err := journal.RunEffectWithBeforeOutcome("effect-callback-error", nil, func() ([]byte, error) {
+		return nil, callbackErr
+	}, func() error {
+		hookCalled = true
+		return nil
+	})
+	if !hookCalled || !errors.Is(err, ErrOutcomeUnknown) || !errors.Is(err, callbackErr) {
+		t.Fatalf("hookCalled=%t err=%v; want hook after callback error and unknown outcome", hookCalled, err)
+	}
+}
+
+func TestRunEffectBeforeOutcomeHookPanicPoisonsWithoutOutcome(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	called := false
+	_, err := journal.RunEffectWithBeforeOutcome("effect-hook-panic", nil, func() ([]byte, error) {
+		return []byte("withheld"), nil
+	}, func() error {
+		called = true
+		panic("simulated reserve release panic")
+	})
+	if !called || !errors.Is(err, ErrOutcomeUnknown) || !strings.Contains(err.Error(), "pre-outcome hook panic") {
+		t.Fatalf("hookCalled=%t err=%v; want hook panic to leave outcome unknown", called, err)
+	}
+	trace, verifyErr := Verify(bytes.NewReader(file.data))
+	if verifyErr != nil || len(trace.Records) != 1 || len(trace.Effects) != 1 || !trace.Effects[0].Unresolved {
+		t.Fatalf("trace after hook panic=%+v verifyErr=%v", trace, verifyErr)
+	}
+	if _, err := journal.Append(Event{Kind: "decision", ID: "must-not-append"}); !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("append after pre-outcome panic error=%v, want ErrPoisoned", err)
+	}
+}
+
+func TestRunEffectBeforeOutcomeFailureSurvivesFreshProcess(t *testing.T) {
+	requireLinuxJournalOpen(t)
+	path := filepath.Join(privateJournalTestDir(t), "pre-outcome-failure.jsonl")
+	journal, err := Open(path)
+	if err != nil {
+		t.Fatalf("open journal: %v", err)
+	}
+	_, runErr := journal.RunEffectWithBeforeOutcome("effect-release-failure", []byte("intent"), func() ([]byte, error) {
+		return []byte("callback ran"), nil
+	}, func() error { return errors.New("reserve release failed") })
+	if !errors.Is(runErr, ErrOutcomeUnknown) {
+		_ = journal.Close()
+		t.Fatalf("RunEffectWithBeforeOutcome error=%v, want ErrOutcomeUnknown", runErr)
+	}
+	if err := journal.Close(); err != nil {
+		t.Fatalf("close journal: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestBeforeOutcomeRecoveryHelper$")
+	command.Env = append(os.Environ(), "TB_AUDIT_BEFORE_OUTCOME_RECOVERY_PATH="+path)
+	if output, err := command.CombinedOutput(); err != nil {
+		t.Fatalf("fresh-process unresolved recovery: %v\n%s", err, output)
+	}
+}
+
+func TestBeforeOutcomeRecoveryHelper(t *testing.T) {
+	path := os.Getenv("TB_AUDIT_BEFORE_OUTCOME_RECOVERY_PATH")
+	if path == "" {
+		return
+	}
+	journal, err := Open(path)
+	if err != nil {
+		t.Fatalf("open unresolved journal in fresh process: %v", err)
+	}
+	defer journal.Close()
+	called := false
+	if _, err := journal.RunEffect("effect-release-failure", nil, func() ([]byte, error) {
+		called = true
+		return nil, nil
+	}); !errors.Is(err, ErrUnresolvedEffect) {
+		t.Fatalf("replay old effect error=%v, want ErrUnresolvedEffect", err)
+	}
+	if called {
+		t.Fatal("fresh process replayed the unresolved effect")
+	}
+	if _, err := journal.RunEffect("later-effect", nil, func() ([]byte, error) {
+		called = true
+		return nil, nil
+	}); !errors.Is(err, ErrQuarantined) {
+		t.Fatalf("later effect error=%v, want ErrQuarantined", err)
+	}
+	if called {
+		t.Fatal("fresh process ran a later effect while the old intent is unresolved")
+	}
+}
+
 func TestLifecycleHookFailureLeavesIntentUnresolved(t *testing.T) {
 	boundaries := []EffectBoundary{
 		EffectBoundaryAfterIntentSync,
