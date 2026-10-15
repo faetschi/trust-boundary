@@ -1,0 +1,4 @@
+# The committed Vite output is compared byte for byte by the reproducibility
+# check. Keep LF line endings on every checkout platform (core.autocrlf is on in
+# some clones).
+dist/** text eol=lf

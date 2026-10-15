@@ -1,0 +1,295 @@
+/*
+ * Shell layout: three regions (rail, workspace, inspector) between a header and a page end. The footer belongs
+ * to the workspace column. Colours are alias tokens only (tokens.test.ts enforces it). The breakpoints are
+ * literals because a media query cannot read a custom property; layout.ts holds the values and the tests check
+ * that the two agree.
+ */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Wide layouts fill the viewport: the transcript or the ledger scrolls inside its view, so the composer stays at the
+   bottom of the chat. Phones keep the page scroll. */
+@media (min-width: 761px) {
+  .shell {
+    height: 100vh;
+  }
+}
+
+/* The skip link is off-screen until it has focus, then it is the first thing to tab to. */
+.skip {
+  position: absolute;
+  left: var(--space-2);
+  top: var(--space-2);
+  z-index: var(--z-modal);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--card);
+  color: var(--card-foreground);
+  transform: translateY(-200%);
+}
+
+.skip:focus {
+  transform: none;
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.title {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.subtitle {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1h);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--foreground);
+  font-size: var(--text-xs);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* The Governance control is shown at every width: the drawer at narrow widths, the column's collapse at wide ones. */
+.drawerToggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--row-h-toolbar);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.claimRow {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+/* The claim boundary is a compact block: its rows sit close, so the header leaves the chat its height. */
+.claimRow > [role="note"] {
+  padding: var(--space-1) var(--space-3);
+  gap: var(--space-1) var(--space-3);
+}
+
+.claimText {
+  margin: 0;
+}
+
+.claim {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  font-size: var(--text-xs);
+}
+
+.claim > div {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+.claim dt {
+  color: var(--muted-foreground);
+}
+
+.claim dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* The columns: the rail, the workspace (which takes the rest) and the inspector. A collapsed column is the icon
+   width, set by data-rail and data-inspector on the body. The collapsed variants are wide-only, and the drawer
+   breakpoint below sets the two-column forms. */
+.body {
+  display: grid;
+  grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--inspector-width);
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (min-width: 1181px) {
+  .body[data-rail="collapsed"] {
+    grid-template-columns: var(--rail-collapsed-width) minmax(0, 1fr) var(--inspector-width);
+  }
+
+  .body[data-inspector="collapsed"] {
+    grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--rail-collapsed-width);
+  }
+
+  .body[data-rail="collapsed"][data-inspector="collapsed"] {
+    grid-template-columns: var(--rail-collapsed-width) minmax(0, 1fr) var(--rail-collapsed-width);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .body {
+    transition: grid-template-columns 150ms var(--ease-std);
+  }
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-2) var(--space-4);
+}
+
+/* The views fill the column that is left after the notices and the view tabs. The shown view is a flex column
+   that fills them, so ChatView can take the height and keep its own scroll. */
+.views {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.views > [role="tabpanel"]:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Wide: the body fills the viewport beneath the header. The views fill the column, and the transcript or the ledger
+   scrolls inside them. The column scrolls only when a short window cannot fit the chrome, so nothing is clipped. */
+@media (min-width: 761px) {
+  .body {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .main {
+    overflow-y: auto;
+  }
+}
+
+/* Below the drawer breakpoint: the inspector leaves the grid and the Governance control drives the drawer. The body is
+   the drawer's containing block, and it starts below the header, so an open drawer never covers the header controls.
+   overflow-x: clip stops the closed drawer, which is translated past the edge, from widening the page. */
+@media (max-width: 1180px) {
+  .body {
+    grid-template-columns: var(--rail-width) minmax(0, 1fr);
+    position: relative;
+    overflow-x: clip;
+  }
+
+  .body[data-rail="collapsed"] {
+    grid-template-columns: var(--rail-collapsed-width) minmax(0, 1fr);
+  }
+}
+
+/* Narrow screens: the rail stacks above the workspace, and the page scrolls. The Governance control is a touch target.
+   The header's rows are the title with the source and connection badges, the controls, and the claim boundary beneath.
+   The subtitle is dropped here, so the badges fit on the title's row and the chat's tabs sit near the top of a phone. */
+@media (max-width: 760px) {
+  .body,
+  .body[data-rail="collapsed"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* One 4 px step between the header's rows and the workspace's rows, so the chat head starts near the header (QA4 check J). */
+  .header {
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
+  }
+
+  .subtitle {
+    display: none;
+  }
+
+  /* The claim boundary's disclosure is a compact row here, so the header leaves the chat its height. */
+  .claimRow details > summary {
+    min-height: 0;
+    padding: var(--space-1) 0;
+  }
+
+  .badges {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .controls {
+    flex: 1 1 100%;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+
+  .drawerToggle {
+    min-height: 44px;
+  }
+
+  /* On a phone the footer closes the column after the views (the DOM order, Shell.tsx). The composer dock is sticky at the
+     viewport's bottom while the chat scrolls, and at the page's end it sits in its own place above the footer. The column has
+     no bottom padding, so the footer's bottom edge is the page's end. */
+  .main {
+    gap: var(--space-1);
+    padding-top: var(--space-1);
+    padding-inline: var(--space-3);
+    padding-bottom: 0;
+  }
+}
+
+/* The drawer's scrim: the page behind an open drawer, over the inert page (the header included) and under the drawer. */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-scrim);
+  background: var(--scrim);
+}
+
+/* At wide widths the chat view is never shorter than its own rows: its transcript keeps a 260 px minimum (Chat.module.css),
+   so a short window scrolls this column instead of squeezing the transcript. The Trajectory view keeps its ledger's scroll. */
+@media (min-width: 761px) {
+  .views[data-view="chat"] {
+    min-height: min-content;
+  }
+}

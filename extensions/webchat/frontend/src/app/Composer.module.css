@@ -1,0 +1,105 @@
+/*
+ * The composer of the Chat view: one card, pinned under the transcript. Every control in it is inert, so nothing here may
+ * read as a working affordance: the send is muted, and there is no focus animation and no transition. Colour comes from the
+ * alias tier only.
+ */
+
+.composer {
+  flex: none;
+  min-width: 0;
+  margin: 0;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1h);
+  min-height: 88px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+.field {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: var(--row-h-input);
+  padding: var(--space-1) 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  resize: none;
+  cursor: not-allowed;
+}
+
+/* The placeholder is the muted text tone in both themes. The browser's own grey has 3.5:1 on the dark card, below 4.5:1. */
+.input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
+
+.input:focus-visible,
+.send:focus-visible {
+  outline: var(--focus-width) solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* The send target is at least 44 px square at every width. Its glyph is muted, at 70% opacity: 3.6:1 on the light fill and
+   5.0:1 on the dark one, so it is still a visible control. The dashed outline and the not-allowed cursor mark it as disabled. */
+.send {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px dashed var(--border);
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font: 600 var(--text-body) / 1 var(--font-sans);
+  cursor: not-allowed;
+}
+
+.send > span {
+  opacity: 0.7;
+}
+
+.reason,
+.status {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+  color: var(--muted-foreground);
+}
+
+/* The polite status line is empty until the control is pressed. An empty line takes no room in the card. */
+.status:empty {
+  display: none;
+}
+
+/* On a phone the reason wraps onto as many lines as it needs, and the field is two lines tall, so the placeholder's wrapped
+   text shows in full: at 360 px it runs to two lines, and where it wraps depends on the platform font. The reason is never
+   cut off, so the dock grows to hold it, and the page's clearance follows (tokens.css, --dock-clearance). */
+@media (max-width: 760px) {
+  .input {
+    min-height: calc(2 * var(--lh-body) + 2 * var(--space-1));
+  }
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}

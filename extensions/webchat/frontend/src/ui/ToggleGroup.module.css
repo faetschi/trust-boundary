@@ -1,0 +1,33 @@
+.group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.toggle {
+  min-height: var(--row-h-toolbar);
+  padding: 0 var(--space-2h);
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  background: var(--accent);
+}
+
+.toggle[aria-pressed="true"] {
+  background: var(--secondary);
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.count {
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+}

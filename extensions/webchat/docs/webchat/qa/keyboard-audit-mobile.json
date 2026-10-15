@@ -1,0 +1,152 @@
+{
+ "url": "http://127.0.0.1:8791/",
+ "viewport": {
+  "width": 390,
+  "height": 900,
+  "innerWidth": 500,
+  "innerHeight": 805
+ },
+ "narrowQueryMatches": true,
+ "initial": {
+  "tag": "BODY",
+  "id": null,
+  "cls": null,
+  "text": "Skip to transcript\n\n    \n      \n        "
+ },
+ "tabStops": [
+  {
+   "tag": "A",
+   "id": null,
+   "cls": "skip-link",
+   "text": "Skip to transcript"
+  },
+  {
+   "tag": "BUTTON",
+   "id": "inspector-toggle",
+   "cls": "ghost-button",
+   "text": "Governance"
+  },
+  {
+   "tag": "BUTTON",
+   "id": "tab-chat",
+   "cls": "view-tab tab is-active",
+   "text": "Chat"
+  },
+  {
+   "tag": "BUTTON",
+   "id": "tab-trajectory",
+   "cls": "view-tab tab",
+   "text": "Trajectory"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "toggle-item",
+   "text": "All18"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "toggle-item",
+   "text": "Denied2"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "toggle-item",
+   "text": "Unknown1"
+  },
+  {
+   "tag": "BUTTON",
+   "id": null,
+   "cls": "toggle-item",
+   "text": "Failed0"
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "Rreadread service/entrypoint.goALLOWsucc"
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "Eeditedit service/entrypoint.goALLOWsucc"
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "$bashbash: curl -s https://example.com/h"
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "$bashbash: go test ./...ALLOWsucceededun"
+  },
+  {
+   "tag": "SUMMARY",
+   "id": null,
+   "cls": null,
+   "text": "$bashbash: go test -race ./...ALLOWunkno"
+  },
+  {
+   "tag": "BODY",
+   "id": null,
+   "cls": null,
+   "text": "Skip to transcript\n\n    \n      \n        "
+  }
+ ],
+ "disclosureFocus": "focused",
+ "disclosureFocusHeld": true,
+ "disclosureOpened": true,
+ "toggleFocus": "focused",
+ "drawerOpened": "true",
+ "drawerClosed": "false",
+ "inertInitially": true,
+ "toggleHidden": false,
+ "inertAfterOpen": false,
+ "inertAfterClose": true,
+ "filterFocus": "focused",
+ "filterPressed": "true",
+ "filterSummary": "2 matches · 3 of 18 element(s) shown for “Denied” (context included)",
+ "filterFocusAfterRender": "denied",
+ "filterTimeline": "turn-013 element(s)$bashbash: curl -s https://example.com/healthzDENYdeniedunverifiedrequestbash: curl -s https://example.com/healthz 11:12:31policyDENY policy_rule_deny sha256:9f2…e0f3a6command cell ",
+ "arrowTarget": "unknown",
+ "trajectoryTabFocus": "focused",
+ "trajectoryShown": true,
+ "chatHidden": true,
+ "trajectoryTabSelected": "true",
+ "ledgerRows": 18,
+ "laneCount": 3,
+ "railHeadings": [
+  "Model",
+  "Policy",
+  "Tools"
+ ],
+ "railAxis": "The axis is record sequence, not time: the projection records no duration, so no span here is drawn as one.",
+ "inlineStyledSegments": 0,
+ "groupFocus": "focused",
+ "groupAfterArrow": "tool",
+ "groupPressedBeforeEnter": "false",
+ "groupPressedAfterEnter": "true",
+ "groupHeadsAfterEnter": 6,
+ "groupFocusAfterEnter": "tool",
+ "rowFocus": "focused",
+ "rowFocusHeld": "decision",
+ "inspectorMode": "record",
+ "inspectorLabel": "Record inspector",
+ "inspectorText": "Decisionsequence 4 · turn turn-01CloseSummarysourceDecisionrecord iddec-01-readsequence4turnturn-01toolreadtool callcall-01Payloadsummaryread within the sealed staging viewDecisionverdictALLOWreason codepolicy_rule_allowpolicy digestsha256:9f2…e0f3a6Evidenceau",
+ "rowFocusAfterRender": "dec-01-read",
+ "selectedRows": 1,
+ "modeAfterEscape": "governance",
+ "searchFocus": "focused",
+ "searchRows": 1,
+ "searchSummary": "1 of 18 record(s) matching “deny” · grouped by Turn",
+ "filterStillAll": "true",
+ "rowsAfterSearchClear": 18,
+ "footStats": "1 turn(s) · 18 record(s)·policy 4 allow / 1 deny / 0 unknown·3 reported·token usage unavailable·duration unavailable",
+ "footUnavailable": 2
+}

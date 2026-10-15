@@ -114,6 +114,15 @@ Pi CLI (untrusted, RPC)
   capability probes, and host/VM setup procedures.
 - `docs/`: active setup, operation, architecture, and status guides.
 
+The optional web chat workspace lives in `extensions/webchat/`, as its own Go
+module with its own Node tests. It is not required: tbound core builds, tests,
+installs and runs without that directory, and the core's build and test gate
+need no Node. (The Pi harness the core launches is a separate Node-based runtime
+and is unchanged.) The extension depends
+only on the core's service contract, and the core never imports it. The boundary
+guard `scripts/check-extension-boundary.sh` runs in `make test` and in CI; see
+[`extensions/webchat/README.md`](extensions/webchat/README.md).
+
 For historical source removed from the active documentation set, see
 [`docs/evidence/README.md`](docs/evidence/README.md) and its
 [`historical-sources.json`](docs/evidence/historical-sources.json) map.

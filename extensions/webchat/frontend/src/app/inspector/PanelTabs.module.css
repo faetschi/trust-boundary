@@ -1,0 +1,111 @@
+/*
+ * The governance tab strip: one row of single-line tabs, each a label and a tone dot. The strip scrolls sideways inside its
+ * own box when its tabs do not fit, and the ‹ and › controls step it for a pointer. Colours are alias tokens only.
+ */
+
+.row {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* The strip still scrolls sideways (touch, trackpad, the controls, and the keyboard's focus), but its scrollbar is not drawn. */
+.strip {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.strip::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .strip {
+    scroll-behavior: smooth;
+  }
+}
+
+.tablist {
+  display: flex;
+  align-items: stretch;
+  width: max-content;
+  min-width: 100%;
+}
+
+/* One line: the label and the dot, never wrapped. The tab's full words are in its name and title. */
+.tab {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--row-h-button);
+  padding: 0 var(--space-1);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--foreground);
+  color: var(--foreground);
+}
+
+.tab:hover {
+  background: var(--accent);
+}
+
+/* The step controls: one at each end, shown only while the tabs overflow. Disabled at the end they cannot pass. They are
+   touch-sized (the button token, 36 px) and hidden from assistive technology, since the arrow keys already do the same job. */
+.step {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--row-h-button);
+  padding: 0;
+  border: 0;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: var(--text-body);
+  cursor: pointer;
+}
+
+.step:hover:not(:disabled) {
+  background: var(--accent);
+}
+
+.step:disabled {
+  color: var(--muted-foreground);
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The line beneath the strip: the selected tab's words, or the record bar. */
+.status {
+  min-width: 0;
+}
+
+/* The one rendered panel: the body under the strip, which scrolls on its own. It is focusable, so that focus can move into it
+   from the strip's skip. */
+.panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  outline-offset: -2px;
+}
+
+/* Phone: the tabs are touch targets of at least 44 px. The breakpoint is the phone breakpoint in layout.ts. */
+@media (max-width: 760px) {
+  .tab {
+    min-height: 44px;
+  }
+}

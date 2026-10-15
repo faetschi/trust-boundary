@@ -1,0 +1,268 @@
+/*
+ * The inspector. A column at wide widths, which collapses to an icon rail. Below 1180 px (DRAWER_BREAKPOINT_PX in
+ * layout.ts) it is an off-canvas drawer, anchored to the top right of the workspace body (see .body in
+ * Shell.module.css): the body starts below the header, so the drawer never covers the header.
+ * It is off-screen until data-open is "true". Colours are alias tokens only.
+ */
+
+/* A flex column: the head, the tab strip and the record bar stay in place, and only the panel body scrolls beneath them. A long
+   record therefore never takes the strip's width with a scrollbar. */
+.inspector {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--space-4);
+  border-left: 1px solid var(--border);
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+/* The collapsed column: the expand control and the five panel icons, centred in the 3.5rem column. */
+.inspector[data-collapsed="true"] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.heading {
+  font-size: var(--text-body);
+  font-weight: 600;
+}
+
+.close {
+  min-height: var(--row-h-toolbar);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+/* The collapse and expand controls: square, with a visible glyph and a name from the markup. */
+.collapse {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--row-h-toolbar);
+  height: var(--row-h-toolbar);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--foreground);
+  font-size: var(--text-body);
+  cursor: pointer;
+}
+
+/* The line under the strip: the selected tab's words. They are plain text, so the words carry the meaning. */
+.tabWords {
+  margin: 0;
+  padding-top: var(--space-2);
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+/* The record bar, under the strip and above the record: the record's name and its close control. */
+.recordBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.recordLabel {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.recordClose {
+  flex: none;
+  min-height: var(--row-h-toolbar);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+  color: var(--foreground);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.iconRail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.iconButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--row-h-toolbar);
+  height: var(--row-h-toolbar);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--accent);
+}
+
+.glyph {
+  font-size: var(--text-2xs);
+  font-weight: 600;
+}
+
+/* The badge mark in the icon's corner: a StateDot, so its shape and colour are the badge's tone. The button's name carries the words. */
+.badgeMark {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+}
+
+.panelTitle {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.summary {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1h);
+  margin: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 40%) minmax(0, 1fr);
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.row dt {
+  color: var(--muted-foreground);
+}
+
+.row dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.unavailable {
+  color: var(--muted-foreground);
+}
+
+.reason,
+.note,
+.trust {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+}
+
+.note {
+  margin: 0;
+  line-height: var(--lh-xs);
+}
+
+.stateLine {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.trust {
+  margin: 0;
+}
+
+/* The warnings close the qualification body, under its own small heading. */
+.warningsSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.warningsTitle {
+  color: var(--muted-foreground);
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.warnings {
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 1180px) {
+  .inspector {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: var(--z-overlay);
+    /* The inspector column's width, so all five governance tabs fit a drawer at 1024 and 900; a gutter on narrow screens. */
+    width: min(var(--inspector-width), 100vw - 2rem);
+    /* Closed, the drawer is past its own width and a gutter, and hidden. It is hidden only when the slide ends, so it leaves the
+       screen before it disappears; open, it shows at once. Hidden, it is out of the focus order and the accessibility tree. */
+    transform: translateX(calc(100% + var(--space-4)));
+    visibility: hidden;
+    transition: transform var(--dur-slow) var(--ease-std), visibility 0s linear var(--dur-slow);
+    box-shadow: var(--shadow-panel);
+  }
+
+  .inspector[data-open="true"] {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform var(--dur-slow) var(--ease-std), visibility 0s;
+  }
+}
+
+/* Phone: the drawer's controls are touch targets of at least 44 px. */
+@media (max-width: 760px) {
+  .close,
+  .recordClose {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspector {
+    transition: none;
+  }
+}

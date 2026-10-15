@@ -1,0 +1,36 @@
+/*
+ * The footer: the session's statistics as one wrapping line, and the build label beside it. It takes the page width, and
+ * wraps at narrow widths rather than stacking a list. Colour comes from the alias tier only.
+ */
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1h) var(--space-2);
+  border-top: 1px solid var(--border);
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+
+.line {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+}
+
+.build {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+}
+
+/* On a phone the footer keeps the 4 px step of the phone stack (Shell.module.css). */
+@media (max-width: 760px) {
+  .footer {
+    padding: var(--space-1) var(--space-2);
+  }
+}

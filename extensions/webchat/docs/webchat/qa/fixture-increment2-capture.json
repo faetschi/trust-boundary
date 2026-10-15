@@ -1,0 +1,2021 @@
+{
+  "schema": "webchat-increment2-browser-qa/v1",
+  "date": "2026-10-14",
+  "scope": "Browser QA of the fixture web chat (docs/web-chat.md §4.5, §4.6, §7.3). Presentation behaviour only. Establishes no G1, containment, H1 or claim-bearing result; the server banner states \"claim boundary: G1=false; H1 unexecuted; containment not-established; claim-bearing=false\".",
+  "source": {
+    "repo": "C:\\Users\\Admin\\.t3\\worktrees\\trust-boundary\\codex-tbound-web-chat",
+    "headCommit": "3146d1bc5d68651591ec1f189fc50470527354fc",
+    "branch": "codex/tbound-web-chat",
+    "supervisorTreeSha": "986d9a10050c0c35bd819a19e26e6639014c5ba7",
+    "workingTreeOfSupervisorAtCapture": "clean (no uncommitted changes under supervisor/ or docs/)",
+    "untrackedOutsideScope": [
+      "docs-next-work.txt"
+    ]
+  },
+  "server": {
+    "binary": {
+      "path": "/tmp/wcqa.inc2/tbound-webchat (WSL Ubuntu)",
+      "sha256": "2fdd831c6e92d1a4b818bc00666000235790338f922767fb274bd418e703e894",
+      "bytes": 10611347
+    },
+    "build": {
+      "command": "cd /mnt/c/Users/Admin/.t3/worktrees/trust-boundary/codex-tbound-web-chat/supervisor && go build -mod=readonly -o /tmp/wcqa.inc2/tbound-webchat ./cmd/tbound-webchat",
+      "exitCode": 0,
+      "goVersion": "go1.27.1 linux/amd64",
+      "tmpdir": "/tmp/wcqa.inc2/t (private, 0700)"
+    },
+    "run": "tbound-webchat --demo --addr 127.0.0.1:8801 (started from WSL; banner: \"source: fixture (read-only projection; no launch, cancel, approve, or execute controls)\")",
+    "pidsStartedAndStopped": {
+      "initial": {
+        "pid": 18200,
+        "endedBy": "SIGKILL in phase C (C.2 outage)"
+      },
+      "restart1": {
+        "pid": 20559,
+        "endedBy": "SIGKILL in phase C (C.5 outage)"
+      },
+      "restart2": {
+        "pid": 20629,
+        "endedBy": "SIGKILL at the end of phase C"
+      },
+      "c6": {
+        "pid": 20734,
+        "endedBy": "SIGKILL at the end of phase C6"
+      }
+    },
+    "staleServerNotUsed": "Port 8791, PID 36672 (old build) was left running and untouched. Port 9333 (PID 6552, another session's Chrome) was not used.",
+    "servedAssetsMatchWorkingTree": {
+      "index.html": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "947bd03d4744f2b1d132db1db313db4bd15999daf9a1f66bbbabac0c3e7f6005",
+        "shaMatchesWorkingTree": true
+      },
+      "styles.css": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "ba2956beef8dd876152dceaa145287b9b16e2fd92779441a2207c086a29aa4c5",
+        "shaMatchesWorkingTree": true
+      },
+      "app.mjs": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "33843228711b888a3bdcbaecb71480faff6be1b955ea2ea74b1d0668a1aa98fe",
+        "shaMatchesWorkingTree": true
+      },
+      "api.mjs": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "73034c0575bd438d0a383110512b12773f8093a7cb6d4f78d875fb9beeaabf11",
+        "shaMatchesWorkingTree": true
+      },
+      "store.mjs": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "190a0580b2a1c8084bcbc28e9d0284b7f18759c4bbd4d8e3033313be16c307de",
+        "shaMatchesWorkingTree": true
+      },
+      "render.mjs": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "592ab12f562f0b73cfd239914675d506f1e2a392d5177ff6163490500dc30e48",
+        "shaMatchesWorkingTree": true
+      },
+      "filters.mjs": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "926c9248e99b76e94e8b028b0e94702ef7fc53b790bb9d62480abcf1b7f2f6cb",
+        "shaMatchesWorkingTree": true
+      },
+      "format.mjs": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "32c2c831750656a0f1ab0a2b6bcf0f69986a5e1906fd5bc30984d9d3b802f8a8",
+        "shaMatchesWorkingTree": true
+      },
+      "trajectory.mjs": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "98283ae771b07826290490a16d672a61ad48c14a27af72736f5667064efba46b",
+        "shaMatchesWorkingTree": true
+      },
+      "markdown.mjs": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "06464df8551a018758cb237cfea23a5282d165e35a9c08ea706a781c65ad18e0",
+        "shaMatchesWorkingTree": true
+      },
+      "backoff.mjs": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "2dd0e2760e48aa5dc44ca90f396601329550fc0ca96cfa6db7fcd74b1a910001",
+        "shaMatchesWorkingTree": true
+      },
+      "stream.mjs": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "bba83458c58268d94541aed4a78a4657e9dfa8ac0931cdf7e8f2099d3318913f",
+        "shaMatchesWorkingTree": true
+      },
+      "anchor.mjs": {
+        "status": 200,
+        "hits": 0,
+        "sha256": "aaa38d409e169c0c77f6d70d20fce2897c3c5d61e7538ff736ab340a0866763f",
+        "shaMatchesWorkingTree": true
+      }
+    },
+    "serverBannerClaimBoundary": "G1=false; H1 unexecuted; containment not-established; claim-bearing=false"
+  },
+  "browser": {
+    "name": "Chrome/155.0.8059.79",
+    "mode": "headless (--headless=new), own instances on debug ports 9444 (B), 9445 (A+D), 9446 (C), 9447 (C.6); profiles under %TEMP%\\wcqa-inc2\\prof-*",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36"
+  },
+  "receipts": [
+    {
+      "step": "go build (WSL, Go 1.27.1)",
+      "exitCode": 0,
+      "sha256": "2fdd831c6e92d1a4b818bc00666000235790338f922767fb274bd418e703e894"
+    },
+    {
+      "step": "phase A+D: node phase-ad.mjs",
+      "exitCode": 0,
+      "output": "phase-ad done; error = none"
+    },
+    {
+      "step": "phase B: node phase-b.mjs (second run; first run identical except announcer log)",
+      "exitCode": 0,
+      "output": "phase-b done; error = none; shots = fixture-chat-markdown-desktop.png,fixture-tail-jump-desktop.png"
+    },
+    {
+      "step": "phase C: node phase-c.mjs (kill, restart, offline; its C.6 part is superseded by C.6a)",
+      "exitCode": 0,
+      "output": "phase-c done; error = none"
+    },
+    {
+      "step": "phase C.6: node phase-c6.mjs",
+      "exitCode": "completed (error = none; exit code not captured)",
+      "output": "phase-c6 done; error = none"
+    }
+  ],
+  "results": [
+    {
+      "id": "A.1",
+      "item": "Markdown module imported in the real page; headings, lists, inline code, links",
+      "verdict": "PASS",
+      "evidence": "import('/static/markdown.mjs') exports MAX_BLOCKS, MAX_MARKDOWN_CHARS, createIncrementalRenderer, safeHref, scanWork, splitBlocks; inline code=[\"x\"], strong=[\"bold\"], em=[\"it\"]; ul=2, ol=2; \"# H1\" -> h3 ([\"H1\"])",
+      "notes": "Heading demotion is by design (markdown.mjs:261-262, level+2). The live \"## Plan\" rendered as a non-h3 heading; its exact level (h4) is from the code, not a separate DOM read."
+    },
+    {
+      "id": "A.2",
+      "item": "Hostile payload table: no script/img/iframe/style/on* attributes; only http/https/mailto become <a>",
+      "verdict": "PASS",
+      "evidence": "16 payloads; forbidden elements=0; on* attributes=0; style attributes=0; <a> created for [\"md-link-quote-injection\",\"label-with-html\"]; non-http(s)/mailto hrefs=0",
+      "notes": "javascript:, JaVaScRiPt:, vbscript:, data:, protocol-relative, relative and raw <a href> all stayed as text. The quote-injection payload produced an https link whose href is percent-encoded (%22) and carries no event attribute."
+    },
+    {
+      "id": "A.3",
+      "item": "Allowed links carry target=_blank and rel=\"noopener noreferrer nofollow\"",
+      "verdict": "PASS",
+      "evidence": "[ok](https://example.com/a?b=1) -> https://example.com/a?b=1 | [h](http://example.com/) -> http://example.com/ | [m](mailto:someone@example.com) -> mailto:someone@example.com | [up](HTTPS://EXAMPLE.com/Up) -> https://example.com/Up"
+    },
+    {
+      "id": "A.4",
+      "item": "Streaming: unclosed fence renders as code, then closes; prefix updates equal a fresh render",
+      "verdict": "PASS",
+      "evidence": "65 prefix updates into one renderer, error=null, final DOM == fresh render: true, blocks reused on 54/65 steps (max 2); open fence: pre=1 text=\"const a = 1;\"; after closing fence: pre=1, paragraphs=[\"Intro.\",\"Done.\"]"
+    },
+    {
+      "id": "A.5",
+      "item": "Code block is keyboard-focusable and scrolls horizontally",
+      "verdict": "PASS",
+      "evidence": "pre tabindex=0, role=region, overflow-x=auto, scrollWidth 1933 > clientWidth 1423; real Tab key from the preceding button focused it; ArrowRight x6 moved scrollLeft 0 -> 240"
+    },
+    {
+      "id": "A.6",
+      "item": "CSP not violated by the real app load; no inline-style violation",
+      "verdict": "PASS",
+      "evidence": "securitypolicyviolation events: 0 at load, 0 after module tests; app DOM style attributes=0; CSP header on /: \"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'\"; X-Content-Type-Options=nosniff"
+    },
+    {
+      "id": "A.7",
+      "item": "Assistant markdown rendered in the chat view (screenshot)",
+      "verdict": "PASS",
+      "evidence": "5 markdown bodies in #timeline; lists=3; code blocks=2 (tabindex 0/0); links=[{\"href\":\"https://go.dev/doc/\",\"target\":\"_blank\",\"rel\":\"noopener noreferrer nofollow\"}]; script/img elements=0/0",
+      "notes": "The demo fixture has no markdown (its 2 assistant messages are plain text). Three assistant messages were delivered through the fake live stream, so they went through the real store and render path. They are not demo data."
+    },
+    {
+      "id": "B.0",
+      "item": "Does the demo emit live events?",
+      "verdict": "PASS",
+      "evidence": "No. The demo is the embedded fixture (source.go:14-34) with no ticker or append loop. Live arrivals were therefore simulated with a fake EventSource (addScriptToEvaluateOnNewDocument). The snapshot came from the real server (epoch fixture-2f1c, cursor fixture-2f1c:18, 18 items).",
+      "notes": "Simulated events used the server's item envelope {schema_version, cursor, kind:\"item\", item}. The SSE id: field was not reproduced. The app does not use it."
+    },
+    {
+      "id": "B.1",
+      "item": "Away from the tail: scroll position unchanged on 3 arrivals",
+      "verdict": "PASS",
+      "evidence": "scrollY 400 -> 400; anchor msg-01-assistant-intro offset delta 0px"
+    },
+    {
+      "id": "B.2",
+      "item": "Text-labelled \"N new records · Jump to latest\" with N=3",
+      "verdict": "PASS",
+      "evidence": "visible BUTTON text \"3 new records · Jump to latest\""
+    },
+    {
+      "id": "B.3",
+      "item": "Status announcer updated once for the burst",
+      "verdict": "PASS",
+      "evidence": "#status-announcer changes matching \"new record\": 1 -> \"3 new records below. Jump to latest is available.\""
+    },
+    {
+      "id": "B.4",
+      "item": "Jump moves to the bottom, focuses the list, and the pending count returns to 0",
+      "verdict": "PASS",
+      "evidence": "scrollY 1630 of 2530 (at bottom: true); activeElement #timeline role=log; control hidden: true; burst records visible: true,true,true"
+    },
+    {
+      "id": "B.5",
+      "item": "Duplicate arrivals do not increase the count",
+      "verdict": "PASS",
+      "evidence": "same-id and same-sequence duplicates: scroll unchanged=true, control hidden=true, new announcer changes=0, duplicate rendered=false"
+    },
+    {
+      "id": "B.6",
+      "item": "Gapped sequence: gap notice appears and the count does not increase",
+      "verdict": "PASS",
+      "evidence": "gap at cursor fixture-2f1c:40 (skipped one); recovery opened 1 new stream after a snapshot; announcer: \"Continuity gap (sequence gap). Recovered from a snapshot; no success is inferred. Earlier history not loaded. No success is inferred for it.\"; control hidden: true",
+      "notes": "A replacement snapshot removes live-only records; after recovery 0 live records remain (the static demo does not contain them). This is expected, and the source-window marker is set (§7.3 item 1). See observation O1."
+    },
+    {
+      "id": "B.7",
+      "item": "Arrival while at the tail is followed and not announced",
+      "verdict": "PASS",
+      "evidence": "follow arrival at tail: atTail=true, control hidden=true; after jump, arrival: announcer changes=0, at bottom=true"
+    },
+    {
+      "id": "B.8",
+      "item": "First load opens at the top of the transcript",
+      "verdict": "PASS",
+      "evidence": "scrollY=0 at first load (scrollHeight 1032)"
+    },
+    {
+      "id": "C.1",
+      "item": "Connection badge sequence after the server is killed",
+      "verdict": "PASS",
+      "evidence": "9 snapshot attempts after the kill; badge text cycled through [\"reconnecting…\",\"connecting…\"] (19 changes); notices while down: \"!projection errorFailed to fetch\"",
+      "notes": "A refused connection shows reconnecting…/connecting… only. \"offline\" and \"stream error\" appeared only in the offline runs (C.4, C.5). No \"stream error\" text was seen."
+    },
+    {
+      "id": "C.2",
+      "item": "Retry spacing: about 500 ms, jittered, increasing, capped at 10 s",
+      "verdict": "PASS",
+      "evidence": "intervals ms [647,1488,2202,7747,8633,5769,7253,7864] vs bounds [[500,1000],[1000,2000],[2000,4000],[4000,8000],[5000,10000],[5000,10000],[5000,10000],[5000,10000]]; first attempt 745 ms after kill; 8 distinct intervals; no non-snapshot /api requests during outage: true",
+      "notes": "The first retry after a drop uses attempt 0: 250–500 ms (50–100% of 500 ms). The cap is reached at the 5th step. Failures seen: ERR_CONNECTION_REFUSED, ERR_EMPTY_RESPONSE, ERR_INCOMPLETE_CHUNKED_ENCODING (the stream was cut by the kill)."
+    },
+    {
+      "id": "C.3",
+      "item": "Recovery: fresh snapshot before the stream; connected only after the stream opens",
+      "verdict": "PASS",
+      "evidence": "snapshot response -> events request -> events response -> badge connected; events request /api/v1/events?cursor=fixture-2f1c%3A18; badge \"connected\" was recorded 4 ms before the driver received the events responseReceived over CDP; recovery 2076 ms after restart",
+      "notes": "At millisecond resolution the CDP timestamps cannot prove the order on their own: the badge and the response differ by 4 ms, which is within CDP delivery latency. The order also follows from the code: \"open\" is set only from the EventSource open handler (api.mjs:30, stream.mjs:189-194). The badge stayed at \"connecting…\" for the whole snapshot and stream handshake."
+    },
+    {
+      "id": "C.4",
+      "item": "Offline: badge text, no retries while offline, immediate reconnect on online",
+      "verdict": "PASS",
+      "evidence": "navigator.onLine=false; native offline events seen=1; synthetic events dispatched=false; badge \"offline\";/api requests during 18012 ms offline: 0; first snapshot after online: 6 ms; connected after 309 ms"
+    },
+    {
+      "id": "C.5",
+      "item": "Offline during the retry loop: no retries while offline; online retries at once",
+      "verdict": "PASS",
+      "evidence": "4 attempts before offline; badge \"offline\"; /api requests during 22322 ms offline: 0; first attempt after online: 6 ms (server still down, badge \"reconnecting…\"); recovered after restart: true"
+    },
+    {
+      "id": "C.6",
+      "item": "Slow handshake text, and the attempt is not cancelled",
+      "verdict": "PASS",
+      "evidence": "16 requests through a 4 s-per-request proxy (Host rewritten for 16); badge \"connecting… @4044ms\" -> \"connecting… · slow handshake: still connecting @19185ms\" -> \"connected @24177ms\"",
+      "notes": "The first \"connecting…\" at ~4 s is the HTML placeholder (index.html:45), not a connection attempt. Module loading through the proxy took longer than the warning. The warning appeared 3 s after connect(), and the attempt completed. An earlier attempt inside phase C got 403 from the gateway because the proxy forwarded Host 127.0.0.1:8802; the gateway pins its bound Host (handler.go:133-135). That run is invalid and was superseded; this result is from phase-c6 with the Host rewritten. This was a harness error, not an app defect."
+    },
+    {
+      "id": "D.1",
+      "item": "Filter toolbar is one tab stop (Tab lands on the pressed button) at 1440 and 1024",
+      "verdict": "PASS",
+      "evidence": "1440: real Tab stops a#skip-link > button#tab-chat > button#tab-trajectory > button; landed on pressed \"All18\" (aria-pressed=true); next Tab leaves to summary. 1024: stops a#skip-link > button#inspector-toggle > button#tab-chat > button#tab-trajectory > button; landed on pressed \"All18\"; next Tab leaves to summary. Roving tabindex=0 count 1/1"
+    },
+    {
+      "id": "D.2",
+      "item": "ArrowRight/ArrowLeft move focus without changing aria-pressed",
+      "verdict": "PASS",
+      "evidence": "1440 focus: All18 -> Denied2 -> Unknown1 -> Denied2; aria-pressed before [\"true\",\"false\",\"false\",\"false\"] after [\"true\",\"false\",\"false\",\"false\"]; 1024 same: true"
+    },
+    {
+      "id": "D.3",
+      "item": "Ledger row aria-labels carry the status words",
+      "verdict": "PASS",
+      "evidence": "rows 18; ALLOW labels 4 all \"ALLOW (permission, not an outcome)\"; UNKNOWN label \"Result record 17: bash. Result: UNKNOWN, not success; output lossy.\"; DENY label \"Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified.\""
+    },
+    {
+      "id": "D.4",
+      "item": "No innerHTML/outerHTML/insertAdjacentHTML sinks in assets (working tree and served)",
+      "verdict": "PASS",
+      "evidence": "regex innerHTML|outerHTML|insertAdjacentHTML|document\\.write|\\beval\\(|new Function|srcdoc|setAttribute\\(\\s*[\"']style|\\.style\\s*=\\s*[\"']; hits in 13 working-tree files: 0; served files returned 200 and sha256 equal to the working tree: true"
+    },
+    {
+      "id": "E.1",
+      "item": "Screenshots written: fixture-chat-markdown-desktop.png (1440) and fixture-tail-jump-desktop.png (1440)",
+      "verdict": "PASS",
+      "evidence": "See screenshots[] for sha256 and dimensions."
+    }
+  ],
+  "observations": [
+    {
+      "id": "O1",
+      "severity": "low",
+      "where": "render.mjs:234 with store.mjs:169",
+      "summary": "Elements dropped by a replacement snapshot are added to state.evicted and shown as \"evicted from the bounded client window\". §7.3 item 1 says these are source-window losses. In the B gap run the notices read \"22 older element(s) were evicted from the bounded client window\" next to \"history evicted, the source window\". The two disagree on the origin."
+    },
+    {
+      "id": "O2",
+      "severity": "low",
+      "where": "render.mjs:226",
+      "summary": "A gateway that cannot be reached shows as \"projection error: Failed to fetch\" in #notices. The label names a projection error for a transport failure."
+    },
+    {
+      "id": "O3",
+      "severity": "low",
+      "where": "markdown.mjs:261-262 vs docs/web-chat.md §4.6",
+      "summary": "Heading levels are demoted (# becomes h3, ## becomes h4). The code comment says so, but §4.6 does not document it."
+    },
+    {
+      "id": "O4",
+      "severity": "info",
+      "where": "render.mjs trajectory rows (button.record-row)",
+      "summary": "Ledger rows are buttons with no roving tabindex, so each row is its own Tab stop. Not Tab-tested beyond this observation; may be intended."
+    },
+    {
+      "id": "O5",
+      "severity": "cosmetic",
+      "where": "fixture-tail-jump-desktop.png",
+      "summary": "The \"N new records · Jump to latest\" pill sits over the bottom of the transcript and covers part of the last code block."
+    }
+  ],
+  "screenshots": [
+    {
+      "name": "fixture-chat-markdown-desktop.png",
+      "path": "docs/webchat/qa/fixture-chat-markdown-desktop.png",
+      "widthPx": 1440,
+      "heightPx": 900,
+      "bytes": 184953,
+      "sha256": "b360b22cc764ff4c7a40c41d430913ba805436e9196bdc7afabc036a7efc8ef8",
+      "sha256MatchesCaptureRun": true
+    },
+    {
+      "name": "fixture-tail-jump-desktop.png",
+      "path": "docs/webchat/qa/fixture-tail-jump-desktop.png",
+      "widthPx": 1440,
+      "heightPx": 900,
+      "bytes": 199695,
+      "sha256": "2723f401c4e4f8731362c5268d89f1e83daaecb253bba1ab3a1c8198a3451af3",
+      "sha256MatchesCaptureRun": true
+    }
+  ],
+  "console": {
+    "unexpectedErrorsOrWarnings": [],
+    "expectedAndExplained": [
+      "Failed to load resource: 404 /favicon.ico (demo server has no favicon); present on every page load",
+      "During the outage (C.2, C.5) and restart: ERR_CONNECTION_REFUSED / ERR_EMPTY_RESPONSE / ERR_INCOMPLETE_CHUNKED_ENCODING for /api/v1/snapshot and /api/v1/events",
+      "C.6 proxy: 403 on /favicon.ico (proxy origin, harmless)"
+    ],
+    "securityPolicyViolationsSeen": 0,
+    "byPhase": {
+      "phaseA_D": [
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "url": "http://127.0.0.1:8801/favicon.ico"
+        }
+      ],
+      "phaseB": [
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "url": "http://127.0.0.1:8801/favicon.ico"
+        }
+      ],
+      "phaseC_outage_and_offline": [
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "url": "http://127.0.0.1:8801/favicon.ico"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+          "url": "http://127.0.0.1:8801/api/v1/events?cursor=fixture-2f1c%3A18"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_EMPTY_RESPONSE",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+          "url": "http://127.0.0.1:8801/api/v1/events?cursor=fixture-2f1c%3A18"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_EMPTY_RESPONSE",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "url": "http://127.0.0.1:8802/"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "url": "http://127.0.0.1:8802/favicon.ico"
+        }
+      ],
+      "phaseC6": [
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "url": "http://127.0.0.1:8802/favicon.ico"
+        }
+      ]
+    }
+  },
+  "notVerified": [
+    "Screen-reader output (no assistive technology was run). A11y checks were DOM-, keyboard- and focus-based only.",
+    "Other browsers (Firefox, Safari). Chrome only.",
+    "Mobile and narrow layouts (only 1440 and 1024 were requested).",
+    "Live assistant streaming from the server: the contract has no in-place item update, so streaming was exercised through the renderer API and the fake stream.",
+    "A real live event source. The demo is static, so B used a fake EventSource fed by the real snapshot.",
+    "The slow handshake came from a 4 s-per-request local proxy, not a real network path.",
+    "Go verification beyond \"go build\": go vet, gofmt -l, and go test -race -count=1 were not run for this QA brief. Only the build was run.",
+    "Trajectory-view keyboard grid and the governance drawer were not in the brief and were not exercised beyond what D.3 touches.",
+    "TASK_STATE.md was not updated (the brief says do not edit any source or docs)."
+  ],
+  "raw": {
+    "phaseAD": {
+      "phase": "A+D",
+      "server": "http://127.0.0.1:8801",
+      "widths": {
+        "w1440": {
+          "innerWidth": 1440,
+          "innerHeight": 900
+        },
+        "w1024": {
+          "innerWidth": 1024,
+          "innerHeight": 768
+        }
+      },
+      "A": {
+        "realAppLoad": {
+          "status": 200,
+          "csp": "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+          "xContentType": "nosniff",
+          "violationsSinceLoad": 0,
+          "violations": [],
+          "styleAttrsInAppDom": 0,
+          "connection": "connected",
+          "items": 8
+        },
+        "moduleRender": {
+          "exports": [
+            "MAX_BLOCKS",
+            "MAX_MARKDOWN_CHARS",
+            "createIncrementalRenderer",
+            "safeHref",
+            "scanWork",
+            "splitBlocks"
+          ],
+          "hostile": [
+            {
+              "id": "script-tag",
+              "src": "<script>alert(1)</script>",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "<script>alert(1)</script>"
+            },
+            {
+              "id": "img-onerror",
+              "src": "<img src=x onerror=alert(1)>",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "<img src=x onerror=alert(1)>"
+            },
+            {
+              "id": "md-link-javascript",
+              "src": "[x](javascript:alert(1))",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "[x](javascript:alert(1))"
+            },
+            {
+              "id": "md-link-mixed-case-javascript",
+              "src": "[x](JaVaScRiPt:alert(1))",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "[x](JaVaScRiPt:alert(1))"
+            },
+            {
+              "id": "md-link-data-html",
+              "src": "[x](data:text/html,<script>alert(1)</script>)",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "[x](data:text/html,<script>alert(1)</script>)"
+            },
+            {
+              "id": "md-link-vbscript",
+              "src": "[x](vbscript:msgbox(1))",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "[x](vbscript:msgbox(1))"
+            },
+            {
+              "id": "md-link-tab-split-javascript",
+              "src": "[x](java\tscript:alert(1))",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "[x](java\tscript:alert(1))"
+            },
+            {
+              "id": "md-link-protocol-relative",
+              "src": "[x](//evil.example/a)",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "[x](//evil.example/a)"
+            },
+            {
+              "id": "md-link-relative",
+              "src": "[x](/relative/path)",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "[x](/relative/path)"
+            },
+            {
+              "id": "md-link-quote-injection",
+              "src": "[x](https://example.com/a\"onmouseover=\"alert(1))",
+              "tags": [
+                "a",
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [
+                {
+                  "href": "https://example.com/a%22onmouseover=%22alert(1",
+                  "target": "_blank",
+                  "rel": "noopener noreferrer nofollow",
+                  "text": "x"
+                }
+              ],
+              "text": "x)"
+            },
+            {
+              "id": "raw-anchor-javascript",
+              "src": "<a href=\"javascript:alert(1)\">x</a>",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "<a href=\"javascript:alert(1)\">x</a>"
+            },
+            {
+              "id": "raw-anchor-https",
+              "src": "<a href=\"https://example.com\">raw</a>",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "<a href=\"https://example.com\">raw</a>"
+            },
+            {
+              "id": "image-markdown",
+              "src": "![alt](https://example.com/p.png)",
+              "tags": [
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "![alt](https://example.com/p.png)"
+            },
+            {
+              "id": "heading-with-html",
+              "src": "# <img src=x onerror=alert(1)>",
+              "tags": [
+                "h3"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "<img src=x onerror=alert(1)>"
+            },
+            {
+              "id": "label-with-html",
+              "src": "[<img src=x onerror=alert(1)>](https://example.com)",
+              "tags": [
+                "a",
+                "p"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [
+                {
+                  "href": "https://example.com/",
+                  "target": "_blank",
+                  "rel": "noopener noreferrer nofollow",
+                  "text": "<img src=x onerror=alert(1)>"
+                }
+              ],
+              "text": "<img src=x onerror=alert(1)>"
+            },
+            {
+              "id": "fenced-html-literal",
+              "src": "```html\n<script>alert(1)</script>\n```",
+              "tags": [
+                "code",
+                "pre"
+              ],
+              "forbiddenFound": [],
+              "eventAttrs": [],
+              "styleAttrs": 0,
+              "links": [],
+              "text": "<script>alert(1)</script>"
+            }
+          ],
+          "allowed": [
+            {
+              "src": "[ok](https://example.com/a?b=1)",
+              "links": [
+                {
+                  "href": "https://example.com/a?b=1",
+                  "target": "_blank",
+                  "rel": "noopener noreferrer nofollow",
+                  "text": "ok"
+                }
+              ],
+              "eventAttrs": [],
+              "forbiddenFound": []
+            },
+            {
+              "src": "[h](http://example.com/)",
+              "links": [
+                {
+                  "href": "http://example.com/",
+                  "target": "_blank",
+                  "rel": "noopener noreferrer nofollow",
+                  "text": "h"
+                }
+              ],
+              "eventAttrs": [],
+              "forbiddenFound": []
+            },
+            {
+              "src": "[m](mailto:someone@example.com)",
+              "links": [
+                {
+                  "href": "mailto:someone@example.com",
+                  "target": "_blank",
+                  "rel": "noopener noreferrer nofollow",
+                  "text": "m"
+                }
+              ],
+              "eventAttrs": [],
+              "forbiddenFound": []
+            },
+            {
+              "src": "[up](HTTPS://EXAMPLE.com/Up)",
+              "links": [
+                {
+                  "href": "https://example.com/Up",
+                  "target": "_blank",
+                  "rel": "noopener noreferrer nofollow",
+                  "text": "up"
+                }
+              ],
+              "eventAttrs": [],
+              "forbiddenFound": []
+            }
+          ],
+          "inline": {
+            "codeInP": [
+              "x"
+            ],
+            "strong": [
+              "bold"
+            ],
+            "em": [
+              "it"
+            ],
+            "tags": [
+              "code",
+              "em",
+              "p",
+              "strong"
+            ]
+          },
+          "headings": {
+            "h1": [],
+            "h2": [],
+            "h3": [
+              "H1"
+            ]
+          },
+          "lists": {
+            "ul": [
+              "a",
+              "b"
+            ],
+            "ol": [
+              "one",
+              "two"
+            ]
+          },
+          "streaming": {
+            "steps": 65,
+            "error": null,
+            "reusedSteps": 54,
+            "reusedMax": 2,
+            "finalEqualsFreshRender": true,
+            "finalTags": [
+              "code",
+              "p",
+              "pre"
+            ],
+            "finalText": "Intro line.const a = 1;\nconst b = 2;After the code.",
+            "literalFenceInText": false
+          },
+          "codeFenceUnclosed": {
+            "openState": {
+              "pre": 1,
+              "preText": "const a = 1;",
+              "paragraphs": [
+                "Intro."
+              ],
+              "literalFence": false
+            },
+            "closedState": {
+              "pre": 1,
+              "preText": "const a = 1;\nconst b = 2;",
+              "paragraphs": [
+                "Intro.",
+                "Done."
+              ],
+              "literalFence": false
+            }
+          },
+          "codeBlock": {
+            "preTag": "PRE",
+            "tabindex": "0",
+            "role": "region",
+            "overflowX": "auto",
+            "scrollWidth": 1933,
+            "clientWidth": 1423,
+            "focusableCountInBox": 1
+          }
+        },
+        "codeBlockTabKey": {
+          "tag": "pre",
+          "cls": "md-code",
+          "role": "region",
+          "tabindex": "0",
+          "isPre": true
+        },
+        "codeBlockKeyboardScroll": {
+          "scrollLeftBefore": 0,
+          "scrollLeftAfterArrowRight": 240,
+          "scrolled": true
+        },
+        "cspViolationsAfterModuleTests": []
+      },
+      "D": {
+        "w1440": {
+          "viewport": [
+            1440,
+            900
+          ],
+          "toolbarVisible": {
+            "rects": 1,
+            "role": "toolbar",
+            "buttons": [
+              {
+                "text": "All18",
+                "pressed": "true",
+                "tabindex": "0"
+              },
+              {
+                "text": "Denied2",
+                "pressed": "false",
+                "tabindex": "-1"
+              },
+              {
+                "text": "Unknown1",
+                "pressed": "false",
+                "tabindex": "-1"
+              },
+              {
+                "text": "Failed0",
+                "pressed": "false",
+                "tabindex": "-1"
+              }
+            ]
+          },
+          "rovingTabindexZeroCount": 1,
+          "tabStopsUntilToolbar": [
+            {
+              "tag": "a",
+              "text": "Skip to transcript",
+              "id": "skip-link",
+              "pressed": null,
+              "inToolbar": false
+            },
+            {
+              "tag": "button",
+              "text": "Chat",
+              "id": "tab-chat",
+              "pressed": null,
+              "inToolbar": false
+            },
+            {
+              "tag": "button",
+              "text": "Trajectory",
+              "id": "tab-trajectory",
+              "pressed": null,
+              "inToolbar": false
+            },
+            {
+              "tag": "button",
+              "text": "All18",
+              "id": null,
+              "pressed": "true",
+              "inToolbar": true
+            }
+          ],
+          "landedOnPressedButton": true,
+          "afterSecondTab": {
+            "tag": "summary",
+            "id": null,
+            "text": "Rreadread service/entrypoint.g",
+            "inToolbar": false
+          },
+          "singleTabStop": true,
+          "arrowNavigation": {
+            "steps": [
+              {
+                "key": "start",
+                "focused": "All18",
+                "pressed": [
+                  "true",
+                  "false",
+                  "false",
+                  "false"
+                ]
+              },
+              {
+                "key": "ArrowRight",
+                "focused": "Denied2",
+                "pressed": [
+                  "true",
+                  "false",
+                  "false",
+                  "false"
+                ]
+              },
+              {
+                "key": "ArrowRight",
+                "focused": "Unknown1",
+                "pressed": [
+                  "true",
+                  "false",
+                  "false",
+                  "false"
+                ]
+              },
+              {
+                "key": "ArrowLeft",
+                "focused": "Denied2",
+                "pressed": [
+                  "true",
+                  "false",
+                  "false",
+                  "false"
+                ]
+              }
+            ],
+            "pressedBefore": [
+              "true",
+              "false",
+              "false",
+              "false"
+            ],
+            "pressedAfter": [
+              "true",
+              "false",
+              "false",
+              "false"
+            ],
+            "pressedUnchangedByArrows": true
+          },
+          "ledger": {
+            "rows": 18,
+            "allowLabels": 4,
+            "allowExample": "Decision record 4: read · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified.",
+            "allowAllCarryPermissionNote": true,
+            "unknownLabels": 1,
+            "unknownExample": "Result record 17: bash. Result: UNKNOWN, not success; output lossy.",
+            "unknownAllNotSuccess": true,
+            "denyLabels": 1,
+            "denyExample": "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified.",
+            "sampleLabels": [
+              "User record 1: prompt. Message: no verdict or outcome recorded.",
+              "Assistant record 2: message. Message: no verdict or outcome recorded.",
+              "Tool record 3: proposal. Activity: pending, no outcome yet."
+            ],
+            "rowsWithoutAriaLabel": 0,
+            "rowTabindexZero": 0,
+            "statusWordsPresent": true
+          }
+        },
+        "w1024": {
+          "viewport": [
+            1024,
+            768
+          ],
+          "toolbarVisible": {
+            "rects": 1,
+            "role": "toolbar",
+            "buttons": [
+              {
+                "text": "All18",
+                "pressed": "true",
+                "tabindex": "0"
+              },
+              {
+                "text": "Denied2",
+                "pressed": "false",
+                "tabindex": "-1"
+              },
+              {
+                "text": "Unknown1",
+                "pressed": "false",
+                "tabindex": "-1"
+              },
+              {
+                "text": "Failed0",
+                "pressed": "false",
+                "tabindex": "-1"
+              }
+            ]
+          },
+          "rovingTabindexZeroCount": 1,
+          "tabStopsUntilToolbar": [
+            {
+              "tag": "a",
+              "text": "Skip to transcript",
+              "id": "skip-link",
+              "pressed": null,
+              "inToolbar": false
+            },
+            {
+              "tag": "button",
+              "text": "Governance",
+              "id": "inspector-toggle",
+              "pressed": null,
+              "inToolbar": false
+            },
+            {
+              "tag": "button",
+              "text": "Chat",
+              "id": "tab-chat",
+              "pressed": null,
+              "inToolbar": false
+            },
+            {
+              "tag": "button",
+              "text": "Trajectory",
+              "id": "tab-trajectory",
+              "pressed": null,
+              "inToolbar": false
+            },
+            {
+              "tag": "button",
+              "text": "All18",
+              "id": null,
+              "pressed": "true",
+              "inToolbar": true
+            }
+          ],
+          "landedOnPressedButton": true,
+          "afterSecondTab": {
+            "tag": "summary",
+            "id": null,
+            "text": "Rreadread service/entrypoint.g",
+            "inToolbar": false
+          },
+          "singleTabStop": true,
+          "arrowNavigation": {
+            "steps": [
+              {
+                "key": "start",
+                "focused": "All18",
+                "pressed": [
+                  "true",
+                  "false",
+                  "false",
+                  "false"
+                ]
+              },
+              {
+                "key": "ArrowRight",
+                "focused": "Denied2",
+                "pressed": [
+                  "true",
+                  "false",
+                  "false",
+                  "false"
+                ]
+              },
+              {
+                "key": "ArrowRight",
+                "focused": "Unknown1",
+                "pressed": [
+                  "true",
+                  "false",
+                  "false",
+                  "false"
+                ]
+              },
+              {
+                "key": "ArrowLeft",
+                "focused": "Denied2",
+                "pressed": [
+                  "true",
+                  "false",
+                  "false",
+                  "false"
+                ]
+              }
+            ],
+            "pressedBefore": [
+              "true",
+              "false",
+              "false",
+              "false"
+            ],
+            "pressedAfter": [
+              "true",
+              "false",
+              "false",
+              "false"
+            ],
+            "pressedUnchangedByArrows": true
+          },
+          "ledger": {
+            "rows": 18,
+            "allowLabels": 4,
+            "allowExample": "Decision record 4: read · reviewed. Policy verdict: ALLOW (permission, not an outcome), not independently verified.",
+            "allowAllCarryPermissionNote": true,
+            "unknownLabels": 1,
+            "unknownExample": "Result record 17: bash. Result: UNKNOWN, not success; output lossy.",
+            "unknownAllNotSuccess": true,
+            "denyLabels": 1,
+            "denyExample": "Decision record 10: bash · reviewed. Policy verdict: DENY (refusal, not an outcome), not independently verified.",
+            "sampleLabels": [
+              "User record 1: prompt. Message: no verdict or outcome recorded.",
+              "Assistant record 2: message. Message: no verdict or outcome recorded.",
+              "Tool record 3: proposal. Activity: pending, no outcome yet."
+            ],
+            "rowsWithoutAriaLabel": 0,
+            "rowTabindexZero": 0,
+            "statusWordsPresent": true
+          }
+        }
+      },
+      "browser": "Chrome/155.0.8059.79",
+      "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+      "consoleAndExceptions": [
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "url": "http://127.0.0.1:8801/favicon.ico"
+        }
+      ],
+      "sinkGrep": {
+        "pattern": "innerHTML|outerHTML|insertAdjacentHTML|document\\.write|\\beval\\(|new Function|srcdoc|setAttribute\\(\\s*[\"']style|\\.style\\s*=\\s*[\"']",
+        "workingTree": {
+          "index.html": {
+            "hits": 0,
+            "sha256": "947bd03d4744f2b1d132db1db313db4bd15999daf9a1f66bbbabac0c3e7f6005"
+          },
+          "styles.css": {
+            "hits": 0,
+            "sha256": "ba2956beef8dd876152dceaa145287b9b16e2fd92779441a2207c086a29aa4c5"
+          },
+          "app.mjs": {
+            "hits": 0,
+            "sha256": "33843228711b888a3bdcbaecb71480faff6be1b955ea2ea74b1d0668a1aa98fe"
+          },
+          "api.mjs": {
+            "hits": 0,
+            "sha256": "73034c0575bd438d0a383110512b12773f8093a7cb6d4f78d875fb9beeaabf11"
+          },
+          "store.mjs": {
+            "hits": 0,
+            "sha256": "190a0580b2a1c8084bcbc28e9d0284b7f18759c4bbd4d8e3033313be16c307de"
+          },
+          "render.mjs": {
+            "hits": 0,
+            "sha256": "592ab12f562f0b73cfd239914675d506f1e2a392d5177ff6163490500dc30e48"
+          },
+          "filters.mjs": {
+            "hits": 0,
+            "sha256": "926c9248e99b76e94e8b028b0e94702ef7fc53b790bb9d62480abcf1b7f2f6cb"
+          },
+          "format.mjs": {
+            "hits": 0,
+            "sha256": "32c2c831750656a0f1ab0a2b6bcf0f69986a5e1906fd5bc30984d9d3b802f8a8"
+          },
+          "trajectory.mjs": {
+            "hits": 0,
+            "sha256": "98283ae771b07826290490a16d672a61ad48c14a27af72736f5667064efba46b"
+          },
+          "markdown.mjs": {
+            "hits": 0,
+            "sha256": "06464df8551a018758cb237cfea23a5282d165e35a9c08ea706a781c65ad18e0"
+          },
+          "backoff.mjs": {
+            "hits": 0,
+            "sha256": "2dd0e2760e48aa5dc44ca90f396601329550fc0ca96cfa6db7fcd74b1a910001"
+          },
+          "stream.mjs": {
+            "hits": 0,
+            "sha256": "bba83458c58268d94541aed4a78a4657e9dfa8ac0931cdf7e8f2099d3318913f"
+          },
+          "anchor.mjs": {
+            "hits": 0,
+            "sha256": "aaa38d409e169c0c77f6d70d20fce2897c3c5d61e7538ff736ab340a0866763f"
+          }
+        },
+        "served": {
+          "index.html": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "947bd03d4744f2b1d132db1db313db4bd15999daf9a1f66bbbabac0c3e7f6005",
+            "shaMatchesWorkingTree": true
+          },
+          "styles.css": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "ba2956beef8dd876152dceaa145287b9b16e2fd92779441a2207c086a29aa4c5",
+            "shaMatchesWorkingTree": true
+          },
+          "app.mjs": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "33843228711b888a3bdcbaecb71480faff6be1b955ea2ea74b1d0668a1aa98fe",
+            "shaMatchesWorkingTree": true
+          },
+          "api.mjs": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "73034c0575bd438d0a383110512b12773f8093a7cb6d4f78d875fb9beeaabf11",
+            "shaMatchesWorkingTree": true
+          },
+          "store.mjs": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "190a0580b2a1c8084bcbc28e9d0284b7f18759c4bbd4d8e3033313be16c307de",
+            "shaMatchesWorkingTree": true
+          },
+          "render.mjs": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "592ab12f562f0b73cfd239914675d506f1e2a392d5177ff6163490500dc30e48",
+            "shaMatchesWorkingTree": true
+          },
+          "filters.mjs": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "926c9248e99b76e94e8b028b0e94702ef7fc53b790bb9d62480abcf1b7f2f6cb",
+            "shaMatchesWorkingTree": true
+          },
+          "format.mjs": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "32c2c831750656a0f1ab0a2b6bcf0f69986a5e1906fd5bc30984d9d3b802f8a8",
+            "shaMatchesWorkingTree": true
+          },
+          "trajectory.mjs": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "98283ae771b07826290490a16d672a61ad48c14a27af72736f5667064efba46b",
+            "shaMatchesWorkingTree": true
+          },
+          "markdown.mjs": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "06464df8551a018758cb237cfea23a5282d165e35a9c08ea706a781c65ad18e0",
+            "shaMatchesWorkingTree": true
+          },
+          "backoff.mjs": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "2dd0e2760e48aa5dc44ca90f396601329550fc0ca96cfa6db7fcd74b1a910001",
+            "shaMatchesWorkingTree": true
+          },
+          "stream.mjs": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "bba83458c58268d94541aed4a78a4657e9dfa8ac0931cdf7e8f2099d3318913f",
+            "shaMatchesWorkingTree": true
+          },
+          "anchor.mjs": {
+            "status": 200,
+            "hits": 0,
+            "sha256": "aaa38d409e169c0c77f6d70d20fce2897c3c5d61e7538ff736ab340a0866763f",
+            "shaMatchesWorkingTree": true
+          }
+        }
+      }
+    },
+    "phaseB": {
+      "phase": "B",
+      "server": "http://127.0.0.1:8801",
+      "notes": [],
+      "browser": "Chrome/155.0.8059.79",
+      "snapshotAtStart": {
+        "epoch": "fixture-2f1c",
+        "cursor": "fixture-2f1c:18",
+        "items": 18,
+        "lastSequence": 18
+      },
+      "initialLoad": {
+        "scrollY": 0,
+        "scrollHeight": 1032,
+        "innerHeight": 900,
+        "connection": "connected",
+        "streamsCreated": 1,
+        "chatJumpHidden": true,
+        "items": 8
+      },
+      "markdownPush": "ok",
+      "markdownInTranscript": {
+        "mdBodies": 5,
+        "h3": [],
+        "ul": [
+          "read main.go",
+          "add the route",
+          "run go test ./..."
+        ],
+        "inlineCode": [
+          "/healthz"
+        ],
+        "preCount": 2,
+        "preTabindex": [
+          "0",
+          "0"
+        ],
+        "links": [
+          {
+            "href": "https://go.dev/doc/",
+            "target": "_blank",
+            "rel": "noopener noreferrer nofollow"
+          }
+        ],
+        "scriptsInTranscript": 0,
+        "imgsInTranscript": 0,
+        "literalScriptText": true,
+        "truncationNotices": 0
+      },
+      "markdownScreenshotState": {
+        "scrollY": 633,
+        "scrollHeight": 1533,
+        "innerHeight": 900,
+        "chatJumpHidden": true
+      },
+      "fillerArrivalsAtTail": 14,
+      "followAtTail": {
+        "atTail": true,
+        "scrollY": 1464,
+        "chatJumpHidden": true,
+        "newRecordVisible": true
+      },
+      "awayBeforeBurst": {
+        "scrollY": 400,
+        "atTail": false,
+        "chatJumpHidden": true,
+        "anchor": "msg-01-assistant-intro",
+        "anchorTop": -21.609375
+      },
+      "afterBurst": {
+        "scrollY": 400,
+        "anchor": "msg-01-assistant-intro",
+        "anchorTop": -21.609375,
+        "jumpText": "3 new records · Jump to latest",
+        "jumpHidden": false,
+        "scrollYUnchanged": true,
+        "anchorOffsetDelta": 0,
+        "announcerChanges": [
+          {
+            "t": 3017,
+            "text": "3 new records below. Jump to latest is available."
+          }
+        ],
+        "announcerWithNewRecord": [
+          {
+            "t": 3017,
+            "text": "3 new records below. Jump to latest is available."
+          }
+        ],
+        "announcerText": "3 new records below. Jump to latest is available.",
+        "jumpVisibleText": {
+          "hidden": false,
+          "text": "3 new records · Jump to latest",
+          "role": "BUTTON",
+          "type": "button"
+        }
+      },
+      "afterJump": {
+        "scrollY": 1630,
+        "scrollHeight": 2530,
+        "atBottom": true,
+        "focusedId": "timeline",
+        "focusedRole": "log",
+        "chatJumpHidden": true,
+        "burstVisible": [
+          true,
+          true,
+          true
+        ]
+      },
+      "tailArrivalAfterJump": {
+        "atBottom": true,
+        "chatJumpHidden": true,
+        "newAnnouncerChanges": 0
+      },
+      "duplicates": {
+        "scrollYUnchanged": true,
+        "chatJumpHidden": true,
+        "newAnnouncerChanges": 0,
+        "dupIdRendered": false
+      },
+      "gap": {
+        "streamsOpenedForRecovery": 1,
+        "noticesText": "iretained window22 older element(s) were evicted from the bounded client window. Counts and filters describe the retained window only.!continuity gapcursor fixture-2f1c:40 · sequence gap. Recovered from a snapshot; no success is inferred for missing elements.!history not loadedEarlier history not loaded: continuity is not proven from element 19 (history evicted, the source window). No success is i",
+        "announcerText": "Continuity gap (sequence gap). Recovered from a snapshot; no success is inferred. Earlier history not loaded. No success is inferred for it.",
+        "newAnnouncerChanges": 2,
+        "announcerChangesDuringGap": [
+          {
+            "t": 6205,
+            "text": "Stream connecting."
+          },
+          {
+            "t": 6213,
+            "text": "Continuity gap (sequence gap). Recovered from a snapshot; no success is inferred. Earlier history not loaded. No success is inferred for it."
+          }
+        ],
+        "chatJumpHidden": true,
+        "gapItemRendered": false,
+        "liveItemsAfterSnapshot": 0,
+        "connection": "connected",
+        "windowGapNotice": true
+      },
+      "consoleAndExceptions": [
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "url": "http://127.0.0.1:8801/favicon.ico"
+        }
+      ],
+      "shots": [
+        {
+          "name": "fixture-chat-markdown-desktop.png",
+          "pngWidth": 1440,
+          "pngHeight": 900,
+          "expected": "1440x900",
+          "bytes": 184953,
+          "sha256": "b360b22cc764ff4c7a40c41d430913ba805436e9196bdc7afabc036a7efc8ef8"
+        },
+        {
+          "name": "fixture-tail-jump-desktop.png",
+          "pngWidth": 1440,
+          "pngHeight": 900,
+          "expected": "1440x900",
+          "bytes": 199695,
+          "sha256": "2723f401c4e4f8731362c5268d89f1e83daaecb253bba1ab3a1c8198a3451af3"
+        }
+      ],
+      "pushedCursor": {
+        "live-md-01": {
+          "seq": 19,
+          "cursor": "fixture-2f1c:19"
+        },
+        "live-md-02": {
+          "seq": 20,
+          "cursor": "fixture-2f1c:20"
+        },
+        "live-md-03": {
+          "seq": 21,
+          "cursor": "fixture-2f1c:21"
+        },
+        "live-fill-00": {
+          "seq": 22,
+          "cursor": "fixture-2f1c:22"
+        },
+        "live-fill-01": {
+          "seq": 23,
+          "cursor": "fixture-2f1c:23"
+        },
+        "live-fill-02": {
+          "seq": 24,
+          "cursor": "fixture-2f1c:24"
+        },
+        "live-fill-03": {
+          "seq": 25,
+          "cursor": "fixture-2f1c:25"
+        },
+        "live-fill-04": {
+          "seq": 26,
+          "cursor": "fixture-2f1c:26"
+        },
+        "live-fill-05": {
+          "seq": 27,
+          "cursor": "fixture-2f1c:27"
+        },
+        "live-fill-06": {
+          "seq": 28,
+          "cursor": "fixture-2f1c:28"
+        },
+        "live-fill-07": {
+          "seq": 29,
+          "cursor": "fixture-2f1c:29"
+        },
+        "live-fill-08": {
+          "seq": 30,
+          "cursor": "fixture-2f1c:30"
+        },
+        "live-fill-09": {
+          "seq": 31,
+          "cursor": "fixture-2f1c:31"
+        },
+        "live-fill-10": {
+          "seq": 32,
+          "cursor": "fixture-2f1c:32"
+        },
+        "live-fill-11": {
+          "seq": 33,
+          "cursor": "fixture-2f1c:33"
+        },
+        "live-fill-12": {
+          "seq": 34,
+          "cursor": "fixture-2f1c:34"
+        },
+        "live-fill-13": {
+          "seq": 35,
+          "cursor": "fixture-2f1c:35"
+        },
+        "live-follow-00": {
+          "seq": 36,
+          "cursor": "fixture-2f1c:36"
+        },
+        "live-burst-01": {
+          "seq": 37,
+          "cursor": "fixture-2f1c:37"
+        },
+        "live-burst-02": {
+          "seq": 38,
+          "cursor": "fixture-2f1c:38"
+        },
+        "live-burst-03": {
+          "seq": 39,
+          "cursor": "fixture-2f1c:39"
+        },
+        "live-tail-after-jump": {
+          "seq": 40,
+          "cursor": "fixture-2f1c:40"
+        }
+      },
+      "snapshotAtEnd": {
+        "epoch": "fixture-2f1c",
+        "cursor": "fixture-2f1c:18",
+        "items": 18,
+        "lastSequence": 18
+      }
+    },
+    "phaseC": {
+      "phase": "C",
+      "server": "http://127.0.0.1:8801",
+      "notes": [],
+      "browser": "Chrome/155.0.8059.79",
+      "serverPidBefore": "18200",
+      "kill1": {
+        "pid": "18200",
+        "state": "dead"
+      },
+      "retries": {
+        "killedAtWall": 1791980352375,
+        "snapshotAttempts": 9,
+        "firstAttemptAfterKillMs": 745,
+        "intervalsMs": [
+          647,
+          1488,
+          2202,
+          7747,
+          8633,
+          5769,
+          7253,
+          7864
+        ],
+        "bounds": [
+          {
+            "computedMs": 1000,
+            "minMs": 500,
+            "maxMs": 1000
+          },
+          {
+            "computedMs": 2000,
+            "minMs": 1000,
+            "maxMs": 2000
+          },
+          {
+            "computedMs": 4000,
+            "minMs": 2000,
+            "maxMs": 4000
+          },
+          {
+            "computedMs": 8000,
+            "minMs": 4000,
+            "maxMs": 8000
+          },
+          {
+            "computedMs": 10000,
+            "minMs": 5000,
+            "maxMs": 10000
+          },
+          {
+            "computedMs": 10000,
+            "minMs": 5000,
+            "maxMs": 10000
+          },
+          {
+            "computedMs": 10000,
+            "minMs": 5000,
+            "maxMs": 10000
+          },
+          {
+            "computedMs": 10000,
+            "minMs": 5000,
+            "maxMs": 10000
+          }
+        ],
+        "allWithinBounds": true,
+        "spreadOfDistinctIntervals": 8,
+        "failures": [
+          "net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+          "net::ERR_EMPTY_RESPONSE",
+          "net::ERR_CONNECTION_REFUSED"
+        ],
+        "apiRequestsOtherThanSnapshot": 0
+      },
+      "badgeAfterKill": [
+        {
+          "t": 1791980352613,
+          "text": "reconnecting…"
+        },
+        {
+          "t": 1791980353119,
+          "text": "connecting…"
+        },
+        {
+          "t": 1791980353130,
+          "text": "reconnecting…"
+        },
+        {
+          "t": 1791980353767,
+          "text": "connecting…"
+        },
+        {
+          "t": 1791980353774,
+          "text": "reconnecting…"
+        },
+        {
+          "t": 1791980355255,
+          "text": "connecting…"
+        },
+        {
+          "t": 1791980355263,
+          "text": "reconnecting…"
+        },
+        {
+          "t": 1791980357457,
+          "text": "connecting…"
+        },
+        {
+          "t": 1791980357464,
+          "text": "reconnecting…"
+        },
+        {
+          "t": 1791980365204,
+          "text": "connecting…"
+        },
+        {
+          "t": 1791980365212,
+          "text": "reconnecting…"
+        },
+        {
+          "t": 1791980373838,
+          "text": "connecting…"
+        },
+        {
+          "t": 1791980373844,
+          "text": "reconnecting…"
+        },
+        {
+          "t": 1791980379607,
+          "text": "connecting…"
+        },
+        {
+          "t": 1791980379614,
+          "text": "reconnecting…"
+        },
+        {
+          "t": 1791980386860,
+          "text": "connecting…"
+        },
+        {
+          "t": 1791980386866,
+          "text": "reconnecting…"
+        },
+        {
+          "t": 1791980394724,
+          "text": "connecting…"
+        },
+        {
+          "t": 1791980394730,
+          "text": "reconnecting…"
+        }
+      ],
+      "noticesWhileDown": "!projection errorFailed to fetch",
+      "restartPid": "20559",
+      "recovery": {
+        "snapshotStatus": 200,
+        "snapshotResponseWall": 1791980400103,
+        "eventsRequestUrl": "/api/v1/events?cursor=fixture-2f1c%3A18",
+        "eventsRequestWall": 1791980400104,
+        "eventsResponseStatus": 200,
+        "eventsResponseWall": 1791980400114,
+        "firstConnectedBadgeAt": 1791980400110,
+        "connectedAfterEventsResponse": true,
+        "order": "snapshot response -> events request -> events response -> badge connected",
+        "snapshotBeforeEvents": true,
+        "recoveryMs": 2076,
+        "badgeTransitions": [
+          {
+            "t": 1791980400098,
+            "text": "connecting…"
+          },
+          {
+            "t": 1791980400110,
+            "text": "connected"
+          }
+        ],
+        "snapshotCursorNow": "fixture-2f1c:18"
+      },
+      "offlineConnected": {
+        "navigatorOnLineWhenEmulatedOffline": false,
+        "browserOfflineEventsSeen": [
+          [
+            "offline",
+            1791980400164
+          ]
+        ],
+        "syntheticOfflineEventDispatched": false,
+        "badgeWhenOffline": "offline",
+        "apiRequestsAfterOfflineSettled": 0,
+        "apiRequestsWhileOffline": 0,
+        "observedWindowMs": 18012,
+        "online": {
+          "syntheticOnlineEventDispatched": false,
+          "browserOnlineEventsSeen": 1,
+          "firstSnapshotAfterOnlineMs": 6,
+          "reconnectedMs": 309,
+          "badgeAfterOnline": "connected"
+        }
+      },
+      "kill2": {
+        "pid": "20559",
+        "state": "dead"
+      },
+      "offlineRetryLoop": {
+        "attemptsBeforeOffline": 4,
+        "badgeWhenOffline": "offline",
+        "syntheticOfflineEventDispatched": false,
+        "apiRequestsWhileOfflineWindow": 0,
+        "observedOfflineWindowMs": 22322,
+        "online": {
+          "syntheticOnlineEventDispatched": false,
+          "firstSnapshotAttemptAfterOnlineMs": 6,
+          "badgeAfterOnlineWhileServerDown": "reconnecting…"
+        },
+        "recoveredAfterRestart": true
+      },
+      "restartPid2": "20629",
+      "slowHandshake": {
+        "proxyDelayMs": 4000,
+        "proxiedRequests": 2,
+        "transitions": [],
+        "sawSlowHandshakeNote": false,
+        "finallyConnected": false,
+        "connectedAtMs": null
+      },
+      "consoleAndExceptions": [
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "url": "http://127.0.0.1:8801/favicon.ico"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+          "url": "http://127.0.0.1:8801/api/v1/events?cursor=fixture-2f1c%3A18"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_EMPTY_RESPONSE",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+          "url": "http://127.0.0.1:8801/api/v1/events?cursor=fixture-2f1c%3A18"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_EMPTY_RESPONSE",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+          "url": "http://127.0.0.1:8801/api/v1/snapshot"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "url": "http://127.0.0.1:8802/"
+        },
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+          "url": "http://127.0.0.1:8802/favicon.ico"
+        }
+      ],
+      "serverStopped": {
+        "pid": "20629",
+        "state": "dead"
+      }
+    },
+    "phaseC6": {
+      "phase": "C.6 slow handshake",
+      "server": "http://127.0.0.1:8801",
+      "proxy": "http://127.0.0.1:8802 -> 127.0.0.1:8801, 4000 ms per request",
+      "serverPid": "20734",
+      "browser": "Chrome/155.0.8059.79",
+      "slowHandshake": {
+        "proxyDelayMs": 4000,
+        "proxiedRequests": 16,
+        "hostRewrittenFor": 16,
+        "transitions": [
+          {
+            "tMs": 4044,
+            "text": "connecting…"
+          },
+          {
+            "tMs": 19185,
+            "text": "connecting… · slow handshake: still connecting"
+          },
+          {
+            "tMs": 24177,
+            "text": "connected"
+          }
+        ],
+        "slowHandshakeNoteFirstSeenAtMs": 19185,
+        "sawSlowHandshakeNote": true,
+        "connectedAtMs": 24177,
+        "connectedAfterWarning": true,
+        "finalBadge": "connected"
+      },
+      "consoleAndExceptions": [
+        {
+          "kind": "log.error",
+          "text": "Failed to load resource: the server responded with a status of 404 (Not Found)",
+          "url": "http://127.0.0.1:8802/favicon.ico"
+        }
+      ],
+      "serverStopped": {
+        "pid": "20734",
+        "state": "dead"
+      }
+    }
+  }
+}

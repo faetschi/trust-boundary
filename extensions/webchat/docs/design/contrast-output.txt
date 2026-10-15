@@ -1,0 +1,81 @@
+Proposed palette sRGB hex (clipped = channel was outside sRGB):
+LIGHT: canvas=#FFFFFF sidebar=#F7F7F7 raised=#FFFFFF bubble=#F0F0F0 hover=#EDEDED fg=#161616 fg2=#4D4D4D fg3=#636363 okInk=#03642B okLine=#1D7D3E denyInk=#A50E15 denyLine=#BE2323 allowInk=#275582 reportedInk=#774A00* reportedLine=#B17000* pendingLine=#636363 idle=#717171 srcUser=#005763* srcAssistant=#6F4FA1 srcTool=#774A00* srcResult=#414F5D srcDecision=#685300* selection=#D7D7D7 primaryFill=#161616 primaryFg=#FAFAFA focus=#161616 inputBorder=#808080
+DARK: canvas=#121212 sidebar=#191919 raised=#202020 bubble=#282828 hover=#2B2B2B fg=#F5F5F5 fg2=#C4C4C4 fg3=#9E9E9E okInk=#52CD86 okLine=#52CD86 denyInk=#FF8987* denyLine=#FF8987* allowInk=#85B6E9 reportedInk=#FEC766 reportedLine=#EDB345 pendingLine=#A4A4A4 idle=#868686 srcUser=#66CFE1 srcAssistant=#C9ACFF* srcTool=#FEC766 srcResult=#A9B9CA srcDecision=#F0CE65 selection=#484848 primaryFill=#F2F2F2 primaryFg=#161616 focus=#E8E8E8 inputBorder=#808080
+CURRENT_DARK: canvas=#0A0A0A sidebar=#121212 raised=#171717 bubble=#262626 hover=#404040 fg=#FAFAFA fg2=#A1A1A1 okInk=#71DF9C okLine=#3BB974 denyInk=#FB2C36 denyLine=#FF6568* allowInk=#60AAF3 reportedInk=#FFCC69 reportedLine=#EDB333 inputBorder=#FFFFFF
+
+== BASELINE tbound current dark (styles.css :root) ==
+┌─────────┬────────────────────────────────┬───────────┬──────────┬─────────┬───────┬─────────┐
+│ (index) │ element                        │ ink       │ worstOn  │ ratio   │ need  │ verdict │
+├─────────┼────────────────────────────────┼───────────┼──────────┼─────────┼───────┼─────────┤
+│ 0       │ 'text foreground'              │ '#FAFAFA' │ 'bubble' │ '14.48' │ '4.5' │ 'PASS'  │
+│ 1       │ 'text muted'                   │ '#A1A1A1' │ 'bubble' │ '5.83'  │ '4.5' │ 'PASS'  │
+│ 2       │ 'chip ink ok'                  │ '#71DF9C' │ 'raised' │ '9.01'  │ '4.5' │ 'PASS'  │
+│ 3       │ 'chip ink deny'                │ '#FB2C36' │ 'raised' │ '4.00'  │ '4.5' │ 'FAIL'  │
+│ 4       │ 'chip ink allow'               │ '#60AAF3' │ 'raised' │ '6.00'  │ '4.5' │ 'PASS'  │
+│ 5       │ 'chip ink reported'            │ '#FFCC69' │ 'raised' │ '9.54'  │ '4.5' │ 'PASS'  │
+│ 6       │ 'reported dashed border'       │ '#EDB333' │ 'raised' │ '9.47'  │ '3.0' │ 'PASS'  │
+│ 7       │ 'control boundary (15% white)' │ '#2F2F2F' │ 'canvas' │ '1.47'  │ '3.0' │ 'FAIL'  │
+└─────────┴────────────────────────────────┴───────────┴──────────┴─────────┴───────┴─────────┘
+
+== PROPOSED light ==
+┌─────────┬────────────────────────────────┬───────────┬───────────────┬─────────┬───────┬─────────┐
+│ (index) │ element                        │ ink       │ worstOn       │ ratio   │ need  │ verdict │
+├─────────┼────────────────────────────────┼───────────┼───────────────┼─────────┼───────┼─────────┤
+│ 0       │ 'text primary'                 │ '#161616' │ 'hover'       │ '15.41' │ '4.5' │ 'PASS'  │
+│ 1       │ 'text secondary'               │ '#4D4D4D' │ 'hover'       │ '7.20'  │ '4.5' │ 'PASS'  │
+│ 2       │ 'text tertiary'                │ '#636363' │ 'hover'       │ '5.11'  │ '4.5' │ 'PASS'  │
+│ 3       │ 'chip ink ok (verified)'       │ '#03642B' │ 'hover'       │ '5.37'  │ '4.5' │ 'PASS'  │
+│ 4       │ 'chip ink deny'                │ '#A50E15' │ 'hover'       │ '5.52'  │ '4.5' │ 'PASS'  │
+│ 5       │ 'chip ink allow (permission)'  │ '#275582' │ 'hover'       │ '5.52'  │ '4.5' │ 'PASS'  │
+│ 6       │ 'chip ink reported/unknown'    │ '#774A00' │ 'hover'       │ '5.68'  │ '4.5' │ 'PASS'  │
+│ 7       │ 'chip ink pending (=text2)'    │ '#4D4D4D' │ 'hover'       │ '6.02'  │ '4.5' │ 'PASS'  │
+│ 8       │ 'src chip user'                │ '#005763' │ 'hover'       │ '5.80'  │ '4.5' │ 'PASS'  │
+│ 9       │ 'src chip assistant'           │ '#6F4FA1' │ 'hover'       │ '4.60'  │ '4.5' │ 'PASS'  │
+│ 10      │ 'src chip tool'                │ '#774A00' │ 'hover'       │ '5.42'  │ '4.5' │ 'PASS'  │
+│ 11      │ 'src chip result/message'      │ '#414F5D' │ 'hover'       │ '6.00'  │ '4.5' │ 'PASS'  │
+│ 12      │ 'src chip decision'            │ '#685300' │ 'hover'       │ '5.33'  │ '4.5' │ 'PASS'  │
+│ 13      │ 'selection text (::selection)' │ '#161616' │ 'selection'   │ '12.61' │ '4.5' │ 'PASS'  │
+│ 14      │ 'primary button label'         │ '#FAFAFA' │ 'primaryFill' │ '17.34' │ '4.5' │ 'PASS'  │
+│ 15      │ 'dot ok (verified) fill'       │ '#1D7D3E' │ 'hover'       │ '4.42'  │ '3.0' │ 'PASS'  │
+│ 16      │ 'dot deny fill/border'         │ '#BE2323' │ 'hover'       │ '5.17'  │ '3.0' │ 'PASS'  │
+│ 17      │ 'dot allow border'             │ '#275582' │ 'hover'       │ '6.59'  │ '3.0' │ 'PASS'  │
+│ 18      │ 'pending hollow ring'          │ '#636363' │ 'hover'       │ '5.11'  │ '3.0' │ 'PASS'  │
+│ 19      │ 'reported dashed border'       │ '#B17000' │ 'hover'       │ '3.46'  │ '3.0' │ 'PASS'  │
+│ 20      │ 'unknown dotted border'        │ '#B17000' │ 'hover'       │ '3.46'  │ '3.0' │ 'PASS'  │
+│ 21      │ 'idle filled dot'              │ '#717171' │ 'hover'       │ '4.13'  │ '3.0' │ 'PASS'  │
+│ 22      │ 'focus ring (2px)'             │ '#161616' │ 'hover'       │ '15.41' │ '3.0' │ 'PASS'  │
+│ 23      │ 'control boundary (input)'     │ '#808080' │ 'sidebar'     │ '3.67'  │ '3.0' │ 'PASS'  │
+└─────────┴────────────────────────────────┴───────────┴───────────────┴─────────┴───────┴─────────┘
+
+== PROPOSED dark ==
+┌─────────┬────────────────────────────────┬───────────┬───────────────┬─────────┬───────┬─────────┐
+│ (index) │ element                        │ ink       │ worstOn       │ ratio   │ need  │ verdict │
+├─────────┼────────────────────────────────┼───────────┼───────────────┼─────────┼───────┼─────────┤
+│ 0       │ 'text primary'                 │ '#F5F5F5' │ 'hover'       │ '12.94' │ '4.5' │ 'PASS'  │
+│ 1       │ 'text secondary'               │ '#C4C4C4' │ 'hover'       │ '8.08'  │ '4.5' │ 'PASS'  │
+│ 2       │ 'text tertiary'                │ '#9E9E9E' │ 'hover'       │ '5.28'  │ '4.5' │ 'PASS'  │
+│ 3       │ 'chip ink ok (verified)'       │ '#52CD86' │ 'hover'       │ '5.53'  │ '4.5' │ 'PASS'  │
+│ 4       │ 'chip ink deny'                │ '#FF8987' │ 'hover'       │ '5.00'  │ '4.5' │ 'PASS'  │
+│ 5       │ 'chip ink allow (permission)'  │ '#85B6E9' │ 'hover'       │ '5.24'  │ '4.5' │ 'PASS'  │
+│ 6       │ 'chip ink reported/unknown'    │ '#FEC766' │ 'hover'       │ '7.11'  │ '4.5' │ 'PASS'  │
+│ 7       │ 'chip ink pending (=text2)'    │ '#C4C4C4' │ 'hover'       │ '6.17'  │ '4.5' │ 'PASS'  │
+│ 8       │ 'src chip user'                │ '#66CFE1' │ 'hover'       │ '6.04'  │ '4.5' │ 'PASS'  │
+│ 9       │ 'src chip assistant'           │ '#C9ACFF' │ 'hover'       │ '5.67'  │ '4.5' │ 'PASS'  │
+│ 10      │ 'src chip tool'                │ '#FEC766' │ 'hover'       │ '6.84'  │ '4.5' │ 'PASS'  │
+│ 11      │ 'src chip result/message'      │ '#A9B9CA' │ 'hover'       │ '5.52'  │ '4.5' │ 'PASS'  │
+│ 12      │ 'src chip decision'            │ '#F0CE65' │ 'hover'       │ '6.90'  │ '4.5' │ 'PASS'  │
+│ 13      │ 'selection text (::selection)' │ '#F5F5F5' │ 'selection'   │ '8.44'  │ '4.5' │ 'PASS'  │
+│ 14      │ 'primary button label'         │ '#161616' │ 'primaryFill' │ '16.12' │ '4.5' │ 'PASS'  │
+│ 15      │ 'dot ok (verified) fill'       │ '#52CD86' │ 'hover'       │ '6.99'  │ '3.0' │ 'PASS'  │
+│ 16      │ 'dot deny fill/border'         │ '#FF8987' │ 'hover'       │ '6.19'  │ '3.0' │ 'PASS'  │
+│ 17      │ 'dot allow border'             │ '#85B6E9' │ 'hover'       │ '6.61'  │ '3.0' │ 'PASS'  │
+│ 18      │ 'pending hollow ring'          │ '#A4A4A4' │ 'hover'       │ '5.69'  │ '3.0' │ 'PASS'  │
+│ 19      │ 'reported dashed border'       │ '#EDB345' │ 'hover'       │ '7.45'  │ '3.0' │ 'PASS'  │
+│ 20      │ 'unknown dotted border'        │ '#EDB345' │ 'hover'       │ '7.45'  │ '3.0' │ 'PASS'  │
+│ 21      │ 'idle filled dot'              │ '#868686' │ 'hover'       │ '3.88'  │ '3.0' │ 'PASS'  │
+│ 22      │ 'focus ring (2px)'             │ '#E8E8E8' │ 'hover'       │ '11.48' │ '3.0' │ 'PASS'  │
+│ 23      │ 'control boundary (input)'     │ '#808080' │ 'raised'      │ '4.11'  │ '3.0' │ 'PASS'  │
+└─────────┴────────────────────────────────┴───────────┴───────────────┴─────────┴───────┴─────────┘
+
+PROPOSED FAILS (0): none
+BASELINE FAILS: chip ink deny=4.00 | control boundary (15% white)=1.47

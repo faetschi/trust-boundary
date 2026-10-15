@@ -1,0 +1,22 @@
+.state {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 40rem;
+  padding: var(--space-5) var(--space-4);
+  color: var(--muted-foreground);
+}
+
+.title {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.body {
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.state[data-state="error"] .title {
+  color: var(--destructive-foreground);
+}
