@@ -407,7 +407,7 @@ func TestProtectedRootRejectsSameContentOwnerDBReplacementAfterLocalMetadataRewr
 	if err != nil {
 		t.Fatalf("inspect replacement owner database: %v", err)
 	}
-	db, err := openOwnerDatabase(ownerPath)
+	db, err := openOwnerDatabase(ownerPath, sqliteOwnerMaxPageCount)
 	if err != nil {
 		t.Fatalf("open replacement to rewrite its local identity metadata: %v", err)
 	}
@@ -728,7 +728,7 @@ func TestLoadSettledCheckpointRejectsMismatchedRootDigestAndOwnerIdentity(t *tes
 		t.Fatal(err)
 	}
 
-	db, err := openOwnerDatabase(ownerPath)
+	db, err := openOwnerDatabase(ownerPath, sqliteOwnerMaxPageCount)
 	if err != nil {
 		t.Fatalf("open owner store to simulate tampering: %v", err)
 	}

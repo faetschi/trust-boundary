@@ -236,7 +236,7 @@ func CreateFreshProtectedRoot(path, ownerStoreRoot string, boundary HostBoundary
 		_ = releaseProtectedRootLock(lockFile)
 		return nil, err
 	}
-	db, err := openOwnerDatabase(cleanPath)
+	db, err := openOwnerDatabase(cleanPath, sqliteProtectedRootMaxPageCount)
 	if err != nil {
 		_ = releaseProtectedRootLock(lockFile)
 		return nil, err
@@ -285,7 +285,11 @@ func OpenExistingProtectedRoot(path, ownerStoreRoot string, boundary HostBoundar
 		_ = releaseProtectedRootLock(lockFile)
 		return nil, err
 	}
-	db, err := openOwnerDatabase(cleanPath)
+	if err := precheckSQLiteFileGeometry(cleanPath, sqliteProtectedRootMaxPageCount); err != nil {
+		_ = releaseProtectedRootLock(lockFile)
+		return nil, err
+	}
+	db, err := openOwnerDatabase(cleanPath, sqliteProtectedRootMaxPageCount)
 	if err != nil {
 		_ = releaseProtectedRootLock(lockFile)
 		return nil, err
@@ -1229,6 +1233,11 @@ func (r *ProtectedTrustedRoot) verifyBoundStoreLocked(ctx context.Context, workf
 }
 
 func (r *ProtectedTrustedRoot) createNamespace(ctx context.Context) error {
+	// Enabling WAL writes page 1, which fixes the page size, so geometry is
+	// verified before it.
+	if err := verifySQLitePageGeometry(ctx, r.db, sqliteProtectedRootMaxPageCount); err != nil {
+		return err
+	}
 	var mode string
 	if err := r.db.QueryRowContext(ctx, "PRAGMA journal_mode=WAL").Scan(&mode); err != nil || !strings.EqualFold(mode, "wal") {
 		return fmt.Errorf("%w: configure protected root WAL mode: mode=%q error=%v", ErrOwnerStore, mode, err)
@@ -1306,6 +1315,9 @@ func (r *ProtectedTrustedRoot) createNamespace(ctx context.Context) error {
 
 func (r *ProtectedTrustedRoot) verifyNamespace(ctx context.Context) error {
 	if err := r.verifyRootPathLocked(); err != nil {
+		return err
+	}
+	if err := verifySQLitePageGeometry(ctx, r.db, sqliteProtectedRootMaxPageCount); err != nil {
 		return err
 	}
 	if err := r.verifyRootPragmas(ctx); err != nil {

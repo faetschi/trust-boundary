@@ -1,0 +1,101 @@
+{
+  "schema_version": "tbound-sqlite-geometry-preflight/v1",
+  "recorded_date": "2026-10-15",
+  "superseded_by": "docs/evidence/sqlite-geometry-failclosed-20261015.json (its unreadable_geometry design and the untested fall-through limitation no longer hold; its logs and hashes are unchanged)",
+  "supersedes_in_part": "docs/evidence/sqlite-capacity-bounds-20261015.json",
+  "scope": "Read-only persisted-geometry precheck (page_size 4096, auto_vacuum 0, page_count <= existing cap) before the writable open of existing owner and protected-root SQLite files. Corrects the r1 defect in which a writable refusal checkpointed and deleted a retained WAL. Established only for the tested fixture: a file with 8192-byte pages and a retained WAL with -shm, left by a fresh process that exited without Close. Refused geometry leaves the main database and WAL byte-identical for the owner and for the protected root. Not established: WAL-needs-recovery states, non-geometry refusals, power-loss or EIO behavior, dedicated filesystem or quota, or any D14/G1 qualification. Green tests verify code, not evidence of the claim.",
+  "claim_status": "NOT_QUALIFIED",
+  "branch": "codex/tbound-prototype",
+  "parent_head_at_start": "d8685eb",
+  "head_at_run": "d315e49 (commits 1902817 and d315e49 do not change supervisor/internal/workflowrecovery)",
+  "commit_status": "NOT_COMMITTED; parent reviews and persists",
+  "changed_files": [
+    "supervisor/internal/workflowrecovery/sqlite_linux.go",
+    "supervisor/internal/workflowrecovery/protected_root_linux.go",
+    "supervisor/internal/workflowrecovery/sqlite_page_geometry_linux_test.go"
+  ],
+  "source_sha256": {
+    "supervisor/internal/workflowrecovery/sqlite_linux.go": "863cab36fb96a5da17ef82b83dffe2e161e0190018bb9be98972a28d9e5157b0",
+    "supervisor/internal/workflowrecovery/protected_root_linux.go": "fc7051c77d0ac3fb3d4a37a95eb41a87344f34d2ecac1267239311d51cd16268",
+    "supervisor/internal/workflowrecovery/protected_root_linux_test.go": "354defb3ccb963260629d4ca7f8836471c78f766069bded9f360ea6136cd1880",
+    "supervisor/internal/workflowrecovery/sqlite_page_geometry_linux_test.go": "292768136e97368be5559037ccfb7f2914c5f56e7368243fed6c718766d42d9e"
+  },
+  "r1_source_sha256": {
+    "supervisor/internal/workflowrecovery/sqlite_linux.go": "916ab35f97fb6563c5d61e3c3c5c1bad743a567176182a67d468305cf82d6072",
+    "supervisor/internal/workflowrecovery/protected_root_linux.go": "a2006fab324597cbaf57571810e6eeec39544e07143c4b4b6ef41b23e8994806",
+    "supervisor/internal/workflowrecovery/protected_root_linux_test.go": "354defb3ccb963260629d4ca7f8836471c78f766069bded9f360ea6136cd1880",
+    "supervisor/internal/workflowrecovery/sqlite_page_geometry_linux_test.go": "d351c1959260d90d880fe5993531ea0f2cd7d42316e89b3cf56e19a1c5b1a17b"
+  },
+  "r1_source_copy": "F:\\TBoundAssets\\recovery-20261015\\sqlite-ro-geometry\\before-src (exact bytes; verified against before-src.expected.sha256)",
+  "design": {
+    "precheck": "openSettledOwnerDatabase (existing read-only helper, unchanged) reads page_size, auto_vacuum and page_count before openOwnerDatabase in openExistingSQLiteOwnerWithCeiling and in OpenExistingProtectedRoot (after the root lock). A mismatch returns ErrOwnerStore with the existing messages.",
+    "unreadable_geometry": "A read error does not refuse. The writable open runs unchanged and still verifies geometry and the ceiling. A read-only connection may be unable to run WAL recovery, so refusing on a read error could block recovery.",
+    "unchanged": "writable DSN ceiling and read-back, LoadSettledCheckpoint seam, typed ErrOwnerStore, locks, deadlines and fences. No VACUUM, migration, or cap change."
+  },
+  "tests_added": [
+    "TestSQLiteOwnerRefusesRetainedWALGeometryWithoutModifyingFiles",
+    "TestProtectedRootRefusesRetainedWALGeometryWithoutModifyingFiles",
+    "TestSQLiteRetainedWALGeometryHelper (fresh-process helper; a no-op unless run as the child)"
+  ],
+  "r1_correction": "docs/evidence/sqlite-capacity-bounds-20261015.json: superseded_by added and enforcement item 3 byte-identity wording corrected. Its source_sha256, logs and results are unchanged.",
+  "environment": "WSL Ubuntu, uid 1000, Linux 5.15.153.1-microsoft-standard-WSL2; go1.27.1 linux/amd64 at /home/jeli2k/go-sdk/go/bin/go; umask 077; private TMPDIR from mktemp under /home/jeli2k, removed on EXIT; GOMAXPROCS=2; GOPROXY=off; GOSUMDB=off; GOTOOLCHAIN=local; GOFLAGS=-mod=readonly; GOMODCACHE=/home/jeli2k/go/pkg/mod; GOCACHE=/home/jeli2k/.cache/go-build; cwd supervisor/; C: free-space guard >= 5 GiB (25 GiB observed).",
+  "runner": {
+    "path": "F:\\TBoundAssets\\recovery-20261015\\sqlite-ro-geometry\\run-gate.sh",
+    "sha256": "e71518ae0960b2ac82d011cf685ca4a61f044989d20cf6314f9a1532fcf8611d",
+    "invocation": "wsl.exe --exec bash run-gate.sh red|green",
+    "red_overlay_sha256": "f7671121419614015b6c48000735aa5fd48f9ab23295d887c799d2667f178037"
+  },
+  "commands": {
+    "red": [
+      "go test -race -mod=readonly -count=1 -p 2 -timeout 600s -v -overlay red-overlay.json ./internal/workflowrecovery -run ^(TestSQLiteOwnerRefusesRetainedWALGeometryWithoutModifyingFiles|TestProtectedRootRefusesRetainedWALGeometryWithoutModifyingFiles)$"
+    ],
+    "green": [
+      "go version",
+      "gofmt -l .",
+      "go build -p 2 -mod=readonly ./...",
+      "go vet -p 2 -mod=readonly ./...",
+      "go test -race -mod=readonly -count=1 -p 2 -timeout 600s -v ./internal/workflowrecovery -run TestSQLitePageGeometry|TestSQLiteOwnerRefuses|TestProtectedRootRefuses|TestSQLiteOwnerPageCeiling|TestSQLiteOwnerCeiling",
+      "go test -race -mod=readonly -count=1 -p 2 -timeout 600s -v ./internal/workflowrecovery",
+      "go test -race -mod=readonly -count=1 -p 2 -timeout 600s -v ./internal/sessionlaunch ./internal/sessionrepo"
+    ]
+  },
+  "red_result": {
+    "run_dir": "F:\\TBoundAssets\\recovery-20261015\\sqlite-ro-geometry\\run-red",
+    "log": "red-retained-wal.log",
+    "log_sha256": "09af23c3befcbb2d3a005b6eb4ac418c7fc72760af90375ff1e9a1c1cf605a2d",
+    "exit": 1,
+    "top_level_fail": 2,
+    "failure": "Both tests failed on the byte check, not on a compile error or an unexpected error: after the refusal the main database hash changed and the WAL was absent."
+  },
+  "green_result": {
+    "run_dir": "F:\\TBoundAssets\\recovery-20261015\\sqlite-ro-geometry\\run-green",
+    "steps": [
+      { "step": "go-version", "exit": 0, "log_sha256": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c", "pass": 0, "fail": 0, "skip": 0 },
+      { "step": "gofmt-module", "exit": 0, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "pass": 0, "fail": 0, "skip": 0, "note": "empty output: no files listed" },
+      { "step": "build-all", "exit": 0, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "pass": 0, "fail": 0, "skip": 0 },
+      { "step": "vet-all", "exit": 0, "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "pass": 0, "fail": 0, "skip": 0 },
+      { "step": "test-focused", "exit": 0, "log_sha256": "36e25b16eb14b26baf67e11c6c9602f2578eac6f200b799ba7e8e34af00d0a8a", "pass": 8, "fail": 0, "skip": 0 },
+      { "step": "test-workflowrecovery", "exit": 0, "log_sha256": "4c0fd82157632e8c8971eeb5533fd57d4f087fd2456aa817b7572f900e780904", "pass": 58, "fail": 0, "skip": 1 },
+      { "step": "test-consumers", "exit": 0, "log_sha256": "0cb8b225b1b32b9a00baa9e532eafece4d17f7c4cd3bcc24e48d09489ec32e2f", "pass": 53, "fail": 0, "skip": 0 }
+    ],
+    "note": "Pass and skip counts are top-level --- PASS and --- SKIP lines. test-consumers covers sessionlaunch and sessionrepo together."
+  },
+  "skips": [
+    "test-workflowrecovery.log: --- SKIP: TestReservedCapacityFilesystemExperiment. It is opt-in (TBOUND_TEST_EXT4_CAPACITY=1) and needs uid 0 with ext4 mounts; this run is uid 1000. NOT VERIFIED."
+  ],
+  "not_run": [
+    "Full module go test ./... (parent's combined gate, per instruction).",
+    "Tests of cmd/tbound and other packages, including the fixture agent's changes.",
+    "Kernel ENOSPC/EDQUOT, EIO, and power loss."
+  ],
+  "superseded_runs": [
+    "run-red-crlf-superseded and run-green-crlf-superseded hold the same tests run on a CRLF-converted copy of the sources. That GREEN run was gofmt-dirty (gofmt -l listed the three edited files), so it is superseded by the runs above."
+  ],
+  "limitations": [
+    "Non-geometry refusals (VerifyStore, verifyNamespace, ceiling read-back) still run after the writable open and may checkpoint a retained WAL. No byte-identity claim is made for them.",
+    "Unreadable geometry (for example, a WAL that needs recovery) falls through to the unchanged writable open. An incompatible file in that state can still be changed by its refusal. Not tested.",
+    "Tested shape: one retained WAL (64 rows, 8192-byte pages) with -shm present. Missing or invalid -shm, OS crash, and concurrent processes are not tested.",
+    "Each existing owner or root open adds one read-only connection under openSettledOwnerDatabase's 10 s ping bound. Latency is not measured.",
+    "Single engine and platform: modernc.org/sqlite v1.60.1 (SQLite 3.53.4) on Linux under WSL2."
+  ]
+}

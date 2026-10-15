@@ -1,0 +1,172 @@
+{
+    "schema_version":  "tbound-sqlite-geometry-failclosed/v1",
+    "recorded_date":  "2026-10-15",
+    "supersedes_in_part":  "docs/evidence/sqlite-geometry-preflight-20261015.json: its precheck design (a read error does not refuse) and its limitation that unreadable geometry falls through untested. Its logs and hashes are unchanged.",
+    "scope":  "The read-only geometry precheck now fails closed. An open, query, or close error of the read-only connection returns ErrOwnerStore with the cause before any writable connection opens. Established only for the tested fixtures: a rollback journal left hot by a process that exited mid-UPDATE, refused through the public owner and protected-root constructors with the main file and journal byte-identical; and a compatible owner whose retained WAL lost its -shm, which still opens and recovers. Green tests verify code, not evidence of the claim.",
+    "claim_status":  "NOT_QUALIFIED",
+    "branch":  "codex/tbound-prototype",
+    "parent_head_at_start":  "d315e49",
+    "head_at_run":  "cba9efa. Commits ded81af..cba9efa were made by others during this task and none touches supervisor/internal/workflowrecovery. This task made no commit.",
+    "commit_status":  "NOT_COMMITTED; parent reviews and persists",
+    "changed_files":  [
+                          "supervisor/internal/workflowrecovery/sqlite_linux.go",
+                          "supervisor/internal/workflowrecovery/sqlite_page_geometry_linux_test.go"
+                      ],
+    "unchanged_files":  [
+                            "supervisor/internal/workflowrecovery/protected_root_linux.go",
+                            "supervisor/internal/workflowrecovery/protected_root_linux_test.go"
+                        ],
+    "source_sha256":  {
+                          "supervisor/internal/workflowrecovery/sqlite_linux.go":  "7c4f9a1f08363e53b62cbbb866d196709c2f9fe01899dd41203d4d5d145cccbb",
+                          "supervisor/internal/workflowrecovery/protected_root_linux.go":  "fc7051c77d0ac3fb3d4a37a95eb41a87344f34d2ecac1267239311d51cd16268",
+                          "supervisor/internal/workflowrecovery/protected_root_linux_test.go":  "354defb3ccb963260629d4ca7f8836471c78f766069bded9f360ea6136cd1880",
+                          "supervisor/internal/workflowrecovery/sqlite_page_geometry_linux_test.go":  "d66ded365137d44cf10ac761c6f54438ebbfef24632c508250fdd70e907efe02"
+                      },
+    "r2_source_sha256":  {
+                             "supervisor/internal/workflowrecovery/sqlite_linux.go":  "863cab36fb96a5da17ef82b83dffe2e161e0190018bb9be98972a28d9e5157b0",
+                             "supervisor/internal/workflowrecovery/protected_root_linux.go":  "fc7051c77d0ac3fb3d4a37a95eb41a87344f34d2ecac1267239311d51cd16268",
+                             "supervisor/internal/workflowrecovery/protected_root_linux_test.go":  "354defb3ccb963260629d4ca7f8836471c78f766069bded9f360ea6136cd1880",
+                             "supervisor/internal/workflowrecovery/sqlite_page_geometry_linux_test.go":  "292768136e97368be5559037ccfb7f2914c5f56e7368243fed6c718766d42d9e"
+                         },
+    "r2_source_copy":  "F:\\TBoundAssets\\recovery-20261015\\sqlite-ro-geometry-failclosed\\before-src (R2 final bytes; before-src.expected.sha256 verified at copy time)",
+    "design":  {
+                   "precheck":  "precheckSQLiteFileGeometry reads page_size, auto_vacuum and page_count through openSettledOwnerDatabase. Any open, query or close error returns ErrOwnerStore, with the cause wrapped by %w, before openOwnerDatabase runs. The close result is checked before the caller proceeds.",
+                   "error_chain":  "openSettledOwnerDatabase wraps its two errors with %w instead of %v. Message text is unchanged. The SQLite code now reaches errors.As, which TestSQLiteOwnerRealCorruptionFailsClosedAfterReservedEffect requires for a read-only connect failure. LoadSettledCheckpoint code is unchanged; only its error chain gains the cause.",
+                   "unchanged":  "Caps and headroom (sqliteOwnerMaxPageCount 32768, sqliteProtectedRootMaxPageCount 4096), schema, writable DSN ceiling and read-back, LoadSettledCheckpoint logic, locks, deadlines, fences, typed ErrOwnerStore. protected_root_linux.go needs no change: its call site already releases the root lock on any precheck error."
+               },
+    "tests_added":  [
+                        "TestSQLiteOwnerRefusesHotJournalWithoutModifyingFiles (RED on R2, GREEN now)",
+                        "TestProtectedRootRefusesHotJournalWithoutModifyingFiles (RED on R2, GREEN now)",
+                        "TestSQLiteOwnerRecoversCompatibleRetainedWALWithoutSHM (control: PASS on R2 and now)",
+                        "TestSQLiteHotJournalHelper and TestSQLiteCompatibleRetainedWALHelper (fresh-process helpers; no-ops unless their environment variable is set)"
+                    ],
+    "helper_change":  "mainAndWALSHA256(t, path) became mainAndSidecarSHA256(t, path, suffix). The four R2 call sites now pass \"-wal\". Digest semantics are unchanged.",
+    "runner":  {
+                   "path":  "F:\\TBoundAssets\\recovery-20261015\\sqlite-ro-geometry-failclosed\\run-gate.sh",
+                   "sha256":  "5d8c54c52a5a213c0ceb3af791ee731e6f07cc3a858b740bdd19dff77ac44792",
+                   "invocation":  "From PowerShell: wsl.exe --exec bash /mnt/f/TBoundAssets/recovery-20261015/sqlite-ro-geometry-failclosed/run-gate.sh red|green. Git Bash rewrites the /mnt path, so it is not used."
+               },
+    "red_overlay":  {
+                        "path":  "F:\\TBoundAssets\\recovery-20261015\\sqlite-ro-geometry-failclosed\\red-overlay.json",
+                        "sha256":  "92c9fb49e16429ca02188085dcc51698ba55bd1e7091c857260f1912d1d146a7",
+                        "replaces":  [
+                                         "sqlite_linux.go",
+                                         "protected_root_linux.go",
+                                         "with the before-src copies of the same names"
+                                     ]
+                    },
+    "environment":  "WSL Ubuntu 24.04.1, Linux 5.15.153.1-microsoft-standard-WSL2, uid 1000; go1.27.1 linux/amd64 at /home/jeli2k/go-sdk/go/bin/go; umask 077; TMPDIR is a private mktemp under /home/jeli2k, removed on EXIT; GOMAXPROCS=2; GOPROXY=off; GOSUMDB=off; GOTOOLCHAIN=local; GOFLAGS=-mod=readonly; GOMODCACHE=/home/jeli2k/go/pkg/mod; GOCACHE=/home/jeli2k/.cache/go-build; cwd supervisor/; C: free-space guard \u003e= 5 GiB (24 GiB observed); modernc.org/sqlite v1.60.1.",
+    "red_result":  {
+                       "run_dir":  "F:\\TBoundAssets\\recovery-20261015\\sqlite-ro-geometry-failclosed\\run-red",
+                       "steps":  [
+                                     {
+                                         "step":  "red-hot-journal",
+                                         "exit":  1,
+                                         "log":  "red-hot-journal.log",
+                                         "log_sha256":  "487d325bee2de695602b8f2f519230ea2991a493db88d2e366d35a699e8f4927",
+                                         "pass":  1,
+                                         "fail":  2,
+                                         "skip":  0,
+                                         "command":  "/home/jeli2k/go-sdk/go/bin/go test -race -mod=readonly -count=1 -p 2 -timeout 600s -v -overlay /mnt/f/TBoundAssets/recovery-20261015/sqlite-ro-geometry-failclosed/red-overlay.json ./internal/workflowrecovery -run ^(TestSQLiteOwnerRefusesHotJournalWithoutModifyingFiles|TestProtectedRootRefusesHotJournalWithoutModifyingFiles|TestSQLiteOwnerRecoversCompatibleRetainedWALWithoutSHM)$"
+                                     }
+                                 ],
+                       "failure":  "Both hot-journal tests fail on the byte check. Against the R2 code the writable open rolled back and deleted the hot journal and changed the main file, then refused. Owner: \"SQLite owner is not in WAL mode\". Protected root: \"protected root is not in WAL mode: \\\"delete\\\"\". The control passes."
+                   },
+    "green_result":  {
+                         "run_dir":  "F:\\TBoundAssets\\recovery-20261015\\sqlite-ro-geometry-failclosed\\run-green",
+                         "steps":  [
+                                       {
+                                           "step":  "go-version",
+                                           "exit":  0,
+                                           "log":  "go-version.log",
+                                           "log_sha256":  "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c",
+                                           "pass":  0,
+                                           "fail":  0,
+                                           "skip":  0,
+                                           "command":  "/home/jeli2k/go-sdk/go/bin/go version"
+                                       },
+                                       {
+                                           "step":  "gofmt-module",
+                                           "exit":  0,
+                                           "log":  "gofmt-module.log",
+                                           "log_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                           "pass":  0,
+                                           "fail":  0,
+                                           "skip":  0,
+                                           "command":  "/home/jeli2k/go-sdk/go/bin/gofmt -l ."
+                                       },
+                                       {
+                                           "step":  "build-all",
+                                           "exit":  0,
+                                           "log":  "build-all.log",
+                                           "log_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                           "pass":  0,
+                                           "fail":  0,
+                                           "skip":  0,
+                                           "command":  "/home/jeli2k/go-sdk/go/bin/go build -p 2 -mod=readonly ./..."
+                                       },
+                                       {
+                                           "step":  "vet-all",
+                                           "exit":  0,
+                                           "log":  "vet-all.log",
+                                           "log_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                                           "pass":  0,
+                                           "fail":  0,
+                                           "skip":  0,
+                                           "command":  "/home/jeli2k/go-sdk/go/bin/go vet -p 2 -mod=readonly ./..."
+                                       },
+                                       {
+                                           "step":  "test-focused",
+                                           "exit":  0,
+                                           "log":  "test-focused.log",
+                                           "log_sha256":  "a46442286964ad1ecb4cc35d029d06fa9a8b2c0e1753c62a6bdb8f14587fe10d",
+                                           "pass":  11,
+                                           "fail":  0,
+                                           "skip":  0,
+                                           "command":  "/home/jeli2k/go-sdk/go/bin/go test -race -mod=readonly -count=1 -p 2 -timeout 600s -v ./internal/workflowrecovery -run TestSQLitePageGeometry|TestSQLiteOwnerRefuses|TestProtectedRootRefuses|TestSQLiteOwnerPageCeiling|TestSQLiteOwnerCeiling|TestSQLiteOwnerRecoversCompatibleRetainedWALWithoutSHM"
+                                       },
+                                       {
+                                           "step":  "test-workflowrecovery",
+                                           "exit":  0,
+                                           "log":  "test-workflowrecovery.log",
+                                           "log_sha256":  "3238fa762bff19c4ad5c3bdcd98fe09bb7b82a12a6012582866bfeed9a5f3d23",
+                                           "pass":  63,
+                                           "fail":  0,
+                                           "skip":  1,
+                                           "command":  "/home/jeli2k/go-sdk/go/bin/go test -race -mod=readonly -count=1 -p 2 -timeout 600s -v ./internal/workflowrecovery"
+                                       },
+                                       {
+                                           "step":  "test-consumers",
+                                           "exit":  0,
+                                           "log":  "test-consumers.log",
+                                           "log_sha256":  "eedadc650dd5ac9d9ec72017bdf9d5a1f8dc5323759ddb1e782870f554d898f9",
+                                           "pass":  53,
+                                           "fail":  0,
+                                           "skip":  0,
+                                           "command":  "/home/jeli2k/go-sdk/go/bin/go test -race -mod=readonly -count=1 -p 2 -timeout 600s -v ./internal/sessionlaunch ./internal/sessionrepo"
+                                       }
+                                   ],
+                         "gofmt":  "gofmt-module.log is 0 bytes: empty output, not only exit 0.",
+                         "refusal":  "The read-only connect fails with \"attempt to write a readonly database (776)\", SQLITE_READONLY_ROLLBACK, for both the owner and the protected root.",
+                         "race":  "No DATA RACE, panic, or FAIL line in any GREEN log."
+                     },
+    "superseded_runs":  [
+                            "run-green: an earlier GREEN attempt in this directory failed TestSQLiteOwnerRealCorruptionFailsClosedAfterReservedEffect (owner and protected root) before the %w change: \"file is not a database (26)\" lacked the SQLite code. Earlier RED and GREEN logs in this directory were overwritten; the logs recorded here are from the final runs."
+                        ],
+    "skips":  [
+                  "test-workflowrecovery.log: --- SKIP: TestReservedCapacityFilesystemExperiment. Opt-in (TBOUND_TEST_EXT4_CAPACITY=1); needs uid 0 with ext4 mounts; this run is uid 1000. NOT VERIFIED. Same as R2."
+              ],
+    "not_run":  [
+                    "Full module go test ./... (the parent combined gate).",
+                    "Packages other than internal/workflowrecovery, internal/sessionlaunch and internal/sessionrepo.",
+                    "Kernel ENOSPC/EDQUOT, EIO, power loss."
+                ],
+    "limitations":  [
+                        "Only the connect branch of the read-only precheck is exercised. A hot journal and a corrupt header both fail at connect. The query and close failure branches have no test; they are covered by reading only.",
+                        "Retained-WAL states tested: -shm present (R2 and fault tests) and -shm removed (control, compatible geometry). A WAL that the read-only connection cannot open but a writable open could recover, for example with a read-only -shm, is untested and is now refused.",
+                        "Hot-journal fixture: DELETE mode, 4017-page main file (root 4016 pages, under its 4096-page cap). The child uses synchronous=OFF, so it models process exit, not power loss.",
+                        "Non-geometry refusals still run after the writable open and may checkpoint a retained WAL. No byte-identity claim is made for them (unchanged from R2).",
+                        "Refusal with -shm absent and the latency of the extra read-only connection are not tested or measured.",
+                        "Single engine and platform: modernc.org/sqlite v1.60.1 on Linux under WSL2."
+                    ]
+}

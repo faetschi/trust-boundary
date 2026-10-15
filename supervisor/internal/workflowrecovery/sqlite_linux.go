@@ -29,6 +29,16 @@ const (
 	sqliteOwnerSchemaVersion = 2
 	sqliteOwnerApplicationID = 0x54425257 // "TBRW"
 	maxCheckpointJSONBytes   = 16 << 20
+	// sqlitePageSize is fixed for every owner and protected-root database. It
+	// is set before the first page write, and existing files must already use it.
+	sqlitePageSize = 4096
+	// sqliteOwnerMaxPageCount caps the owner file at 128 MiB. A fresh owner plus
+	// three maximum-size transitions (each up to 48 MiB of checkpoint/proof blobs,
+	// about 8.2k-12.3k pages) fits; the next one is refused with SQLITE_FULL.
+	sqliteOwnerMaxPageCount = 32768
+	// sqliteProtectedRootMaxPageCount caps the host-only root at 16 MiB. Its rows
+	// hold digests, timestamps, paths, and incarnation records of at most 4 KiB.
+	sqliteProtectedRootMaxPageCount = 4096
 )
 
 // TrustedRoot is the mandatory external host/TCB boundary. Implementations
@@ -126,6 +136,10 @@ type sqliteQueryer interface {
 // OpenExistingSQLiteOwner opens only an existing protected SQLite database.
 // It never creates a database or a workflow checkpoint as a recovery fallback.
 func OpenExistingSQLiteOwner(path string, root TrustedRoot) (*SQLiteOwner, error) {
+	return openExistingSQLiteOwnerWithCeiling(path, root, sqliteOwnerMaxPageCount)
+}
+
+func openExistingSQLiteOwnerWithCeiling(path string, root TrustedRoot, maxPages int64) (*SQLiteOwner, error) {
 	rootIdentity, err := trustedRootIdentity(root)
 	if err != nil {
 		return nil, err
@@ -138,8 +152,17 @@ func OpenExistingSQLiteOwner(path string, root TrustedRoot) (*SQLiteOwner, error
 	if err != nil {
 		return nil, err
 	}
-	db, err := openOwnerDatabase(cleanPath)
+	if err := precheckSQLiteFileGeometry(cleanPath, maxPages); err != nil {
+		return nil, err
+	}
+	db, err := openOwnerDatabase(cleanPath, maxPages)
 	if err != nil {
+		return nil, err
+	}
+	// Geometry is checked before any other statement, so an incompatible file is
+	// refused as-is rather than migrated.
+	if err := verifySQLitePageGeometry(context.Background(), db, maxPages); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	owner := &SQLiteOwner{db: db, root: root, path: cleanPath,
@@ -235,7 +258,7 @@ func openSettledOwnerDatabase(path string) (*sql.DB, error) {
 	dsnURL.RawQuery = query.Encode()
 	db, err := sql.Open("sqlite", dsnURL.String())
 	if err != nil {
-		return nil, fmt.Errorf("%w: open read-only settled SQLite owner: %v", ErrOwnerStore, err)
+		return nil, fmt.Errorf("%w: open read-only settled SQLite owner: %w", ErrOwnerStore, err)
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
@@ -245,7 +268,7 @@ func openSettledOwnerDatabase(path string) (*sql.DB, error) {
 	defer cancel()
 	if err := db.PingContext(pingCtx); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("%w: connect read-only settled SQLite owner: %v", ErrOwnerStore, err)
+		return nil, fmt.Errorf("%w: connect read-only settled SQLite owner: %w", ErrOwnerStore, err)
 	}
 	return db, nil
 }
@@ -277,7 +300,7 @@ func CreateFreshSQLiteOwner(path string, root TrustedRoot) (*SQLiteOwner, error)
 	if err != nil {
 		return nil, err
 	}
-	db, err := openOwnerDatabase(cleanPath)
+	db, err := openOwnerDatabase(cleanPath, sqliteOwnerMaxPageCount)
 	if err != nil {
 		return nil, err
 	}
@@ -312,16 +335,22 @@ func trustedRootIdentity(root TrustedRoot) (string, error) {
 	return identity, nil
 }
 
-func openOwnerDatabase(path string) (*sql.DB, error) {
+// openOwnerDatabase opens a writable owner or protected-root database. Page
+// geometry is carried in the DSN because max_page_count is per connection and
+// is not stored in the file, so every pooled connection re-applies it.
+func openOwnerDatabase(path string, maxPages int64) (*sql.DB, error) {
 	dsnURL := url.URL{Scheme: "file", Path: path}
 	query := url.Values{}
 	query.Set("mode", "rw")
 	query.Set("_txlock", "immediate")
+	query.Set("_auto_vacuum", "NONE")
 	query.Add("_pragma", "busy_timeout=5000")
 	query.Add("_pragma", "foreign_keys=ON")
 	query.Add("_pragma", "synchronous=FULL")
 	query.Add("_pragma", "trusted_schema=OFF")
 	query.Add("_pragma", "wal_autocheckpoint=1000")
+	query.Add("_pragma", fmt.Sprintf("page_size=%d", sqlitePageSize))
+	query.Add("_pragma", fmt.Sprintf("max_page_count=%d", maxPages))
 	dsnURL.RawQuery = query.Encode()
 	db, err := sql.Open("sqlite", dsnURL.String())
 	if err != nil {
@@ -1107,6 +1136,11 @@ func (o *SQLiteOwner) verifyHostBoundaryLocked(ctx context.Context, workflow str
 }
 
 func (o *SQLiteOwner) createStore(ctx context.Context) error {
+	// Enabling WAL writes page 1, which fixes the page size, so geometry is
+	// verified before it.
+	if err := verifySQLitePageGeometry(ctx, o.db, sqliteOwnerMaxPageCount); err != nil {
+		return err
+	}
 	var journalMode string
 	if err := o.db.QueryRowContext(ctx, "PRAGMA journal_mode=WAL").Scan(&journalMode); err != nil {
 		return fmt.Errorf("%w: enable SQLite WAL: %v", ErrOwnerStore, err)
@@ -1269,6 +1303,79 @@ func (o *SQLiteOwner) verifyConnectionPragmas(ctx context.Context) error {
 	}
 	if synchronous != 2 || foreignKeys != 1 || busyTimeout != 5000 || walAutocheckpoint != 1000 {
 		return fmt.Errorf("%w: SQLite PRAGMAs differ from required WAL/FULL owner settings", ErrOwnerStore)
+	}
+	return nil
+}
+
+// verifySQLitePageGeometry checks the page geometry of a writable connection.
+// SQLite silently ignores a page-size change to an existing non-empty file, and
+// raises a ceiling below the current size up to that size. Both values are read
+// back, and a database already larger than its ceiling is refused explicitly,
+// since the raised ceiling would otherwise pass the read-back.
+func verifySQLitePageGeometry(ctx context.Context, db *sql.DB, maxPages int64) error {
+	var pageSize, autoVacuum, ceiling, pageCount int64
+	if err := db.QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize); err != nil {
+		return fmt.Errorf("%w: read SQLite page size: %v", ErrOwnerStore, err)
+	}
+	if err := db.QueryRowContext(ctx, "PRAGMA auto_vacuum").Scan(&autoVacuum); err != nil {
+		return fmt.Errorf("%w: read SQLite auto-vacuum mode: %v", ErrOwnerStore, err)
+	}
+	if err := db.QueryRowContext(ctx, "PRAGMA max_page_count").Scan(&ceiling); err != nil {
+		return fmt.Errorf("%w: read SQLite page ceiling: %v", ErrOwnerStore, err)
+	}
+	if err := db.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount); err != nil {
+		return fmt.Errorf("%w: read SQLite page count: %v", ErrOwnerStore, err)
+	}
+	if err := checkSQLiteFileGeometry(pageSize, autoVacuum, pageCount, maxPages); err != nil {
+		return err
+	}
+	if ceiling != maxPages {
+		return fmt.Errorf("%w: SQLite page ceiling is %d, want %d", ErrOwnerStore, ceiling, maxPages)
+	}
+	return nil
+}
+
+// precheckSQLiteFileGeometry refuses an existing file with incompatible
+// persisted geometry before any writable connection is opened. A writable open
+// rolls back a hot journal and recovers a WAL, and a writable close checkpoints
+// and deletes a retained WAL, so either would change a refused file. The
+// read-only connection writes nothing. max_page_count is per connection and not
+// stored in the file, so only the writable connection checks the ceiling.
+// Geometry that cannot be read read-only fails closed: the file's state is
+// unknown, so the writable open must not run on it.
+func precheckSQLiteFileGeometry(path string, maxPages int64) error {
+	db, err := openSettledOwnerDatabase(path)
+	if err != nil {
+		return err
+	}
+	ctx := context.Background()
+	var pageSize, autoVacuum, pageCount int64
+	readErr := db.QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize)
+	if readErr == nil {
+		readErr = db.QueryRowContext(ctx, "PRAGMA auto_vacuum").Scan(&autoVacuum)
+	}
+	if readErr == nil {
+		readErr = db.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount)
+	}
+	closeErr := db.Close()
+	if readErr != nil {
+		return fmt.Errorf("%w: read SQLite page geometry read-only before writable open: %w", ErrOwnerStore, readErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("%w: close read-only SQLite geometry precheck: %w", ErrOwnerStore, closeErr)
+	}
+	return checkSQLiteFileGeometry(pageSize, autoVacuum, pageCount, maxPages)
+}
+
+// checkSQLiteFileGeometry applies the persisted-geometry rule to values read
+// through either a read-only or a writable connection.
+func checkSQLiteFileGeometry(pageSize, autoVacuum, pageCount, maxPages int64) error {
+	if pageSize != sqlitePageSize || autoVacuum != 0 {
+		return fmt.Errorf("%w: SQLite page geometry differs: page_size=%d auto_vacuum=%d, want page_size=%d auto_vacuum=0",
+			ErrOwnerStore, pageSize, autoVacuum, sqlitePageSize)
+	}
+	if pageCount > maxPages {
+		return fmt.Errorf("%w: SQLite database has %d pages, beyond the %d-page ceiling", ErrOwnerStore, pageCount, maxPages)
 	}
 	return nil
 }
