@@ -1,17 +1,16 @@
-# TBound - current state
+# TBound — current state
 
-Updated 2026-10-15. Branch: `codex/tbound-prototype`. Priority: thesis completion.
+Updated 2026-10-15. Branch: `codex/tbound-prototype`. Scope: thesis completion first.
 
-| Milestone | Current state |
+| Milestone | State |
 | --- | --- |
-| Recovery/provider foundations | Committed cumulative restart/retry accounting, historical checkpoint verification and bounded engineering exchanges. |
-| SQLite safety increment | Verified isolated source: read-only geometry refusal, per-connection ceilings and retained-WAL recovery controls. Linux Go1.27.1 build/vet/format pass; unit and race each 1,229 pass events, zero failures, eight skipped tests. Parent matched four source hashes and 30 logs. This does not qualify D14. |
-| D09 scanner path | Previously skipped test now passes under the required unprivileged NNP/empty-group context in WSL. Piruntime has 121 top-level passes, no skips in that context. |
-| Durable service settlement | NO_DIFF patch passes focused/cmd tests but lacks full fresh-process admission proof. Follow-up implementation active. Unknown outcomes remain blocked. |
-| ABI 8 deployment | Exact ABI8 measured over pinned SSH. Pinned tools, Pi0.87.1, signed offline-verifiable cell image, separate identities and persistent mounts provisioned. Parent verified77artifacts and wrong-key refusal. Actual service/cgroup/profile measurement and registration active; no governed E2E yet. |
-| D14/D20 qualification | Reachable production capacity, physical reserve, real storage faults, owner/cell drain and retained restart remain open. Production-shaped capacity and isolated ext4 task active. Static size estimates remain unadopted. |
-| Research Claims - last | Open. Complete runtime/research gates and thesis reconciliation before freezing deployment, corpus, independent oracles, calibration, scoring and model/cost plan. G1/H1 are not established. |
+| Recovery foundations | Committed durable owner fencing, cumulative restart/retry accounting, historical checkpoint verification and bounded provider exchanges. |
+| SQLite safety | Committed per-connection file ceilings and fail-closed read-only prechecks. Isolated Linux Go 1.27.1 unit/race checks each recorded 1,229 pass events, zero failures and eight skips. Physical D14 qualification remains open. |
+| No-change settlement | Real lease close now rescans the live root and binds its release digest to the durable Store seed. Parent verified source/archive hashes, native exits and unchanged test snapshots. Focused checks pass without skips; full unit/race each pass 26 packages. Full cold catalog re-admission and actual service execution remain open; follow-up active. |
+| ABI 8 deployment | Exact ABI 8 measured over pinned SSH. Pinned runtime, signed cell image, separate identities, mounts and service units provisioned. Cgroup bootstrap, runtime ownership and xattr calibration are being measured. No admitted registration or governed E2E yet. |
+| D14/D20 qualification | Production-shaped testing exposed insufficient terminal ledger headroom after effect admission; correction active. Isolated ext4 reserve feasibility is recorded but does not qualify production storage. Physical faults, prior-owner/cell drain and retained clean restart remain open. |
+| Research Claims — last | Open. Finish deployment, E2E and durability/recovery evidence, then freeze research corpus, independent effect oracles, calibration, scoring and model/cost plan. G1 and H1 are not established. |
 
-Owner-incarnation caveat: intermittent refusals appeared in earlier cmd and a separate no-diff module-unit run; the successful isolated SQLite race run does not resolve their cause. Other cmd/packaging work is excluded from that check.
+An intermittent owner-incarnation refusal remains unexplained; subsequent passing runs do not establish a fix. Component gates exclude other active source increments.
 
-Engineering: OpenCode Go. Final research: OpenRouter DeepSeek V4.1 Flash, US$5 total cap. User/advisor construct review; independent runtime/effect oracles retained. Broader product features deferred; original VM, seed and other-session docs preserved.
+Engineering provider: OpenCode Go. Final research: OpenRouter DeepSeek V4.1 Flash, US$5 total cap. User/advisor construct review; independent runtime/effect oracles retained. Broader product features deferred. Other-session documentation changes and original/seed VMs preserved.

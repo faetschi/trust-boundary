@@ -93,6 +93,7 @@ type managedLiveRootLease struct {
 	terminalLedgerSeq      uint64
 	terminalLedgerHash     string
 	noPublication          bool
+	noChange               *managedNoChangeBaseline
 	abortedBeforeTask      bool
 	released               bool
 }
@@ -146,12 +147,22 @@ type managedLiveRootRunResolvedEvent struct {
 	ResolvedByOwnerEpoch       uint64                `json:"resolved_by_owner_epoch,omitempty"`
 	LifecycleJournalSequence   uint64                `json:"lifecycle_journal_sequence"`
 	LifecycleJournalRecordHash string                `json:"lifecycle_journal_record_hash"`
+	ReleasedTreeDigest         string                `json:"released_tree_digest,omitempty"`
 }
 
 type managedLiveRootPriorRun struct {
 	Event    managedLiveRootRunAdmittedEvent
 	Sequence uint64
 	Hash     string
+}
+
+// managedNoChangeBaseline is the admitted tree a no-change release must still
+// hold. Release rescans the live root with the Store's policy: device and inode
+// identity alone do not show that the contents are unchanged.
+type managedNoChangeBaseline struct {
+	options    workspace.Options
+	generation string
+	treeDigest string
 }
 
 // acquireManagedLiveRoot verifies A's fixed-anchor registration against the
@@ -703,8 +714,11 @@ func (l *managedLiveRootLease) permitTipTree() string {
 	return l.permit.tipTree
 }
 
-func (l *managedLiveRootLease) markNoPublication() error {
-	if l == nil {
+// markNoPublication records that the run ended with no changes to publish. The
+// baseline is the Store generation seeded from this root; close rescans the
+// live root against it before writing the release.
+func (l *managedLiveRootLease) markNoPublication(options workspace.Options, baseline *sessionrepo.Generation) error {
+	if l == nil || baseline == nil || baseline.ID() == "" || !validManagedTreeDigest(baseline.TreeDigest()) {
 		return ErrManagedLiveRootUnavailable
 	}
 	l.mu.Lock()
@@ -713,6 +727,7 @@ func (l *managedLiveRootLease) markNoPublication() error {
 		return ErrManagedLiveRootUnavailable
 	}
 	l.noPublication = true
+	l.noChange = &managedNoChangeBaseline{options: options, generation: baseline.ID(), treeDigest: baseline.TreeDigest()}
 	return nil
 }
 
@@ -838,6 +853,7 @@ func (l *managedLiveRootLease) close() error {
 	outcome := "publication-not-started"
 	rootLedgerSeq, rootLedgerHash := lastManagedLedgerSequence(trace), lastManagedLedgerHash(trace)
 	l.mu.Lock()
+	noChange := l.noChange
 	switch {
 	case l.terminalStatus == publication.StatusSucceeded:
 		outcome = "publication-succeeded"
@@ -879,6 +895,18 @@ func (l *managedLiveRootLease) close() error {
 		LifecycleJournalRecordHash: rootLedgerHash}
 	if outcome == "" || rootLedgerSeq == 0 || rootLedgerHash == "" {
 		return ErrManagedLiveRootRetained
+	}
+	if outcome == "no-publication" {
+		if noChange == nil {
+			return ErrManagedLiveRootRetained
+		}
+		scanOptions := noChange.options
+		scanOptions.Generation, scanOptions.QuiescentRoot = noChange.generation, true
+		snapshot, err := workspace.Scan(root, scanOptions)
+		if err != nil || snapshot.TreeDigest != noChange.treeDigest {
+			return errors.Join(ErrManagedLiveRootRetained, err, errors.New("managed live-root contents differ from the admitted tree at release"))
+		}
+		resolved.ReleasedTreeDigest = snapshot.TreeDigest
 	}
 	if err := root.Close(); err != nil {
 		return errors.Join(ErrManagedLiveRootRetained, err)

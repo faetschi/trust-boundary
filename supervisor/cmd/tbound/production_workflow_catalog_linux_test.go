@@ -12,6 +12,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/publication"
 	"tbound/supervisor/internal/workflow"
 	"tbound/supervisor/internal/workflowrecovery"
 )
@@ -238,6 +239,48 @@ func TestSettledServiceDispositionRejectsUnresolvedPins(t *testing.T) {
 			test.mutate(&pins)
 			if err := validateSettledServiceDisposition(pins, currentConversation); !errors.Is(err, workflowrecovery.ErrPendingUnknown) {
 				t.Fatalf("unresolved pins were admitted: %v", err)
+			}
+		})
+	}
+}
+
+// A pure empty provider result creates no effect or host-call reservation, so
+// its settled disposition must be accepted without either reservation pin.
+func TestSettledServiceDispositionAcceptsPureEmptyProviderResult(t *testing.T) {
+	const currentConversation = "conversation-settled-g1"
+	pins := workflowrecovery.Pins{
+		ProviderDisposition: workflowrecovery.DispositionTerminal,
+		ProviderTranscripts: []workflowrecovery.TranscriptPin{{ConversationID: currentConversation,
+			Disposition: workflowrecovery.DispositionTerminal}},
+		PendingCallDisposition: workflowrecovery.PendingCallNone,
+	}
+	if err := validateSettledServiceDisposition(pins, currentConversation); err != nil {
+		t.Fatalf("pure empty provider result without reservations was refused: %v", err)
+	}
+}
+
+func TestProductionReceiptSettlementClaimRequiresExactDisposition(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		receipt productionPiReceipt
+		want    bool
+	}{
+		{"published with transaction", productionPiReceipt{Disposition: "PUBLISHED",
+			PublicationStatus: string(publication.StatusSucceeded), PublicationTransactionID: "transaction-published"}, true},
+		{"no change without transaction", productionPiReceipt{Disposition: "NO_DIFF", PublicationStatus: "NO_DIFF"}, true},
+		{"no change naming a transaction", productionPiReceipt{Disposition: "NO_DIFF", PublicationStatus: "NO_DIFF",
+			PublicationTransactionID: "transaction-forged"}, false},
+		{"no change claimed as succeeded publication", productionPiReceipt{Disposition: "NO_DIFF",
+			PublicationStatus: string(publication.StatusSucceeded)}, false},
+		{"published without transaction", productionPiReceipt{Disposition: "PUBLISHED",
+			PublicationStatus: string(publication.StatusSucceeded)}, false},
+		{"unknown disposition", productionPiReceipt{Disposition: "UNKNOWN", PublicationStatus: "NO_DIFF"}, false},
+		{"publication failed", productionPiReceipt{Disposition: "PUBLICATION_FAILED",
+			PublicationStatus: string(publication.StatusFailed), PublicationTransactionID: "transaction-failed"}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := productionReceiptSettlementClaimed(test.receipt); got != test.want {
+				t.Fatalf("settlement claim = %t, want %t", got, test.want)
 			}
 		})
 	}

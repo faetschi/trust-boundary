@@ -588,6 +588,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	var publishErr error
 	var bundle sessionrepo.EvidenceBundle
 	var bundleErr error
+	noChangeReleased := false
 	settled := productionWorkerSettlementAllowsPublication(settlement, workerCloseErr)
 	publicationAttemptErr := runProductionPublicationAfterWorkerSettlement(settlement, workerCloseErr, func() error {
 		releaseAdmission()
@@ -595,7 +596,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		if bundleErr != nil {
 			publishErr = fmt.Errorf("read production session generation/tool receipt: %w", bundleErr)
 			publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
-		} else if !bundleHasChanges(bundle) {
+		} else if bundleHasNoChange(bundle) {
 			publicationStatus, disposition = "NO_DIFF", "NO_DIFF"
 			if session.Publication != nil {
 				if err := session.Publication.Close(); err != nil {
@@ -603,9 +604,11 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 				}
 			}
 			if session.ManagedLiveRootLease != nil {
-				if err := session.ManagedLiveRootLease.markNoPublication(); err != nil {
+				if err := session.ManagedLiveRootLease.markNoPublication(session.Workspace, session.Generation); err != nil {
 					publishErr = errors.Join(publishErr, fmt.Errorf("release no-diff managed live-root authority: %w", err))
 					publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
+				} else {
+					noChangeReleased = true
 				}
 			}
 		} else if session.Publication == nil {
@@ -670,7 +673,8 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		TCBProofDigest:         lifecycle.proofDigest, TCBProofJournalSequence: lifecycle.proofSeq,
 		PublicationStatus: publicationStatus, Disposition: disposition, PublicationTransactionID: publicationTx,
 		Success: settled && lifecycleOK && publishErr == nil && workerCloseErr == nil &&
-			disposition == "PUBLISHED" && publicationStatus == string(publication.StatusSucceeded),
+			(disposition == "PUBLISHED" && publicationStatus == string(publication.StatusSucceeded) ||
+				noChangeReleased && disposition == "NO_DIFF" && publicationStatus == "NO_DIFF"),
 	}
 	if bundleErr == nil {
 		receipt.GenerationCount = len(bundle.Generations)
@@ -712,6 +716,17 @@ func bundleHasChanges(bundle sessionrepo.EvidenceBundle) bool {
 		}
 	}
 	return false
+}
+
+// bundleHasNoChange reports a run that publication would find nothing to write:
+// no approved transition carries a change, or the verified sealed tree equals
+// the verified baseline tree. Publication composes net changes per path, so
+// equal trees compose to an empty delta. Such a run never reaches Finalize, and
+// a run that does reach Finalize has at least one composed object.
+func bundleHasNoChange(bundle sessionrepo.EvidenceBundle) bool {
+	chain := bundle.ValidatedChain
+	return !bundleHasChanges(bundle) ||
+		validManagedTreeDigest(chain.BaselineTreeDigest) && chain.SealedTreeDigest == chain.BaselineTreeDigest
 }
 
 var ErrProductionWorkerSettlementIncomplete = errors.New("production publication requires a fully observed STOPPED worker settlement")

@@ -1,0 +1,109 @@
+{
+  "schema_version": "tbound-no-diff-settlement-evidence/v1",
+  "recorded_on": "2026-10-15",
+  "repo": "trust-boundary",
+  "branch": "codex/tbound-prototype",
+  "base_head": "cba9efa",
+  "commit_made": false,
+  "receipt_root": "F:/TBoundAssets/recovery-20261015/no-diff-settlement",
+  "claim_scope": "Known no-change settlement verifier and receipt gate, focused tests, Linux gate receipts. Does not claim end-to-end NO_DIFF admission of a new request ID, fresh-process reload, or a green module-wide gate.",
+  "verdict": {
+    "focused_red_then_green": "pass",
+    "cmd_package_unit_and_race": "pass",
+    "module_unit_and_race": "not_green",
+    "workflowrecovery_intermittent": "failed in module-unit run; passed in module-race run; failure kept as recorded, not rerun to green"
+  },
+  "toolchain": {
+    "host": "WSL Ubuntu, run as jeli2k, invoked via wsl.exe from Git Bash with MSYS_NO_PATHCONV=1",
+    "go": "go1.27.1 linux/amd64 (/home/jeli2k/opt/go1.27.1/bin/go)",
+    "env": "GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly GOMAXPROCS=2 CGO_ENABLED=1 umask 077",
+    "module_cache": "/home/jeli2k/go/pkg/mod (shared, offline)",
+    "build_cache": "/home/jeli2k/.cache/go-build (shared)",
+    "private_snapshot": "/home/jeli2k/tbound-no-diff-<label>/src (cp -a of supervisor/ working tree, supervisor/tbound and tbound.exe removed)",
+    "driver_scripts": [
+      "F:/TBoundAssets/recovery-20261015/no-diff-settlement/scripts/nodiff-gate.sh",
+      "F:/TBoundAssets/recovery-20261015/no-diff-settlement/scripts/nodiff-gate-v2.sh"
+    ]
+  },
+  "defect_addressed": {
+    "summary": "A clean known no-change run settled NO_DIFF but its receipt had success false and the catalog verifier required PUBLISHED with a publication transaction, so completed prior requests failed re-verification and every new request ID was refused.",
+    "source_lines_before": "production_session_linux.go 598-608 and 627-628 (NO_DIFF), 672-673 (success requires PUBLISHED); production_workflow_catalog_linux.go 639-642 (verifier requires PUBLISHED)"
+  },
+  "change": {
+    "production_session_linux.go": "Adds noChangeReleased, set only in the no-change branch (bundle has no changes) when markNoPublication succeeds. Success is true for PUBLISHED with succeeded status, or for NO_DIFF with noChangeReleased. NO_DIFF from the Finalize zero-object path keeps success false.",
+    "production_workflow_catalog_linux.go": "Adds productionReceiptSettlementClaimed: PUBLISHED needs succeeded status and a bounded transaction ID; NO_DIFF needs NO_DIFF status and an empty transaction ID. Adds verifyManagedPiNoPublicationSettlement, which accepts only an exact no-publication release for this admitted run, with no publication pending, transaction, or resolved record for the workflow, an admitted root identity equal to the current descriptor, and a ledger anchor. It returns no-publication plus the release record hash as the settlement ID. verifyCompletedServiceRequest uses the claim helper; verifyCompletedServiceRequestPins dispatches on disposition and uses the settlement ID in the terminal tuple.",
+    "production_workflow_catalog_linux_test.go": "Adds TestProductionReceiptSettlementClaimRequiresExactDisposition, TestNoPublicationSettlementAcceptsOnlyExactDurableRelease (exact positive plus six refusals), and TestSettledServiceDispositionAcceptsPureEmptyProviderResult."
+  },
+  "untouched": [
+    "supervisor/internal/workflowrecovery/* (including the SQLite WIP files)",
+    "docs/ files with uncommitted changes owned by another session",
+    "OVERVIEW.md and TASK_STATE.md",
+    "tracked binaries (supervisor/tbound, supervisor/tbound.exe)"
+  ],
+  "red": {
+    "label": "red",
+    "source_manifest_root_sha256": "c9a52cdc0fbe6e6b0cd1dcd511d2a8e0e910d03a29efac21aa67f3b12525bb26",
+    "command": "go test -mod=readonly -count=1 -p 2 -v -run 'TestNoPublicationSettlement|TestProductionReceiptSettlementClaim|TestSettledServiceDisposition' ./cmd/tbound/",
+    "source_state": "new tests plus stub functions that reproduce the pre-fix refusals",
+    "exit": 1,
+    "failing_assertions": [
+      "TestProductionReceiptSettlementClaimRequiresExactDisposition/no_change_without_transaction: settlement claim = false, want true",
+      "TestNoPublicationSettlementAcceptsOnlyExactDurableRelease/exact_no-publication_release: refused with registered managed live-root writer authority is unavailable"
+    ],
+    "passed_under_red": "the six tampered or incomplete no-publication cases, the other receipt-claim cases, and the pure empty provider case (refusals and unchanged behavior)"
+  },
+  "green": {
+    "label": "green",
+    "source_manifest_root_sha256": "6c8f5d3c1c76274306c361d74174bbe6d68725f187fa4fdd16a5fc45233b61db",
+    "command": "go test -mod=readonly -count=1 -p 2 -v -run 'TestNoPublicationSettlement|TestProductionReceiptSettlementClaim|TestSettledServiceDisposition' ./cmd/tbound/",
+    "exit": 0,
+    "skips": 0
+  },
+  "final_gate": {
+    "label": "final",
+    "source_manifest_root_sha256": "6c8f5d3c1c76274306c361d74174bbe6d68725f187fa4fdd16a5fc45233b61db",
+    "source_manifest_identical_to_green": true,
+    "source_manifest_scope": "supervisor/ only, 244 files (docs/ not included)",
+    "steps": [
+      {"name": "fmt-empty", "command": "gofmt -l . (must print nothing)", "exit": 0, "output_bytes": 0},
+      {"name": "build", "command": "go build ./...", "exit": 0},
+      {"name": "vet", "command": "go vet -mod=readonly ./...", "exit": 0},
+      {"name": "focused-unit", "command": "go test -mod=readonly -count=1 -p 2 -v -run focused ./cmd/tbound/", "exit": 0, "skips": 0},
+      {"name": "cmd-unit", "command": "go test -mod=readonly -count=1 -p 2 ./cmd/tbound/", "exit": 0, "result": "ok 14.676s"},
+      {"name": "cmd-race", "command": "go test -race -mod=readonly -count=1 -p 2 ./cmd/tbound/", "exit": 0, "result": "ok 64.375s", "data_race_lines": 0},
+      {"name": "module-unit", "command": "go test -mod=readonly -count=1 -p 2 ./...", "exit": 1, "failing_packages": [
+        {"package": "internal/evaluationindex", "cause": "harness scope: the snapshot had supervisor/ only and the test reads ../../../docs; the docs-complete targeted rerun passed (see docs_targeted)"},
+        {"package": "internal/workflowrecovery", "cause": "sqlite_linux_test.go:1196 deadline query process incarnation changed: <nil>, want ErrDeadline. Known intermittent fresh-process owner-incarnation failure. Not in changed code. Failure kept, not rerun to green."}
+      ]},
+      {"name": "module-race", "command": "go test -race -mod=readonly -count=1 -p 2 ./...", "exit": 1, "data_race_lines": 0, "failing_packages": [
+        {"package": "internal/evaluationindex", "cause": "same harness scope as module-unit"}
+      ], "passing_packages_of_note": ["internal/workflowrecovery ok 59.062s (intermittent did not recur in this run)"]}
+    ]
+  },
+  "docs_targeted": {
+    "label": "docs-targeted",
+    "source_manifest_root_sha256": "a77cf10f5bf02e8c05a8ed2ebe89bbf21ca6cb03b830b132593742bd0b37d233",
+    "scope": "supervisor/ plus repo docs/",
+    "command": "go test -mod=readonly -count=1 -v ./internal/evaluationindex/",
+    "exit": 0
+  },
+  "not_verified": [
+    "End-to-end verifyCompletedServiceRequest for a NO_DIFF receipt (protected root, LoadSettledCheckpoint, owner drain, Store journal TCB proof) is not exercised by a positive fixture.",
+    "A new request ID admitted after a verified NO_DIFF is not tested. The begin() gate is unchanged and its effect is not demonstrated.",
+    "The no-publication fixture writes the release record in the shape lease close() writes; it does not call close(), which needs a verified registration and authority. The fixture uses a file-backed audit journal in the same process, not a fresh-process reload.",
+    "The session Success expression is not directly tested; it needs full session composition.",
+    "Package-level unit and race runs were not verbose, so skips in pre-existing tests of cmd/tbound would not show. The changed and new tests were checked with -v and show zero skips."
+  ],
+  "open_objections": [
+    "Unchanged-root evidence is identity-based: device, inode, mount, filesystem, uid, gid, and mode equal the admitted descriptor at verification, no publication record exists for the workflow, and the ledger anchor matches. No content or tree digest is recorded at the no-publication transition. A content proof would need a minimal addition at markNoPublication or close, reusing the tree-digest machinery that publication permits already use.",
+    "The Finalize zero-object path (publication status succeeded with no objects, disposition NO_DIFF) still has success false, so the verifier refuses it and new IDs stay blocked there. Its durable shape (pending, resolved succeeded, no transaction, release outcome publication-succeeded) is not accepted as no-change evidence. This needs an owner decision.",
+    "A callback known failure or denial that leaves a pending reservation still blocks settlement. validateSettledServiceDisposition is unchanged, so a valid NO_DIFF after such a denial cannot settle. This boundary is preserved, not weakened.",
+    "Receipt success for NO_DIFF means the settlement is verified no-change. The task outcome is still reported only through turn_completed and the existing receipt fields. A separate task-outcome field was not added. Confirm whether one is wanted.",
+    "The NO_DIFF settlement ID is no-publication plus the release record hash, stored in the terminal transaction slot. The catalog reload requires a bounded non-empty settlement ID on any terminal event that has a run link, so an empty value would break restart. Confirm this identity choice."
+  ],
+  "next_steps": [
+    "Run the docs-complete module-unit and module-race gate on the final source (nodiff-gate-v2.sh) and report workflowrecovery as its own receipt.",
+    "Add a positive fixture that drives verifyCompletedServiceRequest for NO_DIFF end to end, then admits a new request ID after it, in a fresh process.",
+    "Decide the open objections above before extending the Finalize zero-object path."
+  ]
+}

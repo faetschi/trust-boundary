@@ -1,0 +1,294 @@
+{
+    "schema_version":  "tbound-no-diff-settlement-evidence/v2",
+    "recorded_on":  "2026-10-15",
+    "repo":  "trust-boundary",
+    "branch":  "codex/tbound-prototype",
+    "base_head":  "230f2b6",
+    "commit_made":  false,
+    "supersedes":  "docs/evidence/no-diff-settlement-20261015.json (R1); R1 is not edited",
+    "receipt_root":  "F:/TBoundAssets/recovery-20261015/no-diff-settlement-r2",
+    "claim_scope":  "Known no-change managed live-root release and its settlement verifier. A no-change release is written only by the real lease close, after a rescan of the held live root equals the Store baseline tree digest. The settlement verifier accepts it only when this run\u0027s durable seed record carries the same tree digest and sits between admission and release. Verified through the real lease close, a real sessionrepo Store, and a file-backed audit journal; the registration verifier is the existing test seam. Re-verified in a fresh process at the settlement verifier. Not claimed: public catalog verification of a NO_DIFF receipt, admission of a new request ID through the SQLite catalog, the production D09 registration path, or a full production session run. For NO_DIFF, receipt Success means a verified clean runtime completion status for a no-change run; it is not evidence of task success.",
+    "verdict":  {
+                    "focused_red_then_green":  "pass: RED (R1-equivalent production) fails 5 assertions; GREEN focused passes 39 subtests with 0 failures and 0 skips",
+                    "cmd_package_unit_and_race":  "pass: ok 14.625s unit (2 pre-existing env-gated skips), ok 64.484s race with 0 DATA RACE",
+                    "module_unit":  "pass: exit 0, 26 packages ok, 0 FAIL",
+                    "module_race":  "pass: exit 0, 26 packages ok, 0 FAIL, 0 DATA RACE",
+                    "evaluationindex_targeted":  "pass: exit 0 with repo docs from HEAD",
+                    "fresh_process_settlement_verify":  "pass: settlement verifier only, in a child test process that opens the journal cold",
+                    "catalog_reverify_and_new_request_admission":  "not verified",
+                    "production_registration_path_abi8":  "not run; blocked prerequisite (see blocked_prerequisites)"
+                },
+    "toolchain":  {
+                      "host":  "WSL Ubuntu (the distro R1 used), run as jeli2k, invoked via wsl.exe with MSYS_NO_PATHCONV=1; the distro was stopped before the run and was not shut down",
+                      "go":  "go1.27.1 linux/amd64 (/home/jeli2k/opt/go1.27.1/bin/go)",
+                      "env":  "GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly GOMAXPROCS=2 CGO_ENABLED=1; go test -p 2; umask 077",
+                      "module_cache":  "/home/jeli2k/go/pkg/mod (shared, offline)",
+                      "build_cache":  "/home/jeli2k/.cache/go-build (shared)",
+                      "private_tree":  "/home/jeli2k/tbound-r2-a3/pristine = git archive HEAD plus exact overlay; every phase runs in a fresh cp -a copy under /home/jeli2k/tbound-r2-a3/run-\u003cphase\u003e; TMPDIR=/home/jeli2k/tbound-r2-a3/tmp",
+                      "checkout":  "no test, build, or vet ran in the mutable checkout; git archive and git status/diff were read-only",
+                      "driver":  "F:/TBoundAssets/recovery-20261015/no-diff-settlement-r2/scripts/r2-gate.sh (run as: r2-gate.sh a3 prep; a3 red-focused; a3 green)"
+                  },
+    "source":  {
+                   "archive_command":  "git -c core.autocrlf=false archive --format=tar HEAD",
+                   "archive_file":  "F:/TBoundAssets/recovery-20261015/no-diff-settlement-r2/head-archive-230f2b6.tar",
+                   "archive_sha256":  "52b499b83a628873bfba3f544f45351d449d15bed70d169684f8c5a51cadf72b",
+                   "pristine_manifest_root_sha256":  "d0ed5198bf180377342e05dd7ba2f18f19578aa56d6b92791f9db3cd4c24e775",
+                   "red_manifest_sha256":  "91e79c9058198fed89383a80c95eea7981f7c5676bebd734ecb98246e8e886fc",
+                   "overlay":  [
+                                   {
+                                       "path":  "supervisor/internal/workflowrecovery/protected_root_linux.go",
+                                       "sha256":  "fc7051c77d0ac3fb3d4a37a95eb41a87344f34d2ecac1267239311d51cd16268",
+                                       "note":  "SQLite WIP, equal to HEAD 837b7e4 or later; overlay is a no-op"
+                                   },
+                                   {
+                                       "path":  "supervisor/internal/workflowrecovery/protected_root_linux_test.go",
+                                       "sha256":  "354defb3ccb963260629d4ca7f8836471c78f766069bded9f360ea6136cd1880",
+                                       "note":  "SQLite WIP, no-op overlay"
+                                   },
+                                   {
+                                       "path":  "supervisor/internal/workflowrecovery/sqlite_linux.go",
+                                       "sha256":  "7c4f9a1f08363e53b62cbbb866d196709c2f9fe01899dd41203d4d5d145cccbb",
+                                       "note":  "SQLite WIP, no-op overlay"
+                                   },
+                                   {
+                                       "path":  "supervisor/internal/workflowrecovery/sqlite_page_geometry_linux_test.go",
+                                       "sha256":  "d66ded365137d44cf10ac761c6f54438ebbfef24632c508250fdd70e907efe02",
+                                       "note":  "SQLite WIP, no-op overlay"
+                                   },
+                                   {
+                                       "path":  "supervisor/cmd/tbound/production_session_linux.go",
+                                       "sha256":  "ce54fb37a844ba4290361cc5f176474d7a16eaea5b975a08de71f8f898d29024"
+                                   },
+                                   {
+                                       "path":  "supervisor/cmd/tbound/production_workflow_catalog_linux.go",
+                                       "sha256":  "54531159add4d1279d2b5dbedec59b5693ab094e03c32813313081552fb80666"
+                                   },
+                                   {
+                                       "path":  "supervisor/cmd/tbound/production_workflow_catalog_linux_test.go",
+                                       "sha256":  "5882b48d0842edc7e82055a528baf85d01a9abf5174d9cecb175a29b91e96b44"
+                                   },
+                                   {
+                                       "path":  "supervisor/cmd/tbound/managed_live_root_linux.go",
+                                       "sha256":  "effbd0578ca5b9ab91525ee6c77124ee5fc2ba2c18feb1bc516fdab3ca58f3a6"
+                                   },
+                                   {
+                                       "path":  "supervisor/cmd/tbound/production_no_change_linux_test.go",
+                                       "sha256":  "a15d859f8184f48801d2dbac4d8655efd1140d99b500dbad5479e854e09378f8",
+                                       "note":  "new untracked file"
+                                   }
+                               ],
+                   "excluded":  "supervisor/internal/workflowrecovery/production_capacity_linux_test.go (untracked, appeared in the working tree during the round; outside the four-file SQLite set). supervisor/tbound and supervisor/tbound.exe are not tracked and were not in the archive."
+               },
+    "attempts":  [
+                     {
+                         "id":  "a1",
+                         "base_head":  "837b7e4",
+                         "result":  "invalid, not counted. RED mutation left chain unused and the catalog test file had an unused encoding/json import, so the package did not compile. Logs preserved under a1."
+                     },
+                     {
+                         "id":  "a2",
+                         "base_head":  "230f2b6",
+                         "result":  "RED valid. GREEN fixture defect: task.txt was written mode 0600 and the workspace scanner rejects non-normalized modes (ErrNoncanonicalMode), so the real-close positive test and dependent subtests failed. fmt, build, vet, and evaluationindex passed. gofmt -l listed the new test file (alignment). Module steps were stopped by me. Logs preserved under a2; a2 also holds a private diagnostic (debug-positive.log) run in a private copy only."
+                     },
+                     {
+                         "id":  "a3",
+                         "base_head":  "230f2b6",
+                         "result":  "RED valid; GREEN all steps exit 0. This receipt\u0027s evidence basis."
+                     }
+                 ],
+    "defect_addressed":  {
+                             "summary":  "R1 accepted a no-change release on device/inode identity, the admission and release records, and the ledger anchor. It recorded no content digest at release and did not bind the release to a durable seed digest. Its positive fixture handwrote the release record rather than calling close. Net-reverted runs (changes whose composed delta is empty) still went to Finalize, which produced a zero-object Succeeded publication that the verifier could not accept.",
+                             "identity_is_not_content_proof":  "Device, inode, and mount identity are retained as before. Content equality is proven by two endpoint tree digests, admitted and released, with the Store baseline and workspace policy."
+                         },
+    "change":  {
+                   "managed_live_root_linux.go":  "Release record gains released_tree_digest (omitempty). markNoPublication(options, baseline) records the Store baseline generation and policy. close() for outcome no-publication rescans the held root with workspace.Scan (Generation = baseline ID, QuiescentRoot true, Store policy) and fails closed with ErrManagedLiveRootRetained unless the digest equals the baseline digest; the digest is written to the release record. Fences, the one-use permit, and begin() are unchanged.",
+                   "production_session_linux.go":  "NO_DIFF branch is selected by bundleHasNoChange: no approved transition carries a change, or the verified ValidatedChain sealed tree equals the verified baseline tree (both valid digests). That branch calls markNoPublication(session.Workspace, session.Generation). The Finalize zero-object NO_DIFF branch is unchanged from HEAD; it is unreachable with a changed sealed tree and its receipt Success stays false.",
+                   "production_workflow_catalog_linux.go":  "verifyManagedPiNoPublicationSettlement also calls verifyManagedNoChangeSeed: exactly one managed_root_source_capture_seeded record for this run, strict decode, schema_version, run_id, generation_id g0, and tree_digest equal to the release\u0027s released_tree_digest, with its sequence strictly between admission and release. Settlement ID is unchanged: no-publication plus the release record hash.",
+                   "production_workflow_catalog_linux_test.go":  "R1 handwritten no-publication fixture removed. R1 receipt-claim and empty-provider tests kept.",
+                   "production_no_change_linux_test.go (new)":  "Real lease fixture: real sessionrepo Store; seeding through seedManagedRootSourceWithProof (the Store.Seed negative is unseeded); real acquire, completeAdmissionRecovery, markNoPublication, and close; file-backed audit journal. Fresh-process verification runs the settlement verifier in a child test binary that opens the journal cold; the child writes a result file and the parent fails if it is missing or mismatched. Hand-written release records are used only for tamper cases, and a matching hand-written record in the close shape is accepted first. The routing predicate has its own table test."
+               },
+    "red":  {
+                "label":  "red",
+                "source":  "pristine-red = pristine with three R1-equivalent mutations: release-time rescan removed, verifier seed check removed, net-revert routing disabled. Mutation counts after mutation: 0, 0, 1 (a3/red-mutation-counts.txt).",
+                "command":  "go test -mod=readonly -count=1 -p 2 -v -run \u0027TestNoChange|TestBundleHasNoChange|TestProductionReceiptSettlementClaim|TestSettledServiceDisposition\u0027 ./cmd/tbound/",
+                "exit":  1,
+                "log":  "a3/red-focused.log",
+                "failing":  [
+                                "TestNoChangeSettlementRefusesUnverifiedEvidence/live_root_changed_after_seed",
+                                "TestNoChangeSettlementRefusesUnverifiedEvidence/run_never_seeded_from_the_root",
+                                "TestNoChangeSettlementRefusesUnverifiedEvidence/release_without_tree_digest",
+                                "TestNoChangeSettlementRefusesUnverifiedEvidence/released_tree_digest_differs_from_seed",
+                                "TestBundleHasNoChangeRoutesRevertedRunsWithoutPublication/changes_netting_to_the_baseline_tree"
+                            ],
+                "passing_under_red":  "The positive real-close path, the untampered refusals that R1 already enforced (missing release, forged ledger anchor, forged admission hash, publication-succeeded outcome, pending publication without resolution, root identity changed), and the other R1 tests. These guards are unchanged by R2."
+            },
+    "green":  {
+                  "label":  "green",
+                  "focused":  "exit 0; 7 top-level tests pass and 39 subtests pass; 0 FAIL; 0 SKIP (a3/green-focused.log)",
+                  "cmd_unit":  "exit 0; ok 14.625s; verbose 341 PASS and 2 SKIP. The 2 SKIPs are pre-existing and env-gated: TestServePiDevFixtureLaunchesActualPinnedPiOffline (offline dev Pi fixture env) and TestRealProviderDurableLinux (TBOUND_RUN_REAL_PROVIDER_TESTS=1). Neither file is in this round\u0027s diff.",
+                  "cmd_race":  "exit 0; ok 64.484s; 0 DATA RACE lines",
+                  "eval_targeted":  "exit 0; 0 SKIP",
+                  "module_unit":  "exit 0; 26 packages ok; 0 FAIL; internal/workflowrecovery ok 9.978s. Module runs were not verbose, so their skips are not reported.",
+                  "module_race":  "exit 0; 26 packages ok; 0 FAIL; 0 DATA RACE; internal/workflowrecovery ok 51.679s",
+                  "fmt_empty":  "gofmt -l . output 0 bytes; exit 0",
+                  "build_empty":  "go build ./... output 0 bytes; exit 0",
+                  "vet_empty":  "go vet -mod=readonly ./... output 0 bytes; exit 0"
+              },
+    "commands":  [
+                     {
+                         "phase":  "fmt",
+                         "command":  "gofmt -l .",
+                         "exit":  0
+                     },
+                     {
+                         "phase":  "build",
+                         "command":  "go build ./...",
+                         "exit":  0
+                     },
+                     {
+                         "phase":  "vet",
+                         "command":  "go vet -mod=readonly ./...",
+                         "exit":  0
+                     },
+                     {
+                         "phase":  "focused",
+                         "command":  "go test -mod=readonly -count=1 -p 2 -v -run \u0027TestNoChange|TestBundleHasNoChange|TestProductionReceiptSettlementClaim|TestSettledServiceDisposition\u0027 ./cmd/tbound/",
+                         "exit":  0
+                     },
+                     {
+                         "phase":  "cmd-unit",
+                         "command":  "go test -mod=readonly -count=1 -p 2 -v ./cmd/tbound/",
+                         "exit":  0
+                     },
+                     {
+                         "phase":  "cmd-race",
+                         "command":  "go test -race -mod=readonly -count=1 -p 2 ./cmd/tbound/",
+                         "exit":  0
+                     },
+                     {
+                         "phase":  "eval-targeted",
+                         "command":  "go test -mod=readonly -count=1 -v ./internal/evaluationindex/",
+                         "exit":  0
+                     },
+                     {
+                         "phase":  "module-unit",
+                         "command":  "go test -mod=readonly -count=1 -p 2 ./...",
+                         "exit":  0
+                     },
+                     {
+                         "phase":  "module-race",
+                         "command":  "go test -race -mod=readonly -count=1 -p 2 ./...",
+                         "exit":  0
+                     }
+                 ],
+    "known_e2e_outputs_ignored":  [
+                                      {
+                                          "path":  "supervisor/e2e/artifacts/correlation-e2e-report.json",
+                                          "generated_by":  [
+                                                               "module-unit",
+                                                               "module-race"
+                                                           ],
+                                          "sha256":  {
+                                                         "module-unit":  "04adc9fbd00d6bc3e62274a301ab9a78c942d3e6aefb83d31715cc5f469fd040",
+                                                         "module-race":  "04adc9fbd00d6bc3e62274a301ab9a78c942d3e6aefb83d31715cc5f469fd040"
+                                                     }
+                                      },
+                                      {
+                                          "path":  "supervisor/internal/sessionrepo/artifacts/sessionrepo-e2e-report.json",
+                                          "generated_by":  [
+                                                               "module-unit",
+                                                               "module-race"
+                                                           ],
+                                          "sha256":  {
+                                                         "module-unit":  "ac5fb52b4029a4c2431d5ea84b49ee2e95efa4dbcc93ce543d00057fcbea2161",
+                                                         "module-race":  "b1ebb720b566c9c1302c16cb4068b160e2df8fcf4fd5e2d1a58d9ee03a70929b"
+                                                     }
+                                      }
+                                  ],
+    "e2e_note":  "These two files are the only additions in the after-run manifests of the module phases, and no pristine file changed. Each phase ran in a fresh copy. The sessionrepo report hash differs between unit and race runs, so it is not byte-reproducible; only these two paths were ignored.",
+    "r1_correction":  "The R1 receipt says the Finalize zero-object lifecycle has no transaction record. By code reading that is wrong: Publish assigns a transaction ID before the object loop (internal/publication/publication_linux.go:551), and the Finalizer records a non-empty transaction ID in the root ledger (internal/workflow/publication_linux.go:820). Not executed. R2 does not depend on it: net-unchanged runs no longer reach Finalize.",
+    "not_verified":  [
+                         "verifyCompletedServiceRequest for a NO_DIFF receipt: TCB proof journal, owner drain, profile and config bindings, and the receipt pins are not exercised by a positive fixture.",
+                         "Catalog re-admission of a new request ID through the SQLite catalog (MarkTerminal and begin). The only admission check is a second lease acquire at epoch 2 after the verified release.",
+                         "The production D09 registration path. The fake registration verifier (the existing test seam) replaces VerifyD09ManagedLiveRoot, so cgroup, mount, and Runtime A checks are not exercised.",
+                         "The session NO_DIFF routing inside runComposedProductionPiSession. Only the bundleHasNoChange predicate is tested.",
+                         "A real Publish UNKNOWN outcome. Pending publication without resolution stands in for it.",
+                         "The production binders. The release scan policy equals the Store policy by construction: production_binder_linux.go:448-450 and :485, and the recovery binder refuses unless qualifiedXattr equals xattrVisibility (production_recovery_binder_linux.go:338-339). Not exercised through either binder.",
+                         "Skips in module-unit and module-race (not run verbose)."
+                     ],
+    "open_objections":  [
+                            "The public catalog verifier and new-ID admission through the SQLite catalog are not proved. This is the main remaining part of the R1 goal.",
+                            "The release-time content proof compares two endpoint scans: identity plus equal digests at seed and at release. A change that reverts before release is not detected, so the lease fence is the only protection in between.",
+                            "Routing net-reverted runs to the no-publication release instead of Finalize is a behavior change for those runs. PUBLISHED behavior is unchanged: a changed sealed tree still goes to Finalize.",
+                            "The Finalize zero-object NO_DIFF branch is kept verbatim from HEAD. It is unreachable by construction: a changed sealed tree composes at least one change and makePlans emits one plan per composed change, so a succeeded publication has an object. The parent should decide whether to delete it or keep it as a dead guard.",
+                            "The owner-incarnation guard failure from R1 did not recur in the two module runs of a3 (workflowrecovery ok in both). It is not proved fixed, and the guard was not changed.",
+                            "HEAD moved from 837b7e4 to 230f2b6 during this round, with other sessions committing. The supervisor Go tree was unchanged across that move. Untracked workflowrecovery/production_capacity_linux_test.go appeared during the round and is excluded from the snapshot."
+                        ],
+    "blocked_prerequisites":  [
+                                  {
+                                      "item":  "ABI8 guest run of the real D09 registration path and a production session release",
+                                      "owner":  "parent runtime agent",
+                                      "status":  "not run; the guest was not started or touched by this round"
+                                  }
+                              ],
+    "next_steps":  [
+                       "Add a catalog-level fixture: a NO_DIFF receipt through the real release path, verified by verifyCompletedServiceRequest on the real SQLite catalog, reloaded in a fresh process, then a new request ID admitted.",
+                       "Run the real D09 registration path on the ABI8 guest through the parent runtime agent.",
+                       "Parent decision: delete or keep the unreachable Finalize zero-object NO_DIFF branch in production_session_linux.go."
+                   ],
+    "parent_verification":  {
+                                "recorded_on":  "2026-10-15",
+                                "scope":  "Parent independently matched five current cmd source SHA256 values and archive SHA256; checked all nine GREEN pre/post manifests with only the two named module reports added, ten native phase statuses, raw focused/cmd PASS/SKIP counts, and package/race outputs. No tests rerun.",
+                                "source_files_verified":  5,
+                                "green_phases_verified":  9,
+                                "focused_top_level_pass":  7,
+                                "focused_subtest_pass":  39,
+                                "cmd_unit_top_level_pass":  134,
+                                "cmd_unit_subtest_pass":  207,
+                                "cmd_unit_skip":  2,
+                                "module_unit_packages_pass":  26,
+                                "module_race_packages_pass":  26,
+                                "module_skip_status":  "not available: non-verbose runs",
+                                "format_check":  "green-gofmt-list.txt is empty; green-fmt-list.log contains driver sentinel gofmt-done",
+                                "steps_sha256":  "337cb73fc774fbd0bfb998168f7182034251a7bd4185acad21f0652da4857a4a",
+                                "logs":  [
+                                             {
+                                                 "path":  "a3/green-fmt-list.log",
+                                                 "sha256":  "96d212c5ae1bb1ef64fa56b7eb5cd89d572a51f8ad54bb84ba6fbbd6c78a6c8b"
+                                             },
+                                             {
+                                                 "path":  "a3/green-build.log",
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                             },
+                                             {
+                                                 "path":  "a3/green-vet.log",
+                                                 "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                                             },
+                                             {
+                                                 "path":  "a3/green-focused.log",
+                                                 "sha256":  "1849ba8e99e119d67225bf7709b9dc2c2f57ac4598584ba9f7f0ba1f8ce771ba"
+                                             },
+                                             {
+                                                 "path":  "a3/green-cmd-unit.log",
+                                                 "sha256":  "3cd6748a92d9ae81467bb5bf7467b931b485a50fc1647bbd569037da8578a181"
+                                             },
+                                             {
+                                                 "path":  "a3/green-cmd-race.log",
+                                                 "sha256":  "613db951c9d22dbe7ba20a982aa99d99712eb81cec0ed2896a88852e0ecae949"
+                                             },
+                                             {
+                                                 "path":  "a3/green-eval-targeted.log",
+                                                 "sha256":  "fa4d858be4cc8919c1159045f627f0fdc775f2ccf8fcf21ff58460a0aa7d2cf4"
+                                             },
+                                             {
+                                                 "path":  "a3/green-module-unit.log",
+                                                 "sha256":  "89b75eab1f94d86aa2cb2cefafc7edf988f675726100aba91740a371fdde0b8a"
+                                             },
+                                             {
+                                                 "path":  "a3/green-module-race.log",
+                                                 "sha256":  "09edda874c7ade67ba19e061cc46620fe135ea10f3c0d35a5ce4049c270dffa3"
+                                             }
+                                         ],
+                                "critical_review":  "close rescans before writing the durable release; session.close runs before writing the receipt and clears Success on cleanup error. Public catalog cold re-admission remains open; component increment only."
+                            }
+}

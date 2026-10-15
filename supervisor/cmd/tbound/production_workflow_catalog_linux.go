@@ -639,10 +639,9 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequest(ctx context.Con
 		receipt.SchemaVersion != "tbound-production-pi-receipt/v1" || receipt.Mode != "production" || !receipt.Success ||
 		!receipt.WorkerReady || !receipt.TaskAdmitted || !receipt.TurnCompleted || !receipt.ExitObserved ||
 		!receipt.DescendantsSettled || receipt.Settlement != string(piruntime.SettlementStopped) ||
-		receipt.Disposition != "PUBLISHED" || receipt.PublicationStatus != string(publication.StatusSucceeded) ||
+		!productionReceiptSettlementClaimed(receipt) ||
 		!boundedProductionIdentity(receipt.RunID, productionTaskIDMaxBytes) ||
-		!validDigestText(receipt.TCBProofDigest) || receipt.TCBProofJournalSequence == 0 ||
-		!boundedProductionIdentity(receipt.PublicationTransactionID, productionRequestMaxBytes) {
+		!validDigestText(receipt.TCBProofDigest) || receipt.TCBProofJournalSequence == 0 {
 		return errors.Join(ErrPiWorkflowCatalog, err)
 	}
 	if err := validateSettledServiceProfile(profile, template); err != nil {
@@ -815,8 +814,15 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 		_ = publicationJournal.Close()
 		return errors.Join(ErrPiWorkflowCatalog, traceErr)
 	}
-	if err := verifyManagedPiPublicationSettlement(publicationJournal, publicationTrace, rootDescriptor, rootID, registration, entry.WorkflowID,
-		receipt.RunID, pins.OwnerEpoch, receipt.PublicationTransactionID); err != nil {
+	settlementID := receipt.PublicationTransactionID
+	if receipt.Disposition == "NO_DIFF" {
+		settlementID, err = verifyManagedPiNoPublicationSettlement(publicationJournal, publicationTrace, rootDescriptor, rootID,
+			registration, entry.WorkflowID, receipt.RunID, pins.OwnerEpoch)
+	} else {
+		err = verifyManagedPiPublicationSettlement(publicationJournal, publicationTrace, rootDescriptor, rootID, registration, entry.WorkflowID,
+			receipt.RunID, pins.OwnerEpoch, receipt.PublicationTransactionID)
+	}
+	if err != nil {
 		_ = publicationJournal.Close()
 		return err
 	}
@@ -828,17 +834,17 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 		if entry.LatestCheckpointDigest != view.Digest || entry.TerminalRunID != receipt.RunID ||
 			entry.TerminalProofDigest != receipt.TCBProofDigest ||
 			entry.TerminalProofSequence != receipt.TCBProofJournalSequence ||
-			entry.TerminalTransactionID != receipt.PublicationTransactionID {
+			entry.TerminalTransactionID != settlementID {
 			return ErrPiWorkflowCatalog
 		}
 		return c.MarkTerminal(entry.AdmissionRecordHash, view.Digest, receipt.RunID, receipt.TCBProofDigest,
-			receipt.TCBProofJournalSequence, receipt.PublicationTransactionID)
+			receipt.TCBProofJournalSequence, settlementID)
 	}
 	if proofRecord.Sequence != receipt.TCBProofJournalSequence || proofEvent.ProofDigest != receipt.TCBProofDigest {
 		return ErrPiWorkflowCatalog
 	}
 	return c.MarkTerminal(entry.AdmissionRecordHash, view.Digest, receipt.RunID, receipt.TCBProofDigest,
-		receipt.TCBProofJournalSequence, receipt.PublicationTransactionID)
+		receipt.TCBProofJournalSequence, settlementID)
 }
 
 func (c *piServiceWorkflowCatalog) verifySettledOwnerScopes(entry piServiceWorkflowEntry,
@@ -1036,6 +1042,139 @@ func verifyManagedPiPublicationSettlement(journal *audit.Journal, trace audit.Tr
 func validateManagedPublicationOrder(pending, transaction, resolved uint64) error {
 	if pending == 0 || transaction <= pending || resolved <= transaction {
 		return ErrManagedLiveRootUnavailable
+	}
+	return nil
+}
+
+// A published receipt names the publication transaction it settled. A known
+// no-change receipt names none: its settlement is proven only by the durable
+// no-publication release, which verifyManagedPiNoPublicationSettlement checks.
+func productionReceiptSettlementClaimed(receipt productionPiReceipt) bool {
+	switch receipt.Disposition {
+	case "PUBLISHED":
+		return receipt.PublicationStatus == string(publication.StatusSucceeded) &&
+			boundedProductionIdentity(receipt.PublicationTransactionID, productionRequestMaxBytes)
+	case "NO_DIFF":
+		return receipt.PublicationStatus == "NO_DIFF" && receipt.PublicationTransactionID == ""
+	}
+	return false
+}
+
+// verifyManagedPiNoPublicationSettlement accepts a known no-change run only when
+// the publication journal holds this run's admission record and an exact
+// no-publication release anchored to a ledger record that existed before it.
+// No publication pending, transaction, or resolution record may name the
+// workflow, the admitted root identity must still match, and the released tree
+// digest must equal this run's durable seed. It returns the
+// release identity that terminal settlement binds in place of a transaction ID.
+func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.Trace,
+	rootDescriptor managedLiveRootDescriptorIdentity, root workflow.RootIdentity,
+	registration piruntime.D09ManagedLiveRootRegistration, workflowID, runID string, ownerEpoch uint64) (string, error) {
+	if journal == nil || root == (workflow.RootIdentity{}) || !validDigestText(registration.Digest) || !validIdentityText(workflowID) ||
+		!validIdentityText(runID) || ownerEpoch == 0 {
+		return "", ErrManagedLiveRootUnavailable
+	}
+	publicationID := "production-publication-" + workflowID
+	key := managedWorkflowEventID(root, workflowID, publicationID)
+	admissionID := managedLiveRootRunEventID(root, registration.Digest, runID, ownerEpoch)
+	var admitted, released *audit.Record
+	for index := range trace.Records {
+		record := &trace.Records[index]
+		if record.Event.ID == key || strings.HasPrefix(record.Event.ID, key+"/") {
+			switch record.Event.Kind {
+			case "workflow_publication_pending", "workflow_publication_transaction", "workflow_publication_resolved":
+				return "", ErrManagedLiveRootUnavailable
+			}
+		}
+		switch record.Event.Kind {
+		case "managed_live_root_run_admitted":
+			if record.Event.ID == admissionID {
+				var event managedLiveRootRunAdmittedEvent
+				if err := unmarshalGovernedJSON(record.Event.Data, &event); err != nil || admitted != nil ||
+					event.SchemaVersion != "tbound-managed-live-root-run-admitted/v1" || event.Root != root ||
+					event.RegistrationDigest != registration.Digest || event.RunID != runID ||
+					event.WorkflowID != workflowID || event.PublicationID != publicationID ||
+					event.OwnerEpoch != ownerEpoch || event.ServiceUID != registration.ServiceUID ||
+					event.ServiceGID != registration.ServiceGID || event.Descriptor != rootDescriptor {
+					return "", errors.Join(ErrManagedLiveRootUnavailable, err)
+				}
+				admitted = record
+			}
+		case "managed_live_root_run_released":
+			if record.Event.ID == admissionID+"/released" {
+				if released != nil {
+					return "", ErrManagedLiveRootUnavailable
+				}
+				released = record
+			}
+		}
+	}
+	if admitted == nil || released == nil {
+		return "", ErrManagedLiveRootUnavailable
+	}
+	var event managedLiveRootRunResolvedEvent
+	if err := unmarshalGovernedJSON(released.Event.Data, &event); err != nil ||
+		event.SchemaVersion != "tbound-managed-live-root-run-resolved/v1" || event.Root != root ||
+		event.RegistrationDigest != registration.Digest || event.RunID != runID ||
+		event.WorkflowID != workflowID || event.PublicationID != publicationID ||
+		event.OwnerEpoch != ownerEpoch || event.Outcome != "no-publication" ||
+		event.ResolvedByRunID != "" || event.ResolvedByOwnerEpoch != 0 ||
+		event.AdmissionSequence != admitted.Sequence || event.AdmissionRecordHash != admitted.Hash ||
+		event.LifecycleJournalSequence < admitted.Sequence || event.LifecycleJournalSequence >= released.Sequence {
+		return "", errors.Join(ErrManagedLiveRootUnavailable, err)
+	}
+	anchored := false
+	for _, record := range trace.Records {
+		if record.Sequence == event.LifecycleJournalSequence {
+			anchored = record.Hash == event.LifecycleJournalRecordHash
+			break
+		}
+	}
+	if !anchored {
+		return "", ErrManagedLiveRootUnavailable
+	}
+	if err := verifyManagedNoChangeSeed(trace, runID, admitted.Sequence, released.Sequence, event.ReleasedTreeDigest); err != nil {
+		return "", err
+	}
+	if _, pending, err := managedRootLedgerState(journal, root); err != nil || len(pending) != 0 {
+		return "", errors.Join(ErrManagedLiveRootUnavailable, err)
+	}
+	return "no-publication:" + released.Hash, nil
+}
+
+// verifyManagedNoChangeSeed binds a no-change release to the admitted tree. This
+// run's durable seed of the managed root must sit between admission and release,
+// and its tree digest must equal the digest that release rescanned from the root.
+func verifyManagedNoChangeSeed(trace audit.Trace, runID string, admissionSeq, releaseSeq uint64, releasedTree string) error {
+	id := "managed-root-source-capture-seeded:" + runID
+	var seeded *audit.Record
+	for index := range trace.Records {
+		record := &trace.Records[index]
+		if record.Event.Kind != "managed_root_source_capture_seeded" || record.Event.ID != id {
+			continue
+		}
+		if seeded != nil {
+			return ErrManagedLiveRootUnavailable
+		}
+		seeded = record
+	}
+	if seeded == nil || seeded.Sequence <= admissionSeq || seeded.Sequence >= releaseSeq || !validManagedTreeDigest(releasedTree) {
+		return ErrManagedLiveRootUnavailable
+	}
+	var evidence struct {
+		SchemaVersion          string `json:"schema_version"`
+		RunID                  string `json:"run_id"`
+		QualificationDigest    string `json:"qualification_digest"`
+		SnapshotEvidenceDigest string `json:"snapshot_evidence_digest"`
+		XattrEvidenceDigest    string `json:"xattr_evidence_digest"`
+		GenerationID           string `json:"generation_id"`
+		TreeDigest             string `json:"tree_digest"`
+		ManifestDigest         string `json:"manifest_digest"`
+	}
+	if err := unmarshalGovernedJSON(seeded.Event.Data, &evidence); err != nil ||
+		evidence.SchemaVersion != "tbound-managed-root-source-capture-seeded/v1" || evidence.RunID != runID ||
+		evidence.GenerationID != "g0" || evidence.TreeDigest != releasedTree {
+		return errors.Join(ErrManagedLiveRootUnavailable, err)
 	}
 	return nil
 }
