@@ -71,3 +71,16 @@ A global capacity ticket, new protected-root schema, generalized capacity profil
 Defer broad history/cancel/doctor UX, frontend/web chat, generalized installer/update/rollback, remote or multi-user service, and the optional 51-trial recovery expansion. Safe shutdown and verified process drain remain engineering obligations even when a user-facing cancel command is deferred.
 
 Research Claims remains the final milestone. The adopted user/advisor construct-review procedure does not require OSF/Zenodo or multiple independent construct reviewers; accurately report the actual review and its validity limits. Independent runtime/effect oracles and the adopted security, calibration, and friction criteria remain in force. Use DeepSeek V4.1 Flash through OpenRouter with the user's US$5 total cap; freeze current prices, routing, request/token limits, and complete worst-case trial cost before any paid call. If the full protocol does not fit, amend the thesis claim before evaluation rather than reduce the denominator silently.
+
+### Engineering provider clarification — 2026-10-15
+
+The user authorized assessing OpenCode Go subscription access for initial engineering
+tests. These runs are development evidence and do not replace the frozen OpenRouter
+research executions. Keep engineering usage and artifacts separate from the US$5
+OpenRouter ledger; Go is quota-limited and must not silently fall back to paid credits.
+Provider credentials remain in the trusted broker, outside governed Pi and cells.
+Record the actual provider, model, request settings, and time even for development
+runs. DeepSeek V4.1 Flash is the selected research model pending implementation and
+freeze; the existing Nemotron source pin is not evidence that this change is complete.
+Execution-unit counts alone do not establish provider cost: estimate actual requests
+and bounded tokens before predicting whether the final budget can support the protocol.
