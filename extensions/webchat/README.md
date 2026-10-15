@@ -142,6 +142,7 @@ the manifest-derived `/app/` allowlist, the CSP smoke and its exit codes.
     sign-off. Its visual language is superseded by `design/design-language.md`.
   - `webchat/mockups/tbound-redesign-v3.html`: the current static design mockup (demo
     fixture data, offline; the running UI is `/app/`).
+    Desktop frames: buttons with a matching frame jump to it; the governance tabs swap in place.
 
 Paths in these documents are repository-root-relative, for example
 `extensions/webchat/internal/webchat/`. Bare file names such as `store.mjs`

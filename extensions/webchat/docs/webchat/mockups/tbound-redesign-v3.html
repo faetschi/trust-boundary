@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'sha256-YL+GT/clhhEGxu8jH3mKp300oqgH+sKDBfpyK/d8XbA='; script-src 'sha256-QZsWOZIGvaz2Ye1me3Zpj5LbedOIDworjKVbbgn2Ko4=' 'sha256-yry7pCDf1GlqGjmhvvJYXXlwesF7RW9LfRRuHPsr7D8='; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; media-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'sha256-YL+GT/clhhEGxu8jH3mKp300oqgH+sKDBfpyK/d8XbA='; script-src 'sha256-QZsWOZIGvaz2Ye1me3Zpj5LbedOIDworjKVbbgn2Ko4=' 'sha256-yry7pCDf1GlqGjmhvvJYXXlwesF7RW9LfRRuHPsr7D8=' 'sha256-q47G1BcmrB6Vw+wMur694JEMNqlJlrccGpFDTSzSPhw='; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; media-src 'none'">
 <title>tbound web chat: static design mockup v3 (M3c)</title>
 <script>
 (function () {
@@ -1320,6 +1320,7 @@ textarea {
 <header class="mk-top" aria-labelledby="mk-top-title">
   <h1 id="mk-top-title" class="mk-top-title">tbound web chat · static design mockup v3</h1>
   <p class="mk-top-note" role="note">Static mockup — the running UI is /app/; nothing here is evidence of G1/H1.</p>
+<p class="mk-top-note" id="mk-hint" hidden>Buttons inside the desktop frames that have a matching frame jump to it (governance tabs swap in place); this is a static mockup, and nothing in it is evidence.</p>
   <p id="mk-width-note" class="mk-width-note" role="status"></p>
   <noscript><p class="mk-top-note">Scripts are off: the first frame shows, and the frames, the tabs and the frame links do not switch.</p></noscript>
 </header>
@@ -1678,6 +1679,86 @@ textarea {
   });
   window.addEventListener('hashchange', function () { fromHash(false); });
   fromHash(true);
+})();
+</script>
+<script>
+(function () {
+  'use strict';
+  // Desktop frames (the 1440 px frames and the 1024 px chat frames). A button or textarea in a frame jumps to the frame that
+  // shows its result, by setting the hash that the frame switcher above reads. Governance tabs keep their in-place swap.
+  // A control with no frame to show stays inert. Nothing here submits, cancels or approves anything: the composer stays
+  // disabled and G1 stays false.
+  var TWIN = {
+    'chat-light-1440': 'chat-dark-1440', 'chat-dark-1440': 'chat-light-1440',
+    'chat-light-1024': 'chat-dark-1024', 'chat-dark-1024': 'chat-light-1024',
+    'chat-drawer-1024-light': 'chat-drawer-1024-dark', 'chat-drawer-1024-dark': 'chat-drawer-1024-light',
+    'traj-light-1440': 'traj-dark-1440', 'traj-dark-1440': 'traj-light-1440', 'traj-selected-light-1440': 'traj-dark-1440'
+  };
+  function has(frame, label) {
+    return frame.querySelector('[aria-label="' + label + '"]') !== null;
+  }
+  // The 1440 px chat with the sessions rail and the governance inspector each open or collapsed. These frames are light.
+  function stateFrame(rail, inspector) {
+    if (rail === 'open') return inspector === 'open' ? 'chat-light-1440' : 'inspector-collapsed-light-1440';
+    return inspector === 'open' ? 'rail-collapsed-light-1440' : 'rail-inspector-collapsed-light-1440';
+  }
+  function drawerOpen(name) {
+    var m = /^chat-(light|dark)-1024$/.exec(name);
+    return m ? 'chat-drawer-1024-' + m[1] : null;
+  }
+  function drawerClosed(name) {
+    var m = /^chat-drawer-1024-(light|dark)$/.exec(name);
+    return m ? 'chat-' + m[1] + '-1024' : null;
+  }
+  function targetOf(el, frame) {
+    var name = frame.getAttribute('data-frame');
+    var wide = /1440$/.test(name);
+    var rail = has(frame, 'Expand sessions panel') ? 'collapsed' : 'open';
+    var inspector = has(frame, 'Expand governance panel') ? 'collapsed' : 'open';
+    var label = el.getAttribute('aria-label') || '';
+    var text = el.textContent.replace(/\s+/g, ' ').trim();
+    if (el.getAttribute('data-testid') === 'scrim') return drawerClosed(name);
+    if (el.closest('[role="toolbar"][aria-label="Theme"]')) {
+      var want = text === 'Light' ? 'light' : text === 'Dark' ? 'dark' : '';
+      if (!want || want === frame.getAttribute('data-frame-theme')) return null;
+      return TWIN[name] || (wide ? 'chat-' + want + '-1440' : 'chat-' + want + '-1024');
+    }
+    if (text === 'Close governance') return drawerClosed(name);
+    if (text === 'Governance' && /governance-inspector$/.test(el.getAttribute('aria-controls') || '')) {
+      var expanded = el.getAttribute('aria-expanded') === 'true';
+      if (!wide) return expanded ? drawerClosed(name) : drawerOpen(name);
+      return stateFrame(rail, expanded ? 'collapsed' : 'open');
+    }
+    if (!wide) return null;
+    if (label === 'Collapse sessions panel') return stateFrame('collapsed', inspector);
+    if (label === 'Expand sessions panel') return stateFrame('open', inspector);
+    if (label === 'Collapse governance panel') return stateFrame(rail, 'collapsed');
+    if (label === 'Expand governance panel') return stateFrame(rail, 'open');
+    var panel = /^Open (Decisions|Provenance|Publication|Recovery|Qualification) panel/.exec(label);
+    if (panel) return panel[1] === 'Decisions' ? stateFrame(rail, 'open') : 'gov-' + panel[1].toLowerCase() + '-light-1440';
+    if (/^Close record \d+$/.test(label)) return name.indexOf('traj-') === 0 ? 'traj-light-1440' : 'chat-light-1440';
+    if (!label && /^record \d+$/.test(text)) return 'record-bar-light-1440';
+    if (/^(User|Assistant|Tool|Decision|Result) record \d+:/.test(label)) return 'traj-selected-light-1440';
+    if (el.localName === 'textarea' || label === 'Send: not available in this build') return 'composer-focus-light-1440';
+    return null;
+  }
+  function go(from, to) {
+    if (to && to !== from && document.querySelector('.mk-app-frame[data-frame="' + to + '"]')) location.hash = 'frame=' + to;
+  }
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    var frame = target.closest ? target.closest('.mk-app-frame') : null;
+    if (!frame || target.closest('[role="tab"], a[href^="#"]')) return;
+    var el = target.closest('button, textarea, [data-testid="scrim"]');
+    if (el) go(frame.getAttribute('data-frame'), targetOf(el, frame));
+  });
+  // Only the controls that go somewhere get the pointer cursor.
+  [].forEach.call(document.querySelectorAll('.mk-app-frame button, .mk-app-frame textarea, .mk-app-frame [data-testid="scrim"]'), function (el) {
+    var frame = el.closest('.mk-app-frame');
+    var to = targetOf(el, frame);
+    if (to && to !== frame.getAttribute('data-frame')) el.style.cursor = 'pointer';
+  });
+  document.getElementById('mk-hint').hidden = false;
 })();
 </script>
 </body>

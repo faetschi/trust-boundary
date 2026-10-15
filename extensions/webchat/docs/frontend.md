@@ -1538,3 +1538,7 @@ FX4 fixes the phone composer copy that the Redesign browser QA found clipped (de
 - The governance-frame flip above is open for the owner: accept the 5-pixel corner difference in one frame, or investigate the live capture's corner rendering.
 - `repro-check.mjs` was not run. It rebuilds the worktree dist and compares with the dist committed at HEAD, and this change commits nothing.
 - Nothing is committed. The v3 `committedSha256` fields stay stale until the FX4 PNGs are committed.
+
+## Mockup interaction layer (after 92a5927)
+
+`tbound-redesign-v3.html` gained one inline script (its own CSP hash) so that buttons on the desktop frames jump to the frame that shows the result; the governance tabs still swap in place. No frame markup changed: the desktop frames render pixel-identical (14 at 1440, 4 at 1024). `qa/v3-mockup-receipt.json` was not regenerated, so its pinned mockup sha256 and CSP policy describe the file before this layer. The frames it compares are unchanged. Phone frames were not part of this change.

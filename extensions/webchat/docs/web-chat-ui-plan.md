@@ -14,6 +14,7 @@ H1 unexecuted, containment not-established, claim-bearing=false.
 > `webchat/mockups/tbound-redesign-v2.html` is the earlier layout mockup, kept until sign-off; its
 > visual language is superseded by [design/design-language.md](design/design-language.md). The
 > current static design mockup is `webchat/mockups/tbound-redesign-v3.html`.
+> On its desktop frames, buttons with a matching frame jump to it; the governance tabs swap in place.
 
 > **Implementation status (this worktree).**
 > Shipped: the three-region shell (rail / workspace / inspector), the `Chat | Trajectory`

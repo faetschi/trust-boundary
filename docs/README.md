@@ -59,6 +59,7 @@
   [v3](../extensions/webchat/docs/webchat/mockups/tbound-redesign-v3.html), with demo data and
   offline. [v2](../extensions/webchat/docs/webchat/mockups/tbound-redesign-v2.html) is the earlier
   layout mockup, kept until sign-off.
+  In v3, buttons inside the desktop frames jump to the frame that shows the result.
 - [Modular architecture vision](modular-architecture-vision.md): VISION / FUTURE-WORK, not
   part of the thesis claim. A trust-tiered plugin/extension model, the headless CLI direction
   (`serve --headless` is future work), and decision records for the open questions.
