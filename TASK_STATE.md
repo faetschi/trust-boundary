@@ -1,6 +1,6 @@
 # TBound task state
 
-Updated 2026-10-15. Branch `codex/tbound-prototype`; implementation checkpoint `76298d5` at this update.
+Updated 2026-10-15. Branch `codex/tbound-prototype`; implementation checkpoint `e573967` at this update.
 User priority: finish the thesis first and defer broader product features. See
 [docs/status.md](docs/status.md) for evidence, qualification state, blockers, and history;
 this file keeps the short action plan.
@@ -43,8 +43,9 @@ this file keeps the short action plan.
 
 - `e3a75af` fixes the real single-key Windows PowerShell bootstrap caller; its
   non-mutating regression passed. The subsequent elevated run created the disposable
-  candidate but stopped before offline injection: host `wsl --mount --vhd` received
-  a Linux path. Do not blindly rerun creation against the existing candidate.
+  candidate but stopped before offline injection. `e573967` corrects the host
+  Windows-path argument; its live probe still failed with HCS `E_ACCESSDENIED`.
+  The candidate remains Off. Do not blindly rerun creation against it.
   Original VM and seed remain preserved; live ABI qualification is still open.
 - `76298d5` adds authenticated, read-only historical checkpoint inspection without
   continuation authority. Focused Linux race tests include fresh subprocesses;
@@ -55,6 +56,11 @@ this file keeps the short action plan.
 - OpenCode Go is being prepared for engineering tests only. No subscription key
   has been collected and no provider calls have been made in this increment.
   Research Claims remain last, with the separate total US$5 OpenRouter cap.
+- C: filled during development and a failed write truncated the uncommitted catalog
+  source. Stop tests on low space; preserve recovery copies on F:. Generated old
+  test binaries/caches were archived under `F:/TBoundAssets/recovery-20261015`.
+  The catalog patch is being recovered against the committed base; do not count
+  its earlier compile result as verification of the reconstructed revision.
 
 ## Execution rules
 
