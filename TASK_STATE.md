@@ -1,78 +1,24 @@
 # TBound task state
 
-Updated 2026-10-15. Branch `codex/tbound-prototype`; implementation checkpoint `e573967` at this update.
-User priority: finish the thesis first and defer broader product features. See
-[docs/status.md](docs/status.md) for evidence, qualification state, blockers, and history;
-this file keeps the short action plan.
+Updated 2026-10-15. Work only on `codex/tbound-prototype`; latest persisted checkpoint `dadf0a0`.
 
-## Thesis completion plan
+## Current work
 
-1. **Qualify the claim-bearing environment and launch path.** Preserve required artifacts
-   before using the authorized VM replacement; boot and qualify the exact ABI-8 guest,
-   signed profile, Pi closure, and local service admission. A single authenticated UDS
-   service may be an internal boundary behind the CLI. Remote and multi-user service
-   claims are out of scope. Reconcile D15's no-service-mode wording in the thesis before
-   freezing the protocol; the sibling thesis files are not amended by this scope update.
-2. **Complete the retained runtime obligations.** Exercise a real production Pi run with
-   independent workspace, process, network, and publication oracles. Verify the D20
-   production recovery binder, interrupted-activation behavior, and actual owner/cell
-   drain in fresh processes. Component tests and synthetic receipts do not qualify them.
-3. **Close D14 under a bounded storage model.** Keep one claim-bearing service and one
-   unresolved workflow at a time; prevent new request IDs while earlier work is not
-   independently settled. Use physically reserved capacity on a dedicated protected
-   filesystem or strict quota, separate task outputs, derive the maximum terminal-write
-   bound, and test real ENOSPC/fault recovery. Add a global ticket/schema only if the
-   simpler admission and storage model fails. See
-   [the bounded D14 design](docs/design/d14-reserved-capacity.md).
-4. **Research Claims (last).** Follow the user/advisor construct-review procedure;
-   freeze the corpus, oracle matrix, calibration, scoring, provider route, request/token
-   caps, current prices, and worst-case cost estimate. Execute only within the total
-   US$5 OpenRouter cap using DeepSeek V4.1 Flash. Keep independent runtime/effect oracles
-   and the adopted security/calibration/friction criteria. If the full protocol cannot
-   fit, amend the thesis claim before paid evaluation; do not silently reduce its
-   denominator. G1 and H1 remain unestablished until their evidence is reviewed.
+- Claude Haiku 5.5 / max agents: verify the four service-settlement files and receipt; finish the six-file D09 audit-head fix; reconcile the current thesis finish line and identify one safe cleanup.
+- Service settlement must bind independent completion, owner/root checkpoint, Store proof, publication, and registered drained scopes. The final current-generation `AwaitingHostPrompt` transcript is quiescent; pending/UNKNOWN authority blocks admission.
+- Check source hashes against actual Linux Go 1.27.1 unit/race/build/vet evidence before committing. Earlier tests do not qualify the production path.
 
-## Deferred product work
+## Remaining sequence
 
-- Defer broad operator history/cancel/doctor UX, frontend/web chat, generalized
-  installer/update/rollback, remote/multi-user service, and the optional 51-trial
-  recovery expansion. A reproducible setup/runbook and safe process shutdown/drain
-  remain engineering requirements; user-facing product polish does not gate the thesis.
+1. Commit verified settlement and D09 increments.
+2. Qualify one exact ABI 8 guest and real local Pi workflow. Original VM is Saved; seed is preserved. Last disposable candidate failed WSL VHD attachment before injection/boot. Inspect live state before any retry; do not blindly recreate it.
+3. Close bounded D14 storage and retained D20 restart/drain evidence. Enforce a defensible capacity bound; synthetic 64 MiB reserve is not qualification.
+4. Research Claims last: freeze corpus/oracles/calibration/scoring and a costed OpenRouter DeepSeek V4.1 Flash plan within US$5. User/advisor construct review; keep runtime/effect oracles independent. G1/H1 remain unestablished.
 
-## Current execution checkpoint
+## Constraints
 
-- `e3a75af` fixes the real single-key Windows PowerShell bootstrap caller; its
-  non-mutating regression passed. The subsequent elevated run created the disposable
-  candidate but stopped before offline injection. `e573967` corrects the host
-  Windows-path argument; its live probe still failed with HCS `E_ACCESSDENIED`.
-  The candidate remains Off. Do not blindly rerun creation against it.
-  Original VM and seed remain preserved; live ABI qualification is still open.
-- `76298d5` adds authenticated, read-only historical checkpoint inspection without
-  continuation authority. Focused Linux race tests include fresh subprocesses;
-  service settlement/admission integration remains unfinished.
-- D14 needs enforced SQLite page geometry/ceilings and pre-effect headroom checks
-  before reserve sizing can be justified. The synthetic 64 MiB experiment is not
-  a production bound. Refusal when the reserve cannot be re-armed is acceptable.
-- OpenCode Go is being prepared for engineering tests only. No subscription key
-  has been collected and no provider calls have been made in this increment.
-  Research Claims remain last, with the separate total US$5 OpenRouter cap.
-- C: filled during development and a failed write truncated the uncommitted catalog
-  source. Stop tests on low space; preserve recovery copies on F:. Generated old
-  test binaries/caches were archived under `F:/TBoundAssets/recovery-20261015`.
-  The catalog patch is being recovered against the committed base; do not count
-  its earlier compile result as verification of the reconstructed revision.
-
-## Execution rules
-
-- Never read, print, copy, or commit `vm_start.txt`, provider/admin credentials, or real signing keys.
-- Preserve `supervisor/tbound` and `tbound.exe`; build only to explicit private paths.
-- Stage reviewed increments explicitly; never use a blanket reset.
-- Passing checks do not establish G1, containment, or H1.
-- Delegated work uses GPT-6 Luna with reasoning `max`.
-
-## Records
-
-- [Canonical status and evidence index](docs/status.md)
-- [Evidence receipts](docs/evidence/README.md)
-- [Status audit](../review-artifacts/tbound-status-audit-2026-10-14.md)
-- [Consolidation pre-edit patch](../review-artifacts/tbound-completion-2026-10-14/initial-working-tree.patch) (SHA-256 prefix `90517f28`, 67,447 bytes).
+- Thesis sources: `../MSE_MA_Thesis/tbound/tbound-thesis.md` and `tbound.md`. Defer broader product features.
+- Preserve the ten dirty documentation paths owned by another session; stage only reviewed owned files. Never read or print credentials, real signing keys, or `vm_start.txt`.
+- Use one shared Go cache, short private temporary directories with cleanup, and raw logs on F:. WSL scratch was archived externally; old per-run paths may no longer exist. Avoid retained cache/source copies.
+- Guard free disk space. PowerShell 5.1 writes must stop on errors and validate a temporary output before replacing source/JSON. Preserve `supervisor/tbound` and `tbound.exe`.
+- Fully replace `OVERVIEW.md` with current state at major increments; keep this file short. Commit verified increments. Passing tests never establish research claims.
