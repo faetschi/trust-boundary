@@ -3,7 +3,7 @@
 // submit handler, no key handler, no network request. Its one behaviour is to say politely that it is not available,
 // through the shell's announcer, and to draw the same sentence.
 import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { SessionHeader } from "../core/contract";
 import { sessionDefault } from "../core/testing/builders";
 import { click, mount, press, type Mounted } from "../test-support/dom";
@@ -79,10 +79,15 @@ describe("the composer's semantics", () => {
     );
   });
 
-  it("keeps the reason line visible: it is never hidden", () => {
+  it("keeps the reason line visible: it is in the card, with its full text, and never hidden", () => {
     render();
-    expect(q("#composer-reason").hidden).toBe(false);
-    expect(q("#composer-reason").closest("[hidden]")).toBeNull();
+    const reason = q("#composer-reason");
+    expect(reason.closest("section[data-testid='composer']")).toBe(q("section[data-testid='composer']"));
+    expect(reason.textContent).toBe(
+      "Read-only view of a Pi session. This page cannot submit turns, cancel, or approve. Turn submission is a later milestone.",
+    );
+    expect(reason.hidden).toBe(false);
+    expect(reason.closest("[hidden]")).toBeNull();
   });
 
   it("has one button: a type=button send, marked aria-disabled and named, and no form ancestor", () => {
@@ -115,6 +120,16 @@ describe("the composer's semantics", () => {
 });
 
 describe("the composer does not submit", () => {
+  // Every submit event in the document. The composer has no form, so none may fire from Send, Enter or typing.
+  let submitted: Mock<(event: Event) => void>;
+  beforeEach(() => {
+    submitted = vi.fn<(event: Event) => void>();
+    document.addEventListener("submit", submitted);
+  });
+  afterEach(() => {
+    document.removeEventListener("submit", submitted);
+  });
+
   it("makes no network request on Send, and says politely that it is not available", () => {
     const fetchSpy = vi.fn();
     const requestSpy = vi.fn();
@@ -123,8 +138,10 @@ describe("the composer does not submit", () => {
     render();
     expect(drawn()).toBe("");
     click(send());
-    expect(fetchSpy).not.toHaveBeenCalled();
-    expect(requestSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(0);
+    expect(requestSpy).toHaveBeenCalledTimes(0);
+    expect(submitted).toHaveBeenCalledTimes(0);
+    expect(field().value).toBe("");
     expect(drawn()).toBe("Not available: this page cannot submit turns.");
     expect(spoken()).toBe("Not available: this page cannot submit turns.");
   });
@@ -150,7 +167,8 @@ describe("the composer does not submit", () => {
     expect(field().value).toBe("");
     expect(drawn()).toBe("");
     expect(spoken()).toBe("");
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(0);
+    expect(submitted).toHaveBeenCalledTimes(0);
   });
 });
 

@@ -280,13 +280,14 @@ func projectReceipt(receipt runReceipt, observedAt time.Time) Snapshot {
 		Source:        SourceReplay,
 		Verification:  VerificationUnverifiedInput,
 		GeneratedAt:   observedAt,
+		// TurnCount is left unstated. provider_turns counts provider exchanges and turn_completed is a flag, so neither
+		// is a count of session turns, and inventing one from them would contradict the receipt's own numbers.
 		Session: SessionHeader{
 			SessionID: sessionID,
 			Title:     receiptTitle(receipt),
 			Status:    sessionStatusFromReceipt(receipt, hasTurn),
 			CreatedAt: observedAt,
 			UpdatedAt: observedAt,
-			TurnCount: boolToInt(hasTurn),
 		},
 		Panels:   panels,
 		Streams:  streams,
@@ -539,13 +540,6 @@ func generationLabel(value string) string {
 		return identifier
 	}
 	return "unknown"
-}
-
-func boolToInt(value bool) int {
-	if value {
-		return 1
-	}
-	return 0
 }
 
 // boundedText truncates display text to the bounded label size and keeps the

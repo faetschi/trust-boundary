@@ -1,7 +1,11 @@
 // The chip and status-word rules, as pure functions (no DOM).
 import { describe, expect, it } from "vitest";
 import { activityItem, resultItem } from "../../core/testing/builders";
+import { statusText } from "../../core/trajectory";
 import { chipToneOf, sourceRole, stateWord } from "./recordChip";
+
+// The ledger's words for a lossy success (core/trajectory.ts). Every chip and row that words it uses these.
+const LEDGER_LOSSY_PHRASE = "output lossy, not counted as confirmed";
 
 describe("chipToneOf: a core variant as a chip tone", () => {
   it("maps the outcome states onto the shared tone set", () => {
@@ -39,9 +43,20 @@ describe("stateWord: the state chip's word", () => {
     expect(stateWord(item, "reported")).toBe("reported");
   });
 
-  it("reads a lossy success as succeeded (output lossy, not confirmed), on the unknown tone", () => {
+  it("reads a lossy success as succeeded (output lossy, not counted as confirmed), on the unknown tone", () => {
     const item = resultItem({ id: "r1", sequence: 1, tool: "bash", tool_call_id: "c1", state: "succeeded", lossy: true, authority: "observed", verification_scope: "structural-audit-only" });
-    expect(stateWord(item, "unknown")).toBe("succeeded (output lossy, not confirmed)");
+    expect(stateWord(item, "unknown")).toBe("succeeded (output lossy, not counted as confirmed)");
+  });
+
+  it("uses the ledger's own phrase for a lossy success, so the chip and the ledger row cannot word it differently", () => {
+    const item = resultItem({ id: "r1", sequence: 1, tool: "bash", tool_call_id: "c1", state: "succeeded", lossy: true, authority: "observed", verification_scope: "structural-audit-only" });
+    expect(stateWord(item, "unknown")).toContain(LEDGER_LOSSY_PHRASE);
+    expect(statusText(item, null)).toMatch(new RegExp(`${LEDGER_LOSSY_PHRASE}$`));
+  });
+
+  it("reads an unverified lossy success as reported, in the ledger's words", () => {
+    const item = resultItem({ id: "r1", sequence: 1, tool: "bash", tool_call_id: "c1", state: "succeeded", lossy: true });
+    expect(stateWord(item, "reported")).toBe(`reported, ${LEDGER_LOSSY_PHRASE}`);
   });
 
   it("reads other states as the projection names them", () => {

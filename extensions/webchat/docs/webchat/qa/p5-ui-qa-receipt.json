@@ -1,0 +1,2574 @@
+{
+  "receipt": "p5-ui-qa",
+  "generatedAt": "2026-10-15T05:37:13.616Z",
+  "outcome": "PASS",
+  "selectedChecks": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F",
+    "G",
+    "H",
+    "I",
+    "J",
+    "K",
+    "L"
+  ],
+  "git": {
+    "head": "7dc9555"
+  },
+  "script": {
+    "path": "extensions/webchat/scripts/ui-qa.mjs",
+    "sha256": "f3c58d2f523baa5e914e00407a7efc5ab281039102a92b248883d4076076a765"
+  },
+  "cspSmoke": {
+    "path": "extensions/webchat/scripts/csp-smoke.mjs",
+    "sha256": "b0e9125e702bc7542d4fb97501d77827f442d084c291eedbd384a30d1d9b20d0"
+  },
+  "node": "v24.15.0",
+  "platform": "win32 x64",
+  "browser": {
+    "product": "Chrome/155.0.8059.79",
+    "binary": "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "binarySha256": "e2b66159abacb9d42669364e87252f0eb8a0e3bb443f84763b06d44a98997744"
+  },
+  "gateway": {
+    "origin": "http://127.0.0.1:19111",
+    "binarySha256": "658041d7f4020b7da7ec187e1bcfaf57b633445f85054ec630702c338bb10311",
+    "binarySha256Source": "supplied by the operator with --gateway-sha256 (sha256sum in WSL); not verified by this script"
+  },
+  "dist": {
+    "path": "internal/webchat/dist",
+    "files": 5,
+    "sha256": "6b839ca0c94a164072e0d06c116c6e385a37af2e3982d7608892b89999e03d20",
+    "hashes": {
+      ".vite/manifest.json": "8075f5d61f2c80d9dfc2117b4481d612f19d93d8f15d82beaa799e2856996432",
+      "assets/index-BRePCEtU.js": "b032b44ba832173264364d6d9e8375a564eacd01ad7f35ba8cc188346396fdec",
+      "assets/index-LBAMbFfS.css": "8b1913902dcb8da5abe23881b5c1297920b1438cf36fe8989b5acd39923f8364",
+      "index.html": "f1b22babc7422b9e79c460355eea186a7b26ab57d314bfbf7909793d94960cab",
+      "theme-boot.js": "542ca16fff4a9c977662ee3936c122745ea1c1586b98f7167f99b28a70f0981c"
+    }
+  },
+  "checks": [
+    {
+      "id": "A",
+      "name": "csp-smoke without the favicon allowance",
+      "status": "PASS",
+      "ms": 4449,
+      "summary": "csp-smoke exit 0; 3 pages with 0 console errors/exceptions; no favicon allowance in its output",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "command": "node scripts/csp-smoke.mjs --url http://127.0.0.1:19111 --chrome <browser>",
+        "exitCode": 0,
+        "output": "p5-csp-smoke-output.txt",
+        "summary": "csp-smoke exit 0; 3 pages with 0 console errors/exceptions; no favicon allowance in its output"
+      }
+    },
+    {
+      "id": "B",
+      "name": "redirect, legacy notice, served assets",
+      "status": "PASS",
+      "ms": 800,
+      "summary": "HEAD / 302 to /app/; GET / ended on /app/ with the React header; /legacy/ shows \"!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.\"; 2 served assets equal dist",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "HEAD /": {
+          "status": 302,
+          "location": "/app/"
+        },
+        "GET /": {
+          "status": 302,
+          "location": "/app/"
+        },
+        "GET / in the browser": {
+          "endedOn": "/app/",
+          "title": "tbound web chat",
+          "reactHeader": true
+        },
+        "/legacy/ notice": "!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.",
+        "servedAssetSha256": {
+          "/app/assets/index-BRePCEtU.js": "b032b44ba832173264364d6d9e8375a564eacd01ad7f35ba8cc188346396fdec",
+          "/app/assets/index-LBAMbFfS.css": "8b1913902dcb8da5abe23881b5c1297920b1438cf36fe8989b5acd39923f8364"
+        },
+        "summary": "HEAD / 302 to /app/; GET / ended on /app/ with the React header; /legacy/ shows \"!Deprecated: legacy workspace — use /app/This page stays until the React workspace is signed off, then it is removed. Open the React app.\"; 2 served assets equal dist"
+      }
+    },
+    {
+      "id": "C",
+      "name": "keyboard-only walk at 1440",
+      "status": "PASS",
+      "ms": 15656,
+      "summary": "chat Tab order: 22 stops, document end; trajectory: 6 stops, document end; 0 stops without a ring; a first Tab after load landed on the document 7 time(s)",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "skipLink": "a \"Skip to the chat transcript\"",
+        "skipTarget": "div#view-panel-chat role=tabpanel \"Add /healthz and run tests18 e\"",
+        "chatTabOrder": [
+          "a \"Skip to the chat transcript\"",
+          "button \"Governance\"",
+          "button \"System\" pressed=true",
+          "button label=\"Collapse sessions panel\" \"‹\"",
+          "button#view-tab-chat role=tab \"Chat\" selected=true",
+          "button \"All 18\" pressed=true",
+          "button label=\"Copy message: your message, record 1\" \"Copy message\"",
+          "button \"record 1\"",
+          "button label=\"Copy message: Pi, record 2\" \"Copy message\"",
+          "button \"record 2\"",
+          "summary \"Rreadservice/entrypoint.goreco\" open=false",
+          "summary \"Eeditservice/entrypoint.goreco\" open=false",
+          "summary \"$bashcurl -s https://example.c\" open=false",
+          "summary \"$bashgo test ./...record 14unv\" open=false",
+          "summary \"$bashgo test -race ./...record\" open=false",
+          "button label=\"Copy message: Pi, record 18\" \"Copy message\"",
+          "button \"record 18\"",
+          "textarea label=\"Message Pi\"",
+          "button label=\"Send: not available in this build\" \"↑\"",
+          "button label=\"Collapse governance panel\" \"‹\"",
+          "button#governance-tab-decisions role=tab label=\"Decisions, 1 deny verdict\" \"Decisions\" selected=true",
+          "BODY"
+        ],
+        "chatStopIndexes": {
+          "theme": 2,
+          "chatTab": 4,
+          "allFilter": 5,
+          "firstToolCard": 10
+        },
+        "summaryStops": 5,
+        "themeToolbarArrows": {
+          "arrowRight": "Light",
+          "twice": "Dark",
+          "home": "System",
+          "pressedAfterArrows": [
+            [
+              "System",
+              "true"
+            ],
+            [
+              "Light",
+              "false"
+            ],
+            [
+              "Dark",
+              "false"
+            ]
+          ]
+        },
+        "tabs": {
+          "arrowMovesFocusTo": "view-tab-trajectory",
+          "selectedAfterArrow": "true",
+          "selectedAfterEnter": "true",
+          "trajectoryPanelVisible": true
+        },
+        "filters": {
+          "before": [
+            [
+              "All 18",
+              "true"
+            ],
+            [
+              "Denied (verdict or result) 2",
+              "false"
+            ],
+            [
+              "Unknown or lossy 1",
+              "false"
+            ],
+            [
+              "Failed result 0",
+              "false"
+            ]
+          ],
+          "afterArrow": [
+            [
+              "All 18",
+              "true"
+            ],
+            [
+              "Denied (verdict or result) 2",
+              "false"
+            ],
+            [
+              "Unknown or lossy 1",
+              "false"
+            ],
+            [
+              "Failed result 0",
+              "false"
+            ]
+          ],
+          "afterEnter": [
+            [
+              "All 18",
+              "false"
+            ],
+            [
+              "Denied (verdict or result) 2",
+              "true"
+            ],
+            [
+              "Unknown or lossy 1",
+              "false"
+            ],
+            [
+              "Failed result 0",
+              "false"
+            ]
+          ],
+          "countAfterDenied": "2 matches · 3 of 18 element(s) shown for “Denied (verdict or result)” (context included)"
+        },
+        "toolCard": {
+          "label": "Rreadservice/entrypoint.gorecord 5unverifiedALLOWr",
+          "openBefore": false,
+          "openAfterEnter": true,
+          "openAfterSpace": false
+        },
+        "grouping": {
+          "afterArrow": [
+            [
+              "Turn",
+              "true"
+            ],
+            [
+              "Tool",
+              "false"
+            ],
+            [
+              "Verdict",
+              "false"
+            ]
+          ],
+          "afterEnterTool": [
+            [
+              "Turn",
+              "false"
+            ],
+            [
+              "Tool",
+              "true"
+            ],
+            [
+              "Verdict",
+              "false"
+            ]
+          ],
+          "restored": [
+            [
+              "Turn",
+              "true"
+            ],
+            [
+              "Tool",
+              "false"
+            ],
+            [
+              "Verdict",
+              "false"
+            ]
+          ]
+        },
+        "ledgerKeys": {
+          "down1": "Assistant record 2: message. Message: no verdict or outcome recorded. I will inspect the service entrypoint, add the endpoint, then run the tests.",
+          "down2": "Tool record 3: proposal. Activity: pending, no outcome yet. read service/entrypoint.go",
+          "end": "Assistant record 18: message. Message: no verdict or outcome recorded. Added /healthz and ran the suite. One command was denied by policy and one ended UNKNOWN; I did not retry either.",
+          "home": "User record 1: prompt. Message: no verdict or outcome recorded. Add a /healthz endpoint to the service and run the test suite."
+        },
+        "ledgerSelect": {
+          "focusedAfterEnter": "button label=\"Assistant record 2: message. Message: no\" \"AssistantmessageI will inspect\" pressed=true",
+          "pressed": "true",
+          "inspector": {
+            "closeButtons": [
+              "Close record 2"
+            ],
+            "dialogs": []
+          }
+        },
+        "afterEscape": "button label=\"Assistant record 2: message. Message: no\" \"AssistantmessageI will inspect\" pressed=false",
+        "closeRecord": {
+          "focusedAfterClose": "button label=\"Assistant record 2: message. Message: no\" \"AssistantmessageI will inspect\" pressed=false",
+          "pressed": "false"
+        },
+        "selectedTabOrder": [
+          "button label=\"Collapse governance panel\" \"‹\"",
+          "button#governance-tab-decisions role=tab label=\"Decisions, 1 deny verdict\" \"Decisions\" selected=false",
+          "button label=\"Close record 2\" \"Close record\"",
+          "BODY"
+        ],
+        "trajectorySkipLink": "a \"Skip to the trajectory ledger\"",
+        "trajectoryTabOrder": [
+          "button \"Turn\" pressed=true",
+          "input",
+          "button label=\"User record 1: prompt. Message: no verdi\" \"UserpromptAdd a /healthz endpo\" pressed=false",
+          "button label=\"Collapse governance panel\" \"‹\"",
+          "button#governance-tab-decisions role=tab label=\"Decisions, 1 deny verdict\" \"Decisions\" selected=true",
+          "BODY"
+        ],
+        "swallowedFirstTabs": 7,
+        "summary": "chat Tab order: 22 stops, document end; trajectory: 6 stops, document end; 0 stops without a ring; a first Tab after load landed on the document 7 time(s)"
+      }
+    },
+    {
+      "id": "D",
+      "name": "responsive: drawer, overflow, screenshots",
+      "status": "PASS",
+      "ms": 12608,
+      "summary": "1024 px drawer: aria-expanded and inert track the state, hit-testable header, Escape returns focus; 390 px: no overflow, scrollY 0; 12 screenshots",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "drawer1024Closed": {
+          "innerWidth": 1024,
+          "clientWidth": 1024,
+          "toggleVisible": true,
+          "expanded": "false",
+          "inert": true,
+          "ariaHidden": "true",
+          "dataOpen": "false",
+          "asideLeft": 1040,
+          "asideTop": 121,
+          "headerBottom": 121,
+          "activeIsToggle": false,
+          "activeText": "Skip to the chat transcripttbo"
+        },
+        "drawer1024Open": {
+          "innerWidth": 1024,
+          "clientWidth": 1024,
+          "toggleVisible": true,
+          "expanded": "true",
+          "inert": false,
+          "ariaHidden": null,
+          "dataOpen": "true",
+          "asideLeft": 583,
+          "asideTop": 121,
+          "headerBottom": 121,
+          "activeIsToggle": false,
+          "activeText": "Governance"
+        },
+        "headerHitTestWhileOpen": [
+          {
+            "label": "System",
+            "hit": false
+          },
+          {
+            "label": "Light",
+            "hit": false
+          },
+          {
+            "label": "Dark",
+            "hit": false
+          }
+        ],
+        "scrimWhileOpen": {
+          "present": true,
+          "headerInert": true,
+          "headerControls": 4,
+          "coveredByScrim": 4
+        },
+        "scrimPress": {
+          "at": {
+            "x": 60,
+            "y": 300
+          },
+          "expanded": "false",
+          "inert": true,
+          "activeIsToggle": true
+        },
+        "phoneFirstLoadChat": {
+          "innerWidth": 390,
+          "clientWidth": 380,
+          "scrollWidth": 380,
+          "scrollY": 0,
+          "chips": 32,
+          "overflowingChips": []
+        },
+        "phoneFirstShowTrajectory": {
+          "innerWidth": 390,
+          "clientWidth": 380,
+          "scrollWidth": 380,
+          "scrollY": 0,
+          "chips": 16,
+          "overflowingChips": []
+        },
+        "screenshots": [
+          "p5-1440-light-chat.png",
+          "p5-1440-light-trajectory.png",
+          "p5-1024-light-chat.png",
+          "p5-1024-light-trajectory.png",
+          "p5-390-light-chat.png",
+          "p5-390-light-trajectory.png",
+          "p5-1440-dark-chat.png",
+          "p5-1440-dark-trajectory.png",
+          "p5-1024-dark-chat.png",
+          "p5-1024-dark-trajectory.png",
+          "p5-390-dark-chat.png",
+          "p5-390-dark-trajectory.png"
+        ],
+        "summary": "1024 px drawer: aria-expanded and inert track the state, hit-testable header, Escape returns focus; 390 px: no overflow, scrollY 0; 12 screenshots"
+      }
+    },
+    {
+      "id": "E",
+      "name": "theme: persistence, blocked storage, first paint",
+      "status": "PASS",
+      "ms": 12631,
+      "summary": "Dark, Light and System persist across reloads; with storage blocked the page renders on system; first frames match the final canvas in 4 cases",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "choices": {
+          "dark": {
+            "dataTheme": "dark",
+            "stored": "dark",
+            "pressed": [
+              "System=false",
+              "Light=false",
+              "Dark=true"
+            ],
+            "canvas": "oklch(0.18 0 0)"
+          },
+          "light": {
+            "dataTheme": "light",
+            "stored": "light",
+            "pressed": [
+              "System=false",
+              "Light=true",
+              "Dark=false"
+            ],
+            "canvas": "oklch(1 0 0)"
+          },
+          "system": {
+            "dataTheme": null,
+            "stored": "system",
+            "pressed": [
+              "System=true",
+              "Light=false",
+              "Dark=false"
+            ],
+            "canvas": "oklch(1 0 0)"
+          }
+        },
+        "blockedStorage": {
+          "shell": {
+            "header": true,
+            "chat": true
+          },
+          "theme": {
+            "dataTheme": null,
+            "stored": "throws: SecurityError",
+            "pressed": [
+              "System=true",
+              "Light=false",
+              "Dark=false"
+            ],
+            "canvas": "oklch(1 0 0)"
+          }
+        },
+        "firstPaintSamples": [
+          {
+            "case": "stored light, OS dark",
+            "final": "oklch(1 0 0)",
+            "trials": 5,
+            "flashed": 0,
+            "samples": [
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)"
+            ]
+          },
+          {
+            "case": "stored dark, OS light",
+            "final": "oklch(0.18 0 0)",
+            "trials": 5,
+            "flashed": 0,
+            "samples": [
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)"
+            ]
+          },
+          {
+            "case": "nothing stored, OS dark",
+            "final": "oklch(0.18 0 0)",
+            "trials": 5,
+            "flashed": 0,
+            "samples": [
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)",
+              "firstFrame=oklch(0.18 0 0) DOMContentLoaded=oklch(0.18 0 0)"
+            ]
+          },
+          {
+            "case": "nothing stored, OS light",
+            "final": "oklch(1 0 0)",
+            "trials": 5,
+            "flashed": 0,
+            "samples": [
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)",
+              "firstFrame=oklch(1 0 0) DOMContentLoaded=oklch(1 0 0)"
+            ]
+          }
+        ],
+        "summary": "Dark, Light and System persist across reloads; with storage blocked the page renders on system; first frames match the final canvas in 4 cases"
+      }
+    },
+    {
+      "id": "F",
+      "name": "live stream: admission, refusal, gaps, pill",
+      "status": "PASS",
+      "ms": 8311,
+      "summary": "LOST chip and \"LOST, not success\" row; lossy row reads \"output lossy, not counted as confirmed\"; DENY, UNKNOWN and ALLOW tones distinct; observed item refused (invalid item) with recovery; duplicate no-op; gap recovers once; pill \"3 new records\" with scroll kept, one announcement, Jump works",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "snapshot": {
+          "epoch": "fixture-2f1c",
+          "cursor": "fixture-2f1c:18",
+          "source": "fixture",
+          "items": 18,
+          "lastSequence": 18
+        },
+        "countAtStart": 18,
+        "chatChips": [
+          "allow verdict 4:allow",
+          "deny verdict 2:deny",
+          "unknown verdict 1:unknown",
+          "reported 4:reported",
+          "denied result 1:deny",
+          "unresolved result 1:unknown",
+          "lost 1:lost",
+          "lossy 2:unknown",
+          "reported, not verified:reported",
+          "ALLOW:allow",
+          "reported:reported",
+          "DENY:deny",
+          "denied:deny",
+          "unknown:unknown",
+          "lossy:unknown",
+          "lost:lost",
+          "reported, output lossy, not counted as confirmed:reported",
+          "UNKNOWN:unknown",
+          "Observed only · no approvals:idle",
+          "Pi 0.87.1 · tools unavailable:idle"
+        ],
+        "ledgerRows": {
+          "lost": "Result record 19: bash. Result: LOST, not success. QA outcome not recorded",
+          "lossy": "Result record 20: bash. Result: succeeded, reported, not independently verified; output lossy, not counted as confirmed. QA lossy output · output lossy"
+        },
+        "dotShapes": {
+          "lost": {
+            "borderStyle": "solid",
+            "borderWidth": "1px",
+            "radius": "0px",
+            "clipPath": "polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%)",
+            "boxShadow": "none",
+            "background": "oklch(0.6 0.15 70)",
+            "mark": "none"
+          },
+          "deny": {
+            "borderStyle": "solid",
+            "borderWidth": "1px",
+            "radius": "2px",
+            "clipPath": "none",
+            "boxShadow": "none",
+            "background": "oklch(0.52 0.19 27)",
+            "mark": "none"
+          },
+          "unknown": {
+            "borderStyle": "dotted",
+            "borderWidth": "2px",
+            "radius": "50%",
+            "clipPath": "none",
+            "boxShadow": "none",
+            "background": "rgba(0, 0, 0, 0)",
+            "mark": "none"
+          },
+          "allow": {
+            "borderStyle": "solid",
+            "borderWidth": "2px",
+            "radius": "50%",
+            "clipPath": "none",
+            "boxShadow": "none",
+            "background": "rgba(0, 0, 0, 0)",
+            "mark": "absolute 2px oklch(0.44 0.09 250)"
+          },
+          "reported": {
+            "borderStyle": "dashed",
+            "borderWidth": "2px",
+            "radius": "50%",
+            "clipPath": "none",
+            "boxShadow": "none",
+            "background": "rgba(0, 0, 0, 0)",
+            "mark": "none"
+          },
+          "pending": {
+            "borderStyle": "solid",
+            "borderWidth": "1px",
+            "radius": "50%",
+            "clipPath": "none",
+            "boxShadow": "none",
+            "background": "rgba(0, 0, 0, 0)",
+            "mark": "none"
+          }
+        },
+        "refusal": {
+          "notices": [
+            "Continuity gap (invalid item). Recovered from a snapshot; no success is inferred."
+          ],
+          "count": 18
+        },
+        "gap": {
+          "notices": [
+            "Continuity gap (sequence gap). Recovered from a snapshot; no success is inferred."
+          ],
+          "count": 18,
+          "duplicateSnapshotFetches": 0
+        },
+        "pill": {
+          "text": "3 new records · Jump to latest",
+          "scrollBefore": 0,
+          "scrollAfter": 0,
+          "announcements": [
+            "3 new records below. Jump to latest is available."
+          ]
+        },
+        "afterJump": {
+          "y": 662,
+          "h": 938,
+          "inner": 276,
+          "focusRole": "log",
+          "pill": false
+        },
+        "summary": "LOST chip and \"LOST, not success\" row; lossy row reads \"output lossy, not counted as confirmed\"; DENY, UNKNOWN and ALLOW tones distinct; observed item refused (invalid item) with recovery; duplicate no-op; gap recovers once; pill \"3 new records\" with scroll kept, one announcement, Jump works"
+      }
+    },
+    {
+      "id": "G",
+      "name": "reconnect and offline",
+      "status": "PASS",
+      "ms": 46560,
+      "summary": "7 retry attempts, backoffs 790, 1663, 2618, 4962, 6531, 5965 ms; connected only after the event stream answered; 0 requests while offline; first request 2 ms after online",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "badgeAtStart": "connected",
+        "stopCommandStatus": 0,
+        "retryAttempts": 7,
+        "backoffMs": [
+          790,
+          1663,
+          2618,
+          4962,
+          6531,
+          5965
+        ],
+        "attemptDurationMs": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        "outageBadgeStates": [
+          "reconnecting|reconnecting…",
+          "connecting|connecting…"
+        ],
+        "startCommandStatus": 0,
+        "recovery": {
+          "snapshotFetchesAfterRestart": 2,
+          "eventsResponseIndex": 8,
+          "connectedBadgeIndex": 9
+        },
+        "requestsWhileOffline": 0,
+        "firstRequestAfterOnlineMs": 2,
+        "summary": "7 retry attempts, backoffs 790, 1663, 2618, 4962, 6531, 5965 ms; connected only after the event stream answered; 0 requests while offline; first request 2 ms after online"
+      }
+    },
+    {
+      "id": "H",
+      "name": "forced colours and reduced motion",
+      "status": "PASS",
+      "ms": 3591,
+      "summary": "forced colours: 6 of 6 ledger shapes distinct; reduced motion: 0 running animation(s), control transition 0.3s, 0s",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "emulationActive": {
+          "forcedColors": true,
+          "reducedMotion": true
+        },
+        "normalShapes": {
+          "allow": "solid | 2px | 50% | none | absolute 2px oklch(0.44 0.09 250)",
+          "deny": "solid | 1px | 2px | none | none",
+          "reported": "dashed | 2px | 50% | none | none",
+          "unknown": "dotted | 2px | 50% | none | none",
+          "lost": "solid | 1px | 0px | polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%) | none",
+          "pending": "solid | 1px | 50% | none | none"
+        },
+        "forcedShapes": {
+          "allow": "solid | 2px | 50% | none | absolute 2px rgb(255, 255, 255)",
+          "deny": "solid | 1px | 2px | none | none",
+          "reported": "dashed | 2px | 50% | none | none",
+          "unknown": "dotted | 2px | 50% | none | none",
+          "lost": "solid | 1px | 0px | polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%) | none",
+          "pending": "solid | 1px | 50% | none | none"
+        },
+        "reducedMotion": {
+          "runningAnimations": 0,
+          "animatedElements": 0,
+          "animatedSample": [],
+          "asideTransition": "0s",
+          "asideTransform": "matrix(1, 0, 0, 1, 0, 0)",
+          "dataOpen": "true"
+        },
+        "motionControl": {
+          "runningAnimations": 0,
+          "animatedElements": 3,
+          "animatedSample": [
+            "div",
+            "nav",
+            "aside#governance-inspector"
+          ],
+          "asideTransition": "0.3s, 0s",
+          "asideTransform": "matrix(1, 0, 0, 1, 0, 0)",
+          "dataOpen": "true"
+        },
+        "summary": "forced colours: 6 of 6 ledger shapes distinct; reduced motion: 0 running animation(s), control transition 0.3s, 0s"
+      }
+    },
+    {
+      "id": "I",
+      "name": "console, CSP and network",
+      "status": "PASS",
+      "ms": 1,
+      "summary": "0 CSP violations; 0 console errors or warnings outside check G; 9 inside G's outage and offline window; 0 requests off the gateway origin (407 requests in all)",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "requests": {
+          "total": 407,
+          "toGateway": 407,
+          "external": 0
+        },
+        "consoleErrorsAndWarnings": {
+          "outsideGOutage": 0,
+          "inGOutage": 9,
+          "inGOutageSamples": [
+            "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+            "Failed to load resource: net::ERR_EMPTY_RESPONSE",
+            "Failed to load resource: net::ERR_CONNECTION_REFUSED"
+          ]
+        },
+        "cspViolations": 0,
+        "summary": "0 CSP violations; 0 console errors or warnings outside check G; 9 inside G's outage and offline window; 0 requests off the gateway origin (407 requests in all)"
+      }
+    },
+    {
+      "id": "J",
+      "name": "the user's three points at six widths, light and dark",
+      "status": "PASS",
+      "ms": 43019,
+      "summary": "6 widths x 2 themes checked for the rail, the head, messages, the composer, the footer and the governance tabs or drawer",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "state 1440-light": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": true,
+            "rows": 1,
+            "current": "true",
+            "interactiveInRow": 0,
+            "note": "Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.",
+            "toggleName": "Collapse sessions panel",
+            "toggleExpanded": "true",
+            "bodyFound": true,
+            "bodyVisible": true,
+            "railWidth": 182
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 53
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "state 1180-light": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": true,
+            "rows": 1,
+            "current": "true",
+            "interactiveInRow": 0,
+            "note": "Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.",
+            "toggleName": "Collapse sessions panel",
+            "toggleExpanded": "true",
+            "bodyFound": true,
+            "bodyVisible": true,
+            "railWidth": 182
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 53
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "state 1024-light": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": true,
+            "rows": 1,
+            "current": "true",
+            "interactiveInRow": 0,
+            "note": "Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.",
+            "toggleName": "Collapse sessions panel",
+            "toggleExpanded": "true",
+            "bodyFound": true,
+            "bodyVisible": true,
+            "railWidth": 182
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 53
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "state 768-light": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": true,
+            "rows": 1,
+            "current": "true",
+            "interactiveInRow": 0,
+            "note": "Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.",
+            "toggleName": "Collapse sessions panel",
+            "toggleExpanded": "true",
+            "bodyFound": true,
+            "bodyVisible": true,
+            "railWidth": 182
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 53
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "state 390-light": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": false,
+            "rows": 0,
+            "current": null,
+            "interactiveInRow": null,
+            "note": "",
+            "toggleName": "Sessions · Add /healthz and run tests ▾",
+            "toggleExpanded": "false",
+            "bodyFound": true,
+            "bodyVisible": false,
+            "railWidth": 380
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 98
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "state 360-light": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": false,
+            "rows": 0,
+            "current": null,
+            "interactiveInRow": null,
+            "note": "",
+            "toggleName": "Sessions · Add /healthz and run tests ▾",
+            "toggleExpanded": "false",
+            "bodyFound": true,
+            "bodyVisible": false,
+            "railWidth": 350
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 98
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "state 1440-dark": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": true,
+            "rows": 1,
+            "current": "true",
+            "interactiveInRow": 0,
+            "note": "Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.",
+            "toggleName": "Collapse sessions panel",
+            "toggleExpanded": "true",
+            "bodyFound": true,
+            "bodyVisible": true,
+            "railWidth": 182
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 53
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "state 1180-dark": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": true,
+            "rows": 1,
+            "current": "true",
+            "interactiveInRow": 0,
+            "note": "Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.",
+            "toggleName": "Collapse sessions panel",
+            "toggleExpanded": "true",
+            "bodyFound": true,
+            "bodyVisible": true,
+            "railWidth": 182
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 53
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "state 1024-dark": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": true,
+            "rows": 1,
+            "current": "true",
+            "interactiveInRow": 0,
+            "note": "Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.",
+            "toggleName": "Collapse sessions panel",
+            "toggleExpanded": "true",
+            "bodyFound": true,
+            "bodyVisible": true,
+            "railWidth": 182
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 53
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "state 768-dark": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": true,
+            "rows": 1,
+            "current": "true",
+            "interactiveInRow": 0,
+            "note": "Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.",
+            "toggleName": "Collapse sessions panel",
+            "toggleExpanded": "true",
+            "bodyFound": true,
+            "bodyVisible": true,
+            "railWidth": 182
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 53
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "state 390-dark": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": false,
+            "rows": 0,
+            "current": null,
+            "interactiveInRow": null,
+            "note": "",
+            "toggleName": "Sessions · Add /healthz and run tests ▾",
+            "toggleExpanded": "false",
+            "bodyFound": true,
+            "bodyVisible": false,
+            "railWidth": 380
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 98
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "state 360-dark": {
+          "rail": {
+            "navVisible": true,
+            "headingSessions": false,
+            "rows": 0,
+            "current": null,
+            "interactiveInRow": null,
+            "note": "",
+            "toggleName": "Sessions · Add /healthz and run tests ▾",
+            "toggleExpanded": "false",
+            "bodyFound": true,
+            "bodyVisible": false,
+            "railWidth": 350
+          },
+          "head": {
+            "title": "Add /healthz and run tests",
+            "conversation": "Add /healthz and run tests18 element(s) in the retained windowPi 0.87.1 · session-demo-01 · wf-demo-healthzcompleted · reported, not verified",
+            "h2BelowHeader": 98
+          },
+          "messages": {
+            "times": 18,
+            "timesWithDatetime": 18,
+            "copy": 3,
+            "records": 3,
+            "piLabels": 2,
+            "userLabels": 1
+          },
+          "composer": {
+            "section": "Message Pi: not available in this build",
+            "inForm": false,
+            "forms": 0,
+            "textarea": {
+              "readOnly": true,
+              "ariaDisabled": "true",
+              "placeholder": "Submitting turns is not available in this build.",
+              "value": ""
+            },
+            "chips": [
+              "Observed only · no approvals",
+              "Pi 0.87.1 · tools unavailable"
+            ],
+            "send": {
+              "ariaDisabled": "true",
+              "type": "button",
+              "label": "Send: not available in this build"
+            }
+          },
+          "footer": "1 turn · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable"
+        },
+        "summary": "6 widths x 2 themes checked for the rail, the head, messages, the composer, the footer and the governance tabs or drawer",
+        "governanceKeys": "ArrowRight, ArrowLeft (wrap), End, Home checked at 1440 px",
+        "iconRail": {
+          "width": 32,
+          "names": [
+            "Open Decisions panel, 1 deny verdict",
+            "Open Provenance panel, unavailable",
+            "Open Publication panel, not attempted",
+            "Open Recovery panel, unknown",
+            "Open Qualification panel, not established, 2 warnings"
+          ]
+        },
+        "drawerTrapEscapes1024": [],
+        "closeRecordAt1440": {
+          "selectedBefore": "governance-tab-provenance",
+          "focusAfter": "governance-tab-provenance"
+        },
+        "closeRecordAt1024": {
+          "selectedBefore": "governance-tab-provenance",
+          "dataOpen": "true",
+          "activeId": "governance-tab-provenance"
+        },
+        "recordNumberLabels": {
+          "labelled": 3,
+          "records": 18
+        },
+        "composerActions": {
+          "requests": [],
+          "value": ""
+        },
+        "copy": {
+          "wrote": [
+            "Add a /healthz endpoint to the service and run the test suite."
+          ],
+          "label": "Copied"
+        },
+        "copyDenied": {
+          "label": "Copy unavailable",
+          "consoleErrors": 0
+        }
+      }
+    },
+    {
+      "id": "K",
+      "name": "phone dock: Tab and Shift+Tab walk at four sizes",
+      "status": "PASS",
+      "ms": 20548,
+      "summary": "360x640: 20 stops forward and 20 backward, 0 under the dock; 390x844: 20 stops forward and 20 backward, 0 under the dock; 412x915: 20 stops forward and 20 backward, 0 under the dock; 844x390: 19 stops forward and 19 backward, 0 under the dock",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "walks": [
+          {
+            "size": "360x640",
+            "forward": {
+              "stops": 20,
+              "measured": 20,
+              "end": "document end",
+              "list": [
+                "a \"Skip to the chat transcript\"",
+                "button \"Governance\"",
+                "button \"System\" pressed=true",
+                "summary \"Presentation only · display on\"",
+                "button \"Sessions · Add /healthz and ru\"",
+                "button#view-tab-chat role=tab \"Chat\" sel",
+                "button \"All 18\" pressed=true",
+                "button label=\"Copy message: your message",
+                "button \"record 1\"",
+                "button label=\"Copy message: Pi, record 2",
+                "button \"record 2\"",
+                "summary \"Rreadservice/entrypoint.goreco\"",
+                "summary \"Eeditservice/entrypoint.goreco\"",
+                "summary \"$bashcurl -s https://example.c\"",
+                "summary \"$bashgo test ./...record 14unv\"",
+                "summary \"$bashgo test -race ./...record\"",
+                "button label=\"Copy message: Pi, record 1",
+                "button \"record 18\"",
+                "textarea label=\"Message Pi\"",
+                "button label=\"Send: not available in thi"
+              ]
+            },
+            "backward": {
+              "stops": 20,
+              "measured": 20,
+              "end": "cycled to the first stop",
+              "list": [
+                "button label=\"Send: not available in thi",
+                "textarea label=\"Message Pi\"",
+                "button \"record 18\"",
+                "button label=\"Copy message: Pi, record 1",
+                "summary \"$bashgo test -race ./...record\"",
+                "summary \"$bashgo test ./...record 14unv\"",
+                "summary \"$bashcurl -s https://example.c\"",
+                "summary \"Eeditservice/entrypoint.goreco\"",
+                "summary \"Rreadservice/entrypoint.goreco\"",
+                "button \"record 2\"",
+                "button label=\"Copy message: Pi, record 2",
+                "button \"record 1\"",
+                "button label=\"Copy message: your message",
+                "button \"All 18\" pressed=true",
+                "button#view-tab-chat role=tab \"Chat\" sel",
+                "button \"Sessions · Add /healthz and ru\"",
+                "summary \"Presentation only · display on\"",
+                "button \"System\" pressed=true",
+                "button \"Governance\"",
+                "a \"Skip to the chat transcript\""
+              ]
+            },
+            "covered": 0,
+            "end": {
+              "scrollY": 995,
+              "maxScroll": 995,
+              "mainScrollTop": 0,
+              "mainMaxScroll": 0,
+              "dock": [
+                387,
+                557
+              ],
+              "dockFullyVisible": true,
+              "lastMessage": [
+                -411,
+                379
+              ],
+              "lastMessageCovered": false,
+              "footer": [
+                566,
+                610
+              ],
+              "footerCovered": false,
+              "pageScrolls": true,
+              "overflowX": 0
+            }
+          },
+          {
+            "size": "390x844",
+            "forward": {
+              "stops": 20,
+              "measured": 20,
+              "end": "document end",
+              "list": [
+                "a \"Skip to the chat transcript\"",
+                "button \"Governance\"",
+                "button \"System\" pressed=true",
+                "summary \"Presentation only · display on\"",
+                "button \"Sessions · Add /healthz and ru\"",
+                "button#view-tab-chat role=tab \"Chat\" sel",
+                "button \"All 18\" pressed=true",
+                "button label=\"Copy message: your message",
+                "button \"record 1\"",
+                "button label=\"Copy message: Pi, record 2",
+                "button \"record 2\"",
+                "summary \"Rreadservice/entrypoint.goreco\"",
+                "summary \"Eeditservice/entrypoint.goreco\"",
+                "summary \"$bashcurl -s https://example.c\"",
+                "summary \"$bashgo test ./...record 14unv\"",
+                "summary \"$bashgo test -race ./...record\"",
+                "button label=\"Copy message: Pi, record 1",
+                "button \"record 18\"",
+                "textarea label=\"Message Pi\"",
+                "button label=\"Send: not available in thi"
+              ]
+            },
+            "backward": {
+              "stops": 20,
+              "measured": 20,
+              "end": "document end",
+              "list": [
+                "button label=\"Send: not available in thi",
+                "textarea label=\"Message Pi\"",
+                "button \"record 18\"",
+                "button label=\"Copy message: Pi, record 1",
+                "summary \"$bashgo test -race ./...record\"",
+                "summary \"$bashgo test ./...record 14unv\"",
+                "summary \"$bashcurl -s https://example.c\"",
+                "summary \"Eeditservice/entrypoint.goreco\"",
+                "summary \"Rreadservice/entrypoint.goreco\"",
+                "button \"record 2\"",
+                "button label=\"Copy message: Pi, record 2",
+                "button \"record 1\"",
+                "button label=\"Copy message: your message",
+                "button \"All 18\" pressed=true",
+                "button#view-tab-chat role=tab \"Chat\" sel",
+                "button \"Sessions · Add /healthz and ru\"",
+                "summary \"Presentation only · display on\"",
+                "button \"System\" pressed=true",
+                "button \"Governance\"",
+                "a \"Skip to the chat transcript\""
+              ]
+            },
+            "covered": 0,
+            "end": {
+              "scrollY": 765,
+              "maxScroll": 765,
+              "mainScrollTop": 0,
+              "mainMaxScroll": 0,
+              "dock": [
+                591,
+                761
+              ],
+              "dockFullyVisible": true,
+              "lastMessage": [
+                -207,
+                583
+              ],
+              "lastMessageCovered": false,
+              "footer": [
+                770,
+                814
+              ],
+              "footerCovered": false,
+              "pageScrolls": true,
+              "overflowX": 0
+            }
+          },
+          {
+            "size": "412x915",
+            "forward": {
+              "stops": 20,
+              "measured": 20,
+              "end": "document end",
+              "list": [
+                "a \"Skip to the chat transcript\"",
+                "button \"Governance\"",
+                "button \"System\" pressed=true",
+                "summary \"Presentation only · display on\"",
+                "button \"Sessions · Add /healthz and ru\"",
+                "button#view-tab-chat role=tab \"Chat\" sel",
+                "button \"All 18\" pressed=true",
+                "button label=\"Copy message: your message",
+                "button \"record 1\"",
+                "button label=\"Copy message: Pi, record 2",
+                "button \"record 2\"",
+                "summary \"Rreadservice/entrypoint.goreco\"",
+                "summary \"Eeditservice/entrypoint.goreco\"",
+                "summary \"$bashcurl -s https://example.c\"",
+                "summary \"$bashgo test ./...record 14unv\"",
+                "summary \"$bashgo test -race ./...record\"",
+                "button label=\"Copy message: Pi, record 1",
+                "button \"record 18\"",
+                "textarea label=\"Message Pi\"",
+                "button label=\"Send: not available in thi"
+              ]
+            },
+            "backward": {
+              "stops": 20,
+              "measured": 20,
+              "end": "document end",
+              "list": [
+                "button label=\"Send: not available in thi",
+                "textarea label=\"Message Pi\"",
+                "button \"record 18\"",
+                "button label=\"Copy message: Pi, record 1",
+                "summary \"$bashgo test -race ./...record\"",
+                "summary \"$bashgo test ./...record 14unv\"",
+                "summary \"$bashcurl -s https://example.c\"",
+                "summary \"Eeditservice/entrypoint.goreco\"",
+                "summary \"Rreadservice/entrypoint.goreco\"",
+                "button \"record 2\"",
+                "button label=\"Copy message: Pi, record 2",
+                "button \"record 1\"",
+                "button label=\"Copy message: your message",
+                "button \"All 18\" pressed=true",
+                "button#view-tab-chat role=tab \"Chat\" sel",
+                "button \"Sessions · Add /healthz and ru\"",
+                "summary \"Presentation only · display on\"",
+                "button \"System\" pressed=true",
+                "button \"Governance\"",
+                "a \"Skip to the chat transcript\""
+              ]
+            },
+            "covered": 0,
+            "end": {
+              "scrollY": 644,
+              "maxScroll": 644,
+              "mainScrollTop": 0,
+              "mainMaxScroll": 0,
+              "dock": [
+                686,
+                832
+              ],
+              "dockFullyVisible": true,
+              "lastMessage": [
+                -112,
+                678
+              ],
+              "lastMessageCovered": false,
+              "footer": [
+                841,
+                885
+              ],
+              "footerCovered": false,
+              "pageScrolls": true,
+              "overflowX": 0
+            }
+          },
+          {
+            "size": "844x390",
+            "forward": {
+              "stops": 19,
+              "measured": 19,
+              "end": "document end",
+              "list": [
+                "a \"Skip to the chat transcript\"",
+                "button \"Governance\"",
+                "button \"System\" pressed=true",
+                "button label=\"Collapse sessions panel\" \"",
+                "button#view-tab-chat role=tab \"Chat\" sel",
+                "button \"All 18\" pressed=true",
+                "button label=\"Copy message: your message",
+                "button \"record 1\"",
+                "button label=\"Copy message: Pi, record 2",
+                "button \"record 2\"",
+                "summary \"Rreadservice/entrypoint.goreco\"",
+                "summary \"Eeditservice/entrypoint.goreco\"",
+                "summary \"$bashcurl -s https://example.c\"",
+                "summary \"$bashgo test ./...record 14unv\"",
+                "summary \"$bashgo test -race ./...record\"",
+                "button label=\"Copy message: Pi, record 1",
+                "button \"record 18\"",
+                "textarea label=\"Message Pi\"",
+                "button label=\"Send: not available in thi"
+              ]
+            },
+            "backward": {
+              "stops": 19,
+              "measured": 19,
+              "end": "document end",
+              "list": [
+                "button label=\"Send: not available in thi",
+                "textarea label=\"Message Pi\"",
+                "button \"record 18\"",
+                "button label=\"Copy message: Pi, record 1",
+                "summary \"$bashgo test -race ./...record\"",
+                "summary \"$bashgo test ./...record 14unv\"",
+                "summary \"$bashcurl -s https://example.c\"",
+                "summary \"Eeditservice/entrypoint.goreco\"",
+                "summary \"Rreadservice/entrypoint.goreco\"",
+                "button \"record 2\"",
+                "button label=\"Copy message: Pi, record 2",
+                "button \"record 1\"",
+                "button label=\"Copy message: your message",
+                "button \"All 18\" pressed=true",
+                "button#view-tab-chat role=tab \"Chat\" sel",
+                "button label=\"Collapse sessions panel\" \"",
+                "button \"System\" pressed=true",
+                "button \"Governance\"",
+                "a \"Skip to the chat transcript\""
+              ]
+            },
+            "covered": 0,
+            "end": {
+              "scrollY": 0,
+              "maxScroll": 0,
+              "mainScrollTop": 489,
+              "mainMaxScroll": 489,
+              "dock": [
+                114,
+                270
+              ],
+              "dockFullyVisible": true,
+              "lastMessage": [
+                -498,
+                106
+              ],
+              "lastMessageCovered": false,
+              "footer": [
+                285,
+                307
+              ],
+              "footerCovered": false,
+              "pageScrolls": false,
+              "overflowX": 0
+            }
+          }
+        ],
+        "summary": "360x640: 20 stops forward and 20 backward, 0 under the dock; 390x844: 20 stops forward and 20 backward, 0 under the dock; 412x915: 20 stops forward and 20 backward, 0 under the dock; 844x390: 19 stops forward and 19 backward, 0 under the dock"
+      }
+    },
+    {
+      "id": "L",
+      "name": "claim boundary: lossy wording per surface; absent versus zero",
+      "status": "PASS",
+      "ms": 4015,
+      "summary": "lossy wording read on the Chat card, the ledger row and the inspector; four absent and zero snapshots read from the page",
+      "failures": [],
+      "unverified": [],
+      "evidence": {
+        "lossyWording": {
+          "chatCard": [
+            "$bashQA lossy success for Lrecord 19unverifiedreported, output lossy, not counted as confirmedresultreported, output lossy, not counted as confirmedlossy—no result digest projectedreported by the source, not independently verified",
+            "output lossy, not counted as confirmed"
+          ],
+          "ledgerRowLabel": [
+            "output lossy, not counted as confirmed",
+            "QA lossy success for L · output lossy"
+          ],
+          "ledgerRowText": [
+            "ResultbashQA lossy success for L · output lossy07:37:10reported, output lossy, not counted as confirmedlossyunverified"
+          ],
+          "inspector": [
+            "output lossy, not counted as confirmedSummarysourceResultrecord idqa-l-lossysequence19turnturn-01toolbashtool callqa-call-l-lossyPayloadsummaryQA lossy success for LResultstatereported, output lossy, not counted as confirmedlossyyes — output completeness is not a terminal outcomedigest—Evidenceauthoritydiagnosticverificationunverified-inputindependently verifiednoTimingrecorded at07:37:10 — a clock reading, not a durationdurationunavailable — the projection records no durationrecorded timestamp2026-10-15T05:37:10"
+          ]
+        },
+        "lossyChatCard": "$bashQA lossy success for Lrecord 19unverifiedreported, output lossy, not counted as confirmedresultreported, output lossy, not counted as confirmedlossy—no result digest projectedreported by the source, not independently verified; output lossy, not counted as confirmed.output is incomplete; lossy output is not terminal evidence.QA lossy success for L07:37:10",
+        "lossyLedgerRow": {
+          "label": "Result record 19: bash. Result: succeeded, reported, not independently verified; output lossy, not counted as confirmed. QA lossy success for L · output lossy",
+          "text": "ResultbashQA lossy success for L · output lossy07:37:10reported, output lossy, not counted as confirmedlossyunverified"
+        },
+        "absent-zero true-zero-counts": {
+          "label": "a true zero: policy counts 0, digest present, no verdict records",
+          "footer": "1 turn · 3 records retained · policy verdicts 0 allow / 0 deny / 0 unknown · tokens unavailable · timing unavailable",
+          "decisionsTab": "Decisions, no decisions",
+          "railText": "Sessions‹Add /healthz and run testsPi 0.87.1 · 1 turncompleted · reported, not verifiedOther Pi sessions are not listed. This page receives one session from the"
+        },
+        "absent-zero absent-as-gateway-writes-it": {
+          "label": "absent governance as the gateway writes it: counts omitted, digest empty",
+          "footer": "1 turn · 18 records retained · policy verdicts unavailable · tokens unavailable · timing unavailable",
+          "decisionsTab": "Decisions, unavailable",
+          "railText": "Sessions‹Add /healthz and run testsPi 0.87.1 · 1 turncompleted · reported, not verifiedOther Pi sessions are not listed. This page receives one session from the"
+        },
+        "absent-zero true-zero-turns": {
+          "label": "a true zero turn count",
+          "footer": "0 turns · 18 records retained · policy verdicts 4 allow / 1 deny / 0 unknown · tokens unavailable · timing unavailable",
+          "decisionsTab": "Decisions, 1 deny verdict",
+          "railText": "Sessions‹Add /healthz and run testsPi 0.87.1 · 0 turnscompleted · reported, not verifiedOther Pi sessions are not listed. This page receives one session from th"
+        },
+        "absent-zero absent-omitted": {
+          "label": "absent fields omitted from the JSON (policy and turn count)",
+          "footer": "turns unavailable · 18 records retained · policy verdicts unavailable · tokens unavailable · timing unavailable",
+          "decisionsTab": "Decisions, unavailable",
+          "railText": "Sessions‹Add /healthz and run testsPi 0.87.1 · turns unavailablecompleted · reported, not verifiedOther Pi sessions are not listed. This page receives one sessi"
+        },
+        "summary": "lossy wording read on the Chat card, the ledger row and the inspector; four absent and zero snapshots read from the page"
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "p5-drawer-1024-open.png",
+      "sha256": "db8139e5692c1af55a1823d4eb4b3ada6427a4584213c79ccfe84c49f8f962d4",
+      "bytes": 96851,
+      "check": "D"
+    },
+    {
+      "file": "p5-1440-light-chat.png",
+      "sha256": "3cb633a6bfb9130819bfb36d587a9dea3054f5ae09436628a15138c497812255",
+      "bytes": 118770,
+      "check": "D"
+    },
+    {
+      "file": "p5-1440-light-trajectory.png",
+      "sha256": "5ba1a11174b556a006e15129feb174b19287ab6678a5b370eba94bcdd2493d99",
+      "bytes": 130343,
+      "check": "D"
+    },
+    {
+      "file": "p5-1024-light-chat.png",
+      "sha256": "9440b5fec96b8e509ab079eebe7314e16c006569b1d6a1490d7fddfd0a692f3e",
+      "bytes": 101192,
+      "check": "D"
+    },
+    {
+      "file": "p5-1024-light-trajectory.png",
+      "sha256": "8f6a3830f4844c2ae08d7d48e7d1211bc37569ee47a2ae9a4df5d13a3a25c0dc",
+      "bytes": 107264,
+      "check": "D"
+    },
+    {
+      "file": "p5-390-light-chat.png",
+      "sha256": "a08f0d27b902050f184d2a435d0995e605cc2722a1d8995d973ed8c3c3d64e0e",
+      "bytes": 51257,
+      "check": "D"
+    },
+    {
+      "file": "p5-390-light-trajectory.png",
+      "sha256": "8d4d28cb52fec61e0a5a284cc36f3036ff19072c87c0e210efe622b4999fcf90",
+      "bytes": 45280,
+      "check": "D"
+    },
+    {
+      "file": "p5-1440-dark-chat.png",
+      "sha256": "77f0478c5efa467fd403409586f9f0cd670d11c84014eb3584af2174e117983f",
+      "bytes": 119978,
+      "check": "D"
+    },
+    {
+      "file": "p5-1440-dark-trajectory.png",
+      "sha256": "d4602bf8470cd4e28e14c3ef8c841fcf9f5ec0809e228febd9065850f381884f",
+      "bytes": 132375,
+      "check": "D"
+    },
+    {
+      "file": "p5-1024-dark-chat.png",
+      "sha256": "f1ac8f2773a2c2342c38a431cc8df6e0199f69c63952cbe9f5953c4d2f8f1332",
+      "bytes": 101789,
+      "check": "D"
+    },
+    {
+      "file": "p5-1024-dark-trajectory.png",
+      "sha256": "af50cd1bd413f4d623c761c951a26ed3b11f933ab8073f103bb322ccc5b4339d",
+      "bytes": 108305,
+      "check": "D"
+    },
+    {
+      "file": "p5-390-dark-chat.png",
+      "sha256": "41ea2aaae7e09c884b317f701bb9268cdc5e36a9865ddd853b1def4297178e4f",
+      "bytes": 51921,
+      "check": "D"
+    },
+    {
+      "file": "p5-390-dark-trajectory.png",
+      "sha256": "229c5e4450b783b0d25a90527b79e7a4310a66e7647077eb3b8d3beca17a804e",
+      "bytes": 46204,
+      "check": "D"
+    },
+    {
+      "file": "p5-states-light.png",
+      "sha256": "832ed11148b1a9cd2432cb440b0e2d42795c0e355dd165852efa69449cdcec1e",
+      "bytes": 123554,
+      "check": "F"
+    },
+    {
+      "file": "p5-states-dark.png",
+      "sha256": "73c22c7dfe94c466e19d16b274467fc9170933a263f519a02c87f19d234de042",
+      "bytes": 124736,
+      "check": "F"
+    },
+    {
+      "file": "p5-pill-away.png",
+      "sha256": "f794b7356af2aff3e9452d309a2cb7592c64bb99d927e7f5f76d33bccfddfe06",
+      "bytes": 112632,
+      "check": "F"
+    },
+    {
+      "file": "p5-forced-colors-trajectory.png",
+      "sha256": "a85585302bec57c66839f61bd0842850d387475f3fbdd02a5a16472a1a81a9fb",
+      "bytes": 113159,
+      "check": "H"
+    },
+    {
+      "file": "p5-points-1440-light.png",
+      "sha256": "3cb633a6bfb9130819bfb36d587a9dea3054f5ae09436628a15138c497812255",
+      "bytes": 118770,
+      "check": "J"
+    },
+    {
+      "file": "p5-points-1180-light.png",
+      "sha256": "5244ff0a14d75ec37eb3519c7a0656dac03526440e59fa290f0cf35c7ca196fc",
+      "bytes": 88830,
+      "check": "J"
+    },
+    {
+      "file": "p5-drawer-1180-light.png",
+      "sha256": "4569c70d9727682358e042c51b6b95aadc6b5cf0e6ce59a321db2cbef819f9bf",
+      "bytes": 91893,
+      "check": "J"
+    },
+    {
+      "file": "p5-points-1024-light.png",
+      "sha256": "8f7d942fbd69d317a2fbd21791a91e4ac955ceb578006993a72de142118af182",
+      "bytes": 81988,
+      "check": "J"
+    },
+    {
+      "file": "p5-drawer-1024-light.png",
+      "sha256": "1a56ed51f5942ba01b3f17dcff89930749f5eb876cd7d344b66cd3e4a3274e53",
+      "bytes": 84713,
+      "check": "J"
+    },
+    {
+      "file": "p5-points-768-light.png",
+      "sha256": "ea69a26680f96edca1e4aa1990d136435d7f98e829737b0a9130e91fa7f4a2ec",
+      "bytes": 100881,
+      "check": "J"
+    },
+    {
+      "file": "p5-drawer-768-light.png",
+      "sha256": "a162bc365e116c7922e72d5f8b5e14faba8af8904992e6012cb277c606a31f68",
+      "bytes": 81699,
+      "check": "J"
+    },
+    {
+      "file": "p5-points-390-light.png",
+      "sha256": "aa74e56d0fadd3a69c4114135a78c8d365568479d98ca7f320cf2a6fa7665ba8",
+      "bytes": 47013,
+      "check": "J"
+    },
+    {
+      "file": "p5-drawer-390-light.png",
+      "sha256": "daeac3c1da3a068116f58b948ac0b09d8931cd2f588d9c5a4cbaca0f62db2351",
+      "bytes": 31574,
+      "check": "J"
+    },
+    {
+      "file": "p5-points-360-light.png",
+      "sha256": "55a17bdc716a37ee3918d9ec40d9a4dabc761cf0bc0770219e6d6ff97e466177",
+      "bytes": 37652,
+      "check": "J"
+    },
+    {
+      "file": "p5-drawer-360-light.png",
+      "sha256": "4ea5f27c61d3a2ba905454ca928e0eedd3a4b24ad205ac5e717cd63b0521996e",
+      "bytes": 29509,
+      "check": "J"
+    },
+    {
+      "file": "p5-points-1440-dark.png",
+      "sha256": "77f0478c5efa467fd403409586f9f0cd670d11c84014eb3584af2174e117983f",
+      "bytes": 119978,
+      "check": "J"
+    },
+    {
+      "file": "p5-points-1180-dark.png",
+      "sha256": "efe9031e9bf6d7327e46fa0da41c473fa4ce76cc815a2dc0f09307d3239a7a6b",
+      "bytes": 89263,
+      "check": "J"
+    },
+    {
+      "file": "p5-drawer-1180-dark.png",
+      "sha256": "54ef8ed70a780dc35ee6038aa4c44496afa40dc1674c4fca23a7914e08d62709",
+      "bytes": 92665,
+      "check": "J"
+    },
+    {
+      "file": "p5-points-1024-dark.png",
+      "sha256": "871555d36470460ca93a749f72cada870339c3d0143ce45d58e358e4a661fbb9",
+      "bytes": 82449,
+      "check": "J"
+    },
+    {
+      "file": "p5-drawer-1024-dark.png",
+      "sha256": "8c65d3ee70c1ee7a9ad2a0fe675c49ea1c65921974339f8a4c40e64d0714ecfa",
+      "bytes": 85779,
+      "check": "J"
+    },
+    {
+      "file": "p5-points-768-dark.png",
+      "sha256": "49260f38b208c0f0674c607aff425486d17ec11711b635f4054075e7570ef5b1",
+      "bytes": 101490,
+      "check": "J"
+    },
+    {
+      "file": "p5-drawer-768-dark.png",
+      "sha256": "d6e15e9cbd2dac4c37f1e11d616473ea7b5b0566a60e8e51a890d29d09167dec",
+      "bytes": 84282,
+      "check": "J"
+    },
+    {
+      "file": "p5-points-390-dark.png",
+      "sha256": "a80693bf4312cbd94ff10823d43ba90aa7aa1c75158cd89cb407d0e94fa503a4",
+      "bytes": 47676,
+      "check": "J"
+    },
+    {
+      "file": "p5-drawer-390-dark.png",
+      "sha256": "5d44c2010d3db8452e402c0a71f4f14bfe4afd408c3fc2c7f6aaa38d40d57906",
+      "bytes": 32097,
+      "check": "J"
+    },
+    {
+      "file": "p5-points-360-dark.png",
+      "sha256": "dc04ed96f2f0e6ec7b2b01ce0973f54d4909a63e8231e3a17c34042e55be9e1c",
+      "bytes": 38402,
+      "check": "J"
+    },
+    {
+      "file": "p5-drawer-360-dark.png",
+      "sha256": "029c668503019527dee8c7e7739ef28bcb46b648218a2a8fbc3076de61eec0e1",
+      "bytes": 30196,
+      "check": "J"
+    },
+    {
+      "file": "p5-phone-360x640-dock-top.png",
+      "sha256": "dd735a2b0de5106dad59c1690a289df136b64f9742df027a289a4a5450d33330",
+      "bytes": 38818,
+      "check": "K"
+    },
+    {
+      "file": "p5-phone-360x640-dock-end.png",
+      "sha256": "6eba3e200748e86f2fb061567472ec53cf9cc44fc1204f3e491b17ab283b5b1b",
+      "bytes": 36022,
+      "check": "K"
+    },
+    {
+      "file": "p5-phone-390x844-dock-top.png",
+      "sha256": "fa152efbb28351160ab1716af19d79b6245a0348a139914f90a7a2b7fec785b5",
+      "bytes": 47305,
+      "check": "K"
+    },
+    {
+      "file": "p5-phone-390x844-dock-end.png",
+      "sha256": "a36576d4a7e76478995c3d2222ccb0b41091c7cfb52b8b2792c33db13e27c645",
+      "bytes": 47336,
+      "check": "K"
+    },
+    {
+      "file": "p5-phone-412x915-dock-top.png",
+      "sha256": "54ce8a4e9c5adefd658cb7c90f2bee88ab510a4f50d9979a7e9a5728518f2186",
+      "bytes": 53498,
+      "check": "K"
+    },
+    {
+      "file": "p5-phone-412x915-dock-end.png",
+      "sha256": "f548fefe3cd1a1625c7c2f3f3a4ea964a796cf271118b79a7ba1fe32407b00cf",
+      "bytes": 53372,
+      "check": "K"
+    },
+    {
+      "file": "p5-phone-844x390-dock-top.png",
+      "sha256": "4b5ffadc8951d7fcf430b1f7e63ee9295451db973d8738c93a3579e5e797d37f",
+      "bytes": 40718,
+      "check": "K"
+    },
+    {
+      "file": "p5-phone-844x390-dock-end.png",
+      "sha256": "d44dce66507cb82584f05d39e800ad54cb8db5532ff1b67ac4f269bf36bcc371",
+      "bytes": 34011,
+      "check": "K"
+    },
+    {
+      "file": "p5-claims-lossy-ledger.png",
+      "sha256": "50cd96ccc5e9b7c35f3cfd0fe5c74386d99c60e5973a37777414665c96267c4d",
+      "bytes": 144803,
+      "check": "L"
+    }
+  ],
+  "observation": {
+    "timelineG": [
+      {
+        "kind": "request",
+        "at": 55164,
+        "url": "/app/"
+      },
+      {
+        "kind": "response",
+        "at": 55166,
+        "url": "/app/",
+        "status": 200
+      },
+      {
+        "kind": "request",
+        "at": 55174,
+        "url": "/app/theme-boot.js"
+      },
+      {
+        "kind": "request",
+        "at": 55174,
+        "url": "/app/assets/index-BRePCEtU.js"
+      },
+      {
+        "kind": "request",
+        "at": 55174,
+        "url": "/app/assets/index-LBAMbFfS.css"
+      },
+      {
+        "kind": "response",
+        "at": 55175,
+        "url": "/app/assets/index-LBAMbFfS.css",
+        "status": 200
+      },
+      {
+        "kind": "response",
+        "at": 55175,
+        "url": "/app/theme-boot.js",
+        "status": 200
+      },
+      {
+        "kind": "response",
+        "at": 55178,
+        "url": "/app/assets/index-BRePCEtU.js",
+        "status": 200
+      },
+      {
+        "kind": "request",
+        "at": 55185,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "request",
+        "at": 55185,
+        "url": "/favicon.ico"
+      },
+      {
+        "kind": "response",
+        "at": 55186,
+        "url": "/api/v1/snapshot",
+        "status": 200
+      },
+      {
+        "kind": "response",
+        "at": 55192,
+        "url": "/favicon.ico",
+        "status": 204
+      },
+      {
+        "kind": "request",
+        "at": 55192,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "kind": "response",
+        "at": 55199,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
+        "status": 200
+      },
+      {
+        "kind": "badge",
+        "at": 55501,
+        "state": "open|connected"
+      },
+      {
+        "kind": "badge",
+        "at": 56201,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 56201,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "kind": "request",
+        "at": 56304,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 56305,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 56305,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 56307,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 57096,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 57096,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 57096,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 57097,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 58759,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 58759,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 58760,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 58761,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 61378,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 61378,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 61378,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 61379,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 66340,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 66341,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 66341,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 66342,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 72872,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 72872,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 72873,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 72874,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 78838,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 78838,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 78838,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 78839,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 88678,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 88678,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "failed",
+        "at": 88678,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 88679,
+        "state": "reconnecting|reconnecting…"
+      },
+      {
+        "kind": "request",
+        "at": 95306,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 95306,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "response",
+        "at": 95308,
+        "url": "/api/v1/snapshot",
+        "status": 200
+      },
+      {
+        "kind": "request",
+        "at": 95310,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "kind": "response",
+        "at": 95313,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
+        "status": 200
+      },
+      {
+        "kind": "badge",
+        "at": 95313,
+        "state": "open|connected"
+      },
+      {
+        "kind": "badge",
+        "at": 95384,
+        "state": "offline|offline"
+      },
+      {
+        "kind": "failed",
+        "at": 95384,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "kind": "request",
+        "at": 101391,
+        "url": "/api/v1/snapshot"
+      },
+      {
+        "kind": "badge",
+        "at": 101391,
+        "state": "connecting|connecting…"
+      },
+      {
+        "kind": "response",
+        "at": 101393,
+        "url": "/api/v1/snapshot",
+        "status": 200
+      },
+      {
+        "kind": "request",
+        "at": 101395,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "kind": "response",
+        "at": 101397,
+        "url": "/api/v1/events?cursor=fixture-2f1c%3A18",
+        "status": 200
+      },
+      {
+        "kind": "badge",
+        "at": 101397,
+        "state": "open|connected"
+      }
+    ],
+    "requests": 745,
+    "gatewayRequests": 745,
+    "externalRequests": [],
+    "consoleErrorsAndWarnings": [
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+        "url": "http://127.0.0.1:19111/api/v1/events?cursor=fixture-2f1c%3A18"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_EMPTY_RESPONSE",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+      },
+      {
+        "phase": "G",
+        "level": "error",
+        "source": "network",
+        "text": "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot"
+      }
+    ],
+    "cspViolations": [],
+    "failedRequests": [
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:19111/api/v1/events?cursor=fixture-2f1c%3A18",
+        "type": "EventSource",
+        "errorText": "net::ERR_INCOMPLETE_CHUNKED_ENCODING",
+        "t": 41182.087778
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_EMPTY_RESPONSE",
+        "t": 41182.35342
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 41183.144319
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 41184.807889
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 41187.426266
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 41192.389207
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 41198.92085
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 41204.886515
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:19111/api/v1/snapshot",
+        "type": "Fetch",
+        "errorText": "net::ERR_CONNECTION_REFUSED",
+        "t": 41214.726267
+      },
+      {
+        "phase": "G",
+        "url": "http://127.0.0.1:19111/api/v1/events?cursor=fixture-2f1c%3A18",
+        "type": "EventSource",
+        "errorText": "net::ERR_ABORTED",
+        "t": 41221.432533
+      }
+    ]
+  }
+}

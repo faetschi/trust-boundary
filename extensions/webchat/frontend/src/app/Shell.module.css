@@ -235,9 +235,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* One 4 px step between the header's rows and the workspace's rows, so the chat head starts near the header (QA4 check J). */
   .header {
-    gap: var(--space-2);
-    padding: var(--space-1h) var(--space-3);
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-3);
   }
 
   .subtitle {
@@ -266,14 +267,14 @@
     min-height: 44px;
   }
 
-  /* On a phone the footer sits above the views (Footer.module.css), so the chat's composer, pinned to the viewport's bottom,
-     is the page's last box. The column has no bottom padding, so that box ends at the bottom of the page. */
+  /* On a phone the footer closes the column after the views (the DOM order, Shell.tsx). The composer dock is sticky at the
+     viewport's bottom while the chat scrolls, and at the page's end it sits in its own place above the footer. The column has
+     no bottom padding, so the footer's bottom edge is the page's end. */
   .main {
+    gap: var(--space-1);
+    padding-top: var(--space-1);
+    padding-inline: var(--space-3);
     padding-bottom: 0;
-  }
-
-  .views {
-    order: 2;
   }
 }
 

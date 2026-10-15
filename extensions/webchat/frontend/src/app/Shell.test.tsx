@@ -245,7 +245,9 @@ describe("Shell: governance panels honour the projection", () => {
     await settle();
     click(governanceTab("Publication"));
     const section = q("section[aria-labelledby='panel-publication']");
-    expect(section.textContent).toContain("reported");
+    // The label is the state chip. The trust sentence beside it says "not independently verified" and also contains "reported",
+    // so the chip itself is read here.
+    expect(Array.from(section.querySelectorAll("[data-tone]"), (chip) => chip.textContent)).toEqual(["reported"]);
     expect(section.textContent).not.toMatch(/\bpublished\b/);
   });
 
@@ -474,7 +476,12 @@ describe("Shell: the governance inspector's record bar", () => {
     await settle();
     click(byLabel("Trajectory"));
     click(q("button[data-record-row][data-id='d1']"));
+    expect(q("aside button[aria-label^='Close record']")).toBeTruthy();
     press(document.body, "Escape");
+    // The record is cleared: the governance inspector is back, the row is not pressed, and no Close record control is left.
+    expect(q("aside").getAttribute("aria-label")).toBe("Governance inspector");
+    expect(q("button[data-record-row][data-id='d1']").getAttribute("aria-pressed")).toBe("false");
+    expect(document.querySelector("aside button[aria-label^='Close record']")).toBeNull();
     expect(q("aside").querySelectorAll("[role='tab']")).toHaveLength(5);
     expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("true");
     expect(q("aside").getAttribute("data-collapsed")).toBe("false");
@@ -586,6 +593,9 @@ describe("Shell: the open drawer's scrim closes it by a press, as Escape and Clo
     const shell = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
     expect(declarationsOf(shell, ".scrim")).toMatch(/z-index:\s*var\(--z-scrim\);/);
     expect(declarationsOf(shell, ".scrim")).toMatch(/background:\s*var\(--scrim\);/);
+    // The drawer's own rule, at the breakpoint where it is a drawer, is the token that sits above the scrim.
+    const inspector = readFileSync(resolve(process.cwd(), "src/app/Inspector.module.css"), "utf8");
+    expect(declarationsOf(mediaBlock(inspector, "@media (max-width: 1180px)"), ".inspector")).toMatch(/z-index:\s*var\(--z-overlay\);/);
   });
 });
 
@@ -594,15 +604,19 @@ describe("Shell: the open drawer is a modal dialog", () => {
     renderShell(1000);
     await settle();
     expect(q("main").hasAttribute("inert")).toBe(false);
+    // The skip link is picked by its own class, not as the first anchor, so the check cannot land on another link.
+    const skip = q("a[class*='_skip_']");
     click(byLabel("Governance"));
     expect(q("header").hasAttribute("inert")).toBe(true);
     expect(q("nav").hasAttribute("inert")).toBe(true);
     expect(q("main").hasAttribute("inert")).toBe(true);
-    expect(q("a").hasAttribute("inert")).toBe(true);
+    expect(skip.hasAttribute("inert")).toBe(true);
     expect(q("aside").hasAttribute("inert")).toBe(false);
     press(document.body, "Escape");
     expect(q("header").hasAttribute("inert")).toBe(false);
+    expect(q("nav").hasAttribute("inert")).toBe(false);
     expect(q("main").hasAttribute("inert")).toBe(false);
+    expect(skip.hasAttribute("inert")).toBe(false);
   });
 
   it("keeps the wide layout's page live: nothing is inert at a wide width, even with the column open", async () => {
@@ -650,18 +664,26 @@ describe("Shell: the open drawer is a modal dialog", () => {
 });
 
 describe("Shell: the header control and the workspace column", () => {
-  it("shows the Governance header control at every width, with aria-expanded", async () => {
+  it("shows the Governance header control at every width, with aria-expanded that says whether its panel is open", async () => {
     for (const width of [1440, 1180, 1024, 390]) {
       remount(width);
       await settle();
-      expect(byLabel("Governance").getAttribute("aria-expanded"), String(width)).not.toBeNull();
+      // Wide (above the 1180 px drawer breakpoint): the inspector column is open at first. Narrow: the drawer starts closed.
+      const wide = width > 1180;
+      expect(byLabel("Governance").getAttribute("aria-expanded"), String(width)).toBe(wide ? "true" : "false");
+      click(byLabel("Governance"));
+      expect(byLabel("Governance").getAttribute("aria-expanded"), String(width)).toBe(wide ? "false" : "true");
     }
   });
 
-  it("holds the footer inside the workspace column, under the views", async () => {
+  it("holds the footer inside the workspace column, after the views, as the column's last box", async () => {
     renderShell(1440);
     await settle();
-    expect(q("main [aria-label='Session statistics']")).toBeTruthy();
+    const main = q("main[aria-label='Workspace']");
+    const footer = q("main [role='group'][aria-label='Session statistics']").parentElement;
+    expect(footer?.parentElement).toBe(main);
+    expect(main.lastElementChild).toBe(footer);
+    expect(q("[data-view]").compareDocumentPosition(footer as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("keeps the governance tab strip in its own scroll box, so the page never scrolls sideways", () => {
@@ -681,13 +703,43 @@ describe("Shell: the phone header is compact", () => {
   });
 });
 
-describe("Shell: on a phone the pinned composer is the page's last box", () => {
-  it("orders the footer above the views, so the chat's composer, not the footer, ends the page", () => {
+describe("Shell: the phone stack keeps one 4 px step between its rows (QA4 check J)", () => {
+  it("sets the header's rows, the header's padding and the workspace's gaps to the 4 px step", () => {
+    const shell = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
+    const phone = mediaBlock(shell, "@media (max-width: 760px)");
+    expect(declarationsOf(phone, ".header")).toMatch(/gap:\s*var\(--space-1\);/);
+    expect(declarationsOf(phone, ".header")).toMatch(/padding:\s*var\(--space-1\) var\(--space-3\);/);
+    expect(declarationsOf(phone, ".main")).toMatch(/gap:\s*var\(--space-1\);/);
+    expect(declarationsOf(phone, ".main")).toMatch(/padding-top:\s*var\(--space-1\);/);
+  });
+
+  it("sets the footer's padding to the 4 px step on a phone, and leaves its text as it is", () => {
+    const footer = readFileSync(resolve(process.cwd(), "src/app/Footer.module.css"), "utf8");
+    expect(declarationsOf(mediaBlock(footer, "@media (max-width: 760px)"), ".footer")).toMatch(/padding:\s*var\(--space-1\) var\(--space-2\);/);
+  });
+});
+
+describe("Shell: the reading order is the visual order (WCAG 1.3.2)", () => {
+  it("places the footer after the views in the DOM, at every width, which is where it is drawn", async () => {
+    for (const width of [1440, 1024, 390, 360]) {
+      remount(width);
+      await settle();
+      const stats = q('[role="group"][aria-label="Session statistics"]');
+      const views = q("[data-view]");
+      expect(views.compareDocumentPosition(stats) & Node.DOCUMENT_POSITION_FOLLOWING, String(width)).toBeTruthy();
+      expect(views.contains(stats), String(width)).toBe(false);
+    }
+  });
+
+  it("moves no element with CSS order, so the DOM order is the visual order at every width", () => {
     const footer = readFileSync(resolve(process.cwd(), "src/app/Footer.module.css"), "utf8");
     const shell = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
-    expect(declarationsOf(mediaBlock(footer, "@media (max-width: 760px)"), ".footer")).toMatch(/order:\s*1;/);
-    expect(declarationsOf(mediaBlock(shell, "@media (max-width: 760px)"), ".views")).toMatch(/order:\s*2;/);
+    expect(footer).not.toMatch(/\border:/);
+    expect(shell).not.toMatch(/\border:/);
   });
+});
+
+describe("Shell: on a phone the pinned composer is the page's last box", () => {
 
   it("adds no bottom padding to the column on a phone, so the composer's bottom edge is the page's end", () => {
     const shell = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
@@ -696,10 +748,14 @@ describe("Shell: on a phone the pinned composer is the page's last box", () => {
 });
 
 describe("Shell: markup", () => {
-  it("renders no inline style attribute and no event-handler attribute", async () => {
+  it("renders no inline style attribute and no event-handler attribute, after the markup is rendered", async () => {
     renderShell(1440);
     await settle();
-    const html = mounted?.container.innerHTML ?? "";
+    const html = mounted?.container.innerHTML;
+    // The markup must be there before the absence of attributes means anything.
+    expect(html).toMatch(/aria-label="Workspace header"/);
+    expect(html).toMatch(/aria-label="Session statistics"/);
+    expect(html).toMatch(/data-view="chat"/);
     expect(html).not.toMatch(/\sstyle\s*=/);
     expect(html).not.toMatch(/\son[a-z]+\s*=/);
     expect(html).not.toMatch(/<script/i);

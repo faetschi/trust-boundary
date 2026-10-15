@@ -192,14 +192,17 @@ export interface SessionHeader {
   readonly pi_version?: string;
   readonly created_at?: string;
   readonly updated_at?: string;
-  readonly turn_count: number;
+  // Absent when the source did not state a turn count; a stated zero is zero turns. The two are never conflated.
+  readonly turn_count?: number;
 }
 
+// Each count is absent when the source did not state it, and a number (zero included) when it did. The gateway omits an
+// absent count and writes a stated one, so presence is the only signal: a digest or the other counts never stand in.
 export interface GovernancePanel {
   readonly policy_digest?: string;
-  readonly allow_count: number;
-  readonly deny_count: number;
-  readonly unknown_count: number;
+  readonly allow_count?: number;
+  readonly deny_count?: number;
+  readonly unknown_count?: number;
   readonly note?: string;
 }
 

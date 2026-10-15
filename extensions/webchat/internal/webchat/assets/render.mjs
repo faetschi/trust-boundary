@@ -269,6 +269,17 @@ function notice(variant, kind, text) {
   return node;
 }
 
+// statedCount returns a count the source stated, zero included, or null. The gateway omits an absent
+// count rather than writing zero, so presence is the only signal.
+function statedCount(value) {
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function turnsText(session) {
+  const turns = statedCount(session.turn_count);
+  return turns === null ? "turns unavailable" : `${turns} turn(s)`;
+}
+
 function renderSessions(container, state) {
   clear(container);
   const session = state.session;
@@ -286,7 +297,7 @@ function renderSessions(container, state) {
   // The rail must carry the same trust marker as the main status badge: without
   // it a replay's "completed" would appear unqualified.
   const verified = isVerifiedProjection(state);
-  row.appendChild(el("span", "sm", `${humanize(session.status)}${verified ? "" : " · reported"} · ${session.turn_count || 0} turn(s)`));
+  row.appendChild(el("span", "sm", `${humanize(session.status)}${verified ? "" : " · reported"} · ${turnsText(session)}`));
   li.appendChild(row);
   li.appendChild(el("p", "session-note", "Current session. Switching sessions requires the supervisor session service (not implemented)."));
   container.appendChild(li);
@@ -525,9 +536,9 @@ function renderInspector(refs, state) {
   const decisions = refs.panelDecisions;
   clear(decisions);
   const governance = panels.governance || {};
-  kv(decisions, "allow", String(governance.allow_count ?? 0));
-  kv(decisions, "deny", String(governance.deny_count ?? 0));
-  kv(decisions, "unknown", String(governance.unknown_count ?? 0));
+  kv(decisions, "allow", String(statedCount(governance.allow_count) ?? "unavailable"));
+  kv(decisions, "deny", String(statedCount(governance.deny_count) ?? "unavailable"));
+  kv(decisions, "unknown", String(statedCount(governance.unknown_count) ?? "unavailable"));
   kv(decisions, "policy", digestNode(governance.policy_digest));
   if (governance.note) noteRow(decisions, governance.note);
 
@@ -812,7 +823,7 @@ function renderFootStats(refs, state) {
   const counts = governanceCounts(state.items, isVerified);
   const session = state.session || {};
   const stats = [
-    `${session.turn_count || 0} turn(s) · ${state.items.length} record(s)`,
+    `${turnsText(session)} · ${state.items.length} record(s)`,
     `policy ${counts.allow} allow / ${counts.deny} deny / ${counts.unknownDecisions} unknown`,
     `${counts.reported} reported${counts.verified ? ` · ${counts.verified} verified` : ""}`,
     "token usage unavailable",

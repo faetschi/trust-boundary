@@ -296,7 +296,7 @@ describe("the ledger: one row per record, a source chip, a dot and its status", 
     const lossy = rowFor("lossy1");
     expect(lossy.querySelector("span[aria-hidden='true']")?.getAttribute("data-tone")).toBe("unknown");
     expect(lossy.getAttribute("aria-label")).toMatch(/succeeded, output lossy, not counted as confirmed/);
-    expect(lossy.textContent).toContain("succeeded (output lossy, not confirmed)");
+    expect(lossy.textContent).toContain("succeeded (output lossy, not counted as confirmed)");
     expect(lossy.textContent).toContain("lossy");
     expect(lossy.querySelector("[data-tone='ok']")).toBeNull();
     expect(lossy.querySelector("[data-tone='unknown']")).not.toBeNull();

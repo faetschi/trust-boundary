@@ -1,6 +1,6 @@
 # TBound task state
 
-Updated 2026-10-14. Implementation branch: codex/tbound-prototype.
+Updated 2026-10-15. Implementation branch: codex/tbound-prototype.
 Commit reviewed, verified increments; use explicit staging, no blanket reset.
 Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
 
@@ -16,6 +16,19 @@ Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
   ../MSE_MA_Thesis; main unchanged. Draft51 recovery trials (8 lifecycle plus
   9 incidents, x3) is not frozen/registered; E07 conformance remains separate.
 
+## FX3 state of the web chat extension (2026-10-15, uncommitted)
+
+- Footer: the last box of the workspace, under the composer, at every width (DOM order = drawn order; no CSS
+  `order`). QA check J (chat head within 160 px of the header): 98 px at 390 and 360 (was 181), 53 px at 1440 to
+  768 (was 98 to 144). Check K: 0 stops under the dock at 360x640, 390x844, 412x915 and 844x390.
+- Browser QA (`p5`, gateway in WSL, Chrome 155, `docs/webchat/qa/p5-ui-qa-receipt.json`): PASS, 12 of 12 checks, 48 screenshots.
+- Verified: Windows `gate.ps1 -Task verify` (vitest 74 files, 1258 tests, 0 skipped; sinks; deps) and `-Task go` exit 0;
+  WSL Go 1.27.1: gofmt empty, `go vet` exit 0, `go test -race -v` 60 top-level PASS and 0 SKIP (114 subtests);
+  legacy `node --test` 262 of 262 (Windows and WSL). Dist tree digest (repro form) `6d80b808…a585c5`.
+- Open for the owner: the legacy footer's policy counts are derived from loaded items (with no governance panel
+  it reads 0 allow / 0 deny / 0 unknown, where React reads unavailable); `npm run repro` needs the new dist committed.
+  Nothing is committed in this round. Details: `extensions/webchat/docs/frontend.md`, "Redesign review fixes, FX3".
+
 ## Current state of the web chat extension (as of 57e6406)
 
 - Exists: optional module `extensions/webchat/` (`tbound/webchat`, moved in 18f71e6). The core never
@@ -26,9 +39,8 @@ Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
   `6d03657`: `/` is `302` to `/app/`. `/legacy/` is deprecated and serves `/` only if the React build fails.
 - Run: `cd extensions/webchat && go run ./cmd/tbound-webchat --demo`, open `http://127.0.0.1:8791/`.
   Frontend gate: `make extension-webchat-frontend-verify` (Node 24.15.0).
-- Last verified, Linux (WSL, Go 1.27.1, Node 24.15.0): vitest 896/896 (60 files, 0 skipped); extension Go
-  `-race` 54 top-level PASS, 0 SKIP (132 incl. subtests, `-v` run in `phase3-parity.md`); legacy node
-  258/258; sink and dependency gates; boundary guard; Linux rebuild equals committed `dist/`.
+- Last verified (FX3, 2026-10-15): see the FX3 block above. Before FX3 (57e6406): vitest 896/896 on Linux;
+  extension Go `-race` 54 top-level PASS; legacy node 258/258.
 - Open: no screen-reader test; narrow drawer scrolls with the page; Jump-to-latest only in happy-dom;
   LOST shapes and the 1024 px drawer not browser-checked; dead favicon allowance in
   `extensions/webchat/scripts/csp-smoke.mjs` (at HEAD). No live projection, submission or browser auth.

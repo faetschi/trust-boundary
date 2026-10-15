@@ -13,12 +13,11 @@ function countOf(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
-// The turn count. Zero reads unavailable, not "0 turns": the gateway writes an absent turn_count as zero, and a session with
-// records has at least one turn, so a zero here is the absent value. A real session with no turns reads unavailable too; the
-// projection cannot tell the two apart.
+// The turn count: a stated count, zero included ("0 turns"), or unavailable when the source did not state one. Presence is the
+// only signal, because the gateway omits an absent turn_count and writes a stated one.
 function turnsPart(model: StatsModel): string {
   const turns = countOf(model.session?.turn_count);
-  if (turns === null || turns === 0) return "turns unavailable";
+  if (turns === null) return "turns unavailable";
   return `${turns} ${turns === 1 ? "turn" : "turns"}`;
 }
 
@@ -29,12 +28,14 @@ function recordsPart(model: StatsModel): string {
   return `${count} ${count === 1 ? "record" : "records"} retained${evicted}`;
 }
 
-// The policy verdicts. An all-zero panel with no digest is the gateway's zero for an absent panel, so it reads unavailable
-// (decisionsState); the counts are shown only when the projection states them. They are verdicts, not results: the
-// Chat view's filters name results, so the two never share a word.
+// The policy verdicts. A stated count is shown, zero included; one the source did not state reads unavailable, and so does a
+// set of stated zeros that a loaded verdict contradicts (decisionsState). They are verdicts, not results: the Chat view's
+// filters name results, so the two never share a word.
 function policyPart(model: StatsModel): string {
   const governance = model.panels?.governance;
-  if (!governance || decisionsState(governance, verdictCount(model.items)) === "absent") return "policy verdicts unavailable";
+  if (!governance) return "policy verdicts unavailable";
+  const state = decisionsState(governance, verdictCount(model.items));
+  if (state === "absent" || state === "contradicted") return "policy verdicts unavailable";
   const word = (value: unknown) => {
     const count = countOf(value);
     return count === null ? "unavailable" : String(count);

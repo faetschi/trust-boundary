@@ -318,6 +318,8 @@ export function Shell({ version }: { readonly version: string }) {
                 <TrajectoryView model={model} />
               </TabPanel>
             </div>
+            {/* The footer closes the column, under the composer, at every width. The DOM order is the drawn order, so no CSS order
+                property moves it (Shell.test.tsx). */}
             <Footer model={model} version={version} />
           </main>
           <Inspector

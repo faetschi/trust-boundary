@@ -82,7 +82,17 @@ describe("state readings: UNKNOWN stays UNKNOWN", () => {
   });
 });
 
-describe("governance counts: absent is unavailable, never zero", () => {
+// A governance panel with the given counts. An undefined count is omitted, as the gateway omits a count it does not state.
+function governance(allow?: number, deny?: number, unknown?: number, digest?: string): GovernancePanel {
+  return {
+    ...(allow === undefined ? {} : { allow_count: allow }),
+    ...(deny === undefined ? {} : { deny_count: deny }),
+    ...(unknown === undefined ? {} : { unknown_count: unknown }),
+    ...(digest === undefined ? {} : { policy_digest: digest }),
+  };
+}
+
+describe("governance counts: a stated zero reads zero, an absent count reads unavailable", () => {
   it("states the counts in words when the panel is present, each one a verdict", () => {
     expect(decisionSummary({ allow_count: 2, deny_count: 1, unknown_count: 0 })).toBe("policy verdicts 2 allow / 1 deny / 0 unknown");
   });
@@ -91,10 +101,8 @@ describe("governance counts: absent is unavailable, never zero", () => {
     expect(decisionSummary(undefined)).toBe("policy verdicts unavailable (the snapshot carries no governance panel)");
   });
 
-  it("states all-zero counts with no policy digest as unavailable: the gateway writes an absent count as zero", () => {
-    expect(decisionSummary({ allow_count: 0, deny_count: 0, unknown_count: 0 })).toBe(
-      "policy verdicts unavailable (the snapshot carries no decision counts)",
-    );
+  it("states stated zero counts as zero verdicts, with no policy digest too", () => {
+    expect(decisionSummary({ allow_count: 0, deny_count: 0, unknown_count: 0 })).toBe("policy verdicts 0 allow / 0 deny / 0 unknown");
   });
 
   it("states all-zero counts with a policy digest as zero verdicts, which is an observation", () => {
@@ -103,19 +111,40 @@ describe("governance counts: absent is unavailable, never zero", () => {
     );
   });
 
-  it("classifies a panel as counted, none (a digest and zero verdicts) or absent", () => {
-    const zero = { allow_count: 0, deny_count: 0, unknown_count: 0 };
-    expect(decisionsState({ ...zero, policy_digest: "sha256:ab" }, 0)).toBe("none");
-    expect(decisionsState(zero, 0)).toBe("absent");
-    expect(decisionsState(undefined, 0)).toBe("absent");
-    expect(decisionsState({ allow_count: 4, deny_count: 1, unknown_count: 0 }, 5)).toBe("counted");
-    expect(decisionsState({ allow_count: 1, deny_count: 0, unknown_count: 0 }, 0)).toBe("counted");
+  // Each count is absent or a stated number. A stated zero reads zero and an absent count reads unavailable; the policy
+  // digest labels the policy and changes neither, so each row reads the same with and without one.
+  const rows: ReadonlyArray<readonly [number | undefined, number | undefined, number | undefined, string]> = [
+    [undefined, undefined, undefined, "policy verdicts unavailable (the snapshot carries no decision counts)"],
+    [0, 0, 0, "policy verdicts 0 allow / 0 deny / 0 unknown"],
+    [2, 0, 0, "policy verdicts 2 allow / 0 deny / 0 unknown"],
+    [0, 2, 0, "policy verdicts 0 allow / 2 deny / 0 unknown"],
+    [0, 0, 2, "policy verdicts 0 allow / 0 deny / 2 unknown"],
+    [undefined, 0, 0, "policy verdicts unavailable allow / 0 deny / 0 unknown"],
+    [0, undefined, 0, "policy verdicts 0 allow / unavailable deny / 0 unknown"],
+    [0, 0, undefined, "policy verdicts 0 allow / 0 deny / unavailable unknown"],
+    [2, undefined, undefined, "policy verdicts 2 allow / unavailable deny / unavailable unknown"],
+    [undefined, 2, 2, "policy verdicts unavailable allow / 2 deny / 2 unknown"],
+  ];
+  it.each(rows)("reads allow %s, deny %s, unknown %s as '%s', with and without a policy digest", (allow, deny, unknown, text) => {
+    expect(decisionSummary(governance(allow, deny, unknown))).toBe(text);
+    expect(decisionSummary(governance(allow, deny, unknown, "sha256:ab"))).toBe(text);
   });
 
-  it("does not call zero counts 'none' while a loaded decision carries a verdict, the counts contradict it", () => {
-    const zero = { allow_count: 0, deny_count: 0, unknown_count: 0 };
-    expect(decisionsState({ ...zero, policy_digest: "sha256:ab" }, 2)).toBe("absent");
-    expect(decisionsState(zero, 2)).toBe("absent");
+  it("classifies a panel as counted, none (stated zeros and no verdict), contradicted or absent", () => {
+    expect(decisionsState(governance(0, 0, 0), 0)).toBe("none");
+    expect(decisionsState(governance(0, 0, 0, "sha256:ab"), 0)).toBe("none");
+    expect(decisionsState(undefined, 0)).toBe("absent");
+    expect(decisionsState(governance(), 0)).toBe("absent");
+    expect(decisionsState(governance(4, 1, 0), 5)).toBe("counted");
+    expect(decisionsState(governance(1, 0, 0), 0)).toBe("counted");
+  });
+
+  it("does not call stated zeros 'none' while a loaded decision carries a verdict: the counts contradict it", () => {
+    expect(decisionsState(governance(0, 0, 0), 2)).toBe("contradicted");
+    expect(decisionsState(governance(0, 0, 0, "sha256:ab"), 2)).toBe("contradicted");
+    expect(decisionSummary(governance(0, 0, 0), 2)).toBe(
+      "policy verdicts unavailable (the counts contradict the loaded decision records)",
+    );
   });
 
   it("a count the panel cannot state is not an absent panel: it reads part by part", () => {

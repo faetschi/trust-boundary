@@ -15,6 +15,8 @@ import {
 } from "./uiPrefs";
 
 const VALID: UiPrefs = { railCollapsed: true, inspectorCollapsed: false, panel: "publication" };
+// The defaults, pinned as literals. The read cases compare to these, not to DEFAULT_UI_PREFS, so a changed default fails here.
+const PINNED_DEFAULTS: UiPrefs = { railCollapsed: false, inspectorCollapsed: false, panel: "decisions" };
 
 function memoryStorage(initial: Record<string, string> = {}): PrefsStorage & { readonly data: Map<string, string> } {
   const data = new Map(Object.entries(initial));
@@ -86,10 +88,14 @@ describe("ui preferences: the stored shape is strict", () => {
 });
 
 describe("reading ui preferences", () => {
+  it("exports the pinned defaults, so the read cases below check the values the product ships", () => {
+    expect(DEFAULT_UI_PREFS).toEqual(PINNED_DEFAULTS);
+  });
+
   it("returns the defaults when nothing is stored, and leaves storage alone", () => {
     const storage = memoryStorage();
     const remove = vi.spyOn(storage, "removeItem");
-    expect(readUiPrefs(storage)).toEqual(DEFAULT_UI_PREFS);
+    expect(readUiPrefs(storage)).toEqual(PINNED_DEFAULTS);
     expect(remove).not.toHaveBeenCalled();
   });
 
@@ -101,14 +107,14 @@ describe("reading ui preferences", () => {
     const invalid = ["{not json", JSON.stringify({ ...VALID, panel: "sepia" }), "null", "42", JSON.stringify([VALID])];
     for (const raw of invalid) {
       const storage = memoryStorage({ [UI_PREFS_KEY]: raw });
-      expect(readUiPrefs(storage), raw).toEqual(DEFAULT_UI_PREFS);
+      expect(readUiPrefs(storage), raw).toEqual(PINNED_DEFAULTS);
       expect(storage.data.has(UI_PREFS_KEY), raw).toBe(false);
     }
   });
 
   it("reads the defaults, without throwing, when storage is missing or refuses access", () => {
-    expect(readUiPrefs(null)).toEqual(DEFAULT_UI_PREFS);
-    expect(readUiPrefs(refusing)).toEqual(DEFAULT_UI_PREFS);
+    expect(readUiPrefs(null)).toEqual(PINNED_DEFAULTS);
+    expect(readUiPrefs(refusing)).toEqual(PINNED_DEFAULTS);
   });
 
   it("still reads the defaults when clearing an invalid value is refused", () => {
@@ -118,7 +124,7 @@ describe("reading ui preferences", () => {
         throw new Error("denied");
       },
     };
-    expect(readUiPrefs(storage)).toEqual(DEFAULT_UI_PREFS);
+    expect(readUiPrefs(storage)).toEqual(PINNED_DEFAULTS);
   });
 });
 
@@ -189,9 +195,9 @@ describe("useUiPrefs", () => {
   it("keeps each update for the session when storage refuses access, and never throws", () => {
     restore = refuseWindowStorage();
     const hook = renderHook();
-    expect(hook.latest().prefs).toEqual(DEFAULT_UI_PREFS);
+    expect(hook.latest().prefs).toEqual(PINNED_DEFAULTS);
     expect(() => act(() => hook.latest().update({ inspectorCollapsed: true, panel: "recovery" }))).not.toThrow();
-    expect(hook.latest().prefs).toEqual({ ...DEFAULT_UI_PREFS, inspectorCollapsed: true, panel: "recovery" });
+    expect(hook.latest().prefs).toEqual({ ...PINNED_DEFAULTS, inspectorCollapsed: true, panel: "recovery" });
   });
 
   it("applies two updates in one batch, from the latest value of each", () => {
@@ -200,6 +206,6 @@ describe("useUiPrefs", () => {
       hook.latest().update({ railCollapsed: true });
       hook.latest().update({ inspectorCollapsed: true });
     });
-    expect(hook.latest().prefs).toEqual({ ...DEFAULT_UI_PREFS, railCollapsed: true, inspectorCollapsed: true });
+    expect(hook.latest().prefs).toEqual({ ...PINNED_DEFAULTS, railCollapsed: true, inspectorCollapsed: true });
   });
 });

@@ -424,10 +424,17 @@ func TestSubscriptionPanelsAreIsolated(t *testing.T) {
 	if after == nil || !after.Equal(observedAt) {
 		t.Fatalf("mutating a subscription changed store state: %v", after)
 	}
-	// A plain value field must not leak either.
-	subscription.Panels.Governance.AllowCount = 999
-	if got := store.Snapshot().Panels.Governance.AllowCount; got == 999 {
-		t.Fatal("mutating a subscription's value field leaked into the store")
+	// A stated count is a pointer too: mutating it through a subscription must not reach the store.
+	if subscription.Panels.Governance.AllowCount == nil || subscription.Session.TurnCount == nil {
+		t.Fatal("expected stated counts on the subscription")
+	}
+	*subscription.Panels.Governance.AllowCount = 999
+	*subscription.Session.TurnCount = 999
+	if got := store.Snapshot().Panels.Governance.AllowCount; got == nil || *got == 999 {
+		t.Fatal("mutating a subscription's allow count leaked into the store")
+	}
+	if got := store.Snapshot().Session.TurnCount; got == nil || *got == 999 {
+		t.Fatal("mutating a subscription's turn count leaked into the store")
 	}
 }
 

@@ -73,18 +73,24 @@ export function governanceRows(panel: GovernancePanel | null | undefined): Array
 }
 
 const NO_DECISION_COUNTS = "the snapshot carries no decision counts";
+const CONTRADICTED_COUNTS = "the counts contradict the loaded decision records";
 
-// Whether the panel states its decisions. The gateway writes an absent count as zero, so three zero counts are a statement
-// only when a policy digest is present and no loaded decision carries a verdict ("none"). Three zeros otherwise cannot be
-// told from an absent value, so they are "absent". A count the panel does not carry is "counted": it reads part by part.
-export type DecisionsState = "counted" | "none" | "absent";
+// Whether the panel states its decisions, by presence alone. A count the source did not state is absent (undefined or null),
+// and a stated count, zero included, is a statement. "none" is three stated zeros with no loaded verdict. "contradicted" is
+// three stated zeros beside a loaded verdict, which the records refute, so the zeros are not shown. A panel with some counts
+// stated is "counted": it reads part by part, and an absent count reads unavailable. The policy digest plays no part.
+export type DecisionsState = "counted" | "none" | "absent" | "contradicted";
 
 export function decisionsState(panel: GovernancePanel | null | undefined, verdicts: number): DecisionsState {
   if (!panel) return "absent";
-  const counts = [panel.allow_count, panel.deny_count, panel.unknown_count].map(countValue);
-  if (counts.some((count) => count === null || count > 0)) return "counted";
-  const digested = typeof panel.policy_digest === "string" && panel.policy_digest !== "";
-  return digested && verdicts === 0 ? "none" : "absent";
+  const counts = [panel.allow_count, panel.deny_count, panel.unknown_count];
+  if (counts.every(isAbsent)) return "absent";
+  if (counts.every((count) => countValue(count) === 0)) return verdicts === 0 ? "none" : "contradicted";
+  return "counted";
+}
+
+function isAbsent(value: unknown): boolean {
+  return value === undefined || value === null;
 }
 
 // The loaded records that carry a verdict. A zero count beside one of them contradicts the zero.
@@ -96,7 +102,9 @@ export function verdictCount(items: readonly ItemView[]): number {
 // unavailable, and an absent panel says why. A count the panel does not carry reads "unavailable allow", never zero.
 export function decisionSummary(panel: GovernancePanel | null | undefined, verdicts = 0): string {
   if (!panel) return `policy verdicts ${unavailableWords(NO_GOVERNANCE)}`;
-  if (decisionsState(panel, verdicts) === "absent") return `policy verdicts ${unavailableWords(NO_DECISION_COUNTS)}`;
+  const state = decisionsState(panel, verdicts);
+  if (state === "absent") return `policy verdicts ${unavailableWords(NO_DECISION_COUNTS)}`;
+  if (state === "contradicted") return `policy verdicts ${unavailableWords(CONTRADICTED_COUNTS)}`;
   const word = (value: unknown): string => {
     const count = countValue(value);
     return count === null ? "unavailable" : String(count);

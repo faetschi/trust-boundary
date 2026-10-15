@@ -133,11 +133,11 @@ describe("Inspector: the drawer at narrow widths", () => {
     wide.unmount();
   });
 
-  it("has no record tab: the strip holds the five governance tabs, and no tab is pinned", async () => {
+  it("has no record tab: the strip holds the five governance tabs, and none is selected while the record shows", async () => {
     const view = mount(<Host model={await modelWith("d1")} narrow={false} open={false} initialRecordTab />);
     const tabs = Array.from(view.container.querySelectorAll<HTMLElement>("aside [role='tab']"));
     expect(tabs).toHaveLength(5);
-    expect(tabs.map((tab) => tab.dataset.pinned ?? null)).toEqual([null, null, null, null, null]);
+    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "false", "false", "false", "false"]);
     view.unmount();
   });
 
@@ -159,7 +159,7 @@ describe("Inspector: the drawer at narrow widths", () => {
     view.unmount();
   });
 
-  it("moves focus to its heading when the focus ref is set by the shell", async () => {
+  it("attaches the focus ref to its heading, which is focusable and not a tab stop", async () => {
     const model = await modelWith();
     const headingRef = createRef<HTMLHeadingElement>();
     const view = mount(
@@ -178,8 +178,9 @@ describe("Inspector: the drawer at narrow widths", () => {
         onCloseRecord={NO_OP}
       />,
     );
-    headingRef.current?.focus();
-    expect(document.activeElement).toBe(view.container.querySelector("h2"));
+    const heading = view.container.querySelector("h2");
+    expect(headingRef.current).toBe(heading);
+    expect(heading?.tabIndex).toBe(-1);
     view.unmount();
   });
 });

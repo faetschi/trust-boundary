@@ -28,9 +28,9 @@
   font-size: var(--text-2xs);
 }
 
-/* On a phone the footer sits above the views, under the view tabs (Shell.module.css orders the views after it). */
+/* On a phone the footer keeps the 4 px step of the phone stack (Shell.module.css). */
 @media (max-width: 760px) {
   .footer {
-    order: 1;
+    padding: var(--space-1) var(--space-2);
   }
 }

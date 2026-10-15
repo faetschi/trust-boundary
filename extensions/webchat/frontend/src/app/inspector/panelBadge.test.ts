@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Containment, GovernancePanel, Panels, PublicationPanel } from "../../core/contract";
 import { decisionItem, panelsDefault } from "../../core/testing/builders";
 import { PANEL_KEYS, type PanelKey } from "../uiPrefs";
-import { panelBadge, warningBadge, type BadgeSource } from "./panelBadge";
+import { panelBadge, warningBadge, type BadgeSource, type PanelBadge } from "./panelBadge";
 
 function source(overrides: Partial<BadgeSource> = {}): BadgeSource {
   return {
@@ -19,7 +19,7 @@ function withPanels(overrides: Partial<Panels>, sourceOverrides: Partial<BadgeSo
   return source({ panels: { ...panelsDefault(), ...overrides }, ...sourceOverrides });
 }
 
-const UNAVAILABLE = { text: "unavailable", tone: "neutral" };
+const UNAVAILABLE: PanelBadge = { text: "unavailable", tone: "neutral" };
 const VERIFIED = { source: "live", verification: "structural-audit-only" } as const;
 
 describe("panel badges: words, and never the success tone", () => {
@@ -69,6 +69,13 @@ describe("the decisions badge", () => {
     });
   });
 
+  it("shows a denial above an unknown when both are stated, so the danger verdict wins", () => {
+    expect(panelBadge("decisions", withPanels({ governance: { allow_count: 0, deny_count: 1, unknown_count: 2 } }))).toEqual({
+      text: "1 deny verdict",
+      tone: "danger",
+    });
+  });
+
   it("shows an unknown count next, as a warning verdict, plural for two", () => {
     expect(panelBadge("decisions", withPanels({ governance: { allow_count: 3, deny_count: 0, unknown_count: 2 } }))).toEqual({
       text: "2 unknown verdicts",
@@ -76,9 +83,9 @@ describe("the decisions badge", () => {
     });
   });
 
-  it("reads allow-only as a neutral word, never as success", () => {
+  it("reads allow-only with its count, as a neutral word, never as success", () => {
     expect(panelBadge("decisions", withPanels({ governance: { allow_count: 4, deny_count: 0, unknown_count: 0 } }))).toEqual({
-      text: "allow only",
+      text: "4 allow verdicts only",
       tone: "neutral",
     });
   });
@@ -88,8 +95,8 @@ describe("the decisions badge", () => {
     expect(panelBadge("decisions", withPanels({ governance }))).toEqual({ text: "no decisions", tone: "neutral" });
   });
 
-  it("reads all-zero counts with no policy digest as unavailable, because the gateway writes an absent count as zero", () => {
-    expect(panelBadge("decisions", source())).toEqual(UNAVAILABLE);
+  it("reads stated zero counts as no decisions, with or without a policy digest", () => {
+    expect(panelBadge("decisions", source())).toEqual({ text: "no decisions", tone: "neutral" });
   });
 
   it("reads zero counts as unavailable when a loaded decision carries a verdict, since the counts contradict it", () => {
@@ -107,7 +114,53 @@ describe("the decisions badge", () => {
   it("reads unavailable before a projection is loaded, even when a stale panel is present", () => {
     expect(panelBadge("decisions", source({ loaded: false }))).toEqual(UNAVAILABLE);
   });
+
+  // Each panel's loaded guard hides a stale panel that would otherwise draw a word. The stale value differs from the
+  // unavailable word for its panel, so removing that panel's guard changes the badge and fails this case.
+  const STALE: Record<PanelKey, Partial<Panels>> = {
+    decisions: { governance: { allow_count: 0, deny_count: 1, unknown_count: 0 } },
+    provenance: { provenance: { available: true } },
+    publication: { publication: { state: "failed" } as PublicationPanel },
+    recovery: { recovery: { state: "recovery-required" } as Panels["recovery"] },
+    qualification: { qualification: { g1: false, h1: "unexecuted", containment: "not-established", claim_bearing: true } },
+  };
+  it.each([...PANEL_KEYS])("reads the %s badge unavailable before a load, even when its stale panel is present", (key) => {
+    expect(panelBadge(key, withPanels(STALE[key], { loaded: false }))).toEqual(UNAVAILABLE);
+  });
+
+  // A count is absent or a stated number. The badge shows the first stated verdict above zero, in the order deny,
+  // unknown, allow; an absent count the badge needs makes it unavailable. The digest changes no row.
+  const rows: ReadonlyArray<readonly [number | undefined, number | undefined, number | undefined, PanelBadge]> = [
+    [undefined, undefined, undefined, UNAVAILABLE],
+    [0, 0, 0, { text: "no decisions", tone: "neutral" }],
+    [2, 0, 0, { text: "2 allow verdicts only", tone: "neutral" }],
+    [1, 0, 0, { text: "1 allow verdict only", tone: "neutral" }],
+    [0, 2, 0, { text: "2 deny verdicts", tone: "danger" }],
+    [0, 0, 2, { text: "2 unknown verdicts", tone: "warn" }],
+    [undefined, 0, 0, UNAVAILABLE],
+    [0, undefined, 0, UNAVAILABLE],
+    [0, 0, undefined, UNAVAILABLE],
+    [2, undefined, undefined, UNAVAILABLE],
+    [undefined, 2, 2, { text: "2 deny verdicts", tone: "danger" }],
+    [2, 1, undefined, { text: "1 deny verdict", tone: "danger" }],
+  ];
+  it.each(rows)("reads allow %s, deny %s, unknown %s as %j, with and without a policy digest", (allow, deny, unknown, badge) => {
+    const bare = governance(allow, deny, unknown);
+    const digested = governance(allow, deny, unknown, "sha256:ab");
+    expect(panelBadge("decisions", withPanels({ governance: bare }))).toEqual(badge);
+    expect(panelBadge("decisions", withPanels({ governance: digested }))).toEqual(badge);
+  });
 });
+
+// A governance panel with the given counts. An undefined count is omitted, as the gateway omits a count it does not state.
+function governance(allow?: number, deny?: number, unknown?: number, digest?: string): GovernancePanel {
+  return {
+    ...(allow === undefined ? {} : { allow_count: allow }),
+    ...(deny === undefined ? {} : { deny_count: deny }),
+    ...(unknown === undefined ? {} : { unknown_count: unknown }),
+    ...(digest === undefined ? {} : { policy_digest: digest }),
+  };
+}
 
 describe("the provenance badge", () => {
   it("reads available as a neutral word, and everything else as unavailable", () => {

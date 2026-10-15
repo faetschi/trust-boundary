@@ -229,16 +229,19 @@ type SessionHeader struct {
 	PiVersion  string        `json:"pi_version,omitempty"`
 	CreatedAt  time.Time     `json:"created_at,omitempty"`
 	UpdatedAt  time.Time     `json:"updated_at,omitempty"`
-	TurnCount  int           `json:"turn_count"`
+	// TurnCount is nil when the source does not state a turn count and is omitted from the wire. A stated zero is
+	// written as 0. The two are never conflated: a client reads a missing count as unavailable.
+	TurnCount *int `json:"turn_count,omitempty"`
 }
 
 // GovernancePanel summarises policy decisions observed so far. It is a count of
-// observed decisions, not a claim about policy correctness.
+// observed decisions, not a claim about policy correctness. A nil count is not
+// stated by the source and is omitted from the wire; a stated zero is written as 0.
 type GovernancePanel struct {
 	PolicyDigest string `json:"policy_digest,omitempty"`
-	AllowCount   int    `json:"allow_count"`
-	DenyCount    int    `json:"deny_count"`
-	UnknownCount int    `json:"unknown_count"`
+	AllowCount   *int   `json:"allow_count,omitempty"`
+	DenyCount    *int   `json:"deny_count,omitempty"`
+	UnknownCount *int   `json:"unknown_count,omitempty"`
 	Note         string `json:"note,omitempty"`
 }
 

@@ -89,8 +89,29 @@ function evidenceValue(label: string): string {
   return row?.querySelector("dd")?.textContent?.trim() ?? "";
 }
 
-function postureText(): string {
-  return root().querySelector("[role='group'][aria-label='Observed posture']")?.textContent ?? "";
+// The record ids of the Trajectory ledger's rows, in order. The ledger exists only while its view is selected.
+function ledgerIds(): Array<string | null> {
+  const ledger = required(root().querySelector("#view-panel-trajectory"), "trajectory panel");
+  return Array.from(ledger.querySelectorAll("button[data-record-row]"), (row) => row.getAttribute("data-id"));
+}
+
+function postureText(): string | null {
+  return required(root().querySelector("[role='group'][aria-label='Observed posture']"), "observed posture").textContent;
+}
+
+// The tone marks inside one surface. The surface is read first, so an empty list means it has no toned mark, not that it is missing.
+function toneMarks(surface: Element): Array<string | null> {
+  return Array.from(surface.querySelectorAll("[data-tone]"), (element) => element.getAttribute("data-tone"));
+}
+
+// The element a read depends on. A missing element fails the read here; it never reads as an empty string.
+function required<T extends Element>(element: T | null | undefined, what: string): T {
+  if (!element) throw new Error(`no ${what} in the view`);
+  return element;
+}
+
+function workspace(): HTMLElement {
+  return required(root().querySelector("main[aria-label='Workspace']"), "workspace");
 }
 
 beforeEach(() => {
@@ -110,12 +131,26 @@ describe(`one verification gate on every surface: a ${source} projection never r
     snapshotOf({ source, items: [messageItem({ id: "m1", sequence: 1, role: "user", text: "list files" })] });
 
   it("refuses a streamed observed success at the boundary: no surface shows it, and the reader is told why", async () => {
-    await open(fixture());
+    // The snapshot declares the records' own scope, so the scope check admits them and only the authority rule
+    // (observed outside a live projection) refuses them. Under the default unverified scope the scope rule alone refuses.
+    await open(
+      snapshotOf({
+        source,
+        verification_scope: "structural-audit-only",
+        items: [messageItem({ id: "m1", sequence: 1, role: "user", text: "list files", verification_scope: "structural-audit-only" })],
+      }),
+    );
     expect(root().textContent).toContain("Continuity gap (invalid item)");
-    expect(root().querySelector("button[data-record-row][data-id='r1']")).toBeNull();
-    expect(chatChips().some(([text]) => text === "succeeded" || text === "reported")).toBe(false);
-    expect(postureText()).not.toMatch(/verified|reported|ALLOW|DENY/);
-    expect(root().querySelector("[role='status']")?.textContent ?? "").not.toMatch(/succeeded|verified/);
+    const status = required(root().querySelector("[role='status']"), "live status line");
+    expect(status.textContent).toContain("Continuity gap (invalid item)");
+    expect(status.textContent).not.toMatch(/succeeded|verified/);
+    // The chat holds the one admitted record, and its only chip is that record's reading.
+    expect(chatChips()).toEqual([["reported, not verified", "reported"]]);
+    expect(postureText()).toBe("no decisions or results projected");
+    // The ledger is mounted only while its view is selected: switch to it, then read its rows.
+    trajectory();
+    expect(root().querySelector("#view-panel-trajectory")).not.toBeNull();
+    expect(ledgerIds()).toEqual(["m1"]);
   });
 
   it("a success the projection admits reads as reported on every surface, never verified", async () => {
@@ -124,7 +159,10 @@ describe(`one verification gate on every surface: a ${source} projection never r
     expect(chatChips().some(([text]) => text === "succeeded")).toBe(false);
     expect(postureText()).toMatch(/reported 1/);
     expect(postureText()).not.toMatch(/verified 1/);
-    expect(root().querySelector("[role='status']")?.textContent ?? "").not.toMatch(/succeeded|verified/);
+    // The live status line exists and says the stream connected: it is read positively before the negative check.
+    const status = required(root().querySelector("[role='status']"), "live status line");
+    expect(status.textContent).toContain("Stream connected.");
+    expect(status.textContent).not.toMatch(/succeeded|verified/);
     trajectory();
     const row = rowOf("r1");
     expect(row.getAttribute("aria-label")).toMatch(/Result: succeeded, reported, not independently verified/);
@@ -176,6 +214,28 @@ describe("the conversation head and the message marks: reported, not verified un
     expect(root().querySelector("[role='log'] div[data-role='user'] p")?.textContent).toBe("User reported, not verified");
     expect(chatChips()).toContainEqual(["reported, not verified", "reported"]);
     expect(chatChips().some(([text, tone]) => tone === "ok" || text === "verified")).toBe(false);
+    // The head: the session status, read in the view's own status line, as reported, not verified.
+    const head = required(
+      Array.from(workspace().querySelectorAll("p")).find((p) => p.textContent === "completed · reported, not verified"),
+      "conversation head status",
+    );
+    expect(head.textContent).toBe("completed · reported, not verified");
+    expect(toneMarks(head)).not.toContain("ok");
+    // The posture: the observed posture group, read as its one empty line, with no success mark.
+    const posture = required(root().querySelector("[role='group'][aria-label='Observed posture']"), "observed posture");
+    expect(posture.textContent).toBe("no decisions or results projected");
+    expect(toneMarks(posture)).not.toContain("ok");
+    // The rail: the session row's status dot, reported, and no success mark anywhere in the rail.
+    const rail = required(root().querySelector("nav[aria-label='Sessions and streams']"), "sessions rail");
+    expect(required(rail.querySelector("li[aria-current='true'] [data-tone]"), "session status dot").getAttribute("data-tone")).toBe(
+      "reported",
+    );
+    expect(toneMarks(rail)).not.toContain("ok");
+    // The inspector: the governance panel's tabs carry marks, and none is a success mark.
+    const inspector = required(root().querySelector("aside[aria-label='Governance inspector']"), "governance inspector");
+    expect(inspector.textContent).toContain("Decisions · no decisions");
+    expect(toneMarks(inspector).length).toBeGreaterThan(0);
+    expect(toneMarks(inspector)).not.toContain("ok");
   });
 
   it("in a live projection, the head still reads reported, not verified, and a verified message reads verified", async () => {
@@ -193,10 +253,10 @@ describe("the conversation head and the message marks: reported, not verified un
   });
 
   it("the footer reads the statistics as one line, and no statistic is drawn in a success tone", async () => {
-    await open(snapshotOf({ source: "fixture", session, items: [] }), []);
+    // No governance counts are stated, so the verdicts read unavailable. A stated zero would read "0 allow / 0 deny / 0 unknown".
+    await open(snapshotOf({ source: "fixture", session, items: [], panels: { ...snapshotOf().panels, governance: {} } }), []);
     const line = root().querySelector("[role='group'][aria-label='Session statistics']");
     expect(line?.textContent).toMatch(/ · tokens unavailable · timing unavailable$/);
-    // No governance counts and no policy digest: the zeros are the gateway's absent value, so the verdicts read unavailable.
     expect(line?.textContent).toContain(" · policy verdicts unavailable · ");
     expect(line?.querySelector("[data-tone='ok']")).toBeNull();
   });

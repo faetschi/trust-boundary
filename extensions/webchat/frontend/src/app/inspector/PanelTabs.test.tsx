@@ -22,6 +22,8 @@ const TABS: StripTab[] = [
 let view: Mounted | null = null;
 let scrollIntoView: ReturnType<typeof vi.fn>;
 const original = Element.prototype.scrollIntoView;
+// The element each scrollIntoView call was made on, in order (the mock's `this`).
+const scrolledTo = (): unknown[] => scrollIntoView.mock.contexts;
 
 interface ShowOptions {
   readonly selected?: string | null;
@@ -126,8 +128,10 @@ describe("PanelTabs: five single-line tabs", () => {
   });
 
   it("scrolls the selected tab into view, and only when a tab is selected", () => {
-    show();
+    show({ selected: "provenance", stop: "decisions" });
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrolledTo()).toHaveLength(1);
+    expect(scrolledTo()[0]).toBe(tabsOf()[1]);
     expect(scrollIntoView).toHaveBeenCalledWith({ inline: "nearest", block: "nearest" });
     view?.unmount();
     view = null;
@@ -169,6 +173,27 @@ describe("PanelTabs: the scroll controls", () => {
     click(back as HTMLButtonElement);
     expect(strip.scrollLeft).toBe(0);
     expect(back?.disabled).toBe(true);
+  });
+
+  it("steps the strip by exactly 80% of its visible width, and back by the same step", () => {
+    show();
+    // 1000 px of scroll on a 300 px window: a step of 0.8 x 300 = 240 px is never clamped by the end.
+    const strip = laidOut(1000, 300);
+    const [back, forward] = controls();
+    click(forward as HTMLButtonElement);
+    expect(strip.scrollLeft).toBe(240);
+    click(forward as HTMLButtonElement);
+    expect(strip.scrollLeft).toBe(480);
+    click(back as HTMLButtonElement);
+    expect(strip.scrollLeft).toBe(240);
+  });
+
+  it("never steps less than 48 px, so a narrow strip still moves", () => {
+    show();
+    const strip = laidOut(1000, 40);
+    const [, forward] = controls();
+    click(forward as HTMLButtonElement);
+    expect(strip.scrollLeft).toBe(48);
   });
 
   it("keeps the controls out of the tab order and hidden from assistive technology, since the arrow keys already move between tabs", () => {

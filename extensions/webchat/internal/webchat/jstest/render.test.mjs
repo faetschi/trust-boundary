@@ -77,12 +77,19 @@ function fixtureSnapshot() {
   };
 }
 
-function renderFixture() {
+function renderFixture(snapshot = fixtureSnapshot()) {
   const refs = createRefs(REF_NAMES);
   const state = createWorkspace();
-  applySnapshot(state, fixtureSnapshot());
+  applySnapshot(state, snapshot);
   renderAll(refs, state);
   return { refs, state };
+}
+
+// kvValue returns the value cell that follows `key` in a key/value panel, or null.
+function kvValue(container, key) {
+  const cells = container.children;
+  const index = cells.findIndex((node) => node.className === "k" && node.textContent === key);
+  return index < 0 ? null : cells[index + 1].textContent;
 }
 
 test("renderAll completes without throwing and shows the transcript", () => {
@@ -281,6 +288,44 @@ test("the footer marks unrecorded metrics unavailable instead of zero", () => {
   assert.match(refs.footStats.textContent, /duration unavailable/);
   const unavailable = refs.footStats.children.filter((node) => node.dataset.unavailable === "true");
   assert.equal(unavailable.length, 2);
+});
+
+test("an absent turn_count reads unavailable in the rail and the footer, never as 0", () => {
+  const snapshot = fixtureSnapshot();
+  delete snapshot.session.turn_count;
+  const { refs } = renderFixture(snapshot);
+  assert.match(refs.sessions.textContent, /turns unavailable/);
+  assert.doesNotMatch(refs.sessions.textContent, /0 turn/);
+  assert.match(refs.footStats.textContent, /turns unavailable · 7 record\(s\)/);
+  assert.doesNotMatch(refs.footStats.textContent, /0 turn/);
+});
+
+test("a stated turn_count of 0 reads 0 turns in the rail and the footer", () => {
+  const snapshot = fixtureSnapshot();
+  snapshot.session.turn_count = 0;
+  const { refs } = renderFixture(snapshot);
+  assert.match(refs.sessions.textContent, /· 0 turn\(s\)/);
+  assert.doesNotMatch(refs.sessions.textContent, /turns unavailable/);
+  assert.match(refs.footStats.textContent, /0 turn\(s\) · 7 record\(s\)/);
+  assert.notEqual(refs.footStats.children[0].dataset.unavailable, "true");
+});
+
+test("absent governance counts read unavailable, each on its own row", () => {
+  const snapshot = fixtureSnapshot();
+  snapshot.panels.governance = { policy_digest: "sha256:aaaa" };
+  const { refs } = renderFixture(snapshot);
+  assert.equal(kvValue(refs.panelDecisions, "allow"), "unavailable");
+  assert.equal(kvValue(refs.panelDecisions, "deny"), "unavailable");
+  assert.equal(kvValue(refs.panelDecisions, "unknown"), "unavailable");
+});
+
+test("stated zero governance counts read 0, not unavailable", () => {
+  const snapshot = fixtureSnapshot();
+  snapshot.panels.governance = { allow_count: 0, deny_count: 0, unknown_count: 0, policy_digest: "sha256:aaaa" };
+  const { refs } = renderFixture(snapshot);
+  assert.equal(kvValue(refs.panelDecisions, "allow"), "0");
+  assert.equal(kvValue(refs.panelDecisions, "deny"), "0");
+  assert.equal(kvValue(refs.panelDecisions, "unknown"), "0");
 });
 
 test("the ledger ignores the timeline finding filter but honours the search", () => {

@@ -28,8 +28,10 @@ func TestProjectDevelopmentReceiptIsHonest(t *testing.T) {
 	if snapshot.Session.Status != SessionUnknown {
 		t.Fatalf("session status=%q, want unknown for an UNKNOWN settlement", snapshot.Session.Status)
 	}
-	if snapshot.Session.TurnCount != 1 {
-		t.Fatalf("turn count=%d, want 1", snapshot.Session.TurnCount)
+	// The receipt states no session turn count: provider_turns counts provider exchanges, so the count stays absent
+	// rather than being read as the one turn the lifecycle flags imply.
+	if _, present := wireSession(t, snapshot)["turn_count"]; present {
+		t.Fatal("turn_count is written for a receipt; it must be absent")
 	}
 	if snapshot.Panels.Publication.State != PublicationNotAttempted {
 		t.Fatalf("publication=%q, want not-attempted", snapshot.Panels.Publication.State)
@@ -210,8 +212,8 @@ func TestProjectNativeFixtureReceiptShape(t *testing.T) {
 	if snapshot.Panels.Qualification.ClaimBearing || snapshot.Panels.Qualification.G1 {
 		t.Fatal("native fixture receipt must not claim qualification")
 	}
-	if snapshot.Session.TurnCount != 0 {
-		t.Fatalf("turn count=%d, want 0 for a receipt with no turn fields", snapshot.Session.TurnCount)
+	if _, present := wireSession(t, snapshot)["turn_count"]; present {
+		t.Fatal("turn_count is written for a receipt with no turn fields; it must be absent")
 	}
 }
 

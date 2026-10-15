@@ -89,11 +89,11 @@ describe("the Result section: an unverified success is reported, never confirmed
     expect(view.querySelectorAll("[data-tone='ok']")).toHaveLength(0);
   });
 
-  it("shows a lossy success as succeeded (output lossy, not confirmed), on the unknown tone", () => {
+  it("shows a lossy success as succeeded (output lossy, not counted as confirmed), on the unknown tone", () => {
     const view = inspect(
       resultItem({ id: "r1", sequence: 4, tool: "bash", tool_call_id: "c1", state: "succeeded", lossy: true, authority: "observed", verification_scope: "structural-audit-only" }),
     );
-    expect(valueOf(view, "result", "state").textContent).toBe("succeeded (output lossy, not confirmed)");
+    expect(valueOf(view, "result", "state").textContent).toBe("succeeded (output lossy, not counted as confirmed)");
     expect(valueOf(view, "result", "state").querySelector("[data-tone]")?.getAttribute("data-tone")).toBe("unknown");
   });
 

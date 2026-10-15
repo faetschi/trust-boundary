@@ -10,6 +10,7 @@ import {
   COPY_UNAVAILABLE_LABEL,
   clockHm,
   copyMessage,
+  copyName,
   roleLabel,
 } from "./chrome";
 
@@ -65,5 +66,20 @@ describe("the Copy words", () => {
     expect(COPIED_LABEL).toBe("Copied");
     expect(COPY_UNAVAILABLE_LABEL).toBe("Copy unavailable");
     expect(COPIED_MS).toBe(1000);
+  });
+});
+
+describe("copyName: the accessible name of a Copy control", () => {
+  it("names the message it copies by speaker and record, so no two controls share a name", () => {
+    expect(copyName(COPY_LABEL, "assistant", 4)).toBe("Copy message: Pi, record 4");
+    expect(copyName(COPY_LABEL, "user", 3)).toBe("Copy message: your message, record 3");
+    expect(copyName(COPY_LABEL, "system", 2)).toBe("Copy message: system note, record 2");
+    expect(copyName(COPY_LABEL, "user", 3)).not.toBe(copyName(COPY_LABEL, "user", 5));
+  });
+
+  it("starts with the visible label in every state, so the words on screen are in the name", () => {
+    for (const label of [COPY_LABEL, COPIED_LABEL, COPY_UNAVAILABLE_LABEL, COPY_TRUNCATED_LABEL]) {
+      expect(copyName(label, "assistant", 1).startsWith(`${label}:`)).toBe(true);
+    }
   });
 });

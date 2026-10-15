@@ -103,13 +103,26 @@ describe("the sessions rail: one current session, honestly labelled", () => {
     view.unmount();
   });
 
-  it("reads an absent title or version as unavailable, and a zero turn count as unavailable, never as zero", async () => {
-    const bare = { session_id: "s-1", status: "completed", turn_count: 0 } as SessionHeader;
+  it("reads an absent title or version as unavailable, and an absent turn count as unavailable, never as zero", async () => {
+    const bare = { session_id: "s-1", status: "completed" } as SessionHeader;
     const view = renderRail(await loadedFrom("fixture", [], bare));
     const text = sessionRows(view.container)[0]?.textContent ?? "";
     expect(text).toContain("Untitled session unavailable");
     expect(text).toContain("Pi version unavailable · turns unavailable");
     expect(text).not.toMatch(/\b0 turns?\b/);
+    view.unmount();
+  });
+
+  // Absent is unavailable, a stated zero is 0 turns, and a stated count is its number.
+  it.each([
+    [undefined, "turns unavailable"],
+    [0, "0 turns"],
+    [1, "1 turn"],
+    [3, "3 turns"],
+  ] as const)("reads turn_count %s as '%s'", async (turns, text) => {
+    const session = { session_id: "s-1", status: "completed", title: "T", pi_version: "0.87.1", turn_count: turns } as SessionHeader;
+    const view = renderRail(await loadedFrom("fixture", [], session));
+    expect(sessionRows(view.container)[0]?.textContent ?? "").toContain(`Pi 0.87.1 · ${text}`);
     view.unmount();
   });
 

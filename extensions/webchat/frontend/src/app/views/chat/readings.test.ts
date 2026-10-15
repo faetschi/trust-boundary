@@ -69,11 +69,18 @@ describe("states: a success is reported unless it is verified", () => {
     expect(reading.note).toMatch(/not independently verified/);
   });
 
-  it("shows a verified lossy success on the unknown tone, never the success tone", () => {
+  it("shows an unverified lossy success as reported, in the ledger's words, and never as succeeded", () => {
+    const reading = stateReading("succeeded", false, true);
+    expect(reading.label).toBe("reported, output lossy, not counted as confirmed");
+    expect(reading.tone).toBe("reported");
+    expect(reading.label).not.toMatch(/^succeeded/);
+  });
+
+  it("shows a verified lossy success on the unknown tone, never the success tone, in the ledger's words", () => {
     const reading = stateReading("succeeded", true, true);
-    expect(reading.label).toBe("succeeded (output lossy, not confirmed)");
+    expect(reading.label).toBe("succeeded (output lossy, not counted as confirmed)");
     expect(reading.tone).toBe("unknown");
-    expect(reading.note).toMatch(/not counted as confirmed/);
+    expect(reading.note).toMatch(/output lossy, not counted as confirmed/);
   });
 
   it("shows a verified success as succeeded in the success tone", () => {
@@ -117,7 +124,7 @@ describe("states: a success is reported unless it is verified", () => {
   });
 
   it("marks a verified lossy success as verified evidence with lossy output, on the neutral tone and never the success tone", () => {
-    expect(LOSSY_EVIDENCE_READING.label).toBe("verified evidence, output lossy");
+    expect(LOSSY_EVIDENCE_READING.label).toBe("verified evidence, output lossy, not counted as confirmed");
     expect(LOSSY_EVIDENCE_READING.tone).toBe("idle");
     expect(LOSSY_EVIDENCE_READING.tone).not.toBe("ok");
     expect(LOSSY_EVIDENCE_READING.note).toMatch(/not confirmed/);

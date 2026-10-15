@@ -6,14 +6,15 @@
 //
 // Usage, from extensions/webchat/:
 //   node scripts/ui-qa.mjs --url http://127.0.0.1:PORT [--chrome PATH] [--only A,B,...]
-//       [--gateway-sha256 HEX] [--gateway-stop PS_COMMAND --gateway-start PS_COMMAND]
+//       [--run PREFIX] [--gateway-sha256 HEX] [--gateway-stop PS_COMMAND --gateway-start PS_COMMAND]
 //   --chrome PATH, or CHROME_BIN, selects the browser (as in csp-smoke.mjs).
 //   --gateway-stop and --gateway-start are PowerShell commands that stop and restart the
 //   gateway for check G. Without both, G is NOT VERIFIED. --gateway-sha256 is recorded in
 //   the receipt as the gateway binary's SHA-256 (computed by the operator; not verified here).
 //
 // Checks. Each prints PASS, FAIL or NOT VERIFIED with its evidence. The JSON receipt and
-// the PNG files are written to docs/webchat/qa/ (p4-ui-qa-receipt.json, p4-*.png):
+// the PNG files are written to docs/webchat/qa/ as PREFIX-ui-qa-receipt.json and PREFIX-*.png.
+// PREFIX is --run (default p5, the redesign run). The p4 files are the pre-redesign run and are not rewritten:
 //   A  csp-smoke.mjs passes with no favicon allowance (run as a child process).
 //   B  GET / ends on /app/ with the React shell; /legacy/ shows the deprecation notice;
 //      HEAD / is 302 to /app/; the served /app/assets files equal the committed dist.
@@ -28,6 +29,13 @@
 //   H  forced colours and reduced motion.
 //   I  console and network: no CSP violation, no console error or warning (the G outage
 //      window is reported separately), no request off the gateway origin.
+//   J  (redesign) the user's three points at 1440, 1180, 1024, 768, 390 and 360 px, light and
+//      dark: the Sessions rail, the Pi identity and composer, the governance tabs and drawer;
+//      keyboard, persistence, the icon rail, the composer's inert behaviour and copy.
+//   K  (redesign) the phone dock: a Tab and a Shift+Tab walk at 360x640, 390x844, 412x915 and
+//      844x390; no focused element under the dock; the last message and footer not covered.
+//   L  (redesign) the claim boundary: the lossy-success wording on the Chat card, the ledger
+//      row and the inspector; absent versus zero counts, via a snapshot rewritten in the page.
 //
 // Exit codes: 0 PASS (every selected check passed). 1 FAIL: a check failed. 2 usage error.
 // 3 NOT VERIFIED: no browser. 4 NOT VERIFIED: the gateway, DevTools or a check's
@@ -43,12 +51,13 @@ import { delimiter, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const CODE = { pass: 0, fail: 1, usage: 2, noBrowser: 3, notVerified: 4 };
-const CHECK_IDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'];
+const CHECK_IDS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
 const STALE_PORT = 8791;
 const webchatRoot = fileURLToPath(new URL('..', import.meta.url));
 const QA_DIR = fileURLToPath(new URL('../docs/webchat/qa/', import.meta.url));
 const DIST_DIR = join(webchatRoot, 'internal', 'webchat', 'dist');
-const RECEIPT_PATH = join(QA_DIR, 'p4-ui-qa-receipt.json');
+// The output prefix for the receipt and the PNGs (--run). Set once in main() before any check runs.
+let RUN = 'p5';
 const isWindows = process.platform === 'win32';
 const exe = (name) => (isWindows ? `${name}.exe` : name);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -448,6 +457,7 @@ async function navigate(path, { app = true } = {}) {
   await loaded;
   if (app) await waitFor(`Boolean(document.querySelector(${JSON.stringify(APP_HEADER)}))`, 10000);
   await sleep(300);
+  freshLoad = true;
 }
 
 async function viewport(width, height = HEIGHT) {
@@ -460,8 +470,9 @@ async function emulateMedia(features) {
   await sleep(100);
 }
 
-// Writes a viewport PNG into docs/webchat/qa/ and records its SHA-256 for the receipt.
-async function capture(file) {
+// Writes a viewport PNG into docs/webchat/qa/ as <RUN>-<name> and records its SHA-256 for the receipt.
+async function capture(name) {
+  const file = `${RUN}-${name}`;
   const { data } = await cdp.send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
   const bytes = Buffer.from(data, 'base64');
   writeFileSync(join(QA_DIR, file), bytes);
@@ -600,11 +611,11 @@ async function checkA(ctx) {
   const script = join(webchatRoot, 'scripts', 'csp-smoke.mjs');
   const run = spawnSync(process.execPath, [script, '--url', ORIGIN, '--chrome', browserBinary], { encoding: 'utf8', timeout: 300000, cwd: webchatRoot });
   const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
-  writeFileSync(join(QA_DIR, 'p4-csp-smoke-output.txt'), output);
+  writeFileSync(join(QA_DIR, `${RUN}-csp-smoke-output.txt`), output);
   ctx.note('command', `node scripts/csp-smoke.mjs --url ${ORIGIN} --chrome <browser>`);
   ctx.note('exitCode', run.status);
-  ctx.note('output', 'p4-csp-smoke-output.txt');
-  ctx.expect(run.status === 0, `csp-smoke exited ${run.status}; its output is in p4-csp-smoke-output.txt`);
+  ctx.note('output', `${RUN}-csp-smoke-output.txt`);
+  ctx.expect(run.status === 0, `csp-smoke exited ${run.status}; its output is in ${RUN}-csp-smoke-output.txt`);
   const clean = output.split('\n').filter((line) => line.startsWith('PASS ') && /0 console errors\/exceptions/.test(line));
   for (const label of ['PASS / (redirect', 'PASS /app/ (React)', 'PASS /legacy/ (deprecated']) {
     ctx.expect(clean.some((line) => line.startsWith(label)), `csp-smoke has no PASS line with 0 console errors for ${label}`);
@@ -713,6 +724,24 @@ function shortStop(s) {
   return parts.join(' ');
 }
 
+// Headless Chrome has no address bar. After a navigation the first Tab can land on the document
+// (BODY), where a browser's address bar would take that press. The walk presses again in that case
+// and counts it (swallowedFirstTabs); the order itself is still read from the page.
+let freshLoad = false;
+let swallowedFirstTabs = 0;
+async function tabPress() {
+  const first = freshLoad;
+  freshLoad = false;
+  await press('Tab');
+  let stop = await describe();
+  if (first && stop.tag === 'BODY') {
+    swallowedFirstTabs += 1;
+    await press('Tab');
+    stop = await describe();
+  }
+  return stop;
+}
+
 // Presses Tab until focus leaves the document (BODY), comes back to the first stop (a full
 // cycle), or the limit is reached. The walk records how it ended in `end`. A stop that repeats
 // the one before it means focus did not move: a trap.
@@ -720,8 +749,7 @@ async function tabWalk(limit = 80) {
   const stops = [];
   let end = 'limit reached';
   for (let i = 0; i < limit; i += 1) {
-    await press('Tab');
-    const stop = await describe();
+    const stop = await tabPress();
     stops.push(stop);
     if (stop.tag === 'BODY') {
       end = 'document end';
@@ -742,9 +770,21 @@ async function tabWalk(limit = 80) {
 
 async function tabTo(count) {
   let stop = null;
-  for (let i = 0; i < count; i += 1) {
-    await press('Tab');
-    stop = await describe();
+  for (let i = 0; i < count; i += 1) stop = await tabPress();
+  return stop;
+}
+
+// Presses Tab (or Shift+Tab) until a stop satisfies predicate, within the limit.
+async function tabUntil(predicate, { limit = 40, shift = false } = {}) {
+  let stop = null;
+  for (let i = 0; i < limit; i += 1) {
+    if (shift) {
+      await press('Tab', { shift: true });
+      stop = await describe();
+    } else {
+      stop = await tabPress();
+    }
+    if (stop.tag !== 'BODY' && predicate(stop)) return stop;
   }
   return stop;
 }
@@ -752,6 +792,7 @@ async function tabTo(count) {
 async function checkC(ctx) {
   await viewport(1440);
   await emulateMedia([{ name: 'prefers-color-scheme', value: 'light' }]);
+  swallowedFirstTabs = 0;
 
   // C1: the skip link is the first stop, is visible when focused, and Enter moves focus to its target.
   await navigate('/app/');
@@ -772,17 +813,22 @@ async function checkC(ctx) {
   const chatRingless = chatStops.filter((s) => s.tag !== 'BODY' && !s.ring).map(shortStop);
   ctx.expect(['document end', 'cycled to the first stop'].includes(chatWalk.end), `the chat Tab walk ended as "${chatWalk.end}" after ${chatStops.length} stops (a trap or a stuck focus)`);
   ctx.expect(chatRingless.length === 0, `focus stops without a visible ring: ${chatRingless.join(' | ')}`);
-  ctx.expect(chatStops[1]?.text === 'System' && chatStops[1]?.tabindex === '0', `the first theme stop is ${shortStop(chatStops[1] ?? {})}, expected the System button`);
-  ctx.expect(chatStops[2]?.id === 'view-tab-chat', `the second stop after the theme toolbar is ${shortStop(chatStops[2] ?? {})}, expected the Chat tab`);
-  ctx.expect(chatStops[3]?.pressed === 'true' && /^All/.test(chatStops[3]?.text ?? ''), `the first filter stop is ${shortStop(chatStops[3] ?? {})}, expected the pressed All filter`);
+  // Contract change (redesign): the header's Governance toggle and the rail's collapse toggle are Tab stops too, so the
+  // order is read by identity rather than by position: theme, then the Chat tab, the filters, and the tool cards.
+  const themeAt = chatStops.findIndex((s) => s.text === 'System');
+  const chatTabAt = chatStops.findIndex((s) => s.id === 'view-tab-chat');
+  const allAt = chatStops.findIndex((s) => s.pressed === 'true' && /^All/.test(s.text ?? ''));
   const firstCard = chatStops.findIndex((s) => s.tag === 'summary');
-  ctx.expect(firstCard > 3, 'no tool-card summary is reachable by Tab after the filters');
+  ctx.note('chatStopIndexes', { theme: themeAt, chatTab: chatTabAt, allFilter: allAt, firstToolCard: firstCard });
+  ctx.expect(themeAt > 0 && chatStops[themeAt]?.tabindex === '0', `the theme toolbar's stop is ${shortStop(chatStops[themeAt] ?? {})}, expected the System button with tabindex 0`);
+  ctx.expect(chatTabAt > themeAt, `the Chat tab (stop ${chatTabAt}) does not follow the theme toolbar (stop ${themeAt})`);
+  ctx.expect(allAt > chatTabAt, `the pressed All filter (stop ${allAt}) does not follow the Chat tab (stop ${chatTabAt})`);
+  ctx.expect(firstCard > allAt, 'no tool-card summary is reachable by Tab after the filters');
   ctx.note('summaryStops', chatStops.filter((s) => s.tag === 'summary').length);
 
   // C3: the theme toolbar has one Tab stop; its other buttons are reached with the arrow keys.
   await navigate('/app/');
-  await tabTo(2);
-  const onSystem = await describe();
+  const onSystem = await tabUntil((s) => s.text === 'System');
   ctx.expect(onSystem.text === 'System', `Tab did not reach the System button (got ${shortStop(onSystem)})`);
   await press('ArrowRight');
   const onLight = await describe();
@@ -797,7 +843,7 @@ async function checkC(ctx) {
 
   // C4: the view tabs. Arrows and Home/End move focus; the selected tab follows (automatic or with Enter).
   await navigate('/app/');
-  const onChatTab = await tabTo(3);
+  const onChatTab = await tabUntil((s) => s.id === 'view-tab-chat');
   ctx.expect(onChatTab.id === 'view-tab-chat', `Tab did not reach the Chat tab (got ${shortStop(onChatTab)})`);
   await press('ArrowRight');
   const onTrajTab = await describe();
@@ -820,8 +866,7 @@ async function checkC(ctx) {
 
   // C5: the chat filter toolbar. Arrows move focus and leave aria-pressed alone; Enter presses.
   await navigate('/app/');
-  await tabTo(4);
-  const onAll = await describe();
+  const onAll = await tabUntil((s) => s.pressed === 'true' && /^All/.test(s.text ?? ''));
   ctx.expect(onAll.pressed === 'true' && /^All/.test(onAll.text), `Tab did not reach the pressed All filter (got ${shortStop(onAll)})`);
   const pressedBefore = await evaluate(PRESSED_IN('Timeline filters'));
   await press('ArrowRight');
@@ -841,7 +886,7 @@ async function checkC(ctx) {
 
   // C6: tool cards are native disclosures: Enter and Space toggle them.
   await navigate('/app/');
-  const firstSummaryStop = await tabTo(5);
+  const firstSummaryStop = await tabUntil((s) => s.tag === 'summary');
   ctx.expect(firstSummaryStop.tag === 'summary', `Tab after the filters did not reach a tool card (got ${shortStop(firstSummaryStop)})`);
   const openBefore = firstSummaryStop.open;
   await press('Enter');
@@ -854,7 +899,7 @@ async function checkC(ctx) {
 
   // C7: the trajectory view: grouping toolbar, search, the ledger's roving tab stop, selection, and focus return.
   await navigate('/app/');
-  await tabTo(3);
+  await tabUntil((s) => s.id === 'view-tab-chat');
   await press('ArrowRight');
   await press('Enter');
   await press('Tab');
@@ -906,7 +951,7 @@ async function checkC(ctx) {
 
   // C7b: ArrowUp, the inspector's Close button, and a Tab walk with a record selected (the inspector's controls join the order).
   await navigate('/app/');
-  await tabTo(3);
+  await tabUntil((s) => s.id === 'view-tab-chat');
   await press('ArrowRight');
   await press('Enter');
   await press('Tab');
@@ -943,12 +988,10 @@ async function checkC(ctx) {
 
   // C8: the skip link follows the Trajectory view; then a Tab walk of that view, to the end of the document.
   await navigate('/app/');
-  await tabTo(3);
+  await tabUntil((s) => s.id === 'view-tab-chat');
   await press('ArrowRight');
   await press('Enter');
-  await press('Tab', { shift: true });
-  await press('Tab', { shift: true });
-  const trajSkip = await describe();
+  const trajSkip = await tabUntil((s) => s.tag === 'a' && /^#view-panel/.test(s.href ?? ''), { shift: true, limit: 12 });
   ctx.note('trajectorySkipLink', shortStop(trajSkip));
   ctx.expect(trajSkip.tag === 'a' && trajSkip.href === '#view-panel-trajectory', `the skip link in the Trajectory view targets ${trajSkip.href}, expected #view-panel-trajectory`);
   await press('Enter');
@@ -960,7 +1003,8 @@ async function checkC(ctx) {
   ctx.expect(['document end', 'cycled to the first stop'].includes(trajWalk.end), `the trajectory Tab walk ended as "${trajWalk.end}" after ${trajStops.length} stops (a trap or a stuck focus)`);
   const trajRingless = trajStops.filter((s) => s.tag !== 'BODY' && !s.ring).map(shortStop);
   ctx.expect(trajRingless.length === 0, `trajectory focus stops without a visible ring: ${trajRingless.join(' | ')}`);
-  ctx.note('summary', `chat Tab order: ${chatStops.length} stops, ${chatWalk.end}; trajectory: ${trajStops.length} stops, ${trajWalk.end}; ${chatRingless.length + trajRingless.length} stops without a ring`);
+  ctx.note('swallowedFirstTabs', swallowedFirstTabs);
+  ctx.note('summary', `chat Tab order: ${chatStops.length} stops, ${chatWalk.end}; trajectory: ${trajStops.length} stops, ${trajWalk.end}; ${chatRingless.length + trajRingless.length} stops without a ring; a first Tab after load landed on the document ${swallowedFirstTabs} time(s)`);
 }
 
 
@@ -1285,6 +1329,25 @@ async function gatewayAnswers() {
 
 // ---------- D: responsive ----------
 
+// The open drawer's scrim: whether it is drawn, whether the header is inert, and how many header controls it covers.
+const SCRIM_STATE = `(() => {
+  const scrim = document.querySelector('[data-testid="scrim"]');
+  const header = document.querySelector('header[aria-label="Workspace header"]');
+  const controls = header ? Array.from(header.querySelectorAll('button')) : [];
+  const under = controls.filter((b) => {
+    const r = b.getBoundingClientRect();
+    return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === scrim;
+  });
+  return { present: Boolean(scrim), headerInert: header ? header.hasAttribute('inert') : null, headerControls: controls.length, coveredByScrim: under.length };
+})()`;
+
+// A real pointer press at viewport coordinates (the scrim closes the drawer on a press, as Shell.tsx:236 says).
+async function pointerPress(x, y) {
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+  await sleep(400);
+}
+
 async function checkD(ctx) {
   await emulateMedia(LIGHT_OS);
   await navigate('/app/');
@@ -1303,17 +1366,30 @@ async function checkD(ctx) {
   ctx.note('drawer1024Open', open);
   ctx.expect(open.expanded === 'true' && open.inert !== true && open.dataOpen === 'true', `1024 px: the toggle did not open the drawer (aria-expanded ${open.expanded}, inert ${open.inert}, data-open ${open.dataOpen})`);
   ctx.expect(open.asideTop !== null && open.headerBottom !== null && open.asideTop >= open.headerBottom - 1, `1024 px: the drawer top ${open.asideTop} is above the header bottom ${open.headerBottom}`);
+  // Contract change (redesign): the open drawer is modal. A scrim covers the page, the header included, and the header is
+  // inert (Shell.tsx:233-237). The p4 expectation that header controls stay hit-testable no longer holds by design.
   const hits = await evaluate(HEADER_HIT);
   ctx.note('headerHitTestWhileOpen', hits);
-  ctx.expect(hits.length === 3 && hits.every((h) => h.hit), `1024 px: the drawer covers header controls: ${JSON.stringify(hits.filter((h) => !h.hit))}`);
-  ctx.expect(await evaluate(TOGGLE_HIT), '1024 px: the Governance toggle is not hit-testable while the drawer is open');
-  await capture('p4-drawer-1024-open.png');
+  const scrimOpen = await evaluate(SCRIM_STATE);
+  ctx.note('scrimWhileOpen', scrimOpen);
+  ctx.expect(scrimOpen.present && scrimOpen.headerInert === true && scrimOpen.coveredByScrim === scrimOpen.headerControls, `1024 px: with the drawer open the scrim is ${scrimOpen.present ? 'present' : 'missing'}, the header inert is ${scrimOpen.headerInert}, and ${scrimOpen.coveredByScrim} of ${scrimOpen.headerControls} header controls sit under the scrim`);
+  ctx.expect(hits.every((h) => !h.hit) && !(await evaluate(TOGGLE_HIT)), `1024 px: a header control is hit-testable while the modal drawer is open: ${JSON.stringify(hits.filter((h) => h.hit))}`);
+  await capture('drawer-1024-open.png');
 
   await press('Escape');
   await sleep(400);
   const escaped = await evaluate(DRAWER_STATE);
   ctx.expect(escaped.expanded === 'false' && escaped.inert === true, 'Escape did not close the drawer');
   ctx.expect(escaped.activeIsToggle === true, `Escape did not return focus to the Governance toggle (focus on ${escaped.activeText})`);
+
+  // A press on the scrim (not on the drawer) closes the drawer and returns focus to the Governance toggle.
+  await clickSelector(DRAWER_TOGGLE);
+  await sleep(300);
+  const scrimAt = await evaluate(`(() => { const r = document.querySelector('[data-testid="scrim"]').getBoundingClientRect(); return { x: Math.round(r.left + 60), y: Math.round(r.top + 300) }; })()`);
+  await pointerPress(scrimAt.x, scrimAt.y);
+  const scrimClosed = await evaluate(DRAWER_STATE);
+  ctx.note('scrimPress', { at: scrimAt, expanded: scrimClosed.expanded, inert: scrimClosed.inert, activeIsToggle: scrimClosed.activeIsToggle });
+  ctx.expect(scrimClosed.expanded === 'false' && scrimClosed.inert === true && scrimClosed.activeIsToggle === true, `a press on the scrim did not close the drawer and return focus to the toggle (expanded ${scrimClosed.expanded}, inert ${scrimClosed.inert}, focus on ${scrimClosed.activeText})`);
 
   await clickSelector(DRAWER_TOGGLE);
   await sleep(300);
@@ -1347,9 +1423,9 @@ async function checkD(ctx) {
     for (const width of [1440, 1024, 390]) {
       await viewport(width);
       await navigate('/app/');
-      shots.push(await capture(`p4-${width}-${theme.toLowerCase()}-chat.png`));
+      shots.push(await capture(`${width}-${theme.toLowerCase()}-chat.png`));
       await clickSelector('#view-tab-trajectory');
-      shots.push(await capture(`p4-${width}-${theme.toLowerCase()}-trajectory.png`));
+      shots.push(await capture(`${width}-${theme.toLowerCase()}-trajectory.png`));
     }
   }
   await evaluate('localStorage.clear()');
@@ -1478,10 +1554,10 @@ async function checkF(ctx) {
 
     await evaluate(`window.scrollTo(0, document.documentElement.scrollHeight)`);
     await sleep(300);
-    await capture('p4-states-light.png');
+    await capture('states-light.png');
     await clickIn(THEME_TOOLBAR, 'Dark');
     await sleep(300);
-    await capture('p4-states-dark.png');
+    await capture('states-dark.png');
     await clickIn(THEME_TOOLBAR, 'Light');
 
     await clickSelector('#view-tab-trajectory');
@@ -1537,12 +1613,17 @@ async function checkF(ctx) {
     ctx.expect(await waitFor(FAKE_READY, 8000), 'the stream did not reopen after the gap recovery');
     ctx.note('gap', { notices: gapNotices, count: await evaluate(ALL_COUNT), duplicateSnapshotFetches: dupSnapshots });
 
-    // Phase 4: three new records while scrolled away.
-    await evaluate(`window.scrollTo(0, 260)`);
+    // Phase 4: three new records while the reader is away from the tail. Contract change (redesign): at 1440 px the page
+    // does not scroll; the transcript is its own scroll container. The reader goes to the tail, then away from it, and the
+    // count is measured from that point (a reader who never reached the tail would count every record since load).
+    const LOG = `document.querySelector('[role="log"][aria-label="Transcript"]')`;
+    await evaluate(`(() => { const l = ${LOG}; l.scrollTop = l.scrollHeight; return true; })()`);
     await sleep(300);
-    const scrollable = await evaluate('document.documentElement.scrollHeight - window.innerHeight');
-    ctx.expect(scrollable > 200, `the page is too short to scroll away (${scrollable} px of scroll)`);
-    const scrollBefore = await evaluate('window.scrollY');
+    await evaluate(`(() => { const l = ${LOG}; l.scrollTop = 0; return true; })()`);
+    await sleep(300);
+    const scrollable = await evaluate(`(() => { const l = ${LOG}; return l.scrollHeight - l.clientHeight; })()`);
+    ctx.expect(scrollable > 200, `the transcript is too short to scroll away (${scrollable} px of scroll)`);
+    const scrollBefore = await evaluate(`${LOG}.scrollTop`);
     await evaluate(`(() => {
       window.__announce = [];
       const read = () => (document.querySelector('[role="status"][aria-live="polite"]') || {}).textContent ?? null;
@@ -1563,18 +1644,18 @@ async function checkF(ctx) {
     await emit('item', itemFrame(epoch, last.sequence + 3, { id: 'qa-pill-21', type: 'message', role: 'assistant', text: 'QA new record three' }));
     await sleep(1500);
     const pill = await evaluate(PILL);
-    const scrollAfter = await evaluate('window.scrollY');
+    const scrollAfter = await evaluate(`${LOG}.scrollTop`);
     const announced = (await evaluate('window.__announce')).filter((t) => t && /new record/.test(t));
     ctx.note('pill', { text: pill, scrollBefore, scrollAfter, announcements: announced });
     ctx.expect(pill === '3 new records · Jump to latest', `the pill reads ${JSON.stringify(pill)}, expected "3 new records · Jump to latest"`);
-    ctx.expect(scrollAfter === scrollBefore, `scroll moved from ${scrollBefore} to ${scrollAfter} while scrolled away`);
+    ctx.expect(scrollAfter === scrollBefore, `the transcript scroll moved from ${scrollBefore} to ${scrollAfter} while scrolled away`);
     ctx.expect(announced.length === 1 && /3 new records below/.test(announced[0]), `the announcer said ${JSON.stringify(announced)}, expected one "3 new records below" announcement`);
-    await capture('p4-pill-away.png');
+    await capture('pill-away.png');
     await evaluate(`(Array.from(document.querySelectorAll('button')).find((b) => /Jump to latest/.test(b.textContent)) || { click() {} }).click()`);
     await sleep(500);
-    const jumped = await evaluate(`({ y: window.scrollY, h: document.documentElement.scrollHeight, inner: window.innerHeight, focusRole: document.activeElement ? document.activeElement.getAttribute('role') : null, pill: Array.from(document.querySelectorAll('button')).some((b) => /Jump to latest/.test(b.textContent)) })`);
+    const jumped = await evaluate(`(() => { const l = ${LOG}; return { y: l.scrollTop, h: l.scrollHeight, inner: l.clientHeight, focusRole: document.activeElement ? document.activeElement.getAttribute('role') : null, pill: Array.from(document.querySelectorAll('button')).some((b) => /Jump to latest/.test(b.textContent)) }; })()`);
     ctx.note('afterJump', jumped);
-    ctx.expect(jumped.y + jumped.inner >= jumped.h - 40 && !jumped.pill, `Jump did not reach the bottom or remove the pill (${JSON.stringify(jumped)})`);
+    ctx.expect(jumped.y + jumped.inner >= jumped.h - 40 && !jumped.pill, `Jump did not reach the bottom of the transcript or remove the pill (${JSON.stringify(jumped)})`);
     ctx.expect(jumped.focusRole === 'log', `Jump left focus on role ${jumped.focusRole}, expected the transcript log`);
     ctx.note('summary', `LOST chip and "LOST, not success" row; lossy row reads "output lossy, not counted as confirmed"; DENY, UNKNOWN and ALLOW tones distinct; observed item refused (invalid item) with recovery; duplicate no-op; gap recovers once; pill "3 new records" with scroll kept, one announcement, Jump works`);
   } finally {
@@ -1693,7 +1774,7 @@ async function checkH(ctx) {
     const distinct = new Set(Object.values(forcedSignatures)).size;
     ctx.expect(!Object.values(forcedSignatures).includes('missing') && distinct === TONES.length, `under forced colours the ${TONES.length} ledger states share shapes (${distinct} distinct): ${JSON.stringify(forcedSignatures)}`);
     ctx.expect(forced.allow?.mark !== 'none' && forced.pending?.mark === 'none', `under forced colours ALLOW must keep its centred dot and PENDING must not have one: allow=${forced.allow?.mark} pending=${forced.pending?.mark}`);
-    await capture('p4-forced-colors-trajectory.png');
+    await capture('forced-colors-trajectory.png');
 
     // Reduced motion: the drawer transition must not run. A control without the preference must show one.
     await viewport(1024);
@@ -1735,6 +1816,718 @@ async function checkI(ctx) {
 }
 
 
+// ---------- J: the user's three points, at six widths, light and dark ----------
+
+const POINT_SIZES = [
+  [1440, 900],
+  [1180, 800],
+  [1024, 768],
+  [768, 1024],
+  [390, 844],
+  [360, 640],
+];
+const SESSIONS_NOTE = 'Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.';
+const COMPOSER_SECTION = 'Message Pi: not available in this build';
+const PLACEHOLDER = 'Submitting turns is not available in this build.';
+const PREFS_KEY = 'tbound.webchat.ui.v1';
+const TEXT_FN = `const t = (el) => (el ? (el.textContent || '').replace(/\\s+/g, ' ').trim() : '');`;
+const VISIBLE_FN = `const visible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };`;
+
+// Sessions rail, Pi identity, message chrome, the composer and the footer, as the page renders them now.
+const POINT_STATE = `(() => {
+  ${TEXT_FN}
+  ${VISIBLE_FN}
+  const nav = document.querySelector('nav[aria-label="Sessions and streams"]');
+  const list = document.querySelector('ul[aria-label="Sessions"]');
+  const rows = list ? Array.from(list.querySelectorAll(':scope > li')) : [];
+  const railToggle = Array.from(document.querySelectorAll('nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]')).find(visible) || null;
+  const body = document.getElementById('rail-body');
+  const conv = document.querySelector('[class*="_conversation_"]');
+  const head = conv ? conv.querySelector('h2') : null;
+  const header = document.querySelector('header[aria-label="Workspace header"]');
+  const labels = Array.from(document.querySelectorAll('button')).map((b) => t(b) + ' | ' + (b.getAttribute('aria-label') || ''));
+  const log = document.querySelector('[role="log"][aria-label="Transcript"]');
+  const logSpans = Array.from(document.querySelectorAll('[role="log"] span')).filter((s) => s.childElementCount === 0).map((s) => t(s));
+  const times = Array.from(document.querySelectorAll('[role="log"] time'));
+  const composer = document.querySelector('[data-testid="composer"]');
+  const ta = composer ? composer.querySelector('textarea') : null;
+  const send = composer ? composer.querySelector('button') : null;
+  return {
+    rail: {
+      navVisible: visible(nav),
+      headingSessions: Array.from(document.querySelectorAll('nav h2')).some((h) => t(h) === 'Sessions'),
+      rows: rows.length,
+      current: rows.length === 1 ? rows[0].getAttribute('aria-current') : null,
+      interactiveInRow: rows.length === 1 ? rows[0].querySelectorAll('button, a, input, [tabindex]').length : null,
+      note: t(nav ? nav.querySelector('[role="note"]') : null),
+      toggleName: railToggle ? railToggle.getAttribute('aria-label') || t(railToggle) : null,
+      toggleExpanded: railToggle ? railToggle.getAttribute('aria-expanded') : null,
+      bodyFound: Boolean(body),
+      bodyVisible: visible(body),
+      railWidth: nav ? Math.round(nav.getBoundingClientRect().width) : null,
+    },
+    head: {
+      title: t(head),
+      conversation: t(conv),
+      h2BelowHeader: head && header ? Math.round(head.getBoundingClientRect().top - header.getBoundingClientRect().bottom) : null,
+    },
+    messages: {
+      times: times.length,
+      timesWithDatetime: times.filter((x) => x.getAttribute('datetime')).length,
+      copy: labels.filter((x) => x.startsWith('Copy message')).length,
+      records: Array.from(document.querySelectorAll('[role="log"] button')).map((b) => t(b)).filter((x) => /^record \\d+$/.test(x)).length,
+      piLabels: logSpans.filter((x) => x === 'Pi').length,
+      userLabels: logSpans.filter((x) => x === 'User').length,
+    },
+    composer: {
+      section: composer ? composer.getAttribute('aria-label') : null,
+      inForm: composer ? composer.closest('form') !== null : null,
+      forms: document.querySelectorAll('form').length,
+      textarea: ta ? { readOnly: ta.readOnly, ariaDisabled: ta.getAttribute('aria-disabled'), placeholder: ta.getAttribute('placeholder'), value: ta.value } : null,
+      chips: composer ? Array.from(composer.querySelectorAll('span[data-tone]')).map((s) => t(s)) : [],
+      send: send ? { ariaDisabled: send.getAttribute('aria-disabled'), type: send.getAttribute('type'), label: send.getAttribute('aria-label') } : null,
+    },
+    footer: t(document.querySelector('[role="group"][aria-label="Session statistics"]')),
+    forbidden: labels.filter((x) => /^\\+ \\||Stop|Cancel|Model|Mode|Permission|New session|Attach/i.test(x)),
+    readWriteEditBash: /read, write, edit, bash/.test(document.documentElement.outerHTML),
+    newSession: /New session/i.test(document.body.innerText),
+    overflow: { scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth },
+    logVisible: visible(log),
+  };
+})()`;
+
+// The governance inspector: the inline column at 1181 px and up, the drawer below.
+const GOV_STATE = `(() => {
+  ${TEXT_FN}
+  ${VISIBLE_FN}
+  const aside = document.getElementById('governance-inspector');
+  const tabs = Array.from(document.querySelectorAll('[role="tablist"][aria-label="Governance panels"] [role="tab"]'));
+  const panels = Array.from(document.querySelectorAll('#governance-panel'));
+  const rail = document.querySelector('[role="toolbar"][aria-label="Governance panels (collapsed)"]');
+  const headerToggle = document.querySelector('header[aria-label="Workspace header"] button[aria-controls="governance-inspector"]');
+  const collapse = aside ? Array.from(aside.querySelectorAll('button')).find((b) => /^(Collapse|Expand) governance panel$/.test(b.getAttribute('aria-label') || '')) : null;
+  const ar = aside ? aside.getBoundingClientRect() : null;
+  const active = document.activeElement;
+  return {
+    asideVisible: visible(aside),
+    asideLeft: ar ? Math.round(ar.left) : null,
+    asideWidth: ar ? Math.round(ar.width) : null,
+    dataOpen: aside ? aside.getAttribute('data-open') : null,
+    inert: aside ? aside.hasAttribute('inert') : null,
+    ariaHidden: aside ? aside.getAttribute('aria-hidden') : null,
+    headerToggle: headerToggle ? { expanded: headerToggle.getAttribute('aria-expanded'), label: headerToggle.getAttribute('aria-label') || t(headerToggle) } : null,
+    activeIsHeaderToggle: active === headerToggle,
+    collapse: collapse ? collapse.getAttribute('aria-label') : null,
+    tabs: tabs.map((x) => ({ id: x.id, name: x.getAttribute('aria-label') || t(x), selected: x.getAttribute('aria-selected'), tabindex: x.getAttribute('tabindex') })),
+    panels: panels.length,
+    panelLabelledBy: panels.length ? panels[0].getAttribute('aria-labelledby') : null,
+    iconRail: rail ? { width: Math.round(rail.getBoundingClientRect().width), names: Array.from(rail.querySelectorAll('button')).map((b) => b.getAttribute('aria-label')) } : null,
+    activeId: active ? active.id : null,
+    activeLabel: active ? (active.getAttribute('aria-label') || t(active)).slice(0, 60) : null,
+    prefs: localStorage.getItem('${PREFS_KEY}'),
+  };
+})()`;
+
+const TAB_ORDER = ['Decisions', 'Provenance', 'Publication', 'Recovery', 'Qualification'];
+const tabNames = (gv) => gv.tabs.map((x) => x.name.split(',')[0].trim());
+
+async function clickByLabel(label) {
+  const ok = await evaluate(`(() => { const b = Array.from(document.querySelectorAll('button')).find((x) => x.getAttribute('aria-label') === ${JSON.stringify(label)}); if (!b) return false; b.click(); return true; })()`);
+  if (!ok) throw new Error(`no button labelled "${label}"`);
+  await sleep(300);
+}
+
+async function pressCtrlEnter() {
+  const base = { key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13, modifiers: 2 };
+  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...base });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+  await sleep(80);
+}
+
+async function checkJ(ctx) {
+  const snapshot = await getJson(`${ORIGIN}/api/v1/snapshot`);
+  const s = snapshot.session;
+  const g = snapshot.panels.governance;
+  const turns = `${s.turn_count} ${s.turn_count === 1 ? 'turn' : 'turns'}`;
+  const expectedFooter = `${turns} · ${snapshot.items.length} records retained · policy verdicts ${g.allow_count} allow / ${g.deny_count} deny / ${g.unknown_count} unknown · tokens unavailable · timing unavailable`;
+  const expectedChips = ['Observed only · no approvals', s.pi_version ? `Pi ${s.pi_version} · tools unavailable` : 'Pi version unavailable · tools unavailable'];
+  const shots = [];
+
+  await viewport(1440, 900);
+  await navigate('/app/');
+  await evaluate('localStorage.clear()');
+  for (const theme of ['light', 'dark']) {
+    for (const [width, height] of POINT_SIZES) {
+      const key = `${width}-${theme}`;
+      const p = `${width}px ${theme}`;
+      await viewport(width, height);
+      await emulateMedia(theme === 'light' ? LIGHT_OS : DARK_OS);
+      await navigate('/app/');
+      await evaluate(`localStorage.setItem(${JSON.stringify(THEME_KEY)}, ${JSON.stringify(theme)})`);
+      await navigate('/app/');
+      const st = await evaluate(POINT_STATE);
+      ctx.note(`state ${key}`, { rail: st.rail, head: st.head, messages: st.messages, composer: st.composer, footer: st.footer });
+
+      // (a) the Sessions rail
+      if (width > 760) {
+        ctx.expect(st.rail.navVisible && st.rail.headingSessions && st.rail.rows === 1 && st.rail.current === 'true' && st.rail.interactiveInRow === 0, `${p}: the Sessions rail is not one non-interactive current row (rows ${st.rail.rows}, current ${st.rail.current}, interactive ${st.rail.interactiveInRow})`);
+        ctx.expect(st.rail.note === SESSIONS_NOTE, `${p}: the "Other sessions" note reads "${st.rail.note}"`);
+        ctx.expect(/Collapse sessions panel/.test(st.rail.toggleName ?? '') && st.rail.toggleExpanded === 'true', `${p}: the rail toggle is "${st.rail.toggleName}" with aria-expanded ${st.rail.toggleExpanded}`);
+      } else {
+        ctx.expect(st.rail.navVisible && st.rail.toggleExpanded === 'false' && st.rail.bodyVisible === false, `${p}: the phone rail is not a collapsed disclosure strip (aria-expanded ${st.rail.toggleExpanded}, body visible ${st.rail.bodyVisible})`);
+        ctx.expect(st.head.h2BelowHeader !== null && st.head.h2BelowHeader <= 160, `${p}: the chat head starts ${st.head.h2BelowHeader} px below the header (plan: within 160 px)`);
+      }
+
+      // (c) Pi identity
+      ctx.expect(st.head.title === s.title, `${p}: the conversation head reads "${st.head.title}", expected "${s.title}"`);
+      ctx.expect(st.head.conversation.includes(`Pi ${s.pi_version} · ${s.session_id} · ${s.workflow_id}`) && st.head.conversation.includes('completed · reported, not verified'), `${p}: the head does not show "Pi ${s.pi_version} · ${s.session_id} · ${s.workflow_id}" and "completed · reported, not verified"`);
+      ctx.expect(st.messages.times > 0 && st.messages.timesWithDatetime === st.messages.times, `${p}: ${st.messages.times} message time(s), ${st.messages.timesWithDatetime} with a datetime attribute`);
+      ctx.expect(st.messages.copy >= 1 && st.messages.piLabels >= 1 && st.messages.userLabels >= 1, `${p}: ${st.messages.copy} Copy button(s), ${st.messages.piLabels} "Pi" and ${st.messages.userLabels} "User" label(s)`);
+      const c = st.composer;
+      ctx.expect(c.section === COMPOSER_SECTION && c.inForm === false && c.forms === 0, `${p}: composer section "${c.section}", inside a form ${c.inForm}, ${c.forms} form(s) on the page`);
+      ctx.expect(c.textarea !== null && c.textarea.readOnly && c.textarea.ariaDisabled === 'true' && c.textarea.placeholder === PLACEHOLDER && c.textarea.value === '', `${p}: the prompt field is not read-only and aria-disabled with the exact placeholder (${JSON.stringify(c.textarea)})`);
+      ctx.expect(JSON.stringify(c.chips) === JSON.stringify(expectedChips), `${p}: the chips read ${JSON.stringify(c.chips)}, expected ${JSON.stringify(expectedChips)}`);
+      ctx.expect(c.send !== null && c.send.ariaDisabled === 'true' && c.send.type === 'button', `${p}: the send control is ${JSON.stringify(c.send)}`);
+      ctx.expect(st.forbidden.length === 0 && !st.readWriteEditBash && !st.newSession, `${p}: forbidden controls ${JSON.stringify(st.forbidden)}, "read, write, edit, bash" present ${st.readWriteEditBash}, "New session" present ${st.newSession}`);
+      ctx.expect(st.footer === expectedFooter, `${p}: the footer reads "${st.footer}", expected "${expectedFooter}"`);
+      ctx.expect(st.overflow.scrollWidth <= st.overflow.clientWidth, `${p}: horizontal overflow (${JSON.stringify(st.overflow)})`);
+      ctx.expect(st.logVisible, `${p}: the transcript is not visible`);
+      shots.push(await capture(`points-${key}.png`));
+
+      // (b) the governance panel
+      if (width > 1180) {
+        const gv = await evaluate(GOV_STATE);
+        ctx.expect(gv.asideVisible && gv.panels === 1 && tabNames(gv).join('|') === TAB_ORDER.join('|'), `${p}: the governance tabs are ${JSON.stringify(tabNames(gv))} with ${gv.panels} panel(s)`);
+        ctx.expect(gv.tabs.find((x) => x.selected === 'true')?.id === 'governance-tab-decisions' && gv.tabs.filter((x) => x.tabindex === '0').length === 1, `${p}: the selected Decisions tab is not the only roving tab stop (${JSON.stringify(gv.tabs.map((x) => [x.selected, x.tabindex]))})`);
+        ctx.expect(gv.headerToggle?.expanded === 'true', `${p}: the header Governance toggle reads aria-expanded ${gv.headerToggle?.expanded}`);
+      } else {
+        const closed = await evaluate(GOV_STATE);
+        ctx.expect(closed.dataOpen === 'false' && closed.inert === true && closed.ariaHidden === 'true', `${p}: the closed drawer reads data-open ${closed.dataOpen}, inert ${closed.inert}, aria-hidden ${closed.ariaHidden}`);
+        await clickSelector(DRAWER_TOGGLE);
+        await sleep(400);
+        const open = await evaluate(GOV_STATE);
+        ctx.expect(open.dataOpen === 'true' && open.inert === false && open.panels === 1 && tabNames(open).join('|') === TAB_ORDER.join('|'), `${p}: the drawer did not open with the five tabs in order and one panel (data-open ${open.dataOpen}, ${open.panels} panel(s), tabs ${JSON.stringify(tabNames(open))})`);
+        shots.push(await capture(`drawer-${key}.png`));
+        await press('Escape');
+        await sleep(400);
+        const escaped = await evaluate(GOV_STATE);
+        ctx.expect(escaped.dataOpen === 'false' && escaped.activeIsHeaderToggle === true, `${p}: Escape did not close the drawer and return focus to the Governance toggle (data-open ${escaped.dataOpen}, focus "${escaped.activeLabel}")`);
+      }
+    }
+  }
+  ctx.note('summary', `${POINT_SIZES.length} widths x 2 themes checked for the rail, the head, messages, the composer, the footer and the governance tabs or drawer`);
+
+  // Keyboard, persistence and the icon rail, at 1440 px light.
+  await viewport(1440, 900);
+  await emulateMedia(LIGHT_OS);
+  await navigate('/app/');
+  await evaluate('localStorage.clear()');
+  await navigate('/app/');
+  const focusTab = async (id) => {
+    await evaluate(`document.getElementById(${JSON.stringify(id)}).focus()`);
+    await sleep(100);
+  };
+  await focusTab('governance-tab-decisions');
+  await press('ArrowRight');
+  let gv = await evaluate(GOV_STATE);
+  ctx.expect(gv.activeId === 'governance-tab-provenance' && gv.tabs.find((x) => x.id === 'governance-tab-provenance')?.selected === 'true', `ArrowRight on Decisions left focus on ${gv.activeId}`);
+  await press('ArrowLeft');
+  await press('ArrowLeft');
+  gv = await evaluate(GOV_STATE);
+  ctx.expect(gv.activeId === 'governance-tab-qualification' && gv.tabs.find((x) => x.id === 'governance-tab-qualification')?.selected === 'true', `ArrowLeft from Decisions did not wrap to Qualification (focus ${gv.activeId})`);
+  await press('ArrowRight');
+  gv = await evaluate(GOV_STATE);
+  ctx.expect(gv.activeId === 'governance-tab-decisions', `ArrowRight from Qualification did not wrap to Decisions (focus ${gv.activeId})`);
+  await press('End');
+  gv = await evaluate(GOV_STATE);
+  ctx.expect(gv.activeId === 'governance-tab-qualification', `End left focus on ${gv.activeId}`);
+  await press('Home');
+  gv = await evaluate(GOV_STATE);
+  ctx.expect(gv.activeId === 'governance-tab-decisions', `Home left focus on ${gv.activeId}`);
+  ctx.note('governanceKeys', 'ArrowRight, ArrowLeft (wrap), End, Home checked at 1440 px');
+
+  await press('End');
+  await press('ArrowLeft');
+  await navigate('/app/');
+  gv = await evaluate(GOV_STATE);
+  ctx.expect(gv.tabs.find((x) => x.selected === 'true')?.id === 'governance-tab-recovery', `the selected tab did not persist across a reload (selected ${gv.tabs.find((x) => x.selected === 'true')?.id})`);
+  ctx.expect(/"panel":"recovery"/.test(gv.prefs ?? ''), `the stored preferences do not hold the panel key: ${gv.prefs}`);
+  await focusTab('governance-tab-recovery');
+  await press('Home');
+
+  // Collapse to the icon rail, select from it, and keep the collapsed state across a reload.
+  await clickByLabel('Collapse governance panel');
+  gv = await evaluate(GOV_STATE);
+  ctx.note('iconRail', gv.iconRail);
+  ctx.expect(gv.iconRail !== null && gv.iconRail.width > 0 && gv.iconRail.width <= 60 && gv.iconRail.names.filter((n) => /^Open .+ panel/.test(n ?? '')).length === 5, `the collapsed inspector has no five-button icon rail (${JSON.stringify(gv.iconRail)})`);
+  const qualIcon = gv.iconRail?.names.find((n) => /^Open Qualification panel/.test(n ?? '')) ?? null;
+  ctx.expect(qualIcon !== null, `no icon names the Qualification panel with its badge (${JSON.stringify(gv.iconRail?.names)})`);
+  if (qualIcon !== null) await clickByLabel(qualIcon);
+  gv = await evaluate(GOV_STATE);
+  ctx.expect(gv.tabs.find((x) => x.id === 'governance-tab-qualification')?.selected === 'true' && gv.collapse !== null && /Collapse/.test(gv.collapse), `clicking the Qualification icon did not expand and select it (collapse ${gv.collapse}, selected ${gv.tabs.find((x) => x.selected === 'true')?.id})`);
+  ctx.expect(gv.activeId === 'governance-tab-qualification', `the icon click did not move focus to the Qualification tab (focus ${gv.activeId})`);
+  await clickByLabel('Collapse governance panel');
+  await navigate('/app/');
+  gv = await evaluate(GOV_STATE);
+  ctx.expect(gv.iconRail !== null, 'the collapsed inspector did not stay collapsed across a reload');
+  await clickByLabel('Expand governance panel');
+  await sleep(200);
+
+  // The drawer at 1024 px (keyboard): focus stays inside the open drawer for 24 Tab presses, and Escape returns focus.
+  await viewport(1024, 768);
+  await navigate('/app/');
+  await clickSelector(DRAWER_TOGGLE);
+  await sleep(400);
+  const trapEscapes = [];
+  for (let i = 0; i < 24; i += 1) {
+    await press('Tab', { shift: i % 2 === 1 });
+    const inside = await evaluate(`(() => { const a = document.getElementById('governance-inspector'); return Boolean(a && a.contains(document.activeElement)); })()`);
+    if (!inside) trapEscapes.push(i);
+  }
+  ctx.note('drawerTrapEscapes1024', trapEscapes);
+  ctx.expect(trapEscapes.length === 0, `focus left the open drawer on Tab presses ${trapEscapes.join(', ')} at 1024 px`);
+  await press('Escape');
+  await sleep(300);
+  gv = await evaluate(GOV_STATE);
+  ctx.expect(gv.dataOpen === 'false' && gv.activeIsHeaderToggle === true, `Escape after the trap did not close the drawer and return focus (data-open ${gv.dataOpen})`);
+
+  // The drawer's tablist on a phone: the arrows move focus and selection (390 px).
+  await viewport(390, 844);
+  await navigate('/app/');
+  await clickSelector(DRAWER_TOGGLE);
+  await sleep(400);
+  await evaluate(`document.getElementById('governance-tab-decisions').focus()`);
+  await press('ArrowRight');
+  gv = await evaluate(GOV_STATE);
+  ctx.expect(gv.activeId === 'governance-tab-provenance' && gv.tabs.find((x) => x.id === 'governance-tab-provenance')?.selected === 'true', `the drawer tablist at 390 px: ArrowRight left focus on ${gv.activeId}`);
+  await press('Escape');
+  await sleep(300);
+
+  // The Sessions rail's collapse toggle: by keyboard and by pointer, kept across a reload (1440 px); the phone strip (390 px).
+  const railToggleExpr = `Array.from(document.querySelectorAll('nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]')).find((x) => x.getBoundingClientRect().width > 0)`;
+  await viewport(1440, 900);
+  await navigate('/app/');
+  // The rail's state is read after it settles: the React update and the stored preference follow the key or the click.
+  const railNow = async () => (await evaluate(POINT_STATE)).rail;
+  await evaluate(`(() => { ${railToggleExpr}.focus(); return true; })()`);
+  await press('Enter');
+  const collapsedByKey = await waitFor(`(() => { const b = ${railToggleExpr}; return Boolean(b && b.getAttribute('aria-expanded') === 'false'); })()`, 3000);
+  let rs = await railNow();
+  ctx.expect(collapsedByKey && rs.toggleExpanded === 'false' && rs.bodyVisible === false, `Enter on the rail toggle left aria-expanded ${rs.toggleExpanded} and the body visible ${rs.bodyVisible}`);
+  ctx.expect(/"railCollapsed":true/.test((await evaluate(`localStorage.getItem('${PREFS_KEY}')`)) ?? ''), 'the collapsed rail is not in the stored preferences');
+  await navigate('/app/');
+  rs = await railNow();
+  ctx.expect(rs.toggleExpanded === 'false' && rs.bodyVisible === false, `the collapsed rail did not survive a reload (aria-expanded ${rs.toggleExpanded})`);
+  await evaluate(`(() => { ${railToggleExpr}.focus(); return true; })()`);
+  await press(' ');
+  await waitFor(`(() => { const b = ${railToggleExpr}; return Boolean(b && b.getAttribute('aria-expanded') === 'true'); })()`, 3000);
+  rs = await railNow();
+  ctx.expect(rs.toggleExpanded === 'true' && rs.bodyVisible === true && rs.rows === 1, `Space on the rail toggle left aria-expanded ${rs.toggleExpanded} and the body visible ${rs.bodyVisible}`);
+  await clickSelector('nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]');
+  await waitFor(`(() => { const b = ${railToggleExpr}; return Boolean(b && b.getAttribute('aria-expanded') === 'false'); })()`, 3000);
+  rs = await railNow();
+  ctx.expect(rs.toggleExpanded === 'false' && rs.bodyVisible === false, `a pointer press on the rail toggle left aria-expanded ${rs.toggleExpanded}`);
+  await viewport(390, 844);
+  await navigate('/app/');
+  rs = await railNow();
+  ctx.expect(rs.toggleExpanded === 'false' && rs.bodyVisible === false, `the phone strip is not collapsed on first load (aria-expanded ${rs.toggleExpanded})`);
+  await clickSelector('nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]');
+  await waitFor(`(() => { const b = ${railToggleExpr}; return Boolean(b && b.getAttribute('aria-expanded') === 'true'); })()`, 3000);
+  rs = await railNow();
+  ctx.expect(rs.toggleExpanded === 'true' && rs.bodyVisible === true, `the phone strip did not expand (aria-expanded ${rs.toggleExpanded}, body visible ${rs.bodyVisible})`);
+  await clickSelector('nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]');
+  await viewport(1440, 900);
+  await navigate('/app/');
+
+  // The record inspector: a record opens in the inspector; Close record returns focus to the selected governance tab (1440 px),
+  // and at 1024 px the drawer stays open after Close record (the plan's rule: Close record never closes the drawer).
+  const openRecord = async (number) => evaluate(`(() => { const b = Array.from(document.querySelectorAll('[role="log"] button')).find((x) => x.textContent.trim() === 'record ${number}'); if (!b) return false; b.click(); return true; })()`);
+  // Close record returns focus to the governance tab that was selected before the record opened.
+  const selectedTab = async () => (await evaluate(GOV_STATE)).tabs.find((x) => x.selected === 'true')?.id ?? null;
+  const beforeRecord = await selectedTab();
+  ctx.expect(await openRecord(2), 'no "record 2" button in the transcript');
+  await sleep(400);
+  const recordOpen = await evaluate(`Boolean(document.querySelector('button[aria-label="Close record 2"]'))`);
+  ctx.expect(recordOpen, 'selecting record 2 did not show its "Close record 2" control');
+  await clickByLabel('Close record 2');
+  gv = await evaluate(GOV_STATE);
+  ctx.note('closeRecordAt1440', { selectedBefore: beforeRecord, focusAfter: gv.activeId });
+  ctx.expect(gv.activeId === beforeRecord, `Close record 2 left focus on ${gv.activeId}, expected the governance tab selected before the record (${beforeRecord})`);
+  await viewport(1024, 768);
+  await navigate('/app/');
+  const beforeDrawerRecord = await selectedTab();
+  await openRecord(2);
+  await sleep(400);
+  if ((await evaluate(GOV_STATE)).dataOpen !== 'true') {
+    await clickSelector(DRAWER_TOGGLE);
+    await sleep(400);
+  }
+  const drawerRecord = await evaluate(`Boolean(document.querySelector('button[aria-label="Close record 2"]'))`);
+  ctx.expect(drawerRecord, 'at 1024 px the record 2 inspector has no "Close record 2" control in the open drawer');
+  await clickByLabel('Close record 2');
+  gv = await evaluate(GOV_STATE);
+  ctx.note('closeRecordAt1024', { selectedBefore: beforeDrawerRecord, dataOpen: gv.dataOpen, activeId: gv.activeId });
+  ctx.expect(gv.dataOpen === 'true' && gv.activeId === beforeDrawerRecord, `at 1024 px Close record 2 left the drawer data-open ${gv.dataOpen} and focus on ${gv.activeId}, expected open with focus on ${beforeDrawerRecord}`);
+  await press('Escape');
+  await sleep(300);
+  await viewport(1440, 900);
+  await navigate('/app/');
+  const recordButtons = await evaluate(`Array.from(document.querySelectorAll('[role="log"] button')).map((b) => b.textContent.trim()).filter((x) => /^record \\d+$/.test(x)).length`);
+  ctx.note('recordNumberLabels', { labelled: recordButtons, records: snapshot.items.length });
+
+  // Composer and copy, at 1440 px light: no request, no change to the value, the explanation on focus, and the copy paths.
+  await viewport(1440, 900);
+  await navigate('/app/');
+  await evaluate(`(() => { window.__clip = []; const orig = navigator.clipboard.writeText.bind(navigator.clipboard); navigator.clipboard.writeText = (text) => { window.__clip.push(String(text)); return orig(text); }; return true; })()`);
+  await evaluate(`document.querySelector('[data-testid="composer"] textarea').focus()`);
+  const focusedTa = await describe();
+  ctx.expect(focusedTa.tag === 'textarea', `focusing the composer field did not focus the textarea (focus ${shortStop(focusedTa)})`);
+  const reqBefore = observed.requests.length;
+  await cdp.send('Input.insertText', { text: 'a stray draft' }).catch(() => {});
+  await press('Enter');
+  await pressCtrlEnter();
+  const sendAt = await evaluate(`(() => { const r = document.querySelector('[data-testid="composer"] button').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+  await pointerPress(sendAt.x, sendAt.y);
+  await evaluate(`document.querySelector('[data-testid="composer"] button').focus()`);
+  await press('Enter');
+  await press(' ');
+  await sleep(300);
+  const composerRequests = observed.requests.slice(reqBefore).filter((r) => r.url.startsWith(ORIGIN) && !/\/api\/v1\/events/.test(r.url));
+  const after = await evaluate(POINT_STATE);
+  ctx.note('composerActions', { requests: composerRequests.map((r) => r.url.replace(ORIGIN, '')), value: after.composer.textarea?.value ?? null });
+  ctx.expect(composerRequests.length === 0, `${composerRequests.length} request(s) after typing, Enter, Ctrl+Enter, a click and Enter/Space on Send: ${composerRequests.map((r) => r.url.replace(ORIGIN, '')).join(', ')}`);
+  ctx.expect(after.composer.textarea?.value === '', `the read-only prompt field took the typed text: "${after.composer.textarea?.value}"`);
+  const statusText = await evaluate(`(() => { const c = document.querySelector('[data-testid="composer"]'); return c ? c.textContent : ''; })()`);
+  ctx.expect(/Not available/.test(statusText), 'pressing Send did not show the "Not available" explanation');
+
+  await evaluate(`document.querySelector('[data-testid="composer"] textarea').focus()`);
+  await press('Tab');
+  const afterTa = await describe();
+  await press('Tab');
+  const afterSend = await describe();
+  ctx.expect(afterTa.tag === 'button' && afterTa.label === 'Send: not available in this build', `Tab from the composer field went to ${shortStop(afterTa)}, expected Send`);
+  ctx.expect(afterSend.tag !== 'textarea' && afterSend.tag !== 'BODY', `Tab from Send did not leave the composer (went to ${shortStop(afterSend)})`);
+
+  const clipText = snapshot.items[0].text;
+  await evaluate(`(() => { const b = Array.from(document.querySelectorAll('[role="log"] button')).find((x) => x.textContent.trim() === 'Copy message'); b.click(); return true; })()`);
+  await sleep(300);
+  const clip = await evaluate(`({ clip: window.__clip.slice(), label: (Array.from(document.querySelectorAll('[role="log"] button')).find((x) => /^Copied$|^Copy/.test(x.textContent.trim())) || {}).textContent || null })`);
+  ctx.note('copy', { wrote: clip.clip, label: clip.label });
+  ctx.expect(clip.clip.length === 1 && clip.clip[0] === clipText, `the first Copy wrote ${JSON.stringify(clip.clip)}, expected the projected text "${clipText}"`);
+  ctx.expect(clip.label === 'Copied', `after a copy the button reads "${clip.label}", expected "Copied"`);
+  await evaluate(`(() => { navigator.clipboard.writeText = () => Promise.reject(new DOMException('denied by the QA harness', 'NotAllowedError')); return true; })()`);
+  const beforeDenied = observed.console.length;
+  await evaluate(`(() => { const b = Array.from(document.querySelectorAll('[role="log"] button')).find((x) => x.textContent.trim() === 'Copy message'); b.click(); return true; })()`);
+  await sleep(500);
+  const denied = await evaluate(`(() => { const b = Array.from(document.querySelectorAll('[role="log"] button')).find((x) => /^Copy/.test(x.textContent.trim())); return b ? b.textContent.trim() : null; })()`);
+  const deniedIssues = observed.console.slice(beforeDenied).filter((e) => ['error', 'exception'].includes(e.level));
+  ctx.note('copyDenied', { label: denied, consoleErrors: deniedIssues.length });
+  ctx.expect(denied === 'Copy unavailable', `a denied copy reads "${denied}", expected "Copy unavailable"`);
+  ctx.expect(deniedIssues.length === 0, `a denied copy logged ${deniedIssues.length} console error(s): ${deniedIssues.map((e) => e.text).join(' | ')}`);
+  await evaluate(`localStorage.clear()`);
+}
+
+// ---------- K: the phone dock: a Tab and Shift+Tab walk, with every stop measured against the dock ----------
+
+// The focused element against the sticky composer dock: overlapped by the dock's box, or with its centre area hit by the dock.
+const DOCK_COVER = `(() => {
+  const el = document.activeElement;
+  const dock = document.querySelector('[class*="_dock_"]');
+  if (!el || el === document.body || !dock) return null;
+  if (dock.contains(el)) return { covered: false, inDock: true };
+  const r = el.getBoundingClientRect();
+  const d = dock.getBoundingClientRect();
+  const overlap = r.width > 0 && r.height > 0 && r.bottom > d.top + 0.5 && r.top < d.bottom - 0.5 && r.right > d.left && r.left < d.right;
+  const dockHit = [[0.5, 0.5], [0.25, 0.5], [0.75, 0.5], [0.5, 0.25], [0.5, 0.75]].some(([fx, fy]) => {
+    const h = document.elementFromPoint(r.left + r.width * fx, r.top + r.height * fy);
+    return Boolean(h && dock.contains(h));
+  });
+  return { covered: overlap || dockHit, inDock: false, rect: [Math.round(r.top), Math.round(r.bottom)], dock: [Math.round(d.top), Math.round(d.bottom)] };
+})()`;
+
+// The end of the page: the last message, the footer and the dock. Up to 760 px the page scrolls, and the dock is sticky.
+// From 761 px the Workspace (main) and the transcript scroll, and the dock is not sticky: it is reachable at their ends.
+const DOCK_END = `(() => {
+  const dock = document.querySelector('[class*="_dock_"]');
+  const d = dock ? dock.getBoundingClientRect() : null;
+  const turns = Array.from(document.querySelectorAll('[role="log"] section[class*="_turn_"]'));
+  const last = turns.length ? turns[turns.length - 1].getBoundingClientRect() : null;
+  const footer = document.querySelector('[role="group"][aria-label="Session statistics"]');
+  const f = footer ? footer.getBoundingClientRect() : null;
+  const overlap = (r) => Boolean(r && d && r.width > 0 && r.height > 0 && r.bottom > d.top + 0.5 && r.top < d.bottom - 0.5);
+  const main = document.querySelector('main[aria-label="Workspace"]');
+  return {
+    scrollY: Math.round(window.scrollY),
+    maxScroll: Math.round(document.documentElement.scrollHeight - window.innerHeight),
+    mainScrollTop: main ? Math.round(main.scrollTop) : null,
+    mainMaxScroll: main ? Math.round(main.scrollHeight - main.clientHeight) : null,
+    dock: d ? [Math.round(d.top), Math.round(d.bottom)] : null,
+    dockFullyVisible: Boolean(d && d.top >= 0 && d.bottom <= window.innerHeight),
+    lastMessage: last ? [Math.round(last.top), Math.round(last.bottom)] : null,
+    lastMessageCovered: overlap(last),
+    footer: f ? [Math.round(f.top), Math.round(f.bottom)] : null,
+    footerCovered: overlap(f),
+    pageScrolls: document.documentElement.scrollHeight > window.innerHeight,
+    overflowX: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  };
+})()`;
+
+// Presses Tab (or Shift+Tab) until focus leaves the document, and checks every stop against the dock. Headless Chrome
+// can also wrap from the first control straight to the last (no BODY stop between), so a return to the first stop ends
+// the walk as a cycle, as tabWalk does; without that the backward walk would repeat every stop.
+async function dockWalk(backward) {
+  const stops = [];
+  const labels = [];
+  const covered = [];
+  let measured = 0;
+  let end = 'limit reached';
+  let first = true;
+  for (let i = 0; i < 150; i += 1) {
+    let stop;
+    if (backward) {
+      await press('Tab', { shift: true });
+      stop = await describe();
+      if (first && stop.tag === 'BODY') {
+        await press('Tab', { shift: true });
+        stop = await describe();
+      }
+    } else {
+      stop = await tabPress();
+    }
+    first = false;
+    if (stop.tag === 'BODY') {
+      end = 'document end';
+      break;
+    }
+    const label = shortStop(stop);
+    if (labels.length > 0 && label === labels[0]) {
+      end = 'cycled to the first stop';
+      break;
+    }
+    labels.push(label);
+    stops.push(stop);
+    const cover = await evaluate(DOCK_COVER);
+    if (cover) measured += 1;
+    if (cover && cover.covered) covered.push({ stop: label, rect: cover.rect, dock: cover.dock });
+  }
+  return { stops: stops.length, measured, list: labels.map((s) => s.slice(0, 40)), covered, end };
+}
+
+async function checkK(ctx) {
+  const sizes = [
+    [360, 640],
+    [390, 844],
+    [412, 915],
+    [844, 390],
+  ];
+  const rows = [];
+  for (const [width, height] of sizes) {
+    const key = `${width}x${height}`;
+    await viewport(width, height);
+    await emulateMedia(LIGHT_OS);
+    await navigate('/app/');
+    const forward = await dockWalk(false);
+    const backward = await dockWalk(true);
+    await evaluate('window.scrollTo(0, 0)');
+    await sleep(200);
+    await capture(`phone-${key}-dock-top.png`);
+    const wide = width > 760;
+    // Narrow: the page is the scroller. Wide: the Workspace and then the transcript are the scrollers.
+    await evaluate(wide
+      ? `(() => { document.querySelector('main[aria-label="Workspace"]').scrollTop = 1e9; document.querySelector('[role="log"][aria-label="Transcript"]').scrollTop = 1e9; return true; })()`
+      : 'window.scrollTo(0, document.documentElement.scrollHeight)');
+    await sleep(300);
+    const end = await evaluate(DOCK_END);
+    await capture(`phone-${key}-dock-end.png`);
+    const covered = [...forward.covered, ...backward.covered];
+    rows.push({ size: key, forward: { stops: forward.stops, measured: forward.measured, end: forward.end, list: forward.list }, backward: { stops: backward.stops, measured: backward.measured, end: backward.end, list: backward.list }, covered: covered.length, end });
+    ctx.expect(forward.measured === forward.stops && backward.measured === backward.stops && end.dock !== null, `${key}: ${forward.measured} of ${forward.stops} forward and ${backward.measured} of ${backward.stops} backward stops were measured against the dock (dock found: ${end.dock !== null})`);
+    ctx.expect(covered.length === 0, `${key}: focused elements under the dock: ${JSON.stringify(covered.slice(0, 4))}`);
+    const clean = (end) => end === 'document end' || end === 'cycled to the first stop';
+    ctx.expect(clean(forward.end) && clean(backward.end) && forward.stops === backward.stops, `${key}: the walks were ${forward.stops} stops ("${forward.end}") forward and ${backward.stops} stops ("${backward.end}") backward`);
+    ctx.expect(!end.lastMessageCovered, `${key}: the dock covers the last message (${JSON.stringify(end.lastMessage)} against the dock ${JSON.stringify(end.dock)})`);
+    ctx.expect(!end.footerCovered, `${key}: the dock covers the footer (${JSON.stringify(end.footer)} against the dock ${JSON.stringify(end.dock)})`);
+    ctx.expect(end.overflowX === 0, `${key}: horizontal overflow ${end.overflowX} px`);
+    if (wide) {
+      ctx.expect(end.mainScrollTop > 0 && end.dockFullyVisible, `${key}: after the Workspace scrolls to its end the dock is ${end.dockFullyVisible ? 'visible' : 'not fully visible'} (dock ${JSON.stringify(end.dock)}, Workspace scrolled ${end.mainScrollTop} of ${end.mainMaxScroll})`);
+    } else {
+      ctx.expect(end.pageScrolls && end.scrollY > 0, `${key}: the page does not scroll to its end (scrollY ${end.scrollY} of ${end.maxScroll})`);
+    }
+  }
+  ctx.note('walks', rows);
+  ctx.note('summary', rows.map((r) => `${r.size}: ${r.forward.stops} stops forward and ${r.backward.stops} backward, ${r.covered} under the dock`).join('; '));
+}
+
+// ---------- L: the claim boundary and absent data ----------
+
+const LOSSY_PHRASE = 'output lossy, not counted as confirmed';
+const SURFACE_LOSSY = (text) => (text ? Array.from(new Set((text.match(/[^.;|]*output lossy[^.;|]*/g) ?? []).map((p) => p.replace(/\s+/g, ' ').trim()))) : []);
+
+// The snapshot as the page receives it. The gateway's own snapshot is read, then one field set is rewritten.
+let snapshotOverride = null;
+let snapshotHandler = false;
+async function installSnapshotOverride() {
+  if (!snapshotHandler) {
+    cdp.on('Fetch.requestPaused', async ({ requestId, request }) => {
+      try {
+        if (!snapshotOverride || !/\/api\/v1\/snapshot/.test(request.url)) {
+          await cdp.send('Fetch.continueRequest', { requestId });
+          return;
+        }
+        const real = await getJson(`${ORIGIN}/api/v1/snapshot`);
+        const body = JSON.stringify(snapshotOverride(structuredClone(real)));
+        await cdp.send('Fetch.fulfillRequest', {
+          requestId,
+          responseCode: 200,
+          responseHeaders: [
+            { name: 'Content-Type', value: 'application/json' },
+            { name: 'Cache-Control', value: 'no-store' },
+          ],
+          body: Buffer.from(body).toString('base64'),
+        });
+      } catch {
+        // the request is answered by the page's own retry path
+      }
+    });
+    snapshotHandler = true;
+  }
+  await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*/api/v1/snapshot*', requestStage: 'Request' }] });
+}
+
+const ABSENT_VARIANTS = [
+  {
+    id: 'true-zero-counts',
+    label: 'a true zero: policy counts 0, digest present, no verdict records',
+    mutate: (s) => {
+      // A zero count beside a verdict record contradicts the zero (panels.ts decisionsState), so the tool records go. The
+      // validator needs sequences 1..N and a cursor on the last one, so the messages are renumbered and the cursor set.
+      const g = s.panels.governance;
+      g.allow_count = 0;
+      g.deny_count = 0;
+      g.unknown_count = 0;
+      const messages = s.items.filter((item) => item.verdict === undefined && item.tool_call_id === undefined);
+      s.items = messages.map((item, index) => ({ ...item, sequence: index + 1 }));
+      s.cursor = `${s.epoch}:${s.items.length}`;
+      return s;
+    },
+    expect: (r) => (r.footer.includes('policy verdicts 0 allow / 0 deny / 0 unknown') ? null : `the footer reads "${r.footer}", expected "policy verdicts 0 allow / 0 deny / 0 unknown"`),
+  },
+  {
+    id: 'absent-as-gateway-writes-it',
+    label: 'absent governance as the gateway writes it: counts omitted, digest empty',
+    mutate: (s) => {
+      const g = s.panels.governance;
+      g.policy_digest = '';
+      delete g.allow_count;
+      delete g.deny_count;
+      delete g.unknown_count;
+      return s;
+    },
+    expect: (r) => (r.footer.includes('policy verdicts unavailable') && !r.footer.includes('0 allow') ? null : `the footer reads "${r.footer}", expected "policy verdicts unavailable" (no 0 counts)`),
+  },
+  {
+    id: 'true-zero-turns',
+    label: 'a true zero turn count',
+    mutate: (s) => {
+      s.session.turn_count = 0;
+      return s;
+    },
+    expect: (r) => (r.footer.startsWith('0 turns ·') && r.rail.includes('Pi 0.87.1 · 0 turns') ? null : `the footer reads "${r.footer.slice(0, 40)}…" and the rail "${r.rail.match(/Pi [^·]+· [^c]+/)?.[0] ?? ''}", expected "0 turns"`),
+  },
+  {
+    id: 'absent-omitted',
+    label: 'absent fields omitted from the JSON (policy and turn count)',
+    mutate: (s) => {
+      const g = s.panels.governance;
+      delete g.policy_digest;
+      delete g.allow_count;
+      delete g.deny_count;
+      delete g.unknown_count;
+      delete s.session.turn_count;
+      return s;
+    },
+    expect: (r) => (r.footer.includes('turns unavailable') && r.footer.includes('policy verdicts unavailable') && !/\b0 (turns?|allow|deny|unknown)\b/.test(r.footer) ? null : `the footer reads "${r.footer}", expected "turns unavailable" and "policy verdicts unavailable" with no 0`),
+  },
+];
+
+async function checkL(ctx) {
+  const snapshot = await getJson(`${ORIGIN}/api/v1/snapshot`);
+  const epoch = snapshot.epoch;
+  const seq = snapshot.items[snapshot.items.length - 1].sequence + 1;
+  await viewport(1440, 900);
+  await emulateMedia(LIGHT_OS);
+  await navigate('/app/');
+  await evaluate('localStorage.clear()');
+  await installFakeStream();
+  try {
+    await navigate('/app/');
+    ctx.expect(await waitFor(FAKE_READY, 8000), 'the fake EventSource did not open');
+    await emit('item', itemFrame(epoch, seq, { id: 'qa-l-lossy', type: 'result', tool: 'bash', tool_call_id: 'qa-call-l-lossy', state: 'succeeded', lossy: true, summary: 'QA lossy success for L' }));
+    await sleep(500);
+
+    // The Chat card: the transcript element that holds the summary, and its nearest card.
+    const chatCard = await evaluate(`(() => {
+      const leaf = Array.from(document.querySelectorAll('[role="log"] *')).find((e) => e.childElementCount === 0 && /QA lossy success for L/.test(e.textContent));
+      if (!leaf) return null;
+      const card = leaf.closest('details') || leaf.closest('section') || leaf.parentElement;
+      return card.textContent.replace(/\\s+/g, ' ').trim();
+    })()`);
+    await clickSelector('#view-tab-trajectory');
+    const ledgerRow = await evaluate(`(() => {
+      const b = Array.from(document.querySelectorAll('[role="region"][aria-label="Record ledger"] button[data-record-row]')).find((x) => new RegExp('Result record ${seq}\\\\b').test(x.getAttribute('aria-label') || ''));
+      if (!b) return null;
+      b.click();
+      return { label: b.getAttribute('aria-label'), text: b.textContent.replace(/\\s+/g, ' ').trim() };
+    })()`);
+    await sleep(400);
+    const inspector = await evaluate(`(() => { const a = document.querySelector('aside'); return a ? a.textContent.replace(/\\s+/g, ' ').trim() : null; })()`);
+    const surfaces = {
+      chatCard: SURFACE_LOSSY(chatCard),
+      ledgerRowLabel: SURFACE_LOSSY(ledgerRow?.label),
+      ledgerRowText: SURFACE_LOSSY(ledgerRow?.text),
+      inspector: SURFACE_LOSSY(inspector),
+    };
+    ctx.note('lossyWording', surfaces);
+    ctx.note('lossyChatCard', chatCard);
+    ctx.note('lossyLedgerRow', ledgerRow);
+    for (const name of ['chatCard', 'ledgerRowLabel', 'inspector']) {
+      ctx.expect(surfaces[name].some((p) => p.includes(LOSSY_PHRASE)), `the ${name} does not read "${LOSSY_PHRASE}": ${JSON.stringify(surfaces[name])}`);
+    }
+    ctx.expect(ledgerRow !== null, 'the injected lossy success has no ledger row');
+    ctx.expect((await evaluate(`document.querySelectorAll('[data-tone="ok"]').length`)) === 0, 'a success tone appeared for the unverified lossy success');
+    await capture('claims-lossy-ledger.png');
+  } finally {
+    await removeFakeStream();
+  }
+
+  // Absent versus zero, read from the page after the snapshot is rewritten in the page (never in the gateway). The
+  // event stream's session event carries the same session and governance, so it is replaced by the fake EventSource:
+  // then the snapshot is the only source the page has.
+  await installSnapshotOverride();
+  await installFakeStream();
+  try {
+    for (const variant of ABSENT_VARIANTS) {
+      snapshotOverride = variant.mutate;
+      await navigate('/app/');
+      await waitFor(`Boolean(document.querySelector('[role="group"][aria-label="Session statistics"]'))`, 8000);
+      const read = await evaluate(`(() => ({
+        footer: (document.querySelector('[role="group"][aria-label="Session statistics"]') || {}).textContent || '',
+        rail: (document.querySelector('nav[aria-label="Sessions and streams"]') || {}).textContent || '',
+        decisionsTab: (document.getElementById('governance-tab-decisions') || {}).getAttribute ? document.getElementById('governance-tab-decisions').getAttribute('aria-label') : null,
+      }))()`);
+      const problem = variant.expect(read);
+      ctx.note(`absent-zero ${variant.id}`, { label: variant.label, footer: read.footer, decisionsTab: read.decisionsTab, railText: read.rail.slice(0, 160) });
+      ctx.expect(problem === null, `${variant.label}: ${problem}`);
+    }
+  } finally {
+    snapshotOverride = null;
+    await cdp.send('Fetch.disable').catch(() => {});
+    await removeFakeStream();
+    await navigate('/app/');
+  }
+  ctx.note('summary', 'lossy wording read on the Chat card, the ledger row and the inspector; four absent and zero snapshots read from the page');
+}
+
 // ---------- main ----------
 
 function parseArgs(argv) {
@@ -1745,6 +2538,7 @@ function parseArgs(argv) {
     '--gateway-sha256': 'gatewaySha256',
     '--gateway-stop': 'gatewayStop',
     '--gateway-start': 'gatewayStart',
+    '--run': 'run',
   };
   const options = {};
   for (let i = 0; i < argv.length; i += 1) {
@@ -1777,7 +2571,11 @@ function selectedChecks(only) {
 }
 
 function writeReceipt(report) {
-  writeFileSync(RECEIPT_PATH, `${JSON.stringify(report, null, 2)}\n`);
+  writeFileSync(receiptPath(), `${JSON.stringify(report, null, 2)}\n`);
+}
+
+function receiptPath() {
+  return join(QA_DIR, `${RUN}-ui-qa-receipt.json`);
 }
 
 async function main(argv) {
@@ -1788,6 +2586,10 @@ async function main(argv) {
     const selected = selectedChecks(options.only);
     if (options.gatewaySha256 !== undefined && !/^[0-9a-f]{64}$/.test(options.gatewaySha256)) {
       throw new Stop(CODE.usage, '--gateway-sha256 must be 64 lowercase hex digits');
+    }
+    if (options.run !== undefined) {
+      if (!/^[a-z][a-z0-9-]{0,15}$/.test(options.run)) throw new Stop(CODE.usage, '--run must be a short lowercase prefix such as p5');
+      RUN = options.run;
     }
     if (typeof WebSocket !== 'function') throw new Stop(CODE.notVerified, 'this Node has no global WebSocket; Node >= 22 is required');
     const binary = findBrowser(options.chrome ?? null);
@@ -1814,7 +2616,7 @@ async function main(argv) {
     const outcome = failed.length > 0 ? 'FAIL' : unverified.length > 0 ? 'NOT VERIFIED' : 'PASS';
     exitCode = outcome === 'PASS' ? CODE.pass : outcome === 'FAIL' ? CODE.fail : CODE.notVerified;
     writeReceipt({
-      receipt: 'p4-ui-qa',
+      receipt: `${RUN}-ui-qa`,
       generatedAt: new Date().toISOString(),
       outcome,
       selectedChecks: selected,
@@ -1840,7 +2642,7 @@ async function main(argv) {
         failedRequests: observed.failed,
       },
     });
-    console.log(`ui-qa: receipt ${RECEIPT_PATH}`);
+    console.log(`ui-qa: receipt ${receiptPath()}`);
     if (outcome === 'PASS') console.log(`ui-qa: PASS (${results.length} checks, ${screenshots.length} screenshots, ${browser.version.Browser})`);
     else console.log(`ui-qa: ${outcome} (${failed.length} failed, ${unverified.length} not verified)`);
     cdp.close();
@@ -1868,6 +2670,9 @@ const CHECKS = [
   { id: 'G', name: 'reconnect and offline', run: checkG },
   { id: 'H', name: 'forced colours and reduced motion', run: checkH },
   { id: 'I', name: 'console, CSP and network', run: checkI },
+  { id: 'J', name: "the user's three points at six widths, light and dark", run: checkJ },
+  { id: 'K', name: 'phone dock: Tab and Shift+Tab walk at four sizes', run: checkK },
+  { id: 'L', name: 'claim boundary: lossy wording per surface; absent versus zero', run: checkL },
 ];
 
 process.exitCode = await main(process.argv.slice(2));

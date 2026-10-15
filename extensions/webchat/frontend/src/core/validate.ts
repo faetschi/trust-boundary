@@ -363,6 +363,12 @@ function optionalIdentifier(path: string, record: Rec, key: string): void {
   if (value !== undefined) identifierValue(`${path}.${key}`, value, true);
 }
 
+// A count the source states, or none: an absent count is not zero, and a stated count is a non-negative integer.
+function optionalCount(path: string, record: Rec, key: string): void {
+  const value = optional(path, record, key);
+  if (value !== undefined) countValue(`${path}.${key}`, value);
+}
+
 function optionalReference(path: string, record: Rec, key: string): void {
   const value = optional(path, record, key);
   if (value !== undefined) referenceValue(`${path}.${key}`, value, true);
@@ -402,7 +408,7 @@ function assertSession(path: string, value: unknown): asserts value is SessionHe
     const value = optional(path, record, key);
     if (value !== undefined) timeValue(`${path}.${key}`, value);
   }
-  countValue(`${path}.turn_count`, required(path, record, "turn_count"));
+  optionalCount(path, record, "turn_count");
 }
 
 function assertPanels(path: string, value: unknown): asserts value is Panels {
@@ -412,9 +418,9 @@ function assertPanels(path: string, value: unknown): asserts value is Panels {
   const governance = asRecord(`${path}.governance`, required(path, record, "governance"));
   closedKeys(`${path}.governance`, governance, ["policy_digest", "allow_count", "deny_count", "unknown_count", "note"]);
   optionalReference(`${path}.governance`, governance, "policy_digest");
-  countValue(`${path}.governance.allow_count`, required(`${path}.governance`, governance, "allow_count"));
-  countValue(`${path}.governance.deny_count`, required(`${path}.governance`, governance, "deny_count"));
-  countValue(`${path}.governance.unknown_count`, required(`${path}.governance`, governance, "unknown_count"));
+  optionalCount(`${path}.governance`, governance, "allow_count");
+  optionalCount(`${path}.governance`, governance, "deny_count");
+  optionalCount(`${path}.governance`, governance, "unknown_count");
   optionalText(`${path}.governance`, governance, "note", MAX_TEXT_BYTES);
 
   const provenance = asRecord(`${path}.provenance`, required(path, record, "provenance"));

@@ -52,8 +52,8 @@ function verdictsText(count: number, word: string): string {
   return `${count} ${word} verdict${count === 1 ? "" : "s"}`;
 }
 
-// The Decisions tab. Zero counts read "no decisions" only when a policy digest and no verdict back them up (decisionsState);
-// otherwise they are the gateway's zero for an absent count, and read unavailable.
+// The Decisions tab. Stated zeros read "no decisions" unless a loaded verdict contradicts them (decisionsState). A count the
+// source did not state reads unavailable, as does any count the badge needs and does not have.
 function decisionsBadge(source: BadgeSource): PanelBadge {
   const governance = source.loaded ? source.panels?.governance : undefined;
   if (!governance) return UNAVAILABLE;
@@ -63,7 +63,7 @@ function decisionsBadge(source: BadgeSource): PanelBadge {
   if (deny !== null && deny > 0) return { text: verdictsText(deny, "deny"), tone: "danger" };
   if (unknown !== null && unknown > 0) return { text: verdictsText(unknown, "unknown"), tone: "warn" };
   if (allow === null || deny === null || unknown === null) return UNAVAILABLE;
-  if (allow > 0) return { text: "allow only", tone: "neutral" };
+  if (allow > 0) return { text: `${verdictsText(allow, "allow")} only`, tone: "neutral" };
   return decisionsState(governance, verdictCount(source.items ?? [])) === "none"
     ? { text: "no decisions", tone: "neutral" }
     : UNAVAILABLE;

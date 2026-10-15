@@ -38,9 +38,10 @@ clients**:
 ## 2. What is implemented, and what is not
 
 Honesty is a hard requirement: the UI must not imply capabilities that do not
-exist. The composer is present but **disabled and labelled**, and there is no cancel
-control, because submission and cancellation require the authenticated supervisor
-session service.
+exist. The composer is present and labelled but **read-only**: its field is `readonly` and
+`aria-disabled`, and its send control is `aria-disabled`. Neither is natively `disabled`,
+so both stay focusable. There is no cancel control, because submission and cancellation
+require the authenticated supervisor session service.
 
 | Capability | State |
 |---|---|
@@ -61,7 +62,7 @@ session service.
 | Two-press cancel state machine (legacy `stop-sequence.mjs`; typed port in `frontend/src/core/stop-sequence.ts`) | Written and ported, **not wired** into either UI (§4.7) |
 | Live projection from the supervisor | **Not implemented** (`--live` fails closed) |
 | Persistent multi-turn sessions and history | **Not implemented** (supervisor-owned) |
-| Turn submission / cancellation | **Not implemented** (composer disabled) |
+| Turn submission / cancellation | **Not implemented** (composer read-only) |
 | Browser authentication, session ownership, CSRF/origin protection for remote use | **Not implemented** (loopback-only gateway; see §6) |
 | Per-tool approval, policy override, gateway-side tool execution | **Deliberately absent** |
 
@@ -283,12 +284,16 @@ endpoint was needed to build it.
   can never be matched.
 - **Footer** states what was observed (`turns`, `records`, policy counts) and
   marks every metric the projection does not carry as `unavailable` rather than
-  rendering a zero.
+  rendering a zero. A stated count reads its number, zero included; an absent one
+  reads `unavailable`. The footer is the last box of the workspace, directly under
+  the composer, at every width; the DOM order is the drawn order. On a phone the
+  composer dock covers the footer only while the chat scrolls; at the page's end
+  the footer sits below the dock.
 
 ### 4.5 Following the tail (client-only)
 
-The ledger scrolls with the page. The transcript scrolls inside the Chat view, above
-the composer. A reader within 40 px of the bottom keeps following new records. A reader who has scrolled away keeps their
+At 761 px and wider the transcript scrolls inside the Chat view, above the composer,
+and the ledger scrolls inside its own view. At 760 px and below the page scrolls both. A reader within 40 px of the bottom keeps following new records. A reader who has scrolled away keeps their
 place: the first record visible at the top of the viewport is held across each
 re-render. Records applied while they are away are counted on a `N new records ·
 Jump to latest` control in that view, which moves them to the tail and moves focus
@@ -647,7 +652,7 @@ increment does not build.
   path allowlist with redaction, decided by the supervisor rather than the browser.
   Until those exist, a file change is shown only as its bounded summary.
 - **Slash-command listbox: no target.** A `/` listbox needs a composer and a command
-  menu. Neither exists: the composer is disabled and there is no command set. No
+  menu. Neither exists: the composer is read-only and there is no command set. No
   listbox is built, and none is a claim this client makes.
 
 The survey's other "avoid" items are also not adopted: `aria-live="polite"` on the

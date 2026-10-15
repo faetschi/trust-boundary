@@ -39,11 +39,10 @@ function streamText(stream: StreamStatus): string {
   return `${stream.label}: ${HEALTH_WORDS[stream.health] ?? stream.health}${reason}${availability}`;
 }
 
-// The turn count in words, or why there is none. A count the session header does not carry is unavailable, and so is zero:
-// the gateway writes an absent turn_count as zero, and a session with records has at least one turn (see Footer.tsx).
+// The turn count in words: a stated count, zero included, or unavailable when the session header does not state one.
 function turnsWords(value: unknown): string {
   const count = countValue(value);
-  if (count === null || count === 0) return NO_TURNS;
+  if (count === null) return NO_TURNS;
   return `${count} turn${count === 1 ? "" : "s"}`;
 }
 

@@ -11,7 +11,8 @@ Status at HEAD `57e6406` (2026-10-14):
 - **Final QA fix round (2026-10-14, uncommitted):** the Final browser QA's findings are addressed. First paint and
   the lossy wording are fixed, the ALLOW shape and the stale lines are fixed, and the backoff timing is confirmed. The
   browser QA passes 9 of 9 against a Linux-built gateway. See the last section.
-- **Verified on Linux (WSL, Go 1.27.1, Node 24.15.0):** vitest 896/896 (60 files, 0 skipped);
+- **Current state, FX3 (2026-10-15, uncommitted):** see "Redesign review fixes, FX3" at the end of this file. Windows `verify`: vitest 74 files, 1258 tests, 0 skipped. WSL `go test -race -v`: 60 top-level PASS, 0 SKIP. Legacy node 262/262. Browser QA `p5`: 12 of 12 PASS.
+- **Verified on Linux before FX3 (2026-10-14):** vitest 896/896 (60 files, 0 skipped);
   extension Go `-race` 54 top-level PASS, 0 SKIP; legacy node tests 258/258; sink and
   dependency gates with their self-tests; boundary guard; the Linux rebuild equals the
   committed `dist/`. Receipts: "Claim gate in the core" and "Default UI switch" below.
@@ -1287,7 +1288,7 @@ not-established, H1 unexecuted.
 The user reviewed the v3 mockup against the running UI, and the redesign below followed. The React source is the reference. The frames in [`webchat/mockups/tbound-redesign-v3.html`](webchat/mockups/tbound-redesign-v3.html) are captured from it.
 
 **Added**
-- Sessions rail: one session row (`aria-current`, not interactive) with the note "Other Pi sessions are not listed". The rail collapses to a 3.5 rem strip. At 760 px and below it becomes a disclosure strip, and so does the claim strip.
+- Sessions rail: one session row (`aria-current`, not interactive) with the note "Other Pi sessions are not listed". The rail collapses to a 3.5 rem strip. At 760 px and below it becomes a disclosure strip. In the claim boundary only the two explanatory sentences fold, under a disclosure labelled "Presentation only · display only" (`ClaimBoundary.tsx`); the claim values stay visible at every width.
 - Governance inspector: 31.5 rem, collapsible to a 3.5 rem icon rail. Five tabs (Decisions, Provenance, Publication, Recovery, Qualification) show one panel at a time, with scroll buttons when the strip overflows. A selected record shows in a bar between the strip and the body. At 1180 px and below the inspector is a drawer with a scrim.
 - Conversation head (title, Pi version, session id, workflow id, "completed · reported, not verified"), role labels "Pi" and "User", and message chrome (time, Copy, record number).
 - Read-only composer: a readonly textarea, a muted send control with `aria-disabled`, and the chips "Observed only · no approvals" and "Pi <version> · tools unavailable". Focusing it shows the explanation line.
@@ -1295,11 +1296,11 @@ The user reviewed the v3 mockup against the running UI, and the redesign below f
 
 **Deliberately not implemented:** a list of several sessions, a new-session control, `+`, sending, cancelling, mode menus, a diff stat, and MATCHED. The projection has no session-list field, so the rail shows the one session it carries.
 
-**Heuristic:** the Go gateway serialises an absent governance count as `0`. `app/inspector/panelBadge.ts` therefore reads a zero as "unavailable" unless a policy digest and a verdict back it up. That is a UI heuristic, not a field the projection states.
+**Absent versus zero (changed 2026-10-15; see the dated section at the end).** The gateway omits a count the source does not state and writes a stated one, zero included. The client reads presence only: an absent count is "unavailable", and a stated zero is "0" ("0 turns", "0 allow / 0 deny / 0 unknown", the "no decisions" badge). A policy digest plays no part, and a stated zero beside a loaded verdict reads "contradicted", not zero.
 
 **Phones (760 px and below).** The composer and the jump to latest control share one dock at the end of the chat view (`Chat.module.css`, `.dock`). On a phone the dock is `position: sticky; bottom: 0`, with an opaque background, so it stays on the viewport's bottom edge while the transcript scrolls under it. At the end of the page it sits after the last message. The page is the scroller at this width, so `base.css` sets `scroll-padding-bottom: var(--dock-clearance)` on `html`. `tokens.css` defines `--dock-clearance: calc(188px + var(--space-2))`, the tallest measured dock state (status line shown, chips wrapped), so a focused control or an anchor lands above the dock.
 
-**Footer on phones.** At 760 px and below the footer has `order: 1` and the views `order: 2`, so the footer sits above the chat, under the view tabs. It wraps with the width. Measured in the live app: one line at 700 and 760 px; two lines at 390, 600, 761, 768, 769 and 800 px; three lines at 361 px; one line at 1024 px.
+**Footer on phones (superseded by FX2 and FX3).** At this round the footer had `order: 1` and the views `order: 2`, so the footer sat above the chat, under the view tabs. FX2 removed the orders and FX3 moved the footer below the views. It wraps with the width. Measured in the live app: one line at 700 and 760 px; two lines at 390, 600, 761, 768, 769 and 800 px; three lines at 361 px; one line at 1024 px.
 
 **Closed governance sheet.** At 1180 px and below the closed inspector drawer is translated past its own width and a gutter, and set to `visibility: hidden` once the slide ends. It is fully off-canvas, and out of the focus order and the accessibility tree (`Inspector.module.css`). Opening it shows it at once.
 
@@ -1307,7 +1308,7 @@ The user reviewed the v3 mockup against the running UI, and the redesign below f
 - (M2) Governance tab badge words are shown only on the selected tab's status line. The other tabs show a tone shape (`StateDot`), with the words in `aria-label` and `title`.
 - (M3) The footer wraps to two or three lines at phone widths, and to two lines again at 761, 768, 769 and 800 px, so the wrap is not confined to 768 px and below. It is one line at 700 and 760 px. Only the widths listed above were measured.
 - At 390 px the roving "Recovery" tab of the drawer can sit under the "›" scroll button until the tab strip is scrolled.
-- Absent governance counts are inferred from an empty digest plus zero counts, because the Go gateway serialises an absent count as `0` (see the heuristic above).
+- Absent governance counts were inferred from an empty digest plus zero counts. Resolved 2026-10-15: the gateway omits an absent count, so the client reads presence (see the note above).
 - The mockup frames carry the built stylesheet's hashed class names, so they do not read as source names.
 
 **Build identity (this round).** `frontend/src` tree: `5966e17ffac8e9fc74cce0bbb899998151119b5d9f1d44834217b9ece139be0a` (179 files; `find … | LC_ALL=C sort | xargs sha256sum -b | sha256sum`). Dist: `index.html` `7816cb65ba3f08d6a8ba295991dc3ef0340515850f7908996aa1eee190aefc02`; `assets/index-BPWS4mwk.css` `dce5c00936f72d294b18f96790ad9ab01ed3b462f1386ca96dea5e07c1107f22`; `assets/index-DccNui2A.js` `fb5122a6e7edcbf1578a253abf59b0e840a237011addf604a8176719c51b2d2a`. The demo gateway built in WSL (go1.27.1) from a copy of the tree is `9f97bdce6c04da2df63d62a5e5641b61f7ac44116724bede058590f422964613`.
@@ -1315,3 +1316,177 @@ The user reviewed the v3 mockup against the running UI, and the redesign below f
 **Mockup:** the frames are the captured DOM of the running UI under its built stylesheet. There are 22 frames: the 20 of the previous refresh, and two phone frames scrolled to mid-transcript (light and dark) that show the dock pinned. Sixteen are byte-identical to their live capture. The other six: the four phone frames with the dock differ in text anti-aliasing inside the dock (about 600 to 700 px a frame, with the region text and rectangles equal); `gov-publication-light-1440` and `composer-focus-light-1440` differ by five pixels, at most two levels, on the composer's rounded bottom corner, and that cause is not isolated. Both sides run headless Chrome with `--disable-lcd-text`, which cut the phone difference from about 3000 px a frame. Font hinting and colour-profile flags changed nothing, and two raster flags (`--disable-partial-raster`, `--disable-threaded-compositing`) made the capture hang, so neither is used. The live captures varied between identical runs (`gov-publication-light-1440`, `gov-recovery-light-1440`, `chat-light-390`) until a 1 s settle was added after the pointer actions; one later run still changed `chat-light-390` by one pixel, so the live side is not fully deterministic. The mockup side repeated exactly. The receipts are `docs/webchat/qa/v3-mockup-receipt.json` and `docs/webchat/qa/v3-real-app-capture.json`.
 
 **Boundary:** nothing here changes G1 (false), H1 (unexecuted) or containment (not-established). Green gates verify the code; they do not establish these claims, and the mockup frames verify layout and wording only. This round changed no source, test or built file: it regenerated the mockup, its QA receipts and this section. Receipts and QA tables above this section describe the builds they name and are not rewritten.
+
+## Redesign browser QA (2026-10-15)
+
+An independent real-browser pass of the finished redesign at HEAD `7dc9555`. **Result: FAIL** (J and L failed; A to I and K passed). Product code was not changed. The defects below are for the implementer. Receipt: `docs/webchat/qa/p5-ui-qa-receipt.json`; run log: `docs/webchat/qa/p5-ui-qa-run.txt`; 48 screenshots `docs/webchat/qa/p5-*.png`, each hashed in the receipt and checked against the files.
+
+**Receipt.** `node scripts/ui-qa.mjs --url http://127.0.0.1:8891 --chrome "C:\Program Files\Google\Chrome\Application\chrome.exe" --run p5 --gateway-sha256 <gateway> --gateway-stop "wsl -d Ubuntu -e pkill -x tbwc-gw-qa4" --gateway-start "Start-Process wsl.exe -ArgumentList '-d','Ubuntu','-e','/home/jeli2k/tbwc-gw-qa4','--demo','--addr','127.0.0.1:8891' -WindowStyle Hidden"`. Exit code 1. Gateway: the `--demo` fixture, built in WSL with go1.27.1 from this tree, sha256 `81c34bf4c1ab57e65da91e7f25200faa85cd56eb2ef4281d47cc3dda47f44e50`. Browser: Chrome 155.0.8059.79, a temporary profile, closed afterwards. `scripts/ui-qa.mjs` sha256 `f3e511ec0f37ea115099ed77d1f73339c3f983afc9f830daf460b25fb34917b5` (uncommitted). Dist `index.html` `7816cb65ba3f08d6a8ba295991dc3ef0340515850f7908996aa1eee190aefc02`, identical to the committed build. `frontend/src` tree (`sha256sum -b`, repo-root paths, 179 files) `5966e17ffac8e9fc74cce0bbb899998151119b5d9f1d44834217b9ece139be0a`. Requests: 743, all to the gateway, none off origin; CSP violations 0.
+
+| Check | Result | What it measured |
+|---|---|---|
+| A | PASS | csp-smoke exit 0; 3 pages, 0 console errors; no favicon allowance |
+| B | PASS | `/` to `/app/`; legacy notice; served assets equal dist |
+| C | PASS | keyboard walk at 1440: chat 22 stops, trajectory 6, 0 stops without a ring |
+| D | PASS | 1024 drawer: scrim, inert header, Escape, a press on the scrim; 390 no overflow |
+| E | PASS | theme persistence, blocked storage, first paint (4 cases) |
+| F | PASS | LOST and DENY tones distinct; refusal, gap and pill ("3 new records") behave |
+| G | PASS | reconnect: 6 retries, 1.0 to 8.5 s backoff; 0 requests offline |
+| H | PASS | forced colours (6 of 6 shapes distinct); reduced motion (0 animations) |
+| I | PASS | 0 CSP violations; 0 console errors outside G; 0 off-origin requests |
+| J | FAIL | the three points at 1440, 1180, 1024, 768, 390, 360 px, light and dark; all pass except the phone head position (4 failures, defect 1) |
+| K | PASS | Tab and Shift+Tab at 360x640, 390x844, 412x915, 844x390: 19 to 20 stops each way, 0 under the dock; last message and footer not covered |
+| L | FAIL | Chat card lossy wording (defect 3); absent and zero: 3 of 4 read as required (defect 4) |
+
+**Defects, most severe first.**
+1. **Medium: the phone chat head starts 197 px (390) and 219 px (360) below the header;** the plan allows 160 px (plan 8.1). Stack at 390x844: header 0 to 184, Sessions strip 188 to 232, view tabs 245 to 282, footer 297 to 341 (footer above the views: `Footer.module.css:32-34`, `Shell.module.css:275-276`), chat head 381. Repro: 390x844 light, `h2` top minus header bottom.
+2. **Medium: the phone composer copy is clipped.** At 390 px the reason line is `nowrap` with an ellipsis (`Composer.module.css:92-97`): `#composer-reason` has scrollWidth 625 and clientWidth 322, so it ends "...cannot submit tur...". The textarea has one row (`Composer.tsx:44`), so the placeholder's second line ("build.") is hidden; it needs two lines and shows one. At 360 px only 292 of 625 px show. At 1440 px it is complete. The full text reaches only `aria-describedby`.
+3. **Low: the Chat card does not use "output lossy, not counted as confirmed".** For an unverified lossy success it shows `reported`, a `lossy` chip and the note "output is incomplete; lossy output is not terminal evidence" (`views/chat/readings.ts:64-67`, `ToolCard.tsx:46-47,100-104`). The ledger row (`core/trajectory.ts:147,167`) and the inspector carry the phrase. The verified-lossy labels, "succeeded (output lossy, not confirmed)" (`readings.ts:42`, `app/inspector/recordChip.ts:39`), are code-only: the demo has no verified lossy success, so they were not exercised. No success tone appears on any surface.
+4. **Medium: a true zero turn count reads "turns unavailable"** (footer and rail: `Footer.tsx:16-21`, `Rail.tsx:43`). The gateway writes an absent `turn_count` as 0 (`internal/webchat/contract.go:232`, `TurnCount int`), so the UI cannot tell absent from zero and reads zero as unavailable by design. The rule that a true zero reads 0 needs a presence signal from the gateway and the contract. The true-zero policy case does read 0.
+5. **Decision needed: header controls under the open drawer.** While the drawer is open the header is `inert` and under the scrim (`Shell.tsx:233-237`), so the theme controls and the Governance toggle cannot be operated. A press on the scrim or Escape closes the drawer, and the toggle works after close. The brief asked for "header controls reachable". This is the modal contract as built; the check now asserts it.
+6. **Low: phone drawer tabs need scrolling to reach.** At 390 px the Recovery tab's centre is under the "›" control (hit test fails; `inspector/PanelTabs.tsx:194`); at 360 px it lies under the drawer container; Qualification is off the strip at both. At 768 px all five are hit-testable. Focus stays inside the open drawer (0 escapes in 24 presses at 360, 390, 768 and 1024 px), and Escape returns focus to the toggle.
+7. **Low (usability): landscape 844x390 nests three scroll regions.** The Workspace (`main`, `Shell.tsx:278`) is 245 px tall and holds the views, the transcript scroller (260 px, `views/ChatView.tsx:123`) and the dock. The dock (y 603 to 735) is below the fold until `main` is scrolled. It is reachable: at the end of `main` the dock sits at y 114 to 246.
+8. **Low: 8 of 18 records carry a visible `record N`.** Messages 1, 2 and 18 are buttons, tool cards 5, 8, 11, 14 and 17 show the number as text, and the ten nested decision and result rows have none (review4 L1, unchanged).
+9. **Informational: a snapshot with required fields omitted is rejected, not read per field.** With `turn_count` and the governance counts removed, the session header disappears ("No session projection") and the footer reads unavailable (`core/validate.ts:405,413-417`). The gateway never omits these fields.
+
+**Harness notes (not product defects).** Headless Chrome has no address bar, so the first Tab after a navigation lands on the document about once in two loads (7 times in check C). The walks press again and count it (`swallowedFirstTabs`).
+
+**Adapted expectations** (each follows a redesign contract change; none was relaxed):
+- C2 to C8: Tab stops were read by position. The header's Governance toggle and the rail's collapse toggle are new stops, so the order is now asserted by identity (theme, then the Chat tab, the All filter and the first tool card).
+- D: the p4 check that header controls stay hit-testable while the drawer is open is replaced by the modal contract: the scrim covers all four header controls, the header is inert, the toggle is covered. A press on the scrim that closes the drawer and returns focus is added.
+- F phase 4: at 1440 px the page does not scroll, so the reader is moved inside the transcript (to its tail, then away). Jump is checked on the transcript's metrics.
+- K: above 760 px the end state scrolls the Workspace and the transcript, because the dock is not sticky there. Walks also end on a cycle to the first stop (headless wrap-around), and forward and backward stop counts must match.
+- J, K and L are new checks, not adapted from p4. L rewrites `/api/v1/snapshot` in the page with CDP `Fetch` and uses the fake EventSource, because the stream's `session` event carries the same fields and would overwrite the rewrite. Its true-zero variant keeps only message records, since sequences must be 1..N.
+- Harness: `--run PREFIX` (default `p5`), so the p4 receipt and PNGs are not overwritten. `csp-smoke.mjs` is unchanged.
+
+**Not verified.** Screen readers and axe-core (the accessibility tree was read through the DOM only). Touch and hover (no touch emulation). A real clipboard permission prompt (Copy was verified through a hook on `navigator.clipboard.writeText` and an injected rejection). Verified-lossy wording (no verified fixture). Contrast (not re-measured; review4 measured at 1440 only). Mockup v3 (plan 8.10). Code gates (go, vitest, tsc, sinks, deps) were not run in this QA round. Headless `--headless=new` only; no headful run.
+
+**Boundary:** nothing here changes G1 (false), H1 (unexecuted) or containment (not-established). This round is a FAIL and makes no claim beyond what the receipt records.
+
+## Absent versus zero counts (2026-10-15)
+
+The gateway wrote an absent count as `0`, so the client could not tell "not stated" from "zero" and inferred absence from a heuristic (an empty policy digest beside zero counts). Both sides now carry presence.
+
+**Gateway (`internal/webchat`).** `SessionHeader.TurnCount` and `GovernancePanel.AllowCount`, `DenyCount` and `UnknownCount` are `*int` with `omitempty`. `validateCount` accepts nil and refuses a negative count. The receipt projection states no count: `provider_turns` counts provider exchanges, `turn_completed` is a flag, and the terminal receipt records no per-tool verdicts. The old `turn_count` of 1, an OR of booleans, is gone. The store copies the pointers as it copies `ObservedAt`, so a subscriber cannot change a stated count.
+
+**Client (`frontend/src`).** `turn_count` and the three governance counts are optional in `core/contract.ts`. `core/validate.ts` accepts an absent count and refuses a negative, fractional, `null` or non-numeric one. The model reads presence only (`app/panels.ts`, `decisionsState`): every count absent gives `absent`; every count a stated zero gives `none`, or `contradicted` when a loaded verdict refutes the zeros; any other mix is `counted`, part by part.
+
+| Field | Gateway before | Gateway after | Client before | Client after |
+|---|---|---|---|---|
+| `turn_count` | always written; 0 when unstated; receipt: 1 if any turn flag, else 0 | omitted when unstated; a receipt never states it | required; 0 read "turns unavailable" | optional; absent reads "turns unavailable"; 0 reads "0 turns" |
+| `allow_count` | always written; receipt: 0 | omitted when unstated; a receipt omits it | required; all-zero with no digest read "unavailable" | optional; absent reads "unavailable"; 0 reads "0" |
+| `deny_count` | as `allow_count` | as `allow_count` | as `allow_count` | as `allow_count` |
+| `unknown_count` | as `allow_count` | as `allow_count` | as `allow_count` | as `allow_count` |
+
+The Decisions badge reads stated zeros as "no decisions", and an allow-only panel now shows its count ("2 allow verdicts only"; it read "allow only"). Sequence positions (`tcb_proof_sequence`, `last_completed_sequence`, `earliest`) and `items[].sequence` are not counts and keep their wire shape.
+
+**Not done, or open.**
+- The legacy client (`internal/webchat/assets/render.mjs`, lines 289, 528-530 and 815) still reads `turn_count || 0` and `allow_count ?? 0`, so it shows an absent count as 0. For a receipt session it now shows "0 turn(s)" where it showed "1 turn(s)". The legacy client is unchanged, and its 258 tests still pass.
+- The footer and rail say "unavailable" without a reason, as their existing vocabulary does; the reason is in the inspector (`panels.ts`).
+- Only an all-zero panel is checked against loaded verdicts. A partly zero panel is not (unchanged).
+- Browser QA has not been rerun and dist/ has not been rebuilt. The `scripts/ui-qa.mjs` check that zeros with an empty digest read unavailable encodes the retired heuristic; its absent case should delete the keys, as the `absent-omitted` check does.
+
+## Redesign review fixes, FX2 (2026-10-15)
+
+Each change has a unit test, or a browser check for J. The copy and DOM-order tests were seen failing before their fixes.
+
+- **Lossy wording (QA4 L).** One phrase, `output lossy, not counted as confirmed`, now appears on every surface that words a lossy success: the Chat chip and its accessible name (`succeeded (…)` when verified, `reported, …` when not), the mixed-view marker (`verified evidence, …`), the ledger row chip, and the inspector chip and record bar. The chips share one constant, `LOSSY_NOT_COUNTED` (`app/inspector/recordChip.ts`). The ledger's own words (`core/trajectory.ts`) are unchanged, and D4 (`phase2-parity.md`) still holds, because it already names this phrase. This supersedes the "Not changed" note in "Final QA fix round".
+- **Copy controls.** Each accessible name is the visible label, then the message: `Copy message: Pi, record 4`, `Copy message: your message, record 3`, `Copy message: system note, record 2`. The record number identifies the message, because a time does not: two messages can share a minute. "Copy unavailable" reads for the same second as "Copied", and a second copy restarts that second. Each outcome is announced once, through the polite status region.
+- **Reading order (WCAG 1.3.2): superseded by FX3.** This bullet moved the footer above the views. FX3 puts it back at the bottom of the workspace (see the FX3 section). The rule that no CSS `order` moves an element still holds.
+- **Phone stack (QA4 J): not met at FX2; met at FX3.** This bullet records the FX2 measurement; the FX3 section has the layout that passes. One 4 px step between the header rows, the header padding, the workspace gaps and the footer padding. Light theme, HEAD to this round: the chat head starts 197 to 181 px below the header at 390 and 219 to 181 px at 360 (dark is the same); the header bottom moves 184 to 172 and 214 to 198. The plan's 160 px is not reached. Below the header the stack is the Sessions strip (53 px, 44 px touch target), the view tabs (37 px), the footer (79 px: statistics on two lines at 390, the build label beneath), and three 4 px gaps. Reaching 160 needs one of: move the build label out of the footer (about 155 px; `Footer.tsx`), or move the Sessions toggle into the tab row (about 124 px; `Shell.tsx` and `Rail.tsx`). The threshold is unchanged.
+- **Doc claims.** `web-chat.md` §2 and its composer rows say read-only, `aria-disabled`, focusable. §4.5 says the page scrolls the transcript and the ledger at 760 px and below; wider, they scroll inside their views. In the claim boundary only the two explanatory sentences fold (Redesign follow-up above). `phase3-parity.md`: rows 5, 7, 12, 19, 30 and R1 cite current test titles, rows 16 and R2 use the current phrase, and row 22 was checked and is unchanged.
+
+**Browser receipts.** Run from a scratch copy (`%TEMP%\tbwc-fx2`), not from the worktree, against HEAD's Go with this frontend, because `dist/` is not rebuilt in this round. HEAD and this build: A to F, H, I and K match; G is not verified in both (no outage flags); J fails in both (197 and 219 at HEAD, 181 here); L fails at HEAD (the chat-card phrase, and a true-zero turn count) and passes here, where the chat-card phrase is this section's and the true-zero check is the absent-versus-zero change above. Check B failed on this build only because the QA copy compared the served page with HEAD's `dist/`; with the build's own `dist/` it passes. The committed `dist/` is stale until the owner rebuilds it, so `npm run repro` will report a mismatch.
+
+## Redesign review fixes, FX3 (2026-10-15)
+
+FX3 closes the review: the user's footer decision, the REV4 test findings, the legacy absent-count reads and the stale QA check. Tests came first (RED, then GREEN). Mutations ran in throwaway mirrors, never in the worktree. Nothing is committed.
+
+- **Footer position (user decision).** The footer is the last box of the workspace column, directly under the composer, at every width. `Shell.tsx` renders it after the views container. FX2's move above the views is reverted, and no CSS `order` is left in `Shell.module.css` or `Footer.module.css`: the DOM order is the drawn order.
+- **Phones.** The composer dock is sticky at the viewport's bottom while the chat scrolls. At the page's end the dock sits in its own place and the footer is below it, fully visible (`p5-phone-390x844-dock-end.png`). The claim boundary stays in the header (`p5-phone-390x844-dock-top.png`).
+- **Order tests (RED, then GREEN).** `Shell.test.tsx` asserted the FX2 order. The new tests (the footer is the last child of `main`; the footer follows `[data-view]` and is not inside it, at 1440, 1024, 390 and 360) failed on the FX2 tree (2 failing, 51 passing) and pass after the move (Shell, Footer and shell views: 87 of 87). Mutations in a throwaway copy: the footer moved back above the views fails both order tests; `order: 2` on `.views` fails "moves no element with CSS order".
+- **Check J (chat head within 160 px of the header), before and after.** `ui-qa.mjs --only J,K` ran against two scratch gateways built from the same Go source: the FX2 layout and the FX3 layout. The value is the head's top minus the header's bottom; light and dark give the same numbers.
+
+  | Width (px) | FX2 (footer above the views) | FX3 (footer below the views) |
+  |---|---|---|
+  | 1440 | 98 | 53 |
+  | 1180 | 98 | 53 |
+  | 1024 | 98 | 53 |
+  | 768 | 144 | 53 |
+  | 390 | 181 (fail) | 98 |
+  | 360 | 181 (fail) | 98 |
+
+- **Check K (no focused element under the dock).** Tab and Shift+Tab walks at 360x640, 390x844, 412x915 and 844x390, before and after: 0 stops under the dock. Stops forward and backward: 20/20, 20/20, 20/20 and 19/19 in both trees. At the page's end the last message and the footer are not covered.
+
+### REV4 test findings (FX3 B)
+
+Each item was made falsifiable by at least one mutation that the rewritten assertion fails. Mutations ran in throwaway mirrors.
+
+| Item | What changed | Mutation that fails it |
+|---|---|---|
+| 1 streamed observed success (`verification.surfaces`) | Opens Trajectory first; reads the ledger row and the chips positively; no `?? ""`. The fixture now sets `verification_scope: "structural-audit-only"`, because the default scope refused the records and the test passed without the authority rule | `authorityFault` admits observed outside live. The earlier continuity-gap check fails first; with that check also removed in the mirror, the chip assertion fails |
+| 2 notice marker (ChatView) | Reads the real pointer paragraph and the rendered "hello world" first; the `[role='note']` selector is gone | `hasNotice = true` fails the pointer check; `{hasNotice ? null : transcript()}` fails the positive read |
+| 3 drawer focus | The self-focus test is removed from `Inspector.test.tsx`. The real-Shell test "reaches the focus into it on open" carries the focus move | Removing `headingRef.current?.focus()` in `Shell.tsx` fails that test |
+| 4 "no tone is success" | Head status, posture, rail and inspector are each read positively, then checked for no `ok` tone | One mutation per surface: head status `reported` to `verified`; posture `data-tone="ok"`; rail `sessionReading(session, true)`; inspector `StateDot tone="ok"`. Each fails its own check |
+| 5 `data-pinned` (Inspector) | No source sets `data-pinned`. Asserts `aria-selected` on each tab, which the code sets | `selected={recordShown ? null : panel}` changed to `selected={panel}` |
+| 6 "reported" (Shell publication) | Asserts the state chip (`[data-tone]`) reads exactly "reported", not the trust sentence beside it | An empty chip label. The old substring check still passed, because the trust sentence contains "reported" |
+| 7 markup negatives (Shell) | Asserts the markup exists first (header, footer group, `data-view`), then no `style` and no `on*` attribute | A `style` on the footer |
+| 8 Escape (Shell) | Asserts the record cleared: governance label, row not pressed, no Close record control | Removing `dismissRecord()` from the Escape path |
+| 9 UI defaults (`uiPrefs`) | Pins the literal defaults; `DEFAULT_UI_PREFS` must equal them | Default panel `decisions` changed to `publication` |
+| 10 follow new records (ChatView) | Asserts the scroll position (5100) after the record arrives | Removing `scrollTailTo(...)` in `views/chat/tail.ts` |
+| 11 composer position (ChatView) | Asserts the composer is a sibling after the log, not inside it | Rendering the composer inside the log |
+| 12 panel badge | Adds deny-over-unknown; an `it.each` over the panel keys reads UNAVAILABLE for a stale panel | Deny rule changed (the new case fails); provenance guard removed (the new provenance case fails); decisions guard removed (old and new cases fail) |
+| 13 composer, dock and drawer | `Composer.test.tsx` asserts no fetch, XHR or submit event, and the value stays empty, for Enter, Ctrl+Enter and Send. `Composer.layout.test.ts` asserts `.card` exists and checks every overflow clip. `PanelTabs.test.tsx` asserts the scroll target, a step of 80% of the visible width and a 48 px minimum. `Shell.test.tsx` asserts `aria-expanded` exactly `true` or `false` at each width and after a click, the skip link inert while the drawer is open and live after Escape, and the drawer's own `z-index` rule (`--z-overlay`) | Composer: six mutations (Enter fetches; keydown writes the typed character; Enter dispatches submit; Send fetches; Send dispatches submit; reason line hidden). Layout: `overflow: hidden` on `.card`; `.card` renamed. PanelTabs: scroll target `stop`; `STEP_SHARE` 0.5; `MIN_STEP_PX` 100. Shell: `aria-expanded={true}`; `inert` removed from the skip link; drawer `z-index` set to `--z-scrim` |
+
+### Legacy UI: an absent count reads unavailable (FX3 C)
+
+`internal/webchat/assets/render.mjs` now shows a stated count, zero included, and reads `unavailable` for an absent one: the rail's turn count, the footer's turns, and the inspector's allow, deny and unknown rows (`statedCount`, `turnsText`). Four tests were added to `jstest/render.test.mjs` first. Two failed on the old code (an absent `turn_count`; absent governance counts); the two stated-zero guards passed before and after.
+
+### QA script: the absent case omits the keys (FX3 D)
+
+`scripts/ui-qa.mjs`, check L's `absent-as-gateway-writes-it`, deletes `allow_count`, `deny_count` and `unknown_count` instead of writing zeros; its label now says so. The expectation (`policy verdicts unavailable`, with no `0` counts) is unchanged, and so are the true-zero variants and the 160 px threshold of check J.
+
+### Gates (FX3 E)
+
+- Windows `gate.ps1 -Task verify`: exit 0. `tsc` clean; vitest 74 files, 1258 tests passed, 0 skipped; sinks 0 findings; dependencies clean.
+- Windows `gate.ps1 -Task go`: exit 0. `go vet` and `go test` ok for both packages; gofmt empty.
+- Linux (WSL, Go 1.27.1, Node 24.15.0): `gofmt -l .` empty; `go vet -mod=readonly ./...` exit 0; `go test -race -mod=readonly -count=1 -v ./...` exit 0: 60 top-level PASS, 0 FAIL, 0 SKIP; 114 subtests PASS, 0 SKIP. Legacy `node --test internal/webchat/jstest/*.test.mjs`: 262 pass, 0 fail, 0 skipped (the same count under Windows Node 24.15.0).
+- `gate.ps1 -Task build` (run once, at the end): exit 0. The dist files are `index.html`, `theme-boot.js`, `.vite/manifest.json`, `assets/index-BRePCEtU.js` and `assets/index-LBAMbFfS.css`. Tree digest in the repro form (`sha256sum -b` over the sorted file list): `6d80b8086b867c762d3cb632380eae58380be95a1a2802e263e0f7fa75a585c5`. The text-mode digest of the same bytes is `33cca2308f189f52ba34a76b614e263fbddb72bac3ad3d3ffc50f78d793039af`.
+- Gateway: `go build -mod=readonly -o /home/jeli2k/tbwc-gw-fx3 ./cmd/tbound-webchat` in WSL, exit 0. SHA-256 `658041d7f4020b7da7ec187e1bcfaf57b633445f85054ec630702c338bb10311`.
+- Source (the QA ran on this tree): `frontend/src` (180 files) tree `a77f433ce819c5889b351c86d04658e090d3744c999d51744f7e9bc40d6e8056` (`find … -type f | LC_ALL=C sort | xargs sha256sum | sha256sum`); `scripts/ui-qa.mjs` `f3c58d2f523baa5e914e00407a7efc5ab281039102a92b248883d4076076a765`; `internal/webchat/assets/render.mjs` `0a5fc1791b7e0de96708e3e2aa796f4b0d25a49bbe0ab7ac9fa81dc6618dad7d`.
+
+### Not done, or disagreed with
+
+- `npm run repro` was not run. It compares the build with the dist committed at HEAD, and nothing is committed in this round, so it will differ until the new dist is committed.
+- The legacy footer's `policy N allow / N deny / N unknown` counts the loaded items, not a gateway count. With no governance panel and no items it reads `0 allow / 0 deny / 0 unknown`, where React reads "policy verdicts unavailable". Left as is: whether a derived count should read unavailable is a design decision for the owner.
+- Older sections cite the legacy suite as 258 tests; that is their historical receipt. The current count is 262.
+- Helper functions in `Shell.test.tsx` still use `?? ""` fallbacks behind positive assertions; none of them feeds a negative-only check.
+- No screen-reader testing (open since FX2).
+
+### Browser QA, final run (FX3 E)
+
+`scripts/ui-qa.mjs` (default prefix `p5`) ran from the worktree against the gateway built from the final tree. Its stdout is in `docs/webchat/qa/p5-ui-qa-run.txt`, and the receipt is `p5-ui-qa-receipt.json`. The 48 `p5-*.png` screenshots replace the earlier p5 set; the earlier files were moved out of the tree (not deleted).
+
+- Gateway: WSL `/home/jeli2k/tbwc-gw-fx3 --demo --addr 127.0.0.1:19111`, started from Windows with `Start-Process wsl.exe`; SHA-256 `658041d7f4020b7da7ec187e1bcfaf57b633445f85054ec630702c338bb10311` (supplied to the script, as its header says).
+- Browser: Chrome 155.0.8059.79, headless, `chrome.exe` SHA-256 `e2b66159abacb9d42669364e87252f0eb8a0e3bb443f84763b06d44a98997744`.
+- Command: `node scripts/ui-qa.mjs --url http://127.0.0.1:19111 --chrome "C:/Program Files/Google/Chrome/Application/chrome.exe" --gateway-sha256 658041d7f4020b7da7ec187e1bcfaf57b633445f85054ec630702c338bb10311 --gateway-stop "& …/gw-stop.ps1" --gateway-start "& …/gw-start.ps1"`. Exit 0.
+- Receipt: `outcome` PASS; 12 checks PASS; 0 failures; 0 not verified. `git.head` is `7dc9555`; the tree is that commit plus the uncommitted FX1 to FX3 work.
+
+Result: **PASS** (`ui-qa: PASS (12 checks, 48 screenshots)`).
+
+| Check | Result | Key evidence |
+|---|---|---|
+| A csp-smoke without the favicon allowance | PASS | exit 0; 3 pages, 0 console errors or exceptions |
+| B redirect, legacy notice, served assets | PASS | `HEAD /` is 302 to `/app/`; `/legacy/` shows the deprecation notice; 2 served assets equal the dist |
+| C keyboard walk at 1440 | PASS | chat: 22 stops; trajectory: 6 stops; 0 stops without a ring |
+| D responsive | PASS | 1024 px drawer: `aria-expanded` and `inert` track the state, Escape returns focus; 390 px: no overflow, `scrollY` 0 |
+| E theme | PASS | Dark, Light and System persist across reloads; with storage blocked the page renders on system; first frames match in 4 cases |
+| F live stream | PASS | LOST chip and "LOST, not success"; lossy wording on the row; DENY, UNKNOWN and ALLOW tones distinct; invalid item refused and recovered; duplicate no-op; gap recovers once |
+| G reconnect and offline | PASS | 7 retries (790, 1663, 2618, 4962, 6531, 5965 ms); connected only after the event stream answers; 0 requests offline; first request 2 ms after online |
+| H forced colours, reduced motion | PASS | 6 of 6 ledger shapes distinct; 0 animations under reduced motion |
+| I console, CSP, network | PASS | 0 CSP violations; 0 console errors or warnings outside G; 0 requests off the gateway origin (407 in all) |
+| J user's three points, 6 widths, light and dark | PASS | the chat head sits 53 px below the header at 1440, 1180, 1024 and 768, and 98 px at 390 and 360 (the limit is 160) |
+| K phone dock Tab walk | PASS | 20/20, 20/20, 20/20 and 19/19 stops (forward/backward) at 360x640, 390x844, 412x915 and 844x390; 0 under the dock; last message and footer not covered at the page end |
+| L claim boundary, absent versus zero | PASS | lossy wording on the Chat card, the ledger row and the inspector; four absent and zero snapshots read from the page |
+
+Screenshots of the footer position: `p5-points-1440-light.png` (the footer sits under the composer), `p5-phone-390x844-dock-top.png` (the claim boundary in the header, the chat head under the tabs) and `p5-phone-390x844-dock-end.png` (the footer below the dock at the page's end).

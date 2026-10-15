@@ -8,6 +8,7 @@
 import type { Verdict, ResultState } from "../../../core/contract";
 import type { ChipTone } from "../../../ui/Chip";
 import type { GovernanceCounts } from "../../../core/filters";
+import { LOSSY_NOT_COUNTED } from "../../inspector/recordChip";
 
 export interface ChipReading {
   // The text the chip shows. It carries the meaning; the tone is the colour, never the only cue.
@@ -39,12 +40,19 @@ export function stateReading(state: ResultState, evidenced: boolean, lossy = fal
     case "succeeded":
       if (evidenced && lossy) {
         return {
-          label: "succeeded (output lossy, not confirmed)",
+          label: `succeeded (${LOSSY_NOT_COUNTED})`,
           tone: "unknown",
-          note: "verified, but its output is lossy: not counted as confirmed; lossy output is not terminal evidence.",
+          note: `verified, but ${LOSSY_NOT_COUNTED}: lossy output is not terminal evidence.`,
         };
       }
       if (evidenced) return { label: "succeeded", tone: "ok", note: "verified by the gateway." };
+      if (lossy) {
+        return {
+          label: `reported, ${LOSSY_NOT_COUNTED}`,
+          tone: "reported",
+          note: `reported by the source, not independently verified; ${LOSSY_NOT_COUNTED}.`,
+        };
+      }
       return { label: "reported", tone: "reported", note: "reported by the source, not independently verified." };
     case "denied":
       return { label: "denied", tone: "deny", note: "denied: the action did not run; not a success." };
@@ -83,7 +91,7 @@ export const VERIFIED_READING: ChipReading = {
 // The marker of a verified success whose output is lossy. Its evidence is verified, but the output is
 // incomplete, so it is not confirmed: the marker is neutral and never the success tone.
 export const LOSSY_EVIDENCE_READING: ChipReading = {
-  label: "verified evidence, output lossy",
+  label: `verified evidence, ${LOSSY_NOT_COUNTED}`,
   tone: "idle",
   note: "verified by the gateway; its output is lossy, so it is not confirmed.",
 };

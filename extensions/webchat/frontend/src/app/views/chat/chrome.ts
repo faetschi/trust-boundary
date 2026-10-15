@@ -25,6 +25,23 @@ export function roleLabel(role: Role): string {
   }
 }
 
+// The accessible name of a Copy control: the visible label first, so the words on screen are in the name, then the message
+// it copies. The speaker and the record number tell the controls apart. The record is unique in the transcript; a time is not.
+export function copyName(label: string, role: Role, sequence: number): string {
+  return `${label}: ${copyTargetOf(role, sequence)}`;
+}
+
+function copyTargetOf(role: Role, sequence: number): string {
+  switch (role) {
+    case "assistant":
+      return `Pi, record ${sequence}`;
+    case "user":
+      return `your message, record ${sequence}`;
+    default:
+      return `system note, record ${sequence}`;
+  }
+}
+
 // The clock of a message as HH:mm, in local time, with no seconds. An invalid time reads unavailable.
 export function clockHm(value: string): string {
   const date = new Date(value);

@@ -401,8 +401,14 @@ func validatePanels(panels Panels) error {
 	if err := validateReference("governance policy digest", panels.Governance.PolicyDigest, true); err != nil {
 		return err
 	}
-	if panels.Governance.AllowCount < 0 || panels.Governance.DenyCount < 0 || panels.Governance.UnknownCount < 0 {
-		return errors.New("governance decision counts must not be negative")
+	if err := validateCount("governance allow count", panels.Governance.AllowCount); err != nil {
+		return err
+	}
+	if err := validateCount("governance deny count", panels.Governance.DenyCount); err != nil {
+		return err
+	}
+	if err := validateCount("governance unknown count", panels.Governance.UnknownCount); err != nil {
+		return err
 	}
 	if err := validateText("governance note", panels.Governance.Note, MaxTextBytes, true); err != nil {
 		return err
@@ -582,8 +588,14 @@ func validateSession(session SessionHeader) error {
 	if err := validateIdentifier("session pi version", session.PiVersion, true); err != nil {
 		return err
 	}
-	if session.TurnCount < 0 {
-		return errors.New("session turn count must not be negative")
+	return validateCount("session turn count", session.TurnCount)
+}
+
+// validateCount accepts a count the source did not state (nil) and a stated count that is not negative. A stated zero
+// is a count, and nil is not zero.
+func validateCount(name string, count *int) error {
+	if count != nil && *count < 0 {
+		return fmt.Errorf("%s must not be negative", name)
 	}
 	return nil
 }

@@ -21,9 +21,10 @@ import { AnnouncerContext, useAnnouncer } from "../../ui/LiveRegion";
 import { createAnnouncer, type Announcer } from "../../ui/announcer";
 import { WorkspaceProvider, useWorkspace } from "../WorkspaceProvider";
 import { createWorkspaceStore, type WorkspaceModel } from "../workspaceStore";
-import { WINDOW_GAP_TEXT } from "../status";
+import { WINDOW_GAP_LABEL, WINDOW_GAP_TEXT } from "../status";
 import { ChatView, TRANSCRIPT_NOTICE_POINTER } from "./ChatView";
 import { TAIL_ANNOUNCE_DELAY_MS } from "./chat/tail";
+import { COPIED_MS } from "./chat/chrome";
 
 let latest: WorkspaceModel | null = null;
 let liveAnnouncer: Announcer | null = null;
@@ -282,12 +283,12 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
         { source: "live", verification: "structural-audit-only" },
       ),
     );
-    expect(chips()).toContainEqual(["succeeded (output lossy, not confirmed)", "unknown"]);
-    expect(chips()).toContainEqual(["verified evidence, output lossy", "idle"]);
+    expect(chips()).toContainEqual(["succeeded (output lossy, not counted as confirmed)", "unknown"]);
+    expect(chips()).toContainEqual(["verified evidence, output lossy, not counted as confirmed", "idle"]);
     expect(chips()).not.toContainEqual(["verified", "ok"]);
     expect(chips().some(([, tone]) => tone === "ok")).toBe(false);
     // The card's accessible name carries the same reading, so a screen reader hears the lossy output too.
-    expect(qa("summary")[0]?.textContent).toContain("verified evidence, output lossy");
+    expect(qa("summary")[0]?.textContent).toContain("verified evidence, output lossy, not counted as confirmed");
   });
 
   it("states once that a verified projection is verified, and draws no per-item marker on the tool card", async () => {
@@ -483,7 +484,7 @@ describe("honesty rules on the transcript (web-chat.md sections 4.1 and 4.3)", (
     expect(card.textContent).not.toContain("reported");
   });
 
-  it("never gives a verified lossy success the ok tone: it reads succeeded (output lossy, not confirmed) on the unknown tone", async () => {
+  it("never gives a verified lossy success the ok tone: it reads succeeded (output lossy, not counted as confirmed) on the unknown tone", async () => {
     await renderLive(
       verifiedSnapshot([
         observed(decisionItem({ id: "d1", sequence: 1, tool: "bash", tool_call_id: "c1", verdict: "ALLOW" })),
@@ -491,21 +492,21 @@ describe("honesty rules on the transcript (web-chat.md sections 4.1 and 4.3)", (
       ]),
     );
     const found = chips();
-    expect(found).toContainEqual(["succeeded (output lossy, not confirmed)", "unknown"]);
+    expect(found).toContainEqual(["succeeded (output lossy, not counted as confirmed)", "unknown"]);
     expect(found.some(([, tone]) => tone === "ok")).toBe(false);
     const summary = q("[data-anchor='c1'] summary").textContent ?? "";
-    expect(summary).toContain("succeeded (output lossy, not confirmed)");
+    expect(summary).toContain("succeeded (output lossy, not counted as confirmed)");
     expect(summary).not.toMatch(/\bsucceeded\b(?! \(output lossy)/);
     expect(q("[role='group'][aria-label='Observed posture']").textContent).not.toMatch(/verified 1/);
   });
 
-  it("states a lossy result in text, and keeps its state, which lossy output does not change", async () => {
+  it("states a lossy result in the ledger's words, and keeps its reported tone, which lossy output does not change", async () => {
     await renderLive(
       fixtureSnapshot([resultItem({ id: "r1", sequence: 1, tool: "bash", tool_call_id: "c1", state: "succeeded", lossy: true })]),
     );
     const found = chips();
     expect(found).toContainEqual(["lossy", "unknown"]);
-    expect(found).toContainEqual(["reported", "reported"]);
+    expect(found).toContainEqual(["reported, output lossy, not counted as confirmed", "reported"]);
     expect(q("[role='log']").textContent).toContain("lossy output is not terminal evidence");
   });
 
@@ -565,8 +566,12 @@ describe("tool disclosures", () => {
 describe("notices and states", () => {
   it("does not repeat the window notice in the transcript: the shell shows it above the tabs", () => {
     renderModel(modelOf(fixtureItems(), { windowGap: { kind: "server", reason: "cursor_ahead", since: 1 } }));
+    // The loaded records are rendered, and the view has read the gap (its pointer to the shell's notice is shown).
+    // Only then is the absence of the notice read: an empty transcript would pass the absence for nothing.
+    expect(q("[role='log']").textContent).toContain("hello world");
+    expect(qa("[role='log'] p").some((element) => element.textContent === TRANSCRIPT_NOTICE_POINTER)).toBe(true);
+    expect(q("[role='log']").textContent).not.toContain(WINDOW_GAP_LABEL);
     expect(q("[role='log']").textContent).not.toContain(WINDOW_GAP_TEXT);
-    expect(qa("[role='note']")).toHaveLength(0);
   });
 
   it("does not repeat the eviction notice in the transcript, but the summary line still counts it", () => {
@@ -585,8 +590,11 @@ describe("notices and states", () => {
 
   it("shows no earlier-history notice for a loaded window with continuity", async () => {
     await renderLive(fixtureSnapshot());
-    expect(qa("[role='note']").some((note) => note.textContent?.includes("Earlier history"))).toBe(false);
-    expect(q("[role='log']").textContent).not.toContain(TRANSCRIPT_NOTICE_POINTER);
+    // The transcript's own records are shown first, so the absences below are read against a rendered transcript.
+    expect(q("[role='log']").textContent).toContain("hello world");
+    // The notice pointer is the one notice marker the view renders (role="note" is the shell's, not this view's).
+    expect(qa("[role='log'] p").some((element) => element.textContent === TRANSCRIPT_NOTICE_POINTER)).toBe(false);
+    expect(q("[role='log']").textContent).not.toContain(WINDOW_GAP_TEXT);
   });
 
   it("shows a loading state until the projection is loaded", async () => {
@@ -619,8 +627,18 @@ describe("notices and states", () => {
 
 describe("the tail window (web-chat.md section 4.5)", () => {
   it("follows new records for a reader at the tail, and counts none of them", async () => {
+    // The transcript grows by the new record's height when it arrives. A reader at the tail is carried to the new bottom.
+    const heights = { scroll: 5000, view: 500 };
+    stubTranscript(heights);
     await renderLive(fixtureSnapshot());
-    emitItem(messageItem({ id: "m8", sequence: 8, role: "assistant", text: "new" }));
+    transcript().scrollTop = 4500;
+    act(() => {
+      transcript().dispatchEvent(new Event("scroll"));
+    });
+    heights.scroll = 5600;
+    emitItem(messageItem({ id: "m8", sequence: 8, role: "assistant", text: "arrived at the tail" }));
+    expect(transcript().textContent).toContain("arrived at the tail");
+    expect(transcript().scrollTop).toBe(5100);
     expect(hasJumpControl()).toBe(false);
   });
 
@@ -858,13 +876,88 @@ describe("the Copy action", () => {
     );
     expect(button("Copy displayed text (truncated)").textContent).toBe("Copy displayed text (truncated)");
   });
+
+  it("names each Copy control for the message it copies, so no two controls share a name", async () => {
+    await renderLive(
+      fixtureSnapshot([
+        messageItem({ id: "m1", sequence: 1, role: "user", text: "first" }),
+        messageItem({ id: "m2", sequence: 2, role: "assistant", text: "second" }),
+        messageItem({ id: "m3", sequence: 3, role: "system", text: "third" }),
+      ]),
+    );
+    const names = qa<HTMLButtonElement>("button")
+      .filter((element) => element.textContent?.trim() === "Copy message")
+      .map((element) => element.getAttribute("aria-label"));
+    expect(names).toEqual([
+      "Copy message: your message, record 1",
+      "Copy message: Pi, record 2",
+      "Copy message: system note, record 3",
+    ]);
+  });
+
+  it("keeps the record in the name while the label reads Copied", async () => {
+    setClipboard({ writeText: async () => undefined });
+    await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "assistant", text: "hi" })]));
+    click(button("Copy message"));
+    await settleCopy();
+    expect(button("Copied").getAttribute("aria-label")).toBe("Copied: Pi, record 1");
+  });
+
+  it("reads Copy unavailable for the same second as Copied, announces it once, and then returns to Copy message", async () => {
+    setClipboard({ writeText: () => Promise.reject(new Error("permission denied")) });
+    await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello world" })]));
+    const before = liveAnnouncer?.getSnapshot().serial ?? -1;
+    vi.useFakeTimers();
+    click(button("Copy message"));
+    await settleCopy();
+    expect(button("Copy unavailable").getAttribute("aria-label")).toBe("Copy unavailable: your message, record 1");
+    expect(liveAnnouncer?.getSnapshot().serial).toBe(before + 1);
+    expect(liveAnnouncer?.getSnapshot().text).toBe("Copy unavailable.");
+    act(() => {
+      vi.advanceTimersByTime(COPIED_MS - 1);
+    });
+    expect(button("Copy unavailable").textContent).toBe("Copy unavailable");
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(button("Copy message").textContent).toBe("Copy message");
+    expect(liveAnnouncer?.getSnapshot().serial).toBe(before + 1);
+  });
+
+  it("restarts the one-second reading on each copy, so a second copy is not cut short by the first timer", async () => {
+    setClipboard({ writeText: async () => undefined });
+    await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello world" })]));
+    vi.useFakeTimers();
+    click(button("Copy message"));
+    await settleCopy();
+    act(() => {
+      vi.advanceTimersByTime(COPIED_MS - 400);
+    });
+    click(button("Copied"));
+    await settleCopy();
+    act(() => {
+      vi.advanceTimersByTime(COPIED_MS - 400);
+    });
+    expect(button("Copied").textContent).toBe("Copied");
+    act(() => {
+      vi.advanceTimersByTime(400);
+    });
+    expect(button("Copy message").textContent).toBe("Copy message");
+  });
 });
 
 describe("the composer in the Chat view", () => {
   it("renders the composer below the transcript, as a read-only, labelled region", async () => {
     await renderLive(fixtureSnapshot());
+    const log = q("[role='log']");
     const composer = q("[data-testid='composer']");
-    expect(q("[role='log']").compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The composer is not inside the transcript. FOLLOWING alone also holds for a descendant, so the containment is asserted.
+    expect(log.contains(composer)).toBe(false);
+    // The composer's dock is the transcript wrapper's next sibling: the composer follows the log, and is not a child of it.
+    const dock = composer.parentElement;
+    expect(dock?.previousElementSibling).toBe(log.parentElement);
+    expect(dock?.parentElement).toBe(log.parentElement?.parentElement);
+    expect(log.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(q<HTMLTextAreaElement>("[data-testid='composer'] textarea").readOnly).toBe(true);
   });
 

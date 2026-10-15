@@ -38,6 +38,8 @@ describe("the composer on a phone: one line of reason, so the pinned bar stays c
 
 describe("the composer's card does not clip its own focus rings", () => {
   it("leaves the card's overflow visible, so the 2 px outline and its offset draw in full", () => {
-    expect(declarationsIn(css, ".card")).not.toMatch(/overflow:\s*hidden;/);
+    // The rule must exist first: a missing rule has no declarations, and so would pass the clip check below.
+    expect(css).toMatch(/(?:^|[\s},])\.card\s*\{[^}]*\}/);
+    expect(declarationsIn(css, ".card")).not.toMatch(/overflow(?:-[xy])?:\s*(?:hidden|clip);/);
   });
 });

@@ -111,7 +111,7 @@ func (s *Store) Snapshot() Snapshot {
 func (s *Store) Session() SessionHeader {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.base.Session
+	return cloneSession(s.base.Session)
 }
 
 // Item returns a retained projected item by ID. It never resolves a path or
@@ -179,7 +179,7 @@ func (s *Store) UpdateSession(header SessionHeader) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.base.Session = header
+	s.base.Session = cloneSession(header)
 	s.rev++
 	s.broadcastLocked(s.sessionEvent())
 	return nil
@@ -291,7 +291,7 @@ func (s *Store) SubscribeAfter(cursor string) (*Subscription, *ReplayGap) {
 	s.nextSub++
 	channel := make(chan Event, SubscriberQueueSize)
 	s.subs[s.nextSub] = channel
-	result := &Subscription{Initial: s.currentItemsLocked(), Session: s.base.Session, Panels: clonePanels(s.base.Panels), Streams: append([]StreamStatus(nil), s.base.Streams...), Events: channel, store: s, id: s.nextSub}
+	result := &Subscription{Initial: s.currentItemsLocked(), Session: cloneSession(s.base.Session), Panels: clonePanels(s.base.Panels), Streams: append([]StreamStatus(nil), s.base.Streams...), Events: channel, store: s, id: s.nextSub}
 	if cursor == "" {
 		return result, nil
 	}
@@ -387,7 +387,7 @@ func (s *Store) initialized() bool {
 // sessionEvent builds a session event that carries the full non-item projection
 // (session, panels and stream health), so a subscriber never sees stale state.
 func (s *Store) sessionEvent() Event {
-	header := s.base.Session
+	header := cloneSession(s.base.Session)
 	panels := clonePanels(s.base.Panels)
 	streams := append([]StreamStatus(nil), s.base.Streams...)
 	return Event{
@@ -400,16 +400,34 @@ func (s *Store) sessionEvent() Event {
 	}
 }
 
-// clonePanels deep-copies the panel projection, including the ObservedAt
-// pointer, so a caller cannot mutate retained store state through a returned
-// snapshot or a delivered event.
+// clonePanels deep-copies the panel projection, including its pointers (the
+// ObservedAt time and the stated decision counts), so a caller cannot mutate
+// retained store state through a returned snapshot or a delivered event.
 func clonePanels(panels Panels) Panels {
 	out := panels
 	if panels.Publication.ObservedAt != nil {
 		observed := *panels.Publication.ObservedAt
 		out.Publication.ObservedAt = &observed
 	}
+	out.Governance.AllowCount = cloneCount(panels.Governance.AllowCount)
+	out.Governance.DenyCount = cloneCount(panels.Governance.DenyCount)
+	out.Governance.UnknownCount = cloneCount(panels.Governance.UnknownCount)
 	return out
+}
+
+// cloneSession deep-copies the session header, including its stated turn count.
+func cloneSession(session SessionHeader) SessionHeader {
+	session.TurnCount = cloneCount(session.TurnCount)
+	return session
+}
+
+// cloneCount returns a private copy of a stated count, or nil when none is stated.
+func cloneCount(count *int) *int {
+	if count == nil {
+		return nil
+	}
+	value := *count
+	return &value
 }
 
 func cloneEvent(event Event) Event {
@@ -420,7 +438,7 @@ func cloneEvent(event Event) Event {
 		out.Item = &item
 	}
 	if event.Session != nil {
-		session := *event.Session
+		session := cloneSession(*event.Session)
 		out.Session = &session
 	}
 	if event.Panels != nil {
@@ -432,6 +450,7 @@ func cloneEvent(event Event) Event {
 
 func cloneSnapshot(snapshot Snapshot) Snapshot {
 	copy := snapshot
+	copy.Session = cloneSession(snapshot.Session)
 	copy.Panels = clonePanels(snapshot.Panels)
 	copy.Streams = append([]StreamStatus(nil), snapshot.Streams...)
 	copy.Gaps = append([]GapRecord(nil), snapshot.Gaps...)

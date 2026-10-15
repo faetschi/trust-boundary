@@ -35,9 +35,9 @@ same shape, with `source: "live"` and `verification_scope:
 
 - `source`, `verification_scope`, `epoch`, `cursor`, `generated_at`
 - `session`: `session_id`, `workflow_id`, `title`, `status`, `profile`,
-  `pi_version`, `created_at`, `updated_at`, `turn_count`
+  `pi_version`, `created_at`, `updated_at`, `turn_count` (optional, §2.1.1)
 - `panels`:
-  - `governance`: `policy_digest`, `allow_count`, `deny_count`, `unknown_count`
+  - `governance`: `policy_digest`, `allow_count`, `deny_count`, `unknown_count` (each count optional, §2.1.1)
   - `provenance`: `profile_id`, `profile_hash`, `source_digest`,
     `containment_profile`, `containment_digest`, `provider_profile`,
     `runtime_closure`, `tcb_proof_digest`, `tcb_proof_sequence`
@@ -47,6 +47,24 @@ same shape, with `source: "live"` and `verification_scope:
 - `streams[]`: `id`, `label`, `health`, `available`, `reason`
 - `items[]`: the ordered bounded union in §2.2
 - `gaps[]`: durable continuity gaps
+
+### 2.1.1 Absent versus zero
+
+A count the source does not state is **absent**: the gateway omits its key. A stated count is written, and **zero is a stated
+count**. A client reads an absent count as `unavailable` and a stated zero as `0`. Nothing else decides between them: a policy
+digest, a sibling count, or a turn count inferred from other fields never makes an absent count zero or a zero absent.
+
+| Field | Wire | Absent means | Zero means | Where the gateway sets it |
+|---|---|---|---|---|
+| `session.turn_count` | optional integer, ≥ 0 | the source states no session turn count | no turns | live projection: stated. Receipt projection: never stated (`provider_turns` counts provider exchanges, not turns, and `turn_completed` is a flag). Unavailable session: not stated |
+| `panels.governance.allow_count` | optional integer, ≥ 0 | the source states no ALLOW count | no ALLOW decisions observed | live projection: stated. Receipt projection: never stated (the terminal receipt records no per-tool verdicts) |
+| `panels.governance.deny_count` | optional integer, ≥ 0 | the source states no DENY count | no DENY decisions observed | as `allow_count` |
+| `panels.governance.unknown_count` | optional integer, ≥ 0 | the source states no UNKNOWN count | no UNKNOWN decisions observed | as `allow_count` |
+
+A negative, fractional or non-numeric count is refused. The gateway never writes `null`; the client refuses `null`, and the
+gateway reads it as absent. Sequence positions are not counts: `tcb_proof_sequence`, `last_completed_sequence` and `earliest`
+are omitted when 0 (sequences are 1-based, so 0 is no position), and a client reads their absence as not stated. Served
+`items[].sequence` values are always written, numbered from 1.
 
 ### 2.2 Item union (each item is `sequence`, `id`, `type`, `turn_id`,
 `occurred_at`, `authority`, `verification_scope`, and type-specific fields)

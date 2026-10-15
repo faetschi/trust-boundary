@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decisionItem, messageItem, panelsDefault, sessionDefault } from "../core/testing/builders";
-import type { Panels, SessionHeader } from "../core/contract";
+import type { GovernancePanel, Panels, SessionHeader } from "../core/contract";
 import { statsLine } from "./Footer";
 
 type StatsInput = Parameters<typeof statsLine>[0];
@@ -46,21 +46,18 @@ describe("the one-line statistics", () => {
     expect(statsLine(fixture({ session: sessionWith({ turn_count: 3 }) })).startsWith("3 turns · ")).toBe(true);
   });
 
-  // The gateway writes an absent turn_count as 0, and a session with records has at least one turn, so zero is not a count
-  // the page shows. It reads unavailable with or without loaded records.
-  it("reads a zero turn count as unavailable, with or without loaded records", () => {
-    expect(statsLine(fixture({ session: sessionWith({ turn_count: 0 }) })).startsWith("turns unavailable · ")).toBe(true);
-    expect(statsLine(fixture({ session: sessionWith({ turn_count: 0 }), items: [] })).startsWith("turns unavailable · ")).toBe(
-      true,
-    );
+  // A stated zero is a count: a session with no turns reads 0 turns, with or without loaded records.
+  it("reads a stated zero turn count as 0 turns, with or without loaded records", () => {
+    expect(statsLine(fixture({ session: sessionWith({ turn_count: 0 }) })).startsWith("0 turns · ")).toBe(true);
+    expect(statsLine(fixture({ session: sessionWith({ turn_count: 0 }), items: [] })).startsWith("0 turns · ")).toBe(true);
   });
 
-  it("reads an all-zero policy with no digest as unavailable, and with a digest as zero verdicts", () => {
+  it("reads stated zero policy counts as zero verdicts, with or without a policy digest", () => {
     const zero = { allow_count: 0, deny_count: 0, unknown_count: 0 };
     // No decision among the records, so that the zero counts are not contradicted by a verdict.
     const records = [messageItem({ id: "m1", sequence: 1, role: "user", text: "list files" })];
-    const absent: Panels = { ...panelsDefault(), governance: zero };
-    expect(statsLine(fixture({ panels: absent, items: records }))).toContain(" · policy verdicts unavailable · ");
+    const bare: Panels = { ...panelsDefault(), governance: zero };
+    expect(statsLine(fixture({ panels: bare, items: records }))).toContain(" · policy verdicts 0 allow / 0 deny / 0 unknown · ");
     const observed: Panels = { ...panelsDefault(), governance: { ...zero, policy_digest: "sha256:ab" } };
     expect(statsLine(fixture({ panels: observed, items: records }))).toContain(" · policy verdicts 0 allow / 0 deny / 0 unknown · ");
   });
@@ -113,3 +110,42 @@ describe("the one-line statistics", () => {
     expect(statsLine(fixture())).toMatch(/ · tokens unavailable · timing unavailable$/);
   });
 });
+
+// Absent is unavailable, a stated zero is zero, and a stated count is its number, for the turn count and each policy count.
+describe("absent versus zero, in the footer", () => {
+  const TURNS: ReadonlyArray<readonly [number | undefined, string]> = [
+    [undefined, "turns unavailable"],
+    [0, "0 turns"],
+    [1, "1 turn"],
+    [3, "3 turns"],
+  ];
+  it.each(TURNS)("reads turn_count %s as '%s'", (turns, text) => {
+    expect(statsLine(fixture({ session: sessionWith({ turn_count: turns }) })).startsWith(`${text} · `)).toBe(true);
+  });
+
+  const POLICY: ReadonlyArray<readonly [number | undefined, number | undefined, number | undefined, string]> = [
+    [undefined, undefined, undefined, "policy verdicts unavailable"],
+    [0, 0, 0, "policy verdicts 0 allow / 0 deny / 0 unknown"],
+    [2, undefined, 0, "policy verdicts 2 allow / unavailable deny / 0 unknown"],
+    [0, 2, 0, "policy verdicts 0 allow / 2 deny / 0 unknown"],
+    [0, 0, 2, "policy verdicts 0 allow / 0 deny / 2 unknown"],
+  ];
+  // The records carry no verdict, so a stated zero is not contradicted. The digest changes no row.
+  it.each(POLICY)("reads allow %s, deny %s, unknown %s as '%s', with and without a policy digest", (allow, deny, unknown, text) => {
+    const records = [messageItem({ id: "m1", sequence: 1, role: "user", text: "list files" })];
+    for (const digest of [undefined, "sha256:ab"]) {
+      const panels: Panels = { ...panelsDefault(), governance: governance(allow, deny, unknown, digest) };
+      expect(statsLine(fixture({ panels, items: records }))).toContain(` · ${text} · `);
+    }
+  });
+});
+
+// A governance panel with the given counts. An undefined count is omitted, as the gateway omits a count it does not state.
+function governance(allow?: number, deny?: number, unknown?: number, digest?: string): GovernancePanel {
+  return {
+    ...(allow === undefined ? {} : { allow_count: allow }),
+    ...(deny === undefined ? {} : { deny_count: deny }),
+    ...(unknown === undefined ? {} : { unknown_count: unknown }),
+    ...(digest === undefined ? {} : { policy_digest: digest }),
+  };
+}
