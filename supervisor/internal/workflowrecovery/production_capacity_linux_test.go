@@ -498,9 +498,11 @@ func d14PCProbeHeadroom(t *testing.T, slack int64) d14PCProbe {
 // TestD14PreEffectTerminalHeadroomGate is the default-on regression for the
 // pre-effect headroom gap. Before the gate, ReserveEffect was granted at 23 page
 // ceilings (slack 17..39) where the reservation fit but its terminal write did
-// not, so authority was consumed with no durable outcome. The gate must refuse
-// every ceiling below the headroom threshold before any grant, and must admit
-// every ceiling at or above it together with its terminal write.
+// not, so authority was consumed with no durable outcome. The probes are slack 0
+// through 64 and the threshold-1 and threshold ceilings. Each probed ceiling below
+// the threshold must be refused before any grant. The threshold ceiling itself
+// must be granted and settled, for this fixture's 23-page terminal only. Ceilings
+// above the threshold are not probed, and no worst-case terminal is measured.
 func TestD14PreEffectTerminalHeadroomGate(t *testing.T) {
 	threshold := d14PCHeadroomSlack(t)
 	slacks := make([]int64, 0, d14PCSweepSlack+3)
@@ -542,9 +544,10 @@ func TestD14PreEffectTerminalHeadroomGate(t *testing.T) {
 }
 
 // TestD14EffectRefusalLeavesHeadUnchangedAndRetryAdmitted refuses one reservation
-// a page below the headroom threshold, then reopens the same store from disk at
-// the threshold. The refusal must leave the predecessor head and owner epoch
-// intact, and the retry must reserve and settle the captured effect once.
+// a page below the headroom threshold, then reopens the same SQLite file in this
+// process at the threshold. The reopen is same-process, not a fresh-process
+// recovery. The refusal must leave the predecessor head and owner epoch intact,
+// and the retry must reserve and settle the captured effect once.
 func TestD14EffectRefusalLeavesHeadUnchangedAndRetryAdmitted(t *testing.T) {
 	ctx := context.Background()
 	threshold := d14PCHeadroomSlack(t)
@@ -596,6 +599,123 @@ func TestD14EffectRefusalLeavesHeadUnchangedAndRetryAdmitted(t *testing.T) {
 	if err := d14PCSettle(retryLedger, granted); err != nil {
 		t.Fatalf("settle the retried effect: %v", err)
 	}
+}
+
+// TestD14ReservedEffectRefusesNonTerminalCommits pins the window between a granted
+// ReserveEffect and its terminal outcome. While the effect is reserved, every other
+// commit of that workflow must refuse with its typed error before any write, and
+// the terminal accounting of the same effect must still settle. The owner subtest
+// runs on the real protected root and SQLite owner. The recovery subtest takes its
+// replacement epoch on the test trusted root, as the other replacement-epoch tests
+// do: the real root's drain check requires the superseded owner process to be gone,
+// and this single test process is that owner.
+func TestD14ReservedEffectRefusesNonTerminalCommits(t *testing.T) {
+	ctx := context.Background()
+	t.Run("owner commits", func(t *testing.T) {
+		fixture := newD14PCCapturedFixture(t)
+		defer fixture.owner.Close()
+		ledger, err := Open(ctx, fixture.owner, OpenOptions{WorkflowID: fixture.workflow,
+			OwnerEpoch: fixture.prior.Pins.OwnerEpoch, RetainedPins: fixture.prior.Pins, Limits: fixture.prior.Limits})
+		if err != nil {
+			t.Fatalf("open ledger: %v", err)
+		}
+		receipt, err := ledger.ReserveEffect(ctx, fixture.binding, exactCapturedOperationVerifier{expected: fixture.binding})
+		if err != nil {
+			t.Fatalf("grant the captured effect: %v", err)
+		}
+		_, reservedDigest := ledger.Snapshot()
+		reservedHead := d14PCFixture{workflow: fixture.workflow, priorDigest: reservedDigest}
+		refusals := []struct {
+			name string
+			want error
+			run  func() (Receipt, error)
+		}{
+			{"AdvanceCheckpoint", ErrPendingUnknown, func() (Receipt, error) {
+				return Receipt{}, d14PCAdvanceResult(ledger)
+			}},
+			{"ReservePreEffectRetry", ErrPendingUnknown, func() (Receipt, error) {
+				return ledger.ReservePreEffectRetry(ctx)
+			}},
+			{"ReserveHostCall", ErrPendingUnknown, func() (Receipt, error) {
+				return ledger.ReserveHostCall(ctx, testHostCallBinding(d14PCMaxID("host-call-late-"), 41))
+			}},
+			{"second ReserveEffect for the same captured call", ErrPendingUnknown, func() (Receipt, error) {
+				return ledger.ReserveEffect(ctx, fixture.binding, exactCapturedOperationVerifier{expected: fixture.binding})
+			}},
+			{"RegisterInitialTranscript", ErrInvalid, func() (Receipt, error) {
+				return ledger.RegisterInitialTranscript(ctx, allowProgress{}, emptyTranscript(d14PCMaxID("conversation-late-")))
+			}},
+			{"InitializeFresh for the same workflow", ErrCAS, func() (Receipt, error) {
+				pins := testPins(fixture.root.TrustedRootIdentityDigest(), fixture.owner.OwnerIncarnationDigest(),
+					fixture.workflow, d14PCMaxID("session-fresh-"), 1, 1)
+				return InitializeFresh(ctx, fixture.owner, pins, testLimits())
+			}},
+		}
+		for _, refusal := range refusals {
+			refused, err := refusal.run()
+			if !errors.Is(err, refusal.want) {
+				t.Fatalf("%s while reserved = %v, want typed %v", refusal.name, err, refusal.want)
+			}
+			d14PCRequireUnchangedHead(t, reservedHead, ledger, fixture.owner, refused)
+			if fixture.root.poisoned {
+				t.Fatalf("%s poisoned the protected root", refusal.name)
+			}
+		}
+		// The terminal accounting of the same effect is the one commit the reservation
+		// admits, so it must still settle after every refusal above.
+		if err := d14PCSettle(ledger, receipt); err != nil {
+			t.Fatalf("settle the reserved effect after the refusals: %v", err)
+		}
+	})
+	t.Run("recovery observation after a replacement fence", func(t *testing.T) {
+		const workflow = "workflow-d14-reserved-fence"
+		root := newTestTrustedRoot()
+		root.setFence(workflow, 1, 0)
+		directory := t.TempDir()
+		if err := os.Chmod(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		owner, err := CreateFreshSQLiteOwner(filepath.Join(directory, "workflow-owner.sqlite"), root)
+		if err != nil {
+			t.Fatalf("create SQLite owner: %v", err)
+		}
+		defer owner.Close()
+		pins := testPins(root.identity, owner.OwnerIncarnationDigest(), workflow, "session-initial", 1, 1)
+		limits := testLimits()
+		if _, err := InitializeFresh(ctx, owner, pins, limits); err != nil {
+			t.Fatalf("initialize fresh workflow: %v", err)
+		}
+		first, err := Open(ctx, owner, OpenOptions{WorkflowID: workflow, OwnerEpoch: 1,
+			RetainedPins: pins, Limits: limits})
+		if err != nil {
+			t.Fatalf("open first owner epoch: %v", err)
+		}
+		conversation := "conversation-fence"
+		hostCall := "host-call-fence"
+		if _, err := first.RegisterInitialTranscript(ctx, allowProgress{}, emptyTranscript(conversation)); err != nil {
+			t.Fatalf("register initial transcript: %v", err)
+		}
+		if _, err := first.ReserveHostCall(ctx, testHostCallBinding(hostCall, 41)); err != nil {
+			t.Fatalf("charge provider request: %v", err)
+		}
+		binding := d14PCCaptureCall(t, first, conversation, hostCall, "tool-call-fence", "operation-fence")
+		if _, err := first.ReserveEffect(ctx, binding, exactCapturedOperationVerifier{expected: binding}); err != nil {
+			t.Fatalf("grant the captured effect: %v", err)
+		}
+		reserved, reservedDigest := first.Snapshot()
+		root.setFence(workflow, 2, 2)
+		replacement, err := Open(ctx, owner, OpenOptions{WorkflowID: workflow, OwnerEpoch: 2,
+			RetainedPins: reserved.Pins, Limits: reserved.Limits})
+		if err != nil {
+			t.Fatalf("open replacement epoch: %v", err)
+		}
+		// A clean restart needs a verified observation. ObserveRecovery refuses an
+		// observation that still holds a reserved effect, so no restart commit is built.
+		if _, err := replacement.ObserveRecovery(ctx, allowRecovery{}, clonePins(reserved.Pins)); !errors.Is(err, ErrPendingUnknown) {
+			t.Fatalf("recovery observation of a reserved effect = %v, want typed ErrPendingUnknown", err)
+		}
+		d14PCRequireUnchangedHead(t, d14PCFixture{workflow: workflow, priorDigest: reservedDigest}, replacement, owner, Receipt{})
+	})
 }
 
 // TestD14MaxTransitionPagesWithinBound measures real SQLite growth for the largest

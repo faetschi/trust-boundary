@@ -62,13 +62,16 @@ const (
 	// SQLITE_CORRUPT before a cursor would descend below 20 levels, so every balance
 	// chain starts from a tree of at most 20 levels.
 	sqliteBTreeMaxDepth = 20
-	// sqliteSplitSlackPages bounds B-tree growth per transition. Four trees each take
-	// one balance chain: the state table (its PRIMARY KEY autoindex is not touched,
-	// because the state UPDATE does not set workflow_id), the events table, and the
-	// events' two autoindexes. A chain calls balance_nonroot at most once per level,
-	// plus once more after a root split. Each call adds at most 4 pages, since
-	// balance_nonroot caps its sibling set at NB+2 = 5 and reuses at least one old
-	// page. A root split adds 1 page (balance_deeper). Per tree: 4*20+1 = 81 pages.
+	// sqliteSplitSlackPages bounds B-tree growth per transition. Assumption A5 is
+	// argued from the SQL shape and the single balance call in sqlite3BtreeInsert,
+	// not traced in VDBE bytecode: each of the four trees a transition touches takes
+	// one balance chain. Those trees are the state table (its PRIMARY KEY autoindex is
+	// not touched, because the state UPDATE does not set workflow_id), the events
+	// table, and the events' two autoindexes. Under A5, a chain calls balance_nonroot
+	// at most once per level, plus once more after a root split. Each call adds at
+	// most 4 pages, since balance_nonroot caps its sibling set at NB+2 = 5 and reuses
+	// at least one old page. A root split adds 1 page (balance_deeper). Per tree:
+	// 4*20+1 = 81 pages.
 	sqliteSplitSlackPages = 4 * (4*sqliteBTreeMaxDepth + 1)
 )
 
@@ -1548,7 +1551,7 @@ func requireEffectTerminalHeadroom(ctx context.Context, tx *sql.Tx, checkpointJS
 	required := sqliteTransitionPages(int64(len(checkpointJSON)), int64(len(proofJSON))) +
 		sqliteTransitionPages(maxCheckpointJSONBytes, maxCheckpointJSONBytes)
 	if available := freePages + ceiling - pageCount; available < required {
-		return fmt.Errorf("%w: %d free pages cannot hold this effect reservation and its terminal accounting (%d pages); no effect authority was consumed",
+		return fmt.Errorf("%w: %d pages of free plus ceiling headroom cannot hold this effect reservation and its terminal accounting (%d pages); no effect authority was consumed",
 			ErrExhausted, available, required)
 	}
 	return nil

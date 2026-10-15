@@ -1,0 +1,226 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-15",
+  "branch": "codex/tbound-prototype",
+  "status": "PARTIAL. Measured the genuine workflowrecovery ledger path with real SQLite and protected-root stores, ran the existing ext4 root experiment to PASS, and reproduced the pre-effect headroom gap as an opt-in failing test. No physical reserve is implemented and no D14 qualification is claimed.",
+  "claim_status": "NOT_QUALIFIED",
+  "corrections": [
+    {
+      "date": "2026-10-15",
+      "what": "files.new_test_file.sha256 is the R1-era overlay hash. It is kept as r1_overlay_sha256 and is stale. current_sha256 is the production_capacity_linux_test.go content at HEAD 84cfaad plus the 2026-10-15 corrections. The file is tracked now, at b089a9d.",
+      "why": "The receipt's hash did not match the file as committed."
+    },
+    {
+      "date": "2026-10-15",
+      "what": "The ext4 fresh-process and crash-child claims are scoped to what the log records. logs/ext4-run.log (run-ext4-20261015-a, 1911 bytes) shows the top-level TestReservedCapacityFilesystemExperiment PASS (4.06s), the success-child output (TestReservedCapacityLinuxHelper PASS 1.68s), and the D14_CRASH_BOUNDARY line. It prints no crash-child exit status and no verify-phase line. The R1 test source (head.tar, reserved_capacity_linux_test.go) runs verify-success (line 97), run-crash with required exit 77 (line 99; exit comparison at lines 319-326), and verify-crash (line 101). Those phases are covered only by the top-level PASS.",
+      "why": "'verify-success and verify-crash both passed' and 'crash child exits 77' were not in the log."
+    },
+    {
+      "date": "2026-10-15",
+      "what": "'parent decision 3' is now Decision 3 of docs/design/d14-reserved-capacity.md (release before terminal writes). The parent-decision record is not in this repository.",
+      "why": "The reference could not be resolved in the repository."
+    }
+  ],
+  "scope": "Local workflowrecovery package only. One transcript. Synthetic Store pins. No cmd/tbound production fixture, no provider, no physical production volume, no host backing storage, no power-loss, no EIO. Green or red test results here verify code and measure shapes; they do not establish the D14 claim.",
+  "source_basis": {
+    "head_used_for_runs": "837b7e4d146e531678caacf2328f3d3f015a0c88",
+    "head_now": "230f2b6e2a7903a1c56a1a780d689b55050017eb",
+    "head_now_check": "git diff --stat 837b7e4 230f2b6 touches only OVERVIEW.md, TASK_STATE.md, docs/evidence/abi8-runtime-provisioning-20261015.json, packaging/governed/Containerfile, tests/packaging/verify-governed-containerfile-pins.sh. It does not touch supervisor/internal/workflowrecovery or supervisor/cmd/tbound/governed_session_linux.go.",
+    "archive_command": "git -c core.autocrlf=false archive --format=tar 837b7e4 (run from the Windows checkout)",
+    "archive_sha256": "322b25ee3fe59358fcf32e1ac0f35d9807b934cda42199481e7d7386098949f8",
+    "archive_bytes": 6891520,
+    "overlay": "Four pending workflowrecovery files, byte-identical to 837b7e4 at the time of the runs, so the overlay was a no-op: protected_root_linux.go fc7051c7..., protected_root_linux_test.go 354defb3..., sqlite_linux.go 7c4f9a1f..., sqlite_page_geometry_linux_test.go d66ded36...",
+    "new_test_file": {
+      "path": "supervisor/internal/workflowrecovery/production_capacity_linux_test.go",
+      "r1_overlay_sha256": "54f1604a458809951b289b4c8e0c4bf27a4def636fa2ae87c7b8b7237e9ab38a (R1-era overlay, stale; see corrections)",
+        "current_sha256": "517fdc365d10061475fedd67d3a559872c7b7b2afea6d9e4e88b1c9d7a516878 (HEAD 84cfaad plus the 2026-10-15 corrections)",
+      "lines": 394,
+      "tracked": false
+    },
+    "private_build_dirs": [
+      "/home/jeli2k/tbound-d14-20261015-ext4a (ext4 run, built as jeli2k, executed as root)",
+      "/home/jeli2k/tbound-d14-20261015-pc2 (measurement, sweep, and package run, as jeli2k)"
+    ],
+    "toolchain": "/home/jeli2k/go-sdk/go/bin/go, go1.27.1 linux/amd64; env GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly GOMAXPROCS=2 GOMODCACHE=/home/jeli2k/go/pkg/mod GOCACHE=/home/jeli2k/.cache/go-build TMPDIR=<private>/tmp; umask 077",
+    "evidence_directory": "F:/TBoundAssets/recovery-20261015/d14-production-capacity/ (run-ext4-20261015-a, run-pc-20261015-a, run-pc-20261015-b; each with head.tar, overlay, scripts, logs)"
+  },
+  "runs": [
+    {
+      "id": "ext4-root-experiment-a",
+      "purpose": "Run the existing TestReservedCapacityFilesystemExperiment as root in WSL with the opt-in set; do not skip for lack of root.",
+      "build_command": "/home/jeli2k/go-sdk/go/bin/go test -p 2 -count=1 -c -o <private>/evid/workflowrecovery.test ./internal/workflowrecovery (build.exit 0)",
+      "test_binary_sha256": "3bec3d72449f7a10850b9a002cf65c93ef3e7f036f55374c8dde8412819b975e",
+      "run_command": "wsl.exe -d Ubuntu -u root -- sh /mnt/f/TBoundAssets/recovery-20261015/d14-production-capacity/run-ext4-20261015-a/scripts/phaseB-ext4-run.sh (env -i, TBOUND_TEST_EXT4_CAPACITY=1, TMPDIR=<private>/tmp, GOMAXPROCS=2, binary -test.run=^TestReservedCapacityFilesystemExperiment$ -test.v -test.count=1)",
+      "exit": 0,
+      "result": "--- PASS: TestReservedCapacityFilesystemExperiment (4.06s)",
+      "log": "run-ext4-20261015-a/logs/ext4-run.log",
+      "log_sha256": "386edfda83d36aca228401f7e7267cb0c9b21aecf9f6b13915553e14ff1ee07e"
+    },
+    {
+      "id": "measure-tool-call-b",
+      "purpose": "Measure encoded bytes, pages, WAL, root state, and owner commits per API call for one maximal-identifier tool call.",
+      "run_command": "wsl.exe -d Ubuntu -u jeli2k -- sh /mnt/f/TBoundAssets/recovery-20261015/d14-production-capacity/run-pc-20261015-b/scripts/phaseC-pc.sh",
+      "gofmt_l": { "exit": 0, "output_bytes": 0 },
+      "vet": { "command": "go vet -mod=readonly ./internal/workflowrecovery", "exit": 0, "output_bytes": 0 },
+      "default_measurement": {
+        "command": "go test -race -mod=readonly -count=1 -p 2 -v -run ^TestD14ProductionToolCallCommitsAndEncodedBytes$ ./internal/workflowrecovery",
+        "exit": 0,
+        "result": "--- PASS: TestD14ProductionToolCallCommitsAndEncodedBytes (0.43s)",
+        "log": "run-pc-20261015-b/logs/default-measure-race.log",
+        "log_sha256": "c37e12b89af8584dfa71f59f72e4a62980d0f06bf2ad08738e7c2ed3ff5c305f"
+      }
+    },
+    {
+      "id": "headroom-sweep-b",
+      "purpose": "Opt-in RED: for each page ceiling from post-capture+0 to post-capture+64, reserve one effect and then record its terminal outcome.",
+      "command": "TBOUND_D14_HEADROOM_RED=1 go test -mod=readonly -count=1 -p 2 -v -run ^TestD14PreEffectTerminalHeadroomSweep$ ./internal/workflowrecovery",
+      "exit": 1,
+      "result": "--- FAIL: TestD14PreEffectTerminalHeadroomSweep (8.70s). Expected RED on the current code.",
+      "log": "run-pc-20261015-b/logs/red-sweep.log",
+      "log_sha256": "35bc1c7ebb52937f71c20b579853ea91167e2e8aa8d79c1051168af2d76916f3"
+    },
+    {
+      "id": "sweep-default-b",
+      "purpose": "Default gate behaviour of the sweep without the env var.",
+      "command": "go test -mod=readonly -count=1 -p 2 -v -run ^TestD14PreEffectTerminalHeadroomSweep$ ./internal/workflowrecovery",
+      "exit": 0,
+      "result": "--- SKIP: TestD14PreEffectTerminalHeadroomSweep (0.00s)",
+      "log": "run-pc-20261015-b/logs/sweep-default-skip.log",
+      "log_sha256": "e51404243bf60451cab00f78f9df05ad9f4f172938725d885f3e20fefa52dfea"
+    },
+    {
+      "id": "package-race-b",
+      "purpose": "Whole workflowrecovery package with the new test file present, to check for interference with existing tests. Not the full module.",
+      "command": "go test -race -mod=readonly -count=1 -p 2 -v ./internal/workflowrecovery (run as jeli2k in tbound-d14-20261015-pc2)",
+      "exit": 0,
+      "result": "ok tbound/supervisor/internal/workflowrecovery 52.104s; 0 FAIL; SKIP: TestD14PreEffectTerminalHeadroomSweep (opt-in) and TestReservedCapacityFilesystemExperiment (requires root; this run is uid 1000)",
+      "log": "run-pc-20261015-b/logs/package-race-verbose.log",
+      "log_sha256": "3fc53d9eea1f0bb6005da6281d0a0510203191529bc786f08fac4a703298ca92"
+    },
+    {
+      "id": "sweep-first-attempt-a-superseded",
+      "purpose": "First sweep used slack 0..16. It reached no admission window: the reserve itself is refused until slack 17. Its exit 0 is vacuous and is superseded by run b.",
+      "exit": 0,
+      "log": "run-pc-20261015-a/logs/red-sweep.log"
+    }
+  ],
+  "ext4_experiment": {
+    "guard_contract": [
+      "uid 0 required (os.Geteuid), otherwise t.Skip",
+      "TBOUND_TEST_EXT4_CAPACITY=1 required, otherwise t.Skip",
+      "dd, mkfs.ext4, mount, umount, blkid, findmnt, losetup must exist",
+      "512 MiB image and mount point under a fresh /root/tbound-d14-capacity-* directory",
+      "mount -o loop,noatime,nodiratime; must report ext4 magic 0xEF53 with 4 KiB blocks and options containing rw,noatime,nodiratime",
+      "cleanup: umount the exact mount point; detach only /dev/loop* devices whose backing file is the exact image; remove only /root/tbound-d14-capacity-* directories"
+    ],
+    "preflight": {
+      "c_free_gb_before": 23.78,
+      "f_free_gb_before": 1177.54,
+      "wsl_distro": "Ubuntu, started with wsl -d Ubuntu -u root; not shut down, no host VM mutation",
+      "kernel": "5.15.153.1-microsoft-standard-WSL2",
+      "pre_run_residue": "no /root/tbound-d14-capacity-* directory, no loop devices, no d14 mount"
+    },
+    "observed_in_log": {
+      "receipt_line": "D14_EXT4_RECEIPT ... fstype=ext4 options=rw,noatime,nodiratime image_bytes=536870912 reserve_experiment_bytes=67108864 host_backing_qualification=NOT_ESTABLISHED",
+      "success_child": "D14_ENOSPC_TERMINALIZED write=ENOSPC file_sync=success syncfs=success filler_bytes=432484352 available_blocks_at_enospc=0 free_blocks_at_enospc=2621 reserve_allocated_bytes=67108864 reserve_freed_bytes=67108864 audit_intent_frame_bytes=237 audit_outcome_frame_bytes=8388606 owner_page_size=4096 owner_pages=19 owner_terminal_checkpoint_json=3284 owner_terminal_proof_json=8335 owner_wal_bytes=193672 root_page_size=4096 root_pages=6 root_wal_bytes=210152 outcome_payload_bytes=6291255 synthetic_store_pins=true global_ticket=absent",
+      "crash_child": "D14_CRASH_BOUNDARY write=ENOSPC free_blocks_at_enospc=2621 reserve_freed_bytes=67108864 terminal_records=none global_ticket=absent; the crash child exit status is not logged (the test source requires 77; see corrections)",
+      "fresh_process": "not logged per phase; the top-level PASS is the only logged evidence (see corrections)"
+    },
+    "cleanup_after_run": {
+      "losetup_after_bytes": 0,
+      "findmnt_d14_matches": 0,
+      "residual_task_dirs": "none"
+    },
+    "limits": "Synthetic 19-page owner and 6-page root with a 6 MiB outcome payload. This is feasibility evidence only. It does not show maximum checkpoint or proof sizes, the production volume, host backing storage, or power-loss behaviour."
+  },
+  "measurements": {
+    "shape": "Real protected root (CreateFreshProtectedRoot) and real SQLite owner. Every identifier is 256 bytes of '<' plus a short tag. '<' is valid under validID and encodes as \\u003c, six bytes each, so the encoded identifier field is 1536 bytes. One transcript. Synthetic digests.",
+    "api_sequence_per_tool_call": [
+      "ReserveHostCall",
+      "AdvanceCheckpoint (verified captured provider call)",
+      "ReserveEffect (consumes the captured call; returns the receipt)",
+      "RecordTerminalEffectOutcome (owner checkpoint plus protected-root CAS)",
+      "AdvanceCheckpoint (durable provider result)"
+    ],
+    "owner_commits_per_api_call": 1,
+    "owner_commits_per_tool_call": 5,
+    "owner_commits_note": "Counted from workflow_recovery_state.sequence before and after each API call; each call moved the sequence by exactly one. Production call sites: ReserveEffect at cmd/tbound/governed_session_linux.go:584 and RecordTerminalEffectOutcome at cmd/tbound/governed_workflow_live_linux.go:751. Not re-run through cmd/tbound in this round.",
+    "samples": [
+      { "step": "initialize-fresh", "owner_sequence": 1, "checkpoint_json_bytes": 5309, "proof_json_bytes": 2574, "owner_pages": 10, "owner_freelist": 0, "owner_wal_bytes": 74192, "root_revision": 11, "root_pages": 6, "root_wal_bytes": 90672 },
+      { "step": "register-initial-transcript", "owner_sequence": 2, "checkpoint_json_bytes": 7181, "proof_json_bytes": 18585, "owner_pages": 16, "owner_freelist": 0, "owner_wal_bytes": 123632, "root_revision": 19, "root_pages": 6, "root_wal_bytes": 123632 },
+      { "step": "reserve-host-call", "owner_sequence": 3, "checkpoint_json_bytes": 8851, "proof_json_bytes": 16107, "owner_pages": 23, "owner_freelist": 0, "owner_wal_bytes": 177192, "root_revision": 26, "root_pages": 6, "root_wal_bytes": 152472 },
+      { "step": "advance-captured-call", "owner_sequence": 4, "checkpoint_json_bytes": 15467, "proof_json_bytes": 38512, "owner_pages": 39, "owner_freelist": 0, "owner_wal_bytes": 271952, "root_revision": 34, "root_pages": 6, "root_wal_bytes": 185432 },
+      { "step": "reserve-effect", "owner_sequence": 5, "checkpoint_json_bytes": 23253, "proof_json_bytes": 38795, "owner_pages": 56, "owner_freelist": 0, "owner_wal_bytes": 374952, "root_revision": 41, "root_pages": 6, "root_wal_bytes": 214272 },
+      { "step": "record-terminal-outcome", "owner_sequence": 6, "checkpoint_json_bytes": 23425, "proof_json_bytes": 68853, "owner_pages": 79, "owner_freelist": 0, "owner_wal_bytes": 510912, "root_revision": 45, "root_pages": 6, "root_wal_bytes": 230752 },
+      { "step": "advance-tool-result", "owner_sequence": 7, "checkpoint_json_bytes": 17258, "proof_json_bytes": 56668, "owner_pages": 96, "owner_freelist": 0, "owner_wal_bytes": 622152, "root_revision": 53, "root_pages": 6, "root_wal_bytes": 263712 }
+    ],
+    "sample_notes": "WAL is uncheckpointed in this test (no checkpoint ran). Root revision advances by 4 to 8 per owner commit; its cause was not analysed. Owner freelist stayed at 0. The run-a and run-b sample lines are identical.",
+    "not_measured": "Three-transcript shape. Reaching it needs clean restarts (ReserveCleanRestart with retired observations), which this test does not drive. A Store or provider fixture from cmd/tbound was not run."
+  },
+  "headroom_red": {
+    "test": "TestD14PreEffectTerminalHeadroomSweep (opt-in with TBOUND_D14_HEADROOM_RED=1)",
+    "assertion": "No page ceiling may admit ReserveEffect and then refuse its terminal outcome. Authority must not be consumed unless terminal headroom is proven.",
+    "result": "FAIL. Gap window of 23 ceilings.",
+    "boundaries_from_run_b": [
+      { "slack_pages": 16, "max_page_count": 55, "reserve": "refused before receipt (SQLITE_FULL 13 at event append)", "terminal": "not reached" },
+      { "slack_pages": 17, "max_page_count": 56, "reserve": "ADMITTED, pages after reserve 56", "terminal": "REFUSED (SQLITE_FULL 13 at checkpoint row update)" },
+      { "slack_pages": 39, "max_page_count": 78, "reserve": "ADMITTED", "terminal": "REFUSED (SQLITE_FULL 13 at event append)" },
+      { "slack_pages": 40, "max_page_count": 79, "reserve": "ADMITTED", "terminal": "ADMITTED, pages after terminal 79" }
+    ],
+    "summary": "first_terminal_admitted_slack=40; reserve_without_terminal_slacks=23. Reserve growth is 17 pages (39 to 56), and terminal growth is 23 pages (56 to 79), both for the one-transcript shape.",
+    "consequence": "A reservation admitted in this window consumes authority and returns a receipt. Its terminal outcome cannot be written to the owner. The effect is then unresolved and must stay blocked, but the required terminal record is not durable."
+  },
+  "physical_reserve_plan": {
+    "status": "PROPOSAL FOR PARENT DECISION. Nothing here is implemented or verified beyond the measurements above.",
+    "measured_window_one_transcript": {
+      "description": "Components from the reserve-plus-terminal window of the measured tool call, before filesystem overhead and before any pre-effect checkpoint.",
+      "audit_outcome_frame_cap_bytes": 8388608,
+      "audit_outcome_frame_cap_source": "supervisor/internal/audit/audit.go:29 MaxRecordBytes = 8 << 20; ext4 run measured an 8388606-byte outcome frame",
+      "audit_intent_frame_bytes": 237,
+      "owner_data_growth_pages_reserve_plus_terminal": 40,
+      "owner_data_growth_bytes": 163840,
+      "owner_wal_growth_bytes_reserve_plus_terminal": 238960,
+      "root_wal_growth_bytes_reserve_plus_terminal": 45320,
+      "sum_excluding_fs_overhead_bytes": 8836965,
+      "sum_excluding_fs_overhead_mib": 8.43
+    },
+    "fs_overhead_evidence": "On the 512 MiB ext4 experiment image, at ENOSPC free_blocks=2621 (10,735,616 bytes) but available_blocks=0. This is not a constant bound. It must be measured on the production volume.",
+    "wal_bound_evidence": "owner wal_autocheckpoint=1000 pages (sqlite_linux.go:257, 351), about 4.12 MB of WAL at 4120 bytes per frame before an auto-checkpoint attempt. journal_size_limit is not set anywhere in the owner or root code. It only truncates after a successful reset and cannot bound retention by a long reader.",
+    "patch_steps": [
+      "P1 (report only, cmd/tbound/governed_session_linux.go:584): before ReserveEffect, preallocate the derived reserve on the dedicated protected volume (posix_fallocate), then fsync the file and its directory. On failure, return before the receipt. The existing error branch at lines 586-587 already refuses before the callback.",
+      "P2 (report only, cmd/tbound/governed_workflow_live_linux.go:751): after RecordTerminalEffectOutcome succeeds, release and fsync the reserve, then continue to provider progress. The volume must stay exclusive from release until terminal completion.",
+      "P3 (internal/workflowrecovery/recovery.go:754, ReserveEffect): before commit, require owner headroom at least equal to the terminal bound, so it refuses before the receipt. The bound is not derived yet. It must cover the terminal state, event checkpoint, and proof for the registered transcript count (MaxCleanRestarts+1). The measured one-transcript terminal growth is 23 pages.",
+      "P4 (report only, sqlite_linux.go, parent-owned): before the reserve window, run PRAGMA wal_checkpoint(TRUNCATE) and require busy=0, so the window WAL is only that transaction's frames. journal_size_limit may be added to bound WAL reset size only. It does not bound reader retention.",
+      "P5 (deployment): a dedicated protected volume or project quota for owner, root, and audit files, with identity and free-space verified at startup. Stage copies (up to 1 GiB per workspace tree, generations retained with no GC) and the private Git store must sit on a different volume or quota. A stateless statfs check does not reserve capacity."
+    ],
+    "patch_step_correction": "Superseded 2026-10-15 by Decision 3 of docs/design/d14-reserved-capacity.md (the parent-decision record is not in this repository) (Required terminal-settlement evidence). P2 as written is wrong: the reserve must be released and synced BEFORE the protected terminal writes that need its space, not after terminal durability. This is design ordering only, not implemented. P2 above keeps its original wording. P3's 'the bound is not derived yet' is superseded: the logical owner bound is derived in docs/evidence/d14-headroom-proof-20261015-r3.json. No physical reserve is implemented.",
+    "not_in_patch": "No global ProtectedTrustedRoot ticket, no schema change, no generic capacity profile, no all-system writer mutex."
+  },
+  "not_established": [
+    "A physical production reserve. Nothing is allocated or released in product code yet.",
+    "A derived ReserveEffect terminal headroom bound. The sweep is a RED probe, and the gap is open.",
+    "Maximum-transcript checkpoint and proof sizes (three transcripts or MaxCleanRestarts+1).",
+    "The cmd/tbound production fixture and any real Store or provider path.",
+    "Production volume, dedicated quota, host backing storage, power-loss, EIO, unresolved-request admission, and the authenticated singleton lock.",
+    "Full module gate. This round ran go vet and gofmt on the touched file, plus the workflowrecovery package under -race."
+  ],
+  "parent_decisions": [
+    "Choose how to derive the terminal headroom bound for ReserveEffect. Option A: encode worst-case pins and proof with the real encoder at the registered transcript count. Option B: the schema-cap bound (3 max blobs, about 12,300 pages). Option B is conservative and close to the rejected 24,664-page proposal. Option A needs a three-transcript measurement first. This round did not adopt either.",
+    "Choose whether the reserve is held through terminal writes (release after terminal durability) or released before them as in the ext4 experiment. Either requires an exclusive volume.",
+    "Decide whether the sweep flips to default-on once P3 lands. That changes the default gate from one opt-in SKIP to a PASS.",
+    "The workflowrecovery default run has one new opt-in SKIP (TestD14PreEffectTerminalHeadroomSweep). Account for it in the gate's SKIP accounting."
+  ],
+  "files": {
+    "new_tracked_or_untracked": [
+      "supervisor/internal/workflowrecovery/production_capacity_linux_test.go (untracked, new)",
+      "docs/evidence/d14-production-capacity-20261015.json (this receipt)"
+    ],
+    "not_modified": [
+      "Committed in 837b7e4 and not modified here: the four sqlite-*-20261015.json evidence files, and the four workflowrecovery code files (sqlite_linux.go, sqlite_page_geometry_linux_test.go, protected_root_linux.go, protected_root_linux_test.go)",
+      "The ten dirty docs (docs/evidence/README.md and the other nine)",
+      "cmd/tbound host/no-diff WIP (managed_live_root_linux.go, production_session_linux.go, production_workflow_catalog_linux*.go, production_no_change_linux_test.go, no-diff-settlement-20261015.json)",
+      "OVERVIEW.md, TASK_STATE.md, docs/design/d14-reserved-capacity.md, governed_session_linux.go",
+      "No commit was made."
+    ]
+  }
+}

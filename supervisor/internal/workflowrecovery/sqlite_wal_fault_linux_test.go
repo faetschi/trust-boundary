@@ -291,6 +291,10 @@ func runSQLiteWALFaultPhase(t *testing.T, caseName, rootPath, ownerStoreRoot, st
 		if errors.As(faultErr, &refusedBySQLite) {
 			t.Fatalf("%s: headroom refusal reached SQLite before any write: %v", caseName, faultErr)
 		}
+		if owner.poisoned || realRoot.poisoned {
+			t.Fatalf("%s: owner poisoned=%t root poisoned=%t; want neither poisoned by a refusal before any write",
+				caseName, owner.poisoned, realRoot.poisoned)
+		}
 	case "root-first-ioerr":
 		requireSQLiteWALFaultChain(t, caseName, faultErr, ErrOwnerStore)
 		if !realRoot.poisoned || owner.poisoned {
