@@ -692,6 +692,64 @@ func (r *ProtectedTrustedRoot) VerifyCheckpoint(ctx context.Context, workflow st
 	return nil
 }
 
+// verifySettledCheckpoint authenticates a previously settled checkpoint head
+// without evaluating the workflow clock or checking a live owner incarnation.
+// It is intentionally private and read-only: callers must already have a
+// durable terminal marker and independent runner-drain proof, and this method
+// grants no workflow continuation authority.
+func (r *ProtectedTrustedRoot) verifySettledCheckpoint(ctx context.Context, workflow string,
+	store OwnerStoreIdentity, checkpoint Checkpoint, digest string) (bool, bool, []OwnerEpochIdentity, error) {
+	if ctx == nil || ctx.Err() != nil || !validID(workflow) || r == nil ||
+		store.Path == "" || !filepath.IsAbs(store.Path) || filepath.Clean(store.Path) != store.Path ||
+		!validDigest(store.Digest) || !validDigest(digest) || checkpoint.Pins.WorkflowID != workflow ||
+		checkpoint.Pins.OwnerEpoch == 0 || !validDigest(checkpoint.Pins.OwnerIncarnationDigest) ||
+		checkpoint.Pins.RootIdentityDigest != r.rootIdentity ||
+		checkpoint.ComputedCheckpointDigest != digest {
+		return false, false, nil, fmt.Errorf("%w: invalid settled checkpoint/root/store identity binding", ErrOwnerFence)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err := r.checkLocked(); err != nil {
+		return false, false, nil, err
+	}
+	if err := r.verifyRootPathLocked(); err != nil {
+		return false, false, nil, err
+	}
+	if err := r.boundary.VerifyOwnerStore(ctx, workflow, store); err != nil {
+		return false, false, nil, fmt.Errorf("%w: settled owner-store identity: %v", ErrOwnerStore, err)
+	}
+	state, exists, err := loadProtectedRootState(ctx, r.db, workflow)
+	if err != nil {
+		return false, false, nil, err
+	}
+	if !exists || validateProtectedClockState(state) != nil || state.WorkflowID != workflow ||
+		state.OwnerStorePath != store.Path || state.OwnerStoreIdentityDigest != store.Digest ||
+		uint64(state.CheckpointEpoch) != checkpoint.Pins.OwnerEpoch || state.CheckpointDigest != digest ||
+		state.CheckpointIncarnationDigest != checkpoint.Pins.OwnerIncarnationDigest ||
+		uint64(state.FenceEpoch) != checkpoint.Pins.OwnerEpoch ||
+		state.FenceIncarnationDigest != checkpoint.Pins.OwnerIncarnationDigest ||
+		!sameUTCInstant(state.WorkflowDeadlineUTC, checkpoint.Limits.Deadline) {
+		return false, false, nil, fmt.Errorf("%w: settled owner checkpoint differs from the protected root head", ErrRollback)
+	}
+	owners, err := loadOwnerEpochs(ctx, r.db, workflow, 1, maxSQLiteInteger)
+	if err != nil {
+		return false, false, nil, err
+	}
+	if uint64(len(owners)) != checkpoint.Pins.OwnerEpoch {
+		return false, false, nil, fmt.Errorf("%w: protected owner epoch history differs from settled checkpoint", ErrRollback)
+	}
+	for index, owner := range owners {
+		if owner.Epoch != int64(index+1) {
+			return false, false, nil, fmt.Errorf("%w: protected owner epoch history is not contiguous", ErrRollback)
+		}
+	}
+	identities := ownerEpochIdentities(owners)
+	if len(identities) == 0 || identities[len(identities)-1].Incarnation.Digest != checkpoint.Pins.OwnerIncarnationDigest {
+		return false, false, nil, fmt.Errorf("%w: settled checkpoint incarnation differs from protected owner epoch history", ErrRollback)
+	}
+	return state.ClockExpired != 0, state.ClockUncertain != 0, identities, nil
+}
+
 func (r *ProtectedTrustedRoot) AuthorizeFreshWorkflow(ctx context.Context, workflow string, ownerEpoch uint64,
 	initialDigest string, incarnation OwnerIncarnation, deadline time.Time) error {
 	if ctx == nil || !validID(workflow) || ownerEpoch == 0 || !validDigest(initialDigest) ||

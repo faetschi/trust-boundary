@@ -151,6 +151,105 @@ func OpenExistingSQLiteOwner(path string, root TrustedRoot) (*SQLiteOwner, error
 	return owner, nil
 }
 
+// SettledCheckpointView contains only persisted checkpoint pins and their
+// protected-root binding. It grants no owner epoch or continuation authority.
+// Clock expiry/uncertainty is reported as historical metadata because neither
+// condition invalidates a checkpoint that has already been independently
+// settled. Callers must separately prove terminal completion and owner drain;
+// this view must never be used to resume a workflow.
+type SettledCheckpointView struct {
+	Checkpoint         Checkpoint
+	Digest             string
+	OwnerStoreIdentity OwnerStoreIdentity
+	OwnerEpochs        []OwnerEpochIdentity
+	ClockExpired       bool
+	ClockUncertain     bool
+}
+
+// LoadSettledCheckpoint reads and authenticates the latest persisted owner
+// checkpoint for terminal accounting only. It opens the SQLite owner in
+// read-only mode, verifies its append-only history and protected-root head,
+// and deliberately performs no host-clock observation, owner liveness check,
+// fence acquisition, or state mutation.
+func LoadSettledCheckpoint(ctx context.Context, path string, root *ProtectedTrustedRoot,
+	workflow string) (SettledCheckpointView, error) {
+	if ctx == nil || ctx.Err() != nil || !validID(workflow) || root == nil {
+		return SettledCheckpointView{}, fmt.Errorf("%w: invalid settled checkpoint read inputs", ErrOwnerFence)
+	}
+	cleanPath, storageIdentity, err := inspectSQLitePath(path, false)
+	if err != nil {
+		return SettledCheckpointView{}, err
+	}
+	rootIdentity := root.TrustedRootIdentityDigest()
+	if !validDigest(rootIdentity) {
+		return SettledCheckpointView{}, fmt.Errorf("%w: malformed protected-root identity for settled checkpoint read", ErrOwnerFence)
+	}
+	db, err := openSettledOwnerDatabase(cleanPath)
+	if err != nil {
+		return SettledCheckpointView{}, err
+	}
+	defer db.Close()
+	owner := &SQLiteOwner{db: db, root: root, path: cleanPath,
+		storageIdentityDigest: storageIdentity, rootIdentityDigest: rootIdentity}
+	if err := owner.verifyStore(ctx); err != nil {
+		return SettledCheckpointView{}, err
+	}
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return SettledCheckpointView{}, fmt.Errorf("%w: begin read-only settled checkpoint view: %v", ErrOwnerStore, err)
+	}
+	defer tx.Rollback()
+	checkpoint, digest, exists, _, err := loadLedger(ctx, tx, workflow)
+	if err != nil {
+		return SettledCheckpointView{}, err
+	}
+	if !exists {
+		return SettledCheckpointView{}, ErrMissing
+	}
+	ownerStoreIdentity := OwnerStoreIdentity{Path: cleanPath, Digest: storageIdentity}
+	expired, uncertain, owners, err := root.verifySettledCheckpoint(ctx, workflow,
+		ownerStoreIdentity, checkpoint, digest)
+	if err != nil {
+		return SettledCheckpointView{}, err
+	}
+	if err := owner.verifyPathLocked(); err != nil {
+		return SettledCheckpointView{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return SettledCheckpointView{}, fmt.Errorf("%w: close read-only settled checkpoint view: %v", ErrOwnerStore, err)
+	}
+	return SettledCheckpointView{Checkpoint: checkpoint, Digest: digest, OwnerStoreIdentity: ownerStoreIdentity, OwnerEpochs: owners,
+		ClockExpired: expired, ClockUncertain: uncertain}, nil
+}
+
+func openSettledOwnerDatabase(path string) (*sql.DB, error) {
+	dsnURL := url.URL{Scheme: "file", Path: path}
+	query := url.Values{}
+	query.Set("mode", "ro")
+	query.Add("_pragma", "busy_timeout=5000")
+	query.Add("_pragma", "foreign_keys=ON")
+	query.Add("_pragma", "synchronous=FULL")
+	query.Add("_pragma", "trusted_schema=OFF")
+	query.Add("_pragma", "query_only=ON")
+	query.Add("_pragma", "wal_autocheckpoint=1000")
+	dsnURL.RawQuery = query.Encode()
+	db, err := sql.Open("sqlite", dsnURL.String())
+	if err != nil {
+		return nil, fmt.Errorf("%w: open read-only settled SQLite owner: %v", ErrOwnerStore, err)
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
+	db.SetConnMaxIdleTime(0)
+	pingCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := db.PingContext(pingCtx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("%w: connect read-only settled SQLite owner: %v", ErrOwnerStore, err)
+	}
+	return db, nil
+}
+
 // CreateFreshSQLiteOwner exclusively creates a private SQLite owner database
 // and synchronizes both the new database file and its containing directory.
 // This bootstraps only the storage container; a workflow still requires the

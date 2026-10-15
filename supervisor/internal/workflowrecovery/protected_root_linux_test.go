@@ -17,6 +17,7 @@ import (
 )
 
 const protectedRootHelperModeEnv = "TBOUND_PROTECTED_ROOT_LIFECYCLE_MODE"
+const settledCheckpointHelperModeEnv = "TBOUND_SETTLED_CHECKPOINT_READ_MODE"
 
 type processExitDrainVerifier struct {
 	calls [][]OwnerEpochIdentity
@@ -501,6 +502,246 @@ func TestProtectedRootDeadlineUsesStickyBootTimeExpiryAcrossWallRollbackAndReope
 	defer reopened.Close()
 	if err := reopened.VerifyWorkflowDeadline(context.Background(), workflow, deadline); !errors.Is(err, ErrDeadline) {
 		t.Fatalf("reopened root cleared durable expiry: %v", err)
+	}
+}
+
+func TestLoadSettledCheckpointReadOnlyAcceptsExpiredAndFreshBootHistory(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		wantErr    error
+		clockState func(*SQLiteOwner, string, time.Time, *time.Time, *string, *int64) error
+	}{
+		{
+			name:    "expired",
+			wantErr: ErrDeadline,
+			clockState: func(owner *SQLiteOwner, workflow string, deadline time.Time,
+				wall *time.Time, _ *string, bootNS *int64) error {
+				*bootNS += int64(10 * time.Second)
+				*wall = wall.Add(time.Second)
+				return owner.VerifyWorkflowDeadline(context.Background(), workflow, deadline)
+			},
+		},
+		{
+			name:    "fresh-boot-uncertain",
+			wantErr: ErrClockUncertain,
+			clockState: func(owner *SQLiteOwner, workflow string, deadline time.Time,
+				wall *time.Time, bootID *string, bootNS *int64) error {
+				*bootID = "00000000-0000-4000-8000-000000000099"
+				*bootNS++
+				*wall = wall.Add(time.Second)
+				return owner.VerifyWorkflowDeadline(context.Background(), workflow, deadline)
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
+			workflow := "settled-view-" + strings.ReplaceAll(test.name, "-", "")
+			boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
+			root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
+			if err != nil {
+				t.Fatalf("create protected root: %v", err)
+			}
+			baseWall := time.Now().Round(0).UTC()
+			wallNow := baseWall
+			bootID := "00000000-0000-4000-8000-000000000091"
+			bootTimeNS := int64(8_000_000_000)
+			root.clockNow = func() (time.Time, string, int64, error) { return wallNow, bootID, bootTimeNS, nil }
+			ownerPath := filepath.Join(ownerStoreRoot, workflow+".sqlite")
+			owner, err := CreateFreshSQLiteOwner(ownerPath, root)
+			if err != nil {
+				_ = root.Close()
+				t.Fatalf("create SQLite owner: %v", err)
+			}
+			deadline := baseWall.Add(5 * time.Second).UTC()
+			pins := testPins(root.TrustedRootIdentityDigest(), owner.OwnerIncarnationDigest(), workflow,
+				"session-"+workflow, 1, 1)
+			limits := testLimits()
+			limits.Deadline = deadline
+			if _, err := InitializeFresh(context.Background(), owner, pins, limits); err != nil {
+				_ = owner.Close()
+				_ = root.Close()
+				t.Fatalf("initialize workflow: %v", err)
+			}
+			if err := test.clockState(owner, workflow, deadline, &wallNow, &bootID, &bootTimeNS); !errors.Is(err, test.wantErr) {
+				_ = owner.Close()
+				_ = root.Close()
+				t.Fatalf("clock transition = %v, want %v", err, test.wantErr)
+			}
+			if _, _, exists, err := owner.LoadCheckpoint(context.Background(), workflow); err == nil || exists {
+				_ = owner.Close()
+				_ = root.Close()
+				t.Fatalf("normal checkpoint read bypassed workflow clock: exists=%v err=%v", exists, err)
+			}
+			before, exists, err := loadProtectedRootState(context.Background(), root.db, workflow)
+			wantExpired, wantUncertain := int64(0), int64(0)
+			if test.wantErr == ErrDeadline {
+				wantExpired = 1
+			}
+			if test.wantErr == ErrClockUncertain {
+				wantUncertain = 1
+			}
+			if err != nil || !exists || before.ClockExpired != wantExpired || before.ClockUncertain != wantUncertain {
+				_ = owner.Close()
+				_ = root.Close()
+				t.Fatalf("sticky clock state = %+v exists=%v err=%v", before, exists, err)
+			}
+			if err := owner.Close(); err != nil {
+				_ = root.Close()
+				t.Fatalf("close SQLite owner before historical read: %v", err)
+			}
+			if err := root.Close(); err != nil {
+				t.Fatalf("close root before fresh-process historical read: %v", err)
+			}
+			runSettledCheckpointReadHelper(t, rootPath, ownerStoreRoot, ownerPath, workflow,
+				test.wantErr == ErrDeadline, test.wantErr == ErrClockUncertain)
+			reopened, err := OpenExistingProtectedRoot(rootPath, ownerStoreRoot,
+				newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{}))
+			if err != nil {
+				t.Fatalf("reopen protected root: %v", err)
+			}
+			defer reopened.Close()
+			after, exists, err := loadProtectedRootState(context.Background(), reopened.db, workflow)
+			if err != nil || !exists || !reflect.DeepEqual(after, before) {
+				t.Fatalf("fresh-process settled read mutated root: before=%+v after=%+v exists=%v err=%v",
+					before, after, exists, err)
+			}
+			if err := reopened.VerifyWorkflowDeadline(context.Background(), workflow, deadline); !errors.Is(err, test.wantErr) {
+				t.Fatalf("settled view granted continuation after clock state %v: %v", test.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestLoadSettledCheckpointProcessHelper(t *testing.T) {
+	if os.Getenv(settledCheckpointHelperModeEnv) == "" {
+		return
+	}
+	rootPath := os.Getenv("TBOUND_SETTLED_CHECKPOINT_ROOT")
+	ownerStoreRoot := os.Getenv("TBOUND_SETTLED_CHECKPOINT_STORE_ROOT")
+	ownerPath := os.Getenv("TBOUND_SETTLED_CHECKPOINT_OWNER")
+	workflow := os.Getenv("TBOUND_SETTLED_CHECKPOINT_WORKFLOW")
+	wantExpired := os.Getenv("TBOUND_SETTLED_CHECKPOINT_EXPIRED") == "true"
+	wantUncertain := os.Getenv("TBOUND_SETTLED_CHECKPOINT_UNCERTAIN") == "true"
+	root, err := OpenExistingProtectedRoot(rootPath, ownerStoreRoot,
+		newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{}))
+	if err != nil {
+		t.Fatalf("open protected root in fresh process: %v", err)
+	}
+	defer root.Close()
+	before, exists, err := loadProtectedRootState(context.Background(), root.db, workflow)
+	if err != nil || !exists {
+		t.Fatalf("read root state before historical view: exists=%v err=%v", exists, err)
+	}
+	clockCalls := 0
+	root.clockNow = func() (time.Time, string, int64, error) {
+		clockCalls++
+		return time.Time{}, "", 0, errors.New("settled checkpoint read must not observe host clock")
+	}
+	view, err := LoadSettledCheckpoint(context.Background(), ownerPath, root, workflow)
+	if err != nil || view.Digest == "" || view.Checkpoint.Pins.WorkflowID != workflow ||
+		len(view.OwnerEpochs) != 1 || view.OwnerEpochs[0].Epoch != 1 ||
+		view.ClockExpired != wantExpired || view.ClockUncertain != wantUncertain {
+		t.Fatalf("fresh-process settled read = %+v err=%v", view, err)
+	}
+	after, exists, err := loadProtectedRootState(context.Background(), root.db, workflow)
+	if err != nil || !exists || !reflect.DeepEqual(after, before) || clockCalls != 0 {
+		t.Fatalf("fresh-process settled read mutated root or observed clock: before=%+v after=%+v exists=%v calls=%d err=%v",
+			before, after, exists, clockCalls, err)
+	}
+}
+
+func runSettledCheckpointReadHelper(t *testing.T, rootPath, ownerStoreRoot, ownerPath, workflow string,
+	wantExpired, wantUncertain bool) {
+	t.Helper()
+	command := exec.Command(os.Args[0], "-test.v", "-test.run=^TestLoadSettledCheckpointProcessHelper$")
+	command.Env = append(os.Environ(),
+		settledCheckpointHelperModeEnv+"=1",
+		"TBOUND_SETTLED_CHECKPOINT_ROOT="+rootPath,
+		"TBOUND_SETTLED_CHECKPOINT_STORE_ROOT="+ownerStoreRoot,
+		"TBOUND_SETTLED_CHECKPOINT_OWNER="+ownerPath,
+		"TBOUND_SETTLED_CHECKPOINT_WORKFLOW="+workflow,
+		"TBOUND_SETTLED_CHECKPOINT_EXPIRED="+strconv.FormatBool(wantExpired),
+		"TBOUND_SETTLED_CHECKPOINT_UNCERTAIN="+strconv.FormatBool(wantUncertain),
+	)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("fresh-process settled checkpoint read failed: %v\n%s", err, output)
+	}
+	t.Logf("fresh-process settled checkpoint helper output:\n%s", output)
+}
+
+func TestLoadSettledCheckpointRejectsMismatchedRootDigestAndOwnerIdentity(t *testing.T) {
+	rootPath, ownerStoreRoot, base := newProtectedRootTestDirs(t)
+	workflow := "settled-view-integrity"
+	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
+	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
+	if err != nil {
+		t.Fatalf("create protected root: %v", err)
+	}
+	defer root.Close()
+	ownerPath := filepath.Join(ownerStoreRoot, workflow+".sqlite")
+	owner, err := CreateFreshSQLiteOwner(ownerPath, root)
+	if err != nil {
+		t.Fatalf("create SQLite owner: %v", err)
+	}
+	pins := testPins(root.TrustedRootIdentityDigest(), owner.OwnerIncarnationDigest(), workflow, "session-integrity", 1, 1)
+	if _, err := InitializeFresh(context.Background(), owner, pins, testLimits()); err != nil {
+		_ = owner.Close()
+		t.Fatalf("initialize workflow: %v", err)
+	}
+	checkpoint, digest, exists, err := owner.LoadCheckpoint(context.Background(), workflow)
+	if err != nil || !exists {
+		_ = owner.Close()
+		t.Fatalf("load checkpoint: exists=%v err=%v", exists, err)
+	}
+	storeIdentity, err := owner.OwnerStoreIdentity(context.Background(), workflow)
+	if err != nil {
+		_ = owner.Close()
+		t.Fatalf("read owner identity: %v", err)
+	}
+	if _, _, _, err := root.verifySettledCheckpoint(context.Background(), workflow, storeIdentity, checkpoint,
+		testDigest("wrong checkpoint head")); !errors.Is(err, ErrOwnerFence) {
+		t.Errorf("mismatched protected-root digest accepted: %v", err)
+	}
+	wrongStore := storeIdentity
+	wrongStore.Digest = testDigest("wrong owner store identity")
+	if _, _, _, err := root.verifySettledCheckpoint(context.Background(), workflow, wrongStore, checkpoint, digest); err == nil {
+		t.Error("mismatched owner store identity accepted")
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatalf("close owner before read-only tests: %v", err)
+	}
+
+	otherRootDir := filepath.Join(base, "other-host-root")
+	if err := os.Mkdir(otherRootDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	otherRoot, err := CreateFreshProtectedRoot(filepath.Join(otherRootDir, "workflow-root.sqlite"), ownerStoreRoot,
+		newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{}))
+	if err != nil {
+		t.Fatalf("create mismatched protected root: %v", err)
+	}
+	if _, err := LoadSettledCheckpoint(context.Background(), ownerPath, otherRoot, workflow); err == nil {
+		t.Error("owner checkpoint bound to a different protected root was accepted")
+	}
+	if err := otherRoot.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := openOwnerDatabase(ownerPath)
+	if err != nil {
+		t.Fatalf("open owner store to simulate tampering: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), `UPDATE workflow_recovery_state SET checkpoint_digest=? WHERE workflow_id=?`,
+		testDigest("tampered latest checkpoint"), workflow); err != nil {
+		_ = db.Close()
+		t.Fatalf("tamper with SQLite current checkpoint row: %v", err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatalf("close tampered owner store: %v", err)
+	}
+	if _, err := LoadSettledCheckpoint(context.Background(), ownerPath, root, workflow); !errors.Is(err, ErrRollback) {
+		t.Errorf("tampered owner checkpoint accepted or misclassified: %v", err)
 	}
 }
 
