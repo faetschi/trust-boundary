@@ -810,12 +810,11 @@ say 'Offline injection complete; disk released.'
     [IO.File]::WriteAllText($listPath, $normalizedList, (New-Object System.Text.UTF8Encoding($false)))
     $injectWslPath = ConvertTo-WslPath -WindowsPath $injectPath
     $listWslPath = ConvertTo-WslPath -WindowsPath $listPath
-    $vhdWslPath = ConvertTo-WslPath -WindowsPath $vhdPath
     $listArgs = @('-u', 'root', '--', 'bash', $listWslPath)
     try {
         $devicesBefore = @(Invoke-WslCommand -WslArguments $listArgs -ThrowOnError).Output -split "`r?`n" | Where-Object { $_ }
         Write-Host 'Bare-mounting the provisioned disk into WSL (wsl --mount --vhd <path> --bare; never combined with Mount-VHD)...'
-        $null = Invoke-WslCommand -WslArguments @('--mount', '--vhd', $vhdWslPath, '--bare') -ThrowOnError
+        $null = Invoke-WslCommand -WslArguments @('--mount', '--vhd', $vhdPath, '--bare') -ThrowOnError
         try {
             $devicesAfter = @(Invoke-WslCommand -WslArguments $listArgs -ThrowOnError).Output -split "`r?`n" | Where-Object { $_ }
             $newDevices = @($devicesAfter | Where-Object { $_ -notin $devicesBefore })
@@ -845,7 +844,7 @@ say 'Offline injection complete; disk released.'
         }
         finally {
             Write-Host 'Unmounting the disk from WSL...'
-            $null = Invoke-WslCommand -WslArguments @('--unmount', $vhdWslPath)
+            $null = Invoke-WslCommand -WslArguments @('--unmount', $vhdPath)
         }
     }
     finally {
