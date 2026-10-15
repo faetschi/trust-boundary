@@ -1,16 +1,15 @@
 # TBound — current state
 
-Updated 2026-10-15. Branch: `codex/tbound-prototype`. Priority: thesis completion.
+Updated 2026-10-15 (evening). Branch: `codex/tbound-prototype`, HEAD `7520458`. Priority: thesis completion. Green results verify code only: G1 false, H1 unexecuted, containment not established.
 
 | Milestone | Current state |
 | --- | --- |
-| Recovery foundations | Durable fencing, cumulative retry/restart accounting, historical checkpoint verification and bounded provider exchanges committed. |
-| SQLite safety | File ceilings and fail-closed read-only prechecks committed. Isolated Linux Go 1.27.1 unit/race checks each recorded 1,229 pass events, zero failures and eight skips. Physical D14 remains open. |
-| Settlement and catalog | No-change release rescan, Store-seed binding and cold catalog replay committed. Full NO_DIFF verification and different-request admission remain unproved; the replay fixture handwrites its initial checkpoint bind. |
-| ABI 8 deployment | Exact ABI 8 measured; pinned tools/image, identities, mounts and service units provisioned. Code now separates the empty delegated parent, runner leaf and cells sibling, and distinguishes calibration roles. Isolated race checks pass with one scanner-context skip and two command env skips; the scanner-context follow-up is active. Cells creation, guest layout, xattr authority, signed admission and governed E2E remain open. Actual-source xattr probes are active. |
-| D14/D20 qualification | Logical owner headroom gate reproduces and fixes grant-then-terminal failure, but its bound is under pinned-engine review before commit. Physical reserve/faults, real owner/cell drain and retained restart remain open. Minimal production reserve wiring is being mapped. |
-| Research Claims — last | Open. Complete deployment, E2E and durability/recovery evidence, then freeze corpus, independent effect oracles, calibration, scoring and model/cost plan. G1 needs denied-read and transient-mutation evidence; endpoint equality is insufficient. G1/H1 unestablished. |
+| Recovery / D14 | Logical owner headroom gate committed (`b089a9d`) and pinned by a tested invariant: every non-terminal commit is refused while an effect is Reserved (`852f276`). Race gates: workflowrecovery 68 pass / 1 skip, cmd/tbound 138 pass / 2 skip; the opt-in ext4 capacity experiment is unverified. Open: physical reserve, fsync/ENOSPC/power-loss, root terminal anchor and shared owner file ungated, real owner/cell drain, retained restart. |
+| Model pin | Pi and adapter now derive from the broker-approved `deepseek-v4.1-flash` (`bd6de94`). The runtime-bundle digest in the ABI 8 provisioning receipt is stale; re-measure and re-sign during provisioning. |
+| ABI 8 guest | Exact ABI 8 measured. Receipts recorded: xattr source-scope census (`84cfaad`), scanner-context retest in WSL root-to-nonroot (`56aadeb`). Not qualification: B2/B3 calibration, cells creation, systemd leaf, signed host profile, registration, E2E and drain remain open; xattr completeness authority not granted. |
+| Research Claims — last | Code-only components committed: scoring/disposition module `evalscore` (`4a6a849`, 20 thesis points left open, so `rule_satisfied` stays false until decided) and fail-closed micro-USD ledger `usdledger` (`95f6ab6`). In progress: corpus manifest validator, research provider profile. Missing: corpus content, calibration harness, B/V runners, independent E04/E06/effect oracles, frozen prices and cost plan, pre-registration. |
+| Hygiene | Stale `adapter/DESIGN.md` removed. Ten other-session docs remain modified and unstaged. |
 
-A combined immutable module gate is still needed after active source increments. Intermittent owner-incarnation refusals remain unexplained. Hidden privileged xattrs remain a concrete qualification limitation; completeness authority is unsigned.
+Needs your decision: label for a compliant task where C succeeds (and other evalscore OPEN points); ledger unit vs request, stop-rule enforcement, and where the head hash is anchored; OSF/Zenodo registration versus the 2026-10-14 decision; engineering-ledger unit for OpenCode Go.
 
-Engineering: OpenCode Go. Final research: OpenRouter DeepSeek V4.1 Flash, US$5 total cap. User/advisor construct review; independent runtime/effect oracles retained. Broader product features deferred. Other-session docs and original/seed VMs preserved.
+Engineering: OpenCode Go. Final research: OpenRouter DeepSeek V4.1 Flash, US$5 total cap. Independent runtime/effect oracles retained. Broader product features deferred. Original/seed VMs preserved.
