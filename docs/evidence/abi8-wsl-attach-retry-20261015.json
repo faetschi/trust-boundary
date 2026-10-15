@@ -1,0 +1,174 @@
+{
+    "schemaVersion":  1,
+    "date":  "2026-10-15",
+    "result":  "probe_inconclusive_process_timeout_candidate_retired",
+    "conclusion":  "Native WSL mount and unmount exit codes were not persisted; this is not a qualification pass.",
+    "source":  {
+                   "bootstrapPath":  "infra/repro/bootstrap-hyperv-windows.ps1",
+                   "bootstrapSha256":  "5F04AC3E09238C551B568BEE261C354752A6E3AEB550C2480F6CC30913ED5978",
+                   "launcherPath":  "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1",
+                   "launcherSha256":  "BE20B4E57492D78E7BA41CE2021373CA5F4B18B7202CD1B2A3FEA181863C5986",
+                   "launcherPinMatches":  true,
+                   "fixedWindowsPathCalls":  true,
+                   "wslPath":  "C:\\WINDOWS\\System32\\wsl.exe",
+                   "wslSha256":  "4E589E3883229B7A74A4ACDB878689DCEC94E2539FCAD1C194F415B149C337A9",
+                   "wslSignature":  "Valid",
+                   "wslOwner":  "NT SERVICE\\TrustedInstaller"
+               },
+    "runner":  {
+                   "path":  "F:\\TBoundAssets\\recovery-20261015\\host-retry\\fixed-path-probe.ps1",
+                   "sha256":  "48E7721D5B60B086400CF6E3350D78BC40B0ADD70046C895020FB847D74A6AF0",
+                   "windowsPowerShellVersion":  "5.1.19041.6456",
+                   "parseErrors":  0,
+                   "expectedCandidateGuid":  "82794afa-1b57-42b4-b860-4beb6a45db12",
+                   "sourcePinsAndPreflightPassed":  true
+               },
+    "probe":  {
+                  "cFreeBytesBefore":  5271756800,
+                  "wrapperTimedOut":  true,
+                  "wrapperTimeoutMs":  180000,
+                  "wrapperExitCode":  124,
+                  "probePid":  27192,
+                  "probeIdentityMatched":  true,
+                  "probeTerminated":  true,
+                  "nativeMountExitCode":  null,
+                  "nativeUnmountExitCode":  null,
+                  "nativeExitCodesKnown":  false,
+                  "mountInvocationOutputRecorded":  true,
+                  "unmountInvocationOutputRecorded":  true,
+                  "logs":  {
+                               "wsl-mount.stdout.txt":  {
+                                                            "path":  "F:\\TBoundAssets\\recovery-20261015\\host-retry\\wsl-mount.stdout.txt",
+                                                            "bytes":  82,
+                                                            "sha256":  "32F24E621778AD7CF7CE14FC821EEAD4A9C7B10C355264A376F3B6E84EB93BB6"
+                                                        },
+                               "wsl-mount.stderr.txt":  {
+                                                            "path":  "F:\\TBoundAssets\\recovery-20261015\\host-retry\\wsl-mount.stderr.txt",
+                                                            "bytes":  0,
+                                                            "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+                                                        },
+                               "wsl-unmount.stdout.txt":  {
+                                                              "path":  "F:\\TBoundAssets\\recovery-20261015\\host-retry\\wsl-unmount.stdout.txt",
+                                                              "bytes":  82,
+                                                              "sha256":  "32F24E621778AD7CF7CE14FC821EEAD4A9C7B10C355264A376F3B6E84EB93BB6"
+                                                          },
+                               "wsl-unmount.stderr.txt":  {
+                                                              "path":  "F:\\TBoundAssets\\recovery-20261015\\host-retry\\wsl-unmount.stderr.txt",
+                                                              "bytes":  0,
+                                                              "sha256":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855"
+                                                          }
+                           },
+                  "stageAtTimeout":  "not recorded; final runner receipt was not written",
+                  "outputCapture":  "Process.StandardOutput text was decoded by .NET then written as UTF-8; native bytes were not captured directly"
+              },
+    "quiescenceAfterProbe":  {
+                                 "artifactPath":  "F:\\TBoundAssets\\recovery-20261015\\host-retry\\quiescence-check.json",
+                                 "artifactSha256":  "14578911A67EB79AE232E8588640566F863EB592C50A6820E4D5F82E91577D7E",
+                                 "candidateVmCount":  1,
+                                 "candidateVmState":  "Off",
+                                 "candidateJobs":  0,
+                                 "matchingWslProcesses":  0,
+                                 "probePidAlive":  false,
+                                 "vhdAttached":  false,
+                                 "errors":  [
+
+                                            ]
+                             },
+    "retirement":  {
+                       "artifactPath":  "F:\\TBoundAssets\\recovery-20261015\\host-retry\\retire-result.json",
+                       "artifactSha256":  "A56EB36DCB4531E30F5B1C531DDA93B3CBDE0CE3169E5857BFC0776D0B269010",
+                       "cleanupScriptSha256":  "1D02BC9081AD4FF16DD2034DAA348C0A38DDA3D5094D2258E9A761EC879BCDBF",
+                       "status":  "completed",
+                       "vmRemovalReturned":  true,
+                       "rootMoveReturned":  true,
+                       "sourceRoot":  "F:\\TBoundVMs\\TBound-Ubuntu-2404-ABI8",
+                       "sourceRootAbsent":  true,
+                       "retiredRoot":  "F:\\TBoundVMs\\TBound-Ubuntu-2404-ABI8-retired-82794afa",
+                       "retiredRootPresent":  true,
+                       "priorWslExitCodesKnown":  false,
+                       "candidateBefore":  {
+                                               "name":  "TBound-Ubuntu-2404-ABI8",
+                                               "id":  "82794afa-1b57-42b4-b860-4beb6a45db12",
+                                               "state":  "Off",
+                                               "vmPath":  "F:\\TBoundVMs\\TBound-Ubuntu-2404-ABI8\\TBound-Ubuntu-2404-ABI8",
+                                               "diskPath":  "F:\\TBoundVMs\\TBound-Ubuntu-2404-ABI8\\Virtual Hard Disks\\TBound-Ubuntu-2404-ABI8.vhdx",
+                                               "format":  "VHDX",
+                                               "type":  "Dynamic",
+                                               "sizeBytes":  42949672960,
+                                               "parentPath":  "",
+                                               "attached":  false,
+                                               "snapshotCount":  0,
+                                               "rootReparsePoints":  0,
+                                               "candidateJobCount":  0,
+                                               "candidateWslProcessCount":  0,
+                                               "diskFileLength":  6580862976,
+                                               "diskLastWriteUtc":  "2026-10-14T20:54:14.2556161Z"
+                                           },
+                       "retiredDisk":  {
+                                           "path":  "F:\\TBoundVMs\\TBound-Ubuntu-2404-ABI8-retired-82794afa\\Virtual Hard Disks\\TBound-Ubuntu-2404-ABI8.vhdx",
+                                           "fileLengthMatches":  true,
+                                           "lastWriteMatches":  true,
+                                           "attributesMatches":  true,
+                                           "attached":  false,
+                                           "format":  "VHDX",
+                                           "type":  "Dynamic",
+                                           "sizeBytes":  42949672960,
+                                           "parentPath":  ""
+                                       },
+                       "originalBefore":  {
+                                              "name":  "TBound-Ubuntu-2404",
+                                              "id":  "c676170c-31a1-48e3-aa74-1d845411d253",
+                                              "state":  "Running",
+                                              "vmPath":  "F:\\TBoundVMs\\TBound-Ubuntu-2404\\TBound-Ubuntu-2404",
+                                              "diskPaths":  [
+                                                                "F:\\TBoundVMs\\TBound-Ubuntu-2404\\Virtual Hard Disks\\TBound-Ubuntu-2404_9FFBDD2B-6FDF-48B3-B1D6-21AE1412CF17.avhdx"
+                                                            ]
+                                          },
+                       "originalAfter":  {
+                                             "name":  "TBound-Ubuntu-2404",
+                                             "id":  "c676170c-31a1-48e3-aa74-1d845411d253",
+                                             "state":  "Running",
+                                             "vmPath":  "F:\\TBoundVMs\\TBound-Ubuntu-2404\\TBound-Ubuntu-2404",
+                                             "diskPaths":  [
+                                                               "F:\\TBoundVMs\\TBound-Ubuntu-2404\\Virtual Hard Disks\\TBound-Ubuntu-2404_9FFBDD2B-6FDF-48B3-B1D6-21AE1412CF17.avhdx"
+                                                           ]
+                                         },
+                       "originalUnchanged":  true,
+                       "seedBefore":  {
+                                          "name":  "TBound-Ubuntu-ABI8-Seed",
+                                          "id":  "82ffce59-06bf-4c1b-b43a-d406489c6d7f",
+                                          "state":  "Off",
+                                          "vmPath":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\seed-vm\\TBound-Ubuntu-ABI8-Seed",
+                                          "diskPaths":  [
+                                                            "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\seed-vm\\Virtual Hard Disks\\TBound-Ubuntu-ABI8-Seed.vhdx"
+                                                        ]
+                                      },
+                       "seedAfter":  {
+                                         "name":  "TBound-Ubuntu-ABI8-Seed",
+                                         "id":  "82ffce59-06bf-4c1b-b43a-d406489c6d7f",
+                                         "state":  "Off",
+                                         "vmPath":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\seed-vm\\TBound-Ubuntu-ABI8-Seed",
+                                         "diskPaths":  [
+                                                           "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\seed-vm\\Virtual Hard Disks\\TBound-Ubuntu-ABI8-Seed.vhdx"
+                                                       ]
+                                     },
+                       "seedUnchanged":  true,
+                       "disposalMethod":  "Remove only the exact Off candidate VM, then same-volume Move-Item of the fixed root to the retired path; no recursive deletion."
+                   },
+    "protectedVms":  {
+                         "originalUnchanged":  true,
+                         "seedUnchanged":  true
+                     },
+    "cFreeBytesAfterRetirement":  4531593216,
+    "previousFailureReceipt":  "docs/evidence/abi8-wsl-host-path-20261015.json",
+    "externalArtifacts":  {
+                              "timeoutObservation":  {
+                                                         "path":  "F:\\TBoundAssets\\recovery-20261015\\host-retry\\timeout-observation.json",
+                                                         "sha256":  "26DC696A5E528875A08C73947BF78287C149D42313BBBCB32A77A05418F61AF8"
+                                                     },
+                              "stopResult":  {
+                                                 "path":  "F:\\TBoundAssets\\recovery-20261015\\host-retry\\stop-result.json",
+                                                 "sha256":  "8AF67B47837EF2D31B3818ECABD15115730B8974AE7E4CF34A0F855F14482145"
+                                             }
+                          }
+}
