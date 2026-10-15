@@ -15,7 +15,7 @@
 
 Written 2026-10-14 on `codex/tbound-web-chat`; revised 2026-10-14 to record decisions on the open caveats (§10). The web-chat code and docs moved from `supervisor/` to `extensions/webchat/` in `18f71e6`. Paths below use the post-move location; the pre-move `supervisor/` location is given where it differs. Phase numbers in §5, §7 and §8 are this document's own. The web-chat frontend phases (P1 to P3) are in ADR-0001 §(v).
 
-**Current state (2026-10-14, HEAD `57e6406`).** The web chat is an optional extension (`extensions/webchat/`, module `tbound/webchat`). The core neither requires nor imports it, and a boundary guard checks that. Its Go gateway is read-only and loopback-only. Its browser client is React and TypeScript under `/app/`, and `/` redirects there, so the React client is the default UI. The legacy zero-build client is deprecated at `/legacy/` until its owner signs off its removal. Live projection, turn submission and browser authentication are not built (§5.2, §7).
+**Current state. Status at 0b6bdc1 (2026-10-15); FX4 code is 92a5927.** The web chat is an optional extension (`extensions/webchat/`, module `tbound/webchat`). The core neither requires nor imports it, and a boundary guard checks that. Its Go gateway is read-only and loopback-only. Its browser client is React and TypeScript under `/app/`, and `/` redirects there, so the React client is the default UI. The legacy zero-build client is deprecated at `/legacy/` until its owner signs off its removal. Live projection, turn submission and browser authentication are not built (§5.2, §7).
 
 | Label | Meaning |
 |---|---|

@@ -16,9 +16,9 @@ Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
   ../MSE_MA_Thesis; main unchanged. Draft51 recovery trials (8 lifecycle plus
   9 incidents, x3) is not frozen/registered; E07 conformance remains separate.
 
-## FX3 state of the web chat extension (2026-10-15, uncommitted)
+## FX3 state of the web chat extension (2026-10-15; FX3 and FX4 are committed through 92a5927. Re-run `npm run repro` against the committed dist.)
 
-- FX4 (2026-10-15, uncommitted): the phone composer reason wraps and the phone field is two lines tall; dock clearance 268 px; QA 12 of 12; v3 mockup regenerated (25 of 27 frames identical; gov-recovery-light-1440 has a 5-px corner difference). See extensions/webchat/docs/frontend.md, "Redesign review fixes, FX4".
+- FX4 (2026-10-15; FX3 and FX4 are committed through 92a5927. Re-run `npm run repro` against the committed dist.): the phone composer reason wraps and the phone field is two lines tall; dock clearance 268 px; QA 12 of 12; v3 mockup regenerated (25 of 27 frames identical; gov-recovery-light-1440 has a 5-px corner difference). See extensions/webchat/docs/frontend.md, "Redesign review fixes, FX4".
 - Footer: the last box of the workspace, under the composer, at every width (DOM order = drawn order; no CSS
   `order`). QA check J (chat head within 160 px of the header): 98 px at 390 and 360 (was 181), 53 px at 1440 to
   768 (was 98 to 144). Check K: 0 stops under the dock at 360x640, 390x844, 412x915 and 844x390.
@@ -27,10 +27,10 @@ Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
   WSL Go 1.27.1: gofmt empty, `go vet` exit 0, `go test -race -v` 60 top-level PASS and 0 SKIP (114 subtests);
   legacy `node --test` 262 of 262 (Windows and WSL). Dist tree digest (repro form) `6d80b808…a585c5`.
 - Open for the owner: the legacy footer's policy counts are derived from loaded items (with no governance panel
-  it reads 0 allow / 0 deny / 0 unknown, where React reads unavailable); `npm run repro` needs the new dist committed.
+  it reads 0 allow / 0 deny / 0 unknown, where React reads unavailable). FX3 and FX4 are committed through 92a5927. Re-run `npm run repro` against the committed dist.
   Nothing is committed in this round. Details: `extensions/webchat/docs/frontend.md`, "Redesign review fixes, FX3".
 
-## Current state of the web chat extension (as of 57e6406)
+## Current state of the web chat extension. Status at 0b6bdc1 (2026-10-15); FX4 code is 92a5927
 
 - Exists: optional module `extensions/webchat/` (`tbound/webchat`, moved in 18f71e6). The core never
   imports it; `scripts/check-extension-boundary.sh` guards that (`make test`; CI `extension-boundary.yml`).
@@ -43,14 +43,15 @@ Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
 - Last verified (FX3, 2026-10-15): see the FX3 block above. Before FX3 (57e6406): vitest 896/896 on Linux;
   extension Go `-race` 54 top-level PASS; legacy node 258/258.
 - Open: no screen-reader test; narrow drawer scrolls with the page; Jump-to-latest only in happy-dom;
-  LOST shapes and the 1024 px drawer not browser-checked; dead favicon allowance in
-  `extensions/webchat/scripts/csp-smoke.mjs` (at HEAD). No live projection, submission or browser auth.
-- Decisions awaiting the user:
-  1. Legacy removal (`/legacy/`, `assets/`, legacy tests) after sign-off.
-  2. Lossy posture entry: a separate posture entry for verified lossy successes (today counted under
-     `reported` with a hint; `frontend.md`, "Phase 3 review fixes").
-  3. Stream `complete` wording (owner decision).
-  4. PR #11 (`codex/tbound-web-chat`) is still a draft (checked 2026-10-14).
+  LOST shapes and the 1024 px drawer are covered by browser QA p5 (Chrome 155, 12/12;
+  `extensions/webchat/docs/webchat/qa/p5-ui-qa-receipt.json`). No live projection, submission or browser auth.
+- Open owner decisions (one list):
+  (a) Lossy wording: lossy success counted under `reported`; separate posture entry (`frontend.md`, "Phase 3 review fixes").
+  (b) Stream `complete` wording: code already neutral (idle).
+  (c) Legacy UI removal (`/legacy/`, `assets/`, legacy tests) after sign-off.
+  (d) Keep or remove the reserved `lost` state (`web-chat.md`, `web-chat-contract.md`).
+  (e) `core/trajectory.ts` `toneOf` still folds `lost` into `deny` for legacy parity (the React rail uses `recordDot`; not recorded elsewhere).
+- PR #11 is open and still a draft (checked 2026-10-15).
 - Not verified here: GitHub Actions after `4700ca5` (none recorded); the `csp-smoke` job (dispatch-only,
   never run); browsers other than Chrome 155.
 - Older sections marked "(superseded by the block at the top)" keep their receipts.
@@ -707,6 +708,5 @@ Export of HEAD 58492c5 into WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under $
   success never shows a green verified chip; /favicon.ico answers 204.
 - Verified on LINUX: vitest 896/896 (60 files), go -race 54 PASS 0 SKIP (extension), legacy node
   258/258, sinks/deps + self-tests, boundary guard, Linux rebuild == the Windows-built dist.
-- Known leftovers: dead favicon allowance in csp-smoke.mjs; stale 'only / answers HEAD' wording in
-  README and web-chat.md; the narrow drawer scrolls with the page (not pinned); stream 'complete'
+- Known leftovers: the narrow drawer scrolls with the page (not pinned); stream 'complete'
   wording is a decision for the owner; no screen-reader testing.

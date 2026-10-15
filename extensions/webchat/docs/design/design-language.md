@@ -159,7 +159,8 @@ Source: `extensions/webchat/internal/webchat/assets/styles.css`. `index.html:6` 
 
 State encodings, shape plus colour [src: `styles.css:859-890, 1189-1230`]:
 - **ok**: solid filled dot. Chip text "succeeded" / "completed".
-- **allow**: inset ring dot in the allow tone. Chip text "allow".
+- **allow**: bullseye, a 2 px ring with a centred 2 px dot, in the allow tone. Chip text "allow".
+- **lost**: solid diamond, hatched in the unknown tone; text `LOST, not success`.
 - **deny**: solid filled dot in the deny tone. Chip "denied" / "failed".
 - **pending**: hollow grey ring. Chip amber.
 - **reported**: amber dashed border, plus an "unverified" marker.
@@ -207,7 +208,7 @@ Names are kept. Values change. The proposal is oklch, with the sRGB hex that the
 | `--radius` | .625rem | `--radius-md` 12 px | same | scale below |
 | `--font-sans` | Inter, then system | system stack (section 9) | same | no webfont |
 
-Note on ALLOW. Keep ALLOW in a blue-slate hue (250, chroma 0.09). It is lower chroma than the brand blue (about 0.2) and it is not green (OK is 150). ALLOW is also an inset ring, not a filled dot, so it is distinct in shape too. The `--state-allow` / `--info` / `--source-system` family stays one token family. It must never reuse the OK colour.
+Note on ALLOW. Keep ALLOW in a blue-slate hue (250, chroma 0.09). It is lower chroma than the brand blue (about 0.2) and it is not green (OK is 150). ALLOW is also a bullseye (a ring with a centred dot), not a filled dot, so it is distinct in shape too. The `--state-allow` / `--info` / `--source-system` family stays one token family. It must never reuse the OK colour.
 
 Note on AMBER. The hue moves from 82 to 70 in light. Yellow text on white cannot reach 4.5:1 [calc], so the amber family is darkened in light only. Dark keeps the original hue.
 

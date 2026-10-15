@@ -32,7 +32,7 @@ clients**:
 - A successful execution, a publication, and a policy `ALLOW` are **distinct**
   facts with distinct authority. The workspace renders them separately and never
   infers one from another.
-- `UNKNOWN` and `LOST`/`LOSSY` are not success. Uncertain effects and cleanup stay
+- `UNKNOWN` and `lost` results are not success. A `lossy` flag never makes an output count as confirmed. Uncertain effects and cleanup stay
   `UNKNOWN`; the client never retries an effect on reconnect.
 
 ## 2. What is implemented, and what is not
@@ -252,6 +252,7 @@ endpoint was needed to build it.
   result cannot look like a success. Lossy output never takes the `ok` tone. A
   verdict carries an explicit `unverified` marker when the projection did not
   verify it.
+- **`lost` (presentation state, reserved).** `lost` means: the reader holds an effect record whose terminal outcome was not recorded in the retained observation. It is a display label only. The supervisor never emits it (the supervisor records SUCCEEDED, DENIED, FAILED, or UNKNOWN; a missing terminal record is `Unresolved` and is treated like UNKNOWN). The gateway never assigns `lost` today: a call without a retained outcome is projected as `unknown` (internal/webchat/receipt.go). The state is therefore reachable only from injected data (QA scripts). It is never success, never counts as prevention, and never triggers replay. Open owner decision: keep `lost` as a reserved state, or remove it and use `unknown`.
 - **Status in words.** The dot is decorative for assistive technology. The
   record's accessible name carries its status instead, for example `Policy verdict:
   ALLOW (permission, not an outcome), not independently verified` or `Result:
@@ -597,10 +598,7 @@ data loading.
 
 ## 10. Verification receipts
 
-Current numbers at HEAD `57e6406` (Linux, WSL, Go 1.27.1, Node 24.15.0): vitest 896 passed in
-60 files, 0 skipped; extension Go `-race` 54 top-level tests PASS, 0 SKIP (132 PASS including
-subtests, from the `-v` run recorded in [phase3-parity.md](phase3-parity.md)); legacy node
-tests 258 pass, 0 skipped; boundary guard OK. The receipts below are the historical record of
+Gates at 57e6406 (historical): vitest 896 in 60 files; Go 54 top-level; legacy node 258. Current (FX4, 2026-10-15): vitest 1259 in 74 files; Go 60 top-level; legacy node 262; 0 skipped. See [frontend.md](frontend.md). The 57e6406 run was on Linux and WSL (Go 1.27.1, Node 24.15.0), with 132 PASS including subtests (from the `-v` run recorded in [phase3-parity.md](phase3-parity.md)); boundary guard OK. The receipts below are the historical record of
 earlier increments. The React client's receipts are in [frontend.md](frontend.md).
 
 Focused checks on the pinned Go 1.27.1 in Linux, run from `extensions/webchat/`
@@ -616,7 +614,7 @@ Focused checks on the pinned Go 1.27.1 in Linux, run from `extensions/webchat/`
   (WSL) all exit 0, with no skipped tests. `TestStaticAssetsAreClosedAndComplete`
   passes with the new `anchor.mjs` route.
 - `node --test internal/webchat/jstest/*.test.mjs` — 258 pass, 0 skipped at HEAD
-  `4700ca5` (229 at the tail-window increment, `3146d1b`). These cover
+  `4700ca5` (historical; current legacy node count is 262, see [frontend.md](frontend.md)); 229 at the tail-window increment, `3146d1b`. These cover
   the pure modules and the DOM-stub renderer; browser scroll, focus and keyboard
   behaviour is not covered by them.
 - The **real** development CLI fixture receipt was imported with

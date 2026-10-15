@@ -160,4 +160,3 @@ Rows for the six defects the v3 fidelity check found. Each names the test that r
 ### Not done in this pass
 
 - The v3 mockups refresh and the `dist/` rebuild, which belong to other passes.
-- Stale HEAD wording: `extensions/webchat/README.md` line 30 and `extensions/webchat/docs/web-chat.md` lines 337 and 343 say only `/` answers HEAD. `/favicon.ico` now does too. Not edited here. *(Resolved in the docs sweep after `57e6406`: both files now state the method table.)*

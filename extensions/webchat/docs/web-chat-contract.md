@@ -78,6 +78,8 @@ are omitted when 0 (sequences are 1-based, so 0 is no position), and a client re
   (`pending`/`succeeded`/`denied`/`failed`/`unknown`/`lost`), optional `summary`,
   `detail`, `digest`, `lossy`
 
+**`lost` (presentation state, reserved).** `lost` means: the reader holds an effect record whose terminal outcome was not recorded in the retained observation. It is a display label only. The supervisor never emits it (the supervisor records SUCCEEDED, DENIED, FAILED, or UNKNOWN; a missing terminal record is `Unresolved` and is treated like UNKNOWN). The gateway never assigns `lost` today: a call without a retained outcome is projected as `unknown` (internal/webchat/receipt.go). The state is therefore reachable only from injected data (QA scripts). It is never success, never counts as prevention, and never triggers replay. Open owner decision: keep `lost` as a reserved state, or remove it and use `unknown`.
+
 Every string is bounded; every identifier matches a bounded reference pattern;
 each type rejects fields from other types. `authority` must remain `diagnostic`
 or `unknown` in the presentation contract — the projection is an observation, not

@@ -1,6 +1,6 @@
 # Web chat frontend (React client)
 
-Status at HEAD `57e6406` (2026-10-14):
+Status at 0b6bdc1 (2026-10-15); FX4 code is 92a5927:
 
 - **The React client is the default UI.** `/` answers `302` to `/app/` (GET and HEAD).
   The vanilla UI is deprecated at `/legacy/` until the owner signs off its removal.
@@ -8,17 +8,19 @@ Status at HEAD `57e6406` (2026-10-14):
 - **Phases 1 to 3 are committed.** P1 scaffold `263b6ca` (review fixes `2583f5a`); P2 typed
   logic port `4700ca5`; P3 React views `58492c5`, `57bcd95`, `a2aaf30`, `60ca5b0`, `6d03657`
   and `57e6406`. The decision is in `adr-0001-optional-extension.md`.
-- **Final QA fix round (2026-10-14, uncommitted):** the Final browser QA's findings are addressed. First paint and
+- **Final QA fix round (2026-10-14; FX3 and FX4 are committed through 92a5927. Re-run `npm run repro` against the committed dist.):** the Final browser QA's findings are addressed. First paint and
   the lossy wording are fixed, the ALLOW shape and the stale lines are fixed, and the backoff timing is confirmed. The
-  browser QA passes 9 of 9 against a Linux-built gateway. See the last section.
-- **Current state, FX3 (2026-10-15, uncommitted):** see "Redesign review fixes, FX3" at the end of this file. Windows `verify`: vitest 74 files, 1258 tests, 0 skipped. WSL `go test -race -v`: 60 top-level PASS, 0 SKIP. Legacy node 262/262. Browser QA `p5`: 12 of 12 PASS.
+  p5 browser QA passes 12 of 12 against a Linux-built gateway. See the last section.
+- **Current state, FX3 (2026-10-15; FX3 and FX4 are committed through 92a5927. Re-run `npm run repro` against the committed dist.): see "Redesign review fixes, FX3" at the end of this file. Windows `verify`: vitest 74 files, 1259 tests, 0 skipped. WSL `go test -race -v`: 60 top-level PASS, 0 SKIP. Legacy node 262/262. Browser QA `p5`: 12 of 12 PASS.
 - **Verified on Linux before FX3 (2026-10-14):** vitest 896/896 (60 files, 0 skipped);
   extension Go `-race` 54 top-level PASS, 0 SKIP; legacy node tests 258/258; sink and
   dependency gates with their self-tests; boundary guard; the Linux rebuild equals the
   committed `dist/`. Receipts: "Claim gate in the core" and "Default UI switch" below.
 - **Open:** no screen-reader testing; the narrow drawer scrolls with the page (not pinned);
-  stream `complete` wording (owner decision); legacy removal (owner sign-off). The favicon
-  allowance is closed: the final QA fix round removed it (see its section below).
+  stream `complete` wording (owner decision); legacy removal (owner sign-off). All open owner
+  decisions are listed once in `TASK_STATE.md` (repo root), "Open owner decisions".
+- **Closed:** the favicon allowance was removed in the final QA fix round; /favicon.ico answers 204
+  (see its section below).
 - Sections below that say "scaffold" or "not committed" describe the state when they were
   written. Where a later commit changed that state, the section says so.
 
@@ -883,7 +885,10 @@ the inspector, the posture and the footer all ask this gate. No announcement car
    by words" and the rail-words test (RED); `ui/StateDot.test.tsx` "draws LOST in the unknown family
    with a diamond of its own" (RED); `ui/Chip.test.tsx` "LOST is in the unknown family, with a shape
    of its own" (RED); two contrast rows in `styles/tokens.test.ts` for the LOST chip and diamond
-   (both pass; they use the unknown family's pairs).
+   (both pass; they use the unknown family's pairs). Scope: this fix applies to the React rail only.
+   The core's `toneOf` (`frontend/src/core/trajectory.ts`) still folds `lost` into `deny` for legacy
+   parity, and the reserved `lost` state is an open owner decision (`TASK_STATE.md`, "Open owner
+   decisions", items d and e).
 4. **Drawer reopened (fixed).** Leaving the narrow layout closes the drawer and forgets its request,
    so a later narrow layout starts closed. Narrowing with the drawer closed moves focus out of the
    inert inspector to the toggle. Tests: `app/Shell.test.tsx` "does not reopen after a widen and a
@@ -1537,7 +1542,7 @@ FX4 fixes the phone composer copy that the Redesign browser QA found clipped (de
 - The CSS comment in `Composer.module.css` says the placeholder shows in full; that holds from 280 px. The comment is not edited: any comment change alters the CSS hash, and the one-build rule applies.
 - The governance-frame flip above is open for the owner: accept the 5-pixel corner difference in one frame, or investigate the live capture's corner rendering.
 - `repro-check.mjs` was not run. It rebuilds the worktree dist and compares with the dist committed at HEAD, and this change commits nothing.
-- Nothing is committed. The v3 `committedSha256` fields stay stale until the FX4 PNGs are committed.
+- FX3 and FX4 are committed through 92a5927. Re-run `npm run repro` against the committed dist. The v3 `committedSha256` fields stay stale until the FX4 PNGs are committed.
 
 ## Mockup interaction layer (after 92a5927)
 
