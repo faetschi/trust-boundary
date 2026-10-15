@@ -757,7 +757,7 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 	registration piruntime.D09ManagedLiveRootRegistration, rootDescriptor managedLiveRootDescriptorIdentity, rootID workflow.RootIdentity,
 	drainVerifier catalogOwnerDrainVerifier, template piruntime.D09CellTemplate, profile piruntime.HostProfile) error {
 	pins := view.Checkpoint.Pins
-	if pins.RootIdentityDigest != bareWorkflowDigest(entry.RootIdentityDigest) ||
+	if pins.RootIdentityDigest != entry.RootIdentityDigest ||
 		pins.TaskDigest != bareWorkflowDigest(entry.TaskDigest) || pins.PromptDigest != bareWorkflowDigest(entry.PromptDigest) ||
 		pins.ProfileDigest != bareWorkflowDigest(profile.Digest) || pins.ImageDigest != bareWorkflowDigest(template.ExpectedImageDigest) ||
 		pins.OwnerEpoch == 0 || pins.RecoveryGeneration == 0 || pins.StoreJournalCount == 0 ||

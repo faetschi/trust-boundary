@@ -12,6 +12,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/workflow"
 	"tbound/supervisor/internal/workflowrecovery"
 )
 
@@ -126,6 +127,27 @@ func TestSettledServiceProfileRequiresExactLandlockABI(t *testing.T) {
 				t.Fatalf("unsupported Landlock ABI %d was accepted: %v", abi, err)
 			}
 		})
+	}
+}
+
+func TestSettledServiceRequestPinsMatchBareRootIdentity(t *testing.T) {
+	profile, template, _ := productionProofFixture()
+	bareRoot := strings.Repeat("c", 64)
+	entry := piServiceWorkflowEntry{WorkflowID: "workflow-settled", RunID: "run-settled", SessionID: "session-settled",
+		ConversationID: "conversation-settled", RootIdentityDigest: bareRoot,
+		TaskDigest: "sha256:" + strings.Repeat("d", 64), PromptDigest: "sha256:" + strings.Repeat("e", 64)}
+	pins := workflowrecovery.Pins{SessionID: entry.SessionID, RootIdentityDigest: bareRoot,
+		TaskDigest: bareWorkflowDigest(entry.TaskDigest), PromptDigest: bareWorkflowDigest(entry.PromptDigest),
+		ProfileDigest: bareWorkflowDigest(profile.Digest), ImageDigest: bareWorkflowDigest(template.ExpectedImageDigest),
+		OwnerEpoch: 1, RecoveryGeneration: 1, StoreJournalCount: 1, StoreJournalHead: strings.Repeat("f", 64),
+		ProviderDisposition: workflowrecovery.DispositionAwaitingProviderExchange}
+	view := workflowrecovery.SettledCheckpointView{Checkpoint: workflowrecovery.Checkpoint{Pins: pins}}
+	// An admitted bare root identity must pass the pin comparison and reach the disposition gate, which refuses the unresolved exchange.
+	err := (*piServiceWorkflowCatalog)(nil).verifyCompletedServiceRequestPins(context.Background(), piServiceRequestState{}, entry,
+		productionPiReceipt{}, view, piruntime.D09ManagedLiveRootRegistration{}, managedLiveRootDescriptorIdentity{},
+		workflow.RootIdentity{}, catalogOwnerDrainVerifier{}, template, profile)
+	if !errors.Is(err, workflowrecovery.ErrPendingUnknown) {
+		t.Fatalf("admitted bare root identity did not reach the settled disposition gate: %v", err)
 	}
 }
 
