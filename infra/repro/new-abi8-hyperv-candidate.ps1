@@ -15,23 +15,31 @@
     remains mandatory for the D09 host profile.
     ResumeVerifiedMedia reuses only the fixed, hash-pinned prepared ISO and
     task key from this run after exact Rock Ridge-path and private-file checks.
+    FinalizeExistingSeed accepts only the one observed, already-created Off
+    seed and records it after exact VM, disk, media, and key checks. It never
+    creates or starts a VM.
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'High')]
 param(
     [ValidateNotNullOrEmpty()][string]$AssetRoot = 'F:\TBoundAssets\abi8-qualification-2026-10-14',
     [ValidateRange(30, 360)][int]$InstallTimeoutMinutes = 120,
     [ValidateRange(1, 999)][int]$MinimumFreeGb = 120,
-    [switch]$ResumeVerifiedMedia
+    [switch]$ResumeVerifiedMedia,
+    [switch]$FinalizeExistingSeed
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($ResumeVerifiedMedia -and $FinalizeExistingSeed) {
+    throw 'ResumeVerifiedMedia and FinalizeExistingSeed are mutually exclusive.'
+}
 
 $script:IsoPath = 'F:\TBoundAssets\ubuntu-24.04.5\ubuntu-24.04.5-live-server-amd64.iso'
 $script:ExpectedIsoSha256 = '97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8'
 $script:AllowedAssetRoot = 'F:\TBoundAssets'
 $script:VmStoreRoot = 'F:\TBoundVMs'
 $script:SeedVmName = 'TBound-Ubuntu-ABI8-Seed'
+$script:ExpectedSeedVmId = '82ffce59-06bf-4c1b-b43a-d406489c6d7f'
 $script:FinalVmName = 'TBound-Ubuntu-2404-ABI8'
 $script:SwitchName = 'Default Switch'
 $script:WslDistro = 'Ubuntu'
@@ -105,6 +113,31 @@ function Assert-UnoccupiedPath {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Description)
     if (Test-Path -LiteralPath $Path) {
         throw "$Description already exists; inspect it before retrying: $Path"
+    }
+}
+
+function Assert-AssetRootEntryShape {
+    param(
+        [Parameter(Mandatory)][ValidateSet('Create', 'Resume', 'FinalizeExistingSeed')][string]$Mode,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Entries
+    )
+
+    switch ($Mode) {
+        'Create' {
+            if ($Entries.Count -ne 0) { throw 'Create requires an empty asset root.' }
+        }
+        'Resume' {
+            if ($Entries.Count -ne 1 -or $Entries[0].Name -cne 'ubuntu-24.04.5-autoinstall.iso' -or $Entries[0].PSIsContainer) {
+                throw 'Resume requires exactly the prepared ISO file in the asset root.'
+            }
+        }
+        'FinalizeExistingSeed' {
+            if ($Entries.Count -ne 2 -or
+                @($Entries | Where-Object { $_.Name -ceq 'ubuntu-24.04.5-autoinstall.iso' -and -not $_.PSIsContainer }).Count -ne 1 -or
+                @($Entries | Where-Object { $_.Name -ceq 'seed-vm' -and $_.PSIsContainer }).Count -ne 1) {
+                throw 'FinalizeExistingSeed requires exactly the prepared ISO file and seed-vm directory in the asset root.'
+            }
+        }
     }
 }
 
@@ -490,19 +523,18 @@ foreach ($path in @($script:AllowedAssetRoot, $vmStoreFull, $script:IsoPath, $pr
 }
 if (-not (Test-Path -LiteralPath $script:AllowedAssetRoot -PathType Container)) { throw "Asset parent is missing: $($script:AllowedAssetRoot)" }
 if (-not (Test-Path -LiteralPath $vmStoreFull -PathType Container)) { throw "VM storage parent is missing: $vmStoreFull" }
-if ($ResumeVerifiedMedia) {
+if ($ResumeVerifiedMedia -or $FinalizeExistingSeed) {
     $expectedAssetRoot = 'F:\TBoundAssets\abi8-qualification-2026-10-14'
     $expectedPrivateRoot = [IO.Path]::GetFullPath((Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification'))
     if ($assetRootFull -ine $expectedAssetRoot -or $privateRootFull -ine $expectedPrivateRoot) {
-        throw 'Resume accepts only the fixed prepared-media and task-key paths.'
+        throw 'Resume and FinalizeExistingSeed accept only the fixed prepared-media and task-key paths.'
     }
     if (-not [IO.Directory]::Exists($assetRootFull) -or -not [IO.Directory]::Exists($privateRootFull)) {
         throw 'Resume requires the existing prepared-media and private task-key directories.'
     }
     $assetEntries = @(Get-ChildItem -LiteralPath $assetRootFull -Force -ErrorAction Stop)
-    if ($assetEntries.Count -ne 1 -or $assetEntries[0].Name -cne 'ubuntu-24.04.5-autoinstall.iso' -or $assetEntries[0].PSIsContainer) {
-        throw 'Resume asset root contains unexpected entries; refusing to overwrite or reuse them.'
-    }
+    $assetEntryMode = if ($FinalizeExistingSeed) { 'FinalizeExistingSeed' } else { 'Resume' }
+    Assert-AssetRootEntryShape -Mode $assetEntryMode -Entries $assetEntries
     $privateEntries = @(Get-ChildItem -LiteralPath $privateRootFull -Force -ErrorAction Stop)
     $expectedPrivateEntries = @('autoinstall', 'id_ed25519', 'id_ed25519.pub')
     if ($privateEntries.Count -ne 3 -or @($privateEntries | Where-Object { $expectedPrivateEntries -cnotcontains $_.Name }).Count -ne 0) {
@@ -576,15 +608,45 @@ if ($ResumeVerifiedMedia) {
             }
         }
     }
-    Assert-UnoccupiedPath -Path $seedVmRoot -Description 'Seed VM output directory'
-    Assert-UnoccupiedPath -Path $receiptPath -Description 'Seed receipt'
+    if ($FinalizeExistingSeed) {
+        if (-not [IO.Directory]::Exists($seedVmRoot) -or [IO.File]::Exists($receiptPath) -or [IO.Directory]::Exists($receiptPath)) {
+            throw 'FinalizeExistingSeed requires the existing fixed seed directory and no prior seed receipt.'
+        }
+        $seedVmConfigurationDirectory = Join-Path $seedVmRoot $script:SeedVmName
+        foreach ($path in @($seedVmRoot, $seedVmConfigurationDirectory, $seedDiskDirectory, $seedVhdx)) {
+            Assert-NoReparsePathComponents -Path $path
+        }
+        $seedRootEntries = @(Get-ChildItem -LiteralPath $seedVmRoot -Force -ErrorAction Stop)
+        $expectedSeedRootEntries = @($script:SeedVmName, 'Virtual Hard Disks')
+        if ($seedRootEntries.Count -ne 2 -or @($seedRootEntries | Where-Object { $expectedSeedRootEntries -cnotcontains $_.Name }).Count -ne 0 -or
+            @($seedRootEntries | Where-Object { $_.Name -ceq $script:SeedVmName -and -not $_.PSIsContainer }).Count -ne 0 -or
+            @($seedRootEntries | Where-Object { $_.Name -ceq 'Virtual Hard Disks' -and -not $_.PSIsContainer }).Count -ne 0) {
+            throw 'FinalizeExistingSeed found an unexpected entry in the existing fixed seed directory.'
+        }
+        $seedDiskEntries = @(Get-ChildItem -LiteralPath $seedDiskDirectory -Force -ErrorAction Stop)
+        if ($seedDiskEntries.Count -ne 1 -or $seedDiskEntries[0].PSIsContainer -or
+            $seedDiskEntries[0].Name -cne [IO.Path]::GetFileName($seedVhdx)) {
+            throw 'FinalizeExistingSeed found unexpected content in the fixed seed VHD directory.'
+        }
+    }
+    else {
+        Assert-UnoccupiedPath -Path $seedVmRoot -Description 'Seed VM output directory'
+        Assert-UnoccupiedPath -Path $receiptPath -Description 'Seed receipt'
+    }
 }
 else {
+    $createAssetEntries = @()
+    if ([IO.Directory]::Exists($assetRootFull)) {
+        $createAssetEntries = @(Get-ChildItem -LiteralPath $assetRootFull -Force -ErrorAction Stop)
+    }
+    Assert-AssetRootEntryShape -Mode 'Create' -Entries $createAssetEntries
     Assert-UnoccupiedPath -Path $assetRootFull -Description 'Asset root'
     Assert-UnoccupiedPath -Path $privateRootFull -Description 'Private key root'
 }
 Assert-UnoccupiedPath -Path $finalVmRoot -Description 'Final VM root'
-if (Get-VM -Name $script:SeedVmName -ErrorAction SilentlyContinue) { throw "Seed VM already exists: $($script:SeedVmName)" }
+if (-not $FinalizeExistingSeed -and (Get-VM -Name $script:SeedVmName -ErrorAction SilentlyContinue)) {
+    throw "Seed VM already exists: $($script:SeedVmName)"
+}
 if (Get-VM -Name $script:FinalVmName -ErrorAction SilentlyContinue) { throw "Final candidate VM already exists: $($script:FinalVmName)" }
 $switchMatches = @(Get-VMSwitch -ErrorAction Stop | Where-Object { $_.Name -ceq $script:SwitchName })
 if ($switchMatches.Count -ne 1) { throw "Provisioning switch '$($script:SwitchName)' must exist exactly once." }
@@ -627,17 +689,21 @@ $hyperVCommands = @(
 foreach ($commandName in $hyperVCommands) {
     if (-not (Get-Command $commandName -ErrorAction SilentlyContinue)) { throw "Required Hyper-V command is unavailable: $commandName" }
 }
-$operationDescription = if ($ResumeVerifiedMedia) {
+$operationDescription = if ($FinalizeExistingSeed) {
+    'Validate and finalize only the exact existing Off seed VM; do not create or start a VM'
+}
+elseif ($ResumeVerifiedMedia) {
     'Verify the existing pinned autoinstall ISO and task-key files, then install one new seed VM and leave its source VHDX powered off'
 }
 else {
     'Create a private SSH key and derived autoinstall ISO, install one new seed VM, and leave its source VHDX powered off'
 }
-if (-not $PSCmdlet.ShouldProcess("$($script:SeedVmName) and $($script:FinalVmName)", $operationDescription)) {
+$operationTarget = if ($FinalizeExistingSeed) { $script:SeedVmName } else { "$($script:SeedVmName) and $($script:FinalVmName)" }
+if (-not $PSCmdlet.ShouldProcess($operationTarget, $operationDescription)) {
     return
 }
 
-if (-not $ResumeVerifiedMedia) {
+if (-not ($ResumeVerifiedMedia -or $FinalizeExistingSeed)) {
 # Create the task-specific SSH key and NoCloud autoinstall data in private storage.
 Set-PrivateDirectory -Path $privateRootFull
 Assert-NoReparsePathComponents -Path $privateRootFull
@@ -782,61 +848,129 @@ $outputWsl = ConvertTo-WslPath -WindowsPath $customIso
 $bootReport = Invoke-Xorriso -XorrisoArguments @('-indev', $outputWsl, '-report_el_torito', 'as_mkisofs')
 if ($bootReport -notmatch '(?i)eltorito|boot') { throw 'xorriso did not report boot metadata for the derived ISO.' }
 
-# Create one fresh, bounded installer VM. Failure leaves state for inspection.
-$seedDiskDirectory = Join-Path $seedVmRoot 'Virtual Hard Disks'
-New-Item -ItemType Directory -Path $seedVmRoot -ErrorAction Stop | Out-Null
-New-Item -ItemType Directory -Path $seedDiskDirectory -ErrorAction Stop | Out-Null
-Assert-NoReparsePathComponents -Path $seedVmRoot
-$null = New-VHD -Path $seedVhdx -SizeBytes 40GB -Dynamic -ErrorAction Stop
-$null = New-VM -Name $script:SeedVmName -Generation 2 -MemoryStartupBytes 4GB -NoVHD -Path $seedVmRoot -SwitchName $script:SwitchName -ErrorAction Stop
-$null = Set-VMProcessor -VMName $script:SeedVmName -Count 2 -ErrorAction Stop
-$null = Set-VMMemory -VMName $script:SeedVmName -DynamicMemoryEnabled $false -StartupBytes 4GB -ErrorAction Stop
-$null = Set-VM -VMName $script:SeedVmName -AutomaticCheckpointsEnabled $false -CheckpointType ProductionOnly -ErrorAction Stop
-$null = Add-VMHardDiskDrive -VMName $script:SeedVmName -Path $seedVhdx -ErrorAction Stop
-$dvd = Add-VMDvdDrive -VMName $script:SeedVmName -Path $customIso -PassThru -ErrorAction Stop
-$null = Set-VMFirmware -VMName $script:SeedVmName -EnableSecureBoot On -SecureBootTemplate MicrosoftUEFICertificateAuthority -FirstBootDevice $dvd -ErrorAction Stop
+if ($FinalizeExistingSeed) {
+    # This action is bound to the VM instance observed Off after installation.
+    # It never creates or starts a VM and accepts only the fixed empty/installer DVD states.
+    $seedVms = @(Get-VM -Name $script:SeedVmName -ErrorAction Stop)
+    if ($seedVms.Count -ne 1) { throw 'FinalizeExistingSeed did not resolve exactly one existing seed VM.' }
+    $seedVm = $seedVms[0]
+    $seedProcessor = Get-VMProcessor -VMName $script:SeedVmName -ErrorAction Stop
+    $seedMemory = Get-VMMemory -VMName $script:SeedVmName -ErrorAction Stop
+    $seedAdapter = @(Get-VMNetworkAdapter -VMName $script:SeedVmName -ErrorAction Stop)
+    $seedFirmware = Get-VMFirmware -VMName $script:SeedVmName -ErrorAction Stop
+    $seedDvds = @(Get-VMDvdDrive -VMName $script:SeedVmName -ErrorAction Stop)
+    $seedHardDisks = @(Get-VMHardDiskDrive -VMName $script:SeedVmName -ErrorAction Stop)
+    $seedSnapshots = @(Get-VMSnapshot -VMName $script:SeedVmName -ErrorAction Stop)
+    if ($seedVm.Id.ToString() -ine $script:ExpectedSeedVmId -or $seedVm.State -ne 'Off' -or
+        $seedVm.Generation -ne 2 -or $seedProcessor.Count -ne 2 -or
+        $seedMemory.DynamicMemoryEnabled -or $seedMemory.Startup -ne 4GB -or
+        $seedAdapter.Count -ne 1 -or $seedAdapter[0].SwitchName -cne $script:SwitchName -or
+        $seedFirmware.SecureBoot -ne 'On' -or
+        $seedFirmware.SecureBootTemplate -notmatch 'MicrosoftUEFICertificateAuthority' -or
+        $seedDvds.Count -ne 1 -or $seedDvds[0].ControllerNumber -ne 0 -or $seedDvds[0].ControllerLocation -ne 1 -or
+        ($seedDvds[0].Path -and $seedDvds[0].Path -ine $customIso) -or
+        $seedHardDisks.Count -ne 1 -or $seedHardDisks[0].ControllerNumber -ne 0 -or
+        $seedHardDisks[0].ControllerLocation -ne 0 -or $seedHardDisks[0].Path -ine $seedVhdx -or
+        $seedSnapshots.Count -ne 0) {
+        throw 'Existing seed VM differs from the exact observed Off profile; refusing to finalize it.'
+    }
 
-$seedVm = Get-VM -Name $script:SeedVmName -ErrorAction Stop
-$seedProcessor = Get-VMProcessor -VMName $script:SeedVmName -ErrorAction Stop
-$seedMemory = Get-VMMemory -VMName $script:SeedVmName -ErrorAction Stop
-$seedDiskInfo = Get-VHD -Path $seedVhdx -ErrorAction Stop
-$seedAdapter = @(Get-VMNetworkAdapter -VMName $script:SeedVmName -ErrorAction Stop)
-$seedFirmware = Get-VMFirmware -VMName $script:SeedVmName -ErrorAction Stop
-if ($seedVm.Generation -ne 2 -or $seedProcessor.Count -ne 2 -or
-    $seedMemory.DynamicMemoryEnabled -or $seedMemory.Startup -ne 4GB -or
-    $seedDiskInfo.Size -ne 40GB -or $seedDiskInfo.VhdType -ne 'Dynamic' -or
-    $seedAdapter.Count -ne 1 -or $seedAdapter[0].SwitchName -cne $script:SwitchName -or
-    $seedFirmware.SecureBoot -ne 'On' -or
-    $seedFirmware.SecureBootTemplate -notmatch 'MicrosoftUEFICertificateAuthority') {
-    throw 'Seed VM settings differ from the installer profile; inspect the partial VM before retrying.'
-}
+    $seedVhdInfo = Get-VHD -Path $seedVhdx -ErrorAction Stop
+    if ($seedVhdInfo.VhdFormat -ne 'VHDX' -or $seedVhdInfo.Size -ne 40GB -or
+        $seedVhdInfo.VhdType -ne 'Dynamic' -or $seedVhdInfo.ParentPath) {
+        throw 'Existing seed VHDX is not the standalone 40 GiB dynamic disk required for finalization.'
+    }
+    $seedVhdItem = Get-Item -LiteralPath $seedVhdx -Force -ErrorAction Stop
+    if ($seedVhdItem.PSIsContainer -or ($seedVhdItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Existing seed VHDX is not a regular non-reparse file.'
+    }
 
-Write-Host "Starting unattended installation in $($script:SeedVmName). It will power off at completion."
-$null = Start-VM -Name $script:SeedVmName -ErrorAction Stop
-$deadline = (Get-Date).AddMinutes($InstallTimeoutMinutes)
-$lastStatus = ''
-while ((Get-Date) -lt $deadline) {
-    $state = [string](Get-VM -Name $script:SeedVmName -ErrorAction Stop).State
-    if ($state -eq 'Off') { break }
-    if ($state -ne $lastStatus) { Write-Host "Installer VM state: $state"; $lastStatus = $state }
-    Start-Sleep -Seconds 15
-}
-if ((Get-VM -Name $script:SeedVmName -ErrorAction Stop).State -ne 'Off') {
-    throw "Autoinstall did not power off within $InstallTimeoutMinutes minutes. No forced poweroff or cleanup was attempted; inspect the VM and installer log."
-}
+    if ($seedDvds[0].Path -and $seedDvds[0].Path -ieq $customIso) {
+        $null = Set-VMDvdDrive -VMDvdDrive $seedDvds[0] -Path $null -ErrorAction Stop
+    }
+    $null = Set-VMFirmware -VMName $script:SeedVmName -FirstBootDevice $seedHardDisks[0] -ErrorAction Stop
 
-$seedDvd = @(Get-VMDvdDrive -VMName $script:SeedVmName -ErrorAction Stop | Where-Object { $_.Path -eq $customIso })
-if ($seedDvd.Count -ne 1) { throw 'Could not identify exactly one installer DVD to detach.' }
-$null = Set-VMDvdDrive -VMDvdDrive $seedDvd[0] -Path $null -ErrorAction Stop
-$seedHardDisks = @(Get-VMHardDiskDrive -VMName $script:SeedVmName -ErrorAction Stop)
-if ($seedHardDisks.Count -ne 1 -or $seedHardDisks[0].Path -ine $seedVhdx) { throw 'Unexpected seed disk attachment; refusing to hash it.' }
-$null = Set-VMFirmware -VMName $script:SeedVmName -FirstBootDevice $seedHardDisks[0] -ErrorAction Stop
-if (@(Get-VMSnapshot -VMName $script:SeedVmName -ErrorAction Stop).Count -ne 0) { throw 'Seed VM has checkpoints; refusing to hash it.' }
-$seedVhdInfo = Get-VHD -Path $seedVhdx -ErrorAction Stop
-if ($seedVhdInfo.VhdFormat -ne 'VHDX' -or $seedVhdInfo.Size -ne 40GB -or $seedVhdInfo.ParentPath) {
-    throw 'Seed is not a standalone 40 GiB VHDX; refusing to record it as a clone source.'
+    $seedVm = Get-VM -Name $script:SeedVmName -ErrorAction Stop
+    $seedProcessor = Get-VMProcessor -VMName $script:SeedVmName -ErrorAction Stop
+    $seedMemory = Get-VMMemory -VMName $script:SeedVmName -ErrorAction Stop
+    $seedAdapter = @(Get-VMNetworkAdapter -VMName $script:SeedVmName -ErrorAction Stop)
+    $seedFirmware = Get-VMFirmware -VMName $script:SeedVmName -ErrorAction Stop
+    $seedDvds = @(Get-VMDvdDrive -VMName $script:SeedVmName -ErrorAction Stop)
+    $seedHardDisks = @(Get-VMHardDiskDrive -VMName $script:SeedVmName -ErrorAction Stop)
+    $seedSnapshots = @(Get-VMSnapshot -VMName $script:SeedVmName -ErrorAction Stop)
+    if ($seedVm.Id.ToString() -ine $script:ExpectedSeedVmId -or $seedVm.State -ne 'Off' -or $seedVm.Generation -ne 2 -or
+        $seedProcessor.Count -ne 2 -or $seedMemory.DynamicMemoryEnabled -or $seedMemory.Startup -ne 4GB -or
+        $seedAdapter.Count -ne 1 -or $seedAdapter[0].SwitchName -cne $script:SwitchName -or
+        $seedDvds.Count -ne 1 -or $seedDvds[0].ControllerNumber -ne 0 -or $seedDvds[0].ControllerLocation -ne 1 -or $seedDvds[0].Path -or
+        $seedHardDisks.Count -ne 1 -or $seedHardDisks[0].Path -ine $seedVhdx -or
+        $seedSnapshots.Count -ne 0 -or $seedFirmware.SecureBoot -ne 'On' -or
+        $seedFirmware.SecureBootTemplate -notmatch 'MicrosoftUEFICertificateAuthority') {
+        throw 'Existing seed changed during finalization; no receipt was written.'
+    }
+    $seedVhdInfo = Get-VHD -Path $seedVhdx -ErrorAction Stop
+    if ($seedVhdInfo.VhdFormat -ne 'VHDX' -or $seedVhdInfo.Size -ne 40GB -or
+        $seedVhdInfo.VhdType -ne 'Dynamic' -or $seedVhdInfo.ParentPath) {
+        throw 'Existing seed VHDX changed during finalization; no receipt was written.'
+    }
+    $seedDiskHash = (Get-FileHash -LiteralPath $seedVhdx -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
 }
-$seedDiskHash = (Get-FileHash -LiteralPath $seedVhdx -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+else {
+    # Create one fresh, bounded installer VM. Failure leaves state for inspection.
+    $seedDiskDirectory = Join-Path $seedVmRoot 'Virtual Hard Disks'
+    New-Item -ItemType Directory -Path $seedVmRoot -ErrorAction Stop | Out-Null
+    New-Item -ItemType Directory -Path $seedDiskDirectory -ErrorAction Stop | Out-Null
+    Assert-NoReparsePathComponents -Path $seedVmRoot
+    $null = New-VHD -Path $seedVhdx -SizeBytes 40GB -Dynamic -ErrorAction Stop
+    $null = New-VM -Name $script:SeedVmName -Generation 2 -MemoryStartupBytes 4GB -NoVHD -Path $seedVmRoot -SwitchName $script:SwitchName -ErrorAction Stop
+    $null = Set-VMProcessor -VMName $script:SeedVmName -Count 2 -ErrorAction Stop
+    $null = Set-VMMemory -VMName $script:SeedVmName -DynamicMemoryEnabled $false -StartupBytes 4GB -ErrorAction Stop
+    $null = Set-VM -VMName $script:SeedVmName -AutomaticCheckpointsEnabled $false -CheckpointType ProductionOnly -ErrorAction Stop
+    $null = Add-VMHardDiskDrive -VMName $script:SeedVmName -Path $seedVhdx -ErrorAction Stop
+    $dvd = Add-VMDvdDrive -VMName $script:SeedVmName -Path $customIso -PassThru -ErrorAction Stop
+    $null = Set-VMFirmware -VMName $script:SeedVmName -EnableSecureBoot On -SecureBootTemplate MicrosoftUEFICertificateAuthority -FirstBootDevice $dvd -ErrorAction Stop
+
+    $seedVm = Get-VM -Name $script:SeedVmName -ErrorAction Stop
+    $seedProcessor = Get-VMProcessor -VMName $script:SeedVmName -ErrorAction Stop
+    $seedMemory = Get-VMMemory -VMName $script:SeedVmName -ErrorAction Stop
+    $seedDiskInfo = Get-VHD -Path $seedVhdx -ErrorAction Stop
+    $seedAdapter = @(Get-VMNetworkAdapter -VMName $script:SeedVmName -ErrorAction Stop)
+    $seedFirmware = Get-VMFirmware -VMName $script:SeedVmName -ErrorAction Stop
+    if ($seedVm.Generation -ne 2 -or $seedProcessor.Count -ne 2 -or
+        $seedMemory.DynamicMemoryEnabled -or $seedMemory.Startup -ne 4GB -or
+        $seedDiskInfo.Size -ne 40GB -or $seedDiskInfo.VhdType -ne 'Dynamic' -or
+        $seedAdapter.Count -ne 1 -or $seedAdapter[0].SwitchName -cne $script:SwitchName -or
+        $seedFirmware.SecureBoot -ne 'On' -or
+        $seedFirmware.SecureBootTemplate -notmatch 'MicrosoftUEFICertificateAuthority') {
+        throw 'Seed VM settings differ from the installer profile; inspect the partial VM before retrying.'
+    }
+
+    Write-Host "Starting unattended installation in $($script:SeedVmName). It will power off at completion."
+    $null = Start-VM -Name $script:SeedVmName -ErrorAction Stop
+    $deadline = (Get-Date).AddMinutes($InstallTimeoutMinutes)
+    $lastStatus = ''
+    while ((Get-Date) -lt $deadline) {
+        $state = [string](Get-VM -Name $script:SeedVmName -ErrorAction Stop).State
+        if ($state -eq 'Off') { break }
+        if ($state -ne $lastStatus) { Write-Host "Installer VM state: $state"; $lastStatus = $state }
+        Start-Sleep -Seconds 15
+    }
+    if ((Get-VM -Name $script:SeedVmName -ErrorAction Stop).State -ne 'Off') {
+        throw "Autoinstall did not power off within $InstallTimeoutMinutes minutes. No forced poweroff or cleanup was attempted; inspect the VM and installer log."
+    }
+
+    $seedDvd = @(Get-VMDvdDrive -VMName $script:SeedVmName -ErrorAction Stop | Where-Object { $_.Path -eq $customIso })
+    if ($seedDvd.Count -ne 1) { throw 'Could not identify exactly one installer DVD to detach.' }
+    $null = Set-VMDvdDrive -VMDvdDrive $seedDvd[0] -Path $null -ErrorAction Stop
+    $seedHardDisks = @(Get-VMHardDiskDrive -VMName $script:SeedVmName -ErrorAction Stop)
+    if ($seedHardDisks.Count -ne 1 -or $seedHardDisks[0].Path -ine $seedVhdx) { throw 'Unexpected seed disk attachment; refusing to hash it.' }
+    $null = Set-VMFirmware -VMName $script:SeedVmName -FirstBootDevice $seedHardDisks[0] -ErrorAction Stop
+    if (@(Get-VMSnapshot -VMName $script:SeedVmName -ErrorAction Stop).Count -ne 0) { throw 'Seed VM has checkpoints; refusing to hash it.' }
+    $seedVhdInfo = Get-VHD -Path $seedVhdx -ErrorAction Stop
+    if ($seedVhdInfo.VhdFormat -ne 'VHDX' -or $seedVhdInfo.Size -ne 40GB -or $seedVhdInfo.ParentPath) {
+        throw 'Seed is not a standalone 40 GiB VHDX; refusing to record it as a clone source.'
+    }
+    $seedDiskHash = (Get-FileHash -LiteralPath $seedVhdx -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+}
 
 $receipt = [ordered]@{
     schema = 'tbound-abi8-hyperv-seed/v1'
@@ -851,7 +985,7 @@ $receipt = [ordered]@{
         path = $customIso
         sha256 = $derivedIsoHash
         xorrisoVersion = $xorrisoVersion
-        reusedExistingMedia = [bool]$ResumeVerifiedMedia
+        reusedExistingMedia = [bool]($ResumeVerifiedMedia -or $FinalizeExistingSeed)
         canonicalSignatureCoversDerivedMedia = $false
     }
     provisioningKey = [ordered]@{
@@ -861,6 +995,7 @@ $receipt = [ordered]@{
     }
     seedVm = [ordered]@{
         name = $script:SeedVmName
+        id = $seedVm.Id.ToString()
         state = 'Off'
         generation = 2
         processorCount = 2

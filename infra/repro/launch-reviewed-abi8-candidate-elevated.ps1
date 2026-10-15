@@ -3,25 +3,28 @@
 .SYNOPSIS
   Runs the fixed ABI-8 seed helper through a source-checked UAC child.
 .DESCRIPTION
-  Accepted operations are a read-only WhatIf, creation of the one predeclared
-  disposable seed, or continuation using the fixed already-pinned ISO and task
-  key. No paths, VM names, switches, or commands are accepted from the caller.
+  Accepted operations include fixed read-only WhatIf and Observe actions,
+  creation of the one predeclared disposable seed, or continuation using the
+  fixed already-pinned ISO and task key. Observe reports fixed seed metadata
+  without invoking candidate code. No paths, VM names, switches, or commands
+  are accepted from the caller.
   Candidate and bootstrap bytes and the installed Hyper-V module are pinned
   before elevation and rechecked before a ScriptBlock is created.
   Create and Resume are bounded by the seed helper's 120-minute installer limit
-  plus ten minutes of setup slack. A timeout is recorded without deleting or
-  powering off a partially created VM.
+  plus ten minutes of setup slack. FinalizeExistingSeed accepts only the fixed
+  observed VM and does not create or start one. A timeout is recorded without
+  deleting or powering off a partially created VM.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('WhatIf', 'Create', 'Resume')]
+    [ValidateSet('WhatIf', 'Create', 'Resume', 'Observe', 'FinalizeExistingSeed')]
     [string]$Action
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-if ($args.Count -ne 0) { throw 'This launcher accepts only -Action WhatIf or -Action Create.' }
+if ($args.Count -ne 0) { throw 'This launcher accepts only one fixed -Action value.' }
 
 function Get-Sha256Bytes {
     param([Parameter(Mandatory)][byte[]]$Bytes)
@@ -120,7 +123,7 @@ function Assert-TrustedSystemTool {
     }
 }
 
-$expectedCandidateSha256 = '668494F0CF495C14926234E43659738A4F605AB6C635A3C0B22E284057C38A93'
+$expectedCandidateSha256 = '9B0FCB40408FC472ED829B665FF0B13ADF30FB2FB9B51B9EA74921B19B826B03'
 $expectedHyperVManifestSha256 = 'C5F845C5BA7A4960D876DB46D1E63905CD9AC8EFEF650CB3EC9DBBD8B713F4CC'
 $expectedHyperVBinarySha256 = '0FD7A8B2CB8C15E9DA691726C1F1F71F3EC4F853837FD099BA3F9EB2E9399316'
 $expectedWslExeSha256 = '4e589e3883229b7a74a4acdb878689dcec94e2539fcad1c194f415b149c337a9'
@@ -210,6 +213,11 @@ function Write-New([string]$Path, [string]$Text) {
     try { $writer.Write($Text) } finally { $writer.Dispose() }
   } finally { $stream.Dispose() }
 }
+function Write-NewBytesDurably([string]$Path, [byte[]]$Bytes) {
+  $stream = [IO.File]::Open($Path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+  try { $stream.Write($Bytes, 0, $Bytes.Length); $stream.Flush($true) }
+  finally { $stream.Dispose() }
+}
 function Decode-Script([byte[]]$Bytes) {
   if ($Bytes.Length -ge 3 -and $Bytes[0] -eq 0xEF -and $Bytes[1] -eq 0xBB -and $Bytes[2] -eq 0xBF) { $Bytes = $Bytes[3..($Bytes.Length - 1)] }
   [Text.Encoding]::UTF8.GetString($Bytes)
@@ -258,6 +266,7 @@ $expectedHyperVBinaryHash = From-B64 '__HYPERV_BINARY_HASH__'
 $childResultPath = Join-Path $runDirectory 'child-result.json'
 $childErrorPath = Join-Path $runDirectory 'child-error.txt'
 $candidateOutputPath = Join-Path $runDirectory 'candidate-output.txt'
+$seedStatePath = Join-Path $runDirectory 'seed-state.json'
 $exitCode = 2
 $result = [ordered]@{
   schema = 'tbound-abi8-elevated-candidate-result/v1'
@@ -277,6 +286,7 @@ $result = [ordered]@{
   outputSha256 = $null
   outcome = 'refused-or-failed'
   candidateReceiptSha256 = $null
+  seedStateSha256 = $null
   exitCode = 2
 }
 try {
@@ -336,73 +346,135 @@ try {
   $result.wslExecutableSha256 = $expectedWslExeHash
   $result.sshKeygenExecutableSha256 = $expectedSshKeygenHash
   $result.hostExecutablesVerified = $true
-  $candidateBlock = [ScriptBlock]::Create((Decode-Script $candidateBytes))
   $assetRoot = 'F:\TBoundAssets\abi8-qualification-2026-10-14'
-  $captured = @()
-  if ($action -ceq 'WhatIf') {
-    $captured = @(& $candidateBlock -AssetRoot $assetRoot -InstallTimeoutMinutes 120 -MinimumFreeGb 120 -WhatIf *>&1)
-  }
-  elseif ($action -ceq 'Create') {
-    $captured = @(& $candidateBlock -AssetRoot $assetRoot -InstallTimeoutMinutes 120 -MinimumFreeGb 120 -Confirm:$false *>&1)
-  }
-  elseif ($action -ceq 'Resume') {
-    $captured = @(& $candidateBlock -AssetRoot $assetRoot -InstallTimeoutMinutes 120 -MinimumFreeGb 120 -ResumeVerifiedMedia -Confirm:$false *>&1)
-  }
-  else { throw 'Action is not one of the fixed reviewed operations.' }
-  $capturedText = @($captured | ForEach-Object { [string]$_ })
-  $capturedUtf8 = [Text.Encoding]::UTF8.GetBytes(($capturedText -join [Environment]::NewLine) + [Environment]::NewLine)
-  $result.invocationOutputLineCount = $capturedText.Count
-  $result.outputSha256 = Hash-Bytes $capturedUtf8
-  $result.invocationCompleted = $true
-  [IO.File]::WriteAllBytes($candidateOutputPath, $capturedUtf8)
-  if ($action -ceq 'WhatIf') {
-    if ([IO.Directory]::Exists($assetRoot) -or (Get-VM -Name 'TBound-Ubuntu-ABI8-Seed' -ErrorAction SilentlyContinue) -or
-        (Get-VM -Name 'TBound-Ubuntu-2404-ABI8' -ErrorAction SilentlyContinue)) {
-      throw 'WhatIf unexpectedly created a candidate output directory or VM.'
-    }
-    $result.outcome = 'whatif-preflight-completed-no-vm-or-output-created'
-    $exitCode = 0
-  }
-  else {
-    $receiptPath = Join-Path $assetRoot 'abi8-seed-receipt.json'
-    if (-not [IO.File]::Exists($receiptPath)) { throw 'Create completed without the fixed seed receipt.' }
-    $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -ErrorAction Stop
-    if ($receipt.schema -cne 'tbound-abi8-hyperv-seed/v1' -or
-        $receipt.sourceMedia.sha256 -cne '97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8' -or
-        $receipt.derivedMedia.canonicalSignatureCoversDerivedMedia -ne $false -or
-        $receipt.derivedMedia.xorrisoVersion -notmatch '^xorriso 1\.5\.6' -or
-        ($action -ceq 'Resume' -and ($receipt.derivedMedia.sha256 -cne '1ec771177b5c8e347ea6829f40744cc9505a79d6faf79b3f7a3eda74b2f84e76' -or $receipt.derivedMedia.reusedExistingMedia -ne $true)) -or
-        ($action -ceq 'Create' -and $receipt.derivedMedia.reusedExistingMedia -ne $false) -or
-        $receipt.provisioningKey.privateKeyPath -ine (Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519') -or
-        $receipt.provisioningKey.privateKeyMaterialIncluded -ne $false -or
-        $receipt.seedVm.name -cne 'TBound-Ubuntu-ABI8-Seed' -or
-        $receipt.seedVm.state -cne 'Off' -or $receipt.seedVm.generation -ne 2 -or
-        $receipt.seedVm.processorCount -ne 2 -or $receipt.seedVm.fixedMemoryBytes -ne 4GB -or
-        $receipt.seedVm.virtualDiskBytes -ne 40GB -or $receipt.seedVm.diskType -cne 'Dynamic' -or
-        $receipt.seedVm.diskSha256 -notmatch '^[0-9a-f]{64}$' -or
-        $receipt.seedVm.switchName -cne 'Default Switch' -or
-        $receipt.seedVm.secureBoot -cne 'On' -or
-        $receipt.seedVm.secureBootTemplate -notmatch 'MicrosoftUEFICertificateAuthority' -or
-        $receipt.seedVm.parentPath) { throw 'Seed receipt did not match the fixed media, key-path, or VM profile.' }
-    $actualDiskHash = (Get-FileHash -LiteralPath $receipt.seedVm.diskPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
-    if ($actualDiskHash -cne $receipt.seedVm.diskSha256) { throw 'Seed disk hash differs from its receipt.' }
-    $seedVm = Get-VM -Name 'TBound-Ubuntu-ABI8-Seed' -ErrorAction Stop
+  if ($action -ceq 'Observe') {
+    $seedVms = @(Get-VM -Name 'TBound-Ubuntu-ABI8-Seed' -ErrorAction Stop)
+    if ($seedVms.Count -ne 1) { throw 'Read-only observation did not resolve exactly one fixed seed VM.' }
+    $seedVm = $seedVms[0]
     $seedCpu = Get-VMProcessor -VMName $seedVm.Name -ErrorAction Stop
     $seedMemory = Get-VMMemory -VMName $seedVm.Name -ErrorAction Stop
     $seedFirmware = Get-VMFirmware -VMName $seedVm.Name -ErrorAction Stop
-    $seedAdapters = @(Get-VMNetworkAdapter -VMName $seedVm.Name -ErrorAction Stop)
-    $seedDisks = @(Get-VMHardDiskDrive -VMName $seedVm.Name -ErrorAction Stop)
-    $seedSnapshots = @(Get-VMSnapshot -VMName $seedVm.Name -ErrorAction Stop)
-    $seedDvds = @(Get-VMDvdDrive -VMName $seedVm.Name -ErrorAction Stop | Where-Object { $_.Path })
-    if ($seedVm.State -ne 'Off' -or $seedVm.Generation -ne 2 -or $seedCpu.Count -ne 2 -or
-        $seedMemory.DynamicMemoryEnabled -or $seedMemory.Startup -ne 4GB -or
-        $seedFirmware.SecureBoot -ne 'On' -or $seedFirmware.SecureBootTemplate -notmatch 'MicrosoftUEFICertificateAuthority' -or
-        $seedAdapters.Count -ne 1 -or $seedAdapters[0].SwitchName -cne 'Default Switch' -or
-        $seedDisks.Count -ne 1 -or $seedDisks[0].Path -ine $receipt.seedVm.diskPath -or
-        $seedSnapshots.Count -ne 0 -or $seedDvds.Count -ne 0) { throw 'Live seed VM settings differ from the fixed off-state receipt.' }
-    $result.candidateReceiptSha256 = (Hash-Bytes ([IO.File]::ReadAllBytes($receiptPath))).ToLowerInvariant()
-    $result.outcome = 'seed-created-and-off-state-receipt-validated'
+    $seedDvds = @(Get-VMDvdDrive -VMName $seedVm.Name -ErrorAction Stop | ForEach-Object {
+      [ordered]@{
+        controllerNumber = [int]$_.ControllerNumber
+        controllerLocation = [int]$_.ControllerLocation
+        path = [string]$_.Path
+      }
+    })
+    $seedDisks = @(Get-VMHardDiskDrive -VMName $seedVm.Name -ErrorAction Stop | ForEach-Object {
+      [ordered]@{
+        controllerNumber = [int]$_.ControllerNumber
+        controllerLocation = [int]$_.ControllerLocation
+        path = [string]$_.Path
+      }
+    })
+    $seedState = [ordered]@{
+      schema = 'tbound-abi8-seed-state/v1'
+      runId = $runId
+      observedAt = [DateTimeOffset]::Now.ToString('o')
+      vm = [ordered]@{
+        name = [string]$seedVm.Name
+        id = [string]$seedVm.Id
+        state = [string]$seedVm.State
+        generation = [int]$seedVm.Generation
+        processorCount = [int]$seedCpu.Count
+        startupMemoryBytes = [Int64]$seedMemory.Startup
+        dynamicMemoryEnabled = [bool]$seedMemory.DynamicMemoryEnabled
+        secureBoot = [string]$seedFirmware.SecureBoot
+        secureBootTemplate = [string]$seedFirmware.SecureBootTemplate
+        dvdDrives = $seedDvds
+        hardDisks = $seedDisks
+      }
+    }
+    $seedStateJson = ($seedState | ConvertTo-Json -Depth 6) + [Environment]::NewLine
+    $seedStateBytes = [Text.UTF8Encoding]::new($false).GetBytes($seedStateJson)
+    if ([IO.Path]::GetFileName($seedStatePath) -cne 'seed-state.json' -or
+        [IO.Path]::GetFullPath([IO.Path]::GetDirectoryName($seedStatePath)) -ine [IO.Path]::GetFullPath($runDirectory)) {
+      throw 'Read-only state receipt escaped its fixed per-run path.'
+    }
+    Assert-NoReparsePath -Path $seedStatePath
+    Write-NewBytesDurably -Path $seedStatePath -Bytes $seedStateBytes
+    $result.seedStateSha256 = (Hash-Bytes $seedStateBytes).ToLowerInvariant()
+    $result.invocationCompleted = $true
+    $result.outcome = 'observed-seed-state'
     $exitCode = 0
+  }
+  else {
+    $candidateBlock = [ScriptBlock]::Create((Decode-Script $candidateBytes))
+    $captured = @()
+    if ($action -ceq 'WhatIf') {
+      $captured = @(& $candidateBlock -AssetRoot $assetRoot -InstallTimeoutMinutes 120 -MinimumFreeGb 120 -WhatIf *>&1)
+    }
+    elseif ($action -ceq 'Create') {
+      $captured = @(& $candidateBlock -AssetRoot $assetRoot -InstallTimeoutMinutes 120 -MinimumFreeGb 120 -Confirm:$false *>&1)
+    }
+  elseif ($action -ceq 'Resume') {
+    $captured = @(& $candidateBlock -AssetRoot $assetRoot -InstallTimeoutMinutes 120 -MinimumFreeGb 120 -ResumeVerifiedMedia -Confirm:$false *>&1)
+  }
+  elseif ($action -ceq 'FinalizeExistingSeed') {
+    $captured = @(& $candidateBlock -AssetRoot $assetRoot -InstallTimeoutMinutes 120 -MinimumFreeGb 120 -FinalizeExistingSeed -Confirm:$false *>&1)
+  }
+    else { throw 'Action is not one of the fixed reviewed operations.' }
+    $capturedText = @($captured | ForEach-Object { [string]$_ })
+    $capturedUtf8 = [Text.Encoding]::UTF8.GetBytes(($capturedText -join [Environment]::NewLine) + [Environment]::NewLine)
+    $result.invocationOutputLineCount = $capturedText.Count
+    $result.outputSha256 = Hash-Bytes $capturedUtf8
+    $result.invocationCompleted = $true
+    [IO.File]::WriteAllBytes($candidateOutputPath, $capturedUtf8)
+    if ($action -ceq 'WhatIf') {
+      if ([IO.Directory]::Exists($assetRoot) -or (Get-VM -Name 'TBound-Ubuntu-ABI8-Seed' -ErrorAction SilentlyContinue) -or
+          (Get-VM -Name 'TBound-Ubuntu-2404-ABI8' -ErrorAction SilentlyContinue)) {
+        throw 'WhatIf unexpectedly created a candidate output directory or VM.'
+      }
+      $result.outcome = 'whatif-preflight-completed-no-vm-or-output-created'
+      $exitCode = 0
+    }
+    else {
+      $receiptPath = Join-Path $assetRoot 'abi8-seed-receipt.json'
+      if (-not [IO.File]::Exists($receiptPath)) { throw 'Create completed without the fixed seed receipt.' }
+      $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -ErrorAction Stop
+      if ($receipt.schema -cne 'tbound-abi8-hyperv-seed/v1' -or
+          $receipt.sourceMedia.sha256 -cne '97f3d7ffb032c3eb3b23d2c8be9cc76e60c2c1f2c0146ba5ba9fe01cafae0fd8' -or
+          $receipt.derivedMedia.canonicalSignatureCoversDerivedMedia -ne $false -or
+          $receipt.derivedMedia.xorrisoVersion -notmatch '^xorriso 1\.5\.6' -or
+          ($action -in @('Resume', 'FinalizeExistingSeed') -and ($receipt.derivedMedia.sha256 -cne '1ec771177b5c8e347ea6829f40744cc9505a79d6faf79b3f7a3eda74b2f84e76' -or $receipt.derivedMedia.reusedExistingMedia -ne $true)) -or
+          ($action -ceq 'Create' -and $receipt.derivedMedia.reusedExistingMedia -ne $false) -or
+          ($action -ceq 'FinalizeExistingSeed' -and $receipt.seedVm.id -cne '82ffce59-06bf-4c1b-b43a-d406489c6d7f') -or
+          $receipt.provisioningKey.privateKeyPath -ine (Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519') -or
+          $receipt.provisioningKey.privateKeyMaterialIncluded -ne $false -or
+          $receipt.seedVm.name -cne 'TBound-Ubuntu-ABI8-Seed' -or
+          $receipt.seedVm.state -cne 'Off' -or $receipt.seedVm.generation -ne 2 -or
+          $receipt.seedVm.processorCount -ne 2 -or $receipt.seedVm.fixedMemoryBytes -ne 4GB -or
+          $receipt.seedVm.virtualDiskBytes -ne 40GB -or $receipt.seedVm.diskType -cne 'Dynamic' -or
+          $receipt.seedVm.diskSha256 -notmatch '^[0-9a-f]{64}$' -or
+          $receipt.seedVm.switchName -cne 'Default Switch' -or
+          $receipt.seedVm.secureBoot -cne 'On' -or
+          $receipt.seedVm.secureBootTemplate -notmatch 'MicrosoftUEFICertificateAuthority' -or
+          $receipt.seedVm.parentPath) { throw 'Seed receipt did not match the fixed media, key-path, or VM profile.' }
+      $actualDiskHash = (Get-FileHash -LiteralPath $receipt.seedVm.diskPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+      if ($actualDiskHash -cne $receipt.seedVm.diskSha256) { throw 'Seed disk hash differs from its receipt.' }
+      $seedVm = Get-VM -Name 'TBound-Ubuntu-ABI8-Seed' -ErrorAction Stop
+      if ($seedVm.Id.ToString() -ine $receipt.seedVm.id) { throw 'Live seed VM ID differs from its fixed receipt.' }
+      $seedCpu = Get-VMProcessor -VMName $seedVm.Name -ErrorAction Stop
+      $seedMemory = Get-VMMemory -VMName $seedVm.Name -ErrorAction Stop
+      $seedFirmware = Get-VMFirmware -VMName $seedVm.Name -ErrorAction Stop
+      $seedAdapters = @(Get-VMNetworkAdapter -VMName $seedVm.Name -ErrorAction Stop)
+      $seedDisks = @(Get-VMHardDiskDrive -VMName $seedVm.Name -ErrorAction Stop)
+      $seedSnapshots = @(Get-VMSnapshot -VMName $seedVm.Name -ErrorAction Stop)
+      $seedDvds = @(Get-VMDvdDrive -VMName $seedVm.Name -ErrorAction Stop | Where-Object { $_.Path })
+      if ($seedVm.State -ne 'Off' -or $seedVm.Generation -ne 2 -or $seedCpu.Count -ne 2 -or
+          $seedMemory.DynamicMemoryEnabled -or $seedMemory.Startup -ne 4GB -or
+          $seedFirmware.SecureBoot -ne 'On' -or $seedFirmware.SecureBootTemplate -notmatch 'MicrosoftUEFICertificateAuthority' -or
+          $seedAdapters.Count -ne 1 -or $seedAdapters[0].SwitchName -cne 'Default Switch' -or
+          $seedDisks.Count -ne 1 -or $seedDisks[0].Path -ine $receipt.seedVm.diskPath -or
+          $seedSnapshots.Count -ne 0 -or $seedDvds.Count -ne 0) { throw 'Live seed VM settings differ from the fixed off-state receipt.' }
+      $result.candidateReceiptSha256 = (Hash-Bytes ([IO.File]::ReadAllBytes($receiptPath))).ToLowerInvariant()
+      $result.outcome = if ($action -ceq 'FinalizeExistingSeed') {
+        'seed-finalized-existing-off-state-receipt-validated'
+      }
+      else { 'seed-created-and-off-state-receipt-validated' }
+      $exitCode = 0
+    }
   }
 }
 catch {
@@ -567,10 +639,51 @@ try {
                 $childResult.sshKeygenExecutableSha256 -ceq $expectedSshKeygenSha256 -and
                 $childResult.candidateBytesVerifiedBeforeScriptBlockCreation -eq $true -and
                 $childResult.candidateSha256 -ceq $expectedCandidateSha256 -and
-                $childResult.invocationCompleted -eq $true -and $childResult.exitCode -eq 0
+                $childResult.exitCode -eq 0
             )
-            if ($Action -ceq 'WhatIf') { $childResultValidated = $childResultValidated -and $childResult.outcome -ceq 'whatif-preflight-completed-no-vm-or-output-created' }
-            else { $childResultValidated = $childResultValidated -and $childResult.outcome -ceq 'seed-created-and-off-state-receipt-validated' -and $childResult.candidateReceiptSha256 -match '^[0-9A-F]{64}$' }
+            if ($Action -ceq 'WhatIf') {
+                $childResultValidated = $childResultValidated -and
+                    $childResult.invocationCompleted -eq $true -and
+                    $childResult.outcome -ceq 'whatif-preflight-completed-no-vm-or-output-created'
+            }
+            elseif ($Action -ceq 'Observe') {
+                $seedStateValidated = $false
+                try {
+                    $seedStatePath = Join-Path $runDirectory 'seed-state.json'
+                    Assert-NoReparsePathComponents -Path $seedStatePath
+                    if ($childResult.seedStateSha256 -match '^[0-9A-Fa-f]{64}$' -and [IO.File]::Exists($seedStatePath)) {
+                        $seedStateItem = Get-Item -LiteralPath $seedStatePath -Force -ErrorAction Stop
+                        if (-not $seedStateItem.PSIsContainer -and ($seedStateItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
+                            $seedStateBytes = [IO.File]::ReadAllBytes($seedStatePath)
+                            if ((Get-Sha256Bytes $seedStateBytes) -ieq $childResult.seedStateSha256) {
+                                $strictUtf8 = [Text.UTF8Encoding]::new($false, $true)
+                                $seedStateText = $strictUtf8.GetString($seedStateBytes)
+                                $seedState = $seedStateText | ConvertFrom-Json -ErrorAction Stop
+                                $dvdEntries = @($seedState.vm.dvdDrives)
+                                $diskEntries = @($seedState.vm.hardDisks)
+                                $seedStateValidated = (
+                                    $seedState.schema -ceq 'tbound-abi8-seed-state/v1' -and
+                                    $seedState.runId -ceq $runId -and
+                                    $seedState.vm.name -ceq 'TBound-Ubuntu-ABI8-Seed' -and
+                                    $seedState.vm.id -match '^[0-9a-fA-F-]{36}$' -and
+                                    $dvdEntries.Count -le 8 -and $diskEntries.Count -le 16
+                                )
+                            }
+                        }
+                    }
+                }
+                catch { $seedStateValidated = $false }
+                $childResultValidated = $childResultValidated -and
+                    $childResult.outcome -ceq 'observed-seed-state' -and
+                    $childResult.seedStateSha256 -match '^[0-9A-Fa-f]{64}$' -and
+                    $seedStateValidated
+            }
+            else {
+                $childResultValidated = $childResultValidated -and
+                    $childResult.invocationCompleted -eq $true -and
+                    $childResult.outcome -ceq $(if ($Action -ceq 'FinalizeExistingSeed') { 'seed-finalized-existing-off-state-receipt-validated' } else { 'seed-created-and-off-state-receipt-validated' }) -and
+                    $childResult.candidateReceiptSha256 -match '^[0-9A-F]{64}$'
+            }
             $status = if ($childExitCode -eq 0 -and $childResultValidated) { 'verified-' + $childResult.outcome } else { 'child-result-failed-validation' }
             $launchRecord.childResultValidated = [bool]$childResultValidated
         }
@@ -599,6 +712,7 @@ $result = [ordered]@{
     runId = $runId
     outputDirectory = $runDirectory
     childResult = if ([IO.File]::Exists((Join-Path $runDirectory 'child-result.json'))) { Join-Path $runDirectory 'child-result.json' } else { $null }
+    seedState = if ($Action -ceq 'Observe' -and [IO.File]::Exists((Join-Path $runDirectory 'seed-state.json'))) { Join-Path $runDirectory 'seed-state.json' } else { $null }
     candidateOutput = if ([IO.File]::Exists((Join-Path $runDirectory 'candidate-output.txt'))) { Join-Path $runDirectory 'candidate-output.txt' } else { $null }
     childError = if ([IO.File]::Exists((Join-Path $runDirectory 'child-error.txt'))) { Join-Path $runDirectory 'child-error.txt' } else { $null }
     launchError = $rawLaunchError

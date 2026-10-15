@@ -1,10 +1,10 @@
 {
     "schema":  "tbound-abi8-provisioning-preflight/v1",
-    "date":  "2026-10-14",
-    "purpose":  "Record reviewed host-side preparation, exact source pins, and pre-VM launch attempts for the disposable ABI-8 qualification guest.",
+    "date":  "2026-10-15",
+    "purpose":  "Record reviewed host-side preparation, source pins, the verified read-only seed observation, and the prepared finalization-only continuation for the disposable ABI-8 qualification guest.",
     "sourcePins":  {
-                       "infra/repro/new-abi8-hyperv-candidate.ps1":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
-                       "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1":  "fab4e5f4e1a9b3e1048f434ab3752032c7c8c3bd7ac5fa8291d0dfdf4460cc86",
+                       "infra/repro/new-abi8-hyperv-candidate.ps1":  "9b0fcb40408fc472ed829b665ff0b13adf30fb2fb9b51b9ea74921b19b826b03",
+                       "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1":  "9fb092ef77d62e45ba69bb01684db1dea705a874fd0453546d4468bf05690120",
                        "infra/repro/probe-live-landlock-abi8-ssh.ps1":  "5f81221869ad1e1912154de9f430efa58dfa7768401df9e0a21342aa7e44c296",
                        "infra/repro/bootstrap-hyperv-windows.ps1":  "0111d021b96d4605bcf0ce2de027fac168308422dd0db7e2fcc63b0033075b4d",
                        "infra/guest/run-offline-queued.sh":  "d7bc6536320ee0553036992c65a79c347c648c2c8412e2c8e07c88d2e88d4c3c",
@@ -12,7 +12,7 @@
                    },
     "pinRelationship":  {
                             "launcherCandidateSha256Matches":  true,
-                            "currentCandidateSha256":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
+                            "currentCandidateSha256":  "9b0fcb40408fc472ed829b665ff0b13adf30fb2fb9b51b9ea74921b19b826b03",
                             "currentPinWhatIfRun":  false,
                             "latestCompletedWhatIfCandidateSha256":  "c538464378d4491fa8c192f7a852acfda7ab25dc738b6267313f54d307a61ccc",
                             "latestCompletedWhatIfRunId":  "tbound-abi8-seed-whatif-2de53cc982a9"
@@ -88,8 +88,8 @@
                                            "infra/repro/new-abi8-hyperv-candidate.ps1",
                                            "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1"
                                        ],
-                           "candidateCanonicalUtf8LfSha256":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
-                           "launcherCanonicalUtf8LfSha256":  "fab4e5f4e1a9b3e1048f434ab3752032c7c8c3bd7ac5fa8291d0dfdf4460cc86",
+                           "candidateCanonicalUtf8LfSha256":  "8cfc93899d2fbb961261407d6a486a7adb9c4ee5f6196ace174ef87f834357dc",
+                           "launcherCanonicalUtf8LfSha256":  "bce2a00cd86c5a1590c597562e74b36012224b9221c131163ef4cf8b32151dac",
                            "candidateAndLauncherAst":  "pass",
                            "embeddedBootstrapAst":  "pass",
                            "embeddedElevationWrapperAst":  "pass",
@@ -128,6 +128,168 @@
                            "result":  "pass; exact extraction succeeded and every entry byte-equal to its existing local counterpart",
                            "readbackScratchDirectoryDelta":  0,
                            "privateOrSecretContentsPrinted":  false,
+                           "vmMutation":  false,
+                           "qualificationEstablished":  false
+                       },
+                       {
+                           "check":  "Separate read-only Hyper-V inventory during Resume",
+                           "runId":  "tbound-hyperv-inventory-20261014T204942Z-ed55fbf8531d",
+                           "capturedAt":  "2026-10-14T22:49:46.4860467+02:00",
+                           "completionStatus":  "completed-read-only-inventory",
+                           "launchStatus":  "verified-read-only-inventory-success",
+                           "inventorySha256":  "31f97c34ff1d7842f48b00a0088f955e6638ae1fbf56ab0dcd24fa23b7d76255",
+                           "inventoryResultSha256":  "e585a29db8cb13392c10d806829d3eb4b2f86d061ff3421446026c3540d8f120",
+                           "originalVmName":  "TBound-Ubuntu-2404",
+                           "originalVmState":  "Running",
+                           "originalVmProcessorCount":  8,
+                           "onlyVmObjectInSnapshot":  true,
+                           "seedVmStateEstablished":  false,
+                           "guestKernelAndLandlockProbe":  "NOT RUN: execute the read-only command from the guest console; this host script has no guest channel.",
+                           "result":  "pass for preservation observation: the original reviewed VM was Running with eight processors; this earlier snapshot does not establish seed VM state or installer result",
+                           "vmMutationByThisAgent":  false
+                       },
+                       {
+                           "check":  "Current pinned Resume terminal result",
+                           "runId":  "tbound-abi8-seed-resume-34d0fdf91d0e",
+                           "candidateSha256":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
+                           "launcherSha256":  "fab4e5f4e1a9b3e1048f434ab3752032c7c8c3bd7ac5fa8291d0dfdf4460cc86",
+                           "launcherStatus":  "child-result-failed-validation",
+                           "finishedAt":  "2026-10-14T22:54:19.9938786+02:00",
+                           "childProcessId":  32432,
+                           "childExitCode":  2,
+                           "childWaitCompleted":  true,
+                           "childResultValidated":  false,
+                           "childOutcome":  "refused-or-failed",
+                           "failure":  "System.Management.Automation.RuntimeException: Could not identify exactly one installer DVD to detach.",
+                           "phase":  "post-poll DVD-detach guard; candidate code reaches this check only after observing VM State Off",
+                           "seedVmDirectoryPresent":  true,
+                           "seedVmDirectoryChildren":  [
+                                                           "TBound-Ubuntu-ABI8-Seed",
+                                                           "Virtual Hard Disks"
+                                                       ],
+                           "vmCreated":  true,
+                           "installerCompletionValidated":  false,
+                           "seedReceiptWritten":  false,
+                           "qualificationEstablished":  false,
+                           "privateOrSecretContentsPrinted":  false,
+                           "vmMutationByThisAgent":  false
+                       },
+                       {
+                           "check":  "Verified read-only seed VM state observation",
+                           "environment":  "Windows PowerShell 5.1.19041.6456; pinned System32 Hyper-V module and host executables",
+                           "runId":  "tbound-abi8-seed-observe-64a404ea9a43",
+                           "status":  "verified-observed-seed-state",
+                           "candidateSha256":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
+                           "bootstrapSnapshotSha256":  "6b41c6af90e265d09e0e98d57bf393563bf5302a516c3034d1d67a8c0110f540",
+                           "bootstrapWrapperSha256":  "35b9d411fd91aca11ac30d7fd974b518350d9d5a2d958dea3feb38f2371830f0",
+                           "childExitCode":  0,
+                           "childResultSha256":  "a2a4acb066b38192e10d484312831cabb6c4a194bcab694bf56d46db0927dd56",
+                           "seedStateSha256":  "f298bf4021f706242c8d7d6b88f90c5f0e814b5f017f2abf57f0c2dbf47253b6",
+                           "publicArtifactDirectory":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/observe-success-64a404ea9a43",
+                           "publicArtifactManifestSha256":  "caa2b3d548b8988bcdf4719f87199c964599d3ed765b55127eacb8fdf4911f53",
+                           "vm":  {
+                                      "name":  "TBound-Ubuntu-ABI8-Seed",
+                                      "id":  "82ffce59-06bf-4c1b-b43a-d406489c6d7f",
+                                      "state":  "Off",
+                                      "generation":  2,
+                                      "processorCount":  2,
+                                      "startupMemoryBytes":  4294967296,
+                                      "dynamicMemoryEnabled":  false,
+                                      "secureBoot":  "On",
+                                      "secureBootTemplate":  "MicrosoftUEFICertificateAuthority",
+                                      "dvdDrives":  [
+                                                        {
+                                                            "controllerNumber":  0,
+                                                            "controllerLocation":  1,
+                                                            "path":  ""
+                                                        }
+                                                    ],
+                                      "hardDisks":  [
+                                                        {
+                                                            "controllerNumber":  0,
+                                                            "controllerLocation":  0,
+                                                            "path":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\seed-vm\\Virtual Hard Disks\\TBound-Ubuntu-ABI8-Seed.vhdx"
+                                                        }
+                                                    ]
+                                  },
+                           "privateOrSecretContentsCopied":  false,
+                           "privateOrSecretContentsPrinted":  false,
+                           "vmMutation":  false,
+                           "qualificationEstablished":  false,
+                           "result":  "Read-only observation verifies the seed VM is Off with one empty DVD device and one disk at the fixed seed path; it does not establish guest installation success, a seed receipt, Landlock ABI, or host qualification."
+                       },
+                       {
+                           "check":  "FinalizeExistingSeed guard and mocked profile verification",
+                           "environment":  "Windows PowerShell 5.1.19041.6456",
+                           "candidateCanonicalUtf8LfSha256":  "9b0fcb40408fc472ed829b665ff0b13adf30fb2fb9b51b9ea74921b19b826b03",
+                           "launcherCanonicalUtf8LfSha256":  "9fb092ef77d62e45ba69bb01684db1dea705a874fd0453546d4468bf05690120",
+                           "candidateAndLauncherAst":  "pass",
+                           "embeddedBootstrapAst":  "pass",
+                           "embeddedElevationWrapperAst":  "pass",
+                           "launcherCandidatePinMatch":  "pass",
+                           "action":  "FinalizeExistingSeed",
+                           "fixedVmId":  "82ffce59-06bf-4c1b-b43a-d406489c6d7f",
+                           "observedDvdState":  "one device, controller 0/location 1, empty path",
+                           "acceptedDvdState":  "empty path or the exact pinned derived ISO path only",
+                           "blankDvdBehavior":  "no Set-VMDvdDrive call",
+                           "vhdValidation":  "fixed attached path; Get-VHD must report VHDX, dynamic, 40 GiB, no parent; zero checkpoints required before disk hashing",
+                           "finalizerStaticBoundary":  "pass: action branch contains no New-VM, New-VHD, Start-VM, or deletion; optional detach guarded by exact fixed ISO path",
+                           "receiptWrite":  "CreateNew and durable flush through existing seed receipt writer",
+                           "executionStatus":  "mocked profile validation passed; prepared for parent review; not invoked",
+                           "privateKeyContentsRead":  false,
+                           "mockedProfileValidation":  {
+                                                           "environment":  "Windows PowerShell 5.1.19041.6456; source AST extracted from pinned candidate; all Hyper-V metadata mocked; synthetic VHDX only",
+                                                           "candidateCanonicalUtf8LfSha256":  "9b0fcb40408fc472ed829b665ff0b13adf30fb2fb9b51b9ea74921b19b826b03",
+                                                           "command":  "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\\Users\\Admin\\AppData\\Local\\Temp\\abi8-seed-mock-full.ps1",
+                                                           "testScriptSha256":  "849aebe1a70e1d3e8460394d013a63862010929a479da7310dd0bb43c181a37b",
+                                                           "exitCode":  0,
+                                                           "assetRootShapeCases":  9,
+                                                           "finalizerMetadataCases":  31,
+                                                           "validProfilesAccepted":  2,
+                                                           "invalidPreMutationProfilesRejected":  27,
+                                                           "postMutationRevalidationFailuresRejected":  2,
+                                                           "syntheticVhdHashed":  true,
+                                                           "bootDeviceMatchedDisk":  true,
+                                                           "finalizerBranchCreateStartStopDeleteCommands":  0,
+                                                           "hostHyperVCalls":  0,
+                                                           "privateOrSecretContentsRead":  false
+                                                       },
+                           "qualificationEstablished":  false
+                       },
+                       {
+                           "check":  "Fresh verified read-only seed VM state observation",
+                           "environment":  "Windows PowerShell 5.1; reviewed pinned Observe action",
+                           "runId":  "tbound-abi8-seed-observe-26bd3283df85",
+                           "status":  "verified-observed-seed-state",
+                           "candidateSha256":  "9b0fcb40408fc472ed829b665ff0b13adf30fb2fb9b51b9ea74921b19b826b03",
+                           "childExitCode":  0,
+                           "seedStateSha256":  "653a5f9a96f015d834074f85ad0f6be1cc4d46c63c23d1602e17404660f76a39",
+                           "seedStateSha256IndependentlyConfirmedWithGetFileHash":  true,
+                           "vm":  {
+                                      "name":  "TBound-Ubuntu-ABI8-Seed",
+                                      "id":  "82ffce59-06bf-4c1b-b43a-d406489c6d7f",
+                                      "state":  "Off",
+                                      "generation":  2,
+                                      "processorCount":  2,
+                                      "startupMemoryBytes":  4294967296,
+                                      "dynamicMemoryEnabled":  false,
+                                      "secureBoot":  "On",
+                                      "secureBootTemplate":  "MicrosoftUEFICertificateAuthority",
+                                      "dvdDrives":  [
+                                                        {
+                                                            "controllerNumber":  0,
+                                                            "controllerLocation":  1,
+                                                            "path":  ""
+                                                        }
+                                                    ],
+                                      "hardDisks":  [
+                                                        {
+                                                            "controllerNumber":  0,
+                                                            "controllerLocation":  0,
+                                                            "path":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\seed-vm\\Virtual Hard Disks\\TBound-Ubuntu-ABI8-Seed.vhdx"
+                                                        }
+                                                    ]
+                                  },
                            "vmMutation":  false,
                            "qualificationEstablished":  false
                        }
@@ -216,6 +378,18 @@
                                  "notes":  "The partial ISO and private provisioning outputs remain for inspection. Do not rerun against these occupied paths until the follow-on fix accounts for the Windows-mounted name view and establishes fresh output paths."
                              },
                              {
+                                 "runId":  "tbound-abi8-seed-resume-e1d22d36692d",
+                                 "action":  "Resume",
+                                 "candidateSha256":  "3a84362035c981680b80695d530cc4b147fed226b60584b53e284292fbd67057",
+                                 "status":  "child-result-failed-validation",
+                                 "childExitCode":  2,
+                                 "phase":  "temporary exact Rock Ridge GRUB extraction cleanup before VM setup",
+                                 "failure":  "The extracted GRUB file retained ReadOnly and cleanup failed with AccessDenied in finally; no seed VM was created.",
+                                 "vmCreated":  false,
+                                 "qualificationEstablished":  false,
+                                 "appliesToCurrentCandidatePin":  false
+                             },
+                             {
                                  "runId":  "tbound-abi8-seed-resume-f17c22f5305e",
                                  "action":  "Resume",
                                  "candidateSha256":  "bd03523eb25676a88bd50bfca40b833746c73ad8e60866aee6377e84ddc97c8a",
@@ -225,6 +399,78 @@
                                  "vmCreated":  false,
                                  "qualificationEstablished":  false,
                                  "appliesToCurrentCandidatePin":  false
+                             },
+                             {
+                                 "runId":  "tbound-abi8-seed-resume-34d0fdf91d0e",
+                                 "action":  "Resume",
+                                 "candidateSha256":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
+                                 "bootstrapSnapshotSha256":  "84c625b5b6cdd0b5901622eb1e68e874af4b557876180a0db72eb0e7e5db74d1",
+                                 "bootstrapWrapperSha256":  "f6bbc71dc1361de2a78b19b314e1b53b33a1cde1b908cef8e4ff1405c5fe9717",
+                                 "elevationArgumentCharacters":  7679,
+                                 "startedAt":  "2026-10-14T22:49:10.2873653+02:00",
+                                 "launchedAt":  "2026-10-14T22:49:10.9130852+02:00",
+                                 "finishedAt":  "2026-10-14T22:54:19.9938786+02:00",
+                                 "status":  "child-result-failed-validation",
+                                 "childProcessId":  32432,
+                                 "childExitCode":  2,
+                                 "childWaitCompleted":  true,
+                                 "childResultValidated":  false,
+                                 "failure":  "Could not identify exactly one installer DVD to detach.",
+                                 "phase":  "after installer polling reached VM Off, before seed VHD hashing and seed receipt",
+                                 "seedVmDirectoryPresent":  true,
+                                 "seedVmDirectoryChildren":  [
+                                                                 "TBound-Ubuntu-ABI8-Seed",
+                                                                 "Virtual Hard Disks"
+                                                             ],
+                                 "vmCreated":  true,
+                                 "candidateObservedStateAtDetachCheck":  "Off",
+                                 "installerCompletionValidated":  false,
+                                 "qualificationEstablished":  false,
+                                 "appliesToCurrentCandidatePin":  true
+                             },
+                             {
+                                 "runId":  "tbound-abi8-seed-observe-64a404ea9a43",
+                                 "action":  "Observe",
+                                 "candidateSha256":  "668494f0cf495c14926234e43659738a4f605ab6c635a3c0b22e284057c38a93",
+                                 "status":  "verified-observed-seed-state",
+                                 "childExitCode":  0,
+                                 "childWaitCompleted":  true,
+                                 "childResultValidated":  true,
+                                 "seedStateSha256":  "f298bf4021f706242c8d7d6b88f90c5f0e814b5f017f2abf57f0c2dbf47253b6",
+                                 "publicArtifactManifestSha256":  "caa2b3d548b8988bcdf4719f87199c964599d3ed765b55127eacb8fdf4911f53",
+                                 "vmMutation":  false,
+                                 "qualificationEstablished":  false
+                             },
+                             {
+                                 "runId":  "tbound-abi8-seed-observe-26bd3283df85",
+                                 "action":  "Observe",
+                                 "candidateSha256":  "9b0fcb40408fc472ed829b665ff0b13adf30fb2fb9b51b9ea74921b19b826b03",
+                                 "status":  "verified-observed-seed-state",
+                                 "childExitCode":  0,
+                                 "seedStateSha256":  "653a5f9a96f015d834074f85ad0f6be1cc4d46c63c23d1602e17404660f76a39",
+                                 "seedStateSha256IndependentlyConfirmedWithGetFileHash":  true,
+                                 "vmId":  "82ffce59-06bf-4c1b-b43a-d406489c6d7f",
+                                 "vmState":  "Off",
+                                 "vmMutation":  false,
+                                 "qualificationEstablished":  false
+                             },
+                             {
+                                 "runId":  "tbound-abi8-seed-finalizeexistingseed-3f777cc32934",
+                                 "action":  "FinalizeExistingSeed",
+                                 "candidateSha256":  "9b0fcb40408fc472ed829b665ff0b13adf30fb2fb9b51b9ea74921b19b826b03",
+                                 "launcherSha256":  "9fb092ef77d62e45ba69bb01684db1dea705a874fd0453546d4468bf05690120",
+                                 "status":  "verified-seed-finalized-existing-off-state-receipt-validated",
+                                 "finishedAt":  "2026-10-15T11:06:26.5917920+02:00",
+                                 "childProcessId":  39488,
+                                 "childExitCode":  0,
+                                 "childWaitCompleted":  true,
+                                 "childResultValidated":  true,
+                                 "candidateReceiptSha256":  "86705e12f8d52bf7afa8810a32ada1d60370a61807e5bfd2aeaa13271326d53f",
+                                 "seedDiskSha256":  "edf7ae59b39a8d80afd5b74fc0d798d16ded5fc5e32f94ccd617897a3baeec00",
+                                 "publicArtifactManifestSha256":  "af0bd7b8df1f9a6100f2a122c0545991823d52504215c87615691234771645bd",
+                                 "vmId":  "82ffce59-06bf-4c1b-b43a-d406489c6d7f",
+                                 "vmState":  "Off",
+                                 "qualificationEstablished":  false
                              }
                          ],
     "readOnlyIsoDirectoryDiagnosis":  {
@@ -265,7 +511,7 @@
     "qualification":  {
                           "status":  "not-qualified",
                           "liveLandlockAbi8Probe":  "not-run",
-                          "meaning":  "No result in this receipt establishes a qualified ABI-8 guest. The earlier successful WhatIf used a different candidate pin; the latest Create stopped during ISO readback before seed VM creation."
+                          "meaning":  "The existing seed VM was finalized in Off state and its fixed identity/profile and standalone dynamic 40 GiB VHDX hash were recorded in a durable receipt. This is candidate-only metadata evidence; guest installation correctness, live Landlock ABI 8, and host qualification remain unverified. The dedicated live ABI 8 probe has not run."
                       },
     "externalRawArtifacts":  {
                                  "directoryFromRepositoryRoot":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning",
@@ -284,11 +530,39 @@
                                                                 "sha256":  "2aa36313bcf4b3423202b1677542a9eb66a3cd1a2aaf52ff37712b6c469e328c",
                                                                 "byteIdenticalRawFiles":  6
                                                             },
-                                 "byteIdenticalRawFilesTotal":  33,
-                                 "scope":  "Public launcher JSON receipts, candidate/bootstrap source snapshots, and error logs only; no derived ISO or private autoinstall data was copied. The Windows read-only mount used for the name-only diagnosis was detached."
+                                 "byteIdenticalRawFilesTotal":  66,
+                                 "scope":  "Public launcher receipts, pinned source/bootstrap snapshots, read-only original-VM inventory, and finalized seed metadata and logs only. No ISO/VHDX, NoCloud provisioning files, SSH key files or material, passwords, or user-data were copied.",
+                                 "resumeCleanupSupplement":  {
+                                                                 "path":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/artifact-manifest-resume-e1d22d36692d.json",
+                                                                 "sha256":  "6b899f66f02180b1dc8bfb86661d19d3b9a7ec63354dc21f82943d527b4e3964",
+                                                                 "byteIdenticalRawFiles":  6
+                                                             },
+                                 "resumeVerifierScopeSupplement":  {
+                                                                       "path":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/artifact-manifest-resume-f17c22f5305e.json",
+                                                                       "sha256":  "cb5c882d0b82ef1d1c8c6ffa2e25f2b4bbb8187b52065c46ef5de2b10a18eeda",
+                                                                       "byteIdenticalRawFiles":  6
+                                                                   },
+                                 "liveResumeSupplement":  {
+                                                              "path":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/artifact-manifest-resume-live-34d0fdf91d0e.json",
+                                                              "sha256":  "80adec58f5875f32f38d8d6fca7cfc49a54658bc8925f7c6e6e63499ccb7093d",
+                                                              "byteIdenticalRawFiles":  7
+                                                          },
+                                 "originalVmInventorySupplement":  {
+                                                                       "path":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/artifact-manifest-hyperv-inventory-ed55fbf8531d.json",
+                                                                       "sha256":  "eca58a0fe974853915afc92bfbac18eb93aad40254ae39716e95fc37b1ecedb8",
+                                                                       "byteIdenticalRawFiles":  7
+                                                                   },
+                                 "seedFinalizationSupplement":  {
+                                                                    "path":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/finalize-3f777cc32934/artifact-manifest.json",
+                                                                    "sha256":  "af0bd7b8df1f9a6100f2a122c0545991823d52504215c87615691234771645bd",
+                                                                    "byteIdenticalRawFiles":  7,
+                                                                    "seedReceiptSha256":  "86705e12f8d52bf7afa8810a32ada1d60370a61807e5bfd2aeaa13271326d53f",
+                                                                    "seedDiskSha256":  "edf7ae59b39a8d80afd5b74fc0d798d16ded5fc5e32f94ccd617897a3baeec00",
+                                                                    "runId":  "tbound-abi8-seed-finalizeexistingseed-3f777cc32934"
+                                                                }
                              },
     "resumeContinuation":  {
-                               "status":  "ready-for-parent-review",
+                               "status":  "failed-after-seed-vm-poweroff-check-before-seed-receipt",
                                "action":  "Resume",
                                "assetRoot":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14",
                                "derivedIso":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\ubuntu-24.04.5-autoinstall.iso",
@@ -312,9 +586,64 @@
                                              "newScratchDirectories":  0,
                                              "preparedMediaAllExpectedEntriesByteEqual":  true,
                                              "exactRockRidgePaths":  "boot/grub/grub.cfg, nocloud/user-data, nocloud/meta-data",
-                                             "resumeExecution":  "pending-parent-review",
+                                             "resumeExecution":  "failed after seed VM creation and installer poweroff polling; DVD-detach path check failed before VHD hashing or seed receipt; do not rerun Resume/Create against occupied seed outputs",
                                              "privateOrSecretContentsPrinted":  false,
                                              "vmMutation":  false
-                                         }
-                           }
+                                         },
+                               "latestResumeRunId":  "tbound-abi8-seed-resume-34d0fdf91d0e",
+                               "latestResumeExitCode":  2,
+                               "latestResumeFinishedAt":  "2026-10-14T22:54:19.9938786+02:00",
+                               "seedVmDirectory":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\seed-vm",
+                               "seedVmDirectoryPresent":  true,
+                               "seedVmDirectoryChildren":  [
+                                                               "TBound-Ubuntu-ABI8-Seed",
+                                                               "Virtual Hard Disks"
+                                                           ],
+                               "candidateObservedOffBeforeDvdDetachFailure":  true,
+                               "installerCompletionValidated":  false,
+                               "seedReceiptWritten":  false,
+                               "childResultValidated":  false
+                           },
+    "seedFinalization":  {
+                             "runId":  "tbound-abi8-seed-finalizeexistingseed-3f777cc32934",
+                             "action":  "FinalizeExistingSeed",
+                             "status":  "verified-seed-finalized-existing-off-state-receipt-validated",
+                             "startedAt":  "2026-10-15T11:05:09.6854913+02:00",
+                             "finishedAt":  "2026-10-15T11:06:26.5917920+02:00",
+                             "childProcessId":  39488,
+                             "childExitCode":  0,
+                             "childWaitCompleted":  true,
+                             "childResultValidated":  true,
+                             "candidateSha256":  "9b0fcb40408fc472ed829b665ff0b13adf30fb2fb9b51b9ea74921b19b826b03",
+                             "launcherSha256":  "9fb092ef77d62e45ba69bb01684db1dea705a874fd0453546d4468bf05690120",
+                             "candidateReceiptSha256":  "86705e12f8d52bf7afa8810a32ada1d60370a61807e5bfd2aeaa13271326d53f",
+                             "seedReceiptPath":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\abi8-seed-receipt.json",
+                             "seedReceiptBytes":  3059,
+                             "seedReceiptArtifactPath":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/finalize-3f777cc32934/seed-receipt.json",
+                             "seedVm":  {
+                                            "name":  "TBound-Ubuntu-ABI8-Seed",
+                                            "id":  "82ffce59-06bf-4c1b-b43a-d406489c6d7f",
+                                            "state":  "Off",
+                                            "generation":  2,
+                                            "processorCount":  2,
+                                            "fixedMemoryBytes":  4294967296,
+                                            "virtualDiskBytes":  42949672960,
+                                            "diskType":  "Dynamic",
+                                            "diskPath":  "F:\\TBoundAssets\\abi8-qualification-2026-10-14\\seed-vm\\Virtual Hard Disks\\TBound-Ubuntu-ABI8-Seed.vhdx",
+                                            "diskSha256":  "edf7ae59b39a8d80afd5b74fc0d798d16ded5fc5e32f94ccd617897a3baeec00",
+                                            "standaloneVhd":  true,
+                                            "checkpointCount":  0,
+                                            "secureBoot":  "On",
+                                            "secureBootTemplate":  "MicrosoftUEFICertificateAuthority"
+                                        },
+                             "publicArtifactDirectory":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/finalize-3f777cc32934",
+                             "publicArtifactManifest":  "../review-artifacts/tbound-completion-2026-10-14/abi8-provisioning/finalize-3f777cc32934/artifact-manifest.json",
+                             "publicArtifactManifestSha256":  "af0bd7b8df1f9a6100f2a122c0545991823d52504215c87615691234771645bd",
+                             "publicArtifactFiles":  7,
+                             "qualificationEstablished":  false,
+                             "liveAbi8Probe":  "not-run",
+                             "privateOrSecretContentsRead":  false,
+                             "privateOrSecretContentsCopied":  false,
+                             "outcome":  "Exact existing seed profile and disk hash recorded in durable receipt; candidate-only."
+                         }
 }
