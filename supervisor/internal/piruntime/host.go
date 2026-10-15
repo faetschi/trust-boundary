@@ -571,3 +571,14 @@ func validDigest(value string) bool {
 	_, err := hex.DecodeString(encoded)
 	return err == nil
 }
+
+// validBareAuditHead accepts the lowercase, unprefixed SHA-256 hash stored in
+// audit.Record.Hash. It is intentionally separate from validDigest because
+// source audit heads are journal-chain values, not prefixed evidence digests.
+func validBareAuditHead(value string) bool {
+	if len(value) != sha256.Size*2 || value != strings.ToLower(value) {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}

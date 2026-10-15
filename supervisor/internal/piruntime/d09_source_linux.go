@@ -155,7 +155,7 @@ func NewD09PiWorkerChannels(ctx context.Context, source VerifiedD09WorkerSource,
 func validateD09WorkerSourceDescriptor(file *os.File, evidence sessionrepo.SealedSourceEvidence) error {
 	if file == nil || evidence.GenerationID == "" || !validDigest(evidence.TreeDigest) ||
 		!validDigest(evidence.ManifestDigest) || !validDigest(evidence.SourceBindingDigest) ||
-		!validDigest(evidence.ProvenanceDigest) || !validDigest(evidence.StoreAuditHead) ||
+		!validDigest(evidence.ProvenanceDigest) || !validBareAuditHead(evidence.StoreAuditHead) ||
 		!validDigest(evidence.SourceIdentityDigest) || evidence.StoreAuditRecordCount == 0 ||
 		evidence.SourceDevice == 0 || evidence.SourceInode == 0 || evidence.SourceMountID == 0 {
 		return ErrHostBindingsMissing

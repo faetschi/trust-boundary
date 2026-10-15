@@ -7,8 +7,9 @@ import (
 	"errors"
 	"os"
 	"strings"
-	"tbound/supervisor/internal/sessionrepo"
 	"testing"
+
+	"tbound/supervisor/internal/sessionrepo"
 )
 
 type d09ChannelSourceFixture struct{ identity byte }
@@ -65,7 +66,7 @@ func d09ChannelBindingFixture(t *testing.T) (*D09PiWorkerChannels, HostRuntimeBi
 	sourceEvidence := sessionrepo.SealedSourceEvidence{
 		GenerationID: "generation-1", TreeDigest: digest("tree"),
 		ManifestDigest: digest("manifest"), SourceBindingDigest: digest("binding"),
-		ProvenanceDigest: digest("provenance"), StoreAuditHead: digest("audit"),
+		ProvenanceDigest: digest("provenance"), StoreAuditHead: d09AuditHeadFromJournal(t),
 		StoreAuditRecordCount: 1, SourceIdentityDigest: digest("identity"),
 		SourceDevice: 1, SourceInode: 2, SourceMountID: 3,
 	}
@@ -151,7 +152,7 @@ func TestD09BootstrapBindsStoreSourceAndRejectsForgedConsumerView(t *testing.T) 
 		ManifestDigest:        DigestBytes([]byte("manifest")),
 		SourceBindingDigest:   DigestBytes([]byte("binding")),
 		ProvenanceDigest:      DigestBytes([]byte("provenance")),
-		StoreAuditHead:        DigestBytes([]byte("audit")),
+		StoreAuditHead:        d09AuditHeadFromJournal(t),
 		StoreAuditRecordCount: 1,
 		SourceIdentityDigest:  DigestBytes([]byte("identity")),
 		SourceDevice:          1, SourceInode: 2, SourceMountID: 3,

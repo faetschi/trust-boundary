@@ -1002,7 +1002,7 @@ func (w *PiCLIWorker) D09LaunchProof() (D09TCBProof, bool) {
 		!validIdentity(proof.SourceGenerationID) || !validDigest(proof.SourceTreeDigest) ||
 		!validDigest(proof.SourceManifestDigest) || !validDigest(proof.SourceBindingDigest) ||
 		!validDigest(proof.SourceProvenanceDigest) || !validDigest(proof.SourceIdentityDigest) ||
-		!validDigest(proof.SourceStoreAuditHead) || proof.SourceStoreAuditCount == 0 ||
+		!validBareAuditHead(proof.SourceStoreAuditHead) || proof.SourceStoreAuditCount == 0 ||
 		proof.SourceDevice == 0 || proof.SourceInode == 0 || proof.SourceMountID == 0 {
 		return D09TCBProof{}, false
 	}

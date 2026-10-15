@@ -81,7 +81,7 @@ type D09WorkerSourceEvidence struct {
 
 func (e D09WorkerSourceEvidence) validateShape() error {
 	if !validIdentity(e.GenerationID) || !validDigest(e.TreeDigest) || !validDigest(e.ManifestDigest) ||
-		!validDigest(e.SourceBindingDigest) || !validDigest(e.ProvenanceDigest) || !validDigest(e.StoreAuditHead) ||
+		!validDigest(e.SourceBindingDigest) || !validDigest(e.ProvenanceDigest) || !validBareAuditHead(e.StoreAuditHead) ||
 		!validDigest(e.SourceIdentityDigest) || e.StoreAuditRecordCount == 0 || e.SourceDevice == 0 ||
 		e.SourceInode == 0 || e.SourceMountID == 0 {
 		return errors.New("D09 sealed source evidence is incomplete")
