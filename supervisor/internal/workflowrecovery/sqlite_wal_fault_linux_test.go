@@ -29,8 +29,10 @@ import (
 //   - kernel: RLIMIT_FSIZE makes a real write(2) fail with EFBIG, which SQLite
 //     reports as SQLITE_IOERR_WRITE (778). The limit is per file, so each case
 //     arms it at the call boundary where only the intended file must grow.
-//   - engine: PRAGMA max_page_count makes SQLite return SQLITE_FULL (13) itself.
-//     This is not kernel ENOSPC; that needs a full filesystem, which needs root.
+//   - engine: PRAGMA max_page_count is the owner's page ceiling. Setting it to the
+//     current size leaves no headroom, so the reservation's headroom gate refuses
+//     before any write. This is not kernel ENOSPC; that needs a full filesystem,
+//     which needs root.
 //   - hooks: sqliteWALFaultRoot forwards every call to the real protected root
 //     and only changes the RLIMIT between two real calls. It injects no errors.
 const (
@@ -47,7 +49,7 @@ var sqliteWALFaultCases = []string{
 	"root-first-ioerr",
 	"root-boundary-ioerr",
 	"root-anchor-ioerr",
-	"owner-statement-full",
+	"owner-headroom-refused",
 }
 
 type sqliteWALFaultState struct {
@@ -240,7 +242,9 @@ func runSQLiteWALFaultPhase(t *testing.T, caseName, rootPath, ownerStoreRoot, st
 			armedAt = true
 			setLimit(sqliteWALFaultFileSize(t, rootWAL))
 		}
-	case "owner-statement-full":
+	case "owner-headroom-refused":
+		// The ceiling leaves no headroom for the reservation's terminal accounting,
+		// so the gate refuses before any owner statement runs.
 		armedAt = true
 		limitOwnerPageCount(t, owner)
 	default:
@@ -263,7 +267,11 @@ func runSQLiteWALFaultPhase(t *testing.T, caseName, rootPath, ownerStoreRoot, st
 	if _, ok := receipt.EffectBinding(); ok {
 		t.Fatalf("%s: failed reservation returned an effect binding: %+v", caseName, receipt)
 	}
-	if !strings.Contains(faultErr.Error(), "disk I/O error") && !strings.Contains(faultErr.Error(), "database or disk is full") {
+	if caseName == "owner-headroom-refused" {
+		if !errors.Is(faultErr, ErrExhausted) || errors.Is(faultErr, ErrCAS) {
+			t.Fatalf("%s: refusal = %v, want typed ErrExhausted without ErrCAS", caseName, faultErr)
+		}
+	} else if !strings.Contains(faultErr.Error(), "disk I/O error") && !strings.Contains(faultErr.Error(), "database or disk is full") {
 		t.Fatalf("%s: failure is not a SQLite I/O or full condition: %v", caseName, faultErr)
 	}
 	if after, afterDigest := ledger.Snapshot(); afterDigest != priorDigest || !reflect.DeepEqual(after, prior) {
@@ -278,9 +286,11 @@ func runSQLiteWALFaultPhase(t *testing.T, caseName, rootPath, ownerStoreRoot, st
 			t.Fatalf("%s: owner poisoned=%t root poisoned=%t; want owner-only poisoning after an ambiguous commit",
 				caseName, owner.poisoned, realRoot.poisoned)
 		}
-	case "owner-statement-full":
-		requireSQLiteWALFaultChain(t, caseName, faultErr, ErrCAS, ErrOwnerStore)
-		requireSQLiteWALFaultCode(t, caseName, faultErr, 13) // SQLITE_FULL from the engine page limit.
+	case "owner-headroom-refused":
+		var refusedBySQLite *sqlite.Error
+		if errors.As(faultErr, &refusedBySQLite) {
+			t.Fatalf("%s: headroom refusal reached SQLite before any write: %v", caseName, faultErr)
+		}
 	case "root-first-ioerr":
 		requireSQLiteWALFaultChain(t, caseName, faultErr, ErrOwnerStore)
 		if !realRoot.poisoned || owner.poisoned {

@@ -999,6 +999,10 @@ func (l *Ledger) commit(ctx context.Context, next Checkpoint, proof TransitionPr
 	}
 	newDigest, err := l.owner.CompareAndSwapCheckpoint(ctx, l.workflowID, next.Pins.OwnerEpoch, l.digest, next, proof)
 	if err != nil {
+		if errors.Is(err, ErrExhausted) {
+			// A headroom refusal wrote nothing; it is not a compare-and-swap conflict.
+			return Receipt{}, err
+		}
 		return Receipt{}, errors.Join(ErrCAS, err)
 	}
 	if newDigest != next.ComputedCheckpointDigest {

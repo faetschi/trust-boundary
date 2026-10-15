@@ -648,9 +648,10 @@ func TestSQLiteOwnerPageCeilingAdmitsThreeMaxSizeTransitionsAndRefusesFourth(t *
 }
 
 // TestSQLiteOwnerCeilingRefusesEffectReservationWithoutGrant reserves an effect
-// with the ceiling at the current size, so the checkpoint write needs growth.
-// The refusal must be typed, must return no receipt, must leave the ledger and
-// durable head at the predecessor, and must not poison the owner.
+// with the ceiling at the current size. The headroom gate refuses before any row
+// is written, so the refusal is a typed allowance refusal, not a compare-and-swap
+// conflict or a SQLite fault. It must return no receipt, must leave the ledger
+// and durable head at the predecessor, and must not poison the owner.
 func TestSQLiteOwnerCeilingRefusesEffectReservationWithoutGrant(t *testing.T) {
 	const workflow = "workflow-ceiling-reserve"
 	owner, root, ledger, _, _ := newWorkflowHarness(t, workflow, testLimits())
@@ -680,8 +681,13 @@ func TestSQLiteOwnerCeilingRefusesEffectReservationWithoutGrant(t *testing.T) {
 	if reserveErr == nil {
 		t.Fatalf("reservation succeeded at the page ceiling: receipt=%q", receipt.CheckpointDigest())
 	}
-	requireSQLiteWALFaultChain(t, "ceiling reservation", reserveErr, ErrCAS, ErrOwnerStore)
-	requireSQLiteWALFaultCode(t, "ceiling reservation", reserveErr, 13)
+	if !errors.Is(reserveErr, ErrExhausted) || errors.Is(reserveErr, ErrCAS) {
+		t.Fatalf("ceiling reservation refusal = %v, want typed ErrExhausted without ErrCAS", reserveErr)
+	}
+	var refusedBySQLite *sqlite.Error
+	if errors.As(reserveErr, &refusedBySQLite) {
+		t.Fatalf("headroom refusal reached SQLite before any write: %v", reserveErr)
+	}
 	if receipt.CheckpointDigest() != "" || receipt.WorkflowID() != "" {
 		t.Fatalf("refused reservation returned a receipt: workflow=%q digest=%q", receipt.WorkflowID(), receipt.CheckpointDigest())
 	}
@@ -697,11 +703,9 @@ func TestSQLiteOwnerCeilingRefusesEffectReservationWithoutGrant(t *testing.T) {
 	if _, digest, exists, err := ceilinged.LoadCheckpoint(ctx, workflow); err != nil || !exists || digest != priorDigest {
 		t.Fatalf("durable head after refusal: digest=%s exists=%v err=%v; want predecessor %s", digest, exists, err, priorDigest)
 	}
-	// A retry is refused by the same ceiling. Nothing was granted, so there is
-	// no replay of the consumed authority.
-	if _, retryErr := reopenedLedger.ReserveEffect(ctx, testEffectBinding("effect-at-ceiling"), nil); retryErr == nil {
-		t.Fatal("retry reserved an effect at the page ceiling")
-	} else {
-		requireSQLiteWALFaultCode(t, "ceiling retry", retryErr, 13)
+	// A retry is refused by the same gate. Nothing was granted, so there is no
+	// replay of the consumed authority.
+	if _, retryErr := reopenedLedger.ReserveEffect(ctx, testEffectBinding("effect-at-ceiling"), nil); !errors.Is(retryErr, ErrExhausted) {
+		t.Fatalf("retry at the page ceiling = %v, want typed ErrExhausted", retryErr)
 	}
 }

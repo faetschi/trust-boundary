@@ -34,11 +34,42 @@ const (
 	sqlitePageSize = 4096
 	// sqliteOwnerMaxPageCount caps the owner file at 128 MiB. A fresh owner plus
 	// three maximum-size transitions (each up to 48 MiB of checkpoint/proof blobs,
-	// about 8.2k-12.3k pages) fits; the next one is refused with SQLITE_FULL.
+	// about 8.2k-12.3k pages) fits; the next one is refused with SQLITE_FULL. An
+	// effect reservation must also leave headroom for its terminal transition; see
+	// requireEffectTerminalHeadroom.
 	sqliteOwnerMaxPageCount = 32768
 	// sqliteProtectedRootMaxPageCount caps the host-only root at 16 MiB. Its rows
 	// hold digests, timestamps, paths, and incarnation records of at most 4 KiB.
 	sqliteProtectedRootMaxPageCount = 4096
+	// sqliteMinUsablePageBytes is the least usable page size an owner file can have.
+	// The header's reserved-byte count is one byte, so it is at most 255 and the
+	// usable size is at least 4096-255 = 3841. The bounds below use this floor, so
+	// they hold for any reserved-byte count; the geometry check does not read it.
+	sqliteMinUsablePageBytes = sqlitePageSize - 255
+	// sqliteOverflowPayloadBytes is what one overflow page carries after its 4-byte
+	// next-page pointer, at the usable floor. auto_vacuum is NONE.
+	sqliteOverflowPayloadBytes = sqliteMinUsablePageBytes - 4
+	// sqliteMinLocalPayloadBytes is the least a table-leaf record keeps on its page
+	// at the usable floor: ((U-12)*32/255)-23 = 457 for U = 3841. A larger usable
+	// size keeps at least as many bytes local, so this never undercounts overflow.
+	sqliteMinLocalPayloadBytes = 457
+	// sqliteRowOverheadBytes bounds the non-blob columns and record header of an
+	// owner row. Maxima at 256-byte identifiers: the state row is at most 599 bytes
+	// (25 header, 574 values) and an event row at most 418 (18 header, 400 values).
+	sqliteRowOverheadBytes = 1024
+	// sqliteBTreeMaxDepth is BTCURSOR_MAX_DEPTH in the pinned SQLite 3.53.4 that
+	// modernc.org/sqlite v1.60.1 compiles (go.sum-verified). moveToChild returns
+	// SQLITE_CORRUPT before a cursor would descend below 20 levels, so every balance
+	// chain starts from a tree of at most 20 levels.
+	sqliteBTreeMaxDepth = 20
+	// sqliteSplitSlackPages bounds B-tree growth per transition. Four trees each take
+	// one balance chain: the state table (its PRIMARY KEY autoindex is not touched,
+	// because the state UPDATE does not set workflow_id), the events table, and the
+	// events' two autoindexes. A chain calls balance_nonroot at most once per level,
+	// plus once more after a root split. Each call adds at most 4 pages, since
+	// balance_nonroot caps its sibling set at NB+2 = 5 and reuses at least one old
+	// page. A root split adds 1 page (balance_deeper). Per tree: 4*20+1 = 81 pages.
+	sqliteSplitSlackPages = 4 * (4*sqliteBTreeMaxDepth + 1)
 )
 
 // TrustedRoot is the mandatory external host/TCB boundary. Implementations
@@ -1055,6 +1086,15 @@ func (o *SQLiteOwner) CompareAndSwapCheckpoint(ctx context.Context, workflow str
 	if sequence >= int64(maxSQLiteInteger) {
 		return "", fmt.Errorf("%w: checkpoint sequence exhausted", ErrOwnerStore)
 	}
+	if proof.kind == transitionReservation && proof.reservation == reservationEffect {
+		encodedCheckpoint, encodedProof, err := encodeCheckpointAndProof(next, proof)
+		if err != nil {
+			return "", err
+		}
+		if err := requireEffectTerminalHeadroom(ctx, tx, encodedCheckpoint, encodedProof); err != nil {
+			return "", err
+		}
+	}
 	if err := writeNextCheckpoint(ctx, tx, previous, previousDigest, sequence+1, next, expectedDigest, proof); err != nil {
 		return "", err
 	}
@@ -1470,6 +1510,48 @@ func encodeCheckpointAndProof(checkpoint Checkpoint, proof TransitionProof) ([]b
 		return nil, nil, fmt.Errorf("%w: checkpoint or transition proof exceeds the bounded SQLite record size", ErrInvalid)
 	}
 	return checkpointJSON, proofJSON, nil
+}
+
+// sqliteRowPages bounds the overflow pages one owner record needs for a payload
+// of payloadBytes of blob data plus the row overhead. Each overflow page holds
+// sqliteOverflowPayloadBytes, and at least sqliteMinLocalPayloadBytes of the
+// record stay on the leaf page, so this never undercounts.
+func sqliteRowPages(payloadBytes int64) int64 {
+	spill := payloadBytes + sqliteRowOverheadBytes - sqliteMinLocalPayloadBytes
+	return (spill + sqliteOverflowPayloadBytes - 1) / sqliteOverflowPayloadBytes
+}
+
+// sqliteTransitionPages bounds the pages one owner transition adds. The state row
+// rewrite carries checkpointBytes. The appended event carries checkpoint and proof
+// bytes in one record. Pages freed by the rewrite are not credited.
+func sqliteTransitionPages(checkpointBytes, proofBytes int64) int64 {
+	return sqliteRowPages(checkpointBytes) + sqliteRowPages(checkpointBytes+proofBytes) + sqliteSplitSlackPages
+}
+
+// requireEffectTerminalHeadroom runs inside the reservation's write transaction,
+// on the same connection, before any row is written. It refuses the reservation
+// unless the page budget still holds the reservation's own rows and the
+// worst-case terminal transition that must follow it, which is three maximum-size
+// blobs. A refusal consumes no authority: the transaction rolls back, the
+// predecessor head stays current, and the owner is not poisoned.
+func requireEffectTerminalHeadroom(ctx context.Context, tx *sql.Tx, checkpointJSON, proofJSON []byte) error {
+	var ceiling, pageCount, freePages int64
+	if err := tx.QueryRowContext(ctx, "PRAGMA max_page_count").Scan(&ceiling); err != nil {
+		return fmt.Errorf("%w: read SQLite page ceiling before effect reservation: %v", ErrOwnerStore, err)
+	}
+	if err := tx.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount); err != nil {
+		return fmt.Errorf("%w: read SQLite page count before effect reservation: %v", ErrOwnerStore, err)
+	}
+	if err := tx.QueryRowContext(ctx, "PRAGMA freelist_count").Scan(&freePages); err != nil {
+		return fmt.Errorf("%w: read SQLite free pages before effect reservation: %v", ErrOwnerStore, err)
+	}
+	required := sqliteTransitionPages(int64(len(checkpointJSON)), int64(len(proofJSON))) +
+		sqliteTransitionPages(maxCheckpointJSONBytes, maxCheckpointJSONBytes)
+	if available := freePages + ceiling - pageCount; available < required {
+		return fmt.Errorf("%w: %d free pages cannot hold this effect reservation and its terminal accounting (%d pages); no effect authority was consumed",
+			ErrExhausted, available, required)
+	}
+	return nil
 }
 
 func loadLedger(ctx context.Context, queryer sqliteQueryer, workflow string) (Checkpoint, string, bool, int64, error) {
