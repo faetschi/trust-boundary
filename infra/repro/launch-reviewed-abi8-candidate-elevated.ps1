@@ -24,7 +24,6 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-if ($args.Count -ne 0) { throw 'This launcher accepts only one fixed -Action value.' }
 
 function Get-Sha256Bytes {
     param([Parameter(Mandatory)][byte[]]$Bytes)

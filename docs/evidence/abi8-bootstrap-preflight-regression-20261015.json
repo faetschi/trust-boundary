@@ -9,7 +9,7 @@
     "mutated": false
   },
   "sourcePins": {
-    "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1": "5A0CDB49B44224880E5C99C2C96442EB871F20269DC746C69457A9E7FAD0259E",
+    "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1": "C654B03945DC4F93683D4A7C7CD365FDC89960A49E56FD7FB0A9B47E255AF0CB",
     "infra/repro/bootstrap-hyperv-windows.ps1": "E0297B1424EE7A2D55F814FD14E5BB2FAE49B0CE87BFA260B058E1BCF0D36000",
     "infra/repro/new-abi8-hyperv-candidate.ps1-canonical-utf8-lf": "9B0FCB40408FC472ED829B665FF0B13ADF30FB2FB9B51B9EA74921B19B826B03",
     "infra/repro/probe-live-landlock-abi8-ssh.ps1": "5F81221869AD1E1912154DE9F430EFA58DFA7768401DF9E0A21342AA7E44C296",
@@ -71,6 +71,48 @@
       "exitCode": 0
     },
     "verified": "Pending summary persists guest IP and offline-derived ED25519 fingerprint before remote bootstrap; the nonzero bootstrap throw precedes the completion summary. This was a source-order check, not an executed guest failure."
+  },
+  "entrypointRegression": {
+    "powershell": "Windows PowerShell 5.1.19041.6456",
+    "launcherSha256": "C654B03945DC4F93683D4A7C7CD365FDC89960A49E56FD7FB0A9B47E255AF0CB",
+    "externalEvidenceDirectory": "C:/Users/Admin/Desktop/tbound-abi8-launcher-entrypoint-20261015",
+    "bindingTests": [
+      {
+        "case": "unknown named argument to actual launcher -File entry",
+        "exitCode": 1,
+        "rejectedByParameterBinder": true,
+        "log": "C:/Users/Admin/Desktop/tbound-abi8-launcher-entrypoint-20261015/01-unknown-argument.log",
+        "sha256": "D2AEEED7753CC21CEAC65E19646F6BC0B462E9F2E39D02D2EE740D63C7F3B06F"
+      },
+      {
+        "case": "extra positional argument to actual launcher -File entry",
+        "exitCode": 1,
+        "rejectedByParameterBinder": true,
+        "log": "C:/Users/Admin/Desktop/tbound-abi8-launcher-entrypoint-20261015/02-extra-positional.log",
+        "sha256": "7CFF551D2EE07D9D379A932ED903FF33EC87F3B66C72C29A8B1863CC4833BA0A"
+      }
+    ],
+    "safeBootstrapCandidatePreflight": {
+      "runner": "C:/Users/Admin/Desktop/tbound-abi8-launcher-entrypoint-20261015/run-safe-bootstrapcandidate-entry.ps1",
+      "runnerSha256": "4E2062906B84BEA1D414B52CB170F8893D2364C56CBF788588259555310929AB",
+      "commandAndExitLog": "C:/Users/Admin/Desktop/tbound-abi8-launcher-entrypoint-20261015/03b-wrapper-invocation.log",
+      "commandAndExitLogSha256": "2E510FEEABB16DE2591E8EC32416D2EEFC4117A73CF0E4FCE78AFC0A5F5EB057",
+      "result": "C:/Users/Admin/Desktop/tbound-abi8-launcher-entrypoint-20261015/03b-safe-entry-result.json",
+      "resultSha256": "9D0DB3B6B48A449AFA981EDB83E6109159F33B140A4EE44AAC3E191E9B327098",
+      "exitCode": 0,
+      "sourcePreflightReachedStartProcessBoundary": true,
+      "StartProcessInterceptedBeforeChildLaunch": true,
+      "childLaunched": false,
+      "vmMutation": false,
+      "launchRecord": {
+        "path": "C:/Users/Admin/Desktop/tbound-abi8-seed-bootstrapcandidate-e98195db4897/launch.json",
+        "sha256": "04F6743162654D943A09E52BDC0EE854DF381494A543C2B452FD4DABBD28CF17"
+      },
+      "launchResult": {
+        "path": "C:/Users/Admin/Desktop/tbound-abi8-seed-bootstrapcandidate-e98195db4897/launch-result.json",
+        "sha256": "44C17D132FF581A0026FC65063C11E18A113E4937F0C1A0C44850F1E3C9F80A2"
+      }
+    }
   },
   "privateKeyHandling": "The mocked action asserted the fixed task identity paths and emitted no key material. In real provisioning, trusted OpenSSH tools consume the private identity internally for key comparison and SSH; this receipt does not claim that no process reads it. No private-key contents were displayed, copied into evidence, or committed.",
   "candidateDisk": "Bootstrap copies the powered-off seed disk to a standalone dynamic 40-GiB VHDX; it is not a differencing child. The running candidate VHDX is not hashed.",
