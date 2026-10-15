@@ -1,6 +1,6 @@
 # TBound task state
 
-Updated 2026-10-15. Branch `codex/tbound-prototype`; implementation HEAD `ddbe255` at this update.
+Updated 2026-10-15. Branch `codex/tbound-prototype`; implementation checkpoint `76298d5` at this update.
 User priority: finish the thesis first and defer broader product features. See
 [docs/status.md](docs/status.md) for evidence, qualification state, blockers, and history;
 this file keeps the short action plan.
@@ -38,6 +38,23 @@ this file keeps the short action plan.
   installer/update/rollback, remote/multi-user service, and the optional 51-trial
   recovery expansion. A reproducible setup/runbook and safe process shutdown/drain
   remain engineering requirements; user-facing product polish does not gate the thesis.
+
+## Current execution checkpoint
+
+- `e3a75af` fixes the real single-key Windows PowerShell bootstrap caller; its
+  non-mutating regression passed. The subsequent elevated run created the disposable
+  candidate but stopped before offline injection: host `wsl --mount --vhd` received
+  a Linux path. Do not blindly rerun creation against the existing candidate.
+  Original VM and seed remain preserved; live ABI qualification is still open.
+- `76298d5` adds authenticated, read-only historical checkpoint inspection without
+  continuation authority. Focused Linux race tests include fresh subprocesses;
+  service settlement/admission integration remains unfinished.
+- D14 needs enforced SQLite page geometry/ceilings and pre-effect headroom checks
+  before reserve sizing can be justified. The synthetic 64 MiB experiment is not
+  a production bound. Refusal when the reserve cannot be re-armed is acceptable.
+- OpenCode Go is being prepared for engineering tests only. No subscription key
+  has been collected and no provider calls have been made in this increment.
+  Research Claims remain last, with the separate total US$5 OpenRouter cap.
 
 ## Execution rules
 
