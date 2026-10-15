@@ -58,7 +58,11 @@ export function ToolCard({ block, verifiedOf, markOf }: ToolCardProps) {
         {toolGlyph(tool)}
       </span>
       <span className={styles.name}>{tool}</span>
-      <span className={styles.summaryText}>{headline}</span>
+      <span className={styles.summaryText} title={headline}>
+        {headline}
+      </span>
+      {/* The record the card is named for: the result, else the request, else the policy decision (sequence as projected). */}
+      {primary ? <span className={styles.recordRef}>{`record ${primary.sequence}`}</span> : null}
       {unverifiedWord ? <VisuallyHidden>{UNVERIFIED_READING.label}</VisuallyHidden> : null}
       <span className={styles.chips}>
         {verdict ? <Chip tone={verdict.tone}>{verdict.label}</Chip> : null}

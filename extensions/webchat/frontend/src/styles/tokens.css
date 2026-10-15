@@ -148,6 +148,8 @@
   --sidebar-accent: var(--tb-s-hover);
   --sidebar-border: var(--tb-s-line);
   --shadow-panel: var(--tb-s-shadow-panel);
+  /* The scrim behind an open drawer: the page's own background, most of the way opaque, so the page reads as behind it. */
+  --scrim: color-mix(in srgb, var(--background) 72%, transparent);
   --scrollbar-thumb: var(--tb-s-scroll);
   --tertiary-foreground: var(--tb-s-ink-3);
 
@@ -223,17 +225,24 @@
 
   --z-raised: 1;
   --z-sticky: 4;
+  --z-scrim: 15;
   --z-overlay: 20;
   --z-popover: 100;
   --z-modal: 1000;
 
   --focus-width: 2px;
   --row-pad-x: 10px;
-  --rail-width: 15rem;
-  --inspector-width: 21.5rem;
+  --rail-width: 13rem;
+  --rail-collapsed-width: 3.5rem;
+  --inspector-width: 31.5rem;
   --row-h-turn: 33px;
   --row-h-cell: 38px;
   --row-h-toolbar: 32px;
   --row-h-button: 36px;
   --row-h-input: 32px;
+
+  /* The phone composer dock's tallest measured state (status line shown, chips wrapped: 188 px from 200 to 280 px; 170 px at
+     300-390 px) plus one gap. The page reserves it under the viewport's foot on a phone (base.css), so keyboard focus and
+     anchor scrolls never land under the dock. */
+  --dock-clearance: calc(188px + var(--space-2));
 }

@@ -88,6 +88,28 @@ export const LOSSY_EVIDENCE_READING: ChipReading = {
   note: "verified by the gateway; its output is lossy, so it is not confirmed.",
 };
 
+// The reading of a message: the shared gate's verdict in words. A message that the gate does not
+// verify reads "reported, not verified". A message whose verification scope the projection does not carry reads
+// "verification unavailable", and is never verified.
+export const REPORTED_NOT_VERIFIED_READING: ChipReading = {
+  label: "reported, not verified",
+  tone: "reported",
+  note: "reported by the source, not independently verified.",
+};
+
+export const VERIFICATION_UNAVAILABLE_READING: ChipReading = {
+  label: "verification unavailable",
+  tone: "idle",
+  note: "the projection carries no verification scope for this record.",
+};
+
+const SCOPES_WITH_A_VERDICT: ReadonlySet<string> = new Set(["unverified-input", "structural-audit-only"]);
+
+export function messageReading(scope: string | undefined, verified: boolean): ChipReading {
+  if (scope === undefined || !SCOPES_WITH_A_VERDICT.has(scope)) return VERIFICATION_UNAVAILABLE_READING;
+  return verified ? VERIFIED_READING : REPORTED_NOT_VERIFIED_READING;
+}
+
 export interface PostureEntry {
   readonly key: string;
   readonly text: string;
@@ -95,12 +117,19 @@ export interface PostureEntry {
   readonly hint: string;
 }
 
-// The posture badges of the legacy toolbar, in the same order. A zero count is not shown.
+// The posture badges of the legacy toolbar, in the same order. A zero count is not shown. A verdict is a policy decision
+// and a result is an execution, and each count says which, so no word names two different counts on the same screen.
 export function postureEntries(counts: GovernanceCounts): PostureEntry[] {
   const entries: Array<readonly [string, number, string, ChipTone, string]> = [
-    ["allow", counts.allow, "ALLOW", "allow", "policy ALLOW decisions: a permission, not an outcome"],
-    ["deny", counts.deny, "DENY", "deny", "policy DENY decisions"],
-    ["unknown-verdict", counts.unknownDecisions, "unknown verdict", "unknown", "decisions with an UNKNOWN verdict"],
+    ["allow", counts.allow, "allow verdict", "allow", "policy ALLOW verdicts: a permission, not an outcome"],
+    ["deny", counts.deny, "deny verdict", "deny", "policy DENY verdicts: the action was refused by policy"],
+    [
+      "unknown-verdict",
+      counts.unknownDecisions,
+      "unknown verdict",
+      "unknown",
+      "policy verdicts that are UNKNOWN: not decided, and not an ALLOW or a DENY",
+    ],
     ["verified", counts.verified, "verified", "ok", "successful executions confirmed by the projection"],
     [
       "reported",
@@ -109,16 +138,42 @@ export function postureEntries(counts: GovernanceCounts): PostureEntry[] {
       "reported",
       "successes not confirmed: reported but not independently verified, or verified with lossy output",
     ],
-    ["denied", counts.denied, "denied", "deny", "denied results"],
-    ["failed", counts.failed, "failed", "deny", "failed results"],
+    ["denied", counts.denied, "denied result", "deny", "results with the denied outcome: the action did not run"],
+    ["failed", counts.failed, "failed result", "deny", "results that failed"],
     ["pending", counts.pendingResults, "pending", "pending", "results still pending"],
-    ["unknown-result", counts.unknownResults, "unknown result", "unknown", "results with no retained terminal outcome"],
+    ["unknown-result", counts.unknownResults, "unresolved result", "unknown", "results with no retained terminal outcome"],
     ["lost", counts.lost, "lost", "lost", "results whose outcome was lost; not a success"],
     ["lossy", counts.lossy, "lossy", "unknown", "results flagged lossy; lossy output is not terminal evidence"],
   ];
   return entries
     .filter(([, count]) => count > 0)
     .map(([key, count, word, tone, hint]) => ({ key, text: `${word} ${count}`, tone, hint }));
+}
+
+// What the Chat view calls each filter, and what its count counts. A filter counts records, so its name says what it counts:
+// "Denied (verdict or result)" counts both, and the posture chips count each on its own. The hint is the full definition,
+// shown as the filter's title. The policy verdicts are the footer's and the decisions tab's. The core filter ids and
+// labels are the legacy client's (core/filters.ts), and they stay as they are.
+export interface FilterName {
+  readonly label: string;
+  readonly hint: string;
+}
+
+const FILTER_NAMES: Readonly<Record<string, FilterName>> = {
+  all: { label: "All", hint: "every projected element" },
+  denied: { label: "Denied (verdict or result)", hint: "records with a DENY verdict or a denied result" },
+  // Unknown or lossy counts a union: an UNKNOWN verdict, an unknown or lost result, or lossy output. A lost result is in the
+  // unknown family (its outcome was not recorded). The result chip reads "unresolved", so the bare word unknown on this
+  // screen counts verdicts, as the footer's "0 unknown" does.
+  unknown: {
+    label: "Unknown or lossy",
+    hint: "Records whose verdict or result is unknown, or whose output is lossy",
+  },
+  failed: { label: "Failed result", hint: "records with a failed result" },
+};
+
+export function filterNameOf(id: string): FilterName {
+  return Object.hasOwn(FILTER_NAMES, id) ? (FILTER_NAMES[id] as FilterName) : { label: id, hint: "" };
 }
 
 // The line under the toolbar. It separates the matches from the elements shown, because a kept

@@ -12,6 +12,7 @@
 import { SUCCESS_STATES, humanize } from "../core/format";
 import type {
   GovernancePanel,
+  ItemView,
   PublicationPanel,
   QualificationPanel,
   ProvenancePanel,
@@ -40,11 +41,14 @@ export function unavailableWords(reason: string): string {
   return `unavailable (${reason})`;
 }
 
+// A count the projection states: a non-negative integer. Anything else is not a count.
+export function countValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
 export function countReading(value: unknown, reason: string): Reading {
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
-    return { kind: "value", text: String(value) };
-  }
-  return { kind: "unavailable", reason };
+  const count = countValue(value);
+  return count === null ? { kind: "unavailable", reason } : { kind: "value", text: String(count) };
 }
 
 export function textReading(value: unknown, reason: string): Reading {
@@ -65,12 +69,39 @@ export const NO_QUALIFICATION = "the snapshot carries no qualification panel";
 const NOT_PROJECTED = "not projected by the source";
 
 export function governanceRows(panel: GovernancePanel | null | undefined): Array<readonly [string, Reading]> {
-  return [
-    ["Allowed (ALLOW)", countReading(panel?.allow_count, NO_GOVERNANCE)],
-    ["Denied (DENY)", countReading(panel?.deny_count, NO_GOVERNANCE)],
-    ["Unknown", countReading(panel?.unknown_count, NO_GOVERNANCE)],
-    ["Policy digest", textReading(panel?.policy_digest, panel ? "not projected" : NO_GOVERNANCE)],
-  ];
+  return [["Policy digest", textReading(panel?.policy_digest, panel ? "not projected" : NO_GOVERNANCE)]];
+}
+
+const NO_DECISION_COUNTS = "the snapshot carries no decision counts";
+
+// Whether the panel states its decisions. The gateway writes an absent count as zero, so three zero counts are a statement
+// only when a policy digest is present and no loaded decision carries a verdict ("none"). Three zeros otherwise cannot be
+// told from an absent value, so they are "absent". A count the panel does not carry is "counted": it reads part by part.
+export type DecisionsState = "counted" | "none" | "absent";
+
+export function decisionsState(panel: GovernancePanel | null | undefined, verdicts: number): DecisionsState {
+  if (!panel) return "absent";
+  const counts = [panel.allow_count, panel.deny_count, panel.unknown_count].map(countValue);
+  if (counts.some((count) => count === null || count > 0)) return "counted";
+  const digested = typeof panel.policy_digest === "string" && panel.policy_digest !== "";
+  return digested && verdicts === 0 ? "none" : "absent";
+}
+
+// The loaded records that carry a verdict. A zero count beside one of them contradicts the zero.
+export function verdictCount(items: readonly ItemView[]): number {
+  return items.filter((item) => item.verdict !== undefined).length;
+}
+
+// The policy verdicts in words, in the footer's form: "policy verdicts 1 allow / 1 deny / 0 unknown". Absent counts read
+// unavailable, and an absent panel says why. A count the panel does not carry reads "unavailable allow", never zero.
+export function decisionSummary(panel: GovernancePanel | null | undefined, verdicts = 0): string {
+  if (!panel) return `policy verdicts ${unavailableWords(NO_GOVERNANCE)}`;
+  if (decisionsState(panel, verdicts) === "absent") return `policy verdicts ${unavailableWords(NO_DECISION_COUNTS)}`;
+  const word = (value: unknown): string => {
+    const count = countValue(value);
+    return count === null ? "unavailable" : String(count);
+  };
+  return `policy verdicts ${word(panel.allow_count)} allow / ${word(panel.deny_count)} deny / ${word(panel.unknown_count)} unknown`;
 }
 
 // A policy ALLOW is a permission, not an outcome. The panel says so in words.

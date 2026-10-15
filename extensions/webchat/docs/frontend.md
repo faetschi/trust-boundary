@@ -596,7 +596,7 @@ finding filter. The rules are the ones in `web-chat.md` §4.4 and §4.5.
   row. At wide widths the shell has no return target, so the view returns focus to the
   row when the selection is cleared and no live element holds focus. When a record is
   evicted, the store clears the selection and the view moves focus to the ledger, or
-  closes an open drawer through the shell.
+  closes an open drawer through the shell. *(Superseded in part: Close record and the first Escape clear the record and keep an open drawer open, on its governance panel; see "Redesign follow-up" at the end of this file.)*
 - **Record inspector.** A header with the source chip and the position, then the status
   in words, then the core's sections: Summary, Payload (when the record has one),
   Decision, Result, Evidence and Timing. Timing is always present and says that no
@@ -1281,3 +1281,37 @@ not-established, H1 unexecuted.
 - `ToggleGroup.test.tsx` prints "not wrapped in act(...)" warnings. They are pre-existing and were not touched.
 - Not verified, as before: screen readers; Windows high-contrast themes (forced colours were emulated with CDP);
   pointer and touch input; browsers other than Chrome 155.
+
+## Redesign follow-up (user review of v3)
+
+The user reviewed the v3 mockup against the running UI, and the redesign below followed. The React source is the reference. The frames in [`webchat/mockups/tbound-redesign-v3.html`](webchat/mockups/tbound-redesign-v3.html) are captured from it.
+
+**Added**
+- Sessions rail: one session row (`aria-current`, not interactive) with the note "Other Pi sessions are not listed". The rail collapses to a 3.5 rem strip. At 760 px and below it becomes a disclosure strip, and so does the claim strip.
+- Governance inspector: 31.5 rem, collapsible to a 3.5 rem icon rail. Five tabs (Decisions, Provenance, Publication, Recovery, Qualification) show one panel at a time, with scroll buttons when the strip overflows. A selected record shows in a bar between the strip and the body. At 1180 px and below the inspector is a drawer with a scrim.
+- Conversation head (title, Pi version, session id, workflow id, "completed · reported, not verified"), role labels "Pi" and "User", and message chrome (time, Copy, record number).
+- Read-only composer: a readonly textarea, a muted send control with `aria-disabled`, and the chips "Observed only · no approvals" and "Pi <version> · tools unavailable". Focusing it shows the explanation line.
+- One-line footer ("policy verdicts …"), which wraps on narrow screens. Filter labels "Denied (verdict or result)", "Unknown or lossy" and "Failed result".
+
+**Deliberately not implemented:** a list of several sessions, a new-session control, `+`, sending, cancelling, mode menus, a diff stat, and MATCHED. The projection has no session-list field, so the rail shows the one session it carries.
+
+**Heuristic:** the Go gateway serialises an absent governance count as `0`. `app/inspector/panelBadge.ts` therefore reads a zero as "unavailable" unless a policy digest and a verdict back it up. That is a UI heuristic, not a field the projection states.
+
+**Phones (760 px and below).** The composer and the jump to latest control share one dock at the end of the chat view (`Chat.module.css`, `.dock`). On a phone the dock is `position: sticky; bottom: 0`, with an opaque background, so it stays on the viewport's bottom edge while the transcript scrolls under it. At the end of the page it sits after the last message. The page is the scroller at this width, so `base.css` sets `scroll-padding-bottom: var(--dock-clearance)` on `html`. `tokens.css` defines `--dock-clearance: calc(188px + var(--space-2))`, the tallest measured dock state (status line shown, chips wrapped), so a focused control or an anchor lands above the dock.
+
+**Footer on phones.** At 760 px and below the footer has `order: 1` and the views `order: 2`, so the footer sits above the chat, under the view tabs. It wraps with the width. Measured in the live app: one line at 700 and 760 px; two lines at 390, 600, 761, 768, 769 and 800 px; three lines at 361 px; one line at 1024 px.
+
+**Closed governance sheet.** At 1180 px and below the closed inspector drawer is translated past its own width and a gutter, and set to `visibility: hidden` once the slide ends. It is fully off-canvas, and out of the focus order and the accessibility tree (`Inspector.module.css`). Opening it shows it at once.
+
+**Open items accepted, not changed in this round.**
+- (M2) Governance tab badge words are shown only on the selected tab's status line. The other tabs show a tone shape (`StateDot`), with the words in `aria-label` and `title`.
+- (M3) The footer wraps to two or three lines at phone widths, and to two lines again at 761, 768, 769 and 800 px, so the wrap is not confined to 768 px and below. It is one line at 700 and 760 px. Only the widths listed above were measured.
+- At 390 px the roving "Recovery" tab of the drawer can sit under the "›" scroll button until the tab strip is scrolled.
+- Absent governance counts are inferred from an empty digest plus zero counts, because the Go gateway serialises an absent count as `0` (see the heuristic above).
+- The mockup frames carry the built stylesheet's hashed class names, so they do not read as source names.
+
+**Build identity (this round).** `frontend/src` tree: `5966e17ffac8e9fc74cce0bbb899998151119b5d9f1d44834217b9ece139be0a` (179 files; `find … | LC_ALL=C sort | xargs sha256sum -b | sha256sum`). Dist: `index.html` `7816cb65ba3f08d6a8ba295991dc3ef0340515850f7908996aa1eee190aefc02`; `assets/index-BPWS4mwk.css` `dce5c00936f72d294b18f96790ad9ab01ed3b462f1386ca96dea5e07c1107f22`; `assets/index-DccNui2A.js` `fb5122a6e7edcbf1578a253abf59b0e840a237011addf604a8176719c51b2d2a`. The demo gateway built in WSL (go1.27.1) from a copy of the tree is `9f97bdce6c04da2df63d62a5e5641b61f7ac44116724bede058590f422964613`.
+
+**Mockup:** the frames are the captured DOM of the running UI under its built stylesheet. There are 22 frames: the 20 of the previous refresh, and two phone frames scrolled to mid-transcript (light and dark) that show the dock pinned. Sixteen are byte-identical to their live capture. The other six: the four phone frames with the dock differ in text anti-aliasing inside the dock (about 600 to 700 px a frame, with the region text and rectangles equal); `gov-publication-light-1440` and `composer-focus-light-1440` differ by five pixels, at most two levels, on the composer's rounded bottom corner, and that cause is not isolated. Both sides run headless Chrome with `--disable-lcd-text`, which cut the phone difference from about 3000 px a frame. Font hinting and colour-profile flags changed nothing, and two raster flags (`--disable-partial-raster`, `--disable-threaded-compositing`) made the capture hang, so neither is used. The live captures varied between identical runs (`gov-publication-light-1440`, `gov-recovery-light-1440`, `chat-light-390`) until a 1 s settle was added after the pointer actions; one later run still changed `chat-light-390` by one pixel, so the live side is not fully deterministic. The mockup side repeated exactly. The receipts are `docs/webchat/qa/v3-mockup-receipt.json` and `docs/webchat/qa/v3-real-app-capture.json`.
+
+**Boundary:** nothing here changes G1 (false), H1 (unexecuted) or containment (not-established). Green gates verify the code; they do not establish these claims, and the mockup frames verify layout and wording only. This round changed no source, test or built file: it regenerated the mockup, its QA receipts and this section. Receipts and QA tables above this section describe the builds they name and are not rewritten.

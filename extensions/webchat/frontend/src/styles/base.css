@@ -22,6 +22,14 @@ body {
   min-height: 100vh;
 }
 
+/* Phones: the page is the scroller, and the composer dock covers the foot of the viewport. Focus and anchor scrolls stop above
+   the dock, so the root reserves the dock's clearance (tokens.css). Wide layouts scroll inside their views and need none. */
+@media (max-width: 760px) {
+  html {
+    scroll-padding-bottom: var(--dock-clearance);
+  }
+}
+
 h1,
 h2,
 h3,

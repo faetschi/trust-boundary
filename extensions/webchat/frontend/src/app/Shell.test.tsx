@@ -10,6 +10,7 @@ import { WorkspaceProvider } from "./WorkspaceProvider";
 import { click, installMatchMedia, mount, press, settle, type MatchMediaShim, type Mounted } from "../test-support/dom";
 import { fakeWorkspace, type FakeWorkspace } from "../test-support/fakes";
 import { THEME_STORAGE_KEY } from "../theme/theme";
+import { UI_PREFS_KEY } from "./uiPrefs";
 
 // A fixture projection, unverified, with a reported (unverified) publication.
 function fixtureSnapshot() {
@@ -20,7 +21,12 @@ function fixtureSnapshot() {
       decisionItem({ id: "d1", sequence: 3, tool: "bash", tool_call_id: "c1", verdict: "ALLOW" }),
       resultItem({ id: "r1", sequence: 4, tool: "bash", tool_call_id: "c1", state: "succeeded" }),
     ],
-    panels: { ...panelsDefault(), publication: { state: "published" } },
+    // The counts agree with the one ALLOW verdict in the window.
+    panels: {
+      ...panelsDefault(),
+      governance: { allow_count: 1, deny_count: 0, unknown_count: 0 },
+      publication: { state: "published" },
+    },
   });
 }
 
@@ -80,12 +86,22 @@ function byLabel(text: string): HTMLElement {
   return match;
 }
 
+// A governance tab by the start of its accessible name ("Decisions" names "Decisions, 1 deny" too).
+function governanceTab(name: string): HTMLElement {
+  const match = Array.from(mounted?.container.querySelectorAll<HTMLElement>("aside [role='tab']") ?? []).find((el) =>
+    (el.getAttribute("aria-label") ?? "").startsWith(name),
+  );
+  if (!match) throw new Error(`no governance tab ${name}`);
+  return match;
+}
+
 afterEach(() => {
   mounted?.unmount();
   mounted = null;
   shim?.restore();
   shim = null;
   window.localStorage.removeItem(THEME_STORAGE_KEY);
+  window.localStorage.removeItem(UI_PREFS_KEY);
   document.documentElement.removeAttribute("data-theme");
 });
 
@@ -103,7 +119,7 @@ describe("Shell: landmarks and headings", () => {
     expect(q("nav").getAttribute("aria-label")).toBe("Sessions and streams");
     expect(q("main").getAttribute("aria-label")).toBe("Workspace");
     expect(q("aside").getAttribute("aria-label")).toBe("Governance inspector");
-    expect(q("footer").getAttribute("aria-label")).toBe("Observed session metrics");
+    expect(q("[aria-label='Session statistics']").textContent).toContain("turn");
     const levels = Array.from(mounted?.container.querySelectorAll("h1, h2, h3") ?? []).map((h) => h.tagName);
     expect(levels[0]).toBe("H1");
     for (let i = 1; i < levels.length; i++) {
@@ -164,26 +180,29 @@ describe("Shell: the claim boundary and the source are always visible", () => {
     renderShell(1440);
     expect(q("nav").textContent).toContain("No session projection");
     expect(q("nav").textContent).toContain("unavailable (no projection loaded)");
+    click(governanceTab("Qualification"));
     expect(q("aside").textContent).toContain("unavailable (no projection loaded)");
     expect(q("aside").textContent).not.toContain("No warnings projected.");
   });
 
-  it("before the first snapshot, every panel, rail and footer value reads unavailable, never no, zero, none or ok", () => {
+  it("before the first snapshot, every panel and rail value reads unavailable, never no, zero, none or ok", () => {
     renderShell(1440);
-    const values = Array.from(mounted?.container.querySelectorAll("aside dd, aside li, footer dd") ?? []).map(
-      (el) => el.textContent?.trim() ?? "",
-    );
+    const values: string[] = [];
+    for (const name of ["Decisions", "Provenance", "Publication", "Recovery", "Qualification"]) {
+      click(governanceTab(name));
+      values.push(...Array.from(q("aside [role='tabpanel']").querySelectorAll("dd, li")).map((el) => el.textContent?.trim() ?? ""));
+    }
     expect(values.length).toBeGreaterThan(10);
     for (const value of values) expect(value, value).toMatch(/^unavailable/);
-    expect(q("section[aria-labelledby='panel-provenance']").textContent).not.toMatch(/Independently verified\s*no\b/);
     expect(q("nav").textContent).not.toMatch(/No streams projected/);
     expect(q("[role='group'][aria-label='Observed posture']").textContent).not.toContain("no decisions or results projected");
   });
 
-  it("keeps the rail read-only: it has no buttons, links or controls", async () => {
+  it("keeps the rail to one control, the collapse toggle, with no link or field", async () => {
     renderShell(1440);
     await settle();
-    expect(q("nav").querySelectorAll("button, a, input, select, textarea").length).toBe(0);
+    expect(q("nav").querySelectorAll("button")).toHaveLength(1);
+    expect(q("nav").querySelectorAll("a, input, select, textarea")).toHaveLength(0);
   });
 
   it("labels the source as unverified, and the connection in words", async () => {
@@ -224,24 +243,35 @@ describe("Shell: governance panels honour the projection", () => {
   it("shows an unverified publication as reported, never as published", async () => {
     renderShell(1440);
     await settle();
+    click(governanceTab("Publication"));
     const section = q("section[aria-labelledby='panel-publication']");
     expect(section.textContent).toContain("reported");
     expect(section.textContent).not.toMatch(/\bpublished\b/);
   });
 
+  it("shows one governance panel at a time, in the tab order, with the others not rendered", async () => {
+    renderShell(1440);
+    await settle();
+    expect(q("aside").querySelectorAll("[role='tabpanel']")).toHaveLength(1);
+    expect(q("aside").querySelectorAll("section[aria-labelledby^='panel-']")).toHaveLength(1);
+    click(governanceTab("Provenance"));
+    expect(q("aside").querySelectorAll("section[aria-labelledby^='panel-']")).toHaveLength(1);
+    expect(q("section[aria-labelledby='panel-provenance']")).toBeTruthy();
+  });
+
   it("shows the footer's untracked metrics as unavailable, with a reason, not as zero", async () => {
     renderShell(1440);
     await settle();
-    const footer = q("footer");
-    expect(footer.textContent).toContain("Token usage");
-    expect(footer.textContent).toContain("unavailable");
-    expect(footer.textContent).toContain("the projection records no duration");
+    const stats = q("[aria-label='Session statistics']");
+    expect(stats.textContent).toContain("tokens unavailable");
+    expect(stats.textContent).toContain("timing unavailable");
+    expect(stats.textContent).not.toMatch(/tokens 0|timing 0|\b0 ms\b/);
   });
 
-  it("shows the policy counts for the retained window", async () => {
+  it("shows the policy counts for the retained window, as the projection states them", async () => {
     renderShell(1440);
     await settle();
-    expect(q("footer").textContent).toContain("ALLOW 1 · DENY 0 · UNKNOWN 0");
+    expect(q("[aria-label='Session statistics']").textContent).toContain("policy verdicts 1 allow / 0 deny / 0 unknown");
   });
 });
 
@@ -271,12 +301,16 @@ describe("Shell: the drawer at the narrow breakpoint", () => {
     expect(document.activeElement).toBe(byLabel("Governance"));
   });
 
-  it("is a column with no toggle state at wide widths", async () => {
+  it("is a column at wide widths: the header control reports it, collapses it, and the choice persists", async () => {
     renderShell(1440);
     await settle();
-    expect(byLabel("Governance").getAttribute("aria-expanded")).toBeNull();
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("true");
     expect(q("aside").hasAttribute("inert")).toBe(false);
     expect(q("aside").hasAttribute("aria-hidden")).toBe(false);
+    click(byLabel("Governance"));
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("false");
+    expect(q("aside").getAttribute("data-collapsed")).toBe("true");
+    expect(JSON.parse(window.localStorage.getItem(UI_PREFS_KEY) ?? "null")).toMatchObject({ inspectorCollapsed: true });
   });
 
   it("re-evaluates when the viewport crosses the breakpoint", async () => {
@@ -376,6 +410,288 @@ describe("Shell: the theme control", () => {
     click(byLabel("System"));
     expect(document.documentElement.dataset.theme).toBeUndefined();
     expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("system");
+  });
+});
+
+// Unmounts the shell and mounts it again at another width, as a reload does.
+function remount(width: number): void {
+  mounted?.unmount();
+  mounted = null;
+  shim?.restore();
+  shim = null;
+  renderShell(width);
+}
+
+describe("Shell: the sessions rail", () => {
+  it("keeps its collapse choice across a reload, in the one versioned key", async () => {
+    renderShell(1440);
+    await settle();
+    click(q("nav button"));
+    expect(q("nav button").getAttribute("aria-expanded")).toBe("false");
+    expect(JSON.parse(window.localStorage.getItem(UI_PREFS_KEY) ?? "null")).toMatchObject({ railCollapsed: true });
+    remount(1440);
+    await settle();
+    expect(q("nav button").getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("clears a stored choice that is not valid, and shows the defaults", async () => {
+    window.localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ railCollapsed: "yes" }));
+    renderShell(1440);
+    await settle();
+    expect(window.localStorage.getItem(UI_PREFS_KEY)).toBeNull();
+    expect(q("nav button").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("is a disclosure strip on a phone, collapsed by default, and its state is not persisted", async () => {
+    renderShell(390);
+    await settle();
+    const strip = q("nav h2 button");
+    expect(strip.getAttribute("aria-expanded")).toBe("false");
+    expect(strip.textContent).toContain("Sessions · ");
+    click(strip);
+    expect(strip.getAttribute("aria-expanded")).toBe("true");
+    expect(window.localStorage.getItem(UI_PREFS_KEY)).toBeNull();
+  });
+});
+
+describe("Shell: the governance inspector's record bar", () => {
+  it("shows the record under a bar with a close control, and closing it returns focus to the row that opened it", async () => {
+    renderShell(1440);
+    await settle();
+    click(byLabel("Trajectory"));
+    click(q("button[data-record-row][data-id='d1']"));
+    expect(q("aside").querySelectorAll("[role='tab']")).toHaveLength(5);
+    expect(q("aside").querySelectorAll("[role='tab'][aria-selected='true']")).toHaveLength(0);
+    expect(q("aside button[aria-label='Close record 3']").textContent).toBe("Close record");
+    click(q("button[aria-label='Close record 3']"));
+    expect(q("aside").querySelectorAll("[role='tab']")).toHaveLength(5);
+    expect(document.activeElement).toBe(q("button[data-record-row][data-id='d1']"));
+    expect(q("aside").getAttribute("aria-label")).toBe("Governance inspector");
+  });
+
+  it("Escape clears the record first, and leaves a wide inspector open", async () => {
+    renderShell(1440);
+    await settle();
+    click(byLabel("Trajectory"));
+    click(q("button[data-record-row][data-id='d1']"));
+    press(document.body, "Escape");
+    expect(q("aside").querySelectorAll("[role='tab']")).toHaveLength(5);
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("true");
+    expect(q("aside").getAttribute("data-collapsed")).toBe("false");
+  });
+
+  it("choosing a governance tab while a record shows closes the record, and selects that tab", async () => {
+    renderShell(1440);
+    await settle();
+    click(byLabel("Trajectory"));
+    click(q("button[data-record-row][data-id='d1']"));
+    click(governanceTab("Publication"));
+    expect(q("aside").getAttribute("aria-label")).toBe("Governance inspector");
+    expect(governanceTab("Publication").getAttribute("aria-selected")).toBe("true");
+    expect(q("button[data-record-row][data-id='d1']").getAttribute("aria-pressed")).toBe("false");
+    expect(document.querySelector("aside button[aria-label^='Close record']")).toBeNull();
+  });
+
+  it("a new selection shows the record again, after a governance tab was chosen", async () => {
+    renderShell(1440);
+    await settle();
+    click(byLabel("Trajectory"));
+    click(q("button[data-record-row][data-id='d1']"));
+    click(governanceTab("Publication"));
+    click(q("button[data-record-row][data-id='r1']"));
+    expect(q("aside").getAttribute("aria-label")).toBe("Record inspector");
+    expect(q("aside [role='tabpanel']").getAttribute("aria-labelledby")).toBe("governance-record-label");
+  });
+
+  it("selecting a record while the wide inspector is collapsed expands it", async () => {
+    renderShell(1440);
+    await settle();
+    click(byLabel("Governance"));
+    click(byLabel("Trajectory"));
+    click(q("button[data-record-row][data-id='d1']"));
+    expect(q("aside").getAttribute("data-collapsed")).toBe("false");
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("at narrow width, a record opens the drawer; the first Escape clears only the record, and the second closes the drawer", async () => {
+    renderShell(1000);
+    await settle();
+    click(byLabel("Trajectory"));
+    click(q("button[data-record-row][data-id='d1']"));
+    expect(q("aside").getAttribute("data-open")).toBe("true");
+    press(document.body, "Escape");
+    expect(q("aside").getAttribute("data-open")).toBe("true");
+    expect(q("aside").querySelectorAll("[role='tab']")).toHaveLength(5);
+    expect(q("aside").getAttribute("aria-label")).toBe("Governance inspector");
+    expect(document.activeElement).toBe(q("aside [role='tab'][aria-selected='true']"));
+    press(document.body, "Escape");
+    expect(q("aside").getAttribute("data-open")).toBe("false");
+    expect(q("aside").hasAttribute("inert")).toBe(true);
+    expect(document.activeElement).toBe(q("button[data-record-row][data-id='d1']"));
+  });
+
+  it("at narrow width, Close record clears only the record: the drawer stays open on its governance tab, and the next Escape closes it", async () => {
+    renderShell(1000);
+    await settle();
+    click(byLabel("Trajectory"));
+    click(q("button[data-record-row][data-id='d1']"));
+    click(q("button[aria-label='Close record 3']"));
+    expect(q("aside").getAttribute("data-open")).toBe("true");
+    expect(q("aside").hasAttribute("inert")).toBe(false);
+    expect(q("aside").querySelectorAll("[role='tab']")).toHaveLength(5);
+    expect(q("aside").getAttribute("aria-label")).toBe("Governance inspector");
+    expect(document.activeElement).toBe(q("aside [role='tab'][aria-selected='true']"));
+    press(document.body, "Escape");
+    expect(q("aside").getAttribute("data-open")).toBe("false");
+    expect(document.activeElement).toBe(q("button[data-record-row][data-id='d1']"));
+  });
+});
+
+// The keyboard Tab is dispatched by hand, so its default action can be read: a trapped Tab is prevented.
+function tabKey(target: Element, shift = false): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", { key: "Tab", shiftKey: shift, bubbles: true, cancelable: true });
+  act(() => {
+    target.dispatchEvent(event);
+  });
+  return event;
+}
+
+describe("Shell: the open drawer's scrim closes it by a press, as Escape and Close do by key", () => {
+  it("is drawn only while the drawer is open", async () => {
+    renderShell(1000);
+    await settle();
+    expect(document.querySelector("[data-testid='scrim']")).toBeNull();
+    click(byLabel("Governance"));
+    expect(q("[data-testid='scrim']").getAttribute("aria-hidden")).toBe("true");
+    click(byLabel("Close governance"));
+    expect(document.querySelector("[data-testid='scrim']")).toBeNull();
+  });
+
+  it("closes the drawer on a press, and returns focus to the toggle", async () => {
+    renderShell(1000);
+    await settle();
+    click(byLabel("Governance"));
+    click(q("[data-testid='scrim']"));
+    expect(byLabel("Governance").getAttribute("aria-expanded")).toBe("false");
+    expect(q("aside").hasAttribute("inert")).toBe(true);
+    expect(document.querySelector("[data-testid='scrim']")).toBeNull();
+    expect(document.activeElement).toBe(byLabel("Governance"));
+  });
+
+  it("is stacked between the page and the drawer: above the page's layers, under the drawer's", () => {
+    const tokens = readFileSync(resolve(process.cwd(), "src/styles/tokens.css"), "utf8");
+    const z = (name: string) => Number(new RegExp(`--${name}:\\s*(\\d+);`).exec(tokens)?.[1]);
+    expect(z("z-scrim")).toBeGreaterThan(z("z-sticky"));
+    expect(z("z-scrim")).toBeLessThan(z("z-overlay"));
+    const shell = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
+    expect(declarationsOf(shell, ".scrim")).toMatch(/z-index:\s*var\(--z-scrim\);/);
+    expect(declarationsOf(shell, ".scrim")).toMatch(/background:\s*var\(--scrim\);/);
+  });
+});
+
+describe("Shell: the open drawer is a modal dialog", () => {
+  it("makes the page behind it inert while it is open: the header, the skip link, the rail and the workspace", async () => {
+    renderShell(1000);
+    await settle();
+    expect(q("main").hasAttribute("inert")).toBe(false);
+    click(byLabel("Governance"));
+    expect(q("header").hasAttribute("inert")).toBe(true);
+    expect(q("nav").hasAttribute("inert")).toBe(true);
+    expect(q("main").hasAttribute("inert")).toBe(true);
+    expect(q("a").hasAttribute("inert")).toBe(true);
+    expect(q("aside").hasAttribute("inert")).toBe(false);
+    press(document.body, "Escape");
+    expect(q("header").hasAttribute("inert")).toBe(false);
+    expect(q("main").hasAttribute("inert")).toBe(false);
+  });
+
+  it("keeps the wide layout's page live: nothing is inert at a wide width, even with the column open", async () => {
+    renderShell(1440);
+    await settle();
+    expect(q("main").hasAttribute("inert")).toBe(false);
+    expect(q("nav").hasAttribute("inert")).toBe(false);
+  });
+
+  it("wraps Tab from the last stop of the drawer to the first, and Shift+Tab from the first to the last", async () => {
+    renderShell(1000);
+    await settle();
+    click(byLabel("Governance"));
+    // The tab stops of the drawer: its controls, and the one selected tab (the others are roving, tabindex -1).
+    const stops = Array.from(q("aside").querySelectorAll<HTMLElement>("button:not([disabled]):not([tabindex='-1'])"));
+    const first = stops[0];
+    const last = stops[stops.length - 1];
+    if (!first || !last || first === last) throw new Error("the drawer needs two stops to wrap");
+    last.focus();
+    expect(tabKey(last).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(first);
+    expect(tabKey(first, true).defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(last);
+  });
+
+  it("leaves a Tab from one stop of the drawer to the next to the browser", async () => {
+    renderShell(1000);
+    await settle();
+    click(byLabel("Governance"));
+    const stops = Array.from(q("aside").querySelectorAll<HTMLElement>("button:not([disabled]):not([tabindex='-1'])"));
+    const first = stops[0];
+    if (!first || stops.length < 2) throw new Error("the drawer needs two stops");
+    first.focus();
+    expect(tabKey(first).defaultPrevented).toBe(false);
+  });
+
+  it("is a dialog while it is open, and reaches the focus into it on open", async () => {
+    renderShell(1000);
+    await settle();
+    click(byLabel("Governance"));
+    expect(q("aside").getAttribute("role")).toBe("dialog");
+    expect(q("aside").getAttribute("aria-modal")).toBe("true");
+    expect(document.activeElement).toBe(q("aside h2"));
+  });
+});
+
+describe("Shell: the header control and the workspace column", () => {
+  it("shows the Governance header control at every width, with aria-expanded", async () => {
+    for (const width of [1440, 1180, 1024, 390]) {
+      remount(width);
+      await settle();
+      expect(byLabel("Governance").getAttribute("aria-expanded"), String(width)).not.toBeNull();
+    }
+  });
+
+  it("holds the footer inside the workspace column, under the views", async () => {
+    renderShell(1440);
+    await settle();
+    expect(q("main [aria-label='Session statistics']")).toBeTruthy();
+  });
+
+  it("keeps the governance tab strip in its own scroll box, so the page never scrolls sideways", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/app/inspector/PanelTabs.module.css"), "utf8");
+    expect(declarationsOf(css, ".strip")).toMatch(/overflow-x:\s*auto;/);
+  });
+});
+
+describe("Shell: the phone header is compact", () => {
+  it("puts Governance and the theme control on one full-width row, below the badges", () => {
+    const css = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
+    const phone = mediaBlock(css, "@media (max-width: 760px)");
+    const controls = declarationsOf(phone, ".controls");
+    expect(controls).toMatch(/flex:\s*1 1 100%;/);
+    expect(controls).toMatch(/justify-content:\s*space-between;/);
+    expect(controls).toMatch(/margin-left:\s*0;/);
+  });
+});
+
+describe("Shell: on a phone the pinned composer is the page's last box", () => {
+  it("orders the footer above the views, so the chat's composer, not the footer, ends the page", () => {
+    const footer = readFileSync(resolve(process.cwd(), "src/app/Footer.module.css"), "utf8");
+    const shell = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
+    expect(declarationsOf(mediaBlock(footer, "@media (max-width: 760px)"), ".footer")).toMatch(/order:\s*1;/);
+    expect(declarationsOf(mediaBlock(shell, "@media (max-width: 760px)"), ".views")).toMatch(/order:\s*2;/);
+  });
+
+  it("adds no bottom padding to the column on a phone, so the composer's bottom edge is the page's end", () => {
+    const shell = readFileSync(resolve(process.cwd(), "src/app/Shell.module.css"), "utf8");
+    expect(declarationsOf(mediaBlock(shell, "@media (max-width: 760px)"), ".main")).toMatch(/padding-bottom:\s*0;/);
   });
 });
 

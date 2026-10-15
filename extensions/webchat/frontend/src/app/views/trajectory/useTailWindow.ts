@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
-import { isAtTail, maxScrollTop, tailAnnouncement, type ScrollMetrics } from "../../../core/anchor";
+import { isAtTail, maxScrollTop, tailAnnouncement } from "../../../core/anchor";
 import { useAnnouncer } from "../../../ui/LiveRegion";
 import type { WorkspaceActions } from "../../workspaceStore";
+import { metricsOf, onTailScroll, scrollTailTo, tailScroller } from "../tailScroller";
 
 // A burst of arrivals is announced once it has settled, as the legacy client did.
 export const TAIL_SETTLE_MS = 400;
@@ -23,23 +24,10 @@ export interface TailWindow {
   jump(): void;
 }
 
-// The page is the scroller, so the metrics are the document's.
-function scrollRoot(): HTMLElement {
-  return (document.scrollingElement as HTMLElement | null) ?? document.documentElement;
-}
-
-function metrics(): ScrollMetrics {
-  const root = scrollRoot();
-  return { scrollTop: root.scrollTop, clientHeight: root.clientHeight, scrollHeight: root.scrollHeight };
-}
-
-function scrollToTail(): void {
-  window.scrollTo(0, maxScrollTop(metrics()));
-}
-
-// The tail window of the ledger (core/anchor.ts is the arithmetic). A reader at the tail keeps
-// following new records. A reader away from it keeps their place, and the records applied meanwhile
-// are counted on the control. The pin lives in the store, so it survives a switch to the chat view.
+// The tail window of the ledger (core/anchor.ts is the arithmetic). The scroller is the ledger at wide widths, where the
+// view fills its column and the ledger scrolls inside it, and the page at phone widths (tailScroller.ts). A reader at the
+// tail keeps following new records. A reader away from it keeps their place, and the records applied meanwhile are counted
+// on the control. The pin lives in the store, so it survives a switch to the chat view.
 export function useTailWindow({ actions, pending, count, ledgerRef }: TailInput): TailWindow {
   const announcer = useAnnouncer();
   // The tail as last measured. It is measured before the DOM grows, so it still describes the
@@ -59,18 +47,19 @@ export function useTailWindow({ actions, pending, count, ledgerRef }: TailInput)
   );
 
   useLayoutEffect(() => {
-    if (seenRecords.current && atTailRef.current) scrollToTail();
+    const scroller = tailScroller(ledgerRef.current);
+    if (seenRecords.current && atTailRef.current) scrollTailTo(scroller, maxScrollTop(metricsOf(scroller)));
     if (count > 0) seenRecords.current = true;
-    settle(isAtTail(metrics()));
+    settle(isAtTail(metricsOf(scroller)));
   });
 
-  useEffect(() => {
-    function onScroll() {
-      settle(isAtTail(metrics()));
-    }
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [settle]);
+  useEffect(
+    () =>
+      onTailScroll(ledgerRef.current, () => {
+        settle(isAtTail(metricsOf(tailScroller(ledgerRef.current))));
+      }),
+    [settle, ledgerRef],
+  );
 
   useEffect(() => {
     if (pending === 0) {
@@ -88,7 +77,8 @@ export function useTailWindow({ actions, pending, count, ledgerRef }: TailInput)
   }, [pending, announcer]);
 
   const jump = useCallback(() => {
-    scrollToTail();
+    const scroller = tailScroller(ledgerRef.current);
+    scrollTailTo(scroller, maxScrollTop(metricsOf(scroller)));
     atTailRef.current = true;
     actions.repinTail(true);
     ledgerRef.current?.focus({ preventScroll: true });

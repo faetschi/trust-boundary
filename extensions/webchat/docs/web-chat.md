@@ -38,8 +38,9 @@ clients**:
 ## 2. What is implemented, and what is not
 
 Honesty is a hard requirement: the UI must not imply capabilities that do not
-exist. The composer and cancel control are present but **disabled and labelled**
-because submission requires the authenticated supervisor session service.
+exist. The composer is present but **disabled and labelled**, and there is no cancel
+control, because submission and cancellation require the authenticated supervisor
+session service.
 
 | Capability | State |
 |---|---|
@@ -270,10 +271,12 @@ endpoint was needed to build it.
   `Result` (state, lossy, digest), `Evidence` (authority, verification scope and
   an explicit "independently verified: no") and `Timing`. The Timing section is
   always present and always states that a duration is unavailable, because none
-  was recorded. `Escape` or **Close** clears the selection and returns focus to
-  the row; the session-scoped governance panels return. Below 1180 px the
-  inspector is an off-canvas drawer: selecting a record opens it, and dismissing
-  the record closes it.
+  was recorded. The selected record shows in a bar between the governance tab
+  strip and the body. **Close record** clears the selection, keeps an open drawer
+  open on its governance panel, and moves focus to that panel's tab. `Escape`
+  clears the selection first; a second `Escape` closes an open drawer. Below 1180
+  px the inspector is an off-canvas drawer with a scrim: selecting a record opens
+  it.
 - **Search** reads only allowlisted bounded fields (`id`, `text`, `summary`,
   `detail`, `tool`, `kind`, `state`, `verdict`, `reason_code`, `tool_call_id`,
   `turn_id`). Raw paths, arguments and result bytes are not in the projection and
@@ -284,8 +287,8 @@ endpoint was needed to build it.
 
 ### 4.5 Following the tail (client-only)
 
-The transcript and the ledger scroll with the page. A reader within 40 px of the
-bottom keeps following new records. A reader who has scrolled away keeps their
+The ledger scrolls with the page. The transcript scrolls inside the Chat view, above
+the composer. A reader within 40 px of the bottom keeps following new records. A reader who has scrolled away keeps their
 place: the first record visible at the top of the viewport is held across each
 re-render. Records applied while they are away are counted on a `N new records ·
 Jump to latest` control in that view, which moves them to the tail and moves focus
@@ -575,6 +578,7 @@ the running gateway) are in [`webchat/qa/`](webchat/qa/): `fixture-desktop`, `fi
 `receipt-real-expanded-tools`, `unavailable-desktop`, `mobile-conversation`,
 `mobile-inspector`. Keyboard audits driven over the DevTools protocol are in
 `webchat/qa/keyboard-audit-desktop.json` and `keyboard-audit-mobile.json`. They
+were recorded before the redesign follow-up, so they describe that build. They
 verify tab order (skip link → governance toggle → session → timeline filters →
 each tool disclosure), `Enter` toggling a tool disclosure, `Enter` opening the
 governance drawer and `Escape` closing it, `Enter` selecting a timeline filter

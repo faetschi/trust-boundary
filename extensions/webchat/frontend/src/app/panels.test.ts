@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { panelsDefault } from "../core/testing/builders";
 import type { GovernancePanel, Panels, ProvenancePanel } from "../core/contract";
 import {
+  countValue,
+  decisionSummary,
+  decisionsState,
   governanceRows,
   NO_PROJECTION,
   NO_WARNINGS,
@@ -80,23 +83,67 @@ describe("state readings: UNKNOWN stays UNKNOWN", () => {
 });
 
 describe("governance counts: absent is unavailable, never zero", () => {
-  it("shows the counts when the panel is present", () => {
-    const rows = governanceRows({ allow_count: 2, deny_count: 1, unknown_count: 0 });
-    expect(valueOf(rows[0]?.[1])).toBe("2");
-    expect(valueOf(rows[1]?.[1])).toBe("1");
-    expect(valueOf(rows[2]?.[1])).toBe("0");
+  it("states the counts in words when the panel is present, each one a verdict", () => {
+    expect(decisionSummary({ allow_count: 2, deny_count: 1, unknown_count: 0 })).toBe("policy verdicts 2 allow / 1 deny / 0 unknown");
   });
 
-  it("shows every count as unavailable with a reason when the panel is absent", () => {
-    const rows = governanceRows(undefined);
-    for (const [, reading] of rows.slice(0, 3)) {
-      expect(reading).toEqual({ kind: "unavailable", reason: "the snapshot carries no governance panel" });
+  it("states an absent panel as unavailable, with its reason", () => {
+    expect(decisionSummary(undefined)).toBe("policy verdicts unavailable (the snapshot carries no governance panel)");
+  });
+
+  it("states all-zero counts with no policy digest as unavailable: the gateway writes an absent count as zero", () => {
+    expect(decisionSummary({ allow_count: 0, deny_count: 0, unknown_count: 0 })).toBe(
+      "policy verdicts unavailable (the snapshot carries no decision counts)",
+    );
+  });
+
+  it("states all-zero counts with a policy digest as zero verdicts, which is an observation", () => {
+    expect(decisionSummary({ allow_count: 0, deny_count: 0, unknown_count: 0, policy_digest: "sha256:ab" })).toBe(
+      "policy verdicts 0 allow / 0 deny / 0 unknown",
+    );
+  });
+
+  it("classifies a panel as counted, none (a digest and zero verdicts) or absent", () => {
+    const zero = { allow_count: 0, deny_count: 0, unknown_count: 0 };
+    expect(decisionsState({ ...zero, policy_digest: "sha256:ab" }, 0)).toBe("none");
+    expect(decisionsState(zero, 0)).toBe("absent");
+    expect(decisionsState(undefined, 0)).toBe("absent");
+    expect(decisionsState({ allow_count: 4, deny_count: 1, unknown_count: 0 }, 5)).toBe("counted");
+    expect(decisionsState({ allow_count: 1, deny_count: 0, unknown_count: 0 }, 0)).toBe("counted");
+  });
+
+  it("does not call zero counts 'none' while a loaded decision carries a verdict, the counts contradict it", () => {
+    const zero = { allow_count: 0, deny_count: 0, unknown_count: 0 };
+    expect(decisionsState({ ...zero, policy_digest: "sha256:ab" }, 2)).toBe("absent");
+    expect(decisionsState(zero, 2)).toBe("absent");
+  });
+
+  it("a count the panel cannot state is not an absent panel: it reads part by part", () => {
+    const partial = { allow_count: "3", deny_count: 0, unknown_count: 0 } as unknown as GovernancePanel;
+    expect(decisionsState(partial, 0)).toBe("counted");
+  });
+
+  it("refuses a count that is not a non-negative integer, part by part", () => {
+    expect(decisionSummary({ allow_count: -1, deny_count: 1.5, unknown_count: Number.NaN })).toBe(
+      "policy verdicts unavailable allow / unavailable deny / unavailable unknown",
+    );
+  });
+
+  it("keeps the policy digest as the only governance row, unavailable when the panel is absent", () => {
+    expect(governanceRows({ allow_count: 0, deny_count: 0, unknown_count: 0, policy_digest: "sha256:ab" })).toEqual([
+      ["Policy digest", { kind: "value", text: "sha256:ab" }],
+    ]);
+    expect(governanceRows(undefined)[0]?.[1].kind).toBe("unavailable");
+  });
+});
+
+describe("countValue: only a non-negative integer is a count", () => {
+  it("returns the integer, and null for anything else", () => {
+    expect(countValue(0)).toBe(0);
+    expect(countValue(3)).toBe(3);
+    for (const value of ["3", -1, 1.5, Number.NaN, undefined, null, true]) {
+      expect(countValue(value), String(value)).toBeNull();
     }
-  });
-
-  it("refuses a count that is not a non-negative integer", () => {
-    const rows = governanceRows({ allow_count: -1, deny_count: 1.5, unknown_count: Number.NaN });
-    expect(rows.slice(0, 3).every(([, reading]) => reading.kind === "unavailable")).toBe(true);
   });
 });
 
@@ -162,9 +209,8 @@ describe("absent input reads unavailable, never no, zero, none, complete or ok",
   it("a present panel that cannot state a field reads that field as unavailable", () => {
     const provenance = provenanceRows({ available: "yes" } as unknown as ProvenancePanel, true);
     expect(provenance[0]?.[1].kind).toBe("unavailable");
-    const governance = governanceRows({ allow_count: "3", deny_count: 0, unknown_count: 0 } as unknown as GovernancePanel);
-    expect(governance[0]?.[1].kind).toBe("unavailable");
-    expect(governance[1]?.[1]).toEqual({ kind: "value", text: "0" });
+    const governance = decisionSummary({ allow_count: "3", deny_count: 0, unknown_count: 0 } as unknown as GovernancePanel);
+    expect(governance).toBe("policy verdicts unavailable allow / 0 deny / 0 unknown");
   });
 
   it("an absent publication, recovery or session state reads unavailable, and an empty state is not a label", () => {

@@ -4,11 +4,15 @@
  * inline styles, because the CSP allows no inline style (core/trajectory.ts weightClass).
  */
 
+/* The view fills its column: the ledger scrolls inside it, and the toolbar and the rail stay in view above it. */
 .view {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  position: relative;
+  height: 100%;
   min-width: 0;
+  min-height: 0;
 }
 
 /* Toolbar: the grouping toggles and the search field, then the summary line. */
@@ -206,13 +210,16 @@
   font-size: var(--text-xs);
 }
 
-/* Ledger: groups of record rows. The container is a focus target for the tail control. */
+/* Ledger: groups of record rows. At wide widths the container is the scroller, and a focus target for the tail control. */
 
 .ledger {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: var(--space-3);
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .group {
@@ -324,13 +331,15 @@
   font-size: var(--text-xs);
 }
 
-/* The tail control stays in view while the reader is away from the tail. */
+/* The tail control sits over the foot of the ledger, where the reader is looking. At phone widths the page scrolls,
+   and the control sticks to the bottom of the viewport instead (see the phone block below). */
 
 .jump {
-  position: sticky;
+  position: absolute;
   bottom: var(--space-3);
+  left: 50%;
+  transform: translateX(-50%);
   z-index: var(--z-sticky);
-  align-self: center;
   min-height: var(--row-h-button);
   padding: 0 var(--space-4);
   border: 1px solid var(--primary);
@@ -347,6 +356,13 @@
 @media (max-width: 760px) {
   .search {
     flex-basis: 100%;
+  }
+
+  .jump {
+    position: sticky;
+    align-self: center;
+    left: auto;
+    transform: none;
   }
 
   .lane {

@@ -11,9 +11,10 @@ import {
   messageItem,
   panelsDefault,
   resultItem,
+  sessionDefault,
   snapshotOf,
 } from "../../core/testing/builders";
-import { CONTRACT_VERSION, type Item, type Snapshot } from "../../core/contract";
+import { CONTRACT_VERSION, type Item, type SessionHeader, type Snapshot, type VerificationScope } from "../../core/contract";
 import { fakeWorkspace, type FakeWorkspace } from "../../test-support/fakes";
 import { click, mount, settle, type Mounted } from "../../test-support/dom";
 import { AnnouncerContext, useAnnouncer } from "../../ui/LiveRegion";
@@ -112,8 +113,9 @@ function hasJumpControl(): boolean {
 }
 
 // The line under the filter toolbar: the toolbar's sibling paragraph.
+// The count of the retained window, on the head's title row.
 function summaryLine(): string {
-  return q("[role='toolbar']").parentElement?.querySelector("p")?.textContent ?? "";
+  return q("[data-summary]").textContent ?? "";
 }
 
 // The fixture projection of the legacy suite: an ALLOW with a reported result, and a DENY with a denied result.
@@ -145,17 +147,47 @@ function observed<T extends { authority: string; verification_scope: string }>(i
   return { ...item, authority: "observed", verification_scope: "structural-audit-only" };
 }
 
-// Stubs the page's scroll metrics. A 5000 px page in a 500 px viewport is away from the tail at the
-// top. happy-dom's scrollTo writes the scrollTop it is given, so a jump is observable.
-function stubPage(heights: { readonly scroll: number; readonly view: number }): void {
-  const root = document.documentElement;
-  Object.defineProperty(root, "scrollHeight", { configurable: true, get: () => heights.scroll });
-  Object.defineProperty(root, "clientHeight", { configurable: true, get: () => heights.view });
+// Stubs the transcript's scroll metrics. The transcript is the scroller (the view fills the column, and the
+// log scrolls inside it), so a 5000 px transcript in a 500 px viewport is away from the tail at the top. The
+// stub applies to every log element, so it is installed before the view mounts. happy-dom keeps the scrollTop
+// it is given, so a jump is observable.
+function stubTranscript(heights: { readonly scroll: number; readonly view: number }): void {
+  const proto = HTMLElement.prototype;
+  Object.defineProperty(proto, "scrollHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.getAttribute("role") === "log" ? heights.scroll : 0;
+    },
+  });
+  Object.defineProperty(proto, "clientHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.getAttribute("role") === "log" ? heights.view : 0;
+    },
+  });
   restorePage = () => {
-    delete (root as unknown as Record<string, unknown>).scrollHeight;
-    delete (root as unknown as Record<string, unknown>).clientHeight;
-    root.scrollTop = 0;
+    delete (proto as unknown as Record<string, unknown>).scrollHeight;
+    delete (proto as unknown as Record<string, unknown>).clientHeight;
   };
+}
+
+function transcript(): HTMLElement {
+  return q("[role='log']");
+}
+
+// A paragraph of the view whose whole text is the given line.
+function hasParagraph(text: string): boolean {
+  return qa("p").some((element) => element.textContent === text);
+}
+
+// The role line of a message: the first paragraph of its block.
+function roleRow(role: string): HTMLElement {
+  return q(`div[data-role='${role}'] p`);
+}
+
+// A snapshot of the fixture records with the given session header (the Pi identity line is read from it).
+function sessionSnapshot(session: Partial<SessionHeader>): Snapshot {
+  return snapshotOf({ items: fixtureItems(), session: { ...sessionDefault(), ...session }, panels: panelsDefault() });
 }
 
 // A model from a real store with the given items. It is the input for the states that need a fixed
@@ -233,7 +265,7 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
       ),
     );
     expect(q("[role='log']").textContent).not.toContain("in this view are");
-    expect(chips()).toContainEqual(["unverified", "idle"]);
+    expect(chips()).toContainEqual(["reported, not verified", "reported"]);
     expect(chips()).toContainEqual(["verified", "ok"]);
     expect(chips()).toContainEqual(["succeeded", "ok"]);
   });
@@ -258,7 +290,7 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
     expect(qa("summary")[0]?.textContent).toContain("verified evidence, output lossy");
   });
 
-  it("states once that a verified projection is verified, with no per-item marker", async () => {
+  it("states once that a verified projection is verified, and draws no per-item marker on the tool card", async () => {
     await renderLive(
       verifiedSnapshot([
         observed(messageItem({ id: "m1", sequence: 1, role: "user", text: "hello" })),
@@ -266,7 +298,9 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
       ]),
     );
     expect(q("[role='log']").textContent).toContain("All 2 records in this view are verified · source: live");
-    expect(chips().some(([text]) => text === "unverified" || text === "verified")).toBe(false);
+    // The message reads its own verdict of the gate; the tool card, in a uniform view, does not.
+    expect(chips()).toContainEqual(["verified", "ok"]);
+    expect(q("[data-anchor='c1'] summary").textContent).not.toMatch(/unverified|verified/);
   });
 
   it("states no provenance line for an empty projection", async () => {
@@ -279,38 +313,46 @@ describe("the transcript: legacy cases from render.test.mjs", () => {
     const toolbar = q("[role='toolbar']");
     expect(toolbar.getAttribute("aria-label")).toBe("Timeline filters");
     const buttons = Array.from(toolbar.querySelectorAll("button"));
-    expect(buttons.map((element) => element.textContent?.trim())).toEqual(["All 7", "Denied 2", "Unknown 0", "Failed 0"]);
+    expect(buttons.map((element) => element.textContent?.trim())).toEqual([
+      "All 7",
+      "Denied (verdict or result) 2",
+      "Unknown or lossy 0",
+      "Failed result 0",
+    ]);
     expect(buttons[0]?.getAttribute("aria-pressed")).toBe("true");
     expect(buttons[1]?.getAttribute("aria-pressed")).toBe("false");
+    expect(buttons[1]?.getAttribute("title")).toMatch(/DENY verdict or a denied result/);
+    expect(buttons[2]?.getAttribute("title")).toBe("Records whose verdict or result is unknown, or whose output is lossy");
     expect(summaryLine()).toBe("7 element(s) in the retained window");
   });
 
-  it("separates policy ALLOW from reported execution in the posture badges", async () => {
+  it("words each posture count by what it counts: verdicts for decisions, results for executions", async () => {
     await renderLive(fixtureSnapshot());
     const posture = q("[role='group'][aria-label='Observed posture']").textContent ?? "";
-    expect(posture).toMatch(/ALLOW 1/);
-    expect(posture).toMatch(/DENY 1/);
+    expect(posture).toMatch(/allow verdict 1/);
+    expect(posture).toMatch(/deny verdict 1/);
     expect(posture).toMatch(/reported 1/);
-    expect(posture).toMatch(/denied 1/);
+    expect(posture).toMatch(/denied result 1/);
     expect(posture).not.toMatch(/verified 1/);
+    expect(posture).not.toMatch(/ALLOW 1|DENY 1|denied 1/);
   });
 
   it("hides non-matching blocks and messages when the Denied filter is pressed", async () => {
     await renderLive(fixtureSnapshot());
-    click(button("Denied"));
+    click(button("Denied (verdict or result)"));
     const text = q("[role='log']").textContent ?? "";
     expect(text).toContain("bash: curl");
     expect(text).not.toContain("hello world");
     expect(text).not.toContain("bash: go test");
-    expect(button("Denied").getAttribute("aria-pressed")).toBe("true");
-    expect(summaryLine()).toBe("2 matches · 3 of 7 element(s) shown for “Denied” (context included)");
+    expect(button("Denied (verdict or result)").getAttribute("aria-pressed")).toBe("true");
+    expect(summaryLine()).toBe("2 matches · 3 of 7 element(s) shown for “Denied (verdict or result)” (context included)");
   });
 
   it("renders the empty-filter state when no element matches", async () => {
     await renderLive(fixtureSnapshot());
-    click(button("Failed"));
-    expect(q("[role='log']").textContent).toContain("No failed findings");
-    expect(summaryLine()).toBe("0 matches · 0 of 7 element(s) shown for “Failed” (context included)");
+    click(button("Failed result"));
+    expect(q("[role='log']").textContent).toContain("No failed result findings");
+    expect(summaryLine()).toBe("0 matches · 0 of 7 element(s) shown for “Failed result” (context included)");
   });
 
   it("renders assistant text as markdown and the same text from the user as literal", async () => {
@@ -412,6 +454,11 @@ describe("honesty rules on the transcript (web-chat.md sections 4.1 and 4.3)", (
     expect(found).toContainEqual(["UNKNOWN", "unknown"]);
     expect(found).toContainEqual(["unknown", "unknown"]);
     expect(found).toContainEqual(["lost", "lost"]);
+    // The bare word unknown names the verdict count only (the footer's "0 unknown"); the unknown result reads unresolved.
+    const posture = q("[role='group'][aria-label='Observed posture']").textContent ?? "";
+    expect(posture).toMatch(/unknown verdict 1/);
+    expect(posture).toMatch(/unresolved result 1/);
+    expect(posture).not.toMatch(/unknown result/);
     expect(q("[role='log']").textContent).toContain("not an ALLOW or a DENY");
   });
 
@@ -462,11 +509,14 @@ describe("honesty rules on the transcript (web-chat.md sections 4.1 and 4.3)", (
     expect(q("[role='log']").textContent).toContain("lossy output is not terminal evidence");
   });
 
-  it("counts lossy output under the Unknown filter", async () => {
+  it("counts lossy output under the Unknown or lossy filter", async () => {
     await renderLive(
       fixtureSnapshot([resultItem({ id: "r1", sequence: 1, tool: "bash", tool_call_id: "c1", state: "succeeded", lossy: true })]),
     );
-    expect(button("Unknown").textContent).toBe("Unknown 1");
+    expect(button("Unknown or lossy").textContent).toBe("Unknown or lossy 1");
+    expect(button("Unknown or lossy").getAttribute("title")).toBe("Records whose verdict or result is unknown, or whose output is lossy");
+    // The filter counts lossy output, which never takes the success tone; its button is not inside any success chip.
+    expect(button("Unknown or lossy").closest("[data-tone='ok']")).toBeNull();
   });
 
   it("shows the policy digest shortened on screen, with the full value in the title and in the text a reader hears", async () => {
@@ -555,9 +605,10 @@ describe("notices and states", () => {
     expect(q("[role='log']").textContent).toContain("Production observations are unavailable");
   });
 
-  it("says nothing has been projected for an empty live projection", async () => {
+  it("says no Pi turns are observed yet, and that nothing can be sent from this read-only page", async () => {
     await renderLive(snapshotOf({ items: [] }));
-    expect(q("[role='log']").textContent).toContain("No transcript or activity has been projected yet.");
+    expect(q("[role='log']").textContent).toContain("No Pi turns observed yet.");
+    expect(q("[role='log']").textContent).toContain("This page is a read-only view; nothing can be sent from here.");
   });
 
   it("shows a projection error as text", () => {
@@ -574,7 +625,7 @@ describe("the tail window (web-chat.md section 4.5)", () => {
   });
 
   it("counts the records applied while a reader is away, and offers Jump to latest", async () => {
-    stubPage({ scroll: 5000, view: 500 });
+    stubTranscript({ scroll: 5000, view: 500 });
     await renderLive(fixtureSnapshot());
     emitItem(messageItem({ id: "m8", sequence: 8, role: "assistant", text: "one" }));
     emitItem(messageItem({ id: "m9", sequence: 9, role: "assistant", text: "two" }));
@@ -582,7 +633,7 @@ describe("the tail window (web-chat.md section 4.5)", () => {
   });
 
   it("counts only applied records: a duplicate or a gap never adds to the count", async () => {
-    stubPage({ scroll: 5000, view: 500 });
+    stubTranscript({ scroll: 5000, view: 500 });
     await renderLive(fixtureSnapshot());
     emitItem(messageItem({ id: "m8", sequence: 8, role: "assistant", text: "one" }));
     emitItem(messageItem({ id: "m8", sequence: 8, role: "assistant", text: "one" }));
@@ -592,28 +643,28 @@ describe("the tail window (web-chat.md section 4.5)", () => {
   });
 
   it("holds the reader's place when records arrive below the viewport", async () => {
-    stubPage({ scroll: 5000, view: 500 });
+    stubTranscript({ scroll: 5000, view: 500 });
     await renderLive(fixtureSnapshot());
-    document.documentElement.scrollTop = 1200;
+    transcript().scrollTop = 1200;
     act(() => {
-      window.dispatchEvent(new Event("scroll"));
+      transcript().dispatchEvent(new Event("scroll"));
     });
     emitItem(messageItem({ id: "m8", sequence: 8, role: "assistant", text: "below" }));
-    expect(document.documentElement.scrollTop).toBe(1200);
+    expect(transcript().scrollTop).toBe(1200);
   });
 
   it("moves the reader to the tail, and focus to the transcript, when Jump is pressed", async () => {
-    stubPage({ scroll: 5000, view: 500 });
+    stubTranscript({ scroll: 5000, view: 500 });
     await renderLive(fixtureSnapshot());
     emitItem(messageItem({ id: "m8", sequence: 8, role: "assistant", text: "one" }));
     click(button("1 new record"));
-    expect(document.documentElement.scrollTop).toBe(4500);
+    expect(transcript().scrollTop).toBe(4500);
     expect(document.activeElement).toBe(q("[role='log']"));
     expect(hasJumpControl()).toBe(false);
   });
 
   it("announces the waiting count once, after a debounce, through the shell announcer", async () => {
-    stubPage({ scroll: 5000, view: 500 });
+    stubTranscript({ scroll: 5000, view: 500 });
     await renderLive(fixtureSnapshot());
     vi.useFakeTimers();
     emitItem(messageItem({ id: "m8", sequence: 8, role: "assistant", text: "one" }));
@@ -631,16 +682,16 @@ describe("the tail window (web-chat.md section 4.5)", () => {
   });
 
   it("a snapshot load never adds to the count, even for a reader away from the tail", async () => {
-    stubPage({ scroll: 5000, view: 500 });
+    stubTranscript({ scroll: 5000, view: 500 });
     await renderLive(fixtureSnapshot());
     expect(hasJumpControl()).toBe(false);
     expect(latest?.applied).toBe(0);
   });
 
   it("opens at the top of the transcript with no count", async () => {
-    stubPage({ scroll: 5000, view: 500 });
+    stubTranscript({ scroll: 5000, view: 500 });
     await renderLive(fixtureSnapshot());
-    expect(document.documentElement.scrollTop).toBe(0);
+    expect(transcript().scrollTop).toBe(0);
     expect(hasJumpControl()).toBe(false);
   });
 });
@@ -659,5 +710,186 @@ describe("the filter toolbar and the log", () => {
     const log = q("[role='log']");
     expect(log.getAttribute("aria-live")).toBe("off");
     expect(log.getAttribute("aria-label")).toBe("Transcript");
+  });
+});
+
+describe("the conversation head", () => {
+  it("names the session, and states its Pi version, session id, workflow id, and status with its reading", async () => {
+    await renderLive(
+      sessionSnapshot({
+        title: "Demo session",
+        pi_version: "0.87.1",
+        session_id: "session-demo-01",
+        workflow_id: "wf-demo-01",
+        status: "completed",
+      }),
+    );
+    expect(q("h2").textContent).toBe("Demo session");
+    expect(hasParagraph("Pi 0.87.1 · session-demo-01 · wf-demo-01")).toBe(true);
+    // The Pi version is drawn on its own: its text is exactly the projected session.pi_version.
+    expect(qa("p span").some((element) => element.textContent === "0.87.1")).toBe(true);
+    expect(hasParagraph("completed · reported, not verified")).toBe(true);
+  });
+
+  it("reads an absent title as unavailable, never as blank", async () => {
+    await renderLive(sessionSnapshot({ title: undefined, status: "completed" }));
+    expect(q("h2").textContent).toBe("Session title unavailable");
+  });
+
+  it("before the first snapshot, shows the Pi session heading with every value unavailable", () => {
+    mounted = mount(
+      <WorkspaceProvider deps={fakeWorkspace(fixtureSnapshot()).deps}>
+        <Probe />
+      </WorkspaceProvider>,
+    );
+    expect(q("h2").textContent).toBe("Pi session");
+    expect(hasParagraph("Pi version unavailable · session id unavailable · workflow id unavailable")).toBe(true);
+    expect(hasParagraph("status unavailable")).toBe(true);
+  });
+});
+
+describe("message chrome", () => {
+  it("labels the assistant Pi, with its screen-reader text, and the user User, each with its reading", async () => {
+    await renderLive(
+      fixtureSnapshot([
+        messageItem({ id: "m1", sequence: 1, role: "user", text: "hello" }),
+        messageItem({ id: "m2", sequence: 2, role: "assistant", text: "hi" }),
+      ]),
+    );
+    expect(roleRow("user").textContent).toBe("User reported, not verified");
+    expect(roleRow("assistant").textContent).toBe("Pi, assistant reported, not verified");
+  });
+
+  it("reads a message whose verification scope is absent as verification unavailable, never as verified", async () => {
+    // A snapshot item without its scope is refused by validation, so the view is rendered from a model that carries it.
+    const orphan = { ...messageItem({ id: "m1", sequence: 1, role: "assistant", text: "hi" }), verification_scope: undefined as unknown as VerificationScope };
+    renderModel(modelOf([orphan]));
+    expect(roleRow("assistant").textContent).toBe("Pi, assistant verification unavailable");
+  });
+
+  it("gives each message a time, a Copy button and a record button named for its sequence", async () => {
+    await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello" })]));
+    const time = q("div[data-role='user'] time");
+    expect(time.getAttribute("datetime")).toBe("2026-10-13T09:12:04Z");
+    expect(time.textContent).toMatch(/^\d{2}:\d{2}$/);
+    expect(button("Copy message").textContent).toBe("Copy message");
+    expect(button("record 1").textContent).toBe("record 1");
+  });
+
+  it("names every record label by an item's sequence, on messages and on tool cards", async () => {
+    await renderLive(fixtureSnapshot());
+    const sequences = fixtureItems().map((item) => item.sequence);
+    const labels = [...(mounted?.container.textContent ?? "").matchAll(/record (\d+)/g)].map((match) => Number(match[1]));
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) expect(sequences).toContain(label);
+    expect(qa("[data-anchor='c1'] summary")[0]?.textContent).toContain("record 4");
+  });
+
+  it("opens the record inspector from a record button, so the selection moves to that record", async () => {
+    await renderLive(fixtureSnapshot());
+    click(button("record 1"));
+    expect(latest?.selectedId).toBe("m1");
+  });
+
+  it("draws no diff statistic, no group summary and no MATCHED label", async () => {
+    await renderLive(fixtureSnapshot());
+    expect(q("[role='log']").textContent).not.toMatch(/\+\d+\s*[−-]\d+|MATCHED/);
+  });
+
+  it("never names the closed tool vocabulary as this session's tools", async () => {
+    await renderLive(fixtureSnapshot());
+    expect(mounted?.container.textContent).not.toContain("read, write, edit, bash");
+  });
+});
+
+describe("the Copy action", () => {
+  afterEach(() => {
+    delete (navigator as unknown as Record<string, unknown>).clipboard;
+  });
+
+  function setClipboard(value: unknown): void {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value });
+  }
+
+  // Lets the copy promise settle, without moving the timers.
+  async function settleCopy(): Promise<void> {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  it("copies the projected text, reads Copied for one second, and announces the copy", async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    setClipboard({ writeText });
+    await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello world" })]));
+    vi.useFakeTimers();
+    click(button("Copy message"));
+    await settleCopy();
+    expect(writeText).toHaveBeenCalledWith("hello world");
+    expect(button("Copied").textContent).toBe("Copied");
+    expect(liveAnnouncer?.getSnapshot().text).toBe("Message copied.");
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(button("Copy message").textContent).toBe("Copy message");
+  });
+
+  it("reads Copy unavailable when the clipboard refuses, and does not throw", async () => {
+    setClipboard({ writeText: () => Promise.reject(new Error("permission denied")) });
+    await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello world" })]));
+    click(button("Copy message"));
+    await settleCopy();
+    expect(button("Copy unavailable").textContent).toBe("Copy unavailable");
+    expect(liveAnnouncer?.getSnapshot().text).toBe("Copy unavailable.");
+  });
+
+  it("reads Copy unavailable when the page has no clipboard, and does not throw", async () => {
+    setClipboard(undefined);
+    await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello world" })]));
+    click(button("Copy message"));
+    await settleCopy();
+    expect(button("Copy unavailable").textContent).toBe("Copy unavailable");
+  });
+
+  it("names the copy of a truncated message as the displayed text", async () => {
+    await renderLive(
+      fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "assistant", text: "part", text_truncated: true })]),
+    );
+    expect(button("Copy displayed text (truncated)").textContent).toBe("Copy displayed text (truncated)");
+  });
+});
+
+describe("the composer in the Chat view", () => {
+  it("renders the composer below the transcript, as a read-only, labelled region", async () => {
+    await renderLive(fixtureSnapshot());
+    const composer = q("[data-testid='composer']");
+    expect(q("[role='log']").compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(q<HTMLTextAreaElement>("[data-testid='composer'] textarea").readOnly).toBe(true);
+  });
+
+  it("is rendered before the first snapshot too, so the screen still reads as a chat", () => {
+    mounted = mount(
+      <WorkspaceProvider deps={fakeWorkspace(fixtureSnapshot()).deps}>
+        <Probe />
+      </WorkspaceProvider>,
+    );
+    expect(q("[data-testid='composer']")).toBeTruthy();
+  });
+});
+
+describe("the composer dock: the chat view's last box, which holds the jump", () => {
+  it("is a box of its own, and the last child of the chat view, so a phone pins it at the page's end", async () => {
+    await renderLive(fixtureSnapshot());
+    const dock = q("[data-testid='composer']").parentElement;
+    expect(dock?.querySelector("[role='log']")).toBeNull();
+    expect(dock?.parentElement?.lastElementChild).toBe(dock);
+  });
+
+  it("holds the jump in that dock, beside the composer and not inside the transcript", async () => {
+    stubTranscript({ scroll: 5000, view: 500 });
+    await renderLive(fixtureSnapshot());
+    emitItem(messageItem({ id: "m8", sequence: 8, role: "assistant", text: "one" }));
+    expect(button("1 new record").parentElement).toBe(q("[data-testid='composer']").parentElement);
   });
 });

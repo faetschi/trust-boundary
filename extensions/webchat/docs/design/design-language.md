@@ -154,7 +154,7 @@ Source: `extensions/webchat/internal/webchat/assets/styles.css`. `index.html:6` 
 | `--font-sans` / `--font-mono` | Inter first, then system; Geist Mono first | 55–56 | type (neither font is bundled) |
 | `--source-system` … `--source-message` | six oklch hues (.72–.83, chroma .04–.14) | 64–70 | record provenance |
 | `--state-ok` … `--state-idle` | aliases of the above | 79–92 | state dots and chips |
-| `--rail-width` / `--inspector-width` / `--row-pad-x` | 15rem / 21.5rem / .625rem | 95–97 | geometry |
+| `--rail-width` / `--rail-collapsed-width` / `--inspector-width` / `--row-pad-x` | 13rem / 3.5rem / 31.5rem / 10px | 234–237 | geometry |
 | `--radius` | .625rem (10 px) | 45 | radius |
 
 State encodings, shape plus colour [src: `styles.css:859-890, 1189-1230`]:
@@ -527,8 +527,9 @@ Theme selection: light is the default. Dark applies when the OS asks for it, or 
 
   --focus-width: 2px;
   --row-pad-x: 10px;
-  --rail-width: 15rem;
-  --inspector-width: 21.5rem;
+  --rail-width: 13rem;
+  --rail-collapsed-width: 3.5rem;
+  --inspector-width: 31.5rem;
   --row-h-turn: 33px;
   --row-h-cell: 38px;
   --row-h-toolbar: 32px;

@@ -7,10 +7,14 @@ import {
   EMPTY_TOOL_SUMMARY,
   LOSSY_EVIDENCE_READING,
   LOSSY_READING,
+  REPORTED_NOT_VERIFIED_READING,
   UNVERIFIED_READING,
+  VERIFICATION_UNAVAILABLE_READING,
   VERIFIED_READING,
   filterSummaryText,
   firstSummary,
+  messageReading,
+  filterNameOf,
   postureEntries,
   stateReading,
   turnLabel,
@@ -126,8 +130,44 @@ describe("posture badges", () => {
   it("separates policy ALLOW from reported execution", () => {
     const entries = postureEntries(counts({ allow: 1, reported: 1 }));
     const texts = entries.map((entry) => entry.text);
-    expect(texts).toEqual(["ALLOW 1", "reported 1"]);
+    expect(texts).toEqual(["allow verdict 1", "reported 1"]);
     expect(entries.find((entry) => entry.key === "allow")?.tone).toBe("allow");
+  });
+
+  // A count and the word for it must agree across the screen: a verdict count is a decision, a result count is an execution.
+  it("words the decision counts as verdicts and the result counts as results, so no word names two different counts", () => {
+    const entries = postureEntries(counts({ allow: 1, deny: 2, unknownDecisions: 1, denied: 3, unknownResults: 4, failed: 5 }));
+    expect(entries.map((entry) => entry.text)).toEqual([
+      "allow verdict 1",
+      "deny verdict 2",
+      "unknown verdict 1",
+      "denied result 3",
+      "failed result 5",
+      "unresolved result 4",
+    ]);
+    for (const entry of entries) expect(entry.hint.length).toBeGreaterThan(0);
+  });
+
+  // The footer's "0 unknown" counts UNKNOWN verdicts, so on this screen the bare word unknown names a verdict only.
+  it("keeps the bare word unknown for verdicts: an unknown result reads unresolved", () => {
+    const texts = postureEntries(counts({ unknownDecisions: 1, unknownResults: 4 })).map((entry) => entry.text);
+    expect(texts).toEqual(["unknown verdict 1", "unresolved result 4"]);
+    expect(texts.filter((text) => /\bunknown\b/.test(text))).toEqual(["unknown verdict 1"]);
+  });
+
+  it("never draws a member of the Unknown or lossy filter in the success tone", () => {
+    const members = postureEntries(counts({ unknownDecisions: 1, unknownResults: 1, lost: 1, lossy: 1 }));
+    expect(members.map((entry) => entry.tone)).toEqual(["unknown", "unknown", "lost", "unknown"]);
+  });
+
+  it("names each filter for what its count counts, and keeps the legacy id for anything else", () => {
+    expect(filterNameOf("denied").label).toBe("Denied (verdict or result)");
+    expect(filterNameOf("unknown").label).toBe("Unknown or lossy");
+    expect(filterNameOf("failed").label).toBe("Failed result");
+    expect(filterNameOf("denied").hint).toMatch(/DENY verdict or a denied result/);
+    expect(filterNameOf("unknown").hint).toBe("Records whose verdict or result is unknown, or whose output is lossy");
+    expect(filterNameOf("failed").hint).toBe("records with a failed result");
+    expect(filterNameOf("bogus")).toEqual({ label: "bogus", hint: "" });
   });
 
   it("uses the success tone for verified only when there is a verified count", () => {
@@ -180,5 +220,25 @@ describe("turns and summaries", () => {
 
   it("says when no bounded summary was projected", () => {
     expect(firstSummary([null, null])).toBe(EMPTY_TOOL_SUMMARY);
+  });
+});
+
+describe("the reading of a message (the gate's verdict, in words)", () => {
+  it("reads a verified message verified, and every other message reported, not verified", () => {
+    expect(messageReading("structural-audit-only", true)).toEqual(VERIFIED_READING);
+    expect(messageReading("structural-audit-only", false)).toEqual(REPORTED_NOT_VERIFIED_READING);
+    expect(messageReading("unverified-input", false)).toEqual(REPORTED_NOT_VERIFIED_READING);
+  });
+
+  it("reads an absent or unavailable verification scope as verification unavailable, never as verified", () => {
+    expect(messageReading(undefined, false)).toEqual(VERIFICATION_UNAVAILABLE_READING);
+    expect(messageReading("unavailable", true)).toEqual(VERIFICATION_UNAVAILABLE_READING);
+  });
+
+  it("never gives a message that is not verified the success tone", () => {
+    expect(REPORTED_NOT_VERIFIED_READING.label).toBe("reported, not verified");
+    expect(REPORTED_NOT_VERIFIED_READING.tone).toBe("reported");
+    expect(messageReading("structural-audit-only", false).tone).not.toBe("ok");
+    expect(messageReading(undefined, false).tone).not.toBe("ok");
   });
 });

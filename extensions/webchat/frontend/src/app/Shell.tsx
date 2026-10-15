@@ -7,13 +7,14 @@ import { useTheme } from "../theme/useTheme";
 import { parseTheme } from "../theme/theme";
 import { isVerifiedProjection } from "../core/format";
 import type { ViewId } from "../core/store";
-import { useNarrow } from "./layout";
+import { usePhone, useNarrow } from "./layout";
 import { useWorkspace } from "./WorkspaceProvider";
 import { ShellContext, type ShellControls } from "./shellContext";
 import { Rail } from "./Rail";
 import { Footer } from "./Footer";
 import { INSPECTOR_ID, Inspector } from "./Inspector";
 import { ClaimBoundary } from "./ClaimBoundary";
+import { focusableIn, trapTarget } from "./focusTrap";
 import { ChatView } from "./views/ChatView";
 import { TrajectoryView } from "./views/TrajectoryView";
 import {
@@ -24,6 +25,7 @@ import {
   WINDOW_GAP_TEXT,
   type ConnectionStatus,
 } from "./status";
+import { useUiPrefs, type PanelKey } from "./uiPrefs";
 import type { WorkspaceModel } from "./workspaceStore";
 import styles from "./Shell.module.css";
 
@@ -47,20 +49,32 @@ function connectionText(status: ConnectionStatus): string {
   return status.warning ? `${status.label} · ${status.warning}` : status.label;
 }
 
-// The application shell: a skip link to the visible view, the header (title, source and
-// connection badges, the claim boundary, the theme and drawer controls), the sessions rail, the
-// main workspace with its two views, the inspector, and the footer metrics.
+// The application shell: a skip link to the visible view, the header (title, source and connection badges, the claim
+// boundary, the theme and Governance controls), the sessions rail, the workspace with its two views and its footer, and
+// the governance inspector. The rail and the inspector collapse to icon columns at wide widths, and the inspector is a
+// drawer below the drawer breakpoint. Their choices, and the selected governance panel, are persisted (uiPrefs.ts).
 export function Shell({ version }: { readonly version: string }) {
   const model = useWorkspace();
   const { actions } = model;
   const narrow = useNarrow();
+  const phone = usePhone();
+  const [prefs, updatePrefs] = useUiPrefs();
   const [drawerRequested, setDrawerRequested] = useState(false);
+  // The phone rail is a disclosure. Its state is for this session only, so it is not persisted.
+  const [phoneRailOpen, setPhoneRailOpen] = useState(false);
+  // The record is shown in the inspector's panel body while a record is selected. A new selection sets it, and a governance
+  // tab clears it.
+  const [recordTab, setRecordTab] = useState(false);
   const drawerOpen = narrow && drawerRequested;
+  const inspectorCollapsed = !narrow && prefs.inspectorCollapsed;
+  const railExpanded = phone ? phoneRailOpen : !prefs.railCollapsed;
   const [theme, setTheme] = useTheme();
   const toggleRef = useRef<HTMLButtonElement | null>(null);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   // Where focus goes when the drawer closes: the row that opened it, else the toggle.
   const returnRef = useRef<HTMLElement | null>(null);
+  // Set when the drawer is closed by a request that returns focus. The focus moves once the drawer has closed.
+  const returnPending = useRef(false);
   // Set when the drawer is opened by a request that should move focus into it.
   const focusHeadingOnOpen = useRef(false);
 
@@ -70,18 +84,24 @@ export function Shell({ version }: { readonly version: string }) {
     setDrawerRequested(true);
   }, []);
 
+  // The page behind an open drawer is inert, and inert elements cannot take focus. So the return waits for that render to
+  // commit: the effect below moves focus once the drawer is closed.
   const closeInspector = useCallback(() => {
-    const target = returnRef.current;
-    returnRef.current = null;
+    returnPending.current = true;
     setDrawerRequested(false);
-    const focusTarget = target?.isConnected ? target : toggleRef.current;
-    focusTarget?.focus();
   }, []);
 
   useEffect(() => {
     if (drawerOpen && focusHeadingOnOpen.current) {
       focusHeadingOnOpen.current = false;
       headingRef.current?.focus();
+    }
+    if (!drawerOpen && returnPending.current) {
+      returnPending.current = false;
+      const target = returnRef.current;
+      returnRef.current = null;
+      const focusTarget = target?.isConnected ? target : toggleRef.current;
+      focusTarget?.focus();
     }
   }, [drawerOpen]);
 
@@ -101,37 +121,102 @@ export function Shell({ version }: { readonly version: string }) {
     }
   }, [narrow]);
 
-  const clearRecord = useCallback(() => {
+  // Close record, and the record step of Escape: the record closes and an open drawer stays open, on its governance panel.
+  // Focus moves to that panel's tab (the inspector's focus rule), so it stays inside the modal drawer.
+  const dismissRecord = useCallback(() => {
     actions.clearRecord();
-    if (drawerOpen) closeInspector();
-  }, [actions, drawerOpen, closeInspector]);
+    setRecordTab(false);
+  }, [actions]);
 
+  // A new selection opens the record tab, and at narrow widths the drawer. At a wide width a collapsed column expands
+  // to show it. Selecting the selected record again clears it, as the store does.
   const selectRecord = useCallback(
     (id: string, returnTo?: HTMLElement | null) => {
       const selecting = model.selectedId !== id;
       actions.selectRecord(id);
-      if (narrow && selecting) openInspector(returnTo);
+      if (!selecting) {
+        setRecordTab(false);
+        return;
+      }
+      setRecordTab(true);
+      if (narrow) openInspector(returnTo);
+      else if (prefs.inspectorCollapsed) updatePrefs({ inspectorCollapsed: false });
     },
-    [actions, model.selectedId, narrow, openInspector],
+    [actions, model.selectedId, narrow, openInspector, prefs.inspectorCollapsed, updatePrefs],
   );
 
-  // Escape clears the selected record first; otherwise it closes an open drawer.
+  // Escape clears the selected record first, and leaves an open drawer open; the next Escape closes the drawer. It never
+  // collapses the wide column.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       if (model.selectedId !== null) {
-        clearRecord();
+        dismissRecord();
         return;
       }
       if (drawerOpen) closeInspector();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [model.selectedId, drawerOpen, clearRecord, closeInspector]);
+  }, [model.selectedId, drawerOpen, dismissRecord, closeInspector]);
+
+  // While the drawer is open it is a modal dialog: the page behind it is inert (see the markup), and Tab and Shift+Tab stay
+  // inside it. The rule is in focusTrap.ts.
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Tab") return;
+      const drawer = document.getElementById(INSPECTOR_ID);
+      if (!drawer) return;
+      const next = trapTarget(focusableIn(drawer), document.activeElement, event.shiftKey);
+      if (next === null) return;
+      event.preventDefault();
+      next.focus();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [drawerOpen]);
+
+  const toggleRail = useCallback(() => {
+    if (phone) setPhoneRailOpen((open) => !open);
+    else updatePrefs({ railCollapsed: !prefs.railCollapsed });
+  }, [phone, prefs.railCollapsed, updatePrefs]);
+
+  // The Governance control: the drawer at narrow widths, and the column's collapse at wide ones.
+  const toggleInspector = useCallback(() => {
+    if (narrow) {
+      if (drawerOpen) closeInspector();
+      else openInspector();
+    } else {
+      updatePrefs({ inspectorCollapsed: !prefs.inspectorCollapsed });
+    }
+  }, [narrow, drawerOpen, closeInspector, openInspector, prefs.inspectorCollapsed, updatePrefs]);
+
+  const toggleInspectorColumn = useCallback(
+    () => updatePrefs({ inspectorCollapsed: !prefs.inspectorCollapsed }),
+    [prefs.inspectorCollapsed, updatePrefs],
+  );
+  // A governance tab, or an icon of the collapsed rail, shows its panel in place of a record: choosing one closes the record.
+  const selectPanel = useCallback(
+    (panel: PanelKey) => {
+      if (model.selectedId !== null) actions.clearRecord();
+      setRecordTab(false);
+      updatePrefs({ panel });
+    },
+    [actions, model.selectedId, updatePrefs],
+  );
+  const expandTo = useCallback(
+    (panel: PanelKey) => {
+      if (model.selectedId !== null) actions.clearRecord();
+      setRecordTab(false);
+      updatePrefs({ panel, inspectorCollapsed: false });
+    },
+    [actions, model.selectedId, updatePrefs],
+  );
 
   const controls = useMemo<ShellControls>(
-    () => ({ narrow, drawerOpen, openInspector, closeInspector, selectRecord, clearRecord }),
-    [narrow, drawerOpen, openInspector, closeInspector, selectRecord, clearRecord],
+    () => ({ narrow, drawerOpen, openInspector, closeInspector, selectRecord }),
+    [narrow, drawerOpen, openInspector, closeInspector, selectRecord],
   );
 
   const view = model.view;
@@ -142,10 +227,14 @@ export function Shell({ version }: { readonly version: string }) {
   return (
     <ShellContext.Provider value={controls}>
       <div className={styles.shell}>
-        <a className={styles.skip} href={`#${panelId("view", view)}`}>
+        <a className={styles.skip} href={`#${panelId("view", view)}`} inert={drawerOpen}>
           {skipLabel}
         </a>
-        <header aria-label="Workspace header" className={styles.header}>
+        {/* The open drawer is modal: a pointer press on the page behind it closes it. The scrim sits over the inert page, the
+            header included, and under the drawer. It is hidden from assistive technology: keyboard users close the drawer with
+            Escape or its own control. */}
+        {drawerOpen ? <div data-testid="scrim" className={styles.scrim} aria-hidden="true" onClick={closeInspector} /> : null}
+        <header aria-label="Workspace header" className={styles.header} inert={drawerOpen}>
           <div className={styles.brand}>
             <h1 className={styles.title}>tbound web chat</h1>
             <p className={styles.subtitle}>Pi chat workspace</p>
@@ -164,8 +253,8 @@ export function Shell({ version }: { readonly version: string }) {
               type="button"
               className={styles.drawerToggle}
               aria-controls={INSPECTOR_ID}
-              aria-expanded={narrow ? drawerOpen : undefined}
-              onClick={() => (drawerOpen ? closeInspector() : openInspector())}
+              aria-expanded={narrow ? drawerOpen : !inspectorCollapsed}
+              onClick={toggleInspector}
             >
               Governance
             </button>
@@ -180,9 +269,13 @@ export function Shell({ version }: { readonly version: string }) {
             <ClaimBoundary model={model} />
           </div>
         </header>
-        <div className={styles.body}>
-          <Rail model={model} />
-          <main aria-label="Workspace" className={styles.main}>
+        <div
+          className={styles.body}
+          data-rail={railExpanded ? "expanded" : "collapsed"}
+          data-inspector={inspectorCollapsed ? "collapsed" : "expanded"}
+        >
+          <Rail model={model} phone={phone} expanded={railExpanded} onToggle={toggleRail} inert={drawerOpen} />
+          <main aria-label="Workspace" className={styles.main} inert={drawerOpen}>
             {hasNotice ? (
               <div className={styles.notices}>
                 {model.gapNotice ? (
@@ -217,22 +310,31 @@ export function Shell({ version }: { readonly version: string }) {
                 if (next) actions.setView(next.id);
               }}
             />
-            <TabPanel idPrefix="view" id="chat" value={view}>
-              <ChatView model={model} />
-            </TabPanel>
-            <TabPanel idPrefix="view" id="trajectory" value={view}>
-              <TrajectoryView model={model} />
-            </TabPanel>
+            <div className={styles.views} data-view={view}>
+              <TabPanel idPrefix="view" id="chat" value={view}>
+                <ChatView model={model} />
+              </TabPanel>
+              <TabPanel idPrefix="view" id="trajectory" value={view}>
+                <TrajectoryView model={model} />
+              </TabPanel>
+            </div>
+            <Footer model={model} version={version} />
           </main>
           <Inspector
             model={model}
             narrow={narrow}
             open={drawerOpen}
             headingRef={headingRef}
-            onClose={model.selectedId !== null ? clearRecord : closeInspector}
+            collapsed={inspectorCollapsed}
+            panel={prefs.panel}
+            recordTab={recordTab}
+            onClose={closeInspector}
+            onToggleCollapsed={toggleInspectorColumn}
+            onExpandTo={expandTo}
+            onSelectPanel={selectPanel}
+            onCloseRecord={dismissRecord}
           />
         </div>
-        <Footer model={model} version={version} />
         <LiveRegion />
       </div>
     </ShellContext.Provider>

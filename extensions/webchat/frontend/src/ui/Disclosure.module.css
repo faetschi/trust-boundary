@@ -13,6 +13,21 @@
   list-style-position: outside;
 }
 
+/* The affordance: a chevron at the end of the summary, which turns when the disclosure is open. A summary is a flex row
+   and draws no marker of its own, so without this a closed disclosure reads as a heading. */
+.summary::after {
+  content: "▾";
+  flex: none;
+  margin-left: auto;
+  padding-left: var(--space-2);
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+.disclosure[open] > .summary::after {
+  content: "▴";
+}
+
 .body {
   padding: 0 0 var(--space-3);
 }

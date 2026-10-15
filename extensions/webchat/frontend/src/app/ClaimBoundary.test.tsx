@@ -1,8 +1,8 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { QualificationPanel, Snapshot } from "../core/contract";
 import { panelsDefault, snapshotOf } from "../core/testing/builders";
-import { mount, type Mounted } from "../test-support/dom";
+import { installMatchMedia, mount, type MatchMediaShim, type Mounted } from "../test-support/dom";
 import { fakeWorkspace, flush } from "../test-support/fakes";
 import { ClaimBoundary, DISPLAY_ONLY_TEXT, UNVERIFIED_CLAIM_TEXT } from "./ClaimBoundary";
 import { createWorkspaceStore, type WorkspaceModel } from "./workspaceStore";
@@ -84,6 +84,37 @@ describe("the claim boundary reads the projection, and never a literal", () => {
     const view = show({ ...model, panels: { ...panelsDefault(), qualification: partial } });
     expect(valuesOf(view)).toEqual(["true", "unexecuted", MISSING, MISSING]);
     expect(warningsOf(view)).toEqual([UNVERIFIED_CLAIM_TEXT]);
+    view.unmount();
+  });
+});
+
+// The phone breakpoint is the width at which the explanation folds. The shim is restored after each test.
+let shim: MatchMediaShim | null = null;
+afterEach(() => {
+  shim?.restore();
+  shim = null;
+});
+
+describe("the claim boundary folds its explanation at a phone width, and keeps every value", () => {
+  it("at a phone width, the two sentences are a closed disclosure, and every claim value stays outside it", async () => {
+    shim = installMatchMedia(390);
+    const view = show(await loaded(snapshotOf({ panels: panelsDefault() })));
+    const details = view.container.querySelector("details");
+    expect(details?.querySelector("summary")?.textContent).toBe("Presentation only · display only");
+    expect(details?.hasAttribute("open")).toBe(false);
+    expect(details?.textContent).toContain(DISPLAY_ONLY_TEXT);
+    const claims = view.container.querySelector("dl");
+    expect(claims?.closest("details")).toBeNull();
+    expect(claims?.textContent).toContain("G1");
+    expect(claims?.textContent).toContain("Claim-bearing");
+    view.unmount();
+  });
+
+  it("at a wide width, the two sentences are plain text, with no disclosure", async () => {
+    shim = installMatchMedia(1440);
+    const view = show(await loaded(snapshotOf({ panels: panelsDefault() })));
+    expect(view.container.querySelector("details")).toBeNull();
+    expect(view.container.textContent).toContain(DISPLAY_ONLY_TEXT);
     view.unmount();
   });
 });

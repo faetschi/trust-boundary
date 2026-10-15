@@ -161,3 +161,43 @@ describe("one verification gate on every surface: a live structural-audit projec
     expect(evidenceValue("independently verified")).toBe("yes");
   });
 });
+
+// The chat head and the message marks: a session header carries no evidence, so its status
+// is always read as reported, not verified; a message reads its own verdict of the gate.
+describe("the conversation head and the message marks: reported, not verified unless the gate verifies", () => {
+  const session = { session_id: "session-demo-01", workflow_id: "wf-demo-01", title: "Demo", pi_version: "0.87.1", status: "completed", turn_count: 1 } as const;
+
+  it("in a fixture projection, the head and the message read reported, not verified, and no tone is success", async () => {
+    await open(
+      snapshotOf({ source: "fixture", session, items: [messageItem({ id: "m1", sequence: 1, role: "user", text: "list files" })] }),
+      [],
+    );
+    expect(root().textContent).toContain("completed · reported, not verified");
+    expect(root().querySelector("[role='log'] div[data-role='user'] p")?.textContent).toBe("User reported, not verified");
+    expect(chatChips()).toContainEqual(["reported, not verified", "reported"]);
+    expect(chatChips().some(([text, tone]) => tone === "ok" || text === "verified")).toBe(false);
+  });
+
+  it("in a live projection, the head still reads reported, not verified, and a verified message reads verified", async () => {
+    const live = snapshotOf({
+      source: "live",
+      verification_scope: "structural-audit-only",
+      session,
+      items: [
+        messageItem({ id: "m1", sequence: 1, role: "user", text: "list files", authority: "observed", verification_scope: "structural-audit-only" }),
+      ],
+    });
+    await open(live, []);
+    expect(root().textContent).toContain("completed · reported, not verified");
+    expect(chatChips()).toContainEqual(["verified", "ok"]);
+  });
+
+  it("the footer reads the statistics as one line, and no statistic is drawn in a success tone", async () => {
+    await open(snapshotOf({ source: "fixture", session, items: [] }), []);
+    const line = root().querySelector("[role='group'][aria-label='Session statistics']");
+    expect(line?.textContent).toMatch(/ · tokens unavailable · timing unavailable$/);
+    // No governance counts and no policy digest: the zeros are the gateway's absent value, so the verdicts read unavailable.
+    expect(line?.textContent).toContain(" · policy verdicts unavailable · ");
+    expect(line?.querySelector("[data-tone='ok']")).toBeNull();
+  });
+});

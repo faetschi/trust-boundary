@@ -17,6 +17,7 @@ let shim: MatchMediaShim | null = null;
 let mounted: Mounted | null = null;
 let fake: FakeWorkspace | null = null;
 let restorePage: (() => void) | null = null;
+let restoreTranscript: (() => void) | null = null;
 
 function render(snapshot: Snapshot, width = 1440): FakeWorkspace {
   shim = installMatchMedia(width);
@@ -72,6 +73,8 @@ function jumpButton(): HTMLButtonElement | undefined {
 interface Page {
   scroll: number;
   view: number;
+  // The reader's offset, read and written by the transcript's tail logic.
+  top?: number;
 }
 
 function stubPage(page: Page): void {
@@ -82,6 +85,63 @@ function stubPage(page: Page): void {
     delete (root as unknown as Record<string, unknown>).scrollHeight;
     delete (root as unknown as Record<string, unknown>).clientHeight;
     root.scrollTop = 0;
+  };
+}
+
+function transcriptLog(): HTMLElement {
+  const log = mounted?.container.querySelector<HTMLElement>("[role='log'][aria-label='Transcript']");
+  if (!log) throw new Error("no transcript log");
+  return log;
+}
+
+// The scrollers are the chat transcript (a log) and the trajectory ledger (a region named Record ledger): the tail reads
+// their metrics, not the page's. The stub is on the prototype and answers for those two only, so the tail's first
+// measurement on a mount (which runs before any test code can reach the element) reads it. Returns the restore function.
+function stubTranscript(page: Page): () => void {
+  const proto = HTMLElement.prototype;
+  // The accessor a element gets without the stub (own or inherited): the fallback for every other element.
+  const inherited = (name: string): PropertyDescriptor | undefined => {
+    for (let level: object | null = proto; level; level = Object.getPrototypeOf(level)) {
+      const found = Object.getOwnPropertyDescriptor(level, name);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const names = ["scrollHeight", "clientHeight", "scrollTop"];
+  const original = new Map(names.map((name) => [name, inherited(name)]));
+  const own = new Map(names.map((name) => [name, Object.getOwnPropertyDescriptor(proto, name)]));
+  const isScroller = (element: Element) =>
+    element.getAttribute("role") === "log" ||
+    (element.getAttribute("role") === "region" && element.getAttribute("aria-label") === "Record ledger");
+  const fallback = (name: string, element: Element) => original.get(name)?.get?.call(element) ?? 0;
+  Object.defineProperty(proto, "scrollHeight", {
+    configurable: true,
+    get(this: Element) {
+      return isScroller(this) ? page.scroll : fallback("scrollHeight", this);
+    },
+  });
+  Object.defineProperty(proto, "clientHeight", {
+    configurable: true,
+    get(this: Element) {
+      return isScroller(this) ? page.view : fallback("clientHeight", this);
+    },
+  });
+  Object.defineProperty(proto, "scrollTop", {
+    configurable: true,
+    get(this: Element) {
+      return isScroller(this) ? (page.top ?? 0) : fallback("scrollTop", this);
+    },
+    set(this: Element, value: number) {
+      if (isScroller(this)) page.top = value;
+      else original.get("scrollTop")?.set?.call(this, value);
+    },
+  });
+  return () => {
+    for (const name of names) {
+      const descriptor = own.get(name);
+      if (descriptor) Object.defineProperty(proto, name, descriptor);
+      else delete (proto as unknown as Record<string, unknown>)[name];
+    }
   };
 }
 
@@ -101,6 +161,8 @@ afterEach(() => {
   shim = null;
   restorePage?.();
   restorePage = null;
+  restoreTranscript?.();
+  restoreTranscript = null;
   document.body.innerHTML = "";
 });
 
@@ -159,8 +221,8 @@ describe("notices: each condition has one notice, and each notice has its own na
 
 describe("the new-record count across a view switch", () => {
   it("carries the count into the trajectory view and back, and clears it at the tail", async () => {
-    const page: Page = { scroll: 5000, view: 500 };
-    stubPage(page);
+    const page: Page = { scroll: 5000, view: 500, top: 0 };
+    restoreTranscript = stubTranscript(page);
     render(snapshotOf({ items: messages(1, 3) }));
     await settle();
     openStream();
@@ -180,10 +242,24 @@ describe("the new-record count across a view switch", () => {
     expect(jumpButton()?.textContent).toBe("3 new records · Jump to latest");
 
     act(() => {
-      document.documentElement.scrollTop = 4500;
-      window.dispatchEvent(new Event("scroll"));
+      transcriptLog().scrollTop = 4500;
+      transcriptLog().dispatchEvent(new Event("scroll"));
     });
     expect(jumpButton()).toBeUndefined();
+  });
+});
+
+describe("the new-record count at phone widths", () => {
+  it("counts from the page, because the page is the scroller when the layout stacks", async () => {
+    stubPage({ scroll: 5000, view: 500 });
+    render(snapshotOf({ items: messages(1, 3) }), 390);
+    await settle();
+    openStream();
+    await settle();
+    document.documentElement.scrollTop = 0;
+    emitItem(messageItem({ id: "m4", sequence: 4, role: "user", text: "live 4" }));
+    emitItem(messageItem({ id: "m5", sequence: 5, role: "user", text: "live 5" }));
+    expect(jumpButton()?.textContent).toBe("2 new records · Jump to latest");
   });
 });
 

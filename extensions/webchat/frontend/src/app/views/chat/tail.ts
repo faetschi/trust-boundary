@@ -1,48 +1,41 @@
-// The tail window of the transcript: a reader at the tail follows new records, and a reader who has
-// scrolled away keeps their place. The arithmetic is core/anchor.ts; this hook reads the page and
-// writes to it. The page is the scroller (the shell has no inner scroll container), as in the legacy
-// client (web-chat.md section 4.5).
+// The tail window of the transcript: a reader at the tail follows new records, and a reader who has scrolled away keeps
+// their place. The arithmetic is core/anchor.ts; this hook reads the position and writes to it. The scroller is the
+// transcript at wide widths, where the Chat view fills its column and the log scrolls inside it, and the page at phone
+// widths, where the log is as tall as its content (tailScroller.ts). An anchor's offset is measured from the scroller's
+// top edge, so it holds still while the records are added.
 //
-// The count of new records is the store's `tailPending`: the records the store applied since the
-// reader's pin. The pin is kept by the store, so it survives a switch to the trajectory view and back.
+// The count of new records is the store's `tailPending`: the records the store applied since the reader's pin. The pin is
+// kept by the store, so it survives a switch to the trajectory view and back.
 
 import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
-import {
-  isAtTail,
-  maxScrollTop,
-  restoredScrollTop,
-  tailAnnouncement,
-  type ScrollMetrics,
-} from "../../../core/anchor";
+import { isAtTail, maxScrollTop, restoredScrollTop, tailAnnouncement } from "../../../core/anchor";
 import type { Announcer } from "../../../ui/announcer";
 import type { WorkspaceActions } from "../../workspaceStore";
+import { metricsOf, onTailScroll, originOf, scrollTailTo, tailScroller } from "../tailScroller";
 
 // A burst of arrivals is announced once, after it settles.
 export const TAIL_ANNOUNCE_DELAY_MS = 400;
 
 interface Measure {
   readonly atTail: boolean;
-  // The first anchored record that is at least partly visible, and its offset from the viewport top.
+  // The first anchored record that is at least partly visible, and its offset from the scroller's top edge.
   readonly anchorId: string | null;
   readonly offset: number | null;
   readonly scrollTop: number;
 }
 
-function pageMetrics(): ScrollMetrics {
-  const root = document.scrollingElement ?? document.documentElement;
-  return { scrollTop: root.scrollTop, clientHeight: root.clientHeight, scrollHeight: root.scrollHeight };
-}
-
 function measure(region: HTMLElement | null): Measure {
-  const metrics = pageMetrics();
+  const scroller = tailScroller(region);
+  const metrics = metricsOf(scroller);
   let anchorId: string | null = null;
   let offset: number | null = null;
   if (region) {
+    const origin = originOf(scroller);
     for (const node of region.querySelectorAll<HTMLElement>("[data-anchor]")) {
       const rect = node.getBoundingClientRect();
-      if (rect.bottom > 0) {
+      if (rect.bottom > origin) {
         anchorId = node.dataset.anchor ?? null;
-        offset = rect.top;
+        offset = rect.top - origin;
         break;
       }
     }
@@ -52,8 +45,9 @@ function measure(region: HTMLElement | null): Measure {
 
 function anchorOffset(region: HTMLElement | null, id: string): number | null {
   if (!region) return null;
+  const origin = originOf(tailScroller(region));
   for (const node of region.querySelectorAll<HTMLElement>("[data-anchor]")) {
-    if (node.dataset.anchor === id) return node.getBoundingClientRect().top;
+    if (node.dataset.anchor === id) return node.getBoundingClientRect().top - origin;
   }
   return null;
 }
@@ -89,10 +83,11 @@ export function useTailWindow(options: {
   useLayoutEffect(() => {
     const previous = snapshot.current;
     const element = region.current;
-    if (previous) {
-      const now = pageMetrics();
+    if (previous && element) {
+      const scroller = tailScroller(element);
+      const now = metricsOf(scroller);
       if (previous.atTail && shown.current) {
-        window.scrollTo(0, maxScrollTop(now));
+        scrollTailTo(scroller, maxScrollTop(now));
       } else if (previous.anchorId !== null) {
         const target = restoredScrollTop(
           {
@@ -103,7 +98,7 @@ export function useTailWindow(options: {
           },
           now,
         );
-        if (target !== now.scrollTop) window.scrollTo(0, target);
+        if (target !== now.scrollTop) scrollTailTo(scroller, target);
       }
     }
     if (count > 0) shown.current = true;
@@ -112,14 +107,14 @@ export function useTailWindow(options: {
   });
 
   // A scroll by the reader updates the position, so the next commit holds the record they are reading.
-  useEffect(() => {
-    const onScroll = () => {
-      snapshot.current = measure(region.current);
-      follow();
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, [region, follow]);
+  useEffect(
+    () =>
+      onTailScroll(region.current, () => {
+        snapshot.current = measure(region.current);
+        follow();
+      }),
+    [region, follow],
+  );
 
   // One announcement per burst: the count is spoken once it settles, and not again until it grows. A view
   // that mounts over a count already shown (after a switch) does not speak it again.
@@ -139,7 +134,8 @@ export function useTailWindow(options: {
   }, [pending, announcer]);
 
   const jump = useCallback(() => {
-    window.scrollTo(0, maxScrollTop(pageMetrics()));
+    const scroller = tailScroller(region.current);
+    scrollTailTo(scroller, maxScrollTop(metricsOf(scroller)));
     announced.current = 0;
     snapshot.current = measure(region.current);
     actions.repinTail(true);

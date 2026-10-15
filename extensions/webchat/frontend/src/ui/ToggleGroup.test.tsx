@@ -40,6 +40,19 @@ describe("ToggleGroup: a labelled toolbar with one tab stop", () => {
     view.unmount();
   });
 
+  it("gives each button its hint as the title, so what its count counts is stated", () => {
+    const view = mount(
+      <ToggleGroup
+        label="Filter timeline"
+        items={[{ value: "denied", label: "Denied outcome", count: 2, hint: "records with a DENY verdict or a denied result" }]}
+        pressed="denied"
+        onPress={() => undefined}
+      />,
+    );
+    expect(buttonsOf(view.container)[0]?.getAttribute("title")).toBe("records with a DENY verdict or a denied result");
+    view.unmount();
+  });
+
   it("is a button group, not a switch: no role=switch, and every control is a button", () => {
     const view = mount(<Harness />);
     expect(view.container.querySelector("[role='switch']")).toBeNull();

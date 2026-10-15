@@ -3,9 +3,8 @@ import { createContext, useContext } from "react";
 // What the views and the record inspector may ask of the shell. This is the focus contract:
 //   - selectRecord(id, row) selects a record. At narrow widths it opens the drawer and moves
 //     focus into it. `row` is the element to return focus to when the drawer closes.
-//   - clearRecord() clears the selection. At narrow widths it closes the drawer and returns
-//     focus to the row (or to the drawer toggle when no row was given).
-//   - openInspector / closeInspector are the drawer alone, for the toggle and the Escape key.
+//   - openInspector / closeInspector are the drawer alone, for the toggle, the scrim and the Escape key.
+//     Clearing the record never closes the drawer: Close record and Escape's first step leave it open.
 export interface ShellControls {
   // The viewport is at or below the drawer breakpoint.
   readonly narrow: boolean;
@@ -14,7 +13,6 @@ export interface ShellControls {
   openInspector(returnTo?: HTMLElement | null): void;
   closeInspector(): void;
   selectRecord(id: string, returnTo?: HTMLElement | null): void;
-  clearRecord(): void;
 }
 
 export const ShellContext = createContext<ShellControls | null>(null);

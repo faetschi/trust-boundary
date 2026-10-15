@@ -30,8 +30,8 @@ export function TrajectoryView({ model }: { readonly model: WorkspaceModel }) {
   const tail = useTailWindow({ actions, pending: model.tailPending, count: model.items.length, ledgerRef });
 
   // Focus when the selection is cleared by something other than a focused control. If the focus is
-  // still on a live element, it is left alone. Otherwise a narrow drawer closes (its own focus rule
-  // returns focus to the opener, or to the toggle when the opener is gone), and a wide ledger
+  // still on a live element, it is left alone. An open narrow drawer stays open, and the inspector moves
+  // focus to its governance tab: the drawer is modal, so focus never goes behind it. Otherwise a wide ledger
   // returns focus to the row that was selected, or to the ledger when that row was evicted.
   const previousSelected = useRef(model.selectedId);
   useEffect(() => {
@@ -40,10 +40,7 @@ export function TrajectoryView({ model }: { readonly model: WorkspaceModel }) {
     if (previous === null || model.selectedId !== null) return;
     const active = document.activeElement;
     if (active && active !== document.body && active.isConnected) return;
-    if (shell.drawerOpen) {
-      shell.closeInspector();
-      return;
-    }
+    if (shell.drawerOpen) return;
     const row = rows.get(previous);
     (row?.isConnected ? row : ledgerRef.current)?.focus({ preventScroll: true });
   }, [model.selectedId, shell, rows]);

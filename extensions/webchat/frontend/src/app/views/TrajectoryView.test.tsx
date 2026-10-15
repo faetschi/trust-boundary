@@ -127,6 +127,13 @@ function scrollPage(): void {
   });
 }
 
+// A reader's scroll of the ledger, which is the scroller at wide widths.
+function scrollLedger(): void {
+  act(() => {
+    ledger().dispatchEvent(new Event("scroll"));
+  });
+}
+
 function pressedGroup(): string | null {
   const pressed = Array.from(root().querySelectorAll("[role='toolbar'] button[aria-pressed='true']"));
   return pressed[0]?.textContent?.trim() ?? null;
@@ -139,19 +146,30 @@ function groupTitles(): string[] {
   });
 }
 
-// The scroll metrics of the document, as the tail window reads them. Happy-dom has no layout.
-function setPageMetrics(scrollHeight: number, clientHeight: number, scrollTop: number): void {
-  const element = document.documentElement;
-  Object.defineProperty(element, "scrollHeight", { configurable: true, value: scrollHeight });
-  Object.defineProperty(element, "clientHeight", { configurable: true, value: clientHeight });
-  let top = scrollTop;
+// The scroll metrics of an element, as the tail window reads them. Happy-dom has no layout, so the state is read live:
+// a test can grow the element after the view mounts, and the scrollTop setter keeps the value the tail window writes.
+interface ScrollState {
+  scrollHeight: number;
+  clientHeight: number;
+  scrollTop: number;
+}
+
+function stubScroll(element: HTMLElement, state: ScrollState): ScrollState {
+  Object.defineProperty(element, "scrollHeight", { configurable: true, get: () => state.scrollHeight });
+  Object.defineProperty(element, "clientHeight", { configurable: true, get: () => state.clientHeight });
   Object.defineProperty(element, "scrollTop", {
     configurable: true,
-    get: () => top,
+    get: () => state.scrollTop,
     set: (value: number) => {
-      top = value;
+      state.scrollTop = value;
     },
   });
+  return state;
+}
+
+// The document's metrics, for the phone layout, where the page is the scroller.
+function setPageMetrics(scrollHeight: number, clientHeight: number, scrollTop: number): void {
+  stubScroll(document.documentElement, { scrollHeight, clientHeight, scrollTop });
 }
 
 function clearPageMetrics(): void {
@@ -497,20 +515,28 @@ describe("selecting a record: the inspector, the drawer and the focus contract",
     expect(document.activeElement).toBe(aside().querySelector("h2"));
   });
 
-  it("at the drawer breakpoint, Escape closes the drawer and returns focus to the row", async () => {
+  it("at the drawer breakpoint, the first Escape clears only the record; the second closes the drawer and returns focus to the row", async () => {
     await openTrajectory(legacyFixture(), 1024);
     click(rowFor("d2"));
+    press(document.activeElement ?? rowFor("d2"), "Escape");
+    expect(aside().getAttribute("data-open")).toBe("true");
+    expect(aside().querySelectorAll("[role='tab']")).toHaveLength(5);
+    expect(rowFor("d2").getAttribute("aria-pressed")).toBe("false");
     press(document.activeElement ?? rowFor("d2"), "Escape");
     expect(aside().getAttribute("data-open")).toBe("false");
     expect(document.activeElement).toBe(rowFor("d2"));
   });
 
-  it("at the drawer breakpoint, Close record closes the drawer and returns focus to the row", async () => {
+  // Close record clears only the record. The drawer is modal, so focus moves to the governance tab inside it, never behind it.
+  it("at the drawer breakpoint, Close record clears only the record: the drawer stays open, and focus moves to the governance tab", async () => {
     await openTrajectory(legacyFixture(), 1024);
     click(rowFor("d2"));
     click(buttonIn(aside(), "Close record"));
-    expect(aside().getAttribute("data-open")).toBe("false");
-    expect(document.activeElement).toBe(rowFor("d2"));
+    expect(rowFor("d2").getAttribute("aria-pressed")).toBe("false");
+    expect(aside().getAttribute("data-open")).toBe("true");
+    expect(aside().querySelector("h2")?.textContent).toBe("Governance");
+    expect(document.activeElement).toBe(aside().querySelector("[role='tab'][aria-selected='true']"));
+    expect(aside().contains(document.activeElement)).toBe(true);
   });
 
   it("clears the selection when its record is evicted, and falls back to the ledger", async () => {
@@ -530,8 +556,8 @@ describe("selecting a record: the inspector, the drawer and the focus contract",
 describe("the tail window: the count comes only from records the store applied", () => {
   it("shows no count while at the tail, and counts live records once the reader is away", async () => {
     await openTrajectory(legacyFixture().slice(0, 3));
-    setPageMetrics(4000, 800, 0);
-    scrollPage();
+    stubScroll(ledger(), { scrollHeight: 4000, clientHeight: 800, scrollTop: 0 });
+    scrollLedger();
     await settle();
     expect(jumpButton()).toBeUndefined();
     emitItem(messageItem({ id: "m4", sequence: 4, text: "live one" }), "e1:4");
@@ -541,8 +567,8 @@ describe("the tail window: the count comes only from records the store applied",
 
   it("a duplicate of a record already applied adds nothing to the count", async () => {
     await openTrajectory(legacyFixture().slice(0, 3));
-    setPageMetrics(4000, 800, 0);
-    scrollPage();
+    stubScroll(ledger(), { scrollHeight: 4000, clientHeight: 800, scrollTop: 0 });
+    scrollLedger();
     emitItem(messageItem({ id: "m4", sequence: 4, text: "live one" }), "e1:4");
     await settle();
     emitItem(messageItem({ id: "m4", sequence: 4, text: "live one" }), "e1:4");
@@ -552,30 +578,30 @@ describe("the tail window: the count comes only from records the store applied",
 
   it("Jump to latest scrolls to the tail and moves focus to the ledger", async () => {
     await openTrajectory(legacyFixture().slice(0, 3));
-    setPageMetrics(4000, 800, 0);
-    scrollPage();
+    stubScroll(ledger(), { scrollHeight: 4000, clientHeight: 800, scrollTop: 0 });
+    scrollLedger();
     emitItem(messageItem({ id: "m4", sequence: 4, text: "live one" }), "e1:4");
     await settle();
-    const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
     click(jumpButton() as HTMLButtonElement);
-    expect(scroll).toHaveBeenCalledWith(0, 3200);
+    expect(ledger().scrollTop).toBe(3200);
     expect(jumpButton()).toBeUndefined();
     expect(document.activeElement).toBe(ledger());
   });
 
   it("a reader at the tail is followed to the new records", async () => {
     await openTrajectory(legacyFixture().slice(0, 3));
-    setPageMetrics(4000, 800, 3200);
-    const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    const state = stubScroll(ledger(), { scrollHeight: 4000, clientHeight: 800, scrollTop: 3200 });
+    // The ledger grows with the new record, and the reader at its tail is carried down to the new bottom.
+    state.scrollHeight = 4600;
     emitItem(messageItem({ id: "m4", sequence: 4, text: "live one" }), "e1:4");
     await settle();
-    expect(scroll).toHaveBeenCalledWith(0, 3200);
+    expect(ledger().scrollTop).toBe(3800);
   });
 
   it("announces a settled burst of arrivals once, through the status region", async () => {
     await openTrajectory(legacyFixture().slice(0, 3));
-    setPageMetrics(4000, 800, 0);
-    scrollPage();
+    stubScroll(ledger(), { scrollHeight: 4000, clientHeight: 800, scrollTop: 0 });
+    scrollLedger();
     vi.useFakeTimers();
     emitItem(messageItem({ id: "m4", sequence: 4, text: "a" }), "e1:4");
     emitItem(messageItem({ id: "m5", sequence: 5, text: "b" }), "e1:5");
@@ -584,6 +610,15 @@ describe("the tail window: the count comes only from records the store applied",
     });
     expect(mounted?.container.querySelector("[role='status']")?.textContent).toContain("2 new records below");
     vi.useRealTimers();
+  });
+
+  it("at phone widths the page is the scroller, and the count reads the page", async () => {
+    await openTrajectory(legacyFixture().slice(0, 3), 390);
+    setPageMetrics(4000, 800, 0);
+    scrollPage();
+    emitItem(messageItem({ id: "m4", sequence: 4, text: "live one" }), "e1:4");
+    await settle();
+    expect(jumpButton()?.textContent).toBe("1 new record · Jump to latest");
   });
 });
 

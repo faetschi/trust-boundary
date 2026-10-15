@@ -147,8 +147,8 @@ Rows for the six defects the v3 fidelity check found. Each names the test that r
 - The header claim values use the drawer's labels: "Containment" and "Claim-bearing". The literal values are gone. Before the first projection, each value reads `unavailable (no projection loaded)`.
 - The open drawer is anchored to the workspace body, not the viewport, so it scrolls with the page. This is a behaviour change, and it was not checked with the page scrolled.
 - `App.test.tsx` (first paint) now asserts the unavailable reading instead of `not-established`. That file was outside the A3 list; the change follows from A3-3.
-- The favicon allowance in `extensions/webchat/scripts/csp-smoke.mjs` (`isAllowedFavicon404`) is now dead. Remove it in a later pass.
-- Unchanged: the toggle's `aria-expanded`, Escape closing the drawer with focus returned to the toggle, and the focus order. The existing tests cover them.
+- The favicon allowance in `extensions/webchat/scripts/csp-smoke.mjs` (`isAllowedFavicon404`) is now dead. Remove it in a later pass. *(Superseded: the allowance is gone, removed by the final browser QA pass; see `frontend.md`, "Final QA fix round".)*
+- Unchanged: the toggle's `aria-expanded`, Escape closing the drawer with focus returned to the toggle, and the focus order. The existing tests cover them. *(Superseded in part: the first Escape clears a selected record, and the next closes the drawer; see `frontend.md`, "Redesign follow-up".)*
 
 ### Receipts (2026-10-14)
 

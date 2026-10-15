@@ -6,6 +6,8 @@ export interface ToggleItem {
   readonly label: string;
   // Shown after the label and included in the button's accessible name.
   readonly count?: number;
+  // What the count counts. It is the button's title, which a reader gets as its description.
+  readonly hint?: string;
 }
 
 interface ToggleGroupProps {
@@ -63,6 +65,7 @@ export function ToggleGroup({ label, items, pressed, onPress }: ToggleGroupProps
           aria-pressed={item.value === pressed}
           tabIndex={item.value === stop ? 0 : -1}
           className={styles.toggle}
+          title={item.hint}
           onFocus={() => setLastFocused(item.value)}
           onClick={() => {
             setLastFocused(item.value);

@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { useContext, useRef, type ReactNode } from "react";
 import { jumpLabel } from "../../core/anchor";
 import type { ItemView } from "../../core/contract";
 import { FILTERS, countFilter, filterItems, governanceCounts } from "../../core/filters";
@@ -8,12 +8,15 @@ import { useAnnouncer } from "../../ui/LiveRegion";
 import { ToggleGroup, type ToggleItem } from "../../ui/ToggleGroup";
 import { EmptyState, ErrorState, LoadingState } from "../../ui/StateMessage";
 import { NO_PROJECTION, unavailableWords } from "../panels";
+import { ShellContext } from "../shellContext";
 import { failureText, projectionPhase } from "../status";
 import type { WorkspaceModel } from "../workspaceStore";
+import { Composer } from "../Composer";
 import { confirmedIn, isVerifiedIn } from "../verification";
-import { filterSummaryText, postureEntries } from "./chat/readings";
+import { filterNameOf, filterSummaryText, postureEntries } from "./chat/readings";
 import { markerFor, provenanceOf } from "./chat/provenance";
-import { TurnView } from "./chat/Transcript";
+import { conversationHead } from "./chat/identity";
+import { TurnView, type RecordOpener } from "./chat/Transcript";
 import type { Verifier } from "./chat/ToolCard";
 import { useTailWindow } from "./chat/tail";
 import styles from "./chat/Chat.module.css";
@@ -23,11 +26,13 @@ import styles from "./chat/Chat.module.css";
 // them. Announcements are the shell's too, so this line is not live.
 export const TRANSCRIPT_NOTICE_POINTER = "Notices for this transcript are above the tabs.";
 
-// The Chat view: the posture of the retained window, the finding filters, the transcript, and the
-// tail window. Presentation only. Counts come from the store's items and its applied count, and a
-// success is shown as succeeded only with verified evidence (web-chat.md sections 4.1, 4.3 and 4.5).
+// The Chat view: the conversation head (the session, its Pi identity and status), the posture of the retained window,
+// the finding filters, the transcript, the tail window, and the composer, which is pinned under the transcript and
+// submits nothing. Presentation only. Counts come from the store's items and its applied count, and a success is shown
+// as succeeded only with verified evidence (web-chat.md sections 4.1, 4.3 and 4.5).
 export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   const announcer = useAnnouncer();
+  const shell = useContext(ShellContext);
   const logRef = useRef<HTMLDivElement | null>(null);
   const phase = projectionPhase(model);
   // The shared gate: a record is verified only in a live, structurally audited projection, and only with
@@ -47,13 +52,12 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   const provenance = provenanceOf(visible, verifiedOf, model.source);
   const markOf = (item: ItemView) => markerFor(provenance, verifiedOf(item));
   const activeFilter = FILTERS.find((entry) => entry.id === model.filter);
-  const filterLabel = activeFilter ? activeFilter.label : model.filter;
+  const filterLabel = activeFilter ? filterNameOf(activeFilter.id).label : model.filter;
   const posture = postureEntries(governanceCounts(model.items, confirmedOf));
-  const filters: ToggleItem[] = FILTERS.map((entry) => ({
-    value: entry.id,
-    label: entry.label,
-    count: countFilter(model.items, entry.id),
-  }));
+  const filters: ToggleItem[] = FILTERS.map((entry) => {
+    const name = filterNameOf(entry.id);
+    return { value: entry.id, label: name.label, count: countFilter(model.items, entry.id), hint: name.hint };
+  });
   const summary = model.loaded
     ? filterSummaryText({
         filter: model.filter,
@@ -64,6 +68,14 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
         evicted: model.evicted,
       })
     : unavailableWords(NO_PROJECTION);
+  const head = conversationHead(model.session, model.loaded);
+
+  // A record opens through the shell, so the inspector opens where it belongs at each width. A view mounted without
+  // the shell (a test, or a host that renders the view alone) selects the record in the store.
+  const openRecord: RecordOpener = (id, returnTo) => {
+    if (shell) shell.selectRecord(id, returnTo);
+    else model.actions.selectRecord(id);
+  };
 
   function choose(value: string): void {
     const next = FILTERS.find((entry) => entry.id === value);
@@ -74,38 +86,58 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
 
   return (
     <div className={styles.view}>
-      <div className={styles.posture} role="group" aria-label="Observed posture">
-        {!model.loaded ? (
-          <span className={styles.postureEmpty}>{unavailableWords(NO_PROJECTION)}</span>
-        ) : posture.length > 0 ? (
-          posture.map((entry) => (
-            <span key={entry.key} title={entry.hint}>
-              <Chip tone={entry.tone}>{entry.text}</Chip>
-            </span>
-          ))
-        ) : (
-          <span className={styles.postureEmpty}>no decisions or results projected</span>
-        )}
+      <div className={styles.conversation}>
+        <div className={styles.headRow}>
+          <h2 className={styles.title}>{head.title}</h2>
+          <p className={styles.summary} data-summary="">
+            {summary}
+          </p>
+        </div>
+        <div className={styles.facts}>
+          <p className={styles.identity}>
+            Pi <span>{head.piVersion}</span> · {head.sessionId} · {head.workflowId}
+          </p>
+          <p className={styles.status}>{head.status}</p>
+        </div>
       </div>
 
       <div className={styles.toolbar}>
+        <div className={styles.posture} role="group" aria-label="Observed posture">
+          {!model.loaded ? (
+            <span className={styles.postureEmpty}>{unavailableWords(NO_PROJECTION)}</span>
+          ) : posture.length > 0 ? (
+            posture.map((entry) => (
+              <span key={entry.key} title={entry.hint}>
+                <Chip tone={entry.tone}>{entry.text}</Chip>
+              </span>
+            ))
+          ) : (
+            <span className={styles.postureEmpty}>no decisions or results projected</span>
+          )}
+        </div>
         <ToggleGroup label="Timeline filters" items={filters} pressed={model.filter} onPress={choose} />
-        <p className={styles.summary}>{summary}</p>
       </div>
 
-      {/* aria-live is off: the single polite announcer lives in the shell (LiveRegion). */}
-      <div role="log" aria-label="Transcript" aria-live="off" tabIndex={-1} ref={logRef} className={styles.log}>
-        {hasNotice ? <p className={styles.note}>{TRANSCRIPT_NOTICE_POINTER}</p> : null}
-        {provenance.kind === "uniform" ? <p className={styles.note}>{provenance.text}</p> : null}
-        {phase === "loaded" && model.error !== null ? <ErrorState title="Projection error">{model.error}</ErrorState> : null}
-        {transcript()}
+      <div className={styles.logWrap}>
+        {/* aria-live is off: the single polite announcer lives in the shell (LiveRegion). The transcript is the scroller. */}
+        <div role="log" aria-label="Transcript" aria-live="off" tabIndex={-1} ref={logRef} className={styles.log}>
+          {hasNotice ? <p className={styles.note}>{TRANSCRIPT_NOTICE_POINTER}</p> : null}
+          {provenance.kind === "uniform" ? <p className={styles.note}>{provenance.text}</p> : null}
+          {phase === "loaded" && model.error !== null ? <ErrorState title="Projection error">{model.error}</ErrorState> : null}
+          {transcript()}
+        </div>
       </div>
 
-      {tail.pending > 0 ? (
-        <button type="button" className={styles.jump} onClick={tail.jump}>
-          {jumpLabel(tail.pending)}
-        </button>
-      ) : null}
+      {/* The composer dock is the view's last box. On a phone it is pinned to the viewport's bottom edge, and the jump sits
+          on its top edge, so the composer never covers the jump. */}
+      <div className={styles.dock}>
+        {tail.pending > 0 ? (
+          <button type="button" className={styles.jump} onClick={tail.jump}>
+            {jumpLabel(tail.pending)}
+          </button>
+        ) : null}
+        <Composer session={model.session} />
+      </div>
     </div>
   );
 
@@ -117,11 +149,13 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
       return <ErrorState title="Projection not loaded">{failureText(model.error, model.status)}</ErrorState>;
     }
     if (model.items.length === 0) {
-      return (
+      return model.source === "unavailable" ? (
         <EmptyState title="Nothing to display">
-          {model.source === "unavailable"
-            ? "Production observations are unavailable. No live Pi/session source is registered."
-            : "No transcript or activity has been projected yet."}
+          Production observations are unavailable. No live Pi/session source is registered.
+        </EmptyState>
+      ) : (
+        <EmptyState title="No Pi turns observed yet.">
+          This page is a read-only view; nothing can be sent from here.
         </EmptyState>
       );
     }
@@ -133,7 +167,7 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
       );
     }
     return turnsOf(visible).map((turn) => (
-      <TurnView key={turn.id} turn={turn} verifiedOf={verifiedOf} markOf={markOf} />
+      <TurnView key={turn.id} turn={turn} verifiedOf={verifiedOf} markOf={markOf} onRecord={openRecord} />
     ));
   }
 }
