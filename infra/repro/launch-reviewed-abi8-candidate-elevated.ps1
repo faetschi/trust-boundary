@@ -130,7 +130,7 @@ $expectedSshKeygenSha256 = '539ae392c61a53fadddf0bbb152126f3e0bc042e8a4ed50718ab
 $expectedSeedReceiptSha256 = '86705E12F8D52BF7AFA8810A32ADA1D60370A61807E5BFD2AEAA13271326D53F'
 $expectedSeedDiskSha256 = 'EDF7AE59B39A8D80AFD5B74FC0D798D16DED5FC5E32F94CCD617897A3BAEEC00'
 $bootstrapDependencyPins = [ordered]@{
-    'infra/repro/bootstrap-hyperv-windows.ps1' = 'E0297B1424EE7A2D55F814FD14E5BB2FAE49B0CE87BFA260B058E1BCF0D36000'
+    'infra/repro/bootstrap-hyperv-windows.ps1' = '44A2D7D9895AFDF114CC4B17A2A9D5C07263A81011919E03B48DFE311D1B374E'
     'infra/repro/bootstrap-linux.sh' = 'AD26638C8CB18F73AA45BEF50ABF5609BDA0B48EA7430DC029BD49224294068F'
     'infra/repro/landlock-profile-gate.sh' = '4C7040443E8EB4312E5793515B26C37C6D2C66D28361E63C23426BDA7751448B'
     'infra/guest/setup-ubuntu-24.04.sh' = '478484545BB73A531F20732DE784B5A3EDF2C816BD0B5ED3519E8546A16D5443'
@@ -694,7 +694,7 @@ try {
   }
 }
 catch {
-  $failureText = $_.Exception.ToString()
+  $failureText = $_.Exception.ToString() + [Environment]::NewLine + 'ScriptStackTrace:' + [Environment]::NewLine + [string]$_.ScriptStackTrace
   try { if (-not [IO.File]::Exists($childErrorPath)) { Write-New $childErrorPath ($failureText + [Environment]::NewLine) } } catch { }
   [Console]::Error.WriteLine($failureText)
   $result.outcome = 'refused-or-failed'

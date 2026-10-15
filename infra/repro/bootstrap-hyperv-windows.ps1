@@ -420,7 +420,7 @@ if ($SkipWslInjection) {
 else {
     if (-not $PublicKeyFile) { throw 'A -PublicKeyFile is required so the script can enable SSH key authentication (or pass -SkipWslInjection).' }
     if (-not $PrivateKeyFile) { throw '-PrivateKeyFile is required so the SSH identity is explicit before VM changes.' }
-    $publicKeys = Get-ValidatedPublicKeys -Path $PublicKeyFile
+    $publicKeys = @(Get-ValidatedPublicKeys -Path $PublicKeyFile)
     $resolvedPublicKeyPath = (Resolve-Path -LiteralPath $PublicKeyFile -ErrorAction Stop).Path
     Assert-NoReparsePathComponents -Path $resolvedPublicKeyPath
     $publicKeyItem = Get-Item -LiteralPath $resolvedPublicKeyPath -Force -ErrorAction Stop
