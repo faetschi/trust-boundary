@@ -50,6 +50,11 @@ receipt describes the pre-CLI implementation and does not qualify the CLI migrat
 - [SQLite corruption](sqlite-corruption-20261014.json), committed in `c18a2b6`,
   records owner/root header-corruption refusal in fresh processes and a root-open
   error-cause fix, with focused Linux unit/race, vet, and formatting checks.
+- [SQLite fsync EIO](sqlite-fsync-faults-20261015.json), committed in `11c9899`,
+  records two exact-WAL-fd injected syscall faults and an unfiltered control, with
+  fresh-process checks and no skips in the focused unit/race runs. The root case
+  faults clock high-water persistence before anchor CAS. This is error-path
+  characterization, not physical power-loss evidence or D14 completion.
 - [Reserved-capacity ext4 experiment](reserved-capacity-ext4-experiment-20261014.json),
   committed in `9fb5dd6`, records opt-in real filesystem ENOSPC, physical reserve
   release, terminal persistence, and fresh-process checks. It does not implement a

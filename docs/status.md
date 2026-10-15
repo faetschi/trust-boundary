@@ -1,6 +1,6 @@
 # Current status
 
-Updated 2026-10-15. Branch `codex/tbound-prototype`; implementation head `fdc31f2`.
+Updated 2026-10-15. Branch `codex/tbound-prototype`; implementation head `11c9899`.
 The source checkpoint `6a0a52a` and its component receipt in `5051759` are a
 historical baseline. This working status records implementation state and blockers;
 it is not a qualification report.
@@ -62,14 +62,6 @@ it is not a qualification report.
   ENOSPC), and root-anchor write failure. The test uses synthetic Store pins/verifier
   and an fsynced marker; it does not invoke production `RunEffect` or a real external
   provider/Store effect. It is characterization, not D14 completion.
-- **Historical handoff figure:** a handoff reports 1,126 passes, 7 skips, and 0
-  failures in both full suites at the committed checkpoint. No receipt from that
-  handoff has been recovered, and it has not been independently validated. Attribute
-  the figure to the handoff. The fresh receipt above reproduces these counts but
-  does not validate the handoff run.
-- **Older snapshot:** 1,041 passes, 7 skips, and 0 failures in both normal and race
-  suites, on a 349-file snapshot (`/home/jeli2k/tbrcore.20261014.3/`, WSL only). These
-  results do not establish the 368-file checkpoint.
 - **Environment:** the component test reached WSL and observed Landlock ABI 1; invoking
   the probe implicitly starts the distribution if it is stopped. Any `wsl.exe -l -v`
   listing that showed `Stopped` is historical to its observation time, not a claim
@@ -159,7 +151,12 @@ it is not a qualification report.
   This is feasibility evidence, not a production capacity guarantee: a global
   durable ticket, enforced worst-case bounds, exclusion of other protected-volume
   writers, and declared-platform backing/power-loss qualification remain open.
-  Terminal accounting and fsync-failure qualification remain partial.
+  `11c9899` adds [syscall fsync-EIO characterization](evidence/sqlite-fsync-faults-20261015.json):
+  two exact-WAL-fd fault cases and an unfiltered control pass in Linux unit/race,
+  with zero skips. Fresh processes reject the unanchored terminal owner heads and
+  admit no second callback. The root case faults clock high-water persistence
+  before terminal anchor CAS. This does not establish physical media or power-loss
+  safety; production terminal accounting and storage qualification remain partial.
 - **Recovery continuity:** the fresh provider constructor refuses retained nonempty
   journals. Inert history, checkpoint/budget recovery, and ManagedStore/D06 binding
   exist as components; provider-history replay and continuation through the production
