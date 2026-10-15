@@ -6,25 +6,52 @@ import (
 	"errors"
 	"fmt"
 
+	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/providerbridge"
 )
 
+var ErrProviderRecoveryRequired = errors.New("provider transcript recovery is required before constructing a fresh conversation")
+
+// The constructor has no transcript restoration. Even a settled journal cannot
+// be reused with reset history, generation and event counters.
+func requireFreshProviderConversation(journal *audit.Journal) error {
+	if journal == nil {
+		return ErrProviderRecoveryRequired
+	}
+	trace, err := journal.Trace()
+	if err != nil {
+		return errors.Join(ErrProviderRecoveryRequired, fmt.Errorf("verify provider journal before fresh conversation: %w", err))
+	}
+	if len(trace.Records) != 0 {
+		return ErrProviderRecoveryRequired
+	}
+	return nil
+}
+
 func (a *SessionOperationAuthority) NewProviderConversation(config providerbridge.Config) (*providerbridge.Conversation, error) {
-	if err := a.requirePreparedSource(); err != nil {
-		return nil, err
+	if a == nil {
+		return nil, ErrGovernedSessionEvidence
 	}
 	a.mu.Lock()
+	if a.conversation != nil {
+		a.mu.Unlock()
+		return nil, errors.New("governed provider conversation already exists")
+	}
+	providerJournal := a.providerJournal
+	if err := requireFreshProviderConversation(providerJournal); err != nil {
+		a.mu.Unlock()
+		return nil, err
+	}
 	config.InitialGenerationID, config.InitialTreeDigest = a.initialGeneration, a.initialTreeDigest
 	if config.WorkflowID != a.workflowID || config.ConversationID != a.conversationID || config.ProfileID != a.providerProfileID {
 		a.mu.Unlock()
 		return nil, errors.New("provider conversation identity differs from durable governed session")
 	}
-	if a.conversation != nil {
-		a.mu.Unlock()
-		return nil, errors.New("governed provider conversation already exists")
-	}
 	a.mu.Unlock()
-	conversation, err := providerbridge.NewFromEnvironment(config, a.providerJournal)
+	if err := a.requirePreparedSource(); err != nil {
+		return nil, err
+	}
+	conversation, err := providerbridge.NewFromEnvironment(config, providerJournal)
 	if err != nil {
 		return nil, err
 	}

@@ -710,3 +710,33 @@ Export of HEAD 58492c5 into WSL (Go 1.27.1, Node 24.15.0, private TMPDIR under $
   258/258, sinks/deps + self-tests, boundary guard, Linux rebuild == the Windows-built dist.
 - Known leftovers: the narrow drawer scrolls with the page (not pinned); stream 'complete'
   wording is a decision for the owner; no screen-reader testing.
+
+## Governed continuation refusal / recovery-count checkpoint
+
+- Store recovery consumes primary/admission journals; it does not restore the
+  provider conversation. The fresh constructor has no history/generation/counter
+  replay. A pending-only checker would still allow unsafe reuse of settled traces.
+- Implemented ErrProviderRecoveryRequired: NewProviderConversation checks its
+  held provider journal before source verification/credentials/broker creation.
+  Any non-empty trace or Trace failure refuses construction; diagnostic causes
+  are retained. Live AdmitPrompt is unchanged. Missing/closed/corrupt trace tests
+  and actual constructor audit-frame tests passed after behavioral red evidence.
+- Added actual durable-executor success cut (Store outcome/g1 durable), then
+  process exit before ResultingExecutor appends provider_tool_result. A fresh
+  Store reopen preserves g1; an effect-lifecycle sentinel detects replay. The
+  same constructor helper refuses the retained journal; all journal/marker bytes
+  stay unchanged. Recovery verifiers are test stubs: this proves the helper gate,
+  not a recovered production authority or full constructor restart.
+- Independent Luna review accepted the interim gate and narrow crash evidence.
+  Required pinned Linux build/vet/format checks passed; full race986 passed,
+  zero failures,7 unchanged environment skips. Focused race3 passed without skips.
+  All201 Go/module files match the isolated tested source. Production binder
+  currently creates fresh run-scoped Store/provider journals rather than resuming.
+- Recovery documentation sync committed6834181 on codex/tbound-recovery-protocol:
+  six active summaries use proposed51=17x3, still unadopted/unfrozen/unregistered;
+  core workload up to1935, conditional combined1986. H1 remains299/100 and E07
+  separate conformance. Independent review accepted; archives/normative draft
+  unchanged. Receipt recovery-count-sync-receipt-6834181.json.
+- Remaining restart work: recovered ManagedStore/D06 authority binding and exact
+  provider history/generation/counter replay. The current APIs cannot establish
+  a full recovered production session. G1/H1 remain unchanged.
