@@ -14,11 +14,16 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"tbound/supervisor/internal/broker/openrouter"
 )
 
 const PinnedPiVersion = "0.87.1"
 const PinnedPiProvider = "tbound-go-broker"
-const PinnedPiModel = "nvidia/nemotron-3.5-lightning:free"
+
+// PinnedPiModel is the Pi model id under the TBound broker provider. It is the
+// broker-approved model because the adapter rejects any other model id.
+const PinnedPiModel = openrouter.ApprovedModel
 
 // GovernedRPCArgs returns only flags documented by the pinned Pi 0.87.1 CLI.
 // This version has no --no-mcp switch; isolated HOME and environment are

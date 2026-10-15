@@ -26,7 +26,8 @@ type PiAIEventFactory = Pick<typeof import("@earendil-works/pi-ai"), "createAssi
 
 export const BROKER_PROVIDER_ID = "tbound-go-broker" as const;
 export const BROKER_API = "tbound-provider-bridge/v1" as const;
-export const BROKER_MODEL_ID = "nvidia/nemotron-3.5-lightning:free" as const;
+// Mirrors supervisor openrouter.ApprovedModel; piinstall's Go test enforces equality.
+export const BROKER_MODEL_ID = "deepseek-v4.1-flash" as const;
 export const BROKER_CHANNEL_VERSION = "tbound-provider-bridge/v1" as const;
 export const MAX_PROVIDER_FRAME_BYTES = 1 << 20;
 

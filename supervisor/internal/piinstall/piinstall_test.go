@@ -7,8 +7,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"tbound/supervisor/internal/broker/openrouter"
 )
 
 func TestParsePiVersion(t *testing.T) {
@@ -72,7 +75,7 @@ func TestGovernedRPCArgsUsePinnedIsolationFlags(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(args, " ")
-	for _, required := range []string{"--mode rpc", "--no-session", "--no-extensions", "--no-builtin-tools", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve", "--offline", "--extension " + extensionPath, "--provider tbound-go-broker", "--model tbound-go-broker/nvidia/nemotron-3.5-lightning:free"} {
+	for _, required := range []string{"--mode rpc", "--no-session", "--no-extensions", "--no-builtin-tools", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files", "--no-approve", "--offline", "--extension " + extensionPath, "--provider tbound-go-broker", "--model tbound-go-broker/deepseek-v4.1-flash"} {
 		if !strings.Contains(joined, required) {
 			t.Fatalf("arguments %q omit %q", joined, required)
 		}
@@ -82,5 +85,27 @@ func TestGovernedRPCArgsUsePinnedIsolationFlags(t *testing.T) {
 	}
 	if _, err := GovernedRPCArgs("relative.ts"); err == nil {
 		t.Fatal("relative extension path accepted")
+	}
+}
+
+// brokerModelIDLiteral extracts the adapter's registered model id. TypeScript
+// cannot import the Go constant, so this cross-language check keeps the
+// adapter mirror equal to the broker's approved model.
+var brokerModelIDLiteral = regexp.MustCompile(`(?m)^export const BROKER_MODEL_ID = "([^"]+)" as const;`)
+
+func TestPinnedModelsMatchBrokerApprovedModel(t *testing.T) {
+	if PinnedPiModel != openrouter.ApprovedModel {
+		t.Errorf("PinnedPiModel = %q, broker ApprovedModel = %q", PinnedPiModel, openrouter.ApprovedModel)
+	}
+	source, err := os.ReadFile(filepath.Join("..", "..", "..", "adapter", "src", "broker-provider.ts"))
+	if err != nil {
+		t.Fatalf("read adapter broker provider: %v", err)
+	}
+	match := brokerModelIDLiteral.FindSubmatch(source)
+	if match == nil {
+		t.Fatal("adapter BROKER_MODEL_ID literal not found")
+	}
+	if got := string(match[1]); got != openrouter.ApprovedModel {
+		t.Errorf("adapter BROKER_MODEL_ID = %q, broker ApprovedModel = %q", got, openrouter.ApprovedModel)
 	}
 }

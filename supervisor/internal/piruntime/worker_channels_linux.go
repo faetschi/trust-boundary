@@ -31,7 +31,7 @@ import (
 
 const (
 	PiWorkerSchemaVersion    = "governed-pi-cli/v1"
-	PiWorkerModelID          = "nvidia/nemotron-3.5-lightning:free"
+	PiWorkerModelID          = piinstall.PinnedPiModel
 	PiWorkerProviderID       = "tbound-go-broker"
 	PiWorkerMaxFrameBytes    = 1 << 20
 	PiWorkerMaxPromptBytes   = 16 << 10

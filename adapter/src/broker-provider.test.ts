@@ -11,6 +11,9 @@ import {
 } from "./broker-provider.ts";
 
 const maxFrame = 1 << 20;
+// Mirrors the Go broker's ApprovedModel; supervisor piinstall's
+// TestPinnedModelsMatchBrokerApprovedModel checks BROKER_MODEL_ID against it.
+const GO_APPROVED_MODEL = "deepseek-v4.1-flash";
 
 class LinkedDuplex extends Duplex {
   peer?: LinkedDuplex;
@@ -84,7 +87,7 @@ function makeTurn(sequence: number, responseID: string, toolCall?: { id: string;
   return {
     schema_version: BROKER_CHANNEL_VERSION,
     response_id: responseID,
-    model: BROKER_MODEL_ID,
+    model: GO_APPROVED_MODEL,
     created: 1_790_000_000,
     generation: "fixture-generation-g0",
     sequence,
@@ -96,6 +99,10 @@ function makeTurn(sequence: number, responseID: string, toolCall?: { id: string;
     journal_hash: sequence.toString(16).padStart(64, "0"),
   };
 }
+
+test("adapter's registered model is the broker-approved model", () => {
+  assert.equal(BROKER_MODEL_ID, GO_APPROVED_MODEL);
+});
 
 test("Go turn projection must match its fixed model and finish/call shape", async () => {
   const [clientDuplex, serverDuplex] = duplexPair();

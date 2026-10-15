@@ -11,7 +11,7 @@ import { IpcServer } from "./ipc-transport.ts";
 const piVersion = "0.87.1";
 const nodeVersion = "v24.21.0";
 const brokerVersion = "tbound-provider-bridge/v1";
-const brokerModel = "nvidia/nemotron-3.5-lightning:free";
+const brokerModel = "deepseek-v4.1-flash";
 const brokerProvider = "tbound-go-broker";
 const token = "ab".repeat(32);
 const descriptorProfile = "tbound-pi-cli-fdmap/v1;exec=3;exposure=4;bootstrap=5;ipc=6;provider=7;events=8;bundle=9;control=0";
