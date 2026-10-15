@@ -17,6 +17,7 @@
 - Watch skips: a test that ran before and skips now is a regression. If the tests for your change are skipped here, it is **not verified** — say so, don't call it green
 - Test crashes/recovery in a fresh process (see `internal/audit/audit_test.go`); never assert recovery from the same in-memory state
 - Keep a receipt: exact command, exit code, and source hash. "Passed" without them is a story. Report unrun/skipped tests
+- In PowerShell, stop on errors before editing files. Write generated source/JSON to a temporary file on the target volume, validate it, then replace the target; never overwrite from a failed or null conversion pipeline. Use Windows PowerShell 5.1-compatible commands.
 - **Green results never establish a claim** (`G1`/containment/`H1`); they verify code, not evidence
 - Keep tests focused and proportional. Run broader checks when risk warrants
 - Reproduce bugs with failing tests before fixing; add tests for new behavior
