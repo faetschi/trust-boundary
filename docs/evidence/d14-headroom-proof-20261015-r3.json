@@ -39,6 +39,11 @@
       "date": "2026-10-15",
       "what": "Post-R3 overlay changes: recovery.go (ErrExhausted comment), sqlite_linux.go (A5 assumption comment; error text now says free plus ceiling headroom), sqlite_wal_fault_linux_test.go (owner and root no-poison assertions in the owner-headroom-refused case), production_capacity_linux_test.go (new TestD14ReservedEffectRefusesNonTerminalCommits; gate test comment narrowed to the probed ceilings and the 23-page fixture; refusal test relabelled same-process). No change to the gate, the bound, or the constants. The R3 overlays are byte-identical to HEAD b089a9d blobs; current hashes are in current_sha256.",
       "why": "Review items 1 to 5 of the D14 independent review."
+    },
+    {
+      "date": "2026-10-15",
+      "what": "Follow-up in a later commit: the design-doc sentence that the ledger is the only caller of the owner compare-and-swap is scoped to non-test callers. TestReserveEffectUsesTypedNoTokenReservation calls it directly with a forged, untyped proof, and the owner refuses it with ErrObservation. The design doc's current_sha256 entry is updated to match.",
+      "why": "The original sentence was broader than the code."
     }
   ],
   "current_sha256": {
@@ -47,7 +52,7 @@
     "supervisor/internal/workflowrecovery/production_capacity_linux_test.go": "517fdc365d10061475fedd67d3a559872c7b7b2afea6d9e4e88b1c9d7a516878",
     "supervisor/internal/workflowrecovery/sqlite_wal_fault_linux_test.go": "e5afe6b78a82ad142a25caae427d199b50eb079b0183da6653e061238e67c87d",
     "supervisor/internal/workflowrecovery/sqlite_page_geometry_linux_test.go": "e501087aa6b026cdadf75ebf96983bc0438a3b503ab40a5c7048306b445885db (unchanged since R3)",
-    "docs/design/d14-reserved-capacity.md": "eba9d6f0df432d0d26764650faf882b3306c6089ccc6caf14b8fe307303c2535"
+    "docs/design/d14-reserved-capacity.md": "53948d4b284bb8c4f91f6063a0bf53faa6b2c6068ebbf3f0b8335ca5e96ef950 (updated in a follow-up commit; see corrections)"
   },
   "post_r3_verification": {
     "date": "2026-10-15",
