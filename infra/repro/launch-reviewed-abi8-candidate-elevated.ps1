@@ -18,7 +18,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('WhatIf', 'Create', 'Resume', 'Observe', 'FinalizeExistingSeed')]
+    [ValidateSet('WhatIf', 'Create', 'Resume', 'Observe', 'FinalizeExistingSeed', 'BootstrapCandidate')]
     [string]$Action
 )
 
@@ -128,6 +128,16 @@ $expectedHyperVManifestSha256 = 'C5F845C5BA7A4960D876DB46D1E63905CD9AC8EFEF650CB
 $expectedHyperVBinarySha256 = '0FD7A8B2CB8C15E9DA691726C1F1F71F3EC4F853837FD099BA3F9EB2E9399316'
 $expectedWslExeSha256 = '4e589e3883229b7a74a4acdb878689dcec94e2539fcad1c194f415b149c337a9'
 $expectedSshKeygenSha256 = '539ae392c61a53fadddf0bbb152126f3e0bc042e8a4ed50718ab16fbf872cbcc'
+$expectedSeedReceiptSha256 = '86705E12F8D52BF7AFA8810A32ADA1D60370A61807E5BFD2AEAA13271326D53F'
+$expectedSeedDiskSha256 = 'EDF7AE59B39A8D80AFD5B74FC0D798D16DED5FC5E32F94CCD617897A3BAEEC00'
+$bootstrapDependencyPins = [ordered]@{
+    'infra/repro/bootstrap-hyperv-windows.ps1' = 'E0297B1424EE7A2D55F814FD14E5BB2FAE49B0CE87BFA260B058E1BCF0D36000'
+    'infra/repro/bootstrap-linux.sh' = 'AD26638C8CB18F73AA45BEF50ABF5609BDA0B48EA7430DC029BD49224294068F'
+    'infra/repro/landlock-profile-gate.sh' = '4C7040443E8EB4312E5793515B26C37C6D2C66D28361E63C23426BDA7751448B'
+    'infra/guest/setup-ubuntu-24.04.sh' = '478484545BB73A531F20732DE784B5A3EDF2C816BD0B5ED3519E8546A16D5443'
+    'infra/guest/probe-capabilities.sh' = '6E4DAAAF27DCD838E233AD8AEE191C07FDD328A9EA56908FC54C06D59446A3B8'
+    'infra/repro/probe-live-landlock-abi8-ssh.ps1' = '5F81221869AD1E1912154DE9F430EFA58DFA7768401DF9E0A21342AA7E44C296'
+}
 $candidatePath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot 'new-abi8-hyperv-candidate.ps1'))
 Assert-NoReparsePathComponents -Path $candidatePath
 $candidateItem = Get-Item -LiteralPath $candidatePath -Force -ErrorAction Stop
@@ -193,9 +203,62 @@ $bootstrapSnapshotPath = Join-Path $runDirectory 'elevated-bootstrap.snapshot.ps
 $childResultPath = Join-Path $runDirectory 'child-result.json'
 $childErrorPath = Join-Path $runDirectory 'child-error.txt'
 $launchResultPath = Join-Path $runDirectory 'launch-result.json'
+$bootstrapInputLocks = [System.Collections.Generic.List[IO.FileStream]]::new()
+$bootstrapSourceRoot = $null
+$bootstrapSourceManifestPath = $null
+$bootstrapSourceManifestSha256 = $null
+$bootstrapDependencyRecords = @()
 Write-NewBytesFile -Path $candidateSnapshotPath -Bytes $candidateBytes
 $candidateLock = [IO.File]::Open($candidateSnapshotPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
 if ((Get-Sha256Bytes (Read-LockedBytes $candidateLock)) -cne $expectedCandidateSha256) { throw 'Locked candidate snapshot differs from the source pin.' }
+if ($Action -ceq 'BootstrapCandidate') {
+    $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+    Assert-NoReparsePathComponents -Path $repositoryRoot
+    $bootstrapSourceRoot = Join-Path $runDirectory 'bootstrap-source'
+    [IO.Directory]::CreateDirectory($bootstrapSourceRoot) | Out-Null
+    foreach ($relativePath in $bootstrapDependencyPins.Keys) {
+        $sourcePath = [IO.Path]::GetFullPath((Join-Path $repositoryRoot ($relativePath.Replace('/', '\'))))
+        Assert-NoReparsePathComponents -Path $sourcePath
+        $sourceItem = Get-Item -LiteralPath $sourcePath -Force -ErrorAction Stop
+        if ($sourceItem.PSIsContainer -or ($sourceItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Pinned bootstrap dependency is not a regular file: $relativePath"
+        }
+        $sourceLock = [IO.File]::Open($sourcePath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        try { $sourceBytes = Read-LockedBytes $sourceLock }
+        finally { $sourceLock.Dispose() }
+        $sourceSha256 = Get-Sha256Bytes $sourceBytes
+        if ($sourceSha256 -cne $bootstrapDependencyPins[$relativePath]) {
+            throw "Pinned bootstrap dependency hash mismatch: $relativePath"
+        }
+        $snapshotPath = [IO.Path]::GetFullPath((Join-Path $bootstrapSourceRoot ($relativePath.Replace('/', '\'))))
+        $snapshotDirectory = [IO.Path]::GetDirectoryName($snapshotPath)
+        [IO.Directory]::CreateDirectory($snapshotDirectory) | Out-Null
+        Assert-NoReparsePathComponents -Path $snapshotPath
+        Write-NewBytesFile -Path $snapshotPath -Bytes $sourceBytes
+        $snapshotLock = [IO.File]::Open($snapshotPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+        if ((Get-Sha256Bytes (Read-LockedBytes $snapshotLock)) -cne $sourceSha256) {
+            $snapshotLock.Dispose()
+            throw "Pinned bootstrap dependency snapshot mismatch: $relativePath"
+        }
+        $bootstrapInputLocks.Add($snapshotLock)
+        $bootstrapDependencyRecords += ,[ordered]@{
+            path = $relativePath
+            sha256 = $sourceSha256
+            byteLength = $sourceBytes.Length
+        }
+    }
+    $bootstrapSourceManifestPath = Join-Path $runDirectory 'bootstrap-source-manifest.json'
+    $bootstrapSourceManifest = [ordered]@{
+        schema = 'tbound-abi8-bootstrap-source-manifest/v1'
+        snapshotRoot = 'bootstrap-source'
+        files = $bootstrapDependencyRecords
+    }
+    $bootstrapSourceManifestText = ($bootstrapSourceManifest | ConvertTo-Json -Depth 6) + [Environment]::NewLine
+    Write-NewUtf8File -Path $bootstrapSourceManifestPath -Text $bootstrapSourceManifestText
+    $bootstrapSourceManifestBytes = [Text.UTF8Encoding]::new($false).GetBytes($bootstrapSourceManifestText)
+    $bootstrapSourceManifestSha256 = Get-Sha256Bytes $bootstrapSourceManifestBytes
+    $bootstrapInputLocks.Add([IO.File]::Open($bootstrapSourceManifestPath, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read))
+}
 
 $bootstrap = @'
 Set-StrictMode -Version Latest
@@ -263,6 +326,10 @@ $hyperVManifestPath = From-B64 '__HYPERV_MANIFEST_PATH__'
 $expectedHyperVManifestHash = From-B64 '__HYPERV_MANIFEST_HASH__'
 $hyperVBinaryPath = From-B64 '__HYPERV_BINARY_PATH__'
 $expectedHyperVBinaryHash = From-B64 '__HYPERV_BINARY_HASH__'
+$bootstrapSourceRoot = From-B64 '__BOOTSTRAP_SOURCE_ROOT__'
+$expectedBootstrapSourceManifestHash = From-B64 '__BOOTSTRAP_SOURCE_MANIFEST_HASH__'
+$expectedSeedReceiptHash = From-B64 '__SEED_RECEIPT_HASH__'
+$expectedSeedDiskHash = From-B64 '__SEED_DISK_HASH__'
 $childResultPath = Join-Path $runDirectory 'child-result.json'
 $childErrorPath = Join-Path $runDirectory 'child-error.txt'
 $candidateOutputPath = Join-Path $runDirectory 'candidate-output.txt'
@@ -287,7 +354,37 @@ $result = [ordered]@{
   outcome = 'refused-or-failed'
   candidateReceiptSha256 = $null
   seedStateSha256 = $null
+  bootstrapSourceManifestSha256 = $null
+  bootstrapCandidate = $null
   exitCode = 2
+}
+function Assert-FixedSeedReceiptMetadata {
+  param([object]$Receipt, [string]$DiskPath, [string]$ExpectedDiskHash, [string]$PrivateKeyPath)
+  if ($Receipt.schema -cne 'tbound-abi8-hyperv-seed/v1' -or
+      $Receipt.seedVm.id -cne '82ffce59-06bf-4c1b-b43a-d406489c6d7f' -or
+      $Receipt.seedVm.name -cne 'TBound-Ubuntu-ABI8-Seed' -or $Receipt.seedVm.state -cne 'Off' -or
+      $Receipt.seedVm.generation -ne 2 -or $Receipt.seedVm.processorCount -ne 2 -or
+      $Receipt.seedVm.fixedMemoryBytes -ne 4GB -or $Receipt.seedVm.virtualDiskBytes -ne 40GB -or
+      $Receipt.seedVm.diskType -cne 'Dynamic' -or $Receipt.seedVm.diskPath -ine $DiskPath -or
+      $Receipt.seedVm.diskSha256 -ine $ExpectedDiskHash -or $Receipt.seedVm.parentPath -or
+      $Receipt.provisioningKey.privateKeyPath -ine $PrivateKeyPath -or
+      $Receipt.provisioningKey.privateKeyMaterialIncluded -ne $false) {
+    throw 'Finalized seed receipt did not match the fixed clone source and profile.'
+  }
+}
+function Assert-FixedCandidateVmMetadata {
+  param([object]$Vm, [object]$Cpu, [object]$Memory, [object]$Firmware,
+        [object[]]$Adapters, [object[]]$Disks, [object[]]$Snapshots,
+        [object]$Vhd, [string]$DiskPath)
+  if ($Disks.Count -ne 1 -or $Disks[0].Path -ine $DiskPath) { throw 'Final candidate has an unexpected disk attachment.' }
+  if ($Vm.State -ne 'Running' -or $Vm.Generation -ne 2 -or $Cpu.Count -ne 8 -or
+      $Memory.DynamicMemoryEnabled -or $Memory.Startup -ne 16GB -or
+      $Firmware.SecureBoot -ne 'On' -or $Firmware.SecureBootTemplate -notmatch 'MicrosoftUEFICertificateAuthority' -or
+      $Adapters.Count -ne 1 -or $Adapters[0].SwitchName -cne 'Default Switch' -or
+      $Snapshots.Count -ne 0 -or $Vhd.VhdFormat -ne 'VHDX' -or $Vhd.VhdType -ne 'Dynamic' -or
+      $Vhd.Size -ne 40GB -or $Vhd.ParentPath) {
+    throw 'Final candidate differs from the fixed 8-CPU/16-GiB/40-GiB standalone profile.'
+  }
 }
 try {
   $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -402,7 +499,8 @@ try {
   else {
     $candidateBlock = [ScriptBlock]::Create((Decode-Script $candidateBytes))
     $captured = @()
-    if ($action -ceq 'WhatIf') {
+    if ($action -ceq 'BootstrapCandidate') { $captured = @() }
+    elseif ($action -ceq 'WhatIf') {
       $captured = @(& $candidateBlock -AssetRoot $assetRoot -InstallTimeoutMinutes 120 -MinimumFreeGb 120 -WhatIf *>&1)
     }
     elseif ($action -ceq 'Create') {
@@ -415,13 +513,131 @@ try {
     $captured = @(& $candidateBlock -AssetRoot $assetRoot -InstallTimeoutMinutes 120 -MinimumFreeGb 120 -FinalizeExistingSeed -Confirm:$false *>&1)
   }
     else { throw 'Action is not one of the fixed reviewed operations.' }
-    $capturedText = @($captured | ForEach-Object { [string]$_ })
-    $capturedUtf8 = [Text.Encoding]::UTF8.GetBytes(($capturedText -join [Environment]::NewLine) + [Environment]::NewLine)
-    $result.invocationOutputLineCount = $capturedText.Count
-    $result.outputSha256 = Hash-Bytes $capturedUtf8
-    $result.invocationCompleted = $true
-    [IO.File]::WriteAllBytes($candidateOutputPath, $capturedUtf8)
-    if ($action -ceq 'WhatIf') {
+    if ($action -cne 'BootstrapCandidate') {
+      $capturedText = @($captured | ForEach-Object { [string]$_ })
+      $capturedUtf8 = [Text.Encoding]::UTF8.GetBytes(($capturedText -join [Environment]::NewLine) + [Environment]::NewLine)
+      $result.invocationOutputLineCount = $capturedText.Count
+      $result.outputSha256 = Hash-Bytes $capturedUtf8
+      $result.invocationCompleted = $true
+      [IO.File]::WriteAllBytes($candidateOutputPath, $capturedUtf8)
+    }
+    if ($action -ceq 'BootstrapCandidate') {
+      $expectedSourceRoot = [IO.Path]::GetFullPath((Join-Path $runDirectory 'bootstrap-source'))
+      if ([IO.Path]::GetFullPath($bootstrapSourceRoot) -ine $expectedSourceRoot -or
+          $expectedBootstrapSourceManifestHash -notmatch '^[0-9A-F]{64}$') {
+        throw 'Pinned bootstrap source snapshot path or manifest hash is invalid.'
+      }
+      Assert-NoReparsePath -Path $expectedSourceRoot
+      $result.bootstrapSourceManifestSha256 = $expectedBootstrapSourceManifestHash
+
+      $assetRoot = 'F:\TBoundAssets\abi8-qualification-2026-10-14'
+      $seedReceiptPath = Join-Path $assetRoot 'abi8-seed-receipt.json'
+      $seedDiskPath = 'F:\TBoundAssets\abi8-qualification-2026-10-14\seed-vm\Virtual Hard Disks\TBound-Ubuntu-ABI8-Seed.vhdx'
+      if ((Hash-Bytes ([IO.File]::ReadAllBytes($seedReceiptPath))) -cne $expectedSeedReceiptHash) { throw 'Finalized seed receipt hash changed.' }
+      $seedReceipt = Get-Content -LiteralPath $seedReceiptPath -Raw | ConvertFrom-Json -ErrorAction Stop
+      Assert-FixedSeedReceiptMetadata -Receipt $seedReceipt -DiskPath $seedDiskPath `
+        -ExpectedDiskHash $expectedSeedDiskHash -PrivateKeyPath (Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519')
+      if ((Get-FileHash -LiteralPath $seedDiskPath -Algorithm SHA256 -ErrorAction Stop).Hash -cne $expectedSeedDiskHash) { throw 'Finalized seed VHDX hash changed.' }
+      $seedVms = @(Get-VM -Name 'TBound-Ubuntu-ABI8-Seed' -ErrorAction Stop)
+      if ($seedVms.Count -ne 1) { throw 'Expected exactly one fixed seed VM.' }
+      $seedVm = $seedVms[0]
+      $seedDiskDrives = @(Get-VMHardDiskDrive -VMName $seedVm.Name -ErrorAction Stop)
+      if ($seedVm.Id.ToString() -ine $seedReceipt.seedVm.id -or $seedVm.State -ne 'Off' -or
+          $seedVm.Generation -ne 2 -or $seedDiskDrives.Count -ne 1 -or
+          $seedDiskDrives[0].Path -ine $seedDiskPath) { throw 'Live seed identity, power state, or source disk differs from its receipt.' }
+
+      $originalVms = @(Get-VM -Name 'TBound-Ubuntu-2404' -ErrorAction SilentlyContinue)
+      if ($originalVms.Count -ne 1) { throw 'The existing original VM was not found exactly once; refusing the replacement clone action.' }
+      $originalId = $originalVms[0].Id.ToString()
+      $originalState = [string]$originalVms[0].State
+      $candidateVmName = 'TBound-Ubuntu-2404-ABI8'
+      $candidateVmRoot = 'F:\TBoundVMs\TBound-Ubuntu-2404-ABI8'
+      $publicKeyPath = Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519.pub'
+      $privateKeyPath = Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519'
+
+      $bootstrapScriptPath = Join-Path $expectedSourceRoot 'infra\repro\bootstrap-hyperv-windows.ps1'
+      $probeScriptPath = Join-Path $expectedSourceRoot 'infra\repro\probe-live-landlock-abi8-ssh.ps1'
+      $captured = @(& $bootstrapScriptPath -ImageKind GoldenVhdx -ImageSourcePath $seedDiskPath `
+        -ExpectedImageSha256 $expectedSeedDiskHash -PublicKeyFile $publicKeyPath -PrivateKeyFile $privateKeyPath `
+        -VmName $candidateVmName -VmRoot $candidateVmRoot -SwitchName 'Default Switch' -GuestUser 'tboundadmin' `
+        -SshPort 22 -BootTimeoutSeconds 900 -MinimumFreeGb 120 -RepoRoot $expectedSourceRoot -Confirm:$false *>&1)
+      $bootstrapOutput = @($captured | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
+      if ($bootstrapOutput -notmatch '(?m)^SSH private key matches a supplied public key \(comparison passed\)\.\r?$') {
+        throw 'Bootstrap did not report successful private/public key comparison.'
+      }
+      $hostMemoryMatches = [regex]::Matches($bootstrapOutput, '(?m)^Host available physical memory immediately before VM start: ([0-9]+(?:\.[0-9]+)?) GiB\.\r?$')
+      if ($hostMemoryMatches.Count -ne 1) { throw 'Bootstrap did not report one read-only host-memory measurement immediately before VM start.' }
+      $hostAvailableMemoryGiBAtStart = [double]::Parse($hostMemoryMatches[0].Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture)
+      if ($hostAvailableMemoryGiBAtStart -lt 16) { throw 'Host free memory fell below the fixed 16 GiB startup allocation before VM start.' }
+      $summaryPath = Join-Path $candidateVmRoot 'provisioning-summary.txt'
+      $summary = Get-Content -LiteralPath $summaryPath -Raw -ErrorAction Stop
+      $ipMatches = [regex]::Matches($summary, '(?m)^Guest IP:\s+((?:\d{1,3}\.){3}\d{1,3})\s*(?:\(|$)')
+      $fingerprintMatches = [regex]::Matches($summary, '(?m)^Guest ED25519 host key SHA256:\s*(SHA256:[A-Za-z0-9+/]{43})\s*$')
+      if ($ipMatches.Count -ne 1 -or $fingerprintMatches.Count -ne 1) { throw 'Bootstrap summary did not contain exactly one guest IPv4 and offline-derived ED25519 fingerprint.' }
+      $guestIp = $ipMatches[0].Groups[1].Value
+      $offlineFingerprint = $fingerprintMatches[0].Groups[1].Value
+      $probeCaptured = @(& $probeScriptPath -HostName $guestIp -GuestHostKeyFingerprint $offlineFingerprint -UserName 'tboundadmin' -Port 22 *>&1)
+      $probeText = @($probeCaptured | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
+      if ($probeText -notmatch '(?m)^Landlock ABI: 8; errno: 0\s*$') { throw 'Live guest did not return exact Landlock ABI 8 with errno 0.' }
+
+      $candidateVm = Get-VM -Name $candidateVmName -ErrorAction Stop
+      $candidateCpu = Get-VMProcessor -VMName $candidateVmName -ErrorAction Stop
+      $candidateMemory = Get-VMMemory -VMName $candidateVmName -ErrorAction Stop
+      $candidateFirmware = Get-VMFirmware -VMName $candidateVmName -ErrorAction Stop
+      $candidateAdapters = @(Get-VMNetworkAdapter -VMName $candidateVmName -ErrorAction Stop)
+      $candidateDisks = @(Get-VMHardDiskDrive -VMName $candidateVmName -ErrorAction Stop)
+      $candidateSnapshots = @(Get-VMSnapshot -VMName $candidateVmName -ErrorAction Stop)
+      $candidateVhd = Get-VHD -Path $candidateDisks[0].Path -ErrorAction Stop
+      Assert-FixedCandidateVmMetadata -Vm $candidateVm -Cpu $candidateCpu -Memory $candidateMemory `
+        -Firmware $candidateFirmware -Adapters $candidateAdapters -Disks $candidateDisks `
+        -Snapshots $candidateSnapshots -Vhd $candidateVhd `
+        -DiskPath (Join-Path $candidateVmRoot 'Virtual Hard Disks\TBound-Ubuntu-2404-ABI8.vhdx')
+      $seedVmAfter = Get-VM -Name 'TBound-Ubuntu-ABI8-Seed' -ErrorAction Stop
+      if ((Get-FileHash -LiteralPath $seedDiskPath -Algorithm SHA256 -ErrorAction Stop).Hash -cne $expectedSeedDiskHash -or
+          $seedVmAfter.Id.ToString() -ine $seedVm.Id.ToString() -or $seedVmAfter.State -ne 'Off') {
+        throw 'Seed VM identity, state, or source VHDX changed while the clone was provisioned.'
+      }
+      $originalAfter = Get-VM -Name 'TBound-Ubuntu-2404' -ErrorAction Stop
+      if ($originalAfter.Id.ToString() -cne $originalId -or [string]$originalAfter.State -cne $originalState) {
+        throw 'Original VM identity or power state changed during candidate provisioning.'
+      }
+      $finalInvocationText = $bootstrapOutput + [Environment]::NewLine + $probeText
+      $finalInvocationBytes = [Text.Encoding]::UTF8.GetBytes($finalInvocationText + [Environment]::NewLine)
+      $result.invocationOutputLineCount = @($finalInvocationText -split '\r?\n').Count
+      $result.outputSha256 = Hash-Bytes $finalInvocationBytes
+      [IO.File]::WriteAllBytes($candidateOutputPath, $finalInvocationBytes)
+      $result.invocationCompleted = $true
+      $result.bootstrapCandidate = [ordered]@{
+        vmName = $candidateVmName
+        vmId = $candidateVm.Id.ToString()
+        state = [string]$candidateVm.State
+        generation = [int]$candidateVm.Generation
+        processorCount = [int]$candidateCpu.Count
+        startupMemoryBytes = [Int64]$candidateMemory.Startup
+        dynamicMemoryEnabled = [bool]$candidateMemory.DynamicMemoryEnabled
+        switchName = [string]$candidateAdapters[0].SwitchName
+        diskPath = [string]$candidateDisks[0].Path
+        diskType = [string]$candidateVhd.VhdType
+        diskSizeBytes = [Int64]$candidateVhd.Size
+        diskParentPath = [string]$candidateVhd.ParentPath
+        diskSha256 = $null
+        diskSha256Status = 'not-captured-while-running'
+        guestIpv4 = $guestIp
+        guestEd25519Fingerprint = $offlineFingerprint
+        liveLandlockAbi = 8
+        liveLandlockErrno = 0
+        privatePublicKeyMatchReported = $true
+        hostAvailablePhysicalMemoryGiBAtStart = $hostAvailableMemoryGiBAtStart
+        seedVmId = $seedVm.Id.ToString()
+        seedRemainedOff = $true
+        seedDiskSha256 = $expectedSeedDiskHash.ToLowerInvariant()
+        originalVmId = $originalId
+        originalVmStateUnchanged = $true
+      }
+      $result.outcome = 'bootstrap-candidate-created-live-abi8-verified'
+      $exitCode = 0
+    }
+    elseif ($action -ceq 'WhatIf') {
       if ([IO.Directory]::Exists($assetRoot) -or (Get-VM -Name 'TBound-Ubuntu-ABI8-Seed' -ErrorAction SilentlyContinue) -or
           (Get-VM -Name 'TBound-Ubuntu-2404-ABI8' -ErrorAction SilentlyContinue)) {
         throw 'WhatIf unexpectedly created a candidate output directory or VM.'
@@ -429,7 +645,7 @@ try {
       $result.outcome = 'whatif-preflight-completed-no-vm-or-output-created'
       $exitCode = 0
     }
-    else {
+    elseif ($action -in @('Create', 'Resume', 'FinalizeExistingSeed')) {
       $receiptPath = Join-Path $assetRoot 'abi8-seed-receipt.json'
       if (-not [IO.File]::Exists($receiptPath)) { throw 'Create completed without the fixed seed receipt.' }
       $receipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json -ErrorAction Stop
@@ -475,6 +691,7 @@ try {
       else { 'seed-created-and-off-state-receipt-validated' }
       $exitCode = 0
     }
+    else { throw 'Action is not one of the fixed reviewed operations.' }
   }
 }
 catch {
@@ -506,6 +723,10 @@ $bootstrapValues = @{
     '__HYPERV_MANIFEST_HASH__' = ConvertTo-Base64Utf8 $expectedHyperVManifestSha256
     '__HYPERV_BINARY_PATH__' = ConvertTo-Base64Utf8 $hyperVBinaryPath
     '__HYPERV_BINARY_HASH__' = ConvertTo-Base64Utf8 $expectedHyperVBinarySha256
+    '__BOOTSTRAP_SOURCE_ROOT__' = ConvertTo-Base64Utf8 ([string]$bootstrapSourceRoot)
+    '__BOOTSTRAP_SOURCE_MANIFEST_HASH__' = ConvertTo-Base64Utf8 ([string]$bootstrapSourceManifestSha256)
+    '__SEED_RECEIPT_HASH__' = ConvertTo-Base64Utf8 $expectedSeedReceiptSha256
+    '__SEED_DISK_HASH__' = ConvertTo-Base64Utf8 $expectedSeedDiskSha256
 }
 foreach ($key in $bootstrapValues.Keys) { $bootstrap = $bootstrap.Replace($key, $bootstrapValues[$key]) }
 $bootstrapSnapshotBytes = [Text.Encoding]::UTF8.GetBytes($bootstrap)
@@ -591,6 +812,9 @@ $launchRecord = [ordered]@{
     hyperVManifestSha256 = $expectedHyperVManifestSha256
     hyperVBinaryPath = $hyperVBinaryPath
     hyperVBinarySha256 = $expectedHyperVBinarySha256
+    bootstrapSourceRoot = $bootstrapSourceRoot
+    bootstrapSourceManifestPath = $bootstrapSourceManifestPath
+    bootstrapSourceManifestSha256 = $bootstrapSourceManifestSha256
     bootstrapWrapperSha256 = $bootstrapWrapperSha256
     bootstrapSnapshotPath = $bootstrapSnapshotPath
     bootstrapSnapshotSha256 = $bootstrapSnapshotSha256
@@ -612,7 +836,7 @@ $status = 'elevation-request-rejected-or-canceled'
 $childExitCode = $null
 $waitCompleted = $false
 $rawLaunchError = $null
-$deadlineMinutes = if ($Action -in @('Create', 'Resume')) { 130 } else { 10 }
+$deadlineMinutes = if ($Action -in @('Create', 'Resume', 'BootstrapCandidate')) { 130 } else { 10 }
 try {
     $child = Start-Process -FilePath $launchPowerShellPath -ArgumentList $argumentString -Verb RunAs -WindowStyle Hidden -PassThru
     $launchRecord.childProcessId = $child.Id
@@ -678,6 +902,39 @@ try {
                     $childResult.seedStateSha256 -match '^[0-9A-Fa-f]{64}$' -and
                     $seedStateValidated
             }
+            elseif ($Action -ceq 'BootstrapCandidate') {
+                $candidate = $childResult.bootstrapCandidate
+                $childResultValidated = $childResultValidated -and $null -ne $candidate
+                if ($null -ne $candidate) {
+                    $guestAddress = $null
+                    $guestAddressParsed = [Net.IPAddress]::TryParse([string]$candidate.guestIpv4, [ref]$guestAddress) -and
+                        $guestAddress.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork -and
+                        $guestAddress.ToString() -ceq [string]$candidate.guestIpv4
+                    $childResultValidated = $childResultValidated -and
+                    $childResult.invocationCompleted -eq $true -and
+                    $childResult.outcome -ceq 'bootstrap-candidate-created-live-abi8-verified' -and
+                    $childResult.bootstrapSourceManifestSha256 -ceq $bootstrapSourceManifestSha256 -and
+                    $candidate.vmName -ceq 'TBound-Ubuntu-2404-ABI8' -and
+                    $candidate.vmId -match '^[0-9a-fA-F-]{36}$' -and
+                    $candidate.state -ceq 'Running' -and $candidate.generation -eq 2 -and
+                    $candidate.processorCount -eq 8 -and $candidate.startupMemoryBytes -eq 16GB -and
+                    $candidate.dynamicMemoryEnabled -eq $false -and $candidate.switchName -ceq 'Default Switch' -and
+                    $candidate.diskPath -ieq 'F:\TBoundVMs\TBound-Ubuntu-2404-ABI8\Virtual Hard Disks\TBound-Ubuntu-2404-ABI8.vhdx' -and
+                    $candidate.diskType -ceq 'Dynamic' -and $candidate.diskSizeBytes -eq 40GB -and
+                    [string]::IsNullOrEmpty([string]$candidate.diskParentPath) -and
+                    [string]::IsNullOrEmpty([string]$candidate.diskSha256) -and
+                    $candidate.diskSha256Status -ceq 'not-captured-while-running' -and
+                    $guestAddressParsed -and $candidate.guestEd25519Fingerprint -match '^SHA256:[A-Za-z0-9+/]{43}$' -and
+                    $candidate.liveLandlockAbi -eq 8 -and $candidate.liveLandlockErrno -eq 0 -and
+                    $candidate.privatePublicKeyMatchReported -eq $true -and
+                    $candidate.hostAvailablePhysicalMemoryGiBAtStart -ge 16 -and
+                    $candidate.seedVmId -ceq '82ffce59-06bf-4c1b-b43a-d406489c6d7f' -and
+                    $candidate.seedRemainedOff -eq $true -and
+                    $candidate.seedDiskSha256 -ceq $expectedSeedDiskSha256.ToLowerInvariant() -and
+                    $candidate.originalVmId -match '^[0-9a-fA-F-]{36}$' -and
+                    $candidate.originalVmStateUnchanged -eq $true
+                }
+            }
             else {
                 $childResultValidated = $childResultValidated -and
                     $childResult.invocationCompleted -eq $true -and
@@ -698,6 +955,7 @@ catch {
 finally {
     $bootstrapLock.Dispose()
     $candidateLock.Dispose()
+    foreach ($inputLock in $bootstrapInputLocks) { $inputLock.Dispose() }
 }
 
 $launchRecord.status = $status

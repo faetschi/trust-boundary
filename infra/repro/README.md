@@ -108,7 +108,8 @@ UNVERIFIED by design of the read-only probe.
   -ImageKind GoldenVhdx `
   -ImageSourcePath '<verified generic Ubuntu Server install VHDX>' `
   -ExpectedImageSha256 '<64-hex-sha256-of-the-seed-vhdx>' `
-  -PublicKeyFile $env:USERPROFILE\.ssh\id_ed25519.pub
+  -PublicKeyFile $env:USERPROFILE\.ssh\id_ed25519.pub `
+  -PrivateKeyFile $env:USERPROFILE\.ssh\id_ed25519
 ```
 
 What it does, in order:

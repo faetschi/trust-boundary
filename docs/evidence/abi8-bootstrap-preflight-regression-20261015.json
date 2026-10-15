@@ -1,0 +1,78 @@
+{
+  "schema": "tbound-abi8-bootstrap-preflight-regression/v1",
+  "recordedAt": "2026-10-15",
+  "baseHead": "9d0101030597f28c11dae5ab9ce3293ebe98c3dc",
+  "scope": "Source-pinned mocked BootstrapCandidate state transition and bootstrap progress-summary ordering; no Hyper-V VM action was executed.",
+  "seedReceipt": {
+    "path": "F:/TBoundAssets/abi8-qualification-2026-10-14/abi8-seed-receipt.json",
+    "sha256": "86705e12f8d52bf7afa8810a32ada1d60370a61807e5bfd2aeaa13271326d53f",
+    "mutated": false
+  },
+  "sourcePins": {
+    "infra/repro/launch-reviewed-abi8-candidate-elevated.ps1": "5A0CDB49B44224880E5C99C2C96442EB871F20269DC746C69457A9E7FAD0259E",
+    "infra/repro/bootstrap-hyperv-windows.ps1": "E0297B1424EE7A2D55F814FD14E5BB2FAE49B0CE87BFA260B058E1BCF0D36000",
+    "infra/repro/new-abi8-hyperv-candidate.ps1-canonical-utf8-lf": "9B0FCB40408FC472ED829B665FF0B13ADF30FB2FB9B51B9EA74921B19B826B03",
+    "infra/repro/probe-live-landlock-abi8-ssh.ps1": "5F81221869AD1E1912154DE9F430EFA58DFA7768401DF9E0A21342AA7E44C296",
+    "infra/repro/bootstrap-linux.sh": "AD26638C8CB18F73AA45BEF50ABF5609BDA0B48EA7430DC029BD49224294068F",
+    "infra/repro/landlock-profile-gate.sh": "4C7040443E8EB4312E5793515B26C37C6D2C66D28361E63C23426BDA7751448B",
+    "infra/guest/setup-ubuntu-24.04.sh": "478484545BB73A531F20732DE784B5A3EDF2C816BD0B5ED3519E8546A16D5443",
+    "infra/guest/probe-capabilities.sh": "6E4DAAAF27DCD838E233AD8AEE191C07FDD328A9EA56908FC54C06D59446A3B8"
+  },
+  "mockedAction": {
+    "externalEvidenceDirectory": "C:/Users/Admin/Desktop/tbound-abi8-bootstrap-fixed-action-20261015-r4",
+    "runner": {
+      "path": "C:/Users/Admin/Desktop/tbound-abi8-bootstrap-action-test-20261015-5314f5d78525/run-mocked-bootstrap-action.ps1",
+      "sha256": "83043BEB7E17B73B381F342ACC8CEA286626AE45D0CFA01188F087EF7231FF1B"
+    },
+    "commandRecord": {
+      "path": "C:/Users/Admin/Desktop/tbound-abi8-bootstrap-fixed-action-20261015-r4/00-invocation.log",
+      "sha256": "566F6063CFB6057A81885328F5BBE62F2FFC80142A6E340A83A4939C02E4ACEA",
+      "exitCode": 0
+    },
+    "result": {
+      "bootstrapCallCount": 1,
+      "preflightBeforeBootstrapBeforeProbeBeforeProfile": true,
+      "fixedTaskKeyPathsPassedExplicitly": true,
+      "offlineFingerprintPassedToProbe": true,
+      "invocationCompletedAfterProbeAndOutputWrite": true,
+      "finalOutputHashAndLineCountMatchedWrittenBytes": true,
+      "runningCandidateVhdHashCalls": 0,
+      "candidateDiskHashStatus": "not-captured-while-running",
+      "mockActionPassed": true
+    },
+    "logs": [
+      {
+        "path": "C:/Users/Admin/Desktop/tbound-abi8-bootstrap-fixed-action-20261015-r4/04-mocked-bootstrap-action.log",
+        "sha256": "5BE9A68CCE2D5AD3D97465B6CF902BC65DD7E6C59DA462E220557CABA7EF2AB5"
+      },
+      {
+        "path": "C:/Users/Admin/Desktop/tbound-abi8-bootstrap-fixed-action-20261015-r4/mock-action-run/candidate-output.txt",
+        "sha256": "F09D4766A1AAB4DCD2D4EA2309280988971C46528E3B1C6FC291B624912BE7F2"
+      },
+      {
+        "path": "C:/Users/Admin/Desktop/tbound-abi8-bootstrap-fixed-action-20261015-r4/mock-action-run/bootstrap-call.json",
+        "sha256": "6B4BF02DF98950ECAB654F2BEA9663CBBD4965A3081BD03CE4373245688F22B4"
+      },
+      {
+        "path": "C:/Users/Admin/Desktop/tbound-abi8-bootstrap-fixed-action-20261015-r4/mock-action-run/probe-call.json",
+        "sha256": "3A06D06C114690C2C4B938C37E9967C066785E43127C7E5614FF668C3D1B205A"
+      }
+    ]
+  },
+  "bootstrapFailureContactCheck": {
+    "externalEvidenceDirectory": "C:/Users/Admin/Desktop/tbound-abi8-bootstrap-fixed-action-20261015-r4",
+    "checkScript": {
+      "path": "C:/Users/Admin/Desktop/tbound-abi8-bootstrap-fixed-action-20261015-r4/check-bootstrap-progress-order.ps1",
+      "sha256": "B6BD5F3E3091B089E0542DA221833D48C7D848B03AF6AA84C83DCBE14A616329"
+    },
+    "log": {
+      "path": "C:/Users/Admin/Desktop/tbound-abi8-bootstrap-fixed-action-20261015-r4/05-bootstrap-progress-order.log",
+      "sha256": "DB9BA33073A24CC202B2B7EB2869962C3A78D3BEE79B22D951EE15DFA6FC0720",
+      "exitCode": 0
+    },
+    "verified": "Pending summary persists guest IP and offline-derived ED25519 fingerprint before remote bootstrap; the nonzero bootstrap throw precedes the completion summary. This was a source-order check, not an executed guest failure."
+  },
+  "privateKeyHandling": "The mocked action asserted the fixed task identity paths and emitted no key material. In real provisioning, trusted OpenSSH tools consume the private identity internally for key comparison and SSH; this receipt does not claim that no process reads it. No private-key contents were displayed, copied into evidence, or committed.",
+  "candidateDisk": "Bootstrap copies the powered-off seed disk to a standalone dynamic 40-GiB VHDX; it is not a differencing child. The running candidate VHDX is not hashed.",
+  "limitations": "This is launcher/helper regression evidence only. It does not establish that the candidate VM was created, booted, SSH-reachable, or running Landlock ABI 8."
+}

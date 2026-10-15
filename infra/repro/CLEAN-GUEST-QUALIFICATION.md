@@ -168,7 +168,8 @@ checking.
 $SeedVhdx = 'F:\TBoundAssets\abi8-qualification-2026-10-14\seed-vm\Virtual Hard Disks\TBound-Ubuntu-ABI8-Seed.vhdx'
 $SeedSha256 = (Get-FileHash -LiteralPath $SeedVhdx -Algorithm SHA256).Hash
 $PublicKeyFile = Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519.pub'
-.\infra\repro\bootstrap-hyperv-windows.ps1 -ImageKind GoldenVhdx -ImageSourcePath $SeedVhdx -ExpectedImageSha256 $SeedSha256 -PublicKeyFile $PublicKeyFile -VmName 'TBound-Ubuntu-2404-ABI8' -VmRoot 'F:\TBoundVMs\TBound-Ubuntu-2404-ABI8' -SwitchName 'Default Switch'
+$PrivateKeyFile = Join-Path $env:LOCALAPPDATA 'TBound\abi8-qualification\id_ed25519'
+.\infra\repro\bootstrap-hyperv-windows.ps1 -ImageKind GoldenVhdx -ImageSourcePath $SeedVhdx -ExpectedImageSha256 $SeedSha256 -PublicKeyFile $PublicKeyFile -PrivateKeyFile $PrivateKeyFile -VmName 'TBound-Ubuntu-2404-ABI8' -VmRoot 'F:\TBoundVMs\TBound-Ubuntu-2404-ABI8' -SwitchName 'Default Switch'
 ~~~
 
 The clone uses the existing bootstrap's final profile of Generation 2,

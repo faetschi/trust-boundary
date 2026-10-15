@@ -42,7 +42,9 @@
 .EXAMPLE
     .\bootstrap-hyperv-windows.ps1 -ImageKind GoldenVhdx `
         -ImageSourcePath '<verified generic Ubuntu Server install VHDX>' `
-        -ExpectedImageSha256 <64-hex> -PublicKeyFile $env:USERPROFILE\.ssh\id_ed25519.pub
+        -ExpectedImageSha256 <64-hex> `
+        -PublicKeyFile $env:USERPROFILE\.ssh\id_ed25519.pub `
+        -PrivateKeyFile $env:USERPROFILE\.ssh\id_ed25519
 
 .NOTES
     Exit behavior: throws on any failed precondition or step; no partial-state
@@ -55,6 +57,7 @@ param(
     [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$ImageSourcePath,
     [Parameter(Mandatory)][ValidatePattern('^[A-Fa-f0-9]{64}$')][string]$ExpectedImageSha256,
     [ValidateNotNullOrEmpty()][string]$PublicKeyFile,
+    [ValidateNotNullOrEmpty()][string]$PrivateKeyFile,
     [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$')][string]$VmName = 'TBound-Ubuntu-2404',
     [ValidateNotNullOrEmpty()][string]$VmRoot,
     [ValidateNotNullOrEmpty()][string]$SwitchName = 'Default Switch',
@@ -218,6 +221,65 @@ function Get-ValidatedPublicKeys {
     return $lines
 }
 
+function Resolve-PrivateKeyInput {
+    param([Parameter(Mandatory)][string]$Path)
+    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).Path
+    Assert-NoReparsePathComponents -Path $resolved
+    $item = Get-Item -LiteralPath $resolved -Force -ErrorAction Stop
+    if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'PrivateKeyFile must be an existing regular file without reparse points.'
+    }
+    return $resolved
+}
+
+function ConvertTo-WindowsCommandLineArgument {
+    param([Parameter(Mandatory)][string]$Value)
+    # Windows file names cannot contain a double quote. This argument is a
+    # file path and cannot end with a directory separator.
+    return '"' + $Value + '"'
+}
+
+function Assert-PrivateKeyMatchesPublicKey {
+    param(
+        [Parameter(Mandatory)][string]$PrivateKeyPath,
+        [Parameter(Mandatory)][string[]]$PublicKeyLines
+    )
+    $startInfo = New-Object Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $script:SshKeygenExePath
+    $startInfo.Arguments = '-y -P "" -f ' + (ConvertTo-WindowsCommandLineArgument -Value $PrivateKeyPath)
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $process = New-Object Diagnostics.Process
+    $process.StartInfo = $startInfo
+    try {
+        if (-not $process.Start()) { throw 'ssh-keygen process could not be started.' }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $derivedPublicText = $stdoutTask.GetAwaiter().GetResult()
+        $null = $stderrTask.GetAwaiter().GetResult()
+        $exitCode = $process.ExitCode
+    }
+    finally { $process.Dispose() }
+    $derivedPublicLines = @($derivedPublicText -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($exitCode -ne 0 -or $derivedPublicLines.Count -ne 1) {
+        throw 'PrivateKeyFile could not be used to derive one public key; no VM changes were made.'
+    }
+    $derivedFields = ([string]$derivedPublicLines[0]).Trim() -split '\s+'
+    if ($derivedFields.Count -lt 2) { throw 'PrivateKeyFile did not produce a valid public-key identity; no VM changes were made.' }
+    foreach ($publicKeyLine in $PublicKeyLines) {
+        $publicKeyFields = ([string]$publicKeyLine).Trim() -split '\s+'
+        if ($publicKeyFields.Count -ge 2 -and
+            $publicKeyFields[0] -ceq $derivedFields[0] -and
+            $publicKeyFields[1] -ceq $derivedFields[1]) {
+            return $true
+        }
+    }
+    throw 'PrivateKeyFile does not match a supplied public key; no VM changes were made.'
+}
+
 function Invoke-WslCommand {
     param(
         [Parameter(Mandatory)][string[]]$WslArguments,
@@ -325,6 +387,12 @@ $drive = Get-PSDrive -Name $driveLetter -ErrorAction Stop
 if ($null -eq $drive.Free -or $drive.Free -lt ($MinimumFreeGb * 1GB)) {
     throw ("Drive {0}: must have at least {1} GiB free; found {2:N1} GiB." -f $driveLetter, $MinimumFreeGb, ($drive.Free / 1GB))
 }
+$hostMemory = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+$availableHostMemoryBytes = [Int64]$hostMemory.FreePhysicalMemory * 1KB
+if ($availableHostMemoryBytes -lt 16GB) {
+    throw ("Host has {0:N1} GiB available physical memory; at least 16 GiB is required for the fixed VM startup allocation. No VM changes were made." -f ($availableHostMemoryBytes / 1GB))
+}
+Write-Host ([string]::Format([Globalization.CultureInfo]::InvariantCulture, 'Host available physical memory: {0:N1} GiB (fixed VM startup allocation: 16 GiB).', ($availableHostMemoryBytes / 1GB)))
 
 $switchMatches = @(Get-VMSwitch | Where-Object { $_.Name -eq $SwitchName })
 if ($switchMatches.Count -ne 1) {
@@ -341,16 +409,31 @@ if ($ImageKind -eq 'CloudVhdx') {
 }
 
 $publicKeys = $null
-$resolvedKeyPath = $null
+$resolvedPublicKeyPath = $null
+$resolvedPrivateKeyPath = $null
 if ($SkipWslInjection) {
     if ($PublicKeyFile) { throw '-SkipWslInjection cannot be combined with -PublicKeyFile.' }
+    if (-not $PrivateKeyFile) { throw '-PrivateKeyFile is required when -SkipWslInjection is used.' }
     Write-Warning '-SkipWslInjection: the image must already contain SSH access for the trial user.'
+    $privateKeyCandidate = $PrivateKeyFile
 }
 else {
     if (-not $PublicKeyFile) { throw 'A -PublicKeyFile is required so the script can enable SSH key authentication (or pass -SkipWslInjection).' }
+    if (-not $PrivateKeyFile) { throw '-PrivateKeyFile is required so the SSH identity is explicit before VM changes.' }
     $publicKeys = Get-ValidatedPublicKeys -Path $PublicKeyFile
-    $resolvedKeyPath = (Resolve-Path -LiteralPath $PublicKeyFile -ErrorAction Stop).Path
-    Write-Host ("SSH public key(s) validated from {0}: {1} key line(s)." -f $resolvedKeyPath, $publicKeys.Count)
+    $resolvedPublicKeyPath = (Resolve-Path -LiteralPath $PublicKeyFile -ErrorAction Stop).Path
+    Assert-NoReparsePathComponents -Path $resolvedPublicKeyPath
+    $publicKeyItem = Get-Item -LiteralPath $resolvedPublicKeyPath -Force -ErrorAction Stop
+    if ($publicKeyItem.PSIsContainer -or ($publicKeyItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'PublicKeyFile must be a regular file without reparse points.'
+    }
+    $privateKeyCandidate = $PrivateKeyFile
+}
+$resolvedPrivateKeyPath = Resolve-PrivateKeyInput -Path $privateKeyCandidate
+if ($publicKeys) {
+    $null = Assert-PrivateKeyMatchesPublicKey -PrivateKeyPath $resolvedPrivateKeyPath -PublicKeyLines $publicKeys
+    Write-Host 'SSH private key matches a supplied public key (comparison passed).'
+    Write-Host ("SSH public key(s) validated from {0}: {1} key line(s)." -f $resolvedPublicKeyPath, $publicKeys.Count)
 }
 
 # ---------------------------------------------------------------------------
@@ -488,13 +571,13 @@ try {
     }
     Write-Host 'Integration service policy applied (KVP enabled for provisioning IP reporting; disabled again after provisioning).'
 
-    $null = Add-VMHardDiskDrive -VMName $VmName -Path $vhdPath -ErrorAction Stop
+    $provisionedDiskDrive = Add-VMHardDiskDrive -VMName $VmName -Path $vhdPath -PassThru -ErrorAction Stop
 
     $null = Get-VMNetworkAdapter -VMName $VmName -ErrorAction Stop |
         Connect-VMNetworkAdapter -SwitchName $SwitchName -ErrorAction Stop
     Write-Host "Network adapter connected to provisioning switch '$SwitchName' (disconnect it again before untrusted runs)."
 
-    $null = Set-VMFirmware -VMName $VmName -EnableSecureBoot On -SecureBootTemplate 'MicrosoftUEFICertificateAuthority' -ErrorAction Stop
+    $null = Set-VMFirmware -VMName $VmName -EnableSecureBoot On -SecureBootTemplate 'MicrosoftUEFICertificateAuthority' -FirstBootDevice $provisionedDiskDrive -ErrorAction Stop
     Write-Host 'Firmware: Secure Boot On, template MicrosoftUEFICertificateAuthority.'
 
     $script:stepsDone.Add('VM created with current prototype settings')
@@ -722,7 +805,7 @@ say 'Offline injection complete; disk released.'
     New-Item -ItemType Directory -Path $workDir -ErrorAction Stop | Out-Null
     $injectPath = Join-Path $workDir 'inject.sh'
     $listPath = Join-Path $workDir 'list-devices.sh'
-    $pubKeyWslPath = ConvertTo-WslPath -WindowsPath $resolvedKeyPath
+    $pubKeyWslPath = ConvertTo-WslPath -WindowsPath $resolvedPublicKeyPath
     [IO.File]::WriteAllText($injectPath, $normalizedInject, (New-Object System.Text.UTF8Encoding($false)))
     [IO.File]::WriteAllText($listPath, $normalizedList, (New-Object System.Text.UTF8Encoding($false)))
     $injectWslPath = ConvertTo-WslPath -WindowsPath $injectPath
@@ -784,6 +867,12 @@ else {
 # ---------------------------------------------------------------------------
 
 Write-Step 'Step 5/6: boot and wait for SSH'
+$hostMemoryBeforeStart = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
+$availableHostMemoryBeforeStartBytes = [Int64]$hostMemoryBeforeStart.FreePhysicalMemory * 1KB
+if ($availableHostMemoryBeforeStartBytes -lt 16GB) {
+    throw ("Host has {0:N1} GiB available physical memory immediately before VM start; at least 16 GiB is required. The new VM remains stopped." -f ($availableHostMemoryBeforeStartBytes / 1GB))
+}
+Write-Host ([string]::Format([Globalization.CultureInfo]::InvariantCulture, 'Host available physical memory immediately before VM start: {0:N1} GiB.', ($availableHostMemoryBeforeStartBytes / 1GB)))
 $null = Start-VM -Name $VmName -ErrorAction Stop
 Write-Host "VM '$VmName' started; waiting for the guest network and SSH daemon..."
 
@@ -895,6 +984,30 @@ while ((Get-Date) -lt $keyscanDeadline) {
 if (-not $hostKeyVerified) { throw "Could not obtain exactly one ED25519 SSH host key from $guestIp before timeout." }
 Write-Host "Guest ED25519 host key matches $GuestHostKeyFingerprint."
 
+# Preserve the public SSH contact details before guest provisioning can fail,
+# for example when the current booted kernel reports the wrong Landlock ABI.
+$progressSummaryPath = Join-Path $fullVmRoot 'provisioning-summary.txt'
+$progressSummaryLines = @(
+    'TBound reproducible evaluation VM - provisioning progress',
+    "Generated:      $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss K')",
+    "VM name:        $VmName",
+    "Image source:   $resolvedImage",
+    "Image SHA-256:  $((Get-Sha256Hex -Path $resolvedImage))",
+    "Image kind:     $ImageKind",
+    "Guest user:     $GuestUser",
+    "Guest IP:       $guestIp (Default Switch DHCP; changes across reboots)",
+    "Guest ED25519 host key SHA256: $GuestHostKeyFingerprint",
+    'Guest host-key fingerprint source: verified against offline-injected powered-off-disk key',
+    "Private SSH identity path validated: $([bool]$resolvedPrivateKeyPath)",
+    'Provisioning status: guest bootstrap pending; this is not a completion receipt.'
+)
+[IO.File]::WriteAllText(
+    $progressSummaryPath,
+    (($progressSummaryLines -join [Environment]::NewLine) + [Environment]::NewLine),
+    [Text.UTF8Encoding]::new($false)
+)
+Write-Host "Persisted SSH contact details and offline host-key fingerprint to $progressSummaryPath before guest bootstrap."
+
 $sshExe = $script:SshExePath
 $sshBase = @(
     '-F', ('"{0}"' -f $sshConfigFile.FullName),
@@ -913,17 +1026,8 @@ $sshBase = @(
     '-o', 'PreferredAuthentications=publickey',
     '-o', 'ConnectTimeout=8'
 )
-if ($resolvedKeyPath) {
-    $sshBase += @('-i', ('"{0}"' -f $resolvedKeyPath))
-}
-else {
-    $identityCandidate = Join-Path $env:USERPROFILE '.ssh\id_ed25519'
-    if (-not (Test-Path -LiteralPath $identityCandidate)) {
-        throw ("No SSH key available for the SkipWslInjection path: expected $identityCandidate, or pass -PublicKeyFile instead of -SkipWslInjection.")
-    }
-    $resolvedKeyPath = $identityCandidate
-    $sshBase += @('-i', ('"{0}"' -f $resolvedKeyPath))
-}
+if (-not $resolvedPrivateKeyPath) { throw 'PrivateKeyFile preflight did not produce an SSH identity path.' }
+$sshBase += @('-i', ('"{0}"' -f $resolvedPrivateKeyPath))
 $sshTarget = '{0}@{1}' -f $GuestUser, $guestIp
 $sshDeadline = (Get-Date).AddSeconds($BootTimeoutSeconds)
 $sshReady = $false
@@ -965,7 +1069,7 @@ $scpBase = @(
     '-o', 'PermitLocalCommand=no',
     '-o', 'ClearAllForwardings=yes',
     '-o', 'PreferredAuthentications=publickey',
-    '-i', $resolvedKeyPath
+    '-i', $resolvedPrivateKeyPath
 )
 foreach ($pair in @(
         @{ src = $bootstrapLinux; dst = '~/tbound-infra/repro/bootstrap-linux.sh' },
@@ -1040,6 +1144,8 @@ $summaryLines = @(
     "Host tool SHA-256 (wsl.exe): $wslToolHashSummary",
     "Guest user:     $GuestUser (record the actual non-root UID in the guest)",
     "Guest IP:       $guestIp (Default Switch DHCP; changes across reboots)",
+    "Guest ED25519 host key SHA256: $GuestHostKeyFingerprint",
+    "Private SSH identity path validated: $([bool]$resolvedPrivateKeyPath)",
     "Switch:         $SwitchName (adapter CONNECTED - disconnect before untrusted runs)",
     "Bootstrap exit: $bootstrapExit",
     'Completed steps:'
@@ -1057,6 +1163,6 @@ Write-Host '  2. Disconnect the adapter and create the golden baseline:'
 Write-Host "       Disconnect-VMNetworkAdapter -VMName $VmName"
 Write-Host "       Checkpoint-VM -Name $VmName -SnapshotName 'tbound-golden-baseline'"
 Write-Host '  3. Re-run the capability probe offline (as the trial user) and save the report:'
-Write-Host "       .\infra\repro\probe-host.ps1 -Target Ssh -HostName $guestIp -UserName $GuestUser -KeyFile $resolvedKeyPath -OutFile offline-report.txt"
+Write-Host "       .\infra\repro\probe-host.ps1 -Target Ssh -HostName $guestIp -UserName $GuestUser -KeyFile $resolvedPrivateKeyPath -OutFile offline-report.txt"
 Write-Host '  4. If the measured ABI is below 8, Ubuntu 24.04 HWE may provide ABI 8; reboot and re-probe. The D09 profile requires exactly ABI 8, so reconcile a later ABI explicitly.'
 Write-Host '  5. Keep the NIC disconnected for every untrusted run; see docs/reproducible-setup.md for the claim boundary.'
