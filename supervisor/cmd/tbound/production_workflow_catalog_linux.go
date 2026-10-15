@@ -126,6 +126,19 @@ type piServiceWorkflowCatalog struct {
 	entries           map[string]piServiceWorkflowEntry
 	byHostAdmissionID map[string]string
 	ownerScopes       map[string]piServiceWorkflowOwnerScope
+	// ownerStoreRoot is the directory the owner DBs must sit in. The loader sets
+	// it to piServiceOwnerStoreRoot. It is an unexported test dependency, not
+	// configuration: only the loader and tests set it.
+	ownerStoreRoot string
+}
+
+// ownerRoot is the owner-DB directory this catalog verifies against. A catalog
+// built as a struct literal, as older fixtures do, keeps the production value.
+func (c *piServiceWorkflowCatalog) ownerRoot() string {
+	if c == nil || c.ownerStoreRoot == "" {
+		return piServiceOwnerStoreRoot
+	}
+	return c.ownerStoreRoot
 }
 
 func openPiServiceWorkflowCatalog(path string) (*piServiceWorkflowCatalog, error) {
@@ -153,8 +166,17 @@ func openPiServiceWorkflowCatalog(path string) (*piServiceWorkflowCatalog, error
 	if err != nil {
 		return nil, errors.Join(ErrPiWorkflowCatalog, err)
 	}
+	return loadPiServiceWorkflowCatalog(journal)
+}
+
+// loadPiServiceWorkflowCatalog replays a catalog journal into memory and takes
+// ownership of it: on refusal it closes the journal. The production opener calls
+// it only after the fixed-path and ownership gates. Tests call it on a temporary
+// journal to reopen the durable catalog; the replay rules are the same either way.
+func loadPiServiceWorkflowCatalog(journal *audit.Journal) (*piServiceWorkflowCatalog, error) {
 	catalog := &piServiceWorkflowCatalog{journal: journal, entries: make(map[string]piServiceWorkflowEntry),
-		byHostAdmissionID: make(map[string]string), ownerScopes: make(map[string]piServiceWorkflowOwnerScope)}
+		byHostAdmissionID: make(map[string]string), ownerScopes: make(map[string]piServiceWorkflowOwnerScope),
+		ownerStoreRoot: piServiceOwnerStoreRoot}
 	trace, err := journal.Trace()
 	if err != nil {
 		_ = journal.Close()
@@ -379,7 +401,7 @@ func (c *piServiceWorkflowCatalog) ResolveAdmission(admission piServiceAdmission
 func openProductionWorkflowOwner(ctx context.Context, admission *productionWorkflowAdmission,
 	config piServiceConfig, template piruntime.D09CellTemplate, profile piruntime.HostProfile) error {
 	if ctx == nil || admission == nil || admission.Catalog == nil || admission.Entry.WorkflowID == "" ||
-		config.WorkflowRootDBPath != piServiceWorkflowRootDBPath || config.WorkflowOwnerStoreRoot != piServiceOwnerStoreRoot {
+		config.WorkflowRootDBPath != piServiceWorkflowRootDBPath || config.WorkflowOwnerStoreRoot != admission.Catalog.ownerRoot() {
 		return ErrPiWorkflowCatalog
 	}
 	boundary, err := workflowrecovery.NewLinuxHostBoundary(config.WorkflowOwnerStoreRoot, uint32(os.Geteuid()),
@@ -631,7 +653,7 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequest(ctx context.Con
 		entry.TaskID != state.accepted.TaskID || entry.PayloadDigest != state.accepted.PayloadDigest ||
 		entry.ServiceConfigDigest != configDigest || entry.ServiceRegistrationID != registrationID ||
 		!entry.CheckpointBound || !entry.FreshAuthorizationUsed ||
-		requireWorkflowCatalogPath(entry, piServiceConfig{WorkflowOwnerStoreRoot: piServiceOwnerStoreRoot}) != nil {
+		requireWorkflowCatalogPath(entry, piServiceConfig{WorkflowOwnerStoreRoot: c.ownerRoot()}) != nil {
 		return ErrPiWorkflowCatalog
 	}
 	var receipt productionPiReceipt
@@ -670,11 +692,11 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequest(ctx context.Con
 	drainVerifier := catalogOwnerDrainVerifier{catalog: c, cgroupRoot: template.CgroupsPath,
 		cgroupRootDigest: profile.CgroupRootDigest, containment: profile.ContainmentProfile,
 		settlement: profile.SettlementProfile}
-	boundary, err := workflowrecovery.NewLinuxHostBoundary(piServiceOwnerStoreRoot, uint32(os.Geteuid()), drainVerifier, c)
+	boundary, err := workflowrecovery.NewLinuxHostBoundary(c.ownerRoot(), uint32(os.Geteuid()), drainVerifier, c)
 	if err != nil {
 		return errors.Join(ErrPiWorkflowCatalog, err)
 	}
-	protectedRoot, err := workflowrecovery.OpenExistingProtectedRoot(piServiceWorkflowRootDBPath, piServiceOwnerStoreRoot, boundary)
+	protectedRoot, err := workflowrecovery.OpenExistingProtectedRoot(piServiceWorkflowRootDBPath, c.ownerRoot(), boundary)
 	if err != nil {
 		return errors.Join(ErrPiWorkflowCatalog, err)
 	}

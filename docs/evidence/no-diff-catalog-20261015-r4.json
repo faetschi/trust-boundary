@@ -1,0 +1,281 @@
+{
+    "schema_version":  "tbound-no-diff-catalog-evidence/v4",
+    "recorded_on":  "2026-10-15",
+    "repo":  "trust-boundary",
+    "branch":  "codex/tbound-prototype",
+    "head_at_run":  "e406703",
+    "head_note":  "R3 was recorded at ca30579. e406703 (ABI8 bootstrap JSON and docs) was committed before this run\u0027s archive. No supervisor Go file changed between them.",
+    "commit_made":  false,
+    "relates_to":  "docs/evidence/no-diff-catalog-20261015-r3.json (R3 blockers B1 and B2). R2 receipt docs/evidence/no-diff-settlement-20261015-r2.json is not edited.",
+    "receipt_root":  "F:/TBoundAssets/recovery-20261015/no-diff-catalog-r4",
+    "claim_scope":  "Seams B1 and B2 and seam tests only. The fixed-path gate still refuses every other catalog path. The loader initializes the production owner root. A durable terminal admission (reserve, fresh authorization, checkpoint bind, real MarkTerminal) replays identically in a fresh process. Not claimed: the public verifyCompletedServiceRequest NO_DIFF positive path, a real checkpoint bind, catalog re-admission of a different request ID, the production D09 path, or ABI8. Receipt Success is runtime completion, not task success.",
+    "verdict":  {
+                    "seams_b1_b2":  "done: loadPiServiceWorkflowCatalog extracted from the opener; ownerStoreRoot field and ownerRoot() accessor; four owner-root read sites use the accessor",
+                    "seam_tests":  "pass: 3 top-level tests plus 1 child helper; 0 SKIP; 0 FAIL; 0 DATA RACE",
+                    "red":  "pass: RED A (probe on HEAD) fails: the production opener refuses a temporary journal. RED B (new test on HEAD) fails to build: undefined loadPiServiceWorkflowCatalog",
+                    "gofmt_build_vet":  "pass: gofmt -l . empty; go build ./... exit 0; go vet -mod=readonly ./... exit 0 (whole module)",
+                    "cmd_package":  "pass: unit ok 18.361s (138 top-level PASS, 207 subtests, 2 pre-existing SKIP); race ok 73.376s (0 DATA RACE, same SKIP set)",
+                    "verifyCompletedServiceRequest_NO_DIFF_positive":  "not verified: blocked by guards B-a, B-b and inputs B-c, B-d (see blockers)",
+                    "markterminal_then_cold_reopen":  "pass for a durable admission built with reserve, fresh authorization, checkpoint-bind record in the BindInitialCheckpoint shape, and real MarkTerminal; the real checkpoint bind is not exercised",
+                    "begin_of_different_request_id_after_cold_reopen":  "not verified",
+                    "module_wide_unit_and_race":  "not run: no internal package changed and package main is not importable; the whole-module build and vet ran and passed",
+                    "abi8_guest_and_d09_production_registration":  "not run"
+                },
+    "toolchain":  {
+                      "host":  "WSL Ubuntu, user jeli2k, invoked from PowerShell as wsl.exe -d Ubuntu -u jeli2k -- bash /mnt/f/.../r4-verify.sh \u003cphase\u003e",
+                      "go":  "go1.27.1 linux/amd64 (/home/jeli2k/opt/go1.27.1/bin/go); go-version.txt sha256 f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c",
+                      "env":  "GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly GOMAXPROCS=2 CGO_ENABLED=1; go test -p 2; umask 077; TMPDIR=/home/jeli2k/tbound-r4/tmp",
+                      "module_cache":  "/home/jeli2k/go/pkg/mod (shared, offline)",
+                      "driver":  "F:/TBoundAssets/recovery-20261015/no-diff-catalog-r4/scripts/r4-verify.sh",
+                      "tree":  "/home/jeli2k/tbound-r4: pristine = git archive HEAD; each phase is a fresh cp -a copy run-\u003cphase\u003e with its overlay; removed by phase cleanup (REMOVED confirmed)"
+                  },
+    "source":  {
+                   "archive_command":  "git -c core.autocrlf=false archive --format=tar -o F:/TBoundAssets/recovery-20261015/no-diff-catalog-r4/head-archive-e406703.tar HEAD",
+                   "archive_sha256":  "af88eb17de35a525902d9ed70615f78a4da0a5f6c44247b1e5715292d47df635",
+                   "overlay":  [
+                                   {
+                                       "path":  "supervisor/cmd/tbound/production_workflow_catalog_linux.go",
+                                       "change":  "modified (B1 loader, B2 owner root)",
+                                       "pre_sha256":  "956fd40283f7bfd3ac333a152ef796f773e22b5ffda42839ab6e792b5ab217c6",
+                                       "post_run_sha256":  "956fd40283f7bfd3ac333a152ef796f773e22b5ffda42839ab6e792b5ab217c6"
+                                   },
+                                   {
+                                       "path":  "supervisor/cmd/tbound/production_no_change_catalog_linux_test.go",
+                                       "change":  "new, untracked (seam tests)",
+                                       "pre_sha256":  "db6754d2f8555ac5f2e6477bb3da39086df9fa0e06223a2d8a6567d7fe54af98",
+                                       "post_run_sha256":  "db6754d2f8555ac5f2e6477bb3da39086df9fa0e06223a2d8a6567d7fe54af98"
+                                   }
+                               ],
+                   "private_probe":  "F:/TBoundAssets/recovery-20261015/no-diff-catalog-r4/probe/probe_catalog_red_linux_test.go (RED A only; not in the repo)",
+                   "not_in_tree":  [
+                                       "supervisor/internal/workflowrecovery/* working-tree WIP and production_capacity_linux_test.go (other session); the archive is committed HEAD, so this run did not verify that WIP",
+                                       "supervisor/cmd/tbound/production_recovery_binder_linux.go (modified by another session in the working tree; not overlaid; this change keeps every function signature it calls, including requireWorkflowCatalogPath)",
+                                       "D14 and piruntime WIP; docs/evidence/d14-*.json; docs/evidence/abi8-bootstrap-calibration-20261015.json"
+                                   ],
+                   "other_repo_edit":  "docs/decisions/2026-10-14-qualification-and-research-procedure.md: the Delegation sentence is replaced with a dated Haiku 5.5 max override that supersedes GPT 6 Luna. No other text changed."
+               },
+    "commands":  [
+                     {
+                         "phase":  "prep",
+                         "command":  "gofmt -d \u003cboth overlay files\u003e",
+                         "exit":  0,
+                         "log":  "logs/prep-gofmt-d.log",
+                         "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                         "result":  "empty"
+                     },
+                     {
+                         "phase":  "red-probe",
+                         "command":  "go test -mod=readonly -count=1 -p 2 -v -run TestProbeCatalogRedReopenTempJournal ./cmd/tbound/",
+                         "exit":  1,
+                         "log":  "logs/red-probe.log",
+                         "sha256":  "faf59c0f966ef4e7a0675e493a84fb53563eec4576ff8e43ce4da16b7b98af2b",
+                         "result":  "FAIL: cold reopen of a temporary catalog journal refused: host-owned Pi workflow catalog is missing, corrupt, or mismatched"
+                     },
+                     {
+                         "phase":  "red-compile",
+                         "command":  "go test -mod=readonly -count=1 -p 2 -v -run \u003cTARGETED\u003e ./cmd/tbound/",
+                         "exit":  1,
+                         "log":  "logs/red-compile.log",
+                         "sha256":  "fae6bd1e88e58402dbb6640b6c080e8b7caf4dcf3d2e2e7f2a63d838832f094b",
+                         "result":  "build failed: undefined: loadPiServiceWorkflowCatalog (3 sites)"
+                     },
+                     {
+                         "phase":  "green-fmt",
+                         "command":  "gofmt -l .",
+                         "exit":  0,
+                         "log":  "logs/green-fmt.log",
+                         "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                         "result":  "empty"
+                     },
+                     {
+                         "phase":  "green-build",
+                         "command":  "go build ./...",
+                         "exit":  0,
+                         "log":  "logs/green-build.log",
+                         "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                         "result":  "empty"
+                     },
+                     {
+                         "phase":  "green-vet",
+                         "command":  "go vet -mod=readonly ./...",
+                         "exit":  0,
+                         "log":  "logs/green-vet.log",
+                         "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                         "result":  "empty"
+                     },
+                     {
+                         "phase":  "green-targeted",
+                         "command":  "go test -mod=readonly -count=1 -p 2 -v -run \u003cTARGETED\u003e ./cmd/tbound/",
+                         "exit":  0,
+                         "log":  "logs/green-targeted.log",
+                         "sha256":  "157904970e0ffd762e5d4163436cbb98c0055d114d55c8ccaa5b84c0dd8d164b",
+                         "result":  "ok 0.581s; 13 top PASS, 43 subtests PASS, 0 SKIP, 0 FAIL"
+                     },
+                     {
+                         "phase":  "green-targeted-race",
+                         "command":  "go test -race -mod=readonly -count=1 -p 2 -v -run \u003cTARGETED\u003e ./cmd/tbound/",
+                         "exit":  0,
+                         "log":  "logs/green-targeted-race.log",
+                         "sha256":  "842081db55fbb6636f6218ae55a92cf31ca65d903dde9a4820e5175fa31ae390",
+                         "result":  "ok 3.715s; 13 top PASS, 43 subtests PASS, 0 SKIP, 0 FAIL, 0 DATA RACE"
+                     },
+                     {
+                         "phase":  "green-cmd-unit",
+                         "command":  "go test -mod=readonly -count=1 -p 2 -v ./cmd/tbound/",
+                         "exit":  0,
+                         "log":  "logs/green-cmd-unit.log",
+                         "sha256":  "9190e3db02e4d34a7abdba70c02f4bd2c907bb865ef780ab1870a8bf083c5726",
+                         "result":  "ok 18.361s; 138 top PASS, 207 subtests PASS, 2 SKIP (pre-existing), 0 FAIL"
+                     },
+                     {
+                         "phase":  "green-cmd-race",
+                         "command":  "go test -race -mod=readonly -count=1 -p 2 -v ./cmd/tbound/",
+                         "exit":  0,
+                         "log":  "logs/green-cmd-race.log",
+                         "sha256":  "dc2a71ef4a60a976b3c34d07e17973917136953c646a51bda81caef7cbdf6c19",
+                         "result":  "ok 73.376s; 138 top PASS, 207 subtests PASS, 2 SKIP (pre-existing), 0 FAIL, 0 DATA RACE"
+                     },
+                     {
+                         "phase":  "cleanup",
+                         "command":  "rm -rf /home/jeli2k/tbound-r4",
+                         "exit":  0,
+                         "result":  "removed; test -e reports REMOVED"
+                     }
+                 ],
+    "new_tests":  [
+                      {
+                          "name":  "TestCatalogOpenerKeepsFixedPathGate",
+                          "proves":  "the production opener still refuses every catalog path other than the fixed host path; the replay seam is not a path override"
+                      },
+                      {
+                          "name":  "TestCatalogLoaderInitializesProductionOwnerRoot",
+                          "proves":  "loadPiServiceWorkflowCatalog starts the owner root at piServiceOwnerStoreRoot"
+                      },
+                      {
+                          "name":  "TestCatalogReplayReopensTerminalAdmissionInFreshProcess",
+                          "proves":  "after reserve, fresh authorization, checkpoint-bind record, and real MarkTerminal, a child process that replays the journal cold reports the same admission state, including the terminal tuple",
+                          "not_proved":  "the checkpoint-bind record is hand-written in the BindInitialCheckpoint shape because workflowrecovery.Receipt has unexported fields"
+                      },
+                      {
+                          "name":  "TestCatalogReplayFreshProcessHelper",
+                          "proves":  "child side of the fresh-process replay; no-op unless the parent sets TB_CATALOG_REPLAY_REQUEST_PATH"
+                      }
+                  ],
+    "skips":  [
+                  {
+                      "test":  "TestServePiDevFixtureLaunchesActualPinnedPiOffline",
+                      "reason":  "offline dev Pi fixture env gate; pre-existing; not touched"
+                  },
+                  {
+                      "test":  "TestRealProviderDurableLinux",
+                      "reason":  "requires TBOUND_RUN_REAL_PROVIDER_TESTS=1; pre-existing; not touched"
+                  }
+              ],
+    "seam_detail":  {
+                        "B1":  "openPiServiceWorkflowCatalog keeps its fixed-path and ownership gates and returns loadPiServiceWorkflowCatalog(journal). The replay body is unchanged.",
+                        "B2":  "unexported ownerStoreRoot field, set by the loader to piServiceOwnerStoreRoot; ownerRoot() returns it, or the production value for a zero-value struct literal. Read at production_workflow_catalog_linux.go:404 (admission gate), :656 (requireWorkflowCatalogPath), :695 (NewLinuxHostBoundary), :699 (OpenExistingProtectedRoot second argument). No config, env, CLI, or exported override. No signature changed."
+                    },
+    "blockers":  [
+                     {
+                         "id":  "B-a",
+                         "summary":  "The completion verifier pins the store and publication settlement journals to the production audit root, so no temp journal can be verified",
+                         "code":  [
+                                      "production_workflow_catalog_linux.go:905 openPiServiceSettlementJournal requires filepath.Dir(path) == productionAuditRootDefault (/var/lib/tbound/audit, production_binder_linux.go:44)",
+                                      "production_workflow_catalog_linux.go:806 storeJournal from entry.StoreJournalPath; :830 publication-audit.jsonl under productionAuditRootDefault",
+                                      "production_workflow_catalog_linux.go:379-383 admission builds StoreJournalPath, ProviderJournalPath, CommandJournalPath, StoreRootPath, AdminRootPath from the production constants",
+                                      "production_workflow_catalog_linux.go:1638-1642 requireWorkflowCatalogPath pins the store, admin, and audit directories to the constants"
+                                  ],
+                         "minimal_remedy":  "a second private catalog field (auditRoot, zero value = productionAuditRootDefault) read at the same sites. requireWorkflowCatalogPath gets a roots-aware variant; the two-argument function stays because production_recovery_binder_linux.go:44 calls it and is owned by another session.",
+                         "status":  "not implemented: outside the R3-authorized B1 and B2 list; needs parent approval"
+                     },
+                     {
+                         "id":  "B-b",
+                         "summary":  "The root DB path is a production constant on both the admission gate and the completion verifier",
+                         "code":  [
+                                      "production_workflow_catalog_linux.go:404 config.WorkflowRootDBPath != piServiceWorkflowRootDBPath (admission gate)",
+                                      "production_workflow_catalog_linux.go:699 OpenExistingProtectedRoot(piServiceWorkflowRootDBPath, ...)",
+                                      "pi_service_handoff_linux.go:44 piServiceWorkflowRootDBPath = /var/lib/tbound/private-admin/workflow-recovery/root.db",
+                                      "protected_root_linux.go:209 CreateFreshProtectedRoot(path, ownerStoreRoot, boundary) at HEAD"
+                                  ],
+                         "minimal_remedy":  "a third private catalog field (rootDBPath, zero value = piServiceWorkflowRootDBPath) read at the two sites, with the fixture creating its root DB through CreateFreshProtectedRoot.",
+                         "status":  "not implemented: outside the R3-authorized list; needs parent approval"
+                     },
+                     {
+                         "id":  "B-c",
+                         "summary":  "A real settled checkpoint and receipt cannot be constructed from cmd/tbound without a real owner ledger",
+                         "code":  [
+                                      "internal/workflowrecovery recovery.go:444 at HEAD: type Receipt struct has unexported fields; BindInitialCheckpoint (production_workflow_catalog_linux.go:541) takes a Receipt",
+                                      "sqlite_linux.go:197 LoadSettledCheckpoint and :280 CreateFreshSQLiteOwner at HEAD",
+                                      "production_pin_composition_linux_test.go:87-240 is the only existing fixture that builds the owner through the real path, and it needs a real governed session (sessionlaunch.Prepare, git)"
+                                  ],
+                         "status":  "open: the fixture needs a lighter real route to a settled checkpoint; not found in this round"
+                     },
+                     {
+                         "id":  "B-d",
+                         "summary":  "Inputs not yet built: owner drain receipts, the production_tcb_proof record, the NO_DIFF productionPiReceipt, and the request begin and complete chain",
+                         "code":  [
+                                      "production_publication_linux.go:327 verifyProductionLaunchProofJournal checks every proof field (exact profile, mounts, Landlock, seccomp, cgroup v2)",
+                                      "production_workflow_catalog_linux.go catalogOwnerDrainVerifier.VerifyOwnerCellsDrained and MarkOwnerUnexposedDrained",
+                                      "pi_service_handoff_linux.go:1044 begin and :1084 complete; newPiServiceRequestJournal (:979) has no path gate, so it is not a blocker"
+                                  ],
+                         "status":  "open: buildable from data once B-a to B-c are resolved"
+                     }
+                 ],
+    "next_steps":  [
+                       "Parent decision on B-a and B-b: the same private catalog-field pattern as B2, with the two-argument requireWorkflowCatalogPath kept for the other session\u0027s binder file.",
+                       "Parent or owner-ledger agent: a lighter real route to a settled owner checkpoint and a workflowrecovery.Receipt, so BindInitialCheckpoint and LoadSettledCheckpoint run for real.",
+                       "Next round, RED then GREEN: the NO_DIFF positive path through verifyCompletedServiceRequest with the real lease release, seed, owner drain, TCB proof, and receipt; then MarkTerminal, cold reopen, and begin of a different request ID; plus negatives (missing or tampered release or seed, UNKNOWN or pending, undrained owner).",
+                       "ABI8 guest run of the real D09 registration path stays with the parent runtime agent."
+                   ],
+    "cleanup":  "docs/decisions/2026-10-14-qualification-and-research-procedure.md Delegation sentence replaced (dated Haiku 5.5 max override). No other text or other-session doc edited.",
+    "logs":  {
+                 "root":  "F:/TBoundAssets/recovery-20261015/no-diff-catalog-r4/logs",
+                 "steps_txt_sha256":  "a41cbaa2947656810ab6dd1e79f8790f47d9e729c5d5998c02bf74c48552723a",
+                 "exit_file_sha256":  {
+                                          "0":  "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+                                          "1":  "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+                                      }
+             },
+    "parent_review":  {
+                          "date":  "2026-10-15",
+                          "scope":  "Parent independently matched archive and two current Go overlays; matched command log hashes/native exit files and parsed raw PASS/SKIP/race outputs. Critical diff retains public fixed-path checks; replay body is extracted unchanged and owner-root dependency has no external configuration path.",
+                          "commandLogsVerified":  10,
+                          "counts":  [
+                                         {
+                                             "phase":  "green-targeted",
+                                             "topLevelPass":  13,
+                                             "subtestPass":  43,
+                                             "skip":  0,
+                                             "fail":  0,
+                                             "race":  0
+                                         },
+                                         {
+                                             "phase":  "green-targeted-race",
+                                             "topLevelPass":  13,
+                                             "subtestPass":  43,
+                                             "skip":  0,
+                                             "fail":  0,
+                                             "race":  0
+                                         },
+                                         {
+                                             "phase":  "green-cmd-unit",
+                                             "topLevelPass":  138,
+                                             "subtestPass":  207,
+                                             "skip":  2,
+                                             "fail":  0,
+                                             "race":  0
+                                         },
+                                         {
+                                             "phase":  "green-cmd-race",
+                                             "topLevelPass":  138,
+                                             "subtestPass":  207,
+                                             "skip":  2,
+                                             "fail":  0,
+                                             "race":  0
+                                         }
+                                     ],
+                          "sourceIntegrityLimit":  "This round records pre/post hashes of two overlay files, not a whole-tree post-run manifest. A combined immutable full-module gate remains required after active increments settle.",
+                          "qualificationLimit":  "MarkTerminal replay uses a handwritten initial checkpoint-bind record. This proves durable catalog replay only, not NO_DIFF verification, real checkpoint binding, safe new-ID admission, owner drain, or ABI8. A real workflow Ledger can issue Receipt values; unexported fields are not a fundamental production blocker.",
+                          "nextDecision":  "Do not add more temporary-path overrides now. Retain the limited replay increment and exercise full verifier/new-request admission through the real qualified deployment. Reassess unused private test dependencies during cleanup."
+                      }
+}

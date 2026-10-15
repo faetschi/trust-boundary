@@ -47,7 +47,7 @@ or exceed the cap. No paid runs have been executed under this decision.
 
 ## Delegation
 
-All subsequent delegated work uses GPT 6 Luna with reasoning `max` as subagents.
+As of 2026-10-15, delegated work uses Haiku 5.5 with reasoning `max` as subagents, per the user's latest explicit selection, which supersedes the earlier GPT 6 Luna instruction.
 
 
 ## Scope amendment — 2026-10-15

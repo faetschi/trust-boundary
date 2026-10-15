@@ -1,0 +1,168 @@
+{
+  "schema_version": "tbound-no-diff-catalog-evidence/v3",
+  "recorded_on": "2026-10-15",
+  "repo": "trust-boundary",
+  "branch": "codex/tbound-prototype",
+  "base_head": "230f2b6",
+  "head_at_record": "ca30579",
+  "commit_made": false,
+  "relates_to": "docs/evidence/no-diff-settlement-20261015-r2.json (R2 not edited; R2 independently re-verified, see parent_verification)",
+  "receipt_root": "F:/TBoundAssets/recovery-20261015/no-diff-catalog-r3",
+  "parent_verification": "F:/TBoundAssets/recovery-20261015/no-diff-catalog-r3/parent-verification.json (private; carries the full logSHA manifests)",
+  "claim_scope": "Independent mechanical re-verification of R2 (archive, overlay, manifests, raw logs, exits, counts), plus a targeted re-run on base 230f2b6 with the R2 five-file overlay. No production or test file changed and no new test added. The NO_DIFF public-catalog component test was NOT written; the blocker below is the smallest real prerequisite set. R2 closure claims are unchanged: success on the receipt is runtime completion, not task success.",
+  "verdict": {
+    "r2_mechanical_verification": "pass: archive SHA, five overlay SHAs, four no-op SQLite SHAs, pristine manifest root, module-phase manifest additions (exactly two e2e reports), zero-byte green manifest diffs, raw logs, exits, skip and pass counts. One wording discrepancy (see corrections_to_r2). No critical bug found on the verified surface.",
+    "r3_targeted_rerun": "pass: gofmt -l (empty), go build ./... (exit 0), go vet -mod=readonly ./... (exit 0), focused GREEN 46 PASS / 0 SKIP, focused race 46 PASS / 0 SKIP / 0 DATA RACE, cmd unit verbose 341 PASS / 2 SKIP (pre-existing env-gated)",
+    "catalog_component_test": "not written: blocked by real prerequisites B1 and B2 (see blocker)",
+    "red_green_for_new_test": "not applicable: no new test was added. The R2 RED log was re-read, not re-run",
+    "verifyCompletedServiceRequest_NO_DIFF_positive": "not verified",
+    "catalog_markterminal_and_begin_new_request_after_cold_reopen": "not verified",
+    "d09_cgroup_runtime_a_production_registration": "not verified; only the labelled fake authority seam exists",
+    "abi8_guest_and_full_e2e": "not run"
+  },
+  "toolchain": {
+    "host": "WSL Ubuntu, user jeli2k, invoked from PowerShell via wsl.exe (distro was Stopped and was started for the run)",
+    "go": "go1.27.1 linux/amd64 (/home/jeli2k/opt/go1.27.1/bin/go)",
+    "env": "GOTOOLCHAIN=local GOPROXY=off GOSUMDB=off GOFLAGS=-mod=readonly GOMAXPROCS=2 CGO_ENABLED=1; go test -p 2; umask 077; TMPDIR=/home/jeli2k/tbound-r3/tmp (private, removed at exit)",
+    "driver": "F:/TBoundAssets/recovery-20261015/no-diff-catalog-r3/scripts/r3-verify.sh (copied to /home/jeli2k/tbound-r3 and run from there; pristine copy and tmp removed at exit)"
+  },
+  "source": {
+    "archive_command": "git -c core.autocrlf=false -C <repo> archive --format=tar -o F:/TBoundAssets/recovery-20261015/no-diff-catalog-r3/head-archive-230f2b6.tar 230f2b6",
+    "archive_sha256": "52b499b83a628873bfba3f544f45351d449d15bed70d169684f8c5a51cadf72b",
+    "archive_matches_r2": true,
+    "overlay_source": "five files from the working tree (pre-copy SHA in overlay-pre.sha256; staged copies in F:/TBoundAssets/recovery-20261015/no-diff-catalog-r3/overlay); at ca30579 the HEAD blobs equal the same SHAs and no supervisor Go change exists after 872438f",
+    "overlay": [
+      {"path": "supervisor/cmd/tbound/production_session_linux.go", "sha256": "ce54fb37a844ba4290361cc5f176474d7a16eaea5b975a08de71f8f898d29024"},
+      {"path": "supervisor/cmd/tbound/production_workflow_catalog_linux.go", "sha256": "54531159add4d1279d2b5dbedec59b5693ab094e03c32813313081552fb80666"},
+      {"path": "supervisor/cmd/tbound/production_workflow_catalog_linux_test.go", "sha256": "5882b48d0842edc7e82055a528baf85d01a9abf5174d9cecb175a29b91e96b44"},
+      {"path": "supervisor/cmd/tbound/managed_live_root_linux.go", "sha256": "effbd0578ca5b9ab91525ee6c77124ee5fc2ba2c18feb1bc516fdab3ca58f3a6"},
+      {"path": "supervisor/cmd/tbound/production_no_change_linux_test.go", "sha256": "a15d859f8184f48801d2dbac4d8655efd1140d99b500dbad5479e854e09378f8", "note": "new untracked file in R2; committed at 872438f"}
+    ],
+    "excluded": [
+      "supervisor/internal/workflowrecovery/production_capacity_linux_test.go (other agent, untracked)",
+      "supervisor/internal/workflowrecovery SQLite WIP (other agent; not overlaid; the four R2 SQLite files equal the 230f2b6 blobs)"
+    ],
+    "pristine_manifest_root_sha256": "d0ed5198bf180377342e05dd7ba2f18f19578aa56d6b92791f9db3cd4c24e775",
+    "pristine_manifest_lines": 416,
+    "pristine_manifest_identical_to_r2_a3": true,
+    "post_run_manifest_identical_to_pristine": true
+  },
+  "commands": [
+    {"phase": "gofmt", "command": "gofmt -l .", "exit": 0, "log": "logs/gofmt-list.log", "output": "empty"},
+    {"phase": "build", "command": "go build ./...", "exit": 0, "log": "logs/build.log", "output": "empty"},
+    {"phase": "vet", "command": "go vet -mod=readonly ./...", "exit": 0, "log": "logs/vet.log", "output": "empty"},
+    {"phase": "focused-green", "command": "go test -mod=readonly -count=1 -p 2 -v -run 'TestNoChange|TestBundleHasNoChange|TestProductionReceiptSettlementClaim|TestSettledServiceDisposition' ./cmd/tbound/", "exit": 0, "log": "logs/focused-green.log"},
+    {"phase": "focused-race", "command": "go test -race -mod=readonly -count=1 -p 2 -v -run 'TestNoChange|TestBundleHasNoChange|TestProductionReceiptSettlementClaim|TestSettledServiceDisposition' ./cmd/tbound/", "exit": 0, "log": "logs/focused-race.log"},
+    {"phase": "cmd-unit-verbose", "command": "go test -mod=readonly -count=1 -p 2 -v ./cmd/tbound/", "exit": 0, "log": "logs/cmd-unit-verbose.log"}
+  ],
+  "results": {
+    "focused_green": "46 PASS lines (7 top-level, 39 subtests), 0 SKIP, 0 FAIL",
+    "focused_race": "46 PASS lines (7 top-level, 39 subtests), 0 SKIP, 0 FAIL, 0 DATA RACE",
+    "cmd_unit_verbose": "341 PASS, 2 SKIP, 0 FAIL, ok 14.527s",
+    "pristine_and_post_manifest_diff": "both empty (exit 0)"
+  },
+  "logs": {
+    "r3_sha256": {
+      "build.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "cmd-unit-verbose.log": "e5eb20156858e62f31a71a661a50f411af6c2d4b27e7a2062a126812a7ff4d4c",
+      "focused-green.log": "478856dd4a8da68347ef4277d69e9ce07b727ad927eaaba12de4b0a64adaaf66",
+      "focused-race.log": "0fb9c7a1dc6e7d0661ab8b89e6b20fe59e5580f3948a262fcf3d053774bbfc01",
+      "gofmt-list.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "go-version.txt": "f554cfdb85411c2bb1d503df3f53dfbad1f753eb8271938833166a5d26a7547c",
+      "pristine-manifest.sha256": "d0ed5198bf180377342e05dd7ba2f18f19578aa56d6b92791f9db3cd4c24e775",
+      "post-manifest.sha256": "d0ed5198bf180377342e05dd7ba2f18f19578aa56d6b92791f9db3cd4c24e775",
+      "pristine-vs-r2.diff": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "post-vs-pristine.diff": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "steps.txt": "18b8d1b5a0c4c5c408edbc58fe7950ba9a1f29c7863301e197c049a3a61d2b0d",
+      "vet.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "r2_raw_log_manifest": {
+      "path": "F:/TBoundAssets/recovery-20261015/no-diff-catalog-r3/r2-raw-log-sha256.txt",
+      "sha256": "0bcb8ad649fc4dac229f71a801b3910dd701cf2259f1da8886474146ec09966b",
+      "entries": 87,
+      "logs": 22,
+      "note": "separate private manifest for R2 raw logs, txt, out, count, sha256, and tar files; every entry re-hashed OK"
+    }
+  },
+  "seams_and_paths": {
+    "tested_paths": ["supervisor/cmd/tbound (focused, race, unit)", "supervisor module (gofmt, build, vet)"],
+    "existing_fake_seam_in_r2_tests": "newFakeManagedLiveRootAuthority (supervisor/cmd/tbound/managed_live_root_linux_test.go:488) replaces the D09 registration verifier; labelled FAKE, not the production D09 path",
+    "new_seams": "none in R3"
+  },
+  "skips": [
+    {"test": "TestServePiDevFixtureLaunchesActualPinnedPiOffline", "file": "supervisor/cmd/tbound/dev_fixture_linux_test.go", "reason": "offline dev Pi fixture env gate; pre-existing; not in the five-file set"},
+    {"test": "TestRealProviderDurableLinux", "file": "supervisor/cmd/tbound/real_provider_durable_linux_test.go", "reason": "requires TBOUND_RUN_REAL_PROVIDER_TESTS=1; pre-existing; not in the five-file set"}
+  ],
+  "unrun": [
+    "NO_DIFF component test on the public catalog (not written: blocker B1/B2)",
+    "verifyCompletedServiceRequest positive NO_DIFF path, SQLite catalog MarkTerminal and begin of a new request ID after cold reopen",
+    "production D09 registration path (cgroup, mount, Runtime A) and any ABI8 guest run",
+    "module-wide unit and race (not re-run in R3; R2 module logs verified by counts and manifest diffs; no production change in R3)",
+    "R2 RED re-run (raw RED log re-read only)",
+    "evaluationindex targeted (R2 verified; not re-run)"
+  ],
+  "corrections_to_r2": [
+    {"item": "catalog wording", "r2_text": "'SQLite catalog' in not_verified, open_objections[0], and next_steps[0]", "correct": "The public catalog is piServiceWorkflowCatalog, an audit.Open journal at a fixed host path. SQLite is the per-workflow owner store.", "evidence": "production_workflow_catalog_linux.go:131-134, pi_service_handoff_linux.go:43, production_workflow_catalog_linux.go:398", "claim_effect": "none; the catalog claim stays not verified"},
+    {"item": "status fields", "r2_text": "base_head 230f2b6; commit_made false", "correct": "accurate at R2 time. HEAD is now ca30579: 872438f committed the five overlay files and R2 receipts; no supervisor Go change after 872438f", "claim_effect": "none"},
+    {"item": "RED count wording", "r2_text": "RED fails 5 assertions", "correct": "7 --- FAIL lines: 5 leaf subtests and 2 parent tests (raw log preserved)", "claim_effect": "none"}
+  ],
+  "blocker": {
+    "item": "NO_DIFF public-catalog component test (verifyCompletedServiceRequest, MarkTerminal, begin of a different request ID after cold reopen)",
+    "decision": "stopped; no guard loosened, no terminal tuple written directly, no fake acceptance",
+    "items": [
+      {
+        "id": "B1",
+        "summary": "The catalog opens only at the production host path, and replay is inline with the path gate",
+        "code": [
+          "supervisor/cmd/tbound/production_workflow_catalog_linux.go:131-134 openPiServiceWorkflowCatalog rejects path != piServiceWorkflowCatalogPath",
+          "supervisor/cmd/tbound/pi_service_handoff_linux.go:43 piServiceWorkflowCatalogPath = /var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl",
+          "supervisor/cmd/tbound/production_workflow_catalog_linux.go:163 replay loop inside openPiServiceWorkflowCatalog"
+        ],
+        "existing_seam": "struct literal &piServiceWorkflowCatalog{journal: ...} (production_workflow_catalog_linux_test.go:70); skips replay, so it cannot prove a cold reopen",
+        "proposed_seam": "extract the replay into loadPiServiceWorkflowCatalog(journal *audit.Journal) (*piServiceWorkflowCatalog, error). openPiServiceWorkflowCatalog keeps the path and permission gate and calls it. The fixture calls it on audit.Open(tmp) in a child test process, as TestNoChangeSettlementFreshProcessHelper does.",
+        "owner": "parent (production file)"
+      },
+      {
+        "id": "B2",
+        "summary": "The completion verifier pins the owner DB root to a production constant",
+        "code": [
+          "supervisor/cmd/tbound/production_workflow_catalog_linux.go:634 requireWorkflowCatalogPath(entry, piServiceConfig{WorkflowOwnerStoreRoot: piServiceOwnerStoreRoot})",
+          "supervisor/cmd/tbound/pi_service_handoff_linux.go:45 piServiceOwnerStoreRoot = /var/lib/tbound/sessions/workflow-owners",
+          "supervisor/cmd/tbound/production_binder_linux.go:633 same constant on the binder path (not exercised)"
+        ],
+        "admission_side": "production_workflow_catalog_linux.go:356 OwnerDBPath comes from config.WorkflowOwnerStoreRoot; :398 CreateFreshSQLiteOwner",
+        "consequence": "an owner DB admitted under a temp root is refused by verifyCompletedServiceRequest with ErrPiWorkflowCatalog",
+        "proposed_seam": "unexported field ownerStoreRoot on piServiceWorkflowCatalog. Zero value means piServiceOwnerStoreRoot. Only the test sets it. Line 634 reads c.ownerRoot(). The production opener never sets it, and a production test asserts that the opener yields the constant.",
+        "owner": "parent (production file)"
+      },
+      {
+        "id": "B3",
+        "summary": "D09 registration and cgroup measurement are external; an existing labelled seam covers them",
+        "code": [
+          "internal/piruntime/managed_live_root_linux.go:943 VerifyD09ManagedLiveRoot (production)",
+          "supervisor/cmd/tbound/managed_live_root_linux_test.go:488 newFakeManagedLiveRootAuthority (existing test seam)"
+        ],
+        "use": "label the fixture as FAKE D09 registration and cgroup measurement; it is not evidence for the production D09 path",
+        "blocking": false
+      },
+      {
+        "id": "B4",
+        "summary": "Request admission and the terminal chain must run in real order on a real owner store (not read in detail)",
+        "code": [
+          "supervisor/cmd/tbound/pi_service_handoff_linux.go:1044 piServiceRequestJournal.begin, accepted record at :1076",
+          "supervisor/cmd/tbound/pi_service_handoff_linux.go:1084 complete, terminal record at :1104",
+          "supervisor/cmd/tbound/production_workflow_catalog_linux.go:285 ResolveAdmission, :482 AuthorizeFreshWorkflow, :519 BindInitialCheckpoint, :543 MarkCheckpoint, :563 MarkTerminal, :850 verifySettledOwnerScopes, :1182 BindOwnerScope, :1215 MarkOwnerScopeDrained"
+        ],
+        "blocking": false,
+        "note": "the path gates of piServiceRequestJournal's constructor were not read; confirm before implementation"
+      }
+    ],
+    "estimate": "B1 and B2 are about 40 lines in parent-owned production files. The test is about 400 lines, with production_no_change_linux_test.go as the template.",
+    "next": "the parent approves or assigns B1 and B2. The component test then goes in a new production_no_change_catalog_linux_test.go in a separate round, with RED before GREEN."
+  },
+  "next_steps": [
+    "Parent decision on B1 and B2 seams (production files).",
+    "Component test in a separate round: real Store, audit, owner checkpoint, TCB proof pins, real release, cold reopen, different request ID admitted, plus negatives (missing or tampered release or seed, pending or UNKNOWN, undrained owner).",
+    "ABI8 guest run of the real D09 registration path: parent runtime agent."
+  ]
+}
