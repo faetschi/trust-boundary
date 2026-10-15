@@ -1,17 +1,17 @@
-# TBound — current state
+# TBound - current state
 
 Updated 2026-10-15. Branch: `codex/tbound-prototype`. Priority: thesis completion.
 
 | Milestone | Current state |
 | --- | --- |
-| Recovery/provider foundations | Committed component evidence: atomic restart/retry accounting, read-only historical checkpoint verification, bounded OpenCode Go engineering exchanges. |
-| Regression gate | Open. Two stale service fixtures and their evidence are persisted. Focused and package unit checks pass; two package race reruns pass after an unexplained owner-incarnation refusal. Identity diagnostics and the combined storage/module gate remain pending. |
-| Durable service settlement | Committed (`e0d48d0`, corrected by `ebbbbbc`). Positive production settlement and a real end-to-end workflow remain unqualified. |
-| D09 source binding | Committed (`89b76d0`); fixed-snapshot piruntime checks pass with an explicit skip. The cell-template test remains unverified because supplementary groups are unregistered. |
-| Qualified ABI 8 deployment | Open. Bootstrap unmount failure now fails closed, with a five-case failure-path check. Disposable VM is Off with disk and boot order restored. Offline inspection found no authorized task client key; installation on a preserved disk copy is active. Original VM and seed remain preserved. |
-| D14/D20 qualification | Open. Review confirmed that geometry refusal can checkpoint a retained WAL; a read-only precheck and crash regression are being added. The 128 MiB ceiling lacks maximum-path terminal headroom. Complete callback/WAL/reserve bounds, real fault tests, owner/cell drain and retained restart remain required. |
-| Research Claims — last | Open. Reconcile thesis procedure and complete runtime/research gates before freezing deployment, corpus, independent oracles, calibration, scoring, model/settings and cost plan. Literature screening and construct review remain open. G1/H1 are not established. |
+| Recovery/provider foundations | Committed: atomic restart/retry accounting, read-only historical verification, bounded OpenCode Go engineering exchanges. |
+| Regression gate | Open. Corrected service fixtures pass unit and two package race reruns. An earlier owner-incarnation refusal remains unexplained after 60 focused race executions without reproduction. Combined storage/module checks remain pending. |
+| Durable service settlement | Admission and independent verification gate committed. Positive production settlement and real E2E remain unqualified. |
+| D09 source binding | Committed. The cell-template test still skips for unregistered supplementary groups; this path remains unverified. |
+| Qualified ABI 8 deployment | Open. Bootstrap unmount safety is verified. Public-key installation on a disposable disk copy and pinned SSH recovery are active; exact guest ABI remains unmeasured. Original VM and seed are preserved. |
+| D14/D20 qualification | Open. Retained-WAL refusal regression is reproduced; read-only precheck needs fail-closed inspection errors. Complete effect-path storage bounds, reserved capacity, real faults, owner/cell drain and retained restart remain required. |
+| Research Claims - last | Open. Reconcile thesis procedure and complete runtime/research gates before freezing deployment, corpus, independent oracles, calibration, scoring and the model/cost plan. Literature screening and construct review remain open. G1/H1 are not established. |
 
 Engineering route: OpenCode Go. Final research: OpenRouter DeepSeek V4.1 Flash, US$5 total cap. User/advisor construct review; independent runtime/effect oracles remain required.
 
-Frontend, remote/multi-user operation, broad operator UX and generalized distribution are deferred. Other-session documentation changes are preserved.
+Broader frontend, remote/multi-user operation, operator UX and distribution are deferred. Other-session documentation changes are preserved.

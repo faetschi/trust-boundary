@@ -1,25 +1,12 @@
 # TBound task state
 
-Updated 2026-10-15. Work only on `codex/tbound-prototype`.
+Updated 2026-10-15. Branch: `codex/tbound-prototype`. Thesis completion first.
 
-## Current evidence
+- Committed: durable settlement admission (`e0d48d0`, `ebbbbbc`), D09 hash binding (`89b76d0`), fail-closed bootstrap unmount (`d8685eb`), service fixture corrections (`d315e49`). Positive production settlement remains unqualified.
+- Regression: corrected service fixtures pass unit and two package race reruns. One earlier owner-incarnation refusal remains unexplained; 60 private instrumented focused race executions did not reproduce it. Parent verified archive, overlay source and race-log hashes. Receipt: `docs/evidence/owner-incarnation-diagnostic-20261015.json`.
+- Active storage task: read-only geometry inspection must refuse errors before writable open. R2 retained-WAL tests pass, but writable fallback is rejected. Await R3, then combined Linux module build/vet/format/unit/race gate and commit. D09 cell-template supplementary-group skip remains unverified.
+- Active host task: install public client authorization on a disposable disk copy; preserve old disk/original Saved VM/seed; recover pinned SSH; install and measure exact ABI 8. Disposable GUID `df4745b2-fd1b-48ed-b9b9-f36f34d3c19b`; use current task receipt for live state.
+- Active D14 review: count complete effect callback, journals, audits and terminal/root writes. Current 128 MiB owner ceiling is insufficient for a maximum path; prior 256 MiB/headroom proposal is incomplete and unadopted. Then minimum reserve, isolated ext4 faults and actual D20 drain/restart.
+- Next: qualified local deployment and real E2E with independent settlement/effect evidence. Research Claims last: reconcile thesis, complete gates, freeze corpus/oracles/calibration/scoring and OpenRouter DeepSeek V4.1 Flash plan within US$5. User/advisor construct review; G1/H1 remain unestablished.
 
-- Settlement gate `e0d48d0`/`ebbbbbc`; D09 hash binding `89b76d0` committed. Positive production settlement remains unproven.
-- Snapshot `a7ac97e` found two stale service fixtures. Corrections pass focused/unit checks; package race found a separate fresh-process owner-incarnation refusal. Baseline investigation is active; do not call the overall gate green.
-- D09 cell-template still skips for supplementary groups under no-new-privileges. SQLite patch: four source hashes and 13 log hashes independently matched; focused/package/consumer race checks pass, ext4 opt-in remains skipped.
-- Bootstrap unmount safety fix: two source hashes match; AST-extracted five-case harness fails before fix and passes after. Receipt `docs/evidence/abi8-host-recovery-20261015.json`.
-- No G1, containment or H1 claim established. Storage ceilings alone do not establish D14.
-
-## Active / next
-
-1. Fixture corrections/receipts are persisted independently: unit and two full package race reruns pass; one prior incarnation refusal remains unexplained. Private identity diagnostics are active. Corrected storage changes still need a combined module gate before their commit. Positive production settlement remains next.
-2. Host task: disposable GUID `df4745b2-fd1b-48ed-b9b9-f36f34d3c19b` Off, SCSI 0:0 and boot order restored. Trusted disk lacks client authorization. Parent authorized public-key injection on a copy, preserving old disk; recover pinned SSH, then measure/install exact ABI 8. Original Saved; seed preserved. No blind HCS retry/recreation.
-3. Storage review confirmed RW geometry refusal checkpoints a retained WAL. RO precheck + fresh-process owner/root regression task is active. The 128 MiB cap lacks maximal-path headroom; review counted only part of callback writes, so its 256 MiB/24,664-page proposal is not adopted. Complete callback/audit/root/WAL bounds, then reserve integration and D14/D20 qualification. WSL root is available for isolated ext4 tests.
-4. Research Claims last: reconcile thesis; complete gates; freeze protocol/corpus/oracles/calibration/scoring and costed OpenRouter DeepSeek V4.1 Flash plan within US$5. User/advisor construct review and independent runtime/effect oracles; no invented outcomes.
-
-## Constraints
-
-- Canonical thesis: `../MSE_MA_Thesis/tbound/{tbound-thesis,tbound}.md`; broader product features deferred. Haiku 5.5/max delegation.
-- Preserve ten other-session dirty docs. Stage explicit reviewed paths only. Never read/print credentials, real signing keys or `vm_start.txt`.
-- Linux Go 1.27.1; shared SDK/caches; private temporary directories under `/home/jeli2k`, removed on exit. Logs on F:, C: guard ≥5 GiB. No WSL shutdown while tests run.
-- PowerShell 5.1 safe temporary writes/replacement. Preserve `supervisor/tbound` and `tbound.exe`. Fully replace OVERVIEW at increments; keep this file short; commit verified work.
+Constraints: canonical thesis `../MSE_MA_Thesis/tbound/`; Haiku 5.5/max delegation; preserve ten other-session dirty docs; explicit staging only. Never read/print secrets or `vm_start.txt`. Linux Go 1.27.1, shared caches, private trees under `/home/jeli2k` removed on exit, logs F:, C: >=5 GiB, no WSL shutdown with live work. Preserve tracked binaries. Fully replace OVERVIEW at increments; commit verified changes.

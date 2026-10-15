@@ -1,0 +1,42 @@
+{
+  "task": "owner-incarnation diagnostic (private copy only; no tracked writes)",
+  "result": "unresolved: 0 of 60 executions reproduced; no field delta observed",
+  "target_test": "TestGovernedRecoveryCombinedRestartRetryTwoCyclesExhaustsFreshProcess",
+  "command": "go test -race -p 2 -mod=readonly -count=30 -v -run '^TestGovernedRecoveryCombinedRestartRetryTwoCyclesExhaustsFreshProcess$' ./cmd/tbound/ (from supervisor/ in private tree; env -i; GOMAXPROCS=2; GOTOOLCHAIN=local; GOPROXY=off; GOSUMDB=off)",
+  "go": "go1.27.1 linux/amd64",
+  "base_commit": "a7ac97ef3196e804ff9547cfb473b30753dc3a03",
+  "archive_sha256": "f786fcd261d26d5d275c85b1252bdb6dc18e39b19a653e0c187c94c6a71c7d3e",
+  "overlay_sha256": {
+    "supervisor/cmd/tbound/pi_service_handoff_linux_test.go": "78aa93c2282cdc5eeac32000ddeaee9a70dccf119a8484b59a86074640de3c89",
+    "supervisor/cmd/tbound/production_pin_composition_linux_test.go": "246d16f7f9c6643384479e8375db2f3743891adf37f70a5afbb45db18a32a6e0"
+  },
+  "excluded_from_private_tree": [
+    "supervisor/internal/workflowrecovery/sqlite_linux.go working-tree edits",
+    "supervisor/internal/workflowrecovery/protected_root_linux*.go working-tree edits",
+    "supervisor/internal/workflowrecovery/sqlite_page_geometry_linux_test.go",
+    "D14 docs and evidence"
+  ],
+  "instrumentation": {
+    "scope": "private copy of sqlite_linux.go only: 3 lines added, 1 removed (old mismatch return); no guard, condition, or ErrOwnerFence change",
+    "patched_sha256": "01f40c01c70552fe7ab2c3f69253d5945d6ba5cbaaa4c267097c33598509e88f",
+    "patch_files": ["patches/A-old.txt", "patches/A-new.txt", "patches/B-old.txt", "patches/B-new.txt"],
+    "visibility": "TBDIAG lines appear in the parent log only when a child exits with a mismatched code (child CombinedOutput is printed on failure)"
+  },
+  "runs": [
+    {"label": "A", "count": 30, "go_rc": 0, "pass": 30, "fail": 0, "data_race": 0, "mismatch": 0, "elapsed_s": 351, "started_utc": "2026-10-15T16:32:54Z", "boot_id": "494c44f3-4bea-47ea-a65d-e21b783c4e48", "race_log_sha256": "8de66615dc7ad829dc2ef42327ec43cd9805cf88dfd8c526c43c295b93f4b58a"},
+    {"label": "B", "count": 30, "go_rc": 0, "pass": 30, "fail": 0, "data_race": 0, "mismatch": 0, "elapsed_s": 346, "started_utc": "2026-10-15T16:39:02Z", "boot_id": "494c44f3-4bea-47ea-a65d-e21b783c4e48", "race_log_sha256": "b5906937d9790ace10256e32376aab42b66996ad1ed2900c99882b48eb978779"}
+  ],
+  "totals": {"executions": 60, "fail": 0, "elapsed_s": 697, "native_budget_s": 900},
+  "field_delta": null,
+  "launch_context": {"user": "jeli2k", "uid": 1000, "gid": 1000, "CapEff": "0000000000000000", "NoNewPrivs": 0, "pid1": "systemd", "cgroup_mode": "hybrid v1 + 0::/init.scope"},
+  "not_run": [
+    "WSL root -> setpriv uid 1000 second context (not needed without a reproduction; budget)",
+    "full-package repeats (the original failure was in a full-package run; focused runs are the only ones done here)"
+  ],
+  "cleanup": "private trees removed for A and B; no repo writes; no root runs; no WSL shutdown",
+  "notes": [
+    "Brief's 'sqlite_linux.go 1126' is not supported: the committed error literal is line 1100 at a7ac97e and at HEAD; the r2 log has no file:line.",
+    "HEAD moved d8685eb -> d315e49 during this session. The two overlaid test files are now committed at blobs 0d6489d4... and 9ab7f4a0..., the same bytes as the overlay. sqlite_linux.go remains uncommitted in the working tree and was not read or used.",
+    "Within one live process only CgroupIdentityDigest (raw /proc/self/cgroup) can change among the seven OwnerIncarnation fields; this is a code-level inference, not an observed delta."
+  ]
+}
