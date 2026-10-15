@@ -29,7 +29,7 @@ import (
 )
 
 const (
-	realProviderDurableModel        = "nvidia/nemotron-3.5-lightning:free"
+	realProviderDurableModel        = openrouter.ApprovedModel
 	realProviderDurableWritePath    = "provider-write.txt"
 	realProviderDurableWriteContent = "from-real-provider"
 	realProviderDurableCallIssuer   = "test/openrouter-durable-call/v1"
@@ -46,7 +46,7 @@ func TestRealProviderDurableLinux(t *testing.T) {
 	_, keyConfigured := os.LookupEnv(openrouter.APIKeyEnv)
 	_, keyFileConfigured := os.LookupEnv(openrouter.APIKeyFileEnv)
 	if !keyConfigured && !keyFileConfigured {
-		t.Skip("set TBOUND_OPENROUTER_API_KEY or TBOUND_OPENROUTER_API_KEY_FILE to enable the real-provider durable integration")
+		t.Skip("set TBOUND_OPENCODE_GO_API_KEY or TBOUND_OPENCODE_GO_API_KEY_FILE to enable the real-provider durable integration")
 	}
 
 	credentials, err := openrouter.LoadCredentials()
@@ -54,7 +54,7 @@ func TestRealProviderDurableLinux(t *testing.T) {
 		t.Fatalf("load explicitly configured OpenRouter credentials and model: %v", err)
 	}
 	if credentials.ModelID() != realProviderDurableModel {
-		t.Fatalf("TBOUND_OPENROUTER_MODEL must be %q for this integration", realProviderDurableModel)
+		t.Fatalf("credential source returned model %q, want fixed Go profile %q", credentials.ModelID(), realProviderDurableModel)
 	}
 	doer, err := credentials.NewHTTPDoer(openrouter.DefaultHTTPTimeout)
 	if err != nil {
@@ -64,7 +64,7 @@ func TestRealProviderDurableLinux(t *testing.T) {
 
 	prompt := "Make exactly one tool call with the write tool: write the file provider-write.txt with the exact content from-real-provider. Do not call any other tool."
 	providerBroker, err := broker.New(broker.Profile{
-		ID: "real-provider-durable-linux-test", Model: credentials.ModelID(),
+		ID: "real-provider-durable-linux-test", ConversationID: "real-provider-durable-linux-test", Model: credentials.ModelID(),
 		Messages:         []openrouter.Message{{Role: openrouter.User, Content: &prompt}},
 		ToolManifest:     broker.DeclaredToolManifest(),
 		ToolCallIssuer:   realProviderDurableCallIssuer,

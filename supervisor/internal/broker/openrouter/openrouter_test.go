@@ -68,7 +68,7 @@ func (r *fragmentReader) Read(out []byte) (int, error) {
 }
 
 func TestBuildRequestFixesEndpointAndToolSchemas(t *testing.T) {
-	built, err := BuildRequest("vendor/model:free", []Message{{Role: User, Content: strptr("hello")}})
+	built, err := BuildRequest(ApprovedModel, []Message{{Role: User, Content: strptr("hello")}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,12 +87,15 @@ func TestBuildRequestFixesEndpointAndToolSchemas(t *testing.T) {
 		Stream     bool   `json:"stream"`
 		Parallel   *bool  `json:"parallel_tool_calls"`
 		ToolChoice string `json:"tool_choice"`
+		Thinking   struct {
+			Type string `json:"type"`
+		} `json:"thinking"`
 	}
 	original := built.Body()
 	if err := json.Unmarshal(original, &body); err != nil {
 		t.Fatal(err)
 	}
-	if body.Model != "vendor/model:free" || !body.Stream || body.Parallel == nil || *body.Parallel || body.ToolChoice != "auto" {
+	if body.Model != ApprovedModel || !body.Stream || body.Parallel == nil || *body.Parallel || body.ToolChoice != "auto" || body.Thinking.Type != "disabled" {
 		t.Fatalf("profile=%+v", body)
 	}
 	names := []string{"read", "write", "edit", "bash"}
@@ -127,15 +130,18 @@ func TestBuildRequestFixesEndpointAndToolSchemas(t *testing.T) {
 	}
 }
 func TestBuildRequestRejectsUnsupportedMessageAndTool(t *testing.T) {
-	if _, err := BuildRequest("vendor/model", []Message{{Role: "function", Content: strptr("x")}}); err == nil {
+	if _, err := BuildRequest(ApprovedModel, []Message{{Role: "function", Content: strptr("x")}}); err == nil {
 		t.Fatal("unsupported role accepted")
 	}
 	if _, err := BuildRequest(" ", []Message{{Role: User, Content: strptr("x")}}); err == nil {
 		t.Fatal("invalid model accepted")
 	}
-	_, err := BuildRequest("vendor/model", []Message{{Role: Assistant, ToolCalls: []PriorToolCall{{ID: "c1", Name: "read", RawArguments: json.RawMessage(`{"path":"ok","extra":true}`)}}}})
+	_, err := BuildRequest(ApprovedModel, []Message{{Role: Assistant, ToolCalls: []PriorToolCall{{ID: "c1", Name: "read", RawArguments: json.RawMessage(`{"path":"ok","extra":true}`)}}}})
 	if err == nil {
 		t.Fatal("prior call outside the registered schema accepted")
+	}
+	if _, err := BuildRequest("vendor/model", []Message{{Role: User, Content: strptr("x")}}); err == nil {
+		t.Fatal("request builder accepted a model outside the fixed OpenCode Go profile")
 	}
 }
 func TestCaptureSSEReassemblesFragmentsAndMapsTrustedCapture(t *testing.T) {
@@ -287,8 +293,12 @@ func TestCaptureSSEBoundsResponse(t *testing.T) {
 }
 
 func TestBuildRequestPreflightsBeforeMarshaling(t *testing.T) {
-	content := strings.Repeat("x", MaxRequestBytes)
-	if _, err := BuildRequest("vendor/model", []Message{{Role: User, Content: &content}}); err == nil {
+	content := strings.Repeat("x", MaxAssistantTextBytes)
+	messages := make([]Message, 5)
+	for i := range messages {
+		messages[i] = Message{Role: User, Content: &content}
+	}
+	if _, err := BuildRequest(ApprovedModel, messages); err == nil {
 		t.Fatal("oversized request content was accepted")
 	}
 }

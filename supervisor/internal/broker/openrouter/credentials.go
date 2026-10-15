@@ -10,17 +10,15 @@ import (
 )
 
 const (
-	APIKeyEnv          = "TBOUND_OPENROUTER_API_KEY"
-	APIKeyFileEnv      = "TBOUND_OPENROUTER_API_KEY_FILE"
-	ModelEnv           = "TBOUND_OPENROUTER_MODEL"
+	APIKeyEnv          = "TBOUND_OPENCODE_GO_API_KEY"
+	APIKeyFileEnv      = "TBOUND_OPENCODE_GO_API_KEY_FILE"
 	maxCredentialBytes = 4096
 )
 
-// Credentials holds the model ID and API key loaded for one provider run. The
-// key is deliberately private and every printable representation redacts it.
+// Credentials holds the API key for the fixed OpenCode Go profile. The key is
+// deliberately private and every printable representation redacts it.
 type Credentials struct {
-	apiKey  string
-	modelID string
+	apiKey string
 }
 
 func LoadCredentials() (Credentials, error) {
@@ -34,25 +32,19 @@ func LoadCredentialsFrom(lookupEnv func(string) (string, bool)) (Credentials, er
 		return Credentials{}, errors.New("credential environment lookup is required")
 	}
 
-	modelID, modelSet := lookupEnv(ModelEnv)
-	modelID = strings.TrimSpace(modelID)
-	if !modelSet || modelID == "" {
-		return Credentials{}, errors.New("TBOUND_OPENROUTER_MODEL is required")
-	}
-
 	apiKey, keySet := lookupEnv(APIKeyEnv)
 	if keySet && strings.TrimSpace(apiKey) != "" {
 		key, err := normalizeAPIKey(apiKey)
 		if err != nil {
 			return Credentials{}, errors.New("invalid OpenRouter credential")
 		}
-		return credentialsFor(key, modelID)
+		return credentialsFor(key)
 	}
 
 	path, pathSet := lookupEnv(APIKeyFileEnv)
 	path = strings.TrimSpace(path)
 	if !pathSet || path == "" {
-		return Credentials{}, errors.New("OpenRouter credentials are required via TBOUND_OPENROUTER_API_KEY or TBOUND_OPENROUTER_API_KEY_FILE")
+		return Credentials{}, errors.New("OpenCode Go credentials are required via TBOUND_OPENCODE_GO_API_KEY or TBOUND_OPENCODE_GO_API_KEY_FILE")
 	}
 	content, err := readSecureCredentialFile(path)
 	if err != nil {
@@ -62,10 +54,10 @@ func LoadCredentialsFrom(lookupEnv func(string) (string, bool)) (Credentials, er
 	if err != nil {
 		return Credentials{}, errors.New("invalid OpenRouter credential")
 	}
-	return credentialsFor(key, modelID)
+	return credentialsFor(key)
 }
 
-func (c Credentials) ModelID() string { return c.modelID }
+func (c Credentials) ModelID() string { return ApprovedModel }
 
 // Redact replaces this credential's key in a string before it is emitted in
 // diagnostics or a user-visible summary.
@@ -77,7 +69,7 @@ func (c Credentials) Redact(value string) string {
 }
 
 func (c Credentials) String() string {
-	return "Credentials{ModelID:" + c.Redact(c.modelID) + ", APIKey:[REDACTED]}"
+	return "Credentials{ModelID:" + ApprovedModel + ", APIKey:[REDACTED]}"
 }
 
 func (c Credentials) GoString() string { return c.String() }
@@ -87,7 +79,7 @@ func (c Credentials) MarshalJSON() ([]byte, error) {
 	return json.Marshal(struct {
 		ModelID string `json:"model_id"`
 		APIKey  string `json:"api_key"`
-	}{ModelID: c.Redact(c.modelID), APIKey: "[REDACTED]"})
+	}{ModelID: ApprovedModel, APIKey: "[REDACTED]"})
 }
 
 // NewHTTPDoer injects this credential into a new, redirect-forbidding HTTP
@@ -110,9 +102,6 @@ func normalizeAPIKey(value string) (string, error) {
 	return key, nil
 }
 
-func credentialsFor(key, modelID string) (Credentials, error) {
-	if strings.Contains(modelID, key) {
-		return Credentials{}, errors.New("OpenRouter model ID contains credential data")
-	}
-	return Credentials{apiKey: key, modelID: modelID}, nil
+func credentialsFor(key string) (Credentials, error) {
+	return Credentials{apiKey: key}, nil
 }

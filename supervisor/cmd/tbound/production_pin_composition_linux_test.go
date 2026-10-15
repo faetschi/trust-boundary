@@ -15,7 +15,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/piruntime"
-	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflowrecovery"
@@ -66,8 +65,7 @@ func TestProductionFreshAndRecoveryDigestComposition(t *testing.T) {
 				"PATH=/usr/bin:/bin",
 				"HOME=" + root,
 				"TMPDIR=" + root,
-				"TBOUND_OPENROUTER_API_KEY=fixture-only-never-transmitted-key",
-				"TBOUND_OPENROUTER_MODEL=" + providerbridge.ApprovedModel,
+				"TBOUND_OPENCODE_GO_API_KEY=fixture-only-never-transmitted-key",
 				"GIT_CONFIG_NOSYSTEM=1",
 				"GIT_CONFIG_GLOBAL=/dev/null",
 				"GIT_TERMINAL_PROMPT=0",

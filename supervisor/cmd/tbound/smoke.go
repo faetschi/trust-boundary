@@ -22,7 +22,7 @@ import (
 const (
 	smokeSocketName = "tbound.sock"
 	smokeTokenName  = "tbound.token"
-	smokeModel      = "synthetic/no-provider"
+	smokeModel      = openrouter.ApprovedModel
 	smokeGeneration = "synthetic-g0"
 )
 

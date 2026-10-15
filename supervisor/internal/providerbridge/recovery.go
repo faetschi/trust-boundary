@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/broker"
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
@@ -336,7 +337,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				verifyReplayEventID(record, cfg.ConversationID, "host-call-reserved", ordinal) != nil {
 				return TranscriptProjection{}, replayError("provider host-call reservation identity is invalid")
 			}
-			if err := verifyReplayRequestWithCompletionLimit(evidence.Request, cfg.ProfileID, model, history,
+			if err := verifyReplayRequestWithCompletionLimit(evidence.Request, cfg.ProfileID, cfg.ConversationID, model, history,
 				evidence.Binding.TokenUpperBound); err != nil || requestEvidenceDigest(evidence.Request) != evidence.Binding.RequestDigest {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, errors.New("provider host-call reservation does not bind the exact request"), err)
 			}
@@ -364,8 +365,12 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			} else if evidence.HostCall != nil || pins.RequireHostCallReservations {
 				return TranscriptProjection{}, replayError("provider exchange has no matching host-call reservation")
 			}
-			if err := verifyReplayRequestWithCompletionLimit(evidence.Request, cfg.ProfileID, model, history, completionLimit); err != nil {
+			if err := verifyReplayRequestWithCompletionLimit(evidence.Request, cfg.ProfileID, cfg.ConversationID, model, history, completionLimit); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			if len(evidence.Request.Body) > broker.MaxDurableExchangeBytes ||
+				len(evidence.Response) > broker.MaxDurableExchangeBytes-len(evidence.Request.Body) {
+				return TranscriptProjection{}, replayError("provider exchange exceeds its durable raw-byte budget")
 			}
 			captured, err := openrouter.CaptureSSE(bytes.NewReader(evidence.Response))
 			if err != nil || captured.Model() != model || captured.ResponseID() != evidence.ResponseID {
@@ -403,6 +408,19 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				return TranscriptProjection{}, replayError("durable exchange claims a tool call absent from the provider response")
 			}
 			assistantText := captured.AssistantText()
+			replayedTurn := Turn{
+				SchemaVersion: bridgeSchemaVersion, ResponseID: captured.ResponseID(), Model: captured.Model(),
+				Created: captured.Created(), Generation: currentGeneration, Sequence: providerSequence + 1,
+				AssistantText: assistantText, FinishReason: captured.FinishReason(), Usage: captured.Usage(),
+			}
+			if hasCall {
+				replayedTurn.ToolCall = &ToolCallProjection{
+					ID: toolCall.ID, Name: toolCall.Name, Arguments: append(json.RawMessage(nil), toolCall.RawArguments...),
+				}
+			}
+			if err := validateTurnProjectionBudget(replayedTurn); err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
 			if err := appendReplayHistory(&history, model, openrouter.Message{Role: openrouter.Assistant, Content: &assistantText, ToolCalls: priorCalls}); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
@@ -649,11 +667,11 @@ func validateRecoveryPins(pins RecoveryPins) error {
 	return nil
 }
 
-func verifyReplayRequest(request requestEvidence, profileID, model string, history []openrouter.Message) error {
-	return verifyReplayRequestWithCompletionLimit(request, profileID, model, history, 0)
+func verifyReplayRequest(request requestEvidence, profileID, conversationID, model string, history []openrouter.Message) error {
+	return verifyReplayRequestWithCompletionLimit(request, profileID, conversationID, model, history, 0)
 }
 
-func verifyReplayRequestWithCompletionLimit(request requestEvidence, profileID, model string,
+func verifyReplayRequestWithCompletionLimit(request requestEvidence, profileID, conversationID, model string,
 	history []openrouter.Message, completionLimit uint64) error {
 	built, err := openrouter.BuildRequestWithCompletionLimit(model, history, completionLimit)
 	if err != nil {
@@ -661,8 +679,10 @@ func verifyReplayRequestWithCompletionLimit(request requestEvidence, profileID, 
 	}
 	endpoint, _ := url.Parse(openrouter.Endpoint)
 	wantHeaders := httpHeaders{
-		"Accept":       {"text/event-stream"},
-		"Content-Type": {"application/json"},
+		"Accept":                 {"text/event-stream"},
+		"Content-Type":           {"application/json"},
+		"User-Agent":             {openrouter.UserAgent},
+		openrouter.SessionHeader: {conversationID},
 	}
 	if request.ProfileID != profileID || request.Method != "POST" || request.URL != openrouter.Endpoint ||
 		request.Host != endpoint.Host || request.ContentLength != int64(len(built.Body())) ||

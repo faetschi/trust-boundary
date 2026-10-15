@@ -17,7 +17,10 @@ import (
 )
 
 const (
-	Endpoint              = "https://openrouter.ai/api/v1/chat/completions"
+	ApprovedModel         = "deepseek-v4.1-flash"
+	Endpoint              = "https://opencode.ai/inference/go/v1/chat/completions"
+	UserAgent             = "tbound/1.0"
+	SessionHeader         = "X-Opencode-Session"
 	MaxRequestBytes       = 4 << 20
 	MaxResponseBytes      = 4 << 20
 	MaxSSEEventBytes      = 1 << 20
@@ -70,7 +73,12 @@ type request struct {
 	Stream              bool           `json:"stream"`
 	ParallelToolCalls   bool           `json:"parallel_tool_calls"`
 	ToolChoice          string         `json:"tool_choice"`
+	Thinking            thinkingConfig `json:"thinking"`
 	MaxCompletionTokens uint64         `json:"max_completion_tokens,omitempty"`
+}
+
+type thinkingConfig struct {
+	Type string `json:"type"`
 }
 
 const schemaRead = `{"type":"object","properties":{"path":{"type":"string","description":"Path to the file to read (relative or absolute)"},"offset":{"type":"number","description":"Line number to start reading from (1-indexed)"},"limit":{"type":"number","description":"Maximum number of lines to read"}},"required":["path"]}`
@@ -87,10 +95,10 @@ func tools() []functionTool {
 	}
 }
 
-// BuildRequest fixes the endpoint, four Pi proxy tools, streaming, tool choice,
-// and single-call behavior. modelID and messages must come from trusted broker
-// configuration/history. The future runtime must source system/developer text
-// from broker configuration, never from Pi IPC.
+// BuildRequest fixes the endpoint, model, four Pi proxy tools, streaming,
+// disabled thinking, tool choice, and single-call behavior. Messages must come
+// from trusted broker configuration/history. The runtime sources
+// system/developer text from broker configuration, never Pi IPC.
 func BuildRequest(modelID string, messages []Message) (BuiltRequest, error) {
 	return BuildRequestWithCompletionLimit(modelID, messages, 0)
 }
@@ -100,8 +108,8 @@ func BuildRequest(modelID string, messages []Message) (BuiltRequest, error) {
 // exact outbound JSON body as max_completion_tokens and is therefore covered
 // by provider-request digests and workflow token reservations.
 func BuildRequestWithCompletionLimit(modelID string, messages []Message, completionLimit uint64) (BuiltRequest, error) {
-	if !validText(modelID, maxText) {
-		return BuiltRequest{}, errors.New("invalid trusted model ID")
+	if modelID != ApprovedModel {
+		return BuiltRequest{}, errors.New("provider model is outside the fixed OpenCode Go profile")
 	}
 	if completionLimit > math.MaxInt32 {
 		return BuiltRequest{}, errors.New("completion-token cap is outside the supported request range")
@@ -131,7 +139,8 @@ func BuildRequestWithCompletionLimit(modelID string, messages []Message, complet
 		}
 	}
 	body, err := json.Marshal(request{Model: modelID, Messages: messages, Tools: fixedTools, Stream: true,
-		ParallelToolCalls: false, ToolChoice: "auto", MaxCompletionTokens: completionLimit})
+		ParallelToolCalls: false, ToolChoice: "auto", Thinking: thinkingConfig{Type: "disabled"},
+		MaxCompletionTokens: completionLimit})
 	if err != nil {
 		return BuiltRequest{}, err
 	}
@@ -238,7 +247,7 @@ func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte, 
 			return 0, err
 		}
 	}
-	for _, literal := range []string{`],"tools":`, `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto"`} {
+	for _, literal := range []string{`],"tools":`, `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto","thinking":{"type":"disabled"}`} {
 		if err := add(len(literal)); err != nil {
 			return 0, err
 		}

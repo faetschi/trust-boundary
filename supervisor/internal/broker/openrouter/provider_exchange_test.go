@@ -21,7 +21,7 @@ func TestBrokerDoesNotRecordCredentialOrCredentialSourceError(t *testing.T) {
 	}
 	prompt := "a fixed test request"
 	providerBroker, err := broker.New(broker.Profile{
-		ID: "credential-redaction-test", Model: "vendor/model",
+		ID: "credential-redaction-test", ConversationID: "credential-redaction-test", Model: openrouter.ApprovedModel,
 		Messages:         []openrouter.Message{{Role: openrouter.User, Content: &prompt}},
 		ToolManifest:     broker.DeclaredToolManifest(),
 		ToolCallIssuer:   "test/tool-call/v1",
@@ -54,7 +54,7 @@ func TestRealOpenRouterExchange(t *testing.T) {
 	key, keySet := os.LookupEnv(openrouter.APIKeyEnv)
 	keyFile, keyFileSet := os.LookupEnv(openrouter.APIKeyFileEnv)
 	if (!keySet || strings.TrimSpace(key) == "") && (!keyFileSet || strings.TrimSpace(keyFile) == "") {
-		t.Skip("set TBOUND_OPENROUTER_API_KEY or TBOUND_OPENROUTER_API_KEY_FILE to enable the real-network exchange")
+		t.Skip("set TBOUND_OPENCODE_GO_API_KEY or TBOUND_OPENCODE_GO_API_KEY_FILE to enable the real-network exchange")
 	}
 	credentials, err := openrouter.LoadCredentials()
 	if err != nil {
@@ -66,7 +66,7 @@ func TestRealOpenRouterExchange(t *testing.T) {
 	}
 	prompt := "Reply with a short acknowledgment. Do not call a tool unless necessary."
 	providerBroker, err := broker.New(broker.Profile{
-		ID: "real-openrouter-exchange-test", Model: credentials.ModelID(),
+		ID: "real-opencode-go-exchange-test", ConversationID: "real-opencode-go-exchange-test", Model: credentials.ModelID(),
 		Messages:         []openrouter.Message{{Role: openrouter.User, Content: &prompt}},
 		ToolManifest:     broker.DeclaredToolManifest(),
 		ToolCallIssuer:   "test/real-openrouter-tool-call/v1",

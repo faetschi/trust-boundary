@@ -102,7 +102,7 @@ func TestProposalTraversesIPCBrokerGateExecutorAndResult(t *testing.T) {
 func TestConcreteProviderBrokerTraversesIPCToGateAndResult(t *testing.T) {
 	arguments := json.RawMessage(`{"command":"true"}`)
 	profile := providerbroker.Profile{
-		ID: "integration-openrouter-profile-v1", Model: "vendor/model:free",
+		ID: "integration-opencode-profile-v1", ConversationID: "integration-conversation-v1", Model: openrouter.ApprovedModel,
 		Messages:       []openrouter.Message{{Role: openrouter.User, Content: integrationStringPointer("trusted integration prompt")}},
 		ToolManifest:   providerbroker.DeclaredToolManifest(),
 		ToolCallIssuer: integrationCallIssuer, ResponseIDIssuer: integrationResponseIssuer,
@@ -206,7 +206,7 @@ func (d *integrationDoer) Do(request *http.Request) (*http.Response, error) {
 func integrationToolStream(responseID, callID, tool, arguments string) []byte {
 	chunk := func(delta any, finish any) []byte {
 		payload, err := json.Marshal(map[string]any{
-			"id": responseID, "model": "vendor/model:free", "created": 123,
+			"id": responseID, "model": openrouter.ApprovedModel, "created": 123,
 			"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}},
 		})
 		if err != nil {

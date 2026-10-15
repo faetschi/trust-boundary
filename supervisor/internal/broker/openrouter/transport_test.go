@@ -36,8 +36,7 @@ func TestHTTPDoerAddsOneBearerHeaderAndDoesNotMutateRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request.Header["Authorization"] = []string{"old value", "duplicate value"}
-	request.Header["authorization"] = []string{"lowercase duplicate"}
+	setRegisteredHeaders(request, "fixture-session")
 	response, err := doer.Do(request)
 	if err != nil {
 		t.Fatal(err)
@@ -50,9 +49,42 @@ func TestHTTPDoerAddsOneBearerHeaderAndDoesNotMutateRequest(t *testing.T) {
 	if bytes.Contains(body, []byte(key)) || !bytes.Contains(body, []byte("[REDACTED]")) {
 		t.Fatal("response credential was not redacted")
 	}
-	if got := request.Header.Values("Authorization"); len(got) != 2 || got[0] != "old value" || got[1] != "duplicate value" ||
-		len(request.Header["authorization"]) != 1 || request.Header["authorization"][0] != "lowercase duplicate" {
+	if got := request.Header.Values("Authorization"); len(got) != 0 ||
+		request.Header.Get(SessionHeader) != "fixture-session" || request.Header.Get("User-Agent") != UserAgent {
 		t.Fatalf("transport mutated the registered request headers: %q", got)
+	}
+	transport, ok := doer.client.Transport.(*http.Transport)
+	if !ok || transport.Proxy != nil {
+		t.Fatal("OpenCode Go transport must not use an environment proxy")
+	}
+}
+
+func TestHTTPDoerRejectsUnexpectedHeadersBeforeCredentialRead(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		requests.Add(1)
+		writer.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	var credentialReads atomic.Int32
+	doer, err := newHTTPDoer(func() (string, error) {
+		credentialReads.Add(1)
+		return "test-key-123", nil
+	}, time.Second, server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := testRequest(t, server.URL)
+	setRegisteredHeaders(request, "fixture-session")
+	request.Header.Set("X-Extra", "not-approved")
+	if response, err := doer.Do(request); err == nil || response != nil {
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
+		t.Fatal("unexpected header was accepted")
+	}
+	if requests.Load() != 0 || credentialReads.Load() != 0 {
+		t.Fatalf("invalid request reached transport or credential source: requests=%d credentialReads=%d", requests.Load(), credentialReads.Load())
 	}
 }
 
@@ -141,14 +173,13 @@ func TestHTTPDoerRedactsCredentialAcrossResponseReadBoundaries(t *testing.T) {
 func TestLoadCredentialsEnvironmentPrecedesFileAndRedactsRepresentations(t *testing.T) {
 	const secret = "env-openrouter-secret-987"
 	credentials, err := LoadCredentialsFrom(mapLookup(map[string]string{
-		ModelEnv:      "vendor/model:private",
 		APIKeyEnv:     secret,
 		APIKeyFileEnv: filepath.Join(t.TempDir(), "must-not-be-opened"),
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if credentials.ModelID() != "vendor/model:private" {
+	if credentials.ModelID() != ApprovedModel {
 		t.Fatalf("model = %q", credentials.ModelID())
 	}
 	for name, rendered := range map[string]string{
@@ -165,11 +196,8 @@ func TestLoadCredentialsEnvironmentPrecedesFileAndRedactsRepresentations(t *test
 	}
 }
 
-func TestLoadCredentialsRequiresModelAndCredential(t *testing.T) {
-	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{APIKeyEnv: "some-key"})); err == nil || strings.Contains(err.Error(), "some-key") {
-		t.Fatal("missing model was not safely rejected")
-	}
-	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{ModelEnv: "vendor/model"})); err == nil || strings.Contains(err.Error(), "some-key") {
+func TestLoadCredentialsRequiresCredential(t *testing.T) {
+	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{})); err == nil || strings.Contains(err.Error(), "some-key") {
 		t.Fatal("missing credential was not rejected")
 	}
 	if _, err := LoadCredentialsFrom(nil); err == nil {
@@ -192,7 +220,7 @@ func TestLoadCredentialsFromSecureFileAndRejectsUnsafeFiles(t *testing.T) {
 	if err := os.Chmod(path, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	credentials, err := LoadCredentialsFrom(mapLookup(map[string]string{ModelEnv: "vendor/model", APIKeyFileEnv: path}))
+	credentials, err := LoadCredentialsFrom(mapLookup(map[string]string{APIKeyFileEnv: path}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +235,7 @@ func TestLoadCredentialsFromSecureFileAndRejectsUnsafeFiles(t *testing.T) {
 	if err := os.Chmod(insecure, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{ModelEnv: "vendor/model", APIKeyFileEnv: insecure})); err == nil || strings.Contains(err.Error(), "insecure-secret-123") {
+	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{APIKeyFileEnv: insecure})); err == nil || strings.Contains(err.Error(), "insecure-secret-123") {
 		t.Fatal("group/world-readable credential file was accepted or leaked")
 	}
 
@@ -215,13 +243,13 @@ func TestLoadCredentialsFromSecureFileAndRejectsUnsafeFiles(t *testing.T) {
 	if err := os.Symlink(path, symlink); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{ModelEnv: "vendor/model", APIKeyFileEnv: symlink})); err == nil {
+	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{APIKeyFileEnv: symlink})); err == nil {
 		t.Fatal("symlink credential file was accepted")
 	}
-	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{ModelEnv: "vendor/model", APIKeyFileEnv: filepath.Join(directory, "missing")})); err == nil {
+	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{APIKeyFileEnv: filepath.Join(directory, "missing")})); err == nil {
 		t.Fatal("missing credential file was accepted")
 	}
-	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{ModelEnv: "vendor/model", APIKeyFileEnv: directory})); err == nil {
+	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{APIKeyFileEnv: directory})); err == nil {
 		t.Fatal("directory credential file was accepted")
 	}
 }
@@ -241,7 +269,7 @@ func TestLoadCredentialsRejectsOversizedFile(t *testing.T) {
 	if err := os.Chmod(path, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{ModelEnv: "vendor/model", APIKeyFileEnv: path})); err == nil {
+	if _, err := LoadCredentialsFrom(mapLookup(map[string]string{APIKeyFileEnv: path})); err == nil {
 		t.Fatal("oversized credential file was accepted")
 	}
 }
@@ -252,7 +280,15 @@ func testRequest(t *testing.T, endpoint string) *http.Request {
 	if err != nil {
 		t.Fatal(err)
 	}
+	setRegisteredHeaders(request, "fixture-session")
 	return request
+}
+
+func setRegisteredHeaders(request *http.Request, conversationID string) {
+	request.Header.Set("Accept", "text/event-stream")
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("User-Agent", UserAgent)
+	request.Header.Set(SessionHeader, conversationID)
 }
 
 func mapLookup(values map[string]string) func(string) (string, bool) {

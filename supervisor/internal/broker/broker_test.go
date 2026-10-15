@@ -90,6 +90,8 @@ func TestExchangeBuildsAndRecordsExactRegisteredRequest(t *testing.T) {
 	actual := doer.requests[0]
 	if actual.method != http.MethodPost || actual.url != openrouter.Endpoint ||
 		actual.header.Get("Content-Type") != "application/json" || actual.header.Get("Accept") != "text/event-stream" ||
+		actual.header.Get("User-Agent") != openrouter.UserAgent ||
+		actual.header.Get(openrouter.SessionHeader) != profile.ConversationID ||
 		!bytes.Equal(actual.body, built.Body()) {
 		t.Fatalf("transport request did not match the registered OpenRouter request: %+v", actual)
 	}
@@ -103,7 +105,9 @@ func TestExchangeBuildsAndRecordsExactRegisteredRequest(t *testing.T) {
 	recordedRequest := records[0].Request()
 	if recordedRequest.ProfileID() != profile.ID || recordedRequest.Method() != http.MethodPost ||
 		recordedRequest.URL() != openrouter.Endpoint || recordedRequest.Header().Get("Content-Type") != "application/json" ||
-		recordedRequest.Header().Get("Accept") != "text/event-stream" {
+		recordedRequest.Header().Get("Accept") != "text/event-stream" ||
+		recordedRequest.Header().Get("User-Agent") != openrouter.UserAgent ||
+		recordedRequest.Header().Get(openrouter.SessionHeader) != profile.ConversationID {
 		t.Fatalf("request record omitted exact routing metadata: %+v", recordedRequest)
 	}
 	var requestBody struct {
@@ -130,6 +134,37 @@ func TestExchangeBuildsAndRecordsExactRegisteredRequest(t *testing.T) {
 	mutatedResponse[0] ^= 0xff
 	if !bytes.Equal(records[0].Request().Body(), built.Body()) || !bytes.Equal(records[0].ResponseBody(), captured.RawResponse()) {
 		t.Fatal("record accessors exposed mutable request or response bytes")
+	}
+}
+
+func TestExchangeRefusesRequestWithoutDurableResponseHeadroomBeforeCallbacks(t *testing.T) {
+	large := strings.Repeat("p", openrouter.MaxAssistantTextBytes)
+	profile := testProfile()
+	profile.Messages = []openrouter.Message{
+		{Role: openrouter.System, Content: stringPointer(large)},
+		{Role: openrouter.Developer, Content: stringPointer(large)},
+		{Role: openrouter.User, Content: stringPointer(large)},
+	}
+	built, err := openrouter.BuildRequest(profile.Model, profile.Messages)
+	if err != nil {
+		t.Fatalf("build bounded request fixture: %v", err)
+	}
+	if len(built.Body()) <= MaxDurableExchangeBytes || len(built.Body()) > openrouter.MaxRequestBytes {
+		t.Fatalf("fixture request length=%d, want (%d,%d]", len(built.Body()), MaxDurableExchangeBytes, openrouter.MaxRequestBytes)
+	}
+	doer := &fakeDoer{}
+	registered, err := New(profile, doer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	callbackCalled := false
+	_, err = registered.ExchangeWithCompletionLimit(context.Background(), 0, func(RequestRecord) error {
+		callbackCalled = true
+		return nil
+	})
+	if err == nil || callbackCalled || len(doer.requests) != 0 || len(registered.Records()) != 0 {
+		t.Fatalf("over-budget request reached a callback or transport: err=%v callback=%t requests=%d records=%d",
+			err, callbackCalled, len(doer.requests), len(registered.Records()))
 	}
 }
 
@@ -297,7 +332,7 @@ func TestNonSuccessHTTPStatusFailsClosedAndRecordsResponse(t *testing.T) {
 
 func TestResponseModelMustMatchRegisteredProfile(t *testing.T) {
 	response := toolResponse("response-1", "call-1", "read", `{"path":"x"}`)
-	response = bytes.ReplaceAll(response, []byte("vendor/model:free"), []byte("other/model"))
+	response = bytes.ReplaceAll(response, []byte(openrouter.ApprovedModel), []byte("other/model"))
 	broker, _ := newTestBroker(t, response)
 	if _, err := broker.Exchange(context.Background()); err == nil || !strings.Contains(err.Error(), "model differs") {
 		t.Fatalf("provider response for another model was accepted: %v", err)
@@ -347,7 +382,7 @@ func newTestBroker(t *testing.T, responses ...[]byte) (*Broker, *fakeDoer) {
 
 func testProfile() Profile {
 	return Profile{
-		ID: "fixture-openrouter-profile-v1", Model: "vendor/model:free",
+		ID: "fixture-opencode-profile-v1", ConversationID: "fixture-conversation", Model: openrouter.ApprovedModel,
 		Messages:         []openrouter.Message{{Role: openrouter.User, Content: stringPointer("trusted fixture prompt")}},
 		ToolManifest:     DeclaredToolManifest(),
 		ToolCallIssuer:   testCallIssuer,
@@ -379,7 +414,7 @@ func toolResponse(responseID, callID, tool, arguments string) []byte {
 
 func sseChunk(responseID string, delta any, finish any) []byte {
 	chunk := map[string]any{
-		"id": responseID, "model": "vendor/model:free", "created": 123,
+		"id": responseID, "model": openrouter.ApprovedModel, "created": 123,
 		"choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}},
 	}
 	raw, err := json.Marshal(chunk)

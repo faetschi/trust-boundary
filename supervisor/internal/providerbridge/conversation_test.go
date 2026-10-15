@@ -18,6 +18,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
+	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
 )
@@ -69,7 +70,8 @@ type fixtureDoer struct {
 }
 
 func (d *fixtureDoer) Do(request *http.Request) (*http.Response, error) {
-	if request.Method != http.MethodPost || request.URL.String() != openrouterEndpointForTest {
+	if request.Method != http.MethodPost || request.URL.String() != openrouter.Endpoint ||
+		request.Header.Get("User-Agent") != openrouter.UserAgent || request.Header.Get(openrouter.SessionHeader) == "" {
 		return nil, errors.New("unexpected fixture provider route")
 	}
 	body, err := io.ReadAll(request.Body)
@@ -106,8 +108,6 @@ func (d *fixtureDoer) Do(request *http.Request) (*http.Response, error) {
 	}
 	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(bytes.NewReader(raw)), Request: request}, nil
 }
-
-const openrouterEndpointForTest = "https://openrouter.ai/api/v1/chat/completions"
 
 type fixtureExecutor struct {
 	outputs []json.RawMessage

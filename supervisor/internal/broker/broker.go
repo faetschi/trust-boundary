@@ -25,6 +25,10 @@ import (
 
 const (
 	maxProfileIDBytes = 128
+	// MaxDurableExchangeBytes reserves the raw request and response bytes that
+	// can be nested into one bounded provider audit event. The bridge serializer
+	// applies two base64 layers to these byte slices.
+	MaxDurableExchangeBytes = 3 << 20
 	// MaxRecordedBytes bounds exact process-local request/response retention.
 	MaxRecordedBytes     = 16 << 20
 	maxRecordedExchanges = protocol.MaxCapturesPerStream
@@ -42,6 +46,7 @@ func DeclaredToolManifest() []string {
 // endpoint and request schemas remain fixed by openrouter.BuildRequest.
 type Profile struct {
 	ID               string
+	ConversationID   string
 	Model            string
 	Messages         []openrouter.Message
 	ToolManifest     []string
@@ -133,8 +138,15 @@ func New(profile Profile, doer HTTPDoer) (*Broker, error) {
 	if doer == nil {
 		return nil, errors.New("an injected HTTP Doer is required")
 	}
-	if !validText(profile.ID, maxProfileIDBytes) || !validText(profile.Generation, 128) {
+	if !validText(profile.ID, maxProfileIDBytes) ||
+		(profile.ConversationID != "" && !validText(profile.ConversationID, 256)) ||
+		!validText(profile.Generation, 128) {
 		return nil, errors.New("invalid registered profile identity or generation")
+	}
+	if profile.ConversationID == "" {
+		// Low-level broker users that have no conversation owner get a stable
+		// profile-scoped session. providerbridge always supplies Config.ConversationID.
+		profile.ConversationID = profile.ID
 	}
 	if !sameManifest(profile.ToolManifest) {
 		return nil, errors.New("registered profile must declare exactly read, write, edit, bash in order")
@@ -146,7 +158,7 @@ func New(profile Profile, doer HTTPDoer) (*Broker, error) {
 	profile.Messages = cloneMessages(profile.Messages)
 	profile.ToolManifest = DeclaredToolManifest()
 	if _, err := openrouter.BuildRequest(profile.Model, profile.Messages); err != nil {
-		return nil, fmt.Errorf("invalid registered OpenRouter profile: %w", err)
+		return nil, fmt.Errorf("invalid registered OpenCode Go profile: %w", err)
 	}
 	return &Broker{profile: profile, doer: doer, stream: stream}, nil
 }
@@ -194,10 +206,20 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	}
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("Accept", "text/event-stream")
+	request.Header.Set("User-Agent", openrouter.UserAgent)
+	request.Header.Set(openrouter.SessionHeader, b.profile.ConversationID)
 	requestBytes := uint64(len(body))
+	if requestBytes >= uint64(MaxDurableExchangeBytes) {
+		_ = request.Body.Close()
+		return openrouter.CapturedResponse{}, b.failLocked(-1, errors.New("provider request leaves no durable response budget"))
+	}
+	responseLimit := uint64(MaxDurableExchangeBytes) - requestBytes
+	if responseLimit > uint64(openrouter.MaxResponseBytes) {
+		responseLimit = uint64(openrouter.MaxResponseBytes)
+	}
 	remaining := uint64(MaxRecordedBytes) - b.recorded
 	if len(b.records) >= maxRecordedExchanges || requestBytes > remaining ||
-		uint64(openrouter.MaxResponseBytes+1) > remaining-requestBytes {
+		responseLimit+1 > remaining-requestBytes {
 		_ = request.Body.Close()
 		return openrouter.CapturedResponse{}, b.failLocked(-1, errors.New("provider exchange record budget exhausted"))
 	}
@@ -243,7 +265,7 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("OpenRouter exchange canceled: %w", err))
 	}
 
-	responseBody, readErr := readBoundedResponse(response.Body)
+	responseBody, readErr := readBoundedResponse(response.Body, int(responseLimit))
 	closeErr := response.Body.Close()
 	record.responseBody = append([]byte(nil), responseBody...)
 	b.recorded += uint64(len(responseBody))
@@ -362,12 +384,15 @@ func cloneMessages(messages []openrouter.Message) []openrouter.Message {
 	return cloned
 }
 
-func readBoundedResponse(reader io.Reader) ([]byte, error) {
-	raw, err := io.ReadAll(io.LimitReader(reader, openrouter.MaxResponseBytes+1))
+func readBoundedResponse(reader io.Reader, limit int) ([]byte, error) {
+	if limit <= 0 || limit > openrouter.MaxResponseBytes {
+		return nil, errors.New("provider response byte budget is invalid")
+	}
+	raw, err := io.ReadAll(io.LimitReader(reader, int64(limit)+1))
 	if err != nil {
 		return raw, err
 	}
-	if len(raw) == 0 || len(raw) > openrouter.MaxResponseBytes {
+	if len(raw) == 0 || len(raw) > limit {
 		return raw, errors.New("provider response byte length out of bounds")
 	}
 	return raw, nil

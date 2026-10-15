@@ -38,15 +38,15 @@ func (d *oneShotTestDoer) Do(request *http.Request) (*http.Response, error) {
 func TestRunOneShotPrintsOnlyRedactedBoundedSummary(t *testing.T) {
 	const key = "summary-private-key-987"
 	credentials, err := openrouter.LoadCredentialsFrom(func(name string) (string, bool) {
-		values := map[string]string{openrouter.APIKeyEnv: key, openrouter.ModelEnv: "vendor/model"}
+		values := map[string]string{openrouter.APIKeyEnv: key}
 		value, ok := values[name]
 		return value, ok
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	response := append(sseChunk(t, key, "vendor/model", map[string]any{"role": "assistant", "content": key}, nil),
-		sseChunk(t, key, "vendor/model", map[string]any{}, "stop")...)
+	response := append(sseChunk(t, key, openrouter.ApprovedModel, map[string]any{"role": "assistant", "content": key}, nil),
+		sseChunk(t, key, openrouter.ApprovedModel, map[string]any{}, "stop")...)
 	response = append(response, []byte("data: [DONE]\n\n")...)
 	doer := &oneShotTestDoer{response: response}
 	var output bytes.Buffer
@@ -59,7 +59,7 @@ func TestRunOneShotPrintsOnlyRedactedBoundedSummary(t *testing.T) {
 	}
 	for _, field := range []string{
 		"redacted_summary=true", "status_code=200", "response_id=\"[REDACTED]\"",
-		"response_model=\"vendor/model\"", "captured_tool_calls=0",
+		"response_model=\"" + openrouter.ApprovedModel + "\"", "captured_tool_calls=0",
 		"ordered_four_tool_manifest_respected=true", "response_bytes=", "containment=not-established", "g1=false",
 	} {
 		if !strings.Contains(text, field) {
@@ -76,9 +76,6 @@ func TestRunOneShotRedactsCredentialFromErrors(t *testing.T) {
 	credentials, err := openrouter.LoadCredentialsFrom(func(name string) (string, bool) {
 		if name == openrouter.APIKeyEnv {
 			return key, true
-		}
-		if name == openrouter.ModelEnv {
-			return "vendor/model", true
 		}
 		return "", false
 	})

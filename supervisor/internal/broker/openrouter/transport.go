@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 	"time"
 )
 
@@ -22,7 +21,7 @@ const (
 // key in an error, record, or log message.
 type APIKeySource func() (string, error)
 
-// HTTPDoer is the production net/http transport for a registered OpenRouter
+// HTTPDoer is the production net/http transport for the fixed OpenCode Go
 // request. It clones the request before attaching authentication, so the
 // broker's pre-transport request snapshot never contains the credential.
 type HTTPDoer struct {
@@ -37,18 +36,18 @@ func NewHTTPDoer(key APIKeySource, timeout time.Duration) (*HTTPDoer, error) {
 
 func newHTTPDoer(key APIKeySource, timeout time.Duration, endpoint string) (*HTTPDoer, error) {
 	if key == nil {
-		return nil, errors.New("an injected OpenRouter credential source is required")
+		return nil, errors.New("an injected OpenCode Go credential source is required")
 	}
 	if timeout <= 0 || timeout > MaxHTTPTimeout {
-		return nil, errors.New("OpenRouter HTTP timeout is outside the permitted bound")
+		return nil, errors.New("OpenCode Go HTTP timeout is outside the permitted bound")
 	}
 	parsed, err := url.Parse(endpoint)
 	if err != nil || parsed == nil || parsed.Host == "" || parsed.User != nil ||
 		(parsed.Scheme != "https" && parsed.Scheme != "http") {
-		return nil, errors.New("invalid registered OpenRouter endpoint")
+		return nil, errors.New("invalid registered OpenCode Go endpoint")
 	}
 	if endpoint == Endpoint && parsed.Scheme != "https" {
-		return nil, errors.New("OpenRouter endpoint must use HTTPS")
+		return nil, errors.New("OpenCode Go endpoint must use HTTPS")
 	}
 
 	shorter := func(limit time.Duration) time.Duration {
@@ -58,7 +57,6 @@ func newHTTPDoer(key APIKeySource, timeout time.Duration, endpoint string) (*HTT
 		return limit
 	}
 	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: shorter(10 * time.Second), KeepAlive: 30 * time.Second}).DialContext,
 		ForceAttemptHTTP2:     true,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
@@ -74,7 +72,7 @@ func newHTTPDoer(key APIKeySource, timeout time.Duration, endpoint string) (*HTT
 		Transport: transport,
 		Timeout:   timeout,
 		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-			return errors.New("OpenRouter redirects are forbidden")
+			return errors.New("OpenCode Go redirects are forbidden")
 		},
 	}
 	return &HTTPDoer{client: client, key: key, endpoint: endpoint}, nil
@@ -82,32 +80,30 @@ func newHTTPDoer(key APIKeySource, timeout time.Duration, endpoint string) (*HTT
 
 func (d *HTTPDoer) Do(request *http.Request) (*http.Response, error) {
 	if d == nil || d.client == nil || d.key == nil {
-		return nil, errors.New("OpenRouter HTTP transport is not configured")
+		return nil, errors.New("OpenCode Go HTTP transport is not configured")
 	}
 	if request == nil || request.URL == nil || request.Method != http.MethodPost ||
 		request.URL.String() != d.endpoint || request.URL.User != nil ||
 		(request.Host != "" && request.Host != request.URL.Host) {
-		return nil, errors.New("request does not match the registered OpenRouter endpoint and method")
+		return nil, errors.New("request does not match the registered OpenCode Go endpoint and method")
+	}
+	if err := validateRegisteredHeaders(request.Header); err != nil {
+		return nil, err
 	}
 
 	key, err := d.key()
 	if err != nil {
-		return nil, errors.New("OpenRouter credential source failed")
+		return nil, errors.New("OpenCode Go credential source failed")
 	}
 	key, err = normalizeAPIKey(key)
 	if err != nil {
-		return nil, errors.New("OpenRouter credential source returned an invalid credential")
+		return nil, errors.New("OpenCode Go credential source returned an invalid credential")
 	}
 
 	outgoing := request.Clone(request.Context())
 	outgoing.Header = request.Header.Clone()
 	if outgoing.Header == nil {
 		outgoing.Header = make(http.Header)
-	}
-	for name := range outgoing.Header {
-		if strings.EqualFold(name, "Authorization") {
-			delete(outgoing.Header, name)
-		}
 	}
 	outgoing.Header.Set("Authorization", "Bearer "+key)
 
@@ -125,6 +121,23 @@ func (d *HTTPDoer) Do(request *http.Request) (*http.Response, error) {
 		return nil, errors.New("OpenRouter HTTP request failed")
 	}
 	return response, nil
+}
+
+func validateRegisteredHeaders(header http.Header) error {
+	if len(header) != 4 {
+		return errors.New("request headers do not match the fixed OpenCode Go profile")
+	}
+	for _, name := range []string{"Accept", "Content-Type", "User-Agent", SessionHeader} {
+		values, ok := header[name]
+		if !ok || len(values) != 1 {
+			return errors.New("request headers do not match the fixed OpenCode Go profile")
+		}
+	}
+	if header.Get("Accept") != "text/event-stream" || header.Get("Content-Type") != "application/json" ||
+		header.Get("User-Agent") != UserAgent || !validText(header.Get(SessionHeader), 256) {
+		return errors.New("request headers do not match the fixed OpenCode Go profile")
+	}
+	return nil
 }
 
 type redactingReadCloser struct {

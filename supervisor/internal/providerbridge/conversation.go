@@ -28,15 +28,18 @@ import (
 )
 
 const (
-	ApprovedModel       = "nvidia/nemotron-3.5-lightning:free"
-	MaxPromptBytes      = 16 << 10
-	MaxTaskIDBytes      = 128
-	MaxTranscriptBytes  = 8 << 20
-	MaxTranscriptTurns  = 1024
-	MaxIdentityBytes    = 256
-	callIssuer          = "openrouter-tool-call/v1"
-	responseIssuer      = "openrouter-response/v1"
-	bridgeSchemaVersion = "tbound-provider-bridge/v1"
+	ApprovedModel      = openrouter.ApprovedModel
+	MaxPromptBytes     = 16 << 10
+	MaxTaskIDBytes     = 128
+	MaxTranscriptBytes = 8 << 20
+	MaxTranscriptTurns = 1024
+	MaxIdentityBytes   = 256
+	// MaxTurnProjectionBytes bounds the complete canonical Turn JSON, including
+	// assistant text, tool arguments, usage, and fixed projection metadata.
+	MaxTurnProjectionBytes = 1 << 20
+	callIssuer             = "openrouter-tool-call/v1"
+	responseIssuer         = "openrouter-response/v1"
+	bridgeSchemaVersion    = "tbound-provider-bridge/v1"
 )
 
 var (
@@ -233,12 +236,12 @@ type resultEvidence struct {
 }
 
 // NewFromEnvironment uses the existing secure Go credential loader and its
-// redirect-forbidding transport. Only the single historically authorized model
-// is accepted; provider configuration cannot come from Pi or Node.
+// redirect-forbidding transport. The OpenCode Go model and route are fixed;
+// provider configuration cannot come from Pi or Node.
 func NewFromEnvironment(cfg Config, journal *audit.Journal) (*Conversation, error) {
 	credentials, err := openrouter.LoadCredentials()
 	if err != nil {
-		return nil, errors.New("approved OpenRouter credentials are unavailable")
+		return nil, errors.New("OpenCode Go credentials are unavailable")
 	}
 	return NewFromCredentials(cfg, credentials, journal)
 }
@@ -254,7 +257,7 @@ func NewFromCredentials(cfg Config, credentials openrouter.Credentials, journal 
 	}
 	doer, err := credentials.NewHTTPDoer(openrouter.DefaultHTTPTimeout)
 	if err != nil {
-		return nil, fmt.Errorf("configure secure OpenRouter transport: %w", err)
+		return nil, fmt.Errorf("configure secure OpenCode Go transport: %w", err)
 	}
 	return newWithDoer(cfg, credentials.ModelID(), doer, journal)
 }
@@ -343,7 +346,7 @@ func (c *Conversation) AdmitPrompt(taskID, prompt string) error {
 }
 
 // NextTurn constructs the complete registered request from broker-owned
-// history, performs the actual Go OpenRouter broker exchange, captures the
+// history, performs the actual OpenCode Go broker exchange, captures the
 // response/call before release, and persists exact request/response evidence.
 func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 	if c == nil || ctx == nil {
@@ -364,7 +367,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 		return Turn{}, c.failLocked(errors.New("provider conversation turn/sequence budget exhausted"))
 	}
 	profile := broker.Profile{
-		ID: c.cfg.ProfileID, Model: c.model, Messages: cloneMessages(c.history),
+		ID: c.cfg.ProfileID, ConversationID: c.cfg.ConversationID, Model: c.model, Messages: cloneMessages(c.history),
 		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: callIssuer,
 		ResponseIDIssuer: responseIssuer, Generation: c.generation,
 	}
@@ -392,7 +395,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 		if reserveErr != nil {
 			return reserveErr
 		}
-		if binding.CallID == "" || len(binding.RequestDigest) != 64 || binding.RequestDigest != broker.DigestRequestRecord(request) ||
+		if !validHostCallBinding(binding) || len(binding.RequestDigest) != 64 || binding.RequestDigest != broker.DigestRequestRecord(request) ||
 			binding.TokenUpperBound != completionLimit {
 			return errors.New("host-call reservation does not bind the exact outbound request and completion cap")
 		}
@@ -446,6 +449,10 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 	assistantText := captured.AssistantText()
 	if assistantText == "" && projection.ToolCall == nil {
 		return Turn{}, c.failLocked(errors.New("provider response has neither assistant text nor a tool call"))
+	}
+	if err := validateTurnProjectionBudget(projection); err != nil {
+		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
+		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response projection exceeds its durable evidence budget: %w", err), persistErr))
 	}
 	callArray := []openrouter.PriorToolCall(nil)
 	if projection.ToolCall != nil {
@@ -837,12 +844,52 @@ func (c *Conversation) appendLocked(kind, id string, data []byte) (audit.Record,
 		return audit.Record{}, errors.New("provider evidence sequence exhausted")
 	}
 	eventID := fmt.Sprintf("%s:%s:%d", c.cfg.ConversationID, id, c.eventOrdinal+1)
-	record, err := c.journal.Append(audit.Event{Kind: kind, ID: eventID, Data: append([]byte(nil), data...)})
+	event := audit.Event{Kind: kind, ID: eventID, Data: append([]byte(nil), data...)}
+	if err := preflightAuditFrame(event); err != nil {
+		return audit.Record{}, err
+	}
+	record, err := c.journal.Append(event)
 	if err != nil {
 		return audit.Record{}, err
 	}
 	c.eventOrdinal++
 	return record, nil
+}
+
+// preflightAuditFrame applies audit.Append's JSON serializer to a record with
+// the largest possible sequence and fixed-width hash fields. This avoids
+// dispatch/release paths depending on an estimate that ignores nested base64
+// and RawMessage escaping in provider evidence.
+func preflightAuditFrame(event audit.Event) error {
+	record := audit.Record{
+		Version: 1, Sequence: math.MaxUint64, PreviousHash: strings.Repeat("0", 64),
+		Event: event, Hash: strings.Repeat("0", 64),
+	}
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		return err
+	}
+	if len(encoded)+1 > audit.MaxRecordBytes {
+		return audit.ErrRecordTooLarge
+	}
+	return nil
+}
+
+// validateTurnProjectionBudget serializes the full public projection with the
+// largest journal receipt fields. json.Marshal uses the same HTML escaping as
+// durable RawMessage evidence, so this cap includes the worst-case expansion
+// of both assistant text and tool arguments before a capture is accepted.
+func validateTurnProjectionBudget(projection Turn) error {
+	projection.JournalSeq = math.MaxUint64
+	projection.JournalHash = strings.Repeat("0", 64)
+	encoded, err := json.Marshal(projection)
+	if err != nil {
+		return err
+	}
+	if len(encoded) > MaxTurnProjectionBytes {
+		return errors.New("canonical provider turn projection exceeds one mebibyte")
+	}
+	return nil
 }
 
 func (c *Conversation) persistFailedExchangeLocked(records []broker.ExchangeRecord, failure error,
