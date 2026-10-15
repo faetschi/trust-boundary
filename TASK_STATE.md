@@ -1,23 +1,24 @@
 # TBound task state
 
-Updated 2026-10-15. Work only on `codex/tbound-prototype`; latest implementation checkpoint `e0d48d0`.
+Updated 2026-10-15. Work only on `codex/tbound-prototype`; implementation checkpoint `ebbbbbc`.
 
-## Current work
+## Verified increments
 
-- Service settlement is committed: four source/test hashes and all referenced Linux logs independently verified; focused unit/race/build/vet pass. End-to-end production settlement remains open.
-- Claude Haiku 5.5 / max agents are reconciling settlement review, finishing D09 bare audit-head validation, and checking the current thesis finish line plus a safe cleanup candidate.
-- Thesis sources: `../MSE_MA_Thesis/tbound/tbound-thesis.md` and `tbound.md`. Research Claims is last; do not claim G1/H1 from component tests.
+- `e0d48d0` durable new-workflow settlement gate; `ebbbbbc` fixes bare-root comparison, with a regression and focused Linux unit/race/build/vet evidence.
+- `89b76d0` D09 bare audit-head binding. Six source hashes and ten command-log hashes verified. Piruntime unit/race: 263 passes, one unchanged capability-profile skip, zero failures; focused changed paths have no skips.
+- These are component results, not production qualification or G1/H1 evidence. No positive end-to-end production settlement fixture exists yet.
 
-## Next gates
+## Next work
 
-1. Commit verified D09 Store/source-binding correction.
-2. Qualify one exact ABI 8 guest and real local Pi workflow. Original VM is Saved; seed is preserved. Latest disposable candidate failed WSL VHD attachment before injection/boot. Inspect live state before retry; never blindly recreate it.
-3. Close bounded D14 storage and retained D20 restart/drain evidence. Derive/enforce a production capacity bound and test maximum-bound failures; synthetic 64 MiB reserve is insufficient.
-4. Freeze corpus/oracles/calibration/scoring, deployment and costed OpenRouter DeepSeek V4.1 Flash plan within US$5. Complete Research Claims readiness and required evidence honestly; user/advisor construct review.
+1. Read final Haiku 5.5/max audit results. Resolve the current ABI 8 guest attachment blocker with one qualified local deployment and real Pi workflow. Original VM Saved; seed preserved; never blindly recreate an existing candidate.
+2. Enforce/qualify bounded D14 storage and retained D20 recovery/drain. Derive production reserve from enforced limits; synthetic 64 MiB experiment is insufficient.
+3. Research Claims last: freeze deployment/protocol/corpus/oracles/calibration/scoring and costed OpenRouter DeepSeek V4.1 Flash plan within US$5. Use user/advisor construct review and independent runtime/effect oracles; do not invent results.
+4. Make occasional narrow cleanup only after checking references; preserve cited historical evidence and other-session changes.
 
 ## Constraints
 
-- Preserve ten dirty docs owned by another session; stage only reviewed owned paths. Never read/print credentials, real signing keys, or `vm_start.txt`.
-- Use pinned Linux Go 1.27.1, one shared cache, short private temporary directories with cleanup, and raw logs on F:. Old WSL scratch paths were archived and may be absent.
-- Guard free space. PowerShell 5.1 writes must stop on error and validate temporary output before replacing files. Preserve `supervisor/tbound` and `tbound.exe`.
-- Fully replace `OVERVIEW.md` at increments; keep this file concise. Commit verified work. Defer broader product features and preserve cited evidence during cleanup.
+- Canonical thesis: `../MSE_MA_Thesis/tbound/tbound-thesis.md` and `tbound.md`; defer broader product features.
+- Preserve ten dirty docs owned by another session. Stage explicit reviewed paths only. Never read/print credentials, real signing keys or `vm_start.txt`.
+- Linux Go 1.27.1, one shared cache, private short temporary paths with cleanup; logs on F:. Piruntime path guards require private ancestors: use a private directory under `/home/jeli2k`, not `/tmp`.
+- Guard free space. PowerShell 5.1: stop on errors and validate temporary output before replacement. Preserve `supervisor/tbound` and `tbound.exe`.
+- Fully replace OVERVIEW.md with current state at increments; keep this file concise. Commit verified work.
