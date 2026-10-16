@@ -13,6 +13,8 @@ const (
 	fixtureClassB SensitiveClass = "fixture-class-b"
 )
 
+// sampleRef is one well-formed reference used to show what happens when a single
+// test is cited for every cell.
 const sampleRef = "supervisor/internal/sessionrepo.TestSessionRepositoryDeniedReadMatrixE2E"
 
 // allowedFor returns a treatment that the spec permits for the route.
@@ -29,11 +31,23 @@ func allowedFor(r Route) Treatment {
 	}
 }
 
-func coveredCell(r Route, c SensitiveClass) Cell {
-	return Cell{Route: r, Class: c, Treatment: allowedFor(r), TestRef: sampleRef, Status: StatusCovered}
+// fixtureRef returns a well-formed reference unique to one (route, class, kind) slot.
+func fixtureRef(r Route, c SensitiveClass, k EvidenceKind) string {
+	return "supervisor/internal/routematrix/fixtures/" + string(r) + "/" + string(c) + ".Test_" + string(k)
 }
 
-// fullMatrix covers every route for both fixture classes with a valid treatment.
+// coveredCell registers a Covered cell with one evidence entry per kind the route
+// requires, each with its own fixture reference.
+func coveredCell(r Route, c SensitiveClass) Cell {
+	cell := Cell{Route: r, Class: c, Treatment: allowedFor(r), Status: StatusCovered}
+	for _, k := range requiredEvidence[r] {
+		cell.Evidence = append(cell.Evidence, Evidence{Kind: k, TestRef: fixtureRef(r, c, k)})
+	}
+	return cell
+}
+
+// fullMatrix covers every route for both fixture classes with a valid treatment
+// and every required evidence kind, each with a unique reference.
 func fullMatrix() Matrix {
 	m := Matrix{Classes: []SensitiveClass{fixtureClassA, fixtureClassB}}
 	for _, r := range Routes {
@@ -44,12 +58,29 @@ func fullMatrix() Matrix {
 	return m
 }
 
-// copyMatrix returns a matrix with fresh slices so tests never alias fullMatrix.
-func copyMatrix(m Matrix) Matrix {
-	return Matrix{
-		Classes: append([]SensitiveClass(nil), m.Classes...),
-		Cells:   append([]Cell(nil), m.Cells...),
+// fixtureLookup resolves exactly the references that fullMatrix registers.
+func fixtureLookup() func(string) bool {
+	known := make(map[string]bool)
+	for _, c := range fullMatrix().Cells {
+		for _, e := range c.Evidence {
+			known[e.TestRef] = true
+		}
 	}
+	return func(ref string) bool { return known[ref] }
+}
+
+// copyMatrix returns a matrix with fresh slices, including each cell's evidence,
+// so tests never alias fullMatrix.
+func copyMatrix(m Matrix) Matrix {
+	out := Matrix{
+		Classes: append([]SensitiveClass(nil), m.Classes...),
+		Cells:   make([]Cell, len(m.Cells)),
+	}
+	for i, c := range m.Cells {
+		c.Evidence = append([]Evidence(nil), c.Evidence...)
+		out.Cells[i] = c
+	}
+	return out
 }
 
 // mutateCell returns a copy of m with the (route, class) cell edited by f.
@@ -64,6 +95,67 @@ func mutateCell(t *testing.T, m Matrix, r Route, c SensitiveClass, f func(*Cell)
 	}
 	t.Fatalf("no cell for route %q class %q", r, c)
 	return out
+}
+
+// mutateEvidence returns a copy of m with the evidence entry of kind k in the
+// (route, class) cell edited by f.
+func mutateEvidence(t *testing.T, m Matrix, r Route, c SensitiveClass, k EvidenceKind, f func(*Evidence)) Matrix {
+	t.Helper()
+	return mutateCell(t, m, r, c, func(cell *Cell) {
+		for i := range cell.Evidence {
+			if cell.Evidence[i].Kind == k {
+				f(&cell.Evidence[i])
+				return
+			}
+		}
+		t.Fatalf("no %q evidence for route %q class %q", k, r, c)
+	})
+}
+
+// dropEvidence returns a copy of m without the evidence entry of kind k in the
+// (route, class) cell.
+func dropEvidence(t *testing.T, m Matrix, r Route, c SensitiveClass, k EvidenceKind) Matrix {
+	t.Helper()
+	return mutateCell(t, m, r, c, func(cell *Cell) {
+		var kept []Evidence
+		for _, e := range cell.Evidence {
+			if e.Kind != k {
+				kept = append(kept, e)
+			}
+		}
+		if len(kept) == len(cell.Evidence) {
+			t.Fatalf("no %q evidence to drop for route %q class %q", k, r, c)
+		}
+		cell.Evidence = kept
+	})
+}
+
+func withRef(ref string) func(*Evidence) {
+	return func(e *Evidence) { e.TestRef = ref }
+}
+
+func mustCoverage(t *testing.T, m Matrix, lookup func(string) bool) Report {
+	t.Helper()
+	rep, err := Coverage(m, lookup)
+	if err != nil {
+		t.Fatalf("Coverage: %v", err)
+	}
+	return rep
+}
+
+// assertIncomplete requires Complete to be false and some reason to mention substr.
+func assertIncomplete(t *testing.T, rep Report, substr string) {
+	t.Helper()
+	if rep.Complete {
+		t.Errorf("Complete = true, want false (reasons %v)", rep.Reasons)
+		return
+	}
+	for _, r := range rep.Reasons {
+		if strings.Contains(r, substr) {
+			return
+		}
+	}
+	t.Errorf("no reason mentions %q; reasons = %v", substr, rep.Reasons)
 }
 
 func assertErr(t *testing.T, err error, want error) {
@@ -172,10 +264,63 @@ func TestBrokerNeverClaimsConfidentiality(t *testing.T) {
 	}
 }
 
-func TestCoveredWithoutTestRefRejected(t *testing.T) {
-	m := mutateCell(t, fullMatrix(), RouteBashView, fixtureClassA, func(c *Cell) {
-		c.TestRef = ""
-	})
+// TestRequiredEvidencePerRoute pins the per-route evidence requirements that the
+// spec's E06 table and evidence-type sentence are read as imposing. The read
+// routes need an attempted and a successful read; the broker needs provider-channel
+// disclosure. The read-route requirement for successful reads is OPEN (see doc.go).
+func TestRequiredEvidencePerRoute(t *testing.T) {
+	want := map[Route][]EvidenceKind{
+		RouteDeclaredRead:   {EvidenceAttemptedRead, EvidenceSuccessfulRead},
+		RouteBashView:       {EvidenceAttemptedRead, EvidenceSuccessfulRead},
+		RouteDirectRuntime:  {EvidenceAttemptedRead, EvidenceSuccessfulRead},
+		RouteProviderBroker: {EvidenceProviderChannelDisclosure},
+	}
+	for _, r := range Routes {
+		if got := requiredEvidence[r]; !reflect.DeepEqual(got, want[r]) {
+			t.Errorf("route %q: required evidence = %v, want %v", r, got, want[r])
+		}
+	}
+}
+
+func TestEvidenceKindRulesEnforced(t *testing.T) {
+	cases := map[string]struct {
+		m       Matrix
+		wantErr error
+	}{
+		"unknown kind": {
+			m: mutateCell(t, fullMatrix(), RouteBashView, fixtureClassA, func(c *Cell) {
+				c.Evidence = append(c.Evidence, Evidence{Kind: EvidenceKind("Bogus"), TestRef: sampleRef})
+			}),
+			wantErr: ErrUnknownEvidence,
+		},
+		"kind not applicable to read route": {
+			m: mutateCell(t, fullMatrix(), RouteBashView, fixtureClassA, func(c *Cell) {
+				c.Evidence = append(c.Evidence, Evidence{Kind: EvidenceProviderChannelDisclosure, TestRef: sampleRef})
+			}),
+			wantErr: ErrEvidenceNotAllowed,
+		},
+		"read kind on broker": {
+			m: mutateCell(t, fullMatrix(), RouteProviderBroker, fixtureClassA, func(c *Cell) {
+				c.Evidence = append(c.Evidence, Evidence{Kind: EvidenceAttemptedRead, TestRef: sampleRef})
+			}),
+			wantErr: ErrEvidenceNotAllowed,
+		},
+		"duplicate kind in cell": {
+			m: mutateCell(t, fullMatrix(), RouteDirectRuntime, fixtureClassB, func(c *Cell) {
+				c.Evidence = append(c.Evidence, Evidence{Kind: EvidenceSuccessfulRead, TestRef: sampleRef})
+			}),
+			wantErr: ErrDuplicateEvidence,
+		},
+	}
+	for name, tc := range cases {
+		if err := Validate(tc.m); !errors.Is(err, tc.wantErr) {
+			t.Errorf("%s: Validate = %v, want %v", name, err, tc.wantErr)
+		}
+	}
+}
+
+func TestEvidenceEntryWithEmptyRefRejected(t *testing.T) {
+	m := mutateEvidence(t, fullMatrix(), RouteBashView, fixtureClassA, EvidenceAttemptedRead, withRef(""))
 	assertErr(t, Validate(m), ErrMissingTestRef)
 }
 
@@ -186,9 +331,7 @@ func TestWellFormedTestRefsAccepted(t *testing.T) {
 		"a/b.Test_x",
 		"x.y/z.TestA",
 	} {
-		m := mutateCell(t, fullMatrix(), RouteBashView, fixtureClassA, func(c *Cell) {
-			c.TestRef = ref
-		})
+		m := mutateEvidence(t, fullMatrix(), RouteBashView, fixtureClassA, EvidenceAttemptedRead, withRef(ref))
 		if err := Validate(m); err != nil {
 			t.Errorf("ref %q: Validate = %v, want nil", ref, err)
 		}
@@ -210,9 +353,7 @@ func TestMalformedTestRefRejected(t *testing.T) {
 		"supervisor/internal/sessionrepo.BenchmarkX", // not a Test name
 	}
 	for _, ref := range bad {
-		m := mutateCell(t, fullMatrix(), RouteDirectRuntime, fixtureClassA, func(c *Cell) {
-			c.TestRef = ref
-		})
+		m := mutateEvidence(t, fullMatrix(), RouteDirectRuntime, fixtureClassA, EvidenceSuccessfulRead, withRef(ref))
 		if err := Validate(m); !errors.Is(err, ErrMalformedTestRef) {
 			t.Errorf("ref %q: Validate = %v, want ErrMalformedTestRef", ref, err)
 		}
@@ -223,7 +364,7 @@ func TestMalformedRefOnPendingCellRejected(t *testing.T) {
 	m := mutateCell(t, fullMatrix(), RouteDirectRuntime, fixtureClassA, func(c *Cell) {
 		c.Status = StatusPendingGuest
 		c.Reason = "guest run pending"
-		c.TestRef = "not-a-ref"
+		c.Evidence = []Evidence{{Kind: EvidenceAttemptedRead, TestRef: "not-a-ref"}}
 	})
 	assertErr(t, Validate(m), ErrMalformedTestRef)
 }
@@ -231,7 +372,7 @@ func TestMalformedRefOnPendingCellRejected(t *testing.T) {
 func TestPendingWithoutReasonRejected(t *testing.T) {
 	m := mutateCell(t, fullMatrix(), RouteDeclaredRead, fixtureClassB, func(c *Cell) {
 		c.Status = StatusPendingGuest
-		c.TestRef = ""
+		c.Evidence = nil
 		c.Reason = ""
 	})
 	assertErr(t, Validate(m), ErrMissingReason)
@@ -240,7 +381,7 @@ func TestPendingWithoutReasonRejected(t *testing.T) {
 func TestPendingWithReasonAccepted(t *testing.T) {
 	m := mutateCell(t, fullMatrix(), RouteDeclaredRead, fixtureClassB, func(c *Cell) {
 		c.Status = StatusPendingGuest
-		c.TestRef = ""
+		c.Evidence = nil
 		c.Reason = "requires guest VM run"
 	})
 	if err := Validate(m); err != nil {
@@ -259,7 +400,7 @@ func TestEmptyMatrixInvalid(t *testing.T) {
 		if err := Validate(m); !errors.Is(err, ErrEmptyMatrix) {
 			t.Errorf("%s: Validate = %v, want ErrEmptyMatrix", name, err)
 		}
-		if _, err := Coverage(m); !errors.Is(err, ErrEmptyMatrix) {
+		if _, err := Coverage(m, fixtureLookup()); !errors.Is(err, ErrEmptyMatrix) {
 			t.Errorf("%s: Coverage err = %v, want ErrEmptyMatrix", name, err)
 		}
 	}
@@ -276,12 +417,12 @@ func TestClassListValidation(t *testing.T) {
 }
 
 func TestCoverageCountsAndCompleteWhenAllCovered(t *testing.T) {
-	rep, err := Coverage(fullMatrix())
-	if err != nil {
-		t.Fatalf("Coverage: %v", err)
-	}
+	rep := mustCoverage(t, fullMatrix(), fixtureLookup())
 	if !rep.Complete {
-		t.Errorf("Complete = false for all-covered matrix")
+		t.Errorf("Complete = false for all-covered matrix; reasons %v", rep.Reasons)
+	}
+	if len(rep.Reasons) != 0 {
+		t.Errorf("Reasons = %v, want none", rep.Reasons)
 	}
 	if rep.Total != 8 {
 		t.Errorf("Total = %d, want 8", rep.Total)
@@ -299,33 +440,20 @@ func TestCoverageCountsAndCompleteWhenAllCovered(t *testing.T) {
 func TestCompleteFalseWithPendingOrMissing(t *testing.T) {
 	pending := mutateCell(t, fullMatrix(), RouteBashView, fixtureClassA, func(c *Cell) {
 		c.Status = StatusPendingGuest
-		c.TestRef = ""
+		c.Evidence = nil
 		c.Reason = "guest run pending"
 	})
 	missing := mutateCell(t, fullMatrix(), RouteProviderBroker, fixtureClassB, func(c *Cell) {
 		c.Status = StatusMissing
-		c.TestRef = ""
+		c.Evidence = nil
 	})
-	for name, m := range map[string]Matrix{"pending": pending, "missing": missing} {
-		rep, err := Coverage(m)
-		if err != nil {
-			t.Fatalf("%s: Coverage: %v", name, err)
-		}
-		if rep.Complete {
-			t.Errorf("%s: Complete = true, want false (fail closed)", name)
-		}
-	}
-	rep, err := Coverage(pending)
-	if err != nil {
-		t.Fatalf("Coverage(pending): %v", err)
-	}
+	rep := mustCoverage(t, pending, fixtureLookup())
+	assertIncomplete(t, rep, "status Pending_Guest")
 	if rep.ByStatus[StatusPendingGuest] != 1 || rep.ByRoute[RouteBashView][StatusPendingGuest] != 1 {
 		t.Errorf("pending counts wrong: %v / %v", rep.ByStatus, rep.ByRoute[RouteBashView])
 	}
-	rep, err = Coverage(missing)
-	if err != nil {
-		t.Fatalf("Coverage(missing): %v", err)
-	}
+	rep = mustCoverage(t, missing, fixtureLookup())
+	assertIncomplete(t, rep, "status Missing")
 	if rep.ByStatus[StatusMissing] != 1 || rep.ByRoute[RouteProviderBroker][StatusMissing] != 1 {
 		t.Errorf("missing counts wrong: %v / %v", rep.ByStatus, rep.ByRoute[RouteProviderBroker])
 	}
@@ -334,11 +462,100 @@ func TestCompleteFalseWithPendingOrMissing(t *testing.T) {
 func TestCoverageRejectsInvalidMatrix(t *testing.T) {
 	m := fullMatrix()
 	m.Cells = m.Cells[:len(m.Cells)-1]
-	rep, err := Coverage(m)
+	rep, err := Coverage(m, fixtureLookup())
 	assertErr(t, err, ErrMissingCell)
 	if rep.Complete {
 		t.Errorf("Complete = true for invalid matrix")
 	}
+}
+
+// TestNilLookupNotComplete: without a lookup the references are unverified, so the
+// report must not be Complete.
+func TestNilLookupNotComplete(t *testing.T) {
+	rep, err := Coverage(fullMatrix(), nil)
+	if err != nil {
+		t.Fatalf("Coverage(nil lookup): %v", err)
+	}
+	assertIncomplete(t, rep, "lookup")
+}
+
+func TestNonexistentRefNotComplete(t *testing.T) {
+	const nonexistent = "supervisor/internal/routematrix/fixtures/nonexistent.TestNope"
+	m := mutateEvidence(t, fullMatrix(), RouteBashView, fixtureClassA, EvidenceSuccessfulRead, withRef(nonexistent))
+	if err := Validate(m); err != nil {
+		t.Fatalf("Validate(nonexistent but well-formed ref) = %v, want nil", err)
+	}
+	rep := mustCoverage(t, m, fixtureLookup())
+	assertIncomplete(t, rep, nonexistent)
+}
+
+// TestReusedRefNotComplete covers the three ways one test can be cited more than
+// once: on every cell, on two routes, and on two kinds of the same cell.
+func TestReusedRefNotComplete(t *testing.T) {
+	declared := fixtureRef(RouteDeclaredRead, fixtureClassA, EvidenceAttemptedRead)
+
+	everyCell := fullMatrix()
+	for i := range everyCell.Cells {
+		for j := range everyCell.Cells[i].Evidence {
+			everyCell.Cells[i].Evidence[j].TestRef = sampleRef
+		}
+	}
+
+	acrossRoutes := fullMatrix()
+	for i := range acrossRoutes.Cells {
+		c := &acrossRoutes.Cells[i]
+		if c.Class != fixtureClassA {
+			continue
+		}
+		for j := range c.Evidence {
+			if c.Evidence[j].Kind == EvidenceAttemptedRead || c.Evidence[j].Kind == EvidenceProviderChannelDisclosure {
+				c.Evidence[j].TestRef = declared
+			}
+		}
+	}
+
+	sameCell := mutateEvidence(t, fullMatrix(), RouteBashView, fixtureClassB, EvidenceSuccessfulRead, withRef(fixtureRef(RouteBashView, fixtureClassB, EvidenceAttemptedRead)))
+
+	cases := map[string]Matrix{
+		"one ref on every cell":           everyCell,
+		"declared-read ref on all routes": acrossRoutes,
+		"same ref for two kinds in cell":  sameCell,
+	}
+	for name, m := range cases {
+		if err := Validate(m); err != nil {
+			t.Fatalf("%s: Validate = %v, want nil (reuse is a coverage fact, not a shape error)", name, err)
+		}
+		rep := mustCoverage(t, m, func(ref string) bool { return true })
+		assertIncomplete(t, rep, "reused")
+	}
+}
+
+func TestMissingRequiredEvidenceKindNotComplete(t *testing.T) {
+	cases := []struct {
+		name string
+		m    Matrix
+		kind EvidenceKind
+	}{
+		{"declared-read attempted", dropEvidence(t, fullMatrix(), RouteDeclaredRead, fixtureClassA, EvidenceAttemptedRead), EvidenceAttemptedRead},
+		{"bash-view successful", dropEvidence(t, fullMatrix(), RouteBashView, fixtureClassB, EvidenceSuccessfulRead), EvidenceSuccessfulRead},
+		{"direct-runtime successful", dropEvidence(t, fullMatrix(), RouteDirectRuntime, fixtureClassA, EvidenceSuccessfulRead), EvidenceSuccessfulRead},
+		{"broker disclosure", dropEvidence(t, fullMatrix(), RouteProviderBroker, fixtureClassB, EvidenceProviderChannelDisclosure), EvidenceProviderChannelDisclosure},
+	}
+	for _, tc := range cases {
+		if err := Validate(tc.m); err != nil {
+			t.Fatalf("%s: Validate = %v, want nil (missing kind is a coverage fact)", tc.name, err)
+		}
+		rep := mustCoverage(t, tc.m, fixtureLookup())
+		assertIncomplete(t, rep, "missing required evidence kind "+string(tc.kind))
+	}
+}
+
+func TestCoveredWithoutEvidenceNotComplete(t *testing.T) {
+	m := mutateCell(t, fullMatrix(), RouteBashView, fixtureClassA, func(c *Cell) {
+		c.Evidence = nil
+	})
+	rep := mustCoverage(t, m, fixtureLookup())
+	assertIncomplete(t, rep, "missing required evidence kind AttemptedRead")
 }
 
 func TestDigestOrderIndependent(t *testing.T) {
@@ -351,6 +568,12 @@ func TestDigestOrderIndependent(t *testing.T) {
 	reversed := copyMatrix(m)
 	for i, j := 0, len(reversed.Cells)-1; i < j; i, j = i+1, j-1 {
 		reversed.Cells[i], reversed.Cells[j] = reversed.Cells[j], reversed.Cells[i]
+	}
+	for i := range reversed.Cells {
+		ev := reversed.Cells[i].Evidence
+		for a, b := 0, len(ev)-1; a < b; a, b = a+1, b-1 {
+			ev[a], ev[b] = ev[b], ev[a]
+		}
 	}
 	reversed.Classes = []SensitiveClass{fixtureClassB, fixtureClassA}
 	if got := Digest(reversed); got != want {
@@ -371,16 +594,26 @@ func TestDigestPerFieldSensitivity(t *testing.T) {
 	base := fullMatrix()
 	want := Digest(base)
 	route, class := RouteBashView, fixtureClassA
-	mutations := map[string]func(*Cell){
+	cellMutations := map[string]func(*Cell){
 		"route":     func(c *Cell) { c.Route = RouteDeclaredRead },
 		"class":     func(c *Cell) { c.Class = fixtureClassB },
 		"treatment": func(c *Cell) { c.Treatment = TreatmentProposalDenied },
-		"testref":   func(c *Cell) { c.TestRef = "supervisor/internal/other.TestOther" },
 		"status":    func(c *Cell) { c.Status = StatusPendingGuest },
 		"reason":    func(c *Cell) { c.Reason = "x" },
 	}
-	for name, f := range mutations {
+	for name, f := range cellMutations {
 		m := mutateCell(t, base, route, class, f)
+		if got := Digest(m); got == want {
+			t.Errorf("changing %s did not change digest", name)
+		}
+	}
+
+	evidenceMutations := map[string]Matrix{
+		"evidence kind":    mutateEvidence(t, base, route, class, EvidenceAttemptedRead, func(e *Evidence) { e.Kind = EvidenceKind("Other") }),
+		"evidence ref":     mutateEvidence(t, base, route, class, EvidenceSuccessfulRead, withRef("supervisor/internal/other.TestOther")),
+		"evidence dropped": dropEvidence(t, base, route, class, EvidenceSuccessfulRead),
+	}
+	for name, m := range evidenceMutations {
 		if got := Digest(m); got == want {
 			t.Errorf("changing %s did not change digest", name)
 		}
@@ -405,10 +638,15 @@ func TestDigestLengthPrefixPreventsConcatenationCollisions(t *testing.T) {
 	if Digest(a) == Digest(b) {
 		t.Errorf("class boundary collision: %q and %q share a digest", a.Classes, b.Classes)
 	}
-	c := Matrix{Cells: []Cell{{Class: "ab", TestRef: "c"}}}
-	d := Matrix{Cells: []Cell{{Class: "a", TestRef: "bc"}}}
+	c := Matrix{Cells: []Cell{{Class: "ab", Reason: "c"}}}
+	d := Matrix{Cells: []Cell{{Class: "a", Reason: "bc"}}}
 	if Digest(c) == Digest(d) {
 		t.Errorf("field boundary collision in cells")
+	}
+	e := Matrix{Cells: []Cell{{Evidence: []Evidence{{Kind: "ab", TestRef: "c"}}}}}
+	f := Matrix{Cells: []Cell{{Evidence: []Evidence{{Kind: "a", TestRef: "bc"}}}}}
+	if Digest(e) == Digest(f) {
+		t.Errorf("field boundary collision in evidence")
 	}
 }
 
@@ -416,12 +654,11 @@ func TestRefsExistReportsMissingRefs(t *testing.T) {
 	m := fullMatrix()
 	missingA := "supervisor/internal/a.TestMissingA"
 	missingB := "supervisor/internal/b.TestMissingB"
-	m = mutateCell(t, m, RouteBashView, fixtureClassA, func(c *Cell) { c.TestRef = missingA })
-	m = mutateCell(t, m, RouteDeclaredRead, fixtureClassB, func(c *Cell) { c.TestRef = missingB })
-	m = mutateCell(t, m, RouteDirectRuntime, fixtureClassB, func(c *Cell) { c.TestRef = missingA })
+	m = mutateEvidence(t, m, RouteBashView, fixtureClassA, EvidenceAttemptedRead, withRef(missingA))
+	m = mutateEvidence(t, m, RouteDeclaredRead, fixtureClassB, EvidenceSuccessfulRead, withRef(missingB))
+	m = mutateEvidence(t, m, RouteDirectRuntime, fixtureClassB, EvidenceAttemptedRead, withRef(missingA))
 
-	lookup := func(ref string) bool { return ref == sampleRef }
-	err := RefsExist(m, lookup)
+	err := RefsExist(m, fixtureLookup())
 	if !errors.Is(err, ErrMissingRef) {
 		t.Fatalf("RefsExist = %v, want ErrMissingRef", err)
 	}
@@ -434,8 +671,7 @@ func TestRefsExistReportsMissingRefs(t *testing.T) {
 }
 
 func TestRefsExistAllPresent(t *testing.T) {
-	lookup := func(ref string) bool { return ref == sampleRef }
-	if err := RefsExist(fullMatrix(), lookup); err != nil {
+	if err := RefsExist(fullMatrix(), fixtureLookup()); err != nil {
 		t.Fatalf("RefsExist(all present) = %v, want nil", err)
 	}
 }
@@ -443,11 +679,20 @@ func TestRefsExistAllPresent(t *testing.T) {
 func TestRefsExistSkipsEmptyRefsAndRejectsNilLookup(t *testing.T) {
 	m := mutateCell(t, fullMatrix(), RouteProviderBroker, fixtureClassA, func(c *Cell) {
 		c.Status = StatusPendingGuest
-		c.TestRef = ""
+		c.Evidence = nil
 		c.Reason = "pending"
 	})
-	if err := RefsExist(m, func(string) bool { return true }); err != nil {
+	lookedUpEmpty := false
+	if err := RefsExist(m, func(ref string) bool {
+		if ref == "" {
+			lookedUpEmpty = true
+		}
+		return true
+	}); err != nil {
 		t.Errorf("empty pending ref should not be looked up: %v", err)
+	}
+	if lookedUpEmpty {
+		t.Errorf("empty ref was passed to lookup")
 	}
 	assertErr(t, RefsExist(m, nil), ErrNilLookup)
 }
@@ -471,7 +716,7 @@ func TestZeroValuesDoNotPanic(t *testing.T) {
 			if err := Validate(m); err == nil {
 				t.Errorf("%s: Validate = nil, want error", name)
 			}
-			if _, err := Coverage(m); err == nil {
+			if _, err := Coverage(m, nil); err == nil {
 				t.Errorf("%s: Coverage err = nil, want error", name)
 			}
 			_ = Digest(m)
