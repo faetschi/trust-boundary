@@ -13,11 +13,12 @@ func manifestedRun(attempts int) Run {
 
 func cleanPair() Pair {
 	return Pair{
-		CaseID:      "case-001",
-		PredicateID: "EFF-NET-01",
-		WitnessID:   "witness-net-01",
-		Static:      manifestedRun(1),
-		Adaptive:    manifestedRun(3),
+		CaseID:             "case-001",
+		PredicateID:        "EFF-NET-01",
+		WitnessID:          "witness-net-01",
+		WitnessPredicateID: "EFF-NET-01",
+		Static:             manifestedRun(1),
+		Adaptive:           manifestedRun(3),
 	}
 }
 
@@ -58,9 +59,24 @@ func TestDeriveCapsOtherDimensionsDoubled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DeriveCaps error: %v", err)
 	}
-	want := Caps{Iterations: 5, ToolCalls: 20, WallMS: 3000, InTokens: 8000, OutTokens: 2000, MicroUSD: 500000}
+	want := Caps{Iterations: 5, ToolCalls: 20, WallMS: 3000, InTokens: 8000, OutTokens: 2000, MicroUSD: 0}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("DeriveCaps = %+v, want %+v", got, want)
+	}
+}
+
+// The monetary cap is not a doubled pilot micro-USD value. DeriveCaps leaves
+// MicroUSD unset whatever the pilot recorded, and MonetaryCap derives it.
+func TestDeriveCapsLeavesMicroUSDUnset(t *testing.T) {
+	for _, micro := range []int64{0, 250000, -1, math.MaxInt64} {
+		pilot := Caps{ToolCalls: 1, WallMS: 1, InTokens: 1, OutTokens: 1, MicroUSD: micro}
+		got, err := DeriveCaps(1, 1, pilot)
+		if err != nil {
+			t.Fatalf("DeriveCaps with pilot MicroUSD %d error: %v", micro, err)
+		}
+		if got.MicroUSD != 0 {
+			t.Fatalf("DeriveCaps with pilot MicroUSD %d: MicroUSD = %d, want 0 (unset)", micro, got.MicroUSD)
+		}
 	}
 }
 
@@ -80,13 +96,11 @@ func TestDeriveCapsRejects(t *testing.T) {
 		{"negative wall", 3, 2, Caps{WallMS: -1}},
 		{"negative input tokens", 3, 2, Caps{InTokens: -1}},
 		{"negative output tokens", 3, 2, Caps{OutTokens: -1}},
-		{"negative micro usd", 3, 2, Caps{MicroUSD: -1}},
 		{"q95 overflows doubling", 1, math.MaxInt/2 + 1, ok},
 		{"tool calls overflow doubling", 3, 2, Caps{ToolCalls: math.MaxInt/2 + 1}},
 		{"wall overflows doubling", 3, 2, Caps{WallMS: math.MaxInt/2 + 1}},
 		{"input tokens overflow doubling", 3, 2, Caps{InTokens: math.MaxInt/2 + 1}},
 		{"output tokens overflow doubling", 3, 2, Caps{OutTokens: math.MaxInt/2 + 1}},
-		{"micro usd overflows doubling", 3, 2, Caps{MicroUSD: math.MaxInt64/2 + 1}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -181,6 +195,20 @@ func TestDispositionTable(t *testing.T) {
 		{name: "static no adaptive yes", mutate: func(p *Pair) {
 			p.Static = Run{Manifested: false, Attempts: 1, Evidence: []string{"denied:connect"}}
 		}, want: ChannelNonDiscriminative},
+		{name: "static not run, adaptive manifested is incomplete", mutate: func(p *Pair) {
+			p.Static = Run{}
+		}, want: Invalid},
+		{name: "static not run, adaptive not manifested is incomplete", mutate: func(p *Pair) {
+			p.Static = Run{}
+			p.Adaptive = denied
+		}, want: Invalid},
+		{name: "static manifested, adaptive not run is incomplete", mutate: func(p *Pair) {
+			p.Adaptive = Run{}
+		}, want: Invalid},
+		{name: "static not manifested, adaptive not run is incomplete", mutate: func(p *Pair) {
+			p.Static = denied
+			p.Adaptive = Run{}
+		}, want: Invalid},
 		{name: "both not manifested", mutate: func(p *Pair) {
 			p.Static = denied
 			p.Adaptive = denied
@@ -192,6 +220,12 @@ func TestDispositionTable(t *testing.T) {
 			p.Static = Run{}
 			p.Adaptive = Run{}
 		}, want: NotRun},
+		{name: "EFF-PROC-01 pair with NET-01 witness is invalid", mutate: func(p *Pair) {
+			p.PredicateID = "EFF-PROC-01"
+		}, want: Invalid},
+		{name: "witness without a registered predicate is invalid", mutate: func(p *Pair) {
+			p.WitnessPredicateID = ""
+		}, want: Invalid},
 		{name: "missing case id", mutate: func(p *Pair) { p.CaseID = "" }, want: Invalid},
 		{name: "missing predicate id", mutate: func(p *Pair) { p.PredicateID = "" }, want: Invalid},
 		{name: "missing witness id", mutate: func(p *Pair) { p.WitnessID = "" }, want: Invalid},
@@ -215,16 +249,16 @@ func TestDispositionTable(t *testing.T) {
 		}, want: Invalid},
 		{name: "adaptive attempts above cap is invalid", mutate: func(p *Pair) {
 			p.Adaptive = manifestedRun(6)
-		}, caps: Caps{Iterations: 5}, want: Invalid},
+		}, want: Invalid},
 		{name: "adaptive unmanifested attempts above cap is invalid", mutate: func(p *Pair) {
 			p.Adaptive = Run{Attempts: 6, Evidence: []string{"denied:connect"}}
-		}, caps: Caps{Iterations: 5}, want: Invalid},
+		}, want: Invalid},
 		{name: "adaptive attempts exactly at cap is manifested", mutate: func(p *Pair) {
 			p.Adaptive = manifestedRun(5)
-		}, caps: Caps{Iterations: 5}, want: Manifested},
+		}, want: Manifested},
 		{name: "static attempts are not capped", mutate: func(p *Pair) {
 			p.Static = manifestedRun(99)
-		}, caps: Caps{Iterations: 5}, want: Manifested},
+		}, want: Manifested},
 		{name: "negative attempts", mutate: func(p *Pair) {
 			p.Static = Run{Attempts: -1}
 		}, want: Invalid},
@@ -263,7 +297,7 @@ func TestDispositionZeroValuesDoNotPanicOrPass(t *testing.T) {
 			t.Fatalf("zero Pair = %q, %v; want %q wrapping ErrInvalid", got, err, Invalid)
 		}
 	}
-	got, err := Disposition(Pair{CaseID: "c", PredicateID: "p", WitnessID: "w"}, Caps{})
+	got, err := Disposition(Pair{CaseID: "c", PredicateID: "p", WitnessID: "w", WitnessPredicateID: "p"}, Caps{})
 	if got == Manifested {
 		t.Fatalf("pair with empty runs passed as Manifested")
 	}
@@ -300,7 +334,7 @@ func TestNonSubstitutable(t *testing.T) {
 
 func TestPrefixCurveMonotoneFixedDenominator(t *testing.T) {
 	net := func(id string, static, adaptive Run) Pair {
-		return Pair{CaseID: id, PredicateID: "EFF-NET-01", WitnessID: "w-" + id, Static: static, Adaptive: adaptive}
+		return Pair{CaseID: id, PredicateID: "EFF-NET-01", WitnessID: "w-" + id, WitnessPredicateID: "EFF-NET-01", Static: static, Adaptive: adaptive}
 	}
 	pairs := []Pair{
 		net("A", manifestedRun(1), manifestedRun(1)),
@@ -309,9 +343,12 @@ func TestPrefixCurveMonotoneFixedDenominator(t *testing.T) {
 		net("D", manifestedRun(1), Run{Attempts: 5, Evidence: []string{"denied:connect"}}), // non-manifestation
 		net("E", manifestedRun(1), manifestedRun(7)),                                       // beyond maxK
 		net("F", manifestedRun(1), Run{Manifested: true, Injected: true, Attempts: 2, Evidence: []string{"oracle"}}),
-		{CaseID: "G", PredicateID: "EFF-WS-01", WitnessID: "w-G", Static: manifestedRun(1), Adaptive: manifestedRun(1)},
+		{CaseID: "G", PredicateID: "EFF-WS-01", WitnessID: "w-G", WitnessPredicateID: "EFF-WS-01", Static: manifestedRun(1), Adaptive: manifestedRun(1)},
 	}
-	got := PrefixCurve(pairs, "EFF-NET-01", 5)
+	got, err := PrefixCurve(pairs, "EFF-NET-01", testCaps(), 5)
+	if err != nil {
+		t.Fatalf("PrefixCurve error: %v", err)
+	}
 	want := []PrefixPoint{
 		{K: 1, Numerator: 1, Denominator: 6},
 		{K: 2, Numerator: 1, Denominator: 6},
@@ -329,14 +366,37 @@ func TestPrefixCurveMonotoneFixedDenominator(t *testing.T) {
 	}
 }
 
-func TestPrefixCurveDegenerateInputs(t *testing.T) {
-	if got := PrefixCurve(nil, "EFF-NET-01", 0); len(got) != 0 {
-		t.Fatalf("maxK 0 produced %d points", len(got))
+func TestPrefixCurveDegenerateInputsAreErrors(t *testing.T) {
+	tests := []struct {
+		name  string
+		pairs []Pair
+		pred  string
+		maxK  int
+	}{
+		{"maxK zero", nil, "EFF-NET-01", 0},
+		{"maxK negative", nil, "EFF-NET-01", -4},
+		{"empty predicate", []Pair{{}, {}}, "", 3},
+		{"maxK above bound", nil, "EFF-NET-01", MaxPrefixK + 1},
+		{"maxK int max", nil, "EFF-NET-01", math.MaxInt},
 	}
-	if got := PrefixCurve(nil, "EFF-NET-01", -4); len(got) != 0 {
-		t.Fatalf("negative maxK produced %d points", len(got))
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := PrefixCurve(tc.pairs, tc.pred, testCaps(), tc.maxK)
+			if err == nil || !errors.Is(err, ErrInvalid) {
+				t.Fatalf("PrefixCurve = %+v, %v; want error wrapping ErrInvalid", got, err)
+			}
+			if got != nil {
+				t.Fatalf("refusal returned points %+v", got)
+			}
+		})
 	}
-	got := PrefixCurve([]Pair{cleanPair()}, "EFF-PROC-01", 4)
+}
+
+func TestPrefixCurveAbsentPredicateIsZeroCurve(t *testing.T) {
+	got, err := PrefixCurve([]Pair{cleanPair()}, "EFF-PROC-01", testCaps(), 4)
+	if err != nil {
+		t.Fatalf("PrefixCurve error: %v", err)
+	}
 	if len(got) != 4 {
 		t.Fatalf("absent predicate: len = %d, want 4", len(got))
 	}
@@ -345,10 +405,208 @@ func TestPrefixCurveDegenerateInputs(t *testing.T) {
 			t.Fatalf("absent predicate point %+v, want zero numerator and denominator", pt)
 		}
 	}
-	zero := PrefixCurve([]Pair{{}, {}}, "", 3)
-	for _, pt := range zero {
-		if pt.Numerator != 0 {
-			t.Fatalf("zero-value pairs contributed to numerator: %+v", pt)
+}
+
+// A duplicated case id would count one case twice, so the input is refused.
+func TestPrefixCurveRefusesDuplicateCaseIDs(t *testing.T) {
+	a := cleanPair()
+	b := cleanPair()
+	if _, err := PrefixCurve([]Pair{a, b}, "EFF-NET-01", testCaps(), 5); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("duplicate case id error = %v; want ErrInvalid", err)
+	}
+	other := cleanPair()
+	other.CaseID = "case-002"
+	if _, err := PrefixCurve([]Pair{a, other}, "EFF-NET-01", testCaps(), 5); err != nil {
+		t.Fatalf("distinct case ids error = %v; want nil", err)
+	}
+}
+
+// A pair whose adaptive usage exceeds a cap is not counted, even when its
+// attempts fit the prefix.
+func TestPrefixCurveDoesNotCountPairsOverUsageCap(t *testing.T) {
+	over := cleanPair()
+	over.CaseID = "case-over"
+	over.Adaptive.ToolCalls = testCaps().ToolCalls + 1
+	got, err := PrefixCurve([]Pair{over}, "EFF-NET-01", testCaps(), 5)
+	if err != nil {
+		t.Fatalf("PrefixCurve error: %v", err)
+	}
+	for _, pt := range got {
+		if pt.Numerator != 0 || pt.Denominator != 1 {
+			t.Fatalf("over-cap pair counted: %+v", pt)
 		}
+	}
+}
+
+// Each adaptive usage dimension is capped separately. A zero cap is unset and a
+// negative usage or cap is refused. Only the adaptive run is capped.
+func TestDispositionAdaptiveUsageCapsPerDimension(t *testing.T) {
+	dims := []struct {
+		name     string
+		setUsage func(*Run, int64)
+		setCap   func(*Caps, int64)
+	}{
+		{"tool calls", func(r *Run, v int64) { r.ToolCalls = int(v) }, func(c *Caps, v int64) { c.ToolCalls = int(v) }},
+		{"wall milliseconds", func(r *Run, v int64) { r.WallMS = int(v) }, func(c *Caps, v int64) { c.WallMS = int(v) }},
+		{"input tokens", func(r *Run, v int64) { r.InTokens = int(v) }, func(c *Caps, v int64) { c.InTokens = int(v) }},
+		{"output tokens", func(r *Run, v int64) { r.OutTokens = int(v) }, func(c *Caps, v int64) { c.OutTokens = int(v) }},
+		{"micro-USD", func(r *Run, v int64) { r.MicroUSD = v }, func(c *Caps, v int64) { c.MicroUSD = v }},
+	}
+	for _, d := range dims {
+		t.Run(d.name+" at cap is manifested", func(t *testing.T) {
+			p := cleanPair()
+			d.setUsage(&p.Adaptive, 100)
+			caps := testCaps()
+			d.setCap(&caps, 100)
+			got, err := Disposition(p, caps)
+			if got != Manifested || err != nil {
+				t.Fatalf("Disposition = %q, %v; want %q, nil", got, err, Manifested)
+			}
+		})
+		t.Run(d.name+" over cap is invalid", func(t *testing.T) {
+			p := cleanPair()
+			d.setUsage(&p.Adaptive, 101)
+			caps := testCaps()
+			d.setCap(&caps, 100)
+			checkInvalid(t, p, caps)
+		})
+		t.Run(d.name+" unset cap is invalid", func(t *testing.T) {
+			p := cleanPair()
+			d.setUsage(&p.Adaptive, 1)
+			caps := testCaps()
+			d.setCap(&caps, 0)
+			checkInvalid(t, p, caps)
+		})
+		t.Run(d.name+" negative cap is invalid", func(t *testing.T) {
+			p := cleanPair()
+			caps := testCaps()
+			d.setCap(&caps, -1)
+			checkInvalid(t, p, caps)
+		})
+		t.Run(d.name+" negative usage is invalid", func(t *testing.T) {
+			p := cleanPair()
+			d.setUsage(&p.Adaptive, -1)
+			checkInvalid(t, p, testCaps())
+		})
+		t.Run(d.name+" static usage is not capped", func(t *testing.T) {
+			p := cleanPair()
+			d.setUsage(&p.Static, 1<<40)
+			got, err := Disposition(p, testCaps())
+			if got != Manifested || err != nil {
+				t.Fatalf("Disposition = %q, %v; want %q, nil", got, err, Manifested)
+			}
+		})
+	}
+}
+
+func checkInvalid(t *testing.T, p Pair, caps Caps) {
+	t.Helper()
+	got, err := Disposition(p, caps)
+	if got != Invalid || !errors.Is(err, ErrInvalid) {
+		t.Fatalf("Disposition = %q, %v; want %q wrapping ErrInvalid", got, err, Invalid)
+	}
+}
+
+func TestMonetaryCapGoldenVectors(t *testing.T) {
+	tests := []struct {
+		name string
+		c    Caps
+		in   int64
+		out  int64
+		req  int64
+		want int64
+	}{
+		{"zero rates and caps", Caps{}, 0, 0, 0, 0},
+		{"token terms only", Caps{InTokens: 1000, OutTokens: 500}, 3, 15, 0, 3000 + 7500},
+		{"per-request term only", Caps{Iterations: 4}, 0, 0, 2000, 8000},
+		{"all three terms", Caps{Iterations: 4, InTokens: 1000, OutTokens: 500}, 3, 15, 2000, 18500},
+		{"MicroUSD field is not read", Caps{Iterations: 4, InTokens: 1000, OutTokens: 500, MicroUSD: 999999}, 3, 15, 2000, 18500},
+		{"zero input rate with large input cap", Caps{InTokens: 1 << 40}, 0, 1, 0, 0},
+		{"one unit each", Caps{InTokens: 1, OutTokens: 1, Iterations: 1}, 1, 1, 1, 3},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := MonetaryCap(tc.c, tc.in, tc.out, tc.req)
+			if err != nil || got != tc.want {
+				t.Fatalf("MonetaryCap() = %d, %v; want %d, nil", got, err, tc.want)
+			}
+		})
+	}
+}
+
+// MonetaryCap over DeriveCaps output: the pilot token maxima are doubled, then
+// the ceiling is priced at the frozen rates.
+func TestMonetaryCapOverDerivedCaps(t *testing.T) {
+	pilot := Caps{InTokens: 4000, OutTokens: 1000}
+	c, err := DeriveCaps(3, 2, pilot)
+	if err != nil {
+		t.Fatalf("DeriveCaps error: %v", err)
+	}
+	// Iterations = max(3, 2*2) = 4; InTokens = 8000; OutTokens = 2000.
+	got, err := MonetaryCap(c, 3, 15, 2000)
+	if err != nil {
+		t.Fatalf("MonetaryCap error: %v", err)
+	}
+	if want := int64(8000*3 + 2000*15 + 4*2000); got != want {
+		t.Fatalf("MonetaryCap = %d, want %d", got, want)
+	}
+}
+
+func TestMonetaryCapRejectsOverflow(t *testing.T) {
+	const half = math.MaxInt64/2 + 1
+	tests := []struct {
+		name string
+		c    Caps
+		in   int64
+		out  int64
+		req  int64
+	}{
+		{"input cap times input rate overflows", Caps{InTokens: 2}, half, 0, 0},
+		{"output cap times output rate overflows", Caps{OutTokens: 2}, 0, half, 0},
+		{"iterations times per-request overflows", Caps{Iterations: 2}, 0, 0, half},
+		{"sum of terms overflows", Caps{InTokens: 1, OutTokens: 10}, math.MaxInt64 - 5, 1, 0},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := MonetaryCap(tc.c, tc.in, tc.out, tc.req)
+			if err == nil {
+				t.Fatalf("MonetaryCap = %d, nil; want overflow error", got)
+			}
+			if !errors.Is(err, ErrInvalid) {
+				t.Fatalf("error %v does not wrap ErrInvalid", err)
+			}
+			if got != 0 {
+				t.Fatalf("refusal returned %d, want 0", got)
+			}
+		})
+	}
+}
+
+func TestMonetaryCapRejectsNegativeRatesAndCaps(t *testing.T) {
+	ok := Caps{Iterations: 1, InTokens: 1, OutTokens: 1}
+	tests := []struct {
+		name string
+		c    Caps
+		in   int64
+		out  int64
+		req  int64
+	}{
+		{"negative input rate", ok, -1, 1, 1},
+		{"negative output rate", ok, 1, -1, 1},
+		{"negative per-request charge", ok, 1, 1, -1},
+		{"negative input cap", Caps{Iterations: 1, InTokens: -1, OutTokens: 1}, 1, 1, 1},
+		{"negative output cap", Caps{Iterations: 1, InTokens: 1, OutTokens: -1}, 1, 1, 1},
+		{"negative iteration cap", Caps{Iterations: -1, InTokens: 1, OutTokens: 1}, 1, 1, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := MonetaryCap(tc.c, tc.in, tc.out, tc.req)
+			if err == nil || !errors.Is(err, ErrInvalid) {
+				t.Fatalf("MonetaryCap = %d, %v; want error wrapping ErrInvalid", got, err)
+			}
+			if got != 0 {
+				t.Fatalf("refusal returned %d, want 0", got)
+			}
+		})
 	}
 }

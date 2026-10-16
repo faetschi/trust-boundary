@@ -3,6 +3,7 @@ package drainproof
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/workflowrecovery"
@@ -59,9 +60,6 @@ func TestProveAcceptsOwnerWhoseRecordedProcessIsNotLive(t *testing.T) {
 		{"boot id differs", func(o *OwnerObservation) {
 			o.ProcessLive = true
 			o.ObservedBootID = "boot-b"
-		}},
-		{"non-absent scope empty and removed cleanly", func(o *OwnerObservation) {
-			o.Scope = ScopeObservation{Absent: false, IdentityDigest: "scope-a"}
 		}},
 	}
 	for _, tc := range cases {
@@ -121,6 +119,38 @@ func TestProveRefusesWithErrNotDrained(t *testing.T) {
 		{"unpopulated scope remove failed", func(o *OwnerObservation) {
 			o.Scope.Absent = false
 			o.Scope.RemoveErr = errors.New("rm failed")
+		}},
+		{"present scope never observed (zero value)", func(o *OwnerObservation) {
+			o.Scope = ScopeObservation{}
+		}},
+		{"present scope with empty identity digest", func(o *OwnerObservation) {
+			o.Scope.Absent = false
+			o.Scope.IdentityDigest = ""
+		}},
+		{"present scope identity mismatches expected", func(o *OwnerObservation) {
+			o.Scope.Absent = false
+			o.Scope.IdentityDigest = "scope-b"
+		}},
+		{"present scope is foreign (not owner cgroup) with no expectation", func(o *OwnerObservation) {
+			o.Scope = ScopeObservation{Absent: false, IdentityDigest: "scope-a"}
+			o.ExpectedScopeIdentity = ""
+		}},
+		{"present scope matches expectation but not owner cgroup", func(o *OwnerObservation) {
+			o.Scope = ScopeObservation{Absent: false, IdentityDigest: "receipt-a"}
+		}},
+		{"owner pid zero", func(o *OwnerObservation) {
+			o.Owner.Incarnation.PID = 0
+		}},
+		{"owner pid negative", func(o *OwnerObservation) {
+			o.Owner.Incarnation.PID = -1
+		}},
+		{"owner start ticks zero on recorded and owner", func(o *OwnerObservation) {
+			o.Owner.Incarnation.StartTimeTicks = 0
+			o.StartTicks = 0
+			o.ObservedStartTicks = 0
+		}},
+		{"owner cgroup identity digest empty", func(o *OwnerObservation) {
+			o.Owner.Incarnation.CgroupIdentityDigest = ""
 		}},
 		{"pending effects", func(o *OwnerObservation) {
 			o.PendingEffects = 1
@@ -291,11 +321,6 @@ func TestObservationDigestSensitivityPerObservedField(t *testing.T) {
 	base := baseObservation()
 	baseDigest := observationDigest(base)
 
-	// ExpectedScopeIdentity is the caller's expectation, not an observation. On
-	// an accepted proof the receipt identity already commits to it, because
-	// the receipt must equal it. Changing it must not change the digest.
-	notObserved := map[string]bool{".ExpectedScopeIdentity": true}
-
 	const wantLeaves = 22
 	leaves := 0
 	for n := 0; ; n++ {
@@ -305,12 +330,6 @@ func TestObservationDigestSensitivityPerObservedField(t *testing.T) {
 		}
 		leaves++
 		changed := observationDigest(mutated) != baseDigest
-		if notObserved[path] {
-			if changed {
-				t.Errorf("changing %s changed the digest; it must not be part of the observation", path)
-			}
-			continue
-		}
 		if !changed {
 			t.Errorf("changing %s did not change the digest", path)
 		}
@@ -386,5 +405,89 @@ func TestZeroValueObservationDoesNotPanic(t *testing.T) {
 	}
 	if _, err := ProveAll(nil); !errors.Is(err, ErrNotDrained) {
 		t.Fatalf("ProveAll(nil) error = %v; want ErrNotDrained", err)
+	}
+}
+
+// A present scope is accepted only when its observed identity equals the owner's
+// cgroup identity and, if an expected identity is set, equals it too.
+func TestProvePresentScopeAcceptsOwnerCgroupIdentity(t *testing.T) {
+	cases := []struct {
+		name     string
+		expected string
+	}{
+		{"observed identity equals expected", "cgroup-a"},
+		{"no expected identity set, observed identity is the owner cgroup", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			obs := baseObservation()
+			obs.Scope = ScopeObservation{Absent: false, IdentityDigest: "cgroup-a"}
+			obs.ExpectedScopeIdentity = tc.expected
+			proof, err := Prove(obs)
+			if err != nil {
+				t.Fatalf("Prove() error = %v, want nil", err)
+			}
+			if proof.Digest == "" {
+				t.Fatalf("Prove() digest empty")
+			}
+		})
+	}
+}
+
+// Two accepted proofs that differ only in ExpectedScopeIdentity must not share a
+// digest.
+func TestDigestCoversExpectedScopeIdentity(t *testing.T) {
+	a := baseObservation()
+	a.Scope = ScopeObservation{Absent: false, IdentityDigest: "cgroup-a"}
+	a.ExpectedScopeIdentity = ""
+	b := a
+	b.ExpectedScopeIdentity = "cgroup-a"
+
+	pa, errA := Prove(a)
+	pb, errB := Prove(b)
+	if errA != nil || errB != nil {
+		t.Fatalf("Prove errors = %v, %v; want nil", errA, errB)
+	}
+	if pa.Digest == pb.Digest {
+		t.Fatalf("expected-identity change did not change the proof digest %q", pa.Digest)
+	}
+}
+
+// The digest covers the observed scope identity on the present path. It is
+// checked on the observation directly, because a changed identity is refused.
+func TestPresentScopeDigestCoversObservedIdentity(t *testing.T) {
+	base := baseObservation()
+	base.Scope = ScopeObservation{Absent: false, IdentityDigest: "cgroup-a"}
+	changed := base
+	changed.Scope.IdentityDigest = "cgroup-b"
+	if observationDigest(base) == observationDigest(changed) {
+		t.Fatalf("present-scope identity change did not change observationDigest")
+	}
+}
+
+// A zero observation with a valid owner must be refused by the scope step itself,
+// not by owner validation.
+func TestZeroValueObservationWithValidOwnerRefusedAtScope(t *testing.T) {
+	owner := baseObservation()
+	cases := map[string]OwnerObservation{
+		"zero scope": func() OwnerObservation {
+			o := baseObservation()
+			o.Scope = ScopeObservation{}
+			return o
+		}(),
+		"zero everything but owner and recorded identity": {
+			Owner:      owner.Owner,
+			BootID:     owner.BootID,
+			StartTicks: owner.StartTicks,
+		},
+	}
+	for name, obs := range cases {
+		t.Run(name, func(t *testing.T) {
+			checkRefusal(t, obs, ErrNotDrained)
+			_, err := Prove(obs)
+			if err == nil || !strings.Contains(err.Error(), "no observed identity") {
+				t.Fatalf("Prove() error = %v; want refusal from the scope step", err)
+			}
+		})
 	}
 }

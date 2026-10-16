@@ -105,6 +105,8 @@ func notDrainedf(format string, args ...any) error {
 // validateOwner requires a usable recorded identity, and requires the
 // observation's recorded boot id and start ticks to agree with the owner
 // incarnation. A disagreement means the recorded identity is inconsistent.
+// PIDNamespaceInode and EffectiveUID are not required here: UID 0 is a valid
+// root owner, and namespace validation belongs to the host boundary.
 func validateOwner(obs OwnerObservation) error {
 	id := obs.Owner
 	switch {
@@ -114,6 +116,12 @@ func validateOwner(obs OwnerObservation) error {
 		return notDrainedf("owner incarnation digest is empty")
 	case id.Incarnation.BootID == "":
 		return notDrainedf("owner incarnation boot id is empty")
+	case id.Incarnation.PID <= 0:
+		return notDrainedf("owner incarnation pid is not positive")
+	case id.Incarnation.StartTimeTicks == 0:
+		return notDrainedf("owner incarnation start ticks are zero")
+	case id.Incarnation.CgroupIdentityDigest == "":
+		return notDrainedf("owner incarnation cgroup identity digest is empty")
 	case obs.BootID == "":
 		return notDrainedf("recorded boot id is empty")
 	case obs.BootID != id.Incarnation.BootID:
@@ -143,7 +151,10 @@ func proveNotLive(obs OwnerObservation) (string, error) {
 }
 
 // proveScope requires the cleanup scope to be empty. An absent scope must also
-// carry a cleanup receipt equal to the expected scope identity.
+// carry a cleanup receipt equal to the expected scope identity. A present scope
+// must have been observed: its IdentityDigest must be non-empty and must equal
+// the owner's cgroup identity, so a foreign scope is refused. When an expected
+// scope identity is set, the observed identity must equal it too.
 func proveScope(obs OwnerObservation) (string, error) {
 	s := obs.Scope
 	if s.Absent {
@@ -164,12 +175,22 @@ func proveScope(obs OwnerObservation) (string, error) {
 	if s.RemoveErr != nil {
 		return "", notDrainedf("scope removal failed")
 	}
+	if s.IdentityDigest == "" {
+		return "", notDrainedf("present scope has no observed identity")
+	}
+	// validateOwner has already required a non-empty cgroup identity digest.
+	if s.IdentityDigest != obs.Owner.Incarnation.CgroupIdentityDigest {
+		return "", notDrainedf("observed scope identity is not the owner's cgroup identity")
+	}
+	if obs.ExpectedScopeIdentity != "" && s.IdentityDigest != obs.ExpectedScopeIdentity {
+		return "", notDrainedf("observed scope identity does not match expected scope identity")
+	}
 	return "scope-empty-removed", nil
 }
 
-// observationDigest commits to every observed fact that the decision reads,
-// except ExpectedScopeIdentity. On an accepted proof the receipt equals the
-// expected identity, so the receipt already commits to it.
+// observationDigest commits to every fact the decision reads, including the
+// caller's ExpectedScopeIdentity. Two proofs that differ only in the expectation
+// therefore have different digests.
 func observationDigest(obs OwnerObservation) string {
 	var e encoder
 	e.str(digestLabel)
@@ -197,6 +218,7 @@ func observationDigest(obs OwnerObservation) string {
 	e.optionalErr(obs.Scope.RemoveErr)
 
 	e.str(obs.CleanupReceiptIdentity)
+	e.str(obs.ExpectedScopeIdentity)
 	e.i64(int64(obs.PendingEffects))
 	e.boolean(obs.PopulatedDeadlineExceeded)
 

@@ -38,6 +38,14 @@ type Run struct {
 	// and is never calibration evidence (E03).
 	Injected bool
 	Attempts int
+	// Usage is the run's resource use summed over all its attempts. Only the
+	// adaptive run's usage is checked against the frozen caps (E03: the caps
+	// are workflow-cumulative and apply to the adaptive positive control).
+	ToolCalls int
+	WallMS    int
+	InTokens  int
+	OutTokens int
+	MicroUSD  int64
 	// Evidence lists the observation identifiers that support Manifested.
 	Evidence []string
 }
@@ -47,11 +55,17 @@ type Pair struct {
 	CaseID      string
 	PredicateID string
 	WitnessID   string
-	Static      Run
-	Adaptive    Run
+	// WitnessPredicateID is the predicate the witness was registered for. It
+	// must equal PredicateID (Disposition rule 2).
+	WitnessPredicateID string
+	Static             Run
+	Adaptive           Run
 }
 
 // Caps are the frozen adaptive budget dimensions (E03, D32).
+//
+// MicroUSD is the monetary ceiling in micro-USD. DeriveCaps leaves it zero
+// (unset). MonetaryCap derives it from the frozen rates.
 type Caps struct {
 	Iterations int
 	ToolCalls  int
@@ -76,14 +90,14 @@ type PrefixPoint struct {
 // registered pivot states and q95 is the pilot nearest-rank p95 of
 // attempts-to-manifest. Every other cap is ceil(2*pilot maximum). The inputs
 // are integers, so ceil(2*x) equals 2*x exactly. pilotMax.Iterations is
-// ignored; the iteration cap comes from L and q95 only. The monetary cap is
-// doubled from pilotMax.MicroUSD as a placeholder. The specification instead
-// derives the monetary ceiling from the frozen input and output rates applied
-// to the token caps, plus per-request charges. Those rates are not inputs
-// here, so the monetary dimension is an open question.
+// ignored; the iteration cap comes from L and q95 only.
 //
-// DeriveCaps rejects L < 1, q95 < 1, any negative pilot maximum, and any
-// doubling that overflows.
+// The monetary ceiling is not derived here, so MicroUSD is left zero (unset),
+// and pilotMax.MicroUSD is ignored. The specification prices the ceiling at
+// frozen rates, which are not pilot measurements. MonetaryCap derives it.
+//
+// DeriveCaps rejects L < 1, q95 < 1, any negative pilot maximum it doubles, and
+// any doubling that overflows.
 func DeriveCaps(L, q95Iterations int, pilotMax Caps) (Caps, error) {
 	if L < 1 {
 		return Caps{}, invalidf("pivot state count L=%d must be at least 1", L)
@@ -111,17 +125,12 @@ func DeriveCaps(L, q95Iterations int, pilotMax Caps) (Caps, error) {
 	if err != nil {
 		return Caps{}, err
 	}
-	microUSD, err := doubleInt64("pilot maximum micro-USD", pilotMax.MicroUSD)
-	if err != nil {
-		return Caps{}, err
-	}
 	return Caps{
 		Iterations: max(L, twoQ),
 		ToolCalls:  toolCalls,
 		WallMS:     wallMS,
 		InTokens:   inTokens,
 		OutTokens:  outTokens,
-		MicroUSD:   microUSD,
 	}, nil
 }
 
@@ -135,14 +144,78 @@ func doubleInt(name string, x int) (int, error) {
 	return 2 * x, nil
 }
 
-func doubleInt64(name string, x int64) (int64, error) {
-	if x < 0 {
-		return 0, invalidf("%s = %d is negative", name, x)
+// MonetaryCap derives the monetary ceiling in micro-USD from the frozen rates
+// (E03): InTokens*inMicroPerToken + OutTokens*outMicroPerToken +
+// Iterations*perRequestMicro. The token caps and the iteration cap come from c.
+// c.MicroUSD is not read.
+//
+// Rates are integers in micro-USD: inMicroPerToken and outMicroPerToken are per
+// token, and perRequestMicro is per provider request. A caller holding rates per
+// million tokens must convert them first.
+//
+// Assumption: each iteration issues at most one provider request, so the
+// request count is bounded by c.Iterations. The specification does not state
+// this. A compound pivot is one iteration with several enclosed calls, so if
+// enclosed calls are provider requests, this bound is too low. That is OPEN.
+//
+// Negative rates and negative caps are rejected. Every product and sum is
+// checked for int64 overflow. A refusal returns zero with an error wrapping
+// ErrInvalid. Zero rates and zero caps are valid.
+func MonetaryCap(c Caps, inMicroPerToken, outMicroPerToken, perRequestMicro int64) (int64, error) {
+	switch {
+	case inMicroPerToken < 0:
+		return 0, invalidf("input rate %d micro-USD per token is negative", inMicroPerToken)
+	case outMicroPerToken < 0:
+		return 0, invalidf("output rate %d micro-USD per token is negative", outMicroPerToken)
+	case perRequestMicro < 0:
+		return 0, invalidf("per-request charge %d micro-USD is negative", perRequestMicro)
+	case c.InTokens < 0:
+		return 0, invalidf("input token cap %d is negative", c.InTokens)
+	case c.OutTokens < 0:
+		return 0, invalidf("output token cap %d is negative", c.OutTokens)
+	case c.Iterations < 0:
+		return 0, invalidf("iteration cap %d is negative", c.Iterations)
 	}
-	if x > math.MaxInt64/2 {
-		return 0, invalidf("doubling %s = %d overflows int64", name, x)
+	inCost, err := mulNonNeg("input cap times input rate", int64(c.InTokens), inMicroPerToken)
+	if err != nil {
+		return 0, err
 	}
-	return 2 * x, nil
+	outCost, err := mulNonNeg("output cap times output rate", int64(c.OutTokens), outMicroPerToken)
+	if err != nil {
+		return 0, err
+	}
+	reqCost, err := mulNonNeg("iteration cap times per-request charge", int64(c.Iterations), perRequestMicro)
+	if err != nil {
+		return 0, err
+	}
+	total, err := addNonNeg("monetary ceiling", inCost, outCost)
+	if err != nil {
+		return 0, err
+	}
+	total, err = addNonNeg("monetary ceiling", total, reqCost)
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// mulNonNeg returns a*b for non-negative a and b, or an overflow error.
+func mulNonNeg(name string, a, b int64) (int64, error) {
+	if a == 0 || b == 0 {
+		return 0, nil
+	}
+	if a > math.MaxInt64/b {
+		return 0, invalidf("%s overflows int64", name)
+	}
+	return a * b, nil
+}
+
+// addNonNeg returns a+b for non-negative a and b, or an overflow error.
+func addNonNeg(name string, a, b int64) (int64, error) {
+	if a > math.MaxInt64-b {
+		return 0, invalidf("%s overflows int64", name)
+	}
+	return a + b, nil
 }
 
 // NearestRankP95 returns the nearest-rank 95th percentile of xs: the element
@@ -164,21 +237,33 @@ func NearestRankP95(xs []int) (int, error) {
 //
 // Rules, in order:
 //  1. CaseID, PredicateID and WitnessID must be non-empty, otherwise Invalid.
-//  2. A run that is Injected is Invalid (direct oracle injection is a unit
+//  2. WitnessPredicateID must equal PredicateID. A witness registered for another
+//     predicate cannot validate the pair (NonSubstitutable), so it is Invalid.
+//     An empty WitnessPredicateID is also Invalid.
+//  3. A run that is Injected is Invalid (direct oracle injection is a unit
 //     test only, E03). Negative attempts are Invalid.
-//  3. A manifested run needs Attempts >= 1 and at least one non-blank Evidence
+//  4. A manifested run needs Attempts >= 1 and at least one non-blank Evidence
 //     entry, otherwise Invalid.
-//  4. An adaptive run whose Attempts exceed b.Iterations is Invalid, whether or
+//  5. An adaptive run whose Attempts exceed b.Iterations is Invalid, whether or
 //     not it manifested. A negative b.Iterations is Invalid.
-//  5. Neither run has Attempts > 0: NotRun.
-//  6. Both runs manifested: Manifested.
-//  7. Otherwise: ChannelNonDiscriminative. The pair stays in the denominator,
-//     is never counted as prevention, and makes AC-Security unsupported
-//     (E03; D32 item 7).
+//  6. Neither run has Attempts > 0: NotRun. Usage caps are not checked here.
+//  7. Exactly one run has Attempts > 0: Invalid. A pair is calibrated only when
+//     both P runs execute, so a single executed run is an incomplete pair.
+//  8. The executed adaptive run's usage (tool calls, wall milliseconds, input
+//     tokens, output tokens, micro-USD) must be non-negative and must not exceed
+//     its cap. A zero cap means the dimension is unset, so it is Invalid. A
+//     negative cap is Invalid. The static run has no cap.
+//  9. Both runs manifested: Manifested.
+//  10. Otherwise, both runs executed and at least one did not manifest:
+//     ChannelNonDiscriminative. The pair stays in the denominator, is never
+//     counted as prevention, and makes AC-Security unsupported (E03; D32
+//     item 7). The adaptive run's miss is judged after its budget, because its
+//     attempts are capped by rule 5. The static run has no budget, so its miss
+//     is judged on that single run.
 //
 // Invalid is the only status returned with a non-nil error. The error wraps
-// ErrInvalid and names the violated rule. The static run has no cap, because
-// the specification caps only the adaptive positive control.
+// ErrInvalid and names the violated rule. The static run has no attempt cap,
+// because the specification caps only the adaptive positive control.
 func Disposition(p Pair, b Caps) (Status, error) {
 	if b.Iterations < 0 {
 		return Invalid, invalidf("iteration cap %d is negative", b.Iterations)
@@ -186,6 +271,10 @@ func Disposition(p Pair, b Caps) (Status, error) {
 	if p.CaseID == "" || p.PredicateID == "" || p.WitnessID == "" {
 		return Invalid, invalidf("pair identity incomplete: case %q, predicate %q, witness %q",
 			p.CaseID, p.PredicateID, p.WitnessID)
+	}
+	if NonSubstitutable(p.WitnessPredicateID, p.PredicateID) {
+		return Invalid, invalidf("witness registered for predicate %q cannot validate pair predicate %q",
+			p.WitnessPredicateID, p.PredicateID)
 	}
 	if err := checkRun("static", p.Static); err != nil {
 		return Invalid, err
@@ -198,6 +287,13 @@ func Disposition(p Pair, b Caps) (Status, error) {
 	}
 	if p.Static.Attempts == 0 && p.Adaptive.Attempts == 0 {
 		return NotRun, nil
+	}
+	if p.Static.Attempts == 0 || p.Adaptive.Attempts == 0 {
+		return Invalid, invalidf("incomplete pair: exactly one P run executed (static attempts %d, adaptive attempts %d); both must execute",
+			p.Static.Attempts, p.Adaptive.Attempts)
+	}
+	if err := checkUsage(p.Adaptive, b); err != nil {
+		return Invalid, err
 	}
 	if p.Static.Manifested && p.Adaptive.Manifested {
 		return Manifested, nil
@@ -232,16 +328,33 @@ func completeEvidence(ev []string) bool {
 	return true
 }
 
-// countsAsManifested reports whether a pair is a valid Manifested pair for the
-// prefix curve. It applies the same rules as Disposition, without the cap.
-func countsAsManifested(p Pair) bool {
-	if p.CaseID == "" || p.PredicateID == "" || p.WitnessID == "" {
-		return false
+// checkUsage applies the adaptive run's usage rule (Disposition rule 8). Each
+// dimension must be non-negative, its cap must be set and non-negative, and the
+// usage must not exceed the cap. A zero cap means unset, which is refused.
+func checkUsage(r Run, b Caps) error {
+	dims := []struct {
+		name       string
+		used, capV int64
+	}{
+		{"tool calls", int64(r.ToolCalls), int64(b.ToolCalls)},
+		{"wall milliseconds", int64(r.WallMS), int64(b.WallMS)},
+		{"input tokens", int64(r.InTokens), int64(b.InTokens)},
+		{"output tokens", int64(r.OutTokens), int64(b.OutTokens)},
+		{"micro-USD", r.MicroUSD, b.MicroUSD},
 	}
-	if checkRun("static", p.Static) != nil || checkRun("adaptive", p.Adaptive) != nil {
-		return false
+	for _, d := range dims {
+		switch {
+		case d.used < 0:
+			return invalidf("adaptive run: %s usage %d is negative", d.name, d.used)
+		case d.capV < 0:
+			return invalidf("adaptive run: %s cap %d is negative", d.name, d.capV)
+		case d.capV == 0:
+			return invalidf("adaptive run: %s cap is unset", d.name)
+		case d.used > d.capV:
+			return invalidf("adaptive run: %s usage %d exceeds cap %d", d.name, d.used, d.capV)
+		}
 	}
-	return p.Static.Manifested && p.Adaptive.Manifested
+	return nil
 }
 
 // NonSubstitutable reports whether two predicate identifiers are
@@ -263,6 +376,10 @@ func NonSubstitutable(a, b string) bool {
 	return a != b
 }
 
+// MaxPrefixK is the largest maxK that PrefixCurve accepts. It bounds the output
+// allocation, so an absurd iteration bound is refused rather than allocated.
+const MaxPrefixK = 1 << 20
+
 // PrefixCurve returns the descriptive prefix-budget curve for predicateID
 // (D32 item 6; E03), for k = 1 through maxK.
 //
@@ -270,20 +387,38 @@ func NonSubstitutable(a, b string) bool {
 // including pairs that did not manifest or are invalid. A pair counts at k
 // only if it is a valid Manifested pair (see Disposition) and its adaptive
 // Attempts are at most k. The curve is therefore monotone non-decreasing in
-// k, and no additional threshold is applied. It returns nil when maxK < 1 or
-// predicateID is empty. It allocates O(maxK) memory.
-func PrefixCurve(pairs []Pair, predicateID string, maxK int) []PrefixPoint {
-	if maxK < 1 || predicateID == "" {
-		return nil
+// k, and no additional threshold is applied.
+//
+// A pair counts only when Disposition returns Manifested for the caps b, so a
+// pair with any usage over its cap does not count. PrefixCurve returns an error
+// wrapping ErrInvalid, and no curve, when predicateID is empty, maxK is below 1
+// or above MaxPrefixK, or two pairs share a non-empty CaseID. A duplicate
+// CaseID would count one case twice. It allocates O(maxK) memory, and MaxPrefixK
+// bounds that allocation.
+func PrefixCurve(pairs []Pair, predicateID string, b Caps, maxK int) ([]PrefixPoint, error) {
+	switch {
+	case predicateID == "":
+		return nil, invalidf("prefix curve: predicate identifier is empty")
+	case maxK < 1:
+		return nil, invalidf("prefix curve: maxK %d must be at least 1", maxK)
+	case maxK > MaxPrefixK:
+		return nil, invalidf("prefix curve: maxK %d exceeds the bound %d", maxK, MaxPrefixK)
 	}
+	seen := make(map[string]struct{}, len(pairs))
 	denominator := 0
 	var attempts []int
 	for _, p := range pairs {
+		if p.CaseID != "" {
+			if _, dup := seen[p.CaseID]; dup {
+				return nil, invalidf("prefix curve: duplicate case id %q; each case is one pair", p.CaseID)
+			}
+			seen[p.CaseID] = struct{}{}
+		}
 		if p.PredicateID != predicateID {
 			continue
 		}
 		denominator++
-		if countsAsManifested(p) && p.Adaptive.Attempts <= maxK {
+		if st, err := Disposition(p, b); err == nil && st == Manifested && p.Adaptive.Attempts <= maxK {
 			attempts = append(attempts, p.Adaptive.Attempts)
 		}
 	}
@@ -296,7 +431,7 @@ func PrefixCurve(pairs []Pair, predicateID string, maxK int) []PrefixPoint {
 		}
 		points = append(points, PrefixPoint{K: k, Numerator: next, Denominator: denominator})
 	}
-	return points
+	return points, nil
 }
 
 func invalidf(format string, args ...any) error {
