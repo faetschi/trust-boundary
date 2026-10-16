@@ -166,6 +166,20 @@ func TestValidateReviewRules(t *testing.T) {
 		{"one review", func(c *Case) { c.Reviews = c.Reviews[:1] }, "review.count"},
 		{"same role", func(c *Case) { c.Reviews[1].Role = c.Reviews[0].Role }, "review.role"},
 		{"same identity", func(c *Case) { c.Reviews[1].Reviewer = c.Reviews[0].Reviewer }, "review.identity"},
+		{"same role after case and space normalization", func(c *Case) {
+			c.Reviews[1].Role = "  Reviewer-A\t"
+		}, "review.role"},
+		{"same identity after case and space normalization", func(c *Case) {
+			c.Reviews[0].Reviewer = "Team  Alpha"
+			c.Reviews[1].Reviewer = "\tteam alpha  "
+		}, "review.identity"},
+		{"adjudicator is a reviewer after normalization", func(c *Case) {
+			c.Reviews[1].Decision = "other"
+			c.Adjudication = &Adjudication{Adjudicator: " SYNTHETIC-REVIEWER-1 ", Human: true, Blinded: true, Decision: "other"}
+		}, "adjudication.not_third"},
+		{"distinct identities that differ only inside a word stay distinct", func(c *Case) {
+			c.Reviews[1].Reviewer = "synthetic-reviewer-10"
+		}, ""},
 		{"not human", func(c *Case) { c.Reviews[0].Human = false }, "review.human"},
 		{"not blinded", func(c *Case) { c.Reviews[1].Blinded = false }, "review.blinded"},
 		{"empty decision", func(c *Case) { c.Reviews[0].Decision = "" }, "field.empty"},

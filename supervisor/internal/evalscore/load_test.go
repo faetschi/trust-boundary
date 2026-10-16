@@ -3,6 +3,7 @@ package evalscore
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 func TestLoadRoundTripsSyntheticInput(t *testing.T) {
 	want := cleanInput()
+	want.Registered = nil // not part of the trials schema, so Load never sets it
 	b, err := json.Marshal(want)
 	if err != nil {
 		t.Fatal(err)
@@ -28,6 +30,8 @@ func TestLoadRoundTripsSyntheticInput(t *testing.T) {
 	}
 }
 
+// TestLoadRejectsMalformedInput checks each rejection by its specific error text,
+// so a mutation that rejects for the wrong reason fails the test.
 func TestLoadRejectsMalformedInput(t *testing.T) {
 	raw, err := json.Marshal(cleanInput())
 	if err != nil {
@@ -44,33 +48,65 @@ func TestLoadRejectsMalformedInput(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
+		want  string // substring of the error
 	}{
-		{"wrong schema", replace(`"schema":"evalscore-trials/v1"`, `"schema":"evalscore-trials/v0"`)},
-		{"missing c_effect", replace(`"c_effect":"none",`, ``)},
-		{"null identity", replace(`"identity_verified":true`, `"identity_verified":null`)},
-		{"unknown field", replace(`"c_effect"`, `"c_efect"`)},
-		{"case-variant field", replace(`"case_id"`, `"Case_Id"`)},
-		{"duplicate field", replace(`"channel":"tool_call"`, `"channel":"tool_call","channel":"compound"`)},
-		{"boolean as string", replace(`"p_static_manifested":true`, `"p_static_manifested":"true"`)},
-		{"invalid evidence loss", replace(`"evidence_loss":"none"`, `"evidence_loss":"maybe"`)},
-		{"attempt zero", replace(`"attempt":1`, `"attempt":0`)},
-		{"fractional attempt", replace(`"attempt":1`, `"attempt":1.5`)},
-		{"missing top-level array", replace(`"compliant":`, `"complaint":`)},
-		{"trailing data", base + " {}"},
-		{"invalid UTF-8 identifier", replace(`"case_id":"adv-000"`, "\"case_id\":\"adv-\xff\"")},
+		{"wrong schema", replace(`"schema":"evalscore-trials/v1"`, `"schema":"evalscore-trials/v0"`),
+			`schema "evalscore-trials/v0", want "evalscore-trials/v1"`},
+		{"missing c_effect", replace(`"c_effect":"none",`, ``), `missing field "c_effect"`},
+		{"null identity", replace(`"identity_verified":true`, `"identity_verified":null`), `field "identity_verified" is null`},
+		{"unknown field", replace(`"c_effect"`, `"c_efect"`), `unknown field "c_efect"`},
+		{"case-variant field", replace(`"case_id"`, `"Case_Id"`), `unknown field "Case_Id"`},
+		{"duplicate field", replace(`"channel":"tool_call"`, `"channel":"tool_call","channel":"compound"`), `duplicate field "channel"`},
+		{"boolean as string", replace(`"p_static_manifested":true`, `"p_static_manifested":"true"`), `p_static_manifested`},
+		{"attempt zero", replace(`"attempt":1`, `"attempt":0`), `attempt 0, want >= 1`},
+		{"fractional attempt", replace(`"attempt":1`, `"attempt":1.5`), `attempt`},
+		{"missing top-level array", replace(`"compliant":`, `"complaint":`), `unknown field "complaint"`},
+		{"trailing data", base + " {}", `trailing data after JSON object`},
+		{"invalid UTF-8 identifier", replace(`"case_id":"adv-000"`, "\"case_id\":\"adv-\xff\""), `not valid UTF-8`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := Load(strings.NewReader(tt.input)); err == nil {
+			_, err := Load(strings.NewReader(tt.input))
+			if err == nil {
 				t.Fatal("want error")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %q, want it to contain %q", err, tt.want)
 			}
 		})
 	}
 }
 
+// TestLoadAcceptsUnregisteredEnumForReporting: Load checks JSON shape only. A
+// well-formed record with an unregistered enum value loads, and Summarize reports
+// it as an invalid record.
+func TestLoadAcceptsUnregisteredEnumForReporting(t *testing.T) {
+	raw, err := json.Marshal(cleanInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	in, err := Load(strings.NewReader(strings.Replace(string(raw), `"evidence_loss":"none"`, `"evidence_loss":"maybe"`, 1)))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	s, err := Summarize(in)
+	if err != nil {
+		t.Fatalf("Summarize: %v", err)
+	}
+	if len(s.InvalidRecords) != 1 {
+		t.Fatalf("invalid records = %+v, want one", s.InvalidRecords)
+	}
+}
+
+// TestLoadRejectsOversizedInput uses valid JSON whose only defect is its size, so
+// the size check is the only thing that can reject it. Without that check, Load
+// would accept the input.
 func TestLoadRejectsOversizedInput(t *testing.T) {
-	if _, err := Load(strings.NewReader(strings.Repeat(" ", MaxInputBytes+1))); err == nil {
-		t.Fatal("want error for input above MaxInputBytes")
+	raw := `{` + strings.Repeat(" ", MaxInputBytes) +
+		`"schema":"evalscore-trials/v1","evq_passed":true,"adversarial":[],"compliant":[]}`
+	_, err := Load(strings.NewReader(raw))
+	if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("trials exceed %d bytes", MaxInputBytes)) {
+		t.Fatalf("Load oversized input: err = %v; want the size error", err)
 	}
 }
 

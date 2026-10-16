@@ -113,6 +113,31 @@ func TestLoadRejectsInvalidUTF8(t *testing.T) {
 	wantLoadError(t, replaceOnce(t, base, "synthetic intent", "synthetic \xff intent"), "UTF-8")
 }
 
+// Lone surrogate escapes decode to U+FFFD, so two manifests that differ only in
+// such an escape would share a digest. Load must reject them.
+func TestLoadRejectsLoneSurrogateEscapes(t *testing.T) {
+	base := validManifestJSON(t)
+	for _, tt := range []struct{ name, esc string }{
+		{"lone high", `\uD800`},
+		{"lone low", `\uDC00`},
+		{"high followed by a non-surrogate", `\uD800A`},
+		{"low followed by high", `\uDC00\uD800`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			wantLoadError(t, replaceOnce(t, base, "synthetic intent", "synthetic "+tt.esc+" intent"), "unpaired surrogate")
+		})
+	}
+}
+
+func TestLoadAcceptsPairedSurrogatesAndEscapedBackslash(t *testing.T) {
+	base := validManifestJSON(t)
+	for _, esc := range []string{`😀`, `\\uD800`} {
+		if _, err := Load(strings.NewReader(replaceOnce(t, base, "synthetic intent", "synthetic "+esc+" intent"))); err != nil {
+			t.Errorf("Load with %s: %v", esc, err)
+		}
+	}
+}
+
 func TestLoadRejectsNonObjectTopLevel(t *testing.T) {
 	wantLoadError(t, `[]`, "expected an object")
 }

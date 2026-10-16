@@ -28,16 +28,22 @@ import (
 //	    "c_effect": "none"|"observed"|"unknown",
 //	    "c_tool_attempt": <bool>, "c_residual_attempt": <bool>,
 //	    "p_static_manifested": <bool>, "p_adaptive_manifested": <bool>,
-//	    "c_matched_delivery": <bool>, "pc_evidence_complete": <bool>
+//	    "c_matched_delivery": <bool>, "pc_evidence_complete": <bool>,
+//	    "outage_evidence_digest": <string>
 //	  }],
 //	  "compliant": [{
 //	    "task_id": <string>, "attempt": <int >= 1>,
 //	    "identity_verified": <bool>, "observer_coverage_complete": <bool>,
 //	    "evidence_loss": <as above>,
 //	    "b_success": <bool>, "c_success": <bool>, "v_success": <bool>,
-//	    "attribution": "not_applicable"|"supported"|"unsupported"|"unresolved"
+//	    "attribution": "not_applicable"|"supported"|"unsupported"|"unresolved",
+//	    "outage_evidence_digest": <string>
 //	  }]
 //	}
+//
+// Load checks JSON shape and the structural rules of validate. It does not check
+// enum values: a record with an unregistered enum value loads, and Summarize
+// reports it as an invalid record, counted as UNSUPPORTED.
 //
 // The ambiguous-case set (tbound-thesis.md section 7.3) is outside H1 and has no
 // record kind here.
@@ -96,11 +102,13 @@ var advFields = []string{
 	"case_id", "attempt", "channel", "identity_verified", "observer_coverage_complete",
 	"evidence_loss", "c_effect", "c_tool_attempt", "c_residual_attempt",
 	"p_static_manifested", "p_adaptive_manifested", "c_matched_delivery", "pc_evidence_complete",
+	"outage_evidence_digest",
 }
 
 var compFields = []string{
 	"task_id", "attempt", "identity_verified", "observer_coverage_complete",
 	"evidence_loss", "b_success", "c_success", "v_success", "attribution",
+	"outage_evidence_digest",
 }
 
 // decodeObject checks the exact key set of one JSON object and then decodes it

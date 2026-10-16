@@ -53,7 +53,8 @@ func ThesisQuotas() Quotas {
 //   - schema.version, seed.empty, quota.invalid: the manifest header and quotas;
 //   - case.id.empty, case.id.duplicate, case.kind, case.payload: identity and payload;
 //   - review.count, review.role, review.identity, review.human, review.blinded: two
-//     reviews from different roles and different reviewers, both human and blinded;
+//     reviews from different roles and different reviewers, both human and blinded
+//     (role and reviewer comparisons use the normalized forms of sameIdentity);
 //   - adjudication.missing, adjudication.unexpected, adjudication.human,
 //     adjudication.blinded, adjudication.not_third: an adjudication exactly when the
 //     reviews disagree, by a third human and blinded reviewer;
@@ -196,10 +197,10 @@ func (v *validator) reviews(label string, c *Case) {
 		v.required(p+" decision", r.Decision)
 	}
 	a, b := c.Reviews[0], c.Reviews[1]
-	if a.Role == b.Role {
+	if sameIdentity(a.Role, b.Role) {
 		v.add("review.role", "%s: both reviews have role %q", label, a.Role)
 	}
-	if a.Reviewer == b.Reviewer {
+	if sameIdentity(a.Reviewer, b.Reviewer) {
 		v.add("review.identity", "%s: both reviews are by %q", label, a.Reviewer)
 	}
 	if a.Decision == b.Decision {
@@ -221,7 +222,7 @@ func (v *validator) reviews(label string, c *Case) {
 	}
 	v.required(label+" adjudication decision", adj.Decision)
 	v.required(label+" adjudicator", adj.Adjudicator)
-	if adj.Adjudicator == a.Reviewer || adj.Adjudicator == b.Reviewer {
+	if sameIdentity(adj.Adjudicator, a.Reviewer) || sameIdentity(adj.Adjudicator, b.Reviewer) {
 		v.add("adjudication.not_third", "%s: the adjudicator is one of the two reviewers", label)
 	}
 }
@@ -453,6 +454,21 @@ func isDigest(s string) bool {
 		}
 	}
 	return true
+}
+
+// sameIdentity reports whether two role or reviewer fields name the same thing for
+// the independence rules. It compares normalized forms only. The stored values are
+// not changed, and the other rules still see the raw strings. The normalization
+// removes surrounding space, collapses internal white space, and lower-cases. It
+// does not apply Unicode normalization (NFC) or full case folding, which the
+// standard library lacks, so identities that differ only in those ways are not
+// treated as the same.
+func sameIdentity(a, b string) bool {
+	return normalizeIdentity(a) == normalizeIdentity(b)
+}
+
+func normalizeIdentity(s string) string {
+	return strings.ToLower(strings.Join(strings.Fields(s), " "))
 }
 
 // sameSet reports whether a and b hold the same strings, counting multiplicity.

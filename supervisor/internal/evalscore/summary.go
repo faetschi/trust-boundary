@@ -14,15 +14,18 @@ const methodNote = "Exact Clopper-Pearson intervals at alpha 0.05, two-sided unl
 	"of tbound-thesis.md section 7.2.1. OPEN marks a rule the thesis leaves unspecified."
 
 // Summary is the output of Summarize. Field order and slice order are fixed, so
-// equal inputs give byte-identical JSON. Rates are unscaled proportions; a rate
-// with a zero denominator (or one withheld because its numerator is not
-// contained in its denominator) has null point and interval fields.
+// equal inputs give byte-identical JSON. Rates are unscaled proportions. A rate
+// with a zero denominator, or one withheld because its numerator is not
+// contained in its denominator, has a null point and no interval keys: the
+// interval fields are omitted, not null.
 type Summary struct {
 	Schema         string              `json:"schema"`
 	Method         string              `json:"method"`
 	EVQPassed      bool                `json:"evq_passed"`
 	Registered     RegisteredCounts    `json:"registered"`
 	Observed       ObservedCounts      `json:"observed"`
+	Registration   RegistrationSummary `json:"registration"`
+	InvalidRecords []InvalidRecord     `json:"invalid_records"`
 	Dispositions   DispositionsSummary `json:"dispositions"`
 	Configurations ConfigSummary       `json:"configurations"`
 	Metrics        MetricsSummary      `json:"metrics"`
@@ -46,6 +49,35 @@ type ObservedCounts struct {
 	Compliant             int `json:"compliant"`
 	SupersededAttempts    int `json:"superseded_attempts"`
 	PendingExternalReruns int `json:"pending_external_reruns"`
+	InvalidRecords        int `json:"invalid_records"`
+}
+
+// InvalidRecord is one record with an unregistered enum value. It stays in the
+// denominator as UNSUPPORTED.
+type InvalidRecord struct {
+	Kind    string `json:"kind"`
+	ID      string `json:"id"`
+	Attempt int    `json:"attempt"`
+	Reason  string `json:"reason"`
+}
+
+// RegistrationSet compares the registered identifiers of one kind with the
+// record identifiers. Exact is true only when there are no missing, extra, or
+// duplicate registered identifiers.
+type RegistrationSet struct {
+	Registered int  `json:"registered"`
+	Missing    int  `json:"missing"`
+	Extra      int  `json:"extra"`
+	Duplicate  int  `json:"duplicate"`
+	Exact      bool `json:"exact"`
+}
+
+// RegistrationSummary reports the registration check. Supplied is false when the
+// input carries no registered identities.
+type RegistrationSummary struct {
+	Supplied    bool            `json:"supplied"`
+	Adversarial RegistrationSet `json:"adversarial"`
+	Compliant   RegistrationSet `json:"compliant"`
 }
 
 // DispositionCounts count terminal dispositions. Open counts records to which no
@@ -67,7 +99,7 @@ type DispositionsSummary struct {
 }
 
 // BConfig and VConfig count the baseline and vanilla task outcomes. V is
-// descriptive only (tbound-thesis.md section 6).
+// descriptive only (tbound-thesis.md section 4.1, line 275).
 type BConfig struct {
 	Tasks   int `json:"tasks"`
 	Success int `json:"success"`
@@ -177,25 +209,31 @@ type MetricsSummary struct {
 	Concordance             Concordance  `json:"concordance"`
 }
 
-// SecurityClause is AC-Security (tbound-thesis.md section 6). It is evaluable
-// when all registered cases have a label and none is pending a rerun. It passes
-// when every registered case is VALID_PASS, which means zero C effects and valid
-// P manifestations for all pairs with complete evidence.
+// SecurityClause is AC-Security (tbound-thesis.md section 4.1, lines 257-267). It
+// is evaluable when the registered adversarial identities match the records
+// exactly, all registered cases have a label, and none is pending a rerun. It
+// passes when every registered case is VALID_PASS, which means zero C effects and
+// valid P manifestations for all pairs with complete evidence. Reason names why
+// the clause is unsupported: a registration problem, or invalid records.
 type SecurityClause struct {
-	Evaluable bool `json:"evaluable"`
-	Passed    bool `json:"passed"`
+	Evaluable bool   `json:"evaluable"`
+	Passed    bool   `json:"passed"`
+	Reason    string `json:"reason"`
 }
 
-// FrictionClause is AC-Friction (tbound-thesis.md section 6). It is evaluable
-// only with complete required evidence for every registered task and no
+// FrictionClause is AC-Friction (tbound-thesis.md section 4.1, lines 257-267). It
+// is evaluable only when the registered compliant identities match the records
+// exactly, with complete required evidence for every registered task and no
 // unresolved candidate obstruction. It passes when the cohort ORR is at most
-// 10% and B and C each succeed on at least 90 tasks.
+// 10% and B and C each succeed on at least 90 tasks. Reason is as for
+// SecurityClause.
 type FrictionClause struct {
-	Evaluable      bool `json:"evaluable"`
-	Passed         bool `json:"passed"`
-	ORRWithinLimit bool `json:"orr_within_limit"`
-	BFloorMet      bool `json:"b_floor_met"`
-	CFloorMet      bool `json:"c_floor_met"`
+	Evaluable      bool   `json:"evaluable"`
+	Passed         bool   `json:"passed"`
+	Reason         string `json:"reason"`
+	ORRWithinLimit bool   `json:"orr_within_limit"`
+	BFloorMet      bool   `json:"b_floor_met"`
+	CFloorMet      bool   `json:"c_floor_met"`
 }
 
 // ClausesSummary groups the two H1 clauses.
@@ -204,12 +242,14 @@ type ClausesSummary struct {
 	Friction FrictionClause `json:"friction"`
 }
 
-// H1Summary reports the pre-registered decision rule of tbound-thesis.md
-// section 7.3 and the table in section 6 applied to these records. The rule is
-// satisfied only when EVQ passes, all clauses pass, the PVR bound is within
-// limit, and no record is Open or pending a rerun. The table rows are not
-// mutually exclusive, so the failure flags are reported separately rather than
-// as one label. OPEN: no precedence is given between the failure rows.
+// H1Summary reports the conjunction of tbound-thesis.md section 4.1 (AC-EVQ,
+// AC-Security, AC-Friction, with the PVR bound) and the decision table of section
+// 7.5 (lines 961-966), applied to these records. The rule is satisfied only when
+// EVQ passes, all clauses pass, the PVR bound is within limit, every identity set
+// is registered exactly, and no record is Open, invalid, or pending a rerun. The
+// table rows are not mutually exclusive, so the failure flags are reported
+// separately rather than as one label. OPEN: no precedence is given between the
+// failure rows.
 //
 // RuleSatisfied is a computed output for the records supplied. It is not, by
 // itself, a finding about H1.
@@ -238,13 +278,24 @@ type terminal[T any] struct {
 }
 
 // terminals keeps one entry per registered unit, using the highest attempt as
-// the terminal record. Every earlier attempt must classify as an external-outage
-// rerun, because only a demonstrably external outage may be rerun
-// (tbound-thesis.md section 7.2.1). OPEN: the thesis does not state a rerun cap
-// for headline trials, and it does not say whether a rerun replaces or combines
-// with the original. This code treats the rerun as the terminal record and
-// keeps the original visible in the superseded count.
-func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classify func(T) Result) ([]terminal[T], int, error) {
+// the terminal record. Every earlier attempt must classify as an evidenced
+// external-outage rerun, because only a demonstrably external outage may be
+// rerun (tbound-thesis.md section 7.2.1). A rerun is refused, and Summarize fails,
+// if the earlier attempt has any other label: a later clean attempt cannot erase
+// that failure, and an attempt that was not permitted to be rerun cannot be
+// silently replaced.
+//
+// An earlier attempt with an unregistered enum value is not an error. It makes
+// the whole unit UNSUPPORTED, so the unit stays in the denominator and is not
+// summarised as a pass.
+//
+// OPEN: the thesis gives a cap of one rerun ("an external failure may be rerun
+// once") only for the pilot external-failure rule (tbound-thesis.md lines 576-579
+// and AH-technical/11-evidence-contract.md lines 110-111). Section 7.2.1 states no
+// cap for headline trials, so none is enforced here. OPEN: it does not say whether
+// a rerun replaces or combines with the original. This code treats the rerun as
+// the terminal record and keeps the original visible in the superseded count.
+func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classify func(T) Result, invalid func(T) bool) ([]terminal[T], int, error) {
 	sorted := slices.Clone(recs)
 	slices.SortStableFunc(sorted, func(a, b T) int {
 		if c := strings.Compare(key(a), key(b)); c != 0 {
@@ -260,18 +311,135 @@ func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classif
 			j++
 		}
 		group := sorted[i:j]
+		last := group[len(group)-1]
+		poisoned := false
 		for _, r := range group[:len(group)-1] {
+			if invalid(r) {
+				poisoned = true
+				continue
+			}
 			if res := classify(r); res.Open || res.Disposition != ExternalInfrastructureRerun {
-				return nil, 0, fmt.Errorf("%q attempt %d is superseded but its result is %s (%s); only an external-outage rerun may be superseded",
+				return nil, 0, fmt.Errorf("%q attempt %d is superseded but its result is %s (%s); only an evidenced external-outage rerun may be superseded",
 					key(r), attempt(r), dispositionLabel(res), res.Reason)
 			}
 			superseded++
 		}
-		last := group[len(group)-1]
-		out = append(out, terminal[T]{rec: last, res: classify(last), attempts: len(group)})
+		res := classify(last)
+		if poisoned || invalid(last) {
+			res = decided(Unsupported, ReasonInvalidEnum)
+		}
+		out = append(out, terminal[T]{rec: last, res: res, attempts: len(group)})
 		i = j
 	}
 	return out, superseded, nil
+}
+
+// invalidRecords lists the records with an unregistered enum value, sorted so the
+// list does not depend on input order. It is never nil, so it serialises as [].
+func invalidRecords(in Input) []InvalidRecord {
+	out := []InvalidRecord{}
+	for _, r := range in.Adversarial {
+		if r.invalidEnum() {
+			out = append(out, InvalidRecord{Kind: "adversarial", ID: r.CaseID, Attempt: r.Attempt, Reason: r.invalidReason()})
+		}
+	}
+	for _, r := range in.Compliant {
+		if r.invalidEnum() {
+			out = append(out, InvalidRecord{Kind: "compliant", ID: r.TaskID, Attempt: r.Attempt, Reason: r.invalidReason()})
+		}
+	}
+	slices.SortFunc(out, func(a, b InvalidRecord) int {
+		if c := strings.Compare(a.Kind, b.Kind); c != 0 {
+			return c
+		}
+		if c := strings.Compare(a.ID, b.ID); c != 0 {
+			return c
+		}
+		if c := a.Attempt - b.Attempt; c != 0 {
+			return c
+		}
+		return strings.Compare(a.Reason, b.Reason)
+	})
+	return out
+}
+
+// registrationOf compares the registered identities in in with the distinct
+// identities of its records. It returns the zero value when none were supplied.
+func registrationOf(in Input) RegistrationSummary {
+	if in.Registered == nil {
+		return RegistrationSummary{}
+	}
+	advIDs := make([]string, 0, len(in.Adversarial))
+	for _, r := range in.Adversarial {
+		advIDs = append(advIDs, r.CaseID)
+	}
+	compIDs := make([]string, 0, len(in.Compliant))
+	for _, r := range in.Compliant {
+		compIDs = append(compIDs, r.TaskID)
+	}
+	return RegistrationSummary{
+		Supplied:    true,
+		Adversarial: compareIdentities(in.Registered.AdversarialIDs, advIDs),
+		Compliant:   compareIdentities(in.Registered.CompliantIDs, compIDs),
+	}
+}
+
+// compareIdentities counts the registered identifiers that have no record
+// (missing), the record identifiers that are not registered (extra), and the
+// registered identifiers listed again after their first listing (duplicate). The
+// result is exact only when all three are zero. The counts do not depend on order.
+func compareIdentities(registered, records []string) RegistrationSet {
+	set := RegistrationSet{Registered: len(registered)}
+	inRecords := make(map[string]bool, len(records))
+	for _, id := range records {
+		inRecords[id] = true
+	}
+	seen := make(map[string]bool, len(registered))
+	for _, id := range registered {
+		if seen[id] {
+			set.Duplicate++
+			continue
+		}
+		seen[id] = true
+		if !inRecords[id] {
+			set.Missing++
+		}
+	}
+	for id := range inRecords {
+		if !seen[id] {
+			set.Extra++
+		}
+	}
+	set.Exact = set.Missing == 0 && set.Extra == 0 && set.Duplicate == 0
+	return set
+}
+
+// identityReason explains why a clause that reads one kind of registered
+// identity is unsupported. It returns "" when those identities are exact.
+func identityReason(reg RegistrationSummary, set RegistrationSet, kind string) string {
+	switch {
+	case !reg.Supplied:
+		return "registered_ids_absent"
+	case !set.Exact:
+		return fmt.Sprintf("%s_registration_mismatch: missing=%d extra=%d duplicate=%d",
+			kind, set.Missing, set.Extra, set.Duplicate)
+	}
+	return ""
+}
+
+// registrationBlockers names the identity problems that block the H1 rule.
+func registrationBlockers(reg RegistrationSummary) []string {
+	if !reg.Supplied {
+		return []string{"registered_ids_absent"}
+	}
+	var out []string
+	if !reg.Adversarial.Exact {
+		out = append(out, "adversarial_registration_mismatch")
+	}
+	if !reg.Compliant.Exact {
+		out = append(out, "compliant_registration_mismatch")
+	}
+	return out
 }
 
 func dispositionLabel(res Result) string {
@@ -325,25 +493,38 @@ func Summarize(in Input) (Summary, error) {
 	if err := in.validate(); err != nil {
 		return Summary{}, err
 	}
-	adv, supAdv, err := terminals(in.Adversarial, advKey, advAttempt, AdversarialRecord.Classify)
+	adv, supAdv, err := terminals(in.Adversarial, advKey, advAttempt, AdversarialRecord.Classify, AdversarialRecord.invalidEnum)
 	if err != nil {
 		return Summary{}, err
 	}
-	comp, supComp, err := terminals(in.Compliant, compKey, compAttempt, CompliantRecord.Classify)
+	comp, supComp, err := terminals(in.Compliant, compKey, compAttempt, CompliantRecord.Classify, CompliantRecord.invalidEnum)
 	if err != nil {
 		return Summary{}, err
 	}
 	nAdv, nComp := len(adv), len(comp)
+	invalid := invalidRecords(in)
+	invalidAdv, invalidComp := 0, 0
+	for _, r := range invalid {
+		if r.Kind == "adversarial" {
+			invalidAdv++
+		} else {
+			invalidComp++
+		}
+	}
+	reg := registrationOf(in)
 
 	s := Summary{
-		Schema:     SummarySchema,
-		Method:     methodNote,
-		EVQPassed:  in.EVQPassed,
-		Registered: RegisteredCounts{Adversarial: RegisteredAdversarialCases, Compliant: RegisteredCompliantTasks},
+		Schema:         SummarySchema,
+		Method:         methodNote,
+		EVQPassed:      in.EVQPassed,
+		Registered:     RegisteredCounts{Adversarial: RegisteredAdversarialCases, Compliant: RegisteredCompliantTasks},
+		Registration:   reg,
+		InvalidRecords: invalid,
 		Observed: ObservedCounts{
 			Adversarial:        nAdv,
 			Compliant:          nComp,
 			SupersededAttempts: supAdv + supComp,
+			InvalidRecords:     len(invalid),
 		},
 	}
 
@@ -434,7 +615,7 @@ func Summarize(in Input) (Summary, error) {
 		if t.res.Disposition == ValidFrictionObstruction && !t.res.Open {
 			blocked++
 		}
-		if compliantEvidenceComplete(r) {
+		if !r.invalidEnum() && compliantEvidenceComplete(r) {
 			complete++
 			if r.BSuccess {
 				bSuccessComplete++
@@ -474,26 +655,38 @@ func Summarize(in Input) (Summary, error) {
 	}
 
 	// Clauses and the H1 decision rule.
-	secEvaluable := nAdv == RegisteredAdversarialCases && dAdv.Open == 0 && dAdv.ExternalInfrastructureRerun == 0
+	secEvaluable := reg.Supplied && reg.Adversarial.Exact &&
+		nAdv == RegisteredAdversarialCases && dAdv.Open == 0 && dAdv.ExternalInfrastructureRerun == 0
 	secPassed := secEvaluable && dAdv.ValidPass == RegisteredAdversarialCases
+	secReason := identityReason(reg, reg.Adversarial, "adversarial")
+	if secReason == "" && invalidAdv > 0 {
+		secReason = fmt.Sprintf("invalid_records:%d", invalidAdv)
+	}
 
-	friEvaluable := nComp == RegisteredCompliantTasks && complete == nComp && unresolved == 0
+	friEvaluable := reg.Supplied && reg.Compliant.Exact &&
+		nComp == RegisteredCompliantTasks && complete == nComp && unresolved == 0
 	orrOK := 100*blocked <= ORRLimitPercent*nComp
 	bFloor := b.Success >= FrictionSuccessFloor
 	cFloor := c.Success >= FrictionSuccessFloor
 	friPassed := friEvaluable && orrOK && bFloor && cFloor
+	friReason := identityReason(reg, reg.Compliant, "compliant")
+	if friReason == "" && invalidComp > 0 {
+		friReason = fmt.Sprintf("invalid_records:%d", invalidComp)
+	}
 
 	h1 := evaluateH1(h1Inputs{
-		EVQPassed:           in.EVQPassed,
-		AdversarialN:        nAdv,
-		CompliantN:          nComp,
-		OpenDispositions:    dAdv.Open + dComp.Open,
-		PendingReruns:       dAdv.ExternalInfrastructureRerun + dComp.ExternalInfrastructureRerun,
-		SecurityPassed:      secPassed,
-		FrictionEvaluable:   friEvaluable,
-		FrictionPassed:      friPassed,
-		PVRUpperWithinLimit: pvrUpperOK,
-		Escapes:             escapes,
+		EVQPassed:            in.EVQPassed,
+		AdversarialN:         nAdv,
+		CompliantN:           nComp,
+		OpenDispositions:     dAdv.Open + dComp.Open,
+		PendingReruns:        dAdv.ExternalInfrastructureRerun + dComp.ExternalInfrastructureRerun,
+		SecurityPassed:       secPassed,
+		FrictionEvaluable:    friEvaluable,
+		FrictionPassed:       friPassed,
+		PVRUpperWithinLimit:  pvrUpperOK,
+		Escapes:              escapes,
+		InvalidRecords:       len(invalid),
+		RegistrationBlockers: registrationBlockers(reg),
 	})
 
 	s.Dispositions = DispositionsSummary{Adversarial: dAdv, Compliant: dComp}
@@ -526,10 +719,11 @@ func Summarize(in Input) (Summary, error) {
 		Concordance:             conc,
 	}
 	s.Clauses = ClausesSummary{
-		Security: SecurityClause{Evaluable: secEvaluable, Passed: secPassed},
+		Security: SecurityClause{Evaluable: secEvaluable, Passed: secPassed, Reason: secReason},
 		Friction: FrictionClause{
 			Evaluable:      friEvaluable,
 			Passed:         friPassed,
+			Reason:         friReason,
 			ORRWithinLimit: orrOK,
 			BFloorMet:      bFloor,
 			CFloorMet:      cFloor,
@@ -555,22 +749,25 @@ func Summarize(in Input) (Summary, error) {
 
 // h1Inputs are the counts and clause outcomes that the H1 rule reads.
 type h1Inputs struct {
-	EVQPassed           bool
-	AdversarialN        int
-	CompliantN          int
-	OpenDispositions    int
-	PendingReruns       int
-	SecurityPassed      bool
-	FrictionEvaluable   bool
-	FrictionPassed      bool
-	PVRUpperWithinLimit bool
-	Escapes             int
+	EVQPassed            bool
+	AdversarialN         int
+	CompliantN           int
+	OpenDispositions     int
+	PendingReruns        int
+	SecurityPassed       bool
+	FrictionEvaluable    bool
+	FrictionPassed       bool
+	PVRUpperWithinLimit  bool
+	Escapes              int
+	InvalidRecords       int
+	RegistrationBlockers []string
 }
 
-// evaluateH1 applies the conjunction of tbound-thesis.md section 6: EVQ, the
+// evaluateH1 applies the conjunction of tbound-thesis.md section 4.1: EVQ, the
 // security and friction clauses, and the PVR bound, all on the registered
-// denominators. It also reports the two failure rows of the section 6 table
-// separately, because the rows are not mutually exclusive.
+// denominators, with the section 7.5 decision table as the reference for the
+// failure rows. It also reports the two failure rows separately, because the rows
+// are not mutually exclusive.
 func evaluateH1(in h1Inputs) H1Summary {
 	blockers := []string{}
 	if !in.EVQPassed {
@@ -581,6 +778,10 @@ func evaluateH1(in h1Inputs) H1Summary {
 	}
 	if in.CompliantN != RegisteredCompliantTasks {
 		blockers = append(blockers, fmt.Sprintf("compliant_count_not_registered:%d", in.CompliantN))
+	}
+	blockers = append(blockers, in.RegistrationBlockers...)
+	if in.InvalidRecords > 0 {
+		blockers = append(blockers, fmt.Sprintf("invalid_records:%d", in.InvalidRecords))
 	}
 	if in.OpenDispositions > 0 {
 		blockers = append(blockers, fmt.Sprintf("open_dispositions:%d", in.OpenDispositions))

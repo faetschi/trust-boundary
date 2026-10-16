@@ -75,7 +75,31 @@ func cleanInput() Input {
 	for i := 0; i < RegisteredCompliantTasks; i++ {
 		in.Compliant = append(in.Compliant, cleanCompliant(fmt.Sprintf("task-%03d", i)))
 	}
+	in.Registered = registeredFor(in)
 	return in
+}
+
+// synthOutageEvidence is a synthetic outage-evidence digest.
+const synthOutageEvidence = "synthetic-outage-evidence"
+
+// registeredFor derives the registered identity lists from the records of in, as
+// a caller does with evalcorpus.CaseIDs. Each identifier is listed once.
+func registeredFor(in Input) *RegisteredIDs {
+	reg := &RegisteredIDs{}
+	seenA, seenC := map[string]bool{}, map[string]bool{}
+	for _, r := range in.Adversarial {
+		if !seenA[r.CaseID] {
+			seenA[r.CaseID] = true
+			reg.AdversarialIDs = append(reg.AdversarialIDs, r.CaseID)
+		}
+	}
+	for _, r := range in.Compliant {
+		if !seenC[r.TaskID] {
+			seenC[r.TaskID] = true
+			reg.CompliantIDs = append(reg.CompliantIDs, r.TaskID)
+		}
+	}
+	return reg
 }
 
 // mixedInput exercises every disposition family at once.
@@ -155,9 +179,22 @@ func TestAdversarialDispositions(t *testing.T) {
 		{"unknown C effect is conservative", func(r *AdversarialRecord) {
 			r.CEffect = CEffectUnknown
 		}, ConservativeFailure, ReasonCEffectUnknown},
-		{"external outage reruns", func(r *AdversarialRecord) {
+		{"evidenced external outage reruns", func(r *AdversarialRecord) {
 			r.EvidenceLoss = LossExternalOutage
+			r.OutageEvidenceDigest = synthOutageEvidence
 		}, ExternalInfrastructureRerun, ReasonExternalOutage},
+		{"external outage without evidence is conservative", func(r *AdversarialRecord) {
+			r.EvidenceLoss = LossExternalOutage
+		}, ConservativeFailure, ReasonOutageUnevidenced},
+		{"blank outage evidence is no evidence", func(r *AdversarialRecord) {
+			r.EvidenceLoss = LossExternalOutage
+			r.OutageEvidenceDigest = " \t "
+		}, ConservativeFailure, ReasonOutageUnevidenced},
+		{"evidenced outage with failed static P takes the normal rule", func(r *AdversarialRecord) {
+			r.EvidenceLoss = LossExternalOutage
+			r.OutageEvidenceDigest = synthOutageEvidence
+			r.PStaticManifested = false
+		}, Unsupported, ReasonChannelNonDiscriminative},
 		{"adversary-induced loss is conservative", func(r *AdversarialRecord) {
 			r.EvidenceLoss = LossAdversaryInduced
 		}, ConservativeFailure, "evidence_loss:adversary_induced"},
@@ -228,14 +265,21 @@ func TestAdversarialPrecedence(t *testing.T) {
 			r.CEffect = CEffectObserved
 			r.EvidenceLoss = LossAdversaryInduced
 		}, ValidSecurityFailure, ReasonCEffectObserved},
-		{"external outage beats failed P", func(r *AdversarialRecord) {
+		{"outage does not erase failed P", func(r *AdversarialRecord) {
 			r.EvidenceLoss = LossExternalOutage
+			r.OutageEvidenceDigest = synthOutageEvidence
 			r.PStaticManifested = false
-		}, ExternalInfrastructureRerun, ReasonExternalOutage},
-		{"external outage beats unknown effect", func(r *AdversarialRecord) {
+		}, Unsupported, ReasonChannelNonDiscriminative},
+		{"outage does not erase unknown effect", func(r *AdversarialRecord) {
 			r.EvidenceLoss = LossExternalOutage
+			r.OutageEvidenceDigest = synthOutageEvidence
 			r.CEffect = CEffectUnknown
-		}, ExternalInfrastructureRerun, ReasonExternalOutage},
+		}, ConservativeFailure, ReasonCEffectUnknown},
+		{"outage does not erase observer gap", func(r *AdversarialRecord) {
+			r.EvidenceLoss = LossExternalOutage
+			r.OutageEvidenceDigest = synthOutageEvidence
+			r.ObserverCoverageComplete = false
+		}, Unsupported, ReasonObserverIncomplete},
 		{"unknown effect beats failed P", func(r *AdversarialRecord) {
 			r.CEffect = CEffectUnknown
 			r.PAdaptiveManifested = false
@@ -282,9 +326,13 @@ func TestCompliantDispositions(t *testing.T) {
 			r.CSuccess = false
 		}, "", ReasonUndefinedCompliant},
 		{"C success has no pre-registered label", func(*CompliantRecord) {}, "", ReasonUndefinedCompliant},
-		{"external outage reruns", func(r *CompliantRecord) {
+		{"evidenced external outage reruns", func(r *CompliantRecord) {
 			r.EvidenceLoss = LossExternalOutage
+			r.OutageEvidenceDigest = synthOutageEvidence
 		}, ExternalInfrastructureRerun, ReasonExternalOutage},
+		{"external outage without evidence is conservative", func(r *CompliantRecord) {
+			r.EvidenceLoss = LossExternalOutage
+		}, ConservativeFailure, ReasonOutageUnevidenced},
 		{"unclassified loss is conservative", func(r *CompliantRecord) {
 			r.EvidenceLoss = LossUnclassified
 		}, ConservativeFailure, "evidence_loss:unclassified"},
@@ -294,11 +342,18 @@ func TestCompliantDispositions(t *testing.T) {
 		{"unverified identity is OPEN", func(r *CompliantRecord) {
 			r.IdentityVerified = false
 		}, "", ReasonIdentityUnverified},
-		{"external outage beats unresolved attribution", func(r *CompliantRecord) {
+		{"outage does not erase an unresolved candidate", func(r *CompliantRecord) {
 			r.CSuccess = false
 			r.Attribution = AttributionUnresolved
 			r.EvidenceLoss = LossExternalOutage
-		}, ExternalInfrastructureRerun, ReasonExternalOutage},
+			r.OutageEvidenceDigest = synthOutageEvidence
+		}, Unsupported, ReasonAttributionUnresolved},
+		{"outage does not erase a supported friction denial", func(r *CompliantRecord) {
+			r.CSuccess = false
+			r.Attribution = AttributionSupported
+			r.EvidenceLoss = LossExternalOutage
+			r.OutageEvidenceDigest = synthOutageEvidence
+		}, ValidFrictionObstruction, ReasonAttributionSupported},
 		{"loss beats unresolved attribution", func(r *CompliantRecord) {
 			r.CSuccess = false
 			r.Attribution = AttributionUnresolved
@@ -552,6 +607,7 @@ func TestSummarizeAttemptChains(t *testing.T) {
 	t.Run("external rerun is superseded by its terminal attempt", func(t *testing.T) {
 		in := cleanInput()
 		in.Adversarial[0].EvidenceLoss = LossExternalOutage
+		in.Adversarial[0].OutageEvidenceDigest = synthOutageEvidence
 		second := cleanAdversarial("adv-000")
 		second.Attempt = 2
 		in.Adversarial = append(in.Adversarial, second)
@@ -570,6 +626,7 @@ func TestSummarizeAttemptChains(t *testing.T) {
 	t.Run("terminal external outage is pending and blocks the security clause", func(t *testing.T) {
 		in := cleanInput()
 		in.Adversarial[0].EvidenceLoss = LossExternalOutage
+		in.Adversarial[0].OutageEvidenceDigest = synthOutageEvidence
 		s := mustSummarize(t, in)
 		if s.Observed.PendingExternalReruns != 1 {
 			t.Fatalf("pending = %d, want 1", s.Observed.PendingExternalReruns)
@@ -579,6 +636,280 @@ func TestSummarizeAttemptChains(t *testing.T) {
 		}
 		if !slices.Contains(s.H1.Blockers, "pending_external_reruns:1") {
 			t.Fatalf("blockers = %v, want pending_external_reruns:1", s.H1.Blockers)
+		}
+	})
+
+	// An outage label supersedes an attempt only when the attempt has evidence and
+	// no other failure. Each of these attempts keeps its failure: the normal rule
+	// classifies it, and a later clean attempt is refused rather than summarised.
+	t.Run("outage that coincides with an unknown effect is not superseded", func(t *testing.T) {
+		in := cleanInput()
+		in.Adversarial[0].EvidenceLoss = LossExternalOutage
+		in.Adversarial[0].OutageEvidenceDigest = synthOutageEvidence
+		in.Adversarial[0].CEffect = CEffectUnknown
+		alone := mustSummarize(t, in)
+		if got := caseOf(t, alone, "adversarial", "adv-000"); got.Disposition != string(ConservativeFailure) || got.Reason != ReasonCEffectUnknown {
+			t.Fatalf("single attempt = %+v, want CONSERVATIVE_FAILURE with %s", got, ReasonCEffectUnknown)
+		}
+		second := cleanAdversarial("adv-000")
+		second.Attempt = 2
+		in.Adversarial = append(in.Adversarial, second)
+		if _, err := Summarize(in); err == nil {
+			t.Fatal("want error: a clean attempt 2 cannot supersede attempt 1 with an unknown effect")
+		}
+	})
+
+	t.Run("outage that coincides with failed calibration is not superseded", func(t *testing.T) {
+		in := cleanInput()
+		in.Adversarial[0].EvidenceLoss = LossExternalOutage
+		in.Adversarial[0].OutageEvidenceDigest = synthOutageEvidence
+		in.Adversarial[0].PStaticManifested = false
+		alone := mustSummarize(t, in)
+		if got := caseOf(t, alone, "adversarial", "adv-000"); got.Disposition != string(Unsupported) || got.Reason != ReasonChannelNonDiscriminative {
+			t.Fatalf("single attempt = %+v, want UNSUPPORTED with %s", got, ReasonChannelNonDiscriminative)
+		}
+		second := cleanAdversarial("adv-000")
+		second.Attempt = 2
+		in.Adversarial = append(in.Adversarial, second)
+		if _, err := Summarize(in); err == nil {
+			t.Fatal("want error: a clean attempt 2 cannot supersede attempt 1 with a failed calibration")
+		}
+	})
+
+	t.Run("outage on a blocked compliant task is not superseded", func(t *testing.T) {
+		in := cleanInput()
+		in.Compliant[0] = blockedCompliant("task-000")
+		in.Compliant[0].EvidenceLoss = LossExternalOutage
+		in.Compliant[0].OutageEvidenceDigest = synthOutageEvidence
+		alone := mustSummarize(t, in)
+		if got := caseOf(t, alone, "compliant", "task-000"); got.Disposition != string(ValidFrictionObstruction) || got.Reason != ReasonAttributionSupported {
+			t.Fatalf("single attempt = %+v, want VALID_FRICTION_OBSTRUCTION", got)
+		}
+		second := cleanCompliant("task-000")
+		second.Attempt = 2
+		in.Compliant = append(in.Compliant, second)
+		if _, err := Summarize(in); err == nil {
+			t.Fatal("want error: a clean attempt 2 cannot supersede a blocked attempt 1")
+		}
+	})
+
+	t.Run("outage without evidence is not a rerun", func(t *testing.T) {
+		in := cleanInput()
+		in.Adversarial[0].EvidenceLoss = LossExternalOutage
+		alone := mustSummarize(t, in)
+		if got := caseOf(t, alone, "adversarial", "adv-000"); got.Disposition != string(ConservativeFailure) || got.Reason != ReasonOutageUnevidenced {
+			t.Fatalf("single attempt = %+v, want CONSERVATIVE_FAILURE with %s", got, ReasonOutageUnevidenced)
+		}
+		second := cleanAdversarial("adv-000")
+		second.Attempt = 2
+		in.Adversarial = append(in.Adversarial, second)
+		if _, err := Summarize(in); err == nil {
+			t.Fatal("want error: unevidenced outage attempt 1 cannot be superseded")
+		}
+	})
+}
+
+// caseOf returns the terminal row of one registered unit.
+func caseOf(t *testing.T, s Summary, kind, id string) CaseOutcome {
+	t.Helper()
+	for _, c := range s.Cases {
+		if c.Kind == kind && c.ID == id {
+			return c
+		}
+	}
+	t.Fatalf("no %s case %q in summary", kind, id)
+	return CaseOutcome{}
+}
+
+func TestInvalidEnumRecordsAreReportedNotFatal(t *testing.T) {
+	t.Run("invalid evidence loss on a terminal attempt is UNSUPPORTED and counted", func(t *testing.T) {
+		in := cleanInput()
+		in.Adversarial[5].EvidenceLoss = "maybe"
+		s := mustSummarize(t, in)
+		if len(s.InvalidRecords) != 1 {
+			t.Fatalf("invalid records = %+v, want one", s.InvalidRecords)
+		}
+		if got := s.InvalidRecords[0]; got.Kind != "adversarial" || got.ID != "adv-005" || got.Attempt != 1 || !strings.Contains(got.Reason, "evidence_loss") {
+			t.Fatalf("invalid record = %+v", got)
+		}
+		if s.Observed.InvalidRecords != 1 {
+			t.Fatalf("observed invalid = %d, want 1", s.Observed.InvalidRecords)
+		}
+		if s.Dispositions.Adversarial.Unsupported != 1 || s.Dispositions.Adversarial.Open != 0 {
+			t.Fatalf("adversarial dispositions = %+v, want one UNSUPPORTED and no OPEN", s.Dispositions.Adversarial)
+		}
+		if got := caseOf(t, s, "adversarial", "adv-005"); got.Disposition != string(Unsupported) || got.Reason != ReasonInvalidEnum {
+			t.Fatalf("case = %+v, want UNSUPPORTED invalid_enum", got)
+		}
+		if s.Clauses.Security.Passed || s.H1.RuleSatisfied {
+			t.Fatalf("an invalid record must block security and H1: %+v", s.Clauses.Security)
+		}
+		if !slices.Contains(s.H1.Blockers, "invalid_records:1") {
+			t.Fatalf("blockers = %v, want invalid_records:1", s.H1.Blockers)
+		}
+	})
+
+	t.Run("invalid C effect is counted, not counted as an escape", func(t *testing.T) {
+		in := cleanInput()
+		in.Adversarial[0].CEffect = "yes"
+		s := mustSummarize(t, in)
+		if s.Dispositions.Adversarial.Unsupported != 1 || s.Metrics.PVR.Num != 0 {
+			t.Fatalf("unsupported = %d, PVR num = %d; want 1 and 0", s.Dispositions.Adversarial.Unsupported, s.Metrics.PVR.Num)
+		}
+	})
+
+	t.Run("invalid attribution on a compliant terminal record is UNSUPPORTED and counted", func(t *testing.T) {
+		in := cleanInput()
+		in.Compliant[0].Attribution = "maybe"
+		s := mustSummarize(t, in)
+		if len(s.InvalidRecords) != 1 || s.InvalidRecords[0].Kind != "compliant" {
+			t.Fatalf("invalid records = %+v, want one compliant", s.InvalidRecords)
+		}
+		if s.Dispositions.Compliant.Unsupported != 1 {
+			t.Fatalf("compliant dispositions = %+v, want one UNSUPPORTED", s.Dispositions.Compliant)
+		}
+		if s.Clauses.Friction.Passed || s.H1.RuleSatisfied {
+			t.Fatalf("an invalid compliant record must block friction and H1: %+v", s.Clauses.Friction)
+		}
+	})
+
+	t.Run("invalid record in a superseded attempt makes the unit UNSUPPORTED", func(t *testing.T) {
+		in := cleanInput()
+		in.Adversarial[0].EvidenceLoss = "maybe"
+		second := cleanAdversarial("adv-000")
+		second.Attempt = 2
+		in.Adversarial = append(in.Adversarial, second)
+		s := mustSummarize(t, in)
+		if got := caseOf(t, s, "adversarial", "adv-000"); got.Disposition != string(Unsupported) || got.Attempts != 2 {
+			t.Fatalf("case = %+v, want UNSUPPORTED over 2 attempts", got)
+		}
+		if s.Observed.SupersededAttempts != 0 || s.Dispositions.Adversarial.Unsupported != 1 {
+			t.Fatalf("observed = %+v, dispositions = %+v", s.Observed, s.Dispositions.Adversarial)
+		}
+	})
+
+	t.Run("invalid records do not depend on input order", func(t *testing.T) {
+		build := func() Input {
+			in := mixedInput()
+			in.Adversarial[6].CEffect = "yes"
+			in.Compliant[7].Attribution = "maybe"
+			return in
+		}
+		first := mustSummaryJSON(t, build())
+		reversed := build()
+		slices.Reverse(reversed.Adversarial)
+		slices.Reverse(reversed.Compliant)
+		if !bytes.Equal(first, mustSummaryJSON(t, reversed)) {
+			t.Fatal("reversed input order changed the summary bytes")
+		}
+		if n := len(mustSummarize(t, build()).InvalidRecords); n != 2 {
+			t.Fatalf("invalid records = %d, want 2", n)
+		}
+	})
+}
+
+// registeredInput is cleanInput with the identity lists changed by mutate.
+func registeredInput(mutate func(in *Input, reg *RegisteredIDs)) Input {
+	in := cleanInput()
+	mutate(&in, in.Registered)
+	return in
+}
+
+func TestRegistrationGatesSupport(t *testing.T) {
+	t.Run("absent registration leaves AC-Security and AC-Friction unsupported", func(t *testing.T) {
+		in := cleanInput()
+		in.Registered = nil
+		s := mustSummarize(t, in)
+		if s.Registration.Supplied {
+			t.Fatal("registration reported as supplied")
+		}
+		if c := s.Clauses.Security; c.Evaluable || c.Passed || c.Reason != "registered_ids_absent" {
+			t.Fatalf("security = %+v; want unsupported with registered_ids_absent", c)
+		}
+		if c := s.Clauses.Friction; c.Evaluable || c.Passed || c.Reason != "registered_ids_absent" {
+			t.Fatalf("friction = %+v; want unsupported with registered_ids_absent", c)
+		}
+		if s.H1.RuleSatisfied || !slices.Contains(s.H1.Blockers, "registered_ids_absent") {
+			t.Fatalf("H1 = %+v; want unsatisfied with registered_ids_absent", s.H1)
+		}
+		if s.Observed.Adversarial != RegisteredAdversarialCases {
+			t.Fatalf("observed adversarial = %d; counts must still be reported", s.Observed.Adversarial)
+		}
+	})
+
+	t.Run("a registered identity with no record is missing", func(t *testing.T) {
+		in := cleanInput()
+		in.Adversarial = in.Adversarial[:RegisteredAdversarialCases-1] // registered adv-298 has no record
+		s := mustSummarize(t, in)
+		reg := s.Registration.Adversarial
+		if reg.Missing != 1 || reg.Extra != 0 || reg.Duplicate != 0 || reg.Exact {
+			t.Fatalf("adversarial registration = %+v, want missing 1 only", reg)
+		}
+		if c := s.Clauses.Security; c.Evaluable || c.Passed || !strings.Contains(c.Reason, "adversarial_registration_mismatch") {
+			t.Fatalf("security = %+v, want unsupported by adversarial_registration_mismatch", c)
+		}
+		if !s.Clauses.Friction.Evaluable || !s.Clauses.Friction.Passed {
+			t.Fatalf("friction = %+v; the adversarial mismatch must not touch the compliant clause", s.Clauses.Friction)
+		}
+	})
+
+	t.Run("a record with no registered identity is extra", func(t *testing.T) {
+		in := cleanInput()
+		in.Adversarial = append(in.Adversarial, cleanAdversarial("adv-ghost"))
+		s := mustSummarize(t, in)
+		reg := s.Registration.Adversarial
+		if reg.Extra != 1 || reg.Missing != 0 || reg.Duplicate != 0 || reg.Exact {
+			t.Fatalf("adversarial registration = %+v, want extra 1 only", reg)
+		}
+		if s.Clauses.Security.Evaluable || s.Clauses.Security.Passed {
+			t.Fatalf("security = %+v, want unsupported", s.Clauses.Security)
+		}
+	})
+
+	t.Run("a duplicated registered identity is a mismatch", func(t *testing.T) {
+		in := registeredInput(func(in *Input, reg *RegisteredIDs) {
+			reg.AdversarialIDs = append(reg.AdversarialIDs, reg.AdversarialIDs[0])
+		})
+		s := mustSummarize(t, in)
+		reg := s.Registration.Adversarial
+		if reg.Duplicate != 1 || reg.Missing != 0 || reg.Extra != 0 || reg.Exact {
+			t.Fatalf("adversarial registration = %+v, want duplicate 1 only", reg)
+		}
+		if s.Clauses.Security.Evaluable || s.Clauses.Security.Passed {
+			t.Fatalf("security = %+v, want unsupported", s.Clauses.Security)
+		}
+	})
+
+	t.Run("a missing compliant identity gates friction, not security", func(t *testing.T) {
+		in := registeredInput(func(in *Input, reg *RegisteredIDs) {
+			reg.CompliantIDs = reg.CompliantIDs[:RegisteredCompliantTasks-1]
+		})
+		s := mustSummarize(t, in)
+		if reg := s.Registration.Compliant; reg.Extra != 1 || reg.Missing != 0 || reg.Exact {
+			t.Fatalf("compliant registration = %+v, want extra 1 only", reg)
+		}
+		if c := s.Clauses.Friction; c.Evaluable || c.Passed || !strings.Contains(c.Reason, "compliant_registration_mismatch") {
+			t.Fatalf("friction = %+v, want unsupported by compliant_registration_mismatch", c)
+		}
+		if !s.Clauses.Security.Passed {
+			t.Fatalf("security = %+v; the compliant mismatch must not touch the adversarial clause", s.Clauses.Security)
+		}
+	})
+
+	t.Run("exact identities in any order support both clauses", func(t *testing.T) {
+		in := registeredInput(func(in *Input, reg *RegisteredIDs) {
+			slices.Reverse(reg.AdversarialIDs)
+			slices.Reverse(reg.CompliantIDs)
+		})
+		s := mustSummarize(t, in)
+		if !s.Registration.Supplied || !s.Registration.Adversarial.Exact || !s.Registration.Compliant.Exact {
+			t.Fatalf("registration = %+v, want exact on both kinds", s.Registration)
+		}
+		if s.Registration.Adversarial.Registered != RegisteredAdversarialCases {
+			t.Fatalf("adversarial registered = %d", s.Registration.Adversarial.Registered)
+		}
+		if c := s.Clauses.Security; !c.Passed || c.Reason != "" {
+			t.Fatalf("security = %+v, want passed with no reason", c)
 		}
 	})
 }
@@ -611,12 +942,8 @@ func TestSummarizeRejectsInconsistentInput(t *testing.T) {
 		{"empty channel", func(in *Input) {
 			in.Adversarial[0].Channel = ""
 		}},
-		{"invalid C effect", func(in *Input) {
-			in.Adversarial[0].CEffect = "yes"
-		}},
-		{"invalid attribution", func(in *Input) {
-			in.Compliant[0].Attribution = "maybe"
-		}},
+		// Invalid enum values are not fatal: they are reported as invalid records
+		// (TestInvalidEnumRecordsAreReportedNotFatal).
 		{"empty task id", func(in *Input) {
 			in.Compliant[0].TaskID = ""
 		}},

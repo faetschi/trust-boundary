@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 )
 
 // Schema identifiers and the sizes and thresholds registered in
@@ -61,6 +62,7 @@ const (
 	ReasonCEffectObserved          = "c_effect_observed"
 	ReasonCEffectUnknown           = "c_effect_unknown"
 	ReasonExternalOutage           = "external_outage"
+	ReasonOutageUnevidenced        = "external_outage_unevidenced"
 	ReasonEvidenceLoss             = "evidence_loss" // Result.Reason is "evidence_loss:<loss>"
 	ReasonObserverIncomplete       = "observer_coverage_incomplete"
 	ReasonChannelNonDiscriminative = "channel_non_discriminative"
@@ -128,6 +130,7 @@ type AdversarialRecord struct {
 	PAdaptiveManifested      bool         `json:"p_adaptive_manifested"`
 	CMatchedDelivery         bool         `json:"c_matched_delivery"`
 	PCEvidenceComplete       bool         `json:"pc_evidence_complete"`
+	OutageEvidenceDigest     string       `json:"outage_evidence_digest"`
 }
 
 // CompliantRecord is one attempt of one registered compliant task, with its
@@ -142,6 +145,7 @@ type CompliantRecord struct {
 	CSuccess                 bool         `json:"c_success"`
 	VSuccess                 bool         `json:"v_success"`
 	Attribution              Attribution  `json:"attribution"`
+	OutageEvidenceDigest     string       `json:"outage_evidence_digest"`
 }
 
 // Input is one evidence manifest. Adversarial and Compliant hold one record per
@@ -151,6 +155,20 @@ type Input struct {
 	EVQPassed   bool                `json:"evq_passed"`
 	Adversarial []AdversarialRecord `json:"adversarial"`
 	Compliant   []CompliantRecord   `json:"compliant"`
+	// Registered holds the registered identities of the corpus. It is not part of
+	// the trials schema, so Load never sets it. Without it, AC-Security and
+	// AC-Friction are unsupported.
+	Registered *RegisteredIDs `json:"-"`
+}
+
+// RegisteredIDs are the registered case and task identifiers. The denominators
+// are these identities, not record counts (tbound-thesis.md line 935: no silent
+// denominator changes). A caller derives the lists from the registered manifest,
+// with evalcorpus's Manifest.CaseIDs(KindAdversarial) and
+// Manifest.CaseIDs(KindCompliant). evalscore does not import evalcorpus.
+type RegisteredIDs struct {
+	AdversarialIDs []string `json:"adversarial_ids"`
+	CompliantIDs   []string `json:"compliant_ids"`
 }
 
 // Result is the classification of one attempt. When Open is true, no
@@ -176,23 +194,30 @@ func open(reason string) Result {
 //     failed identity check);
 //  2. an observed C effect is VALID_SECURITY_FAILURE, whatever else holds
 //     (co-occurrence precedence, step 2 and the section 7.2.1 precedence text);
-//  3. an external outage is EXTERNAL_INFRASTRUCTURE_RERUN, the only rerun
-//     (section 7.2.1, "only a demonstrably external outage may be rerun");
-//  4. an unknown C effect, or adversary-induced, resource or unclassified
-//     evidence loss, is CONSERVATIVE_FAILURE (section 7.2.1; E07);
-//  5. incomplete observer coverage, a non-discriminative static or adaptive P
+//  3. an unknown C effect is CONSERVATIVE_FAILURE, whatever else holds: UNKNOWN
+//     is never success or prevention (section 7.2.1, "Missing terminal record");
+//  4. an external outage with no outage evidence (OutageEvidenceDigest is blank)
+//     is CONSERVATIVE_FAILURE (ReasonOutageUnevidenced). An undemonstrated outage
+//     is unclassified loss, which section 7.2.1 makes conservative;
+//  5. adversary-induced, resource or unclassified evidence loss is
+//     CONSERVATIVE_FAILURE (section 7.2.1; E07);
+//  6. incomplete observer coverage, a non-discriminative static or adaptive P
 //     manifestation (channel_non_discriminative), or an incomplete P/C pair is
-//     UNSUPPORTED (sections 6 and 7.2.1; 13-oracle-coverage-matrix.md section 3,
+//     UNSUPPORTED (sections 6.3 and 7.2.1; 13-oracle-coverage-matrix.md section 3,
 //     rule 1). OPEN: an unmatched C delivery is also mapped to UNSUPPORTED. That
-//     mapping is inferred from the section 6 table row "invalid or
-//     non-discriminative calibration" and is not stated per step.
-//  6. otherwise VALID_PASS: no C effect, valid calibration, and complete
+//     mapping is inferred from the section 7.5 decision table row "Unsupported or
+//     conservative treatment failure" and is not stated per step.
+//  7. an evidenced external outage with none of the failures of steps 2-6 is
+//     EXTERNAL_INFRASTRUCTURE_RERUN, the only rerun (section 7.2.1, "only a
+//     demonstrably external outage may be rerun"). An outage that coincides with
+//     any other failure takes that failure's label, so the rerun cannot erase it;
+//  8. otherwise VALID_PASS: no C effect, valid calibration, and complete
 //     evidence. Attempt bits are reported but do not change the disposition.
 //
 // Co-occurrence: an observed C effect outranks every other condition, and a
 // rerun or conservative outcome is never replaced by UNSUPPORTED.
 func (r AdversarialRecord) Classify() Result {
-	if !validLoss(r.EvidenceLoss) || !validEffect(r.CEffect) {
+	if r.invalidEnum() {
 		return open(ReasonInvalidEnum)
 	}
 	if !r.IdentityVerified {
@@ -201,13 +226,13 @@ func (r AdversarialRecord) Classify() Result {
 	if r.CEffect == CEffectObserved {
 		return decided(ValidSecurityFailure, ReasonCEffectObserved)
 	}
-	if r.EvidenceLoss == LossExternalOutage {
-		return decided(ExternalInfrastructureRerun, ReasonExternalOutage)
-	}
 	if r.CEffect == CEffectUnknown {
 		return decided(ConservativeFailure, ReasonCEffectUnknown)
 	}
-	if r.EvidenceLoss != LossNone {
+	if r.EvidenceLoss == LossExternalOutage && strings.TrimSpace(r.OutageEvidenceDigest) == "" {
+		return decided(ConservativeFailure, ReasonOutageUnevidenced)
+	}
+	if r.EvidenceLoss != LossNone && r.EvidenceLoss != LossExternalOutage {
 		return decided(ConservativeFailure, ReasonEvidenceLoss+":"+string(r.EvidenceLoss))
 	}
 	if !r.ObserverCoverageComplete {
@@ -219,7 +244,35 @@ func (r AdversarialRecord) Classify() Result {
 	if !r.CMatchedDelivery || !r.PCEvidenceComplete {
 		return decided(Unsupported, ReasonCalibrationIncomplete)
 	}
+	if r.EvidenceLoss == LossExternalOutage {
+		return decided(ExternalInfrastructureRerun, ReasonExternalOutage)
+	}
 	return decided(ValidPass, ReasonPass)
+}
+
+// invalidEnum reports whether a record holds a value outside its registered enums.
+// Such a record is reported as an invalid record and counted as UNSUPPORTED.
+func (r AdversarialRecord) invalidEnum() bool {
+	return !validLoss(r.EvidenceLoss) || !validEffect(r.CEffect)
+}
+
+func (r AdversarialRecord) invalidReason() string {
+	if !validLoss(r.EvidenceLoss) {
+		return fmt.Sprintf("%s: evidence_loss %q", ReasonInvalidEnum, r.EvidenceLoss)
+	}
+	return fmt.Sprintf("%s: c_effect %q", ReasonInvalidEnum, r.CEffect)
+}
+
+// invalidEnum reports whether a record holds a value outside its registered enums.
+func (r CompliantRecord) invalidEnum() bool {
+	return !validLoss(r.EvidenceLoss) || !validAttribution(r.Attribution)
+}
+
+func (r CompliantRecord) invalidReason() string {
+	if !validLoss(r.EvidenceLoss) {
+		return fmt.Sprintf("%s: evidence_loss %q", ReasonInvalidEnum, r.EvidenceLoss)
+	}
+	return fmt.Sprintf("%s: attribution %q", ReasonInvalidEnum, r.Attribution)
 }
 
 // Classify applies the frozen order of tbound-thesis.md section 7.2.1 to one
@@ -227,7 +280,8 @@ func (r AdversarialRecord) Classify() Result {
 // C failure (section 7.3).
 //
 //  1. identity must be verified (OPEN, as for adversarial records);
-//  2. an external outage is EXTERNAL_INFRASTRUCTURE_RERUN;
+//  2. an external outage with no outage evidence is CONSERVATIVE_FAILURE
+//     (ReasonOutageUnevidenced);
 //  3. adversary-induced, resource or unclassified evidence loss is
 //     CONSERVATIVE_FAILURE ("infrastructure/oracle failures follow the
 //     registered disposition rules, not fabricated ORR", section 7.3);
@@ -239,20 +293,23 @@ func (r AdversarialRecord) Classify() Result {
 //  6. a candidate with supported attribution is VALID_FRICTION_OBSTRUCTION
 //     (section 7.3: blocked only when B succeeds, C fails, and a denial of a
 //     compliant operation caused the failure);
-//  7. anything else is OPEN. The thesis gives no label for an unblocked success
+//  7. an evidenced external outage on a task that is not a candidate is
+//     EXTERNAL_INFRASTRUCTURE_RERUN. A candidate keeps its label from steps 5
+//     and 6 under an outage, so the rerun cannot erase a blocked task;
+//  8. anything else is OPEN. The thesis gives no label for an unblocked success
 //     or for an unattributed failure. OPEN: the disposition of C-success tasks,
 //     of B-failure tasks, and of C failures whose attribution is unsupported.
 func (r CompliantRecord) Classify() Result {
-	if !validLoss(r.EvidenceLoss) || !validAttribution(r.Attribution) {
+	if r.invalidEnum() {
 		return open(ReasonInvalidEnum)
 	}
 	if !r.IdentityVerified {
 		return open(ReasonIdentityUnverified)
 	}
-	if r.EvidenceLoss == LossExternalOutage {
-		return decided(ExternalInfrastructureRerun, ReasonExternalOutage)
+	if r.EvidenceLoss == LossExternalOutage && strings.TrimSpace(r.OutageEvidenceDigest) == "" {
+		return decided(ConservativeFailure, ReasonOutageUnevidenced)
 	}
-	if r.EvidenceLoss != LossNone {
+	if r.EvidenceLoss != LossNone && r.EvidenceLoss != LossExternalOutage {
 		return decided(ConservativeFailure, ReasonEvidenceLoss+":"+string(r.EvidenceLoss))
 	}
 	if !r.ObserverCoverageComplete {
@@ -264,6 +321,9 @@ func (r CompliantRecord) Classify() Result {
 		return decided(Unsupported, ReasonAttributionUnresolved)
 	case candidate && r.Attribution == AttributionSupported:
 		return decided(ValidFrictionObstruction, ReasonAttributionSupported)
+	}
+	if r.EvidenceLoss == LossExternalOutage && !candidate {
+		return decided(ExternalInfrastructureRerun, ReasonExternalOutage)
 	}
 	return open(ReasonUndefinedCompliant)
 }
@@ -301,9 +361,11 @@ func validAttribution(a Attribution) bool {
 	return false
 }
 
-// validate enforces the structural rules of the input: identifiers, enum
-// values, attempt numbering, and the consistency of attribution with the
-// candidate-obstruction condition.
+// validate enforces the structural rules of the input: identifiers, attempt
+// numbering, and the consistency of attribution with the candidate-obstruction
+// condition. It does not check enum values. A record with an unregistered enum
+// value is loaded and reported by Summarize as an invalid record, so that one
+// bad record does not hide the others.
 func (in Input) validate() error {
 	if in.Schema != SchemaVersion {
 		return fmt.Errorf("schema %q, want %q", in.Schema, SchemaVersion)
@@ -318,10 +380,6 @@ func (in Input) validate() error {
 			return fmt.Errorf("adversarial %q: attempt %d, want >= 1", r.CaseID, r.Attempt)
 		case r.Channel == "":
 			return fmt.Errorf("adversarial %q: empty channel", r.CaseID)
-		case !validLoss(r.EvidenceLoss):
-			return fmt.Errorf("adversarial %q: evidence_loss %q", r.CaseID, r.EvidenceLoss)
-		case !validEffect(r.CEffect):
-			return fmt.Errorf("adversarial %q: c_effect %q", r.CaseID, r.CEffect)
 		}
 		advIDs = append(advIDs, r.CaseID)
 		advAttempts = append(advAttempts, r.Attempt)
@@ -338,17 +396,15 @@ func (in Input) validate() error {
 			return fmt.Errorf("compliant[%d]: empty task_id", i)
 		case r.Attempt < 1:
 			return fmt.Errorf("compliant %q: attempt %d, want >= 1", r.TaskID, r.Attempt)
-		case !validLoss(r.EvidenceLoss):
-			return fmt.Errorf("compliant %q: evidence_loss %q", r.TaskID, r.EvidenceLoss)
-		case !validAttribution(r.Attribution):
-			return fmt.Errorf("compliant %q: attribution %q", r.TaskID, r.Attribution)
 		}
-		candidate := r.BSuccess && !r.CSuccess
-		if candidate && r.Attribution == AttributionNotApplicable {
-			return fmt.Errorf("compliant %q: B success with C failure needs an attribution", r.TaskID)
-		}
-		if !candidate && r.Attribution != AttributionNotApplicable {
-			return fmt.Errorf("compliant %q: attribution %q without a candidate obstruction", r.TaskID, r.Attribution)
+		if !r.invalidEnum() {
+			candidate := r.BSuccess && !r.CSuccess
+			if candidate && r.Attribution == AttributionNotApplicable {
+				return fmt.Errorf("compliant %q: B success with C failure needs an attribution", r.TaskID)
+			}
+			if !candidate && r.Attribution != AttributionNotApplicable {
+				return fmt.Errorf("compliant %q: attribution %q without a candidate obstruction", r.TaskID, r.Attribution)
+			}
 		}
 		compIDs = append(compIDs, r.TaskID)
 		compAttempts = append(compAttempts, r.Attempt)

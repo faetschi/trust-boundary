@@ -21,10 +21,11 @@ import (
 //   - a field without omitempty that is absent, and null anywhere;
 //   - data after the top-level value.
 //
+// Load also rejects an unpaired surrogate \u escape (a lone high or low surrogate).
+// encoding/json would decode it to U+FFFD, so two manifests that differ only in such
+// an escape would share a digest. A valid high-low pair is accepted.
+//
 // Load checks shape only. Use Validate for the registered counts, quotas, and rules.
-// Known limit: encoding/json replaces an unpaired \u surrogate escape with U+FFFD, and
-// Load does not reject that input, so two manifests that differ only in such escapes
-// decode to the same digest.
 func Load(r io.Reader) (Manifest, error) {
 	if r == nil {
 		return Manifest{}, errors.New("evalcorpus: nil reader")
@@ -38,6 +39,9 @@ func Load(r io.Reader) (Manifest, error) {
 	}
 	if !utf8.Valid(data) {
 		return Manifest{}, errors.New("evalcorpus: manifest is not valid UTF-8")
+	}
+	if err := rejectLoneSurrogates(data); err != nil {
+		return Manifest{}, err
 	}
 	if err := rejectDuplicateKeys(data); err != nil {
 		return Manifest{}, err
@@ -69,6 +73,64 @@ func rejectDuplicateKeys(data []byte) error {
 		return errors.New("evalcorpus: trailing data after manifest")
 	}
 	return nil
+}
+
+// rejectLoneSurrogates scans the raw bytes for \u escapes and fails on a surrogate
+// (U+D800 to U+DFFF) that is not part of a high-low pair. An escaped backslash is
+// skipped, so the text \\uD800 is not read as an escape.
+func rejectLoneSurrogates(data []byte) error {
+	const lone = "evalcorpus: manifest has an unpaired surrogate \\u escape"
+	for i := 0; i < len(data); i++ {
+		if data[i] != '\\' || i+1 >= len(data) {
+			continue
+		}
+		if data[i+1] != 'u' {
+			i++ // skip the escaped character
+			continue
+		}
+		u, ok := hex4(data, i+2)
+		if !ok {
+			i++ // malformed; encoding/json reports it
+			continue
+		}
+		switch {
+		case u >= 0xDC00 && u <= 0xDFFF:
+			return errors.New(lone)
+		case u >= 0xD800 && u <= 0xDBFF:
+			j := i + 6
+			if j+1 >= len(data) || data[j] != '\\' || data[j+1] != 'u' {
+				return errors.New(lone)
+			}
+			if v, ok := hex4(data, j+2); !ok || v < 0xDC00 || v > 0xDFFF {
+				return errors.New(lone)
+			}
+			i = j + 5
+		default:
+			i += 5
+		}
+	}
+	return nil
+}
+
+// hex4 decodes the four hexadecimal digits at data[at:at+4].
+func hex4(data []byte, at int) (rune, bool) {
+	if at < 0 || at+4 > len(data) {
+		return 0, false
+	}
+	var v rune
+	for _, c := range data[at : at+4] {
+		switch {
+		case c >= '0' && c <= '9':
+			v = v<<4 | rune(c-'0')
+		case c >= 'a' && c <= 'f':
+			v = v<<4 | rune(c-'a'+10)
+		case c >= 'A' && c <= 'F':
+			v = v<<4 | rune(c-'A'+10)
+		default:
+			return 0, false
+		}
+	}
+	return v, true
 }
 
 func scanDuplicates(dec *json.Decoder) error {
