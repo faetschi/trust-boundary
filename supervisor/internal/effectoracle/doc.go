@@ -7,7 +7,7 @@
 // heartbeats, and marks. Mark records a named observation point together with a
 // SHA-256 snapshot of the tree. Stop returns a Report with the events, the
 // snapshots, the explicit gaps, and a verdict. Report.TransientMutations derives
-// create-then-delete and modify-then-revert candidates. An endpoint-only
+// create-then-delete candidates and reverted candidates. An endpoint-only
 // comparison cannot see either one.
 //
 // The package imports nothing from the TBound store, gate, delta, publication,
@@ -18,14 +18,30 @@
 //
 // Start, every Mark, and Stop write a uniquely named canary file in the root,
 // wait until the reader observes its close_write, and then remove it. Each
-// attempt is recorded as a heartbeat. Canary events are filtered out of Events,
-// and the canary names never appear in the report. A canary that is not
-// observed within the timeout, or that is attempted after the reader has
-// stopped, is recorded as unobserved. Unless a gap is also recorded, the verdict
-// is then instrument_unqualified (see Verdicts). inotify reports events in queue
-// order, so an observed canary also shows that the kernel events of operations
-// completed before the canary was written have been read. This holds unless the
-// queue overflowed.
+// attempt is recorded as a heartbeat. The oracle's own canary traffic is
+// filtered out of Events: the create, write, close, and removal it causes for
+// each canary, in that order. The canary names do not appear in the report. Any
+// other event for an issued canary name is recorded in Events and counted as a
+// canary_anomaly gap, so a foreign process that learned a name leaves evidence.
+// A canary that is not observed within the timeout, or that is attempted after
+// the reader has stopped, is recorded as unobserved. Unless a gap is also
+// recorded, the verdict is then instrument_unqualified (see Verdicts). inotify
+// reports events in queue order, so an observed canary also shows that the
+// kernel events of operations completed before the canary was written have been
+// read. This holds unless the queue overflowed.
+//
+// Liveness is checked per Start, Mark, and Stop, and only on the root watch. A
+// subdirectory watch that stopped delivering events without a recorded gap would
+// not be detected by a canary. A kernel IN_IGNORED on a subdirectory watch drops
+// that watch's mapping without a gap. This is not a silent loss. IN_IGNORED
+// arrives when the directory is removed, which the parent's delete event
+// records; when the directory is unmounted, which is a mount_boundary gap; or
+// when the oracle removes the watch itself, which it does only after recording a
+// gap (an overflow rebuild, or a directory replaced during watch installation) or
+// a move.
+//
+// The window ends at the stop barrier. Once the stop canary is observed, or has
+// timed out, later records are not applied to the log.
 //
 // # Loss and coverage
 //
@@ -35,10 +51,22 @@
 //     window is evidence_lost;
 //   - a failed read or a malformed inotify record. The reader stops;
 //   - the root deleted, moved, or unmounted;
-//   - watch-limit exhaustion (ENOSPC) and other watch or enumeration failures;
-//   - a directory created or moved in before its watch was installed
-//     (subdir_race). The new subtree is enumerated and watched, but any child
-//     created and deleted in the gap is not observed;
+//   - watch-limit exhaustion (ENOSPC) and other watch or enumeration failures,
+//     including a directory replaced by a symlink during watch installation;
+//   - a directory created or moved in with entries already in it (subdir_race).
+//     Its subtree is watched and enumerated, but the entries that existed before
+//     the watch are not observed. A directory created empty raises no gap. An
+//     entry in it whose creation was not observed, because it existed before the
+//     watch, does raise one (subdir_race) when its first event arrives;
+//   - a watched directory moved away (dir_moved_out). Entries created in it
+//     before the move are not paired with later events, so the window is
+//     incomplete for that subtree;
+//   - a path the snapshot could not read in full: a permission failure, a FIFO or
+//     symlink swapped in mid-walk, or a directory swapped for a symlink
+//     (snapshot_unreadable). The path is recorded as an entry of type
+//     "unreadable". The walk goes on, so the other entries and events are kept;
+//   - an event for an issued canary name that the oracle did not cause
+//     (canary_anomaly);
 //   - events for a watch the oracle does not map;
 //   - a snapshot that overlapped workspace events.
 //
@@ -69,22 +97,35 @@
 //     file can change again before its digest is taken.
 //   - Mutations that happen during Start, before the first barrier. Start must
 //     run before the workload begins.
-//   - A directory swapped between enumeration and watch installation, for
-//     example by a symlink or by renaming an ancestor. IN_DONT_FOLLOW protects
-//     only the final path component.
+//   - Mutations between a directory's creation and the installation of its
+//     watch. An entry that exists when the watch is installed is seen by the
+//     enumeration, or, if it is removed before the enumeration, through its delete
+//     event (subdir_race). An entry created and removed entirely before the watch
+//     is installed is unobservable and leaves no trace. The verdict can be ok
+//     despite such an entry, so the window's claim does not cover it.
+//   - A swap of an ancestor directory between enumeration and watch installation,
+//     for example by renaming an ancestor or by replacing one with a symlink.
+//     O_NOFOLLOW and O_DIRECTORY protect only the final path component.
 //   - Extended attributes, ACLs, and capabilities. IN_ATTRIB reports their
 //     changes as events, but snapshot digests do not cover them.
-//   - Descriptor-relative traversal. Snapshots are path based (Lstat and
-//     O_NOFOLLOW) and are not atomic. A concurrent change is detected only when
-//     a walk sees a path vanish or when workspace events overlap a snapshot. A
-//     change whose event is queued after the post-snapshot barrier is not
-//     detected.
-//   - Anything after the post-Stop barrier. The window ends there.
+//   - Snapshots are path based (Lstat, then open with O_NOFOLLOW) and are not
+//     atomic. A concurrent change is detected only when a walk sees a path vanish,
+//     when a path cannot be opened safely, or when workspace events overlap a
+//     snapshot. A change whose event is queued after the post-snapshot barrier is
+//     not detected.
+//   - Anything after the post-Stop barrier. The window ends there, and records
+//     read after it are not applied.
 //   - The brief presence of canary files in the root. Concurrent processes can
-//     observe them.
+//     observe them. A process that creates an issued canary name before the
+//     oracle does makes that canary unobserved, so the verdict is not ok.
 //   - Inode identity. Replacing a file with identical content is not a revert,
 //     because equality compares type, mode, owner, link count, size, digest,
 //     and link target.
+//   - Identical rewrites and same-mode changes. A path whose start and stop
+//     entries are equal is reported as reverted only when a mark saw a different
+//     state. Otherwise it is touched_unchanged, which is not a claim of a
+//     transient mutation. The fingerprint excludes mtime, so a same-content
+//     rewrite between two marks cannot be told apart from no change.
 //
 // The at_ns fields are monotonic offsets from Start. Report.JSON includes them,
 // and Report.Digest excludes them, so identical workloads produce identical

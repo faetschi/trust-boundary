@@ -75,7 +75,7 @@ func TestTransientRevertedFindsEqualEndpointsWithAnIntermediateChange(t *testing
 	}
 }
 
-func TestDeleteAndRestoreIsRevertedNotCreatedThenDeleted(t *testing.T) {
+func TestDeleteAndRestoreWithoutAnObservedIntermediateIsTouchedUnchanged(t *testing.T) {
 	r := &Report{
 		Events: []Event{
 			{Seq: 2, Kind: KindDelete, Path: "f.txt"},
@@ -83,14 +83,90 @@ func TestDeleteAndRestoreIsRevertedNotCreatedThenDeleted(t *testing.T) {
 		},
 		Marks: []Mark{markAt(MarkStart, 1, fileAt("f.txt", "aa")), markAt(MarkStop, 4, fileAt("f.txt", "aa"))},
 	}
+	// No mark saw the path between the delete and the restore, so the
+	// intermediate state is unknown and the endpoints alone cannot show a revert.
 	want := []Transient{{
-		Kind:            TransientReverted,
+		Kind:            TransientTouchedUnchanged,
 		Path:            "f.txt",
 		EventSeqs:       []uint64{2, 3},
 		ObservedAtMarks: []string{},
 	}}
 	if got := r.TransientMutations(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("TransientMutations() = %+v, want %+v", got, want)
+	}
+}
+
+func TestDeleteAndRestoreObservedAtAMarkIsReverted(t *testing.T) {
+	r := &Report{
+		Events: []Event{
+			{Seq: 2, Kind: KindDelete, Path: "f.txt"},
+			{Seq: 4, Kind: KindCreate, Path: "f.txt"},
+		},
+		Marks: []Mark{
+			markAt(MarkStart, 1, fileAt("f.txt", "aa")),
+			markAt("gone", 3),
+			markAt(MarkStop, 5, fileAt("f.txt", "aa")),
+		},
+	}
+	want := []Transient{{
+		Kind:            TransientReverted,
+		Path:            "f.txt",
+		EventSeqs:       []uint64{2, 4},
+		ObservedAtMarks: []string{"gone"},
+	}}
+	if got := r.TransientMutations(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("TransientMutations() = %+v, want %+v", got, want)
+	}
+}
+
+func TestPathWithoutAnObservedDifferenceIsTouchedUnchanged(t *testing.T) {
+	endpoints := []Mark{markAt(MarkStart, 1, fileAt("f.txt", "aa")), markAt(MarkStop, 5, fileAt("f.txt", "aa"))}
+	cases := []struct {
+		name   string
+		events []Event
+		marks  []Mark
+		seqs   []uint64
+	}{
+		{
+			name:   "same-mode chmod",
+			events: []Event{{Seq: 2, Kind: KindAttrib, Path: "f.txt"}},
+			marks:  endpoints,
+			seqs:   []uint64{2},
+		},
+		{
+			name: "same-bytes rewrite",
+			events: []Event{
+				{Seq: 2, Kind: KindModify, Path: "f.txt"},
+				{Seq: 3, Kind: KindCloseWrite, Path: "f.txt"},
+			},
+			marks: endpoints,
+			seqs:  []uint64{2, 3},
+		},
+		{
+			name: "same-bytes rewrite with an identical mark between",
+			events: []Event{
+				{Seq: 2, Kind: KindModify, Path: "f.txt"},
+				{Seq: 4, Kind: KindCloseWrite, Path: "f.txt"},
+			},
+			marks: []Mark{
+				markAt(MarkStart, 1, fileAt("f.txt", "aa")),
+				markAt("mid", 3, fileAt("f.txt", "aa")),
+				markAt(MarkStop, 5, fileAt("f.txt", "aa")),
+			},
+			seqs: []uint64{2, 4},
+		},
+	}
+	for _, c := range cases {
+		r := &Report{Events: c.events, Marks: c.marks}
+		want := []Transient{{
+			Kind:            TransientTouchedUnchanged,
+			Path:            "f.txt",
+			EventSeqs:       c.seqs,
+			ObservedAtMarks: []string{},
+		}}
+		if got := r.TransientMutations(); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: TransientMutations() = %+v, want %+v", c.name, got, want)
+		}
 	}
 }
 

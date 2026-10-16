@@ -60,6 +60,23 @@ func TestParseEventsRejectsTruncatedRecords(t *testing.T) {
 	}
 }
 
+// dropNamed removes every record for a name in drop from a batch, as a kernel
+// that lost those events would, and returns the rest in the same layout.
+func dropNamed(batch []byte, drop map[string]bool) []byte {
+	recs, err := parseEvents(batch)
+	if err != nil {
+		return batch
+	}
+	var out []byte
+	for _, r := range recs {
+		if drop[r.name] {
+			continue
+		}
+		out = appendInotifyRecord(out, int32(r.wd), r.mask, r.name)
+	}
+	return out
+}
+
 func TestKernelInotifyWatchRoundTrip(t *testing.T) {
 	requireInotify(t)
 	k, err := openKernelInotify()

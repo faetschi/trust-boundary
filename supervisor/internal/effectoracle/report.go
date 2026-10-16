@@ -47,12 +47,16 @@ const (
 	GapUnmappedEvent      = "unmapped_event"      // an event for a watch the oracle does not map
 	GapSnapshotConcurrent = "snapshot_concurrent" // workspace events overlapped a snapshot
 	GapCanaryCleanup      = "canary_cleanup_failed"
+	GapSnapshotUnreadable = "snapshot_unreadable"
+	GapCanaryAnomaly      = "canary_anomaly"
+	GapDirMovedOut        = "dir_moved_out"
 )
 
 // Transient candidate kinds.
 const (
 	TransientCreatedThenDeleted = "created_then_deleted"
 	TransientReverted           = "reverted"
+	TransientTouchedUnchanged   = "touched_unchanged"
 )
 
 // Reserved endpoint mark names. Start and Stop record them automatically.
@@ -148,7 +152,7 @@ type Mark struct {
 // numbers are not recorded, so they take no part in equality.
 type Entry struct {
 	Path   string `json:"path"`
-	Type   string `json:"type"`  // dir, file, symlink, or other
+	Type   string `json:"type"`  // dir, file, symlink, other, or unreadable (a path whose state could not be read in full)
 	Mode   uint32 `json:"mode"`  // permission, setuid, setgid, and sticky bits
 	UID    uint32 `json:"uid"`   // owner, recorded as a number
 	GID    uint32 `json:"gid"`   // group, recorded as a number
@@ -173,10 +177,13 @@ type Transient struct {
 // TransientMutations returns the candidates in the window, ordered by first
 // event sequence number and then by path. A created_then_deleted candidate
 // pairs a creation (create or moved_to) with the next deletion (delete or
-// moved_from) of the same path. A reverted candidate is a path that has
-// recorded mutation events and whose start and stop entries are equal. The
-// candidates come from the events and the marks alone. They are claims only
-// when Verdict is VerdictOK.
+// moved_from) of the same path. A path that has recorded events and whose start
+// and stop entries are equal is a reverted candidate only when a mark observed a
+// state that differs from the start. Otherwise it is touched_unchanged: it was
+// touched, but nothing in the window shows it changed, because a same-mode chmod
+// or an identical rewrite leaves the fingerprint unchanged. The candidates come
+// from the events and the marks alone. They are claims only when Verdict is
+// VerdictOK.
 func (r *Report) TransientMutations() []Transient {
 	var out []Transient
 	pending := make(map[string]Event)
@@ -207,15 +214,23 @@ func (r *Report) TransientMutations() []Transient {
 		for p := range touched {
 			a, inStart := startIdx[p]
 			b, inStop := stopIdx[p]
-			if inStart && inStop && a.fingerprint() == b.fingerprint() {
-				out = append(out, Transient{
-					Kind:            TransientReverted,
-					Path:            p,
-					IsDir:           a.Type == "dir",
-					EventSeqs:       r.eventSeqsFor(p),
-					ObservedAtMarks: r.marksDiffering(p, a),
-				})
+			if !inStart || !inStop || a.fingerprint() != b.fingerprint() {
+				continue
 			}
+			// Equal endpoints are a revert only when a mark observed a different
+			// state. Otherwise the path was touched, but nothing shows it changed.
+			kind := TransientTouchedUnchanged
+			observed := r.marksDiffering(p, a)
+			if len(observed) > 0 {
+				kind = TransientReverted
+			}
+			out = append(out, Transient{
+				Kind:            kind,
+				Path:            p,
+				IsDir:           a.Type == "dir",
+				EventSeqs:       r.eventSeqsFor(p),
+				ObservedAtMarks: observed,
+			})
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
