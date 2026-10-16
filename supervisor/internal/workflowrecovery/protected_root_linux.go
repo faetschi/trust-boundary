@@ -166,6 +166,10 @@ type ProtectedTrustedRoot struct {
 	clockNow       func() (time.Time, string, int64, error)
 	closed         bool
 	poisoned       bool
+
+	// clockPersistFault is a test seam invoked before each pre-commit step of
+	// persistProtectedClockStateLocked. It is nil in production.
+	clockPersistFault func(stage string) error
 }
 
 type protectedRootState struct {
@@ -1173,15 +1177,36 @@ func (r *ProtectedTrustedRoot) persistProtectedClockStateLocked(workflow string,
 	}
 	persistCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	tx, err := r.db.BeginTx(persistCtx, nil)
-	if err != nil {
-		r.poisoned = true
+	// Failures before the commit leave the durable head unchanged: the deferred
+	// rollback undoes any uncommitted write, and the caller refuses only this
+	// attempt. They do not poison the root. A rollback that cannot be confirmed
+	// may leave the single pooled connection inside the write, so it poisons.
+	if err := r.injectClockPersistFaultLocked("begin"); err != nil {
 		return fmt.Errorf("%w: begin protected clock high-water update: %v", ErrOwnerStore, err)
 	}
-	defer tx.Rollback()
+	tx, err := r.db.BeginTx(persistCtx, nil)
+	if err != nil {
+		return fmt.Errorf("%w: begin protected clock high-water update: %v", ErrOwnerStore, err)
+	}
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			r.poisoned = true
+		}
+	}()
+	if err := r.injectClockPersistFaultLocked("load"); err != nil {
+		return fmt.Errorf("%w: read protected clock high-water: %v", ErrOwnerStore, err)
+	}
 	current, exists, err := loadProtectedRootState(persistCtx, tx, workflow)
 	if err != nil {
-		r.poisoned = true
+		if errors.Is(err, ErrRollback) {
+			// The caller validated this row moments earlier, so an invalid row now
+			// means another writer changed it during this operation.
+			r.poisoned = true
+		}
 		return err
 	}
 	if !exists || current.Revision != previous.Revision || current.WorkflowDeadlineUTC != previous.WorkflowDeadlineUTC ||
@@ -1191,19 +1216,35 @@ func (r *ProtectedTrustedRoot) persistProtectedClockStateLocked(workflow string,
 		return fmt.Errorf("%w: protected clock anchor/revision changed during verification", ErrRollback)
 	}
 	next.Revision = current.Revision + 1
+	if err := r.injectClockPersistFaultLocked("update"); err != nil {
+		return fmt.Errorf("%w: update protected clock high-water: %v", ErrOwnerStore, err)
+	}
 	if err := updateProtectedRootState(persistCtx, tx, next); err != nil {
-		r.poisoned = true
+		if errors.Is(err, ErrCAS) {
+			// The row matched no workflow after it was read in this transaction.
+			r.poisoned = true
+		}
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		r.poisoned = true
 		return fmt.Errorf("%w: commit protected clock high-water update: %v", ErrOwnerStore, err)
 	}
+	committed = true
 	if err := syncSQLiteDirectory(r.path); err != nil {
 		r.poisoned = true
 		return fmt.Errorf("%w: sync protected root clock high-water: %v", ErrOwnerStore, err)
 	}
 	return nil
+}
+
+// injectClockPersistFaultLocked runs the test seam for one pre-commit step. It
+// returns nil in production because clockPersistFault is never set there.
+func (r *ProtectedTrustedRoot) injectClockPersistFaultLocked(stage string) error {
+	if r.clockPersistFault == nil {
+		return nil
+	}
+	return r.clockPersistFault(stage)
 }
 
 func (r *ProtectedTrustedRoot) verifyRootPathLocked() error {
