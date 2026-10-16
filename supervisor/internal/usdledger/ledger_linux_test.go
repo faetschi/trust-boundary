@@ -35,12 +35,31 @@ func must(t *testing.T, err error) {
 	}
 }
 
+// testConfig may create its ledger, so tests that start from an empty path use it
+// as-is. Tests that check the default refusal build their own Config.
 func testConfig() Config {
-	return Config{LedgerID: "research-test", CapMicroUSD: testCap, MinPerUnitWorstCaseMicroUSD: testMin}
+	return Config{LedgerID: "research-test", CapMicroUSD: testCap, MinPerUnitWorstCaseMicroUSD: testMin, AllowGenesis: true}
 }
 
 func helperConfig() Config {
-	return Config{LedgerID: "research-test", CapMicroUSD: helperCap, MinPerUnitWorstCaseMicroUSD: helperMin}
+	return Config{LedgerID: "research-test", CapMicroUSD: helperCap, MinPerUnitWorstCaseMicroUSD: helperMin, AllowGenesis: true}
+}
+
+// withAfterFlockHook installs a test seam that runs after the ledger lock is taken.
+func withAfterFlockHook(t *testing.T, hook func(path string)) {
+	t.Helper()
+	prev := afterFlockHook
+	afterFlockHook = hook
+	t.Cleanup(func() { afterFlockHook = prev })
+}
+
+// withSyncHook makes the next record fsync use hook. The hook runs after the
+// record bytes are written, which is the "landed but not durable" window.
+func withSyncHook(t *testing.T, hook func(*os.File) error) {
+	t.Helper()
+	prev := syncRecord
+	syncRecord = hook
+	t.Cleanup(func() { syncRecord = prev })
 }
 
 func openTest(t *testing.T, path string, cfg Config) *Ledger {
@@ -286,8 +305,8 @@ func TestResearchAndEngineeringLedgersAreIsolated(t *testing.T) {
 	dir := t.TempDir()
 	researchPath := filepath.Join(dir, "research.jsonl")
 	engineeringPath := filepath.Join(dir, "engineering.jsonl")
-	researchCfg := Config{LedgerID: "research-openrouter-deepseek-v4.1-flash", CapMicroUSD: 5_000_000, MinPerUnitWorstCaseMicroUSD: 2_583}
-	engineeringCfg := Config{LedgerID: "engineering-opencode-go", CapMicroUSD: 1_000_000, MinPerUnitWorstCaseMicroUSD: 1_000}
+	researchCfg := Config{LedgerID: "research-openrouter-deepseek-v4.1-flash", CapMicroUSD: 5_000_000, MinPerUnitWorstCaseMicroUSD: 2_583, AllowGenesis: true}
+	engineeringCfg := Config{LedgerID: "engineering-opencode-go", CapMicroUSD: 1_000_000, MinPerUnitWorstCaseMicroUSD: 1_000, AllowGenesis: true}
 	research := openTest(t, researchPath, researchCfg)
 	engineering := openTest(t, engineeringPath, engineeringCfg)
 
@@ -446,6 +465,68 @@ func TestAnchoredOpenRefusesDeletedLedgerInsteadOfResetting(t *testing.T) {
 	}
 }
 
+func TestMissingLedgerIsRefusedByDefault(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	cfg := testConfig()
+	cfg.AllowGenesis = false
+	if _, err := Open(path, cfg); !errors.Is(err, ErrMissingLedger) {
+		t.Fatalf("absent ledger without AllowGenesis: %v", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("refused Open created a ledger file (stat: %v)", err)
+	}
+}
+
+func TestAllowGenesisCreatesFreshLedger(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	l := openTest(t, path, testConfig())
+	wantTotals(t, snapshotOf(t, l), 0, 0, 0)
+	if n := len(lineList(readLedger(t, path))); n != 1 {
+		t.Fatalf("genesis-only file has %d lines, want 1", n)
+	}
+}
+
+func TestExpectedHeadRefusesMissingLedgerEvenWithAllowGenesis(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	anchored := testConfig()
+	anchored.ExpectedHeadSHA256 = zeroHash
+	if _, err := Open(path, anchored); !errors.Is(err, ErrHeadMismatch) {
+		t.Fatalf("anchored absent ledger with AllowGenesis: %v", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("refused anchored open created a ledger file (stat: %v)", err)
+	}
+}
+
+// A file renamed into the path after this Open took its lock belongs to another
+// inode. Writing through the locked descriptor would never reach the file that
+// the path names, so Open must refuse.
+func TestLedgerReplacedAfterLockIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "research.jsonl")
+	l := openTest(t, path, testConfig())
+	must(t, l.Reserve("a", 100))
+	must(t, l.Close())
+
+	impostor := filepath.Join(dir, "impostor.jsonl")
+	impostorBytes := readLedger(t, path)
+	must(t, os.WriteFile(impostor, impostorBytes, 0o600))
+	withAfterFlockHook(t, func(p string) {
+		if err := os.Rename(impostor, p); err != nil {
+			t.Fatalf("rename impostor into place: %v", err)
+		}
+	})
+	if _, err := Open(path, testConfig()); !errors.Is(err, ErrLedgerReplaced) {
+		t.Fatalf("open after path was replaced: %v", err)
+	}
+	// The refused Open released its lock, and the renamed-in file was not written.
+	if !bytes.Equal(impostorBytes, readLedger(t, path)) {
+		t.Fatal("refused Open changed the renamed-in file")
+	}
+	afterFlockHook = nil
+	wantTotals(t, snapshotOf(t, openTest(t, path, testConfig())), 0, 100, 0)
+}
+
 func TestReplayRejectsInvariantViolationsWithValidChain(t *testing.T) {
 	genesis := record{Kind: genesisKind, Ledger: "research-test", Cap: testCap}
 	cases := []struct {
@@ -464,6 +545,12 @@ func TestReplayRejectsInvariantViolationsWithValidChain(t *testing.T) {
 		{"uncertain carrying an amount", []record{genesis, {Kind: reserveKind, Unit: "a", Micro: 1}, {Kind: uncertainKind, Unit: "a", Micro: 1}}},
 		{"missing genesis", []record{{Kind: reserveKind, Unit: "a", Micro: 1}}},
 		{"second genesis", []record{genesis, genesis}},
+		{"overage not above reservation", []record{genesis, {Kind: reserveKind, Unit: "a", Micro: 100}, {Kind: overageKind, Unit: "a", Micro: 100}}},
+		{"overage of unknown unit", []record{genesis, {Kind: overageKind, Unit: "a", Micro: 1}}},
+		{"overage carrying genesis fields", []record{genesis, {Kind: reserveKind, Unit: "a", Micro: 100}, {Kind: overageKind, Unit: "a", Micro: 150, Cap: 5}}},
+		{"second overage", []record{genesis, {Kind: reserveKind, Unit: "a", Micro: 100}, {Kind: overageKind, Unit: "a", Micro: 150}, {Kind: overageKind, Unit: "a", Micro: 200}}},
+		{"reserve after overage", []record{genesis, {Kind: reserveKind, Unit: "a", Micro: 100}, {Kind: overageKind, Unit: "a", Micro: 150}, {Kind: reserveKind, Unit: "b", Micro: 1}}},
+		{"settle above reservation written as settle", []record{genesis, {Kind: reserveKind, Unit: "a", Micro: 100}, {Kind: settleKind, Unit: "a", Micro: 150}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -518,6 +605,155 @@ func TestWriteFailurePoisonsLedgerWithoutApplyingState(t *testing.T) {
 	wantTotals(t, snapshotOf(t, openTest(t, path, testConfig())), 0, 100, 0)
 }
 
+func TestSyncFailureLandsRecordPoisonsHandleAndReopenVerifies(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	l := openTest(t, path, testConfig())
+	must(t, l.Reserve("a", 100))
+	withSyncHook(t, func(*os.File) error { return errors.New("injected sync failure") })
+	if err := l.Reserve("b", 100); !errors.Is(err, ErrPoisoned) || !strings.Contains(err.Error(), "injected sync failure") {
+		t.Fatalf("reserve with failing sync: %v", err)
+	}
+	if err := l.Settle("a", 50); !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("settle after sync failure: %v", err)
+	}
+	if _, err := l.Snapshot(); !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("snapshot after sync failure: %v", err)
+	}
+	must(t, l.Close())
+	// The record for "b" was written before its fsync failed, so the file holds it.
+	// A fresh handle verifies the chain and counts both reservations as uncertain.
+	s := snapshotOf(t, openTest(t, path, testConfig()))
+	wantTotals(t, s, 0, 200, 0)
+	if s.Records != 3 {
+		t.Fatalf("records after landed write = %d, want genesis plus two reserves", s.Records)
+	}
+}
+
+func TestFailedGenesisSyncRemovesNewLedgerFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	withSyncHook(t, func(*os.File) error { return errors.New("injected sync failure") })
+	if _, err := Open(path, testConfig()); !errors.Is(err, ErrPoisoned) {
+		t.Fatalf("create with failing genesis sync: %v", err)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("failed create left a ledger file behind (stat: %v)", err)
+	}
+}
+
+func TestOverageIsRecordedAboveCapAndBlocksFurtherReserves(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	l := openTest(t, path, testConfig())
+	must(t, l.Reserve("a", 400))
+	must(t, l.Reserve("b", 600))
+	if err := l.SettleOverage("a", 550); err != nil {
+		t.Fatalf("overage settle: %v", err)
+	}
+	s := snapshotOf(t, l)
+	// The actual 550 is committed in full, so committed is 1150 against a cap of 1000.
+	wantTotals(t, s, 600, 0, 550)
+	if s.RemainingMicroUSD != -150 || !s.StopRule || !s.Overspent {
+		t.Fatalf("over-cap snapshot = remaining %d stop %v overspent %v", s.RemainingMicroUSD, s.StopRule, s.Overspent)
+	}
+	// Releasing the other reservation leaves headroom, but the ledger stays fail-closed.
+	must(t, l.Settle("b", 0))
+	wantTotals(t, snapshotOf(t, l), 0, 0, 550)
+	if err := l.Reserve("c", 1); !errors.Is(err, ErrOverCap) {
+		t.Fatalf("reserve after overage with headroom: %v", err)
+	}
+	if err := l.Reserve("c", 450); !errors.Is(err, ErrOverCap) {
+		t.Fatalf("reserve filling remaining headroom after overage: %v", err)
+	}
+	wantTotals(t, snapshotOf(t, l), 0, 0, 550)
+}
+
+func TestOverageRecordsActualAmountNotReservation(t *testing.T) {
+	l := openTest(t, filepath.Join(t.TempDir(), "research.jsonl"), testConfig())
+	must(t, l.Reserve("a", 300))
+	must(t, l.MarkUncertain("a"))
+	if err := l.SettleOverage("a", 450); err != nil {
+		t.Fatalf("overage settle of uncertain unit: %v", err)
+	}
+	wantTotals(t, snapshotOf(t, l), 0, 0, 450)
+}
+
+func TestSettleOverageRefusesAmountsNotAboveReservation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	l := openTest(t, path, testConfig())
+	must(t, l.Reserve("a", 500))
+	before := readLedger(t, path)
+	for _, tc := range []struct {
+		name   string
+		unit   string
+		actual int64
+		want   error
+	}{
+		{"equal to reservation", "a", 500, ErrNotOverage},
+		{"below reservation", "a", 100, ErrNotOverage},
+		{"negative", "a", -1, ErrInvalidAmount},
+		{"unknown unit", "missing", 1, ErrUnknownUnit},
+	} {
+		if err := l.SettleOverage(tc.unit, tc.actual); !errors.Is(err, tc.want) {
+			t.Fatalf("%s: got %v, want %v", tc.name, err, tc.want)
+		}
+	}
+	if !bytes.Equal(before, readLedger(t, path)) {
+		t.Fatal("refused overage settle changed the ledger")
+	}
+	if snapshotOf(t, l).Overspent {
+		t.Fatal("refused overage settle set Overspent")
+	}
+	// Settle keeps its old contract: an amount above the reservation is refused.
+	if err := l.Settle("a", 501); !errors.Is(err, ErrOverSettle) {
+		t.Fatalf("Settle above reservation: %v", err)
+	}
+	wantTotals(t, snapshotOf(t, l), 500, 0, 0)
+}
+
+func TestSettleOverageIsIdempotentForSameAmountOnly(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	l := openTest(t, path, testConfig())
+	must(t, l.Reserve("a", 100))
+	must(t, l.SettleOverage("a", 150))
+	before := readLedger(t, path)
+	must(t, l.SettleOverage("a", 150))
+	if !bytes.Equal(before, readLedger(t, path)) {
+		t.Fatal("replayed overage settle appended a record")
+	}
+	if err := l.SettleOverage("a", 151); !errors.Is(err, ErrSettleConflict) {
+		t.Fatalf("different overage after settle: %v", err)
+	}
+	if err := l.Settle("a", 100); !errors.Is(err, ErrSettleConflict) {
+		t.Fatalf("different plain settle after overage: %v", err)
+	}
+	must(t, l.Settle("a", 150))
+	wantTotals(t, snapshotOf(t, l), 0, 0, 150)
+}
+
+func TestSettleOverageOverflowIsRefusedWithoutChangingLedger(t *testing.T) {
+	cfg := Config{LedgerID: "research-test", CapMicroUSD: math.MaxInt64, MinPerUnitWorstCaseMicroUSD: testMin, AllowGenesis: true}
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	l := openTest(t, path, cfg)
+	must(t, l.Reserve("x", 10))
+	must(t, l.Reserve("y", 10))
+	before := readLedger(t, path)
+	if err := l.SettleOverage("x", math.MaxInt64); !errors.Is(err, ErrInvalidAmount) {
+		t.Fatalf("overage that overflows committed: %v", err)
+	}
+	if !bytes.Equal(before, readLedger(t, path)) {
+		t.Fatal("overflowing overage changed the ledger")
+	}
+	wantTotals(t, snapshotOf(t, l), 20, 0, 0)
+
+	// The largest committed total that fits exactly is accepted.
+	edge := openTest(t, filepath.Join(t.TempDir(), "edge.jsonl"), cfg)
+	must(t, edge.Reserve("solo", 1))
+	must(t, edge.SettleOverage("solo", math.MaxInt64))
+	wantTotals(t, snapshotOf(t, edge), 0, 0, math.MaxInt64)
+	if err := edge.Reserve("more", 1); !errors.Is(err, ErrOverCap) {
+		t.Fatalf("reserve at MaxInt64 committed: %v", err)
+	}
+}
+
 func TestCloseBlocksFurtherOperations(t *testing.T) {
 	l, err := Open(filepath.Join(t.TempDir(), "research.jsonl"), testConfig())
 	must(t, err)
@@ -532,7 +768,7 @@ func TestCloseBlocksFurtherOperations(t *testing.T) {
 }
 
 func TestStopRuleTripsBelowPerUnitMinimum(t *testing.T) {
-	cfg := Config{LedgerID: "research-test", CapMicroUSD: 1000, MinPerUnitWorstCaseMicroUSD: 300}
+	cfg := Config{LedgerID: "research-test", CapMicroUSD: 1000, MinPerUnitWorstCaseMicroUSD: 300, AllowGenesis: true}
 	l := openTest(t, filepath.Join(t.TempDir(), "research.jsonl"), cfg)
 	must(t, l.Reserve("a", 700))
 	if snapshotOf(t, l).StopRule {
@@ -652,6 +888,26 @@ func TestFreshProcessKillAfterMixedOperationsRecoversEachState(t *testing.T) {
 	wantTotals(t, snapshotOf(t, openTest(t, path, helperConfig())), 0, 0, 620)
 }
 
+func TestFreshProcessOverageSurvivesRestartAndBlocksReserves(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	out, err := runFreshProcess(t, "writer-overage-kill", path)
+	requireSIGKILL(t, "writer-overage-kill", out, err)
+	if out, err := runFreshProcess(t, "verify-overage-kill", path); err != nil {
+		t.Fatalf("verify-overage-kill: %v\n%s", err, out)
+	}
+	// The overage is booked at its actual 450, not at the 300 reservation. The
+	// verify child settled the other unit to zero, so nothing else is counted.
+	l := openTest(t, path, helperConfig())
+	s := snapshotOf(t, l)
+	wantTotals(t, s, 0, 0, 450)
+	if !s.Overspent {
+		t.Fatal("overage did not survive restart")
+	}
+	if err := l.Reserve("parent", 1); !errors.Is(err, ErrOverCap) {
+		t.Fatalf("reserve after restart with overage: %v", err)
+	}
+}
+
 // killSelf terminates the process without deferred cleanup, as a crash would.
 // The parent requires death by SIGKILL, so the os.Exit fallback is a failure.
 func killSelf() {
@@ -718,6 +974,35 @@ func TestUSDLedgerHelper(t *testing.T) {
 		}
 		must(t, l.Settle("mix-b", 500))
 		wantTotals(t, snapshotOf(t, l), 0, 0, 620)
+	case "writer-overage-kill":
+		l, err := Open(path, helperConfig())
+		must(t, err)
+		must(t, l.Reserve("ov-a", 300))
+		must(t, l.Reserve("ov-b", 600))
+		must(t, l.SettleOverage("ov-a", 450))
+		killSelf()
+	case "verify-overage-kill":
+		l := openTest(t, path, helperConfig())
+		wantTotals(t, snapshotOf(t, l), 0, 600, 450)
+		if !snapshotOf(t, l).Overspent {
+			t.Fatal("overage not recovered")
+		}
+		if err := l.Reserve("next", 1); !errors.Is(err, ErrOverCap) {
+			t.Fatalf("reserve after recovered overage: %v", err)
+		}
+		before := readLedger(t, path)
+		must(t, l.SettleOverage("ov-a", 450))
+		if !bytes.Equal(before, readLedger(t, path)) {
+			t.Fatal("replayed overage settle changed the ledger")
+		}
+		// The chain verifies against an anchor taken from this process's view.
+		head := snapshotOf(t, l).HeadSHA256
+		must(t, l.Close())
+		anchored := helperConfig()
+		anchored.ExpectedHeadSHA256 = head
+		reopened := openTest(t, path, anchored)
+		must(t, reopened.Settle("ov-b", 0))
+		wantTotals(t, snapshotOf(t, reopened), 0, 0, 450)
 	default:
 		t.Fatalf("unknown helper mode %q", mode)
 	}

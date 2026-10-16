@@ -5,24 +5,42 @@ package usdledger
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"syscall"
 )
 
-// openLedgerFile creates path exclusively when it is absent and otherwise opens
-// the existing file. Either way the returned handle holds an exclusive
-// nonblocking flock until it is closed. O_NOFOLLOW makes a symlink at path fail
-// closed.
-func openLedgerFile(path string) (*os.File, bool, error) {
+// afterFlockHook is a test seam that runs after the lock is taken and before
+// the path is compared with the locked file. It is nil outside tests.
+var afterFlockHook func(path string)
+
+// openLedgerFile opens the ledger at path with an exclusive nonblocking flock held
+// until the handle is closed. When create is true and path is absent, it creates
+// the file exclusively and reports created. When create is false and path is
+// absent, it returns ErrMissingLedger and creates nothing. O_NOFOLLOW makes a
+// symlink at path fail closed. After the lock is taken, path must still name the
+// locked file. A file renamed into place while this call waited is refused.
+func openLedgerFile(path string, create bool) (*os.File, bool, error) {
 	flags := os.O_RDWR | os.O_APPEND | syscall.O_CLOEXEC | syscall.O_NOFOLLOW
-	file, err := os.OpenFile(path, flags|os.O_CREATE|os.O_EXCL, 0o600)
-	created := err == nil
-	if errors.Is(err, os.ErrExist) {
+	var file *os.File
+	var err error
+	created := false
+	if create {
+		file, err = os.OpenFile(path, flags|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			created = true
+		} else if errors.Is(err, fs.ErrExist) {
+			file, err = os.OpenFile(path, flags, 0)
+		}
+	} else {
 		file, err = os.OpenFile(path, flags, 0)
 	}
 	if err != nil {
-		if errors.Is(err, syscall.ELOOP) {
+		switch {
+		case errors.Is(err, syscall.ELOOP):
 			return nil, false, ErrInvalidLedgerFile
+		case !create && errors.Is(err, fs.ErrNotExist):
+			return nil, false, ErrMissingLedger
 		}
 		return nil, false, err
 	}
@@ -33,6 +51,9 @@ func openLedgerFile(path string) (*os.File, bool, error) {
 		}
 		return nil, false, fmt.Errorf("flock ledger: %w", err)
 	}
+	if afterFlockHook != nil {
+		afterFlockHook(path)
+	}
 	info, err := file.Stat()
 	if err != nil {
 		_ = file.Close()
@@ -41,6 +62,20 @@ func openLedgerFile(path string) (*os.File, bool, error) {
 	if !info.Mode().IsRegular() {
 		_ = file.Close()
 		return nil, false, ErrInvalidLedgerFile
+	}
+	// The lock belongs to the inode we opened. Writing through it is only correct
+	// while path still names that inode. Lstat does not follow a symlink.
+	pathInfo, err := os.Lstat(path)
+	if err != nil {
+		_ = file.Close()
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, false, ErrLedgerReplaced
+		}
+		return nil, false, err
+	}
+	if !os.SameFile(info, pathInfo) {
+		_ = file.Close()
+		return nil, false, ErrLedgerReplaced
 	}
 	return file, created, nil
 }
