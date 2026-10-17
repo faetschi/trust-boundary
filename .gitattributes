@@ -5,3 +5,4 @@ infra/repro/launch-reviewed-hyperv-inventory-elevated.ps1 text eol=lf
 infra/repro/probe-existing-tbound-guest.ps1 text eol=lf
 infra/repro/run-reviewed-hyperv-inventory-worker.ps1 text eol=lf
 infra/guest/systemd/* text eol=lf
+corpus/** text eol=lf
