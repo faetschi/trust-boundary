@@ -599,7 +599,7 @@ func NewFinalizer(options FinalizerOptions) (*Finalizer, error) {
 		options.Journal == nil || options.Ledger == nil || !options.Ledger.uses(options.Journal) ||
 		options.OpenPublication == nil || options.OpenRecovery == nil || options.Trust == nil ||
 		options.Workspace.Limits.MaxObjects <= 0 || options.Workspace.MetadataPolicyDigest == "" ||
-		!options.Workspace.XattrVisibility.Complete || options.Workspace.XattrVisibility.ProfileDigest == "" {
+		options.Workspace.XattrVisibility.Authority != workspace.XattrAuthorityBoundedNoHiddenTrusted || options.Workspace.XattrVisibility.ProfileDigest == "" {
 		return nil, ErrFinalizerConfig
 	}
 	commit, err := gate.NewInternalCommitGate(options.Journal)
@@ -922,7 +922,7 @@ func openGenerationReadable(generation *sessionrepo.Generation) (*os.File, error
 
 func validWorkspaceBinding(options workspace.Options) bool {
 	return options.Limits.MaxObjects > 0 && options.Limits.MaxDepth > 0 && options.Limits.MaxFileBytes > 0 &&
-		options.Limits.MaxTotalBytes > 0 && options.MetadataPolicyDigest != "" && options.XattrVisibility.Complete &&
+		options.Limits.MaxTotalBytes > 0 && options.MetadataPolicyDigest != "" && options.XattrVisibility.Authority == workspace.XattrAuthorityBoundedNoHiddenTrusted &&
 		options.XattrVisibility.ProfileDigest != ""
 }
 

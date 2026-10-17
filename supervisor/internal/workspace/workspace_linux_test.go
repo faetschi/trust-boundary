@@ -20,7 +20,7 @@ func testOptions() Options {
 		QuiescentRoot:        true,
 		XattrVisibility: XattrVisibilityAttestation{
 			ProfileDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-			Complete:      true,
+			Authority:     XattrAuthorityBoundedNoHiddenTrusted,
 		},
 	}
 }
@@ -211,6 +211,37 @@ func TestImportFailsClosedWithoutXattrVisibilityAttestation(t *testing.T) {
 	_, err := Import(source, destination, options)
 	if !errors.Is(err, ErrXattrVisibilityUnproven) {
 		t.Fatalf("Import error = %v, want ErrXattrVisibilityUnproven", err)
+	}
+}
+
+// The only admitted authority is the BOUNDED root-attested one; it is not a
+// complete-enumeration claim. Empty, retired and unknown labels are refused by
+// both Import and Scan.
+func TestAdmissionAcceptsExactlyTheBoundedXattrAuthority(t *testing.T) {
+	if string(XattrAuthorityBoundedNoHiddenTrusted) != "root-attested-bounded-no-hidden-trusted/v1" {
+		t.Fatalf("bounded authority label drifted: %q", XattrAuthorityBoundedNoHiddenTrusted)
+	}
+	for name, authority := range map[string]XattrVisibilityAuthority{
+		"empty":                   "",
+		"retired complete label":  "root-profile-measured-complete-enumeration/v1",
+		"bounded next version":    "root-attested-bounded-no-hidden-trusted/v2",
+		"bounded with whitespace": "root-attested-bounded-no-hidden-trusted/v1 ",
+		"upper case":              "ROOT-ATTESTED-BOUNDED-NO-HIDDEN-TRUSTED/V1",
+		"bare complete":           "complete",
+	} {
+		source, destination, _ := newRoots(t)
+		options := testOptions()
+		options.XattrVisibility.Authority = authority
+		if _, err := Import(source, destination, options); !errors.Is(err, ErrXattrVisibilityUnproven) {
+			t.Fatalf("%s: Import error = %v, want ErrXattrVisibilityUnproven", name, err)
+		}
+		if _, err := Scan(source, options); !errors.Is(err, ErrXattrVisibilityUnproven) {
+			t.Fatalf("%s: Scan error = %v, want ErrXattrVisibilityUnproven", name, err)
+		}
+	}
+	source, destination, _ := newRoots(t)
+	if _, err := Import(source, destination, testOptions()); err != nil {
+		t.Fatalf("bounded authority was refused: %v", err)
 	}
 }
 

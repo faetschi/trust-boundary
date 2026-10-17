@@ -72,7 +72,7 @@ func TestDurableDecisionPathEndToEnd(t *testing.T) {
 	options := sessionrepo.Options{
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
 		Limits:             workspace.DefaultLimits(),
-		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:            journal,
 		AuthorizeOperation: authority.authorize,
 		VerifyDecision:     authority.verifyDecision,
@@ -422,7 +422,7 @@ func TestDurableEditDecisionPath(t *testing.T) {
 	options := sessionrepo.Options{
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
 		Limits:             workspace.DefaultLimits(),
-		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:            journal,
 		AuthorizeOperation: authority.authorize,
 		VerifyDecision:     authority.verifyDecision,
@@ -515,7 +515,7 @@ func TestDurableExecutorRejectsUnsupportedTool(t *testing.T) {
 	options := sessionrepo.Options{
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
 		Limits:             workspace.DefaultLimits(),
-		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:            journal,
 		AuthorizeOperation: authority.authorize,
 		VerifyDecision:     authority.verifyDecision,
@@ -757,7 +757,7 @@ func durableFixtureSnapshot(t *testing.T, taskContent, generation string) worksp
 	snapshot, err := workspace.Scan(root, workspace.Options{
 		Generation: generation, MetadataPolicyDigest: durableMetadataDigest,
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 	})
 	if err != nil {
 		t.Fatalf("scan expected %s fixture: %v", generation, err)

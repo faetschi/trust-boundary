@@ -159,6 +159,7 @@ type governedRecoveryRuntimeBinding struct {
 	PrivateGitIdentityDigest string           `json:"private_git_identity_digest"`
 	Limits                   workspace.Limits `json:"limits"`
 	XattrProfileDigest       string           `json:"xattr_profile_digest"`
+	XattrAuthority           string           `json:"xattr_authority"`
 	BashOutputPaths          []string         `json:"bash_output_paths"`
 }
 
@@ -1190,6 +1191,7 @@ func governedRecoveryRuntimeDigest(request governedRecoveryRequest) (string, err
 		D06ProvenanceDigest:      bareWorkflowDigest(request.GitPin.ProvenanceDigest),
 		PrivateGitIdentityDigest: bareWorkflowDigest(request.GitPin.RepositoryIdentityDigest),
 		Limits:                   request.StoreOptions.Limits, XattrProfileDigest: request.StoreOptions.XattrVisibility.ProfileDigest,
+		XattrAuthority:  string(request.StoreOptions.XattrVisibility.Authority),
 		BashOutputPaths: cloneDurableOutputScopePaths(request.BashOutputPaths),
 	}
 	encoded, err := json.Marshal(binding)

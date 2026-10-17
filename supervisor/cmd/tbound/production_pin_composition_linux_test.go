@@ -132,7 +132,7 @@ func runProductionPinFixtureHelper(t *testing.T) {
 	catalogJournal := openProductionPinFixtureJournal(t, catalogJournalPath)
 
 	storePolicyDigest, metadataPolicyDigest := governedReplayStorePolicy, governedReplayMetaPolicy
-	xattr := workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Complete: true}
+	xattr := workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}
 	policy, err := productionGatePolicy()
 	if err != nil {
 		t.Fatal(err)

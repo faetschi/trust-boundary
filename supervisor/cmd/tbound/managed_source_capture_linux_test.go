@@ -256,7 +256,7 @@ func newManagedSourceSeedFixture(t *testing.T) (*sessionrepo.Store, *audit.Journ
 	store, err := sessionrepo.Create(durableOpenRoot(t, storePath), sessionrepo.Options{
 		PolicyDigest: managedRootTestPolicy, MetadataPolicyDigest: managedRootTestMetadata,
 		Limits:          workspace.DefaultLimits(),
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:         journal, AuthorizeOperation: func(sessionrepo.OperationRequest) error { return nil },
 		VerifyDecision:   func(delta.PolicyDecision, delta.TransitionBinding) error { return nil },
 		VerifySettlement: func(sessionrepo.CommandSettlement, string, string) error { return nil },

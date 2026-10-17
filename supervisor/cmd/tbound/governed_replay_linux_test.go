@@ -97,7 +97,7 @@ func newGovernedReplayFixtureWithPolicy(t *testing.T, turns []providerbridge.Dev
 		t.Fatal(err)
 	}
 	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(),
-		workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Complete: true}, nil)
+		workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}, nil)
 	_ = storeRoot.Close()
 	if err != nil {
 		t.Fatal(err)

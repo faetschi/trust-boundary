@@ -134,7 +134,7 @@ func TestRealProviderDurableLinux(t *testing.T) {
 	options := sessionrepo.Options{
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
 		Limits:             workspace.DefaultLimits(),
-		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:            journal,
 		AuthorizeOperation: authority.authorize,
 		VerifyDecision:     authority.verifyDecision,
@@ -374,7 +374,7 @@ func TestSyntheticDurableEvidenceAssertionsLinux(t *testing.T) {
 	options := sessionrepo.Options{
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
 		Limits:             workspace.DefaultLimits(),
-		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:            journal,
 		AuthorizeOperation: authority.authorize,
 		VerifyDecision:     authority.verifyDecision,
@@ -579,7 +579,7 @@ func realProviderDurableSnapshot(t *testing.T, generation string, includeWrite b
 	snapshot, err := workspace.Scan(root, workspace.Options{
 		Generation: generation, MetadataPolicyDigest: durableMetadataDigest,
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 	})
 	if err != nil {
 		t.Fatalf("scan expected %s generation: %v", generation, err)

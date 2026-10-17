@@ -22,6 +22,11 @@ var ErrServiceProviderCredentials = errors.New("service provider credential file
 // in one code-defined file, piruntime.D09ManagedPiProviderCredentialPath:
 // a regular file (never a symlink), owned by the service uid, mode 0400 (the
 // existing loader also admits 0600), at most 4096 bytes, one printable token.
+// Because the path is one of openrouter.ServiceCredentialPaths(), the loader also
+// walks every ancestor from "/" with openat(O_PATH|O_NOFOLLOW|O_DIRECTORY): each
+// must be a real directory owned by root and not group- or other-writable, and
+// the file is opened relative to the last verified directory, so no intermediate
+// symlink is ever followed.
 // /etc is read-only but readable under ProtectSystem=strict, so no unit change
 // is needed. The lookup exposes only the _FILE key, so neither
 // TBOUND_OPENCODE_GO_API_KEY nor a caller-chosen path is ever consulted.

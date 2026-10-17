@@ -92,7 +92,7 @@ func newFixture(t *testing.T, liveFiles, baseFiles, middleFiles, finalFiles map[
 	metadata := testDigest("metadata")
 	wsOptions := workspace.Options{Generation: "unused", MetadataPolicyDigest: metadata,
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: testDigest("xattr-profile"), Complete: true}}
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: testDigest("xattr-profile"), Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}}
 	live, err := os.Open(livePath)
 	if err != nil {
 		t.Fatal(err)

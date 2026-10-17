@@ -27,7 +27,7 @@ var (
 	ErrInvalidOptions           = errors.New("invalid workspace options")
 	ErrUntrustedRoot            = errors.New("workspace root is not supervisor-owned and private")
 	ErrNotQuiescent             = errors.New("workspace root was not attested quiescent")
-	ErrXattrVisibilityUnproven  = errors.New("complete xattr visibility is not attested")
+	ErrXattrVisibilityUnproven  = errors.New("bounded xattr visibility authority is not attested")
 	ErrUnsupportedMetadata      = errors.New("workspace contains unsupported metadata")
 	ErrSymlink                  = errors.New("workspace contains a symbolic link")
 	ErrHardLink                 = errors.New("workspace contains a linked regular file")
@@ -67,13 +67,29 @@ func DefaultLimits() Limits {
 	}
 }
 
-// XattrVisibilityAttestation must come from the trusted host-profile loader
-// after it establishes complete enumeration for the registered filesystem and
-// privilege profile. listxattr(2) may omit names the caller cannot access;
-// success from listxattr alone is not a complete visibility proof.
+// XattrVisibilityAuthority names the basis on which a host attests the xattr
+// visibility of the registered source. It is a closed set: admission accepts
+// exactly XattrAuthorityBoundedNoHiddenTrusted and refuses every other value,
+// including the empty one.
+type XattrVisibilityAuthority string
+
+// XattrAuthorityBoundedNoHiddenTrusted is the only accepted authority. It is a
+// BOUNDED claim, not complete enumeration: under the trusted host-administrator
+// assumption, root attests (through the separately signed calibration) that the
+// one measured filesystem type, mount options, scanner uid/gid and access
+// profile hold no hidden trusted.* attributes. The unprivileged scan itself
+// cannot list trusted.* names, so its silence is not evidence of absence; the
+// claim covers nothing beyond the measured profile.
+const XattrAuthorityBoundedNoHiddenTrusted XattrVisibilityAuthority = "root-attested-bounded-no-hidden-trusted/v1"
+
+// XattrVisibilityAttestation must come from the trusted host-profile loader.
+// It carries the typed authority and the digest of the profile it was issued
+// for. It is NOT an attestation of complete xattr enumeration: listxattr(2) may
+// omit names the caller cannot access, and success from listxattr alone proves
+// nothing. Downstream receipts that record this attestation record Authority.
 type XattrVisibilityAttestation struct {
 	ProfileDigest string
-	Complete      bool
+	Authority     XattrVisibilityAuthority
 }
 
 // ReservedMetadataFilter selects the narrow reserved-name policy used by an
@@ -226,7 +242,7 @@ func validateOptions(options Options) error {
 	if !options.QuiescentRoot {
 		return ErrNotQuiescent
 	}
-	if !options.XattrVisibility.Complete || !validSHA256(options.XattrVisibility.ProfileDigest) {
+	if options.XattrVisibility.Authority != XattrAuthorityBoundedNoHiddenTrusted || !validSHA256(options.XattrVisibility.ProfileDigest) {
 		return ErrXattrVisibilityUnproven
 	}
 	limits := options.Limits

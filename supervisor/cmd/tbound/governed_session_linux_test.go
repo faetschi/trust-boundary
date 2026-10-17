@@ -90,7 +90,7 @@ func TestSyntheticProviderAuditBindsRealE05StoreAndLeaseOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(), workspace.XattrVisibilityAttestation{ProfileDigest: xattrDigest, Complete: true}, nil)
+	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(), workspace.XattrVisibilityAttestation{ProfileDigest: xattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}, nil)
 	_ = storeRoot.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -322,7 +322,7 @@ func TestSyntheticProviderAuditBindsRealE05StoreAndLeaseOrigin(t *testing.T) {
 	}
 	workspaceOptions := workspace.Options{Generation: g0.ID(), MetadataPolicyDigest: metadataPolicyDigest,
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: xattrDigest, Complete: true}}
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: xattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}}
 	// Seed one known, already-resolved root owner so the subsequent managed lease
 	// and successful publication exercise a strictly increasing epoch. The
 	// negative-origin assertions below compare against this exact prior prefix.
@@ -783,7 +783,7 @@ func TestSyntheticProviderConversationAuditDrivesActualDurableE05Executor(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(), workspace.XattrVisibilityAttestation{ProfileDigest: xattrDigest, Complete: true}, nil)
+	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(), workspace.XattrVisibilityAttestation{ProfileDigest: xattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}, nil)
 	_ = storeRoot.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -1013,7 +1013,7 @@ func TestSessionAuthorityRefusesStoreBuiltWithForeignCallbacks(t *testing.T) {
 		PolicyDigest:         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		MetadataPolicyDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Limits:               workspace.DefaultLimits(),
-		XattrVisibility:      workspace.XattrVisibilityAttestation{ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Complete: true},
+		XattrVisibility:      workspace.XattrVisibilityAttestation{ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:              journal, AuthorizeOperation: func(sessionrepo.OperationRequest) error { return errors.New("foreign authorizer refuses") },
 		VerifyDecision: func(delta.PolicyDecision, delta.TransitionBinding) error {
 			return errors.New("foreign verifier refuses")

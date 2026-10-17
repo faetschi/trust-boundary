@@ -137,10 +137,15 @@ func TestRebindRequiresExplicitRecoveryActivationAndNeverDestroysRetainedGit(t *
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = journal.Close() })
+	// The recorded receipts carry the bounded authority label, not a completeness bit.
+	if provenance.XattrAuthority != workspace.XattrAuthorityBoundedNoHiddenTrusted ||
+		provenance.PrivateGit.XattrAuthority != privategit.XattrAuthorityBoundedNoHiddenTrusted {
+		t.Fatalf("recorded xattr authority = %q / %q, want the bounded authority", provenance.XattrAuthority, provenance.PrivateGit.XattrAuthority)
+	}
 	options := sessionrepo.Options{
 		PolicyDigest:         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		MetadataPolicyDigest: provenance.MetadataPolicyDigest, Limits: workspace.DefaultLimits(),
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: provenance.XattrProfileDigest, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: provenance.XattrProfileDigest, Authority: provenance.XattrAuthority},
 		Journal:         journal, AuthorizeOperation: func(sessionrepo.OperationRequest) error { return errors.New("fixture has no operation authority") },
 		VerifyDecision: func(delta.PolicyDecision, delta.TransitionBinding) error {
 			return errors.New("fixture has no decision authority")
@@ -372,7 +377,7 @@ func TestMeasuredDevelopmentRunnerUsesDurableDisposableCommandView(t *testing.T)
 	xattrDigest := "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 	options := sessionrepo.Options{
 		PolicyDigest: policyDigest, MetadataPolicyDigest: metadataDigest, Limits: workspace.DefaultLimits(),
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: xattrDigest, Complete: true}, Journal: journal,
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: xattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}, Journal: journal,
 		AuthorizeOperation: func(request sessionrepo.OperationRequest) error {
 			if request.Tool != "bash" || request.Operation.Kind != delta.OperationLease || request.Operation.LeaseID != leaseID ||
 				request.InputGeneration != "g0" || request.Decision.ID != "fixture-decision" || request.Decision.PolicyDigest != policyDigest {
@@ -505,7 +510,7 @@ func newSessionFixture(t *testing.T, withGit bool) *sessionFixture {
 	store, err := CreateStore(root, sessionrepo.Options{
 		PolicyDigest:         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		MetadataPolicyDigest: metadataDigest, Limits: workspace.DefaultLimits(),
-		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: xattrDigest, Complete: true},
+		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: xattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:            journal,
 		AuthorizeOperation: func(sessionrepo.OperationRequest) error { return errors.New("fixture has no operation authority") },
 		VerifyDecision: func(delta.PolicyDecision, delta.TransitionBinding) error {

@@ -103,7 +103,7 @@ func startNoChangeRun(t *testing.T, seed bool) *noChangeRun {
 		root:     workflow.RootIdentity{Device: lease.identity.Device, Inode: lease.identity.Inode},
 		baseline: baseline,
 		options: workspace.Options{MetadataPolicyDigest: managedRootTestMetadata, Limits: workspace.DefaultLimits(),
-			XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Complete: true}}}
+			XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}}}
 }
 
 func newNoChangeStore(t *testing.T, root string) *sessionrepo.Store {
@@ -120,7 +120,7 @@ func newNoChangeStore(t *testing.T, root string) *sessionrepo.Store {
 	store, err := sessionrepo.Create(durableOpenRoot(t, storePath), sessionrepo.Options{
 		PolicyDigest: managedRootTestPolicy, MetadataPolicyDigest: managedRootTestMetadata,
 		Limits:          workspace.DefaultLimits(),
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:         storeJournal, AuthorizeOperation: func(sessionrepo.OperationRequest) error { return nil },
 		VerifyDecision:   func(delta.PolicyDecision, delta.TransitionBinding) error { return nil },
 		VerifySettlement: func(sessionrepo.CommandSettlement, string, string) error { return nil },

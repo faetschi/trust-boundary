@@ -328,7 +328,7 @@ func TestGovernedWriteCrashWithholdsProviderResult(t *testing.T) {
 		t.Fatal(err)
 	}
 	actual, err := workspace.Scan(g1, workspace.Options{Generation: "g1", MetadataPolicyDigest: governedCrashMetadata, Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedCrashXattr, Complete: true}})
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedCrashXattr, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}})
 	g1.Close()
 	if err != nil || !reflect.DeepEqual(actual.Manifest, admission.Output) || actual.TreeDigest != admission.Candidate.OutputTreeDigest {
 		t.Fatalf("promoted candidate mismatch: %v", err)
@@ -429,7 +429,7 @@ func governedCrashChild(t *testing.T) {
 			verifySettlement = func(sessionrepo.CommandSettlement, string, string) error { return nil }
 		}
 		options := sessionrepo.Options{PolicyDigest: governedCrashPolicy, MetadataPolicyDigest: governedCrashMetadata, Limits: workspace.DefaultLimits(),
-			XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedCrashXattr, Complete: true}, Journal: journal,
+			XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedCrashXattr, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}, Journal: journal,
 			AuthorizeOperation: authorizeOperation, VerifyDecision: verifyDecision, VerifySettlement: verifySettlement}
 		dir, err := os.Open(filepath.Join(root, "store"))
 		if err != nil {
@@ -592,7 +592,7 @@ func governedCrashChild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(), workspace.XattrVisibilityAttestation{ProfileDigest: governedCrashXattr, Complete: true}, nil)
+	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(), workspace.XattrVisibilityAttestation{ProfileDigest: governedCrashXattr, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}, nil)
 	storeRoot.Close()
 	if err != nil {
 		t.Fatal(err)

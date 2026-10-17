@@ -57,7 +57,7 @@ func TestPublishFromSeededSessionRepositoryEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	policy, metadata := sessionRepoTestDigest("session-policy"), sessionRepoTestDigest("session-metadata")
-	xattr := workspace.XattrVisibilityAttestation{ProfileDigest: sessionRepoTestDigest("session-xattr-profile"), Complete: true}
+	xattr := workspace.XattrVisibilityAttestation{ProfileDigest: sessionRepoTestDigest("session-xattr-profile"), Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}
 	operation := delta.OperationIdentity{Kind: delta.OperationProposalCall, ProposalID: "session-proposal-1", CallIssuer: "fixture-provider", CallID: "session-call-1"}
 	decision := delta.PolicyDecision{ID: "session-policy-decision-1", Outcome: delta.PolicyAllow, PolicyDigest: policy, MetadataPolicyDigest: metadata}
 	var authorizedRequest sessionrepo.OperationRequest

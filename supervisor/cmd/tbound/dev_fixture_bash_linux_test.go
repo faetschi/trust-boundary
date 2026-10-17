@@ -39,7 +39,7 @@ func devFixtureRunnerStore(t *testing.T, commands devFixtureRunner) (*sessionrep
 	store, err := sessionrepo.Create(durableOpenRoot(t, storePath), sessionrepo.Options{
 		PolicyDigest: devFixtureStorePolicy, MetadataPolicyDigest: devFixtureMetadataPolicy,
 		Limits:          workspace.DefaultLimits(),
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: devFixtureXattrPolicy, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: devFixtureXattrPolicy, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:         journal, AuthorizeOperation: authority.authorize,
 		VerifyDecision: authority.verifyDecision, VerifySettlement: authority.verifySettlement,
 	})

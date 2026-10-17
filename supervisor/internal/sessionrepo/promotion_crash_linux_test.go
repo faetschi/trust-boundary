@@ -206,7 +206,7 @@ func promotionCrashChild(t *testing.T) {
 	authority := &e2eReceiptAuthority{requests: make(map[string]OperationRequest), bindings: make(map[string]delta.TransitionBinding)}
 	options := Options{PolicyDigest: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		MetadataPolicyDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Limits: workspace.DefaultLimits(),
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:         journal, AuthorizeOperation: authority.authorize, VerifyDecision: authority.verifyDecision,
 		VerifySettlement: func(CommandSettlement, string, string) error {
 			return errors.New("write crash fixture must not run a command")

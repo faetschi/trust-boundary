@@ -59,12 +59,24 @@ func DefaultLimits() Limits {
 	}
 }
 
+// XattrVisibilityAuthority is the label of the host xattr-visibility claim a
+// private-Git capture rests on. The only accepted value is the BOUNDED
+// root-attested authority (no hidden trusted.* attributes under the trusted
+// host-admin assumption), equal to workspace.XattrAuthorityBoundedNoHiddenTrusted.
+// It is not a complete-enumeration claim.
+type XattrVisibilityAuthority string
+
+// XattrAuthorityBoundedNoHiddenTrusted is the single admitted authority.
+const XattrAuthorityBoundedNoHiddenTrusted XattrVisibilityAuthority = "root-attested-bounded-no-hidden-trusted/v1"
+
 // XattrVisibilityAttestation is the host-profile assertion required before a
-// workspace scan can be treated as complete. It is intentionally not inferred
-// from a successful listxattr call.
+// workspace scan is admitted: the profile digest plus the typed bounded
+// authority. It is intentionally not inferred from a successful listxattr call
+// and does not claim complete enumeration. The authority is recorded in
+// Provenance so the receipt carries the bounded label.
 type XattrVisibilityAttestation struct {
 	ProfileDigest string
-	Complete      bool
+	Authority     XattrVisibilityAuthority
 }
 
 // SourceDescriptor is a supervisor-owned, already-open source descriptor and
@@ -188,29 +200,30 @@ type Snapshot struct {
 // It contains no source pathname and therefore cannot itself create a live
 // workspace reference.
 type Provenance struct {
-	SchemaVersion        string             `json:"schema_version"`
-	RepositoryName       string             `json:"repository_name"`
-	Transfer             string             `json:"transfer"`
-	FilterPolicy         string             `json:"filter_policy"`
-	SourceGeneration     string             `json:"source_generation"`
-	SourceTreeDigest     string             `json:"source_tree_digest"`
-	SourceManifest       delta.TreeManifest `json:"source_manifest"`
-	MetadataPolicyDigest string             `json:"metadata_policy_digest"`
-	SourceBindingDigest  string             `json:"source_binding_digest"`
-	GitVersion           string             `json:"git_version"`
-	GitExecutableDigest  string             `json:"git_executable_digest"`
-	GitExecutionBoundary string             `json:"git_execution_boundary"`
-	InitialBranch        string             `json:"initial_branch"`
-	SourceRootDevice     uint64             `json:"source_root_device"`
-	SourceRootInode      uint64             `json:"source_root_inode"`
-	PrivateRootDevice    uint64             `json:"private_root_device"`
-	PrivateRootInode     uint64             `json:"private_root_inode"`
-	PrivateParentDevice  uint64             `json:"private_parent_device"`
-	PrivateParentInode   uint64             `json:"private_parent_inode"`
-	PrivateGitDevice     uint64             `json:"private_git_device"`
-	PrivateGitInode      uint64             `json:"private_git_inode"`
-	XattrProfileDigest   string             `json:"xattr_profile_digest"`
-	CaptureLimits        Limits             `json:"capture_limits"`
+	SchemaVersion        string                   `json:"schema_version"`
+	RepositoryName       string                   `json:"repository_name"`
+	Transfer             string                   `json:"transfer"`
+	FilterPolicy         string                   `json:"filter_policy"`
+	SourceGeneration     string                   `json:"source_generation"`
+	SourceTreeDigest     string                   `json:"source_tree_digest"`
+	SourceManifest       delta.TreeManifest       `json:"source_manifest"`
+	MetadataPolicyDigest string                   `json:"metadata_policy_digest"`
+	SourceBindingDigest  string                   `json:"source_binding_digest"`
+	GitVersion           string                   `json:"git_version"`
+	GitExecutableDigest  string                   `json:"git_executable_digest"`
+	GitExecutionBoundary string                   `json:"git_execution_boundary"`
+	InitialBranch        string                   `json:"initial_branch"`
+	SourceRootDevice     uint64                   `json:"source_root_device"`
+	SourceRootInode      uint64                   `json:"source_root_inode"`
+	PrivateRootDevice    uint64                   `json:"private_root_device"`
+	PrivateRootInode     uint64                   `json:"private_root_inode"`
+	PrivateParentDevice  uint64                   `json:"private_parent_device"`
+	PrivateParentInode   uint64                   `json:"private_parent_inode"`
+	PrivateGitDevice     uint64                   `json:"private_git_device"`
+	PrivateGitInode      uint64                   `json:"private_git_inode"`
+	XattrProfileDigest   string                   `json:"xattr_profile_digest"`
+	XattrAuthority       XattrVisibilityAuthority `json:"xattr_authority"`
+	CaptureLimits        Limits                   `json:"capture_limits"`
 }
 
 // DirectoryIdentity is the device/inode pair of a descriptor-anchored

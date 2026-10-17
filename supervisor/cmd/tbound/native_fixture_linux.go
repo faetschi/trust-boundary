@@ -85,7 +85,7 @@ func runNativeFixture(ctx context.Context, output io.Writer) error {
 	store, err := sessionrepo.Create(storeRoot, sessionrepo.Options{
 		PolicyDigest: nativeFixturePolicyDigest, MetadataPolicyDigest: nativeFixtureMetadataDigest,
 		Limits:          workspace.DefaultLimits(),
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: nativeFixtureXattrDigest, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: nativeFixtureXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:         storeJournal, AuthorizeOperation: auth.authorize,
 		VerifyDecision: auth.verifyDecision, VerifySettlement: auth.verifySettlement,
 	})
@@ -166,7 +166,7 @@ func runNativeFixture(ctx context.Context, output io.Writer) error {
 	defer liveRoot.Close()
 	workspaceOptions := workspace.Options{Generation: "g0", MetadataPolicyDigest: nativeFixtureMetadataDigest,
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: nativeFixtureXattrDigest, Complete: true}}
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: nativeFixtureXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}}
 	ledger, err := workflow.NewRootLedger(publicationJournal)
 	if err != nil {
 		return err

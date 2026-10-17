@@ -102,7 +102,7 @@ func durableBashFixture(t *testing.T) (*sessionrepo.Store, *audit.Journal, *dura
 	options := sessionrepo.Options{
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
 		Limits:             workspace.DefaultLimits(),
-		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:            journal,
 		AuthorizeOperation: authority.authorize,
 		VerifyDecision:     authority.verifyDecision,

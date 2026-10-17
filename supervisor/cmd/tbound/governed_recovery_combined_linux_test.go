@@ -366,7 +366,7 @@ func combinedRecoveryTemplate(t *testing.T, p combinedRecoveryPaths, owner workf
 		StoreRoot: storeRoot, StoreJournalPath: p.storeJournal, AdminRoot: adminRoot,
 		StoreOptions: sessionrepo.Options{PolicyDigest: governedReplayStorePolicy,
 			MetadataPolicyDigest: governedReplayMetaPolicy, Limits: workspace.DefaultLimits(),
-			XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Complete: true}},
+			XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}},
 		GitPin: gitPin, GatePolicy: policy,
 		ProviderProfileDigest: digestBytes([]byte("combined-recovery-provider-profile/v1")),
 		ImageDigest:           digestBytes([]byte("combined-recovery-image/v1")),
@@ -433,7 +433,7 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 		t.Fatal(err)
 	}
 	managed, err := authority.CreateStore(storeRoot, workspace.DefaultLimits(),
-		workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Complete: true}, nil)
+		workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}, nil)
 	_ = storeRoot.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -730,7 +730,7 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc c
 		NewSessionID: fmt.Sprintf("%s-session-g%d", combinedRecoveryWorkflow, gen), NewConversationID: newConversation,
 		Limits: before.Limits, StoreRoot: storeRoot, StoreJournalPath: p.storeJournal,
 		StoreOptions: sessionrepo.Options{PolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
-			Limits: workspace.DefaultLimits(), XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Complete: true},
+			Limits: workspace.DefaultLimits(), XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: governedReplayXattrPolicy, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 			Journal: storeJournal},
 		AdminRoot: adminRoot, GitPin: gitPin, Transcripts: transcripts,
 		ProviderProfile: providerProfile, ProviderProfileDigest: digestBytes([]byte("combined-recovery-provider-profile/v1")),

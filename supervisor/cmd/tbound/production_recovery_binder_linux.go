@@ -73,7 +73,10 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 	if err != nil {
 		return nil, errors.Join(ErrProductionXattrVisibilityUnavailable, err)
 	}
-	xattrVisibility := workspace.XattrVisibilityAttestation{ProfileDigest: calibration.Digest, Complete: true}
+	xattrVisibility, err := piruntime.WorkspaceXattrAttestation(calibration.Digest, calibration.Authority)
+	if err != nil {
+		return nil, errors.Join(ErrProductionXattrVisibilityUnavailable, err)
+	}
 	policy, err := productionGatePolicy()
 	if err != nil {
 		return nil, err

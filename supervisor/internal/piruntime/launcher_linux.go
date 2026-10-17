@@ -98,8 +98,8 @@ func newLinuxCgroupScope(delegatedRoot, directory *os.File, containmentProfile, 
 	if !ok || directoryStat.Uid != uint32(os.Geteuid()) || directoryStat.Dev != rootStat.Dev {
 		return nil, errors.New("Pi worker cgroup identity differs from delegated root")
 	}
-	if err := requireCgroup2Path(directoryPath); err != nil {
-		return nil, err
+	if err := requireCgroup2Descriptor(directory); err != nil {
+		return nil, errors.Join(ErrCgroupScopeRefused, err)
 	}
 	// The root identity binds only stable facts (hierarchy path, cgroup2, owner
 	// uid, required controllers). The root's device/inode/mount id change at
@@ -108,12 +108,14 @@ func newLinuxCgroupScope(delegatedRoot, directory *os.File, containmentProfile, 
 	if err != nil {
 		return nil, fmt.Errorf("inspect cgroup2 mount: %w", err)
 	}
-	hierarchyPath, isCgroup2 := cgroup2HierarchyPathFromMountinfo(string(mountinfo), rootPath)
-	rootDigest, err := cgroupRootFacts{hierarchyPath: hierarchyPath, cgroup2: isCgroup2, ownerUID: rootStat.Uid,
+	// The held delegated-root descriptor itself must be cgroup2 (fstatfs) and on the
+	// mount that covers its path among ALL mounts; a mount over the path is refused.
+	hierarchyPath, observeErr := observeCgroup2Descriptor(delegatedRoot, string(mountinfo))
+	rootDigest, err := cgroupRootFacts{hierarchyPath: hierarchyPath, cgroup2: observeErr == nil, ownerUID: rootStat.Uid,
 		controllers: rootControllers, subtree: rootSubtree, device: uint64(rootStat.Dev), inode: rootStat.Ino,
 	}.stableDigest()
 	if err != nil {
-		return nil, errors.Join(ErrCgroupScopeRefused, err)
+		return nil, errors.Join(ErrCgroupScopeRefused, err, observeErr)
 	}
 	return &LinuxCgroupScope{root: delegatedRoot, file: directory, rootDigest: rootDigest, containment: containmentProfile, settlement: settlementProfile}, nil
 }
@@ -168,12 +170,8 @@ func CreateLinuxCgroupScope(delegatedRoot *os.File, childName, containmentProfil
 	if err != nil || !rootInfo.IsDir() {
 		return nil, ErrCgroupScopeRefused
 	}
-	rootPath, err := cgroupDescriptorPath(delegatedRoot)
-	if err != nil {
-		return nil, err
-	}
-	if err := requireCgroup2Path(rootPath); err != nil {
-		return nil, err
+	if err := requireCgroup2Descriptor(delegatedRoot); err != nil {
+		return nil, errors.Join(ErrCgroupScopeRefused, err)
 	}
 	rootType, err := readAt(delegatedRoot, "cgroup.type", 128)
 	if err != nil || strings.TrimSpace(string(rootType)) != "domain" {
@@ -439,21 +437,7 @@ func requireCgroup2Path(path string) error {
 	if err != nil {
 		return fmt.Errorf("inspect cgroup2 mount: %w", err)
 	}
-	for _, line := range strings.Split(string(data), "\n") {
-		parts := strings.SplitN(line, " - ", 2)
-		if len(parts) != 2 || !strings.HasPrefix(parts[1], "cgroup2 ") {
-			continue
-		}
-		fields := strings.Fields(parts[0])
-		if len(fields) < 5 {
-			continue
-		}
-		mount := filepath.Clean(unescapeMountField(fields[4]))
-		if path != mount && strings.HasPrefix(path, mount+string(os.PathSeparator)) {
-			return nil
-		}
-	}
-	return errors.New("Pi worker cgroup is not below a mounted cgroup-v2 filesystem")
+	return requireCgroup2PathIn(string(data), path)
 }
 
 // Settle uses only the supplied unique cgroup directory's cgroup.kill and
@@ -498,15 +482,11 @@ func validateCgroupDirectoryState(directory *os.File, requireEmpty bool) error {
 	if err != nil || !stat.IsDir() {
 		return errors.New("cgroup handle is not a directory")
 	}
-	path, err := cgroupDescriptorPath(directory)
-	if err != nil {
-		return err
-	}
 	owner, ok := stat.Sys().(*syscall.Stat_t)
 	if !ok || owner.Uid != uint32(os.Geteuid()) {
 		return errors.New("cgroup scope is not owned by the launching UID")
 	}
-	if err := requireCgroup2Path(path); err != nil {
+	if err := requireCgroup2Descriptor(directory); err != nil {
 		return err
 	}
 	typeValue, err := readAt(directory, "cgroup.type", 128)

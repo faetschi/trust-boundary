@@ -49,15 +49,14 @@ const D09XattrScanPrivilegeProfile = "service-nonroot-no-extra-groups-empty-caps
 // without a trusted administrator, or attributes created after the
 // measurement. Complete enumeration is not granted and no authority string for
 // it exists in this build.
-const D09XattrBoundedAuthority = "root-attested-bounded-no-hidden-trusted/v1"
+const D09XattrBoundedAuthority = string(workspace.XattrAuthorityBoundedNoHiddenTrusted)
 
 // D09XattrVisibilityAuthority is the closed signed-template policy value. It
 // is the bounded authority; it is the documented default and the only value
 // ValidD09XattrVisibilityAuthority accepts. Runtime APIs still verify the
 // actual protected profile and source descriptor; a caller-provided boolean or
 // digest alone cannot issue the workspace attestation, and workspace
-// attestation Complete means "bounded per this authority", not complete
-// enumeration.
+// attestation carries this typed bounded Authority, never a completeness bit.
 const D09XattrVisibilityAuthority = D09XattrBoundedAuthority
 
 // ValidD09XattrVisibilityAuthority reports whether authority is the single
@@ -581,7 +580,8 @@ func (q *D09ManagedLiveRootSnapshotQualification) XattrEvidence() (D09ManagedRoo
 }
 
 // XattrVisibilityAttestation converts an opaque managed-root qualification into
-// the workspace import attestation. Callers cannot synthesize Complete: the
+// the workspace import attestation, carrying the evidence's bounded Authority.
+// Callers cannot synthesize it: the
 // qualification is issued only after the signed RW calibration and current
 // recovered source lease have both been checked.
 func (q *D09ManagedLiveRootSnapshotQualification) XattrVisibilityAttestation() (workspace.XattrVisibilityAttestation, error) {
@@ -589,7 +589,19 @@ func (q *D09ManagedLiveRootSnapshotQualification) XattrVisibilityAttestation() (
 	if err != nil {
 		return workspace.XattrVisibilityAttestation{}, err
 	}
-	return workspace.XattrVisibilityAttestation{ProfileDigest: evidence.CalibrationDigest, Complete: true}, nil
+	return WorkspaceXattrAttestation(evidence.CalibrationDigest, evidence.Authority)
+}
+
+// WorkspaceXattrAttestation is the single place a piruntime xattr result becomes
+// a workspace attestation. It forwards the recorded authority label and admits
+// only the bounded authority (ValidD09XattrVisibilityAuthority); an empty or
+// unknown label, or a malformed profile digest, yields no attestation. It never
+// asserts complete enumeration.
+func WorkspaceXattrAttestation(profileDigest, authority string) (workspace.XattrVisibilityAttestation, error) {
+	if !validDigest(profileDigest) || !ValidD09XattrVisibilityAuthority(authority) {
+		return workspace.XattrVisibilityAttestation{}, errors.New("xattr visibility result does not carry the bounded root-attested authority")
+	}
+	return workspace.XattrVisibilityAttestation{ProfileDigest: profileDigest, Authority: workspace.XattrVisibilityAuthority(authority)}, nil
 }
 
 // RevalidateRootSnapshot implements sessionrepo's narrow structural bridge.
@@ -914,7 +926,7 @@ func VerifyD09ManagedLiveRootSnapshot(ctx context.Context, verified *VerifiedD09
 
 // MeasureD09ManagedLiveRootXattrs performs the managed-RW measurement only
 // under a current verified registration and C's recovered opaque writer lease.
-// It never returns workspace.Complete/Quiescent flags.
+// It never returns workspace Quiescent/authority flags.
 func MeasureD09ManagedLiveRootXattrs(ctx context.Context, verified *VerifiedD09ManagedLiveRoot,
 	candidate *os.File, profile HostProfile, template D09CellTemplate,
 	lease D09ManagedSourceLease) (D09ManagedRootXattrEvidence, error) {
@@ -1182,7 +1194,7 @@ func VerifyD09XattrVisibility(source *os.File, profile HostProfile, template D09
 		return workspace.XattrVisibilityAttestation{}, errors.Join(
 			errors.New("actual source xattr enumeration did not complete under the calibrated scanner"), err)
 	}
-	return workspace.XattrVisibilityAttestation{ProfileDigest: calibration.Digest, Complete: true}, nil
+	return WorkspaceXattrAttestation(calibration.Digest, calibration.Authority)
 }
 
 func mountOptionsForID(mountID uint64) (options string, readOnly bool, err error) {

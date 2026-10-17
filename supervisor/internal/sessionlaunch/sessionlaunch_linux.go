@@ -351,24 +351,25 @@ func (p *AdminParent) Close() error {
 // Provenance commits to the verified source evidence and actual private Git
 // initialization record. It contains no source path and is copied defensively.
 type Provenance struct {
-	SchemaVersion        string                `json:"schema_version"`
-	BindingDigest        string                `json:"binding_digest"`
-	SourceGeneration     string                `json:"source_generation"`
-	SourceTreeDigest     string                `json:"source_tree_digest"`
-	PolicyDigest         string                `json:"policy_digest"`
-	MetadataPolicyDigest string                `json:"metadata_policy_digest"`
-	StoreAuditHead       string                `json:"store_audit_head"`
-	StoreAuditRecords    uint64                `json:"store_audit_records"`
-	SourceRootDevice     uint64                `json:"source_root_device"`
-	SourceRootInode      uint64                `json:"source_root_inode"`
-	XattrProfileDigest   string                `json:"xattr_profile_digest"`
-	Transfer             string                `json:"transfer"`
-	PrivateGit           privategit.Provenance `json:"private_git"`
-	PrivateGitDigest     string                `json:"private_git_digest"`
-	GitExecutableDigest  string                `json:"git_executable_digest"`
-	GitExecutionBoundary string                `json:"git_execution_boundary"`
-	SourceRecord         uint64                `json:"source_record_sequence"`
-	PrivateGitRecord     uint64                `json:"private_git_record_sequence"`
+	SchemaVersion        string                             `json:"schema_version"`
+	BindingDigest        string                             `json:"binding_digest"`
+	SourceGeneration     string                             `json:"source_generation"`
+	SourceTreeDigest     string                             `json:"source_tree_digest"`
+	PolicyDigest         string                             `json:"policy_digest"`
+	MetadataPolicyDigest string                             `json:"metadata_policy_digest"`
+	StoreAuditHead       string                             `json:"store_audit_head"`
+	StoreAuditRecords    uint64                             `json:"store_audit_records"`
+	SourceRootDevice     uint64                             `json:"source_root_device"`
+	SourceRootInode      uint64                             `json:"source_root_inode"`
+	XattrProfileDigest   string                             `json:"xattr_profile_digest"`
+	XattrAuthority       workspace.XattrVisibilityAuthority `json:"xattr_authority"`
+	Transfer             string                             `json:"transfer"`
+	PrivateGit           privategit.Provenance              `json:"private_git"`
+	PrivateGitDigest     string                             `json:"private_git_digest"`
+	GitExecutableDigest  string                             `json:"git_executable_digest"`
+	GitExecutionBoundary string                             `json:"git_execution_boundary"`
+	SourceRecord         uint64                             `json:"source_record_sequence"`
+	PrivateGitRecord     uint64                             `json:"private_git_record_sequence"`
 }
 
 // PreparedSession owns the private Git admin repository and persisted source
@@ -822,7 +823,7 @@ func Prepare(ctx context.Context, managed *ManagedStore, generation *sessionrepo
 ) (*PreparedSession, error) {
 	if ctx == nil || managed == nil || managed.store == nil || generation == nil || managed.journal == nil || admin == nil ||
 		managed.profile.Limits.MaxObjects <= 0 || managed.profile.Limits.MaxDepth <= 0 || managed.profile.Limits.MaxFileBytes <= 0 ||
-		managed.profile.Limits.MaxTotalBytes < managed.profile.Limits.MaxFileBytes || !managed.profile.XattrVisibility.Complete ||
+		managed.profile.Limits.MaxTotalBytes < managed.profile.Limits.MaxFileBytes || managed.profile.XattrVisibility.Authority != workspace.XattrAuthorityBoundedNoHiddenTrusted ||
 		!validDigest(managed.profile.XattrVisibility.ProfileDigest) || !validDigest(gitProfile.ExecutableDigest) ||
 		!validDomainIdentity(gitProfile.ExecutionBoundary) {
 		return nil, ErrInvalidSource
@@ -908,7 +909,7 @@ func Prepare(ctx context.Context, managed *ManagedStore, generation *sessionrepo
 		PolicyDigest: bundle.PolicyDigest, MetadataPolicyDigest: bundle.MetadataPolicyDigest,
 		StoreAuditHead: bundle.AuditHeadHash, StoreAuditRecords: bundle.AuditRecordCount,
 		SourceRootDevice: sourceStat.device, SourceRootInode: sourceStat.inode,
-		XattrProfileDigest: profile.XattrVisibility.ProfileDigest, Transfer: "workspace-import-ordinary-byte-copy",
+		XattrProfileDigest: profile.XattrVisibility.ProfileDigest, XattrAuthority: profile.XattrVisibility.Authority, Transfer: "workspace-import-ordinary-byte-copy",
 		GitExecutableDigest: gitProfile.ExecutableDigest, GitExecutionBoundary: gitProfile.ExecutionBoundary,
 		SourceRecord: bundle.AuditRecordCount + 1,
 	}
@@ -929,8 +930,9 @@ func Prepare(ctx context.Context, managed *ManagedStore, generation *sessionrepo
 	created, createErr := privategit.Create(ctx, admin.root, privategit.SourceDescriptor{
 		Root: sourceRoot, Generation: generation.ID(), MetadataPolicyDigest: bundle.MetadataPolicyDigest,
 		BindingDigest: bindingDigest, Limits: privateGitLimits(profile.Limits), Quiescent: true,
-		XattrVisibility: privategit.XattrVisibilityAttestation{ProfileDigest: profile.XattrVisibility.ProfileDigest, Complete: true},
-		Binding:         source,
+		XattrVisibility: privategit.XattrVisibilityAttestation{ProfileDigest: profile.XattrVisibility.ProfileDigest,
+			Authority: privategit.XattrVisibilityAuthority(profile.XattrVisibility.Authority)},
+		Binding: source,
 	}, gitOptions)
 	if createErr != nil {
 		if errors.Is(createErr, privategit.ErrCleanupIncomplete) {
@@ -1053,7 +1055,7 @@ func Rebind(managed *ManagedStore, admin *AdminParent, pin RecoveryGitPin) (*Rec
 	}()
 
 	if profile.Limits.MaxObjects <= 0 || profile.Limits.MaxDepth <= 0 || profile.Limits.MaxFileBytes <= 0 ||
-		profile.Limits.MaxTotalBytes < profile.Limits.MaxFileBytes || !profile.XattrVisibility.Complete ||
+		profile.Limits.MaxTotalBytes < profile.Limits.MaxFileBytes || profile.XattrVisibility.Authority != workspace.XattrAuthorityBoundedNoHiddenTrusted ||
 		!validDigest(profile.XattrVisibility.ProfileDigest) {
 		return nil, ErrProvenanceMissing
 	}
@@ -1091,6 +1093,7 @@ func Rebind(managed *ManagedStore, admin *AdminParent, pin RecoveryGitPin) (*Rec
 		provenance.SourceGeneration != baseline.ID() || provenance.SourceTreeDigest != baseline.TreeDigest() ||
 		provenance.PolicyDigest != bundle.PolicyDigest || provenance.MetadataPolicyDigest != bundle.MetadataPolicyDigest ||
 		provenance.XattrProfileDigest != profile.XattrVisibility.ProfileDigest ||
+		provenance.XattrAuthority != profile.XattrVisibility.Authority ||
 		provenance.GitExecutableDigest != provenance.PrivateGit.GitExecutableDigest ||
 		provenance.GitExecutionBoundary != provenance.PrivateGit.GitExecutionBoundary {
 		return nil, errors.Join(ErrProvenanceMissing, err)
@@ -1746,10 +1749,11 @@ func bindingDigest(bundle sessionrepo.EvidenceBundle, generation *sessionrepo.Ge
 		Device     uint64           `json:"device"`
 		Inode      uint64           `json:"inode"`
 		Xattr      string           `json:"xattr_profile_digest"`
+		Authority  string           `json:"xattr_authority"`
 		Limits     workspace.Limits `json:"limits"`
 	}{"tbound/sessionlaunch/source-binding/v1", DigestBytes(bundle.AuditJournal), generation.ID(), generation.TreeDigest(),
 		bundle.PolicyDigest, bundle.MetadataPolicyDigest, bundle.AuditHeadHash, stat.device, stat.inode,
-		profile.XattrVisibility.ProfileDigest, profile.Limits}
+		profile.XattrVisibility.ProfileDigest, string(profile.XattrVisibility.Authority), profile.Limits}
 	encoded, err := json.Marshal(identity)
 	if err != nil {
 		return "", err

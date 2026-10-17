@@ -822,7 +822,7 @@ func newPublicationRuntimeFixture(t *testing.T, inject publication.FaultInjector
 	storeOptions := sessionrepo.Options{
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
 		Limits:          workspace.DefaultLimits(),
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:         storeJournal, AuthorizeOperation: authority.authorize, VerifyDecision: authority.verifyDecision,
 		VerifySettlement: authority.verifySettlement,
 	}
@@ -850,7 +850,7 @@ func newPublicationRuntimeFixture(t *testing.T, inject publication.FaultInjector
 	}
 	workspaceOptions := workspace.Options{Generation: "g0", MetadataPolicyDigest: durableMetadataDigest,
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true}}
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}}
 	trust := customTrust
 	if trust == nil {
 		trust = &runtimeFixtureTrust{authority: authority, callIssuer: durableCallIssuer, callID: durableCallID, sequence: 1,

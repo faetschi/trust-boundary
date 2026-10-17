@@ -128,7 +128,7 @@ func durableBashSandboxExpectedSnapshot(t *testing.T) workspace.Snapshot {
 	snapshot, err := workspace.Scan(root, workspace.Options{
 		Generation: "g1", MetadataPolicyDigest: durableMetadataDigest,
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 	})
 	if err != nil {
 		t.Fatalf("scan expected sandbox output fixture: %v", err)

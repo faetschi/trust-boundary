@@ -55,6 +55,9 @@ func (v *VerifiedD09ManagedLiveRoot) EnsureCellsCgroup(ctx context.Context) erro
 		return errors.Join(ErrD09ManagedLiveRootRefused,
 			errors.New("delegated service cgroup identity changed before cells creation"), err)
 	}
+	if err := requireCgroup2Descriptor(parent); err != nil {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
 	return ensureCellsCgroup(parent, v.registration.ServiceUID)
 }
 

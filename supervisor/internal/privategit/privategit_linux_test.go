@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/workspace"
 )
 
 const testDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -577,6 +578,9 @@ func TestRepositoryIdentityDigestBindsD06ProfileAndAnchoredNodes(t *testing.T) {
 		{name: "xattr-profile", mutate: func(p *Provenance, _ *Snapshot, _ *string) {
 			p.XattrProfileDigest = "sha256:" + strings.Repeat("b", 64)
 		}},
+		{name: "xattr-authority", mutate: func(p *Provenance, _ *Snapshot, _ *string) {
+			p.XattrAuthority = XattrVisibilityAuthority("root-attested-bounded-no-hidden-trusted/v2")
+		}},
 		{name: "source-binding-profile", mutate: func(p *Provenance, _ *Snapshot, _ *string) {
 			p.SourceBindingDigest = "sha256:" + strings.Repeat("b", 64)
 		}},
@@ -1126,7 +1130,7 @@ func testSource(root *os.File) SourceDescriptor {
 	return SourceDescriptor{
 		Root: root, Generation: "g0", MetadataPolicyDigest: testDigest, BindingDigest: testDigest,
 		Limits: DefaultLimits(), Quiescent: true,
-		XattrVisibility: XattrVisibilityAttestation{ProfileDigest: testDigest, Complete: true},
+		XattrVisibility: XattrVisibilityAttestation{ProfileDigest: testDigest, Authority: XattrAuthorityBoundedNoHiddenTrusted},
 		Binding:         testSourceVerifier{},
 	}
 }
@@ -1339,4 +1343,62 @@ func containsUnsafeGitConfig(config string) bool {
 		}
 	}
 	return false
+}
+
+// The private-Git receipt records the bounded authority, equal to the
+// workspace label it is converted to, and refuses anything else at Create and
+// at Reopen.
+func TestPrivateGitProvenanceCarriesOnlyTheBoundedXattrAuthority(t *testing.T) {
+	if string(XattrAuthorityBoundedNoHiddenTrusted) != string(workspace.XattrAuthorityBoundedNoHiddenTrusted) {
+		t.Fatalf("private-Git authority label %q differs from the workspace label %q",
+			XattrAuthorityBoundedNoHiddenTrusted, workspace.XattrAuthorityBoundedNoHiddenTrusted)
+	}
+	for _, authority := range []XattrVisibilityAuthority{"", "complete", "root-profile-measured-complete-enumeration/v1"} {
+		parentPath := privateTestDirectory(t, "parent")
+		sourcePath := privateTestDirectory(t, "source")
+		parent := openPrivateTestDirectory(t, parentPath)
+		source := openPrivateTestDirectory(t, sourcePath)
+		descriptor := testSource(source)
+		descriptor.XattrVisibility.Authority = authority
+		if _, err := Create(context.Background(), parent, descriptor, testOptions(testPinnedGit(t))); !errors.Is(err, ErrInvalidOptions) {
+			t.Fatalf("Create with xattr authority %q = %v, want ErrInvalidOptions", authority, err)
+		}
+	}
+
+	parentPath := privateTestDirectory(t, "parent")
+	sourcePath := privateTestDirectory(t, "source")
+	writePrivateFile(t, filepath.Join(sourcePath, "README.md"), "snapshot bytes\n", 0o600)
+	parent := openPrivateTestDirectory(t, parentPath)
+	source := openPrivateTestDirectory(t, sourcePath)
+	repository, err := Create(context.Background(), parent, testSource(source), testOptions(testPinnedGit(t)))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if got := repository.Provenance().XattrAuthority; got != XattrAuthorityBoundedNoHiddenTrusted {
+		t.Fatalf("provenance xattr authority = %q, want the bounded authority", got)
+	}
+	approval := approvalForRepository(t, parent, repository)
+	if err := repository.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for _, authority := range []XattrVisibilityAuthority{"", "complete"} {
+		forged := cloneReopenApproval(approval)
+		forged.Provenance.XattrAuthority = authority
+		identity, err := repositoryIdentity(parent, forged.Name, forged.Provenance, forged.Snapshot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		forged.ExpectedIdentityDigest = identity.Digest()
+		if _, err := Reopen(parent, forged); !errors.Is(err, ErrReopenBinding) {
+			t.Fatalf("Reopen with xattr authority %q = %v, want ErrReopenBinding", authority, err)
+		}
+	}
+	verified, err := Reopen(parent, approval)
+	if err != nil {
+		t.Fatalf("Reopen with the bounded authority: %v", err)
+	}
+	if got := verified.Provenance().XattrAuthority; got != XattrAuthorityBoundedNoHiddenTrusted {
+		t.Fatalf("reopened xattr authority = %q", got)
+	}
+	_ = verified.Close()
 }

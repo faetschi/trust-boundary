@@ -95,7 +95,7 @@ func expectedWriteSnapshot(t *testing.T, generation string, files []writeFixture
 		Generation: generation, MetadataPolicyDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
 		XattrVisibility: workspace.XattrVisibilityAttestation{
-			ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Complete: true,
+			ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted,
 		},
 	}
 	snapshot, err := workspace.Scan(openFixtureRoot(t, rootPath), options)

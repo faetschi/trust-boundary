@@ -75,7 +75,7 @@ func TestRootLedgerQuarantinesAcrossWorkflowsUntilNoPrepareIsReconciled(t *testi
 func testRootWorkspace() workspace.Options {
 	return workspace.Options{Generation: "g0", MetadataPolicyDigest: "sha256:test",
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: "sha256:test-profile", Complete: true}}
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: "sha256:test-profile", Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}}
 }
 
 func TestAdmissionClosesAndWaitsForAcceptedEffects(t *testing.T) {

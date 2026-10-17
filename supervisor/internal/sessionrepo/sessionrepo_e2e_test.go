@@ -721,7 +721,7 @@ func newE2EStore(t *testing.T) (*Store, *audit.Journal, string, *e2eReceiptAutho
 		Limits:               workspace.DefaultLimits(),
 		XattrVisibility: workspace.XattrVisibilityAttestation{
 			ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-			Complete:      true,
+			Authority:     workspace.XattrAuthorityBoundedNoHiddenTrusted,
 		},
 		Journal:            journal,
 		AuthorizeOperation: authority.authorize,
@@ -839,7 +839,7 @@ func fixtureSnapshot(t *testing.T, generation, readme, result string) workspace.
 		Generation: generation, MetadataPolicyDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
 		XattrVisibility: workspace.XattrVisibilityAttestation{
-			ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Complete: true,
+			ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted,
 		},
 	}
 	snapshot, err := workspace.Scan(root, options)

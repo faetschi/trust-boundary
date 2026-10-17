@@ -86,7 +86,7 @@ func TestStoreRunBashIntegration(t *testing.T) {
 		Limits:               workspace.DefaultLimits(),
 		XattrVisibility: workspace.XattrVisibilityAttestation{
 			ProfileDigest: xattrDigest,
-			Complete:      true,
+			Authority:     workspace.XattrAuthorityBoundedNoHiddenTrusted,
 		},
 		Journal: journal,
 		AuthorizeOperation: func(sessionrepo.OperationRequest) error {

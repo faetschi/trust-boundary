@@ -42,7 +42,7 @@ func validateOptionProfile(options Options, requireAuthorities bool) error {
 	if options.Limits.MaxObjects <= 0 || options.Limits.MaxDepth <= 0 ||
 		options.Limits.MaxFileBytes <= 0 || options.Limits.MaxTotalBytes <= 0 ||
 		options.Limits.MaxFileBytes > options.Limits.MaxTotalBytes ||
-		!options.XattrVisibility.Complete || !validSHA256(options.XattrVisibility.ProfileDigest) {
+		options.XattrVisibility.Authority != workspace.XattrAuthorityBoundedNoHiddenTrusted || !validSHA256(options.XattrVisibility.ProfileDigest) {
 		return ErrInvalidOptions
 	}
 	return nil

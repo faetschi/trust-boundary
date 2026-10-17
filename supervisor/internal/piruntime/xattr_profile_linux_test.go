@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"testing"
+
+	"tbound/supervisor/internal/workspace"
 )
 
 func TestD09XattrCalibrationRolesAreClosedAndManagedRWBindsRegistration(t *testing.T) {
@@ -186,12 +188,52 @@ func TestManagedLiveRootQualificationIssuesWorkspaceXattrAttestation(t *testing.
 	if err != nil {
 		t.Fatalf("qualified managed source did not issue xattr attestation: %v", err)
 	}
-	if !attestation.Complete || attestation.ProfileDigest != evidence.CalibrationDigest {
-		t.Fatalf("workspace xattr attestation = %+v, want calibrated complete result", attestation)
+	if attestation.Authority != workspace.XattrAuthorityBoundedNoHiddenTrusted || string(attestation.Authority) != D09XattrBoundedAuthority ||
+		attestation.ProfileDigest != evidence.CalibrationDigest {
+		t.Fatalf("workspace xattr attestation = %+v, want the calibrated BOUNDED authority", attestation)
 	}
 
 	qualification.xattr.EvidenceDigest = DigestBytes([]byte("tampered evidence"))
-	if attestation, err := qualification.XattrVisibilityAttestation(); !errors.Is(err, ErrD09ManagedLiveRootRefused) || attestation.Complete {
+	if attestation, err := qualification.XattrVisibilityAttestation(); !errors.Is(err, ErrD09ManagedLiveRootRefused) || attestation.Authority != "" {
 		t.Fatalf("tampered qualification issued workspace attestation %+v, err=%v", attestation, err)
+	}
+}
+
+// The conversion boundary: the bounded label produced by the piruntime
+// evidence arrives at workspace admission, and nothing else does.
+func TestWorkspaceXattrAttestationConversionCarriesTheBoundedLabelToAdmission(t *testing.T) {
+	digest := DigestBytes([]byte("calibration"))
+	root := t.TempDir()
+	rootFD, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rootFD.Close()
+	admit := func(attestation workspace.XattrVisibilityAttestation) error {
+		_, err := workspace.Scan(rootFD, workspace.Options{
+			Generation: "g0", MetadataPolicyDigest: DigestBytes([]byte("metadata")), Limits: workspace.DefaultLimits(),
+			QuiescentRoot: true, XattrVisibility: attestation,
+		})
+		return err
+	}
+
+	attestation, err := WorkspaceXattrAttestation(digest, D09XattrBoundedAuthority)
+	if err != nil {
+		t.Fatalf("bounded authority refused: %v", err)
+	}
+	if attestation.Authority != workspace.XattrAuthorityBoundedNoHiddenTrusted || attestation.ProfileDigest != digest {
+		t.Fatalf("converted attestation = %+v", attestation)
+	}
+	if err := admit(attestation); err != nil {
+		t.Fatalf("workspace admission refused the converted bounded attestation: %v", err)
+	}
+	for _, authority := range []string{"", "complete", "root-profile-measured-complete-enumeration/v1", "root-attested-bounded-no-hidden-trusted/v2"} {
+		got, err := WorkspaceXattrAttestation(digest, authority)
+		if err == nil || got != (workspace.XattrVisibilityAttestation{}) {
+			t.Fatalf("authority %q converted to %+v, err=%v", authority, got, err)
+		}
+		if err := admit(workspace.XattrVisibilityAttestation{ProfileDigest: digest, Authority: workspace.XattrVisibilityAuthority(authority)}); !errors.Is(err, workspace.ErrXattrVisibilityUnproven) {
+			t.Fatalf("workspace admission accepted authority %q: %v", authority, err)
+		}
 	}
 }

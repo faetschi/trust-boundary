@@ -57,7 +57,7 @@ func TestProductionXattrVisibilityRefusesSyntheticCompleteAssertion(t *testing.T
 	profile := piruntime.DefaultLinuxHostProfileTemplate()
 	template := piruntime.DefaultD09CellTemplate()
 	attestation, err := productionXattrVisibility(profile, template, nil)
-	if !errors.Is(err, ErrProductionXattrVisibilityUnavailable) || attestation.Complete {
+	if !errors.Is(err, ErrProductionXattrVisibilityUnavailable) || attestation.Authority != "" {
 		t.Fatalf("production xattr attestation synthesized trust: %+v err=%v", attestation, err)
 	}
 }

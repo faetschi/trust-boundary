@@ -21,6 +21,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/workspace"
 )
 
 var (
@@ -321,6 +322,7 @@ type d06SourceProvenance struct {
 	SourceTreeDigest     string          `json:"source_tree_digest"`
 	MetadataPolicyDigest string          `json:"metadata_policy_digest"`
 	XattrProfileDigest   string          `json:"xattr_profile_digest"`
+	XattrAuthority       string          `json:"xattr_authority"`
 	PrivateGitDigest     string          `json:"private_git_digest"`
 	SourceRecord         uint64          `json:"source_record_sequence"`
 	PrivateGitRecord     uint64          `json:"private_git_record_sequence"`
@@ -424,12 +426,14 @@ func verifyD06SourceRecords(bundle EvidenceBundle) (d06SourceProvenance, error) 
 		MetadataPolicyDigest string             `json:"metadata_policy_digest"`
 		SourceBindingDigest  string             `json:"source_binding_digest"`
 		XattrProfileDigest   string             `json:"xattr_profile_digest"`
+		XattrAuthority       string             `json:"xattr_authority"`
 	}
 	privateGitDigest := sha256.Sum256(rp.PrivateGit)
 	if json.Unmarshal(rp.PrivateGit, &privateGit) != nil || !reflect.DeepEqual(privateGit.SourceManifest, sourceEvent.Manifest) ||
 		privateGit.SourceGeneration != rp.SourceGeneration || privateGit.SourceTreeDigest != rp.SourceTreeDigest ||
 		privateGit.MetadataPolicyDigest != sourceEvent.Manifest.MetadataPolicyDigest ||
 		privateGit.SourceBindingDigest != rp.BindingDigest || privateGit.XattrProfileDigest != rp.XattrProfileDigest ||
+		privateGit.XattrAuthority != rp.XattrAuthority ||
 		"sha256:"+hex.EncodeToString(privateGitDigest[:]) != rp.PrivateGitDigest {
 		return d06SourceProvenance{}, fmt.Errorf("%w: private-Git provenance does not bind the exact D06 source manifest", ErrSealedSourceUnavailable)
 	}
@@ -459,7 +463,8 @@ func verifyD06SourceRecords(bundle EvidenceBundle) (d06SourceProvenance, error) 
 func rkD06ProvenanceMismatch(source, ready d06SourceProvenance, sourceSequence, readySequence uint64) bool {
 	return source.SourceGeneration == "" || source.SourceTreeDigest == "" ||
 		source.SourceGeneration != ready.SourceGeneration || source.SourceTreeDigest != ready.SourceTreeDigest ||
-		source.BindingDigest != ready.BindingDigest || source.SourceRecord != sourceSequence ||
+		source.BindingDigest != ready.BindingDigest ||
+		source.XattrAuthority != string(workspace.XattrAuthorityBoundedNoHiddenTrusted) || source.XattrAuthority != ready.XattrAuthority || source.SourceRecord != sourceSequence ||
 		source.PrivateGitRecord != 0 || source.PrivateGitDigest != "" ||
 		ready.SourceRecord != sourceSequence || ready.PrivateGitRecord != readySequence ||
 		ready.PrivateGitDigest == "" || len(ready.PrivateGit) == 0

@@ -128,7 +128,7 @@ func TestManagedLiveRootAuthorityPermitCoversDurableRootLedgerTerminal(t *testin
 	defer store.Close()
 	workspaceOptions := workspace.Options{Generation: baseline.ID(), MetadataPolicyDigest: metadataDigest,
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Complete: true}}
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}}
 	rootLedger, err := workflow.NewRootLedger(journal)
 	if err != nil {
 		t.Fatal(err)
@@ -536,7 +536,7 @@ func managedRootTestSession(t *testing.T) (*sessionrepo.Store, *sessionrepo.Gene
 	store, err := sessionrepo.Create(durableOpenRoot(t, storePath), sessionrepo.Options{
 		PolicyDigest: managedRootTestPolicy, MetadataPolicyDigest: managedRootTestMetadata,
 		Limits:          workspace.DefaultLimits(),
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:         storeJournal, AuthorizeOperation: func(sessionrepo.OperationRequest) error { return nil },
 		VerifyDecision:   func(delta.PolicyDecision, delta.TransitionBinding) error { return nil },
 		VerifySettlement: func(sessionrepo.CommandSettlement, string, string) error { return nil },

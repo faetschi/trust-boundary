@@ -59,7 +59,7 @@ func newD09SourceFixture(t *testing.T) *sessionFixture {
 		PolicyDigest:         "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		MetadataPolicyDigest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Limits:               workspace.DefaultLimits(),
-		XattrVisibility:      workspace.XattrVisibilityAttestation{ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Complete: true},
+		XattrVisibility:      workspace.XattrVisibilityAttestation{ProfileDigest: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:              journal,
 		// These synthetic authorities are test fixtures only; they never mint a
 		// production profile/consumer mount proof. They permit one real Store write

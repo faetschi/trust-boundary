@@ -138,7 +138,7 @@ func Create(ctx context.Context, parent *os.File, source SourceDescriptor, optio
 		QuiescentRoot: source.Quiescent,
 		XattrVisibility: workspace.XattrVisibilityAttestation{
 			ProfileDigest: source.XattrVisibility.ProfileDigest,
-			Complete:      source.XattrVisibility.Complete,
+			Authority:     workspace.XattrVisibilityAuthority(source.XattrVisibility.Authority),
 		},
 		ImportPolicy: workspace.ImportPolicy{
 			ReservedMetadata: workspace.ReservedMetadataRejectLiveGit,
@@ -274,7 +274,8 @@ func Create(ctx context.Context, parent *os.File, source SourceDescriptor, optio
 			PrivateRootDevice: uint64(rootInfo.Dev), PrivateRootInode: uint64(rootInfo.Ino),
 			PrivateParentDevice: uint64(parentInfo.Dev), PrivateParentInode: uint64(parentInfo.Ino),
 			PrivateGitDevice: uint64(gitAdminInfo.Dev), PrivateGitInode: uint64(gitAdminInfo.Ino),
-			XattrProfileDigest: source.XattrVisibility.ProfileDigest, CaptureLimits: source.Limits,
+			XattrProfileDigest: source.XattrVisibility.ProfileDigest, XattrAuthority: source.XattrVisibility.Authority,
+			CaptureLimits: source.Limits,
 		},
 		identity: nodeIdentity{Device: uint64(rootInfo.Dev), Inode: uint64(rootInfo.Ino)},
 		gitAdmin: nodeIdentity{Device: uint64(gitAdminInfo.Dev), Inode: uint64(gitAdminInfo.Ino)},
@@ -351,7 +352,7 @@ func Reopen(parent *os.File, approval ReopenApproval) (*VerifiedRepository, erro
 		snapshot: cloneSnapshot(approval.Snapshot), provenance: cloneProvenance(approval.Provenance),
 		identity: nodeIdentityFromStat(rootInfo), gitAdmin: nodeIdentityFromStat(gitAdminInfo),
 		limits:   approval.Provenance.CaptureLimits,
-		xattr:    XattrVisibilityAttestation{ProfileDigest: approval.Provenance.XattrProfileDigest, Complete: true},
+		xattr:    XattrVisibilityAttestation{ProfileDigest: approval.Provenance.XattrProfileDigest, Authority: approval.Provenance.XattrAuthority},
 		readOnly: true,
 	}
 	closeRoot = false
@@ -369,7 +370,7 @@ func validateReopenApproval(parent *os.File, approval ReopenApproval) error {
 		provenance.SchemaVersion != "tbound-private-git/v2" || provenance.Transfer != "descriptor-relative-filtered-byte-copy" ||
 		provenance.FilterPolicy != "workspace-reserved-git/v1" || provenance.SourceGeneration == "" ||
 		!validTreeDigest(provenance.SourceTreeDigest) || !validSHA256(provenance.MetadataPolicyDigest) ||
-		!validSHA256(provenance.SourceBindingDigest) || !validSHA256(provenance.XattrProfileDigest) ||
+		!validSHA256(provenance.SourceBindingDigest) || !validSHA256(provenance.XattrProfileDigest) || provenance.XattrAuthority != XattrAuthorityBoundedNoHiddenTrusted ||
 		!validSHA256(provenance.GitExecutableDigest) || strings.TrimSpace(provenance.GitExecutionBoundary) == "" ||
 		provenance.InitialBranch != "main" || provenance.SourceRootDevice == 0 || provenance.SourceRootInode == 0 ||
 		provenance.PrivateParentDevice == 0 || provenance.PrivateParentInode == 0 || provenance.PrivateRootDevice == 0 ||
@@ -418,7 +419,7 @@ func repositoryIdentity(parent *os.File, name string, provenance Provenance, sna
 }
 
 func validateOptions(source SourceDescriptor, options Options) error {
-	if source.Root == nil || source.Binding == nil || !source.Quiescent || source.Generation == "" || strings.TrimSpace(source.Generation) != source.Generation || !validSHA256(source.MetadataPolicyDigest) || !validSHA256(source.BindingDigest) || !source.XattrVisibility.Complete || !validSHA256(source.XattrVisibility.ProfileDigest) {
+	if source.Root == nil || source.Binding == nil || !source.Quiescent || source.Generation == "" || strings.TrimSpace(source.Generation) != source.Generation || !validSHA256(source.MetadataPolicyDigest) || !validSHA256(source.BindingDigest) || source.XattrVisibility.Authority != XattrAuthorityBoundedNoHiddenTrusted || !validSHA256(source.XattrVisibility.ProfileDigest) {
 		return ErrInvalidOptions
 	}
 	limits := source.Limits
@@ -1473,7 +1474,7 @@ func verifyRepositoryLocked(repository *Repository) error {
 		},
 		QuiescentRoot: true,
 		XattrVisibility: workspace.XattrVisibilityAttestation{
-			ProfileDigest: repository.xattr.ProfileDigest, Complete: repository.xattr.Complete,
+			ProfileDigest: repository.xattr.ProfileDigest, Authority: workspace.XattrVisibilityAuthority(repository.xattr.Authority),
 		},
 		ImportPolicy: workspace.ImportPolicy{ReservedMetadata: workspace.ReservedMetadataExcludeRootPrivateGit},
 	}
@@ -1484,6 +1485,7 @@ func verifyRepositoryLocked(repository *Repository) error {
 		repository.provenance.PrivateRootDevice != repository.identity.Device || repository.provenance.PrivateRootInode != repository.identity.Inode ||
 		repository.provenance.PrivateGitDevice != repository.gitAdmin.Device || repository.provenance.PrivateGitInode != repository.gitAdmin.Inode ||
 		repository.provenance.XattrProfileDigest != repository.xattr.ProfileDigest ||
+		repository.provenance.XattrAuthority != repository.xattr.Authority ||
 		!validSHA256(repository.provenance.SourceBindingDigest) || repository.provenance.GitExecutableDigest == "" ||
 		strings.TrimSpace(repository.provenance.GitExecutionBoundary) == "" ||
 		repository.provenance.CaptureLimits != repository.limits ||

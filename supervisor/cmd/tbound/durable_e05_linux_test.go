@@ -736,7 +736,7 @@ func e05Store(t *testing.T, taskContent string) (*sessionrepo.Store, *audit.Jour
 	options := sessionrepo.Options{
 		PolicyDigest: durablePolicyDigest, MetadataPolicyDigest: durableMetadataDigest,
 		Limits:             workspace.DefaultLimits(),
-		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility:    workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:            journal,
 		AuthorizeOperation: authority.authorize,
 		VerifyDecision:     authority.verifyDecision,
@@ -775,7 +775,7 @@ func e05ExpectedSnapshot(t *testing.T, taskContent string, withBashOutput bool) 
 	snapshot, err := workspace.Scan(root, workspace.Options{
 		Generation: "expected", MetadataPolicyDigest: durableMetadataDigest,
 		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 	})
 	if err != nil {
 		t.Fatalf("scan expected e05 tree: %v", err)

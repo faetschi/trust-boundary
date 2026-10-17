@@ -362,7 +362,7 @@ func setupDevelopmentFixtureStore(base string, commands devFixtureRunner) (*sess
 	store, err := sessionrepo.Create(storeRoot, sessionrepo.Options{
 		PolicyDigest: devFixtureStorePolicy, MetadataPolicyDigest: devFixtureMetadataPolicy,
 		Limits:          workspace.DefaultLimits(),
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: devFixtureXattrPolicy, Complete: true},
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: devFixtureXattrPolicy, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted},
 		Journal:         storeJournal, AuthorizeOperation: authority.authorize,
 		VerifyDecision: authority.verifyDecision, VerifySettlement: authority.verifySettlement,
 	})
