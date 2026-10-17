@@ -118,14 +118,23 @@ type Profile struct {
 	// as a pair, and Frozen requires both. They are sent on every request, so the
 	// provider refuses to route above them in any pricing period. Every price in
 	// this package (reservation, worst case, token-only settlement) is the larger of
-	// the declared price and its ceiling.
+	// the declared price and its ceiling, except CeilingMicroUSD, which prices at the
+	// ceilings alone to detect a charge above them.
 	MaxPriceMicroPerMTokIn  *uint64 `json:"max_price_micro_usd_per_1m_tokens_in"`
 	MaxPriceMicroPerMTokOut *uint64 `json:"max_price_micro_usd_per_1m_tokens_out"`
 	MaxInputTokens          *uint64 `json:"max_input_tokens"`
-	MaxOutputTokens         *uint64 `json:"max_output_tokens"`
-	MaxRequestsPerUnit      *uint64 `json:"max_requests_per_unit"`
-	TemperatureMilli        *uint64 `json:"temperature_milli"`
-	Seed                    *uint64 `json:"seed"`
+	// InputFramingReserveTokens is the slack kept below max_input_tokens for input
+	// tokens that the request body does not contain: the provider chat template
+	// adds special tokens (role markers, end of turn) around every message. A
+	// request is admitted only if its serialized body, which bounds the content
+	// tokens, plus this reserve fits max_input_tokens. It must be positive and below
+	// max_input_tokens. It is part of the canonical digest, so it is frozen with the
+	// profile.
+	InputFramingReserveTokens *uint64 `json:"input_framing_reserve_tokens"`
+	MaxOutputTokens           *uint64 `json:"max_output_tokens"`
+	MaxRequestsPerUnit        *uint64 `json:"max_requests_per_unit"`
+	TemperatureMilli          *uint64 `json:"temperature_milli"`
+	Seed                      *uint64 `json:"seed"`
 	// Reasoning is the explicit, required reasoning control sent with every
 	// request. null is OPEN.
 	Reasoning *Reasoning `json:"reasoning"`
@@ -204,6 +213,7 @@ func (p Profile) Validate() error {
 		{"max_price_micro_usd_per_1m_tokens_in", p.MaxPriceMicroPerMTokIn},
 		{"max_price_micro_usd_per_1m_tokens_out", p.MaxPriceMicroPerMTokOut},
 		{"max_input_tokens", p.MaxInputTokens},
+		{"input_framing_reserve_tokens", p.InputFramingReserveTokens},
 		{"max_output_tokens", p.MaxOutputTokens},
 		{"max_requests_per_unit", p.MaxRequestsPerUnit},
 		{"seed", p.Seed},
@@ -240,7 +250,8 @@ func (p Profile) Frozen() bool {
 //   - the profile validates;
 //   - every required field is non-null: routing order, allow_fallbacks,
 //     data_collection, quantizations, require_parameters and zdr; both prices;
-//     max_input_tokens, max_output_tokens and max_requests_per_unit;
+//     max_input_tokens, input_framing_reserve_tokens, max_output_tokens and
+//     max_requests_per_unit;
 //     temperature_milli, seed, timeout_ms and frozen_at. A null field is OPEN
 //     and fails with ErrOpenField, which names the field;
 //   - both price ceilings are set, whether or not a provider order is, else
@@ -266,6 +277,7 @@ func (p Profile) FrozenReason() error {
 		{"input_micro_usd_per_1m_tokens", p.InputMicroUSDPer1M != nil},
 		{"output_micro_usd_per_1m_tokens", p.OutputMicroUSDPer1M != nil},
 		{"max_input_tokens", p.MaxInputTokens != nil},
+		{"input_framing_reserve_tokens", p.InputFramingReserveTokens != nil},
 		{"max_output_tokens", p.MaxOutputTokens != nil},
 		{"max_requests_per_unit", p.MaxRequestsPerUnit != nil},
 		{"temperature_milli", p.TemperatureMilli != nil},
@@ -286,6 +298,11 @@ func (p Profile) FrozenReason() error {
 	}
 	if *p.TemperatureMilli != 0 {
 		return ErrTemperatureNotZero
+	}
+	// The reserve is positive (Validate) and must leave room for content, else every
+	// request would be refused.
+	if *p.InputFramingReserveTokens >= *p.MaxInputTokens {
+		return errors.New("research profile input_framing_reserve_tokens must be below max_input_tokens")
 	}
 	return nil
 }

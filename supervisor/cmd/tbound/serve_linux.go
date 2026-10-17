@@ -34,7 +34,9 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	nativeHostProfile := flags.String("native-host-profile", "", "protected authorized signed host profile path; empty uses the root-owned /etc/tbound trust root")
 	workspace := flags.String("workspace", "", "protected source workspace directory for the governed production session")
 	source := flags.String("source", "", "protected source snapshot directory for the governed production session")
-	taskID := flags.String("task-id", "", "registered, host-admitted production task identity")
+	taskID := flags.String("task-id", "", "registered, host-admitted production task identity (the case_id in corpus mode)")
+	attempt := flags.Int("attempt", 0, "corpus-mode attempt, 1 or 2 (2 only as an outage rerun); corpus-mode services take the prompt from their frozen manifest and refuse --task")
+	role := flags.String("role", "", "corpus-mode governed role of the trial: trajectory, static-replay, adaptive-replay, variance-1, variance-2, compliant or ambiguous (the service checks it against the case kind)")
 	taskRequestID := flags.String("task-request-id", "", "bounded production prompt request identity")
 	task := flags.String("task", "", "bounded plain production task prompt (host-admitted control, never a model or key hint)")
 	var rawBashOutputPaths []string
@@ -83,7 +85,7 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if *serviceMode {
-		if *nativeHostProfile != "" || *workspace != "" || *source != "" || *taskID != "" || *taskRequestID != "" || *task != "" || bashOutputPaths != nil {
+		if *nativeHostProfile != "" || *workspace != "" || *source != "" || *taskID != "" || *taskRequestID != "" || *task != "" || *attempt != 0 || *role != "" || bashOutputPaths != nil {
 			return errors.New("internal --service mode accepts no task, profile, workspace, source, or Bash output scope arguments")
 		}
 		return runProductionPiService(ctx, transcript)
@@ -97,7 +99,7 @@ func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 		bashOutputScope = &cloned
 	}
 	return runProductionPiServiceClient(ctx, transcript, piServiceRequest{
-		RequestID: *taskRequestID, TaskID: *taskID, Prompt: *task, BashOutputPaths: bashOutputScope,
+		RequestID: *taskRequestID, TaskID: *taskID, Prompt: *task, Attempt: *attempt, Role: *role, BashOutputPaths: bashOutputScope,
 	})
 }
 

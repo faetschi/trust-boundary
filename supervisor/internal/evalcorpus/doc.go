@@ -13,9 +13,9 @@
 // result on any manifest is not evidence about the corpus or about any claim.
 //
 // Canonical form (used for the manifest digest): RFC 8785 JSON for this schema's value
-// subset (strings, booleans, arrays, objects). Object members are sorted by UTF-16 code
-// units, there is no insignificant whitespace, and only the RFC 8785 string escapes are
-// used. The schema has no numbers. A nil array canonicalizes as an empty array.
+// subset (strings, booleans, arrays, objects, and the non-negative integers up to 2^53-1 of
+// Trial, written as decimal digits). Object members are sorted by UTF-16 code units, there
+// is no insignificant whitespace, and only the RFC 8785 string escapes are used. A nil array canonicalizes as an empty array.
 //
 // Selection (Allocate): cold and variance members are chosen by ranking each candidate
 // with SHA-256 over length-prefixed (domain, seed, purpose, id) and keeping the lowest

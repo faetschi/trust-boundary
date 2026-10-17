@@ -204,6 +204,9 @@ func TestManagedLiveRootQualificationIssuesWorkspaceXattrAttestation(t *testing.
 func TestWorkspaceXattrAttestationConversionCarriesTheBoundedLabelToAdmission(t *testing.T) {
 	digest := DigestBytes([]byte("calibration"))
 	root := t.TempDir()
+	if err := os.Chmod(root, 0o700); err != nil { // workspace.Scan requires a private root; t.TempDir is 0755 under umask 022
+		t.Fatal(err)
+	}
 	rootFD, err := os.Open(root)
 	if err != nil {
 		t.Fatal(err)

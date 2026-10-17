@@ -284,6 +284,7 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		CommandRunner:   runner, GovernedCommandRunner: runner,
 		ProviderTokenUpperBound: productionProviderTokenUpperBound(checkpoint.Limits), RequireEvidencedBash: true,
 		FreshProviderJournal: newProviderJournal, FreshProviderJournalPath: newProviderPath, FreshJournalIdentity: newProviderIdentity,
+		CorpusManifestDigest: entry.CorpusManifestDigest,
 	}
 	candidate, err := prepareGovernedRecovery(ctx, request)
 	if err != nil {
@@ -578,7 +579,12 @@ func productionRecoveryGitPin(trace audit.Trace, pins workflowrecovery.Pins) (se
 			continue
 		}
 		var ready readyEvent
-		if unmarshalGovernedJSON(record.Event.Data, &ready) != nil || ready.SchemaVersion != "tbound-sessionlaunch-provenance/v1" ||
+		// Only the current D06 record version is accepted; an upgrade requires draining retained sessions first.
+		if unmarshalGovernedJSON(record.Event.Data, &ready) == nil && ready.SchemaVersion != sessionrepo.D06ProvenanceSchemaVersion {
+			return sessionlaunch.RecoveryGitPin{}, errors.Join(workflowrecovery.ErrObservation, fmt.Errorf("%w: record version %q, supported %q",
+				sessionrepo.ErrUnsupportedProvenanceVersion, ready.SchemaVersion, sessionrepo.D06ProvenanceSchemaVersion))
+		}
+		if unmarshalGovernedJSON(record.Event.Data, &ready) != nil ||
 			ready.Provenance.PrivateGit.RepositoryName == "" ||
 			ready.Snapshot.TreeDigest != ready.Provenance.SourceTreeDigest ||
 			!reflect.DeepEqual(ready.Snapshot.Manifest, ready.Provenance.PrivateGit.SourceManifest) {

@@ -35,6 +35,7 @@ var (
 	ErrClosed              = errors.New("private Git repository is closed")
 	ErrReadOnlyRepository  = errors.New("reopened private Git repository is verification-only")
 	ErrReopenBinding       = errors.New("private Git reopen lacks an authenticated pinned identity")
+	ErrUnsupportedVersion  = errors.New("unsupported private Git provenance version: an upgrade requires draining retained sessions first")
 	ErrUnsupportedPlatform = errors.New("private Git staging is unsupported on this platform")
 )
 
@@ -58,6 +59,11 @@ func DefaultLimits() Limits {
 		MaxTotalBytes: 1 << 30,
 	}
 }
+
+// ProvenanceSchemaVersion is the schema label of Provenance. It is bumped whenever
+// the shape changes (v3 added xattr_authority), so that an older retained record
+// is refused as an unsupported version rather than as a misleading field error.
+const ProvenanceSchemaVersion = "tbound-private-git/v3"
 
 // XattrVisibilityAuthority is the label of the host xattr-visibility claim a
 // private-Git capture rests on. The only accepted value is the BOUNDED

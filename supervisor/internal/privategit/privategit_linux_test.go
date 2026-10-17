@@ -73,7 +73,7 @@ func TestCreateInitializesIndependentPrivateGitRepository(t *testing.T) {
 		t.Fatalf("unsafe private config: %q", config)
 	}
 	provenance := repository.Provenance()
-	if provenance.SchemaVersion != "tbound-private-git/v2" || !validRepositoryName(provenance.RepositoryName) || provenance.PrivateParentDevice == 0 || provenance.PrivateParentInode == 0 ||
+	if provenance.SchemaVersion != "tbound-private-git/v3" || !validRepositoryName(provenance.RepositoryName) || provenance.PrivateParentDevice == 0 || provenance.PrivateParentInode == 0 ||
 		provenance.SourceTreeDigest == "" || provenance.SourceBindingDigest != testDigest || provenance.GitExecutableDigest == "" || provenance.GitExecutionBoundary == "" || provenance.Digest() == "" || provenance.InitialBranch != "main" || provenance.FilterPolicy != "workspace-reserved-git/v1" {
 		t.Fatalf("incomplete provenance: %+v", provenance)
 	}
@@ -210,7 +210,7 @@ func TestReopenRejectsMissingOrForgedTrustedIdentityAndWrongAnchors(t *testing.T
 		t.Fatal(err)
 	}
 	legacy.ExpectedIdentityDigest = legacyIdentity.Digest()
-	if _, err := Reopen(parent, legacy); !errors.Is(err, ErrReopenBinding) {
+	if _, err := Reopen(parent, legacy); !errors.Is(err, ErrReopenBinding) || !errors.Is(err, ErrUnsupportedVersion) {
 		t.Fatalf("Reopen historical v1 provenance = %v, want explicit refusal", err)
 	}
 	if _, err := os.Stat(filepath.Join(parentPath, approval.Name, "README.md")); err != nil {
@@ -1401,4 +1401,45 @@ func TestPrivateGitProvenanceCarriesOnlyTheBoundedXattrAuthority(t *testing.T) {
 		t.Fatalf("reopened xattr authority = %q", got)
 	}
 	_ = verified.Close()
+}
+
+// A provenance written before the xattr_authority field existed carries the old
+// version label. It is refused as an unsupported version (an upgrade requires
+// draining retained sessions first); the absent authority is never read as bounded.
+func TestReopenRefusesPreAuthorityProvenanceAsAnUnsupportedVersion(t *testing.T) {
+	parentPath := privateTestDirectory(t, "parent")
+	sourcePath := privateTestDirectory(t, "source")
+	writePrivateFile(t, filepath.Join(sourcePath, "README.md"), "snapshot bytes\n", 0o600)
+	parent := openPrivateTestDirectory(t, parentPath)
+	source := openPrivateTestDirectory(t, sourcePath)
+	repository, err := Create(context.Background(), parent, testSource(source), testOptions(testPinnedGit(t)))
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	approval := approvalForRepository(t, parent, repository)
+	if err := repository.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reidentify := func(a ReopenApproval) ReopenApproval {
+		identity, err := repositoryIdentity(parent, a.Name, a.Provenance, a.Snapshot)
+		if err != nil {
+			t.Fatal(err)
+		}
+		a.ExpectedIdentityDigest = identity.Digest()
+		return a
+	}
+	old := cloneReopenApproval(approval)
+	old.Provenance.SchemaVersion = "tbound-private-git/v2"
+	old.Provenance.XattrAuthority = ""
+	_, err = Reopen(parent, reidentify(old))
+	if !errors.Is(err, ErrUnsupportedVersion) || !errors.Is(err, ErrReopenBinding) || !strings.Contains(err.Error(), "unsupported") {
+		t.Fatalf("Reopen of a pre-authority v2 provenance = %v, want the unsupported-version error", err)
+	}
+	// The current version with the authority removed is a field refusal, not a
+	// version refusal, and the authority is not inferred.
+	missing := cloneReopenApproval(approval)
+	missing.Provenance.XattrAuthority = ""
+	if _, err := Reopen(parent, reidentify(missing)); !errors.Is(err, ErrReopenBinding) || errors.Is(err, ErrUnsupportedVersion) {
+		t.Fatalf("Reopen of a v3 provenance without authority = %v, want a plain binding refusal", err)
+	}
 }

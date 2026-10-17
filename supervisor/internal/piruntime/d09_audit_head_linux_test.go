@@ -16,7 +16,11 @@ import (
 
 func d09AuditHeadFromJournal(t *testing.T) string {
 	t.Helper()
-	journal, err := audit.Open(filepath.Join(t.TempDir(), "store-audit.jsonl"))
+	journalDir := t.TempDir()
+	if err := os.Chmod(journalDir, 0o700); err != nil { // t.TempDir is 0755 under umask 022
+		t.Fatal(err)
+	}
+	journal, err := audit.Open(filepath.Join(journalDir, "store-audit.jsonl"))
 	if err != nil {
 		t.Fatalf("open audit journal fixture: %v", err)
 	}

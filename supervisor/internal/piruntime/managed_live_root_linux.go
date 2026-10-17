@@ -29,7 +29,7 @@ const (
 	D09ManagedLiveRootWriterPolicy      = "managed-nonlogin-single-service-writer/v1"
 	D09ManagedPiServiceSocketSchema     = "tbound-managed-pi-service-socket/v1"
 	D09ManagedPiServiceSocketMode       = "systemd-socket-activation-single-task/v1"
-	D09ManagedPiServiceConfigSchema     = "tbound-pi-service-config/v3"
+	D09ManagedPiServiceConfigSchema     = "tbound-pi-service-config/v4"
 	D09ManagedPiServiceConfigPath       = "/etc/tbound/serve-pi-service.json"
 	D09ManagedPiProviderCredentialPath  = "/etc/tbound/provider/opencode-go.key"
 	D09ManagedPiServiceSocketPath       = "/run/tbound/serve-pi.sock"
@@ -64,6 +64,16 @@ const (
 	D09ManagedPiServiceConfigMaxBytes   = 16 << 10
 	d09ManagedLiveRootSignatureDomain   = "tbound-managed-live-root-registration/v1\x00"
 	d09ManagedLiveRootMaximumBytes      = 64 << 10
+)
+
+// The v4 service config adds corpus admission (workflow_admission_mode "corpus"). The v3
+// single-task schema stays valid for the fresh and resume modes, so an installed
+// single-task config does not need re-signing.
+const (
+	D09ManagedPiServiceConfigSchemaV3   = "tbound-pi-service-config/v3"
+	D09ManagedPiWorkflowAdmissionCorpus = "corpus"
+	D09ManagedPiCorpusManifestPath      = "/etc/tbound/corpus/manifest.json"
+	D09ManagedPiCorpusManifestMaxBytes  = 16 << 20
 )
 
 // The research provider route has its own fixed key file next to the engineering
@@ -161,15 +171,19 @@ type D09ManagedPiServiceConfig struct {
 	ContainersConfDigest        string   `json:"containers_conf_digest"`
 	StorageConfPath             string   `json:"storage_conf_path"`
 	StorageConfDigest           string   `json:"storage_conf_digest"`
+
+	// CorpusManifestPath and CorpusManifestDigest are set exactly in corpus mode (schema
+	// v4): the service takes each trial's prompt and budgets from that frozen manifest,
+	// never from the config or a client. The digest is evalcorpus.Digest of the manifest.
+	CorpusManifestPath   string `json:"corpus_manifest_path,omitempty"`
+	CorpusManifestDigest string `json:"corpus_manifest_digest,omitempty"`
 }
 
 func (c D09ManagedPiServiceConfig) Validate() error {
-	if c.SchemaVersion != D09ManagedPiServiceConfigSchema || c.SourcePolicy != "current-managed-live-root/v1" ||
+	if (c.SchemaVersion != D09ManagedPiServiceConfigSchema && c.SchemaVersion != D09ManagedPiServiceConfigSchemaV3) ||
+		c.SourcePolicy != "current-managed-live-root/v1" ||
 		(c.ProviderRoute != D09ManagedPiProviderRouteEngineering && c.ProviderRoute != D09ManagedPiProviderRouteResearch) ||
-		(c.WorkflowAdmissionMode != "fresh" && c.WorkflowAdmissionMode != "resume") ||
-		!validIdentity(c.WorkflowAdmissionID) || len(c.WorkflowAdmissionID) > 256 ||
-		!validIdentity(c.WorkflowTaskID) || len(c.WorkflowTaskID) > 256 ||
-		len(c.WorkflowPrompt) == 0 || len(c.WorkflowPrompt) > 16<<10 || !utf8.ValidString(c.WorkflowPrompt) || strings.TrimSpace(c.WorkflowPrompt) == "" ||
+		!c.validWorkflowAdmissionEnvelope() ||
 		!validD09WorkflowBashPaths(c.WorkflowBashOutputPaths) ||
 		c.WorkflowCatalogPath != D09ManagedPiWorkflowCatalogPath || c.WorkflowRootDBPath != D09ManagedPiWorkflowRootDBPath ||
 		c.WorkflowOwnerStoreRoot != D09ManagedPiOwnerStoreRoot || c.WorkflowMaxPreEffectRetries > 2 ||
@@ -184,6 +198,27 @@ func (c D09ManagedPiServiceConfig) Validate() error {
 		return ErrD09ManagedLiveRootRefused
 	}
 	return nil
+}
+
+// validWorkflowAdmissionEnvelope checks the admission mode against the members that
+// belong to it. Single-task modes (fresh, resume) pin one task, prompt and admission id
+// in the config and carry no corpus member. Corpus mode (schema v4 only) pins a frozen
+// manifest by path and digest and carries no inline task, prompt or admission id; the
+// per-trial prompt, budgets and admission id come from the manifest.
+func (c D09ManagedPiServiceConfig) validWorkflowAdmissionEnvelope() bool {
+	switch c.WorkflowAdmissionMode {
+	case "fresh", "resume":
+		return c.CorpusManifestPath == "" && c.CorpusManifestDigest == "" &&
+			validIdentity(c.WorkflowAdmissionID) && len(c.WorkflowAdmissionID) <= 256 &&
+			validIdentity(c.WorkflowTaskID) && len(c.WorkflowTaskID) <= 256 &&
+			len(c.WorkflowPrompt) > 0 && len(c.WorkflowPrompt) <= 16<<10 && utf8.ValidString(c.WorkflowPrompt) &&
+			strings.TrimSpace(c.WorkflowPrompt) != ""
+	case D09ManagedPiWorkflowAdmissionCorpus:
+		return c.SchemaVersion == D09ManagedPiServiceConfigSchema &&
+			c.WorkflowAdmissionID == "" && c.WorkflowTaskID == "" && c.WorkflowPrompt == "" &&
+			c.CorpusManifestPath == D09ManagedPiCorpusManifestPath && validDigest(c.CorpusManifestDigest)
+	}
+	return false
 }
 
 func validD09WorkflowBashPaths(paths []string) bool {

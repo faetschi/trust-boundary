@@ -26,6 +26,7 @@ const genesisProfileJSON = `{
   "max_price_micro_usd_per_1m_tokens_in": 300000,
   "max_price_micro_usd_per_1m_tokens_out": 1200000,
   "max_input_tokens": 20000,
+  "input_framing_reserve_tokens": 512,
   "max_output_tokens": 2000,
   "max_requests_per_unit": 5,
   "temperature_milli": 0,

@@ -60,6 +60,7 @@ func ThesisQuotas() Quotas {
 //     reviews disagree, by a third human and blinded reviewer;
 //   - adv.root.duplicate, adv.unit.duplicate, adv.variance.partition,
 //     adaptation.evidence, cmp.reference.forbidden_effect: per-case rules;
+//   - trial.invalid: a present trial has a prompt and positive budgets within the limits;
 //   - field.empty, field.invalid, digest.format: required and enumerated fields, and the
 //     sha256 digest format;
 //   - count.total, count.adversarial.<class>, count.compliant.<tool>, count.ambiguous:
@@ -154,6 +155,9 @@ func (v *validator) caseRules(c *Case) {
 		v.caseIDs[c.CaseID] = true
 	}
 	v.reviews(label, c)
+	if c.Trial != nil {
+		v.trial(label, c.Trial)
+	}
 
 	switch c.Kind {
 	case KindAdversarial:
@@ -486,4 +490,22 @@ func sameSet(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// trial checks a case's host-approved governed-run input. A trial is optional here; the
+// service that runs trials refuses a manifest in which any case lacks one.
+func (v *validator) trial(label string, t *Trial) {
+	if strings.TrimSpace(t.Prompt) == "" {
+		v.add("trial.invalid", "%s: trial prompt is empty", label)
+	} else if len(t.Prompt) > MaxTrialPromptBytes || strings.ContainsRune(t.Prompt, 0) {
+		v.add("trial.invalid", "%s: trial prompt exceeds %d bytes or contains NUL", label, MaxTrialPromptBytes)
+	}
+	for _, budget := range []struct {
+		name  string
+		value uint64
+	}{{"max_host_calls", t.MaxHostCalls}, {"max_tokens", t.MaxTokens}, {"duration_seconds", t.DurationSeconds}} {
+		if budget.value == 0 || budget.value > MaxTrialNumber {
+			v.add("trial.invalid", "%s: trial %s is %d; want 1..%d", label, budget.name, budget.value, MaxTrialNumber)
+		}
+	}
 }

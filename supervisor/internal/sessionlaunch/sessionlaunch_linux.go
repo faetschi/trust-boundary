@@ -30,22 +30,26 @@ const (
 	linuxOPath                 = 0x200000
 	maxDevelopmentRunnerLeases = 512
 
-	provenanceSchema        = "tbound-sessionlaunch-provenance/v1"
+	provenanceSchema = sessionrepo.D06ProvenanceSchemaVersion
+	// sourceBindingDomain is the digest domain of the source-binding digest. Its
+	// input gained xattr_authority, so the label moved from v1 to v2.
+	sourceBindingDomain     = "tbound/sessionlaunch/source-binding/v2"
 	sourceBindingEventKind  = "sessionlaunch_source_binding"
 	privateGitEventKind     = "sessionlaunch_private_git_ready"
 	failedSnapshotEventKind = "sessionlaunch_private_git_failed"
 )
 
 var (
-	ErrInvalidSource              = errors.New("invalid sealed session source")
-	ErrSourceChanged              = errors.New("sealed session source changed during private snapshot preparation")
-	ErrSourceEvidence             = errors.New("sealed session source does not match durable session evidence")
-	ErrAuditJournalMismatch       = errors.New("sessionlaunch journal is not the store's exact verified audit journal")
-	ErrPrivateParent              = errors.New("private Git admin parent lacks an exclusive supervisor-owned boundary")
-	ErrProvenanceMissing          = errors.New("durable D06 provenance is incomplete")
-	ErrWorkerExposure             = errors.New("worker exposure is unavailable or not bound to a verified sealed generation")
-	ErrDevelopmentSandbox         = errors.New("measured development sandbox profile is unavailable")
-	ErrRecoveryActivationRequired = errors.New("recovery preview requires a durable clean-restart reservation before activation")
+	ErrInvalidSource                = errors.New("invalid sealed session source")
+	ErrSourceChanged                = errors.New("sealed session source changed during private snapshot preparation")
+	ErrSourceEvidence               = errors.New("sealed session source does not match durable session evidence")
+	ErrAuditJournalMismatch         = errors.New("sessionlaunch journal is not the store's exact verified audit journal")
+	ErrPrivateParent                = errors.New("private Git admin parent lacks an exclusive supervisor-owned boundary")
+	ErrProvenanceMissing            = errors.New("durable D06 provenance is incomplete")
+	ErrUnsupportedProvenanceVersion = errors.New("unsupported D06 provenance version: an upgrade requires draining retained sessions first")
+	ErrWorkerExposure               = errors.New("worker exposure is unavailable or not bound to a verified sealed generation")
+	ErrDevelopmentSandbox           = errors.New("measured development sandbox profile is unavailable")
+	ErrRecoveryActivationRequired   = errors.New("recovery preview requires a durable clean-restart reservation before activation")
 )
 
 var (
@@ -1647,6 +1651,37 @@ func verifySourceEventOnlyAppend(base, current []byte, sourceRecord audit.Record
 	return nil
 }
 
+// requireProvenanceVersion refuses a D06 journal record whose schema version is
+// not the current provenanceSchema, before any other field is read. An upgrade
+// that changes the provenance format requires draining retained sessions first:
+// older records are refused as an unsupported version, never migrated, and an
+// absent xattr_authority is never inferred as bounded. The version is read from
+// the record envelope (private-Git-ready) and from the embedded provenance
+// (both record kinds); any version present must be the current one.
+func requireProvenanceVersion(data []byte) error {
+	var probe struct {
+		SchemaVersion string `json:"schema_version"`
+		Provenance    struct {
+			SchemaVersion string `json:"schema_version"`
+		} `json:"provenance"`
+	}
+	if json.Unmarshal(data, &probe) != nil {
+		return ErrProvenanceMissing
+	}
+	envelope, embedded := probe.SchemaVersion, probe.Provenance.SchemaVersion
+	if embedded != provenanceSchema || (envelope != "" && envelope != provenanceSchema) {
+		version := embedded
+		if version == provenanceSchema {
+			version = envelope
+		}
+		return errors.Join(ErrProvenanceMissing, fmt.Errorf("%w: record version %q, supported %q",
+			ErrUnsupportedProvenanceVersion, version, provenanceSchema))
+	}
+	return nil
+}
+
+// verifyPersistedD06Records checks only current-version D06 records; an upgrade
+// requires draining retained sessions first.
 func verifyPersistedD06Records(journalBytes []byte, provenance Provenance) error {
 	trace, err := audit.Verify(bytes.NewReader(journalBytes))
 	if err != nil {
@@ -1660,6 +1695,9 @@ func verifyPersistedD06Records(journalBytes []byte, provenance Provenance) error
 	for _, record := range trace.Records {
 		switch record.Event.Kind {
 		case sourceBindingEventKind:
+			if err := requireProvenanceVersion(record.Event.Data); err != nil {
+				return err
+			}
 			var source sourceBindingRecord
 			if unmarshalNoUnknown(record.Event.Data, &source) != nil || record.Sequence != provenance.SourceRecord ||
 				source.Provenance.StoreAuditRecords != provenance.StoreAuditRecords ||
@@ -1676,6 +1714,9 @@ func verifyPersistedD06Records(journalBytes []byte, provenance Provenance) error
 			}
 			sourceSeen = true
 		case privateGitEventKind:
+			if err := requireProvenanceVersion(record.Event.Data); err != nil {
+				return err
+			}
 			var event struct {
 				SchemaVersion string              `json:"schema_version"`
 				Provenance    Provenance          `json:"provenance"`
@@ -1696,6 +1737,8 @@ func verifyPersistedD06Records(journalBytes []byte, provenance Provenance) error
 	return nil
 }
 
+// retainedD06Evidence reads only current-version D06 records; an upgrade requires
+// draining retained sessions first.
 func retainedD06Evidence(records []audit.Record) (Provenance, privategit.Snapshot, error) {
 	var provenance Provenance
 	var snapshot privategit.Snapshot
@@ -1703,8 +1746,14 @@ func retainedD06Evidence(records []audit.Record) (Provenance, privategit.Snapsho
 	for _, record := range records {
 		switch record.Event.Kind {
 		case sourceBindingEventKind:
+			if err := requireProvenanceVersion(record.Event.Data); err != nil {
+				return Provenance{}, privategit.Snapshot{}, err
+			}
 			sourceCount++
 		case privateGitEventKind:
+			if err := requireProvenanceVersion(record.Event.Data); err != nil {
+				return Provenance{}, privategit.Snapshot{}, err
+			}
 			readyCount++
 			var ready struct {
 				SchemaVersion string              `json:"schema_version"`
@@ -1751,7 +1800,7 @@ func bindingDigest(bundle sessionrepo.EvidenceBundle, generation *sessionrepo.Ge
 		Xattr      string           `json:"xattr_profile_digest"`
 		Authority  string           `json:"xattr_authority"`
 		Limits     workspace.Limits `json:"limits"`
-	}{"tbound/sessionlaunch/source-binding/v1", DigestBytes(bundle.AuditJournal), generation.ID(), generation.TreeDigest(),
+	}{sourceBindingDomain, DigestBytes(bundle.AuditJournal), generation.ID(), generation.TreeDigest(),
 		bundle.PolicyDigest, bundle.MetadataPolicyDigest, bundle.AuditHeadHash, stat.device, stat.inode,
 		profile.XattrVisibility.ProfileDigest, string(profile.XattrVisibility.Authority), profile.Limits}
 	encoded, err := json.Marshal(identity)

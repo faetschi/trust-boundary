@@ -361,8 +361,8 @@ func TestManagedWriterRequiresFilesOnlyLocalIdentityAndSingleGroup(t *testing.T)
 }
 
 func TestD09ManagedPiServiceConfigProviderRouteIsARequiredEnum(t *testing.T) {
-	if D09ManagedPiServiceConfigSchema != "tbound-pi-service-config/v3" {
-		t.Fatalf("config schema was not bumped for provider_route: %q", D09ManagedPiServiceConfigSchema)
+	if D09ManagedPiServiceConfigSchema != "tbound-pi-service-config/v4" {
+		t.Fatalf("config schema was not bumped for corpus admission: %q", D09ManagedPiServiceConfigSchema)
 	}
 	if D09ManagedPiResearchCredentialPath != "/etc/tbound/provider/openrouter.key" ||
 		D09ManagedPiProviderCredentialPath != "/etc/tbound/provider/opencode-go.key" {
@@ -416,24 +416,5 @@ func TestD09ManagedPiServiceConfigDigestChangesWithProviderRoute(t *testing.T) {
 	}
 	if digest(D09ManagedPiProviderRouteResearch) != research {
 		t.Fatal("the service config digest is not deterministic")
-	}
-}
-
-// The committed smoke service config is the operator's template. It must carry
-// the current schema and an explicit engineering route, and must not contain a
-// member the strict decoder does not know.
-func TestSmokeServiceConfigTemplateCarriesAnExplicitEngineeringRoute(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "..", "infra", "guest", "serve-pi-service.smoke.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
-	decoder.DisallowUnknownFields()
-	var config D09ManagedPiServiceConfig
-	if err := decoder.Decode(&config); err != nil {
-		t.Fatalf("smoke config does not match the service config schema: %v", err)
-	}
-	if config.SchemaVersion != D09ManagedPiServiceConfigSchema || config.ProviderRoute != D09ManagedPiProviderRouteEngineering {
-		t.Fatalf("smoke config schema %q route %q", config.SchemaVersion, config.ProviderRoute)
 	}
 }

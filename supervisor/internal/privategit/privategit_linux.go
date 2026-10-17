@@ -260,7 +260,7 @@ func Create(ctx context.Context, parent *os.File, source SourceDescriptor, optio
 		root: root, parent: parentCopy, name: name,
 		snapshot: Snapshot{Manifest: imported.Manifest, TreeDigest: imported.TreeDigest, Objects: imported.Objects, Bytes: imported.Bytes},
 		provenance: Provenance{
-			SchemaVersion:    "tbound-private-git/v2",
+			SchemaVersion:    ProvenanceSchemaVersion,
 			RepositoryName:   name,
 			Transfer:         "descriptor-relative-filtered-byte-copy",
 			FilterPolicy:     "workspace-reserved-git/v1",
@@ -364,10 +364,19 @@ func Reopen(parent *os.File, approval ReopenApproval) (*VerifiedRepository, erro
 	return verified, nil
 }
 
+// validateReopenApproval refuses any provenance whose schema version is not the
+// current one before it looks at any field. An upgrade that changes the
+// provenance format requires draining retained sessions first: older artifacts
+// are refused as an unsupported version, never migrated or reinterpreted (an
+// absent xattr_authority is never inferred as the bounded authority).
 func validateReopenApproval(parent *os.File, approval ReopenApproval) error {
 	provenance := approval.Provenance
+	if provenance.SchemaVersion != ProvenanceSchemaVersion {
+		return errors.Join(ErrReopenBinding, fmt.Errorf("%w: provenance version %q, supported %q",
+			ErrUnsupportedVersion, provenance.SchemaVersion, ProvenanceSchemaVersion))
+	}
 	if parent == nil || approval.Name == "" || !validRepositoryName(approval.Name) || approval.Name != provenance.RepositoryName ||
-		provenance.SchemaVersion != "tbound-private-git/v2" || provenance.Transfer != "descriptor-relative-filtered-byte-copy" ||
+		provenance.Transfer != "descriptor-relative-filtered-byte-copy" ||
 		provenance.FilterPolicy != "workspace-reserved-git/v1" || provenance.SourceGeneration == "" ||
 		!validTreeDigest(provenance.SourceTreeDigest) || !validSHA256(provenance.MetadataPolicyDigest) ||
 		!validSHA256(provenance.SourceBindingDigest) || !validSHA256(provenance.XattrProfileDigest) || provenance.XattrAuthority != XattrAuthorityBoundedNoHiddenTrusted ||
@@ -1441,9 +1450,11 @@ func destroyRepositoryLocked(repository *Repository) error {
 	return repository.parent.Close()
 }
 
+// verifyRepositoryLocked accepts only the current provenance schema version; an
+// upgrade requires draining retained sessions first.
 func verifyRepositoryLocked(repository *Repository) error {
 	if repository.parent == nil || !validRepositoryName(repository.name) || repository.name != repository.provenance.RepositoryName ||
-		repository.provenance.SchemaVersion != "tbound-private-git/v2" {
+		repository.provenance.SchemaVersion != ProvenanceSchemaVersion {
 		return ErrGitMetadata
 	}
 	parentInfo, err := statFile(repository.parent)

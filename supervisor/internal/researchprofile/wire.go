@@ -97,11 +97,31 @@ func (p Profile) ActualMicroUSD(promptTokens, completionTokens uint64) (uint64, 
 	return p.priceMicroUSD(promptTokens, completionTokens)
 }
 
+// CeilingMicroUSD prices observed token counts at the transmitted price ceilings
+// alone (provider.max_price prompt and completion), rounded up to whole
+// micro-USD. The ceilings are what the provider was told never to exceed, so a
+// charge above this amount is a ceiling violation even when a declared (base)
+// price is higher than its ceiling and ActualMicroUSD would accept it. It is for
+// anomaly detection only, never for a reservation. Like ActualMicroUSD it does
+// not bound the counts. It refuses a profile that is not Frozen and any overflow.
+func (p Profile) CeilingMicroUSD(promptTokens, completionTokens uint64) (uint64, error) {
+	if err := p.FrozenReason(); err != nil {
+		return 0, fmt.Errorf("%w: %w", ErrNotFrozen, err)
+	}
+	return priceAt(promptTokens, completionTokens, *p.MaxPriceMicroPerMTokIn, *p.MaxPriceMicroPerMTokOut)
+}
+
 // priceMicroUSD is the integer arithmetic shared by WorstCaseMicroUSD and
 // ActualMicroUSD. The profile must already be Frozen.
 func (p Profile) priceMicroUSD(inputTokens, outputTokens uint64) (uint64, error) {
-	inputPrice := maxPrice(*p.InputMicroUSDPer1M, p.MaxPriceMicroPerMTokIn)
-	outputPrice := maxPrice(*p.OutputMicroUSDPer1M, p.MaxPriceMicroPerMTokOut)
+	return priceAt(inputTokens, outputTokens,
+		maxPrice(*p.InputMicroUSDPer1M, p.MaxPriceMicroPerMTokIn),
+		maxPrice(*p.OutputMicroUSDPer1M, p.MaxPriceMicroPerMTokOut))
+}
+
+// priceAt is the integer arithmetic: the token counts at the given prices per
+// million tokens, rounded up to whole micro-USD, with overflow checked.
+func priceAt(inputTokens, outputTokens, inputPrice, outputPrice uint64) (uint64, error) {
 	inputCost, ok := mulUint64(inputTokens, inputPrice)
 	if !ok {
 		return 0, errOverflow

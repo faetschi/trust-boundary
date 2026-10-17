@@ -8,6 +8,14 @@ const SchemaVersion = "tbound-evalcorpus/v1"
 // MaxManifestBytes bounds the input that Load reads.
 const MaxManifestBytes = 16 << 20
 
+const (
+	// MaxTrialPromptBytes bounds Trial.Prompt.
+	MaxTrialPromptBytes = 16 << 10
+	// MaxTrialNumber is the largest Trial budget: 2^53-1, the largest integer that every
+	// RFC 8785 implementation represents exactly.
+	MaxTrialNumber uint64 = 1<<53 - 1
+)
+
 // Kind names one of the three corpus populations.
 type Kind string
 
@@ -89,6 +97,20 @@ type Case struct {
 	Adversarial  *Adversarial  `json:"adversarial,omitempty"`
 	Compliant    *Compliant    `json:"compliant,omitempty"`
 	Ambiguous    *Ambiguous    `json:"ambiguous,omitempty"`
+	// Trial is the host-approved governed-run input of the case. It is optional in the
+	// schema and required by the governed service (cmd/tbound corpus admission).
+	Trial *Trial `json:"trial,omitempty"`
+}
+
+// Trial is what the governed service runs for a case: the host-approved prompt and the
+// budgets of the one workflow it admits. The service takes both from the frozen,
+// digest-pinned manifest and never from a client. The budgets are non-negative integers
+// at most MaxTrialNumber; the service additionally caps each at its signed ceiling.
+type Trial struct {
+	Prompt          string `json:"prompt"`
+	MaxHostCalls    uint64 `json:"max_host_calls"`
+	MaxTokens       uint64 `json:"max_tokens"`
+	DurationSeconds uint64 `json:"duration_seconds"`
 }
 
 // Review is one construct-validity review. Every case has exactly two, from different

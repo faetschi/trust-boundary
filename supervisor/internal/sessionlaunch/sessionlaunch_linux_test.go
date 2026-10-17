@@ -587,3 +587,41 @@ func pinFixtureGit(t *testing.T) (privategit.PinnedGit, GitProfile) {
 	t.Cleanup(func() { _ = git.Close() })
 	return git, GitProfile{ExecutableDigest: expected, ExecutionBoundary: "test-only-supervisor-private-admin-fixture"}
 }
+
+// Retained D06 records written before xattr_authority existed carry the v1 label.
+// They are refused as an unsupported version (an upgrade requires draining
+// retained sessions first), whatever else they contain.
+func TestRetainedD06EvidenceRefusesOldProvenanceVersionAsUnsupported(t *testing.T) {
+	const v1 = "tbound-sessionlaunch-provenance/v1"
+	if provenanceSchema == v1 {
+		t.Fatal("the sessionlaunch provenance label was not bumped")
+	}
+	old := func(kind string) audit.Record {
+		return audit.Record{Event: audit.Event{Kind: kind, Data: []byte(`{"schema_version":"` + v1 + `","provenance":{"schema_version":"` + v1 + `"}}`)}}
+	}
+	for _, kind := range []string{sourceBindingEventKind, privateGitEventKind} {
+		_, _, err := retainedD06Evidence([]audit.Record{old(kind)})
+		if !errors.Is(err, ErrUnsupportedProvenanceVersion) || !errors.Is(err, ErrProvenanceMissing) || !strings.Contains(err.Error(), "unsupported") {
+			t.Fatalf("%s at v1 = %v, want the unsupported-version error", kind, err)
+		}
+	}
+	current := `{"schema_version":"` + provenanceSchema + `","provenance":{"schema_version":"` + provenanceSchema + `"}}`
+	if err := requireProvenanceVersion([]byte(current)); err != nil {
+		t.Fatalf("current version refused: %v", err)
+	}
+	for _, mismatch := range []string{
+		`{"schema_version":"` + provenanceSchema + `","provenance":{"schema_version":"` + v1 + `"}}`,
+		`{"schema_version":"` + v1 + `","provenance":{"schema_version":"` + provenanceSchema + `"}}`,
+		`{"provenance":{}}`,
+	} {
+		if err := requireProvenanceVersion([]byte(mismatch)); !errors.Is(err, ErrUnsupportedProvenanceVersion) {
+			t.Fatalf("mismatched version %s = %v, want the unsupported-version error", mismatch, err)
+		}
+	}
+}
+
+func TestSourceBindingDigestDomainWasBumpedWhenItsInputGainedTheAuthority(t *testing.T) {
+	if sourceBindingDomain != "tbound/sessionlaunch/source-binding/v2" {
+		t.Fatalf("source-binding digest domain = %q, want the v2 label", sourceBindingDomain)
+	}
+}

@@ -44,6 +44,7 @@ const frozenProfileJSON = `{
   "max_price_micro_usd_per_1m_tokens_in": 300000,
   "max_price_micro_usd_per_1m_tokens_out": 1200000,
   "max_input_tokens": 20000,
+  "input_framing_reserve_tokens": 512,
   "max_output_tokens": 2000,
   "max_requests_per_unit": 5,
   "temperature_milli": 0,
@@ -199,7 +200,11 @@ func conversation(t *testing.T, f *fixture, b *Bundle) *providerbridge.Conversat
 // outbound request body.
 func conversationWithSystem(t *testing.T, f *fixture, b *Bundle, system string) *providerbridge.Conversation {
 	t.Helper()
-	journal, err := audit.Open(filepath.Join(t.TempDir(), "provider.jsonl"))
+	journalDir := t.TempDir()
+	if err := os.Chmod(journalDir, 0o700); err != nil { // t.TempDir is 0755 under umask 022
+		t.Fatal(err)
+	}
+	journal, err := audit.Open(filepath.Join(journalDir, "provider.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -675,6 +680,9 @@ func TestOversizedRequestBodyIsRefusedBeforeReservationAndDispatch(t *testing.T)
 	}
 }
 
+// framingReserve is input_framing_reserve_tokens in frozenProfileJSON.
+const framingReserve = 512
+
 func TestRequestBodyExactlyAtTheBoundIsAcceptedAndOneByteOverIsRefused(t *testing.T) {
 	system := repeatedWords(1500)
 	// Measure the exact serialized body this conversation sends. The body does not
@@ -700,7 +708,7 @@ func TestRequestBodyExactlyAtTheBoundIsAcceptedAndOneByteOverIsRefused(t *testin
 	}
 
 	t.Run("at the bound", func(t *testing.T) {
-		f := newFixture(t, withMaxInput(length), ledgerConfigJSON(5_000_000, 20_000, "request"))
+		f := newFixture(t, withMaxInput(length+framingReserve), ledgerConfigJSON(5_000_000, 20_000, "request"))
 		f.genesis()
 		var bundle *Bundle
 		server := newProviderServer(t, &bundle)
@@ -709,14 +717,14 @@ func TestRequestBodyExactlyAtTheBoundIsAcceptedAndOneByteOverIsRefused(t *testin
 		}
 		bundle = f.open(server.URL + "/api/v1/chat/completions")
 		if _, err := conversationWithSystem(t, f, bundle, system).NextTurn(context.Background()); err != nil {
-			t.Fatalf("a body exactly at the bound was refused: %v", err)
+			t.Fatalf("a body at max_input_tokens minus the framing reserve was refused: %v", err)
 		}
-		if got, want := server.openAtHit.Load(), ceilingMicro(uint64(length), 64); got != want {
-			t.Fatalf("reserved %d micro-USD for a %d-byte bound; want %d", got, length, want)
+		if got, want := server.openAtHit.Load(), ceilingMicro(uint64(length+framingReserve), 64); got != want {
+			t.Fatalf("reserved %d micro-USD for a %d-byte body; want %d (max_input_tokens in full)", got, length, want)
 		}
 	})
 	t.Run("one byte over", func(t *testing.T) {
-		f := newFixture(t, withMaxInput(length-1), ledgerConfigJSON(5_000_000, 20_000, "request"))
+		f := newFixture(t, withMaxInput(length+framingReserve-1), ledgerConfigJSON(5_000_000, 20_000, "request"))
 		f.genesis()
 		var bundle *Bundle
 		server := newProviderServer(t, &bundle)
@@ -872,6 +880,58 @@ func TestCostAboveTheCeilingPricedTokensIsAnOverageAnomaly(t *testing.T) {
 		}
 		if snap := snapshot(t, bundle); snap.Overspent || snap.SettledMicroUSD != 13 {
 			t.Fatalf("cost without tokens mis-settled: %+v", snap)
+		}
+	})
+}
+
+// declaredAboveCeilingProfileJSON declares 500000 micro-USD per 1M input tokens
+// but transmits a ceiling of 300000, so ActualMicroUSD (the larger of the two)
+// prices 1000 input tokens at 500 while the ceiling allows only 300.
+func declaredAboveCeilingProfileJSON() string {
+	return strings.Replace(frozenProfileJSON, `"input_micro_usd_per_1m_tokens": 150000`, `"input_micro_usd_per_1m_tokens": 500000`, 1)
+}
+
+func TestCostAboveTheTransmittedCeilingIsAnAnomalyEvenWhenTheDeclaredPriceIsHigher(t *testing.T) {
+	run := func(t *testing.T, usage map[string]any) (*Bundle, error) {
+		f := newFixture(t, declaredAboveCeilingProfileJSON(), ledgerConfigJSON(5_000_000, 20_000, "request"))
+		f.genesis()
+		var bundle *Bundle
+		server := newProviderServer(t, &bundle)
+		server.handler = func(w http.ResponseWriter, _ *http.Request) { sse(w, usage) }
+		bundle = f.open(server.URL + "/api/v1/chat/completions")
+		_, err := conversation(t, f, bundle).NextTurn(context.Background())
+		return bundle, err
+	}
+	t.Run("400 micro-USD for 1000 input tokens under a 300 ceiling", func(t *testing.T) {
+		bundle, err := run(t, map[string]any{"prompt_tokens": 1000, "completion_tokens": 0, "cost": 0.0004})
+		if !errors.Is(err, ErrSpendOverage) {
+			t.Fatalf("a charge above the transmitted ceiling was not an anomaly: %v", err)
+		}
+		if snap := snapshot(t, bundle); !snap.Overspent {
+			t.Fatalf("anomaly did not stop the ledger: %+v", snap)
+		}
+	})
+	t.Run("301 micro-USD is above the ceiling", func(t *testing.T) {
+		if _, err := run(t, map[string]any{"prompt_tokens": 1000, "completion_tokens": 0, "cost": 0.000301}); !errors.Is(err, ErrSpendOverage) {
+			t.Fatalf("301 over a 300 ceiling: %v", err)
+		}
+	})
+	t.Run("a cost equal to the ceiling price is genuine", func(t *testing.T) {
+		bundle, err := run(t, map[string]any{"prompt_tokens": 1000, "completion_tokens": 0, "cost": 0.0003})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snap := snapshot(t, bundle); snap.Overspent || snap.SettledMicroUSD != 300 {
+			t.Fatalf("genuine cost mis-settled: %+v", snap)
+		}
+	})
+	t.Run("a missing cost still settles at the conservative maximum price", func(t *testing.T) {
+		bundle, err := run(t, map[string]any{"prompt_tokens": 1000, "completion_tokens": 0})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snap := snapshot(t, bundle); snap.Overspent || snap.SettledMicroUSD != 500 {
+			t.Fatalf("token-only settlement is not at the larger of declared and ceiling: %+v", snap)
 		}
 	})
 }

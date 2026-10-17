@@ -24,10 +24,17 @@ import (
 	"tbound/supervisor/internal/workspace"
 )
 
+// D06ProvenanceSchemaVersion is the schema label of the durable D06 source and
+// private-Git-ready journal records. It is bumped whenever their shape changes
+// (v2 added xattr_authority), so that an older retained record is refused as an
+// unsupported version rather than as a misleading digest or field error.
+const D06ProvenanceSchemaVersion = "tbound-sessionlaunch-provenance/v2"
+
 var (
-	ErrSealedSourceUnavailable = errors.New("verified sealed-generation source is unavailable or unverified")
-	ErrSealedSourceOutstanding = errors.New("session Store still owns a D09 sealed-source capability")
-	ErrSealedSourceExportOpen  = errors.New("caller-owned D09 source descriptor must close before its source capability")
+	ErrSealedSourceUnavailable      = errors.New("verified sealed-generation source is unavailable or unverified")
+	ErrUnsupportedProvenanceVersion = errors.New("unsupported D06 provenance version: an upgrade requires draining retained sessions first")
+	ErrSealedSourceOutstanding      = errors.New("session Store still owns a D09 sealed-source capability")
+	ErrSealedSourceExportOpen       = errors.New("caller-owned D09 source descriptor must close before its source capability")
 )
 
 // SealedSourceEvidence describes only the Store-owned host SOURCE descriptor.
@@ -379,6 +386,35 @@ func verifySealedSourceAnchors(ctx context.Context, store *Store, generation *Ge
 	return chain, bundle, d06, nil
 }
 
+// requireD06ProvenanceVersion refuses a durable D06 record whose schema version
+// is not D06ProvenanceSchemaVersion, before any other field is read. An upgrade
+// that changes the record format requires draining retained sessions first: older
+// records are refused as an unsupported version, never migrated, and an absent
+// xattr_authority is never inferred as the bounded authority.
+func requireD06ProvenanceVersion(data []byte) error {
+	var probe struct {
+		SchemaVersion string `json:"schema_version"`
+		Provenance    struct {
+			SchemaVersion string `json:"schema_version"`
+		} `json:"provenance"`
+	}
+	if json.Unmarshal(data, &probe) != nil {
+		return fmt.Errorf("%w: D06 provenance record schema is invalid", ErrSealedSourceUnavailable)
+	}
+	envelope, embedded := probe.SchemaVersion, probe.Provenance.SchemaVersion
+	if embedded != D06ProvenanceSchemaVersion || (envelope != "" && envelope != D06ProvenanceSchemaVersion) {
+		version := embedded
+		if version == D06ProvenanceSchemaVersion {
+			version = envelope
+		}
+		return fmt.Errorf("%w: %w: record version %q, supported %q", ErrSealedSourceUnavailable,
+			ErrUnsupportedProvenanceVersion, version, D06ProvenanceSchemaVersion)
+	}
+	return nil
+}
+
+// verifyD06SourceRecords accepts only current-version D06 records; an upgrade
+// requires draining retained sessions first.
 func verifyD06SourceRecords(bundle EvidenceBundle) (d06SourceProvenance, error) {
 	trace, err := audit.Verify(bytes.NewReader(bundle.AuditJournal))
 	if err != nil || uint64(len(trace.Records)) != bundle.AuditRecordCount || auditHeadHash(trace.Records) != bundle.AuditHeadHash {
@@ -404,10 +440,15 @@ func verifyD06SourceRecords(bundle EvidenceBundle) (d06SourceProvenance, error) 
 	if source == nil || ready == nil || source.Sequence == 0 || ready.Sequence <= source.Sequence {
 		return d06SourceProvenance{}, fmt.Errorf("%w: durable D06 source/private-Git provenance is missing", ErrSealedSourceUnavailable)
 	}
+	for _, record := range []*audit.Record{source, ready} {
+		if err := requireD06ProvenanceVersion(record.Event.Data); err != nil {
+			return d06SourceProvenance{}, err
+		}
+	}
 	var sourceEvent d06SourceEvent
 	var readyEvent d06PrivateGitEvent
 	if json.Unmarshal(source.Event.Data, &sourceEvent) != nil || json.Unmarshal(ready.Event.Data, &readyEvent) != nil ||
-		readyEvent.SchemaVersion != "tbound-sessionlaunch-provenance/v1" {
+		readyEvent.SchemaVersion != D06ProvenanceSchemaVersion {
 		return d06SourceProvenance{}, fmt.Errorf("%w: D06 provenance record schema is invalid", ErrSealedSourceUnavailable)
 	}
 	sp, rp := sourceEvent.Provenance, readyEvent.Provenance
@@ -507,7 +548,7 @@ func sealedSourceIdentityDigest(evidence SealedSourceEvidence) (string, error) {
 		Device     uint64 `json:"source_device"`
 		Inode      uint64 `json:"source_inode"`
 		MountID    uint64 `json:"source_mount_id"`
-	}{"tbound/sessionrepo/sealed-source/v1", evidence.GenerationID, evidence.TreeDigest,
+	}{"tbound/sessionrepo/sealed-source/v2", evidence.GenerationID, evidence.TreeDigest,
 		evidence.ManifestDigest, evidence.SourceBindingDigest, evidence.ProvenanceDigest,
 		evidence.StoreAuditHead, evidence.StoreAuditRecordCount, evidence.SourceDevice,
 		evidence.SourceInode, evidence.SourceMountID}

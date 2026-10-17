@@ -37,7 +37,10 @@ const (
 	piServiceConfigPath          = "/etc/tbound/serve-pi-service.json"
 	piServiceRequestJournalPath  = "/var/lib/tbound/audit/serve-pi-requests.jsonl"
 	piServiceResponseSchema      = "tbound-pi-service-response/v1"
-	piServiceConfigSchema        = "tbound-pi-service-config/v3"
+	piServiceConfigSchema        = "tbound-pi-service-config/v4"
+	piServiceConfigSchemaV3      = "tbound-pi-service-config/v3" // single-task schema, still valid for fresh and resume
+	piServiceAdmissionCorpus     = "corpus"
+	piServiceCorpusManifestPath  = "/etc/tbound/corpus/manifest.json"
 	piServiceSocketSchema        = "tbound-managed-pi-service-socket/v1"
 	piServiceSocketMode          = "systemd-socket-activation-single-task/v1"
 	piServiceSourcePolicy        = "current-managed-live-root/v1"
@@ -59,11 +62,17 @@ var (
 	ErrPiServiceUnresolvedPrior = errors.New("a prior accepted Pi service workflow is not independently settled")
 )
 
+// piServiceRequest is the wire request. Attempt (1, or 2 for the one outage rerun) and
+// Role (a governed role) are the corpus-mode members: the task_id is then the case_id
+// and the prompt must be empty, because the service takes the prompt and budgets of the
+// case from its frozen manifest. Zero Attempt and empty Role mean a single-task request.
 type piServiceRequest struct {
 	RequestID       string    `json:"request_id"`
 	TaskID          string    `json:"task_id"`
 	Prompt          string    `json:"prompt"`
 	BashOutputPaths *[]string `json:"bash_output_paths,omitempty"`
+	Attempt         int       `json:"attempt,omitempty"`
+	Role            string    `json:"role,omitempty"`
 }
 
 type piServiceResponse struct {
@@ -123,6 +132,8 @@ type piServiceConfig struct {
 	WorkflowMaxHostCalls        uint64   `json:"workflow_max_host_calls"`
 	WorkflowMaxTokens           uint64   `json:"workflow_max_tokens"`
 	WorkflowDurationSeconds     uint64   `json:"workflow_duration_seconds"`
+	CorpusManifestPath          string   `json:"corpus_manifest_path,omitempty"`
+	CorpusManifestDigest        string   `json:"corpus_manifest_digest,omitempty"`
 	PodmanHome                  string   `json:"podman_home"`
 	PodmanGraphRoot             string   `json:"podman_graphroot"`
 	PodmanRunRoot               string   `json:"podman_runroot"`
@@ -246,6 +257,28 @@ type piServiceRequestJournal struct {
 	journal            *audit.Journal
 	entries            map[string]piServiceRequestState
 	settlementVerifier func(context.Context, piServiceRequestState) error
+	// admissionScreen is the service's host-side check of a request that runs before
+	// the request is journaled as accepted. It returns an error code to refuse the
+	// request without consuming its request id, or "" to let it proceed. It is nil
+	// until the service installs it.
+	admissionScreen func(piServicePeerCredentials, piServiceRequest) string
+}
+
+func (j *piServiceRequestJournal) setAdmissionScreen(screen func(piServicePeerCredentials, piServiceRequest) string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.admissionScreen = screen
+}
+
+// screen runs the installed admission screen. A refused request is not journaled.
+func (j *piServiceRequestJournal) screen(peer piServicePeerCredentials, request piServiceRequest) string {
+	j.mu.Lock()
+	screen := j.admissionScreen
+	j.mu.Unlock()
+	if screen == nil {
+		return ""
+	}
+	return screen(peer, request)
 }
 
 type piServiceTaskRunner func(context.Context, piServiceRequest) (json.RawMessage, error)
@@ -639,12 +672,30 @@ func readProductionPiServiceConfig(path, expectedDigest string) (piServiceConfig
 	if err := decoder.Decode(&config); err != nil {
 		return piServiceConfig{}, errors.Join(ErrPiServiceUnavailable, err)
 	}
-	if config.SchemaVersion != piServiceConfigSchema || config.SourcePolicy != piServiceSourcePolicy ||
+	if validateProductionPiServiceConfig(config) != nil {
+		return piServiceConfig{}, ErrPiServiceUnavailable
+	}
+	containers, err := readProtectedPiServiceFile(config.ContainersConfigPath, 1<<20)
+	if err != nil || digestBytes(containers) != config.ContainersConfigDigest {
+		return piServiceConfig{}, errors.Join(ErrPiServiceUnavailable, err)
+	}
+	storage, err := readProtectedPiServiceFile(config.StorageConfigPath, 1<<20)
+	if err != nil || digestBytes(storage) != config.StorageConfigDigest {
+		return piServiceConfig{}, errors.Join(ErrPiServiceUnavailable, err)
+	}
+	return config, nil
+}
+
+// validateProductionPiServiceConfig is the structural check of a decoded service
+// config. Single-task modes (fresh, resume) pin one inline task, prompt and admission
+// id and accept schema v3 or v4. Corpus mode (schema v4 only) pins a frozen manifest by
+// fixed path and digest and carries no inline task, prompt or admission id. In both
+// shapes the workflow_max_* members are the host ceilings of a workflow.
+func validateProductionPiServiceConfig(config piServiceConfig) error {
+	if (config.SchemaVersion != piServiceConfigSchema && config.SchemaVersion != piServiceConfigSchemaV3) ||
+		config.SourcePolicy != piServiceSourcePolicy ||
 		(config.ProviderRoute != piruntime.D09ManagedPiProviderRouteEngineering && config.ProviderRoute != piruntime.D09ManagedPiProviderRouteResearch) ||
-		(config.WorkflowAdmissionMode != "fresh" && config.WorkflowAdmissionMode != "resume") ||
-		!boundedProductionIdentity(config.WorkflowAdmissionID, productionRequestMaxBytes) ||
-		!boundedProductionIdentity(config.WorkflowTaskID, productionTaskIDMaxBytes) ||
-		!boundedProductionPrompt(config.WorkflowPrompt) ||
+		!validPiServiceAdmissionEnvelope(config) ||
 		sessionrepo.ValidateOutputScopePaths(config.WorkflowBashOutputPaths) != nil ||
 		config.WorkflowCatalogPath != piServiceWorkflowCatalogPath || config.WorkflowRootDBPath != piServiceWorkflowRootDBPath ||
 		config.WorkflowOwnerStoreRoot != piServiceOwnerStoreRoot || config.WorkflowMaxPreEffectRetries > 2 ||
@@ -657,17 +708,24 @@ func readProductionPiServiceConfig(path, expectedDigest string) (piServiceConfig
 		config.ContainersConfigPath != "/etc/tbound/podman-config/containers.conf" ||
 		config.StorageConfigPath != "/etc/tbound/podman-config/storage.conf" ||
 		!validDigestText(config.ContainersConfigDigest) || !validDigestText(config.StorageConfigDigest) {
-		return piServiceConfig{}, ErrPiServiceUnavailable
+		return ErrPiServiceUnavailable
 	}
-	containers, err := readProtectedPiServiceFile(config.ContainersConfigPath, 1<<20)
-	if err != nil || digestBytes(containers) != config.ContainersConfigDigest {
-		return piServiceConfig{}, errors.Join(ErrPiServiceUnavailable, err)
+	return nil
+}
+
+func validPiServiceAdmissionEnvelope(config piServiceConfig) bool {
+	switch config.WorkflowAdmissionMode {
+	case "fresh", "resume":
+		return config.CorpusManifestPath == "" && config.CorpusManifestDigest == "" &&
+			boundedProductionIdentity(config.WorkflowAdmissionID, productionRequestMaxBytes) &&
+			boundedProductionIdentity(config.WorkflowTaskID, productionTaskIDMaxBytes) &&
+			boundedProductionPrompt(config.WorkflowPrompt)
+	case piServiceAdmissionCorpus:
+		return config.SchemaVersion == piServiceConfigSchema &&
+			config.WorkflowAdmissionID == "" && config.WorkflowTaskID == "" && config.WorkflowPrompt == "" &&
+			config.CorpusManifestPath == piServiceCorpusManifestPath && validDigestText(config.CorpusManifestDigest)
 	}
-	storage, err := readProtectedPiServiceFile(config.StorageConfigPath, 1<<20)
-	if err != nil || digestBytes(storage) != config.StorageConfigDigest {
-		return piServiceConfig{}, errors.Join(ErrPiServiceUnavailable, err)
-	}
-	return config, nil
+	return false
 }
 
 func readProtectedPiServiceFile(path string, maximum int64) ([]byte, error) {
@@ -1303,6 +1361,12 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			_ = unixConn.Close()
 			continue
 		}
+		if code := journal.screen(peer, request); code != "" {
+			_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
+				RequestID: request.RequestID, Status: "refused", ErrorCode: code})
+			_ = unixConn.Close()
+			continue
+		}
 		prior, exists, lookupErr := journal.lookup(peer, request, payloadDigest)
 		if lookupErr != nil {
 			_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
@@ -1458,10 +1522,37 @@ func runProductionPiServiceClient(ctx context.Context, output io.Writer, request
 	if err != nil {
 		return err
 	}
-	if _, err := readProductionPiServiceConfig(contract.ServiceConfigPath, contract.ServiceConfigDigest); err != nil {
+	serviceConfig, err := readProductionPiServiceConfig(contract.ServiceConfigPath, contract.ServiceConfigDigest)
+	if err != nil {
+		return err
+	}
+	if err := checkPiServiceClientRequest(serviceConfig, request); err != nil {
 		return err
 	}
 	return callProductionPiService(ctx, socket, registration.ServiceUID, registration.ServiceGID, request, output)
+}
+
+// checkPiServiceClientRequest refuses, before anything is sent, a request whose shape
+// does not match the installed service's admission mode. A corpus-mode service owns
+// every prompt, so a client that supplies task text is refused here and again by the
+// service; a single-task service takes no attempt.
+func checkPiServiceClientRequest(config piServiceConfig, request piServiceRequest) error {
+	if config.WorkflowAdmissionMode == piServiceAdmissionCorpus {
+		if request.Prompt != "" {
+			return fmt.Errorf("%w: the corpus-mode service takes its prompt from the frozen manifest; --task is not accepted", ErrPiServiceRefused)
+		}
+		if request.Attempt != 1 && request.Attempt != 2 {
+			return fmt.Errorf("%w: the corpus-mode service needs --attempt 1 or 2", ErrPiServiceRefused)
+		}
+		if !validCorpusRole(request.Role) {
+			return fmt.Errorf("%w: the corpus-mode service needs --role, one of trajectory, static-replay, adaptive-replay, variance-1, variance-2, compliant, ambiguous", ErrPiServiceRefused)
+		}
+		return nil
+	}
+	if request.Attempt != 0 || request.Role != "" {
+		return fmt.Errorf("%w: --attempt and --role are accepted only by a corpus-mode service", ErrPiServiceRefused)
+	}
+	return nil
 }
 
 func writePiServiceRequest(conn net.Conn, data []byte) error {
@@ -1503,9 +1594,21 @@ func callPiServiceConn(conn *net.UnixConn, request piServiceRequest) (piServiceR
 	return response, nil
 }
 
+// validatePiServiceRequest checks the wire form of a request. A single-task request
+// carries a bounded prompt and no attempt. A corpus request (attempt present) names a
+// case_id as task_id and an attempt of 1 or 2, and carries no prompt: the service owns
+// the prompt. Whether the case exists is the service's decision, made against its
+// frozen manifest before the request is journaled.
 func validatePiServiceRequest(request piServiceRequest) error {
 	if !boundedProductionIdentity(request.RequestID, productionRequestMaxBytes) ||
-		!boundedProductionIdentity(request.TaskID, productionTaskIDMaxBytes) || !boundedProductionPrompt(request.Prompt) {
+		!boundedProductionIdentity(request.TaskID, productionTaskIDMaxBytes) {
+		return ErrPiServiceRefused
+	}
+	if request.Attempt != 0 || request.Role != "" {
+		if (request.Attempt != 1 && request.Attempt != 2) || !validCorpusRole(request.Role) || request.Prompt != "" {
+			return ErrPiServiceRefused
+		}
+	} else if !boundedProductionPrompt(request.Prompt) {
 		return ErrPiServiceRefused
 	}
 	if request.BashOutputPaths != nil {
@@ -1624,6 +1727,15 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	if err := verifyPiServiceEnvironment(serviceConfig, registration); err != nil {
 		return err
 	}
+	// A corpus-mode service admits only trials of its frozen manifest. The manifest is
+	// read through the strict root-owned walk, must match the signed digest and pass
+	// evalcorpus.Validate, or the service refuses to start before it listens.
+	var corpus *productionCorpus
+	if serviceConfig.WorkflowAdmissionMode == piServiceAdmissionCorpus {
+		if corpus, err = loadProductionCorpus(serviceConfig); err != nil {
+			return err
+		}
+	}
 	// The provider route is fixed by the digest-pinned service config. A research
 	// route opens its frozen profile, key and genesis ledger here, so a missing or
 	// unfrozen input refuses the service before any listener or task exists.
@@ -1651,6 +1763,10 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 		return fmt.Errorf("open host-provisioned workflow admission catalog: %w", err)
 	}
 	defer workflowCatalog.Close()
+	workflowCatalog.corpus = corpus
+	// Requests the catalog could never admit (unknown case, bad attempt, client task
+	// text, a used case/attempt) are refused before they are journaled as accepted.
+	requests.setAdmissionScreen(workflowCatalog.admissionScreen(serviceConfig))
 	registrationID := piServiceRegistrationIdentity(registration, socket, contract)
 	if !validDigestText(registrationID) {
 		return ErrPiServiceUnavailable
@@ -1686,8 +1802,11 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 		if request.BashOutputPaths != nil {
 			bashOutputPaths = cloneDurableOutputScopePaths(*request.BashOutputPaths)
 		}
+		// The prompt that runs is the one the catalog admitted: the request's own in a
+		// single-task mode (identical by the envelope check) and the manifest's in
+		// corpus mode, where the request carries none.
 		config := productionServeConfig{ServiceMode: true, ManagedLiveRootPath: registration.RootPath,
-			TaskID: request.TaskID, TaskRequestID: request.RequestID, TaskPrompt: request.Prompt,
+			TaskID: request.TaskID, TaskRequestID: request.RequestID, TaskPrompt: workflowAdmission.Entry.TaskPrompt,
 			BashOutputPaths: bashOutputPaths, workflowAdmission: workflowAdmission, providerRoute: providerRoute}
 		var receipt bytes.Buffer
 		runErr := runProductionPiServe(taskCtx, &receipt, config, newProductionBinder())

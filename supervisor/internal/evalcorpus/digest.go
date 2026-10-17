@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strconv"
 	"unicode/utf16"
 	"unicode/utf8"
 )
 
 // CanonicalJSON returns the canonical form of m: RFC 8785 for this schema's value
-// subset (strings, booleans, arrays, objects; the schema has no numbers). Object members
+// subset (strings, booleans, arrays, objects, and non-negative integers up to 2^53-1,
+// which are written as their decimal digits). Object members
 // are sorted by UTF-16 code units, there is no insignificant whitespace, and strings use
 // only the RFC 8785 escapes. A nil array canonicalizes as []. Array order is kept.
 // Invalid UTF-8 is an error.
@@ -86,6 +88,13 @@ func writeCanonical(buf *bytes.Buffer, v reflect.Value) error {
 		buf.WriteByte(']')
 	case reflect.String:
 		return writeCanonicalString(buf, v.String())
+	case reflect.Uint64:
+		// RFC 8785 writes an integer as its decimal digits. Above 2^53-1 other JSON
+		// implementations disagree on the value, so there is no interoperable form.
+		if v.Uint() > MaxTrialNumber {
+			return fmt.Errorf("evalcorpus: integer %d exceeds 2^53-1 in canonical form", v.Uint())
+		}
+		buf.WriteString(strconv.FormatUint(v.Uint(), 10))
 	case reflect.Bool:
 		if v.Bool() {
 			buf.WriteString("true")

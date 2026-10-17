@@ -28,6 +28,7 @@ const draftJSON = `{
   "max_price_micro_usd_per_1m_tokens_in": null,
   "max_price_micro_usd_per_1m_tokens_out": null,
   "max_input_tokens": null,
+  "input_framing_reserve_tokens": null,
   "max_output_tokens": null,
   "max_requests_per_unit": null,
   "temperature_milli": null,
@@ -56,6 +57,7 @@ const syntheticJSON = `{
   "max_price_micro_usd_per_1m_tokens_in": 1111,
   "max_price_micro_usd_per_1m_tokens_out": 2222,
   "max_input_tokens": 1000,
+  "input_framing_reserve_tokens": 100,
   "max_output_tokens": 100,
   "max_requests_per_unit": 3,
   "temperature_milli": 0,
@@ -67,7 +69,7 @@ const syntheticJSON = `{
 
 // syntheticCanonical is the canonical encoding of syntheticJSON: fixed field
 // order, no insignificant whitespace, explicit nulls. Digest must be its SHA-256.
-const syntheticCanonical = `{"schema_version":1,"endpoint":"https://openrouter.ai/api/v1/chat/completions","model":"deepseek/deepseek-v4.1-flash","allowed_response_models":["deepseek/deepseek-v4.1-flash"],"routing":{"order":["example-provider"],"allow_fallbacks":false,"data_collection":"deny","quantizations":[],"require_parameters":true,"zdr":true},"input_micro_usd_per_1m_tokens":1111,"output_micro_usd_per_1m_tokens":2222,"max_price_micro_usd_per_1m_tokens_in":1111,"max_price_micro_usd_per_1m_tokens_out":2222,"max_input_tokens":1000,"max_output_tokens":100,"max_requests_per_unit":3,"temperature_milli":0,"seed":7,"reasoning":{"enabled":false},"timeout_ms":1234,"frozen_at":"2026-10-15T00:00:00Z"}`
+const syntheticCanonical = `{"schema_version":1,"endpoint":"https://openrouter.ai/api/v1/chat/completions","model":"deepseek/deepseek-v4.1-flash","allowed_response_models":["deepseek/deepseek-v4.1-flash"],"routing":{"order":["example-provider"],"allow_fallbacks":false,"data_collection":"deny","quantizations":[],"require_parameters":true,"zdr":true},"input_micro_usd_per_1m_tokens":1111,"output_micro_usd_per_1m_tokens":2222,"max_price_micro_usd_per_1m_tokens_in":1111,"max_price_micro_usd_per_1m_tokens_out":2222,"max_input_tokens":1000,"input_framing_reserve_tokens":100,"max_output_tokens":100,"max_requests_per_unit":3,"temperature_milli":0,"seed":7,"reasoning":{"enabled":false},"timeout_ms":1234,"frozen_at":"2026-10-15T00:00:00Z"}`
 
 func load(t *testing.T, doc string) Profile {
 	t.Helper()
@@ -168,6 +170,7 @@ func TestLoadRejectsMalformedDocuments(t *testing.T) {
 		{"negative money", replaceOnce(t, draftJSON, `"input_micro_usd_per_1m_tokens": null`, `"input_micro_usd_per_1m_tokens": -1`), "cannot unmarshal number -1"},
 		{"zero price", replaceOnce(t, draftJSON, `"output_micro_usd_per_1m_tokens": null`, `"output_micro_usd_per_1m_tokens": 0`), "output_micro_usd_per_1m_tokens must be positive"},
 		{"zero seed", replaceOnce(t, draftJSON, `"seed": null`, `"seed": 0`), "seed must be positive"},
+		{"zero framing reserve", replaceOnce(t, draftJSON, `"input_framing_reserve_tokens": null`, `"input_framing_reserve_tokens": 0`), "input_framing_reserve_tokens must be positive"},
 		{"zero ceiling", replaceOnce(t, draftJSON, `"max_price_micro_usd_per_1m_tokens_in": null`, `"max_price_micro_usd_per_1m_tokens_in": 0`), "max_price_micro_usd_per_1m_tokens_in must be positive"},
 		{"ceiling pair half set", replaceOnce(t, syntheticJSON, `"max_price_micro_usd_per_1m_tokens_in": 1111`, `"max_price_micro_usd_per_1m_tokens_in": null`), "must be set together"},
 		{"temperature above 2", replaceOnce(t, draftJSON, `"temperature_milli": null`, `"temperature_milli": 2001`), "temperature_milli must be from 0 to 2000"},
@@ -220,6 +223,7 @@ func TestFrozenRequiresEveryOpenField(t *testing.T) {
 		{"input price", func(p *Profile) { p.InputMicroUSDPer1M = nil }, "input_micro_usd_per_1m_tokens"},
 		{"output price", func(p *Profile) { p.OutputMicroUSDPer1M = nil }, "output_micro_usd_per_1m_tokens"},
 		{"max input tokens", func(p *Profile) { p.MaxInputTokens = nil }, "max_input_tokens"},
+		{"input framing reserve", func(p *Profile) { p.InputFramingReserveTokens = nil }, "input_framing_reserve_tokens"},
 		{"max output tokens", func(p *Profile) { p.MaxOutputTokens = nil }, "max_output_tokens"},
 		{"max requests per unit", func(p *Profile) { p.MaxRequestsPerUnit = nil }, "max_requests_per_unit"},
 		{"temperature", func(p *Profile) { p.TemperatureMilli = nil }, "temperature_milli"},
@@ -457,5 +461,52 @@ func TestDigestCoversDraftsAndRejectsInvalid(t *testing.T) {
 	p.Model = "other/model"
 	if _, err := p.Digest(); err == nil || !strings.Contains(err.Error(), "model must be") {
 		t.Fatalf("Digest of invalid profile: %v", err)
+	}
+}
+
+func TestFrozenRequiresTheFramingReserveBelowMaxInputTokens(t *testing.T) {
+	for _, reserve := range []uint64{1000, 1001} {
+		p := load(t, syntheticJSON)
+		p.InputFramingReserveTokens = ptr(reserve)
+		if p.Frozen() {
+			t.Fatalf("a framing reserve of %d against max_input_tokens=1000 is frozen", reserve)
+		}
+		if err := p.FrozenReason(); err == nil || !strings.Contains(err.Error(), "input_framing_reserve_tokens") {
+			t.Fatalf("reason %v does not name input_framing_reserve_tokens", err)
+		}
+	}
+	p := load(t, syntheticJSON)
+	p.InputFramingReserveTokens = ptr[uint64](999)
+	if !p.Frozen() {
+		t.Fatalf("a reserve of 999 is refused: %v", p.FrozenReason())
+	}
+}
+
+func TestDigestCoversTheFramingReserve(t *testing.T) {
+	base := load(t, syntheticJSON)
+	other := load(t, replaceOnce(t, syntheticJSON, `"input_framing_reserve_tokens": 100`, `"input_framing_reserve_tokens": 101`))
+	if mustDigest(t, base) == mustDigest(t, other) {
+		t.Fatal("the digest does not cover input_framing_reserve_tokens")
+	}
+}
+
+// CeilingMicroUSD prices at the transmitted ceilings alone, also when a declared
+// price is higher than its ceiling (ActualMicroUSD takes the larger).
+func TestCeilingMicroUSDPricesAtTheTransmittedCeilingsAlone(t *testing.T) {
+	doc := replaceOnce(t, syntheticJSON, `"input_micro_usd_per_1m_tokens": 1111`, `"input_micro_usd_per_1m_tokens": 500000`)
+	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_in": 1111`, `"max_price_micro_usd_per_1m_tokens_in": 300000`)
+	p := load(t, doc)
+	if got, err := p.CeilingMicroUSD(1000, 0); err != nil || got != 300 {
+		t.Fatalf("ceiling price of 1000 input tokens = %d, %v; want 300", got, err)
+	}
+	if got, err := p.ActualMicroUSD(1000, 0); err != nil || got != 500 {
+		t.Fatalf("max price of 1000 input tokens = %d, %v; want 500", got, err)
+	}
+	if _, err := p.CeilingMicroUSD(math.MaxUint64, 0); err == nil {
+		t.Fatal("overflow not refused")
+	}
+	draft := load(t, draftJSON)
+	if _, err := draft.CeilingMicroUSD(1, 1); !errors.Is(err, ErrNotFrozen) {
+		t.Fatalf("a draft profile priced a ceiling: %v", err)
 	}
 }

@@ -25,12 +25,14 @@
 //     them in any pricing period, peak or base; reservation and token-only
 //     settlement price at that ceiling;
 //   - actual cost is the provider-reported usage.cost when present; a cost above
-//     the usage tokens priced at the ceiling is an anomaly and is recorded with
-//     SettleOverage; without usage.cost the tokens priced at the ceiling are the
-//     cost;
+//     the usage tokens priced at the transmitted ceilings alone is an anomaly and
+//     is recorded with SettleOverage; without usage.cost the tokens priced at the
+//     larger of declared price and ceiling are the cost;
 //   - max_input_tokens is enforced before the reservation: the request is refused,
 //     with nothing reserved or sent, when its serialized body (an upper bound of
-//     its input tokens) is longer than max_input_tokens. The reservation then
+//     its content tokens) plus input_framing_reserve_tokens (slack for the
+//     provider chat-template tokens that the body does not contain) is longer
+//     than max_input_tokens. The reservation then
 //     assumes max_input_tokens in full, and a larger actual cost is recorded with
 //     SettleOverage, after which the ledger refuses every later request.
 //
@@ -82,7 +84,7 @@ var (
 	ErrSpendOverage    = errors.New("provider cost exceeded its reservation; the ledger recorded the overage and refuses further requests")
 	ErrUsageMissing    = errors.New("provider response carries no usable usage; the cost is unknown")
 	ErrWrongRequest    = errors.New("request is not built from this research profile")
-	ErrInputOverBound  = errors.New("research request body exceeds the frozen max_input_tokens bound")
+	ErrInputOverBound  = errors.New("research request body plus the framing reserve exceeds the frozen max_input_tokens bound")
 )
 
 // Paths names the files of the research route. DefaultPaths gives the fixed
@@ -349,12 +351,19 @@ func (b *Bundle) ReserveSpend(_ context.Context, reservation providerbridge.Spen
 	// byte length; the content is no longer than the body that carries it. A token
 	// per byte is the worst case and is far above real prompts (about 3 to 4 bytes
 	// per token), so this refuses some bodies that would have fit, never one that
-	// would not. No tighter bound is claimed. Chat-template special tokens are not
-	// in the body and are a small constant per message, so the reservation keeps the
-	// full frozen max_input_tokens and does not shrink to the bound.
-	if bound := uint64(len(body)); bound > *b.profile.MaxInputTokens {
-		return "", fmt.Errorf("%w: the request body is %d bytes (an upper bound of its input tokens), max_input_tokens is %d",
-			ErrInputOverBound, bound, *b.profile.MaxInputTokens)
+	// would not. No tighter bound is claimed.
+	//
+	// Chat-template special tokens (role markers, end of turn) are added by the
+	// provider, are not in the body, and are a small constant per message. The
+	// frozen input_framing_reserve_tokens is the slack for them: the request is
+	// admitted only if len(body) + reserve <= max_input_tokens, so the input tokens
+	// of the content (at most len(body)) and of the framing (assumed to fit the
+	// reserve) stay within max_input_tokens, which the reservation prices in full.
+	// A body at exactly max_input_tokens, with no slack, is therefore refused.
+	limit, reserve := *b.profile.MaxInputTokens, *b.profile.InputFramingReserveTokens
+	if bound := uint64(len(body)); reserve >= limit || bound > limit-reserve {
+		return "", fmt.Errorf("%w: the request body is %d bytes (an upper bound of its content tokens) plus a framing reserve of %d tokens, max_input_tokens is %d",
+			ErrInputOverBound, bound, reserve, limit)
 	}
 	amount, err := b.reserveAmount(reservation.CompletionLimit)
 	if err != nil {

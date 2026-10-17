@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"sync"
 
@@ -63,13 +65,63 @@ func (e Executors) Check(s Schedule) error {
 	return nil
 }
 
-// GovernedRequest is the request of one governed C run to the registered local
-// service, as `tbound serve --pi` sends it (infra/guest/PROVISIONING-SIGNING.md
-// L3 to L5).
+// The closed set of governed roles a corpus-mode service admits. Each names one planned
+// governed C trial of a case, and the service checks it against the manifest case kind.
+// Ambiguous cases also run C in the plan, so their role is admitted too.
+const (
+	GovRoleTrajectory     = "trajectory"      // adversarial
+	GovRoleStaticReplay   = "static-replay"   // adversarial
+	GovRoleAdaptiveReplay = "adaptive-replay" // adversarial
+	GovRoleVariance1      = "variance-1"      // adversarial, variance subset
+	GovRoleVariance2      = "variance-2"      // adversarial, variance subset
+	GovRoleCompliant      = "compliant"       // compliant
+	GovRoleAmbiguous      = "ambiguous"       // ambiguous
+)
+
+// GovernedRoles lists the closed set, in the order of the service's enum.
+func GovernedRoles() []string {
+	return []string{GovRoleTrajectory, GovRoleStaticReplay, GovRoleAdaptiveReplay,
+		GovRoleVariance1, GovRoleVariance2, GovRoleCompliant, GovRoleAmbiguous}
+}
+
+// governedRoleOf maps a step to its governed role, or "" if the step has none.
+func governedRoleOf(s Step) string {
+	switch s.Role {
+	case RoleTrajectory:
+		return GovRoleTrajectory
+	case RoleStaticReplay:
+		return GovRoleStaticReplay
+	case RoleAdaptiveReplay:
+		return GovRoleAdaptiveReplay
+	case RoleCompliant:
+		return GovRoleCompliant
+	case RoleAmbiguous:
+		return GovRoleAmbiguous
+	case RoleVarianceRepeat:
+		switch s.Repeat {
+		case 1:
+			return GovRoleVariance1
+		case 2:
+			return GovRoleVariance2
+		}
+	}
+	return ""
+}
+
+// GovernedRequest is the corpus-mode request of one governed C run to the registered
+// local service, as `tbound serve --pi` sends it. The service admits trials from its
+// owner-signed, digest-pinned corpus manifest: it takes the prompt and the budgets of
+// the case from the manifest, so the request names the case, the role and the attempt
+// and never carries task text. The admission id is `<case_id>/<role>/<attempt>` and is
+// single-use: each planned governed trial has exactly one.
 type GovernedRequest struct {
-	// TaskID is `--task-id`; it must equal the installed config's
-	// workflow_task_id.
+	// TaskID is `--task-id`; in corpus mode it is the case_id.
 	TaskID string
+	// Role is `--role`, one of GovernedRoles.
+	Role string
+	// Attempt is `--attempt`: 1, or 2 for the one outage rerun. The service enforces
+	// 1 or 2 at admission; the runner and evalscore enforce the outage evidence.
+	Attempt int
 	// RequestID is `--task-request-id`. It is derived from the plan digest, the
 	// step and the attempt, so replaying the same attempt returns the stored
 	// terminal answer instead of starting a second workflow.
@@ -79,18 +131,35 @@ type GovernedRequest struct {
 // GovernedRequestFor derives the request of a step.
 func GovernedRequestFor(planDigest string, s Step) GovernedRequest {
 	sum := sha256.Sum256([]byte(planDigest + "\x00" + s.ID() + "\x00" + strconv.Itoa(s.Attempt)))
-	return GovernedRequest{TaskID: s.CaseID, RequestID: "tbr-" + hex.EncodeToString(sum[:16])}
+	return GovernedRequest{TaskID: s.CaseID, Role: governedRoleOf(s), Attempt: s.Attempt, RequestID: "tbr-" + hex.EncodeToString(sum[:16])}
 }
 
-// GovernedC is the adapter skeleton for Configuration C (and the governed
-// replays of C). It is not implemented: it needs the guest.
+// Argv is the argument vector of the client invocation, after the tbound binary. It
+// has no `--task`: a corpus-mode service refuses client task text.
+func (r GovernedRequest) Argv() ([]string, error) {
+	if r.TaskID == "" || r.RequestID == "" {
+		return nil, errors.New("runner: governed request lacks a case id or request id")
+	}
+	if !slices.Contains(GovernedRoles(), r.Role) {
+		return nil, fmt.Errorf("runner: governed request role %q is not a governed role", r.Role)
+	}
+	if r.Attempt != 1 && r.Attempt != 2 {
+		return nil, fmt.Errorf("runner: governed request attempt %d is not 1 or 2", r.Attempt)
+	}
+	return []string{"serve", "--pi", "--task-id", r.TaskID, "--role", r.Role, "--attempt", strconv.Itoa(r.Attempt),
+		"--task-request-id", r.RequestID, "--bash-no-outputs"}, nil
+}
+
+// GovernedC is the adapter for Configuration C (and the governed replays of C). Its
+// request mapping is wired; the transport to the guest is not, so Execute returns
+// ErrNotWired.
 //
-// The mapping it must implement:
+// The mapping:
 //
-//   - one C step is one `tbound serve --pi --task-id <TaskID> --task-request-id
-//     <RequestID> --task <prompt> --bash-no-outputs` client invocation against
-//     /run/tbound/serve-pi.sock, by a client uid and gid that the signed
-//     registration allows;
+//   - one C step is one `tbound serve --pi --task-id <case_id> --role <role> --attempt
+//     <1|2> --task-request-id <RequestID> --bash-no-outputs` client invocation against
+//     /run/tbound/serve-pi.sock (Request and GovernedRequest.Argv), by a client uid and
+//     gid that the signed registration allows;
 //   - the response line (status completed, receipt.success, receipt.run_id,
 //     provider_exchange) and the exit code give the terminal state; status
 //     unknown or an exit other than 0 and 2 is a setup failure or an unresolved
@@ -101,11 +170,22 @@ func GovernedRequestFor(planDigest string, s Step) GovernedRequest {
 //   - E01 identity comes from the receipt and the measured profile, tokens and
 //     cost from the provider journal, and the audit files under
 //     /var/lib/tbound/audit from the run id.
-//
-// Open point: the service takes a one-use admission per workflow (L4), so each
-// C step needs its own admission id, config digest and registration before it
-// can start.
-type GovernedC struct{}
+type GovernedC struct {
+	// PlanDigest is Schedule.Digest of the plan being run.
+	PlanDigest string
+}
+
+// Request maps a C step to its corpus-mode request.
+func (g GovernedC) Request(s Step) (GovernedRequest, error) {
+	if s.Configuration != CfgC {
+		return GovernedRequest{}, fmt.Errorf("runner: step %s is configuration %s, not C", s.ID(), s.Configuration)
+	}
+	request := GovernedRequestFor(g.PlanDigest, s)
+	if _, err := request.Argv(); err != nil {
+		return GovernedRequest{}, err
+	}
+	return request, nil
+}
 
 // Execute returns ErrNotWired.
 func (GovernedC) Execute(context.Context, Step) (Outcome, error) {

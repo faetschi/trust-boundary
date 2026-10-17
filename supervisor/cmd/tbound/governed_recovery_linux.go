@@ -74,6 +74,10 @@ type governedRecoveryRequest struct {
 	FreshProviderJournalPath string
 	FreshJournalIdentity     string
 	ConversationFactory      func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error)
+
+	// CorpusManifestDigest is the pinned corpus manifest of a corpus-mode admission, bound
+	// into the runtime digest. Empty for single-task workflows.
+	CorpusManifestDigest string
 }
 
 type governedRecoveryCandidate struct {
@@ -161,6 +165,7 @@ type governedRecoveryRuntimeBinding struct {
 	XattrProfileDigest       string           `json:"xattr_profile_digest"`
 	XattrAuthority           string           `json:"xattr_authority"`
 	BashOutputPaths          []string         `json:"bash_output_paths"`
+	CorpusManifestDigest     string           `json:"corpus_manifest_digest,omitempty"` // corpus-mode admissions only
 }
 
 type governedRecoveryIdentityPins struct {
@@ -1193,7 +1198,14 @@ func governedRecoveryRuntimeDigest(request governedRecoveryRequest) (string, err
 		Limits:                   request.StoreOptions.Limits, XattrProfileDigest: request.StoreOptions.XattrVisibility.ProfileDigest,
 		XattrAuthority:  string(request.StoreOptions.XattrVisibility.Authority),
 		BashOutputPaths: cloneDurableOutputScopePaths(request.BashOutputPaths),
+		// pinned for corpus-mode admissions only
+		CorpusManifestDigest: request.CorpusManifestDigest,
 	}
+	return binding.digest()
+}
+
+// digest is the runtime binding digest the workflow pins and every recovery recomputes.
+func (binding governedRecoveryRuntimeBinding) digest() (string, error) {
 	encoded, err := json.Marshal(binding)
 	if err != nil {
 		return "", err

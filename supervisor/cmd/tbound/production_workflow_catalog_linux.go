@@ -69,6 +69,7 @@ type piServiceWorkflowEntry struct {
 	PayloadDigest           string                              `json:"payload_digest"`
 	ServiceConfigDigest     string                              `json:"service_config_digest"`
 	ServiceRegistrationID   string                              `json:"service_registration_id"`
+	CorpusManifestDigest    string                              `json:"corpus_manifest_digest,omitempty"` // pinned manifest of a corpus-mode admission
 	WorkflowID              string                              `json:"workflow_id"`
 	RunID                   string                              `json:"run_id"`
 	SessionID               string                              `json:"session_id"`
@@ -131,6 +132,10 @@ type piServiceWorkflowCatalog struct {
 	// it to piServiceOwnerStoreRoot. It is an unexported test dependency, not
 	// configuration: only the loader and tests set it.
 	ownerStoreRoot string
+	// corpus is the frozen manifest of a corpus-mode service. It is set by
+	// runProductionPiService after the manifest is loaded and verified; it is nil in
+	// the single-task modes.
+	corpus *productionCorpus
 }
 
 // ownerRoot is the owner-DB directory this catalog verifies against. A catalog
@@ -320,7 +325,11 @@ func (c *piServiceWorkflowCatalog) ResolveAdmission(admission piServiceAdmission
 		admission.RegistrationID != "" && admission.RegistrationID != registrationID {
 		return nil, ErrPiWorkflowCatalog
 	}
-	if !workflowEnvelopeMatchesRequest(config, admission.Request) {
+	// The envelope is the host-approved admission id, prompt and budgets this request
+	// selects: the one inline task of a single-task config, or the manifest case of a
+	// corpus-mode config. A request that selects none is never admitted.
+	envelope, ok := c.envelopeFor(config, admission.Request)
+	if !ok {
 		return nil, ErrPiWorkflowCatalog
 	}
 	key := admission.AcceptedRecord.Hash
@@ -330,19 +339,22 @@ func (c *piServiceWorkflowCatalog) ResolveAdmission(admission piServiceAdmission
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if existing, exists := c.entries[key]; exists {
-		if !catalogEntryMatchesAdmission(existing, admission, configDigest, registrationID) || !admission.IsReplay ||
+		matched := admission
+		matched.Request.Prompt = envelope.Prompt // a corpus request carries no prompt; the manifest owns it
+		if !catalogEntryMatchesAdmission(existing, matched, configDigest, registrationID) || !admission.IsReplay ||
+			existing.HostAdmissionID != envelope.AdmissionID || existing.CorpusManifestDigest != envelope.CorpusManifestDigest ||
 			!existing.CheckpointBound || existing.Terminal {
 			return nil, ErrPiWorkflowCatalog
 		}
 		return &productionWorkflowAdmission{Mode: "resume", Entry: clonePiServiceWorkflowEntry(existing), Catalog: c}, nil
 	}
-	if _, alreadyReserved := c.byHostAdmissionID[config.WorkflowAdmissionID]; alreadyReserved {
+	if _, alreadyReserved := c.byHostAdmissionID[envelope.AdmissionID]; alreadyReserved {
 		// An accepted host task has already consumed this one-use admission
 		// envelope. A changed client request ID cannot mint a second workflow or
 		// reset its cumulative counters.
 		return nil, ErrPiWorkflowCatalog
 	}
-	if admission.IsReplay || config.WorkflowAdmissionMode != "fresh" {
+	if admission.IsReplay || (config.WorkflowAdmissionMode != "fresh" && config.WorkflowAdmissionMode != piServiceAdmissionCorpus) {
 		return nil, ErrPiWorkflowCatalog
 	}
 	token, err := productionToken()
@@ -358,7 +370,7 @@ func (c *piServiceWorkflowCatalog) ResolveAdmission(admission piServiceAdmission
 		TaskID      string   `json:"task_id"`
 		Prompt      string   `json:"prompt"`
 		BashPaths   []string `json:"bash_output_paths"`
-	}{config.WorkflowAdmissionID, admission.Request.TaskID, admission.Request.Prompt,
+	}{envelope.AdmissionID, admission.Request.TaskID, envelope.Prompt,
 		admissionRequestBashPaths(admission.Request)})
 	if err != nil {
 		return nil, err
@@ -369,7 +381,7 @@ func (c *piServiceWorkflowCatalog) ResolveAdmission(admission piServiceAdmission
 	}
 	reservedAt := time.Now().UTC()
 	entry := piServiceWorkflowEntry{
-		SchemaVersion: workflowCatalogSchema, HostAdmissionID: config.WorkflowAdmissionID, AdmissionRecordHash: key,
+		SchemaVersion: workflowCatalogSchema, HostAdmissionID: envelope.AdmissionID, AdmissionRecordHash: key,
 		AdmissionSequence: admission.AcceptedRecord.Sequence,
 		PeerUID:           admission.Peer.UID, PeerGID: admission.Peer.GID, PeerPID: admission.Peer.PID,
 		RequestID: admission.Request.RequestID, TaskID: admission.Request.TaskID,
@@ -382,13 +394,13 @@ func (c *piServiceWorkflowCatalog) ResolveAdmission(admission piServiceAdmission
 		StoreJournalPath:    filepath.Join(productionAuditRootDefault, runID+"-session-audit.jsonl"),
 		ProviderJournalPath: filepath.Join(productionAuditRootDefault, runID+"-provider-audit.jsonl"),
 		CommandJournalPath:  filepath.Join(productionAuditRootDefault, runID+"-command-audit.jsonl"),
-		TaskPrompt:          admission.Request.Prompt, TaskDigest: digestBytes(taskBytes),
-		PromptDigest: digestBytes([]byte(admission.Request.Prompt)), BashOutputPaths: bashPaths,
+		TaskPrompt:          envelope.Prompt, TaskDigest: digestBytes(taskBytes),
+		PromptDigest: digestBytes([]byte(envelope.Prompt)), BashOutputPaths: bashPaths,
 		Limits: workflowrecovery.Limits{MaxPreEffectRetries: config.WorkflowMaxPreEffectRetries,
-			MaxCleanRestarts: config.WorkflowMaxCleanRestarts, MaxHostCalls: config.WorkflowMaxHostCalls,
-			MaxTokens: config.WorkflowMaxTokens,
-			Deadline:  reservedAt.Add(time.Duration(config.WorkflowDurationSeconds) * time.Second)},
-		ReservedAt: reservedAt,
+			MaxCleanRestarts: config.WorkflowMaxCleanRestarts, MaxHostCalls: envelope.MaxHostCalls,
+			MaxTokens: envelope.MaxTokens,
+			Deadline:  reservedAt.Add(time.Duration(envelope.DurationSeconds) * time.Second)},
+		ReservedAt: reservedAt, CorpusManifestDigest: envelope.CorpusManifestDigest,
 	}
 	event := piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema, AdmissionHash: key, Entry: entry}
 	if err := c.appendLocked("pi_workflow_admission_reserved", workflowCatalogEventID("reserved", key), event); err != nil {
@@ -1724,7 +1736,7 @@ func validWorkflowCatalogEntry(entry piServiceWorkflowEntry) bool {
 }
 
 func workflowEnvelopeMatchesRequest(config piServiceConfig, request piServiceRequest) bool {
-	return request.TaskID == config.WorkflowTaskID && request.Prompt == config.WorkflowPrompt &&
+	return request.Attempt == 0 && request.Role == "" && request.TaskID == config.WorkflowTaskID && request.Prompt == config.WorkflowPrompt &&
 		reflect.DeepEqual(admissionRequestBashPaths(request), config.WorkflowBashOutputPaths)
 }
 
