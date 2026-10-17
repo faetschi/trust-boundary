@@ -44,7 +44,7 @@ func goodReconciliation(requestID string) piServiceReconciliation {
 		OwnerCheckpoint:  digestBytes([]byte("checkpoint " + requestID)),
 		OwnerDrainProofs: []string{digestBytes([]byte("drain one " + requestID)), digestBytes([]byte("drain two " + requestID))},
 		OwnerDrainBootID: "boot-one", Publication: digestBytes([]byte("publication " + requestID)),
-		ProviderRoute: "research", Provider: digestBytes([]byte("provider " + requestID))}
+		ProviderRoute: "research", Provider: digestBytes([]byte("provider " + requestID)), ProviderSettlement: providerSettlementTerminal}
 }
 
 func lastAbandonedEvent(t *testing.T, journal *audit.Journal) piServiceRequestAbandonedEvent {

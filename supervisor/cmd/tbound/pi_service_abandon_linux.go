@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	piServiceAbandonedSchema     = "tbound-pi-service-request-abandoned/v2"
+	piServiceAbandonedSchema     = "tbound-pi-service-request-abandoned/v3"
 	piServiceAbandonedSettlement = "abandoned-unknown"
 	piServiceAbandonedMaxReason  = 512
 )
@@ -33,7 +33,13 @@ const (
 // after the host reconciled the request's workflow (owner drained, no pending effect or
 // publication, no undisposed provider request): the record binds that evidence, and every
 // later begin re-derives it before it skips the request. It is not a claim that the
-// workflow had no effect, not a completion, and not an outage claim. A rerun of the case is a separate
+// workflow had no effect, not a completion, and not an outage claim. Above all it never
+// claims remote quiescence: whether a provider request still runs on the provider's side
+// cannot be proven from host state. The evidence claims only that local effects are drained
+// and settled, and that provider cost is booked at the worst case. Its ProviderSettlement
+// says which: "terminal" when every exchange has a terminal record, or
+// "bounded-retained-liability" when an exchange is UNCERTAIN in the USD ledger or unknown in
+// the provider-bridge journal, whose cost is retained at its reserved worst case. A rerun of the case is a separate
 // admission (attempt 2) that the runner permits only with its own outage evidence, and
 // the original request id still replays its stored unknown terminal.
 type piServiceRequestAbandonedEvent struct {
@@ -128,17 +134,30 @@ func (event piServiceRequestAbandonedEvent) bindsTerminal(state piServiceRequest
 	return err == nil && terminalDigest == event.TerminalDigest
 }
 
+// admissionReconciler is the reconciler one begin uses for all of its abandoned priors. A
+// reconciler that can scope itself to an admission returns a view whose publication-journal
+// snapshot is read lazily, once, and dropped when the begin returns. j.mu is held.
+func (j *piServiceRequestJournal) admissionReconciler() piServiceAbandonReconciler {
+	if scoped, ok := j.reconciler.(interface {
+		forAdmission() piServiceAbandonReconciler
+	}); ok {
+		return scoped.forAdmission()
+	}
+	return j.reconciler
+}
+
 // recheckAbandoned is the condition under which begin may skip an abandoned request: the
 // record still binds this terminal, a reconciler is installed, and the workflow's evidence,
 // derived again now, still equals the evidence bound at abandonment. j.mu is held.
-func (j *piServiceRequestJournal) recheckAbandoned(ctx context.Context, state piServiceRequestState) error {
+func (j *piServiceRequestJournal) recheckAbandoned(ctx context.Context, reconciler piServiceAbandonReconciler,
+	state piServiceRequestState) error {
 	if state.abandoned == nil || !state.abandoned.bindsTerminal(state) {
 		return fmt.Errorf("request %q: the abandon record is missing or does not bind its terminal", state.accepted.RequestID)
 	}
-	if j.reconciler == nil {
+	if reconciler == nil {
 		return fmt.Errorf("request %q: no workflow reconciler is installed to re-check its abandon record", state.accepted.RequestID)
 	}
-	current, err := j.reconciler.Reconcile(ctx, state)
+	current, err := reconciler.Reconcile(ctx, state)
 	if err != nil {
 		return fmt.Errorf("request %q is abandoned but its workflow is no longer reconciled: %w", state.accepted.RequestID, err)
 	}
@@ -208,6 +227,25 @@ func (j *piServiceRequestJournal) abandonUnknown(ctx context.Context, requestID,
 	return record, nil
 }
 
+// abandonUnknownUsage is the help text of the abandon-unknown command.
+const abandonUnknownUsage = `usage: tbound abandon-unknown --request-id ID --reason TEXT
+
+Settles one unknown Pi service request so later requests are admitted again. Root-only; stop
+tbound-pi.service first.
+
+The request is abandoned only after the host reconciled its workflow: owner scopes drained,
+no pending effect or publication, no provider request without a recorded disposition. The
+evidence is bound in the journal and re-derived on every later admission.
+
+Abandonment never claims remote quiescence. Whether a provider request still runs on the
+provider's side cannot be proven from host state. It claims only that local effects are drained
+and settled, and that provider cost is booked at the worst case. The recorded provider
+settlement says which: "terminal" (every exchange has a terminal record) or
+"bounded-retained-liability" (an exchange is UNCERTAIN in the USD ledger or unknown in the
+provider-bridge journal; its cost is retained at the reserved worst case).
+
+`
+
 // abandonUnknownEffectiveUID is a test seam for the root-only check.
 var abandonUnknownEffectiveUID = os.Geteuid
 
@@ -229,6 +267,10 @@ var abandonUnknownEffectiveUID = os.Geteuid
 func runAbandonUnknown(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tbound abandon-unknown", flag.ContinueOnError)
 	flags.SetOutput(stderr)
+	flags.Usage = func() {
+		fmt.Fprint(stderr, abandonUnknownUsage)
+		flags.PrintDefaults()
+	}
 	requestID := flags.String("request-id", "", "request id whose unknown terminal is settled")
 	reason := flags.String("reason", "", "why the unknown request is abandoned (1..512 printable bytes, kept in the journal)")
 	if err := flags.Parse(args); err != nil {

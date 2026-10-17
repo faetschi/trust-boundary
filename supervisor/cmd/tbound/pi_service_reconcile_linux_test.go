@@ -160,7 +160,7 @@ func TestReconcileEngineeringProviderRequiresADispositionForEveryDispatchedReque
 					}
 					return trace, !tc.missing, nil
 				}}
-			digest, err := r.reconcileProvider(context.Background(), entry, []string{"conversation-1"})
+			digest, _, err := r.reconcileProvider(context.Background(), entry, []string{"conversation-1"})
 			if tc.refused {
 				if !errors.Is(err, ErrPiServiceUnreconciled) || !strings.Contains(err.Error(), "disposition") {
 					t.Fatalf("an undisposed provider request was reconciled: digest=%q err=%v", digest, err)
@@ -197,7 +197,7 @@ func TestReconcileResearchProviderRefusesAnOpenLedgerReservation(t *testing.T) {
 		}}
 	conversations := []string{"conversation-1", reconcileTestWorkflow + "-conversation-g2"}
 	current = units(usdledger.UnitStateUncertain, usdledger.UnitStateSettled)
-	uncertain, err := r.reconcileProvider(context.Background(), entry, conversations)
+	uncertain, _, err := r.reconcileProvider(context.Background(), entry, conversations)
 	if err != nil || !validDigestText(uncertain) {
 		t.Fatalf("uncertain and settled units were refused: %v", err)
 	}
@@ -205,23 +205,23 @@ func TestReconcileResearchProviderRefusesAnOpenLedgerReservation(t *testing.T) {
 		t.Fatalf("the probe did not cover the workflow: %q %v %d", probedWorkflow, probedConversations, probedTurns)
 	}
 	current = units(usdledger.UnitStateSettled, usdledger.UnitStateOpen)
-	if _, err := r.reconcileProvider(context.Background(), entry, conversations); !errors.Is(err, ErrPiServiceUnreconciled) ||
+	if _, _, err := r.reconcileProvider(context.Background(), entry, conversations); !errors.Is(err, ErrPiServiceUnreconciled) ||
 		!strings.Contains(err.Error(), "open") {
 		t.Fatalf("an OPEN ledger reservation was reconciled: %v", err)
 	}
 	current = units(usdledger.UnitStateSettled)
-	settled, err := r.reconcileProvider(context.Background(), entry, conversations)
+	settled, _, err := r.reconcileProvider(context.Background(), entry, conversations)
 	if err != nil || settled == uncertain {
 		t.Fatalf("the evidence does not distinguish the unit states: %q vs %q err=%v", settled, uncertain, err)
 	}
 	r.spendUnits = func(string, []string, uint64) ([]usdledger.UnitInfo, error) {
 		return nil, errors.New("ledger unreadable")
 	}
-	if _, err := r.reconcileProvider(context.Background(), entry, conversations); !errors.Is(err, ErrPiServiceUnreconciled) {
+	if _, _, err := r.reconcileProvider(context.Background(), entry, conversations); !errors.Is(err, ErrPiServiceUnreconciled) {
 		t.Fatalf("an unreadable ledger was reconciled: %v", err)
 	}
 	r.spendUnits = nil
-	if _, err := r.reconcileProvider(context.Background(), entry, conversations); !errors.Is(err, ErrPiServiceUnreconciled) {
+	if _, _, err := r.reconcileProvider(context.Background(), entry, conversations); !errors.Is(err, ErrPiServiceUnreconciled) {
 		t.Fatalf("a research route without a ledger probe was reconciled: %v", err)
 	}
 }

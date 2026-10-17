@@ -12,6 +12,20 @@ import (
 // quiescent, so the request stays quarantined and its barrier on later requests stays.
 var ErrPiServiceUnreconciled = errors.New("the workflow behind the unknown Pi service request is not reconciled")
 
+// The provider settlement values of the reconciliation evidence. Neither claims that the
+// provider stopped working: remote termination cannot be proven from host state.
+const (
+	// providerSettlementTerminal: every provider exchange of the workflow has a terminal record
+	// (a settled ledger unit, a recorded exchange), or none was ever dispatched.
+	providerSettlementTerminal = "terminal"
+	// providerSettlementBoundedRetainedLiability: some exchange is only UNCERTAIN in the USD
+	// ledger (booked at its reserved worst case) or unknown in the provider-bridge journal
+	// (provider_exchange_unknown, a local disposition). Local effects are drained and settled and
+	// the cost is bounded and retained, but whether the provider still works on the request is
+	// not known.
+	providerSettlementBoundedRetainedLiability = "bounded-retained-liability"
+)
+
 // piServiceAbandonReconciler proves that the workflow behind one unknown request is quiescent
 // and returns the evidence digests the proof rests on. It is read-side apart from the owner
 // drain verifier's own teardown receipts. A non-nil error means something is unreconciled, and
@@ -47,6 +61,10 @@ type piServiceReconciliation struct {
 	// "engineering" (Provider digests the workflow's provider-bridge journals).
 	ProviderRoute string `json:"provider_route"`
 	Provider      string `json:"provider_digest"`
+	// ProviderSettlement is what the provider evidence proves: "terminal" or
+	// "bounded-retained-liability" (see the constants). It is never a claim of remote quiescence.
+	// It is part of the reconciliation digest.
+	ProviderSettlement string `json:"provider_settlement"`
 }
 
 func (r piServiceReconciliation) digest() (string, error) {
@@ -59,7 +77,8 @@ func (r piServiceReconciliation) digest() (string, error) {
 
 func (r piServiceReconciliation) valid() bool {
 	if !validDigestText(r.OwnerCheckpoint) || !validDigestText(r.Publication) || !validDigestText(r.Provider) ||
-		r.ProviderRoute != "research" && r.ProviderRoute != "engineering" {
+		r.ProviderRoute != "research" && r.ProviderRoute != "engineering" ||
+		r.ProviderSettlement != providerSettlementTerminal && r.ProviderSettlement != providerSettlementBoundedRetainedLiability {
 		return false
 	}
 	if r.NoWorkflow {
@@ -104,5 +123,6 @@ func (r piServiceReconciliation) stillHolds(current piServiceReconciliation) boo
 	current.OwnerDrainProofs, current.OwnerDrainBootID = nil, ""
 	return r.WorkflowID == current.WorkflowID && r.NoWorkflow == current.NoWorkflow &&
 		r.OwnerNeverBound == current.OwnerNeverBound && r.OwnerCheckpoint == current.OwnerCheckpoint &&
-		r.Publication == current.Publication && r.ProviderRoute == current.ProviderRoute && r.Provider == current.Provider
+		r.Publication == current.Publication && r.ProviderRoute == current.ProviderRoute && r.Provider == current.Provider &&
+		r.ProviderSettlement == current.ProviderSettlement
 }

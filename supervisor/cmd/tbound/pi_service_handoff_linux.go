@@ -306,6 +306,11 @@ type piServiceRequestJournal struct {
 	// (owner database, store journal). Their fingerprints are part of the verified mark. It is
 	// nil until the service installs it, and then no file is fingerprinted.
 	evidenceFiles func(piServiceRequestState) []string
+	// evidenceState returns a cheap value of the per-workflow state a settlement verification
+	// reads from a store that is not a per-request file (the workflow's checkpoint and fence head
+	// in the protected-root database). It is part of the verified mark. It is nil until the
+	// service installs it.
+	evidenceState func(piServiceRequestState) string
 	// reconciler proves, before an unknown request is abandoned and again on every begin that
 	// skips it, that the request's workflow is quiescent. It is nil until the service installs
 	// it, and then no unknown request can be abandoned or skipped.
@@ -337,6 +342,12 @@ func (j *piServiceRequestJournal) setEvidenceFiles(files func(piServiceRequestSt
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.evidenceFiles = files
+}
+
+func (j *piServiceRequestJournal) setEvidenceState(state func(piServiceRequestState) string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.evidenceState = state
 }
 
 func (j *piServiceRequestJournal) setReconciler(reconciler piServiceAbandonReconciler) {
@@ -1280,12 +1291,21 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 	// truncation, replacement, deletion, chmod or chown, even with size and mtime
 	// restored, because ctime cannot be set by a caller). Such a prior is verified
 	// again at the next begin, and the admission is refused if it no longer verifies.
+	// The mark also carries the workflow's own checkpoint and fence head in the
+	// protected-root database (evidenceState: one read-only query per prior), so a change of
+	// that head is caught even when the three files are unchanged.
 	// What is not covered: shared append-only journals that every request grows
 	// (catalog, publication journal), which cannot be fingerprinted per prior without
 	// invalidating every prior on every request; a change confined to them is detected
 	// at the next service start. A failed verification is never remembered. A prior whose
 	// files change while it is being verified keeps its pre-verification fingerprint,
 	// so it is verified again at the next begin.
+	//
+	// Abandoned priors are never cached: each is re-reconciled on every begin. All of them
+	// share one fresh publication-journal snapshot that lives for this admission only
+	// (admissionReconciler), so the journal is read and verified once per begin, not once
+	// per abandoned prior.
+	reconciler := j.admissionReconciler()
 	for key, prior := range j.entries {
 		if err := ctx.Err(); err != nil {
 			return audit.Record{}, err
@@ -1295,7 +1315,7 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 			// stay in the journal. The block on later requests is lifted only while the
 			// reconciliation evidence bound in the abandon record still holds: it is
 			// re-derived on every begin, never trusted from the record alone.
-			if err := j.recheckAbandoned(ctx, prior); err != nil {
+			if err := j.recheckAbandoned(ctx, reconciler, prior); err != nil {
 				return audit.Record{}, fmt.Errorf("%w: %v", ErrPiServiceUnresolvedPrior, err)
 			}
 			continue
@@ -1307,6 +1327,9 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 			acceptedSequence: prior.acceptedRecord.Sequence, terminal: prior.terminal}
 		if j.evidenceFiles != nil {
 			mark.evidence = evidenceFingerprint(j.evidenceFiles(prior))
+		}
+		if j.evidenceState != nil {
+			mark.evidence += "|" + j.evidenceState(prior)
 		}
 		if j.verified[key] == mark {
 			continue
@@ -2012,6 +2035,7 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	// A cached settlement is tied to the per-request evidence files it read, and an abandoned
 	// unknown request is skipped only while its workflow re-reconciles to the bound evidence.
 	requests.setEvidenceFiles(workflowCatalog.settlementEvidenceFiles)
+	requests.setEvidenceState(workflowCatalog.settlementEvidenceState)
 	requests.setReconciler(newProductionUnknownReconciler(workflowCatalog, serviceConfig, providerRoute))
 	runTask := func(taskCtx context.Context, request piServiceRequest) (json.RawMessage, error) {
 		requestAdmission, ok := piServiceAdmissionFromContext(taskCtx)
