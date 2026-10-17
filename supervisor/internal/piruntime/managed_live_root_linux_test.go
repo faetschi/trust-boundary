@@ -16,6 +16,7 @@ import (
 func testD09ManagedPiServiceConfig() D09ManagedPiServiceConfig {
 	return D09ManagedPiServiceConfig{
 		SchemaVersion: D09ManagedPiServiceConfigSchema, SourcePolicy: "current-managed-live-root/v1",
+		ProviderRoute:         D09ManagedPiProviderRouteEngineering,
 		WorkflowAdmissionMode: "fresh", WorkflowAdmissionID: "host-task-2026-10-14",
 		WorkflowTaskID: "approved-task", WorkflowPrompt: "Read the approved host task.",
 		WorkflowCatalogPath: D09ManagedPiWorkflowCatalogPath, WorkflowRootDBPath: D09ManagedPiWorkflowRootDBPath,
@@ -356,5 +357,83 @@ func TestManagedWriterRequiresFilesOnlyLocalIdentityAndSingleGroup(t *testing.T)
 	}
 	if registeredLocalServiceGroup([]byte("tbound-pi:x:992:\nusers:x:100:alice,tbound-pi\n"), registration) {
 		t.Fatal("service account in an adjacent group was accepted")
+	}
+}
+
+func TestD09ManagedPiServiceConfigProviderRouteIsARequiredEnum(t *testing.T) {
+	if D09ManagedPiServiceConfigSchema != "tbound-pi-service-config/v3" {
+		t.Fatalf("config schema was not bumped for provider_route: %q", D09ManagedPiServiceConfigSchema)
+	}
+	if D09ManagedPiResearchCredentialPath != "/etc/tbound/provider/openrouter.key" ||
+		D09ManagedPiProviderCredentialPath != "/etc/tbound/provider/opencode-go.key" {
+		t.Fatalf("fixed credential paths drifted: %q %q", D09ManagedPiProviderCredentialPath, D09ManagedPiResearchCredentialPath)
+	}
+	for _, route := range []string{D09ManagedPiProviderRouteEngineering, D09ManagedPiProviderRouteResearch} {
+		config := testD09ManagedPiServiceConfig()
+		config.ProviderRoute = route
+		if err := config.Validate(); err != nil {
+			t.Errorf("route %q refused: %v", route, err)
+		}
+	}
+	for _, route := range []string{"", "Engineering", "research ", "opencode-go", "openrouter", "both"} {
+		config := testD09ManagedPiServiceConfig()
+		config.ProviderRoute = route
+		if err := config.Validate(); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+			t.Errorf("route %q accepted: %v", route, err)
+		}
+	}
+	// A config document without provider_route decodes to the empty route and is
+	// refused: the field is required, there is no engineering default.
+	encoded, err := json.Marshal(testD09ManagedPiServiceConfig())
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutRoute := strings.Replace(string(encoded), `"provider_route":"engineering",`, ``, 1)
+	if withoutRoute == string(encoded) {
+		t.Fatalf("provider_route is not encoded as a config member: %s", encoded)
+	}
+	if _, err := decodeD09ManagedPiServiceConfig([]byte(withoutRoute)); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+		t.Fatalf("config without provider_route decoded: %v", err)
+	}
+	if _, err := decodeD09ManagedPiServiceConfig(encoded); err != nil {
+		t.Fatalf("config with provider_route refused: %v", err)
+	}
+}
+
+func TestD09ManagedPiServiceConfigDigestChangesWithProviderRoute(t *testing.T) {
+	digest := func(route string) string {
+		config := testD09ManagedPiServiceConfig()
+		config.ProviderRoute = route
+		encoded, err := json.Marshal(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return DigestBytes(encoded)
+	}
+	engineering, research := digest(D09ManagedPiProviderRouteEngineering), digest(D09ManagedPiProviderRouteResearch)
+	if engineering == research {
+		t.Fatal("the service config digest does not cover provider_route")
+	}
+	if digest(D09ManagedPiProviderRouteResearch) != research {
+		t.Fatal("the service config digest is not deterministic")
+	}
+}
+
+// The committed smoke service config is the operator's template. It must carry
+// the current schema and an explicit engineering route, and must not contain a
+// member the strict decoder does not know.
+func TestSmokeServiceConfigTemplateCarriesAnExplicitEngineeringRoute(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "infra", "guest", "serve-pi-service.smoke.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.DisallowUnknownFields()
+	var config D09ManagedPiServiceConfig
+	if err := decoder.Decode(&config); err != nil {
+		t.Fatalf("smoke config does not match the service config schema: %v", err)
+	}
+	if config.SchemaVersion != D09ManagedPiServiceConfigSchema || config.ProviderRoute != D09ManagedPiProviderRouteEngineering {
+		t.Fatalf("smoke config schema %q route %q", config.SchemaVersion, config.ProviderRoute)
 	}
 }

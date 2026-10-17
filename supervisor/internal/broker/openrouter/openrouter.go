@@ -52,9 +52,12 @@ type PriorToolCall struct {
 	RawArguments json.RawMessage
 }
 
-type BuiltRequest struct{ body []byte }
+type BuiltRequest struct {
+	body []byte
+	url  string
+}
 
-func (r BuiltRequest) RequestURL() string { return Endpoint }
+func (r BuiltRequest) RequestURL() string { return r.url }
 func (r BuiltRequest) Body() []byte       { return append([]byte(nil), r.body...) }
 
 type fnSchema struct {
@@ -74,6 +77,18 @@ type request struct {
 	ParallelToolCalls   bool           `json:"parallel_tool_calls"`
 	ToolChoice          string         `json:"tool_choice"`
 	Thinking            thinkingConfig `json:"thinking"`
+	MaxCompletionTokens uint64         `json:"max_completion_tokens,omitempty"`
+}
+
+// researchRequest is the fixed head of a research-route body. The frozen profile
+// members are spliced after it by BuildRequestForRoute.
+type researchRequest struct {
+	Model               string         `json:"model"`
+	Messages            []Message      `json:"messages"`
+	Tools               []functionTool `json:"tools"`
+	Stream              bool           `json:"stream"`
+	ParallelToolCalls   bool           `json:"parallel_tool_calls"`
+	ToolChoice          string         `json:"tool_choice"`
 	MaxCompletionTokens uint64         `json:"max_completion_tokens,omitempty"`
 }
 
@@ -111,6 +126,34 @@ func BuildRequestWithCompletionLimit(modelID string, messages []Message, complet
 	if modelID != ApprovedModel {
 		return BuiltRequest{}, errors.New("provider model is outside the fixed OpenCode Go profile")
 	}
+	return BuildRequestForRoute(EngineeringRoute(), messages, completionLimit)
+}
+
+// engineeringTail and researchTail are the fixed request members that follow the
+// tool list. The engineering tail disables provider thinking, which is specific
+// to the OpenCode Go route; the research route adds the frozen profile members
+// after the optional completion cap instead.
+const (
+	engineeringTail = `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto","thinking":{"type":"disabled"}`
+	researchTail    = `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto"`
+)
+
+// BuildRequestForRoute builds the registered request for one route. The zero
+// route and the engineering route give exactly the bytes BuildRequest always
+// gave. A research route sends the same four Pi proxy tools and single-call
+// behaviour to its own endpoint and model, without the OpenCode Go thinking
+// member, followed by the frozen profile members. The cap, when positive, is
+// still the host-selected max_completion_tokens.
+func BuildRequestForRoute(route Route, messages []Message, completionLimit uint64) (BuiltRequest, error) {
+	route = route.Resolved()
+	if err := route.Validate(); err != nil {
+		return BuiltRequest{}, err
+	}
+	modelID := route.Model
+	tail := engineeringTail
+	if route.IsResearch() {
+		tail = researchTail
+	}
 	if completionLimit > math.MaxInt32 {
 		return BuiltRequest{}, errors.New("completion-token cap is outside the supported request range")
 	}
@@ -127,7 +170,7 @@ func BuildRequestWithCompletionLimit(modelID string, messages []Message, complet
 	if err != nil {
 		return BuiltRequest{}, fmt.Errorf("encode fixed tool schemas: %w", err)
 	}
-	expectedSize, err := preflightRequestSize(modelID, messages, toolsJSON, completionLimit)
+	expectedSize, err := preflightRequestSize(modelID, messages, toolsJSON, completionLimit, tail)
 	if err != nil {
 		return BuiltRequest{}, err
 	}
@@ -138,18 +181,29 @@ func BuildRequestWithCompletionLimit(modelID string, messages []Message, complet
 			}
 		}
 	}
-	body, err := json.Marshal(request{Model: modelID, Messages: messages, Tools: fixedTools, Stream: true,
-		ParallelToolCalls: false, ToolChoice: "auto", Thinking: thinkingConfig{Type: "disabled"},
-		MaxCompletionTokens: completionLimit})
+	var body []byte
+	if route.IsResearch() {
+		body, err = json.Marshal(researchRequest{Model: modelID, Messages: messages, Tools: fixedTools, Stream: true,
+			ParallelToolCalls: false, ToolChoice: "auto", MaxCompletionTokens: completionLimit})
+		if err == nil {
+			// Replace the closing brace with the frozen members: ",<members without its opening brace>".
+			body = append(append(body[:len(body)-1], ','), route.members[1:]...)
+			expectedSize += len(route.members) - 1
+		}
+	} else {
+		body, err = json.Marshal(request{Model: modelID, Messages: messages, Tools: fixedTools, Stream: true,
+			ParallelToolCalls: false, ToolChoice: "auto", Thinking: thinkingConfig{Type: "disabled"},
+			MaxCompletionTokens: completionLimit})
+	}
 	if err != nil {
 		return BuiltRequest{}, err
 	}
 	if len(body) != expectedSize || len(body) > MaxRequestBytes {
 		return BuiltRequest{}, errors.New("encoded request size did not match its bounded preflight")
 	}
-	return BuiltRequest{body}, nil
+	return BuiltRequest{body: body, url: route.Endpoint}, nil
 }
-func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte, completionLimit uint64) (int, error) {
+func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte, completionLimit uint64, tail string) (int, error) {
 	size := 0
 	add := func(amount int) error {
 		if amount < 0 || amount > MaxRequestBytes-size {
@@ -247,7 +301,7 @@ func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte, 
 			return 0, err
 		}
 	}
-	for _, literal := range []string{`],"tools":`, `,"stream":true,"parallel_tool_calls":false,"tool_choice":"auto","thinking":{"type":"disabled"}`} {
+	for _, literal := range []string{`],"tools":`, tail} {
 		if err := add(len(literal)); err != nil {
 			return 0, err
 		}

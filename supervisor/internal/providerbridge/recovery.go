@@ -53,7 +53,7 @@ const (
 
 // RecoveryPins contains host-owned inputs required to reproduce the exact
 // provider transcript. The prompt text, model, policy and initial generation
-// are never inferred from the journal. Model must equal ApprovedModel.
+// are never inferred from the journal. Model must equal the model of Config.Route (ApprovedModel on the engineering route).
 // ProfileID remains a host-pinned label; it does not authenticate an external
 // profile artifact or close over all runtime/transport configuration. The
 // caller must supply the immutable host profile and its exact prompt inputs.
@@ -274,6 +274,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 
 	cfg := pins.Config
 	model := pins.Model
+	route := cfg.Route.Resolved()
 	policy := pins.Policy
 	stream, err := protocol.NewStream(callIssuer, responseIssuer)
 	if err != nil {
@@ -320,7 +321,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				return TranscriptProjection{}, replayError("host prompt evidence is invalid or unpinned")
 			}
 			content := admitted.Prompt
-			if err := appendReplayHistory(&history, model, openrouter.Message{Role: openrouter.User, Content: &content}); err != nil {
+			if err := appendReplayHistory(&history, route, openrouter.Message{Role: openrouter.User, Content: &content}); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
 			state = replayAwaitExchange
@@ -337,7 +338,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				verifyReplayEventID(record, cfg.ConversationID, "host-call-reserved", ordinal) != nil {
 				return TranscriptProjection{}, replayError("provider host-call reservation identity is invalid")
 			}
-			if err := verifyReplayRequestWithCompletionLimit(evidence.Request, cfg.ProfileID, cfg.ConversationID, model, history,
+			if err := verifyReplayRequestWithCompletionLimit(evidence.Request, cfg.ProfileID, cfg.ConversationID, route, history,
 				evidence.Binding.TokenUpperBound); err != nil || requestEvidenceDigest(evidence.Request) != evidence.Binding.RequestDigest {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, errors.New("provider host-call reservation does not bind the exact request"), err)
 			}
@@ -365,7 +366,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			} else if evidence.HostCall != nil || pins.RequireHostCallReservations {
 				return TranscriptProjection{}, replayError("provider exchange has no matching host-call reservation")
 			}
-			if err := verifyReplayRequestWithCompletionLimit(evidence.Request, cfg.ProfileID, cfg.ConversationID, model, history, completionLimit); err != nil {
+			if err := verifyReplayRequestWithCompletionLimit(evidence.Request, cfg.ProfileID, cfg.ConversationID, route, history, completionLimit); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
 			if len(evidence.Request.Body) > broker.MaxDurableExchangeBytes ||
@@ -409,7 +410,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			}
 			assistantText := captured.AssistantText()
 			replayedTurn := Turn{
-				SchemaVersion: bridgeSchemaVersion, ResponseID: captured.ResponseID(), Model: captured.Model(),
+				SchemaVersion: bridgeSchemaVersion, ResponseID: captured.ResponseID(), Model: projectedModel(route, captured.Model()),
 				Created: captured.Created(), Generation: currentGeneration, Sequence: providerSequence + 1,
 				AssistantText: assistantText, FinishReason: captured.FinishReason(), Usage: captured.Usage(),
 			}
@@ -421,7 +422,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			if err := validateTurnProjectionBudget(replayedTurn); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
-			if err := appendReplayHistory(&history, model, openrouter.Message{Role: openrouter.Assistant, Content: &assistantText, ToolCalls: priorCalls}); err != nil {
+			if err := appendReplayHistory(&history, route, openrouter.Message{Role: openrouter.Assistant, Content: &assistantText, ToolCalls: priorCalls}); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
 			providerSequence++
@@ -523,7 +524,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			}
 			resultContent := string(evidence.Result)
 			message := openrouter.Message{Role: openrouter.Tool, ToolCallID: evidence.ToolCallID, Content: &resultContent}
-			if err := appendReplayHistory(&history, model, message); err != nil {
+			if err := appendReplayHistory(&history, route, message); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
 			currentGeneration, currentTree = evidence.GenerationTo, evidence.TreeDigestTo
@@ -616,7 +617,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 		return TranscriptProjection{}, replayError("provider journal ends with an unsettled host-call reservation")
 	}
 
-	request, err := openrouter.BuildRequest(model, history)
+	request, err := openrouter.BuildRequestForRoute(route, history, 0)
 	if err != nil {
 		return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 	}
@@ -656,7 +657,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 
 func validateRecoveryPins(pins RecoveryPins) error {
 	cfg := pins.Config
-	if pins.Model != ApprovedModel || pins.Policy.Digest() == "" ||
+	if pins.Model != cfg.Route.Resolved().Model || cfg.Route.Validate() != nil || pins.Policy.Digest() == "" ||
 		!validText(cfg.ConversationID, MaxIdentityBytes) || !validText(cfg.WorkflowID, MaxIdentityBytes) ||
 		!validText(cfg.ProfileID, MaxIdentityBytes) || !validText(cfg.InitialGenerationID, MaxIdentityBytes) ||
 		!validReplayTreeDigest(cfg.InitialTreeDigest) ||
@@ -667,24 +668,25 @@ func validateRecoveryPins(pins RecoveryPins) error {
 	return nil
 }
 
-func verifyReplayRequest(request requestEvidence, profileID, conversationID, model string, history []openrouter.Message) error {
-	return verifyReplayRequestWithCompletionLimit(request, profileID, conversationID, model, history, 0)
+func verifyReplayRequest(request requestEvidence, profileID, conversationID string, route openrouter.Route, history []openrouter.Message) error {
+	return verifyReplayRequestWithCompletionLimit(request, profileID, conversationID, route, history, 0)
 }
 
-func verifyReplayRequestWithCompletionLimit(request requestEvidence, profileID, conversationID, model string,
-	history []openrouter.Message, completionLimit uint64) error {
-	built, err := openrouter.BuildRequestWithCompletionLimit(model, history, completionLimit)
+func verifyReplayRequestWithCompletionLimit(request requestEvidence, profileID, conversationID string,
+	route openrouter.Route, history []openrouter.Message, completionLimit uint64) error {
+	route = route.Resolved()
+	built, err := openrouter.BuildRequestForRoute(route, history, completionLimit)
 	if err != nil {
 		return err
 	}
-	endpoint, _ := url.Parse(openrouter.Endpoint)
+	endpoint, _ := url.Parse(route.Endpoint)
 	wantHeaders := httpHeaders{
 		"Accept":                 {"text/event-stream"},
 		"Content-Type":           {"application/json"},
 		"User-Agent":             {openrouter.UserAgent},
 		openrouter.SessionHeader: {conversationID},
 	}
-	if request.ProfileID != profileID || request.Method != "POST" || request.URL != openrouter.Endpoint ||
+	if request.ProfileID != profileID || request.Method != "POST" || request.URL != route.Endpoint ||
 		request.Host != endpoint.Host || request.ContentLength != int64(len(built.Body())) ||
 		!reflect.DeepEqual(request.Headers, wantHeaders) || !bytes.Equal(request.Body, built.Body()) {
 		return errors.New("recorded provider request does not byte-match the pinned broker history and fixed HTTP profile")
@@ -808,12 +810,12 @@ func validateReplayResult(evidence resultEvidence, pending replayDecision, cfg C
 	return nil
 }
 
-func appendReplayHistory(history *[]openrouter.Message, model string, message openrouter.Message) error {
+func appendReplayHistory(history *[]openrouter.Message, route openrouter.Route, message openrouter.Message) error {
 	proposed := append(cloneMessages(*history), message)
 	if len(proposed) > MaxTranscriptTurns*3+2 {
 		return errors.New("provider replay message budget exhausted")
 	}
-	request, err := openrouter.BuildRequest(model, proposed)
+	request, err := openrouter.BuildRequestForRoute(route, proposed, 0)
 	if err != nil {
 		return err
 	}

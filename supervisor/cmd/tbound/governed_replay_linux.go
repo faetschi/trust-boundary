@@ -531,12 +531,13 @@ func findGovernedGeneration(bundle sessionrepo.EvidenceBundle, id, treeDigest st
 func validateGovernedReplayPins(pins GovernedReplayPins) error {
 	cfg := pins.Provider.Config
 	profile := pins.Profile
+	route := profile.Route.Resolved()
 	wantMessages := []openrouter.Message{{Role: openrouter.System, Content: stringPointer(cfg.SystemPrompt)},
 		{Role: openrouter.Developer, Content: stringPointer(cfg.DeveloperPrompt)}}
 	if cfg.WorkflowID == "" || cfg.ConversationID == "" || cfg.ProfileID == "" || cfg.InitialGenerationID == "" ||
 		cfg.InitialTreeDigest == "" || cfg.SystemPrompt == "" || cfg.DeveloperPrompt == "" ||
-		pins.Provider.Model != providerbridge.ApprovedModel || profile.ID != cfg.ProfileID ||
-		profile.Model != providerbridge.ApprovedModel || profile.ToolCallIssuer != governedCallIssuer ||
+		pins.Provider.Model != route.Model || cfg.Route.Resolved() != route || profile.ID != cfg.ProfileID ||
+		profile.Model != route.Model || profile.ToolCallIssuer != governedCallIssuer ||
 		profile.ResponseIDIssuer != governedResponseIssuer || profile.Generation != cfg.InitialGenerationID ||
 		!reflect.DeepEqual(profile.ToolManifest, broker.DeclaredToolManifest()) || !reflect.DeepEqual(profile.Messages, wantMessages) ||
 		!validBareSHA256(pins.StorePolicyDigest) || !validBareSHA256(pins.MetadataPolicyDigest) {

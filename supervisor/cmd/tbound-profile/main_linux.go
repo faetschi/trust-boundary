@@ -57,8 +57,16 @@ usage:
   tbound-profile managed-root-sign --registration <json> --key <ed25519-private>
                                     --out-sig <signature> [--out-registration <signed.json>]
   tbound-profile managed-root-verify --registration <json> --sig <signature> --pub <public-key>
+  tbound-profile research-ledger-genesis [--profile <abs>] [--ledger-config <abs>] [--ledger <abs>]
   tbound-profile xattr-measure  --source <protected-read-only-directory>
   tbound-profile xattr-digest   --filesystem-magic <n> --mount-options-digest <sha256> --uid <n> --gid <n>
+
+research-ledger-genesis creates the research USD ledger once, from the frozen research
+profile and the research ledger configuration (defaults: the fixed paths under
+/etc/tbound/provider and /var/lib/tbound/sessions/usd-ledger). Run it as the service identity
+so that the service owns the 0600 ledger file, e.g. through setpriv --reuid <service-uid>. It refuses an
+unfrozen profile and an existing ledger, and prints the genesis head SHA-256 to store outside
+the ledger. The service never creates a ledger: a missing one is refused.
 
 The private key is read from --key only and is never printed. The signature
 covers the verifier's domain-prefixed canonical profile bytes, and the written
@@ -128,6 +136,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runManagedRootSign(args[1:], stdout, stderr)
 	case "managed-root-verify":
 		return runManagedRootVerify(args[1:], stdout, stderr)
+	case "research-ledger-genesis":
+		return runResearchLedgerGenesis(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		if _, err := io.WriteString(stdout, usageText); err != nil {
 			return err

@@ -29,7 +29,7 @@ const (
 	D09ManagedLiveRootWriterPolicy      = "managed-nonlogin-single-service-writer/v1"
 	D09ManagedPiServiceSocketSchema     = "tbound-managed-pi-service-socket/v1"
 	D09ManagedPiServiceSocketMode       = "systemd-socket-activation-single-task/v1"
-	D09ManagedPiServiceConfigSchema     = "tbound-pi-service-config/v2"
+	D09ManagedPiServiceConfigSchema     = "tbound-pi-service-config/v3"
 	D09ManagedPiServiceConfigPath       = "/etc/tbound/serve-pi-service.json"
 	D09ManagedPiProviderCredentialPath  = "/etc/tbound/provider/opencode-go.key"
 	D09ManagedPiServiceSocketPath       = "/run/tbound/serve-pi.sock"
@@ -64,6 +64,15 @@ const (
 	D09ManagedPiServiceConfigMaxBytes   = 16 << 10
 	d09ManagedLiveRootSignatureDomain   = "tbound-managed-live-root-registration/v1\x00"
 	d09ManagedLiveRootMaximumBytes      = 64 << 10
+)
+
+// The research provider route has its own fixed key file next to the engineering
+// one (same loader rules: service uid, mode 0400 or 0600, environment ignored).
+// provider_route in the service config is exactly one of the two route names.
+const (
+	D09ManagedPiResearchCredentialPath   = "/etc/tbound/provider/openrouter.key"
+	D09ManagedPiProviderRouteEngineering = "engineering"
+	D09ManagedPiProviderRouteResearch    = "research"
 )
 
 // D09ManagedPiServiceSocket is the fixed systemd activation policy for the
@@ -118,9 +127,15 @@ func (s D09ManagedPiServiceSocket) Validate(serviceUID, serviceGID int) error {
 // D09ManagedPiServiceConfig is the complete fixed non-client service config.
 // It contains no task, project, source path, profile, environment, or credential
 // values. The registration pins the file digest and runtime verifies every path.
+// ProviderRoute selects the provider route of every workflow the service runs:
+// "engineering" (OpenCode Go, key opencode-go.key) or "research" (OpenRouter under
+// the frozen research profile and the USD ledger, key openrouter.key). It is
+// required, an absent member decodes to "" and is refused, so there is no implicit
+// route. Like every member it is covered by the config digest the registration pins.
 type D09ManagedPiServiceConfig struct {
 	SchemaVersion               string   `json:"schema_version"`
 	SourcePolicy                string   `json:"source_policy"`
+	ProviderRoute               string   `json:"provider_route"`
 	WorkflowAdmissionMode       string   `json:"workflow_admission_mode"`
 	WorkflowAdmissionID         string   `json:"workflow_admission_id"`
 	WorkflowTaskID              string   `json:"workflow_task_id"`
@@ -150,6 +165,7 @@ type D09ManagedPiServiceConfig struct {
 
 func (c D09ManagedPiServiceConfig) Validate() error {
 	if c.SchemaVersion != D09ManagedPiServiceConfigSchema || c.SourcePolicy != "current-managed-live-root/v1" ||
+		(c.ProviderRoute != D09ManagedPiProviderRouteEngineering && c.ProviderRoute != D09ManagedPiProviderRouteResearch) ||
 		(c.WorkflowAdmissionMode != "fresh" && c.WorkflowAdmissionMode != "resume") ||
 		!validIdentity(c.WorkflowAdmissionID) || len(c.WorkflowAdmissionID) > 256 ||
 		!validIdentity(c.WorkflowTaskID) || len(c.WorkflowTaskID) > 256 ||

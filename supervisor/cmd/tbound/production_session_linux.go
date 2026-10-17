@@ -83,6 +83,7 @@ type productionServeConfig struct {
 	BashOutputPaths     []string                     // operator-declared exact output scope; nil disables Bash
 	workflowRecovery    *governedRecoveryRequest     // set only by a trusted host recovery loader; never client parsed
 	workflowAdmission   *productionWorkflowAdmission // set only by the authenticated service + host catalog
+	providerRoute       productionProviderRoute      // set only by the service from its fixed provider_route; zero is the engineering route
 }
 
 func (c productionServeConfig) validate() error {

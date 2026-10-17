@@ -36,25 +36,28 @@ var ErrGovernedRecoveryUnavailable = errors.New("host-authorized governed workfl
 // from client flags or provider data. All file handles refer to retained
 // artifacts; recovery never falls back to creating another Store/workflow.
 type governedRecoveryRequest struct {
-	Owner                    workflowrecovery.Owner
-	Ledger                   *workflowrecovery.Ledger
-	WorkflowID               string
-	NewOwnerEpoch            uint64
-	NewSessionID             string
-	NewConversationID        string
-	Limits                   workflowrecovery.Limits
-	StoreRoot                *os.File
-	StoreJournalPath         string
-	StoreOptions             sessionrepo.Options
-	AdminRoot                *os.File
-	GitPin                   sessionlaunch.RecoveryGitPin
-	Transcripts              []GovernedRecoveryTranscript
-	CommandHistories         []productionRecoveryCommandJournal
-	ProductionProfile        piruntime.HostProfile
-	D09Template              piruntime.D09CellTemplate
-	GatePolicy               gate.Policy
-	ProviderProfile          broker.Profile
-	ProviderProfileDigest    string
+	Owner                 workflowrecovery.Owner
+	Ledger                *workflowrecovery.Ledger
+	WorkflowID            string
+	NewOwnerEpoch         uint64
+	NewSessionID          string
+	NewConversationID     string
+	Limits                workflowrecovery.Limits
+	StoreRoot             *os.File
+	StoreJournalPath      string
+	StoreOptions          sessionrepo.Options
+	AdminRoot             *os.File
+	GitPin                sessionlaunch.RecoveryGitPin
+	Transcripts           []GovernedRecoveryTranscript
+	CommandHistories      []productionRecoveryCommandJournal
+	ProductionProfile     piruntime.HostProfile
+	D09Template           piruntime.D09CellTemplate
+	GatePolicy            gate.Policy
+	ProviderProfile       broker.Profile
+	ProviderProfileDigest string
+	// ProviderRoute is the host-opened provider route. Its zero value is the
+	// engineering route.
+	ProviderRoute            productionProviderRoute
 	ImageDigest              string
 	RuntimeProfileDigest     string
 	SystemPrompt             string
@@ -430,6 +433,7 @@ func (c *governedRecoveryCandidate) Activate(ctx context.Context) (*governedReco
 		return nil, err
 	}
 	authority.requireEvidencedBashContainment = request.RequireEvidencedBash
+	authority.BindProviderRoute(request.ProviderRoute)
 	liveOptions := request.StoreOptions
 	liveOptions.AuthorizeOperation = authority.AuthorizeOperation
 	liveOptions.VerifyDecision = authority.VerifyDecision
@@ -910,7 +914,8 @@ func validateRecoveryHostPins(request governedRecoveryRequest, previous workflow
 		request.SystemPrompt == "" || request.DeveloperPrompt == "" ||
 		request.StorePolicyDigest != request.StoreOptions.PolicyDigest ||
 		request.MetadataPolicyDigest != request.StoreOptions.MetadataPolicyDigest ||
-		request.ProviderProfile.ID == "" || request.ProviderProfile.Model != providerbridge.ApprovedModel ||
+		request.ProviderProfile.ID == "" || request.ProviderProfile.Model != request.ProviderProfile.Route.Resolved().Model ||
+		request.ProviderProfile.Route != request.ProviderRoute.Route() ||
 		!reflect.DeepEqual(request.ProviderProfile.ToolManifest, broker.DeclaredToolManifest()) ||
 		bareWorkflowDigest(request.RuntimeProfileDigest) == "" {
 		return workflowrecovery.ErrRollback
@@ -919,7 +924,7 @@ func validateRecoveryHostPins(request governedRecoveryRequest, previous workflow
 		templateDigest, err := request.D09Template.Digest()
 		if len(request.CommandHistories) == 0 || err != nil ||
 			request.ProductionProfile.ContainmentProfileDigest != templateDigest ||
-			bareWorkflowDigest(request.ProductionProfile.ProviderProfileDigest) != bareWorkflowDigest(request.ProviderProfileDigest) ||
+			bareWorkflowDigest(request.ProviderRoute.ProviderProfileDigest(request.ProductionProfile.ProviderProfileDigest)) != bareWorkflowDigest(request.ProviderProfileDigest) ||
 			request.ProviderProfile.ID != request.ProductionProfile.ProviderProfile ||
 			bareWorkflowDigest(request.D09Template.ExpectedImageDigest) != previous.ImageDigest ||
 			bareWorkflowDigest(request.ProductionProfile.PiRuntimeBundleDigest) != bareWorkflowDigest(request.RuntimeProfileDigest) {
@@ -933,7 +938,8 @@ func validateRecoveryHostPins(request governedRecoveryRequest, previous workflow
 			transcript.Replay.Provider.Config.ProfileID != request.ProviderProfile.ID ||
 			transcript.Replay.Provider.Config.SystemPrompt != request.SystemPrompt ||
 			transcript.Replay.Provider.Config.DeveloperPrompt != request.DeveloperPrompt ||
-			transcript.Replay.Provider.Model != providerbridge.ApprovedModel ||
+			transcript.Replay.Provider.Model != request.ProviderProfile.Model ||
+			transcript.Replay.Provider.Config.Route != request.ProviderProfile.Route ||
 			transcript.Replay.Provider.Policy.Digest() != request.GatePolicy.Digest() ||
 			!reflect.DeepEqual(transcript.Replay.Provider.Policy, request.GatePolicy) ||
 			!reflect.DeepEqual(transcript.Replay.Profile, wantProfile) ||

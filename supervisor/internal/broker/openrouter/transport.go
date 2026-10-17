@@ -34,6 +34,19 @@ func NewHTTPDoer(key APIKeySource, timeout time.Duration) (*HTTPDoer, error) {
 	return newHTTPDoer(key, timeout, Endpoint)
 }
 
+// NewHTTPDoerForEndpoint is the transport of a research route. It is the same
+// redirect-forbidding client as NewHTTPDoer, bound to one endpoint. The endpoint
+// must use HTTPS; plain HTTP is accepted only on a loopback address so that an
+// offline fixture can run a fake server. The research route validates the URL
+// itself, so this seam does not widen what a deployed service can reach.
+func NewHTTPDoerForEndpoint(key APIKeySource, timeout time.Duration, endpoint string) (*HTTPDoer, error) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed == nil || parsed.User != nil || (parsed.Scheme != "https" && !loopbackHTTPEndpoint(endpoint)) {
+		return nil, errors.New("research endpoint must use HTTPS or be a loopback fixture")
+	}
+	return newHTTPDoer(key, timeout, endpoint)
+}
+
 func newHTTPDoer(key APIKeySource, timeout time.Duration, endpoint string) (*HTTPDoer, error) {
 	if key == nil {
 		return nil, errors.New("an injected OpenCode Go credential source is required")

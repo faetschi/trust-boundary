@@ -153,7 +153,7 @@ func (v capturedOperationVerifier) VerifyCapturedOperation(ctx context.Context,
 		}
 	}
 	providerPins := providerbridge.RecoveryPins{
-		Config: config, Model: providerbridge.ApprovedModel, Policy: policy,
+		Config: config, Model: config.Route.Resolved().Model, Policy: policy,
 		CheckpointRecordCount: activePin.JournalCount, CheckpointRecordHead: activePin.JournalHead,
 		RequireHostCallReservations: true,
 	}
@@ -196,7 +196,7 @@ func (v capturedCallProviderReplayVerifier) VerifyDecision(binding providerbridg
 	if a == nil || binding.DecisionRecordSequence != v.proof.decisionSequence ||
 		binding.DecisionRecordHash != v.proof.decisionHash || binding.WorkflowID != v.checkpoint.Pins.WorkflowID ||
 		binding.ConversationID != v.binding.ConversationID || binding.ProfileID != a.providerProfileID ||
-		binding.Model != providerbridge.ApprovedModel || binding.PolicyDigest != a.gatePolicyDigest ||
+		binding.Model != a.currentProviderRoute().Model || binding.PolicyDigest != a.gatePolicyDigest ||
 		binding.ToolCallID != v.binding.ToolCallID || binding.ResponseID != v.proof.response ||
 		binding.ProviderSequence != v.proof.sequence || binding.InputGeneration != v.checkpoint.Pins.StoreTipGenerationID ||
 		bindingTreeDigest == "" || bindingTreeDigest != v.checkpoint.Pins.StoreTipTreeDigest ||
@@ -417,7 +417,7 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 		return workflowrecovery.Pins{}, workflowrecovery.ErrObservation
 	}
 	profile := broker.Profile{
-		ID: profileID, Model: providerbridge.ApprovedModel,
+		ID: profileID, Model: config.Route.Resolved().Model, Route: config.Route,
 		Messages: []openrouter.Message{
 			{Role: openrouter.System, Content: stringPointer(config.SystemPrompt)},
 			{Role: openrouter.Developer, Content: stringPointer(config.DeveloperPrompt)},
@@ -425,7 +425,7 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 		ResponseIDIssuer: governedResponseIssuer, Generation: config.InitialGenerationID,
 	}
 	providerPins := providerbridge.RecoveryPins{
-		Config: config, Model: providerbridge.ApprovedModel, Policy: policy,
+		Config: config, Model: config.Route.Resolved().Model, Policy: policy,
 		CheckpointRecordCount: activePin.JournalCount, CheckpointRecordHead: activePin.JournalHead,
 		RequireHostCallReservations: true,
 	}

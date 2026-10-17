@@ -26,6 +26,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/researchroute"
 	"tbound/supervisor/internal/sessionrepo"
 )
 
@@ -36,7 +37,7 @@ const (
 	piServiceConfigPath          = "/etc/tbound/serve-pi-service.json"
 	piServiceRequestJournalPath  = "/var/lib/tbound/audit/serve-pi-requests.jsonl"
 	piServiceResponseSchema      = "tbound-pi-service-response/v1"
-	piServiceConfigSchema        = "tbound-pi-service-config/v2"
+	piServiceConfigSchema        = "tbound-pi-service-config/v3"
 	piServiceSocketSchema        = "tbound-managed-pi-service-socket/v1"
 	piServiceSocketMode          = "systemd-socket-activation-single-task/v1"
 	piServiceSourcePolicy        = "current-managed-live-root/v1"
@@ -108,6 +109,7 @@ type piServiceRegistrationContract struct {
 type piServiceConfig struct {
 	SchemaVersion               string   `json:"schema_version"`
 	SourcePolicy                string   `json:"source_policy"`
+	ProviderRoute               string   `json:"provider_route"`
 	WorkflowAdmissionMode       string   `json:"workflow_admission_mode"`
 	WorkflowAdmissionID         string   `json:"workflow_admission_id"`
 	WorkflowTaskID              string   `json:"workflow_task_id"`
@@ -638,6 +640,7 @@ func readProductionPiServiceConfig(path, expectedDigest string) (piServiceConfig
 		return piServiceConfig{}, errors.Join(ErrPiServiceUnavailable, err)
 	}
 	if config.SchemaVersion != piServiceConfigSchema || config.SourcePolicy != piServiceSourcePolicy ||
+		(config.ProviderRoute != piruntime.D09ManagedPiProviderRouteEngineering && config.ProviderRoute != piruntime.D09ManagedPiProviderRouteResearch) ||
 		(config.WorkflowAdmissionMode != "fresh" && config.WorkflowAdmissionMode != "resume") ||
 		!boundedProductionIdentity(config.WorkflowAdmissionID, productionRequestMaxBytes) ||
 		!boundedProductionIdentity(config.WorkflowTaskID, productionTaskIDMaxBytes) ||
@@ -1621,6 +1624,14 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	if err := verifyPiServiceEnvironment(serviceConfig, registration); err != nil {
 		return err
 	}
+	// The provider route is fixed by the digest-pinned service config. A research
+	// route opens its frozen profile, key and genesis ledger here, so a missing or
+	// unfrozen input refuses the service before any listener or task exists.
+	providerRoute, err := openProductionProviderRoute(serviceConfig, researchroute.DefaultPaths())
+	if err != nil {
+		return errors.Join(ErrPiServiceUnavailable, err)
+	}
+	defer providerRoute.Close()
 	activated, err := systemdActivatedPiListener(socket)
 	if err != nil {
 		return err
@@ -1677,7 +1688,7 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 		}
 		config := productionServeConfig{ServiceMode: true, ManagedLiveRootPath: registration.RootPath,
 			TaskID: request.TaskID, TaskRequestID: request.RequestID, TaskPrompt: request.Prompt,
-			BashOutputPaths: bashOutputPaths, workflowAdmission: workflowAdmission}
+			BashOutputPaths: bashOutputPaths, workflowAdmission: workflowAdmission, providerRoute: providerRoute}
 		var receipt bytes.Buffer
 		runErr := runProductionPiServe(taskCtx, &receipt, config, newProductionBinder())
 		encoded := bytes.TrimSpace(receipt.Bytes())

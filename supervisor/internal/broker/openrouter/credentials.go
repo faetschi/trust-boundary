@@ -105,3 +105,9 @@ func normalizeAPIKey(value string) (string, error) {
 func credentialsFor(key string) (Credentials, error) {
 	return Credentials{apiKey: key}, nil
 }
+
+// NewHTTPDoerForEndpoint is NewHTTPDoer for a research route: the same key
+// handling and redirect-forbidding transport, bound to the route's endpoint.
+func (c Credentials) NewHTTPDoerForEndpoint(endpoint string, timeout time.Duration) (*HTTPDoer, error) {
+	return NewHTTPDoerForEndpoint(func() (string, error) { return c.apiKey, nil }, timeout, endpoint)
+}

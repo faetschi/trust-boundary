@@ -232,6 +232,13 @@ type SessionOperationAuthority struct {
 	// settlement) instead of the development "not-established" marker. The
 	// production composition sets it; development/E05 tests leave it false.
 	requireEvidencedBashContainment bool
+
+	// providerRoute, providerSpend and providerFactory are the host-bound provider
+	// route (BindProviderRoute). All three are zero on the engineering route: the
+	// fixed OpenCode Go profile, no spend hook, and the service key-file factory.
+	providerRoute   openrouter.Route
+	providerSpend   providerbridge.SpendAccountant
+	providerFactory func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error)
 }
 
 // governedCommandRunner is the authority's measured command-settlement seam. It
@@ -742,6 +749,7 @@ func (a *SessionOperationAuthority) proofForDecisionID(decisionID string) (gover
 func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decisionID string) (governedCapture, error) {
 	a.mu.Lock()
 	initialGeneration, initialTree, bound := a.initialGeneration, a.initialTreeDigest, a.baselineBound
+	route := a.providerRoute.Resolved()
 	a.mu.Unlock()
 	if !bound {
 		return governedCapture{}, errors.New("governed baseline is not bound")
@@ -795,7 +803,7 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				reservation.ProfileID != a.providerProfileID || providerTurn == ^uint64(0) || reservation.Turn != providerTurn+1 ||
 				!validIdentityText(reservation.Binding.CallID) || !validWorkflowDigest(reservation.Binding.RequestDigest) ||
 				reservation.Binding.TokenUpperBound == 0 || reservation.Request.ProfileID != a.providerProfileID ||
-				reservation.Request.Method != "POST" || reservation.Request.URL != openrouter.Endpoint ||
+				reservation.Request.Method != "POST" || reservation.Request.URL != route.Endpoint ||
 				reservation.Request.Host == "" || len(reservation.Request.Body) == 0 ||
 				providerRequestEvidenceDigest(reservation.Request) != reservation.Binding.RequestDigest {
 				return governedCapture{}, ErrGovernedSessionEvidence
@@ -809,9 +817,9 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 			var exchange providerExchangeEvidence
 			if err := unmarshalGovernedJSON(record.Event.Data, &exchange); err != nil || exchange.WorkflowID != a.workflowID ||
 				providerTurn == ^uint64(0) || exchange.Turn != providerTurn+1 || exchange.ResponseIDIssuer != governedResponseIssuer || exchange.ToolCallIDIssuer != governedCallIssuer ||
-				exchange.ResponseID == "" || exchange.Model != providerbridge.ApprovedModel || exchange.StatusCode != 200 ||
+				exchange.ResponseID == "" || exchange.Model != route.Model || exchange.StatusCode != 200 ||
 				exchange.Request.ProfileID != a.providerProfileID || exchange.Request.Method != "POST" ||
-				exchange.Request.URL != openrouter.Endpoint || exchange.Request.Host == "" || len(exchange.Request.Body) == 0 {
+				exchange.Request.URL != route.Endpoint || exchange.Request.Host == "" || len(exchange.Request.Body) == 0 {
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
 			if pendingHostCall != nil {

@@ -81,6 +81,47 @@ type Config struct {
 	// complete tool result is journaled and before that result is released to
 	// the adapter. It is supplied only by the governed workflow authority.
 	AdvanceProgress func(context.Context) error
+	// Route selects the wire profile. The zero Route is the fixed engineering
+	// (OpenCode Go) route. The host sets a research route only from a frozen
+	// research profile; the Pi worker never supplies it.
+	Route openrouter.Route
+	// Spend, when non-nil, accounts the monetary cost of every provider request:
+	// it reserves a worst case before the request leaves the process and settles
+	// the reported usage afterwards (see SpendAccountant). It is nil on the
+	// engineering route.
+	Spend SpendAccountant
+}
+
+// SpendAccountant is the monetary (USD) side of a host call. NextTurn calls it
+// at the same point as ReserveHostCall and CompleteHostCall:
+//
+//   - ReserveSpend runs after the exact request is fixed and before any
+//     reservation of the workflow ledger or any network call. An error refuses
+//     the request, which is then never sent.
+//   - ReleaseSpend runs when a later reservation refuses dispatch, so the
+//     request provably never left the process.
+//   - SettleSpend runs once the exact provider response is captured, with the
+//     raw usage object of that response. An error withholds the response.
+//   - UncertainSpend runs when the request may have been sent but its cost is
+//     not established: any failure after dispatch, a missing usage object, or a
+//     failed settlement. The reservation stays counted.
+type SpendAccountant interface {
+	ReserveSpend(ctx context.Context, reservation SpendReservation) (unitID string, err error)
+	ReleaseSpend(ctx context.Context, unitID string) error
+	SettleSpend(ctx context.Context, unitID string, usage json.RawMessage) error
+	UncertainSpend(ctx context.Context, unitID string) error
+}
+
+// SpendReservation names the exact request that is about to be sent.
+type SpendReservation struct {
+	WorkflowID     string
+	ConversationID string
+	// Turn is the one-based provider turn of this conversation.
+	Turn uint64
+	// CompletionLimit is the host-selected max_completion_tokens bound of the
+	// request. Zero means the host selected none.
+	CompletionLimit uint64
+	Request         broker.RequestRecord
 }
 
 // HostCallBinding is the providerbridge view of a workflowrecovery reservation.
@@ -104,6 +145,7 @@ type Conversation struct {
 
 	cfg         Config
 	model       string
+	route       openrouter.Route
 	doer        broker.HTTPDoer
 	journal     eventJournal
 	correlation *protocol.Stream
@@ -249,6 +291,18 @@ func NewFromEnvironment(cfg Config, journal *audit.Journal) (*Conversation, erro
 // NewFromCredentials constructs the production-shaped owner from a secure
 // loader result. The API key remains encapsulated by Credentials/HTTPDoer.
 func NewFromCredentials(cfg Config, credentials openrouter.Credentials, journal *audit.Journal) (*Conversation, error) {
+	if route := cfg.Route.Resolved(); route.IsResearch() {
+		// The research route takes its model, endpoint and timeout from the frozen
+		// profile route. The credential only carries the API key.
+		if journal == nil {
+			return nil, errors.New("provider conversation requires the protected audit journal")
+		}
+		doer, err := credentials.NewHTTPDoerForEndpoint(route.Endpoint, route.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("configure secure research transport: %w", err)
+		}
+		return newWithDoer(cfg, route.Model, doer, journal)
+	}
 	if credentials.ModelID() != ApprovedModel {
 		return nil, errors.New("provider profile model is not the approved model")
 	}
@@ -268,8 +322,12 @@ func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJo
 	if reflectNil(doer) || reflectNil(journal) {
 		return nil, errors.New("provider conversation requires an injected HTTP Doer and durable journal")
 	}
-	if model != ApprovedModel {
+	route := cfg.Route.Resolved()
+	if model != route.Model {
 		return nil, errors.New("provider profile model is not the approved model")
+	}
+	if err := route.Validate(); err != nil {
+		return nil, err
 	}
 	for name, value := range map[string]string{
 		"conversation ID": cfg.ConversationID, "workflow ID": cfg.WorkflowID,
@@ -298,11 +356,11 @@ func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJo
 		{Role: openrouter.System, Content: &system},
 		{Role: openrouter.Developer, Content: &developer},
 	}
-	if _, err := openrouter.BuildRequest(model, history); err != nil {
+	if _, err := openrouter.BuildRequestForRoute(route, history, 0); err != nil {
 		return nil, fmt.Errorf("validate immutable provider prompt: %w", err)
 	}
 	return &Conversation{
-		cfg: cfg, model: model, doer: doer, journal: journal,
+		cfg: cfg, model: model, route: route, doer: doer, journal: journal,
 		correlation: stream, history: history, generation: cfg.InitialGenerationID,
 		treeDigest: cfg.InitialTreeDigest, responseIDs: make(map[string]struct{}),
 		transitionIDs: make(map[string]struct{}), effectIDs: make(map[string]struct{}), state: stateNeedsPrompt,
@@ -348,7 +406,7 @@ func (c *Conversation) AdmitPrompt(taskID, prompt string) error {
 // NextTurn constructs the complete registered request from broker-owned
 // history, performs the actual OpenCode Go broker exchange, captures the
 // response/call before release, and persists exact request/response evidence.
-func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
+func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) {
 	if c == nil || ctx == nil {
 		return Turn{}, ErrClosed
 	}
@@ -367,7 +425,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 		return Turn{}, c.failLocked(errors.New("provider conversation turn/sequence budget exhausted"))
 	}
 	profile := broker.Profile{
-		ID: c.cfg.ProfileID, ConversationID: c.cfg.ConversationID, Model: c.model, Messages: cloneMessages(c.history),
+		ID: c.cfg.ProfileID, ConversationID: c.cfg.ConversationID, Model: c.model, Route: c.cfg.Route, Messages: cloneMessages(c.history),
 		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: callIssuer,
 		ResponseIDIssuer: responseIssuer, Generation: c.generation,
 	}
@@ -387,17 +445,51 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 		}
 	}
 	var hostCallBinding *HostCallBinding
+	// Monetary accounting (research route only). spendUnit is the open ledger
+	// reservation of this request. Once the request may have left the process
+	// (spendDispatched) and until SettleSpend has run (spendSettled), any return
+	// from NextTurn leaves the cost unestablished and marks the unit uncertain.
+	var spendUnit string
+	spendDispatched, spendSettled := false, false
+	defer func() {
+		if spendUnit != "" && spendDispatched && !spendSettled {
+			if err := c.cfg.Spend.UncertainSpend(context.WithoutCancel(ctx), spendUnit); err != nil {
+				turnErr = errors.Join(turnErr, fmt.Errorf("mark provider spend uncertain: %w", err))
+			}
+		}
+	}()
 	captured, exchangeErr := requestBroker.ExchangeWithCompletionLimit(ctx, completionLimit, func(request broker.RequestRecord) error {
+		if c.cfg.Spend != nil {
+			unit, spendErr := c.cfg.Spend.ReserveSpend(ctx, SpendReservation{WorkflowID: c.cfg.WorkflowID,
+				ConversationID: c.cfg.ConversationID, Turn: c.turns + 1, CompletionLimit: completionLimit, Request: request})
+			if spendErr != nil {
+				return fmt.Errorf("reserve provider spend before dispatch: %w", spendErr)
+			}
+			spendUnit = unit
+		}
+		// refuse reports a refusal that happens before the request is handed to the
+		// transport, after the spend reservation: the request provably never left.
+		refuse := func(cause error) error {
+			if spendUnit != "" {
+				if err := c.cfg.Spend.ReleaseSpend(ctx, spendUnit); err != nil {
+					spendDispatched = true // the release is not durable; keep the unit counted
+					return errors.Join(cause, fmt.Errorf("release provider spend: %w", err))
+				}
+				spendUnit = ""
+			}
+			return cause
+		}
 		if c.cfg.ReserveHostCall == nil {
+			spendDispatched = spendUnit != ""
 			return nil
 		}
 		binding, reserveErr := c.cfg.ReserveHostCall(ctx, request, completionLimit)
 		if reserveErr != nil {
-			return reserveErr
+			return refuse(reserveErr)
 		}
 		if !validHostCallBinding(binding) || len(binding.RequestDigest) != 64 || binding.RequestDigest != broker.DigestRequestRecord(request) ||
 			binding.TokenUpperBound != completionLimit {
-			return errors.New("host-call reservation does not bind the exact outbound request and completion cap")
+			return refuse(errors.New("host-call reservation does not bind the exact outbound request and completion cap"))
 		}
 		hostCallBinding = &binding
 		reservation := hostCallReservationEvidence{WorkflowID: c.cfg.WorkflowID,
@@ -405,11 +497,12 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 			Turn: c.turns + 1, Binding: binding, Request: requestEvidenceFromBroker(request)}
 		encoded, marshalErr := json.Marshal(reservation)
 		if marshalErr != nil {
-			return marshalErr
+			return refuse(marshalErr)
 		}
 		if _, appendErr := c.appendLocked("provider_host_call_reserved", "host-call-reserved", encoded); appendErr != nil {
-			return fmt.Errorf("persist exact host-call reservation before HTTP dispatch: %w", appendErr)
+			return refuse(fmt.Errorf("persist exact host-call reservation before HTTP dispatch: %w", appendErr))
 		}
+		spendDispatched = spendUnit != ""
 		return nil
 	})
 	records := requestBroker.Records()
@@ -432,7 +525,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 	}
 	nextSequence := c.sequence + 1
 	projection := Turn{
-		SchemaVersion: bridgeSchemaVersion, ResponseID: captured.ResponseID(), Model: captured.Model(),
+		SchemaVersion: bridgeSchemaVersion, ResponseID: captured.ResponseID(), Model: projectedModel(c.route, captured.Model()),
 		Created: captured.Created(), Generation: c.generation, Sequence: nextSequence,
 		AssistantText: captured.AssistantText(), FinishReason: captured.FinishReason(), Usage: captured.Usage(),
 	}
@@ -474,6 +567,14 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 	if err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("persist exact provider exchange; response withheld: %w", err))
 	}
+	if spendUnit != "" {
+		// SettleSpend leaves the unit in its final state (settled, overage-settled
+		// or uncertain) whether or not it returns an error.
+		spendSettled = true
+		if err := c.cfg.Spend.SettleSpend(ctx, spendUnit, captured.Usage()); err != nil {
+			return Turn{}, c.failLocked(fmt.Errorf("settle provider spend; response withheld: %w", err))
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return Turn{}, c.failLocked(fmt.Errorf("provider exchange canceled before release: %w", err))
 	}
@@ -513,6 +614,18 @@ func (c *Conversation) NextTurn(ctx context.Context) (Turn, error) {
 		}
 	}
 	return projection, nil
+}
+
+// projectedModel is the model id shown to the Pi worker in a Turn. The worker pins
+// one local model label (ApprovedModel) and refuses any other, whichever provider
+// route serves the request, so the research route reports that label there. The
+// provider's own model id stays in the durable exchange evidence and is checked
+// against the route's model before the response is accepted.
+func projectedModel(route openrouter.Route, providerModel string) string {
+	if route.Resolved().IsResearch() {
+		return ApprovedModel
+	}
+	return providerModel
 }
 
 func requestEvidenceFromBroker(record broker.RequestRecord) requestEvidence {
@@ -828,7 +941,7 @@ func (c *Conversation) appendHistoryLocked(message openrouter.Message) error {
 	if len(proposed) > MaxTranscriptTurns*3+2 {
 		return errors.New("provider transcript message limit exhausted")
 	}
-	request, err := openrouter.BuildRequest(c.model, proposed)
+	request, err := openrouter.BuildRequestForRoute(c.route, proposed, 0)
 	if err != nil {
 		return fmt.Errorf("bounded broker transcript rejected: %w", err)
 	}

@@ -190,13 +190,13 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		}
 		profileMessages := []openrouter.Message{{Role: openrouter.System, Content: stringPointer(productionSystemPrompt)},
 			{Role: openrouter.Developer, Content: stringPointer(productionDeveloperPrompt)}}
-		providerProfile := broker.Profile{ID: profile.ProviderProfile, Model: providerbridge.ApprovedModel,
+		providerProfile := broker.Profile{ID: profile.ProviderProfile, Model: config.providerRoute.Model(), Route: config.providerRoute.Route(),
 			Messages: profileMessages, ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 			ResponseIDIssuer: governedResponseIssuer}
 		providerConfig := providerbridge.Config{WorkflowID: entry.WorkflowID, ConversationID: pin.ConversationID,
 			ProfileID: profile.ProviderProfile, SystemPrompt: productionSystemPrompt, DeveloperPrompt: productionDeveloperPrompt}
 		replayPins := GovernedReplayPins{
-			Provider: providerbridge.RecoveryPins{Config: providerConfig, Model: providerbridge.ApprovedModel, Policy: policy},
+			Provider: providerbridge.RecoveryPins{Config: providerConfig, Model: config.providerRoute.Model(), Policy: policy},
 			Profile:  providerProfile, StorePolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest,
 			BashOutputPaths: cloneDurableOutputScopePaths(entry.BashOutputPaths),
 		}
@@ -261,7 +261,7 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 	if err != nil {
 		return fail(err)
 	}
-	providerProfile := broker.Profile{ID: profile.ProviderProfile, Model: providerbridge.ApprovedModel,
+	providerProfile := broker.Profile{ID: profile.ProviderProfile, Model: config.providerRoute.Model(), Route: config.providerRoute.Route(),
 		Messages: []openrouter.Message{{Role: openrouter.System, Content: stringPointer(productionSystemPrompt)},
 			{Role: openrouter.Developer, Content: stringPointer(productionDeveloperPrompt)}},
 		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
@@ -272,8 +272,9 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		Limits: checkpoint.Limits, StoreRoot: storeRoot, StoreJournalPath: entry.StoreJournalPath,
 		StoreOptions: storeOptions, AdminRoot: adminRoot, GitPin: gitPin,
 		Transcripts: transcripts, CommandHistories: commandHistories, ProductionProfile: profile, D09Template: template,
-		GatePolicy: policy, ProviderProfile: providerProfile, ProviderProfileDigest: profile.ProviderProfileDigest,
-		ImageDigest: template.ExpectedImageDigest, RuntimeProfileDigest: profile.PiRuntimeBundleDigest,
+		GatePolicy: policy, ProviderProfile: providerProfile, ProviderRoute: config.providerRoute,
+		ProviderProfileDigest: config.providerRoute.ProviderProfileDigest(profile.ProviderProfileDigest),
+		ImageDigest:           template.ExpectedImageDigest, RuntimeProfileDigest: profile.PiRuntimeBundleDigest,
 		SystemPrompt: productionSystemPrompt, DeveloperPrompt: productionDeveloperPrompt,
 		StorePolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest,
 		BashOutputPaths: cloneDurableOutputScopePaths(entry.BashOutputPaths),

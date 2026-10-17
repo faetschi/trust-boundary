@@ -31,7 +31,17 @@ func requireFreshProviderConversation(journal *audit.Journal) error {
 }
 
 func (a *SessionOperationAuthority) NewProviderConversation(config providerbridge.Config) (*providerbridge.Conversation, error) {
-	return a.newProviderConversation(config, productionProviderConversationFactory)
+	factory := productionProviderConversationFactory
+	if a != nil {
+		a.mu.Lock()
+		if a.providerFactory != nil {
+			// The research route reads its own fixed key file; the engineering
+			// route keeps the service key-file factory.
+			factory = a.providerFactory
+		}
+		a.mu.Unlock()
+	}
+	return a.newProviderConversation(config, factory)
 }
 
 // newProviderConversation keeps the constructor's complete host admission and
@@ -103,6 +113,8 @@ func (a *SessionOperationAuthority) newProviderConversation(config providerbridg
 		config.CompleteHostCall = a.completeProviderHostCall
 		config.AdvanceProgress = a.advanceProviderProgress
 	}
+	// The provider route and spend hook are host-bound too; a caller's are discarded.
+	config = a.applyProviderRoute(config)
 	if err := a.requirePreparedSource(); err != nil {
 		return nil, err
 	}

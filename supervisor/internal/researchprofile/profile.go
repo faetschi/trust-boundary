@@ -262,25 +262,7 @@ func (p Profile) WorstCaseMicroUSD(inputTokensMax, outputTokensMax uint64) (uint
 	if outputTokensMax > *p.MaxOutputTokens {
 		return 0, errors.New("output token bound exceeds the frozen max_output_tokens")
 	}
-	inputPrice := maxPrice(*p.InputMicroUSDPer1M, p.MaxPriceMicroPerMTokIn)
-	outputPrice := maxPrice(*p.OutputMicroUSDPer1M, p.MaxPriceMicroPerMTokOut)
-	inputCost, ok := mulUint64(inputTokensMax, inputPrice)
-	if !ok {
-		return 0, errOverflow
-	}
-	outputCost, ok := mulUint64(outputTokensMax, outputPrice)
-	if !ok {
-		return 0, errOverflow
-	}
-	total := inputCost + outputCost
-	if total < inputCost {
-		return 0, errOverflow
-	}
-	microUSD := total / microUSDPerMillionTokens
-	if total%microUSDPerMillionTokens != 0 {
-		microUSD++
-	}
-	return microUSD, nil
+	return p.priceMicroUSD(inputTokensMax, outputTokensMax)
 }
 
 // WorstCaseUnitMicroUSD returns the micro-USD to reserve for one unit: the

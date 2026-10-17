@@ -45,9 +45,12 @@ func DeclaredToolManifest() []string {
 // Profile is trusted broker configuration, never populated from Pi IPC. The
 // endpoint and request schemas remain fixed by openrouter.BuildRequest.
 type Profile struct {
-	ID               string
-	ConversationID   string
-	Model            string
+	ID             string
+	ConversationID string
+	Model          string
+	// Route selects the wire profile. The zero Route is the fixed engineering
+	// (OpenCode Go) route; a research route must name the same Model.
+	Route            openrouter.Route
 	Messages         []openrouter.Message
 	ToolManifest     []string
 	ToolCallIssuer   string
@@ -157,8 +160,12 @@ func New(profile Profile, doer HTTPDoer) (*Broker, error) {
 	}
 	profile.Messages = cloneMessages(profile.Messages)
 	profile.ToolManifest = DeclaredToolManifest()
-	if _, err := openrouter.BuildRequest(profile.Model, profile.Messages); err != nil {
-		return nil, fmt.Errorf("invalid registered OpenCode Go profile: %w", err)
+	route := profile.Route.Resolved()
+	if route.Model != profile.Model {
+		return nil, errors.New("registered profile model differs from its provider route")
+	}
+	if _, err := openrouter.BuildRequestForRoute(route, profile.Messages, 0); err != nil {
+		return nil, fmt.Errorf("invalid registered provider profile: %w", err)
 	}
 	return &Broker{profile: profile, doer: doer, stream: stream}, nil
 }
@@ -195,7 +202,7 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 		return openrouter.CapturedResponse{}, err
 	}
 
-	built, err := openrouter.BuildRequestWithCompletionLimit(b.profile.Model, b.profile.Messages, completionLimit)
+	built, err := openrouter.BuildRequestForRoute(b.profile.Route, b.profile.Messages, completionLimit)
 	if err != nil {
 		return openrouter.CapturedResponse{}, b.failLocked(-1, fmt.Errorf("build registered provider request: %w", err))
 	}
@@ -251,7 +258,7 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	record.statusCode = response.StatusCode
 	record.responseSet = true
 	if response.Request != nil && response.Request.URL != nil &&
-		(response.Request.Method != http.MethodPost || response.Request.URL.String() != openrouter.Endpoint) {
+		(response.Request.Method != http.MethodPost || response.Request.URL.String() != b.profile.Route.Resolved().Endpoint) {
 		if response.Body != nil {
 			_ = response.Body.Close()
 		}

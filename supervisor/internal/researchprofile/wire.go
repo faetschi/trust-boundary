@@ -1,0 +1,140 @@
+package researchprofile
+
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+// Endpoint and Model are the one fixed research identity. A Profile whose
+// Endpoint or Model differs is refused by Validate, so a caller that builds a
+// request from a loaded Profile cannot reach any other URL or model.
+const (
+	Endpoint = fixedEndpoint
+	Model    = fixedModel
+)
+
+// wireProvider is the OpenRouter "provider" request object rendered from the
+// frozen routing decisions. An empty order or quantizations list is omitted:
+// the profile's empty list means "no pin" and "no constraint", and OpenRouter
+// treats a missing member the same way. The field names are the ones the
+// profile uses and must be re-verified against the live provider-routing
+// documentation at freeze time (see Routing).
+type wireProvider struct {
+	Order             []string      `json:"order,omitempty"`
+	AllowFallbacks    bool          `json:"allow_fallbacks"`
+	DataCollection    string        `json:"data_collection"`
+	Quantizations     []string      `json:"quantizations,omitempty"`
+	RequireParameters bool          `json:"require_parameters"`
+	ZDR               bool          `json:"zdr"`
+	MaxPrice          *wireMaxPrice `json:"max_price,omitempty"`
+}
+
+// wireMaxPrice carries the price ceilings in US dollars per million tokens, as
+// OpenRouter expects, rendered exactly from the integer micro-USD profile values.
+type wireMaxPrice struct {
+	Prompt     json.Number `json:"prompt"`
+	Completion json.Number `json:"completion"`
+}
+
+type wireUsage struct {
+	Include bool `json:"include"`
+}
+
+type wireMembers struct {
+	Provider    wireProvider `json:"provider"`
+	Temperature json.Number  `json:"temperature"`
+	Seed        uint64       `json:"seed"`
+	Usage       wireUsage    `json:"usage"`
+}
+
+// RequestMembers returns the canonical JSON object of top-level chat-completions
+// members that this profile fixes: the provider routing object, temperature,
+// seed, and usage accounting (usage.include asks OpenRouter to report the token
+// counts and cost that the ledger settles). The caller appends them to the fixed
+// request members (model, messages, tools, stream, tool choice and the host's
+// completion cap). The result has no insignificant whitespace and a fixed member
+// order, so equal profiles give byte-equal requests. A profile that is not
+// Frozen is refused with ErrNotFrozen.
+func (p Profile) RequestMembers() (string, error) {
+	if err := p.FrozenReason(); err != nil {
+		return "", fmt.Errorf("%w: %w", ErrNotFrozen, err)
+	}
+	provider := wireProvider{
+		Order:             append([]string(nil), p.Routing.Order...),
+		AllowFallbacks:    *p.Routing.AllowFallbacks,
+		DataCollection:    *p.Routing.DataCollection,
+		Quantizations:     append([]string(nil), p.Routing.Quantizations...),
+		RequireParameters: *p.Routing.RequireParameters,
+		ZDR:               *p.Routing.ZDR,
+	}
+	if p.MaxPriceMicroPerMTokIn != nil {
+		provider.MaxPrice = &wireMaxPrice{
+			Prompt:     decimalFromMicro(*p.MaxPriceMicroPerMTokIn, 6),
+			Completion: decimalFromMicro(*p.MaxPriceMicroPerMTokOut, 6),
+		}
+	}
+	encoded, err := json.Marshal(wireMembers{
+		Provider:    provider,
+		Temperature: decimalFromMicro(*p.TemperatureMilli, 3),
+		Seed:        *p.Seed,
+		Usage:       wireUsage{Include: true},
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode research request members: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// ActualMicroUSD prices observed token counts at the profile's worst price per
+// token (the larger of each declared price and its ceiling), rounded up to whole
+// micro-USD. Unlike WorstCaseMicroUSD it does not bound the counts by the frozen
+// maxima: a provider can report more tokens than the profile allowed, and the
+// ledger needs the true cost to record that overage. It refuses a profile that
+// is not Frozen and any overflow.
+func (p Profile) ActualMicroUSD(promptTokens, completionTokens uint64) (uint64, error) {
+	if err := p.FrozenReason(); err != nil {
+		return 0, fmt.Errorf("%w: %w", ErrNotFrozen, err)
+	}
+	return p.priceMicroUSD(promptTokens, completionTokens)
+}
+
+// priceMicroUSD is the integer arithmetic shared by WorstCaseMicroUSD and
+// ActualMicroUSD. The profile must already be Frozen.
+func (p Profile) priceMicroUSD(inputTokens, outputTokens uint64) (uint64, error) {
+	inputPrice := maxPrice(*p.InputMicroUSDPer1M, p.MaxPriceMicroPerMTokIn)
+	outputPrice := maxPrice(*p.OutputMicroUSDPer1M, p.MaxPriceMicroPerMTokOut)
+	inputCost, ok := mulUint64(inputTokens, inputPrice)
+	if !ok {
+		return 0, errOverflow
+	}
+	outputCost, ok := mulUint64(outputTokens, outputPrice)
+	if !ok {
+		return 0, errOverflow
+	}
+	total := inputCost + outputCost
+	if total < inputCost {
+		return 0, errOverflow
+	}
+	microUSD := total / microUSDPerMillionTokens
+	if total%microUSDPerMillionTokens != 0 {
+		microUSD++
+	}
+	return microUSD, nil
+}
+
+// decimalFromMicro renders value/10^digits as a JSON number without an exponent
+// and without trailing zeros: 270000 with 6 digits is 0.27, 1000000 is 1, and 0
+// is 0.
+func decimalFromMicro(value uint64, digits int) json.Number {
+	text := strconv.FormatUint(value, 10)
+	if len(text) <= digits {
+		text = strings.Repeat("0", digits-len(text)+1) + text
+	}
+	whole, fraction := text[:len(text)-digits], strings.TrimRight(text[len(text)-digits:], "0")
+	if fraction == "" {
+		return json.Number(whole)
+	}
+	return json.Number(whole + "." + fraction)
+}

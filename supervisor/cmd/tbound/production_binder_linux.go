@@ -376,6 +376,7 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	// Production requires positive, evidenced Bash containment; a legacy/dev
 	// "not-established" settlement can never be admitted or receipted as D09.
 	authority.requireEvidencedBashContainment = true
+	authority.BindProviderRoute(config.providerRoute)
 	session.Authority, session.StoreJournal, session.ProviderJournal = authority, storeJournal, providerJournal
 	session.CommandJournal = commandJournal
 	session.Policy, session.StorePolicyDigest, session.MetadataPolicyDigest = policy, storePolicyDigest, metadataPolicyDigest
