@@ -1,0 +1,26 @@
+# Canonical source for /etc/systemd/system/usr-bin-podman.mount (root:root 0644).
+# File bind mount of the pinned Podman (/opt/tbound/podman/podman, a root:root 0555
+# copy of /usr/bin/podman) onto /usr/bin/podman with ro,nosuid,nodev, so that
+# verifyPinnedToolBinary (supervisor/internal/piruntime/containment_linux.go:995,
+# which calls requireReadOnlyMount at :2498) sees the template's podman_path on a
+# read-only mount. The path stays /usr/bin/podman because the registered template
+# and the services use that path.
+# CAVEAT: binding over a package-managed file blocks dpkg/apt from replacing
+# /usr/bin/podman ("Device or resource busy"). The package is already apt-held on
+# the ABI8 guest; to upgrade, stop this unit first and re-measure and re-sign
+# everything that binds podman_digest (D09 template, host profile).
+# This is tamper evidence, not immutability: root can still unmount, remount rw,
+# or replace the source file. The digest pin is checked separately by
+# hashProtectedFile at launch.
+# Install verbatim; the unit name must equal the escaped Where= path.
+[Unit]
+Description=TBound pinned Podman executable (read-only file bind)
+
+[Mount]
+What=/opt/tbound/podman/podman
+Where=/usr/bin/podman
+Type=none
+Options=bind,ro,nosuid,nodev
+
+[Install]
+WantedBy=local-fs.target
