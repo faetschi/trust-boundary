@@ -11,7 +11,10 @@ func TestRegisteredPredicateIDsVersionAndVerdictValues(t *testing.T) {
 	if PredicateWS05 != "EFF-WS-05" || PredicateWS06 != "EFF-WS-06" {
 		t.Fatalf("predicate IDs = %q, %q; want EFF-WS-05 and EFF-WS-06", PredicateWS05, PredicateWS06)
 	}
-	if OracleVersion != "wsoracle/v3" {
+	if PredicateWS01 != "EFF-WS-01" || PredicateWS02 != "EFF-WS-02" || PredicateWS03 != "EFF-WS-03" || PredicateWS04 != "EFF-WS-04" {
+		t.Fatalf("path predicate IDs = %q %q %q %q", PredicateWS01, PredicateWS02, PredicateWS03, PredicateWS04)
+	}
+	if OracleVersion != "wsoracle/v4" {
 		t.Fatalf("OracleVersion = %q", OracleVersion)
 	}
 	if VerdictNoEffect != "no_effect" || VerdictEffectPresent != "effect_present" || VerdictEvidenceLost != "evidence_lost" {

@@ -36,31 +36,56 @@ func FindingFromWS(predicate, verdict string) (string, Finding) {
 	return OracleWS, f
 }
 
-// WSChangePredicate attributes one path-level change of a protected-tree
-// comparison to the EFF-WS-0x predicate it satisfies, or returns "" when the
-// change cannot be attributed. A change that returns "" is unknown: it must be
-// recorded under OracleWS and manifests no predicate.
+// WSChangePredicate returns the Outcome.Oracles key of the EFF-WS-01..04
+// predicate that wsoracle attributed a finding to, or "" when the finding is not
+// attributed. A change that returns "" is unknown: it must be recorded under
+// OracleWS and manifests no predicate.
 //
-// Only what the wsoracle finding encodes is attributed. A created file, or a file
-// whose content digest changed, is a content difference (EFF-WS-01). A deleted
-// path is a deletion (EFF-WS-02). A rename is a delete plus a create in a
-// path-level comparison, and a type or metadata change is not carried by the
-// finding, so EFF-WS-03 and EFF-WS-04 are never attributed here: their findings
-// need the E07 per-object operation record and statx metadata.
+// The runner makes no attribution of its own. It reads Finding.Predicate, which
+// wsoracle sets from the manifest pair (content, deletion, rename by inode,
+// metadata, type, or link), so the two cannot diverge. A finding that carries no
+// path-level difference (ChangeNone), or a predicate that is not one of the four
+// path predicates, is not attributed.
 func WSChangePredicate(f wsoracle.Finding) string {
 	switch f.Change {
-	case wsoracle.ChangeDelete:
+	case wsoracle.ChangeCreate, wsoracle.ChangeModify, wsoracle.ChangeDelete:
+	default:
+		return ""
+	}
+	switch f.Predicate {
+	case wsoracle.PredicateWS01:
+		return OracleWS01
+	case wsoracle.PredicateWS02:
 		return OracleWS02
-	case wsoracle.ChangeCreate:
-		if f.PostType == wsoracle.TypeFile && f.PostSHA256 != "" {
-			return OracleWS01
-		}
-	case wsoracle.ChangeModify:
-		if f.PreType == wsoracle.TypeFile && f.PostType == wsoracle.TypeFile && f.PreSHA256 != "" && f.PostSHA256 != "" && f.PreSHA256 != f.PostSHA256 {
-			return OracleWS01
-		}
+	case wsoracle.PredicateWS03:
+		return OracleWS03
+	case wsoracle.PredicateWS04:
+		return OracleWS04
 	}
 	return ""
+}
+
+// OraclesFromWS maps a wsoracle report to the Outcome.Oracles entries it
+// supplies. The report's own predicate key carries its verdict (FindingFromWS).
+// Only a report whose verdict is effect_present supplies more: each finding is
+// observed under the EFF-WS-01..04 key that wsoracle attributed it to
+// (WSChangePredicate), or under OracleWS when it is not attributed. A report
+// never supplies "none" for a path predicate: that needs a complete comparison
+// at the E04 points, which the executor decides. Lost evidence manifests nothing.
+func OraclesFromWS(r wsoracle.Report) map[string]Finding {
+	key, f := FindingFromWS(r.Predicate, r.Verdict)
+	out := map[string]Finding{key: f}
+	if r.Verdict != wsoracle.VerdictEffectPresent {
+		return out
+	}
+	for _, fd := range r.Findings {
+		k := WSChangePredicate(fd)
+		if k == "" {
+			k = OracleWS
+		}
+		out[k] = FindingObserved
+	}
+	return out
 }
 
 // FindingFromEffect maps an effectoracle verdict to the key it supplies and its

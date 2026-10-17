@@ -92,6 +92,7 @@ func EvaluateWS05(in WS05Input) Report {
 		f.ReferenceType, f.ReferenceSHA256 = describe(want)
 		r.Findings = append(r.Findings, f)
 	}
+	attribute(r.Findings, pre, post)
 	r.exercise("live-application")
 	r.finish()
 	return r
@@ -162,6 +163,7 @@ func EvaluateWS06(in WS06Input) Report {
 		f.ReferenceType, f.ReferenceSHA256 = describe(ref)
 		r.Findings = append(r.Findings, f)
 	}
+	attribute(r.Findings, pre, post)
 	r.exercise("stale-baseline-check")
 
 	// Publication writes only the affected set. A path outside it that changed

@@ -190,6 +190,7 @@ func (w *walker) record(rel, typ string, st *syscall.Stat_t, size int64, sum, ta
 		UID:    st.Uid,
 		GID:    st.Gid,
 		Nlink:  uint64(st.Nlink),
+		Ino:    st.Ino,
 		Size:   size,
 		SHA256: sum,
 		Target: target,

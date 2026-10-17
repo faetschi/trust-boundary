@@ -6,7 +6,10 @@ import (
 
 // OracleVersion labels the report format and rule set. Change it whenever a
 // field or rule changes meaning, because registered oracle digests depend on it.
-const OracleVersion = "wsoracle/v3"
+//
+// v4 adds the inode number to manifest entries and attributes each finding to
+// one of EFF-WS-01..04 (Finding.Predicate, Peer, Meta).
+const OracleVersion = "wsoracle/v4"
 
 // Instrument names the observation method in Report.Instrument.
 const Instrument = "linux-openat-fstat-sha256"
@@ -17,6 +20,10 @@ const ScopeUnitCheck = "unit_check"
 
 // Registered predicate IDs (13-oracle-coverage-matrix.md §1.1).
 const (
+	PredicateWS01 = "EFF-WS-01" // content difference (create, overwrite, modify)
+	PredicateWS02 = "EFF-WS-02" // deletion or removal
+	PredicateWS03 = "EFF-WS-03" // rename or move, including rename-based replacement
+	PredicateWS04 = "EFF-WS-04" // metadata, type, or link difference
 	PredicateWS05 = "EFF-WS-05"
 	PredicateWS06 = "EFF-WS-06"
 )
@@ -86,17 +93,41 @@ var PreservationFields = []string{
 // Finding is one path that shows the registered effect. Reference is the state
 // the rule compared against: the composed ledger state for EFF-WS-05, and the
 // registered baseline for EFF-WS-06.
+//
+// Predicate attributes the path-level change to exactly one of EFF-WS-01..04, or
+// is empty when the change is ambiguous (see attribute.go). An empty Predicate is
+// still an observed effect; it simply manifests no path predicate. Peer is the
+// counterpart path of an EFF-WS-03 rename. Meta is set for EFF-WS-04 only.
 type Finding struct {
-	Path            string `json:"path"`
-	Reason          string `json:"reason"`
-	Change          string `json:"change"`
-	PreType         string `json:"pre_type,omitempty"`
-	PreSHA256       string `json:"pre_sha256,omitempty"`
-	PostType        string `json:"post_type,omitempty"`
-	PostSHA256      string `json:"post_sha256,omitempty"`
-	ReferenceType   string `json:"reference_type,omitempty"`
-	ReferenceSHA256 string `json:"reference_sha256,omitempty"`
-	MatchesSealed   bool   `json:"matches_sealed,omitempty"`
+	Path            string      `json:"path"`
+	Reason          string      `json:"reason"`
+	Change          string      `json:"change"`
+	Predicate       string      `json:"predicate,omitempty"`
+	Peer            string      `json:"peer,omitempty"`
+	Meta            *MetaChange `json:"meta,omitempty"`
+	PreType         string      `json:"pre_type,omitempty"`
+	PreSHA256       string      `json:"pre_sha256,omitempty"`
+	PostType        string      `json:"post_type,omitempty"`
+	PostSHA256      string      `json:"post_sha256,omitempty"`
+	ReferenceType   string      `json:"reference_type,omitempty"`
+	ReferenceSHA256 string      `json:"reference_sha256,omitempty"`
+	MatchesSealed   bool        `json:"matches_sealed,omitempty"`
+}
+
+// MetaChange is the metadata evidence of an EFF-WS-04 finding: mode, ownership,
+// link count, and link target before and after. An absent side is all zero, and
+// the finding's PreType or PostType is then empty.
+type MetaChange struct {
+	PreMode    uint32 `json:"pre_mode"`
+	PostMode   uint32 `json:"post_mode"`
+	PreUID     uint32 `json:"pre_uid"`
+	PostUID    uint32 `json:"post_uid"`
+	PreGID     uint32 `json:"pre_gid"`
+	PostGID    uint32 `json:"post_gid"`
+	PreNlink   uint64 `json:"pre_nlink"`
+	PostNlink  uint64 `json:"post_nlink"`
+	PreTarget  string `json:"pre_target,omitempty"`
+	PostTarget string `json:"post_target,omitempty"`
 }
 
 // ManifestRef identifies one manifest input by digest, without its contents.

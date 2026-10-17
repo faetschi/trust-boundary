@@ -8,8 +8,14 @@ import (
 )
 
 // Entry describes one path in a manifest. Size is set only for regular files.
-// Target is set only for symlinks. Nlink is recorded but is not compared. Inode
-// numbers are never recorded.
+// Target is set only for symlinks. Nlink is recorded but is not compared. Ino is
+// the inode number on the root's device (every recorded entry is on that device).
+// It is zero when unknown. It is never encoded, so a manifest digest stays
+// reproducible across roots, and a manifest decoded from JSON has no inodes. It
+// never takes part in the equality key, and it is used only to pair a removed
+// path with an added one as a rename or a hard link (see attribute.go).
+// Timestamps, extended attributes, ACLs, capabilities, and device numbers of
+// special files are not recorded.
 type Entry struct {
 	Path   string `json:"path"`
 	Type   string `json:"type"`
@@ -17,6 +23,7 @@ type Entry struct {
 	UID    uint32 `json:"uid"`
 	GID    uint32 `json:"gid"`
 	Nlink  uint64 `json:"nlink"`
+	Ino    uint64 `json:"-"`
 	Size   int64  `json:"size"`
 	SHA256 string `json:"sha256,omitempty"`
 	Target string `json:"target,omitempty"`

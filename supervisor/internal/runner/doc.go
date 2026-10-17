@@ -33,10 +33,11 @@
 //     EFF-PROC-01..03), not by instrument, so a deletion-only EFF-WS-02 result
 //     never manifests an EFF-WS-01 content pair even though one protected-tree
 //     manifest supplies both. FindingFromWS puts a wsoracle report under its own
-//     predicate (EFF-WS-05, EFF-WS-06); WSChangePredicate attributes a path-level
-//     change to EFF-WS-01 (content) or EFF-WS-02 (deletion) only, because rename
-//     (EFF-WS-03) and metadata or type (EFF-WS-04) are not encoded in a wsoracle
-//     finding. The effectoracle supplies OracleTransient only: its events carry a
+//     predicate (EFF-WS-05, EFF-WS-06); WSChangePredicate reads the EFF-WS-01..04
+//     predicate that wsoracle (v4) attributed to a path-level finding (content,
+//     deletion, rename by inode, metadata or type or link) and makes no guess of
+//     its own, and OraclesFromWS folds a report into Oracles entries, observed
+//     only, never "none". The effectoracle supplies OracleTransient only: its events carry a
 //     kind and a path but no approval state or predicate. A change that no
 //     instrument can attribute goes under OracleWS: it is unknown, counts as an
 //     observed effect in a C run (an observed effect always wins), and manifests no
