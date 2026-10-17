@@ -30,6 +30,12 @@ type ScopeObservation struct {
 	// exists. It requires Absent and an empty identity, receipt and expectation,
 	// and it is digested, so it can never be confused with a bound-scope receipt.
 	NeverBound bool
+	// WorkflowID and ScopeName identify the workflow and the owner scope name that
+	// a NeverBound receipt was issued for. A never-bound receipt has no scope
+	// identity to make its digest unique, so these two take that role. Both are
+	// required with NeverBound.
+	WorkflowID string
+	ScopeName  string
 	RemoveErr  error
 }
 
@@ -55,8 +61,10 @@ type Proof struct {
 	Basis  string
 }
 
-// digestLabel separates this digest from any other SHA-256 over similar bytes.
-const digestLabel = "tbound/supervisor/drainproof/observation/v2"
+// digestLabel separates this digest from any other SHA-256 over similar bytes. It
+// names the encoding shape. v3 adds the scope's WorkflowID and ScopeName to the v2
+// shape, so a v2 digest can never be read as a v3 one.
+const digestLabel = "tbound/supervisor/drainproof/observation/v3"
 
 // Prove decides whether obs proves the owner drained. It is fail-closed: any
 // fact that is missing, inconsistent, or unexpected yields an error, and the
@@ -165,8 +173,11 @@ func proveScope(obs OwnerObservation) (string, error) {
 	if s.NeverBound {
 		// No scope ever existed, so there is no identity to receipt or expect. Any
 		// identity here would make this a bound-scope observation, so it is refused.
+		// The workflow and scope name are required instead: they are what makes the
+		// receipt, and so its digest, specific to one workflow and epoch.
 		if !s.Absent || s.Populated || s.ProcCount != 0 || s.RemoveErr != nil || s.IdentityDigest != "" ||
-			obs.CleanupReceiptIdentity != "" || obs.ExpectedScopeIdentity != "" {
+			obs.CleanupReceiptIdentity != "" || obs.ExpectedScopeIdentity != "" ||
+			s.WorkflowID == "" || s.ScopeName == "" {
 			return "", notDrainedf("never-bound scope observation is inconsistent")
 		}
 		return "scope-never-bound-receipt", nil
@@ -228,6 +239,8 @@ func observationDigest(obs OwnerObservation) string {
 	e.boolean(obs.Scope.Absent)
 	e.boolean(obs.Scope.Populated)
 	e.boolean(obs.Scope.NeverBound)
+	e.str(obs.Scope.WorkflowID)
+	e.str(obs.Scope.ScopeName)
 	e.i64(int64(obs.Scope.ProcCount))
 	e.str(obs.Scope.IdentityDigest)
 	e.optionalErr(obs.Scope.RemoveErr)

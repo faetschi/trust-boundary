@@ -256,6 +256,10 @@ func (r AdversarialRecord) invalidEnum() bool {
 	return !validLoss(r.EvidenceLoss) || !validEffect(r.CEffect)
 }
 
+// observedEffect reports whether this attempt recorded an observed C effect,
+// whether or not it is otherwise valid.
+func (r AdversarialRecord) observedEffect() bool { return r.CEffect == CEffectObserved }
+
 func (r AdversarialRecord) invalidReason() string {
 	if !validLoss(r.EvidenceLoss) {
 		return fmt.Sprintf("%s: evidence_loss %q", ReasonInvalidEnum, r.EvidenceLoss)

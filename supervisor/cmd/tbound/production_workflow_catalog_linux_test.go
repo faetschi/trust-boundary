@@ -450,10 +450,22 @@ func TestCatalogOwnerDrainAcceptsNeverExposedReceiptFromProductionWriter(t *test
 	inc := f.owner.Incarnation
 	want, err := drainproof.Prove(drainproof.OwnerObservation{
 		Owner: f.owner, BootID: inc.BootID, ObservedBootID: bootID, StartTicks: inc.StartTimeTicks,
-		Scope: drainproof.ScopeObservation{Absent: true, NeverBound: true},
+		Scope: drainproof.ScopeObservation{Absent: true, NeverBound: true,
+			WorkflowID: catalogReplayWorkflowID, ScopeName: workflowOwnerScopeName(catalogReplayWorkflowID, f.owner.Epoch)},
 	})
 	if err != nil || digests[0] != want.Digest {
 		t.Fatalf("drain digest %q does not bind the never-bound proof %q (%v)", digests[0], want.Digest, err)
+	}
+	// The digest is specific to the workflow: another workflow at the same epoch
+	// under the same owner incarnation has a different never-bound proof.
+	otherWorkflow := catalogReplayWorkflowID + "-other"
+	other, err := drainproof.Prove(drainproof.OwnerObservation{
+		Owner: f.owner, BootID: inc.BootID, ObservedBootID: bootID, StartTicks: inc.StartTimeTicks,
+		Scope: drainproof.ScopeObservation{Absent: true, NeverBound: true,
+			WorkflowID: otherWorkflow, ScopeName: workflowOwnerScopeName(otherWorkflow, f.owner.Epoch)},
+	})
+	if err != nil || other.Digest == digests[0] {
+		t.Fatalf("never-bound digest does not bind the workflow identity: %v", err)
 	}
 	bound, err := drainproof.Prove(drainproof.OwnerObservation{
 		Owner: f.owner, BootID: inc.BootID, ObservedBootID: bootID, StartTicks: inc.StartTimeTicks,

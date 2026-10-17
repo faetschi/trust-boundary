@@ -106,12 +106,16 @@ var (
 	// evalscore does not allow: only earlier attempts that are evidenced
 	// external-outage reruns may be superseded.
 	ErrDuplicatePrimary = errors.New("evalreport: repeated primary records not explained by an evidenced external-outage rerun")
+	// ErrScoringRejected means evalscore rejected the record set for a reason that
+	// is not a repeated primary record, such as a wrong schema or a malformed record.
+	ErrScoringRejected = errors.New("evalreport: evalscore rejected the trial records")
 )
 
-// InputError is the error Build returns for ErrUnregisteredRecord and
-// ErrDuplicatePrimary. Adversarial and Compliant are sorted, distinct IDs.
+// InputError is the error Build returns for ErrUnregisteredRecord,
+// ErrDuplicatePrimary and ErrScoringRejected. Adversarial and Compliant are
+// sorted, distinct IDs, and are empty for ErrScoringRejected.
 type InputError struct {
-	Err         error // ErrUnregisteredRecord or ErrDuplicatePrimary
+	Err         error // ErrUnregisteredRecord, ErrDuplicatePrimary or ErrScoringRejected
 	Adversarial []string
 	Compliant   []string
 	Cause       error // evalscore's error, when it produced this one
@@ -137,6 +141,9 @@ func (e *InputError) Unwrap() []error { return []error{e.Err, e.Cause} }
 func advKey(r evalscore.AdversarialRecord) string { return r.CaseID }
 func cmpKey(r evalscore.CompliantRecord) string   { return r.TaskID }
 
+func advFirst(r evalscore.AdversarialRecord) evalscore.AdversarialRecord { r.Attempt = 1; return r }
+func cmpFirst(r evalscore.CompliantRecord) evalscore.CompliantRecord     { r.Attempt = 1; return r }
+
 // unregistered returns the sorted distinct record IDs of one kind that the
 // manifest does not register under that kind.
 func unregistered[T any](idx *manifestIndex, kind string, recs []T, key func(T) string) []string {
@@ -149,11 +156,16 @@ func unregistered[T any](idx *manifestIndex, kind string, recs []T, key func(T) 
 	return slices.Sorted(maps.Keys(ids))
 }
 
-// rejectedRepeats returns the sorted IDs that have several records and that
-// evalscore.Summarize rejects when given those records alone. It decides
-// nothing itself: evalscore's validation is the only rule. It is called only
-// after Summarize has rejected the whole set, to say which cases to fix.
-func rejectedRepeats[T any](recs []T, key func(T) string, alone func([]T) evalscore.Input) []string {
+// rejectedRepeats returns the sorted IDs that have several records, that
+// evalscore.Summarize rejects when given those records alone, and whose rejection
+// comes from the repetition. It decides nothing itself: evalscore's validation is
+// the only rule. A group is a repetition problem only if every one of its records
+// is accepted by evalscore when taken alone as a first attempt. If any single
+// record is rejected by itself, the rejection is about that record or the input
+// as a whole (a wrong schema, an empty channel), not about the repeat. It is
+// called only after Summarize has rejected the whole set, to say which cases to
+// fix.
+func rejectedRepeats[T any](recs []T, key func(T) string, alone func([]T) evalscore.Input, asFirst func(T) T) []string {
 	groups := map[string][]T{}
 	for _, r := range recs {
 		groups[key(r)] = append(groups[key(r)], r)
@@ -163,7 +175,17 @@ func rejectedRepeats[T any](recs []T, key func(T) string, alone func([]T) evalsc
 		if len(groups[id]) < 2 {
 			continue
 		}
-		if _, err := evalscore.Summarize(alone(groups[id])); err != nil {
+		if _, err := evalscore.Summarize(alone(groups[id])); err == nil {
+			continue
+		}
+		repeatOnly := true
+		for _, r := range groups[id] {
+			if _, err := evalscore.Summarize(alone([]T{asFirst(r)})); err != nil {
+				repeatOnly = false
+				break
+			}
+		}
+		if repeatOnly {
 			bad = append(bad, id)
 		}
 	}
@@ -171,17 +193,19 @@ func rejectedRepeats[T any](recs []T, key func(T) string, alone func([]T) evalsc
 }
 
 // scoringError explains why evalscore rejected t. If some repeated case is
-// rejected on its own, the error is an ErrDuplicatePrimary naming those cases,
-// with evalscore's message attached; otherwise it is evalscore's error as is.
+// rejected because of its repetition (see rejectedRepeats), the error is an
+// ErrDuplicatePrimary naming those cases, with evalscore's message attached.
+// Otherwise the rejection is not about repeats, and the error is an ErrScoringRejected
+// that carries evalscore's error as its cause and names no case.
 func scoringError(t evalscore.Input, cause error) error {
 	adv := rejectedRepeats(t.Adversarial, advKey, func(g []evalscore.AdversarialRecord) evalscore.Input {
 		return evalscore.Input{Schema: t.Schema, Adversarial: g}
-	})
+	}, advFirst)
 	cmp := rejectedRepeats(t.Compliant, cmpKey, func(g []evalscore.CompliantRecord) evalscore.Input {
 		return evalscore.Input{Schema: t.Schema, Compliant: g}
-	})
+	}, cmpFirst)
 	if len(adv) == 0 && len(cmp) == 0 {
-		return fmt.Errorf("evalreport: evalscore: %w", cause)
+		return &InputError{Err: ErrScoringRejected, Cause: cause}
 	}
 	return &InputError{Err: ErrDuplicatePrimary, Adversarial: adv, Compliant: cmp, Cause: cause}
 }

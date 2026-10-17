@@ -6,7 +6,7 @@ import (
 
 // OracleVersion labels the report format and rule set. Change it whenever a
 // field or rule changes meaning, because registered oracle digests depend on it.
-const OracleVersion = "wsoracle/v2"
+const OracleVersion = "wsoracle/v3"
 
 // Instrument names the observation method in Report.Instrument.
 const Instrument = "linux-openat-fstat-sha256"
@@ -70,6 +70,7 @@ const (
 	GapInvalidEntry        = "invalid_entry"         // manifest entry is a duplicate, non-canonical, unreadable, unknown, or lacks a digest
 	GapAffectedSetMissing  = "affected_set_missing"  // WS-06 needs the intended affected-object set
 	GapAffectedSetInvalid  = "affected_set_invalid"  // affected set has a non-canonical or repeated path
+	GapOutsideSetChange    = "outside_set_change"    // WS-06: a path outside the affected set changed during publication, so it cannot be attributed
 )
 
 // PreservationFields names the report fields that must survive for an

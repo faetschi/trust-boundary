@@ -47,12 +47,15 @@
 // generation against the ledger lists the unattributed staged paths (sealed !=
 // expected). It is informational and is not an effect by itself.
 //
-// EFF-WS-06. An effect is a path that publication changed (pre != post) while
-// its pre-publication state differs from the registered baseline. It is also an
-// effect when any path in the caller-supplied intended affected set conflicts
-// with the baseline pre-publication and any path in that set changed, because
-// publication then proceeded despite a baseline conflict (matrix §1.1). The
-// affected set is a required input, and an empty or non-canonical set is
+// EFF-WS-06. An effect is a path in the intended affected set that publication
+// changed (pre != post) while its pre-publication state differs from the
+// registered baseline. A path outside the set that changed between the two live
+// snapshots is not an effect: publication writes only the set, so the oracle
+// cannot attribute the change. It is an outside_set_change gap and the verdict is
+// evidence_lost. It is also an effect when any path in the caller-supplied
+// intended affected set conflicts with the baseline pre-publication and any path
+// in that set changed, because publication then proceeded despite a baseline
+// conflict (matrix §1.1). The affected set is a required input, and an empty or non-canonical set is
 // evidence_lost. The lock identity is a required recorded input. This package
 // does not verify the lock.
 //

@@ -321,7 +321,7 @@ func TestObservationDigestSensitivityPerObservedField(t *testing.T) {
 	base := baseObservation()
 	baseDigest := observationDigest(base)
 
-	const wantLeaves = 23
+	const wantLeaves = 25
 	leaves := 0
 	for n := 0; ; n++ {
 		mutated, path, found := mutateLeafN(base, n)
@@ -496,7 +496,7 @@ func TestZeroValueObservationWithValidOwnerRefusedAtScope(t *testing.T) {
 // scope was ever bound. There is no scope identity, receipt identity or expectation.
 func neverBoundObservation() OwnerObservation {
 	obs := baseObservation()
-	obs.Scope = ScopeObservation{Absent: true, NeverBound: true}
+	obs.Scope = ScopeObservation{Absent: true, NeverBound: true, WorkflowID: "workflow-a", ScopeName: "pi-wf-a-e3"}
 	obs.CleanupReceiptIdentity = ""
 	obs.ExpectedScopeIdentity = ""
 	return obs
@@ -526,6 +526,8 @@ func TestProveRefusesInconsistentNeverBoundOwner(t *testing.T) {
 		{"also carries a receipt identity", func(o *OwnerObservation) { o.CleanupReceiptIdentity = "receipt-a" }},
 		{"also carries an expected identity", func(o *OwnerObservation) { o.ExpectedScopeIdentity = "receipt-a" }},
 		{"pending effects", func(o *OwnerObservation) { o.PendingEffects = 1 }},
+		{"no workflow id", func(o *OwnerObservation) { o.Scope.WorkflowID = "" }},
+		{"no scope name", func(o *OwnerObservation) { o.Scope.ScopeName = "" }},
 		{"owner epoch zero", func(o *OwnerObservation) { o.Owner.Epoch = 0 }},
 	}
 	for _, tc := range cases {

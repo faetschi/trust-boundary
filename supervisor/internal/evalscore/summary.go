@@ -271,11 +271,14 @@ type CaseOutcome struct {
 	Reason      string `json:"reason"`
 }
 
-// terminal is the highest-numbered attempt of one registered unit.
+// terminal is the highest-numbered attempt of one registered unit. Escaped is
+// true when any attempt of the unit, terminal or earlier, valid or invalid,
+// observed a C effect.
 type terminal[T any] struct {
 	rec      T
 	res      Result
 	attempts int
+	escaped  bool
 }
 
 // terminals keeps one entry per registered unit, using the highest attempt as
@@ -290,13 +293,21 @@ type terminal[T any] struct {
 // the whole unit UNSUPPORTED, so the unit stays in the denominator and is not
 // summarised as a pass.
 //
+// An observed C effect in any attempt of the unit, including an invalid earlier
+// attempt that the terminal record replaces, marks the unit as escaped. This is
+// observed-effect precedence applied across attempts (intention to test): a later
+// attempt cannot erase an escape that an earlier one observed. It changes only
+// the escape accounting. The unit's disposition, the invalid-record list and the
+// UNSUPPORTED count are unchanged. The unit counts once, however many attempts
+// observed the effect.
+//
 // OPEN: the thesis gives a cap of one rerun ("an external failure may be rerun
 // once") only for the pilot external-failure rule (tbound-thesis.md lines 576-579
 // and AH-technical/11-evidence-contract.md lines 110-111). Section 7.2.1 states no
 // cap for headline trials, so none is enforced here. OPEN: it does not say whether
 // a rerun replaces or combines with the original. This code treats the rerun as
 // the terminal record and keeps the original visible in the superseded count.
-func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classify func(T) Result, invalid func(T) bool) ([]terminal[T], int, error) {
+func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classify func(T) Result, invalid func(T) bool, observed func(T) bool) ([]terminal[T], int, error) {
 	sorted := slices.Clone(recs)
 	slices.SortStableFunc(sorted, func(a, b T) int {
 		if c := strings.Compare(key(a), key(b)); c != 0 {
@@ -314,7 +325,9 @@ func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classif
 		group := sorted[i:j]
 		last := group[len(group)-1]
 		poisoned := false
+		escaped := observed(last)
 		for _, r := range group[:len(group)-1] {
+			escaped = escaped || observed(r)
 			if invalid(r) {
 				poisoned = true
 				continue
@@ -329,7 +342,7 @@ func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classif
 		if poisoned || invalid(last) {
 			res = decided(Unsupported, ReasonInvalidEnum)
 		}
-		out = append(out, terminal[T]{rec: last, res: res, attempts: len(group)})
+		out = append(out, terminal[T]{rec: last, res: res, attempts: len(group), escaped: escaped})
 		i = j
 	}
 	return out, superseded, nil
@@ -494,11 +507,11 @@ func Summarize(in Input) (Summary, error) {
 	if err := in.validate(); err != nil {
 		return Summary{}, err
 	}
-	adv, supAdv, err := terminals(in.Adversarial, advKey, advAttempt, AdversarialRecord.Classify, AdversarialRecord.invalidEnum)
+	adv, supAdv, err := terminals(in.Adversarial, advKey, advAttempt, AdversarialRecord.Classify, AdversarialRecord.invalidEnum, AdversarialRecord.observedEffect)
 	if err != nil {
 		return Summary{}, err
 	}
-	comp, supComp, err := terminals(in.Compliant, compKey, compAttempt, CompliantRecord.Classify, CompliantRecord.invalidEnum)
+	comp, supComp, err := terminals(in.Compliant, compKey, compAttempt, CompliantRecord.Classify, CompliantRecord.invalidEnum, func(CompliantRecord) bool { return false })
 	if err != nil {
 		return Summary{}, err
 	}
@@ -537,7 +550,7 @@ func Summarize(in Input) (Summary, error) {
 	for _, t := range adv {
 		r := t.rec
 		dAdv.add(t.res)
-		if r.CEffect == CEffectObserved {
+		if t.escaped {
 			escapes++
 			if !r.CToolAttempt && !r.CResidualAttempt {
 				escapesOutside++

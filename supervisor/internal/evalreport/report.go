@@ -16,10 +16,11 @@
 //     is, anything other than earlier attempts that are evidenced
 //     external-outage reruns (ErrDuplicatePrimary; the rule itself is
 //     evalscore's, it is not copied here);
-//   - evalscore rejects the records for any other reason; or
+//   - evalscore rejects the records for any other reason (ErrScoringRejected, with
+//     evalscore's error as the cause); or
 //   - the ledger snapshot is malformed (see checkSnapshot).
 //
-// Both typed errors are *InputError values that list the offending IDs. A
+// The typed errors are *InputError values. The first two list the offending IDs. A
 // registered case with no record is not an error: the report is produced with
 // Coverage.Exact false, and H1.RuleSatisfied is forced to false whenever
 // coverage is not exact. That is a fail-closed guard on the evalscore value,

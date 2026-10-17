@@ -99,11 +99,14 @@ func EvaluateWS05(in WS05Input) Report {
 
 // EvaluateWS06 evaluates EFF-WS-06 over the supplied manifests.
 //
-// An effect is a path that publication changed (pre != post) while its
-// pre-publication state differs from the registered baseline: publication
-// overwrote, replaced, or deleted an object that no longer matched. It is also
-// an effect when any object in the intended affected set conflicts with the
-// baseline before publication and any object in that set changed, even if
+// An effect is a path in the intended affected set that publication changed
+// (pre != post) while its pre-publication state differs from the registered
+// baseline: publication overwrote, replaced, or deleted an object that no longer
+// matched. A path outside the set that changed between pre and post is never an
+// effect: the oracle cannot attribute it, so it is an outside_set_change gap and
+// the verdict is evidence_lost. It is also an effect when any object in the
+// intended affected set conflicts with the baseline before publication and any
+// object in that set changed, even if
 // publication failed before reaching the conflicting one. The conflicting
 // objects are then listed with change "none". A conflict that publication never
 // proceeded past, because nothing in the set changed, is not an effect. An
@@ -147,7 +150,7 @@ func EvaluateWS06(in WS06Input) Report {
 		stale := fingerprint(before) != fingerprint(ref)
 		f := Finding{Path: p}
 		switch {
-		case stale && fingerprint(before) != fingerprint(after):
+		case stale && affected[p] && fingerprint(before) != fingerprint(after):
 			f.Reason, f.Change = ReasonStaleBaselineOverwrite, changeKind(before, after)
 		case stale && proceeded && affected[p]:
 			f.Reason, f.Change = ReasonBaselineConflictProceeded, ChangeNone
@@ -160,6 +163,20 @@ func EvaluateWS06(in WS06Input) Report {
 		r.Findings = append(r.Findings, f)
 	}
 	r.exercise("stale-baseline-check")
+
+	// Publication writes only the affected set. A path outside it that changed
+	// between the two snapshots was written by someone else, or by a publication
+	// that exceeded its set. Either way the oracle cannot attribute the change, so
+	// it is a gap and the verdict is evidence_lost, not an effect. A missing set
+	// already has its own gap and is not repeated for every path.
+	if len(affected) > 0 {
+		for _, p := range sortedUnion(keysOf(pre), keysOf(post)) {
+			if !affected[p] && fingerprint(at(pre, p)) != fingerprint(at(post, p)) {
+				r.Gaps = append(r.Gaps, Gap{Manifest: in.PostPublication.Label, Kind: GapOutsideSetChange, Path: p})
+			}
+		}
+	}
+	r.exercise("outside-set-check")
 	r.finish()
 	return r
 }

@@ -11,7 +11,7 @@ func TestRegisteredPredicateIDsVersionAndVerdictValues(t *testing.T) {
 	if PredicateWS05 != "EFF-WS-05" || PredicateWS06 != "EFF-WS-06" {
 		t.Fatalf("predicate IDs = %q, %q; want EFF-WS-05 and EFF-WS-06", PredicateWS05, PredicateWS06)
 	}
-	if OracleVersion != "wsoracle/v2" {
+	if OracleVersion != "wsoracle/v3" {
 		t.Fatalf("OracleVersion = %q", OracleVersion)
 	}
 	if VerdictNoEffect != "no_effect" || VerdictEffectPresent != "effect_present" || VerdictEvidenceLost != "evidence_lost" {
@@ -127,7 +127,7 @@ func TestWS06WitnessRecordsLockAndPublicationAsRecordedOnly(t *testing.T) {
 	if r.Witness.LockIdentity != "lock-1" || r.Witness.PublicationResult != "SUCCEEDED" {
 		t.Fatalf("witness = %+v", r.Witness)
 	}
-	want := []string{"manifest-completeness", "live-root-identity", "lock-identity", "affected-set", "stale-baseline-check"}
+	want := []string{"manifest-completeness", "live-root-identity", "lock-identity", "affected-set", "stale-baseline-check", "outside-set-check"}
 	if !slices.Equal(r.Witness.Exercised, want) {
 		t.Fatalf("exercised = %v, want %v", r.Witness.Exercised, want)
 	}
