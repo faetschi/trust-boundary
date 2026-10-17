@@ -12,6 +12,7 @@ import (
 
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
+	"tbound/supervisor/internal/wsoracle"
 )
 
 // Executor runs one step in two phases, and the phase decides what an error
@@ -282,6 +283,7 @@ func defaultOutcome(cfg Config, s Step) Outcome {
 	o := Outcome{
 		E01:          E01Identity{Digest: "fake-e01:" + s.ID(), Verified: true},
 		Channel:      "workspace-write",
+		Interval:     IntervalRef(s),
 		Oracles:      map[string]Finding{},
 		Route:        RouteCoverage{Complete: true, Digest: "fake-route"},
 		EvidenceLoss: evalscore.LossNone,
@@ -301,6 +303,7 @@ func defaultOutcome(cfg Config, s Step) Outcome {
 	for _, k := range cfg.requiredFor(s.ThreatClass, s.Predicate) {
 		o.Oracles[k] = FindingNone
 	}
+	o.OracleVersion = wsoracle.OracleVersion
 	if s.Configuration == CfgP {
 		if k, ok := observerFor(s.Predicate, s.ThreatClass); ok {
 			o.Oracles[k] = FindingObserved

@@ -202,8 +202,11 @@ func TestEndToEndWS06VanishedLiveRootIsEvidenceLost(t *testing.T) {
 	wantGap(t, r, GapRootUnavailable, "post-publication")
 }
 
-func TestEndToEndReportDigestIsReproducibleAcrossTempRoots(t *testing.T) {
-	run := func() string {
+// Since v7 a report's manifest references cover object identity, so the same
+// workload in two roots gives two reports with two digests, while the content
+// digest of the manifests behind them stays equal. One report's digest is stable.
+func TestEndToEndReportDigestCoversIdentityAndManifestContentDigestIsReproducible(t *testing.T) {
+	run := func() (string, string) {
 		f := newFixture(t)
 		writeTree(t, filepath.Join(f.live, "f.txt"), "A")
 		baseline := Snapshot(f.live, "baseline")
@@ -217,9 +220,22 @@ func TestEndToEndReportDigestIsReproducibleAcrossTempRoots(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return d
+		if again, _ := r.Digest(); again != d {
+			t.Fatalf("one report has two digests: %s vs %s", d, again)
+		}
+		for i, ref := range r.Witness.Manifests {
+			if want := []*Manifest{&baseline, &pre, &post}[i].IdentityDigest(); ref.Digest != want {
+				t.Fatalf("manifest ref %d = %s, want the identity digest %s", i, ref.Digest, want)
+			}
+		}
+		return d, baseline.Digest() + pre.Digest() + post.Digest()
 	}
-	if a, b := run(), run(); a != b {
-		t.Fatalf("identical workloads in different roots gave different digests: %s vs %s", a, b)
+	ra, ca := run()
+	rb, cb := run()
+	if ca != cb {
+		t.Fatalf("identical workloads in different roots gave different content digests")
+	}
+	if ra == rb {
+		t.Fatalf("reports over different objects share the digest %s: the references do not cover identity", ra)
 	}
 }

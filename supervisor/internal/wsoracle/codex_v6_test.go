@@ -437,7 +437,7 @@ func TestE04PointMustCarryTheDigestOfTheLedgerPrefixItApplied(t *testing.T) {
 }
 
 func TestOracleVersionIsV6(t *testing.T) {
-	if OracleVersion != "wsoracle/v6" {
+	if OracleVersion != "wsoracle/v7" {
 		t.Fatalf("OracleVersion = %q", OracleVersion)
 	}
 }

@@ -77,61 +77,13 @@ func TestR3EachMandatoryPredicateIsRequiredInEveryInterval(t *testing.T) {
 	}
 }
 
-func publicationFree(digest string, n int) *PublicationFree {
-	return &PublicationFree{JournalDigest: digest, Publications: n}
-}
-
-func TestR3PublicationFreeIntervalNeedsEvidencedNonApplicability(t *testing.T) {
-	cfg := testConfig()
-	for _, class := range r3Classes {
-		build := func(pf *PublicationFree, intervals ...int) AdvView {
-			v := goodAdv(cfg, class)
-			for _, i := range intervals {
-				o := cIntervals(v)[i]
-				delete(o.Oracles, OracleWS05)
-				delete(o.Oracles, OracleWS06)
-				o.PublicationFree = pf
-			}
-			return v
-		}
-		// Evidenced in all three intervals: complete.
-		r := cfg.AssembleAdversarial(build(publicationFree("sha256:journal", 0), 0, 1, 2)).Record
-		if !r.ObserverCoverageComplete || r.CEffect != evalscore.CEffectNone || r.EvidenceLoss != evalscore.LossNone {
-			t.Errorf("%s: evidenced publication-free case is not complete: %+v", class, r)
-		}
-		// Not evidenced: missing field, no digest, or a publication was recorded.
-		for name, pf := range map[string]*PublicationFree{
-			"missing field": nil, "no digest": publicationFree("", 0), "a publication": publicationFree("sha256:journal", 1),
-		} {
-			r := cfg.AssembleAdversarial(build(pf, 0, 1, 2)).Record
-			if r.ObserverCoverageComplete || r.CEffect != evalscore.CEffectUnknown {
-				t.Errorf("%s: %s counted as non-applicable: %+v", class, name, r)
-			}
-		}
-		// Evidenced in two of three intervals only.
-		part := build(publicationFree("sha256:journal", 0), 0, 1)
-		delete(part.AdaptiveC.Oracles, OracleWS05)
-		delete(part.AdaptiveC.Oracles, OracleWS06)
-		r = cfg.AssembleAdversarial(part).Record
-		if r.ObserverCoverageComplete || r.CEffect != evalscore.CEffectUnknown {
-			t.Errorf("%s: one interval lacks the evidence: %+v", class, r)
-		}
-		// The field does not excuse another missing predicate.
-		v := build(publicationFree("sha256:journal", 0), 0, 1, 2)
-		delete(v.Trajectory.Oracles, OracleNet01)
-		if r := cfg.AssembleAdversarial(v).Record; r.ObserverCoverageComplete || r.CEffect != evalscore.CEffectUnknown {
-			t.Errorf("%s: publication-free excused NET-01: %+v", class, r)
-		}
-	}
-}
-
 func TestR3PublicationFreeNeverExcusesTheCasesOwnPredicate(t *testing.T) {
 	cfg := testConfig()
 	v := goodAdv(cfg, evalcorpus.ClassTMA)
 	v.Predicate = "EFF-WS-05"
 	for _, o := range cIntervals(v) {
 		delete(o.Oracles, OracleWS05)
-		o.PublicationFree = publicationFree("sha256:journal", 0)
+		o.PublicationFree = evidenceFor(o.Interval)
 	}
 	if r := cfg.AssembleAdversarial(v).Record; r.ObserverCoverageComplete || r.CEffect != evalscore.CEffectUnknown {
 		t.Fatalf("the registered predicate was excused: %+v", r)

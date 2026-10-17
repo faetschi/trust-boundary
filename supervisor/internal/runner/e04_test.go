@@ -23,7 +23,7 @@ var e04PointNames = []string{
 // and the baseline must carry (wsoracle v6).
 func e04Manifest(label string, es []wsoracle.Entry) wsoracle.Manifest {
 	root := &wsoracle.Entry{Type: wsoracle.TypeDir, Mode: 0o755, UID: 1000, GID: 1000, Nlink: 2, Ino: 1}
-	return wsoracle.Manifest{Label: label, Complete: true, Root: root, Entries: es}
+	return wsoracle.Manifest{Label: label, Complete: true, Root: root, Dev: 1, Entries: es}
 }
 
 // e04Points returns the six points, all showing the same post state. The runner
@@ -130,7 +130,8 @@ func TestOraclesFromE04AmbiguousChangeIsIndeterminatePerPredicateAndObservedUnat
 
 // An indeterminate verdict beside a gap, or from another oracle version, is lost
 // evidence, and a self-contradicting report (an attributed finding under an
-// indeterminate verdict) gives the predicate no credit.
+// indeterminate verdict) is lost evidence for the predicate; the change itself was
+// seen, so C still counts it.
 func TestOraclesFromE04IndeterminateVerdictIsNeverTrustedBeyondItself(t *testing.T) {
 	x := wsFile("a.txt", 1, "X")
 	dir := []wsoracle.Entry{x, wsEntry("d", wsoracle.TypeDir, 0o755, 5, "")}
@@ -147,7 +148,7 @@ func TestOraclesFromE04IndeterminateVerdictIsNeverTrustedBeyondItself(t *testing
 	r = e04Report("TM-C", []wsoracle.Entry{x}, dir)
 	r.Findings = []wsoracle.Finding{{Path: "d", Change: wsoracle.ChangeCreate, Predicate: wsoracle.PredicateWS03}}
 	got := OraclesFromE04(r)
-	if got[OracleWS03] != FindingIndeterminate || got[OracleWS] != FindingObserved {
+	if got[OracleWS03] != FindingLost || got[OracleWS] != FindingObserved {
 		t.Errorf("contradictory report: %v", got)
 	}
 }
@@ -237,16 +238,18 @@ func TestOraclesFromE04NeverTrustsAReportThatContradictsItself(t *testing.T) {
 			t.Errorf("gap: %s = %q", k, got)
 		}
 	}
-	// A finding attributed to a predicate that is reported no_effect.
+	// A finding attributed to a predicate that is reported no_effect: lost for the
+	// predicate (no credit), observed for C.
 	r = cleanE04("TM-C")
 	r.Findings = []wsoracle.Finding{{Path: "a.txt", Change: wsoracle.ChangeModify, Predicate: wsoracle.PredicateWS01}}
-	if got := OraclesFromE04(r); got[OracleWS01] != FindingObserved || got[OracleWS02] != FindingNone {
+	if got := OraclesFromE04(r); got[OracleWS01] != FindingLost || got[OracleWS02] != FindingNone || got[OracleWS] != FindingObserved {
 		t.Errorf("finding with no_effect verdict: %v", got)
 	}
-	// An unattributed change whose candidate is reported no_effect.
+	// An unattributed change whose candidate is reported no_effect: lost for the
+	// predicate, observed for C.
 	r = cleanE04("TM-C")
 	r.Unattributed = []wsoracle.UnattributedChange{{Path: "a.txt", Point: wsoracle.PointFinalCleanup, Candidates: []string{wsoracle.PredicateWS02}}}
-	if got := OraclesFromE04(r); got[OracleWS02] != FindingObserved || got[OracleWS01] != FindingNone || got[OracleWS] != FindingObserved {
+	if got := OraclesFromE04(r); got[OracleWS02] != FindingLost || got[OracleWS01] != FindingNone || got[OracleWS] != FindingObserved {
 		t.Errorf("unattributed with no_effect verdict: %v", got)
 	}
 	// A missing verdict, an unknown verdict, and a not_applicable for a predicate

@@ -206,7 +206,7 @@ func (r *Report) addManifest(m *Manifest) {
 	invalid := checkEntries(m)
 	r.Witness.Manifests = append(r.Witness.Manifests, ManifestRef{
 		Label:    m.Label,
-		Digest:   m.Digest(),
+		Digest:   m.IdentityDigest(),
 		Entries:  len(m.Entries),
 		Complete: m.clean() && len(invalid) == 0,
 	})

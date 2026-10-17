@@ -54,9 +54,17 @@
 //     for all classes and EFF-WS-06 for TM-A and TM-B, as well as the path
 //     predicates, EFF-NET-01, the transient observer and, for TM-C, EFF-PROC-01..03.
 //     An interval without publication is exempt from WS-05/06 only if its Outcome
-//     names it publication-free (Outcome.PublicationFree) with a publication
-//     journal digest and a zero count; a missing field is NOT complete, and the
-//     case's own registered predicate is never exempt. An observed effect in any
+//     carries that interval's own publication journal (Outcome.PublicationFree: a
+//     hash-chained package-audit journal whose first record is the
+//     IntervalMarkerKind record of Outcome.Interval, which the runner sets). The
+//     runner verifies the chain, recomputes the head digest, checks the interval
+//     binding and counts the publication records itself; a forged or reused
+//     journal, a missing field or any publication record is NOT complete, and the
+//     case's own registered predicate is never exempt. Only a report of exactly the
+//     current wsoracle version that its own findings support earns a predicate
+//     finding (OraclesFromE04); Outcome.OracleVersion and OracleReport (RecordE04,
+//     RecordWS) store that provenance and Export rejects WS findings of any other
+//     version (ErrOracleVersion). An observed effect in any
 //     of them stays c_effect observed. P observations never reach c_effect.
 //   - The rerun headroom is capped at MaxRerunHeadroom, 97 units: 5% of the 1,935
 //     planned units, 96.75 rounded up (rounded down it would be 96). 0 means 97;

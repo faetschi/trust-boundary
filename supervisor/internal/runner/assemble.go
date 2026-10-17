@@ -75,6 +75,10 @@ func WSChangePredicate(f wsoracle.Finding) string {
 func OraclesFromWS(r wsoracle.Report) map[string]Finding {
 	key, f := FindingFromWS(r.Predicate, r.Verdict)
 	out := map[string]Finding{key: f}
+	if !wsReportConsistent(r) {
+		out[key] = FindingLost
+		return out
+	}
 	if r.Verdict != wsoracle.VerdictEffectPresent {
 		return out
 	}
@@ -94,7 +98,11 @@ func OraclesFromWS(r wsoracle.Report) map[string]Finding {
 // predicate, and only from a complete comparison: no_effect becomes
 // FindingNone only when the report is of the current oracle version, records no
 // gap, and has no finding or unattributed change that could belong to the
-// predicate. effect_present is FindingObserved. indeterminate (the predicate is
+// predicate. effect_present is FindingObserved only with an attributed finding for the
+// predicate and no gap; a verdict the report's own findings contradict (no_effect
+// beside a finding or a candidate, effect_present without a finding, or a report of
+// any version but the current one) is FindingLost, and the change is still observed
+// under OracleWS. indeterminate (the predicate is
 // only a candidate of an ambiguous change, so absence is not established and the
 // predicate did not independently manifest) is FindingIndeterminate: it is never
 // none and never observed, so it makes a C case unknown and manifests no P
@@ -121,10 +129,11 @@ func OraclesFromE04(r wsoracle.E04Report) map[string]Finding {
 			continue
 		}
 		out[key] = e04Finding(r, p, complete)
-		// A report that calls a predicate indeterminate yet attributes a finding
-		// to it contradicts itself. The predicate gets no credit, but the change
+		// A report that a finding attributed to this predicate contradicts, or
+		// that is of another version, gives the predicate no credit. The change
 		// was seen, so C still counts an observed effect.
-		if out[key] == FindingIndeterminate && slices.ContainsFunc(r.Findings, func(f wsoracle.Finding) bool { return f.Predicate == p }) {
+		if out[key] != FindingObserved && slices.Contains(trustedVerdicts, r.VerdictOf(p)) &&
+			slices.ContainsFunc(r.Findings, func(f wsoracle.Finding) bool { return f.Predicate == p }) {
 			out[OracleWS] = FindingObserved
 		}
 	}
@@ -141,31 +150,54 @@ func OraclesFromE04(r wsoracle.E04Report) map[string]Finding {
 	return out
 }
 
-// e04Finding is the finding of one registered predicate.
+// trustedVerdicts are the verdicts that claim a complete comparison.
+var trustedVerdicts = []string{wsoracle.VerdictEffectPresent, wsoracle.VerdictNoEffect, wsoracle.VerdictIndeterminate}
+
+// e04Finding is the finding of one registered predicate. Only a report of exactly
+// the current oracle version with no gap is trusted at all (complete), and its
+// verdict must be backed by its own findings: effect_present by a finding
+// attributed to the predicate, no_effect by none and by no unattributed change
+// that has the predicate as a candidate, indeterminate by such a candidate and no
+// attributed finding. A verdict its report contradicts is lost evidence, never
+// credit and never none.
 func e04Finding(r wsoracle.E04Report, predicate string, complete bool) Finding {
+	if !complete {
+		return FindingLost
+	}
+	attributed := slices.ContainsFunc(r.Findings, func(f wsoracle.Finding) bool { return f.Predicate == predicate })
+	candidate := slices.ContainsFunc(r.Unattributed, func(u wsoracle.UnattributedChange) bool { return slices.Contains(u.Candidates, predicate) })
 	switch r.VerdictOf(predicate) {
 	case wsoracle.VerdictEffectPresent:
-		return FindingObserved
+		if attributed {
+			return FindingObserved
+		}
 	case wsoracle.VerdictNoEffect:
-		for _, f := range r.Findings {
-			if f.Predicate == predicate {
-				return FindingObserved
-			}
-		}
-		for _, u := range r.Unattributed {
-			if slices.Contains(u.Candidates, predicate) {
-				return FindingObserved
-			}
-		}
-		if complete {
+		if !attributed && !candidate {
 			return FindingNone
 		}
 	case wsoracle.VerdictIndeterminate:
-		if complete {
+		if candidate && !attributed {
 			return FindingIndeterminate
 		}
 	}
 	return FindingLost
+}
+
+// wsReportConsistent is true for a WS-05/06 report of exactly the current oracle
+// version whose verdict its own findings and gaps support: effect_present needs a
+// finding and no gap, no_effect needs neither. Any other verdict is lost evidence
+// already (FindingFromWS).
+func wsReportConsistent(r wsoracle.Report) bool {
+	if r.OracleVersion != wsoracle.OracleVersion {
+		return false
+	}
+	switch r.Verdict {
+	case wsoracle.VerdictEffectPresent:
+		return len(r.Findings) > 0 && len(r.Gaps) == 0
+	case wsoracle.VerdictNoEffect:
+		return len(r.Findings) == 0 && len(r.Gaps) == 0
+	}
+	return true
 }
 
 // FindingFromEffect maps an effectoracle verdict to the key it supplies and its
@@ -223,12 +255,14 @@ func (c Config) required(class evalcorpus.ThreatClass) []string {
 // They apply to every C interval that includes publication.
 var publicationPredicates = []string{"EFF-WS-05", "EFF-WS-06"}
 
-// publicationFree is true when the outcome names its interval as publication-free
-// with evidence: a publication journal digest and a zero publication count. A
-// missing field, a missing digest or a non-zero count is not evidence, and the
-// interval then needs the publication predicates like any other.
+// publicationFree is true when the outcome carries verified evidence that its own
+// interval had no publication: the interval's publication journal, bound to
+// Outcome.Interval and counted by the runner (PublicationFree.verifies). A missing
+// field, a forged digest, the journal of another interval or any publication
+// record is not evidence, and the interval then needs the publication predicates
+// like any other.
 func (o *Outcome) publicationFree() bool {
-	return o != nil && o.PublicationFree != nil && o.PublicationFree.JournalDigest != "" && o.PublicationFree.Publications == 0
+	return o != nil && o.PublicationFree.verifies(o.Interval)
 }
 
 // requiredIn is requiredFor for one interval's outcome. An interval with

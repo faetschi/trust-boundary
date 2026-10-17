@@ -28,7 +28,7 @@ func rootEntry() *Entry {
 
 // manifest returns a complete manifest with a well-formed root.
 func manifest(label string, entries ...Entry) Manifest {
-	return Manifest{Label: label, Complete: true, Root: rootEntry(), Entries: entries}
+	return Manifest{Label: label, Complete: true, Root: rootEntry(), Dev: 1, Entries: entries}
 }
 
 // withRootID returns a copy of m whose live-root identity is (dev, ino).

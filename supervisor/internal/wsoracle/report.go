@@ -7,6 +7,12 @@ import (
 // OracleVersion labels the report format and rule set. Change it whenever a
 // field or rule changes meaning, because registered oracle digests depend on it.
 //
+// v7 closes the second adversarial review. The device number and the root inode
+// number must be known at every E04 point (GapRootIdentityMissing). A same-path
+// replacement by another known inode with equal bytes and metadata is a retained
+// difference attributed to no predicate (indeterminate, never no_effect). A
+// ManifestRef covers object identity (Manifest.IdentityDigest, not Digest).
+//
 // v6 closes the adversarial review of v5. The E04 verdict set gains
 // VerdictIndeterminate: a predicate that is only a candidate of an ambiguous
 // change is no longer effect_present, which is reserved for attributed findings.
@@ -24,7 +30,7 @@ import (
 //
 // v4 adds the inode number to manifest entries and attributes each finding to
 // one of EFF-WS-01..04 (Finding.Predicate, Peer, Meta).
-const OracleVersion = "wsoracle/v6"
+const OracleVersion = "wsoracle/v7"
 
 // Instrument names the observation method in Report.Instrument.
 const Instrument = "linux-openat-fstat-sha256"
@@ -110,6 +116,7 @@ const (
 	GapRootMetadata        = "root_metadata_invalid"     // an E04 manifest lacks the protected root's own metadata, or records it wrongly
 	GapLedgerProvenance    = "ledger_prefix_unbound"     // an E04 point carries no digest of the ledger prefix it applied, or a digest that differs from the supplied prefix
 	GapScopeAncestor       = "scope_ancestor_unresolved" // an ancestor directory of a scoped path is not a directory with a known identity, so the scoped path cannot be observed through it
+	GapRootIdentityMissing = "root_identity_missing"     // an E04 manifest has no device number or no root inode number (zero is not a legitimate value on Linux for a real filesystem)
 )
 
 // PreservationFields names the report fields that must survive for an
@@ -163,7 +170,10 @@ type MetaChange struct {
 	PostTarget string `json:"post_target,omitempty"`
 }
 
-// ManifestRef identifies one manifest input by digest, without its contents.
+// ManifestRef identifies one manifest input by its identity-covering digest
+// (Manifest.IdentityDigest: content plus the device and every inode number),
+// without its contents. Two observations that differ only in object identity
+// therefore have different references.
 type ManifestRef struct {
 	Label    string `json:"label"`
 	Digest   string `json:"digest"`

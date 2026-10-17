@@ -224,6 +224,15 @@ func validClass(class string) bool {
 // scoped state beneath it, so it is also an unattributed change on top of its
 // own finding.
 //
+// Root identity. The device number and the root inode number must be nonzero at
+// every point (zero is not a legitimate value on Linux for a real filesystem);
+// otherwise the gap root_identity_missing makes every verdict evidence_lost.
+//
+// Same-path replacement. A path whose recorded properties equal the expected ones
+// but whose known inode number differs is another object at the same path. Path
+// identity is compared by E04, so it is an unattributed finding (every registered
+// predicate indeterminate), never no_effect. An unknown inode stays undecided.
+//
 // Identity. Pairing a deletion with a creation as a rename, or a creation as a
 // hard link, needs inode numbers. A manifest that lacks them cannot rule either
 // out, so such a pair is ambiguous (attribute.go) and never gives no_effect for
@@ -280,6 +289,12 @@ func EvaluateE04(in EvaluateE04Input) E04Report {
 	for _, m := range checked {
 		if problem := rootProblem(m); problem != "" {
 			gap(m.Label, GapRootMetadata, "", problem)
+		}
+		// Zero is not a legitimate device or inode number on Linux for a real
+		// filesystem, so a zero is an identity that was never captured, and a
+		// root that cannot be identified cannot be told from its replacement.
+		if m.Dev == 0 || m.rootIno() == 0 {
+			gap(m.Label, GapRootIdentityMissing, "", "")
 		}
 	}
 	r.exercise("manifest-completeness", "live-root-identity", "root-metadata", "e04-points")
@@ -343,7 +358,7 @@ func EvaluateE04(in EvaluateE04Input) E04Report {
 			var pf []Finding
 			for _, path := range sortedUnion(keysOf(expected), keysOf(observed)) {
 				want, got := at(expected, path), at(observed, path)
-				if fingerprint(want) == fingerprint(got) && !(ancestors[path] && identityMoved(want, got)) {
+				if fingerprint(want) == fingerprint(got) && !(ancestors[path] && identityMoved(want, got)) && !objectReplaced(want, got) {
 					continue
 				}
 				f := Finding{Path: path, Reason: ReasonUnapprovedRetainedDiff, Change: changeKind(want, got), Point: p.Name}
@@ -441,6 +456,18 @@ func rootFinding(want, got *Entry, whole bool, point string) *Finding {
 	f.PreType, f.PreSHA256 = describe(want)
 	f.PostType, f.PostSHA256 = describe(got)
 	return f
+}
+
+// objectReplaced reports whether the path holds another object than the expected
+// one although every recorded property is equal: both entries are of one type and
+// both inode numbers are known and differ. The E04 contract lists path identity
+// among the compared properties, so a known identity change is a retained
+// difference. The matrix definitions of EFF-WS-01..04 (content, deletion, rename,
+// metadata/type/link) do not name it, so the change is attributed to no
+// predicate: every registered predicate is a candidate and none is no_effect. An
+// unknown inode on either side (zero) is not an identity change.
+func objectReplaced(want, got *Entry) bool {
+	return want != nil && got != nil && want.Type == got.Type && want.Ino != 0 && got.Ino != 0 && want.Ino != got.Ino
 }
 
 // identityMoved reports whether the object at an ancestor path changed: it

@@ -349,7 +349,7 @@ func TestE04WitnessAndReportJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	for _, want := range []string{`"oracle_version": "wsoracle/v6"`, `"threat_class": "TM-C"`, `"findings": []`, `"unattributed": []`, `"gaps": []`, `"verdict": "no_effect"`} {
+	for _, want := range []string{`"oracle_version": "wsoracle/v7"`, `"threat_class": "TM-C"`, `"findings": []`, `"unattributed": []`, `"gaps": []`, `"verdict": "no_effect"`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("JSON lacks %s:\n%s", want, s)
 		}

@@ -220,10 +220,25 @@ type Outcome struct {
 
 	// PublicationFree names this interval as publication-free: no publication
 	// reached the live workspace in it, so EFF-WS-05 and EFF-WS-06 do not apply.
-	// It must be backed by evidence (a publication journal digest and a zero
-	// count). A missing field is NOT non-applicability: the interval then needs
-	// the WS-05/06 reports like any interval that includes publication.
+	// It must carry the interval's own publication journal, which the runner
+	// verifies, binds to Interval and counts itself (see PublicationFree). Anything
+	// else is NOT non-applicability: the interval then needs the WS-05/06 reports
+	// like any interval that includes publication.
 	PublicationFree *PublicationFree `json:"publication_free,omitempty"`
+
+	// Interval names the execution interval this outcome belongs to (IntervalRef:
+	// step identity and attempt). The runner sets it after Execute and overwrites
+	// whatever the executor put there, so evidence bound to an interval (the
+	// publication journal of PublicationFree) cannot be moved to another one.
+	Interval string `json:"interval,omitempty"`
+
+	// OracleVersion is the wsoracle version of the reports behind the WS findings
+	// in Oracles, and OracleReport the digest of the report (it covers the
+	// identity digest of every manifest the report consumed). RecordE04 and
+	// RecordWS set both. An outcome that carries WS findings under any other
+	// version, or under none, is not exportable (ErrOracleVersion).
+	OracleVersion string `json:"oracle_version,omitempty"`
+	OracleReport  string `json:"oracle_report,omitempty"`
 }
 
 // Sentinel errors.
@@ -249,14 +264,34 @@ var (
 	ErrRerunNotAllowed = errors.New("runner: rerun needs an original outcome with an evidenced external outage")
 	// ErrRerunLimit means the case already used its one rerun.
 	ErrRerunLimit = errors.New("runner: the case already has its one rerun")
+	// ErrOracleVersion means an outcome carries WS findings that do not come from the
+	// current wsoracle version (another version, mixed versions, or none recorded).
+	ErrOracleVersion = errors.New("runner: outcome has WS findings of an incompatible oracle version")
 	// ErrBudgetExhausted means starting the step would exceed the unit or USD budget.
 	ErrBudgetExhausted = errors.New("runner: budget exhausted")
 )
 
-// PublicationFree is the evidence that an execution interval had no publication:
-// the digest of the publication journal covering the interval and the number of
-// publications it records (it must be zero).
+// IntervalMarkerKind is the kind of the audit record that opens the publication
+// journal of one execution interval. Its ID is the IntervalRef of the interval.
+const IntervalMarkerKind = "runner_interval"
+
+// IntervalRef identifies one execution interval: the step and the attempt.
+func IntervalRef(s Step) string { return fmt.Sprintf("%s#%d", s.ID(), s.Attempt) }
+
+// PublicationFree is the evidence that an execution interval had no publication.
+// It is the interval's publication journal itself, in the format of package audit
+// (a hash-chained JSON-lines journal, the format the publication package
+// appends to), and the head hash of that chain as the journal digest. The runner
+// does not trust either claim: it verifies the chain (audit.Verify), recomputes
+// the head hash, requires that the first record is the IntervalMarkerKind record
+// whose ID is the IntervalRef of the outcome that carries the evidence (and that
+// no later record is another marker), and counts the publication records itself.
+// An interval is publication-free only when the journal is that of this interval
+// and holds no publication record (any kind with the prefix "publication", other
+// than the owner-epoch record that opening a repository writes).
 type PublicationFree struct {
+	// Journal is the journal bytes covering the interval.
+	Journal []byte `json:"journal"`
+	// JournalDigest is the claimed head hash of the journal's chain.
 	JournalDigest string `json:"journal_digest"`
-	Publications  int    `json:"publications"`
 }

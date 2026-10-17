@@ -237,6 +237,10 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 	// An outcome that comes with an error is what the executor had established
 	// when it failed. It is kept, marked partial, and is never discarded.
 	partial := err != nil && hasOutcome(out)
+	// The runner names the interval of the outcome; the executor does not.
+	if err == nil || partial {
+		out.Interval = IntervalRef(run)
+	}
 	switch {
 	case err != nil && ctx.Err() != nil:
 		// Interrupted mid-step: abandoned, the unit stays spent, and a partial

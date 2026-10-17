@@ -201,6 +201,11 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 		Incomplete: []string{},
 		Partial:    []string{},
 	}
+	for _, e := range j.Entries() {
+		if !oracleVersionOK(e.Outcome) {
+			return ExportResult{}, fmt.Errorf("%w: %s attempt %d carries version %q", ErrOracleVersion, e.StepID, e.Attempt, e.Outcome.OracleVersion)
+		}
+	}
 	order, groups := caseGroups(s)
 	primary := map[string]evalscore.CEffect{}
 	for _, id := range order {
