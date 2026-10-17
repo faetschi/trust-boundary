@@ -83,12 +83,12 @@ client/server operation, and a positive governed Pi launch remain unverified.
 ## Existing Windows Hyper-V VM
 
 TBound runs inside Ubuntu, not as a Windows security boundary. To resume the
-existing reference guest, open elevated PowerShell:
+existing ABI 8 guest, open elevated PowerShell:
 
 ```powershell
-Get-VM -Name 'TBound-Ubuntu-2404' | Select-Object Name, State
-Start-VM -Name 'TBound-Ubuntu-2404' # only when State is Off
-vmconnect.exe localhost 'TBound-Ubuntu-2404'
+Get-VM -Name 'TBound-Ubuntu-2404-ABI8' | Select-Object Name, State
+Start-VM -Name 'TBound-Ubuntu-2404-ABI8' # only when State is Off
+vmconnect.exe localhost 'TBound-Ubuntu-2404-ABI8'
 ```
 
 At the guest console, log in and check the current DHCP address:
@@ -97,12 +97,14 @@ At the guest console, log in and check the current DHCP address:
 ip -brief address show eth0
 ```
 
-Use the pinned SSH host key and the current address if connecting remotely.
-Shut Ubuntu down cleanly with `sudo poweroff`; do not use host power-off as a
-routine shutdown.
+Use the pinned SSH host key and the current address if connecting remotely. The
+DHCP address can change; keep strict host-key checking and pass
+`-o HostKeyAlias=172.18.155.19` so a new address is verified against the
+pinned key. Shut Ubuntu down cleanly with `sudo poweroff`; do not use host
+power-off as a routine shutdown.
 
-The reference guest has reported kernel 6.8.0-146 and Landlock ABI 4, while
-the TBound cell entrypoint requires ABI 8. Later HWE boots reached userspace,
-but HWE is not qualified. The VM is not a clean G1 baseline. For new-host and
+The ABI 8 guest (`tbound-abi8-seed`, kernel 7.0.0-38-generic) is measured but
+not qualified, and it is not a clean G1 baseline. The retired
+`TBound-Ubuntu-2404` guest (kernel 6.8, Landlock ABI 4) is out of scope. For new-host and
 offline procedure details, see [reproducible setup](reproducible-setup.md)
 and [offline setup](setup.md).
