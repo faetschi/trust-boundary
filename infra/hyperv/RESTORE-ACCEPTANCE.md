@@ -2,7 +2,7 @@
 
 **Status: planned and untested.** No checkpoint has been created and no restore has been performed on this guest. **Every VM state change below (shutdown, NIC change, start, checkpoint create, Apply) requires explicit owner approval, given separately per action and released by the coordinator.** This file does not grant any of them. All steps are run by a human in an elevated Hyper-V admin shell or the VM console; automation and agents do not run them. Do not run untrusted code, agent tasks, or fault injection during this procedure.
 
-Scope: file-state restore only, no freeze/thaw. A pass shows that this checkpoint restored the tested guest file state on this VM. It makes no claim about production-checkpoint freeze/thaw, containment, G1 or H1. Record the checkpoint type Hyper-V actually reports (SETUP.md requires ProductionOnly with VSS disabled; an earlier VM reported Standard) and make no freeze/thaw claim either way.
+Scope: file-state restore only, no freeze/thaw. A pass shows that this checkpoint restored the tested guest file state on this VM. It makes no claim about production-checkpoint freeze/thaw, containment, G1 or H1. Record two separate fields: the VM `CheckpointType` (the policy; SETUP.md requires ProductionOnly with VSS disabled; an earlier VM reported Standard) and each snapshot's `SnapshotType` (a per-snapshot classification, not the policy). A ProductionOnly VM may produce a Recovery or Standard snapshot depending on the host, so a reported Standard `SnapshotType` alone proves no fallback or policy discrepancy. Make no freeze/thaw claim either way.
 
 ## Target
 
@@ -27,7 +27,7 @@ SSH reaches the guest only while its NIC is connected to `Default Switch`: Git B
 
        $vmName = 'TBound-Ubuntu-2404-ABI8'
        $vmRoot = 'F:\TBoundVMs\TBound-Ubuntu-2404-ABI8'
-       Get-VM -Name $vmName | Select-Object Name, Id, State
+       Get-VM -Name $vmName | Select-Object Name, Id, State, CheckpointType
        Get-VMNetworkAdapter -VMName $vmName | Select-Object Name, SwitchName, Connected
        Get-VMSnapshot -VMName $vmName | Select-Object Name, SnapshotType
        Get-VMHardDiskDrive -VMName $vmName | ForEach-Object { Get-VHD -Path $_.Path } | Select-Object Path, VhdType, ParentPath
@@ -46,14 +46,15 @@ If it fails, stop and keep the error. Do not fall back to a Standard checkpoint,
 
 ## 3. Marker test (the only guest writes)
 
-Boot the VM with the NIC still disconnected and open the console. Choose a short ID (below, `a91c2e`) and record it on the host. If the check does not print `ABSENT_BEFORE`, choose another ID.
+Boot the VM with the NIC still disconnected and open the console. Choose a short ID (below, `a91c2e`) and record it on the host. If the check does not print `ABSENT_BEFORE`, choose another ID. The marker is created at an exact absolute path, never `$HOME` or `~`. The path below assumes the account home is `/home/tboundadmin`; confirm with `getent passwd tboundadmin | cut -d: -f6` and substitute if it differs.
 
+    id -u
     cat /proc/sys/kernel/random/boot_id
-    test ! -e "$HOME/.tbound-restore-a91c2e" && test ! -L "$HOME/.tbound-restore-a91c2e" && echo ABSENT_BEFORE
-    (set -C; printf 'TBOUND restore a91c2e\n' > "$HOME/.tbound-restore-a91c2e")
-    sha256sum "$HOME/.tbound-restore-a91c2e"
+    test ! -e /home/tboundadmin/.tbound-restore-a91c2e && test ! -L /home/tboundadmin/.tbound-restore-a91c2e && echo ABSENT_BEFORE
+    (set -C; printf 'TBOUND restore a91c2e\n' > /home/tboundadmin/.tbound-restore-a91c2e)
+    sha256sum /home/tboundadmin/.tbound-restore-a91c2e
 
-Record the boot ID and marker hash. Confirm no default route (`ip -4 route show default`, `ip -6 route show default`) and carrier 0 on every non-loopback interface. Run `sudo poweroff`, wait for Off, and run host Verify again.
+Record the boot ID, the marker path, the creating UID (`id -u`) and the marker hash. Confirm no default route (`ip -4 route show default`, `ip -6 route show default`) and carrier 0 on every non-loopback interface. Run `sudo poweroff`, wait for Off, and run host Verify again.
 
 ## 4. Apply (irreversible)
 
@@ -65,15 +66,16 @@ In Hyper-V Manager the equivalent is Apply on the checkpoint; do not choose "Cre
 
 ## 5. Verify after restore
 
-Boot offline and run at the console:
+Boot offline and run at the console. Run as the SAME UID recorded as `marker_uid` in section 3 and show the output. If `id -u` differs, the result is INCONCLUSIVE, not a pass: another account may not see the marker and report it absent. Check the exact absolute marker path, never `$HOME`.
 
-    test ! -e "$HOME/.tbound-restore-a91c2e" && test ! -L "$HOME/.tbound-restore-a91c2e" && echo RESTORE_PASS || echo RESTORE_FAIL
+    id -u
+    test ! -e /home/tboundadmin/.tbound-restore-a91c2e && test ! -L /home/tboundadmin/.tbound-restore-a91c2e && echo RESTORE_PASS || echo RESTORE_FAIL
     hostname; uname -r; cat /proc/sys/kernel/random/boot_id
     tbound-profile runtime-bundle-digest --root /var/lib/tbound/runtime
     ip -4 route show default; ip -6 route show default
     for f in /sys/class/net/*/carrier; do echo "$f"; cat "$f"; done
 
-Pass requires all of: `RESTORE_PASS`; hostname `tbound-abi8-seed`; kernel `7.0.0-38-generic`; digest equal to `sha256:d7367e1b...` above; a boot ID different from the marker-boot ID (a fresh boot; the 2026-10-17 value `f94189ae-...` is not expected to recur); no default route; carrier 0 on every non-loopback interface (ignore loopback). Then shut down and run host Verify once more with the VM Off.
+Pass requires all of: `RESTORE_PASS` at the exact marker path; `id -u` equal to `marker_uid` (else INCONCLUSIVE); hostname `tbound-abi8-seed`; kernel `7.0.0-38-generic`; digest equal to `sha256:d7367e1b...` above; a boot ID different from the marker-boot ID (a fresh boot; the 2026-10-17 value `f94189ae-...` is not expected to recur); no default route; carrier 0 on every non-loopback interface (ignore loopback). Then shut down and run host Verify once more with the VM Off.
 
 ## Receipt template (planned)
 
@@ -81,14 +83,14 @@ Write one JSON receipt under `docs/evidence/` after the run. Include no keys, ke
 
     {
       "receipt": "abi8-checkpoint-restore-<yyyymmdd>",
-      "status": "RESTORE_PASS | RESTORE_FAIL | NOT_RUN",
+      "status": "RESTORE_PASS | RESTORE_FAIL | INCONCLUSIVE | NOT_RUN",
       "approvals": [{"action": "...", "approvedBy": "owner", "releasedBy": "coordinator", "utc": "..."}],
-      "vm": {"name": "TBound-Ubuntu-2404-ABI8", "id": "df4745b2-...", "stateBeforeApply": "Off", "stateAfterApply": "Off"},
-      "checkpoint": {"name": "...", "snapshotType": "...", "count": 1, "createdUtc": "..."},
+      "vm": {"name": "TBound-Ubuntu-2404-ABI8", "id": "df4745b2-...", "checkpointType": "<VM CheckpointType>", "stateBeforeApply": "Off", "stateAfterApply": "Off"},
+      "checkpoint": {"name": "...", "snapshotType": "<snapshot SnapshotType>", "count": 1, "createdUtc": "..."},
       "diskChain": {"beforeApply": ["<path>", "..."], "afterApply": ["<path>", "..."], "complete": true},
       "hostVerify": {"beforeApply": {"exit": 0, "output": "<ref or sha256>"}, "afterApply": {"exit": 0, "output": "<ref or sha256>"}},
       "storage": {"trackedBytes": 0, "freeBytes": 0},
-      "marker": {"id": "...", "absentBefore": true, "sha256": "...", "markerBootId": "...", "result": "RESTORE_PASS | RESTORE_FAIL"},
+      "marker": {"id": "...", "marker_path": "/home/tboundadmin/.tbound-restore-<id>", "marker_uid": 0, "verify_uid": 0, "absentBefore": true, "sha256": "...", "markerBootId": "...", "result": "RESTORE_PASS | RESTORE_FAIL | INCONCLUSIVE"},
       "guestAfterRestore": {"hostname": "tbound-abi8-seed", "kernel": "7.0.0-38-generic", "bootId": "...",
                             "runtimeBundleDigest": "sha256:d7367e1b...", "digestMatchesRemeasure": true},
       "network": {"adapterConnected": false, "defaultRoutes": "none", "nonLoopbackCarrier": "0"},
