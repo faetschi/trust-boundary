@@ -48,8 +48,8 @@ tbound-profile managed-root-sign --registration managed-live-root.json \
 # cgroup_version=v2/cgroup_controllers=cpu,memory,pids, pinned podman/crun/cosign
 # paths+digests, cpus, pids_max, memory_mb, cgroups_path, and xattr filesystem
 # magic/mount-options digest/scanner UID/GID/closed scanner privilege profile/
-# derived profile digest plus the root-profile-measured-complete-enumeration/v1
-# authority enum; set
+# derived profile digest plus the root-attested-bounded-no-hidden-trusted/v1
+# authority (bounded claim, not complete enumeration); set
 # managed_live_root_registration_digest to the printed registration digest.
 tbound-profile template-digest --template d09-cell.json
 # Set the signed host profile's ContainmentProfileDigest to that digest.
