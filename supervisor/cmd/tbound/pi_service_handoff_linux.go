@@ -1604,6 +1604,12 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	if err := verified.Revalidate(ctx, verificationRoot); err != nil {
 		return errors.Join(ErrPiServiceUnavailable, err)
 	}
+	// The closed `cells` sibling of the runner leaf can only be created here,
+	// inside the running unit's delegated cgroup, and before any listener,
+	// binder or launcher exists. Failure refuses to start the service.
+	if err := verified.EnsureCellsCgroup(ctx); err != nil {
+		return errors.Join(ErrPiServiceUnavailable, fmt.Errorf("provision delegated cells cgroup: %w", err))
+	}
 	socket, contract, err := serviceSocketRegistrationFromSignedRegistration(registration)
 	if err != nil {
 		return err
