@@ -153,7 +153,6 @@ func TestAssembleCalibrationRejections(t *testing.T) {
 		"adaptive over cap": func(v *AdvView) { v.AdaptiveP.Metrics.CostMicroUSD = 1 << 40 },
 		"channel changed":   func(v *AdvView) { v.AdaptiveC.Channel = "network" },
 		"P oracle lost":     func(v *AdvView) { v.StaticP.Oracles[OracleNet01] = FindingLost },
-		"C replay missing":  func(v *AdvView) { v.AdaptiveC = nil },
 	}
 	for name, m := range mut {
 		v := goodAdv(cfg, evalcorpus.ClassTMA)

@@ -21,14 +21,18 @@ const (
 	// EntryBegin is written, and synced, before an executor starts. From then on
 	// the unit is spent whatever happens.
 	EntryBegin EntryKind = "begin"
-	// EntryDone ends a begun step with an Outcome, or with a SetupFailure.
+	// EntryDone ends a begun step with an Outcome, or with a SetupFailure. An
+	// Outcome with an ExecError is the partial outcome of a step that failed after
+	// execution began.
 	EntryDone EntryKind = "done"
 	// EntryAbandoned ends a begun step that never finished: the process died or
-	// the context ended mid-step. The unit stays spent and the step has no
-	// outcome, so it scores as missing evidence; it is not retried.
+	// the context ended mid-step. The unit stays spent and the step is not
+	// retried. It has no outcome unless the executor returned a partial one with
+	// its error; without one it scores as missing evidence.
 	EntryAbandoned EntryKind = "abandoned"
-	// EntryVoid cancels a begin whose executor turned out not to be wired. The
-	// unit is not spent.
+	// EntryVoid cancels a begin whose executor turned out not to be wired, or
+	// refused the step before it started anything (ErrSetupRefused). The unit is
+	// not spent.
 	EntryVoid EntryKind = "void"
 )
 
@@ -50,7 +54,11 @@ type Entry struct {
 
 	Outcome      *Outcome `json:"outcome,omitempty"`
 	SetupFailure string   `json:"setup_failure,omitempty"`
-	Reason       string   `json:"reason,omitempty"`
+	// ExecError is the error an executor returned together with Outcome: the step
+	// failed after execution began and Outcome (marked Partial) is what it had
+	// established.
+	ExecError string `json:"exec_error,omitempty"`
+	Reason    string `json:"reason,omitempty"`
 	// ElapsedMS is the runner's own monotonic measurement around Execute.
 	ElapsedMS int64 `json:"elapsed_ms,omitempty"`
 }
@@ -320,6 +328,12 @@ func (j *Journal) check(e Entry) error {
 		}
 		if e.Kind == EntryDone && (e.Outcome == nil) == (e.SetupFailure == "") {
 			return j.corrupt("done record of %q needs exactly one of outcome and setup_failure", e.StepID)
+		}
+		if e.Kind == EntryVoid && e.Outcome != nil {
+			return j.corrupt("void record of %q carries an outcome", e.StepID)
+		}
+		if e.ExecError != "" && (e.Kind != EntryDone || e.Outcome == nil) {
+			return j.corrupt("exec_error of %q without a done outcome", e.StepID)
 		}
 	default:
 		return j.corrupt("unknown kind %q", e.Kind)

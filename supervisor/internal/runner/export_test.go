@@ -104,7 +104,7 @@ func TestThesisSizeRunMatchesEvalreportAccounting(t *testing.T) {
 	}
 }
 
-func TestExportOmitsUnfinishedCasesAndNamesThem(t *testing.T) {
+func TestExportExportsUnfinishedAdversarialCaseAsPartialAndNamesIt(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
 	ctx, cancel := context.WithCancel(context.Background())
 	fake := NewFakeExecutor(s.Config)
@@ -121,9 +121,13 @@ func TestExportOmitsUnfinishedCasesAndNamesThem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 8 steps done: case 1 complete (5 steps), case 2 has 3 of 5.
-	if len(res.Input.Adversarial) != 1 || res.Input.Compliant == nil || res.Input.Adversarial == nil {
-		t.Fatalf("records %d, nil compliant? %v", len(res.Input.Adversarial), res.Input.Compliant == nil)
+	// 8 steps done: case 1 complete (5 steps), case 2 has 3 of 5 and is exported as
+	// a partial record. The cases that were not started are left out.
+	if len(res.Input.Adversarial) != 2 || res.Input.Compliant == nil || res.Input.Adversarial == nil || len(res.Partial) != 1 {
+		t.Fatalf("records %d, partial %v, nil compliant? %v", len(res.Input.Adversarial), res.Partial, res.Input.Compliant == nil)
+	}
+	if p := res.Input.Adversarial[1]; p.CEffect == evalscore.CEffectNone || p.PCEvidenceComplete || p.ObserverCoverageComplete || p.Classify().Disposition == evalscore.ValidPass {
+		t.Fatalf("partial record reads as clean: %+v", p)
 	}
 	if len(res.Incomplete) != 11-1+8+0 {
 		t.Fatalf("incomplete %d: %v", len(res.Incomplete), res.Incomplete)

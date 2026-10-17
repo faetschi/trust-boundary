@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"tbound/supervisor/internal/evalreport"
+	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/usdledger"
 )
 
@@ -37,7 +39,8 @@ type RunReport struct {
 	Executed      int // steps run by this call
 	AlreadyDone   int // steps that already had a terminal record
 	Abandoned     int // interrupted steps closed by this call
-	SetupFailures int // setup failures in the journal
+	SetupFailures int // setup failures in the journal (no outcome; the unit is spent)
+	ExecFailures  int // steps that failed after execution began and kept a partial outcome
 	Remaining     int // plan steps without a terminal record
 	Finished      bool
 	Stop          StopReason
@@ -60,6 +63,9 @@ func NewRunner(s Schedule, j *Journal, e Executor, opt Options) (*Runner, error)
 	}
 	if j.sched.Digest != s.Digest {
 		return nil, ErrPlanMismatch
+	}
+	if h := s.Config.RerunHeadroom; h < 0 || h > MaxRerunHeadroom || (s.Config.NoRerunHeadroom && h != 0) {
+		return nil, fmt.Errorf("runner: rerun headroom %d is outside the owner ceiling %d", h, MaxRerunHeadroom)
 	}
 	return &Runner{sched: s, j: j, exec: e, opt: opt}, nil
 }
@@ -177,7 +183,14 @@ func (r *Runner) admit(rerun bool) (StopReason, error) {
 		evalreport.RegisteredCapMicroUSD-snap.CommittedMicroUSD < snap.MinPerUnitWorstCaseMicroUSD {
 		return StopUSD, nil
 	}
-	if snap.OpenUnits+snap.UncertainUnits+snap.SettledUnits+1 > cfg.UnitCap+cfg.RerunHeadroom {
+	// The ledger counts every unit, the pilots included. A planned step may use
+	// UnitCap plus the reruns already spent, never the unspent headroom: that is
+	// for reruns only. A rerun may use UnitCap plus the whole headroom.
+	limit := cfg.UnitCap + (r.j.UnitsUsed() - r.j.plannedBegun())
+	if rerun {
+		limit = cfg.UnitCap + cfg.RerunHeadroom
+	}
+	if snap.OpenUnits+snap.UncertainUnits+snap.SettledUnits+1 > limit {
 		return StopUnits, nil
 	}
 	return StopNone, nil
@@ -200,20 +213,36 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 
 	end := base
 	end.ElapsedMS = elapsed
+	// An outcome that comes with an error is what the executor had established
+	// when it failed. It is kept, marked partial, and is never discarded.
+	partial := err != nil && hasOutcome(out)
 	switch {
-	case errors.Is(err, ErrNotWired):
+	case err != nil && !partial && (errors.Is(err, ErrNotWired) || errors.Is(err, ErrSetupRefused)):
+		// Nothing ran: the begin is voided and the unit is not spent.
 		end.Kind, end.Reason = EntryVoid, err.Error()
 		if aerr := r.j.append(end); aerr != nil {
 			return aerr
 		}
 		return err
 	case err != nil && ctx.Err() != nil:
+		// Interrupted mid-step: abandoned, the unit stays spent, and a partial
+		// outcome is kept next to the reason.
 		end.Kind, end.Reason = EntryAbandoned, "interrupted: "+ctx.Err().Error()
+		if partial {
+			end.Outcome = partialOutcome(out)
+			end.Reason += "; executor error: " + err.Error()
+		}
 		if aerr := r.j.append(end); aerr != nil {
 			return aerr
 		}
 		return ctx.Err()
+	case partial:
+		// Failed after execution began: the unit is spent and the partial outcome
+		// is the step's terminal record, with the error beside it.
+		end.Kind, end.Outcome, end.ExecError = EntryDone, partialOutcome(out), err.Error()
 	case err != nil:
+		// No outcome and no attestation that nothing ran: a setup failure that
+		// spends the unit.
 		end.Kind, end.SetupFailure = EntryDone, err.Error()
 	default:
 		if out.EvidenceLoss == "" {
@@ -233,6 +262,9 @@ func (r *Runner) report(rep RunReport) RunReport {
 		if e.Kind == EntryDone {
 			if e.Outcome != nil {
 				rep.SpentMicroUSD += e.Outcome.Metrics.CostMicroUSD
+				if e.ExecError != "" {
+					rep.ExecFailures++
+				}
 			} else {
 				rep.SetupFailures++
 			}
@@ -245,4 +277,19 @@ func (r *Runner) report(rep RunReport) RunReport {
 	}
 	rep.Finished = rep.Remaining == 0
 	return rep
+}
+
+// hasOutcome is true when an executor returned something other than the zero
+// Outcome. With an error it makes the result a partial outcome.
+func hasOutcome(o Outcome) bool { return !reflect.DeepEqual(o, Outcome{}) }
+
+// partialOutcome marks an outcome that came with an executor error or an
+// interruption. What it observed stays; it can never be complete, and its
+// evidence loss is at least unclassified, so absence in it is not a negative.
+func partialOutcome(o Outcome) *Outcome {
+	o.Partial = true
+	if o.EvidenceLoss == "" || o.EvidenceLoss == evalscore.LossNone {
+		o.EvidenceLoss = evalscore.LossUnclassified
+	}
+	return &o
 }

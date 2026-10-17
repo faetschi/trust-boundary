@@ -422,7 +422,9 @@ func TestRerunOutageFlagWithoutDigestIsRefused(t *testing.T) {
 }
 
 func TestRerunRespectsUnitBudget(t *testing.T) {
-	s := smallSchedule(t, smallConfig()) // cap == plan, no headroom
+	cfg := smallConfig() // cap == plan, headroom off
+	cfg.NoRerunHeadroom = true
+	s := smallSchedule(t, cfg)
 	st := findStep(t, s, firstCase(s, "adversarial"), RoleTrajectory, CfgC)
 	fake := NewFakeExecutor(s.Config)
 	fake.Hook = outageHook(st)
@@ -438,7 +440,7 @@ func TestRerunRespectsUnitBudget(t *testing.T) {
 
 func TestRerunMidRunReservesCapacityForPlannedSteps(t *testing.T) {
 	cfg := smallConfig()
-	cfg.RerunHeadroom = 0
+	cfg.NoRerunHeadroom = true
 	s := smallSchedule(t, cfg)
 	st := findStep(t, s, firstCase(s, "adversarial"), RoleTrajectory, CfgC)
 	j := openJournal(t, t.TempDir(), s)

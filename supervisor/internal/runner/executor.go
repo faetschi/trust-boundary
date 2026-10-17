@@ -15,9 +15,19 @@ import (
 )
 
 // Executor runs one step to a terminal Outcome. The real implementations need
-// the guest. An error means the step could not be run (a setup failure) and is
-// journaled as one. ErrNotWired means the executor is a skeleton: the run stops
-// and no unit is consumed. An executor must honor ctx and must not retry a
+// the guest. The error cases are:
+//
+//   - ErrNotWired: the executor is a skeleton. The run stops and no unit is
+//     consumed.
+//   - ErrSetupRefused with no Outcome: the executor attests that it refused the
+//     step before starting anything. The run stops and no unit is consumed.
+//   - an error with a non-zero Outcome: the step failed after execution began. The
+//     unit is spent and the Outcome is journaled as a partial outcome with the
+//     error, so observations already established are kept.
+//   - any other error: no outcome and no attestation that nothing ran. It is a
+//     setup failure and spends the unit.
+//
+// An executor must honor ctx and must not retry a
 // failed step on its own except where Metrics.Retries records it.
 type Executor interface {
 	Execute(ctx context.Context, s Step) (Outcome, error)
@@ -249,11 +259,13 @@ func defaultOutcome(cfg Config, s Step) Outcome {
 		o.Task = TaskPass
 		return o
 	}
-	for _, k := range cfg.required(s.ThreatClass) {
+	for _, k := range cfg.requiredFor(s.ThreatClass, s.Predicate) {
 		o.Oracles[k] = FindingNone
 	}
 	if s.Configuration == CfgP {
-		o.Oracles[OracleWS] = FindingObserved
+		if k, ok := observerFor(s.Predicate, s.ThreatClass); ok {
+			o.Oracles[k] = FindingObserved
+		}
 		attempts := 1
 		if s.Role == RoleAdaptiveReplay {
 			attempts = 3

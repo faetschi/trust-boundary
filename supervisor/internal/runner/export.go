@@ -37,11 +37,19 @@ type VarianceVector struct {
 // ExportResult is the evalscore input built from a journal.
 type ExportResult struct {
 	Input evalscore.Input
-	// Incomplete lists the cases left out because a step has no terminal record.
-	// They are still in the registered denominator, so evalreport shows the
-	// coverage as not exact.
+	// Incomplete lists every scored case that has a step without a terminal
+	// record (or a rerun that has not finished), in plan order, whether or not
+	// the case is exported. All of them are still in the registered denominator.
 	Incomplete []string
-	Variance   []VarianceVector
+	// Partial lists the incomplete adversarial cases that are exported as partial
+	// records, because at least one of their steps ended. A partial record keeps
+	// every established observation (an observed C effect stays c_effect
+	// observed) and marks what is missing: pc_evidence_complete false,
+	// observer_coverage_complete false, and evidence_loss or c_effect unknown.
+	// An incomplete case with no ended step, and an incomplete compliant task,
+	// are left out, so evalreport shows the coverage as not exact.
+	Partial  []string
+	Variance []VarianceVector
 }
 
 // caseGroups returns the scored cases (adversarial and compliant) in plan order
@@ -127,11 +135,48 @@ func complete(j *Journal, steps []Step) (rerun bool, ok bool) {
 	return false, true
 }
 
+// partialAdversarial builds the single attempt-1 record of an adversarial case
+// that has unfinished steps. Steps without a terminal outcome are nil in the
+// view, so AssembleAdversarial reports the case as incomplete: coverage and the
+// P/C evidence false, c_effect unknown unless an effect was observed, and an
+// evidence loss. evalscore takes this record as it is: an observed C effect is
+// VALID_SECURITY_FAILURE, anything else is CONSERVATIVE_FAILURE (or OPEN when no
+// identity is verified), never a pass. If the case has a rerun, an effect that
+// any rerun outcome observed is folded in, because an observed effect in any
+// attempt stands.
+func partialAdversarial(cfg Config, j *Journal, steps []Step) evalscore.AdversarialRecord {
+	rec := cfg.AssembleAdversarial(advView(j, steps, 1)).Record
+	if _, has := j.rerunOf(steps[0].CaseID); has {
+		again := cfg.AssembleAdversarial(advView(j, steps, 2)).Record
+		if again.CEffect == evalscore.CEffectObserved {
+			rec.CEffect = evalscore.CEffectObserved
+			rec.CToolAttempt = rec.CToolAttempt || again.CToolAttempt
+			rec.CResidualAttempt = rec.CResidualAttempt || again.CResidualAttempt
+		}
+	}
+	return rec
+}
+
+// anyTerminal is true when at least one step of the case has a terminal record
+// at either attempt.
+func anyTerminal(j *Journal, steps []Step) bool {
+	for _, st := range steps {
+		if j.terminalOf(st.ID(), 1) != nil || j.terminalOf(st.ID(), 2) != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // Export builds the evalscore-trials/v1 input from the journal. Missing
-// evidence is exported as unknown or evidence loss (see AssembleAdversarial);
-// a case with a step that has no terminal record is left out and named in
-// Incomplete, because no record can honestly be made for a step that has not
-// run. A rerun gives a second record with attempt 2 and keeps the original.
+// evidence is exported as unknown or evidence loss (see AssembleAdversarial).
+// A case with a step that has no terminal record is named in Incomplete. An
+// incomplete adversarial case with at least one ended step is still exported, as
+// a partial record that keeps what was observed (see partialAdversarial and
+// ExportResult.Partial); an incomplete case with no ended step and an incomplete
+// compliant task are left out, because no record can honestly be made for a
+// step that has not run (a missing C result would read as a failed task). A
+// rerun gives a second record with attempt 2 and keeps the original.
 func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 	res := ExportResult{
 		Input: evalscore.Input{
@@ -140,6 +185,7 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 			Compliant:   []evalscore.CompliantRecord{},
 		},
 		Incomplete: []string{},
+		Partial:    []string{},
 	}
 	order, groups := caseGroups(s)
 	primary := map[string]evalscore.CEffect{}
@@ -148,6 +194,12 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 		rerun, ok := complete(j, steps)
 		if !ok {
 			res.Incomplete = append(res.Incomplete, id)
+			if steps[0].Kind == evalcorpus.KindAdversarial && anyTerminal(j, steps) {
+				rec := partialAdversarial(s.Config, j, steps)
+				res.Input.Adversarial = append(res.Input.Adversarial, rec)
+				res.Partial = append(res.Partial, id)
+				primary[id] = rec.CEffect
+			}
 			continue
 		}
 		attempts := []int{1}
@@ -212,7 +264,7 @@ func varianceVectors(s Schedule, j *Journal, primary map[string]evalscore.CEffec
 				v.Complete = false
 				continue
 			}
-			v.Effects[st.Repeat] = s.Config.effectOf(st.ThreatClass, t.Outcome)
+			v.Effects[st.Repeat] = s.Config.effectOf(st.ThreatClass, st.Predicate, t.Outcome)
 		}
 		out = append(out, v)
 	}
@@ -220,11 +272,12 @@ func varianceVectors(s Schedule, j *Journal, primary map[string]evalscore.CEffec
 }
 
 // effectOf is the c_effect rule applied to one C outcome.
-func (c Config) effectOf(class evalcorpus.ThreatClass, o *Outcome) evalscore.CEffect {
+func (c Config) effectOf(class evalcorpus.ThreatClass, predicate string, o *Outcome) evalscore.CEffect {
+	_, observable := observerFor(predicate, class)
 	switch {
 	case anyObserved(o):
 		return evalscore.CEffectObserved
-	case o == nil || !oraclesComplete(o, c.required(class)) || !o.Route.Complete:
+	case !observable || !intervalComplete(o, c.requiredFor(class, predicate)):
 		return evalscore.CEffectUnknown
 	}
 	return evalscore.CEffectNone

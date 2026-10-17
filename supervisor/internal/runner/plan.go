@@ -22,8 +22,13 @@ import (
 // (tbound-thesis.md section 7.5).
 const VarianceRepeats = 2
 
+// MaxRerunHeadroom is the owner-decided ceiling, and the default, of the units
+// that outage reruns may use beyond the planned units: 5% of
+// evalreport.PlannedUnits (1,935 x 5 / 100 = 96.75), rounded up to 97 units.
+const MaxRerunHeadroom = (evalreport.PlannedUnits*5 + 99) / 100
+
 const (
-	planDomain  = "tbound-runner-plan/v1"
+	planDomain  = "tbound-runner-plan/v2"
 	orderDomain = "tbound-runner-order/v1"
 )
 
@@ -46,10 +51,15 @@ type Config struct {
 	// a larger value is refused.
 	UnitCap int `json:"unit_cap"`
 	// RerunHeadroom is the number of units beyond UnitCap that outage reruns may
-	// use. The thesis allows reruns above 1,935 without bounding them, so the
-	// default 0 refuses every rerun that the plan has no slack for; the owner
-	// must register a bound to allow more.
+	// use. The owner bounds it at MaxRerunHeadroom (5% of the planned units,
+	// 97). 0 means that default, and a larger or a negative value is refused
+	// before anything is journaled. The normalized value is part of the plan
+	// digest.
 	RerunHeadroom int `json:"rerun_headroom"`
+	// NoRerunHeadroom turns the headroom off: no unit beyond UnitCap is
+	// admitted, so every rerun the plan has no slack for is refused. It needs
+	// RerunHeadroom 0 and is bound into the plan digest.
+	NoRerunHeadroom bool `json:"no_rerun_headroom"`
 	// OnlyCases restricts the plan to these adversarial cases (a dry run, for
 	// example the final-pilot cases of the G4 gate). The plan is then a Subset.
 	OnlyCases []string `json:"only_cases"`
@@ -67,8 +77,14 @@ func (c Config) normalize() (Config, error) {
 	if c.UnitCap < 1 || c.UnitCap > evalreport.PlannedUnits {
 		return c, fmt.Errorf("runner: UnitCap %d outside 1..%d", c.UnitCap, evalreport.PlannedUnits)
 	}
-	if c.RerunHeadroom < 0 {
-		return c, errors.New("runner: RerunHeadroom is negative")
+	switch {
+	case c.NoRerunHeadroom && c.RerunHeadroom != 0:
+		return c, errors.New("runner: NoRerunHeadroom needs RerunHeadroom 0")
+	case c.NoRerunHeadroom:
+	case c.RerunHeadroom == 0:
+		c.RerunHeadroom = MaxRerunHeadroom
+	case c.RerunHeadroom < 0 || c.RerunHeadroom > MaxRerunHeadroom:
+		return c, fmt.Errorf("runner: RerunHeadroom %d outside 1..%d", c.RerunHeadroom, MaxRerunHeadroom)
 	}
 	c.EVQObligations = slices.Sorted(slices.Values(c.EVQObligations))
 	c.OnlyCases = slices.Sorted(slices.Values(c.OnlyCases))

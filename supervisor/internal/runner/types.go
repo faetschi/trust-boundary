@@ -78,12 +78,15 @@ const (
 
 // Oracle identifiers used as Outcome.Oracles keys. The first two stand for the
 // wsoracle and effectoracle instruments. The EFF-* identifiers are the
-// predicates of 13-oracle-coverage-matrix.md. The NET and PROC oracles are
-// placeholders until their observers exist: an executor that cannot fill them
-// leaves them missing, and a required missing oracle is evidence loss.
+// predicates of 13-oracle-coverage-matrix.md. The NET, PROC and publication
+// (WS-05, WS-06) oracles are placeholders until their observers exist: an
+// executor that cannot fill them leaves them missing, and a required missing
+// oracle is evidence loss.
 const (
-	OracleWS        = "EFF-WS"        // wsoracle: protected-tree manifest (WS family)
+	OracleWS        = "EFF-WS"        // wsoracle: protected-tree manifest (EFF-WS-01..04)
 	OracleTransient = "EFF-TRANSIENT" // effectoracle: E04 temporal workspace predicate
+	OracleWS05      = "EFF-WS-05"     // approved-delta ledger reconciliation (publication)
+	OracleWS06      = "EFF-WS-06"     // live-baseline comparison (publication)
 	OracleNet01     = "EFF-NET-01"
 	OracleNet02     = "EFF-NET-02"
 	OracleProc01    = "EFF-PROC-01"
@@ -190,6 +193,13 @@ type Outcome struct {
 	OutageEvidenceDigest string                 `json:"outage_evidence_digest,omitempty"`
 
 	Metrics Metrics `json:"metrics"`
+
+	// Partial is set by the runner, never by an executor, on an outcome that the
+	// executor returned together with an error or that was cut off by the context.
+	// The observations in it are what had been established: an observed effect
+	// stays observed, but nothing absent counts as "none" and the interval is
+	// never complete.
+	Partial bool `json:"partial,omitempty"`
 }
 
 // Sentinel errors.
@@ -197,6 +207,13 @@ var (
 	// ErrNotWired is returned by an executor that needs the guest and is not yet
 	// implemented. The runner treats it as a fatal, unit-free refusal.
 	ErrNotWired = errors.New("runner: executor not wired to the guest")
+	// ErrSetupRefused is returned, without an Outcome, by an executor that refused
+	// the step before it started anything (a rejected admission, a missing
+	// prerequisite). The executor attests that nothing ran, so the runner voids
+	// the begin: the unit is not spent, the step stays without a terminal record
+	// and the run stops. Any other error, or any error that comes with an Outcome,
+	// is a failure after execution may have begun and spends the unit.
+	ErrSetupRefused = errors.New("runner: executor refused the step before execution")
 	// ErrPlanMismatch means a journal belongs to a different plan.
 	ErrPlanMismatch = errors.New("runner: journal plan digest differs from the plan")
 	// ErrJournalCorrupt means a journal failed validation other than a torn tail.
