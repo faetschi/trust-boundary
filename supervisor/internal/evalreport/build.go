@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"slices"
 	"sort"
 
@@ -84,81 +86,113 @@ func orUnset(s string) string {
 	return s
 }
 
-// stratumFor returns the stratum of a record ID, creating the "unregistered"
-// stratum of its kind for IDs that are not in the manifest.
-func (idx *manifestIndex) stratumFor(kind, id string) *Stratum {
-	key, ok := idx.stratumOf[kind][id]
-	if !ok {
-		key = kind + "/unregistered"
-	}
-	st := idx.strata[key]
+// stratumFor returns the stratum of a registered record ID.
+func (idx *manifestIndex) stratumFor(kind, id string) (*Stratum, error) {
+	st := idx.strata[idx.stratumOf[kind][id]]
 	if st == nil {
-		st = &Stratum{Key: key, Kind: kind}
-		idx.strata[key] = st
+		return nil, fmt.Errorf("evalreport: internal: scored %s %q has no stratum", kind, id)
 	}
-	return st
+	return st, nil
 }
 
-// repeated returns the sorted IDs whose records cannot be reduced to one
-// primary trial. ASSUMPTION: a repeat is legitimate only as an evidenced
-// external-outage rerun; evalscore.Summarize would otherwise fail the whole
-// report, so such cases are reported as duplicates and withheld instead.
-// Attempt gaps are left to evalscore, which rejects them.
-func repeated[T any](recs []T, key func(T) string, attempt func(T) int, classify func(T) evalscore.Result) []string {
+// Sentinel errors for rejected inputs. Build wraps them in an *InputError that
+// lists the offending IDs, so errors.Is selects the class and errors.As reaches
+// the IDs.
+var (
+	// ErrUnregisteredRecord means a trial record names an ID that the manifest
+	// does not register under that record's kind.
+	ErrUnregisteredRecord = errors.New("evalreport: trial records for IDs not registered in the manifest")
+	// ErrDuplicatePrimary means a case has repeated primary records that
+	// evalscore does not allow: only earlier attempts that are evidenced
+	// external-outage reruns may be superseded.
+	ErrDuplicatePrimary = errors.New("evalreport: repeated primary records not explained by an evidenced external-outage rerun")
+)
+
+// InputError is the error Build returns for ErrUnregisteredRecord and
+// ErrDuplicatePrimary. Adversarial and Compliant are sorted, distinct IDs.
+type InputError struct {
+	Err         error // ErrUnregisteredRecord or ErrDuplicatePrimary
+	Adversarial []string
+	Compliant   []string
+	Cause       error // evalscore's error, when it produced this one
+}
+
+func (e *InputError) Error() string {
+	s := e.Err.Error()
+	if len(e.Adversarial) > 0 {
+		s += fmt.Sprintf("; adversarial %q", e.Adversarial)
+	}
+	if len(e.Compliant) > 0 {
+		s += fmt.Sprintf("; compliant %q", e.Compliant)
+	}
+	if e.Cause != nil {
+		s += ": " + e.Cause.Error()
+	}
+	return s
+}
+
+// Unwrap lets errors.Is match both the sentinel and the evalscore cause.
+func (e *InputError) Unwrap() []error { return []error{e.Err, e.Cause} }
+
+func advKey(r evalscore.AdversarialRecord) string { return r.CaseID }
+func cmpKey(r evalscore.CompliantRecord) string   { return r.TaskID }
+
+// unregistered returns the sorted distinct record IDs of one kind that the
+// manifest does not register under that kind.
+func unregistered[T any](idx *manifestIndex, kind string, recs []T, key func(T) string) []string {
+	ids := map[string]bool{}
+	for _, r := range recs {
+		if _, ok := idx.stratumOf[kind][key(r)]; !ok {
+			ids[key(r)] = true
+		}
+	}
+	return slices.Sorted(maps.Keys(ids))
+}
+
+// rejectedRepeats returns the sorted IDs that have several records and that
+// evalscore.Summarize rejects when given those records alone. It decides
+// nothing itself: evalscore's validation is the only rule. It is called only
+// after Summarize has rejected the whole set, to say which cases to fix.
+func rejectedRepeats[T any](recs []T, key func(T) string, alone func([]T) evalscore.Input) []string {
 	groups := map[string][]T{}
 	for _, r := range recs {
 		groups[key(r)] = append(groups[key(r)], r)
 	}
 	bad := []string{}
 	for _, id := range slices.Sorted(maps.Keys(groups)) {
-		g := groups[id]
-		if len(g) < 2 {
+		if len(groups[id]) < 2 {
 			continue
 		}
-		slices.SortStableFunc(g, func(a, b T) int { return attempt(a) - attempt(b) })
-		isBad := false
-		for i := 0; i < len(g)-1 && !isBad; i++ {
-			if attempt(g[i]) == attempt(g[i+1]) {
-				isBad = true
-				break
-			}
-			res := classify(g[i])
-			rerun := !res.Open && res.Disposition == evalscore.ExternalInfrastructureRerun
-			invalid := res.Open && res.Reason == evalscore.ReasonInvalidEnum
-			isBad = !rerun && !invalid
-		}
-		if isBad {
+		if _, err := evalscore.Summarize(alone(groups[id])); err != nil {
 			bad = append(bad, id)
 		}
 	}
 	return bad
 }
 
-func without[T any](recs []T, key func(T) string, drop []string) []T {
-	out := make([]T, 0, len(recs))
-	for _, r := range recs {
-		if !slices.Contains(drop, key(r)) {
-			out = append(out, r)
-		}
+// scoringError explains why evalscore rejected t. If some repeated case is
+// rejected on its own, the error is an ErrDuplicatePrimary naming those cases,
+// with evalscore's message attached; otherwise it is evalscore's error as is.
+func scoringError(t evalscore.Input, cause error) error {
+	adv := rejectedRepeats(t.Adversarial, advKey, func(g []evalscore.AdversarialRecord) evalscore.Input {
+		return evalscore.Input{Schema: t.Schema, Adversarial: g}
+	})
+	cmp := rejectedRepeats(t.Compliant, cmpKey, func(g []evalscore.CompliantRecord) evalscore.Input {
+		return evalscore.Input{Schema: t.Schema, Compliant: g}
+	})
+	if len(adv) == 0 && len(cmp) == 0 {
+		return fmt.Errorf("evalreport: evalscore: %w", cause)
 	}
-	return out
+	return &InputError{Err: ErrDuplicatePrimary, Adversarial: adv, Compliant: cmp, Cause: cause}
 }
 
-func advKey(r evalscore.AdversarialRecord) string  { return r.CaseID }
-func advAttempt(r evalscore.AdversarialRecord) int { return r.Attempt }
-func advClassify(r evalscore.AdversarialRecord) evalscore.Result {
-	return r.Classify()
-}
-func cmpKey(r evalscore.CompliantRecord) string  { return r.TaskID }
-func cmpAttempt(r evalscore.CompliantRecord) int { return r.Attempt }
-func cmpClassify(r evalscore.CompliantRecord) evalscore.Result {
-	return r.Classify()
-}
-
-// Build assembles the report. Inputs are not modified. It fails on a ledger
-// snapshot that is internally inconsistent or has no 64-hex head, on a manifest
-// that cannot be canonicalized or has an unknown case kind, and on trial records
-// that evalscore rejects after duplicates have been withheld.
+// Build assembles the report. Inputs are not modified. It fails closed: it
+// returns an error, never a report, for a malformed ledger snapshot, a manifest
+// with an unknown case kind, a record whose ID is not registered
+// (ErrUnregisteredRecord), and any record set that evalscore rejects, naming
+// repeated primary records as ErrDuplicatePrimary. No record is filtered before
+// scoring. A registered case without a record yields a report whose coverage is
+// not exact and whose H1.RuleSatisfied is false.
 func Build(in Inputs) (Report, error) {
 	if err := checkSnapshot(in.Ledger); err != nil {
 		return Report{}, err
@@ -171,28 +205,29 @@ func Build(in Inputs) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	ledgerDigest, err := digestLedger(in.Ledger)
+	if err != nil {
+		return Report{}, err
+	}
 	idx, err := indexManifest(in.Manifest)
 	if err != nil {
 		return Report{}, err
 	}
 
-	badAdv := repeated(in.Trials.Adversarial, advKey, advAttempt, advClassify)
-	badCmp := repeated(in.Trials.Compliant, cmpKey, cmpAttempt, cmpClassify)
-	scoring := evalscore.Input{
-		Schema:      in.Trials.Schema,
-		EVQPassed:   in.Trials.EVQPassed,
-		Adversarial: without(in.Trials.Adversarial, advKey, badAdv),
-		Compliant:   without(in.Trials.Compliant, cmpKey, badCmp),
-		// The registered identities come from the manifest, whatever the caller set.
-		Registered: &evalscore.RegisteredIDs{
-			AdversarialIDs: in.Manifest.CaseIDs(evalcorpus.KindAdversarial),
-			CompliantIDs:   in.Manifest.CaseIDs(evalcorpus.KindCompliant),
-		},
+	if adv, cmp := unregistered(idx, kindAdversarial, in.Trials.Adversarial, advKey),
+		unregistered(idx, kindCompliant, in.Trials.Compliant, cmpKey); len(adv)+len(cmp) > 0 {
+		return Report{}, &InputError{Err: ErrUnregisteredRecord, Adversarial: adv, Compliant: cmp}
 	}
-	withheld := len(in.Trials.Adversarial) - len(scoring.Adversarial) + len(in.Trials.Compliant) - len(scoring.Compliant)
+
+	scoring := in.Trials // the record slices are shared; Summarize clones before sorting
+	// The registered identities come from the manifest, whatever the caller set.
+	scoring.Registered = &evalscore.RegisteredIDs{
+		AdversarialIDs: in.Manifest.CaseIDs(evalcorpus.KindAdversarial),
+		CompliantIDs:   in.Manifest.CaseIDs(evalcorpus.KindCompliant),
+	}
 	sum, err := evalscore.Summarize(scoring)
 	if err != nil {
-		return Report{}, fmt.Errorf("evalreport: evalscore: %w", err)
+		return Report{}, scoringError(in.Trials, err)
 	}
 
 	recordIDs := map[string]map[string]bool{kindAdversarial: {}, kindCompliant: {}}
@@ -202,23 +237,27 @@ func Build(in Inputs) (Report, error) {
 	for _, r := range in.Trials.Compliant {
 		recordIDs[kindCompliant][r.TaskID] = true
 	}
-	scoredRegistered := map[string]int{}
+	scored := map[string]int{}
 	for _, c := range sum.Cases {
-		st := idx.stratumFor(c.Kind, c.ID)
+		st, err := idx.stratumFor(c.Kind, c.ID)
+		if err != nil {
+			return Report{}, err
+		}
 		st.Scored++
 		addDisposition(&st.Dispositions, c.Disposition)
-		if _, ok := idx.stratumOf[c.Kind][c.ID]; ok {
-			scoredRegistered[c.Kind]++
-		}
+		scored[c.Kind]++
 	}
 	for _, ir := range sum.InvalidRecords {
-		idx.stratumFor(ir.Kind, ir.ID).InvalidRecords++
+		st, err := idx.stratumFor(ir.Kind, ir.ID)
+		if err != nil {
+			return Report{}, err
+		}
+		st.InvalidRecords++
 	}
 	cov := Coverage{
 		UnscoredAmbiguous: idx.ambiguous,
-		WithheldRecords:   withheld,
-		Adversarial:       coverKind(idx, kindAdversarial, recordIDs[kindAdversarial], badAdv, scoredRegistered[kindAdversarial]),
-		Compliant:         coverKind(idx, kindCompliant, recordIDs[kindCompliant], badCmp, scoredRegistered[kindCompliant]),
+		Adversarial:       coverKind(idx, kindAdversarial, recordIDs[kindAdversarial], scored[kindAdversarial]),
+		Compliant:         coverKind(idx, kindCompliant, recordIDs[kindCompliant], scored[kindCompliant]),
 	}
 	cov.Exact = cov.Adversarial.exact() && cov.Compliant.exact()
 
@@ -230,11 +269,12 @@ func Build(in Inputs) (Report, error) {
 	r := Report{
 		Schema: Schema,
 		Bindings: Bindings{
-			ManifestDigest: manifestDigest,
-			TrialsDigest:   trialsDigest,
-			LedgerID:       in.Ledger.LedgerID,
-			LedgerHead:     in.Ledger.HeadSHA256,
-			LedgerRecords:  in.Ledger.Records,
+			ManifestDigest:       manifestDigest,
+			TrialsDigest:         trialsDigest,
+			LedgerID:             in.Ledger.LedgerID,
+			LedgerHead:           in.Ledger.HeadSHA256,
+			LedgerRecords:        in.Ledger.Records,
+			LedgerSnapshotDigest: ledgerDigest,
 		},
 		Coverage:       cov,
 		Strata:         strata,
@@ -244,7 +284,7 @@ func Build(in Inputs) (Report, error) {
 		InvalidRecords: sum.InvalidRecords,
 		Clauses:        sum.Clauses,
 		Metrics:        sum.Metrics,
-		H1:             sum.H1,
+		H1:             requireExactCoverage(sum.H1, cov.Exact),
 		Spend:          spendOf(in.Ledger),
 	}
 	r.Flags = flagsOf(r)
@@ -254,35 +294,35 @@ func Build(in Inputs) (Report, error) {
 	return r, nil
 }
 
+// requireExactCoverage is a fail-closed guard, not re-scoring: H1.RuleSatisfied
+// is false whenever coverage is not exact, even if evalscore's value were true.
+// Every other H1 field, including Blockers, stays as evalscore computed it; the
+// "coverage_not_exact" flag reports the cause.
+func requireExactCoverage(h evalscore.H1Summary, exact bool) evalscore.H1Summary {
+	if !exact {
+		h.RuleSatisfied = false
+	}
+	return h
+}
+
 func (k KindCoverage) exact() bool {
-	return len(k.Missing) == 0 && len(k.Extra) == 0 && len(k.Duplicate) == 0 && len(k.ManifestDuplicate) == 0
+	return len(k.Missing) == 0 && len(k.ManifestDuplicate) == 0
 }
 
 // coverKind compares the distinct registered IDs of one kind with the record IDs
-// of that kind. The lists are sorted and never nil.
-func coverKind(idx *manifestIndex, kind string, records map[string]bool, bad []string, scored int) KindCoverage {
+// of that kind (all of which are registered by now). The lists are sorted and
+// never nil.
+func coverKind(idx *manifestIndex, kind string, records map[string]bool, scored int) KindCoverage {
 	k := KindCoverage{
 		Registered:        len(idx.distinct[kind]),
 		Scored:            scored,
 		Missing:           []string{},
-		Extra:             []string{},
-		Duplicate:         bad,
 		ManifestDuplicate: idx.duplicate[kind],
 	}
 	for _, id := range idx.distinct[kind] {
 		if !records[id] {
 			k.Missing = append(k.Missing, id)
 			idx.strata[idx.stratumOf[kind][id]].Missing++
-		}
-	}
-	for _, id := range slices.Sorted(maps.Keys(records)) {
-		if _, ok := idx.stratumOf[kind][id]; !ok {
-			k.Extra = append(k.Extra, id)
-		}
-	}
-	for _, id := range bad {
-		if key, ok := idx.stratumOf[kind][id]; ok {
-			idx.strata[key].Duplicate++
 		}
 	}
 	return k
@@ -318,27 +358,95 @@ func calibrationOf(p evalscore.PConfig) Calibration {
 	return c
 }
 
-// checkSnapshot requires a bindable head and self-consistent money fields, so a
-// hand-built snapshot cannot make the spend section disagree with itself.
+func snapErr(format string, args ...any) error {
+	return fmt.Errorf("evalreport: ledger snapshot: "+format, args...)
+}
+
+// addNonNegative adds two non-negative values and reports overflow.
+func addNonNegative(a, b int64) (int64, bool) {
+	if a > math.MaxInt64-b {
+		return 0, false
+	}
+	return a + b, true
+}
+
+// checkSnapshot requires a bindable head and a well-formed, self-consistent
+// snapshot, so a hand-built one cannot make the spend section disagree with
+// itself or report a budget it does not have.
+//
+// usdledger defines one threshold relationship: Config.validate requires
+// MinPerUnitWorstCaseMicroUSD in (0, CapMicroUSD], and Snapshot.StopRule is
+// RemainingMicroUSD < MinPerUnitWorstCaseMicroUSD. Both are enforced here. The
+// threshold's value is a configuration choice that is not stored in the
+// ledger file, so nothing else is checked about it. RemainingMicroUSD alone may
+// be negative (a recorded overage commits more than the cap).
 func checkSnapshot(s usdledger.Snapshot) error {
 	if len(s.HeadSHA256) != 64 {
-		return fmt.Errorf("evalreport: ledger head must be 64 lowercase hex digits")
+		return snapErr("head must be 64 lowercase hex digits")
 	}
 	for _, c := range s.HeadSHA256 {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return fmt.Errorf("evalreport: ledger head must be 64 lowercase hex digits")
+			return snapErr("head must be 64 lowercase hex digits")
 		}
 	}
-	if s.CommittedMicroUSD != s.OpenMicroUSD+s.UncertainMicroUSD+s.SettledMicroUSD {
-		return fmt.Errorf("evalreport: ledger snapshot: committed %d != open+uncertain+settled", s.CommittedMicroUSD)
+	for _, f := range []struct {
+		name string
+		v    int64
+	}{
+		{"cap", s.CapMicroUSD}, {"min per unit worst case", s.MinPerUnitWorstCaseMicroUSD},
+		{"open", s.OpenMicroUSD}, {"uncertain", s.UncertainMicroUSD},
+		{"settled", s.SettledMicroUSD}, {"committed", s.CommittedMicroUSD},
+		{"open units", int64(s.OpenUnits)}, {"uncertain units", int64(s.UncertainUnits)},
+		{"settled units", int64(s.SettledUnits)},
+	} {
+		if f.v < 0 {
+			return snapErr("%s is negative (%d)", f.name, f.v)
+		}
 	}
+	if s.CapMicroUSD == 0 {
+		return snapErr("cap must be positive")
+	}
+	if s.MinPerUnitWorstCaseMicroUSD == 0 || s.MinPerUnitWorstCaseMicroUSD > s.CapMicroUSD {
+		return snapErr("min per unit worst case %d must be in (0, cap %d]", s.MinPerUnitWorstCaseMicroUSD, s.CapMicroUSD)
+	}
+	sum, ok := addNonNegative(s.OpenMicroUSD, s.UncertainMicroUSD)
+	if ok {
+		sum, ok = addNonNegative(sum, s.SettledMicroUSD)
+	}
+	if !ok {
+		return snapErr("open+uncertain+settled overflows int64")
+	}
+	if s.CommittedMicroUSD != sum {
+		return snapErr("committed %d != open+uncertain+settled %d", s.CommittedMicroUSD, sum)
+	}
+	// Cap and committed are both non-negative, so the difference cannot overflow.
 	if s.RemainingMicroUSD != s.CapMicroUSD-s.CommittedMicroUSD {
-		return fmt.Errorf("evalreport: ledger snapshot: remaining %d != cap-committed", s.RemainingMicroUSD)
+		return snapErr("remaining %d != cap-committed", s.RemainingMicroUSD)
+	}
+	if want := s.RemainingMicroUSD < s.MinPerUnitWorstCaseMicroUSD; s.StopRule != want {
+		return snapErr("stop rule %t, but remaining %d vs threshold %d requires %t",
+			s.StopRule, s.RemainingMicroUSD, s.MinPerUnitWorstCaseMicroUSD, want)
+	}
+	if _, ok := totalUnits(s); !ok {
+		return snapErr("unit counts overflow int")
 	}
 	return nil
 }
 
+// totalUnits adds the three non-negative unit counts and reports overflow.
+func totalUnits(s usdledger.Snapshot) (int, bool) {
+	total := s.OpenUnits
+	for _, n := range []int{s.UncertainUnits, s.SettledUnits} {
+		if total > math.MaxInt-n {
+			return 0, false
+		}
+		total += n
+	}
+	return total, true
+}
+
 func spendOf(s usdledger.Snapshot) Spend {
+	total, _ := totalUnits(s) // checkSnapshot has already rejected overflow
 	sp := Spend{
 		LedgerID:              s.LedgerID,
 		CapMicroUSD:           s.CapMicroUSD,
@@ -351,7 +459,7 @@ func spendOf(s usdledger.Snapshot) Spend {
 		OpenUnits:             s.OpenUnits,
 		UncertainUnits:        s.UncertainUnits,
 		SettledUnits:          s.SettledUnits,
-		TotalUnits:            s.OpenUnits + s.UncertainUnits + s.SettledUnits,
+		TotalUnits:            total,
 		PlannedUnits:          PlannedUnits,
 		StopRule:              s.StopRule,
 		Overspent:             s.Overspent,
@@ -361,6 +469,16 @@ func spendOf(s usdledger.Snapshot) Spend {
 	sp.UnitsOverPlanned = sp.TotalUnits > PlannedUnits
 	sp.WithinBudget = sp.CapMatchesRegistered && !sp.OverCap && !sp.Overspent
 	return sp
+}
+
+// digestLedger binds the whole usdledger.Snapshot: the canonical JSON of the
+// struct, so every exported field (including any added later) is covered.
+func digestLedger(s usdledger.Snapshot) (string, error) {
+	raw, err := canonical(s, "")
+	if err != nil {
+		return "", err
+	}
+	return domainDigest(LedgerDigestDomain, raw), nil
 }
 
 // flagsOf lists the report-level conditions that need attention, in a fixed

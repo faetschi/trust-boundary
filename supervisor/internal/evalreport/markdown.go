@@ -20,21 +20,21 @@ func (r Report) Markdown() string {
 	w("- manifest digest: %s", r.Bindings.ManifestDigest)
 	w("- trials digest: %s", r.Bindings.TrialsDigest)
 	w("- ledger: %s, head %s, %d records", mdText(r.Bindings.LedgerID), r.Bindings.LedgerHead, r.Bindings.LedgerRecords)
+	w("- ledger snapshot digest: %s", r.Bindings.LedgerSnapshotDigest)
 	w("")
 
 	w("## Coverage")
 	w("")
-	w("Exact: %t. Ambiguous cases not scored by evalscore: %d. Records withheld from scoring: %d.",
-		r.Coverage.Exact, r.Coverage.UnscoredAmbiguous, r.Coverage.WithheldRecords)
+	w("Exact: %t. Ambiguous cases not scored by evalscore: %d.", r.Coverage.Exact, r.Coverage.UnscoredAmbiguous)
 	w("")
-	w("| Kind | Registered | Scored | Missing | Extra | Duplicate | Manifest duplicate |")
-	w("|---|---|---|---|---|---|---|")
+	w("| Kind | Registered | Scored | Missing | Manifest duplicate |")
+	w("|---|---|---|---|---|")
 	for _, k := range []struct {
 		name string
 		c    KindCoverage
 	}{{kindAdversarial, r.Coverage.Adversarial}, {kindCompliant, r.Coverage.Compliant}} {
-		w("| %s | %d | %d | %d | %d | %d | %d |", k.name, k.c.Registered, k.c.Scored,
-			len(k.c.Missing), len(k.c.Extra), len(k.c.Duplicate), len(k.c.ManifestDuplicate))
+		w("| %s | %d | %d | %d | %d |", k.name, k.c.Registered, k.c.Scored,
+			len(k.c.Missing), len(k.c.ManifestDuplicate))
 	}
 	for _, k := range []struct {
 		name string
@@ -43,7 +43,7 @@ func (r Report) Markdown() string {
 		for _, l := range []struct {
 			what string
 			ids  []string
-		}{{"missing", k.c.Missing}, {"extra", k.c.Extra}, {"duplicate", k.c.Duplicate}, {"manifest duplicate", k.c.ManifestDuplicate}} {
+		}{{"missing", k.c.Missing}, {"manifest duplicate", k.c.ManifestDuplicate}} {
 			if len(l.ids) > 0 {
 				w("")
 				w("%s %s: %s", k.name, l.what, mdList(l.ids))
@@ -54,12 +54,12 @@ func (r Report) Markdown() string {
 
 	w("## Strata")
 	w("")
-	w("| Stratum | Registered | Scored | Missing | Duplicate | Invalid | VALID_PASS | VALID_SECURITY_FAILURE | VALID_FRICTION_OBSTRUCTION | CONSERVATIVE_FAILURE | EXTERNAL_INFRASTRUCTURE_RERUN | UNSUPPORTED | OPEN |")
-	w("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+	w("| Stratum | Registered | Scored | Missing | Invalid | VALID_PASS | VALID_SECURITY_FAILURE | VALID_FRICTION_OBSTRUCTION | CONSERVATIVE_FAILURE | EXTERNAL_INFRASTRUCTURE_RERUN | UNSUPPORTED | OPEN |")
+	w("|---|---|---|---|---|---|---|---|---|---|---|---|")
 	for _, s := range r.Strata {
 		d := s.Dispositions
-		w("| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |", mdText(s.Key), s.Registered, s.Scored,
-			s.Missing, s.Duplicate, s.InvalidRecords, d.ValidPass, d.ValidSecurityFailure, d.ValidFrictionObstruction,
+		w("| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |", mdText(s.Key), s.Registered, s.Scored,
+			s.Missing, s.InvalidRecords, d.ValidPass, d.ValidSecurityFailure, d.ValidFrictionObstruction,
 			d.ConservativeFailure, d.ExternalInfrastructureRerun, d.Unsupported, d.Open)
 	}
 	w("")
