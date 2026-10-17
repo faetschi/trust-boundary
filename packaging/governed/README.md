@@ -6,23 +6,25 @@ at run time.
 
 ## Contents
 
-- `Containerfile` — builds `cmd/tbound-cell-entrypoint` statically and installs
-  it as the cell entrypoint (`/usr/local/bin/tbound-pi-entrypoint`) on top of a
-  pinned Node base image with the pinned Pi runtime.
+- `cell_image.py` — the build of record: assembles the cell image offline and
+  reproducibly as an OCI layout from the digest-pinned base layers
+  (`base-images.lock.json`), the frozen-commit entrypoint and adapter sources.
+  Subcommands `resolve`, `pull` (one-time, digest-pinned), `build`, `measure`.
+- `sign_cell_image.py` — signs the layout on the owner machine with the owner
+  cosign key and writes the layout the launcher verifies
+  (`cosign verify --offline --insecure-ignore-tlog=true --key ... --local-image`).
+- `Containerfile` — the same image for a podman host (digest-pinned bases, no
+  package manager). Not the build of record; its manifest digest differs.
 - The entrypoint source is `supervisor/cmd/tbound-cell-entrypoint/`.
 
 ## Build and freeze
 
+The ordered, owner-approvable procedure (build twice, measure, sign, verify,
+load into the service store) is `infra/guest/PROVISIONING-SIGNING.md` P3, P6,
+P7 and I1. Do not use `podman build`, `cosign sign` on a tag, or `podman save`
+for the image that gets signed.
+
 ```sh
-# Build (no network is needed at run time; the build host may fetch base layers).
-podman build -f packaging/governed/Containerfile -t localhost/tbound/pi-cell:latest .
-
-# Sign and export a local OCI layout for offline verification.
-cosign sign --key <admin-private-key> localhost/tbound/pi-cell:latest
-podman save --format oci-archive localhost/tbound/pi-cell:latest -o pi-cell-oci/ || \
-  skopeo copy containers-storage:localhost/tbound/pi-cell:latest oci:pi-cell-oci:latest
-cosign sign --key <admin-private-key> oci:pi-cell-oci:latest   # sign the local layout
-
 # Freeze the measured identities into the registered template.
 tbound-profile template-init --out d09-cell.json
 # Measure and offline-sign the exact managed writer root/service/mount policy.

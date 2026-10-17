@@ -1,20 +1,32 @@
 # syntax=docker/dockerfile:1
-# Governed D09 Pi cell image (rootless Podman/crun).
+# Governed D09 Pi cell image (rootless Podman/crun), podman-buildable form.
+#
+# THE SIGNED IMAGE IS NOT BUILT FROM THIS FILE. It is assembled offline and
+# reproducibly by packaging/governed/cell_image.py from the same inputs (the
+# base images pinned below, the frozen-commit entrypoint, adapter sources and
+# mount-target directories); see infra/guest/PROVISIONING-SIGNING.md P3. This
+# file documents the same image for a podman-capable host. It will not produce
+# the same manifest digest (podman writes its own config and timestamps), so it
+# must not be used for the image that gets signed.
+#
+# Both base images are pinned by index digest (packaging/governed/base-images.lock.json,
+# checked by tests/packaging/verify-governed-containerfile-pins.sh). The build
+# needs no registry beyond those two digests and runs no package manager.
 #
 # Build from the repository root:
 #   podman build -f packaging/governed/Containerfile -t localhost/tbound/pi-cell:latest .
 #
-# The resulting image is signed with cosign and its repo digest is frozen into
-# the registered /etc/tbound/d09-cell.json template. The image is never pulled
-# at run time (podman --pull=never) and is verified offline from a local OCI
-# layout. No secret or private signing key belongs in this image.
-FROM golang:1.27.1-bookworm AS entrypoint
+# The image is signed with cosign and its manifest digest is frozen into the
+# registered /etc/tbound/d09-cell.json template. It is never pulled at run time
+# (podman --pull=never) and is verified offline from a local OCI layout. No
+# secret or private signing key belongs in this image.
+FROM docker.io/library/golang:1.27.1-bookworm@sha256:8d48e12ec56735e9358640898b9d9b9fcca110612ed8a5567438c0a1baa24e66 AS entrypoint
 WORKDIR /src
 COPY supervisor/ ./supervisor/
 RUN cd supervisor \
  && CGO_ENABLED=0 go build -trimpath -o /out/tbound-pi-entrypoint ./cmd/tbound-cell-entrypoint
 
-FROM node:24.21.0-bookworm-slim
+FROM docker.io/library/node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20
 LABEL org.opencontainers.image.title="tbound-pi-cell" \
       org.opencontainers.image.description="Governed D09 Pi worker cell (non-claim-bearing until frozen and signed)" \
       org.opencontainers.image.licenses="MIT"
@@ -23,13 +35,13 @@ LABEL org.opencontainers.image.title="tbound-pi-cell" \
 # handles fd4/fd9, applies Landlock, and execs the held fd3 binary.
 COPY --from=entrypoint /out/tbound-pi-entrypoint /usr/local/bin/tbound-pi-entrypoint
 
-# Pinned Pi runtime; installed at build time only. The runtime bundle is handed
-# into the cell as fd9, not read from this path at run time.
+# Adapter sources only. No `npm install` runs in the build: nothing in the cell
+# reads node_modules from this path (the Pi runtime bundle is handed into the
+# cell as fd9 and mounted at /runtime), so installing it here only added a
+# network dependency and an unpinned input to the signed image.
 RUN mkdir -p /usr/local/lib/tbound/runtime
 COPY adapter/package.json adapter/package-lock.json /usr/local/lib/tbound/runtime/
 COPY adapter/src/ /usr/local/lib/tbound/runtime/src/
-RUN cd /usr/local/lib/tbound/runtime \
- && npm install --omit=dev --no-audit --no-fund
 
 # Mount targets must exist in the immutable root. Podman replaces these
 # directories with the verified sealed consumer view (/var/lib/tbound/pi-worker),

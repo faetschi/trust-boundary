@@ -1,0 +1,23 @@
+{
+ "schema": "tbound-base-images/v1",
+ "images": {
+  "golang": {
+   "config_digest": "sha256:5d12712a32f8abba7d2612d3aa1917b8524d2b0f090117ce89d86907f6aa8c1f",
+   "index_digest": "sha256:8d48e12ec56735e9358640898b9d9b9fcca110612ed8a5567438c0a1baa24e66",
+   "manifest_digest": "sha256:e114385c58e7280d2f56d6cf374219dda33fef8eb77f72e9f290ccae6160bd90",
+   "platform": "linux/amd64",
+   "pull_layers": false,
+   "repository": "library/golang",
+   "tag": "1.27.1-bookworm"
+  },
+  "node": {
+   "config_digest": "sha256:470015c1ab1577c19efce2e80cdad4afd9c682cf8f4dcf3dccae5abfd9113397",
+   "index_digest": "sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20",
+   "manifest_digest": "sha256:51b1100cc2a83d370c6a60952e3f2989c8a43159d0e38586e090f3b3326efefd",
+   "platform": "linux/amd64",
+   "pull_layers": true,
+   "repository": "library/node",
+   "tag": "24.21.0-bookworm-slim"
+  }
+ }
+}

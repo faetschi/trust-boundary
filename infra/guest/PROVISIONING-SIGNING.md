@@ -1,6 +1,6 @@
 # ABI8 guest: owner-approvable provisioning and signing sequence
 
-Status: final draft for owner approval, 2026-10-17. Based on the throwaway-key dry run (`F:\TBoundAssets\recovery-20261015\sign-dryrun-20261017\owner-sequence.sh.txt`) and the code fixes in `23a65ba`. Nothing here has been run on the guest except steps the dry run marked DRYRUN-OK. This runbook supersedes `docs/governed-setup.md` section 225-236 for the ABI8 guest (that section is stale: it predates the single `tbound-pi` service identity, the ro-mounted executables, the split calibration roles and the signed host profile flow).
+Status: final draft for owner approval, 2026-10-17. Based on the throwaway-key dry run (`F:\TBoundAssets\recovery-20261015\sign-dryrun-20261017\owner-sequence.sh.txt`) and the code fixes in `23a65ba`. Nothing here has been run on the guest except steps the dry run marked DRYRUN-OK. P3 to P7 were re-dry-run on the owner machine on 2026-10-17 (see B1 to B3). This runbook supersedes `docs/governed-setup.md` section 225-236 for the ABI8 guest (that section is stale: it predates the single `tbound-pi` service identity, the ro-mounted executables, the split calibration roles and the signed host profile flow).
 
 ## Tags and rules
 
@@ -24,15 +24,18 @@ Status: final draft for owner approval, 2026-10-17. Based on the throwaway-key d
 | S2 | R1-7 | admin key | managed-live-root xattr calibration `d09-xattr-enumeration-calibration` |
 | S3 | R2-4 | admin key | managed live root registration `managed-live-root` |
 | S4 | R5-2 | admin key | host profile `pi-host-profile` |
-| S5 | P6 | cosign key | cell image, by manifest digest `IMGDIGEST` (`cosign sign`) |
+| S5 | P6 | cosign key | cell image, by manifest digest `IMGDIGEST` (one `cosign sign-blob` call inside `sign_cell_image.py`) |
 
 The admin key is the raw 64-byte Ed25519 key. S1 to S4 are domain-separated. The calibration and registration signatures are v2 (`authority` field); old v1 calibrations no longer verify.
 
-## Blockers (nothing in the repo resolves these; they are not invented away)
+## Blockers (B1, B2 resolved in the dry run; B3 steps written but unproven; B4 and B5 open for the owner)
 
-- B1 Network. The image build needs network: `packaging/governed/Containerfile` pulls `golang:1.27.1-bookworm` and `node:24.21.0-bookworm-slim` by mutable tag and runs `npm install --omit=dev` inside the build; the signing helper pulls `registry:2`. The guest podman store holds only the old `localhost/tbound/pi-cell:latest` (read-only check 2026-10-17); no base image is cached. There is no offline image build path in the repo. P3 and P6 cannot run until the owner approves a network window or supplies the base images and npm cache.
-- B2 Signing with the owner key is unproven. The only procedure is the helper `F:\TBoundAssets\recovery-20261015\abi8-runtime-provisioning-20261015\helpers\image-sign-offline-verify.sh`, which generated an ephemeral key on the guest and signed through a loopback `registry:2` (cosign v3 cannot sign an `oci:` layout directly). The owner key must not be copied to the guest, so P6 runs on the owner machine against a loopback registry there. Dry-run it with a throwaway key first.
-- B3 The image must exist in the service's podman store. `selectImage` (`containment_linux.go:1244`) needs `localhost/tbound/pi-cell:latest` in `/var/lib/tbound/podman-storage/graphroot` with a RepoDigest equal to `IMGDIGEST`. That directory is empty today (checked read-only 2026-10-17) and no repo step loads it. I1 states the requirement; the load mechanism must be defined and proven on a throwaway store before approval. It must happen before Z1.
+B1 to B3 were worked on 2026-10-17 (evidence: `F:\TBoundAssets\recovery-20261015\cell-image-20261017\`, dry run at HEAD `3b1b183`, throwaway keys, nothing written to the guest).
+
+- B1 Network and mutability: RESOLVED (dry-run proven). Both base images are pinned by index digest in `packaging/governed/base-images.lock.json` and in the `Containerfile`. The node digest is the one the current signed image was built from: its five base layers (`diff_ids` `e5898914...` to `b6a146dc...`, read from the guest `localhost/tbound/pi-cell:latest`) are identical to the current layers of `node:24.21.0-bookworm-slim`, and the golang config digest `5d12712a...` equals the one in the old build log. The build no longer runs `npm install` and no longer needs a container runtime: `packaging/governed/cell_image.py` assembles the image offline as an OCI layout from the digest-pinned base layers (one-time pull, every blob verified) plus one deterministic uncompressed layer. Two builds gave byte-identical layouts and the same manifest digest. The one-time pull is the only network use; it is already done into `F:\...\cell-image-20261017\artifacts\base-cache`, so P3 can run fully offline. Decision to confirm: the in-image `/usr/local/lib/tbound/runtime` keeps `package.json`, the lock file and `src/` but no `node_modules`; nothing reads that path (the Pi runtime bundle is mounted at `/runtime` as fd9), so the old npm step only added a network dependency.
+- B2 Signing with an owner key that never touches the guest: RESOLVED in dry run, with one supervisor change the owner must accept (B5). `sign_cell_image.py` runs on the owner machine. cosign v3.1.3 cannot sign a layout and always writes a Sigstore bundle, for which `verify --local-image` prints an empty `docker-manifest-digest` (the earlier ephemeral-key receipt shows exactly that); the launcher needs that claim. The helper therefore signs the classic simple-signing payload with one `cosign sign-blob --key` call and lets `cosign save` write the layout from a throwaway in-process loopback registry (stdlib Python, no `registry:2`, no image to pin, no network). Throwaway key A signs; the launcher's own `verifyOfflineSignature` (real exec runner, private netns, scratch test) accepts it; key B and a wrong pinned digest are refused.
+- B5 Launcher change (NEW, owner decision): the launcher ran `cosign verify --offline --key ... --local-image ...`. With cosign v3.1.3 that form fails for every key signature without a Rekor entry (`offline verification failed`; bundle format: `0 < 1` log entries), so no offline owner-key signature could ever pass. `containment_linux.go` now also passes `--insecure-ignore-tlog=true` (one argument, plus the matching test strings; `go vet`, `gofmt`, `go test ./internal/piruntime/` green in a scratch tree). Trust then rests on the pinned `cosign.pub` digest, not on a transparency log. This changes the `tbound` runner digest, so it must be committed before F0; otherwise revert it and the launcher cannot verify any offline signature.
+- B3 The image must exist in the service's podman store: STEPS WRITTEN, STILL OPEN (unproven). `selectImage` (`containment_linux.go:1244`) needs `localhost/tbound/pi-cell:latest` in `/var/lib/tbound/podman-storage/graphroot` with a RepoDigest equal to `IMGDIGEST`; the directory is empty today (checked read-only 2026-10-17). I1 below now has exact load and check commands. No podman exists on the owner machine and nothing may run on the guest, so they have not been executed anywhere. Two things are unproven: that podman 4.9.3 keeps the manifest digest on `load` (the checks catch it if not), and that the `no-new-privs` service context can read a store that a normal-context `sudo -u` load created (check C4 catches it). Run I1 once, before Z1.
 - B4 The client invocation for the positive launch and the drain observation (Part L) are not documented anywhere in the repo; the owner supplies them.
 
 ## Placeholders
@@ -46,6 +49,9 @@ W               = owner-side build dir, absolute, canonical, mode 0700 (unique n
 H               = owner-side signing dir, absolute, canonical, mode 0700
 SCR             = /var/tmp/tbound-cal-20261017 (guest scratch, 995:986 0700)
 BR              = F:\TBoundAssets\recovery-20261015\bundle-rebuild-20261017  (/f/... in Git Bash, /mnt/f/... in WSL)
+CI              = F:\TBoundAssets\recovery-20261015\cell-image-20261017  (dry-run scripts, logs; tools\cosign-v3.1.3 = the repo-pinned cosign, sha256 4629c757..., copied read-only from the guest; artifacts\base-cache = pulled base layers)
+COSIGN          = owner-side cosign v3.1.3 binary (a copy of the file `cosign-v3.1.3` in the CI tools directory, chmod 700; sha256 4629c757...). The launcher treats a binary named `cosign` specially, so keep that file name for launcher-path checks.
+B               = owner-side image build dir, absolute, canonical, mode 0700 (unique name, removed at the end)
 IMGDIGEST       = signed image manifest digest (P6)
 <ADMIN_KEY_PATH>, <ADMIN_PUB_PATH>, <COSIGN_KEY_PATH>  owner-held; never read by an agent
 ```
@@ -73,7 +79,7 @@ cd $W/src/supervisor && for c in tbound tbound-profile tbound-cell-entrypoint; d
 sha256sum $W/bin/*        # build twice (separate dirs, umask 077); the two passes must be byte-identical
 ```
 
-Record `tbound` (runner) and `tbound-profile` digests; the runner digest is bound by R2. `$W/bin/tbound-cell-entrypoint` is the offline reference for the in-image entrypoint (P3); the toolchain build matched the container build byte-for-byte for the previous image.
+Record `tbound` (runner) and `tbound-profile` digests; the runner digest is bound by R2. `$W/bin/tbound-cell-entrypoint` is the offline reference for the in-image entrypoint (P3); the image now embeds this very binary (P3 builds the image from it), and a second `go build` in another directory must match it.
 
 ### P2 [READ-ONLY] rebuild the runtime bundle from F (LF)
 
@@ -81,26 +87,29 @@ Scripts and tooling are in `BR` (`10-setup.sh`, `20-bundle.sh`, `40-go-and-diges
 
 Record `BUNDLE_DIGEST` and the tar sha256. Cross-check only: at 8c2a3cb the LF build was `sha256:8e405ef0f2a3a3ed725dba2815d71bd8e5db007fe993f4ac3979ad59016d4f48`; no bundle input (`adapter/src`, `adapter/pi-runtime-package.json`, `scripts/prepare_official_pi_runtime.py`) differs between 8c2a3cb and 4a668e7, so the same value is expected at F if they still do not. A different value is not an error, but it is the value to pin. The currently installed bundle (`sha256:d7367e1b...6884`) predates the model pin and is replaced in P11.
 
-### P3 [READ-ONLY] build the cell image from F (new private scratch only; BLOCKED by B1)
+### P3 [READ-ONLY] build the cell image from F on the owner machine (offline; B1 resolved)
 
-Procedure: `packaging/governed/Containerfile` plus the previous helper `abi8-runtime-provisioning-20261015/helpers/image-build.sh`, re-pointed at a new scratch dir `/home/tboundadmin/tbound-build-<F first 8 hex>`. Rootless podman as tboundadmin, no sudo; it writes only that directory, tboundadmin's own rootless store and (if absent) tboundadmin's `~/.config/containers/registries.conf` for short-name resolution. Needs owner approval of the network window (B1).
+Nothing is built or pulled on the guest. `packaging/governed/cell_image.py` (Python 3 stdlib, run with `python3 -I`) assembles the image as an OCI layout from the digest-pinned base layers, the P1 entrypoint, the F adapter sources and the mount-target directories (see B1 for the `node_modules` decision). It runs as the owner user in WSL, writes only `$B`, and needs the base-layer cache `CACHE`. Use the cache from the 2026-10-17 pull (`CI\artifacts\base-cache`, copied into a private dir) for a fully offline build. Only if that cache is lost, refill it once with `pull` (network; fetches only the digests in `base-images.lock.json`, verifies every blob, writes `pull-record.json`).
 
 ```
-# stage the F source (same LF tree as P1) into the guest scratch dir
-tar -C $W/src -c supervisor adapter packaging | GSSH 'umask 077; B=$HOME/tbound-build-<F8>; mkdir $B $B/src && tar -x -C $B/src'
-GSSH 'cd $HOME/tbound-build-<F8>/src && podman build --file packaging/governed/Containerfile --tag localhost/tbound/pi-cell:latest --layers .'
-# measure from a created (not run) container
-GSSH 'CID=$(podman create localhost/tbound/pi-cell:latest); for p in usr/local/bin/tbound-pi-entrypoint usr/local/bin/node bin/bash; do podman cp $CID:/$p $B/measure/$(basename $p); done; podman rm $CID; sha256sum $B/measure/*'
-GSSH 'podman save --format oci-dir -o $B/pi-cell-oci localhost/tbound/pi-cell:latest'
+# one-time and only if the cache is missing (network, digest-pinned public images only)
+python3 -I $W/src/packaging/governed/cell_image.py pull --lock $W/src/packaging/governed/base-images.lock.json --cache $CACHE
+# build (offline); --epoch is the frozen commit time, so equal inputs give an equal manifest digest
+python3 -I $W/src/packaging/governed/cell_image.py build --lock $W/src/packaging/governed/base-images.lock.json --cache $CACHE \
+  --entrypoint $W/bin/tbound-cell-entrypoint --adapter $W/src/adapter --epoch $(git show -s --format=%ct $F) --out $B/oci
+python3 -I $W/src/packaging/governed/cell_image.py measure --layout $B/oci
 ```
 
-Record from the measurement:
+Build twice into two new dirs; `diff -r` of the two layouts must print nothing. Dry run at HEAD `3b1b183`: both builds gave manifest `sha256:177197a0...a7e1`, config `d32a43b8...6166`, one added layer `4bf81bb2...a3af`.
 
-- `ENTRYPOINT_DIGEST` = sha256 of `/usr/local/bin/tbound-pi-entrypoint` in the image. It must equal `sha256sum $W/bin/tbound-cell-entrypoint` from P1 (independent offline cross-check). If they differ, stop.
-- `NODE` in the image must equal the host Node `7fde7b8a...df4c` (`verifyImageWorkerExecutable`).
-- `BASH_DIGEST` = sha256 of `/bin/bash` in the image. The base image is a mutable tag, so this may differ from the previous `55b89ab2...`; the new value is pinned as `command_executable_digest`.
+Record from `measure`:
 
-The image digest is NOT reproducible (mutable base tags, npm, timestamps). Only the one image that is signed in P6 is pinned.
+- `IMGDIGEST` = `image_manifest_digest`. Signing does not change it and no registry is involved; it is the only image digest that is pinned.
+- `ENTRYPOINT_DIGEST` = `entrypoint_sha256`. It must equal `sha256sum $W/bin/tbound-cell-entrypoint` from P1 (an independent `go build` in another directory). If they differ, stop. Dry run: both `sha256:dda92159...63e5`.
+- `node_sha256` must equal the host Node `7fde7b8a...df4c` (`verifyImageWorkerExecutable`). Dry run: equal.
+- `BASH_DIGEST` = `bash_sha256` (the file behind `/bin/bash`; `/bin` is a symlink to `usr/bin`). The base is now pinned by digest, so it is stable: `55b89ab2...efcf`, unchanged from the previous image.
+
+The image digest is reproducible from (lock file, F, epoch). The layer is an uncompressed tar with fixed mtime/owner/mode, so it does not depend on a zlib version. `packaging/governed/Containerfile` documents the same image for a podman host but is not the build of record and does not give the same digest.
 
 The previous entrypoint digest `12679b05b6f5fc12ac86459b9aaa062f17d11e7bb2426e32e5f5646c48ba1ad7` belonged to the old image (built from 93ede26) and is not used going forward. The 62-hex value in `abi8-runtime-provisioning-20261015.json:241` is a copy error (two characters dropped); that receipt is not edited.
 
@@ -117,29 +126,32 @@ cosign public-key --key <COSIGN_KEY_PATH> --outfile $H/cosign.pub        # passp
 sha256sum $H/cosign.pub        # record as COSIGN_PUB_DIGEST (replaces the old ephemeral-key value b1179231...)
 ```
 
-### P6 [OWNER SIGN] S5: sign the cell image, export the offline layout (BLOCKED by B1, B2)
+### P6 [OWNER SIGN] S5: sign the cell image, export the offline layout (B2 resolved, see B5)
 
-Runs on the owner machine, never on the guest. Flags follow the previous helper; push `$B/pi-cell-oci` from P3 (transferred to the owner machine) into a loopback registry, sign by digest, save the layout.
-
-```
-podman run -d --name tbound-sign-registry -p 127.0.0.1:5000:5000 docker.io/library/registry:2
-podman push --tls-verify=false --format oci --digestfile $H/pushed.digest <image from the transferred oci-dir> 127.0.0.1:5000/tbound/pi-cell:latest
-IMGDIGEST=$(cat $H/pushed.digest)
-cosign sign --key <COSIGN_KEY_PATH> --tlog-upload=false --use-signing-config=false --allow-http-registry=true --allow-insecure-registry=true --yes 127.0.0.1:5000/tbound/pi-cell@$IMGDIGEST
-cosign save --dir $H/pi-cell-oci --allow-http-registry=true --allow-insecure-registry=true 127.0.0.1:5000/tbound/pi-cell@$IMGDIGEST
-podman rm -f tbound-sign-registry
-```
-
-`IMGDIGEST` is the registry manifest digest and the only image digest that is pinned (it differs from the guest store digest; the previous pair was `20d55339...` vs `ac72b2d7...`). The loaded service-store image must carry the same RepoDigest (B3).
-
-### P7 [READ-ONLY] verify the signed layout
-
-Run the exact form the launcher uses (`containment_linux.go:1299`), offline, with the pinned guest cosign v3.1.3 where possible:
+Runs on the owner machine, never on the guest, offline. One key operation: `sign_cell_image.py` calls `COSIGN sign-blob --key <COSIGN_KEY_PATH>` once on the simple-signing payload for `IMGDIGEST`, then runs `COSIGN save` against its own throwaway loopback registry (127.0.0.1, random port, in memory, torn down on exit; its environment holds only `PATH`, `TERM`, a temp `HOME` and the passphrase variable). The passphrase is typed by the owner at cosign's prompt (or exported by the owner as `COSIGN_PASSWORD`); the helper never reads it. The output path must not exist.
 
 ```
-cosign verify --offline --key $H/cosign.pub --local-image $H/pi-cell-oci        # docker-manifest-digest must equal IMGDIGEST
+python3 -I $W/src/packaging/governed/sign_cell_image.py sign --layout $B/oci --cosign $COSIGN --key <COSIGN_KEY_PATH> --out $H/pi-cell-oci
+# loadable single-image archive for I1 (same blobs, same manifest, index.json without the signature entry)
+tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner --format=gnu -C $B/oci -cf $H/pi-cell-load.tar oci-layout index.json blobs
+sha256sum $H/pi-cell-load.tar        # record as LOAD_TAR_DIGEST (dry run: 54eb3b28...; byte-identical across two builds)
+```
+
+The signed layout keeps the unsigned image manifest and blobs unchanged and adds the signature manifest (`sha256-<IMGDIGEST hex>.sig`); its `index.json` lists the image and the signature, so `podman load` cannot read it directly (hence the separate archive).
+
+### P7 [READ-ONLY] verify the signed layout, and show a wrong key fails
+
+The launcher form (`containment_linux.go:1312`), offline, run by the helper with the same payload rule as `parseCosignImageDigest`:
+
+```
+python3 -I $W/src/packaging/governed/sign_cell_image.py verify --layout $H/pi-cell-oci --cosign $COSIGN --pub $H/cosign.pub --expect $IMGDIGEST      # prints IMGDIGEST
+python3 -I .../sign_cell_image.py verify --layout $H/pi-cell-oci --cosign $COSIGN --pub <any other public key> --expect $IMGDIGEST             # must fail: invalid signature
 grep -c $IMGDIGEST $H/pi-cell-oci/index.json                                    # manifest digest present in the layout index
 ```
+
+The same call as a bare command: `cosign verify --offline --insecure-ignore-tlog=true --key $H/cosign.pub --local-image $H/pi-cell-oci`. Without `--insecure-ignore-tlog=true` it fails for this signature (B5).
+
+Dry run (throwaway keys, 2026-10-17, scripts `CI\40-sign-dryrun.sh` and `CI\42-launcher-verify.sh`): verify under key A printed `sha256:177197a0...a7e1`; under key B: `invalid signature when validating ASN.1 encoded signature`. The repo's own `verifyOfflineSignature` (real exec runner, private user and network namespace, scratch test file outside the repo) returned ok for key A with the right pin and refused key B and a wrong pin (`local OCI layout does not contain the frozen manifest`).
 
 ### P8 [PRIVILEGED WRITE] install the trust anchor before Row 1
 
@@ -197,7 +209,7 @@ for u in usr-local-bin-tbound usr-bin-podman usr-bin-crun opt-tbound-cell; do
   GSSH "sudo -n install -o root -g root -m 0644 /dev/stdin /etc/systemd/system/$u.mount" < $W/src/infra/guest/systemd/$u.mount ; done
 GSSH 'cd /tmp && sudo -n systemctl daemon-reload && for u in usr-local-bin-tbound usr-bin-podman usr-bin-crun opt-tbound-cell; do systemd-analyze verify /etc/systemd/system/$u.mount && sudo -n systemctl enable --now $u.mount; done'
 GSSH 'findmnt -n -o TARGET,OPTIONS /usr/local/bin/tbound /usr/bin/podman /usr/bin/crun /opt/tbound/cell; sha256sum /usr/local/bin/tbound /usr/bin/podman /usr/bin/crun /opt/tbound/cell/cosign /opt/tbound/cell/cosign.pub /opt/tbound/cell/seccomp.json'        # [READ-ONLY] every line ro,nosuid,nodev,relatime; hashes equal the sources
-GSSH 'sudo -n /opt/tbound/cell/cosign verify --offline --key /opt/tbound/cell/cosign.pub --local-image /opt/tbound/cell/pi-cell-oci'        # [READ-ONLY] same as P7, now from the mount; docker-manifest-digest == IMGDIGEST
+GSSH 'sudo -n /opt/tbound/cell/cosign verify --offline --insecure-ignore-tlog=true --key /opt/tbound/cell/cosign.pub --local-image /opt/tbound/cell/pi-cell-oci'        # [READ-ONLY] same as P7, now from the mount; docker-manifest-digest == IMGDIGEST
 ```
 
 Rollback per unit: `sudo systemctl disable --now <unit>; sudo rm /etc/systemd/system/<unit>; sudo systemctl daemon-reload`; restore `/opt/tbound/bin/tbound.old` and `tbound-profile.old` over the live files; remove `/opt/tbound/cell-src/*` and the new directories if empty. The old ephemeral-key assets `/etc/tbound/cosign.pub` and `/etc/tbound/pi-cell-oci` are left untouched and unreferenced. Reboot persistence is not verified; after the first reboot check that all four units and the runtime/live units are active before relying on them.
@@ -407,11 +419,45 @@ The printed template digest must equal `ContainmentProfileDigest` in the profile
 
 ## Closing provisioning
 
-### I1 [PRIVILEGED WRITE] load the signed image into the service podman store (BLOCKED by B3)
+### I1 [PRIVILEGED WRITE] load the signed image into the service podman store (B3: steps written, NOT yet run anywhere)
 
-Required result, as the service identity (`SVC`, storage per `/etc/tbound/podman-config/storage.conf`, graphroot `/var/lib/tbound/podman-storage/graphroot`): `podman image exists localhost/tbound/pi-cell:latest` succeeds and its `RepoDigests` contain `@IMGDIGEST`. The mechanism is not defined in the repo and must be proven first on a throwaway store; it needs no network. It must run before Z1 because it needs the service uid.
+Required result, as the service identity: `podman image exists localhost/tbound/pi-cell:latest` succeeds, the image ID is the config digest and its `RepoDigests` contain `@IMGDIGEST`. No network. Must run after P8 (scratch dir) and before Z1 (it needs `sudo -u`), with the service stopped. `selectImage` (`containment_linux.go:1244`) is the consumer.
 
-Rollback: the graphroot was empty (995:986 0700) before this step; `sudo find /var/lib/tbound/podman-storage/graphroot -mindepth 1 -delete`.
+The image comes from `pi-cell-load.tar` (P6), the single-image archive of the very blobs that were signed; the signed multi-entry layout in `/opt/tbound/cell` is not loadable. The store is used exactly as the unit configures it: the unit's `Environment=` list, `/etc/tbound/podman-config/{containers,storage}.conf`, graphroot `/var/lib/tbound/podman-storage/graphroot`, runroot `/run/tbound-pi/podman-runroot`. The runroot, `TMPDIR` and `XDG_*` paths are the unit's real ones, because libpod records them in its state database and a different set would be reported as a mismatch at service start. `/run/tbound-pi` does not exist while the service is stopped (checked read-only 2026-10-17); it is created here and removed at the end (systemd recreates it at service start).
+
+```
+IMGDIGEST=sha256:<from P3>            CFG=<config digest hex from P3, without sha256:>            SCR=/var/tmp/tbound-cal-20261017
+PODMAN_SVC='sudo -n -u tbound-pi env -C / -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/var/lib/tbound/podman-home USER=tbound-pi LOGNAME=tbound-pi XDG_RUNTIME_DIR=/run/tbound-pi XDG_CONFIG_HOME=/etc/tbound/podman-config XDG_DATA_HOME=/var/lib/tbound/podman-home/data XDG_CACHE_HOME=/run/tbound-pi/cache TMPDIR=/run/tbound-pi/tmp CONTAINERS_CONF=/etc/tbound/podman-config/containers.conf CONTAINERS_STORAGE_CONF=/etc/tbound/podman-config/storage.conf LANG=C LC_ALL=C /usr/bin/podman --root /var/lib/tbound/podman-storage/graphroot'
+
+# C0 [READ-ONLY] preconditions: service inactive, store empty, no podman state yet
+GSSH 'systemctl is-active tbound-pi.service; sudo -n ls -A /var/lib/tbound/podman-storage/graphroot | wc -l; ls -d /run/tbound-pi'        # inactive / 0 / No such file
+
+# 1 transfer and check the archive (the scratch dir is 995:986 0700 from P8)
+GSSH 'sudo -n install -o 995 -g 986 -m 0600 /dev/stdin /var/tmp/tbound-cal-20261017/pi-cell-load.tar' < $H/pi-cell-load.tar
+GSSH 'sudo -n sha256sum /var/tmp/tbound-cal-20261017/pi-cell-load.tar'        # == LOAD_TAR_DIGEST
+
+# 2 runtime dir exactly as RuntimeDirectory=tbound-pi would make it
+GSSH 'sudo -n install -d -o 995 -g 986 -m 0700 /run/tbound-pi /run/tbound-pi/tmp /run/tbound-pi/cache'
+
+# 3 load, then name it. podman load of an OCI archive leaves the image unnamed; the tag is a local name only.
+GSSH "$PODMAN_SVC load --input $SCR/pi-cell-load.tar"
+GSSH "$PODMAN_SVC tag $CFG localhost/tbound/pi-cell:latest"
+
+# 4 checks (all [READ-ONLY]; any mismatch means stop and run the rollback)
+GSSH "$PODMAN_SVC image exists localhost/tbound/pi-cell:latest; echo exists=\$?"                       # exists=0
+GSSH "$PODMAN_SVC image inspect localhost/tbound/pi-cell:latest --format '{{.Id}} {{.Digest}} {{.ManifestType}} {{range .RepoDigests}}{{.}} {{end}}'"
+#   expect: <CFG> <IMGDIGEST> application/vnd.oci.image.manifest.v1+json localhost/tbound/pi-cell@<IMGDIGEST>
+GSSH "$PODMAN_SVC images --no-trunc --format '{{.Repository}}:{{.Tag}} {{.ID}}'"                        # exactly one line, :latest
+# C4 the same inspect in the service's own context (no-new-privs, zero capabilities); the load above ran without NNP so that newuidmap works
+GSSH "sudo -n setpriv --reuid 995 --regid 986 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs -- ${PODMAN_SVC#sudo -n -u tbound-pi } image inspect localhost/tbound/pi-cell:latest --format '{{.Digest}}'"        # == IMGDIGEST
+
+# 5 clean up the transient runtime state (graphroot keeps the image)
+GSSH 'sudo -n rm -rf /run/tbound-pi'
+```
+
+`selectImage` accepts the image only if some `RepoDigests` entry ends in `@IMGDIGEST` (case-insensitive); the check in step 4 is that exact condition. Because the archive is the signed manifest unchanged, `Digest` should equal `IMGDIGEST` (unlike the 2026-10-15 pair `20d55339...` / `ac72b2d7...`, where `podman build` and `podman push` each wrote their own manifest). If podman rewrote the manifest, `Digest` differs: stop, do not re-sign; report it. If C4 fails but the normal-context inspect passes, the store is readable only with `newuidmap` (setuid, ineffective under `NoNewPrivileges=yes`): stop before Z1; that is a service-context design issue, not a signing issue.
+
+Rollback: the graphroot was empty (995:986 0700) before this step; `sudo rm -rf /run/tbound-pi; sudo find /var/lib/tbound/podman-storage/graphroot -mindepth 1 -delete`.
 
 ### Z0 [PRIVILEGED WRITE] remove scratch
 
@@ -419,7 +465,7 @@ Rollback: the graphroot was empty (995:986 0700) before this step; `sudo find /v
 GSSH 'sudo -n rm -rf /var/tmp/tbound-cal-20261017'
 ```
 
-Rollback: none needed; regenerable scratch (R1-3 and R2-2 outputs are already fetched to `$H`). Also remove `$W`, and the guest build dir `/home/tboundadmin/tbound-build-<F8>` (tboundadmin-owned, no sudo) once the image is in the service store.
+Rollback: none needed; regenerable scratch (R1-3 and R2-2 outputs are already fetched to `$H`). Also remove `$W`, `$B` and the private cosign scratch on the owner machine. Nothing is built on the guest, so there is no guest build dir.
 
 ### Z1 [PRIVILEGED WRITE] revoke passwordless sudo (last sudo command, before the first cell launch)
 
