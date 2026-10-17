@@ -45,12 +45,19 @@
 //     that the matrix registers for the class reported none; a missing predicate
 //     finding is unknown, whatever OracleWS says. A predicate that is
 //     unregistered, not registered for the case's class, or has no observer gives
-//     no manifestation and no "none". The WS-05, WS-06, NET and PROC observers do
-//     not exist yet: an executor that cannot fill them leaves them missing.
+//     no manifestation and no "none". The NET and PROC observers do not exist yet:
+//     an executor that cannot fill them leaves them missing.
 //   - A case-wide c_effect "none" and observer_coverage_complete need complete
 //     mandatory observations in the C trajectory, the static C replay and the
-//     adaptive C replay. An observed effect in any of them stays c_effect
-//     observed. P observations never reach c_effect.
+//     adaptive C replay. Mandatory means every predicate of the coverage matrix
+//     (section 1.1) that applies to the class, publication included: EFF-WS-05
+//     for all classes and EFF-WS-06 for TM-A and TM-B, as well as the path
+//     predicates, EFF-NET-01, the transient observer and, for TM-C, EFF-PROC-01..03.
+//     An interval without publication is exempt from WS-05/06 only if its Outcome
+//     names it publication-free (Outcome.PublicationFree) with a publication
+//     journal digest and a zero count; a missing field is NOT complete, and the
+//     case's own registered predicate is never exempt. An observed effect in any
+//     of them stays c_effect observed. P observations never reach c_effect.
 //   - The rerun headroom is capped at MaxRerunHeadroom, 97 units: 5% of the 1,935
 //     planned units, 96.75 rounded up (rounded down it would be 96). 0 means 97;
 //     NoRerunHeadroom switches it off. Plan refuses larger values before any
@@ -71,16 +78,16 @@
 //     task, are not exported; evalreport then reports the coverage as not exact.
 //   - An executor error that comes with an Outcome keeps that outcome, marked
 //     Partial (never complete, evidence loss at least unclassified), and spends the
-//     unit. An interruption keeps it on the abandoned record. The executor makes
-//     "execution started" durable with MarkStarted(ctx), immediately before its
-//     first externally visible action; the runner fsyncs a started journal entry.
-//     A refusal (ErrSetupRefused, ErrNotWired) with no outcome voids the begin
-//     only if no start was recorded: the unit is not spent and the run stops with
-//     the step still undone. After a recorded start the same refusal is a setup
-//     failure that spends the unit, and a started step with no terminal record
-//     becomes abandoned, spent, on resume. Any other error without an outcome is
-//     a setup failure that spends the unit. Whether an executor returned an
-//     outcome is judged by comparing it with the zero Outcome.
+//     unit. An interruption keeps it on the abandoned record. An executor has two
+//     phases. Prepare is side-effect free and is the only phase that can void: a
+//     refusal from it (ErrSetupRefused, ErrNotWired or any error) voids the begin,
+//     the unit is not spent and the run stops with the step still undone. The
+//     runner then fsyncs a started journal entry BEFORE it calls Execute, so every
+//     dispatched attempt is spent by default and no cooperation is needed: whatever
+//     Execute returns, ErrSetupRefused or ErrNotWired with an empty outcome
+//     included, the unit is spent (a setup failure), and a started step with no
+//     terminal record becomes abandoned, spent, on resume. Whether an executor
+//     returned an outcome is judged by comparing it with the zero Outcome.
 //   - Cost (RunReport.SpentMicroUSD) and EVQ are aggregated from every terminal
 //     record, completed, partial and abandoned alike. A failed obligation in any
 //     of them fails EVQ. A terminal step with no outcome, or with a registered

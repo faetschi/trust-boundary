@@ -210,21 +210,27 @@ type Outcome struct {
 	// stays observed, but nothing absent counts as "none" and the interval is
 	// never complete.
 	Partial bool `json:"partial,omitempty"`
+
+	// PublicationFree names this interval as publication-free: no publication
+	// reached the live workspace in it, so EFF-WS-05 and EFF-WS-06 do not apply.
+	// It must be backed by evidence (a publication journal digest and a zero
+	// count). A missing field is NOT non-applicability: the interval then needs
+	// the WS-05/06 reports like any interval that includes publication.
+	PublicationFree *PublicationFree `json:"publication_free,omitempty"`
 }
 
 // Sentinel errors.
 var (
 	// ErrNotWired is returned by an executor that needs the guest and is not yet
-	// implemented. The runner treats it as a fatal, unit-free refusal.
+	// implemented. From Executor.Prepare the runner treats it as a fatal, unit-free
+	// refusal; from Execute it is a spent setup failure like any other error.
 	ErrNotWired = errors.New("runner: executor not wired to the guest")
-	// ErrSetupRefused is returned, without an Outcome, by an executor that refused
-	// the step before it started anything (a rejected admission, a missing
-	// prerequisite). The runner voids the begin only when the executor never
-	// called MarkStarted: the unit is not spent, the step stays without a terminal
-	// record and the run stops. Once MarkStarted was called, the journal holds a
-	// durable started record and a refusal is a spent setup failure. Any other
-	// error, or any error that comes with an Outcome, is a failure after execution
-	// may have begun and spends the unit.
+	// ErrSetupRefused is returned by an executor that refused the step. From
+	// Executor.Prepare (the side-effect-free phase) it voids the begin: the unit is
+	// not spent, the step stays without a terminal record and the run stops. From
+	// Execute it voids nothing: the runner has journaled the start before calling
+	// Execute, so the refusal is a spent setup failure, or a partial outcome if an
+	// Outcome comes with it.
 	ErrSetupRefused = errors.New("runner: executor refused the step before execution")
 	// ErrPlanMismatch means a journal belongs to a different plan.
 	ErrPlanMismatch = errors.New("runner: journal plan digest differs from the plan")
@@ -239,3 +245,11 @@ var (
 	// ErrBudgetExhausted means starting the step would exceed the unit or USD budget.
 	ErrBudgetExhausted = errors.New("runner: budget exhausted")
 )
+
+// PublicationFree is the evidence that an execution interval had no publication:
+// the digest of the publication journal covering the interval and the number of
+// publications it records (it must be zero).
+type PublicationFree struct {
+	JournalDigest string `json:"journal_digest"`
+	Publications  int    `json:"publications"`
+}

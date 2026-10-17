@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"tbound/supervisor/internal/evalreport"
@@ -198,7 +196,7 @@ func (r *Runner) admit(rerun bool) (StopReason, error) {
 	return StopNone, nil
 }
 
-// execute runs one attempt of a step: begin, execute, terminal record.
+// execute runs one attempt of a step: begin, prepare, started, execute, terminal record.
 func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 	id := st.ID()
 	base := Entry{StepID: id, CaseID: st.CaseID, Index: st.Index, Attempt: attempt}
@@ -209,26 +207,29 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 	}
 	run := st
 	run.Attempt = attempt
-	// The executor makes "execution started" durable through MarkStarted. The
-	// runner does not take its word that nothing ran: only a step that never
-	// recorded a start can be voided.
-	var (
-		startOnce sync.Once
-		startErr  error
-		started   atomic.Bool
-	)
-	mark := func() error {
-		startOnce.Do(func() {
-			e := base
-			e.Kind = EntryStarted
-			if startErr = r.j.append(e); startErr == nil {
-				started.Store(true)
-			}
-		})
-		return startErr
+	// Prepare is side-effect free and is the only phase that can void the begin.
+	// A refusal, or a context that ended meanwhile, leaves nothing to observe.
+	perr := r.exec.Prepare(ctx, run)
+	if perr == nil {
+		perr = ctx.Err()
+	}
+	if perr != nil {
+		void := base
+		void.Kind, void.Reason = EntryVoid, "prepare: "+perr.Error()
+		if aerr := r.j.append(void); aerr != nil {
+			return aerr
+		}
+		return perr
+	}
+	// The runner makes "execution started" durable before it dispatches. From here
+	// on the unit is spent whatever Execute returns; the executor cannot void it.
+	started := base
+	started.Kind = EntryStarted
+	if err := r.j.append(started); err != nil {
+		return err
 	}
 	t0 := time.Now()
-	out, err := r.exec.Execute(withStarted(ctx, mark), run)
+	out, err := r.exec.Execute(ctx, run)
 	elapsed := time.Since(t0).Milliseconds()
 
 	end := base
@@ -237,15 +238,6 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 	// when it failed. It is kept, marked partial, and is never discarded.
 	partial := err != nil && hasOutcome(out)
 	switch {
-	case err != nil && !partial && !started.Load() && startErr == nil && (errors.Is(err, ErrNotWired) || errors.Is(err, ErrSetupRefused)):
-		// Nothing ran and no start was recorded: the begin is voided and the unit is
-		// not spent. After a recorded start the same error falls through to the
-		// setup failure below, which spends the unit.
-		end.Kind, end.Reason = EntryVoid, err.Error()
-		if aerr := r.j.append(end); aerr != nil {
-			return aerr
-		}
-		return err
 	case err != nil && ctx.Err() != nil:
 		// Interrupted mid-step: abandoned, the unit stays spent, and a partial
 		// outcome is kept next to the reason.
@@ -263,7 +255,8 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 		// is the step's terminal record, with the error beside it.
 		end.Kind, end.Outcome, end.ExecError = EntryDone, partialOutcome(out), err.Error()
 	case err != nil:
-		// No outcome and no unstarted refusal: a setup failure that spends the unit.
+		// No outcome: a setup failure. The start is journaled, so the unit is spent
+		// whatever the error is (ErrSetupRefused and ErrNotWired included).
 		end.Kind, end.SetupFailure = EntryDone, err.Error()
 	default:
 		if out.EvidenceLoss == "" {

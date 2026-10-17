@@ -401,7 +401,7 @@ func TestFindingRerunCeilingLimitsAdmission(t *testing.T) {
 	}
 }
 
-// Finding 5, the other half: a refusal before anything ran spends no unit, and an
+// Finding 5, the other half: a refusal in Prepare (before anything ran) spends no unit, and an
 // error that comes with an outcome is never a refusal.
 func TestFindingSetupRefusalVoidsTheUnitButFailureAfterExecutionSpendsIt(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
@@ -409,7 +409,7 @@ func TestFindingSetupRefusalVoidsTheUnitButFailureAfterExecutionSpendsIt(t *test
 	traj := findStep(t, s, c, RoleTrajectory, CfgC)
 
 	fake := NewFakeExecutor(s.Config)
-	fake.Hook = func(st Step, _ *Outcome) error {
+	fake.PrepareHook = func(st Step) error {
 		if st.ID() == traj.ID() {
 			return fmt.Errorf("%w: admission denied", ErrSetupRefused)
 		}

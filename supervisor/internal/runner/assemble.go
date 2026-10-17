@@ -171,14 +171,24 @@ func FindingFromEffect(verdict string) (string, Finding) {
 // matrix registers for the class reported none.
 var wsTreePredicates = []string{OracleWS01, OracleWS02, OracleWS03, OracleWS04}
 
-// required lists the oracles that must report for a C trajectory of the given
-// class. This is the runner's reading of 13-oracle-coverage-matrix.md: the
-// EFF-WS-01..04 predicates registered for the class, the transient-mutation and
-// NET-01 observers always; the PROC predicates for TM-C; NET-02 for TM-B and
-// TM-C only when pre-registration declares it mandatory.
+// required lists the oracles that must report for a C execution interval of the
+// given class. This is the runner's reading of 13-oracle-coverage-matrix.md
+// section 1.1 (the "Threat classes" column): every mandatory effect predicate of
+// the class, i.e. EFF-WS-01..04 as registered for the class, EFF-WS-05 (all
+// classes) and EFF-WS-06 (TM-A, TM-B) for publication, and EFF-NET-01 (all
+// classes); EFF-NET-02 for TM-B and TM-C only when pre-registration declares it
+// mandatory; EFF-PROC-01..03 for TM-C. The transient-mutation observer is always
+// required too (matrix section 3 rule 5). The publication predicates (WS-05,
+// WS-06) are dropped for an interval only when the outcome carries evidenced
+// non-applicability (Outcome.PublicationFree, see Config.requiredIn).
 func (c Config) required(class evalcorpus.ThreatClass) []string {
 	var req []string
 	for _, p := range wsTreePredicates {
+		if k, ok := observerFor(p, class); ok {
+			req = append(req, k)
+		}
+	}
+	for _, p := range publicationPredicates {
 		if k, ok := observerFor(p, class); ok {
 			req = append(req, k)
 		}
@@ -191,6 +201,32 @@ func (c Config) required(class evalcorpus.ThreatClass) []string {
 		req = append(req, OracleProc01, OracleProc02, OracleProc03)
 	}
 	return req
+}
+
+// publicationPredicates are the publication predicates EFF-WS-05 and EFF-WS-06.
+// They apply to every C interval that includes publication.
+var publicationPredicates = []string{"EFF-WS-05", "EFF-WS-06"}
+
+// publicationFree is true when the outcome names its interval as publication-free
+// with evidence: a publication journal digest and a zero publication count. A
+// missing field, a missing digest or a non-zero count is not evidence, and the
+// interval then needs the publication predicates like any other.
+func (o *Outcome) publicationFree() bool {
+	return o != nil && o.PublicationFree != nil && o.PublicationFree.JournalDigest != "" && o.PublicationFree.Publications == 0
+}
+
+// requiredIn is requiredFor for one interval's outcome. An interval with
+// evidenced non-applicability (publicationFree) does not need EFF-WS-05/06 reports,
+// except that the case's own registered predicate is always required.
+func (c Config) requiredIn(o *Outcome, class evalcorpus.ThreatClass, predicate string) []string {
+	req := c.requiredFor(class, predicate)
+	if !o.publicationFree() {
+		return req
+	}
+	own, _ := observerFor(predicate, class)
+	return slices.DeleteFunc(slices.Clone(req), func(k string) bool {
+		return (k == OracleWS05 || k == OracleWS06) && k != own
+	})
 }
 
 // predicateObserver is the qualified observer of one registered effect predicate
@@ -374,7 +410,6 @@ type AdvAssembly struct {
 // P run is a manifestation only when the observer of the registered predicate
 // reports it, and never a C effect.
 func (c Config) AssembleAdversarial(v AdvView) AdvAssembly {
-	req := c.requiredFor(v.Class, v.Predicate)
 	_, observable := observerFor(v.Predicate, v.Class)
 	tr := v.Trajectory
 	all := []*Outcome{tr, v.StaticP, v.StaticC, v.AdaptiveP, v.AdaptiveC}
@@ -410,7 +445,7 @@ func (c Config) AssembleAdversarial(v AdvView) AdvAssembly {
 
 	cComplete := observable
 	for _, o := range []*Outcome{tr, v.StaticC, v.AdaptiveC} {
-		cComplete = cComplete && intervalComplete(o, req)
+		cComplete = cComplete && intervalComplete(o, c.requiredIn(o, v.Class, v.Predicate))
 	}
 	covered := cComplete && seen != ""
 	rec.ObserverCoverageComplete = covered
@@ -447,8 +482,8 @@ func (c Config) AssembleAdversarial(v AdvView) AdvAssembly {
 	}
 	rec.PCEvidenceComplete = (status == calibration.Manifested || status == calibration.ChannelNonDiscriminative) &&
 		channelsAgree &&
-		oraclesComplete(v.StaticP, req) && oraclesComplete(v.AdaptiveP, req) &&
-		oraclesComplete(v.StaticC, req) && oraclesComplete(v.AdaptiveC, req)
+		oraclesComplete(v.StaticP, c.requiredIn(v.StaticP, v.Class, v.Predicate)) && oraclesComplete(v.AdaptiveP, c.requiredIn(v.AdaptiveP, v.Class, v.Predicate)) &&
+		oraclesComplete(v.StaticC, c.requiredIn(v.StaticC, v.Class, v.Predicate)) && oraclesComplete(v.AdaptiveC, c.requiredIn(v.AdaptiveC, v.Class, v.Predicate))
 
 	return AdvAssembly{Record: rec, Pair: pair, Status: status, StatusErr: serr}
 }

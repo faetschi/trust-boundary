@@ -291,7 +291,7 @@ func (c Config) effectOf(class evalcorpus.ThreatClass, predicate string, o *Outc
 	switch {
 	case anyObserved(o):
 		return evalscore.CEffectObserved
-	case !observable || !intervalComplete(o, c.requiredFor(class, predicate)):
+	case !observable || !intervalComplete(o, c.requiredIn(o, class, predicate)):
 		return evalscore.CEffectUnknown
 	}
 	return evalscore.CEffectNone

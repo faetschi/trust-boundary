@@ -244,37 +244,31 @@ func TestR2StepWithoutOutcomeBlocksEVQ(t *testing.T) {
 	}
 }
 
-// startedExecutor calls MarkStarted, then refuses.
-type startedExecutor struct {
+// refusingExecutor refuses one step in Execute (no Outcome).
+type refusingExecutor struct {
 	Executor
 	target Step
 	err    error
-	mark   bool
 }
 
-func (p startedExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
+func (p refusingExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
 	if s.ID() != p.target.ID() {
 		return p.Executor.Execute(ctx, s)
-	}
-	if p.mark {
-		if err := MarkStarted(ctx); err != nil {
-			return Outcome{}, err
-		}
 	}
 	return Outcome{}, p.err
 }
 
-// Finding 4: execution started is durable at the executor's boundary, and after it
-// a refusal is a spent setup failure.
-func TestR2StartedThenRefusedSpendsTheUnit(t *testing.T) {
+// Finding 4: the runner journals the start before Execute, so a refusal from
+// Execute is a spent setup failure.
+func TestR2ExecuteRefusalSpendsTheUnit(t *testing.T) {
 	for _, refusal := range []error{ErrSetupRefused, ErrNotWired} {
 		s := smallSchedule(t, smallConfig())
 		traj := findStep(t, s, firstCase(s, "adversarial"), RoleTrajectory, CfgC)
-		ex := startedExecutor{Executor: NewFakeExecutor(s.Config), target: traj, err: refusal, mark: true}
+		ex := refusingExecutor{Executor: NewFakeExecutor(s.Config), target: traj, err: refusal}
 		j := openJournal(t, t.TempDir(), s)
 		rep, err := mustRunner(t, s, j, ex, Options{}).Run(context.Background())
 		if err != nil || !rep.Finished || rep.UnitsUsed != 89 || rep.SetupFailures != 1 {
-			t.Fatalf("%v after start: %+v %v", refusal, rep, err)
+			t.Fatalf("%v from Execute: %+v %v", refusal, rep, err)
 		}
 		started, voided := 0, 0
 		var done *Entry
@@ -300,24 +294,12 @@ func TestR2StartedThenRefusedSpendsTheUnit(t *testing.T) {
 		}
 		_ = j.Close()
 	}
-
-	// Without the call, the executor attests that nothing ran and the begin is voided.
-	s := smallSchedule(t, smallConfig())
-	traj := findStep(t, s, firstCase(s, "adversarial"), RoleTrajectory, CfgC)
-	ex := startedExecutor{Executor: NewFakeExecutor(s.Config), target: traj, err: ErrSetupRefused}
-	j := openJournal(t, t.TempDir(), s)
-	defer j.Close()
-	rep, err := mustRunner(t, s, j, ex, Options{}).Run(context.Background())
-	if !errors.Is(err, ErrSetupRefused) || rep.UnitsUsed != 0 || rep.Finished {
-		t.Fatalf("refusal before start: %+v %v", rep, err)
-	}
 }
 
-func TestR2FakeExecutorFollowsTheStartedContract(t *testing.T) {
+func TestR2FakeExecutorHookRefusalSpends(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
 	traj := findStep(t, s, firstCase(s, "adversarial"), RoleTrajectory, CfgC)
 	fake := NewFakeExecutor(s.Config)
-	fake.StartedFirst = true
 	fake.Hook = func(st Step, _ *Outcome) error {
 		if st.ID() == traj.ID() {
 			return ErrSetupRefused
@@ -332,40 +314,28 @@ func TestR2FakeExecutorFollowsTheStartedContract(t *testing.T) {
 	}
 }
 
-func TestR2StartedIsIdempotentAndHarmlessOutsideARunner(t *testing.T) {
-	if err := MarkStarted(context.Background()); err != nil {
-		t.Fatalf("MarkStarted outside a runner: %v", err)
-	}
+// The runner writes exactly one started entry per dispatched step.
+func TestR2RunnerJournalsOneStartedPerStep(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
-	traj := findStep(t, s, firstCase(s, "adversarial"), RoleTrajectory, CfgC)
-	ex := twiceExecutor{Executor: NewFakeExecutor(s.Config), target: traj}
 	j := openJournal(t, t.TempDir(), s)
 	defer j.Close()
-	if _, err := mustRunner(t, s, j, ex, Options{}).Run(context.Background()); err != nil {
+	if _, err := mustRunner(t, s, j, NewFakeExecutor(s.Config), Options{}).Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	n := 0
+	n := map[string]int{}
 	for _, e := range j.Entries() {
-		if e.Kind == EntryStarted && e.StepID == traj.ID() {
-			n++
+		if e.Kind == EntryStarted {
+			n[e.StepID]++
 		}
 	}
-	if n != 1 {
-		t.Fatalf("%d started entries, want 1", n)
+	if len(n) != 89 {
+		t.Fatalf("%d steps have a started entry, want 89", len(n))
 	}
-}
-
-type twiceExecutor struct {
-	Executor
-	target Step
-}
-
-func (p twiceExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
-	if s.ID() == p.target.ID() {
-		_ = MarkStarted(ctx)
-		_ = MarkStarted(ctx)
+	for id, c := range n {
+		if c != 1 {
+			t.Fatalf("%s has %d started entries", id, c)
+		}
 	}
-	return p.Executor.Execute(ctx, s)
 }
 
 // Crash-resume: a started entry without a terminal entry is abandoned and spent,

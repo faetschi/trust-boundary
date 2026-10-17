@@ -14,26 +14,29 @@ import (
 	"tbound/supervisor/internal/evalscore"
 )
 
-// Executor runs one step to a terminal Outcome. The real implementations need
-// the guest. The error cases are:
+// Executor runs one step in two phases, and the phase decides what an error
+// costs. The runner, not the executor, controls which one an attempt is in.
 //
-//   - ErrNotWired: the executor is a skeleton. The run stops and no unit is
-//     consumed, provided the executor never called MarkStarted.
-//   - ErrSetupRefused with no Outcome: the executor refused the step before
-//     starting anything. The run stops and no unit is consumed, provided the
-//     executor never called MarkStarted. The runner does not take the executor's
-//     word for it: the executor must call MarkStarted(ctx) immediately before its
-//     first externally visible action, and after that call either error is a
-//     setup failure that spends the unit.
-//   - an error with a non-zero Outcome: the step failed after execution began. The
-//     unit is spent and the Outcome is journaled as a partial outcome with the
-//     error, so observations already established are kept.
-//   - any other error: no outcome and no attestation that nothing ran. It is a
-//     setup failure and spends the unit.
+//   - Prepare is the only place an attempt can be voided. It must have no visible
+//     effect: no write to the workspace, no request to a service, no guest boot,
+//     nothing an oracle could observe. It checks that the step can be run (wiring,
+//     admission, registration) and may refuse. Any error from Prepare (ErrNotWired,
+//     ErrSetupRefused or another) voids the begin: no unit is spent, the step stays
+//     without a terminal record and the run stops with that error.
+//   - Execute does the work. The runner writes and fsyncs a started journal entry
+//     before it calls Execute, so every dispatched attempt is spent by default and
+//     the executor does not have to cooperate. Whatever Execute returns, including
+//     ErrSetupRefused or ErrNotWired with an empty Outcome, the unit is spent:
+//     an error with a non-zero Outcome is journaled as a partial outcome with the
+//     error, so observations already established are kept; an error without an
+//     Outcome is a setup failure; an interruption leaves the step abandoned. A
+//     crash after the started entry is closed as abandoned on resume and never
+//     run again.
 //
-// An executor must honor ctx and must not retry a
-// failed step on its own except where Metrics.Retries records it.
+// An executor must honor ctx and must not retry a failed step on its own except
+// where Metrics.Retries records it.
 type Executor interface {
+	Prepare(ctx context.Context, s Step) error
 	Execute(ctx context.Context, s Step) (Outcome, error)
 }
 
@@ -41,6 +44,15 @@ type Executor interface {
 // an unwired configuration.
 type Executors struct {
 	A, B, C, P, V Executor
+}
+
+// Prepare implements Executor. An unwired configuration refuses with ErrNotWired.
+func (e Executors) Prepare(ctx context.Context, s Step) error {
+	x := e.of(s.Configuration)
+	if x == nil {
+		return fmt.Errorf("%w: configuration %s", ErrNotWired, s.Configuration)
+	}
+	return x.Prepare(ctx, s)
 }
 
 // Execute implements Executor.
@@ -183,7 +195,8 @@ func (r GovernedRequest) Argv() ([]string, error) {
 //     and FindingFromEffect (each finding stored under the key those functions
 //     return, and EFF-WS-01..04 only for changes that WSChangePredicate can
 //     attribute), plus the NET and PROC observers when they exist;
-//   - MarkStarted(ctx) is called immediately before the request is sent;
+//   - Prepare checks wiring and admission without sending anything; the runner
+//     journals the start before Execute sends the request;
 //   - E01 identity comes from the receipt and the measured profile, tokens and
 //     cost from the provider journal, and the audit files under
 //     /var/lib/tbound/audit from the run id.
@@ -204,10 +217,14 @@ func (g GovernedC) Request(s Step) (GovernedRequest, error) {
 	return request, nil
 }
 
-// Execute returns ErrNotWired. It does nothing visible, so it does not call
-// MarkStarted. A wired implementation must call MarkStarted(ctx) immediately
-// before it sends the request to the service (or touches the guest), and not
-// before: that call is what makes the unit spent.
+// Prepare refuses with ErrNotWired: the transport is not wired, nothing has been
+// sent, and the runner voids the attempt. A wired implementation checks the
+// request and the service registration here, with no visible action.
+func (GovernedC) Prepare(context.Context, Step) error { return ErrNotWired }
+
+// Execute returns ErrNotWired. The runner never reaches it for an unwired
+// GovernedC, because Prepare refuses first; a wired implementation sends the
+// request to the service here, after the runner has journaled the start.
 func (GovernedC) Execute(context.Context, Step) (Outcome, error) {
 	return Outcome{}, ErrNotWired
 }
@@ -215,16 +232,14 @@ func (GovernedC) Execute(context.Context, Step) (Outcome, error) {
 // FakeExecutor is a deterministic in-memory executor for tests. By default it
 // returns a clean, complete outcome for every step: every required oracle
 // reports none, except that P steps observe the registered effect and manifest
-// it. Hook may change the outcome or fail the step.
+// it. PrepareHook models a refusal in the side-effect-free phase (the attempt is
+// voided); Hook may change the outcome or fail the step in Execute, where every
+// error spends the unit.
 type FakeExecutor struct {
-	Cfg  Config
-	Hook func(s Step, o *Outcome) error
-	// StartedFirst makes the executor call MarkStarted before Hook runs, so that
-	// a refusal by Hook happens after execution started and spends the unit. By
-	// default the Hook models the setup phase: a refusal it returns
-	// (ErrSetupRefused, ErrNotWired) comes before any start, and every other
-	// outcome of the Hook is reported after MarkStarted.
-	StartedFirst bool
+	Cfg Config
+	// PrepareHook, if set, runs in Prepare; an error voids the attempt.
+	PrepareHook func(s Step) error
+	Hook        func(s Step, o *Outcome) error
 
 	mu    sync.Mutex
 	calls []Step
@@ -240,54 +255,26 @@ func (f *FakeExecutor) Calls() []Step {
 	return append([]Step(nil), f.calls...)
 }
 
+// Prepare implements Executor. It records nothing and has no visible effect.
+func (f *FakeExecutor) Prepare(_ context.Context, s Step) error {
+	if f.PrepareHook != nil {
+		return f.PrepareHook(s)
+	}
+	return nil
+}
+
 // Execute implements Executor.
-func (f *FakeExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
+func (f *FakeExecutor) Execute(_ context.Context, s Step) (Outcome, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, s)
 	f.mu.Unlock()
-	if f.StartedFirst {
-		if err := MarkStarted(ctx); err != nil {
-			return Outcome{}, err
-		}
-	}
 	o := defaultOutcome(f.Cfg, s)
 	if f.Hook != nil {
 		if err := f.Hook(s, &o); err != nil {
-			if !errors.Is(err, ErrSetupRefused) && !errors.Is(err, ErrNotWired) {
-				if merr := MarkStarted(ctx); merr != nil {
-					return Outcome{}, merr
-				}
-			}
 			return Outcome{}, err
 		}
 	}
-	if err := MarkStarted(ctx); err != nil {
-		return Outcome{}, err
-	}
 	return o, nil
-}
-
-type startedKey struct{}
-
-// withStarted returns a context that carries the runner's started callback.
-func withStarted(ctx context.Context, f func() error) context.Context {
-	return context.WithValue(ctx, startedKey{}, f)
-}
-
-// MarkStarted is the executor's durable "execution started" record. An executor
-// must call it with the ctx it was given, immediately before its first
-// externally visible action (a guest boot, a request to the service, a write to
-// the workspace), and must not act if it returns an error. The runner writes and
-// fsyncs a started journal entry before MarkStarted returns. From then on the
-// begin cannot be voided: whatever the executor returns, including
-// ErrSetupRefused or ErrNotWired without an Outcome, the unit is spent, and a
-// crash leaves the step abandoned. Calling it again is harmless. Outside a runner
-// (a ctx without the callback) it does nothing.
-func MarkStarted(ctx context.Context) error {
-	if f, ok := ctx.Value(startedKey{}).(func() error); ok {
-		return f()
-	}
-	return nil
 }
 
 // defaultOutcome is the clean, complete outcome of a step.
