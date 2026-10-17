@@ -58,6 +58,12 @@ usage:
                                     --out-sig <signature> [--out-registration <signed.json>]
   tbound-profile managed-root-verify --registration <json> --sig <signature> --pub <public-key>
   tbound-profile research-ledger-genesis [--profile <abs>] [--ledger-config <abs>] [--ledger <abs>]
+  tbound-profile corpus-digest --manifest <path> [--quota-profile thesis|pilot]
+                                [--max-host-calls <n> --max-tokens <n> --duration-seconds <n>]
+  tbound-profile preregistration-record --freeze-commit <40-hex> --corpus-manifest <path>
+                                --quota-profile thesis|pilot --runner-config <path>
+                                [--research-profile <path>] [--research-ledger-config <path>]
+                                [--evalscore-schema <name>] --reviewers owner,advisor
   tbound-profile xattr-measure  --source <protected-read-only-directory>
   tbound-profile xattr-digest   --filesystem-magic <n> --mount-options-digest <sha256> --uid <n> --gid <n>
 
@@ -67,6 +73,17 @@ profile and the research ledger configuration (defaults: the fixed paths under
 so that the service owns the 0600 ledger file, e.g. through setpriv --reuid <service-uid>. It refuses an
 unfrozen profile and an existing ledger, and prints the genesis head SHA-256 to store outside
 the ledger. The service never creates a ledger: a missing one is refused.
+
+corpus-digest admits a corpus manifest the way the corpus-mode service does (strict loader,
+evalcorpus.Validate under the quota profile, a bounded trial on every case) and prints the digest
+to pin as corpus_manifest_digest. The optional host ceilings add the service config comparison. It
+prints nothing and exits non-zero when the manifest is refused.
+
+preregistration-record prints one JSON line, the pre-registration record: the freeze commit, the
+corpus digest, the quota profile, the runner plan digest (the allocation comes from the
+manifest split seed), the planned units and rerun headroom, the evalscore schema, the optional
+research profile and ledger configuration digests, and the reviewer names, bound by a
+domain-labelled record_digest (tbound-preregistration/v1). It is deterministic.
 
 The private key is read from --key only and is never printed. The signature
 covers the verifier's domain-prefixed canonical profile bytes, and the written
@@ -138,6 +155,10 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runManagedRootVerify(args[1:], stdout, stderr)
 	case "research-ledger-genesis":
 		return runResearchLedgerGenesis(args[1:], stdout, stderr)
+	case "corpus-digest":
+		return runCorpusDigest(args[1:], stdout, stderr)
+	case "preregistration-record":
+		return runPreregistrationRecord(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		if _, err := io.WriteString(stdout, usageText); err != nil {
 			return err

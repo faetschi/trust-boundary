@@ -55,16 +55,22 @@ func TestResumeAfterCrashMidRun(t *testing.T) {
 		}
 		return nil
 	}
+	var dead *Journal
 	func() {
 		defer func() {
+			// A dead process releases its file handles. Without this, the handle stays open
+			// and native Windows cannot remove the temp dir. The journal code does not leak.
+			if dead != nil {
+				_ = dead.Close()
+			}
 			if v := recover(); v == nil {
 				t.Fatal("the simulated crash did not happen")
 			} else if _, ok := v.(crash); !ok {
 				panic(v)
 			}
 		}()
-		j := openJournal(t, dir, s) // never closed: the process "died"
-		_, _ = mustRunner(t, s, j, first, Options{}).Run(context.Background())
+		dead = openJournal(t, dir, s) // not closed by the run: the process "died"
+		_, _ = mustRunner(t, s, dead, first, Options{}).Run(context.Background())
 	}()
 	if len(first.Calls()) != dieAt+1 {
 		t.Fatalf("first process executed %d steps", len(first.Calls()))

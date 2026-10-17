@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/providerbridge"
@@ -42,9 +43,9 @@ import (
 // half-wired worker.
 
 const (
-	productionTaskIDMaxBytes    = 256
-	productionRequestMaxBytes   = 256
-	productionPromptMaxBytes    = 1 << 16
+	productionTaskIDMaxBytes    = corpusadmit.TaskIDMaxBytes
+	productionRequestMaxBytes   = corpusadmit.RequestIDMaxBytes
+	productionPromptMaxBytes    = corpusadmit.PromptMaxBytes
 	productionReceiptMaxBytes   = 64 << 10
 	productionSessionMaxRuntime = 20 * time.Minute
 )
@@ -899,10 +900,9 @@ func writeProductionPiReceipt(output io.Writer, receipt productionPiReceipt) err
 }
 
 func boundedProductionIdentity(value string, maximum int) bool {
-	return value != "" && strings.TrimSpace(value) == value && len([]byte(value)) <= maximum && !strings.ContainsAny(value, "\x00\r\n")
+	return corpusadmit.BoundedIdentity(value, maximum)
 }
 
 func boundedProductionPrompt(value string) bool {
-	trimmed := strings.TrimSpace(value)
-	return trimmed != "" && len([]byte(value)) <= productionPromptMaxBytes && !strings.ContainsRune(value, 0)
+	return corpusadmit.BoundedPrompt(value)
 }

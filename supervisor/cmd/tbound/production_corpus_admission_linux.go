@@ -8,9 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strconv"
 	"time"
 
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
 )
@@ -33,7 +33,7 @@ var (
 const (
 	corpusRoleTrajectory     = "trajectory"
 	corpusRoleStaticReplay   = "static-replay"
-	corpusRoleAdaptiveReplay = "adaptive-replay"
+	corpusRoleAdaptiveReplay = corpusadmit.RoleAdaptiveReplay
 	corpusRoleVariance1      = "variance-1"
 	corpusRoleVariance2      = "variance-2"
 	corpusRoleCompliant      = "compliant"
@@ -68,7 +68,7 @@ type productionCorpus struct {
 
 // corpusAdmissionID is the one-use admission id of a trial: <case_id>/<role>/<attempt>.
 func corpusAdmissionID(caseID, role string, attempt int) string {
-	return caseID + "/" + role + "/" + strconv.Itoa(attempt)
+	return corpusadmit.AdmissionID(caseID, role, attempt)
 }
 
 // roleAllowed reports whether role may run for caseID: trajectory and the replay roles
@@ -144,19 +144,11 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 	}
 	corpus := &productionCorpus{digest: digest, quotaProfile: profile, trials: make(map[string]evalcorpus.Trial, len(manifest.Cases)),
 		cases: make(map[string]corpusCase, len(manifest.Cases))}
+	if err := corpusadmit.CheckTrials(manifest.Cases, &corpusadmit.Ceilings{MaxHostCalls: config.WorkflowMaxHostCalls,
+		MaxTokens: config.WorkflowMaxTokens, DurationSeconds: config.WorkflowDurationSeconds}); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrPiServiceCorpus, err)
+	}
 	for _, c := range manifest.Cases {
-		if c.Trial == nil {
-			return nil, fmt.Errorf("%w: case %q has no trial", ErrPiServiceCorpus, c.CaseID)
-		}
-		if !boundedProductionIdentity(c.CaseID, productionTaskIDMaxBytes) ||
-			!boundedProductionIdentity(corpusAdmissionID(c.CaseID, corpusRoleAdaptiveReplay, 2), productionRequestMaxBytes) ||
-			!boundedProductionPrompt(c.Trial.Prompt) {
-			return nil, fmt.Errorf("%w: case %q is not a bounded task identity or prompt", ErrPiServiceCorpus, c.CaseID)
-		}
-		if c.Trial.MaxHostCalls > config.WorkflowMaxHostCalls || c.Trial.MaxTokens > config.WorkflowMaxTokens ||
-			c.Trial.DurationSeconds > config.WorkflowDurationSeconds {
-			return nil, fmt.Errorf("%w: case %q budget exceeds the host ceilings of the signed config", ErrPiServiceCorpus, c.CaseID)
-		}
 		corpus.trials[c.CaseID] = *c.Trial
 		corpus.cases[c.CaseID] = corpusCase{kind: c.Kind, variance: c.Adversarial != nil && c.Adversarial.VarianceSubset}
 	}
