@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"tbound/supervisor/internal/evalreport"
@@ -88,7 +90,7 @@ func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 	for _, st := range r.sched.Steps { // a rerun interrupted in an earlier process
 		if r.j.begunOf(st.ID(), 2) && r.j.terminalOf(st.ID(), 2) == nil {
 			if err := r.j.append(Entry{Kind: EntryAbandoned, StepID: st.ID(), CaseID: st.CaseID, Index: st.Index, Attempt: 2,
-				Reason: "rerun begun in an earlier process and never finished; not retried"}); err != nil {
+				Reason: abandonReason(r.j.startedOf(st.ID(), 2), "rerun ")}); err != nil {
 				return r.report(rep), err
 			}
 			rep.Abandoned++
@@ -101,7 +103,7 @@ func (r *Runner) Run(ctx context.Context) (RunReport, error) {
 		}
 		if r.j.begunOf(st.ID(), 1) {
 			if err := r.j.append(Entry{Kind: EntryAbandoned, StepID: st.ID(), CaseID: st.CaseID, Index: st.Index, Attempt: 1,
-				Reason: "begun in an earlier process and never finished; not retried"}); err != nil {
+				Reason: abandonReason(r.j.startedOf(st.ID(), 1), "")}); err != nil {
 				return r.report(rep), err
 			}
 			rep.Abandoned++
@@ -207,8 +209,26 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 	}
 	run := st
 	run.Attempt = attempt
+	// The executor makes "execution started" durable through MarkStarted. The
+	// runner does not take its word that nothing ran: only a step that never
+	// recorded a start can be voided.
+	var (
+		startOnce sync.Once
+		startErr  error
+		started   atomic.Bool
+	)
+	mark := func() error {
+		startOnce.Do(func() {
+			e := base
+			e.Kind = EntryStarted
+			if startErr = r.j.append(e); startErr == nil {
+				started.Store(true)
+			}
+		})
+		return startErr
+	}
 	t0 := time.Now()
-	out, err := r.exec.Execute(ctx, run)
+	out, err := r.exec.Execute(withStarted(ctx, mark), run)
 	elapsed := time.Since(t0).Milliseconds()
 
 	end := base
@@ -217,8 +237,10 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 	// when it failed. It is kept, marked partial, and is never discarded.
 	partial := err != nil && hasOutcome(out)
 	switch {
-	case err != nil && !partial && (errors.Is(err, ErrNotWired) || errors.Is(err, ErrSetupRefused)):
-		// Nothing ran: the begin is voided and the unit is not spent.
+	case err != nil && !partial && !started.Load() && startErr == nil && (errors.Is(err, ErrNotWired) || errors.Is(err, ErrSetupRefused)):
+		// Nothing ran and no start was recorded: the begin is voided and the unit is
+		// not spent. After a recorded start the same error falls through to the
+		// setup failure below, which spends the unit.
 		end.Kind, end.Reason = EntryVoid, err.Error()
 		if aerr := r.j.append(end); aerr != nil {
 			return aerr
@@ -241,8 +263,7 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 		// is the step's terminal record, with the error beside it.
 		end.Kind, end.Outcome, end.ExecError = EntryDone, partialOutcome(out), err.Error()
 	case err != nil:
-		// No outcome and no attestation that nothing ran: a setup failure that
-		// spends the unit.
+		// No outcome and no unstarted refusal: a setup failure that spends the unit.
 		end.Kind, end.SetupFailure = EntryDone, err.Error()
 	default:
 		if out.EvidenceLoss == "" {
@@ -253,21 +274,33 @@ func (r *Runner) execute(ctx context.Context, st Step, attempt int) error {
 	return r.j.append(end)
 }
 
-// report fills the journal-derived fields of rep.
+// abandonReason is the reason of a step closed on resume. The unit is spent
+// either way; a recorded start says that execution is known to have begun.
+func abandonReason(started bool, what string) string {
+	if started {
+		return what + "execution started in an earlier process and never finished; not retried"
+	}
+	return what + "begun in an earlier process and never finished (no start recorded); not retried"
+}
+
+// report fills the journal-derived fields of rep. The spend is every known cost
+// of every terminal outcome: completed, partial and abandoned steps alike. An
+// abandoned step with no outcome has an unknown cost and adds nothing.
 func (r *Runner) report(rep RunReport) RunReport {
 	rep.PlanDigest = r.sched.Digest
 	rep.PlannedUnits = r.sched.Units()
 	rep.UnitsUsed = r.j.UnitsUsed()
 	for _, e := range r.j.Entries() {
-		if e.Kind == EntryDone {
-			if e.Outcome != nil {
-				rep.SpentMicroUSD += e.Outcome.Metrics.CostMicroUSD
-				if e.ExecError != "" {
-					rep.ExecFailures++
-				}
-			} else {
-				rep.SetupFailures++
+		if e.Kind != EntryDone && e.Kind != EntryAbandoned {
+			continue
+		}
+		if e.Outcome != nil {
+			rep.SpentMicroUSD += e.Outcome.Metrics.CostMicroUSD
+			if e.Kind == EntryDone && e.ExecError != "" {
+				rep.ExecFailures++
 			}
+		} else if e.Kind == EntryDone {
+			rep.SetupFailures++
 		}
 	}
 	for _, st := range r.sched.Steps {

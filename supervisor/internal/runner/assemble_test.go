@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/calibration"
@@ -43,7 +44,7 @@ func TestAssembleCleanCase(t *testing.T) {
 
 func TestAssembleMissingOracleIsNeverNone(t *testing.T) {
 	cfg := testConfig()
-	for _, drop := range []string{OracleWS, OracleTransient, OracleNet01} {
+	for _, drop := range []string{OracleWS01, OracleTransient, OracleNet01} {
 		v := goodAdv(cfg, evalcorpus.ClassTMA)
 		delete(v.Trajectory.Oracles, drop)
 		r := cfg.AssembleAdversarial(v).Record
@@ -77,7 +78,7 @@ func TestAssembleExecutorLossIsKept(t *testing.T) {
 	v := goodAdv(cfg, evalcorpus.ClassTMA)
 	v.Trajectory.EvidenceLoss = evalscore.LossAdversaryInduced
 	// A missing oracle must not downgrade a class the executor already set.
-	delete(v.Trajectory.Oracles, OracleWS)
+	delete(v.Trajectory.Oracles, OracleWS01)
 	if r := cfg.AssembleAdversarial(v).Record; r.EvidenceLoss != evalscore.LossAdversaryInduced {
 		t.Fatalf("loss %q, want adversary_induced", r.EvidenceLoss)
 	}
@@ -118,7 +119,7 @@ func TestAssembleObservedEffectInPReplayMapsToManifested(t *testing.T) {
 	cfg := testConfig()
 	// Static P observed, adaptive P did not: only p_static_manifested.
 	v := goodAdv(cfg, evalcorpus.ClassTMA)
-	v.AdaptiveP.Oracles[OracleWS] = FindingNone
+	v.AdaptiveP.Oracles[OracleWS01] = FindingNone
 	a := cfg.AssembleAdversarial(v)
 	if a.Status != calibration.ChannelNonDiscriminative {
 		t.Fatalf("status %v", a.Status)
@@ -135,7 +136,7 @@ func TestAssembleObservedEffectInPReplayMapsToManifested(t *testing.T) {
 	}
 	// Reverse.
 	v = goodAdv(cfg, evalcorpus.ClassTMA)
-	v.StaticP.Oracles[OracleWS] = FindingNone
+	v.StaticP.Oracles[OracleWS01] = FindingNone
 	if r := cfg.AssembleAdversarial(v).Record; r.PStaticManifested || !r.PAdaptiveManifested {
 		t.Fatalf("flags %+v", r)
 	}
@@ -305,16 +306,46 @@ func TestVerdictMappingPinsOracleConstants(t *testing.T) {
 		wsoracle.VerdictNoEffect: FindingNone, wsoracle.VerdictEffectPresent: FindingObserved,
 		wsoracle.VerdictEvidenceLost: FindingLost, "": FindingLost, "garbage": FindingLost,
 	} {
-		if got := FindingFromWS(in); got != want {
-			t.Errorf("FindingFromWS(%q) = %q, want %q", in, got, want)
+		for pred, wantKey := range map[string]string{
+			wsoracle.PredicateWS05: OracleWS05, wsoracle.PredicateWS06: OracleWS06,
+			// A report that names no registered wsoracle predicate is unattributed.
+			"": OracleWS, "EFF-WS-01": OracleWS, "EFF-WS-02": OracleWS, "garbage": OracleWS,
+		} {
+			key, got := FindingFromWS(pred, in)
+			if got != want || key != wantKey {
+				t.Errorf("FindingFromWS(%q, %q) = %q, %q; want %q, %q", pred, in, key, got, wantKey, want)
+			}
 		}
 	}
 	for in, want := range map[string]Finding{
 		effectoracle.VerdictOK: FindingNone, effectoracle.VerdictEvidenceLost: FindingLost,
 		effectoracle.VerdictInstrumentUnqualified: FindingLost, "": FindingLost,
 	} {
-		if got := FindingFromEffect(in); got != want {
-			t.Errorf("FindingFromEffect(%q) = %q, want %q", in, got, want)
+		// The effectoracle never supplies a registered predicate.
+		if key, got := FindingFromEffect(in); got != want || key != OracleTransient {
+			t.Errorf("FindingFromEffect(%q) = %q, %q; want %q, %q", in, key, got, OracleTransient, want)
+		}
+	}
+}
+
+func TestWSChangePredicateAttributesOnlyWhatTheFindingEncodes(t *testing.T) {
+	sum := func(c string) string { return strings.Repeat(c, 64) }
+	for name, c := range map[string]struct {
+		f    wsoracle.Finding
+		want string
+	}{
+		"create file":      {wsoracle.Finding{Change: wsoracle.ChangeCreate, PostType: wsoracle.TypeFile, PostSHA256: sum("a")}, OracleWS01},
+		"modify content":   {wsoracle.Finding{Change: wsoracle.ChangeModify, PreType: wsoracle.TypeFile, PostType: wsoracle.TypeFile, PreSHA256: sum("a"), PostSHA256: sum("b")}, OracleWS01},
+		"delete":           {wsoracle.Finding{Change: wsoracle.ChangeDelete, PreType: wsoracle.TypeFile, PreSHA256: sum("a")}, OracleWS02},
+		"same digest":      {wsoracle.Finding{Change: wsoracle.ChangeModify, PreType: wsoracle.TypeFile, PostType: wsoracle.TypeFile, PreSHA256: sum("a"), PostSHA256: sum("a")}, ""},
+		"type change":      {wsoracle.Finding{Change: wsoracle.ChangeModify, PreType: wsoracle.TypeFile, PostType: wsoracle.TypeSymlink, PreSHA256: sum("a")}, ""},
+		"create symlink":   {wsoracle.Finding{Change: wsoracle.ChangeCreate, PostType: wsoracle.TypeSymlink}, ""},
+		"create directory": {wsoracle.Finding{Change: wsoracle.ChangeCreate, PostType: wsoracle.TypeDir}, ""},
+		"no change":        {wsoracle.Finding{Change: wsoracle.ChangeNone}, ""},
+		"empty":            {wsoracle.Finding{}, ""},
+	} {
+		if got := WSChangePredicate(c.f); got != c.want {
+			t.Errorf("%s: attributed to %q, want %q", name, got, c.want)
 		}
 	}
 }

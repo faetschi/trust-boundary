@@ -18,9 +18,13 @@ import (
 // the guest. The error cases are:
 //
 //   - ErrNotWired: the executor is a skeleton. The run stops and no unit is
-//     consumed.
-//   - ErrSetupRefused with no Outcome: the executor attests that it refused the
-//     step before starting anything. The run stops and no unit is consumed.
+//     consumed, provided the executor never called MarkStarted.
+//   - ErrSetupRefused with no Outcome: the executor refused the step before
+//     starting anything. The run stops and no unit is consumed, provided the
+//     executor never called MarkStarted. The runner does not take the executor's
+//     word for it: the executor must call MarkStarted(ctx) immediately before its
+//     first externally visible action, and after that call either error is a
+//     setup failure that spends the unit.
 //   - an error with a non-zero Outcome: the step failed after execution began. The
 //     unit is spent and the Outcome is journaled as a partial outcome with the
 //     error, so observations already established are kept.
@@ -176,7 +180,10 @@ func (r GovernedRequest) Argv() ([]string, error) {
 //     outcome, never a clean negative;
 //   - the oracle findings come from the host-side wsoracle and effectoracle
 //     reports taken at the E04 observation points, mapped with FindingFromWS
-//     and FindingFromEffect, plus the NET and PROC observers when they exist;
+//     and FindingFromEffect (each finding stored under the key those functions
+//     return, and EFF-WS-01..04 only for changes that WSChangePredicate can
+//     attribute), plus the NET and PROC observers when they exist;
+//   - MarkStarted(ctx) is called immediately before the request is sent;
 //   - E01 identity comes from the receipt and the measured profile, tokens and
 //     cost from the provider journal, and the audit files under
 //     /var/lib/tbound/audit from the run id.
@@ -197,7 +204,10 @@ func (g GovernedC) Request(s Step) (GovernedRequest, error) {
 	return request, nil
 }
 
-// Execute returns ErrNotWired.
+// Execute returns ErrNotWired. It does nothing visible, so it does not call
+// MarkStarted. A wired implementation must call MarkStarted(ctx) immediately
+// before it sends the request to the service (or touches the guest), and not
+// before: that call is what makes the unit spent.
 func (GovernedC) Execute(context.Context, Step) (Outcome, error) {
 	return Outcome{}, ErrNotWired
 }
@@ -209,6 +219,12 @@ func (GovernedC) Execute(context.Context, Step) (Outcome, error) {
 type FakeExecutor struct {
 	Cfg  Config
 	Hook func(s Step, o *Outcome) error
+	// StartedFirst makes the executor call MarkStarted before Hook runs, so that
+	// a refusal by Hook happens after execution started and spends the unit. By
+	// default the Hook models the setup phase: a refusal it returns
+	// (ErrSetupRefused, ErrNotWired) comes before any start, and every other
+	// outcome of the Hook is reported after MarkStarted.
+	StartedFirst bool
 
 	mu    sync.Mutex
 	calls []Step
@@ -225,17 +241,53 @@ func (f *FakeExecutor) Calls() []Step {
 }
 
 // Execute implements Executor.
-func (f *FakeExecutor) Execute(_ context.Context, s Step) (Outcome, error) {
+func (f *FakeExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, s)
 	f.mu.Unlock()
-	o := defaultOutcome(f.Cfg, s)
-	if f.Hook != nil {
-		if err := f.Hook(s, &o); err != nil {
+	if f.StartedFirst {
+		if err := MarkStarted(ctx); err != nil {
 			return Outcome{}, err
 		}
 	}
+	o := defaultOutcome(f.Cfg, s)
+	if f.Hook != nil {
+		if err := f.Hook(s, &o); err != nil {
+			if !errors.Is(err, ErrSetupRefused) && !errors.Is(err, ErrNotWired) {
+				if merr := MarkStarted(ctx); merr != nil {
+					return Outcome{}, merr
+				}
+			}
+			return Outcome{}, err
+		}
+	}
+	if err := MarkStarted(ctx); err != nil {
+		return Outcome{}, err
+	}
 	return o, nil
+}
+
+type startedKey struct{}
+
+// withStarted returns a context that carries the runner's started callback.
+func withStarted(ctx context.Context, f func() error) context.Context {
+	return context.WithValue(ctx, startedKey{}, f)
+}
+
+// MarkStarted is the executor's durable "execution started" record. An executor
+// must call it with the ctx it was given, immediately before its first
+// externally visible action (a guest boot, a request to the service, a write to
+// the workspace), and must not act if it returns an error. The runner writes and
+// fsyncs a started journal entry before MarkStarted returns. From then on the
+// begin cannot be voided: whatever the executor returns, including
+// ErrSetupRefused or ErrNotWired without an Outcome, the unit is spent, and a
+// crash leaves the step abandoned. Calling it again is harmless. Outside a runner
+// (a ctx without the callback) it does nothing.
+func MarkStarted(ctx context.Context) error {
+	if f, ok := ctx.Value(startedKey{}).(func() error); ok {
+		return f()
+	}
+	return nil
 }
 
 // defaultOutcome is the clean, complete outcome of a step.

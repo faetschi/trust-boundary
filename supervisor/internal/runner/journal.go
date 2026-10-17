@@ -21,6 +21,11 @@ const (
 	// EntryBegin is written, and synced, before an executor starts. From then on
 	// the unit is spent whatever happens.
 	EntryBegin EntryKind = "begin"
+	// EntryStarted is written, and synced, when the executor calls MarkStarted:
+	// immediately before its first externally visible action. From then on the
+	// begin cannot be voided, whatever the executor returns, and a crash leaves the
+	// step abandoned with its unit spent. It does not end the step.
+	EntryStarted EntryKind = "started"
 	// EntryDone ends a begun step with an Outcome, or with a SetupFailure. An
 	// Outcome with an ExecError is the partial outcome of a step that failed after
 	// execution began.
@@ -31,8 +36,9 @@ const (
 	// its error; without one it scores as missing evidence.
 	EntryAbandoned EntryKind = "abandoned"
 	// EntryVoid cancels a begin whose executor turned out not to be wired, or
-	// refused the step before it started anything (ErrSetupRefused). The unit is
-	// not spent.
+	// refused the step before it started anything (ErrSetupRefused) and never
+	// recorded a started entry. The unit is not spent. A begun step with a started
+	// entry cannot be voided.
 	EntryVoid EntryKind = "void"
 )
 
@@ -70,6 +76,7 @@ type stepKey struct {
 
 type keyState struct {
 	begun    bool // a begin that has not been voided
+	started  bool // the executor recorded the start of execution
 	terminal *Entry
 }
 
@@ -223,6 +230,14 @@ func (j *Journal) begunOf(id string, attempt int) bool {
 	return st != nil && st.begun
 }
 
+// startedOf is true when the step attempt has a started entry.
+func (j *Journal) startedOf(id string, attempt int) bool {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	st := j.state[stepKey{id, attempt}]
+	return st != nil && st.started
+}
+
 // rerunOf returns the step of the case that was rerun, if any.
 func (j *Journal) rerunOf(caseID string) (stepKey, bool) {
 	j.mu.Lock()
@@ -319,6 +334,16 @@ func (j *Journal) check(e Entry) error {
 				return j.corrupt("case %q has a second rerun (%q after %q)", step.CaseID, e.StepID, prev.id)
 			}
 		}
+	case EntryStarted:
+		if st == nil || !st.begun || st.terminal != nil {
+			return j.corrupt("started for %q attempt %d without an open begin", e.StepID, e.Attempt)
+		}
+		if st.started {
+			return j.corrupt("%q attempt %d started twice", e.StepID, e.Attempt)
+		}
+		if e.Outcome != nil || e.SetupFailure != "" || e.ExecError != "" {
+			return j.corrupt("started record of %q carries a result", e.StepID)
+		}
 	case EntryDone, EntryAbandoned, EntryVoid:
 		if st == nil || !st.begun {
 			return j.corrupt("%s for %q attempt %d without a begin", e.Kind, e.StepID, e.Attempt)
@@ -331,6 +356,9 @@ func (j *Journal) check(e Entry) error {
 		}
 		if e.Kind == EntryVoid && e.Outcome != nil {
 			return j.corrupt("void record of %q carries an outcome", e.StepID)
+		}
+		if e.Kind == EntryVoid && st.started {
+			return j.corrupt("void record of %q attempt %d after execution started", e.StepID, e.Attempt)
 		}
 		if e.ExecError != "" && (e.Kind != EntryDone || e.Outcome == nil) {
 			return j.corrupt("exec_error of %q without a done outcome", e.StepID)
@@ -363,6 +391,8 @@ func (j *Journal) commit(e Entry) error {
 			step, _ := j.sched.Lookup(e.StepID)
 			j.rerun[step.CaseID] = k
 		}
+	case EntryStarted:
+		st.started = true
 	case EntryVoid:
 		st.begun = false
 		j.units--

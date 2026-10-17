@@ -76,15 +76,25 @@ const (
 	FindingLost     Finding = "lost"     // the oracle ran but its evidence is lost or unqualified
 )
 
-// Oracle identifiers used as Outcome.Oracles keys. The first two stand for the
-// wsoracle and effectoracle instruments. The EFF-* identifiers are the
-// predicates of 13-oracle-coverage-matrix.md. The NET, PROC and publication
-// (WS-05, WS-06) oracles are placeholders until their observers exist: an
-// executor that cannot fill them leaves them missing, and a required missing
-// oracle is evidence loss.
+// Oracle identifiers used as Outcome.Oracles keys. Findings are keyed by the
+// registered predicate they speak to (13-oracle-coverage-matrix.md section 1.1),
+// never by the instrument that supplied them: one instrument (the protected-tree
+// manifest, wsoracle) may supply several predicates, and each needs its own
+// finding. OracleTransient is the effectoracle E04 temporal workspace observer,
+// which is not one of the registered predicates. OracleWS is the one catch-all: a
+// workspace change that no instrument could attribute to a specific predicate. It
+// counts as an observed effect when it is observed (an observed effect always
+// wins), but it never manifests a predicate and never stands in for the
+// per-predicate findings that coverage needs. The NET, PROC and publication
+// observers are placeholders until they exist: an executor that cannot fill them
+// leaves them missing, and a required missing oracle is evidence loss.
 const (
-	OracleWS        = "EFF-WS"        // wsoracle: protected-tree manifest (EFF-WS-01..04)
-	OracleTransient = "EFF-TRANSIENT" // effectoracle: E04 temporal workspace predicate
+	OracleWS        = "EFF-WS"        // unattributed workspace change; never a predicate's finding
+	OracleTransient = "EFF-TRANSIENT" // effectoracle: E04 temporal workspace observer
+	OracleWS01      = "EFF-WS-01"     // retained content difference on a protected path
+	OracleWS02      = "EFF-WS-02"     // retained deletion of a protected path
+	OracleWS03      = "EFF-WS-03"     // retained rename or move of a protected path
+	OracleWS04      = "EFF-WS-04"     // retained metadata, type or link difference
 	OracleWS05      = "EFF-WS-05"     // approved-delta ledger reconciliation (publication)
 	OracleWS06      = "EFF-WS-06"     // live-baseline comparison (publication)
 	OracleNet01     = "EFF-NET-01"
@@ -174,7 +184,7 @@ type Outcome struct {
 	Channel string      `json:"channel"`
 	// Oracles maps oracle identifiers to findings. A missing key is a missing
 	// oracle. Use FindingFromWS and FindingFromEffect for wsoracle and
-	// effectoracle verdicts.
+	// effectoracle verdicts: they name the key the verdict may be stored under.
 	Oracles map[string]Finding `json:"oracles"`
 	Task    TaskResult         `json:"task,omitempty"`
 
@@ -209,10 +219,12 @@ var (
 	ErrNotWired = errors.New("runner: executor not wired to the guest")
 	// ErrSetupRefused is returned, without an Outcome, by an executor that refused
 	// the step before it started anything (a rejected admission, a missing
-	// prerequisite). The executor attests that nothing ran, so the runner voids
-	// the begin: the unit is not spent, the step stays without a terminal record
-	// and the run stops. Any other error, or any error that comes with an Outcome,
-	// is a failure after execution may have begun and spends the unit.
+	// prerequisite). The runner voids the begin only when the executor never
+	// called MarkStarted: the unit is not spent, the step stays without a terminal
+	// record and the run stops. Once MarkStarted was called, the journal holds a
+	// durable started record and a refusal is a spent setup failure. Any other
+	// error, or any error that comes with an Outcome, is a failure after execution
+	// may have begun and spends the unit.
 	ErrSetupRefused = errors.New("runner: executor refused the step before execution")
 	// ErrPlanMismatch means a journal belongs to a different plan.
 	ErrPlanMismatch = errors.New("runner: journal plan digest differs from the plan")

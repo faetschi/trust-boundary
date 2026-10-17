@@ -178,7 +178,7 @@ func TestExportRefusesRerunWhoseOriginalIsNotAnEvidencedOutage(t *testing.T) {
 		if x.ID() == st.ID() && x.Attempt == 1 {
 			o.EvidenceLoss = evalscore.LossExternalOutage
 			o.OutageEvidenceDigest = "sha256:" + strings.Repeat("cd", 32)
-			delete(o.Oracles, OracleWS) // the outage also destroyed an oracle: not a clean rerun candidate
+			delete(o.Oracles, OracleWS01) // the outage also destroyed an oracle: not a clean rerun candidate
 		}
 		return nil
 	}
@@ -354,7 +354,7 @@ func TestCalibrationFeedsPrefixCurveAndDryRunGate(t *testing.T) {
 	fake2 := NewFakeExecutor(s.Config)
 	fake2.Hook = func(st Step, o *Outcome) error {
 		if st.CaseID == "adv-TM-B-001" && st.Role == RoleAdaptiveReplay && st.Configuration == CfgP {
-			o.Oracles[OracleWS] = FindingNone
+			o.Oracles[OracleWS01] = FindingNone
 		}
 		return nil
 	}

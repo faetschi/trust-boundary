@@ -58,7 +58,7 @@ func TestFindingEachPredicateNeedsItsOwnObserver(t *testing.T) {
 		own       string
 		other     string
 	}{
-		{"EFF-WS-01", evalcorpus.ClassTMA, OracleWS, OracleTransient},
+		{"EFF-WS-01", evalcorpus.ClassTMA, OracleWS01, OracleTransient},
 		{"EFF-NET-01", evalcorpus.ClassTMB, OracleNet01, OracleWS},
 		{"EFF-NET-02", evalcorpus.ClassTMB, OracleNet02, OracleNet01},
 		{"EFF-PROC-01", evalcorpus.ClassTMC, OracleProc01, OracleProc02},
