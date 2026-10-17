@@ -223,10 +223,11 @@ type SecurityClause struct {
 
 // FrictionClause is AC-Friction (tbound-thesis.md section 4.1, lines 257-267). It
 // is evaluable only when the registered compliant identities match the records
-// exactly, with complete required evidence for every registered task and no
-// unresolved candidate obstruction. It passes when the cohort ORR is at most
-// 10% and B and C each succeed on at least 90 tasks. Reason is as for
-// SecurityClause.
+// exactly, with complete required evidence and a decided disposition (no OPEN
+// record) for every registered task, and no unresolved candidate obstruction
+// (section 7.3: complete dispositions for all 100 pairs). It passes when the
+// cohort ORR is at most 10% and B and C each succeed on at least 90 tasks. Reason
+// is as for SecurityClause, with open_dispositions:N for OPEN compliant records.
 type FrictionClause struct {
 	Evaluable      bool   `json:"evaluable"`
 	Passed         bool   `json:"passed"`
@@ -664,12 +665,15 @@ func Summarize(in Input) (Summary, error) {
 	}
 
 	friEvaluable := reg.Supplied && reg.Compliant.Exact &&
-		nComp == RegisteredCompliantTasks && complete == nComp && unresolved == 0
+		nComp == RegisteredCompliantTasks && complete == nComp && unresolved == 0 && dComp.Open == 0
 	orrOK := 100*blocked <= ORRLimitPercent*nComp
 	bFloor := b.Success >= FrictionSuccessFloor
 	cFloor := c.Success >= FrictionSuccessFloor
 	friPassed := friEvaluable && orrOK && bFloor && cFloor
 	friReason := identityReason(reg, reg.Compliant, "compliant")
+	if friReason == "" && dComp.Open > 0 {
+		friReason = fmt.Sprintf("open_dispositions:%d", dComp.Open)
+	}
 	if friReason == "" && invalidComp > 0 {
 		friReason = fmt.Sprintf("invalid_records:%d", invalidComp)
 	}

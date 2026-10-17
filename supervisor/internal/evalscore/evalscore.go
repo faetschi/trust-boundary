@@ -296,9 +296,18 @@ func (r CompliantRecord) invalidReason() string {
 //  7. an evidenced external outage on a task that is not a candidate is
 //     EXTERNAL_INFRASTRUCTURE_RERUN. A candidate keeps its label from steps 5
 //     and 6 under an outage, so the rerun cannot erase a blocked task;
-//  8. anything else is OPEN. The thesis gives no label for an unblocked success
-//     or for an unattributed failure. OPEN: the disposition of C-success tasks,
-//     of B-failure tasks, and of C failures whose attribution is unsupported.
+//  8. a C success with complete evidence is VALID_PASS (DECIDED by the user on
+//     2026-10-17: "a compliant task for which Configuration C succeeds (complete
+//     evidence, supported attribution) is VALID_PASS"). Steps 1-4 have already
+//     required identity, observer coverage and no evidence loss. A C success
+//     carries no attribution: validate admits only not_applicable, so the
+//     attribution condition is that value. The decision text does not exclude a
+//     task whose B run failed, so such a task is VALID_PASS too. Its B failure
+//     still counts against the B floor of AC-Friction;
+//  9. anything else is OPEN. The thesis gives no label for a C failure with
+//     unsupported attribution, nor for a B and C failure that is not a candidate.
+//     OPEN: the disposition of B-failure tasks with C failure, and of C failures
+//     whose attribution is unsupported.
 func (r CompliantRecord) Classify() Result {
 	if r.invalidEnum() {
 		return open(ReasonInvalidEnum)
@@ -324,6 +333,9 @@ func (r CompliantRecord) Classify() Result {
 	}
 	if r.EvidenceLoss == LossExternalOutage && !candidate {
 		return decided(ExternalInfrastructureRerun, ReasonExternalOutage)
+	}
+	if r.CSuccess && r.Attribution == AttributionNotApplicable {
+		return decided(ValidPass, ReasonPass)
 	}
 	return open(ReasonUndefinedCompliant)
 }
