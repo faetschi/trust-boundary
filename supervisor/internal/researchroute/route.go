@@ -14,15 +14,24 @@
 //
 // Decisions left to the owner are inputs, not constants: the cap, the stop-rule
 // threshold and the reserve basis come from the ledger configuration, and the
-// provider pin or price ceilings come from the profile. The defaults chosen where
+// provider pin and price ceilings come from the profile. The defaults chosen where
 // the existing APIs left a gap are documented at their use:
 //
 //   - every provider request is its own ledger unit, settled to its actual cost;
 //   - the reserve basis selects the worst case of one request or of one unit;
-//   - actual cost is the larger of the provider-reported cost and the usage
-//     tokens priced at the profile's worst price;
-//   - max_input_tokens cannot be enforced before the provider counts tokens, so
-//     the reservation assumes it and a larger actual cost is recorded with
+//   - every price is the larger of the declared price and the profile's price
+//     ceiling, and the ceilings (provider.max_price, required by the frozen
+//     profile) are sent on every request, so the provider refuses to route above
+//     them in any pricing period, peak or base; reservation and token-only
+//     settlement price at that ceiling;
+//   - actual cost is the provider-reported usage.cost when present; a cost above
+//     the usage tokens priced at the ceiling is an anomaly and is recorded with
+//     SettleOverage; without usage.cost the tokens priced at the ceiling are the
+//     cost;
+//   - max_input_tokens is enforced before the reservation: the request is refused,
+//     with nothing reserved or sent, when its serialized body (an upper bound of
+//     its input tokens) is longer than max_input_tokens. The reservation then
+//     assumes max_input_tokens in full, and a larger actual cost is recorded with
 //     SettleOverage, after which the ledger refuses every later request.
 //
 // Passing tests verify this code only. They establish neither budget feasibility
@@ -73,6 +82,7 @@ var (
 	ErrSpendOverage    = errors.New("provider cost exceeded its reservation; the ledger recorded the overage and refuses further requests")
 	ErrUsageMissing    = errors.New("provider response carries no usable usage; the cost is unknown")
 	ErrWrongRequest    = errors.New("request is not built from this research profile")
+	ErrInputOverBound  = errors.New("research request body exceeds the frozen max_input_tokens bound")
 )
 
 // Paths names the files of the research route. DefaultPaths gives the fixed
@@ -322,8 +332,29 @@ func (b *Bundle) ReserveSpend(_ context.Context, reservation providerbridge.Spen
 			snapshot.RemainingMicroUSD, snapshot.MinPerUnitWorstCaseMicroUSD)
 	}
 	request := reservation.Request
-	if request.URL() != b.route.Endpoint || !bytes.HasSuffix(request.Body(), []byte(","+b.route.Members()[1:])) {
+	body := request.Body()
+	if request.URL() != b.route.Endpoint || !bytes.HasSuffix(body, []byte(","+b.route.Members()[1:])) {
 		return "", ErrWrongRequest
+	}
+	// Input-token bound. The reservation prices max_input_tokens in full, so it is
+	// an upper bound on the charge only if the request cannot carry more input than
+	// that. Nothing else limits the input: system and developer prompts, history and
+	// tool definitions are all in the body. So the exact serialized body that will
+	// be sent (every message, every tool definition and all framing, including the
+	// frozen profile members) is bounded here, before anything is reserved.
+	//
+	// len(body) is the bound. The provider's tokenizer is a byte-level BPE, in which
+	// every token covers at least one byte of its input and no token is produced
+	// from nothing, so the number of tokens the content yields is at most its UTF-8
+	// byte length; the content is no longer than the body that carries it. A token
+	// per byte is the worst case and is far above real prompts (about 3 to 4 bytes
+	// per token), so this refuses some bodies that would have fit, never one that
+	// would not. No tighter bound is claimed. Chat-template special tokens are not
+	// in the body and are a small constant per message, so the reservation keeps the
+	// full frozen max_input_tokens and does not shrink to the bound.
+	if bound := uint64(len(body)); bound > *b.profile.MaxInputTokens {
+		return "", fmt.Errorf("%w: the request body is %d bytes (an upper bound of its input tokens), max_input_tokens is %d",
+			ErrInputOverBound, bound, *b.profile.MaxInputTokens)
 	}
 	amount, err := b.reserveAmount(reservation.CompletionLimit)
 	if err != nil {
@@ -364,9 +395,12 @@ func (b *Bundle) UncertainSpend(_ context.Context, unitID string) error {
 }
 
 // SettleSpend implements providerbridge.SpendAccountant. The actual cost is the
-// larger of the provider-reported usage.cost (US$, rounded up to micro-USD) and
-// the usage token counts priced at the profile's worst price. A cost within the
-// reservation is settled; a larger cost is recorded with SettleOverage and
+// provider-reported usage.cost (US$, rounded up to micro-USD) when present, else
+// the usage token counts priced at the profile's price ceilings (see actualCost).
+// A usage.cost above the tokens priced at the ceilings is an anomaly: the
+// ceilings were sent with the request, so the provider cannot have charged more,
+// and the cost is recorded with SettleOverage. A cost within the reservation and
+// the ceiling price is settled; a larger one is recorded with SettleOverage and
 // reported as ErrSpendOverage, after which the ledger refuses every later
 // reservation. When no cost can be established the unit is marked uncertain and
 // ErrUsageMissing is returned. In every case the unit is left in its final state.
@@ -377,9 +411,16 @@ func (b *Bundle) SettleSpend(_ context.Context, unitID string, usage json.RawMes
 	if !known {
 		return b.uncertainWith(unitID, usdledger.ErrUnknownUnit)
 	}
-	actual, err := b.actualCost(usage)
+	actual, anomaly, err := b.actualCost(usage)
 	if err != nil {
 		return b.uncertainWith(unitID, err)
+	}
+	if anomaly && actual <= reserved {
+		// The ledger records a stop only through SettleOverage, and refuses it for an
+		// amount within the reservation. The anomaly is therefore booked at one
+		// micro-USD above the reservation: never below the reported cost, and the
+		// ledger then refuses every later reservation.
+		actual = reserved + 1
 	}
 	if actual <= reserved {
 		if err := b.ledger.Settle(unitID, actual); err != nil {

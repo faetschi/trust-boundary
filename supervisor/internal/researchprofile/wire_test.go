@@ -19,7 +19,7 @@ func TestRequestMembersRendersTheFrozenProviderParameters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestMembers: %v", err)
 	}
-	const want = `{"provider":{"order":["example-provider"],"allow_fallbacks":false,"data_collection":"deny","require_parameters":true,"zdr":true},"temperature":0,"seed":7,"reasoning":{"enabled":false}}`
+	const want = `{"provider":{"order":["example-provider"],"allow_fallbacks":false,"data_collection":"deny","require_parameters":true,"zdr":true,"max_price":{"prompt":0.001111,"completion":0.002222}},"temperature":0,"seed":7,"reasoning":{"enabled":false}}`
 	if got != want {
 		t.Fatalf("members\n got %s\nwant %s", got, want)
 	}
@@ -30,8 +30,8 @@ func TestRequestMembersRendersTheFrozenProviderParameters(t *testing.T) {
 
 func TestRequestMembersRendersPriceCeilingsInUSDPerMillionTokens(t *testing.T) {
 	doc := replaceOnce(t, syntheticJSON, `"order": ["example-provider"]`, `"order": []`)
-	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_in": null`, `"max_price_micro_usd_per_1m_tokens_in": 270000`)
-	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_out": null`, `"max_price_micro_usd_per_1m_tokens_out": 1100000`)
+	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_in": 1111`, `"max_price_micro_usd_per_1m_tokens_in": 270000`)
+	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_out": 2222`, `"max_price_micro_usd_per_1m_tokens_out": 1100000`)
 	doc = replaceOnce(t, doc, `"quantizations": []`, `"quantizations": ["fp8"]`)
 	got, err := load(t, doc).RequestMembers()
 	if err != nil {

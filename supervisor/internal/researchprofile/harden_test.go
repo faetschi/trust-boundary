@@ -128,8 +128,8 @@ func TestAllowedResponseModelsAreStrictAndPartOfFrozen(t *testing.T) {
 
 func TestWorstCaseUnitUsesThePeakCeilingNotTheBasePrice(t *testing.T) {
 	// Declared (base) 1111/2222; a peak ceiling of 5000/9000 must govern both sides.
-	doc := replaceOnce(t, syntheticJSON, `"max_price_micro_usd_per_1m_tokens_in": null`, `"max_price_micro_usd_per_1m_tokens_in": 5000`)
-	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_out": null`, `"max_price_micro_usd_per_1m_tokens_out": 9000`)
+	doc := replaceOnce(t, syntheticJSON, `"max_price_micro_usd_per_1m_tokens_in": 1111`, `"max_price_micro_usd_per_1m_tokens_in": 5000`)
+	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_out": 2222`, `"max_price_micro_usd_per_1m_tokens_out": 9000`)
 	p := load(t, doc)
 	p.MaxInputTokens = ptr[uint64](1_000_000)
 	p.MaxOutputTokens = ptr[uint64](1_000_000)

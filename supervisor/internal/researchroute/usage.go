@@ -10,48 +10,59 @@ import (
 )
 
 // actualCost establishes the cost of one response from its usage object, in
-// micro-USD. It is the larger of two figures, each used when present:
+// micro-USD, and reports whether the cost is an anomaly.
 //
-//   - the provider-reported "cost" (US dollars, as OpenRouter reports it with
-//     usage accounting enabled), rounded up to whole micro-USD, exactly;
-//   - "prompt_tokens" and "completion_tokens" priced at the profile's worst price
-//     per token, rounded up.
+// The token counts are priced at the profile's price ceilings (the larger of the
+// declared price and the ceiling, see researchprofile.Profile.ActualMicroUSD). The
+// ceilings are sent with every request as provider.max_price, so the provider does
+// not route above them in any pricing period, and tokens priced at the ceilings
+// are a guaranteed upper bound of the charge. They are never priced at a lower
+// declared (base) rate: a weekday peak rate is twice the base rate.
 //
-// Taking the larger figure never understates spend when one of them is wrong. If
-// neither can be read, the cost is unknown and ErrUsageMissing is returned.
-func (b *Bundle) actualCost(usage json.RawMessage) (int64, error) {
+//   - usage.cost present (US dollars, as OpenRouter reports it), rounded up to
+//     whole micro-USD, exactly: the cost is the settled amount, so that genuine
+//     costs are not over-counted. If the token counts are also present and the
+//     cost is greater than their ceiling price, the provider charged beyond what
+//     the ceilings allow. That is an anomaly (anomaly is true): the caller records
+//     it with SettleOverage, which stops the ledger.
+//   - usage.cost absent: the token counts priced at the ceilings are the cost.
+//
+// If neither can be read, the cost is unknown and ErrUsageMissing is returned.
+func (b *Bundle) actualCost(usage json.RawMessage) (micro int64, anomaly bool, err error) {
 	if len(usage) == 0 {
-		return 0, ErrUsageMissing
+		return 0, false, ErrUsageMissing
 	}
 	var members map[string]json.RawMessage
 	if err := json.Unmarshal(usage, &members); err != nil || members == nil {
-		return 0, fmt.Errorf("%w: usage is not an object", ErrUsageMissing)
+		return 0, false, fmt.Errorf("%w: usage is not an object", ErrUsageMissing)
 	}
-	var best int64
-	found := false
+	var reported int64
+	costOK := false
 	if raw, ok := members["cost"]; ok && string(raw) != "null" {
-		micro, err := usdToMicro(raw)
+		reported, err = usdToMicro(raw)
 		if err != nil {
-			return 0, fmt.Errorf("%w: cost: %w", ErrUsageMissing, err)
+			return 0, false, fmt.Errorf("%w: cost: %w", ErrUsageMissing, err)
 		}
-		best, found = micro, true
+		costOK = true
 	}
+	var ceiling int64
+	ceilingOK := false
 	prompt, promptOK := tokenCount(members["prompt_tokens"])
 	completion, completionOK := tokenCount(members["completion_tokens"])
 	if promptOK && completionOK {
 		priced, err := b.profile.ActualMicroUSD(prompt, completion)
 		if err != nil || priced > math.MaxInt64 {
-			return 0, errors.Join(ErrUsageMissing, err)
+			return 0, false, errors.Join(ErrUsageMissing, err)
 		}
-		if !found || int64(priced) > best {
-			best = int64(priced)
-		}
-		found = true
+		ceiling, ceilingOK = int64(priced), true
 	}
-	if !found {
-		return 0, ErrUsageMissing
+	switch {
+	case costOK:
+		return reported, ceilingOK && reported > ceiling, nil
+	case ceilingOK:
+		return ceiling, false, nil
 	}
-	return best, nil
+	return 0, false, ErrUsageMissing
 }
 
 // tokenCount reads a non-negative integer token count.

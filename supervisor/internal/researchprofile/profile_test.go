@@ -53,8 +53,8 @@ const syntheticJSON = `{
   },
   "input_micro_usd_per_1m_tokens": 1111,
   "output_micro_usd_per_1m_tokens": 2222,
-  "max_price_micro_usd_per_1m_tokens_in": null,
-  "max_price_micro_usd_per_1m_tokens_out": null,
+  "max_price_micro_usd_per_1m_tokens_in": 1111,
+  "max_price_micro_usd_per_1m_tokens_out": 2222,
   "max_input_tokens": 1000,
   "max_output_tokens": 100,
   "max_requests_per_unit": 3,
@@ -67,7 +67,7 @@ const syntheticJSON = `{
 
 // syntheticCanonical is the canonical encoding of syntheticJSON: fixed field
 // order, no insignificant whitespace, explicit nulls. Digest must be its SHA-256.
-const syntheticCanonical = `{"schema_version":1,"endpoint":"https://openrouter.ai/api/v1/chat/completions","model":"deepseek/deepseek-v4.1-flash","allowed_response_models":["deepseek/deepseek-v4.1-flash"],"routing":{"order":["example-provider"],"allow_fallbacks":false,"data_collection":"deny","quantizations":[],"require_parameters":true,"zdr":true},"input_micro_usd_per_1m_tokens":1111,"output_micro_usd_per_1m_tokens":2222,"max_price_micro_usd_per_1m_tokens_in":null,"max_price_micro_usd_per_1m_tokens_out":null,"max_input_tokens":1000,"max_output_tokens":100,"max_requests_per_unit":3,"temperature_milli":0,"seed":7,"reasoning":{"enabled":false},"timeout_ms":1234,"frozen_at":"2026-10-15T00:00:00Z"}`
+const syntheticCanonical = `{"schema_version":1,"endpoint":"https://openrouter.ai/api/v1/chat/completions","model":"deepseek/deepseek-v4.1-flash","allowed_response_models":["deepseek/deepseek-v4.1-flash"],"routing":{"order":["example-provider"],"allow_fallbacks":false,"data_collection":"deny","quantizations":[],"require_parameters":true,"zdr":true},"input_micro_usd_per_1m_tokens":1111,"output_micro_usd_per_1m_tokens":2222,"max_price_micro_usd_per_1m_tokens_in":1111,"max_price_micro_usd_per_1m_tokens_out":2222,"max_input_tokens":1000,"max_output_tokens":100,"max_requests_per_unit":3,"temperature_milli":0,"seed":7,"reasoning":{"enabled":false},"timeout_ms":1234,"frozen_at":"2026-10-15T00:00:00Z"}`
 
 func load(t *testing.T, doc string) Profile {
 	t.Helper()
@@ -169,7 +169,7 @@ func TestLoadRejectsMalformedDocuments(t *testing.T) {
 		{"zero price", replaceOnce(t, draftJSON, `"output_micro_usd_per_1m_tokens": null`, `"output_micro_usd_per_1m_tokens": 0`), "output_micro_usd_per_1m_tokens must be positive"},
 		{"zero seed", replaceOnce(t, draftJSON, `"seed": null`, `"seed": 0`), "seed must be positive"},
 		{"zero ceiling", replaceOnce(t, draftJSON, `"max_price_micro_usd_per_1m_tokens_in": null`, `"max_price_micro_usd_per_1m_tokens_in": 0`), "max_price_micro_usd_per_1m_tokens_in must be positive"},
-		{"ceiling pair half set", replaceOnce(t, syntheticJSON, `"max_price_micro_usd_per_1m_tokens_in": null`, `"max_price_micro_usd_per_1m_tokens_in": 5000`), "must be set together"},
+		{"ceiling pair half set", replaceOnce(t, syntheticJSON, `"max_price_micro_usd_per_1m_tokens_in": 1111`, `"max_price_micro_usd_per_1m_tokens_in": null`), "must be set together"},
 		{"temperature above 2", replaceOnce(t, draftJSON, `"temperature_milli": null`, `"temperature_milli": 2001`), "temperature_milli must be from 0 to 2000"},
 		{"date without time", replaceOnce(t, draftJSON, `"frozen_at": null`, `"frozen_at": "2026-10-15"`), "frozen_at must be an RFC 3339 timestamp"},
 		{"unknown data_collection", replaceOnce(t, draftJSON, `"data_collection": null`, `"data_collection": "maybe"`), `data_collection must be "allow" or "deny"`},
@@ -249,22 +249,39 @@ func TestFrozenRequiresEveryOpenField(t *testing.T) {
 	}
 }
 
-func TestFrozenRejectsUnpinnedRoutingWithoutPriceCeiling(t *testing.T) {
-	p := load(t, syntheticJSON)
-	p.Routing.Order = []string{}
-	if err := p.Validate(); err != nil {
-		t.Fatalf("Validate with empty order: %v", err)
+// A provider pin never replaces the price ceilings: peak-period prices can be
+// double the base prices, and only the ceilings (sent on every request) bound the
+// charge in every pricing period.
+func TestFrozenAlwaysRequiresBothPriceCeilings(t *testing.T) {
+	for name, order := range map[string][]string{
+		"provider order set":   {"example-provider"},
+		"empty provider order": {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := load(t, syntheticJSON)
+			p.Routing.Order = order
+			p.MaxPriceMicroPerMTokIn, p.MaxPriceMicroPerMTokOut = nil, nil
+			if err := p.Validate(); err != nil {
+				t.Fatalf("Validate without ceilings: %v", err)
+			}
+			if p.Frozen() {
+				t.Fatal("Frozen accepted a profile without price ceilings")
+			}
+			requireReason(t, p.FrozenReason(), ErrPriceCeilingRequired, "max_price")
+			if _, err := p.RequestMembers(); !errors.Is(err, ErrNotFrozen) {
+				t.Fatalf("request members rendered without ceilings: %v", err)
+			}
+			if _, err := p.WorstCaseMicroUSD(1, 1); !errors.Is(err, ErrNotFrozen) {
+				t.Fatalf("worst case priced without ceilings: %v", err)
+			}
+		})
 	}
-	if p.Frozen() {
-		t.Fatal("Frozen accepted empty provider order with no price ceiling")
-	}
-	requireReason(t, p.FrozenReason(), ErrUnpinnedRouting, "provider pin")
 }
 
 func TestFrozenAcceptsPriceCeilingInPlaceOfProviderPin(t *testing.T) {
 	doc := replaceOnce(t, syntheticJSON, `"order": ["example-provider"]`, `"order": []`)
-	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_in": null`, `"max_price_micro_usd_per_1m_tokens_in": 5000`)
-	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_out": null`, `"max_price_micro_usd_per_1m_tokens_out": 3000`)
+	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_in": 1111`, `"max_price_micro_usd_per_1m_tokens_in": 5000`)
+	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_out": 2222`, `"max_price_micro_usd_per_1m_tokens_out": 3000`)
 	p := load(t, doc)
 	if err := p.FrozenReason(); err != nil {
 		t.Fatalf("empty order with both price ceilings: %v", err)
@@ -322,8 +339,8 @@ func TestWorstCaseMicroUSDIsIntegerCeiling(t *testing.T) {
 func TestWorstCaseUsesMaxOfDeclaredPriceAndCeiling(t *testing.T) {
 	// Declared 1111 and 2222. The input ceiling 5000 is higher, so it governs the
 	// input side. The output ceiling 1000 is lower, so the declared 2222 governs.
-	doc := replaceOnce(t, syntheticJSON, `"max_price_micro_usd_per_1m_tokens_in": null`, `"max_price_micro_usd_per_1m_tokens_in": 5000`)
-	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_out": null`, `"max_price_micro_usd_per_1m_tokens_out": 1000`)
+	doc := replaceOnce(t, syntheticJSON, `"max_price_micro_usd_per_1m_tokens_in": 1111`, `"max_price_micro_usd_per_1m_tokens_in": 5000`)
+	doc = replaceOnce(t, doc, `"max_price_micro_usd_per_1m_tokens_out": 2222`, `"max_price_micro_usd_per_1m_tokens_out": 1000`)
 	p := load(t, doc)
 	p.MaxInputTokens = ptr[uint64](1_000_000)
 	p.MaxOutputTokens = ptr[uint64](1_000_000)
@@ -419,11 +436,11 @@ func TestDigestIgnoresFormattingNotValues(t *testing.T) {
 
 func TestDigestCoversPriceCeilingsAndRoutingFlags(t *testing.T) {
 	base := mustDigest(t, load(t, syntheticJSON))
-	ceilings := replaceOnce(t, syntheticJSON, `"max_price_micro_usd_per_1m_tokens_in": null`, `"max_price_micro_usd_per_1m_tokens_in": 5000`)
-	ceilings = replaceOnce(t, ceilings, `"max_price_micro_usd_per_1m_tokens_out": null`, `"max_price_micro_usd_per_1m_tokens_out": 3000`)
+	ceilings := replaceOnce(t, syntheticJSON, `"max_price_micro_usd_per_1m_tokens_in": 1111`, `"max_price_micro_usd_per_1m_tokens_in": 5000`)
+	ceilings = replaceOnce(t, ceilings, `"max_price_micro_usd_per_1m_tokens_out": 2222`, `"max_price_micro_usd_per_1m_tokens_out": 3000`)
 	withCeiling := mustDigest(t, load(t, ceilings))
 	if withCeiling == base {
-		t.Fatal("setting a price ceiling pair did not change the digest")
+		t.Fatal("changing the price ceiling pair did not change the digest")
 	}
 	withZDR := mustDigest(t, load(t, replaceOnce(t, syntheticJSON, `"zdr": true`, `"zdr": false`)))
 	if withZDR == base {

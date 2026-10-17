@@ -12,8 +12,8 @@
 // to each other.
 //
 // A JSON null marks a value OPEN (not yet decided). Freezing requires every
-// required field to be decided, a provider pin or a price ceiling pair, and
-// temperature 0. The decision doc requires freezing provider routing, current
+// required field to be decided, both price ceilings (a provider pin never replaces
+// them) and temperature 0. The decision doc requires freezing provider routing, current
 // price ceilings and request/token limits before paid execution.
 //
 // Scope: the tests verify code only, with synthetic numbers and no provider
@@ -61,16 +61,21 @@ var ErrNotFrozen = errors.New("research profile is not frozen")
 // names the field.
 var ErrOpenField = errors.New("research profile field is OPEN")
 
-// ErrUnpinnedRouting reports an empty provider order with no price ceiling pair.
-var ErrUnpinnedRouting = errors.New("research profile needs a provider pin (non-empty routing.order) or both price ceilings")
+// ErrPriceCeilingRequired reports a profile without both price ceilings
+// (provider.max_price prompt and completion). A provider pin does not replace
+// them: prices can change by period (OpenRouter weekday peak overrides double the
+// base rates), and only a ceiling that is sent on every request bounds the charge
+// in every period.
+var ErrPriceCeilingRequired = errors.New("research profile needs both provider.max_price ceilings (max_price_micro_usd_per_1m_tokens_in and _out), also when a provider order is set")
 
 // ErrTemperatureNotZero reports a temperature_milli other than 0. The thesis pins
 // temperature at zero.
 var ErrTemperatureNotZero = errors.New("research profile temperature_milli must be 0 (temperature-zero is pinned)")
 
 // Routing mirrors OpenRouter's provider-routing request object. A nil field is
-// OPEN. An empty order means no provider pin, which Frozen accepts only with a
-// price ceiling pair. An empty quantizations list is an explicit "no constraint".
+// OPEN. An empty order means no provider pin, which Frozen accepts (the price
+// ceilings, always required, bound the price). An empty quantizations list is an
+// explicit "no constraint".
 type Routing struct {
 	Order          []string `json:"order"`
 	AllowFallbacks *bool    `json:"allow_fallbacks"`
@@ -108,9 +113,12 @@ type Profile struct {
 	Routing               Routing  `json:"routing"`
 	InputMicroUSDPer1M    *uint64  `json:"input_micro_usd_per_1m_tokens"`
 	OutputMicroUSDPer1M   *uint64  `json:"output_micro_usd_per_1m_tokens"`
-	// MaxPriceMicroPerMTokIn and MaxPriceMicroPerMTokOut are optional price
-	// ceilings. They are set as a pair or not at all, and the worst case uses the
-	// larger of each declared price and its ceiling.
+	// MaxPriceMicroPerMTokIn and MaxPriceMicroPerMTokOut are the price ceilings
+	// (provider.max_price prompt and completion, per million tokens). They are set
+	// as a pair, and Frozen requires both. They are sent on every request, so the
+	// provider refuses to route above them in any pricing period. Every price in
+	// this package (reservation, worst case, token-only settlement) is the larger of
+	// the declared price and its ceiling.
 	MaxPriceMicroPerMTokIn  *uint64 `json:"max_price_micro_usd_per_1m_tokens_in"`
 	MaxPriceMicroPerMTokOut *uint64 `json:"max_price_micro_usd_per_1m_tokens_out"`
 	MaxInputTokens          *uint64 `json:"max_input_tokens"`
@@ -235,11 +243,12 @@ func (p Profile) Frozen() bool {
 //     max_input_tokens, max_output_tokens and max_requests_per_unit;
 //     temperature_milli, seed, timeout_ms and frozen_at. A null field is OPEN
 //     and fails with ErrOpenField, which names the field;
-//   - routing has a provider pin (a non-empty order) or both price ceilings,
-//     else ErrUnpinnedRouting;
+//   - both price ceilings are set, whether or not a provider order is, else
+//     ErrPriceCeilingRequired;
 //   - temperature_milli is 0, else ErrTemperatureNotZero.
 //
-// The ceilings are optional. Frozen never reads them as OPEN.
+// A missing ceiling pair is reported as ErrPriceCeilingRequired, not as an OPEN
+// field.
 func (p Profile) FrozenReason() error {
 	if err := p.Validate(); err != nil {
 		return err
@@ -270,9 +279,10 @@ func (p Profile) FrozenReason() error {
 			return fmt.Errorf("%w: %s", ErrOpenField, f.name)
 		}
 	}
-	// Validate has already required the two ceilings to be set together.
-	if len(p.Routing.Order) == 0 && p.MaxPriceMicroPerMTokIn == nil {
-		return ErrUnpinnedRouting
+	// Validate has already required the two ceilings to be set together, so one
+	// check covers both. A provider order does not stand in for them.
+	if p.MaxPriceMicroPerMTokIn == nil || p.MaxPriceMicroPerMTokOut == nil {
+		return ErrPriceCeilingRequired
 	}
 	if *p.TemperatureMilli != 0 {
 		return ErrTemperatureNotZero
