@@ -1,0 +1,212 @@
+package runner
+
+import (
+	"errors"
+	"fmt"
+
+	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/evalscore"
+)
+
+// Configuration is an evaluation configuration (tbound-thesis.md section 6).
+type Configuration string
+
+const (
+	// CfgA is native Pi in the cell. Diagnostic only and outside the 1,935 units,
+	// so Plan never emits an A step. The executor slot exists so that a separate
+	// diagnostic plan can reuse this runner.
+	CfgA Configuration = "A"
+	// CfgB is proxy tools with a no-op gate.
+	CfgB Configuration = "B"
+	// CfgC is proxy tools with the gate: the confirmatory treatment.
+	CfgC Configuration = "C"
+	// CfgP is a deterministic stub or hostile entrypoint in a synthetic fixture.
+	// It makes no model call and is calibration only.
+	CfgP Configuration = "P"
+	// CfgV is native Pi without tbound (descriptive).
+	CfgV Configuration = "V"
+)
+
+// Role says what a step is for within its case.
+type Role string
+
+const (
+	RoleTrajectory     Role = "trajectory"      // the C adversarial trajectory
+	RoleStaticReplay   Role = "static-replay"   // one half (P or C) of the static P/C pair
+	RoleAdaptiveReplay Role = "adaptive-replay" // one half (P or C) of the adaptive P/C pair
+	RoleCompliant      Role = "compliant"       // B, C or V run of a compliant task
+	RoleAmbiguous      Role = "ambiguous"       // B or C run of an ambiguous case (outside evalscore)
+	RoleVarianceRepeat Role = "variance-repeat" // separate-session C repeat of a variance-subset case
+)
+
+// Step is one execution unit. Every step costs exactly one unit.
+type Step struct {
+	// Index is the allocation sequence index: the position in the plan, which is
+	// also the unit index.
+	Index         int                    `json:"index"`
+	CaseID        string                 `json:"case_id"`
+	Kind          evalcorpus.Kind        `json:"kind"`
+	ThreatClass   evalcorpus.ThreatClass `json:"threat_class,omitempty"`
+	Configuration Configuration          `json:"configuration"`
+	Role          Role                   `json:"role"`
+	// Repeat is 1 or 2 for a variance repeat and 0 otherwise.
+	Repeat int `json:"repeat"`
+	// Attempt is 1 in the plan. The runner sets 2 on the copy it passes to an
+	// executor for the one permitted outage rerun.
+	Attempt int `json:"attempt"`
+	// Predicate is the registered forbidden-effect predicate of an adversarial
+	// case's P/C pair (its first ForbiddenEffects entry) and WitnessID its
+	// registered per-channel witness. Both are empty for other kinds.
+	Predicate string `json:"predicate,omitempty"`
+	WitnessID string `json:"witness_id,omitempty"`
+}
+
+// ID identifies the step across attempts. The attempt is not part of it.
+func (s Step) ID() string {
+	return fmt.Sprintf("%s|%s|%s|%d", s.CaseID, s.Role, s.Configuration, s.Repeat)
+}
+
+// Finding is one oracle's result for one trial. The empty value means the
+// oracle reported nothing, which is never a negative.
+type Finding string
+
+const (
+	FindingNone     Finding = "none"     // complete evidence, no effect
+	FindingObserved Finding = "observed" // the effect was observed
+	FindingLost     Finding = "lost"     // the oracle ran but its evidence is lost or unqualified
+)
+
+// Oracle identifiers used as Outcome.Oracles keys. The first two stand for the
+// wsoracle and effectoracle instruments. The EFF-* identifiers are the
+// predicates of 13-oracle-coverage-matrix.md. The NET and PROC oracles are
+// placeholders until their observers exist: an executor that cannot fill them
+// leaves them missing, and a required missing oracle is evidence loss.
+const (
+	OracleWS        = "EFF-WS"        // wsoracle: protected-tree manifest (WS family)
+	OracleTransient = "EFF-TRANSIENT" // effectoracle: E04 temporal workspace predicate
+	OracleNet01     = "EFF-NET-01"
+	OracleNet02     = "EFF-NET-02"
+	OracleProc01    = "EFF-PROC-01"
+	OracleProc02    = "EFF-PROC-02"
+	OracleProc03    = "EFF-PROC-03"
+)
+
+// TaskResult is the independent acceptance-test result of a compliant task run.
+// The empty value means the oracle reported nothing.
+type TaskResult string
+
+const (
+	TaskPass TaskResult = "pass"
+	TaskFail TaskResult = "fail"
+	TaskLost TaskResult = "lost"
+)
+
+// E01Identity is the E01 identity and generation record of a trial: its digest
+// and whether the host verified it against the registered pins.
+type E01Identity struct {
+	Digest   string `json:"digest"`
+	Verified bool   `json:"verified"`
+}
+
+// RouteCoverage is the E06 exposure-matrix coverage (routematrix.Report) that
+// held for the trial.
+type RouteCoverage struct {
+	Complete bool   `json:"complete"`
+	Digest   string `json:"digest,omitempty"`
+}
+
+// Obligation is one EVQ obligation result for a trial.
+type Obligation struct {
+	ID     string `json:"id"`
+	Passed bool   `json:"passed"`
+}
+
+// Metrics are the per-trial measurements of tbound-thesis.md section 7.4.
+// Latencies come from the executor's monotonic clock.
+type Metrics struct {
+	LatencyMS     int   `json:"latency_ms"`
+	GateLatencyMS int   `json:"gate_latency_ms"`
+	InTokens      int   `json:"in_tokens"`
+	OutTokens     int   `json:"out_tokens"`
+	CostMicroUSD  int64 `json:"cost_micro_usd"`
+	ToolCalls     int   `json:"tool_calls"`
+	Retries       int   `json:"retries"`
+}
+
+// CalibrationEvidence is what a P step reports about its witness. Whether the
+// effect manifested is derived from the oracle findings, not stated here.
+type CalibrationEvidence struct {
+	WitnessID          string   `json:"witness_id"`
+	WitnessPredicateID string   `json:"witness_predicate_id"`
+	Evidence           []string `json:"evidence"`
+	// Injected marks direct oracle injection, which is never calibration evidence.
+	Injected bool `json:"injected"`
+	// Attempts is 1 for the static run and the adaptive iteration count for the
+	// adaptive run (the prefix-curve input).
+	Attempts int `json:"attempts"`
+}
+
+// AttackerTerminal is the terminal state of an adaptive attacker run.
+type AttackerTerminal struct {
+	Stop        string `json:"stop"`
+	Attempts    int    `json:"attempts"`
+	Iterations  int64  `json:"iterations"`
+	StateDigest string `json:"state_digest"`
+}
+
+// AttemptsToManifest returns the number of pivots up to and including the one
+// that manifested the effect, and false if the run did not manifest it.
+func (a AttackerTerminal) AttemptsToManifest() (int, bool) {
+	if a.Stop != "manifested" {
+		return 0, false
+	}
+	return a.Attempts, true
+}
+
+// Outcome is everything an executor reports about one step. Verdicts are
+// recorded as findings; the runner never accepts a bare success flag for a
+// security result.
+type Outcome struct {
+	E01     E01Identity `json:"e01"`
+	Channel string      `json:"channel"`
+	// Oracles maps oracle identifiers to findings. A missing key is a missing
+	// oracle. Use FindingFromWS and FindingFromEffect for wsoracle and
+	// effectoracle verdicts.
+	Oracles map[string]Finding `json:"oracles"`
+	Task    TaskResult         `json:"task,omitempty"`
+
+	ToolAttempt     bool `json:"tool_attempt"`
+	ResidualAttempt bool `json:"residual_attempt"`
+	// MatchedDelivery is true when a C replay received the registered stimulus
+	// unchanged.
+	MatchedDelivery bool `json:"matched_delivery"`
+
+	Calibration *CalibrationEvidence `json:"calibration,omitempty"`
+	Attacker    *AttackerTerminal    `json:"attacker,omitempty"`
+	Route       RouteCoverage        `json:"route"`
+	EVQ         []Obligation         `json:"evq"`
+
+	EvidenceLoss         evalscore.EvidenceLoss `json:"evidence_loss"`
+	OutageEvidenceDigest string                 `json:"outage_evidence_digest,omitempty"`
+
+	Metrics Metrics `json:"metrics"`
+}
+
+// Sentinel errors.
+var (
+	// ErrNotWired is returned by an executor that needs the guest and is not yet
+	// implemented. The runner treats it as a fatal, unit-free refusal.
+	ErrNotWired = errors.New("runner: executor not wired to the guest")
+	// ErrPlanMismatch means a journal belongs to a different plan.
+	ErrPlanMismatch = errors.New("runner: journal plan digest differs from the plan")
+	// ErrJournalCorrupt means a journal failed validation other than a torn tail.
+	ErrJournalCorrupt = errors.New("runner: journal is corrupt")
+	// ErrOverPlanned means the plan has more steps than the unit cap.
+	ErrOverPlanned = errors.New("runner: plan exceeds the unit cap")
+	// ErrRerunNotAllowed means the original outcome lacks outage evidence.
+	ErrRerunNotAllowed = errors.New("runner: rerun needs an original outcome with an evidenced external outage")
+	// ErrRerunLimit means the case already used its one rerun.
+	ErrRerunLimit = errors.New("runner: the case already has its one rerun")
+	// ErrBudgetExhausted means starting the step would exceed the unit or USD budget.
+	ErrBudgetExhausted = errors.New("runner: budget exhausted")
+)
