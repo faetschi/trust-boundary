@@ -1,70 +1,96 @@
-# Hyper-V disposable restore acceptance
+# Hyper-V disposable checkpoint-restore acceptance (ABI 8 guest)
 
-**Status: planned and untested.** No checkpoint restore has been performed. This runbook does not authorize the restore now: wait until the latest offline-verifier failure has been collected and diagnosed and the coordinator has issued the restore step. Temporary trusted maintenance networking is already approved; the required host NIC connect/disconnect remains a human Hyper-V action.
+**Status: planned and untested.** No checkpoint has been created and no restore has been performed on this guest. **Every VM state change below (shutdown, NIC change, start, checkpoint create, Apply) requires explicit owner approval, given separately per action and released by the coordinator.** This file does not grant any of them. All steps are run by a human in an elevated Hyper-V admin shell or the VM console; automation and agents do not run them. Do not run untrusted code, agent tasks, or fault injection during this procedure.
 
-This is a narrow test of the existing checkpoint on the existing VM. Treat every command here as executable code; run only the listed trusted host and console operations. Do not run untrusted code, agent tasks, adversarial tests, or fault injection during this procedure. Do not create a checkpoint, export or duplicate the VM, expand its disk, or delete AVHDX files.
+Scope: file-state restore only, no freeze/thaw. A pass shows that this checkpoint restored the tested guest file state on this VM. It makes no claim about production-checkpoint freeze/thaw, containment, G1 or H1. Record the checkpoint type Hyper-V actually reports (SETUP.md requires ProductionOnly with VSS disabled; an earlier VM reported Standard) and make no freeze/thaw claim either way.
 
-## 1. Preserve the missing evidence and freeze replay inputs
+## Target
 
-After the pending maintenance reconnect, copy the complete guest run directory ~/.tbound-offline-queued.qm5j16OwKf to a new directory under F:\TBoundAssets\Evidence. Preserve its status, completion, exit-code, launcher log, verifier JSON, and stderr files. Hash the host copy and confirm that no verifier or launcher remains active. Do not restore until the failure has been reviewed and the coordinator has issued the restore step.
+| Item | Value | Source |
+| --- | --- | --- |
+| VM | `TBound-Ubuntu-2404-ABI8`, Hyper-V id prefix `df4745b2` (Generation 2) | abi8-guest-qualification-progress-20261015.json |
+| VM root | `F:\TBoundVMs\TBound-Ubuntu-2404-ABI8` | same |
+| Guest | hostname `tbound-abi8-seed`, kernel `7.0.0-38-generic`, Ubuntu 24.04.5 LTS | abi8-readonly-remeasure-20261017.json |
+| Runtime-bundle digest | `sha256:d7367e1b58db53c35fa967c333340599ea30aa43471d3a61c3c8cbbb59246884` (`tbound-profile runtime-bundle-digest --root /var/lib/tbound/runtime`; same under uid 995 and `tboundadmin`) | same |
+| Checkpoints now | 0 (coordinator-stated; the 2026-10-17 re-measure could not query Get-VM) | coordinator |
+| Network now | `Default Switch`; guest at 172.22.198.27 | re-measure receipt |
 
-Freeze the reviewed source commit and full commit ID in the evidence record before the restore. Prepare a source-only archive from that commit; never archive the guest home, caches, node_modules, credentials, or untracked files. The existing Export-TBoundGuestBundle.ps1 rejects any untracked file because it runs git status --porcelain=v1 --untracked-files=all; the current unrelated vm_start.txt therefore blocks that exporter. Leave it untouched. Use Git's commit-only archive operation instead, with an unused output path under F:\TBoundAssets\GuestHandoff:
+The retired VM `TBound-Ubuntu-2404` and its `ubuntu-24.04.5-golden-baseline` checkpoint are out of scope.
 
-    $repo = 'C:\Users\Admin\Desktop\FH\Master Software Engineering\MA Thesis\trust-boundary'
-    $commit = '<reviewed full commit ID>'
-    $archive = 'F:\TBoundAssets\GuestHandoff\tbound-<commit-prefix>\tbound-<commit-prefix>.tar'
-    $parent = Split-Path -Parent $archive
-    if (-not [IO.Path]::IsPathRooted($archive)) { throw 'Archive path must be absolute.' }
-    if (-not $archive.StartsWith('F:\TBoundAssets\GuestHandoff\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Archive must remain under the tracked handoff directory.' }
-    if (Test-Path -LiteralPath $archive) { throw 'Archive already exists; choose a new path.' }
-    if (Test-Path -LiteralPath $parent) { throw 'Archive parent already exists; choose a new unique directory.' }
-    # Run the storage projection check described below before creating this directory.
-    New-Item -ItemType Directory -Path $parent | Out-Null
-    if (Test-Path -LiteralPath $archive) { throw 'Archive appeared before creation; stop.' }
-    git -C $repo -c "safe.directory=$repo" archive --format=tar --prefix=tbound/ --output=$archive $commit
-    if ($LASTEXITCODE -ne 0) { throw 'Source archive failed.' }
-    Get-FileHash -Algorithm SHA256 -LiteralPath $archive
+SSH reaches the guest only while its NIC is connected to `Default Switch`: Git Bash `ssh.exe`, the pinned known_hosts file, `StrictHostKeyChecking=yes`, plus `-o HostKeyAlias=172.18.155.19` for the new address. The restore test below runs with the NIC disconnected, so every guest step uses the VMConnect console. Reconnecting the NIC is a separate approved action and is not part of this test.
 
-Before creating the parent directory or archive, run host Verify and estimate the archive size from that commit's tree. Include that size in the projection: tracked TBound files must remain at or below 100 GiB and free F: space at or above 700 GiB. Re-run Verify after archive creation. Validate the exact member list against the committed tree and require only regular files and directories; reject symlinks and special files. Record the commit ID and archive SHA-256. A Git archive uses the committed tree, so it omits the unrelated untracked file. See [Git archive documentation](https://git-scm.com/docs/git-archive).
+## 1. Preconditions (read-only; stop on any failure)
 
-Record the current guest hashes for supervisor/go.sum and infra/guest/verify-offline.py. The expected reviewed artifacts currently recorded are SHA-256 2ff7956b129800bfed3b5f9ca671ece52317fc4fa4786c76f4672abb075f1aea and bbcefad25a5184bb87b2efaba3b73b2480be609f6daff30a376aed9d184b2272. If both match the frozen commit, the Git artifact is sufficient; preserve only a hash manifest, not another source-tree copy. If either differs, preserve and review that exact file delta before proceeding.
+1. Confirm VMConnect shows Basic Session with no clipboard or device redirection (SETUP.md, "Clipboard and VMConnect session").
+2. Shut the guest down gracefully from its console (`sudo poweroff`). Never `Stop-VM`. Disconnect the sole adapter, eject any ISO, and keep the installed disk first in boot order (SETUP.md Phase 2, steps 5-6).
+3. With the VM Off, record state, adapter, snapshots and the disk chain:
 
-Do not duplicate the Go or npm cache. Recreate the Go module cache after restore with the documented GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org go mod download all during trusted maintenance. Verify the recorded F: dependency-preparation artifact in place. Reuse the restored npm cache if present; if absent, prepare it from the pinned lockfile with lifecycle scripts disabled. Never copy node_modules or an arbitrary home directory.
+       $vmName = 'TBound-Ubuntu-2404-ABI8'
+       $vmRoot = 'F:\TBoundVMs\TBound-Ubuntu-2404-ABI8'
+       Get-VM -Name $vmName | Select-Object Name, Id, State
+       Get-VMNetworkAdapter -VMName $vmName | Select-Object Name, SwitchName, Connected
+       Get-VMSnapshot -VMName $vmName | Select-Object Name, SnapshotType
+       Get-VMHardDiskDrive -VMName $vmName | ForEach-Object { Get-VHD -Path $_.Path } | Select-Object Path, VhdType, ParentPath
 
-Before and after each host-side artifact or evidence copy, use the documented storage checks. Keep tracked TBound files at or below 100 GiB and F: free space at or above 700 GiB. These measured-file checks are not hard quotas. Stop if a projected or measured limit fails.
+   Require: Off; exactly one adapter, disconnected; the Id begins `df4745b2`; the disk chain is complete and no deeper than 2.
+4. Run host Verify with `$vmName`, `$vmRoot` and the ISO, hash and switch variables from SETUP.md (`-Mode Verify ... -BasicSessionConfirmed`). Require tracked TBound files at or below 100 GiB and F: free at or above 700 GiB. These are measured-file checks, not quotas; re-run them after each step that writes to F:.
 
-## 2. Prove rollback with a plain-text marker
+## 2. Create the checkpoint
 
-Use infra/hyperv/SETUP.md to confirm Basic Session and run Test-UbuntuHyperVVm.ps1 -Mode Verify with the existing VM, ISO, and hash arguments. The VM must be Off, its sole adapter disconnected, and the single named baseline checkpoint and complete disk chain must be present. Confirm the storage gates. Record the checkpoint name, CheckpointType, SnapshotType, disk chain, and verifier output.
+Allowed only when step 1 passes, no checkpoint exists, and the owner has approved this action. Use the command from SETUP.md Phase 2, step 8, with this VM and a recorded name:
 
-Boot the VM with its adapter disconnected. At the Ubuntu console, choose a new short ID and record it on the host. Replace a91c2e below with that ID. If the first command does not print ABSENT_BEFORE, choose another ID. These are the only guest writes in the restore test:
+    $cp = 'abi8-restore-baseline'   # owner may choose another name; record it
+    Checkpoint-VM -Name $vmName -SnapshotName $cp
 
+If it fails, stop and keep the error. Do not fall back to a Standard checkpoint, change the VSS policy, or create a second checkpoint. Then confirm the VM is Off, exactly one checkpoint exists, and host Verify passes (checkpoint files count toward the 100 GiB budget). Record this "before" Verify output and the disk chain (now base VHDX plus one AVHDX).
+
+## 3. Marker test (the only guest writes)
+
+Boot the VM with the NIC still disconnected and open the console. Choose a short ID (below, `a91c2e`) and record it on the host. If the check does not print `ABSENT_BEFORE`, choose another ID.
+
+    cat /proc/sys/kernel/random/boot_id
     test ! -e "$HOME/.tbound-restore-a91c2e" && test ! -L "$HOME/.tbound-restore-a91c2e" && echo ABSENT_BEFORE
     (set -C; printf 'TBOUND restore a91c2e\n' > "$HOME/.tbound-restore-a91c2e")
-    test -f "$HOME/.tbound-restore-a91c2e" && test ! -L "$HOME/.tbound-restore-a91c2e" && sha256sum "$HOME/.tbound-restore-a91c2e"
+    sha256sum "$HOME/.tbound-restore-a91c2e"
 
-Require ABSENT_BEFORE and record the marker hash. Confirm both default-route commands print no route and that each non-loopback carrier is 0. Then shut Ubuntu down with sudo poweroff and run host Verify again while the VM is Off.
+Record the boot ID and marker hash. Confirm no default route (`ip -4 route show default`, `ip -6 route show default`) and carrier 0 on every non-loopback interface. Run `sudo poweroff`, wait for Off, and run host Verify again.
 
-**Proceed only after the saved failure report has been reviewed and the coordinator has issued the restore step.** In Hyper-V Manager, select TBound-Ubuntu-2404, right-click ubuntu-24.04.5-golden-baseline, and choose Apply. If prompted, choose Apply alone; do not choose Create Checkpoint and Apply. Applying the selected checkpoint cannot be undone. See [Microsoft checkpoint guidance](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/checkpoints).
+## 4. Apply (irreversible)
 
-Afterward, confirm the VM is Off, the same single checkpoint remains, the disk chain is complete, the adapter remains disconnected, and host Verify passes. Boot offline and use these simple guest probes:
+**Applying a checkpoint cannot be undone.** Everything written to the VM after the checkpoint is discarded, including the marker. Proceed only with the owner's explicit approval and the coordinator's release, with the VM Off and section 3 recorded.
+
+    Restore-VMSnapshot -VMName $vmName -Name $cp    # answer the confirmation prompt yourself
+
+In Hyper-V Manager the equivalent is Apply on the checkpoint; do not choose "Create Checkpoint and Apply". Afterwards confirm the VM is Off, the same single checkpoint remains, the disk chain is complete, the adapter is still disconnected, and host Verify passes. If a parent disk is missing, a second checkpoint appears, the network state is unexpected, or a storage gate fails, stop. Do not repair or delete checkpoint files.
+
+## 5. Verify after restore
+
+Boot offline and run at the console:
 
     test ! -e "$HOME/.tbound-restore-a91c2e" && test ! -L "$HOME/.tbound-restore-a91c2e" && echo RESTORE_PASS || echo RESTORE_FAIL
-    ip -4 route show default
-    ip -6 route show default
+    hostname; uname -r; cat /proc/sys/kernel/random/boot_id
+    tbound-profile runtime-bundle-digest --root /var/lib/tbound/runtime
+    ip -4 route show default; ip -6 route show default
     for f in /sys/class/net/*/carrier; do echo "$f"; cat "$f"; done
-    id -u
-    hostname
-    uname -r
 
-Require RESTORE_PASS, no IPv4 or IPv6 default route, carrier 0 on every non-loopback interface, the recorded guest identity, and passing host Verify before and after boot. Ignore the loopback carrier. Record console output and host inventories. RESTORE_FAIL, a missing parent disk, an extra checkpoint, unexpected network state, or a storage-gate failure stops the procedure. Do not repair or delete checkpoint files.
+Pass requires all of: `RESTORE_PASS`; hostname `tbound-abi8-seed`; kernel `7.0.0-38-generic`; digest equal to `sha256:d7367e1b...` above; a boot ID different from the marker-boot ID (a fresh boot; the 2026-10-17 value `f94189ae-...` is not expected to recur); no default route; carrier 0 on every non-loopback interface (ignore loopback). Then shut down and run host Verify once more with the VM Off.
 
-## 3. Reapply reviewed state after the offline proof
+## Receipt template (planned)
 
-Only after recording the successful offline marker check, shut down cleanly. The human operator may use the already-approved temporary Default Switch maintenance connection. Verify the guest SSH host key at its console and use the dedicated pinned host-key file; if it differs, stop and resolve the identity from the console. Re-enroll only the approved public key if needed. Keep the private key on the host.
+Write one JSON receipt under `docs/evidence/` after the run. Include no keys, key paths or secrets.
 
-Transfer and verify the frozen commit archive using infra/guest/SOURCE-HANDOFF.md. Extract it into a new guest directory and record source hashes. Recreate the Go module cache from the pinned go.mod and go.sum during trusted online maintenance. Recheck the npm cache and prepare it from the lockfile only if absent, with scripts disabled. Record cache paths and sizes; do not copy caches. Have the human disconnect the host NIC again, confirm the guest offline gate, shut down, and rerun host Verify before later trials.
-
-## Interpretation
-
-A passing marker test demonstrates that this checkpoint restored the tested guest file state on this VM. It does not establish production-checkpoint freeze/thaw behavior. The existing record reports SnapshotType=Standard while the VM policy is ProductionOnly and VSS is disabled; record both and make no freeze/thaw claim.
+    {
+      "receipt": "abi8-checkpoint-restore-<yyyymmdd>",
+      "status": "RESTORE_PASS | RESTORE_FAIL | NOT_RUN",
+      "approvals": [{"action": "...", "approvedBy": "owner", "releasedBy": "coordinator", "utc": "..."}],
+      "vm": {"name": "TBound-Ubuntu-2404-ABI8", "id": "df4745b2-...", "stateBeforeApply": "Off", "stateAfterApply": "Off"},
+      "checkpoint": {"name": "...", "snapshotType": "...", "count": 1, "createdUtc": "..."},
+      "diskChain": {"beforeApply": ["<path>", "..."], "afterApply": ["<path>", "..."], "complete": true},
+      "hostVerify": {"beforeApply": {"exit": 0, "output": "<ref or sha256>"}, "afterApply": {"exit": 0, "output": "<ref or sha256>"}},
+      "storage": {"trackedBytes": 0, "freeBytes": 0},
+      "marker": {"id": "...", "absentBefore": true, "sha256": "...", "markerBootId": "...", "result": "RESTORE_PASS | RESTORE_FAIL"},
+      "guestAfterRestore": {"hostname": "tbound-abi8-seed", "kernel": "7.0.0-38-generic", "bootId": "...",
+                            "runtimeBundleDigest": "sha256:d7367e1b...", "digestMatchesRemeasure": true},
+      "network": {"adapterConnected": false, "defaultRoutes": "none", "nonLoopbackCarrier": "0"},
+      "claims": {"freezeThaw": false, "containment": false, "G1": false, "H1": false}
+    }
