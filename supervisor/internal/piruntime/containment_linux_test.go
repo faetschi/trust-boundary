@@ -147,7 +147,7 @@ func completeD09Host(t *testing.T) (D09Config, *fakeD09Runner) {
 			"/usr/bin/podman image inspect localhost/tbound/pi-cell:latest": {
 				ExitCode: 0, Stdout: []byte(`[{"RepoDigests":["` + digestRef + `"]}]`),
 			},
-			"cosign verify --offline --key " + cosignKey + " --local-image " + layout: {
+			"cosign verify --offline --insecure-ignore-tlog=true --key " + cosignKey + " --local-image " + layout: {
 				ExitCode: 0, Stdout: []byte(`[{"critical":{"image":{"docker-manifest-digest":"` + digest + `"}}}]`),
 			},
 		},
@@ -294,7 +294,7 @@ func TestD09ProbeRejectsUnpinnedUnsignedOrDriftedPolicy(t *testing.T) {
 	}
 
 	config, runner = completeD09Host(t)
-	runner.results["cosign verify --offline --key "+config.CosignPublicKeyPath+" --local-image "+config.OCILayoutPath] = D09CommandResult{ExitCode: 1, Stderr: []byte("signature mismatch")}
+	runner.results["cosign verify --offline --insecure-ignore-tlog=true --key "+config.CosignPublicKeyPath+" --local-image "+config.OCILayoutPath] = D09CommandResult{ExitCode: 1, Stderr: []byte("signature mismatch")}
 	if _, err := newTestLauncher(config, runner).Probe(context.Background()); !errors.Is(err, ErrProductionLauncherUnavailable) {
 		t.Fatalf("failed local cosign verification did not fail closed: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestD09ProbeBindsCosignPayloadToFrozenImage(t *testing.T) {
 
 	// Valid signature over a DIFFERENT image digest must refuse.
 	config, runner = completeD09Host(t)
-	key := "cosign verify --offline --key " + config.CosignPublicKeyPath + " --local-image " + config.OCILayoutPath
+	key := "cosign verify --offline --insecure-ignore-tlog=true --key " + config.CosignPublicKeyPath + " --local-image " + config.OCILayoutPath
 	runner.results[key] = D09CommandResult{ExitCode: 0, Stdout: []byte(`[{"critical":{"image":{"docker-manifest-digest":"sha256:` + strings.Repeat("9", 64) + `"}}}]`)}
 	if _, err := newTestLauncher(config, runner).Probe(context.Background()); !errors.Is(err, ErrProductionLauncherUnavailable) {
 		t.Fatalf("signature over a different image was accepted: %v", err)
@@ -526,7 +526,7 @@ func TestD09ProbeBindsCosignPayloadToFrozenImage(t *testing.T) {
 
 	// Valid exit but no identity claim must refuse.
 	config, runner = completeD09Host(t)
-	key = "cosign verify --offline --key " + config.CosignPublicKeyPath + " --local-image " + config.OCILayoutPath
+	key = "cosign verify --offline --insecure-ignore-tlog=true --key " + config.CosignPublicKeyPath + " --local-image " + config.OCILayoutPath
 	runner.results[key] = D09CommandResult{ExitCode: 0, Stdout: []byte(`[{"critical":{}}]`)}
 	if _, err := newTestLauncher(config, runner).Probe(context.Background()); !errors.Is(err, ErrProductionLauncherUnavailable) {
 		t.Fatalf("identity-less cosign payload was accepted: %v", err)

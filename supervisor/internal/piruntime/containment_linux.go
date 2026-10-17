@@ -1279,10 +1279,12 @@ func (l *D09PodmanCrunLauncher) selectImage(ctx context.Context, podmanPath, ref
 }
 
 // verifyOfflineSignature verifies the locally mirrored OCI image layout with
-// the official `cosign verify --offline --key <pub> --local-image <layout>` form, then
+// the official `cosign verify --offline --insecure-ignore-tlog=true --key <pub> --local-image <layout>` form, then
 // cryptographically binds the verified signature payload to the frozen pin and
 // the local OCI bytes. It never names a registry reference and runs with a
-// sanitized, proxy-free environment.
+// sanitized, proxy-free environment. --insecure-ignore-tlog is required: a key
+// signature that was never uploaded to Rekor fails cosign v3 log-inclusion
+// otherwise (measured, cosign v3.1.3); trust rests on the pinned public key.
 func (l *D09PodmanCrunLauncher) verifyOfflineSignature(ctx context.Context, config D09Config, cosignBinary string, requireImmutable bool) error {
 	if strings.TrimSpace(config.CosignPublicKeyPath) == "" {
 		return errors.New("protected offline cosign public key path is not configured")
@@ -1309,7 +1311,7 @@ func (l *D09PodmanCrunLauncher) verifyOfflineSignature(ctx context.Context, conf
 	if err := verifyLocalOCIIdentity(config.OCILayoutPath, config.ExpectedImageDigest, requireImmutable); err != nil {
 		return err
 	}
-	result := l.runner.Run(ctx, cosignBinary, "verify", "--offline", "--key", config.CosignPublicKeyPath, "--local-image", config.OCILayoutPath)
+	result := l.runner.Run(ctx, cosignBinary, "verify", "--offline", "--insecure-ignore-tlog=true", "--key", config.CosignPublicKeyPath, "--local-image", config.OCILayoutPath)
 	if result.Err != nil {
 		return result.Err
 	}
