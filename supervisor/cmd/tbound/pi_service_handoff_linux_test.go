@@ -22,7 +22,10 @@ import (
 	"tbound/supervisor/internal/piruntime"
 )
 
-func TestValidatePiServiceUnitPinsServicePolicy(t *testing.T) {
+// piServiceUnitFixture returns the fixed registration, service configuration,
+// writable paths, and a service unit text that satisfies the piruntime R8
+// requirements (including DelegateSubgroup=runner).
+func piServiceUnitFixture() (piruntime.D09ManagedLiveRootRegistration, piServiceConfig, []string, string) {
 	registration := piruntime.D09ManagedLiveRootRegistration{
 		ServiceName: "tbound-pi", ServiceGroup: "tbound-pi", RunnerPath: "/usr/local/bin/tbound",
 	}
@@ -54,6 +57,7 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 Delegate=yes
+DelegateSubgroup=runner
 RuntimeDirectory=tbound-pi
 RuntimeDirectoryMode=0700
 StateDirectory=tbound/audit tbound/live tbound/podman-home tbound/podman-storage/graphroot tbound/private-admin tbound/publication-state tbound/sessions
@@ -62,6 +66,42 @@ ReadWritePaths=/run/tbound-pi /var/lib/tbound/audit /var/lib/tbound/live /var/li
 Environment=HOME=/var/lib/tbound/podman-home USER=tbound-pi LOGNAME=tbound-pi XDG_RUNTIME_DIR=/run/tbound-pi XDG_CONFIG_HOME=/etc/tbound/podman-config XDG_DATA_HOME=/var/lib/tbound/podman-home/data XDG_CACHE_HOME=/run/tbound-pi/cache TMPDIR=/run/tbound-pi/tmp CONTAINERS_CONF=/etc/tbound/podman-config/containers.conf CONTAINERS_STORAGE_CONF=/etc/tbound/podman-config/storage.conf LANG=C LC_ALL=C
 UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS
 `
+	return registration, serviceConfig, writablePaths, unit
+}
+
+// The handoff validator and the piruntime managed-root validator both read the
+// same installed unit. A unit that satisfies the piruntime R8 contract
+// (DelegateSubgroup=runner) must therefore pass the handoff validator, and the
+// subgroup must be the exact closed runner leaf.
+func TestValidatePiServiceUnitRequiresExactRunnerDelegateSubgroup(t *testing.T) {
+	registration, serviceConfig, writablePaths, unit := piServiceUnitFixture()
+	if !strings.Contains(unit, "DelegateSubgroup="+piruntime.D09ManagedPiRunnerCgroupLeaf+"\n") {
+		t.Fatal("fixture does not carry the piruntime R8 DelegateSubgroup requirement")
+	}
+	if err := validatePiServiceUnit([]byte(unit), registration, serviceConfig, writablePaths); err != nil {
+		t.Fatalf("unit satisfying the piruntime R8 contract refused by the handoff validator: %v", err)
+	}
+	for name, mutated := range map[string]string{
+		"missing subgroup":          strings.Replace(unit, "DelegateSubgroup=runner\n", "", 1),
+		"empty subgroup":            strings.Replace(unit, "DelegateSubgroup=runner", "DelegateSubgroup=", 1),
+		"cell subtree as main leaf": strings.Replace(unit, "DelegateSubgroup=runner", "DelegateSubgroup=cells", 1),
+		"dotdot escape":             strings.Replace(unit, "DelegateSubgroup=runner", "DelegateSubgroup=../runner", 1),
+		"nested descendant":         strings.Replace(unit, "DelegateSubgroup=runner", "DelegateSubgroup=runner/child", 1),
+		"case variant":              strings.Replace(unit, "DelegateSubgroup=runner", "DelegateSubgroup=Runner", 1),
+		"duplicate subgroup":        strings.Replace(unit, "DelegateSubgroup=runner\n", "DelegateSubgroup=runner\nDelegateSubgroup=runner\n", 1),
+		"other unlisted directive":  strings.Replace(unit, "DelegateSubgroup=runner\n", "DelegateSubgroup=runner\nSlice=system.slice\n", 1),
+	} {
+		if mutated == unit {
+			t.Fatalf("mutation %q did not change the baseline unit", name)
+		}
+		if err := validatePiServiceUnit([]byte(mutated), registration, serviceConfig, writablePaths); !errors.Is(err, ErrPiServiceUnavailable) {
+			t.Fatalf("handoff validator accepted unit with %s or returned unexpected error: %v", name, err)
+		}
+	}
+}
+
+func TestValidatePiServiceUnitPinsServicePolicy(t *testing.T) {
+	registration, serviceConfig, writablePaths, unit := piServiceUnitFixture()
 	if err := validatePiServiceUnit([]byte(unit), registration, serviceConfig, writablePaths); err != nil {
 		t.Fatalf("valid fixed Pi service unit refused: %v", err)
 	}

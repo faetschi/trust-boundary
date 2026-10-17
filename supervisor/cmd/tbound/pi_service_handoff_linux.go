@@ -424,7 +424,7 @@ func validatePiServiceUnit(data []byte, registration piruntime.D09ManagedLiveRoo
 	if !piServiceSystemdUnitHasOnlyAllowedDirectives(sections, map[string][]string{
 		"Unit": {"Description"},
 		"Service": {"User", "Group", "ExecStart", "KillMode", "UMask", "NoNewPrivileges", "ProtectSystem",
-			"ProtectHome", "PrivateTmp", "Delegate", "RuntimeDirectory", "RuntimeDirectoryMode", "StateDirectory",
+			"ProtectHome", "PrivateTmp", "Delegate", "DelegateSubgroup", "RuntimeDirectory", "RuntimeDirectoryMode", "StateDirectory",
 			"StateDirectoryMode", "ReadWritePaths", "Environment", "UnsetEnvironment"},
 	}) {
 		return fmt.Errorf("%w: signed Pi service unit contains an unsupported section or directive", ErrPiServiceUnavailable)
@@ -441,6 +441,7 @@ func validatePiServiceUnit(data []byte, registration piruntime.D09ManagedLiveRoo
 	protectHome, protectHomeOK := get("ProtectHome")
 	privateTmp, privateTmpOK := get("PrivateTmp")
 	delegate, delegateOK := get("Delegate")
+	delegateSubgroup, delegateSubgroupOK := get("DelegateSubgroup")
 	runtimeDirectory, runtimeDirectoryOK := get("RuntimeDirectory")
 	runtimeDirectoryMode, runtimeDirectoryModeOK := get("RuntimeDirectoryMode")
 	stateDirectories, stateDirectoriesOK := get("StateDirectory")
@@ -453,7 +454,8 @@ func validatePiServiceUnit(data []byte, registration piruntime.D09ManagedLiveRoo
 		!killOK || killMode != "control-group" || !umaskOK || umask != "0077" ||
 		!nnpOK || !strings.EqualFold(noNewPrivs, "yes") || !protectSystemOK || protectSystem != "strict" ||
 		!protectHomeOK || !strings.EqualFold(protectHome, "yes") || !privateTmpOK || !strings.EqualFold(privateTmp, "yes") ||
-		!delegateOK || !strings.EqualFold(delegate, "yes") || !runtimeDirectoryOK || runtimeDirectory != "tbound-pi" ||
+		!delegateOK || !strings.EqualFold(delegate, "yes") ||
+		!delegateSubgroupOK || delegateSubgroup != piruntime.D09ManagedPiRunnerCgroupLeaf || !runtimeDirectoryOK || runtimeDirectory != "tbound-pi" ||
 		!runtimeDirectoryModeOK || runtimeDirectoryMode != "0700" || !stateDirectoriesOK ||
 		!piServiceStringListEqual(strings.Fields(stateDirectories), wantStateDirectories) ||
 		!stateDirectoryModeOK || stateDirectoryMode != "0700" || !writePathsOK ||

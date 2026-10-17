@@ -1,0 +1,19 @@
+# Canonical source for /etc/systemd/system/tbound-pi.socket (root:root 0644).
+# Identical in content to the guest unit measured on 2026-10-15 (sha256 9dcb52a1...)
+# apart from this comment header. Validated by the handoff and piruntime tests
+# that load this file (TestPiServiceTemplates*).
+[Unit]
+Description=TBound managed Pi local service socket (one authenticated UDS, one active workflow)
+
+[Socket]
+ListenStream=/run/tbound/serve-pi.sock
+Accept=no
+Service=tbound-pi.service
+SocketUser=root
+SocketGroup=tbound-pi-clients
+SocketMode=0660
+DirectoryMode=0755
+FileDescriptorName=tbound-pi
+
+[Install]
+WantedBy=sockets.target

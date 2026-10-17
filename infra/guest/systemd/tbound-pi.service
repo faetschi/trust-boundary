@@ -1,0 +1,32 @@
+# Canonical source for /etc/systemd/system/tbound-pi.service (root:root 0644).
+# Install verbatim; no drop-ins (the runtime refuses them). The directive set is
+# closed: cmd/tbound/pi_service_handoff_linux.go and
+# internal/piruntime/managed_live_root_linux.go both validate it, and
+# TestPiServiceTemplates* in each package load this file so they cannot drift.
+# Derived from the guest unit measured on 2026-10-15 (sha256 daf053a8...) with
+# two deliberate differences: DelegateSubgroup=runner is added (required by the
+# R8 runner-leaf cgroup layout), and the installed Type=simple, Requires=,
+# After= and RequiresMountsFor= lines are omitted because the closed handoff
+# allowlist rejects them (Type=simple is the ExecStart default).
+[Unit]
+Description=TBound managed Pi service (socket-activated, one fixed workflow)
+
+[Service]
+User=tbound-pi
+Group=tbound-pi
+ExecStart=/usr/local/bin/tbound serve --pi --service
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+Delegate=yes
+DelegateSubgroup=runner
+RuntimeDirectory=tbound-pi
+RuntimeDirectoryMode=0700
+StateDirectory=tbound/audit tbound/live tbound/podman-home tbound/podman-storage/graphroot tbound/private-admin tbound/publication-state tbound/sessions
+StateDirectoryMode=0700
+ReadWritePaths=/run/tbound-pi /var/lib/tbound/audit /var/lib/tbound/live /var/lib/tbound/podman-home /var/lib/tbound/podman-storage/graphroot /var/lib/tbound/private-admin /var/lib/tbound/publication-state /var/lib/tbound/sessions
+UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS
+Environment=HOME=/var/lib/tbound/podman-home USER=tbound-pi LOGNAME=tbound-pi XDG_RUNTIME_DIR=/run/tbound-pi XDG_CONFIG_HOME=/etc/tbound/podman-config XDG_DATA_HOME=/var/lib/tbound/podman-home/data XDG_CACHE_HOME=/run/tbound-pi/cache TMPDIR=/run/tbound-pi/tmp CONTAINERS_CONF=/etc/tbound/podman-config/containers.conf CONTAINERS_STORAGE_CONF=/etc/tbound/podman-config/storage.conf LANG=C LC_ALL=C
