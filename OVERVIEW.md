@@ -1,23 +1,22 @@
 # TBound — current state
 
-Updated 2026-10-17. Branch: `codex/tbound-prototype`, HEAD `484d806`. Priority: thesis completion. Green results verify code only: G1 false, H1 unexecuted, containment not established.
+Updated 2026-10-17. Branch: `codex/tbound-prototype`, HEAD `1423e0d`. Priority: thesis completion. Green results verify code only: G1 false, H1 unexecuted, containment not established. Goal cleared by the user; no background work running.
 
 | Milestone | Current state |
 | --- | --- |
-| Recovery / D14 | Logical owner headroom gate and invariant test committed and re-run green (workflowrecovery 70 pass / 1 skip, cmd/tbound 138 pass / 2 skip). Review fix `484d806`: a rolled-back pre-commit clock-persist failure no longer poisons the root, so a Reserved terminal can be retried. Open: physical reserve, fsync/ENOSPC/power-loss, root terminal anchor and shared owner file ungated, real owner/cell drain wiring, retained restart. |
-| Model pin | Pi and adapter derive from the broker-approved `deepseek-v4.1-flash`. Runtime-bundle digest in the ABI 8 provisioning receipt is stale; re-measure and re-sign during provisioning. |
-| ABI 8 guest | Exact ABI 8 measured; xattr census and scanner-context receipts recorded. Not qualification: B2/B3 calibration, cells creation, systemd leaf, signed host profile, registration, E2E and drain remain open and need the guest and your signing authority. |
-| Research Claims — last | Host-side, code-only components committed and independently reviewed once (all confirmed findings fixed, tests first): `evalscore`, `evalcorpus`, `usdledger`, `researchprofile`, `effectoracle` (E04), `drainproof` (unwired), `routematrix` (E06 coverage checker, not an E06 pass), `calibration` (P/C pair logic), `attacker` (pivot state machine, library content open). None is wired into a runner yet. Missing: corpus content, B/V runners and P/C replays (need guest), oracles EFF-WS-05/06, NET-01/02, PROC-01..03, frozen prices and cost plan, pre-registration. |
-| Hygiene | Stale docs/dead code removed. Review-fix commits `a081cbf`, `b2d94ce`, `721b968`, `ab783f1`, `97c6741`. Full-module gate on HEAD running. Ten other-session docs remain modified; `docs/tbound-product.md` is another session's untracked file. |
+| Recovery / D14 / D20 | Logical headroom gate, invariant test, clock-persist fix (`484d806`), and production drain proof wiring (`928a79e`: drainproof, evidence binds observed facts, live owner refused first). Open: physical reserve, fsync/ENOSPC/power-loss, root terminal anchor and shared owner file ungated, crash window between scope remove and bind (refused, not drained), pending effects not observed, live cgroup paths untested without delegation. |
+| Model pin | Pi and adapter derive from the broker-approved `deepseek-v4.1-flash`. Runtime-bundle digest in the ABI 8 provisioning receipt is stale; re-measure/re-sign at provisioning. |
+| ABI 8 guest | Measured; xattr census and scanner-context receipts recorded. VM is Off. Open (need guest, your approvals, signing): B2/B3 calibration (you chose B2 option A: chmod root:root 0555, changes bundle digest), cells, systemd leaf, NodeRO mount, signed host profile, registration, E2E `serve --pi`, drain on real cells, checkpoint restore. You approved read-only re-measurement; start the guest from an elevated shell first (no start action in the pinned script). |
+| Research Claims — last | Host-side, code-only and reviewed: `evalscore` (compliant C-success = VALID_PASS, user decision; `rule_satisfied` can now be true on a synthetic full corpus), `evalcorpus`, `usdledger`, `researchprofile`, `effectoracle` (E04), `wsoracle` (EFF-WS-05/06 unit-level), `drainproof`, `routematrix` (coverage checker), `calibration`, `attacker` (library content open). Full-module gate on `9598a36`: 1955 pass / 8 skip / 0 fail. Not wired into a runner. Missing: corpus content, B/V runners, P/C replays (guest), NET-01/02 and PROC-01..03 oracles (guest), frozen prices and cost plan, pre-registration, G0/G1, advisor review. |
+| Hygiene | Dead code and stale docs removed. Ten other-session docs modified; `docs/tbound-product.md` untracked (other session). |
 
-Needs your decision (code defaults are fail-closed and unfrozen):
-- evalscore: label for a compliant task where C succeeds (blocks `rule_satisfied`); one-rerun cap for headline trials; unevidenced outage as conservative failure vs unsupported.
-- Ledger: unit vs request, stop-rule enforcement, head-hash anchor location (caller must pass it; `AllowGenesis` is explicit); engineering-ledger unit for OpenCode Go.
-- evalcorpus: seed rule (SHA-256 placeholder), cold stratum per class vs source, root uniqueness scope, source-pool selection, EFF-* vocabulary.
-- effectoracle: records after Stop dropped by design; ancestor-swap residual (needs fd-relative watches).
-- drainproof: dead owner + absent scope + no receipt counts as not drained (the D20 test assumes the opposite); pending effects in the proof vs ledger gate.
-- researchprofile: pin a provider or set price ceilings; verify `require_parameters`/`zdr` names against live OpenRouter docs at freeze.
-- calibration: static-only pair semantics; monetary cap needs prices (convert per-MTok to per-token).
-- OSF/Zenodo registration versus the 2026-10-14 decision; whether to full-capture VM uplink (EFF-NET-02).
+Needs your decision:
+- Ledger: unit vs request, stop-rule, head-hash anchor owner (`AllowGenesis` explicit); engineering-ledger unit for OpenCode Go.
+- evalscore: one-rerun cap for headline trials; unevidenced outage as conservative failure vs unsupported.
+- evalcorpus: seed rule (SHA-256 placeholder), cold stratum, root uniqueness scope, source-pool selection, EFF-* vocabulary.
+- wsoracle: ledger serialization and tree-digest definitions, metadata scope, `openat2` requirement.
+- researchprofile: pin a provider or set price ceilings; verify `require_parameters`/`zdr` names at freeze.
+- calibration: static-only pair semantics; monetary cap needs prices.
+- OSF/Zenodo registration vs the 2026-10-14 decision; full VM-uplink capture (EFF-NET-02).
 
 Engineering: OpenCode Go. Final research: OpenRouter DeepSeek V4.1 Flash, US$5 total cap. Original/seed VMs preserved.
