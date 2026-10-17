@@ -98,10 +98,22 @@ func newLinuxCgroupScope(delegatedRoot, directory *os.File, containmentProfile, 
 	if !ok || directoryStat.Uid != uint32(os.Geteuid()) || directoryStat.Dev != rootStat.Dev {
 		return nil, errors.New("Pi worker cgroup identity differs from delegated root")
 	}
-	rootIdentity := fmt.Sprintf("%s\x00%d\x00%d\x00%s\x00%s", rootPath, rootStat.Dev, rootStat.Ino, strings.TrimSpace(string(rootControllers)), strings.TrimSpace(string(rootSubtree)))
-	rootDigest := DigestBytes([]byte(rootIdentity))
 	if err := requireCgroup2Path(directoryPath); err != nil {
 		return nil, err
+	}
+	// The root identity binds only stable facts (hierarchy path, cgroup2, owner
+	// uid, required controllers). The root's device/inode/mount id change at
+	// every service start and are deliberately not part of it.
+	mountinfo, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return nil, fmt.Errorf("inspect cgroup2 mount: %w", err)
+	}
+	hierarchyPath, isCgroup2 := cgroup2HierarchyPathFromMountinfo(string(mountinfo), rootPath)
+	rootDigest, err := cgroupRootFacts{hierarchyPath: hierarchyPath, cgroup2: isCgroup2, ownerUID: rootStat.Uid,
+		controllers: rootControllers, subtree: rootSubtree, device: uint64(rootStat.Dev), inode: rootStat.Ino,
+	}.stableDigest()
+	if err != nil {
+		return nil, errors.Join(ErrCgroupScopeRefused, err)
 	}
 	return &LinuxCgroupScope{root: delegatedRoot, file: directory, rootDigest: rootDigest, containment: containmentProfile, settlement: settlementProfile}, nil
 }
@@ -300,6 +312,10 @@ func (s *LinuxCgroupScope) Remove(ctx context.Context) error {
 	return s.Close()
 }
 
+// RootDigest is the stable identity of the delegated cell root as observed
+// through the held descriptor. It equals DigestD09CgroupRoot of the live
+// hierarchy path/owner uid/controllers and is what the signed profile's
+// CgroupRootDigest is compared against; it carries no inode or mount id.
 func (s *LinuxCgroupScope) RootDigest() string {
 	if s == nil {
 		return ""

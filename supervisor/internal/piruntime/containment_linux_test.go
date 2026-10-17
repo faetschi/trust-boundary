@@ -1110,6 +1110,16 @@ func TestD09CellTemplateDraftIsNotAdmissible(t *testing.T) {
 	if err := validateD09CellTemplate(measured); err != nil {
 		t.Fatalf("measured template rejected: %v", err)
 	}
+	if measured.XattrVisibilityAuthority != "root-attested-bounded-no-hidden-trusted/v1" {
+		t.Fatalf("the documented default xattr authority is %q", measured.XattrVisibilityAuthority)
+	}
+	for _, unknown := range []string{"", "root-profile-measured-complete-enumeration/v1", "root-attested-bounded-no-hidden-trusted/v2"} {
+		unknownAuthority := measured
+		unknownAuthority.XattrVisibilityAuthority = unknown
+		if err := validateD09CellTemplate(unknownAuthority); !errors.Is(err, ErrD09TemplateInvalid) {
+			t.Fatalf("template with xattr authority %q was admitted: %v", unknown, err)
+		}
+	}
 	badXattrAuthority := measured
 	badXattrAuthority.XattrScanPrivilegeProfile = "caller-claimed-complete/v1"
 	if err := validateD09CellTemplate(badXattrAuthority); !errors.Is(err, ErrD09TemplateInvalid) {

@@ -234,3 +234,83 @@ func TestProfileCommandRejectsShortPrivateKey(t *testing.T) {
 		t.Fatal("sign accepted a short Ed25519 private key")
 	}
 }
+
+func TestProfileCommandCgroupRootDigestIsDerivedAndStable(t *testing.T) {
+	var out, errOut bytes.Buffer
+	if err := run([]string{"cgroup-root-digest", "--uid", "995"}, &out, &errOut); err != nil {
+		t.Fatalf("cgroup-root-digest: %v (%s)", err, errOut.String())
+	}
+	want, err := piruntime.D09ManagedCellsCgroupRootDigest(995)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(out.String()) != want {
+		t.Fatalf("cgroup-root-digest printed %q, want the derived %s", out.String(), want)
+	}
+	// Deterministic: a second run, and the explicit canonical path, agree.
+	var again bytes.Buffer
+	if err := run([]string{"cgroup-root-digest", "--uid", "995", "--cgroups-path", "/system.slice/tbound-pi.service/cells"}, &again, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	if again.String() != out.String() {
+		t.Fatalf("derived value is not deterministic: %q vs %q", again.String(), out.String())
+	}
+	for _, args := range [][]string{
+		{"cgroup-root-digest"},
+		{"cgroup-root-digest", "--uid", "0"},
+		{"cgroup-root-digest", "--uid", "995", "--cgroups-path", "relative/cells"},
+		{"cgroup-root-digest", "--uid", "995", "--cgroups-path", "/system.slice/../cells"},
+		{"cgroup-root-digest", "--uid", "995", "extra"},
+	} {
+		if err := run(args, &bytes.Buffer{}, &errOut); err == nil {
+			t.Fatalf("%v was accepted", args)
+		}
+	}
+}
+
+func TestProfileCommandXattrCalibrationVerifyWrongKeyIsNotATemplateError(t *testing.T) {
+	dir := t.TempDir()
+	signerPublic, signerPrivate, err := ed25519.GenerateKey(cryptorand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherPublic, _, err := ed25519.GenerateKey(cryptorand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := piruntime.DigestBytes([]byte("rw,nodev,nosuid"))
+	calibration := piruntime.D09XattrEnumerationCalibration{
+		Authority: piruntime.D09XattrVisibilityAuthority, FilesystemMagic: 0xef53, MountOptionsDigest: options,
+		ScanUID: 1001, ScanGID: 1002, ScanPrivilegeProfile: piruntime.D09XattrScanPrivilegeProfile,
+		SourceAccessProfile: piruntime.D09XattrManagedRWSourceProfile, EnumerationProfile: piruntime.D09XattrEnumerationProfile,
+		VisibilityProfileDigest: piruntime.DigestD09XattrVisibilityProfile(0xef53, options, 1001, 1002,
+			piruntime.D09XattrScanPrivilegeProfile),
+		ProbeCorpusDigest:      piruntime.DigestBytes([]byte("corpus")),
+		ProbeObservationDigest: piruntime.DigestBytes([]byte("observation")), ProbeEntryCount: 2, ProbeXattrNameCount: 1,
+	}
+	encoded, signature, _, err := piruntime.SignD09XattrEnumerationCalibration(calibration, signerPrivate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(name string, data []byte) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	calibrationPath, sigPath := write("cal.json", encoded), write("cal.sig", signature)
+	var out, errOut bytes.Buffer
+	if err := run([]string{"xattr-calibration-verify", "--calibration", calibrationPath, "--sig", sigPath,
+		"--pub", write("signer.pub", signerPublic)}, &out, &errOut); err != nil {
+		t.Fatalf("correct key refused: %v", err)
+	}
+	err = run([]string{"xattr-calibration-verify", "--calibration", calibrationPath, "--sig", sigPath,
+		"--pub", write("other.pub", otherPublic)}, &out, &errOut)
+	if err == nil {
+		t.Fatal("wrong key verified")
+	}
+	if strings.Contains(err.Error(), "cell template") || !strings.Contains(err.Error(), "signature") {
+		t.Fatalf("wrong-key error is misleading: %q", err)
+	}
+}

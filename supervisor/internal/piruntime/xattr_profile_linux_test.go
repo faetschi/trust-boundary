@@ -25,6 +25,7 @@ func TestD09XattrCalibrationRolesAreClosedAndManagedRWBindsRegistration(t *testi
 	rwOptions := registration.RootMountOptionsDigest
 	templateROVisibility := DigestD09XattrVisibilityProfile(0xef53, roOptions, uid, gid, D09XattrScanPrivilegeProfile)
 	managed := D09XattrEnumerationCalibration{
+		Authority:       D09XattrVisibilityAuthority,
 		FilesystemMagic: 0xef53, MountOptionsDigest: rwOptions, ScanUID: uid, ScanGID: gid,
 		ScanPrivilegeProfile: D09XattrScanPrivilegeProfile, SourceAccessProfile: D09XattrManagedRWSourceProfile,
 		EnumerationProfile:      D09XattrEnumerationProfile,
@@ -97,6 +98,7 @@ func TestD09XattrEnumerationCalibrationIsDomainSeparatedAndStrict(t *testing.T) 
 		t.Fatal(err)
 	}
 	calibration := D09XattrEnumerationCalibration{
+		Authority:       D09XattrVisibilityAuthority,
 		FilesystemMagic: 0xef53, MountOptionsDigest: DigestBytes([]byte("rw,nodev,nosuid")),
 		ScanUID: 1001, ScanGID: 1002, ScanPrivilegeProfile: D09XattrScanPrivilegeProfile,
 		SourceAccessProfile: D09XattrManagedRWSourceProfile, EnumerationProfile: D09XattrEnumerationProfile,
@@ -163,7 +165,7 @@ func TestMeasureD09XattrEnumerationRejectsSymlinks(t *testing.T) {
 
 func TestManagedLiveRootQualificationIssuesWorkspaceXattrAttestation(t *testing.T) {
 	evidence := D09ManagedRootXattrEvidence{
-		SchemaVersion: "tbound-d09-managed-live-xattr-evidence/v1", RunID: "managed-run",
+		SchemaVersion: "tbound-d09-managed-live-xattr-evidence/v2", Authority: D09XattrVisibilityAuthority, RunID: "managed-run",
 		OwnerEpoch: 1, RegistrationDigest: DigestBytes([]byte("registration")),
 		CalibrationDigest:   DigestBytes([]byte("managed-rw-calibration")),
 		LeaseEvidenceDigest: DigestBytes([]byte("lease")), RootDevice: 1, RootInode: 2,

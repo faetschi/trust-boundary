@@ -29,21 +29,53 @@ const d09XattrVisibilityDomain = "tbound-d09-xattr-visibility/v2\x00"
 // NoNewPrivs, and the initial host user namespace (complete UID/GID maps).
 const D09XattrScanPrivilegeProfile = "service-nonroot-no-extra-groups-empty-caps-nnp-initial-userns/v1"
 
-// D09XattrVisibilityAuthority is the closed signed-template policy authorizing
-// xattr-complete scanning for the measured filesystem/scanner identity. Runtime
-// APIs still verify the actual protected profile and source descriptor; a
-// caller-provided boolean or digest alone cannot issue the workspace attestation.
-const D09XattrVisibilityAuthority = "root-profile-measured-complete-enumeration/v1"
+// D09XattrBoundedAuthority is the only xattr-visibility authority this build
+// admits. It is a BOUNDED, root-attested result, not a completeness proof.
+//
+// What it claims: the trusted host administrator (root; the host-admin trust
+// assumption is part of the thesis TCB) attests, through the separately signed
+// enumeration calibration, that for the one measured filesystem type, mount
+// options, scanner uid/gid and source access profile there are no hidden
+// trusted.* attributes on the governed source. The label is carried in the
+// signed cell template, the signed calibration, and the managed-root xattr
+// evidence, so downstream receipts show this bounded claim.
+//
+// What it does NOT claim: that the unprivileged scanner enumerates every
+// extended attribute. It does not. A non-root scanner cannot list trusted.*
+// names at all (the known counterexample is trusted.tbound.probe, hidden from
+// uid 995), so the scan's silence about trusted.* is not evidence of absence;
+// the trusted.* statement rests on root's attestation, not on the enumeration.
+// It makes no claim about other filesystems, other mounts or uids, hosts
+// without a trusted administrator, or attributes created after the
+// measurement. Complete enumeration is not granted and no authority string for
+// it exists in this build.
+const D09XattrBoundedAuthority = "root-attested-bounded-no-hidden-trusted/v1"
+
+// D09XattrVisibilityAuthority is the closed signed-template policy value. It
+// is the bounded authority; it is the documented default and the only value
+// ValidD09XattrVisibilityAuthority accepts. Runtime APIs still verify the
+// actual protected profile and source descriptor; a caller-provided boolean or
+// digest alone cannot issue the workspace attestation, and workspace
+// attestation Complete means "bounded per this authority", not complete
+// enumeration.
+const D09XattrVisibilityAuthority = D09XattrBoundedAuthority
+
+// ValidD09XattrVisibilityAuthority reports whether authority is the single
+// admitted bounded authority. Unknown strings, including the retired
+// complete-enumeration label, are refused.
+func ValidD09XattrVisibilityAuthority(authority string) bool {
+	return authority == D09XattrBoundedAuthority
+}
 
 const (
-	D09XattrEnumerationCalibrationSchema = "tbound-d09-xattr-enumeration-calibration/v1"
+	D09XattrEnumerationCalibrationSchema = "tbound-d09-xattr-enumeration-calibration/v2"
 	D09XattrEnumerationProfile           = "fd-relative-listxattr-procfd/v1"
 	D09XattrManagedRWSourceProfile       = "managed-live-root-rw-under-recovered-lease/v1"
 	D09XattrReadonlySourceProfile        = "readonly-sealed-source/v1"
-	d09XattrCalibrationDomain            = "tbound-d09-xattr-enumeration-calibration/v1\x00"
+	d09XattrCalibrationDomain            = "tbound-d09-xattr-enumeration-calibration/v2\x00"
 	d09ManagedSourceLeaseEvidenceDomain  = "tbound-d09-managed-source-lease-evidence/v1\x00"
 	d09ManagedSnapshotEvidenceDomain     = "tbound-d09-managed-live-snapshot-evidence/v1\x00"
-	d09ManagedRootXattrEvidenceDomain    = "tbound-d09-managed-live-xattr-evidence/v1\x00"
+	d09ManagedRootXattrEvidenceDomain    = "tbound-d09-managed-live-xattr-evidence/v2\x00"
 )
 
 const (
@@ -59,6 +91,7 @@ const (
 // the source is writable.
 type D09XattrEnumerationCalibration struct {
 	SchemaVersion           string `json:"schema_version"`
+	Authority               string `json:"authority"`
 	FilesystemMagic         uint64 `json:"filesystem_magic"`
 	MountOptionsDigest      string `json:"mount_options_digest"`
 	ScanUID                 int    `json:"scan_uid"`
@@ -75,7 +108,7 @@ type D09XattrEnumerationCalibration struct {
 }
 
 func (c D09XattrEnumerationCalibration) Validate() error {
-	if c.SchemaVersion != D09XattrEnumerationCalibrationSchema || c.FilesystemMagic == 0 ||
+	if c.SchemaVersion != D09XattrEnumerationCalibrationSchema || !ValidD09XattrVisibilityAuthority(c.Authority) || c.FilesystemMagic == 0 ||
 		!validDigest(c.MountOptionsDigest) || c.ScanUID <= 0 || c.ScanGID <= 0 ||
 		c.ScanPrivilegeProfile != D09XattrScanPrivilegeProfile ||
 		(c.SourceAccessProfile != D09XattrManagedRWSourceProfile && c.SourceAccessProfile != D09XattrReadonlySourceProfile) ||
@@ -125,6 +158,21 @@ func SignD09XattrEnumerationCalibration(calibration D09XattrEnumerationCalibrati
 	return encoded, ed25519.Sign(privateKey, message), calibration.Digest, nil
 }
 
+// ErrD09XattrCalibrationSignature reports that a well-formed xattr enumeration
+// calibration did not verify under the supplied public key (wrong key, or a
+// signature made over other bytes). It is distinct from a missing or invalid
+// cell template, and its message says so. It still unwraps to
+// ErrD09TemplateInvalid so existing fail-closed callers keep refusing.
+var ErrD09XattrCalibrationSignature error = d09XattrCalibrationSignatureError{}
+
+type d09XattrCalibrationSignatureError struct{}
+
+func (d09XattrCalibrationSignatureError) Error() string {
+	return "xattr calibration signature does not verify under the supplied public key (wrong signing key, or signature over different bytes)"
+}
+
+func (d09XattrCalibrationSignatureError) Unwrap() error { return ErrD09TemplateInvalid }
+
 func VerifyD09XattrEnumerationCalibration(encoded, signature []byte, publicKey ed25519.PublicKey) (D09XattrEnumerationCalibration, error) {
 	var calibration D09XattrEnumerationCalibration
 	if len(encoded) == 0 || len(encoded) > 64<<10 || len(signature) != ed25519.SignatureSize ||
@@ -141,8 +189,11 @@ func VerifyD09XattrEnumerationCalibration(encoded, signature []byte, publicKey e
 		return D09XattrEnumerationCalibration{}, ErrD09TemplateInvalid
 	}
 	message, err := D09XattrEnumerationCalibrationSigningBytes(calibration)
-	if err != nil || calibration.Digest != DigestBytes(message) || !ed25519.Verify(publicKey, message, signature) {
+	if err != nil || calibration.Digest != DigestBytes(message) {
 		return D09XattrEnumerationCalibration{}, errors.Join(ErrD09TemplateInvalid, err)
+	}
+	if !ed25519.Verify(publicKey, message, signature) {
+		return D09XattrEnumerationCalibration{}, ErrD09XattrCalibrationSignature
 	}
 	canonical, err := json.Marshal(calibration)
 	if err != nil || !bytes.Equal(canonical, encoded) {
@@ -346,6 +397,7 @@ type D09ManagedLiveRootSnapshotEvidence struct {
 // writable root. It contains no Complete/Quiescent boolean.
 type D09ManagedRootXattrEvidence struct {
 	SchemaVersion        string `json:"schema_version"`
+	Authority            string `json:"authority"`
 	RunID                string `json:"run_id"`
 	OwnerEpoch           uint64 `json:"owner_epoch"`
 	RegistrationDigest   string `json:"registration_digest"`
@@ -390,7 +442,7 @@ func d09ManagedSnapshotEvidenceBytes(e D09ManagedLiveRootSnapshotEvidence) ([]by
 }
 
 func (e D09ManagedRootXattrEvidence) Validate() error {
-	if e.SchemaVersion != "tbound-d09-managed-live-xattr-evidence/v1" || !validIdentity(e.RunID) ||
+	if e.SchemaVersion != "tbound-d09-managed-live-xattr-evidence/v2" || !ValidD09XattrVisibilityAuthority(e.Authority) || !validIdentity(e.RunID) ||
 		e.OwnerEpoch == 0 || !validDigest(e.RegistrationDigest) || !validDigest(e.CalibrationDigest) ||
 		!validDigest(e.LeaseEvidenceDigest) || e.RootDevice == 0 || e.RootInode == 0 || e.RootMountID == 0 ||
 		e.FilesystemMagic == 0 || !validDigest(e.MountOptionsDigest) || e.ScanUID <= 0 || e.ScanGID <= 0 ||
@@ -914,7 +966,7 @@ func MeasureD09ManagedLiveRootXattrs(ctx context.Context, verified *VerifiedD09M
 		return D09ManagedRootXattrEvidence{}, err
 	}
 	evidence := D09ManagedRootXattrEvidence{
-		SchemaVersion: "tbound-d09-managed-live-xattr-evidence/v1", RunID: leaseEvidence.RunID,
+		SchemaVersion: "tbound-d09-managed-live-xattr-evidence/v2", Authority: calibration.Authority, RunID: leaseEvidence.RunID,
 		OwnerEpoch: leaseEvidence.OwnerEpoch, RegistrationDigest: registration.Digest,
 		CalibrationDigest: calibration.Digest, LeaseEvidenceDigest: leaseEvidence.EvidenceDigest,
 		RootDevice: registration.RootDevice, RootInode: registration.RootInode, RootMountID: registration.RootMountID,
@@ -1006,7 +1058,7 @@ func MeasureD09XattrEnumerationCalibration(source *os.File, accessProfile, probe
 			errors.New("calibration corpus did not expose the required xattr enumeration probe"), err)
 	}
 	return D09XattrEnumerationCalibration{
-		SchemaVersion:   D09XattrEnumerationCalibrationSchema,
+		SchemaVersion: D09XattrEnumerationCalibrationSchema, Authority: D09XattrVisibilityAuthority,
 		FilesystemMagic: measurements.FilesystemMagic, MountOptionsDigest: measurements.MountOptionsDigest,
 		ScanUID: measurements.ScanUID, ScanGID: measurements.ScanGID,
 		ScanPrivilegeProfile: measurements.ScanPrivilegeProfile, SourceAccessProfile: accessProfile,
@@ -1117,6 +1169,7 @@ func VerifyD09XattrVisibility(source *os.File, profile HostProfile, template D09
 	}
 	calibration, err := LoadVerifiedD09ReadonlyXattrEnumerationCalibration(context.Background())
 	if err != nil || calibration.SourceAccessProfile != D09XattrReadonlySourceProfile ||
+		calibration.Authority != template.XattrVisibilityAuthority ||
 		calibration.VisibilityProfileDigest != expected || calibration.FilesystemMagic != observed.FilesystemMagic ||
 		calibration.MountOptionsDigest != observed.MountOptionsDigest || calibration.ScanUID != observed.ScanUID ||
 		calibration.ScanGID != observed.ScanGID || calibration.ScanPrivilegeProfile != observed.ScanPrivilegeProfile {

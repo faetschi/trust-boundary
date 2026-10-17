@@ -42,6 +42,7 @@ usage:
   tbound-profile template-digest --template <d09-cell.json>
   tbound-profile xattr-measure   --source <protected-read-only-directory>
   tbound-profile xattr-digest    --filesystem-magic <n> --mount-options-digest <sha256> --uid <n> --gid <n>
+  tbound-profile cgroup-root-digest --uid <service-uid> [--cgroups-path </system.slice/name.service/cells>]
   tbound-profile xattr-calibration-measure --source <calibration-corpus> --access-profile <profile>
                                            --probe-corpus-digest <sha256> [--out <json>]
   tbound-profile xattr-calibration-sign --calibration <json> --key <ed25519-private>
@@ -77,6 +78,10 @@ Registration authenticates filesystem/service policy, not current quiescence.
 The D09 cell template digest printed by template-digest must be installed into
 the signed profile's ContainmentProfileDigest so no D09 identity can be switched
 after the profile is verified.
+
+The profile's CgroupRootDigest is derived, not measured: cgroup-root-digest hashes the
+canonical cells cgroup path, cgroup2, the service uid and cpu,memory,pids. It binds
+no inode or mount id, so it stays valid across service restarts.
 `
 
 func main() {
@@ -107,6 +112,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runXattrMeasure(args[1:], stdout, stderr)
 	case "xattr-digest":
 		return runXattrDigest(args[1:], stdout, stderr)
+	case "cgroup-root-digest":
+		return runCgroupRootDigest(args[1:], stdout, stderr)
 	case "xattr-calibration-measure":
 		return runXattrCalibrationMeasure(args[1:], stdout, stderr)
 	case "xattr-calibration-sign":
@@ -152,7 +159,7 @@ func runInit(args []string, stdout, stderr io.Writer) error {
 	if err := writeNewFile(*out, encoded, *force); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(stdout, "wrote canonical unsigned host profile template: %s\nDigest is empty until signed; replace placeholder digests with the measured experiment values, then:\n  tbound-profile sign --profile %s --key <ed25519-private> --out-sig %s.ed25519 --out-pub %s.pub\n",
+	if _, err := fmt.Fprintf(stdout, "wrote canonical unsigned host profile template: %s\nDigest is empty until signed; replace placeholder digests with the measured experiment values (cgroup_root_digest comes from 'tbound-profile cgroup-root-digest --uid <service-uid>'), then:\n  tbound-profile sign --profile %s --key <ed25519-private> --out-sig %s.ed25519 --out-pub %s.pub\n",
 		*out, *out, strings.TrimSuffix(*out, ".json"), strings.TrimSuffix(*out, ".json")); err != nil {
 		return err
 	}
@@ -325,6 +332,26 @@ func runTemplateDigest(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	return nil
+}
+
+func runCgroupRootDigest(args []string, stdout, stderr io.Writer) error {
+	flags := flag.NewFlagSet("tbound-profile cgroup-root-digest", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	uid := flags.Int("uid", 0, "delegated owner uid (the registered service uid)")
+	cgroupsPath := flags.String("cgroups-path", piruntime.D09ManagedPiServiceCgroupPath+"/"+piruntime.D09ManagedPiCellCgroupLeaf,
+		"canonical cgroup-v2 hierarchy path of the delegated cells root")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || *uid <= 0 {
+		return errors.New("--uid (the positive service uid) is required")
+	}
+	digest, err := piruntime.DigestD09CgroupRoot(*cgroupsPath, *uid)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(stdout, digest)
+	return err
 }
 
 func runXattrMeasure(args []string, stdout, stderr io.Writer) error {
