@@ -25,7 +25,12 @@ type ScopeObservation struct {
 	Populated      bool
 	ProcCount      int
 	IdentityDigest string
-	RemoveErr      error
+	// NeverBound marks an authenticated durable never-exposed receipt: the owner
+	// was cleaned up before any worker scope was created, so no scope identity
+	// exists. It requires Absent and an empty identity, receipt and expectation,
+	// and it is digested, so it can never be confused with a bound-scope receipt.
+	NeverBound bool
+	RemoveErr  error
 }
 
 // OwnerObservation is one owner's observed facts, compared against the
@@ -51,7 +56,7 @@ type Proof struct {
 }
 
 // digestLabel separates this digest from any other SHA-256 over similar bytes.
-const digestLabel = "tbound/supervisor/drainproof/observation/v1"
+const digestLabel = "tbound/supervisor/drainproof/observation/v2"
 
 // Prove decides whether obs proves the owner drained. It is fail-closed: any
 // fact that is missing, inconsistent, or unexpected yields an error, and the
@@ -157,6 +162,15 @@ func proveNotLive(obs OwnerObservation) (string, error) {
 // scope identity is set, the observed identity must equal it too.
 func proveScope(obs OwnerObservation) (string, error) {
 	s := obs.Scope
+	if s.NeverBound {
+		// No scope ever existed, so there is no identity to receipt or expect. Any
+		// identity here would make this a bound-scope observation, so it is refused.
+		if !s.Absent || s.Populated || s.ProcCount != 0 || s.RemoveErr != nil || s.IdentityDigest != "" ||
+			obs.CleanupReceiptIdentity != "" || obs.ExpectedScopeIdentity != "" {
+			return "", notDrainedf("never-bound scope observation is inconsistent")
+		}
+		return "scope-never-bound-receipt", nil
+	}
 	if s.Absent {
 		if s.Populated || s.ProcCount != 0 || s.RemoveErr != nil {
 			return "", notDrainedf("scope reported absent but also populated, counted, or with a remove error")
@@ -213,6 +227,7 @@ func observationDigest(obs OwnerObservation) string {
 
 	e.boolean(obs.Scope.Absent)
 	e.boolean(obs.Scope.Populated)
+	e.boolean(obs.Scope.NeverBound)
 	e.i64(int64(obs.Scope.ProcCount))
 	e.str(obs.Scope.IdentityDigest)
 	e.optionalErr(obs.Scope.RemoveErr)

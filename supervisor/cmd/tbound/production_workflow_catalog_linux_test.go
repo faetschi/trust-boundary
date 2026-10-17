@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -51,10 +52,11 @@ func TestCatalogOwnerDrainRequiresCleanupReceiptOrLiveScope(t *testing.T) {
 	catalog.ownerScopes = map[string]piServiceWorkflowOwnerScope{key: {
 		AdmissionHash: digest, WorkflowID: workflow, OwnerEpoch: owner.Epoch,
 		Incarnation: incarnation, ScopeName: workflowOwnerScopeName(workflow, owner.Epoch),
-		// A cleanup receipt names the scope identity it cleaned up. An exact
+		// A bound cleanup receipt names the scope identity it cleaned up. An exact
 		// receipt must carry that identity, not only the epoch and incarnation.
+		// The never-exposed receipt has its own tests below, driven by the real writer.
 		ScopeIdentityDigest: "sha256:" + strings.Repeat("d", 64),
-		Drained:             true, Unexposed: true,
+		Drained:             true,
 	}}
 	if _, err := verifier.VerifyOwnerCellsDrainedWithProof(context.Background(), workflow, []workflowrecovery.OwnerEpochIdentity{owner}); err != nil {
 		t.Fatalf("exact prior cleanup receipt was not accepted: %v", err)
@@ -96,7 +98,7 @@ func drainedOwnerScopeFixture(t *testing.T, workflow string, incarnation workflo
 		ownerScopes: map[string]piServiceWorkflowOwnerScope{key: {
 			AdmissionHash: digest, WorkflowID: workflow, OwnerEpoch: owner.Epoch,
 			Incarnation: incarnation, ScopeName: workflowOwnerScopeName(workflow, owner.Epoch),
-			ScopeIdentityDigest: scopeIdentity, Drained: true, Unexposed: true,
+			ScopeIdentityDigest: scopeIdentity, Drained: true,
 		}}}
 	verifier := catalogOwnerDrainVerifier{catalog: catalog, cgroupRoot: filepath.Clean(root),
 		cgroupRootDigest: "sha256:" + strings.Repeat("a", 64), containment: piruntime.D09ContainmentProfile,
@@ -335,6 +337,217 @@ func TestCatalogOwnerDrainProofDigestBindsCleanupReceiptIdentity(t *testing.T) {
 	if first == other {
 		t.Fatal("different scope identities produced the same drain digest")
 	}
+}
+
+// neverExposedFixture is a durable catalog whose epoch-2 owner was cleaned up
+// by the binder without ever creating a worker scope. The receipt is written by
+// the real MarkOwnerUnexposedDrained, and the catalog is then closed and
+// replayed cold from its journal, so nothing in memory survives from the writer.
+type neverExposedFixture struct {
+	verifier      catalogOwnerDrainVerifier
+	owner         workflowrecovery.OwnerEpochIdentity
+	cgroupRoot    string
+	journalPath   string
+	admissionHash string
+}
+
+func newNeverExposedFixture(t *testing.T, incarnation workflowrecovery.OwnerIncarnation) neverExposedFixture {
+	t.Helper()
+	root := privateGovernedTestRoot(t)
+	ownerRoot := filepath.Join(root, "owner-store")
+	cgroupRoot := filepath.Join(root, "cgroup")
+	for _, dir := range []string{ownerRoot, cgroupRoot} {
+		if err := os.Mkdir(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	journalPath := filepath.Join(root, "workflow-catalog.jsonl")
+	journal, err := audit.Open(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admissionHash := bareWorkflowDigest(digestBytes([]byte("never-exposed-admission")))
+	entry := catalogReplayEntry(root, ownerRoot, admissionHash)
+	reserved, err := json.Marshal(piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema, AdmissionHash: admissionHash, Entry: entry})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := journal.Append(audit.Event{Kind: "pi_workflow_admission_reserved",
+		ID: workflowCatalogEventID("reserved", admissionHash), Data: reserved}); err != nil {
+		t.Fatal(err)
+	}
+	catalog := reopenCatalogReplayJournal(t, journal, ownerRoot)
+	initialDigest := bareWorkflowDigest(digestBytes([]byte("never-exposed-initial-checkpoint")))
+	store := workflowrecovery.OwnerStoreIdentity{
+		Digest: bareWorkflowDigest(digestBytes([]byte("never-exposed-store"))), Path: entry.OwnerDBPath,
+	}
+	freshIncarnation := workflowrecovery.OwnerIncarnation{
+		Digest: bareWorkflowDigest(digestBytes([]byte("never-exposed-fresh-incarnation"))), BootID: "never-exposed-boot",
+		PID: os.Getpid(), StartTimeTicks: 1, PIDNamespaceInode: 1, EffectiveUID: uint32(os.Geteuid()),
+		CgroupIdentityDigest: bareWorkflowDigest(digestBytes([]byte("never-exposed-fresh-cgroup"))),
+	}
+	if err := catalog.AuthorizeFreshWorkflow(context.Background(), catalogReplayWorkflowID, 1, initialDigest,
+		freshIncarnation, entry.Limits.Deadline, bareWorkflowDigest(digestBytes([]byte("never-exposed-root"))), store); err != nil {
+		t.Fatalf("fresh authorization refused: %v", err)
+	}
+	checkpoint, err := json.Marshal(piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema,
+		AdmissionHash: admissionHash, Digest: initialDigest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := journal.Append(audit.Event{Kind: "pi_workflow_checkpoint_bound",
+		ID: workflowCatalogEventID("checkpoint", admissionHash), Data: checkpoint}); err != nil {
+		t.Fatal(err)
+	}
+	// The production writer, exactly as the binder failure paths call it.
+	if err := catalog.MarkOwnerUnexposedDrained(admissionHash, catalogReplayWorkflowID, 2, incarnation, cgroupRoot); err != nil {
+		t.Fatalf("MarkOwnerUnexposedDrained refused: %v", err)
+	}
+	if err := catalog.Close(); err != nil {
+		t.Fatal(err)
+	}
+	journal, err = audit.Open(journalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cold := reopenCatalogReplayJournal(t, journal, ownerRoot)
+	t.Cleanup(func() { _ = cold.Close() })
+	return neverExposedFixture{journalPath: journalPath, cgroupRoot: cgroupRoot, admissionHash: admissionHash,
+		owner: workflowrecovery.OwnerEpochIdentity{Epoch: 2, Incarnation: incarnation},
+		verifier: catalogOwnerDrainVerifier{catalog: cold, cgroupRoot: cgroupRoot,
+			cgroupRootDigest: "sha256:" + strings.Repeat("a", 64), containment: piruntime.D09ContainmentProfile,
+			settlement: piruntime.D09SettlementProfile}}
+}
+
+func (f neverExposedFixture) verify(owner workflowrecovery.OwnerEpochIdentity) ([]string, error) {
+	return f.verifier.VerifyOwnerCellsDrainedWithProof(context.Background(), catalogReplayWorkflowID,
+		[]workflowrecovery.OwnerEpochIdentity{owner})
+}
+
+func deadNeverExposedIncarnation() workflowrecovery.OwnerIncarnation {
+	return workflowrecovery.OwnerIncarnation{
+		Digest: strings.Repeat("b", 64), BootID: "different-boot", PID: 424242, StartTimeTicks: 1,
+		PIDNamespaceInode: 1, EffectiveUID: uint32(os.Geteuid()), CgroupIdentityDigest: strings.Repeat("c", 64),
+	}
+}
+
+// A binder failure that never created a worker scope leaves an Unexposed,
+// Drained receipt with no scope identity. After a cold replay that receipt must
+// be a valid drain basis for a dead owner whose scope name is absent.
+func TestCatalogOwnerDrainAcceptsNeverExposedReceiptFromProductionWriter(t *testing.T) {
+	f := newNeverExposedFixture(t, deadNeverExposedIncarnation())
+	state, ok := f.verifier.catalog.ownerScope(catalogReplayWorkflowID, f.owner.Epoch)
+	if !ok || !state.Drained || !state.Unexposed || state.ScopeIdentityDigest != "" {
+		t.Fatalf("cold replay did not restore the writer's never-exposed receipt: %+v", state)
+	}
+	digests, err := f.verify(f.owner)
+	if err != nil || len(digests) != 1 {
+		t.Fatalf("never-exposed receipt from the production writer was refused: %v (%d digests)", err, len(digests))
+	}
+	// The evidence digest binds drainproof's never-bound proof, which is not the
+	// proof of any bound-scope receipt for the same owner.
+	bootID, _ := currentProcessIdentityForTest(t)
+	inc := f.owner.Incarnation
+	want, err := drainproof.Prove(drainproof.OwnerObservation{
+		Owner: f.owner, BootID: inc.BootID, ObservedBootID: bootID, StartTicks: inc.StartTimeTicks,
+		Scope: drainproof.ScopeObservation{Absent: true, NeverBound: true},
+	})
+	if err != nil || digests[0] != want.Digest {
+		t.Fatalf("drain digest %q does not bind the never-bound proof %q (%v)", digests[0], want.Digest, err)
+	}
+	bound, err := drainproof.Prove(drainproof.OwnerObservation{
+		Owner: f.owner, BootID: inc.BootID, ObservedBootID: bootID, StartTicks: inc.StartTimeTicks,
+		Scope:                  drainproof.ScopeObservation{Absent: true, IdentityDigest: "sha256:" + strings.Repeat("d", 64)},
+		CleanupReceiptIdentity: "sha256:" + strings.Repeat("d", 64), ExpectedScopeIdentity: "sha256:" + strings.Repeat("d", 64),
+	})
+	if err != nil || bound.Digest == digests[0] {
+		t.Fatalf("never-bound digest is confusable with a bound-scope digest: %v", err)
+	}
+}
+
+func TestCatalogOwnerDrainRefusesNeverExposedReceiptWhenNotProven(t *testing.T) {
+	bootID, liveStart := currentProcessIdentityForTest(t)
+	t.Run("scope present", func(t *testing.T) {
+		f := newNeverExposedFixture(t, deadNeverExposedIncarnation())
+		scope := filepath.Join(f.cgroupRoot, workflowOwnerScopeName(catalogReplayWorkflowID, f.owner.Epoch))
+		if err := os.Mkdir(scope, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.verify(f.owner); err == nil {
+			t.Fatal("never-exposed receipt was accepted while the scope name is present")
+		}
+		if _, err := os.Lstat(scope); err != nil {
+			t.Fatalf("refused drain touched the present scope: %v", err)
+		}
+	})
+	t.Run("live owner", func(t *testing.T) {
+		live := deadNeverExposedIncarnation()
+		live.BootID, live.PID, live.StartTimeTicks = bootID, os.Getpid(), liveStart
+		f := newNeverExposedFixture(t, live)
+		if _, err := f.verify(f.owner); err == nil {
+			t.Fatal("never-exposed receipt was accepted for a live owner process")
+		}
+	})
+	t.Run("wrong incarnation", func(t *testing.T) {
+		f := newNeverExposedFixture(t, deadNeverExposedIncarnation())
+		other := f.owner
+		other.Incarnation.Digest = strings.Repeat("e", 64)
+		if _, err := f.verify(other); err == nil {
+			t.Fatal("never-exposed receipt was accepted for a different owner incarnation")
+		}
+	})
+	t.Run("wrong epoch", func(t *testing.T) {
+		f := newNeverExposedFixture(t, deadNeverExposedIncarnation())
+		other := f.owner
+		other.Epoch = 3
+		if _, err := f.verify(other); err == nil {
+			t.Fatal("never-exposed receipt for epoch 2 was accepted for epoch 3")
+		}
+	})
+	t.Run("receipt also marked bound", func(t *testing.T) {
+		f := newNeverExposedFixture(t, deadNeverExposedIncarnation())
+		key := workflowOwnerEpochKey(catalogReplayWorkflowID, f.owner.Epoch)
+		state := f.verifier.catalog.ownerScopes[key]
+		state.ScopeIdentityDigest = "sha256:" + strings.Repeat("d", 64)
+		f.verifier.catalog.ownerScopes[key] = state
+		if _, err := f.verify(f.owner); err == nil {
+			t.Fatal("receipt that is both unexposed and bound was accepted")
+		}
+	})
+	t.Run("replay rejects an unexposed receipt over a bound scope", func(t *testing.T) {
+		f := newNeverExposedFixture(t, deadNeverExposedIncarnation())
+		_ = f.verifier.catalog.Close()
+		journal, err := audit.Open(f.journalPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		const epoch = 3
+		name := workflowOwnerScopeName(catalogReplayWorkflowID, epoch)
+		bound := piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema, AdmissionHash: f.admissionHash,
+			WorkflowID: catalogReplayWorkflowID, OwnerEpoch: epoch, Incarnation: f.owner.Incarnation,
+			ScopeName: name, ScopePath: filepath.Join(f.cgroupRoot, name), ScopeIdentityDigest: "sha256:" + strings.Repeat("d", 64)}
+		unexposed := piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema, AdmissionHash: f.admissionHash,
+			WorkflowID: catalogReplayWorkflowID, OwnerEpoch: epoch, Incarnation: f.owner.Incarnation,
+			ScopeName: name, DrainProofDigest: bareWorkflowDigest(digestBytes([]byte("forged"))), Unexposed: true}
+		for _, record := range []struct {
+			kind, id string
+			event    piServiceWorkflowEvent
+		}{
+			{"pi_workflow_owner_scope_bound", workflowOwnerScopeEventID("bound", catalogReplayWorkflowID, epoch), bound},
+			{"pi_workflow_owner_scope_drained", workflowOwnerScopeEventID("drained", catalogReplayWorkflowID, epoch), unexposed},
+		} {
+			encoded, err := json.Marshal(record.event)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := journal.Append(audit.Event{Kind: record.kind, ID: record.id, Data: encoded}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := loadPiServiceWorkflowCatalog(journal); !errors.Is(err, ErrPiWorkflowCatalog) {
+			t.Fatalf("replay accepted an unexposed receipt over a bound scope: %v", err)
+		}
+	})
 }
 
 func TestPiServiceWorkflowCatalogTerminalTupleIsExactAndIdempotent(t *testing.T) {

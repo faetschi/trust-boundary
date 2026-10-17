@@ -321,7 +321,7 @@ func TestObservationDigestSensitivityPerObservedField(t *testing.T) {
 	base := baseObservation()
 	baseDigest := observationDigest(base)
 
-	const wantLeaves = 22
+	const wantLeaves = 23
 	leaves := 0
 	for n := 0; ; n++ {
 		mutated, path, found := mutateLeafN(base, n)
@@ -489,5 +489,82 @@ func TestZeroValueObservationWithValidOwnerRefusedAtScope(t *testing.T) {
 				t.Fatalf("Prove() error = %v; want refusal from the scope step", err)
 			}
 		})
+	}
+}
+
+// neverBoundObservation is a dead owner whose cleanup receipt says no worker
+// scope was ever bound. There is no scope identity, receipt identity or expectation.
+func neverBoundObservation() OwnerObservation {
+	obs := baseObservation()
+	obs.Scope = ScopeObservation{Absent: true, NeverBound: true}
+	obs.CleanupReceiptIdentity = ""
+	obs.ExpectedScopeIdentity = ""
+	return obs
+}
+
+func TestProveAcceptsNeverBoundOwner(t *testing.T) {
+	proof, err := Prove(neverBoundObservation())
+	if err != nil {
+		t.Fatalf("Prove(never bound) error = %v, want nil", err)
+	}
+	if !strings.Contains(proof.Basis, "scope-never-bound-receipt") || strings.Contains(proof.Basis, "receipt-matched") {
+		t.Fatalf("Basis = %q, want the never-bound basis and not the bound-scope basis", proof.Basis)
+	}
+}
+
+func TestProveRefusesInconsistentNeverBoundOwner(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*OwnerObservation)
+	}{
+		{"live owner", func(o *OwnerObservation) { o.ProcessLive = true }},
+		{"scope not absent", func(o *OwnerObservation) { o.Scope.Absent = false }},
+		{"scope populated", func(o *OwnerObservation) { o.Scope.Populated = true }},
+		{"scope has processes", func(o *OwnerObservation) { o.Scope.ProcCount = 1 }},
+		{"scope remove error", func(o *OwnerObservation) { o.Scope.RemoveErr = errors.New("rmdir failed") }},
+		{"also carries a scope identity", func(o *OwnerObservation) { o.Scope.IdentityDigest = "scope-a" }},
+		{"also carries a receipt identity", func(o *OwnerObservation) { o.CleanupReceiptIdentity = "receipt-a" }},
+		{"also carries an expected identity", func(o *OwnerObservation) { o.ExpectedScopeIdentity = "receipt-a" }},
+		{"pending effects", func(o *OwnerObservation) { o.PendingEffects = 1 }},
+		{"owner epoch zero", func(o *OwnerObservation) { o.Owner.Epoch = 0 }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			obs := neverBoundObservation()
+			tc.mutate(&obs)
+			checkRefusal(t, obs, ErrNotDrained)
+		})
+	}
+}
+
+// Absent with no receipt and no NeverBound mark stays refused: an identity-free
+// absent scope is not a receipt.
+func TestProveStillRefusesAbsentScopeWithoutReceiptOrNeverBound(t *testing.T) {
+	obs := neverBoundObservation()
+	obs.Scope.NeverBound = false
+	checkRefusal(t, obs, ErrNotDrained)
+}
+
+// The never-bound proof must not share a digest with any bound-scope receipt
+// proof, including a bound receipt that has empty identity text.
+func TestNeverBoundDigestIsDistinctFromBoundReceiptDigest(t *testing.T) {
+	never := neverBoundObservation()
+	neverProof, err := Prove(never)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound := baseObservation()
+	boundProof, err := Prove(bound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if neverProof.Digest == boundProof.Digest {
+		t.Fatal("never-bound and bound-scope proofs share a digest")
+	}
+	// Same facts except the mark itself.
+	unmarked := never
+	unmarked.Scope.NeverBound = false
+	if observationDigest(never) == observationDigest(unmarked) {
+		t.Fatal("the NeverBound mark does not change the digest")
 	}
 }

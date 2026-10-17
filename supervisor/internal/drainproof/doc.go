@@ -40,6 +40,13 @@
 //     CleanupReceiptIdentity equal to ExpectedScopeIdentity. An absent scope
 //     with no receipt is refused. This is OPEN spec question Q1.
 //
+//     Scope.NeverBound is the one exception to the receipt rule. It marks an
+//     authenticated durable never-exposed receipt, where cleanup finished before
+//     any worker scope was created. It requires Absent, an unpopulated scope with
+//     no processes and no remove error, and an empty IdentityDigest,
+//     CleanupReceiptIdentity and ExpectedScopeIdentity. Any identity makes it a
+//     bound-scope observation, so it is refused. The mark is digested.
+//
 //  5. Present scope. When Scope.Absent is false, the scope must be unpopulated,
 //     have ProcCount == 0 (a negative count is refused), and have no remove
 //     error. The scope must also have been observed, so Scope.IdentityDigest
@@ -68,10 +75,10 @@
 //
 //  9. Digest. Proof.Digest is the lowercase hex SHA-256 of a canonical encoding
 //     of the observed facts. The encoding starts with the domain label
-//     "tbound/supervisor/drainproof/observation/v1". Integers are fixed-width
+//     "tbound/supervisor/drainproof/observation/v2". Integers are fixed-width
 //     big-endian, booleans are one byte, and strings are length-prefixed. The
 //     digest covers every Owner field, both boot ids, both start ticks, the
-//     liveness flag, every Scope field, the receipt identity, the expected scope identity, the pending count,
+//     liveness flag, every Scope field (including NeverBound), the receipt identity, the expected scope identity, the pending count,
 //     and the deadline flag. A RemoveErr is recorded as presence plus its message
 //     text, so two errors with the same text are indistinguishable. Basis is
 //     derived and is not digested. ExpectedScopeIdentity is digested, so two

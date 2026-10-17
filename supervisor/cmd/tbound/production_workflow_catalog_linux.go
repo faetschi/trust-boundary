@@ -1396,6 +1396,16 @@ func (v catalogOwnerDrainVerifier) drainOwnerEpoch(ctx context.Context, entry pi
 		if _, err := os.Lstat(filepath.Join(v.cgroupRoot, name)); !errors.Is(err, os.ErrNotExist) {
 			return "", errors.Join(ErrPiWorkflowCatalog, err)
 		}
+		if state.Unexposed {
+			// The binder cleaned this owner up before any worker scope was created, so
+			// the receipt has no scope identity. It is a distinct never-bound basis, and
+			// a receipt that also carries a binding is inconsistent and refused.
+			if state.ScopeIdentityDigest != "" || state.ScopePath != "" || state.ScopeName != name {
+				return "", ErrPiWorkflowCatalog
+			}
+			return proveOwnerDrain(owner, process,
+				drainproof.ScopeObservation{Absent: true, NeverBound: true}, "", "")
+		}
 		// The durable drained record is the cleanup receipt. It names the scope it
 		// bound, so the receipt identity and the expected identity are that binding.
 		return proveOwnerDrain(owner, process,
