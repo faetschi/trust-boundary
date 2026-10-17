@@ -2,7 +2,7 @@
 
 **Status: planned and untested.** No checkpoint has been created and no restore has been performed on this guest. **Every VM state change below (shutdown, NIC change, start, checkpoint create, Apply) requires explicit owner approval, given separately per action and released by the coordinator.** This file does not grant any of them. All steps are run by a human in an elevated Hyper-V admin shell or the VM console; automation and agents do not run them. Do not run untrusted code, agent tasks, or fault injection during this procedure.
 
-Scope: file-state restore only, no freeze/thaw. A pass shows that this checkpoint restored the tested guest file state on this VM. It makes no claim about production-checkpoint freeze/thaw, containment, G1 or H1. Record two separate fields: the VM `CheckpointType` (the policy; SETUP.md requires ProductionOnly with VSS disabled; an earlier VM reported Standard) and each snapshot's `SnapshotType` (a per-snapshot classification, not the policy). A ProductionOnly VM may produce a Recovery or Standard snapshot depending on the host, so a reported Standard `SnapshotType` alone proves no fallback or policy discrepancy. Make no freeze/thaw claim either way.
+Scope: file-state restore only, no freeze/thaw. A pass shows that this checkpoint restored the tested guest file state on this VM. It makes no claim about production-checkpoint freeze/thaw, containment, G1 or H1. Record two separate fields as observed: the VM `CheckpointType` (the policy; SETUP.md requires ProductionOnly with VSS disabled) and each snapshot's `SnapshotType` (a per-snapshot classification, not the policy). A retired VM (`TBound-Ubuntu-2404`) earlier reported a `SnapshotType` of Standard; that is a snapshot observation of a different VM, not a `CheckpointType`. The relationship between a ProductionOnly policy and the resulting `SnapshotType` is not verified on this host and must not be used to infer fallback either way. Make no freeze/thaw claim either way.
 
 ## Target
 
@@ -42,7 +42,7 @@ Allowed only when step 1 passes, no checkpoint exists, and the owner has approve
     $cp = 'abi8-restore-baseline'   # owner may choose another name; record it
     Checkpoint-VM -Name $vmName -SnapshotName $cp
 
-If it fails, stop and keep the error. Do not fall back to a Standard checkpoint, change the VSS policy, or create a second checkpoint. Then confirm the VM is Off, exactly one checkpoint exists, and host Verify passes (checkpoint files count toward the 100 GiB budget). Record this "before" Verify output and the disk chain (now base VHDX plus one AVHDX).
+If it fails, stop and keep the error. Do not fall back to a Standard checkpoint (the recorded `CheckpointType` policy stays as is), change the VSS policy, or create a second checkpoint. Then confirm the VM is Off, exactly one checkpoint exists, and host Verify passes (checkpoint files count toward the 100 GiB budget). Record this "before" Verify output and the disk chain (now base VHDX plus one AVHDX).
 
 ## 3. Marker test (the only guest writes)
 
@@ -66,16 +66,23 @@ In Hyper-V Manager the equivalent is Apply on the checkpoint; do not choose "Cre
 
 ## 5. Verify after restore
 
-Boot offline and run at the console. Run as the SAME UID recorded as `marker_uid` in section 3 and show the output. If `id -u` differs, the result is INCONCLUSIVE, not a pass: another account may not see the marker and report it absent. Check the exact absolute marker path, never `$HOME`.
+Boot offline and run at the console. Substitute `<MARKER_UID>` with the `marker_uid` recorded in section 3, run as that same UID, and show the output. The check runs in a subshell so its `exit` ends only the check. Absence must be proven by `stat` failing with ENOENT ("No such file or directory") after the UID gate and a positive control that the parent directory exists and is searchable. Any other result is INCONCLUSIVE, not a pass: another account may not see the marker, and an unmounted or unreadable parent looks like an absent file. Check the exact absolute marker path, never `$HOME`.
 
-    id -u
-    test ! -e /home/tboundadmin/.tbound-restore-a91c2e && test ! -L /home/tboundadmin/.tbound-restore-a91c2e && echo RESTORE_PASS || echo RESTORE_FAIL
+    (
+      [ "$(id -u)" = "<MARKER_UID>" ] || { echo INCONCLUSIVE uid; exit 2; }
+      test -d /home/tboundadmin && test -x /home/tboundadmin || { echo INCONCLUSIVE parent; exit 2; }
+      err=$(LC_ALL=C stat /home/tboundadmin/.tbound-restore-a91c2e 2>&1 >/dev/null); rc=$?
+      if [ "$rc" -eq 0 ]; then echo RESTORE_FAIL
+      elif printf '%s\n' "$err" | grep -q 'No such file or directory'; then echo RESTORE_PASS
+      else echo INCONCLUSIVE stat; exit 2
+      fi
+    )
     hostname; uname -r; cat /proc/sys/kernel/random/boot_id
     tbound-profile runtime-bundle-digest --root /var/lib/tbound/runtime
     ip -4 route show default; ip -6 route show default
     for f in /sys/class/net/*/carrier; do echo "$f"; cat "$f"; done
 
-Pass requires all of: `RESTORE_PASS` at the exact marker path; `id -u` equal to `marker_uid` (else INCONCLUSIVE); hostname `tbound-abi8-seed`; kernel `7.0.0-38-generic`; digest equal to `sha256:d7367e1b...` above; a boot ID different from the marker-boot ID (a fresh boot; the 2026-10-17 value `f94189ae-...` is not expected to recur); no default route; carrier 0 on every non-loopback interface (ignore loopback). Then shut down and run host Verify once more with the VM Off.
+Pass requires all of: `RESTORE_PASS` from the script above (UID gate, parent-directory control, and ENOENT from `stat` at the exact marker path); hostname `tbound-abi8-seed`; kernel `7.0.0-38-generic`; digest equal to `sha256:d7367e1b...` above; a boot ID different from the marker-boot ID (a fresh boot; the 2026-10-17 value `f94189ae-...` is not expected to recur); no default route; carrier 0 on every non-loopback interface (ignore loopback). Then shut down and run host Verify once more with the VM Off.
 
 ## Receipt template (planned)
 
@@ -90,7 +97,7 @@ Write one JSON receipt under `docs/evidence/` after the run. Include no keys, ke
       "diskChain": {"beforeApply": ["<path>", "..."], "afterApply": ["<path>", "..."], "complete": true},
       "hostVerify": {"beforeApply": {"exit": 0, "output": "<ref or sha256>"}, "afterApply": {"exit": 0, "output": "<ref or sha256>"}},
       "storage": {"trackedBytes": 0, "freeBytes": 0},
-      "marker": {"id": "...", "marker_path": "/home/tboundadmin/.tbound-restore-<id>", "marker_uid": 0, "verify_uid": 0, "absentBefore": true, "sha256": "...", "markerBootId": "...", "result": "RESTORE_PASS | RESTORE_FAIL | INCONCLUSIVE"},
+      "marker": {"id": "...", "marker_path": "/home/tboundadmin/.tbound-restore-<id>", "marker_uid": 0, "verify_uid": 0, "parent_dir_check": "pass | fail", "absentBefore": true, "sha256": "...", "markerBootId": "...", "result": "RESTORE_PASS | RESTORE_FAIL | INCONCLUSIVE"},
       "guestAfterRestore": {"hostname": "tbound-abi8-seed", "kernel": "7.0.0-38-generic", "bootId": "...",
                             "runtimeBundleDigest": "sha256:d7367e1b...", "digestMatchesRemeasure": true},
       "network": {"adapterConnected": false, "defaultRoutes": "none", "nonLoopbackCarrier": "0"},
