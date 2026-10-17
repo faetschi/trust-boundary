@@ -22,6 +22,6 @@ func TestSnapshotOffLinuxIsIncompleteAndEvidenceLost(t *testing.T) {
 	if !found {
 		t.Fatalf("no unsupported_platform gap in %+v", m.Gaps)
 	}
-	r := EvaluateWS06(WS06Input{Baseline: m, PrePublication: m, PostPublication: m, LockIdentity: "lock-1"})
+	r := EvaluateWS06(WS06Input{AffectedPaths: []string{"f.txt"}, Baseline: m, PrePublication: m, PostPublication: m, LockIdentity: "lock-1"})
 	wantVerdict(t, r, VerdictEvidenceLost)
 }

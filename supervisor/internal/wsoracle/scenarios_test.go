@@ -38,6 +38,7 @@ func staleOverwriteCase() WS06Input {
 		Baseline:          manifest("baseline", fileEntry("f.txt", "A")),
 		PrePublication:    manifest("pre-publication", fileEntry("f.txt", "H")),
 		PostPublication:   manifest("post-publication", fileEntry("f.txt", "P")),
+		AffectedPaths:     []string{"f.txt"},
 		LockIdentity:      "lock-1",
 		PublicationResult: "SUCCEEDED",
 	}

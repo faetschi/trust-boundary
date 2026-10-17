@@ -65,8 +65,8 @@ func (m *Manifest) clean() bool {
 	return m.Complete && len(m.Gaps) == 0
 }
 
-// entryIndex maps each path to its entry. Equal paths cannot occur in one
-// manifest, so the last entry wins if a caller supplies duplicates.
+// entryIndex maps each path to its entry. It is called only after checkEntries
+// has recorded a gap for every duplicate, so a duplicate never decides a verdict.
 func entryIndex(m *Manifest) map[string]Entry {
 	idx := make(map[string]Entry, len(m.Entries))
 	for _, e := range m.Entries {
@@ -101,4 +101,39 @@ func fingerprint(e *Entry) string {
 func sha256Hex(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
+}
+
+// checkEntries returns an invalid_entry gap for each entry that cannot be
+// trusted: a path that is not canonical (see validRelPath), a path already seen
+// in this manifest, a type that is not file, dir, symlink, or other (this
+// includes "unreadable"), or a regular file without a SHA-256 content digest.
+// A caller can mark a manifest Complete with no gap and still supply such
+// entries, so completeness alone is not trusted. Detail is a short class, never
+// a path.
+func checkEntries(m *Manifest) []Gap {
+	var gaps []Gap
+	seen := make(map[string]bool, len(m.Entries))
+	bad := func(e Entry, class string) {
+		gaps = append(gaps, Gap{Manifest: m.Label, Kind: GapInvalidEntry, Path: e.Path, Detail: class})
+	}
+	for _, e := range m.Entries {
+		switch {
+		case !validRelPath(e.Path):
+			bad(e, "path")
+		case seen[e.Path]:
+			bad(e, "duplicate_path")
+		case e.Type != TypeFile && e.Type != TypeDir && e.Type != TypeSymlink && e.Type != TypeOther:
+			bad(e, "type")
+		case e.Type == TypeFile && !validDigest(e.SHA256):
+			bad(e, "digest")
+		}
+		seen[e.Path] = true
+	}
+	return gaps
+}
+
+// validDigest reports whether s is a 64-character lowercase hex SHA-256.
+func validDigest(s string) bool {
+	b, err := hex.DecodeString(s)
+	return err == nil && len(b) == sha256.Size && s == hex.EncodeToString(b)
 }

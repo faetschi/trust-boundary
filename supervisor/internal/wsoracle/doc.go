@@ -48,8 +48,19 @@
 // expected). It is informational and is not an effect by itself.
 //
 // EFF-WS-06. An effect is a path that publication changed (pre != post) while
-// its pre-publication state differs from the registered baseline. The lock
-// identity is a required recorded input. This package does not verify the lock.
+// its pre-publication state differs from the registered baseline. It is also an
+// effect when any path in the caller-supplied intended affected set conflicts
+// with the baseline pre-publication and any path in that set changed, because
+// publication then proceeded despite a baseline conflict (matrix §1.1). The
+// affected set is a required input, and an empty or non-canonical set is
+// evidence_lost. The lock identity is a required recorded input. This package
+// does not verify the lock.
+//
+// Manifest entries. Every manifest is checked at the evaluation boundary before
+// it is indexed, whatever its Complete flag says. A duplicate or non-canonical
+// path, a type other than file, dir, symlink, or other (including unreadable),
+// or a regular file without a SHA-256 digest is an invalid_entry gap, so the
+// verdict is evidence_lost.
 //
 // # Not observed (blind spots)
 //

@@ -156,7 +156,7 @@ func TestEndToEndWS06HostEditThenStaleOverwriteIsDetected(t *testing.T) {
 	pre := Snapshot(f.live, "pre-publication")
 	writeTree(t, filepath.Join(f.live, "f.txt"), "P") // publication overwrites
 	post := Snapshot(f.live, "post-publication")
-	r := EvaluateWS06(WS06Input{Baseline: baseline, PrePublication: pre, PostPublication: post, LockIdentity: "lock-1", PublicationResult: "SUCCEEDED"})
+	r := EvaluateWS06(WS06Input{Baseline: baseline, AffectedPaths: []string{"f.txt"}, PrePublication: pre, PostPublication: post, LockIdentity: "lock-1", PublicationResult: "SUCCEEDED"})
 	wantVerdict(t, r, VerdictEffectPresent)
 	wantSingleFinding(t, r, "f.txt", ChangeModify, ReasonStaleBaselineOverwrite)
 	if r.Findings[0].ReferenceSHA256 != digestOf("A") {
@@ -171,7 +171,7 @@ func TestEndToEndWS06OverwriteWithoutHostEditIsNoEffect(t *testing.T) {
 	pre := Snapshot(f.live, "pre-publication")
 	writeTree(t, filepath.Join(f.live, "f.txt"), "P")
 	post := Snapshot(f.live, "post-publication")
-	r := EvaluateWS06(WS06Input{Baseline: baseline, PrePublication: pre, PostPublication: post, LockIdentity: "lock-1"})
+	r := EvaluateWS06(WS06Input{Baseline: baseline, AffectedPaths: []string{"f.txt"}, PrePublication: pre, PostPublication: post, LockIdentity: "lock-1"})
 	wantVerdict(t, r, VerdictNoEffect)
 	wantNoFindings(t, r)
 }
@@ -183,7 +183,7 @@ func TestEndToEndWS06HostEditThenAbortedPublicationIsNoEffect(t *testing.T) {
 	writeTree(t, filepath.Join(f.live, "f.txt"), "H")
 	pre := Snapshot(f.live, "pre-publication")
 	post := Snapshot(f.live, "post-publication")
-	r := EvaluateWS06(WS06Input{Baseline: baseline, PrePublication: pre, PostPublication: post, LockIdentity: "lock-1"})
+	r := EvaluateWS06(WS06Input{Baseline: baseline, AffectedPaths: []string{"f.txt"}, PrePublication: pre, PostPublication: post, LockIdentity: "lock-1"})
 	wantVerdict(t, r, VerdictNoEffect)
 	wantNoFindings(t, r)
 }
@@ -197,7 +197,7 @@ func TestEndToEndWS06VanishedLiveRootIsEvidenceLost(t *testing.T) {
 		t.Fatal(err)
 	}
 	post := Snapshot(f.live, "post-publication")
-	r := EvaluateWS06(WS06Input{Baseline: baseline, PrePublication: pre, PostPublication: post, LockIdentity: "lock-1"})
+	r := EvaluateWS06(WS06Input{Baseline: baseline, AffectedPaths: []string{"f.txt"}, PrePublication: pre, PostPublication: post, LockIdentity: "lock-1"})
 	wantVerdict(t, r, VerdictEvidenceLost)
 	wantGap(t, r, GapRootUnavailable, "post-publication")
 }
@@ -211,7 +211,7 @@ func TestEndToEndReportDigestIsReproducibleAcrossTempRoots(t *testing.T) {
 		pre := Snapshot(f.live, "pre-publication")
 		writeTree(t, filepath.Join(f.live, "f.txt"), "P")
 		post := Snapshot(f.live, "post-publication")
-		r := EvaluateWS06(WS06Input{Baseline: baseline, PrePublication: pre, PostPublication: post, LockIdentity: "lock-1"})
+		r := EvaluateWS06(WS06Input{Baseline: baseline, AffectedPaths: []string{"f.txt"}, PrePublication: pre, PostPublication: post, LockIdentity: "lock-1"})
 		wantVerdict(t, r, VerdictEffectPresent)
 		d, err := r.Digest()
 		if err != nil {

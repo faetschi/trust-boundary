@@ -15,10 +15,12 @@ type WS05Input struct {
 	PostPublication Manifest
 }
 
-// WS06Input is the evidence for EFF-WS-06. LockIdentity and PublicationResult are
-// recorded in the witness. LockIdentity is required, and PublicationResult is
-// informational.
+// WS06Input is the evidence for EFF-WS-06. AffectedPaths is the intended
+// affected-object set of the publication, as canonical relative paths, and is
+// required. LockIdentity and PublicationResult are recorded in the witness.
+// LockIdentity is required, and PublicationResult is informational.
 type WS06Input struct {
+	AffectedPaths     []string
 	Baseline          Manifest
 	PrePublication    Manifest
 	PostPublication   Manifest
@@ -98,10 +100,14 @@ func EvaluateWS05(in WS05Input) Report {
 // EvaluateWS06 evaluates EFF-WS-06 over the supplied manifests.
 //
 // An effect is a path that publication changed (pre != post) while its
-// pre-publication state differs from the registered baseline. Publication then
-// overwrote, replaced, or deleted an object that no longer matched the baseline.
-// A stale path that publication left alone is not an effect. A stale path that
-// publication aborted before touching is not an effect either.
+// pre-publication state differs from the registered baseline: publication
+// overwrote, replaced, or deleted an object that no longer matched. It is also
+// an effect when any object in the intended affected set conflicts with the
+// baseline before publication and any object in that set changed, even if
+// publication failed before reaching the conflicting one. The conflicting
+// objects are then listed with change "none". A conflict that publication never
+// proceeded past, because nothing in the set changed, is not an effect. An
+// empty or non-canonical affected set is evidence_lost.
 func EvaluateWS06(in WS06Input) Report {
 	r := newReport(PredicateWS06)
 	r.addManifest(&in.Baseline)
@@ -117,22 +123,36 @@ func EvaluateWS06(in WS06Input) Report {
 	}
 	r.exercise("lock-identity")
 
+	affected, problem := affectedSet(in.AffectedPaths)
+	if problem != "" {
+		r.Gaps = append(r.Gaps, Gap{Manifest: "affected_paths", Kind: problem})
+	}
+	r.exercise("affected-set")
+
 	base := entryIndex(&in.Baseline)
 	pre := entryIndex(&in.PrePublication)
 	post := entryIndex(&in.PostPublication)
-	for _, p := range sortedUnion(keysOf(base), keysOf(pre), keysOf(post)) {
+	// Publication proceeded despite a baseline conflict when some object in the
+	// affected set conflicted before publication and some object in it changed.
+	conflict, changed := false, false
+	for p := range affected {
+		before := at(pre, p)
+		conflict = conflict || fingerprint(before) != fingerprint(at(base, p))
+		changed = changed || fingerprint(before) != fingerprint(at(post, p))
+	}
+	proceeded := conflict && changed
+	for _, p := range sortedUnion(keysOf(base), keysOf(pre), keysOf(post), keysOf(affected)) {
 		before, after := at(pre, p), at(post, p)
-		if fingerprint(before) == fingerprint(after) {
-			continue
-		}
 		ref := at(base, p)
-		if fingerprint(before) == fingerprint(ref) {
+		stale := fingerprint(before) != fingerprint(ref)
+		f := Finding{Path: p}
+		switch {
+		case stale && fingerprint(before) != fingerprint(after):
+			f.Reason, f.Change = ReasonStaleBaselineOverwrite, changeKind(before, after)
+		case stale && proceeded && affected[p]:
+			f.Reason, f.Change = ReasonBaselineConflictProceeded, ChangeNone
+		default:
 			continue
-		}
-		f := Finding{
-			Path:   p,
-			Reason: ReasonStaleBaselineOverwrite,
-			Change: changeKind(before, after),
 		}
 		f.PreType, f.PreSHA256 = describe(before)
 		f.PostType, f.PostSHA256 = describe(after)
@@ -164,11 +184,12 @@ func (r *Report) exercise(steps ...string) {
 // report. A manifest marked incomplete with no gap gets an incomplete_manifest
 // gap, so it can never pass as clean.
 func (r *Report) addManifest(m *Manifest) {
+	invalid := checkEntries(m)
 	r.Witness.Manifests = append(r.Witness.Manifests, ManifestRef{
 		Label:    m.Label,
 		Digest:   m.Digest(),
 		Entries:  len(m.Entries),
-		Complete: m.clean(),
+		Complete: m.clean() && len(invalid) == 0,
 	})
 	if len(m.Gaps) == 0 && !m.Complete {
 		r.Gaps = append(r.Gaps, Gap{Manifest: m.Label, Kind: GapIncompleteManifest})
@@ -179,6 +200,7 @@ func (r *Report) addManifest(m *Manifest) {
 		}
 		r.Gaps = append(r.Gaps, g)
 	}
+	r.Gaps = append(r.Gaps, invalid...)
 }
 
 // checkLiveRoot records a root_identity_changed gap for each manifest whose
@@ -248,4 +270,23 @@ func sortedUnion(keysets ...[]string) []string {
 	}
 	slices.Sort(out)
 	return out
+}
+
+// affectedSet returns the intended affected-object set. The problem is
+// GapAffectedSetMissing for an empty set, GapAffectedSetInvalid for a path that
+// is not canonical (see validRelPath) or repeats, and empty when the set is
+// usable. A set that cannot be decided is never read as "no conflict".
+func affectedSet(paths []string) (map[string]bool, string) {
+	if len(paths) == 0 {
+		return nil, GapAffectedSetMissing
+	}
+	set := make(map[string]bool, len(paths))
+	problem := ""
+	for _, p := range paths {
+		if !validRelPath(p) || set[p] {
+			problem = GapAffectedSetInvalid
+		}
+		set[p] = true
+	}
+	return set, problem
 }

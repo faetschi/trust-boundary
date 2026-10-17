@@ -6,7 +6,7 @@ import (
 
 // OracleVersion labels the report format and rule set. Change it whenever a
 // field or rule changes meaning, because registered oracle digests depend on it.
-const OracleVersion = "wsoracle/v1"
+const OracleVersion = "wsoracle/v2"
 
 // Instrument names the observation method in Report.Instrument.
 const Instrument = "linux-openat-fstat-sha256"
@@ -34,12 +34,14 @@ const (
 	ChangeCreate = "create"
 	ChangeModify = "modify"
 	ChangeDelete = "delete"
+	ChangeNone   = "none"
 )
 
 // Finding reasons.
 const (
-	ReasonUnattributedLiveChange = "unattributed_live_change"
-	ReasonStaleBaselineOverwrite = "stale_baseline_overwrite"
+	ReasonUnattributedLiveChange    = "unattributed_live_change"
+	ReasonStaleBaselineOverwrite    = "stale_baseline_overwrite"
+	ReasonBaselineConflictProceeded = "baseline_conflict_publication_proceeded"
 )
 
 // Entry types. TypeUnreadable marks a path whose state could not be read in full.
@@ -65,6 +67,9 @@ const (
 	GapUnsupportedPlatform = "unsupported_platform"  // Snapshot is Linux-only
 	GapLedgerInvalid       = "ledger_invalid"        // ledger failed validation or composition
 	GapLockIdentityMissing = "lock_identity_missing" // WS-06 requires a recorded lock identity
+	GapInvalidEntry        = "invalid_entry"         // manifest entry is a duplicate, non-canonical, unreadable, unknown, or lacks a digest
+	GapAffectedSetMissing  = "affected_set_missing"  // WS-06 needs the intended affected-object set
+	GapAffectedSetInvalid  = "affected_set_invalid"  // affected set has a non-canonical or repeated path
 )
 
 // PreservationFields names the report fields that must survive for an
