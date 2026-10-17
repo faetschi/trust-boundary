@@ -63,4 +63,4 @@ It uses `$HOME/go-sdk/go/bin/go` when present, otherwise `go` from `PATH`, and
 uses Node 24.15.0 from its standard extracted path under `$HOME` when present,
 otherwise Node on `PATH` or `NODE_BIN` (Node 22.19+).
 
-See `CORRELATION_FAILURE_MODES.md` for the pre-implementation failure analysis and review addendum.
+See `CORRELATION_FAILURE_MODES.md` for the pre-implementation failure analysis and review addendum. The session repository's failure list is in `internal/sessionrepo/FAILURE_MODES.md`.

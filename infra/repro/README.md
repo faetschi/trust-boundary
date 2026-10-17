@@ -203,6 +203,7 @@ summary rather than treating the raw exit code alone as a capability result.
 - `bootstrap-linux.sh` — native Linux bootstrap (idempotent, fail-closed).
 - `bootstrap-hyperv-windows.ps1` — Hyper-V VM creation and guest provisioning.
 - `probe-host.ps1` — one-command capability report (SSH / WSL / saved capture).
+- [DISPOSABLE-CGROUP-TEARDOWN.md](DISPOSABLE-CGROUP-TEARDOWN.md) — operator procedure and trust boundary for the destructive `cgroup_teardown_witness.py` component probe; not qualification evidence.
 
 The full guide with step counts, expected duration, troubleshooting table, and
 the G1 profile-freeze mapping is
