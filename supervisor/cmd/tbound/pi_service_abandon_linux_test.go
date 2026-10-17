@@ -66,7 +66,7 @@ func TestAbandonUnknownUnblocksLaterRequestsAndKeepsTheOriginalEntry(t *testing.
 		t.Fatal(err)
 	}
 
-	record, err := h.requests.abandonUnknown("request-0002", "provider outage 2026-10-17, operator confirmed no effect")
+	record, err := h.requests.abandonUnknown(context.Background(), "request-0002", "provider outage 2026-10-17, operator confirmed no effect")
 	if err != nil || record.Event.Kind != "pi_service_request_abandoned" {
 		t.Fatalf("abandon: record=%+v err=%v", record, err)
 	}
@@ -114,7 +114,7 @@ func TestAbandonUnknownIsPerRequest(t *testing.T) {
 	if err := h.admitUnknown(t, 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.requests.abandonUnknown("request-0001", "outage one"); err != nil {
+	if _, err := h.requests.abandonUnknown(context.Background(), "request-0001", "outage one"); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.admitUnknown(t, 2); err != nil {
@@ -137,7 +137,7 @@ func TestAbandonUnknownRefusesEverythingExceptAnUnsettledUnknownTerminal(t *test
 	if err := h.admitUnknown(t, 2); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := h.requests.abandonUnknown("request-0002", "outage"); err != nil {
+	if _, err := h.requests.abandonUnknown(context.Background(), "request-0002", "outage"); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.admit(t, 3, false); err != nil {
@@ -154,7 +154,7 @@ func TestAbandonUnknownRefusesEverythingExceptAnUnsettledUnknownTerminal(t *test
 		"control character":        {"request-0002", "bad\nreason"},
 		"oversized reason":         {"request-0002", strings.Repeat("r", 513)},
 	} {
-		if _, err := h.requests.abandonUnknown(tc.id, tc.reason); err == nil {
+		if _, err := h.requests.abandonUnknown(context.Background(), tc.id, tc.reason); err == nil {
 			t.Fatalf("%s: settlement was accepted", name)
 		}
 	}
@@ -181,7 +181,7 @@ func TestAbandonUnknownRecordIsBoundToTheTerminalAtServiceStart(t *testing.T) {
 				t.Fatal(err)
 			}
 			state := h.requests.entries[piServiceRequestKey(incrementalPeer().UID, "request-0001")]
-			event, err := newPiServiceRequestAbandonedEvent(state, "outage")
+			event, err := newPiServiceRequestAbandonedEvent(state, "outage", goodReconciliation("request-0001"))
 			if err != nil {
 				t.Fatal(err)
 			}

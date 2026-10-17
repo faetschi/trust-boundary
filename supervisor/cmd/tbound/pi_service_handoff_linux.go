@@ -238,6 +238,21 @@ type piServiceRequestAcceptedEvent struct {
 	RequestID     string `json:"request_id"`
 	TaskID        string `json:"task_id"`
 	PayloadDigest string `json:"payload_digest"`
+	// ConfigDigest, RegistrationID and EnvelopeDigest bind the request to the service
+	// config, registration and admission envelope that were active when it was accepted.
+	// A stored terminal is replayed only to a service bound to the same three, whether or
+	// not the request ever reserved a workflow. Entries journaled before this binding existed
+	// carry none of them and are refused on replay (replay-binding-mismatch).
+	ConfigDigest   string `json:"config_digest,omitempty"`
+	RegistrationID string `json:"registration_id,omitempty"`
+	EnvelopeDigest string `json:"envelope_digest,omitempty"`
+}
+
+// piServiceAcceptanceBinding is what the service binds into the accepted record.
+type piServiceAcceptanceBinding struct {
+	ConfigDigest   string
+	RegistrationID string
+	EnvelopeDigest string
 }
 
 type piServiceRequestTerminalEvent struct {
@@ -262,6 +277,9 @@ type piServiceVerifiedSettlement struct {
 	acceptedHash     string
 	acceptedSequence uint64
 	terminal         *piServiceResponse
+	// evidence is the fingerprint of the evidence files the verifier read (see
+	// evidenceFingerprint), taken before the verification ran.
+	evidence string
 }
 
 type piServiceRequestJournal struct {
@@ -281,6 +299,17 @@ type piServiceRequestJournal struct {
 	// active manifest, config, registration and envelope before it is returned. It returns
 	// an error code to refuse the replay, or "". It is nil until the service installs it.
 	terminalReplayCheck func(piServicePeerCredentials, piServiceRequest, piServiceRequestState) string
+	// acceptanceBinding returns the config, registration and envelope binding that begin
+	// persists in the accepted record. It is nil until the service installs it.
+	acceptanceBinding func(piServicePeerCredentials, piServiceRequest) piServiceAcceptanceBinding
+	// evidenceFiles names the host files a settlement verification of one request reads
+	// (owner database, store journal). Their fingerprints are part of the verified mark. It is
+	// nil until the service installs it, and then no file is fingerprinted.
+	evidenceFiles func(piServiceRequestState) []string
+	// reconciler proves, before an unknown request is abandoned and again on every begin that
+	// skips it, that the request's workflow is quiescent. It is nil until the service installs
+	// it, and then no unknown request can be abandoned or skipped.
+	reconciler piServiceAbandonReconciler
 	// afterScreen is a test seam called after the first admission screen passed and before
 	// the request competes for the one active-task slot. It is nil in production.
 	afterScreen func(request piServiceRequest, active *atomic.Bool)
@@ -296,6 +325,24 @@ func (j *piServiceRequestJournal) setTerminalReplayCheck(check func(piServicePee
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.terminalReplayCheck = check
+}
+
+func (j *piServiceRequestJournal) setAcceptanceBinding(binding func(piServicePeerCredentials, piServiceRequest) piServiceAcceptanceBinding) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.acceptanceBinding = binding
+}
+
+func (j *piServiceRequestJournal) setEvidenceFiles(files func(piServiceRequestState) []string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.evidenceFiles = files
+}
+
+func (j *piServiceRequestJournal) setReconciler(reconciler piServiceAbandonReconciler) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.reconciler = reconciler
 }
 
 func (j *piServiceRequestJournal) setAfterScreen(hook func(piServiceRequest, *atomic.Bool)) {
@@ -1139,7 +1186,9 @@ func newPiServiceRequestJournal(journal *audit.Journal) (*piServiceRequestJourna
 			if err := unmarshalGovernedJSON(record.Event.Data, &accepted); err != nil ||
 				accepted.SchemaVersion != "tbound-pi-service-request-accepted/v1" || accepted.ClientUID <= 0 ||
 				accepted.ClientPID <= 0 || !boundedProductionIdentity(accepted.RequestID, productionRequestMaxBytes) ||
-				!boundedProductionIdentity(accepted.TaskID, productionTaskIDMaxBytes) || !validDigestText(accepted.PayloadDigest) {
+				!boundedProductionIdentity(accepted.TaskID, productionTaskIDMaxBytes) || !validDigestText(accepted.PayloadDigest) ||
+				!optionalDigestText(accepted.ConfigDigest) || !optionalDigestText(accepted.RegistrationID) ||
+				!optionalDigestText(accepted.EnvelopeDigest) {
 				return nil, errors.Join(ErrPiServiceUnavailable, err)
 			}
 			key := piServiceRequestKey(accepted.ClientUID, accepted.RequestID)
@@ -1220,21 +1269,35 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 	// Guarantee. Every prior must be a completed request whose settlement verifies, or
 	// the new request is refused. A settlement verification that passed is remembered
 	// in memory for the life of this process, keyed to the exact journal state it
-	// covered (accepted record hash and sequence, and the terminal response object), so
-	// each later begin verifies only requests that settled since. The memory is never
-	// persisted: a service start begins empty and its first begin verifies every prior
-	// in full, so a tampered old entry is detected at the latest on the first admission
-	// after a start. Within one running service, the host evidence of a prior that was
-	// already verified (owner store, store and publication journals, cgroup scope) is
-	// not read again; a change to it is detected at the next service start, not before.
-	// A failed verification is never remembered.
+	// covered (accepted record hash and sequence, and the terminal response object)
+	// and to a fingerprint of the evidence files that verification read (see
+	// evidenceFingerprint: dev, ino, size, mtime_ns and ctime_ns of each file, one
+	// lstat per file per begin). The memory is never persisted: a service start begins
+	// empty and its first begin verifies every prior in full.
+	//
+	// What a cached prior is protected against within one running service: any change
+	// to a file the verification read that moves its fingerprint (rewrite, growth,
+	// truncation, replacement, deletion, chmod or chown, even with size and mtime
+	// restored, because ctime cannot be set by a caller). Such a prior is verified
+	// again at the next begin, and the admission is refused if it no longer verifies.
+	// What is not covered: shared append-only journals that every request grows
+	// (catalog, publication journal), which cannot be fingerprinted per prior without
+	// invalidating every prior on every request; a change confined to them is detected
+	// at the next service start. A failed verification is never remembered. A prior whose
+	// files change while it is being verified keeps its pre-verification fingerprint,
+	// so it is verified again at the next begin.
 	for key, prior := range j.entries {
 		if err := ctx.Err(); err != nil {
 			return audit.Record{}, err
 		}
 		if prior.abandoned != nil && prior.terminal != nil && prior.terminal.Status == "unknown" {
 			// An operator-settled unknown terminal (tbound abandon-unknown). Its entries
-			// stay in the journal; only the block on later requests is lifted.
+			// stay in the journal. The block on later requests is lifted only while the
+			// reconciliation evidence bound in the abandon record still holds: it is
+			// re-derived on every begin, never trusted from the record alone.
+			if err := j.recheckAbandoned(ctx, prior); err != nil {
+				return audit.Record{}, fmt.Errorf("%w: %v", ErrPiServiceUnresolvedPrior, err)
+			}
 			continue
 		}
 		if prior.terminal == nil || prior.terminal.Status != "completed" || j.settlementVerifier == nil {
@@ -1242,10 +1305,14 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 		}
 		mark := piServiceVerifiedSettlement{acceptedHash: prior.acceptedRecord.Hash,
 			acceptedSequence: prior.acceptedRecord.Sequence, terminal: prior.terminal}
+		if j.evidenceFiles != nil {
+			mark.evidence = evidenceFingerprint(j.evidenceFiles(prior))
+		}
 		if j.verified[key] == mark {
 			continue
 		}
 		if err := j.settlementVerifier(ctx, prior); err != nil {
+			delete(j.verified, key)
 			return audit.Record{}, fmt.Errorf("%w: %v", ErrPiServiceUnresolvedPrior, err)
 		}
 		if j.verified == nil {
@@ -1256,6 +1323,11 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 	accepted := piServiceRequestAcceptedEvent{SchemaVersion: "tbound-pi-service-request-accepted/v1",
 		ClientUID: peer.UID, ClientGID: peer.GID, ClientPID: peer.PID, RequestID: request.RequestID,
 		TaskID: request.TaskID, PayloadDigest: payloadDigest}
+	if j.acceptanceBinding != nil {
+		binding := j.acceptanceBinding(peer, request)
+		accepted.ConfigDigest, accepted.RegistrationID, accepted.EnvelopeDigest =
+			binding.ConfigDigest, binding.RegistrationID, binding.EnvelopeDigest
+	}
 	data, err := json.Marshal(accepted)
 	if err != nil {
 		return audit.Record{}, err
@@ -1545,9 +1617,16 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 				_ = unixConn.Close()
 				continue
 			}
-			acceptedEvent = piServiceRequestAcceptedEvent{SchemaVersion: "tbound-pi-service-request-accepted/v1",
-				ClientUID: peer.UID, ClientGID: peer.GID, ClientPID: peer.PID,
-				RequestID: request.RequestID, TaskID: request.TaskID, PayloadDigest: payloadDigest}
+			// The accepted record is journaled, so a failure from here on is an unknown outcome.
+			stored, _, lookupErr := journal.lookup(peer, request, payloadDigest)
+			if lookupErr != nil {
+				active.Store(false)
+				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
+					RequestID: request.RequestID, Status: "unknown", ErrorCode: "request-journal-unavailable"})
+				_ = unixConn.Close()
+				continue
+			}
+			acceptedEvent = stored.accepted
 		}
 		if validateListener != nil {
 			if err := validateListener(); err != nil {
@@ -1917,6 +1996,7 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 		return ErrPiServiceUnavailable
 	}
 	requests.setTerminalReplayCheck(workflowCatalog.terminalReplayCheck(serviceConfig, contract.ServiceConfigDigest, registrationID))
+	requests.setAcceptanceBinding(workflowCatalog.acceptanceBinding(serviceConfig, contract.ServiceConfigDigest, registrationID))
 	requests.settlementVerifier = func(settlementCtx context.Context, prior piServiceRequestState) error {
 		template, _, err := piruntime.LoadD09CellTemplate(settlementCtx)
 		if err != nil {
@@ -1929,6 +2009,10 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 		return workflowCatalog.verifyCompletedServiceRequest(settlementCtx, prior, contract.ServiceConfigDigest,
 			registrationID, verified, template, profile)
 	}
+	// A cached settlement is tied to the per-request evidence files it read, and an abandoned
+	// unknown request is skipped only while its workflow re-reconciles to the bound evidence.
+	requests.setEvidenceFiles(workflowCatalog.settlementEvidenceFiles)
+	requests.setReconciler(newProductionUnknownReconciler(workflowCatalog, serviceConfig, providerRoute))
 	runTask := func(taskCtx context.Context, request piServiceRequest) (json.RawMessage, error) {
 		requestAdmission, ok := piServiceAdmissionFromContext(taskCtx)
 		if !ok {
@@ -1966,4 +2050,35 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 		return append(json.RawMessage(nil), encoded...), runErr
 	}
 	return servePiServiceRequests(ctx, activated.Listener, socket, requests, activated.Revalidate, runTask)
+}
+
+// optionalDigestText accepts an absent digest or a valid one.
+func optionalDigestText(value string) bool { return value == "" || validDigestText(value) }
+
+// evidenceFingerprint is a cheap fingerprint of the evidence files a verification read: one
+// lstat per file, committing to the path, device, inode, size, mtime_ns and ctime_ns (a file
+// that is absent or cannot be examined is its own fingerprint). Any change that goes through
+// the file system after the fingerprint was taken (write, truncate, replace, delete, chmod,
+// chown) moves it; ctime moves even when size and mtime are put back, and cannot be set by an
+// unprivileged caller. It is a change detector for a cache, not a content proof: a cache hit
+// means "these files were not touched since a full verification passed".
+func evidenceFingerprint(paths []string) string {
+	if len(paths) == 0 {
+		return ""
+	}
+	hash := sha256.New()
+	for _, path := range paths {
+		var stat syscall.Stat_t
+		err := syscall.Lstat(path, &stat)
+		switch {
+		case err == nil:
+			fmt.Fprintf(hash, "%s\x00%d\x00%d\x00%d\x00%d\x00%d\x00%d\x00%d\x00", path, uint64(stat.Dev), uint64(stat.Ino),
+				stat.Size, int64(stat.Mtim.Sec), int64(stat.Mtim.Nsec), int64(stat.Ctim.Sec), int64(stat.Ctim.Nsec))
+		case errors.Is(err, syscall.ENOENT):
+			fmt.Fprintf(hash, "%s\x00absent\x00", path)
+		default:
+			fmt.Fprintf(hash, "%s\x00unreadable:%v\x00", path, err)
+		}
+	}
+	return "sha256:" + hex.EncodeToString(hash.Sum(nil))
 }

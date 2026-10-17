@@ -751,3 +751,48 @@ func parseRecord(body []byte) (record, error) {
 	}
 	return rec, nil
 }
+
+// Unit lifecycle states reported by Unit.
+const (
+	UnitStateOpen      = "open"
+	UnitStateUncertain = "uncertain"
+	UnitStateSettled   = "settled"
+)
+
+// UnitInfo is the lifecycle of one reservation. SettledMicroUSD is meaningful only for a
+// settled unit.
+type UnitInfo struct {
+	ID               string
+	State            string
+	ReservedMicroUSD int64
+	SettledMicroUSD  int64
+}
+
+// Unit reports the reservation of unitID, or found == false when this ledger holds none. It
+// reads the projection only. A reservation that was open when an earlier process ended is
+// uncertain here, so "open" means a request that this handle reserved and has not yet settled
+// or marked uncertain.
+func (l *Ledger) Unit(unitID string) (info UnitInfo, found bool, err error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if err := l.usable(); err != nil {
+		return UnitInfo{}, false, err
+	}
+	if err := validID(unitID); err != nil {
+		return UnitInfo{}, false, err
+	}
+	u, ok := l.book.units[unitID]
+	if !ok {
+		return UnitInfo{}, false, nil
+	}
+	info = UnitInfo{ID: unitID, ReservedMicroUSD: u.reserved}
+	switch u.state {
+	case unitOpen:
+		info.State = UnitStateOpen
+	case unitUncertain:
+		info.State = UnitStateUncertain
+	case unitSettled:
+		info.State, info.SettledMicroUSD = UnitStateSettled, u.settled
+	}
+	return info, true, nil
+}

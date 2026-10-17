@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -277,9 +278,19 @@ func (c *piServiceWorkflowCatalog) screenTerminalReplay(config piServiceConfig, 
 	entry, reserved := c.entries[state.acceptedRecord.Hash]
 	c.mu.Unlock()
 	if !reserved {
-		// Accepted but never reserved: no workflow ran, so a stored unknown terminal
-		// (a failed resolution) has no binding to compare. A completed one must have one.
+		// Accepted but never reserved: no workflow ran, so a stored unknown terminal (a
+		// failed resolution) has no catalog entry to compare. A completed one must have one.
+		// The unknown one is bound by what the accepted record itself persisted: the service
+		// config digest, the registration identity and the admission envelope that were
+		// active at acceptance. An old record that persisted none of them cannot be shown
+		// to belong to this service, so it is refused.
 		if state.terminal.Status == "completed" {
+			return replayBindingMismatch
+		}
+		accepted := state.accepted
+		if !validDigestText(accepted.ConfigDigest) || !validDigestText(accepted.RegistrationID) ||
+			!validDigestText(accepted.EnvelopeDigest) || accepted.ConfigDigest != configDigest ||
+			accepted.RegistrationID != registrationID || accepted.EnvelopeDigest != c.envelopeBindingDigest(config, request) {
 			return replayBindingMismatch
 		}
 		return ""
@@ -294,4 +305,30 @@ func (c *piServiceWorkflowCatalog) screenTerminalReplay(config piServiceConfig, 
 		return replayBindingMismatch
 	}
 	return ""
+}
+
+// envelopeBindingDigest commits to the admission envelope that request selects under config:
+// the one-use admission id, the host prompt, the budgets and the pinned corpus manifest. A
+// request that selects no envelope has its own constant digest, so a request that was not
+// admissible when it was accepted is not replayed to a config under which it would be.
+func (c *piServiceWorkflowCatalog) envelopeBindingDigest(config piServiceConfig, request piServiceRequest) string {
+	envelope, ok := c.envelopeFor(config, request)
+	if !ok {
+		return digestBytes([]byte("tbound-pi-service-envelope/none"))
+	}
+	encoded, err := json.Marshal(envelope)
+	if err != nil {
+		return digestBytes([]byte("tbound-pi-service-envelope/unencodable"))
+	}
+	return digestBytes(append([]byte("tbound-pi-service-envelope/v1\x00"), encoded...))
+}
+
+// acceptanceBinding returns the binding begin persists in the accepted record, so that the
+// replay of a terminal can be checked against it whether or not a workflow was reserved.
+func (c *piServiceWorkflowCatalog) acceptanceBinding(config piServiceConfig, configDigest,
+	registrationID string) func(piServicePeerCredentials, piServiceRequest) piServiceAcceptanceBinding {
+	return func(_ piServicePeerCredentials, request piServiceRequest) piServiceAcceptanceBinding {
+		return piServiceAcceptanceBinding{ConfigDigest: configDigest, RegistrationID: registrationID,
+			EnvelopeDigest: c.envelopeBindingDigest(config, request)}
+	}
 }

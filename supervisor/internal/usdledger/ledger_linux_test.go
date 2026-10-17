@@ -1007,3 +1007,47 @@ func TestUSDLedgerHelper(t *testing.T) {
 		t.Fatalf("unknown helper mode %q", mode)
 	}
 }
+
+// Unit reports one reservation's lifecycle without changing the ledger. A reservation that was
+// still open when the process died is uncertain in a fresh handle, never open.
+func TestUnitReportsEachReservationState(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "research.jsonl")
+	l := openTest(t, path, testConfig())
+	must(t, l.Reserve("open-unit", 100))
+	must(t, l.Reserve("uncertain-unit", 200))
+	must(t, l.MarkUncertain("uncertain-unit"))
+	must(t, l.Reserve("settled-unit", 300))
+	must(t, l.Settle("settled-unit", 120))
+	for id, want := range map[string]UnitInfo{
+		"open-unit":      {ID: "open-unit", State: UnitStateOpen, ReservedMicroUSD: 100},
+		"uncertain-unit": {ID: "uncertain-unit", State: UnitStateUncertain, ReservedMicroUSD: 200},
+		"settled-unit":   {ID: "settled-unit", State: UnitStateSettled, ReservedMicroUSD: 300, SettledMicroUSD: 120},
+	} {
+		got, found, err := l.Unit(id)
+		if err != nil || !found || got != want {
+			t.Fatalf("%s: got %+v found=%v err=%v, want %+v", id, got, found, err, want)
+		}
+	}
+	if _, found, err := l.Unit("never-reserved"); err != nil || found {
+		t.Fatalf("an unreserved unit was reported: found=%v err=%v", found, err)
+	}
+	before := readLedger(t, path)
+	if _, _, err := l.Unit("open-unit"); err != nil {
+		t.Fatal(err)
+	}
+	if after := readLedger(t, path); string(after) != string(before) {
+		t.Fatal("Unit wrote to the ledger")
+	}
+	must(t, l.Close())
+	fresh := openTest(t, path, testConfig())
+	if got, found, err := fresh.Unit("open-unit"); err != nil || !found || got.State != UnitStateUncertain {
+		t.Fatalf("a crash-open reservation is %+v found=%v err=%v, want uncertain", got, found, err)
+	}
+	if _, _, err := fresh.Unit(""); !errors.Is(err, ErrInvalidID) {
+		t.Fatalf("an invalid id was accepted: %v", err)
+	}
+	must(t, fresh.Close())
+	if _, _, err := fresh.Unit("open-unit"); !errors.Is(err, ErrClosed) {
+		t.Fatalf("a closed ledger answered: %v", err)
+	}
+}

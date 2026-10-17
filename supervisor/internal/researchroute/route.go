@@ -50,6 +50,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"sort"
 	"sync"
 	"time"
 
@@ -467,4 +468,38 @@ func LoadProfileDigest(paths Paths) (string, error) {
 		return "", err
 	}
 	return in.digest, nil
+}
+
+// maxWorkflowUnitTurns bounds the unit-id probe of WorkflowUnits.
+const maxWorkflowUnitTurns = 4096
+
+// WorkflowUnits reports the ledger units that the requests of one workflow created: for each
+// conversation id and each provider turn 1..maxTurns, the unit that ReserveSpend would have
+// named. Only units the ledger holds are returned, ordered by unit id. The workflow ledger
+// bounds a workflow's host calls, so maxTurns (the workflow's host-call limit) bounds the
+// turns of any one of its conversations. It reads the ledger and changes nothing.
+func (b *Bundle) WorkflowUnits(workflowID string, conversationIDs []string, maxTurns uint64) ([]usdledger.UnitInfo, error) {
+	if workflowID == "" || maxTurns == 0 || maxTurns > maxWorkflowUnitTurns {
+		return nil, fmt.Errorf("workflow unit probe needs a workflow id and 1..%d turns", maxWorkflowUnitTurns)
+	}
+	var units []usdledger.UnitInfo
+	seen := make(map[string]struct{}, len(conversationIDs))
+	for _, conversationID := range conversationIDs {
+		if _, duplicate := seen[conversationID]; duplicate || conversationID == "" {
+			continue
+		}
+		seen[conversationID] = struct{}{}
+		for turn := uint64(1); turn <= maxTurns; turn++ {
+			info, found, err := b.ledger.Unit(unitID(providerbridge.SpendReservation{WorkflowID: workflowID,
+				ConversationID: conversationID, Turn: turn}))
+			if err != nil {
+				return nil, err
+			}
+			if found {
+				units = append(units, info)
+			}
+		}
+	}
+	sort.Slice(units, func(i, j int) bool { return units[i].ID < units[j].ID })
+	return units, nil
 }

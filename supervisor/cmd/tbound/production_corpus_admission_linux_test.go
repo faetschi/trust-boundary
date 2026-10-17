@@ -374,6 +374,9 @@ type corpusServiceHarness struct {
 	registrationID string
 	// beforeResolve, when set, runs in the runner before the catalog reservation.
 	beforeResolve atomic.Pointer[func(piServiceRequest)]
+	// failResolve makes the runner fail before the catalog reservation, which leaves an accepted
+	// request with an unreserved unknown terminal.
+	failResolve atomic.Bool
 }
 
 // newCorpusServiceHarness serves the real request loop with the real corpus
@@ -403,6 +406,9 @@ func newCorpusServiceHarness(t *testing.T) *corpusServiceHarness {
 		if gate := harness.beforeResolve.Load(); gate != nil {
 			(*gate)(request)
 		}
+		if harness.failResolve.Load() {
+			return nil, errors.New("synthetic outage before the workflow was reserved")
+		}
 		admission.ConfigDigest, admission.RegistrationID = configDigest, registrationID
 		resolved, err := catalog.ResolveAdmission(admission, config, configDigest, registrationID)
 		if err != nil {
@@ -416,6 +422,7 @@ func newCorpusServiceHarness(t *testing.T) *corpusServiceHarness {
 	})
 	harness.server.requests.setAdmissionScreen(catalog.admissionScreen(config))
 	harness.server.requests.setTerminalReplayCheck(catalog.terminalReplayCheck(config, configDigest, registrationID))
+	harness.server.requests.setAcceptanceBinding(catalog.acceptanceBinding(config, configDigest, registrationID))
 	harness.server.requests.mu.Lock()
 	harness.server.requests.settlementVerifier = func(context.Context, piServiceRequestState) error { return nil }
 	harness.server.requests.mu.Unlock()

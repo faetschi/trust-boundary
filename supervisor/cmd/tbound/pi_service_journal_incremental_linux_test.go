@@ -23,6 +23,8 @@ type incrementalJournal struct {
 	calls    map[string]int
 	total    int
 	failID   string // a verification of this request id fails
+	// reconciler is the fake workflow reconciliation behind abandon-unknown.
+	reconciler *fakeAbandonReconciler
 }
 
 func openIncrementalJournal(t testing.TB, path string) *incrementalJournal {
@@ -36,7 +38,9 @@ func openIncrementalJournal(t testing.TB, path string) *incrementalJournal {
 		_ = journal.Close()
 		t.Fatal(err)
 	}
-	h := &incrementalJournal{path: path, audit: journal, requests: requests, calls: make(map[string]int)}
+	h := &incrementalJournal{path: path, audit: journal, requests: requests, calls: make(map[string]int),
+		reconciler: newFakeAbandonReconciler()}
+	requests.setReconciler(h.reconciler)
 	requests.settlementVerifier = func(_ context.Context, prior piServiceRequestState) error {
 		h.calls[prior.accepted.RequestID]++
 		h.total++

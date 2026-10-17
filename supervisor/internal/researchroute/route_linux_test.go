@@ -935,3 +935,63 @@ func TestCostAboveTheTransmittedCeilingIsAnAnomalyEvenWhenTheDeclaredPriceIsHigh
 		}
 	})
 }
+
+// WorkflowUnits shows one workflow's units in every lifecycle state: open while the request is
+// in flight, settled after a reported cost, uncertain after an ambiguous outcome. Units of other
+// workflows and conversations are not reported.
+func TestWorkflowUnitsReportOpenSettledAndUncertainUnits(t *testing.T) {
+	probe := func(bundle *Bundle) []usdledger.UnitInfo {
+		t.Helper()
+		units, err := bundle.WorkflowUnits("workflow-1", []string{"conversation-1", "conversation-2"}, 5)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return units
+	}
+	f := newFixture(t, frozenProfileJSON, ledgerConfigJSON(5_000_000, 20_000, "request"))
+	f.genesis()
+	var bundle *Bundle
+	var inFlight []usdledger.UnitInfo
+	server := newProviderServer(t, &bundle)
+	server.handler = func(w http.ResponseWriter, _ *http.Request) {
+		inFlight = probe(bundle)
+		sse(w, map[string]any{"prompt_tokens": 11, "completion_tokens": 3, "cost": 0.000002})
+	}
+	bundle = f.open(server.URL + "/api/v1/chat/completions")
+	if units := probe(bundle); len(units) != 0 {
+		t.Fatalf("units before any request: %+v", units)
+	}
+	if _, err := conversation(t, f, bundle).NextTurn(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(inFlight) != 1 || inFlight[0].State != usdledger.UnitStateOpen || inFlight[0].ReservedMicroUSD != requestReserve {
+		t.Fatalf("the in-flight request is not an open unit: %+v", inFlight)
+	}
+	if units := probe(bundle); len(units) != 1 || units[0].State != usdledger.UnitStateSettled || units[0].SettledMicroUSD != 2 {
+		t.Fatalf("the answered request is not a settled unit: %+v", units)
+	}
+	if other, err := bundle.WorkflowUnits("workflow-2", []string{"conversation-1"}, 5); err != nil || len(other) != 0 {
+		t.Fatalf("another workflow's probe reported units: %+v err=%v", other, err)
+	}
+	for _, bad := range []struct {
+		workflow string
+		turns    uint64
+	}{{"", 5}, {"workflow-1", 0}, {"workflow-1", maxWorkflowUnitTurns + 1}} {
+		if _, err := bundle.WorkflowUnits(bad.workflow, []string{"conversation-1"}, bad.turns); err == nil {
+			t.Fatalf("probe %+v was accepted", bad)
+		}
+	}
+
+	g := newFixture(t, frozenProfileJSON, ledgerConfigJSON(5_000_000, 20_000, "request"))
+	g.genesis()
+	var ambiguous *Bundle
+	failing := newProviderServer(t, &ambiguous)
+	failing.handler = func(w http.ResponseWriter, _ *http.Request) { http.Error(w, "upstream", http.StatusBadGateway) }
+	ambiguous = g.open(failing.URL + "/api/v1/chat/completions")
+	if _, err := conversation(t, g, ambiguous).NextTurn(context.Background()); err == nil {
+		t.Fatal("an ambiguous outcome released a turn")
+	}
+	if units := probe(ambiguous); len(units) != 1 || units[0].State != usdledger.UnitStateUncertain || units[0].ReservedMicroUSD != requestReserve {
+		t.Fatalf("the ambiguous request is not an uncertain unit: %+v", units)
+	}
+}
