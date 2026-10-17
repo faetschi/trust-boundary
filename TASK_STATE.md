@@ -1,6 +1,6 @@
 # TBound task state
 
-Updated 2026-10-17 (goal re-set; guest pings again). Running: read-only guest re-measure (Sonnet), evalreport package (Sonnet), docs cleanup (Haiku). Commit only after verified report. Only `codex/tbound-prototype`; thesis first.
+Updated 2026-10-17 (goal active). Running: throwaway-key sign dry run (Sonnet); Codex r2 review of ff6185d+b32467c. Pending: Codex r2 retry for e4f3341+f1ad4fb (crashed twice, likely concurrency); Codex review of ca6fb3d+e8a2004+d99ced8. Commit only after verified report. Only `codex/tbound-prototype`; thesis first.
 
 - Committed: D14 b089a9d/852f276/7520458/484d806; drain wiring 928a79e; model pin bd6de94; R9 84cfaad; R10 56aadeb; evalscore 4a6a849+97c6741+2c59e11; usdledger 95f6ab6+721b968; researchprofile 94484cf; evalcorpus 81abc77; effectoracle 1384e9a+b2d94ce; drainproof fca4680+a081cbf; routematrix 0b46b74+ab783f1; calibration 74c6c7d; attacker a298f71; wsoracle 1423e0d; cleanup dc985e2/5ed2295/5bd16fd.
 - Gate: full module on ff6185d = 38 pkgs, 2102 pass/8 skip/0 fail (clean-room, logs F:/TBoundAssets/recovery-20261015/fullgate-20261017). Skips unverified: real provider x2, dev fixture Pi, Landlock ABI8, D09 scanner, root ownership, cgroup limits, ext4 capacity.
