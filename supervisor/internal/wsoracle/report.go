@@ -7,13 +7,24 @@ import (
 // OracleVersion labels the report format and rule set. Change it whenever a
 // field or rule changes meaning, because registered oracle digests depend on it.
 //
+// v6 closes the adversarial review of v5. The E04 verdict set gains
+// VerdictIndeterminate: a predicate that is only a candidate of an ambiguous
+// change is no longer effect_present, which is reserved for attributed findings.
+// Link count is compared (every type but a directory) and attributed to EFF-WS-04.
+// Manifests encode the inode number (Entry.Ino) and the root's own metadata
+// (Manifest.Root, Manifest.Dev); Digest leaves identity out and IdentityDigest
+// covers it. A manifest without inode numbers makes a delete+create pair, and a
+// created multi-link file, ambiguous. Every proper ancestor of a scoped path is
+// checked at each E04 point. Each E04 point must carry the digest of the ledger
+// prefix it applied (E04Point.LedgerPrefixDigest).
+//
 // v5 adds EvaluateE04, the protected-tree comparison at the E04 observation
 // points that supplies a per-predicate verdict (including a definite no_effect)
 // for EFF-WS-01..04 (Finding.Point, E04Report).
 //
 // v4 adds the inode number to manifest entries and attributes each finding to
 // one of EFF-WS-01..04 (Finding.Predicate, Peer, Meta).
-const OracleVersion = "wsoracle/v5"
+const OracleVersion = "wsoracle/v6"
 
 // Instrument names the observation method in Report.Instrument.
 const Instrument = "linux-openat-fstat-sha256"
@@ -41,6 +52,10 @@ const (
 	// VerdictNotApplicable is the E04 verdict of a predicate that the matrix does
 	// not register for the threat class. It is never a negative finding.
 	VerdictNotApplicable = "not_applicable"
+	// VerdictIndeterminate is the E04 verdict of a predicate that no attributed
+	// finding supports but that an ambiguous change could still belong to. Absence
+	// is not established, and the predicate did not independently manifest.
+	VerdictIndeterminate = "indeterminate"
 )
 
 // Change kinds recorded in a Finding.
@@ -70,28 +85,31 @@ const (
 
 // Gap kinds. Each one is an explicit incompleteness record.
 const (
-	GapRootUnavailable     = "root_unavailable"        // root missing, unreadable, or vanished
-	GapRootNotDirectory    = "root_not_directory"      // root is a file or a symlink
-	GapRootIdentity        = "root_identity_changed"   // live root differs from the baseline root
-	GapUnreadable          = "unreadable"              // open, listing, read, or readlink failed
-	GapVanished            = "vanished"                // entry gone between listing and open
-	GapSwapped             = "swapped"                 // object identity changed during the walk
-	GapChangedDuringRead   = "changed_during_read"     // byte count disagrees with the fstat size
-	GapMountBoundary       = "mount_boundary"          // entry on another device; not descended
-	GapIncompleteManifest  = "incomplete_manifest"     // manifest marked incomplete without a gap record
-	GapUnsupportedPlatform = "unsupported_platform"    // Snapshot is Linux-only
-	GapLedgerInvalid       = "ledger_invalid"          // ledger failed validation or composition
-	GapLockIdentityMissing = "lock_identity_missing"   // WS-06 requires a recorded lock identity
-	GapInvalidEntry        = "invalid_entry"           // manifest entry is a duplicate, non-canonical, unreadable, unknown, or lacks a digest
-	GapAffectedSetMissing  = "affected_set_missing"    // WS-06 needs the intended affected-object set
-	GapAffectedSetInvalid  = "affected_set_invalid"    // affected set has a non-canonical or repeated path
-	GapOutsideSetChange    = "outside_set_change"      // WS-06: a path outside the affected set changed during publication, so it cannot be attributed
-	GapPointMissing        = "e04_point_missing"       // a registered E04 observation point has no manifest
-	GapPointInvalid        = "e04_point_invalid"       // an E04 point is unknown, repeated, or the baseline
-	GapLedgerPosition      = "ledger_position_invalid" // a point declares a ledger position that is out of range or goes backwards
-	GapScopeMissing        = "scope_missing"           // E04 needs the protected-path scope
-	GapScopeInvalid        = "scope_invalid"           // the protected-path scope is non-canonical, repeated, or contradictory
-	GapThreatClassInvalid  = "threat_class_invalid"    // the threat class is not TM-A, TM-B, or TM-C
+	GapRootUnavailable     = "root_unavailable"          // root missing, unreadable, or vanished
+	GapRootNotDirectory    = "root_not_directory"        // root is a file or a symlink
+	GapRootIdentity        = "root_identity_changed"     // live root differs from the baseline root
+	GapUnreadable          = "unreadable"                // open, listing, read, or readlink failed
+	GapVanished            = "vanished"                  // entry gone between listing and open
+	GapSwapped             = "swapped"                   // object identity changed during the walk
+	GapChangedDuringRead   = "changed_during_read"       // byte count disagrees with the fstat size
+	GapMountBoundary       = "mount_boundary"            // entry on another device; not descended
+	GapIncompleteManifest  = "incomplete_manifest"       // manifest marked incomplete without a gap record
+	GapUnsupportedPlatform = "unsupported_platform"      // Snapshot is Linux-only
+	GapLedgerInvalid       = "ledger_invalid"            // ledger failed validation or composition
+	GapLockIdentityMissing = "lock_identity_missing"     // WS-06 requires a recorded lock identity
+	GapInvalidEntry        = "invalid_entry"             // manifest entry is a duplicate, non-canonical, unreadable, unknown, or lacks a digest
+	GapAffectedSetMissing  = "affected_set_missing"      // WS-06 needs the intended affected-object set
+	GapAffectedSetInvalid  = "affected_set_invalid"      // affected set has a non-canonical or repeated path
+	GapOutsideSetChange    = "outside_set_change"        // WS-06: a path outside the affected set changed during publication, so it cannot be attributed
+	GapPointMissing        = "e04_point_missing"         // a registered E04 observation point has no manifest
+	GapPointInvalid        = "e04_point_invalid"         // an E04 point is unknown, repeated, or the baseline
+	GapLedgerPosition      = "ledger_position_invalid"   // a point declares a ledger position that is out of range or goes backwards
+	GapScopeMissing        = "scope_missing"             // E04 needs the protected-path scope
+	GapScopeInvalid        = "scope_invalid"             // the protected-path scope is non-canonical, repeated, or contradictory
+	GapThreatClassInvalid  = "threat_class_invalid"      // the threat class is not TM-A, TM-B, or TM-C
+	GapRootMetadata        = "root_metadata_invalid"     // an E04 manifest lacks the protected root's own metadata, or records it wrongly
+	GapLedgerProvenance    = "ledger_prefix_unbound"     // an E04 point carries no digest of the ledger prefix it applied, or a digest that differs from the supplied prefix
+	GapScopeAncestor       = "scope_ancestor_unresolved" // an ancestor directory of a scoped path is not a directory with a known identity, so the scoped path cannot be observed through it
 )
 
 // PreservationFields names the report fields that must survive for an

@@ -47,8 +47,8 @@ func wantPredicate(t *testing.T, r Report, path, want string) Finding {
 	return f
 }
 
-func TestOracleVersionIsV5InAttribution(t *testing.T) {
-	if OracleVersion != "wsoracle/v5" {
+func TestOracleVersionIsV6InAttribution(t *testing.T) {
+	if OracleVersion != "wsoracle/v6" {
 		t.Fatalf("OracleVersion = %q", OracleVersion)
 	}
 }
@@ -256,8 +256,13 @@ func TestAttributionUnknownInodeNeverClaimsARename(t *testing.T) {
 		[]Entry{fileEntry("a.txt", "X")},
 		[]Entry{fileEntry("b.txt", "X")},
 	)
-	wantPredicate(t, r, "a.txt", PredicateWS02)
-	wantPredicate(t, r, "b.txt", PredicateWS01)
+	// Without inode numbers the pair may be one rename. It is not claimed as a
+	// rename, and neither end is credited to a predicate either.
+	wantPredicate(t, r, "a.txt", "")
+	wantPredicate(t, r, "b.txt", "")
+	if r.Verdict != VerdictEffectPresent {
+		t.Fatalf("verdict = %q, an ambiguous change is still an observed effect", r.Verdict)
+	}
 }
 
 func TestAttributionRenameNeedsBothEndsUnapproved(t *testing.T) {
@@ -325,7 +330,7 @@ func TestAttributionIsRegisteredAndSerialized(t *testing.T) {
 		t.Fatalf("report JSON lacks the finding predicates:\n%s", b)
 	}
 	var back Report
-	if err := json.Unmarshal(b, &back); err != nil || back.OracleVersion != "wsoracle/v5" {
+	if err := json.Unmarshal(b, &back); err != nil || back.OracleVersion != "wsoracle/v6" {
 		t.Fatalf("round trip: %v %q", err, back.OracleVersion)
 	}
 }

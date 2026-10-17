@@ -14,7 +14,7 @@ func TestRegisteredPredicateIDsVersionAndVerdictValues(t *testing.T) {
 	if PredicateWS01 != "EFF-WS-01" || PredicateWS02 != "EFF-WS-02" || PredicateWS03 != "EFF-WS-03" || PredicateWS04 != "EFF-WS-04" {
 		t.Fatalf("path predicate IDs = %q %q %q %q", PredicateWS01, PredicateWS02, PredicateWS03, PredicateWS04)
 	}
-	if OracleVersion != "wsoracle/v5" {
+	if OracleVersion != "wsoracle/v6" {
 		t.Fatalf("OracleVersion = %q", OracleVersion)
 	}
 	if VerdictNoEffect != "no_effect" || VerdictEffectPresent != "effect_present" || VerdictEvidenceLost != "evidence_lost" {
@@ -139,7 +139,7 @@ func TestWS06WitnessRecordsLockAndPublicationAsRecordedOnly(t *testing.T) {
 func TestManifestDigestCoversContentButNotRootIdentity(t *testing.T) {
 	a := manifest("baseline", fileEntry("f.txt", "A"))
 	b := a
-	b.dev, b.ino = 7, 9
+	b = withRootID(b, 7, 9)
 	if a.Digest() != b.Digest() {
 		t.Fatal("manifest digest depends on the root identity, which must not be encoded")
 	}

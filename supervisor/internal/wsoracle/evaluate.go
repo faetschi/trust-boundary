@@ -226,7 +226,7 @@ func (r *Report) addManifest(m *Manifest) {
 // root differs from the first one. The first manifest must be the baseline.
 func (r *Report) checkLiveRoot(ms ...*Manifest) {
 	for _, m := range ms[1:] {
-		if m.dev != ms[0].dev || m.ino != ms[0].ino {
+		if m.Dev != ms[0].Dev || m.rootIno() != ms[0].rootIno() {
 			r.Gaps = append(r.Gaps, Gap{Manifest: m.Label, Kind: GapRootIdentity})
 		}
 	}

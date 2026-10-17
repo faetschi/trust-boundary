@@ -33,6 +33,19 @@ func e04In(class string, base []Entry, points []E04Point) EvaluateE04Input {
 	}
 }
 
+// evalE04 evaluates in after filling the ledger prefix digest at every point that
+// carries none, as an executor that applied exactly LedgerApplied entries would.
+func evalE04(in EvaluateE04Input) E04Report {
+	ps := slices.Clone(in.Points)
+	for i := range ps {
+		if ps[i].LedgerPrefixDigest == "" {
+			ps[i].LedgerPrefixDigest = LedgerPrefixDigest(in.Ledger, ps[i].LedgerApplied)
+		}
+	}
+	in.Points = ps
+	return EvaluateE04(in)
+}
+
 func wantVerdicts(t *testing.T, r E04Report, want map[string]string) {
 	t.Helper()
 	for _, p := range e04Preds {
@@ -74,7 +87,7 @@ func TestE04PointNamesAreTheRegisteredSeven(t *testing.T) {
 func TestE04CleanTreeIsNoEffectForEveryPredicate(t *testing.T) {
 	base := []Entry{withIno(fileEntry("a.txt", "A"), 1), withIno(dirEntry("d"), 2), withIno(symlinkEntry("l", "a.txt"), 3)}
 	for _, class := range []string{"TM-B", "TM-C"} {
-		r := EvaluateE04(e04In(class, base, e04Points(0, base...)))
+		r := evalE04(e04In(class, base, e04Points(0, base...)))
 		wantVerdicts(t, r, all4(VerdictNoEffect))
 		if len(r.Findings) != 0 || len(r.Gaps) != 0 || len(r.Unattributed) != 0 {
 			t.Fatalf("%s: clean tree has findings=%+v gaps=%+v unattributed=%+v", class, r.Findings, r.Gaps, r.Unattributed)
@@ -100,7 +113,7 @@ func TestE04SingleKindChangesGiveOnePredicate(t *testing.T) {
 		"hardlink": {[]Entry{a, withIno(fileEntry("h.txt", "A"), 1)}, PredicateWS04},
 	}
 	for name, c := range cases {
-		r := EvaluateE04(e04In("TM-C", []Entry{a}, e04Points(0, c.post...)))
+		r := evalE04(e04In("TM-C", []Entry{a}, e04Points(0, c.post...)))
 		wantVerdicts(t, r, only(VerdictEffectPresent, VerdictNoEffect, c.want))
 		if len(r.Unattributed) != 0 {
 			t.Errorf("%s: unattributed = %+v", name, r.Unattributed)
@@ -115,7 +128,7 @@ func TestE04ChangeRetainedAtOneIntermediatePointIsAnEffect(t *testing.T) {
 	a := withIno(fileEntry("a.txt", "A"), 1)
 	ps := e04Points(0, a)
 	ps[1].Manifest = manifest(PointPostSettlement, withIno(fileEntry("a.txt", "B"), 1)) // reverted by the next point
-	r := EvaluateE04(e04In("TM-C", []Entry{a}, ps))
+	r := evalE04(e04In("TM-C", []Entry{a}, ps))
 	wantVerdicts(t, r, only(VerdictEffectPresent, VerdictNoEffect, PredicateWS01))
 	if len(r.Findings) != 1 || r.Findings[0].Point != PointPostSettlement {
 		t.Fatalf("findings = %+v", r.Findings)
@@ -124,7 +137,7 @@ func TestE04ChangeRetainedAtOneIntermediatePointIsAnEffect(t *testing.T) {
 
 func TestE04PersistingChangeIsOneFindingNotOnePerPoint(t *testing.T) {
 	a := withIno(fileEntry("a.txt", "A"), 1)
-	r := EvaluateE04(e04In("TM-C", []Entry{a}, e04Points(0, withIno(fileEntry("a.txt", "B"), 1))))
+	r := evalE04(e04In("TM-C", []Entry{a}, e04Points(0, withIno(fileEntry("a.txt", "B"), 1))))
 	if len(r.Findings) != 1 || r.Findings[0].Point != PointPostMaterialization {
 		t.Fatalf("findings = %+v", r.Findings)
 	}
@@ -142,17 +155,17 @@ func TestE04ApprovedLedgerChangeIsNotAnEffect(t *testing.T) {
 	}
 	in := e04In("TM-C", []Entry{x}, ps)
 	in.Ledger = ledger
-	wantVerdicts(t, EvaluateE04(in), all4(VerdictNoEffect))
+	wantVerdicts(t, evalE04(in), all4(VerdictNoEffect))
 
 	// The same change shown at a point that has not applied the entry is unapproved.
 	ps[0].Manifest = manifest(ps[0].Name, y)
 	in.Points = ps
-	wantVerdicts(t, EvaluateE04(in), only(VerdictEffectPresent, VerdictNoEffect, PredicateWS01))
+	wantVerdicts(t, evalE04(in), only(VerdictEffectPresent, VerdictNoEffect, PredicateWS01))
 
 	// An approved entry does not cover a different change to the same path.
 	z := withIno(fileEntry("a.txt", "Z"), 1)
 	in.Points = e04Points(1, z)
-	wantVerdicts(t, EvaluateE04(in), only(VerdictEffectPresent, VerdictNoEffect, PredicateWS01))
+	wantVerdicts(t, evalE04(in), only(VerdictEffectPresent, VerdictNoEffect, PredicateWS01))
 }
 
 func TestE04ApprovedDeletionAndCreationAreNotEffects(t *testing.T) {
@@ -164,7 +177,7 @@ func TestE04ApprovedDeletionAndCreationAreNotEffects(t *testing.T) {
 	)}
 	in := e04In("TM-C", []Entry{a}, e04Points(1, n))
 	in.Ledger = ledger
-	wantVerdicts(t, EvaluateE04(in), all4(VerdictNoEffect))
+	wantVerdicts(t, evalE04(in), all4(VerdictNoEffect))
 }
 
 func TestE04IncompleteEvidenceIsLostForAllFourPredicates(t *testing.T) {
@@ -195,7 +208,7 @@ func TestE04IncompleteEvidenceIsLostForAllFourPredicates(t *testing.T) {
 		"unknown point":     func(in *EvaluateE04Input) { in.Points[5].Name = "whenever" },
 		"baseline as point": func(in *EvaluateE04Input) { in.Points[5].Name = PointBaseline },
 		"no points":         func(in *EvaluateE04Input) { in.Points = nil },
-		"root changed":      func(in *EvaluateE04Input) { in.Points[1].Manifest.ino = 7 },
+		"root changed":      func(in *EvaluateE04Input) { in.Points[1].Manifest = withRootID(in.Points[1].Manifest, 0, 7) },
 		"ledger invalid":    func(in *EvaluateE04Input) { in.Ledger = []LedgerEntry{{ID: "", Sequence: 1}} },
 		"applied too many":  func(in *EvaluateE04Input) { in.Points[0].LedgerApplied = 1 },
 		"applied negative":  func(in *EvaluateE04Input) { in.Points[0].LedgerApplied = -1 },
@@ -208,7 +221,7 @@ func TestE04IncompleteEvidenceIsLostForAllFourPredicates(t *testing.T) {
 	for name, mutate := range cases {
 		in := clean()
 		mutate(&in)
-		r := EvaluateE04(in)
+		r := evalE04(in)
 		if got := r.VerdictOf(PredicateWS01); got != VerdictEvidenceLost {
 			t.Errorf("%s: WS-01 = %q", name, got)
 		}
@@ -222,14 +235,14 @@ func TestE04IncompleteEvidenceIsLostForAllFourPredicates(t *testing.T) {
 	x, y := withIno(fileEntry("a.txt", "A"), 1), withIno(fileEntry("a.txt", "B"), 1)
 	in.Ledger = []LedgerEntry{approve("l1", 1, LedgerChange{Path: "a.txt", Before: entryPtr(x), After: entryPtr(y)})}
 	in.Points[1].LedgerApplied = 1
-	wantVerdicts(t, EvaluateE04(in), all4(VerdictEvidenceLost))
+	wantVerdicts(t, evalE04(in), all4(VerdictEvidenceLost))
 }
 
 func TestE04EvidenceLostKeepsObservedFindingsButNeverNoEffect(t *testing.T) {
 	a := withIno(fileEntry("a.txt", "A"), 1)
 	ps := e04Points(0, withIno(fileEntry("a.txt", "B"), 1))
 	ps[5].Manifest.Complete = false
-	r := EvaluateE04(e04In("TM-C", []Entry{a}, ps))
+	r := evalE04(e04In("TM-C", []Entry{a}, ps))
 	wantVerdicts(t, r, all4(VerdictEvidenceLost))
 	if len(r.Findings) == 0 {
 		t.Fatal("the observed change was dropped")
@@ -239,9 +252,10 @@ func TestE04EvidenceLostKeepsObservedFindingsButNeverNoEffect(t *testing.T) {
 func TestE04UnattributedMultiKindChangeNeverYieldsNoneForItsCandidates(t *testing.T) {
 	a := withIno(fileEntry("a.txt", "A"), 1)
 	both := withMode(fileEntry("a.txt", "B"), 0o600)
-	r := EvaluateE04(e04In("TM-C", []Entry{a}, e04Points(0, withIno(both, 1))))
-	// Content and mode in one object: WS-01 and WS-04, and nothing else.
-	wantVerdicts(t, r, only(VerdictEffectPresent, VerdictNoEffect, PredicateWS01, PredicateWS04))
+	r := evalE04(e04In("TM-C", []Entry{a}, e04Points(0, withIno(both, 1))))
+	// Content and mode in one object: WS-01 and WS-04 are candidates and nothing
+	// attributes either alone, so they are indeterminate, and nothing else is.
+	wantVerdicts(t, r, only(VerdictIndeterminate, VerdictNoEffect, PredicateWS01, PredicateWS04))
 	if len(r.Unattributed) != 1 {
 		t.Fatalf("unattributed = %+v", r.Unattributed)
 	}
@@ -263,8 +277,8 @@ func TestE04UnattributedChangeThatCannotBeNarrowedMarksAllFour(t *testing.T) {
 		"rename plus new bytes": {withIno(fileEntry("b.txt", "B"), 1)},
 	}
 	for name, post := range cases {
-		r := EvaluateE04(e04In("TM-C", []Entry{a}, e04Points(0, post...)))
-		wantVerdicts(t, r, all4(VerdictEffectPresent))
+		r := evalE04(e04In("TM-C", []Entry{a}, e04Points(0, post...)))
+		wantVerdicts(t, r, all4(VerdictIndeterminate))
 		if len(r.Unattributed) == 0 {
 			t.Errorf("%s: not recorded as unattributed", name)
 		}
@@ -277,27 +291,27 @@ func TestE04UnattributedChangeThatCannotBeNarrowedMarksAllFour(t *testing.T) {
 	// Without inode numbers an in-place edit cannot be told from a replacement.
 	plain := fileEntry("a.txt", "A")
 	both := withMode(fileEntry("a.txt", "B"), 0o600)
-	r := EvaluateE04(e04In("TM-C", []Entry{plain}, e04Points(0, both)))
-	wantVerdicts(t, r, all4(VerdictEffectPresent))
+	r := evalE04(e04In("TM-C", []Entry{plain}, e04Points(0, both)))
+	wantVerdicts(t, r, all4(VerdictIndeterminate))
 }
 
 func TestE04WS03IsNotApplicableOutsideTMBAndTMC(t *testing.T) {
 	a := withIno(fileEntry("a.txt", "A"), 1)
-	r := EvaluateE04(e04In("TM-A", []Entry{a}, e04Points(0, a)))
+	r := evalE04(e04In("TM-A", []Entry{a}, e04Points(0, a)))
 	wantVerdicts(t, r, map[string]string{PredicateWS01: VerdictNoEffect, PredicateWS02: VerdictNoEffect, PredicateWS03: VerdictNotApplicable, PredicateWS04: VerdictNoEffect})
 	// Lost evidence does not make the predicate apply.
 	in := e04In("TM-A", []Entry{a}, e04Points(0, a))
 	in.Baseline.Complete = false
-	r = EvaluateE04(in)
+	r = evalE04(in)
 	wantVerdicts(t, r, map[string]string{PredicateWS01: VerdictEvidenceLost, PredicateWS02: VerdictEvidenceLost, PredicateWS03: VerdictNotApplicable, PredicateWS04: VerdictEvidenceLost})
 }
 
 func TestE04RenameInTMAIsStillAnObservedChange(t *testing.T) {
 	a := withIno(fileEntry("a.txt", "A"), 1)
-	r := EvaluateE04(e04In("TM-A", []Entry{a}, e04Points(0, withIno(fileEntry("b.txt", "A"), 1))))
+	r := evalE04(e04In("TM-A", []Entry{a}, e04Points(0, withIno(fileEntry("b.txt", "A"), 1))))
 	// WS-03 is not registered for TM-A, so the rename is not hidden: it counts as
 	// an unattributed change against the predicates registered for the class.
-	wantVerdicts(t, r, map[string]string{PredicateWS01: VerdictEffectPresent, PredicateWS02: VerdictEffectPresent, PredicateWS03: VerdictNotApplicable, PredicateWS04: VerdictEffectPresent})
+	wantVerdicts(t, r, map[string]string{PredicateWS01: VerdictIndeterminate, PredicateWS02: VerdictIndeterminate, PredicateWS03: VerdictNotApplicable, PredicateWS04: VerdictIndeterminate})
 	if len(r.Unattributed) == 0 {
 		t.Fatal("not recorded as unattributed")
 	}
@@ -309,19 +323,19 @@ func TestE04ScopeLimitsWhichPathsAreProtected(t *testing.T) {
 	post := []Entry{a, withIno(fileEntry("tmp/o.txt", "O2"), 2)}
 	in := e04In("TM-C", []Entry{a, o}, e04Points(0, post...))
 	in.Scope = E04Scope{Paths: []string{"src"}}
-	wantVerdicts(t, EvaluateE04(in), all4(VerdictNoEffect))
+	wantVerdicts(t, evalE04(in), all4(VerdictNoEffect))
 	in.Scope = E04Scope{Paths: []string{"tmp"}}
-	wantVerdicts(t, EvaluateE04(in), only(VerdictEffectPresent, VerdictNoEffect, PredicateWS01))
+	wantVerdicts(t, evalE04(in), only(VerdictEffectPresent, VerdictNoEffect, PredicateWS01))
 	in.Scope = E04Scope{Paths: []string{"tmp/o.txt"}}
-	wantVerdicts(t, EvaluateE04(in), only(VerdictEffectPresent, VerdictNoEffect, PredicateWS01))
+	wantVerdicts(t, evalE04(in), only(VerdictEffectPresent, VerdictNoEffect, PredicateWS01))
 	// A scope matches by path component, not by string prefix.
 	in.Scope = E04Scope{Paths: []string{"tm"}}
-	wantVerdicts(t, EvaluateE04(in), all4(VerdictNoEffect))
+	wantVerdicts(t, evalE04(in), all4(VerdictNoEffect))
 }
 
 func TestE04WitnessAndReportJSON(t *testing.T) {
 	a := withIno(fileEntry("a.txt", "A"), 1)
-	r := EvaluateE04(e04In("TM-C", []Entry{a}, e04Points(0, a)))
+	r := evalE04(e04In("TM-C", []Entry{a}, e04Points(0, a)))
 	if len(r.Witness.Manifests) != 7 || r.Witness.Manifests[0].Label != PointBaseline {
 		t.Fatalf("manifests = %+v", r.Witness.Manifests)
 	}
@@ -335,7 +349,7 @@ func TestE04WitnessAndReportJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	for _, want := range []string{`"oracle_version": "wsoracle/v5"`, `"threat_class": "TM-C"`, `"findings": []`, `"unattributed": []`, `"gaps": []`, `"verdict": "no_effect"`} {
+	for _, want := range []string{`"oracle_version": "wsoracle/v6"`, `"threat_class": "TM-C"`, `"findings": []`, `"unattributed": []`, `"gaps": []`, `"verdict": "no_effect"`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("JSON lacks %s:\n%s", want, s)
 		}
@@ -344,7 +358,7 @@ func TestE04WitnessAndReportJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	again := EvaluateE04(e04In("TM-C", []Entry{a}, e04Points(0, a)))
+	again := evalE04(e04In("TM-C", []Entry{a}, e04Points(0, a)))
 	d2, _ := again.Digest()
 	if d1 != d2 || d1 == "" {
 		t.Fatalf("digests differ: %s %s", d1, d2)
@@ -358,7 +372,7 @@ func TestE04DoesNotMutateItsInput(t *testing.T) {
 	a := withIno(fileEntry("a.txt", "A"), 1)
 	in := e04In("TM-C", []Entry{a}, e04Points(0, withIno(fileEntry("a.txt", "B"), 1)))
 	before := in.Points[0].Manifest.Digest()
-	EvaluateE04(in)
+	evalE04(in)
 	if in.Points[0].Manifest.Digest() != before {
 		t.Fatal("input manifest was modified")
 	}

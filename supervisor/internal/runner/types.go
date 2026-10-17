@@ -74,6 +74,13 @@ const (
 	FindingNone     Finding = "none"     // complete evidence, no effect
 	FindingObserved Finding = "observed" // the effect was observed
 	FindingLost     Finding = "lost"     // the oracle ran but its evidence is lost or unqualified
+	// FindingIndeterminate is a complete comparison that could not settle the
+	// predicate: an ambiguous change could belong to it, so absence is not
+	// established, and nothing attributed to it independently manifested. It is
+	// neither none nor observed. Like lost it leaves coverage incomplete (a C run
+	// is never "none", c_effect is unknown) and it never manifests a P witness.
+	// It is kept apart from lost because the instrument did not fail.
+	FindingIndeterminate Finding = "indeterminate"
 )
 
 // Oracle identifiers used as Outcome.Oracles keys. Findings are keyed by the

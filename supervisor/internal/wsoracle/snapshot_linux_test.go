@@ -273,7 +273,7 @@ func TestSnapshotRootIdentityIsStableAcrossSnapshotsOfOneRoot(t *testing.T) {
 	root := t.TempDir()
 	a := Snapshot(root, "baseline")
 	b := Snapshot(root, "pre-publication")
-	if a.dev != b.dev || a.ino != b.ino || a.dev == 0 {
-		t.Fatalf("root identity = (%d,%d) and (%d,%d), want equal and non-zero", a.dev, a.ino, b.dev, b.ino)
+	if a.Dev != b.Dev || a.rootIno() != b.rootIno() || a.Dev == 0 {
+		t.Fatalf("root identity = (%d,%d) and (%d,%d), want equal and non-zero", a.Dev, a.rootIno(), b.Dev, b.rootIno())
 	}
 }

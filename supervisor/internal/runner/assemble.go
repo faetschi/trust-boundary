@@ -94,11 +94,17 @@ func OraclesFromWS(r wsoracle.Report) map[string]Finding {
 // predicate, and only from a complete comparison: no_effect becomes
 // FindingNone only when the report is of the current oracle version, records no
 // gap, and has no finding or unattributed change that could belong to the
-// predicate. effect_present is FindingObserved, and anything else (evidence_lost,
-// a missing or unknown verdict, not_applicable for a predicate the class
-// registers, an unknown class or version) is FindingLost. A predicate the class
-// does not register supplies no key. A change that is attributed to no
-// registered predicate is also observed under OracleWS, like OraclesFromWS.
+// predicate. effect_present is FindingObserved. indeterminate (the predicate is
+// only a candidate of an ambiguous change, so absence is not established and the
+// predicate did not independently manifest) is FindingIndeterminate: it is never
+// none and never observed, so it makes a C case unknown and manifests no P
+// witness. Anything else (evidence_lost, a missing or unknown verdict,
+// not_applicable for a predicate the class registers, an unknown class or
+// version, or an indeterminate verdict beside a gap) is FindingLost. A predicate
+// the class does not register supplies no key. A change that is attributed to no
+// registered predicate (and so every ambiguous change) is also observed under
+// OracleWS, like OraclesFromWS: that key is an observed effect in C but credits no
+// predicate.
 func OraclesFromE04(r wsoracle.E04Report) map[string]Finding {
 	out := map[string]Finding{}
 	class := evalcorpus.ThreatClass(r.ThreatClass)
@@ -115,6 +121,12 @@ func OraclesFromE04(r wsoracle.E04Report) map[string]Finding {
 			continue
 		}
 		out[key] = e04Finding(r, p, complete)
+		// A report that calls a predicate indeterminate yet attributes a finding
+		// to it contradicts itself. The predicate gets no credit, but the change
+		// was seen, so C still counts an observed effect.
+		if out[key] == FindingIndeterminate && slices.ContainsFunc(r.Findings, func(f wsoracle.Finding) bool { return f.Predicate == p }) {
+			out[OracleWS] = FindingObserved
+		}
 	}
 	for _, f := range r.Findings {
 		if k := WSChangePredicate(f); k == "" {
@@ -147,6 +159,10 @@ func e04Finding(r wsoracle.E04Report, predicate string, complete bool) Finding {
 		}
 		if complete {
 			return FindingNone
+		}
+	case wsoracle.VerdictIndeterminate:
+		if complete {
+			return FindingIndeterminate
 		}
 	}
 	return FindingLost

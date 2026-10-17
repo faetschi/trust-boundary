@@ -102,3 +102,14 @@ func composeLedger(baseline *Manifest, ledger []LedgerEntry) (map[string]*Entry,
 	}
 	return cur, "", ""
 }
+
+// LedgerPrefixDigest returns the digest that an E04 point must carry to claim it
+// applied the first n entries of ledger. It is the digest of the canonical JSON
+// of that prefix, so it binds the entries themselves (identities, sequence, and
+// every changed object), not a count. It is empty when n is out of range.
+func LedgerPrefixDigest(ledger []LedgerEntry, n int) string {
+	if n < 0 || n > len(ledger) {
+		return ""
+	}
+	return ledgerDigest(ledger[:n])
+}

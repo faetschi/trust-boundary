@@ -98,7 +98,7 @@ func TestEndToEndAttributionPerPredicate(t *testing.T) {
 					t.Fatal(err)
 				}
 			},
-			want: map[string]string{"hard": PredicateWS04},
+			want: map[string]string{"hard": PredicateWS04, "keep.txt": PredicateWS04}, // the new path, and the link count of the object it links
 		},
 		{
 			name: "directory created is not attributed",

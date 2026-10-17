@@ -21,10 +21,10 @@ const (
 	// EntryBegin is written, and synced, before an executor starts. From then on
 	// the unit is spent whatever happens.
 	EntryBegin EntryKind = "begin"
-	// EntryStarted is written, and synced, when the executor calls MarkStarted:
-	// immediately before its first externally visible action. From then on the
-	// begin cannot be voided, whatever the executor returns, and a crash leaves the
-	// step abandoned with its unit spent. It does not end the step.
+	// EntryStarted is written, and synced, by the runner after Prepare succeeds
+	// and before it calls Execute. From then on the begin cannot be voided,
+	// whatever the executor returns, and a crash leaves the step abandoned with
+	// its unit spent. It does not end the step.
 	EntryStarted EntryKind = "started"
 	// EntryDone ends a begun step with an Outcome, or with a SetupFailure. An
 	// Outcome with an ExecError is the partial outcome of a step that failed after
@@ -36,9 +36,9 @@ const (
 	// its error; without one it scores as missing evidence.
 	EntryAbandoned EntryKind = "abandoned"
 	// EntryVoid cancels a begin whose executor turned out not to be wired, or
-	// refused the step before it started anything (ErrSetupRefused) and never
-	// recorded a started entry. The unit is not spent. A begun step with a started
-	// entry cannot be voided.
+	// whose Prepare refused the step (ErrSetupRefused), so the runner never wrote
+	// a started entry. The unit is not spent. A begun step with a started entry
+	// cannot be voided.
 	EntryVoid EntryKind = "void"
 )
 

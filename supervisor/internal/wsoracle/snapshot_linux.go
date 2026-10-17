@@ -45,7 +45,17 @@ func Snapshot(root, label string) Manifest {
 		m.Gaps = append(m.Gaps, Gap{Manifest: label, Kind: GapRootUnavailable, Detail: errClass(err)})
 		return m.seal()
 	}
-	m.dev, m.ino = st.Dev, st.Ino
+	// The root's own metadata is part of the protected state. It is read from the
+	// descriptor, so it is the metadata of the directory the walk lists.
+	m.Dev = st.Dev
+	m.Root = &Entry{
+		Type:  TypeDir,
+		Mode:  uint32(st.Mode) & 07777,
+		UID:   st.Uid,
+		GID:   st.Gid,
+		Nlink: uint64(st.Nlink),
+		Ino:   st.Ino,
+	}
 	w := &walker{m: &m, rootDev: st.Dev}
 	w.walkDir(rfd, "")
 	sort.Slice(m.Entries, func(i, j int) bool { return m.Entries[i].Path < m.Entries[j].Path })

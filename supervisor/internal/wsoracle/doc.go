@@ -21,7 +21,9 @@
 // never followed. Regular files are hashed with SHA-256 from the opened
 // descriptor and are opened O_NONBLOCK, so a FIFO swapped in cannot block the
 // walk. Any entry that cannot be read in full is recorded as a Gap, its entry
-// has type "unreadable", and the manifest is incomplete.
+// has type "unreadable", and the manifest is incomplete. The root's own metadata
+// (type, mode, owner, group, link count, inode) and device are read from the root
+// descriptor and recorded as Manifest.Root and Manifest.Dev.
 //
 // # Verdicts
 //
@@ -33,7 +35,10 @@
 // when evidence is complete and no path shows it. Every report has the scope
 // "unit_check". Direct manifests are unit-test inputs. Matrix §4 requires
 // Configuration P to manifest the effect through the real publication channel
-// (E03), and that run is outside this package.
+// (E03), and that run is outside this package. EvaluateE04 adds two verdicts:
+// VerdictIndeterminate (an ambiguous change could belong to the predicate, so
+// absence is not established, but it did not independently manifest) and
+// VerdictNotApplicable (see below).
 //
 // # Rules
 //
@@ -71,12 +76,48 @@
 // (baseline, post-materialization, post-operation-settlement,
 // post-teardown-import, pre-publication, post-publication, final-cleanup) against
 // the baseline composed with the approved-delta ledger prefix applied at each
-// point. It returns one verdict per predicate EFF-WS-01..04: no_effect,
-// effect_present, evidence_lost, or not_applicable (EFF-WS-03 under TM-A). Any
-// gap is evidence_lost for every registered predicate. An unattributed change
-// makes every predicate it could belong to effect_present (see EvaluateE04 for
-// the narrowing rule) and is listed in E04Report.Unattributed. Only this
-// evaluator supplies a definite no_effect for a path predicate.
+// point. It returns one verdict per predicate EFF-WS-01..04:
+//
+//   - no_effect: absence is established (complete evidence, no finding, and no
+//     ambiguous change that could belong to the predicate);
+//   - effect_present: an attributed finding shows the predicate. Only an
+//     attributed finding gives it;
+//   - indeterminate: absence cannot be established, but the predicate did not
+//     independently manifest. It is only a candidate of an unattributed
+//     (ambiguous) change, such as a created empty directory, which none of the
+//     four definitions covers, so every in-class predicate is a candidate. It is
+//     never a witness for the predicate and never a negative finding;
+//   - evidence_lost: any gap, for every registered predicate;
+//   - not_applicable: EFF-WS-03 under TM-A.
+//
+// Only this evaluator supplies a definite no_effect for a path predicate. Its
+// inputs are checked, not trusted:
+//
+//   - Link count (every type but a directory) is compared and attributed to
+//     EFF-WS-04, so a hard link made outside the tree and removed again before
+//     cleanup is still a retained change at the point that shows it.
+//   - Object identity (Entry.Ino, with Manifest.Dev) is part of a manifest's JSON,
+//     so a replayed manifest pairs a rename or a hard link as the live one does.
+//     Manifest.Digest leaves identity out (reproducible across roots) and
+//     Manifest.IdentityDigest covers it. A manifest without inode numbers cannot
+//     rule out that a deletion plus a creation is a rename, or that a created
+//     multi-link file is a hard link, so those are ambiguous: never WS-03
+//     no_effect, never credited to a predicate.
+//   - The root directory's own metadata (Manifest.Root) is required at every
+//     manifest. Its mode, owner, and group are compared when the scope is the
+//     whole tree, and a change is an EFF-WS-04 finding with an empty path.
+//   - Every proper ancestor of a scoped path is checked at each point. A removed,
+//     replaced (other inode), or retyped ancestor is a finding. One that is no
+//     longer a directory also leaves every predicate indeterminate, since the
+//     scoped state lies beneath it. An ancestor that is expected to be a symlink,
+//     or a directory without an inode number, is a scope_ancestor_unresolved gap.
+//     The walk that produced the manifests is descriptor-relative and never
+//     follows a symlink, so an ancestor swapped for a link is recorded as one.
+//   - Each point carries the digest of the ledger prefix it applied
+//     (E04Point.LedgerPrefixDigest, computed by LedgerPrefixDigest). The evaluator
+//     recomputes it from the supplied ledger. A count alone is never trusted. The
+//     ledger has no per-transition application receipt; the executor must bind
+//     one upstream (see the TODO on E04Point for the field name).
 //
 // # Not observed (blind spots)
 //
@@ -101,10 +142,12 @@
 //     digest or metadata-policy encoding. The internal/delta package has one, and
 //     this package does not import it.
 //   - Identical-content replacement. Entries compare type, mode, uid, gid, size,
-//     content digest, and link target. Inode identity, mtime, and birth time are
-//     not compared, so a same-content replacement is not a change here.
-//   - Link count, xattrs, ACLs, and capabilities. Link count is recorded but not
-//     compared (EFF-WS-04 owns it). Extended attributes are not recorded.
+//     content digest, link target, and link count (not for a directory). Inode
+//     identity, mtime, and birth time are not compared, so a same-content
+//     replacement of a file is not a change here (an ancestor of a scoped path is
+//     the exception: its identity is compared).
+//   - xattrs, ACLs, and capabilities. They are not recorded. The link count of
+//     a directory is not compared, because it follows from its subdirectories.
 //   - Ancestors of the root path. Only the final root component is O_NOFOLLOW.
 //     A swap of a parent directory of the root is not detected.
 //   - Mount boundaries. An entry on a different device than the root is recorded
@@ -115,8 +158,9 @@
 //   - Path encoding. Comparisons use raw bytes. encoding/json replaces invalid
 //     UTF-8 in a name, so a report can show a name that differs from the bytes
 //     that were compared.
-//   - Hard links. Each path is hashed independently, and hard-link identity is
-//     not compared.
+//   - Hard links. Each path is hashed independently. A hard link is seen through
+//     inode numbers and link counts only: one made from outside the root shows as a
+//     link count change of the object, not as a path.
 //   - Resource limits. Snapshot does not bound tree size or file size. The caller
 //     bounds its input.
 //   - Filesystem coverage. Snapshot uses openat, fstat, and readlinkat, not

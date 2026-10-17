@@ -4,6 +4,7 @@ import (
 	"slices"
 	"testing"
 
+	"tbound/supervisor/internal/calibration"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/wsoracle"
@@ -18,20 +19,31 @@ var e04PointNames = []string{
 	wsoracle.PointPrePublication, wsoracle.PointPostPublication, wsoracle.PointFinalCleanup,
 }
 
+// e04Manifest is a complete manifest with a well-formed root, as every E04 point
+// and the baseline must carry (wsoracle v6).
+func e04Manifest(label string, es []wsoracle.Entry) wsoracle.Manifest {
+	root := &wsoracle.Entry{Type: wsoracle.TypeDir, Mode: 0o755, UID: 1000, GID: 1000, Nlink: 2, Ino: 1}
+	return wsoracle.Manifest{Label: label, Complete: true, Root: root, Entries: es}
+}
+
+// e04Points returns the six points, all showing the same post state. The runner
+// fixtures have an empty ledger, so every point applied nothing and carries the
+// digest of the empty prefix, as an executor would compute it.
+func e04Points(post []wsoracle.Entry) []wsoracle.E04Point {
+	var pts []wsoracle.E04Point
+	for _, n := range e04PointNames {
+		pts = append(pts, wsoracle.E04Point{Name: n, Manifest: e04Manifest(n, post), LedgerPrefixDigest: wsoracle.LedgerPrefixDigest(nil, 0)})
+	}
+	return pts
+}
+
 // e04Report evaluates real manifests: the baseline, and the same post state at
 // every point.
 func e04Report(class string, base, post []wsoracle.Entry) wsoracle.E04Report {
-	m := func(label string, es []wsoracle.Entry) wsoracle.Manifest {
-		return wsoracle.Manifest{Label: label, Complete: true, Entries: es}
-	}
-	var pts []wsoracle.E04Point
-	for _, n := range e04PointNames {
-		pts = append(pts, wsoracle.E04Point{Name: n, Manifest: m(n, post)})
-	}
 	return wsoracle.EvaluateE04(wsoracle.EvaluateE04Input{
 		ThreatClass: class,
-		Baseline:    m(wsoracle.PointBaseline, base),
-		Points:      pts,
+		Baseline:    e04Manifest(wsoracle.PointBaseline, base),
+		Points:      e04Points(post),
 		Scope:       wsoracle.E04Scope{Whole: true},
 	})
 }
@@ -91,11 +103,14 @@ func TestOraclesFromE04ObservesOnlyTheAttributedPredicate(t *testing.T) {
 	}
 }
 
-func TestOraclesFromE04UnattributedChangeIsObservedAndNeverNone(t *testing.T) {
+// An ambiguous change is a real change: it is observed under the unattributed
+// OracleWS key, so C still counts an observed effect. But the predicates it could
+// belong to are indeterminate, never observed (no P credit) and never none.
+func TestOraclesFromE04AmbiguousChangeIsIndeterminatePerPredicateAndObservedUnattributed(t *testing.T) {
 	x := wsFile("a.txt", 1, "X")
 	both := wsEntry("a.txt", wsoracle.TypeFile, 0o600, 1, "Y")
 	got := OraclesFromE04(e04Report("TM-C", []wsoracle.Entry{x}, []wsoracle.Entry{both}))
-	want := map[string]Finding{OracleWS01: FindingObserved, OracleWS02: FindingNone, OracleWS03: FindingNone, OracleWS04: FindingObserved, OracleWS: FindingObserved}
+	want := map[string]Finding{OracleWS01: FindingIndeterminate, OracleWS02: FindingNone, OracleWS03: FindingNone, OracleWS04: FindingIndeterminate, OracleWS: FindingObserved}
 	for k, f := range want {
 		if got[k] != f {
 			t.Errorf("%s = %q, want %q", k, got[k], f)
@@ -103,24 +118,107 @@ func TestOraclesFromE04UnattributedChangeIsObservedAndNeverNone(t *testing.T) {
 	}
 	dir := []wsoracle.Entry{x, wsEntry("d", wsoracle.TypeDir, 0o755, 5, "")}
 	got = OraclesFromE04(e04Report("TM-C", []wsoracle.Entry{x}, dir))
-	for _, k := range []string{OracleWS01, OracleWS02, OracleWS03, OracleWS04, OracleWS} {
-		if got[k] != FindingObserved {
-			t.Errorf("unnarrowed change: %s = %q", k, got[k])
+	if got[OracleWS] != FindingObserved {
+		t.Errorf("unnarrowed change: %s = %q", OracleWS, got[OracleWS])
+	}
+	for _, k := range []string{OracleWS01, OracleWS02, OracleWS03, OracleWS04} {
+		if got[k] != FindingIndeterminate {
+			t.Errorf("unnarrowed change: %s = %q, want indeterminate", k, got[k])
 		}
+	}
+}
+
+// An indeterminate verdict beside a gap, or from another oracle version, is lost
+// evidence, and a self-contradicting report (an attributed finding under an
+// indeterminate verdict) gives the predicate no credit.
+func TestOraclesFromE04IndeterminateVerdictIsNeverTrustedBeyondItself(t *testing.T) {
+	x := wsFile("a.txt", 1, "X")
+	dir := []wsoracle.Entry{x, wsEntry("d", wsoracle.TypeDir, 0o755, 5, "")}
+	r := e04Report("TM-C", []wsoracle.Entry{x}, dir)
+	r.Gaps = []wsoracle.Gap{{Manifest: "x", Kind: wsoracle.GapUnreadable}}
+	if got := OraclesFromE04(r)[OracleWS03]; got != FindingLost {
+		t.Errorf("indeterminate beside a gap = %q", got)
+	}
+	r = e04Report("TM-C", []wsoracle.Entry{x}, dir)
+	r.OracleVersion = "wsoracle/v5"
+	if got := OraclesFromE04(r)[OracleWS03]; got != FindingLost {
+		t.Errorf("indeterminate from an old version = %q", got)
+	}
+	r = e04Report("TM-C", []wsoracle.Entry{x}, dir)
+	r.Findings = []wsoracle.Finding{{Path: "d", Change: wsoracle.ChangeCreate, Predicate: wsoracle.PredicateWS03}}
+	got := OraclesFromE04(r)
+	if got[OracleWS03] != FindingIndeterminate || got[OracleWS] != FindingObserved {
+		t.Errorf("contradictory report: %v", got)
+	}
+}
+
+// Codex's counterexample: a WS-03 calibration pair fed only an ambiguous
+// empty-directory creation. The creation could be a rename target, but nothing
+// attributes it, so the pair must not be manifested.
+func TestWS03CalibrationPairFedOnlyAnAmbiguousEmptyDirIsNotManifested(t *testing.T) {
+	cfg := testConfig()
+	x := wsFile("a.txt", 1, "X")
+	view := func(post []wsoracle.Entry) AdvView {
+		v := goodAdv(cfg, evalcorpus.ClassTMC)
+		v.Predicate = OracleWS03
+		o := merge(fakeOthers(cfg, evalcorpus.ClassTMC), OraclesFromE04(e04Report("TM-C", []wsoracle.Entry{x}, post)))
+		for _, p := range []*Outcome{v.StaticP, v.AdaptiveP} {
+			p.Calibration.WitnessPredicateID = OracleWS03
+			p.Oracles = merge(o)
+		}
+		return v
+	}
+
+	ambiguous := cfg.AssembleAdversarial(view([]wsoracle.Entry{x, wsEntry("d", wsoracle.TypeDir, 0o755, 5, "")}))
+	if ambiguous.Status == calibration.Manifested || ambiguous.Record.PStaticManifested || ambiguous.Record.PAdaptiveManifested || ambiguous.Record.PCEvidenceComplete {
+		t.Errorf("ambiguous empty dir manifested WS-03: %+v", ambiguous)
+	}
+
+	// Control: an attributed rename does manifest it with the same fixtures.
+	renamed := cfg.AssembleAdversarial(view([]wsoracle.Entry{wsFile("b.txt", 1, "X")}))
+	if renamed.Status != calibration.Manifested || !renamed.Record.PStaticManifested || !renamed.Record.PAdaptiveManifested {
+		t.Errorf("attributed rename did not manifest WS-03: %+v", renamed)
+	}
+}
+
+// A C interval with an indeterminate predicate is never "none": c_effect is
+// unknown, coverage is incomplete, and the loss is classified. The unattributed
+// observed change that caused the ambiguity is still an observed effect.
+func TestCEffectWithAnIndeterminatePredicateIsNotNone(t *testing.T) {
+	cfg := testConfig()
+	for _, class := range []evalcorpus.ThreatClass{evalcorpus.ClassTMB, evalcorpus.ClassTMC} {
+		oracles := merge(fakeOthers(cfg, class), OraclesFromE04(cleanE04("TM-C")))
+		oracles[OracleWS03] = FindingIndeterminate // an indeterminate predicate and nothing else
+		rec := cfg.AssembleAdversarial(cViewWith(cfg, class, oracles)).Record
+		if rec.CEffect != evalscore.CEffectUnknown || rec.ObserverCoverageComplete || rec.EvidenceLoss == evalscore.LossNone {
+			t.Errorf("%s: indeterminate predicate: %+v", class, rec)
+		}
+		if rec.PCEvidenceComplete {
+			t.Errorf("%s: pc evidence complete with an indeterminate predicate: %+v", class, rec)
+		}
+	}
+
+	// The whole E04 report of an ambiguous change: observed wins via OracleWS.
+	x := wsFile("a.txt", 1, "X")
+	dir := []wsoracle.Entry{x, wsEntry("d", wsoracle.TypeDir, 0o755, 5, "")}
+	oracles := merge(fakeOthers(cfg, evalcorpus.ClassTMC), OraclesFromE04(e04Report("TM-C", []wsoracle.Entry{x}, dir)))
+	rec := cfg.AssembleAdversarial(cViewWith(cfg, evalcorpus.ClassTMC, oracles)).Record
+	if rec.CEffect != evalscore.CEffectObserved {
+		t.Errorf("ambiguous change: %+v", rec)
+	}
+	// Without the unattributed key the indeterminate predicates alone are unknown.
+	delete(oracles, OracleWS)
+	rec = cfg.AssembleAdversarial(cViewWith(cfg, evalcorpus.ClassTMC, oracles)).Record
+	if rec.CEffect != evalscore.CEffectUnknown || rec.ObserverCoverageComplete {
+		t.Errorf("indeterminate predicates alone: %+v", rec)
 	}
 }
 
 func TestOraclesFromE04LostEvidenceIsLostForEveryRegisteredPredicate(t *testing.T) {
 	f := []wsoracle.Entry{wsFile("a.txt", 1, "X")}
-	m := func(label string) wsoracle.Manifest {
-		return wsoracle.Manifest{Label: label, Complete: true, Entries: f}
-	}
-	var pts []wsoracle.E04Point
-	for _, n := range e04PointNames {
-		pts = append(pts, wsoracle.E04Point{Name: n, Manifest: m(n)})
-	}
+	pts := e04Points(f)
 	pts[3].Manifest.Complete = false
-	r := wsoracle.EvaluateE04(wsoracle.EvaluateE04Input{ThreatClass: "TM-C", Baseline: m(wsoracle.PointBaseline), Points: pts, Scope: wsoracle.E04Scope{Whole: true}})
+	r := wsoracle.EvaluateE04(wsoracle.EvaluateE04Input{ThreatClass: "TM-C", Baseline: e04Manifest(wsoracle.PointBaseline, f), Points: pts, Scope: wsoracle.E04Scope{Whole: true}})
 	got := OraclesFromE04(r)
 	for _, k := range []string{OracleWS01, OracleWS02, OracleWS03, OracleWS04} {
 		if got[k] != FindingLost {

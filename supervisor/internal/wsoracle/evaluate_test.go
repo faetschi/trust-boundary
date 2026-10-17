@@ -21,8 +21,26 @@ func dirEntry(path string) Entry {
 	return Entry{Path: path, Type: TypeDir, Mode: 0o755, UID: 1000, GID: 1000, Nlink: 2}
 }
 
+// rootEntry is the metadata of a well-formed protected root.
+func rootEntry() *Entry {
+	return &Entry{Type: TypeDir, Mode: 0o755, UID: 1000, GID: 1000, Nlink: 2, Ino: 1}
+}
+
+// manifest returns a complete manifest with a well-formed root.
 func manifest(label string, entries ...Entry) Manifest {
-	return Manifest{Label: label, Complete: true, Entries: entries}
+	return Manifest{Label: label, Complete: true, Root: rootEntry(), Entries: entries}
+}
+
+// withRootID returns a copy of m whose live-root identity is (dev, ino).
+func withRootID(m Manifest, dev, ino uint64) Manifest {
+	r := rootEntry()
+	if m.Root != nil {
+		c := *m.Root
+		r = &c
+	}
+	r.Ino = ino
+	m.Dev, m.Root = dev, r
+	return m
 }
 
 func entryPtr(e Entry) *Entry { return &e }
@@ -314,9 +332,9 @@ func TestWS05IncompleteSealedGenerationIsEvidenceLost(t *testing.T) {
 func TestWS05LiveRootIdentityChangeIsEvidenceLost(t *testing.T) {
 	keep := fileEntry("keep.txt", "K")
 	base := manifest("baseline", keep)
-	base.dev, base.ino = 1, 10
+	base = withRootID(base, 1, 10)
 	post := manifest("post-publication", keep)
-	post.dev, post.ino = 1, 99
+	post = withRootID(post, 1, 99)
 	r := EvaluateWS05(WS05Input{
 		Baseline:        base,
 		Sealed:          manifest("sealed", keep),
@@ -333,11 +351,11 @@ func TestWS05SealedGenerationIsASeparateTreeSoItsRootIdentityIsNotCompared(t *te
 	// lives in another tree, and its identity is not compared with the live one.
 	live := func(label string) Manifest {
 		m := manifest(label, keep)
-		m.dev, m.ino = 1, 10
+		m = withRootID(m, 1, 10)
 		return m
 	}
 	sealed := manifest("sealed", keep)
-	sealed.dev, sealed.ino = 5, 50
+	sealed = withRootID(sealed, 5, 50)
 	r := EvaluateWS05(WS05Input{
 		Baseline:        live("baseline"),
 		Sealed:          sealed,
@@ -453,9 +471,9 @@ func TestWS06IncompleteBaselineIsEvidenceLost(t *testing.T) {
 
 func TestWS06LiveRootIdentityChangeIsEvidenceLost(t *testing.T) {
 	pre := manifest("pre-publication", fileEntry("f.txt", "A"))
-	pre.dev, pre.ino = 2, 20
+	pre = withRootID(pre, 2, 20)
 	base := manifest("baseline", fileEntry("f.txt", "A"))
-	base.dev, base.ino = 1, 10
+	base = withRootID(base, 1, 10)
 	r := EvaluateWS06(WS06Input{
 		Baseline:        base,
 		PrePublication:  pre,

@@ -5,17 +5,22 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"slices"
 )
 
 // Entry describes one path in a manifest. Size is set only for regular files.
-// Target is set only for symlinks. Nlink is recorded but is not compared. Ino is
-// the inode number on the root's device (every recorded entry is on that device).
-// It is zero when unknown. It is never encoded, so a manifest digest stays
-// reproducible across roots, and a manifest decoded from JSON has no inodes. It
-// never takes part in the equality key, and it is used only to pair a removed
-// path with an added one as a rename or a hard link (see attribute.go).
-// Timestamps, extended attributes, ACLs, capabilities, and device numbers of
-// special files are not recorded.
+// Target is set only for symlinks. Nlink is the link count. It is compared for
+// every type except a directory, whose count is 2 plus its subdirectories and so
+// follows from the tree itself (a directory cannot be hard-linked).
+//
+// Ino is the inode number on the root's device (every recorded entry is on that
+// device, so Manifest.Dev and Ino together are the object identity). It is zero
+// when unknown. It is encoded, so a manifest decoded from JSON keeps the identity
+// that rename and hard-link attribution need, but Manifest.Digest leaves it out
+// so that a content digest stays reproducible across roots; Manifest.IdentityDigest
+// covers it. Ino never takes part in the equality key (see fingerprint). Timestamps,
+// extended attributes, ACLs, capabilities, and device numbers of special files are
+// not recorded.
 type Entry struct {
 	Path   string `json:"path"`
 	Type   string `json:"type"`
@@ -23,7 +28,7 @@ type Entry struct {
 	UID    uint32 `json:"uid"`
 	GID    uint32 `json:"gid"`
 	Nlink  uint64 `json:"nlink"`
-	Ino    uint64 `json:"-"`
+	Ino    uint64 `json:"ino,omitempty"`
 	Size   int64  `json:"size"`
 	SHA256 string `json:"sha256,omitempty"`
 	Target string `json:"target,omitempty"`
@@ -40,25 +45,55 @@ type Gap struct {
 }
 
 // Manifest is one observation of a tree at a named point. Complete is true only
-// when the walk read every path in full and recorded no gap. The root identity
-// (device and inode) is kept for comparison across manifests of one live tree.
-// It is never encoded.
+// when the walk read every path in full and recorded no gap.
+//
+// Root is the root directory's own metadata (type, mode, owner, group, link
+// count, inode), with an empty Path. It is part of the protected state: the
+// entries describe what is inside the root, and Root describes the root. Dev is
+// the root's device. Dev and Root.Ino are the live-root identity, compared across
+// manifests of one live tree.
 type Manifest struct {
 	Label    string  `json:"label"`
 	Complete bool    `json:"complete"`
+	Root     *Entry  `json:"root,omitempty"`
+	Dev      uint64  `json:"dev,omitempty"`
 	Entries  []Entry `json:"entries"`
 	Gaps     []Gap   `json:"gaps"`
-
-	dev uint64
-	ino uint64
 }
 
-// Digest returns the hex SHA-256 of the manifest's label, completeness, entries,
-// and gaps. The root identity is not included.
-func (m *Manifest) Digest() string {
+// rootIno returns the root's inode number, or zero when Root is not recorded.
+func (m *Manifest) rootIno() uint64 {
+	if m.Root == nil {
+		return 0
+	}
+	return m.Root.Ino
+}
+
+// Digest returns the hex SHA-256 of the manifest's label, completeness, root
+// metadata, entries, and gaps. It leaves out object identity (the device and
+// every inode number), so the digest of the same content is reproducible across
+// roots and across a rebuilt tree. IdentityDigest covers the identity.
+func (m *Manifest) Digest() string { return m.digest(false) }
+
+// IdentityDigest returns the hex SHA-256 of everything Digest covers plus the
+// device and every inode number.
+func (m *Manifest) IdentityDigest() string { return m.digest(true) }
+
+func (m *Manifest) digest(identity bool) string {
 	c := *m
-	c.Entries = nonNil(c.Entries)
+	c.Entries = nonNil(slices.Clone(c.Entries))
 	c.Gaps = nonNil(c.Gaps)
+	if !identity {
+		c.Dev = 0
+		for i := range c.Entries {
+			c.Entries[i].Ino = 0
+		}
+		if c.Root != nil {
+			r := *c.Root
+			r.Ino = 0
+			c.Root = &r
+		}
+	}
 	b, err := json.Marshal(&c)
 	if err != nil {
 		// Only plain strings and integers are encoded, so this cannot happen.
@@ -92,8 +127,9 @@ func at(idx map[string]Entry, p string) *Entry {
 }
 
 // fingerprint is the equality key for an entry, or "absent" for nil. It covers
-// type, mode, owner, group, size (regular files only), content digest, and
-// link target. Link count and inode identity take no part in it.
+// type, mode, owner, group, size (regular files only), content digest, link
+// target, and link count (every type except a directory, see Entry). Inode
+// identity takes no part in it.
 func fingerprint(e *Entry) string {
 	if e == nil {
 		return "absent"
@@ -102,7 +138,16 @@ func fingerprint(e *Entry) string {
 	if e.Type == TypeFile {
 		size = e.Size
 	}
-	return fmt.Sprintf("%s|%o|%d|%d|%d|%s|%s", e.Type, e.Mode, e.UID, e.GID, size, e.SHA256, e.Target)
+	return fmt.Sprintf("%s|%o|%d|%d|%d|%s|%s|%d", e.Type, e.Mode, e.UID, e.GID, size, e.SHA256, e.Target, linkCount(e))
+}
+
+// linkCount is the link count that takes part in comparison: zero for a
+// directory, whose count is derived from its subdirectories.
+func linkCount(e *Entry) uint64 {
+	if e.Type == TypeDir {
+		return 0
+	}
+	return e.Nlink
 }
 
 func sha256Hex(b []byte) string {
