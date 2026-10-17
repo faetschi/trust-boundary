@@ -28,7 +28,7 @@ Status: final draft for owner approval, 2026-10-17. Based on the throwaway-key d
 
 The admin key is the raw 64-byte Ed25519 key. S1 to S4 are domain-separated. The calibration and registration signatures are v2 (`authority` field); old v1 calibrations no longer verify.
 
-## Blockers (B1, B2 resolved in the dry run; B3 steps written but unproven; B4 and B5 open for the owner)
+## Blockers (B1, B2 resolved in the dry run; B3 steps written but unproven; B4 documented; B5, B6, B7 open for the owner)
 
 B1 to B3 were worked on 2026-10-17 (evidence: `F:\TBoundAssets\recovery-20261015\cell-image-20261017\`, dry run at HEAD `3b1b183`, throwaway keys, nothing written to the guest).
 
@@ -36,7 +36,9 @@ B1 to B3 were worked on 2026-10-17 (evidence: `F:\TBoundAssets\recovery-20261015
 - B2 Signing with an owner key that never touches the guest: RESOLVED in dry run, with one supervisor change the owner must accept (B5). `sign_cell_image.py` runs on the owner machine. cosign v3.1.3 cannot sign a layout and always writes a Sigstore bundle, for which `verify --local-image` prints an empty `docker-manifest-digest` (the earlier ephemeral-key receipt shows exactly that); the launcher needs that claim. The helper therefore signs the classic simple-signing payload with one `cosign sign-blob --key` call and lets `cosign save` write the layout from a throwaway in-process loopback registry (stdlib Python, no `registry:2`, no image to pin, no network). Throwaway key A signs; the launcher's own `verifyOfflineSignature` (real exec runner, private netns, scratch test) accepts it; key B and a wrong pinned digest are refused.
 - B5 Launcher change (NEW, owner decision): the launcher ran `cosign verify --offline --key ... --local-image ...`. With cosign v3.1.3 that form fails for every key signature without a Rekor entry (`offline verification failed`; bundle format: `0 < 1` log entries), so no offline owner-key signature could ever pass. `containment_linux.go` now also passes `--insecure-ignore-tlog=true` (one argument, plus the matching test strings; `go vet`, `gofmt`, `go test ./internal/piruntime/` green in a scratch tree). Trust then rests on the pinned `cosign.pub` digest, not on a transparency log. This changes the `tbound` runner digest, so it must be committed before F0; otherwise revert it and the launcher cannot verify any offline signature.
 - B3 The image must exist in the service's podman store: STEPS WRITTEN, STILL OPEN (unproven). `selectImage` (`containment_linux.go:1244`) needs `localhost/tbound/pi-cell:latest` in `/var/lib/tbound/podman-storage/graphroot` with a RepoDigest equal to `IMGDIGEST`; the directory is empty today (checked read-only 2026-10-17). I1 below now has exact load and check commands. No podman exists on the owner machine and nothing may run on the guest, so they have not been executed anywhere. Two things are unproven: that podman 4.9.3 keeps the manifest digest on `load` (the checks catch it if not), and that the `no-new-privs` service context can read a store that a normal-context `sudo -u` load created (check C4 catches it). Run I1 once, before Z1.
-- B4 The client invocation for the positive launch and the drain observation (Part L) are not documented anywhere in the repo; the owner supplies them.
+- B4 The client invocation and the drain observation: DOCUMENTED (2026-10-17, from code, unrun). See L3 to L5 and the file:line references there. The first launch is a minimal read-only smoke task, owner decision 2026-10-17: task `smoke-read-readme`, admission id `smoke-2026-10-17`, fixture budgets (4 host calls, 10000 tokens, 1200 s), template `infra/guest/serve-pi-service.smoke.json` (installed at R2-0). Provider calls must use the engineering route (OpenCode Go); the research route (OpenRouter, US$5 budget) must not be used.
+- B6 Provider credential route (NEW, OPEN, needs a repo change): the production `serve --pi --service` path reads the OpenCode Go key only through `LoadCredentialsFrom(os.LookupEnv)` (`internal/broker/openrouter/credentials.go:24-57`, via `providerbridge.NewFromEnvironment` at `internal/providerbridge/conversation.go:241-247`, called from `cmd/tbound/governed_conversation_linux.go:34`). It needs `TBOUND_OPENCODE_GO_API_KEY` or `TBOUND_OPENCODE_GO_API_KEY_FILE` in the service environment. The closed unit contract sets neither: `Environment=` must equal exactly the 12 registered keys (`cmd/tbound/pi_service_handoff_linux.go:465-474`, `internal/piruntime/managed_live_root_linux.go:1836-1844`), and `EnvironmentFile` is refused (`managed_live_root_linux.go:1846-1851`); `LoadCredential=` is not in the directive allowlist (`pi_service_handoff_linux.go:425-428`). So today the service cannot reach any provider and the first provider call fails closed. Smallest fix, not implemented: in `cmd/tbound/governed_conversation_linux.go:34` replace `providerbridge.NewFromEnvironment` with a factory that calls `openrouter.LoadCredentialsFrom` with a lookup returning one fixed path for `TBOUND_OPENCODE_GO_API_KEY_FILE` (and nothing else), then `providerbridge.NewFromCredentials`; add the path constant next to the other `D09ManagedPi*` paths. Alternative: add `TBOUND_OPENCODE_GO_API_KEY_FILE=<path>` to the unit `Environment=` and to both `wantEnvironment` maps. Either change alters the `tbound` runner digest, so by rule 5 it means a new F0 and a re-run of P1 to P11, R2 and R5 (S3 and S4 re-signed; with the unit alternative also the unit digest). The credential file (proposed path `/etc/tbound/opencode-go-api-key`, a choice, not defined in code) must be a regular file, not a symlink, at most 4096 bytes, owner = the service uid (995), mode 0400 or 0600 (any bit outside 0600 is refused; `internal/broker/openrouter/credential_file_linux.go:11-31`). The owner creates it; an agent never reads it. The research route is not reachable from this path: `researchprofile` is imported by nothing but its own tests, and `OPENROUTER_API_KEY*` is read nowhere.
+- B7 The managed live root is empty (checked read-only 2026-10-17: only `lost+found`, plus the R1-5 baselines), so the smoke prompt has nothing to read. L0 seeds one fixed harmless file; it is unproven that the xattr enumeration and the source capture accept it (L0 has a census check).
 
 ## Placeholders
 
@@ -312,6 +314,28 @@ Rollback: `sudo rm /etc/tbound/d09-xattr-enumeration-calibration{,-readonly}.{js
 
 ## Row 2+6: managed live root measure and registration
 
+### R2-0 [PRIVILEGED WRITE] install the smoke service config (before R2-2: the registration pins its digest)
+
+`/etc/tbound/serve-pi-service.json` on the guest is still the 2026-10-15 fixture (sha256 `40db4c92...`, admission id `host-task-2026-10-14`, task `approved-task`). Replace it with `infra/guest/serve-pi-service.smoke.json`, whose two digests are `<MEASURE>` placeholders. The service refuses a config whose digest differs from the registration, so any later edit means R2-2 and S3 again. The service must be inactive.
+
+```
+# [READ-ONLY] measure the two Podman config digests (each is "sha256:" + the sha256sum of the installed file; 2026-10-17 values: containers 8627b6ed..., storage 9c571a18...)
+CD=sha256:$(GSSH 'sha256sum /etc/tbound/podman-config/containers.conf' | cut -d' ' -f1)
+SD=sha256:$(GSSH 'sha256sum /etc/tbound/podman-config/storage.conf' | cut -d' ' -f1)
+# [READ-ONLY] fill the template on the owner machine (new file under $H), then check it
+sed -e "s|\"containers_conf_digest\": \"<MEASURE>\"|\"containers_conf_digest\": \"$CD\"|" -e "s|\"storage_conf_digest\": \"<MEASURE>\"|\"storage_conf_digest\": \"$SD\"|" infra/guest/serve-pi-service.smoke.json > $H/serve-pi-service.json
+! grep -q MEASURE $H/serve-pi-service.json && grep -c '"sha256:[0-9a-f]\{64\}"' $H/serve-pi-service.json        # expect 2
+# keep the old file, then install (root:root 0644)
+GSSH 'sudo -n cat /etc/tbound/serve-pi-service.json' > $H/serve-pi-service.json.prev        # [READ-ONLY] expect sha256 40db4c92...
+GSSH 'sudo -n systemctl is-active tbound-pi.service'        # [READ-ONLY] expect inactive (tbound-pi.socket may stay active)
+GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/serve-pi-service.json' < $H/serve-pi-service.json
+GSSH 'sha256sum /etc/tbound/serve-pi-service.json'; sha256sum $H/serve-pi-service.json        # [READ-ONLY] expect equal
+```
+
+The template validated (2026-10-17) against `D09ManagedPiServiceConfig.Validate` (`managed_live_root_linux.go:150`, via `decodeD09ManagedPiServiceConfig`) and the `cmd/tbound` `piServiceConfig` strict decode, and the documented client request matches it under `workflowEnvelopeMatchesRequest` (`production_workflow_catalog_linux.go:1726`). With the placeholders left in, the decoder refuses it.
+
+Rollback: `GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/serve-pi-service.json' < $H/serve-pi-service.json.prev`.
+
 ### R2-1 [PRIVILEGED WRITE] create the one parent cgroup (temporary, for measurement only)
 
 `<service>/cells` is created by the runner at service start and is not pre-created here.
@@ -480,7 +504,18 @@ Rollback: none, by rule. Passwordless sudo is never restored. Every later privil
 
 ## Part L: first launch (SEPARATE APPROVAL; owner console as root, no sudo)
 
-Each `[PRIVILEGED WRITE]` here changes runtime state only; none changes a signed or measured artifact. Abort on the first unexpected result.
+Each `[PRIVILEGED WRITE]` here changes runtime state only; none changes a signed or measured artifact (R2-0 and the B6 credential are the provisioning-time exceptions, done before this part). Abort on the first unexpected result. This part is the minimal read-only smoke task (owner decision 2026-10-17); it does not start before B6 is resolved, because the service has no provider credential until then.
+
+Placeholders for this part: `CLIENT = setpriv --reuid 994 --regid 985 --clear-groups` (uid 994 `tbound-client`, primary gid 985 `tbound-pi-clients`; its login shell is nologin, so use `setpriv` as root, as the runbook does for uid 995), `RID = smoke-req-<UTC timestamp>` (a request id is consumed forever; never reuse one), `PROMPT` = the `workflow_prompt` string of the installed `/etc/tbound/serve-pi-service.json`, copied byte for byte.
+
+### L0 [PRIVILEGED WRITE] seed the one fixture file the smoke task reads (service inactive; B7)
+
+```
+printf 'TBound smoke fixture. This file is harmless: it only checks that the read tool works.\n' | install -o 995 -g 986 -m 0600 /dev/stdin /var/lib/tbound/live/SMOKE-README.txt
+python3 -I - /var/lib/tbound/live < xattr-census-r9.py | tail -1        # [READ-ONLY] expect dir 2, file 1, no xattr names
+```
+
+Rollback: `rm /var/lib/tbound/live/SMOKE-README.txt`. The file name must equal the one in the template prompt (`SMOKE-README.txt`).
 
 ### L1 [PRIVILEGED WRITE] start the service
 
@@ -505,19 +540,41 @@ findmnt -n -o TARGET,OPTIONS /usr/local/bin/tbound /usr/bin/podman /usr/bin/crun
 
 ### L3 [PRIVILEGED WRITE] positive launch
 
-One governed run of the fixed workflow through the registered client (uid 994, group `tbound-pi-clients`). The client invocation is not defined in this repo (B4); the owner supplies it. Expect admission to pass every pin (profile signature, template digest, image digest, entrypoint digest, ro mounts, cgroup root) and the run to complete under the registered resource bounds.
+One governed run of the fixed smoke workflow through the registered client. The client is `tbound serve --pi` without `--service` (`supervisor/cmd/tbound/serve_linux.go:30-101`; flags at 29-45, client call at 99-101); it loads the signed registration and the pinned service config, then dials the socket and prints the service response.
 
-Rollback: stop the service (L1 rollback); remove the run's live-root output only by an owner-supervised console action.
+```
+CLIENT /usr/local/bin/tbound serve --pi --task-id smoke-read-readme --task-request-id "$RID" --task "$PROMPT" --bash-no-outputs
+echo "exit=$?"
+```
 
-### L4 [READ-ONLY] drain
+- All three values must equal the installed config exactly: `--task-id` = `workflow_task_id`, `--task` = `workflow_prompt`, and `--bash-no-outputs` = `workflow_bash_output_paths: []`. Omitting the flag sends no scope (null), which does not equal `[]`. Any mismatch ends as `unknown` / `task-outcome-unknown` and consumes the request id (`production_workflow_catalog_linux.go:323-325`, `1726-1729`; see N7).
+- Socket `/run/tbound/serve-pi.sock`, root:`tbound-pi-clients`, mode 0660 (`pi_service_handoff_linux.go:33`; group check at 282; unit mode check at 551-556). The client's effective uid must be in the registered `AllowedClientUIDs` and its gid must equal `AllowedClientPrimaryGID` (994 and 985 here, as passed to `managed-root-measure` in R2-2; `pi_service_handoff_linux.go:969-975`, client-side refusal at 1389). The client blocks until the run ends, up to 20.5 minutes (`1213`).
+- Success: exactly one JSON line on stdout, `{"schema_version":"tbound-pi-service-response/v1","request_id":"<RID>","status":"completed","receipt":{...,"success":true,...}}`, and exit 0 (`pi_service_handoff_linux.go:1381-1444`; receipt fields at `production_session_linux.go:220-252`). Otherwise the JSON line (when the service answered) is still printed, stderr gets `local Pi service <status>: <error_code>` and the exit is 2 (`pi_service_handoff_linux.go:1430-1431`, `main.go:44-48`); `completed` with `success:false` prints `local Pi service completed with a non-success production disposition`.
+- Provider traffic goes to `https://opencode.ai/inference/go/v1/chat/completions`, model `deepseek-v4.1-flash`, both constants in `internal/broker/openrouter/openrouter.go:20-21`. Expect `provider_exchange:true` in the receipt. If the service cannot load the credential it fails closed; do not retry with another route.
 
-After the run ends: `cells` holds no child scope and `cgroup.procs` is empty; no container remains in the service store (`SVC podman ps -a` empty); no cell mount remains in `/proc/*/mountinfo`; the audit log records the scope as drained. The service accepts the next workflow.
+Rollback: stop the service (L1 rollback); the run's live-root output (none expected, the task is read-only) is removed only by an owner-supervised console action.
+
+### L4 [READ-ONLY] drain and observation
+
+During the run (second shell): `C=/sys/fs/cgroup/system.slice/tbound-pi.service/cells; ls $C; for d in $C/pi-wf-*; do cat $d/cgroup.events; done` shows `populated 1`. The scope name is `pi-wf-<first 24 hex of sha256(workflow_id)>-e<epoch>` for the service path (`production_workflow_catalog_linux.go:1566-1571`, used at `production_binder_linux.go:517-518`); `pi-<token>` (`production_binder_linux.go:873`) is the non-service path and does not occur here.
+
+After the client returns:
+
+- `cells` holds no child scope: the scope directory is removed, so `cgroup.events` can only be read before removal (`populated 1` then gone, or `populated 0` if the directory is read in the window before `rmdir`). `$C/cgroup.procs` is empty; no container remains in the service store (`SVC podman ps -a` empty); no cell mount remains in `/proc/*/mountinfo`.
+- Audit files, as root: `/var/lib/tbound/audit/<runID>-session-audit.jsonl`, `<runID>-provider-audit.jsonl`, `<runID>-command-audit.jsonl` (`production_binder_linux.go:283-293`), where `runID = production-run-<token>` is in the catalog entry and in the receipt `run_id`; plus `/var/lib/tbound/audit/serve-pi-requests.jsonl` (`pi_service_handoff_linux.go:37`, opened at 1629), which holds `pi_service_request_accepted` and its terminal record for `RID`. The provider journal should show the exchanges to OpenCode Go and at most 4 host calls and 10000 tokens.
+- Catalog `/var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl`: expect records of kind `pi_workflow_admission_reserved`, `pi_workflow_fresh_authorized`, `pi_workflow_checkpoint_bound` / `pi_workflow_checkpoint_advanced`, `pi_workflow_owner_scope_bound`, `pi_workflow_owner_scope_drained` and `pi_workflow_terminal` (the complete set of kinds in `production_workflow_catalog_linux.go`; their exact order is not asserted here).
+- A NORMAL completion does write `pi_workflow_owner_scope_drained`: `runProductionPiServe` defers `session.close()` (`production_session_linux.go:311-315`), which runs the closer stack in reverse (`production_binder_linux.go:592-622`); `removeScope` (`:529-540`) removes the owner cgroup and then calls `MarkOwnerScopeDrained(..., "session_cleanup_complete")` when the scope was bound (`:535-538`). It is skipped, and the cleanup retained, only if the lifecycle is UNKNOWN (`:594-602`) or `scope.Remove` fails. The other writers are the host drain verifier for superseded owners (`production_workflow_catalog_linux.go:1456`, `production_recovery_binder_linux.go:415`) and the unexposed-binder-failure variant (`production_workflow_catalog_linux.go:1273-1303`, `Unexposed:true`). Check `grep -c pi_workflow_owner_scope_drained catalog.jsonl` is 1 and that the event has `"unexposed"` absent or false.
+- The service now holds a one-use admission: the same host admission id cannot start a second fresh workflow (`production_workflow_catalog_linux.go:339-344`). A further run needs a new `workflow_admission_id`, which changes the config digest and means R2-0, R2-2 and S3 again.
 
 ### L5 [PRIVILEGED WRITE] negative cases (each must fail closed; restore afterwards)
 
-- N1: a second workflow while one is active is refused.
-- N2: a connection from a uid outside `tbound-pi-clients` is refused at the socket.
-- N3: `systemctl stop opt-tbound-cell.mount`, then attempt a launch: it must be refused (cosign, key, seccomp and layout are no longer on a read-only mount). Restore: `systemctl start opt-tbound-cell.mount`; re-run L2.
-- N4: network egress from inside the cell fails (`network-none`).
+Order matters: N5 and N6 are client-side refusals that touch no journal and may run any time. N7 leaves a terminal `unknown` request and every later request is then refused as `prior-workflow-unsettled` (`pi_service_handoff_linux.go:1060-1068`, `1328-1329`), so run N7 last, after L3 and L4.
+
+- N1: a second workflow while one is active is refused (`busy` / `one-task-at-a-time`, `pi_service_handoff_linux.go:1317`).
+- N2 [READ-ONLY]: a connection from a uid outside `tbound-pi-clients` is refused at the socket: `setpriv --reuid 1000 --regid 1000 --clear-groups python3 -c 'import socket; s=socket.socket(socket.AF_UNIX); s.connect("/run/tbound/serve-pi.sock")'` raises PermissionError (socket mode 0660, group 985). The real client never gets that far (N6).
+- N3 and N4 are NOT part of the first smoke. Each needs a launch, and a launch spends the one-use admission (see L4), so each needs its own admission id (a new config: R2-0, R2-2, S3). N3: `systemctl stop opt-tbound-cell.mount`, then attempt a launch: it must be refused (cosign, key, seccomp and layout are no longer on a read-only mount); restore with `systemctl start opt-tbound-cell.mount` and re-run L2. N4: network egress from inside the cell fails (`network-none`); it needs a Bash command in the cell, which the smoke prompt forbids.
+- N5 [READ-ONLY, client side] `--native-host-profile` from the client: `CLIENT /usr/local/bin/tbound serve --pi --native-host-profile /etc/tbound/pi-host-profile.json --task-id smoke-read-readme --task-request-id "$RID" --task "$PROMPT" --bash-no-outputs` exits 2 with stderr ``ordinary `serve --pi` is a local service client; profile/source/workspace are service-owned and cannot be selected by the client`` (`serve_linux.go:91-93`). It never dials the socket. `--workspace` and `--source` give the same message.
+- N6 [READ-ONLY, client side] wrong uid: `setpriv --reuid 1000 --regid 985 --clear-groups /usr/local/bin/tbound serve --pi ...` (any uid other than 994, or any primary gid other than 985) exits 2 with stderr `local Pi service refused the request` (`pi_service_handoff_linux.go:55,1389-1391`). The client checks its own effective uid and gid against the registration before it dials, so there is no stdout JSON and nothing is journalled. A server-side refusal (`refused` / `peer-not-authorized`, `1286`) is reachable only by a modified client.
+- N7 [PRIVILEGED WRITE] unknown task id: same command with `--task-id smoke-unknown-task` and a fresh `RID`: stdout line has `"status":"unknown","error_code":"task-outcome-unknown"`, exit 2, stderr `local Pi service unknown: task-outcome-unknown`. The service accepted and journalled the request before resolving it (`pi_service_handoff_linux.go:1315-1375`), so the request id is consumed, replaying it returns the stored terminal answer, and the service refuses all later requests as `prior-workflow-unsettled`. No workflow starts: `ResolveAdmission` refuses the envelope mismatch (`production_workflow_catalog_linux.go:323-325`). Recovery from that state is an owner decision, not part of this smoke.
 
 Rollback: restore every mount stopped in N3 and re-run L2; stop the service if any case was not refused.
