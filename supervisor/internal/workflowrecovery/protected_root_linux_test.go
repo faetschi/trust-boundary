@@ -488,7 +488,7 @@ func TestProtectedRootDeadlineUsesStickyBootTimeExpiryAcrossWallRollbackAndReope
 		t.Fatalf("create protected root: %v", err)
 	}
 	baseWall := time.Now().Round(0).UTC()
-	deadline := baseWall.Add(10 * time.Second).UTC()
+	deadline := baseWall.Add(time.Hour).UTC()
 	bootID := "00000000-0000-4000-8000-000000000001"
 	bootTimeNS := int64(5_000_000_000)
 	wallNow := baseWall
@@ -517,7 +517,7 @@ func TestProtectedRootDeadlineUsesStickyBootTimeExpiryAcrossWallRollbackAndReope
 
 	// Let CLOCK_BOOTTIME pass the immutable deadline while wall time still
 	// appears to have almost the full original duration left.
-	bootTimeNS += int64(11 * time.Second)
+	bootTimeNS += int64(time.Hour + time.Second)
 	wallNow = baseWall.Add(time.Second)
 	if err := root.VerifyWorkflowDeadline(context.Background(), workflow, deadline); !errors.Is(err, ErrDeadline) {
 		t.Fatalf("monotonic expiry = %v, want ErrDeadline", err)
@@ -562,7 +562,7 @@ func TestLoadSettledCheckpointReadOnlyAcceptsExpiredAndFreshBootHistory(t *testi
 			wantErr: ErrDeadline,
 			clockState: func(owner *SQLiteOwner, workflow string, deadline time.Time,
 				wall *time.Time, _ *string, bootNS *int64) error {
-				*bootNS += int64(10 * time.Second)
+				*bootNS += int64(time.Hour + time.Second)
 				*wall = wall.Add(time.Second)
 				return owner.VerifyWorkflowDeadline(context.Background(), workflow, deadline)
 			},
@@ -598,7 +598,7 @@ func TestLoadSettledCheckpointReadOnlyAcceptsExpiredAndFreshBootHistory(t *testi
 				_ = root.Close()
 				t.Fatalf("create SQLite owner: %v", err)
 			}
-			deadline := baseWall.Add(5 * time.Second).UTC()
+			deadline := baseWall.Add(time.Hour).UTC()
 			pins := testPins(root.TrustedRootIdentityDigest(), owner.OwnerIncarnationDigest(), workflow,
 				"session-"+workflow, 1, 1)
 			limits := testLimits()
@@ -800,7 +800,7 @@ func TestTerminalEffectOutcomeCanOnlySettleExactReservationAfterStickyExpiry(t *
 		t.Fatalf("create protected root: %v", err)
 	}
 	baseWall := time.Now().Round(0).UTC()
-	deadline := baseWall.Add(5 * time.Second).UTC()
+	deadline := baseWall.Add(time.Hour).UTC()
 	bootID := "00000000-0000-4000-8000-000000000021"
 	bootTimeNS := int64(20_000_000_000)
 	wallNow := baseWall
@@ -891,7 +891,7 @@ func TestTerminalEffectOutcomeCanOnlySettleExactReservationAfterStickyExpiry(t *
 	// The original wall clock still appears before the deadline, but the
 	// protected monotonic clock crosses it and stores a sticky expiry.
 	wallNow = baseWall.Add(time.Second)
-	bootTimeNS += int64(6 * time.Second)
+	bootTimeNS += int64(time.Hour + time.Second)
 	if _, err := ledger.RecordTerminalEffectOutcome(context.Background(), reservation,
 		acceptBoundTerminalEffect{}, terminalPins); err != nil {
 		t.Fatalf("account already-consumed known Store outcome after expiry: %v", err)

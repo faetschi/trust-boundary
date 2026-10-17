@@ -46,6 +46,9 @@ type testTrustedRoot struct {
 	authorizationCalls int
 	boundaryCalls      int
 	failNextCAS        error
+	// deadlineNow is the clock VerifyWorkflowDeadline compares against; nil
+	// means the real wall clock.
+	deadlineNow func() time.Time
 }
 
 func newTestTrustedRoot() *testTrustedRoot {
@@ -144,10 +147,24 @@ func (r *testTrustedRoot) VerifyWorkflowDeadline(_ context.Context, _ string, de
 	if deadline.IsZero() {
 		return ErrClockUncertain
 	}
-	if !time.Now().Before(deadline) {
+	r.mu.Lock()
+	now := time.Now
+	if r.deadlineNow != nil {
+		now = r.deadlineNow
+	}
+	r.mu.Unlock()
+	if !now().Before(deadline) {
 		return ErrDeadline
 	}
 	return nil
+}
+
+// setDeadlineClock pins the clock used by VerifyWorkflowDeadline so tests can
+// cross a workflow deadline without sleeping against the real wall clock.
+func (r *testTrustedRoot) setDeadlineClock(now func() time.Time) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.deadlineNow = now
 }
 
 func (r *testTrustedRoot) AuthorizeFreshWorkflow(_ context.Context, workflow string, ownerEpoch uint64, initialDigest string,
@@ -1154,7 +1171,7 @@ func TestZeroRecoveryAllowancesAreValidAndBudgetsStayWorkflowWide(t *testing.T) 
 	if _, err := ledger.ReservePreEffectRetry(context.Background()); !errors.Is(err, ErrExhausted) {
 		t.Fatalf("disabled retry allowance = %v, want ErrExhausted", err)
 	}
-	if err := validateLimits(limits, time.Now()); err != nil {
+	if err := validateLimits(limits, limits.Deadline.Add(-time.Minute)); err != nil {
 		t.Fatalf("zero recovery allowances should be valid disabled budgets: %v", err)
 	}
 	usedLimits := testLimits()
@@ -1186,14 +1203,29 @@ func TestZeroRecoveryAllowancesAreValidAndBudgetsStayWorkflowWide(t *testing.T) 
 		t.Fatalf("modified original call cap = %v, want ErrRollback", err)
 	}
 
-	deadlineLimits := testLimits()
-	deadlineLimits.Deadline = time.Now().UTC().Add(180 * time.Millisecond)
-	owner3, _, ledger3, _, _ := newWorkflowHarness(t, "workflow-deadline", deadlineLimits)
+	// The workflow keeps a comfortable real-time deadline so setup under a
+	// loaded or race-instrumented run can never expire it. Expiry is then
+	// reached by moving the clocks, not by sleeping.
+	owner3, root3, ledger3, deadlineCheckpoint, _ := newWorkflowHarness(t, "workflow-deadline", testLimits())
 	defer owner3.Close()
-	deadlineCheckpoint, _ := ledger3.Snapshot()
-	time.Sleep(time.Until(deadlineCheckpoint.Limits.Deadline) + 25*time.Millisecond)
+	deadline := deadlineCheckpoint.Limits.Deadline
+	if _, err := ledger3.ReservePreEffectRetry(context.Background()); err != nil {
+		t.Fatalf("reservation before original deadline: %v", err)
+	}
+	// Root-verified expiry: the trusted root observes the deadline exactly.
+	root3.setDeadlineClock(func() time.Time { return deadline })
 	if _, err := ledger3.ReservePreEffectRetry(context.Background()); !errors.Is(err, ErrDeadline) {
-		t.Fatalf("reservation after original deadline = %v, want ErrDeadline", err)
+		t.Fatalf("reservation after root-observed original deadline = %v, want ErrDeadline", err)
+	}
+	// Ledger-local wall-clock expiry: the root still reports time before the
+	// deadline, while the ledger's own deadline is long past the real clock.
+	pastDeadline := time.Now().UTC().Add(-time.Hour)
+	root3.setDeadlineClock(func() time.Time { return pastDeadline.Add(-time.Second) })
+	ledger3.mu.Lock()
+	ledger3.checkpoint.Limits.Deadline = pastDeadline
+	ledger3.mu.Unlock()
+	if _, err := ledger3.ReservePreEffectRetry(context.Background()); !errors.Is(err, ErrDeadline) {
+		t.Fatalf("reservation after ledger-observed original deadline = %v, want ErrDeadline", err)
 	}
 }
 
