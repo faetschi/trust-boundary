@@ -1,0 +1,21 @@
+# Canonical source for /etc/systemd/system/usr-local-bin-node.mount (root:root 0644).
+# File bind mount of the pinned host Node (/opt/tbound/node/node, a root:root 0555
+# copy of /usr/local/bin/node) onto /usr/local/bin/node with ro,nosuid,nodev, so
+# that the launcher's verifyImmutableLinuxExecutable / requireReadOnlyMount checks
+# (supervisor/internal/piruntime/launcher_linux.go, ~:741 and ~:1007) see the
+# production Node executable on a read-only mount.
+# This is tamper evidence, not immutability: root can still unmount, remount rw,
+# or replace the source file. The digest pin is checked separately by
+# openVerifiedExecutable at launch.
+# Install verbatim; the unit name must equal the escaped Where= path.
+[Unit]
+Description=TBound pinned Node executable (read-only file bind)
+
+[Mount]
+What=/opt/tbound/node/node
+Where=/usr/local/bin/node
+Type=none
+Options=bind,ro,nosuid,nodev
+
+[Install]
+WantedBy=local-fs.target
