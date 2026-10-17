@@ -57,12 +57,14 @@ func (p *verticalFreshWorkflowPolicy) AuthorizeFreshWorkflow(ctx context.Context
 
 type verticalNoPriorOwnerDrain struct{}
 
-func (verticalNoPriorOwnerDrain) VerifyOwnerCellsDrained(_ context.Context, _ string,
-	owners []workflowrecovery.OwnerEpochIdentity) error {
+// verticalNoPriorOwnerDrain is valid only for a fresh fixture with no superseded
+// owner. It produces no drain digests, and it refuses any owner it is asked about.
+func (verticalNoPriorOwnerDrain) VerifyOwnerCellsDrainedWithProof(_ context.Context, _ string,
+	owners []workflowrecovery.OwnerEpochIdentity) ([]string, error) {
 	if len(owners) != 0 {
-		return errors.New("fresh vertical fixture has no prior owner epochs to drain")
+		return nil, errors.New("fresh vertical fixture has no prior owner epochs to drain")
 	}
-	return nil
+	return nil, nil
 }
 
 type verticalInitialTranscriptProgress struct {

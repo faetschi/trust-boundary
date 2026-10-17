@@ -29,8 +29,12 @@ const (
 // OwnerDrainVerifier is implemented by the trusted runner/cgroup boundary.
 // It must prove that every listed owner incarnation and all of its governed
 // cells are drained. A PID-only check or a provider assertion is insufficient.
+// It returns one drain-proof digest per owner, in input order. The protected
+// root persists each digest as that owner's drain evidence, so the digest must
+// commit to the observed drain facts. A verifier that cannot produce a digest
+// cannot satisfy this interface, so no owner can be fenced without evidence.
 type OwnerDrainVerifier interface {
-	VerifyOwnerCellsDrained(ctx context.Context, workflow string, owners []OwnerEpochIdentity) error
+	VerifyOwnerCellsDrainedWithProof(ctx context.Context, workflow string, owners []OwnerEpochIdentity) ([]string, error)
 }
 
 // FreshWorkflowPolicy is supplied by the host control plane, not by a provider,
@@ -50,7 +54,7 @@ type FreshWorkflowPolicy interface {
 type HostBoundary interface {
 	VerifyOwnerStore(ctx context.Context, workflow string, store OwnerStoreIdentity) error
 	VerifyOwnerIncarnation(ctx context.Context, workflow string, incarnation OwnerIncarnation) error
-	VerifyOwnersDrained(ctx context.Context, workflow string, owners []OwnerEpochIdentity) error
+	VerifyOwnersDrainedWithEvidence(ctx context.Context, workflow string, owners []OwnerEpochIdentity) ([]string, error)
 	AuthorizeFreshWorkflow(ctx context.Context, workflow string, ownerEpoch uint64,
 		initialDigest string, incarnation OwnerIncarnation, deadline time.Time,
 		rootIdentity string, store OwnerStoreIdentity) error
@@ -115,19 +119,35 @@ func (b *LinuxHostBoundary) VerifyOwnerIncarnation(_ context.Context, workflow s
 	return nil
 }
 
-func (b *LinuxHostBoundary) VerifyOwnersDrained(ctx context.Context, workflow string, owners []OwnerEpochIdentity) error {
+// VerifyOwnersDrainedWithEvidence verifies that every superseded owner is drained
+// and returns one drain-proof digest per owner, in input order. A missing or
+// malformed digest is refused, so an owner epoch cannot be fenced on evidence
+// that does not cover every owner.
+func (b *LinuxHostBoundary) VerifyOwnersDrainedWithEvidence(ctx context.Context, workflow string,
+	owners []OwnerEpochIdentity) ([]string, error) {
 	if b == nil || ctx == nil || !validID(workflow) || len(owners) == 0 {
-		return fmt.Errorf("%w: no verifiable owner-incarnation drain set", ErrOwnerFence)
+		return nil, fmt.Errorf("%w: no verifiable owner-incarnation drain set", ErrOwnerFence)
 	}
 	for _, owner := range owners {
 		if owner.Epoch == 0 || !validOwnerIncarnation(owner.Incarnation) {
-			return fmt.Errorf("%w: malformed superseded owner identity", ErrOwnerFence)
+			return nil, fmt.Errorf("%w: malformed superseded owner identity", ErrOwnerFence)
 		}
 	}
-	if err := b.ownerDrainVerifier.VerifyOwnerCellsDrained(ctx, workflow, append([]OwnerEpochIdentity(nil), owners...)); err != nil {
-		return fmt.Errorf("%w: runner/cgroup owner drain: %v", ErrOwnerFence, err)
+	digests, err := b.ownerDrainVerifier.VerifyOwnerCellsDrainedWithProof(ctx, workflow,
+		append([]OwnerEpochIdentity(nil), owners...))
+	if err != nil {
+		return nil, fmt.Errorf("%w: runner/cgroup owner drain: %v", ErrOwnerFence, err)
 	}
-	return nil
+	if len(digests) != len(owners) {
+		return nil, fmt.Errorf("%w: runner/cgroup owner drain returned %d proof digests for %d owners",
+			ErrOwnerFence, len(digests), len(owners))
+	}
+	for i, digest := range digests {
+		if !validDigest(digest) {
+			return nil, fmt.Errorf("%w: runner/cgroup owner drain proof digest %d is malformed", ErrOwnerFence, i)
+		}
+	}
+	return append([]string(nil), digests...), nil
 }
 
 func (b *LinuxHostBoundary) AuthorizeFreshWorkflow(ctx context.Context, workflow string, ownerEpoch uint64,
@@ -599,11 +619,15 @@ func (r *ProtectedTrustedRoot) AcquireOwnerEpoch(ctx context.Context, workflow s
 			return fmt.Errorf("%w: protected root owner-epoch history has a gap", ErrRollback)
 		}
 		if len(oldOwners) > 0 {
-			if err := r.boundary.VerifyOwnersDrained(ctx, workflow, ownerEpochIdentities(oldOwners)); err != nil {
+			drainDigests, err := r.boundary.VerifyOwnersDrainedWithEvidence(ctx, workflow, ownerEpochIdentities(oldOwners))
+			if err != nil {
 				return fmt.Errorf("%w: one or more superseded owner/cells were not drained: %v", ErrOwnerFence, err)
 			}
-			for _, old := range oldOwners {
-				if err := markOwnerEpochDrained(ctx, tx, r.rootIdentity, old); err != nil {
+			if len(drainDigests) != len(oldOwners) {
+				return fmt.Errorf("%w: drain evidence does not cover every superseded owner", ErrOwnerFence)
+			}
+			for i, old := range oldOwners {
+				if err := markOwnerEpochDrained(ctx, tx, r.rootIdentity, old, drainDigests[i]); err != nil {
 					return err
 				}
 			}
@@ -1552,7 +1576,11 @@ func ownerEpochIdentities(owners []protectedOwnerEpoch) []OwnerEpochIdentity {
 	return result
 }
 
-func markOwnerEpochDrained(ctx context.Context, tx *sql.Tx, rootIdentity string, ownerEpoch protectedOwnerEpoch) error {
+// markOwnerEpochDrained persists the drain evidence for one superseded owner. The
+// evidence digest binds the protected root, the owner epoch, and the verifier's
+// drain-proof digest, which commits to the observed drain facts.
+func markOwnerEpochDrained(ctx context.Context, tx *sql.Tx, rootIdentity string, ownerEpoch protectedOwnerEpoch,
+	proofDigest string) error {
 	if ownerEpoch.Drained == 1 && validDigest(ownerEpoch.DrainEvidenceDigest) {
 		return nil
 	}
@@ -1563,18 +1591,14 @@ func markOwnerEpochDrained(ctx context.Context, tx *sql.Tx, rootIdentity string,
 	if !validDigest(rootIdentity) {
 		return fmt.Errorf("%w: protected root identity is malformed", ErrRollback)
 	}
+	if !validDigest(proofDigest) {
+		return fmt.Errorf("%w: owner drain proof digest is malformed", ErrOwnerFence)
+	}
 	if err := decodeOwnerJSON(ownerEpoch.IncarnationJSON, &incarnation); err != nil || !validOwnerIncarnation(incarnation) {
 		return fmt.Errorf("%w: decode owner before drain marking: %v", ErrRollback, err)
 	}
-	encoded, _ := json.Marshal(struct {
-		RootIdentity string `json:"root_identity_digest"`
-		Workflow     string `json:"workflow_id"`
-		Epoch        int64  `json:"epoch"`
-		Incarnation  string `json:"incarnation_digest"`
-		Outcome      string `json:"outcome"`
-	}{rootIdentity, ownerEpoch.WorkflowID, ownerEpoch.Epoch, incarnation.Digest, "host_boundary_verified_drained"})
-	proofSum := sha256.Sum256(append([]byte("tbound-owner-drain-evidence/v1\n"), encoded...))
-	drainDigest := hex.EncodeToString(proofSum[:])
+	drainDigest := ownerDrainEvidenceDigest(rootIdentity, ownerEpoch.WorkflowID, uint64(ownerEpoch.Epoch),
+		incarnation.Digest, proofDigest)
 	result, err := tx.ExecContext(ctx, `UPDATE workflow_root_owner_epochs SET drained=1,drain_evidence_digest=?
 		WHERE workflow_id=? AND epoch=? AND incarnation_digest=? AND drained=0`,
 		drainDigest, ownerEpoch.WorkflowID, ownerEpoch.Epoch, incarnation.Digest)
@@ -1586,6 +1610,22 @@ func markOwnerEpochDrained(ctx context.Context, tx *sql.Tx, rootIdentity string,
 		return fmt.Errorf("%w: owner drain record changed during acquisition", ErrCAS)
 	}
 	return nil
+}
+
+// ownerDrainEvidenceDigest is the persisted drain evidence for one superseded
+// owner. It is a pure binding of the protected root, workflow, epoch, owner
+// incarnation digest, and the verifier's drain-proof digest. Any changed input
+// changes the evidence.
+func ownerDrainEvidenceDigest(rootIdentity, workflow string, epoch uint64, incarnationDigest, proofDigest string) string {
+	encoded, _ := json.Marshal(struct {
+		RootIdentity string `json:"root_identity_digest"`
+		Workflow     string `json:"workflow_id"`
+		Epoch        uint64 `json:"epoch"`
+		Incarnation  string `json:"incarnation_digest"`
+		ProofDigest  string `json:"drain_proof_digest"`
+	}{rootIdentity, workflow, epoch, incarnationDigest, proofDigest})
+	sum := sha256.Sum256(append([]byte("tbound-owner-drain-evidence/v2\n"), encoded...))
+	return hex.EncodeToString(sum[:])
 }
 
 func validOwnerIncarnation(incarnation OwnerIncarnation) bool {

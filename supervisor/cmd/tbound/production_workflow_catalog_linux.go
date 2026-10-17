@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/drainproof"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/publication"
 	"tbound/supervisor/internal/workflow"
@@ -800,7 +801,7 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 	if err := c.verifySettledOwnerScopes(entry, view.OwnerEpochs, template.CgroupsPath); err != nil {
 		return err
 	}
-	if err := drainVerifier.VerifyOwnerCellsDrained(ctx, entry.WorkflowID, view.OwnerEpochs); err != nil {
+	if _, err := drainVerifier.VerifyOwnerCellsDrainedWithProof(ctx, entry.WorkflowID, view.OwnerEpochs); err != nil {
 		return errors.Join(ErrPiWorkflowCatalog, err)
 	}
 	storeJournal, err := openPiServiceSettlementJournal(entry.StoreJournalPath)
@@ -1303,101 +1304,182 @@ func (c *piServiceWorkflowCatalog) MarkOwnerUnexposedDrained(admissionHash, work
 	return nil
 }
 
+// catalogOwnerDrainVerifier verifies superseded owner epochs for the Pi workflow
+// catalog. Each owner is observed and then proved with drainproof. The verifier
+// returns the drain-proof digest per owner, and the protected root persists it as
+// drain evidence.
 type catalogOwnerDrainVerifier struct {
 	catalog          *piServiceWorkflowCatalog
 	cgroupRoot       string
 	cgroupRootDigest string
 	containment      string
 	settlement       string
+	// openScope opens one exact owner scope. It is nil in production, which uses
+	// piruntime.OpenLinuxCgroupScopeForDrain. Tests supply a fake with the same
+	// open contract, because a delegated cgroup v2 root is not available to them.
+	openScope func(root *os.File, name, containment, settlement, expectedIdentity string) (ownerScopeDrainer, error)
 }
 
-func (v catalogOwnerDrainVerifier) VerifyOwnerCellsDrained(ctx context.Context, workflow string,
-	owners []workflowrecovery.OwnerEpochIdentity) error {
+// ownerScopeDrainer is the part of a retained cgroup scope that the drain verifier uses.
+type ownerScopeDrainer interface {
+	RootDigest() string
+	IdentityDigest() string
+	Remove(ctx context.Context) error
+	Close() error
+}
+
+func (v catalogOwnerDrainVerifier) openOwnerScope(root *os.File, name, expectedIdentity string) (ownerScopeDrainer, error) {
+	if v.openScope != nil {
+		return v.openScope(root, name, v.containment, v.settlement, expectedIdentity)
+	}
+	scope, err := piruntime.OpenLinuxCgroupScopeForDrain(root, name, v.containment, v.settlement, expectedIdentity)
+	if err != nil {
+		return nil, err
+	}
+	return scope, nil
+}
+
+func (v catalogOwnerDrainVerifier) VerifyOwnerCellsDrainedWithProof(ctx context.Context, workflow string,
+	owners []workflowrecovery.OwnerEpochIdentity) ([]string, error) {
 	if ctx == nil || v.catalog == nil || !validIdentityText(workflow) || len(owners) == 0 ||
 		filepath.Clean(v.cgroupRoot) != v.cgroupRoot || !filepath.IsAbs(v.cgroupRoot) ||
 		!validDigestText(v.cgroupRootDigest) || v.containment != piruntime.D09ContainmentProfile ||
 		v.settlement != piruntime.D09SettlementProfile {
-		return workflowrecovery.ErrOwnerFence
+		return nil, workflowrecovery.ErrOwnerFence
 	}
 	entry, ok := v.catalog.workflowEntry(workflow)
 	settledTerminal := entry.Terminal && validIdentityText(entry.TerminalRunID) &&
 		validDigestText(entry.TerminalProofDigest) && entry.TerminalProofSequence > 0 &&
 		boundedProductionIdentity(entry.TerminalTransactionID, productionRequestMaxBytes)
 	if !ok || !entry.CheckpointBound || entry.Terminal && !settledTerminal {
-		return errors.Join(workflowrecovery.ErrOwnerFence, ErrPiWorkflowCatalog)
+		return nil, errors.Join(workflowrecovery.ErrOwnerFence, ErrPiWorkflowCatalog)
 	}
+	digests := make([]string, 0, len(owners))
 	priorEpoch := uint64(0)
 	for _, owner := range owners {
 		if err := ctx.Err(); err != nil {
-			return err
+			return nil, err
 		}
 		if owner.Epoch <= priorEpoch || !validWorkflowOwnerIncarnation(owner.Incarnation) {
-			return workflowrecovery.ErrOwnerFence
+			return nil, workflowrecovery.ErrOwnerFence
 		}
 		priorEpoch = owner.Epoch
-		if err := v.drainOwnerEpoch(ctx, entry, owner); err != nil {
-			return fmt.Errorf("owner epoch %d drain proof is incomplete: %w", owner.Epoch, err)
+		digest, err := v.drainOwnerEpoch(ctx, entry, owner)
+		if err != nil {
+			return nil, fmt.Errorf("owner epoch %d drain proof is incomplete: %w", owner.Epoch, err)
 		}
+		digests = append(digests, digest)
 	}
-	return nil
+	return digests, nil
 }
 
+// drainOwnerEpoch proves that one superseded owner epoch is drained and returns
+// the drain-proof digest of the observed facts. A live owner process is refused
+// first, whatever the scope state. A drained catalog record is the cleanup
+// receipt for an absent scope. An undrained epoch is torn down only when its
+// scope is bound to this epoch, and it is receipted before the proof is built.
 func (v catalogOwnerDrainVerifier) drainOwnerEpoch(ctx context.Context, entry piServiceWorkflowEntry,
-	owner workflowrecovery.OwnerEpochIdentity) error {
+	owner workflowrecovery.OwnerEpochIdentity) (string, error) {
 	state, exists := v.catalog.ownerScope(entry.WorkflowID, owner.Epoch)
 	if exists && (state.AdmissionHash != entry.AdmissionRecordHash || state.Incarnation != owner.Incarnation) {
-		return ErrPiWorkflowCatalog
+		return "", ErrPiWorkflowCatalog
 	}
-	processLive, err := workflowOwnerProcessStillLive(owner.Incarnation)
+	process, err := workflowOwnerProcessObservation(owner.Incarnation)
 	if err != nil {
-		return err
+		return "", err
 	}
+	if process.Live {
+		return "", errors.New("superseded owner process is still live and has no completed cleanup proof")
+	}
+	name := workflowOwnerScopeName(entry.WorkflowID, owner.Epoch)
 	if exists && state.Drained {
-		path := filepath.Join(v.cgroupRoot, workflowOwnerScopeName(entry.WorkflowID, owner.Epoch))
-		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-			return errors.Join(ErrPiWorkflowCatalog, err)
+		if _, err := os.Lstat(filepath.Join(v.cgroupRoot, name)); !errors.Is(err, os.ErrNotExist) {
+			return "", errors.Join(ErrPiWorkflowCatalog, err)
 		}
-		return nil
-	}
-	if processLive {
-		return errors.New("superseded owner process is still live and has no completed cleanup proof")
+		// The durable drained record is the cleanup receipt. It names the scope it
+		// bound, so the receipt identity and the expected identity are that binding.
+		return proveOwnerDrain(owner, process,
+			drainproof.ScopeObservation{Absent: true, IdentityDigest: state.ScopeIdentityDigest},
+			state.ScopeIdentityDigest, state.ScopeIdentityDigest)
 	}
 	root, err := openServiceDirectoryNoSymlinks(v.cgroupRoot)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer root.Close()
-	name := workflowOwnerScopeName(entry.WorkflowID, owner.Epoch)
-	expectedIdentity := ""
-	if exists {
-		expectedIdentity = state.ScopeIdentityDigest
-	}
-	scope, openErr := piruntime.OpenLinuxCgroupScopeForDrain(root, name, v.containment, v.settlement, expectedIdentity)
+	// An unbound scope is opened with no expectation, exactly as the recovery path
+	// always did. Its identity is captured below, before teardown.
+	scope, openErr := v.openOwnerScope(root, name, state.ScopeIdentityDigest)
 	if openErr != nil {
 		if errors.Is(openErr, syscall.ENOENT) {
-			return errors.New("superseded owner scope is absent without a durable cleanup receipt")
+			return "", errors.New("superseded owner scope is absent without a durable cleanup receipt")
 		}
-		return openErr
+		return "", openErr
 	}
 	if scope.RootDigest() != v.cgroupRootDigest {
 		_ = scope.Close()
-		return errors.New("retained owner scope is under a different delegated cgroup root")
+		return "", errors.New("retained owner scope is under a different delegated cgroup root")
 	}
 	scopeIdentity := scope.IdentityDigest()
 	if !validDigestText(scopeIdentity) {
 		_ = scope.Close()
-		return errors.New("retained owner scope identity could not be captured before teardown")
+		return "", errors.New("retained owner scope identity could not be captured before teardown")
 	}
 	if err := scope.Remove(ctx); err != nil {
-		return err
+		return "", err
+	}
+	// Remove returned nil, so the scope settled and was unlinked. The absence is
+	// observed again rather than assumed from that return value.
+	if _, err := os.Lstat(filepath.Join(v.cgroupRoot, name)); !errors.Is(err, os.ErrNotExist) {
+		return "", errors.Join(ErrPiWorkflowCatalog, err)
 	}
 	if !exists {
+		// A dead owner's unbound scope is the scope a crash left between creation and
+		// binding. It is now removed, so bind it to this epoch, then record the receipt.
 		if err := v.catalog.bindRecoveredOwnerScope(entry, owner, name, filepath.Join(v.cgroupRoot, name), scopeIdentity); err != nil {
-			return err
+			return "", err
 		}
 	}
-	return v.catalog.MarkOwnerScopeDrained(entry.AdmissionRecordHash, entry.WorkflowID, owner.Epoch,
-		owner.Incarnation, v.cgroupRoot, "host_process_exit_and_cgroup_kill")
+	if err := v.catalog.MarkOwnerScopeDrained(entry.AdmissionRecordHash, entry.WorkflowID, owner.Epoch,
+		owner.Incarnation, v.cgroupRoot, "host_process_exit_and_cgroup_kill"); err != nil {
+		return "", err
+	}
+	// The receipt is durable and names the identity captured before teardown. For a
+	// bound scope that identity equals the recorded binding, which the open checked.
+	// For an unbound scope the binding was just recorded from that same identity, so
+	// the expectation is that identity.
+	expectedIdentity := state.ScopeIdentityDigest
+	if !exists {
+		expectedIdentity = scopeIdentity
+	}
+	return proveOwnerDrain(owner, process,
+		drainproof.ScopeObservation{Absent: true, IdentityDigest: scopeIdentity},
+		scopeIdentity, expectedIdentity)
+}
+
+// proveOwnerDrain builds drainproof's observation of one superseded owner epoch
+// and returns its proof digest. Every drainproof refusal is an owner-fence refusal.
+func proveOwnerDrain(owner workflowrecovery.OwnerEpochIdentity, process workflowOwnerProcess,
+	scope drainproof.ScopeObservation, receiptIdentity, expectedIdentity string) (string, error) {
+	proof, err := drainproof.Prove(drainproof.OwnerObservation{
+		Owner:                  owner,
+		BootID:                 owner.Incarnation.BootID,
+		ObservedBootID:         process.BootID,
+		StartTicks:             owner.Incarnation.StartTimeTicks,
+		ObservedStartTicks:     process.StartTicks,
+		ProcessLive:            process.Live,
+		Scope:                  scope,
+		CleanupReceiptIdentity: receiptIdentity,
+		ExpectedScopeIdentity:  expectedIdentity,
+		// Pending effects are not observed here. The catalog keeps no pending-effect
+		// count per owner epoch, so 0 is recorded. drainproof's pending-effect refusal
+		// (OPEN question Q2) therefore does not apply at this boundary.
+		PendingEffects: 0,
+	})
+	if err != nil {
+		return "", fmt.Errorf("%w: owner epoch %d: %w", workflowrecovery.ErrOwnerFence, owner.Epoch, err)
+	}
+	return proof.Digest, nil
 }
 
 func (c *piServiceWorkflowCatalog) bindRecoveredOwnerScope(entry piServiceWorkflowEntry,
@@ -1496,16 +1578,27 @@ func workflowDrainProofDigest(workflow string, epoch uint64, incarnation workflo
 	return digestBytes(encoded)
 }
 
-func workflowOwnerProcessStillLive(incarnation workflowrecovery.OwnerIncarnation) (bool, error) {
+// workflowOwnerProcess is the host's observation of a superseded owner process.
+// Live is true only when the process exists on the recorded boot with the recorded
+// start ticks. That is the identity drainproof checks.
+type workflowOwnerProcess struct {
+	BootID     string
+	StartTicks uint64
+	Live       bool
+}
+
+func workflowOwnerProcessObservation(incarnation workflowrecovery.OwnerIncarnation) (workflowOwnerProcess, error) {
 	if incarnation.PID <= 0 || incarnation.StartTimeTicks == 0 {
-		return false, workflowrecovery.ErrOwnerFence
+		return workflowOwnerProcess{}, workflowrecovery.ErrOwnerFence
 	}
 	bootID, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if err != nil {
-		return false, err
+		return workflowOwnerProcess{}, err
 	}
-	if strings.TrimSpace(string(bootID)) != incarnation.BootID {
-		return false, nil
+	observed := workflowOwnerProcess{BootID: strings.TrimSpace(string(bootID))}
+	if observed.BootID != incarnation.BootID {
+		// A different boot means the recorded process is gone.
+		return observed, nil
 	}
 	path := filepath.Join("/proc", strconv.Itoa(incarnation.PID), "stat")
 	readStart := func() (uint64, error) {
@@ -1529,22 +1622,24 @@ func workflowOwnerProcessStillLive(incarnation workflowrecovery.OwnerIncarnation
 	}
 	first, err := readStart()
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return observed, nil
 	}
 	if err != nil {
-		return false, err
+		return workflowOwnerProcess{}, err
 	}
 	second, err := readStart()
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return observed, nil
 	}
 	if err != nil {
-		return false, err
+		return workflowOwnerProcess{}, err
 	}
 	if first != second {
-		return false, errors.New("owner PID identity changed while verifying retirement")
+		return workflowOwnerProcess{}, errors.New("owner PID identity changed while verifying retirement")
 	}
-	return first == incarnation.StartTimeTicks, nil
+	observed.StartTicks = first
+	observed.Live = first == incarnation.StartTimeTicks
+	return observed, nil
 }
 
 func (c *piServiceWorkflowCatalog) appendLocked(kind, id string, event piServiceWorkflowEvent) error {

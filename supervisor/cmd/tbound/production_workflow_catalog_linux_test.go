@@ -7,10 +7,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/drainproof"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/publication"
 	"tbound/supervisor/internal/workflow"
@@ -36,7 +39,7 @@ func TestCatalogOwnerDrainRequiresCleanupReceiptOrLiveScope(t *testing.T) {
 		cgroupRootDigest: cgroupRootDigest, containment: piruntime.D09ContainmentProfile,
 		settlement: piruntime.D09SettlementProfile}
 
-	err := verifier.VerifyOwnerCellsDrained(context.Background(), workflow, []workflowrecovery.OwnerEpochIdentity{owner})
+	_, err := verifier.VerifyOwnerCellsDrainedWithProof(context.Background(), workflow, []workflowrecovery.OwnerEpochIdentity{owner})
 	if err == nil {
 		t.Fatalf("absent owner scope without a durable cleanup receipt was accepted: %v", err)
 	}
@@ -48,10 +51,289 @@ func TestCatalogOwnerDrainRequiresCleanupReceiptOrLiveScope(t *testing.T) {
 	catalog.ownerScopes = map[string]piServiceWorkflowOwnerScope{key: {
 		AdmissionHash: digest, WorkflowID: workflow, OwnerEpoch: owner.Epoch,
 		Incarnation: incarnation, ScopeName: workflowOwnerScopeName(workflow, owner.Epoch),
-		Drained: true, Unexposed: true,
+		// A cleanup receipt names the scope identity it cleaned up. An exact
+		// receipt must carry that identity, not only the epoch and incarnation.
+		ScopeIdentityDigest: "sha256:" + strings.Repeat("d", 64),
+		Drained:             true, Unexposed: true,
 	}}
-	if err := verifier.VerifyOwnerCellsDrained(context.Background(), workflow, []workflowrecovery.OwnerEpochIdentity{owner}); err != nil {
+	if _, err := verifier.VerifyOwnerCellsDrainedWithProof(context.Background(), workflow, []workflowrecovery.OwnerEpochIdentity{owner}); err != nil {
 		t.Fatalf("exact prior cleanup receipt was not accepted: %v", err)
+	}
+}
+
+// currentProcessIdentityForTest returns this process's real boot id and start
+// ticks, so a test can present a genuinely live owner to the drain verifier.
+func currentProcessIdentityForTest(t *testing.T) (string, uint64) {
+	t.Helper()
+	bootData, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	statData, err := os.ReadFile("/proc/self/stat")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closeParen := strings.LastIndexByte(string(statData), ')')
+	fields := strings.Fields(string(statData[closeParen+1:]))
+	start, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil || start == 0 {
+		t.Fatalf("parse own start ticks: %v", err)
+	}
+	return strings.TrimSpace(string(bootData)), start
+}
+
+// drainedOwnerScopeFixture is a catalog whose owner epoch 1 is recorded as
+// drained, with a cleanup receipt identity supplied by the caller.
+func drainedOwnerScopeFixture(t *testing.T, workflow string, incarnation workflowrecovery.OwnerIncarnation,
+	scopeIdentity string) (*piServiceWorkflowCatalog, catalogOwnerDrainVerifier, workflowrecovery.OwnerEpochIdentity) {
+	t.Helper()
+	root := t.TempDir()
+	digest := strings.Repeat("a", 64)
+	entry := piServiceWorkflowEntry{AdmissionRecordHash: digest, WorkflowID: workflow, CheckpointBound: true}
+	owner := workflowrecovery.OwnerEpochIdentity{Epoch: 1, Incarnation: incarnation}
+	key := workflowOwnerEpochKey(workflow, owner.Epoch)
+	catalog := &piServiceWorkflowCatalog{entries: map[string]piServiceWorkflowEntry{digest: entry},
+		ownerScopes: map[string]piServiceWorkflowOwnerScope{key: {
+			AdmissionHash: digest, WorkflowID: workflow, OwnerEpoch: owner.Epoch,
+			Incarnation: incarnation, ScopeName: workflowOwnerScopeName(workflow, owner.Epoch),
+			ScopeIdentityDigest: scopeIdentity, Drained: true, Unexposed: true,
+		}}}
+	verifier := catalogOwnerDrainVerifier{catalog: catalog, cgroupRoot: filepath.Clean(root),
+		cgroupRootDigest: "sha256:" + strings.Repeat("a", 64), containment: piruntime.D09ContainmentProfile,
+		settlement: piruntime.D09SettlementProfile}
+	return catalog, verifier, owner
+}
+
+// A drained cleanup receipt describes a scope. It says nothing about whether
+// the recorded owner process is still running, so a live owner is refused.
+func TestCatalogOwnerDrainRefusesLiveOwnerEvenWithDrainedReceipt(t *testing.T) {
+	bootID, startTicks := currentProcessIdentityForTest(t)
+	incarnation := workflowrecovery.OwnerIncarnation{
+		Digest: strings.Repeat("b", 64), BootID: bootID, PID: os.Getpid(), StartTimeTicks: startTicks,
+		PIDNamespaceInode: 1, EffectiveUID: uint32(os.Geteuid()), CgroupIdentityDigest: strings.Repeat("c", 64),
+	}
+	_, verifier, owner := drainedOwnerScopeFixture(t, "workflow-live-drained", incarnation, "sha256:"+strings.Repeat("d", 64))
+	_, err := verifier.VerifyOwnerCellsDrainedWithProof(context.Background(), "workflow-live-drained",
+		[]workflowrecovery.OwnerEpochIdentity{owner})
+	if err == nil {
+		t.Fatal("a drained cleanup receipt was accepted for a live recorded owner process")
+	}
+}
+
+// A receipt that does not name the scope identity it cleaned up is not a
+// cleanup receipt for this scope, so the absent scope is refused.
+func TestCatalogOwnerDrainRefusesDrainedReceiptWithoutScopeIdentity(t *testing.T) {
+	incarnation := workflowrecovery.OwnerIncarnation{
+		Digest: strings.Repeat("b", 64), BootID: "different-boot", PID: 424242, StartTimeTicks: 1,
+		PIDNamespaceInode: 1, EffectiveUID: uint32(os.Geteuid()), CgroupIdentityDigest: strings.Repeat("c", 64),
+	}
+	_, verifier, owner := drainedOwnerScopeFixture(t, "workflow-identityless-receipt", incarnation, "")
+	_, err := verifier.VerifyOwnerCellsDrainedWithProof(context.Background(), "workflow-identityless-receipt",
+		[]workflowrecovery.OwnerEpochIdentity{owner})
+	if err == nil {
+		t.Fatal("a cleanup receipt without a scope identity was accepted")
+	}
+}
+
+// fakeOwnerScopeOpener stands in for the delegated cgroup v2 root. A scope is a
+// directory under root, and Remove unlinks it. It follows the open contract of
+// piruntime.OpenLinuxCgroupScopeForDrain: a non-empty expected identity must
+// equal the observed identity, and an absent directory reports ENOENT. The
+// tests use it to exercise the verifier's ordering, binding and proof logic. It
+// does not exercise cgroup mechanics.
+type fakeOwnerScopeOpener struct {
+	root       string
+	rootDigest string
+	identity   string
+	opens      []string
+	removed    []string
+}
+
+type fakeOwnerScope struct {
+	opener *fakeOwnerScopeOpener
+	path   string
+}
+
+func (f *fakeOwnerScopeOpener) open(_ *os.File, name, _, _, expectedIdentity string) (ownerScopeDrainer, error) {
+	f.opens = append(f.opens, expectedIdentity)
+	path := filepath.Join(f.root, name)
+	if _, err := os.Lstat(path); err != nil {
+		return nil, errors.Join(errors.New("fake owner scope refused"), err)
+	}
+	if expectedIdentity != "" && expectedIdentity != f.identity {
+		return nil, errors.New("fake owner scope identity differs from the expected identity")
+	}
+	return &fakeOwnerScope{opener: f, path: path}, nil
+}
+
+func (s *fakeOwnerScope) RootDigest() string     { return s.opener.rootDigest }
+func (s *fakeOwnerScope) IdentityDigest() string { return s.opener.identity }
+func (s *fakeOwnerScope) Close() error           { return nil }
+func (s *fakeOwnerScope) Remove(context.Context) error {
+	if err := os.Remove(s.path); err != nil {
+		return err
+	}
+	s.opener.removed = append(s.opener.removed, s.path)
+	return nil
+}
+
+// unboundScopeFixture is a catalog with a real journal, an entry for the workflow,
+// and no recorded owner scope for epoch 1. The scope directory exists when present.
+type unboundScopeFixture struct {
+	catalog  *piServiceWorkflowCatalog
+	verifier catalogOwnerDrainVerifier
+	journal  *audit.Journal
+	opener   *fakeOwnerScopeOpener
+	owner    workflowrecovery.OwnerEpochIdentity
+	path     string
+}
+
+func newUnboundScopeFixture(t *testing.T, workflow string, incarnation workflowrecovery.OwnerIncarnation,
+	present bool, identity string) unboundScopeFixture {
+	t.Helper()
+	root := t.TempDir()
+	journal, err := audit.Open(filepath.Join(root, "workflow-catalog.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = journal.Close() })
+	digest := strings.Repeat("a", 64)
+	entry := piServiceWorkflowEntry{AdmissionRecordHash: digest, WorkflowID: workflow, CheckpointBound: true}
+	catalog := &piServiceWorkflowCatalog{journal: journal,
+		entries:           map[string]piServiceWorkflowEntry{digest: entry},
+		byHostAdmissionID: make(map[string]string), ownerScopes: make(map[string]piServiceWorkflowOwnerScope)}
+	name := workflowOwnerScopeName(workflow, 1)
+	path := filepath.Join(root, name)
+	if present {
+		if err := os.Mkdir(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cgroupRootDigest := "sha256:" + strings.Repeat("a", 64)
+	opener := &fakeOwnerScopeOpener{root: root, rootDigest: cgroupRootDigest, identity: identity}
+	return unboundScopeFixture{catalog: catalog, journal: journal, opener: opener, path: path,
+		owner: workflowrecovery.OwnerEpochIdentity{Epoch: 1, Incarnation: incarnation},
+		verifier: catalogOwnerDrainVerifier{catalog: catalog, cgroupRoot: root,
+			cgroupRootDigest: cgroupRootDigest, containment: piruntime.D09ContainmentProfile,
+			settlement: piruntime.D09SettlementProfile, openScope: opener.open}}
+}
+
+// A superseded owner with an unbound scope is recovered: the process is dead, so
+// the scope is removed, bound to the recovered epoch, and marked drained. The
+// proof commits to the identity captured before teardown. A live owner is refused
+// first, and its scope is not touched. An absent scope with no record is refused.
+func TestCatalogOwnerDrainUnboundScopeIsRecoveredOrRefused(t *testing.T) {
+	const workflow = "workflow-unbound-scope"
+	identity := "sha256:" + strings.Repeat("d", 64)
+	bootID, liveStart := currentProcessIdentityForTest(t)
+	deadIncarnation := workflowrecovery.OwnerIncarnation{
+		Digest: strings.Repeat("b", 64), BootID: "different-boot", PID: 424242, StartTimeTicks: 1,
+		PIDNamespaceInode: 1, EffectiveUID: uint32(os.Geteuid()), CgroupIdentityDigest: strings.Repeat("c", 64),
+	}
+	liveIncarnation := workflowrecovery.OwnerIncarnation{
+		Digest: strings.Repeat("b", 64), BootID: bootID, PID: os.Getpid(), StartTimeTicks: liveStart,
+		PIDNamespaceInode: 1, EffectiveUID: uint32(os.Geteuid()), CgroupIdentityDigest: strings.Repeat("c", 64),
+	}
+
+	t.Run("dead owner with unbound scope is removed, bound and drained", func(t *testing.T) {
+		f := newUnboundScopeFixture(t, workflow, deadIncarnation, true, identity)
+		digests, err := f.verifier.VerifyOwnerCellsDrainedWithProof(context.Background(), workflow,
+			[]workflowrecovery.OwnerEpochIdentity{f.owner})
+		if err != nil || len(digests) != 1 {
+			t.Fatalf("dead owner with unbound scope was refused: %v (%d digests)", err, len(digests))
+		}
+		if !reflect.DeepEqual(f.opener.opens, []string{""}) {
+			t.Fatalf("unbound scope was opened with expected identities %q, want one empty expectation", f.opener.opens)
+		}
+		if _, err := os.Lstat(f.path); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("unbound scope was not removed: %v", err)
+		}
+		state, bound := f.catalog.ownerScope(workflow, f.owner.Epoch)
+		if !bound || !state.Drained || state.ScopeIdentityDigest != identity || state.ScopePath != f.path {
+			t.Fatalf("recovered scope was not bound and drained at the captured identity: %+v", state)
+		}
+		trace, err := f.journal.Trace()
+		if err != nil || len(trace.Records) != 2 ||
+			trace.Records[0].Event.Kind != "pi_workflow_owner_scope_bound" ||
+			trace.Records[1].Event.Kind != "pi_workflow_owner_scope_drained" {
+			t.Fatalf("recovery did not journal bind then drain: records=%d err=%v", len(trace.Records), err)
+		}
+		// The proof is drainproof's proof of the observed facts, with the receipt
+		// and the expectation both equal to the identity captured before teardown.
+		want, err := drainproof.Prove(drainproof.OwnerObservation{
+			Owner: f.owner, BootID: deadIncarnation.BootID, ObservedBootID: bootID,
+			StartTicks:             deadIncarnation.StartTimeTicks,
+			Scope:                  drainproof.ScopeObservation{Absent: true, IdentityDigest: identity},
+			CleanupReceiptIdentity: identity, ExpectedScopeIdentity: identity,
+		})
+		if err != nil || digests[0] != want.Digest {
+			t.Fatalf("drain digest %q does not bind the captured identity; want %q (%v)", digests[0], want.Digest, err)
+		}
+	})
+
+	t.Run("live owner with unbound scope is refused and the scope is not removed", func(t *testing.T) {
+		f := newUnboundScopeFixture(t, workflow, liveIncarnation, true, identity)
+		if _, err := f.verifier.VerifyOwnerCellsDrainedWithProof(context.Background(), workflow,
+			[]workflowrecovery.OwnerEpochIdentity{f.owner}); err == nil {
+			t.Fatal("live owner with an unbound scope was accepted")
+		}
+		if len(f.opener.opens) != 0 || len(f.opener.removed) != 0 {
+			t.Fatalf("live owner's scope was opened or removed: opens=%q removed=%q", f.opener.opens, f.opener.removed)
+		}
+		if _, err := os.Lstat(f.path); err != nil {
+			t.Fatalf("live owner's scope was removed: %v", err)
+		}
+		if _, bound := f.catalog.ownerScope(workflow, f.owner.Epoch); bound {
+			t.Fatal("live owner's scope was bound")
+		}
+	})
+
+	t.Run("absent scope with no record is refused", func(t *testing.T) {
+		f := newUnboundScopeFixture(t, workflow, deadIncarnation, false, identity)
+		if _, err := f.verifier.VerifyOwnerCellsDrainedWithProof(context.Background(), workflow,
+			[]workflowrecovery.OwnerEpochIdentity{f.owner}); err == nil {
+			t.Fatal("absent scope with no record was accepted")
+		}
+		if _, bound := f.catalog.ownerScope(workflow, f.owner.Epoch); bound {
+			t.Fatal("absent scope with no record was bound")
+		}
+		if trace, err := f.journal.Trace(); err != nil || len(trace.Records) != 0 {
+			t.Fatalf("refused absent scope journaled %d records: %v", len(trace.Records), err)
+		}
+	})
+}
+
+// The drain digest that the protected root persists is drainproof's digest of
+// the observed facts. Identical receipts give identical digests, and a
+// different scope identity gives a different digest.
+func TestCatalogOwnerDrainProofDigestBindsCleanupReceiptIdentity(t *testing.T) {
+	const workflow = "workflow-drain-digest"
+	incarnation := workflowrecovery.OwnerIncarnation{
+		Digest: strings.Repeat("b", 64), BootID: "different-boot", PID: 424242, StartTimeTicks: 1,
+		PIDNamespaceInode: 1, EffectiveUID: uint32(os.Geteuid()), CgroupIdentityDigest: strings.Repeat("c", 64),
+	}
+	digestFor := func(scopeIdentity string) string {
+		t.Helper()
+		_, verifier, owner := drainedOwnerScopeFixture(t, workflow, incarnation, scopeIdentity)
+		digests, err := verifier.VerifyOwnerCellsDrainedWithProof(context.Background(), workflow,
+			[]workflowrecovery.OwnerEpochIdentity{owner})
+		if err != nil || len(digests) != 1 {
+			t.Fatalf("drained receipt with identity %q was refused or missing a digest: %v (%d digests)",
+				scopeIdentity, err, len(digests))
+		}
+		return digests[0]
+	}
+	first := digestFor("sha256:" + strings.Repeat("d", 64))
+	again := digestFor("sha256:" + strings.Repeat("d", 64))
+	other := digestFor("sha256:" + strings.Repeat("e", 64))
+	if len(first) != 64 {
+		t.Fatalf("drain digest %q is not a SHA-256 hex digest", first)
+	}
+	if first != again {
+		t.Fatal("identical observations produced different drain digests")
+	}
+	if first == other {
+		t.Fatal("different scope identities produced the same drain digest")
 	}
 }
 

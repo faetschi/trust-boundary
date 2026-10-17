@@ -4,6 +4,8 @@ package workflowrecovery
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -19,33 +21,77 @@ import (
 const protectedRootHelperModeEnv = "TBOUND_PROTECTED_ROOT_LIFECYCLE_MODE"
 const settledCheckpointHelperModeEnv = "TBOUND_SETTLED_CHECKPOINT_READ_MODE"
 
+// processExitDrainVerifier is a PID-only TEST DOUBLE, not drain evidence. It
+// checks only that no process still carries each recorded PID and incarnation
+// digest. It observes no cgroup, scope, cell, or receipt state. Its drain
+// digest binds only the owner identity, so it is weaker than the production
+// verifier (catalogOwnerDrainVerifier in cmd/tbound), whose digest is the
+// drainproof.Prove digest of the observed scope facts. Use it only where a test
+// needs owner epochs to be accepted and does not test drain strength.
 type processExitDrainVerifier struct {
 	calls [][]OwnerEpochIdentity
 }
 
-func (v *processExitDrainVerifier) VerifyOwnerCellsDrained(_ context.Context, workflow string, owners []OwnerEpochIdentity) error {
+func (v *processExitDrainVerifier) VerifyOwnerCellsDrainedWithProof(_ context.Context, workflow string,
+	owners []OwnerEpochIdentity) ([]string, error) {
 	if !validID(workflow) || len(owners) == 0 {
-		return errors.New("empty owner drain request")
+		return nil, errors.New("empty owner drain request")
 	}
 	copyOfOwners := append([]OwnerEpochIdentity(nil), owners...)
+	digests := make([]string, 0, len(copyOfOwners))
 	for _, owner := range copyOfOwners {
 		if owner.Epoch == 0 || !validOwnerIncarnation(owner.Incarnation) {
-			return errors.New("malformed owner incarnation in drain request")
+			return nil, errors.New("malformed owner incarnation in drain request")
 		}
 		if _, err := os.Stat(filepath.Join("/proc", strconv.Itoa(owner.Incarnation.PID))); err == nil {
 			observed, identityErr := ownerIncarnationForPID(owner.Incarnation.PID)
 			if identityErr != nil {
-				return fmt.Errorf("cannot verify live prior owner PID %d: %w", owner.Incarnation.PID, identityErr)
+				return nil, fmt.Errorf("cannot verify live prior owner PID %d: %w", owner.Incarnation.PID, identityErr)
 			}
 			if observed.Digest == owner.Incarnation.Digest {
-				return fmt.Errorf("prior owner epoch %d is still live", owner.Epoch)
+				return nil, fmt.Errorf("prior owner epoch %d is still live", owner.Epoch)
 			}
 		} else if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("cannot inspect prior owner PID %d: %w", owner.Incarnation.PID, err)
+			return nil, fmt.Errorf("cannot inspect prior owner PID %d: %w", owner.Incarnation.PID, err)
 		}
+		digests = append(digests, pidOnlyTestDrainDigest(owner))
 	}
 	v.calls = append(v.calls, copyOfOwners)
-	return nil
+	return digests, nil
+}
+
+// pidOnlyTestDrainDigest is the test double's drain digest. It commits to the
+// owner identity only, which is exactly the weakness the doc comment records.
+func pidOnlyTestDrainDigest(owner OwnerEpochIdentity) string {
+	sum := sha256.Sum256([]byte(fmt.Sprintf("tbound-pid-only-test-double-drain/v1\n%d\n%s",
+		owner.Epoch, owner.Incarnation.Digest)))
+	return hex.EncodeToString(sum[:])
+}
+
+// proofDrainVerifier returns caller-chosen drain digests so a test can observe
+// exactly what the protected root persists. It proves nothing about the host.
+type proofDrainVerifier struct {
+	digest    string
+	short     bool
+	malformed bool
+}
+
+func (v *proofDrainVerifier) VerifyOwnerCellsDrainedWithProof(_ context.Context, workflow string,
+	owners []OwnerEpochIdentity) ([]string, error) {
+	if !validID(workflow) || len(owners) == 0 {
+		return nil, errors.New("empty owner drain request")
+	}
+	digests := make([]string, 0, len(owners))
+	for range owners {
+		digests = append(digests, v.digest)
+	}
+	switch {
+	case v.short:
+		return digests[1:], nil
+	case v.malformed:
+		digests[0] = "not-a-digest"
+	}
+	return digests, nil
 }
 
 type allowProtectedFreshWorkflow struct {
@@ -1113,6 +1159,112 @@ func runProtectedRootHelper(t *testing.T, rootPath, ownerStoreRoot, ownerPath, w
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("protected-root %s child process failed: %v\n%s", mode, err, output)
+	}
+}
+
+// acquireEpochTwoWithDrainProof makes epoch 1 the accepted checkpoint, then
+// acquires epoch 2 with a drain verifier that returns the given digests. It
+// returns the persisted row for epoch 1 and the acquisition error.
+func acquireEpochTwoWithDrainProof(t *testing.T, workflow string, verifier *proofDrainVerifier) (string, protectedOwnerEpoch, error) {
+	t.Helper()
+	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
+	ownerPath := filepath.Join(ownerStoreRoot, "workflow.sqlite")
+	ctx := context.Background()
+	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, verifier)
+	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
+	if err != nil {
+		t.Fatalf("create protected root: %v", err)
+	}
+	defer root.Close()
+	owner, err := CreateFreshSQLiteOwner(ownerPath, root)
+	if err != nil {
+		t.Fatalf("create owner store: %v", err)
+	}
+	defer owner.Close()
+	pins := testPins(root.TrustedRootIdentityDigest(), owner.OwnerIncarnationDigest(), workflow, "session-original", 1, 1)
+	if _, err := InitializeFresh(ctx, owner, pins, testLimits()); err != nil {
+		t.Fatalf("initialize epoch 1: %v", err)
+	}
+	next, err := owner.NextOwnerEpoch(ctx, workflow)
+	if err != nil || next != 2 {
+		t.Fatalf("next owner epoch = %d, %v; want 2", next, err)
+	}
+	acquireErr := owner.AcquireOwnerEpoch(ctx, workflow, 1, next)
+	stored, err := loadOwnerEpochs(ctx, root.db, workflow, 1, 1)
+	if err != nil || len(stored) != 1 {
+		t.Fatalf("load persisted epoch 1: %+v, %v", stored, err)
+	}
+	return root.rootIdentity, stored[0], acquireErr
+}
+
+// The persisted drain evidence must commit to the verifier's proof digest. Two
+// different observations must persist different evidence, and the persisted
+// value must be exactly the pure binding of the observed digest.
+func TestOwnerDrainEvidencePersistsVerifierProofDigest(t *testing.T) {
+	const workflow = "protected-root-drain-evidence"
+	observationA := strings.Repeat("a", 64)
+	observationB := strings.Repeat("b", 64)
+	rootA, storedA, err := acquireEpochTwoWithDrainProof(t, workflow, &proofDrainVerifier{digest: observationA})
+	if err != nil {
+		t.Fatalf("drain with observation A was refused: %v", err)
+	}
+	rootB, storedB, err := acquireEpochTwoWithDrainProof(t, workflow, &proofDrainVerifier{digest: observationB})
+	if err != nil {
+		t.Fatalf("drain with observation B was refused: %v", err)
+	}
+	if storedA.DrainEvidenceDigest == storedB.DrainEvidenceDigest {
+		t.Fatal("different drain observations persisted the same drain evidence digest")
+	}
+	if storedA.Drained != 1 || storedB.Drained != 1 {
+		t.Fatalf("epoch 1 was not marked drained: a=%+v b=%+v", storedA, storedB)
+	}
+	wantA := ownerDrainEvidenceDigest(rootA, workflow, 1, storedA.IncarnationDigest, observationA)
+	wantB := ownerDrainEvidenceDigest(rootB, workflow, 1, storedB.IncarnationDigest, observationB)
+	if storedA.DrainEvidenceDigest != wantA || storedB.DrainEvidenceDigest != wantB {
+		t.Fatalf("persisted evidence does not bind its observation: a=%s want %s; b=%s want %s",
+			storedA.DrainEvidenceDigest, wantA, storedB.DrainEvidenceDigest, wantB)
+	}
+}
+
+// Every superseded owner needs its own well-formed proof digest. A verifier
+// that omits one, or returns a malformed one, must refuse the fence.
+func TestOwnerDrainProofDigestsMustCoverEverySupersededOwner(t *testing.T) {
+	for name, verifier := range map[string]*proofDrainVerifier{
+		"missing digest":   {digest: strings.Repeat("a", 64), short: true},
+		"malformed digest": {digest: "not-a-digest", malformed: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, _, err := acquireEpochTwoWithDrainProof(t, "protected-root-drain-coverage", verifier)
+			if !errors.Is(err, ErrOwnerFence) {
+				t.Fatalf("epoch 2 acquisition with %s = %v, want ErrOwnerFence", name, err)
+			}
+		})
+	}
+}
+
+// The binding is a pure function of the root, workflow, epoch, incarnation and
+// proof digest. Identical inputs give identical evidence, and any changed input
+// changes it.
+func TestOwnerDrainEvidenceDigestBindsEveryInput(t *testing.T) {
+	incarnation := strings.Repeat("e", 64)
+	proof := strings.Repeat("a", 64)
+	base := ownerDrainEvidenceDigest("root", "wf", 1, incarnation, proof)
+	if !validDigest(base) {
+		t.Fatalf("drain evidence digest %q is not a SHA-256 digest", base)
+	}
+	if got := ownerDrainEvidenceDigest("root", "wf", 1, incarnation, proof); got != base {
+		t.Fatalf("identical inputs gave different evidence: %s != %s", got, base)
+	}
+	for name, got := range map[string]string{
+		"root":        ownerDrainEvidenceDigest("root-other", "wf", 1, incarnation, proof),
+		"workflow":    ownerDrainEvidenceDigest("root", "wf-other", 1, incarnation, proof),
+		"epoch":       ownerDrainEvidenceDigest("root", "wf", 2, incarnation, proof),
+		"incarnation": ownerDrainEvidenceDigest("root", "wf", 1, strings.Repeat("f", 64), proof),
+		"proof":       ownerDrainEvidenceDigest("root", "wf", 1, incarnation, strings.Repeat("b", 64)),
+	} {
+		if got == base {
+			t.Fatalf("changing %s did not change the drain evidence digest", name)
+		}
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"tbound/supervisor/internal/broker"
 	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/drainproof"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
@@ -51,12 +53,17 @@ type combinedRecoveryScenario struct {
 	maxPreEffectRetries uint64
 	maxCleanRestarts    uint64
 	deadline            time.Duration
+	// withoutCleanupReceipt models a superseded owner whose cleanup scope is
+	// absent and has no durable cleanup receipt. Every other scenario seeds one.
+	withoutCleanupReceipt bool
 }
 
 var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
 	"two-cycles":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute},
 	"retry-exhausted": {maxPreEffectRetries: 0, maxCleanRestarts: 2, deadline: 10 * time.Minute},
 	"deadline":        {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 8 * time.Second},
+	"absent-scope-no-receipt": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute,
+		withoutCleanupReceipt: true},
 }
 
 type combinedRecoveryPaths struct {
@@ -87,12 +94,133 @@ func (p combinedRecoveryPaths) providerJournal(ordinal uint64) string {
 	return filepath.Join(p.root, fmt.Sprintf("provider-audit-ord%d.jsonl", ordinal))
 }
 
-// combinedRecoveryDrain stands in for the host cell-drain proof. The superseded
-// owner in these tests is a process that has already exited.
-type combinedRecoveryDrain struct{}
+// combinedRecoveryScopeRecord is the host's durable record for one owner epoch's
+// cleanup scope. ScopeIdentity is the binding recorded when the scope was
+// created. CleanupReceipt is the receipt written when that scope was torn down,
+// and it is empty when no cleanup completed.
+type combinedRecoveryScopeRecord struct {
+	ScopeIdentity  string `json:"scope_identity"`
+	CleanupReceipt string `json:"cleanup_receipt,omitempty"`
+}
 
-func (combinedRecoveryDrain) VerifyOwnerCellsDrained(context.Context, string, []workflowrecovery.OwnerEpochIdentity) error {
-	return nil
+const combinedRecoveryScopeRecordsName = "cleanup-scope-records.json"
+
+func combinedRecoveryReadScopeRecords(root string) (map[string]combinedRecoveryScopeRecord, error) {
+	records := map[string]combinedRecoveryScopeRecord{}
+	data, err := os.ReadFile(filepath.Join(root, combinedRecoveryScopeRecordsName))
+	if errors.Is(err, os.ErrNotExist) {
+		return records, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(data, &records); err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+// combinedRecoverySeedScope records, when an owner process exits, the scope
+// binding for its epoch and, if the scenario models a completed cleanup, the
+// matching cleanup receipt. Without a receipt the scope is absent and undrained.
+func combinedRecoverySeedScope(t *testing.T, root string, epoch uint64, withReceipt bool) {
+	t.Helper()
+	records, err := combinedRecoveryReadScopeRecords(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity := digestBytes([]byte(fmt.Sprintf("combined-recovery-scope/%s/epoch-%d", combinedRecoveryWorkflow, epoch)))
+	record := combinedRecoveryScopeRecord{ScopeIdentity: identity}
+	if withReceipt {
+		record.CleanupReceipt = identity
+	}
+	records[strconv.FormatUint(epoch, 10)] = record
+	combinedRecoveryWriteJSON(t, filepath.Join(root, combinedRecoveryScopeRecordsName), records)
+}
+
+// combinedRecoveryHostObserver is the fake host observation for these fixtures.
+// Process facts are read from procfs. The cleanup-scope facts come from the
+// durable records above. No cgroup exists in these fixtures, so every superseded
+// owner's scope is observed as absent.
+type combinedRecoveryHostObserver struct {
+	root string
+}
+
+func (o combinedRecoveryHostObserver) observe(owner workflowrecovery.OwnerEpochIdentity) (drainproof.OwnerObservation, error) {
+	records, err := combinedRecoveryReadScopeRecords(o.root)
+	if err != nil {
+		return drainproof.OwnerObservation{}, err
+	}
+	bootData, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		return drainproof.OwnerObservation{}, err
+	}
+	bootID := strings.TrimSpace(string(bootData))
+	observedStart, present, err := combinedRecoveryProcessStartTicks(owner.Incarnation.PID)
+	if err != nil {
+		return drainproof.OwnerObservation{}, err
+	}
+	live := present && bootID == owner.Incarnation.BootID && observedStart == owner.Incarnation.StartTimeTicks
+	record := records[strconv.FormatUint(owner.Epoch, 10)]
+	return drainproof.OwnerObservation{
+		Owner: owner, BootID: owner.Incarnation.BootID, ObservedBootID: bootID,
+		StartTicks: owner.Incarnation.StartTimeTicks, ObservedStartTicks: observedStart,
+		ProcessLive: live, Scope: drainproof.ScopeObservation{Absent: true},
+		CleanupReceiptIdentity: record.CleanupReceipt, ExpectedScopeIdentity: record.ScopeIdentity,
+	}, nil
+}
+
+// combinedRecoveryProcessStartTicks reads a PID's start ticks from procfs. It
+// reports present=false when no such process exists.
+func combinedRecoveryProcessStartTicks(pid int) (uint64, bool, error) {
+	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+	closeParen := strings.LastIndexByte(string(data), ')')
+	if closeParen < 0 {
+		return 0, false, errors.New("malformed process stat")
+	}
+	fields := strings.Fields(string(data[closeParen+1:]))
+	if len(fields) <= 19 {
+		return 0, false, errors.New("process stat lacks its start time")
+	}
+	start, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil || start == 0 {
+		return 0, false, errors.New("process stat has an invalid start time")
+	}
+	return start, true, nil
+}
+
+// combinedRecoveryDrain verifies superseded owners with drainproof over the fake
+// host observer. A superseded owner is drained only when its process has exited,
+// its scope is absent, and a cleanup receipt matches the recorded scope binding.
+type combinedRecoveryDrain struct {
+	root string
+}
+
+func (d combinedRecoveryDrain) VerifyOwnerCellsDrainedWithProof(ctx context.Context, _ string,
+	owners []workflowrecovery.OwnerEpochIdentity) ([]string, error) {
+	if ctx == nil || len(owners) == 0 {
+		return nil, errors.New("no superseded owner to drain")
+	}
+	observer := combinedRecoveryHostObserver{root: d.root}
+	digests := make([]string, 0, len(owners))
+	for _, owner := range owners {
+		observation, err := observer.observe(owner)
+		if err != nil {
+			return nil, err
+		}
+		proof, err := drainproof.Prove(observation)
+		if err != nil {
+			return nil, err
+		}
+		digests = append(digests, proof.Digest)
+	}
+	return digests, nil
 }
 
 type combinedRecoveryGitName struct {
@@ -117,6 +245,8 @@ type combinedRecoveryResult struct {
 	Counters           workflowrecovery.Counters `json:"counters"`
 	Transcripts        int                       `json:"transcripts"`
 	StoreEffects       int                       `json:"store_effects"`
+	// FenceEpoch is the protected root's accepted fence high-water mark.
+	FenceEpoch uint64 `json:"fence_epoch"`
 }
 
 func combinedRecoveryFileDigest(path string, limit int64) (combinedRecoveryFileEvidence, error) {
@@ -260,7 +390,7 @@ func TestGovernedRecoveryCombinedChildEntry(t *testing.T) {
 	case "original":
 		combinedRecoveryOriginal(t, root, step, combinedRecoveryScenarios[scenario])
 	case "recover", "recover-capture":
-		combinedRecoveryRecover(t, root, step, phase == "recover-capture")
+		combinedRecoveryRecover(t, root, step, phase == "recover-capture", combinedRecoveryScenarios[scenario])
 	default:
 		t.Fatalf("unknown combined recovery phase %q", phase)
 	}
@@ -481,6 +611,7 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 		evidence[name] = digest
 	}
 	combinedRecoveryWriteJSON(t, p.evidence, evidence)
+	combinedRecoverySeedScope(t, root, 1, !sc.withoutCleanupReceipt)
 	combinedRecoveryWriteJSON(t, filepath.Join(root, "result-"+step+".json"), combinedRecoveryResult{
 		Step: step, Deadline: deadline, OwnerEpoch: 1, RecoveryGeneration: 1, Captured: true,
 		Counters: checkpoint.Counters, Transcripts: 1, StoreEffects: len(storeTrace.Effects),
@@ -491,11 +622,11 @@ func combinedRecoveryOriginal(t *testing.T, root, step string, sc combinedRecove
 // combinedRecoveryRecover runs one fresh recovery process. It verifies the
 // retained crash evidence, performs the production prepare/activate sequence,
 // and records the durable checkpoint it observes.
-func combinedRecoveryRecover(t *testing.T, root, step string, capture bool) {
+func combinedRecoveryRecover(t *testing.T, root, step string, capture bool, sc combinedRecoveryScenario) {
 	t.Helper()
 	ctx := context.Background()
 	p := combinedRecoveryPathsFor(root)
-	boundary, err := workflowrecovery.NewLinuxHostBoundary(p.ownerStore, uint32(os.Geteuid()), combinedRecoveryDrain{}, &verticalFreshWorkflowPolicy{})
+	boundary, err := workflowrecovery.NewLinuxHostBoundary(p.ownerStore, uint32(os.Geteuid()), combinedRecoveryDrain{root: root}, &verticalFreshWorkflowPolicy{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,6 +756,9 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool) {
 			_ = candidate.Close()
 		} else {
 			result.Activated = true
+			// This process now owns the new epoch. Its scope record is written when
+			// it exits, so the next recovery can observe it.
+			combinedRecoverySeedScope(t, root, request.NewOwnerEpoch, !sc.withoutCleanupReceipt)
 			if capture {
 				if err := session.Authority.AdmitPrompt(session.Conversation, session.Durable,
 					session.RecoveryPromptTask, session.RecoveryPrompt); err != nil {
@@ -646,6 +780,11 @@ func combinedRecoveryRecover(t *testing.T, root, step string, capture bool) {
 		t.Fatal(err)
 	}
 	result.OwnerEpoch, result.RecoveryGeneration, result.Counters = after.Pins.OwnerEpoch, after.Pins.RecoveryGeneration, after.Counters
+	next, err := protectedRoot.NextOwnerEpoch(ctx, combinedRecoveryWorkflow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result.FenceEpoch = next - 1
 	combinedRecoveryWriteJSON(t, filepath.Join(root, "result-"+step+".json"), result)
 	if result.Captured {
 		os.Exit(combinedRecoveryCrashExit)
@@ -759,6 +898,33 @@ func TestGovernedRecoveryCombinedRetryExhaustionChargesNoRestart(t *testing.T) {
 			result.PrepareError, result.ActivateError)
 	}
 	combinedRecoveryRequireCounters(t, result, workflowrecovery.Counters{HostCalls: 1, Tokens: combinedRecoveryTokens})
+}
+
+// TestGovernedRecoveryCombinedAbsentScopeWithoutReceiptRefusesRecovery is the
+// negative twin of the restart scenarios. The superseded owner's process has
+// exited and its cleanup scope is absent, but no cleanup receipt was recorded.
+// That owner is not drained, so recovery must be refused by the owner fence and
+// must not acquire the next owner epoch.
+func TestGovernedRecoveryCombinedAbsentScopeWithoutReceiptRefusesRecovery(t *testing.T) {
+	root := privateGovernedTestRoot(t)
+	const scenario = "absent-scope-no-receipt"
+	combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
+	// The capturing phase scripts a provider turn, so an accepted drain would
+	// activate and capture. A refusal must therefore be the fence, not a
+	// fixture shortfall.
+	result := combinedRecoveryRunChild(t, root, scenario, "recover-capture", "r1", 0)
+	if result.Activated || (result.PrepareError == "" && result.ActivateError == "") {
+		t.Fatalf("recovery activated over an undrained superseded owner: prepare=%q activate=%q",
+			result.PrepareError, result.ActivateError)
+	}
+	refusal := result.PrepareError + result.ActivateError
+	if !strings.Contains(refusal, workflowrecovery.ErrOwnerFence.Error()) {
+		t.Fatalf("recovery refusal = %q, want the owner fence refusal", refusal)
+	}
+	if result.OwnerEpoch != 1 || result.FenceEpoch != 1 {
+		t.Fatalf("refused recovery moved the owner fence: checkpoint epoch=%d fence epoch=%d, want 1 and 1",
+			result.OwnerEpoch, result.FenceEpoch)
+	}
 }
 
 // TestGovernedRecoveryCombinedDeadlineChargesNothing checks that recovery after
