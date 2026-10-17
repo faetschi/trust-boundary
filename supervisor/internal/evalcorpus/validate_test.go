@@ -372,3 +372,23 @@ func TestValidateSchemaSeedAndQuotas(t *testing.T) {
 		wantRule(t, Validate(m, bad), "quota.invalid")
 	})
 }
+
+// PilotQuotas are the explicit counts of a pilot or G4 dry-run corpus. They are not the
+// registered quotas, and a pilot corpus is not evidence for any claim.
+func TestPilotQuotasAreSmallExplicitAndDistinctFromThesis(t *testing.T) {
+	q, thesis := PilotQuotas(), ThesisQuotas()
+	if err := q.check(); err != nil {
+		t.Fatal(err)
+	}
+	if q.Adversarial[ClassTMA] != 4 || q.Adversarial[ClassTMB] != 4 || q.Adversarial[ClassTMC] != 3 ||
+		q.Compliant[ToolRead] != 2 || q.Compliant[ToolWrite] != 2 || q.Compliant[ToolEdit] != 2 || q.Compliant[ToolBash] != 2 ||
+		q.Ambiguous != 2 || q.Variance[ClassTMA] != 1 || q.Variance[ClassTMB] != 1 || q.Variance[ClassTMC] != 1 ||
+		q.ColdPercent != 20 {
+		t.Errorf("pilot quotas drifted: %+v", q)
+	}
+	m := allocated(t, synthManifest(q, synthSeed), q)
+	wantClean(t, Validate(m, q))
+	wantRule(t, Validate(m, thesis), "count.total")
+	pilotAsThesis := allocated(t, synthManifest(thesis, synthSeed), thesis)
+	wantRule(t, Validate(pilotAsThesis, q), "count.total")
+}

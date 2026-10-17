@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
+	"time"
 
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
@@ -22,6 +23,7 @@ var ErrPiServiceCorpus = errors.New("corpus manifest is missing, not the pinned 
 var (
 	readCorpusManifest = piruntime.ReadD09ManagedPiCorpusManifest
 	corpusQuotas       = evalcorpus.ThesisQuotas
+	pilotCorpusQuotas  = evalcorpus.PilotQuotas
 )
 
 // The closed set of governed roles. Each names one planned governed C trial of a case
@@ -57,8 +59,10 @@ type corpusCase struct {
 // admits. It is built once at service start and is read-only afterwards.
 type productionCorpus struct {
 	digest string
-	trials map[string]evalcorpus.Trial
-	cases  map[string]corpusCase
+	// quotaProfile is the profile the manifest was validated under: "thesis" or "pilot".
+	quotaProfile string
+	trials       map[string]evalcorpus.Trial
+	cases        map[string]corpusCase
 }
 
 // corpusAdmissionID is the one-use admission id of a trial: <case_id>/<role>/<attempt>.
@@ -126,11 +130,18 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 		return nil, fmt.Errorf("%w: manifest digest %s differs from the signed config digest %s",
 			ErrPiServiceCorpus, digest, config.CorpusManifestDigest)
 	}
-	if violations := evalcorpus.Validate(manifest, corpusQuotas()); len(violations) != 0 {
-		return nil, fmt.Errorf("%w: evalcorpus.Validate: %d violation(s), first %s: %s",
-			ErrPiServiceCorpus, len(violations), violations[0].Rule, violations[0].Detail)
+	profile := config.effectiveCorpusQuotaProfile()
+	quotas := corpusQuotas()
+	if profile == piruntime.D09ManagedPiCorpusQuotaProfilePilot {
+		quotas = pilotCorpusQuotas()
+	} else if profile != piruntime.D09ManagedPiCorpusQuotaProfileThesis {
+		return nil, fmt.Errorf("%w: unknown corpus quota profile %q", ErrPiServiceCorpus, profile)
 	}
-	corpus := &productionCorpus{digest: digest, trials: make(map[string]evalcorpus.Trial, len(manifest.Cases)),
+	if violations := evalcorpus.Validate(manifest, quotas); len(violations) != 0 {
+		return nil, fmt.Errorf("%w: evalcorpus.Validate under the %s quotas: %d violation(s), first %s: %s",
+			ErrPiServiceCorpus, profile, len(violations), violations[0].Rule, violations[0].Detail)
+	}
+	corpus := &productionCorpus{digest: digest, quotaProfile: profile, trials: make(map[string]evalcorpus.Trial, len(manifest.Cases)),
 		cases: make(map[string]corpusCase, len(manifest.Cases))}
 	for _, c := range manifest.Cases {
 		if c.Trial == nil {
@@ -161,6 +172,7 @@ type workflowEnvelope struct {
 	MaxTokens            uint64
 	DurationSeconds      uint64
 	CorpusManifestDigest string
+	CorpusQuotaProfile   string
 }
 
 // envelopeFor resolves the envelope that request selects, or reports that it selects
@@ -174,7 +186,7 @@ func (c *piServiceWorkflowCatalog) envelopeFor(config piServiceConfig, request p
 			MaxHostCalls: config.WorkflowMaxHostCalls, MaxTokens: config.WorkflowMaxTokens,
 			DurationSeconds: config.WorkflowDurationSeconds}, true
 	}
-	if c == nil || c.corpus == nil || config.CorpusManifestDigest != c.corpus.digest ||
+	if c == nil || c.corpus == nil || config.CorpusManifestDigest != c.corpus.digest || config.effectiveCorpusQuotaProfile() != c.corpus.quotaProfile ||
 		request.Prompt != "" || (request.Attempt != 1 && request.Attempt != 2) || !c.corpus.roleAllowed(request.TaskID, request.Role) ||
 		!reflect.DeepEqual(admissionRequestBashPaths(request), config.WorkflowBashOutputPaths) {
 		return workflowEnvelope{}, false
@@ -185,7 +197,7 @@ func (c *piServiceWorkflowCatalog) envelopeFor(config piServiceConfig, request p
 	}
 	return workflowEnvelope{AdmissionID: corpusAdmissionID(request.TaskID, request.Role, request.Attempt), Prompt: trial.Prompt,
 		MaxHostCalls: trial.MaxHostCalls, MaxTokens: trial.MaxTokens, DurationSeconds: trial.DurationSeconds,
-		CorpusManifestDigest: c.corpus.digest}, true
+		CorpusManifestDigest: c.corpus.digest, CorpusQuotaProfile: c.corpus.quotaProfile}, true
 }
 
 // admissionScreen returns the pre-journal screen of the service: it refuses a request
@@ -237,6 +249,49 @@ func (c *piServiceWorkflowCatalog) screenRequest(config piServiceConfig, peer pi
 		if entry := c.entries[hash]; entry.RequestID != request.RequestID || entry.PeerUID != peer.UID {
 			return "admission-already-used"
 		}
+	}
+	return ""
+}
+
+// terminalReplayCheck returns the check the service runs before it returns a stored
+// terminal response. A response recorded under one manifest, service config or
+// registration must not be answered by a service bound to another: the identical
+// request would otherwise return the old receipt before ResolveAdmission checks
+// anything. The check compares the catalog entry the request reserved with the active
+// config digest, registration identity and the envelope the request selects now.
+func (c *piServiceWorkflowCatalog) terminalReplayCheck(config piServiceConfig, configDigest,
+	registrationID string) func(piServicePeerCredentials, piServiceRequest, piServiceRequestState) string {
+	return func(peer piServicePeerCredentials, request piServiceRequest, state piServiceRequestState) string {
+		return c.screenTerminalReplay(config, configDigest, registrationID, request, state)
+	}
+}
+
+const replayBindingMismatch = "replay-binding-mismatch"
+
+func (c *piServiceWorkflowCatalog) screenTerminalReplay(config piServiceConfig, configDigest, registrationID string,
+	request piServiceRequest, state piServiceRequestState) string {
+	if c == nil || state.terminal == nil {
+		return replayBindingMismatch
+	}
+	c.mu.Lock()
+	entry, reserved := c.entries[state.acceptedRecord.Hash]
+	c.mu.Unlock()
+	if !reserved {
+		// Accepted but never reserved: no workflow ran, so a stored unknown terminal
+		// (a failed resolution) has no binding to compare. A completed one must have one.
+		if state.terminal.Status == "completed" {
+			return replayBindingMismatch
+		}
+		return ""
+	}
+	envelope, ok := c.envelopeFor(config, request)
+	if !ok || entry.ServiceConfigDigest != configDigest || entry.ServiceRegistrationID != registrationID ||
+		entry.HostAdmissionID != envelope.AdmissionID || entry.CorpusManifestDigest != envelope.CorpusManifestDigest ||
+		entry.CorpusQuotaProfile != envelope.CorpusQuotaProfile ||
+		entry.TaskPrompt != envelope.Prompt || entry.Limits.MaxHostCalls != envelope.MaxHostCalls ||
+		entry.Limits.MaxTokens != envelope.MaxTokens ||
+		entry.Limits.Deadline.Sub(entry.ReservedAt) != time.Duration(envelope.DurationSeconds)*time.Second {
+		return replayBindingMismatch
 	}
 	return ""
 }

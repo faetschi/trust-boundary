@@ -134,6 +134,8 @@ type piServiceConfig struct {
 	WorkflowDurationSeconds     uint64   `json:"workflow_duration_seconds"`
 	CorpusManifestPath          string   `json:"corpus_manifest_path,omitempty"`
 	CorpusManifestDigest        string   `json:"corpus_manifest_digest,omitempty"`
+	CorpusQuotaProfile          string   `json:"corpus_quota_profile,omitempty"`
+	AllowPilotOnResearch        bool     `json:"allow_pilot_on_research,omitempty"`
 	PodmanHome                  string   `json:"podman_home"`
 	PodmanGraphRoot             string   `json:"podman_graphroot"`
 	PodmanRunRoot               string   `json:"podman_runroot"`
@@ -250,6 +252,16 @@ type piServiceRequestState struct {
 	accepted       piServiceRequestAcceptedEvent
 	acceptedRecord audit.Record
 	terminal       *piServiceResponse
+	// abandoned is the operator settlement of an unknown terminal, if one was journaled.
+	abandoned *piServiceRequestAbandonedEvent
+}
+
+// piServiceVerifiedSettlement identifies the journal state of one request that passed
+// settlement verification. The terminal pointer makes a replaced terminal a different state.
+type piServiceVerifiedSettlement struct {
+	acceptedHash     string
+	acceptedSequence uint64
+	terminal         *piServiceResponse
 }
 
 type piServiceRequestJournal struct {
@@ -257,17 +269,61 @@ type piServiceRequestJournal struct {
 	journal            *audit.Journal
 	entries            map[string]piServiceRequestState
 	settlementVerifier func(context.Context, piServiceRequestState) error
+	// verified is the in-memory record of settlement verifications that passed in this
+	// process. See begin for the exact guarantee. It starts empty at every service start.
+	verified map[string]piServiceVerifiedSettlement
 	// admissionScreen is the service's host-side check of a request that runs before
 	// the request is journaled as accepted. It returns an error code to refuse the
 	// request without consuming its request id, or "" to let it proceed. It is nil
 	// until the service installs it.
 	admissionScreen func(piServicePeerCredentials, piServiceRequest) string
+	// terminalReplayCheck is the service's check of a stored terminal response against the
+	// active manifest, config, registration and envelope before it is returned. It returns
+	// an error code to refuse the replay, or "". It is nil until the service installs it.
+	terminalReplayCheck func(piServicePeerCredentials, piServiceRequest, piServiceRequestState) string
+	// afterScreen is a test seam called after the first admission screen passed and before
+	// the request competes for the one active-task slot. It is nil in production.
+	afterScreen func(request piServiceRequest, active *atomic.Bool)
 }
 
 func (j *piServiceRequestJournal) setAdmissionScreen(screen func(piServicePeerCredentials, piServiceRequest) string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	j.admissionScreen = screen
+}
+
+func (j *piServiceRequestJournal) setTerminalReplayCheck(check func(piServicePeerCredentials, piServiceRequest, piServiceRequestState) string) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.terminalReplayCheck = check
+}
+
+func (j *piServiceRequestJournal) setAfterScreen(hook func(piServiceRequest, *atomic.Bool)) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	j.afterScreen = hook
+}
+
+func (j *piServiceRequestJournal) runAfterScreen(request piServiceRequest, active *atomic.Bool) {
+	j.mu.Lock()
+	hook := j.afterScreen
+	j.mu.Unlock()
+	if hook != nil {
+		hook(request, active)
+	}
+}
+
+// checkTerminalReplay runs the installed replay check. With none installed (a test
+// fixture without a catalog) a stored terminal is returned as is.
+func (j *piServiceRequestJournal) checkTerminalReplay(peer piServicePeerCredentials, request piServiceRequest,
+	state piServiceRequestState) string {
+	j.mu.Lock()
+	check := j.terminalReplayCheck
+	j.mu.Unlock()
+	if check == nil {
+		return ""
+	}
+	return check(peer, request, state)
 }
 
 // screen runs the installed admission screen. A refused request is not journaled.
@@ -713,17 +769,45 @@ func validateProductionPiServiceConfig(config piServiceConfig) error {
 	return nil
 }
 
+// validPiServiceCorpusQuotaProfile mirrors piruntime.D09ManagedPiServiceConfig: the thesis
+// profile (absent or explicit) on any route, the pilot profile on the engineering route, or
+// on the research route only with the explicit allowance, which is refused wherever it has
+// nothing to allow.
+func validPiServiceCorpusQuotaProfile(config piServiceConfig) bool {
+	switch config.CorpusQuotaProfile {
+	case "", piruntime.D09ManagedPiCorpusQuotaProfileThesis:
+		return !config.AllowPilotOnResearch
+	case piruntime.D09ManagedPiCorpusQuotaProfilePilot:
+		return config.AllowPilotOnResearch == (config.ProviderRoute == piruntime.D09ManagedPiProviderRouteResearch)
+	}
+	return false
+}
+
+// effectiveCorpusQuotaProfile is "thesis" or "pilot" for a corpus-mode config (an absent
+// member is thesis) and "" for a single-task config.
+func (config piServiceConfig) effectiveCorpusQuotaProfile() string {
+	if config.WorkflowAdmissionMode != piServiceAdmissionCorpus {
+		return ""
+	}
+	if config.CorpusQuotaProfile == "" {
+		return piruntime.D09ManagedPiCorpusQuotaProfileThesis
+	}
+	return config.CorpusQuotaProfile
+}
+
 func validPiServiceAdmissionEnvelope(config piServiceConfig) bool {
 	switch config.WorkflowAdmissionMode {
 	case "fresh", "resume":
 		return config.CorpusManifestPath == "" && config.CorpusManifestDigest == "" &&
+			config.CorpusQuotaProfile == "" && !config.AllowPilotOnResearch &&
 			boundedProductionIdentity(config.WorkflowAdmissionID, productionRequestMaxBytes) &&
 			boundedProductionIdentity(config.WorkflowTaskID, productionTaskIDMaxBytes) &&
 			boundedProductionPrompt(config.WorkflowPrompt)
 	case piServiceAdmissionCorpus:
 		return config.SchemaVersion == piServiceConfigSchema &&
 			config.WorkflowAdmissionID == "" && config.WorkflowTaskID == "" && config.WorkflowPrompt == "" &&
-			config.CorpusManifestPath == piServiceCorpusManifestPath && validDigestText(config.CorpusManifestDigest)
+			config.CorpusManifestPath == piServiceCorpusManifestPath && validDigestText(config.CorpusManifestDigest) &&
+			validPiServiceCorpusQuotaProfile(config)
 	}
 	return false
 }
@@ -1081,6 +1165,21 @@ func newPiServiceRequestJournal(journal *audit.Journal) (*piServiceRequestJourna
 			response := terminal.Response
 			state.terminal = &response
 			requestJournal.entries[key] = state
+		case "pi_service_request_abandoned":
+			// The operator settlement of an unknown terminal. It must name that exact
+			// terminal, so a record that does not match it refuses the service start.
+			var abandoned piServiceRequestAbandonedEvent
+			if err := unmarshalGovernedJSON(record.Event.Data, &abandoned); err != nil || abandoned.ClientUID <= 0 ||
+				!boundedProductionIdentity(abandoned.RequestID, productionRequestMaxBytes) {
+				return nil, errors.Join(ErrPiServiceUnavailable, err)
+			}
+			key := piServiceRequestKey(abandoned.ClientUID, abandoned.RequestID)
+			state, ok := requestJournal.entries[key]
+			if record.Event.ID != key+"/abandoned" || !ok || !abandoned.matches(state) {
+				return nil, ErrPiServiceUnavailable
+			}
+			state.abandoned = &abandoned
+			requestJournal.entries[key] = state
 		}
 	}
 	return requestJournal, nil
@@ -1118,16 +1217,41 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 	if _, exists := j.entries[key]; exists {
 		return audit.Record{}, ErrPiServiceRequestConflict
 	}
-	for _, prior := range j.entries {
+	// Guarantee. Every prior must be a completed request whose settlement verifies, or
+	// the new request is refused. A settlement verification that passed is remembered
+	// in memory for the life of this process, keyed to the exact journal state it
+	// covered (accepted record hash and sequence, and the terminal response object), so
+	// each later begin verifies only requests that settled since. The memory is never
+	// persisted: a service start begins empty and its first begin verifies every prior
+	// in full, so a tampered old entry is detected at the latest on the first admission
+	// after a start. Within one running service, the host evidence of a prior that was
+	// already verified (owner store, store and publication journals, cgroup scope) is
+	// not read again; a change to it is detected at the next service start, not before.
+	// A failed verification is never remembered.
+	for key, prior := range j.entries {
 		if err := ctx.Err(); err != nil {
 			return audit.Record{}, err
+		}
+		if prior.abandoned != nil && prior.terminal != nil && prior.terminal.Status == "unknown" {
+			// An operator-settled unknown terminal (tbound abandon-unknown). Its entries
+			// stay in the journal; only the block on later requests is lifted.
+			continue
 		}
 		if prior.terminal == nil || prior.terminal.Status != "completed" || j.settlementVerifier == nil {
 			return audit.Record{}, ErrPiServiceUnresolvedPrior
 		}
+		mark := piServiceVerifiedSettlement{acceptedHash: prior.acceptedRecord.Hash,
+			acceptedSequence: prior.acceptedRecord.Sequence, terminal: prior.terminal}
+		if j.verified[key] == mark {
+			continue
+		}
 		if err := j.settlementVerifier(ctx, prior); err != nil {
 			return audit.Record{}, fmt.Errorf("%w: %v", ErrPiServiceUnresolvedPrior, err)
 		}
+		if j.verified == nil {
+			j.verified = make(map[string]piServiceVerifiedSettlement)
+		}
+		j.verified[key] = mark
 	}
 	accepted := piServiceRequestAcceptedEvent{SchemaVersion: "tbound-pi-service-request-accepted/v1",
 		ClientUID: peer.UID, ClientGID: peer.GID, ClientPID: peer.PID, RequestID: request.RequestID,
@@ -1375,10 +1499,19 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			continue
 		}
 		if exists && prior.terminal != nil {
+			// A stored terminal is returned only if it still belongs to the active
+			// manifest, config, registration and envelope. A refusal consumes nothing.
+			if code := journal.checkTerminalReplay(peer, request, prior); code != "" {
+				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
+					RequestID: request.RequestID, Status: "refused", ErrorCode: code})
+				_ = unixConn.Close()
+				continue
+			}
 			_ = writePiServiceFrame(unixConn, *prior.terminal)
 			_ = unixConn.Close()
 			continue
 		}
+		journal.runAfterScreen(request, &active)
 		if !active.CompareAndSwap(false, true) {
 			_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
 				RequestID: request.RequestID, Status: "busy", ErrorCode: "one-task-at-a-time"})
@@ -1388,6 +1521,18 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 		acceptedRecord := prior.acceptedRecord
 		acceptedEvent := prior.accepted
 		if !exists {
+			// The screen ran before this request held the active slot. The task that held
+			// it may have reserved this admission, or changed what the catalog admits, in
+			// the meantime, so screen again now that nothing else can run. A refusal here
+			// journals nothing and frees the slot, instead of becoming an accepted request
+			// whose resolution fails and whose terminal unknown blocks later work.
+			if code := journal.screen(peer, request); code != "" {
+				active.Store(false)
+				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
+					RequestID: request.RequestID, Status: "refused", ErrorCode: code})
+				_ = unixConn.Close()
+				continue
+			}
 			acceptedRecord, err = journal.begin(ctx, peer, request, payloadDigest)
 			if err != nil {
 				active.Store(false)
@@ -1771,6 +1916,7 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	if !validDigestText(registrationID) {
 		return ErrPiServiceUnavailable
 	}
+	requests.setTerminalReplayCheck(workflowCatalog.terminalReplayCheck(serviceConfig, contract.ServiceConfigDigest, registrationID))
 	requests.settlementVerifier = func(settlementCtx context.Context, prior piServiceRequestState) error {
 		template, _, err := piruntime.LoadD09CellTemplate(settlementCtx)
 		if err != nil {

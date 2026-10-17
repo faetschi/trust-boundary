@@ -78,6 +78,11 @@ type governedRecoveryRequest struct {
 	// CorpusManifestDigest is the pinned corpus manifest of a corpus-mode admission, bound
 	// into the runtime digest. Empty for single-task workflows.
 	CorpusManifestDigest string
+
+	// CorpusQuotaProfile is the quota profile the corpus manifest was validated under (thesis
+	// or pilot), bound into the runtime digest so a pilot workflow cannot be taken for a
+	// thesis one. Empty for single-task workflows.
+	CorpusQuotaProfile string
 }
 
 type governedRecoveryCandidate struct {
@@ -166,6 +171,7 @@ type governedRecoveryRuntimeBinding struct {
 	XattrAuthority           string           `json:"xattr_authority"`
 	BashOutputPaths          []string         `json:"bash_output_paths"`
 	CorpusManifestDigest     string           `json:"corpus_manifest_digest,omitempty"` // corpus-mode admissions only
+	CorpusQuotaProfile       string           `json:"corpus_quota_profile,omitempty"`   // corpus-mode admissions only: thesis or pilot
 }
 
 type governedRecoveryIdentityPins struct {
@@ -254,8 +260,11 @@ func prepareGovernedRecovery(ctx context.Context, request governedRecoveryReques
 	if err != nil {
 		return nil, err
 	}
-	runtimeDigest, err := governedRecoveryRuntimeDigest(request)
-	if err != nil || runtimeDigest != previous.RuntimeDigest {
+	runtimeBinding, err := governedRecoveryRuntimeBindingFor(request)
+	if err == nil {
+		err = checkGovernedRecoveryRuntimePin(runtimeBinding, previous.RuntimeDigest)
+	}
+	if err != nil {
 		return nil, errors.Join(workflowrecovery.ErrRollback, err)
 	}
 	historicalSettlement := request.HistoricalSettlement
@@ -1148,23 +1157,45 @@ func recoveryIdentityDigest(identity any) string {
 	return hex.EncodeToString(hash[:])
 }
 
+// The runtime binding names. They moved from v2 to v3 when the binding gained
+// xattr_authority, the corpus manifest digest and the corpus quota profile. Only v3 is
+// hashed; a v2 binding or pin is refused as an unsupported version.
+const (
+	governedRecoveryRuntimeSchema        = "tbound-governed-recovery-runtime/v3"
+	governedRecoveryRuntimeBindingDomain = "tbound-workflow-runtime-binding/v3"
+	governedRecoveryRuntimeSchemaV2      = "tbound-governed-recovery-runtime/v2"
+	governedRecoveryRuntimeDomainV2      = "tbound-workflow-runtime-binding/v2"
+)
+
+// ErrGovernedRecoveryUnsupportedVersion means a runtime binding or a pin made from one
+// uses a binding version this build no longer supports.
+var ErrGovernedRecoveryUnsupportedVersion = errors.New("governed recovery runtime binding: unsupported version")
+
 func governedRecoveryRuntimeDigest(request governedRecoveryRequest) (string, error) {
+	binding, err := governedRecoveryRuntimeBindingFor(request)
+	if err != nil {
+		return "", err
+	}
+	return binding.digest()
+}
+
+func governedRecoveryRuntimeBindingFor(request governedRecoveryRequest) (governedRecoveryRuntimeBinding, error) {
 	templateDigest, err := request.D09Template.Digest()
 	if err != nil && request.ProductionProfile.Mode == piruntime.ModeProduction {
-		return "", err
+		return governedRecoveryRuntimeBinding{}, err
 	}
 	storeRoot, err := recoveryDirectoryIdentityDigest(request.StoreRoot)
 	if err != nil {
-		return "", err
+		return governedRecoveryRuntimeBinding{}, err
 	}
 	storeJournal, err := recoveryFileIdentityDigest(request.StoreJournalPath, false)
 	if err != nil {
-		return "", err
+		return governedRecoveryRuntimeBinding{}, err
 	}
 	storePath := request.StoreRoot.Name()
 	admissionJournal, err := recoveryFileIdentityDigest(filepath.Join(storePath, "delta-admission.jsonl"), false)
 	if err != nil {
-		return "", err
+		return governedRecoveryRuntimeBinding{}, err
 	}
 	commandPins := make([]string, 0, len(request.CommandHistories))
 	for _, command := range request.CommandHistories {
@@ -1172,16 +1203,16 @@ func governedRecoveryRuntimeDigest(request governedRecoveryRequest) (string, err
 		commandTrace, traceErr := command.Journal.Trace()
 		if identityErr != nil || traceErr != nil || actualCommandIdentity != command.Pin.IdentityDigest ||
 			uint64(len(commandTrace.Records)) != command.Pin.RecordCount || auditHeadHash(commandTrace.Records) != command.Pin.Head {
-			return "", errors.Join(workflowrecovery.ErrObservation, identityErr, traceErr)
+			return governedRecoveryRuntimeBinding{}, errors.Join(workflowrecovery.ErrObservation, identityErr, traceErr)
 		}
 		commandPins = append(commandPins, command.Pin.IdentityDigest)
 	}
 	identityPins, err := collectGovernedRecoveryIdentityPins(request)
 	if err != nil {
-		return "", err
+		return governedRecoveryRuntimeBinding{}, err
 	}
 	binding := governedRecoveryRuntimeBinding{
-		SchemaVersion: "tbound-governed-recovery-runtime/v2", StoreRootIdentity: storeRoot,
+		SchemaVersion: governedRecoveryRuntimeSchema, StoreRootIdentity: storeRoot,
 		RootIdentity: identityPins.RootIdentityDigest, StoreIdentity: identityPins.StoreIdentityDigest,
 		AdmissionIdentity: identityPins.AdmissionIdentityDigest, AdminIdentity: identityPins.AdminIdentityDigest,
 		StoreJournalIdentity: storeJournal, AdmissionJournalIdentity: admissionJournal,
@@ -1199,19 +1230,52 @@ func governedRecoveryRuntimeDigest(request governedRecoveryRequest) (string, err
 		XattrAuthority:  string(request.StoreOptions.XattrVisibility.Authority),
 		BashOutputPaths: cloneDurableOutputScopePaths(request.BashOutputPaths),
 		// pinned for corpus-mode admissions only
-		CorpusManifestDigest: request.CorpusManifestDigest,
+		CorpusManifestDigest: request.CorpusManifestDigest, CorpusQuotaProfile: request.CorpusQuotaProfile,
 	}
-	return binding.digest()
+	return binding, nil
 }
 
 // digest is the runtime binding digest the workflow pins and every recovery recomputes.
+// A binding of any version but the current one is refused.
 func (binding governedRecoveryRuntimeBinding) digest() (string, error) {
+	if binding.SchemaVersion != governedRecoveryRuntimeSchema {
+		return "", fmt.Errorf("%w: %q", ErrGovernedRecoveryUnsupportedVersion, binding.SchemaVersion)
+	}
+	return binding.hash(governedRecoveryRuntimeBindingDomain)
+}
+
+func (binding governedRecoveryRuntimeBinding) hash(domain string) (string, error) {
 	encoded, err := json.Marshal(binding)
 	if err != nil {
 		return "", err
 	}
-	hash := sha256.Sum256(append([]byte("tbound-workflow-runtime-binding/v2\x00"), encoded...))
+	hash := sha256.Sum256(append([]byte(domain+"\x00"), encoded...))
 	return hex.EncodeToString(hash[:]), nil
+}
+
+// legacyV2Digest is the digest a workflow pinned under the v2 names: the same members
+// under the v2 schema and domain, without the quota profile that v3 added. It exists only
+// to recognise such a pin, never to authorise one.
+func (binding governedRecoveryRuntimeBinding) legacyV2Digest() (string, error) {
+	binding.SchemaVersion, binding.CorpusQuotaProfile = governedRecoveryRuntimeSchemaV2, ""
+	return binding.hash(governedRecoveryRuntimeDomainV2)
+}
+
+// checkGovernedRecoveryRuntimePin compares the binding recomputed for a recovery with the
+// runtime digest the workflow pinned. A pin made under the v2 names is reported as an
+// unsupported version; any other difference is a rollback.
+func checkGovernedRecoveryRuntimePin(binding governedRecoveryRuntimeBinding, pinned string) error {
+	digest, err := binding.digest()
+	if err != nil {
+		return err
+	}
+	if digest == pinned {
+		return nil
+	}
+	if legacy, legacyErr := binding.legacyV2Digest(); legacyErr == nil && legacy == pinned {
+		return ErrGovernedRecoveryUnsupportedVersion
+	}
+	return workflowrecovery.ErrRollback
 }
 
 func collectGovernedRecoveryIdentityPins(request governedRecoveryRequest) (governedRecoveryIdentityPins, error) {

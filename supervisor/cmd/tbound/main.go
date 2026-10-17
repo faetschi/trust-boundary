@@ -52,6 +52,9 @@ func run(args []string, transcript io.Writer, stderr io.Writer) error {
 	if len(args) > 0 && args[0] == "serve" {
 		return runServe(args[1:], transcript, stderr)
 	}
+	if len(args) > 0 && args[0] == "abandon-unknown" {
+		return runAbandonUnknown(args[1:], transcript, stderr)
+	}
 	flags := flag.NewFlagSet("tbound", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	smokeListen := flags.Bool("smoke-listen", false, "run the synthetic, no-effect Unix-socket integration listener")

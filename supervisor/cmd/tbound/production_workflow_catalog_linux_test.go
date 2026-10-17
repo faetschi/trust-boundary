@@ -194,6 +194,10 @@ func newUnboundScopeFixture(t *testing.T, workflow string, incarnation workflowr
 	present bool, identity string) unboundScopeFixture {
 	t.Helper()
 	root := t.TempDir()
+	// audit.Open requires an exact 0700 parent; t.TempDir is 0755 under umask 022.
+	if err := os.Chmod(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	journal, err := audit.Open(filepath.Join(root, "workflow-catalog.jsonl"))
 	if err != nil {
 		t.Fatal(err)

@@ -10,3 +10,7 @@ import (
 func runServe(args []string, transcript io.Writer, stderr io.Writer) error {
 	return errors.New("native Pi host profile is missing; production --pi launch is refused")
 }
+
+func runAbandonUnknown(args []string, stdout io.Writer, stderr io.Writer) error {
+	return errors.New("abandon-unknown is available only on Linux")
+}

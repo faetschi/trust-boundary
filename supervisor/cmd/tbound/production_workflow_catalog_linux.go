@@ -70,6 +70,7 @@ type piServiceWorkflowEntry struct {
 	ServiceConfigDigest     string                              `json:"service_config_digest"`
 	ServiceRegistrationID   string                              `json:"service_registration_id"`
 	CorpusManifestDigest    string                              `json:"corpus_manifest_digest,omitempty"` // pinned manifest of a corpus-mode admission
+	CorpusQuotaProfile      string                              `json:"corpus_quota_profile,omitempty"`   // quota profile that manifest was validated under
 	WorkflowID              string                              `json:"workflow_id"`
 	RunID                   string                              `json:"run_id"`
 	SessionID               string                              `json:"session_id"`
@@ -343,6 +344,7 @@ func (c *piServiceWorkflowCatalog) ResolveAdmission(admission piServiceAdmission
 		matched.Request.Prompt = envelope.Prompt // a corpus request carries no prompt; the manifest owns it
 		if !catalogEntryMatchesAdmission(existing, matched, configDigest, registrationID) || !admission.IsReplay ||
 			existing.HostAdmissionID != envelope.AdmissionID || existing.CorpusManifestDigest != envelope.CorpusManifestDigest ||
+			existing.CorpusQuotaProfile != envelope.CorpusQuotaProfile ||
 			!existing.CheckpointBound || existing.Terminal {
 			return nil, ErrPiWorkflowCatalog
 		}
@@ -401,6 +403,7 @@ func (c *piServiceWorkflowCatalog) ResolveAdmission(admission piServiceAdmission
 			MaxTokens: envelope.MaxTokens,
 			Deadline:  reservedAt.Add(time.Duration(envelope.DurationSeconds) * time.Second)},
 		ReservedAt: reservedAt, CorpusManifestDigest: envelope.CorpusManifestDigest,
+		CorpusQuotaProfile: envelope.CorpusQuotaProfile,
 	}
 	event := piServiceWorkflowEvent{SchemaVersion: workflowCatalogSchema, AdmissionHash: key, Entry: entry}
 	if err := c.appendLocked("pi_workflow_admission_reserved", workflowCatalogEventID("reserved", key), event); err != nil {
@@ -1732,7 +1735,18 @@ func validWorkflowCatalogEntry(entry piServiceWorkflowEntry) bool {
 		boundedProductionPrompt(entry.TaskPrompt) && validDigestText(entry.TaskDigest) && validDigestText(entry.PromptDigest) &&
 		!entry.Limits.Deadline.IsZero() && entry.Limits.Deadline.Location() == time.UTC &&
 		entry.Limits.MaxPreEffectRetries <= 2 && entry.Limits.MaxCleanRestarts <= 2 &&
-		entry.Limits.MaxHostCalls > 0 && entry.Limits.MaxTokens > 0 && !entry.ReservedAt.IsZero()
+		entry.Limits.MaxHostCalls > 0 && entry.Limits.MaxTokens > 0 && !entry.ReservedAt.IsZero() &&
+		validCatalogCorpusQuotaProfile(entry)
+}
+
+// validCatalogCorpusQuotaProfile: a corpus admission names the profile its manifest was
+// validated under, and no other admission does.
+func validCatalogCorpusQuotaProfile(entry piServiceWorkflowEntry) bool {
+	if entry.CorpusManifestDigest == "" {
+		return entry.CorpusQuotaProfile == ""
+	}
+	return entry.CorpusQuotaProfile == piruntime.D09ManagedPiCorpusQuotaProfileThesis ||
+		entry.CorpusQuotaProfile == piruntime.D09ManagedPiCorpusQuotaProfilePilot
 }
 
 func workflowEnvelopeMatchesRequest(config piServiceConfig, request piServiceRequest) bool {

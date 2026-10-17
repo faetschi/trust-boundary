@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -368,6 +369,11 @@ type corpusServiceHarness struct {
 	config       piServiceConfig
 	digest       string
 	manifest     evalcorpus.Manifest
+
+	configDigest   string
+	registrationID string
+	// beforeResolve, when set, runs in the runner before the catalog reservation.
+	beforeResolve atomic.Pointer[func(piServiceRequest)]
 }
 
 // newCorpusServiceHarness serves the real request loop with the real corpus
@@ -385,13 +391,17 @@ func newCorpusServiceHarness(t *testing.T) *corpusServiceHarness {
 	catalog, catalogAudit := corpusTestCatalog(t, root, corpus)
 	configDigest := corpusTestDigest("service config")
 	registrationID := corpusTestDigest("registration")
-	harness := &corpusServiceHarness{catalog: catalog, catalogAudit: catalogAudit, config: config, digest: digest, manifest: manifest}
+	harness := &corpusServiceHarness{catalog: catalog, catalogAudit: catalogAudit, config: config, digest: digest, manifest: manifest,
+		configDigest: configDigest, registrationID: registrationID}
 	harness.server = newPiServiceTestServer(t, piServiceSocketRegistration{
 		AllowedClientUIDs: []int{os.Geteuid()}, AllowedClientPrimaryGID: os.Getegid(),
 	}, func(ctx context.Context, request piServiceRequest) (json.RawMessage, error) {
 		admission, ok := piServiceAdmissionFromContext(ctx)
 		if !ok {
 			return nil, errors.New("no admission in context")
+		}
+		if gate := harness.beforeResolve.Load(); gate != nil {
+			(*gate)(request)
 		}
 		admission.ConfigDigest, admission.RegistrationID = configDigest, registrationID
 		resolved, err := catalog.ResolveAdmission(admission, config, configDigest, registrationID)
@@ -405,6 +415,7 @@ func newCorpusServiceHarness(t *testing.T) *corpusServiceHarness {
 			"deadline_seconds": int(resolved.Entry.Limits.Deadline.Sub(resolved.Entry.ReservedAt) / time.Second)})
 	})
 	harness.server.requests.setAdmissionScreen(catalog.admissionScreen(config))
+	harness.server.requests.setTerminalReplayCheck(catalog.terminalReplayCheck(config, configDigest, registrationID))
 	harness.server.requests.mu.Lock()
 	harness.server.requests.settlementVerifier = func(context.Context, piServiceRequestState) error { return nil }
 	harness.server.requests.mu.Unlock()
@@ -647,7 +658,7 @@ func TestFreshModeAdmissionIsUnchangedByCorpusSupport(t *testing.T) {
 }
 
 func TestRuntimeBindingCoversTheCorpusManifestDigest(t *testing.T) {
-	binding := governedRecoveryRuntimeBinding{SchemaVersion: "tbound-governed-recovery-runtime/v2",
+	binding := governedRecoveryRuntimeBinding{SchemaVersion: governedRecoveryRuntimeSchema,
 		StoreRootIdentity: "store", CommandJournalIdentities: []string{}, BashOutputPaths: []string{}}
 	plain, err := binding.digest()
 	if err != nil {

@@ -142,7 +142,7 @@ func initializeProductionFreshWorkflow(ctx context.Context, config productionSer
 		ProviderTokenUpperBound: productionProviderTokenUpperBound(entry.Limits), RequireEvidencedBash: true,
 		FreshProviderJournal: providerJournal, FreshProviderJournalPath: entry.ProviderJournalPath,
 		FreshJournalIdentity: providerIdentity,
-		CorpusManifestDigest: entry.CorpusManifestDigest,
+		CorpusManifestDigest: entry.CorpusManifestDigest, CorpusQuotaProfile: entry.CorpusQuotaProfile,
 	}
 	runtimeDigest, err := governedRecoveryRuntimeDigest(request)
 	if err != nil {

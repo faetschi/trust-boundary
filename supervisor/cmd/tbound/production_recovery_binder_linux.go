@@ -284,7 +284,7 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		CommandRunner:   runner, GovernedCommandRunner: runner,
 		ProviderTokenUpperBound: productionProviderTokenUpperBound(checkpoint.Limits), RequireEvidencedBash: true,
 		FreshProviderJournal: newProviderJournal, FreshProviderJournalPath: newProviderPath, FreshJournalIdentity: newProviderIdentity,
-		CorpusManifestDigest: entry.CorpusManifestDigest,
+		CorpusManifestDigest: entry.CorpusManifestDigest, CorpusQuotaProfile: entry.CorpusQuotaProfile,
 	}
 	candidate, err := prepareGovernedRecovery(ctx, request)
 	if err != nil {

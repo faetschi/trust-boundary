@@ -83,6 +83,12 @@ const (
 	D09ManagedPiResearchCredentialPath   = "/etc/tbound/provider/openrouter.key"
 	D09ManagedPiProviderRouteEngineering = "engineering"
 	D09ManagedPiProviderRouteResearch    = "research"
+
+	// Corpus quota profiles. "thesis" (the default when the member is absent) validates a
+	// corpus manifest against the pre-registered quotas; "pilot" against the small explicit
+	// pilot quotas of a pilot or G4 dry run, whose results are not thesis results.
+	D09ManagedPiCorpusQuotaProfileThesis = "thesis"
+	D09ManagedPiCorpusQuotaProfilePilot  = "pilot"
 )
 
 // D09ManagedPiServiceSocket is the fixed systemd activation policy for the
@@ -177,6 +183,14 @@ type D09ManagedPiServiceConfig struct {
 	// never from the config or a client. The digest is evalcorpus.Digest of the manifest.
 	CorpusManifestPath   string `json:"corpus_manifest_path,omitempty"`
 	CorpusManifestDigest string `json:"corpus_manifest_digest,omitempty"`
+
+	// CorpusQuotaProfile selects the quotas a corpus manifest is validated against: absent
+	// or "thesis", or "pilot". Corpus mode only. AllowPilotOnResearch is the explicit
+	// allowance that a "pilot" profile needs, and only needs, on the research provider route
+	// (default false); it is refused in every other combination. Both are members of the
+	// signed document, so the config digest the registration pins covers them.
+	CorpusQuotaProfile   string `json:"corpus_quota_profile,omitempty"`
+	AllowPilotOnResearch bool   `json:"allow_pilot_on_research,omitempty"`
 }
 
 func (c D09ManagedPiServiceConfig) Validate() error {
@@ -209,6 +223,7 @@ func (c D09ManagedPiServiceConfig) validWorkflowAdmissionEnvelope() bool {
 	switch c.WorkflowAdmissionMode {
 	case "fresh", "resume":
 		return c.CorpusManifestPath == "" && c.CorpusManifestDigest == "" &&
+			c.CorpusQuotaProfile == "" && !c.AllowPilotOnResearch &&
 			validIdentity(c.WorkflowAdmissionID) && len(c.WorkflowAdmissionID) <= 256 &&
 			validIdentity(c.WorkflowTaskID) && len(c.WorkflowTaskID) <= 256 &&
 			len(c.WorkflowPrompt) > 0 && len(c.WorkflowPrompt) <= 16<<10 && utf8.ValidString(c.WorkflowPrompt) &&
@@ -216,7 +231,21 @@ func (c D09ManagedPiServiceConfig) validWorkflowAdmissionEnvelope() bool {
 	case D09ManagedPiWorkflowAdmissionCorpus:
 		return c.SchemaVersion == D09ManagedPiServiceConfigSchema &&
 			c.WorkflowAdmissionID == "" && c.WorkflowTaskID == "" && c.WorkflowPrompt == "" &&
-			c.CorpusManifestPath == D09ManagedPiCorpusManifestPath && validDigest(c.CorpusManifestDigest)
+			c.CorpusManifestPath == D09ManagedPiCorpusManifestPath && validDigest(c.CorpusManifestDigest) &&
+			c.validCorpusQuotaProfile()
+	}
+	return false
+}
+
+// validCorpusQuotaProfile accepts the thesis profile (absent or explicit) on any route,
+// and the pilot profile on the engineering route, or on the research route only with the
+// explicit allowance. The allowance is refused wherever it has nothing to allow.
+func (c D09ManagedPiServiceConfig) validCorpusQuotaProfile() bool {
+	switch c.CorpusQuotaProfile {
+	case "", D09ManagedPiCorpusQuotaProfileThesis:
+		return !c.AllowPilotOnResearch
+	case D09ManagedPiCorpusQuotaProfilePilot:
+		return c.AllowPilotOnResearch == (c.ProviderRoute == D09ManagedPiProviderRouteResearch)
 	}
 	return false
 }
