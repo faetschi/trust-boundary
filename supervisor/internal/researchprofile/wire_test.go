@@ -19,7 +19,7 @@ func TestRequestMembersRendersTheFrozenProviderParameters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestMembers: %v", err)
 	}
-	const want = `{"provider":{"order":["example-provider"],"allow_fallbacks":false,"data_collection":"deny","require_parameters":true,"zdr":true},"temperature":0,"seed":7,"usage":{"include":true}}`
+	const want = `{"provider":{"order":["example-provider"],"allow_fallbacks":false,"data_collection":"deny","require_parameters":true,"zdr":true},"temperature":0,"seed":7,"reasoning":{"enabled":false}}`
 	if got != want {
 		t.Fatalf("members\n got %s\nwant %s", got, want)
 	}
@@ -37,7 +37,7 @@ func TestRequestMembersRendersPriceCeilingsInUSDPerMillionTokens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestMembers: %v", err)
 	}
-	const want = `{"provider":{"allow_fallbacks":false,"data_collection":"deny","quantizations":["fp8"],"require_parameters":true,"zdr":true,"max_price":{"prompt":0.27,"completion":1.1}},"temperature":0,"seed":7,"usage":{"include":true}}`
+	const want = `{"provider":{"allow_fallbacks":false,"data_collection":"deny","quantizations":["fp8"],"require_parameters":true,"zdr":true,"max_price":{"prompt":0.27,"completion":1.1}},"temperature":0,"seed":7,"reasoning":{"enabled":false}}`
 	if got != want {
 		t.Fatalf("members\n got %s\nwant %s", got, want)
 	}

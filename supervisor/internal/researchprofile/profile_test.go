@@ -32,6 +32,7 @@ const draftJSON = `{
   "max_requests_per_unit": null,
   "temperature_milli": null,
   "seed": null,
+  "reasoning": null,
   "timeout_ms": null,
   "frozen_at": null
 }`
@@ -59,13 +60,14 @@ const syntheticJSON = `{
   "max_requests_per_unit": 3,
   "temperature_milli": 0,
   "seed": 7,
+  "reasoning": {"enabled": false},
   "timeout_ms": 1234,
   "frozen_at": "2026-10-15T00:00:00Z"
 }`
 
 // syntheticCanonical is the canonical encoding of syntheticJSON: fixed field
 // order, no insignificant whitespace, explicit nulls. Digest must be its SHA-256.
-const syntheticCanonical = `{"schema_version":1,"endpoint":"https://openrouter.ai/api/v1/chat/completions","model":"deepseek/deepseek-v4.1-flash","routing":{"order":["example-provider"],"allow_fallbacks":false,"data_collection":"deny","quantizations":[],"require_parameters":true,"zdr":true},"input_micro_usd_per_1m_tokens":1111,"output_micro_usd_per_1m_tokens":2222,"max_price_micro_usd_per_1m_tokens_in":null,"max_price_micro_usd_per_1m_tokens_out":null,"max_input_tokens":1000,"max_output_tokens":100,"max_requests_per_unit":3,"temperature_milli":0,"seed":7,"timeout_ms":1234,"frozen_at":"2026-10-15T00:00:00Z"}`
+const syntheticCanonical = `{"schema_version":1,"endpoint":"https://openrouter.ai/api/v1/chat/completions","model":"deepseek/deepseek-v4.1-flash","allowed_response_models":["deepseek/deepseek-v4.1-flash"],"routing":{"order":["example-provider"],"allow_fallbacks":false,"data_collection":"deny","quantizations":[],"require_parameters":true,"zdr":true},"input_micro_usd_per_1m_tokens":1111,"output_micro_usd_per_1m_tokens":2222,"max_price_micro_usd_per_1m_tokens_in":null,"max_price_micro_usd_per_1m_tokens_out":null,"max_input_tokens":1000,"max_output_tokens":100,"max_requests_per_unit":3,"temperature_milli":0,"seed":7,"reasoning":{"enabled":false},"timeout_ms":1234,"frozen_at":"2026-10-15T00:00:00Z"}`
 
 func load(t *testing.T, doc string) Profile {
 	t.Helper()
@@ -222,6 +224,7 @@ func TestFrozenRequiresEveryOpenField(t *testing.T) {
 		{"max requests per unit", func(p *Profile) { p.MaxRequestsPerUnit = nil }, "max_requests_per_unit"},
 		{"temperature", func(p *Profile) { p.TemperatureMilli = nil }, "temperature_milli"},
 		{"seed", func(p *Profile) { p.Seed = nil }, "seed"},
+		{"reasoning", func(p *Profile) { p.Reasoning = nil }, "reasoning"},
 		{"timeout", func(p *Profile) { p.TimeoutMS = nil }, "timeout_ms"},
 		{"frozen_at", func(p *Profile) { p.FrozenAt = nil }, "frozen_at"},
 		{"routing order", func(p *Profile) { p.Routing.Order = nil }, "routing.order"},

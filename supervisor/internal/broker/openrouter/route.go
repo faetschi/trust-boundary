@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
+	"net/http"
 	"net/url"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -37,6 +40,10 @@ type Route struct {
 	// Timeout is the HTTP timeout of the research profile.
 	Timeout time.Duration
 	members string
+	// responseModels is the newline-joined exact list of response-model strings the
+	// route accepts (a string, so that Route stays comparable). The zero route
+	// accepts only Model.
+	responseModels string
 }
 
 // ResearchSpec is the input of NewResearchRoute.
@@ -45,9 +52,12 @@ type ResearchSpec struct {
 	Endpoint      string
 	ProfileDigest string
 	// Members is the canonical JSON object of request members fixed by the
-	// profile (provider routing, temperature, seed, usage accounting).
+	// profile (provider routing, temperature, seed, reasoning).
 	Members string
 	Timeout time.Duration
+	// ResponseModels lists the exact response-model strings the route accepts. Empty
+	// means just Model.
+	ResponseModels []string
 }
 
 // EngineeringRoute is the fixed OpenCode Go route.
@@ -88,8 +98,15 @@ func NewResearchRoute(spec ResearchSpec) (Route, error) {
 	if err := validateResearchMembers(spec.Members); err != nil {
 		return Route{}, err
 	}
+	models := spec.ResponseModels
+	if len(models) == 0 {
+		models = []string{spec.Model}
+	}
+	if err := validateResponseModels(models); err != nil {
+		return Route{}, err
+	}
 	return Route{Model: spec.Model, Endpoint: spec.Endpoint, ProfileDigest: spec.ProfileDigest,
-		Timeout: spec.Timeout, members: spec.Members}, nil
+		Timeout: spec.Timeout, members: spec.Members, responseModels: strings.Join(models, "\n")}, nil
 }
 
 // Validate checks that a route is exactly the engineering route or a well-formed
@@ -104,9 +121,63 @@ func (r Route) Validate() error {
 		return nil
 	}
 	checked, err := NewResearchRoute(ResearchSpec{Model: r.Model, Endpoint: r.Endpoint,
-		ProfileDigest: r.ProfileDigest, Members: r.members, Timeout: r.Timeout})
+		ProfileDigest: r.ProfileDigest, Members: r.members, Timeout: r.Timeout, ResponseModels: r.ResponseModels()})
 	if err != nil || checked != r {
 		return errors.New("provider route is not a valid research route")
+	}
+	return nil
+}
+
+// maxResponseModels bounds the response-model list of a research route.
+const maxResponseModels = 8
+
+// ResponseModels returns the exact response-model strings the route accepts.
+func (r Route) ResponseModels() []string {
+	r = r.Resolved()
+	if r.responseModels == "" {
+		return []string{r.Model}
+	}
+	return strings.Split(r.responseModels, "\n")
+}
+
+// AcceptsResponseModel reports whether a provider response may name model: an
+// exact match against the route's list, which is just the requested model unless
+// the research profile pins more. Nothing else is accepted.
+func (r Route) AcceptsResponseModel(model string) bool {
+	if model == "" {
+		return false
+	}
+	return slices.Contains(r.ResponseModels(), model)
+}
+
+// RequestHeaders is the complete header set the host puts on a provider request
+// (the transport adds Authorization). The engineering route keeps its fixed
+// OpenCode Go set. The research route sends only Content-Type: no OpenCode
+// session header, Accept or host User-Agent reaches OpenRouter, and the profile
+// declares no attribution headers.
+func (r Route) RequestHeaders(sessionID string) http.Header {
+	header := make(http.Header)
+	header.Set("Content-Type", "application/json")
+	if r.Resolved().IsResearch() {
+		return header
+	}
+	header.Set("Accept", "text/event-stream")
+	header.Set("User-Agent", UserAgent)
+	header.Set(SessionHeader, sessionID)
+	return header
+}
+
+func validateResponseModels(models []string) error {
+	if len(models) > maxResponseModels {
+		return errors.New("research route response-model list is too long")
+	}
+	for i, model := range models {
+		if !validText(model, maxText) {
+			return errors.New("research route response model is not valid text")
+		}
+		if slices.Contains(models[:i], model) {
+			return errors.New("research route response-model list repeats an entry")
+		}
 	}
 	return nil
 }

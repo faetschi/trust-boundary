@@ -31,6 +31,7 @@ const researchRouteProfileJSON = `{
   "max_requests_per_unit": 5,
   "temperature_milli": 0,
   "seed": 7,
+  "reasoning": {"enabled": false},
   "timeout_ms": 5000,
   "frozen_at": "2026-10-17T00:00:00Z"
 }`
@@ -220,5 +221,40 @@ func TestResearchRoutePathsAreFixedAndWritableUnderTheUnchangedServiceUnit(t *te
 	}
 	if !strings.Contains(string(template), "/var/lib/tbound/sessions") {
 		t.Fatal("the committed service unit no longer grants /var/lib/tbound/sessions")
+	}
+}
+
+// A changed ledger configuration (cap, stop rule, reserve basis) must change the
+// provider-profile digest that the workflow runtime pin, recovery and replay
+// compare, exactly as a changed research profile does.
+func TestLedgerConfigChangeChangesTheProviderProfileDigestPin(t *testing.T) {
+	paths := researchRoutePaths(t)
+	researchRouteGenesis(t, paths)
+	const host = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	pin := func() string {
+		route, err := openProductionProviderRoute(piServiceConfig{ProviderRoute: piruntime.D09ManagedPiProviderRouteResearch, WorkflowMaxHostCalls: 4}, paths)
+		if err != nil {
+			t.Fatalf("research route refused: %v", err)
+		}
+		defer route.Close()
+		return route.ProviderProfileDigest(host)
+	}
+	before := pin()
+	if again := pin(); again != before {
+		t.Fatal("the pin is not deterministic")
+	}
+	// min_per_unit is not stored in the ledger file, so the ledger still opens.
+	changed := strings.Replace(researchRouteLedgerConfigJSON, `"min_per_unit_worst_case_micro_usd":20000`, `"min_per_unit_worst_case_micro_usd":25000`, 1)
+	if changed == researchRouteLedgerConfigJSON {
+		t.Fatal("fixture did not change")
+	}
+	if err := os.Remove(paths.LedgerConfig); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.LedgerConfig, []byte(changed), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if after := pin(); after == before {
+		t.Fatal("a changed ledger configuration left the provider-profile digest pin unchanged")
 	}
 }

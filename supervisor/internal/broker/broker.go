@@ -211,10 +211,9 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	if err != nil {
 		return openrouter.CapturedResponse{}, b.failLocked(-1, fmt.Errorf("construct registered provider request: %w", err))
 	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Accept", "text/event-stream")
-	request.Header.Set("User-Agent", openrouter.UserAgent)
-	request.Header.Set(openrouter.SessionHeader, b.profile.ConversationID)
+	// The route fixes the header set: the research route sends no vendor session
+	// header (see openrouter.Route.RequestHeaders).
+	request.Header = b.profile.Route.RequestHeaders(b.profile.ConversationID)
 	requestBytes := uint64(len(body))
 	if requestBytes >= uint64(MaxDurableExchangeBytes) {
 		_ = request.Body.Close()
@@ -290,7 +289,7 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	if err != nil {
 		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, fmt.Errorf("capture OpenRouter response: %w", err))
 	}
-	if captured.Model() != b.profile.Model {
+	if !b.profile.Route.AcceptsResponseModel(captured.Model()) {
 		return openrouter.CapturedResponse{}, b.failLocked(recordIndex, errors.New("provider response model differs from the registered profile"))
 	}
 	if b.sequence == ^uint64(0) {

@@ -33,6 +33,7 @@ import (
 	"math"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 )
@@ -83,16 +84,30 @@ type Routing struct {
 	ZDR               *bool `json:"zdr"`
 }
 
-// Profile is one research provider profile. Every JSON field must be present;
-// null is OPEN. Money is integer micro-USD and temperature is integer
+// Reasoning mirrors OpenRouter's reasoning request object, restricted to the two
+// controls the profile freezes. Exactly one member is set: Enabled (for example
+// false to switch reasoning off) or Effort.
+type Reasoning struct {
+	Enabled *bool   `json:"enabled,omitempty"`
+	Effort  *string `json:"effort,omitempty"`
+}
+
+// Profile is one research provider profile. Every JSON field must be present
+// (allowed_response_models alone may be omitted); null is OPEN. Money is integer micro-USD and temperature is integer
 // milli-units, so the document contains no floats.
 type Profile struct {
-	SchemaVersion       uint64  `json:"schema_version"`
-	Endpoint            string  `json:"endpoint"`
-	Model               string  `json:"model"`
-	Routing             Routing `json:"routing"`
-	InputMicroUSDPer1M  *uint64 `json:"input_micro_usd_per_1m_tokens"`
-	OutputMicroUSDPer1M *uint64 `json:"output_micro_usd_per_1m_tokens"`
+	SchemaVersion uint64 `json:"schema_version"`
+	Endpoint      string `json:"endpoint"`
+	Model         string `json:"model"`
+	// AllowedResponseModels lists the exact response-model strings the provider
+	// may report for the requested Model (a dated or canonical slug, for example).
+	// The JSON member is optional; absent means just Model. Load fills the default,
+	// so the canonical digest always carries the list. A response model outside the
+	// list is never accepted.
+	AllowedResponseModels []string `json:"allowed_response_models"`
+	Routing               Routing  `json:"routing"`
+	InputMicroUSDPer1M    *uint64  `json:"input_micro_usd_per_1m_tokens"`
+	OutputMicroUSDPer1M   *uint64  `json:"output_micro_usd_per_1m_tokens"`
 	// MaxPriceMicroPerMTokIn and MaxPriceMicroPerMTokOut are optional price
 	// ceilings. They are set as a pair or not at all, and the worst case uses the
 	// larger of each declared price and its ceiling.
@@ -103,8 +118,11 @@ type Profile struct {
 	MaxRequestsPerUnit      *uint64 `json:"max_requests_per_unit"`
 	TemperatureMilli        *uint64 `json:"temperature_milli"`
 	Seed                    *uint64 `json:"seed"`
-	TimeoutMS               *uint64 `json:"timeout_ms"`
-	FrozenAt                *string `json:"frozen_at"`
+	// Reasoning is the explicit, required reasoning control sent with every
+	// request. null is OPEN.
+	Reasoning *Reasoning `json:"reasoning"`
+	TimeoutMS *uint64    `json:"timeout_ms"`
+	FrozenAt  *string    `json:"frozen_at"`
 }
 
 // Load reads one research profile. It is strict: unknown, duplicate and missing
@@ -118,18 +136,29 @@ func Load(r io.Reader) (Profile, error) {
 	if len(data) > maxProfileBytes {
 		return Profile{}, errors.New("research profile exceeds the size limit")
 	}
-	members, err := strictObject(data, jsonKeys(reflect.TypeFor[Profile]()))
+	members, err := strictObject(data, requiredProfileKeys(), optionalProfileKeys...)
 	if err != nil {
 		return Profile{}, err
 	}
 	if _, err := strictObject(members["routing"], jsonKeys(reflect.TypeFor[Routing]())); err != nil {
 		return Profile{}, err
 	}
+	if string(members["reasoning"]) != "null" {
+		if _, err := strictObject(members["reasoning"], nil, "enabled", "effort"); err != nil {
+			return Profile{}, err
+		}
+	}
+	if raw, present := members["allowed_response_models"]; present && string(raw) == "null" {
+		return Profile{}, errors.New("research profile allowed_response_models must be a list when present")
+	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	var p Profile
 	if err := dec.Decode(&p); err != nil {
 		return Profile{}, fmt.Errorf("decode research profile: %w", err)
+	}
+	if _, present := members["allowed_response_models"]; !present {
+		p.AllowedResponseModels = []string{p.Model}
 	}
 	if err := p.Validate(); err != nil {
 		return Profile{}, err
@@ -150,6 +179,12 @@ func (p Profile) Validate() error {
 		return fmt.Errorf("research profile model must be %q", fixedModel)
 	}
 	if err := p.Routing.validate(); err != nil {
+		return err
+	}
+	if err := p.validateResponseModels(); err != nil {
+		return err
+	}
+	if err := p.Reasoning.validate(); err != nil {
 		return err
 	}
 	positive := []struct {
@@ -226,6 +261,7 @@ func (p Profile) FrozenReason() error {
 		{"max_requests_per_unit", p.MaxRequestsPerUnit != nil},
 		{"temperature_milli", p.TemperatureMilli != nil},
 		{"seed", p.Seed != nil},
+		{"reasoning", p.Reasoning != nil},
 		{"timeout_ms", p.TimeoutMS != nil},
 		{"frozen_at", p.FrozenAt != nil},
 	}
@@ -289,7 +325,7 @@ func (p Profile) Digest() (string, error) {
 	if err := p.Validate(); err != nil {
 		return "", err
 	}
-	canonical, err := json.Marshal(p)
+	canonical, err := json.Marshal(p.normalized())
 	if err != nil {
 		return "", fmt.Errorf("encode research profile: %w", err)
 	}
@@ -345,15 +381,18 @@ func (r Routing) validate() error {
 }
 
 // strictObject returns the members of one JSON object. It rejects non-objects,
-// keys outside want, duplicate keys, missing keys and trailing data. A member
-// whose value is null is still present.
-func strictObject(raw []byte, want []string) (map[string]json.RawMessage, error) {
+// keys outside want and optional, duplicate keys, missing keys from want and
+// trailing data. A member whose value is null is still present.
+func strictObject(raw []byte, want []string, optional ...string) (map[string]json.RawMessage, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
 		return nil, errors.New("research profile object expected")
 	}
 	allowed := make(map[string]bool, len(want))
 	for _, key := range want {
+		allowed[key] = true
+	}
+	for _, key := range optional {
 		allowed[key] = true
 	}
 	members := make(map[string]json.RawMessage, len(want))
@@ -397,4 +436,78 @@ func jsonKeys(t reflect.Type) []string {
 		keys = append(keys, strings.Split(t.Field(i).Tag.Get("json"), ",")[0])
 	}
 	return keys
+}
+
+// optionalProfileKeys are the top-level members Load does not require.
+var optionalProfileKeys = []string{"allowed_response_models"}
+
+func requiredProfileKeys() []string {
+	return slices.DeleteFunc(jsonKeys(reflect.TypeFor[Profile]()), func(key string) bool {
+		return slices.Contains(optionalProfileKeys, key)
+	})
+}
+
+const (
+	maxResponseModels    = 8
+	maxResponseModelSize = 128
+)
+
+// ResponseModels returns the exact response-model strings the provider may
+// report: the profile's list, or just Model when no list is set.
+func (p Profile) ResponseModels() []string {
+	if p.AllowedResponseModels == nil {
+		return []string{p.Model}
+	}
+	return append([]string(nil), p.AllowedResponseModels...)
+}
+
+// normalized is the profile with the default response-model list made explicit,
+// so a profile with the member omitted and one that lists only Model digest alike.
+func (p Profile) normalized() Profile {
+	p.AllowedResponseModels = p.ResponseModels()
+	return p
+}
+
+func (p Profile) validateResponseModels() error {
+	list := p.ResponseModels()
+	if len(list) == 0 || len(list) > maxResponseModels {
+		return fmt.Errorf("research profile allowed_response_models must hold 1 to %d entries", maxResponseModels)
+	}
+	seen := make(map[string]bool, len(list))
+	for _, slug := range list {
+		if !validModelSlug(slug) || seen[slug] {
+			return errors.New("research profile allowed_response_models entries must be unique model slugs of letters, digits and ._-:/+")
+		}
+		seen[slug] = true
+	}
+	return nil
+}
+
+func validModelSlug(slug string) bool {
+	if slug == "" || len(slug) > maxResponseModelSize {
+		return false
+	}
+	for i := 0; i < len(slug); i++ {
+		c := slug[i]
+		if !('a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' || strings.IndexByte("._-:/+", c) >= 0) {
+			return false
+		}
+	}
+	return true
+}
+
+var reasoningEfforts = []string{"xhigh", "high", "medium", "low", "minimal", "none"}
+
+// validate checks a decided reasoning setting. nil is OPEN and passes here.
+func (r *Reasoning) validate() error {
+	if r == nil {
+		return nil
+	}
+	if (r.Enabled == nil) == (r.Effort == nil) {
+		return errors.New("research profile reasoning must set exactly one of enabled or effort")
+	}
+	if r.Effort != nil && !slices.Contains(reasoningEfforts, *r.Effort) {
+		return fmt.Errorf("research profile reasoning effort must be one of %s", strings.Join(reasoningEfforts, ", "))
+	}
+	return nil
 }

@@ -99,6 +99,7 @@ type Bundle struct {
 	digest       string
 	route        openrouter.Route
 	ledgerConfig LedgerConfig
+	ledgerDigest string
 	keyPath      string
 	ledger       *usdledger.Ledger
 
@@ -113,6 +114,7 @@ type inputs struct {
 	digest       string
 	route        openrouter.Route
 	ledgerConfig LedgerConfig
+	ledgerDigest string
 }
 
 // Open loads the frozen profile and the ledger configuration, checks the key, and
@@ -134,7 +136,7 @@ func open(paths Paths, endpoint string) (*Bundle, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open research USD ledger: %w", err)
 	}
-	return &Bundle{profile: in.profile, digest: in.digest, route: in.route, ledgerConfig: in.ledgerConfig,
+	return &Bundle{profile: in.profile, digest: in.digest, route: in.route, ledgerConfig: in.ledgerConfig, ledgerDigest: in.ledgerDigest,
 		keyPath: paths.Key, ledger: ledger, reserved: make(map[string]int64)}, nil
 }
 
@@ -161,6 +163,21 @@ func Genesis(paths Paths) (usdledger.Snapshot, error) {
 	return snapshot, errors.Join(snapshotErr, ledger.Close())
 }
 
+// ledgerOptions deliberately leaves usdledger.Config.ExpectedHeadSHA256 unset.
+// That check compares the ledger's CURRENT head hash, which changes with every
+// appended record, so an anchor written once at genesis would match only a ledger
+// that has not yet recorded a reservation, and the service would refuse to reopen
+// its own ledger after the first request. Detecting rollback to an older copy,
+// truncation at a record boundary or a tail edit needs an anchor that is updated
+// as the ledger grows, and nothing in the current API or file layout provides one
+// that the service cannot also rewrite. What this route does catch: a deleted
+// ledger (Open refuses a missing file without Genesis), a foreign cap or ledger
+// ID, a broken hash chain and a torn record.
+//
+// TODO(owner-decision): who owns the head-hash anchor (an operator-held copy of
+// Snapshot.HeadSHA256 compared before each run, an append-only or remote log, or
+// a root-owned file updated by a separate privileged process) is open. Until it
+// is decided, rollback of the ledger to an earlier valid state is NOT detected.
 func ledgerOptions(config LedgerConfig, genesis bool) usdledger.Config {
 	return usdledger.Config{LedgerID: config.LedgerID, CapMicroUSD: config.CapMicroUSD,
 		MinPerUnitWorstCaseMicroUSD: config.MinPerUnitWorstCaseMicroUSD, AllowGenesis: genesis}
@@ -190,7 +207,8 @@ func load(paths Paths, endpoint string) (inputs, error) {
 		endpoint = profile.Endpoint
 	}
 	route, err := openrouter.NewResearchRoute(openrouter.ResearchSpec{Model: profile.Model, Endpoint: endpoint,
-		ProfileDigest: digest, Members: members, Timeout: durationMS(*profile.TimeoutMS)})
+		ProfileDigest: digest, Members: members, Timeout: durationMS(*profile.TimeoutMS),
+		ResponseModels: profile.ResponseModels()})
 	if err != nil {
 		return inputs{}, fmt.Errorf("research route: %w", err)
 	}
@@ -206,7 +224,11 @@ func load(paths Paths, endpoint string) (inputs, error) {
 	if _, err := b.reserveAmount(*profile.MaxOutputTokens); err != nil {
 		return inputs{}, err
 	}
-	return inputs{profile: profile, digest: digest, route: route, ledgerConfig: ledgerConfig}, nil
+	ledgerDigest, err := ledgerConfig.Digest()
+	if err != nil {
+		return inputs{}, err
+	}
+	return inputs{profile: profile, digest: digest, route: route, ledgerConfig: ledgerConfig, ledgerDigest: ledgerDigest}, nil
 }
 
 // loadKey reads the research key with the engineering key's loader rules. Only
@@ -245,12 +267,14 @@ func (b *Bundle) Snapshot() (usdledger.Snapshot, error) { return b.ledger.Snapsh
 // Close releases the ledger lock.
 func (b *Bundle) Close() error { return b.ledger.Close() }
 
-// ProviderProfileDigest binds the research profile into the provider-profile
-// digest that the workflow runtime pin already commits to. The result has the
-// same "sha256:<hex>" shape as the host digest it extends, and it changes with
-// either input.
+// ProviderProfileDigest binds the research profile and the ledger configuration
+// (ledger ID, cap, stop rule, reserve basis) into the provider-profile digest that
+// the workflow runtime pin already commits to. The result has the same
+// "sha256:<hex>" shape as the host digest it extends, and it changes with any of
+// the three inputs, so recovery and replay refuse a changed ledger configuration
+// exactly as they refuse a changed profile.
 func (b *Bundle) ProviderProfileDigest(hostDigest string) string {
-	sum := sha256.Sum256([]byte("tbound-research-provider-profile/v1\x00" + hostDigest + "\x00" + b.digest))
+	sum := sha256.Sum256([]byte("tbound-research-provider-profile/v2\x00" + hostDigest + "\x00" + b.digest + "\x00" + b.ledgerDigest))
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
 

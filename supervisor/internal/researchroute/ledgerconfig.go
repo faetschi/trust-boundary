@@ -2,6 +2,8 @@ package researchroute
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -113,4 +115,19 @@ func validLedgerID(id string) bool {
 		}
 	}
 	return true
+}
+
+// Digest is the lowercase hex SHA-256 of the canonical encoding of the validated
+// configuration (fixed member order, no insignificant whitespace), so file
+// formatting and key order do not change it and any value change does.
+func (c LedgerConfig) Digest() (string, error) {
+	if err := c.validate(); err != nil {
+		return "", err
+	}
+	canonical, err := json.Marshal(c)
+	if err != nil {
+		return "", fmt.Errorf("%w: encode: %w", ErrLedgerConfig, err)
+	}
+	sum := sha256.Sum256(canonical)
+	return hex.EncodeToString(sum[:]), nil
 }

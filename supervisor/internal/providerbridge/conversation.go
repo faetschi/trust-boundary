@@ -517,7 +517,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	if len(records) != 1 || !records[0].HasResponse() {
 		return Turn{}, c.failLocked(errors.New("broker did not retain exactly one complete exchange"))
 	}
-	if captured.Model() != c.model {
+	if !c.route.AcceptsResponseModel(captured.Model()) {
 		return Turn{}, c.failLocked(errors.New("captured response model differs from registered model"))
 	}
 	if c.turns == math.MaxUint64 || c.sequence == math.MaxUint64 {

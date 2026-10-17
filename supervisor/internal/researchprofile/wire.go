@@ -38,21 +38,18 @@ type wireMaxPrice struct {
 	Completion json.Number `json:"completion"`
 }
 
-type wireUsage struct {
-	Include bool `json:"include"`
-}
-
 type wireMembers struct {
 	Provider    wireProvider `json:"provider"`
 	Temperature json.Number  `json:"temperature"`
 	Seed        uint64       `json:"seed"`
-	Usage       wireUsage    `json:"usage"`
+	Reasoning   Reasoning    `json:"reasoning"`
 }
 
 // RequestMembers returns the canonical JSON object of top-level chat-completions
 // members that this profile fixes: the provider routing object, temperature,
-// seed, and usage accounting (usage.include asks OpenRouter to report the token
-// counts and cost that the ledger settles). The caller appends them to the fixed
+// seed and the reasoning control. It does not send usage.include: OpenRouter
+// deprecated it, and usage (with usage.cost, which the ledger settles) is returned
+// without it. The caller appends them to the fixed
 // request members (model, messages, tools, stream, tool choice and the host's
 // completion cap). The result has no insignificant whitespace and a fixed member
 // order, so equal profiles give byte-equal requests. A profile that is not
@@ -79,7 +76,7 @@ func (p Profile) RequestMembers() (string, error) {
 		Provider:    provider,
 		Temperature: decimalFromMicro(*p.TemperatureMilli, 3),
 		Seed:        *p.Seed,
-		Usage:       wireUsage{Include: true},
+		Reasoning:   *p.Reasoning,
 	})
 	if err != nil {
 		return "", fmt.Errorf("encode research request members: %w", err)

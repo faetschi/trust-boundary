@@ -817,7 +817,7 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 			var exchange providerExchangeEvidence
 			if err := unmarshalGovernedJSON(record.Event.Data, &exchange); err != nil || exchange.WorkflowID != a.workflowID ||
 				providerTurn == ^uint64(0) || exchange.Turn != providerTurn+1 || exchange.ResponseIDIssuer != governedResponseIssuer || exchange.ToolCallIDIssuer != governedCallIssuer ||
-				exchange.ResponseID == "" || exchange.Model != route.Model || exchange.StatusCode != 200 ||
+				exchange.ResponseID == "" || !route.AcceptsResponseModel(exchange.Model) || exchange.StatusCode != 200 ||
 				exchange.Request.ProfileID != a.providerProfileID || exchange.Request.Method != "POST" ||
 				exchange.Request.URL != route.Endpoint || exchange.Request.Host == "" || len(exchange.Request.Body) == 0 {
 				return governedCapture{}, ErrGovernedSessionEvidence

@@ -352,7 +352,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			if err := unmarshalCanonicalEvent(record.Event.Data, &evidence); err != nil ||
 				evidence.WorkflowID != cfg.WorkflowID || evidence.Turn != providerSequence+1 ||
 				evidence.ResponseIDIssuer != responseIssuer || evidence.ToolCallIDIssuer != callIssuer ||
-				evidence.StatusCode != 200 || evidence.Model != model ||
+				evidence.StatusCode != 200 || !route.AcceptsResponseModel(evidence.Model) ||
 				verifyReplayEventID(record, cfg.ConversationID, "exchange", ordinal) != nil {
 				return TranscriptProjection{}, replayError("provider exchange metadata or event identity is invalid")
 			}
@@ -374,7 +374,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				return TranscriptProjection{}, replayError("provider exchange exceeds its durable raw-byte budget")
 			}
 			captured, err := openrouter.CaptureSSE(bytes.NewReader(evidence.Response))
-			if err != nil || captured.Model() != model || captured.ResponseID() != evidence.ResponseID {
+			if err != nil || !route.AcceptsResponseModel(captured.Model()) || captured.ResponseID() != evidence.ResponseID {
 				return TranscriptProjection{}, replayError("captured response does not parse to the recorded provider identity")
 			}
 			if !validText(captured.ResponseID(), MaxIdentityBytes) {
@@ -680,12 +680,7 @@ func verifyReplayRequestWithCompletionLimit(request requestEvidence, profileID, 
 		return err
 	}
 	endpoint, _ := url.Parse(route.Endpoint)
-	wantHeaders := httpHeaders{
-		"Accept":                 {"text/event-stream"},
-		"Content-Type":           {"application/json"},
-		"User-Agent":             {openrouter.UserAgent},
-		openrouter.SessionHeader: {conversationID},
-	}
+	wantHeaders := httpHeaders(route.RequestHeaders(conversationID))
 	if request.ProfileID != profileID || request.Method != "POST" || request.URL != route.Endpoint ||
 		request.Host != endpoint.Host || request.ContentLength != int64(len(built.Body())) ||
 		!reflect.DeepEqual(request.Headers, wantHeaders) || !bytes.Equal(request.Body, built.Body()) {

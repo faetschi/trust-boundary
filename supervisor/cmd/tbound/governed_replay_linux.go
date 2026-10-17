@@ -663,7 +663,7 @@ func (v *governedStoreReplayVerifier) VerifyDecision(binding providerbridge.Prov
 		exchangeEvidence.ResponseID != binding.ResponseID || exchangeEvidence.ToolCallIDIssuer != binding.ToolCallIDIssuer ||
 		exchangeEvidence.ToolCall == nil || exchangeEvidence.ToolCall.ID != binding.ToolCallID ||
 		exchangeEvidence.ToolCall.Name != binding.Proposal.Tool || !sameGovernedToolCallProjection(exchangeEvidence.ToolCall, binding.Proposal) ||
-		exchangeEvidence.Request.ProfileID != v.pins.Profile.ID || exchangeEvidence.Model != v.pins.Profile.Model {
+		exchangeEvidence.Request.ProfileID != v.pins.Profile.ID || !v.pins.Profile.Route.AcceptsResponseModel(exchangeEvidence.Model) {
 		return errors.New("provider exchange does not bind the exact call proposal and pinned profile")
 	}
 	if binding.GateDecision.Verdict == gate.Deny {

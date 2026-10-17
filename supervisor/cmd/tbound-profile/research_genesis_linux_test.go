@@ -30,6 +30,7 @@ const genesisProfileJSON = `{
   "max_requests_per_unit": 5,
   "temperature_milli": 0,
   "seed": 7,
+  "reasoning": {"enabled": false},
   "timeout_ms": 5000,
   "frozen_at": "2026-10-17T00:00:00Z"
 }`

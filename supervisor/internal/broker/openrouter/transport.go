@@ -28,6 +28,9 @@ type HTTPDoer struct {
 	client   *http.Client
 	key      APIKeySource
 	endpoint string
+	// research selects the research header set (Content-Type only, see
+	// Route.RequestHeaders). It is set only by NewHTTPDoerForEndpoint.
+	research bool
 }
 
 func NewHTTPDoer(key APIKeySource, timeout time.Duration) (*HTTPDoer, error) {
@@ -44,7 +47,12 @@ func NewHTTPDoerForEndpoint(key APIKeySource, timeout time.Duration, endpoint st
 	if err != nil || parsed == nil || parsed.User != nil || (parsed.Scheme != "https" && !loopbackHTTPEndpoint(endpoint)) {
 		return nil, errors.New("research endpoint must use HTTPS or be a loopback fixture")
 	}
-	return newHTTPDoer(key, timeout, endpoint)
+	doer, err := newHTTPDoer(key, timeout, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	doer.research = true
+	return doer, nil
 }
 
 func newHTTPDoer(key APIKeySource, timeout time.Duration, endpoint string) (*HTTPDoer, error) {
@@ -100,7 +108,7 @@ func (d *HTTPDoer) Do(request *http.Request) (*http.Response, error) {
 		(request.Host != "" && request.Host != request.URL.Host) {
 		return nil, errors.New("request does not match the registered OpenCode Go endpoint and method")
 	}
-	if err := validateRegisteredHeaders(request.Header); err != nil {
+	if err := validateRegisteredHeaders(request.Header, d.research); err != nil {
 		return nil, err
 	}
 
@@ -136,7 +144,13 @@ func (d *HTTPDoer) Do(request *http.Request) (*http.Response, error) {
 	return response, nil
 }
 
-func validateRegisteredHeaders(header http.Header) error {
+func validateRegisteredHeaders(header http.Header, research bool) error {
+	if research {
+		if len(header) != 1 || len(header["Content-Type"]) != 1 || header.Get("Content-Type") != "application/json" {
+			return errors.New("request headers do not match the fixed research profile")
+		}
+		return nil
+	}
 	if len(header) != 4 {
 		return errors.New("request headers do not match the fixed OpenCode Go profile")
 	}

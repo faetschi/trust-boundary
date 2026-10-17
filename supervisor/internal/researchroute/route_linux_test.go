@@ -45,6 +45,7 @@ const frozenProfileJSON = `{
   "max_requests_per_unit": 5,
   "temperature_milli": 0,
   "seed": 7,
+  "reasoning": {"enabled": false},
   "timeout_ms": 5000,
   "frozen_at": "2026-10-17T00:00:00Z"
 }`
@@ -160,8 +161,12 @@ func newProviderServer(t *testing.T, b **Bundle) *providerServer {
 }
 
 func sse(w http.ResponseWriter, usage map[string]any) {
+	sseModel(w, usage, "deepseek/deepseek-v4.1-flash")
+}
+
+func sseModel(w http.ResponseWriter, usage map[string]any, model string) {
 	chunk := func(delta map[string]any, finish any, extra map[string]any) string {
-		value := map[string]any{"id": "resp-1", "model": "deepseek/deepseek-v4.1-flash", "created": 1,
+		value := map[string]any{"id": "resp-1", "model": model, "created": 1,
 			"object": "chat.completion.chunk", "choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}}}
 		for k, v := range extra {
 			value[k] = v
@@ -173,7 +178,7 @@ func sse(w http.ResponseWriter, usage map[string]any) {
 	_, _ = w.Write([]byte(chunk(map[string]any{"role": "assistant", "content": "ok"}, nil, nil)))
 	_, _ = w.Write([]byte(chunk(map[string]any{}, "stop", nil)))
 	if usage != nil {
-		trailer := map[string]any{"id": "resp-1", "model": "deepseek/deepseek-v4.1-flash", "created": 1,
+		trailer := map[string]any{"id": "resp-1", "model": model, "created": 1,
 			"object": "chat.completion.chunk", "choices": []any{}, "usage": usage}
 		raw, _ := json.Marshal(trailer)
 		_, _ = w.Write([]byte("data: " + string(raw) + "\n\n"))
