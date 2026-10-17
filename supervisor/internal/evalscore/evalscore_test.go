@@ -867,6 +867,7 @@ func TestInvalidEnumRecordsAreReportedNotFatal(t *testing.T) {
 	t.Run("invalid record in a superseded attempt makes the unit UNSUPPORTED", func(t *testing.T) {
 		in := cleanInput()
 		in.Adversarial[0].EvidenceLoss = "maybe"
+		in.Adversarial[0].OutageEvidenceDigest = synthOutageEvidence
 		second := cleanAdversarial("adv-000")
 		second.Attempt = 2
 		in.Adversarial = append(in.Adversarial, second)

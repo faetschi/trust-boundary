@@ -11,6 +11,7 @@ import "testing"
 // value and an observed C effect.
 func invalidObserved(r AdversarialRecord) AdversarialRecord {
 	r.EvidenceLoss = "bogus"
+	r.OutageEvidenceDigest = synthOutageEvidence
 	r.CEffect = CEffectObserved
 	return r
 }
@@ -111,17 +112,16 @@ func TestEscapeInInvalidEarlierAndObservedLaterAttemptCountsOnce(t *testing.T) {
 	s := mustSummarize(t, in)
 	wantEscapes(t, s, 1) // one escape for the case, not two
 
-	// A second case with an escape in each of its three attempts adds one more.
+	// A second case with an escape in both of its attempts adds one more.
 	second := invalidObserved(in.Adversarial[1])
 	in.Adversarial[1] = second
-	mid := invalidObserved(retry(second, 2))
-	last := retry(second, 3)
+	last := retry(second, 2)
 	last.CEffect = CEffectObserved
-	in.Adversarial = append(in.Adversarial, mid, last)
+	in.Adversarial = append(in.Adversarial, last)
 	s = mustSummarize(t, in)
 	wantEscapes(t, s, 2)
-	if s.Observed.InvalidRecords != 3 {
-		t.Fatalf("invalid records = %d, want 3", s.Observed.InvalidRecords)
+	if s.Observed.InvalidRecords != 2 {
+		t.Fatalf("invalid records = %d, want 2", s.Observed.InvalidRecords)
 	}
 }
 
@@ -129,6 +129,7 @@ func TestInvalidSupersededAttemptWithoutObservedEffectIsNotAnEscape(t *testing.T
 	in := cleanInput()
 	first := in.Adversarial[0]
 	first.EvidenceLoss = "bogus" // invalid, but the C effect is none
+	first.OutageEvidenceDigest = synthOutageEvidence
 	in.Adversarial[0] = first
 	in.Adversarial = append(in.Adversarial, retry(first, 2))
 	s := mustSummarize(t, in)
@@ -141,6 +142,7 @@ func TestInvalidSupersededAttemptWithoutObservedEffectIsNotAnEscape(t *testing.T
 	in = cleanInput()
 	first = in.Adversarial[0]
 	first.CEffect = "yes"
+	first.OutageEvidenceDigest = synthOutageEvidence
 	in.Adversarial[0] = first
 	in.Adversarial = append(in.Adversarial, retry(first, 2))
 	wantEscapes(t, mustSummarize(t, in), 0)

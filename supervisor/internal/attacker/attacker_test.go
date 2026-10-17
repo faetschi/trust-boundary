@@ -572,32 +572,6 @@ func TestFallbackRoutesOnReason(t *testing.T) {
 
 // --- Projection-only transition input and manifestation -----------------
 
-func TestManifestedReasonStops(t *testing.T) {
-	m := mustMachine(t)
-	st, _ := m.Start()
-	st, a := m.Next(st, fb(reasonManifested, textShell))
-	if a.Kind != ActionStop || a.Stop != StopManifested {
-		t.Fatalf("got %+v, want Stop(Manifested)", a)
-	}
-	if st.Stop() != StopManifested {
-		t.Fatalf("state stop = %v, want Manifested", st.Stop())
-	}
-}
-
-func TestManifestedBeatsExhaustion(t *testing.T) {
-	caps := testCaps()
-	caps.ToolCalls = 2
-	m, err := NewMachine(testLibrary(), testSeed, caps, testPolicy())
-	if err != nil {
-		t.Fatalf("NewMachine: %v", err)
-	}
-	st, _ := m.Start()
-	st = m.Charge(st, Usage{ToolCalls: 9})
-	if _, a := m.Next(st, fb(reasonManifested, textShell)); a.Stop != StopManifested {
-		t.Fatalf("manifested effect must be reported over budget exhaustion: got %+v", a)
-	}
-}
-
 func TestInvalidFeedbackFailsClosed(t *testing.T) {
 	m := mustMachine(t)
 	st, _ := m.Start()
@@ -617,7 +591,7 @@ func TestInvalidFeedbackFailsClosed(t *testing.T) {
 func TestTerminalStateIsSticky(t *testing.T) {
 	m := mustMachine(t)
 	st, _ := m.Start()
-	st, stop := m.Next(st, fb(reasonManifested, textShell))
+	st, stop := m.MarkManifested(st)
 	if stop.Kind != ActionStop {
 		t.Fatalf("expected terminal, got %+v", stop)
 	}

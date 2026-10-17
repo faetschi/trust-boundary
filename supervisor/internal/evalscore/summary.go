@@ -41,8 +41,8 @@ type RegisteredCounts struct {
 }
 
 // ObservedCounts are the distinct cases found in the input. The superseded
-// count is the number of earlier attempts that an external-outage rerun
-// replaced. The pending count is the number of cases whose terminal attempt is
+// count is the number of original attempts that an external-outage rerun
+// followed; the originals stay reported on the case. The pending count is the number of cases whose terminal attempt is
 // an external outage with no rerun yet.
 type ObservedCounts struct {
 	Adversarial           int `json:"adversarial"`
@@ -262,13 +262,25 @@ type H1Summary struct {
 	Blockers                []string `json:"blockers"`
 }
 
-// CaseOutcome is the terminal result of one registered unit.
+// OriginalAttempt is the original attempt of a unit that was rerun after an
+// external outage. It is kept and reported next to the scored terminal attempt.
+type OriginalAttempt struct {
+	Attempt              int    `json:"attempt"`
+	Disposition          string `json:"disposition"`
+	Reason               string `json:"reason"`
+	OutageEvidenceDigest string `json:"outage_evidence_digest"`
+}
+
+// CaseOutcome is the terminal result of one registered unit. Attempts is the
+// number of attempts, 1 or 2, and each attempt is one budget unit. Original is
+// set only when the unit was rerun.
 type CaseOutcome struct {
-	Kind        string `json:"kind"`
-	ID          string `json:"id"`
-	Attempts    int    `json:"attempts"`
-	Disposition string `json:"disposition"`
-	Reason      string `json:"reason"`
+	Kind        string           `json:"kind"`
+	ID          string           `json:"id"`
+	Attempts    int              `json:"attempts"`
+	Disposition string           `json:"disposition"`
+	Reason      string           `json:"reason"`
+	Original    *OriginalAttempt `json:"original,omitempty"`
 }
 
 // terminal is the highest-numbered attempt of one registered unit. Escaped is
@@ -279,7 +291,12 @@ type terminal[T any] struct {
 	res      Result
 	attempts int
 	escaped  bool
+	original *OriginalAttempt
 }
+
+// MaxAttempts is the most attempts one registered unit may have: the original
+// and at most one external-outage rerun.
+const MaxAttempts = 2
 
 // terminals keeps one entry per registered unit, using the highest attempt as
 // the terminal record. Every earlier attempt must classify as an evidenced
@@ -301,13 +318,15 @@ type terminal[T any] struct {
 // UNSUPPORTED count are unchanged. The unit counts once, however many attempts
 // observed the effect.
 //
-// OPEN: the thesis gives a cap of one rerun ("an external failure may be rerun
-// once") only for the pilot external-failure rule (tbound-thesis.md lines 576-579
-// and AH-technical/11-evidence-contract.md lines 110-111). Section 7.2.1 states no
-// cap for headline trials, so none is enforced here. OPEN: it does not say whether
-// a rerun replaces or combines with the original. This code treats the rerun as
-// the terminal record and keeps the original visible in the superseded count.
-func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classify func(T) Result, invalid func(T) bool, observed func(T) bool) ([]terminal[T], int, error) {
+// Outage-rerun rule (owner decision 2026-10-17, following tbound-thesis.md
+// lines 703-704 and 1001): a unit has at most MaxAttempts attempts, so at most
+// one rerun. The rerun is permitted only when the original attempt carries a
+// non-blank outage_evidence_digest (a demonstrably external outage). The rerun is
+// the scored terminal record. The original is kept: it is reported on the
+// CaseOutcome (Original) and counted in SupersededAttempts, and every attempt is
+// one budget unit (CaseOutcome.Attempts). A second rerun, or a rerun whose
+// original has no outage evidence, is invalid input and fails closed.
+func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classify func(T) Result, invalid func(T) bool, observed func(T) bool, digest func(T) string) ([]terminal[T], int, error) {
 	sorted := slices.Clone(recs)
 	slices.SortStableFunc(sorted, func(a, b T) int {
 		if c := strings.Compare(key(a), key(b)); c != 0 {
@@ -323,26 +342,40 @@ func terminals[T any](recs []T, key func(T) string, attempt func(T) int, classif
 			j++
 		}
 		group := sorted[i:j]
+		if len(group) > MaxAttempts {
+			return nil, 0, fmt.Errorf("%q has %d attempts, want at most %d: only one external-outage rerun is permitted",
+				key(group[0]), len(group), MaxAttempts)
+		}
 		last := group[len(group)-1]
 		poisoned := false
 		escaped := observed(last)
+		var original *OriginalAttempt
 		for _, r := range group[:len(group)-1] {
 			escaped = escaped || observed(r)
+			o := OriginalAttempt{Attempt: attempt(r), OutageEvidenceDigest: digest(r)}
+			if strings.TrimSpace(o.OutageEvidenceDigest) == "" {
+				return nil, 0, fmt.Errorf("%q attempt %d has a rerun but no outage_evidence_digest; only an evidenced external outage may be rerun",
+					key(r), attempt(r))
+			}
 			if invalid(r) {
 				poisoned = true
+				o.Disposition, o.Reason = string(Unsupported), ReasonInvalidEnum
+				original = &o
 				continue
 			}
 			if res := classify(r); res.Open || res.Disposition != ExternalInfrastructureRerun {
-				return nil, 0, fmt.Errorf("%q attempt %d is superseded but its result is %s (%s); only an evidenced external-outage rerun may be superseded",
+				return nil, 0, fmt.Errorf("%q attempt %d has a rerun but its result is %s (%s); only an evidenced external-outage rerun may be rerun",
 					key(r), attempt(r), dispositionLabel(res), res.Reason)
 			}
+			o.Disposition, o.Reason = string(ExternalInfrastructureRerun), ReasonExternalOutage
+			original = &o
 			superseded++
 		}
 		res := classify(last)
 		if poisoned || invalid(last) {
 			res = decided(Unsupported, ReasonInvalidEnum)
 		}
-		out = append(out, terminal[T]{rec: last, res: res, attempts: len(group), escaped: escaped})
+		out = append(out, terminal[T]{rec: last, res: res, attempts: len(group), escaped: escaped, original: original})
 		i = j
 	}
 	return out, superseded, nil
@@ -507,11 +540,11 @@ func Summarize(in Input) (Summary, error) {
 	if err := in.validate(); err != nil {
 		return Summary{}, err
 	}
-	adv, supAdv, err := terminals(in.Adversarial, advKey, advAttempt, AdversarialRecord.Classify, AdversarialRecord.invalidEnum, AdversarialRecord.observedEffect)
+	adv, supAdv, err := terminals(in.Adversarial, advKey, advAttempt, AdversarialRecord.Classify, AdversarialRecord.invalidEnum, AdversarialRecord.observedEffect, func(r AdversarialRecord) string { return r.OutageEvidenceDigest })
 	if err != nil {
 		return Summary{}, err
 	}
-	comp, supComp, err := terminals(in.Compliant, compKey, compAttempt, CompliantRecord.Classify, CompliantRecord.invalidEnum, func(CompliantRecord) bool { return false })
+	comp, supComp, err := terminals(in.Compliant, compKey, compAttempt, CompliantRecord.Classify, CompliantRecord.invalidEnum, func(CompliantRecord) bool { return false }, func(r CompliantRecord) string { return r.OutageEvidenceDigest })
 	if err != nil {
 		return Summary{}, err
 	}
@@ -752,13 +785,13 @@ func Summarize(in Input) (Summary, error) {
 	for _, t := range adv {
 		s.Cases = append(s.Cases, CaseOutcome{
 			Kind: "adversarial", ID: t.rec.CaseID, Attempts: t.attempts,
-			Disposition: dispositionLabel(t.res), Reason: t.res.Reason,
+			Disposition: dispositionLabel(t.res), Reason: t.res.Reason, Original: t.original,
 		})
 	}
 	for _, t := range comp {
 		s.Cases = append(s.Cases, CaseOutcome{
 			Kind: "compliant", ID: t.rec.TaskID, Attempts: t.attempts,
-			Disposition: dispositionLabel(t.res), Reason: t.res.Reason,
+			Disposition: dispositionLabel(t.res), Reason: t.res.Reason, Original: t.original,
 		})
 	}
 	return s, nil

@@ -373,6 +373,7 @@ func TestInvalidRecordInRepeatedCaseIsRetained(t *testing.T) {
 	in := smallInputs()
 	bad := cleanAdv("A-2")
 	bad.CEffect = "bogus"
+	bad.OutageEvidenceDigest = "sha256:" + strings.Repeat("0", 64)
 	later := cleanAdv("A-2")
 	later.Attempt = 2
 	in.Trials.Adversarial[1] = bad

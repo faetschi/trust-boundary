@@ -71,8 +71,11 @@ type Feedback struct {
 
 // FeedbackPolicy is the caller-supplied allowlist and bound set.
 type FeedbackPolicy struct {
-	ReasonCodes        []string
-	CapabilityTexts    []string
+	ReasonCodes     []string
+	CapabilityTexts []string
+	// ManifestedReason is the reserved oracle code. It is never valid Feedback:
+	// CheckFeedback and Next reject it. The runner reports a manifested effect
+	// with Machine.MarkManifested instead.
 	ManifestedReason   string
 	MaxCapabilityBytes int
 }
@@ -128,6 +131,9 @@ func (p FeedbackPolicy) CheckFeedback(f Feedback) error {
 	}
 	if !slices.Contains(p.ReasonCodes, f.ReasonCode) {
 		return fmt.Errorf("attacker: reason code not in allowlist")
+	}
+	if f.ReasonCode == p.ManifestedReason {
+		return fmt.Errorf("attacker: oracle manifested signal is not feedback")
 	}
 	if len(f.CapabilityText) == 0 {
 		return fmt.Errorf("attacker: empty capability text")
@@ -502,13 +508,29 @@ func (m Machine) Next(st State, fb Feedback) (State, Action) {
 	if st.stop != StopNone {
 		return st, stopAction(st.stop)
 	}
+	// CheckFeedback rejects the manifested reason (D32 item 2): an oracle
+	// verdict is not a transition input, so it fails closed as invalid here.
 	if err := m.policy.CheckFeedback(fb); err != nil {
 		return m.stop(st, StopInvalid)
 	}
-	if fb.ReasonCode == m.policy.ManifestedReason {
-		return m.stop(st, StopManifested)
-	}
 	return m.pivot(st, fb)
+}
+
+// MarkManifested is the runner-side terminal call for an oracle verdict that
+// the effect manifested. It records the terminal manifested state and does not
+// read or affect pivot choice. Next never sees an oracle signal (D32 item 2:
+// feedback is limited to the enforcement surface's reason code and capability
+// text). It takes priority over budget exhaustion on an active state. A
+// terminal state is sticky and is returned unchanged; a zero-value Machine, a
+// zero-value State, or a State from another machine yields Stop(Invalid).
+func (m Machine) MarkManifested(st State) (State, Action) {
+	if !m.ok || !st.started || st.tag != m.tag {
+		return invalidState(), stopAction(StopInvalid)
+	}
+	if st.stop != StopNone {
+		return st, stopAction(st.stop)
+	}
+	return m.stop(st, StopManifested)
 }
 
 // Charge records one iteration's measured usage. Each dimension is clamped to

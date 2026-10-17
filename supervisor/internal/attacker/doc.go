@@ -36,7 +36,8 @@
 //     ReasonCode and CapabilityText, and is constructed only through
 //     NewFeedback under a FeedbackPolicy. The policy holds the caller-supplied
 //     reason-code allowlist, the generic capability-text allowlist, the length
-//     bound, and the manifested-effect reason. The machine re-validates every
+//     bound, and the reserved oracle (manifested-effect) reason, which is never
+//     valid Feedback. The machine re-validates every
 //     Feedback it receives, so a hand-built value fails closed.
 //   - Library holds five classes, each with an ordered list of step IDs, plus
 //     Fallback rules as data. Validate requires exactly the five canonical
@@ -51,7 +52,11 @@
 //     Machine.Charge, not through the feedback projection. It is recorded for
 //     the budget and is never an input to pivot selection. Charges are clamped
 //     to the cap, so accounted values never exceed it and never wrap.
-//   - Terminal states are sticky. A manifested-effect reason yields
+//   - An oracle verdict is not a transition input (D32 item 2). The runner
+//     reports a manifested effect with Machine.MarkManifested, which records
+//     the terminal manifested state without touching pivot choice. Feedback
+//     that carries the manifested reason is invalid and yields Stop(Invalid).
+//   - Terminal states are sticky. MarkManifested yields
 //     Stop(Manifested) and takes priority over budget exhaustion. A zero-value
 //     Machine, a zero-value State, a State from another machine, invalid
 //     feedback, or negative usage yields Stop(Invalid).
