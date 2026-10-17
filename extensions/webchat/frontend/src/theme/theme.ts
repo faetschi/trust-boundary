@@ -1,13 +1,16 @@
-// Theme choice: system, light or dark. The choice is applied as a data-theme attribute on
+// Theme choice: dark, light or system. The choice is applied as a data-theme attribute on
 // <html>, which tokens.css reads. "system" removes the attribute, so the OS query decides.
-// Storage is optional: a browser that refuses storage, or throws on access, keeps the
-// choice for the session and falls back to "system" on the next load. Nothing here
-// throws. public/theme-boot.js repeats this read and apply for the first paint, before
+// Dark is the default: nothing stored, an unknown stored value, or storage that is refused
+// all read as dark. Storage is optional: a browser that refuses storage, or throws on access,
+// keeps the choice for the session and falls back to the default on the next load. Nothing
+// here throws. public/theme-boot.js repeats this read and apply for the first paint, before
 // any module runs; boot.test.ts checks that the two agree for every stored value.
 
 export type ThemeChoice = "system" | "light" | "dark";
 
 export const THEME_CHOICES: readonly ThemeChoice[] = ["system", "light", "dark"];
+
+export const DEFAULT_THEME: ThemeChoice = "dark";
 
 export const THEME_STORAGE_KEY = "tbound-webchat-theme";
 
@@ -17,7 +20,7 @@ export interface StorageLike {
 }
 
 export function parseTheme(value: unknown): ThemeChoice {
-  return value === "light" || value === "dark" ? value : "system";
+  return value === "light" || value === "dark" || value === "system" ? value : DEFAULT_THEME;
 }
 
 // The storage object, or null when the browser refuses access. Reading the property
@@ -31,11 +34,11 @@ export function storageOf(win: { readonly localStorage?: StorageLike } | undefin
 }
 
 export function readTheme(storage: StorageLike | null): ThemeChoice {
-  if (!storage) return "system";
+  if (!storage) return DEFAULT_THEME;
   try {
     return parseTheme(storage.getItem(THEME_STORAGE_KEY));
   } catch {
-    return "system";
+    return DEFAULT_THEME;
   }
 }
 

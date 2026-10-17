@@ -1,19 +1,22 @@
+/* A segmented control (v2 .tg): one bordered track, the pressed segment raised on the bubble tone. */
 .group {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: var(--space-1);
-  padding: var(--space-1);
+  gap: 2px;
+  padding: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
 }
 
 .toggle {
-  min-height: var(--row-h-toolbar);
-  padding: 0 var(--space-2h);
+  min-height: 28px;
+  padding: 0 var(--space-2);
   border: 0;
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--muted-foreground);
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 

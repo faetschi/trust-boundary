@@ -87,8 +87,8 @@ export function ChatView({ model }: { readonly model: WorkspaceModel }) {
   return (
     <div className={styles.view}>
       <div className={styles.conversation}>
+        {/* The session title is the header's heading (Shell.tsx), beside its chips; the chat head keeps the window's summary. */}
         <div className={styles.headRow}>
-          <h2 className={styles.title}>{head.title}</h2>
           <p className={styles.summary} data-summary="">
             {summary}
           </p>

@@ -10,15 +10,16 @@
   margin: 0;
 }
 
+/* The rounded box of the v2 mockup: a 1 px input edge, and the card tone at 70%, so it reads as a control on any ground. */
 .card {
   display: flex;
   flex-direction: column;
   gap: var(--space-1h);
   min-height: 88px;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--card);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklab, var(--card) 70%, transparent);
   color: var(--card-foreground);
 }
 
@@ -96,6 +97,22 @@
   .input {
     min-height: calc(2 * var(--lh-body) + 2 * var(--space-1));
   }
+}
+
+/* The "+" attaches nothing in this build. It is decoration, hidden from assistive tech, and drawn dashed and muted like the
+   disabled send, so it does not read as a working control. It sits in the prompt row, so the status chips keep one row of
+   their own and the dock does not grow. */
+.attach {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px dashed var(--border);
+  border-radius: 50%;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font: 500 var(--text-body) / 1 var(--font-sans);
 }
 
 .chips {

@@ -31,6 +31,9 @@ export function Composer({ session }: { readonly session: SessionHeader | null }
     <section aria-label={COMPOSER_LABEL} data-testid="composer" className={styles.composer}>
       <div className={styles.card}>
         <div className={styles.field}>
+          <span className={styles.attach} aria-hidden="true">
+            +
+          </span>
           <textarea
             aria-label="Message Pi"
             aria-describedby="composer-reason"

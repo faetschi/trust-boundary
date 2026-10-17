@@ -108,6 +108,15 @@ describe("the composer's semantics", () => {
     expect(mounted?.container.querySelector("[aria-haspopup], [role='menu'], [role='menuitem'], [role='listbox']")).toBeNull();
   });
 
+  it("draws the '+' as aria-hidden decoration, never as a button", () => {
+    render("0.87.1");
+    const plus = Array.from(mounted?.container.querySelectorAll("span[aria-hidden='true']") ?? []).filter(
+      (element) => element.textContent === "+",
+    );
+    expect(plus).toHaveLength(1);
+    expect(plus[0]?.closest("button")).toBeNull();
+  });
+
   it("never names the closed tool vocabulary as this session's tools", () => {
     render("0.87.1");
     expect(mounted?.container.textContent).not.toContain("read, write, edit, bash");

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decisionItem, messageItem, panelsDefault, sessionDefault } from "../core/testing/builders";
 import type { GovernancePanel, Panels, SessionHeader } from "../core/contract";
-import { statsLine } from "./Footer";
+import { statsLine, statsParts } from "./Footer";
 
 type StatsInput = Parameters<typeof statsLine>[0];
 
@@ -108,6 +108,31 @@ describe("the one-line statistics", () => {
 
   it("never gives tokens or timing a number", () => {
     expect(statsLine(fixture())).toMatch(/ · tokens unavailable · timing unavailable$/);
+  });
+});
+
+// The footer draws each reading as its own part, so an unavailable one can be drawn in the warning ink. The parts joined are the line.
+describe("the readings the footer draws apart", () => {
+  it("keeps each reading as one part, and the parts joined are the statistics line", () => {
+    expect(statsParts(fixture())).toEqual([
+      "1 turn",
+      "4 records retained",
+      "policy verdicts 1 allow / 1 deny / 0 unknown",
+      "tokens unavailable",
+      "timing unavailable",
+    ]);
+    expect(statsParts(fixture()).join(" · ")).toBe(statsLine(fixture()));
+  });
+
+  it("gives every unavailable reading its own part before the first snapshot", () => {
+    const parts = statsParts({ session: null, panels: null, items: [], evicted: 0, loaded: false });
+    expect(parts.filter((part) => part.includes("unavailable"))).toEqual([
+      "turns unavailable",
+      "records retained unavailable",
+      "policy verdicts unavailable",
+      "tokens unavailable",
+      "timing unavailable",
+    ]);
   });
 });
 

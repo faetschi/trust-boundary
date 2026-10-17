@@ -16,6 +16,16 @@ Receipts and detailed logs: ../review-artifacts/tbound-resume-2026-10-13/.
   ../MSE_MA_Thesis; main unchanged. Draft51 recovery trials (8 lifecycle plus
   9 incidents, x3) is not frozen/registered; E07 conformance remains separate.
 
+## v2 restyle of the web chat UI (2026-10-15, uncommitted on codex/tbound-web-chat)
+
+- Dark is the default theme (nothing stored, an unknown value, or refused storage). System follows the OS; Light and Dark stay selectable (`theme.ts`, `public/theme-boot.js`, `tokens.css`).
+- Layout follows `docs/webchat/mockups/tbound-redesign-v2.html`: session title and source chips in the header row, claim strip beneath, theme switch in a "More options" disclosure, rail and inspector at 264 px and 340 px. Deliberately not in v2: "+ New session" (rail tests forbid it) and the document icon (no action).
+- Verified: vitest 74 files, 1276 passed, 0 skipped; check:sinks and check:deps clean; dist reproducible (Windows); Go `-race` 60 top-level PASS, 0 SKIP on the same dist; ui-qa p8 12 of 12 PASS (`docs/webchat/qa/p8-ui-qa-receipt.json`).
+- ui-qa edits are contract updates, not weakened checks: the theme walk opens the disclosure; E expects dark; D counts drawn header buttons; J follows the header; copy controls match by aria-label. Check G's stop is now asynchronous: the blocking `spawnSync` stop had stamped the first retries in one burst. The band is unchanged.
+- QA history: p6 failed 6 of 12 (K real, fixed; C, D, E stale; J a locator error; G timing); p7 failed G only; p8 passes and is the committed receipt. The p6 and p7 receipts are not in the repo.
+- Phone: out of scope per the owner. The phone sections of ui-qa (J and K) still run and pass; no phone design work.
+- v3 mockup (`tbound-redesign-v3.html`) is regenerated from the restyled UI: 27 frames, 26 identical to live; `chat-light-360` differs by 34,861 px (cause not isolated; phone out of scope). Five frame definitions were rebuilt from recorded states because the original generator was lost. Details: `docs/frontend.md`.
+
 ## FX3 state of the web chat extension (2026-10-15; FX3 and FX4 are committed through 92a5927. Re-run `npm run repro` against the committed dist.)
 
 - FX4 (2026-10-15; FX3 and FX4 are committed through 92a5927. Re-run `npm run repro` against the committed dist.): the phone composer reason wraps and the phone field is two lines tall; dock clearance 268 px; QA 12 of 12; v3 mockup regenerated (25 of 27 frames identical; gov-recovery-light-1440 has a 5-px corner difference). See extensions/webchat/docs/frontend.md, "Redesign review fixes, FX4".

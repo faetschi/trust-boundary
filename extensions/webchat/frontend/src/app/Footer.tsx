@@ -2,6 +2,7 @@
 // "unavailable", never zero. Tokens and timing are not projected, so they read unavailable too. Before the first snapshot
 // every count is unavailable: an empty window is a statement only once a projection has loaded.
 
+import { Fragment } from "react";
 import { decisionsState, verdictCount } from "./panels";
 import type { WorkspaceModel } from "./workspaceStore";
 import styles from "./Footer.module.css";
@@ -43,22 +44,27 @@ function policyPart(model: StatsModel): string {
   return `policy verdicts ${word(governance.allow_count)} allow / ${word(governance.deny_count)} deny / ${word(governance.unknown_count)} unknown`;
 }
 
+// The statistics as separate readings. Each one is a part the footer can draw on its own, so an unavailable one can be drawn in
+// the warning ink.
+export function statsParts(model: StatsModel): string[] {
+  return [turnsPart(model), recordsPart(model), policyPart(model), "tokens unavailable", "timing unavailable"];
+}
+
 // The statistics as the one line the footer shows.
 export function statsLine(model: StatsModel): string {
-  return [
-    turnsPart(model),
-    recordsPart(model),
-    policyPart(model),
-    "tokens unavailable",
-    "timing unavailable",
-  ].join(" · ");
+  return statsParts(model).join(" · ");
 }
 
 export function Footer({ model, version }: { readonly model: WorkspaceModel; readonly version: string }) {
   return (
     <div className={styles.footer}>
       <div role="group" aria-label="Session statistics" className={styles.line}>
-        {statsLine(model)}
+        {statsParts(model).map((part, index) => (
+          <Fragment key={part}>
+            {index > 0 ? <span className={styles.sep}> · </span> : null}
+            <span className={part.includes("unavailable") ? styles.un : undefined}>{part}</span>
+          </Fragment>
+        ))}
       </div>
       <p className={styles.build}>build {version}</p>
     </div>

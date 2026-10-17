@@ -24,14 +24,14 @@ export function ClaimBoundary({ model }: { readonly model: WorkspaceModel }) {
   const rows = qualificationRows(panels?.qualification, panels ? NO_QUALIFICATION : NO_PROJECTION);
   const phone = usePhone();
   const explanation = (
-    <>
+    <div className={styles.explain}>
       <p className={styles.claimText}>Presentation only: the supervisor retains policy, effect and publication authority.</p>
       <p className={styles.claimText}>{DISPLAY_ONLY_TEXT}</p>
-    </>
+    </div>
   );
+  // The claim values come first, as the v2 strip draws them; the explanation follows them (the grid in Shell.module.css).
   return (
     <Notice label="Claim boundary" tone="claim">
-      {phone ? <Disclosure summary={EXPLANATION_SUMMARY}>{explanation}</Disclosure> : explanation}
       <dl className={styles.claim}>
         {rows.map(([label, reading]) => {
           const unverifiedTrue = !verified && CLAIM_ROWS.has(label) && reading.kind === "value" && reading.text === "true";
@@ -46,6 +46,7 @@ export function ClaimBoundary({ model }: { readonly model: WorkspaceModel }) {
           );
         })}
       </dl>
+      {phone ? <Disclosure summary={EXPLANATION_SUMMARY}>{explanation}</Disclosure> : explanation}
     </Notice>
   );
 }

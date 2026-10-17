@@ -6,7 +6,7 @@ import type { SessionHeader, SourceClass, StreamStatus } from "../core/contract"
 import { snapshotOf, streamDefault } from "../core/testing/builders";
 import { click, mount } from "../test-support/dom";
 import { fakeWorkspace, flush } from "../test-support/fakes";
-import { Rail } from "./Rail";
+import { Rail, RailToggle } from "./Rail";
 import { PHONE_BREAKPOINT_PX } from "./layout";
 import { createWorkspaceStore, type WorkspaceModel } from "./workspaceStore";
 
@@ -41,6 +41,11 @@ const DEMO_SESSION: SessionHeader = {
 const NOTE =
   "Other Pi sessions are not listed. This page receives one session from the supervisor. A session list needs the supervisor session service, which is not available in this build.";
 
+// The desktop collapse toggle on its own: the shell draws it in the header's brand row (Shell.test.tsx checks that).
+function renderToggle(expanded: boolean, onToggle: () => void = () => undefined) {
+  return mount(<RailToggle expanded={expanded} onToggle={onToggle} />);
+}
+
 function renderRail(model: WorkspaceModel, props: { expanded?: boolean; phone?: boolean; onToggle?: () => void } = {}) {
   return mount(
     <Rail
@@ -72,7 +77,8 @@ const RECEIPT = streamDefault({
 describe("the sessions rail: one current session, honestly labelled", () => {
   it("is headed Sessions and lists exactly one session row, marked current and not interactive", async () => {
     const view = renderRail(await loadedFrom("fixture"));
-    expect(view.container.querySelector("h2")?.textContent).toBe("Sessions");
+    // The source binding is the rail's first section (v2 order), so the Sessions heading is found by its id.
+    expect(view.container.querySelector("#rail-sessions-title")?.textContent).toBe("Sessions");
     const rows = sessionRows(view.container);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.getAttribute("aria-current")).toBe("true");
@@ -134,11 +140,11 @@ describe("the sessions rail: one current session, honestly labelled", () => {
     view.unmount();
   });
 
-  it("has one control, the collapse toggle, and no link or field", async () => {
+  it("has no control and no link or field: the desktop collapse toggle is in the header's brand row", async () => {
     const view = renderRail(await loadedFrom("fixture"));
     const nav = view.container.querySelector("nav") as HTMLElement;
     expect(nav.querySelectorAll("a, input, select, textarea")).toHaveLength(0);
-    expect(nav.querySelectorAll("button")).toHaveLength(1);
+    expect(nav.querySelectorAll("button")).toHaveLength(0);
     view.unmount();
   });
 
@@ -153,14 +159,13 @@ describe("the sessions rail: one current session, honestly labelled", () => {
 
 describe("the rail collapses and expands", () => {
   it("announces the toggle's state, and names the action it takes", async () => {
-    const model = await loadedFrom("fixture");
-    const open = renderRail(model);
+    const open = renderToggle(true);
     const toggle = open.container.querySelector("button") as HTMLButtonElement;
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
     expect(toggle.getAttribute("aria-controls")).toBe("rail-body");
     expect(toggle.getAttribute("aria-label")).toBe("Collapse sessions panel");
     open.unmount();
-    const closed = renderRail(model, { expanded: false });
+    const closed = renderToggle(false);
     const collapsedToggle = closed.container.querySelector("button") as HTMLButtonElement;
     expect(collapsedToggle.getAttribute("aria-expanded")).toBe("false");
     expect(collapsedToggle.getAttribute("aria-label")).toBe("Expand sessions panel");
@@ -169,7 +174,7 @@ describe("the rail collapses and expands", () => {
 
   it("calls back once when the toggle is pressed", async () => {
     const onToggle = vi.fn();
-    const view = renderRail(await loadedFrom("fixture"), { onToggle });
+    const view = renderToggle(true, onToggle);
     click(view.container.querySelector("button") as HTMLButtonElement);
     expect(onToggle).toHaveBeenCalledTimes(1);
     view.unmount();
@@ -181,7 +186,7 @@ describe("the rail collapses and expands", () => {
     expect(body.hasAttribute("hidden")).toBe(true);
     expect(body.children).toHaveLength(0);
     expect(view.container.querySelector("[role='img']")?.getAttribute("aria-label")).toBe("Session: completed, reported");
-    expect(view.container.querySelectorAll("button")).toHaveLength(1);
+    expect(view.container.querySelectorAll("button")).toHaveLength(0);
     view.unmount();
   });
 

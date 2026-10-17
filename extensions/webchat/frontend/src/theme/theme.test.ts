@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyTheme,
+  DEFAULT_THEME,
   parseTheme,
   readTheme,
   storageOf,
@@ -30,12 +31,18 @@ const throwingStorage: StorageLike = {
 };
 
 describe("theme choice", () => {
-  it("accepts only the three choices, and reads anything else as system", () => {
+  it("accepts only the three choices, and reads anything else as the dark default", () => {
     expect(parseTheme("light")).toBe("light");
     expect(parseTheme("dark")).toBe("dark");
     expect(parseTheme("system")).toBe("system");
-    expect(parseTheme("sepia")).toBe("system");
-    expect(parseTheme(null)).toBe("system");
+    expect(parseTheme("sepia")).toBe("dark");
+    expect(parseTheme(null)).toBe("dark");
+  });
+
+  it("defaults to dark when nothing is stored, and keeps a stored system choice", () => {
+    expect(DEFAULT_THEME).toBe("dark");
+    expect(readTheme(memoryStorage())).toBe("dark");
+    expect(readTheme(memoryStorage({ [THEME_STORAGE_KEY]: "system" }))).toBe("system");
   });
 
   it("persists the choice under one key and reads it back", () => {
@@ -45,16 +52,16 @@ describe("theme choice", () => {
     expect(readTheme(storage)).toBe("dark");
   });
 
-  it("falls back to system when storage throws on read, and does not throw", () => {
-    expect(readTheme(throwingStorage)).toBe("system");
+  it("falls back to the dark default when storage throws on read, and does not throw", () => {
+    expect(readTheme(throwingStorage)).toBe("dark");
   });
 
   it("reports a refused write, and does not throw", () => {
     expect(writeTheme(throwingStorage, "light")).toBe(false);
   });
 
-  it("falls back to system when storage is unavailable at all", () => {
-    expect(readTheme(null)).toBe("system");
+  it("falls back to the dark default when storage is unavailable at all", () => {
+    expect(readTheme(null)).toBe("dark");
     expect(writeTheme(null, "light")).toBe(false);
   });
 

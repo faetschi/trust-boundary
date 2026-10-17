@@ -204,9 +204,12 @@ export function Inspector({
       aria-hidden={closed || undefined}
     >
       <div className={styles.head}>
-        <h2 ref={headingRef} tabIndex={-1} className={styles.heading}>
-          {recordShown ? "Record" : "Governance"}
-        </h2>
+        <div className={styles.titleRow}>
+          <h2 ref={headingRef} tabIndex={-1} className={styles.heading}>
+            {recordShown ? "Record" : "Governance"}
+          </h2>
+          {recordShown ? null : <span className={styles.scope}>session-scoped</span>}
+        </div>
         {narrow ? (
           <button type="button" className={styles.close} onClick={onClose}>
             Close governance

@@ -109,6 +109,13 @@ function button(text: string): HTMLButtonElement {
   return match;
 }
 
+// The Copy control in one of its states. It is icon-only, so its accessible name, not its text, says the state and the message.
+function copyControl(state: string): HTMLButtonElement {
+  const match = qa<HTMLButtonElement>("button").find((element) => element.getAttribute("aria-label")?.startsWith(`${state}:`));
+  if (!match) throw new Error(`no copy control reading "${state}"`);
+  return match;
+}
+
 function hasJumpControl(): boolean {
   return qa("button").some((element) => element.textContent?.includes("Jump to latest"));
 }
@@ -742,25 +749,19 @@ describe("the conversation head", () => {
         status: "completed",
       }),
     );
-    expect(q("h2").textContent).toBe("Demo session");
+    // The title is the shell header's heading, tested in Shell.test.tsx ("titles the session in the header row").
     expect(hasParagraph("Pi 0.87.1 · session-demo-01 · wf-demo-01")).toBe(true);
     // The Pi version is drawn on its own: its text is exactly the projected session.pi_version.
     expect(qa("p span").some((element) => element.textContent === "0.87.1")).toBe(true);
     expect(hasParagraph("completed · reported, not verified")).toBe(true);
   });
 
-  it("reads an absent title as unavailable, never as blank", async () => {
-    await renderLive(sessionSnapshot({ title: undefined, status: "completed" }));
-    expect(q("h2").textContent).toBe("Session title unavailable");
-  });
-
-  it("before the first snapshot, shows the Pi session heading with every value unavailable", () => {
+  it("before the first snapshot, every value reads unavailable (the title is tested in Shell.test.tsx)", () => {
     mounted = mount(
       <WorkspaceProvider deps={fakeWorkspace(fixtureSnapshot()).deps}>
         <Probe />
       </WorkspaceProvider>,
     );
-    expect(q("h2").textContent).toBe("Pi session");
     expect(hasParagraph("Pi version unavailable · session id unavailable · workflow id unavailable")).toBe(true);
     expect(hasParagraph("status unavailable")).toBe(true);
   });
@@ -790,8 +791,31 @@ describe("message chrome", () => {
     const time = q("div[data-role='user'] time");
     expect(time.getAttribute("datetime")).toBe("2026-10-13T09:12:04Z");
     expect(time.textContent).toMatch(/^\d{2}:\d{2}$/);
-    expect(button("Copy message").textContent).toBe("Copy message");
+    expect(copyControl("Copy message").getAttribute("aria-label")).toBe("Copy message: your message, record 1");
     expect(button("record 1").textContent).toBe("record 1");
+  });
+
+  it("draws the Copy control as an icon alone: no text, and a name that says what it copies", async () => {
+    await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello" })]));
+    const control = copyControl("Copy message");
+    expect(control.textContent?.trim()).toBe("");
+    expect(control.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("puts the record button on the speaker's label row, beside the rule", async () => {
+    await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "assistant", text: "hi" })]));
+    const row = roleRow("assistant").parentElement;
+    expect(row?.querySelector("button")?.textContent).toBe("record 1");
+    expect(row?.querySelector("[aria-hidden='true']")).not.toBeNull();
+  });
+
+  it("draws each turn heading as a label, a hairline rule and the element count", async () => {
+    await renderLive(fixtureSnapshot());
+    const heading = q("section").firstElementChild;
+    expect(heading?.children).toHaveLength(3);
+    expect(heading?.children[0]?.textContent).toBe("turn t1");
+    expect(heading?.children[1]?.getAttribute("aria-hidden")).toBe("true");
+    expect(heading?.children[2]?.textContent).toBe("7 element(s)");
   });
 
   it("names every record label by an item's sequence, on messages and on tool cards", async () => {
@@ -842,39 +866,41 @@ describe("the Copy action", () => {
     setClipboard({ writeText });
     await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello world" })]));
     vi.useFakeTimers();
-    click(button("Copy message"));
+    click(copyControl("Copy message"));
     await settleCopy();
     expect(writeText).toHaveBeenCalledWith("hello world");
-    expect(button("Copied").textContent).toBe("Copied");
+    expect(copyControl("Copied").getAttribute("aria-label")).toBe("Copied: your message, record 1");
     expect(liveAnnouncer?.getSnapshot().text).toBe("Message copied.");
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(button("Copy message").textContent).toBe("Copy message");
+    expect(copyControl("Copy message").getAttribute("aria-label")).toBe("Copy message: your message, record 1");
   });
 
   it("reads Copy unavailable when the clipboard refuses, and does not throw", async () => {
     setClipboard({ writeText: () => Promise.reject(new Error("permission denied")) });
     await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello world" })]));
-    click(button("Copy message"));
+    click(copyControl("Copy message"));
     await settleCopy();
-    expect(button("Copy unavailable").textContent).toBe("Copy unavailable");
+    expect(copyControl("Copy unavailable").getAttribute("aria-label")).toBe("Copy unavailable: your message, record 1");
     expect(liveAnnouncer?.getSnapshot().text).toBe("Copy unavailable.");
   });
 
   it("reads Copy unavailable when the page has no clipboard, and does not throw", async () => {
     setClipboard(undefined);
     await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello world" })]));
-    click(button("Copy message"));
+    click(copyControl("Copy message"));
     await settleCopy();
-    expect(button("Copy unavailable").textContent).toBe("Copy unavailable");
+    expect(copyControl("Copy unavailable").getAttribute("aria-label")).toBe("Copy unavailable: your message, record 1");
   });
 
   it("names the copy of a truncated message as the displayed text", async () => {
     await renderLive(
       fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "assistant", text: "part", text_truncated: true })]),
     );
-    expect(button("Copy displayed text (truncated)").textContent).toBe("Copy displayed text (truncated)");
+    expect(copyControl("Copy displayed text (truncated)").getAttribute("aria-label")).toBe(
+      "Copy displayed text (truncated): Pi, record 1",
+    );
   });
 
   it("names each Copy control for the message it copies, so no two controls share a name", async () => {
@@ -886,7 +912,7 @@ describe("the Copy action", () => {
       ]),
     );
     const names = qa<HTMLButtonElement>("button")
-      .filter((element) => element.textContent?.trim() === "Copy message")
+      .filter((element) => element.getAttribute("aria-label")?.startsWith("Copy message:"))
       .map((element) => element.getAttribute("aria-label"));
     expect(names).toEqual([
       "Copy message: your message, record 1",
@@ -898,9 +924,9 @@ describe("the Copy action", () => {
   it("keeps the record in the name while the label reads Copied", async () => {
     setClipboard({ writeText: async () => undefined });
     await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "assistant", text: "hi" })]));
-    click(button("Copy message"));
+    click(copyControl("Copy message"));
     await settleCopy();
-    expect(button("Copied").getAttribute("aria-label")).toBe("Copied: Pi, record 1");
+    expect(copyControl("Copied").getAttribute("aria-label")).toBe("Copied: Pi, record 1");
   });
 
   it("reads Copy unavailable for the same second as Copied, announces it once, and then returns to Copy message", async () => {
@@ -908,19 +934,19 @@ describe("the Copy action", () => {
     await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello world" })]));
     const before = liveAnnouncer?.getSnapshot().serial ?? -1;
     vi.useFakeTimers();
-    click(button("Copy message"));
+    click(copyControl("Copy message"));
     await settleCopy();
-    expect(button("Copy unavailable").getAttribute("aria-label")).toBe("Copy unavailable: your message, record 1");
+    expect(copyControl("Copy unavailable").getAttribute("aria-label")).toBe("Copy unavailable: your message, record 1");
     expect(liveAnnouncer?.getSnapshot().serial).toBe(before + 1);
     expect(liveAnnouncer?.getSnapshot().text).toBe("Copy unavailable.");
     act(() => {
       vi.advanceTimersByTime(COPIED_MS - 1);
     });
-    expect(button("Copy unavailable").textContent).toBe("Copy unavailable");
+    expect(copyControl("Copy unavailable").getAttribute("aria-label")).toBe("Copy unavailable: your message, record 1");
     act(() => {
       vi.advanceTimersByTime(1);
     });
-    expect(button("Copy message").textContent).toBe("Copy message");
+    expect(copyControl("Copy message").getAttribute("aria-label")).toBe("Copy message: your message, record 1");
     expect(liveAnnouncer?.getSnapshot().serial).toBe(before + 1);
   });
 
@@ -928,21 +954,21 @@ describe("the Copy action", () => {
     setClipboard({ writeText: async () => undefined });
     await renderLive(fixtureSnapshot([messageItem({ id: "m1", sequence: 1, role: "user", text: "hello world" })]));
     vi.useFakeTimers();
-    click(button("Copy message"));
+    click(copyControl("Copy message"));
     await settleCopy();
     act(() => {
       vi.advanceTimersByTime(COPIED_MS - 400);
     });
-    click(button("Copied"));
+    click(copyControl("Copied"));
     await settleCopy();
     act(() => {
       vi.advanceTimersByTime(COPIED_MS - 400);
     });
-    expect(button("Copied").textContent).toBe("Copied");
+    expect(copyControl("Copied").getAttribute("aria-label")).toBe("Copied: your message, record 1");
     act(() => {
       vi.advanceTimersByTime(400);
     });
-    expect(button("Copy message").textContent).toBe("Copy message");
+    expect(copyControl("Copy message").getAttribute("aria-label")).toBe("Copy message: your message, record 1");
   });
 });
 

@@ -1,6 +1,7 @@
 import type { SessionHeader, StreamHealth, StreamStatus } from "../core/contract";
 import { humanize } from "../core/format";
 import type { ChipTone } from "../ui/Chip";
+import { Chip } from "../ui/Chip";
 import { StateDot } from "../ui/StateDot";
 import { VisuallyHidden } from "../ui/VisuallyHidden";
 import { countValue, NO_PROJECTION, sessionReading, unavailableWords } from "./panels";
@@ -46,6 +47,11 @@ function turnsWords(value: unknown): string {
   return `${count} turn${count === 1 ? "" : "s"}`;
 }
 
+// The name of the source the page is bound to. The fixture is named as such; any other source is named by its class.
+function bindingName(source: string): string {
+  return source === "fixture" ? "Fixture workspace" : `Workspace (${source})`;
+}
+
 // The session row. The header is never verified here, so a success status reads "reported, not verified".
 function SessionRow({ session }: { readonly session: SessionHeader }) {
   const reading = sessionReading(session, false);
@@ -77,10 +83,30 @@ interface RailProps {
   readonly inert?: boolean;
 }
 
+// The rail, in the v2 order: the source binding, the sessions, the observation streams, then the read-only footnotes.
+// At a wide width it collapses to an icon column; at a phone width it is a strip that opens the same body.
+// The desktop collapse toggle of the rail. The shell draws it in the header's brand row, beside the rail it collapses, so
+// it stays anchored to the rail's top edge at every desktop width. At a phone width the strip in the rail is the toggle.
+export function RailToggle({ expanded, onToggle }: { readonly expanded: boolean; readonly onToggle: () => void }) {
+  const toggleName = expanded ? "Collapse sessions panel" : "Expand sessions panel";
+  return (
+    <button
+      type="button"
+      className={styles.toggle}
+      aria-expanded={expanded}
+      aria-controls="rail-body"
+      aria-label={toggleName}
+      title={toggleName}
+      onClick={onToggle}
+    >
+      <span aria-hidden="true">{expanded ? "‹" : "›"}</span>
+    </button>
+  );
+}
+
 export function Rail({ model, phone, expanded, onToggle, inert = false }: RailProps) {
   const { session } = model;
   const reading = sessionReading(session, false);
-  const toggleName = expanded ? "Collapse sessions panel" : "Expand sessions panel";
   const sessionTitle = session ? session.title || UNTITLED : "no session projection";
   return (
     <nav aria-label="Sessions and streams" className={styles.rail} data-expanded={expanded} inert={inert}>
@@ -90,42 +116,44 @@ export function Rail({ model, phone, expanded, onToggle, inert = false }: RailPr
             <span>{`Sessions · ${sessionTitle}`}</span> <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
           </button>
         </h2>
-      ) : (
+      ) : expanded ? null : (
+        // The collapsed icon column: the heading for assistive technology and the status dot. The collapse toggle is in the
+        // header's brand row (RailToggle, rendered by the shell), so it is never drawn over the rail's content.
         <div className={styles.railHead}>
           <h2 id="rail-session" className={styles.heading}>
-            {expanded ? "Sessions" : <VisuallyHidden>Sessions</VisuallyHidden>}
+            <VisuallyHidden>Sessions</VisuallyHidden>
           </h2>
-          {!expanded && session ? (
+          {session ? (
             <span role="img" aria-label={`Session: ${session.status ? humanize(session.status) : "status unavailable"}${reading.tone === "reported" ? ", reported" : ""}`}>
               <StateDot tone={reading.tone} />
             </span>
           ) : null}
-          <button
-            type="button"
-            className={styles.toggle}
-            aria-expanded={expanded}
-            aria-controls="rail-body"
-            aria-label={toggleName}
-            title={toggleName}
-            onClick={onToggle}
-          >
-            <span aria-hidden="true">{expanded ? "‹" : "›"}</span>
-          </button>
         </div>
       )}
       <div id="rail-body" className={styles.body} hidden={!expanded}>
         {expanded ? (
           <>
-            {session ? (
-              <ul aria-label="Sessions" className={styles.sessionList}>
-                <SessionRow session={session} />
-              </ul>
-            ) : (
-              <p className={styles.line}>No session projection</p>
-            )}
-            <p role="note" className={styles.otherNote}>
-              {OTHER_SESSIONS_NOTE}
-            </p>
+            <section aria-labelledby="rail-binding" className={styles.section}>
+              <h2 id="rail-binding" className={styles.heading}>
+                Source binding
+              </h2>
+              <div className={styles.binding}>
+                <span className={styles.bindingName}>{bindingName(model.source)}</span>
+                <Chip tone="idle">{model.source}</Chip>
+              </div>
+            </section>
+            <section aria-labelledby="rail-sessions-title" className={styles.section}>
+              <h2 id="rail-sessions-title" className={styles.heading}>
+                Sessions
+              </h2>
+              {session ? (
+                <ul aria-label="Sessions" className={styles.sessionList}>
+                  <SessionRow session={session} />
+                </ul>
+              ) : (
+                <p className={styles.line}>No session projection</p>
+              )}
+            </section>
             <section aria-labelledby="rail-streams" className={styles.section}>
               <h2 id="rail-streams" className={styles.heading}>
                 Observation streams
@@ -145,10 +173,15 @@ export function Rail({ model, phone, expanded, onToggle, inert = false }: RailPr
                 <p className={styles.line}>No streams projected.</p>
               )}
             </section>
-            <p className={styles.note}>
-              Read-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are
-              supervisor authority.
-            </p>
+            <div className={styles.footnote}>
+              <p role="note" className={styles.otherNote}>
+                {OTHER_SESSIONS_NOTE}
+              </p>
+              <p className={styles.note}>
+                Read-only projection. No launch, cancel, approve, fork or execute control exists in this client; those are
+                supervisor authority.
+              </p>
+            </div>
           </>
         ) : null}
       </div>

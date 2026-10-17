@@ -15,20 +15,21 @@
   min-height: 0;
 }
 
-/* Toolbar: the grouping toggles and the search field, then the summary line. */
+/* Toolbar: the grouping control and the search field on one line, then the summary line. */
 
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-2) var(--space-4);
 }
 
 .groupRow {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1h) var(--space-3);
   min-width: 0;
 }
 
@@ -40,18 +41,23 @@
 
 .search {
   display: flex;
+  align-items: center;
   flex: 0 1 18rem;
   min-width: 12rem;
+  min-height: var(--row-h-input);
+  padding: 0 var(--space-2h);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
+  color: var(--muted-foreground);
 }
 
 .searchInput {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: var(--row-h-input);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--input);
-  border-radius: var(--radius-sm);
-  background: var(--background);
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--foreground);
   font: inherit;
   font-size: var(--text-sm);
@@ -63,43 +69,62 @@
   font-size: var(--text-xs);
 }
 
-/* Sequence rail: three lanes over every retained record. The axis is the record sequence. */
+/* Sequence rail: three lanes over every retained record, in one bordered panel. The axis is the record sequence. */
 
 .rail {
   display: flex;
   flex-direction: column;
   gap: var(--space-1h);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2h) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--card);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--foreground) 2%, transparent);
 }
 
 .lane {
   display: grid;
   grid-template-columns: 4.5rem minmax(0, 1fr);
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-2h);
 }
 
 .laneLabel {
   color: var(--muted-foreground);
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
   font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
+/* A lane's colour is the source colour of what the lane records: assistant for the model, decision for the policy,
+   tool for the tools. Only the fills of the tones below read it. */
 .track {
+  --local-lane: var(--muted-foreground);
   display: flex;
+  align-items: center;
+  gap: 2px;
   min-width: 0;
-  height: 0.75rem;
-  overflow: hidden;
-  border-radius: var(--radius-xs);
+  height: 1.125rem;
+}
+
+.track[data-lane="model"] {
+  --local-lane: var(--source-assistant);
+}
+
+.track[data-lane="policy"] {
+  --local-lane: var(--source-decision);
+}
+
+.track[data-lane="tools"] {
+  --local-lane: var(--source-tool);
 }
 
 .seg {
   flex-basis: 0;
   min-width: 2px;
+  height: 0.5rem;
   box-sizing: border-box;
+  border-radius: var(--radius-xs);
 }
 
 .seg-w1 {
@@ -134,15 +159,16 @@
   flex-grow: 8;
 }
 
-/* Tones: a shape carries the state as well as the colour, as the status dots do. */
+/* Tones: a shape carries the state as well as the colour, as the status dots do. Deny is the deny state colour; the
+   muted tone is a tint, so a lane's empty spans read as absence. */
 
 .seg[data-tone="ok"] {
-  background: var(--state-ok);
+  background: var(--local-lane);
 }
 
 .seg[data-tone="allow"] {
-  background: color-mix(in oklch, var(--state-allow) 22%, transparent);
-  box-shadow: inset 0 0 0 2px var(--state-allow);
+  background: color-mix(in oklch, var(--local-lane) 22%, transparent);
+  box-shadow: inset 0 0 0 2px var(--local-lane);
 }
 
 .seg[data-tone="deny"] {
@@ -168,11 +194,11 @@
 }
 
 .seg[data-tone="idle"] {
-  background: var(--state-idle);
+  background: var(--local-lane);
 }
 
 .seg[data-tone="muted"] {
-  background: var(--muted);
+  background: color-mix(in oklch, var(--muted-foreground) 55%, transparent);
 }
 
 @media (forced-colors: active) {
@@ -197,9 +223,12 @@
   }
 }
 
+/* The axis note sits inside the panel, under a dashed rule. It states what the axis is, and it stays visible. */
 .axis {
-  margin: 0;
-  color: var(--muted-foreground);
+  margin: var(--space-1h) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border);
+  color: var(--warning-foreground);
   font-size: var(--text-xs);
   line-height: var(--lh-xs);
 }
@@ -228,23 +257,46 @@
   gap: var(--space-1h);
 }
 
+/* The group heading is a turn box, a rule that fills the row, then the meta, as the turn separator of the v2 mockup. */
 .groupHead {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--border);
+  align-items: center;
+  gap: var(--space-2h);
+}
+
+.groupHead::before {
+  content: "";
+  order: 1;
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--border);
 }
 
 .groupTitle {
-  font-size: var(--text-xs);
-  font-weight: 600;
+  order: 0;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 1 auto;
+  min-width: 1.5rem;
+  height: 1.125rem;
+  padding: 0 var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--muted);
+  color: var(--foreground);
+  font-size: var(--text-2xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .groupMeta {
+  order: 2;
   color: var(--muted-foreground);
   font-size: var(--text-xs);
+  white-space: nowrap;
 }
 
 .groupBody {
@@ -253,17 +305,19 @@
   gap: var(--space-1);
 }
 
+/* A record row: a grid of a status mark, the kind chip, the label, the payload, the clock and the tail chips, so the
+   columns line up down the ledger. The row is a button; a selected row is tinted and outlined. */
 .row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 0.875rem 5.25rem 8.5rem minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: var(--space-1h) var(--space-2);
+  gap: var(--space-1h) var(--space-2h);
   width: 100%;
   min-height: var(--row-h-cell);
   padding: var(--space-1h) var(--row-pad-x);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--card);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--foreground);
   font: inherit;
   font-size: var(--text-sm);
@@ -272,26 +326,35 @@
 }
 
 .row:hover {
-  background: var(--accent);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
 }
 
-.selected,
+.row.selected,
 .row[aria-pressed="true"] {
-  background: var(--accent);
-  box-shadow: inset 3px 0 0 var(--foreground);
+  background: color-mix(in oklch, var(--info) 10%, transparent);
+  border-color: color-mix(in oklch, var(--info) 34%, transparent);
+}
+
+.kind {
+  display: inline-flex;
+  justify-self: start;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .label {
   min-width: 0;
-  max-width: 16rem;
+  max-width: 100%;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--foreground) 3%, transparent);
   overflow: hidden;
-  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .payload {
-  flex: 1 1 12rem;
   min-width: 0;
   overflow: hidden;
   color: var(--muted-foreground);
@@ -312,7 +375,8 @@
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1);
+  justify-self: end;
+  gap: var(--space-1h);
 }
 
 .chipWrap {
@@ -369,7 +433,9 @@
     grid-template-columns: 3.5rem minmax(0, 1fr);
   }
 
-  .label {
-    max-width: 100%;
+  /* A phone is too narrow for the fixed columns: the row wraps as a flow, as it did before the grid. */
+  .row {
+    display: flex;
+    flex-wrap: wrap;
   }
 }

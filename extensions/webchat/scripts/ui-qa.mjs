@@ -518,6 +518,23 @@ function runGatewayCommand(label, command) {
   return { label, status: result.status, ok: result.status === 0 };
 }
 
+// The same command, run without blocking the event loop. Check G reads DevTools events while the stop runs. A synchronous call
+// held those events back, so the outage's first attempts were stamped in one burst and their gap read as 0 to 126 ms (a
+// measurement artefact; the scheduler's floor is 250 ms). Round 4 (the G investigation) measured it at a 4 s stop: 0 ms for
+// HEAD and the restyle alike; asynchronously, 784 to 864 ms.
+function runGatewayCommandAsync(label, command) {
+  return new Promise((resolve) => {
+    const child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', command], { stdio: 'ignore' });
+    const timer = setTimeout(() => child.kill(), 60000);
+    const done = (status) => {
+      clearTimeout(timer);
+      resolve({ label, status, ok: status === 0 });
+    };
+    child.on('exit', (code) => done(code));
+    child.on('error', () => done(null));
+  });
+}
+
 // ---------- the fixtures every check reads ----------
 
 function distTree() {
@@ -747,12 +764,19 @@ async function tabPress() {
 // Presses Tab until focus leaves the document (BODY), comes back to the first stop (a full
 // cycle), or the limit is reached. The walk records how it ended in `end`. A stop that repeats
 // the one before it means focus did not move: a trap.
-async function tabWalk(limit = 80) {
+// Round 3: openDisclosure names a summary that the walk opens with Enter when it reaches it. The header's "More options"
+// disclosure holds the theme switch, which is not in the Tab order until it opens. The walk then continues in the same pass.
+async function tabWalk(limit = 80, { openDisclosure = null } = {}) {
+  let opened = false;
   const stops = [];
   let end = 'limit reached';
   for (let i = 0; i < limit; i += 1) {
     const stop = await tabPress();
     stops.push(stop);
+    if (openDisclosure && !opened && stop.label === openDisclosure) {
+      opened = true;
+      await press('Enter');
+    }
     if (stop.tag === 'BODY') {
       end = 'document end';
       break;
@@ -809,7 +833,9 @@ async function checkC(ctx) {
 
   // C2: the full Tab order from the top of the page, to the end of the document.
   await navigate('/app/');
-  const chatWalk = await tabWalk();
+  // Contract change (round 3): the theme switch sits in the header's "More options" disclosure, closed by default. The walk opens
+  // it at its stop (Enter), so the theme options are reached in their place in the Tab order.
+  const chatWalk = await tabWalk(80, { openDisclosure: 'More options' });
   const chatStops = chatWalk.stops;
   ctx.note('chatTabOrder', chatStops.map(shortStop));
   const chatRingless = chatStops.filter((s) => s.tag !== 'BODY' && !s.ring).map(shortStop);
@@ -817,12 +843,14 @@ async function checkC(ctx) {
   ctx.expect(chatRingless.length === 0, `focus stops without a visible ring: ${chatRingless.join(' | ')}`);
   // Contract change (redesign): the header's Governance toggle and the rail's collapse toggle are Tab stops too, so the
   // order is read by identity rather than by position: theme, then the Chat tab, the filters, and the tool cards.
-  const themeAt = chatStops.findIndex((s) => s.text === 'System');
+  // Contract change (round 3, the dark default): the theme toolbar's one Tab stop is the pressed option, which is Dark by default.
+  const themeAt = chatStops.findIndex((s) => ['System', 'Light', 'Dark'].includes(s.text) && s.pressed === 'true');
   const chatTabAt = chatStops.findIndex((s) => s.id === 'view-tab-chat');
   const allAt = chatStops.findIndex((s) => s.pressed === 'true' && /^All/.test(s.text ?? ''));
-  const firstCard = chatStops.findIndex((s) => s.tag === 'summary');
+  // Contract change (round 3): the header's disclosure is a summary too. A tool card is a summary that is not the disclosure.
+  const firstCard = chatStops.findIndex((s) => s.tag === 'summary' && s.label !== 'More options');
   ctx.note('chatStopIndexes', { theme: themeAt, chatTab: chatTabAt, allFilter: allAt, firstToolCard: firstCard });
-  ctx.expect(themeAt > 0 && chatStops[themeAt]?.tabindex === '0', `the theme toolbar's stop is ${shortStop(chatStops[themeAt] ?? {})}, expected the System button with tabindex 0`);
+  ctx.expect(themeAt > 0 && chatStops[themeAt]?.tabindex === '0', "the theme toolbar's stop is " + shortStop(chatStops[themeAt] ?? {}) + ", expected the pressed theme option with tabindex 0");
   ctx.expect(chatTabAt > themeAt, `the Chat tab (stop ${chatTabAt}) does not follow the theme toolbar (stop ${themeAt})`);
   ctx.expect(allAt > chatTabAt, `the pressed All filter (stop ${allAt}) does not follow the Chat tab (stop ${chatTabAt})`);
   ctx.expect(firstCard > allAt, 'no tool-card summary is reachable by Tab after the filters');
@@ -830,18 +858,24 @@ async function checkC(ctx) {
 
   // C3: the theme toolbar has one Tab stop; its other buttons are reached with the arrow keys.
   await navigate('/app/');
-  const onSystem = await tabUntil((s) => s.text === 'System');
-  ctx.expect(onSystem.text === 'System', `Tab did not reach the System button (got ${shortStop(onSystem)})`);
+  // Contract change (round 3): open the header's "More options" disclosure first (Enter on its summary); the theme options follow it.
+  const onMore = await tabUntil((s) => s.label === 'More options');
+  ctx.expect(onMore.label === 'More options', `Tab did not reach the More options disclosure (got ${shortStop(onMore)})`);
+  await press('Enter');
+  // Contract change (round 3, the dark default): the theme's Tab stop is the pressed option, Dark. The arrow keys wrap from it:
+  // ArrowRight from Dark goes to System, then ArrowRight to Light, and Home goes to System.
+  const onStop = await tabUntil((s) => s.text === 'Dark' && s.pressed === 'true');
+  ctx.expect(onStop.text === 'Dark', 'Tab did not reach the pressed Dark option (got ' + shortStop(onStop) + ')');
+  await press('ArrowRight');
+  const onSystem = await describe();
+  ctx.expect(onSystem.text === 'System', 'ArrowRight on the theme toolbar left focus on ' + shortStop(onSystem) + ', expected System (wrapping from Dark)');
   await press('ArrowRight');
   const onLight = await describe();
-  ctx.expect(onLight.text === 'Light', `ArrowRight on the theme toolbar left focus on ${shortStop(onLight)}, expected Light`);
-  await press('ArrowRight');
-  const onDark = await describe();
-  ctx.expect(onDark.text === 'Dark', `ArrowRight on Light left focus on ${shortStop(onDark)}, expected Dark`);
+  ctx.expect(onLight.text === 'Light', 'ArrowRight on System left focus on ' + shortStop(onLight) + ', expected Light');
   await press('Home');
   const onHome = await describe();
-  ctx.expect(onHome.text === 'System', `Home on the theme toolbar left focus on ${shortStop(onHome)}, expected System`);
-  ctx.note('themeToolbarArrows', { arrowRight: onLight.text, twice: onDark.text, home: onHome.text, pressedAfterArrows: await evaluate(PRESSED_IN('Theme')) });
+  ctx.expect(onHome.text === 'System', 'Home on the theme toolbar left focus on ' + shortStop(onHome) + ', expected System');
+  ctx.note('themeToolbarArrows', { arrowRight: onSystem.text, twice: onLight.text, home: onHome.text, pressedAfterArrows: await evaluate(PRESSED_IN('Theme')) });
 
   // C4: the view tabs. Arrows and Home/End move focus; the selected tab follows (automatic or with Enter).
   await navigate('/app/');
@@ -1335,7 +1369,9 @@ async function gatewayAnswers() {
 const SCRIM_STATE = `(() => {
   const scrim = document.querySelector('[data-testid="scrim"]');
   const header = document.querySelector('header[aria-label="Workspace header"]');
-  const controls = header ? Array.from(header.querySelectorAll('button')) : [];
+  // Contract change (round 3): the theme switch is in the header's closed "More options" disclosure, so its buttons are not drawn
+  // and are not header controls at this point. Only the drawn header buttons are counted, and each must sit under the scrim.
+  const controls = header ? Array.from(header.querySelectorAll('button')).filter((b) => b.checkVisibility()) : [];
   const under = controls.filter((b) => {
     const r = b.getBoundingClientRect();
     return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === scrim;
@@ -1468,7 +1504,9 @@ async function checkE(ctx) {
   const blockedShell = await evaluate(`({ header: Boolean(document.querySelector('${APP_HEADER}')), chat: Boolean(document.getElementById('view-panel-chat')) })`);
   ctx.note('blockedStorage', { shell: blockedShell, theme: blocked });
   ctx.expect(blockedShell.header && blockedShell.chat, 'the page did not render with localStorage throwing');
-  ctx.expect(blocked.dataTheme === null && blocked.pressed.includes('System=true'), `with storage blocked the page did not default to system (data-theme ${blocked.dataTheme}, ${JSON.stringify(blocked.pressed)})`);
+  // Contract change (round 3, the dark default): with nothing usable stored, the page renders on dark (theme.ts DEFAULT_THEME and
+  // public/theme-boot.js). System is no longer the default, so the expectation is Dark.
+  ctx.expect(blocked.dataTheme === 'dark' && blocked.pressed.includes('Dark=true'), `with storage blocked the page did not default to dark (data-theme ${blocked.dataTheme}, ${JSON.stringify(blocked.pressed)})`);
   await clickIn(THEME_TOOLBAR, 'Dark');
   const blockedDark = await evaluate(THEME_STATE);
   ctx.expect(blockedDark.dataTheme === 'dark', 'choosing Dark with storage blocked did not apply for the session');
@@ -1681,7 +1719,7 @@ async function checkG(ctx) {
   try {
     // Outage: the gateway is stopped. The client retries with growing, jittered delays, capped at 10 s.
     const stopAt = performance.now();
-    const stop = runGatewayCommand('stop', gatewayCommands.stop);
+    const stop = await runGatewayCommandAsync('stop', gatewayCommands.stop);
     ctx.note('stopCommandStatus', stop.status);
     const stopped = await poll(async () => !(await gatewayAnswers()), 20000, 200);
     ctx.expect(stopped, 'the gateway still answers after the stop command');
@@ -1842,10 +1880,13 @@ const POINT_STATE = `(() => {
   const nav = document.querySelector('nav[aria-label="Sessions and streams"]');
   const list = document.querySelector('ul[aria-label="Sessions"]');
   const rows = list ? Array.from(list.querySelectorAll(':scope > li')) : [];
-  const railToggle = Array.from(document.querySelectorAll('nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]')).find(visible) || null;
+  // The desktop toggle is in the header's brand row, and the phone's is the strip in the nav (Shell.tsx, Rail.tsx). Round 3: J read
+  // the header only, so the phone strip was missed (aria-expanded null). Either one, whichever is drawn.
+  const railToggle = Array.from(document.querySelectorAll('header[aria-label="Workspace header"] button[aria-controls="rail-body"], nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]')).find(visible) || null;
   const body = document.getElementById('rail-body');
   const conv = document.querySelector('[class*="_conversation_"]');
-  const head = conv ? conv.querySelector('h2') : null;
+  // The session title is the workspace heading, in the header's title row (Shell.tsx). The chat head is the conversation block.
+  const head = document.querySelector('header[aria-label="Workspace header"] h2');
   const header = document.querySelector('header[aria-label="Workspace header"]');
   const labels = Array.from(document.querySelectorAll('button')).map((b) => t(b) + ' | ' + (b.getAttribute('aria-label') || ''));
   const log = document.querySelector('[role="log"][aria-label="Transcript"]');
@@ -1871,12 +1912,13 @@ const POINT_STATE = `(() => {
     head: {
       title: t(head),
       conversation: t(conv),
-      h2BelowHeader: head && header ? Math.round(head.getBoundingClientRect().top - header.getBoundingClientRect().bottom) : null,
+      // The chat head (the conversation block) starts this far below the header. Its title is in the header, so the block is measured.
+      chatHeadBelowHeader: conv && header ? Math.round(conv.getBoundingClientRect().top - header.getBoundingClientRect().bottom) : null,
     },
     messages: {
       times: times.length,
       timesWithDatetime: times.filter((x) => x.getAttribute('datetime')).length,
-      copy: labels.filter((x) => x.startsWith('Copy message')).length,
+      copy: Array.from(document.querySelectorAll('button')).filter((b) => (b.getAttribute('aria-label') || '').startsWith('Copy message')).length,
       records: Array.from(document.querySelectorAll('[role="log"] button')).map((b) => t(b)).filter((x) => /^record \\d+$/.test(x)).length,
       piLabels: logSpans.filter((x) => x === 'Pi').length,
       userLabels: logSpans.filter((x) => x === 'User').length,
@@ -1977,7 +2019,7 @@ async function checkJ(ctx) {
         ctx.expect(/Collapse sessions panel/.test(st.rail.toggleName ?? '') && st.rail.toggleExpanded === 'true', `${p}: the rail toggle is "${st.rail.toggleName}" with aria-expanded ${st.rail.toggleExpanded}`);
       } else {
         ctx.expect(st.rail.navVisible && st.rail.toggleExpanded === 'false' && st.rail.bodyVisible === false, `${p}: the phone rail is not a collapsed disclosure strip (aria-expanded ${st.rail.toggleExpanded}, body visible ${st.rail.bodyVisible})`);
-        ctx.expect(st.head.h2BelowHeader !== null && st.head.h2BelowHeader <= 160, `${p}: the chat head starts ${st.head.h2BelowHeader} px below the header (plan: within 160 px)`);
+        ctx.expect(st.head.chatHeadBelowHeader !== null && st.head.chatHeadBelowHeader <= 160, `${p}: the chat head starts ${st.head.chatHeadBelowHeader} px below the header (plan: within 160 px)`);
       }
 
       // (c) Pi identity
@@ -2106,7 +2148,7 @@ async function checkJ(ctx) {
   await sleep(300);
 
   // The Sessions rail's collapse toggle: by keyboard and by pointer, kept across a reload (1440 px); the phone strip (390 px).
-  const railToggleExpr = `Array.from(document.querySelectorAll('nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]')).find((x) => x.getBoundingClientRect().width > 0)`;
+  const railToggleExpr = `Array.from(document.querySelectorAll('header[aria-label="Workspace header"] button[aria-controls="rail-body"], nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]')).find((x) => x.getBoundingClientRect().width > 0)`;
   await viewport(1440, 900);
   await navigate('/app/');
   // The rail's state is read after it settles: the React update and the stored preference follow the key or the click.
@@ -2125,7 +2167,7 @@ async function checkJ(ctx) {
   await waitFor(`(() => { const b = ${railToggleExpr}; return Boolean(b && b.getAttribute('aria-expanded') === 'true'); })()`, 3000);
   rs = await railNow();
   ctx.expect(rs.toggleExpanded === 'true' && rs.bodyVisible === true && rs.rows === 1, `Space on the rail toggle left aria-expanded ${rs.toggleExpanded} and the body visible ${rs.bodyVisible}`);
-  await clickSelector('nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]');
+  await clickSelector('header[aria-label="Workspace header"] button[aria-controls="rail-body"], nav[aria-label="Sessions and streams"] button[aria-controls="rail-body"]');
   await waitFor(`(() => { const b = ${railToggleExpr}; return Boolean(b && b.getAttribute('aria-expanded') === 'false'); })()`, 3000);
   rs = await railNow();
   ctx.expect(rs.toggleExpanded === 'false' && rs.bodyVisible === false, `a pointer press on the rail toggle left aria-expanded ${rs.toggleExpanded}`);
@@ -2211,17 +2253,17 @@ async function checkJ(ctx) {
   ctx.expect(afterSend.tag !== 'textarea' && afterSend.tag !== 'BODY', `Tab from Send did not leave the composer (went to ${shortStop(afterSend)})`);
 
   const clipText = snapshot.items[0].text;
-  await evaluate(`(() => { const b = Array.from(document.querySelectorAll('[role="log"] button')).find((x) => x.textContent.trim() === 'Copy message'); b.click(); return true; })()`);
+  await evaluate(`(() => { const b = document.querySelector('[role="log"] button[aria-label^="Copy message"]'); b.click(); return true; })()`);
   await sleep(300);
-  const clip = await evaluate(`({ clip: window.__clip.slice(), label: (Array.from(document.querySelectorAll('[role="log"] button')).find((x) => /^Copied$|^Copy/.test(x.textContent.trim())) || {}).textContent || null })`);
+  const clip = await evaluate(`(() => { const word = (x) => (x.getAttribute('aria-label') || '').split(': ')[0]; const b = Array.from(document.querySelectorAll('[role="log"] button')).find((x) => /^Copied$|^Copy/.test(word(x))); return { clip: window.__clip.slice(), label: b ? word(b) : null }; })()`);
   ctx.note('copy', { wrote: clip.clip, label: clip.label });
   ctx.expect(clip.clip.length === 1 && clip.clip[0] === clipText, `the first Copy wrote ${JSON.stringify(clip.clip)}, expected the projected text "${clipText}"`);
   ctx.expect(clip.label === 'Copied', `after a copy the button reads "${clip.label}", expected "Copied"`);
   await evaluate(`(() => { navigator.clipboard.writeText = () => Promise.reject(new DOMException('denied by the QA harness', 'NotAllowedError')); return true; })()`);
   const beforeDenied = observed.console.length;
-  await evaluate(`(() => { const b = Array.from(document.querySelectorAll('[role="log"] button')).find((x) => x.textContent.trim() === 'Copy message'); b.click(); return true; })()`);
+  await evaluate(`(() => { const b = document.querySelector('[role="log"] button[aria-label^="Copy message"]'); b.click(); return true; })()`);
   await sleep(500);
-  const denied = await evaluate(`(() => { const b = Array.from(document.querySelectorAll('[role="log"] button')).find((x) => /^Copy/.test(x.textContent.trim())); return b ? b.textContent.trim() : null; })()`);
+  const denied = await evaluate(`(() => { const word = (x) => (x.getAttribute('aria-label') || '').split(': ')[0]; const b = Array.from(document.querySelectorAll('[role="log"] button')).find((x) => /^Copy/.test(word(x))); return b ? word(b) : null; })()`);
   const deniedIssues = observed.console.slice(beforeDenied).filter((e) => ['error', 'exception'].includes(e.level));
   ctx.note('copyDenied', { label: denied, consoleErrors: deniedIssues.length });
   ctx.expect(denied === 'Copy unavailable', `a denied copy reads "${denied}", expected "Copy unavailable"`);

@@ -402,6 +402,26 @@ describe("Inspector: the collapsed column at wide widths", () => {
   });
 });
 
+describe("Inspector: the header's scope", () => {
+  it("shows that the governance panels are session-scoped beside the heading, not inside the heading's name", async () => {
+    const view = mount(<Host model={await modelWith()} />);
+    const heading = view.container.querySelector("h2");
+    expect(heading?.textContent).toBe("Governance");
+    const scope = Array.from(view.container.querySelectorAll("span")).find((span) => span.textContent === "session-scoped");
+    expect(scope).toBeDefined();
+    expect(heading?.contains(scope ?? null)).toBe(false);
+    expect(heading?.parentElement?.contains(scope ?? null)).toBe(true);
+    view.unmount();
+  });
+
+  it("shows no session scope over a record, whose heading is Record", async () => {
+    const view = mount(<Host model={await modelWith("d1")} initialRecordTab />);
+    expect(view.container.querySelector("h2")?.textContent).toBe("Record");
+    expect(view.container.textContent).not.toContain("session-scoped");
+    view.unmount();
+  });
+});
+
 describe("the drawer's width fits the five governance tabs", () => {
   it("is the inspector column's width, or the viewport less a gutter, whichever is narrower", () => {
     const css = readFileSync(resolve(process.cwd(), "src/app/Inspector.module.css"), "utf8");

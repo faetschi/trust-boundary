@@ -1,6 +1,7 @@
 /*
- * The footer: the session's statistics as one wrapping line, and the build label beside it. It takes the page width, and
- * wraps at narrow widths rather than stacking a list. Colour comes from the alias tier only.
+ * The footer: the session's statistics as one centred, muted line under the composer, and the build label beside it. The line
+ * takes the page width, and wraps at narrow widths rather than stacking a list. A reading that is unavailable is drawn in the
+ * warning ink, and the separators are faint. Colour comes from the alias tier only.
  */
 
 .footer {
@@ -10,8 +11,8 @@
   justify-content: space-between;
   gap: var(--space-1) var(--space-2);
   padding: var(--space-1h) var(--space-2);
-  border-top: 1px solid var(--border);
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-2xs);
   color: var(--muted-foreground);
 }
 
@@ -19,7 +20,15 @@
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
-  color: var(--foreground);
+  text-align: center;
+}
+
+.sep {
+  opacity: 0.45;
+}
+
+.un {
+  color: var(--warning-foreground);
 }
 
 .build {
