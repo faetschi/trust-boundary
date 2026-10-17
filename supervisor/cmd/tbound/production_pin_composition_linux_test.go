@@ -15,6 +15,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflowrecovery"
@@ -31,7 +32,8 @@ const (
 )
 
 // This test runs its production initializer helper in an environment with an
-// explicit safe-variable allowlist and a fixed dummy provider credential. The
+// explicit safe-variable allowlist and a dummy 0400 key file bound through the
+// production service factory seam (the environment key is ignored). The
 // real initializer can construct its production conversation, but the fixture
 // never calls NextTurn and therefore cannot send a provider request.
 func TestProductionFreshAndRecoveryDigestComposition(t *testing.T) {
@@ -65,7 +67,6 @@ func TestProductionFreshAndRecoveryDigestComposition(t *testing.T) {
 				"PATH=/usr/bin:/bin",
 				"HOME=" + root,
 				"TMPDIR=" + root,
-				"TBOUND_OPENCODE_GO_API_KEY=fixture-only-never-transmitted-key",
 				"GIT_CONFIG_NOSYSTEM=1",
 				"GIT_CONFIG_GLOBAL=/dev/null",
 				"GIT_TERMINAL_PROMPT=0",
@@ -98,6 +99,14 @@ func runProductionPinFixtureHelper(t *testing.T) {
 	if !filepath.IsAbs(root) || filepath.Clean(root) != root {
 		t.Fatal("isolated production fixture root is not absolute and clean")
 	}
+	keyPath := filepath.Join(root, "fixture-provider.key")
+	if err := os.WriteFile(keyPath, []byte("fixture-only-never-transmitted-key\n"), 0o400); err != nil {
+		t.Fatal(err)
+	}
+	defer func(previous func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error)) {
+		productionProviderConversationFactory = previous
+	}(productionProviderConversationFactory)
+	productionProviderConversationFactory = serviceProviderConversationFactory(keyPath)
 	paths := map[string]string{
 		"source": filepath.Join(root, "source"), "store": filepath.Join(root, "store"),
 		"admin": filepath.Join(root, "admin"), "rootdir": filepath.Join(root, "recovery-root"),

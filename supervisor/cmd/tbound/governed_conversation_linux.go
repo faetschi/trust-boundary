@@ -31,13 +31,13 @@ func requireFreshProviderConversation(journal *audit.Journal) error {
 }
 
 func (a *SessionOperationAuthority) NewProviderConversation(config providerbridge.Config) (*providerbridge.Conversation, error) {
-	return a.newProviderConversation(config, providerbridge.NewFromEnvironment)
+	return a.newProviderConversation(config, productionProviderConversationFactory)
 }
 
 // newProviderConversation keeps the constructor's complete host admission and
 // ledger checks in one place. The factory is package-private and exists only so
 // offline subprocess tests can use the pinned development transport; production
-// always calls NewFromEnvironment above.
+// always calls the fixed service key-file factory above (never the environment).
 func (a *SessionOperationAuthority) newProviderConversation(config providerbridge.Config,
 	factory func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error)) (*providerbridge.Conversation, error) {
 	if a == nil {

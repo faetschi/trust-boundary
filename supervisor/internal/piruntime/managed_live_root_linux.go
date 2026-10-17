@@ -31,6 +31,7 @@ const (
 	D09ManagedPiServiceSocketMode       = "systemd-socket-activation-single-task/v1"
 	D09ManagedPiServiceConfigSchema     = "tbound-pi-service-config/v2"
 	D09ManagedPiServiceConfigPath       = "/etc/tbound/serve-pi-service.json"
+	D09ManagedPiProviderCredentialPath  = "/etc/tbound/provider/opencode-go.key"
 	D09ManagedPiServiceSocketPath       = "/run/tbound/serve-pi.sock"
 	D09ManagedPiSocketUnitPath          = "/etc/systemd/system/tbound-pi.socket"
 	D09ManagedPiServiceUnitPath         = "/etc/systemd/system/tbound-pi.service"
