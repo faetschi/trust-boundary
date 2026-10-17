@@ -13,6 +13,8 @@ Decisions (2026-10-17, owner):
 - Research: pre-registration = digest-pinned repo freeze commit, reviewers = owner + advisor; P = stub (no model); per-case order (C then 4 P/C replays); reruns only with outage evidence, max one, original kept, rerun scored; rerun headroom 5% (97 units); admission = signed corpus manifest, id `case_id/role/attempt`.
 - Earlier: compliant C-success = VALID_PASS; dead owner + absent scope + no receipt = not drained.
 
+Known flake: TestD14PreEffectTerminalHeadroomGate failed once (ErrRestartRequired at slack 22); stress investigation stalled (race x200 >54 min, no output) and was stopped 2026-10-17; not reproduced, no code changed.
+
 Open owner decisions: ledger head-hash anchor owner (rollback detection); ledger unit vs request; P/C unit definition (EC:64 vs budget); corpus content and review; freeze commit timing; signing session (5 signatures + 2 key reads, runbook `infra/guest/PROVISIONING-SIGNING.md`).
 
 Next: runbook update (v4 corpus config, research route files, genesis, B4); Codex reviews of pending increments; then owner-approved provisioning/signing session on the guest (172.22.198.27, HostKeyAlias 172.18.155.19) and E2E smoke over OpenCode Go.
