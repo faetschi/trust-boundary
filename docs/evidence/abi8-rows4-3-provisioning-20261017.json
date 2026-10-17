@@ -1,0 +1,163 @@
+{
+    "receipt":  "abi8-rows4-3-provisioning-20261017",
+    "decisionState":  "STOPPED_BEFORE_ANY_GUEST_WRITE_DOCS_AND_CODE_CONFLICT_NOT_QUALIFICATION",
+    "scope":  "Owner-approved privileged provisioning of row 4 (NodeRO mount) and row 3 (tbound-pi systemd unit and socket, R8 layout) on the disposable ABI 8 guest. The agent read the documented procedure first, captured read-only pre-state, found documentation and code conflicts for both rows, and STOPPED as instructed. NO guest write was performed. This is NOT qualification. No signing. NOPASSWD unchanged. Cell leg (D2) out of scope. G1, containment, H1, D14 and D20 are not established.",
+    "repo":  {
+                 "branch":  "codex/tbound-prototype",
+                 "headWhenWritten":  "ff6185d",
+                 "committedByThisWork":  false,
+                 "stagedByThisWork":  false,
+                 "repoFilesWrittenByThisWork":  ["docs/evidence/abi8-rows4-3-provisioning-20261017.json"]
+             },
+    "approvalScope":  {
+                          "approvedBy":  "owner, 2026-10-17",
+                          "approvedQuote":  [
+                                                "Row 4: the NodeRO (read-only runtime) mount on the guest.",
+                                                "Row 3: install and verify the tbound-pi systemd unit and socket, using the committed R8 layout (commit 0664c25): closed empty delegated parent plus an exact runner leaf, and cgroups_path /system.slice/tbound-pi.service/cells under Delegate=yes. Verify cgroup.kill and cgroup.events exist where the docs require."
+                                            ],
+                          "notApproved":  [
+                                              "any signing (calibration, registration, host profile)",
+                                              "installing anything into /etc/tbound other than what rows 3/4 strictly require per the docs",
+                                              "revoking or changing the NOPASSWD sudo drop-in",
+                                              "starting a cell or launching serve --pi sessions beyond minimal unit verification",
+                                              "any checkpoint, VM power/NIC change, package installs, or provider calls",
+                                              "AppArmor/host-policy changes; the cell leg (D2) is OUT OF SCOPE by owner decision"
+                                          ]
+                      },
+    "access":  {
+                   "sshClient":  "C:/Program Files/Git/usr/bin/ssh.exe (Git Bash). Windows OpenSSH not used.",
+                   "options":  "Byte-identical to F:/TBoundAssets/recovery-20261015/remeasure-20261017/gssh2.sh (cmp verified): identity by path only (never read), IdentitiesOnly, BatchMode, publickey only, StrictHostKeyChecking=yes, HostKeyAlgorithms=ssh-ed25519, pinned known_hosts-172.18.155.19.txt, HostKeyAlias=172.18.155.19, target tboundadmin@172.22.198.27. Login succeeded, so the host key matched the pin.",
+                   "sudo":  "sudo -n used only for read-only sha256sum and ls of root-only files during pre-state capture.",
+                   "guestWrites":  0
+               },
+    "guestPreState":  {
+                          "capturedUtc":  "2026-10-17T09:55:08Z (guest clock)",
+                          "log":  "logs/10-prestate.txt",
+                          "identity":  "tbound-abi8-seed, kernel 7.0.0-38-generic, boot_id f94189ae-ccfc-48f7-8187-3c508643a4a1, systemd 255 (255.4-1ubuntu8.18), cgroup2fs",
+                          "mounts":  "findmnt: /var/lib/tbound/live /dev/loop0 ext4 rw,nosuid,nodev,relatime (id 161); /var/lib/tbound/runtime bind of /dev/sda2[/var/lib/tbound/runtime-src] ext4 ro,nosuid,nodev,relatime (id 356). No mount at /usr/local/bin/node or /usr/local/bin.",
+                          "modes":  {
+                                        "/usr/local/bin/node":  "root:root 0755 regular file, dev 2050 ino 2109630, lsattr: no immutable flag, sha256 7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c, v24.21.0",
+                                        "/usr/local/bin/tbound":  "root:root 0755, sha256 b7f738d8bf9b64979dee921842bfe134ccd897ecfdc7ef3cc95612ddb8f62087",
+                                        "/usr/local/bin/tbound-profile":  "root:root 0755, sha256 7c5fa5f53b6f2c16b23ab1fca41706b2c7bd4f4816936dcc3be293b189c3e942",
+                                        "/var/lib/tbound/runtime and runtime-src":  "root:root 0555, dev 2050 ino 285411 (same inode)",
+                                        "/var/lib/tbound/live":  "tbound-pi:tbound-pi 0700, dev 1792 ino 2",
+                                        "/run/tbound/serve-pi.sock":  "root:tbound-pi-clients 0660 socket"
+                                    },
+                          "unitFiles":  {
+                                            "/etc/systemd/system/tbound-pi.service":  "sha256 daf053a8df668c404425e2f010c9ce4870c908d23ee4353f8ea3220608039d07 (identical to the hash recorded in abi8-bootstrap-calibration and abi8-measured-registration; installed 2026-10-15 17:56). Delegate=yes, NO DelegateSubgroup line. DropInPaths empty. UnitFileState static.",
+                                            "/etc/systemd/system/tbound-pi.socket":  "sha256 9dcb52a148c71b549211ad5b87345166f64494febc2522739022830ff709ffd8",
+                                            "/etc/systemd/system/var-lib-tbound-runtime.mount":  "sha256 2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3 (What=/var/lib/tbound/runtime-src Where=/var/lib/tbound/runtime Options=bind,ro,nosuid,nodev)",
+                                            "/etc/systemd/system/var-lib-tbound-live.mount":  "sha256 9de139e34d16f78f19bfde5c6ea5dca60175aae84a334bbc90423806acbebff2"
+                                        },
+                          "systemctl":  "tbound-pi.socket enabled, active (listening) /run/tbound/serve-pi.sock since 2026-10-15 17:56:54. tbound-pi.service inactive (dead), last run exited 2/INVALIDARGUMENT at 2026-10-15 18:12:07 ('managed D09 live-root registration or runtime identity is not admitted', 'native Pi host profile is missing'). Delegate=yes, DelegateSubgroup= (empty), ControlGroup= (empty).",
+                          "cgroupTree":  "/sys/fs/cgroup/system.slice/tbound-pi.service does not exist (unit inactive). system.slice subtree_control: cpuset cpu io memory pids. No cgroup.kill or cgroup.events can be inspected.",
+                          "bundleDigest":  "tbound-profile runtime-bundle-digest --root /var/lib/tbound/runtime rc 0: sha256:d7367e1b58db53c35fa967c333340599ea30aa43471d3a61c3c8cbbb59246884",
+                          "sudoers":  "/etc/sudoers.d/90-tbound-tboundadmin present (sha256 e4a234a4e813115b15ef9f43404de6978947eabd6b10c7edf65afde2a649353b), untouched",
+                          "etcTbound":  "cosign.pub, pi-cell-oci/, podman-config/, seccomp.json, serve-pi-service.json. No host profile, registration or calibration files."
+                      },
+    "documentedProcedureSearch":  {
+                                      "sources":  [
+                                                      "docs/evidence/abi8-bootstrap-calibration-20261015.json",
+                                                      "docs/evidence/abi8-runtime-prerequisites-20261015-r8.json",
+                                                      "docs/evidence/abi8-measured-registration-20261015.json",
+                                                      "docs/evidence/abi8-local-deployment-20261015.json",
+                                                      "docs/evidence/abi8-runtime-provisioning-20261015.json",
+                                                      "docs/evidence/abi8-readonly-remeasure-20261017.json",
+                                                      "docs/governed-setup.md (read-only)",
+                                                      "supervisor/cmd/tbound/pi_service_handoff_linux.go",
+                                                      "supervisor/internal/piruntime/managed_live_root_linux.go",
+                                                      "supervisor/cmd/tbound-profile/main_linux.go (grep only)"
+                                                  ],
+                                      "result":  "No executable provisioning procedure exists for either row. No unit, socket or mount template file is tracked in the repo (git ls-files for *.service, *.socket, *.mount returns zero). Unit text exists only as Go test strings and as validators.",
+                                      "evidenceLog":  "logs/20-conflict-evidence.txt"
+                                  },
+    "stopReasons":  [
+                        {
+                            "id":  "S1",
+                            "row":  4,
+                            "title":  "Row 4 is ambiguous: two incompatible readings, and the documented text is a dangling reference",
+                            "detail":  [
+                                           "The brief describes row 4 as 'the NodeRO (read-only runtime) mount' and verifies it by findmnt ro, runtime-bundle digest d7367e1b...6884 and xattr-measure read_only=true. Those three checks describe the runtime BUNDLE mount at /var/lib/tbound/runtime. That mount already exists, is ro, and already passes all three (pre-state above; abi8-readonly-remeasure-20261017.json). Reading A: row 4 is already satisfied and there is nothing to execute.",
+                                           "Elsewhere the project means the HOST NODE executable on an immutable read-only mount: docs/governed-setup.md:116-119 ('root-owned, protected, and on an immutable read-only mount (see section 4b)'), OVERVIEW.md:9 ('NodeRO mount'), abi8-runtime-provisioning-20261015.json prerequisite 9, abi8-measured-registration-20261015.json:95 and :172 ('immutableReadOnlyMount: false'). The brief's verifications do not test that.",
+                                           "The cross-reference is dangling: docs/governed-setup.md:326 section 4b is the child descriptor contract and contains no mount procedure.",
+                                           "No mechanism is documented: not whether it is a file bind of /usr/local/bin/node onto itself or a directory mount, not whether it is persistent (a .mount unit) or transient, and not the unit name. The signed profile pins the exact path /usr/local/bin/node (supervisor/internal/piruntime/host.go:58), so the choice is constrained but not specified.",
+                                           "No code checks it: abi8-bootstrap-calibration-20261015.json:37 and :274 record that no validator requires a Node immutability check, and git grep of non-test supervisor code finds none. A guessed mount therefore cannot be validated by the repo."
+                                       ],
+                            "needsFromOwner":  "State whether row 4 means (A) the existing runtime-bundle ro bind (already done), or (B) the host Node ro mount, and if B, the mechanism and persistence (suggested but NOT adopted: a systemd var-usr-local-bin-node.mount unit with What=Where=/usr/local/bin/node, Options=bind,ro,nosuid,nodev, modelled on var-lib-tbound-runtime.mount) plus the matching verification."
+                        },
+                        {
+                            "id":  "S2",
+                            "row":  3,
+                            "title":  "Code conflict: the two service-unit validators cannot both accept any unit",
+                            "detail":  [
+                                           "supervisor/internal/piruntime/managed_live_root_linux.go:1409 and :1417 (validateManagedSystemdPolicy) and :1814 (validateD09ManagedPiServiceUnit), changed by 0664c25, REQUIRE DelegateSubgroup=runner.",
+                                           "supervisor/cmd/tbound/pi_service_handoff_linux.go:424-428 (validatePiServiceUnit, called at :335 on the service startup path with the signed unit) permits only a closed Service directive set that does NOT contain DelegateSubgroup, and returns 'signed Pi service unit contains an unsupported section or directive' for any other directive.",
+                                           "A unit with DelegateSubgroup=runner passes the piruntime validators and fails the cmd/tbound validator. A unit without it does the reverse. No installed unit can satisfy the committed R8 layout and the runner's own handoff check. The R8 receipt (abi8-runtime-prerequisites-20261015-r8.json) lists no change to pi_service_handoff_linux.go; commit 0664c25 touched only piruntime, cmd/tbound/production_recovery_binder_linux.go and cmd/tbound-profile.",
+                                           "The installed unit (sha256 daf053a8...) predates R8 and lacks DelegateSubgroup, so it must change if R8 is to be honoured."
+                                       ],
+                            "needsFromOwner":  "A repo fix adding DelegateSubgroup to the allowed Service directives and its exact-value check in pi_service_handoff_linux.go (separate session owns that file area), then the unit template as a committed file."
+                        },
+                        {
+                            "id":  "S3",
+                            "row":  3,
+                            "title":  "No committed unit source, so 'unit sha256 matches the repo source' cannot be checked",
+                            "detail":  [
+                                           "git ls-files has no tbound-pi.service or tbound-pi.socket. The only text is inside Go test fixtures (managed_live_root_linux_test.go lines near 170-220 and 249-290; pi_service_handoff_linux_test.go lines near 40-110) and in the guest-resident files hashed in the 2026-10-15 receipts.",
+                                           "The guest unit cannot be derived by editing the installed file plus one line without inventing the source of truth."
+                                       ]
+                        },
+                        {
+                            "id":  "S4",
+                            "row":  3,
+                            "title":  "The required cgroup verification cannot exist after a unit install; the cells creation policy is undecided",
+                            "detail":  [
+                                           "The service cgroup exists only while the unit runs: abi8-measured-registration-20261015.json:122 and abi8-bootstrap-calibration-20261015.json:103 and :112 ('cgroup is ephemeral ... the pre-provisioned directory did not survive'). The unit exits 2 INVALIDARGUMENT in about 10 ms without an admitted registration and host profile (:115), and signing is not approved, so the service cannot stay up.",
+                                           "Checks 'parent empty, runner leaf, cells path present, cgroup.kill, cgroup.events' therefore cannot be made true or observed without either a signed registration (not approved) or a measurement-only placeholder ExecStart, which abi8-measured-registration-20261015.json:208 states needs explicit separate approval.",
+                                           "No code or procedure creates <service>/cells: abi8-runtime-prerequisites-20261015-r8.json:208 ('Creation policy ... is a parent decision and is not implemented'); production_binder_linux.go opens it with os.Open and fails closed if absent. Because the parent is ephemeral, a one-time provisioning mkdir cannot persist either.",
+                                           "Kernel acceptance of DelegateSubgroup=runner under systemd 255 is listed as untested at abi8-runtime-prerequisites-20261015-r8.json 'untested'.",
+                                           "docs/governed-setup.md still carries the stale tbound-writer examples (lines 219-230) and does not mention DelegateSubgroup, the runner leaf or cells at all."
+                                       ],
+                            "needsFromOwner":  "Decide who creates cells and when (runner mkdir under the delegated parent at start, or a root ExecStartPre which the validators currently forbid), and whether a labelled measurement-only placeholder start is approved."
+                        }
+                    ],
+    "commandsRun":  [
+                        {"id": "C1", "command": "cmp gssh.sh remeasure-20261017/gssh2.sh", "rc": 0, "result": "identical wrapper"},
+                        {"id": "C2", "command": "gssh.sh 'sh -s' < prestate.sh (read-only: id, findmnt, mountinfo, stat, lsattr, sudo -n sha256sum, cat units, systemctl status/show, cgroup ls, systemctl --version, sudoers ls/sha256, /etc/tbound ls, node --version, tbound-profile runtime-bundle-digest --root /var/lib/tbound/runtime)", "rc": 0, "log": "logs/10-prestate.txt"},
+                        {"id": "C3", "command": "repo read-only: git grep, git show --stat 0664c25, sed -n on governed-setup.md and validators", "rc": 0, "log": "logs/20-conflict-evidence.txt"}
+                    ],
+    "executedWrites":  [],
+    "rollbackNotes":  {
+                          "row4":  "Not executed, no rollback needed. Had a Node bind-mount unit been installed the inverse would be: systemctl disable --now <unit>.mount; rm /etc/systemd/system/<unit>.mount; systemctl daemon-reload; umount /usr/local/bin/node; sha256sum /usr/local/bin/node must equal 7fde7b8a...df4c.",
+                          "row3":  "Not executed, no rollback needed. The inverse of a unit replacement would be restoring the pre-state bytes (sha256 daf053a8... for tbound-pi.service, 9dcb52a1... for tbound-pi.socket) from a copy taken before the write, then systemctl daemon-reload and systemctl restart tbound-pi.socket. No such copy exists because nothing was changed."
+                      },
+    "verificationResults":  {
+                                "row4_findmntRo":  "Not applicable to the Node mount (S1). The existing runtime bundle bind is ro,nosuid,nodev: PASS as pre-state, unchanged.",
+                                "row4_bundleDigest":  "sha256:d7367e1b58db53c35fa967c333340599ea30aa43471d3a61c3c8cbbb59246884, unchanged (pre-state, rc 0).",
+                                "row4_xattrMeasureReadOnly":  "Not re-run this round (no write; last measured true in abi8-readonly-remeasure-20261017.json).",
+                                "row3_systemdAnalyzeVerify":  "Not run (no unit installed).",
+                                "row3_unitSha256VsRepo":  "Not possible, no repo source (S3).",
+                                "row3_socket":  "Pre-state only: active (listening) /run/tbound/serve-pi.sock. Unchanged.",
+                                "row3_cgroupLayout":  "Not possible, service cgroup does not exist (S4).",
+                                "row3_cgroupKillEvents":  "Not possible (S4)."
+                            },
+    "postState":  "Identical to pre-state. No guest file, mount, unit, cgroup or sudoers change.",
+    "logs":  {
+                 "directory":  "F:/TBoundAssets/recovery-20261015/guest-rows43-20261017",
+                 "files":  ["logs/00-start-utc.txt", "logs/10-prestate.txt", "logs/10-prestate.stderr", "logs/20-conflict-evidence.txt", "logs/99-end-utc.txt", "gssh.sh"],
+                 "manifest":  "manifest-logs.sha256 (5 files under logs/), its own sha256 is cdb2347d7b0bf37c42f6813438e84fa03db844ab828215aed512d5df9c788533"
+             },
+    "statement":  "NOT QUALIFICATION. No signing was performed (no calibration, registration, host profile or template). The NOPASSWD sudo drop-in is unchanged. No cell was launched, no serve --pi session was started, no service was started, no checkpoint, VM power or NIC change, no package install, no provider call. The cell leg (D2) is out of scope by owner decision. G1, containment, H1, D14 and D20 are not established.",
+    "claims":  {
+                   "G1":  false,
+                   "containment":  "not established",
+                   "H1":  "not executed",
+                   "qualification":  false,
+                   "guestWrites":  0,
+                   "signed":  false,
+                   "noPasswdChanged":  false,
+                   "cellsLaunched":  0,
+                   "providerCalls":  0,
+                   "paidSpendUsd":  0,
+                   "rowsExecuted":  []
+               }
+}
