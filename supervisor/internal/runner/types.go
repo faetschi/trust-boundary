@@ -221,7 +221,8 @@ type Outcome struct {
 	// PublicationFree names this interval as publication-free: no publication
 	// reached the live workspace in it, so EFF-WS-05 and EFF-WS-06 do not apply.
 	// It must carry the interval's own publication journal, which the runner
-	// verifies, binds to Interval and counts itself (see PublicationFree). Anything
+	// verifies, binds to Interval and counts itself, and whose head and count must
+	// match the anchor from the governed service (see PublicationFree). Anything
 	// else is NOT non-applicability: the interval then needs the WS-05/06 reports
 	// like any interval that includes publication.
 	PublicationFree *PublicationFree `json:"publication_free,omitempty"`
@@ -235,10 +236,14 @@ type Outcome struct {
 	// OracleVersion is the wsoracle version of the reports behind the WS findings
 	// in Oracles, and OracleReport the digest of the report (it covers the
 	// identity digest of every manifest the report consumed). RecordE04 and
-	// RecordWS set both. An outcome that carries WS findings under any other
-	// version, or under none, is not exportable (ErrOracleVersion).
+	// RecordWS set both, and bind each finding to its own report in OracleRefs. An
+	// outcome that carries a WS finding without a reference of its own, or under any
+	// other version, or under none, is not exportable (ErrOracleVersion).
 	OracleVersion string `json:"oracle_version,omitempty"`
 	OracleReport  string `json:"oracle_report,omitempty"`
+
+	// OracleRefs binds each WS finding in Oracles to the report it came from.
+	OracleRefs map[string]OracleRef `json:"oracle_refs,omitempty"`
 }
 
 // Sentinel errors.
@@ -289,9 +294,42 @@ func IntervalRef(s Step) string { return fmt.Sprintf("%s#%d", s.ID(), s.Attempt)
 // An interval is publication-free only when the journal is that of this interval
 // and holds no publication record (any kind with the prefix "publication", other
 // than the owner-epoch record that opening a repository writes).
+//
+// The journal and its head come from the executor, a trusted evidence producer
+// (see Executor), so they prove consistency, not authenticity: a marker can be
+// minted, and a chain cut at a record boundary before a publication record is still
+// a valid chain. The anchor closes that gap: AnchorHead and AnchorCount come from the
+// governed service's own receipt for the interval and must equal the recomputed head
+// and the counted publications. An interval without an anchor is NOT exempt.
+//
+// TODO(guest-executor): bind the anchor to the service receipt of the interval. No
+// receipt field carries the publication-journal head or record count yet: the
+// service's per-request receipt (productionPiReceipt in
+// supervisor/cmd/tbound/production_session_linux.go) has PublicationStatus and
+// PublicationTransactionID only. The service must add the head hash and the record
+// count of the interval's publication journal to that receipt (for example
+// publication_journal_head and publication_journal_record_count), and the
+// guest-backed executor must copy them into AnchorHead and AnchorCount unchanged.
+// Until then no executor can fill the anchor and no interval is exempt.
 type PublicationFree struct {
 	// Journal is the journal bytes covering the interval.
 	Journal []byte `json:"journal"`
 	// JournalDigest is the claimed head hash of the journal's chain.
 	JournalDigest string `json:"journal_digest"`
+	// AnchorHead is the head hash of the interval's publication journal as the
+	// governed service's receipt reports it. Empty means no anchor.
+	AnchorHead string `json:"anchor_head"`
+	// AnchorCount is the number of publications that receipt reports for the interval.
+	AnchorCount int `json:"anchor_count"`
 }
+
+// OracleRef is the provenance of one WS finding: the oracle version and the digest of
+// the report (it covers the identity digest of every manifest the report consumed).
+type OracleRef struct {
+	Version string `json:"version"`
+	Report  string `json:"report"`
+}
+
+// ErrOracleProvenance means a WS finding has no report reference of its own, or a
+// report cannot be merged into an outcome whose WS findings lack one.
+var ErrOracleProvenance = errors.New("runner: WS finding without a compatible report reference")

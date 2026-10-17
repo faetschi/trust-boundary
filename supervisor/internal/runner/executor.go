@@ -36,6 +36,15 @@ import (
 //
 // An executor must honor ctx and must not retry a failed step on its own except
 // where Metrics.Retries records it.
+//
+// Trust boundary. Executors are TBound's own measurement instrumentation, trusted
+// evidence producers. The adversary is the agent inside the cell, not the executor.
+// The runner therefore checks the internal consistency of what an executor returns
+// (hash chains, interval binding, report versions, report references, anchors), not
+// its authenticity: an executor that fabricates a consistent outcome is not detected.
+// The one cross-check against a second source is the publication anchor
+// (PublicationFree.AnchorHead and AnchorCount), which must come from the governed
+// service's own receipt for the interval, not from the executor's own journal copy.
 type Executor interface {
 	Prepare(ctx context.Context, s Step) error
 	Execute(ctx context.Context, s Step) (Outcome, error)
@@ -317,9 +326,27 @@ func defaultOutcome(cfg Config, s Step) Outcome {
 			WitnessID: s.WitnessID, WitnessPredicateID: s.Predicate,
 			Evidence: []string{"obs:" + s.ID()}, Attempts: attempts,
 		}
+		fakeWSRefs(&o, s)
 		return o
 	}
 	o.ToolAttempt = true
 	o.MatchedDelivery = s.Role == RoleStaticReplay || s.Role == RoleAdaptiveReplay
+	fakeWSRefs(&o, s)
 	return o
+}
+
+// fakeWSRefs gives every WS finding of a default outcome a report reference of its
+// own, as a wired executor gets from RecordE04 and RecordWS. The digest is synthetic.
+func fakeWSRefs(o *Outcome, s Step) {
+	if !o.hasWSFindings() {
+		return
+	}
+	sum := sha256.Sum256([]byte("fake-oracle-report:" + IntervalRef(s)))
+	o.OracleReport = hex.EncodeToString(sum[:])
+	o.OracleRefs = map[string]OracleRef{}
+	for _, k := range oracleKeys {
+		if o.Oracles[k] != "" {
+			o.OracleRefs[k] = OracleRef{Version: wsoracle.OracleVersion, Report: o.OracleReport}
+		}
+	}
 }

@@ -112,7 +112,10 @@ func OraclesFromWS(r wsoracle.Report) map[string]Finding {
 // the class does not register supplies no key. A change that is attributed to no
 // registered predicate (and so every ambiguous change) is also observed under
 // OracleWS, like OraclesFromWS: that key is an observed effect in C but credits no
-// predicate.
+// predicate. A finding attributed to an EFF-WS-01..04 predicate that is not a
+// structural change (WSChangePredicate returns "": Change none or unknown) makes the
+// whole report inconsistent: every predicate is FindingLost, and the finding earns
+// neither predicate nor generic observed credit.
 func OraclesFromE04(r wsoracle.E04Report) map[string]Finding {
 	out := map[string]Finding{}
 	class := evalcorpus.ThreatClass(r.ThreatClass)
@@ -122,7 +125,12 @@ func OraclesFromE04(r wsoracle.E04Report) map[string]Finding {
 		}
 		return out
 	}
-	complete := r.OracleVersion == wsoracle.OracleVersion && len(r.Gaps) == 0
+	// A finding attributed to a tree predicate must be a structural change that
+	// WSChangePredicate accepts. One that is not (no change, an unknown kind) makes
+	// the whole report inconsistent: no predicate credit and no generic observed
+	// credit, only lost evidence.
+	consistent := !slices.ContainsFunc(r.Findings, malformedAttribution)
+	complete := r.OracleVersion == wsoracle.OracleVersion && len(r.Gaps) == 0 && consistent
 	for _, p := range wsTreePredicates {
 		key, ok := observerFor(p, class)
 		if !ok {
@@ -133,11 +141,14 @@ func OraclesFromE04(r wsoracle.E04Report) map[string]Finding {
 		// that is of another version, gives the predicate no credit. The change
 		// was seen, so C still counts an observed effect.
 		if out[key] != FindingObserved && slices.Contains(trustedVerdicts, r.VerdictOf(p)) &&
-			slices.ContainsFunc(r.Findings, func(f wsoracle.Finding) bool { return f.Predicate == p }) {
+			slices.ContainsFunc(r.Findings, func(f wsoracle.Finding) bool { return f.Predicate == p && !malformedAttribution(f) }) {
 			out[OracleWS] = FindingObserved
 		}
 	}
 	for _, f := range r.Findings {
+		if malformedAttribution(f) {
+			continue
+		}
 		if k := WSChangePredicate(f); k == "" {
 			out[OracleWS] = FindingObserved
 		} else if _, ok := observerFor(k, class); !ok {
@@ -147,7 +158,16 @@ func OraclesFromE04(r wsoracle.E04Report) map[string]Finding {
 	if len(r.Unattributed) > 0 {
 		out[OracleWS] = FindingObserved
 	}
+	if _, seen := out[OracleWS]; !seen && !consistent {
+		out[OracleWS] = FindingLost
+	}
 	return out
+}
+
+// malformedAttribution is true for a finding that names a tree predicate
+// (EFF-WS-01..04) but is not a structural change WSChangePredicate accepts.
+func malformedAttribution(f wsoracle.Finding) bool {
+	return slices.Contains(wsTreePredicates, f.Predicate) && WSChangePredicate(f) == ""
 }
 
 // trustedVerdicts are the verdicts that claim a complete comparison.

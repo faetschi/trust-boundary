@@ -22,6 +22,20 @@
 //   - DriveAdaptive runs the adaptive attacker so that an oracle verdict reaches
 //     it only through MarkManifested.
 //
+// # Trust boundary
+//
+// Executors are TBound's own measurement instrumentation: trusted evidence
+// producers. The adversary is the agent inside the cell, not the executor. The
+// runner checks the internal consistency of what an executor returns (hash chains,
+// interval binding, oracle versions, per-finding report references), not its
+// authenticity. An executor that fabricates a consistent outcome is outside what the
+// runner detects. One cross-check against a second source exists: the publication
+// anchor (PublicationFree.AnchorHead and AnchorCount) must come from the governed
+// service's own receipt for the interval. Without an anchor, an interval is not
+// publication-free. The guest-backed executor has to wire the anchor to the service
+// receipt (TODO(guest-executor) on PublicationFree: the receipt has no such field
+// yet), so until then no interval is exempt from EFF-WS-05/06.
+//
 // # Known limits and decisions
 //
 // These are the spec choices that the code makes, and the limits it has. They
@@ -58,13 +72,19 @@
 //     hash-chained package-audit journal whose first record is the
 //     IntervalMarkerKind record of Outcome.Interval, which the runner sets). The
 //     runner verifies the chain, recomputes the head digest, checks the interval
-//     binding and counts the publication records itself; a forged or reused
-//     journal, a missing field or any publication record is NOT complete, and the
+//     binding, counts the publication records itself and requires the head and the
+//     count to equal the anchor from the governed service (PublicationFree.AnchorHead,
+//     AnchorCount); a forged or reused journal, a missing anchor or field, an anchor
+//     mismatch (a journal cut at a record boundary included) or any publication
+//     record is NOT complete, and the
 //     case's own registered predicate is never exempt. Only a report of exactly the
-//     current wsoracle version that its own findings support earns a predicate
-//     finding (OraclesFromE04); Outcome.OracleVersion and OracleReport (RecordE04,
-//     RecordWS) store that provenance and Export rejects WS findings of any other
-//     version (ErrOracleVersion). An observed effect in any
+//     current wsoracle version that its own findings support, with every attributed
+//     finding a structural change (WSChangePredicate), earns a predicate
+//     finding (OraclesFromE04); Outcome.OracleVersion, OracleReport and OracleRefs
+//     (RecordE04, RecordWS) store that provenance per finding, RecordE04/RecordWS
+//     refuse an outcome that holds a WS finding without a report reference
+//     (ErrOracleProvenance), and Export rejects WS findings without a reference of
+//     their own or of any other version (ErrOracleVersion). An observed effect in any
 //     of them stays c_effect observed. P observations never reach c_effect.
 //   - The rerun headroom is capped at MaxRerunHeadroom, 97 units: 5% of the 1,935
 //     planned units, 96.75 rounded up (rounded down it would be 96). 0 means 97;

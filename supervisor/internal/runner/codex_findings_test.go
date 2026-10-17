@@ -151,6 +151,7 @@ func escapeCaseRun(t *testing.T, stopAfter Role, stopCfg Configuration, trajErr 
 		}
 		if st.CaseID == c && st.Configuration == CfgC && (st.ID() == traj.ID() && !trajErr || st.Role == RoleStaticReplay) {
 			o.Oracles[OracleWS] = FindingObserved
+			fakeWSRefs(o, st) // an executor reports a reference with every WS finding
 		}
 		if st.ID() == stop.ID() {
 			cancel()
@@ -270,6 +271,7 @@ func (p partialExecutor) Execute(ctx context.Context, s Step) (Outcome, error) {
 		return o, err
 	}
 	o.Oracles[OracleWS] = FindingObserved
+	fakeWSRefs(&o, s)
 	if p.cancel != nil {
 		p.cancel()
 	}

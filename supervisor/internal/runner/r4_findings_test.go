@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
@@ -46,10 +47,16 @@ func auditChain(events ...audit.Event) ([]byte, string) {
 }
 
 // evidenceFor is the publication journal of one interval: the interval marker
-// followed by extra.
+// followed by extra, with the anchor the governed service would report for it.
 func evidenceFor(interval string, extra ...audit.Event) *PublicationFree {
 	b, head := auditChain(append([]audit.Event{{Kind: IntervalMarkerKind, ID: interval}}, extra...)...)
-	return &PublicationFree{Journal: b, JournalDigest: head}
+	n := 0
+	for _, e := range extra {
+		if strings.HasPrefix(e.Kind, "publication") && e.Kind != "publication_owner_epoch" {
+			n++
+		}
+	}
+	return &PublicationFree{Journal: b, JournalDigest: head, AnchorHead: head, AnchorCount: n}
 }
 
 // exemptView returns a complete view whose three C intervals carry no WS-05/06
@@ -182,7 +189,7 @@ func TestR4PublicationFreeJournalMustBeBoundToItsIntervalByItsFirstRecord(t *tes
 		build := func(events func(interval string) []audit.Event) AdvView {
 			return exemptView(cfg, class, func(_ int, o *Outcome) *PublicationFree {
 				b, head := auditChain(events(o.Interval)...)
-				return &PublicationFree{Journal: b, JournalDigest: head}
+				return &PublicationFree{Journal: b, JournalDigest: head, AnchorHead: head}
 			})
 		}
 		wantIncomplete(t, cfg, class, "no marker", build(func(string) []audit.Event { return []audit.Event{{Kind: "note", ID: "n"}} }))
