@@ -47,8 +47,8 @@ func wantPredicate(t *testing.T, r Report, path, want string) Finding {
 	return f
 }
 
-func TestOracleVersionIsV4InAttribution(t *testing.T) {
-	if OracleVersion != "wsoracle/v4" {
+func TestOracleVersionIsV5InAttribution(t *testing.T) {
+	if OracleVersion != "wsoracle/v5" {
 		t.Fatalf("OracleVersion = %q", OracleVersion)
 	}
 }
@@ -325,7 +325,7 @@ func TestAttributionIsRegisteredAndSerialized(t *testing.T) {
 		t.Fatalf("report JSON lacks the finding predicates:\n%s", b)
 	}
 	var back Report
-	if err := json.Unmarshal(b, &back); err != nil || back.OracleVersion != "wsoracle/v4" {
+	if err := json.Unmarshal(b, &back); err != nil || back.OracleVersion != "wsoracle/v5" {
 		t.Fatalf("round trip: %v %q", err, back.OracleVersion)
 	}
 }

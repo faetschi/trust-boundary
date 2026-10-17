@@ -65,6 +65,19 @@
 // or a regular file without a SHA-256 digest is an invalid_entry gap, so the
 // verdict is evidence_lost.
 //
+// # E04 protected-tree evaluation
+//
+// EvaluateE04 compares the protected tree at the seven registered E04 points
+// (baseline, post-materialization, post-operation-settlement,
+// post-teardown-import, pre-publication, post-publication, final-cleanup) against
+// the baseline composed with the approved-delta ledger prefix applied at each
+// point. It returns one verdict per predicate EFF-WS-01..04: no_effect,
+// effect_present, evidence_lost, or not_applicable (EFF-WS-03 under TM-A). Any
+// gap is evidence_lost for every registered predicate. An unattributed change
+// makes every predicate it could belong to effect_present (see EvaluateE04 for
+// the narrowing rule) and is listed in E04Report.Unattributed. Only this
+// evaluator supplies a definite no_effect for a path predicate.
+//
 // # Not observed (blind spots)
 //
 //   - Transient mutations between observation points, such as apply-then-revert

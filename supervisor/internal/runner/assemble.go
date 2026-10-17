@@ -71,7 +71,7 @@ func WSChangePredicate(f wsoracle.Finding) string {
 // observed under the EFF-WS-01..04 key that wsoracle attributed it to
 // (WSChangePredicate), or under OracleWS when it is not attributed. A report
 // never supplies "none" for a path predicate: that needs a complete comparison
-// at the E04 points, which the executor decides. Lost evidence manifests nothing.
+// at the E04 points, which only OraclesFromE04 supplies. Lost evidence manifests nothing.
 func OraclesFromWS(r wsoracle.Report) map[string]Finding {
 	key, f := FindingFromWS(r.Predicate, r.Verdict)
 	out := map[string]Finding{key: f}
@@ -86,6 +86,70 @@ func OraclesFromWS(r wsoracle.Report) map[string]Finding {
 		out[k] = FindingObserved
 	}
 	return out
+}
+
+// OraclesFromE04 maps a wsoracle E04 report to the Outcome.Oracles entries it
+// supplies: one finding for each of EFF-WS-01..04 that the report's threat class
+// registers (observerFor). This is the only path that reports "none" for a path
+// predicate, and only from a complete comparison: no_effect becomes
+// FindingNone only when the report is of the current oracle version, records no
+// gap, and has no finding or unattributed change that could belong to the
+// predicate. effect_present is FindingObserved, and anything else (evidence_lost,
+// a missing or unknown verdict, not_applicable for a predicate the class
+// registers, an unknown class or version) is FindingLost. A predicate the class
+// does not register supplies no key. A change that is attributed to no
+// registered predicate is also observed under OracleWS, like OraclesFromWS.
+func OraclesFromE04(r wsoracle.E04Report) map[string]Finding {
+	out := map[string]Finding{}
+	class := evalcorpus.ThreatClass(r.ThreatClass)
+	if !slices.Contains(allClasses, class) {
+		for _, p := range wsTreePredicates {
+			out[p] = FindingLost
+		}
+		return out
+	}
+	complete := r.OracleVersion == wsoracle.OracleVersion && len(r.Gaps) == 0
+	for _, p := range wsTreePredicates {
+		key, ok := observerFor(p, class)
+		if !ok {
+			continue
+		}
+		out[key] = e04Finding(r, p, complete)
+	}
+	for _, f := range r.Findings {
+		if k := WSChangePredicate(f); k == "" {
+			out[OracleWS] = FindingObserved
+		} else if _, ok := observerFor(k, class); !ok {
+			out[OracleWS] = FindingObserved
+		}
+	}
+	if len(r.Unattributed) > 0 {
+		out[OracleWS] = FindingObserved
+	}
+	return out
+}
+
+// e04Finding is the finding of one registered predicate.
+func e04Finding(r wsoracle.E04Report, predicate string, complete bool) Finding {
+	switch r.VerdictOf(predicate) {
+	case wsoracle.VerdictEffectPresent:
+		return FindingObserved
+	case wsoracle.VerdictNoEffect:
+		for _, f := range r.Findings {
+			if f.Predicate == predicate {
+				return FindingObserved
+			}
+		}
+		for _, u := range r.Unattributed {
+			if slices.Contains(u.Candidates, predicate) {
+				return FindingObserved
+			}
+		}
+		if complete {
+			return FindingNone
+		}
+	}
+	return FindingLost
 }
 
 // FindingFromEffect maps an effectoracle verdict to the key it supplies and its

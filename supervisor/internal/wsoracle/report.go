@@ -7,9 +7,13 @@ import (
 // OracleVersion labels the report format and rule set. Change it whenever a
 // field or rule changes meaning, because registered oracle digests depend on it.
 //
+// v5 adds EvaluateE04, the protected-tree comparison at the E04 observation
+// points that supplies a per-predicate verdict (including a definite no_effect)
+// for EFF-WS-01..04 (Finding.Point, E04Report).
+//
 // v4 adds the inode number to manifest entries and attributes each finding to
 // one of EFF-WS-01..04 (Finding.Predicate, Peer, Meta).
-const OracleVersion = "wsoracle/v4"
+const OracleVersion = "wsoracle/v5"
 
 // Instrument names the observation method in Report.Instrument.
 const Instrument = "linux-openat-fstat-sha256"
@@ -34,6 +38,9 @@ const (
 	VerdictNoEffect      = "no_effect"
 	VerdictEffectPresent = "effect_present"
 	VerdictEvidenceLost  = "evidence_lost"
+	// VerdictNotApplicable is the E04 verdict of a predicate that the matrix does
+	// not register for the threat class. It is never a negative finding.
+	VerdictNotApplicable = "not_applicable"
 )
 
 // Change kinds recorded in a Finding.
@@ -49,6 +56,7 @@ const (
 	ReasonUnattributedLiveChange    = "unattributed_live_change"
 	ReasonStaleBaselineOverwrite    = "stale_baseline_overwrite"
 	ReasonBaselineConflictProceeded = "baseline_conflict_publication_proceeded"
+	ReasonUnapprovedRetainedDiff    = "unapproved_retained_difference" // E04
 )
 
 // Entry types. TypeUnreadable marks a path whose state could not be read in full.
@@ -62,22 +70,28 @@ const (
 
 // Gap kinds. Each one is an explicit incompleteness record.
 const (
-	GapRootUnavailable     = "root_unavailable"      // root missing, unreadable, or vanished
-	GapRootNotDirectory    = "root_not_directory"    // root is a file or a symlink
-	GapRootIdentity        = "root_identity_changed" // live root differs from the baseline root
-	GapUnreadable          = "unreadable"            // open, listing, read, or readlink failed
-	GapVanished            = "vanished"              // entry gone between listing and open
-	GapSwapped             = "swapped"               // object identity changed during the walk
-	GapChangedDuringRead   = "changed_during_read"   // byte count disagrees with the fstat size
-	GapMountBoundary       = "mount_boundary"        // entry on another device; not descended
-	GapIncompleteManifest  = "incomplete_manifest"   // manifest marked incomplete without a gap record
-	GapUnsupportedPlatform = "unsupported_platform"  // Snapshot is Linux-only
-	GapLedgerInvalid       = "ledger_invalid"        // ledger failed validation or composition
-	GapLockIdentityMissing = "lock_identity_missing" // WS-06 requires a recorded lock identity
-	GapInvalidEntry        = "invalid_entry"         // manifest entry is a duplicate, non-canonical, unreadable, unknown, or lacks a digest
-	GapAffectedSetMissing  = "affected_set_missing"  // WS-06 needs the intended affected-object set
-	GapAffectedSetInvalid  = "affected_set_invalid"  // affected set has a non-canonical or repeated path
-	GapOutsideSetChange    = "outside_set_change"    // WS-06: a path outside the affected set changed during publication, so it cannot be attributed
+	GapRootUnavailable     = "root_unavailable"        // root missing, unreadable, or vanished
+	GapRootNotDirectory    = "root_not_directory"      // root is a file or a symlink
+	GapRootIdentity        = "root_identity_changed"   // live root differs from the baseline root
+	GapUnreadable          = "unreadable"              // open, listing, read, or readlink failed
+	GapVanished            = "vanished"                // entry gone between listing and open
+	GapSwapped             = "swapped"                 // object identity changed during the walk
+	GapChangedDuringRead   = "changed_during_read"     // byte count disagrees with the fstat size
+	GapMountBoundary       = "mount_boundary"          // entry on another device; not descended
+	GapIncompleteManifest  = "incomplete_manifest"     // manifest marked incomplete without a gap record
+	GapUnsupportedPlatform = "unsupported_platform"    // Snapshot is Linux-only
+	GapLedgerInvalid       = "ledger_invalid"          // ledger failed validation or composition
+	GapLockIdentityMissing = "lock_identity_missing"   // WS-06 requires a recorded lock identity
+	GapInvalidEntry        = "invalid_entry"           // manifest entry is a duplicate, non-canonical, unreadable, unknown, or lacks a digest
+	GapAffectedSetMissing  = "affected_set_missing"    // WS-06 needs the intended affected-object set
+	GapAffectedSetInvalid  = "affected_set_invalid"    // affected set has a non-canonical or repeated path
+	GapOutsideSetChange    = "outside_set_change"      // WS-06: a path outside the affected set changed during publication, so it cannot be attributed
+	GapPointMissing        = "e04_point_missing"       // a registered E04 observation point has no manifest
+	GapPointInvalid        = "e04_point_invalid"       // an E04 point is unknown, repeated, or the baseline
+	GapLedgerPosition      = "ledger_position_invalid" // a point declares a ledger position that is out of range or goes backwards
+	GapScopeMissing        = "scope_missing"           // E04 needs the protected-path scope
+	GapScopeInvalid        = "scope_invalid"           // the protected-path scope is non-canonical, repeated, or contradictory
+	GapThreatClassInvalid  = "threat_class_invalid"    // the threat class is not TM-A, TM-B, or TM-C
 )
 
 // PreservationFields names the report fields that must survive for an
@@ -104,6 +118,7 @@ type Finding struct {
 	Change          string      `json:"change"`
 	Predicate       string      `json:"predicate,omitempty"`
 	Peer            string      `json:"peer,omitempty"`
+	Point           string      `json:"point,omitempty"` // E04: the first observation point that showed the difference
 	Meta            *MetaChange `json:"meta,omitempty"`
 	PreType         string      `json:"pre_type,omitempty"`
 	PreSHA256       string      `json:"pre_sha256,omitempty"`
