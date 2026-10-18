@@ -591,111 +591,53 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	}
 	session.Lifecycle.markTaskAdmitted()
 	session.ManagedLiveRootLease.markTaskAdmitted()
-	if err := waitProductionTurnEnd(ctx, worker, config.TaskRequestID); err != nil {
-		cancelRun()
+	ops := productionLifecycleOps{
+		waitTurn: func() error {
+			if err := waitProductionTurnEnd(ctx, worker, config.TaskRequestID); err != nil {
+				cancelRun()
+				return err
+			}
+			return nil
+		},
+		closeWorker: func() (piruntime.Settlement, error) {
+			settlement = closeWorker()
+			return settlement, workerCloseErr
+		},
+		joinChannels: func() error {
+			select {
+			case err := <-channelsDone:
+				channelsJoined = true
+				session.Lifecycle.markChannelsJoined(err)
+				if err != nil {
+					return fmt.Errorf("governed production channels did not settle cleanly: %w", err)
+				}
+			case <-time.After(60 * time.Second):
+				cancelRun()
+				return errors.New("governed production channels did not settle after the worker exited")
+			}
+			return nil
+		},
+		releaseAdmission: releaseAdmission,
+		evidenceBundle:   session.Store.EvidenceBundle,
+		recordTerminal: func(ctx context.Context, status publication.Status, transactionID string) error {
+			return session.ManagedLiveRootLease.recordDurableTerminal(ctx, session.PublicationJournal, status, transactionID)
+		},
+	}
+	if session.Publication != nil {
+		ops.closePublication, ops.finalize = session.Publication.Close, session.Publication.Finalize
+	}
+	if session.ManagedLiveRootLease != nil {
+		ops.markNoPublication = func() error {
+			return session.ManagedLiveRootLease.markNoPublication(session.Workspace, session.Generation)
+		}
+	}
+	outcome, err := session.settleProductionTurn(ctx, ops)
+	if err != nil {
 		return err
 	}
-	session.Lifecycle.markTurnCompleted()
-	// E04 post-operation-settlement: the turn has ended, so its operations are settled; the
-	// worker is not torn down yet.
-	session.recordE04(wsoracle.PointPostSettlement)
-
-	settlement = closeWorker()
-	select {
-	case err := <-channelsDone:
-		channelsJoined = true
-		session.Lifecycle.markChannelsJoined(err)
-		if err != nil {
-			return fmt.Errorf("governed production channels did not settle cleanly: %w", err)
-		}
-	case <-time.After(60 * time.Second):
-		cancelRun()
-		return errors.New("governed production channels did not settle after the worker exited")
-	}
-	publicationStatus := "UNAVAILABLE"
-	disposition := "UNKNOWN"
-	publicationTx := ""
-	var publishErr error
-	var bundle sessionrepo.EvidenceBundle
-	var bundleErr error
-	noChangeReleased := false
-	e04LedgerSet := false
-	settled := productionWorkerSettlementAllowsPublication(settlement, workerCloseErr)
-	publicationAttemptErr := runProductionPublicationAfterWorkerSettlement(settlement, workerCloseErr, func() error {
-		releaseAdmission()
-		bundle, bundleErr = session.Store.EvidenceBundle()
-		// E04 post-teardown-import: the worker is stopped and settled (the gate above), the loops
-		// are joined, and the supervisor has imported the workspace result.
-		session.recordE04(wsoracle.PointPostTeardown)
-		if bundleErr != nil {
-			publishErr = fmt.Errorf("read production session generation/tool receipt: %w", bundleErr)
-			publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
-		} else if bundleHasNoChange(bundle) {
-			publicationStatus, disposition = "NO_DIFF", "NO_DIFF"
-			session.recordE04(wsoracle.PointPrePublication) // the no-diff release is the publication step
-			if session.Publication != nil {
-				if err := session.Publication.Close(); err != nil {
-					publishErr = fmt.Errorf("close no-diff publication session: %w", err)
-				}
-			}
-			if session.ManagedLiveRootLease != nil {
-				if err := session.ManagedLiveRootLease.markNoPublication(session.Workspace, session.Generation); err != nil {
-					publishErr = errors.Join(publishErr, fmt.Errorf("release no-diff managed live-root authority: %w", err))
-					publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
-				} else {
-					noChangeReleased = true
-				}
-			}
-		} else if session.Publication == nil {
-			publishErr = errors.New("production publication runtime is unavailable")
-			publicationStatus, disposition = "UNAVAILABLE", "UNKNOWN"
-		} else {
-			session.recordE04(wsoracle.PointPrePublication) // the step that may write the live root
-			result, finalizeErr := session.Publication.Finalize(ctx)
-			publicationStatus = string(result.Status)
-			if publicationStatus == "" {
-				publicationStatus = "UNKNOWN"
-			}
-			publicationTx = result.TransactionID
-			if result.Status == publication.StatusSucceeded || result.Status == publication.StatusFailed {
-				if err := session.ManagedLiveRootLease.recordDurableTerminal(ctx, session.PublicationJournal, result.Status, result.TransactionID); err != nil {
-					finalizeErr = errors.Join(finalizeErr, fmt.Errorf("verify durable managed-root terminal lifecycle record: %w", err))
-					publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
-				}
-			}
-			// The live-root ledger is what the publication itself applied (result.Ledger), taken
-			// only when the outcome says exactly what happened; otherwise it stays unavailable.
-			session.E04.setLedger(productionE04LedgerFromResult(result, finalizeErr))
-			e04LedgerSet = true
-			if finalizeErr == nil && result.Status == publication.StatusSucceeded && len(result.Objects) == 0 {
-				publicationStatus, disposition = "NO_DIFF", "NO_DIFF"
-			} else if finalizeErr == nil && result.Status == publication.StatusSucceeded {
-				disposition = "PUBLISHED"
-			} else {
-				disposition = "PUBLICATION_" + string(result.Status)
-				if finalizeErr == nil {
-					finalizeErr = fmt.Errorf("production publication did not succeed: %s", publicationStatus)
-				}
-			}
-			if finalizeErr != nil {
-				publishErr = fmt.Errorf("finalize registered production session (%s): %w", publicationStatus, finalizeErr)
-			}
-		}
-		// E04 post-publication. The approved deltas reach the live root only here. Finalize set the
-		// ledger from what the publication applied (see production_e04_points_linux.go); any other
-		// path, where no publication outcome exists, records the empty prefix only for a run known
-		// to have published nothing.
-		if !e04LedgerSet && (disposition != "NO_DIFF" || publishErr != nil) {
-			session.E04.setLedger(productionE04LedgerUnavailable())
-		}
-		session.recordE04(wsoracle.PointPostPublication)
-		return nil
-	})
-	if publicationAttemptErr != nil {
-		bundleErr = publicationAttemptErr
-		publishErr = errors.Join(publishErr, publicationAttemptErr)
-		publicationStatus, disposition = "UNAVAILABLE", "UNKNOWN"
-	}
+	publicationStatus, disposition, publicationTx := outcome.publicationStatus, outcome.disposition, outcome.publicationTx
+	publishErr, bundle, bundleErr := outcome.publishErr, outcome.bundle, outcome.bundleErr
+	noChangeReleased, settled := outcome.noChangeReleased, outcome.settled
 	lifecycle := session.Lifecycle.snapshot()
 	lifecycleOK := validateProductionLifecycle(lifecycle, session.RunID, session.ProductionCommandRunner) == nil &&
 		verifyProductionLaunchProofJournal(session.StoreJournal, lifecycle, session.Profile, session.D09Template, session.RunID,
@@ -771,6 +713,134 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		receipt.Success = false
 	}
 	return errors.Join(writeProductionPiReceipt(output, receipt), publishErr, workerCloseErr, cleanupErr)
+}
+
+// productionLifecycleOps are the effects of the session between the end of the admitted prompt and
+// the publication outcome. runComposedProductionPiSession binds them to the real worker, governed
+// loops, store, publication runtime and managed-root lease; a test binds fakes, which is the seam
+// that lets it observe the order of the E04 points against the lifecycle events. A nil closePublication,
+// markNoPublication or finalize means the session has no such component.
+type productionLifecycleOps struct {
+	waitTurn          func() error
+	closeWorker       func() (piruntime.Settlement, error)
+	joinChannels      func() error
+	releaseAdmission  func()
+	evidenceBundle    func() (sessionrepo.EvidenceBundle, error)
+	closePublication  func() error
+	markNoPublication func() error
+	finalize          func(context.Context) (publication.Result, error)
+	recordTerminal    func(context.Context, publication.Status, string) error
+}
+
+// productionSettlementOutcome is what settleProductionTurn leaves for the receipt.
+type productionSettlementOutcome struct {
+	settled           bool
+	publicationStatus string
+	disposition       string
+	publicationTx     string
+	publishErr        error
+	bundle            sessionrepo.EvidenceBundle
+	bundleErr         error
+	noChangeReleased  bool
+}
+
+// settleProductionTurn is the lifecycle from the end of the turn to the publication outcome, and the
+// four E04 points taken in it: post-operation-settlement (turn ended, worker not torn down),
+// post-teardown-import (worker settled, loops joined), pre-publication, and post-publication. A
+// returned error is a turn, teardown or channel failure: the points after it are not taken.
+func (session *productionPiSession) settleProductionTurn(ctx context.Context, ops productionLifecycleOps) (productionSettlementOutcome, error) {
+	var out productionSettlementOutcome
+	if err := ops.waitTurn(); err != nil {
+		return out, err
+	}
+	session.Lifecycle.markTurnCompleted()
+	// E04 post-operation-settlement: the turn has ended, so its operations are settled; the
+	// worker is not torn down yet.
+	session.recordE04(wsoracle.PointPostSettlement)
+
+	settlement, workerCloseErr := ops.closeWorker()
+	if err := ops.joinChannels(); err != nil {
+		return out, err
+	}
+	out.publicationStatus, out.disposition = "UNAVAILABLE", "UNKNOWN"
+	e04LedgerSet := false
+	out.settled = productionWorkerSettlementAllowsPublication(settlement, workerCloseErr)
+	publicationAttemptErr := runProductionPublicationAfterWorkerSettlement(settlement, workerCloseErr, func() error {
+		ops.releaseAdmission()
+		out.bundle, out.bundleErr = ops.evidenceBundle()
+		// E04 post-teardown-import: the worker is stopped and settled (the gate above), the loops
+		// are joined, and the supervisor has imported the workspace result.
+		session.recordE04(wsoracle.PointPostTeardown)
+		if out.bundleErr != nil {
+			out.publishErr = fmt.Errorf("read production session generation/tool receipt: %w", out.bundleErr)
+			out.publicationStatus, out.disposition = "UNKNOWN", "UNKNOWN"
+		} else if bundleHasNoChange(out.bundle) {
+			out.publicationStatus, out.disposition = "NO_DIFF", "NO_DIFF"
+			session.recordE04(wsoracle.PointPrePublication) // the no-diff release is the publication step
+			if ops.closePublication != nil {
+				if err := ops.closePublication(); err != nil {
+					out.publishErr = fmt.Errorf("close no-diff publication session: %w", err)
+				}
+			}
+			if ops.markNoPublication != nil {
+				if err := ops.markNoPublication(); err != nil {
+					out.publishErr = errors.Join(out.publishErr, fmt.Errorf("release no-diff managed live-root authority: %w", err))
+					out.publicationStatus, out.disposition = "UNKNOWN", "UNKNOWN"
+				} else {
+					out.noChangeReleased = true
+				}
+			}
+		} else if ops.finalize == nil {
+			out.publishErr = errors.New("production publication runtime is unavailable")
+			out.publicationStatus, out.disposition = "UNAVAILABLE", "UNKNOWN"
+		} else {
+			session.recordE04(wsoracle.PointPrePublication) // the step that may write the live root
+			result, finalizeErr := ops.finalize(ctx)
+			out.publicationStatus = string(result.Status)
+			if out.publicationStatus == "" {
+				out.publicationStatus = "UNKNOWN"
+			}
+			out.publicationTx = result.TransactionID
+			if result.Status == publication.StatusSucceeded || result.Status == publication.StatusFailed {
+				if err := ops.recordTerminal(ctx, result.Status, result.TransactionID); err != nil {
+					finalizeErr = errors.Join(finalizeErr, fmt.Errorf("verify durable managed-root terminal lifecycle record: %w", err))
+					out.publicationStatus, out.disposition = "UNKNOWN", "UNKNOWN"
+				}
+			}
+			// The live-root ledger is what the publication itself applied (result.Ledger), taken
+			// only when the outcome says exactly what happened; otherwise it stays unavailable.
+			session.E04.setLedger(productionE04LedgerFromResult(result, finalizeErr))
+			e04LedgerSet = true
+			if finalizeErr == nil && result.Status == publication.StatusSucceeded && len(result.Objects) == 0 {
+				out.publicationStatus, out.disposition = "NO_DIFF", "NO_DIFF"
+			} else if finalizeErr == nil && result.Status == publication.StatusSucceeded {
+				out.disposition = "PUBLISHED"
+			} else {
+				out.disposition = "PUBLICATION_" + string(result.Status)
+				if finalizeErr == nil {
+					finalizeErr = fmt.Errorf("production publication did not succeed: %s", out.publicationStatus)
+				}
+			}
+			if finalizeErr != nil {
+				out.publishErr = fmt.Errorf("finalize registered production session (%s): %w", out.publicationStatus, finalizeErr)
+			}
+		}
+		// E04 post-publication. The approved deltas reach the live root only here. Finalize set the
+		// ledger from what the publication applied (see production_e04_points_linux.go); any other
+		// path, where no publication outcome exists, records the empty prefix only for a run known
+		// to have published nothing.
+		if !e04LedgerSet && (out.disposition != "NO_DIFF" || out.publishErr != nil) {
+			session.E04.setLedger(productionE04LedgerUnavailable())
+		}
+		session.recordE04(wsoracle.PointPostPublication)
+		return nil
+	})
+	if publicationAttemptErr != nil {
+		out.bundleErr = publicationAttemptErr
+		out.publishErr = errors.Join(out.publishErr, publicationAttemptErr)
+		out.publicationStatus, out.disposition = "UNAVAILABLE", "UNKNOWN"
+	}
+	return out, nil
 }
 
 func bundleHasChanges(bundle sessionrepo.EvidenceBundle) bool {

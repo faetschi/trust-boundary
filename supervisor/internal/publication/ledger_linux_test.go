@@ -262,3 +262,97 @@ func TestPublicationFailedBeforeAnyObjectHasAnEmptyLedger(t *testing.T) {
 		t.Fatalf("recovered = %+v err=%v", recovered, recoverErr)
 	}
 }
+
+// A directory the publication created must be the directory it approves. A directory swapped into
+// place after creation (here: the created one removed and another empty 0755 directory renamed to
+// its path) must not be journaled as the approved creation.
+func TestPublicationDoesNotApproveADirectoryReplacedAfterCreation(t *testing.T) {
+	f := newFixture(t, map[string]string{}, map[string]string{}, map[string]string{}, map[string]string{}, nil, nil, []string{"created-dir"})
+	live := filepath.Join(f.root, "live")
+	baseline := wsoracle.Snapshot(live, wsoracle.PointBaseline)
+	repo := f.acquire(1)
+	defer repo.Close()
+	result, err := repo.Publish(context.Background(), f.request, allowFor("directory swap"), func(point string, _ int) error {
+		if point != "after-mkdir" {
+			return nil
+		}
+		target := filepath.Join(live, "created-dir")
+		other := filepath.Join(live, "other-dir")
+		for _, step := range []func() error{
+			func() error { return os.Remove(target) },
+			func() error { return os.Mkdir(other, 0o755) },
+			func() error { return os.Chmod(other, 0o755) },
+			func() error { return os.Rename(other, target) },
+		} {
+			if err := step(); err != nil {
+				t.Errorf("swap step: %v", err)
+			}
+		}
+		return nil
+	})
+	if err == nil || result.Status == StatusSucceeded || len(result.Ledger) != 0 {
+		t.Fatalf("a replaced directory was approved: result=%+v err=%v", result, err)
+	}
+	recovered, recoverErr := repo.Recover(f.live, result.TransactionID, nil)
+	if len(recovered.Ledger) != 0 || recovered.Status == StatusSucceeded {
+		t.Fatalf("recovered = %+v err=%v, want no approved directory", recovered, recoverErr)
+	}
+	report := wsoracle.EvaluateE04(e04Over(live, baseline, recovered.Ledger))
+	if got := report.VerdictOf(wsoracle.PredicateWS01); got == wsoracle.VerdictNoEffect {
+		t.Fatalf("EFF-WS-01 = %q for an unapproved directory", got)
+	}
+}
+
+// A destination that changes between the baseline check and the swap is not a transition the
+// ledger can approve: the object displaced by the swap is read back and must be the recorded
+// before state.
+func TestPublicationDoesNotApproveADestinationReplacedBetweenCheckAndSwap(t *testing.T) {
+	base := map[string]string{"a.txt": "before-a"}
+	f := newFixture(t, base, base, base, map[string]string{"a.txt": "final-a"}, nil, nil, nil)
+	live := filepath.Join(f.root, "live")
+	repo := f.acquire(1)
+	defer repo.Close()
+	result, err := repo.Publish(context.Background(), f.request, allowFor("check swap race"), func(point string, _ int) error {
+		if point != "after-object-start-checkpoint" {
+			return nil
+		}
+		intruder := filepath.Join(live, ".intruder")
+		if err := os.WriteFile(intruder, []byte("intruder-a"), 0o644); err != nil {
+			t.Errorf("write intruder: %v", err)
+		}
+		if err := os.Rename(intruder, filepath.Join(live, "a.txt")); err != nil {
+			t.Errorf("replace destination: %v", err)
+		}
+		return nil
+	})
+	if err == nil || result.Status == StatusSucceeded || len(result.Ledger) != 0 {
+		t.Fatalf("a replaced destination was approved: result=%+v err=%v", result, err)
+	}
+	recovered, recoverErr := repo.Recover(f.live, result.TransactionID, nil)
+	if len(recovered.Ledger) != 0 || recovered.Status == StatusSucceeded {
+		t.Fatalf("recovered = %+v err=%v, want no approved object", recovered, recoverErr)
+	}
+}
+
+// A destination that appears where the plan has no prior object is never overwritten.
+func TestPublicationDoesNotOverwriteADestinationThatAppearsBeforeTheSwap(t *testing.T) {
+	base := map[string]string{"keep.txt": "keep"}
+	f := newFixture(t, base, base, base, map[string]string{"keep.txt": "keep", "new.txt": "published"}, nil, nil, nil)
+	live := filepath.Join(f.root, "live")
+	repo := f.acquire(1)
+	defer repo.Close()
+	result, err := repo.Publish(context.Background(), f.request, allowFor("appearing destination"), func(point string, _ int) error {
+		if point == "after-object-start-checkpoint" {
+			if err := os.WriteFile(filepath.Join(live, "new.txt"), []byte("intruder"), 0o644); err != nil {
+				t.Errorf("write intruder: %v", err)
+			}
+		}
+		return nil
+	})
+	if err == nil || result.Status == StatusSucceeded || len(result.Ledger) != 0 {
+		t.Fatalf("an appearing destination was approved: result=%+v err=%v", result, err)
+	}
+	if got, readErr := os.ReadFile(filepath.Join(live, "new.txt")); readErr != nil || string(got) != "intruder" {
+		t.Fatalf("destination was overwritten: %q err=%v", got, readErr)
+	}
+}

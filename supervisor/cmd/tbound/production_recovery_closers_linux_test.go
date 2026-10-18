@@ -21,7 +21,7 @@ func TestTransferCandidateClosersRemovesTheCandidateAndKeepsTheLiveRoot(t *testi
 	managed, admin, prepared := closer("managed"), closer("admin"), closer("prepared")
 
 	stack := []func() error{owner, store, candidate, publicationRoot, publicationJournal, lease, liveRoot}
-	stack, ok := transferCandidateClosers(stack, candidate, managed, admin, prepared)
+	stack, ok := transferCandidateClosers(stack, 2, managed, admin, prepared)
 	if !ok {
 		t.Fatal("the candidate closer was not found on the stack")
 	}
@@ -42,8 +42,8 @@ func TestTransferCandidateClosersRemovesTheCandidateAndKeepsTheLiveRoot(t *testi
 // A stack that does not hold the candidate closer is reported, and the activated handles' closers
 // are on the returned stack anyway, so a failure path still closes them.
 func TestTransferCandidateClosersReportsAStackWithoutTheCandidate(t *testing.T) {
-	a, b, candidate, activated := func() error { return nil }, func() error { return nil }, func() error { return nil }, func() error { return nil }
-	out, ok := transferCandidateClosers([]func() error{a, b}, candidate, activated)
+	a, b, activated := func() error { return nil }, func() error { return nil }, func() error { return nil }
+	out, ok := transferCandidateClosers([]func() error{a, b}, 2, activated)
 	if ok || len(out) != 3 {
 		t.Fatalf("ok=%v len=%d, want false and 3 (both kept closers and the activated one)", ok, len(out))
 	}

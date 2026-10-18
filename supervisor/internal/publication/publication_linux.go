@@ -24,6 +24,7 @@ import (
 	"unsafe"
 
 	"github.com/gowebpki/jcs"
+	"golang.org/x/sys/unix"
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/workspace"
@@ -832,7 +833,7 @@ func (r *Repository) apply(ctx context.Context, root, artifact *os.File, prep pr
 			return err
 		}
 		if plan.After.Exists && plan.After.Type == delta.ObjectDirectory {
-			if err := r.createDirectory(ctx, root, parent, base, index, plan, prep.TransactionID, inject); err != nil {
+			if err := r.createDirectory(ctx, root, parent, artifact, base, index, plan, prep.TransactionID, inject); err != nil {
 				parent.Close()
 				return err
 			}
@@ -878,13 +879,32 @@ func (r *Repository) apply(ctx context.Context, root, artifact *os.File, prep pr
 				parent.Close()
 				return fmt.Errorf("retained original for %q is missing or invalid", plan.Path)
 			}
-			if err := unlinkAt(int(parent.Fd()), base, 0); err != nil {
+			// The target is moved into the private artifact directory in one atomic step, and the object
+			// that was actually displaced is stat'ed and hashed there. Only a displaced object equal to the
+			// recorded before state is removed and approved; anything else stays in the artifact directory
+			// and the object is never recorded as applied.
+			displacedName := fmt.Sprintf("displaced-%04d", index)
+			if err := unix.Renameat2(int(parent.Fd()), base, int(artifact.Fd()), displacedName, unix.RENAME_NOREPLACE); err != nil {
 				parent.Close()
-				return fmt.Errorf("unlink publication target %q: %w", plan.Path, err)
+				return fmt.Errorf("move publication target %q aside: %w", plan.Path, err)
+			}
+			displaced, _, err := currentRegularEntryAt(artifact, displacedName, plan.Path, plan.Before, plan.BeforeID, r.options.Workspace.Limits.MaxFileBytes)
+			if err != nil {
+				parent.Close()
+				return fmt.Errorf("displaced object for %q is not the recorded before state: %w", plan.Path, err)
+			}
+			beforeEntry = &displaced
+			if err := unlinkAt(int(artifact.Fd()), displacedName, 0); err != nil {
+				parent.Close()
+				return fmt.Errorf("remove displaced object for %q: %w", plan.Path, err)
 			}
 			if err := injectFault(inject, "after-unlink", index); err != nil {
 				parent.Close()
 				return err
+			}
+			if err := artifact.Sync(); err != nil {
+				parent.Close()
+				return fmt.Errorf("sync artifact directory after removing %q: %w", plan.Path, err)
 			}
 			if err := parent.Sync(); err != nil {
 				parent.Close()
@@ -919,13 +939,32 @@ func (r *Repository) apply(ctx context.Context, root, artifact *os.File, prep pr
 			parent.Close()
 			return fmt.Errorf("retained original for %q is missing or invalid", plan.Path)
 		}
-		if err := syscall.Renameat(int(artifact.Fd()), plan.StageName, int(parent.Fd()), base); err != nil {
+		// A new destination is installed with RENAME_NOREPLACE. An existing one is swapped with the staged
+		// file by RENAME_EXCHANGE, so the displaced object lands under the staged name and can be read back.
+		flags := uint(unix.RENAME_NOREPLACE)
+		if plan.Before.Exists {
+			flags = unix.RENAME_EXCHANGE
+		}
+		if err := unix.Renameat2(int(artifact.Fd()), plan.StageName, int(parent.Fd()), base, flags); err != nil {
 			parent.Close()
 			return fmt.Errorf("rename staged object into %q: %w", plan.Path, err)
 		}
 		if err := injectFault(inject, "after-rename", index); err != nil {
 			parent.Close()
 			return err
+		}
+		if plan.Before.Exists {
+			// The ledger's before state is the object the swap displaced, not the one checked earlier.
+			displaced, _, err := currentRegularEntryAt(artifact, plan.StageName, plan.Path, plan.Before, plan.BeforeID, r.options.Workspace.Limits.MaxFileBytes)
+			if err != nil {
+				parent.Close()
+				return fmt.Errorf("displaced object for %q is not the recorded before state: %w", plan.Path, err)
+			}
+			beforeEntry = &displaced
+			if err := unlinkAt(int(artifact.Fd()), plan.StageName, 0); err != nil {
+				parent.Close()
+				return fmt.Errorf("remove displaced object for %q: %w", plan.Path, err)
+			}
 		}
 		if err := parent.Sync(); err != nil {
 			parent.Close()
@@ -958,7 +997,11 @@ func (r *Repository) apply(ctx context.Context, root, artifact *os.File, prep pr
 	return nil
 }
 
-func (r *Repository) createDirectory(ctx context.Context, root, parent *os.File, base string, index int, plan objectPlan, txID string, inject FaultInjector) error {
+// createDirectory builds the directory inside the private artifact directory, opens it there, sets its
+// mode and takes its identity from the held descriptor, then installs it with RENAME_NOREPLACE. The
+// approved creation is only recorded if both the held descriptor and the destination, re-opened without
+// following links, still have that identity.
+func (r *Repository) createDirectory(ctx context.Context, root, parent, artifact *os.File, base string, index int, plan objectPlan, txID string, inject FaultInjector) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -982,13 +1025,11 @@ func (r *Repository) createDirectory(ctx context.Context, root, parent *os.File,
 	if err := verifyParentStill(root, plan.Path, parentID); err != nil {
 		return err
 	}
-	if err := syscall.Mkdirat(int(parent.Fd()), base, 0o700); err != nil {
-		return fmt.Errorf("mkdir publication directory %q: %w", plan.Path, err)
+	stageName := fmt.Sprintf("dir-%04d", index)
+	if err := syscall.Mkdirat(int(artifact.Fd()), stageName, 0o700); err != nil {
+		return fmt.Errorf("create staged publication directory %q: %w", plan.Path, err)
 	}
-	if err := injectFault(inject, "after-mkdir", index); err != nil {
-		return err
-	}
-	fd, err := syscall.Openat(int(parent.Fd()), base, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	fd, err := syscall.Openat(int(artifact.Fd()), stageName, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return err
 	}
@@ -997,18 +1038,43 @@ func (r *Repository) createDirectory(ctx context.Context, root, parent *os.File,
 	if err := syscall.Fchmod(fd, 0o755); err != nil {
 		return err
 	}
+	committed, err := identifyDirectory(directory)
+	if err != nil {
+		return err
+	}
 	if err := directory.Sync(); err != nil {
-		return fmt.Errorf("sync created directory %q: %w", plan.Path, err)
+		return fmt.Errorf("sync staged directory %q: %w", plan.Path, err)
+	}
+	if err := unix.Renameat2(int(artifact.Fd()), stageName, int(parent.Fd()), base, unix.RENAME_NOREPLACE); err != nil {
+		return fmt.Errorf("install publication directory %q: %w", plan.Path, err)
+	}
+	if err := injectFault(inject, "after-mkdir", index); err != nil {
+		return err
 	}
 	if err := parent.Sync(); err != nil {
 		return fmt.Errorf("sync parent of created directory %q: %w", plan.Path, err)
 	}
+	if err := artifact.Sync(); err != nil {
+		return fmt.Errorf("sync staged-source directory after installing %q: %w", plan.Path, err)
+	}
 	if err := injectFault(inject, "after-parent-sync", index); err != nil {
 		return err
 	}
+	// Both the held descriptor and the destination, re-opened without following links, must still be
+	// the directory that was committed to; otherwise the creation is not recorded as applied.
 	identity, err := identifyDirectory(directory)
+	if err != nil || !sameDirectoryIdentity(identity, committed) {
+		return fmt.Errorf("created directory %q is not the committed object: %v", plan.Path, err)
+	}
+	installedFD, err := syscall.Openat(int(parent.Fd()), base, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
-		return err
+		return fmt.Errorf("re-open created directory %q: %w", plan.Path, err)
+	}
+	installed := os.NewFile(uintptr(installedFD), plan.Path)
+	defer installed.Close()
+	installedID, err := identifyDirectory(installed)
+	if err != nil || !sameDirectoryIdentity(installedID, committed) {
+		return fmt.Errorf("directory at %q was replaced after creation: %v", plan.Path, err)
 	}
 	afterEntry := directoryLedgerEntry(plan.Path, identity)
 	change := ledgerChangeFor(plan.Path, nil, &afterEntry)
