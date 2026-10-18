@@ -25,6 +25,8 @@ Decision 2026-10-18: NET-01 registered sink runs ON THE GUEST (guest-local addre
 
 Open owner decisions: ledger head-hash anchor owner (at OpenRouter switch); corpus review sign-off.
 
+Guest address is DHCP on the Default Switch and changes after host restarts (now 172.30.8.106, switch 172.30.0.1/20; MAC 00-15-5D-0C-40-02). Always discover via Get-NetNeighbor -LinkLayerAddress and connect with -o HostKeyAlias=172.18.155.19 against the pinned key; never relax host-key checking.
+
 Next: receipt anchor + Codex review; then freeze commit, preregistration record, and owner-approved signing session + E2E smoke over OpenCode Go; then guest executors (GovernedC), NET/PROC oracles, corpus content, pilot (quota profile pilot).
 
 Constraints: preserve the ten other-session docs and `docs/tbound-product.md`; explicit `git add`; no secret/key/vm_start.txt reads; pinned Go 1.27.1 at /home/jeli2k/opt/go1.27.1 (default 1.22); clean-room gates archive `supervisor docs adapter/src infra`, short private TMPDIR; logs on F:; C: >= 5 GiB; no `wsl --shutdown`; every privileged guest write, signing, or VM state change needs explicit approval; sign only with the owner's keys.
