@@ -139,11 +139,3 @@ These package layouts carry `tbound`, `tbound-doctor`, `tbound-profile`, the
 runtime bundle, and (linux/amd64) the unsigned TCB entrypoint binary under a
 non-PATH libexec directory. Package installation alone does not establish
 signature, root-owned immutability, or governed trust.
-
-## Honesty boundary
-
-These artifacts are the dev/install surface. The CLI service handoff and
-production composition code do not establish a provisioned or qualified service,
-containment, G1, or H1. The tbound-cell-entrypoint remains unsigned and requires
-the operator's approved offline image-signing/profile workflow. The build never
-signs it, generates keys, or records a registered profile digest.
