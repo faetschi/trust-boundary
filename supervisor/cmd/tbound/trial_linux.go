@@ -58,9 +58,9 @@ const (
 	trialKillRounds  = 20
 )
 
-// trialKillPoll is the pause between two rounds of killing and rescanning (a variable so a
-// test can shorten it).
-var trialKillPoll = 50 * time.Millisecond
+// trialKillWait is how long, in total, the reset waits for the kernel to confirm that the
+// groups it sent SIGKILL have exited (a variable so a test can shorten it).
+var trialKillWait = 5 * time.Second
 
 const trialUsage = `usage: tbound trial reset <case_id> [--check]   (root only; one JSON document on stdout)
   reset <case_id>           reset the live root to the fixture of the case
@@ -346,8 +346,8 @@ func cgroupPopulated(dir string) (bool, error) {
 // errProcGone means the pinned process is gone: it was reaped, or never existed.
 var errProcGone = errors.New("process is gone")
 
-// procPin is a process held by a pidfd. It names the process itself and not a number that
-// the kernel may hand to another process after the first one is reaped.
+// procPin is a process (thread group) held by a pidfd. It names the process itself and not a
+// number that the kernel may hand to another process after the first one is reaped.
 type procPin interface {
 	// Alive returns errProcGone once the process was reaped. A zombie that is not reaped
 	// yet still holds its pid, so a successful Alive after reading /proc/<pid> shows that
@@ -356,6 +356,10 @@ type procPin interface {
 	// Signal sends SIGKILL to the pinned process (pidfd_send_signal) and returns
 	// errProcGone if it was reaped.
 	Signal() error
+	// Exited reports whether the whole thread group has exited, waiting up to wait for it.
+	// The kernel makes the pidfd of a thread-group leader readable only when the last
+	// thread is gone, so a zombie leader with a running worker is not exited.
+	Exited(wait time.Duration) (bool, error)
 	Close() error
 }
 
@@ -390,19 +394,44 @@ func (p *pidfdPin) Alive() error  { return p.send(0) }
 func (p *pidfdPin) Signal() error { return p.send(unix.SIGKILL) }
 func (p *pidfdPin) Close() error  { return unix.Close(p.fd) }
 
-// killUIDProcesses sends SIGKILL to every live process whose real uid is uid, rescans until
-// none is left, and fails if one survives trialKillRounds rounds. A process whose threads
-// are all zombies is already dead; a zombie thread-group leader with a live worker thread is
-// not (procOwnership), and SIGKILL through the pidfd of its tgid ends the whole group. It
-// never acts for uid 0.
+// pollPidfd is poll(2); a test replaces it.
+var pollPidfd = unix.Poll
+
+func (p *pidfdPin) Exited(wait time.Duration) (bool, error) {
+	deadline := time.Now().Add(wait)
+	for {
+		fds := []unix.PollFd{{Fd: int32(p.fd), Events: unix.POLLIN}}
+		ms := int((time.Until(deadline) + time.Millisecond - 1) / time.Millisecond)
+		n, err := pollPidfd(fds, max(ms, 0))
+		if errors.Is(err, unix.EINTR) {
+			continue
+		}
+		if err != nil {
+			return false, fmt.Errorf("poll pidfd: %w", err)
+		}
+		switch {
+		case n == 0:
+			return false, nil
+		case fds[0].Revents&unix.POLLIN != 0:
+			return true, nil
+		}
+		return false, fmt.Errorf("poll pidfd: revents %#x", fds[0].Revents)
+	}
+}
+
+// killUIDProcesses sends SIGKILL to every process (thread group) whose real uid is uid and
+// whose group has not exited, waits until the kernel confirms that every such group exited,
+// and repeats until a fresh scan finds no group left to kill. It refuses (an error) if a
+// group is still running trialKillWait after its SIGKILL, or if trialKillRounds scans each
+// found one. It never acts for uid 0.
 //
-// A pid read from procRoot is only a candidate: it can be reaped and reused by another
-// process, for example one of root, before it is signaled. Each candidate is therefore
-// pinned with a pidfd first; its uid is read from procRoot after the pin and the pin must
-// still be alive after that read (so the status belonged to the pinned process); only then
-// is it signaled, through the pidfd. A candidate that fails the check is left alone. An
-// error from the pin other than a vanished process (no pidfd support, a denied open)
-// refuses the reset: there is no fallback to signaling by number.
+// Liveness is never read from /proc: the pidfd of a thread-group leader is readable only when
+// the whole group has exited, and a zombie leader with running worker threads is not readable.
+// Ownership is the real uid in the leader's /proc/<pid>/status, which a zombie leader keeps.
+// That uid is read after the pidfd is opened and the pidfd must still be alive after the
+// read, so the status belonged to the pinned process and not to a reused pid. A pidfd_open
+// error other than a vanished process (no pidfd support, a denied open) refuses the reset:
+// there is no fallback to signaling by number.
 func killUIDProcesses(procRoot string, uid uint32, pin pinProcess) error {
 	if uid == 0 {
 		return errors.New("refusing to kill the processes of uid 0")
@@ -412,57 +441,94 @@ func killUIDProcesses(procRoot string, uid uint32, pin pinProcess) error {
 		if err != nil {
 			return err
 		}
-		if len(pids) == 0 {
+		killed, err := killGroups(procRoot, uid, pids, pin)
+		if err != nil {
+			return err
+		}
+		if killed == 0 {
 			return nil
 		}
-		for _, pid := range pids {
-			if err := killPinned(procRoot, uid, pid, pin); err != nil {
-				return err
-			}
-		}
-		time.Sleep(trialKillPoll)
 	}
-	pids, err := uidProcesses(procRoot, uid)
-	if err != nil {
-		return err
-	}
-	if len(pids) != 0 {
-		return fmt.Errorf("processes of uid %d survive the kill: %v", uid, pids)
-	}
-	return nil
+	return fmt.Errorf("processes of uid %d survive %d rounds of kills", uid, trialKillRounds)
 }
 
-// killPinned signals pid if, and only if, the process the pidfd pins is a live process of uid.
-func killPinned(procRoot string, uid uint32, pid int, pin pinProcess) error {
-	pinned, err := pin(pid)
-	if errors.Is(err, errProcGone) {
-		return nil
+// pinnedGroup is a signaled thread group that has to be confirmed exited.
+type pinnedGroup struct {
+	pid int
+	pin procPin
+}
+
+// killGroups signals the candidate groups that are of uid and not exited, and returns how many
+// it signaled once the kernel confirms all of them exited.
+func killGroups(procRoot string, uid uint32, pids []int, pin pinProcess) (int, error) {
+	var signaled []pinnedGroup
+	defer func() {
+		for _, g := range signaled {
+			g.pin.Close()
+		}
+	}()
+	for _, pid := range pids {
+		pinned, err := pin(pid)
+		if errors.Is(err, errProcGone) {
+			continue
+		}
+		if err != nil {
+			return 0, fmt.Errorf("cannot pin pid %d, refusing the reset: %w", pid, err)
+		}
+		sent, err := signalIfLive(procRoot, uid, pid, pinned)
+		if sent {
+			signaled = append(signaled, pinnedGroup{pid, pinned})
+		} else {
+			pinned.Close()
+		}
+		if err != nil {
+			return 0, err
+		}
 	}
-	if err != nil {
-		return fmt.Errorf("cannot pin pid %d, refusing the reset: %w", pid, err)
+	deadline := time.Now().Add(trialKillWait)
+	for _, g := range signaled {
+		exited, err := g.pin.Exited(max(time.Until(deadline), 0))
+		if err != nil {
+			return 0, fmt.Errorf("wait for pid %d: %w", g.pid, err)
+		}
+		if !exited {
+			return 0, fmt.Errorf("pid %d (uid %d) is still running %s after SIGKILL, refusing the reset", g.pid, uid, trialKillWait)
+		}
 	}
-	defer pinned.Close()
-	live, owned, err := procOwnership(procRoot, pid, uid)
+	return len(signaled), nil
+}
+
+// signalIfLive sends SIGKILL through the pidfd if the pinned process is of uid and its group
+// has not exited. The uid is read after the pin, and the pin must be alive after the read.
+func signalIfLive(procRoot string, uid uint32, pid int, pinned procPin) (sent bool, err error) {
+	real, found, err := readProcRealUID(procRoot, pid)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := pinned.Alive(); err != nil {
 		if errors.Is(err, errProcGone) {
-			return nil // reaped: the status may belong to a reused pid
+			return false, nil // reaped: the status may belong to a reused pid
 		}
-		return fmt.Errorf("check pinned pid %d: %w", pid, err)
+		return false, fmt.Errorf("check pinned pid %d: %w", pid, err)
 	}
-	if !live || !owned {
-		return nil // not a cell process (any more): never signal it
+	if !found || real != uid {
+		return false, nil // not a cell process (any more): never signal it
 	}
-	if err := pinned.Signal(); err != nil && !errors.Is(err, errProcGone) {
-		return fmt.Errorf("signal pinned pid %d: %w", pid, err)
+	exited, err := pinned.Exited(0)
+	if err != nil || exited {
+		return false, err
 	}
-	return nil
+	if err := pinned.Signal(); err != nil {
+		if errors.Is(err, errProcGone) {
+			return false, nil
+		}
+		return false, fmt.Errorf("signal pinned pid %d: %w", pid, err)
+	}
+	return true, nil
 }
 
-// uidProcesses lists the live processes of procRoot whose real uid is uid. A process is live
-// unless every one of its threads is a zombie (see procOwnership).
+// uidProcesses lists the thread groups of procRoot whose leader has real uid uid, zombie
+// leaders included. It is a candidate list only: killGroups decides what is still running.
 func uidProcesses(procRoot string, uid uint32) ([]int, error) {
 	entries, err := os.ReadDir(procRoot)
 	if err != nil {
@@ -474,116 +540,37 @@ func uidProcesses(procRoot string, uid uint32) ([]int, error) {
 		if err != nil || pid <= 0 {
 			continue
 		}
-		live, owned, err := procOwnership(procRoot, pid, uid)
+		real, found, err := readProcRealUID(procRoot, pid)
 		if err != nil {
 			return nil, err
 		}
-		if live && owned {
+		if found && real == uid {
 			pids = append(pids, pid)
 		}
 	}
 	return pids, nil
 }
 
-// procStatusInfo is what the reset reads from one /proc status file.
-type procStatusInfo struct {
-	hasState bool
-	dead     bool // State is Z (zombie) or X (dead)
-	hasUID   bool
-	realUID  uint32
-}
-
-func parseProcStatus(status []byte) procStatusInfo {
-	var st procStatusInfo
+// readProcRealUID reads the real uid of the thread-group leader pid from procRoot/<pid>/status;
+// found is false when the process is gone. A status without a parsable real uid is an error:
+// what cannot be attributed refuses the reset.
+func readProcRealUID(procRoot string, pid int) (real uint32, found bool, err error) {
+	status, err := os.ReadFile(filepath.Join(procRoot, strconv.Itoa(pid), "status"))
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, fmt.Errorf("read the status of pid %d: %w", pid, err)
+	}
 	for _, line := range strings.Split(string(status), "\n") {
-		if state, ok := strings.CutPrefix(line, "State:"); ok {
-			state = strings.TrimSpace(state)
-			st.hasState = state != ""
-			st.dead = strings.HasPrefix(state, "Z") || strings.HasPrefix(state, "X")
-		}
 		if ids, ok := strings.CutPrefix(line, "Uid:"); ok {
 			if fields := strings.Fields(ids); len(fields) > 0 {
-				real, err := strconv.ParseUint(fields[0], 10, 32)
-				st.hasUID = err == nil
-				st.realUID = uint32(real)
+				if id, err := strconv.ParseUint(fields[0], 10, 32); err == nil {
+					return uint32(id), true, nil
+				}
 			}
+			break
 		}
 	}
-	return st
-}
-
-// readProcStatus reads and parses a status file; found is false when the process or thread
-// is gone.
-func readProcStatus(path string) (st procStatusInfo, found bool, err error) {
-	status, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
-		return procStatusInfo{}, false, nil
-	}
-	if err != nil {
-		return procStatusInfo{}, false, err
-	}
-	return parseProcStatus(status), true, nil
-}
-
-// procOwnership reports whether the process (thread group) pid of procRoot is live and
-// whether its real uid is uid. A process that is gone is neither.
-//
-// A process is live while any of its threads runs. The state of procRoot/<pid>/status is the
-// state of the thread-group leader: when the main thread exits and a worker thread keeps
-// running, the leader is a zombie ("Z") but the group still executes code, can write files,
-// and must be killed. A leader that is not a zombie decides on its own (live, uid from its
-// status). For a zombie leader the threads in procRoot/<pid>/task decide: the group is dead
-// if none of them is a zombie or dead, otherwise it is live and owned if the real uid of
-// every live thread is uid. Whatever cannot be established refuses (an error) rather than
-// skipping the process: an unreadable task directory or thread status, a live thread without
-// a state or a parsable uid, or live threads of different uids.
-func procOwnership(procRoot string, pid int, uid uint32) (live, owned bool, err error) {
-	dir := filepath.Join(procRoot, strconv.Itoa(pid))
-	leader, found, err := readProcStatus(filepath.Join(dir, "status"))
-	if err != nil {
-		return false, false, fmt.Errorf("read the status of pid %d: %w", pid, err)
-	}
-	if !found {
-		return false, false, nil
-	}
-	if !leader.dead {
-		return true, leader.hasUID && leader.realUID == uid, nil
-	}
-	tasks, err := os.ReadDir(filepath.Join(dir, "task"))
-	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
-		return false, false, nil // reaped, or nothing left to inspect
-	}
-	if err != nil {
-		return false, false, fmt.Errorf("list the threads of zombie leader pid %d: %w", pid, err)
-	}
-	liveTasks, ownedTasks := 0, 0
-	for _, task := range tasks {
-		tid, err := strconv.Atoi(task.Name())
-		if err != nil || tid <= 0 {
-			continue
-		}
-		st, found, err := readProcStatus(filepath.Join(dir, "task", task.Name(), "status"))
-		if err != nil {
-			return false, false, fmt.Errorf("read the status of thread %d of pid %d: %w", tid, pid, err)
-		}
-		if !found || (st.hasState && st.dead) {
-			continue // the thread exited meanwhile, or is a zombie itself
-		}
-		if !st.hasState || !st.hasUID {
-			return false, false, fmt.Errorf("thread %d of zombie leader pid %d has no readable state or uid, refusing the reset", tid, pid)
-		}
-		liveTasks++
-		if st.realUID == uid {
-			ownedTasks++
-		}
-	}
-	switch {
-	case liveTasks == 0:
-		return false, false, nil
-	case ownedTasks == liveTasks:
-		return true, true, nil
-	case ownedTasks == 0:
-		return true, false, nil
-	}
-	return false, false, fmt.Errorf("zombie leader pid %d has live threads of uid %d and of other uids, refusing the reset", pid, uid)
+	return 0, true, fmt.Errorf("pid %d has no readable real uid, refusing the reset", pid)
 }

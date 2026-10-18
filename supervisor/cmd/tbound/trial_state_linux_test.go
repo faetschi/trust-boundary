@@ -183,6 +183,17 @@ type fakePin struct {
 	gone bool
 	// noKill leaves the process alive after a signal.
 	noKill bool
+	// exited makes the whole thread group exited from the start (a readable pidfd), as a
+	// zombie leader without running threads is.
+	exited bool
+}
+
+// shortKillWait bounds the wait for the kernel to confirm an exit, so a refusing test is fast.
+func shortKillWait(t *testing.T) {
+	t.Helper()
+	old := trialKillWait
+	trialKillWait = 20 * time.Millisecond
+	t.Cleanup(func() { trialKillWait = old })
 }
 
 func (p *fakePin) Alive() error {
@@ -203,10 +214,20 @@ func (p *fakePin) Signal() error {
 	return os.RemoveAll(filepath.Join(p.root, strconv.Itoa(p.pid)))
 }
 
+// Exited is true once the fake process directory is gone (killed and reaped) or the fake was
+// created exited.
+func (p *fakePin) Exited(time.Duration) (bool, error) {
+	if p.exited {
+		return true, nil
+	}
+	_, err := os.Stat(filepath.Join(p.root, strconv.Itoa(p.pid)))
+	return os.IsNotExist(err), nil
+}
+
 func (p *fakePin) Close() error { *p.closed++; return nil }
 
 func TestKillUIDProcessesKillsOnlyLiveProcessesOfThatUID(t *testing.T) {
-	trialKillPoll = time.Millisecond
+	shortKillWait(t)
 	root := fakeProc(t, map[int]string{
 		10: procStatus("S (sleeping)", 995, 995, 995, 995),
 		11: procStatus("R (running)", 995, 995, 995, 995),
@@ -218,12 +239,13 @@ func TestKillUIDProcessesKillsOnlyLiveProcessesOfThatUID(t *testing.T) {
 	var signaled []int
 	var closed int
 	pin := func(pid int) (procPin, error) {
-		return &fakePin{root: root, pid: pid, signals: &signaled, closed: &closed}, nil
+		// Pid 13 is a zombie leader without threads: its group exited, its pidfd is readable.
+		return &fakePin{root: root, pid: pid, signals: &signaled, closed: &closed, exited: pid == 13}, nil
 	}
 	if err := killUIDProcesses(root, 995, pin); err != nil {
 		t.Fatalf("killUIDProcesses: %v", err)
 	}
-	// A process whose real uid is the cell uid is killed; a zombie and another uid are not.
+	// A process whose real uid is the cell uid is killed; an exited group and another uid are not.
 	want := map[int]bool{10: true, 11: true, 15: true}
 	if len(signaled) != len(want) {
 		t.Fatalf("signaled %v, want pids 10, 11 and 15", signaled)
@@ -238,13 +260,14 @@ func TestKillUIDProcessesKillsOnlyLiveProcessesOfThatUID(t *testing.T) {
 			t.Errorf("pid %d was removed", pid)
 		}
 	}
-	if closed != 3 {
-		t.Errorf("closed %d pidfds, want 3", closed)
+	// Every opened pidfd is closed: 10, 11, 13 and 15 in the first scan, 13 again in the rescan.
+	if closed != 5 {
+		t.Errorf("closed %d pidfds, want 5", closed)
 	}
 }
 
 func TestKillUIDProcessesFailsWhileAProcessSurvives(t *testing.T) {
-	trialKillPoll = time.Millisecond
+	shortKillWait(t)
 	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
 	var signaled []int
 	var closed int
@@ -268,7 +291,7 @@ func TestKillUIDProcessesNeverTargetsRoot(t *testing.T) {
 // The scan saw pid 10 as a cell process. By the time the pidfd is opened the pid belongs to a
 // root process: it is validated against the pinned process and must not be signaled.
 func TestKillUIDProcessesDoesNotSignalAReusedPID(t *testing.T) {
-	trialKillPoll = time.Millisecond
+	shortKillWait(t)
 	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
 	var signaled []int
 	var closed int
@@ -294,7 +317,7 @@ func TestKillUIDProcessesDoesNotSignalAReusedPID(t *testing.T) {
 // The pidfd must still refer to a process after its uid was read: if it was reaped in
 // between, the status read may belong to a reused pid and nothing is signaled.
 func TestKillUIDProcessesDoesNotSignalAReapedPinnedProcess(t *testing.T) {
-	trialKillPoll = time.Millisecond
+	shortKillWait(t)
 	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
 	var signaled []int
 	var closed int
@@ -317,7 +340,7 @@ func TestKillUIDProcessesDoesNotSignalAReapedPinnedProcess(t *testing.T) {
 
 // With no pidfd support the reset fails closed: no numeric-pid fallback signals anything.
 func TestKillUIDProcessesFailsClosedWithoutPidfd(t *testing.T) {
-	trialKillPoll = time.Millisecond
+	shortKillWait(t)
 	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
 	for name, pinErr := range map[string]error{"enosys": syscall.ENOSYS, "eperm": syscall.EPERM, "other": errors.New("boom")} {
 		pin := func(int) (procPin, error) { return nil, pinErr }
