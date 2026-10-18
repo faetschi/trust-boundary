@@ -107,4 +107,4 @@ The ABI 8 guest (`tbound-abi8-seed`, kernel 7.0.0-38-generic) is measured but
 not qualified, and it is not a clean G1 baseline. The retired
 `TBound-Ubuntu-2404` guest (kernel 6.8, Landlock ABI 4) is out of scope. For new-host and
 offline procedure details, see [reproducible setup](reproducible-setup.md)
-and [offline setup](setup.md).
+and the guest [offline runbook](../infra/guest/README.md).
