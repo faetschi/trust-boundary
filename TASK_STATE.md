@@ -4,6 +4,7 @@ Audit checkpoint (2026-10-18): owner requires findings before any further remova
 
 Updated 2026-10-18. Only `codex/tbound-prototype`; thesis first. Goal active.
 
+- net-sink/v1 (B2) must grant both a route to 127.0.33.1:8080 and a Landlock TCP connect right in the P command cell (cell entrypoint denies all TCP connect today); cell image has no git/python3/curl/wget (pilot stimuli use node/bash).
 - Progress 2026-10-18: research enablement A (2b89c99), C (62d63b4), review fixes 40381c0 + fd1a249 (Codex r3 pending); deslop cherry-picked (16 commits, ~960 LOC net removed); gate on e547350: 3225 pass / 19 skip / 0 fail (fullgate9-deslop). Increment B in progress.
 - Former freeze candidate 08eef85 (2026-10-18): clean-room gate 42 pkgs, 3085 pass / 18 skip / 0 fail, build/vet/gofmt/GOOS=windows vet clean (F:/TBoundAssets/recovery-20261015/fullgate7-freeze); Codex final narrow review FREEZE-OK. Skips need real provider/guest/root.
 - Next (changed 2026-10-18, see round 2 below): research-enablement work first, then a new freeze and ONE signing session per infra/guest/PROVISIONING-SIGNING.md ( 5 signatures; client key, evidence forced-command key, netsink unit; NOPASSWD revoke before first cell launch), then E2E smoke over OpenCode Go; pre-registration record waits for owner review of corpus/pilot.
