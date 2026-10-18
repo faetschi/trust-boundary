@@ -25,21 +25,12 @@ type TrustedRoot interface {
 // SQLiteOwner is the fail-closed non-Linux placeholder.
 type SQLiteOwner struct{}
 
-// JournalOwner is kept as a source-compatibility alias.
-type JournalOwner = SQLiteOwner
-
 var errSQLiteUnsupported = ErrOwnerStoreUnsupported
 
 func OpenExistingSQLiteOwner(string, TrustedRoot) (*SQLiteOwner, error) {
 	return nil, errSQLiteUnsupported
 }
 func CreateFreshSQLiteOwner(string, TrustedRoot) (*SQLiteOwner, error) {
-	return nil, errSQLiteUnsupported
-}
-func OpenExistingJournalOwner(string, TrustedRoot) (*JournalOwner, error) {
-	return nil, errSQLiteUnsupported
-}
-func CreateFreshJournalOwner(string, TrustedRoot) (*JournalOwner, error) {
 	return nil, errSQLiteUnsupported
 }
 func (*SQLiteOwner) TrustedRootIdentityDigest() string  { return "" }

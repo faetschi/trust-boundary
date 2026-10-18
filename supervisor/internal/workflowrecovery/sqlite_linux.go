@@ -130,10 +130,6 @@ type SQLiteOwner struct {
 	poisoned              bool
 }
 
-// JournalOwner is kept as a source-compatibility alias. New integrations
-// should name the durable implementation SQLiteOwner explicitly.
-type JournalOwner = SQLiteOwner
-
 type ownerStateRow struct {
 	WorkflowID             string
 	OwnerEpoch             int64
@@ -345,17 +341,6 @@ func CreateFreshSQLiteOwner(path string, root TrustedRoot) (*SQLiteOwner, error)
 		return nil, err
 	}
 	return owner, nil
-}
-
-// OpenExistingJournalOwner and CreateFreshJournalOwner retain the former
-// constructor names while using the SQLite implementation and its stronger
-// transactional owner store.
-func OpenExistingJournalOwner(path string, root TrustedRoot) (*JournalOwner, error) {
-	return OpenExistingSQLiteOwner(path, root)
-}
-
-func CreateFreshJournalOwner(path string, root TrustedRoot) (*JournalOwner, error) {
-	return CreateFreshSQLiteOwner(path, root)
 }
 
 func trustedRootIdentity(root TrustedRoot) (string, error) {
