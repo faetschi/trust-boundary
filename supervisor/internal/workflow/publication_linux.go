@@ -588,7 +588,6 @@ type Finalizer struct {
 	finished            bool
 	finalizeStarted     bool
 	evidence            sessionrepo.EvidenceBundle
-	origin              delta.Transition
 	originOperation     delta.OperationIdentity
 	terminalLeaseOrigin *publication.TerminalLeaseOriginBinding
 }
@@ -775,7 +774,7 @@ func (f *Finalizer) Finalize(ctx context.Context) (publication.Result, error) {
 	if err != nil || sealedSnapshot.TreeDigest != sealedEvidence.TreeDigest || !reflect.DeepEqual(sealedSnapshot.Manifest, sealedEvidence.Manifest) {
 		return publication.Result{}, errors.Join(errors.New("retained sealed descriptor differs from verified evidence"), err)
 	}
-	f.evidence, f.origin, f.originOperation, f.terminalLeaseOrigin = bundle, origin, originOperation, terminalLeaseOrigin
+	f.evidence, f.originOperation, f.terminalLeaseOrigin = bundle, originOperation, terminalLeaseOrigin
 	var verifyTerminalLeaseOrigin func(context.Context, delta.Transition, publication.TerminalLeaseOriginBinding) error
 	if terminalLeaseOrigin != nil {
 		resolver := f.options.Trust.(TerminalOriginResolver)
