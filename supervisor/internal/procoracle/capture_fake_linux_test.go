@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -136,12 +138,18 @@ type fakeCellReader struct {
 
 func (c fakeCellReader) Observe() (CellFacts, error) { return c.facts, c.err }
 
+// fakeClock makes every observation of the fixtures a microsecond later than the
+// last, starting just after the deadline: snapshot times must be strictly ordered.
+var fakeClock atomic.Int64
+
 func (f *fakeProc) view() HostView {
-	return HostView{ProcRoot: f.root, Now: func() time.Time { return t0.Add(time.Second) }}
+	return HostView{ProcRoot: f.root, Now: func() time.Time {
+		return t0.Add(time.Second + time.Duration(fakeClock.Add(1))*time.Microsecond)
+	}}
 }
 
 func cellOf(pids ...int) fakeCellReader {
-	return fakeCellReader{facts: CellFacts{HierarchyPath: fakeCell, Populated: len(pids) > 0, PIDs: pids}}
+	return fakeCellReader{facts: CellFacts{HierarchyPath: fakeCell, Inode: testInode, Populated: len(pids) > 0, PIDs: pids}}
 }
 
 func params(pt Point, reg ...ProcID) CaptureParams {
@@ -213,7 +221,7 @@ func TestCaptureRecordsProcessesAndSocketsFromProcfs(t *testing.T) {
 		t.Fatalf("gaps: %v", gapDomains(s))
 	}
 	if s.Point != PointFinalCleanup || s.Seq != 1 || s.CellPath != fakeCell || !s.Populated || s.PIDNamespace != "pid:[4026531836]" ||
-		!s.ObservedAt.Equal(t0.Add(time.Second)) || s.RegistrationDigest != testReg.Digest() || !s.Registry.Recorded ||
+		s.ObservedAt.Before(t0.Add(time.Second)) || s.ObservedAt.After(t0.Add(2*time.Second)) || s.RegistrationDigest != testReg.Digest() || !s.Registry.Recorded ||
 		!s.IdentityScanned || s.ScannedPIDs != 3 {
 		t.Errorf("header: %+v", s)
 	}
@@ -447,7 +455,7 @@ func TestCaptureCellReadFailureIsAGap(t *testing.T) {
 
 func TestCaptureVanishedCellRequiresDrainProof(t *testing.T) {
 	f := newFakeProc(t)
-	removed := fakeCellReader{facts: CellFacts{Removed: true}}
+	removed := fakeCellReader{facts: CellFacts{Removed: true, Inode: testInode}}
 	proof := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 	s := Capture(removed, f.view(), params(PointFinalCleanup))
@@ -690,7 +698,7 @@ func (c *fakeMonitorCell) Observe() (CellFacts, error) {
 	if n == c.stallAt {
 		time.Sleep(c.stall)
 	}
-	return CellFacts{HierarchyPath: fakeCell}, nil
+	return CellFacts{HierarchyPath: fakeCell, Inode: testInode}, nil
 }
 
 func monitorReg(maxGap time.Duration) Registration {
@@ -825,4 +833,39 @@ func TestMonitorContinuousRecordGivesNoEffectAndSeesAnEscape(t *testing.T) {
 	if !sawPoll {
 		t.Errorf("no finding from a poll: %+v", res.Findings)
 	}
+}
+
+// Capture is bound to the registered cell: another cgroup than the registered
+// one (path or inode) is refused, and the empty other cell does not read as a
+// clean teardown of the registered one.
+func TestCaptureRefusesACellOtherThanRegistered(t *testing.T) {
+	for name, facts := range map[string]CellFacts{
+		"other inode":        {HierarchyPath: fakeCell, Inode: testInode + 1},
+		"other path":         {HierarchyPath: fakeCell + "-b", Inode: testInode},
+		"other cell":         {HierarchyPath: fakeCell + "-b", Inode: testInode + 1},
+		"no inode":           {HierarchyPath: fakeCell},
+		"removed other cell": {Removed: true, Inode: testInode + 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeProc(t)
+			f.addProc(100, 5000, "pi", "S", 1, fakeCell)
+			s := Capture(fakeCellReader{facts: facts}, f.view(), params(PointFinalCleanup, ProcID{PID: 100, StartTicks: 5000}))
+			if !slices.Contains(gapDomains(s), DomainCell+"/cell_identity_mismatch") || len(s.Processes) != 0 {
+				t.Fatalf("gaps %v, processes %d", gapDomains(s), len(s.Processes))
+			}
+			snaps := []Snapshot{withSeq2(s, 1, PointInterval), withSeq2(s, 2, PointPostTeardown), withSeq2(s, 3, PointFinalCleanup)}
+			wantVerdicts(t, evalT(snaps, Policy{}), VerdictEvidenceLost, VerdictEvidenceLost, VerdictEvidenceLost)
+		})
+	}
+	// The registered cell itself captures without a gap.
+	f := newFakeProc(t)
+	if s := Capture(cellOf(), f.view(), params(PointFinalCleanup)); len(s.Gaps) != 0 || s.CellInode != testInode {
+		t.Fatalf("gaps %v inode %d", gapDomains(s), s.CellInode)
+	}
+}
+
+func withSeq2(s Snapshot, seq int, pt Point) Snapshot {
+	s.Seq, s.Point = seq, pt
+	s.ObservedAt = t0.Add(time.Duration(seq) * time.Second)
+	return s
 }

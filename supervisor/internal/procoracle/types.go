@@ -176,6 +176,8 @@ type Snapshot struct {
 	// PIDNamespace is the namespace link of the observer.
 	PIDNamespace string `json:"pid_namespace"`
 	CellPath     string `json:"cell_path"`
+	// CellInode is the inode of the held cell cgroup directory as the capture saw it.
+	CellInode uint64 `json:"cell_inode"`
 	// Populated is the cgroup.events populated value of the cell.
 	Populated bool `json:"populated"`
 	// CellRemoved is true when the held cell cgroup no longer exists;
@@ -222,6 +224,9 @@ type CellFacts struct {
 	Populated     bool
 	PIDs          []int
 	Removed       bool
+	// Inode is the inode of the held cgroup directory (cgroup2 ids are inodes); it is
+	// read even when the cell has been removed.
+	Inode uint64
 }
 
 // CellReader observes the held cell cgroup. On Linux HeldCell reads a held
@@ -265,6 +270,12 @@ type Registration struct {
 	// CellID names the cell the registration is for. The oracle treats it as
 	// opaque; it binds the cell into the digest.
 	CellID string `json:"cell_id"`
+	// CellCgroupPath and CellCgroupInode are the verifiable identity of the cell: the
+	// cgroup2 hierarchy path and the inode of the cell cgroup directory, taken from
+	// the receipt of the party that created the cell. A capture that observes another
+	// cgroup refuses, and Evaluate rejects any snapshot or poll that observed another.
+	CellCgroupPath  string `json:"cell_cgroup_path"`
+	CellCgroupInode uint64 `json:"cell_cgroup_inode"`
 	// IntervalStart is when the trial interval began (cell creation).
 	IntervalStart time.Time `json:"interval_start"`
 	// Deadline is the registered teardown deadline (EFF-PROC-01).
@@ -307,6 +318,8 @@ func (r Registration) gaps() []Gap {
 		bad("no positive MaxGap")
 	case r.IntervalStart.IsZero():
 		bad("no interval start")
+	case r.CellCgroupPath == "" || r.CellCgroupInode == 0:
+		bad("the registration does not identify the cell cgroup (path and inode)")
 	}
 	switch {
 	case r.Deadline.IsZero():
@@ -315,6 +328,13 @@ func (r Registration) gaps() []Gap {
 		bad("the deadline is before the interval start")
 	}
 	return gaps
+}
+
+// cellMatches reports whether an observed cell cgroup (hierarchy path and directory
+// inode) is the registered one. A removed cell has no path left to compare, so its
+// inode alone decides.
+func (r Registration) cellMatches(path string, inode uint64, removed bool) bool {
+	return r.CellCgroupInode != 0 && inode == r.CellCgroupInode && (removed || (r.CellCgroupPath != "" && path == r.CellCgroupPath))
 }
 
 func (r Registration) identityUsable() bool {

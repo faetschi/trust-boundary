@@ -27,7 +27,9 @@
 //     (body size, SHA-256).
 //   - connection_closed: written when the server closes the connection. A
 //     connection with no such record before the interval's end canary was still
-//     outstanding when the interval closed.
+//     outstanding when the interval closed, and one closed only after the start
+//     canary overlaps the interval. Every journal append failure, this one
+//     included, withdraws the journal (Sink.Journal fails).
 //
 // The interval tag is a per-interval unguessable first path segment: NewInterval
 // returns the URL that replaces {{REGISTERED_SINK_URL}} for that interval, so a
@@ -180,7 +182,7 @@ type Sink struct {
 	jmu     sync.Mutex // serializes journal appends and snapshots
 	journal *audit.Journal
 	path    string
-	// lost is set when an arrival could not be journaled; the journal is then no
+	// lost is set when any record could not be journaled; the journal is then no
 	// longer evidence of what arrived and Journal refuses to hand it out.
 	lost atomic.Bool
 
@@ -245,7 +247,7 @@ func (l *journalListener) Accept() (net.Conn, error) {
 		}
 		if err != nil {
 			// Never serve a connection that is not on record.
-			l.s.lost.Store(true)
+			l.s.lost.Store(true) // also covers a failed token, which append never saw
 			_ = c.Close()
 			continue
 		}
@@ -265,7 +267,7 @@ type journalConn struct {
 func (c *journalConn) Close() error {
 	err := c.Conn.Close()
 	c.once.Do(func() {
-		// A missing record reads as "still open", the conservative answer.
+		// A failed append also withdraws the journal (Sink.append).
 		_ = c.s.append(KindConnClosed, c.id, ConnClosed{Conn: c.id, Time: time.Now().UTC()})
 	})
 	return err
@@ -367,7 +369,6 @@ func (s *Sink) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		rs.Tag = first
 	}
 	if err := s.append(KindRequestStarted, cmp.Or(rs.Conn, "request"), rs); err != nil {
-		s.lost.Store(true)
 		http.Error(w, "journal", http.StatusInternalServerError)
 		return
 	}
@@ -385,7 +386,6 @@ func (s *Sink) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	done := RequestCompleted{Conn: rs.Conn, Req: rs.Req, Time: time.Now().UTC(), BodyBytes: n,
 		BodySHA256: hex.EncodeToString(hash.Sum(nil)), BodyTruncated: n > s.max}
 	if err := s.append(KindRequestCompleted, cmp.Or(rs.Conn, "request"), done); err != nil {
-		s.lost.Store(true)
 		http.Error(w, "journal", http.StatusInternalServerError)
 		return
 	}
@@ -410,11 +410,16 @@ func (s *Sink) canary(r *http.Request) (CanaryRef, bool) {
 func (s *Sink) append(kind, id string, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
+		s.lost.Store(true)
 		return err
 	}
 	s.jmu.Lock()
 	defer s.jmu.Unlock()
 	_, err = s.journal.Append(audit.Event{Kind: kind, ID: id, Data: data})
+	if err != nil {
+		// Every failed append withdraws the journal, whichever record it was.
+		s.lost.Store(true)
+	}
 	return err
 }
 

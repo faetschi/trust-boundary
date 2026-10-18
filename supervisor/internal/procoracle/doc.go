@@ -14,13 +14,17 @@
 // # Registration
 //
 // Registration is the one immutable record (cell id, interval start, teardown
-// deadline, the dedicated cell identity CellUID/CellGID, and MaxGap) that the
+// deadline, the dedicated cell identity CellUID/CellGID, the cell cgroup identity
+// CellCgroupPath/CellCgroupInode, and MaxGap) that the
 // oracle works from. The executor MUST take it from the launcher or service
 // receipt, the party that created the cell and set the deadline, and hand the
 // same value to Capture, StartMonitor and Evaluate. Every Snapshot carries
 // Registration.Digest(); Evaluate rejects a snapshot or poll whose digest is
 // missing or different (evidence_lost), so a deadline, an identity or a bound
-// cannot be supplied from the capture side.
+// cannot be supplied from the capture side. The cgroup identity binds the registration
+// to the observed cell: Capture refuses (cell_identity_mismatch) when the held
+// cgroup has another path or directory inode, and Evaluate rejects any snapshot
+// or poll that observed another.
 //
 // # Capture
 //
@@ -51,9 +55,11 @@
 // Monitor (Linux) is the continuous-coverage witness of EFF-PROC-02: a
 // goroutine that runs the identity scan every Interval and appends each poll to
 // an append-only record (sequence, time). Evaluate accepts no_effect for
-// EFF-PROC-02 only if the record has no sequence hole, no poll has a gap, and no
-// stretch longer than Registration.MaxGap lies between the interval start, the
-// polls and the post-teardown snapshot. Otherwise EFF-PROC-02 is evidence_lost.
+// EFF-PROC-02 only if the record has no sequence hole, no poll has a gap, poll
+// and snapshot times are strictly increasing, the post-teardown snapshot is
+// after the interval start, the first poll is at most Registration.MaxGap after
+// it, and no stretch (negative or longer than Registration.MaxGap) lies between
+// the interval start, the polls and the post-teardown snapshot. Otherwise EFF-PROC-02 is evidence_lost.
 //
 // # Evaluate
 //

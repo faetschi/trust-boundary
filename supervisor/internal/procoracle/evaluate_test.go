@@ -9,6 +9,9 @@ import (
 
 const testCell = "/system.slice/tbound-pi.service/cells/pi-wf-0123456789abcdef01234567-e1"
 
+// testInode is the inode of the fixture cell cgroup directory.
+const testInode uint64 = 424242
+
 var t0 = time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
 
 // testReg is the registration every fixture runs under: the interval started 30 s
@@ -16,6 +19,7 @@ var t0 = time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
 var testReg = Registration{
 	CellID: "pi-wf-0123456789abcdef01234567-e1", IntervalStart: t0.Add(-30 * time.Second), Deadline: t0,
 	CellUID: 1000, CellGID: 1000, MaxGap: 10 * time.Second,
+	CellCgroupPath: testCell, CellCgroupInode: testInode,
 }
 
 var (
@@ -40,7 +44,7 @@ func ident(p Process) Process {
 func snap(seq int, pt Point, at time.Duration, procs ...Process) Snapshot {
 	s := Snapshot{
 		Seq: seq, Point: pt, ObservedAt: t0.Add(at), PIDNamespace: "pid:[4026531836]",
-		CellPath: testCell, RegistrationDigest: testReg.Digest(), IdentityScanned: true, ScannedPIDs: 40,
+		CellPath: testCell, CellInode: testInode, RegistrationDigest: testReg.Digest(), IdentityScanned: true, ScannedPIDs: 40,
 		Registry:  Registry{Recorded: true, Procs: []ProcID{idWorker, idSleep}},
 		Processes: procs, Sockets: []Socket{}, Gaps: []Gap{},
 	}
@@ -118,7 +122,7 @@ func hasGap(res Result, domain, code string) bool {
 }
 
 func TestOracleVersionIsBumpedForTheIdentityScan(t *testing.T) {
-	if OracleVersion != "procoracle/v2" {
+	if OracleVersion != "procoracle/v3" {
 		t.Errorf("the rule set changed (identity scan, coverage witness, registration): version %q", OracleVersion)
 	}
 }
@@ -195,6 +199,8 @@ func TestEvaluateInvalidRegistrationIsEvidenceLost(t *testing.T) {
 		"negative max gap":  func(r *Registration) { r.MaxGap = -time.Second },
 		"all-ones identity": func(r *Registration) { r.CellUID = ^uint32(0) },
 		"all-ones group id": func(r *Registration) { r.CellGID = ^uint32(0) },
+		"no cgroup path":    func(r *Registration) { r.CellCgroupPath = "" },
+		"no cgroup inode":   func(r *Registration) { r.CellCgroupInode = 0 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			reg := testReg
@@ -254,12 +260,14 @@ func TestRegistrationDigestCoversEveryField(t *testing.T) {
 		t.Fatalf("digest %q", base)
 	}
 	for name, mutate := range map[string]func(*Registration){
-		"cell":     func(r *Registration) { r.CellID += "x" },
-		"start":    func(r *Registration) { r.IntervalStart = r.IntervalStart.Add(time.Second) },
-		"deadline": func(r *Registration) { r.Deadline = r.Deadline.Add(time.Second) },
-		"uid":      func(r *Registration) { r.CellUID++ },
-		"gid":      func(r *Registration) { r.CellGID++ },
-		"maxgap":   func(r *Registration) { r.MaxGap++ },
+		"cell":         func(r *Registration) { r.CellID += "x" },
+		"start":        func(r *Registration) { r.IntervalStart = r.IntervalStart.Add(time.Second) },
+		"deadline":     func(r *Registration) { r.Deadline = r.Deadline.Add(time.Second) },
+		"uid":          func(r *Registration) { r.CellUID++ },
+		"gid":          func(r *Registration) { r.CellGID++ },
+		"maxgap":       func(r *Registration) { r.MaxGap++ },
+		"cgroup path":  func(r *Registration) { r.CellCgroupPath += "x" },
+		"cgroup inode": func(r *Registration) { r.CellCgroupInode++ },
 	} {
 		r := testReg
 		mutate(&r)
@@ -497,6 +505,8 @@ func TestEvaluateMonitorCoverageRules(t *testing.T) {
 		"polls only before start": {at(-60*s, -50*s), VerdictEvidenceLost, "coverage_gap"},
 		"no polls":                {nil, VerdictEvidenceLost, "no_monitor"},
 		"time regressed":          {at(-25*s, -16*s, -17*s, -8*s, -1*s), VerdictEvidenceLost, "poll_time_regressed"},
+		"equal poll times":        {at(-25*s, -16*s, -16*s, -8*s, -1*s), VerdictEvidenceLost, "poll_time_regressed"},
+		"polls only after end":    {at(2*s, 3*s), VerdictEvidenceLost, "first_poll_late"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -625,4 +635,81 @@ func mustJSON(t *testing.T, v any) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// A post-teardown snapshot that is not after the interval start cannot witness
+// the interval, however the polls lie before it: a negative stretch is not a
+// short one.
+func TestEvaluatePostTeardownNotAfterIntervalStartIsEvidenceLost(t *testing.T) {
+	s := time.Second
+	// testReg.IntervalStart is t0-30s.
+	for name, postAt := range map[string]time.Duration{"before the start": -40 * s, "at the start": -30 * s} {
+		t.Run(name, func(t *testing.T) {
+			snaps := []Snapshot{
+				snap(1, PointInterval, postAt-10*s),
+				snap(2, PointPostTeardown, postAt),
+				snap(3, PointFinalCleanup, postAt+s),
+			}
+			polls := []Snapshot{poll(1, postAt-8*s), poll(2, postAt-5*s)}
+			res := result(t, Evaluate(testReg, snaps, polls, Policy{}), PredicateProc02)
+			if res.Verdict != VerdictEvidenceLost || !hasGap(res, DomainCoverage, "post_teardown_not_after_start") {
+				t.Errorf("PROC-02 = %s %+v", res.Verdict, res.Gaps)
+			}
+		})
+	}
+}
+
+// Snapshot times must be strictly increasing in sequence order.
+func TestEvaluateSnapshotTimesMustBeStrictlyOrdered(t *testing.T) {
+	for name, mutate := range map[string]func([]Snapshot){
+		"equal":     func(s []Snapshot) { s[2].ObservedAt = s[1].ObservedAt },
+		"regressed": func(s []Snapshot) { s[2].ObservedAt = s[1].ObservedAt.Add(-time.Second) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			snaps := cleanRun()
+			mutate(snaps)
+			res := result(t, evalT(snaps, Policy{}), PredicateProc02)
+			if res.Verdict != VerdictEvidenceLost || !hasGap(res, DomainCoverage, "snapshot_time_regressed") {
+				t.Errorf("PROC-02 = %s %+v", res.Verdict, res.Gaps)
+			}
+		})
+	}
+}
+
+// Every snapshot and poll must have observed the registered cgroup: the path and
+// the directory inode.
+func TestEvaluateSnapshotOfAnotherCellIsEvidenceLost(t *testing.T) {
+	for name, mutate := range map[string]func(*Snapshot){
+		"other inode": func(s *Snapshot) { s.CellInode++ },
+		"no inode":    func(s *Snapshot) { s.CellInode = 0 },
+		"other path":  func(s *Snapshot) { s.CellPath = "/system.slice/other-cell" },
+	} {
+		t.Run("snapshots "+name, func(t *testing.T) {
+			snaps := cleanRun()
+			for i := range snaps {
+				mutate(&snaps[i])
+			}
+			wantVerdicts(t, evalT(snaps, Policy{}), VerdictEvidenceLost, VerdictEvidenceLost, VerdictEvidenceLost)
+		})
+		t.Run("one snapshot "+name, func(t *testing.T) {
+			snaps := cleanRun()
+			mutate(&snaps[1])
+			wantVerdicts(t, evalT(snaps, Policy{}), VerdictEvidenceLost, VerdictEvidenceLost, VerdictEvidenceLost)
+		})
+		t.Run("one poll "+name, func(t *testing.T) {
+			polls := cleanPolls()
+			mutate(&polls[2])
+			res := result(t, Evaluate(testReg, cleanRun(), polls, Policy{}), PredicateProc02)
+			if res.Verdict != VerdictEvidenceLost {
+				t.Errorf("PROC-02 = %s %+v", res.Verdict, res.Gaps)
+			}
+		})
+	}
+	// A removed cell has no path to compare, but its inode must be the registered one.
+	snaps := cleanRun()
+	snaps[2].CellRemoved, snaps[2].CellPath = true, ""
+	snaps[2].DrainProof = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	wantVerdicts(t, evalT(snaps, Policy{}), VerdictNoEffect, VerdictNoEffect, VerdictNoEffect)
+	snaps[2].CellInode++
+	wantVerdicts(t, evalT(snaps, Policy{}), VerdictEvidenceLost, VerdictEvidenceLost, VerdictEvidenceLost)
 }

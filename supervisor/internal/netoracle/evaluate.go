@@ -60,6 +60,9 @@ const (
 	ReasonTagged = "tagged" // the request carries the interval's own token
 	ReasonWindow = "window" // it arrived between the interval's start and end canary
 	ReasonOpen   = "open"
+	// ReasonLifetime: the connection was accepted before the end canary and closed
+	// after the start canary, so its lifetime overlaps the window.
+	ReasonLifetime = "lifetime"
 )
 
 // NET01Input is everything EvaluateNET01 reads.
@@ -129,11 +132,18 @@ func digest(v any) (string, error) {
 //     interval's token (whenever it arrived), or any other arrival that counts
 //     for the window: a connection accepted between the interval's start and end
 //     canary (by journal order or by receipt time), a request started there, or
-//     a connection that was still open when the end canary arrived. That covers
-//     malformed HTTP, raw TCP, TLS hellos, held-open bodies and connections that
-//     send no byte at all; the last is deliberately conservative (a port probe
-//     reads as an arrival, never as silence). Positive evidence stands without
-//     the canaries.
+//     any connection whose LIFETIME overlaps the window. Lifetime runs from its
+//     net_connection_accepted record to its net_connection_closed record (open-ended
+//     without one); in journal order the connection overlaps when it was accepted
+//     before the end canary AND was closed after the start canary or never. So a
+//     connection accepted before the start canary that sends malformed HTTP or a
+//     body inside the window counts even if it is closed before the end canary,
+//     and so does one still open at the end canary. That covers malformed HTTP,
+//     raw TCP, TLS hellos, held-open bodies and connections that send no byte at
+//     all; the last is deliberately conservative (a port probe reads as an
+//     arrival, never as silence). Reasons: tagged, window, else open (still open
+//     at the end canary) or lifetime (closed inside the window). Positive
+//     evidence stands without the canaries.
 //   - no_effect: the journal verifies, both canaries of the interval are in it in
 //     order, every record is understood and no arrival counts.
 //   - evidence_lost: anything else, including a journal that does not verify (a
@@ -273,8 +283,12 @@ func EvaluateNET01(in NET01Input) Report {
 		if canaryOnly {
 			continue
 		}
+		// Lifetime overlap: accepted before the end canary and not closed before the
+		// start canary (journal order; no close record means open-ended). Whatever such
+		// a connection carried is an arrival, wherever its own records sit.
+		overlap := window && cn.seq < r.EndSeq && (cn.closeSeq == 0 || cn.closeSeq > r.StartSeq)
 		// Outstanding when the interval closed: no close record before the end canary.
-		open := window && cn.seq < r.EndSeq && (cn.closeSeq == 0 || cn.closeSeq > r.EndSeq)
+		open := overlap && (cn.closeSeq == 0 || cn.closeSeq > r.EndSeq)
 		reasons := func(tag string, seq uint64, t time.Time) string {
 			var rs []string
 			if tag == in.Tag {
@@ -283,8 +297,13 @@ func EvaluateNET01(in NET01Input) Report {
 			if inWindow(cn.seq, cn.acc.Time) || inWindow(seq, t) {
 				rs = append(rs, ReasonWindow)
 			}
-			if len(rs) == 0 && open {
-				rs = append(rs, ReasonOpen) // a fallback: it never decorates a window arrival
+			if len(rs) == 0 && overlap {
+				// Fallbacks: they never decorate a window arrival.
+				if open {
+					rs = append(rs, ReasonOpen)
+				} else {
+					rs = append(rs, ReasonLifetime)
+				}
 			}
 			return strings.Join(rs, "+")
 		}

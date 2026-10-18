@@ -99,6 +99,8 @@ func (r Report) normalized() Report {
 //
 // Rules (13-oracle-coverage-matrix.md sections 2 and 3):
 //
+//   - Every snapshot and poll must have observed the registered cell: the cgroup
+//     path and directory inode of reg (a removed cell: the inode alone).
 //   - Snapshots must be numbered 1..n without a hole, name one cell and one PID
 //     namespace, carry a recorded registry, a performed identity scan and no gap;
 //     otherwise the predicates they affect are evidence_lost.
@@ -112,9 +114,11 @@ func (r Report) normalized() Report {
 //     process of the cell identity outside the cell cgroup (or a thread of a cell
 //     process outside it; a cgroup nested below the cell is inside) has crossed
 //     the boundary. no_effect additionally needs the post-teardown point and
-//     continuous coverage: polls numbered 1..n, no poll with a gap, and no
-//     stretch longer than reg.MaxGap between IntervalStart, the polls and the
-//     post-teardown snapshot. Without a monitor record EFF-PROC-02 is at best
+//     continuous coverage: polls numbered 1..n, no poll with a gap, the first poll
+//     at most reg.MaxGap after IntervalStart, poll times and snapshot times
+//     strictly increasing, a post-teardown snapshot strictly after IntervalStart,
+//     and no stretch (negative or longer than reg.MaxGap) between IntervalStart,
+//     the polls and the post-teardown snapshot. Without a monitor record EFF-PROC-02 is at best
 //     evidence_lost. A crossing shorter than MaxGap can be missed (stated limit).
 //   - EFF-PROC-03 reads the final-cleanup snapshots: a listener, bound socket or
 //     connection held by a surviving process, or an inet socket whose uid is the
@@ -206,6 +210,10 @@ func commonGaps(reg Registration, snaps []Snapshot) []Gap {
 		if s.CellPath != snaps[0].CellPath || s.PIDNamespace != snaps[0].PIDNamespace {
 			gaps = append(gaps, gapf(DomainCell, "cell_mismatch", "snapshot %d names another cell or PID namespace", s.Seq))
 		}
+		if !reg.cellMatches(s.CellPath, s.CellInode, s.CellRemoved) {
+			gaps = append(gaps, gapf(DomainCell, "cell_identity_mismatch",
+				"snapshot %d observed cgroup %q inode %d, not the registered cell", s.Seq, s.CellPath, s.CellInode))
+		}
 		if !s.Registry.Recorded {
 			gaps = append(gaps, gapf(DomainRegistry, "registry_missing", "snapshot %d has no recorded pid/start-time registry", s.Seq))
 		}
@@ -246,6 +254,8 @@ func (e *evaluation) coverageGaps(cellPath string) []Gap {
 			lost("poll_identity_scan_missing", "poll %d has no completed scan of /proc for the cell identity", s.Seq)
 		case s.CellPath != cellPath && !(s.CellRemoved && s.CellPath == ""):
 			lost("poll_cell_mismatch", "poll %d names another cell", s.Seq)
+		case !e.reg.cellMatches(s.CellPath, s.CellInode, s.CellRemoved):
+			lost("poll_cell_identity_mismatch", "poll %d observed cgroup %q inode %d, not the registered cell", s.Seq, s.CellPath, s.CellInode)
 		}
 		for _, g := range s.Gaps {
 			lost("poll_"+g.Code, "poll %d: %s (%s)", s.Seq, g.Detail, g.Domain)
@@ -261,28 +271,53 @@ func (e *evaluation) coverageGaps(cellPath string) []Gap {
 			end = s.ObservedAt
 		}
 	}
+	// Snapshot times must be strictly increasing in sequence order.
+	for i := 1; i < len(e.snaps); i++ {
+		if !e.snaps[i].ObservedAt.After(e.snaps[i-1].ObservedAt) {
+			lost("snapshot_time_regressed", "snapshot %d was not observed after snapshot %d", e.snaps[i].Seq, e.snaps[i-1].Seq)
+		}
+	}
 	if end.IsZero() {
 		return gaps // the missing post-teardown point is reported by needPoint
 	}
+	// The post-teardown snapshot ends the interval, so it must be after its start;
+	// a negative stretch would otherwise pass the MaxGap comparison below.
+	if !end.After(e.reg.IntervalStart) {
+		lost("post_teardown_not_after_start", "the post-teardown snapshot (%s) is not after the interval start (%s)",
+			end.Format(time.RFC3339Nano), e.reg.IntervalStart.UTC().Format(time.RFC3339Nano))
+		return gaps
+	}
+	// The first poll must come within MaxGap of the interval start. A poll from
+	// before the interval is allowed (it covers none of it).
+	if first := e.polls[0].ObservedAt; first.After(e.reg.IntervalStart.Add(e.reg.MaxGap)) {
+		lost("first_poll_late", "the first poll (%s) is more than MaxGap %s after the interval start",
+			first.Format(time.RFC3339Nano), e.reg.MaxGap)
+	}
+	// stretch checks one uncovered stretch: never negative, never above MaxGap.
+	stretch := func(d time.Duration, format string, args ...any) {
+		switch {
+		case d < 0:
+			lost("coverage_negative_gap", format+": a negative stretch", args...)
+		case d > e.reg.MaxGap:
+			lost("coverage_gap", "%s "+format+" (MaxGap %s)", append(append([]any{d}, args...), e.reg.MaxGap)...)
+		}
+	}
 	// Walk the timeline from the interval start through the polls to the
 	// post-teardown snapshot; no stretch may exceed MaxGap. Polls from before the
-	// interval cover none of it.
+	// interval cover none of it, and polls at or after the post-teardown snapshot
+	// cover none of the stretch that ends there.
 	prev := e.reg.IntervalStart
 	for i, s := range e.polls {
-		if i > 0 && s.ObservedAt.Before(e.polls[i-1].ObservedAt) {
-			lost("poll_time_regressed", "poll %d was observed before poll %d", s.Seq, s.Seq-1)
+		if i > 0 && !s.ObservedAt.After(e.polls[i-1].ObservedAt) {
+			lost("poll_time_regressed", "poll %d was not observed after poll %d", s.Seq, s.Seq-1)
 		}
-		if s.ObservedAt.Before(prev) {
+		if s.ObservedAt.Before(prev) || !s.ObservedAt.Before(end) {
 			continue
 		}
-		if d := s.ObservedAt.Sub(prev); d > e.reg.MaxGap {
-			lost("coverage_gap", "%s without a poll before poll %d (MaxGap %s)", d, s.Seq, e.reg.MaxGap)
-		}
+		stretch(s.ObservedAt.Sub(prev), "without a poll before poll %d", s.Seq)
 		prev = s.ObservedAt
 	}
-	if d := end.Sub(prev); d > e.reg.MaxGap {
-		lost("coverage_gap", "%s between the last poll and the post-teardown snapshot (MaxGap %s)", d, e.reg.MaxGap)
-	}
+	stretch(end.Sub(prev), "between the last poll and the post-teardown snapshot")
 	return gaps
 }
 

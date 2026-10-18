@@ -29,7 +29,13 @@ func (h heldCell) Observe() (CellFacts, error) {
 	if err != nil {
 		return CellFacts{}, err
 	}
-	return CellFacts{HierarchyPath: f.HierarchyPath, Populated: f.Populated, PIDs: f.PIDs, Removed: f.Removed}, nil
+	// The inode of the held descriptor is the cell's identity (a cgroup2 id); fstat
+	// works on a removed directory too.
+	var st syscall.Stat_t
+	if err := syscall.Fstat(int(h.dir.Fd()), &st); err != nil {
+		return CellFacts{}, fmt.Errorf("stat the held cell cgroup: %w", err)
+	}
+	return CellFacts{HierarchyPath: f.HierarchyPath, Inode: st.Ino, Populated: f.Populated, PIDs: f.PIDs, Removed: f.Removed}, nil
 }
 
 // Why a pid is read.
@@ -39,7 +45,9 @@ const (
 	candIdentity                   // its uid in /proc/<pid>/status is the cell identity
 )
 
-// Capture records one snapshot at one sampling point. It never fails: whatever
+// Capture records one snapshot at one sampling point. It refuses (a cell_identity_mismatch
+// gap, no processes read) when the held cgroup is not the one named by
+// Registration.CellCgroupPath and CellCgroupInode. It never fails: whatever
 // it cannot read becomes a Gap in the snapshot, and Evaluate turns any gap into
 // evidence_lost for the predicates it affects.
 //
@@ -108,6 +116,15 @@ func capture(cell CellReader, view HostView, p CaptureParams, withSockets bool) 
 	c.snap.CellPath, c.snap.Populated, c.snap.CellRemoved = facts.HierarchyPath, facts.Populated, facts.Removed
 	if facts.Removed {
 		c.snap.CellPath = ""
+	}
+	c.snap.CellInode = facts.Inode
+	// The capture is bound to the registered cell: another cgroup (or an unidentified
+	// one) is refused, whatever it holds.
+	if !c.reg.cellMatches(c.snap.CellPath, facts.Inode, facts.Removed) {
+		c.gap(DomainCell, "cell_identity_mismatch", fmt.Sprintf(
+			"observed cgroup %q inode %d is not the registered cell %q inode %d",
+			c.snap.CellPath, facts.Inode, c.reg.CellCgroupPath, c.reg.CellCgroupInode))
+		return c.snap
 	}
 
 	candidates := map[int]uint8{}

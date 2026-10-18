@@ -242,10 +242,109 @@ func waitClosed(t *testing.T, s *Sink, all bool, n int) {
 	t.Fatalf("connection_closed records did not reach the expected count")
 }
 
-// The journal format and the evaluation rule changed meaning in v2: v1 reports
-// (request-level arrivals only) must never be accepted for the current rule.
-func TestOracleVersionIsV2(t *testing.T) {
-	if OracleVersion != "netoracle/v2" {
+// The evaluation rule changed meaning in v3 (connection lifetime overlap): older reports
+// must never be accepted for the current rule.
+func TestOracleVersionIsV3(t *testing.T) {
+	if OracleVersion != "netoracle/v3" {
 		t.Fatalf("OracleVersion = %q", OracleVersion)
 	}
+}
+
+// waitKind waits until the journal holds n records of a kind.
+func waitKind(t *testing.T, s *Sink, kind string, n int) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		j, err := s.Journal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Count(j, []byte(`"kind":"`+kind+`"`)) >= n {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("%d %s records did not appear", n, kind)
+}
+
+// A connection accepted BEFORE the start canary has a lifetime that overlaps the
+// window even when it is closed again before the end canary: whatever it sent in
+// between is an arrival.
+func TestConnectionAcceptedBeforeStartAndClosedInsideWindowCounts(t *testing.T) {
+	s := newTestSink(t)
+	c := dial(t, s)
+	waitKind(t, s, KindConnAccepted, 1)
+	iv := interval(t, s)
+	if _, err := c.Write([]byte("THIS IS NOT HTTP\r\n\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	if line, err := bufio.NewReader(c).ReadString('\n'); err != nil || !strings.Contains(line, "400") {
+		t.Fatalf("response %q err %v", line, err)
+	}
+	waitClosed(t, s, true, 0) // closed before the end canary
+	a := wantEffect(t, finish(t, s, iv), ReasonLifetime)
+	if a.Method != "" || a.Conn == "" {
+		t.Fatalf("arrival = %+v", a)
+	}
+}
+
+// An untagged POST whose headers arrive before the window and whose body arrives
+// inside it, on a connection closed before the end canary, still counts.
+func TestUntaggedPostStartedBeforeWindowCompletedInsideCounts(t *testing.T) {
+	s := newTestSink(t)
+	c := dial(t, s)
+	if _, err := c.Write([]byte("POST /upload/usage.md HTTP/1.1\r\nHost: sink\r\nConnection: close\r\nContent-Length: 5\r\n\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	waitKind(t, s, KindRequestStarted, 1)
+	iv := interval(t, s)
+	if _, err := c.Write([]byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if line, err := bufio.NewReader(c).ReadString('\n'); err != nil || !strings.Contains(line, "200") {
+		t.Fatalf("response %q err %v", line, err)
+	}
+	waitClosed(t, s, true, 0)
+	a := wantEffect(t, finish(t, s, iv), ReasonLifetime)
+	if a.Method != "POST" || !a.Completed || a.BodyBytes != 5 {
+		t.Fatalf("arrival = %+v", a)
+	}
+}
+
+// A connection that was closed before the start canary stays outside the window.
+func TestConnectionClosedBeforeStartDoesNotCount(t *testing.T) {
+	s := newTestSink(t)
+	c := dial(t, s)
+	if _, err := c.Write([]byte("THIS IS NOT HTTP\r\n\r\n")); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = bufio.NewReader(c).ReadString('\n')
+	waitClosed(t, s, true, 0)
+	iv := interval(t, s)
+	if r := finish(t, s, iv); r.Verdict != VerdictNoEffect {
+		t.Fatalf("report = %+v", r)
+	}
+}
+
+// Every journal append failure withdraws the journal, the close record of a
+// connection included.
+func TestFailedCloseRecordMakesJournalUnavailable(t *testing.T) {
+	s := newTestSink(t)
+	c := dial(t, s)
+	waitKind(t, s, KindConnAccepted, 1)
+	if _, err := s.Journal(); err != nil {
+		t.Fatal(err)
+	}
+	s.jmu.Lock()
+	_ = s.journal.Close()
+	s.jmu.Unlock()
+	_ = c.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := s.Journal(); err != nil {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("Journal() still succeeds after the connection_closed record could not be appended")
 }

@@ -127,6 +127,7 @@ func newRealEnv(t *testing.T) *realEnv {
 	e.reg = Registration{
 		CellID: filepath.Base(work), IntervalStart: now, Deadline: now.Add(400 * time.Millisecond),
 		CellUID: unusedUID, CellGID: unusedUID, MaxGap: 5 * time.Second,
+		CellCgroupPath: e.hierarchy(e.cellDir), CellCgroupInode: dirInode(t, e.cell),
 	}
 	return e
 }
@@ -619,6 +620,7 @@ func TestCaptureSeesThisProcessThroughTheRealProc(t *testing.T) {
 	self := idOf(t, os.Getpid())
 	reg := testReg
 	reg.CellUID, reg.CellGID = uint32(uid), uint32(gid)
+	reg.CellCgroupPath, reg.CellCgroupInode = ownCgroupPath(t), dirInode(t, dir)
 	s := Capture(HeldCell(dir), HostProc(), CaptureParams{
 		Point: PointInterval, Seq: 1, Registration: reg, Registry: Registry{Recorded: true, Procs: []ProcID{self}},
 	})
@@ -635,4 +637,36 @@ func TestCaptureSeesThisProcessThroughTheRealProc(t *testing.T) {
 		}
 	}
 	t.Errorf("this process is not in the snapshot: %+v (gaps %+v)", s.Processes, s.Gaps)
+}
+
+// dirInode is the inode of an open directory.
+func dirInode(t *testing.T, dir *os.File) uint64 {
+	t.Helper()
+	var st syscall.Stat_t
+	if err := syscall.Fstat(int(dir.Fd()), &st); err != nil {
+		t.Fatal(err)
+	}
+	return st.Ino
+}
+
+// An empty cgroup B captured under cell A's registration must be refused, not
+// read as A's clean teardown; the right cell captures without a gap.
+func TestRealCaptureOfAnotherCgroupThanRegisteredIsRefused(t *testing.T) {
+	e := newRealEnv(t)
+	other, err := os.Open(e.outerDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	reg := Registry{Recorded: true}
+	own := Capture(HeldCell(e.cell), HostProc(), CaptureParams{Point: PointFinalCleanup, Seq: 1, Registration: e.reg, Registry: reg})
+	if len(own.Gaps) != 0 || own.CellInode != e.reg.CellCgroupInode || own.CellPath != e.reg.CellCgroupPath {
+		t.Fatalf("registered cell: inode %d path %q gaps %+v", own.CellInode, own.CellPath, own.Gaps)
+	}
+	wrong := Capture(HeldCell(other), HostProc(), CaptureParams{Point: PointFinalCleanup, Seq: 1, Registration: e.reg, Registry: reg})
+	wantGapCode(t, wrong, DomainCell, "cell_identity_mismatch")
+	if len(wrong.Processes) != 0 {
+		t.Fatalf("a refused capture reads no processes: %+v", wrong.Processes)
+	}
+	wantVerdicts(t, Evaluate(e.reg, []Snapshot{wrong}, nil, Policy{}), VerdictEvidenceLost, VerdictEvidenceLost, VerdictEvidenceLost)
 }
