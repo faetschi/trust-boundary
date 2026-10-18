@@ -73,7 +73,7 @@ func TestGovernedRequestRefusesAttemptsOutsideOneAndTwo(t *testing.T) {
 	}
 }
 
-func TestGovernedCStaysUnwiredUntilTheGuestTransportExists(t *testing.T) {
+func TestGovernedCWithoutATransportStaysUnwired(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
 	if _, err := (GovernedC{PlanDigest: s.Digest}).Execute(context.Background(), s.Steps[0]); !errors.Is(err, ErrNotWired) {
 		t.Fatalf("GovernedC.Execute = %v, want ErrNotWired", err)

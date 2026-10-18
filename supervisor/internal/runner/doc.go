@@ -10,7 +10,8 @@
 //     and its seeded allocation, with a digest that binds the manifest, the
 //     protocol Config (including the freeze commit) and every step.
 //   - Executor runs one step. FakeExecutor serves the tests. GovernedC is the
-//     skeleton of the Configuration C adapter and returns ErrNotWired.
+//     adapter of Configuration C over a Transport (SSHTransport) and Collectors;
+//     without a Transport it is ErrNotWired.
 //   - AssembleAdversarial and AssembleCompliant map an Outcome into an
 //     evalscore record. Missing evidence is never a negative.
 //   - Journal is an append-only, fsynced, resumable JSONL record of every
@@ -32,9 +33,9 @@
 // runner detects. One cross-check against a second source exists: the publication
 // anchor (PublicationFree.AnchorHead and AnchorCount) must come from the governed
 // service's own receipt for the interval. Without an anchor, an interval is not
-// publication-free. The guest-backed executor has to wire the anchor to the service
-// receipt (TODO(guest-executor) on PublicationFree: the receipt has no such field
-// yet), so until then no interval is exempt from EFF-WS-05/06.
+// publication-free. GovernedC copies the anchor from the service receipt (checking its
+// interval ref); without journal bytes from a collector no interval is exempt from
+// EFF-WS-05/06.
 //
 // # Known limits and decisions
 //

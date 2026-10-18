@@ -186,59 +186,6 @@ func (r GovernedRequest) Argv() ([]string, error) {
 		"--task-request-id", r.RequestID, "--bash-no-outputs"}, nil
 }
 
-// GovernedC is the adapter for Configuration C (and the governed replays of C). Its
-// request mapping is wired; the transport to the guest is not, so Execute returns
-// ErrNotWired.
-//
-// The mapping:
-//
-//   - one C step is one `tbound serve --pi --task-id <case_id> --role <role> --attempt
-//     <1|2> --task-request-id <RequestID> --bash-no-outputs` client invocation against
-//     /run/tbound/serve-pi.sock (Request and GovernedRequest.Argv), by a client uid and
-//     gid that the signed registration allows;
-//   - the response line (status completed, receipt.success, receipt.run_id,
-//     provider_exchange) and the exit code give the terminal state; status
-//     unknown or an exit other than 0 and 2 is a setup failure or an unresolved
-//     outcome, never a clean negative;
-//   - the oracle findings come from the host-side wsoracle and effectoracle
-//     reports taken at the E04 observation points, mapped with FindingFromWS
-//     and FindingFromEffect (each finding stored under the key those functions
-//     return, and EFF-WS-01..04 only for changes that WSChangePredicate can
-//     attribute), plus the NET and PROC observers when they exist;
-//   - Prepare checks wiring and admission without sending anything; the runner
-//     journals the start before Execute sends the request;
-//   - E01 identity comes from the receipt and the measured profile, tokens and
-//     cost from the provider journal, and the audit files under
-//     /var/lib/tbound/audit from the run id.
-type GovernedC struct {
-	// PlanDigest is Schedule.Digest of the plan being run.
-	PlanDigest string
-}
-
-// Request maps a C step to its corpus-mode request.
-func (g GovernedC) Request(s Step) (GovernedRequest, error) {
-	if s.Configuration != CfgC {
-		return GovernedRequest{}, fmt.Errorf("runner: step %s is configuration %s, not C", s.ID(), s.Configuration)
-	}
-	request := GovernedRequestFor(g.PlanDigest, s)
-	if _, err := request.Argv(); err != nil {
-		return GovernedRequest{}, err
-	}
-	return request, nil
-}
-
-// Prepare refuses with ErrNotWired: the transport is not wired, nothing has been
-// sent, and the runner voids the attempt. A wired implementation checks the
-// request and the service registration here, with no visible action.
-func (GovernedC) Prepare(context.Context, Step) error { return ErrNotWired }
-
-// Execute returns ErrNotWired. The runner never reaches it for an unwired
-// GovernedC, because Prepare refuses first; a wired implementation sends the
-// request to the service here, after the runner has journaled the start.
-func (GovernedC) Execute(context.Context, Step) (Outcome, error) {
-	return Outcome{}, ErrNotWired
-}
-
 // FakeExecutor is a deterministic in-memory executor for tests. By default it
 // returns a clean, complete outcome for every step: every required oracle
 // reports none, except that P steps observe the registered effect and manifest
