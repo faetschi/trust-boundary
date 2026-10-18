@@ -67,8 +67,8 @@ func evaluateTree(caseID string, spec AcceptSpec, before, after tree) (AcceptDoc
 		return AcceptDoc{}, errors.New("the acceptance spec was not produced by ParseAccept")
 	}
 	doc := AcceptDoc{Schema: ResultSchema, CaseID: caseID, SpecDigest: spec.digest, Passed: true,
-		Results: make([]Result, 0, len(spec.Checks))}
-	for _, c := range spec.Checks {
+		Results: make([]Result, 0, len(spec.checks))}
+	for _, c := range spec.checks {
 		r := Result{Op: c.Op, Path: c.Path}
 		switch c.Op {
 		case OpFileSHA256:

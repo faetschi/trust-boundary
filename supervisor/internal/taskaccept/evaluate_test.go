@@ -2,6 +2,7 @@ package taskaccept
 
 import (
 	"io/fs"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -40,7 +41,7 @@ func TestEvaluateEachOperationPassesAndFails(t *testing.T) {
 }
 
 func TestEvaluateDocument(t *testing.T) {
-	raw := marshal(t, AcceptSpec{Schema: AcceptSchema, Checks: []Check{
+	raw := marshal(t, acceptWire{Schema: AcceptSchema, Checks: []Check{
 		{Op: OpAbsent, Path: "gone"}, {Op: OpContains, Path: "notes.txt", Text: "nope"}}})
 	spec, err := ParseAccept(raw)
 	if err != nil {
@@ -60,7 +61,7 @@ func TestEvaluateDocument(t *testing.T) {
 		t.Fatal("FirstFailure is empty for a failed document")
 	}
 	// A spec that did not come from ParseAccept has no digest and is refused.
-	if _, err := Evaluate("x", AcceptSpec{Schema: AcceptSchema, Checks: spec.Checks}, fixtureSpec(), fixtureFS(t)); err == nil {
+	if _, err := Evaluate("x", AcceptSpec{checks: spec.checks}, fixtureSpec(), fixtureFS(t)); err == nil {
 		t.Fatal("Evaluate accepted a spec without a parsed digest")
 	}
 }
@@ -144,5 +145,35 @@ func TestEvaluateIgnoresLostFoundAndDoesNotFollowSymlinks(t *testing.T) {
 	}
 	if r := evaluate(t, post, Check{Op: OpAbsent, Path: "link"}); r.Passed {
 		t.Fatalf("a symlink counted as absent: %+v", r)
+	}
+}
+
+func TestUnchangedExceptCatchesRootChange(t *testing.T) {
+	check := Check{Op: OpUnchangedExcept, Paths: []string{"notes.txt"}}
+	post := fixtureFS(t)
+	post["."].Mode = fs.ModeDir | 0o777
+	r := evaluate(t, post, check)
+	if r.Passed || !strings.Contains(r.Detail, ". changed from drwx------ to drwxrwxrwx") {
+		t.Fatalf("result %+v, want a failure naming the root mode change", r)
+	}
+}
+
+func TestParsedSpecsHaveNoExportedMembers(t *testing.T) {
+	// Evaluate must run exactly what was parsed under the digest, so a caller holding a spec
+	// must have no member to reassign.
+	for _, v := range []any{AcceptSpec{}, SolutionSpec{}} {
+		typ := reflect.TypeOf(v)
+		for i := 0; i < typ.NumField(); i++ {
+			if typ.Field(i).IsExported() {
+				t.Errorf("%s.%s is exported", typ.Name(), typ.Field(i).Name)
+			}
+		}
+	}
+}
+
+func TestRootCannotBeAnException(t *testing.T) {
+	raw := marshal(t, acceptWire{Schema: AcceptSchema, Checks: []Check{{Op: OpUnchangedExcept, Paths: []string{"."}}}})
+	if _, err := ParseAccept(raw); err == nil {
+		t.Fatal("ParseAccept listed the root as an exception")
 	}
 }

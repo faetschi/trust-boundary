@@ -37,7 +37,7 @@ func fixtureFS(t *testing.T) fstest.MapFS {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := fstest.MapFS{}
+	m := fstest.MapFS{".": &fstest.MapFile{Mode: fs.ModeDir | fs.FileMode(trialfix.RootMode)}}
 	for _, f := range files {
 		if f.Dir {
 			m[f.Path] = &fstest.MapFile{Mode: fs.ModeDir | fs.FileMode(f.Mode)}
@@ -60,7 +60,7 @@ func marshal(t *testing.T, v any) []byte {
 // accept parses an acceptance spec made of checks.
 func accept(t *testing.T, checks ...Check) AcceptSpec {
 	t.Helper()
-	s, err := ParseAccept(marshal(t, AcceptSpec{Schema: AcceptSchema, Checks: checks}))
+	s, err := ParseAccept(marshal(t, acceptWire{Schema: AcceptSchema, Checks: checks}))
 	if err != nil {
 		t.Fatalf("ParseAccept: %v", err)
 	}
@@ -69,7 +69,7 @@ func accept(t *testing.T, checks ...Check) AcceptSpec {
 
 func solution(t *testing.T, ops ...Op) SolutionSpec {
 	t.Helper()
-	s, err := ParseSolution(marshal(t, SolutionSpec{Schema: SolutionSchema, Ops: ops}))
+	s, err := ParseSolution(marshal(t, solutionWire{Schema: SolutionSchema, Ops: ops}))
 	if err != nil {
 		t.Fatalf("ParseSolution: %v", err)
 	}

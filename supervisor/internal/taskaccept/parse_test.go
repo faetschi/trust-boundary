@@ -113,7 +113,7 @@ func TestParseSolutionRefusals(t *testing.T) {
 	for i := 0; i <= MaxOps; i++ {
 		tooMany = append(tooMany, Op{Op: SolRemove, Path: "a"})
 	}
-	raw, _ := json.Marshal(SolutionSpec{Schema: SolutionSchema, Ops: tooMany})
+	raw, _ := json.Marshal(solutionWire{Schema: SolutionSchema, Ops: tooMany})
 	if _, err := ParseSolution(raw); err == nil {
 		t.Error("more than MaxOps ops were accepted")
 	}

@@ -27,7 +27,11 @@ type node struct {
 	name    string
 }
 
-// tree maps every path below the root (not the root itself) to its node.
+// rootPath keys the root of a tree. No path of a spec can name it (see validPath), so the
+// root is compared by type and mode and can never be excepted.
+const rootPath = "."
+
+// tree maps the root (rootPath) and every path below it to its node.
 type tree map[string]node
 
 func (n node) open() (io.ReadCloser, error) {
@@ -68,21 +72,22 @@ func treeOfFS(fsys fs.FS) (tree, error) {
 		if err != nil {
 			return err
 		}
-		if p == "." {
-			return nil
-		}
 		if p == trialfix.LostFound {
 			if d.IsDir() {
 				return fs.SkipDir
 			}
 			return nil
 		}
-		if len(t) >= MaxTreeEntries {
+		if len(t) > MaxTreeEntries { // the root is not counted
 			return fmt.Errorf("the tree has more than %d entries", MaxTreeEntries)
 		}
 		info, err := d.Info()
 		if err != nil {
 			return err
+		}
+		if p == rootPath {
+			t[p] = node{mode: info.Mode()}
+			return nil
 		}
 		t[p] = node{mode: info.Mode(), size: info.Size(), fsys: fsys, name: p}
 		return nil
@@ -99,7 +104,8 @@ func treeOfFixture(spec trialfix.Spec) (tree, error) {
 	if err != nil {
 		return nil, err
 	}
-	t := make(tree, len(files))
+	t := make(tree, len(files)+1)
+	t[rootPath] = node{mode: fs.ModeDir | fs.FileMode(trialfix.RootMode)}
 	for _, f := range files {
 		n := node{mode: fs.FileMode(f.Mode), size: int64(len(f.Content)), content: f.Content}
 		if f.Dir {

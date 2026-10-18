@@ -42,7 +42,8 @@ const (
 // are relative and canonical (see validPath); Digest is "sha256:" and 64 lowercase hex
 // digits; Text is non-empty UTF-8.
 //
-// unchanged_except names the paths that may differ from the fixture. Every other path of the
+// unchanged_except names the paths that may differ from the fixture. The root directory is
+// always compared (type and mode, never content) and cannot be listed. Every other path of the
 // post-run tree must exist in the fixture with the same type, mode and content, and every
 // other fixture path must still exist. An added file or directory is a change unless its own
 // path is listed; a listed directory does not exempt what is under it. An empty Paths means
@@ -55,11 +56,17 @@ type Check struct {
 	Paths  []string `json:"paths,omitempty"`
 }
 
-// AcceptSpec is a parsed acceptance spec. Obtain one with ParseAccept, which records the
-// digest of the bytes it came from.
-type AcceptSpec struct {
+// acceptWire is the JSON form of an acceptance spec.
+type acceptWire struct {
 	Schema string  `json:"schema"`
 	Checks []Check `json:"checks"`
+}
+
+// AcceptSpec is a parsed acceptance spec. Obtain one with ParseAccept, which records the
+// digest of the bytes it came from. Its members are unexported so that what Evaluate runs is
+// exactly what the digest names; the zero value is refused by Evaluate.
+type AcceptSpec struct {
+	checks []Check
 	digest string
 }
 
@@ -76,7 +83,7 @@ func DigestOf(raw []byte) string {
 // data after the document, a wrong schema, no check or more than MaxChecks, an unknown
 // operation, a member that the operation does not use, and an invalid path, digest or text.
 func ParseAccept(raw []byte) (AcceptSpec, error) {
-	var s AcceptSpec
+	var s acceptWire
 	if err := strictDecode(raw, &s, "acceptance spec"); err != nil {
 		return AcceptSpec{}, err
 	}
@@ -91,8 +98,7 @@ func ParseAccept(raw []byte) (AcceptSpec, error) {
 			return AcceptSpec{}, fmt.Errorf("acceptance spec: check %d (%s): %w", i, c.Op, err)
 		}
 	}
-	s.digest = DigestOf(raw)
-	return s, nil
+	return AcceptSpec{checks: s.Checks, digest: DigestOf(raw)}, nil
 }
 
 func (c Check) validate() error {

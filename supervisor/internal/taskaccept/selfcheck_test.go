@@ -105,7 +105,7 @@ func TestSolutionApplySemantics(t *testing.T) {
 	for i := 0; i < 9; i++ {
 		many = append(many, Op{Op: SolWrite, Path: string(rune('a'+i)) + "big", Mode: "0644", ContentB64: b64(strings.Repeat("x", 1<<20))})
 	}
-	if _, err := (SolutionSpec{Schema: SolutionSchema, Ops: many}).apply(base); err == nil || !strings.Contains(err.Error(), "bytes of content") {
+	if _, err := (SolutionSpec{ops: many}).apply(base); err == nil || !strings.Contains(err.Error(), "bytes of content") {
 		t.Fatalf("a solution over the total content bound: %v", err)
 	}
 }

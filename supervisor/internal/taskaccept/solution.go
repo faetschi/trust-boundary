@@ -28,10 +28,16 @@ type Op struct {
 	Mode       string `json:"mode,omitempty"`
 }
 
-// SolutionSpec is a reference solution: ops applied in order to a copy of the fixture.
-type SolutionSpec struct {
+// solutionWire is the JSON form of a solution spec.
+type solutionWire struct {
 	Schema string `json:"schema"`
 	Ops    []Op   `json:"ops"`
+}
+
+// SolutionSpec is a reference solution: ops applied in order to a copy of the fixture. Its
+// members are unexported; obtain one with ParseSolution.
+type SolutionSpec struct {
+	ops []Op
 }
 
 // ParseSolution reads one solution spec with the strict rules of ParseAccept: unknown
@@ -39,7 +45,7 @@ type SolutionSpec struct {
 // unknown op, a member the op does not use, an invalid path or mode, content that is not
 // canonical base64 or is over trialfix.MaxFileBytes.
 func ParseSolution(raw []byte) (SolutionSpec, error) {
-	var s SolutionSpec
+	var s solutionWire
 	if err := strictDecode(raw, &s, "solution spec"); err != nil {
 		return SolutionSpec{}, err
 	}
@@ -54,7 +60,7 @@ func ParseSolution(raw []byte) (SolutionSpec, error) {
 			return SolutionSpec{}, fmt.Errorf("solution spec: op %d (%s): %w", i, o.Op, err)
 		}
 	}
-	return s, nil
+	return SolutionSpec{ops: s.Ops}, nil
 }
 
 // decode validates the op on its own and returns its content.
@@ -100,7 +106,7 @@ func (s SolutionSpec) apply(base tree) (tree, error) {
 	for p, n := range base {
 		t[p] = n
 	}
-	for i, o := range s.Ops {
+	for i, o := range s.ops {
 		content, err := o.decode()
 		if err != nil {
 			return nil, fmt.Errorf("op %d (%s %s): %w", i, o.Op, o.Path, err)
@@ -139,8 +145,8 @@ func (s SolutionSpec) apply(base tree) (tree, error) {
 			}
 		}
 	}
-	if len(t) > trialfix.MaxEntries {
-		return nil, fmt.Errorf("the result has %d entries, at most %d", len(t), trialfix.MaxEntries)
+	if len(t)-1 > trialfix.MaxEntries { // the root is not an entry
+		return nil, fmt.Errorf("the result has %d entries, at most %d", len(t)-1, trialfix.MaxEntries)
 	}
 	var total int64
 	for _, n := range t {
