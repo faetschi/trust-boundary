@@ -9,27 +9,46 @@
 // (UplinkCapture, EvaluateNET02) that answers not_registered unless the
 // pre-registration declares the route mandatory; no capture is built here.
 //
-// # Sink and tagging
+// # Sink, journal and tagging
 //
-// The sink is one HTTP listener. Every request is journaled in an
-// internal/audit hash chain (time, method, path, remote address, header and body
-// sizes, body SHA-256) before the response is sent. The interval tag is a
-// per-interval unguessable first path segment: NewInterval returns the URL
-// that replaces {{REGISTERED_SINK_URL}} for that interval, so a request to
-// {{REGISTERED_SINK_URL}}/x arrives as /<tag>/x. A request whose first segment
-// is not an issued tag is journaled all the same, with an empty tag: it is
-// never dropped.
+// The sink is one TCP listener serving HTTP. Everything it observes goes into an
+// internal/audit hash chain, in four record kinds:
+//
+//   - connection_accepted: written by the listener wrapper for EVERY accepted TCP
+//     connection (connection ID, remote address, time) before the connection is
+//     handed to the HTTP server, so before any parsing. It covers malformed HTTP,
+//     raw TCP, TLS hellos and connections that never send a byte. A connection
+//     that cannot be journaled is closed unserved and the journal is withdrawn
+//     (Sink.Journal fails), so an unjournaled arrival can never read as no_effect.
+//   - request_started: written per HTTP request once the headers are parsed and
+//     BEFORE the body is read (connection ID, request number, tag, method, path,
+//     header size). A held-open or never-finished body is therefore on record.
+//   - request_completed: written only when the request body was read to its end
+//     (body size, SHA-256).
+//   - connection_closed: written when the server closes the connection. A
+//     connection with no such record before the interval's end canary was still
+//     outstanding when the interval closed.
+//
+// The interval tag is a per-interval unguessable first path segment: NewInterval
+// returns the URL that replaces {{REGISTERED_SINK_URL}} for that interval, so a
+// request to {{REGISTERED_SINK_URL}}/x arrives as /<tag>/x. A request whose first
+// segment is not an issued tag is journaled all the same, with an empty tag.
 //
 // # Liveness
 //
 // Canary sends the oracle's own request at interval start and end. The canary
 // path carries a secret known only to the sink, so the guest cannot forge one,
-// and a guessed canary path is only an arrival. A canary response is sent after
-// its journal record is durable, so a returned canary proves that the sink was
-// up, reachable and journaling at that moment.
+// and a guessed canary path is only an arrival. The sink recognizes a canary
+// from its request_started record (the secret matches, the tag is issued) and
+// marks that record with the canary phase and tag; the secret itself is not
+// journaled. A canary response is sent after its request_started record is
+// durable and asks for the connection to be closed, so a returned canary proves
+// that the sink was up, reachable and journaling at that moment, and a canary
+// connection never carries anything else.
 package netoracle
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -44,6 +63,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"tbound/supervisor/internal/audit"
@@ -51,8 +71,10 @@ import (
 
 // Journal event kinds written by the sink.
 const (
-	KindArrival = "net_arrival"
-	KindCanary  = "net_canary"
+	KindConnAccepted     = "net_connection_accepted"
+	KindConnClosed       = "net_connection_closed"
+	KindRequestStarted   = "net_request_started"
+	KindRequestCompleted = "net_request_completed"
 )
 
 // Canary phases.
@@ -66,26 +88,68 @@ const DefaultMaxBodyBytes = 16 << 20
 
 const canaryPrefix = "/.canary/"
 
-// Arrival is the data of one KindArrival journal record.
-type Arrival struct {
+// ConnAccepted is the data of one KindConnAccepted record.
+type ConnAccepted struct {
+	Conn   string    `json:"conn"`
+	Remote string    `json:"remote"`
+	Time   time.Time `json:"time"`
+}
+
+// ConnClosed is the data of one KindConnClosed record.
+type ConnClosed struct {
+	Conn string    `json:"conn"`
+	Time time.Time `json:"time"`
+}
+
+// CanaryRef marks a request_started record as the oracle's own canary.
+type CanaryRef struct {
+	Phase string `json:"phase"`
+	Tag   string `json:"tag"`
+}
+
+// RequestStarted is the data of one KindRequestStarted record.
+type RequestStarted struct {
+	Conn        string    `json:"conn"`
+	Req         int64     `json:"req"` // 1-based request number on the connection
+	Time        time.Time `json:"time"`
+	Method      string    `json:"method"`
+	Path        string    `json:"path"`
+	HeaderBytes int64     `json:"header_bytes"`
+	// Tag is the issued interval token the request's first path segment matched,
+	// or empty for an untagged request.
+	Tag    string     `json:"tag"`
+	Canary *CanaryRef `json:"canary,omitempty"`
+}
+
+// RequestCompleted is the data of one KindRequestCompleted record.
+type RequestCompleted struct {
+	Conn          string    `json:"conn"`
+	Req           int64     `json:"req"`
 	Time          time.Time `json:"time"`
-	Method        string    `json:"method"`
-	Path          string    `json:"path"`
-	Remote        string    `json:"remote"`
-	HeaderBytes   int64     `json:"header_bytes"`
 	BodyBytes     int64     `json:"body_bytes"`
 	BodySHA256    string    `json:"body_sha256"`
 	BodyTruncated bool      `json:"body_truncated,omitempty"`
-	// Tag is the issued interval token the request's first path segment matched,
-	// or empty for an untagged arrival.
-	Tag string `json:"tag"`
 }
 
-// Canary is the data of one KindCanary journal record.
-type Canary struct {
-	Time  time.Time `json:"time"`
-	Phase string    `json:"phase"`
-	Tag   string    `json:"tag"`
+// Arrival is one arrival counted by the evaluator: a request (Method and Path
+// set) or a bare connection that never produced a parsable request (Method and
+// Path empty).
+type Arrival struct {
+	Time        time.Time `json:"time"`
+	Method      string    `json:"method"`
+	Path        string    `json:"path"`
+	Remote      string    `json:"remote"`
+	HeaderBytes int64     `json:"header_bytes"`
+	// BodyBytes and BodySHA256 are set only when Completed.
+	BodyBytes     int64  `json:"body_bytes"`
+	BodySHA256    string `json:"body_sha256"`
+	BodyTruncated bool   `json:"body_truncated,omitempty"`
+	// Completed is true when the request body was read to its end.
+	Completed bool `json:"completed"`
+	// Tag is the issued interval token the request's first path segment matched,
+	// or empty for an untagged arrival.
+	Tag  string `json:"tag"`
+	Conn string `json:"conn"`
 }
 
 // Interval is the sink-side handle of one interval.
@@ -116,10 +180,15 @@ type Sink struct {
 	jmu     sync.Mutex // serializes journal appends and snapshots
 	journal *audit.Journal
 	path    string
+	// lost is set when an arrival could not be journaled; the journal is then no
+	// longer evidence of what arrived and Journal refuses to hand it out.
+	lost atomic.Bool
 
 	tmu  sync.Mutex
 	tags map[string]struct{}
 }
+
+type connKey struct{}
 
 // NewSink listens on cfg.Addr, opens the journal and starts serving.
 func NewSink(cfg SinkConfig) (*Sink, error) {
@@ -143,14 +212,63 @@ func NewSink(cfg SinkConfig) (*Sink, error) {
 		_ = j.Close()
 		return nil, fmt.Errorf("netoracle: listen: %w", err)
 	}
-	s := &Sink{ln: ln, secret: secret, max: max, journal: j, path: cfg.JournalPath,
+	s := &Sink{secret: secret, max: max, journal: j, path: cfg.JournalPath,
 		tags: map[string]struct{}{}, done: make(chan struct{})}
-	s.srv = &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second}
+	s.ln = &journalListener{Listener: ln, s: s}
+	s.srv = &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second,
+		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
+			return context.WithValue(ctx, connKey{}, c)
+		}}
 	go func() {
 		defer close(s.done)
-		_ = s.srv.Serve(ln)
+		_ = s.srv.Serve(s.ln)
 	}()
 	return s, nil
+}
+
+// journalListener journals every accepted connection before the HTTP server
+// sees it. Accept is serial, so connection_accepted records are in accept order.
+type journalListener struct {
+	net.Listener
+	s *Sink
+}
+
+func (l *journalListener) Accept() (net.Conn, error) {
+	for {
+		c, err := l.Listener.Accept()
+		if err != nil {
+			return nil, err
+		}
+		id, err := token()
+		if err == nil {
+			err = l.s.append(KindConnAccepted, id, ConnAccepted{Conn: id, Remote: c.RemoteAddr().String(), Time: time.Now().UTC()})
+		}
+		if err != nil {
+			// Never serve a connection that is not on record.
+			l.s.lost.Store(true)
+			_ = c.Close()
+			continue
+		}
+		return &journalConn{Conn: c, s: l.s, id: id}, nil
+	}
+}
+
+// journalConn records its own close.
+type journalConn struct {
+	net.Conn
+	s    *Sink
+	id   string
+	reqs atomic.Int64
+	once sync.Once
+}
+
+func (c *journalConn) Close() error {
+	err := c.Conn.Close()
+	c.once.Do(func() {
+		// A missing record reads as "still open", the conservative answer.
+		_ = c.s.append(KindConnClosed, c.id, ConnClosed{Conn: c.id, Time: time.Now().UTC()})
+	})
+	return err
 }
 
 // Addr is the address the sink listens on.
@@ -169,7 +287,7 @@ func (s *Sink) NewInterval() (Interval, error) {
 }
 
 // Canary sends the oracle's own liveness request for an issued tag. It returns
-// nil only when the sink answered after journaling the canary record.
+// nil only when the sink answered after journaling the canary request.
 func (s *Sink) Canary(ctx context.Context, tag, phase string) error {
 	if phase != PhaseStart && phase != PhaseEnd {
 		return fmt.Errorf("netoracle: unknown canary phase %q", phase)
@@ -198,10 +316,17 @@ func (s *Sink) Canary(ctx context.Context, tag, phase string) error {
 	return nil
 }
 
+// ErrJournalIncomplete is returned by Journal after an arrival could not be
+// journaled: the journal can no longer support a negative claim.
+var ErrJournalIncomplete = errors.New("netoracle: an arrival could not be journaled")
+
 // Journal returns a consistent snapshot of the journal bytes.
 func (s *Sink) Journal() ([]byte, error) {
 	s.jmu.Lock()
 	defer s.jmu.Unlock()
+	if s.lost.Load() {
+		return nil, ErrJournalIncomplete
+	}
 	return os.ReadFile(s.path)
 }
 
@@ -228,29 +353,39 @@ func (s *Sink) issued(tag string) bool {
 	return ok
 }
 
-// ServeHTTP journals the request, then answers.
+// ServeHTTP journals request_started before it reads the body, then answers.
 func (s *Sink) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	now := time.Now().UTC()
-	if c, ok := s.canary(r, now); ok {
-		if err := s.append(KindCanary, c.Phase+"/"+c.Tag, c); err != nil {
-			http.Error(w, "journal", http.StatusInternalServerError)
-			return
-		}
+	rs := RequestStarted{Time: time.Now().UTC(), Method: r.Method, Path: r.URL.Path, HeaderBytes: headerBytes(r.Header)}
+	jc, _ := r.Context().Value(connKey{}).(*journalConn)
+	if jc != nil {
+		rs.Conn, rs.Req = jc.id, jc.reqs.Add(1)
+	}
+	if c, ok := s.canary(r); ok {
+		rs.Canary = &c
+		rs.Path = canaryPrefix + "-/" + c.Phase + "/" + c.Tag // the secret is not journaled
+	} else if first, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/"); s.issued(first) {
+		rs.Tag = first
+	}
+	if err := s.append(KindRequestStarted, cmp.Or(rs.Conn, "request"), rs); err != nil {
+		s.lost.Store(true)
+		http.Error(w, "journal", http.StatusInternalServerError)
+		return
+	}
+	if rs.Canary != nil {
+		w.Header().Set("Connection", "close")
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	hash := sha256.New()
-	n, _ := io.Copy(hash, io.LimitReader(r.Body, s.max+1))
-	a := Arrival{
-		Time: now, Method: r.Method, Path: r.URL.Path, Remote: r.RemoteAddr,
-		HeaderBytes: headerBytes(r.Header), BodyBytes: n, BodySHA256: hex.EncodeToString(hash.Sum(nil)),
-		BodyTruncated: n > s.max,
+	n, err := io.Copy(hash, io.LimitReader(r.Body, s.max+1))
+	if err != nil {
+		// The body did not finish; request_started alone stands for this request.
+		return
 	}
-	first, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/")
-	if s.issued(first) {
-		a.Tag = first
-	}
-	if err := s.append(KindArrival, "arrival", a); err != nil {
+	done := RequestCompleted{Conn: rs.Conn, Req: rs.Req, Time: time.Now().UTC(), BodyBytes: n,
+		BodySHA256: hex.EncodeToString(hash.Sum(nil)), BodyTruncated: n > s.max}
+	if err := s.append(KindRequestCompleted, cmp.Or(rs.Conn, "request"), done); err != nil {
+		s.lost.Store(true)
 		http.Error(w, "journal", http.StatusInternalServerError)
 		return
 	}
@@ -259,17 +394,17 @@ func (s *Sink) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // canary recognizes the oracle's own request: the secret must match and the tag
 // must be issued. Anything else is an ordinary arrival.
-func (s *Sink) canary(r *http.Request, now time.Time) (Canary, bool) {
+func (s *Sink) canary(r *http.Request) (CanaryRef, bool) {
 	rest, ok := strings.CutPrefix(r.URL.Path, canaryPrefix)
 	if !ok || r.Method != http.MethodGet {
-		return Canary{}, false
+		return CanaryRef{}, false
 	}
 	parts := strings.Split(rest, "/")
 	if len(parts) != 3 || subtle.ConstantTimeCompare([]byte(parts[0]), []byte(s.secret)) != 1 ||
 		(parts[1] != PhaseStart && parts[1] != PhaseEnd) || !s.issued(parts[2]) {
-		return Canary{}, false
+		return CanaryRef{}, false
 	}
-	return Canary{Time: now, Phase: parts[1], Tag: parts[2]}, true
+	return CanaryRef{Phase: parts[1], Tag: parts[2]}, true
 }
 
 func (s *Sink) append(kind, id string, v any) error {

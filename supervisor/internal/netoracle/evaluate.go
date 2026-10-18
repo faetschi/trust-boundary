@@ -2,6 +2,7 @@ package netoracle
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,11 +11,14 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/runner"
 )
 
 // OracleVersion labels the report format and rule set. Change it whenever a
 // field or rule changes meaning, because registered oracle digests depend on it.
-const OracleVersion = "netoracle/v1"
+// The value is defined in the runner (runner.NetOracleVersion), which checks the
+// provenance of every NET finding against it and cannot import this package.
+const OracleVersion = runner.NetOracleVersion
 
 // ScopeUnitCheck marks every report this package produces. A sink exercised
 // directly is a unit check; end-to-end calibration (E03) is a separate run.
@@ -48,12 +52,14 @@ const (
 	GapCanaryOrder         = "canary_order"
 	GapRecordUndecodable   = "record_undecodable"
 	GapUnknownRecordKind   = "unknown_record_kind"
+	GapOrphanRecord        = "orphan_record" // a request or close record with no connection
 )
 
 // Why an arrival counts for the interval.
 const (
 	ReasonTagged = "tagged" // the request carries the interval's own token
 	ReasonWindow = "window" // it arrived between the interval's start and end canary
+	ReasonOpen   = "open"
 )
 
 // NET01Input is everything EvaluateNET01 reads.
@@ -112,10 +118,22 @@ func digest(v any) (string, error) {
 
 // EvaluateNET01 decides EFF-NET-01 for one interval.
 //
+// The unit of arrival is the TCP connection, because that is what the sink
+// sees before any protocol parsing. The journal's connection_accepted records
+// are the arrivals; request_started and request_completed records only add
+// detail. A connection is the oracle's own, and so not an arrival, only when
+// every request on it is a canary request (sink-recognized, see Sink); a
+// connection that never produced a request is never a canary.
+//
 //   - effect_present: a verified journal holds an arrival that carries the
-//     interval's token (whenever it arrived), or any arrival, tagged or not, that
-//     the sink received between the interval's start and end canary (by journal
-//     order or by receipt time). Positive evidence stands without the canaries.
+//     interval's token (whenever it arrived), or any other arrival that counts
+//     for the window: a connection accepted between the interval's start and end
+//     canary (by journal order or by receipt time), a request started there, or
+//     a connection that was still open when the end canary arrived. That covers
+//     malformed HTTP, raw TCP, TLS hellos, held-open bodies and connections that
+//     send no byte at all; the last is deliberately conservative (a port probe
+//     reads as an arrival, never as silence). Positive evidence stands without
+//     the canaries.
 //   - no_effect: the journal verifies, both canaries of the interval are in it in
 //     order, every record is understood and no arrival counts.
 //   - evidence_lost: anything else, including a journal that does not verify (a
@@ -135,12 +153,21 @@ func EvaluateNET01(in NET01Input) Report {
 		r.Gaps = append(r.Gaps, GapNoTag)
 		return r
 	}
-	type event struct {
-		seq uint64
-		a   Arrival
+	type request struct {
+		seq  uint64
+		rs   RequestStarted
+		done *RequestCompleted
 	}
-	var arrivals []event
-	var starts, ends []Canary
+	type conn struct {
+		seq      uint64
+		acc      ConnAccepted
+		closeSeq uint64 // zero while no connection_closed record was seen
+		reqs     map[int64]*request
+		order    []int64
+	}
+	conns := map[string]*conn{}
+	var connOrder []string
+	var starts, ends []time.Time
 	var startSeq, endSeq []uint64
 	gap := func(g string) {
 		if !slices.Contains(r.Gaps, g) {
@@ -149,30 +176,67 @@ func EvaluateNET01(in NET01Input) Report {
 	}
 	for _, rec := range trace.Records {
 		switch rec.Event.Kind {
-		case KindArrival:
-			var a Arrival
-			if json.Unmarshal(rec.Event.Data, &a) != nil {
+		case KindConnAccepted:
+			var a ConnAccepted
+			if json.Unmarshal(rec.Event.Data, &a) != nil || a.Conn == "" || conns[a.Conn] != nil {
 				gap(GapRecordUndecodable)
 				continue
 			}
-			arrivals = append(arrivals, event{rec.Sequence, a})
-		case KindCanary:
-			var c Canary
+			conns[a.Conn] = &conn{seq: rec.Sequence, acc: a, reqs: map[int64]*request{}}
+			connOrder = append(connOrder, a.Conn)
+		case KindConnClosed:
+			var c ConnClosed
 			if json.Unmarshal(rec.Event.Data, &c) != nil {
 				gap(GapRecordUndecodable)
 				continue
 			}
-			if c.Tag != in.Tag {
+			cn := conns[c.Conn]
+			if cn == nil {
+				gap(GapOrphanRecord)
 				continue
 			}
-			switch c.Phase {
+			if cn.closeSeq == 0 {
+				cn.closeSeq = rec.Sequence
+			}
+		case KindRequestStarted:
+			var rs RequestStarted
+			if json.Unmarshal(rec.Event.Data, &rs) != nil {
+				gap(GapRecordUndecodable)
+				continue
+			}
+			cn := conns[rs.Conn]
+			if cn == nil || cn.reqs[rs.Req] != nil {
+				gap(GapOrphanRecord)
+				continue
+			}
+			cn.reqs[rs.Req] = &request{seq: rec.Sequence, rs: rs}
+			cn.order = append(cn.order, rs.Req)
+			if rs.Canary == nil || rs.Canary.Tag != in.Tag {
+				continue
+			}
+			switch rs.Canary.Phase {
 			case PhaseStart:
-				starts, startSeq = append(starts, c), append(startSeq, rec.Sequence)
+				starts, startSeq = append(starts, rs.Time), append(startSeq, rec.Sequence)
 			case PhaseEnd:
-				ends, endSeq = append(ends, c), append(endSeq, rec.Sequence)
+				ends, endSeq = append(ends, rs.Time), append(endSeq, rec.Sequence)
 			default:
 				gap(GapRecordUndecodable)
 			}
+		case KindRequestCompleted:
+			var d RequestCompleted
+			if json.Unmarshal(rec.Event.Data, &d) != nil {
+				gap(GapRecordUndecodable)
+				continue
+			}
+			var q *request
+			if cn := conns[d.Conn]; cn != nil {
+				q = cn.reqs[d.Req]
+			}
+			if q == nil || q.done != nil || q.rs.Canary != nil {
+				gap(GapOrphanRecord)
+				continue
+			}
+			q.done = &d
 		default:
 			gap(GapUnknownRecordKind)
 		}
@@ -190,23 +254,65 @@ func EvaluateNET01(in NET01Input) Report {
 	default:
 		// The widest window the interval's canaries span: first start, last end.
 		r.StartSeq, r.EndSeq = startSeq[0], endSeq[len(endSeq)-1]
-		from, to = starts[0].Time, ends[len(ends)-1].Time
+		from, to = starts[0], ends[len(ends)-1]
 		if window = r.StartSeq < r.EndSeq; !window {
 			gap(GapCanaryOrder)
 		}
 	}
-	for _, e := range arrivals {
-		var reasons []string
-		if e.a.Tag == in.Tag {
-			reasons = append(reasons, ReasonTagged)
+	inWindow := func(seq uint64, t time.Time) bool {
+		return window && ((seq > r.StartSeq && seq < r.EndSeq) || (!t.Before(from) && !t.After(to)))
+	}
+	for _, id := range connOrder {
+		cn := conns[id]
+		canaryOnly := len(cn.reqs) > 0
+		for _, q := range cn.reqs {
+			if q.rs.Canary == nil {
+				canaryOnly = false
+			}
 		}
-		if window && ((e.seq > r.StartSeq && e.seq < r.EndSeq) || (!e.a.Time.Before(from) && !e.a.Time.After(to))) {
-			reasons = append(reasons, ReasonWindow)
+		if canaryOnly {
+			continue
 		}
-		if len(reasons) > 0 {
-			r.Arrivals = append(r.Arrivals, ArrivalRef{Seq: e.seq, Arrival: e.a, Reason: strings.Join(reasons, "+")})
+		// Outstanding when the interval closed: no close record before the end canary.
+		open := window && cn.seq < r.EndSeq && (cn.closeSeq == 0 || cn.closeSeq > r.EndSeq)
+		reasons := func(tag string, seq uint64, t time.Time) string {
+			var rs []string
+			if tag == in.Tag {
+				rs = append(rs, ReasonTagged)
+			}
+			if inWindow(cn.seq, cn.acc.Time) || inWindow(seq, t) {
+				rs = append(rs, ReasonWindow)
+			}
+			if len(rs) == 0 && open {
+				rs = append(rs, ReasonOpen) // a fallback: it never decorates a window arrival
+			}
+			return strings.Join(rs, "+")
+		}
+		base := Arrival{Time: cn.acc.Time, Remote: cn.acc.Remote, Conn: id}
+		var seen bool
+		for _, n := range cn.order {
+			q := cn.reqs[n]
+			if q.rs.Canary != nil {
+				continue
+			}
+			seen = true
+			a := base
+			a.Time, a.Method, a.Path, a.HeaderBytes, a.Tag = q.rs.Time, q.rs.Method, q.rs.Path, q.rs.HeaderBytes, q.rs.Tag
+			if q.done != nil {
+				a.Completed, a.BodyBytes, a.BodySHA256, a.BodyTruncated = true, q.done.BodyBytes, q.done.BodySHA256, q.done.BodyTruncated
+			}
+			if reason := reasons(a.Tag, q.seq, q.rs.Time); reason != "" {
+				r.Arrivals = append(r.Arrivals, ArrivalRef{Seq: q.seq, Arrival: a, Reason: reason})
+			}
+		}
+		if !seen {
+			// Not one parsable request: malformed HTTP, raw TCP, a TLS hello, or nothing at all.
+			if reason := reasons("", cn.seq, cn.acc.Time); reason != "" {
+				r.Arrivals = append(r.Arrivals, ArrivalRef{Seq: cn.seq, Arrival: base, Reason: reason})
+			}
 		}
 	}
+	slices.SortFunc(r.Arrivals, func(a, b ArrivalRef) int { return cmp.Compare(a.Seq, b.Seq) })
 	switch {
 	case len(r.Arrivals) > 0:
 		r.Verdict = VerdictEffectPresent

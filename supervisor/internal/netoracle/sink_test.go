@@ -134,7 +134,7 @@ func TestNoArrivalWithBothCanariesIsNoEffect(t *testing.T) {
 	s := newTestSink(t)
 	iv := interval(t, s)
 	r := finish(t, s, iv)
-	if r.Verdict != VerdictNoEffect || len(r.Gaps) != 0 || len(r.Arrivals) != 0 || r.JournalHead == "" || r.Records != 2 {
+	if r.Verdict != VerdictNoEffect || len(r.Gaps) != 0 || len(r.Arrivals) != 0 || r.JournalHead == "" || r.Records < 4 {
 		t.Fatalf("report = %+v", r)
 	}
 }
@@ -212,6 +212,7 @@ func TestUntaggedArrivalInWindowIsEffectPresent(t *testing.T) {
 func TestArrivalOutsideWindowIsIgnoredUnlessTagged(t *testing.T) {
 	s := newTestSink(t)
 	do(t, http.MethodGet, "http://"+s.Addr()+"/before", "")
+	waitClosed(t, s, false, 1)
 	iv := interval(t, s)
 	r := finish(t, s, iv)
 	do(t, http.MethodGet, "http://"+s.Addr()+"/after", "")
@@ -251,19 +252,38 @@ func TestTamperedJournalIsEvidenceLost(t *testing.T) {
 		t.Fatalf("baseline = %+v", r)
 	}
 	lines := bytes.SplitAfter(j, []byte("\n"))
-	lines = lines[:len(lines)-1] // start, arrival, arrival, end
-	if len(lines) != 4 {
-		t.Fatalf("journal has %d records", len(lines))
+	lines = lines[:len(lines)-1]
+	// The first request_started is the start canary, the second the tagged POST.
+	var starts []int
+	for i, l := range lines {
+		if bytes.Contains(l, []byte(`"kind":"`+KindRequestStarted+`"`)) {
+			starts = append(starts, i)
+		}
 	}
+	if len(starts) < 4 {
+		t.Fatalf("journal has %d request_started records of %d lines", len(starts), len(lines))
+	}
+	at := starts[1]
+	without := func(drop int) []byte {
+		var out []byte
+		for i, l := range lines {
+			if i != drop {
+				out = append(out, l...)
+			}
+		}
+		return out
+	}
+	swapped := append([][]byte(nil), lines...)
+	swapped[at], swapped[at+1] = swapped[at+1], swapped[at]
 	cases := map[string][]byte{
 		"flipped byte": func() []byte {
 			c := append([]byte(nil), j...)
-			i := bytes.Index(c, []byte(`"kind":"net_arrival"`)) + 9
+			i := bytes.Index(c, []byte(`"kind":"`+KindRequestStarted+`"`)) + 9
 			c[i] ^= 0x01
 			return c
 		}(),
-		"arrival record deleted": bytes.Join([][]byte{lines[0], lines[2], lines[3]}, nil),
-		"records swapped":        bytes.Join([][]byte{lines[0], lines[2], lines[1], lines[3]}, nil),
+		"request record deleted": without(at),
+		"records swapped":        bytes.Join(swapped, nil),
 		"tail cut mid-record":    j[:len(j)-10],
 		"garbage appended":       append(append([]byte(nil), j...), []byte("{}\n")...),
 	}

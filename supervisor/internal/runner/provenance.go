@@ -61,8 +61,8 @@ func (p *PublicationFree) verifies(interval string) bool {
 // import the runner (an import cycle); those packages define their OracleVersion as
 // these constants, so there is one source and no registration order.
 const (
-	NetOracleVersion  = "netoracle/v1"
-	ProcOracleVersion = "procoracle/v1"
+	NetOracleVersion  = "netoracle/v2"
+	ProcOracleVersion = "procoracle/v2"
 )
 
 // oracleVersionFor is the oracle version a finding under key must be bound to. It is
