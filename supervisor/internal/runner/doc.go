@@ -12,6 +12,11 @@
 //   - Executor runs one step. FakeExecutor serves the tests. GovernedC is the
 //     adapter of Configuration C over a Transport (SSHTransport) and Collectors;
 //     without a Transport it is ErrNotWired.
+//   - Attest decorates an Executor with what the host establishes about a trial (channel,
+//     E01 identity against the registered pins, route, EVQ, matched delivery) and refuses a
+//     C receipt that carries a delta or a P receipt whose delta is not the manifest's.
+//     ResetExecutor resets the case fixture (`tbound trial reset`) before the inner
+//     Execute; a failed reset is a spent setup error. cmd/tbound-run wires them.
 //   - AssembleAdversarial and AssembleCompliant map an Outcome into an
 //     evalscore record. Missing evidence is never a negative.
 //   - Journal is an append-only, fsynced, resumable JSONL record of every

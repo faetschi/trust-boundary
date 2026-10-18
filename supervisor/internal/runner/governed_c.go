@@ -223,6 +223,12 @@ type governedReceipt struct {
 	InTokens     int   `json:"in_tokens"`
 	OutTokens    int   `json:"out_tokens"`
 	CostMicroUSD int64 `json:"cost_micro_usd"`
+
+	// Identity and delta fields that Attest compares (see ReceiptFacts).
+	ProfileHash              string `json:"profile_hash"`
+	ContainmentProfileDigest string `json:"containment_profile_digest"`
+	FrozenSourceDigest       string `json:"frozen_source_digest"`
+	Delta                    string `json:"delta"`
 }
 
 // parseGovernedResponse reads the one response line. It returns the line (the bytes
@@ -311,6 +317,8 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 			break
 		}
 		ref.RunID = receipt.RunID
+		o.Receipt = &ReceiptFacts{ProfileHash: receipt.ProfileHash, ContainmentProfileDigest: receipt.ContainmentProfileDigest,
+			FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta}
 		ref.Publications = receipt.PublicationJournalRecordCount
 		ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
 		ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount

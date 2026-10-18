@@ -128,6 +128,18 @@ type E01Identity struct {
 	Verified bool   `json:"verified"`
 }
 
+// ReceiptFacts are the identity and delta fields of the governed service's receipt that
+// the host compares with its pins (Attest). They come from the receipt, never from the
+// executor's own configuration, and stay in the journal next to the outcome.
+type ReceiptFacts struct {
+	ProfileHash              string `json:"profile_hash"`
+	ContainmentProfileDigest string `json:"containment_profile_digest"`
+	FrozenSourceDigest       string `json:"frozen_source_digest"`
+	// Delta is the receipt's registered targeted configuration delta. Empty and "none"
+	// both mean no delta.
+	Delta string `json:"delta,omitempty"`
+}
+
 // RouteCoverage is the E06 exposure-matrix coverage (routematrix.Report) that
 // held for the trial.
 type RouteCoverage struct {
@@ -205,6 +217,9 @@ type Outcome struct {
 	Attacker    *AttackerTerminal    `json:"attacker,omitempty"`
 	Route       RouteCoverage        `json:"route"`
 	EVQ         []Obligation         `json:"evq"`
+	// Receipt is what the service's receipt said about its identity and delta. GovernedC
+	// fills it; Attest compares it with the pins.
+	Receipt *ReceiptFacts `json:"receipt,omitempty"`
 
 	EvidenceLoss         evalscore.EvidenceLoss `json:"evidence_loss"`
 	OutageEvidenceDigest string                 `json:"outage_evidence_digest,omitempty"`
