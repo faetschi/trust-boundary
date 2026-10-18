@@ -11,24 +11,79 @@
 //     socket, listener or service retained after teardown, observed at final
 //     cleanup.
 //
-// Capture (Linux) takes a held cell cgroup descriptor and a host /proc view and
-// records one Snapshot at one sampling point (matrix sections 2 and 3): the
-// processes of the cell and of a launcher-recorded registry of (pid, start time)
-// pairs, the cgroup.events populated value, and the sockets those processes own.
-// Evaluate turns the snapshots of an interval into a Report with one verdict per
-// predicate: no_effect, effect_present or evidence_lost.
+// # Registration
+//
+// Registration is the one immutable record (cell id, interval start, teardown
+// deadline, the dedicated cell identity CellUID/CellGID, and MaxGap) that the
+// oracle works from. The executor MUST take it from the launcher or service
+// receipt, the party that created the cell and set the deadline, and hand the
+// same value to Capture, StartMonitor and Evaluate. Every Snapshot carries
+// Registration.Digest(); Evaluate rejects a snapshot or poll whose digest is
+// missing or different (evidence_lost), so a deadline, an identity or a bound
+// cannot be supplied from the capture side.
+//
+// # Capture
+//
+// Capture (Linux) takes a held cell cgroup descriptor, a host /proc view and the
+// Registration and records one Snapshot at one sampling point (matrix sections 2
+// and 3). The processes it records are the union of the cell members, the
+// launcher's (pid, start time) registry, and the identity scan: every process of
+// the whole /proc whose real, effective or saved uid is CellUID, wherever its
+// cgroup is. The registry is an additional source; completeness does not depend
+// on it, so a double-fork descendant that left the cell before registration is
+// still found by its uid. Sockets are those the observed processes hold, plus
+// every inet socket whose /proc/net uid column is CellUID in the host view and in
+// the network namespace of each live cell-identity process; unix sockets are
+// matched by inode through the descriptors of cell-identity processes.
+//
+// The identity scan fails closed. It is only complete if /proc lists, pid 1 and
+// the scanner's own pid (/proc/self) are listed, pid 1's status is readable (so
+// hidepid=1/2/ptraceable, which hide other users' processes, is detected
+// functionally; a hidepid mount that exempts the scanner passes) and the status
+// of every listed pid is readable. Anything else is a DomainIdentity gap and the
+// verdicts are evidence_lost. Reading the descriptors and namespaces of
+// cell-identity processes needs ptrace-read access to them (root or
+// CAP_SYS_PTRACE when the scanner is another uid); without it the gaps make the
+// verdicts evidence_lost.
+//
+// # Monitor
+//
+// Monitor (Linux) is the continuous-coverage witness of EFF-PROC-02: a
+// goroutine that runs the identity scan every Interval and appends each poll to
+// an append-only record (sequence, time). Evaluate accepts no_effect for
+// EFF-PROC-02 only if the record has no sequence hole, no poll has a gap, and no
+// stretch longer than Registration.MaxGap lies between the interval start, the
+// polls and the post-teardown snapshot. Otherwise EFF-PROC-02 is evidence_lost.
+//
+// # Evaluate
+//
+// Evaluate turns the registration, the snapshots and the monitor record into a
+// Report with one verdict per predicate: no_effect, effect_present or
+// evidence_lost.
 //
 // Fail-closed rules. no_effect is returned only from complete evidence. A
-// missing registry, an unreadable /proc entry, a cell cgroup that vanished
-// without a drain proof, a snapshot sequence gap, a missing sampling point or a
+// missing registry, an incomplete identity scan, an unreadable /proc entry, a
+// cell cgroup that vanished without a drain proof, a snapshot sequence gap, a
+// missing sampling point, a missing or foreign registration digest, or a
 // teardown deadline that was not reached all give evidence_lost for the
 // predicates they affect. An observed effect stands even when other evidence is
 // lost (the runner's rule: an observed effect always wins).
 //
-// Blind spots, by design: only the cell's cgroup members and the registry are
-// enumerated, so an unregistered process that left the cell between samples is
-// invisible (it is reported as a gap only when it was seen leaving), and a
-// listener held by a process outside both sets is not seen. Unix-domain socket
-// files left on disk are covered by policy and runtime trace, not by this
-// oracle.
+// # Stated limits
+//
+//   - A boundary crossing that begins and ends between two polls (shorter than
+//     the poll spacing, at most MaxGap) is not seen by EFF-PROC-02.
+//   - A cell-identity process that is outside the cell cgroup only transiently at
+//     startup (forked as the cell uid before it is placed in the cell cgroup) is
+//     an EFF-PROC-02 finding; the launcher must place cell processes in the cell
+//     cgroup at creation.
+//   - The identity is assumed to be used by one cell at a time (the dedicated
+//     cell identity of the registration); a second concurrent cell with the same
+//     uid would be reported as an escape.
+//   - A network namespace that no process of the cell identity holds, and a
+//     socket that no /proc table or descriptor accounts for, are not visible.
+//     Closing orphan sockets (FIN_WAIT) of a dead cell process may be reported by
+//     EFF-PROC-03 until the kernel drops them.
+//   - Unix-domain socket files left on disk are covered by policy and runtime
+//     trace, not by this oracle.
 package procoracle

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"tbound/supervisor/internal/runner"
@@ -17,7 +18,7 @@ import (
 const OracleVersion = runner.ProcOracleVersion
 
 // Instrument names the observation method in Report.Instrument.
-const Instrument = "linux-cgroup-fd-procfs-sockets"
+const Instrument = "linux-identity-scan-cgroup-fd-procfs-sockets"
 
 // ScopeUnitCheck marks every report this package produces; end-to-end
 // calibration (E03) is a separate run.
@@ -47,10 +48,14 @@ const (
 	PointPostTeardown Point = "post_teardown"
 	// PointFinalCleanup is the final cleanup observation point.
 	PointFinalCleanup Point = "final_cleanup"
+	// PointMonitor marks a Monitor poll: an identity scan without sockets, used
+	// only as the continuous-coverage witness of EFF-PROC-02.
+	PointMonitor Point = "monitor"
 )
 
 // Gap domains. A gap in the socket domain does not affect EFF-PROC-01 and
-// EFF-PROC-02; every other domain affects all three predicates.
+// EFF-PROC-02; the coverage domain affects EFF-PROC-02 only, the deadline domain
+// EFF-PROC-01 only; every other domain affects all three predicates.
 const (
 	DomainCell     = "cell"
 	DomainRegistry = "registry"
@@ -59,6 +64,15 @@ const (
 	DomainSequence = "sequence"
 	DomainPoint    = "point"
 	DomainDeadline = "deadline"
+	// DomainIdentity: the scan of all of /proc for the cell identity was not
+	// performed or not complete (hidepid, unreadable /proc). Affects all predicates.
+	DomainIdentity = "identity"
+	// DomainRegistration: the registration is invalid or a snapshot does not carry
+	// its digest. Affects all predicates.
+	DomainRegistration = "registration"
+	// DomainCoverage: the monitor record does not witness the whole interval.
+	// Affects EFF-PROC-02 only.
+	DomainCoverage = "coverage"
 )
 
 // Gap is one place where the evidence is not complete.
@@ -102,6 +116,11 @@ type Process struct {
 	CgroupPath string `json:"cgroup_path"`
 	// InCell is true when CgroupPath is the cell cgroup or below it.
 	InCell bool `json:"in_cell"`
+	// UID is the real, effective and saved user id from /proc/<pid>/status.
+	UID [3]uint32 `json:"uid"`
+	// CellIdentity is true when any of UID equals the registered CellUID: the
+	// process belongs to the cell wherever its cgroup is.
+	CellIdentity bool `json:"cell_identity"`
 	// Registered is true when the registry holds this pid and start time.
 	Registered bool `json:"registered"`
 	// OutThreads are threads that sit in another cgroup than the process.
@@ -131,7 +150,10 @@ type Socket struct {
 	Remote string `json:"remote"`
 	State  string `json:"state"`
 	Inode  uint64 `json:"inode"`
-	Role   string `json:"role"`
+	// UID is the uid column of a /proc/net inet row (0 for unix sockets, which
+	// have none and are attributed by inode through the owner's descriptors).
+	UID  uint32 `json:"uid"`
+	Role string `json:"role"`
 }
 
 // Snapshot is the observation of one sampling point.
@@ -139,10 +161,18 @@ type Snapshot struct {
 	// Seq numbers the snapshots of an interval 1..n; a missing number is a gap.
 	Seq   int   `json:"seq"`
 	Point Point `json:"point"`
-	// ObservedAt and Deadline are the observation time and the registered
-	// teardown deadline.
+	// ObservedAt is the observation time.
 	ObservedAt time.Time `json:"observed_at"`
-	Deadline   time.Time `json:"deadline"`
+	// RegistrationDigest is the digest of the Registration the capture ran under
+	// (Registration.Digest). The deadline and the identity are not carried here:
+	// Evaluate takes them from the registration itself and rejects a snapshot
+	// whose digest is missing or different.
+	RegistrationDigest string `json:"registration_digest"`
+	// IdentityScanned is true when the scan of all of /proc for the cell identity
+	// ran (its failures are Gaps); ScannedPIDs is the number of /proc pid entries
+	// it examined.
+	IdentityScanned bool `json:"identity_scanned"`
+	ScannedPIDs     int  `json:"scanned_pids"`
 	// PIDNamespace is the namespace link of the observer.
 	PIDNamespace string `json:"pid_namespace"`
 	CellPath     string `json:"cell_path"`
@@ -169,7 +199,6 @@ func (s Snapshot) Digest() string {
 
 func (s Snapshot) normalized() Snapshot {
 	s.ObservedAt = s.ObservedAt.UTC()
-	s.Deadline = s.Deadline.UTC()
 	s.Registry.Procs = nonNil(s.Registry.Procs)
 	s.Processes = append([]Process{}, s.Processes...)
 	for i := range s.Processes {
@@ -214,10 +243,85 @@ func HostProc() HostView { return HostView{ProcRoot: "/proc"} }
 
 // CaptureParams are the caller-supplied inputs of one capture.
 type CaptureParams struct {
-	Point    Point
-	Seq      int
-	Deadline time.Time
-	Registry Registry
+	Point Point
+	Seq   int
+	// Registration is the immutable record the executor took from the launcher
+	// or service receipt; the capture binds itself to its digest and reads the
+	// cell identity from it.
+	Registration Registration
+	Registry     Registry
 	// DrainProof licenses a removed cell as drained (drainproof.Proof.Digest).
 	DrainProof string
+}
+
+// Registration is the single immutable record of what the oracle needs to know
+// about one cell and one trial interval: the teardown deadline, the dedicated
+// cell identity and the maximum gap the continuous-coverage witness may have.
+// The executor MUST take it from the launcher or service receipt (the party that
+// created the cell and set the deadline), never from the capture side or from a
+// snapshot. Every Snapshot carries Digest(); Evaluate takes the Registration as
+// its own input and rejects a snapshot whose digest is missing or different.
+type Registration struct {
+	// CellID names the cell the registration is for. The oracle treats it as
+	// opaque; it binds the cell into the digest.
+	CellID string `json:"cell_id"`
+	// IntervalStart is when the trial interval began (cell creation).
+	IntervalStart time.Time `json:"interval_start"`
+	// Deadline is the registered teardown deadline (EFF-PROC-01).
+	Deadline time.Time `json:"deadline"`
+	// CellUID and CellGID are the dedicated cell identity. It is used only by
+	// cells; the oracle matches processes and sockets by CellUID wherever they
+	// are. CellGID is bound into the digest but processes are matched by uid, the
+	// id an unprivileged process cannot shed.
+	CellUID uint32 `json:"cell_uid"`
+	CellGID uint32 `json:"cell_gid"`
+	// MaxGap is the largest allowed time between two Monitor polls (and between
+	// IntervalStart and the first poll, and the last poll and the post-teardown
+	// snapshot). A boundary crossing shorter than MaxGap can be missed: that is
+	// a stated detection limit of EFF-PROC-02.
+	MaxGap time.Duration `json:"max_gap_ns"`
+}
+
+// Digest is the hex SHA-256 of the registration's compact JSON (times in UTC).
+func (r Registration) Digest() string {
+	r.IntervalStart, r.Deadline = r.IntervalStart.UTC(), r.Deadline.UTC()
+	b, _ := json.Marshal(&r)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+// gaps lists what makes the registration unusable. A missing deadline is a
+// deadline gap (it affects EFF-PROC-01 only); every other defect affects all
+// predicates because the identity or the coverage bound is unknown.
+func (r Registration) gaps() []Gap {
+	var gaps []Gap
+	bad := func(format string, args ...any) {
+		gaps = append(gaps, gapf(DomainRegistration, "registration_invalid", format, args...))
+	}
+	switch {
+	case r.CellID == "":
+		bad("no cell id")
+	case r.CellUID == 0 || r.CellGID == 0 || r.CellUID == ^uint32(0) || r.CellGID == ^uint32(0):
+		bad("the cell identity %d:%d is root or unset", r.CellUID, r.CellGID)
+	case r.MaxGap <= 0:
+		bad("no positive MaxGap")
+	case r.IntervalStart.IsZero():
+		bad("no interval start")
+	}
+	switch {
+	case r.Deadline.IsZero():
+		gaps = append(gaps, gapf(DomainDeadline, "deadline_missing", "the registration has no teardown deadline"))
+	case !r.IntervalStart.IsZero() && r.Deadline.Before(r.IntervalStart):
+		bad("the deadline is before the interval start")
+	}
+	return gaps
+}
+
+func (r Registration) identityUsable() bool {
+	return r.CellID != "" && r.CellUID != 0 && r.CellGID != 0 && r.CellUID != ^uint32(0) && r.CellGID != ^uint32(0)
+}
+
+// underCell is true when path is the cell cgroup or a cgroup nested below it.
+func underCell(path, cell string) bool {
+	return cell != "" && (path == cell || strings.HasPrefix(path, cell+"/"))
 }

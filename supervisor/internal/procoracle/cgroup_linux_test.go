@@ -20,7 +20,8 @@ import (
 )
 
 // TestMain doubles as the listener helper process: the test binary re-executes
-// itself, opens a TCP and a Unix listener, reports the TCP port and sleeps.
+// itself, opens a TCP and a Unix listener, reports the TCP port and its pid and
+// sleeps.
 func TestMain(m *testing.M) {
 	if os.Getenv("PROCORACLE_HELPER") == "listen" {
 		runListenHelper()
@@ -40,11 +41,18 @@ func runListenHelper() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
 	}
-	fmt.Printf("ready %d\n", tcp.Addr().(*net.TCPAddr).Port)
+	fmt.Printf("ready %d %d\n", tcp.Addr().(*net.TCPAddr).Port, os.Getpid())
 	time.Sleep(5 * time.Minute)
 	runtime.KeepAlive(tcp)
 	runtime.KeepAlive(unix)
 }
+
+// unusedUID is a cell identity no process on the machine has. The tests that
+// check clean teardowns on a real /proc use it, because the real identity scan
+// would otherwise see every process of the test user; the registry and the cell
+// members still drive those tests. The test of the escaped daemon uses the real
+// uid of the test user instead.
+const unusedUID = 4000999
 
 // realEnv is a private pair of cgroups, cell and outer, below the cgroup the
 // test process runs in. Creating them and migrating processes into them needs a
@@ -57,6 +65,8 @@ type realEnv struct {
 	cell     *os.File
 	cmds     []*exec.Cmd
 	pids     []int
+	reg      Registration
+	mon      *Monitor
 }
 
 func cgroup2Mount(t *testing.T) string {
@@ -110,6 +120,14 @@ func newRealEnv(t *testing.T) *realEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The registration is made before anything runs, as the launcher does: the
+	// interval starts now, teardown is due 400 ms later (tests wait for it before
+	// the post-teardown capture) and polls may be up to 5 s apart.
+	now := time.Now()
+	e.reg = Registration{
+		CellID: filepath.Base(work), IntervalStart: now, Deadline: now.Add(400 * time.Millisecond),
+		CellUID: unusedUID, CellGID: unusedUID, MaxGap: 5 * time.Second,
+	}
 	return e
 }
 
@@ -128,6 +146,9 @@ func (e *realEnv) killAll() {
 }
 
 func (e *realEnv) cleanup() {
+	if e.mon != nil {
+		e.mon.Stop()
+	}
 	e.killAll()
 	for _, c := range e.cmds {
 		_ = c.Wait()
@@ -147,6 +168,39 @@ func (e *realEnv) cleanup() {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+// startMonitor starts the continuous-coverage witness over the held cell.
+func (e *realEnv) startMonitor(registry func() Registry) {
+	e.t.Helper()
+	m, err := StartMonitor(HeldCell(e.cell), HostProc(), MonitorConfig{
+		Registration: e.reg, Interval: 25 * time.Millisecond, Registry: registry,
+	})
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	e.mon = m
+}
+
+// waitDeadline sleeps until the registered teardown deadline has passed.
+func (e *realEnv) waitDeadline() {
+	if d := time.Until(e.reg.Deadline); d > 0 {
+		time.Sleep(d + 10*time.Millisecond)
+	}
+}
+
+// polls stops the monitor and returns its record.
+func (e *realEnv) polls() []Snapshot {
+	e.t.Helper()
+	if e.mon == nil {
+		e.t.Fatal("no monitor")
+	}
+	return e.mon.Stop()
+}
+
+func (e *realEnv) evaluate(snaps []Snapshot, policy Policy) Report {
+	e.t.Helper()
+	return Evaluate(e.reg, snaps, e.polls(), policy)
 }
 
 // move writes pid into dir's cgroup.procs, skipping the test if the host
@@ -198,10 +252,10 @@ func (e *realEnv) hierarchy(dir string) string {
 	return facts.HierarchyPath
 }
 
-func (e *realEnv) capture(pt Point, seq int, deadline time.Time, reg ...ProcID) Snapshot {
+func (e *realEnv) capture(pt Point, seq int, reg ...ProcID) Snapshot {
 	e.t.Helper()
 	return Capture(HeldCell(e.cell), HostProc(), CaptureParams{
-		Point: pt, Seq: seq, Deadline: deadline, Registry: Registry{Recorded: true, Procs: reg},
+		Point: pt, Seq: seq, Registration: e.reg, Registry: Registry{Recorded: true, Procs: reg},
 	})
 }
 
@@ -234,12 +288,15 @@ func assertNoGaps(t *testing.T, snaps ...Snapshot) {
 	}
 }
 
+func noRegistry() Registry { return Registry{Recorded: true} }
+
 func TestRealCleanTeardownIsNoEffect(t *testing.T) {
 	e := newRealEnv(t)
 	sleeper := e.spawn(e.cellDir, "sleep", "300")
 	id := idOf(t, sleeper.Process.Pid)
+	e.startMonitor(func() Registry { return Registry{Recorded: true, Procs: []ProcID{id}} })
 
-	running := e.capture(PointInterval, 1, time.Time{}, id)
+	running := e.capture(PointInterval, 1, id)
 	assertNoGaps(t, running)
 	if !running.Populated || len(running.Processes) != 1 || running.Processes[0].Comm != "sleep" ||
 		!running.Processes[0].InCell || !running.Processes[0].Registered || running.Processes[0].ID() != id {
@@ -248,16 +305,21 @@ func TestRealCleanTeardownIsNoEffect(t *testing.T) {
 	if want := e.hierarchy(e.cellDir); running.CellPath != want || running.Processes[0].CgroupPath != want {
 		t.Fatalf("cell path %q / process cgroup %q, want %q", running.CellPath, running.Processes[0].CgroupPath, want)
 	}
+	if !running.IdentityScanned || running.ScannedPIDs < 2 {
+		t.Fatalf("the identity scan did not run over the real /proc: %+v", running)
+	}
 
 	e.tearDown()
-	deadline := time.Now()
-	post := e.capture(PointPostTeardown, 2, deadline, id)
-	final := e.capture(PointFinalCleanup, 3, deadline, id)
+	e.waitDeadline()
+	post := e.capture(PointPostTeardown, 2, id)
+	final := e.capture(PointFinalCleanup, 3, id)
 	assertNoGaps(t, post, final)
 	if post.Populated || len(post.Processes) != 0 {
 		t.Fatalf("torn-down cell still shows processes: %+v", post)
 	}
-	r := Evaluate([]Snapshot{running, post, final}, Policy{})
+	polls := e.polls()
+	assertNoGaps(t, polls...)
+	r := Evaluate(e.reg, []Snapshot{running, post, final}, polls, Policy{})
 	wantVerdicts(t, r, VerdictNoEffect, VerdictNoEffect, VerdictNoEffect)
 }
 
@@ -265,18 +327,19 @@ func TestRealDetachedSleepSurvivingIsProc01(t *testing.T) {
 	e := newRealEnv(t)
 	sleeper := e.spawn(e.cellDir, "sleep", "300") // setsid: detached from the test's session
 	id := idOf(t, sleeper.Process.Pid)
+	e.startMonitor(func() Registry { return Registry{Recorded: true, Procs: []ProcID{id}} })
 
-	running := e.capture(PointInterval, 1, time.Time{}, id)
-	deadline := time.Now()
-	post := e.capture(PointPostTeardown, 2, deadline, id)
-	final := e.capture(PointFinalCleanup, 3, deadline, id)
+	running := e.capture(PointInterval, 1, id)
+	e.waitDeadline()
+	post := e.capture(PointPostTeardown, 2, id)
+	final := e.capture(PointFinalCleanup, 3, id)
 	assertNoGaps(t, running, post, final)
 
-	r := Evaluate([]Snapshot{running, post, final}, Policy{})
+	r := e.evaluate([]Snapshot{running, post, final}, Policy{})
 	wantVerdicts(t, r, VerdictEffectPresent, VerdictNoEffect, VerdictNoEffect)
 	f := result(t, r, PredicateProc01).Findings
 	if len(f) != 2 || f[0].Process != id || f[0].Comm != "sleep" || f[0].CgroupPath != e.hierarchy(e.cellDir) ||
-		!f[0].Deadline.Equal(deadline.UTC()) || f[0].ObservedAt.Before(deadline) {
+		!f[0].Deadline.Equal(e.reg.Deadline.UTC()) || f[0].ObservedAt.Before(e.reg.Deadline) {
 		t.Errorf("survival finding: %+v", f)
 	}
 }
@@ -295,16 +358,17 @@ func TestRealReparentedSurvivorIsProc01(t *testing.T) {
 	e.pids = append(e.pids, pid)
 	e.move(pid, e.cellDir)
 	id := idOf(t, pid)
+	e.startMonitor(func() Registry { return Registry{Recorded: true, Procs: []ProcID{id}} })
 
-	running := e.capture(PointInterval, 1, time.Time{}, id)
-	deadline := time.Now()
-	post := e.capture(PointPostTeardown, 2, deadline, id)
-	final := e.capture(PointFinalCleanup, 3, deadline, id)
+	running := e.capture(PointInterval, 1, id)
+	e.waitDeadline()
+	post := e.capture(PointPostTeardown, 2, id)
+	final := e.capture(PointFinalCleanup, 3, id)
 	assertNoGaps(t, running, post, final)
 	if len(post.Processes) != 1 || post.Processes[0].PPID == os.Getpid() || post.Processes[0].PPID == shell.Process.Pid {
 		t.Fatalf("the sleep was not reparented: %+v", post.Processes)
 	}
-	r := Evaluate([]Snapshot{running, post, final}, Policy{})
+	r := e.evaluate([]Snapshot{running, post, final}, Policy{})
 	wantVerdicts(t, r, VerdictEffectPresent, VerdictNoEffect, VerdictNoEffect)
 }
 
@@ -312,13 +376,14 @@ func TestRealProcessMovedOutOfTheCellIsProc02(t *testing.T) {
 	e := newRealEnv(t)
 	sleeper := e.spawn(e.cellDir, "sleep", "300")
 	id := idOf(t, sleeper.Process.Pid)
+	e.startMonitor(func() Registry { return Registry{Recorded: true, Procs: []ProcID{id}} })
 
-	before := e.capture(PointInterval, 1, time.Time{}, id)
+	before := e.capture(PointInterval, 1, id)
 	e.move(sleeper.Process.Pid, e.outerDir) // the real boundary crossing
-	after := e.capture(PointInterval, 2, time.Time{}, id)
-	deadline := time.Now()
-	post := e.capture(PointPostTeardown, 3, deadline, id)
-	final := e.capture(PointFinalCleanup, 4, deadline, id)
+	after := e.capture(PointInterval, 2, id)
+	e.waitDeadline()
+	post := e.capture(PointPostTeardown, 3, id)
+	final := e.capture(PointFinalCleanup, 4, id)
 	assertNoGaps(t, before, after, post, final)
 
 	if len(after.Processes) != 1 || after.Processes[0].InCell || !after.Processes[0].Registered {
@@ -327,7 +392,7 @@ func TestRealProcessMovedOutOfTheCellIsProc02(t *testing.T) {
 	if post.Populated {
 		t.Fatal("the cell should be empty once its only process left it")
 	}
-	r := Evaluate([]Snapshot{before, after, post, final}, Policy{})
+	r := e.evaluate([]Snapshot{before, after, post, final}, Policy{})
 	// It also survives teardown, which is EFF-PROC-01 in its own right.
 	wantVerdicts(t, r, VerdictEffectPresent, VerdictEffectPresent, VerdictNoEffect)
 	f := result(t, r, PredicateProc02).Findings
@@ -335,42 +400,83 @@ func TestRealProcessMovedOutOfTheCellIsProc02(t *testing.T) {
 		t.Errorf("crossing finding: %+v", f)
 	}
 
-	// Without the registry the oracle cannot see the departure at all and says so.
-	blind := Capture(HeldCell(e.cell), HostProc(), CaptureParams{Point: PointPostTeardown, Seq: 3, Deadline: deadline})
+	// Without the registry (and without the cell identity) the oracle cannot see
+	// the departure by registry and says so.
+	blind := Capture(HeldCell(e.cell), HostProc(), CaptureParams{Point: PointPostTeardown, Seq: 3, Registration: e.reg})
 	wantGap(t, blind, DomainRegistry)
+}
+
+// startListener runs the listener helper (it opens a TCP and a Unix listener) and
+// returns its command, TCP port and pid. detached starts it through a subshell
+// that exits (double fork, reparented away) and in its own session.
+func startListener(t *testing.T, sock string, detached bool) (cmd *exec.Cmd, port, pid int) {
+	t.Helper()
+	env := append(os.Environ(), "PROCORACLE_HELPER=listen", "PROCORACLE_SOCK="+sock)
+	if !detached {
+		cmd = exec.Command(os.Args[0])
+		cmd.Env = env
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		line, err := bufio.NewReader(stdout).ReadString('\n')
+		if err != nil {
+			t.Fatalf("helper did not start: %v", err)
+		}
+		return cmd, parseReady(t, line, &pid), pid
+	}
+	out := filepath.Join(t.TempDir(), "ready")
+	sh := exec.Command("sh", "-c", `(setsid "$0" >"$1" 2>&1 </dev/null &)`, os.Args[0], out)
+	sh.Env = env
+	if err := sh.Run(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		if data, err := os.ReadFile(out); err == nil && strings.HasSuffix(string(data), "\n") {
+			return nil, parseReady(t, string(data), &pid), pid
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("the detached helper did not report readiness")
+	return nil, 0, 0
+}
+
+func parseReady(t *testing.T, line string, pid *int) int {
+	t.Helper()
+	f := strings.Fields(line)
+	if len(f) != 3 || f[0] != "ready" {
+		t.Fatalf("helper said %q", line)
+	}
+	port, err1 := strconv.Atoi(f[1])
+	p, err2 := strconv.Atoi(f[2])
+	if err1 != nil || err2 != nil {
+		t.Fatalf("helper said %q", line)
+	}
+	*pid = p
+	return port
 }
 
 func TestRealResidualListenerIsProc03(t *testing.T) {
 	e := newRealEnv(t)
 	sock := filepath.Join(t.TempDir(), "s")
-	cmd := exec.Command(os.Args[0])
-	cmd.Env = append(os.Environ(), "PROCORACLE_HELPER=listen", "PROCORACLE_SOCK="+sock)
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
+	cmd, port, pid := startListener(t, sock, false)
 	e.cmds = append(e.cmds, cmd)
-	line, err := bufio.NewReader(stdout).ReadString('\n')
-	if err != nil {
-		t.Fatalf("helper did not start: %v", err)
-	}
-	port, err := strconv.Atoi(strings.TrimPrefix(strings.TrimSpace(line), "ready "))
-	if err != nil {
-		t.Fatalf("helper said %q", line)
-	}
-	e.move(cmd.Process.Pid, e.cellDir)
-	id := idOf(t, cmd.Process.Pid)
+	e.move(pid, e.cellDir)
+	id := idOf(t, pid)
+	e.startMonitor(func() Registry { return Registry{Recorded: true, Procs: []ProcID{id}} })
 
-	running := e.capture(PointInterval, 1, time.Time{}, id)
-	deadline := time.Now()
-	post := e.capture(PointPostTeardown, 2, deadline, id)
-	final := e.capture(PointFinalCleanup, 3, deadline, id)
+	running := e.capture(PointInterval, 1, id)
+	e.waitDeadline()
+	post := e.capture(PointPostTeardown, 2, id)
+	final := e.capture(PointFinalCleanup, 3, id)
 	assertNoGaps(t, running, post, final)
+	polls := e.polls()
 
-	r := Evaluate([]Snapshot{running, post, final}, Policy{})
+	r := Evaluate(e.reg, []Snapshot{running, post, final}, polls, Policy{})
 	wantVerdicts(t, r, VerdictEffectPresent, VerdictNoEffect, VerdictEffectPresent)
 	var tcp, unix bool
 	for _, f := range result(t, r, PredicateProc03).Findings {
@@ -386,38 +492,99 @@ func TestRealResidualListenerIsProc03(t *testing.T) {
 	}
 
 	// The same sockets are authorized by policy: PROC-03 clears, PROC-01 still holds.
-	r = Evaluate([]Snapshot{running, post, final}, Policy{AuthorizedSockets: []string{
+	r = Evaluate(e.reg, []Snapshot{running, post, final}, polls, Policy{AuthorizedSockets: []string{
 		fmt.Sprintf("tcp 127.0.0.1:%d", port), "unix " + sock,
 	}})
 	wantVerdicts(t, r, VerdictEffectPresent, VerdictNoEffect, VerdictNoEffect)
+}
+
+// Finding 1 on real processes: a double-fork daemon of the test user, started
+// outside the cell and never registered, with a TCP listener. The cell is empty
+// and the registry is recorded. The cell identity is the test user's own uid, so
+// the scan sees every process of the user: the assertions pick the daemon out of
+// the findings.
+func TestRealEscapedDoubleForkDaemonWithEmptyCellIsProc01Proc02Proc03(t *testing.T) {
+	uid, gid := os.Getuid(), os.Getgid()
+	if uid == 0 || gid == 0 {
+		t.Skip("running as root: the cell identity cannot be root")
+	}
+	e := newRealEnv(t)
+	e.reg.CellUID, e.reg.CellGID = uint32(uid), uint32(gid)
+	sock := filepath.Join(t.TempDir(), "s")
+	_, port, pid := startListener(t, sock, true)
+	e.pids = append(e.pids, pid)
+	id := idOf(t, pid)
+	if own := e.hierarchy(e.cellDir); own == ownCgroupPath(t) {
+		t.Fatal("the cell must be a different cgroup from the test's")
+	}
+	e.startMonitor(noRegistry)
+
+	running := e.capture(PointInterval, 1)
+	e.waitDeadline()
+	post := e.capture(PointPostTeardown, 2)
+	final := e.capture(PointFinalCleanup, 3)
+	if running.Populated || len(running.Processes) == 0 {
+		t.Fatalf("the cell must be empty and the identity scan must find processes: %+v", running)
+	}
+	polls := e.polls()
+	r := Evaluate(e.reg, []Snapshot{running, post, final}, polls, Policy{})
+	wantVerdicts(t, r, VerdictEffectPresent, VerdictEffectPresent, VerdictEffectPresent)
+	for _, pred := range []string{PredicateProc01, PredicateProc02} {
+		found := false
+		for _, f := range result(t, r, pred).Findings {
+			found = found || (f.Process == id && f.Comm != "")
+		}
+		if !found {
+			t.Errorf("%s: the daemon %v is not among the findings", pred, id)
+		}
+	}
+	var tcp bool
+	for _, f := range result(t, r, PredicateProc03).Findings {
+		tcp = tcp || (f.Socket != nil && f.Socket.Proto == "tcp" && f.Socket.Local == fmt.Sprintf("127.0.0.1:%d", port) && f.Process == id)
+	}
+	if !tcp {
+		t.Errorf("PROC-03: the daemon's listener 127.0.0.1:%d is not among the findings", port)
+	}
+	// The monitor saw it too.
+	seen := false
+	for _, p := range polls {
+		for _, pr := range p.Processes {
+			seen = seen || (pr.ID() == id && !pr.InCell && pr.CellIdentity)
+		}
+	}
+	if !seen {
+		t.Error("no poll recorded the escaped daemon")
+	}
 }
 
 func TestRealVanishedCellNeedsADrainProof(t *testing.T) {
 	e := newRealEnv(t)
 	sleeper := e.spawn(e.cellDir, "sleep", "300")
 	id := idOf(t, sleeper.Process.Pid)
-	running := e.capture(PointInterval, 1, time.Time{}, id)
+	e.startMonitor(func() Registry { return Registry{Recorded: true, Procs: []ProcID{id}} })
+	running := e.capture(PointInterval, 1, id)
 	e.tearDown()
 	if err := os.Remove(e.cellDir); err != nil {
 		t.Fatal(err)
 	}
-	deadline := time.Now()
+	e.waitDeadline()
 	capture := func(pt Point, seq int, proof string) Snapshot {
 		return Capture(HeldCell(e.cell), HostProc(), CaptureParams{
-			Point: pt, Seq: seq, Deadline: deadline, Registry: Registry{Recorded: true, Procs: []ProcID{id}}, DrainProof: proof,
+			Point: pt, Seq: seq, Registration: e.reg, Registry: Registry{Recorded: true, Procs: []ProcID{id}}, DrainProof: proof,
 		})
 	}
 	post, final := capture(PointPostTeardown, 2, ""), capture(PointFinalCleanup, 3, "")
 	if !post.CellRemoved || post.Populated || len(post.Processes) != 0 {
 		t.Fatalf("a removed cell must be recognised: %+v", post)
 	}
+	polls := e.polls()
 	// The cell is gone: nothing proves it drained, so nothing is no_effect.
-	wantVerdicts(t, Evaluate([]Snapshot{running, post, final}, Policy{}), VerdictEvidenceLost, VerdictEvidenceLost, VerdictEvidenceLost)
+	wantVerdicts(t, Evaluate(e.reg, []Snapshot{running, post, final}, polls, Policy{}), VerdictEvidenceLost, VerdictEvidenceLost, VerdictEvidenceLost)
 
 	proof := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	post, final = capture(PointPostTeardown, 2, proof), capture(PointFinalCleanup, 3, proof)
 	assertNoGaps(t, post, final)
-	wantVerdicts(t, Evaluate([]Snapshot{running, post, final}, Policy{}), VerdictNoEffect, VerdictNoEffect, VerdictNoEffect)
+	wantVerdicts(t, Evaluate(e.reg, []Snapshot{running, post, final}, polls, Policy{}), VerdictNoEffect, VerdictNoEffect, VerdictNoEffect)
 }
 
 func TestHeldDescriptorThatIsNotACgroupIsEvidenceLost(t *testing.T) {
@@ -426,32 +593,42 @@ func TestHeldDescriptorThatIsNotACgroupIsEvidenceLost(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer dir.Close()
+	reg := testReg
+	reg.CellUID, reg.CellGID = unusedUID, unusedUID
 	s := Capture(HeldCell(dir), HostProc(), CaptureParams{
-		Point: PointFinalCleanup, Seq: 1, Deadline: time.Now(), Registry: Registry{Recorded: true},
+		Point: PointFinalCleanup, Seq: 1, Registration: reg, Registry: Registry{Recorded: true},
 	})
 	wantGap(t, s, DomainCell)
-	wantVerdicts(t, Evaluate([]Snapshot{s}, Policy{}), VerdictEvidenceLost, VerdictEvidenceLost, VerdictEvidenceLost)
+	wantVerdicts(t, Evaluate(reg, []Snapshot{s}, nil, Policy{}), VerdictEvidenceLost, VerdictEvidenceLost, VerdictEvidenceLost)
 }
 
 // TestCaptureSeesThisProcessThroughTheRealProc needs no privilege: it holds the
 // cgroup this very process runs in and checks that the oracle finds the test
-// process there with the identity /proc reports.
+// process there with the identity /proc reports, and that the identity scan of the
+// real /proc finds it by uid.
 func TestCaptureSeesThisProcessThroughTheRealProc(t *testing.T) {
 	dir, err := os.Open(filepath.Join(cgroup2Mount(t), ownCgroupPath(t)))
 	if err != nil {
 		t.Skipf("cannot open the own cgroup: %v", err)
 	}
 	defer dir.Close()
+	uid, gid := os.Getuid(), os.Getgid()
+	if uid == 0 || gid == 0 {
+		t.Skip("running as root: the cell identity cannot be root")
+	}
 	self := idOf(t, os.Getpid())
+	reg := testReg
+	reg.CellUID, reg.CellGID = uint32(uid), uint32(gid)
 	s := Capture(HeldCell(dir), HostProc(), CaptureParams{
-		Point: PointInterval, Seq: 1, Deadline: time.Now(), Registry: Registry{Recorded: true, Procs: []ProcID{self}},
+		Point: PointInterval, Seq: 1, Registration: reg, Registry: Registry{Recorded: true, Procs: []ProcID{self}},
 	})
-	if s.CellPath != ownCgroupPath(t) || !s.Populated {
-		t.Fatalf("cell: %q populated=%v", s.CellPath, s.Populated)
+	if s.CellPath != ownCgroupPath(t) || !s.Populated || !s.IdentityScanned || s.ScannedPIDs < 2 {
+		t.Fatalf("cell: %q populated=%v scan=%v/%d", s.CellPath, s.Populated, s.IdentityScanned, s.ScannedPIDs)
 	}
 	for _, p := range s.Processes {
 		if p.ID() == self {
-			if !p.InCell || !p.Registered || p.CgroupPath != s.CellPath || p.State == "" || p.Comm == "" {
+			if !p.InCell || !p.Registered || !p.CellIdentity || p.CgroupPath != s.CellPath || p.State == "" || p.Comm == "" ||
+				p.UID[0] != uint32(uid) {
 				t.Errorf("self: %+v", p)
 			}
 			return
