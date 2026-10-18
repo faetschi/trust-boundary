@@ -55,9 +55,11 @@ func (p ReceiptPins) match(r *ReceiptFacts) bool {
 //     recorded as not passed. A failed obligation the executor reported beyond the
 //     configured list is kept as reported.
 //   - Route is the route report the run was configured with.
-//   - MatchedDelivery is true for a static or adaptive replay step whose identity is
-//     verified: the replays are scripted and the plan names their stimulus.
-//   - A C receipt with a delta, and a P receipt whose delta is not PDelta(case), are
+//   - MatchedDelivery is true for a static or adaptive replay step whose identity, provider mode, script
+//     digest and admission policy digest are verified: the replays are scripted and the plan names their stimulus.
+//   - A receipt without the provider mode of its role (scripted for the replay roles, model for the
+//     others), a scripted receipt whose script or admission policy digest differs from the expected one,
+//     a C receipt with a delta, and a P receipt whose delta is not PDelta(case), are
 //     refused with ErrReceiptPolicy. The outcome is kept, unverified, and the error makes
 //     it partial in the journal.
 //
@@ -75,6 +77,14 @@ type Attest struct {
 	// PDelta returns the manifest's p_delta of a case (the empty string for none) and
 	// whether the case is known. A nil PDelta refuses every P receipt.
 	PDelta func(caseID string) (delta string, ok bool)
+	// ScriptDigest returns the digest of the frozen script of a case, computed from the manifest the way
+	// the service computes it, and whether the case is known. A scripted receipt must carry it; a nil
+	// ScriptDigest refuses every scripted receipt.
+	ScriptDigest func(caseID string) (digest string, ok bool)
+	// AdmissionPolicyDigest returns the admission_policy_digest the service must report for a case under a
+	// configuration (the control package of C, the delta's rule of P), computed from the manifest and the
+	// pinned Store policies. A scripted receipt must carry it; a nil source refuses every scripted receipt.
+	AdmissionPolicyDigest func(caseID string, cfg Configuration) (digest string, ok bool)
 }
 
 // Validate checks the configuration of the decorator.
@@ -124,7 +134,7 @@ func (a Attest) Execute(ctx context.Context, s Step) (Outcome, error) {
 		verified = false
 		err = errors.Join(err, perr)
 	}
-	if perr := checkProviderMode(s, out.Receipt); perr != nil {
+	if perr := a.checkProvider(s, out.Receipt); perr != nil {
 		verified = false
 		err = errors.Join(err, perr)
 	}
@@ -201,21 +211,48 @@ func normalizeDelta(d string) string {
 	return d
 }
 
-// checkProviderMode requires the provider of a replay role to be scripted and the provider of every
-// other role to be a model. A receipt without a provider_mode predates the member and is not checked.
-func checkProviderMode(s Step, r *ReceiptFacts) error {
-	if r == nil || r.ProviderMode == "" {
+// providerModeOf is the provider a role runs on: a script for the replay roles of both halves, a model
+// for every other role. A role outside the set has none.
+func providerModeOf(role Role) (mode string, ok bool) {
+	switch role {
+	case RoleStaticReplay, RoleAdaptiveReplay:
+		return "scripted", true
+	case RoleTrajectory, RoleCompliant, RoleAmbiguous, RoleVarianceRepeat:
+		return "model", true
+	}
+	return "", false
+}
+
+// checkProvider requires every receipt to name the provider of the role (no receipt predates the
+// member) and a scripted receipt to carry the digest of the case's frozen script and the admission
+// policy digest of the configuration, each equal to what the manifest and the pins give.
+func (a Attest) checkProvider(s Step, r *ReceiptFacts) error {
+	if r == nil {
 		return nil
 	}
-	if s.Role == RoleAdaptiveReplay {
-		return nil // adaptive replays are not scripted by this build
-	}
-	want := "model"
-	if s.Role == RoleStaticReplay {
-		want = "scripted"
+	want, ok := providerModeOf(s.Role)
+	if !ok {
+		return fmt.Errorf("%w: role %q of %s has no provider mode", ErrReceiptPolicy, s.Role, s.ID())
 	}
 	if r.ProviderMode != want {
 		return fmt.Errorf("%w: receipt of %s reports provider_mode %q, the role requires %q", ErrReceiptPolicy, s.ID(), r.ProviderMode, want)
+	}
+	if want != "scripted" {
+		return nil
+	}
+	var script, policy string
+	var scriptOK, policyOK bool
+	if a.ScriptDigest != nil {
+		script, scriptOK = a.ScriptDigest(s.CaseID)
+	}
+	if a.AdmissionPolicyDigest != nil {
+		policy, policyOK = a.AdmissionPolicyDigest(s.CaseID, s.Configuration)
+	}
+	if !scriptOK || script == "" || r.ScriptDigest != script {
+		return fmt.Errorf("%w: scripted receipt of %s carries script_digest %q, the manifest gives %q", ErrReceiptPolicy, s.ID(), r.ScriptDigest, script)
+	}
+	if !policyOK || policy == "" || r.AdmissionPolicyDigest != policy {
+		return fmt.Errorf("%w: scripted receipt of %s carries admission_policy_digest %q, the pins give %q", ErrReceiptPolicy, s.ID(), r.AdmissionPolicyDigest, policy)
 	}
 	return nil
 }

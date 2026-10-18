@@ -277,6 +277,14 @@ type resultEvidence struct {
 	EffectID         string `json:"effect_id,omitempty"`
 }
 
+// admissionDeniedEvidence is the provider_admission_denied record: the exact DENY Result released for an
+// ALLOWed operation whose settled change delta admission refused. The generation does not move and no
+// transition exists. EffectID names the Store effect that holds the refusal; ReasonCode is its stable code.
+type admissionDeniedEvidence struct {
+	resultEvidence
+	ReasonCode string `json:"reason_code"`
+}
+
 // NewFromEnvironment uses the existing secure Go credential loader and its
 // redirect-forbidding transport. The OpenCode Go model and route are fixed;
 // provider configuration cannot come from Pi or Node.
@@ -770,6 +778,10 @@ func (e *ResultingExecutor) Execute(ctx context.Context, proposal protocol.Propo
 	c.mu.Unlock()
 
 	output, err := e.inner.Execute(ctx, proposal, decision)
+	var denied *protocol.AdmissionDeniedError
+	if errors.As(err, &denied) {
+		return nil, c.recordAdmissionDenied(ctx, proposal, decision, denied)
+	}
 	if err != nil {
 		return nil, c.recordUnknownExecution(proposal, decision, fmt.Errorf("trusted executor failed; provider result withheld: %w", err))
 	}
@@ -811,6 +823,40 @@ func (e *ResultingExecutor) Execute(ctx context.Context, proposal protocol.Propo
 		}
 	}
 	return append(json.RawMessage(nil), output...), nil
+}
+
+// recordAdmissionDenied journals the refusal of an ALLOWed operation by delta admission as one
+// provider_admission_denied record, appends the DENY Result to the history and advances the workflow
+// checkpoint like any released result, and returns the typed denial for the supervisor to release. The
+// provider generation does not move: the candidate was discarded. A denial that cannot be recorded
+// exactly is an UNKNOWN execution.
+func (c *Conversation) recordAdmissionDenied(ctx context.Context, proposal protocol.Proposal, decision gate.Decision,
+	denied *protocol.AdmissionDeniedError) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || c.state != stateExecuting || c.current == nil || !sameProposal(proposal, c.current.proposal) {
+		return c.recordUnknownExecutionLocked(proposal, decision, errors.New("conversation changed while executor was running"))
+	}
+	if err := ctx.Err(); err != nil {
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("execution canceled; provider result withheld: %w", err))
+	}
+	if !protocol.ValidAdmissionReasonCode(denied.ReasonCode) || !validText(denied.EffectID, MaxIdentityBytes) {
+		return c.recordUnknownExecutionLocked(proposal, decision, errors.New("admission denial has no stable reason code or Store effect"))
+	}
+	if _, duplicate := c.effectIDs[denied.EffectID]; duplicate {
+		return c.recordUnknownExecutionLocked(proposal, decision, errors.New("admission denial effect ID was replayed"))
+	}
+	result := admissionDeniedResult(proposal, decision, denied.ReasonCode)
+	if err := c.appendResultLocked("provider_admission_denied", result, denied.ReasonCode, c.generation, c.treeDigest, 0, "", denied.EffectID); err != nil {
+		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist admission denial; IPC result withheld: %w", err))
+	}
+	c.effectIDs[denied.EffectID] = struct{}{}
+	if c.cfg.AdvanceProgress != nil {
+		if err := c.cfg.AdvanceProgress(ctx); err != nil {
+			return c.failLocked(fmt.Errorf("advance workflow checkpoint after admission denial: %w", err))
+		}
+	}
+	return denied
 }
 
 func (c *Conversation) recordUnknownExecution(proposal protocol.Proposal, decision gate.Decision, cause error, output ...json.RawMessage) error {
@@ -879,6 +925,20 @@ func (c *Conversation) Close() {
 }
 
 func (c *Conversation) appendToolResultLocked(result protocol.Result, nextGeneration, nextTreeDigest string, transitionSequence uint64, transitionIDs ...string) error {
+	transitionID, effectID := "", ""
+	if len(transitionIDs) > 0 {
+		transitionID = transitionIDs[0]
+	}
+	if len(transitionIDs) > 1 {
+		effectID = transitionIDs[1]
+	}
+	return c.appendResultLocked("provider_tool_result", result, "", nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID)
+}
+
+// appendResultLocked journals the exact protocol result of the current call and appends it to the history.
+// A non-empty denialReason makes it the provider_admission_denied record of an ALLOWed operation.
+func (c *Conversation) appendResultLocked(kind string, result protocol.Result, denialReason, nextGeneration, nextTreeDigest string,
+	transitionSequence uint64, transitionID, effectID string) error {
 	if c.current == nil {
 		return ErrWrongState
 	}
@@ -893,19 +953,11 @@ func (c *Conversation) appendToolResultLocked(result protocol.Result, nextGenera
 	toGeneration := fromGeneration
 	fromTreeDigest := c.treeDigest
 	toTreeDigest := fromTreeDigest
-	transitionID := ""
-	effectID := ""
-	if len(transitionIDs) > 0 {
-		transitionID = transitionIDs[0]
-	}
-	if len(transitionIDs) > 1 {
-		effectID = transitionIDs[1]
-	}
 	if nextGeneration != "" {
 		toGeneration = nextGeneration
 		toTreeDigest = nextTreeDigest
 	}
-	evidence, err := json.Marshal(resultEvidence{
+	base := resultEvidence{
 		WorkflowID: c.cfg.WorkflowID, ConversationID: c.cfg.ConversationID,
 		ResponseIDIssuer: responseIssuer, ToolCallIDIssuer: callIssuer,
 		ResponseID: c.current.responseID, ToolCallID: c.current.call.ID, Tool: c.current.call.Name,
@@ -914,11 +966,17 @@ func (c *Conversation) appendToolResultLocked(result protocol.Result, nextGenera
 		TreeDigestFrom: fromTreeDigest, TreeDigestTo: toTreeDigest,
 		ResultDigest: resultDigest, Result: encoded, TransitionID: transitionID,
 		TransitionSeq: transitionSequence, EffectID: effectID,
-	})
+	}
+	var evidence []byte
+	if denialReason != "" {
+		evidence, err = json.Marshal(admissionDeniedEvidence{resultEvidence: base, ReasonCode: denialReason})
+	} else {
+		evidence, err = json.Marshal(base)
+	}
 	if err != nil {
 		return err
 	}
-	_, err = c.appendLocked("provider_tool_result", resultID, evidence)
+	_, err = c.appendLocked(kind, resultID, evidence)
 	if err != nil {
 		return err
 	}
@@ -1051,6 +1109,14 @@ func resultFor(proposal protocol.Proposal, decision gate.Decision, output json.R
 		ReasonCode: decision.ReasonCode, PolicyDigest: decision.PolicyDigest,
 		Output: append(json.RawMessage(nil), output...),
 	}
+}
+
+// admissionDeniedResult is the Result of an ALLOWed operation that delta admission refused: the gate
+// decision's correlation with a DENY verdict and the admission reason code, and no output.
+func admissionDeniedResult(proposal protocol.Proposal, decision gate.Decision, reasonCode string) protocol.Result {
+	result := resultFor(proposal, decision, nil)
+	result.Verdict, result.ReasonCode = string(gate.Deny), reasonCode
+	return result
 }
 
 type generationSummary struct {

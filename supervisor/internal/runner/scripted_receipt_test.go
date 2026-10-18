@@ -98,6 +98,18 @@ func TestGovernedReceiptCarriesProviderModeScriptDeltaPolicyAndProposals(t *test
 	if !o.ToolAttempt {
 		t.Fatal("a denied proposal is a tool attempt (ATT-TOOL-01)")
 	}
+	// a delta-admission denial of an allowed proposal is listed as a deny with its reason (ATT-TOOL-01)
+	h := newGovernedFixture(t)
+	r3 := h.receipt(true)
+	r3["proposals"] = []map[string]string{
+		{"tool": "write", "verdict": "DENY", "reason_code": "scope_protected_path"},
+		{"tool": "write", "verdict": "ALLOW", "reason_code": "policy_rule_allow"},
+	}
+	h.respond("completed", "", r3, 0)
+	if o, err := h.g.Execute(context.Background(), h.step); err != nil || !o.ToolAttempt ||
+		o.Receipt.Proposals[0] != (ProposalFact{Tool: "write", Verdict: "DENY", ReasonCode: "scope_protected_path"}) {
+		t.Fatalf("admission denial: attempt=%t receipt=%+v err=%v", o.ToolAttempt, o.Receipt, err)
+	}
 	// no denied proposal, no tool attempt
 	g := newGovernedFixture(t)
 	r2 := g.receipt(true)
@@ -108,30 +120,83 @@ func TestGovernedReceiptCarriesProviderModeScriptDeltaPolicyAndProposals(t *test
 	}
 }
 
-func TestAttestChecksTheProviderModeOfTheRole(t *testing.T) {
-	run := func(role Role, mode string) (Outcome, error) {
-		r := matching()
-		r.ProviderMode = mode
-		in := &stubInner{out: Outcome{Receipt: r, E01: E01Identity{Digest: "d"}}}
-		return newAttest(in).Execute(context.Background(), advStep(CfgC, role))
+func attestRun(a Attest, s Step, mutate func(*ReceiptFacts)) (Outcome, error) {
+	r := matchingFor(s)
+	if mutate != nil {
+		mutate(r)
 	}
-	if out, err := run(RoleStaticReplay, "scripted"); err != nil || !out.E01.Verified || !out.MatchedDelivery {
-		t.Fatalf("scripted static replay: %+v %v", out, err)
-	}
-	for name, tc := range map[string]struct {
-		role Role
-		mode string
-	}{"model in a replay": {RoleStaticReplay, "model"}, "scripted trajectory": {RoleTrajectory, "scripted"}} {
-		out, err := run(tc.role, tc.mode)
-		if !errors.Is(err, ErrReceiptPolicy) || out.E01.Verified || out.MatchedDelivery {
-			t.Errorf("%s: %+v %v", name, out, err)
+	a.Inner = &stubInner{out: Outcome{Receipt: r, E01: E01Identity{Digest: "d"}}}
+	return a.Execute(context.Background(), s)
+}
+
+func TestAttestRequiresTheProviderModeOfEveryRole(t *testing.T) {
+	a := newAttest(nil)
+	allRoles := []Role{RoleTrajectory, RoleStaticReplay, RoleAdaptiveReplay, RoleCompliant, RoleAmbiguous, RoleVarianceRepeat}
+	for _, cfg := range []Configuration{CfgC, CfgP} {
+		for _, role := range allRoles {
+			if cfg == CfgP && role != RoleStaticReplay && role != RoleAdaptiveReplay {
+				continue
+			}
+			s := advStep(cfg, role)
+			scripted := role == RoleStaticReplay || role == RoleAdaptiveReplay
+			out, err := attestRun(a, s, nil)
+			if err != nil || !out.E01.Verified || out.MatchedDelivery != scripted {
+				t.Errorf("%s/%s with the right provider: %+v %v", cfg, role, out, err)
+			}
+			wrong := "scripted"
+			if scripted {
+				wrong = "model"
+			}
+			// an absent member, the other provider and an unknown value are all refused, adaptive included
+			for name, mode := range map[string]string{"absent": "", "the other provider": wrong, "unknown value": "replayed"} {
+				out, err := attestRun(a, s, func(r *ReceiptFacts) { r.ProviderMode = mode })
+				if !errors.Is(err, ErrReceiptPolicy) || out.E01.Verified || out.MatchedDelivery {
+					t.Errorf("%s/%s with %s provider_mode: %+v %v", cfg, role, name, out, err)
+				}
+			}
 		}
 	}
-	// receipts of the model roles and older receipts without the member stay accepted
-	if _, err := run(RoleTrajectory, "model"); err != nil {
-		t.Fatal(err)
+	// a role outside the set has no provider mode and is refused
+	out, err := attestRun(a, advStep(CfgC, Role("bogus")), func(r *ReceiptFacts) { r.ProviderMode = "model" })
+	if !errors.Is(err, ErrReceiptPolicy) || out.E01.Verified {
+		t.Errorf("unsupported role: %+v %v", out, err)
 	}
-	if _, err := run(RoleStaticReplay, ""); err != nil {
-		t.Fatal(err)
+}
+
+func TestAttestComparesTheScriptAndAdmissionPolicyDigestsOfAScriptedReceipt(t *testing.T) {
+	for _, cfg := range []Configuration{CfgC, CfgP} {
+		s := advStep(cfg, RoleStaticReplay)
+		for name, mutate := range map[string]func(*ReceiptFacts){
+			"missing script digest":    func(r *ReceiptFacts) { r.ScriptDigest = "" },
+			"wrong script digest":      func(r *ReceiptFacts) { r.ScriptDigest = "sha256:" + hexOf('x') },
+			"missing admission policy": func(r *ReceiptFacts) { r.AdmissionPolicyDigest = "" },
+			"wrong admission policy":   func(r *ReceiptFacts) { r.AdmissionPolicyDigest = "sha256:" + hexOf('x') },
+			"the other configuration's policy": func(r *ReceiptFacts) {
+				r.AdmissionPolicyDigest = map[Configuration]string{CfgC: testPolicyP, CfgP: testPolicyC}[cfg]
+			},
+		} {
+			out, err := attestRun(newAttest(nil), s, mutate)
+			if !errors.Is(err, ErrReceiptPolicy) || out.E01.Verified || out.MatchedDelivery || !hasOutcome(out) {
+				t.Errorf("%s/%s: %+v %v", cfg, name, out, err)
+			}
+		}
+		// no expectation source, or an unknown case, fails closed
+		for name, a := range map[string]Attest{
+			"no script source": func() Attest { a := newAttest(nil); a.ScriptDigest = nil; return a }(),
+			"no policy source": func() Attest { a := newAttest(nil); a.AdmissionPolicyDigest = nil; return a }(),
+		} {
+			if out, err := attestRun(a, s, nil); !errors.Is(err, ErrReceiptPolicy) || out.E01.Verified || out.MatchedDelivery {
+				t.Errorf("%s/%s: %+v %v", cfg, name, out, err)
+			}
+		}
+		unknown := s
+		unknown.CaseID = "adv-x"
+		if out, err := attestRun(newAttest(nil), unknown, nil); !errors.Is(err, ErrReceiptPolicy) || out.MatchedDelivery {
+			t.Errorf("%s: unknown case: %+v %v", cfg, out, err)
+		}
+	}
+	// a model role needs neither digest
+	if out, err := attestRun(newAttest(nil), advStep(CfgC, RoleTrajectory), nil); err != nil || !out.E01.Verified {
+		t.Errorf("model role: %+v %v", out, err)
 	}
 }

@@ -200,7 +200,7 @@ func (v capturedCallProviderReplayVerifier) VerifyDecision(binding providerbridg
 		binding.ToolCallID != v.binding.ToolCallID || binding.ResponseID != v.proof.response ||
 		binding.ProviderSequence != v.proof.sequence || binding.InputGeneration != v.checkpoint.Pins.StoreTipGenerationID ||
 		bindingTreeDigest == "" || bindingTreeDigest != v.checkpoint.Pins.StoreTipTreeDigest ||
-		binding.GateDecision.Verdict != gate.Allow || !reflect.DeepEqual(binding.Proposal, v.proof.proposal) ||
+		binding.GateDecision.Verdict != gate.Allow || !sameCapturedProposal(binding.Proposal, v.proof.proposal) ||
 		!reflect.DeepEqual(binding.GateDecision, v.proof.decision) {
 		return workflowrecovery.ErrObservation
 	}
@@ -234,6 +234,13 @@ func (v activeWorkflowProgressVerifier) VerifyProgress(ctx context.Context, prev
 		return workflowrecovery.ErrObservation
 	}
 	return nil
+}
+
+func (v capturedCallProviderReplayVerifier) VerifyAdmissionDenial(binding providerbridge.ProviderAdmissionDenialBinding) error {
+	if binding.ResultRecordSequence <= v.prefixCount {
+		return nil
+	}
+	return workflowrecovery.ErrPendingUnknown
 }
 
 func (a *SessionOperationAuthority) currentLedgerPins() workflowrecovery.Pins {
@@ -653,7 +660,8 @@ func (v activeWorkflowCommandVerifier) VerifyGovernedVerifier(replay *governedSt
 	}
 	a.mu.Unlock()
 	for _, decision := range replay.decisions {
-		if decision == nil || decision.binding.ConversationID != conversationID || decision.entry.Tool != "bash" {
+		// A refused Bash candidate has no transition for D09 evidence to bind to: nothing was promoted.
+		if decision == nil || decision.binding.ConversationID != conversationID || decision.entry.Tool != "bash" || decision.denied {
 			continue
 		}
 		proof, ok := proofs[decision.entry.Operation]
@@ -936,8 +944,8 @@ func (a *SessionOperationAuthority) terminalEffectPins(ctx context.Context, prev
 		operationEvidence.EffectID != binding.OperationID || operationEvidence.Operation != proof.request.Operation ||
 		operationEvidence.DecisionID != proof.request.Decision.ID || operationEvidence.ArgumentDigest != typedDigest ||
 		operationEvidence.InputGeneration != proof.request.InputGeneration || operationEvidence.InputTreeDigest != proof.request.InputTreeDigest ||
-		operationEvidence.Outcome != "success" || operationEvidence.ResultDigest != digestBytes(effect.Result) ||
-		operationEvidence.ResultDigest == "" {
+		(operationEvidence.Outcome != "success" && !deniedAfterEffect(*operationEvidence)) ||
+		operationEvidence.ResultDigest != digestBytes(effect.Result) || operationEvidence.ResultDigest == "" {
 		return fail(workflowrecovery.ErrObservation)
 	}
 	stage = "tool-specific admission evidence"
@@ -948,23 +956,25 @@ func (a *SessionOperationAuthority) terminalEffectPins(ctx context.Context, prev
 			operationEvidence.OutputTreeDigest != operationEvidence.InputTreeDigest {
 			return fail(workflowrecovery.ErrObservation)
 		}
-	} else if operationEvidence.Admission == nil || operationEvidence.OutputGeneration == "" || operationEvidence.OutputTreeDigest == "" {
+	} else if operationEvidence.Admission == nil || (!deniedAfterEffect(*operationEvidence) &&
+		(operationEvidence.OutputGeneration == "" || operationEvidence.OutputTreeDigest == "")) {
 		return fail(workflowrecovery.ErrObservation)
 	}
 	stage = "admission outcome crosslink"
+	denied := deniedAfterEffect(*operationEvidence)
 	if operationEvidence.Admission != nil {
 		ref := *operationEvidence.Admission
+		wantOutcome := "allow"
+		if denied {
+			wantOutcome = "deny"
+		}
 		if ref.Sequence == 0 || ref.Sequence > uint64(len(admissionTrace.Records)) ||
 			admissionTrace.Records[ref.Sequence-1].Hash != ref.RecordHash ||
-			ref.IntentDigest != digestBytes(effect.Intent) || ref.Outcome != "allow" {
+			ref.IntentDigest != digestBytes(effect.Intent) || ref.Outcome != wantOutcome {
 			return fail(workflowrecovery.ErrObservation)
 		}
-		var admitted struct {
-			Request      sessionrepo.OperationRequest `json:"request"`
-			IntentDigest string                       `json:"intent_digest"`
-			Outcome      string                       `json:"outcome"`
-		}
-		if unmarshalGovernedJSON(admissionTrace.Records[ref.Sequence-1].Event.Data, &admitted) != nil ||
+		var admitted governedReplayAdmissionRecord
+		if decodeCanonicalGoverned(admissionTrace.Records[ref.Sequence-1].Event.Data, &admitted) != nil ||
 			admitted.Request.EffectID != binding.OperationID || admitted.Request.Operation != proof.request.Operation ||
 			admitted.Request.Decision != proof.request.Decision || admitted.Request.Tool != proof.request.Tool ||
 			admitted.Request.ArgumentDigest != typedDigest || admitted.IntentDigest != ref.IntentDigest || admitted.Outcome != ref.Outcome {
@@ -973,11 +983,12 @@ func (a *SessionOperationAuthority) terminalEffectPins(ctx context.Context, prev
 	}
 	if proof.request.Tool == "bash" {
 		transition, ok := transitionForOperationEvidence(bundle, *operationEvidence)
-		if !ok || operationEvidence.Operation.Kind != delta.OperationLease || operationEvidence.ExitCode == nil ||
+		// A refused candidate has no transition; nothing was promoted for D09 evidence to bind to.
+		if ok == denied || operationEvidence.Operation.Kind != delta.OperationLease || operationEvidence.ExitCode == nil ||
 			operationEvidence.CommandRunnerProfile == "" || operationEvidence.CommandContainmentStatus != "not-established" {
 			return fail(workflowrecovery.ErrObservation)
 		}
-		if evidencedBash {
+		if evidencedBash && !denied {
 			verifier, ok := runner.(governedBashEvidenceOriginVerifier)
 			if !ok {
 				return workflowrecovery.Pins{}, "", workflowrecovery.ErrObservation
@@ -1039,4 +1050,14 @@ func validWorkflowDigest(value string) bool {
 	}
 	decoded, err := hex.DecodeString(value)
 	return err == nil && len(decoded) == sha256.Size
+}
+
+// sameCapturedProposal compares the replayed provider call with the proof read back from the journal. The
+// journal nests the arguments through encoding/json, which HTML-escapes <, > and &, so their bytes differ
+// from the captured response's while the canonical JSON is the same.
+func sameCapturedProposal(replayed, journaled protocol.Proposal) bool {
+	left, leftErr := json.Marshal(replayed.Arguments)
+	right, rightErr := json.Marshal(journaled.Arguments)
+	return leftErr == nil && rightErr == nil && bytes.Equal(left, right) &&
+		replayed.SchemaVersion == journaled.SchemaVersion && replayed.ToolCallID == journaled.ToolCallID && replayed.Tool == journaled.Tool
 }

@@ -366,6 +366,9 @@ func (acceptingProviderReplayVerifier) VerifyDecision(providerbridge.ProviderDec
 func (acceptingProviderReplayVerifier) VerifyResult(providerbridge.ProviderResultBinding) error {
 	return nil
 }
+func (acceptingProviderReplayVerifier) VerifyAdmissionDenial(providerbridge.ProviderAdmissionDenialBinding) error {
+	return nil
+}
 
 func TestReplayGovernedTranscriptRejectsSelfConsistentForgedProviderOutput(t *testing.T) {
 	fixture := newGovernedReplayFixture(t, []providerbridge.DevelopmentProviderTurn{

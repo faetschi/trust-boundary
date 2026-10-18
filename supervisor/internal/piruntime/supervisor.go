@@ -78,7 +78,10 @@ func (s *Supervisor) HandledProposals() uint64 {
 
 // Serve processes proposals sequentially. Correlation always precedes gate
 // evaluation; denied proposals never reach the executor. Any transport,
-// broker, gate-result encoding, or executor error closes the stream.
+// broker, gate-result encoding, or executor error closes the stream, except
+// protocol.AdmissionDeniedError: an allowed operation whose settled change
+// delta admission refused is released as a DENY Result with the admission
+// reason code, and the loop continues.
 func (s *Supervisor) Serve(ctx context.Context) error {
 	if s == nil || s.IPC == nil || s.Broker == nil || s.Policy.Digest() == "" ||
 		s.ProposalLimit > ipc.MaxFramesPerDirection {
@@ -136,18 +139,24 @@ func (s *Supervisor) Serve(ctx context.Context) error {
 				result.Output = json.RawMessage(`{"status":"stubbed-no-effect"}`)
 			} else {
 				output, err := s.Executor.Execute(ctx, proposal, decision)
-				if err != nil {
+				var denied *protocol.AdmissionDeniedError
+				if errors.As(err, &denied) && protocol.ValidAdmissionReasonCode(denied.ReasonCode) {
+					// Delta admission refused the settled change: the agent gets a normal DENY
+					// Result with the stable reason code and the run goes on.
+					result.Verdict, result.ReasonCode = string(gate.Deny), denied.ReasonCode
+				} else if err != nil {
 					return fmt.Errorf("executor failed; result withheld: %w", err)
-				}
-				if len(output) > protocol.MaxFrameBytes {
-					return errors.New("executor output exceeds the protocol bound; result withheld")
-				}
-				if len(output) > 0 {
-					if err := protocol.ValidateStrictJSON(output); err != nil {
-						return fmt.Errorf("executor output is not bounded strict JSON; result withheld: %w", err)
+				} else {
+					if len(output) > protocol.MaxFrameBytes {
+						return errors.New("executor output exceeds the protocol bound; result withheld")
 					}
+					if len(output) > 0 {
+						if err := protocol.ValidateStrictJSON(output); err != nil {
+							return fmt.Errorf("executor output is not bounded strict JSON; result withheld: %w", err)
+						}
+					}
+					result.Output = append(json.RawMessage(nil), output...)
 				}
-				result.Output = append(json.RawMessage(nil), output...)
 			}
 		}
 		if err := s.IPC.SendResult(result); err != nil {

@@ -21,7 +21,9 @@ import (
 type replayVerifierFixture struct {
 	decisions []ProviderDecisionBinding
 	results   []ProviderResultBinding
+	denials   []ProviderAdmissionDenialBinding
 	err       error
+	denialErr error
 }
 
 type retirementVerifierFixture struct {
@@ -59,6 +61,16 @@ func (v *replayVerifierFixture) VerifyResult(binding ProviderResultBinding) erro
 	binding.Decision = cloneDecisionBinding(binding.Decision)
 	binding.Result = cloneProtocolResult(binding.Result)
 	v.results = append(v.results, binding)
+	return v.err
+}
+
+func (v *replayVerifierFixture) VerifyAdmissionDenial(binding ProviderAdmissionDenialBinding) error {
+	binding.Decision = cloneDecisionBinding(binding.Decision)
+	binding.Result = cloneProtocolResult(binding.Result)
+	v.denials = append(v.denials, binding)
+	if v.denialErr != nil {
+		return v.denialErr
+	}
 	return v.err
 }
 

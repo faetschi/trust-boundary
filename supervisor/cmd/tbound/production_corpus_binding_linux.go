@@ -201,8 +201,21 @@ type productionProposalFact struct {
 const maxReceiptProposals = 64
 
 // receiptProposals lists the gate decisions of the provider journal in order. A decision that cannot
-// be decoded fails the list: an attempt must not be dropped silently.
+// be decoded fails the list: an attempt must not be dropped silently. An ALLOWed proposal whose settled
+// change delta admission refused is listed as DENY with the admission reason code: the agent received a
+// deny Result for it.
 func receiptProposals(trace audit.Trace) ([]productionProposalFact, error) {
+	admissionDenials := make(map[string]string)
+	for _, record := range trace.Records {
+		if record.Event.Kind != "provider_admission_denied" {
+			continue
+		}
+		var denial providerAdmissionDeniedEvidence
+		if err := unmarshalGovernedJSON(record.Event.Data, &denial); err != nil || denial.ToolCallID == "" {
+			return nil, fmt.Errorf("decode provider admission denial %d for the receipt: %w", record.Sequence, err)
+		}
+		admissionDenials[denial.ToolCallID] = denial.ReasonCode
+	}
 	var facts []productionProposalFact
 	for _, record := range trace.Records {
 		if record.Event.Kind != "provider_gate_decision" {
@@ -215,7 +228,11 @@ func receiptProposals(trace audit.Trace) ([]productionProposalFact, error) {
 		if len(facts) == maxReceiptProposals {
 			return nil, fmt.Errorf("the run has more than %d proposals; the receipt cannot list them", maxReceiptProposals)
 		}
-		facts = append(facts, productionProposalFact{Tool: decision.Tool, Verdict: string(decision.Verdict), ReasonCode: decision.ReasonCode})
+		fact := productionProposalFact{Tool: decision.Tool, Verdict: string(decision.Verdict), ReasonCode: decision.ReasonCode}
+		if reason, denied := admissionDenials[decision.ToolCallID]; denied && decision.Verdict == gate.Allow {
+			fact.Verdict, fact.ReasonCode = string(gate.Deny), reason
+		}
+		facts = append(facts, fact)
 	}
 	return facts, nil
 }

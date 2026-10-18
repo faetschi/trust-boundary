@@ -80,6 +80,7 @@ func TestCorpusServesOnlyWhatThisBuildImplements(t *testing.T) {
 		{admitAll, corpusRolePStaticReplay, true}, {none, corpusRolePStaticReplay, true},
 		{admitAll, corpusRoleStaticReplay, true}, {admitAll, corpusRoleTrajectory, true},
 		{admitAll, corpusRolePAdaptiveReplay, false}, // the scripted adaptive source is not implemented
+		{admitAll, corpusRoleAdaptiveReplay, false},  // C adaptive must never fall back to the model
 	} {
 		if got := corpus.roleServable(tc.caseID, tc.role); got != tc.want {
 			t.Errorf("%s/%s servable=%t, want %t", tc.caseID, tc.role, got, tc.want)
@@ -126,6 +127,7 @@ func TestCorpusServiceRefusesWhatItCannotServeWithoutConsumingTheRequest(t *test
 		code    string
 	}{
 		"p-adaptive-replay (not implemented)": {corpusRequest("u1", admitAll, corpusRolePAdaptiveReplay, 1), "role-unavailable"},
+		"adaptive-replay (not implemented)":   {corpusRequest("u4", admitAll, corpusRoleAdaptiveReplay, 1), "role-unavailable"},
 		"p-static-replay on a compliant case": {corpusRequest("u2", compliant, corpusRolePStaticReplay, 1), "role-kind-mismatch"},
 	} {
 		if response := roundTripPiServiceRequest(t, h.server.path, tc.request); response.Status != "refused" || response.ErrorCode != tc.code {
@@ -474,9 +476,9 @@ func TestDurableExecutorReportsAnAdmissionDenialWithItsReasonAndPromotesNothing(
 				}
 				return
 			}
-			var denied *admissionDeniedError
+			var denied *protocol.AdmissionDeniedError
 			if !errors.As(err, &denied) || denied.ReasonCode != sessionrepo.DenyReasonProtectedPath || denied.Tool != "write" ||
-				!errors.Is(err, sessionrepo.ErrDeltaDenied) {
+				denied.EffectID == "" || !errors.Is(err, sessionrepo.ErrDeltaDenied) {
 				t.Fatalf("Execute = %q, %v; want the protected-path denial", output, err)
 			}
 			if tip := executor.Tip(); tip == nil || tip.ID() != "g0" {
@@ -507,6 +509,34 @@ func TestClientRequestCannotSelectTheProviderScriptOrDelta(t *testing.T) {
 		var request piServiceRequest
 		if err := decoder.Decode(&request); err == nil {
 			t.Errorf("a request member %q was accepted", member)
+		}
+	}
+}
+
+// The host (tbound-run) computes the expected script and admission policy digests from the manifest
+// with the portable evalcorpus functions; they must equal what the service puts in its receipt.
+func TestHostExpectedDigestsEqualTheServiceReceiptDigests(t *testing.T) {
+	corpus, manifest := scriptedTestCorpus(t, nil)
+	policy, metadata := corpusTestDigest("sp"), corpusTestDigest("mp")
+	for _, caseID := range []string{corpusCaseWithDelta(t, manifest, evalcorpus.PDeltaAdmitAll), corpusCaseWithDelta(t, manifest, evalcorpus.PDeltaNone)} {
+		trial := corpus.trials[caseID]
+		for _, role := range []string{corpusRoleStaticReplay, corpusRolePStaticReplay} {
+			binding, err := corpus.bindingFor(caseID, role)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := binding.admissionPolicyDigest(policy, metadata)
+			if err != nil {
+				t.Fatal(err)
+			}
+			promoteAll := role == corpusRolePStaticReplay && trial.EffectivePDelta() == evalcorpus.PDeltaAdmitAll
+			got, err := evalcorpus.AdmissionPolicyDigest(policy, metadata, promoteAll, trial.ProtectedPaths)
+			if err != nil || got != want {
+				t.Errorf("%s/%s: host %q (%v), service %q", caseID, role, got, err, want)
+			}
+			if digest, err := evalcorpus.ScriptDigest(trial.Script); err != nil || digest != binding.scriptDigest() {
+				t.Errorf("%s/%s: host script digest %q (%v), service %q", caseID, role, digest, err, binding.scriptDigest())
+			}
 		}
 	}
 }

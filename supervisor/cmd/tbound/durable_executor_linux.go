@@ -204,7 +204,7 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 		}
 		mutation, err = e.store.Write(ctx, e.tip, operation, policyDecision, path, content)
 		if err != nil {
-			return nil, admissionDenied(proposal.Tool, mutation, fmt.Errorf("durable write: %w", err))
+			return nil, e.admissionDenied(ctx, proposal, decision, mutation, fmt.Errorf("durable write: %w", err))
 		}
 	case "edit":
 		path, edits, err := durableEditArguments(proposal.Arguments)
@@ -213,7 +213,7 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 		}
 		mutation, err = e.store.Edit(ctx, e.tip, operation, policyDecision, path, edits)
 		if err != nil {
-			return nil, admissionDenied(proposal.Tool, mutation, fmt.Errorf("durable edit: %w", err))
+			return nil, e.admissionDenied(ctx, proposal, decision, mutation, fmt.Errorf("durable edit: %w", err))
 		}
 	case "bash":
 		if e.bashOutputPaths == nil {
@@ -239,7 +239,7 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 			DeclaredOutputPaths: cloneDurableOutputScopePaths(e.bashOutputPaths)}
 		mutation, err = e.store.RunBash(ctx, e.tip, operation, policyDecision, spec, e.commandRunner)
 		if err != nil {
-			return nil, admissionDenied(proposal.Tool, mutation, fmt.Errorf("durable bash: %w", err))
+			return nil, e.admissionDenied(ctx, proposal, decision, mutation, fmt.Errorf("durable bash: %w", err))
 		}
 	default:
 		return nil, fmt.Errorf("durable executor does not implement tool %q", proposal.Tool)
@@ -688,28 +688,19 @@ func validBareSHA256(value string) bool {
 	return err == nil
 }
 
-// admissionDeniedError reports that the Store's delta admission refused the settled change of an
-// allowed operation: the candidate was discarded and nothing was promoted. ReasonCode is the stable
-// code (sessionrepo.DenyReason*). The run still ends fail-closed, as for any executor error: the
-// result is withheld and the workflow is unknown. Surfacing the refusal to the agent as a deny Result
-// needs the provider-journal and Store replay verifiers to accept an allowed decision followed by a
-// denied admission, which they do not.
-type admissionDeniedError struct {
-	Tool       string
-	ReasonCode string
-	err        error
-}
-
-func (e *admissionDeniedError) Error() string {
-	return fmt.Sprintf("delta admission denied the %s change (%s): %v", e.Tool, e.ReasonCode, e.err)
-}
-
-func (e *admissionDeniedError) Unwrap() error { return e.err }
-
-// admissionDenied wraps err as an admissionDeniedError if it is the Store's admission denial.
-func admissionDenied(tool string, mutation sessionrepo.MutationResult, err error) error {
+// admissionDenied turns the Store's refusal of a settled change (delta admission, ErrDeltaDenied) into a
+// protocol.AdmissionDeniedError once the workflow owner has settled the denied effect: the candidate was
+// discarded and nothing was promoted, so the denial is a result to release, not an executor failure. Any
+// other error is returned unchanged, and a denial the owner cannot settle stays an error.
+func (e *DurableExecutor) admissionDenied(ctx context.Context, proposal protocol.Proposal, decision gate.Decision,
+	mutation sessionrepo.MutationResult, err error) error {
 	if !errors.Is(err, sessionrepo.ErrDeltaDenied) {
 		return err
 	}
-	return &admissionDeniedError{Tool: tool, ReasonCode: mutation.DenyReason, err: err}
+	if e.afterDurableOperation != nil {
+		if settleErr := e.afterDurableOperation(ctx, proposal, decision); settleErr != nil {
+			return fmt.Errorf("settle denied Store operation against workflow owner before result release: %w", settleErr)
+		}
+	}
+	return &protocol.AdmissionDeniedError{Tool: proposal.Tool, ReasonCode: mutation.DenyReason, EffectID: mutation.EffectID, Err: err}
 }

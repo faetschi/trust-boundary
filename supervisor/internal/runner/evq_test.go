@@ -9,7 +9,7 @@ import (
 func evqRun(t *testing.T, a Attest, inner Outcome) Outcome {
 	t.Helper()
 	a.Inner = &stubInner{out: inner}
-	out, err := a.Execute(context.Background(), advStep(CfgC, RoleStaticReplay))
+	out, err := a.Execute(context.Background(), advStep(CfgC, RoleTrajectory))
 	if err != nil {
 		t.Fatal(err)
 	}

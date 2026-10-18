@@ -44,6 +44,9 @@ type runConfig struct {
 	OnlyCases      []string         `json:"only_cases"`
 	// Pins are the receipt identity values E01 is verified against.
 	Pins runner.ReceiptPins `json:"pins"`
+	// AdmissionPolicy pins the two Store policy digests the service commits its admission_policy_digest to.
+	// With the manifest they give the digest a scripted receipt must carry.
+	AdmissionPolicy admissionPolicyPins `json:"admission_policy"`
 	// RouteReport is a JSON routematrix.Report; its file digest is the route digest.
 	RouteReport string `json:"route_report"`
 	// EVQResults pins the conformance results file (strict JSON {obligations:[{id,passed,
@@ -56,6 +59,12 @@ type runConfig struct {
 	RunDir string     `json:"run_dir"`
 	SSH    sshConfig  `json:"ssh"`
 	Proc   procConfig `json:"proc"`
+}
+
+// admissionPolicyPins are the Store policy and metadata policy digests of the governed service.
+type admissionPolicyPins struct {
+	PolicyDigest         string `json:"policy_digest"`
+	MetadataPolicyDigest string `json:"metadata_policy_digest"`
 }
 
 // pinnedFile is a file named by absolute path and pinned by "sha256:<hex>" of its bytes.
@@ -143,6 +152,9 @@ func (c runConfig) validate() error {
 		if !filepath.IsAbs(p) {
 			return fmt.Errorf("%s %q must be an absolute path", name, p)
 		}
+	}
+	if !digestRE.MatchString(c.AdmissionPolicy.PolicyDigest) || !digestRE.MatchString(c.AdmissionPolicy.MetadataPolicyDigest) {
+		return errors.New("admission_policy needs policy_digest and metadata_policy_digest as sha256:<64 hex>")
 	}
 	if !filepath.IsAbs(c.EVQResults.Path) || !digestRE.MatchString(c.EVQResults.SHA256) {
 		return errors.New("evq_results needs an absolute path and a sha256:<64 hex> digest")
@@ -260,18 +272,19 @@ const runBindingDomain = "tbound-run-binding/v1"
 
 // runBinding is the normalized digest of every attestation and collector input that is not
 // in the plan digest: the receipt pins, the route report (its digest and completeness), the
-// EVQ results file digest and the PROC collector settings. It is recorded in the journal
+// EVQ results file digest, the admission policy pins and the PROC collector settings. It is recorded in the journal
 // header, so a journal is only resumed, rerun, exported or reported under the inputs it
 // was started with. The authorized sockets are a set and are sorted.
 func (c runConfig) runBinding(route runner.RouteCoverage, evqDigest string) (string, error) {
 	doc := struct {
-		Domain           string             `json:"domain"`
-		Pins             runner.ReceiptPins `json:"pins"`
-		RouteDigest      string             `json:"route_digest"`
-		RouteComplete    bool               `json:"route_complete"`
-		EVQResultsDigest string             `json:"evq_results_digest"`
-		Proc             procConfig         `json:"proc"`
-	}{runBindingDomain, c.Pins, route.Digest, route.Complete, evqDigest, c.Proc}
+		Domain           string              `json:"domain"`
+		Pins             runner.ReceiptPins  `json:"pins"`
+		RouteDigest      string              `json:"route_digest"`
+		RouteComplete    bool                `json:"route_complete"`
+		EVQResultsDigest string              `json:"evq_results_digest"`
+		Proc             procConfig          `json:"proc"`
+		AdmissionPolicy  admissionPolicyPins `json:"admission_policy"`
+	}{runBindingDomain, c.Pins, route.Digest, route.Complete, evqDigest, c.Proc, c.AdmissionPolicy}
 	doc.Proc.AuthorizedSockets = slices.Sorted(slices.Values(c.Proc.AuthorizedSockets))
 	if doc.Proc.AuthorizedSockets == nil {
 		doc.Proc.AuthorizedSockets = []string{}

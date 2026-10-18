@@ -136,7 +136,8 @@ func newEnv(t *testing.T) *env {
 		"only_cases":      []string{},
 		"pins": map[string]string{"profile_hash": fixtureDigest("p"), "containment_profile_digest": fixtureDigest("c"),
 			"frozen_source_digest": fixtureDigest("s")},
-		"route_report": e.path("route.json"), "ledger": "synthetic-empty", "run_dir": e.path("run"),
+		"admission_policy": map[string]string{"policy_digest": fixtureDigest("store-policy"), "metadata_policy_digest": fixtureDigest("metadata-policy")},
+		"route_report":     e.path("route.json"), "ledger": "synthetic-empty", "run_dir": e.path("run"),
 		"evq_results": map[string]string{"path": e.path("evq.json"), "sha256": fixtureFileDigest(evqAllPassed)},
 		"ssh": map[string]any{
 			"path": e.path("ssh.exe"), "known_hosts": e.path("known_hosts"), "host": "10.0.0.2", "host_key_alias": "tbound-guest",

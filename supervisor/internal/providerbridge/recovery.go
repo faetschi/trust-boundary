@@ -173,6 +173,21 @@ type ProviderResultBinding struct {
 	EffectID             string
 }
 
+// ProviderAdmissionDenialBinding binds the released DENY Result of an ALLOWed operation whose settled
+// change delta admission refused to the gate decision, the provider_admission_denied record and the
+// reason code. The provider generation does not move and no transition exists. The verifier must find
+// the Store effect EffectID holding a denied admission with exactly this reason and no promotion.
+type ProviderAdmissionDenialBinding struct {
+	Decision             ProviderDecisionBinding
+	ResultRecordSequence uint64
+	ResultRecordHash     string
+	ResultID             string
+	ResultDigest         string
+	Result               protocol.Result
+	EffectID             string
+	ReasonCode           string
+}
+
 // StoreReplayVerifier cross-links provider decisions and released results to
 // concrete durable Store evidence. Implementations must be read-only. A nil
 // verifier permits provider-only DENY projection, but any ALLOW decision
@@ -181,6 +196,7 @@ type ProviderResultBinding struct {
 type StoreReplayVerifier interface {
 	VerifyDecision(ProviderDecisionBinding) error
 	VerifyResult(ProviderResultBinding) error
+	VerifyAdmissionDenial(ProviderAdmissionDenialBinding) error
 }
 
 // TranscriptProjection contains only bounded status, identity and commitment
@@ -532,6 +548,42 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			state = replayAwaitExchange
 			resultCount++
 
+		case "provider_admission_denied":
+			if state != replayAwaitResult || pending == nil || resultCount == math.MaxUint64 {
+				return TranscriptProjection{}, replayError("admission denial has no unique preceding gate decision")
+			}
+			var evidence admissionDeniedEvidence
+			if err := unmarshalCanonicalEvent(record.Event.Data, &evidence); err != nil ||
+				record.Sequence <= pending.binding.DecisionRecordSequence ||
+				verifyReplayEventID(record, cfg.ConversationID, evidence.ResultID, ordinal) != nil {
+				return TranscriptProjection{}, replayError("admission denial record is malformed or out of order")
+			}
+			if err := validateReplayAdmissionDenial(evidence, *pending, cfg, currentGeneration, currentTree, effects); err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			decoded, err := protocol.DecodeResult(evidence.Result)
+			if err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			if !hasReplayVerifier(verifier) {
+				return TranscriptProjection{}, replayError("admission denial requires a concrete read-only Store verifier")
+			}
+			if err := verifier.VerifyAdmissionDenial(ProviderAdmissionDenialBinding{
+				Decision: cloneDecisionBinding(pending.binding), ResultRecordSequence: record.Sequence,
+				ResultRecordHash: record.Hash, ResultID: evidence.ResultID, ResultDigest: evidence.ResultDigest,
+				Result: cloneProtocolResult(decoded), EffectID: evidence.EffectID, ReasonCode: evidence.ReasonCode,
+			}); err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, fmt.Errorf("verify Store admission denial cross-link: %w", err))
+			}
+			denialContent := string(evidence.Result)
+			denialMessage := openrouter.Message{Role: openrouter.Tool, ToolCallID: evidence.ToolCallID, Content: &denialContent}
+			if err := appendReplayHistory(&history, route, denialMessage); err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
+			pending = nil
+			state = replayAwaitExchange
+			resultCount++
+
 		case retirementEventKind:
 			if pins.PreviousOwnerEpoch == 0 {
 				return TranscriptProjection{}, replayError("provider lineage retirement lacks a retained predecessor owner")
@@ -742,18 +794,49 @@ func sameReplayToolCallProjection(recorded *ToolCallProjection, captured openrou
 	return err == nil && bytes.Equal(got, want)
 }
 
+// validateReplayAdmissionDenial accepts exactly one shape: an ALLOW gate decision followed by the DENY
+// Result of its reason code, with no output, no transition and no generation change, and a Store effect
+// that no other result used.
+func validateReplayAdmissionDenial(evidence admissionDeniedEvidence, pending replayDecision, cfg Config,
+	currentGeneration, currentTree string, effects map[string]struct{}) error {
+	decision := pending.binding.GateDecision
+	if decision.Verdict != gate.Allow {
+		return errors.New("admission denial follows a gate decision that did not allow the operation")
+	}
+	if err := validateReplayResultIdentity(evidence.resultEvidence, pending, cfg, currentGeneration, currentTree); err != nil {
+		return err
+	}
+	if !protocol.ValidAdmissionReasonCode(evidence.ReasonCode) {
+		return errors.New("admission denial has no stable reason code")
+	}
+	decoded, err := protocol.DecodeResult(evidence.Result)
+	if err != nil {
+		return err
+	}
+	canonical, err := protocol.MarshalResult(decoded)
+	if err != nil || !bytes.Equal(canonical, evidence.Result) {
+		return errors.New("admission denial is not the exact canonical protocol result")
+	}
+	if !reflect.DeepEqual(decoded, admissionDeniedResult(pending.binding.Proposal, decision, evidence.ReasonCode)) {
+		return errors.New("admission denial result differs from the recorded gate decision and reason code")
+	}
+	if evidence.GenerationTo != currentGeneration || evidence.TreeDigestTo != currentTree ||
+		evidence.TransitionID != "" || evidence.TransitionSeq != 0 || !validText(evidence.EffectID, MaxIdentityBytes) {
+		return errors.New("admission denial moves the provider generation, carries a transition, or lacks its Store effect")
+	}
+	if _, exists := effects[evidence.EffectID]; exists {
+		return errors.New("admission denial effect ID was reused")
+	}
+	effects[evidence.EffectID] = struct{}{}
+	return nil
+}
+
 func validateReplayResult(evidence resultEvidence, pending replayDecision, cfg Config,
 	currentGeneration, currentTree string, lastTransition *uint64, transitions, effects map[string]struct{}) error {
 	decision := pending.binding.GateDecision
 	call := pending.call
-	if evidence.WorkflowID != cfg.WorkflowID || evidence.ConversationID != cfg.ConversationID ||
-		evidence.ResponseIDIssuer != responseIssuer || evidence.ToolCallIDIssuer != callIssuer ||
-		evidence.ResponseID != pending.binding.ResponseID || evidence.ToolCallID != call.ID ||
-		evidence.Tool != call.Name || evidence.ArgumentDigest != decision.CanonicalArgumentsDigest ||
-		evidence.Sequence != pending.binding.ProviderSequence || evidence.GenerationFrom != currentGeneration ||
-		evidence.TreeDigestFrom != currentTree || evidence.ResultID != stableResultID(cfg.WorkflowID, cfg.ConversationID, evidence.ResponseID, evidence.ToolCallID) ||
-		evidence.ResultDigest != digestBytes(evidence.Result) || len(evidence.Result) == 0 {
-		return errors.New("provider result does not match its captured call and input provider tip")
+	if err := validateReplayResultIdentity(evidence, pending, cfg, currentGeneration, currentTree); err != nil {
+		return err
 	}
 	decoded, err := protocol.DecodeResult(evidence.Result)
 	if err != nil {
@@ -801,6 +884,24 @@ func validateReplayResult(evidence resultEvidence, pending replayDecision, cfg C
 	}
 	if evidence.GenerationTo == "" || evidence.TreeDigestTo == "" {
 		return errors.New("provider result has no output generation commitment")
+	}
+	return nil
+}
+
+// validateReplayResultIdentity checks that a result record belongs to the pending captured call at the
+// current provider tip.
+func validateReplayResultIdentity(evidence resultEvidence, pending replayDecision, cfg Config,
+	currentGeneration, currentTree string) error {
+	decision := pending.binding.GateDecision
+	call := pending.call
+	if evidence.WorkflowID != cfg.WorkflowID || evidence.ConversationID != cfg.ConversationID ||
+		evidence.ResponseIDIssuer != responseIssuer || evidence.ToolCallIDIssuer != callIssuer ||
+		evidence.ResponseID != pending.binding.ResponseID || evidence.ToolCallID != call.ID ||
+		evidence.Tool != call.Name || evidence.ArgumentDigest != decision.CanonicalArgumentsDigest ||
+		evidence.Sequence != pending.binding.ProviderSequence || evidence.GenerationFrom != currentGeneration ||
+		evidence.TreeDigestFrom != currentTree || evidence.ResultID != stableResultID(cfg.WorkflowID, cfg.ConversationID, evidence.ResponseID, evidence.ToolCallID) ||
+		evidence.ResultDigest != digestBytes(evidence.Result) || len(evidence.Result) == 0 {
+		return errors.New("provider result does not match its captured call and input provider tip")
 	}
 	return nil
 }

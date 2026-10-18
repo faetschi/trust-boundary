@@ -149,6 +149,11 @@ type governedReplayDecisionEvidence struct {
 	toGen      string
 	toTree     string
 	resultSeen bool
+	// denied marks an ALLOWed operation whose settled change delta admission refused: the Store holds a
+	// denied_after_effect operation and no transition, denyReason is the reason code recomputed from the
+	// retained admission record and scope, and the only releasable result is the matching DENY.
+	denied     bool
+	denyReason string
 }
 
 // Alias keeps helper fields explicit while avoiding accidental retention in
@@ -615,7 +620,7 @@ func newGovernedStoreReplayVerifier(pins GovernedReplayPins, providerTrace, stor
 		v.authByEffect[auth.EffectID] = record
 	}
 	for _, op := range disposition.Operations {
-		if op.Outcome != "success" {
+		if op.Outcome != "success" && !deniedAfterEffect(op) {
 			return nil, errors.New("Store contains an operation without a successful, releasable outcome")
 		}
 	}
@@ -697,6 +702,18 @@ func (v *governedStoreReplayVerifier) VerifyDecision(binding providerbridge.Prov
 	}
 	verified := &governedReplayDecisionEvidence{binding: aliasDecision(binding), request: request,
 		auth: authRecord, effect: effect, entry: operation}
+	if deniedAfterEffect(operation) {
+		reason, err := v.deniedAdmissionReason(request, effect, operation)
+		if err != nil {
+			return err
+		}
+		verified.denied, verified.denyReason = true, reason
+		v.usedAuth[key] = true
+		v.lastAuthSequence = authRecord.Sequence
+		v.decisions[key] = verified
+		v.called = true
+		return nil
+	}
 	expected, toGeneration, toTree, _, _, _, err := v.expectedDurableOutput(verified, binding)
 	if err != nil {
 		return err
@@ -847,7 +864,8 @@ func (v *governedStoreReplayVerifier) bindStoreOperation(binding providerbridge.
 	entry, ok := v.operationByEffect[auth.EffectID]
 	if !ok || entry.AuditSequence != effect.OutcomeSequence || entry.Tool != request.Tool || entry.Operation != request.Operation ||
 		entry.DecisionID != decision.ID || entry.ArgumentDigest != argumentDigest || entry.InputGeneration != request.InputGeneration ||
-		entry.InputTreeDigest != request.InputTreeDigest || entry.Outcome != "success" || entry.ResultDigest != digestBytes(effect.Result) {
+		entry.InputTreeDigest != request.InputTreeDigest || (entry.Outcome != "success" && !deniedAfterEffect(entry)) ||
+		entry.ResultDigest != digestBytes(effect.Result) {
 		return sessionrepo.OperationRequest{}, audit.EffectTrace{}, sessionrepo.OperationEvidence{}, errors.New("Store OperationEvidence does not bind the authorized successful effect")
 	}
 	if request.Tool == "read" {
@@ -870,6 +888,10 @@ func (v *governedStoreReplayVerifier) bindStoreOperation(binding providerbridge.
 		if entry.Admission == nil {
 			return sessionrepo.OperationRequest{}, audit.EffectTrace{}, sessionrepo.OperationEvidence{}, errors.New("Store mutation has no verified admission reference")
 		}
+		if deniedAfterEffect(entry) {
+			// No transition exists for a refused candidate; VerifyDecision checks its admission record.
+			return request, effect, entry, nil
+		}
 		transition, found := v.transitionForOperation(entry)
 		if !found || transition.InputGeneration != request.InputGeneration || transition.InputTreeDigest != request.InputTreeDigest ||
 			transition.OutputGeneration != entry.OutputGeneration || transition.OutputTreeDigest != entry.OutputTreeDigest ||
@@ -891,7 +913,7 @@ func (v *governedStoreReplayVerifier) VerifyResult(binding providerbridge.Provid
 	decisionKey := governedReplayDecisionKey{binding.Decision.DecisionRecordSequence, binding.Decision.DecisionRecordHash}
 	verified, ok := v.decisions[decisionKey]
 	if !ok || verified.binding.DecisionRecordHash != binding.Decision.DecisionRecordHash ||
-		verified.binding.Proposal.Tool != binding.Decision.Proposal.Tool || verified.resultSeen ||
+		verified.binding.Proposal.Tool != binding.Decision.Proposal.Tool || verified.resultSeen || verified.denied ||
 		binding.GenerationFrom != binding.Decision.InputGeneration || binding.TreeDigestFrom != binding.Decision.InputTreeDigest ||
 		!validBareSHA256(binding.ResultDigest) {
 		return errors.New("provider result has no unique successful Store-linked decision")
@@ -939,6 +961,91 @@ func (v *governedStoreReplayVerifier) VerifyResult(binding providerbridge.Provid
 	verified.output = append([]byte(nil), expected...)
 	verified.toGen, verified.toTree, verified.resultSeen = toGeneration, toTree, true
 	v.providerTipGeneration, v.providerTipTree = toGeneration, toTree
+	return nil
+}
+
+// deniedAfterEffect reports whether the Store evidence is that of an operation whose effect completed and
+// whose settled change delta admission refused: nothing was promoted, so there is no output generation.
+func deniedAfterEffect(operation sessionrepo.OperationEvidence) bool {
+	return operation.Outcome == "denied_after_effect" && operation.Admission != nil && operation.Admission.Outcome == "deny" &&
+		operation.OutputGeneration == "" && operation.OutputTreeDigest == ""
+}
+
+// deniedAdmissionReason verifies the retained evidence of a refused candidate and returns its reason code,
+// recomputed from the admission record and the Store's admission scope: the record is a denial of exactly
+// this operation, the effect result carries the same record and candidate, and the scope denies it.
+func (v *governedStoreReplayVerifier) deniedAdmissionReason(request sessionrepo.OperationRequest, effect audit.EffectTrace,
+	operation sessionrepo.OperationEvidence) (string, error) {
+	var admission governedReplayAdmissionRecord
+	if err := v.decodeAdmission(*operation.Admission, request, effect, &admission); err != nil {
+		return "", err
+	}
+	candidate := admission.Candidate
+	if operation.Admission.Outcome != "deny" || admission.Outcome != "deny" || candidate.Tool != request.Tool ||
+		candidate.Operation != request.Operation || candidate.Decision != request.Decision ||
+		candidate.ArgumentDigest != request.ArgumentDigest || candidate.InputGeneration != request.InputGeneration ||
+		candidate.InputTreeDigest != request.InputTreeDigest || candidate.ViewID != request.ViewID ||
+		candidate.ExecutionContextDigest != request.ExecutionContextDigest {
+		return "", errors.New("denied admission record does not bind the exact refused operation")
+	}
+	outcome, reason := v.bundle.AdmissionScope.Decide(request.OutputScopePaths, candidate.Changes)
+	if outcome != "deny" || !protocol.ValidAdmissionReasonCode(reason) {
+		return "", errors.New("the Store admission scope does not deny the retained candidate")
+	}
+	if request.Tool == "bash" {
+		var result governedReplayCommandEffect
+		if decodeCanonicalGoverned(effect.Result, &result) != nil || !sameDurableTransition(result.Transition, candidate) ||
+			result.Admission != *operation.Admission || result.RunnerProfile != operation.CommandRunnerProfile ||
+			operation.ExitCode == nil || *operation.ExitCode != result.Command.ExitCode || !result.Command.ExitObserved ||
+			result.Settlement.ExitCode != result.Command.ExitCode || !result.Settlement.ExitObserved ||
+			result.Settlement.LeaseID != request.Operation.LeaseID || result.Settlement.ViewID != request.ViewID ||
+			!result.Settlement.ProcessScopeEmpty || !result.Settlement.WritersStopped || !result.Settlement.MountDetached {
+			return "", errors.New("denied Bash effect result differs from its retained candidate and settlement")
+		}
+		return reason, nil
+	}
+	var result governedReplayMutationEffect
+	if decodeCanonicalGoverned(effect.Result, &result) != nil || !sameDurableTransition(result.Transition, candidate) ||
+		result.Admission != *operation.Admission {
+		return "", errors.New("denied mutation effect result differs from its retained candidate")
+	}
+	return reason, nil
+}
+
+// VerifyAdmissionDenial is the released-result check of a refused ALLOW: the provider_admission_denied
+// record is exactly the DENY Result of the reason the Store evidence yields, for a decision whose Store
+// operation was denied after its effect, and the provider generation stays where it was.
+func (v *governedStoreReplayVerifier) VerifyAdmissionDenial(binding providerbridge.ProviderAdmissionDenialBinding) error {
+	if v == nil {
+		return errors.New("Store replay verifier is unavailable")
+	}
+	decisionKey := governedReplayDecisionKey{binding.Decision.DecisionRecordSequence, binding.Decision.DecisionRecordHash}
+	verified, ok := v.decisions[decisionKey]
+	if !ok || !verified.denied || verified.resultSeen || verified.binding.DecisionRecordHash != binding.Decision.DecisionRecordHash ||
+		verified.binding.Proposal.Tool != binding.Decision.Proposal.Tool || !validBareSHA256(binding.ResultDigest) ||
+		binding.EffectID != verified.request.EffectID || binding.ReasonCode != verified.denyReason {
+		return errors.New("admission denial has no unique Store-denied decision with this effect and reason")
+	}
+	providerRecord, ok := v.providerRecords[binding.ResultRecordSequence]
+	if !ok || providerRecord.Hash != binding.ResultRecordHash || providerRecord.Event.Kind != "provider_admission_denied" ||
+		providerRecord.Event.ID != fmt.Sprintf("%s:%s:%d", binding.Decision.ConversationID, binding.ResultID, binding.ResultRecordSequence) {
+		return errors.New("admission denial sequence/hash does not resolve to exactly one protected record")
+	}
+	var denial providerAdmissionDeniedEvidence
+	if decodeCanonicalGoverned(providerRecord.Event.Data, &denial) != nil || denial.ResultID != binding.ResultID ||
+		denial.ResultDigest != binding.ResultDigest || denial.ResultDigest != digestBytes(denial.Result) ||
+		!bytes.Equal(denial.Result, mustMarshalProtocolResult(binding.Result)) || denial.ReasonCode != binding.ReasonCode ||
+		denial.EffectID != binding.EffectID || denial.WorkflowID != binding.Decision.WorkflowID ||
+		denial.ConversationID != binding.Decision.ConversationID || denial.ResponseID != binding.Decision.ResponseID ||
+		denial.ResponseIDIssuer != binding.Decision.ResponseIDIssuer || denial.ToolCallID != binding.Decision.ToolCallID ||
+		denial.ToolCallIDIssuer != binding.Decision.ToolCallIDIssuer || denial.Tool != binding.Decision.Proposal.Tool ||
+		denial.GenerationFrom != binding.Decision.InputGeneration || denial.TreeDigestFrom != binding.Decision.InputTreeDigest {
+		return errors.New("admission denial journal record differs from the exact callback binding")
+	}
+	if _, err := checkAdmissionDenialResult(denial, binding.Decision.GateDecision); err != nil {
+		return err
+	}
+	verified.resultSeen = true
 	return nil
 }
 
@@ -1039,6 +1146,19 @@ func (v *governedStoreReplayVerifier) transitionForOperation(operation sessionre
 
 func (v *governedStoreReplayVerifier) verifyAdmission(reference sessionrepo.AdmissionReference, request sessionrepo.OperationRequest,
 	transition delta.Transition, effect audit.EffectTrace, decoded *governedReplayAdmissionRecord) error {
+	if err := v.decodeAdmission(reference, request, effect, decoded); err != nil {
+		return err
+	}
+	if decoded.Candidate.ID != transition.ID || !sameDurableTransition(decoded.Candidate, transition) || reference.Outcome != "allow" {
+		return errors.New("admission record does not bind exact effect intent, Store policy, and transition")
+	}
+	return nil
+}
+
+// decodeAdmission resolves a Store admission reference to its protected record and checks that it binds
+// the operation request, the effect intent and the pinned Store policies, whatever its outcome.
+func (v *governedStoreReplayVerifier) decodeAdmission(reference sessionrepo.AdmissionReference, request sessionrepo.OperationRequest,
+	effect audit.EffectTrace, decoded *governedReplayAdmissionRecord) error {
 	var match *audit.Record
 	for index := range v.admissionTrace.Records {
 		record := &v.admissionTrace.Records[index]
@@ -1056,9 +1176,8 @@ func (v *governedStoreReplayVerifier) verifyAdmission(reference sessionrepo.Admi
 	if decodeCanonicalGoverned(match.Event.Data, decoded) != nil || decoded.SchemaVersion != sessionrepo.AdmissionSchemaVersion ||
 		!reflect.DeepEqual(decoded.Request, request) || decoded.IntentDigest != digestBytes(effect.Intent) || decoded.PolicyDigest != v.pins.StorePolicyDigest ||
 		decoded.MetadataPolicyDigest != v.pins.MetadataPolicyDigest || decoded.Outcome != reference.Outcome ||
-		decoded.Candidate.ID != transition.ID || !sameDurableTransition(decoded.Candidate, transition) ||
-		reference.Outcome != "allow" || reference.IntentDigest != decoded.IntentDigest {
-		return errors.New("admission record does not bind exact effect intent, Store policy, and transition")
+		reference.IntentDigest != decoded.IntentDigest {
+		return errors.New("admission record does not bind exact effect intent and Store policy")
 	}
 	return nil
 }
@@ -1179,7 +1298,7 @@ func (v *governedStoreReplayVerifier) finish(projection providerbridge.Transcrip
 		return errors.New("Store operation evidence is not one-to-one with this conversation's provider ALLOW authorization")
 	}
 	for _, decision := range v.decisions {
-		if decision.binding.GateDecision.Verdict == gate.Allow && decision.output == nil && decision.resultSeen {
+		if decision.binding.GateDecision.Verdict == gate.Allow && decision.output == nil && decision.resultSeen && !decision.denied {
 			return errors.New("released provider result has an empty Store output reconstruction")
 		}
 	}

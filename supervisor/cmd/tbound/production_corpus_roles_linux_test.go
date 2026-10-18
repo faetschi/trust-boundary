@@ -36,11 +36,13 @@ func corpusCaseForRole(t *testing.T, manifest evalcorpus.Manifest, role string) 
 	return ""
 }
 
-var corpusTestRoles = []string{corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRolePStaticReplay,
+// corpusTestRoles are the roles this build serves; the two adaptive replay roles wait for the matched
+// scripted attacker and are refused as role-unavailable.
+var corpusTestRoles = []string{corpusRoleTrajectory, corpusRoleStaticReplay, corpusRolePStaticReplay,
 	corpusRoleVariance1, corpusRoleVariance2, corpusRoleCompliant, corpusRoleAmbiguous}
 
 func TestCorpusRoleSetIsClosed(t *testing.T) {
-	for _, role := range corpusTestRoles {
+	for _, role := range append([]string{corpusRoleAdaptiveReplay, corpusRolePAdaptiveReplay}, corpusTestRoles...) {
 		if !validCorpusRole(role) {
 			t.Errorf("role %q is not valid", role)
 		}
@@ -136,7 +138,7 @@ func TestCorpusServiceRefusesARoleThatDoesNotMatchTheCaseKind(t *testing.T) {
 func TestCorpusServiceAdmitsDifferentRolesOfOneCaseIndependently(t *testing.T) {
 	h := newCorpusServiceHarness(t)
 	caseID := corpusCaseForRole(t, h.manifest, corpusRoleVariance1)
-	roles := []string{corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRoleVariance1, corpusRoleVariance2}
+	roles := []string{corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleVariance1, corpusRoleVariance2}
 	for i, role := range roles {
 		response := roundTripPiServiceRequest(t, h.server.path, corpusRequest("tbr-indep-"+role, caseID, role, 1))
 		if response.Status != "completed" || int(h.server.calls.Load()) != i+1 {

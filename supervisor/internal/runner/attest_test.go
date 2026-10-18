@@ -39,7 +39,28 @@ func (s *stubInner) Execute(context.Context, Step) (Outcome, error) {
 
 func matching() *ReceiptFacts {
 	return &ReceiptFacts{ProfileHash: attestPins.ProfileHash,
-		ContainmentProfileDigest: attestPins.ContainmentProfileDigest, FrozenSourceDigest: attestPins.FrozenSourceDigest}
+		ContainmentProfileDigest: attestPins.ContainmentProfileDigest, FrozenSourceDigest: attestPins.FrozenSourceDigest,
+		ProviderMode: "model"}
+}
+
+// The expected digests newAttest gives for the known cases.
+var (
+	testScriptDigest = "sha256:" + hexOf('s')
+	testPolicyC      = "sha256:" + hexOf('c')
+	testPolicyP      = "sha256:" + hexOf('p')
+)
+
+// matchingFor is the receipt a correct service returns for the step: a model run says only "model", a
+// scripted replay carries its script digest and the admission policy digest of its configuration.
+func matchingFor(s Step) *ReceiptFacts {
+	r := matching()
+	if s.Role == RoleStaticReplay || s.Role == RoleAdaptiveReplay {
+		r.ProviderMode, r.ScriptDigest, r.AdmissionPolicyDigest = "scripted", testScriptDigest, testPolicyC
+		if s.Configuration == CfgP {
+			r.AdmissionPolicyDigest, r.Delta = testPolicyP, "net-sink/v1" // the registered p_delta of adv-p
+		}
+	}
+	return r
 }
 
 func newAttest(inner Executor) Attest {
@@ -50,6 +71,13 @@ func newAttest(inner Executor) Attest {
 		PDelta: func(id string) (string, bool) {
 			return map[string]string{"adv-p": "net-sink/v1", "adv-none": ""}[id], id == "adv-p" || id == "adv-none"
 		},
+		ScriptDigest: func(id string) (string, bool) { return testScriptDigest, id == "adv-p" || id == "adv-none" },
+		AdmissionPolicyDigest: func(id string, cfg Configuration) (string, bool) {
+			if cfg == CfgP {
+				return testPolicyP, id == "adv-p" || id == "adv-none"
+			}
+			return testPolicyC, id == "adv-p" || id == "adv-none"
+		},
 	}
 }
 
@@ -59,13 +87,14 @@ func advStep(cfg Configuration, role Role) Step {
 }
 
 func TestAttestFillsWhatGovernedCLeavesEmpty(t *testing.T) {
-	in := &stubInner{out: Outcome{E01: E01Identity{Digest: "sha256:e01"}, Receipt: matching()}}
-	a := newAttest(in)
+	a := newAttest(nil)
 	for _, tc := range []struct {
 		role    Role
 		matched bool
 	}{{RoleTrajectory, false}, {RoleStaticReplay, true}, {RoleAdaptiveReplay, true}, {RoleVarianceRepeat, false}} {
-		out, err := a.Execute(context.Background(), advStep(CfgC, tc.role))
+		step := advStep(CfgC, tc.role)
+		a.Inner = &stubInner{out: Outcome{E01: E01Identity{Digest: "sha256:e01"}, Receipt: matchingFor(step)}}
+		out, err := a.Execute(context.Background(), step)
 		if err != nil {
 			t.Fatalf("%s: %v", tc.role, err)
 		}
@@ -90,7 +119,7 @@ func TestAttestVerifiesOnlyOnEqualPins(t *testing.T) {
 		"containment": func(r *ReceiptFacts) { r.ContainmentProfileDigest = "" },
 		"source":      func(r *ReceiptFacts) { r.FrozenSourceDigest += "0" },
 	} {
-		r := matching()
+		r := matchingFor(advStep(CfgC, RoleStaticReplay))
 		mutate(r)
 		in := &stubInner{out: Outcome{E01: E01Identity{Digest: "d"}, Receipt: r}}
 		out, err := newAttest(in).Execute(context.Background(), advStep(CfgC, RoleStaticReplay))
@@ -114,7 +143,7 @@ func TestAttestVerifiesOnlyOnEqualPins(t *testing.T) {
 
 func TestAttestRefusesACReceiptWithADelta(t *testing.T) {
 	for _, delta := range []string{"admit-all/v1", "net-sink/v1", "no-reap/v1", "unknown"} {
-		r := matching()
+		r := matchingFor(advStep(CfgC, RoleStaticReplay))
 		r.Delta = delta
 		out, err := newAttest(&stubInner{out: Outcome{Receipt: r, E01: E01Identity{Digest: "d"}}}).Execute(context.Background(), advStep(CfgC, RoleStaticReplay))
 		if !errors.Is(err, ErrReceiptPolicy) {
@@ -125,7 +154,7 @@ func TestAttestRefusesACReceiptWithADelta(t *testing.T) {
 		}
 	}
 	for _, delta := range []string{"", "none"} {
-		r := matching()
+		r := matchingFor(advStep(CfgC, RoleStaticReplay))
 		r.Delta = delta
 		if _, err := newAttest(&stubInner{out: Outcome{Receipt: r, E01: E01Identity{Digest: "d"}}}).Execute(context.Background(), advStep(CfgC, RoleStaticReplay)); err != nil {
 			t.Fatalf("delta %q: %v", delta, err)
@@ -135,10 +164,10 @@ func TestAttestRefusesACReceiptWithADelta(t *testing.T) {
 
 func TestAttestPReceiptDeltaMustEqualTheManifest(t *testing.T) {
 	run := func(a Attest, caseID, delta string) (Outcome, error) {
-		r := matching()
-		r.Delta = delta
 		st := advStep(CfgP, RoleStaticReplay)
 		st.CaseID = caseID
+		r := matchingFor(st)
+		r.Delta = delta
 		a.Inner = &stubInner{out: Outcome{Receipt: r, E01: E01Identity{Digest: "d"}}}
 		return a.Execute(context.Background(), st)
 	}

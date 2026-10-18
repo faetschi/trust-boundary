@@ -105,8 +105,8 @@ func (c *productionCorpus) roleAllowed(caseID, role string) bool {
 
 // roleServable reports whether this build can serve role for caseID once roleAllowed holds: a static
 // replay role needs the frozen script of the case; a P role needs a delta the build implements; the
-// scripted adaptive replay of the P half is not implemented. It never selects a provider for a role
-// it cannot serve: a P run must not fall back to a model.
+// scripted adaptive replay of either half is not implemented until the matched scripted attacker lands:
+// the C half must not fall back to a model. It never selects a provider for a role it cannot serve.
 func (c *productionCorpus) roleServable(caseID, role string) bool {
 	if !c.roleAllowed(caseID, role) {
 		return false
@@ -117,7 +117,7 @@ func (c *productionCorpus) roleServable(caseID, role string) bool {
 		return len(trial.Script) != 0
 	case corpusRolePStaticReplay:
 		return len(trial.Script) != 0 && implementedPDelta(trial.EffectivePDelta())
-	case corpusRolePAdaptiveReplay:
+	case corpusRoleAdaptiveReplay, corpusRolePAdaptiveReplay:
 		return false
 	}
 	return true

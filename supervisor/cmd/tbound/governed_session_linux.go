@@ -145,6 +145,34 @@ type providerResultEvidence struct {
 	EffectID         string `json:"effect_id,omitempty"`
 }
 
+// providerAdmissionDeniedEvidence is the provider_admission_denied journal record: the DENY Result of an
+// ALLOWed operation whose settled change delta admission refused. It has no transition and does not move
+// the provider generation; EffectID is the Store effect holding the refusal.
+type providerAdmissionDeniedEvidence struct {
+	providerResultEvidence
+	ReasonCode string `json:"reason_code"`
+}
+
+// checkAdmissionDenialResult checks that a denial record carries exactly the DENY Result of its reason
+// code for the ALLOW decision: same correlation and policy digest, no output, no transition, an unchanged
+// provider generation, and a Store effect. It returns the decoded Result.
+func checkAdmissionDenialResult(denial providerAdmissionDeniedEvidence, decision gate.Decision) (protocol.Result, error) {
+	result, err := protocol.DecodeResult(denial.Result)
+	canonical, marshalErr := protocol.MarshalResult(result)
+	if err != nil || marshalErr != nil || !bytes.Equal(canonical, denial.Result) ||
+		decision.Verdict != gate.Allow || !protocol.ValidAdmissionReasonCode(denial.ReasonCode) ||
+		result.ResponseID == nil || result.ResponseID.Issuer != denial.ResponseIDIssuer || result.ResponseID.Opaque != denial.ResponseID ||
+		result.ToolCallID != denial.ToolCallID || result.Tool != denial.Tool || result.Sequence != denial.Sequence ||
+		result.CanonicalArgumentsDigest != denial.ArgumentDigest || result.Verdict != string(gate.Deny) ||
+		result.ReasonCode != denial.ReasonCode || result.PolicyDigest != decision.PolicyDigest || len(result.Output) != 0 ||
+		decision.CanonicalArgumentsDigest != denial.ArgumentDigest || decision.Tool != denial.Tool || decision.Sequence != denial.Sequence ||
+		denial.TransitionID != "" || denial.TransitionSeq != 0 || denial.EffectID == "" ||
+		denial.GenerationTo != denial.GenerationFrom || denial.TreeDigestTo != denial.TreeDigestFrom {
+		return protocol.Result{}, errors.Join(ErrGovernedSessionEvidence, err, marshalErr)
+	}
+	return result, nil
+}
+
 type governedCapture struct {
 	proposal         protocol.Proposal
 	decision         gate.Decision
@@ -985,6 +1013,49 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
 			currentGeneration, currentTree = resultEvidence.GenerationTo, resultEvidence.TreeDigestTo
+			activeCaptureKey = ""
+		case "provider_admission_denied":
+			if activeCaptureKey == "" {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			var denial providerAdmissionDeniedEvidence
+			if err := unmarshalGovernedJSON(record.Event.Data, &denial); err != nil || denial.WorkflowID != a.workflowID ||
+				denial.ConversationID != a.conversationID || denial.ResponseIDIssuer != governedResponseIssuer ||
+				denial.ToolCallIDIssuer != governedCallIssuer || denial.GenerationFrom != currentGeneration ||
+				denial.TreeDigestFrom != currentTree || denial.ResultDigest != digestBytes(denial.Result) ||
+				denial.ResultID != stableProviderResultID(a.workflowID, a.conversationID, denial.ResponseID, denial.ToolCallID) {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			if err := verifyProviderEventID(record, a.conversationID, denial.ResultID, providerOrdinal); err != nil {
+				return governedCapture{}, err
+			}
+			denialKey := providerCaptureKey(denial.ResponseID, denial.ToolCallID)
+			capture, captured := exchanges[denialKey]
+			decision, decided := decisions[denialKey]
+			if denialKey != activeCaptureKey || !captured || !decided || capture.sequence != denial.Sequence ||
+				capture.proposal.Tool != denial.Tool {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			if _, err := checkAdmissionDenialResult(denial, decision); err != nil {
+				return governedCapture{}, err
+			}
+			matchedDenial := 0
+			for i := range proofs {
+				proof := &proofs[i]
+				if proof.response != denial.ResponseID || proof.call != denial.ToolCallID || proof.sequence != denial.Sequence {
+					continue
+				}
+				if proof.decisionSequence >= record.Sequence || proof.generation != denial.GenerationFrom ||
+					proof.treeDigest != denial.TreeDigestFrom || proof.result != nil {
+					return governedCapture{}, ErrGovernedSessionEvidence
+				}
+				copy := denial.providerResultEvidence
+				proof.result = &copy
+				matchedDenial++
+			}
+			if matchedDenial != 1 {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
 			activeCaptureKey = ""
 		case "provider_tool_result_unknown", "provider_exchange_unknown":
 			id := "unknown-result"

@@ -328,3 +328,28 @@ func ScriptDigest(script []ScriptTurn) (string, error) {
 	sum := sha256.Sum256(buf.Bytes())
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
+
+// AdmissionPolicyDigest is the admission_policy_digest a governed service reports for a run: the
+// digest of the Store's admission schema, both pinned policy digests, the scope rule (promote-all/v1
+// when promoteAll, else exact-path-output-scope/v1) and the protected paths. It must equal
+// sessionrepo.AdmissionPolicyDigest for the same inputs; a test in cmd/tbound holds the two together.
+// The host computes it from the manifest and its pins so that it needs no Linux-only package.
+func AdmissionPolicyDigest(policyDigest, metadataPolicyDigest string, promoteAll bool, protectedPaths []string) (string, error) {
+	rule := "exact-path-output-scope/v1"
+	if promoteAll {
+		rule = "promote-all/v1"
+		protectedPaths = nil
+	}
+	encoded, err := json.Marshal(struct {
+		SchemaVersion        string   `json:"schema_version"`
+		PolicyDigest         string   `json:"policy_digest"`
+		MetadataPolicyDigest string   `json:"metadata_policy_digest"`
+		ScopeRule            string   `json:"scope_rule"`
+		ProtectedPaths       []string `json:"protected_paths,omitempty"`
+	}{"tbound-sessionrepo-admission/v1", policyDigest, metadataPolicyDigest, rule, protectedPaths})
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}

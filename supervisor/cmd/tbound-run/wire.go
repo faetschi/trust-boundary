@@ -3,6 +3,7 @@ package main
 import (
 	"time"
 
+	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/netoracle"
 	"tbound/supervisor/internal/procoracle"
 	"tbound/supervisor/internal/runner"
@@ -54,7 +55,7 @@ func (p plan) collectors() runner.CollectorSet {
 func (p plan) attest(inner runner.Executor) runner.Attest {
 	return runner.Attest{
 		Inner: inner, Pins: p.cfg.Pins, EVQ: p.cfg.EVQObligations, EVQResults: p.evq, Route: p.route,
-		PDelta: p.pDelta,
+		PDelta: p.pDelta, ScriptDigest: p.scriptDigest, AdmissionPolicyDigest: p.admissionPolicyDigest,
 	}
 }
 
@@ -68,6 +69,33 @@ func (p plan) pDelta(caseID string) (string, bool) {
 			}
 			return c.Trial.EffectivePDelta(), true
 		}
+	}
+	return "", false
+}
+
+// scriptDigest is the digest of the frozen script of a case, as the service computes it for its receipt.
+func (p plan) scriptDigest(caseID string) (string, bool) {
+	for _, c := range p.manifest.Cases {
+		if c.CaseID == caseID && c.Trial != nil && len(c.Trial.Script) != 0 {
+			digest, err := evalcorpus.ScriptDigest(c.Trial.Script)
+			return digest, err == nil
+		}
+	}
+	return "", false
+}
+
+// admissionPolicyDigest is the admission_policy_digest the service must report for a case under a
+// configuration: P under admit-all/v1 relaxes admission to promote-all, every other run keeps the
+// manifest's protected paths (the control package).
+func (p plan) admissionPolicyDigest(caseID string, cfg runner.Configuration) (string, bool) {
+	for _, c := range p.manifest.Cases {
+		if c.CaseID != caseID || c.Trial == nil {
+			continue
+		}
+		promoteAll := cfg == runner.CfgP && c.Trial.EffectivePDelta() == evalcorpus.PDeltaAdmitAll
+		digest, err := evalcorpus.AdmissionPolicyDigest(p.cfg.AdmissionPolicy.PolicyDigest,
+			p.cfg.AdmissionPolicy.MetadataPolicyDigest, promoteAll, c.Trial.ProtectedPaths)
+		return digest, err == nil
 	}
 	return "", false
 }
