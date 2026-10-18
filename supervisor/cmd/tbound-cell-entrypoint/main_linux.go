@@ -52,7 +52,6 @@ import (
 const (
 	cellEntrypointSchema = "tbound-pi-entrypoint/v1"
 
-	execFD     = 3
 	exposureFD = 4
 	bundleFD   = 9
 	proofFD    = 10

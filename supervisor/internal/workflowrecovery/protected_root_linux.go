@@ -1634,13 +1634,6 @@ func validOwnerIncarnation(incarnation OwnerIncarnation) bool {
 		incarnation.Digest == computeOwnerIncarnationDigest(incarnation)
 }
 
-func cleanProtectedRootDirectory(path string) (string, error) {
-	if path == "" || !filepath.IsAbs(path) || filepath.Clean(path) != path {
-		return "", fmt.Errorf("%w: protected root directory must be absolute and clean", ErrOwnerStore)
-	}
-	return path, nil
-}
-
 func validateProtectedOwnerStoreRoot(path string) error {
 	info, err := os.Lstat(path)
 	if err != nil {

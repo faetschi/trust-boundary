@@ -1307,16 +1307,6 @@ func validateCheckpoint(cp Checkpoint, digest string) error {
 	return nil
 }
 
-func validateCheckpointAt(cp Checkpoint, digest string, now time.Time) error {
-	if err := validateCheckpoint(cp, digest); err != nil {
-		return err
-	}
-	if err := validateLimits(cp.Limits, now); err != nil {
-		return err
-	}
-	return nil
-}
-
 func validateLimitsStructure(limits Limits) error {
 	if limits.MaxPreEffectRetries > 2 || limits.MaxCleanRestarts > 2 ||
 		limits.MaxHostCalls == 0 || limits.MaxTokens == 0 || limits.MaxHostCalls > maxSQLiteInteger ||

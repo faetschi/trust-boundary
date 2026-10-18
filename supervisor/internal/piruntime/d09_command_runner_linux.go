@@ -1025,21 +1025,6 @@ type d09ContainerState struct {
 	} `json:"State"`
 }
 
-func readContainerID(path string) (string, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	id := strings.TrimSpace(string(data))
-	if len(id) != 64 {
-		return "", errors.New("cidfile did not contain a 64-hex container id")
-	}
-	if _, err := hex.DecodeString(id); err != nil {
-		return "", err
-	}
-	return id, nil
-}
-
 func inspectContainer(ctx context.Context, podmanPath, id string) (d09ContainerState, error) {
 	cmd := exec.CommandContext(ctx, podmanPath, "inspect", id)
 	cmd.Env = d09ProbeEnv()

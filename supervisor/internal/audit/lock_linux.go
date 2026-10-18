@@ -158,10 +158,6 @@ func inodeOwner(info os.FileInfo) (uint32, error) {
 	return stat.Uid, nil
 }
 
-func currentEffectiveUID() int {
-	return syscall.Geteuid()
-}
-
 func acquireJournalLock(file *os.File) error {
 	err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if err == nil {

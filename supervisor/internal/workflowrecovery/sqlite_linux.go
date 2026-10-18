@@ -662,14 +662,6 @@ func ownerIncarnationForPID(pid int) (OwnerIncarnation, error) {
 	return identity, nil
 }
 
-func currentProcessIncarnationDigest() (string, error) {
-	incarnation, err := currentProcessIncarnation()
-	if err != nil {
-		return "", err
-	}
-	return incarnation.Digest, nil
-}
-
 func computeOwnerIncarnationDigest(incarnation OwnerIncarnation) string {
 	incarnation.Digest = ""
 	encoded, _ := json.Marshal(incarnation)

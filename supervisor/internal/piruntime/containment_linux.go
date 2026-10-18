@@ -69,8 +69,6 @@ const (
 	// the TCB, applies the process-wide Landlock ruleset, verifies the fixed
 	// descriptor birth order, and execs fd3.
 	d09EntrypointPath = "/usr/local/bin/tbound-pi-entrypoint"
-	// d09SettleTimeout bounds the post-run settlement observation.
-	d09SettleTimeout = 30 * time.Second
 	// d09CleanupTimeout bounds the owned cleanup context used on error paths so
 	// a canceled caller context can never skip teardown.
 	d09CleanupTimeout     = 20 * time.Second
@@ -2205,17 +2203,6 @@ func (l *D09PodmanCrunLauncher) validateD09LaunchRequest(ctx context.Context, re
 	return profile, nil
 }
 
-// cleanupCell settles descendants through the held scope using an owned, finite
-// context, independent of the caller context.
-func (l *D09PodmanCrunLauncher) cleanupCell() {
-	if l == nil || l.scope == nil {
-		return
-	}
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), d09CleanupTimeout)
-	defer cancel()
-	_, _ = l.scope.Settle(cleanupCtx)
-}
-
 // closeLaunchPidfdLocked records close failures and clears the descriptor only
 // after a successful Close. The caller must hold record.ownerMu.
 func closeLaunchPidfdLocked(record *d09LaunchRecord) error {
@@ -2398,10 +2385,6 @@ func (l *D09PodmanCrunLauncher) cleanupFailedLaunch(cmd *exec.Cmd) bool {
 // the worker. `--cgroup-parent` names the path resolved from the held scope.
 func d09ContainerArguments(config D09Config, name, imageRef string, environment, arguments []string) []string {
 	return d09ContainerArgumentsAt(config, name, imageRef, environment, arguments, PiWorkerCellWorkdir, nil, "")
-}
-
-func d09ContainerArgumentsWithEnv(config D09Config, name, imageRef string, environment, extraEnv, arguments []string) []string {
-	return d09ContainerArgumentsAtWithEnv(config, name, imageRef, environment, extraEnv, arguments, PiWorkerCellWorkdir, nil, "")
 }
 
 func d09ContainerArgumentsAt(config D09Config, name, imageRef string, environment, arguments []string, workdir string, mounts []string, cidPath string) []string {

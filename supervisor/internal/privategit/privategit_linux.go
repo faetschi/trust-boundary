@@ -1536,8 +1536,3 @@ func verifyRepositoryLocked(repository *Repository) error {
 func nodeIdentityFromStat(info syscall.Stat_t) nodeIdentity {
 	return nodeIdentity{Device: uint64(info.Dev), Inode: uint64(info.Ino)}
 }
-
-func hashBytes(data []byte) string {
-	digest := sha256.Sum256(data)
-	return "sha256:" + hex.EncodeToString(digest[:])
-}

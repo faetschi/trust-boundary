@@ -1863,20 +1863,6 @@ func identifyRegular(file *os.File) (fileIdentity, error) {
 	return identityFromStat(info), nil
 }
 
-func identifyAt(parent *os.File, name string) (fileIdentity, error) {
-	fd, err := syscall.Openat(int(parent.Fd()), name, linuxOPath|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		return fileIdentity{}, err
-	}
-	file := os.NewFile(uintptr(fd), name)
-	defer file.Close()
-	var info syscall.Stat_t
-	if err := syscall.Fstat(fd, &info); err != nil {
-		return fileIdentity{}, err
-	}
-	return identityFromStat(info), nil
-}
-
 func identityFromStat(info syscall.Stat_t) fileIdentity {
 	return fileIdentity{Device: uint64(info.Dev), Inode: info.Ino, Mode: info.Mode, UID: info.Uid, GID: info.Gid, Links: uint64(info.Nlink), Size: info.Size}
 }

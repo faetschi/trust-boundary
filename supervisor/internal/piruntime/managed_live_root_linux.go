@@ -786,11 +786,6 @@ func lookupLocalServiceAccount(passwd, groupFile []byte, serviceName, serviceGro
 	return uid, gid, shell, foundUser && foundGroup
 }
 
-func mustHashProtectedFile(path string, maximum int64) string {
-	digest, _ := hashProtectedFile(path, maximum)
-	return digest
-}
-
 func mustD09ManagedLiveRootSigningBytes(registration D09ManagedLiveRootRegistration) []byte {
 	message, _ := D09ManagedLiveRootSigningBytes(registration)
 	return message

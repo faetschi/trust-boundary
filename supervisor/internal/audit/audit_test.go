@@ -1070,7 +1070,7 @@ func requireRootOwnedFixtureAncestor(t *testing.T, path string) {
 // These checks cover the fixed path and stat metadata. The offline verifier preflights ACLs and xattrs before invoking this test.
 func validateOwnershipFixtures(t *testing.T, fixtureRoot string) {
 	t.Helper()
-	uid := currentEffectiveUID()
+	uid := os.Geteuid()
 	gid := os.Getegid()
 	expectedRoot := filepath.Join(string(os.PathSeparator), "var", "lib", "tbound", "audit-ownership-fixtures", strconv.Itoa(uid))
 	if filepath.Clean(fixtureRoot) != expectedRoot {
@@ -1110,7 +1110,7 @@ func validateOwnershipFixtures(t *testing.T, fixtureRoot string) {
 func TestOpenRejectsUntrustedOwnership(t *testing.T) {
 	requireLinuxJournalOpen(t)
 	if fixtureRoot := os.Getenv("TBOUND_AUDIT_OWNERSHIP_FIXTURE_ROOT"); fixtureRoot != "" {
-		if currentEffectiveUID() <= 0 {
+		if os.Geteuid() <= 0 {
 			t.Fatal("ownership fixtures must be tested as the non-root trial user")
 		}
 		validateOwnershipFixtures(t, fixtureRoot)
@@ -1125,7 +1125,7 @@ func TestOpenRejectsUntrustedOwnership(t *testing.T) {
 		}
 		return
 	}
-	if currentEffectiveUID() != 0 {
+	if os.Geteuid() != 0 {
 		t.Skip("changing file ownership requires root")
 	}
 	root := privateJournalTestDir(t)

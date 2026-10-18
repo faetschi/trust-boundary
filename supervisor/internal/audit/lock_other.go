@@ -23,7 +23,3 @@ func checkSupervisorOwnership(os.FileInfo) error {
 func openJournalDirectory(string) (*os.File, error) {
 	return nil, ErrLockUnsupported
 }
-
-func currentEffectiveUID() int {
-	return -1
-}
