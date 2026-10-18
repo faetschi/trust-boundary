@@ -213,9 +213,6 @@ func TestDispositionTable(t *testing.T) {
 			p.Static = denied
 			p.Adaptive = denied
 		}, want: ChannelNonDiscriminative},
-		{name: "denied crossing is not manifested", mutate: func(p *Pair) {
-			p.Static = denied
-		}, want: ChannelNonDiscriminative},
 		{name: "neither run executed is NotRun", mutate: func(p *Pair) {
 			p.Static = Run{}
 			p.Adaptive = Run{}

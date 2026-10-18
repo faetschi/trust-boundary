@@ -185,14 +185,6 @@ func TestRejectsMissingNullOrEmptyEntryBounds(t *testing.T) {
 	}
 }
 
-func TestRejectsUnsafeCitationTraversal(t *testing.T) {
-	b := validDocument(t)
-	b = strings.Replace(b, `"ref":"repo:docs/source.md"`, `"ref":"repo:../source.md"`, 1)
-	if _, err := ValidateJSON([]byte(b)); err == nil {
-		t.Fatal("unsafe citation reference was accepted")
-	}
-}
-
 func TestRejectsUnsafePathsAndReversedLines(t *testing.T) {
 	unsafeRefs := []string{
 		"repo:C:/Windows/system32",

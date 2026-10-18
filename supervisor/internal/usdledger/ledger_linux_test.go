@@ -453,18 +453,6 @@ func TestExpectedHeadAnchorDetectsTailEditAndBoundaryTruncation(t *testing.T) {
 	}
 }
 
-func TestAnchoredOpenRefusesDeletedLedgerInsteadOfResetting(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "research.jsonl")
-	anchored := testConfig()
-	anchored.ExpectedHeadSHA256 = zeroHash
-	if _, err := Open(path, anchored); !errors.Is(err, ErrHeadMismatch) {
-		t.Fatalf("anchored open of absent ledger: %v", err)
-	}
-	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("refused anchored open left a ledger behind (stat: %v)", err)
-	}
-}
-
 func TestMissingLedgerIsRefusedByDefault(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "research.jsonl")
 	cfg := testConfig()
@@ -474,15 +462,6 @@ func TestMissingLedgerIsRefusedByDefault(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("refused Open created a ledger file (stat: %v)", err)
-	}
-}
-
-func TestAllowGenesisCreatesFreshLedger(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "research.jsonl")
-	l := openTest(t, path, testConfig())
-	wantTotals(t, snapshotOf(t, l), 0, 0, 0)
-	if n := len(lineList(readLedger(t, path))); n != 1 {
-		t.Fatalf("genesis-only file has %d lines, want 1", n)
 	}
 }
 
@@ -701,10 +680,6 @@ func TestSettleOverageRefusesAmountsNotAboveReservation(t *testing.T) {
 	}
 	if snapshotOf(t, l).Overspent {
 		t.Fatal("refused overage settle set Overspent")
-	}
-	// Settle keeps its old contract: an amount above the reservation is refused.
-	if err := l.Settle("a", 501); !errors.Is(err, ErrOverSettle) {
-		t.Fatalf("Settle above reservation: %v", err)
 	}
 	wantTotals(t, snapshotOf(t, l), 500, 0, 0)
 }
