@@ -133,12 +133,3 @@ func canonicalServeBashOutputPaths(raw []string, allowNoOutputs bool) ([]string,
 	}
 	return paths, nil
 }
-
-// runGovernedPiServe is the CLI production entry point. It performs the CLI-side
-// trust decision and drives the composed session through the concrete
-// productionBinder. The binder assembles the protected profile/template, durable
-// D06 session, sealed exposure/assets, and the D09 launcher; there is no nil
-// placeholder. See docs/production-pi-session.md for the exact contract.
-func runGovernedPiServe(ctx context.Context, output io.Writer, config productionServeConfig) error {
-	return runProductionPiServe(ctx, output, config, newProductionBinder())
-}

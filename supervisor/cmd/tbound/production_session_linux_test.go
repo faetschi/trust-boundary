@@ -26,7 +26,7 @@ import (
 // placeholder for a real launch.
 func TestProductionServeRefusesOnUnprovisionedHost(t *testing.T) {
 	var transcript bytes.Buffer
-	err := runGovernedPiServe(context.Background(), &transcript, productionServeConfig{})
+	err := runProductionPiServe(context.Background(), &transcript, productionServeConfig{}, newProductionBinder())
 	if err == nil {
 		t.Fatal("unprovisioned production route returned success")
 	}

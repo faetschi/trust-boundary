@@ -12,7 +12,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"syscall"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
@@ -194,38 +193,6 @@ func validateProductionLifecycle(evidence productionLifecycleSnapshot, runID str
 		return ErrProductionLifecycleUnsettled
 	}
 	return nil
-}
-
-// validateProtectedLiveRoot is a negative-test helper for an unmanaged
-// descriptor. Production uses managedLiveRootLease and never treats this local
-// ownership/mode check as a writer-domain or quiescence authority.
-func validateProtectedLiveRoot(live *os.File) error {
-	if live == nil {
-		return ErrProductionQuiescenceUnavailable
-	}
-	var stat syscall.Stat_t
-	if err := syscall.Fstat(int(live.Fd()), &stat); err != nil {
-		return errors.Join(ErrProductionQuiescenceUnavailable, err)
-	}
-	if stat.Mode&syscall.S_IFMT != syscall.S_IFDIR || stat.Uid != uint32(os.Geteuid()) ||
-		stat.Gid != uint32(os.Getegid()) || stat.Mode&0o7777 != 0o700 {
-		return fmt.Errorf("%w: live publication root must be the exact private owner directory", ErrProductionQuiescenceUnavailable)
-	}
-	return nil
-}
-
-// requireProductionQuiescenceEvidence is retained only for negative tests of
-// the former unregistered-root route. It is intentionally not called by the
-// production finalizer; only the fixed registered writer policy plus the
-// run-scoped managedLiveRootLease can issue a production permit.
-func requireProductionQuiescenceEvidence(live *os.File, lifecycle productionLifecycleSnapshot, runID string, runner *productionCommandRunner) error {
-	if err := validateProtectedLiveRoot(live); err != nil {
-		return err
-	}
-	if err := validateProductionLifecycle(lifecycle, runID, runner); err != nil {
-		return err
-	}
-	return ErrProductionQuiescenceUnavailable
 }
 
 // productionBashEvidenceVerifier is intentionally stricter than a profile

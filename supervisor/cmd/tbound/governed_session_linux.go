@@ -1231,16 +1231,6 @@ func (a *SessionOperationAuthority) CreateStore(root *os.File, limits workspace.
 	return managed, nil
 }
 
-func governedSessionrepoArgumentDigest(proposal protocol.Proposal, bashOutputPaths ...[]string) (string, error) {
-	if len(bashOutputPaths) > 1 {
-		return "", errors.New("governed argument digest accepts at most one Bash output scope")
-	}
-	var paths []string
-	if len(bashOutputPaths) == 1 {
-		paths = bashOutputPaths[0]
-	}
-	return sessionrepoArgumentDigest(proposal, paths)
-}
 func providerCaptureKey(response, call string) string { return response + "\x00" + call }
 
 func validGovernedViewID(view string) bool {

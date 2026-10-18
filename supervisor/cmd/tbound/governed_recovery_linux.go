@@ -1382,11 +1382,3 @@ func validBareWorkflowDigest(value string) bool {
 	_, err := hex.DecodeString(value)
 	return err == nil
 }
-
-func (r governedRecoveryRequest) workflowPinsPolicyMatches(pins workflowrecovery.Pins) bool {
-	return barePolicyDigest(r.GatePolicy.Digest()) == pins.PolicyDigest &&
-		bareWorkflowDigest(r.ProviderProfileDigest) == pins.ProfileDigest &&
-		bareWorkflowDigest(r.ImageDigest) == pins.ImageDigest &&
-		bareWorkflowDigest(r.GitPin.ProvenanceDigest) == pins.D06ProvenanceDigest &&
-		bareWorkflowDigest(r.GitPin.RepositoryIdentityDigest) == pins.PrivateGitIdentityDigest
-}

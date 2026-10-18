@@ -237,23 +237,6 @@ func TestProductionCommandRunnerDoesNotAdmitProfileStringAlone(t *testing.T) {
 	}
 }
 
-func TestProductionTrustNeverTreatsSourceBindingAsLiveRootQuiescence(t *testing.T) {
-	root := t.TempDir()
-	file, err := os.Open(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	if err := os.Chmod(root, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	runner := newProductionCommandRunner(nil)
-	err = requireProductionQuiescenceEvidence(file, validTestProductionLifecycle(), "run-test", runner)
-	if !errors.Is(err, ErrProductionQuiescenceUnavailable) {
-		t.Fatalf("live-root quiescence without trusted writer attestor = %v, want typed refusal", err)
-	}
-}
-
 func productionProofFixture() (piruntime.HostProfile, piruntime.D09CellTemplate, piruntime.D09TCBProof) {
 	template := piruntime.DefaultD09CellTemplate()
 	template.ExpectedImageDigest = "sha256:" + strings.Repeat("1", 64)
@@ -383,22 +366,5 @@ func TestProductionLaunchProofRejectsMissingInvalidAndWrongRunReferences(t *test
 	}
 	if err := validateProductionLifecycle(evidence.snapshot(), "run-other", newProductionCommandRunner(nil)); !errors.Is(err, ErrProductionLifecycleUnsettled) {
 		t.Fatalf("proof from a different run was accepted: %v", err)
-	}
-}
-
-func TestProductionQuiescenceRejectsInvalidProtectedLiveRoot(t *testing.T) {
-	root := t.TempDir()
-	file, err := os.Open(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer file.Close()
-	if err := os.Chmod(root, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	runner := newProductionCommandRunner(nil)
-	err = requireProductionQuiescenceEvidence(file, validTestProductionLifecycle(), "run-test", runner)
-	if !errors.Is(err, ErrProductionQuiescenceUnavailable) {
-		t.Fatalf("unprotected live root = %v, want quiescence refusal", err)
 	}
 }

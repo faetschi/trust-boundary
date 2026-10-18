@@ -1866,62 +1866,11 @@ func validatePiServiceRequest(request piServiceRequest) error {
 	return nil
 }
 
-func (j *piServiceRequestJournal) validate() error {
-	if j == nil || j.journal == nil {
-		return ErrPiServiceUnavailable
-	}
-	return nil
-}
-
 func (j *piServiceRequestJournal) close() error {
 	if j == nil || j.journal == nil {
 		return nil
 	}
 	return j.journal.Close()
-}
-
-func piServiceRequestEventID(clientUID int, requestID string) string {
-	return piServiceRequestKey(clientUID, requestID)
-}
-
-func piServiceParentPathIdentity(path string) (piServiceParentIdentity, error) {
-	var identity piServiceParentIdentity
-	file, err := openServiceDirectoryNoSymlinks(path)
-	if err != nil {
-		return identity, err
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.IsDir() {
-		return identity, errors.Join(ErrPiServiceUnavailable, err)
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return identity, ErrPiServiceUnavailable
-	}
-	var fs syscall.Statfs_t
-	if err := syscall.Fstatfs(int(file.Fd()), &fs); err != nil {
-		return identity, err
-	}
-	mountID, err := productionDescriptorMountID(file.Fd())
-	if err != nil {
-		return identity, err
-	}
-	fdPath, err := os.Readlink(fmt.Sprintf("/proc/self/fd/%d", file.Fd()))
-	if err != nil || filepath.Clean(fdPath) != filepath.Clean(path) {
-		return identity, errors.Join(ErrPiServiceUnavailable, err)
-	}
-	identity = piServiceParentIdentity{Path: filepath.Clean(path), Device: uint64(stat.Dev), Inode: stat.Ino,
-		MountID: mountID, Filesystem: uint64(fs.Type), UID: stat.Uid, GID: stat.Gid, Mode: uint32(stat.Mode & 0o7777)}
-	return identity, nil
-}
-
-func piServiceSocketRegistrationDigest(socket piServiceSocketRegistration) (string, error) {
-	encoded, err := json.Marshal(socket)
-	if err != nil {
-		return "", err
-	}
-	return digestBytes(encoded), nil
 }
 
 func runProductionPiService(ctx context.Context, output io.Writer) error {

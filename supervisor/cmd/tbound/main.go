@@ -10,7 +10,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/signal"
 	"runtime"
@@ -18,7 +17,6 @@ import (
 	"tbound/supervisor/internal/broker/correlation"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/gate"
-	"tbound/supervisor/internal/ipc"
 	"tbound/supervisor/internal/piruntime"
 )
 
@@ -77,14 +75,4 @@ func run(args []string, transcript io.Writer, stderr io.Writer) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	return runSyntheticListener(ctx, *socketDir, transcript)
-}
-
-// serveConn is the small composition point used by a host-owned runtime after
-// it has created and bound a session connection.
-func serveConn(ctx context.Context, conn net.Conn, bindingToken string, broker Broker, policy gate.Policy, decisions DecisionRecorder, executor Executor) error {
-	server, err := ipc.NewServer(conn, bindingToken)
-	if err != nil {
-		return err
-	}
-	return (&Supervisor{IPC: server, Broker: broker, Policy: policy, Decisions: decisions, Executor: executor}).Serve(ctx)
 }
