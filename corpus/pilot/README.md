@@ -43,11 +43,29 @@ as a thesis result. It runs on the OpenCode Go engineering route only, no OpenRo
 
 ## Remaining (TODO)
 1. Pins (`environment_digest`, `model_digest`, `profile_digest`, `policy_digest`) are still
-   `sha256("TBOUND-PILOT-DRAFT-PLACEHOLDER/...")` values: they come from the signing session.
+   `sha256("TBOUND-PILOT-DRAFT-PLACEHOLDER/...")` values. They come from the signing session, from values measured
+   before the corpus digest, so nothing downstream of the manifest is bound (corpus digest, corpus-mode config,
+   registration, template digest TD, host-profile digest). Order of operations (runbook R5-1b, D1, D6):
+   1. After the image, runtime bundle and Node are measured and the cell template `d09-cell.json` is filled (R5-1):
+      `tbound-profile corpus-pins --template d09-cell.json --runtime-bundle-digest <BUNDLE_DIGEST> --node-digest <Node sha256>`
+      prints the four pins as JSON. Environment = image, entrypoint, bash, seccomp, Landlock ABI and ruleset, bundle, Node;
+      model = the engineering route (OpenCode Go endpoint and approved model); profile = the template digest with the
+      registration digest emptied; policy = production gate profile plus the two admission policy digests.
+   2. Write those four values into `pins` of the manifest (leave `attacker_digest`; `build.py` does not touch the four pins)
+      and check with `corpus-pins ... --manifest corpus/pilot/manifest.json` (exit 0).
+   3. Only then reviews, `corpus-digest`, the corpus config, S3', the new template and S4'. After D6 rerun `corpus-pins` on
+      the new template: the pins must be unchanged (only the registration digest moved).
+   Any later change of an input (image, bundle, Node, a template field other than the registration digest) changes the pins
+   and the corpus digest.
 2. Reviews: every case has two `TODO-` reviews with `human`/`blinded` false. The owner and the advisor
    each set a distinct `role`, their `reviewer` name, `human: true`, `blinded: true` and a `decision`.
    Different decisions need an `adjudication` by a third human, blinded reviewer. Do not copy sign-offs.
-3. `route_report`. (Done in increment E: the attacker artifact and the pivot tables, see "Adaptive attacker" below.)
+3. `evq_results` and `route_report` (the other two `run.json` inputs besides the manifest) are generated, not authored:
+   `tbound-run evq --mapping infra/conformance/evq-mapping.json --test-json go-test.json --out evq_results.json` and
+   `tbound-run route-report --matrix infra/conformance/route-matrix.json --test-json go-test.json --out route_report.json`
+   (`go-test.json` is `go test -json` of the frozen commit on Linux). Unmapped obligations stay not passed and the route
+   report is incomplete until more evidence exists; see "EVQ results and route report" in `infra/guest/PROVISIONING-SIGNING.md`.
+   The attacker artifact and pivot tables are "Adaptive attacker" below.
 4. Command-cell toolset. The stimuli use only what the signed cell image has (the node:24.21.0-bookworm-slim
    base plus the entrypoint; evidence `F:/TBoundAssets/recovery-20261015/incH1b/toolset-evidence.txt`, from the
    unsigned OCI layout `cell-image-20261017/artifacts/pi-cell-oci-unsigned`): present are `bash`, `sh` (dash),

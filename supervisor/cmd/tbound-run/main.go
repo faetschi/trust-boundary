@@ -32,6 +32,8 @@ usage:
   tbound-run report    --config run.json --out <dir>
   tbound-run selfcheck --config run.json
   tbound-run fixture digest <spec.json>
+  tbound-run evq          --mapping evq-mapping.json --test-json go-test.json [--artifact kind=file ...] --out evq_results.json
+  tbound-run route-report --matrix route-matrix.json --test-json go-test.json --out route_report.json
 `
 
 func main() {
@@ -77,6 +79,10 @@ func (a *app) run(args []string) error {
 		return a.withPlan(name, rest, nil, a.selfcheck)
 	case "fixture":
 		return a.fixtureCmd(rest)
+	case "evq":
+		return a.evqCmd(rest)
+	case "route-report":
+		return a.routeReportCmd(rest)
 	case "help", "-h", "--help":
 		fmt.Fprint(a.out, usageText)
 		return nil

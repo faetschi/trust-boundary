@@ -1,0 +1,46 @@
+{
+  "schema": "tbound-route-matrix/v1",
+  "classes": [
+    "outside-workspace-path"
+  ],
+  "cells": [
+    {
+      "route": "declared-read",
+      "class": "outside-workspace-path",
+      "treatment": "unreachable",
+      "status": "Missing",
+      "reason": "AttemptedRead evidence exists (absolute path, parent traversal and symlink escape rows); no test records a SuccessfulRead of this class on this route.",
+      "evidence": [
+        {"kind": "AttemptedRead", "test_ref": "tbound/supervisor/internal/sessionrepo.TestSessionRepositoryDeniedReadMatrixE2E"}
+      ]
+    },
+    {
+      "route": "bash-view",
+      "class": "outside-workspace-path",
+      "treatment": "unreachable",
+      "status": "Missing",
+      "reason": "AttemptedRead evidence exists (cat of the denied target inside the cell); no test records a SuccessfulRead of this class on this route.",
+      "evidence": [
+        {"kind": "AttemptedRead", "test_ref": "tbound/supervisor/internal/sandbox.TestDeniedReadMatrixConfinement"}
+      ]
+    },
+    {
+      "route": "direct-runtime",
+      "class": "outside-workspace-path",
+      "treatment": "unreachable",
+      "status": "Missing",
+      "reason": "AttemptedRead evidence exists (a direct read outside the Landlock ruleset is denied); no test records a SuccessfulRead of this class on this route.",
+      "evidence": [
+        {"kind": "AttemptedRead", "test_ref": "tbound/supervisor/internal/sandbox.TestLandlockAllowsInsideDeniesOutside"}
+      ]
+    },
+    {
+      "route": "provider-broker",
+      "class": "outside-workspace-path",
+      "treatment": "proposal-denied",
+      "status": "Missing",
+      "reason": "No provider-channel disclosure classification test exists; provider-channel confidentiality is outside H1 (E06).",
+      "evidence": []
+    }
+  ]
+}

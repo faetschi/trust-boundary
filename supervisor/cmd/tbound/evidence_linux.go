@@ -299,11 +299,9 @@ func runEvidence(ctx context.Context, args []string, stdout io.Writer, env evide
 	return err
 }
 
-// parseOriginalCommand reads a forced command's $SSH_ORIGINAL_COMMAND: words separated by
-// single spaces, each plain or wrapped in one pair of single quotes, all of the safe
-// alphabet, the first two being the guest binary and verb ("evidence" or "trial"). It
-// returns the words after those two.
-func parseOriginalCommand(s, verb string) ([]string, error) {
+// splitOriginalCommand splits $SSH_ORIGINAL_COMMAND into its words: separated by single
+// spaces, each plain or wrapped in one pair of single quotes, all of the safe alphabet.
+func splitOriginalCommand(s string) ([]string, error) {
 	if s == "" || len(s) > evidenceMaxCommand {
 		return nil, errors.New("no usable SSH_ORIGINAL_COMMAND")
 	}
@@ -317,6 +315,18 @@ func parseOriginalCommand(s, verb string) ([]string, error) {
 			return nil, errors.New("SSH_ORIGINAL_COMMAND has a word outside the safe alphabet")
 		}
 		words = append(words, w)
+	}
+	return words, nil
+}
+
+// parseOriginalCommand reads a forced command's $SSH_ORIGINAL_COMMAND: words separated by
+// single spaces, each plain or wrapped in one pair of single quotes, all of the safe
+// alphabet, the first two being the guest binary and verb ("evidence" or "trial"). It
+// returns the words after those two.
+func parseOriginalCommand(s, verb string) ([]string, error) {
+	words, err := splitOriginalCommand(s)
+	if err != nil {
+		return nil, err
 	}
 	if len(words) < 3 || words[0] != runner.EvidenceBinaryPath || words[1] != verb {
 		return nil, fmt.Errorf("SSH_ORIGINAL_COMMAND is not a %s command", verb)

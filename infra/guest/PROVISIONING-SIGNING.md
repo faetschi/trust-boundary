@@ -39,20 +39,22 @@ The admin key is the raw 64-byte Ed25519 key. S1 to S4 are domain-separated; the
 
 1. F0 freeze (needs owner approval to pick `F`). P1 to P3 build (read-only, built twice). P4 to P6 [OWNER SIGN]. P7 verify.
 2. Guest: P8 to P13 (trust anchor, ownership, ro mounts, bundle, key, B2 and corpus files).
-3. R1 calibration (S1, S2), R2 smoke config and registration (S3), R5 template and host profile (S4).
-4. SSH-1 to SSH-3 (forced-command keys), NS-1 (net sink unit), Spike A.
+3. R1 calibration (S1, S2), R2 smoke config and registration (S3), R5 template, manifest pins (R5-1b) and host profile (S4).
+4. SSH-1 to SSH-3 (three forced-command keys: evidence, trial, client), NS-1 (net sink unit), Spike A.
 5. I1 (image into the service store), Z0, Z1 (revoke sudo).
 6. Part L smoke (separate approval).
 7. Part D after the reviews (S3', S4'), Spike B, then the pilot run.
 
-## Blockers (open; code or decisions missing)
+## Blockers (BL-1 and BL-4 resolved in code and in this text; the rest open)
 
-- BL-1 Client key has no forced command. `runner.SSHTransport` reaches the client as `setpriv --reuid 994 --regid 985 --clear-groups /usr/local/bin/tbound serve --pi ...` (`DefaultClientCommand`) and no guest entry parses that (`tbound evidence` and `tbound trial` have `ssh-original-command`; `serve` has none; nothing reads `SSH_ORIGINAL_COMMAND` for it). A `restrict,command=` line therefore cannot be written. Without one, the pilot needs an unrestricted root key (and `PermitRootLogin prohibit-password`, since `forced-commands-only` refuses it), which defeats Z1. Owner decision BEFORE F0: add a client forced-command entry in code (new `F`), or accept the unrestricted key for the pilot only. The smoke does not need the key (Part L runs at the root console). SSH-2 installs only the two keys that have entries.
+Both resolutions are code (`cmd/tbound/client_forced_linux.go`, `cmd/tbound-profile/corpus_pins_linux.go`, `gate.ProductionProfile`) that is not yet in a commit: commit it, then take `F0` from that commit. Every digest and signature in this runbook is taken after that commit.
+
+- BL-1 RESOLVED. The client key has a forced-command entry, `tbound client-forced`. `runner.SSHTransport` sends the client as `setpriv --reuid 994 --regid 985 --clear-groups /usr/local/bin/tbound serve --pi --task-id <case_id> --role <role> --attempt <1|2> --task-request-id <id> --bash-no-outputs` (`DefaultClientCommand`, `GovernedRequest.Argv`); the entry accepts exactly that grammar and nothing else, then runs it. The transport is unchanged (`SSHTransport.RemoteCommand`, an exported accessor of its quoting, is only for the parity test). The key logs in as `root`, not as `tbound-client`: only root can `setpriv` to uid 994, and `tbound-client` has `/usr/sbin/nologin`, which sshd would run for any command of that account, so a `Match User tbound-client` or `ForceCommand` for that user cannot work. Exact lines are in SSH-1 and SSH-2. The smoke does not need the key (Part L runs at the root console).
 - BL-2 `tbound trial reset|accept|v-run` need a corpus-mode service config. They resolve the case through the signed registration, the service config and the pinned corpus manifest (`trialPinnedFixtureDigest`, `loadProductionCorpus`); under the smoke config they refuse ("not a corpus-mode config"). So the net-sink, no-reap and V spikes, and the real `nft` load, run only after Part D (Spike B). A defect found there that needs code (for example the `nft -j` shape that `verifyNetSinkRuleset` expects, unmeasured on the guest's nft) means a new `F` and a new session.
 - BL-3 `nft` and the kernel. `trialNftPath` is `/usr/sbin/nft`; the rule needs `socket cgroupv2` support. No repo evidence shows nft installed or the kernel module available on the guest, and the guest is offline with no documented install route. Spike A checks it read-only; if missing, net-sink is impossible and A-03, B-04, C-03 are `channel_non_discriminative`.
-- BL-4 Manifest `pins.*` (`environment_digest`, `model_digest`, `profile_digest`, `policy_digest`) are placeholders; `evalcorpus.Validate` checks only their format, nothing compares them to a profile (receipt identity is pinned in `run.json pins`). Owner decision before D1: do not set `profile_digest` to the S4' host profile digest, that is circular (manifest, corpus digest, S3' config, registration, TD, S4' profile). Use values final in this session.
-- BL-5 No generator for `evq_results` (strict JSON `{"obligations":[{"id","passed","evidence_ref"}]}`, `runner.ParseEVQResults`) or `route_report` (`routematrix.Report` JSON). The owner or coordinator authors them. An obligation without a `passed:true` result is reported not passed (`Attest`); the pilot is non-claim-bearing either way.
-- BL-6 After Z1 the owner moves files with `GSSH` to a staging directory of `tboundadmin` and installs from the root console; there is no scripted root channel (BL-1). Part D steps are marked accordingly.
+- BL-4 RESOLVED. The manifest pins (`environment_digest`, `model_digest`, `profile_digest`, `policy_digest`) are checked only for format (`evalcorpus.Validate`); nothing compares them to a profile (receipt identity is pinned in `run.json pins`, which stays as it is). They must not bind anything downstream of the corpus digest: corpus digest, S3' config, registration, template digest TD, S4' host profile digest. `tbound-profile corpus-pins` defines each pin from values measured before any of those exist (section "Manifest pins", run at R5-1 and again at D1 and D6). The manifest schema is unchanged.
+- BL-5 closed: `tbound-run evq` and `tbound-run route-report` generate `evq_results` and `route_report` (see "EVQ results and route report" in the pilot run). They are code in `F`; the pinned mapping and route matrix live in `infra/conformance/` (also in `F`). Most obligations pass from named tests; 6 of 22 EVQ obligations are unmapped (no implementable evidence yet) and stay not passed, and the route report is incomplete (no `SuccessfulRead` or provider-disclosure evidence). `Attest` reports both as not passed; the pilot is non-claim-bearing either way.
+- BL-6 After Z1 the owner moves files with `GSSH` to a staging directory of `tboundadmin` and installs from the root console; there is no scripted root channel (the three forced-command keys of Part K run only their own verbs). Part D steps are marked accordingly.
 - Unproven, not blockers: I1 podman load keeps the manifest digest and the `no-new-privs` service reads the store; L0 accepts the seeded file in the xattr census; guest egress to `opencode.ai:443`; V `--uidmap` under `setpriv --no-new-privs`.
 
 ## Placeholders
@@ -434,6 +436,23 @@ Unchanged: `cosign_digest` `4629c757...`, `seccomp_profile_digest` `cc374cf2...`
 TBP template-digest --template $H/d09-cell.json              # prints TD and the two derived delta digests (net-sink/v1, no-reap/v1); record all three
 ```
 
+### R5-1b [READ-ONLY] manifest pins (BL-4)
+
+Compute the four `pins.*` of the corpus manifest now, from the template and the values of this session, before the corpus digest, the corpus config, the registration of Part D or any host-profile signature exist. The registration digest in the template is ignored.
+
+```
+TBP corpus-pins --template $H/d09-cell.json --runtime-bundle-digest $BUNDLE_DIGEST --node-digest sha256:7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c        # PINS: one JSON line, the four members
+```
+
+| Manifest pin | Binds | Inputs |
+| --- | --- | --- |
+| `environment_digest` | what the cell runs in | signed image manifest digest `IMGDIGEST`, `ENTRYPOINT_DIGEST`, `BASH_DIGEST`, seccomp digest, Landlock ABI (8) and ruleset digest (all from the template), `BUNDLE_DIGEST`, the host Node digest |
+| `model_digest` | the provider route profile | `--provider-route engineering` (default, pilot): route name, `openrouter.Endpoint` (OpenCode Go) and `openrouter.ApprovedModel`. `--provider-route research --research-profile <frozen profile>`: the frozen research profile digest (NOT NOW) |
+| `profile_digest` | the containment profile | the digest of the cell template with `managed_live_root_registration_digest` emptied: the base template. It is neither TD nor the host-profile digest |
+| `policy_digest` | the enforced policy | `gate.ProductionProfile` digest (four tools allowed) plus the two admission policy digests of `run.json admission_policy` (`e6a77851...`, `bf937a0d...`) |
+
+Each pin is `sha256` over `tbound-corpus-pin/v1/<kind>`, a NUL byte and compact JSON of its inputs, so no pin equals a file or template digest. Order of operations, which is what makes it non-circular: image, bundle, Node and template fields are measured in P1 to P6, R1 and R5-1; the pins follow from those; the manifest carries the pins; the corpus digest follows from the manifest (D1); the corpus config pins the corpus digest (D3); the registration pins the config (S3'); the template pins the registration (D6, so TD moves); the host profile pins TD (S4'). No pin reads anything later in that chain. The tool takes no registration, config, TD or profile digest, and a test holds the pins constant while the registration digest (and so TD) changes. After a pin input changes (a rebuilt image, a new bundle, another cell field) the pins change, the corpus digest with them, and S3'/S4' are redone as for any manifest edit.
+
 ### R5-2 [OWNER SIGN, needs owner approval] S4
 
 ```
@@ -463,26 +482,35 @@ GSSH 'tbound-profile verify --profile /etc/tbound/pi-host-profile.json --sig /et
 
 ## Part K: forced-command keys and the NET sink (before Z1)
 
-Two keys with entries, one without (BL-1). All are separate ed25519 keys generated on the owner machine (`ssh-keygen -t ed25519 -f <KEY>`; passphrase policy is the owner's decision for an unattended runner); the owner keeps the private halves.
+Three keys, each with its own forced-command entry. All are separate ed25519 keys generated on the owner machine (`ssh-keygen -t ed25519 -f <KEY>`; passphrase policy is the owner's decision for an unattended runner); the owner keeps the private halves.
 
 | Key | Login | Guest command | Used by |
 | --- | --- | --- | --- |
 | evidence `<EVKEY>` | `root` | `tbound evidence ssh-original-command` | collectors (E04, PROC, publication journal, NET) |
 | trial `<TRKEY>` (NEW) | `root` | `tbound trial ssh-original-command` | `trial reset`, `trial accept`, `trial v-run` |
-| client `<CLKEY>` | `root` | none possible (BL-1) | `setpriv ... tbound serve --pi` |
+| client `<CLKEY>` | `root` | `tbound client-forced` | the governed client: `setpriv ... tbound serve --pi ...` (`SSHTransport`, one run per C, P and B step) |
 
 Grammar of `SSH_ORIGINAL_COMMAND` (`parseOriginalCommand`, shared by both entries; `evidenceRequiredUID` and `trialRequiredUID` are 0): the runner sends `'/usr/local/bin/tbound' 'trial' 'reset' '<case_id>' '--check'`, every word shell-quoted by `SSHTransport.remoteCommand`. The entry splits on single spaces, accepts each word plain or inside one pair of single quotes, requires every word to match `^[A-Za-z0-9._:/@#|+=,-]+$` (at most 256 bytes; the whole string at most 2048 bytes), requires word 1 to be `/usr/local/bin/tbound` (`runner.EvidenceBinaryPath`) and word 2 to be the entry's verb (`evidence` or `trial`), refuses nesting of `ssh-original-command`, and never passes anything to a shell. Trial verbs: `reset <case_id> [--check]`, `accept <case_id> [--tree live]`, `v-run <case_id>`; the case id must be in the safe alphabet and not start with `-`. Any other word, flag or uid is refused with exit 2.
 
 ### SSH-1 [OWNER, owner machine] generate the keys and the authorized_keys lines
 
-The two lines, exactly (public halves from the `.pub` files; the comment is free):
+The three lines, exactly (public halves from the `.pub` files; the comment is free):
 
 ```
 restrict,command="/usr/local/bin/tbound evidence ssh-original-command" ssh-ed25519 <EVKEY public half> tbound-evidence
 restrict,command="/usr/local/bin/tbound trial ssh-original-command" ssh-ed25519 <TRKEY public half> tbound-trial
+restrict,command="/usr/local/bin/tbound client-forced" ssh-ed25519 <CLKEY public half> tbound-client
 ```
 
-`restrict` switches off pty, forwarding, agent and X11; `command=` runs only that entry whatever the client sends. The client key line is not written (BL-1).
+`restrict` switches off pty, forwarding, agent and X11; `command=` runs only that entry whatever the client sends.
+
+The client entry (`tbound client-forced`, takes no argument, root only) reads `SSH_ORIGINAL_COMMAND`, which `runner.SSHTransport` fills with the launcher and `GovernedRequest.Argv`, every word single-quoted:
+
+```
+'setpriv' '--reuid' '994' '--regid' '985' '--clear-groups' '/usr/local/bin/tbound' 'serve' '--pi' '--task-id' '<case_id>' '--role' '<role>' '--attempt' '<1|2>' '--task-request-id' '<id>' '--bash-no-outputs'
+```
+
+Grammar (`parseClientForced`): the same word rules as the other entries (single spaces, plain or one pair of single quotes, safe alphabet, at most 256 bytes a word and 2048 in all); the six launcher words must equal `runner.DefaultClientCommand()` exactly (uid 994, gid 985, `--clear-groups`, no other setpriv option); then `serve --pi`; then `--task-id`, `--role`, `--attempt`, `--task-request-id` (each with a value) and the bare `--bash-no-outputs`, each exactly once, in any order. Any other flag (`--task`, `--bash-output`, `--native-host-profile`, `--workspace`, `--source`, `--service`, fixtures), positional word, repeat, missing member or `--flag=value` form is refused with exit 2 and nothing is run. Values: task id and request id are non-empty, at most 256 bytes (`productionTaskIDMaxBytes`, `productionRequestMaxBytes`, `boundedProductionIdentity`), in the safe alphabet, not starting with `-`; the role is one of the 11 governed roles (`validCorpusRole`, held equal to `runner.GovernedRoles()` by test); the attempt is exactly `1` or `2`. The program that runs is rebuilt from the validated values: `/usr/bin/setpriv` (absolute) with the launcher and the flags in the runner's order, environment `PATH=/usr/sbin:/usr/bin:/sbin:/bin LANG=C LC_ALL=C`, replacing the entry process (`syscall.Exec`, no shell). The service still checks the request against the pinned config and the caller's uid and gid (994, 985) as before.
 
 ### SSH-2 [PRIVILEGED WRITE, needs owner approval] install the keys and the sshd drop-in
 
@@ -490,18 +518,19 @@ restrict,command="/usr/local/bin/tbound trial ssh-original-command" ssh-ed25519 
 
 ```
 GSSH 'sudo -n install -d -o root -g root -m 0700 /root/.ssh'
-GSSH 'sudo -n sh -c "umask 077; cat >> /root/.ssh/authorized_keys"' < <the two lines>
+GSSH 'sudo -n sh -c "umask 077; cat >> /root/.ssh/authorized_keys"' < <the three lines>
 printf 'PermitRootLogin forced-commands-only\nPasswordAuthentication no\n' | GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/ssh/sshd_config.d/50-tbound-forced.conf'
 GSSH 'sudo -n sshd -t && sudo -n systemctl reload ssh'
 ```
 
-Rollback: delete the two key lines and the drop-in, `sshd -t`, `systemctl reload ssh`. The alternative `Match User root` + `ForceCommand` restricts every root login, not one key; the per-key form is the default and the choice is the owner's. If BL-1 is resolved by an unrestricted client key, `PermitRootLogin` must become `prohibit-password` and that is a separate owner decision.
+Rollback: delete the three key lines and the drop-in, `sshd -t`, `systemctl reload ssh`. The alternative `Match User root` + `ForceCommand` restricts every root login, not one key, and could give only one of the three verbs; the per-key form is the only one that works for three keys and is the default. No `Match User tbound-client` block is written: that account is never logged in to. `PermitRootLogin forced-commands-only` is enough for all three keys (each line carries `command=`), so no unrestricted root key exists and Z1 is not defeated. [READ-ONLY] before the first client run: `GSSH 'ls -l /usr/bin/setpriv; id tbound-client'` (the entry runs `/usr/bin/setpriv`; uid 994, gid 985).
 
 ### SSH-3 [READ-ONLY] prove the restriction (pinned host key, `KSSH`)
 
 - `KSSH <EVKEY> id` and `KSSH <TRKEY> id`: exit 2, no `uid=` in the output, stderr `SSH_ORIGINAL_COMMAND is not a evidence command` / `... trial command`.
 - `KSSH <EVKEY> /usr/local/bin/tbound evidence e04-snapshot --root /etc --point baseline`: refused (root not registered). `KSSH <EVKEY> /usr/local/bin/tbound evidence proc-cell`: one JSON line with cell path `/system.slice/tbound-pi.service/cells`, non-zero inode, cell uid and gid (these two become `proc.cell_uid` and `proc.cell_gid`).
 - `KSSH <TRKEY> /usr/local/bin/tbound trial reset X --check`: under the smoke config this is refused with `the service config is not a corpus-mode config` (BL-2); that refusal proves the key reached `trial`. After Part D it prints one `ResetDoc` JSON line.
+- `KSSH <CLKEY> id`: exit 2, no `uid=`, stderr `SSH_ORIGINAL_COMMAND is not a client command`. `KSSH <CLKEY> setpriv --reuid 0 --regid 0 --clear-groups /usr/local/bin/tbound serve --pi ...` (any other uid or gid) and the same command with an extra `--task x` or `--native-host-profile /x`: exit 2, nothing started. After Part D (corpus config): the runner's own request through `<CLKEY>`, for example the `tbound-run selfcheck` transport check or one `run --max-steps 1`, reaches the service as uid 994 (the service journals `pi_service_request_accepted`); before Part D the smoke config refuses it client-side (`--attempt and --role are accepted only by a corpus-mode service`), which still proves the entry ran `serve --pi`. Unmeasured on the guest until then.
 - `date +%s%N` on the guest against the host within 1 s (PROC coverage and the teardown deadline use both clocks).
 
 ### NS-1 [PRIVILEGED WRITE, needs owner approval] the NET sink unit (needed by the pilot NET cases)
@@ -648,7 +677,7 @@ It appends one `pi_service_request_abandoned` v3 record (reconciliation evidence
 
 State from the smoke (catalog, journals, consumed admission id) survives the re-registration; settled runs do not block (`managedLiveRootPriorRunsFromTrace` is keyed by the run's own registration digest). An `unknown` smoke request must be settled first. Everything below is after Z1: the root console, files staged by `GSSH` into a directory of `tboundadmin` and installed with `install -o root -g root` from the console, sha256 compared on both sides (BL-6). The service is stopped (`systemctl stop tbound-pi.service tbound-pi.socket`) for D3 to D7. No new binary, image, bundle or calibration is involved: `F` is unchanged. Signatures in this part: S3' and S4' only.
 
-- D1 [READ-ONLY, owner machine, WSL] after the owner and advisor each fill their review (distinct `role`, `reviewer`, `human: true`, `blinded: true`, `decision`; different decisions need an adjudication by a third human), and BL-4 is decided, save the final manifest as `corpus/pilot/manifest.json`. Compute the digest with the frozen tool:
+- D1 [READ-ONLY, owner machine, WSL] after the owner and advisor each fill their review (distinct `role`, `reviewer`, `human: true`, `blinded: true`, `decision`; different decisions need an adjudication by a third human), set the four `pins.*` members of the draft to PINS (R5-1b; `pins.attacker_digest` stays), save the final manifest as `corpus/pilot/manifest.json` and check it: `TBP corpus-pins --template $H/d09-cell.json --runtime-bundle-digest $BUNDLE_DIGEST --node-digest <Node digest> --manifest corpus/pilot/manifest.json` must exit 0 (it names the members that differ). Compute the digest with the frozen tool:
   ```
   TBP corpus-digest --manifest corpus/pilot/manifest.json --quota-profile pilot --artifacts corpus/pilot/artifacts --max-host-calls 8 --max-tokens 20000 --duration-seconds 1200      # prints CORPUS_DIGEST; nothing and non-zero if refused
   ```
@@ -657,7 +686,7 @@ State from the smoke (catalog, journals, consumed admission id) survives the re-
 - D3 [READ-ONLY] fill `infra/guest/serve-pi-service.corpus-pilot.json` (schema v4, engineering route, mode `corpus`, `corpus_manifest_path` fixed, `corpus_quota_profile: "pilot"`, no `allow_pilot_on_research` (it must be false on the engineering route), no inline task, prompt or admission id, `workflow_bash_output_paths: []`, ceilings 8 host calls / 20000 tokens / 1200 s: the largest pilot trial needs 8 / 20000 / 1200 and a smaller ceiling fails `corpusadmit.CheckTrials` at service start; `workflow_duration_seconds` may not exceed 1200). Replace `<CORPUS_DIGEST>` and the two `<MEASURE>` digests (same podman config digests as R2-0). Validity of the template, strict decode in `piruntime` and `cmd/tbound`, the ceilings against the draft pilot manifest and the artifacts, was checked once on a scratch copy of `1dfca4e` (log `F:\TBoundAssets\recovery-20261015\runbook\scratch-validate.log`). Install as `/etc/tbound/serve-pi-service.json` (root:root 0644) with the R2-0 command pattern, keeping the smoke config as `.prev`. This is the config the registration pins; rollback: reinstall the smoke config and registration.
 - D4 [READ-ONLY] R2-1, R2-2 and R2-3 again, at the root console without `sudo -n` (R2-1 and R2-3 are [PRIVILEGED WRITE], needs owner approval; `--out` goes to a new root-only scratch file because Z0 removed `SCR`); the new `managed-live-root.unsigned.json` pins the new config digest. [OWNER SIGN, needs owner approval] S3': `TBP managed-root-sign` and `managed-root-verify` as R2-4; record the new REGDIGEST.
 - D5 [PRIVILEGED WRITE, needs owner approval] install the registration (R2-5).
-- D6 [OWNER SIGN, needs owner approval] S4': set `managed_live_root_registration_digest` in `$H/d09-cell.json` to the new REGDIGEST, run `template-digest` (new TD and delta digests), set `ContainmentProfileDigest` to the new TD in a fresh `TBP init` profile (same ID rules, other fields as R5-2), `TBP sign`, verify with the same public key.
+- D6 [OWNER SIGN, needs owner approval] S4': set `managed_live_root_registration_digest` in `$H/d09-cell.json` to the new REGDIGEST, run `template-digest` (new TD and delta digests), run `corpus-pins` on the new template again: PINS must be unchanged and `--manifest` must still exit 0 (only the registration digest may differ; any other change means start again from the pins), set `ContainmentProfileDigest` to the new TD in a fresh `TBP init` profile (same ID rules, other fields as R5-2), `TBP sign`, verify with the same public key.
 - D7 [PRIVILEGED WRITE, needs owner approval] install the profile and template (R5-3) and verify (R5-4). Rollback for D4 to D7: reinstall the smoke-era `serve-pi-service.json.prev`, `managed-live-root.*`, `pi-host-profile.*`, `d09-cell.json` copies (keep them before overwriting).
 - D8 [PRIVILEGED WRITE, needs owner approval] `systemctl start tbound-pi.service`; L2 checks; `journalctl` shows no refusal (a corpus failure refuses the service before it listens). Then SSH-3 trial check prints a `ResetDoc`, and Spike B.
 
@@ -684,12 +713,26 @@ The host builds `tbound-run.exe` (P1) and uses Git Bash `ssh` with three keys an
 | `admission_policy` | `policy_digest` = `sha256:e6a77851e90357efcba0fdc8036493acab5f74e911f38d5f32e001477419f683` (sha256 of `tbound/session-policy/v1`), `metadata_policy_digest` = `sha256:bf937a0d4d98f54111e82d025dc3b9aa7eeec939f71343547ba4392624e0785c` (sha256 of `tbound/metadata-policy/v1`); constants in `production_binder_linux.go` |
 | `v_image_digest` | `IMGDIGEST` (required, the plan has V steps) |
 | `artifacts_dir` | absolute path of `corpus/pilot/artifacts` (the host copy of the guest directory); `adaptive_caps` left out, taken from the attacker artifact |
-| `evq_obligations`, `evq_results` | non-empty ID list; `{path, sha256: "sha256:<hex>"}` of the pinned results file (BL-5) |
-| `route_report` | absolute path of the `routematrix.Report` JSON (BL-5); its file digest is the route digest |
+| `evq_obligations`, `evq_results` | the `evq_obligations` line printed by `tbound-run evq` (all 22 IDs of the mapping); `{path, sha256: "sha256:<hex>"}` with the `results_sha256` it printed |
+| `route_report` | absolute path of the `route_report.json` written by `tbound-run route-report`; its file digest is the route digest |
 | `ledger`, `run_dir` | `"synthetic-empty"`; a new absolute directory (holds `journal.jsonl`) |
-| `ssh` | `path` (Git Bash `ssh.exe`), `known_hosts`, `host` = `GUEST_IP`, `host_key_alias` = `172.18.155.19`, `client`, `evidence`, `trial` each `{user, key}` with three different key files (`client` unusable until BL-1) |
+| `ssh` | `path` (Git Bash `ssh.exe`), `known_hosts`, `host` = `GUEST_IP`, `host_key_alias` = `172.18.155.19`, `client`, `evidence`, `trial` each `{user, key}` with three different key files (`client` user `root`, forced command `tbound client-forced`) |
 | `proc` | `cell_uid`, `cell_gid` (from `evidence proc-cell`, SSH-3), `monitor_seconds` (tight bound of one step), `teardown_grace_seconds`, `authorized_sockets` (`[]` unless the owner authorizes a survivor socket) |
 | `only_cases` | optional; use a one-case list for the first trial |
+
+### EVQ results and route report (once per frozen commit, before `plan`)
+
+Both files are established once for `F`, outside the trial executor, and pinned in `run.json`; `Attest` takes every EVQ pass from the results file and nothing else. Neither command touches the network, the guest or a key. Run the tests on Linux from the `F` checkout (a Windows run skips the Linux-only tests, which then do not pass):
+
+```
+cd supervisor && go test -count=1 -json ./... > $H/go-test.json        # or only the packages named in infra/conformance/*.json
+tbound-run evq          --mapping infra/conformance/evq-mapping.json --test-json $H/go-test.json [--artifact <kind>=<file> ...] --out $H/evq_results.json
+tbound-run route-report --matrix  infra/conformance/route-matrix.json --test-json $H/go-test.json --out $H/route_report.json
+```
+
+- `evq` decides each obligation of the mapping, in mapping order. It is passed only if every mapped test PASSed (a skip, a failure, a missing result, a failed package or a skipped subtest is not a pass, in any of the given `--test-json` files) and every mapped `--artifact` kind was supplied as a non-empty file. A passed obligation's `evidence_ref` is `evq-mapping=sha256:..;go-test-json=sha256:..;artifact:<kind>=sha256:..` (mapping, test JSON and artifact bytes). An obligation with no mapped evidence is written `passed:false`. The report lists every not passed obligation with its reason, prints the `evq_obligations` JSON array, `mapping_sha256` and `results_sha256` (the `evq_results.sha256` of `run.json`). It refuses an existing `--out`, an unknown artifact kind and a malformed mapping (strict JSON, schema `tbound-evq-mapping/v1`). Unmapped now: `EVQ-SURFACE-ADAPTER-EQUIVALENCE` (TypeScript adapter tests), `EVQ-PROVIDER-REAL-EXCHANGE`, `EVQ-RECOVERY-LIFECYCLE-CUTPOINTS`, `EVQ-NETWORK-SINK-GUEST`, `EVQ-LINUX-CAPABILITY-GUEST`, `EVQ-COMMAND-VIEW-FAULTS`. `EVQ-ORACLE-PROCESS` passes only where the `Real*` cgroup tests run (they skip on WSL). Artifact kinds exist in the tool but the pinned mapping names none yet: a presence-and-digest check of an unparsed guest file would pass an empty probe result, so add one only together with a content check.
+- `route-report` reads the pinned E06 matrix (classes, treatment and declared status per cell, test references) and the test JSON, and writes the `routematrix.Report` via `routematrix.Coverage`. A cell declared `Covered` stays Covered only if all its test references PASSed; otherwise it is `Missing`. The matrix has one class (`outside-workspace-path`) and 4 cells, all `Missing` (no test records a `SuccessfulRead`, and no provider-channel classification test exists), so the report is `Complete: false` by design; it prints `matrix_digest`, the test JSON digests and the reasons. The file digest of `route_report.json` is the route digest.
+- Record `mapping_sha256`, `matrix_digest`, the `test_json` digests and `results_sha256` with the run (they are not inside the report). Any change to the mapping or the matrix is a change under `infra`, so it voids `F`.
 
 Sequence (each is [READ-ONLY] on the guest side except `run` and `rerun`, which spend units):
 

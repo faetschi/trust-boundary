@@ -361,8 +361,8 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	if err != nil {
 		return fail(err)
 	}
-	storePolicyDigest := digestBytes([]byte("tbound/session-policy/v1"))
-	metadataPolicyDigest := digestBytes([]byte("tbound/metadata-policy/v1"))
+	storePolicyDigest := digestBytes([]byte(gate.ProductionSessionPolicyLabel))
+	metadataPolicyDigest := digestBytes([]byte(gate.ProductionMetadataPolicyLabel))
 
 	var commandLauncher *piruntime.D09PodmanCrunLauncher
 	// commandDelta is the command-cell delta of this run, set below from the admitted role and the
@@ -956,12 +956,7 @@ func openProductionCgroupScopeNamed(ctx context.Context, template piruntime.D09C
 }
 
 func productionGatePolicy() (gate.Policy, error) {
-	return gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{
-		{Tool: "read", Effect: gate.EffectAllow},
-		{Tool: "edit", Effect: gate.EffectAllow},
-		{Tool: "write", Effect: gate.EffectAllow},
-		{Tool: "bash", Effect: gate.EffectAllow},
-	}})
+	return gate.NewPolicy(gate.ProductionProfile())
 }
 
 func productionToken() (string, error) {

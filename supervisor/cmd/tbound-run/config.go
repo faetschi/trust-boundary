@@ -240,6 +240,11 @@ func loadRoute(path string) (runner.RouteCoverage, error) {
 	if err != nil || len(data) > maxConfigBytes {
 		return runner.RouteCoverage{}, errors.New("route report: unreadable or too large")
 	}
+	return parseRouteReport(data)
+}
+
+// parseRouteReport decodes the route report strictly and takes its digest over the bytes.
+func parseRouteReport(data []byte) (runner.RouteCoverage, error) {
 	var rep routematrix.Report
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()

@@ -121,6 +121,11 @@ func shellQuote(s string) (string, error) {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'", nil
 }
 
+// RemoteCommand is the one string the guest receives for argv: the launcher and argv, every
+// word shell-quoted. The guest's client forced-command entry (`tbound client-forced`) is held
+// to it by test.
+func (c SSHTransport) RemoteCommand(argv []string) (string, error) { return c.remoteCommand(argv) }
+
 // remoteCommand is the one string the guest shell receives.
 func (c SSHTransport) remoteCommand(argv []string) (string, error) {
 	words := append(append([]string(nil), c.launcher()...), argv...)

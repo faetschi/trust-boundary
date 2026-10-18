@@ -17,6 +17,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
 	"tbound/supervisor/internal/broker/openrouter"
+	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/providerbridge"
@@ -85,8 +86,8 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 	if err != nil {
 		return nil, err
 	}
-	storePolicyDigest := digestBytes([]byte("tbound/session-policy/v1"))
-	metadataPolicyDigest := digestBytes([]byte("tbound/metadata-policy/v1"))
+	storePolicyDigest := digestBytes([]byte(gate.ProductionSessionPolicyLabel))
+	metadataPolicyDigest := digestBytes([]byte(gate.ProductionMetadataPolicyLabel))
 	if !validDigestText(profile.ProviderProfileDigest) || !validDigestText(profile.PiRuntimeBundleDigest) ||
 		!validDigestText(template.ExpectedImageDigest) || profile.ProviderProfile == "" ||
 		!validDigestText(profile.Digest) {

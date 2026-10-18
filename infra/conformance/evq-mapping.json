@@ -1,0 +1,372 @@
+{
+  "schema": "tbound-evq-mapping/v1",
+  "obligations": [
+    {
+      "id": "EVQ-IDENTITY",
+      "title": "E01 identity: the signed host profile, the pinned Pi build and model, and receipt identity equal to the registered pins",
+      "tests": {
+        "tbound/supervisor/internal/piruntime": [
+          "TestLinuxSignedHostProfileVerifiesCanonicalPinnedProfile",
+          "TestLinuxHostProfileSignVerifyRoundTrip",
+          "TestVerifyLinuxSignedHostProfileFilesRoundTrip",
+          "TestLoadLinuxSignedHostProfileRefusesUnprotectedPath",
+          "TestProductionPiCLIProfileRejectsLegacyOrMalformedContracts",
+          "TestProductionAdmissionRequiresHostProfileAndAttestation"
+        ],
+        "tbound/supervisor/internal/piinstall": [
+          "TestDiscoverPiPinsVersionAndFingerprintsExecutable",
+          "TestDiscoverPiRejectsOtherVersions",
+          "TestPinnedModelsMatchBrokerApprovedModel"
+        ],
+        "tbound/supervisor/internal/runner": [
+          "TestAttestVerifiesOnlyOnEqualPins"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-SURFACE-INVENTORY",
+      "title": "Surface closure: the exact four-tool manifest, no unregistered tool, pinned isolation flags for the governed Pi",
+      "tests": {
+        "tbound/supervisor/internal/broker": [
+          "TestProfileRequiresTheExactDeclaredManifest",
+          "TestUnknownProviderToolIsRejectedByTheManifest"
+        ],
+        "tbound/supervisor/internal/broker/openrouter": [
+          "TestBuildRequestFixesEndpointAndToolSchemas",
+          "TestBuildRequestRejectsUnsupportedMessageAndTool"
+        ],
+        "tbound/supervisor/internal/broker/protocol": [
+          "TestPiProposalsMatchTrustedFourToolCaptureSequence"
+        ],
+        "tbound/supervisor/internal/gate": [
+          "TestUnknownToolAndCorrelationBeforePolicy"
+        ],
+        "tbound/supervisor/internal/piinstall": [
+          "TestGovernedRPCArgsUsePinnedIsolationFlags"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-SURFACE-ADAPTER-EQUIVALENCE",
+      "title": "Surface closure: the Pi adapter is side-effect-free and equivalent for every registered tool (adapter tests are TypeScript, not Go)"
+    },
+    {
+      "id": "EVQ-PROPOSAL-INTEGRITY",
+      "title": "Malformed, oversized, duplicate, replayed, out-of-order and digest-mismatched proposals fail closed; default deny",
+      "tests": {
+        "tbound/supervisor/internal/ipc": [
+          "TestProposalResultPipeAndCleanClose",
+          "TestOversizedLengthRejectedBeforePayloadAllocation",
+          "TestTruncatedPrefixAndPayloadRejected",
+          "TestBindingMismatchDuplicateUnknownAndReplayRejected",
+          "TestUnknownDirectionAndMalformedPayloadFailClosed",
+          "TestBindingTokenValidationAndGeneratedToken",
+          "TestUnixSocketTransportIsPrivateAndCarriesBoundProposal"
+        ],
+        "tbound/supervisor/internal/gate": [
+          "TestPolicyAllowDenyAndDefaultDeny",
+          "TestArgumentDigestMismatchFailsClosed",
+          "TestMissingPolicyFailsClosedAfterCorrelation",
+          "TestUnknownAndAmbiguousPoliciesAreRejected"
+        ],
+        "tbound/supervisor/internal/broker/protocol": [
+          "TestArgumentMismatchFailsClosed",
+          "TestUnknownCallFailsClosed",
+          "TestReplayAndOutOfOrderFailClosed",
+          "TestMalformedRequestsFailClosed",
+          "TestPerStreamCountBudgets",
+          "TestPerStreamProposalByteBudget"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-PROVIDER-CORRELATION",
+      "title": "E02/E05 provider correlation: tool results bound to response, call identity, name, argument digest and sequence; no forged or replayed result; transcript replay",
+      "tests": {
+        "tbound/supervisor/internal/broker": [
+          "TestExchangeBuildsAndRecordsExactRegisteredRequest",
+          "TestProposalCorrelationBindsTrustedResponseCallNameAndDigest",
+          "TestUnknownDuplicateStaleAndDigestMismatchedCallsAreRejected"
+        ],
+        "tbound/supervisor/internal/broker/protocol": [
+          "TestProposalCannotForgeBrokerMetadata"
+        ],
+        "tbound/supervisor/internal/broker/openrouter": [
+          "TestCaptureSSERejectsMultipleToolCalls",
+          "TestCaptureSSERejectsAmbiguousStreams"
+        ],
+        "tbound/supervisor/internal/providerbridge": [
+          "TestConversationRejectsUncorrelatedOrReplayedProposal",
+          "TestConversationOwnsFourToolE05TranscriptAndDurableResults",
+          "TestReplayTranscriptRejectsRequestNotMatchingRebuiltHistory",
+          "TestReplayTranscriptRejectsPinSequenceIdentityAndRecordDrift",
+          "TestRealAuditJournalOrdersPromptExchangeDecisionAndToolResult"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-PROVIDER-ROUTE",
+      "title": "E02 provider route: fixed endpoint and headers, no redirect, no ambient credential, response model pinned; the broker is the only provider path",
+      "tests": {
+        "tbound/supervisor/internal/broker/openrouter": [
+          "TestHTTPDoerRefusesRedirects",
+          "TestHTTPDoerRejectsUnexpectedHeadersBeforeCredentialRead",
+          "TestHTTPDoerForEndpointRequiresHTTPSExceptLoopback",
+          "TestHTTPDoerRedactsCredentialAcrossResponseReadBoundaries",
+          "TestRequestHeadersAreRouteSpecific",
+          "TestBrokerDoesNotRecordCredentialOrCredentialSourceError"
+        ],
+        "tbound/supervisor/internal/broker": [
+          "TestResponseModelMustMatchRegisteredProfile",
+          "TestNonSuccessHTTPStatusFailsClosedAndRecordsResponse"
+        ],
+        "tbound/supervisor/internal/providerbridge": [
+          "TestInheritedChannelServesOnlyBrokerTurnRequests"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-PROVIDER-REAL-EXCHANGE",
+      "title": "E05 G1: one real provider exchange and two successive generations (read, edit, Bash, read); needs the network and a real provider key"
+    },
+    {
+      "id": "EVQ-WORKSPACE-CONFINEMENT",
+      "title": "Path traversal, symlink and hard-link escape, special files and Git indirection are rejected at import, publication and read",
+      "tests": {
+        "tbound/supervisor/internal/workspace": [
+          "TestImportRejectsLinksSpecialFilesAndVisibleXattrs",
+          "TestImportReservedGitFilterRejectsBeforeOpeningMetadata",
+          "TestImportReservedGitFilterRaceBarrierCopiesZeroInsertedGitBytes",
+          "TestImportRejectsEqualOrOverlappingRoots",
+          "TestImportEnforcesStreamingLimits"
+        ],
+        "tbound/supervisor/internal/privategit": [
+          "TestCreateRejectsNestedSubmoduleAndLinkedWorktreePointers",
+          "TestCreateRejectsLiveGitDirectoryAndPointerBeforeDestination",
+          "TestCreateDoesNotInheritHostGitConfigurationOrDrivers"
+        ],
+        "tbound/supervisor/internal/publication": [
+          "TestPublicationRejectsSymlinkAndHardLinkObjects"
+        ],
+        "tbound/supervisor/internal/sessionrepo": [
+          "TestSessionRepositoryDeniedReadMatrixE2E"
+        ],
+        "tbound/supervisor/internal/sandbox": [
+          "TestPathEscapeDenied"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-STAGING-DELTA",
+      "title": "Staging provenance: the approved-delta chain binds each generation to exact tool arguments, decisions, policy and endpoint commitments",
+      "tests": {
+        "tbound/supervisor/internal/delta": [
+          "TestValidateChainComposesEditsAndReverts",
+          "TestValidateChainRejectsBrokenOrderingAndLinks",
+          "TestValidateChainAllowsEmptyGenerationTransition",
+          "TestValidateChainRequiresExactToolArgumentBinding",
+          "TestValidateChainAppliesChangeSetFromOneInputSnapshot",
+          "TestValidateChainRejectsExcessAggregateTreeWorkBeforeStepCopy",
+          "TestValidateChainPreflightsOversizedManifestStrings",
+          "TestValidateChainBoundsAggregateInputBytes",
+          "TestValidateChainRequiresDecisionAttestationAndPolicyMatch",
+          "TestValidateChainRequiresCompleteMatchingEndpointCommitments",
+          "TestComputeTreeDigestRequiresCanonicalCompleteManifest"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-PUBLICATION-PROVENANCE",
+      "title": "E07 publication: per-object ledger for create, overwrite, delete, rename and directory creation; no approval of a change made beside it; conflicts and replaced destinations fail closed",
+      "tests": {
+        "tbound/supervisor/internal/publication": [
+          "TestPublicationRecordsOneApprovedLedgerEntryPerAppliedObject",
+          "TestPublicationLedgerCoversEveryOperationAndComposesAgainstTheBaseline",
+          "TestPublicationLedgerDoesNotApproveAChangeMadeBesideIt",
+          "TestPublicationRefusedByTheAuthorityHasNoLedgerAndNoEffect",
+          "TestPublicationLedgerOfAnInterruptedPublicationNamesOnlyWhatWasApplied",
+          "TestPublicationDoesNotApproveADirectoryReplacedAfterCreation",
+          "TestPublicationDoesNotApproveADestinationReplacedBetweenCheckAndSwap",
+          "TestPublicationDoesNotOverwriteADestinationThatAppearsBeforeTheSwap",
+          "TestPublishComposesCreateOverwriteDeleteRenameAndDirectoryCreate",
+          "TestPublicationConflictAndAuthorizationBindingFailClosed",
+          "TestPublicationRejectsOriginOutsideApprovedProposalCalls",
+          "TestPublicationOSLockAndOwnerEpochFence"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-RECOVERY-ADMISSION",
+      "title": "E07 recovery and admission: faults at publication boundaries give SUCCEEDED, FAILED or UNKNOWN without replay; stale owners are fenced; unsettled provider state never admits",
+      "tests": {
+        "tbound/supervisor/internal/publication": [
+          "TestPublicationFaultBoundariesRecoverByObservationWithoutReplay",
+          "TestPublicationPreparationAndTerminalFaultBoundaries",
+          "TestMixedMultiObjectRecoveryDoesNotReplayAnyRemainingOperation",
+          "TestPublicationRecoveryRejectsTamperedDurableStateRecord",
+          "TestRecoveryKeepsTamperedCheckpointedLiveStateUnknown",
+          "TestDisposableCheckpointRestoreNeverOverwritesLaterLiveEffects",
+          "TestDisposableCheckpointRestoreRecoveryBoundaries"
+        ],
+        "tbound/supervisor/internal/workflowrecovery": [
+          "TestSQLiteOwnerFreshProcessReopenKeepsUncertainReservationCharged",
+          "TestSQLiteOwnerCrashAfterReservationBeforeProviderDispatch",
+          "TestSQLiteOwnerCrashBeforeExternalCASLeavesUnadmittedTail",
+          "TestSQLiteOwnerRequiresFenceDrainAndRejectsStaleOwner",
+          "TestUnsettledProviderStateCanBeRecordedButCannotAdmitOrRetry",
+          "TestCleanRestartWithPreEffectRetryChargesBothAllowancesInOneReceipt",
+          "TestProtectedRootLocksNamespaceAndRejectsForgedProcessIncarnation",
+          "TestOwnerDrainEvidencePersistsVerifierProofDigest"
+        ],
+        "tbound/supervisor/internal/workflow": [
+          "TestRootLedgerQuarantinesAcrossWorkflowsUntilNoPrepareIsReconciled",
+          "TestAdmissionClosesAndWaitsForAcceptedEffects"
+        ],
+        "tbound/supervisor/internal/drainproof": [
+          "TestProveAcceptsDrainedOwner",
+          "TestProveRefusesWithErrNotDrained",
+          "TestProvePopulatedDeadlineIsUnknownNotNotDrained",
+          "TestProveAllFailsClosedOnEmptyOrAnyRefusal"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-RECOVERY-LIFECYCLE-CUTPOINTS",
+      "title": "Recovery conformance: the eight lifecycle cutpoints LC-01 to LC-08 injected end to end (the injectors are not implemented)"
+    },
+    {
+      "id": "EVQ-JOURNAL-FAULTS",
+      "title": "Audit journal faults: write, fsync, ENOSPC and EFBIG failures prevent the effect or withhold the result; corrupt or truncated journals are refused; crash cuts never replay",
+      "tests": {
+        "tbound/supervisor/internal/audit": [
+          "TestRealENOSPCIntentWritePreventsEffect",
+          "TestRealFailedFsyncIntentPreventsEffect",
+          "TestRealEFBIGIntentWritePreventsEffect",
+          "TestRealEFBIGOutcomeWriteWithholdsResultAndQuarantines",
+          "TestIntentSyncFailurePreventsEffect",
+          "TestOutcomeSyncFailureWithholdsResultAfterEffect",
+          "TestPanicQuarantinesAllLaterEffects",
+          "TestCallbackErrorRecordsUnknownAndQuarantinesAfterReopen",
+          "TestDuplicateEffectIDDoesNotRunAgain",
+          "TestOpenRejectsCorruptAndTruncatedJournal",
+          "TestOpenReconstructsUnresolvedAttemptAndBlocksReplay",
+          "TestAuditAndCallbackFixtureCrashCutsNeverReplay"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-ORACLE-WORKSPACE",
+      "title": "E04 workspace predicate: retained protected-state difference at the registered points, attribution to WS-01 to WS-04, approved ledger changes are not effects, incomplete evidence is lost",
+      "tests": {
+        "tbound/supervisor/internal/wsoracle": [
+          "TestE04CleanTreeIsNoEffectForEveryPredicate",
+          "TestE04ChangeRetainedAtOneIntermediatePointIsAnEffect",
+          "TestE04PointNamesAreTheRegisteredSeven",
+          "TestE04ApprovedLedgerChangeIsNotAnEffect",
+          "TestE04IncompleteEvidenceIsLostForAllFourPredicates",
+          "TestE04AncestorReplacedBySymlinkIsAnEffect",
+          "TestAttributionContentChangeIsWS01",
+          "TestAttributionDeleteIsWS02",
+          "TestAttributionRenameWithSameInodeIsWS03",
+          "TestAttributionModeChangeIsWS04"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-ORACLE-TRANSIENT",
+      "title": "E04 event instrument: create/delete-and-revert and modify/revert fixtures, liveness canaries, declared loss semantics",
+      "tests": {
+        "tbound/supervisor/internal/effectoracle": [
+          "TestCreateThenDeleteIsTransientAndInvisibleToEndpoints",
+          "TestModifyThenRevertIsTransientAndEndpointsAgree",
+          "TestSilentInstrumentFailsTheCanaryAndIsUnqualified",
+          "TestQueueOverflowIsEvidenceLostAndWatchesSurvive",
+          "TestTransientCreateThenDeleteIsFoundFromEventsAlone",
+          "TestDeleteAndRestoreObservedAtAMarkIsReverted",
+          "TestPreservationFieldsNameTheGapAndHeartbeatFields"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-ORACLE-NETWORK",
+      "title": "Network canary oracle: tagged arrival is an effect, a clean window is none only with both canaries and a live sink, lost or tampered evidence is never none",
+      "tests": {
+        "tbound/supervisor/internal/netoracle": [
+          "TestCollectorArrivalInTheCanaryWindowIsAnEffect",
+          "TestCollectorCleanWindowIsNoneWithAReportReference",
+          "TestCollectorWithADeadSinkNeverSaysNone",
+          "TestTaggedArrivalIsEffectPresent",
+          "TestNoArrivalWithBothCanariesIsNoEffect",
+          "TestMissingCanaryIsEvidenceLost",
+          "TestTamperedJournalIsEvidenceLost",
+          "TestSinkRestartedInsideTheWindowIsNeverNoEffect",
+          "TestSinkThatLostARecordAcknowledgesNoCanary",
+          "TestRawTCPBytesAreEffectPresent",
+          "TestTLSClientHelloIsEffectPresent",
+          "TestForeignCanaryDoesNotCount"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-NETWORK-SINK-GUEST",
+      "title": "The net-sink nft rule (socket cgroupv2) and the Landlock connect right load and discriminate on the guest kernel (BL-2, BL-3, Spike A and B)"
+    },
+    {
+      "id": "EVQ-ORACLE-PROCESS",
+      "title": "Process oracle: surviving, escaped and listening processes are detected, a clean teardown is none, unreadable or missing evidence is lost",
+      "tests": {
+        "tbound/supervisor/internal/procoracle": [
+          "TestCaptureEscapedDoubleForkDaemonWithEmptyCellAndRecordedRegistry",
+          "TestRealCleanTeardownIsNoEffect",
+          "TestRealDetachedSleepSurvivingIsProc01",
+          "TestRealReparentedSurvivorIsProc01",
+          "TestRealProcessMovedOutOfTheCellIsProc02",
+          "TestRealResidualListenerIsProc03",
+          "TestEvaluateCleanTeardownIsNoEffect",
+          "TestEvaluateSurvivorIsProc01",
+          "TestEvaluateZombieIsNotASurvivor",
+          "TestEvaluateMissingRegistryIsEvidenceLost",
+          "TestMonitorGapGreaterThanMaxGapIsEvidenceLost",
+          "TestCaptureHiddenOrUnreadableProcIsEvidenceLost"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-PROCESS-CONTAINMENT",
+      "title": "Cancellation, timeout and surviving descendants: the whole cell scope is killed and a survivor fails closed",
+      "tests": {
+        "tbound/supervisor/internal/sandbox": [
+          "TestSurvivingChildFailsClosed",
+          "TestCancelKillsWholeScope"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-LINUX-CONTAINMENT",
+      "title": "Linux capability, mechanisms on the test host: Landlock inside/outside, seccomp, no network, read-only runtime, cgroup cells root refusals",
+      "tests": {
+        "tbound/supervisor/internal/sandbox": [
+          "TestProbeMechanisms",
+          "TestLandlockAllowsInsideDeniesOutside",
+          "TestSeccompFilter",
+          "TestNoNetwork",
+          "TestReadOnlyRuntimeAndWritableWorkspace"
+        ],
+        "tbound/supervisor/internal/piruntime": [
+          "TestEnsureCellsCgroupRefusesCellsWithProcesses",
+          "TestD09CgroupRootDigestIsStableAcrossCellsInodes",
+          "TestD09CellCgroupRootIsClosedSiblingOfRunner",
+          "TestLandlockDigestCommitsToConnectPortsAndScopeOnly"
+        ]
+      }
+    },
+    {
+      "id": "EVQ-LINUX-CAPABILITY-GUEST",
+      "title": "Linux capability on the guest: effective cgroup-v2 mode and controllers, cgroup.kill, Landlock ABI and errata, seccomp digest (Spike A); no guest receipt format exists to bind"
+    },
+    {
+      "id": "EVQ-COMMAND-VIEW-FAULTS",
+      "title": "Command-view conformance: setup, COW and teardown fault injection with ENOSPC, EDQUOT, EIO, EROFS and cross-device cases (02 section 11); not implemented as a suite"
+    }
+  ]
+}
