@@ -691,11 +691,14 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 			(disposition == "PUBLISHED" && publicationStatus == string(publication.StatusSucceeded) ||
 				noChangeReleased && disposition == "NO_DIFF" && publicationStatus == "NO_DIFF"),
 	}
+	// TraceCommitted, not Trace: a journal cut or emptied while this handle is open is still a valid
+	// hash chain, and anchoring it could give a false zero-publication head. Rollback across a
+	// reopening is not detected here (privileged interference or operational rollback).
 	if session.PublicationJournal == nil {
 		if config.workflowAdmission != nil && config.workflowAdmission.Entry.CorpusManifestDigest != "" {
 			publishErr = errors.Join(publishErr, errors.New("anchor production publication interval: no publication journal"))
 		}
-	} else if publicationTrace, traceErr := session.PublicationJournal.Trace(); traceErr != nil {
+	} else if publicationTrace, traceErr := session.PublicationJournal.TraceCommitted(); traceErr != nil {
 		publishErr = errors.Join(publishErr, fmt.Errorf("read production publication journal for the interval anchor: %w", traceErr))
 	} else if anchorErr := applyPublicationAnchor(&receipt, config.workflowAdmission, session.WorkflowID, publicationTrace); anchorErr != nil {
 		publishErr = errors.Join(publishErr, fmt.Errorf("anchor production publication interval: %w", anchorErr))

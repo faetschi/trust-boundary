@@ -254,6 +254,41 @@ func (j *Journal) Append(event Event) (Record, error) {
 func (j *Journal) Trace() (Trace, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	return j.traceLocked()
+}
+
+// TraceCommitted is Trace for a caller that needs the file to end where this handle left
+// it. It returns the verified journal only if its final sequence and head hash equal the
+// sequence and head this handle has committed (the state recorded when the journal was
+// opened and advanced by every successful append), and fails with ErrCorrupt if the file
+// is shorter, longer or different: a valid hash-chain prefix verifies, so Trace alone
+// cannot tell a journal that was cut at a record boundary, or emptied, from the journal
+// this handle wrote. An empty file is accepted only if the handle has committed nothing.
+//
+// Limitation: the comparison is against the memory of this open handle. A journal that
+// was cut or replaced before it was opened, or rolled back to an earlier valid state
+// across a close and reopen, is not detected; that is privileged interference or
+// operational rollback, which this package does not defend against.
+func (j *Journal) TraceCommitted() (Trace, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	trace, err := j.traceLocked()
+	if err != nil {
+		return Trace{}, err
+	}
+	var sequence uint64
+	head := ""
+	if n := len(trace.Records); n > 0 {
+		sequence, head = trace.Records[n-1].Sequence, trace.Records[n-1].Hash
+	}
+	if sequence != j.sequence || head != j.head {
+		return Trace{}, fmt.Errorf("%w: the journal ends at sequence %d but this handle committed sequence %d",
+			ErrCorrupt, sequence, j.sequence)
+	}
+	return trace, nil
+}
+
+func (j *Journal) traceLocked() (Trace, error) {
 	if j.closed {
 		return Trace{}, ErrClosed
 	}
