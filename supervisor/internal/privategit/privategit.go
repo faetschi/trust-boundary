@@ -134,7 +134,7 @@ type Options struct {
 type PinnedGit struct {
 	path     string
 	file     *os.File
-	identity executableIdentity
+	identity GitExecutableIdentity
 	verify   GitExecutableVerifier
 	boundary string
 }
@@ -176,16 +176,6 @@ type GitExecutableApproval struct {
 // model-controlled worker. PinGitExecutable still rechecks the approved
 // descriptor before each invocation.
 type GitExecutableVerifier func(GitExecutableIdentity) error
-
-type executableIdentity struct {
-	Device    uint64
-	Inode     uint64
-	Size      int64
-	Mode      uint32
-	MtimeSec  int64
-	MtimeNsec int64
-	Digest    string
-}
 
 type nodeIdentity struct {
 	Device uint64
@@ -431,10 +421,7 @@ func (r *Repository) Root() *os.File {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.closed || r.destroyed {
-		return nil
-	}
-	if r.readOnly {
+	if r.closed || r.destroyed || r.readOnly {
 		return nil
 	}
 	return r.root

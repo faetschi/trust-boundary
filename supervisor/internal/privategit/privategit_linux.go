@@ -91,11 +91,7 @@ func PinGitExecutable(path string, approval GitExecutableApproval) (PinnedGit, e
 		return PinnedGit{}, fmt.Errorf("%w: trusted verifier: %v", ErrGitExecutable, err)
 	}
 	closeOnError = false
-	return PinnedGit{path: resolved, file: file, verify: approval.Verifier, identity: executableIdentity{
-		Device: identity.Device, Inode: identity.Inode, Size: identity.Size,
-		Mode: identity.Mode, MtimeSec: identity.MtimeSec, MtimeNsec: identity.MtimeNsec,
-		Digest: identity.Digest,
-	}, boundary: approval.Boundary}, nil
+	return PinnedGit{path: resolved, file: file, verify: approval.Verifier, identity: identity, boundary: approval.Boundary}, nil
 }
 
 // Create captures source through the existing descriptor-relative workspace
@@ -1392,7 +1388,7 @@ func readBoundedEntries(directory *os.File, maximum int) ([]os.DirEntry, error) 
 	if _, err := directory.Seek(0, io.SeekStart); err != nil {
 		return nil, err
 	}
-	entries := make([]os.DirEntry, 0, minInt(maximum, 128))
+	entries := make([]os.DirEntry, 0, min(maximum, 128))
 	for {
 		remaining := maximum - len(entries)
 		request := remaining + 1
@@ -1414,13 +1410,6 @@ func readBoundedEntries(directory *os.File, maximum int) ([]os.DirEntry, error) 
 			return nil, io.ErrNoProgress
 		}
 	}
-}
-
-func minInt(left, right int) int {
-	if left < right {
-		return left
-	}
-	return right
 }
 
 func unlinkAt(parent *os.File, name string, flags uintptr) error {

@@ -104,7 +104,6 @@ func buildReport(ctx context.Context, version, prefix string, opts piinstall.Opt
 		rep.Checks = append(rep.Checks, check{Name: "self", Status: warn, Detail: "cannot resolve own executable"})
 	}
 
-	// Prefix.
 	if info, err := os.Stat(prefix); err == nil {
 		mode := info.Mode().Perm()
 		st := pass
@@ -128,13 +127,12 @@ func buildReport(ctx context.Context, version, prefix string, opts piinstall.Opt
 		rep.Checks = append(rep.Checks, check{Name: "pi", Status: pass, Detail: fmt.Sprintf("%s (%s; sha256:%s)", piInfo.Version, piInfo.Path, piInfo.SHA256)})
 	}
 
-	// Linux-only capability checks.
 	if runtime.GOOS == "linux" {
 		rep.Checks = append(rep.Checks, cgroupCheck())
 		rep.Checks = append(rep.Checks, lookPathCheck("podman", "needed for governed containment (Phase 2)"))
 		rep.Checks = append(rep.Checks, lookPathCheck("crun", "needed for governed containment (Phase 2)"))
 		rep.Checks = append(rep.Checks, lookPathCheck("cosign", "needed to verify the signed cell image (Phase 2)"))
-		rep.Checks = append(rep.Checks, signedProfileCheck())
+		rep.Checks = append(rep.Checks, signedProfileCheckAt("/etc/tbound"))
 		rep.Checks = append(rep.Checks, landlockCheck())
 	} else {
 		rep.Checks = append(rep.Checks, check{Name: "containment", Status: warn, Detail: "containment checks are Linux-only", Remediation: "use the declared Linux evaluation host for governed runs"})
@@ -187,10 +185,6 @@ func lookPathCheck(name, reason string) check {
 		return check{Name: name, Status: pass, Detail: p}
 	}
 	return check{Name: name, Status: warn, Detail: "not found — " + reason, Remediation: "install " + name + " for governed runs"}
-}
-
-func signedProfileCheck() check {
-	return signedProfileCheckAt("/etc/tbound")
 }
 
 func signedProfileCheckAt(directory string) check {

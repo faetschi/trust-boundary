@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strconv"
 
 	"tbound/supervisor/internal/broker"
@@ -74,7 +75,7 @@ func runOneShot(ctx context.Context, credentials openrouter.Credentials, doer br
 	callCount := 0
 	if call, ok := captured.ToolCall(); ok {
 		callCount = 1
-		manifestRespected = manifestRespected && contains(broker.DeclaredToolManifest(), call.Name)
+		manifestRespected = manifestRespected && slices.Contains(broker.DeclaredToolManifest(), call.Name)
 	}
 	_, err = fmt.Fprintf(output,
 		"redacted_summary=true status_code=%d response_id=%s response_model=%s captured_tool_calls=%d ordered_four_tool_manifest_respected=%t response_bytes=%d max_response_bytes=%d containment=not-established g1=false\n",
@@ -113,13 +114,4 @@ func requestManifestRespected(body []byte) (bool, error) {
 		}
 	}
 	return true, nil
-}
-
-func contains(values []string, candidate string) bool {
-	for _, value := range values {
-		if value == candidate {
-			return true
-		}
-	}
-	return false
 }

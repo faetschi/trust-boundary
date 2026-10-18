@@ -86,13 +86,7 @@ func TestCreateInitializesIndependentPrivateGitRepository(t *testing.T) {
 	if err := repository.Destroy(); err != nil {
 		t.Fatalf("Destroy: %v", err)
 	}
-	entries, err := os.ReadDir(parentPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("bounded Destroy left parent entries: %+v", entries)
-	}
+	requireEmptyDirectory(t, parentPath, "bounded Destroy left parent entries")
 }
 
 func TestReopenVerifiesPinnedSnapshotWithoutRestoringAuthorityOrMutatingEvidence(t *testing.T) {
@@ -629,13 +623,7 @@ func TestCreateRejectsLiveGitDirectoryAndPointerBeforeDestination(t *testing.T) 
 			if !errors.Is(err, ErrSourceContainsGit) {
 				t.Fatalf("Create error = %v, want ErrSourceContainsGit", err)
 			}
-			entries, readErr := os.ReadDir(parentPath)
-			if readErr != nil {
-				t.Fatal(readErr)
-			}
-			if len(entries) != 0 {
-				t.Fatalf("destination was created on rejected source: %+v", entries)
-			}
+			requireEmptyDirectory(t, parentPath, "destination was created on rejected source")
 		})
 	}
 }
@@ -651,13 +639,7 @@ func TestCreateRequiresTrustedSourceBindingEvidence(t *testing.T) {
 	if !errors.Is(err, ErrInvalidOptions) {
 		t.Fatalf("Create without source binding = %v, want ErrInvalidOptions", err)
 	}
-	entries, readErr := os.ReadDir(parentPath)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("destination was created without source binding: %+v", entries)
-	}
+	requireEmptyDirectory(t, parentPath, "destination was created without source binding")
 }
 
 func TestCreateRejectsNestedSubmoduleAndLinkedWorktreePointers(t *testing.T) {
@@ -681,13 +663,7 @@ func TestCreateRejectsNestedSubmoduleAndLinkedWorktreePointers(t *testing.T) {
 			if !errors.Is(err, ErrSourceContainsGit) {
 				t.Fatalf("Create error = %v, want ErrSourceContainsGit", err)
 			}
-			entries, readErr := os.ReadDir(parentPath)
-			if readErr != nil {
-				t.Fatal(readErr)
-			}
-			if len(entries) != 0 {
-				t.Fatalf("destination was created on nested admin rejection: %+v", entries)
-			}
+			requireEmptyDirectory(t, parentPath, "destination was created on nested admin rejection")
 		})
 	}
 }
@@ -713,13 +689,7 @@ func TestCreateRejectsRealGitHistoryAndLinkedWorktreeFixture(t *testing.T) {
 	if !errors.Is(err, ErrSourceContainsGit) {
 		t.Fatalf("Create real linked worktree = %v, want ErrSourceContainsGit", err)
 	}
-	entries, readErr := os.ReadDir(parentPath)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("destination was created for real linked worktree: %+v", entries)
-	}
+	requireEmptyDirectory(t, parentPath, "destination was created for real linked worktree")
 }
 
 func TestCreateRejectsRealGitSubmodulePointerFixture(t *testing.T) {
@@ -745,13 +715,7 @@ func TestCreateRejectsRealGitSubmodulePointerFixture(t *testing.T) {
 	if !errors.Is(err, ErrSourceContainsGit) {
 		t.Fatalf("Create real submodule = %v, want ErrSourceContainsGit", err)
 	}
-	entries, readErr := os.ReadDir(parentPath)
-	if readErr != nil {
-		t.Fatal(readErr)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("destination was created for real submodule: %+v", entries)
-	}
+	requireEmptyDirectory(t, parentPath, "destination was created for real submodule")
 }
 
 func TestCreatePreservesSafeGitWorktreeAttributesWithoutHistory(t *testing.T) {
@@ -896,13 +860,7 @@ func TestCreateCleansOnlyItsBoundedDirectoryWhenPinnedGitChanges(t *testing.T) {
 	if !errors.Is(err, ErrGitExecutable) {
 		t.Fatalf("Create error = %v, want ErrGitExecutable", err)
 	}
-	entries, err := os.ReadDir(parentPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("failed creation left private staging entries: %+v", entries)
-	}
+	requireEmptyDirectory(t, parentPath, "failed creation left private staging entries")
 }
 
 func TestPinRejectsSameUIDGitLikeExecutableWithoutApprovedBytes(t *testing.T) {
@@ -1321,6 +1279,17 @@ func descriptorPath(t *testing.T, file *os.File) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func requireEmptyDirectory(t *testing.T, path, message string) {
+	t.Helper()
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("%s: %+v", message, entries)
+	}
 }
 
 func assertPrivateDirectory(t *testing.T, path string) {
