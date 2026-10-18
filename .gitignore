@@ -29,3 +29,4 @@ supervisor/internal/sessionrepo/artifacts/
 # this does not match the retained supervisor/tbound.exe pattern above.
 supervisor/tbound-*
 __pycache__/
+.claude/
