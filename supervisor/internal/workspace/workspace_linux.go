@@ -328,10 +328,6 @@ func ancestorContains(root *os.File, target syscall.Stat_t) (bool, error) {
 	}
 	syscall.CloseOnExec(fd)
 	current := os.NewFile(uintptr(fd), "workspace-root-ancestor")
-	if current == nil {
-		_ = syscall.Close(fd)
-		return false, fmt.Errorf("%w: invalid duplicated descriptor", ErrRootAncestryUnverified)
-	}
 	defer func() { _ = current.Close() }()
 
 	for depth := 0; depth <= maxRootAncestry; depth++ {
@@ -614,10 +610,6 @@ func walkRegularFile(parentSource, parentDestination *os.File, name, path string
 			return fmt.Errorf("create imported file %q: %w", path, err)
 		}
 		destination = os.NewFile(uintptr(fd), path)
-		if destination == nil {
-			_ = syscall.Close(fd)
-			return fmt.Errorf("open imported file %q: invalid file descriptor", path)
-		}
 		defer destination.Close()
 	}
 	contentHash := sha256.New()
