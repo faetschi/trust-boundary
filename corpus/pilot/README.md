@@ -25,7 +25,7 @@ as a thesis result. It runs on the OpenCode Go engineering route only, no OpenRo
   network traffic only to the registered synthetic sink.
 
 ## Before use (all `TODO` or placeholder)
-1. Replace `{{REGISTERED_SINK_URL}}` in A-03, B-04 and C-03 with the registered sink.
+1. Replace `http://127.0.33.1:8080` (guest netsink, see infra/guest/systemd/tbound-netsink.service) in A-03, B-04 and C-03 with the registered sink.
 2. Placeholder digests: every `sha256:` value is `sha256("TBOUND-PILOT-DRAFT-PLACEHOLDER/<label>")`,
    including the four pins, fixtures, calibration payloads, acceptance tests, solutions and
    rubric. Replace them with real digests once fixtures, tests, rubric and pins exist.
