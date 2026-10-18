@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
@@ -292,7 +293,8 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		return fail(fmt.Errorf("read-only replay, external retirement, and durable clean-restart reservation failed: %w", err))
 	}
 	recoveryCandidate = candidate
-	closers = append(closers, recoveryCandidate.Close)
+	candidateCloser := recoveryCandidate.Close
+	closers = append(closers, candidateCloser)
 
 	// The durable restart receipt now exists. Only after this point acquire C's
 	// managed-live-root writer capability and run its recovery/source gates.
@@ -361,8 +363,12 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		return fail(fmt.Errorf("revalidate receipt and retained pins before managed Store/D06 activation: %w", err))
 	}
 	managed, admin, prepared = recovered.Managed, recovered.Admin, recovered.Prepared
-	closers = closers[:len(closers)-1] // Candidate transferred the activated Store/admin/D06 handles.
-	closers = append(closers, managed.Close, admin.Close, prepared.Close)
+	var candidateTransferred bool
+	// The candidate transferred the activated Store/admin/D06 handles: its own closer leaves the stack.
+	closers, candidateTransferred = transferCandidateClosers(closers, candidateCloser, managed.Close, admin.Close, prepared.Close)
+	if !candidateTransferred {
+		return fail(ErrGovernedRecoveryUnavailable)
+	}
 	baseline, tip := managed.Store().BaselineGeneration(), recovered.Generation
 	if baseline == nil || tip == nil || managed.Store().TipGeneration() != tip {
 		return fail(ErrGovernedRecoveryUnavailable)
@@ -621,4 +627,37 @@ func productionRecoveryGitPin(trace audit.Trace, pins workflowrecovery.Pins) (se
 			return nil
 		},
 	}, nil
+}
+
+// transferCandidateClosers is the closer-stack step after governedRecoveryCandidate.Activate:
+// the candidate handed its Store, admin and D06 handles to the activated session, so the
+// candidate's own closer leaves the stack and the activated handles' closers join it. The
+// candidate closer is found by identity (the same func value), never by position: the
+// closers registered after it (the live root among them) must stay. The activated closers
+// are always added, so a failure path still closes them; ok is false, and the stack is
+// otherwise unchanged, when the candidate closer is not on it exactly once.
+func transferCandidateClosers(closers []func() error, candidate func() error, activated ...func() error) ([]func() error, bool) {
+	found := -1
+	for index, closer := range closers {
+		if !sameCloser(closer, candidate) {
+			continue
+		}
+		if found >= 0 {
+			return append(closers, activated...), false
+		}
+		found = index
+	}
+	if found < 0 {
+		return append(closers, activated...), false
+	}
+	out := make([]func() error, 0, len(closers)-1+len(activated))
+	out = append(out, closers[:found]...)
+	out = append(out, closers[found+1:]...)
+	return append(out, activated...), true
+}
+
+// sameCloser reports whether a and b are the same func value: the same closure, not merely
+// code shared by several closures. A func value is one pointer to its closure object.
+func sameCloser(a, b func() error) bool {
+	return a != nil && b != nil && *(*unsafe.Pointer)(unsafe.Pointer(&a)) == *(*unsafe.Pointer)(unsafe.Pointer(&b))
 }

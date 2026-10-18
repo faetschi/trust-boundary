@@ -10,7 +10,6 @@ import (
 	"io"
 	"reflect"
 	"slices"
-	"sync"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/wsoracle"
@@ -330,21 +329,17 @@ func (s CollectorSet) Validate() error {
 //
 // E04. The seven registered points are moments inside the service run (materialization,
 // settlement, teardown import, publication, cleanup). A collector outside the service
-// cannot sample those moments, so it observes the protected root at two times: the
-// baseline, in BeginInterval right before the request is sent, and after the run, when
-// the service has answered (teardown and cleanup are over). Only those two are observed:
-// the end state is the one final_cleanup snapshot and the five internal points stay absent,
-// so EvaluateE04 answers evidence_lost for WS-01..04 (with any end-state difference still
-// listed as a finding), never no_effect (see e04LaterPoints). The approved-delta ledger is not collected: E04 is served
-// only for an interval whose receipt anchor shows no publication, since a published
-// change is an approved change that only a ledger can explain; any other interval stays
-// absent.
+// cannot sample those moments, so the service takes the manifest itself at each of them and
+// journals it in a per-workflow store whose head and count the receipt binds
+// (cmd/tbound/production_e04_points_linux.go). E04 fetches that store with the guest kind
+// e04-points and E04PointsInput verifies it against the receipt binding. A receipt without
+// the binding, a store that does not match it, or any transport or decode failure is
+// ErrEvidenceAbsent, never a partial input. A point the service could not snapshot is a
+// gap and stays missing, so its verdicts are evidence_lost; a published interval's ledger
+// basis is unavailable for the same reason (see E04LedgerUnavailable).
 type SSHCollectors struct {
 	AbsentCollectors
 	Client EvidenceClient
-
-	mu        sync.Mutex
-	baselines map[string]wsoracle.Manifest
 }
 
 // NewSSHCollectors returns collectors over the evidence transport.
@@ -355,74 +350,16 @@ func NewSSHCollectors(t Transport) *SSHCollectors {
 // Validate checks the evidence transport.
 func (c *SSHCollectors) Validate() error { return c.Client.Validate() }
 
-// TODO(service-lifecycle-snapshots): the six internal E04 points (post_materialization,
-// post_settlement, post_teardown, pre_publication, post_publication, final_cleanup) are
-// moments inside the service run. A collector outside the service sees only the state
-// before the request and the state after the answer, so it must not label an end-state
-// snapshot with an internal point: a file changed at post_settlement and restored before
-// the answer would then read as no_effect. Only the end state is collected, as
-// final_cleanup (the last point, the one the end of the run is), and the other five stay
-// absent so EvaluateE04 returns evidence_lost for WS-01..04. The real fix is service-side
-// manifests captured at the service's own lifecycle barriers.
-var e04LaterPoints = []string{wsoracle.PointFinalCleanup}
-
-func (c *SSHCollectors) snapshot(ctx context.Context, point string) (wsoracle.Manifest, error) {
-	var doc E04SnapshotDoc
-	if err := c.Client.CallDoc(ctx, &doc, EvidenceE04Snapshot, "--root", EvidenceLiveRoot, "--point", point); err != nil {
-		return wsoracle.Manifest{}, err
-	}
-	if doc.Schema != EvidenceSchema || doc.Kind != EvidenceE04Snapshot || doc.Point != point ||
-		doc.Root != EvidenceLiveRoot || doc.Manifest.Label != point || doc.Manifest.Root == nil {
-		return wsoracle.Manifest{}, evidenceAbsent("e04 snapshot document does not answer the %s request", point)
-	}
-	return doc.Manifest, nil
-}
-
-// BeginInterval takes the baseline snapshot.
-func (c *SSHCollectors) BeginInterval(ctx context.Context, ref EvidenceRef) error {
-	c.mu.Lock()
-	delete(c.baselines, ref.Interval)
-	c.mu.Unlock()
-	m, err := c.snapshot(ctx, wsoracle.PointBaseline)
-	if err != nil {
-		return err
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.baselines == nil {
-		c.baselines = map[string]wsoracle.Manifest{}
-	}
-	c.baselines[ref.Interval] = m
-	return nil
-}
-
-// EndInterval drops the interval's baseline.
-func (c *SSHCollectors) EndInterval(ref EvidenceRef) {
-	c.mu.Lock()
-	delete(c.baselines, ref.Interval)
-	c.mu.Unlock()
-}
-
 // E04 implements Collectors.
 func (c *SSHCollectors) E04(ctx context.Context, ref EvidenceRef) (wsoracle.EvaluateE04Input, error) {
-	c.mu.Lock()
-	baseline, ok := c.baselines[ref.Interval]
-	c.mu.Unlock()
-	if !ok {
-		return wsoracle.EvaluateE04Input{}, evidenceAbsent("no baseline snapshot for %s", ref.Interval)
+	if ref.E04Head == "" || ref.E04Count <= 0 {
+		return wsoracle.EvaluateE04Input{}, evidenceAbsent("the receipt carries no E04 evidence binding for %s", ref.Interval)
 	}
-	if !ref.PublicationsKnown || ref.Publications != 0 {
-		return wsoracle.EvaluateE04Input{}, evidenceAbsent("the interval's publications are unknown or non-zero and no ledger is collected")
+	var doc E04PointsDoc
+	if err := c.Client.CallDoc(ctx, &doc, EvidenceE04Points, "--interval-ref", ref.Interval); err != nil {
+		return wsoracle.EvaluateE04Input{}, err
 	}
-	in := wsoracle.EvaluateE04Input{Baseline: baseline, Scope: wsoracle.E04Scope{Whole: true}}
-	for _, p := range e04LaterPoints {
-		m, err := c.snapshot(ctx, p)
-		if err != nil {
-			return wsoracle.EvaluateE04Input{}, err
-		}
-		in.Points = append(in.Points, wsoracle.E04Point{Name: p, Manifest: m, LedgerPrefixDigest: wsoracle.LedgerPrefixDigest(nil, 0)})
-	}
-	return in, nil
+	return E04PointsInput(doc, ref.Interval, ref.E04Head, ref.E04Count)
 }
 
 // PublicationJournal implements Collectors. The bytes must verify as an audit chain

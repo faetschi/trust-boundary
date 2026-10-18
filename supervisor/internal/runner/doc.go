@@ -95,11 +95,12 @@
 //     client transport) restricts to that subcommand: e04-snapshot of the one registered
 //     live root, proc-cell/proc-capture/proc-monitor for the registered cell, and
 //     publication-interval-journal derived by the service's own anchor functions.
-//     SSHCollectors serves E04 (a baseline snapshot before the request and one end-state
-//     snapshot after it: the service's internal observation points cannot be sampled from
-//     outside and are left absent, so WS-01..04 are evidence_lost until service-side
-//     lifecycle manifests exist, and only for an interval whose receipt anchor shows no
-//     publication, since no approved-delta ledger is collected) and the publication journal; procoracle.SSHCollector serves
+//     SSHCollectors serves E04 from the service's own manifests of the seven lifecycle
+//     points (the e04-points kind: the per-workflow store the receipt binds by head and
+//     count, verified by E04PointsInput; a receipt without the binding or a store that
+//     does not match it leaves E04 absent, a gap point stays missing, and a published
+//     interval's ledger basis is unavailable, so those verdicts are evidence_lost) and the
+//     publication journal; procoracle.SSHCollector serves
 //     PROC (the monitor runs on the guest in parallel with the request, the request is sent only
 //     after the monitor acknowledged its first poll, and the polls come back at the end of
 //     its duration); netoracle.Collector serves NET from the sink that runs on the guest

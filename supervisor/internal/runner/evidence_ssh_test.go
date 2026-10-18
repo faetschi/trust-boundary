@@ -37,166 +37,127 @@ func (f *fakeEvidenceTransport) argvs() [][]string {
 	return append([][]string(nil), f.calls...)
 }
 
-func evidenceManifest(label string) wsoracle.Manifest {
-	root := &wsoracle.Entry{Type: wsoracle.TypeDir, Mode: 0o700, UID: 995, GID: 986, Nlink: 2, Ino: 7}
-	return wsoracle.Manifest{Label: label, Complete: true, Root: root, Dev: 9,
-		Entries: []wsoracle.Entry{wsFile("a.txt", 11, "X")}}
-}
-
-// e04Guest answers e04-snapshot for every point with the same tree.
-func e04Guest(mutate func(*E04SnapshotDoc)) func([]string) ([]byte, int, error) {
+// e04PointsGuest answers e04-points for the interval of doc; mutate edits the document first.
+func e04PointsGuest(doc E04PointsDoc, mutate func(*E04PointsDoc)) func([]string) ([]byte, int, error) {
 	return func(argv []string) ([]byte, int, error) {
-		if len(argv) != 5 || argv[0] != EvidenceE04Snapshot || argv[1] != "--root" || argv[3] != "--point" {
+		if len(argv) != 3 || argv[0] != EvidenceE04Points || argv[1] != "--interval-ref" || argv[2] != doc.IntervalRef {
 			return nil, 2, nil
 		}
-		doc := E04SnapshotDoc{Schema: EvidenceSchema, Kind: EvidenceE04Snapshot, Point: argv[4], Root: argv[2],
-			Manifest: evidenceManifest(argv[4])}
+		d := doc
 		if mutate != nil {
-			mutate(&doc)
+			mutate(&d)
 		}
-		b, _ := json.Marshal(doc)
+		b, _ := json.Marshal(d)
 		return b, 0, nil
 	}
 }
 
-// The collector sits outside the service and can observe only the baseline (before the
-// request) and the end state (after the answer). It must not label end-state snapshots
-// with the six internal E04 points: a change made and undone between them would then
-// read as no_effect. The internal points stay absent, so every WS predicate is
-// evidence_lost until service-side lifecycle manifests exist.
-func TestSSHCollectorsE04ObservesOnlyTheBaselineAndTheEndState(t *testing.T) {
-	ft := &fakeEvidenceTransport{handler: e04Guest(nil)}
+func e04BoundRef(doc E04PointsDoc) EvidenceRef {
+	return EvidenceRef{Interval: doc.IntervalRef, E04Head: doc.Head, E04Count: doc.Count}
+}
+
+// The collector asks the guest for the service's own manifests of the seven lifecycle points
+// and checks them against the receipt binding. It takes no baseline snapshot of its own.
+func TestSSHCollectorsE04ServesTheServiceStoreTheReceiptBinds(t *testing.T) {
+	doc, _, _ := e04ptDoc(t, e04ptRun7(nil))
+	ft := &fakeEvidenceTransport{handler: e04PointsGuest(doc, nil)}
 	c := NewSSHCollectors(ft)
-	ref := EvidenceRef{Interval: "case|trajectory|C|0#1", PublicationsKnown: true}
-	if err := c.BeginInterval(context.Background(), ref); err != nil {
-		t.Fatal(err)
+	if _, ok := any(c).(IntervalCollectors); ok {
+		t.Fatal("SSHCollectors still takes interval snapshots")
 	}
-	if got := ft.argvs(); len(got) != 1 || !reflect.DeepEqual(got[0], []string{"e04-snapshot", "--root", EvidenceLiveRoot, "--point", "baseline"}) {
-		t.Fatalf("calls after Begin = %q", got)
-	}
-	in, err := c.E04(context.Background(), ref)
+	in, err := c.E04(context.Background(), e04BoundRef(doc))
 	if err != nil {
 		t.Fatal(err)
 	}
-	calls := ft.argvs()
-	if len(calls) != 2 || len(in.Points) != 1 {
-		t.Fatalf("calls=%d points=%d, want 2 and 1", len(calls), len(in.Points))
+	if calls := ft.argvs(); len(calls) != 1 || !reflect.DeepEqual(calls[0], []string{"e04-points", "--interval-ref", e04ptInterval}) {
+		t.Fatalf("calls = %q", calls)
 	}
-	if p := in.Points[0]; p.Name != wsoracle.PointFinalCleanup || calls[1][4] != wsoracle.PointFinalCleanup {
-		t.Fatalf("end state labelled %q (call %q), want final_cleanup", p.Name, calls[1])
+	if in.Baseline.Label != wsoracle.PointBaseline || len(in.Points) != 6 || !in.Scope.Whole {
+		t.Fatalf("baseline=%q points=%d scope=%+v, want the baseline and six more points", in.Baseline.Label, len(in.Points), in.Scope)
 	}
-	if in.Points[0].LedgerPrefixDigest != wsoracle.LedgerPrefixDigest(nil, 0) || in.Points[0].LedgerApplied != 0 {
-		t.Error("the end state carries a ledger prefix")
+	names := []string{in.Baseline.Label}
+	for _, p := range in.Points {
+		names = append(names, p.Name)
 	}
-	if in.Baseline.Label != wsoracle.PointBaseline || !in.Scope.Whole || len(in.Ledger) != 0 {
-		t.Fatalf("baseline/scope/ledger = %q %+v %v", in.Baseline.Label, in.Scope, in.Ledger)
+	if !reflect.DeepEqual(names, E04PointOrder) {
+		t.Fatalf("points = %v, want %v", names, E04PointOrder)
 	}
-	in.ThreatClass = "TM-C"
+	in.ThreatClass = wsoracle.ClassTMA
 	rep := wsoracle.EvaluateE04(in)
-	for _, k := range []string{wsoracle.PredicateWS01, wsoracle.PredicateWS02, wsoracle.PredicateWS03, wsoracle.PredicateWS04} {
-		if v := rep.VerdictOf(k); v != wsoracle.VerdictEvidenceLost {
-			t.Errorf("%s = %q on an unchanged end state, want evidence_lost (internal points were not observed)", k, v)
+	for _, k := range []string{wsoracle.PredicateWS01, wsoracle.PredicateWS02, wsoracle.PredicateWS04} {
+		if v := rep.VerdictOf(k); v != wsoracle.VerdictNoEffect {
+			t.Errorf("%s = %q for an untouched root observed at all seven points, want no_effect", k, v)
 		}
 	}
 }
 
-func TestSSHCollectorsE04ChangedEndStateIsNeverNoEffect(t *testing.T) {
-	changed := e04Guest(func(d *E04SnapshotDoc) {
-		if d.Point != wsoracle.PointBaseline {
-			d.Manifest.Entries = []wsoracle.Entry{wsFile("a.txt", 11, "Y")}
-		}
-	})
-	c := NewSSHCollectors(&fakeEvidenceTransport{handler: changed})
-	ref := EvidenceRef{Interval: "i#1", PublicationsKnown: true}
-	if err := c.BeginInterval(context.Background(), ref); err != nil {
-		t.Fatal(err)
-	}
-	in, err := c.E04(context.Background(), ref)
-	if err != nil {
-		t.Fatal(err)
-	}
-	in.ThreatClass = "TM-A"
-	rep := wsoracle.EvaluateE04(in)
-	if v := rep.VerdictOf(wsoracle.PredicateWS01); v == wsoracle.VerdictNoEffect {
-		t.Fatalf("EFF-WS-01 = %q for a changed file", v)
-	}
-	if len(rep.Findings) == 0 {
-		t.Fatal("the end-state change is not reported as a finding")
+func TestSSHCollectorsE04ServesAPublishedIntervalToo(t *testing.T) {
+	doc, _, _ := e04ptDoc(t, e04ptRun7(nil))
+	c := NewSSHCollectors(&fakeEvidenceTransport{handler: e04PointsGuest(doc, nil)})
+	ref := e04BoundRef(doc)
+	ref.PublicationsKnown, ref.Publications = true, 1
+	if _, err := c.E04(context.Background(), ref); err != nil {
+		t.Fatalf("a published interval is decided by the stored ledger basis, not refused here: %v", err)
 	}
 }
 
-func TestSSHCollectorsE04WithoutALedgerServesOnlyAKnownPublicationFreeInterval(t *testing.T) {
+// Without a binding in the receipt nothing is asked and nothing is returned: the evidence is
+// absent, not a short or negative input.
+func TestSSHCollectorsE04ReceiptWithoutABindingIsAbsent(t *testing.T) {
+	doc, head, count := e04ptDoc(t, e04ptRun7(nil))
 	for name, ref := range map[string]EvidenceRef{
-		"publication":        {Interval: "i#1", PublicationsKnown: true, Publications: 1},
-		"anchor not known":   {Interval: "i#1"},
-		"begin not observed": {Interval: "other#1", PublicationsKnown: true},
+		"no binding":     {Interval: e04ptInterval},
+		"no head":        {Interval: e04ptInterval, E04Count: count},
+		"no count":       {Interval: e04ptInterval, E04Head: head},
+		"negative count": {Interval: e04ptInterval, E04Head: head, E04Count: -1},
 	} {
-		ft := &fakeEvidenceTransport{handler: e04Guest(nil)}
-		c := NewSSHCollectors(ft)
-		if err := c.BeginInterval(context.Background(), EvidenceRef{Interval: "i#1"}); err != nil {
-			t.Fatal(err)
+		ft := &fakeEvidenceTransport{handler: e04PointsGuest(doc, nil)}
+		in, err := NewSSHCollectors(ft).E04(context.Background(), ref)
+		if !errors.Is(err, ErrEvidenceAbsent) || len(in.Points) != 0 {
+			t.Errorf("%s: points=%d err=%v, want ErrEvidenceAbsent", name, len(in.Points), err)
 		}
-		before := len(ft.argvs())
-		if _, err := c.E04(context.Background(), ref); !errors.Is(err, ErrEvidenceAbsent) {
-			t.Errorf("%s: err = %v, want ErrEvidenceAbsent", name, err)
-		}
-		if name != "begin not observed" && len(ft.argvs()) != before {
-			t.Errorf("%s: snapshots were taken although E04 cannot be served", name)
+		if len(ft.argvs()) != 0 {
+			t.Errorf("%s: the guest was called for a receipt without a binding", name)
 		}
 	}
 }
 
-func TestSSHCollectorsEvidenceFailuresAreAbsentNeverNone(t *testing.T) {
-	good := e04Guest(nil)
-	cases := map[string]func([]string) ([]byte, int, error){
-		"transport error": func([]string) ([]byte, int, error) { return nil, 0, errors.New("ssh: connect refused") },
-		"nonzero exit":    func([]string) ([]byte, int, error) { return nil, 2, nil },
-		"empty output":    func([]string) ([]byte, int, error) { return nil, 0, nil },
-		"not json":        func([]string) ([]byte, int, error) { return []byte("oops"), 0, nil },
-		"truncated": func(a []string) ([]byte, int, error) {
+func TestSSHCollectorsE04DocumentThatDoesNotMatchTheReceiptIsAbsent(t *testing.T) {
+	doc, _, _ := e04ptDoc(t, e04ptRun7(nil))
+	good := e04PointsGuest(doc, nil)
+	for name, tc := range map[string]struct {
+		ref     EvidenceRef
+		handler func([]string) ([]byte, int, error)
+	}{
+		"receipt head differs":   {EvidenceRef{Interval: doc.IntervalRef, E04Head: strings.Repeat("0", 64), E04Count: doc.Count}, good},
+		"receipt count differs":  {EvidenceRef{Interval: doc.IntervalRef, E04Head: doc.Head, E04Count: doc.Count - 1}, good},
+		"document head differs":  {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.Head = strings.Repeat("0", 64) })},
+		"document count differs": {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.Count-- })},
+		"other interval":         {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.IntervalRef = "x#2" })},
+		"wrong schema":           {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.Schema = "tbound-evidence/v0" })},
+		"wrong kind":             {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.Kind = EvidenceNetJournal })},
+		"not base64":             {e04BoundRef(doc), e04PointsGuest(doc, func(d *E04PointsDoc) { d.JournalB64 = "%%%" })},
+		"transport error":        {e04BoundRef(doc), func([]string) ([]byte, int, error) { return nil, 0, errors.New("ssh: connect refused") }},
+		"nonzero exit":           {e04BoundRef(doc), func([]string) ([]byte, int, error) { return nil, 2, nil }},
+		"empty output":           {e04BoundRef(doc), func([]string) ([]byte, int, error) { return nil, 0, nil }},
+		"not json":               {e04BoundRef(doc), func([]string) ([]byte, int, error) { return []byte("oops"), 0, nil }},
+		"truncated": {e04BoundRef(doc), func(a []string) ([]byte, int, error) {
 			b, c, e := good(a)
 			return b[:len(b)/2], c, e
-		},
-		"two documents": func(a []string) ([]byte, int, error) {
+		}},
+		"two documents": {e04BoundRef(doc), func(a []string) ([]byte, int, error) {
 			b, c, e := good(a)
 			return append(append(b, '\n'), b...), c, e
-		},
-		"unknown field": func(a []string) ([]byte, int, error) {
+		}},
+		"unknown field": {e04BoundRef(doc), func(a []string) ([]byte, int, error) {
 			b, c, e := good(a)
 			return []byte(strings.Replace(string(b), `"kind"`, `"extra":1,"kind"`, 1)), c, e
-		},
-		"wrong schema": e04Guest(func(d *E04SnapshotDoc) { d.Schema = "tbound-evidence/v0" }),
-		"wrong kind":   e04Guest(func(d *E04SnapshotDoc) { d.Kind = EvidenceProcCapture }),
-		"other point":  e04Guest(func(d *E04SnapshotDoc) { d.Point = wsoracle.PointFinalCleanup }),
-		"other label":  e04Guest(func(d *E04SnapshotDoc) { d.Manifest.Label = "other" }),
-		"other root":   e04Guest(func(d *E04SnapshotDoc) { d.Root = "/etc" }),
-		"no root meta": e04Guest(func(d *E04SnapshotDoc) { d.Manifest.Root = nil }),
-	}
-	for name, h := range cases {
-		c := NewSSHCollectors(&fakeEvidenceTransport{handler: h})
-		ref := EvidenceRef{Interval: "i#1", PublicationsKnown: true}
-		if err := c.BeginInterval(context.Background(), ref); !errors.Is(err, ErrEvidenceAbsent) {
-			t.Errorf("%s: Begin err = %v, want ErrEvidenceAbsent", name, err)
+		}},
+	} {
+		in, err := NewSSHCollectors(&fakeEvidenceTransport{handler: tc.handler}).E04(context.Background(), tc.ref)
+		if !errors.Is(err, ErrEvidenceAbsent) || len(in.Points) != 0 || in.Baseline.Root != nil {
+			t.Errorf("%s: err=%v points=%d, want ErrEvidenceAbsent and an empty input", name, err, len(in.Points))
 		}
-		if _, err := c.E04(context.Background(), ref); !errors.Is(err, ErrEvidenceAbsent) {
-			t.Errorf("%s: E04 err = %v, want ErrEvidenceAbsent", name, err)
-		}
-	}
-	// The end-state snapshot failing makes the whole input absent, not a short one.
-	calls := 0
-	c := NewSSHCollectors(&fakeEvidenceTransport{handler: func(a []string) ([]byte, int, error) {
-		calls++
-		if calls == 2 {
-			return nil, 255, nil
-		}
-		return e04Guest(nil)(a)
-	}})
-	ref := EvidenceRef{Interval: "i#1", PublicationsKnown: true}
-	if err := c.BeginInterval(context.Background(), ref); err != nil {
-		t.Fatal(err)
-	}
-	if in, err := c.E04(context.Background(), ref); !errors.Is(err, ErrEvidenceAbsent) || len(in.Points) != 0 {
-		t.Fatalf("partial points: %d, %v", len(in.Points), err)
 	}
 }
 
@@ -435,5 +396,32 @@ func TestFirstLineWriterReportsTheFirstCompleteLineOnceAndKeepsEverything(t *tes
 	}
 	if w.buf.String() != "partial\nsecond\nthird" {
 		t.Fatalf("buffered = %q", w.buf.String())
+	}
+}
+
+// The receipt's E04 binding reaches the collector through the evidence reference.
+func TestGovernedCCarriesTheReceiptsE04BindingToTheCollector(t *testing.T) {
+	f := newGovernedFixture(t)
+	var events []string
+	rc := &recordingCollectors{events: &events}
+	f.g.Collectors = rc
+	receipt := f.receipt(true)
+	receipt["e04_evidence_head"] = strings.Repeat("b", 64)
+	receipt["e04_evidence_record_count"] = 7
+	receipt["e04_gap_count"] = 2
+	f.respond("completed", "", receipt, 0)
+	if _, err := f.g.Execute(context.Background(), f.step); err != nil {
+		t.Fatal(err)
+	}
+	if e := rc.e04[0]; e.E04Head != strings.Repeat("b", 64) || e.E04Count != 7 || e.E04GapCount != 2 {
+		t.Fatalf("E04 ref = %+v", e)
+	}
+	// A receipt without the binding leaves the reference unbound.
+	f.respond("completed", "", f.receipt(true), 0)
+	if _, err := f.g.Execute(context.Background(), f.step); err != nil {
+		t.Fatal(err)
+	}
+	if e := rc.e04[1]; e.E04Head != "" || e.E04Count != 0 || e.E04GapCount != 0 {
+		t.Fatalf("E04 ref without a binding = %+v", e)
 	}
 }

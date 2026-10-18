@@ -49,10 +49,16 @@ type EvidenceRef struct {
 	RunID string
 	// Publications is the receipt anchor's publication count, and PublicationsKnown
 	// is true only when the receipt carried an anchor for this interval. A collector
-	// that has no approved-delta ledger (SSHCollectors) serves E04 only for a known
-	// zero.
+	// that has no approved-delta ledger records the published interval's ledger basis as
+	// unavailable (see E04LedgerUnavailable).
 	Publications      int
 	PublicationsKnown bool
+	// E04Head, E04Count and E04GapCount are the receipt's e04_evidence_head,
+	// e04_evidence_record_count and e04_gap_count: the service's binding of its E04 point
+	// store. They are empty/zero when the receipt carries no binding.
+	E04Head     string
+	E04Count    int
+	E04GapCount int
 }
 
 // ObserverEvidence is what a NET or PROC collector returns: the findings and, for each
@@ -210,6 +216,10 @@ type governedReceipt struct {
 	PublicationJournalHead        string `json:"publication_journal_head"`
 	PublicationJournalRecordCount int    `json:"publication_journal_record_count"`
 
+	E04EvidenceHead        string `json:"e04_evidence_head"`
+	E04EvidenceRecordCount int    `json:"e04_evidence_record_count"`
+	E04GapCount            int    `json:"e04_gap_count"`
+
 	InTokens     int   `json:"in_tokens"`
 	OutTokens    int   `json:"out_tokens"`
 	CostMicroUSD int64 `json:"cost_micro_usd"`
@@ -303,6 +313,7 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		ref.RunID = receipt.RunID
 		ref.Publications = receipt.PublicationJournalRecordCount
 		ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
+		ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount
 		o.Metrics.ToolCalls = len(receipt.ToolSequence)
 		o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
 		if receipt.Success {

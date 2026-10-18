@@ -69,6 +69,9 @@ import (
 //	    the interval journal of the corpus admission REF names (marker record, then the
 //	    workflow's publication records), base64, with the head and count the receipt
 //	    anchor carries; derived by the service's own anchor functions.
+//	e04-points                   --interval-ref REF
+//	    the service's own protected-tree manifests at the seven E04 points of the admission REF
+//	    names, bound by the receipt's head and count (evidence_e04_points_linux.go). Read-only.
 //	net-canary                   --phase start|end --interval TAG
 //	    the ONE kind with an effect: it sends a single GET canary request to the guest NET sink
 //	    (runner.NetsinkAddr, 127.0.33.1:8080) with the sink-private secret and prints the journal
@@ -109,6 +112,7 @@ const evidenceUsage = `usage: tbound evidence <kind> [--flag value]...   (read-o
   proc-capture                 --registration <digest> --point <post_teardown|final_cleanup> --interval-start <ns> --deadline <ns>
   proc-monitor                 --registration <digest> --interval-start <ns> --deadline <ns> --duration <s> --interval <ms>
   publication-interval-journal --interval-ref <ref>
+  e04-points                   --interval-ref <ref>
   net-canary                   --phase <start|end> --interval <tag>   (sends ONE canary to the guest NET sink: the only effect)
   net-journal                  --interval <tag>
   ssh-original-command         (forced-command entry; reads $SSH_ORIGINAL_COMMAND)
@@ -238,6 +242,9 @@ func runEvidence(ctx context.Context, args []string, stdout io.Writer, env evide
 		return errors.New("no evidence kind")
 	}
 	kind, rest := args[0], args[1:]
+	if h, ok := evidenceExtraKinds[kind]; ok {
+		return runEvidenceExtra(kind, h, rest, stdout, env)
+	}
 	if _, ok := evidenceFlags[kind]; !ok {
 		return fmt.Errorf("unknown evidence kind %q", kind)
 	}
