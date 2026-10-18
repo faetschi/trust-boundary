@@ -113,11 +113,7 @@ func seedSQLiteCorruptionFixture(t *testing.T, rootPath, ownerStoreRoot string) 
 	t.Helper()
 	ctx := context.Background()
 	ownerPath := filepath.Join(ownerStoreRoot, "workflow-owner.sqlite")
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, sqliteCorruptionWorkflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, sqliteCorruptionWorkflow)
 	owner, err := CreateFreshSQLiteOwner(ownerPath, root)
 	if err != nil {
 		_ = root.Close()

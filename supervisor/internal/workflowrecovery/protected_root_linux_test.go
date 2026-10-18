@@ -160,6 +160,16 @@ func newProtectedRootTestBoundary(t *testing.T, ownerStoreRoot, workflow string,
 	return boundary
 }
 
+func createProtectedRoot(t *testing.T, rootPath, ownerStoreRoot, workflow string) (*LinuxHostBoundary, *ProtectedTrustedRoot) {
+	t.Helper()
+	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
+	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
+	if err != nil {
+		t.Fatalf("create protected root: %v", err)
+	}
+	return boundary, root
+}
+
 func TestProtectedRootLocksNamespaceAndRejectsForgedProcessIncarnation(t *testing.T) {
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 	workflow := "protected-root-lock"
@@ -208,11 +218,7 @@ func TestProtectedRootLocksNamespaceAndRejectsForgedProcessIncarnation(t *testin
 func TestProtectedRootLockPathReplacementFailsClosed(t *testing.T) {
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 	workflow := "protected-root-lock-replacement"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	boundary, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	lockPath := rootPath + ".lock"
 	retainedLockPath := lockPath + ".retained"
 	if err := os.Rename(lockPath, retainedLockPath); err != nil {
@@ -374,11 +380,7 @@ func TestProtectedRootPersistsHeadAndRequiresDrainOfAbandonedFence(t *testing.T)
 func TestProtectedRootFreshAuthorizationCannotResetReplacedOwnerStore(t *testing.T) {
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 	workflow := "protected-root-no-reset"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	defer root.Close()
 	ownerPath := filepath.Join(ownerStoreRoot, "workflow.sqlite")
 	owner, err := CreateFreshSQLiteOwner(ownerPath, root)
@@ -415,11 +417,7 @@ func TestProtectedRootFreshAuthorizationCannotResetReplacedOwnerStore(t *testing
 func TestProtectedRootRejectsSameContentOwnerDBReplacementAfterLocalMetadataRewrite(t *testing.T) {
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 	workflow := "protected-root-db-inode-binding"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	defer root.Close()
 
 	ownerPath := filepath.Join(ownerStoreRoot, "workflow.sqlite")
@@ -482,11 +480,7 @@ func TestProtectedRootRejectsSameContentOwnerDBReplacementAfterLocalMetadataRewr
 func TestProtectedRootDeadlineUsesStickyBootTimeExpiryAcrossWallRollbackAndReopen(t *testing.T) {
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 	workflow := "protected-root-deadline-sticky-expiry"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	baseWall := time.Now().Round(0).UTC()
 	deadline := baseWall.Add(time.Hour).UTC()
 	bootID := "00000000-0000-4000-8000-000000000001"
@@ -582,11 +576,7 @@ func TestLoadSettledCheckpointReadOnlyAcceptsExpiredAndFreshBootHistory(t *testi
 		t.Run(test.name, func(t *testing.T) {
 			rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 			workflow := "settled-view-" + strings.ReplaceAll(test.name, "-", "")
-			boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-			root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-			if err != nil {
-				t.Fatalf("create protected root: %v", err)
-			}
+			_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 			baseWall := time.Now().Round(0).UTC()
 			wallNow := baseWall
 			bootID := "00000000-0000-4000-8000-000000000091"
@@ -719,11 +709,7 @@ func runSettledCheckpointReadHelper(t *testing.T, rootPath, ownerStoreRoot, owne
 func TestLoadSettledCheckpointRejectsMismatchedRootDigestAndOwnerIdentity(t *testing.T) {
 	rootPath, ownerStoreRoot, base := newProtectedRootTestDirs(t)
 	workflow := "settled-view-integrity"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	defer root.Close()
 	ownerPath := filepath.Join(ownerStoreRoot, workflow+".sqlite")
 	owner, err := CreateFreshSQLiteOwner(ownerPath, root)
@@ -794,11 +780,7 @@ func TestLoadSettledCheckpointRejectsMismatchedRootDigestAndOwnerIdentity(t *tes
 func TestTerminalEffectOutcomeCanOnlySettleExactReservationAfterStickyExpiry(t *testing.T) {
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 	workflow := "protected-root-late-effect-terminal"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	baseWall := time.Now().Round(0).UTC()
 	deadline := baseWall.Add(time.Hour).UTC()
 	bootID := "00000000-0000-4000-8000-000000000021"
@@ -938,11 +920,7 @@ func TestTerminalEffectOutcomeCanOnlySettleExactReservationAfterStickyExpiry(t *
 func TestTerminalEffectUncertainRootCASLeavesOwnerPoisonedAndClockPauseSticky(t *testing.T) {
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 	workflow := "protected-root-terminal-cas-uncertain"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	baseWall := time.Now().Round(0).UTC()
 	deadline := baseWall.Add(time.Hour).UTC()
 	bootID := "00000000-0000-4000-8000-000000000022"
@@ -1032,11 +1010,7 @@ func TestProtectedRootDeadlineClockRollbackAndBootChangePersistPause(t *testing.
 		t.Run(scenario, func(t *testing.T) {
 			rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 			workflow := "protected-root-clock-pause-" + scenario
-			boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-			root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-			if err != nil {
-				t.Fatalf("create protected root: %v", err)
-			}
+			_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 			baseWall := time.Now().Round(0).UTC()
 			deadline := baseWall.Add(time.Hour).UTC()
 			bootID := "00000000-0000-4000-8000-000000000002"
@@ -1271,11 +1245,7 @@ func TestOwnerDrainEvidenceDigestBindsEveryInput(t *testing.T) {
 func TestProtectedRootRejectsDifferentOwnerStoreRoot(t *testing.T) {
 	rootPath, ownerStoreRoot, base := newProtectedRootTestDirs(t)
 	workflow := "protected-root-store-binding"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	if err := root.Close(); err != nil {
 		t.Fatalf("close protected root: %v", err)
 	}
@@ -1300,11 +1270,7 @@ func TestProtectedRootRejectsDifferentOwnerStoreRoot(t *testing.T) {
 func TestReserveHostCallAfterSuccessfulToolResultAllowsOnlyNextExchange(t *testing.T) {
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 	workflow := "protected-root-next-host-call-after-result"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	defer root.Close()
 	owner, err := CreateFreshSQLiteOwner(filepath.Join(ownerStoreRoot, "workflow.sqlite"), root)
 	if err != nil {
@@ -1442,11 +1408,7 @@ func TestReserveHostCallAfterSuccessfulToolResultAllowsOnlyNextExchange(t *testi
 func TestNextProviderExchangeAdmissionRejectsNearbyPendingStates(t *testing.T) {
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 	workflow := "protected-root-next-host-call-nearby-states"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	defer root.Close()
 	owner, err := CreateFreshSQLiteOwner(filepath.Join(ownerStoreRoot, "workflow.sqlite"), root)
 	if err != nil {

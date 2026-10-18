@@ -225,11 +225,7 @@ func TestD14ProductionToolCallCommitsAndEncodedBytes(t *testing.T) {
 	ctx := context.Background()
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 	workflow := d14PCMaxID("workflow-")
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	defer root.Close()
 	owner, err := CreateFreshSQLiteOwner(filepath.Join(ownerStoreRoot, "workflow.sqlite"), root)
 	if err != nil {
@@ -325,11 +321,7 @@ func newD14PCCapturedFixture(t *testing.T) d14PCFixture {
 	ctx := context.Background()
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
 	workflow := d14PCMaxID("workflow-")
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	t.Cleanup(func() { _ = root.Close() })
 	path := filepath.Join(ownerStoreRoot, "workflow.sqlite")
 	owner, err := CreateFreshSQLiteOwner(path, root)

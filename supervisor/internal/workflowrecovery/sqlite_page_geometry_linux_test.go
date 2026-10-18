@@ -68,20 +68,53 @@ func fileSHA256(t *testing.T, path string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// rewriteSQLiteGeometry produces an existing, schema-valid file whose geometry
-// differs from the contract. VACUUM is the engine path that rewrites a database
-// under a new page size or auto-vacuum mode; WAL is restored afterwards.
-func rewriteSQLiteGeometry(t *testing.T, path, geometryPragma string, applied func(sqlitePageGeometry) bool) {
+func openRWSQLite(t *testing.T, path string) *sql.DB {
 	t.Helper()
-	dsnURL := url.URL{Scheme: "file", Path: path}
-	query := url.Values{}
-	query.Set("mode", "rw")
-	dsnURL.RawQuery = query.Encode()
+	dsnURL := url.URL{Scheme: "file", Path: path, RawQuery: url.Values{"mode": {"rw"}}.Encode()}
 	db, err := sql.Open("sqlite", dsnURL.String())
 	if err != nil {
 		t.Fatal(err)
 	}
 	db.SetMaxOpenConns(1)
+	return db
+}
+
+// createClosedOwner creates and closes a fresh SQLite owner file.
+func createClosedOwner(t *testing.T) (*testTrustedRoot, string) {
+	t.Helper()
+	root := newTestTrustedRoot()
+	directory := t.TempDir()
+	if err := os.Chmod(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(directory, "workflow-owner.sqlite")
+	owner, err := CreateFreshSQLiteOwner(path, root)
+	if err != nil {
+		t.Fatalf("create owner: %v", err)
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return root, path
+}
+
+// createClosedProtectedRoot creates and closes a fresh protected root file.
+func createClosedProtectedRoot(t *testing.T, workflow string) (string, string, *LinuxHostBoundary) {
+	t.Helper()
+	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
+	boundary, created := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
+	if err := created.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return rootPath, ownerStoreRoot, boundary
+}
+
+// rewriteSQLiteGeometry produces an existing, schema-valid file whose geometry
+// differs from the contract. VACUUM is the engine path that rewrites a database
+// under a new page size or auto-vacuum mode; WAL is restored afterwards.
+func rewriteSQLiteGeometry(t *testing.T, path, geometryPragma string, applied func(sqlitePageGeometry) bool) {
+	t.Helper()
+	db := openRWSQLite(t, path)
 	defer db.Close()
 	ctx := context.Background()
 	for _, statement := range []string{"PRAGMA journal_mode=DELETE", geometryPragma, "VACUUM", "PRAGMA journal_mode=WAL"} {
@@ -165,19 +198,7 @@ func TestSQLiteOwnerRefusesIncompatiblePageGeometryWithoutModifyingFile(t *testi
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			root := newTestTrustedRoot()
-			directory := t.TempDir()
-			if err := os.Chmod(directory, 0o700); err != nil {
-				t.Fatal(err)
-			}
-			path := filepath.Join(directory, "workflow-owner.sqlite")
-			owner, err := CreateFreshSQLiteOwner(path, root)
-			if err != nil {
-				t.Fatalf("create owner: %v", err)
-			}
-			if err := owner.Close(); err != nil {
-				t.Fatal(err)
-			}
+			root, path := createClosedOwner(t)
 			rewriteSQLiteGeometry(t, path, tc.pragma, tc.applied)
 			before := fileSHA256(t, path)
 			if _, err := OpenExistingSQLiteOwner(path, root); !errors.Is(err, ErrOwnerStore) ||
@@ -192,15 +213,7 @@ func TestSQLiteOwnerRefusesIncompatiblePageGeometryWithoutModifyingFile(t *testi
 }
 
 func TestProtectedRootRefusesIncompatiblePageGeometryWithoutModifyingFile(t *testing.T) {
-	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, "workflow-root-mismatch", &processExitDrainVerifier{})
-	created, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
-	if err := created.Close(); err != nil {
-		t.Fatal(err)
-	}
+	rootPath, ownerStoreRoot, boundary := createClosedProtectedRoot(t, "workflow-root-mismatch")
 	rewriteSQLiteGeometry(t, rootPath, "PRAGMA page_size=8192",
 		func(g sqlitePageGeometry) bool { return g.PageSize == 8192 })
 	before := fileSHA256(t, rootPath)
@@ -225,15 +238,7 @@ func TestSQLiteRetainedWALGeometryHelper(t *testing.T) {
 	if path == "" {
 		return
 	}
-	dsnURL := url.URL{Scheme: "file", Path: path}
-	query := url.Values{}
-	query.Set("mode", "rw")
-	dsnURL.RawQuery = query.Encode()
-	db, err := sql.Open("sqlite", dsnURL.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
+	db := openRWSQLite(t, path)
 	ctx := context.Background()
 	for _, statement := range []string{
 		"PRAGMA journal_mode=DELETE",
@@ -296,22 +301,10 @@ func mainAndSidecarSHA256(t *testing.T, path, suffix string) (string, string) {
 // and the WAL byte-identical. A writable close would checkpoint and delete the
 // WAL, so the geometry must be checked through a read-only connection first.
 func TestSQLiteOwnerRefusesRetainedWALGeometryWithoutModifyingFiles(t *testing.T) {
-	root := newTestTrustedRoot()
-	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(directory, "workflow-owner.sqlite")
-	owner, err := CreateFreshSQLiteOwner(path, root)
-	if err != nil {
-		t.Fatalf("create owner: %v", err)
-	}
-	if err := owner.Close(); err != nil {
-		t.Fatal(err)
-	}
+	root, path := createClosedOwner(t)
 	runRetainedWALGeometryHelper(t, path)
 	mainBefore, walBefore := mainAndSidecarSHA256(t, path, "-wal")
-	owner, err = OpenExistingSQLiteOwner(path, root)
+	owner, err := OpenExistingSQLiteOwner(path, root)
 	if err == nil {
 		_ = owner.Close()
 		t.Fatal("incompatible owner with a retained WAL was admitted")
@@ -328,15 +321,7 @@ func TestSQLiteOwnerRefusesRetainedWALGeometryWithoutModifyingFiles(t *testing.T
 // TestProtectedRootRefusesRetainedWALGeometryWithoutModifyingFiles is the
 // protected-root form of the owner case above.
 func TestProtectedRootRefusesRetainedWALGeometryWithoutModifyingFiles(t *testing.T) {
-	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, "workflow-root-retained-wal", &processExitDrainVerifier{})
-	created, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
-	if err := created.Close(); err != nil {
-		t.Fatal(err)
-	}
+	rootPath, ownerStoreRoot, boundary := createClosedProtectedRoot(t, "workflow-root-retained-wal")
 	runRetainedWALGeometryHelper(t, rootPath)
 	mainBefore, walBefore := mainAndSidecarSHA256(t, rootPath, "-wal")
 	root, err := OpenExistingProtectedRoot(rootPath, ownerStoreRoot, boundary)
@@ -366,15 +351,7 @@ func TestSQLiteHotJournalHelper(t *testing.T) {
 	if path == "" {
 		return
 	}
-	dsnURL := url.URL{Scheme: "file", Path: path}
-	query := url.Values{}
-	query.Set("mode", "rw")
-	dsnURL.RawQuery = query.Encode()
-	db, err := sql.Open("sqlite", dsnURL.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
+	db := openRWSQLite(t, path)
 	ctx := context.Background()
 	for _, statement := range []string{
 		"PRAGMA journal_mode=DELETE",
@@ -427,22 +404,10 @@ func runHotJournalHelper(t *testing.T, path string) {
 // from the read-only precheck. A writable open would roll back and delete the
 // journal before the later WAL-profile check refuses the file.
 func TestSQLiteOwnerRefusesHotJournalWithoutModifyingFiles(t *testing.T) {
-	root := newTestTrustedRoot()
-	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(directory, "workflow-owner.sqlite")
-	owner, err := CreateFreshSQLiteOwner(path, root)
-	if err != nil {
-		t.Fatalf("create owner: %v", err)
-	}
-	if err := owner.Close(); err != nil {
-		t.Fatal(err)
-	}
+	root, path := createClosedOwner(t)
 	runHotJournalHelper(t, path)
 	mainBefore, journalBefore := mainAndSidecarSHA256(t, path, "-journal")
-	owner, err = OpenExistingSQLiteOwner(path, root)
+	owner, err := OpenExistingSQLiteOwner(path, root)
 	if err == nil {
 		_ = owner.Close()
 		t.Fatal("owner with a hot journal was admitted")
@@ -461,15 +426,7 @@ func TestSQLiteOwnerRefusesHotJournalWithoutModifyingFiles(t *testing.T) {
 // form of the owner case above. The root is created first so its lock file
 // exists before the child runs.
 func TestProtectedRootRefusesHotJournalWithoutModifyingFiles(t *testing.T) {
-	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, "workflow-root-hot-journal", &processExitDrainVerifier{})
-	created, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
-	if err := created.Close(); err != nil {
-		t.Fatal(err)
-	}
+	rootPath, ownerStoreRoot, boundary := createClosedProtectedRoot(t, "workflow-root-hot-journal")
 	runHotJournalHelper(t, rootPath)
 	mainBefore, journalBefore := mainAndSidecarSHA256(t, rootPath, "-journal")
 	root, err := OpenExistingProtectedRoot(rootPath, ownerStoreRoot, boundary)
@@ -497,15 +454,7 @@ func TestSQLiteCompatibleRetainedWALHelper(t *testing.T) {
 	if path == "" {
 		return
 	}
-	dsnURL := url.URL{Scheme: "file", Path: path}
-	query := url.Values{}
-	query.Set("mode", "rw")
-	dsnURL.RawQuery = query.Encode()
-	db, err := sql.Open("sqlite", dsnURL.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	db.SetMaxOpenConns(1)
+	db := openRWSQLite(t, path)
 	ctx := context.Background()
 	for _, statement := range []string{
 		"PRAGMA wal_autocheckpoint=0",
@@ -529,19 +478,7 @@ func TestSQLiteCompatibleRetainedWALHelper(t *testing.T) {
 // its -shm index is recoverable, so the precheck must admit it and the writable
 // open must recover every committed frame.
 func TestSQLiteOwnerRecoversCompatibleRetainedWALWithoutSHM(t *testing.T) {
-	root := newTestTrustedRoot()
-	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(directory, "workflow-owner.sqlite")
-	owner, err := CreateFreshSQLiteOwner(path, root)
-	if err != nil {
-		t.Fatalf("create owner: %v", err)
-	}
-	if err := owner.Close(); err != nil {
-		t.Fatal(err)
-	}
+	root, path := createClosedOwner(t)
 	cmd := exec.Command(os.Args[0], "-test.run=^TestSQLiteCompatibleRetainedWALHelper$", "-test.count=1")
 	cmd.Env = append(os.Environ(), sqliteCompatibleWALHelperEnv+"="+path)
 	if out, err := cmd.CombinedOutput(); err != nil {

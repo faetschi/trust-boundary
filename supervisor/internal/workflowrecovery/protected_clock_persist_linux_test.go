@@ -29,11 +29,7 @@ func newProtectedClockFixture(t *testing.T, workflow string) *protectedClockFixt
 	t.Helper()
 	ctx := context.Background()
 	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	root, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create protected root: %v", err)
-	}
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	t.Cleanup(func() { _ = root.Close() })
 	baseWall := time.Now().Round(0).UTC()
 	deadline := baseWall.Add(time.Hour).UTC()
