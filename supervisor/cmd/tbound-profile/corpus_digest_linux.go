@@ -101,7 +101,7 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	flags.Uint64Var(&ceilings.MaxHostCalls, "max-host-calls", 0, "service config workflow_max_host_calls (with --max-tokens and --duration-seconds)")
 	flags.Uint64Var(&ceilings.MaxTokens, "max-tokens", 0, "service config workflow_max_tokens")
 	flags.Uint64Var(&ceilings.DurationSeconds, "duration-seconds", 0, "service config workflow_duration_seconds")
-	artifacts := flags.String("artifacts", "", "directory of the fixture artifacts (fixture-<hex>.json); when given, every case's fixture must verify")
+	artifacts := flags.String("artifacts", "", "directory of the artifacts (fixture-<hex>.json; for compliant cases also accept-<hex>.json and solution-<hex>.json); when given, every case's artifacts must verify")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}

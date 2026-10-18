@@ -14,12 +14,14 @@ const digestPrefix = "sha256:"
 // FixtureArtifactName is the file name of the fixture spec whose digest is digest:
 // fixture-<64 lowercase hex digits>.json. It reports false for anything that is not a
 // "sha256:" digest, so a name never carries a path.
-func FixtureArtifactName(digest string) (string, bool) {
+func FixtureArtifactName(digest string) (string, bool) { return artifactName("fixture-", digest) }
+
+func artifactName(prefix, digest string) (string, bool) {
 	hex, ok := strings.CutPrefix(digest, digestPrefix)
 	if !ok || len(hex) != 64 || strings.Trim(hex, "0123456789abcdef") != "" {
 		return "", false
 	}
-	return "fixture-" + hex + ".json", true
+	return prefix + hex + ".json", true
 }
 
 // FixtureDigest is the workspace_fixture_digest of a case, whatever its kind. It reports
@@ -61,14 +63,24 @@ func LoadFixture(fsys fs.FS, digest string) (trialfix.Spec, error) {
 // CheckArtifacts returns the first case whose workspace fixture artifact is missing,
 // unreadable, or does not recompute to the case's workspace_fixture_digest. The artifacts
 // are fixture-<hex>.json files in fsys (see FixtureArtifactName). Cases may share a fixture.
+//
+// A compliant case additionally needs accept-<hex>.json and solution-<hex>.json, whose bytes
+// digest to the case's acceptance_test.digest and reference_solution.digest, and the pair
+// must pass taskaccept.SelfCheck against the case's fixture (see checkTask).
 func CheckArtifacts(cases []evalcorpus.Case, fsys fs.FS) error {
 	for _, c := range cases {
 		digest, ok := FixtureDigest(c)
 		if !ok {
 			return fmt.Errorf("case %q has no workspace fixture digest", c.CaseID)
 		}
-		if _, err := LoadFixture(fsys, digest); err != nil {
+		fixture, err := LoadFixture(fsys, digest)
+		if err != nil {
 			return fmt.Errorf("case %q: %w", c.CaseID, err)
+		}
+		if c.Kind == evalcorpus.KindCompliant {
+			if err := checkTask(fsys, fixture, c.Compliant); err != nil {
+				return fmt.Errorf("case %q: %w", c.CaseID, err)
+			}
 		}
 	}
 	return nil

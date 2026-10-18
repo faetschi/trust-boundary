@@ -52,6 +52,7 @@ func artifactCases(t *testing.T) ([]evalcorpus.Case, fstest.MapFS) {
 		}
 		fsys[name] = specFile(t, s)
 	}
+	putTask(fsys, cases[1].Compliant, cmpAccept, solutionJSON("cmp done"))
 	return cases, fsys
 }
 

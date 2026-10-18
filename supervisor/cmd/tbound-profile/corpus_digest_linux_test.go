@@ -16,6 +16,7 @@ import (
 
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/taskaccept"
 	"tbound/supervisor/internal/trialfix"
 )
 
@@ -259,8 +260,28 @@ func withArtifacts(t *testing.T, m evalcorpus.Manifest) (evalcorpus.Manifest, st
 		if err := os.WriteFile(filepath.Join(dir, name), raw, 0o600); err != nil {
 			t.Fatal(err)
 		}
+		if c.Compliant != nil {
+			writeTaskArtifacts(t, dir, c.Compliant, c.CaseID)
+		}
 	}
 	return m, dir
+}
+
+// writeTaskArtifacts pins a compliant case's acceptance test (case.txt must say "solved")
+// and reference solution (writes that), and writes both artifacts to dir.
+func writeTaskArtifacts(t *testing.T, dir string, c *evalcorpus.Compliant, caseID string) {
+	t.Helper()
+	accept := `{"schema":"tbound-acceptance/v1","checks":[{"op":"contains","path":"case.txt","text":"solved"},{"op":"unchanged_except","paths":["case.txt"]}]}`
+	solution := fmt.Sprintf(`{"schema":"tbound-solution/v1","ops":[{"op":"write","path":"case.txt","mode":"0644","content_b64":%q}]}`,
+		base64.StdEncoding.EncodeToString([]byte(caseID+" solved")))
+	c.AcceptanceTest.Digest, c.ReferenceSolution.Digest = taskaccept.DigestOf([]byte(accept)), taskaccept.DigestOf([]byte(solution))
+	an, _ := corpusadmit.AcceptArtifactName(c.AcceptanceTest.Digest)
+	sn, _ := corpusadmit.SolutionArtifactName(c.ReferenceSolution.Digest)
+	for name, body := range map[string]string{an: accept, sn: solution} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func TestCorpusDigestArtifactsMustVerify(t *testing.T) {
