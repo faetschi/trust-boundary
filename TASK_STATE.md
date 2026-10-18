@@ -21,6 +21,8 @@ Known flake: TestD14PreEffectTerminalHeadroomGate failed once (ErrRestartRequire
 
 Decisions round 8 (2026-10-17): signing session right after receipt anchor + its Codex review; unit = each execution (1,935 plan kept; EC:64 wording to align in thesis); corpus: coordinator drafts pilot-quota corpus first for owner review, then thesis corpus for owner+advisor review; ledger rollback anchor decided later (OpenRouter switch).
 
+Decision 2026-10-18: NET-01 registered sink runs ON THE GUEST (guest-local address outside the cell netns, small systemd unit, journal read via evidence channel, canaries issued on guest); guest stays offline. TODO: implement after Codex review of 00f77c6.
+
 Open owner decisions: ledger head-hash anchor owner (at OpenRouter switch); corpus review sign-off.
 
 Next: receipt anchor + Codex review; then freeze commit, preregistration record, and owner-approved signing session + E2E smoke over OpenCode Go; then guest executors (GovernedC), NET/PROC oracles, corpus content, pilot (quota profile pilot).
