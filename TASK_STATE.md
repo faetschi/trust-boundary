@@ -1,9 +1,11 @@
 # TBound task state
 
+Audit checkpoint (2026-10-18): owner requires findings before any further removals. Only GPT 6.1-Sol subagents. Restored eight live recovery verifier methods accidentally deleted in the interrupted cleanup; existing cleanup remains uncommitted. Read-only reports: `../review-artifacts/test-audit-20261018-{cmd,internal,adapter}.md`. Ten private internal helpers and adapter probe reply type are candidates only; exported compatibility APIs retained. Two earlier negative-test removals have unproven replacement coverage. Focused cmd/tbound race check: exit 0, 511 pass records, 3 skips, 0 failures; adapter: 17 pass/1 skip; Python closure: 9 pass. Full current-tree gate remains unverified; see reports for exact commands, source hashes and skips. Do not resume removals before owner reviews findings.
+
 Updated 2026-10-17. Only `codex/tbound-prototype`; thesis first. Goal active.
 
-- Gate: last full module 1a4cf40 = 2702 pass / 10 skip / 0 fail (agent clean-room). Skips need real provider / guest / root.
-- Running: PROC oracle (procoracle), anchor e2e test + audit TraceCommitted. Committed: netoracle 58acbf7, GovernedC ca09991.
+- Gate (freeze candidate d2f6b06): 43 pkgs, 2933 pass / 17 skip / 0 fail, clean-room incl. infra (F:/TBoundAssets/recovery-20261015/fullgate4-20261018). Skips: 7 procoracle real-cgroup tests (pass in delegated scope, procoracle-r2 gate), 2 root-only credential tests (passed in root run), rest need real provider/guest/root.
+- Running: narrow Codex r2 on netoracle v2 (f7fdd61) + procoracle v2 (d2f6b06); then FREEZE + preregistration record + signing session.
 - Signing-session add-on (needs owner approval): runner reaches the client as tbound-client (uid 994, nologin) and sudo is revoked at Z1, so propose a dedicated ssh key for tbound-client with restrict + forced command running only `tbound serve --pi` with validated args (needs a non-nologin shell or Match User ForceCommand); privileged guest write.
 - TODO after those land: runner provenance must enforce per-key OracleRefs (version+report) for NET/PROC keys too (today only WS keys; oracleVersionOK assumes wsoracle version).
 - Codex reviews done through 1a4cf40 except the receipt-anchor increment. Trust decision: executors are trusted evidence producers; runner checks consistency, service receipt anchors exemptions.
