@@ -28,3 +28,4 @@ supervisor/internal/sessionrepo/artifacts/
 # Narrowly scoped to the supervisor root and to dash-suffixed tbound names:
 # this does not match the retained supervisor/tbound.exe pattern above.
 supervisor/tbound-*
+__pycache__/
