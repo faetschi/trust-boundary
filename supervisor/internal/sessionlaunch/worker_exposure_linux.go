@@ -146,8 +146,7 @@ func (p *PreparedSession) verifyD06SourceForGeneration(ctx context.Context,
 		return verifiedD09SourceAnchors{}, ErrD09ExposureSource
 	}
 	p.mu.Lock()
-	if p.closed || p.closing || p.recoveryPending || p.store == nil || p.journal == nil || p.git == nil ||
-		generation == nil || generation.ID() == "" {
+	if p.closed || p.closing || p.recoveryPending || p.store == nil || p.journal == nil || p.git == nil || generation.ID() == "" {
 		p.mu.Unlock()
 		return verifiedD09SourceAnchors{}, ErrD09ExposureSource
 	}
@@ -176,7 +175,7 @@ func (p *PreparedSession) verifyD06SourceForGeneration(ctx context.Context,
 		return verifiedD09SourceAnchors{}, errors.Join(ErrD09ExposureSource, err)
 	}
 	if !reflect.DeepEqual(chain, bundle.ValidatedChain) || !bundleContainsGeneration(bundle, generation) ||
-		!bundleContainsGeneration(bundle, baseGeneration) || generation.ID() == "" ||
+		!bundleContainsGeneration(bundle, baseGeneration) ||
 		generation.Manifest().MetadataPolicyDigest != bundle.MetadataPolicyDigest ||
 		bundle.PolicyDigest != provenance.PolicyDigest || bundle.MetadataPolicyDigest != provenance.MetadataPolicyDigest {
 		return verifiedD09SourceAnchors{}, fmt.Errorf("%w: requested generation is not the verified current Store tip or D06 seed", ErrD09ExposureSource)

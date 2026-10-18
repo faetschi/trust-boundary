@@ -28,7 +28,6 @@ const (
 	MaxToolArgumentsBytes = 1 << 20
 	MaxAssistantTextBytes = 1 << 20
 	maxText               = 256
-	maxDepth              = 64
 )
 
 type Role string
@@ -205,120 +204,86 @@ func BuildRequestForRoute(route Route, messages []Message, completionLimit uint6
 }
 func preflightRequestSize(modelID string, messages []Message, toolsJSON []byte, completionLimit uint64, tail string) (int, error) {
 	size := 0
-	add := func(amount int) error {
-		if amount < 0 || amount > MaxRequestBytes-size {
-			return errors.New("request exceeds byte limit before marshaling")
+	var failure error
+	add := func(amount int) {
+		switch {
+		case failure != nil:
+		case amount < 0 || amount > MaxRequestBytes-size:
+			failure = errors.New("request exceeds byte limit before marshaling")
+		default:
+			size += amount
 		}
-		size += amount
-		return nil
 	}
-	addString := func(value string) error {
+	addLiteral := func(literals ...string) {
+		for _, literal := range literals {
+			add(len(literal))
+		}
+	}
+	addString := func(value string) {
+		if failure != nil {
+			return
+		}
 		length, err := escapedJSONStringLength(value)
 		if err != nil {
-			return err
+			failure = err
+			return
 		}
-		return add(length)
+		add(length)
 	}
-	if err := add(len(`{"model":`)); err != nil {
-		return 0, err
-	}
-	if err := addString(modelID); err != nil {
-		return 0, err
-	}
-	if err := add(len(`,"messages":[`)); err != nil {
-		return 0, err
-	}
+	addLiteral(`{"model":`)
+	addString(modelID)
+	addLiteral(`,"messages":[`)
 	for index, message := range messages {
+		if failure != nil {
+			break
+		}
 		if index != 0 {
-			if err := add(1); err != nil {
-				return 0, err
-			}
+			add(1)
 		}
-		if err := add(len(`{"role":`)); err != nil {
-			return 0, err
-		}
-		if err := addString(string(message.Role)); err != nil {
-			return 0, err
-		}
-		if err := add(len(`,"content":`)); err != nil {
-			return 0, err
-		}
+		addLiteral(`{"role":`)
+		addString(string(message.Role))
+		addLiteral(`,"content":`)
 		if message.Content == nil {
-			if err := add(len(`null`)); err != nil {
-				return 0, err
-			}
-		} else if err := addString(*message.Content); err != nil {
-			return 0, err
+			addLiteral(`null`)
+		} else {
+			addString(*message.Content)
 		}
 		if message.ToolCallID != "" {
-			if err := add(len(`,"tool_call_id":`)); err != nil {
-				return 0, err
-			}
-			if err := addString(message.ToolCallID); err != nil {
-				return 0, err
-			}
+			addLiteral(`,"tool_call_id":`)
+			addString(message.ToolCallID)
 		}
 		if len(message.ToolCalls) != 0 {
-			if err := add(len(`,"tool_calls":[`)); err != nil {
-				return 0, err
-			}
+			addLiteral(`,"tool_calls":[`)
 			for callIndex, call := range message.ToolCalls {
 				if callIndex != 0 {
-					if err := add(1); err != nil {
-						return 0, err
+					add(1)
+				}
+				addLiteral(`{"id":`, `,"type":"function","function":{"name":`)
+				addString(call.ID)
+				addString(call.Name)
+				addLiteral(`,"arguments":`)
+				if failure == nil {
+					argumentLength, err := escapedJSONBytesLength(call.RawArguments)
+					if err != nil {
+						failure = err
 					}
+					add(argumentLength)
 				}
-				for _, literal := range []string{`{"id":`, `,"type":"function","function":{"name":`} {
-					if err := add(len(literal)); err != nil {
-						return 0, err
-					}
-				}
-				if err := addString(call.ID); err != nil {
-					return 0, err
-				}
-				if err := addString(call.Name); err != nil {
-					return 0, err
-				}
-				if err := add(len(`,"arguments":`)); err != nil {
-					return 0, err
-				}
-				argumentLength, err := escapedJSONBytesLength(call.RawArguments)
-				if err != nil {
-					return 0, err
-				}
-				if err := add(argumentLength); err != nil {
-					return 0, err
-				}
-				if err := add(2); err != nil { // closes function and tool-call objects
-					return 0, err
-				}
+				add(2) // closes function and tool-call objects
 			}
-			if err := add(1); err != nil { // closes tool_calls array
-				return 0, err
-			}
+			add(1) // closes tool_calls array
 		}
-		if err := add(1); err != nil { // closes message object
-			return 0, err
-		}
+		add(1) // closes message object
 	}
-	for _, literal := range []string{`],"tools":`, tail} {
-		if err := add(len(literal)); err != nil {
-			return 0, err
-		}
-	}
-	if err := add(len(toolsJSON)); err != nil {
-		return 0, err
-	}
+	addLiteral(`],"tools":`, tail)
+	add(len(toolsJSON))
 	if completionLimit > 0 {
-		if err := add(len(`,"max_completion_tokens":`)); err != nil {
-			return 0, err
-		}
-		if err := add(len(strconv.FormatUint(completionLimit, 10))); err != nil {
-			return 0, err
-		}
+		addLiteral(`,"max_completion_tokens":`)
+		add(len(strconv.FormatUint(completionLimit, 10)))
 	}
-	if err := add(1); err != nil { // closes request object
-		return 0, err
+	add(1) // closes request object
+	if failure != nil {
+		return 0, failure
 	}
 	return size, nil
 }
@@ -582,7 +547,7 @@ func decodeSSE(raw []byte) (CapturedResponse, error) {
 	return s.out, nil
 }
 func (s *stream) chunk(raw []byte) error {
-	if err := strictJSON(raw); err != nil {
+	if err := protocol.ValidateStrictJSON(raw); err != nil {
 		return fmt.Errorf("invalid SSE JSON: %w", err)
 	}
 	o, err := object(raw)
@@ -929,122 +894,4 @@ func validText(s string, limit int) bool {
 		}
 	}
 	return true
-}
-func strictJSON(raw []byte) error {
-	if len(raw) == 0 || !utf8.Valid(raw) {
-		return errors.New("empty or invalid UTF-8 JSON")
-	}
-	if err := rejectSurrogateEscapes(raw); err != nil {
-		return err
-	}
-	d := json.NewDecoder(bytes.NewReader(raw))
-	d.UseNumber()
-	if err := scan(d, 0); err != nil {
-		return err
-	}
-	if _, err := d.Token(); err != io.EOF {
-		return errors.New("trailing JSON")
-	}
-	return nil
-}
-
-func rejectSurrogateEscapes(raw []byte) error {
-	inString := false
-	for i := 0; i < len(raw); i++ {
-		if !inString {
-			if raw[i] == '"' {
-				inString = true
-			}
-			continue
-		}
-		switch raw[i] {
-		case '"':
-			inString = false
-		case '\\':
-			if i+1 >= len(raw) {
-				continue
-			}
-			if raw[i+1] != 'u' {
-				i++
-				continue
-			}
-			if i+5 >= len(raw) {
-				continue // The JSON decoder reports malformed escapes.
-			}
-			unit, err := strconv.ParseUint(string(raw[i+2:i+6]), 16, 16)
-			if err != nil {
-				continue
-			}
-			switch {
-			case unit >= 0xd800 && unit <= 0xdbff:
-				if i+11 >= len(raw) || raw[i+6] != '\\' || raw[i+7] != 'u' {
-					return errors.New("unpaired escaped UTF-16 high surrogate")
-				}
-				low, err := strconv.ParseUint(string(raw[i+8:i+12]), 16, 16)
-				if err != nil || low < 0xdc00 || low > 0xdfff {
-					return errors.New("unpaired escaped UTF-16 high surrogate")
-				}
-				i += 11
-			case unit >= 0xdc00 && unit <= 0xdfff:
-				return errors.New("unpaired escaped UTF-16 low surrogate")
-			default:
-				i += 5
-			}
-		}
-	}
-	return nil
-}
-func scan(d *json.Decoder, depth int) error {
-	t, e := d.Token()
-	if e != nil {
-		return e
-	}
-	if n, ok := t.(json.Number); ok {
-		f, e := strconv.ParseFloat(string(n), 64)
-		if e != nil || math.IsInf(f, 0) || math.IsNaN(f) || (f == 0 && math.Signbit(f)) {
-			return errors.New("invalid JSON number")
-		}
-	}
-	x, ok := t.(json.Delim)
-	if !ok {
-		return nil
-	}
-	if depth >= maxDepth {
-		return errors.New("JSON nesting too deep")
-	}
-	switch x {
-	case '{':
-		seen := map[string]bool{}
-		for d.More() {
-			k, e := d.Token()
-			if e != nil {
-				return e
-			}
-			key, ok := k.(string)
-			if !ok || seen[key] {
-				return errors.New("invalid or duplicate JSON key")
-			}
-			seen[key] = true
-			if e = scan(d, depth+1); e != nil {
-				return e
-			}
-		}
-		end, e := d.Token()
-		if e != nil || end != json.Delim('}') {
-			return errors.New("malformed object")
-		}
-	case '[':
-		for d.More() {
-			if e = scan(d, depth+1); e != nil {
-				return e
-			}
-		}
-		end, e := d.Token()
-		if e != nil || end != json.Delim(']') {
-			return errors.New("malformed array")
-		}
-	default:
-		return errors.New("unexpected JSON delimiter")
-	}
-	return nil
 }

@@ -10,6 +10,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"tbound/supervisor/internal/broker/protocol"
 )
 
 // researchEndpoint is the one OpenRouter chat-completions URL a research route
@@ -186,7 +188,7 @@ func validateResearchMembers(members string) error {
 	if len(members) < 2 || len(members) > maxResearchMembersBytes || members[0] != '{' || members[len(members)-1] != '}' {
 		return errors.New("research route members must be one compact JSON object")
 	}
-	if err := strictJSON([]byte(members)); err != nil {
+	if err := protocol.ValidateStrictJSON([]byte(members)); err != nil {
 		return errors.New("research route members are not strict JSON")
 	}
 	var compact bytes.Buffer

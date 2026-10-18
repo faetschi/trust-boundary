@@ -38,7 +38,7 @@ func LoadCredentialsFrom(lookupEnv func(string) (string, bool)) (Credentials, er
 		if err != nil {
 			return Credentials{}, errors.New("invalid OpenRouter credential")
 		}
-		return credentialsFor(key)
+		return Credentials{apiKey: key}, nil
 	}
 
 	path, pathSet := lookupEnv(APIKeyFileEnv)
@@ -54,7 +54,7 @@ func LoadCredentialsFrom(lookupEnv func(string) (string, bool)) (Credentials, er
 	if err != nil {
 		return Credentials{}, errors.New("invalid OpenRouter credential")
 	}
-	return credentialsFor(key)
+	return Credentials{apiKey: key}, nil
 }
 
 func (c Credentials) ModelID() string { return ApprovedModel }
@@ -100,10 +100,6 @@ func normalizeAPIKey(value string) (string, error) {
 		}
 	}
 	return key, nil
-}
-
-func credentialsFor(key string) (Credentials, error) {
-	return Credentials{apiKey: key}, nil
 }
 
 // NewHTTPDoerForEndpoint is NewHTTPDoer for a research route: the same key

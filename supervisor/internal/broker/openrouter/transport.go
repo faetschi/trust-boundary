@@ -71,19 +71,13 @@ func newHTTPDoer(key APIKeySource, timeout time.Duration, endpoint string) (*HTT
 		return nil, errors.New("OpenCode Go endpoint must use HTTPS")
 	}
 
-	shorter := func(limit time.Duration) time.Duration {
-		if timeout < limit {
-			return timeout
-		}
-		return limit
-	}
 	transport := &http.Transport{
-		DialContext:           (&net.Dialer{Timeout: shorter(10 * time.Second), KeepAlive: 30 * time.Second}).DialContext,
+		DialContext:           (&net.Dialer{Timeout: min(timeout, 10*time.Second), KeepAlive: 30 * time.Second}).DialContext,
 		ForceAttemptHTTP2:     true,
 		TLSClientConfig:       &tls.Config{MinVersion: tls.VersionTLS12},
-		TLSHandshakeTimeout:   shorter(10 * time.Second),
-		ResponseHeaderTimeout: shorter(30 * time.Second),
-		ExpectContinueTimeout: shorter(time.Second),
+		TLSHandshakeTimeout:   min(timeout, 10*time.Second),
+		ResponseHeaderTimeout: min(timeout, 30*time.Second),
+		ExpectContinueTimeout: min(timeout, time.Second),
 		MaxIdleConns:          4,
 		MaxIdleConnsPerHost:   2,
 		MaxConnsPerHost:       2,
@@ -123,9 +117,6 @@ func (d *HTTPDoer) Do(request *http.Request) (*http.Response, error) {
 
 	outgoing := request.Clone(request.Context())
 	outgoing.Header = request.Header.Clone()
-	if outgoing.Header == nil {
-		outgoing.Header = make(http.Header)
-	}
 	outgoing.Header.Set("Authorization", "Bearer "+key)
 
 	response, doErr := d.client.Do(outgoing)

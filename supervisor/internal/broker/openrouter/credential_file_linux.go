@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 )
@@ -44,13 +45,7 @@ func ServiceCredentialPaths() []string {
 }
 
 func isServiceCredentialPath(path string) bool {
-	clean := filepath.Clean(path)
-	for _, fixed := range serviceCredentialPaths {
-		if clean == fixed {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(serviceCredentialPaths, filepath.Clean(path))
 }
 
 func readSecureCredentialFile(path string) ([]byte, error) {
