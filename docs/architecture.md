@@ -102,55 +102,26 @@ CLI routes and exit codes are in [governed host setup](governed-setup.md#cli-rou
 
 The service handoff, journal, and source-capture implementation exist, but
 provisioned service operation and the real signed-profile path are unqualified.
-Production Pi CLI launch, D06 sealed-source boundary, production command-cell
-containment, runtime settlement, publication, and independent effect observers
-also remain unqualified. See [current status](status.md).
+Production Pi CLI launch, the D06 sealed-source boundary, production
+command-cell containment, runtime settlement, publication, and independent
+effect observers also remain unqualified. Gates are tracked in
+[current status](status.md). Criteria not tracked there: broker continuation is
+wired to real multi-turn history (current captures and the fixture's
+`nativeFixtureTrust` are synthetic); every effect-capable run has an admitted
+session store and durable recorder (a non-nil interface is not evidence); a
+claim-bearing interactive run needs a reviewed, pinned Pi terminal entrypoint
+with demonstrated PTY typing, tool-result continuation, and denied direct
+effect, config, session, and shortcut routes; and no dataset runner or
+claim-bearing evidence manifest exists yet.
 
-Production admission still needs these facts from the trusted host verifier. A
-callback that returns nil, a client-supplied `ready` string, a model name, or a
-fixture receipt cannot supply them:
+Production admission needs these facts from the trusted host verifier; a nil
+callback result, a client-supplied `ready` string, a model name, or a fixture
+receipt supplies none of them: host identity and runtime-profile digest;
+immutable child executable identity with exact argv and working-directory
+identity; terminal-input endpoint identity; the exact minimal environment;
+peer-authenticated IPC and terminal/stdio bridge identity; containment and
+descendant-settlement mechanism with evidence; the observation-channel profile;
+source provenance and offline-verifier identity; and the reviewed provider
+profile identity. Installing artifacts or supplying credentials establishes
+none of them.
 
-- host identity and the reviewed complete runtime-profile digest;
-- immutable child executable identity and digest, with the exact initial argv and
-  working-directory identity;
-- terminal-input endpoint identity, with the working-directory handle retained for
-  the host launcher;
-- the exact minimal child environment identity;
-- peer-authenticated IPC binding and the terminal or stdio bridge identity;
-- containment mechanism and effective configuration, and the descendant settlement
-  mechanism and evidence;
-- the bounded observation-channel profile;
-- source provenance and offline-verifier identity; and
-- the separately reviewed provider profile identity.
-
-Open criteria, with the owner who must close each one:
-
-- **Production recovery:** the D20 atomic reservation fix and its positive
-  preparation-to-activation regression (recovery and workflow owner).
-- **Broker continuation:** the registered provider exchange wired to real multi-turn
-  history (broker owner). Current captures are synthetic.
-- **Durable effects:** the admitted session store and durable recorder for every
-  effect-capable run. A non-nil interface is not evidence of durable storage (host
-  composition owner).
-- **Publication trust:** reviewed source and offline-verifier provenance, quiescence,
-  transition and origin verification, and owner-epoch recovery evidence (trust owner).
-  The fixture's `nativeFixtureTrust` is synthetic.
-- **Host and process proof:** immutable executable bytes, the exact minimal
-  environment, peer identity, containment, and independent process-tree settlement
-  bound to a reviewed profile (host and platform owner). The D09 Podman/crun launcher
-  implements `ExecutableLauncher.StartVerified`, but no positive host launch has been
-  demonstrated.
-- **Interactive run:** before a claim-bearing interactive run, the native and adapter
-  owner must supply a reviewed, pinned Pi terminal entrypoint and demonstrate actual
-  PTY typing, ordinary chat, tool-result continuation, and denied direct
-  effect, config, session, and shortcut routes. This is an open criterion, not a
-  completed result.
-- **Thesis workflow:** no dataset runner or claim-bearing evidence manifest exists.
-  Map approved experiments onto the runtime only after the criteria above are reviewed
-  (evaluation owner).
-
-Operator prerequisites are separate from code proof. Approved pinned Pi and Node
-artifacts, a supported interactive terminal, a reviewed host profile and platform
-policy, and any provider access approved by the broker owner are all needed. Installing
-artifacts or supplying credentials does not establish executable identity, containment,
-provider authenticity, or publication trust.
