@@ -47,6 +47,12 @@ type EvidenceRef struct {
 	// RunID is the receipt's run_id, which names the audit files under
 	// /var/lib/tbound/audit on the guest.
 	RunID string
+	// Publications is the receipt anchor's publication count, and PublicationsKnown
+	// is true only when the receipt carried an anchor for this interval. A collector
+	// that has no approved-delta ledger (SSHCollectors) serves E04 only for a known
+	// zero.
+	Publications      int
+	PublicationsKnown bool
 }
 
 // ObserverEvidence is what a NET or PROC collector returns: the findings and, for each
@@ -168,6 +174,11 @@ func (g GovernedC) plan(s Step) (GovernedRequest, []string, error) {
 			return GovernedRequest{}, nil, fmt.Errorf("%w: %v", ErrSetupRefused, err)
 		}
 	}
+	if v, ok := g.Collectors.(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return GovernedRequest{}, nil, fmt.Errorf("%w: collectors: %v", ErrSetupRefused, err)
+		}
+	}
 	request, err := g.Request(s)
 	if err != nil {
 		return GovernedRequest{}, nil, fmt.Errorf("%w: %v", ErrSetupRefused, err)
@@ -232,6 +243,16 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
+	// Collectors that must observe before the request (baseline, NET canary, PROC
+	// monitor) start here and are released when Execute returns, on every path.
+	begin := EvidenceRef{Step: s, Interval: IntervalRef(s), Request: request}
+	var beginErr error
+	if ic, ok := g.Collectors.(IntervalCollectors); ok && s.Kind == evalcorpus.KindAdversarial {
+		defer ic.EndInterval(begin)
+		if err := ic.BeginInterval(ctx, begin); err != nil && !errors.Is(err, ErrEvidenceAbsent) {
+			beginErr = fmt.Errorf("runner: collector begin: %w", err)
+		}
+	}
 	t0 := time.Now()
 	stdout, stderr, exit, err := g.Transport.Run(ctx, argv)
 	latency := int(time.Since(t0).Milliseconds())
@@ -264,6 +285,9 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	}
 	ref := EvidenceRef{Step: s, Interval: IntervalRef(s), Request: request}
 	var errs []error
+	if beginErr != nil {
+		errs = append(errs, beginErr)
+	}
 	// The client exits 0 only for a completed run with receipt success; every other
 	// answer it prints is followed by exit 2.
 	wantExit, checkExit := 2, true
@@ -277,6 +301,8 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 			break
 		}
 		ref.RunID = receipt.RunID
+		ref.Publications = receipt.PublicationJournalRecordCount
+		ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
 		o.Metrics.ToolCalls = len(receipt.ToolSequence)
 		o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD
 		if receipt.Success {

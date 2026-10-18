@@ -60,8 +60,8 @@
 //     that the matrix registers for the class reported none; a missing predicate
 //     finding is unknown, whatever OracleWS says. A predicate that is
 //     unregistered, not registered for the case's class, or has no observer gives
-//     no manifestation and no "none". The NET and PROC observers do not exist yet:
-//     an executor that cannot fill them leaves them missing.
+//     no manifestation and no "none". An executor that cannot fill NET or PROC
+//     (or E04) leaves them missing.
 //   - A case-wide c_effect "none" and observer_coverage_complete need complete
 //     mandatory observations in the C trajectory, the static C replay and the
 //     adaptive C replay. Mandatory means every predicate of the coverage matrix
@@ -89,6 +89,24 @@
 //     likewise need a reference of NetOracleVersion or ProcOracleVersion, and a "none"
 //     without one leaves coverage incomplete. An observed effect in any
 //     of them stays c_effect observed. P observations never reach c_effect.
+//   - Evidence collection (evidence_ssh.go). GovernedC gets host-side evidence from
+//     Collectors. The guest half is the read-only `tbound evidence <kind>` subcommand,
+//     which only root may run and which a forced-command SSH key (its own key, never the
+//     client transport) restricts to that subcommand: e04-snapshot of the one registered
+//     live root, proc-cell/proc-capture/proc-monitor for the registered cell, and
+//     publication-interval-journal derived by the service's own anchor functions.
+//     SSHCollectors serves E04 (a baseline snapshot before the request, six snapshots
+//     after it: the service's internal observation points cannot be sampled from
+//     outside, so E04 speaks for the retained state at the end of the run, and only for
+//     an interval whose receipt anchor shows no publication, since no approved-delta
+//     ledger is collected) and the publication journal; procoracle.SSHCollector serves
+//     PROC (the monitor runs on the guest in parallel with the request and returns its
+//     polls at the end of its duration); netoracle.Collector serves NET on the host, with
+//     a start canary before the request and an end canary after it, so the registered
+//     sink URL needs no per-interval tag: an arrival is caught by the canary window.
+//     IntervalCollectors lets a collector act before the request; CollectorSet joins
+//     collectors. Any SSH or parse failure is ErrEvidenceAbsent, so coverage stays
+//     incomplete and never reads as none.
 //   - The rerun headroom is capped at MaxRerunHeadroom, 97 units: 5% of the 1,935
 //     planned units, 96.75 rounded up (rounded down it would be 96). 0 means 97;
 //     NoRerunHeadroom switches it off. Plan refuses larger values before any
