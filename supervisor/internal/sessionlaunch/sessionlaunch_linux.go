@@ -611,8 +611,7 @@ func traceHead(trace audit.Trace) (string, uint64) {
 }
 
 func workflowRecoveryDigest(value string) string {
-	value = strings.TrimPrefix(value, "sha256:")
-	return value
+	return strings.TrimPrefix(value, "sha256:")
 }
 
 func workflowTreeDigest(value string) string {
@@ -942,11 +941,7 @@ func Prepare(ctx context.Context, managed *ManagedStore, generation *sessionrepo
 		if errors.Is(createErr, privategit.ErrCleanupIncomplete) {
 			keepAdminReservation = true
 		}
-		failureData, _ := json.Marshal(struct {
-			SchemaVersion string `json:"schema_version"`
-			BindingDigest string `json:"binding_digest"`
-			ErrorClass    string `json:"error_class"`
-		}{provenanceSchema, bindingDigest, safeErrorClass(createErr)})
+		failureData, _ := json.Marshal(failedSnapshotRecord{provenanceSchema, bindingDigest, safeErrorClass(createErr)})
 		_, auditErr := journal.Append(audit.Event{Kind: failedSnapshotEventKind, ID: sourceEventID + "-failed", Data: failureData})
 		return nil, errors.Join(fmt.Errorf("create fresh private Git snapshot: %w", createErr), auditErr)
 	}
@@ -964,11 +959,7 @@ func Prepare(ctx context.Context, managed *ManagedStore, generation *sessionrepo
 		return nil, destroyCreated(errors.New("pinned Git executable or execution boundary differs from admitted profile"))
 	}
 	if err := created.Verify(); err != nil {
-		failedData, _ := json.Marshal(struct {
-			SchemaVersion string `json:"schema_version"`
-			BindingDigest string `json:"binding_digest"`
-			ErrorClass    string `json:"error_class"`
-		}{provenanceSchema, bindingDigest, safeErrorClass(err)})
+		failedData, _ := json.Marshal(failedSnapshotRecord{provenanceSchema, bindingDigest, safeErrorClass(err)})
 		_, auditErr := journal.Append(audit.Event{Kind: failedSnapshotEventKind, ID: sourceEventID + "-verify-failed", Data: failedData})
 		return nil, errors.Join(destroyCreated(fmt.Errorf("verify fresh private Git admin tree: %w", err)), auditErr)
 	}
@@ -980,11 +971,7 @@ func Prepare(ctx context.Context, managed *ManagedStore, generation *sessionrepo
 		return nil, errors.Join(errors.New("audit journal changed during private Git preparation"), created.Destroy())
 	}
 	provenance.PrivateGitRecord = uint64(len(traceBeforeReady.Records)) + 1
-	readyData, err := json.Marshal(struct {
-		SchemaVersion string              `json:"schema_version"`
-		Provenance    Provenance          `json:"provenance"`
-		Snapshot      privategit.Snapshot `json:"snapshot"`
-	}{provenanceSchema, provenance, created.Snapshot()})
+	readyData, err := json.Marshal(privateGitReadyRecord{provenanceSchema, provenance, created.Snapshot()})
 	if err != nil {
 		return nil, destroyCreated(err)
 	}
@@ -1180,6 +1167,18 @@ func Rebind(managed *ManagedStore, admin *AdminParent, pin RecoveryGitPin) (*Rec
 		views: make(map[*WorkerView]struct{}), sources: make(map[*VerifiedD09ExposureSource]struct{}),
 	}
 	return &RecoveryCandidate{managed: managed, prepared: prepared}, nil
+}
+
+type privateGitReadyRecord struct {
+	SchemaVersion string              `json:"schema_version"`
+	Provenance    Provenance          `json:"provenance"`
+	Snapshot      privategit.Snapshot `json:"snapshot"`
+}
+
+type failedSnapshotRecord struct {
+	SchemaVersion string `json:"schema_version"`
+	BindingDigest string `json:"binding_digest"`
+	ErrorClass    string `json:"error_class"`
 }
 
 type sourceBindingRecord struct {
@@ -1422,10 +1421,7 @@ func (p *PreparedSession) VerifySourceBinding(store *sessionrepo.Store, generati
 	if err := verifyPersistedD06Records(bundle.AuditJournal, provenance); err != nil {
 		return err
 	}
-	if err := privateGit.Verify(); err != nil {
-		return err
-	}
-	return nil
+	return privateGit.Verify()
 }
 
 // VerifyDurableProvenance is safe to call from sessionrepo's operation/decision
@@ -1717,11 +1713,7 @@ func verifyPersistedD06Records(journalBytes []byte, provenance Provenance) error
 			if err := requireProvenanceVersion(record.Event.Data); err != nil {
 				return err
 			}
-			var event struct {
-				SchemaVersion string              `json:"schema_version"`
-				Provenance    Provenance          `json:"provenance"`
-				Snapshot      privategit.Snapshot `json:"snapshot"`
-			}
+			var event privateGitReadyRecord
 			if unmarshalNoUnknown(record.Event.Data, &event) != nil || record.Sequence != provenance.PrivateGitRecord ||
 				event.SchemaVersion != provenanceSchema || !reflect.DeepEqual(event.Provenance, provenance) ||
 				event.Provenance.PrivateGitDigest != provenance.PrivateGitDigest || event.Provenance.BindingDigest != provenance.BindingDigest ||
@@ -1755,11 +1747,7 @@ func retainedD06Evidence(records []audit.Record) (Provenance, privategit.Snapsho
 				return Provenance{}, privategit.Snapshot{}, err
 			}
 			readyCount++
-			var ready struct {
-				SchemaVersion string              `json:"schema_version"`
-				Provenance    Provenance          `json:"provenance"`
-				Snapshot      privategit.Snapshot `json:"snapshot"`
-			}
+			var ready privateGitReadyRecord
 			if unmarshalNoUnknown(record.Event.Data, &ready) != nil || ready.SchemaVersion != provenanceSchema {
 				return Provenance{}, privategit.Snapshot{}, ErrProvenanceMissing
 			}
@@ -1978,25 +1966,26 @@ func writeGuardIdentity(root *os.File, guard *os.File) error {
 	return nil
 }
 
-func requireFreshAdminParent(root, guard *os.File, lockName string) error {
+func readAdminEntries(root *os.File, openMessage, name string) ([]os.DirEntry, error) {
 	fd, err := syscall.Openat(int(root.Fd()), ".", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
-		return fmt.Errorf("open private admin directory for stale-entry check: %w", err)
+		return nil, fmt.Errorf("%s: %w", openMessage, err)
 	}
-	directory := os.NewFile(uintptr(fd), "sessionlaunch-admin-enumeration")
+	directory := os.NewFile(uintptr(fd), name)
 	entries, err := directory.ReadDir(-1)
 	closeErr := directory.Close()
 	if err != nil || closeErr != nil {
-		return errors.Join(ErrPrivateParent, err, closeErr)
+		return nil, errors.Join(ErrPrivateParent, err, closeErr)
 	}
-	if len(entries) != 1 || entries[0].Name() != lockName {
-		return fmt.Errorf("%w: private admin parent contains stale or unexpected entries", ErrPrivateParent)
-	}
+	return entries, nil
+}
+
+func verifyAdminLock(root, guard *os.File, lockName, fileName string) error {
 	lockFD, err := syscall.Openat(int(root.Fd()), lockName, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return errors.Join(ErrPrivateParent, err)
 	}
-	lockFile := os.NewFile(uintptr(lockFD), "verified-sessionlaunch-lock")
+	lockFile := os.NewFile(uintptr(lockFD), fileName)
 	lockStat, statErr := statNode(lockFile)
 	guardStat, guardErr := statNode(guard)
 	_ = lockFile.Close()
@@ -2008,19 +1997,24 @@ func requireFreshAdminParent(root, guard *os.File, lockName string) error {
 	return nil
 }
 
+func requireFreshAdminParent(root, guard *os.File, lockName string) error {
+	entries, err := readAdminEntries(root, "open private admin directory for stale-entry check", "sessionlaunch-admin-enumeration")
+	if err != nil {
+		return err
+	}
+	if len(entries) != 1 || entries[0].Name() != lockName {
+		return fmt.Errorf("%w: private admin parent contains stale or unexpected entries", ErrPrivateParent)
+	}
+	return verifyAdminLock(root, guard, lockName, "verified-sessionlaunch-lock")
+}
+
 func requireRecoveredAdminParent(root, guard *os.File, lockName, repositoryName string) error {
 	if !validPrivateGitName(repositoryName) {
 		return ErrPrivateParent
 	}
-	fd, err := syscall.Openat(int(root.Fd()), ".", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	entries, err := readAdminEntries(root, "open retained private admin directory for exact-entry check", "sessionlaunch-recovery-admin-enumeration")
 	if err != nil {
-		return fmt.Errorf("open retained private admin directory for exact-entry check: %w", err)
-	}
-	directory := os.NewFile(uintptr(fd), "sessionlaunch-recovery-admin-enumeration")
-	entries, err := directory.ReadDir(-1)
-	closeErr := directory.Close()
-	if err != nil || closeErr != nil {
-		return errors.Join(ErrPrivateParent, err, closeErr)
+		return err
 	}
 	if len(entries) != 2 {
 		return fmt.Errorf("%w: retained private admin parent has unexpected entry count", ErrPrivateParent)
@@ -2039,20 +2033,7 @@ func requireRecoveredAdminParent(root, guard *os.File, lockName, repositoryName 
 	if !seenLock || !seenRepository {
 		return fmt.Errorf("%w: retained private admin parent is missing a pinned entry", ErrPrivateParent)
 	}
-	lockFD, err := syscall.Openat(int(root.Fd()), lockName, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		return errors.Join(ErrPrivateParent, err)
-	}
-	lockFile := os.NewFile(uintptr(lockFD), "verified-sessionlaunch-recovery-lock")
-	lockStat, statErr := statNode(lockFile)
-	guardStat, guardErr := statNode(guard)
-	_ = lockFile.Close()
-	if statErr != nil || guardErr != nil || lockStat.mode&syscall.S_IFMT != syscall.S_IFREG ||
-		lockStat.mode&0o7777 != 0o600 || lockStat.links != 1 ||
-		lockStat.device != guardStat.device || lockStat.inode != guardStat.inode {
-		return errors.Join(ErrPrivateParent, statErr, guardErr)
-	}
-	return nil
+	return verifyAdminLock(root, guard, lockName, "verified-sessionlaunch-recovery-lock")
 }
 
 func validPrivateGitName(name string) bool {

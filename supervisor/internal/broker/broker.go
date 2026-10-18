@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"unicode"
@@ -151,7 +152,7 @@ func New(profile Profile, doer HTTPDoer) (*Broker, error) {
 		// profile-scoped session. providerbridge always supplies Config.ConversationID.
 		profile.ConversationID = profile.ID
 	}
-	if !sameManifest(profile.ToolManifest) {
+	if !slices.Equal(profile.ToolManifest, declaredToolManifest[:]) {
 		return nil, errors.New("registered profile must declare exactly read, write, edit, bash in order")
 	}
 	stream, err := protocol.NewStream(profile.ToolCallIssuer, profile.ResponseIDIssuer)
@@ -219,10 +220,7 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 		_ = request.Body.Close()
 		return openrouter.CapturedResponse{}, b.failLocked(-1, errors.New("provider request leaves no durable response budget"))
 	}
-	responseLimit := uint64(MaxDurableExchangeBytes) - requestBytes
-	if responseLimit > uint64(openrouter.MaxResponseBytes) {
-		responseLimit = uint64(openrouter.MaxResponseBytes)
-	}
+	responseLimit := min(uint64(MaxDurableExchangeBytes)-requestBytes, uint64(openrouter.MaxResponseBytes))
 	remaining := uint64(MaxRecordedBytes) - b.recorded
 	if len(b.records) >= maxRecordedExchanges || requestBytes > remaining ||
 		responseLimit+1 > remaining-requestBytes {
@@ -357,18 +355,6 @@ func (b *Broker) Records() []ExchangeRecord {
 		records[index] = cloneExchangeRecord(record)
 	}
 	return records
-}
-
-func sameManifest(manifest []string) bool {
-	if len(manifest) != len(declaredToolManifest) {
-		return false
-	}
-	for index, name := range declaredToolManifest {
-		if manifest[index] != name {
-			return false
-		}
-	}
-	return true
 }
 
 func cloneMessages(messages []openrouter.Message) []openrouter.Message {

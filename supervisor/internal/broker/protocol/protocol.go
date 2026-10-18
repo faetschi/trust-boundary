@@ -144,23 +144,11 @@ func (s *Stream) Capture(capture TrustedCapture) correlation.Decision {
 		!validDigest(capture.CanonicalArgumentsDigest) ||
 		strings.TrimSpace(capture.ToolName) != capture.ToolName ||
 		!validText(capture.Generation, maxGenerationBytes) {
-		s.closed = true
-		copy := call
-		return correlation.Decision{
-			Phase: correlation.PhaseCapture, Accepted: false,
-			ReasonCode: correlation.ReasonMalformedCapture, StreamClosed: true,
-			BrokerCapture: &copy,
-		}
+		return s.rejectMalformedCapture(call)
 	}
 	digest, err := CanonicalArgumentsDigest(capture.ToolName, capture.RawArguments)
 	if err != nil || digest != capture.CanonicalArgumentsDigest {
-		s.closed = true
-		copy := call
-		return correlation.Decision{
-			Phase: correlation.PhaseCapture, Accepted: false,
-			ReasonCode: correlation.ReasonMalformedCapture, StreamClosed: true,
-			BrokerCapture: &copy,
-		}
+		return s.rejectMalformedCapture(call)
 	}
 	call.CanonicalArgumentsDigest = digest
 
@@ -226,6 +214,14 @@ func (s *Stream) Propose(raw []byte) correlation.Decision {
 		s.closed = true
 	}
 	return decision
+}
+
+func (s *Stream) rejectMalformedCapture(call correlation.BrokerCall) correlation.Decision {
+	s.closed = true
+	return correlation.Decision{
+		Phase: correlation.PhaseCapture, ReasonCode: correlation.ReasonMalformedCapture,
+		StreamClosed: true, BrokerCapture: &call,
+	}
 }
 
 func (s *Stream) rejectProposal(reason correlation.ReasonCode, proposal *correlation.Proposal) correlation.Decision {
