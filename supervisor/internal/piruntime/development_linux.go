@@ -46,16 +46,6 @@ func StageDevelopmentPiCLIBundle(bundleParent, adapterRoot string) (string, erro
 		return "", err
 	}
 	for _, relative := range DeveloperPiCLIAdapterSourceFiles {
-		if relative == "src/tbound-cli-extension.ts" {
-			data, err := readRegularBounded(filepath.Join(adapterRoot, filepath.FromSlash(relative)), 16<<20)
-			if err != nil {
-				return "", fmt.Errorf("read Pi CLI extension source %s: %w", relative, err)
-			}
-			if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(relative)), data, 0o600); err != nil {
-				return "", err
-			}
-			continue
-		}
 		data, err := readRegularBounded(filepath.Join(adapterRoot, filepath.FromSlash(relative)), 16<<20)
 		if err != nil {
 			return "", fmt.Errorf("read Pi CLI extension source %s: %w", relative, err)

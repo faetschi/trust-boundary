@@ -112,9 +112,7 @@ func (a *Admission) CloseAndWait(ctx context.Context) error {
 	if !a.closed {
 		a.open, a.closed = false, true
 		for lease := range a.leases {
-			if lease.cancel != nil {
-				lease.cancel()
-			}
+			lease.cancel()
 		}
 	}
 	if a.inFlight == 0 {
