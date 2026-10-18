@@ -3,7 +3,8 @@
 Updated 2026-10-17. Only `codex/tbound-prototype`; thesis first. Goal active.
 
 - Gate: last full module 1a4cf40 = 2702 pass / 10 skip / 0 fail (agent clean-room). Skips need real provider / guest / root.
-- Running: service receipt publication anchor (head+count) for runner PublicationFree.
+- Running: GovernedC executor (runner), PROC oracle (procoracle), anchor e2e test + audit TraceCommitted. Committed: netoracle 58acbf7.
+- TODO after those land: runner provenance must enforce per-key OracleRefs (version+report) for NET/PROC keys too (today only WS keys; oracleVersionOK assumes wsoracle version).
 - Codex reviews done through 1a4cf40 except the receipt-anchor increment. Trust decision: executors are trusted evidence producers; runner checks consistency, service receipt anchors exemptions.
 
 Decisions (2026-10-17, owner):
