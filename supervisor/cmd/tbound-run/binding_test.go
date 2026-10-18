@@ -41,6 +41,7 @@ func bindingMutations() map[string]func(e *env) {
 		"admission policy pin": func(e *env) {
 			e.cfg["admission_policy"].(map[string]string)["policy_digest"] = fixtureDigest("other-store-policy")
 		},
+		"v image pin":          func(e *env) { e.cfg["v_image_digest"] = fixtureDigest("other-cell-image") },
 		"proc cell uid":        func(e *env) { proc(e)["cell_uid"] = 996 },
 		"proc cell gid":        func(e *env) { proc(e)["cell_gid"] = 987 },
 		"proc monitor seconds": func(e *env) { proc(e)["monitor_seconds"] = 61 },

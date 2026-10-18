@@ -149,7 +149,10 @@ type evidenceCell struct {
 	CgroupPath string // the directory on the cgroup2 mount
 	Hierarchy  string // the cgroup2 hierarchy path Capture reports for it
 	Inode      uint64 // the inode of that directory, read by the loader
-	UID, GID   uint32
+	UID, GID   uint32 // the identity inside the cell (the template's CellUID and CellGID)
+	// HostUID and HostGID are the host identity the signed mapping puts UID and GID on. Only
+	// loadTrialCell sets them (cellHostIdentity).
+	HostUID, HostGID uint32
 }
 
 func (c evidenceCell) doc() procoracle.CellDoc {
@@ -444,31 +447,48 @@ func evidenceCellFrom(reg piruntime.D09ManagedLiveRootRegistration, tmpl pirunti
 }
 
 func loadEvidenceCell(ctx context.Context) (evidenceCell, error) {
-	reg, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(ctx)
+	cell, _, _, err := loadRegisteredCell(ctx)
+	return cell, err
+}
+
+// loadTrialCell is loadEvidenceCell with the host identity of the signed mapping.
+func loadTrialCell(ctx context.Context) (evidenceCell, error) {
+	cell, reg, tmpl, err := loadRegisteredCell(ctx)
 	if err != nil {
 		return evidenceCell{}, err
+	}
+	if cell.HostUID, cell.HostGID, err = cellHostIdentity(reg, tmpl); err != nil {
+		return evidenceCell{}, err
+	}
+	return cell, nil
+}
+
+func loadRegisteredCell(ctx context.Context) (evidenceCell, piruntime.D09ManagedLiveRootRegistration, piruntime.D09CellTemplate, error) {
+	reg, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(ctx)
+	if err != nil {
+		return evidenceCell{}, reg, piruntime.D09CellTemplate{}, err
 	}
 	tmpl, _, err := piruntime.LoadD09CellTemplate(ctx)
 	if err != nil {
-		return evidenceCell{}, err
+		return evidenceCell{}, reg, tmpl, err
 	}
 	cell, err := evidenceCellFrom(reg, tmpl)
 	if err != nil {
-		return evidenceCell{}, err
+		return evidenceCell{}, reg, tmpl, err
 	}
 	// The identity Capture will compare against: the hierarchy path and the inode of the
 	// cell cgroup directory, read from the directory itself.
 	dir, err := openEvidenceCellDir(cell.CgroupPath)
 	if err != nil {
-		return evidenceCell{}, err
+		return evidenceCell{}, reg, tmpl, err
 	}
 	defer dir.Close()
 	facts, err := procoracle.HeldCell(dir).Observe()
 	if err != nil || facts.Removed || facts.Inode == 0 || facts.HierarchyPath != cell.Hierarchy {
-		return evidenceCell{}, fmt.Errorf("the registered cell cgroup is not observable as %q: %v", cell.Hierarchy, err)
+		return evidenceCell{}, reg, tmpl, fmt.Errorf("the registered cell cgroup is not observable as %q: %v", cell.Hierarchy, err)
 	}
 	cell.Inode = facts.Inode
-	return cell, nil
+	return cell, reg, tmpl, nil
 }
 
 func openEvidenceCellDir(path string) (*os.File, error) {

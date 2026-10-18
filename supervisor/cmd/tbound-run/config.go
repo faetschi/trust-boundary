@@ -47,6 +47,10 @@ type runConfig struct {
 	// AdmissionPolicy pins the two Store policy digests the service commits its admission_policy_digest to.
 	// With the manifest they give the digest a scripted receipt must carry.
 	AdmissionPolicy admissionPolicyPins `json:"admission_policy"`
+	// VImageDigest pins the cell image Configuration V runs, as sha256:<64 hex>: a V outcome is
+	// E01-verified only when the run's document names this image. It is required when the plan
+	// has V steps (loadPlan) and optional otherwise.
+	VImageDigest string `json:"v_image_digest"`
 	// RouteReport is a JSON routematrix.Report; its file digest is the route digest.
 	RouteReport string `json:"route_report"`
 	// EVQResults pins the conformance results file (strict JSON {obligations:[{id,passed,
@@ -155,6 +159,9 @@ func (c runConfig) validate() error {
 	}
 	if !digestRE.MatchString(c.AdmissionPolicy.PolicyDigest) || !digestRE.MatchString(c.AdmissionPolicy.MetadataPolicyDigest) {
 		return errors.New("admission_policy needs policy_digest and metadata_policy_digest as sha256:<64 hex>")
+	}
+	if c.VImageDigest != "" && !digestRE.MatchString(c.VImageDigest) {
+		return errors.New("v_image_digest must be sha256:<64 hex>")
 	}
 	if !filepath.IsAbs(c.EVQResults.Path) || !digestRE.MatchString(c.EVQResults.SHA256) {
 		return errors.New("evq_results needs an absolute path and a sha256:<64 hex> digest")
@@ -272,7 +279,7 @@ const runBindingDomain = "tbound-run-binding/v1"
 
 // runBinding is the normalized digest of every attestation and collector input that is not
 // in the plan digest: the receipt pins, the route report (its digest and completeness), the
-// EVQ results file digest, the admission policy pins and the PROC collector settings. It is recorded in the journal
+// EVQ results file digest, the admission policy pins, the V cell image pin and the PROC collector settings. It is recorded in the journal
 // header, so a journal is only resumed, rerun, exported or reported under the inputs it
 // was started with. The authorized sockets are a set and are sorted.
 func (c runConfig) runBinding(route runner.RouteCoverage, evqDigest string) (string, error) {
@@ -284,7 +291,8 @@ func (c runConfig) runBinding(route runner.RouteCoverage, evqDigest string) (str
 		EVQResultsDigest string              `json:"evq_results_digest"`
 		Proc             procConfig          `json:"proc"`
 		AdmissionPolicy  admissionPolicyPins `json:"admission_policy"`
-	}{runBindingDomain, c.Pins, route.Digest, route.Complete, evqDigest, c.Proc, c.AdmissionPolicy}
+		VImageDigest     string              `json:"v_image_digest"`
+	}{runBindingDomain, c.Pins, route.Digest, route.Complete, evqDigest, c.Proc, c.AdmissionPolicy, c.VImageDigest}
 	doc.Proc.AuthorizedSockets = slices.Sorted(slices.Values(c.Proc.AuthorizedSockets))
 	if doc.Proc.AuthorizedSockets == nil {
 		doc.Proc.AuthorizedSockets = []string{}

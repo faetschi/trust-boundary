@@ -1,0 +1,567 @@
+//go:build linux
+
+package piruntime
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"tbound/supervisor/internal/sessionrepo"
+)
+
+func testD09Delta(t *testing.T, name string) D09CellDelta {
+	t.Helper()
+	delta, err := ParseD09CellDelta(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return delta
+}
+
+func TestLandlockDigestCommitsToConnectPortsAndScopeOnly(t *testing.T) {
+	ro, rw := []string{"/usr"}, []string{"/work"}
+	base, err := DigestD09LandlockRules(ro, rw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if same, err := DigestD09LandlockRulesNet(ro, rw, nil, 0); err != nil || same != base {
+		t.Fatalf("no network allowance must keep the base ruleset digest: %s %v", same, err)
+	}
+	connect, err := DigestD09LandlockRulesNet(ro, rw, []uint16{8080}, 0)
+	if err != nil || connect == base {
+		t.Fatalf("a connect right must change the digest: %s %v", connect, err)
+	}
+	scoped, _ := DigestD09LandlockRulesNet(ro, rw, []uint16{8080}, D09LandlockScopeAbstractUnix)
+	other, _ := DigestD09LandlockRulesNet(ro, rw, []uint16{8081}, 0)
+	if scoped == connect || other == connect || other == base {
+		t.Fatal("the digest is not sensitive to the port or the scope")
+	}
+	for name, ports := range map[string][]uint16{"zero port": {0}, "duplicate": {8080, 8080}, "unsorted": {9000, 8080}} {
+		if _, err := DigestD09LandlockRulesNet(ro, rw, ports, 0); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	if _, err := DigestD09LandlockRulesNet(ro, rw, nil, 1<<9); err == nil {
+		t.Error("an unregistered Landlock scope bit was accepted")
+	}
+}
+
+func TestD09CellDeltaLandlockRulesetDigestIsPerDelta(t *testing.T) {
+	ro, rw := []string{"/usr"}, []string{"/work"}
+	base, _ := DigestD09LandlockRules(ro, rw)
+	for name, wantChanged := range map[string]bool{"": false, D09CellDeltaNoReap: false, D09CellDeltaNetSink: true} {
+		got, err := testD09Delta(t, name).LandlockRulesetDigest(ro, rw)
+		if err != nil || (got != base) != wantChanged {
+			t.Errorf("delta %q ruleset digest changed=%t, want %t (%v)", name, got != base, wantChanged, err)
+		}
+	}
+}
+
+func testD09DeltaConfig() D09Config {
+	return D09Config{UID: 1000, GID: 1000, PidsMax: 128, MemoryMB: 512, CPUs: "1", SeccompProfilePath: "/etc/tbound/seccomp.json",
+		CgroupsPath: "/sys/fs/cgroup/tbound", CrunPath: "/usr/bin/crun", LandlockABI: 8, LandlockROPath: "/usr", LandlockRWPath: "/work",
+		LandlockRulesetDigest: DigestBytes([]byte("ll")), TemplateDigest: DigestBytes([]byte("signed base template")),
+		CommandExecutable: "/bin/bash", CommandExecutableDigest: fakeD09Digest}
+}
+
+func testD09DeltaPlan(t *testing.T, name string) (d09DeltaPlan, D09Config) {
+	t.Helper()
+	config := testD09DeltaConfig()
+	ro, rw := []string{config.LandlockROPath}, []string{config.LandlockRWPath}
+	config.LandlockRulesetDigest, _ = DigestD09LandlockRules(ro, rw)
+	delta := testD09Delta(t, name)
+	token := ""
+	if delta.NoReap() {
+		token = "0123456789abcdef0123456789abcdef"
+	}
+	plan, err := newD09DeltaPlan(delta, config, token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plan, config
+}
+
+func commandArgsFor(t *testing.T, plan d09DeltaPlan, config D09Config) string {
+	t.Helper()
+	spec := sessionrepo.CommandSpec{Executable: config.CommandExecutable, Args: []string{"-lc", "true"}}
+	return strings.Join(d09CommandCellArgumentsDelta(plan, config, "tbound-pi-cell-cmd-x", "/tmp/cid",
+		"localhost/tbound/pi-cell@sha256:"+strings.Repeat("a", 64), "/proc/123/fd/4", "view-1", "lease-1", 1, 2, spec), " ")
+}
+
+func TestD09CommandCellArgumentsPerDelta(t *testing.T) {
+	plan, config := testD09DeltaPlan(t, "")
+	base := commandArgsFor(t, plan, config)
+	for _, want := range []string{"--network=none", "-e TBOUND_TEMPLATE_DIGEST=" + config.TemplateDigest, "-e TBOUND_LANDLOCK_RULESET_DIGEST=" + config.LandlockRulesetDigest} {
+		if !strings.Contains(base, want) {
+			t.Errorf("base cell vector is missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{"--network=host", "TBOUND_CELL_DELTA", "TBOUND_DELTA_TEMPLATE_DIGEST", "TBOUND_LANDLOCK_CONNECT_PORTS", "TBOUND_OUTPUT_END_MARKER"} {
+		if strings.Contains(base, forbidden) {
+			t.Errorf("base cell vector carries %q", forbidden)
+		}
+	}
+	if base != strings.Join(d09CommandCellArguments(config, "tbound-pi-cell-cmd-x", "/tmp/cid",
+		"localhost/tbound/pi-cell@sha256:"+strings.Repeat("a", 64), "/proc/123/fd/4", "view-1", "lease-1", 1, 2,
+		sessionrepo.CommandSpec{Executable: config.CommandExecutable, Args: []string{"-lc", "true"}}), " ") {
+		t.Fatal("the unrelaxed vector differs from the legacy constructor")
+	}
+
+	plan, config = testD09DeltaPlan(t, D09CellDeltaNetSink)
+	net := commandArgsFor(t, plan, config)
+	for _, want := range []string{"--network=host", "-e TBOUND_CELL_DELTA=net-sink/v1", "-e TBOUND_DELTA_TEMPLATE_DIGEST=" + plan.templateDigest,
+		"-e TBOUND_LANDLOCK_CONNECT_PORTS=8080", "-e TBOUND_LANDLOCK_RULESET_DIGEST=" + plan.landlockDigest,
+		"-e TBOUND_TEMPLATE_DIGEST=" + config.TemplateDigest} {
+		if !strings.Contains(net, want) {
+			t.Errorf("net-sink vector is missing %q:\n%s", want, net)
+		}
+	}
+	if strings.Contains(net, "--network=none") || strings.Contains(net, "TBOUND_OUTPUT_END_MARKER") || plan.landlockDigest == config.LandlockRulesetDigest {
+		t.Errorf("net-sink vector kept the network-none cell or took no-reap state:\n%s", net)
+	}
+
+	plan, config = testD09DeltaPlan(t, D09CellDeltaNoReap)
+	reap := commandArgsFor(t, plan, config)
+	for _, want := range []string{"--network=none", "-e TBOUND_CELL_DELTA=no-reap/v1", "-e TBOUND_DELTA_TEMPLATE_DIGEST=" + plan.templateDigest,
+		"-e TBOUND_OUTPUT_END_MARKER=", "-e TBOUND_LANDLOCK_RULESET_DIGEST=" + config.LandlockRulesetDigest} {
+		if !strings.Contains(reap, want) {
+			t.Errorf("no-reap vector is missing %q:\n%s", want, reap)
+		}
+	}
+	if strings.Contains(reap, "--network=host") || strings.Contains(reap, "TBOUND_LANDLOCK_CONNECT_PORTS") {
+		t.Errorf("no-reap vector relaxed the network:\n%s", reap)
+	}
+}
+
+func TestD09DeltaPlanRefusesAnUnusableBase(t *testing.T) {
+	config := testD09DeltaConfig()
+	config.TemplateDigest = ""
+	if _, err := newD09DeltaPlan(testD09Delta(t, D09CellDeltaNetSink), config, ""); err == nil {
+		t.Error("a delta plan was built without the signed base template digest")
+	}
+	config = testD09DeltaConfig()
+	config.LandlockROPath = "relative"
+	if _, err := newD09DeltaPlan(testD09Delta(t, D09CellDeltaNetSink), config, ""); err == nil {
+		t.Error("a delta plan was built from an unparsable Landlock path list")
+	}
+	config = testD09DeltaConfig()
+	if _, err := newD09DeltaPlan(testD09Delta(t, D09CellDeltaNoReap), config, ""); err == nil {
+		t.Error("a no-reap plan was built without an output marker")
+	}
+}
+
+func validNetSinkProofFor(t *testing.T, name string) (d09CommandProof, d09DeltaPlan, D09Config) {
+	t.Helper()
+	plan, config := testD09DeltaPlan(t, name)
+	imageDigest := DigestBytes([]byte("image"))
+	config.ExpectedImageDigest, config.CommandExecutableDigest = imageDigest, DigestBytes([]byte("bash"))
+	config.HostNamespaces = D09NamespaceInodes{User: 100, Mount: 101, PID: 102, IPC: 103, UTS: 104, Network: 105}
+	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
+	proof := d09CommandProof{
+		Schema: "tbound-pi-entrypoint/v1", UID: 1000, GID: 1000, CapEff: d09EmptyCapabilitySet,
+		NoNewPrivs: true, Seccomp: 2, LandlockABI: 8, LandlockRulesetDigest: plan.landlockDigest,
+		LandlockTSYNC: true, CgroupV2: true, LeaderPID: 10, ContainerLeaderPID: 1, LeaseID: "lease-1", ViewID: "view-1",
+		CommandReady: true, ContainerName: "cell-1", ImageRef: "localhost/tbound/pi-cell@" + imageDigest,
+		ImageDigest: imageDigest, TemplateDigest: config.TemplateDigest, ConsumerMountsVerified: true,
+		CommandPath: "/bin/bash", CommandDigest: config.CommandExecutableDigest, CommandWorkdir: ".",
+		RawSourceFDsClosed: true, WorkerMountID: 10, RuntimeMountID: 10,
+		WorkerDevice: 1, WorkerInode: 2, RuntimeDevice: 1, RuntimeInode: 2,
+		UserNSInode: 200, MountNSInode: 201, PIDNSInode: 202, IPCNSInode: 203, UTSNSInode: 204, NetworkNSInode: 205,
+		NoExternalRoutes: true,
+	}
+	if plan.delta.Relaxed() {
+		proof.Delta, proof.DeltaTemplateDigest = plan.delta.Name(), plan.templateDigest
+	}
+	if plan.delta.NetSink() {
+		proof.NetworkNSInode, proof.NoExternalRoutes = config.HostNamespaces.Network, false
+	}
+	proof.UIDMap = D09InsideUIDMap(config.CellUID)
+	proof.GIDMap = D09InsideGIDMap(config.CellGID)
+	proof.UserNamespaceMapDigest = config.UserNamespaceMappingDigest
+	return proof, plan, config
+}
+
+func TestD09CommandProofIsBoundToItsDelta(t *testing.T) {
+	spec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", "true"}}
+	validate := func(proof d09CommandProof, plan d09DeltaPlan, config D09Config) error {
+		return validateD09CommandProofDelta(plan, proof, config, proof.ImageRef, "lease-1", "view-1", "cell-1", 1, 2, spec)
+	}
+	for _, name := range []string{"", D09CellDeltaNetSink, D09CellDeltaNoReap} {
+		proof, plan, config := validNetSinkProofFor(t, name)
+		if err := validate(proof, plan, config); err != nil {
+			t.Fatalf("delta %q: valid proof rejected: %v", name, err)
+		}
+	}
+
+	// A proof is only valid for the delta the host launched. Replaying the proof of one delta for
+	// another, or dropping the delta fields, is refused.
+	baseProof, basePlan, baseConfig := validNetSinkProofFor(t, "")
+	netProof, netPlan, netConfig := validNetSinkProofFor(t, D09CellDeltaNetSink)
+	reapProof, reapPlan, reapConfig := validNetSinkProofFor(t, D09CellDeltaNoReap)
+	for name, tc := range map[string]struct {
+		proof  d09CommandProof
+		plan   d09DeltaPlan
+		config D09Config
+	}{
+		"base proof for net-sink":    {baseProof, netPlan, netConfig},
+		"net-sink proof for base":    {netProof, basePlan, baseConfig},
+		"net-sink proof for no-reap": {netProof, reapPlan, reapConfig},
+		"no-reap proof for net-sink": {reapProof, netPlan, netConfig},
+		"no-reap proof for base":     {reapProof, basePlan, baseConfig},
+		"base proof for no-reap":     {baseProof, reapPlan, reapConfig},
+	} {
+		if err := validate(tc.proof, tc.plan, tc.config); !errors.Is(err, ErrProductionLauncherUnavailable) {
+			t.Errorf("%s was accepted: %v", name, err)
+		}
+	}
+
+	// The shared network namespace belongs to net-sink only, and the private one to the other cells.
+	shared := baseProof
+	shared.NetworkNSInode, shared.NoExternalRoutes = baseConfig.HostNamespaces.Network, false
+	if err := validate(shared, basePlan, baseConfig); err == nil {
+		t.Error("a base cell that shares the host network namespace was accepted")
+	}
+	private := netProof
+	private.NetworkNSInode, private.NoExternalRoutes = 205, true
+	if err := validate(private, netPlan, netConfig); err == nil {
+		t.Error("a net-sink proof that claims a private network namespace was accepted")
+	}
+	for name, mutate := range map[string]func(*d09CommandProof){
+		"net-sink sharing the host PID namespace":   func(p *d09CommandProof) { p.PIDNSInode = netConfig.HostNamespaces.PID },
+		"net-sink sharing the host mount namespace": func(p *d09CommandProof) { p.MountNSInode = netConfig.HostNamespaces.Mount },
+		"net-sink with the base ruleset digest":     func(p *d09CommandProof) { p.LandlockRulesetDigest = netConfig.LandlockRulesetDigest },
+		"net-sink with a forged delta digest":       func(p *d09CommandProof) { p.DeltaTemplateDigest = DigestBytes([]byte("forged")) },
+		"net-sink without the delta name":           func(p *d09CommandProof) { p.Delta = "" },
+	} {
+		bad := netProof
+		mutate(&bad)
+		if err := validate(bad, netPlan, netConfig); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+}
+
+func TestD09MarkedOutputStopsAtTheCellMarker(t *testing.T) {
+	marker := []byte("\n--tbound-cell-end-abc--\n")
+	newOutput := func(limit int) *d09MarkedOutput { return newD09MarkedOutput(limit, marker) }
+
+	out := newOutput(1 << 10)
+	_, _ = out.Write([]byte("hello\n"))
+	select {
+	case <-out.Done():
+		t.Fatal("done before the marker")
+	default:
+	}
+	_, _ = out.Write(marker)
+	_, _ = out.Write([]byte("late output of a survivor"))
+	select {
+	case <-out.Done():
+	default:
+		t.Fatal("marker not recognised")
+	}
+	if got := string(out.Bytes()); got != "hello\n" || out.Overflowed() {
+		t.Fatalf("output = %q overflow=%t", got, out.Overflowed())
+	}
+
+	// A marker split across writes, and output without a trailing newline.
+	split := newOutput(1 << 10)
+	_, _ = split.Write([]byte("abc"))
+	_, _ = split.Write(marker[:7])
+	_, _ = split.Write(marker[7:])
+	if got := string(split.Bytes()); got != "abc" {
+		t.Fatalf("split marker left %q", got)
+	}
+
+	// A command cannot end the stream early by printing something else, and the marker is found
+	// after the retained bytes overflowed the bound.
+	big := newOutput(8)
+	_, _ = big.Write([]byte(strings.Repeat("x", 64)))
+	_, _ = big.Write(marker)
+	select {
+	case <-big.Done():
+	default:
+		t.Fatal("marker after an overflow was not recognised")
+	}
+	if !big.Overflowed() || len(big.Bytes()) > 8 {
+		t.Fatalf("overflow=%t len=%d", big.Overflowed(), len(big.Bytes()))
+	}
+	forged := newOutput(1 << 10)
+	_, _ = forged.Write([]byte("\n--tbound-cell-end-guess--\n"))
+	select {
+	case <-forged.Done():
+		t.Fatal("a guessed marker ended the stream")
+	default:
+	}
+}
+
+func noReapReceiptParts(t *testing.T) (D09CommandProof, sessionrepo.CommandResult, sessionrepo.CommandSettlement, D09CommandSettlementEvidence) {
+	t.Helper()
+	imageDigest := DigestBytes([]byte("image"))
+	delta := testD09Delta(t, D09CellDeltaNoReap)
+	deltaDigest, err := delta.TemplateDigest(DigestBytes([]byte("template")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := D09CommandProof{
+		Schema: "tbound-pi-entrypoint/v1", UID: 1000, GID: 1000, CapEff: d09EmptyCapabilitySet,
+		NoNewPrivs: true, Seccomp: 2, LandlockABI: 8, LandlockRulesetDigest: DigestBytes([]byte("landlock")),
+		LandlockTSYNC: true, CgroupV2: true, LeaderPID: 321, ContainerLeaderPID: 1,
+		LeaseID: "lease-1", ViewID: "view-1", CommandStarted: true, CommandReady: true,
+		CommandExitObserved: true, CommandExitCode: 0, CommandPath: "/bin/bash", CommandDigest: DigestBytes([]byte("bash")),
+		CommandWorkdir: ".", ContainerName: "cell-1", ImageRef: "localhost/tbound/pi-cell@" + imageDigest,
+		ImageDigest: imageDigest, TemplateDigest: DigestBytes([]byte("template")),
+		Delta: delta.Name(), DeltaTemplateDigest: deltaDigest,
+	}
+	result := sessionrepo.CommandResult{ExitObserved: true, Stdout: []byte("4242\n")}
+	settlement := sessionrepo.CommandSettlement{
+		LeaseID: "lease-1", ViewID: "view-1", ExitObserved: true, SurvivorsTolerated: true,
+		EvidenceClass: D09CommandRunnerProfile + ":" + D09NoReapSettlementEvidence,
+	}
+	evidence := D09CommandSettlementEvidence{
+		SurvivorsTolerated: true, FinalCommandProofRead: true, OutputMarkerObserved: true,
+		ContainerLeftRunning: true, CommandScopeDetached: true, CommandOutputWithinBound: true,
+	}
+	return proof, result, settlement, evidence
+}
+
+func TestD09NoReapReceiptRecordsTheToleratedSurvivorsAndNothingElseDoes(t *testing.T) {
+	spec := sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", "true"}}
+	issue := func(proof D09CommandProof, settlement sessionrepo.CommandSettlement, evidence D09CommandSettlementEvidence) error {
+		_, err := newD09CommandReceipt("lease-1", "view-1", "cell-1", strings.Repeat("a", 64), spec,
+			sessionrepo.CommandResult{ExitObserved: true}, settlement, proof, evidence)
+		return err
+	}
+	proof, _, settlement, evidence := noReapReceiptParts(t)
+	if err := issue(proof, settlement, evidence); err != nil {
+		t.Fatalf("a no-reap left-running receipt was refused: %v", err)
+	}
+	receipt, err := newD09CommandReceipt("lease-1", "view-1", "cell-1", strings.Repeat("a", 64), spec,
+		sessionrepo.CommandResult{ExitObserved: true}, settlement, proof, evidence)
+	if err != nil || receipt.Proof.Delta != D09CellDeltaNoReap || !validDigest(receipt.Proof.DeltaTemplateDigest) || !receipt.Settlement.SurvivorsTolerated {
+		t.Fatalf("the receipt does not record the delta and the tolerated survivors: %+v %v", receipt.Proof, err)
+	}
+
+	// The tolerance exists for the no-reap delta only.
+	for name, mutate := range map[string]func(*D09CommandProof, *sessionrepo.CommandSettlement, *D09CommandSettlementEvidence){
+		"unrelaxed cell": func(p *D09CommandProof, _ *sessionrepo.CommandSettlement, _ *D09CommandSettlementEvidence) {
+			p.Delta, p.DeltaTemplateDigest = "", ""
+		},
+		"net-sink cell": func(p *D09CommandProof, _ *sessionrepo.CommandSettlement, _ *D09CommandSettlementEvidence) {
+			p.Delta = D09CellDeltaNetSink
+		},
+		"unknown delta": func(p *D09CommandProof, _ *sessionrepo.CommandSettlement, _ *D09CommandSettlementEvidence) {
+			p.Delta = "no-reap/v2"
+		},
+		"missing delta identity": func(p *D09CommandProof, _ *sessionrepo.CommandSettlement, _ *D09CommandSettlementEvidence) {
+			p.DeltaTemplateDigest = ""
+		},
+		"settled flags with tolerance": func(_ *D09CommandProof, s *sessionrepo.CommandSettlement, _ *D09CommandSettlementEvidence) {
+			s.ProcessScopeEmpty = true
+		},
+		"another evidence class": func(_ *D09CommandProof, s *sessionrepo.CommandSettlement, _ *D09CommandSettlementEvidence) {
+			s.EvidenceClass += "+x"
+		},
+		"no output marker": func(_ *D09CommandProof, _ *sessionrepo.CommandSettlement, e *D09CommandSettlementEvidence) {
+			e.OutputMarkerObserved = false
+		},
+		"container not running": func(_ *D09CommandProof, _ *sessionrepo.CommandSettlement, e *D09CommandSettlementEvidence) {
+			e.ContainerLeftRunning = false
+		},
+		"scope not detached": func(_ *D09CommandProof, _ *sessionrepo.CommandSettlement, e *D09CommandSettlementEvidence) {
+			e.CommandScopeDetached = false
+		},
+		"claims a removal": func(_ *D09CommandProof, _ *sessionrepo.CommandSettlement, e *D09CommandSettlementEvidence) {
+			e.ContainerRemoved = true
+		},
+		"claims populated=0": func(_ *D09CommandProof, _ *sessionrepo.CommandSettlement, e *D09CommandSettlementEvidence) {
+			e.CgroupPopulatedZero = true
+		},
+		"no exit observation": func(p *D09CommandProof, _ *sessionrepo.CommandSettlement, _ *D09CommandSettlementEvidence) {
+			p.CommandExitObserved = false
+		},
+	} {
+		p, _, s, e := noReapReceiptParts(t)
+		mutate(&p, &s, &e)
+		if err := issue(p, s, e); !errors.Is(err, ErrD09CommandReceiptInvalid) {
+			t.Errorf("%s: a receipt was minted: %v", name, err)
+		}
+	}
+
+	// A fully settled receipt cannot carry the left-running evidence, and a left-running claim on
+	// a settled cell is not a settled receipt either.
+	settledProof, settledResult, settledSettlement, settledEvidence := noReapReceiptParts(t)
+	_ = settledResult
+	settledProof.Delta, settledProof.DeltaTemplateDigest = "", ""
+	settledSettlement = sessionrepo.CommandSettlement{LeaseID: "lease-1", ViewID: "view-1", ProcessScopeEmpty: true, WritersStopped: true,
+		MountDetached: true, ExitObserved: true, EvidenceClass: D09CommandRunnerProfile + ":settled"}
+	settledEvidence = D09CommandSettlementEvidence{
+		ContainerExitInspected: true, FinalCommandProofRead: true, PodmanWaitCompleted: true,
+		OutputWritersDrained: true, ContainerRemoved: true, LeaderPidfdExited: true,
+		CgroupPopulatedZero: true, MountNamespaceReleased: true, CommandOutputWithinBound: true, CommandCgroupRemoved: true,
+	}
+	if err := issue(settledProof, settledSettlement, settledEvidence); err != nil {
+		t.Fatalf("a settled receipt was refused: %v", err)
+	}
+	withTolerance := settledSettlement
+	withTolerance.SurvivorsTolerated = true
+	if err := issue(settledProof, withTolerance, settledEvidence); err == nil {
+		t.Error("a settled receipt carrying the tolerance flag was minted")
+	}
+	leftRunning := settledEvidence
+	leftRunning.ContainerLeftRunning = true
+	if err := issue(settledProof, settledSettlement, leftRunning); err == nil {
+		t.Error("a settled receipt carrying left-running evidence was minted")
+	}
+}
+
+func TestTemplateDeltaLandlockRulesetDigestFollowsTheSignedPaths(t *testing.T) {
+	template := D09CellTemplate{LandlockROPath: "/usr,/lib", LandlockRWPath: "/work,/tmp"}
+	base, err := DigestD09LandlockRules([]string{"/usr", "/lib"}, []string{"/work", "/tmp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	template.LandlockRulesetDigest = base
+	for name, relaxed := range map[string]bool{"": false, D09CellDeltaNoReap: false, D09CellDeltaNetSink: true} {
+		got, err := template.DeltaLandlockRulesetDigest(testD09Delta(t, name))
+		if err != nil || (got != base) != relaxed {
+			t.Errorf("delta %q: %s relaxed=%t (%v)", name, got, relaxed, err)
+		}
+	}
+	template.LandlockROPath = "relative"
+	if _, err := template.DeltaLandlockRulesetDigest(testD09Delta(t, D09CellDeltaNetSink)); err == nil {
+		t.Error("a delta ruleset digest was derived from a non-canonical path")
+	}
+}
+
+func TestRunnerForADeltaStillNeedsAnAdmittedLauncherAndLease(t *testing.T) {
+	for _, name := range []string{"", D09CellDeltaNetSink, D09CellDeltaNoReap} {
+		if _, err := NewD09CommandRunnerForDelta("", &D09PodmanCrunLauncher{}, testD09Delta(t, name)); !errors.Is(err, ErrProductionLauncherUnavailable) {
+			t.Errorf("delta %q: a runner without a lease or admitted launcher was built: %v", name, err)
+		}
+	}
+}
+
+const netSinkRuleFile = "../../../infra/guest/nftables/tbound-net-sink.nft"
+
+func TestNetSinkNftMatchDerivesPathAndLevelFromTheCellsCgroup(t *testing.T) {
+	path, level, err := D09NetSinkNftMatch("/sys/fs/cgroup/system.slice/tbound-pi.service/cells")
+	if err != nil || path != "system.slice/tbound-pi.service/cells/net-sink" || level != 4 {
+		t.Fatalf("default cells cgroup: %q %d %v", path, level, err)
+	}
+	if path, level, err := D09NetSinkNftMatch("/sys/fs/cgroup/tbound/"); err != nil || path != "tbound/net-sink" || level != 2 {
+		t.Errorf("short cells cgroup: %q %d %v", path, level, err)
+	}
+	for _, bad := range []string{"", "/sys/fs/cgroup", "/sys/fs/cgroup/", "/tmp/cells", "/sys/fs/cgroup/a/../b", "/sys/fs/cgroup/a//b", `/sys/fs/cgroup/a"b`, "/sys/fs/cgroup/a b"} {
+		if _, _, err := D09NetSinkNftMatch(bad); err == nil {
+			t.Errorf("cells cgroup %q was accepted", bad)
+		}
+	}
+}
+
+// The installed rule matches the cgroup, never the uid: the service uid also makes the provider calls.
+func TestNetSinkRuleFileMatchesTheCgroupDerivationAndTheDigestPin(t *testing.T) {
+	raw, err := os.ReadFile(netSinkRuleFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.ReplaceAll(string(raw), "\r\n", "\n")
+	if got := DigestBytes([]byte(text)); got != D09NetSinkRuleDigest {
+		t.Fatalf("D09NetSinkRuleDigest is %s but infra/guest/nftables/tbound-net-sink.nft has %s: update the pin with the file", D09NetSinkRuleDigest, got)
+	}
+	path, level, err := D09NetSinkNftMatch("/sys/fs/cgroup/system.slice/tbound-pi.service/cells")
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := fmt.Sprintf("socket cgroupv2 level %d %q", level, path)
+	var rules []string
+	for _, line := range strings.Split(text, "\n") {
+		if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+			rules = append(rules, line)
+		}
+	}
+	accept := match + " ip daddr " + D09NetSinkAddress + " tcp dport " + fmt.Sprint(D09NetSinkPort) + " accept"
+	drop := match + " counter drop"
+	accepts, drops := 0, 0
+	for _, rule := range rules {
+		switch {
+		case rule == accept:
+			accepts++
+		case rule == drop:
+			drops++
+		case strings.Contains(rule, "skuid"), strings.Contains(rule, "meta cgroup"):
+			t.Errorf("rule matches the uid or another selector, not the net-sink cgroup: %s", rule)
+		case strings.HasSuffix(rule, " accept"):
+			t.Errorf("rule accepts something other than the registered sink: %s", rule)
+		}
+	}
+	if accepts != 1 || drops != 1 {
+		t.Fatalf("want one accept for %s:%d and one drop for the cgroup, got %d and %d", D09NetSinkAddress, D09NetSinkPort, accepts, drops)
+	}
+	if strings.Index(text, accept) > strings.Index(text, drop) {
+		t.Error("the drop rule precedes the accept rule")
+	}
+	if !strings.Contains(text, "policy accept") {
+		t.Error("the chain must leave every socket outside the net-sink cgroup untouched")
+	}
+}
+
+func TestRequireNetSinkRuleFailsClosed(t *testing.T) {
+	raw, err := os.ReadFile(netSinkRuleFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serve := func(data []byte, err error) func(string, int64) ([]byte, error) {
+		return func(path string, _ int64) ([]byte, error) {
+			if path != D09NetSinkRulePath {
+				t.Errorf("read %s", path)
+			}
+			return data, err
+		}
+	}
+	if err := requireNetSinkRule(serve(raw, nil)); err != nil {
+		t.Fatalf("the pinned rule was refused: %v", err)
+	}
+	crlf := []byte(strings.ReplaceAll(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n", "\r\n"))
+	if err := requireNetSinkRule(serve(crlf, nil)); err != nil {
+		t.Errorf("the pinned rule with CRLF line endings was refused: %v", err)
+	}
+	altered := []byte(strings.Replace(string(raw), "counter drop", "counter accept", 1))
+	for name, read := range map[string]func(string, int64) ([]byte, error){
+		"absent":  serve(nil, os.ErrNotExist),
+		"altered": serve(altered, nil),
+		"empty":   serve(nil, nil),
+	} {
+		if err := requireNetSinkRule(read); !errors.Is(err, ErrProductionLauncherUnavailable) {
+			t.Errorf("%s rule file: %v", name, err)
+		}
+	}
+}
+
+func TestNetSinkParentCgroupMustExistAndBeACgroup(t *testing.T) {
+	cellsRoot, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cellsRoot.Close()
+	launcher := &D09PodmanCrunLauncher{scope: &LinuxCgroupScope{root: cellsRoot}}
+	if _, err := launcher.openNetSinkParent(); !errors.Is(err, ErrCgroupScopeRefused) {
+		t.Fatalf("an absent net-sink parent was opened: %v", err)
+	}
+	// The service never creates the parent: the rule has to name the directory that exists.
+	if _, err := os.Stat(filepath.Join(cellsRoot.Name(), D09NetSinkCgroupName)); err == nil {
+		t.Fatal("openNetSinkParent created the parent")
+	}
+	if err := os.Mkdir(filepath.Join(cellsRoot.Name(), D09NetSinkCgroupName), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := launcher.openNetSinkParent(); !errors.Is(err, ErrCgroupScopeRefused) {
+		t.Fatalf("a plain directory was taken for the net-sink cgroup: %v", err)
+	}
+	if _, err := (&D09PodmanCrunLauncher{}).openNetSinkParent(); !errors.Is(err, ErrCgroupScopeRefused) {
+		t.Fatalf("a launcher without a scope opened the net-sink parent: %v", err)
+	}
+}

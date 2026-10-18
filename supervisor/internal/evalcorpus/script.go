@@ -54,20 +54,35 @@ const (
 	MaxProtectedPaths           = 32
 	MaxProtectedPathBytes       = 256
 	MaxPDeltaJustificationBytes = 2 << 10
+	MaxPivots                   = 64
+	MaxPivotBytes               = 64 << 10
 )
 
 // CalibrationPayloadSchema names the canonical form that CalibrationPayloadDigest commits to.
-// Adding the pivots member of increment E is a schema bump: the payload then names
-// "tbound-calibration-payload/v2", so a v1 digest can never equal a v2 digest of the same script.
-const CalibrationPayloadSchema = "tbound-calibration-payload/v1"
+//
+//	v1: {p_delta, schema, script}
+//	v2: {p_delta, pivots, schema, script}, the pivots member being the case's attacker pivot table
+//	    (an object, empty when the case has none)
+//
+// Adding the pivots member of the adaptive replay is a schema bump: the payload names
+// "tbound-calibration-payload/v2", so a v1 digest can never equal a v2 digest of the same script. Only v2 is
+// produced and accepted; a manifest frozen under v1 must be re-digested.
+const CalibrationPayloadSchema = "tbound-calibration-payload/v2"
 
-// CalibrationPayloadDigest is the calibration_payload_digest of a scripted case: "sha256:" and the
+// CalibrationPayloadDigest is the calibration_payload_digest of a scripted case without pivots (see
+// CalibrationPayloadDigestOf).
+func CalibrationPayloadDigest(script []ScriptTurn, pDelta string) (string, error) {
+	return CalibrationPayloadDigestOf(script, nil, pDelta)
+}
+
+// CalibrationPayloadDigestOf is the calibration_payload_digest of a scripted case: "sha256:" and the
 // SHA-256 of the RFC 8785 canonical form (this package's value subset) of
 //
-//	{"p_delta": <effective delta>, "schema": "tbound-calibration-payload/v1", "script": <turns>}
+//	{"p_delta": <effective delta>, "pivots": <step id -> turn>, "schema": "tbound-calibration-payload/v2", "script": <turns>}
 //
-// An empty p_delta digests as "none". A script that is not admissible (CheckStimulus) has no digest.
-func CalibrationPayloadDigest(script []ScriptTurn, pDelta string) (string, error) {
+// An empty p_delta digests as "none"; no pivots digest as {}. A script or pivot table that is not
+// admissible (CheckStimulus) has no digest.
+func CalibrationPayloadDigestOf(script []ScriptTurn, pivots map[string]ScriptTurn, pDelta string) (string, error) {
 	if pDelta == "" {
 		pDelta = PDeltaNone
 	}
@@ -77,9 +92,16 @@ func CalibrationPayloadDigest(script []ScriptTurn, pDelta string) (string, error
 	if err := checkScript(script); err != nil {
 		return "", err
 	}
+	if err := checkPivots(pivots); err != nil {
+		return "", err
+	}
 	var buf bytes.Buffer
 	buf.WriteString(`{"p_delta":`)
 	if err := writeCanonicalString(&buf, pDelta); err != nil {
+		return "", err
+	}
+	buf.WriteString(`,"pivots":`)
+	if err := writeCanonical(&buf, reflect.ValueOf(pivotsOrEmpty(pivots))); err != nil {
 		return "", err
 	}
 	buf.WriteString(`,"schema":`)
@@ -129,12 +151,15 @@ func (t Trial) CheckStimulus() error {
 	case delta != PDeltaNone && len(t.Script) == 0:
 		return fmt.Errorf("p_delta %s is registered for a trial without a script", delta)
 	}
+	if err := t.checkPivotsOfTrial(); err != nil {
+		return err
+	}
 	return checkProtectedPaths(t.ProtectedPaths)
 }
 
 // HasStimulus reports whether any member that only an adversarial case may carry is set.
 func (t Trial) HasStimulus() bool {
-	return len(t.Script) != 0 || t.PDelta != "" || t.PDeltaJustification != "" || len(t.ProtectedPaths) != 0
+	return len(t.Script) != 0 || t.PDelta != "" || t.PDeltaJustification != "" || len(t.ProtectedPaths) != 0 || t.Pivots != nil
 }
 
 // CheckCalibrationDigest requires an adversarial case with a script to carry the calibration payload
@@ -146,12 +171,12 @@ func CheckCalibrationDigest(c Case) error {
 	if c.Adversarial == nil {
 		return errors.New("a scripted case has no adversarial payload")
 	}
-	want, err := CalibrationPayloadDigest(c.Trial.Script, c.Trial.PDelta)
+	want, err := CalibrationPayloadDigestOf(c.Trial.Script, c.Trial.Pivots, c.Trial.PDelta)
 	if err != nil {
 		return err
 	}
 	if c.Adversarial.CalibrationPayloadDigest != want {
-		return fmt.Errorf("calibration_payload_digest is %q; the script and p_delta digest to %q",
+		return fmt.Errorf("calibration_payload_digest is %q; the script, pivots and p_delta digest to %q",
 			c.Adversarial.CalibrationPayloadDigest, want)
 	}
 	return nil
@@ -351,5 +376,91 @@ func AdmissionPolicyDigest(policyDigest, metadataPolicyDigest string, promoteAll
 		return "", err
 	}
 	sum := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
+}
+
+// pivotsOrEmpty returns a non-nil map so that the canonical form of an absent table is {}.
+func pivotsOrEmpty(pivots map[string]ScriptTurn) map[string]ScriptTurn {
+	if pivots == nil {
+		return map[string]ScriptTurn{}
+	}
+	return pivots
+}
+
+// ValidPivotStepID reports whether id can name a step of the attacker library: 1 to 64 bytes of
+// [a-z0-9._-], the identifier rule of package attacker.
+func ValidPivotStepID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '_' || c == '.' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// checkPivots reports the first reason a pivot table is not admissible: more than MaxPivots entries, a
+// step id that is not a valid library step id, a turn that is not exactly one tool call with canonical
+// JSON-object arguments, or a table larger than MaxPivotBytes. An absent table is admissible; an empty
+// one is not (it would digest like an absent one).
+func checkPivots(pivots map[string]ScriptTurn) error {
+	if pivots == nil {
+		return nil
+	}
+	if len(pivots) == 0 {
+		return errors.New("pivots is present but empty")
+	}
+	if len(pivots) > MaxPivots {
+		return fmt.Errorf("pivots has %d entries; at most %d", len(pivots), MaxPivots)
+	}
+	total := 0
+	for id, turn := range pivots {
+		if !ValidPivotStepID(id) {
+			return fmt.Errorf("pivot step id %q is not 1 to 64 bytes of [a-z0-9._-]", id)
+		}
+		if turn.Tool == "" {
+			return fmt.Errorf("pivot %q is not a tool call", id)
+		}
+		if err := checkScript([]ScriptTurn{turn}); err != nil {
+			return fmt.Errorf("pivot %q: %w", id, err)
+		}
+		total += len(id) + len(turn.Tool) + len(turn.Arguments)
+	}
+	if total > MaxPivotBytes {
+		return fmt.Errorf("pivots are %d bytes; at most %d", total, MaxPivotBytes)
+	}
+	return nil
+}
+
+// checkPivotsOfTrial applies checkPivots and requires a script: the adaptive replay accompanies a static
+// witness, and the calibration digest of a case is anchored on its script.
+func (t Trial) checkPivotsOfTrial() error {
+	if t.Pivots == nil {
+		return nil
+	}
+	if len(t.Script) == 0 {
+		return errors.New("pivots are registered for a trial without a script")
+	}
+	return checkPivots(t.Pivots)
+}
+
+// PivotsDigest is "sha256:" and the SHA-256 of the canonical form of the pivot table alone. A governed
+// service reports it in the receipt of an adaptive replay, so that the host can see which table of
+// concrete turns the attacker machine drew from. An absent or inadmissible table has no digest.
+func PivotsDigest(pivots map[string]ScriptTurn) (string, error) {
+	if len(pivots) == 0 {
+		return "", errors.New("evalcorpus: no pivots to digest")
+	}
+	if err := checkPivots(pivots); err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := writeCanonical(&buf, reflect.ValueOf(pivots)); err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(buf.Bytes())
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }

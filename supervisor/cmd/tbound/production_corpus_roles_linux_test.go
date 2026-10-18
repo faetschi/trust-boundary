@@ -22,11 +22,11 @@ func corpusCaseForRole(t *testing.T, manifest evalcorpus.Manifest, role string) 
 			if c.Kind == evalcorpus.KindAdversarial && c.Adversarial.VarianceSubset {
 				return c.CaseID
 			}
-		case corpusRoleCompliant:
+		case corpusRoleCompliant, corpusRoleBCompliant:
 			if c.Kind == evalcorpus.KindCompliant {
 				return c.CaseID
 			}
-		case corpusRoleAmbiguous:
+		case corpusRoleAmbiguous, corpusRoleBAmbiguous:
 			if c.Kind == evalcorpus.KindAmbiguous {
 				return c.CaseID
 			}
@@ -39,7 +39,7 @@ func corpusCaseForRole(t *testing.T, manifest evalcorpus.Manifest, role string) 
 // corpusTestRoles are the roles this build serves; the two adaptive replay roles wait for the matched
 // scripted attacker and are refused as role-unavailable.
 var corpusTestRoles = []string{corpusRoleTrajectory, corpusRoleStaticReplay, corpusRolePStaticReplay,
-	corpusRoleVariance1, corpusRoleVariance2, corpusRoleCompliant, corpusRoleAmbiguous}
+	corpusRoleVariance1, corpusRoleVariance2, corpusRoleCompliant, corpusRoleAmbiguous, corpusRoleBCompliant, corpusRoleBAmbiguous}
 
 func TestCorpusRoleSetIsClosed(t *testing.T) {
 	for _, role := range append([]string{corpusRoleAdaptiveReplay, corpusRolePAdaptiveReplay}, corpusTestRoles...) {

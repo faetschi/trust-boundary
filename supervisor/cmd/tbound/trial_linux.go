@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -39,13 +38,20 @@ import (
 //
 //	reset <case_id>
 //	    refuses when a workflow admission has no terminal, a managed-root run still holds the
-//	    live root, the cells cgroup is populated, or the fixture artifact does not verify.
-//	    Otherwise it kills the processes of the cell uid that are left outside the cells
-//	    cgroup, wipes the live root in place (the root inode, its mode and owner and a
-//	    top-level lost+found are kept), populates it from the fixture, and prints the digest
-//	    of the fixture next to the digest of the resulting tree, which must be equal.
+//	    live root, or the fixture artifact does not verify. Otherwise it kills whatever still
+//	    runs in the cells cgroup subtree (a write of 1 to cgroup.kill, then a bounded wait for
+//	    populated 0; a missing cgroup.kill or a cgroup that stays populated refuses), wipes the
+//	    live root in place (the root inode, its mode and owner and a top-level lost+found are
+//	    kept), populates it from the fixture, and prints the digest of the fixture next to the
+//	    digest of the resulting tree, which must be equal.
 //	reset <case_id> --check
-//	    the refusals only. It changes nothing.
+//	    the refusals only, and a populated cells cgroup is one of them. It changes nothing.
+//	accept <case_id> [--tree live]
+//	    evaluates the case's pinned acceptance artifact against the live root (read-only,
+//	    links are never followed) and prints the result document (trial_accept_linux.go).
+//	v-run <case_id>
+//	    runs native Pi (Configuration V) once in a plain Podman container on a fresh copy of
+//	    the case fixture and prints the run document (trial_vrun_linux.go).
 //	ssh-original-command
 //	    the forced-command entry: reads $SSH_ORIGINAL_COMMAND, which must be
 //	    "/usr/local/bin/tbound trial <args>" in the word grammar of the evidence entry.
@@ -55,17 +61,18 @@ const (
 	// (fixture-<hex>.json, root:root 0644). Only a test replaces it, through trialEnv.
 	trialArtifactDir = "/opt/tbound/corpus/artifacts"
 	trialResetLabel  = "reset"
-	trialKillRounds  = 20
 )
 
-// trialKillWait is how long, in total, the reset waits for the kernel to confirm that the
-// groups it sent SIGKILL have exited (a variable so a test can shorten it).
+// trialKillWait bounds the wait for the cells cgroup to become unpopulated after cgroup.kill
+// (a variable so a test can shorten it).
 var trialKillWait = 5 * time.Second
 
 const trialUsage = `usage: tbound trial reset <case_id> [--check]   (root only; one JSON document on stdout)
   reset <case_id>           reset the live root to the fixture of the case
   reset <case_id> --check   verify the preconditions and the fixture artifact only
-  ssh-original-command      (forced-command entry; reads $SSH_ORIGINAL_COMMAND)
+  accept <case_id> [--tree live]   evaluate the acceptance artifact of a compliant case on the live root
+  v-run <case_id>           run native Pi (Configuration V) on a fresh fixture copy in a plain container
+  ssh-original-command     (forced-command entry; reads $SSH_ORIGINAL_COMMAND)
 `
 
 // trialEnv is everything the subcommand touches outside its arguments; tests replace it.
@@ -79,17 +86,20 @@ type trialEnv struct {
 	// liveRoot is the root that is reset, and owner the owner of what is put in it.
 	liveRoot string
 	owner    trialfix.Owner
-	// cell resolves the registered cell, as the evidence kinds do.
+	// cell resolves the registered cell, as the evidence kinds do, with its host identity.
 	cell func(ctx context.Context) (evidenceCell, error)
 	// pending returns an error naming what is still pending: a workflow admission without a
 	// terminal, or a managed-root run that holds the live root.
 	pending func(ctx context.Context) error
-	// cellPopulated reports whether the cgroup directory holds any process.
-	cellPopulated func(cgroupDir string) (bool, error)
-	// killLeftovers kills every process of the uid and fails if one survives.
-	killLeftovers func(uid uint32) error
+	// cellPopulated reports whether the cells cgroup (or one below it) holds a live process.
+	cellPopulated func(cell evidenceCell) (bool, error)
+	// killCell kills every process of the cells cgroup subtree and fails unless the cgroup is
+	// unpopulated afterwards.
+	killCell func(cell evidenceCell) error
 	// snapshot is wsoracle.Snapshot.
 	snapshot func(root, label string) wsoracle.Manifest
+	// task is what the accept and v-run verbs need (trial_accept_linux.go, trial_vrun_linux.go).
+	task trialTaskEnv
 }
 
 func productionTrialEnv() trialEnv {
@@ -97,11 +107,9 @@ func productionTrialEnv() trialEnv {
 		geteuid: os.Geteuid, getenv: os.Getenv,
 		fixtureDigest: trialPinnedFixtureDigest, artifacts: os.DirFS(trialArtifactDir),
 		liveRoot: piruntime.D09ManagedPiLiveRootPath, owner: trialfix.Canonical,
-		cell: loadEvidenceCell, pending: trialPending, cellPopulated: cgroupPopulated,
-		killLeftovers: func(uid uint32) error {
-			return killUIDProcesses("/proc", uid, pinProcessPidfd)
-		},
+		cell: loadTrialCell, pending: trialPending, cellPopulated: cellsCgroupPopulated, killCell: killCellsCgroup,
 		snapshot: wsoracle.Snapshot,
+		task:     productionTrialTaskEnv(),
 	}
 }
 
@@ -155,6 +163,8 @@ func runTrial(ctx context.Context, args []string, stdout io.Writer, env trialEnv
 		}
 		_, err = stdout.Write(append(encoded, '\n'))
 		return err
+	case "accept", "v-run":
+		return runTrialTask(ctx, verb, rest, stdout, env)
 	default:
 		return fmt.Errorf("unknown trial verb %q", verb)
 	}
@@ -195,26 +205,27 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	if err != nil {
 		return trialfix.ResetDoc{}, fmt.Errorf("the registered cell cannot be resolved: %w", err)
 	}
-	if cell.UID != env.owner.UID {
-		return trialfix.ResetDoc{}, fmt.Errorf("the cell uid %d is not the fixture owner %d", cell.UID, env.owner.UID)
+	if cell.HostUID != env.owner.UID || cell.HostGID != env.owner.GID {
+		return trialfix.ResetDoc{}, fmt.Errorf("the cell's host identity %d:%d is not the fixture owner %d:%d", cell.HostUID, cell.HostGID, env.owner.UID, env.owner.GID)
 	}
 	if err := env.pending(ctx); err != nil {
 		return trialfix.ResetDoc{}, fmt.Errorf("a workflow, admission or publication is pending: %w", err)
 	}
-	populated, err := env.cellPopulated(cell.CgroupPath)
+	populated, err := env.cellPopulated(cell)
 	if err != nil {
 		return trialfix.ResetDoc{}, fmt.Errorf("the cells cgroup cannot be read: %w", err)
 	}
-	if populated {
-		return trialfix.ResetDoc{}, errors.New("the cells cgroup holds processes")
-	}
 	doc := trialfix.ResetDoc{Schema: trialfix.ResetSchema, CaseID: caseID, FixtureDigest: digest, Check: check}
 	if check {
+		if populated {
+			return trialfix.ResetDoc{}, errors.New("the cells cgroup holds processes")
+		}
 		return doc, nil
 	}
-	// The stray processes go first: one that outlived its cell could write into the tree
-	// that is about to be built. The verification below sees anything that still did.
-	if err := env.killLeftovers(cell.UID); err != nil {
+	// Whatever still runs in the cells cgroup goes first: a process that outlived its cell
+	// could write into the tree that is about to be built. The kill is the kernel's and
+	// atomic over the subtree, and the reset proceeds only on populated 0.
+	if err := env.killCell(cell); err != nil {
 		return trialfix.ResetDoc{}, err
 	}
 	if err := trialfix.Reset(env.liveRoot, spec, env.owner); err != nil {
@@ -229,6 +240,21 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	}
 	doc.TreeDigest = tree
 	return doc, nil
+}
+
+// cellHostIdentity is the host uid and gid the signed user-namespace mapping puts the cell's
+// processes on. The profile admits one mapping only (rootless-single-own-uid-gid/v1): the
+// template's in-cell uid and gid map onto the service's own host uid and gid, which own the live
+// root and the fixtures. The in-cell identity is not a host identity. The template's mapping digest
+// is recomputed from the registered identities, as the launcher does, so a template that maps the
+// cell anywhere else is refused. Reset and v-run both take the host identity from here.
+func cellHostIdentity(reg piruntime.D09ManagedLiveRootRegistration, tmpl piruntime.D09CellTemplate) (uid, gid uint32, err error) {
+	if reg.ServiceUID <= 0 || reg.ServiceGID <= 0 || tmpl.CellUID <= 0 || tmpl.CellGID <= 0 ||
+		tmpl.UserNamespaceMappingProfile != piruntime.D09UserNamespaceMappingProfile ||
+		tmpl.UserNamespaceMappingDigest != piruntime.DigestD09UserNamespaceMapping(tmpl.CellUID, tmpl.CellGID, reg.ServiceUID, reg.ServiceGID) {
+		return 0, 0, errors.New("the cell template does not map the cell onto the registered service identity")
+	}
+	return uint32(reg.ServiceUID), uint32(reg.ServiceGID), nil
 }
 
 // trialPinnedFixtureDigest is the fixture digest of caseID in the pinned corpus manifest: the
@@ -322,10 +348,107 @@ func trialPendingFrom(catalog, lifecycle audit.Trace, root workflow.RootIdentity
 	return nil
 }
 
-// cgroupPopulated reports whether the cgroup2 directory, or one below it, holds a process,
-// from the populated key of its cgroup.events.
-func cgroupPopulated(dir string) (bool, error) {
-	data, err := os.ReadFile(filepath.Join(dir, "cgroup.events"))
+// A reset does not look for the cell's processes: every one of them lives in the registered
+// cells cgroup subtree (the launcher creates each cell below it, podman --cgroup-parent), and
+// the kernel kills a cgroup subtree as one operation. A write of "1" to cgroup.kill sends SIGKILL
+// to every process of the subtree, and a fork or a migration into the subtree after that point
+// is killed too, so a process cannot slip out of a scan between its start and its end. The
+// reset waits until cgroup.events reports populated 0 (no live process in the subtree, a
+// zombie does not count) and refuses otherwise. A kernel without cgroup.kill refuses: there is
+// no fallback.
+//
+// The stated limit: a process that left the subtree is not killed or found. Nothing in the
+// launcher flags lets a cell do that (--cap-drop=ALL, no-new-privileges, --read-only, a
+// seccomp profile, podman's default cgroup namespace and read-only cgroup mount, no
+// --privileged; containment_linux.go, d09_command_runner_linux.go), but that is not measured
+// on a running cell, and a scan for such a process is the race this design removes.
+
+// openCellsCgroup opens the cells cgroup directory without following a final symlink and
+// requires it to be a cgroup2 directory with the inode the cell registration was resolved with.
+func openCellsCgroup(cell evidenceCell) (*os.File, error) {
+	dir, err := openEvidenceCellDir(cell.CgroupPath)
+	if err != nil {
+		return nil, err
+	}
+	var fsStat unix.Statfs_t
+	var st unix.Stat_t
+	if err := unix.Fstatfs(int(dir.Fd()), &fsStat); err != nil || fsStat.Type != unix.CGROUP2_SUPER_MAGIC {
+		dir.Close()
+		return nil, fmt.Errorf("%s is not on a cgroup2 filesystem (%v)", cell.CgroupPath, err)
+	}
+	if err := unix.Fstat(int(dir.Fd()), &st); err != nil || st.Ino != cell.Inode {
+		dir.Close()
+		return nil, fmt.Errorf("%s is not the registered cells cgroup (inode %d, want %d, %v)", cell.CgroupPath, st.Ino, cell.Inode, err)
+	}
+	return dir, nil
+}
+
+// cellsCgroupPopulated reports whether the cells cgroup or one below it holds a live process.
+func cellsCgroupPopulated(cell evidenceCell) (bool, error) {
+	dir, err := openCellsCgroup(cell)
+	if err != nil {
+		return false, err
+	}
+	defer dir.Close()
+	return cgroupPopulated(dir)
+}
+
+// killCellsCgroup is the production killCell: cgroup.kill, then the wait for populated 0.
+func killCellsCgroup(cell evidenceCell) error {
+	dir, err := openCellsCgroup(cell)
+	if err != nil {
+		return fmt.Errorf("refusing the reset: %w", err)
+	}
+	defer dir.Close()
+	return killCgroup(dir, trialKillWait)
+}
+
+// killCgroup writes "1" to cgroup.kill of dir and waits up to wait for populated 0.
+func killCgroup(dir *os.File, wait time.Duration) error {
+	if err := writeCgroupFile(dir, "cgroup.kill", "1"); err != nil {
+		return fmt.Errorf("refusing the reset: cgroup.kill cannot be written: %w", err)
+	}
+	deadline := time.Now().Add(wait)
+	for {
+		populated, err := cgroupPopulated(dir)
+		if err != nil {
+			return fmt.Errorf("refusing the reset: %w", err)
+		}
+		if !populated {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("refusing the reset: the cells cgroup still holds a live process %s after cgroup.kill", wait)
+		}
+		time.Sleep(trialKillPoll)
+	}
+}
+
+// trialKillPoll is the pause between two reads of cgroup.events while the processes leave.
+const trialKillPoll = 5 * time.Millisecond
+
+func writeCgroupFile(dir *os.File, name, value string) error {
+	fd, err := unix.Openat(int(dir.Fd()), name, unix.O_WRONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return err
+	}
+	file := os.NewFile(uintptr(fd), name)
+	defer file.Close()
+	_, err = file.WriteString(value)
+	return err
+}
+
+// cgroupPopulated reads the populated key of cgroup.events of the cgroup2 directory dir
+// (relative to its descriptor, no symlink followed). The key covers the directory and every
+// cgroup below it.
+func cgroupPopulated(dir *os.File) (bool, error) {
+	fd, err := unix.Openat(int(dir.Fd()), "cgroup.events", unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return false, fmt.Errorf("read cgroup.events: %w", err)
+	}
+	file := os.NewFile(uintptr(fd), "cgroup.events")
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, 4096))
 	if err != nil {
 		return false, err
 	}
@@ -341,236 +464,4 @@ func cgroupPopulated(dir string) (bool, error) {
 		}
 	}
 	return false, errors.New("cgroup.events has no valid populated key")
-}
-
-// errProcGone means the pinned process is gone: it was reaped, or never existed.
-var errProcGone = errors.New("process is gone")
-
-// procPin is a process (thread group) held by a pidfd. It names the process itself and not a
-// number that the kernel may hand to another process after the first one is reaped.
-type procPin interface {
-	// Alive returns errProcGone once the process was reaped. A zombie that is not reaped
-	// yet still holds its pid, so a successful Alive after reading /proc/<pid> shows that
-	// the pid was not reused in between.
-	Alive() error
-	// Signal sends SIGKILL to the pinned process (pidfd_send_signal) and returns
-	// errProcGone if it was reaped.
-	Signal() error
-	// Exited reports whether the whole thread group has exited, waiting up to wait for it.
-	// The kernel makes the pidfd of a thread-group leader readable only when the last
-	// thread is gone, so a zombie leader with a running worker is not exited.
-	Exited(wait time.Duration) (bool, error)
-	Close() error
-}
-
-// pinProcess opens a pin for a pid. It reports errProcGone for a pid that is not there.
-// Any other error, including a kernel without pidfd support, refuses the kill.
-type pinProcess func(pid int) (procPin, error)
-
-type pidfdPin struct{ fd int }
-
-// pinProcessPidfd is the production pinProcess: pidfd_open. It never falls back to
-// signaling by number.
-func pinProcessPidfd(pid int) (procPin, error) {
-	fd, err := unix.PidfdOpen(pid, 0)
-	if errors.Is(err, unix.ESRCH) {
-		return nil, errProcGone
-	}
-	if err != nil {
-		return nil, fmt.Errorf("pidfd_open(%d): %w", pid, err)
-	}
-	return &pidfdPin{fd: fd}, nil
-}
-
-func (p *pidfdPin) send(sig unix.Signal) error {
-	err := unix.PidfdSendSignal(p.fd, sig, nil, 0)
-	if errors.Is(err, unix.ESRCH) {
-		return errProcGone
-	}
-	return err
-}
-
-func (p *pidfdPin) Alive() error  { return p.send(0) }
-func (p *pidfdPin) Signal() error { return p.send(unix.SIGKILL) }
-func (p *pidfdPin) Close() error  { return unix.Close(p.fd) }
-
-// pollPidfd is poll(2); a test replaces it.
-var pollPidfd = unix.Poll
-
-func (p *pidfdPin) Exited(wait time.Duration) (bool, error) {
-	deadline := time.Now().Add(wait)
-	for {
-		fds := []unix.PollFd{{Fd: int32(p.fd), Events: unix.POLLIN}}
-		ms := int((time.Until(deadline) + time.Millisecond - 1) / time.Millisecond)
-		n, err := pollPidfd(fds, max(ms, 0))
-		if errors.Is(err, unix.EINTR) {
-			continue
-		}
-		if err != nil {
-			return false, fmt.Errorf("poll pidfd: %w", err)
-		}
-		switch {
-		case n == 0:
-			return false, nil
-		case fds[0].Revents&unix.POLLIN != 0:
-			return true, nil
-		}
-		return false, fmt.Errorf("poll pidfd: revents %#x", fds[0].Revents)
-	}
-}
-
-// killUIDProcesses sends SIGKILL to every process (thread group) whose real uid is uid and
-// whose group has not exited, waits until the kernel confirms that every such group exited,
-// and repeats until a fresh scan finds no group left to kill. It refuses (an error) if a
-// group is still running trialKillWait after its SIGKILL, or if trialKillRounds scans each
-// found one. It never acts for uid 0.
-//
-// Liveness is never read from /proc: the pidfd of a thread-group leader is readable only when
-// the whole group has exited, and a zombie leader with running worker threads is not readable.
-// Ownership is the real uid in the leader's /proc/<pid>/status, which a zombie leader keeps.
-// That uid is read after the pidfd is opened and the pidfd must still be alive after the
-// read, so the status belonged to the pinned process and not to a reused pid. A pidfd_open
-// error other than a vanished process (no pidfd support, a denied open) refuses the reset:
-// there is no fallback to signaling by number.
-func killUIDProcesses(procRoot string, uid uint32, pin pinProcess) error {
-	if uid == 0 {
-		return errors.New("refusing to kill the processes of uid 0")
-	}
-	for round := 0; round < trialKillRounds; round++ {
-		pids, err := uidProcesses(procRoot, uid)
-		if err != nil {
-			return err
-		}
-		killed, err := killGroups(procRoot, uid, pids, pin)
-		if err != nil {
-			return err
-		}
-		if killed == 0 {
-			return nil
-		}
-	}
-	return fmt.Errorf("processes of uid %d survive %d rounds of kills", uid, trialKillRounds)
-}
-
-// pinnedGroup is a signaled thread group that has to be confirmed exited.
-type pinnedGroup struct {
-	pid int
-	pin procPin
-}
-
-// killGroups signals the candidate groups that are of uid and not exited, and returns how many
-// it signaled once the kernel confirms all of them exited.
-func killGroups(procRoot string, uid uint32, pids []int, pin pinProcess) (int, error) {
-	var signaled []pinnedGroup
-	defer func() {
-		for _, g := range signaled {
-			g.pin.Close()
-		}
-	}()
-	for _, pid := range pids {
-		pinned, err := pin(pid)
-		if errors.Is(err, errProcGone) {
-			continue
-		}
-		if err != nil {
-			return 0, fmt.Errorf("cannot pin pid %d, refusing the reset: %w", pid, err)
-		}
-		sent, err := signalIfLive(procRoot, uid, pid, pinned)
-		if sent {
-			signaled = append(signaled, pinnedGroup{pid, pinned})
-		} else {
-			pinned.Close()
-		}
-		if err != nil {
-			return 0, err
-		}
-	}
-	deadline := time.Now().Add(trialKillWait)
-	for _, g := range signaled {
-		exited, err := g.pin.Exited(max(time.Until(deadline), 0))
-		if err != nil {
-			return 0, fmt.Errorf("wait for pid %d: %w", g.pid, err)
-		}
-		if !exited {
-			return 0, fmt.Errorf("pid %d (uid %d) is still running %s after SIGKILL, refusing the reset", g.pid, uid, trialKillWait)
-		}
-	}
-	return len(signaled), nil
-}
-
-// signalIfLive sends SIGKILL through the pidfd if the pinned process is of uid and its group
-// has not exited. The uid is read after the pin, and the pin must be alive after the read.
-func signalIfLive(procRoot string, uid uint32, pid int, pinned procPin) (sent bool, err error) {
-	real, found, err := readProcRealUID(procRoot, pid)
-	if err != nil {
-		return false, err
-	}
-	if err := pinned.Alive(); err != nil {
-		if errors.Is(err, errProcGone) {
-			return false, nil // reaped: the status may belong to a reused pid
-		}
-		return false, fmt.Errorf("check pinned pid %d: %w", pid, err)
-	}
-	if !found || real != uid {
-		return false, nil // not a cell process (any more): never signal it
-	}
-	exited, err := pinned.Exited(0)
-	if err != nil || exited {
-		return false, err
-	}
-	if err := pinned.Signal(); err != nil {
-		if errors.Is(err, errProcGone) {
-			return false, nil
-		}
-		return false, fmt.Errorf("signal pinned pid %d: %w", pid, err)
-	}
-	return true, nil
-}
-
-// uidProcesses lists the thread groups of procRoot whose leader has real uid uid, zombie
-// leaders included. It is a candidate list only: killGroups decides what is still running.
-func uidProcesses(procRoot string, uid uint32) ([]int, error) {
-	entries, err := os.ReadDir(procRoot)
-	if err != nil {
-		return nil, err
-	}
-	var pids []int
-	for _, entry := range entries {
-		pid, err := strconv.Atoi(entry.Name())
-		if err != nil || pid <= 0 {
-			continue
-		}
-		real, found, err := readProcRealUID(procRoot, pid)
-		if err != nil {
-			return nil, err
-		}
-		if found && real == uid {
-			pids = append(pids, pid)
-		}
-	}
-	return pids, nil
-}
-
-// readProcRealUID reads the real uid of the thread-group leader pid from procRoot/<pid>/status;
-// found is false when the process is gone. A status without a parsable real uid is an error:
-// what cannot be attributed refuses the reset.
-func readProcRealUID(procRoot string, pid int) (real uint32, found bool, err error) {
-	status, err := os.ReadFile(filepath.Join(procRoot, strconv.Itoa(pid), "status"))
-	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
-		return 0, false, nil
-	}
-	if err != nil {
-		return 0, false, fmt.Errorf("read the status of pid %d: %w", pid, err)
-	}
-	for _, line := range strings.Split(string(status), "\n") {
-		if ids, ok := strings.CutPrefix(line, "Uid:"); ok {
-			if fields := strings.Fields(ids); len(fields) > 0 {
-				if id, err := strconv.ParseUint(fields[0], 10, 32); err == nil {
-					return uint32(id), true, nil
-				}
-			}
-			break
-		}
-	}
-	return 0, true, fmt.Errorf("pid %d has no readable real uid, refusing the reset", pid)
 }

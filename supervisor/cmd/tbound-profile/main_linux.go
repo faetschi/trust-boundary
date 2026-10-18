@@ -363,6 +363,21 @@ func runTemplateDigest(args []string, stdout, stderr io.Writer) error {
 	if _, err := fmt.Fprintf(stdout, "D09 cell template canonical digest: %s\n", digest); err != nil {
 		return err
 	}
+	// The command-cell delta templates are derived from this digest by code (no extra signature);
+	// print their identities so the operator can compare them with the receipts.
+	for _, name := range []string{piruntime.D09CellDeltaNetSink, piruntime.D09CellDeltaNoReap} {
+		delta, err := piruntime.ParseD09CellDelta(name)
+		if err != nil {
+			return err
+		}
+		derived, err := delta.TemplateDigest(digest)
+		if err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintf(stdout, "D09 command-cell delta %s template digest: %s\n", name, derived); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

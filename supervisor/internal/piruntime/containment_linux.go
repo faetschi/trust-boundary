@@ -669,6 +669,26 @@ func (l *D09PodmanCrunLauncher) Close(ctx context.Context) error {
 // D09 worker scope. It consumes the authenticated lease/view identity only as
 // input to freshness/identity validation; no caller-supplied path is accepted.
 func (l *D09PodmanCrunLauncher) NewCommandScope(ctx context.Context, leaseID, viewID string) (*d09OwnedCommandScope, error) {
+	return l.newCommandScope(ctx, leaseID, viewID, false, false)
+}
+
+// NewDetachedCommandScope is NewCommandScope for the no-reap/v1 command cell: the unique cgroup is a
+// direct child of the delegated cells root, a sibling of the worker scope and not below it, so the
+// worker scope's recursive cgroup.kill at settlement cannot reach a surviving descendant. The scope
+// is never removed by the lease; abandon() hands it over to the operator reset.
+func (l *D09PodmanCrunLauncher) NewDetachedCommandScope(ctx context.Context, leaseID, viewID string) (*d09OwnedCommandScope, error) {
+	return l.newCommandScope(ctx, leaseID, viewID, true, false)
+}
+
+// NewNetSinkCommandScope is NewCommandScope for the net-sink/v1 command cell: the unique cgroup is a
+// child of the fixed parent D09NetSinkCgroupName of the cells cgroup, which the guest nftables rule
+// matches. The parent must exist and is only opened here, never created or removed. The scope is
+// settled and removed by the lease like any other command scope.
+func (l *D09PodmanCrunLauncher) NewNetSinkCommandScope(ctx context.Context, leaseID, viewID string) (*d09OwnedCommandScope, error) {
+	return l.newCommandScope(ctx, leaseID, viewID, false, true)
+}
+
+func (l *D09PodmanCrunLauncher) newCommandScope(ctx context.Context, leaseID, viewID string, detached, netSink bool) (*d09OwnedCommandScope, error) {
 	if l == nil || l.scope == nil || ctx == nil || !validIdentity(leaseID) || !validIdentity(viewID) {
 		return nil, ErrCgroupScopeRefused
 	}
@@ -683,8 +703,32 @@ func (l *D09PodmanCrunLauncher) NewCommandScope(ctx context.Context, leaseID, vi
 	if err != nil {
 		return nil, err
 	}
+	if detached {
+		if parentPath, err = cgroupDescriptorPath(l.scope.root); err != nil {
+			return nil, err
+		}
+	}
 	name := "tbound-cmd-" + d09NewToken()
-	parentFD, err := syscall.Openat(int(l.scope.file.Fd()), ".", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	parentDir := l.scope.file
+	if detached {
+		name = d09DetachedScopePrefix + d09NewToken()
+		parentDir = l.scope.root
+		if parentDir == nil {
+			return nil, ErrCgroupScopeRefused
+		}
+	}
+	if netSink {
+		dir, err := l.openNetSinkParent()
+		if err != nil {
+			return nil, err
+		}
+		defer dir.Close()
+		parentDir = dir
+		if parentPath, err = cgroupDescriptorPath(dir); err != nil {
+			return nil, err
+		}
+	}
+	parentFD, err := syscall.Openat(int(parentDir.Fd()), ".", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, fmt.Errorf("duplicate D09 delegated cgroup root: %w", err)
 	}
@@ -704,19 +748,19 @@ func (l *D09PodmanCrunLauncher) NewCommandScope(ctx context.Context, leaseID, vi
 	if err != nil {
 		_ = child.Close()
 		_ = parent.Close()
-		return nil, errors.Join(err, unlinkatDir(int(l.scope.file.Fd()), name))
+		return nil, errors.Join(err, unlinkatDir(int(parentDir.Fd()), name))
 	}
 	if err := validateCgroupDirectory(scope.file); err != nil {
 		_ = scope.Close()
-		_ = unlinkatDir(int(l.scope.file.Fd()), name)
+		_ = unlinkatDir(int(parentDir.Fd()), name)
 		return nil, errors.Join(ErrCgroupScopeRefused, err)
 	}
 	if err := enableD09SubtreeControllers(scope.file); err != nil {
 		_ = scope.Close()
-		_ = unlinkatDir(int(l.scope.file.Fd()), name)
+		_ = unlinkatDir(int(parentDir.Fd()), name)
 		return nil, fmt.Errorf("enable D09 command-scope cpu/memory/pids controllers: %w", err)
 	}
-	owned := &d09OwnedCommandScope{launcher: l, name: name, scope: scope, leaseID: leaseID, viewID: viewID, parentPath: parentPath}
+	owned := &d09OwnedCommandScope{launcher: l, name: name, scope: scope, leaseID: leaseID, viewID: viewID, parentPath: parentPath, detached: detached}
 	l.commandMu.Lock()
 	if l.commandScopes == nil {
 		l.commandScopes = make(map[string]*d09OwnedCommandScope)
@@ -724,7 +768,7 @@ func (l *D09PodmanCrunLauncher) NewCommandScope(ctx context.Context, leaseID, vi
 	if _, collision := l.commandScopes[name]; collision {
 		l.commandMu.Unlock()
 		_ = scope.Close()
-		_ = unlinkatDir(int(l.scope.file.Fd()), name)
+		_ = unlinkatDir(int(parentDir.Fd()), name)
 		return nil, ErrCgroupScopeRefused
 	}
 	l.commandScopes[name] = owned
@@ -751,6 +795,7 @@ type d09OwnedCommandScope struct {
 	leaseID    string
 	viewID     string
 	parentPath string
+	detached   bool
 
 	mu         sync.Mutex
 	settled    bool
@@ -852,7 +897,7 @@ func (s *d09OwnedCommandScope) Close() error {
 // held delegated scope before closing descriptors. A failure leaves the handles
 // retained and the name registered for reconciliation.
 func (s *d09OwnedCommandScope) Remove() error {
-	if s == nil || s.launcher == nil || s.launcher.scope == nil || s.launcher.scope.file == nil {
+	if s == nil || s.launcher == nil || s.launcher.scope == nil || s.launcher.scope.file == nil || s.scope == nil || s.scope.root == nil {
 		return ErrCgroupScopeRefused
 	}
 	s.mu.Lock()
@@ -866,7 +911,7 @@ func (s *d09OwnedCommandScope) Remove() error {
 	}
 	s.removing = true
 	s.mu.Unlock()
-	err := unlinkatDir(int(s.launcher.scope.file.Fd()), s.name)
+	err := unlinkatDir(int(s.scope.root.Fd()), s.name)
 	s.mu.Lock()
 	s.removing = false
 	if err == nil {
@@ -2634,4 +2679,38 @@ func d09NewToken() string {
 		return strconv.FormatInt(time.Now().UnixNano(), 16)
 	}
 	return hex.EncodeToString(token[:])
+}
+
+// d09DetachedScopePrefix names the command cgroups of the no-reap/v1 cell. The operator reset
+// recognises them by this prefix.
+const d09DetachedScopePrefix = "tbound-nr-"
+
+// abandon releases a detached command scope from the lease without killing or removing it: the
+// no-reap/v1 cell is left running by design. It closes the held descriptors and forgets the scope
+// in the launcher, so a later launcher Close does not wait for it. The cgroup directory and its
+// processes stay for the operator reset.
+func (s *d09OwnedCommandScope) abandon() error {
+	if s == nil || s.launcher == nil || !s.detached {
+		return ErrCgroupScopeRefused
+	}
+	s.mu.Lock()
+	if s.closed || s.removing {
+		s.mu.Unlock()
+		return ErrUnknownSettlement
+	}
+	s.closed, s.settled = true, false
+	s.mu.Unlock()
+	closeErr := s.scope.Close()
+	s.launcher.commandMu.Lock()
+	delete(s.launcher.commandScopes, s.name)
+	s.launcher.commandMu.Unlock()
+	return closeErr
+}
+
+// populated reads cgroup.events of the scope without any kill.
+func (s *d09OwnedCommandScope) populated() (bool, error) {
+	if s == nil || s.scope == nil || s.scope.file == nil {
+		return false, ErrCgroupScopeRefused
+	}
+	return readCgroupPopulated(s.scope.file)
 }

@@ -17,11 +17,16 @@ import (
 	"testing/fstest"
 
 	"tbound/supervisor/internal/corpusadmit"
+	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/trialfix"
 	"tbound/supervisor/internal/wsoracle"
 )
 
 const trialTestCase = "adv-TM-A-001"
+
+// trialTestInCellOffset keeps the in-cell uid and gid of the test cell apart from the host
+// identity that owns the fixtures, as under the signed single-own-uid-gid mapping.
+const trialTestInCellOffset = 5000
 
 func trialTestSpec(content string) trialfix.Spec {
 	return trialfix.Spec{Schema: trialfix.Schema, Entries: []trialfix.Entry{
@@ -56,7 +61,7 @@ type trialTestEnv struct {
 	pendingErr error
 	// populated is what the fake cells cgroup reports.
 	populated bool
-	killed    []uint32
+	killed    []string // cgroup paths the kill ran on
 	// dirtyAtKill records whether the old content was still in the root when the kill ran.
 	dirtyAtKill bool
 	killErr     error
@@ -97,12 +102,13 @@ func newTrialTestEnv(t *testing.T) *trialTestEnv {
 		liveRoot:  root,
 		owner:     owner,
 		cell: func(context.Context) (evidenceCell, error) {
-			return evidenceCell{ID: "cells", CgroupPath: "/cells", Hierarchy: "/cells", Inode: 1, UID: owner.UID, GID: owner.GID}, nil
+			return evidenceCell{ID: "cells", CgroupPath: "/cells", Hierarchy: "/cells", Inode: 1,
+				UID: owner.UID + trialTestInCellOffset, GID: owner.GID + trialTestInCellOffset, HostUID: owner.UID, HostGID: owner.GID}, nil
 		},
 		pending:       func(context.Context) error { return e.pendingErr },
-		cellPopulated: func(string) (bool, error) { return e.populated, nil },
-		killLeftovers: func(uid uint32) error {
-			e.killed = append(e.killed, uid)
+		cellPopulated: func(evidenceCell) (bool, error) { return e.populated, nil },
+		killCell: func(cell evidenceCell) error {
+			e.killed = append(e.killed, cell.CgroupPath)
 			_, err := os.Stat(filepath.Join(root, "left-over"))
 			e.dirtyAtKill = err == nil
 			return e.killErr
@@ -153,9 +159,9 @@ func TestTrialResetWipesPopulatesAndReportsTheDigests(t *testing.T) {
 	if got, err := os.ReadFile(filepath.Join(e.root, "src", "main.go")); err != nil || string(got) != "package main\n" {
 		t.Fatalf("src/main.go = %q, %v", got, err)
 	}
-	// The cell uid's stray processes are killed, and before the tree is wiped, so that one
+	// The processes left in the cells cgroup are killed, and before the tree is wiped, so that one
 	// cannot write into the fresh tree.
-	if len(e.killed) != 1 || e.killed[0] != e.owner.UID || !e.dirtyAtKill {
+	if len(e.killed) != 1 || e.killed[0] != "/cells" || !e.dirtyAtKill {
 		t.Fatalf("kills = %v, dirty at kill %v", e.killed, e.dirtyAtKill)
 	}
 	// A second reset gives the same document.
@@ -180,6 +186,26 @@ func TestTrialResetCheckOnlyVerifiesPreconditionsAndTheArtifact(t *testing.T) {
 	}
 }
 
+// A populated cells cgroup is a refusal of --check, and the work of the reset: it is killed
+// before the tree is wiped, and the reset goes on.
+func TestTrialResetKillsAPopulatedCellsCgroupAndCheckRefuses(t *testing.T) {
+	e := newTrialTestEnv(t)
+	e.populated = true
+	if _, out, err := e.run(t, "reset", trialTestCase, "--check"); err == nil || !strings.Contains(err.Error(), "cells cgroup") || out != "" {
+		t.Fatalf("--check: err %v, output %q; want a refusal naming the cells cgroup", err, out)
+	}
+	e.rootUntouched(t)
+	if len(e.killed) != 0 {
+		t.Fatalf("--check killed %v", e.killed)
+	}
+	if _, _, err := e.run(t, "reset", trialTestCase); err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if len(e.killed) != 1 || !e.dirtyAtKill {
+		t.Fatalf("kills = %v, dirty at kill %v", e.killed, e.dirtyAtKill)
+	}
+}
+
 func TestTrialResetRefusals(t *testing.T) {
 	for name, tc := range map[string]struct {
 		mutate func(e *trialTestEnv)
@@ -199,18 +225,27 @@ func TestTrialResetRefusals(t *testing.T) {
 			_, other := trialTestArtifact(t, trialTestSpec("other\n"))
 			e.files[name] = other
 		}, "digests to"},
-		"workflow pending":   {func(e *trialTestEnv) { e.pendingErr = errors.New("workflow abc is not terminal") }, "not terminal"},
-		"cell has processes": {func(e *trialTestEnv) { e.populated = true }, "cells cgroup"},
-		"cell is not the fixture owner": {func(e *trialTestEnv) {
+		"workflow pending": {func(e *trialTestEnv) { e.pendingErr = errors.New("workflow abc is not terminal") }, "not terminal"},
+		"cell host uid is not the fixture owner": {func(e *trialTestEnv) {
 			e.cell = func(context.Context) (evidenceCell, error) {
-				return evidenceCell{CgroupPath: "/cells", UID: e.owner.UID + 1, GID: e.owner.GID}, nil
+				return evidenceCell{CgroupPath: "/cells", UID: 1000, GID: 1000, HostUID: e.owner.UID + 1, HostGID: e.owner.GID}, nil
+			}
+		}, "fixture owner"},
+		"cell host gid is not the fixture owner": {func(e *trialTestEnv) {
+			e.cell = func(context.Context) (evidenceCell, error) {
+				return evidenceCell{CgroupPath: "/cells", UID: 1000, GID: 1000, HostUID: e.owner.UID, HostGID: e.owner.GID + 1}, nil
+			}
+		}, "fixture owner"},
+		"cell has no host identity": {func(e *trialTestEnv) {
+			e.cell = func(context.Context) (evidenceCell, error) {
+				return evidenceCell{CgroupPath: "/cells", UID: e.owner.UID, GID: e.owner.GID}, nil
 			}
 		}, "fixture owner"},
 		"cell unresolvable": {func(e *trialTestEnv) {
 			e.cell = func(context.Context) (evidenceCell, error) { return evidenceCell{}, errors.New("no registration") }
 		}, "no registration"},
 		"cgroup unreadable": {func(e *trialTestEnv) {
-			e.cellPopulated = func(string) (bool, error) { return false, errors.New("cgroup.events unreadable") }
+			e.cellPopulated = func(evidenceCell) (bool, error) { return false, errors.New("cgroup.events unreadable") }
 		}, "unreadable"},
 	} {
 		for _, args := range [][]string{{"reset", trialTestCase}, {"reset", trialTestCase, "--check"}} {
@@ -338,5 +373,82 @@ func TestTrialMainHelpPrintsUsage(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if rc := trialMain([]string{"--help"}, &stdout, &stderr, trialEnv{}); rc != 0 || !strings.Contains(stderr.String(), "tbound trial reset <case_id> [--check]") {
 		t.Fatalf("rc %d, stderr %q", rc, stderr.String())
+	}
+}
+
+// The registration shape of the real guest: the cell template names the in-cell identity 1000:1000,
+// and the signed rootless-single-own-uid-gid mapping puts it on the service's host identity
+// 995:986, which owns the live root and the fixtures.
+func realMappingShape() (piruntime.D09ManagedLiveRootRegistration, piruntime.D09CellTemplate) {
+	reg := piruntime.D09ManagedLiveRootRegistration{ServiceUID: 995, ServiceGID: 986}
+	tmpl := piruntime.D09CellTemplate{CellUID: 1000, CellGID: 1000, UserNamespaceMappingProfile: piruntime.D09UserNamespaceMappingProfile,
+		UserNamespaceMappingDigest: piruntime.DigestD09UserNamespaceMapping(1000, 1000, 995, 986)}
+	return reg, tmpl
+}
+
+func TestCellHostIdentityIsTheServiceIdentityTheSignedMappingNames(t *testing.T) {
+	reg, tmpl := realMappingShape()
+	uid, gid, err := cellHostIdentity(reg, tmpl)
+	if err != nil || uid != 995 || gid != 986 {
+		t.Fatalf("host identity = %d:%d, %v; want 995:986", uid, gid, err)
+	}
+	// It is the canonical fixture owner: a reset of the real registration is not refused.
+	if uid != trialfix.Canonical.UID || gid != trialfix.Canonical.GID {
+		t.Fatalf("the real host identity %d:%d is not the canonical owner %d:%d", uid, gid, trialfix.Canonical.UID, trialfix.Canonical.GID)
+	}
+	for name, mutate := range map[string]func(r *piruntime.D09ManagedLiveRootRegistration, c *piruntime.D09CellTemplate){
+		"mapping digest of another host uid": func(r *piruntime.D09ManagedLiveRootRegistration, c *piruntime.D09CellTemplate) {
+			c.UserNamespaceMappingDigest = piruntime.DigestD09UserNamespaceMapping(1000, 1000, 996, 986)
+		},
+		"mapping digest of another in-cell gid": func(r *piruntime.D09ManagedLiveRootRegistration, c *piruntime.D09CellTemplate) {
+			c.CellGID = 1001
+		},
+		"other mapping profile": func(r *piruntime.D09ManagedLiveRootRegistration, c *piruntime.D09CellTemplate) {
+			c.UserNamespaceMappingProfile = "rootless-subuid-range/v1"
+		},
+		"no mapping": func(r *piruntime.D09ManagedLiveRootRegistration, c *piruntime.D09CellTemplate) {
+			c.UserNamespaceMappingDigest = ""
+		},
+		"root service":   func(r *piruntime.D09ManagedLiveRootRegistration, c *piruntime.D09CellTemplate) { r.ServiceUID = 0 },
+		"no service gid": func(r *piruntime.D09ManagedLiveRootRegistration, c *piruntime.D09CellTemplate) { r.ServiceGID = 0 },
+		"root cell":      func(r *piruntime.D09ManagedLiveRootRegistration, c *piruntime.D09CellTemplate) { c.CellUID = 0 },
+	} {
+		r, c := reg, tmpl
+		mutate(&r, &c)
+		if uid, gid, err := cellHostIdentity(r, c); err == nil {
+			t.Errorf("%s: accepted as %d:%d", name, uid, gid)
+		}
+	}
+}
+
+// Reset passes the real shape (in-cell 1000, host 995 equal to the owner) and refuses a live
+// root owned by anybody else.
+func TestResetComparesTheHostIdentityOfTheMappingWithTheFixtureOwner(t *testing.T) {
+	reg, tmpl := realMappingShape()
+	hostUID, hostGID, err := cellHostIdentity(reg, tmpl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, tc := range map[string]struct {
+		owner trialfix.Owner
+		ok    bool
+	}{
+		"owner is the mapped host identity": {trialfix.Owner{UID: hostUID, GID: hostGID}, true},
+		"owner is the in-cell identity":     {trialfix.Owner{UID: 1000, GID: 1000}, false},
+		"owner is another host uid":         {trialfix.Owner{UID: hostUID + 1, GID: hostGID}, false},
+		"owner is another host gid":         {trialfix.Owner{UID: hostUID, GID: hostGID + 1}, false},
+	} {
+		e := newTrialTestEnv(t)
+		e.owner = tc.owner
+		e.cell = func(context.Context) (evidenceCell, error) {
+			return evidenceCell{ID: "cells", CgroupPath: "/cells", Hierarchy: "/cells", Inode: 1, UID: 1000, GID: 1000, HostUID: hostUID, HostGID: hostGID}, nil
+		}
+		_, _, err := e.run(t, "reset", trialTestCase, "--check")
+		if tc.ok && err != nil {
+			t.Errorf("%s: refused: %v", name, err)
+		}
+		if !tc.ok && (err == nil || !strings.Contains(err.Error(), "fixture owner")) {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
 }

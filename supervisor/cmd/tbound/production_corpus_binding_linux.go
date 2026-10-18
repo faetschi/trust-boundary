@@ -29,12 +29,32 @@ var ErrScriptedRoleNotRecoverable = errors.New("a scripted replay workflow canno
 // scriptedCorpusRole reports whether the provider of role is a script. Only the admitted role decides
 // this: no request member, config member or environment variable does.
 func scriptedCorpusRole(role string) bool {
+	return staticCorpusRole(role) || adaptiveCorpusRole(role)
+}
+
+// staticCorpusRole reports whether role replays the frozen script of its case.
+func staticCorpusRole(role string) bool {
 	return role == corpusRoleStaticReplay || role == corpusRolePStaticReplay
+}
+
+// adaptiveCorpusRole reports whether role is driven by the attacker machine over the case's pivot table:
+// the C and the P half run the identical machine, pivots and budget.
+func adaptiveCorpusRole(role string) bool {
+	return role == corpusRoleAdaptiveReplay || role == corpusRolePAdaptiveReplay
 }
 
 // pCorpusRole reports whether role is a role of the P half of a pair.
 func pCorpusRole(role string) bool {
 	return role == corpusRolePStaticReplay || role == corpusRolePAdaptiveReplay
+}
+
+// bCorpusRole reports whether role is a role of Configuration B. Only the admitted role selects the
+// B composition: it keeps the real model and the production proxy tool path and relaxes delta admission to
+// admit-all/v1 (no protected-path denial, no bash output-scope denial). The production gate profile
+// already allows every registered tool, so B differs from C in admission only; the gate keeps its
+// correlation and argument checks, which are the adapter and transport controls B is meant to contain.
+func bCorpusRole(role string) bool {
+	return role == corpusRoleBCompliant || role == corpusRoleBAmbiguous
 }
 
 // corpusAdmissionRole returns the role of a corpus admission id, <case_id>/<role>/<attempt>, for the
@@ -63,12 +83,18 @@ type corpusBinding struct {
 	caseID string
 	role   string
 	// delta is the registered targeted configuration delta of the run: the case's p_delta for a P role,
-	// none for every C role.
+	// admit-all/v1 for a B role (its admission rule), none for every C role.
 	delta string
 	// scope is the delta-admission rule of the Store: the case's protected paths for the control
 	// package, promote-all only for a P role whose case registers admit-all/v1.
 	scope  sessionrepo.AdmissionScope
 	script []evalcorpus.ScriptTurn
+	// adaptive is the attacker-driven source of an adaptive replay role. It is shared by the provider factory
+	// and the receipt, which reads its terminal state. attackerDigest and pivotsDigest identify the pinned
+	// artifact and the case's pivot table.
+	adaptive       *providerbridge.AdaptiveSource
+	attackerDigest string
+	pivotsDigest   string
 }
 
 // bindingFor derives the binding of role for caseID, or reports that this build cannot serve it.
@@ -85,8 +111,27 @@ func (c *productionCorpus) bindingFor(caseID, role string) (corpusBinding, error
 			binding.scope = sessionrepo.AdmissionScope{Rule: sessionrepo.AdmissionScopeRulePromoteAll}
 		}
 	}
-	if scriptedCorpusRole(role) {
+	if bCorpusRole(role) {
+		binding.delta = evalcorpus.PDeltaAdmitAll
+		binding.scope = sessionrepo.AdmissionScope{Rule: sessionrepo.AdmissionScopeRulePromoteAll}
+	}
+	if staticCorpusRole(role) {
 		binding.script = append([]evalcorpus.ScriptTurn(nil), trial.Script...)
+	}
+	if adaptiveCorpusRole(role) {
+		pivots := make(map[string]providerbridge.ScriptTurn, len(trial.Pivots))
+		for id, turn := range trial.Pivots {
+			pivots[id] = providerbridge.ScriptTurn{Tool: turn.Tool, Arguments: append([]byte(nil), turn.Arguments...), Text: turn.Text}
+		}
+		source, err := providerbridge.NewAdaptiveSource(*c.attacker, pivots)
+		if err != nil {
+			return corpusBinding{}, fmt.Errorf("%w: adaptive source of case %q: %w", ErrPiServiceCorpus, caseID, err)
+		}
+		digest, err := evalcorpus.PivotsDigest(trial.Pivots)
+		if err != nil {
+			return corpusBinding{}, fmt.Errorf("%w: pivots of case %q: %w", ErrPiServiceCorpus, caseID, err)
+		}
+		binding.adaptive, binding.attackerDigest, binding.pivotsDigest = source, c.attackerDigest, digest
 	}
 	return binding, binding.scope.Validate()
 }
@@ -119,9 +164,10 @@ func (b corpusBinding) providerMode() string {
 	return providerModeModel
 }
 
-// scriptDigest is the digest of the frozen script a scripted run replays, empty for a model run.
+// scriptDigest is the digest of the frozen script a static replay run replays, empty for every other run
+// (an adaptive replay reports pivots_digest and attacker_digest instead).
 func (b corpusBinding) scriptDigest() string {
-	if !b.scripted() {
+	if !staticCorpusRole(b.role) {
 		return ""
 	}
 	digest, err := evalcorpus.ScriptDigest(b.script)
@@ -142,6 +188,12 @@ func (b corpusBinding) admissionPolicyDigest(policyDigest, metadataPolicyDigest 
 func (b corpusBinding) scriptedFactory() func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error) {
 	if !b.scripted() {
 		return nil
+	}
+	if b.adaptive != nil {
+		source := b.adaptive
+		return func(config providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
+			return providerbridge.NewScriptedConversation(config, journal, source)
+		}
 	}
 	turns := make([]providerbridge.ScriptTurn, len(b.script))
 	for i, turn := range b.script {
@@ -248,6 +300,11 @@ func applyCorpusReceipt(receipt *productionPiReceipt, binding *corpusBinding, pr
 			return fmt.Errorf("admission policy digest for the receipt: %w", err)
 		}
 		receipt.AdmissionPolicyDigest = digest
+		if binding.adaptive != nil {
+			terminal := binding.adaptive.Terminal()
+			receipt.PivotsIssued, receipt.AttackerStop, receipt.AttackerStateDigest = terminal.PivotsIssued, terminal.Stop, terminal.StateDigest
+			receipt.AttackerDigest, receipt.PivotsDigest = binding.attackerDigest, binding.pivotsDigest
+		}
 	} else if providerExchange {
 		receipt.ProviderMode = providerModeModel
 	}

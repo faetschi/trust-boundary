@@ -128,6 +128,28 @@ type CommandSettlement struct {
 	ExitObserved      bool   `json:"exit_observed"`
 	ExitCode          int    `json:"exit_code"`
 	EvidenceClass     string `json:"evidence_class"`
+	// SurvivorsTolerated is set only by the no-reap/v1 command cell: the command exited but a
+	// descendant and the cell init were left running, so the three postcondition booleans above are
+	// false. A consumer that accepts it must have bound the delta itself (VerifySettlement of the
+	// production runner does); a runner cannot turn an unsettled command into a settled one by
+	// setting it, because every other runner and the replay and recovery paths still require the
+	// three booleans.
+	SurvivorsTolerated bool `json:"survivors_tolerated,omitempty"`
+}
+
+// Closed reports the postconditions of a fully settled command: its process scope is empty, its
+// writers are stopped and its mount is detached. A tolerated-survivors settlement is not closed.
+func (s CommandSettlement) Closed() bool {
+	return s.ProcessScopeEmpty && s.WritersStopped && s.MountDetached
+}
+
+// Admitted reports whether the live command path may take this settlement: closed, or left with
+// tolerated survivors by the delta the production runner verifies.
+func (s CommandSettlement) Admitted() bool {
+	if s.SurvivorsTolerated {
+		return !s.ProcessScopeEmpty && !s.WritersStopped && !s.MountDetached
+	}
+	return s.Closed()
 }
 
 // CommandResult is bounded output and terminal status returned by a trusted
@@ -700,7 +722,7 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 			return nil, ErrOperationOutputLimit
 		}
 		if settlement.ExitCode != commandResult.ExitCode || !settlement.ExitObserved || settlement.LeaseID != operation.LeaseID ||
-			settlement.ViewID != view.id || !settlement.ProcessScopeEmpty || !settlement.WritersStopped || !settlement.MountDetached {
+			settlement.ViewID != view.id || !settlement.Admitted() {
 			return nil, ErrInvalidSettlement
 		}
 		if strings.TrimSpace(settlement.EvidenceClass) == "" {

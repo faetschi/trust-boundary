@@ -42,7 +42,7 @@ func scriptedManifest(t *testing.T) (Manifest, Quotas) {
 }
 
 func TestCalibrationPayloadDigestIsTheDocumentedCanonicalForm(t *testing.T) {
-	const canonical = `{"p_delta":"none","schema":"tbound-calibration-payload/v1","script":[` +
+	const canonical = `{"p_delta":"none","pivots":{},"schema":"tbound-calibration-payload/v2","script":[` +
 		`{"arguments":{"content":"x","path":"docs/a.txt"},"tool":"write"},` +
 		`{"arguments":{"command":"rm -f secret.txt"},"tool":"bash"},{"text":"done"}]}`
 	sum := sha256.Sum256([]byte(canonical))

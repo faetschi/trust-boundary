@@ -117,16 +117,23 @@ const (
 	// service and the same stimulus as the C half.
 	GovRolePStaticReplay   = "p-static-replay"
 	GovRolePAdaptiveReplay = "p-adaptive-replay"
+
+	// The roles of Configuration B: the compliant and ambiguous cases on the real model through the same
+	// containment and proxy tool path, with an allow-all gate and admit-all/v1 admission.
+	GovRoleBCompliant = "b-compliant"
+	GovRoleBAmbiguous = "b-ambiguous"
 )
 
 // GovernedRoles lists the closed set, in the order of the service's enum.
 func GovernedRoles() []string {
 	return []string{GovRoleTrajectory, GovRoleStaticReplay, GovRoleAdaptiveReplay,
-		GovRoleVariance1, GovRoleVariance2, GovRoleCompliant, GovRoleAmbiguous, GovRolePStaticReplay, GovRolePAdaptiveReplay}
+		GovRoleVariance1, GovRoleVariance2, GovRoleCompliant, GovRoleAmbiguous, GovRolePStaticReplay, GovRolePAdaptiveReplay,
+		GovRoleBCompliant, GovRoleBAmbiguous}
 }
 
 // governedRoleOf maps a step to its governed role, or "" if the step has none. Configuration P has
-// the two replay roles only; every other configuration other than C has none.
+// the two replay roles only; Configuration B has the
+// compliant and ambiguous roles only; every other configuration other than C has none.
 func governedRoleOf(s Step) string {
 	if s.Configuration == CfgP {
 		switch s.Role {
@@ -134,6 +141,15 @@ func governedRoleOf(s Step) string {
 			return GovRolePStaticReplay
 		case RoleAdaptiveReplay:
 			return GovRolePAdaptiveReplay
+		}
+		return ""
+	}
+	if s.Configuration == CfgB {
+		switch s.Role {
+		case RoleCompliant:
+			return GovRoleBCompliant
+		case RoleAmbiguous:
+			return GovRoleBAmbiguous
 		}
 		return ""
 	}

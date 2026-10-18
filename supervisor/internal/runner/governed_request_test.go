@@ -87,14 +87,14 @@ func TestGovernedCWithoutATransportStaysUnwired(t *testing.T) {
 	}
 }
 
-// Every planned C and P step maps to exactly one governed role, and no two of them share a
+// Every planned B, C and P step maps to exactly one governed role, and no two of them share a
 // (case, role, attempt) admission: the roles of the P half differ from those of the C half.
 func TestEveryPlannedCStepHasADistinctGovernedAdmission(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
 	seen := map[string]string{}
 	roles := map[string]int{}
 	for _, st := range s.Steps {
-		if st.Configuration != CfgC && st.Configuration != CfgP {
+		if st.Configuration != CfgC && st.Configuration != CfgP && st.Configuration != CfgB {
 			continue
 		}
 		request, err := (GovernedC{PlanDigest: s.Digest, Configuration: st.Configuration}).Request(st)
@@ -120,7 +120,7 @@ func TestEveryPlannedCStepHasADistinctGovernedAdmission(t *testing.T) {
 }
 
 func TestGovernedRoleSetIsClosedAndNamedAfterTheRunnerRoles(t *testing.T) {
-	want := []string{"trajectory", "static-replay", "adaptive-replay", "variance-1", "variance-2", "compliant", "ambiguous", "p-static-replay", "p-adaptive-replay"}
+	want := []string{"trajectory", "static-replay", "adaptive-replay", "variance-1", "variance-2", "compliant", "ambiguous", "p-static-replay", "p-adaptive-replay", "b-compliant", "b-ambiguous"}
 	if !reflect.DeepEqual(GovernedRoles(), want) {
 		t.Fatalf("governed roles = %q, want %q", GovernedRoles(), want)
 	}

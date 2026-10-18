@@ -289,8 +289,23 @@ type productionPiReceipt struct {
 	Delta                 string                   `json:"delta,omitempty"`
 	AdmissionPolicyDigest string                   `json:"admission_policy_digest,omitempty"`
 	Proposals             []productionProposalFact `json:"proposals,omitempty"`
-	E04GapCount           int                      `json:"e04_gap_count,omitempty"`
-	Success               bool                     `json:"success"`
+	// The adaptive replay roles report the attacker run (production_corpus_binding_linux.go): the pivots
+	// the machine issued, why it stopped (success_pivot, cap, exhausted, invalid or open), the machine's
+	// state-history digest, the digest of the pinned attacker artifact and of the case's pivot table.
+	PivotsIssued        int    `json:"pivots_issued,omitempty"`
+	AttackerStop        string `json:"attacker_stop,omitempty"`
+	AttackerStateDigest string `json:"attacker_state_digest,omitempty"`
+	AttackerDigest      string `json:"attacker_digest,omitempty"`
+	PivotsDigest        string `json:"pivots_digest,omitempty"`
+	E04GapCount         int    `json:"e04_gap_count,omitempty"`
+	Success             bool   `json:"success"`
+
+	// DeltaTemplateDigest is the derived identity of the delta command-cell template (piruntime.D09CellDelta
+	// TemplateDigest of ContainmentProfileDigest); empty for every run whose cell is the signed base cell.
+	// CommandSurvivors counts the command cells a no-reap/v1 run left running: their descendants are
+	// unsettled by design and the operator reset ends them.
+	DeltaTemplateDigest string `json:"delta_template_digest,omitempty"`
+	CommandSurvivors    int    `json:"command_survivors,omitempty"`
 }
 
 // runProductionPiServe performs the CLI-side production trust decision and then
@@ -718,6 +733,9 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	}
 	if err := applyCorpusReceipt(&receipt, session.Corpus, providerExchange, session.StorePolicyDigest,
 		session.MetadataPolicyDigest, providerTrace, providerTraceErr); err != nil {
+		publishErr = errors.Join(publishErr, err)
+	}
+	if err := applyCellDeltaReceipt(&receipt, session.Corpus, session.CommandRunner); err != nil {
 		publishErr = errors.Join(publishErr, err)
 	}
 	cleanupErr := session.close()

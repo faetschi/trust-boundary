@@ -158,6 +158,7 @@ func (v *validator) manifestRules(m Manifest) {
 	v.digest("pins.model_digest", m.Pins.ModelDigest)
 	v.digest("pins.profile_digest", m.Pins.ProfileDigest)
 	v.digest("pins.policy_digest", m.Pins.PolicyDigest)
+	v.pinAttacker(m)
 }
 
 func (v *validator) caseRules(c *Case) {
@@ -534,5 +535,28 @@ func (v *validator) trial(label string, c *Case) {
 		} else if err := CheckCalibrationDigest(*c); err != nil {
 			v.add("trial.calibration_digest", "%s: %v", label, err)
 		}
+	}
+}
+
+// pinAttacker applies the attacker pin rule: the digest is required exactly when some case carries
+// pivots, and when present it is a well-formed digest. (That the artifact exists and fits the pivots is
+// checked with the artifacts, corpusadmit.CheckArtifacts.)
+func (v *validator) pinAttacker(m Manifest) {
+	pivoted := false
+	for _, c := range m.Cases {
+		if c.Trial != nil && c.Trial.Pivots != nil {
+			pivoted = true
+			break
+		}
+	}
+	switch {
+	case m.Pins.AttackerDigest != "":
+		if !isDigest(m.Pins.AttackerDigest) {
+			v.add("digest.format", "pins.attacker_digest is not sha256 followed by 64 lowercase hex digits")
+		} else if !pivoted {
+			v.add("pins.attacker", "pins.attacker_digest is set but no case carries pivots")
+		}
+	case pivoted:
+		v.add("pins.attacker", "a case carries pivots but pins.attacker_digest is empty")
 	}
 }

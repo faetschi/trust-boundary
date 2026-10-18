@@ -17,6 +17,10 @@ var ErrReceiptPolicy = errors.New("runner: receipt violates the registered delta
 // DeltaNone is the delta of a receipt without one; an empty delta means the same.
 const DeltaNone = "none"
 
+// BDelta is the delta a Configuration B receipt reports: B relaxes delta admission to admit-all/v1 and
+// nothing else, selected by the b-* role alone.
+const BDelta = "admit-all/v1"
+
 // ReceiptPins are the receipt identity values the host expects. They are the host's
 // registered pins for the run, not read from any executor. E01 is verified only when the
 // receipt of the step carries exactly these three values.
@@ -59,8 +63,9 @@ func (p ReceiptPins) match(r *ReceiptFacts) bool {
 //     digest and admission policy digest are verified: the replays are scripted and the plan names their stimulus.
 //   - A receipt without the provider mode of its role (scripted for the replay roles, model for the
 //     others), a scripted receipt whose script or admission policy digest differs from the expected one,
-//     a C receipt with a delta, and a P receipt whose delta is not PDelta(case), are
-//     refused with ErrReceiptPolicy. The outcome is kept, unverified, and the error makes
+//     a C receipt with a delta, a P receipt whose delta is not PDelta(case), a B receipt whose delta is
+//     not BDelta (admit-all/v1) or whose admission policy digest is not the B rule's, and a C or P model
+//     receipt that names another configuration's admission policy digest, are refused with ErrReceiptPolicy. The outcome is kept, unverified, and the error makes
 //     it partial in the journal.
 //
 // An empty Outcome (a setup failure or a refusal) is returned untouched, so a failed
@@ -85,6 +90,11 @@ type Attest struct {
 	// configuration (the control package of C, the delta's rule of P), computed from the manifest and the
 	// pinned Store policies. A scripted receipt must carry it; a nil source refuses every scripted receipt.
 	AdmissionPolicyDigest func(caseID string, cfg Configuration) (digest string, ok bool)
+	// AttackerDigest is the manifest's pins.attacker_digest, and PivotsDigest returns the digest of a case's
+	// pivot table (evalcorpus.PivotsDigest). An adaptive replay receipt must carry both; empty or nil refuses
+	// every adaptive receipt.
+	AttackerDigest string
+	PivotsDigest   func(caseID string) (digest string, ok bool)
 }
 
 // Validate checks the configuration of the decorator.
@@ -189,6 +199,11 @@ func (a Attest) checkDelta(s Step, r *ReceiptFacts) error {
 		if got != DeltaNone {
 			return fmt.Errorf("%w: C receipt of %s carries delta %q", ErrReceiptPolicy, s.ID(), r.Delta)
 		}
+	case CfgB:
+		// B runs under admit-all/v1 and says so; the receipt of any other delta is not a B run.
+		if got != BDelta {
+			return fmt.Errorf("%w: B receipt of %s carries delta %q, B runs under %q", ErrReceiptPolicy, s.ID(), r.Delta, BDelta)
+		}
 	case CfgP:
 		if a.PDelta == nil {
 			return fmt.Errorf("%w: no manifest p_delta to compare the P receipt of %s with", ErrReceiptPolicy, s.ID())
@@ -238,7 +253,7 @@ func (a Attest) checkProvider(s Step, r *ReceiptFacts) error {
 		return fmt.Errorf("%w: receipt of %s reports provider_mode %q, the role requires %q", ErrReceiptPolicy, s.ID(), r.ProviderMode, want)
 	}
 	if want != "scripted" {
-		return nil
+		return a.checkModelPolicy(s, r)
 	}
 	var script, policy string
 	var scriptOK, policyOK bool
@@ -248,11 +263,61 @@ func (a Attest) checkProvider(s Step, r *ReceiptFacts) error {
 	if a.AdmissionPolicyDigest != nil {
 		policy, policyOK = a.AdmissionPolicyDigest(s.CaseID, s.Configuration)
 	}
-	if !scriptOK || script == "" || r.ScriptDigest != script {
+	if s.Role == RoleAdaptiveReplay {
+		if err := a.checkAdaptive(s, r); err != nil {
+			return err
+		}
+	} else if !scriptOK || script == "" || r.ScriptDigest != script {
 		return fmt.Errorf("%w: scripted receipt of %s carries script_digest %q, the manifest gives %q", ErrReceiptPolicy, s.ID(), r.ScriptDigest, script)
 	}
 	if !policyOK || policy == "" || r.AdmissionPolicyDigest != policy {
 		return fmt.Errorf("%w: scripted receipt of %s carries admission_policy_digest %q, the pins give %q", ErrReceiptPolicy, s.ID(), r.AdmissionPolicyDigest, policy)
+	}
+	return nil
+}
+
+// checkAdaptive requires the receipt of an adaptive replay (either half) to carry the digest of the
+// attacker artifact the manifest pins and the digest of the case's pivot table, and a stop and a state
+// digest of the attacker run. It carries no script digest: the machine, not a script, chose the turns.
+// The C and the P receipt of one case are compared with the same pinned values, so both carry the same
+// attacker digest and the same pivot table digest, or the one that differs is refused.
+func (a Attest) checkAdaptive(s Step, r *ReceiptFacts) error {
+	var pivots string
+	var pivotsOK bool
+	if a.PivotsDigest != nil {
+		pivots, pivotsOK = a.PivotsDigest(s.CaseID)
+	}
+	switch {
+	case a.AttackerDigest == "" || r.AttackerDigest != a.AttackerDigest:
+		return fmt.Errorf("%w: adaptive receipt of %s carries attacker_digest %q, the manifest pins %q", ErrReceiptPolicy, s.ID(), r.AttackerDigest, a.AttackerDigest)
+	case !pivotsOK || pivots == "" || r.PivotsDigest != pivots:
+		return fmt.Errorf("%w: adaptive receipt of %s carries pivots_digest %q, the manifest gives %q", ErrReceiptPolicy, s.ID(), r.PivotsDigest, pivots)
+	case r.ScriptDigest != "":
+		return fmt.Errorf("%w: adaptive receipt of %s carries a script_digest", ErrReceiptPolicy, s.ID())
+	case r.AttackerStop == "" || r.AttackerStateDigest == "" || r.PivotsIssued < 0:
+		return fmt.Errorf("%w: adaptive receipt of %s lacks the attacker stop or state digest", ErrReceiptPolicy, s.ID())
+	}
+	return nil
+}
+
+// checkModelPolicy applies the admission rule to the receipt of a model run. A B receipt must carry the
+// admission policy digest of the B rule (admit-all/v1) that the manifest and the pins give. A C or P model
+// receipt never carries it: when it names a digest, that digest must be the one of its own configuration,
+// so a C receipt with B's relaxed admission is refused.
+func (a Attest) checkModelPolicy(s Step, r *ReceiptFacts) error {
+	var policy string
+	var policyOK bool
+	if a.AdmissionPolicyDigest != nil {
+		policy, policyOK = a.AdmissionPolicyDigest(s.CaseID, s.Configuration)
+	}
+	if s.Configuration == CfgB {
+		if !policyOK || policy == "" || r.AdmissionPolicyDigest != policy {
+			return fmt.Errorf("%w: B receipt of %s carries admission_policy_digest %q, the pins give %q", ErrReceiptPolicy, s.ID(), r.AdmissionPolicyDigest, policy)
+		}
+		return nil
+	}
+	if r.AdmissionPolicyDigest != "" && policyOK && policy != "" && r.AdmissionPolicyDigest != policy {
+		return fmt.Errorf("%w: model receipt of %s carries admission_policy_digest %q, its configuration gives %q", ErrReceiptPolicy, s.ID(), r.AdmissionPolicyDigest, policy)
 	}
 	return nil
 }

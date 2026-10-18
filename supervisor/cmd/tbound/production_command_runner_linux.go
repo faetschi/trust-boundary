@@ -30,6 +30,9 @@ type productionCommandRunner struct {
 	settledReceipts map[string]sessionrepo.CommandSettlement
 	evidenceRunners map[string]sessionrepo.CommandRunner
 	settled         int
+	// survivorsTolerated is set by the binder for a no-reap/v1 lease and only then: its command cells are
+	// left running, so their settlement must carry the tolerance flag and no other lease may carry it.
+	survivorsTolerated bool
 }
 
 // newProductionCommandRunner accepts only a per-lease factory. RegisterLease
@@ -154,7 +157,7 @@ func (r *productionCommandRunner) VerifySettlement(candidate sessionrepo.Command
 	actual, exists := r.receipts[viewID]
 	lease, leaseExists := r.leases[viewID]
 	if !exists || !leaseExists || lease.leaseID != leaseID || actual.LeaseID != leaseID || actual.ViewID != viewID ||
-		!actual.ExitObserved || !actual.ProcessScopeEmpty || !actual.WritersStopped || !actual.MountDetached ||
+		!actual.ExitObserved || !actual.Admitted() || actual.SurvivorsTolerated != r.survivorsTolerated ||
 		!strings.HasPrefix(actual.EvidenceClass, piruntime.D09CommandRunnerProfile+":") || !settlementMatches(actual, candidate) {
 		return errors.New("production command settlement does not match the retained one-use receipt")
 	}
@@ -255,7 +258,8 @@ func settlementMatches(actual, candidate sessionrepo.CommandSettlement) bool {
 	return actual.LeaseID == candidate.LeaseID && actual.ViewID == candidate.ViewID &&
 		actual.ExitObserved == candidate.ExitObserved && actual.ExitCode == candidate.ExitCode &&
 		actual.ProcessScopeEmpty == candidate.ProcessScopeEmpty && actual.WritersStopped == candidate.WritersStopped &&
-		actual.MountDetached == candidate.MountDetached && actual.EvidenceClass == candidate.EvidenceClass
+		actual.MountDetached == candidate.MountDetached && actual.EvidenceClass == candidate.EvidenceClass &&
+		actual.SurvivorsTolerated == candidate.SurvivorsTolerated
 }
 
 func validDigestText(value string) bool {

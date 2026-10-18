@@ -79,14 +79,16 @@ func TestCorpusServesOnlyWhatThisBuildImplements(t *testing.T) {
 	}{
 		{admitAll, corpusRolePStaticReplay, true}, {none, corpusRolePStaticReplay, true},
 		{admitAll, corpusRoleStaticReplay, true}, {admitAll, corpusRoleTrajectory, true},
-		{admitAll, corpusRolePAdaptiveReplay, false}, // the scripted adaptive source is not implemented
+		{admitAll, corpusRolePAdaptiveReplay, false}, // this manifest carries no pivots and pins no attacker
 		{admitAll, corpusRoleAdaptiveReplay, false},  // C adaptive must never fall back to the model
 	} {
 		if got := corpus.roleServable(tc.caseID, tc.role); got != tc.want {
 			t.Errorf("%s/%s servable=%t, want %t", tc.caseID, tc.role, got, tc.want)
 		}
 	}
-	// A registered but unimplemented delta, and a missing script, are refused for the roles that need them.
+	// net-sink/v1 and no-reap/v1 are served for the P half (the derived command-cell templates), and the C
+	// static replay of the same case stays on the signed base cell. A missing script is refused for the
+	// roles that need one.
 	for _, delta := range []string{evalcorpus.PDeltaNetSink, evalcorpus.PDeltaNoReap} {
 		c2, m2 := scriptedTestCorpus(t, func(m *evalcorpus.Manifest) {
 			for i := range m.Cases {
@@ -97,8 +99,8 @@ func TestCorpusServesOnlyWhatThisBuildImplements(t *testing.T) {
 			}
 		})
 		_ = m2
-		if c2.roleServable(admitAll, corpusRolePStaticReplay) {
-			t.Errorf("p-static-replay is served under the unimplemented delta %s", delta)
+		if !c2.roleServable(admitAll, corpusRolePStaticReplay) {
+			t.Errorf("p-static-replay is not served under the implemented delta %s", delta)
 		}
 		if !c2.roleServable(admitAll, corpusRoleStaticReplay) {
 			t.Errorf("the C static replay of a case with delta %s must still be served", delta)
@@ -126,9 +128,9 @@ func TestCorpusServiceRefusesWhatItCannotServeWithoutConsumingTheRequest(t *test
 		request piServiceRequest
 		code    string
 	}{
-		"p-adaptive-replay (not implemented)": {corpusRequest("u1", admitAll, corpusRolePAdaptiveReplay, 1), "role-unavailable"},
-		"adaptive-replay (not implemented)":   {corpusRequest("u4", admitAll, corpusRoleAdaptiveReplay, 1), "role-unavailable"},
-		"p-static-replay on a compliant case": {corpusRequest("u2", compliant, corpusRolePStaticReplay, 1), "role-kind-mismatch"},
+		"p-adaptive-replay (no pivots, no attacker pin)": {corpusRequest("u1", admitAll, corpusRolePAdaptiveReplay, 1), "role-unavailable"},
+		"adaptive-replay (no pivots, no attacker pin)":   {corpusRequest("u4", admitAll, corpusRoleAdaptiveReplay, 1), "role-unavailable"},
+		"p-static-replay on a compliant case":            {corpusRequest("u2", compliant, corpusRolePStaticReplay, 1), "role-kind-mismatch"},
 	} {
 		if response := roundTripPiServiceRequest(t, h.server.path, tc.request); response.Status != "refused" || response.ErrorCode != tc.code {
 			t.Errorf("%s: %+v", name, response)
@@ -192,18 +194,6 @@ func TestBindingSelectsProviderDeltaAndAdmissionRuleFromTheRoleAndManifestOnly(t
 	}
 	if _, err := corpus.bindingFor(admitAll, corpusRolePAdaptiveReplay); err == nil {
 		t.Fatal("a binding was derived for a role the build cannot serve")
-	}
-}
-
-func TestOnlyTheStaticReplayRolesAreScripted(t *testing.T) {
-	for _, role := range corpusTestRoles {
-		want := role == corpusRoleStaticReplay || role == corpusRolePStaticReplay
-		if got := scriptedCorpusRole(role); got != want {
-			t.Errorf("scriptedCorpusRole(%s) = %t, want %t", role, got, want)
-		}
-	}
-	if scriptedCorpusRole(corpusRolePAdaptiveReplay) || scriptedCorpusRole("") || scriptedCorpusRole("scripted") {
-		t.Error("a role outside the static replay pair is scripted")
 	}
 }
 

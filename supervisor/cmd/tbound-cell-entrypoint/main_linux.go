@@ -63,6 +63,7 @@ const (
 
 	landlockCreateRulesetVersion = 1
 	landlockRulePathBeneath      = 1
+	landlockRuleNetPort          = 2
 	// landlockRestrictSelfTSYNC makes the ruleset cover every thread in the
 	// thread group, so the multi-threaded Go runtime is fully confined. It
 	// requires the registered TSYNC ABI.
@@ -82,6 +83,10 @@ func main() {
 	commandMode := os.Getenv("TBOUND_CELL_MODE") == "command"
 	if len(os.Args) < 2 && !commandMode {
 		fatal("missing exec target")
+	}
+	delta, deltaErr := cellDeltaFromEnv(os.Getenv, commandMode)
+	if deltaErr != nil {
+		fatal("command-cell delta: %v", deltaErr)
 	}
 	var target string
 	var argv []string
@@ -185,7 +190,7 @@ func main() {
 	if expectedDigest == "" {
 		fatal("TBOUND_LANDLOCK_RULESET_DIGEST is required")
 	}
-	abi, digest, err := applyLandlock(requiredABI)
+	abi, digest, err := applyLandlockFor(requiredABI, delta.delta)
 	if err != nil {
 		fatal("apply Landlock: %v", err)
 	}
@@ -206,12 +211,12 @@ func main() {
 		"runtime_device": runtimeDevice, "runtime_inode": runtimeInode,
 		"uid_map": uidMap, "gid_map": gidMap, "user_namespace_map_digest": mapDigest,
 	}
-	nsProof := measureNamespaceIsolation()
+	nsProof := measureNamespaceIsolation(networkIsolationRequired(delta.delta))
 	for key, value := range nsProof {
 		proof[key] = value
 	}
 	if os.Getenv("TBOUND_CELL_MODE") == "command" {
-		runCommandCell(target, argv, proof)
+		runCommandCell(target, argv, proof, delta)
 		return
 	}
 	proofFile := os.NewFile(uintptr(proofFD), "tcb-proof")
@@ -272,7 +277,7 @@ func envUint64(name string) uint64 {
 	return value
 }
 
-func measureNamespaceIsolation() map[string]any {
+func measureNamespaceIsolation(privateNetwork bool) map[string]any {
 	names := []struct{ file, key, env string }{
 		{"user", "user_ns_inode", "TBOUND_HOST_NS_USER"},
 		{"mnt", "mount_ns_inode", "TBOUND_HOST_NS_MOUNT"},
@@ -292,15 +297,22 @@ func measureNamespaceIsolation() map[string]any {
 			fatal("consumer %s namespace inode is unavailable", item.file)
 		}
 		host := envUint64(item.env)
-		if stat.Ino == host {
+		if item.file == "net" && !privateNetwork {
+			// net-sink/v1: the cell shares the host network namespace on purpose.
+			if stat.Ino != host {
+				fatal("net-sink cell is not in the host network namespace")
+			}
+		} else if stat.Ino == host {
 			fatal("consumer %s namespace is not private", item.file)
 		}
 		proof[item.key] = stat.Ino
 	}
-	if err := requireNoExternalRoutes(); err != nil {
-		fatal("network namespace contains an external route: %v", err)
+	if privateNetwork {
+		if err := requireNoExternalRoutes(); err != nil {
+			fatal("network namespace contains an external route: %v", err)
+		}
 	}
-	proof["no_external_routes"] = true
+	proof["no_external_routes"] = privateNetwork
 	return proof
 }
 
@@ -383,6 +395,8 @@ type commandProof struct {
 	ImageRef               string `json:"image_ref"`
 	ImageDigest            string `json:"image_digest"`
 	TemplateDigest         string `json:"template_digest"`
+	Delta                  string `json:"delta,omitempty"`
+	DeltaTemplateDigest    string `json:"delta_template_digest,omitempty"`
 }
 
 // runCommandCell uses the authenticated start-ack handshake. It writes a TCB
@@ -390,7 +404,7 @@ type commandProof struct {
 // membership and obtain a pidfd, then launches the authorized command. The
 // command cannot inherit the proof descriptor (CLOEXEC); after it exits PID1
 // writes a second proof line and exits with the observed command code.
-func runCommandCell(commandPath string, args []string, base map[string]any) {
+func runCommandCell(commandPath string, args []string, base map[string]any, delta cellDelta) {
 	if !filepath.IsAbs(commandPath) || filepath.Clean(commandPath) != commandPath {
 		fatal("command mode requires a clean absolute in-image executable: %q", commandPath)
 	}
@@ -450,6 +464,10 @@ func runCommandCell(commandPath string, args []string, base map[string]any) {
 		ImageDigest:    strings.TrimSpace(os.Getenv("TBOUND_IMAGE_DIGEST")),
 		TemplateDigest: strings.TrimSpace(os.Getenv("TBOUND_TEMPLATE_DIGEST")),
 	}
+	proof.Delta = delta.delta.Name()
+	if delta.delta.Relaxed() {
+		proof.DeltaTemplateDigest, _ = delta.delta.TemplateDigest(proof.TemplateDigest)
+	}
 	proof.CommandPath = commandPath
 	proof.CommandDigest = observedCommandDigest
 	proof.CommandWorkdir = cleanWorkingDirectory
@@ -484,8 +502,17 @@ func runCommandCell(commandPath string, args []string, base map[string]any) {
 	}
 	proof.CommandExitObserved = true
 	proof.CommandExitCode = exitCode
+	if delta.endMarker != "" {
+		// no-reap/v1: end both output streams at the marker before the final proof, so the host has
+		// the complete output even though a surviving descendant may hold the streams open.
+		_, _ = os.Stdout.WriteString(delta.endMarker)
+		_, _ = os.Stderr.WriteString(delta.endMarker)
+	}
 	writeProofLine(proofFile, proof)
 	_ = proofFile.Close()
+	if delta.delta.NoReap() {
+		lingerAsInit()
+	}
 	os.Exit(exitCode)
 }
 
@@ -763,6 +790,11 @@ func unescapeMountPoint(value string) string {
 // fails closed with an exact ABI prerequisite when the kernel lacks the
 // registered TSYNC ABI or the reviewed paths are missing.
 func applyLandlock(requiredABI int) (int, string, error) {
+	return applyLandlockFor(requiredABI, piruntime.D09CellDelta{})
+}
+
+// applyLandlockFor is applyLandlock for the Landlock ruleset of a command-cell delta (planLandlock).
+func applyLandlockFor(requiredABI int, delta piruntime.D09CellDelta) (int, string, error) {
 	if requiredABI != landlockTSYNCABI {
 		return 0, "", fmt.Errorf("this entrypoint is frozen to the exact Landlock ABI %d (TSYNC) profile; signed template requested %d", landlockTSYNCABI, requiredABI)
 	}
@@ -779,21 +811,31 @@ func applyLandlock(requiredABI int) (int, string, error) {
 	if abi != requiredABI {
 		return 0, "", fmt.Errorf("landlock ABI %d (TSYNC) is required exactly, kernel reports %d", requiredABI, abi)
 	}
-	rules := appendRules(roPaths, landlockReadExecute, rwPaths, landlockAccessAllABI8)
-	digest, err := piruntime.DigestD09LandlockRules(roPaths, rwPaths)
+	plan := planLandlock(delta, roPaths, rwPaths)
+	digest, err := delta.LandlockRulesetDigest(roPaths, rwPaths)
 	if err != nil {
 		return 0, "", err
 	}
-	ruleset := struct {
-		HandledAccessFS  uint64
-		HandledAccessNet uint64
-	}{landlockAccessAllABI8, landlockAccessAllNet}
-	fd, _, errno := syscall.Syscall(uintptr(sysLandlockCreateRuleset), uintptr(unsafe.Pointer(&ruleset)), unsafe.Sizeof(ruleset), 0)
+	var fd uintptr
+	if plan.scoped == 0 {
+		ruleset := struct {
+			HandledAccessFS  uint64
+			HandledAccessNet uint64
+		}{plan.handledFS, plan.handledNet}
+		fd, _, errno = syscall.Syscall(uintptr(sysLandlockCreateRuleset), uintptr(unsafe.Pointer(&ruleset)), unsafe.Sizeof(ruleset), 0)
+	} else {
+		ruleset := struct {
+			HandledAccessFS  uint64
+			HandledAccessNet uint64
+			Scoped           uint64
+		}{plan.handledFS, plan.handledNet, plan.scoped}
+		fd, _, errno = syscall.Syscall(uintptr(sysLandlockCreateRuleset), uintptr(unsafe.Pointer(&ruleset)), unsafe.Sizeof(ruleset), 0)
+	}
 	if errno != 0 {
 		return 0, "", fmt.Errorf("create landlock ruleset: %w", errno)
 	}
 	defer syscall.Close(int(fd))
-	for _, rule := range rules {
+	for _, rule := range plan.pathRules {
 		parent, err := os.Open(rule.path)
 		if err != nil {
 			return 0, "", fmt.Errorf("open landlock path %q: %w", rule.path, err)
@@ -806,6 +848,16 @@ func applyLandlock(requiredABI int) (int, string, error) {
 		_ = parent.Close()
 		if errno != 0 {
 			return 0, "", fmt.Errorf("add landlock rule %q: %w", rule.path, errno)
+		}
+	}
+	// The only network right ever allowed: connect to a TCP port of the delta (net-sink/v1: 8080).
+	for _, port := range plan.connectPorts {
+		attr := struct {
+			AllowedAccess uint64
+			Port          uint64
+		}{piruntime.D09LandlockNetConnectTCP, uint64(port)}
+		if _, _, errno := syscall.Syscall6(uintptr(sysLandlockAddRule), fd, landlockRuleNetPort, uintptr(unsafe.Pointer(&attr)), 0, 0, 0); errno != 0 {
+			return 0, "", fmt.Errorf("add landlock connect rule for port %d: %w", port, errno)
 		}
 	}
 	if _, _, errno := syscall.Syscall(uintptr(sysLandlockRestrictSelf), fd, landlockRestrictSelfTSYNC, 0); errno != 0 {

@@ -54,7 +54,8 @@ type publicationAnchor struct {
 }
 
 // runnerStepRole maps a governed (service) role to the runner's Role, Repeat and Configuration: the
-// p-* roles are the replay roles of Configuration P, every other role is configuration C.
+// p-* roles are the replay roles of Configuration P, the b-* roles are the compliant and ambiguous roles of
+// Configuration B, every other role is configuration C.
 func runnerStepRole(role string) (string, int, string, bool) {
 	switch role {
 	case corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRoleCompliant, corpusRoleAmbiguous:
@@ -63,6 +64,10 @@ func runnerStepRole(role string) (string, int, string, bool) {
 		return corpusRoleStaticReplay, 0, "P", true
 	case corpusRolePAdaptiveReplay:
 		return corpusRoleAdaptiveReplay, 0, "P", true
+	case corpusRoleBCompliant:
+		return corpusRoleCompliant, 0, "B", true
+	case corpusRoleBAmbiguous:
+		return corpusRoleAmbiguous, 0, "B", true
 	case corpusRoleVariance1:
 		return "variance-repeat", 1, "C", true
 	case corpusRoleVariance2:

@@ -1792,7 +1792,7 @@ func checkPiServiceClientRequest(config piServiceConfig, request piServiceReques
 			return fmt.Errorf("%w: the corpus-mode service needs --attempt 1 or 2", ErrPiServiceRefused)
 		}
 		if !validCorpusRole(request.Role) {
-			return fmt.Errorf("%w: the corpus-mode service needs --role, one of trajectory, static-replay, adaptive-replay, variance-1, variance-2, compliant, ambiguous", ErrPiServiceRefused)
+			return fmt.Errorf("%w: the corpus-mode service needs --role, one of trajectory, static-replay, adaptive-replay, variance-1, variance-2, compliant, ambiguous, p-static-replay, p-adaptive-replay, b-compliant, b-ambiguous", ErrPiServiceRefused)
 		}
 		return nil
 	}

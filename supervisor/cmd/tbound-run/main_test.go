@@ -137,6 +137,7 @@ func newEnv(t *testing.T) *env {
 		"pins": map[string]string{"profile_hash": fixtureDigest("p"), "containment_profile_digest": fixtureDigest("c"),
 			"frozen_source_digest": fixtureDigest("s")},
 		"admission_policy": map[string]string{"policy_digest": fixtureDigest("store-policy"), "metadata_policy_digest": fixtureDigest("metadata-policy")},
+		"v_image_digest":   fixtureDigest("cell-image"),
 		"route_report":     e.path("route.json"), "ledger": "synthetic-empty", "run_dir": e.path("run"),
 		"evq_results": map[string]string{"path": e.path("evq.json"), "sha256": fixtureFileDigest(evqAllPassed)},
 		"ssh": map[string]any{
@@ -272,6 +273,8 @@ func TestConfigIsStrict(t *testing.T) {
 		},
 		"known_hosts dev null": func(c map[string]any) { c["ssh"].(map[string]any)["known_hosts"] = "/dev/null" },
 		"no proc":              func(c map[string]any) { delete(c, "proc") },
+		"image pin not digest": func(c map[string]any) { c["v_image_digest"] = "latest" },
+		"image pin short":      func(c map[string]any) { c["v_image_digest"] = "sha256:abc" },
 	} {
 		e := newEnv(t)
 		mutate(e.cfg)
@@ -296,6 +299,30 @@ func TestConfigIsStrict(t *testing.T) {
 	e.file("run.json", string(good))
 	if _, err := e.cliCfg(nil, "plan"); err != nil {
 		t.Fatalf("the unmodified config must load: %v", err)
+	}
+}
+
+// Configuration V is judged against the cell image it ran: a plan that contains V steps needs
+// the pinned image digest in run.json, and a plan without V steps does not.
+func TestPlanNeedsTheImagePinOnlyWhenVIsInThePlan(t *testing.T) {
+	e := newEnv(t)
+	delete(e.cfg, "v_image_digest")
+	e.write()
+	_, err := e.cliCfg(nil, "plan")
+	if err == nil || !strings.Contains(err.Error(), "v_image_digest") {
+		t.Fatalf("a plan with V steps and no image pin: %v", err)
+	}
+	// A subset of adversarial cases has no V step (V runs compliant tasks only).
+	var adversarial []string
+	for _, c := range e.manifest.Cases {
+		if c.Kind == evalcorpus.KindAdversarial {
+			adversarial = append(adversarial, c.CaseID)
+		}
+	}
+	e.cfg["only_cases"] = adversarial[:1]
+	e.write()
+	if _, err := e.cliCfg(nil, "plan"); err != nil {
+		t.Fatalf("a plan without V steps needs no image pin: %v", err)
 	}
 }
 
@@ -393,21 +420,33 @@ func TestRunMaxStepsStopsCleanlyAndResumes(t *testing.T) {
 	}
 }
 
+// withoutB is the real wiring with the B executor removed, to exercise the fail-closed path.
+func withoutB(wire wireFunc) wireFunc {
+	return func(p plan) (runner.Executors, error) {
+		ex, err := wire(p)
+		ex.B = nil
+		return ex, err
+	}
+}
+
 func TestRunWithTheRealWiringFailsClosedForUnwiredConfigurations(t *testing.T) {
 	e := newEnv(t)
-	out, err := e.cliCfg(wireSSH, "run")
+	out, err := e.cliCfg(withoutB(wireSSH), "run")
 	if !errors.Is(err, runner.ErrNotWired) {
-		t.Fatalf("run with P, B and V unwired: %v\n%s", err, out)
+		t.Fatalf("run with B unwired: %v\n%s", err, out)
 	}
 	if line(out, "units_used") != "0" || line(out, "executed") != "0" {
 		t.Fatalf("a refused wiring must spend nothing:\n%s", out)
 	}
 	ex, err := wireSSH(plan{cfg: mustConfig(t, e), sched: e.sched()})
-	if err != nil || ex.C == nil || ex.P == nil || ex.B != nil || ex.V != nil || ex.A != nil {
+	if err != nil || ex.C == nil || ex.P == nil || ex.B == nil || ex.V == nil || ex.A != nil {
 		t.Fatalf("wiring: %+v %v", ex, err)
 	}
 	if _, ok := ex.C.(runner.Attest); !ok {
 		t.Fatalf("C is %T, want the Attest decorator", ex.C)
+	}
+	if _, ok := ex.B.(runner.Attest); !ok {
+		t.Fatalf("B is %T, want the Attest decorator", ex.B)
 	}
 }
 
@@ -422,7 +461,7 @@ func mustConfig(t *testing.T, e *env) runConfig {
 
 func TestSelfcheck(t *testing.T) {
 	e := newEnv(t)
-	out, err := e.cliCfg(wireSSH, "selfcheck")
+	out, err := e.cliCfg(withoutB(wireSSH), "selfcheck")
 	if err == nil || !strings.Contains(out, "ok   configuration P wired") || !strings.Contains(out, "FAIL configuration B wired") ||
 		!strings.Contains(out, "ok   configuration C wired") || !strings.Contains(out, "ok   collectors") {
 		t.Fatalf("selfcheck with the real wiring: %v\n%s", err, out)

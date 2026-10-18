@@ -8,6 +8,7 @@ import (
 	"math"
 	"reflect"
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -675,6 +676,13 @@ func fill(v reflect.Value) {
 		for i := 0; i < v.Len(); i++ {
 			fill(v.Index(i))
 		}
+	case reflect.Map:
+		if v.Len() == 0 {
+			v.Set(reflect.MakeMap(v.Type()))
+			entry := reflect.New(v.Type().Elem()).Elem()
+			fill(entry)
+			v.SetMapIndex(reflect.ValueOf("k").Convert(v.Type().Key()), entry)
+		}
 	}
 }
 
@@ -702,6 +710,12 @@ func scalarPaths(v reflect.Value, path string, out *[]string) {
 	case reflect.Slice:
 		for i := 0; i < v.Len(); i++ {
 			scalarPaths(v.Index(i), fmt.Sprintf("%s[%d]", path, i), out)
+		}
+	case reflect.Map:
+		keys := v.MapKeys()
+		sort.Slice(keys, func(i, j int) bool { return keys[i].String() < keys[j].String() })
+		for _, k := range keys {
+			scalarPaths(v.MapIndex(k), fmt.Sprintf("%s[%s]", path, k.String()), out)
 		}
 	default:
 		*out = append(*out, path)
@@ -738,6 +752,16 @@ func mutateAt(t *testing.T, root reflect.Value, path string) {
 		case reflect.Slice:
 			for i := 0; i < v.Len(); i++ {
 				if walk(v.Index(i), fmt.Sprintf("%s[%d]", p, i)) {
+					return true
+				}
+			}
+			return false
+		case reflect.Map:
+			for _, k := range v.MapKeys() {
+				entry := reflect.New(v.Type().Elem()).Elem()
+				entry.Set(v.MapIndex(k))
+				if walk(entry, fmt.Sprintf("%s[%s]", p, k.String())) {
+					v.SetMapIndex(k, entry)
 					return true
 				}
 			}

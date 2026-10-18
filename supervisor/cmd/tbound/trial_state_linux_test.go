@@ -4,15 +4,11 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
-	"time"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/piruntime"
@@ -120,12 +116,20 @@ func TestTrialPendingFromRefusesUnreadableRecords(t *testing.T) {
 }
 
 func TestCgroupPopulated(t *testing.T) {
-	dir := t.TempDir()
+	path := t.TempDir()
+	dir, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
 	write := func(content string) {
 		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, "cgroup.events"), []byte(content), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(path, "cgroup.events"), []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if _, err := cgroupPopulated(dir); err == nil {
+		t.Error("a cgroup without cgroup.events was accepted")
 	}
 	write("populated 0\nfrozen 0\n")
 	if got, err := cgroupPopulated(dir); err != nil || got {
@@ -141,263 +145,18 @@ func TestCgroupPopulated(t *testing.T) {
 			t.Errorf("cgroup.events %q was accepted", bad)
 		}
 	}
-	if _, err := cgroupPopulated(filepath.Join(dir, "absent")); err == nil {
-		t.Error("a missing cgroup was accepted")
-	}
-}
-
-// fakeProc builds a /proc with one directory per pid.
-func fakeProc(t *testing.T, procs map[int]string) string {
-	t.Helper()
-	root := t.TempDir()
-	for pid, status := range procs {
-		dir := filepath.Join(root, strconv.Itoa(pid))
-		if err := os.Mkdir(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, "status"), []byte(status), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.Mkdir(filepath.Join(root, "self"), 0o700); err != nil {
+	// cgroup.events is read without following a symlink.
+	other := filepath.Join(t.TempDir(), "events")
+	if err := os.WriteFile(other, []byte("populated 0\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return root
-}
-
-func procStatus(state string, uids ...int) string {
-	u := make([]string, len(uids))
-	for i, id := range uids {
-		u[i] = strconv.Itoa(id)
-	}
-	return "Name:\tx\nState:\t" + state + "\nUid:\t" + strings.Join(u, "\t") + "\nGid:\t1\t1\t1\t1\n"
-}
-
-// fakePin is a pinned process of a fake /proc: Signal removes its directory unless noKill.
-type fakePin struct {
-	root    string
-	pid     int
-	signals *[]int
-	closed  *int
-	// gone makes Alive and Signal report the process as reaped.
-	gone bool
-	// noKill leaves the process alive after a signal.
-	noKill bool
-	// exited makes the whole thread group exited from the start (a readable pidfd), as a
-	// zombie leader without running threads is.
-	exited bool
-}
-
-// shortKillWait bounds the wait for the kernel to confirm an exit, so a refusing test is fast.
-func shortKillWait(t *testing.T) {
-	t.Helper()
-	old := trialKillWait
-	trialKillWait = 20 * time.Millisecond
-	t.Cleanup(func() { trialKillWait = old })
-}
-
-func (p *fakePin) Alive() error {
-	if p.gone {
-		return errProcGone
-	}
-	return nil
-}
-
-func (p *fakePin) Signal() error {
-	if p.gone {
-		return errProcGone
-	}
-	*p.signals = append(*p.signals, p.pid)
-	if p.noKill {
-		return nil
-	}
-	return os.RemoveAll(filepath.Join(p.root, strconv.Itoa(p.pid)))
-}
-
-// Exited is true once the fake process directory is gone (killed and reaped) or the fake was
-// created exited.
-func (p *fakePin) Exited(time.Duration) (bool, error) {
-	if p.exited {
-		return true, nil
-	}
-	_, err := os.Stat(filepath.Join(p.root, strconv.Itoa(p.pid)))
-	return os.IsNotExist(err), nil
-}
-
-func (p *fakePin) Close() error { *p.closed++; return nil }
-
-func TestKillUIDProcessesKillsOnlyLiveProcessesOfThatUID(t *testing.T) {
-	shortKillWait(t)
-	root := fakeProc(t, map[int]string{
-		10: procStatus("S (sleeping)", 995, 995, 995, 995),
-		11: procStatus("R (running)", 995, 995, 995, 995),
-		12: procStatus("S (sleeping)", 1000, 1000, 1000, 1000),
-		13: procStatus("Z (zombie)", 995, 995, 995, 995),
-		14: procStatus("S (sleeping)", 0, 995, 995, 995),
-		15: procStatus("S (sleeping)", 995, 0, 0, 0),
-	})
-	var signaled []int
-	var closed int
-	pin := func(pid int) (procPin, error) {
-		// Pid 13 is a zombie leader without threads: its group exited, its pidfd is readable.
-		return &fakePin{root: root, pid: pid, signals: &signaled, closed: &closed, exited: pid == 13}, nil
-	}
-	if err := killUIDProcesses(root, 995, pin); err != nil {
-		t.Fatalf("killUIDProcesses: %v", err)
-	}
-	// A process whose real uid is the cell uid is killed; an exited group and another uid are not.
-	want := map[int]bool{10: true, 11: true, 15: true}
-	if len(signaled) != len(want) {
-		t.Fatalf("signaled %v, want pids 10, 11 and 15", signaled)
-	}
-	for _, pid := range signaled {
-		if !want[pid] {
-			t.Fatalf("signaled %v, want pids 10, 11 and 15", signaled)
-		}
-	}
-	for _, pid := range []int{12, 13, 14} {
-		if _, err := os.Stat(filepath.Join(root, strconv.Itoa(pid))); err != nil {
-			t.Errorf("pid %d was removed", pid)
-		}
-	}
-	// Every opened pidfd is closed: 10, 11, 13 and 15 in the first scan, 13 again in the rescan.
-	if closed != 5 {
-		t.Errorf("closed %d pidfds, want 5", closed)
-	}
-}
-
-func TestKillUIDProcessesFailsWhileAProcessSurvives(t *testing.T) {
-	shortKillWait(t)
-	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
-	var signaled []int
-	var closed int
-	pin := func(pid int) (procPin, error) {
-		return &fakePin{root: root, pid: pid, signals: &signaled, closed: &closed, noKill: true}, nil
-	}
-	if err := killUIDProcesses(root, 995, pin); err == nil || !strings.Contains(err.Error(), "10") {
-		t.Fatalf("err = %v, want a failure naming pid 10", err)
-	}
-}
-
-func TestKillUIDProcessesNeverTargetsRoot(t *testing.T) {
-	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 0, 0, 0, 0)})
-	called := false
-	pin := func(int) (procPin, error) { called = true; return nil, errors.New("must not be called") }
-	if err := killUIDProcesses(root, 0, pin); err == nil || called {
-		t.Fatalf("uid 0: err %v, pin called %v", err, called)
-	}
-}
-
-// The scan saw pid 10 as a cell process. By the time the pidfd is opened the pid belongs to a
-// root process: it is validated against the pinned process and must not be signaled.
-func TestKillUIDProcessesDoesNotSignalAReusedPID(t *testing.T) {
-	shortKillWait(t)
-	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
-	var signaled []int
-	var closed int
-	pin := func(pid int) (procPin, error) {
-		// The cell process exited and a root process reused the pid before the open.
-		status := filepath.Join(root, strconv.Itoa(pid), "status")
-		if err := os.WriteFile(status, []byte(procStatus("S (sleeping)", 0, 0, 0, 0)), 0o600); err != nil {
-			t.Fatal(err)
-		}
-		return &fakePin{root: root, pid: pid, signals: &signaled, closed: &closed}, nil
-	}
-	if err := killUIDProcesses(root, 995, pin); err != nil {
-		t.Fatalf("killUIDProcesses: %v", err)
-	}
-	if len(signaled) != 0 {
-		t.Fatalf("signaled %v: a root process was signaled by a stale pid", signaled)
-	}
-	if closed != 1 {
-		t.Fatalf("closed %d pidfds, want 1", closed)
-	}
-}
-
-// The pidfd must still refer to a process after its uid was read: if it was reaped in
-// between, the status read may belong to a reused pid and nothing is signaled.
-func TestKillUIDProcessesDoesNotSignalAReapedPinnedProcess(t *testing.T) {
-	shortKillWait(t)
-	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
-	var signaled []int
-	var closed int
-	opens := 0
-	pin := func(pid int) (procPin, error) {
-		opens++
-		if opens > 1 { // the rescan: the cell process is gone for good
-			_ = os.RemoveAll(filepath.Join(root, strconv.Itoa(pid)))
-			return nil, errProcGone
-		}
-		return &fakePin{root: root, pid: pid, signals: &signaled, closed: &closed, gone: true}, nil
-	}
-	if err := killUIDProcesses(root, 995, pin); err != nil {
-		t.Fatalf("killUIDProcesses: %v", err)
-	}
-	if len(signaled) != 0 || closed != 1 {
-		t.Fatalf("signaled %v, closed %d: the pinned process was gone", signaled, closed)
-	}
-}
-
-// With no pidfd support the reset fails closed: no numeric-pid fallback signals anything.
-func TestKillUIDProcessesFailsClosedWithoutPidfd(t *testing.T) {
-	shortKillWait(t)
-	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
-	for name, pinErr := range map[string]error{"enosys": syscall.ENOSYS, "eperm": syscall.EPERM, "other": errors.New("boom")} {
-		pin := func(int) (procPin, error) { return nil, pinErr }
-		if err := killUIDProcesses(root, 995, pin); err == nil {
-			t.Fatalf("%s: a failed pidfd open did not refuse the reset", name)
-		}
-		if _, err := os.Stat(filepath.Join(root, "10")); err != nil {
-			t.Fatalf("%s: the process directory vanished", name)
-		}
-	}
-}
-
-// The production pin signals through a pidfd and notices when its process is reaped.
-func TestPidfdPinSignalsAndDetectsReaping(t *testing.T) {
-	cmd := exec.Command("sleep", "60")
-	if err := cmd.Start(); err != nil {
+	if err := os.Remove(filepath.Join(path, "cgroup.events")); err != nil {
 		t.Fatal(err)
 	}
-	reaped := false
-	defer func() {
-		if !reaped {
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-		}
-	}()
-	pin, err := pinProcessPidfd(cmd.Process.Pid)
-	if err != nil {
-		t.Fatalf("pidfd_open on this kernel: %v", err)
-	}
-	defer pin.Close()
-	if err := pin.Alive(); err != nil {
-		t.Fatalf("a live process is not alive: %v", err)
-	}
-	if err := pin.Signal(); err != nil {
-		t.Fatalf("signal: %v", err)
-	}
-	err = cmd.Wait()
-	reaped = true
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != -1 {
-		t.Fatalf("the process was not killed by a signal: %v", err)
-	}
-	if err := pin.Alive(); !errors.Is(err, errProcGone) {
-		t.Fatalf("a reaped process is still alive: %v", err)
-	}
-	if err := pin.Signal(); !errors.Is(err, errProcGone) {
-		t.Fatalf("signal after reaping: %v", err)
-	}
-}
-
-// Nothing in the reset may signal a bare pid: a number can be reused between scan and kill.
-func TestTrialResetNeverSignalsByNumericPID(t *testing.T) {
-	src, err := os.ReadFile("trial_linux.go")
-	if err != nil {
+	if err := os.Symlink(other, filepath.Join(path, "cgroup.events")); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(src), "syscall.Kill(") || strings.Contains(string(src), "unix.Kill(") {
-		t.Fatal("trial_linux.go signals a process by its numeric pid")
+	if _, err := cgroupPopulated(dir); err == nil {
+		t.Error("a symlinked cgroup.events was followed")
 	}
 }

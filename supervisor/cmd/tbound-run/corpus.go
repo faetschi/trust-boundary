@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"tbound/supervisor/internal/corpusadmit"
@@ -85,6 +86,9 @@ func loadPlan(cfg runConfig) (plan, error) {
 	if cfg.QuotaProfile == quotaThesis && (sched.Subset || sched.Units() != evalreport.PlannedUnits) {
 		return plan{}, fmt.Errorf("a thesis plan must be the registered %d units without a subset; it has %d (subset %t)",
 			evalreport.PlannedUnits, sched.Units(), sched.Subset)
+	}
+	if cfg.VImageDigest == "" && slices.ContainsFunc(sched.Steps, func(s runner.Step) bool { return s.Configuration == runner.CfgV }) {
+		return plan{}, errors.New("config: v_image_digest is required: the plan has Configuration V steps, and a V outcome is E01-verified only against the pinned cell image")
 	}
 	route, err := loadRoute(cfg.RouteReport)
 	if err != nil {

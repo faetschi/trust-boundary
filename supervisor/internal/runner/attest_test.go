@@ -48,6 +48,8 @@ var (
 	testScriptDigest = "sha256:" + hexOf('s')
 	testPolicyC      = "sha256:" + hexOf('c')
 	testPolicyP      = "sha256:" + hexOf('p')
+	testAttacker     = "sha256:" + hexOf('a')
+	testPivots       = "sha256:" + hexOf('v')
 )
 
 // matchingFor is the receipt a correct service returns for the step: a model run says only "model", a
@@ -58,6 +60,11 @@ func matchingFor(s Step) *ReceiptFacts {
 		r.ProviderMode, r.ScriptDigest, r.AdmissionPolicyDigest = "scripted", testScriptDigest, testPolicyC
 		if s.Configuration == CfgP {
 			r.AdmissionPolicyDigest, r.Delta = testPolicyP, "net-sink/v1" // the registered p_delta of adv-p
+		}
+		if s.Role == RoleAdaptiveReplay {
+			// the machine chose the turns: no script digest, the attacker run instead
+			r.ScriptDigest, r.AttackerDigest, r.PivotsDigest = "", testAttacker, testPivots
+			r.PivotsIssued, r.AttackerStop, r.AttackerStateDigest = 2, "success_pivot", hexOf('d')
 		}
 	}
 	return r
@@ -71,7 +78,9 @@ func newAttest(inner Executor) Attest {
 		PDelta: func(id string) (string, bool) {
 			return map[string]string{"adv-p": "net-sink/v1", "adv-none": ""}[id], id == "adv-p" || id == "adv-none"
 		},
-		ScriptDigest: func(id string) (string, bool) { return testScriptDigest, id == "adv-p" || id == "adv-none" },
+		ScriptDigest:   func(id string) (string, bool) { return testScriptDigest, id == "adv-p" || id == "adv-none" },
+		AttackerDigest: testAttacker,
+		PivotsDigest:   func(id string) (string, bool) { return testPivots, id == "adv-p" || id == "adv-none" },
 		AdmissionPolicyDigest: func(id string, cfg Configuration) (string, bool) {
 			if cfg == CfgP {
 				return testPolicyP, id == "adv-p" || id == "adv-none"

@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"reflect"
 	"time"
 
+	"tbound/supervisor/internal/attacker"
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
@@ -25,6 +28,10 @@ var (
 	readCorpusManifest = piruntime.ReadD09ManagedPiCorpusManifest
 	corpusQuotas       = evalcorpus.ThesisQuotas
 	pilotCorpusQuotas  = evalcorpus.PilotQuotas
+
+	// attackerArtifacts is where the attacker artifact named by the manifest pin is read: the root-owned
+	// artifact directory the signing session installs (the same one `tbound trial reset` reads fixtures from).
+	attackerArtifacts = func() fs.FS { return os.DirFS(trialArtifactDir) }
 )
 
 // The closed set of governed roles. Each names one planned governed C trial of a case
@@ -42,12 +49,17 @@ const (
 	// The roles of the P half of a pair (Configuration P under the case's registered delta).
 	corpusRolePStaticReplay   = corpusadmit.RolePStaticReplay
 	corpusRolePAdaptiveReplay = corpusadmit.RolePAdaptiveReplay
+
+	// The roles of Configuration B: compliant and ambiguous cases on the real model with admit-all/v1.
+	corpusRoleBCompliant = corpusadmit.RoleBCompliant
+	corpusRoleBAmbiguous = corpusadmit.RoleBAmbiguous
 )
 
 func validCorpusRole(role string) bool {
 	switch role {
 	case corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRoleVariance1,
-		corpusRoleVariance2, corpusRoleCompliant, corpusRoleAmbiguous, corpusRolePStaticReplay, corpusRolePAdaptiveReplay:
+		corpusRoleVariance2, corpusRoleCompliant, corpusRoleAmbiguous, corpusRolePStaticReplay, corpusRolePAdaptiveReplay,
+		corpusRoleBCompliant, corpusRoleBAmbiguous:
 		return true
 	}
 	return false
@@ -70,6 +82,10 @@ type productionCorpus struct {
 	cases        map[string]corpusCase
 	// fixtures maps a case to its workspace_fixture_digest, for `tbound trial reset`.
 	fixtures map[string]string
+	// attacker is the pinned attacker artifact (Pins.AttackerDigest) that the adaptive replay roles build
+	// their machine from; nil when no case carries pivots.
+	attacker       *attacker.Spec
+	attackerDigest string
 }
 
 // corpusAdmissionID is the one-use admission id of a trial: <case_id>/<role>/<attempt>.
@@ -80,8 +96,8 @@ func corpusAdmissionID(caseID, role string, attempt int) string {
 // roleAllowed reports whether role may run for caseID: trajectory and the replay roles (of both
 // halves of the pair)
 // only for adversarial cases, the variance roles only for adversarial cases in the
-// variance subset, compliant only for compliant tasks, ambiguous only for ambiguous
-// cases.
+// variance subset, compliant and b-compliant only for compliant tasks, ambiguous and
+// b-ambiguous only for ambiguous cases.
 func (c *productionCorpus) roleAllowed(caseID, role string) bool {
 	if c == nil {
 		return false
@@ -95,18 +111,18 @@ func (c *productionCorpus) roleAllowed(caseID, role string) bool {
 		return info.kind == evalcorpus.KindAdversarial
 	case corpusRoleVariance1, corpusRoleVariance2:
 		return info.kind == evalcorpus.KindAdversarial && info.variance
-	case corpusRoleCompliant:
+	case corpusRoleCompliant, corpusRoleBCompliant:
 		return info.kind == evalcorpus.KindCompliant
-	case corpusRoleAmbiguous:
+	case corpusRoleAmbiguous, corpusRoleBAmbiguous:
 		return info.kind == evalcorpus.KindAmbiguous
 	}
 	return false
 }
 
 // roleServable reports whether this build can serve role for caseID once roleAllowed holds: a static
-// replay role needs the frozen script of the case; a P role needs a delta the build implements; the
-// scripted adaptive replay of either half is not implemented until the matched scripted attacker lands:
-// the C half must not fall back to a model. It never selects a provider for a role it cannot serve.
+// replay role needs the frozen script of the case; an adaptive replay role needs the pivot table of the
+// case and the pinned attacker artifact (the C half must never fall back to a model); a P role needs a
+// delta the build implements. It never selects a provider for a role it cannot serve.
 func (c *productionCorpus) roleServable(caseID, role string) bool {
 	if !c.roleAllowed(caseID, role) {
 		return false
@@ -117,16 +133,25 @@ func (c *productionCorpus) roleServable(caseID, role string) bool {
 		return len(trial.Script) != 0
 	case corpusRolePStaticReplay:
 		return len(trial.Script) != 0 && implementedPDelta(trial.EffectivePDelta())
-	case corpusRoleAdaptiveReplay, corpusRolePAdaptiveReplay:
-		return false
+	case corpusRoleAdaptiveReplay:
+		return c.adaptiveServable(trial)
+	case corpusRolePAdaptiveReplay:
+		return c.adaptiveServable(trial) && len(trial.Script) != 0 && implementedPDelta(trial.EffectivePDelta())
 	}
 	return true
 }
 
-// implementedPDelta lists the registered deltas this build implements. net-sink/v1 and no-reap/v1 are
-// registered names the service refuses until the command-cell template that implements them exists.
+// adaptiveServable reports whether the adaptive replay of a case can run: it has a pivot table and the
+// manifest pinned an attacker artifact that loaded.
+func (c *productionCorpus) adaptiveServable(trial evalcorpus.Trial) bool {
+	return c.attacker != nil && len(trial.Pivots) != 0
+}
+
+// implementedPDelta lists the registered deltas this build implements: all four. net-sink/v1 and no-reap/v1
+// run the P command cell under a derived template (commandCellDeltaFor, piruntime.D09CellDelta).
 func implementedPDelta(delta string) bool {
-	return delta == evalcorpus.PDeltaNone || delta == evalcorpus.PDeltaAdmitAll
+	return delta == evalcorpus.PDeltaNone || delta == evalcorpus.PDeltaAdmitAll ||
+		delta == evalcorpus.PDeltaNetSink || delta == evalcorpus.PDeltaNoReap
 }
 
 func (c *productionCorpus) trial(caseID string) (evalcorpus.Trial, bool) {
@@ -180,6 +205,16 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 	if err := corpusadmit.CheckTrials(manifest.Cases, &corpusadmit.Ceilings{MaxHostCalls: config.WorkflowMaxHostCalls,
 		MaxTokens: config.WorkflowMaxTokens, DurationSeconds: config.WorkflowDurationSeconds}); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrPiServiceCorpus, err)
+	}
+	if err := corpusadmit.CheckAttacker(manifest, attackerArtifacts()); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrPiServiceCorpus, err)
+	}
+	if manifest.Pins.AttackerDigest != "" {
+		spec, err := corpusadmit.LoadAttacker(attackerArtifacts(), manifest.Pins.AttackerDigest)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrPiServiceCorpus, err)
+		}
+		corpus.attacker, corpus.attackerDigest = &spec, manifest.Pins.AttackerDigest
 	}
 	for _, c := range manifest.Cases {
 		corpus.trials[c.CaseID] = *c.Trial

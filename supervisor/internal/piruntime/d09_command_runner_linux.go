@@ -47,6 +47,9 @@ type D09CommandRunner struct {
 	leaseID  string
 	launcher *D09PodmanCrunLauncher
 	profile  HostProfile
+	// delta is the registered command-cell delta of this lease; the zero value is the signed base
+	// cell. It is fixed at construction by the service from the admitted role and the pinned manifest.
+	delta D09CellDelta
 
 	mu         sync.Mutex
 	usedScopes map[string]struct{}
@@ -59,13 +62,22 @@ type D09CommandRunner struct {
 // returned by its durable authority and a factory backed by delegated cgroup
 // descriptors. It cannot substitute a command executor or settlement callback.
 func NewD09CommandRunner(leaseID string, launcher *D09PodmanCrunLauncher) (*D09CommandRunner, error) {
+	return NewD09CommandRunnerForDelta(leaseID, launcher, D09CellDelta{})
+}
+
+// NewD09CommandRunnerForDelta is NewD09CommandRunner for a command cell under a registered
+// delta. The delta is a typed value that only ParseD09CellDelta can make relaxed.
+func NewD09CommandRunnerForDelta(leaseID string, launcher *D09PodmanCrunLauncher, delta D09CellDelta) (*D09CommandRunner, error) {
 	profile, admitted := launcher.admittedProfileSnapshot()
 	if !validIdentity(leaseID) || launcher == nil || launcher.scope == nil || !admitted {
 		return nil, ErrProductionLauncherUnavailable
 	}
-	return &D09CommandRunner{leaseID: leaseID, launcher: launcher, profile: profile,
+	return &D09CommandRunner{leaseID: leaseID, launcher: launcher, profile: profile, delta: delta,
 		usedScopes: make(map[string]struct{}), usedViews: make(map[string]struct{}), receipts: make(map[string]D09CommandReceipt)}, nil
 }
+
+// Delta is the registered command-cell delta this runner launches its cells under.
+func (r *D09CommandRunner) Delta() D09CellDelta { return r.delta }
 
 func (*D09CommandRunner) Profile() string { return D09CommandRunnerProfile }
 
@@ -116,6 +128,10 @@ type D09CommandProof struct {
 	UTSNSInode             uint64 `json:"uts_ns_inode"`
 	NetworkNSInode         uint64 `json:"network_ns_inode"`
 	NoExternalRoutes       bool   `json:"no_external_routes"`
+	// Delta and DeltaTemplateDigest name the registered command-cell delta the cell was launched
+	// under and its derived template identity. Both are empty for the unrelaxed cell.
+	Delta               string `json:"delta,omitempty"`
+	DeltaTemplateDigest string `json:"delta_template_digest,omitempty"`
 }
 
 type d09CommandProof = D09CommandProof
@@ -134,6 +150,14 @@ type D09CommandSettlementEvidence struct {
 	MountNamespaceReleased   bool `json:"mount_namespace_released"`
 	CommandOutputWithinBound bool `json:"command_output_within_bound"`
 	CommandCgroupRemoved     bool `json:"command_cgroup_removed"`
+	// The no-reap/v1 command cell is left running, so the exit, wait, removal and detach
+	// observations above do not exist for it. Instead the host observed the cell's own final proof,
+	// the end-of-output marker of both streams, the container still running, and detached the
+	// command cgroup from the lease without killing it. Both sets never hold in one receipt.
+	SurvivorsTolerated   bool `json:"survivors_tolerated,omitempty"`
+	OutputMarkerObserved bool `json:"output_marker_observed,omitempty"`
+	ContainerLeftRunning bool `json:"container_left_running,omitempty"`
+	CommandScopeDetached bool `json:"command_scope_detached,omitempty"`
 }
 
 // D09CommandReceipt is an opaque, one-use receipt for a single authorized
@@ -209,12 +233,9 @@ func validateD09CommandReceipt(r D09CommandReceipt, requireSeal bool) error {
 		r.Proof.CommandStarted != true || !r.Proof.CommandReady || !r.Proof.CommandExitObserved || r.Proof.CommandExitCode != r.ExitCode ||
 		r.Proof.LeaderPID <= 0 || r.Proof.ContainerLeaderPID != 1 || !validDigest(r.Proof.CommandDigest) ||
 		r.Settlement.LeaseID != r.LeaseID || r.Settlement.ViewID != r.ViewID || !r.Settlement.ExitObserved ||
-		r.Settlement.ExitCode != r.ExitCode || !r.Settlement.ProcessScopeEmpty || !r.Settlement.WritersStopped || !r.Settlement.MountDetached ||
+		r.Settlement.ExitCode != r.ExitCode ||
 		!strings.HasPrefix(r.Settlement.EvidenceClass, D09CommandRunnerProfile+":") ||
-		!r.Evidence.ContainerExitInspected || !r.Evidence.FinalCommandProofRead || !r.Evidence.PodmanWaitCompleted ||
-		!r.Evidence.OutputWritersDrained || !r.Evidence.ContainerRemoved || !r.Evidence.LeaderPidfdExited ||
-		!r.Evidence.CgroupPopulatedZero || !r.Evidence.MountNamespaceReleased || !r.Evidence.CommandOutputWithinBound ||
-		!r.Evidence.CommandCgroupRemoved {
+		!d09ReceiptSettlementComplete(r) {
 		return ErrD09CommandReceiptInvalid
 	}
 	if requireSeal {
@@ -453,7 +474,18 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 	if err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 	}
-	scope, err := r.launcher.NewCommandScope(ctx, r.leaseID, viewID)
+	var scope *d09OwnedCommandScope
+	switch {
+	case r.delta.NoReap():
+		scope, err = r.launcher.NewDetachedCommandScope(ctx, r.leaseID, viewID)
+	case r.delta.NetSink():
+		// Fail closed before any cell starts: the pinned nftables rule must be installed.
+		if err = requireNetSinkRule(readRootOwnedProfileFile); err == nil {
+			scope, err = r.launcher.NewNetSinkCommandScope(ctx, r.leaseID, viewID)
+		}
+	default:
+		scope, err = r.launcher.NewCommandScope(ctx, r.leaseID, viewID)
+	}
 	if err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("allocate unique D09 command cgroup: %w", err)
 	}
@@ -461,6 +493,7 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrCgroupScopeRefused
 	}
 	containerStarted := false
+	abandoned := false // a no-reap/v1 scope handed over to the operator reset: never killed here
 	scopeClosed := false
 	name := ""
 	scopePath := ""
@@ -478,7 +511,7 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		return nil
 	}
 	defer func() {
-		if !scope.IsSettled() {
+		if !scope.IsSettled() && !abandoned {
 			cleanupCtx, cancel := context.WithTimeout(context.Background(), d09CommandCleanupLimit)
 			if containerStarted {
 				cleanup := exec.CommandContext(cleanupCtx, report.PodmanPath, "rm", "-f", name)
@@ -550,8 +583,22 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 	}
 	config.HostNamespaces = hostNamespaces
 	config.CgroupsPath = scopePath
-	args := d09CommandCellArguments(config, name, cidPath, report.ImageRef, viewMountPath, viewID, r.leaseID, uint64(viewStat.Dev), viewStat.Ino, spec)
-	stdout, stderr := &d09BoundedOutput{limit: d09CommandOutputLimit}, &d09BoundedOutput{limit: d09CommandOutputLimit}
+	outputToken := ""
+	if r.delta.NoReap() {
+		if outputToken, err = newD09OutputToken(); err != nil {
+			return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+		}
+	}
+	plan, err := newD09DeltaPlan(r.delta, config, outputToken)
+	if err != nil {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("derive the command-cell delta identity: %w", err)
+	}
+	args := d09CommandCellArgumentsDelta(plan, config, name, cidPath, report.ImageRef, viewMountPath, viewID, r.leaseID, uint64(viewStat.Dev), viewStat.Ino, spec)
+	var stdout, stderr d09CapturedOutput = &d09BoundedOutput{limit: d09CommandOutputLimit}, &d09BoundedOutput{limit: d09CommandOutputLimit}
+	if r.delta.NoReap() {
+		stdout = newD09MarkedOutput(d09CommandOutputLimit, []byte(D09OutputEndMarker(outputToken)))
+		stderr = newD09MarkedOutput(d09CommandOutputLimit, []byte(D09OutputEndMarker(outputToken)))
+	}
 	command := exec.CommandContext(commandCtx, report.PodmanPath, args...)
 	command.Env = d09ProbeEnv()
 	command.ExtraFiles = []*os.File{viewSource, proofWrite, ackRead} // child fds3=readonly-view-source,4=proof,5=start-ack.
@@ -606,7 +653,7 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		_ = waitD09PodmanShutdown(waitResult, d09CommandCleanupLimit)
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("verify exact host-visible D09 command uid/gid map before start acknowledgement: %w", err)
 	}
-	if err := validateD09CommandProof(startProof, config, report.ImageRef, r.leaseID, viewID, name, uint64(viewStat.Dev), viewStat.Ino, spec); err != nil {
+	if err := validateD09CommandProofDelta(plan, startProof, config, report.ImageRef, r.leaseID, viewID, name, uint64(viewStat.Dev), viewStat.Ino, spec); err != nil {
 		r.cleanupCommand(scope, report.PodmanPath, name)
 		_ = command.Process.Kill()
 		_ = waitD09PodmanShutdown(waitResult, d09CommandCleanupLimit)
@@ -643,6 +690,32 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("acknowledge D09 command TCB proof: %w", err)
 	}
 	_ = ackWrite.Close()
+
+	if r.delta.NoReap() {
+		// no-reap/v1: the command cell is left running. There is no container exit to wait for;
+		// the cell's own final proof and end-of-output marker are the exit and output observation,
+		// and the detached command cgroup is handed over to the operator reset instead of killed.
+		markedOut, markedErr := stdout.(*d09MarkedOutput), stderr.(*d09MarkedOutput)
+		result, settlement, finalProof, evidence, noReapErr := r.settleNoReap(commandCtx, d09NoReapSettle{
+			scope: scope, proofReader: proofReader, startProof: startProof, containerPID: containerState.State.PID,
+			podmanPath: report.PodmanPath, cid: cid, stdout: markedOut, stderr: markedErr, viewID: viewID,
+		})
+		if noReapErr == nil {
+			noReapErr = scope.abandon()
+		}
+		if noReapErr != nil {
+			r.cleanupCommand(scope, report.PodmanPath, name)
+			_ = command.Process.Kill()
+			_ = waitD09PodmanShutdown(waitResult, d09CommandCleanupLimit)
+			return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, noReapErr
+		}
+		abandoned = true
+		if err := r.issueReceipt(viewID, name, cid, spec, result, settlement, finalProof, evidence); err != nil {
+			r.cleanupCommand(nil, report.PodmanPath, name)
+			return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+		}
+		return result, settlement, nil
+	}
 
 	var waitErr error
 	select {
@@ -711,28 +784,37 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		ExitObserved: true, ExitCode: state.State.ExitCode,
 		EvidenceClass: D09CommandRunnerProfile + ":inspect-exit+podman-wait+proof-pipe-eof+output-drained+container-removed+leader-pidfd+cgroup-populated0+mountns-released+cgroup-removed",
 	}
-	receipt, err := newD09CommandReceipt(r.leaseID, viewID, name, cid, spec, result, settlement, finalProof,
+	if err := r.issueReceipt(viewID, name, cid, spec, result, settlement, finalProof,
 		D09CommandSettlementEvidence{
 			ContainerExitInspected: true, FinalCommandProofRead: true, PodmanWaitCompleted: true,
 			OutputWritersDrained: true, ContainerRemoved: true, LeaderPidfdExited: true,
 			CgroupPopulatedZero: true, MountNamespaceReleased: true, CommandOutputWithinBound: true,
 			CommandCgroupRemoved: true,
-		})
+		}); err != nil {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+	}
+	return result, settlement, nil
+}
+
+// issueReceipt seals the one-use receipt of a finished command and retains it for the exact view.
+func (r *D09CommandRunner) issueReceipt(viewID, name, cid string, spec sessionrepo.CommandSpec, result sessionrepo.CommandResult,
+	settlement sessionrepo.CommandSettlement, finalProof d09CommandProof, evidence D09CommandSettlementEvidence) error {
+	receipt, err := newD09CommandReceipt(r.leaseID, viewID, name, cid, spec, result, settlement, finalProof, evidence)
 	if err != nil {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("issue D09 command proof receipt: %w", err)
+		return fmt.Errorf("issue D09 command proof receipt: %w", err)
 	}
 	if err := r.launcher.retainCommandReceipt(); err != nil {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+		return err
 	}
 	r.mu.Lock()
 	if _, exists := r.receipts[viewID]; exists {
 		r.mu.Unlock()
 		r.launcher.releaseCommandReceipt()
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrD09CommandReceiptInvalid
+		return ErrD09CommandReceiptInvalid
 	}
 	r.receipts[viewID] = receipt
 	r.mu.Unlock()
-	return result, settlement, nil
+	return nil
 }
 
 // reserveCommandView atomically burns a unique live CommandView for one Run.
@@ -773,7 +855,8 @@ func sameD09CommandProofIdentity(first, final d09CommandProof) bool {
 		first.UserNSInode == final.UserNSInode && first.MountNSInode == final.MountNSInode &&
 		first.PIDNSInode == final.PIDNSInode && first.IPCNSInode == final.IPCNSInode &&
 		first.UTSNSInode == final.UTSNSInode && first.NetworkNSInode == final.NetworkNSInode &&
-		first.NoExternalRoutes == final.NoExternalRoutes
+		first.NoExternalRoutes == final.NoExternalRoutes &&
+		first.Delta == final.Delta && first.DeltaTemplateDigest == final.DeltaTemplateDigest
 }
 
 func (r *D09CommandRunner) cleanupCommand(scope *d09OwnedCommandScope, podmanPath, name string) {
@@ -860,6 +943,14 @@ func validateD09CommandSpec(spec sessionrepo.CommandSpec, config D09Config) erro
 }
 
 func d09CommandCellArguments(config D09Config, name, cidPath, imageRef, viewPath, viewID, leaseID string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) []string {
+	return d09CommandCellArgumentsDelta(d09BasePlan(config), config, name, cidPath, imageRef, viewPath, viewID, leaseID, viewDevice, viewInode, spec)
+}
+
+// d09CommandCellArgumentsDelta builds the Podman command vector of one command cell under the plan
+// of its delta. The unrelaxed plan yields the signed base cell. net-sink/v1 changes the network
+// mode and the Landlock ruleset digest, and passes the delta and its derived template identity;
+// no-reap/v1 passes the delta, its identity and the end-of-output marker. Nothing else differs.
+func d09CommandCellArgumentsDelta(plan d09DeltaPlan, config D09Config, name, cidPath, imageRef, viewPath, viewID, leaseID string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) []string {
 	uid, gid := strconv.Itoa(config.UID), strconv.Itoa(config.GID)
 	workdir := "/work"
 	if spec.WorkingDirectory != "" {
@@ -870,7 +961,7 @@ func d09CommandCellArguments(config D09Config, name, cidPath, imageRef, viewPath
 		entrypoint = d09EntrypointPath
 	}
 	args := []string{
-		"run", "--name", name, "--runtime", config.CrunPath, "--cidfile", cidPath, "--pull=never", "--network=none",
+		"run", "--name", name, "--runtime", config.CrunPath, "--cidfile", cidPath, "--pull=never", "--network=" + plan.delta.NetworkMode(),
 		"--pid=private", "--ipc=private", "--uts=private", "--read-only", "--cap-drop=ALL",
 		"--security-opt", "no-new-privileges", "--security-opt", "seccomp=" + config.SeccompProfilePath,
 		"--pids-limit", strconv.Itoa(config.PidsMax), "--memory", strconv.Itoa(config.MemoryMB) + "m", "--cpus", config.CPUs,
@@ -886,7 +977,7 @@ func d09CommandCellArguments(config D09Config, name, cidPath, imageRef, viewPath
 		"-e", "TBOUND_USERNS_HOST_UID=" + strconv.Itoa(config.UserNamespaceHostUID),
 		"-e", "TBOUND_USERNS_HOST_GID=" + strconv.Itoa(config.UserNamespaceHostGID),
 		"-e", "TBOUND_LANDLOCK_ABI=" + strconv.Itoa(config.LandlockABI),
-		"-e", "TBOUND_LANDLOCK_RULESET_DIGEST=" + config.LandlockRulesetDigest,
+		"-e", "TBOUND_LANDLOCK_RULESET_DIGEST=" + plan.landlockDigest,
 		"-e", "TBOUND_LANDLOCK_RO_PATH=" + config.LandlockROPath,
 		"-e", "TBOUND_LANDLOCK_RW_PATH=" + config.LandlockRWPath,
 		"-e", "TBOUND_CELL_MODE=command", "-e", "TBOUND_CELL_COMMAND=" + spec.Executable,
@@ -906,8 +997,17 @@ func d09CommandCellArguments(config D09Config, name, cidPath, imageRef, viewPath
 		"-e", "TBOUND_HOST_NS_UTS=" + strconv.FormatUint(config.HostNamespaces.UTS, 10),
 		"-e", "TBOUND_HOST_NS_NETWORK=" + strconv.FormatUint(config.HostNamespaces.Network, 10),
 		"-e", "TBOUND_CELL_PROOF_FD=4", "-e", "TBOUND_CELL_ACK_FD=5",
-		imageRef, entrypoint, spec.Executable,
 	}
+	if plan.delta.Relaxed() {
+		args = append(args, "-e", "TBOUND_CELL_DELTA="+plan.delta.Name(), "-e", "TBOUND_DELTA_TEMPLATE_DIGEST="+plan.templateDigest)
+	}
+	if ports := plan.delta.ConnectPortsText(); ports != "" {
+		args = append(args, "-e", "TBOUND_LANDLOCK_CONNECT_PORTS="+ports)
+	}
+	if plan.outputMarker != "" {
+		args = append(args, "-e", "TBOUND_OUTPUT_END_MARKER="+plan.outputMarker)
+	}
+	args = append(args, imageRef, entrypoint, spec.Executable)
 	return append(args, spec.Args...)
 }
 
@@ -976,6 +1076,18 @@ func readBoundedProofLine(reader *bufio.Reader) (string, error) {
 }
 
 func validateD09CommandProof(proof d09CommandProof, config D09Config, imageRef, leaseID, viewID, containerName string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) error {
+	return validateD09CommandProofDelta(d09BasePlan(config), proof, config, imageRef, leaseID, viewID, containerName, viewDevice, viewInode, spec)
+}
+
+// validateD09CommandProofDelta validates the command proof of a cell launched under the plan of its
+// delta: the ruleset digest, namespace profile and delta identity must be the ones the host derived
+// for exactly this delta, so the proof of one cell cannot stand for another.
+func validateD09CommandProofDelta(plan d09DeltaPlan, proof d09CommandProof, config D09Config, imageRef, leaseID, viewID, containerName string, viewDevice, viewInode uint64, spec sessionrepo.CommandSpec) error {
+	if proof.Delta != plan.delta.Name() || (proof.DeltaTemplateDigest != "") != plan.delta.Relaxed() ||
+		plan.delta.Relaxed() && proof.DeltaTemplateDigest != plan.templateDigest {
+		return fmt.Errorf("%w: command proof delta identity does not match the launched delta", ErrProductionLauncherUnavailable)
+	}
+	config.LandlockRulesetDigest = plan.landlockDigest
 	base := D09TCBProof{Schema: proof.Schema, UID: proof.UID, GID: proof.GID, CapEff: proof.CapEff,
 		NoNewPrivs: proof.NoNewPrivs, Seccomp: proof.Seccomp, LandlockABI: proof.LandlockABI,
 		LandlockRulesetDigest: proof.LandlockRulesetDigest, LandlockTSYNC: proof.LandlockTSYNC,
@@ -995,7 +1107,7 @@ func validateD09CommandProof(proof d09CommandProof, config D09Config, imageRef, 
 	if err := validateD09TCBProof(base, config); err != nil {
 		return err
 	}
-	if err := validateD09NamespaceProof(base, config.HostNamespaces); err != nil {
+	if err := validateD09NamespaceProofDelta(base, config.HostNamespaces, plan.delta); err != nil {
 		return err
 	}
 	if proof.UserNamespaceMapDigest != config.UserNamespaceMappingDigest ||

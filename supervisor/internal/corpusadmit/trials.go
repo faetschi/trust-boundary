@@ -22,11 +22,15 @@ const (
 
 // RoleAdaptiveReplay is the governed role of the C half of the adaptive pair. RolePStaticReplay and
 // RolePAdaptiveReplay are the roles of the P half (Configuration P under its registered delta).
-// RolePAdaptiveReplay gives the longest admission id of a case.
+// RolePAdaptiveReplay gives the longest admission id of a case. RoleBCompliant and RoleBAmbiguous are the
+// roles of Configuration B (the real model through the same containment and proxy tool path, an allow-all
+// gate and admit-all/v1 admission); their admission ids never collide with those of C.
 const (
 	RoleAdaptiveReplay  = "adaptive-replay"
 	RolePStaticReplay   = "p-static-replay"
 	RolePAdaptiveReplay = "p-adaptive-replay"
+	RoleBCompliant      = "b-compliant"
+	RoleBAmbiguous      = "b-ambiguous"
 )
 
 // Ceilings are the host ceilings of a signed service config. A trial budget above any of

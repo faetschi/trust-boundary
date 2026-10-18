@@ -67,11 +67,35 @@ type d09LandlockRule struct {
 	access uint64
 }
 
+// Landlock scope bits (ABI 6 and later). The net-sink cell, which shares the host
+// network namespace, scopes abstract unix sockets so it cannot reach the abstract
+// sockets of host processes outside its Landlock domain.
+const (
+	D09LandlockScopeAbstractUnix uint64 = 1 << 0
+	d09LandlockScopeKnown               = D09LandlockScopeAbstractUnix | 1<<1
+)
+
 // DigestD09LandlockRules returns the canonical digest of the exact static
 // ABI-8 filesystem+network policy the in-image entrypoint installs. Network bind
 // and connect rights are handled with no allow rules, so both are denied. The
 // path order and effective access masks are part of the digest.
 func DigestD09LandlockRules(readOnlyPaths, readWritePaths []string) (string, error) {
+	return DigestD09LandlockRulesNet(readOnlyPaths, readWritePaths, nil, 0)
+}
+
+// DigestD09LandlockRulesNet is DigestD09LandlockRules for a command-cell delta
+// that allows TCP connect to the given ports (strictly increasing, nonzero) and
+// scopes the given Landlock scope bits. With no port and no scope it equals
+// DigestD09LandlockRules, so the base digest is unchanged by the delta support.
+func DigestD09LandlockRulesNet(readOnlyPaths, readWritePaths []string, connectPorts []uint16, scoped uint64) (string, error) {
+	if scoped&^d09LandlockScopeKnown != 0 {
+		return "", errors.New("Landlock profile names an unregistered scope bit")
+	}
+	for i, port := range connectPorts {
+		if port == 0 || i > 0 && port <= connectPorts[i-1] {
+			return "", errors.New("Landlock connect ports must be nonzero and strictly increasing")
+		}
+	}
 	paths := make(map[string]bool, len(readOnlyPaths)+len(readWritePaths))
 	rules := make([]d09LandlockRule, 0, len(readOnlyPaths)+len(readWritePaths))
 	for _, path := range readOnlyPaths {
@@ -109,6 +133,17 @@ func DigestD09LandlockRules(readOnlyPaths, readWritePaths []string) (string, err
 		_, _ = hash.Write([]byte(rule.path))
 		binary.LittleEndian.PutUint64(field[:], rule.access)
 		_, _ = hash.Write(field[:])
+	}
+	if len(connectPorts) != 0 || scoped != 0 {
+		_, _ = hash.Write([]byte("net-delta/v1\x00"))
+		binary.LittleEndian.PutUint64(field[:], scoped)
+		_, _ = hash.Write(field[:])
+		binary.LittleEndian.PutUint64(field[:], uint64(len(connectPorts)))
+		_, _ = hash.Write(field[:])
+		for _, port := range connectPorts {
+			binary.LittleEndian.PutUint64(field[:], uint64(port))
+			_, _ = hash.Write(field[:])
+		}
 	}
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }

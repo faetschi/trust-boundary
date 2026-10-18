@@ -93,6 +93,8 @@ type productionD09BashRunner struct {
 	template       piruntime.D09CellTemplate
 	mu             sync.Mutex
 	evidence       map[string]productionD09RunEvidence
+	// delta is the registered command-cell delta of the lease; the zero value is the signed base cell.
+	delta piruntime.D09CellDelta
 }
 
 func newProductionD09BashRunner(leaseID string, inner *piruntime.D09CommandRunner, journal *audit.Journal,
@@ -151,11 +153,11 @@ func (r *productionD09BashRunner) Run(ctx context.Context, view *sessionrepo.Com
 		runtimeReceipt.ExitCode != result.ExitCode || !result.ExitObserved {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrProductionCommandEvidence
 	}
-	if err := validateProductionD09ReceiptInvocation(view, runnerSpec, result, settlement, runtimeReceipt, r.profile, r.template); err != nil {
+	if err := validateProductionD09ReceiptInvocation(view, runnerSpec, result, settlement, runtimeReceipt, r.profile, r.template, r.delta); err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, errors.Join(ErrProductionCommandEvidence, err)
 	}
 	if settlement.LeaseID != r.leaseID || settlement.ViewID != view.ID() || !settlement.ExitObserved ||
-		!settlement.ProcessScopeEmpty || !settlement.WritersStopped || !settlement.MountDetached ||
+		!settlement.Admitted() || settlement.SurvivorsTolerated != r.delta.NoReap() ||
 		!strings.HasPrefix(settlement.EvidenceClass, piruntime.D09CommandRunnerProfile+":") {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrProductionCommandEvidence
 	}
@@ -173,7 +175,7 @@ func (r *productionD09BashRunner) Run(ctx context.Context, view *sessionrepo.Com
 
 func validateProductionD09ReceiptInvocation(view *sessionrepo.CommandView, spec sessionrepo.CommandSpec,
 	result sessionrepo.CommandResult, settlement sessionrepo.CommandSettlement, receipt piruntime.D09CommandReceipt,
-	profile piruntime.HostProfile, template piruntime.D09CellTemplate) error {
+	profile piruntime.HostProfile, template piruntime.D09CellTemplate, cell piruntime.D09CellDelta) error {
 	if view == nil || !result.ExitObserved || settlement.LeaseID != receipt.LeaseID || settlement.ViewID != view.ID() ||
 		receipt.ViewID != view.ID() || receipt.Settlement != settlement || receipt.ExitCode != result.ExitCode ||
 		profile.Mode != piruntime.ModeProduction || profile.ContainmentProfile != piruntime.D09ContainmentProfile ||
@@ -181,14 +183,23 @@ func validateProductionD09ReceiptInvocation(view *sessionrepo.CommandView, spec 
 		return ErrProductionCommandEvidence
 	}
 	templateDigest, err := template.Digest()
+	cellRuleset, rulesetErr := template.DeltaLandlockRulesetDigest(cell)
+	cellTemplate, cellErr := cell.TemplateDigest(templateDigest)
+	if !cell.Relaxed() {
+		cellTemplate = ""
+	}
+	if err == nil {
+		err = errors.Join(rulesetErr, cellErr)
+	}
 	if err != nil || templateDigest != profile.ContainmentProfileDigest || receipt.TemplateDigest != templateDigest ||
 		receipt.ImageDigest != template.ExpectedImageDigest || receipt.ImageRef != registeredD09ImageDigestRef(template) ||
 		template.CommandExecutable != spec.Executable || receipt.Proof.CommandDigest != template.CommandExecutableDigest || receipt.Proof.CommandPath != spec.Executable ||
 		receipt.Proof.CommandWorkdir != filepath.Clean(spec.WorkingDirectory) || receipt.Proof.UID != template.CellUID ||
 		receipt.Proof.GID != template.CellGID || receipt.Proof.CapEff != "0000000000000000" || !receipt.Proof.NoNewPrivs ||
 		receipt.Proof.Seccomp != 2 || !receipt.Proof.CgroupV2 || !receipt.Proof.LandlockTSYNC ||
-		receipt.Proof.LandlockABI < template.LandlockABI || receipt.Proof.LandlockRulesetDigest != template.LandlockRulesetDigest ||
-		!receipt.Proof.ConsumerMountsVerified || !receipt.Proof.RawSourceFDsClosed || !receipt.Proof.NoExternalRoutes ||
+		receipt.Proof.LandlockABI < template.LandlockABI || receipt.Proof.LandlockRulesetDigest != cellRuleset ||
+		!receipt.Proof.ConsumerMountsVerified || !receipt.Proof.RawSourceFDsClosed || receipt.Proof.NoExternalRoutes != cell.ExpectNoExternalRoutes() ||
+		receipt.Proof.Delta != cell.Name() || receipt.Proof.DeltaTemplateDigest != cellTemplate ||
 		receipt.Proof.WorkerMountID == 0 || receipt.Proof.WorkerMountID != receipt.Proof.RuntimeMountID {
 		return errors.Join(ErrProductionCommandEvidence, err)
 	}

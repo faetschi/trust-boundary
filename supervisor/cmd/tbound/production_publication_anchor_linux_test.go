@@ -200,7 +200,7 @@ func TestPublicationAnchorIntervalRefIsTheRunnersIntervalRef(t *testing.T) {
 			if (role == runner.RoleVarianceRepeat) != (repeat != 0) {
 				continue
 			}
-			for _, cfg := range []runner.Configuration{runner.CfgC, runner.CfgP} {
+			for _, cfg := range []runner.Configuration{runner.CfgB, runner.CfgC, runner.CfgP} {
 				for attempt := 1; attempt <= 2; attempt++ {
 					step := runner.Step{CaseID: anchorTestCase, Role: role, Configuration: cfg, Repeat: repeat, Attempt: attempt}
 					request := runner.GovernedRequestFor("plan-digest", step)

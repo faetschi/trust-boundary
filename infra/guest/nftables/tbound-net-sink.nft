@@ -1,0 +1,32 @@
+# Canonical source for /etc/tbound/net-sink.nft (root:root 0644), the guest side of the net-sink/v1
+# command-cell delta (design B2). Loaded by the owner at the guest spike (PROVISIONING-SIGNING.md, R5-5).
+#
+# net-sink/v1 runs the P command cell in the guest ROOT network namespace (Podman --network=host,
+# rootless). Two independent layers then confine what the cell can reach:
+#   1. inside the cell, Landlock allows TCP connect to port 8080 only and denies bind and every other
+#      connect (cmd/tbound-cell-entrypoint);
+#   2. this rule, outside the cell: every packet created by a socket in the net-sink cgroup is dropped
+#      unless it is TCP to 127.0.33.1:8080, for every protocol and both address families.
+#
+# The match is by cgroup, not by uid: the cell runs as the service uid (tbound-pi), the same uid whose
+# service process makes the provider HTTPS calls, and those sockets must stay untouched. The service puts
+# every net-sink command cell under one fixed, persistent parent cgroup,
+#   /sys/fs/cgroup/system.slice/tbound-pi.service/cells/net-sink
+# (D09NetSinkCgroupName under the cells cgroup of the signed template). nft resolves the path to a cgroup
+# id when the rule is LOADED: the directory must exist before `nft -f`, and must not be removed or
+# recreated afterwards (a recreated directory has another id and the rule would then match nothing).
+# The service only opens it (it never creates or removes it) and refuses net-sink when it is absent.
+#
+# Level and path: the path is relative to the cgroup2 mount (no leading slash, no /sys/fs/cgroup). The
+# level is the depth of that cgroup below the cgroup2 root, which is the number of path components:
+# system.slice / tbound-pi.service / cells / net-sink = 4. Every descendant (the command scope, the
+# libpod scope of the container) matches through this ancestor. A different cells path in the signed
+# template needs a different line here: piruntime.D09NetSinkNftMatch derives both values from the
+# template, and a unit test holds this file to it.
+table inet tbound_net_sink {
+	chain output {
+		type filter hook output priority filter; policy accept;
+		socket cgroupv2 level 4 "system.slice/tbound-pi.service/cells/net-sink" ip daddr 127.0.33.1 tcp dport 8080 accept
+		socket cgroupv2 level 4 "system.slice/tbound-pi.service/cells/net-sink" counter drop
+	}
+}

@@ -141,8 +141,9 @@ func (AbsentCollectors) Proc(context.Context, EvidenceRef) (ObserverEvidence, er
 // Prepare checks the configuration and the step mapping and sends nothing; the runner
 // journals the start before Execute sends the request.
 type GovernedC struct {
-	// Configuration is the configuration this executor serves: CfgC (the zero value) or CfgP, whose steps
-	// run through the same service under the p-* roles.
+	// Configuration is the configuration this executor serves: CfgC (the zero value), CfgP, whose steps
+	// run through the same service under the p-* roles, or CfgB, whose compliant and ambiguous steps run
+	// under the b-* roles.
 	Configuration Configuration
 	// PlanDigest is Schedule.Digest of the plan being run.
 	PlanDigest string
@@ -158,8 +159,8 @@ func (g GovernedC) Request(s Step) (GovernedRequest, error) {
 	if want == "" {
 		want = CfgC
 	}
-	if want != CfgC && want != CfgP {
-		return GovernedRequest{}, fmt.Errorf("runner: governed executor serves C or P, not %s", want)
+	if want != CfgC && want != CfgP && want != CfgB {
+		return GovernedRequest{}, fmt.Errorf("runner: governed executor serves B, C or P, not %s", want)
 	}
 	if s.Configuration != want {
 		return GovernedRequest{}, fmt.Errorf("runner: step %s is configuration %s, not %s", s.ID(), s.Configuration, want)
@@ -245,6 +246,12 @@ type governedReceipt struct {
 	ScriptDigest          string         `json:"script_digest"`
 	AdmissionPolicyDigest string         `json:"admission_policy_digest"`
 	Proposals             []ProposalFact `json:"proposals"`
+
+	PivotsIssued        int    `json:"pivots_issued"`
+	AttackerStop        string `json:"attacker_stop"`
+	AttackerStateDigest string `json:"attacker_state_digest"`
+	AttackerDigest      string `json:"attacker_digest"`
+	PivotsDigest        string `json:"pivots_digest"`
 }
 
 // parseGovernedResponse reads the one response line. It returns the line (the bytes
@@ -336,7 +343,9 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		o.Receipt = &ReceiptFacts{ProfileHash: receipt.ProfileHash, ContainmentProfileDigest: receipt.ContainmentProfileDigest,
 			FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta,
 			ProviderMode: receipt.ProviderMode, ScriptDigest: receipt.ScriptDigest,
-			AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals)}
+			AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals),
+			PivotsIssued: receipt.PivotsIssued, AttackerStop: receipt.AttackerStop, AttackerStateDigest: receipt.AttackerStateDigest,
+			AttackerDigest: receipt.AttackerDigest, PivotsDigest: receipt.PivotsDigest}
 		o.ToolAttempt = slices.ContainsFunc(receipt.Proposals, func(p ProposalFact) bool { return strings.EqualFold(p.Verdict, "deny") }) || o.ToolAttempt
 		ref.Publications = receipt.PublicationJournalRecordCount
 		ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
@@ -358,6 +367,7 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		errs = append(errs, fmt.Errorf("%w: exit code %d does not fit status %s", ErrGovernedMalformed, exit, resp.Status))
 	}
 	errs = append(errs, g.collect(ctx, ref, &o)...)
+	mapReplay(&o, s)
 	return o, errors.Join(errs...)
 }
 

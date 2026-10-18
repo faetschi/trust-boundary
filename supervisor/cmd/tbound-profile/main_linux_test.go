@@ -217,6 +217,18 @@ func TestProfileCommandTemplateInitDigest(t *testing.T) {
 	if !strings.Contains(out.String(), "sha256:") {
 		t.Fatalf("template-digest printed no digest: %q", out.String())
 	}
+	// The two command-cell delta identities are derived from the printed template digest.
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 3 || !strings.Contains(lines[1], "delta net-sink/v1 template digest: sha256:") ||
+		!strings.Contains(lines[2], "delta no-reap/v1 template digest: sha256:") {
+		t.Fatalf("template-digest did not print the two delta template digests: %q", out.String())
+	}
+	base := strings.TrimSpace(lines[0][strings.LastIndex(lines[0], " ")+1:])
+	netSink, _ := piruntime.ParseD09CellDelta(piruntime.D09CellDeltaNetSink)
+	want, err := netSink.TemplateDigest(base)
+	if err != nil || !strings.HasSuffix(lines[1], want) {
+		t.Fatalf("printed net-sink digest is not the derived one: %q want %s (%v)", lines[1], want, err)
+	}
 }
 
 func TestProfileCommandRejectsShortPrivateKey(t *testing.T) {

@@ -203,6 +203,21 @@ func checkShape(v any, t reflect.Type, path string) error {
 				return err
 			}
 		}
+	case reflect.Map:
+		obj, ok := v.(map[string]any)
+		if !ok {
+			return fmt.Errorf("%s: expected an object", path)
+		}
+		keys := make([]string, 0, len(obj))
+		for k := range obj {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if err := checkShape(obj[k], t.Elem(), path+"."+k); err != nil {
+				return err
+			}
+		}
 	case reflect.Struct:
 		obj, ok := v.(map[string]any)
 		if !ok {
@@ -300,6 +315,15 @@ func checkScriptArguments(m Manifest) error {
 			var scratch bytes.Buffer
 			if err := writeCanonicalRaw(&scratch, turn.Arguments); err != nil {
 				return fmt.Errorf("case %q script turn %d: %w", c.CaseID, i, err)
+			}
+		}
+		for id, turn := range c.Trial.Pivots {
+			if len(turn.Arguments) == 0 {
+				continue
+			}
+			var scratch bytes.Buffer
+			if err := writeCanonicalRaw(&scratch, turn.Arguments); err != nil {
+				return fmt.Errorf("case %q pivot %q: %w", c.CaseID, id, err)
 			}
 		}
 	}

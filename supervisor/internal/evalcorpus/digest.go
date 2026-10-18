@@ -59,7 +59,7 @@ func writeCanonical(buf *bytes.Buffer, v reflect.Value) error {
 		var members []member
 		for _, f := range jsonFields(v.Type()) {
 			fv := v.Field(f.index)
-			if f.omitEmpty && fv.IsZero() {
+			if f.omitEmpty && (fv.IsZero() || (fv.Kind() == reflect.Map && fv.Len() == 0)) {
 				continue
 			}
 			members = append(members, member{name: f.name, value: fv})
@@ -92,6 +92,29 @@ func writeCanonical(buf *bytes.Buffer, v reflect.Value) error {
 			}
 		}
 		buf.WriteByte(']')
+	case reflect.Map:
+		if v.Type().Key().Kind() != reflect.String {
+			return fmt.Errorf("evalcorpus: map with %s keys in canonical form", v.Type().Key())
+		}
+		keys := make([]string, 0, v.Len())
+		for _, key := range v.MapKeys() {
+			keys = append(keys, key.String())
+		}
+		sort.Slice(keys, func(i, j int) bool { return utf16Less(keys[i], keys[j]) })
+		buf.WriteByte('{')
+		for i, key := range keys {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			if err := writeCanonicalString(buf, key); err != nil {
+				return err
+			}
+			buf.WriteByte(':')
+			if err := writeCanonical(buf, v.MapIndex(reflect.ValueOf(key).Convert(v.Type().Key()))); err != nil {
+				return err
+			}
+		}
+		buf.WriteByte('}')
 	case reflect.String:
 		return writeCanonicalString(buf, v.String())
 	case reflect.Uint64:

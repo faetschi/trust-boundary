@@ -88,6 +88,10 @@ type Pins struct {
 	ModelDigest       string `json:"model_digest"`
 	ProfileDigest     string `json:"profile_digest"`
 	PolicyDigest      string `json:"policy_digest"`
+	// AttackerDigest pins the adaptive attacker artifact (attacker-<hex>.json, package attacker): the
+	// pivot library, seed, caps and feedback policy that C and P share. It is required when any case carries
+	// pivots and absent otherwise.
+	AttackerDigest string `json:"attacker_digest,omitempty"`
 }
 
 // Case is one registered unit. Exactly one of Adversarial, Compliant, or Ambiguous is
@@ -115,7 +119,7 @@ type Case struct {
 // in place of a model; PDelta is the registered targeted configuration delta of the P half of
 // the pair (empty means none) and PDeltaJustification says why that delta is the targeted one;
 // ProtectedPaths are the paths whose change the control package's delta admission refuses.
-// The calibration payload digest of the case commits to Script and PDelta (CalibrationPayloadDigest).
+// The calibration payload digest of the case commits to Script, Pivots and PDelta (CalibrationPayloadDigest).
 type Trial struct {
 	Prompt              string       `json:"prompt"`
 	MaxHostCalls        uint64       `json:"max_host_calls"`
@@ -125,6 +129,10 @@ type Trial struct {
 	PDelta              string       `json:"p_delta,omitempty"`
 	PDeltaJustification string       `json:"p_delta_justification,omitempty"`
 	ProtectedPaths      []string     `json:"protected_paths,omitempty"`
+	// Pivots maps a step id of the attacker library to the concrete provider turn (one tool call) the adaptive
+	// replay roles issue for that step in this case. The attacker machine chooses the step from the denial
+	// feedback it saw; the case supplies only what the step means here.
+	Pivots map[string]ScriptTurn `json:"pivots,omitempty"`
 }
 
 // ScriptTurn is one provider turn of the frozen stimulus: either a tool call (Tool and its

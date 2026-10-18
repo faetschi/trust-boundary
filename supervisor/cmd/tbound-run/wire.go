@@ -23,16 +23,24 @@ type wireFunc func(p plan) (runner.Executors, error)
 // establishes (channel, E01 identity against the pins, route, EVQ, matched delivery) and
 // refuses a delta on a C receipt.
 //
-// B and V have no executor yet: they stay nil, so Executors.Check (selfcheck, run) reports
-// ErrNotWired for any plan that contains them. Nothing is filtered or skipped.
+// A compliant C step also gets its task result: AcceptExecutor calls `tbound trial accept` after
+// the governed run. V is GovernedV over the trial key (`tbound trial v-run`, native Pi in a plain
+// container, no Attest; see wire_v.go).
+//
+// B is the same stack with Configuration B (b-compliant and b-ambiguous: the real model, an allow-all gate
+// and admit-all/v1 admission); a compliant B step also gets its task result from AcceptExecutor.
 func wireSSH(p plan) (runner.Executors, error) {
 	ts := p.cfg.transports()
 	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors()}
 	governedP := governed
 	governedP.Configuration = runner.CfgP
+	governedB := governed
+	governedB.Configuration = runner.CfgB
 	return runner.Executors{
-		C: p.attest(runner.ResetExecutor{Inner: governed, Transport: ts.trial}),
+		C: p.attest(runner.AcceptExecutor{Inner: runner.ResetExecutor{Inner: governed, Transport: ts.trial}, Transport: ts.trial}),
 		P: p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial}),
+		B: p.attest(runner.AcceptExecutor{Inner: runner.ResetExecutor{Inner: governedB, Transport: ts.trial}, Transport: ts.trial}),
+		V: p.governedV(ts.trial),
 	}, nil
 }
 
@@ -56,7 +64,20 @@ func (p plan) attest(inner runner.Executor) runner.Attest {
 	return runner.Attest{
 		Inner: inner, Pins: p.cfg.Pins, EVQ: p.cfg.EVQObligations, EVQResults: p.evq, Route: p.route,
 		PDelta: p.pDelta, ScriptDigest: p.scriptDigest, AdmissionPolicyDigest: p.admissionPolicyDigest,
+		AttackerDigest: p.manifest.Pins.AttackerDigest, PivotsDigest: p.pivotsDigest,
 	}
+}
+
+// pivotsDigest is the digest of the pivot table of a case, as the service computes it for the receipt of an
+// adaptive replay.
+func (p plan) pivotsDigest(caseID string) (string, bool) {
+	for _, c := range p.manifest.Cases {
+		if c.CaseID == caseID && c.Trial != nil && len(c.Trial.Pivots) != 0 {
+			digest, err := evalcorpus.PivotsDigest(c.Trial.Pivots)
+			return digest, err == nil
+		}
+	}
+	return "", false
 }
 
 // pDelta is the registered targeted configuration delta of a case: the p_delta of its trial, "none"
@@ -85,14 +106,14 @@ func (p plan) scriptDigest(caseID string) (string, bool) {
 }
 
 // admissionPolicyDigest is the admission_policy_digest the service must report for a case under a
-// configuration: P under admit-all/v1 relaxes admission to promote-all, every other run keeps the
+// configuration: B and P under admit-all/v1 relax admission to promote-all, every other run keeps the
 // manifest's protected paths (the control package).
 func (p plan) admissionPolicyDigest(caseID string, cfg runner.Configuration) (string, bool) {
 	for _, c := range p.manifest.Cases {
 		if c.CaseID != caseID || c.Trial == nil {
 			continue
 		}
-		promoteAll := cfg == runner.CfgP && c.Trial.EffectivePDelta() == evalcorpus.PDeltaAdmitAll
+		promoteAll := cfg == runner.CfgB || (cfg == runner.CfgP && c.Trial.EffectivePDelta() == evalcorpus.PDeltaAdmitAll)
 		digest, err := evalcorpus.AdmissionPolicyDigest(p.cfg.AdmissionPolicy.PolicyDigest,
 			p.cfg.AdmissionPolicy.MetadataPolicyDigest, promoteAll, c.Trial.ProtectedPaths)
 		return digest, err == nil

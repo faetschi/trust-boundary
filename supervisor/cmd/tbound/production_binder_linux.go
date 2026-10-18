@@ -365,16 +365,21 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	metadataPolicyDigest := digestBytes([]byte("tbound/metadata-policy/v1"))
 
 	var commandLauncher *piruntime.D09PodmanCrunLauncher
+	// commandDelta is the command-cell delta of this run, set below from the admitted role and the
+	// pinned manifest only; it stays the signed base cell for every run that is not a P replay.
+	var commandDelta piruntime.D09CellDelta
 	runner := newProductionCommandRunner(func(leaseID string) (sessionrepo.CommandRunner, error) {
 		if commandLauncher == nil {
 			return nil, ErrProductionBashRunnerUnavailable
 		}
-		inner, err := piruntime.NewD09CommandRunner(leaseID, commandLauncher)
+		inner, err := piruntime.NewD09CommandRunnerForDelta(leaseID, commandLauncher, commandDelta)
 		if err != nil {
 			return nil, err
 		}
-		return newProductionD09BashRunner(leaseID, inner, commandJournal, runID, session.SessionID,
-			session.WorkflowID, session.ConversationID, profile, template), nil
+		bash := newProductionD09BashRunner(leaseID, inner, commandJournal, runID, session.SessionID,
+			session.WorkflowID, session.ConversationID, profile, template)
+		bash.delta = commandDelta
+		return bash, nil
 	})
 	session.CommandRunner, session.ProductionCommandRunner = runner, runner
 	authority, err := NewSessionOperationAuthority(storeJournal, providerJournal,
@@ -394,6 +399,10 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 			return fail(bindErr)
 		}
 		if corpusBound != nil {
+			if commandDelta, err = commandCellDeltaFor(corpusBound.role, corpusBound.delta); err != nil {
+				return fail(err)
+			}
+			runner.survivorsTolerated = commandDelta.NoReap()
 			if err := authority.BindCorpusBinding(*corpusBound); err != nil {
 				return fail(err)
 			}

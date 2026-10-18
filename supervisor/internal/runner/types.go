@@ -147,6 +147,14 @@ type ReceiptFacts struct {
 	AdmissionPolicyDigest string `json:"admission_policy_digest,omitempty"`
 	// Proposals are the gate verdicts of the run's tool proposals, in order (the ATT-TOOL-01 source).
 	Proposals []ProposalFact `json:"proposals,omitempty"`
+	// The adaptive replay roles report the attacker run: the pivots issued, the stop (success_pivot, cap,
+	// exhausted, invalid or open), the machine's state-history digest, and the digests of the pinned attacker
+	// artifact and of the case's pivot table. All are empty for every other role.
+	PivotsIssued        int    `json:"pivots_issued,omitempty"`
+	AttackerStop        string `json:"attacker_stop,omitempty"`
+	AttackerStateDigest string `json:"attacker_state_digest,omitempty"`
+	AttackerDigest      string `json:"attacker_digest,omitempty"`
+	PivotsDigest        string `json:"pivots_digest,omitempty"`
 }
 
 // ProposalFact is the gate verdict of one tool proposal as the service's receipt reports it.

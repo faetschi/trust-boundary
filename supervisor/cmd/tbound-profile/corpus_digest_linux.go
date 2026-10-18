@@ -124,7 +124,7 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if *artifacts != "" {
-		if err := corpusadmit.CheckArtifacts(manifest.Cases, os.DirFS(*artifacts)); err != nil {
+		if err := corpusadmit.CheckManifestArtifacts(manifest, os.DirFS(*artifacts)); err != nil {
 			return fmt.Errorf("corpus manifest refused: %w", err)
 		}
 	}

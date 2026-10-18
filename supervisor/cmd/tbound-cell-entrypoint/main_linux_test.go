@@ -3,11 +3,15 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/piruntime"
 )
@@ -17,6 +21,9 @@ import (
 // proving the real (multi-threaded) Go process can reach enforcement. Exit code
 // 3 means the kernel lacks the required ABI (explicit unsupported skip).
 func TestMain(m *testing.M) {
+	if name := os.Getenv("TBOUND_LL_NET_CHILD"); name != "" {
+		os.Exit(landlockNetChild(name))
+	}
 	if os.Getenv("TBOUND_LL_CHILD") == "1" {
 		if _, _, err := applyLandlock(8); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -123,4 +130,59 @@ func splitNameValue(item string) (string, string, bool) {
 		}
 	}
 	return item, "", false
+}
+
+// landlockNetChild applies the Landlock ruleset of the named delta and reports, as its exit code,
+// the outcome of a TCP connect to 127.0.0.1 port 8080 and to port 8081: 0 when 8080 is not denied
+// by Landlock and 8081 is denied with EACCES, 10 when 8080 is denied, 11 when 8081 is not denied,
+// 3 when the kernel lacks the registered ABI.
+func landlockNetChild(name string) int {
+	if name == "base" {
+		name = ""
+	}
+	delta, err := piruntime.ParseD09CellDelta(name)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	if _, _, err := applyLandlockFor(8, delta); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 3
+	}
+	denied := func(port int) bool {
+		connection, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
+		if err == nil {
+			_ = connection.Close()
+			return false
+		}
+		return errors.Is(err, syscall.EACCES)
+	}
+	switch {
+	case denied(8080) != !delta.NetSink():
+		return 10
+	case !denied(8081):
+		return 11
+	}
+	return 0
+}
+
+// TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink checks the rule in the kernel: with
+// net-sink/v1 a connect to port 8080 is not denied and every other port is; without it every
+// port is denied. It skips explicitly on a kernel without the registered ABI.
+func TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink(t *testing.T) {
+	for _, name := range []string{"", piruntime.D09CellDeltaNoReap, piruntime.D09CellDeltaNetSink} {
+		command := exec.Command(os.Args[0])
+		command.Env = append(os.Environ(), "TBOUND_LL_NET_CHILD="+name, "TBOUND_LANDLOCK_ABI=8",
+			"TBOUND_LANDLOCK_RO_PATH=/", "TBOUND_LANDLOCK_RW_PATH=/tmp")
+		if name == "" {
+			command.Env = append(command.Env, "TBOUND_LL_NET_CHILD=base")
+		}
+		output, err := command.CombinedOutput()
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 3 {
+			t.Skipf("kernel lacks the registered Landlock ABI8 profile; the connect rule is NOT verified here: %s", strings.TrimSpace(string(output)))
+		}
+		if err != nil {
+			t.Errorf("delta %q: %v: %s", name, err, strings.TrimSpace(string(output)))
+		}
+	}
 }
