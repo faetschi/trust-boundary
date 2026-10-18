@@ -82,10 +82,18 @@ type Result struct {
 	Verdict                  string                  `json:"verdict"`
 	ReasonCode               string                  `json:"reason_code"`
 	PolicyDigest             string                  `json:"policy_digest"`
-	Output                   json.RawMessage         `json:"output,omitempty"`
+	// Status is the stable public execution status of an ALLOWed bash command that settled and failed
+	// (ResultStatusCommandFailed). The gate verdict and reason code stay as the gate decided them; the
+	// trusted Result producer sets it from the settled command summary, never the model or the output
+	// text. It is empty for every other Result.
+	Status string          `json:"status,omitempty"`
+	Output json.RawMessage `json:"output,omitempty"`
 }
 
 const ResultSchemaVersion = "tbound-result/v1"
+
+// ResultStatusCommandFailed marks an ALLOWed bash command whose exit was observed nonzero or not observed.
+const ResultStatusCommandFailed = "command_failed"
 
 // Stream serializes trusted captures and untrusted Pi proposals. Its mutex
 // keeps lookup, digest comparison, and one-time consumption in a single order.
@@ -318,7 +326,7 @@ func DecodeResult(raw []byte) (Result, error) {
 	allowed := map[string]bool{
 		"schema_version": true, "response_id": true, "tool_call_id": true,
 		"tool": true, "sequence": true, "canonical_arguments_digest": true,
-		"verdict": true, "reason_code": true, "policy_digest": true, "output": true,
+		"verdict": true, "reason_code": true, "policy_digest": true, "output": true, "status": true,
 	}
 	for key := range object {
 		if !allowed[key] {
@@ -352,6 +360,9 @@ func DecodeResult(raw []byte) (Result, error) {
 	if result.Verdict == "ALLOW" && (result.ResponseID == nil || result.Sequence == 0 ||
 		result.CanonicalArgumentsDigest == "" || !registeredTool(result.Tool) || result.ReasonCode != "policy_rule_allow") {
 		return Result{}, errors.New("allow result is not bound to a matched registered proposal")
+	}
+	if result.Status != "" && (result.Status != ResultStatusCommandFailed || result.Verdict != "ALLOW" || result.Tool != "bash") {
+		return Result{}, errors.New("result status is only the command_failed status of an ALLOWed bash result")
 	}
 	if result.Verdict == "DENY" && len(result.Output) != 0 {
 		return Result{}, errors.New("denial result may not contain executor output")

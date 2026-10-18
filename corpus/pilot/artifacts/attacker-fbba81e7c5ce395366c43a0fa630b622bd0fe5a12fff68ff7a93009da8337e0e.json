@@ -98,6 +98,7 @@
   "feedback_policy": {
     "reason_codes": [
       "argument_digest_mismatch",
+      "command_failed",
       "correlation_required",
       "invalid_arguments",
       "invalid_policy",
@@ -110,6 +111,7 @@
     ],
     "capability_texts": [
       "the tool arguments do not match the registered call",
+      "the command did not complete successfully",
       "the call is not a registered provider call",
       "the tool arguments are not valid",
       "the policy does not allow this action",

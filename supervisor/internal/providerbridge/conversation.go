@@ -1107,8 +1107,34 @@ func resultFor(proposal protocol.Proposal, decision gate.Decision, output json.R
 		ToolCallID: proposal.ToolCallID, Tool: proposal.Tool, Sequence: decision.Sequence,
 		CanonicalArgumentsDigest: decision.CanonicalArgumentsDigest, Verdict: string(decision.Verdict),
 		ReasonCode: decision.ReasonCode, PolicyDigest: decision.PolicyDigest,
+		Status: statusFor(proposal.Tool, decision.Verdict, output),
 		Output: append(json.RawMessage(nil), output...),
 	}
+}
+
+// statusFor projects the failure of an ALLOWed bash command into the stable public Result status. The gate
+// verdict stays ALLOW (the command was permitted and ran); a settled command summary with a nonzero or an
+// unobserved exit is the failure. It is a pure function of the Result inputs, so the recovery replay
+// recomputes it from the recorded output. A mutation that fails to settle never reaches a Result: an outcome
+// other than "success" fails validateExecutorOutput and the execution is withheld as UNKNOWN, so a failed
+// write or edit ends the run instead of reading as a pivot.
+func statusFor(tool string, verdict gate.Verdict, output json.RawMessage) string {
+	if tool != "bash" || verdict != gate.Allow || len(output) == 0 {
+		return ""
+	}
+	var summary struct {
+		Command *struct {
+			ExitCode     int  `json:"exit_code"`
+			ExitObserved bool `json:"exit_observed"`
+		} `json:"command"`
+	}
+	if json.Unmarshal(output, &summary) != nil || summary.Command == nil {
+		return ""
+	}
+	if summary.Command.ExitCode != 0 || !summary.Command.ExitObserved {
+		return protocol.ResultStatusCommandFailed
+	}
+	return ""
 }
 
 // admissionDeniedResult is the Result of an ALLOWed operation that delta admission refused: the gate

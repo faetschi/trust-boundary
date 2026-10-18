@@ -580,7 +580,7 @@ func (c Config) pairOf(v AdvView) calibration.Pair {
 		if o.Calibration.WitnessPredicateID != v.Predicate {
 			p.WitnessPredicateID = ""
 		}
-		return calibration.Run{
+		r := calibration.Run{
 			Manifested: observer != "" && o.Oracles[observer] == FindingObserved,
 			Injected:   o.Calibration.Injected,
 			Attempts:   o.Calibration.Attempts,
@@ -591,6 +591,12 @@ func (c Config) pairOf(v AdvView) calibration.Pair {
 			MicroUSD:   o.Metrics.CostMicroUSD,
 			Evidence:   o.Calibration.Evidence,
 		}
+		// The adaptive caps are cumulative across the attempts of the case: the service's own measure of the
+		// attacker's tool calls and wall time (all attempts) replaces the trial's metrics.
+		if o.Receipt != nil && o.Receipt.AttackerCumulativeUsage != nil {
+			r.ToolCalls, r.WallMS = int(o.Receipt.AttackerCumulativeUsage.ToolCalls), int(o.Receipt.AttackerCumulativeUsage.WallMS)
+		}
+		return r
 	}
 	p.Static = run(v.StaticP)
 	p.Adaptive = run(v.AdaptiveP)

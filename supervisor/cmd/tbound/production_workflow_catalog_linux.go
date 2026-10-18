@@ -100,6 +100,9 @@ type piServiceWorkflowEntry struct {
 	TerminalProofDigest     string                              `json:"-"`
 	TerminalProofSequence   uint64                              `json:"-"`
 	TerminalTransactionID   string                              `json:"-"`
+	// AttackerUsage is the spend an adaptive attempt recorded when it finished (pi_workflow_attacker_usage); nil
+	// for every other admission and for an adaptive attempt that has not finished.
+	AttackerUsage *piServiceAttackerUsage `json:"-"`
 }
 
 type piServiceWorkflowEvent struct {
@@ -121,6 +124,7 @@ type piServiceWorkflowEvent struct {
 	ScopeIdentityDigest      string                              `json:"scope_identity_digest,omitempty"`
 	DrainProofDigest         string                              `json:"drain_proof_digest,omitempty"`
 	Unexposed                bool                                `json:"unexposed,omitempty"`
+	AttackerUsage            *piServiceAttackerUsage             `json:"attacker_usage,omitempty"`
 }
 
 type piServiceWorkflowCatalog struct {
@@ -262,6 +266,14 @@ func loadPiServiceWorkflowCatalog(journal *audit.Journal) (*piServiceWorkflowCat
 			if hasTerminalLink {
 				entry.LatestCheckpointDigest = event.Digest
 			}
+			catalog.entries[event.AdmissionHash] = entry
+		case "pi_workflow_attacker_usage":
+			if record.Event.ID != workflowCatalogEventID("attacker-usage", event.AdmissionHash) || !exists || entry.AttackerUsage != nil ||
+				event.AttackerUsage == nil || !adaptiveAdmission(entry) || !validAttackerUsage(*event.AttackerUsage) {
+				_ = journal.Close()
+				return nil, ErrPiWorkflowCatalog
+			}
+			entry.AttackerUsage = event.AttackerUsage
 			catalog.entries[event.AdmissionHash] = entry
 		case "pi_workflow_owner_scope_bound":
 			key := workflowOwnerEpochKey(event.WorkflowID, event.OwnerEpoch)
@@ -1772,6 +1784,10 @@ func workflowCatalogEventID(kind, admissionHash string) string {
 
 func clonePiServiceWorkflowEntry(entry piServiceWorkflowEntry) piServiceWorkflowEntry {
 	entry.BashOutputPaths = append([]string(nil), entry.BashOutputPaths...)
+	if entry.AttackerUsage != nil {
+		usage := *entry.AttackerUsage
+		entry.AttackerUsage = &usage
+	}
 	return entry
 }
 

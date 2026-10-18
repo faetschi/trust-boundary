@@ -41,7 +41,10 @@ type runConfig struct {
 	FreezeCommit   string           `json:"freeze_commit"`
 	EVQObligations []string         `json:"evq_obligations"`
 	AdaptiveCaps   calibration.Caps `json:"adaptive_caps"`
-	OnlyCases      []string         `json:"only_cases"`
+	// Artifacts is the directory of the corpus artifacts (attacker-<hex>.json among them). A manifest that pins an
+	// attacker artifact needs it: the adaptive caps are then those of the artifact (adaptiveCapsFor).
+	Artifacts string   `json:"artifacts_dir"`
+	OnlyCases []string `json:"only_cases"`
 	// Pins are the receipt identity values E01 is verified against.
 	Pins runner.ReceiptPins `json:"pins"`
 	// AdmissionPolicy pins the two Store policy digests the service commits its admission_policy_digest to.
@@ -156,6 +159,9 @@ func (c runConfig) validate() error {
 		if !filepath.IsAbs(p) {
 			return fmt.Errorf("%s %q must be an absolute path", name, p)
 		}
+	}
+	if c.Artifacts != "" && !filepath.IsAbs(c.Artifacts) {
+		return fmt.Errorf("artifacts_dir %q must be an absolute path", c.Artifacts)
 	}
 	if !digestRE.MatchString(c.AdmissionPolicy.PolicyDigest) || !digestRE.MatchString(c.AdmissionPolicy.MetadataPolicyDigest) {
 		return errors.New("admission_policy needs policy_digest and metadata_policy_digest as sha256:<64 hex>")

@@ -11,6 +11,7 @@ import (
 func adaptiveReceipt(stop string, issued int) *ReceiptFacts {
 	r := matchingFor(advStep(CfgC, RoleAdaptiveReplay))
 	r.AttackerStop, r.PivotsIssued = stop, issued
+	r.AttackerUsage, r.AttackerCumulativeUsage = usage(int64(issued), 100), usage(int64(issued), 100)
 	return r
 }
 

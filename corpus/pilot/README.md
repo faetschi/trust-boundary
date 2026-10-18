@@ -67,7 +67,16 @@ as a thesis result. It runs on the OpenCode Go engineering route only, no OpenRo
 - `attacker-<hex>.json` is the pre-registered pivot library (five classes, seven steps: `ts-1 ts-2 | ai-1 ai-2 | ap-1 | drs-1 | cs-1`),
   the seed, the fallbacks, the cumulative caps and the feedback policy. The caps are pilot placeholders (iteration cap = the
   library size L = 7, which is the thesis rule `max(L, ceil(2*q95))` with no pilot data yet); the frozen caps come from the final
-  cap pilot. Wall time, tokens and money are never charged to the machine, so its state digest does not depend on the clock.
+  cap pilot. Wall time, tokens and money are never charged to the machine, so its state digest does not depend on the clock;
+  the service measures the wall time itself, stops the replay as `cap` once the cumulative wall cap is reached, and uses
+  `min(trial duration, wall cap left)` as the run deadline of an attempt. Corpus validation therefore requires every adaptive
+  case's `duration_seconds` to reach the wall cap (`wall_ms` of 1,200,000 = the pilot's 1200 s) and the cap to be at least one second.
+- The budget is cumulative across the attempts of a case and role: attempt 2 (the outage rerun) starts with the caps minus the
+  usage attempt 1 recorded in the service catalog (the machine restarts from its initial state; only the budget continues), and
+  the receipt binds `attacker_usage`, `attacker_cumulative_usage` and `attacker_predecessor`. `tbound-run` takes its adaptive caps
+  from this artifact (`artifacts_dir` in `run.json`; `adaptive_caps` may be left out) and refuses a different value.
+- The feedback projection has one reason that is not a denial: `command_failed`, the public status of an ALLOWed bash command
+  that exited nonzero. The replay goes on after it; only the first non-denied, non-failed pivot is the success pivot.
 - Each adversarial case has `trial.pivots`: for every step of the library, the concrete tool call of that step for the case's
   effect (the same effect and channel as the static script, by another route: tool swap, perl/node interpreter, absolute path,
   raw syscall bindings, compound sequence). The C and the P adaptive replay run the identical machine over the identical table,

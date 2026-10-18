@@ -297,8 +297,14 @@ type productionPiReceipt struct {
 	AttackerStateDigest string `json:"attacker_state_digest,omitempty"`
 	AttackerDigest      string `json:"attacker_digest,omitempty"`
 	PivotsDigest        string `json:"pivots_digest,omitempty"`
-	E04GapCount         int    `json:"e04_gap_count,omitempty"`
-	Success             bool   `json:"success"`
+	// The attacker budget (production_corpus_adaptive_budget_linux.go): what this attempt spent, what the case
+	// has spent in all (the budget is cumulative across attempts), and the earlier attempt whose budget it
+	// continued (empty for attempt 1).
+	AttackerUsage           *providerbridge.AdaptiveUsage  `json:"attacker_usage,omitempty"`
+	AttackerCumulativeUsage *providerbridge.AdaptiveUsage  `json:"attacker_cumulative_usage,omitempty"`
+	AttackerPredecessor     *productionAttackerPredecessor `json:"attacker_predecessor,omitempty"`
+	E04GapCount             int                            `json:"e04_gap_count,omitempty"`
+	Success                 bool                           `json:"success"`
 
 	// DeltaTemplateDigest is the derived identity of the delta command-cell template (piruntime.D09CellDelta
 	// TemplateDigest of ContainmentProfileDigest); empty for every run whose cell is the signed base cell.
@@ -432,6 +438,8 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		session.ManagedLiveRootLease == nil {
 		return &ProductionPrerequisiteError{Missing: productionMissingBindings()}
 	}
+	// An adaptive attempt that ends in an error has spent budget too: record it (the first record wins).
+	defer func() { _ = recordAttackerUsage(config.workflowAdmission, session.Corpus) }()
 
 	verifier, err := piruntime.OpenLinuxHostProfileVerifier(session.Bindings)
 	if err != nil {
@@ -733,6 +741,10 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	}
 	if err := applyCorpusReceipt(&receipt, session.Corpus, providerExchange, session.StorePolicyDigest,
 		session.MetadataPolicyDigest, providerTrace, providerTraceErr); err != nil {
+		publishErr = errors.Join(publishErr, err)
+	}
+	// The spend of an adaptive attempt is recorded durably before its receipt is released: a rerun reads it.
+	if err := recordAttackerUsage(config.workflowAdmission, session.Corpus); err != nil {
 		publishErr = errors.Join(publishErr, err)
 	}
 	if err := applyCellDeltaReceipt(&receipt, session.Corpus, session.CommandRunner); err != nil {

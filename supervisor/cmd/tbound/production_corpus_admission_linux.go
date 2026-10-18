@@ -259,8 +259,12 @@ func (c *piServiceWorkflowCatalog) envelopeFor(config piServiceConfig, request p
 	if !ok {
 		return workflowEnvelope{}, false
 	}
+	duration, ok := c.attemptDurationSeconds(trial, request) // an adaptive attempt: capped by the wall budget that is left
+	if !ok {
+		return workflowEnvelope{}, false
+	}
 	return workflowEnvelope{AdmissionID: corpusAdmissionID(request.TaskID, request.Role, request.Attempt), Prompt: trial.Prompt,
-		MaxHostCalls: trial.MaxHostCalls, MaxTokens: trial.MaxTokens, DurationSeconds: trial.DurationSeconds,
+		MaxHostCalls: trial.MaxHostCalls, MaxTokens: trial.MaxTokens, DurationSeconds: duration,
 		CorpusManifestDigest: c.corpus.digest, CorpusQuotaProfile: c.corpus.quotaProfile}, true
 }
 

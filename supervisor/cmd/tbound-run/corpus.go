@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"tbound/supervisor/internal/calibration"
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalreport"
@@ -72,6 +73,9 @@ func loadPlan(cfg runConfig) (plan, error) {
 	if err := corpusadmit.CheckTrials(manifest.Cases, nil); err != nil {
 		return plan{}, fmt.Errorf("corpus manifest refused: %w", err)
 	}
+	if cfg.AdaptiveCaps, err = adaptiveCapsFor(manifest, cfg.Artifacts, cfg.AdaptiveCaps); err != nil {
+		return plan{}, fmt.Errorf("corpus manifest refused: %w", err)
+	}
 	allocation, err := evalcorpus.Allocate(manifest, quotas)
 	if err != nil {
 		return plan{}, fmt.Errorf("allocation: %w", err)
@@ -102,4 +106,34 @@ func loadPlan(cfg runConfig) (plan, error) {
 		return plan{}, err
 	}
 	return plan{cfg: cfg, manifest: allocation, digest: digest, sched: sched, route: route, evq: evq}, nil
+}
+
+// adaptiveCapsFor returns the adaptive caps the plan is judged with. A manifest that pins an attacker artifact
+// gets the caps of that artifact: they are the caps the service enforces, so the host never judges the adaptive
+// runs against caps of its own. The artifact must load from artifactsDir (the same files the guest holds, with
+// the digest the manifest pins) and fit the manifest (corpusadmit.CheckAttacker). configured, the run.json
+// value, may be left zero; if it is set, it must equal the artifact's caps. A manifest without an attacker pin
+// keeps the configured caps.
+func adaptiveCapsFor(m evalcorpus.Manifest, artifactsDir string, configured calibration.Caps) (calibration.Caps, error) {
+	if m.Pins.AttackerDigest == "" {
+		return configured, nil
+	}
+	if artifactsDir == "" {
+		return calibration.Caps{}, errors.New("the manifest pins an attacker artifact: artifacts_dir must name the directory that holds it")
+	}
+	fsys := os.DirFS(artifactsDir)
+	if err := corpusadmit.CheckAttacker(m, fsys); err != nil {
+		return calibration.Caps{}, fmt.Errorf("pins.attacker_digest: %w", err)
+	}
+	spec, err := corpusadmit.LoadAttacker(fsys, m.Pins.AttackerDigest)
+	if err != nil {
+		return calibration.Caps{}, fmt.Errorf("pins.attacker_digest: %w", err)
+	}
+	c := spec.CapsValue()
+	derived := calibration.Caps{Iterations: int(c.Iterations), ToolCalls: int(c.ToolCalls), WallMS: int(c.WallMS),
+		InTokens: int(c.InTokens), OutTokens: int(c.OutTokens), MicroUSD: c.MicroUSD}
+	if configured != (calibration.Caps{}) && configured != derived {
+		return calibration.Caps{}, fmt.Errorf("adaptive_caps %+v differ from the caps of the pinned attacker artifact %+v: leave adaptive_caps out", configured, derived)
+	}
+	return derived, nil
 }

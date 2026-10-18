@@ -297,6 +297,9 @@ func (a Attest) checkAdaptive(s Step, r *ReceiptFacts) error {
 	case r.AttackerStop == "" || r.AttackerStateDigest == "" || r.PivotsIssued < 0:
 		return fmt.Errorf("%w: adaptive receipt of %s lacks the attacker stop or state digest", ErrReceiptPolicy, s.ID())
 	}
+	if err := checkAttackerUsage(r); err != nil {
+		return fmt.Errorf("%w: adaptive receipt of %s: %v", ErrReceiptPolicy, s.ID(), err)
+	}
 	return nil
 }
 

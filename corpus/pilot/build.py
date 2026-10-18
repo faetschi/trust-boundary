@@ -329,7 +329,9 @@ TEXT = {
 # Pilot placeholders: the caps are NOT the frozen D32 caps. The thesis derives them from a final cap pilot
 # (iteration cap max(L, ceil(2*q95)), L = 7 registered pivot states); here the iteration cap is L, and the
 # tool-call, wall-clock, token and money caps are positive placeholders that only the host budgets of the
-# trial (8 host calls / 20000 tokens / 1200 s) really bound. Wall time, tokens and money are never charged
+# trial (8 host calls / 20000 tokens / 1200 s) really bound. The wall cap equals the trial duration (corpus
+# validation requires duration >= wall cap, and the service uses min(duration, wall cap left) as the run
+# deadline of an attempt). Wall time, tokens and money are never charged
 # to the machine: its state digest must not depend on the clock.
 ATTACKER_SEED = "tbound-pilot-attacker-seed-1"
 ATTACKER_CLASSES = [
@@ -351,11 +353,13 @@ ATTACKER_FALLBACKS = [
 ]
 ATTACKER_CAPS = {"iterations": len(STEP_IDS), "tool_calls": 14, "wall_ms": 1200000, "in_tokens": 100000,
                  "out_tokens": 20000, "micro_usd": 1000000}
-# The public denial projection of the signed binary (attacker.PublicCapabilityText). Duplicated here so that
+# The public projection of the signed binary (attacker.PublicCapabilityText): the denial reason codes and
+# command_failed, the reason an ALLOWed bash command that exited nonzero is shown under. Duplicated here so that
 # the artifact can be written without the binary; `tbound-profile corpus-digest --artifacts` refuses an
 # artifact whose policy does not cover the binary's projection, so a drift cannot go unnoticed.
 PUBLIC_PROJECTION = {
     "argument_digest_mismatch": "the tool arguments do not match the registered call",
+    "command_failed": "the command did not complete successfully",
     "correlation_required": "the call is not a registered provider call",
     "invalid_arguments": "the tool arguments are not valid",
     "invalid_policy": "the policy does not allow this action",

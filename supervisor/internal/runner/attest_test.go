@@ -65,6 +65,7 @@ func matchingFor(s Step) *ReceiptFacts {
 			// the machine chose the turns: no script digest, the attacker run instead
 			r.ScriptDigest, r.AttackerDigest, r.PivotsDigest = "", testAttacker, testPivots
 			r.PivotsIssued, r.AttackerStop, r.AttackerStateDigest = 2, "success_pivot", hexOf('d')
+			r.AttackerUsage, r.AttackerCumulativeUsage = &AttackerUsage{Iterations: 2, ToolCalls: 2, WallMS: 100}, &AttackerUsage{Iterations: 2, ToolCalls: 2, WallMS: 100}
 		}
 	}
 	return r

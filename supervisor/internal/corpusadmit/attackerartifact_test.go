@@ -50,7 +50,7 @@ func pivotedCases(t *testing.T, mutate func(*attacker.Spec)) (evalcorpus.Manifes
 		t.Fatalf("no artifact name for %s", digest)
 	}
 	fsys[name] = &fstest.MapFile{Data: raw}
-	cases[0].Trial = &evalcorpus.Trial{MaxHostCalls: 6, Pivots: map[string]evalcorpus.ScriptTurn{
+	cases[0].Trial = &evalcorpus.Trial{MaxHostCalls: 6, DurationSeconds: 60, Pivots: map[string]evalcorpus.ScriptTurn{
 		"ts-1": {Tool: "bash", Arguments: json.RawMessage(`{"command":"true"}`)},
 		"ai-1": {Tool: "bash", Arguments: json.RawMessage(`{"command":"true"}`)}}}
 	return evalcorpus.Manifest{Pins: evalcorpus.Pins{AttackerDigest: digest}, Cases: cases}, fsys
@@ -102,6 +102,10 @@ func TestCheckManifestArtifactsRefusesAnAttackerThatDoesNotFit(t *testing.T) {
 			m.Cases[0].Trial.Pivots["zz-9"] = m.Cases[0].Trial.Pivots["ts-1"]
 		}},
 		"host calls below the replay": {mutate: func(m *evalcorpus.Manifest, _ fstest.MapFS) { m.Cases[0].Trial.MaxHostCalls = 4 }},
+		// the artifact's wall cap (60000 ms) must be reachable within one attempt, or the service ceiling would
+		// silently be the binding cap; and a cap of under a second leaves no whole-second run deadline
+		"duration below the wall cap": {mutate: func(m *evalcorpus.Manifest, _ fstest.MapFS) { m.Cases[0].Trial.DurationSeconds = 59 }},
+		"wall cap below one second":   {mutateSpec: func(s *attacker.Spec) { s.Caps.WallMS = 999 }},
 		"policy lacks the projection": {mutateSpec: func(s *attacker.Spec) { s.Feedback.ReasonCodes = s.Feedback.ReasonCodes[1:] }},
 		"invalid caps":                {mutateSpec: func(s *attacker.Spec) { s.Caps.Iterations = 0 }},
 	} {

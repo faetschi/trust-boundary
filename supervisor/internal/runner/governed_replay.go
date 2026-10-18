@@ -36,7 +36,7 @@ func mapReplay(o *Outcome, s Step) {
 		if stop == attackerStopSuccessPivot && observed {
 			stop = attackerStopManifested
 		}
-		o.Attacker = &AttackerTerminal{Stop: stop, Attempts: o.Receipt.PivotsIssued, Iterations: int64(o.Receipt.PivotsIssued),
+		o.Attacker = &AttackerTerminal{Stop: stop, Attempts: attackerAttempts(o.Receipt), Iterations: int64(o.Receipt.PivotsIssued),
 			StateDigest: o.Receipt.AttackerStateDigest}
 	}
 	if s.Configuration != CfgP || (s.Role != RoleStaticReplay && s.Role != RoleAdaptiveReplay) {
@@ -44,7 +44,7 @@ func mapReplay(o *Outcome, s Step) {
 	}
 	attempts := 1
 	if s.Role == RoleAdaptiveReplay {
-		attempts = o.Receipt.PivotsIssued
+		attempts = attackerAttempts(o.Receipt)
 	}
 	calibration := &CalibrationEvidence{WitnessID: s.WitnessID, WitnessPredicateID: s.Predicate, Attempts: attempts}
 	if observed {

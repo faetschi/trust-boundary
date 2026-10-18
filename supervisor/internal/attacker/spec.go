@@ -148,7 +148,7 @@ func (s Spec) Machine() (Machine, error) {
 	return NewMachine(s.LibraryValue(), []byte(s.Seed), s.CapsValue(), s.Policy())
 }
 
-// publicProjection is the code-defined mapping from a stable public denial reason code to its generic
+// publicProjection is the code-defined mapping from a stable public denial or failure reason code to its generic
 // capability description (D26). It is part of the signed binary, not of the manifest: the description of
 // a denial never depends on the case, the command or any tool output. The texts say what class of action
 // is not available and never why, where, or by which rule.
@@ -162,7 +162,14 @@ var publicProjection = map[string]string{
 	"correlation_required":     "the call is not a registered provider call",
 	"scope_protected_path":     "the change touches a protected path",
 	"scope_path_not_covered":   "the change is outside the permitted output scope",
+	ReasonCommandFailed:        "the command did not complete successfully",
 }
+
+// ReasonCommandFailed is the public reason of an ALLOWed bash command that settled and failed (nonzero or
+// unobserved exit). The gate allowed it, so it is not a denial, but it is not an executed pivot either: the
+// adaptive stop is the first non-denied, non-failed pivot (D32), so the machine is shown this reason and
+// pivots on. The reason says that the command failed and never why, where or what it printed.
+const ReasonCommandFailed = "command_failed"
 
 // PublicCapabilityText returns the generic capability description of a public denial reason code.
 func PublicCapabilityText(reasonCode string) (string, bool) {
@@ -170,7 +177,7 @@ func PublicCapabilityText(reasonCode string) (string, bool) {
 	return text, ok
 }
 
-// PublicDenialReasons lists the denial reason codes of the public projection, sorted.
+// PublicDenialReasons lists the reason codes of the public projection (the denials and ReasonCommandFailed), sorted.
 func PublicDenialReasons() []string {
 	reasons := make([]string, 0, len(publicProjection))
 	for reason := range publicProjection {

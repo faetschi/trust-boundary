@@ -155,6 +155,12 @@ type ReceiptFacts struct {
 	AttackerStateDigest string `json:"attacker_state_digest,omitempty"`
 	AttackerDigest      string `json:"attacker_digest,omitempty"`
 	PivotsDigest        string `json:"pivots_digest,omitempty"`
+	// The attacker budget is cumulative across the attempts of a case (adaptive_budget.go): AttackerUsage is what
+	// this attempt spent, AttackerCumulativeUsage what the case has spent in all, and AttackerPredecessor the
+	// earlier attempt whose budget it continued (nil for attempt 1).
+	AttackerUsage           *AttackerUsage       `json:"attacker_usage,omitempty"`
+	AttackerCumulativeUsage *AttackerUsage       `json:"attacker_cumulative_usage,omitempty"`
+	AttackerPredecessor     *AttackerPredecessor `json:"attacker_predecessor,omitempty"`
 }
 
 // ProposalFact is the gate verdict of one tool proposal as the service's receipt reports it.

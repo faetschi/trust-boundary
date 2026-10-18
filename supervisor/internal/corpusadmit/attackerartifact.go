@@ -39,7 +39,8 @@ func LoadAttacker(fsys fs.FS, digest string) (attacker.Spec, error) {
 // (LoadAttacker), and every pivot of every case must name a step of its library: a pivot that no
 // machine can ever select is a table error. A case's host-call budget must also cover the adaptive
 // replay, one host call per pivot the machine can issue (the smaller of its iteration cap and the
-// library size) and one for the final text turn.
+// library size) and one for the final text turn. Its duration must reach the attacker's wall cap, and the cap
+// must be at least a second, so that the service run deadline min(duration, wall cap left) is the pinned cap.
 func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS) error {
 	pivoted := false
 	for _, c := range m.Cases {
@@ -60,9 +61,18 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS) error {
 		steps[id] = true
 	}
 	issuable := uint64(len(steps))
-	if caps := spec.CapsValue(); caps.Iterations > 0 && uint64(caps.Iterations) < issuable {
+	caps := spec.CapsValue()
+	if caps.Iterations > 0 && uint64(caps.Iterations) < issuable {
 		issuable = uint64(caps.Iterations)
 	}
+	// The service enforces min(the trial's duration, the wall cap that is left) as the run deadline, in whole
+	// seconds. So the artifact's wall cap must allow a whole second, and every adaptive case's duration must
+	// reach the cap: with a shorter duration the service ceiling, not the pinned cap, would bind a single
+	// attempt and the cumulative wall accounting would not mean what the artifact says.
+	if caps.WallMS < 1000 {
+		return fmt.Errorf("attacker wall_ms %d is below one second, the unit of the service run deadline", caps.WallMS)
+	}
+	wallSeconds := uint64((caps.WallMS + 999) / 1000)
 	for _, c := range m.Cases {
 		if c.Trial == nil || c.Trial.Pivots == nil {
 			continue
@@ -74,6 +84,9 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS) error {
 		}
 		if c.Trial.MaxHostCalls < issuable+1 {
 			return fmt.Errorf("case %q: max_host_calls %d is below the %d host calls of the adaptive replay", c.CaseID, c.Trial.MaxHostCalls, issuable+1)
+		}
+		if c.Trial.DurationSeconds < wallSeconds {
+			return fmt.Errorf("case %q: duration_seconds %d is below the %d s wall cap of the pinned attacker", c.CaseID, c.Trial.DurationSeconds, wallSeconds)
 		}
 	}
 	return nil

@@ -60,20 +60,26 @@ func bCorpusRole(role string) bool {
 // corpusAdmissionRole returns the role of a corpus admission id, <case_id>/<role>/<attempt>, for the
 // case the catalog admitted.
 func corpusAdmissionRole(admissionID, caseID string) (string, bool) {
+	role, _, ok := corpusAdmissionParts(admissionID, caseID)
+	return role, ok
+}
+
+// corpusAdmissionParts returns the role and the attempt (1 or 2) of a corpus admission id.
+func corpusAdmissionParts(admissionID, caseID string) (string, int, bool) {
 	attemptAt := strings.LastIndex(admissionID, "/")
 	if attemptAt < 0 || caseID == "" {
-		return "", false
+		return "", 0, false
 	}
-	if attempt, err := strconv.Atoi(admissionID[attemptAt+1:]); err != nil || (attempt != 1 && attempt != 2) ||
-		strconv.Itoa(attempt) != admissionID[attemptAt+1:] {
-		return "", false
+	attempt, err := strconv.Atoi(admissionID[attemptAt+1:])
+	if err != nil || (attempt != 1 && attempt != 2) || strconv.Itoa(attempt) != admissionID[attemptAt+1:] {
+		return "", 0, false
 	}
 	roleAt := strings.LastIndex(admissionID[:attemptAt], "/")
 	if roleAt <= 0 || admissionID[:roleAt] != caseID {
-		return "", false
+		return "", 0, false
 	}
 	role := admissionID[roleAt+1 : attemptAt]
-	return role, validCorpusRole(role)
+	return role, attempt, validCorpusRole(role)
 }
 
 // corpusBinding is everything the service derives for one corpus workflow from its admitted role and
@@ -95,10 +101,14 @@ type corpusBinding struct {
 	adaptive       *providerbridge.AdaptiveSource
 	attackerDigest string
 	pivotsDigest   string
+	// predecessor is the earlier attempt of the case and role whose attacker budget this attempt continues
+	// (production_corpus_adaptive_budget_linux.go); nil for attempt 1.
+	predecessor *productionAttackerPredecessor
 }
 
-// bindingFor derives the binding of role for caseID, or reports that this build cannot serve it.
-func (c *productionCorpus) bindingFor(caseID, role string) (corpusBinding, error) {
+// bindingFor derives the binding of role for caseID, or reports that this build cannot serve it. The options
+// configure the adaptive source of an adaptive role (the budget a retry continues).
+func (c *productionCorpus) bindingFor(caseID, role string, options ...providerbridge.AdaptiveOption) (corpusBinding, error) {
 	if !c.roleServable(caseID, role) {
 		return corpusBinding{}, fmt.Errorf("%w: role %q is not served for case %q", ErrPiServiceCorpus, role, caseID)
 	}
@@ -123,7 +133,7 @@ func (c *productionCorpus) bindingFor(caseID, role string) (corpusBinding, error
 		for id, turn := range trial.Pivots {
 			pivots[id] = providerbridge.ScriptTurn{Tool: turn.Tool, Arguments: append([]byte(nil), turn.Arguments...), Text: turn.Text}
 		}
-		source, err := providerbridge.NewAdaptiveSource(*c.attacker, pivots)
+		source, err := providerbridge.NewAdaptiveSource(*c.attacker, pivots, options...)
 		if err != nil {
 			return corpusBinding{}, fmt.Errorf("%w: adaptive source of case %q: %w", ErrPiServiceCorpus, caseID, err)
 		}
@@ -144,14 +154,26 @@ func (c *piServiceWorkflowCatalog) bindingForEntry(entry piServiceWorkflowEntry)
 	if c == nil || c.corpus == nil || c.corpus.digest != entry.CorpusManifestDigest {
 		return nil, ErrPiWorkflowCatalog
 	}
-	role, ok := corpusAdmissionRole(entry.HostAdmissionID, entry.TaskID)
+	role, attempt, ok := corpusAdmissionParts(entry.HostAdmissionID, entry.TaskID)
 	if !ok {
 		return nil, ErrPiWorkflowCatalog
 	}
-	binding, err := c.corpus.bindingFor(entry.TaskID, role)
+	// An adaptive retry continues the cumulative attacker budget of the attempt before it, read from the
+	// service's own catalog.
+	var options []providerbridge.AdaptiveOption
+	var predecessor *productionAttackerPredecessor
+	if adaptiveCorpusRole(role) && attempt > 1 {
+		var err error
+		if predecessor, err = c.attackerPredecessor(entry.TaskID, role, attempt); err != nil {
+			return nil, err
+		}
+		options = append(options, providerbridge.WithPriorUsage(predecessor.CumulativeUsage))
+	}
+	binding, err := c.corpus.bindingFor(entry.TaskID, role, options...)
 	if err != nil {
 		return nil, errors.Join(ErrPiWorkflowCatalog, err)
 	}
+	binding.predecessor = predecessor
 	return &binding, nil
 }
 
@@ -304,6 +326,7 @@ func applyCorpusReceipt(receipt *productionPiReceipt, binding *corpusBinding, pr
 			terminal := binding.adaptive.Terminal()
 			receipt.PivotsIssued, receipt.AttackerStop, receipt.AttackerStateDigest = terminal.PivotsIssued, terminal.Stop, terminal.StateDigest
 			receipt.AttackerDigest, receipt.PivotsDigest = binding.attackerDigest, binding.pivotsDigest
+			applyAttackerUsage(receipt, binding, terminal)
 		}
 	} else if providerExchange {
 		receipt.ProviderMode = providerModeModel

@@ -111,7 +111,7 @@ func drive(t *testing.T, source *AdaptiveSource, denials []string, output func(n
 func TestAdaptiveSourceFollowsTheMachineOnTheProjectedFeedbackOnly(t *testing.T) {
 	spec := adaptiveSpec(5)
 	denials := []string{"policy_rule_deny", "scope_protected_path", "policy_rule_deny", "unknown_tool", "policy_rule_deny"}
-	source, err := NewAdaptiveSource(spec, adaptivePivots(spec))
+	source, err := newTestSource(spec, adaptivePivots(spec))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,7 +165,7 @@ func TestAdaptiveReplayIsIdenticalForCAndPOnTheSamePinnedInputsAndResults(t *tes
 	spec := adaptiveSpec(6)
 	denials := []string{"policy_rule_deny", "policy_rule_deny", "scope_protected_path", "invalid_arguments", "policy_default_deny", "scope_path_not_covered"}
 	run := func() ([]string, AdaptiveTerminal) {
-		source, err := NewAdaptiveSource(spec, adaptivePivots(spec))
+		source, err := newTestSource(spec, adaptivePivots(spec))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -180,7 +180,7 @@ func TestAdaptiveReplayIsIdenticalForCAndPOnTheSamePinnedInputsAndResults(t *tes
 	// a different Result sequence is a different state digest (the digest commits to the feedback)
 	other := append([]string(nil), denials...)
 	other[0] = "unknown_tool"
-	source, _ := NewAdaptiveSource(spec, adaptivePivots(spec))
+	source, _ := newTestSource(spec, adaptivePivots(spec))
 	_, _, otherTerminal := drive(t, source, other, nil)
 	if otherTerminal.StateDigest == cTerminal.StateDigest {
 		t.Fatal("the state digest does not depend on the feedback")
@@ -190,21 +190,21 @@ func TestAdaptiveReplayIsIdenticalForCAndPOnTheSamePinnedInputsAndResults(t *tes
 func TestAdaptiveSourceSeesNothingButTheVerdictAndReasonOfTheLastResult(t *testing.T) {
 	spec := adaptiveSpec(6)
 	denials := []string{"policy_rule_deny", "scope_protected_path", "policy_rule_deny", "unknown_tool", "invalid_arguments", "policy_default_deny"}
-	base, _ := NewAdaptiveSource(spec, adaptivePivots(spec))
+	base, _ := newTestSource(spec, adaptivePivots(spec))
 	wantSteps, _, wantTerminal := drive(t, base, denials, nil)
 	for name, output := range map[string]func(int) string{
 		"different output text": func(n int) string { return fmt.Sprintf(`{"content":"secret %d","outcome":"success"}`, n) },
 		"error-looking output":  func(n int) string { return `{"error":"permission denied: /etc/shadow","exit_code":126}` },
 		"large output":          func(n int) string { return `{"content":"` + strings.Repeat("x", 4000) + `"}` },
 	} {
-		source, _ := NewAdaptiveSource(spec, adaptivePivots(spec))
+		source, _ := newTestSource(spec, adaptivePivots(spec))
 		steps, _, terminal := drive(t, source, denials, output)
 		if !reflect.DeepEqual(steps, wantSteps) || terminal != wantTerminal {
 			t.Errorf("%s changed the replay: %v %+v, want %v %+v", name, steps, terminal, wantSteps, wantTerminal)
 		}
 	}
 	// other Result members (policy digest, sequence, arguments digest) do not either
-	source, _ := NewAdaptiveSource(spec, adaptivePivots(spec))
+	source, _ := newTestSource(spec, adaptivePivots(spec))
 	history := []ScriptMessage{{Role: "user", Content: "u"}}
 	first, err := source.Next(history)
 	if err != nil {
@@ -223,7 +223,7 @@ func TestAdaptiveSourceSeesNothingButTheVerdictAndReasonOfTheLastResult(t *testi
 
 func TestAdaptiveSourceStopsAtTheFirstNonDeniedPivot(t *testing.T) {
 	spec := adaptiveSpec(6)
-	source, _ := NewAdaptiveSource(spec, adaptivePivots(spec))
+	source, _ := newTestSource(spec, adaptivePivots(spec))
 	history := []ScriptMessage{{Role: "user", Content: "u"}}
 	first, _ := source.Next(history)
 	history = append(history, resultMessage(t, 1, "DENY", "policy_rule_deny", ""))
@@ -246,7 +246,7 @@ func TestAdaptiveSourceStopsWhenTheTableOrTheLibraryRunsOut(t *testing.T) {
 	spec := adaptiveSpec(30)
 	// the first step has no pivot in this case's table
 	missing := adaptivePivots(spec, "ts-1")
-	source, _ := NewAdaptiveSource(spec, missing)
+	source, _ := newTestSource(spec, missing)
 	final, err := source.Next([]ScriptMessage{{Role: "user", Content: "u"}})
 	if err != nil || final.Tool != "" {
 		t.Fatalf("final = %+v, %v", final, err)
@@ -255,7 +255,7 @@ func TestAdaptiveSourceStopsWhenTheTableOrTheLibraryRunsOut(t *testing.T) {
 		t.Fatalf("terminal = %+v", terminal)
 	}
 	// every step denied: the library (7 steps) runs out before the iteration cap of 30
-	full, _ := NewAdaptiveSource(spec, adaptivePivots(spec))
+	full, _ := newTestSource(spec, adaptivePivots(spec))
 	denials := make([]string, 30)
 	for i := range denials {
 		denials[i] = "policy_rule_deny"
@@ -269,7 +269,7 @@ func TestAdaptiveSourceStopsWhenTheTableOrTheLibraryRunsOut(t *testing.T) {
 func TestAdaptiveSourceEndsInvalidOnAReasonOutsideTheProjection(t *testing.T) {
 	spec := adaptiveSpec(6)
 	for _, reason := range []string{"made_up_reason", "policy_rule_allow", ""} {
-		source, _ := NewAdaptiveSource(spec, adaptivePivots(spec))
+		source, _ := newTestSource(spec, adaptivePivots(spec))
 		history := []ScriptMessage{{Role: "user", Content: "u"}}
 		if _, err := source.Next(history); err != nil {
 			t.Fatal(err)
@@ -284,7 +284,7 @@ func TestAdaptiveSourceEndsInvalidOnAReasonOutsideTheProjection(t *testing.T) {
 func TestAdaptiveSourceFailsClosedOnAnInconsistentHistory(t *testing.T) {
 	spec := adaptiveSpec(6)
 	newStarted := func() (*AdaptiveSource, []ScriptMessage) {
-		source, _ := NewAdaptiveSource(spec, adaptivePivots(spec))
+		source, _ := newTestSource(spec, adaptivePivots(spec))
 		history := []ScriptMessage{{Role: "user", Content: "u"}}
 		if _, err := source.Next(history); err != nil {
 			t.Fatal(err)
@@ -312,7 +312,7 @@ func TestAdaptiveSourceFailsClosedOnAnInconsistentHistory(t *testing.T) {
 		}
 	}
 	// tool results before the first pivot
-	source, _ := NewAdaptiveSource(spec, adaptivePivots(spec))
+	source, _ := newTestSource(spec, adaptivePivots(spec))
 	if _, err := source.Next([]ScriptMessage{good}); err == nil {
 		t.Error("a result before the first pivot was accepted")
 	}
@@ -327,10 +327,10 @@ func TestAdaptiveSourceFailsClosedOnAnInconsistentHistory(t *testing.T) {
 
 func TestNewAdaptiveSourceRefusesWhatIsNotATable(t *testing.T) {
 	spec := adaptiveSpec(6)
-	if _, err := NewAdaptiveSource(spec, nil); err == nil {
+	if _, err := newTestSource(spec, nil); err == nil {
 		t.Error("an empty pivot table was accepted")
 	}
-	if _, err := NewAdaptiveSource(spec, map[string]ScriptTurn{"ts-1": {Text: "hello"}}); err == nil {
+	if _, err := newTestSource(spec, map[string]ScriptTurn{"ts-1": {Text: "hello"}}); err == nil {
 		t.Error("a text pivot was accepted")
 	}
 	broken := spec
@@ -340,7 +340,7 @@ func TestNewAdaptiveSourceRefusesWhatIsNotATable(t *testing.T) {
 	}
 	// the source owns a copy of the table
 	pivots := adaptivePivots(spec)
-	source, _ := NewAdaptiveSource(spec, pivots)
+	source, _ := newTestSource(spec, pivots)
 	pivots["ts-1"] = ScriptTurn{Tool: "bash", Arguments: json.RawMessage(`{"command":"echo changed"}`)}
 	turn, err := source.Next([]ScriptMessage{{Role: "user", Content: "u"}})
 	if err != nil || stepOf(t, turn) != "ts-1" {

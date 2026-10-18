@@ -50,6 +50,9 @@ type ExportResult struct {
 	// are left out, so evalreport shows the coverage as not exact.
 	Partial  []string
 	Variance []VarianceVector
+	// AdaptiveBudgetFlags names the cases whose adaptive C and P halves started their scored attempt with
+	// different cumulative budgets already spent (see checkAdaptiveBudgets). They are exported as they are.
+	AdaptiveBudgetFlags []string
 }
 
 // caseGroups returns the scored cases (adversarial and compliant) in plan order
@@ -206,6 +209,11 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 			return ExportResult{}, fmt.Errorf("%w: %s attempt %d carries version %q", ErrOracleVersion, e.StepID, e.Attempt, e.Outcome.OracleVersion)
 		}
 	}
+	flags, err := checkAdaptiveBudgets(s, j)
+	if err != nil {
+		return ExportResult{}, err
+	}
+	res.AdaptiveBudgetFlags = flags
 	order, groups := caseGroups(s)
 	primary := map[string]evalscore.CEffect{}
 	for _, id := range order {
