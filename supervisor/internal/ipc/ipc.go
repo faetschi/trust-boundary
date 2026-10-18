@@ -218,9 +218,6 @@ func (e *endpoint) write(kind Kind, payload []byte) error {
 	if err := e.checkOpen(); err != nil {
 		return err
 	}
-	if kind != ProposalKind && kind != ResultKind {
-		return e.fail(ErrUnsupportedKind)
-	}
 	if e.writeFrames >= MaxFramesPerDirection || uint64(len(payload)) > MaxMessageBytes || e.writeBytes > MaxStreamBytes-uint64(len(payload)) {
 		return e.fail(ErrFrameTooLarge)
 	}
@@ -296,7 +293,7 @@ func (e *endpoint) read(want Kind) ([]byte, error) {
 	if frame.Kind != want {
 		return nil, e.fail(ErrUnexpectedKind)
 	}
-	if frame.Payload == nil || len(frame.Payload) == 0 {
+	if len(frame.Payload) == 0 {
 		return nil, e.fail(fmt.Errorf("%w: missing payload", ErrMalformedFrame))
 	}
 	e.mu.Lock()

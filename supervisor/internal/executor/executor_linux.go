@@ -67,7 +67,7 @@ func (runner *Runner) Run(ctx context.Context, view *sessionrepo.CommandView, sp
 // mapOutcome performs the pure mapping from sandbox evidence into the
 // supervisor's runner receipt. ViewID and LeaseID come from the trusted view
 // and the authorized lease; ExitObserved and ExitCode come from the real
-// result. It is exported only within the package for direct testing.
+// result.
 func mapOutcome(result sandbox.Result, settlement sandbox.Settlement, viewID, leaseID string) (sessionrepo.CommandResult, sessionrepo.CommandSettlement) {
 	commandResult := sessionrepo.CommandResult{
 		ExitCode:     result.ExitCode,

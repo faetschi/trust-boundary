@@ -675,49 +675,14 @@ func NewDevelopmentCommandRunner(limits sandbox.Limits) (*DevelopmentCommandRunn
 	if err != nil {
 		return nil, fmt.Errorf("probe development command sandbox: %w", err)
 	}
-	if err := requireDevelopmentSandbox(report); err != nil {
-		return nil, err
+	if missing := report.MissingMechanisms(); len(missing) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrDevelopmentSandbox, strings.Join(missing, ","))
 	}
 	if (limits.MemoryBytes != 0 || limits.PidsMax != 0 || limits.CPUWeight != 0) && !report.CgroupDelegated {
 		return nil, fmt.Errorf("%w: requested resource limits require observed delegated cgroup-v2", ErrDevelopmentSandbox)
 	}
 	return &DevelopmentCommandRunner{report: report, limits: limits,
 		leases: make(map[string]commandLease), receipts: make(map[string]sessionrepo.CommandSettlement)}, nil
-}
-
-func requireDevelopmentSandbox(report sandbox.Report) error {
-	var missing []string
-	if report.LandlockABI < 1 {
-		missing = append(missing, "landlock-abi1")
-	}
-	if !report.SeccompBPF {
-		missing = append(missing, "seccomp-bpf")
-	}
-	if !report.UserNamespaces {
-		missing = append(missing, "user-namespace")
-	}
-	if !report.MountNamespace {
-		missing = append(missing, "mount-namespace")
-	}
-	if !report.PidNamespace {
-		missing = append(missing, "pid-namespace")
-	}
-	if !report.NetworkNamespace {
-		missing = append(missing, "network-namespace")
-	}
-	if !report.Loopback {
-		missing = append(missing, "loopback-interface")
-	}
-	if !report.NoNewPrivs {
-		missing = append(missing, "no-new-privs")
-	}
-	if !report.CapabilitiesEmpty {
-		missing = append(missing, "empty-capabilities")
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("%w: %s", ErrDevelopmentSandbox, strings.Join(missing, ","))
-	}
-	return nil
 }
 
 func (r *DevelopmentCommandRunner) Profile() string {

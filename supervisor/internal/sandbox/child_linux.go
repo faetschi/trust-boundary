@@ -132,7 +132,7 @@ func (layout *cellLayout) unmountAll() (bool, []string) {
 		}
 	}
 	if layout.CellDir != "" {
-		if err := removeTree(layout.CellDir); err != nil {
+		if err := os.RemoveAll(layout.CellDir); err != nil {
 			detached = false
 			notes = append(notes, fmt.Sprintf("remove %s: %v", layout.CellDir, err))
 		}
@@ -488,10 +488,7 @@ func setupTarget(plan stagePlan) error {
 	if err := applyLandlock(rules); err != nil {
 		return err
 	}
-	if err := installSeccomp(); err != nil {
-		return err
-	}
-	return nil
+	return installSeccomp()
 }
 
 func runProbeChild() {
@@ -619,15 +616,5 @@ func exitStatusFromError(waitErr error, command *exec.Cmd) (int, bool) {
 	if errors.As(waitErr, &exitError) {
 		return exitStatus(exitError.Sys().(syscall.WaitStatus))
 	}
-	if waitErr != nil {
-		return 0, false
-	}
 	return 0, false
-}
-
-func removeTree(path string) error {
-	if err := os.RemoveAll(path); err != nil {
-		return err
-	}
-	return nil
 }

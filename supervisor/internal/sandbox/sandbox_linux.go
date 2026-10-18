@@ -154,7 +154,8 @@ func (report Report) EvidenceClass() string {
 	return "dev-wsl-non-claim-bearing:" + strings.Join(report.mechanisms(), "+")
 }
 
-func (report Report) require() error {
+// MissingMechanisms lists the mechanisms a development cell requires that were not observed.
+func (report Report) MissingMechanisms() []string {
 	var missing []string
 	if report.LandlockABI < 1 {
 		missing = append(missing, "landlock-abi1")
@@ -183,7 +184,11 @@ func (report Report) require() error {
 	if !report.CapabilitiesEmpty {
 		missing = append(missing, "empty-capabilities")
 	}
-	if len(missing) > 0 {
+	return missing
+}
+
+func (report Report) require() error {
+	if missing := report.MissingMechanisms(); len(missing) > 0 {
 		return fmt.Errorf("%w: %s", ErrMechanismUnavailable, strings.Join(missing, ","))
 	}
 	return nil
@@ -318,32 +323,31 @@ func Launch(ctx context.Context, request Request) (Result, Settlement, error) {
 		return Result{}, Settlement{}, err
 	}
 	defer cancelWrite.Close()
+	releaseChildEnds := func() {
+		_ = controlWrite.Close()
+		_ = cancelRead.Close()
+	}
 
 	command, err := newCellCommand(config, []*os.File{controlWrite, request.Root, cancelRead})
 	if err != nil {
-		_ = controlWrite.Close()
-		_ = cancelRead.Close()
+		releaseChildEnds()
 		return Result{}, Settlement{}, err
 	}
 	stdout, err := command.StdoutPipe()
 	if err != nil {
-		_ = controlWrite.Close()
-		_ = cancelRead.Close()
+		releaseChildEnds()
 		return Result{}, Settlement{}, err
 	}
 	stderr, err := command.StderrPipe()
 	if err != nil {
-		_ = controlWrite.Close()
-		_ = cancelRead.Close()
+		releaseChildEnds()
 		return Result{}, Settlement{}, err
 	}
 	if err := command.Start(); err != nil {
-		_ = controlWrite.Close()
-		_ = cancelRead.Close()
+		releaseChildEnds()
 		return Result{}, Settlement{}, fmt.Errorf("start command cell: %w", err)
 	}
-	_ = controlWrite.Close()
-	_ = cancelRead.Close()
+	releaseChildEnds()
 
 	var output, errOutput bytes.Buffer
 	var wg sync.WaitGroup
@@ -391,14 +395,11 @@ func Launch(ctx context.Context, request Request) (Result, Settlement, error) {
 	if !message.MountDetached {
 		return Result{}, Settlement{}, fmt.Errorf("%w: cell mount was not detached: %s", ErrNotSettled, strings.Join(message.Notes, "; "))
 	}
-	evidenceClass := report.EvidenceClass()
-	if message.CgroupEstablished != report.CgroupDelegated {
-		// The evidence class reflects what this run actually established, not
-		// only what the probe found available.
-		effectiveReport := report
-		effectiveReport.CgroupDelegated = report.CgroupDelegated && message.CgroupEstablished
-		evidenceClass = effectiveReport.EvidenceClass()
-	}
+	// The evidence class reflects what this run actually established, not only
+	// what the probe found available.
+	effectiveReport := report
+	effectiveReport.CgroupDelegated = report.CgroupDelegated && message.CgroupEstablished
+	evidenceClass := effectiveReport.EvidenceClass()
 	result := Result{ExitCode: message.ExitCode, Stdout: output.Bytes(), Stderr: errOutput.Bytes()}
 	settlement := Settlement{
 		ProcessScopeEmpty: message.ProcessScopeEmpty,

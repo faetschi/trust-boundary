@@ -212,13 +212,7 @@ func ValidateChain(spec ChainSpec, entries []Transition, verify DecisionVerifier
 
 	baseline := cloneManifest(spec.Baseline)
 	sealed := cloneManifest(spec.Sealed)
-	transitions, totalChanges, err := cloneTransitions(entries)
-	if err != nil {
-		return Result{}, err
-	}
-	if totalChanges > MaxTotalChanges {
-		return Result{}, invalid("total transition changes exceed limit %d", MaxTotalChanges)
-	}
+	transitions := cloneTransitions(entries)
 	if !validDigest(spec.PolicyDigest, "sha256:") ||
 		!validDigest(spec.MetadataPolicyDigest, "sha256:") {
 		return Result{}, invalid("policy commitments must be SHA-256 digests")
@@ -307,11 +301,7 @@ func ValidateChain(spec ChainSpec, entries []Transition, verify DecisionVerifier
 			if err := validateObjectState(change.After); err != nil {
 				return Result{}, invalid("%s change[%d] after: %v", prefix, j, err)
 			}
-			actual, exists := current[change.Path]
-			if !exists {
-				actual = ObjectState{}
-			}
-			if actual != change.Before {
+			if current[change.Path] != change.Before {
 				return Result{}, invalid("%s change[%d]: preimage mismatch for %q", prefix, j, change.Path)
 			}
 			if change.Before == change.After {
@@ -578,10 +568,7 @@ func manifestWork(objects []ManifestObject) int64 {
 }
 
 func transitionWork(before, after int64, beforeCount, afterCount int) int64 {
-	count := beforeCount
-	if afterCount > count {
-		count = afterCount
-	}
+	count := max(beforeCount, afterCount)
 	// Each step clones/maps, checks hierarchy, builds/sorts a complete manifest,
 	// and marshals/canonicalizes it. The logarithmic term bounds sorting work.
 	factor := int64(6 + bits.Len(uint(count+1)))
@@ -794,21 +781,13 @@ func digestValidatedManifest(manifest TreeManifest) (string, error) {
 	return TreeDigestProfile + hex.EncodeToString(hash[:]), nil
 }
 
-func cloneTransitions(entries []Transition) ([]Transition, int, error) {
+func cloneTransitions(entries []Transition) []Transition {
 	copied := make([]Transition, len(entries))
-	total := 0
 	for i, entry := range entries {
-		if len(entry.Changes) > MaxChangesPerTransition {
-			return nil, 0, invalid("transition[%d] exceeds change limit %d", i, MaxChangesPerTransition)
-		}
-		if total > MaxTotalChanges-len(entry.Changes) {
-			return nil, 0, invalid("total transition changes exceed limit %d", MaxTotalChanges)
-		}
-		total += len(entry.Changes)
 		copied[i] = entry
 		copied[i].Changes = cloneChanges(entry.Changes)
 	}
-	return copied, total, nil
+	return copied
 }
 
 func cloneManifest(manifest TreeManifest) TreeManifest {

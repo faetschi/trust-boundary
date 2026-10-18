@@ -22,9 +22,6 @@ var ErrCgroupUnsupported = errors.New("cgroup v2 limits are not delegated")
 // populated=0 confirmation are not established.
 type cgroupScope struct {
 	path         string
-	memoryMax    bool
-	pidsMax      bool
-	cpuWeight    bool
 	killWritable bool
 }
 
@@ -72,26 +69,17 @@ func establishCgroup(token string, limits Limits) (*cgroupScope, error) {
 	cleanup := func() {
 		_ = os.Remove(path)
 	}
-	if limits.MemoryBytes > 0 {
-		if err := writeControl(path, "memory.max", strconv.FormatInt(limits.MemoryBytes, 10)); err != nil {
-			cleanup()
-			return nil, fmt.Errorf("%w: memory.max: %v", ErrCgroupUnsupported, err)
+	for _, limit := range []struct {
+		file  string
+		value int64
+	}{{"memory.max", limits.MemoryBytes}, {"pids.max", limits.PidsMax}, {"cpu.weight", limits.CPUWeight}} {
+		if limit.value <= 0 {
+			continue
 		}
-		scope.memoryMax = true
-	}
-	if limits.PidsMax > 0 {
-		if err := writeControl(path, "pids.max", strconv.FormatInt(limits.PidsMax, 10)); err != nil {
+		if err := writeControl(path, limit.file, strconv.FormatInt(limit.value, 10)); err != nil {
 			cleanup()
-			return nil, fmt.Errorf("%w: pids.max: %v", ErrCgroupUnsupported, err)
+			return nil, fmt.Errorf("%w: %s: %v", ErrCgroupUnsupported, limit.file, err)
 		}
-		scope.pidsMax = true
-	}
-	if limits.CPUWeight > 0 {
-		if err := writeControl(path, "cpu.weight", strconv.FormatInt(limits.CPUWeight, 10)); err != nil {
-			cleanup()
-			return nil, fmt.Errorf("%w: cpu.weight: %v", ErrCgroupUnsupported, err)
-		}
-		scope.cpuWeight = true
 	}
 	if file, err := os.OpenFile(filepath.Join(path, "cgroup.kill"), os.O_WRONLY, 0); err == nil {
 		_ = file.Close()
