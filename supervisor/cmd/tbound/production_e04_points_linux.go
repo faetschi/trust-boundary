@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/publication"
 	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/wsoracle"
 )
@@ -67,19 +68,27 @@ import (
 // The ledger. EvaluateE04Input needs, for the protected root, a []wsoracle.LedgerEntry of
 // approved transitions with full before/after Entry values (type, mode, owner, group, link
 // count, size, sha256 or link target) for every changed path, and at each point the count of
-// entries applied plus wsoracle.LedgerPrefixDigest of that prefix. The service's approved-delta
-// ledger (sessionrepo EvidenceBundle.ApprovedDeltaLedger, delta.Transition) records
-// ObjectState{Exists, Type, ContentDigest, MetadataIdentity}, where MetadataIdentity is a hash of
-// the policy-selected metadata, not the mode, owner and link count, and its transitions apply to
-// the workspace generations, not to the live root. publication.ObjectResult has path, operation
-// and status only. So no concrete ledger for the live root exists. Every point before
-// publication, and every point of a run that published nothing, records the empty prefix: the
-// approved deltas reach the live root only at publication, and the empty prefix is
-// wsoracle.LedgerPrefixDigest(nil, 0). After a publication that did anything, or whose outcome is
-// not known to have done nothing, the point records no prefix digest (LedgerBasis unavailable):
-// EvaluateE04 then reports a ledger-provenance gap and evidence_lost. The missing piece is a
-// concrete before/after Entry per published object (from publication, read back from the live
-// root under the permit, not from the later snapshot).
+// entries applied plus wsoracle.LedgerPrefixDigest of that prefix. The session's approved-delta
+// ledger (sessionrepo EvidenceBundle.ApprovedDeltaLedger, delta.Transition) is not that: it
+// records ObjectState{Exists, Type, ContentDigest, MetadataIdentity}, where MetadataIdentity is a
+// hash of the policy-selected metadata, not the mode, owner and link count, and its transitions
+// apply to the workspace generations, not to the live root. The live-root ledger comes from the
+// governed publication itself, which is the only thing that writes the live root, and writes only
+// transitions that were approved: for each object it applies, internal/publication reads the
+// object's before state (stat and hash through the bound parent descriptor, under the live-root
+// lock, at apply time) and its after state (the same, after the rename, which must be the staged
+// inode), journals them with the object's "applied" checkpoint, and returns them as
+// publication.Result.Ledger: one entry per applied object, in apply order, with an ID bound to the
+// transaction. productionE04LedgerFromResult turns the outcome into the ledger the points after
+// publication record (the entries themselves, in each record, so the store alone rebuilds
+// EvaluateE04Input.Ledger, and their prefix digest). Every point before publication, and every
+// point of a run that applied nothing, records the empty prefix, wsoracle.LedgerPrefixDigest(nil,
+// 0). Whenever the outcome does not say exactly what was applied (an error, an UNKNOWN status or
+// object, an applied object without an entry, an entry for an object that was not applied, a
+// ledger too large for one record), the point records no prefix digest (LedgerBasis unavailable):
+// EvaluateE04 then reports a ledger-provenance gap and evidence_lost. A ledger entry whose after
+// state is not what the post-publication manifest shows is not special-cased: it is the ordinary
+// comparison, an effect (or a lost interval if the manifest is unusable).
 
 const productionE04StoreSuffix = "-e04-audit.jsonl"
 
@@ -97,6 +106,60 @@ type productionE04Ledger struct {
 	applied int
 	digest  string
 	basis   string
+	// entries is the whole ledger when basis is runner.E04LedgerPublication; applied is its length.
+	entries []wsoracle.LedgerEntry
+}
+
+// productionE04LedgerFromResult is the ledger the points after publication record for a publication
+// outcome. The publication ledger names what the publication applied to the live root, with the
+// state it read there (internal/publication, Result.Ledger). It is used only when the outcome says
+// exactly what happened:
+//
+//   - the publish call returned no error and the status is SUCCEEDED or FAILED, both terminal and
+//     known: an UNKNOWN status, an error, or no status at all (the call was refused before it could
+//     publish, or was cut short) may have applied objects that nothing records;
+//   - no object is UNKNOWN: an unknown object may or may not be in the live root;
+//   - every SUCCEEDED object has exactly one ledger entry of its own path, bound to the
+//     transaction, in sequence order, and no entry names an object that did not succeed. An
+//     applied object without an entry makes the whole ledger unavailable, never a shorter one.
+//
+// With no SUCCEEDED object nothing was applied and the prefix is the empty one. A FAILED outcome
+// with some SUCCEEDED objects keeps those objects in the live root (publication does not roll
+// back), and the ledger names exactly them.
+func productionE04LedgerFromResult(result publication.Result, publishErr error) productionE04Ledger {
+	if publishErr != nil || (result.Status != publication.StatusSucceeded && result.Status != publication.StatusFailed) {
+		return productionE04LedgerUnavailable()
+	}
+	applied := make(map[string]bool, len(result.Objects))
+	for _, object := range result.Objects {
+		switch object.Status {
+		case publication.ObjectSucceeded:
+			if applied[object.Path] {
+				return productionE04LedgerUnavailable()
+			}
+			applied[object.Path] = true
+		case publication.ObjectFailed:
+		default:
+			return productionE04LedgerUnavailable()
+		}
+	}
+	if len(result.Ledger) != len(applied) {
+		return productionE04LedgerUnavailable()
+	}
+	if len(applied) == 0 {
+		return productionE04LedgerNone()
+	}
+	covered := make(map[string]bool, len(applied))
+	for i, entry := range result.Ledger {
+		if result.TransactionID == "" || entry.Sequence != uint64(i+1) || !strings.HasPrefix(entry.ID, result.TransactionID+"/") ||
+			len(entry.Changes) != 1 || !applied[entry.Changes[0].Path] || covered[entry.Changes[0].Path] {
+			return productionE04LedgerUnavailable()
+		}
+		covered[entry.Changes[0].Path] = true
+	}
+	entries := append([]wsoracle.LedgerEntry(nil), result.Ledger...)
+	return productionE04Ledger{applied: len(entries), digest: wsoracle.LedgerPrefixDigest(entries, len(entries)),
+		basis: runner.E04LedgerPublication, entries: entries}
 }
 
 func productionE04LedgerNone() productionE04Ledger {
@@ -221,6 +284,9 @@ func (r *productionE04Recorder) record(point string) {
 	}
 	rec := runner.E04PointRecord{Schema: runner.E04PointSchema, Seq: r.next, WorkflowID: r.workflowID, RunID: r.runID,
 		Point: point, LedgerApplied: r.ledger.applied, LedgerPrefixDigest: r.ledger.digest, LedgerBasis: r.ledger.basis}
+	if r.ledger.basis == runner.E04LedgerPublication {
+		rec.Ledger = r.ledger.entries
+	}
 	manifest, reason := r.capture(point)
 	rec.Status = runner.E04StatusSnapshot
 	if reason != "" {
@@ -235,6 +301,12 @@ func (r *productionE04Recorder) record(point string) {
 		// that keeps only the digest of what was seen.
 		rec.Status, rec.GapReason, rec.Manifest = runner.E04StatusGap, "record_too_large", nil
 		err = r.append(rec)
+		if errors.Is(err, audit.ErrRecordTooLarge) {
+			// The ledger alone does not fit either. A ledger is never cut: the record names none,
+			// and EvaluateE04 reports the missing prefix.
+			rec.LedgerApplied, rec.LedgerPrefixDigest, rec.LedgerBasis, rec.Ledger = 0, "", runner.E04LedgerUnavailable, nil
+			err = r.append(rec)
+		}
 	}
 	if err != nil {
 		r.fatal = fmt.Errorf("e04 store append: %w", err)

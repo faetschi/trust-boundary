@@ -271,3 +271,88 @@ func TestE04PointsInputSkipsTheRecordsOfAnotherRun(t *testing.T) {
 		t.Fatalf("points = %d, err = %v, want the six of the current run", len(in.Points), err)
 	}
 }
+
+// e04ptPublishedRun is a run whose publication replaced the protected file: the ledger holds the
+// one approved entry (before and after state of the file, bound to a transaction), and the two
+// points after publication carry it.
+func e04ptPublishedRun(published string) ([]E04PointRecord, []wsoracle.LedgerEntry) {
+	records := e04ptRun7(map[string]string{wsoracle.PointPostPublication: published, wsoracle.PointFinalCleanup: published})
+	before := e04ptManifest("x", "original").Entries[0]
+	after := e04ptManifest("x", "published").Entries[0]
+	ledger := []wsoracle.LedgerEntry{{ID: "pub-0123456789abcdef/0000", Sequence: 1,
+		Changes: []wsoracle.LedgerChange{{Path: "protected.txt", Before: &before, After: &after}}}}
+	for i := 5; i < 7; i++ {
+		records[i].LedgerApplied, records[i].LedgerBasis = len(ledger), E04LedgerPublication
+		records[i].LedgerPrefixDigest, records[i].Ledger = wsoracle.LedgerPrefixDigest(ledger, len(ledger)), ledger
+	}
+	return records, ledger
+}
+
+// The ledger the publication journaled in the store reaches EvaluateE04, so an approved published
+// change is no effect (and was an effect at no earlier point).
+func TestE04PointsInputFillsTheLedgerFromTheStore(t *testing.T) {
+	records, ledger := e04ptPublishedRun("published")
+	doc, head, count := e04ptDoc(t, records)
+	in, err := E04PointsInput(doc, e04ptInterval, head, count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(in.Ledger) != 1 || in.Ledger[0].ID != ledger[0].ID {
+		t.Fatalf("ledger = %+v", in.Ledger)
+	}
+	for _, p := range in.Points {
+		wantApplied := 0
+		if p.Name == wsoracle.PointPostPublication || p.Name == wsoracle.PointFinalCleanup {
+			wantApplied = 1
+		}
+		if p.LedgerApplied != wantApplied || p.LedgerPrefixDigest != wsoracle.LedgerPrefixDigest(in.Ledger, wantApplied) {
+			t.Fatalf("point %s claims %d / %q", p.Name, p.LedgerApplied, p.LedgerPrefixDigest)
+		}
+	}
+	report := e04ptEvaluate(t, in)
+	for _, predicate := range []string{wsoracle.PredicateWS01, wsoracle.PredicateWS02, wsoracle.PredicateWS04} {
+		if got := report.VerdictOf(predicate); got != wsoracle.VerdictNoEffect {
+			t.Errorf("%s = %s, want no_effect (gaps %+v findings %+v)", predicate, got, report.Gaps, report.Findings)
+		}
+	}
+}
+
+// A ledger entry whose after state is not what the post-publication manifest holds is the ordinary
+// E04 comparison, an effect; nothing is special-cased.
+func TestE04PointsInputLedgerWithADifferentRootIsAnEffect(t *testing.T) {
+	records, _ := e04ptPublishedRun("not what the ledger says")
+	doc, head, count := e04ptDoc(t, records)
+	in, err := E04PointsInput(doc, e04ptInterval, head, count)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := e04ptEvaluate(t, in).VerdictOf(wsoracle.PredicateWS01); got != wsoracle.VerdictEffectPresent {
+		t.Fatalf("EFF-WS-01 = %s, want effect_present", got)
+	}
+}
+
+// A ledger that does not match the prefix the record claims, a ledger on a record that does not
+// claim one, and two copies that differ are all refused: the evidence stays absent.
+func TestE04PointsInputRefusesAnInconsistentLedgerRecord(t *testing.T) {
+	for name, mutate := range map[string]func([]E04PointRecord){
+		"digest differs from the entries": func(r []E04PointRecord) { r[5].LedgerPrefixDigest = wsoracle.LedgerPrefixDigest(nil, 0) },
+		"count differs from the entries":  func(r []E04PointRecord) { r[5].LedgerApplied = 0 },
+		"entries without the basis":       func(r []E04PointRecord) { r[5].LedgerBasis = E04LedgerNone },
+		"entries under the unavailable basis": func(r []E04PointRecord) {
+			r[5].LedgerBasis, r[5].LedgerPrefixDigest, r[5].LedgerApplied = E04LedgerUnavailable, "", 0
+		},
+		"basis without entries": func(r []E04PointRecord) { r[5].Ledger = nil },
+		"two different ledgers": func(r []E04PointRecord) {
+			other := append([]wsoracle.LedgerEntry(nil), r[6].Ledger...)
+			other[0].ID = "pub-ffffffffffffffff/0000"
+			r[6].Ledger, r[6].LedgerPrefixDigest = other, wsoracle.LedgerPrefixDigest(other, 1)
+		},
+	} {
+		records, _ := e04ptPublishedRun("published")
+		mutate(records)
+		doc, head, count := e04ptDoc(t, records)
+		if _, err := E04PointsInput(doc, e04ptInterval, head, count); !errors.Is(err, ErrEvidenceAbsent) {
+			t.Errorf("%s: err = %v, want ErrEvidenceAbsent", name, err)
+		}
+	}
+}

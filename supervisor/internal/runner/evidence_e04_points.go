@@ -47,6 +47,13 @@ const (
 	// cmd/tbound/production_e04_points_linux.go). LedgerPrefixDigest is empty, so
 	// EvaluateE04 answers evidence_lost, never no_effect.
 	E04LedgerUnavailable = "unavailable_published_delta_has_no_concrete_ledger"
+	// E04LedgerPublication: the record carries the approved-delta ledger of the live root as the
+	// governed publication itself applied it (publication.Result.Ledger): one wsoracle.LedgerEntry
+	// per applied object, with the before and after state read from the live root at apply time,
+	// bound to the publication transaction id. LedgerApplied is the number of entries the point
+	// had applied (all of them, at the points after publication), LedgerPrefixDigest is
+	// wsoracle.LedgerPrefixDigest of that prefix, and Ledger holds the entries.
+	E04LedgerPublication = "applied_by_governed_publication"
 )
 
 // E04PointRecord is one journaled point of the store. Seq is the position in the store
@@ -66,6 +73,9 @@ type E04PointRecord struct {
 	LedgerApplied          int                `json:"ledger_applied"`
 	LedgerPrefixDigest     string             `json:"ledger_prefix_digest"`
 	LedgerBasis            string             `json:"ledger_basis"`
+	// Ledger is the ledger the record's prefix is of. It is present only for E04LedgerPublication,
+	// and then holds exactly the LedgerApplied entries the prefix digest names.
+	Ledger []wsoracle.LedgerEntry `json:"ledger,omitempty"`
 }
 
 // E04PointsDoc is the output of `tbound evidence e04-points`. JournalB64 is the first Count
@@ -126,7 +136,10 @@ func DecodeE04PointJournal(journal []byte, head string, count int, workflowID, r
 			p.Status != E04StatusSnapshot && p.Status != E04StatusGap,
 			p.Status == E04StatusSnapshot && (p.Manifest == nil || p.GapReason != ""),
 			p.Status == E04StatusGap && p.GapReason == "",
-			p.Manifest != nil && p.Manifest.IdentityDigest() != p.ManifestIdentityDigest:
+			p.Manifest != nil && p.Manifest.IdentityDigest() != p.ManifestIdentityDigest,
+			p.LedgerBasis == E04LedgerPublication && (len(p.Ledger) == 0 || p.LedgerApplied != len(p.Ledger) ||
+				p.LedgerPrefixDigest != wsoracle.LedgerPrefixDigest(p.Ledger, p.LedgerApplied)),
+			p.LedgerBasis != E04LedgerPublication && len(p.Ledger) != 0:
 			return nil, e04PointsAbsent("record %d is not a valid point record of workflow %s", record.Sequence, workflowID)
 		}
 		if p.RunID == runID {
@@ -139,7 +152,8 @@ func DecodeE04PointJournal(journal []byte, head string, count int, workflowID, r
 // E04PointsInput verifies doc against the receipt binding (receiptHead and receiptCount are
 // the receipt's e04_evidence_head and e04_evidence_record_count, as the service journaled
 // them) and returns the EvaluateE04 input: the baseline record, and every other point whose
-// record is a snapshot, each with the ledger prefix the service recorded. A point that is a
+// record is a snapshot, each with the ledger prefix the service recorded, and Ledger from the
+// records that carry one (E04LedgerPublication). A point that is a
 // gap, or has no record, is left out, so EvaluateE04 reports it missing and every verdict
 // is evidence_lost. ThreatClass is left to the caller; Scope is the whole tree. A doc that
 // does not match the receipt, a store that does not verify, a repeated point, or a missing
@@ -172,6 +186,15 @@ func E04PointsInput(doc E04PointsDoc, interval, receiptHead string, receiptCount
 			return wsoracle.EvaluateE04Input{}, e04PointsAbsent("point %s is recorded twice for the run", p.Point)
 		}
 		seen[p.Point] = true
+		if p.LedgerBasis == E04LedgerPublication {
+			// The ledger travels with every record that claims it, a gap record included: the point
+			// may be unusable but the ledger it names was journaled. All of the run's copies must be
+			// the same ledger, and EvaluateE04 then checks each point's claimed prefix against it.
+			if in.Ledger != nil && wsoracle.LedgerPrefixDigest(in.Ledger, len(in.Ledger)) != wsoracle.LedgerPrefixDigest(p.Ledger, len(p.Ledger)) {
+				return wsoracle.EvaluateE04Input{}, e04PointsAbsent("the run's records carry different ledgers")
+			}
+			in.Ledger = slices.Clone(p.Ledger)
+		}
 		if p.Status != E04StatusSnapshot {
 			continue
 		}

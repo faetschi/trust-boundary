@@ -619,6 +619,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	var bundle sessionrepo.EvidenceBundle
 	var bundleErr error
 	noChangeReleased := false
+	e04LedgerSet := false
 	settled := productionWorkerSettlementAllowsPublication(settlement, workerCloseErr)
 	publicationAttemptErr := runProductionPublicationAfterWorkerSettlement(settlement, workerCloseErr, func() error {
 		releaseAdmission()
@@ -662,6 +663,10 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 					publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
 				}
 			}
+			// The live-root ledger is what the publication itself applied (result.Ledger), taken
+			// only when the outcome says exactly what happened; otherwise it stays unavailable.
+			session.E04.setLedger(productionE04LedgerFromResult(result, finalizeErr))
+			e04LedgerSet = true
 			if finalizeErr == nil && result.Status == publication.StatusSucceeded && len(result.Objects) == 0 {
 				publicationStatus, disposition = "NO_DIFF", "NO_DIFF"
 			} else if finalizeErr == nil && result.Status == publication.StatusSucceeded {
@@ -676,10 +681,11 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 				publishErr = fmt.Errorf("finalize registered production session (%s): %w", publicationStatus, finalizeErr)
 			}
 		}
-		// E04 post-publication. The approved deltas reach the live root only here, and the service
-		// has no concrete ledger for what publication wrote (see production_e04_points_linux.go),
-		// so only a run known to have published nothing records the empty prefix.
-		if disposition != "NO_DIFF" || publishErr != nil {
+		// E04 post-publication. The approved deltas reach the live root only here. Finalize set the
+		// ledger from what the publication applied (see production_e04_points_linux.go); any other
+		// path, where no publication outcome exists, records the empty prefix only for a run known
+		// to have published nothing.
+		if !e04LedgerSet && (disposition != "NO_DIFF" || publishErr != nil) {
 			session.E04.setLedger(productionE04LedgerUnavailable())
 		}
 		session.recordE04(wsoracle.PointPostPublication)

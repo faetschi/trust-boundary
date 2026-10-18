@@ -27,6 +27,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/workspace"
+	"tbound/supervisor/internal/wsoracle"
 )
 
 const (
@@ -222,12 +223,19 @@ type ObjectResult struct {
 	Detail     string       `json:"detail,omitempty"`
 }
 
+// Result is the outcome of a publication transaction. Ledger is the approved-delta ledger of the
+// live root as the publication itself applied it: one wsoracle.LedgerEntry per object whose
+// result is SUCCEEDED, in the order the objects were applied, each bound to TransactionID (see
+// ledgerEntriesFor). It names only what was applied, so an object that FAILED or is UNKNOWN has
+// no entry; a Result whose Status is UNKNOWN, or that has an UNKNOWN object, does not say that
+// the Ledger is everything that happened, and a caller must not read it that way.
 type Result struct {
-	TransactionID string         `json:"transaction_id"`
-	PublicationID string         `json:"publication_id"`
-	Status        Status         `json:"status"`
-	Objects       []ObjectResult `json:"objects"`
-	Binding       CommitBinding  `json:"binding"`
+	TransactionID string                 `json:"transaction_id"`
+	PublicationID string                 `json:"publication_id"`
+	Status        Status                 `json:"status"`
+	Objects       []ObjectResult         `json:"objects"`
+	Binding       CommitBinding          `json:"binding"`
+	Ledger        []wsoracle.LedgerEntry `json:"ledger,omitempty"`
 }
 
 type openHow struct {
@@ -283,6 +291,9 @@ type progressRecord struct {
 	ParentIdentity *fileIdentity `json:"parent_identity,omitempty"`
 	ObjectIdentity *fileIdentity `json:"object_identity,omitempty"`
 	Durability     string        `json:"durability,omitempty"`
+	// Ledger is the live-root change of an "applied" checkpoint: the object's state before and after
+	// the apply, read from the live root under the publication lock (see ledgerChangeFor).
+	Ledger *wsoracle.LedgerChange `json:"ledger,omitempty"`
 }
 
 type tokenRecord struct {
@@ -306,6 +317,14 @@ type txView struct {
 	artifactID *fileIdentity
 	token      *tokenRecord
 	terminal   *terminalRecord
+	// applied holds the live-root change of each applied object, in the order the checkpoints were
+	// journaled, which is the order the objects were applied.
+	applied []appliedChange
+}
+
+type appliedChange struct {
+	index  int
+	change wsoracle.LedgerChange
 }
 
 // Acquire takes a nonblocking workflow repository flock and durably advances
@@ -691,7 +710,7 @@ func (r *Repository) Recover(liveRoot *os.File, transactionID string, inject Fau
 		return Result{}, err
 	}
 	if tx.terminal != nil {
-		result := resultFromTerminal(tx.prepare, *tx.terminal)
+		result := resultFromTerminal(tx, *tx.terminal)
 		if result.Status == StatusUnknown {
 			return result, ErrRecoveryUnknown
 		}
@@ -740,7 +759,7 @@ func (r *Repository) Recover(liveRoot *os.File, transactionID string, inject Fau
 		if err := r.appendRecord("publication_aborted", transactionID, terminal); err != nil {
 			return Result{}, err
 		}
-		return resultFromTerminal(tx.prepare, terminal), nil
+		return resultFromTerminal(tx, terminal), nil
 	}
 	if artifact == nil || tx.artifactID == nil {
 		return Result{TransactionID: transactionID, PublicationID: tx.prepare.PublicationID, Status: StatusUnknown, Binding: tx.prepare.Binding}, ErrRecoveryUnknown
@@ -820,11 +839,16 @@ func (r *Repository) apply(ctx context.Context, root, artifact *os.File, prep pr
 			parent.Close()
 			continue
 		}
+		// The before state of the ledger is what the live root holds now, read through the bound parent
+		// descriptor under the live-root lock and the baseline check, not what the plan expects.
+		var beforeEntry *wsoracle.Entry
 		if plan.Before.Exists {
-			if err := verifyCurrentRegularAt(parent, base, plan.Before, plan.BeforeID, r.options.Workspace.Limits.MaxFileBytes); err != nil {
+			entry, _, err := currentRegularEntryAt(parent, base, plan.Path, plan.Before, plan.BeforeID, r.options.Workspace.Limits.MaxFileBytes)
+			if err != nil {
 				parent.Close()
 				return fmt.Errorf("baseline changed before applying %q: %w", plan.Path, err)
 			}
+			beforeEntry = &entry
 		} else {
 			exists, err := pathExistsAt(parent, base)
 			if err != nil {
@@ -870,8 +894,15 @@ func (r *Repository) apply(ctx context.Context, root, artifact *os.File, prep pr
 				parent.Close()
 				return err
 			}
+			absent, absentErr := pathExistsAt(parent, base)
 			parent.Close()
-			if err := r.appendProgress(progressRecord{TransactionID: prep.TransactionID, Index: index, Step: "applied", Durability: "unlink-and-parent-sync-checkpointed"}); err != nil {
+			if absentErr != nil || absent {
+				// The unlink is not observed as done, so no change is recorded as applied. The
+				// object is then UNKNOWN at reconciliation, never approved.
+				return fmt.Errorf("deleted object %q is not observed as absent: %v", plan.Path, absentErr)
+			}
+			change := ledgerChangeFor(plan.Path, beforeEntry, nil)
+			if err := r.appendProgress(progressRecord{TransactionID: prep.TransactionID, Index: index, Step: "applied", Durability: "unlink-and-parent-sync-checkpointed", Ledger: &change}); err != nil {
 				return err
 			}
 			if err := injectFault(inject, "after-object-checkpoint", index); err != nil {
@@ -908,15 +939,16 @@ func (r *Repository) apply(ctx context.Context, root, artifact *os.File, prep pr
 			parent.Close()
 			return err
 		}
-		objectID, err := identifyAt(parent, base)
+		// The after state of the ledger is what the live root holds now: the object is stat'ed and
+		// hashed through the same parent descriptor, and must be the staged inode with the planned
+		// state. Anything else is not recorded as applied.
+		afterEntry, objectID, err := currentRegularEntryAt(parent, base, plan.Path, plan.After, stageID, r.options.Workspace.Limits.MaxFileBytes)
 		parent.Close()
 		if err != nil {
-			return err
+			return fmt.Errorf("renamed object %q is not the staged object: %w", plan.Path, err)
 		}
-		if !sameIdentity(*stageID, objectID) {
-			return fmt.Errorf("renamed object %q does not retain the staged inode identity", plan.Path)
-		}
-		if err := r.appendProgress(progressRecord{TransactionID: prep.TransactionID, Index: index, Step: "applied", ObjectIdentity: &objectID, Durability: "rename-and-parent-sync-checkpointed"}); err != nil {
+		change := ledgerChangeFor(plan.Path, beforeEntry, &afterEntry)
+		if err := r.appendProgress(progressRecord{TransactionID: prep.TransactionID, Index: index, Step: "applied", ObjectIdentity: &objectID, Durability: "rename-and-parent-sync-checkpointed", Ledger: &change}); err != nil {
 			return err
 		}
 		if err := injectFault(inject, "after-object-checkpoint", index); err != nil {
@@ -978,7 +1010,9 @@ func (r *Repository) createDirectory(ctx context.Context, root, parent *os.File,
 	if err != nil {
 		return err
 	}
-	if err := r.appendProgress(progressRecord{TransactionID: txID, Index: index, Step: "applied", ObjectIdentity: &identity, Durability: "directory-and-parent-synced-checkpointed"}); err != nil {
+	afterEntry := directoryLedgerEntry(plan.Path, identity)
+	change := ledgerChangeFor(plan.Path, nil, &afterEntry)
+	if err := r.appendProgress(progressRecord{TransactionID: txID, Index: index, Step: "applied", ObjectIdentity: &identity, Durability: "directory-and-parent-synced-checkpointed", Ledger: &change}); err != nil {
 		return err
 	}
 	return injectFault(inject, "after-object-checkpoint", index)
@@ -986,7 +1020,7 @@ func (r *Repository) createDirectory(ctx context.Context, root, parent *os.File,
 
 func (r *Repository) reconcile(root, parent, artifact *os.File, tx txView, inject FaultInjector) (Result, error) {
 	if tx.terminal != nil {
-		return resultFromTerminal(tx.prepare, *tx.terminal), nil
+		return resultFromTerminal(tx, *tx.terminal), nil
 	}
 	results := make([]ObjectResult, len(tx.prepare.Plans))
 	unknown, failed := false, false
@@ -1036,7 +1070,7 @@ func (r *Repository) reconcile(root, parent, artifact *os.File, tx txView, injec
 	if err := injectFault(inject, "after-terminal-checkpoint", -1); err != nil {
 		return Result{TransactionID: tx.prepare.TransactionID, PublicationID: tx.prepare.PublicationID, Status: status, Objects: results, Binding: tx.prepare.Binding}, err
 	}
-	result := resultFromTerminal(tx.prepare, terminal)
+	result := resultFromTerminal(tx, terminal)
 	if status == StatusUnknown {
 		return result, ErrRecoveryUnknown
 	}
@@ -1505,21 +1539,77 @@ func verifyParentStill(root *os.File, path string, expected fileIdentity) error 
 	return nil
 }
 
-func verifyCurrentRegularAt(parent *os.File, base string, expected delta.ObjectState, expectedID *fileIdentity, maxBytes int64) error {
+// currentRegularEntryAt opens base beneath parent without following a link, checks that it is the
+// expected regular object (content, normalized metadata, and the recorded identity), and returns
+// its wsoracle.Entry: type, mode, owner, group, link count, inode, size, and sha256, as stat and
+// hash read them from the open descriptor.
+func currentRegularEntryAt(parent *os.File, base, path string, expected delta.ObjectState, expectedID *fileIdentity, maxBytes int64) (wsoracle.Entry, fileIdentity, error) {
 	fd, err := syscall.Openat(int(parent.Fd()), base, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		return err
+		return wsoracle.Entry{}, fileIdentity{}, err
 	}
 	file := os.NewFile(uintptr(fd), base)
 	defer file.Close()
 	id, state, err := inspectRegular(file, maxBytes)
 	if err != nil {
-		return err
+		return wsoracle.Entry{}, fileIdentity{}, err
 	}
-	if state != expected || expectedID == nil || !sameIdentity(*expectedID, id) {
-		return ErrBaselineConflict
+	if state != expected || expectedID == nil || !sameIdentity(*expectedID, id) || !validSHA256(state.ContentDigest) {
+		return wsoracle.Entry{}, fileIdentity{}, ErrBaselineConflict
 	}
-	return nil
+	return wsoracle.Entry{Path: path, Type: wsoracle.TypeFile, Mode: id.Mode & 0o7777, UID: id.UID, GID: id.GID, Nlink: id.Links,
+		Ino: id.Inode, Size: id.Size, SHA256: strings.TrimPrefix(state.ContentDigest, "sha256:")}, id, nil
+}
+
+// directoryLedgerEntry is the wsoracle.Entry of a directory the publication created, from the
+// identity read off the open descriptor after the mode was set.
+func directoryLedgerEntry(path string, id fileIdentity) wsoracle.Entry {
+	return wsoracle.Entry{Path: path, Type: wsoracle.TypeDir, Mode: id.Mode & 0o7777, UID: id.UID, GID: id.GID, Nlink: id.Links, Ino: id.Inode}
+}
+
+func ledgerChangeFor(path string, before, after *wsoracle.Entry) wsoracle.LedgerChange {
+	change := wsoracle.LedgerChange{Path: path}
+	if before != nil {
+		copyOf := *before
+		change.Before = &copyOf
+	}
+	if after != nil {
+		copyOf := *after
+		change.After = &copyOf
+	}
+	return change
+}
+
+// validLedgerChange reports whether an "applied" checkpoint's change describes the planned object:
+// the same path, an absent side exactly where the plan has none, and entries that carry their path.
+func validLedgerChange(change wsoracle.LedgerChange, plan objectPlan) bool {
+	if change.Path != plan.Path || (change.Before != nil) != plan.Before.Exists || (change.After != nil) != plan.After.Exists {
+		return false
+	}
+	for _, entry := range []*wsoracle.Entry{change.Before, change.After} {
+		if entry != nil && (entry.Path != plan.Path || (entry.Type != wsoracle.TypeFile && entry.Type != wsoracle.TypeDir)) {
+			return false
+		}
+	}
+	return true
+}
+
+// ledgerEntriesFor is the approved-delta ledger of the live root for a transaction: one entry per
+// applied object whose result is SUCCEEDED, in the order the objects were applied. Each entry has a
+// single change and an ID that names the transaction and the plan index. An applied checkpoint of an
+// object that is not SUCCEEDED is left out (its state is not claimed); an object that is SUCCEEDED
+// without a recorded change leaves the ledger short, which the caller sees as a count mismatch.
+func ledgerEntriesFor(tx txView, objects []ObjectResult) []wsoracle.LedgerEntry {
+	var entries []wsoracle.LedgerEntry
+	for _, applied := range tx.applied {
+		if applied.index >= len(objects) || objects[applied.index].Status != ObjectSucceeded {
+			continue
+		}
+		entries = append(entries, wsoracle.LedgerEntry{
+			ID:       fmt.Sprintf("%s/%04d", tx.prepare.TransactionID, applied.index),
+			Sequence: uint64(len(entries) + 1), Changes: []wsoracle.LedgerChange{applied.change}})
+	}
+	return entries
 }
 
 func objectMatchesAt(root *os.File, path string, expected delta.ObjectState, expectedID *fileIdentity, maxBytes int64) bool {
@@ -2085,9 +2175,11 @@ func bytesEqual(left, right []byte) bool {
 	return true
 }
 
-func resultFromTerminal(prep prepareRecord, terminal terminalRecord) Result {
+func resultFromTerminal(tx txView, terminal terminalRecord) Result {
+	prep := tx.prepare
 	return Result{TransactionID: prep.TransactionID, PublicationID: prep.PublicationID, Status: terminal.Status,
-		Objects: append([]ObjectResult(nil), terminal.Objects...), Binding: prep.Binding}
+		Objects: append([]ObjectResult(nil), terminal.Objects...), Binding: prep.Binding,
+		Ledger: ledgerEntriesFor(tx, terminal.Objects)}
 }
 
 func (r *Repository) appendProgress(progress progressRecord) error {
@@ -2156,6 +2248,18 @@ func readTransactions(trace audit.Trace, workflow string) ([]txView, error) {
 			}
 			if !validProgressStep(progress.Step) {
 				return nil, errors.New("unknown publication checkpoint step")
+			}
+			if progress.Ledger != nil {
+				// Only an applied object has a live-root change, once, and it describes the plan.
+				if progress.Step != "applied" || progress.Index < 0 || !validLedgerChange(*progress.Ledger, view.prepare.Plans[progress.Index]) {
+					return nil, errors.New("publication checkpoint carries a malformed live-root change")
+				}
+				for _, earlier := range view.applied {
+					if earlier.index == progress.Index {
+						return nil, errors.New("publication object has two live-root changes")
+					}
+				}
+				view.applied = append(view.applied, appliedChange{index: progress.Index, change: *progress.Ledger})
 			}
 			view.progress[progress.Index] = append(view.progress[progress.Index], progress)
 			if progress.Index == -1 && progress.Step == "artifact-ready" && progress.ObjectIdentity != nil {
