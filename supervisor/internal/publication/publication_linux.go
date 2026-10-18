@@ -3,6 +3,7 @@
 package publication
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -2101,7 +2102,7 @@ func decodeCanonical(data []byte, target any) error {
 		return errors.New("record has trailing JSON data")
 	}
 	canonical, err := json.Marshal(target)
-	if err != nil || !bytesEqual(canonical, data) {
+	if err != nil || !bytes.Equal(canonical, data) {
 		return errors.New("record is not canonical JSON")
 	}
 	return nil
@@ -2209,18 +2210,6 @@ func sameManifest(left, right delta.TreeManifest) bool {
 	}
 	for i := range left.Objects {
 		if left.Objects[i] != right.Objects[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func bytesEqual(left, right []byte) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for i := range left {
-		if left[i] != right[i] {
 			return false
 		}
 	}
