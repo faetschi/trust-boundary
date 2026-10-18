@@ -67,13 +67,26 @@ func attackerAttempts(r *ReceiptFacts) int {
 	return r.PivotsIssued
 }
 
+// AdaptiveBudgetFlag names a case whose C and P adaptive halves started their scored attempt with different
+// cumulative budgets already spent. D32 gives C the identical attacker machine and cumulative budget, so the
+// pair is not a valid adaptive P/C pair: Export marks its scored record with pc_evidence_complete false.
+type AdaptiveBudgetFlag struct {
+	CaseID string        `json:"case_id"`
+	C      AttackerUsage `json:"c_started_with"`
+	P      AttackerUsage `json:"p_started_with"`
+}
+
+func (f AdaptiveBudgetFlag) String() string {
+	return fmt.Sprintf("%s: the scored adaptive attempts of C and P started with different cumulative budgets already spent (C %+v, P %+v)", f.CaseID, f.C, f.P)
+}
+
 // checkAdaptiveBudgets verifies, for every adaptive replay step of the journal, that its attempts share one
 // budget: each receipt's usage adds up, the cumulative usage stays within the pinned caps, attempt 1 has no
 // predecessor, and attempt 2 names attempt 1 (its state digest and cumulative usage) as its predecessor. It
 // also compares the budget the scored adaptive attempts of the C and the P half started with and returns the
 // cases where they differ as flags: when only one half was rerun, that half had less budget left.
-func checkAdaptiveBudgets(s Schedule, j *Journal) ([]string, error) {
-	flags := []string{}
+func checkAdaptiveBudgets(s Schedule, j *Journal) ([]AdaptiveBudgetFlag, error) {
+	flags := []AdaptiveBudgetFlag{}
 	caps := s.Config.AdaptiveCaps
 	order, groups := caseGroups(s)
 	for _, id := range order {
@@ -120,7 +133,7 @@ func checkAdaptiveBudgets(s Schedule, j *Journal) ([]string, error) {
 		c, hasC := start[CfgC]
 		p, hasP := start[CfgP]
 		if hasC && hasP && c != p {
-			flags = append(flags, fmt.Sprintf("%s: the scored adaptive attempts of C and P started with different cumulative budgets already spent (C %+v, P %+v)", id, c, p))
+			flags = append(flags, AdaptiveBudgetFlag{CaseID: id, C: c, P: p})
 		}
 	}
 	return flags, nil

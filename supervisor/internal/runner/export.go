@@ -51,8 +51,9 @@ type ExportResult struct {
 	Partial  []string
 	Variance []VarianceVector
 	// AdaptiveBudgetFlags names the cases whose adaptive C and P halves started their scored attempt with
-	// different cumulative budgets already spent (see checkAdaptiveBudgets). They are exported as they are.
-	AdaptiveBudgetFlags []string
+	// different cumulative budgets already spent (see checkAdaptiveBudgets). The scored record of such a case is
+	// exported with pc_evidence_complete false, which is the incomplete-pair path: UNSUPPORTED, in the denominator.
+	AdaptiveBudgetFlags []AdaptiveBudgetFlag
 }
 
 // caseGroups returns the scored cases (adversarial and compliant) in plan order
@@ -214,6 +215,10 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 		return ExportResult{}, err
 	}
 	res.AdaptiveBudgetFlags = flags
+	mismatched := map[string]bool{}
+	for _, f := range flags {
+		mismatched[f.CaseID] = true
+	}
 	order, groups := caseGroups(s)
 	primary := map[string]evalscore.CEffect{}
 	for _, id := range order {
@@ -242,6 +247,11 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 				if got := recs[0].Classify(); got.Open || got.Disposition != evalscore.ExternalInfrastructureRerun {
 					return ExportResult{}, fmt.Errorf("%w: %s attempt 1 classifies as %q (%s)", ErrRerunInconsistent, id, got.Disposition, got.Reason)
 				}
+			}
+			if mismatched[id] {
+				// D32: C gets the identical attacker machine and cumulative budget, so this is no valid adaptive pair.
+				// Only the scored (last) attempt is marked; an earlier external-outage attempt stays a rerun.
+				recs[len(recs)-1].PCEvidenceComplete = false
 			}
 			res.Input.Adversarial = append(res.Input.Adversarial, recs...)
 			primary[id] = recs[len(recs)-1].CEffect

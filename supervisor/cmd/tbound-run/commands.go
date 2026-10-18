@@ -174,6 +174,9 @@ func (a *app) exportCmd(args []string) error {
 		if err := runner.WriteTrialsFile(out, res.Input); err != nil {
 			return err
 		}
+		if _, err := syncFlagsFile(filepath.Dir(out), res.AdaptiveBudgetFlags); err != nil {
+			return err
+		}
 		a.printExport(res)
 		return nil
 	})
@@ -191,6 +194,12 @@ func (a *app) exportJournal(p plan) (runner.ExportResult, error) {
 func (a *app) printExport(res runner.ExportResult) {
 	fmt.Fprintf(a.out, "adversarial_records %d\ncompliant_records %d\nincomplete_cases %d\npartial_cases %d\nevq_passed %t\n",
 		len(res.Input.Adversarial), len(res.Input.Compliant), len(res.Incomplete), len(res.Partial), res.Input.EVQPassed)
+	if len(res.AdaptiveBudgetFlags) > 0 {
+		fmt.Fprintf(a.out, "adaptive_budget_flags %d\n", len(res.AdaptiveBudgetFlags))
+		for _, l := range flagLines(res.AdaptiveBudgetFlags) {
+			fmt.Fprintf(a.out, "adaptive_budget_flag %s\n", l)
+		}
+	}
 }
 
 // syntheticLedger is the empty USD ledger of a pilot report: nothing spent, the
@@ -228,18 +237,24 @@ func (a *app) reportCmd(args []string) error {
 		if err != nil {
 			return err
 		}
-		meta, err := json.Marshal(struct {
-			ClaimBearing bool   `json:"claim_bearing"`
-			Ledger       string `json:"ledger"`
-			ReportDigest string `json:"report_digest"`
-			PlanDigest   string `json:"plan_digest"`
-			Incomplete   int    `json:"incomplete_cases"`
-			Note         string `json:"note"`
-		}{false, ledgerSyntheticEmpty, rep.Digest, p.sched.Digest, len(res.Incomplete), nonClaimNote})
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
+		flagsDigest, err := syncFlagsFile(dir, res.AdaptiveBudgetFlags)
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(dir, 0o700); err != nil {
+		meta, err := json.Marshal(struct {
+			ClaimBearing bool     `json:"claim_bearing"`
+			Ledger       string   `json:"ledger"`
+			ReportDigest string   `json:"report_digest"`
+			PlanDigest   string   `json:"plan_digest"`
+			Incomplete   int      `json:"incomplete_cases"`
+			Flags        []string `json:"adaptive_budget_flags,omitempty"`
+			FlagsDigest  string   `json:"adaptive_budget_flags_sha256,omitempty"`
+			Note         string   `json:"note"`
+		}{false, ledgerSyntheticEmpty, rep.Digest, p.sched.Digest, len(res.Incomplete), flagLines(res.AdaptiveBudgetFlags), flagsDigest, nonClaimNote})
+		if err != nil {
 			return err
 		}
 		for _, f := range []struct {
@@ -247,7 +262,7 @@ func (a *app) reportCmd(args []string) error {
 			data []byte
 		}{
 			{"report.json", append(canonical, '\n')},
-			{"report.md", []byte("> " + nonClaimNote + "\n\n" + rep.Markdown())},
+			{"report.md", []byte("> " + nonClaimNote + "\n\n" + flagsMarkdown(res.AdaptiveBudgetFlags) + rep.Markdown())},
 			{"report.meta.json", append(meta, '\n')},
 		} {
 			if err := writeFileAtomic(filepath.Join(dir, f.name), f.data); err != nil {

@@ -122,7 +122,7 @@ func TestExportChecksTheCumulativeAdaptiveBudgetAcrossTheRerun(t *testing.T) {
 		t.Fatalf("a consistent rerun chain within the caps was refused: %v", err)
 	}
 	// only one half can be rerun, so the pair's final attempts started with different budgets: flagged, not refused
-	if len(res.AdaptiveBudgetFlags) != 1 || !strings.HasPrefix(res.AdaptiveBudgetFlags[0], caseID+":") {
+	if len(res.AdaptiveBudgetFlags) != 1 || res.AdaptiveBudgetFlags[0].CaseID != caseID {
 		t.Fatalf("flags = %v; want the pair of %s", res.AdaptiveBudgetFlags, caseID)
 	}
 }
@@ -194,5 +194,39 @@ func TestExportWithoutARerunHasNoBudgetFlags(t *testing.T) {
 	res, err := Export(s, j, ExportOptions{})
 	if err != nil || len(res.AdaptiveBudgetFlags) != 0 {
 		t.Fatalf("flags %v, err %v", res.AdaptiveBudgetFlags, err)
+	}
+}
+
+// A pair whose adaptive halves had different budgets is not a valid adaptive P/C pair (D32): its scored record
+// goes through the existing incomplete-pair path (pc_evidence_complete false, UNSUPPORTED, still in the
+// denominator), while the earlier external-outage attempt stays a rerun and the other cases are untouched.
+func TestExportMarksAMismatchedBudgetPairAsAnIncompletePair(t *testing.T) {
+	s, j, caseID := adaptiveBudgetJournal(t, nil, consistentReceipts)
+	res, err := Export(s, j, ExportOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mine []evalscore.AdversarialRecord
+	for _, r := range res.Input.Adversarial {
+		if r.CaseID != caseID {
+			if !r.PCEvidenceComplete {
+				t.Errorf("%s: an unflagged case lost pc_evidence_complete", r.CaseID)
+			}
+			continue
+		}
+		mine = append(mine, r)
+	}
+	if len(mine) != 2 {
+		t.Fatalf("records of %s = %d; want the outage attempt and the rerun", caseID, len(mine))
+	}
+	if got := mine[0].Classify(); got.Open || got.Disposition != evalscore.ExternalInfrastructureRerun {
+		t.Errorf("attempt 1 = %+v; want it to stay an external-infrastructure rerun", got)
+	}
+	last := mine[1]
+	if last.PCEvidenceComplete {
+		t.Fatal("the scored record of a mismatched-budget pair kept pc_evidence_complete true")
+	}
+	if got := last.Classify(); got.Open || got.Disposition != evalscore.Unsupported || got.Reason != evalscore.ReasonCalibrationIncomplete {
+		t.Errorf("scored record = %+v; want UNSUPPORTED %s", got, evalscore.ReasonCalibrationIncomplete)
 	}
 }
