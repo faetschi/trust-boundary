@@ -5,7 +5,7 @@ Audit checkpoint (2026-10-18): owner requires findings before any further remova
 Updated 2026-10-18. Only `codex/tbound-prototype`; thesis first. Goal active.
 
 - CODE FREEZE 08eef85 (2026-10-18): clean-room gate 42 pkgs, 3085 pass / 18 skip / 0 fail, build/vet/gofmt/GOOS=windows vet clean (F:/TBoundAssets/recovery-20261015/fullgate7-freeze); Codex final narrow review FREEZE-OK. Skips need real provider/guest/root.
-- Next: owner signing session per infra/guest/PROVISIONING-SIGNING.md (build from 08eef85; 5 signatures; client key, evidence forced-command key, netsink unit; NOPASSWD revoke before first cell launch), then E2E smoke over OpenCode Go; pre-registration record waits for owner review of corpus/pilot.
+- Next (changed 2026-10-18, see round 2 below): research-enablement work first, then a new freeze and ONE signing session per infra/guest/PROVISIONING-SIGNING.md ( 5 signatures; client key, evidence forced-command key, netsink unit; NOPASSWD revoke before first cell launch), then E2E smoke over OpenCode Go; pre-registration record waits for owner review of corpus/pilot.
 - Codex adversarial reviews done for every increment through 08eef85 (findings fixed or recorded as decisions). Trust decision: executors are trusted evidence producers; runner checks consistency, service receipt anchors exemptions.
 
 Decisions (2026-10-17, owner):
@@ -21,7 +21,12 @@ Decisions round 8 (2026-10-17): signing session right after receipt anchor + its
 
 Decision 2026-10-18: NET-01 registered sink runs ON THE GUEST (guest-local address outside the cell netns, small systemd unit, journal read via evidence channel, canaries issued on guest); guest stays offline. Implemented (d10d970, tbound-netsink unit).
 
-Open owner decisions: ledger head-hash anchor owner (at OpenRouter switch); corpus review sign-off.
+Decisions 2026-10-18 (owner): F = 08eef85 (P1-P3 read-only prep approved); pilot corpus approved as drafted by the owner (owner review = accept; evalcorpus still needs a second human reviewer of a different role, i.e. the advisor, before corpus-digest passes; fixtures/tests/rubric/pins still placeholders).
+
+Decisions 2026-10-18 round 2 (owner, after gap analysis): research is not runnable yet (runner library complete but no driver; only C wired; no fixture materialization; no B/P/V; C adaptive = static). Owner chose: BUILD ALL FIRST, SIGN ONCE (the 08eef85 prep P1-P3 is a reproducibility dry run only: all byte-identical, bundle sha256:8e405ef0... unchanged, IMGDIGEST sha256:52f3f2e3..., receipt F:/TBoundAssets/recovery-20261015/prep-08eef85/prep-receipt.md); V = native Pi in a plain Podman container on the guest, no TBound gate, fresh fixture per run (thesis states container, not VM); C adaptive-replay = manifest-pinned scripted pivots replayed by the service as follow-up turns after denials (no live attacker model); per-trial fixture reset and P witnesses via a root-only forced-command subcommand (`tbound trial reset|witness`, registered fixtures/witnesses from the pinned manifest only), no unrestricted root key.
+Research-enablement work items (in order): fixture format+digest and trial reset; P executor (witness); runner CLI (plan/run/rerun/export/report, host is Windows); B mode (no-op gate, configuration-qualified admission ids); scripted pivots for C adaptive; V container executor; compliant task oracle (TASK-COMPLETE-01); pilot fixtures/tests/rubric; then freeze, sign once, smoke, pilot.
+
+Open owner decisions: ledger head-hash anchor owner (at OpenRouter switch); advisor review of pilot cases.
 
 Guest address is DHCP on the Default Switch and changes after host restarts (now 172.30.8.106, switch 172.30.0.1/20; MAC 00-15-5D-0C-40-02). Always discover via Get-NetNeighbor -LinkLayerAddress and connect with -o HostKeyAlias=172.18.155.19 against the pinned key; never relax host-key checking.
 
