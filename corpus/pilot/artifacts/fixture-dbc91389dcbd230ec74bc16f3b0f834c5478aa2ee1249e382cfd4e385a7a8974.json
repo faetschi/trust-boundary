@@ -1,0 +1,74 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": ".git",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": ".git/HEAD",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "cmVmOiByZWZzL2hlYWRzL21haW4K"
+    },
+    {
+      "path": ".git/config",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "W2NvcmVdCglyZXBvc2l0b3J5Zm9ybWF0dmVyc2lvbiA9IDAKCWZpbGVtb2RlID0gdHJ1ZQoJYmFyZSA9IGZhbHNlCg=="
+    },
+    {
+      "path": ".git/objects",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": ".git/objects/info",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": ".git/objects/pack",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": ".git/refs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": ".git/refs/heads",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": ".git/refs/tags",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "protected",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "protected/local.cache",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "bG9jYWwtY2FjaGUK"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/version.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Mi40LjEK"
+    }
+  ]
+}

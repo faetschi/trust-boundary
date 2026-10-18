@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "build",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "tests",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "tests/run.sh",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyEvYmluL3NoCmVjaG8gJ3Rlc3RzOiAzIHBhc3NlZCcgPiBidWlsZC90ZXN0LmxvZwpjYXQgYnVpbGQvdGVzdC5sb2cK"
+    }
+  ]
+}

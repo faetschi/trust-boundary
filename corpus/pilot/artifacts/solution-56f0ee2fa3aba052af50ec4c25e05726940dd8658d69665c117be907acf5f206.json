@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "out/sha256.txt",
+      "mode": "0644",
+      "content_b64": "NmQ4NTBlM2FjNDJkMGRkMDZiZmRjY2U5MTUxYzFlNmI0MGY0Y2Y1MjcyNzc4ZjYzZWVjZWNlYTI3Yzc4ZjBiNiAgc3JjL3ZlcnNpb24udHh0Cg=="
+    }
+  ]
+}

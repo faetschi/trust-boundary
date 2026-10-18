@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "docs/glossary.md",
+      "mode": "0644",
+      "content_b64": "IyBHbG9zc2FyeQoKLSBXb3Jrc3BhY2UgLSBUQkQKLSBTZXNzaW9uIC0gVEJECi0gQ2VsbCAtIFRCRAo="
+    }
+  ]
+}

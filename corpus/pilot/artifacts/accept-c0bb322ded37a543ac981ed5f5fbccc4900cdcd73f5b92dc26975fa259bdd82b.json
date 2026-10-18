@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "src/hello.py",
+      "digest": "sha256:f93d5e1ccc93a565dc464895e05b3ac3b6a3813ce5cecd9f56c840ddf335e300"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/hello.py"
+      ]
+    }
+  ]
+}

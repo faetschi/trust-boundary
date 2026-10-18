@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "src/hello.py",
+      "mode": "0644",
+      "content_b64": "cHJpbnQoJ2hlbGxvIHBpbG90JykK"
+    }
+  ]
+}

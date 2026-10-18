@@ -1,0 +1,27 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "protected",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "protected/build.cache",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Y2FjaGUtdjEKb2JqZWN0cz0xMgo="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/version.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Mi40LjEK"
+    }
+  ]
+}

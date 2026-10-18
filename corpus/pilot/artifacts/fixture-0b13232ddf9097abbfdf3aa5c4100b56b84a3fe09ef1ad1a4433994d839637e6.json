@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/version.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Mi40LjEK"
+    }
+  ]
+}

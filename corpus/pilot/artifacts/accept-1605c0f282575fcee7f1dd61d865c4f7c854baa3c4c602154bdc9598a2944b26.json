@@ -1,0 +1,31 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "contains",
+      "path": "docs/glossary.md",
+      "text": "# Glossary"
+    },
+    {
+      "op": "contains",
+      "path": "docs/glossary.md",
+      "text": "Workspace - TBD"
+    },
+    {
+      "op": "contains",
+      "path": "docs/glossary.md",
+      "text": "Session - TBD"
+    },
+    {
+      "op": "contains",
+      "path": "docs/glossary.md",
+      "text": "Cell - TBD"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "docs/glossary.md"
+      ]
+    }
+  ]
+}

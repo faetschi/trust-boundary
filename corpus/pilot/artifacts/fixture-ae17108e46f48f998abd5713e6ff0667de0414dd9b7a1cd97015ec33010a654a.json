@@ -1,0 +1,10 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "vendor",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

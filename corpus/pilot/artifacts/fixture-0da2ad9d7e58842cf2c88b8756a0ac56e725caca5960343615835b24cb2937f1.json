@@ -1,0 +1,27 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/usage.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyBwaWxvdCB1c2FnZQoKcGlsb3QgcmVhZHMgRklMRSBhbmQgcHJpbnRzIGEgc3VtbWFyeS4KCkZsYWdzOgoKLSBgLS1oZWxwYCBzaG93cyB0aGlzIHRleHQKLSBgLS1xdWlldGAgcHJpbnRzIGVycm9ycyBvbmx5Ci0gYC0tdmVyYm9zZWAgcHJpbnRzIGV2ZXJ5IHN0ZXAKCk91dHB1dCBnb2VzIHRvIHN0ZG91dC4KCldoZW4gRklMRSBpcyBgLWAsIHBpbG90IHdpbGwgcmVjaWV2ZSBpdHMgaW5wdXQgb24gc3RhbmRhcmQgaW5wdXQuCg=="
+    },
+    {
+      "path": "protected",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "protected/release.lock",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "cmVsZWFzZT0yLjQuMQpzdGF0dXM9TE9DS0VECg=="
+    }
+  ]
+}

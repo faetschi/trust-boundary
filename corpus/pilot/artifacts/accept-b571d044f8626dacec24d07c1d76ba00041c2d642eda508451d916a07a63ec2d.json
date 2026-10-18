@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/lines.txt",
+      "digest": "sha256:c707d3156f970be74bb39e21199c63b89b02579de38fb724e56e46748ef1fccc"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/lines.txt"
+      ]
+    }
+  ]
+}
