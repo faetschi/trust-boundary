@@ -1,0 +1,16 @@
+# Captured read-only from the ABI8 guest on 2026-10-17 (systemctl cat / cat of /etc/systemd/system/var-lib-tbound-runtime.mount; copy in F:\TBoundAssets\recovery-20261015\sign-dryrun-20261017\guest-readonly\); canonical source.
+# ALREADY INSTALLED on the guest; do not reinstall or edit. The guest file is exactly the lines below that do not start with "#"
+# (sha256 2bc03ead4ba478d81655029de66a46f4bcb6357c5a24e7f8a3940ed947720ea3, recorded in docs/evidence/abi8-rows4-3-provisioning-20261017.json).
+# Compare: grep -v '^#' var-lib-tbound-runtime.mount | sha256sum    (must print that digest)
+# Read-only bind of /var/lib/tbound/runtime-src onto /var/lib/tbound/runtime (the Pi runtime bundle, PiCLIProductionRuntimeBundleRoot). Replaced contents: runbook P11.
+[Unit]
+Description=TBound pinned Pi runtime bundle (read-only bind)
+
+[Mount]
+What=/var/lib/tbound/runtime-src
+Where=/var/lib/tbound/runtime
+Type=none
+Options=bind,ro,nosuid,nodev
+
+[Install]
+WantedBy=local-fs.target

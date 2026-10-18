@@ -1,8 +1,8 @@
 # Canonical source for /etc/systemd/system/usr-bin-crun.mount (root:root 0644).
 # File bind mount of the pinned crun (/opt/tbound/crun/crun, a root:root 0555 copy
 # of /usr/bin/crun) onto /usr/bin/crun with ro,nosuid,nodev, so that
-# verifyPinnedToolBinary (supervisor/internal/piruntime/containment_linux.go:1008,
-# which calls requireReadOnlyMount at :2498) sees the template's crun_path on a
+# verifyPinnedToolBinary (supervisor/internal/piruntime/containment_linux.go, called
+# from Probe for config.CrunPath; it calls requireReadOnlyMount) sees the template's crun_path on a
 # read-only mount. The path stays /usr/bin/crun because Podman executes the
 # runtime from /etc/tbound/podman-config/containers.conf runtime_path, which names
 # /usr/bin/crun; the checked binary must be the executed binary.

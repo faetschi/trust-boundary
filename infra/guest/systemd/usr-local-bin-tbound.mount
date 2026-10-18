@@ -2,9 +2,11 @@
 # File bind mount of the pinned runner (/opt/tbound/tbound/tbound, a root:root 0555
 # copy of the HEAD-built /usr/local/bin/tbound) onto /usr/local/bin/tbound with
 # ro,nosuid,nodev, so that hashProtectedFile and verifyPinnedToolBinary
-# (supervisor/internal/piruntime/d09_template_linux.go:269 and containment_linux.go:2498,
-# reached from managed_live_root_linux.go:574-578 at managed-root-measure and from
-# managed_live_root_linux.go:1276 at launch) see the runner on a read-only mount.
+# (supervisor/internal/piruntime: hashProtectedFile in d09_template_linux.go and
+# verifyPinnedToolBinary in containment_linux.go, reached from
+# MeasureD09ManagedLiveRootRegistrationWithOptions at managed-root-measure and from
+# verifyD09ManagedWriterProcess at launch, both in managed_live_root_linux.go) see
+# the runner on a read-only mount.
 # Same pattern as usr-local-bin-node.mount. tbound-profile is NOT checked by any
 # code path and needs no mount.
 # This is tamper evidence, not immutability: root can still unmount, remount rw,
