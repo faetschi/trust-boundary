@@ -391,8 +391,10 @@ func (p *pidfdPin) Signal() error { return p.send(unix.SIGKILL) }
 func (p *pidfdPin) Close() error  { return unix.Close(p.fd) }
 
 // killUIDProcesses sends SIGKILL to every live process whose real uid is uid, rescans until
-// none is left, and fails if one survives trialKillRounds rounds. A zombie is already dead.
-// It never acts for uid 0.
+// none is left, and fails if one survives trialKillRounds rounds. A process whose threads
+// are all zombies is already dead; a zombie thread-group leader with a live worker thread is
+// not (procOwnership), and SIGKILL through the pidfd of its tgid ends the whole group. It
+// never acts for uid 0.
 //
 // A pid read from procRoot is only a candidate: it can be reaped and reused by another
 // process, for example one of root, before it is signaled. Each candidate is therefore
@@ -459,7 +461,8 @@ func killPinned(procRoot string, uid uint32, pid int, pin pinProcess) error {
 	return nil
 }
 
-// uidProcesses lists the live (not zombie) processes of procRoot whose real uid is uid.
+// uidProcesses lists the live processes of procRoot whose real uid is uid. A process is live
+// unless every one of its threads is a zombie (see procOwnership).
 func uidProcesses(procRoot string, uid uint32) ([]int, error) {
 	entries, err := os.ReadDir(procRoot)
 	if err != nil {
@@ -482,28 +485,105 @@ func uidProcesses(procRoot string, uid uint32) ([]int, error) {
 	return pids, nil
 }
 
-// procOwnership reads procRoot/<pid>/status: whether the process is live (not a zombie)
-// and whether its real uid is uid. A process that is gone is neither.
-func procOwnership(procRoot string, pid int, uid uint32) (live, owned bool, err error) {
-	status, err := os.ReadFile(filepath.Join(procRoot, strconv.Itoa(pid), "status"))
-	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
-		return false, false, nil
-	}
-	if err != nil {
-		return false, false, fmt.Errorf("read the status of pid %d: %w", pid, err)
-	}
-	live = true
+// procStatusInfo is what the reset reads from one /proc status file.
+type procStatusInfo struct {
+	hasState bool
+	dead     bool // State is Z (zombie) or X (dead)
+	hasUID   bool
+	realUID  uint32
+}
+
+func parseProcStatus(status []byte) procStatusInfo {
+	var st procStatusInfo
 	for _, line := range strings.Split(string(status), "\n") {
 		if state, ok := strings.CutPrefix(line, "State:"); ok {
 			state = strings.TrimSpace(state)
-			live = !strings.HasPrefix(state, "Z") && !strings.HasPrefix(state, "X")
+			st.hasState = state != ""
+			st.dead = strings.HasPrefix(state, "Z") || strings.HasPrefix(state, "X")
 		}
 		if ids, ok := strings.CutPrefix(line, "Uid:"); ok {
 			if fields := strings.Fields(ids); len(fields) > 0 {
 				real, err := strconv.ParseUint(fields[0], 10, 32)
-				owned = err == nil && uint32(real) == uid
+				st.hasUID = err == nil
+				st.realUID = uint32(real)
 			}
 		}
 	}
-	return live, owned, nil
+	return st
+}
+
+// readProcStatus reads and parses a status file; found is false when the process or thread
+// is gone.
+func readProcStatus(path string) (st procStatusInfo, found bool, err error) {
+	status, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+		return procStatusInfo{}, false, nil
+	}
+	if err != nil {
+		return procStatusInfo{}, false, err
+	}
+	return parseProcStatus(status), true, nil
+}
+
+// procOwnership reports whether the process (thread group) pid of procRoot is live and
+// whether its real uid is uid. A process that is gone is neither.
+//
+// A process is live while any of its threads runs. The state of procRoot/<pid>/status is the
+// state of the thread-group leader: when the main thread exits and a worker thread keeps
+// running, the leader is a zombie ("Z") but the group still executes code, can write files,
+// and must be killed. A leader that is not a zombie decides on its own (live, uid from its
+// status). For a zombie leader the threads in procRoot/<pid>/task decide: the group is dead
+// if none of them is a zombie or dead, otherwise it is live and owned if the real uid of
+// every live thread is uid. Whatever cannot be established refuses (an error) rather than
+// skipping the process: an unreadable task directory or thread status, a live thread without
+// a state or a parsable uid, or live threads of different uids.
+func procOwnership(procRoot string, pid int, uid uint32) (live, owned bool, err error) {
+	dir := filepath.Join(procRoot, strconv.Itoa(pid))
+	leader, found, err := readProcStatus(filepath.Join(dir, "status"))
+	if err != nil {
+		return false, false, fmt.Errorf("read the status of pid %d: %w", pid, err)
+	}
+	if !found {
+		return false, false, nil
+	}
+	if !leader.dead {
+		return true, leader.hasUID && leader.realUID == uid, nil
+	}
+	tasks, err := os.ReadDir(filepath.Join(dir, "task"))
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+		return false, false, nil // reaped, or nothing left to inspect
+	}
+	if err != nil {
+		return false, false, fmt.Errorf("list the threads of zombie leader pid %d: %w", pid, err)
+	}
+	liveTasks, ownedTasks := 0, 0
+	for _, task := range tasks {
+		tid, err := strconv.Atoi(task.Name())
+		if err != nil || tid <= 0 {
+			continue
+		}
+		st, found, err := readProcStatus(filepath.Join(dir, "task", task.Name(), "status"))
+		if err != nil {
+			return false, false, fmt.Errorf("read the status of thread %d of pid %d: %w", tid, pid, err)
+		}
+		if !found || (st.hasState && st.dead) {
+			continue // the thread exited meanwhile, or is a zombie itself
+		}
+		if !st.hasState || !st.hasUID {
+			return false, false, fmt.Errorf("thread %d of zombie leader pid %d has no readable state or uid, refusing the reset", tid, pid)
+		}
+		liveTasks++
+		if st.realUID == uid {
+			ownedTasks++
+		}
+	}
+	switch {
+	case liveTasks == 0:
+		return false, false, nil
+	case ownedTasks == liveTasks:
+		return true, true, nil
+	case ownedTasks == 0:
+		return true, false, nil
+	}
+	return false, false, fmt.Errorf("zombie leader pid %d has live threads of uid %d and of other uids, refusing the reset", pid, uid)
 }
