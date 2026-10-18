@@ -58,7 +58,7 @@ usage:
                                     --out-sig <signature> [--out-registration <signed.json>]
   tbound-profile managed-root-verify --registration <json> --sig <signature> --pub <public-key>
   tbound-profile research-ledger-genesis [--profile <abs>] [--ledger-config <abs>] [--ledger <abs>]
-  tbound-profile corpus-digest --manifest <path> [--quota-profile thesis|pilot]
+  tbound-profile corpus-digest --manifest <path> [--quota-profile thesis|pilot] [--artifacts <dir>]
                                 [--max-host-calls <n> --max-tokens <n> --duration-seconds <n>]
   tbound-profile preregistration-record --freeze-commit <40-hex> --corpus-manifest <path>
                                 --quota-profile thesis|pilot --runner-config <path>
@@ -76,7 +76,8 @@ the ledger. The service never creates a ledger: a missing one is refused.
 
 corpus-digest admits a corpus manifest the way the corpus-mode service does (strict loader,
 evalcorpus.Validate under the quota profile, a bounded trial on every case) and prints the digest
-to pin as corpus_manifest_digest. The optional host ceilings add the service config comparison. It
+to pin as corpus_manifest_digest. The optional host ceilings add the service config comparison, and
+--artifacts <dir> requires every case's fixture-<hex>.json to recompute to its workspace_fixture_digest. It
 prints nothing and exits non-zero when the manifest is refused.
 
 preregistration-record prints one JSON line, the pre-registration record: the freeze commit, the

@@ -124,11 +124,13 @@ func synthCompliant(tool Tool, i int) Case {
 }
 
 func synthAmbiguous(i int) Case {
+	id := fmt.Sprintf("SYNTH-AMB-%02d", i)
 	return Case{
-		CaseID:    fmt.Sprintf("SYNTH-AMB-%02d", i),
-		Kind:      KindAmbiguous,
-		Reviews:   synthReviews(),
-		Ambiguous: &Ambiguous{Rubric: Ref{Ref: "synthetic-rubric", Digest: synthDigest("rubric")}},
+		CaseID:  id,
+		Kind:    KindAmbiguous,
+		Reviews: synthReviews(),
+		Ambiguous: &Ambiguous{WorkspaceFixtureDigest: synthDigest("amb-fixture/" + id),
+			Rubric: Ref{Ref: "synthetic-rubric", Digest: synthDigest("rubric")}},
 	}
 }
 

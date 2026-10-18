@@ -102,6 +102,30 @@ func TestValidateDigestFormat(t *testing.T) {
 	}
 }
 
+func TestValidateAmbiguousFixtureDigest(t *testing.T) {
+	q := smallQuotas()
+	t.Run("missing", func(t *testing.T) {
+		m := allocated(t, synthManifest(q, synthSeed), q)
+		findCase(t, &m, "SYNTH-AMB-01").Ambiguous.WorkspaceFixtureDigest = ""
+		wantRule(t, Validate(m, q), "field.empty")
+	})
+	t.Run("malformed", func(t *testing.T) {
+		m := allocated(t, synthManifest(q, synthSeed), q)
+		findCase(t, &m, "SYNTH-AMB-01").Ambiguous.WorkspaceFixtureDigest = "sha256:" + strings.Repeat("A", 64)
+		wantRule(t, Validate(m, q), "digest.format")
+	})
+	t.Run("changes the manifest digest", func(t *testing.T) {
+		a := allocated(t, synthManifest(q, synthSeed), q)
+		b := allocated(t, synthManifest(q, synthSeed), q)
+		findCase(t, &b, "SYNTH-AMB-01").Ambiguous.WorkspaceFixtureDigest = synthDigest("another fixture")
+		da, _ := Digest(a)
+		db, _ := Digest(b)
+		if da == db {
+			t.Error("changing an ambiguous fixture digest did not change the manifest digest")
+		}
+	})
+}
+
 func TestValidateColdCountRule(t *testing.T) {
 	q := smallQuotas()
 	m := allocated(t, synthManifest(q, synthSeed), q)

@@ -5,14 +5,18 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/trialfix"
 )
 
 // All fixtures here are synthetic.
@@ -66,7 +70,8 @@ func fixtureManifest(t *testing.T, q evalcorpus.Quotas, seed string) evalcorpus.
 	}
 	for i := 1; i <= q.Ambiguous; i++ {
 		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: fmt.Sprintf("amb-%02d", i), Kind: evalcorpus.KindAmbiguous, Reviews: fixtureReviews(),
-			Ambiguous: &evalcorpus.Ambiguous{Rubric: evalcorpus.Ref{Ref: "rubric", Digest: fixtureDigest("rubric")}}})
+			Ambiguous: &evalcorpus.Ambiguous{WorkspaceFixtureDigest: fixtureDigest("amb-fixture"),
+				Rubric: evalcorpus.Ref{Ref: "rubric", Digest: fixtureDigest("rubric")}}})
 	}
 	allocated, err := evalcorpus.Allocate(m, q)
 	if err != nil {
@@ -222,5 +227,69 @@ func TestCorpusDigestHostCeilings(t *testing.T) {
 	}
 	if _, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot", "--max-host-calls", "4"); err == nil {
 		t.Fatal("a partial ceiling set was accepted")
+	}
+}
+
+// withArtifacts gives every case a real fixture (a one-file tree named after the case) and
+// writes the fixture artifacts to a new directory.
+func withArtifacts(t *testing.T, m evalcorpus.Manifest) (evalcorpus.Manifest, string) {
+	t.Helper()
+	dir := t.TempDir()
+	for i := range m.Cases {
+		c := &m.Cases[i]
+		spec := trialfix.Spec{Schema: trialfix.Schema, Entries: []trialfix.Entry{{Path: "case.txt", Type: trialfix.TypeFile, Mode: "0644",
+			ContentB64: base64.StdEncoding.EncodeToString([]byte(c.CaseID))}}}
+		digest, err := trialfix.Digest(spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch {
+		case c.Adversarial != nil:
+			c.Adversarial.WorkspaceFixtureDigest = digest
+		case c.Compliant != nil:
+			c.Compliant.WorkspaceFixtureDigest = digest
+		case c.Ambiguous != nil:
+			c.Ambiguous.WorkspaceFixtureDigest = digest
+		}
+		name, _ := corpusadmit.FixtureArtifactName(digest)
+		raw, err := json.Marshal(spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return m, dir
+}
+
+func TestCorpusDigestArtifactsMustVerify(t *testing.T) {
+	m, artifacts := withArtifacts(t, fixtureManifest(t, evalcorpus.PilotQuotas(), "corpus-digest-seed"))
+	path := writeManifest(t, t.TempDir(), "corpus.json", m)
+	want, err := evalcorpus.Digest(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot", "--artifacts", artifacts)
+	if err != nil || out != want+"\n" {
+		t.Fatalf("with matching artifacts: out %q err %v, want %q", out, err, want)
+	}
+
+	// One artifact removed: the digest is not printed.
+	name, _ := corpusadmit.FixtureArtifactName(m.Cases[0].Adversarial.WorkspaceFixtureDigest)
+	if err := os.Remove(filepath.Join(artifacts, name)); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err = runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot", "--artifacts", artifacts)
+	if err == nil || out != "" || !strings.Contains(err.Error(), m.Cases[0].CaseID) {
+		t.Fatalf("with a missing artifact: out %q err %v, want a refusal naming %s", out, err, m.Cases[0].CaseID)
+	}
+
+	// Without the flag the artifacts are not looked at.
+	if _, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot"); err != nil {
+		t.Fatalf("without --artifacts: %v", err)
+	}
+	if _, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot", "--artifacts", filepath.Join(artifacts, "absent")); err == nil {
+		t.Fatal("an artifact directory that does not exist was accepted")
 	}
 }

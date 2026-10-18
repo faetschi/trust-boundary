@@ -252,7 +252,7 @@ func runEvidence(ctx context.Context, args []string, stdout io.Writer, env evide
 		if len(rest) != 0 {
 			return fmt.Errorf("%s takes no argument", kind)
 		}
-		words, err := parseEvidenceOriginalCommand(env.getenv("SSH_ORIGINAL_COMMAND"))
+		words, err := parseOriginalCommand(env.getenv("SSH_ORIGINAL_COMMAND"), "evidence")
 		if err != nil {
 			return err
 		}
@@ -296,11 +296,11 @@ func runEvidence(ctx context.Context, args []string, stdout io.Writer, env evide
 	return err
 }
 
-// parseEvidenceOriginalCommand reads the forced command's $SSH_ORIGINAL_COMMAND: words
-// separated by single spaces, each plain or wrapped in one pair of single quotes, all of the
-// safe alphabet, the first two being the guest binary and "evidence". It returns the
-// words after those two.
-func parseEvidenceOriginalCommand(s string) ([]string, error) {
+// parseOriginalCommand reads a forced command's $SSH_ORIGINAL_COMMAND: words separated by
+// single spaces, each plain or wrapped in one pair of single quotes, all of the safe
+// alphabet, the first two being the guest binary and verb ("evidence" or "trial"). It
+// returns the words after those two.
+func parseOriginalCommand(s, verb string) ([]string, error) {
 	if s == "" || len(s) > evidenceMaxCommand {
 		return nil, errors.New("no usable SSH_ORIGINAL_COMMAND")
 	}
@@ -315,8 +315,8 @@ func parseEvidenceOriginalCommand(s string) ([]string, error) {
 		}
 		words = append(words, w)
 	}
-	if len(words) < 3 || words[0] != runner.EvidenceBinaryPath || words[1] != "evidence" {
-		return nil, errors.New("SSH_ORIGINAL_COMMAND is not an evidence command")
+	if len(words) < 3 || words[0] != runner.EvidenceBinaryPath || words[1] != verb {
+		return nil, fmt.Errorf("SSH_ORIGINAL_COMMAND is not a %s command", verb)
 	}
 	return words[2:], nil
 }

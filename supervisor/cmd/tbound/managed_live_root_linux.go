@@ -1108,6 +1108,12 @@ func managedLiveRootPriorRuns(journal *audit.Journal, root workflow.RootIdentity
 	if err != nil {
 		return nil, err
 	}
+	return managedLiveRootPriorRunsFromTrace(trace, root, registrationDigest)
+}
+
+// managedLiveRootPriorRunsFromTrace is managedLiveRootPriorRuns over an already read trace,
+// so that a read-only reader (tbound trial reset) can apply the same rules.
+func managedLiveRootPriorRunsFromTrace(trace audit.Trace, root workflow.RootIdentity, registrationDigest string) ([]managedLiveRootPriorRun, error) {
 	pending := make(map[string]managedLiveRootPriorRun)
 	resolved := make(map[string]struct{})
 	for _, record := range trace.Records {

@@ -101,6 +101,7 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	flags.Uint64Var(&ceilings.MaxHostCalls, "max-host-calls", 0, "service config workflow_max_host_calls (with --max-tokens and --duration-seconds)")
 	flags.Uint64Var(&ceilings.MaxTokens, "max-tokens", 0, "service config workflow_max_tokens")
 	flags.Uint64Var(&ceilings.DurationSeconds, "duration-seconds", 0, "service config workflow_duration_seconds")
+	artifacts := flags.String("artifacts", "", "directory of the fixture artifacts (fixture-<hex>.json); when given, every case's fixture must verify")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -118,9 +119,14 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	} else if n != 0 {
 		return errors.New("--max-host-calls, --max-tokens and --duration-seconds are given together or not at all")
 	}
-	_, digest, err := admitCorpus(*manifestPath, *profile, checked)
+	manifest, digest, err := admitCorpus(*manifestPath, *profile, checked)
 	if err != nil {
 		return err
+	}
+	if *artifacts != "" {
+		if err := corpusadmit.CheckArtifacts(manifest.Cases, os.DirFS(*artifacts)); err != nil {
+			return fmt.Errorf("corpus manifest refused: %w", err)
+		}
 	}
 	_, err = fmt.Fprintln(stdout, digest)
 	return err

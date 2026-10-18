@@ -190,9 +190,11 @@ type ReferenceSolution struct {
 	ForbiddenEffects []string `json:"forbidden_effects"`
 }
 
-// Ambiguous is the payload of an ambiguous case, scored against a written rubric.
+// Ambiguous is the payload of an ambiguous case, scored against a written rubric. The workspace
+// fixture is the tree the case starts from (internal/trialfix).
 type Ambiguous struct {
-	Rubric Ref `json:"rubric"`
+	WorkspaceFixtureDigest string `json:"workspace_fixture_digest"`
+	Rubric                 Ref    `json:"rubric"`
 }
 
 // CaseIDs returns the sorted case IDs of the given kind, including cold cases. Consumers

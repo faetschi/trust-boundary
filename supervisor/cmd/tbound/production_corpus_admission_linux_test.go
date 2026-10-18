@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
 )
@@ -84,7 +85,8 @@ func corpusTestManifest(t *testing.T) evalcorpus.Manifest {
 	}
 	for i := 1; i <= q.Ambiguous; i++ {
 		m.Cases = append(m.Cases, evalcorpus.Case{CaseID: fmt.Sprintf("amb-%02d", i), Kind: evalcorpus.KindAmbiguous, Reviews: corpusTestReviews(),
-			Ambiguous: &evalcorpus.Ambiguous{Rubric: evalcorpus.Ref{Ref: "rubric", Digest: corpusTestDigest("rubric")}}})
+			Ambiguous: &evalcorpus.Ambiguous{WorkspaceFixtureDigest: corpusTestDigest("amb-fixture"),
+				Rubric: evalcorpus.Ref{Ref: "rubric", Digest: corpusTestDigest("rubric")}}})
 	}
 	allocated, err := evalcorpus.Allocate(m, q)
 	if err != nil {
@@ -706,5 +708,24 @@ func TestCorpusServiceRefusesARequestWhoseBashScopeDiffersFromTheConfig(t *testi
 	}
 	if h.server.calls.Load() != 0 || h.journalRecords(t) != 0 {
 		t.Fatalf("refused scope reached the runner or the journal: calls=%d records=%d", h.server.calls.Load(), h.journalRecords(t))
+	}
+}
+
+// The corpus keeps each case's pinned fixture digest, whatever its kind, for `tbound trial reset`.
+func TestCorpusModeKeepsTheFixtureDigestOfEveryCase(t *testing.T) {
+	manifest := corpusTestManifest(t)
+	config, _ := installCorpusTestManifest(t, manifest)
+	corpus, err := loadProductionCorpus(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(corpus.fixtures) != len(manifest.Cases) {
+		t.Fatalf("corpus holds %d fixture digests for %d cases", len(corpus.fixtures), len(manifest.Cases))
+	}
+	for _, c := range manifest.Cases {
+		want, ok := corpusadmit.FixtureDigest(c)
+		if !ok || corpus.fixtures[c.CaseID] != want {
+			t.Errorf("%s: fixture digest %q, want %q", c.CaseID, corpus.fixtures[c.CaseID], want)
+		}
 	}
 }

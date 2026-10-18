@@ -64,6 +64,8 @@ type productionCorpus struct {
 	quotaProfile string
 	trials       map[string]evalcorpus.Trial
 	cases        map[string]corpusCase
+	// fixtures maps a case to its workspace_fixture_digest, for `tbound trial reset`.
+	fixtures map[string]string
 }
 
 // corpusAdmissionID is the one-use admission id of a trial: <case_id>/<role>/<attempt>.
@@ -143,7 +145,7 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 			ErrPiServiceCorpus, profile, len(violations), violations[0].Rule, violations[0].Detail)
 	}
 	corpus := &productionCorpus{digest: digest, quotaProfile: profile, trials: make(map[string]evalcorpus.Trial, len(manifest.Cases)),
-		cases: make(map[string]corpusCase, len(manifest.Cases))}
+		cases: make(map[string]corpusCase, len(manifest.Cases)), fixtures: make(map[string]string, len(manifest.Cases))}
 	if err := corpusadmit.CheckTrials(manifest.Cases, &corpusadmit.Ceilings{MaxHostCalls: config.WorkflowMaxHostCalls,
 		MaxTokens: config.WorkflowMaxTokens, DurationSeconds: config.WorkflowDurationSeconds}); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrPiServiceCorpus, err)
@@ -151,6 +153,9 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 	for _, c := range manifest.Cases {
 		corpus.trials[c.CaseID] = *c.Trial
 		corpus.cases[c.CaseID] = corpusCase{kind: c.Kind, variance: c.Adversarial != nil && c.Adversarial.VarianceSubset}
+		if digest, ok := corpusadmit.FixtureDigest(c); ok {
+			corpus.fixtures[c.CaseID] = digest
+		}
 	}
 	return corpus, nil
 }

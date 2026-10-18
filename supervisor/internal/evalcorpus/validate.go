@@ -352,6 +352,7 @@ func (v *validator) compliant(label string, c *Case) {
 
 func (v *validator) ambiguousCase(label string, p *Ambiguous) {
 	v.ambiguous++
+	v.digest(label+" workspace_fixture_digest", p.WorkspaceFixtureDigest)
 	v.required(label+" rubric.ref", p.Rubric.Ref)
 	v.digest(label+" rubric.digest", p.Rubric.Digest)
 }
