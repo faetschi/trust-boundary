@@ -43,12 +43,6 @@ const D09UserNamespaceParentSemantics = "initial-host-userns/v1"
 
 func D09InsideUIDMap(cellUID int) string { return fmt.Sprintf("%d 0 1", cellUID) }
 func D09InsideGIDMap(cellGID int) string { return fmt.Sprintf("%d 0 1", cellGID) }
-func D09HostUIDMap(cellUID, serviceUID int) string {
-	return fmt.Sprintf("%d %d 1", cellUID, serviceUID)
-}
-func D09HostGIDMap(cellGID, serviceGID int) string {
-	return fmt.Sprintf("%d %d 1", cellGID, serviceGID)
-}
 
 func ParseD09IDMap(raw []byte) (D09IDMapRange, error) {
 	var mapping D09IDMapRange

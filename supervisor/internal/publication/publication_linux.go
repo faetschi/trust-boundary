@@ -683,7 +683,7 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err != nil {
 		return Result{TransactionID: txID, PublicationID: request.PublicationID, Status: StatusUnknown, Binding: binding}, err
 	}
-	return r.reconcile(request.LiveRoot, artifactParent, artifact, tx, inject)
+	return r.reconcile(request.LiveRoot, artifact, tx, inject)
 }
 
 func clonePublicationTransitions(input []delta.Transition) []delta.Transition {
@@ -765,7 +765,7 @@ func (r *Repository) Recover(liveRoot *os.File, transactionID string, inject Fau
 	if artifact == nil || tx.artifactID == nil {
 		return Result{TransactionID: transactionID, PublicationID: tx.prepare.PublicationID, Status: StatusUnknown, Binding: tx.prepare.Binding}, ErrRecoveryUnknown
 	}
-	return r.reconcile(liveRoot, parent, artifact, tx, inject)
+	return r.reconcile(liveRoot, artifact, tx, inject)
 }
 
 // Close releases the repository flock. Outstanding transactions are not
@@ -1084,7 +1084,7 @@ func (r *Repository) createDirectory(ctx context.Context, root, parent, artifact
 	return injectFault(inject, "after-object-checkpoint", index)
 }
 
-func (r *Repository) reconcile(root, parent, artifact *os.File, tx txView, inject FaultInjector) (Result, error) {
+func (r *Repository) reconcile(root, artifact *os.File, tx txView, inject FaultInjector) (Result, error) {
 	if tx.terminal != nil {
 		return resultFromTerminal(tx, *tx.terminal), nil
 	}

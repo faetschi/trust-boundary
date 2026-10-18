@@ -454,38 +454,6 @@ func StartChild(ctx context.Context, spec ChildSpec) (*Process, error) {
 	return process, nil
 }
 
-// StartFixtureChild is the only path that permits an unbound absolute helper.
-// It is explicitly synthetic and never creates a production capability.
-func StartFixtureChild(ctx context.Context, spec ChildSpec) (*Process, error) {
-	if ctx == nil {
-		return nil, errors.New("native fixture child context is required")
-	}
-	if err := spec.validateShape(); err != nil {
-		return nil, err
-	}
-	if spec.Descendant == nil {
-		return nil, errors.New("native fixture child requires an explicit fixture descendant settler")
-	}
-	if !tryAcquireSettlementWorker() {
-		return nil, ErrSettlementCapacity
-	}
-	stdout, stderr, writers, err := childOutputs(spec.Mode, spec.TUIOutput, spec.Observation, spec.ObservationMax)
-	if err != nil {
-		releaseSettlementWorker()
-		return nil, err
-	}
-	cmd := exec.CommandContext(ctx, spec.Executable, spec.Args...)
-	cmd.Dir = spec.Dir
-	cmd.Env = append([]string{}, spec.Env...)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = spec.Stdin, stdout, stderr
-	if err := cmd.Start(); err != nil {
-		releaseSettlementWorker()
-		closeObservationWriters(writers)
-		return nil, fmt.Errorf("start native fixture child: %w", err)
-	}
-	return newProcess(cmd, spec.Descendant, writers, true), nil
-}
-
 func childOutputs(mode IOMode, tuiOutput io.Writer, observation ObservationSink, observationMax int) (io.Writer, io.Writer, []*observationWriter, error) {
 	if mode == IOModeNativeTUI {
 		return tuiOutput, tuiOutput, nil, nil

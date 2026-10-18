@@ -1071,7 +1071,7 @@ func LaunchD09PiCLIWorker(ctx context.Context, capability *AdmissionCapability,
 		return reject(fmt.Errorf("D09 Pi launch refused: %w", err))
 	}
 
-	return launchPiCLIWorker(ctx, profile, runtime, capability, channels.channels, bootstrap, false, "", "")
+	return launchPiCLIWorker(ctx, profile, runtime, capability, channels.channels, bootstrap, false, "")
 }
 
 func validateD09PiChannelBindings(channels *D09PiWorkerChannels, runtime HostRuntimeBindings) error {
@@ -1293,7 +1293,7 @@ func validatePiCLIEnvironment(environment []string) error {
 }
 
 func launchPiCLIWorkerCore(ctx context.Context, profile HostProfile, runtime HostRuntimeBindings, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap, plan DeveloperPiCLIPlan) (*PiCLIWorker, error) {
-	return launchPiCLIWorker(ctx, profile, runtime, nil, channels, bootstrap, true, plan.PiPath, "")
+	return launchPiCLIWorker(ctx, profile, runtime, nil, channels, bootstrap, true, plan.PiPath)
 }
 
 func developmentPiCLIRuntimeLauncher(ctx context.Context, plan DeveloperPiCLIPlan, profile HostProfile, runtime HostRuntimeBindings) (*Process, error) {
@@ -1400,7 +1400,7 @@ func newPiCLIWorkerRPC(profile HostProfile, stdout io.Reader, stdin io.Writer) (
 	return NewPiRPCClient(stdout, stdin)
 }
 
-func launchPiCLIWorker(ctx context.Context, profile HostProfile, runtime HostRuntimeBindings, capability *AdmissionCapability, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap, development bool, nodePath, dependencyRoot string) (resultWorker *PiCLIWorker, resultErr error) {
+func launchPiCLIWorker(ctx context.Context, profile HostProfile, runtime HostRuntimeBindings, capability *AdmissionCapability, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap, development bool, nodePath string) (resultWorker *PiCLIWorker, resultErr error) {
 	if ctx == nil || channels == nil {
 		return nil, errors.New("governed Pi worker requires context and channels")
 	}

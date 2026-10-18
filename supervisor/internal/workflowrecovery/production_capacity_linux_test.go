@@ -145,7 +145,7 @@ func d14PCJSON(t *testing.T, value any) string {
 // d14PCCaptureCall persists the verified provider capture for a host call that
 // ReserveHostCall already charged. It mirrors prepareCapturedCallForEffect but
 // takes caller-chosen identifiers so the tool-call shape can be maximal.
-func d14PCCaptureCall(t *testing.T, ledger *Ledger, conversation, hostCall, toolCall, operation string) EffectBinding {
+func d14PCCaptureCall(t *testing.T, ledger *Ledger, conversation, toolCall, operation string) EffectBinding {
 	t.Helper()
 	checkpoint, _ := ledger.Snapshot()
 	pins := clonePins(checkpoint.Pins)
@@ -273,7 +273,7 @@ func TestD14ProductionToolCallCommitsAndEncodedBytes(t *testing.T) {
 		t.Fatalf("charge provider request: %v", err)
 	}
 	record("reserve-host-call")
-	binding := d14PCCaptureCall(t, ledger, conversation, hostCall, toolCall, operation)
+	binding := d14PCCaptureCall(t, ledger, conversation, toolCall, operation)
 	record("advance-captured-call")
 	receipt, err := ledger.ReserveEffect(ctx, binding, exactCapturedOperationVerifier{expected: binding})
 	if err != nil {
@@ -359,7 +359,7 @@ func newD14PCCapturedFixture(t *testing.T) d14PCFixture {
 	if _, err := ledger.ReserveHostCall(ctx, testHostCallBinding(hostCall, 41)); err != nil {
 		t.Fatalf("charge provider request: %v", err)
 	}
-	binding := d14PCCaptureCall(t, ledger, conversation, hostCall, d14PCMaxID("tool-call-"), d14PCMaxID("operation-"))
+	binding := d14PCCaptureCall(t, ledger, conversation, d14PCMaxID("tool-call-"), d14PCMaxID("operation-"))
 	prior, priorDigest := ledger.Snapshot()
 	return d14PCFixture{root: root, owner: owner, binding: binding, workflow: workflow, path: path,
 		pages: readSQLitePageGeometry(t, owner.db).PageCount, freePages: d14PCFreePages(t, owner),
@@ -698,7 +698,7 @@ func TestD14ReservedEffectRefusesNonTerminalCommits(t *testing.T) {
 		if _, err := first.ReserveHostCall(ctx, testHostCallBinding(hostCall, 41)); err != nil {
 			t.Fatalf("charge provider request: %v", err)
 		}
-		binding := d14PCCaptureCall(t, first, conversation, hostCall, "tool-call-fence", "operation-fence")
+		binding := d14PCCaptureCall(t, first, conversation, "tool-call-fence", "operation-fence")
 		if _, err := first.ReserveEffect(ctx, binding, exactCapturedOperationVerifier{expected: binding}); err != nil {
 			t.Fatalf("grant the captured effect: %v", err)
 		}

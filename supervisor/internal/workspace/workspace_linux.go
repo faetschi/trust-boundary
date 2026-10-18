@@ -466,7 +466,7 @@ func walkDirectory(source, destination *os.File, parent string, depth int, state
 			_ = node.Close()
 			return fmt.Errorf("%w: %q", ErrSymlink, path)
 		case syscall.S_IFDIR:
-			err = walkSubdirectory(source, destination, name, path, node, nodeInfo, depth+1, state, requireCanonical)
+			err = walkSubdirectory(source, destination, name, path, nodeInfo, depth+1, state, requireCanonical)
 		case syscall.S_IFREG:
 			err = walkRegularFile(source, destination, name, path, node, nodeInfo, state, requireCanonical)
 		default:
@@ -545,7 +545,7 @@ func filterReservedEntries(policy ReservedMetadataFilter, parent string, entries
 	return filtered
 }
 
-func walkSubdirectory(parentSource, parentDestination *os.File, name, path string, node *os.File, nodeInfo syscall.Stat_t, depth int, state *walkState, requireCanonical bool) error {
+func walkSubdirectory(parentSource, parentDestination *os.File, name, path string, nodeInfo syscall.Stat_t, depth int, state *walkState, requireCanonical bool) error {
 	source, err := openDirectory(parentSource, name)
 	if err != nil {
 		return fmt.Errorf("open directory %q: %w", path, err)

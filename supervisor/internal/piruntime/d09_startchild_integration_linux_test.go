@@ -56,7 +56,7 @@ func TestD09LaunchHelperBootstrapReadinessRPCAndSettledClose(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	worker, err := launchPiCLIWorker(ctx, profile, capability.runtime,
-		capability, channels.channels, bootstrap, false, "", "")
+		capability, channels.channels, bootstrap, false, "")
 	if err != nil || worker == nil {
 		t.Fatalf("launch helper returned worker=%v err=%v", worker, err)
 	}
@@ -262,7 +262,7 @@ func TestD09LaunchHelperRejectsInvalidPerLaunchProofBeforeBootstrap(t *testing.T
 				t.Fatalf("bind admitted source before launch helper: %v", err)
 			}
 			worker, err := launchPiCLIWorker(context.Background(), profile, capability.runtime,
-				capability, channels.channels, bootstrap, false, "", "")
+				capability, channels.channels, bootstrap, false, "")
 			if err == nil || worker != nil {
 				t.Fatalf("invalid launch proof returned worker=%v err=%v", worker, err)
 			}
@@ -335,7 +335,7 @@ func TestD09StartChildCleanupFailsClosedWhenSettlementIsUnconfirmed(t *testing.T
 	}
 
 	worker, err := launchPiCLIWorker(context.Background(), profile, capability.runtime,
-		capability, channels.channels, bootstrap, false, "", "")
+		capability, channels.channels, bootstrap, false, "")
 	if worker != nil || !errors.Is(err, ErrUnknownSettlement) {
 		t.Fatalf("unconfirmed cleanup returned worker=%v err=%v, want UNKNOWN settlement", worker, err)
 	}
@@ -588,7 +588,7 @@ func TestD09StartChildRetainsOwnersAfterFallbackKillFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	worker, err := launchPiCLIWorker(context.Background(), profile, capability.runtime,
-		capability, channels.channels, bootstrap, false, "", "")
+		capability, channels.channels, bootstrap, false, "")
 	if worker != nil || !errors.Is(err, ErrUnknownSettlement) {
 		t.Fatalf("fallback kill failure returned worker=%v err=%v, want UNKNOWN", worker, err)
 	}

@@ -193,12 +193,12 @@ func sseModel(w http.ResponseWriter, usage map[string]any, model string) {
 // conversation builds a real providerbridge conversation on the bundle's route,
 // with the same managed host-call callbacks the production authority installs.
 func conversation(t *testing.T, f *fixture, b *Bundle) *providerbridge.Conversation {
-	return conversationWithSystem(t, f, b, "Research system prompt.")
+	return conversationWithSystem(t, b, "Research system prompt.")
 }
 
 // conversationWithSystem is conversation with a chosen system prompt, to size the
 // outbound request body.
-func conversationWithSystem(t *testing.T, f *fixture, b *Bundle, system string) *providerbridge.Conversation {
+func conversationWithSystem(t *testing.T, b *Bundle, system string) *providerbridge.Conversation {
 	t.Helper()
 	journalDir := t.TempDir()
 	if err := os.Chmod(journalDir, 0o700); err != nil { // t.TempDir is 0755 under umask 022
@@ -674,7 +674,7 @@ func TestOversizedRequestBodyIsRefusedBeforeReservationAndDispatch(t *testing.T)
 			server.handler = func(w http.ResponseWriter, _ *http.Request) { sse(w, nil) }
 			bundle = f.open(server.URL + "/api/v1/chat/completions")
 			before := snapshot(t, bundle)
-			_, err := conversationWithSystem(t, f, bundle, repeatedWords(100_000)).NextTurn(context.Background())
+			_, err := conversationWithSystem(t, bundle, repeatedWords(100_000)).NextTurn(context.Background())
 			refusedBeforeAnyReservation(t, err, ErrInputOverBound, server, before, snapshot(t, bundle))
 		})
 	}
@@ -699,7 +699,7 @@ func TestRequestBodyExactlyAtTheBoundIsAcceptedAndOneByteOverIsRefused(t *testin
 			sse(w, map[string]any{"prompt_tokens": 11, "completion_tokens": 3})
 		}
 		bundle = f.open(server.URL + "/api/v1/chat/completions")
-		if _, err := conversationWithSystem(t, f, bundle, system).NextTurn(context.Background()); err != nil {
+		if _, err := conversationWithSystem(t, bundle, system).NextTurn(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -716,7 +716,7 @@ func TestRequestBodyExactlyAtTheBoundIsAcceptedAndOneByteOverIsRefused(t *testin
 			sse(w, map[string]any{"prompt_tokens": 11, "completion_tokens": 3})
 		}
 		bundle = f.open(server.URL + "/api/v1/chat/completions")
-		if _, err := conversationWithSystem(t, f, bundle, system).NextTurn(context.Background()); err != nil {
+		if _, err := conversationWithSystem(t, bundle, system).NextTurn(context.Background()); err != nil {
 			t.Fatalf("a body at max_input_tokens minus the framing reserve was refused: %v", err)
 		}
 		if got, want := server.openAtHit.Load(), ceilingMicro(uint64(length+framingReserve), 64); got != want {
@@ -731,7 +731,7 @@ func TestRequestBodyExactlyAtTheBoundIsAcceptedAndOneByteOverIsRefused(t *testin
 		server.handler = func(w http.ResponseWriter, _ *http.Request) { sse(w, nil) }
 		bundle = f.open(server.URL + "/api/v1/chat/completions")
 		before := snapshot(t, bundle)
-		_, err := conversationWithSystem(t, f, bundle, system).NextTurn(context.Background())
+		_, err := conversationWithSystem(t, bundle, system).NextTurn(context.Background())
 		refusedBeforeAnyReservation(t, err, ErrInputOverBound, server, before, snapshot(t, bundle))
 	})
 }
@@ -752,7 +752,7 @@ func TestNearCapLedgerWithALargeAllowedBodyReservesTheCeilingAmount(t *testing.T
 			sse(w, map[string]any{"prompt_tokens": 11, "completion_tokens": 3})
 		}
 		bundle = f.open(server.URL + "/api/v1/chat/completions")
-		if _, err := conversationWithSystem(t, f, bundle, system).NextTurn(context.Background()); err != nil {
+		if _, err := conversationWithSystem(t, bundle, system).NextTurn(context.Background()); err != nil {
 			t.Fatalf("near-cap request refused: %v", err)
 		}
 		if length < 15_000 || length > 20_000 {
@@ -770,7 +770,7 @@ func TestNearCapLedgerWithALargeAllowedBodyReservesTheCeilingAmount(t *testing.T
 		server.handler = func(w http.ResponseWriter, _ *http.Request) { sse(w, nil) }
 		bundle = f.open(server.URL + "/api/v1/chat/completions")
 		before := snapshot(t, bundle)
-		_, err := conversationWithSystem(t, f, bundle, system).NextTurn(context.Background())
+		_, err := conversationWithSystem(t, bundle, system).NextTurn(context.Background())
 		refusedBeforeAnyReservation(t, err, usdledger.ErrCapExceeded, server, before, snapshot(t, bundle))
 	})
 }
