@@ -48,7 +48,7 @@ func (p plan) collectors() runner.CollectorSet {
 // attest wraps an executor with the host-side attestation of this run.
 func (p plan) attest(inner runner.Executor) runner.Attest {
 	return runner.Attest{
-		Inner: inner, Pins: p.cfg.Pins, EVQ: p.cfg.EVQObligations, Route: p.route,
+		Inner: inner, Pins: p.cfg.Pins, EVQ: p.cfg.EVQObligations, EVQResults: p.evq, Route: p.route,
 		// TODO(increment B): read the manifest's Trial.p_delta once evalcorpus has the
 		// field. Until then no case has a registered P delta, so every P receipt is refused.
 		PDelta: func(string) (string, bool) { return "", false },

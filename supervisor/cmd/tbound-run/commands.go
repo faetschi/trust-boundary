@@ -21,6 +21,7 @@ import (
 func (a *app) plan(p plan) error {
 	fmt.Fprintf(a.out, "plan_digest %s\n", p.sched.Digest)
 	fmt.Fprintf(a.out, "manifest_digest %s\n", p.sched.ManifestDigest)
+	fmt.Fprintf(a.out, "run_binding %s\n", p.sched.RunBinding)
 	fmt.Fprintf(a.out, "quota_profile %s\n", p.cfg.QuotaProfile)
 	fmt.Fprintf(a.out, "units %d\n", p.sched.Units())
 	fmt.Fprintf(a.out, "subset %t\n", p.sched.Subset)
@@ -306,7 +307,7 @@ func (a *app) selfcheck(p plan) error {
 	for _, k := range []struct{ name, path string }{{"client", ssh.Client.Key}, {"evidence", ssh.Evidence.Key}, {"trial", ssh.Trial.Key}} {
 		check(k.name+" key file exists", statRegular(k.path)) // only stat: a key is never opened here
 	}
-	check("attest settings", runner.Attest{EVQ: p.cfg.EVQObligations, Pins: p.cfg.Pins}.Validate())
+	check("attest settings", runner.Attest{EVQ: p.cfg.EVQObligations, EVQResults: p.evq, Pins: p.cfg.Pins}.Validate())
 	check("collectors", p.collectors().Validate())
 	check("trial transport", runner.ResetExecutor{Transport: p.cfg.transports().trial}.Validate())
 

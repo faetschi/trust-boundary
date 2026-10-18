@@ -4,10 +4,13 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -170,6 +173,38 @@ func procStatus(state string, uids ...int) string {
 	return "Name:\tx\nState:\t" + state + "\nUid:\t" + strings.Join(u, "\t") + "\nGid:\t1\t1\t1\t1\n"
 }
 
+// fakePin is a pinned process of a fake /proc: Signal removes its directory unless noKill.
+type fakePin struct {
+	root    string
+	pid     int
+	signals *[]int
+	closed  *int
+	// gone makes Alive and Signal report the process as reaped.
+	gone bool
+	// noKill leaves the process alive after a signal.
+	noKill bool
+}
+
+func (p *fakePin) Alive() error {
+	if p.gone {
+		return errProcGone
+	}
+	return nil
+}
+
+func (p *fakePin) Signal() error {
+	if p.gone {
+		return errProcGone
+	}
+	*p.signals = append(*p.signals, p.pid)
+	if p.noKill {
+		return nil
+	}
+	return os.RemoveAll(filepath.Join(p.root, strconv.Itoa(p.pid)))
+}
+
+func (p *fakePin) Close() error { *p.closed++; return nil }
+
 func TestKillUIDProcessesKillsOnlyLiveProcessesOfThatUID(t *testing.T) {
 	trialKillPoll = time.Millisecond
 	root := fakeProc(t, map[int]string{
@@ -180,23 +215,22 @@ func TestKillUIDProcessesKillsOnlyLiveProcessesOfThatUID(t *testing.T) {
 		14: procStatus("S (sleeping)", 0, 995, 995, 995),
 		15: procStatus("S (sleeping)", 995, 0, 0, 0),
 	})
-	var killed []int
-	kill := func(pid int) error {
-		killed = append(killed, pid)
-		return os.RemoveAll(filepath.Join(root, strconv.Itoa(pid)))
+	var signaled []int
+	var closed int
+	pin := func(pid int) (procPin, error) {
+		return &fakePin{root: root, pid: pid, signals: &signaled, closed: &closed}, nil
 	}
-	if err := killUIDProcesses(root, 995, kill); err != nil {
+	if err := killUIDProcesses(root, 995, pin); err != nil {
 		t.Fatalf("killUIDProcesses: %v", err)
 	}
-	// A process whose real or effective uid is the cell uid is killed; a zombie and another
-	// uid are not.
+	// A process whose real uid is the cell uid is killed; a zombie and another uid are not.
 	want := map[int]bool{10: true, 11: true, 15: true}
-	if len(killed) != len(want) {
-		t.Fatalf("killed %v, want pids 10, 11 and 15", killed)
+	if len(signaled) != len(want) {
+		t.Fatalf("signaled %v, want pids 10, 11 and 15", signaled)
 	}
-	for _, pid := range killed {
+	for _, pid := range signaled {
 		if !want[pid] {
-			t.Fatalf("killed %v, want pids 10, 11 and 15", killed)
+			t.Fatalf("signaled %v, want pids 10, 11 and 15", signaled)
 		}
 	}
 	for _, pid := range []int{12, 13, 14} {
@@ -204,12 +238,20 @@ func TestKillUIDProcessesKillsOnlyLiveProcessesOfThatUID(t *testing.T) {
 			t.Errorf("pid %d was removed", pid)
 		}
 	}
+	if closed != 3 {
+		t.Errorf("closed %d pidfds, want 3", closed)
+	}
 }
 
 func TestKillUIDProcessesFailsWhileAProcessSurvives(t *testing.T) {
 	trialKillPoll = time.Millisecond
 	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
-	if err := killUIDProcesses(root, 995, func(int) error { return nil }); err == nil || !strings.Contains(err.Error(), "10") {
+	var signaled []int
+	var closed int
+	pin := func(pid int) (procPin, error) {
+		return &fakePin{root: root, pid: pid, signals: &signaled, closed: &closed, noKill: true}, nil
+	}
+	if err := killUIDProcesses(root, 995, pin); err == nil || !strings.Contains(err.Error(), "10") {
 		t.Fatalf("err = %v, want a failure naming pid 10", err)
 	}
 }
@@ -217,7 +259,122 @@ func TestKillUIDProcessesFailsWhileAProcessSurvives(t *testing.T) {
 func TestKillUIDProcessesNeverTargetsRoot(t *testing.T) {
 	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 0, 0, 0, 0)})
 	called := false
-	if err := killUIDProcesses(root, 0, func(int) error { called = true; return nil }); err == nil || called {
-		t.Fatalf("uid 0: err %v, kill called %v", err, called)
+	pin := func(int) (procPin, error) { called = true; return nil, errors.New("must not be called") }
+	if err := killUIDProcesses(root, 0, pin); err == nil || called {
+		t.Fatalf("uid 0: err %v, pin called %v", err, called)
+	}
+}
+
+// The scan saw pid 10 as a cell process. By the time the pidfd is opened the pid belongs to a
+// root process: it is validated against the pinned process and must not be signaled.
+func TestKillUIDProcessesDoesNotSignalAReusedPID(t *testing.T) {
+	trialKillPoll = time.Millisecond
+	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
+	var signaled []int
+	var closed int
+	pin := func(pid int) (procPin, error) {
+		// The cell process exited and a root process reused the pid before the open.
+		status := filepath.Join(root, strconv.Itoa(pid), "status")
+		if err := os.WriteFile(status, []byte(procStatus("S (sleeping)", 0, 0, 0, 0)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return &fakePin{root: root, pid: pid, signals: &signaled, closed: &closed}, nil
+	}
+	if err := killUIDProcesses(root, 995, pin); err != nil {
+		t.Fatalf("killUIDProcesses: %v", err)
+	}
+	if len(signaled) != 0 {
+		t.Fatalf("signaled %v: a root process was signaled by a stale pid", signaled)
+	}
+	if closed != 1 {
+		t.Fatalf("closed %d pidfds, want 1", closed)
+	}
+}
+
+// The pidfd must still refer to a process after its uid was read: if it was reaped in
+// between, the status read may belong to a reused pid and nothing is signaled.
+func TestKillUIDProcessesDoesNotSignalAReapedPinnedProcess(t *testing.T) {
+	trialKillPoll = time.Millisecond
+	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
+	var signaled []int
+	var closed int
+	opens := 0
+	pin := func(pid int) (procPin, error) {
+		opens++
+		if opens > 1 { // the rescan: the cell process is gone for good
+			_ = os.RemoveAll(filepath.Join(root, strconv.Itoa(pid)))
+			return nil, errProcGone
+		}
+		return &fakePin{root: root, pid: pid, signals: &signaled, closed: &closed, gone: true}, nil
+	}
+	if err := killUIDProcesses(root, 995, pin); err != nil {
+		t.Fatalf("killUIDProcesses: %v", err)
+	}
+	if len(signaled) != 0 || closed != 1 {
+		t.Fatalf("signaled %v, closed %d: the pinned process was gone", signaled, closed)
+	}
+}
+
+// With no pidfd support the reset fails closed: no numeric-pid fallback signals anything.
+func TestKillUIDProcessesFailsClosedWithoutPidfd(t *testing.T) {
+	trialKillPoll = time.Millisecond
+	root := fakeProc(t, map[int]string{10: procStatus("S (sleeping)", 995, 995, 995, 995)})
+	for name, pinErr := range map[string]error{"enosys": syscall.ENOSYS, "eperm": syscall.EPERM, "other": errors.New("boom")} {
+		pin := func(int) (procPin, error) { return nil, pinErr }
+		if err := killUIDProcesses(root, 995, pin); err == nil {
+			t.Fatalf("%s: a failed pidfd open did not refuse the reset", name)
+		}
+		if _, err := os.Stat(filepath.Join(root, "10")); err != nil {
+			t.Fatalf("%s: the process directory vanished", name)
+		}
+	}
+}
+
+// The production pin signals through a pidfd and notices when its process is reaped.
+func TestPidfdPinSignalsAndDetectsReaping(t *testing.T) {
+	cmd := exec.Command("sleep", "60")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	reaped := false
+	defer func() {
+		if !reaped {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+	}()
+	pin, err := pinProcessPidfd(cmd.Process.Pid)
+	if err != nil {
+		t.Fatalf("pidfd_open on this kernel: %v", err)
+	}
+	defer pin.Close()
+	if err := pin.Alive(); err != nil {
+		t.Fatalf("a live process is not alive: %v", err)
+	}
+	if err := pin.Signal(); err != nil {
+		t.Fatalf("signal: %v", err)
+	}
+	err = cmd.Wait()
+	reaped = true
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != -1 {
+		t.Fatalf("the process was not killed by a signal: %v", err)
+	}
+	if err := pin.Alive(); !errors.Is(err, errProcGone) {
+		t.Fatalf("a reaped process is still alive: %v", err)
+	}
+	if err := pin.Signal(); !errors.Is(err, errProcGone) {
+		t.Fatalf("signal after reaping: %v", err)
+	}
+}
+
+// Nothing in the reset may signal a bare pid: a number can be reused between scan and kill.
+func TestTrialResetNeverSignalsByNumericPID(t *testing.T) {
+	src, err := os.ReadFile("trial_linux.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(src), "syscall.Kill(") || strings.Contains(string(src), "unix.Kill(") {
+		t.Fatal("trial_linux.go signals a process by its numeric pid")
 	}
 }

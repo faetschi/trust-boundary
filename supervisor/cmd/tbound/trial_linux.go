@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/piruntime"
@@ -97,7 +99,7 @@ func productionTrialEnv() trialEnv {
 		liveRoot: piruntime.D09ManagedPiLiveRootPath, owner: trialfix.Canonical,
 		cell: loadEvidenceCell, pending: trialPending, cellPopulated: cgroupPopulated,
 		killLeftovers: func(uid uint32) error {
-			return killUIDProcesses("/proc", uid, func(pid int) error { return syscall.Kill(pid, syscall.SIGKILL) })
+			return killUIDProcesses("/proc", uid, pinProcessPidfd)
 		},
 		snapshot: wsoracle.Snapshot,
 	}
@@ -341,10 +343,65 @@ func cgroupPopulated(dir string) (bool, error) {
 	return false, errors.New("cgroup.events has no valid populated key")
 }
 
-// killUIDProcesses sends SIGKILL (kill) to every live process whose real uid is uid, rescans
-// until none is left, and fails if one survives trialKillRounds rounds. A zombie is already
-// dead. It never acts for uid 0.
-func killUIDProcesses(procRoot string, uid uint32, kill func(pid int) error) error {
+// errProcGone means the pinned process is gone: it was reaped, or never existed.
+var errProcGone = errors.New("process is gone")
+
+// procPin is a process held by a pidfd. It names the process itself and not a number that
+// the kernel may hand to another process after the first one is reaped.
+type procPin interface {
+	// Alive returns errProcGone once the process was reaped. A zombie that is not reaped
+	// yet still holds its pid, so a successful Alive after reading /proc/<pid> shows that
+	// the pid was not reused in between.
+	Alive() error
+	// Signal sends SIGKILL to the pinned process (pidfd_send_signal) and returns
+	// errProcGone if it was reaped.
+	Signal() error
+	Close() error
+}
+
+// pinProcess opens a pin for a pid. It reports errProcGone for a pid that is not there.
+// Any other error, including a kernel without pidfd support, refuses the kill.
+type pinProcess func(pid int) (procPin, error)
+
+type pidfdPin struct{ fd int }
+
+// pinProcessPidfd is the production pinProcess: pidfd_open. It never falls back to
+// signaling by number.
+func pinProcessPidfd(pid int) (procPin, error) {
+	fd, err := unix.PidfdOpen(pid, 0)
+	if errors.Is(err, unix.ESRCH) {
+		return nil, errProcGone
+	}
+	if err != nil {
+		return nil, fmt.Errorf("pidfd_open(%d): %w", pid, err)
+	}
+	return &pidfdPin{fd: fd}, nil
+}
+
+func (p *pidfdPin) send(sig unix.Signal) error {
+	err := unix.PidfdSendSignal(p.fd, sig, nil, 0)
+	if errors.Is(err, unix.ESRCH) {
+		return errProcGone
+	}
+	return err
+}
+
+func (p *pidfdPin) Alive() error  { return p.send(0) }
+func (p *pidfdPin) Signal() error { return p.send(unix.SIGKILL) }
+func (p *pidfdPin) Close() error  { return unix.Close(p.fd) }
+
+// killUIDProcesses sends SIGKILL to every live process whose real uid is uid, rescans until
+// none is left, and fails if one survives trialKillRounds rounds. A zombie is already dead.
+// It never acts for uid 0.
+//
+// A pid read from procRoot is only a candidate: it can be reaped and reused by another
+// process, for example one of root, before it is signaled. Each candidate is therefore
+// pinned with a pidfd first; its uid is read from procRoot after the pin and the pin must
+// still be alive after that read (so the status belonged to the pinned process); only then
+// is it signaled, through the pidfd. A candidate that fails the check is left alone. An
+// error from the pin other than a vanished process (no pidfd support, a denied open)
+// refuses the reset: there is no fallback to signaling by number.
+func killUIDProcesses(procRoot string, uid uint32, pin pinProcess) error {
 	if uid == 0 {
 		return errors.New("refusing to kill the processes of uid 0")
 	}
@@ -357,7 +414,9 @@ func killUIDProcesses(procRoot string, uid uint32, kill func(pid int) error) err
 			return nil
 		}
 		for _, pid := range pids {
-			_ = kill(pid) // a process that is already gone is not an error; the rescan decides
+			if err := killPinned(procRoot, uid, pid, pin); err != nil {
+				return err
+			}
 		}
 		time.Sleep(trialKillPoll)
 	}
@@ -367,6 +426,35 @@ func killUIDProcesses(procRoot string, uid uint32, kill func(pid int) error) err
 	}
 	if len(pids) != 0 {
 		return fmt.Errorf("processes of uid %d survive the kill: %v", uid, pids)
+	}
+	return nil
+}
+
+// killPinned signals pid if, and only if, the process the pidfd pins is a live process of uid.
+func killPinned(procRoot string, uid uint32, pid int, pin pinProcess) error {
+	pinned, err := pin(pid)
+	if errors.Is(err, errProcGone) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("cannot pin pid %d, refusing the reset: %w", pid, err)
+	}
+	defer pinned.Close()
+	live, owned, err := procOwnership(procRoot, pid, uid)
+	if err != nil {
+		return err
+	}
+	if err := pinned.Alive(); err != nil {
+		if errors.Is(err, errProcGone) {
+			return nil // reaped: the status may belong to a reused pid
+		}
+		return fmt.Errorf("check pinned pid %d: %w", pid, err)
+	}
+	if !live || !owned {
+		return nil // not a cell process (any more): never signal it
+	}
+	if err := pinned.Signal(); err != nil && !errors.Is(err, errProcGone) {
+		return fmt.Errorf("signal pinned pid %d: %w", pid, err)
 	}
 	return nil
 }
@@ -383,29 +471,39 @@ func uidProcesses(procRoot string, uid uint32) ([]int, error) {
 		if err != nil || pid <= 0 {
 			continue
 		}
-		status, err := os.ReadFile(filepath.Join(procRoot, entry.Name(), "status"))
-		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
-			continue
-		}
+		live, owned, err := procOwnership(procRoot, pid, uid)
 		if err != nil {
-			return nil, fmt.Errorf("read the status of pid %d: %w", pid, err)
-		}
-		live, owned := true, false
-		for _, line := range strings.Split(string(status), "\n") {
-			if state, ok := strings.CutPrefix(line, "State:"); ok {
-				state = strings.TrimSpace(state)
-				live = !strings.HasPrefix(state, "Z") && !strings.HasPrefix(state, "X")
-			}
-			if ids, ok := strings.CutPrefix(line, "Uid:"); ok {
-				if fields := strings.Fields(ids); len(fields) > 0 {
-					real, err := strconv.ParseUint(fields[0], 10, 32)
-					owned = err == nil && uint32(real) == uid
-				}
-			}
+			return nil, err
 		}
 		if live && owned {
 			pids = append(pids, pid)
 		}
 	}
 	return pids, nil
+}
+
+// procOwnership reads procRoot/<pid>/status: whether the process is live (not a zombie)
+// and whether its real uid is uid. A process that is gone is neither.
+func procOwnership(procRoot string, pid int, uid uint32) (live, owned bool, err error) {
+	status, err := os.ReadFile(filepath.Join(procRoot, strconv.Itoa(pid), "status"))
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ESRCH) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, false, fmt.Errorf("read the status of pid %d: %w", pid, err)
+	}
+	live = true
+	for _, line := range strings.Split(string(status), "\n") {
+		if state, ok := strings.CutPrefix(line, "State:"); ok {
+			state = strings.TrimSpace(state)
+			live = !strings.HasPrefix(state, "Z") && !strings.HasPrefix(state, "X")
+		}
+		if ids, ok := strings.CutPrefix(line, "Uid:"); ok {
+			if fields := strings.Fields(ids); len(fields) > 0 {
+				real, err := strconv.ParseUint(fields[0], 10, 32)
+				owned = err == nil && uint32(real) == uid
+			}
+		}
+	}
+	return live, owned, nil
 }

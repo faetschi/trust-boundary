@@ -151,6 +151,9 @@ type RouteCoverage struct {
 type Obligation struct {
 	ID     string `json:"id"`
 	Passed bool   `json:"passed"`
+	// EvidenceRef names the conformance artifact behind a result that Attest took from
+	// the pinned EVQ results.
+	EvidenceRef string `json:"evidence_ref,omitempty"`
 }
 
 // Metrics are the per-trial measurements of tbound-thesis.md section 7.4.
@@ -275,7 +278,7 @@ var (
 	// Outcome comes with it.
 	ErrSetupRefused = errors.New("runner: executor refused the step before execution")
 	// ErrPlanMismatch means a journal belongs to a different plan.
-	ErrPlanMismatch = errors.New("runner: journal plan digest differs from the plan")
+	ErrPlanMismatch = errors.New("runner: journal plan digest or run binding differs from the plan")
 	// ErrJournalCorrupt means a journal failed validation other than a torn tail.
 	ErrJournalCorrupt = errors.New("runner: journal is corrupt")
 	// ErrOverPlanned means the plan has more steps than the unit cap.

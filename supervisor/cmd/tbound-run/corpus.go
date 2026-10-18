@@ -19,6 +19,7 @@ type plan struct {
 	digest   string              // evalcorpus.Digest of the manifest
 	sched    runner.Schedule
 	route    runner.RouteCoverage
+	evq      runner.EVQResults // the pinned conformance results
 }
 
 func quotasFor(profile string) (evalcorpus.Quotas, error) {
@@ -89,5 +90,12 @@ func loadPlan(cfg runConfig) (plan, error) {
 	if err != nil {
 		return plan{}, err
 	}
-	return plan{cfg: cfg, manifest: allocation, digest: digest, sched: sched, route: route}, nil
+	evq, evqDigest, err := loadEVQResults(cfg.EVQResults)
+	if err != nil {
+		return plan{}, err
+	}
+	if sched.RunBinding, err = cfg.runBinding(route, evqDigest); err != nil {
+		return plan{}, err
+	}
+	return plan{cfg: cfg, manifest: allocation, digest: digest, sched: sched, route: route, evq: evq}, nil
 }

@@ -45,7 +45,8 @@ func matching() *ReceiptFacts {
 func newAttest(inner Executor) Attest {
 	return Attest{
 		Inner: inner, Pins: attestPins, EVQ: []string{"EVQ-1", "EVQ-2"},
-		Route: RouteCoverage{Complete: true, Digest: "sha256:" + hexOf('r')},
+		EVQResults: EVQResults{{ID: "EVQ-1", Passed: true, EvidenceRef: "ref-1"}, {ID: "EVQ-2", Passed: true, EvidenceRef: "ref-2"}},
+		Route:      RouteCoverage{Complete: true, Digest: "sha256:" + hexOf('r')},
 		PDelta: func(id string) (string, bool) {
 			return map[string]string{"adv-p": "net-sink/v1", "adv-none": ""}[id], id == "adv-p" || id == "adv-none"
 		},
@@ -74,7 +75,7 @@ func TestAttestFillsWhatGovernedCLeavesEmpty(t *testing.T) {
 		if out.Route != a.Route {
 			t.Fatalf("%s: route %+v", tc.role, out.Route)
 		}
-		if len(out.EVQ) != 2 || out.EVQ[0] != (Obligation{ID: "EVQ-1", Passed: true}) || out.EVQ[1] != (Obligation{ID: "EVQ-2", Passed: true}) {
+		if len(out.EVQ) != 2 || out.EVQ[0] != (Obligation{ID: "EVQ-1", Passed: true, EvidenceRef: "ref-1"}) || out.EVQ[1] != (Obligation{ID: "EVQ-2", Passed: true, EvidenceRef: "ref-2"}) {
 			t.Fatalf("%s: evq %+v", tc.role, out.EVQ)
 		}
 		if out.MatchedDelivery != tc.matched {
@@ -99,10 +100,9 @@ func TestAttestVerifiesOnlyOnEqualPins(t *testing.T) {
 		if out.E01.Verified || out.MatchedDelivery {
 			t.Fatalf("%s: verified %t matched %t on a pin mismatch", name, out.E01.Verified, out.MatchedDelivery)
 		}
-		for _, ob := range out.EVQ {
-			if ob.Passed {
-				t.Fatalf("%s: obligation %s passed without a verified identity", name, ob.ID)
-			}
+		// Receipt identity establishes E01 only: EVQ follows the pinned results.
+		if len(out.EVQ) != 2 || !out.EVQ[0].Passed || !out.EVQ[1].Passed {
+			t.Fatalf("%s: an unverified identity changed the EVQ results: %+v", name, out.EVQ)
 		}
 	}
 	// No receipt facts at all: nothing to compare, nothing verified.

@@ -51,6 +51,8 @@ type Entry struct {
 	// Header.
 	PlanDigest   string `json:"plan_digest,omitempty"`
 	PlannedUnits int    `json:"planned_units,omitempty"`
+	// RunBinding is Schedule.RunBinding of the run that created the journal.
+	RunBinding string `json:"run_binding,omitempty"`
 
 	// Step records.
 	StepID  string `json:"step_id,omitempty"`
@@ -162,7 +164,7 @@ func OpenJournal(path string, s Schedule) (*Journal, error) {
 		}
 	}
 	if len(j.entries) == 0 {
-		if err := j.append(Entry{Kind: EntryHeader, PlanDigest: s.Digest, PlannedUnits: s.Units()}); err != nil {
+		if err := j.append(Entry{Kind: EntryHeader, PlanDigest: s.Digest, PlannedUnits: s.Units(), RunBinding: s.RunBinding}); err != nil {
 			_ = f.Close()
 			return nil, err
 		}
@@ -302,6 +304,9 @@ func (j *Journal) check(e Entry) error {
 		}
 		if e.PlannedUnits != j.sched.Units() {
 			return fmt.Errorf("%w: journal plans %d units, plan has %d", ErrPlanMismatch, e.PlannedUnits, j.sched.Units())
+		}
+		if e.RunBinding != j.sched.RunBinding {
+			return fmt.Errorf("%w: journal run binding %q, run binding %q", ErrPlanMismatch, e.RunBinding, j.sched.RunBinding)
 		}
 		return nil
 	}

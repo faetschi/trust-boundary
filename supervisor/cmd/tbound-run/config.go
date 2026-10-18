@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 
 	"tbound/supervisor/internal/broker/protocol"
@@ -17,6 +18,8 @@ import (
 	"tbound/supervisor/internal/routematrix"
 	"tbound/supervisor/internal/runner"
 )
+
+var digestRE = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 const (
 	maxConfigBytes = 1 << 20
@@ -43,12 +46,22 @@ type runConfig struct {
 	Pins runner.ReceiptPins `json:"pins"`
 	// RouteReport is a JSON routematrix.Report; its file digest is the route digest.
 	RouteReport string `json:"route_report"`
+	// EVQResults pins the conformance results file (strict JSON {obligations:[{id,passed,
+	// evidence_ref}]}) by path and sha256. The results are established outside the trial
+	// executor; Attest takes every EVQ pass from them and from nowhere else.
+	EVQResults pinnedFile `json:"evq_results"`
 	// Ledger must be "synthetic-empty".
 	Ledger string `json:"ledger"`
 	// RunDir holds journal.jsonl.
 	RunDir string     `json:"run_dir"`
 	SSH    sshConfig  `json:"ssh"`
 	Proc   procConfig `json:"proc"`
+}
+
+// pinnedFile is a file named by absolute path and pinned by "sha256:<hex>" of its bytes.
+type pinnedFile struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
 }
 
 // sshConfig names the guest login of three separate keys: the client key (serve), the
@@ -131,6 +144,9 @@ func (c runConfig) validate() error {
 			return fmt.Errorf("%s %q must be an absolute path", name, p)
 		}
 	}
+	if !filepath.IsAbs(c.EVQResults.Path) || !digestRE.MatchString(c.EVQResults.SHA256) {
+		return errors.New("evq_results needs an absolute path and a sha256:<64 hex> digest")
+	}
 	keys := []string{c.SSH.Client.Key, c.SSH.Evidence.Key, c.SSH.Trial.Key}
 	for i, k := range keys {
 		if slices.Contains(keys[:i], k) {
@@ -210,4 +226,60 @@ func loadRoute(path string) (runner.RouteCoverage, error) {
 	}
 	sum := sha256.Sum256(data)
 	return runner.RouteCoverage{Complete: rep.Complete, Digest: "sha256:" + hex.EncodeToString(sum[:])}, nil
+}
+
+// loadEVQResults reads the pinned EVQ results file: it must hash to the pinned digest and
+// parse strictly (runner.ParseEVQResults). A changed file is refused, never re-pinned.
+func loadEVQResults(pin pinnedFile) (runner.EVQResults, string, error) {
+	f, err := os.Open(pin.Path)
+	if err != nil {
+		return nil, "", fmt.Errorf("evq results: %w", err)
+	}
+	defer f.Close()
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+		return nil, "", fmt.Errorf("evq results: %s is not a regular file", pin.Path)
+	}
+	data, err := io.ReadAll(io.LimitReader(f, runner.MaxEVQResultsBytes+1))
+	if err != nil || len(data) > runner.MaxEVQResultsBytes {
+		return nil, "", errors.New("evq results: unreadable or too large")
+	}
+	sum := sha256.Sum256(data)
+	digest := "sha256:" + hex.EncodeToString(sum[:])
+	if digest != pin.SHA256 {
+		return nil, "", fmt.Errorf("evq results: %s hashes to %s, run.json pins %s", pin.Path, digest, pin.SHA256)
+	}
+	results, err := runner.ParseEVQResults(data)
+	if err != nil {
+		return nil, "", err
+	}
+	return results, digest, nil
+}
+
+// runBindingDomain labels the run binding digest.
+const runBindingDomain = "tbound-run-binding/v1"
+
+// runBinding is the normalized digest of every attestation and collector input that is not
+// in the plan digest: the receipt pins, the route report (its digest and completeness), the
+// EVQ results file digest and the PROC collector settings. It is recorded in the journal
+// header, so a journal is only resumed, rerun, exported or reported under the inputs it
+// was started with. The authorized sockets are a set and are sorted.
+func (c runConfig) runBinding(route runner.RouteCoverage, evqDigest string) (string, error) {
+	doc := struct {
+		Domain           string             `json:"domain"`
+		Pins             runner.ReceiptPins `json:"pins"`
+		RouteDigest      string             `json:"route_digest"`
+		RouteComplete    bool               `json:"route_complete"`
+		EVQResultsDigest string             `json:"evq_results_digest"`
+		Proc             procConfig         `json:"proc"`
+	}{runBindingDomain, c.Pins, route.Digest, route.Complete, evqDigest, c.Proc}
+	doc.Proc.AuthorizedSockets = slices.Sorted(slices.Values(c.Proc.AuthorizedSockets))
+	if doc.Proc.AuthorizedSockets == nil {
+		doc.Proc.AuthorizedSockets = []string{}
+	}
+	b, err := json.Marshal(doc)
+	if err != nil {
+		return "", fmt.Errorf("run binding: %w", err)
+	}
+	sum := sha256.Sum256(b)
+	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }

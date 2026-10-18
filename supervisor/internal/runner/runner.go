@@ -61,7 +61,7 @@ func NewRunner(s Schedule, j *Journal, e Executor, opt Options) (*Runner, error)
 	if j == nil || e == nil {
 		return nil, errors.New("runner: nil journal or executor")
 	}
-	if j.sched.Digest != s.Digest {
+	if j.sched.Digest != s.Digest || j.sched.RunBinding != s.RunBinding {
 		return nil, ErrPlanMismatch
 	}
 	if h := s.Config.RerunHeadroom; h < 0 || h > MaxRerunHeadroom || (s.Config.NoRerunHeadroom && h != 0) {

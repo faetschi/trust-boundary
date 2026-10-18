@@ -22,6 +22,15 @@ import (
 	"tbound/supervisor/internal/trialfix"
 )
 
+// evqAllPassed is a synthetic conformance results file that passes the two fixture obligations.
+const evqAllPassed = `{"obligations":[{"id":"EVQ-1","passed":true,"evidence_ref":"synthetic-artifact-1"},` +
+	`{"id":"EVQ-2","passed":true,"evidence_ref":"synthetic-artifact-2"}]}`
+
+func fixtureFileDigest(content string) string {
+	sum := sha256.Sum256([]byte(content))
+	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
 // All fixtures here are synthetic. They exercise the CLI's code only.
 
 const commit = "0123456789abcdef0123456789abcdef01234567"
@@ -119,6 +128,7 @@ func newEnv(t *testing.T) *env {
 	for _, f := range []string{"ssh.exe", "known_hosts", "client.key", "evidence.key", "trial.key"} {
 		e.file(f, "dummy, not a key") // only stat'ed, never read
 	}
+	e.file("evq.json", evqAllPassed)
 	e.cfg = map[string]any{
 		"manifest": e.path("corpus.json"), "quota_profile": "pilot", "freeze_commit": commit,
 		"evq_obligations": []string{"EVQ-1", "EVQ-2"},
@@ -127,6 +137,7 @@ func newEnv(t *testing.T) *env {
 		"pins": map[string]string{"profile_hash": fixtureDigest("p"), "containment_profile_digest": fixtureDigest("c"),
 			"frozen_source_digest": fixtureDigest("s")},
 		"route_report": e.path("route.json"), "ledger": "synthetic-empty", "run_dir": e.path("run"),
+		"evq_results": map[string]string{"path": e.path("evq.json"), "sha256": fixtureFileDigest(evqAllPassed)},
 		"ssh": map[string]any{
 			"path": e.path("ssh.exe"), "known_hosts": e.path("known_hosts"), "host": "10.0.0.2", "host_key_alias": "tbound-guest",
 			"client":   map[string]string{"user": "root", "key": e.path("client.key")},

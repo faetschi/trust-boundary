@@ -107,6 +107,12 @@ type Schedule struct {
 	// Subset is true when Config.OnlyCases restricted the plan. A subset plan
 	// is not the registered 1,935-unit plan.
 	Subset bool
+	// RunBinding is the digest of the host's attestation and collector inputs of a run
+	// (receipt pins, route report, EVQ results, PROC settings). It is not part of Digest,
+	// so the registered plan digest stays the pre-registered one, but the journal header
+	// records it and OpenJournal refuses a journal written under another binding. It is
+	// empty when the caller binds nothing.
+	RunBinding string
 
 	index map[string]int // step ID to position
 }

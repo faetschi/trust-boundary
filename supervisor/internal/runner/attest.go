@@ -47,10 +47,13 @@ func (p ReceiptPins) match(r *ReceiptFacts) bool {
 //     so the predicate names the channel). It is set for adversarial steps only.
 //   - E01.Verified is true only when the receipt facts equal Pins. A missing receipt or
 //     any other value is unverified, never an error.
-//   - EVQ is the registered obligation list. The host-checkable obligation of a trial is
-//     the identity check above, so every listed obligation is passed exactly when E01 is
-//     verified and the receipt passed the delta policy. This is a statement about this
-//     host check, not about the guest conformance suite.
+//   - EVQ is never manufactured here and an executor result is never overwritten. Receipt
+//     identity establishes E01.Verified only. Every configured obligation is reported, and
+//     it passes only when the pinned EVQResults (the independently established conformance
+//     results of the run) name it as passed and the executor, if it reported the obligation,
+//     did not fail it. An obligation without a pinned result, or with a failed one, is
+//     recorded as not passed. A failed obligation the executor reported beyond the
+//     configured list is kept as reported.
 //   - Route is the route report the run was configured with.
 //   - MatchedDelivery is true for a static or adaptive replay step whose identity is
 //     verified: the replays are scripted and the plan names their stimulus.
@@ -64,8 +67,11 @@ type Attest struct {
 	Inner Executor
 	Pins  ReceiptPins
 	// EVQ lists the obligation IDs reported for every trial. It must not be empty.
-	EVQ   []string
-	Route RouteCoverage
+	EVQ []string
+	// EVQResults are the independently established conformance results (the pinned EVQ
+	// results file of the run). They are the only source of a passed obligation.
+	EVQResults EVQResults
+	Route      RouteCoverage
 	// PDelta returns the manifest's p_delta of a case (the empty string for none) and
 	// whether the case is known. A nil PDelta refuses every P receipt.
 	PDelta func(caseID string) (delta string, ok bool)
@@ -83,6 +89,9 @@ func (a Attest) Validate() error {
 		if id == "" || slices.Contains(a.EVQ[:i], id) {
 			return fmt.Errorf("attest EVQ obligation %q is empty or repeated", id)
 		}
+	}
+	if err := a.EVQResults.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -120,12 +129,38 @@ func (a Attest) Execute(ctx context.Context, s Step) (Outcome, error) {
 		out.Channel = s.Predicate
 	}
 	out.Route = a.Route
-	out.EVQ = make([]Obligation, len(a.EVQ))
-	for i, id := range a.EVQ {
-		out.EVQ[i] = Obligation{ID: id, Passed: verified}
-	}
+	out.EVQ = a.evq(out.EVQ)
 	out.MatchedDelivery = verified && (s.Role == RoleStaticReplay || s.Role == RoleAdaptiveReplay)
 	return out, err
+}
+
+// evq merges the obligations an executor reported with the pinned conformance results.
+// Nothing here derives a pass from the trial itself.
+func (a Attest) evq(reported []Obligation) []Obligation {
+	pinned := make(map[string]EVQResult, len(a.EVQResults))
+	for _, r := range a.EVQResults {
+		pinned[r.ID] = r
+	}
+	out := make([]Obligation, 0, len(a.EVQ)+len(reported))
+	for _, id := range a.EVQ {
+		r, ok := pinned[id]
+		ob := Obligation{ID: id, Passed: ok && r.Passed}
+		if ok {
+			ob.EvidenceRef = r.EvidenceRef
+		}
+		for _, got := range reported {
+			if got.ID == id && !got.Passed {
+				ob.Passed = false
+			}
+		}
+		out = append(out, ob)
+	}
+	for _, got := range reported {
+		if !slices.Contains(a.EVQ, got.ID) {
+			out = append(out, got)
+		}
+	}
+	return out
 }
 
 // checkDelta applies the delta policy of the configuration. Other configurations are not
