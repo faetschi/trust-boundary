@@ -333,7 +333,6 @@ func (denyRecovery) VerifyRecoveryObservation(context.Context, Checkpoint, Pins)
 
 func TestSQLiteOwnerUsesWALFullAndAuthorizesFreshExactlyOnce(t *testing.T) {
 	owner, root, ledger, checkpoint, receipt := newWorkflowHarness(t, "workflow-fresh", testLimits())
-	defer owner.Close()
 	if receipt.WorkflowID() != checkpoint.Pins.WorkflowID || receipt.Counters() != (Counters{}) {
 		t.Fatalf("fresh receipt does not bind the initial checkpoint: %+v", receipt)
 	}
@@ -381,7 +380,6 @@ func TestSQLiteOwnerUsesWALFullAndAuthorizesFreshExactlyOnce(t *testing.T) {
 
 func TestSQLiteOwnerRollsBackFailedMultiRecordReservation(t *testing.T) {
 	owner, root, ledger, _, _ := newWorkflowHarness(t, "workflow-rollback", testLimits())
-	defer owner.Close()
 	if _, err := ledger.RegisterInitialTranscript(context.Background(), allowProgress{}, emptyTranscript("conversation-1")); err != nil {
 		t.Fatalf("register initial transcript: %v", err)
 	}
@@ -422,7 +420,6 @@ func TestSQLiteOwnerRollsBackFailedMultiRecordReservation(t *testing.T) {
 
 func TestReserveEffectUsesTypedNoTokenReservation(t *testing.T) {
 	owner, _, ledger, _, _ := newWorkflowHarness(t, "workflow-effect-reservation", testLimits())
-	defer owner.Close()
 	if _, err := ledger.RegisterInitialTranscript(context.Background(), allowProgress{}, emptyTranscript("conversation-1")); err != nil {
 		t.Fatalf("register initial transcript: %v", err)
 	}
@@ -449,8 +446,7 @@ func TestReserveEffectUsesTypedNoTokenReservation(t *testing.T) {
 }
 
 func TestReserveEffectConsumesExactCapturedCallOnce(t *testing.T) {
-	owner, _, ledger, _, _ := newWorkflowHarness(t, "workflow-captured-effect", testLimits())
-	defer owner.Close()
+	_, _, ledger, _, _ := newWorkflowHarness(t, "workflow-captured-effect", testLimits())
 	binding, before := prepareCapturedCallForEffect(t, ledger, "operation-captured", "provider-tool-call-17")
 	if before.Pins.PendingCallDisposition != PendingCallCaptured {
 		t.Fatalf("provider tool call was mislabeled terminal before Store outcome: %q", before.Pins.PendingCallDisposition)
@@ -491,8 +487,7 @@ func TestReserveEffectConsumesExactCapturedCallOnce(t *testing.T) {
 }
 
 func TestCapturedCallCannotBeRelabeledTerminalBeforeStoreOutcome(t *testing.T) {
-	owner, _, ledger, _, _ := newWorkflowHarness(t, "workflow-captured-not-terminal", testLimits())
-	defer owner.Close()
+	_, _, ledger, _, _ := newWorkflowHarness(t, "workflow-captured-not-terminal", testLimits())
 	binding, before := prepareCapturedCallForEffect(t, ledger, "operation-still-pending", "provider-tool-call-pending")
 	verifier := exactCapturedOperationVerifier{expected: binding}
 
@@ -515,8 +510,7 @@ func TestCapturedCallCannotBeRelabeledTerminalBeforeStoreOutcome(t *testing.T) {
 }
 
 func TestLaterCapturedCallCanFollowSettledRetiredCall(t *testing.T) {
-	owner, _, ledger, _, _ := newWorkflowHarness(t, "workflow-captured-multiple-calls", testLimits())
-	defer owner.Close()
+	_, _, ledger, _, _ := newWorkflowHarness(t, "workflow-captured-multiple-calls", testLimits())
 	_, first := prepareCapturedCallForEffect(t, ledger, "operation-first-denied", "provider-tool-call-first")
 
 	retired := clonePins(first.Pins)
@@ -576,8 +570,7 @@ func TestLaterCapturedCallCanFollowSettledRetiredCall(t *testing.T) {
 }
 
 func TestReserveEffectRejectsMismatchedCapturedOperationBindings(t *testing.T) {
-	owner, _, ledger, _, _ := newWorkflowHarness(t, "workflow-captured-mismatch", testLimits())
-	defer owner.Close()
+	_, _, ledger, _, _ := newWorkflowHarness(t, "workflow-captured-mismatch", testLimits())
 	binding, before := prepareCapturedCallForEffect(t, ledger, "operation-mismatch-base", "provider-tool-call-18")
 	verifier := exactCapturedOperationVerifier{expected: binding}
 	cases := map[string]func(*EffectBinding){
@@ -607,8 +600,7 @@ func TestReserveEffectRejectsMismatchedCapturedOperationBindings(t *testing.T) {
 }
 
 func TestReserveEffectRejectsUnsettledAndUnknownProviderCalls(t *testing.T) {
-	owner, _, ledger, _, _ := newWorkflowHarness(t, "workflow-captured-unsettled", testLimits())
-	defer owner.Close()
+	_, _, ledger, _, _ := newWorkflowHarness(t, "workflow-captured-unsettled", testLimits())
 	if _, err := ledger.RegisterInitialTranscript(context.Background(), allowProgress{}, emptyTranscript("conversation-unsettled")); err != nil {
 		t.Fatalf("register unsettled test conversation: %v", err)
 	}
@@ -996,7 +988,6 @@ func runCrashCutpoint(t *testing.T, path, rootIdentity string, checkpoint Checkp
 
 func TestSQLiteOwnerAcceptsExternallyVerifiedAppendOnlyTailOnCleanRestart(t *testing.T) {
 	owner, root, initialLedger, initial, _ := newWorkflowHarness(t, "workflow-restart-tail", testLimits())
-	defer owner.Close()
 	if _, err := initialLedger.RegisterInitialTranscript(context.Background(), allowProgress{}, emptyTranscript("conversation-1")); err != nil {
 		t.Fatalf("register initial transcript: %v", err)
 	}
@@ -1068,7 +1059,6 @@ func TestSQLiteOwnerAcceptsExternallyVerifiedAppendOnlyTailOnCleanRestart(t *tes
 
 func TestUnsettledProviderStateCanBeRecordedButCannotAdmitOrRetry(t *testing.T) {
 	owner, root, ledger, checkpoint, _ := newWorkflowHarness(t, "workflow-pending", testLimits())
-	defer owner.Close()
 	if _, err := ledger.RegisterInitialTranscript(context.Background(), allowProgress{}, emptyTranscript("conversation-1")); err != nil {
 		t.Fatalf("register initial transcript: %v", err)
 	}
@@ -1166,8 +1156,7 @@ func TestZeroRecoveryAllowancesAreValidAndBudgetsStayWorkflowWide(t *testing.T) 
 	limits := testLimits()
 	limits.MaxPreEffectRetries = 0
 	limits.MaxCleanRestarts = 0
-	owner, _, ledger, _, _ := newWorkflowHarness(t, "workflow-zero-allowance", limits)
-	defer owner.Close()
+	_, _, ledger, _, _ := newWorkflowHarness(t, "workflow-zero-allowance", limits)
 	if _, err := ledger.ReservePreEffectRetry(context.Background()); !errors.Is(err, ErrExhausted) {
 		t.Fatalf("disabled retry allowance = %v, want ErrExhausted", err)
 	}
@@ -1231,7 +1220,6 @@ func TestZeroRecoveryAllowancesAreValidAndBudgetsStayWorkflowWide(t *testing.T) 
 
 func TestSQLiteOwnerRequiresFenceDrainAndRejectsStaleOwner(t *testing.T) {
 	owner, root, oldLedger, checkpoint, _ := newWorkflowHarness(t, "workflow-fencing", testLimits())
-	defer owner.Close()
 	root.setFence(checkpoint.Pins.WorkflowID, 2, 0)
 	if _, err := Open(context.Background(), owner, OpenOptions{
 		WorkflowID: checkpoint.Pins.WorkflowID, OwnerEpoch: 2,

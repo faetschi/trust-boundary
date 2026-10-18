@@ -661,27 +661,7 @@ func TestD14ReservedEffectRefusesNonTerminalCommits(t *testing.T) {
 	})
 	t.Run("recovery observation after a replacement fence", func(t *testing.T) {
 		const workflow = "workflow-d14-reserved-fence"
-		root := newTestTrustedRoot()
-		root.setFence(workflow, 1, 0)
-		directory := t.TempDir()
-		if err := os.Chmod(directory, 0o700); err != nil {
-			t.Fatal(err)
-		}
-		owner, err := CreateFreshSQLiteOwner(filepath.Join(directory, "workflow-owner.sqlite"), root)
-		if err != nil {
-			t.Fatalf("create SQLite owner: %v", err)
-		}
-		defer owner.Close()
-		pins := testPins(root.identity, owner.OwnerIncarnationDigest(), workflow, "session-initial", 1, 1)
-		limits := testLimits()
-		if _, err := InitializeFresh(ctx, owner, pins, limits); err != nil {
-			t.Fatalf("initialize fresh workflow: %v", err)
-		}
-		first, err := Open(ctx, owner, OpenOptions{WorkflowID: workflow, OwnerEpoch: 1,
-			RetainedPins: pins, Limits: limits})
-		if err != nil {
-			t.Fatalf("open first owner epoch: %v", err)
-		}
+		owner, root, first, _, _ := newWorkflowHarness(t, workflow, testLimits())
 		conversation := "conversation-fence"
 		hostCall := "host-call-fence"
 		if _, err := first.RegisterInitialTranscript(ctx, allowProgress{}, emptyTranscript(conversation)); err != nil {

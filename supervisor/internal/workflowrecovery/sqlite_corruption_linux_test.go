@@ -8,7 +8,6 @@ import (
 	"errors"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -67,23 +66,12 @@ func TestSQLiteOwnerRealCorruptionFailsClosedAfterReservedEffect(t *testing.T) {
 
 func runSQLiteCorruptionChild(t *testing.T, phase, target, rootPath, ownerStoreRoot string) []byte {
 	t.Helper()
-	command := exec.Command(os.Args[0], "-test.v", "-test.run=^TestSQLiteOwnerCorruptionHelper$")
-	command.Env = append(os.Environ(),
+	return runHelperChild(t, "TestSQLiteOwnerCorruptionHelper", "SQLITE_CORRUPTION_", phase, target,
 		sqliteCorruptionHelperEnv+"="+phase,
 		sqliteCorruptionTargetEnv+"="+target,
 		sqliteCorruptionRootEnv+"="+rootPath,
 		sqliteCorruptionStoreEnv+"="+ownerStoreRoot,
 	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("%s child for %s failed: %v\n%s", phase, target, err, output)
-	}
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.Contains(line, "SQLITE_CORRUPTION_") {
-			t.Log(strings.TrimSpace(line))
-		}
-	}
-	return output
 }
 
 func TestSQLiteOwnerCorruptionHelper(t *testing.T) {

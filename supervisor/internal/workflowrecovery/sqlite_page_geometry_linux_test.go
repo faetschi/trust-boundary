@@ -542,7 +542,6 @@ func TestSQLiteOwnerRefusesExistingDatabaseBeyondCeiling(t *testing.T) {
 func TestSQLiteOwnerPageCeilingAdmitsThreeMaxSizeTransitionsAndRefusesFourth(t *testing.T) {
 	const workflow = "workflow-max-transitions"
 	owner, _, _, _, _ := newWorkflowHarness(t, workflow, testLimits())
-	defer owner.Close()
 	ctx := context.Background()
 	maxBlob := bytes.Repeat([]byte("x"), maxCheckpointJSONBytes)
 	transition := func(sequence int64) error {

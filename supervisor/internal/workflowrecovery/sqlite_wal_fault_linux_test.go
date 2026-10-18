@@ -114,20 +114,27 @@ func TestSQLiteOwnerRealWALWriteFault(t *testing.T) {
 
 func runSQLiteWALFaultChild(t *testing.T, phase, caseName, rootPath, ownerStoreRoot, statePath string) []byte {
 	t.Helper()
-	command := exec.Command(os.Args[0], "-test.v", "-test.run=^TestSQLiteOwnerRealWALWriteFaultHelper$")
-	command.Env = append(os.Environ(),
+	return runHelperChild(t, "TestSQLiteOwnerRealWALWriteFaultHelper", "SQLITE_WAL_FAULT_", phase, caseName,
 		sqliteWALFaultHelperEnv+"="+phase,
 		sqliteWALFaultCaseEnv+"="+caseName,
 		sqliteWALFaultRootEnv+"="+rootPath,
 		sqliteWALFaultStoreRootEnv+"="+ownerStoreRoot,
 		sqliteWALFaultStateEnv+"="+statePath,
 	)
+}
+
+// runHelperChild runs one helper test in a fresh process with the extra
+// environment and logs its output lines that contain logMarker.
+func runHelperChild(t *testing.T, helperTest, logMarker, phase, caseName string, env ...string) []byte {
+	t.Helper()
+	command := exec.Command(os.Args[0], "-test.v", "-test.run=^"+helperTest+"$")
+	command.Env = append(os.Environ(), env...)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s helper for %s failed: %v\n%s", phase, caseName, err, output)
 	}
 	for _, line := range bytes.Split(output, []byte("\n")) {
-		if bytes.Contains(line, []byte("SQLITE_WAL_FAULT_")) {
+		if bytes.Contains(line, []byte(logMarker)) {
 			t.Logf("%s: %s", phase, bytes.TrimSpace(line))
 		}
 	}
@@ -162,11 +169,7 @@ func runSQLiteWALFaultPhase(t *testing.T, caseName, rootPath, ownerStoreRoot, st
 	ownerPath := filepath.Join(ownerStoreRoot, "workflow-owner.sqlite")
 	ownerWAL := ownerPath + "-wal"
 	rootWAL := rootPath + "-wal"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, sqliteWALFaultWorkflow, &processExitDrainVerifier{})
-	realRoot, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create real protected root: %v", err)
-	}
+	_, realRoot := createProtectedRoot(t, rootPath, ownerStoreRoot, sqliteWALFaultWorkflow)
 	armed := &sqliteWALFaultRoot{ProtectedTrustedRoot: realRoot}
 	owner, err := CreateFreshSQLiteOwner(ownerPath, armed)
 	if err != nil {

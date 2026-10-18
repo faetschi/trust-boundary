@@ -5,8 +5,6 @@ package workflowrecovery
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 )
 
@@ -31,27 +29,7 @@ type combinedRetirementFixture struct {
 func newCombinedRetirementFixture(t *testing.T, workflow string, limits Limits, captured bool) combinedRetirementFixture {
 	t.Helper()
 	ctx := context.Background()
-	root := newTestTrustedRoot()
-	root.setFence(workflow, 1, 0)
-	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(directory, "workflow-owner.sqlite")
-	owner, err := CreateFreshSQLiteOwner(path, root)
-	if err != nil {
-		t.Fatalf("create fresh SQLite owner: %v", err)
-	}
-	t.Cleanup(func() { _ = owner.Close() })
-	pins := testPins(root.identity, owner.OwnerIncarnationDigest(), workflow, "session-initial", 1, 1)
-	if _, err := InitializeFresh(ctx, owner, pins, limits); err != nil {
-		t.Fatalf("initialize fresh workflow: %v", err)
-	}
-	first, err := Open(ctx, owner, OpenOptions{WorkflowID: workflow, OwnerEpoch: 1,
-		RetainedPins: pins, Limits: limits})
-	if err != nil {
-		t.Fatalf("open first owner epoch: %v", err)
-	}
+	owner, root, first, _, _ := newWorkflowHarness(t, workflow, limits)
 	if captured {
 		prepareCapturedCallForEffect(t, first, "combined-operation", "combined-tool-call")
 	} else if _, err := first.RegisterInitialTranscript(ctx, allowProgress{}, emptyTranscript("conversation-idle")); err != nil {
@@ -77,7 +55,7 @@ func newCombinedRetirementFixture(t *testing.T, workflow string, limits Limits, 
 	if err != nil {
 		t.Fatalf("verify externally retired observation: %v", err)
 	}
-	return combinedRetirementFixture{path: path, root: root, owner: owner, ledger: ledger,
+	return combinedRetirementFixture{path: owner.path, root: root, owner: owner, ledger: ledger,
 		observation: observation, observed: observed, staged: stale, stagedDigest: staleDigest}
 }
 

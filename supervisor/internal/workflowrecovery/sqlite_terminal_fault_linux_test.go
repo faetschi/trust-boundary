@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"reflect"
@@ -134,8 +133,7 @@ func TestSQLiteOwnerTerminalEffectRealPersistenceFault(t *testing.T) {
 
 func runSQLiteTerminalFaultChild(t *testing.T, phase, caseName, rootPath, ownerStoreRoot, statePath, markerPath string) []byte {
 	t.Helper()
-	command := exec.Command(os.Args[0], "-test.v", "-test.run=^TestSQLiteOwnerTerminalEffectRealPersistenceFaultHelper$")
-	command.Env = append(os.Environ(),
+	return runHelperChild(t, "TestSQLiteOwnerTerminalEffectRealPersistenceFaultHelper", "SQLITE_TERMINAL_FAULT_", phase, caseName,
 		sqliteTerminalFaultHelperEnv+"="+phase,
 		sqliteTerminalFaultCaseEnv+"="+caseName,
 		sqliteTerminalFaultRootEnv+"="+rootPath,
@@ -143,16 +141,6 @@ func runSQLiteTerminalFaultChild(t *testing.T, phase, caseName, rootPath, ownerS
 		sqliteTerminalFaultStateEnv+"="+statePath,
 		sqliteTerminalFaultMarkerEnv+"="+markerPath,
 	)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("%s helper for %s failed: %v\n%s", phase, caseName, err, output)
-	}
-	for _, line := range bytes.Split(output, []byte("\n")) {
-		if bytes.Contains(line, []byte("SQLITE_TERMINAL_FAULT_")) {
-			t.Logf("%s: %s", phase, bytes.TrimSpace(line))
-		}
-	}
-	return output
 }
 
 func TestSQLiteOwnerTerminalEffectRealPersistenceFaultHelper(t *testing.T) {
@@ -185,11 +173,7 @@ func runSQLiteTerminalFaultPhase(t *testing.T, caseName, rootPath, ownerStoreRoo
 	ownerPath := filepath.Join(ownerStoreRoot, "workflow-owner.sqlite")
 	ownerWAL := ownerPath + "-wal"
 	rootWAL := rootPath + "-wal"
-	boundary := newProtectedRootTestBoundary(t, ownerStoreRoot, workflow, &processExitDrainVerifier{})
-	realRoot, err := CreateFreshProtectedRoot(rootPath, ownerStoreRoot, boundary)
-	if err != nil {
-		t.Fatalf("create real protected root: %v", err)
-	}
+	_, realRoot := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
 	armed := &sqliteTerminalFaultRoot{ProtectedTrustedRoot: realRoot}
 	owner, err := CreateFreshSQLiteOwner(ownerPath, armed)
 	if err != nil {
