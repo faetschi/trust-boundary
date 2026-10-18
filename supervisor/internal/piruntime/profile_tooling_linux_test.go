@@ -32,11 +32,6 @@ func TestPiWorkerCellIdentitiesAreStable(t *testing.T) {
 		t.Fatalf("in-cell executable/runtime identity drifted: node=%s executable=%s bundle=%s",
 			PiWorkerCellNodeVersion, PiWorkerCellExecutable, PiWorkerCellRuntimeBundleRoot)
 	}
-	if err := DefaultLinuxHostProfileTemplate().Validate(); err != nil {
-		// Digest is intentionally empty; validate the rest of the template by
-		// signing it and checking the signed profile.
-		t.Logf("unsigned template validate (expected missing Digest): %v", err)
-	}
 }
 
 func TestProductionPiCLIProfileRejectsLegacyOrMalformedContracts(t *testing.T) {

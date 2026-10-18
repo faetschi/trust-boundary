@@ -2375,7 +2375,7 @@ func (l *D09PodmanCrunLauncher) cleanupFailedLaunch(cmd *exec.Cmd) bool {
 	return l.finishFailedLaunchRecord(cmd, record) == nil
 }
 
-// d09ContainerArguments builds the exact hardened `podman run` vector for one
+// d09ContainerArgumentsAtWithEnv builds the exact hardened `podman run` vector for one
 // worker cell. `--preserve-fds 8` passes fd3 exec, fd4 exposure, fd5 bootstrap,
 // fd6 IPC, fd7 provider, fd8 events, fd9 bundle, and fd10 TCB proof. The verified
 // Go-held D06/runtime consumer descriptors are bound read-only at their fixed
@@ -2383,14 +2383,6 @@ func (l *D09PodmanCrunLauncher) cleanupFailedLaunch(cmd *exec.Cmd) bool {
 // mount IDs then replaces raw source descriptors with consumer-mount handles.
 // No private-Git/admin/store-root descriptor or arbitrary caller path reaches
 // the worker. `--cgroup-parent` names the path resolved from the held scope.
-func d09ContainerArguments(config D09Config, name, imageRef string, environment, arguments []string) []string {
-	return d09ContainerArgumentsAt(config, name, imageRef, environment, arguments, PiWorkerCellWorkdir, nil, "")
-}
-
-func d09ContainerArgumentsAt(config D09Config, name, imageRef string, environment, arguments []string, workdir string, mounts []string, cidPath string) []string {
-	return d09ContainerArgumentsAtWithEnv(config, name, imageRef, environment, nil, arguments, workdir, mounts, cidPath)
-}
-
 func d09ContainerArgumentsAtWithEnv(config D09Config, name, imageRef string, environment, extraEnv, arguments []string, workdir string, mounts []string, cidPath string) []string {
 	uid := strconv.Itoa(config.UID)
 	gid := strconv.Itoa(config.GID)

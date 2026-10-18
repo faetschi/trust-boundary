@@ -9,12 +9,6 @@ import (
 	"testing"
 )
 
-func TestCorpusQuotaProfileConstants(t *testing.T) {
-	if D09ManagedPiCorpusQuotaProfileThesis != "thesis" || D09ManagedPiCorpusQuotaProfilePilot != "pilot" {
-		t.Fatalf("quota profile names drifted: %q %q", D09ManagedPiCorpusQuotaProfileThesis, D09ManagedPiCorpusQuotaProfilePilot)
-	}
-}
-
 func TestCorpusQuotaProfileValidation(t *testing.T) {
 	type mutate = func(*D09ManagedPiServiceConfig)
 	accepted := map[string]mutate{

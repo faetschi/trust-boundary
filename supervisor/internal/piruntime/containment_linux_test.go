@@ -442,8 +442,8 @@ func TestD09LauncherManagedRootBindingRejectsWrongIdentityAndDoubleBind(t *testi
 func TestD09ContainerArgumentsComposeFrozenCell(t *testing.T) {
 	config := D09Config{UID: 1000, GID: 1000, PidsMax: 128, MemoryMB: 512, CPUs: "1", SeccompProfilePath: "/etc/tbound/seccomp.json", CgroupsPath: "/sys/fs/cgroup/tbound", EntrypointPath: "/usr/local/bin/tbound-pi-entrypoint", CrunPath: "/usr/bin/crun", LandlockABI: 1, LandlockRulesetDigest: DigestBytes([]byte("landlock")), LandlockROPath: "/usr", LandlockRWPath: "/work"}
 	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
-	args := d09ContainerArguments(config, "tbound-pi-cell-deadbeef",
-		"localhost/tbound/pi-cell@"+fakeD09Digest, PiWorkerCellEnvironment(), PiWorkerCellArguments())
+	args := d09ContainerArgumentsAtWithEnv(config, "tbound-pi-cell-deadbeef",
+		"localhost/tbound/pi-cell@"+fakeD09Digest, PiWorkerCellEnvironment(), nil, PiWorkerCellArguments(), PiWorkerCellWorkdir, nil, "")
 	workerArguments := PiWorkerCellArguments()
 	if len(args) < len(workerArguments) || !equalStrings(args[len(args)-len(workerArguments):], workerArguments) {
 		t.Fatalf("D09 container argv does not end with the exact frozen Pi CLI argv: %q", args)

@@ -456,7 +456,8 @@ func SignD09ManagedLiveRootRegistration(registration D09ManagedLiveRootRegistrat
 		return nil, nil, "", ErrD09ManagedLiveRootRefused
 	}
 	registration.SchemaVersion = D09ManagedLiveRootSchema
-	registration.Digest = DigestBytes(mustD09ManagedLiveRootSigningBytes(registration))
+	message, _ := D09ManagedLiveRootSigningBytes(registration)
+	registration.Digest = DigestBytes(message)
 	if err := registration.Validate(); err != nil {
 		return nil, nil, "", err
 	}
@@ -786,11 +787,6 @@ func lookupLocalServiceAccount(passwd, groupFile []byte, serviceName, serviceGro
 	return uid, gid, shell, foundUser && foundGroup
 }
 
-func mustD09ManagedLiveRootSigningBytes(registration D09ManagedLiveRootRegistration) []byte {
-	message, _ := D09ManagedLiveRootSigningBytes(registration)
-	return message
-}
-
 // VerifyD09ManagedLiveRootRegistration verifies strict canonical JSON, the
 // exact domain-separated signature and digest, and all closed policy fields.
 func VerifyD09ManagedLiveRootRegistration(encoded, signature []byte, publicKey ed25519.PublicKey) (D09ManagedLiveRootRegistration, error) {
@@ -799,7 +795,7 @@ func VerifyD09ManagedLiveRootRegistration(encoded, signature []byte, publicKey e
 		len(publicKey) != ed25519.PublicKeySize {
 		return registration, ErrD09ManagedLiveRootRefused
 	}
-	if err := protocolValidateStrictJSON(encoded); err != nil {
+	if err := protocol.ValidateStrictJSON(encoded); err != nil {
 		return registration, fmt.Errorf("%w: registration JSON is not strict: %v", ErrD09ManagedLiveRootRefused, err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(encoded))
@@ -823,11 +819,6 @@ func VerifyD09ManagedLiveRootRegistration(encoded, signature []byte, publicKey e
 		return registration, err
 	}
 	return registration, nil
-}
-
-func protocolValidateStrictJSON(encoded []byte) error {
-	// Use the shared duplicate-key/depth/size validator used by supervisor IPC.
-	return protocol.ValidateStrictJSON(encoded)
 }
 
 // VerifiedD09ManagedLiveRoot holds descriptor-bound registration verification.

@@ -1222,7 +1222,7 @@ func StartDevelopmentPiCLIWorker(ctx context.Context, plan DeveloperPiCLIPlan) (
 	bootstrap.WorkerViewIdentity = sourceEvidence.WorkerViewIdentity
 	bootstrap.WorkerMountID = sourceEvidence.WorkerMountID
 	runtime := developmentPiCLIWorkerBindings(profile, plan, channels)
-	return launchPiCLIWorkerCore(ctx, profile, runtime, channels, bootstrap, plan)
+	return launchPiCLIWorker(ctx, profile, runtime, nil, channels, bootstrap, true, plan.PiPath)
 }
 
 func developmentPiCLIProfile(plan DeveloperPiCLIPlan, bundleDigest string, channels *PiWorkerChannels) HostProfile {
@@ -1290,10 +1290,6 @@ func validatePiCLIEnvironment(environment []string) error {
 		}
 	}
 	return nil
-}
-
-func launchPiCLIWorkerCore(ctx context.Context, profile HostProfile, runtime HostRuntimeBindings, channels *PiWorkerChannels, bootstrap PiWorkerBootstrap, plan DeveloperPiCLIPlan) (*PiCLIWorker, error) {
-	return launchPiCLIWorker(ctx, profile, runtime, nil, channels, bootstrap, true, plan.PiPath)
 }
 
 func developmentPiCLIRuntimeLauncher(ctx context.Context, plan DeveloperPiCLIPlan, profile HostProfile, runtime HostRuntimeBindings) (*Process, error) {
