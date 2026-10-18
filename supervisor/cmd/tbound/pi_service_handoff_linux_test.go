@@ -746,7 +746,7 @@ func TestPiServiceJournalRecoveryProcessHelper(t *testing.T) {
 	}()
 	serveErr := servePiServiceRequests(ctx, listener, piServiceSocketRegistration{
 		AllowedClientUIDs: []int{uid}, AllowedClientPrimaryGID: gid,
-	}, requests, nil, run)
+	}, requests, nil, run, nil)
 	closeErr := requests.close()
 	if serveErr != nil || closeErr != nil {
 		t.Fatalf("recovery service err=%v journal close=%v", serveErr, closeErr)
@@ -801,6 +801,12 @@ type piServiceTestServer struct {
 func newPiServiceTestServer(t *testing.T, socket piServiceSocketRegistration,
 	run piServiceTaskRunner) *piServiceTestServer {
 	t.Helper()
+	return newPiServiceTestServerLocked(t, socket, run, nil)
+}
+
+func newPiServiceTestServerLocked(t *testing.T, socket piServiceSocketRegistration,
+	run piServiceTaskRunner, maintenance func() (func(), error)) *piServiceTestServer {
+	t.Helper()
 	root := privateGovernedTestRoot(t)
 	path := filepath.Join(root, "service.sock")
 	address := &net.UnixAddr{Name: path, Net: "unix"}
@@ -827,7 +833,7 @@ func newPiServiceTestServer(t *testing.T, socket piServiceSocketRegistration,
 		return run(ctx, request)
 	}
 	go func() {
-		server.done <- servePiServiceRequests(ctx, listener, socket, journalRequestsOnly(requests), nil, wrappedRunner)
+		server.done <- servePiServiceRequests(ctx, listener, socket, journalRequestsOnly(requests), nil, wrappedRunner, maintenance)
 	}()
 	t.Cleanup(func() {
 		cancel()

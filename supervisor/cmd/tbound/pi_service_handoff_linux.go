@@ -1525,8 +1525,12 @@ func readPiServiceResponse(conn net.Conn) (piServiceResponse, error) {
 	return response, nil
 }
 
+// servePiServiceRequests serves the socket, one task at a time. maintenance takes the maintenance lock
+// (maintenance_lock_linux.go) for each admitted task and returns its release; it is nil only in tests.
+// The lock is held with the active slot, from the admission to the end of the task, and is released
+// wherever the slot is.
 func servePiServiceRequests(ctx context.Context, listener net.Listener, socket piServiceSocketRegistration,
-	journal *piServiceRequestJournal, validateListener func() error, run piServiceTaskRunner) error {
+	journal *piServiceRequestJournal, validateListener func() error, run piServiceTaskRunner, maintenance func() (func(), error)) error {
 	if ctx == nil || listener == nil || journal == nil || run == nil {
 		return ErrPiServiceUnavailable
 	}
@@ -1613,6 +1617,25 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			_ = unixConn.Close()
 			continue
 		}
+		release := func() {}
+		if maintenance != nil {
+			var lockErr error
+			if release, lockErr = maintenance(); lockErr != nil {
+				active.Store(false)
+				response := piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
+					Status: "refused", ErrorCode: "maintenance-lock-unavailable"}
+				if errors.Is(lockErr, errMaintenanceBusy) {
+					response.Status, response.ErrorCode = "busy", "maintenance-in-progress"
+				}
+				_ = writePiServiceFrame(unixConn, response)
+				_ = unixConn.Close()
+				continue
+			}
+		}
+		free := func() {
+			release()
+			active.Store(false)
+		}
 		acceptedRecord := prior.acceptedRecord
 		acceptedEvent := prior.accepted
 		if !exists {
@@ -1622,7 +1645,7 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			// journals nothing and frees the slot, instead of becoming an accepted request
 			// whose resolution fails and whose terminal unknown blocks later work.
 			if code := journal.screen(peer, request); code != "" {
-				active.Store(false)
+				free()
 				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
 					RequestID: request.RequestID, Status: "refused", ErrorCode: code})
 				_ = unixConn.Close()
@@ -1630,7 +1653,7 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			}
 			acceptedRecord, err = journal.begin(ctx, peer, request, payloadDigest)
 			if err != nil {
-				active.Store(false)
+				free()
 				errorCode := "request-journal-unavailable"
 				if errors.Is(err, ErrPiServiceUnresolvedPrior) {
 					errorCode = "prior-workflow-unsettled"
@@ -1643,7 +1666,7 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			// The accepted record is journaled, so a failure from here on is an unknown outcome.
 			stored, _, lookupErr := journal.lookup(peer, request, payloadDigest)
 			if lookupErr != nil {
-				active.Store(false)
+				free()
 				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
 					RequestID: request.RequestID, Status: "unknown", ErrorCode: "request-journal-unavailable"})
 				_ = unixConn.Close()
@@ -1653,7 +1676,7 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 		}
 		if validateListener != nil {
 			if err := validateListener(); err != nil {
-				active.Store(false)
+				free()
 				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
 					RequestID: request.RequestID, Status: "unknown", ErrorCode: "socket-authority-changed"})
 				_ = unixConn.Close()
@@ -1664,7 +1687,7 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 		go func(conn *net.UnixConn, peer piServicePeerCredentials, request piServiceRequest, payloadDigest string,
 			acceptedEvent piServiceRequestAcceptedEvent, acceptedRecord audit.Record, isReplay bool) {
 			defer tasks.Done()
-			defer active.Store(false)
+			defer free()
 			defer conn.Close()
 			taskCtx, cancel := context.WithTimeout(ctx, productionSessionMaxRuntime)
 			defer cancel()
@@ -2022,7 +2045,7 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 		}
 		return append(json.RawMessage(nil), encoded...), runErr
 	}
-	return servePiServiceRequests(ctx, activated.Listener, socket, requests, activated.Revalidate, runTask)
+	return servePiServiceRequests(ctx, activated.Listener, socket, requests, activated.Revalidate, runTask, serviceMaintenanceLock.acquire)
 }
 
 // optionalDigestText accepts an absent digest or a valid one.

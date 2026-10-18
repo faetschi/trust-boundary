@@ -152,9 +152,22 @@ const (
 	// D09NetSinkRulePath is the installed copy of infra/guest/nftables/tbound-net-sink.nft.
 	D09NetSinkRulePath = "/etc/tbound/net-sink.nft"
 	// D09NetSinkRuleDigest pins the rule file (LF line endings). The service refuses net-sink unless
-	// the installed file has this digest. It proves the file, not that nft loaded it: the spike
-	// proves the load.
-	D09NetSinkRuleDigest = "sha256:2e3036f75f351454becacd89fdd2c67f76631a718959e990544831482f229c87"
+	// the installed file has this digest and the reset attested its load (D09NetSinkAttestPath).
+	D09NetSinkRuleDigest = "sha256:b2a5618fe4c9f1461d3120482e133a44252aee28b553083d68da8689d9f378e4"
+
+	// D09NetSinkAttestPath is the root-owned attestation the operator reset writes after it loaded
+	// the pinned rule and read it back (tbound trial reset). The service refuses net-sink unless it
+	// matches this boot, the net-sink parent cgroup it opens and the pinned rule digest.
+	D09NetSinkAttestPath   = "/run/tbound/net-sink.attest"
+	D09NetSinkAttestSchema = "tbound-net-sink-attest/v1"
+	// D09NetSinkTable is the nftables table the rule file declares.
+	D09NetSinkTable = "tbound_net_sink"
+
+	// D09NoReapContainerLabel and D09LeaseContainerLabelKey label the containers of no-reap/v1
+	// command cells, which are left running and not removed by the lease. The operator reset removes
+	// the containers that carry the first label.
+	D09NoReapContainerLabel   = "tbound.delta=no-reap/v1"
+	D09LeaseContainerLabelKey = "tbound.lease"
 
 	cgroup2MountPrefix = "/sys/fs/cgroup/"
 )

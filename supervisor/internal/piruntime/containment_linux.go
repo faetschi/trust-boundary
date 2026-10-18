@@ -718,7 +718,7 @@ func (l *D09PodmanCrunLauncher) newCommandScope(ctx context.Context, leaseID, vi
 		}
 	}
 	if netSink {
-		dir, err := l.openNetSinkParent()
+		dir, err := l.openNetSinkParent(netSinkLoadAttested)
 		if err != nil {
 			return nil, err
 		}

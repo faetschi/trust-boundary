@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -66,6 +67,11 @@ type trialTestEnv struct {
 	dirtyAtKill bool
 	killErr     error
 	snapshotFn  func(root, label string) wsoracle.Manifest
+	// events is the order in which the reset used its seams.
+	events     []string
+	lockErr    error
+	noReapErr  error
+	netSinkErr error
 }
 
 func newTrialTestEnv(t *testing.T) *trialTestEnv {
@@ -105,15 +111,35 @@ func newTrialTestEnv(t *testing.T) *trialTestEnv {
 			return evidenceCell{ID: "cells", CgroupPath: "/cells", Hierarchy: "/cells", Inode: 1,
 				UID: owner.UID + trialTestInCellOffset, GID: owner.GID + trialTestInCellOffset, HostUID: owner.UID, HostGID: owner.GID}, nil
 		},
-		pending:       func(context.Context) error { return e.pendingErr },
+		lock: func() (func(), error) {
+			if e.lockErr != nil {
+				return nil, e.lockErr
+			}
+			e.events = append(e.events, "lock")
+			return func() { e.events = append(e.events, "unlock") }, nil
+		},
+		pending: func(context.Context) error {
+			e.events = append(e.events, "pending")
+			return e.pendingErr
+		},
+		cleanNoReap: func(context.Context, evidenceCell) error {
+			e.events = append(e.events, "no-reap")
+			return e.noReapErr
+		},
+		netSink: func(context.Context, evidenceCell) error {
+			e.events = append(e.events, "net-sink")
+			return e.netSinkErr
+		},
 		cellPopulated: func(evidenceCell) (bool, error) { return e.populated, nil },
 		killCell: func(cell evidenceCell) error {
+			e.events = append(e.events, "kill")
 			e.killed = append(e.killed, cell.CgroupPath)
 			_, err := os.Stat(filepath.Join(root, "left-over"))
 			e.dirtyAtKill = err == nil
 			return e.killErr
 		},
 		snapshot: func(r, label string) wsoracle.Manifest {
+			e.events = append(e.events, "verify")
 			if e.snapshotFn != nil {
 				return e.snapshotFn(r, label)
 			}
@@ -449,6 +475,66 @@ func TestResetComparesTheHostIdentityOfTheMappingWithTheFixtureOwner(t *testing.
 		}
 		if !tc.ok && (err == nil || !strings.Contains(err.Error(), "fixture owner")) {
 			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+// The reset holds the maintenance lock from before the pending check to after the final digest
+// check, and cleans the no-reap leftovers and (re)loads the net-sink rule after the kill and before
+// the tree is touched.
+func TestTrialResetHoldsTheMaintenanceLockAcrossTheWholeReset(t *testing.T) {
+	e := newTrialTestEnv(t)
+	if _, _, err := e.run(t, "reset", trialTestCase); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(e.events, " "), "lock pending kill no-reap net-sink verify unlock"; got != want {
+		t.Fatalf("seam order %q, want %q", got, want)
+	}
+}
+
+func TestTrialResetRefusesWhenAWorkflowOrAnotherResetHoldsTheLock(t *testing.T) {
+	for name, lockErr := range map[string]error{
+		"busy":        fmt.Errorf("%w: held", errMaintenanceBusy),
+		"unavailable": fmt.Errorf("%w: absent", errMaintenanceUnavailable),
+	} {
+		for _, args := range [][]string{{"reset", trialTestCase}, {"reset", trialTestCase, "--check"}} {
+			e := newTrialTestEnv(t)
+			e.lockErr = lockErr
+			if _, out, err := e.run(t, args...); err == nil || out != "" || !strings.Contains(err.Error(), "maintenance lock") {
+				t.Fatalf("%s %v: err %v, output %q; want a refusal naming the maintenance lock", name, args, err, out)
+			}
+			e.rootUntouched(t)
+			if len(e.killed) != 0 || len(e.events) != 0 {
+				t.Fatalf("%s %v: the reset went on: kills %v, events %v", name, args, e.killed, e.events)
+			}
+		}
+	}
+}
+
+// --check changes nothing: it takes the lock for its reads and releases it, and runs no cleanup.
+func TestTrialResetCheckTakesTheLockAndCleansNothing(t *testing.T) {
+	e := newTrialTestEnv(t)
+	if _, _, err := e.run(t, "reset", trialTestCase, "--check"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(e.events, " "), "lock pending unlock"; got != want {
+		t.Fatalf("seam order %q, want %q", got, want)
+	}
+}
+
+func TestTrialResetRefusesBeforeWipingWhenTheCleanupFails(t *testing.T) {
+	for name, set := range map[string]func(*trialTestEnv){
+		"no-reap leftovers": func(e *trialTestEnv) { e.noReapErr = errors.New("container x remains") },
+		"net-sink rule":     func(e *trialTestEnv) { e.netSinkErr = errors.New("nft refused") },
+	} {
+		e := newTrialTestEnv(t)
+		set(e)
+		if _, out, err := e.run(t, "reset", trialTestCase); err == nil || out != "" {
+			t.Fatalf("%s: err %v, output %q; want a refusal", name, err, out)
+		}
+		e.rootUntouched(t)
+		if last := e.events[len(e.events)-1]; last != "unlock" {
+			t.Fatalf("%s: the lock was not released: %v", name, e.events)
 		}
 	}
 }

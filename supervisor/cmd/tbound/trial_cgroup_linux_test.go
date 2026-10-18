@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -16,6 +17,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"tbound/supervisor/internal/trialfix"
 )
 
 // Tests of the process cleanup of `tbound trial reset`: cgroup.kill on the cells cgroup and the
@@ -443,5 +446,35 @@ func TestKillCgroupNeverSucceedsWhileAZombieLeaderStillRuns(t *testing.T) {
 		t.Logf("this kernel's cgroup.kill ends zombie leaders with running threads")
 	default:
 		t.Logf("this kernel's cgroup.kill leaves zombie leaders with running threads; the reset refuses: %v", err)
+	}
+}
+
+// The cleanup of the no-reap/v1 leftovers and the net-sink parent on a real cgroup2 filesystem
+// (skips unless the test runs in a delegated subtree, like the cgroup.kill tests above).
+func TestResetHostRemovesNrCgroupsAndCreatesTheNetSinkParentOnRealCgroups(t *testing.T) {
+	cg := newTestCgroup(t)
+	host := trialHost{
+		openCells:  func(evidenceCell) (*os.File, error) { return os.Open(cg.path) },
+		checkFS:    requireCgroup2Dir,
+		runtimeDir: filepath.Join(t.TempDir(), "absent"),
+		owner:      trialfix.Owner{UID: uint32(os.Geteuid()), GID: uint32(os.Getegid())},
+	}
+	for _, name := range []string{"tbound-nr-aa/child", "tbound-nr-bb", "tbound-cmd-cc"} {
+		if err := os.MkdirAll(filepath.Join(cg.path, name), 0o755); err != nil {
+			t.Skipf("cannot create cgroups here: %v", err)
+		}
+	}
+	parent, err := host.ensureNetSinkParent(evidenceCell{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent.Close()
+	if err := host.cleanNoReap(context.Background(), evidenceCell{}); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]bool{"tbound-nr-aa": false, "tbound-nr-bb": false, "tbound-cmd-cc": true, "net-sink": true} {
+		if _, err := os.Stat(filepath.Join(cg.path, name)); (err == nil) != want {
+			t.Errorf("%s present=%v, want %v", name, err == nil, want)
+		}
 	}
 }

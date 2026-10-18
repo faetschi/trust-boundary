@@ -479,10 +479,9 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 	case r.delta.NoReap():
 		scope, err = r.launcher.NewDetachedCommandScope(ctx, r.leaseID, viewID)
 	case r.delta.NetSink():
-		// Fail closed before any cell starts: the pinned nftables rule must be installed.
-		if err = requireNetSinkRule(readRootOwnedProfileFile); err == nil {
-			scope, err = r.launcher.NewNetSinkCommandScope(ctx, r.leaseID, viewID)
-		}
+		// Fail closed before any cell starts: the pinned rule must be installed and attested as
+		// loaded for the current net-sink parent cgroup (NewNetSinkCommandScope).
+		scope, err = r.launcher.NewNetSinkCommandScope(ctx, r.leaseID, viewID)
 	default:
 		scope, err = r.launcher.NewCommandScope(ctx, r.leaseID, viewID)
 	}
@@ -1006,6 +1005,11 @@ func d09CommandCellArgumentsDelta(plan d09DeltaPlan, config D09Config, name, cid
 	}
 	if plan.outputMarker != "" {
 		args = append(args, "-e", "TBOUND_OUTPUT_END_MARKER="+plan.outputMarker)
+	}
+	if plan.delta.NoReap() {
+		// The cell is left running and the container is not removed (no --rm): the labels let the
+		// operator reset find and remove exactly these containers (tbound trial reset).
+		args = append(args, "--label", D09NoReapContainerLabel, "--label", D09LeaseContainerLabelKey+"="+leaseID)
 	}
 	args = append(args, imageRef, entrypoint, spec.Executable)
 	return append(args, spec.Args...)

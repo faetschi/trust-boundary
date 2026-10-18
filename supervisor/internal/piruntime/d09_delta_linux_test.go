@@ -3,6 +3,8 @@
 package piruntime
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -120,14 +122,15 @@ func TestD09CommandCellArgumentsPerDelta(t *testing.T) {
 			t.Errorf("net-sink vector is missing %q:\n%s", want, net)
 		}
 	}
-	if strings.Contains(net, "--network=none") || strings.Contains(net, "TBOUND_OUTPUT_END_MARKER") || plan.landlockDigest == config.LandlockRulesetDigest {
+	if strings.Contains(net, "--label") || strings.Contains(base, "--label") || strings.Contains(net, "--network=none") || strings.Contains(net, "TBOUND_OUTPUT_END_MARKER") || plan.landlockDigest == config.LandlockRulesetDigest {
 		t.Errorf("net-sink vector kept the network-none cell or took no-reap state:\n%s", net)
 	}
 
 	plan, config = testD09DeltaPlan(t, D09CellDeltaNoReap)
 	reap := commandArgsFor(t, plan, config)
 	for _, want := range []string{"--network=none", "-e TBOUND_CELL_DELTA=no-reap/v1", "-e TBOUND_DELTA_TEMPLATE_DIGEST=" + plan.templateDigest,
-		"-e TBOUND_OUTPUT_END_MARKER=", "-e TBOUND_LANDLOCK_RULESET_DIGEST=" + config.LandlockRulesetDigest} {
+		"-e TBOUND_OUTPUT_END_MARKER=", "-e TBOUND_LANDLOCK_RULESET_DIGEST=" + config.LandlockRulesetDigest,
+		"--label " + D09NoReapContainerLabel, "--label " + D09LeaseContainerLabelKey + "=lease-1"} {
 		if !strings.Contains(reap, want) {
 			t.Errorf("no-reap vector is missing %q:\n%s", want, reap)
 		}
@@ -509,35 +512,164 @@ func TestNetSinkRuleFileMatchesTheCgroupDerivationAndTheDigestPin(t *testing.T) 
 	}
 }
 
-func TestRequireNetSinkRuleFailsClosed(t *testing.T) {
+// netSinkHost is a host where the rule file is installed and the reset attested the load for a
+// parent directory and boot id: the three inputs requireNetSinkRule takes.
+type netSinkHost struct {
+	files  map[string][]byte
+	boot   string
+	parent *os.File
+}
+
+func newNetSinkHost(t *testing.T) *netSinkHost {
+	t.Helper()
 	raw, err := os.ReadFile(netSinkRuleFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	serve := func(data []byte, err error) func(string, int64) ([]byte, error) {
-		return func(path string, _ int64) ([]byte, error) {
-			if path != D09NetSinkRulePath {
-				t.Errorf("read %s", path)
-			}
-			return data, err
+	parent, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { parent.Close() })
+	h := &netSinkHost{files: map[string][]byte{D09NetSinkRulePath: raw}, boot: "11111111-2222-3333-4444-555555555555", parent: parent}
+	h.attest(t, func(*D09NetSinkAttestation) {})
+	return h
+}
+
+func (h *netSinkHost) attest(t *testing.T, mutate func(*D09NetSinkAttestation)) {
+	t.Helper()
+	a, err := NewD09NetSinkAttestation(h.boot, h.parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutate(&a)
+	data, err := a.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.files[D09NetSinkAttestPath] = data
+}
+
+func (h *netSinkHost) require() error {
+	return requireNetSinkRule(func(path string, _ int64) ([]byte, error) {
+		data, ok := h.files[path]
+		if !ok {
+			return nil, os.ErrNotExist
 		}
+		return data, nil
+	}, func() (string, error) { return h.boot, nil }, h.parent)
+}
+
+func TestRequireNetSinkRuleFailsClosed(t *testing.T) {
+	h := newNetSinkHost(t)
+	if err := h.require(); err != nil {
+		t.Fatalf("the pinned rule with a matching attestation was refused: %v", err)
 	}
-	if err := requireNetSinkRule(serve(raw, nil)); err != nil {
-		t.Fatalf("the pinned rule was refused: %v", err)
-	}
-	crlf := []byte(strings.ReplaceAll(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n", "\r\n"))
-	if err := requireNetSinkRule(serve(crlf, nil)); err != nil {
+	raw := h.files[D09NetSinkRulePath]
+	h.files[D09NetSinkRulePath] = []byte(strings.ReplaceAll(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n", "\r\n"))
+	if err := h.require(); err != nil {
 		t.Errorf("the pinned rule with CRLF line endings was refused: %v", err)
 	}
-	altered := []byte(strings.Replace(string(raw), "counter drop", "counter accept", 1))
-	for name, read := range map[string]func(string, int64) ([]byte, error){
-		"absent":  serve(nil, os.ErrNotExist),
-		"altered": serve(altered, nil),
-		"empty":   serve(nil, nil),
+	for name, data := range map[string][]byte{
+		"absent":  nil,
+		"altered": []byte(strings.Replace(string(raw), "counter drop", "counter accept", 1)),
+		"empty":   {},
 	} {
-		if err := requireNetSinkRule(read); !errors.Is(err, ErrProductionLauncherUnavailable) {
+		h := newNetSinkHost(t)
+		if data == nil {
+			delete(h.files, D09NetSinkRulePath)
+		} else {
+			h.files[D09NetSinkRulePath] = data
+		}
+		if err := h.require(); !errors.Is(err, ErrProductionLauncherUnavailable) {
 			t.Errorf("%s rule file: %v", name, err)
 		}
+	}
+}
+
+// The pinned file proves the file only. The reset's attestation proves that nft loaded it for the
+// parent cgroup that exists now, in this boot.
+func TestRequireNetSinkRuleNeedsTheLoadAttestation(t *testing.T) {
+	other, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	otherAttestation, err := NewD09NetSinkAttestation("11111111-2222-3333-4444-555555555555", other)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]func(*testing.T, *netSinkHost){
+		"missing": func(_ *testing.T, h *netSinkHost) { delete(h.files, D09NetSinkAttestPath) },
+		"wrong boot id": func(t *testing.T, h *netSinkHost) {
+			h.attest(t, func(a *D09NetSinkAttestation) { a.BootID = "another-boot" })
+		},
+		"wrong inode": func(t *testing.T, h *netSinkHost) {
+			h.attest(t, func(a *D09NetSinkAttestation) { a.ParentIno = otherAttestation.ParentIno })
+		},
+		"wrong device": func(t *testing.T, h *netSinkHost) { h.attest(t, func(a *D09NetSinkAttestation) { a.ParentDev++ }) },
+		"wrong rule": func(t *testing.T, h *netSinkHost) {
+			h.attest(t, func(a *D09NetSinkAttestation) { a.RuleDigest = DigestBytes([]byte("x")) })
+		},
+		"wrong schema": func(t *testing.T, h *netSinkHost) { h.attest(t, func(a *D09NetSinkAttestation) { a.Schema = "x" }) },
+		"garbage":      func(_ *testing.T, h *netSinkHost) { h.files[D09NetSinkAttestPath] = []byte("not json") },
+		"unknown field": func(_ *testing.T, h *netSinkHost) {
+			h.files[D09NetSinkAttestPath] = append(bytes.TrimSuffix(bytes.TrimSpace(h.files[D09NetSinkAttestPath]), []byte("}")), []byte(`,"extra":1}`)...)
+		},
+	}
+	for name, mutate := range cases {
+		h := newNetSinkHost(t)
+		mutate(t, h)
+		if name == "wrong inode" && otherAttestation.ParentIno == mustAttestation(t, h).ParentIno {
+			t.Fatal("test directories share an inode")
+		}
+		if err := h.require(); !errors.Is(err, ErrProductionLauncherUnavailable) {
+			t.Errorf("%s attestation: %v", name, err)
+		}
+	}
+	// A boot id the host cannot read refuses too.
+	h := newNetSinkHost(t)
+	read := func(path string, _ int64) ([]byte, error) { return h.files[path], nil }
+	if err := requireNetSinkRule(read, func() (string, error) { return "", os.ErrNotExist }, h.parent); !errors.Is(err, ErrProductionLauncherUnavailable) {
+		t.Errorf("unreadable boot id: %v", err)
+	}
+}
+
+func mustAttestation(t *testing.T, h *netSinkHost) D09NetSinkAttestation {
+	t.Helper()
+	a, err := NewD09NetSinkAttestation(h.boot, h.parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
+}
+
+// A file the service uid could write is not an attestation: the reader the service uses refuses
+// a file that is not root-owned.
+func TestNetSinkAttestationFromANonRootFileIsRefused(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("needs a non-root test user")
+	}
+	h := newNetSinkHost(t)
+	path := filepath.Join(t.TempDir(), "net-sink.attest")
+	if err := os.WriteFile(path, h.files[D09NetSinkAttestPath], 0o644); err != nil {
+		t.Fatal(err)
+	}
+	read := func(p string, max int64) ([]byte, error) {
+		if p == D09NetSinkAttestPath {
+			return readRootOwnedProfileFile(path, max)
+		}
+		return h.files[p], nil
+	}
+	if err := requireNetSinkRule(read, func() (string, error) { return h.boot, nil }, h.parent); !errors.Is(err, ErrProductionLauncherUnavailable) {
+		t.Fatalf("an attestation owned by the service uid was accepted: %v", err)
+	}
+}
+
+func TestReadD09BootIDIsAUUID(t *testing.T) {
+	id, err := ReadD09BootID()
+	if err != nil || len(id) != 36 || strings.TrimSpace(id) != id {
+		t.Fatalf("boot id %q: %v", id, err)
 	}
 }
 
@@ -548,7 +680,7 @@ func TestNetSinkParentCgroupMustExistAndBeACgroup(t *testing.T) {
 	}
 	defer cellsRoot.Close()
 	launcher := &D09PodmanCrunLauncher{scope: &LinuxCgroupScope{root: cellsRoot}}
-	if _, err := launcher.openNetSinkParent(); !errors.Is(err, ErrCgroupScopeRefused) {
+	if _, err := launcher.openNetSinkParent(attestedForTest); !errors.Is(err, ErrCgroupScopeRefused) {
 		t.Fatalf("an absent net-sink parent was opened: %v", err)
 	}
 	// The service never creates the parent: the rule has to name the directory that exists.
@@ -558,10 +690,34 @@ func TestNetSinkParentCgroupMustExistAndBeACgroup(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(cellsRoot.Name(), D09NetSinkCgroupName), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := launcher.openNetSinkParent(); !errors.Is(err, ErrCgroupScopeRefused) {
+	if _, err := launcher.openNetSinkParent(attestedForTest); !errors.Is(err, ErrCgroupScopeRefused) {
 		t.Fatalf("a plain directory was taken for the net-sink cgroup: %v", err)
 	}
-	if _, err := (&D09PodmanCrunLauncher{}).openNetSinkParent(); !errors.Is(err, ErrCgroupScopeRefused) {
+	if _, err := (&D09PodmanCrunLauncher{}).openNetSinkParent(attestedForTest); !errors.Is(err, ErrCgroupScopeRefused) {
 		t.Fatalf("a launcher without a scope opened the net-sink parent: %v", err)
+	}
+}
+
+func attestedForTest(*os.File) error { return nil }
+
+// The net-sink command scope is never allocated unless the reset attested the load for the parent it
+// opens: here the guest has no attestation (and no installed rule), the parent is a plain directory.
+func TestNewNetSinkCommandScopeRefusesWithoutTheLoadAttestation(t *testing.T) {
+	cellsRoot, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cellsRoot.Close()
+	if err := os.Mkdir(filepath.Join(cellsRoot.Name(), D09NetSinkCgroupName), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	launcher := &D09PodmanCrunLauncher{scope: &LinuxCgroupScope{root: cellsRoot, file: cellsRoot}}
+	_, err = launcher.NewNetSinkCommandScope(context.Background(), "lease-1", "view-1")
+	if !errors.Is(err, ErrProductionLauncherUnavailable) {
+		t.Fatalf("a net-sink scope was allocated or refused for another reason: %v", err)
+	}
+	entries, _ := os.ReadDir(filepath.Join(cellsRoot.Name(), D09NetSinkCgroupName))
+	if len(entries) != 0 {
+		t.Fatalf("a command cgroup was created below the unattested parent: %v", entries)
 	}
 }

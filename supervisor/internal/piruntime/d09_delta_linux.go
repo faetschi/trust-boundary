@@ -318,7 +318,7 @@ func (t D09CellTemplate) DeltaLandlockRulesetDigest(delta D09CellDelta) (string,
 // afterwards would not be the one the rule matches. The directory must be a cgroup2 domain owned
 // by the service uid; its subtree controllers are enabled here so the command scopes below it can
 // carry their limits.
-func (l *D09PodmanCrunLauncher) openNetSinkParent() (*os.File, error) {
+func (l *D09PodmanCrunLauncher) openNetSinkParent(attested func(parent *os.File) error) (*os.File, error) {
 	if l == nil || l.scope == nil || l.scope.root == nil {
 		return nil, ErrCgroupScopeRefused
 	}
@@ -329,6 +329,12 @@ func (l *D09PodmanCrunLauncher) openNetSinkParent() (*os.File, error) {
 			ErrCgroupScopeRefused, D09NetSinkCgroupName, err)
 	}
 	dir := os.NewFile(uintptr(fd), "d09-net-sink-parent")
+	// Before anything else is done with it: the reset must have loaded the pinned rule for this
+	// very directory in this boot (requireNetSinkRule).
+	if err := attested(dir); err != nil {
+		_ = dir.Close()
+		return nil, err
+	}
 	if err := validateCgroupDirectoryState(dir, false); err != nil {
 		_ = dir.Close()
 		return nil, errors.Join(ErrCgroupScopeRefused, err)
@@ -340,16 +346,8 @@ func (l *D09PodmanCrunLauncher) openNetSinkParent() (*os.File, error) {
 	return dir, nil
 }
 
-// requireNetSinkRule is the service-side fail-closed check before a net-sink command cell starts:
-// the installed rule file must be the pinned one. It does not prove that nft loaded it; the guest
-// spike does.
-func requireNetSinkRule(read func(path string, maximum int64) ([]byte, error)) error {
-	raw, err := read(D09NetSinkRulePath, 8<<10)
-	if err != nil {
-		return fmt.Errorf("%w: net-sink nftables rule %s is not installed: %v", ErrProductionLauncherUnavailable, D09NetSinkRulePath, err)
-	}
-	if DigestBytes(bytes.ReplaceAll(raw, []byte("\r\n"), []byte("\n"))) != D09NetSinkRuleDigest {
-		return fmt.Errorf("%w: installed net-sink nftables rule differs from the pinned one", ErrProductionLauncherUnavailable)
-	}
-	return nil
+// netSinkLoadAttested is the production check of the net-sink parent: the installed rule is the
+// pinned one and the root-owned attestation names this boot and this directory.
+func netSinkLoadAttested(parent *os.File) error {
+	return requireNetSinkRule(readRootOwnedProfileFile, ReadD09BootID, parent)
 }

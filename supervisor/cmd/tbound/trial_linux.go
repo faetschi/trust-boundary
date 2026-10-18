@@ -37,11 +37,14 @@ import (
 // digest the manifest pins.
 //
 //	reset <case_id>
-//	    refuses when a workflow admission has no terminal, a managed-root run still holds the
+//	    takes the maintenance lock first (maintenance_lock_linux.go) and holds it to the end: it
+//	    refuses while the service has a workflow admitted or another reset runs. It then refuses when a workflow admission has no terminal, a managed-root run still holds the
 //	    live root, or the fixture artifact does not verify. Otherwise it kills whatever still
 //	    runs in the cells cgroup subtree (a write of 1 to cgroup.kill, then a bounded wait for
-//	    populated 0; a missing cgroup.kill or a cgroup that stays populated refuses), wipes the
-//	    live root in place (the root inode, its mode and owner and a top-level lost+found are
+//	    populated 0; a missing cgroup.kill or a cgroup that stays populated refuses), removes the
+//	    containers and tbound-nr-* cgroups that no-reap/v1 cells left (trial_host_linux.go), makes the
+//	    net-sink/v1 confinement current when /etc/tbound/net-sink.nft is installed (parent cgroup,
+//	    nft load, read-back, attestation), wipes the live root in place (the root inode, its mode and owner and a top-level lost+found are
 //	    kept), populates it from the fixture, and prints the digest of the fixture next to the
 //	    digest of the resulting tree, which must be equal.
 //	reset <case_id> --check
@@ -88,6 +91,9 @@ type trialEnv struct {
 	owner    trialfix.Owner
 	// cell resolves the registered cell, as the evidence kinds do, with its host identity.
 	cell func(ctx context.Context) (evidenceCell, error)
+	// lock takes the maintenance lock without waiting (maintenance_lock_linux.go) and returns its
+	// release. The service holds it from the admission of a workflow until it is settled.
+	lock func() (func(), error)
 	// pending returns an error naming what is still pending: a workflow admission without a
 	// terminal, or a managed-root run that holds the live root.
 	pending func(ctx context.Context) error
@@ -96,6 +102,11 @@ type trialEnv struct {
 	// killCell kills every process of the cells cgroup subtree and fails unless the cgroup is
 	// unpopulated afterwards.
 	killCell func(cell evidenceCell) error
+	// cleanNoReap removes the containers and the tbound-nr-* cgroups that no-reap/v1 cells leave
+	// behind, once the cells cgroup is unpopulated (trial_host_linux.go).
+	cleanNoReap func(ctx context.Context, cell evidenceCell) error
+	// netSink makes the net-sink/v1 confinement current: parent cgroup, nft table, attestation.
+	netSink func(ctx context.Context, cell evidenceCell) error
 	// snapshot is wsoracle.Snapshot.
 	snapshot func(root, label string) wsoracle.Manifest
 	// task is what the accept and v-run verbs need (trial_accept_linux.go, trial_vrun_linux.go).
@@ -103,11 +114,13 @@ type trialEnv struct {
 }
 
 func productionTrialEnv() trialEnv {
+	host := productionTrialHost()
 	return trialEnv{
 		geteuid: os.Geteuid, getenv: os.Getenv,
 		fixtureDigest: trialPinnedFixtureDigest, artifacts: os.DirFS(trialArtifactDir),
 		liveRoot: piruntime.D09ManagedPiLiveRootPath, owner: trialfix.Canonical,
-		cell: loadTrialCell, pending: trialPending, cellPopulated: cellsCgroupPopulated, killCell: killCellsCgroup,
+		cell: loadTrialCell, lock: resetMaintenanceLock.acquire, pending: trialPending, cellPopulated: cellsCgroupPopulated, killCell: killCellsCgroup,
+		cleanNoReap: host.cleanNoReap, netSink: host.ensureNetSink,
 		snapshot: wsoracle.Snapshot,
 		task:     productionTrialTaskEnv(),
 	}
@@ -208,6 +221,12 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	if cell.HostUID != env.owner.UID || cell.HostGID != env.owner.GID {
 		return trialfix.ResetDoc{}, fmt.Errorf("the cell's host identity %d:%d is not the fixture owner %d:%d", cell.HostUID, cell.HostGID, env.owner.UID, env.owner.GID)
 	}
+	// From here to the final digest check no admission and no other reset may run.
+	release, err := env.lock()
+	if err != nil {
+		return trialfix.ResetDoc{}, fmt.Errorf("the maintenance lock is not available (a workflow is admitted or another reset runs): %w", err)
+	}
+	defer release()
 	if err := env.pending(ctx); err != nil {
 		return trialfix.ResetDoc{}, fmt.Errorf("a workflow, admission or publication is pending: %w", err)
 	}
@@ -227,6 +246,14 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	// atomic over the subtree, and the reset proceeds only on populated 0.
 	if err := env.killCell(cell); err != nil {
 		return trialfix.ResetDoc{}, err
+	}
+	// Whatever a no-reap/v1 cell left (its container, its tbound-nr-* cgroup) goes next, and the
+	// net-sink confinement is made current, before the tree is touched.
+	if err := env.cleanNoReap(ctx, cell); err != nil {
+		return trialfix.ResetDoc{}, fmt.Errorf("refusing the reset: no-reap leftovers: %w", err)
+	}
+	if err := env.netSink(ctx, cell); err != nil {
+		return trialfix.ResetDoc{}, fmt.Errorf("refusing the reset: net-sink confinement: %w", err)
 	}
 	if err := trialfix.Reset(env.liveRoot, spec, env.owner); err != nil {
 		return trialfix.ResetDoc{}, err
