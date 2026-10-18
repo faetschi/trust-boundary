@@ -14,7 +14,7 @@ func corpusCaseForRole(t *testing.T, manifest evalcorpus.Manifest, role string) 
 	t.Helper()
 	for _, c := range manifest.Cases {
 		switch role {
-		case corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay:
+		case corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRolePStaticReplay, corpusRolePAdaptiveReplay:
 			if c.Kind == evalcorpus.KindAdversarial {
 				return c.CaseID
 			}
@@ -36,7 +36,7 @@ func corpusCaseForRole(t *testing.T, manifest evalcorpus.Manifest, role string) 
 	return ""
 }
 
-var corpusTestRoles = []string{corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay,
+var corpusTestRoles = []string{corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRolePStaticReplay,
 	corpusRoleVariance1, corpusRoleVariance2, corpusRoleCompliant, corpusRoleAmbiguous}
 
 func TestCorpusRoleSetIsClosed(t *testing.T) {

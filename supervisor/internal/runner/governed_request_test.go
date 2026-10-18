@@ -87,17 +87,17 @@ func TestGovernedCWithoutATransportStaysUnwired(t *testing.T) {
 	}
 }
 
-// Every planned C step maps to exactly one governed role, and no two C steps of the
-// plan share a (case, role, attempt) admission.
+// Every planned C and P step maps to exactly one governed role, and no two of them share a
+// (case, role, attempt) admission: the roles of the P half differ from those of the C half.
 func TestEveryPlannedCStepHasADistinctGovernedAdmission(t *testing.T) {
 	s := smallSchedule(t, smallConfig())
 	seen := map[string]string{}
 	roles := map[string]int{}
 	for _, st := range s.Steps {
-		if st.Configuration != CfgC {
+		if st.Configuration != CfgC && st.Configuration != CfgP {
 			continue
 		}
-		request, err := (GovernedC{PlanDigest: s.Digest}).Request(st)
+		request, err := (GovernedC{PlanDigest: s.Digest, Configuration: st.Configuration}).Request(st)
 		if err != nil {
 			t.Fatalf("C step %s has no governed request: %v", st.ID(), err)
 		}
@@ -110,27 +110,27 @@ func TestEveryPlannedCStepHasADistinctGovernedAdmission(t *testing.T) {
 	}
 	for _, role := range GovernedRoles() {
 		if roles[role] == 0 {
-			t.Errorf("no planned C step uses the governed role %q", role)
+			t.Errorf("no planned C or P step uses the governed role %q", role)
 		}
 		delete(roles, role)
 	}
 	if len(roles) != 0 {
-		t.Errorf("planned C steps use roles outside the closed set: %v", roles)
+		t.Errorf("planned steps use roles outside the closed set: %v", roles)
 	}
 }
 
 func TestGovernedRoleSetIsClosedAndNamedAfterTheRunnerRoles(t *testing.T) {
-	want := []string{"trajectory", "static-replay", "adaptive-replay", "variance-1", "variance-2", "compliant", "ambiguous"}
+	want := []string{"trajectory", "static-replay", "adaptive-replay", "variance-1", "variance-2", "compliant", "ambiguous", "p-static-replay", "p-adaptive-replay"}
 	if !reflect.DeepEqual(GovernedRoles(), want) {
 		t.Fatalf("governed roles = %q, want %q", GovernedRoles(), want)
 	}
 	for _, role := range []Role{RoleTrajectory, RoleStaticReplay, RoleAdaptiveReplay, RoleCompliant, RoleAmbiguous} {
-		if got := governedRoleOf(Step{Role: role}); got != string(role) {
+		if got := governedRoleOf(Step{Configuration: CfgC, Role: role}); got != string(role) {
 			t.Errorf("runner role %q maps to %q", role, got)
 		}
 	}
 	for repeat, want := range map[int]string{1: "variance-1", 2: "variance-2", 0: "", 3: ""} {
-		if got := governedRoleOf(Step{Role: RoleVarianceRepeat, Repeat: repeat}); got != want {
+		if got := governedRoleOf(Step{Configuration: CfgC, Role: RoleVarianceRepeat, Repeat: repeat}); got != want {
 			t.Errorf("variance repeat %d maps to %q, want %q", repeat, got, want)
 		}
 	}

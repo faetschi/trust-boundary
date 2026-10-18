@@ -647,7 +647,14 @@ func TestDigestAndOutputStableAcrossRecordOrder(t *testing.T) {
 // every pointer a target, so no field class is skipped. scalarPaths then lists
 // every scalar reachable from v. Fields tagged json:"-" are not part of any digest
 // and are skipped.
+// rawJSON is the free-form JSON member type (a script turn's arguments): one scalar leaf of the digest.
+var rawJSON = reflect.TypeOf(json.RawMessage(nil))
+
 func fill(v reflect.Value) {
+	if v.Type() == rawJSON {
+		v.Set(reflect.ValueOf(json.RawMessage(`{"a":"b"}`)))
+		return
+	}
 	switch v.Kind() {
 	case reflect.Pointer:
 		if v.IsNil() {
@@ -672,6 +679,10 @@ func fill(v reflect.Value) {
 }
 
 func scalarPaths(v reflect.Value, path string, out *[]string) {
+	if v.Type() == rawJSON {
+		*out = append(*out, path)
+		return
+	}
 	switch v.Kind() {
 	case reflect.Pointer:
 		if !v.IsNil() {
@@ -703,6 +714,13 @@ func mutateAt(t *testing.T, root reflect.Value, path string) {
 	t.Helper()
 	var walk func(v reflect.Value, p string) bool
 	walk = func(v reflect.Value, p string) bool {
+		if v.Type() == rawJSON {
+			if p != path {
+				return false
+			}
+			v.Set(reflect.ValueOf(json.RawMessage(`{"a":"c"}`)))
+			return true
+		}
 		switch v.Kind() {
 		case reflect.Pointer:
 			return !v.IsNil() && walk(v.Elem(), p)

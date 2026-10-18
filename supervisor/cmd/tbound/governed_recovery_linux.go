@@ -172,6 +172,9 @@ type governedRecoveryRuntimeBinding struct {
 	BashOutputPaths          []string         `json:"bash_output_paths"`
 	CorpusManifestDigest     string           `json:"corpus_manifest_digest,omitempty"` // corpus-mode admissions only
 	CorpusQuotaProfile       string           `json:"corpus_quota_profile,omitempty"`   // corpus-mode admissions only: thesis or pilot
+	// AdmissionPolicyDigest pins a non-default delta-admission scope (protected paths, promote-all). It is
+	// empty for the default scope, so every earlier pin keeps its digest.
+	AdmissionPolicyDigest string `json:"admission_policy_digest,omitempty"`
 }
 
 type governedRecoveryIdentityPins struct {
@@ -1231,6 +1234,13 @@ func governedRecoveryRuntimeBindingFor(request governedRecoveryRequest) (governe
 		BashOutputPaths: cloneDurableOutputScopePaths(request.BashOutputPaths),
 		// pinned for corpus-mode admissions only
 		CorpusManifestDigest: request.CorpusManifestDigest, CorpusQuotaProfile: request.CorpusQuotaProfile,
+	}
+	if scope := request.StoreOptions.AdmissionScope; !scope.IsZero() {
+		digest, err := sessionrepo.AdmissionPolicyDigest(request.StorePolicyDigest, request.MetadataPolicyDigest, scope)
+		if err != nil {
+			return governedRecoveryRuntimeBinding{}, err
+		}
+		binding.AdmissionPolicyDigest = digest
 	}
 	return binding, nil
 }

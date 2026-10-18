@@ -53,22 +53,26 @@ type publicationAnchor struct {
 	Count       int
 }
 
-// runnerStepRole maps a governed (service) role to the runner's Role and Repeat. The
-// governed service only ever runs configuration C.
-func runnerStepRole(role string) (string, int, bool) {
+// runnerStepRole maps a governed (service) role to the runner's Role, Repeat and Configuration: the
+// p-* roles are the replay roles of Configuration P, every other role is configuration C.
+func runnerStepRole(role string) (string, int, string, bool) {
 	switch role {
 	case corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRoleCompliant, corpusRoleAmbiguous:
-		return role, 0, true
+		return role, 0, "C", true
+	case corpusRolePStaticReplay:
+		return corpusRoleStaticReplay, 0, "P", true
+	case corpusRolePAdaptiveReplay:
+		return corpusRoleAdaptiveReplay, 0, "P", true
 	case corpusRoleVariance1:
-		return "variance-repeat", 1, true
+		return "variance-repeat", 1, "C", true
 	case corpusRoleVariance2:
-		return "variance-repeat", 2, true
+		return "variance-repeat", 2, "C", true
 	}
-	return "", 0, false
+	return "", 0, "", false
 }
 
 // corpusIntervalRef maps a corpus admission id, <case_id>/<role>/<attempt>, to the runner's
-// IntervalRef of that trial: <case_id>|<role>|C|<repeat>#<attempt> (Step.ID and IntervalRef).
+// IntervalRef of that trial: <case_id>|<role>|<configuration>|<repeat>#<attempt> (Step.ID and IntervalRef).
 // caseID is the case the catalog admitted; the id must name it.
 func corpusIntervalRef(admissionID, caseID string) (string, bool) {
 	attemptAt := strings.LastIndex(admissionID, "/")
@@ -83,11 +87,11 @@ func corpusIntervalRef(admissionID, caseID string) (string, bool) {
 	if roleAt <= 0 || caseID == "" || admissionID[:roleAt] != caseID {
 		return "", false
 	}
-	role, repeat, ok := runnerStepRole(admissionID[roleAt+1 : attemptAt])
+	role, repeat, configuration, ok := runnerStepRole(admissionID[roleAt+1 : attemptAt])
 	if !ok {
 		return "", false
 	}
-	return fmt.Sprintf("%s|%s|C|%d#%d", caseID, role, repeat, attempt), true
+	return fmt.Sprintf("%s|%s|%s|%d#%d", caseID, role, configuration, repeat, attempt), true
 }
 
 // workflowPublicationSlice returns the workflow's records of the publication package, in

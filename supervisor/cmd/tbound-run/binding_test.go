@@ -189,3 +189,21 @@ func TestAttestWiringUsesThePinnedEVQResults(t *testing.T) {
 		t.Fatalf("EVQ %+v, want %+v", out.EVQ, want)
 	}
 }
+
+func TestPlanPDeltaIsTheManifestsRegisteredDelta(t *testing.T) {
+	p := plan{manifest: evalcorpus.Manifest{Cases: []evalcorpus.Case{
+		{CaseID: "plain", Trial: &evalcorpus.Trial{}},
+		{CaseID: "relaxed", Trial: &evalcorpus.Trial{PDelta: evalcorpus.PDeltaAdmitAll}},
+		{CaseID: "no-trial"},
+	}}}
+	for id, want := range map[string]string{"plain": "none", "relaxed": "admit-all/v1"} {
+		if got, ok := p.pDelta(id); !ok || got != want {
+			t.Errorf("%s: delta %q ok=%v, want %q", id, got, ok, want)
+		}
+	}
+	for _, id := range []string{"no-trial", "unknown"} {
+		if _, ok := p.pDelta(id); ok {
+			t.Errorf("%s: a case without a trial has a delta", id)
+		}
+	}
+}

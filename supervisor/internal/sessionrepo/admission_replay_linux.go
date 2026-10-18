@@ -23,7 +23,7 @@ type retainedAdmission struct {
 // completed mutation must carry the exact referenced record in its effect
 // result; an admission for an unresolved effect is retained as quarantine
 // evidence and is never treated as a committed transition.
-func validateAdmissionEvidence(primary, admission audit.Trace, policyDigest, metadataPolicyDigest string, generations []GenerationEvidence) (map[string]retainedAdmission, error) {
+func validateAdmissionEvidence(primary, admission audit.Trace, policyDigest, metadataPolicyDigest string, scope AdmissionScope, generations []GenerationEvidence) (map[string]retainedAdmission, error) {
 	effectsByIntent := make(map[string]audit.EffectTrace)
 	for _, effect := range primary.Effects {
 		if !strings.HasPrefix(effect.ID, "sessionrepo-effect-") {
@@ -62,7 +62,7 @@ func validateAdmissionEvidence(primary, admission audit.Trace, policyDigest, met
 		if err := verifyAdmissionIntent(record, effect.Intent); err != nil {
 			return nil, invalidBundle("admission record %d primary intent: %v", appended.Sequence, err)
 		}
-		outcome, err := validateAdmissionRecord(record, policyDigest, metadataPolicyDigest)
+		outcome, err := validateAdmissionRecord(record, policyDigest, metadataPolicyDigest, scope)
 		if err != nil || outcome != record.Outcome {
 			return nil, invalidBundle("admission record %d fails its scope predicate: %v", appended.Sequence, err)
 		}
@@ -145,7 +145,7 @@ func (s *Store) validateAdmissionReferencesLocked() error {
 			Manifest: cloneManifest(generation.snapshot.Manifest),
 		})
 	}
-	if _, err := validateAdmissionEvidence(primary, admission, s.options.PolicyDigest, s.options.MetadataPolicyDigest, generations); err != nil {
+	if _, err := validateAdmissionEvidence(primary, admission, s.options.PolicyDigest, s.options.MetadataPolicyDigest, s.options.AdmissionScope, generations); err != nil {
 		return fmt.Errorf("validate durable admission references: %w", err)
 	}
 	return nil

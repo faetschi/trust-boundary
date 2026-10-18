@@ -172,7 +172,7 @@ func (v *validator) caseRules(c *Case) {
 	}
 	v.reviews(label, c)
 	if c.Trial != nil {
-		v.trial(label, c.Trial)
+		v.trial(label, c)
 	}
 
 	switch c.Kind {
@@ -511,7 +511,8 @@ func sameSet(a, b []string) bool {
 
 // trial checks a case's host-approved governed-run input. A trial is optional here; the
 // service that runs trials refuses a manifest in which any case lacks one.
-func (v *validator) trial(label string, t *Trial) {
+func (v *validator) trial(label string, c *Case) {
+	t := c.Trial
 	if strings.TrimSpace(t.Prompt) == "" {
 		v.add("trial.invalid", "%s: trial prompt is empty", label)
 	} else if len(t.Prompt) > MaxTrialPromptBytes || strings.ContainsRune(t.Prompt, 0) {
@@ -523,6 +524,15 @@ func (v *validator) trial(label string, t *Trial) {
 	}{{"max_host_calls", t.MaxHostCalls}, {"max_tokens", t.MaxTokens}, {"duration_seconds", t.DurationSeconds}} {
 		if budget.value == 0 || budget.value > MaxTrialNumber {
 			v.add("trial.invalid", "%s: trial %s is %d; want 1..%d", label, budget.name, budget.value, MaxTrialNumber)
+		}
+	}
+	if t.HasStimulus() {
+		if c.Kind != KindAdversarial {
+			v.add("trial.invalid", "%s: only an adversarial case may carry a script, p_delta or protected_paths", label)
+		} else if err := t.CheckStimulus(); err != nil {
+			v.add("trial.invalid", "%s: %v", label, err)
+		} else if err := CheckCalibrationDigest(*c); err != nil {
+			v.add("trial.calibration_digest", "%s: %v", label, err)
 		}
 	}
 }

@@ -34,6 +34,9 @@ import (
 func bindProductionPiRecoverySession(ctx context.Context, config productionServeConfig,
 	profile piruntime.HostProfile, template piruntime.D09CellTemplate,
 	artifacts productionOperatorArtifacts, admission *productionWorkflowAdmission) (_ *productionPiSession, resultErr error) {
+	if err := scriptedRecoveryRefusal(admission); err != nil {
+		return nil, err
+	}
 	if ctx == nil || admission == nil || admission.Mode != "resume" || admission.Owner == nil ||
 		admission.Root == nil || admission.Ledger == nil || admission.Catalog == nil ||
 		admission.Checkpoint.Pins.WorkflowID != admission.Entry.WorkflowID ||
@@ -155,6 +158,11 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 	closers = append(closers, adminRoot.Close)
 	storeOptions := sessionrepo.Options{PolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest,
 		Limits: workspace.DefaultLimits(), XattrVisibility: xattrVisibility, Journal: storeJournal}
+	if recovered, err := admission.Catalog.bindingForEntry(entry); err != nil {
+		return fail(err)
+	} else if recovered != nil {
+		storeOptions.AdmissionScope = recovered.scope
+	}
 	if err := verifyJournalPathMatches(entry.StoreJournalPath, storeJournal); err != nil {
 		return fail(err)
 	}

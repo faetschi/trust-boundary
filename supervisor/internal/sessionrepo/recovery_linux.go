@@ -561,8 +561,8 @@ func (s *Store) recoverAdmissionLocked(admissions *admissionRecovery, effect aud
 	if _, exists := admissions.consumed[reference.Sequence]; exists {
 		return admissionRecord{}, fmt.Errorf("%w: admission reference is reused", ErrInvalidAdmission)
 	}
-	if err := VerifyAdmission(s.admissionJournal, reference, effect.Intent,
-		s.options.PolicyDigest, s.options.MetadataPolicyDigest); err != nil {
+	if err := VerifyAdmissionScoped(s.admissionJournal, reference, effect.Intent,
+		s.options.PolicyDigest, s.options.MetadataPolicyDigest, s.options.AdmissionScope); err != nil {
 		return admissionRecord{}, err
 	}
 	appended := admissions.records[reference.Sequence-1]

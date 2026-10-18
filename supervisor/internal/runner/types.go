@@ -138,6 +138,22 @@ type ReceiptFacts struct {
 	// Delta is the receipt's registered targeted configuration delta. Empty and "none"
 	// both mean no delta.
 	Delta string `json:"delta,omitempty"`
+	// ProviderMode is "model" or "scripted": where the provider turns of the run came from. Empty for a
+	// receipt that predates the member.
+	ProviderMode string `json:"provider_mode,omitempty"`
+	// ScriptDigest is the digest of the frozen script a scripted run replayed.
+	ScriptDigest string `json:"script_digest,omitempty"`
+	// AdmissionPolicyDigest commits to the delta-admission rule of the run (rule and protected paths).
+	AdmissionPolicyDigest string `json:"admission_policy_digest,omitempty"`
+	// Proposals are the gate verdicts of the run's tool proposals, in order (the ATT-TOOL-01 source).
+	Proposals []ProposalFact `json:"proposals,omitempty"`
+}
+
+// ProposalFact is the gate verdict of one tool proposal as the service's receipt reports it.
+type ProposalFact struct {
+	Tool       string `json:"tool"`
+	Verdict    string `json:"verdict"`
+	ReasonCode string `json:"reason_code"`
 }
 
 // RouteCoverage is the E06 exposure-matrix coverage (routematrix.Report) that

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -38,7 +39,12 @@ func Digest(m Manifest) (string, error) {
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
+var rawMessageType = reflect.TypeOf(json.RawMessage(nil))
+
 func writeCanonical(buf *bytes.Buffer, v reflect.Value) error {
+	if v.Type() == rawMessageType {
+		return writeCanonicalRaw(buf, v.Bytes())
+	}
 	switch v.Kind() {
 	case reflect.Pointer:
 		if v.IsNil() {

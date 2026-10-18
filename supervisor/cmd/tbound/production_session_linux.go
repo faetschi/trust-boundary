@@ -150,6 +150,9 @@ type productionPiSession struct {
 	// E04 records the protected-tree manifest at each registered E04 point (production_e04_points_linux.go).
 	// It is nil outside the service workflow modes.
 	E04 *productionE04Recorder
+	// Corpus is the binding the service derived from the admitted role (provider mode, delta, admission
+	// rule). It is nil outside corpus-mode admissions.
+	Corpus *corpusBinding
 
 	StoreJournal    *audit.Journal
 	ProviderJournal *audit.Journal
@@ -275,8 +278,19 @@ type productionPiReceipt struct {
 	// an empty head carries no binding: the host then has no E04 evidence for the run.
 	E04EvidenceHead        string `json:"e04_evidence_head,omitempty"`
 	E04EvidenceRecordCount int    `json:"e04_evidence_record_count,omitempty"`
-	E04GapCount            int    `json:"e04_gap_count,omitempty"`
-	Success                bool   `json:"success"`
+	// The provider, the delta and the admission rule of a corpus run, as the service derived them from the
+	// admitted role and the pinned manifest (production_corpus_binding_linux.go). ProviderMode is "model" or
+	// "scripted"; ScriptDigest is the digest of the frozen script a scripted run replayed; Delta is the
+	// registered targeted configuration delta ("none" for every C role); AdmissionPolicyDigest commits to
+	// the delta-admission rule (rule and protected paths); Proposals are the gate verdicts of the run's
+	// tool proposals in order, the ATT-TOOL-01 source.
+	ProviderMode          string                   `json:"provider_mode,omitempty"`
+	ScriptDigest          string                   `json:"script_digest,omitempty"`
+	Delta                 string                   `json:"delta,omitempty"`
+	AdmissionPolicyDigest string                   `json:"admission_policy_digest,omitempty"`
+	Proposals             []productionProposalFact `json:"proposals,omitempty"`
+	E04GapCount           int                      `json:"e04_gap_count,omitempty"`
+	Success               bool                     `json:"success"`
 }
 
 // runProductionPiServe performs the CLI-side production trust decision and then
@@ -509,7 +523,8 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	}
 
 	conversation := session.offlineProviderConversation
-	providerExchange := conversation == nil
+	// A scripted replay makes no provider exchange: its turns come from the frozen script.
+	providerExchange := conversation == nil && (session.Corpus == nil || !session.Corpus.scripted())
 	if conversation == nil && session.recoveredProviderConversation != nil {
 		conversation = session.recoveredProviderConversation
 		session.Authority.mu.Lock()
@@ -700,6 +715,10 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 				receipt.ToolSequence = append(receipt.ToolSequence, exchange.ToolCall.Name)
 			}
 		}
+	}
+	if err := applyCorpusReceipt(&receipt, session.Corpus, providerExchange, session.StorePolicyDigest,
+		session.MetadataPolicyDigest, providerTrace, providerTraceErr); err != nil {
+		publishErr = errors.Join(publishErr, err)
 	}
 	cleanupErr := session.close()
 	if cleanupErr != nil {

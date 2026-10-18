@@ -402,7 +402,7 @@ func TestRunWithTheRealWiringFailsClosedForUnwiredConfigurations(t *testing.T) {
 		t.Fatalf("a refused wiring must spend nothing:\n%s", out)
 	}
 	ex, err := wireSSH(plan{cfg: mustConfig(t, e), sched: e.sched()})
-	if err != nil || ex.C == nil || ex.P != nil || ex.B != nil || ex.V != nil || ex.A != nil {
+	if err != nil || ex.C == nil || ex.P == nil || ex.B != nil || ex.V != nil || ex.A != nil {
 		t.Fatalf("wiring: %+v %v", ex, err)
 	}
 	if _, ok := ex.C.(runner.Attest); !ok {
@@ -422,7 +422,7 @@ func mustConfig(t *testing.T, e *env) runConfig {
 func TestSelfcheck(t *testing.T) {
 	e := newEnv(t)
 	out, err := e.cliCfg(wireSSH, "selfcheck")
-	if err == nil || !strings.Contains(out, "FAIL configuration P wired") || !strings.Contains(out, "FAIL configuration B wired") ||
+	if err == nil || !strings.Contains(out, "ok   configuration P wired") || !strings.Contains(out, "FAIL configuration B wired") ||
 		!strings.Contains(out, "ok   configuration C wired") || !strings.Contains(out, "ok   collectors") {
 		t.Fatalf("selfcheck with the real wiring: %v\n%s", err, out)
 	}

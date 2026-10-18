@@ -92,9 +92,27 @@ func corpusTestManifest(t *testing.T) evalcorpus.Manifest {
 	if err != nil {
 		t.Fatal(err)
 	}
+	scripted := 0
 	for i := range allocated.Cases {
 		id := allocated.Cases[i].CaseID
 		allocated.Cases[i].Trial = &evalcorpus.Trial{Prompt: "Host-approved prompt of " + id, MaxHostCalls: 4, MaxTokens: 10000, DurationSeconds: 600}
+		if allocated.Cases[i].Kind != evalcorpus.KindAdversarial {
+			continue
+		}
+		// Every adversarial case carries a frozen one-turn script and protected paths; every second
+		// one registers the admit-all/v1 delta (corpusCaseWithDelta finds them).
+		trial := allocated.Cases[i].Trial
+		trial.Script = []evalcorpus.ScriptTurn{{Tool: "write", Arguments: json.RawMessage(`{"content":"x","path":"note.txt"}`)}}
+		trial.ProtectedPaths = []string{"protected", "secret.txt"}
+		if scripted++; scripted%2 == 0 {
+			trial.PDelta = evalcorpus.PDeltaAdmitAll
+			trial.PDeltaJustification = "the promote-all admission relaxes the scope check of this channel"
+		}
+		digest, err := evalcorpus.CalibrationPayloadDigest(trial.Script, trial.PDelta)
+		if err != nil {
+			t.Fatal(err)
+		}
+		allocated.Cases[i].Adversarial.CalibrationPayloadDigest = digest
 	}
 	if violations := evalcorpus.Validate(allocated, q); len(violations) != 0 {
 		t.Fatalf("test manifest is invalid: %v", violations)

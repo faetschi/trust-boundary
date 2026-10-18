@@ -79,6 +79,9 @@ type Options struct {
 	AuthorizeOperation   func(OperationRequest) error
 	VerifyDecision       delta.DecisionVerifier
 	VerifySettlement     func(settlement CommandSettlement, viewID, leaseID string) error
+	// AdmissionScope selects the delta-admission rule. The zero value is exact-path-output-scope/v1
+	// without protected paths.
+	AdmissionScope AdmissionScope
 }
 
 // RootAttestation is a caller assertion that a source tree has no active
@@ -177,6 +180,9 @@ type MutationResult struct {
 	EffectID   string              `json:"effect_id"`
 	Outcome    string              `json:"outcome"`
 	Admission  *AdmissionReference `json:"admission,omitempty"`
+	// DenyReason is the stable reason code of a denied candidate (DenyReason* constants). It is
+	// computed from the admission scope and is empty unless Outcome is denied_after_effect.
+	DenyReason string `json:"-"`
 }
 
 // OperationEvidence records a durable released result. ResultDigest commits to
@@ -729,9 +735,9 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 		if err != nil {
 			return nil, err
 		}
-		reference, err := AppendAdmission(s.admissionJournal, request, intent,
+		reference, err := AppendAdmissionScoped(s.admissionJournal, request, intent,
 			s.options.PolicyDigest, s.options.MetadataPolicyDigest,
-			input.snapshot.Manifest, snapshot.Manifest, transition)
+			input.snapshot.Manifest, snapshot.Manifest, transition, s.options.AdmissionScope)
 		if err != nil {
 			return nil, err
 		}
@@ -748,6 +754,7 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 		}
 		if reference.Outcome == "deny" {
 			committed.Outcome = "denied_after_effect"
+			_, committed.DenyReason = s.options.AdmissionScope.Decide(request.OutputScopePaths, transition.Changes)
 			stageClosed = true
 			keepStage = true
 			cleanupErr := errors.Join(stage.Close(), removeTreeAt(int(s.genDir.Fd()), stageName))

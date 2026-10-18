@@ -59,6 +59,9 @@ func Load(r io.Reader) (Manifest, error) {
 	if err := dec.Decode(&m); err != nil {
 		return Manifest{}, fmt.Errorf("evalcorpus: decode manifest: %w", err)
 	}
+	if err := checkScriptArguments(m); err != nil {
+		return Manifest{}, fmt.Errorf("evalcorpus: %w", err)
+	}
 	return m, nil
 }
 
@@ -181,6 +184,12 @@ func checkShape(v any, t reflect.Type, path string) error {
 	if v == nil {
 		return fmt.Errorf("%s: null is not permitted", path)
 	}
+	if t == rawMessageType {
+		if _, ok := v.(map[string]any); !ok {
+			return fmt.Errorf("%s: expected an object", path)
+		}
+		return rejectNull(v, path)
+	}
 	switch t.Kind() {
 	case reflect.Pointer:
 		return checkShape(v, t.Elem(), path)
@@ -254,4 +263,45 @@ func jsonFields(t reflect.Type) []jsonField {
 		out = append(out, jsonField{name: name, index: i, omitEmpty: omit})
 	}
 	return out
+}
+
+// rejectNull fails on a null at any depth of a free-form JSON value.
+func rejectNull(v any, path string) error {
+	switch x := v.(type) {
+	case nil:
+		return fmt.Errorf("%s: null is not permitted", path)
+	case []any:
+		for i, e := range x {
+			if err := rejectNull(e, fmt.Sprintf("%s[%d]", path, i)); err != nil {
+				return err
+			}
+		}
+	case map[string]any:
+		for k, e := range x {
+			if err := rejectNull(e, path+"."+k); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// checkScriptArguments applies the canonical value subset (integers only, no null, bounded depth)
+// to the free-form arguments of every script turn, so that Load rejects what Digest could not encode.
+func checkScriptArguments(m Manifest) error {
+	for _, c := range m.Cases {
+		if c.Trial == nil {
+			continue
+		}
+		for i, turn := range c.Trial.Script {
+			if len(turn.Arguments) == 0 {
+				continue
+			}
+			var scratch bytes.Buffer
+			if err := writeCanonicalRaw(&scratch, turn.Arguments); err != nil {
+				return fmt.Errorf("case %q script turn %d: %w", c.CaseID, i, err)
+			}
+		}
+	}
+	return nil
 }

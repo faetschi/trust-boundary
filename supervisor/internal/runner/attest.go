@@ -124,6 +124,10 @@ func (a Attest) Execute(ctx context.Context, s Step) (Outcome, error) {
 		verified = false
 		err = errors.Join(err, perr)
 	}
+	if perr := checkProviderMode(s, out.Receipt); perr != nil {
+		verified = false
+		err = errors.Join(err, perr)
+	}
 	out.E01.Verified = verified
 	if s.Kind == evalcorpus.KindAdversarial {
 		out.Channel = s.Predicate
@@ -195,4 +199,23 @@ func normalizeDelta(d string) string {
 		return DeltaNone
 	}
 	return d
+}
+
+// checkProviderMode requires the provider of a replay role to be scripted and the provider of every
+// other role to be a model. A receipt without a provider_mode predates the member and is not checked.
+func checkProviderMode(s Step, r *ReceiptFacts) error {
+	if r == nil || r.ProviderMode == "" {
+		return nil
+	}
+	if s.Role == RoleAdaptiveReplay {
+		return nil // adaptive replays are not scripted by this build
+	}
+	want := "model"
+	if s.Role == RoleStaticReplay {
+		want = "scripted"
+	}
+	if r.ProviderMode != want {
+		return fmt.Errorf("%w: receipt of %s reports provider_mode %q, the role requires %q", ErrReceiptPolicy, s.ID(), r.ProviderMode, want)
+	}
+	return nil
 }

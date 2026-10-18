@@ -62,6 +62,9 @@ type EvidenceBundle struct {
 	CommandContainmentStatus string `json:"command_containment_status"`
 	PolicyDigest             string `json:"policy_digest"`
 	MetadataPolicyDigest     string `json:"metadata_policy_digest"`
+	// AdmissionScope is the delta-admission scope the admission records were written under. It is
+	// omitted for the default scope.
+	AdmissionScope AdmissionScope `json:"admission_scope,omitzero"`
 	// AuditJournal is the exact newline-delimited canonical audit journal. It
 	// verifies with audit.Verify and is byte-identical to the on-disk journal
 	// when that journal was framed canonically.
@@ -130,7 +133,7 @@ func (s *Store) EvidenceBundle() (EvidenceBundle, error) {
 			Manifest: cloneManifest(generation.snapshot.Manifest),
 		})
 	}
-	if _, err := validateAdmissionEvidence(trace, admissionTrace, s.options.PolicyDigest, s.options.MetadataPolicyDigest, generations); err != nil {
+	if _, err := validateAdmissionEvidence(trace, admissionTrace, s.options.PolicyDigest, s.options.MetadataPolicyDigest, s.options.AdmissionScope, generations); err != nil {
 		return EvidenceBundle{}, err
 	}
 	var auditHead string
@@ -147,6 +150,7 @@ func (s *Store) EvidenceBundle() (EvidenceBundle, error) {
 		CommandContainmentStatus: "not-established",
 		PolicyDigest:             s.options.PolicyDigest,
 		MetadataPolicyDigest:     s.options.MetadataPolicyDigest,
+		AdmissionScope:           s.options.AdmissionScope,
 		AuditJournal:             journal,
 		AuditRecordCount:         uint64(len(trace.Records)),
 		AuditHeadHash:            auditHead,
@@ -263,7 +267,7 @@ func Reconstruct(bundle EvidenceBundle) (Disposition, error) {
 	if err != nil {
 		return Disposition{}, err
 	}
-	admissions, err := validateAdmissionEvidence(trace, admissionTrace, bundle.PolicyDigest, bundle.MetadataPolicyDigest, generations)
+	admissions, err := validateAdmissionEvidence(trace, admissionTrace, bundle.PolicyDigest, bundle.MetadataPolicyDigest, bundle.AdmissionScope, generations)
 	if err != nil {
 		return Disposition{}, err
 	}

@@ -19,7 +19,6 @@ const (
 	AdmissionSchemaVersion = "tbound-sessionrepo-admission/v1"
 	admissionEventKind     = "sessionrepo_admission"
 	admissionJournalName   = "delta-admission.jsonl"
-	admissionScopeRule     = "exact-path-output-scope/v1"
 )
 
 // Create the fixed journal entry relative to the already-validated private
@@ -92,6 +91,21 @@ func AppendAdmission(
 	input, output delta.TreeManifest,
 	candidate delta.Transition,
 ) (AdmissionReference, error) {
+	return AppendAdmissionScoped(journal, request, primaryIntent, policyDigest, metadataPolicyDigest,
+		input, output, candidate, AdmissionScope{})
+}
+
+// AppendAdmissionScoped is AppendAdmission under an admission scope. The scope decides the outcome
+// and is part of the admission policy digest of the record.
+func AppendAdmissionScoped(
+	journal *audit.Journal,
+	request OperationRequest,
+	primaryIntent []byte,
+	policyDigest, metadataPolicyDigest string,
+	input, output delta.TreeManifest,
+	candidate delta.Transition,
+	scope AdmissionScope,
+) (AdmissionReference, error) {
 	if journal == nil || len(primaryIntent) == 0 || len(primaryIntent) > audit.MaxRecordBytes {
 		return AdmissionReference{}, fmt.Errorf("%w: journal and bounded primary intent are required", ErrInvalidAdmission)
 	}
@@ -109,14 +123,14 @@ func AppendAdmission(
 	}
 	record.Candidate.Changes = append([]delta.ObjectChange(nil), candidate.Changes...)
 
-	record.AdmissionPolicyDigest, err = computeAdmissionPolicyDigest(policyDigest, metadataPolicyDigest)
+	record.AdmissionPolicyDigest, err = computeAdmissionPolicyDigest(policyDigest, metadataPolicyDigest, scope)
 	if err != nil {
 		return AdmissionReference{}, err
 	}
 	if err := verifyAdmissionIntent(record, primaryIntent); err != nil {
 		return AdmissionReference{}, err
 	}
-	outcome, err := validateAdmissionRecord(record, policyDigest, metadataPolicyDigest)
+	outcome, err := validateAdmissionRecord(record, policyDigest, metadataPolicyDigest, scope)
 	if err != nil {
 		return AdmissionReference{}, err
 	}
@@ -146,6 +160,17 @@ func VerifyAdmission(
 	primaryIntent []byte,
 	policyDigest, metadataPolicyDigest string,
 ) error {
+	return VerifyAdmissionScoped(journal, reference, primaryIntent, policyDigest, metadataPolicyDigest, AdmissionScope{})
+}
+
+// VerifyAdmissionScoped is VerifyAdmission under the admission scope the record was written under.
+func VerifyAdmissionScoped(
+	journal *audit.Journal,
+	reference AdmissionReference,
+	primaryIntent []byte,
+	policyDigest, metadataPolicyDigest string,
+	scope AdmissionScope,
+) error {
 	if journal == nil || len(primaryIntent) == 0 || len(primaryIntent) > audit.MaxRecordBytes {
 		return fmt.Errorf("%w: journal and bounded primary intent are required", ErrInvalidAdmission)
 	}
@@ -171,7 +196,7 @@ func VerifyAdmission(
 	if record.IntentDigest != digestBytes(primaryIntent) {
 		return fmt.Errorf("%w: primary intent digest mismatch", ErrInvalidAdmission)
 	}
-	outcome, err := validateAdmissionRecord(record, policyDigest, metadataPolicyDigest)
+	outcome, err := validateAdmissionRecord(record, policyDigest, metadataPolicyDigest, scope)
 	if err != nil {
 		return err
 	}
@@ -190,6 +215,7 @@ func VerifyAdmission(
 func validateAdmissionRecord(
 	record admissionRecord,
 	policyDigest, metadataPolicyDigest string,
+	scope AdmissionScope,
 ) (string, error) {
 	fail := func(reason string) (string, error) {
 		return "", fmt.Errorf("%w: %s", ErrInvalidAdmission, reason)
@@ -203,7 +229,7 @@ func validateAdmissionRecord(
 		return fail("schema or pinned policy identity mismatch")
 	}
 
-	admissionPolicyDigest, err := computeAdmissionPolicyDigest(policyDigest, metadataPolicyDigest)
+	admissionPolicyDigest, err := computeAdmissionPolicyDigest(policyDigest, metadataPolicyDigest, scope)
 	if err != nil {
 		return fail("cannot compute admission policy digest")
 	}
@@ -273,32 +299,8 @@ func validateAdmissionRecord(
 	// Scope validity and coverage are intentionally evaluated here, after all
 	// structural checks. Invalid or uncovered scopes produce DENY and do not
 	// discard the structurally valid candidate evidence.
-	if OutputScopeCoversChanges(request.OutputScopePaths, candidate.Changes) {
-		return "allow", nil
-	}
-	return "deny", nil
-}
-
-func computeAdmissionPolicyDigest(policyDigest, metadataPolicyDigest string) (string, error) {
-	if !validSHA256(policyDigest) || !validSHA256(metadataPolicyDigest) {
-		return "", ErrInvalidAdmission
-	}
-	payload := struct {
-		SchemaVersion        string `json:"schema_version"`
-		PolicyDigest         string `json:"policy_digest"`
-		MetadataPolicyDigest string `json:"metadata_policy_digest"`
-		ScopeRule            string `json:"scope_rule"`
-	}{
-		SchemaVersion:        AdmissionSchemaVersion,
-		PolicyDigest:         policyDigest,
-		MetadataPolicyDigest: metadataPolicyDigest,
-		ScopeRule:            admissionScopeRule,
-	}
-	encoded, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-	return digestBytes(encoded), nil
+	outcome, _ := scope.Decide(request.OutputScopePaths, candidate.Changes)
+	return outcome, nil
 }
 
 func decodeAdmissionRecord(data []byte) (admissionRecord, error) {

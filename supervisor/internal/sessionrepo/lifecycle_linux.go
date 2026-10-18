@@ -45,6 +45,9 @@ func validateOptionProfile(options Options, requireAuthorities bool) error {
 		options.XattrVisibility.Authority != workspace.XattrAuthorityBoundedNoHiddenTrusted || !validSHA256(options.XattrVisibility.ProfileDigest) {
 		return ErrInvalidOptions
 	}
+	if options.AdmissionScope.Validate() != nil {
+		return ErrInvalidOptions
+	}
 	return nil
 }
 
@@ -317,9 +320,9 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 		if err != nil {
 			return nil, err
 		}
-		reference, err := AppendAdmission(s.admissionJournal, request, intent,
+		reference, err := AppendAdmissionScoped(s.admissionJournal, request, intent,
 			s.options.PolicyDigest, s.options.MetadataPolicyDigest,
-			input.snapshot.Manifest, snapshot.Manifest, transition)
+			input.snapshot.Manifest, snapshot.Manifest, transition, s.options.AdmissionScope)
 		if err != nil {
 			return nil, err
 		}
@@ -333,6 +336,7 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 		}
 		if reference.Outcome == "deny" {
 			committed.Outcome = "denied_after_effect"
+			_, committed.DenyReason = s.options.AdmissionScope.Decide(request.OutputScopePaths, transition.Changes)
 			stageClosed = true
 			keepStage = true
 			cleanupErr := errors.Join(stage.Close(), removeTreeAt(int(s.genDir.Fd()), stageName))

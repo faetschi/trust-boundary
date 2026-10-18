@@ -444,7 +444,7 @@ func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, tra
 		request.ExecutionContextDigest != operation.ExecutionContextDigest || request.ExecutionContextDigest != transition.ExecutionContextDigest ||
 		request.InputGeneration != operation.InputGeneration || request.InputGeneration != transition.InputGeneration ||
 		request.InputTreeDigest != operation.InputTreeDigest || request.InputTreeDigest != transition.InputTreeDigest ||
-		!sessionrepo.OutputScopeCoversChanges(request.OutputScopePaths, transition.Changes) ||
+		!admissionAllows(bundle, request.OutputScopePaths, transition.Changes) ||
 		commandResult.Admission != *operation.Admission || commandResult.Admission.Outcome != "allow" ||
 		commandResult.Admission.IntentDigest != digestBytes(effect.Intent) ||
 		commandResult.Command.ExitCode != receipt.ExitCode || !commandResult.Command.ExitObserved ||
@@ -592,4 +592,12 @@ func compareProductionD09CommandEvent(r *productionD09BashRunner, event producti
 		return ErrProductionCommandEvidence
 	}
 	return nil
+}
+
+// admissionAllows reports whether the admission scope the bundle was written under allows the
+// promoted changes of an operation that declared requestScope. For the default scope this is the
+// exact-path output-scope coverage check; under promote-all/v1 a promoted change may lie outside it.
+func admissionAllows(bundle sessionrepo.EvidenceBundle, requestScope []string, changes []delta.ObjectChange) bool {
+	outcome, _ := bundle.AdmissionScope.Decide(requestScope, changes)
+	return outcome == "allow"
 }

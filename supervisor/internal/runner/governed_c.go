@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"tbound/supervisor/internal/evalcorpus"
@@ -140,6 +141,9 @@ func (AbsentCollectors) Proc(context.Context, EvidenceRef) (ObserverEvidence, er
 // Prepare checks the configuration and the step mapping and sends nothing; the runner
 // journals the start before Execute sends the request.
 type GovernedC struct {
+	// Configuration is the configuration this executor serves: CfgC (the zero value) or CfgP, whose steps
+	// run through the same service under the p-* roles.
+	Configuration Configuration
 	// PlanDigest is Schedule.Digest of the plan being run.
 	PlanDigest string
 	// Transport reaches the guest. Nil means the executor is not wired.
@@ -148,10 +152,17 @@ type GovernedC struct {
 	Collectors Collectors
 }
 
-// Request maps a C step to its corpus-mode request.
+// Request maps a step of the executor's configuration to its corpus-mode request.
 func (g GovernedC) Request(s Step) (GovernedRequest, error) {
-	if s.Configuration != CfgC {
-		return GovernedRequest{}, fmt.Errorf("runner: step %s is configuration %s, not C", s.ID(), s.Configuration)
+	want := g.Configuration
+	if want == "" {
+		want = CfgC
+	}
+	if want != CfgC && want != CfgP {
+		return GovernedRequest{}, fmt.Errorf("runner: governed executor serves C or P, not %s", want)
+	}
+	if s.Configuration != want {
+		return GovernedRequest{}, fmt.Errorf("runner: step %s is configuration %s, not %s", s.ID(), s.Configuration, want)
 	}
 	request := GovernedRequestFor(g.PlanDigest, s)
 	if _, err := request.Argv(); err != nil {
@@ -229,6 +240,11 @@ type governedReceipt struct {
 	ContainmentProfileDigest string `json:"containment_profile_digest"`
 	FrozenSourceDigest       string `json:"frozen_source_digest"`
 	Delta                    string `json:"delta"`
+
+	ProviderMode          string         `json:"provider_mode"`
+	ScriptDigest          string         `json:"script_digest"`
+	AdmissionPolicyDigest string         `json:"admission_policy_digest"`
+	Proposals             []ProposalFact `json:"proposals"`
 }
 
 // parseGovernedResponse reads the one response line. It returns the line (the bytes
@@ -318,7 +334,10 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		}
 		ref.RunID = receipt.RunID
 		o.Receipt = &ReceiptFacts{ProfileHash: receipt.ProfileHash, ContainmentProfileDigest: receipt.ContainmentProfileDigest,
-			FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta}
+			FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta,
+			ProviderMode: receipt.ProviderMode, ScriptDigest: receipt.ScriptDigest,
+			AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals)}
+		o.ToolAttempt = slices.ContainsFunc(receipt.Proposals, func(p ProposalFact) bool { return strings.EqualFold(p.Verdict, "deny") }) || o.ToolAttempt
 		ref.Publications = receipt.PublicationJournalRecordCount
 		ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
 		ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount

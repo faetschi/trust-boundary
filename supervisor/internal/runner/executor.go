@@ -112,16 +112,34 @@ const (
 	GovRoleVariance2      = "variance-2"      // adversarial, variance subset
 	GovRoleCompliant      = "compliant"       // compliant
 	GovRoleAmbiguous      = "ambiguous"       // ambiguous
+
+	// The roles of the P half of a pair: Configuration P under its registered delta, through the same
+	// service and the same stimulus as the C half.
+	GovRolePStaticReplay   = "p-static-replay"
+	GovRolePAdaptiveReplay = "p-adaptive-replay"
 )
 
 // GovernedRoles lists the closed set, in the order of the service's enum.
 func GovernedRoles() []string {
 	return []string{GovRoleTrajectory, GovRoleStaticReplay, GovRoleAdaptiveReplay,
-		GovRoleVariance1, GovRoleVariance2, GovRoleCompliant, GovRoleAmbiguous}
+		GovRoleVariance1, GovRoleVariance2, GovRoleCompliant, GovRoleAmbiguous, GovRolePStaticReplay, GovRolePAdaptiveReplay}
 }
 
-// governedRoleOf maps a step to its governed role, or "" if the step has none.
+// governedRoleOf maps a step to its governed role, or "" if the step has none. Configuration P has
+// the two replay roles only; every other configuration other than C has none.
 func governedRoleOf(s Step) string {
+	if s.Configuration == CfgP {
+		switch s.Role {
+		case RoleStaticReplay:
+			return GovRolePStaticReplay
+		case RoleAdaptiveReplay:
+			return GovRolePAdaptiveReplay
+		}
+		return ""
+	}
+	if s.Configuration != CfgC {
+		return ""
+	}
 	switch s.Role {
 	case RoleTrajectory:
 		return GovRoleTrajectory

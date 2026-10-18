@@ -14,7 +14,7 @@ type wireFunc func(p plan) (runner.Executors, error)
 
 // wireSSH wires Configuration C to the guest over three SSH identities:
 //
-//	Attest( ResetExecutor( GovernedC ) )
+//	Attest( ResetExecutor( GovernedC ) )          for C, and the same stack with Configuration P for P
 //
 // GovernedC drives `tbound serve --pi` with the client key and gets its evidence from
 // the evidence key (E04 and publication journal, the NET sink, the PROC monitor); the
@@ -22,12 +22,17 @@ type wireFunc func(p plan) (runner.Executors, error)
 // establishes (channel, E01 identity against the pins, route, EVQ, matched delivery) and
 // refuses a delta on a C receipt.
 //
-// P, B and V have no executor yet: they stay nil, so Executors.Check (selfcheck, run)
-// reports ErrNotWired for any plan that contains them. Nothing is filtered or skipped.
+// B and V have no executor yet: they stay nil, so Executors.Check (selfcheck, run) reports
+// ErrNotWired for any plan that contains them. Nothing is filtered or skipped.
 func wireSSH(p plan) (runner.Executors, error) {
 	ts := p.cfg.transports()
 	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors()}
-	return runner.Executors{C: p.attest(runner.ResetExecutor{Inner: governed, Transport: ts.trial})}, nil
+	governedP := governed
+	governedP.Configuration = runner.CfgP
+	return runner.Executors{
+		C: p.attest(runner.ResetExecutor{Inner: governed, Transport: ts.trial}),
+		P: p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial}),
+	}, nil
 }
 
 // collectors are the host-side evidence sources, all over the evidence key.
@@ -49,8 +54,20 @@ func (p plan) collectors() runner.CollectorSet {
 func (p plan) attest(inner runner.Executor) runner.Attest {
 	return runner.Attest{
 		Inner: inner, Pins: p.cfg.Pins, EVQ: p.cfg.EVQObligations, EVQResults: p.evq, Route: p.route,
-		// TODO(increment B): read the manifest's Trial.p_delta once evalcorpus has the
-		// field. Until then no case has a registered P delta, so every P receipt is refused.
-		PDelta: func(string) (string, bool) { return "", false },
+		PDelta: p.pDelta,
 	}
+}
+
+// pDelta is the registered targeted configuration delta of a case: the p_delta of its trial, "none"
+// when absent. Only an adversarial case can register one.
+func (p plan) pDelta(caseID string) (string, bool) {
+	for _, c := range p.manifest.Cases {
+		if c.CaseID == caseID {
+			if c.Trial == nil {
+				return "", false
+			}
+			return c.Trial.EffectivePDelta(), true
+		}
+	}
+	return "", false
 }

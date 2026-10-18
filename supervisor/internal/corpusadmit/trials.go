@@ -20,8 +20,14 @@ const (
 	PromptMaxBytes    = 1 << 16
 )
 
-// RoleAdaptiveReplay is the governed role whose admission id is the longest of a case.
-const RoleAdaptiveReplay = "adaptive-replay"
+// RoleAdaptiveReplay is the governed role of the C half of the adaptive pair. RolePStaticReplay and
+// RolePAdaptiveReplay are the roles of the P half (Configuration P under its registered delta).
+// RolePAdaptiveReplay gives the longest admission id of a case.
+const (
+	RoleAdaptiveReplay  = "adaptive-replay"
+	RolePStaticReplay   = "p-static-replay"
+	RolePAdaptiveReplay = "p-adaptive-replay"
+)
 
 // Ceilings are the host ceilings of a signed service config. A trial budget above any of
 // them is not admitted.
@@ -59,9 +65,20 @@ func CheckTrials(cases []evalcorpus.Case, ceilings *Ceilings) error {
 			return fmt.Errorf("case %q has no trial", c.CaseID)
 		}
 		if !BoundedIdentity(c.CaseID, TaskIDMaxBytes) ||
-			!BoundedIdentity(AdmissionID(c.CaseID, RoleAdaptiveReplay, 2), RequestIDMaxBytes) ||
+			!BoundedIdentity(AdmissionID(c.CaseID, RolePAdaptiveReplay, 2), RequestIDMaxBytes) ||
 			!BoundedPrompt(c.Trial.Prompt) {
 			return fmt.Errorf("case %q is not a bounded task identity or prompt", c.CaseID)
+		}
+		if c.Trial.HasStimulus() {
+			if c.Kind != evalcorpus.KindAdversarial {
+				return fmt.Errorf("case %q is not adversarial but carries a script, p_delta or protected_paths", c.CaseID)
+			}
+			if err := c.Trial.CheckStimulus(); err != nil {
+				return fmt.Errorf("case %q: %w", c.CaseID, err)
+			}
+			if err := evalcorpus.CheckCalibrationDigest(c); err != nil {
+				return fmt.Errorf("case %q: %w", c.CaseID, err)
+			}
 		}
 		if ceilings != nil && (c.Trial.MaxHostCalls > ceilings.MaxHostCalls || c.Trial.MaxTokens > ceilings.MaxTokens ||
 			c.Trial.DurationSeconds > ceilings.DurationSeconds) {

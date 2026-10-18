@@ -200,18 +200,20 @@ func TestPublicationAnchorIntervalRefIsTheRunnersIntervalRef(t *testing.T) {
 			if (role == runner.RoleVarianceRepeat) != (repeat != 0) {
 				continue
 			}
-			for attempt := 1; attempt <= 2; attempt++ {
-				step := runner.Step{CaseID: anchorTestCase, Role: role, Configuration: runner.CfgC, Repeat: repeat, Attempt: attempt}
-				request := runner.GovernedRequestFor("plan-digest", step)
-				if request.Role == "" {
-					continue
+			for _, cfg := range []runner.Configuration{runner.CfgC, runner.CfgP} {
+				for attempt := 1; attempt <= 2; attempt++ {
+					step := runner.Step{CaseID: anchorTestCase, Role: role, Configuration: cfg, Repeat: repeat, Attempt: attempt}
+					request := runner.GovernedRequestFor("plan-digest", step)
+					if request.Role == "" {
+						continue
+					}
+					admission := corpusAdmissionID(request.TaskID, request.Role, request.Attempt)
+					ref, ok := corpusIntervalRef(admission, request.TaskID)
+					if !ok || ref != runner.IntervalRef(step) {
+						t.Fatalf("%s: interval ref %q ok=%v, runner says %q", admission, ref, ok, runner.IntervalRef(step))
+					}
+					covered[request.Role] = true
 				}
-				admission := corpusAdmissionID(request.TaskID, request.Role, request.Attempt)
-				ref, ok := corpusIntervalRef(admission, request.TaskID)
-				if !ok || ref != runner.IntervalRef(step) {
-					t.Fatalf("%s: interval ref %q ok=%v, runner says %q", admission, ref, ok, runner.IntervalRef(step))
-				}
-				covered[request.Role] = true
 			}
 		}
 	}

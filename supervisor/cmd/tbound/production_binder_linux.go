@@ -387,6 +387,19 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	// "not-established" settlement can never be admitted or receipted as D09.
 	authority.requireEvidencedBashContainment = true
 	authority.BindProviderRoute(config.providerRoute)
+	if workflowAdmission != nil {
+		// The admitted role alone selects the provider (model or scripted) and the admission rule.
+		corpusBound, bindErr := workflowAdmission.Catalog.bindingForEntry(workflowAdmission.Entry)
+		if bindErr != nil {
+			return fail(bindErr)
+		}
+		if corpusBound != nil {
+			if err := authority.BindCorpusBinding(*corpusBound); err != nil {
+				return fail(err)
+			}
+			session.Corpus = corpusBound
+		}
+	}
 	session.Authority, session.StoreJournal, session.ProviderJournal = authority, storeJournal, providerJournal
 	session.CommandJournal = commandJournal
 	session.Policy, session.StorePolicyDigest, session.MetadataPolicyDigest = policy, storePolicyDigest, metadataPolicyDigest
@@ -496,7 +509,8 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 			storePolicyDigest, metadataPolicyDigest, managed, storeRoot, adminRoot,
 			storeJournal, providerJournal, commandJournal, prepared, g0,
 			sessionrepo.Options{PolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest,
-				Limits: workspace.DefaultLimits(), XattrVisibility: xattrVisibility, Journal: storeJournal},
+				Limits: workspace.DefaultLimits(), XattrVisibility: xattrVisibility, Journal: storeJournal,
+				AdmissionScope: authority.admissionScope},
 			runner, authority, productionSystemPrompt, productionDeveloperPrompt)
 		if err != nil {
 			return fail(fmt.Errorf("initialize the host-authorized production workflow before worker exposure: %w", err))

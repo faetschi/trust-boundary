@@ -309,7 +309,7 @@ func TestSessionRepositoryEvidenceBundleReconstructsDeniedAdmissionE2E(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	admissions, err := validateAdmissionEvidence(primaryTrace, admissionTrace, bundle.PolicyDigest, bundle.MetadataPolicyDigest, bundle.Generations)
+	admissions, err := validateAdmissionEvidence(primaryTrace, admissionTrace, bundle.PolicyDigest, bundle.MetadataPolicyDigest, AdmissionScope{}, bundle.Generations)
 	if err != nil {
 		t.Fatal(err)
 	}

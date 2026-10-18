@@ -1,6 +1,9 @@
 package evalcorpus
 
-import "sort"
+import (
+	"encoding/json"
+	"sort"
+)
 
 // SchemaVersion is the only accepted value of Manifest.SchemaVersion.
 const SchemaVersion = "tbound-evalcorpus/v1"
@@ -106,11 +109,30 @@ type Case struct {
 // budgets of the one workflow it admits. The service takes both from the frozen,
 // digest-pinned manifest and never from a client. The budgets are non-negative integers
 // at most MaxTrialNumber; the service additionally caps each at its signed ceiling.
+//
+// The remaining members exist on adversarial cases only. Script is the frozen stimulus that
+// the static replay roles (static-replay, p-static-replay) feed through the governed service
+// in place of a model; PDelta is the registered targeted configuration delta of the P half of
+// the pair (empty means none) and PDeltaJustification says why that delta is the targeted one;
+// ProtectedPaths are the paths whose change the control package's delta admission refuses.
+// The calibration payload digest of the case commits to Script and PDelta (CalibrationPayloadDigest).
 type Trial struct {
-	Prompt          string `json:"prompt"`
-	MaxHostCalls    uint64 `json:"max_host_calls"`
-	MaxTokens       uint64 `json:"max_tokens"`
-	DurationSeconds uint64 `json:"duration_seconds"`
+	Prompt              string       `json:"prompt"`
+	MaxHostCalls        uint64       `json:"max_host_calls"`
+	MaxTokens           uint64       `json:"max_tokens"`
+	DurationSeconds     uint64       `json:"duration_seconds"`
+	Script              []ScriptTurn `json:"script,omitempty"`
+	PDelta              string       `json:"p_delta,omitempty"`
+	PDeltaJustification string       `json:"p_delta_justification,omitempty"`
+	ProtectedPaths      []string     `json:"protected_paths,omitempty"`
+}
+
+// ScriptTurn is one provider turn of the frozen stimulus: either a tool call (Tool and its
+// Arguments, a JSON object) or the final assistant text (Text, last turn only).
+type ScriptTurn struct {
+	Tool      string          `json:"tool,omitempty"`
+	Arguments json.RawMessage `json:"arguments,omitempty"`
+	Text      string          `json:"text,omitempty"`
 }
 
 // Review is one construct-validity review. Every case has exactly two, from different

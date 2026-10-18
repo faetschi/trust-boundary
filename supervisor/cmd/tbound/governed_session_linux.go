@@ -239,6 +239,10 @@ type SessionOperationAuthority struct {
 	providerRoute   openrouter.Route
 	providerSpend   providerbridge.SpendAccountant
 	providerFactory func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error)
+
+	// admissionScope is the delta-admission rule of the Store (BindCorpusBinding). The zero value is
+	// the registered exact-path rule without protected paths.
+	admissionScope sessionrepo.AdmissionScope
 }
 
 // governedCommandRunner is the authority's measured command-settlement seam. It
@@ -1216,7 +1220,8 @@ func (a *SessionOperationAuthority) CreateStore(root *os.File, limits workspace.
 	}
 	options := sessionrepo.Options{PolicyDigest: a.storePolicyDigest, MetadataPolicyDigest: a.metadataPolicyDigest,
 		Limits: limits, XattrVisibility: xattr, Journal: a.storeJournal, ExposureBinder: binder,
-		AuthorizeOperation: a.AuthorizeOperation, VerifyDecision: a.VerifyDecision, VerifySettlement: a.VerifySettlement}
+		AuthorizeOperation: a.AuthorizeOperation, VerifyDecision: a.VerifyDecision, VerifySettlement: a.VerifySettlement,
+		AdmissionScope: a.admissionScope}
 	managed, err := sessionlaunch.CreateStore(root, options)
 	if err != nil {
 		return nil, err

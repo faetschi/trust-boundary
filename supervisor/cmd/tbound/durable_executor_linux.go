@@ -204,7 +204,7 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 		}
 		mutation, err = e.store.Write(ctx, e.tip, operation, policyDecision, path, content)
 		if err != nil {
-			return nil, fmt.Errorf("durable write: %w", err)
+			return nil, admissionDenied(proposal.Tool, mutation, fmt.Errorf("durable write: %w", err))
 		}
 	case "edit":
 		path, edits, err := durableEditArguments(proposal.Arguments)
@@ -213,7 +213,7 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 		}
 		mutation, err = e.store.Edit(ctx, e.tip, operation, policyDecision, path, edits)
 		if err != nil {
-			return nil, fmt.Errorf("durable edit: %w", err)
+			return nil, admissionDenied(proposal.Tool, mutation, fmt.Errorf("durable edit: %w", err))
 		}
 	case "bash":
 		if e.bashOutputPaths == nil {
@@ -239,7 +239,7 @@ func (e *DurableExecutor) Execute(ctx context.Context, proposal protocol.Proposa
 			DeclaredOutputPaths: cloneDurableOutputScopePaths(e.bashOutputPaths)}
 		mutation, err = e.store.RunBash(ctx, e.tip, operation, policyDecision, spec, e.commandRunner)
 		if err != nil {
-			return nil, fmt.Errorf("durable bash: %w", err)
+			return nil, admissionDenied(proposal.Tool, mutation, fmt.Errorf("durable bash: %w", err))
 		}
 	default:
 		return nil, fmt.Errorf("durable executor does not implement tool %q", proposal.Tool)
@@ -686,4 +686,30 @@ func validBareSHA256(value string) bool {
 	}
 	_, err := hex.DecodeString(encoded)
 	return err == nil
+}
+
+// admissionDeniedError reports that the Store's delta admission refused the settled change of an
+// allowed operation: the candidate was discarded and nothing was promoted. ReasonCode is the stable
+// code (sessionrepo.DenyReason*). The run still ends fail-closed, as for any executor error: the
+// result is withheld and the workflow is unknown. Surfacing the refusal to the agent as a deny Result
+// needs the provider-journal and Store replay verifiers to accept an allowed decision followed by a
+// denied admission, which they do not.
+type admissionDeniedError struct {
+	Tool       string
+	ReasonCode string
+	err        error
+}
+
+func (e *admissionDeniedError) Error() string {
+	return fmt.Sprintf("delta admission denied the %s change (%s): %v", e.Tool, e.ReasonCode, e.err)
+}
+
+func (e *admissionDeniedError) Unwrap() error { return e.err }
+
+// admissionDenied wraps err as an admissionDeniedError if it is the Store's admission denial.
+func admissionDenied(tool string, mutation sessionrepo.MutationResult, err error) error {
+	if !errors.Is(err, sessionrepo.ErrDeltaDenied) {
+		return err
+	}
+	return &admissionDeniedError{Tool: tool, ReasonCode: mutation.DenyReason, err: err}
 }

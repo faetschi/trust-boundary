@@ -38,12 +38,16 @@ const (
 	corpusRoleVariance2      = "variance-2"
 	corpusRoleCompliant      = "compliant"
 	corpusRoleAmbiguous      = "ambiguous"
+
+	// The roles of the P half of a pair (Configuration P under the case's registered delta).
+	corpusRolePStaticReplay   = corpusadmit.RolePStaticReplay
+	corpusRolePAdaptiveReplay = corpusadmit.RolePAdaptiveReplay
 )
 
 func validCorpusRole(role string) bool {
 	switch role {
 	case corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRoleVariance1,
-		corpusRoleVariance2, corpusRoleCompliant, corpusRoleAmbiguous:
+		corpusRoleVariance2, corpusRoleCompliant, corpusRoleAmbiguous, corpusRolePStaticReplay, corpusRolePAdaptiveReplay:
 		return true
 	}
 	return false
@@ -73,7 +77,8 @@ func corpusAdmissionID(caseID, role string, attempt int) string {
 	return corpusadmit.AdmissionID(caseID, role, attempt)
 }
 
-// roleAllowed reports whether role may run for caseID: trajectory and the replay roles
+// roleAllowed reports whether role may run for caseID: trajectory and the replay roles (of both
+// halves of the pair)
 // only for adversarial cases, the variance roles only for adversarial cases in the
 // variance subset, compliant only for compliant tasks, ambiguous only for ambiguous
 // cases.
@@ -86,7 +91,7 @@ func (c *productionCorpus) roleAllowed(caseID, role string) bool {
 		return false
 	}
 	switch role {
-	case corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay:
+	case corpusRoleTrajectory, corpusRoleStaticReplay, corpusRoleAdaptiveReplay, corpusRolePStaticReplay, corpusRolePAdaptiveReplay:
 		return info.kind == evalcorpus.KindAdversarial
 	case corpusRoleVariance1, corpusRoleVariance2:
 		return info.kind == evalcorpus.KindAdversarial && info.variance
@@ -96,6 +101,32 @@ func (c *productionCorpus) roleAllowed(caseID, role string) bool {
 		return info.kind == evalcorpus.KindAmbiguous
 	}
 	return false
+}
+
+// roleServable reports whether this build can serve role for caseID once roleAllowed holds: a static
+// replay role needs the frozen script of the case; a P role needs a delta the build implements; the
+// scripted adaptive replay of the P half is not implemented. It never selects a provider for a role
+// it cannot serve: a P run must not fall back to a model.
+func (c *productionCorpus) roleServable(caseID, role string) bool {
+	if !c.roleAllowed(caseID, role) {
+		return false
+	}
+	trial := c.trials[caseID]
+	switch role {
+	case corpusRoleStaticReplay:
+		return len(trial.Script) != 0
+	case corpusRolePStaticReplay:
+		return len(trial.Script) != 0 && implementedPDelta(trial.EffectivePDelta())
+	case corpusRolePAdaptiveReplay:
+		return false
+	}
+	return true
+}
+
+// implementedPDelta lists the registered deltas this build implements. net-sink/v1 and no-reap/v1 are
+// registered names the service refuses until the command-cell template that implements them exists.
+func implementedPDelta(delta string) bool {
+	return delta == evalcorpus.PDeltaNone || delta == evalcorpus.PDeltaAdmitAll
 }
 
 func (c *productionCorpus) trial(caseID string) (evalcorpus.Trial, bool) {
@@ -185,7 +216,7 @@ func (c *piServiceWorkflowCatalog) envelopeFor(config piServiceConfig, request p
 			DurationSeconds: config.WorkflowDurationSeconds}, true
 	}
 	if c == nil || c.corpus == nil || config.CorpusManifestDigest != c.corpus.digest || config.effectiveCorpusQuotaProfile() != c.corpus.quotaProfile ||
-		request.Prompt != "" || (request.Attempt != 1 && request.Attempt != 2) || !c.corpus.roleAllowed(request.TaskID, request.Role) ||
+		request.Prompt != "" || (request.Attempt != 1 && request.Attempt != 2) || !c.corpus.roleServable(request.TaskID, request.Role) ||
 		!reflect.DeepEqual(admissionRequestBashPaths(request), config.WorkflowBashOutputPaths) {
 		return workflowEnvelope{}, false
 	}
@@ -235,6 +266,9 @@ func (c *piServiceWorkflowCatalog) screenRequest(config piServiceConfig, peer pi
 	}
 	if !c.corpus.roleAllowed(request.TaskID, request.Role) {
 		return "role-kind-mismatch"
+	}
+	if !c.corpus.roleServable(request.TaskID, request.Role) {
+		return "role-unavailable"
 	}
 	if _, ok := c.envelopeFor(config, request); !ok {
 		return "invalid-request"

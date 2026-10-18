@@ -82,7 +82,7 @@ func TestStoreProcessCrashAfterPromotionBeforeOutcome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	outcome, err := validateAdmissionRecord(candidate, seed.PolicyDigest, seed.MetadataPolicyDigest)
+	outcome, err := validateAdmissionRecord(candidate, seed.PolicyDigest, seed.MetadataPolicyDigest, AdmissionScope{})
 	if err != nil || outcome != "allow" || candidate.Request.EffectID != effect.ID || candidate.Output.Generation != "g1" || !sameManifest(candidate.Input, seed.Baseline.Manifest) {
 		t.Fatalf("candidate admission=%+v outcome=%q err=%v", candidate, outcome, err)
 	}
