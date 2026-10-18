@@ -58,16 +58,3 @@ func TestRerunOriginalIsRetainedInSummaryOutput(t *testing.T) {
 		t.Fatalf("compliant case = %+v", c)
 	}
 }
-
-func TestRerunOriginalSurvivesAnEscapeInIt(t *testing.T) {
-	in := cleanInput()
-	first := invalidObserved(in.Adversarial[0])
-	in.Adversarial[0] = first
-	in.Adversarial = append(in.Adversarial, retry(first, 2))
-	s := mustSummarize(t, in)
-	wantEscapes(t, s, 1)
-	got := caseOf(t, s, "adversarial", "adv-000")
-	if got.Disposition != string(Unsupported) || got.Original == nil || got.Original.Attempt != 1 {
-		t.Fatalf("case = %+v", got)
-	}
-}

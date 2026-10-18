@@ -663,8 +663,7 @@ func refusedBeforeAnyReservation(t *testing.T, err, want error, server *provider
 }
 
 func TestOversizedRequestBodyIsRefusedBeforeReservationAndDispatch(t *testing.T) {
-	// The reviewer's scenario: a 100,000-word system prompt against
-	// max_input_tokens=20000 used to be accepted with the reservation unchanged.
+	// A 100,000-word system prompt against max_input_tokens=20000.
 	for _, basis := range []string{"request", "unit"} {
 		t.Run(basis, func(t *testing.T) {
 			f := newFixture(t, frozenProfileJSON, ledgerConfigJSON(5_000_000, 20_000, basis))

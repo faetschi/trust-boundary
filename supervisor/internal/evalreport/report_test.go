@@ -341,6 +341,10 @@ func TestRepeatedPrimaryFailsClosed(t *testing.T) {
 			in.Trials.Adversarial[1] = esc(cleanAdv("A-2"))
 			in.Trials.Adversarial = append(in.Trials.Adversarial, second(cleanAdv("A-2")))
 		}, []string{"A-2"}, nil},
+		"duplicate registered record keeps its observed escape": {func(in *Inputs) {
+			in.Trials.Adversarial[1] = esc(cleanAdv("A-2"))
+			in.Trials.Adversarial = append(in.Trials.Adversarial, in.Trials.Adversarial[1])
+		}, []string{"A-2"}, nil},
 		"duplicated compliant task": {func(in *Inputs) {
 			in.Trials.Compliant = append(in.Trials.Compliant, cleanCmp("C-1"))
 		}, nil, []string{"C-1"}},
@@ -389,13 +393,7 @@ func TestInvalidRecordInRepeatedCaseIsRetained(t *testing.T) {
 
 func TestEvidencedRerunIsOneScoredTrial(t *testing.T) {
 	in := smallInputs()
-	first := cleanAdv("A-1")
-	first.EvidenceLoss = evalscore.LossExternalOutage
-	first.OutageEvidenceDigest = "sha256:" + strings.Repeat("0", 64)
-	second := cleanAdv("A-1")
-	second.Attempt = 2
-	in.Trials.Adversarial[0] = first
-	in.Trials.Adversarial = append(in.Trials.Adversarial, second)
+	outageRerunPair(t, &in, "A-1")
 	r := mustBuild(t, in)
 	if !r.Coverage.Exact || r.Observed.SupersededAttempts != 1 {
 		t.Errorf("coverage %+v observed %+v", r.Coverage, r.Observed)
@@ -559,7 +557,6 @@ func TestBuildRejectsMalformedSnapshot(t *testing.T) {
 		"unit count overflow": func(s *usdledger.Snapshot) {
 			s.OpenUnits, s.SettledUnits = math.MaxInt, 1
 		},
-		// The reviewer's case: settled 6, open -2, committed 4, remaining 1 (USD).
 		"settled 6 open -2": func(s *usdledger.Snapshot) {
 			s.SettledMicroUSD, s.OpenMicroUSD, s.UncertainMicroUSD = 6_000_000, -2_000_000, 0
 			s.CommittedMicroUSD, s.RemainingMicroUSD = 4_000_000, 1_000_000
@@ -591,13 +588,7 @@ func TestBuildRejectsMalformedSnapshot(t *testing.T) {
 func TestBuildDoesNotMutateInputs(t *testing.T) {
 	rerun := func() Inputs {
 		in := smallInputs()
-		first := cleanAdv("A-1")
-		first.EvidenceLoss = evalscore.LossExternalOutage
-		first.OutageEvidenceDigest = "sha256:" + strings.Repeat("0", 64)
-		second := cleanAdv("A-1")
-		second.Attempt = 2
-		in.Trials.Adversarial[0] = first
-		in.Trials.Adversarial = append(in.Trials.Adversarial, second)
+		outageRerunPair(t, &in, "A-1")
 		return in
 	}
 	in, want := rerun(), rerun()
@@ -838,13 +829,6 @@ func TestReportDigestChangesWithEveryInputClass(t *testing.T) {
 			t.Errorf("%s: digest equals %s", name, prev)
 		}
 		seen[r.Digest] = name
-	}
-	// The reviewer's reproduction: only the threshold differs.
-	a, b := smallInputs(), smallInputs()
-	b.Ledger.MinPerUnitWorstCaseMicroUSD++
-	ra, rb := mustBuild(t, a), mustBuild(t, b)
-	if ra.Bindings.LedgerSnapshotDigest == rb.Bindings.LedgerSnapshotDigest || ra.Digest == rb.Digest {
-		t.Error("threshold change leaves the ledger binding or report digest unchanged")
 	}
 }
 

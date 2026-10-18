@@ -192,11 +192,7 @@ func MonetaryCap(c Caps, inMicroPerToken, outMicroPerToken, perRequestMicro int6
 	if err != nil {
 		return 0, err
 	}
-	total, err = addNonNeg("monetary ceiling", total, reqCost)
-	if err != nil {
-		return 0, err
-	}
-	return total, nil
+	return addNonNeg("monetary ceiling", total, reqCost)
 }
 
 // mulNonNeg returns a*b for non-negative a and b, or an overflow error.

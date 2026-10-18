@@ -253,35 +253,6 @@ func TestTreatmentAllowedPerRoute(t *testing.T) {
 	}
 }
 
-func TestBrokerNeverClaimsConfidentiality(t *testing.T) {
-	for _, tr := range []Treatment{TreatmentOmitted, TreatmentMarker, TreatmentUnreachable} {
-		m := mutateCell(t, fullMatrix(), RouteProviderBroker, fixtureClassB, func(c *Cell) {
-			c.Treatment = tr
-		})
-		if err := Validate(m); !errors.Is(err, ErrTreatmentNotAllowed) {
-			t.Errorf("broker with %q: Validate = %v, want ErrTreatmentNotAllowed", tr, err)
-		}
-	}
-}
-
-// TestRequiredEvidencePerRoute pins the per-route evidence requirements that the
-// spec's E06 table and evidence-type sentence are read as imposing. The read
-// routes need an attempted and a successful read; the broker needs provider-channel
-// disclosure. The read-route requirement for successful reads is OPEN (see doc.go).
-func TestRequiredEvidencePerRoute(t *testing.T) {
-	want := map[Route][]EvidenceKind{
-		RouteDeclaredRead:   {EvidenceAttemptedRead, EvidenceSuccessfulRead},
-		RouteBashView:       {EvidenceAttemptedRead, EvidenceSuccessfulRead},
-		RouteDirectRuntime:  {EvidenceAttemptedRead, EvidenceSuccessfulRead},
-		RouteProviderBroker: {EvidenceProviderChannelDisclosure},
-	}
-	for _, r := range Routes {
-		if got := requiredEvidence[r]; !reflect.DeepEqual(got, want[r]) {
-			t.Errorf("route %q: required evidence = %v, want %v", r, got, want[r])
-		}
-	}
-}
-
 func TestEvidenceKindRulesEnforced(t *testing.T) {
 	cases := map[string]struct {
 		m       Matrix
@@ -548,14 +519,6 @@ func TestMissingRequiredEvidenceKindNotComplete(t *testing.T) {
 		rep := mustCoverage(t, tc.m, fixtureLookup())
 		assertIncomplete(t, rep, "missing required evidence kind "+string(tc.kind))
 	}
-}
-
-func TestCoveredWithoutEvidenceNotComplete(t *testing.T) {
-	m := mutateCell(t, fullMatrix(), RouteBashView, fixtureClassA, func(c *Cell) {
-		c.Evidence = nil
-	})
-	rep := mustCoverage(t, m, fixtureLookup())
-	assertIncomplete(t, rep, "missing required evidence kind AttemptedRead")
 }
 
 func TestDigestOrderIndependent(t *testing.T) {

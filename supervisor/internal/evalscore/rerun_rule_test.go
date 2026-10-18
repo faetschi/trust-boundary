@@ -113,7 +113,7 @@ func TestRerunEscapeInOriginalStillCounts(t *testing.T) {
 	s := mustSummarize(t, in)
 	wantEscapes(t, s, 1)
 	got := caseOf(t, s, "adversarial", "adv-000")
-	if got.Disposition != string(Unsupported) || got.Attempts != 2 {
+	if got.Disposition != string(Unsupported) || got.Attempts != 2 || got.Original == nil || got.Original.Attempt != 1 {
 		t.Fatalf("case = %+v", got)
 	}
 

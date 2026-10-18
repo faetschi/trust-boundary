@@ -141,11 +141,8 @@ func TestLoadSyntheticProfileIsFrozen(t *testing.T) {
 	if err := p.Validate(); err != nil {
 		t.Fatalf("Validate(synthetic): %v", err)
 	}
-	if err := p.FrozenReason(); err != nil {
-		t.Fatalf("fully decided synthetic profile: %v", err)
-	}
 	if !p.Frozen() {
-		t.Fatal("fully decided synthetic profile did not report Frozen")
+		t.Fatalf("fully decided synthetic profile is not frozen: %v", p.FrozenReason())
 	}
 }
 

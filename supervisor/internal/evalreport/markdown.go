@@ -143,6 +143,5 @@ func mdList(ids []string) string {
 
 // mdText keeps identifiers from breaking table rows.
 func mdText(s string) string {
-	s = strings.NewReplacer("|", `\|`, "\r", " ", "\n", " ").Replace(s)
-	return s
+	return strings.NewReplacer("|", `\|`, "\r", " ", "\n", " ").Replace(s)
 }
