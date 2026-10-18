@@ -22,6 +22,7 @@ import (
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workspace"
+	"tbound/supervisor/internal/wsoracle"
 )
 
 // This file is the concrete production composition root for `tbound serve --pi`
@@ -146,6 +147,9 @@ type productionPiSession struct {
 	Generation   *sessionrepo.Generation
 	ManagedStore *sessionlaunch.ManagedStore
 	Lifecycle    *productionLifecycleEvidence
+	// E04 records the protected-tree manifest at each registered E04 point (production_e04_points_linux.go).
+	// It is nil outside the service workflow modes.
+	E04 *productionE04Recorder
 
 	StoreJournal    *audit.Journal
 	ProviderJournal *audit.Journal
@@ -264,7 +268,15 @@ type productionPiReceipt struct {
 	PublicationIntervalRef        string `json:"publication_interval_ref,omitempty"`
 	PublicationJournalHead        string `json:"publication_journal_head,omitempty"`
 	PublicationJournalRecordCount int    `json:"publication_journal_record_count"`
-	Success                       bool   `json:"success"`
+	// The E04 evidence binding (see production_e04_points_linux.go): the head hash and record count of
+	// the workflow's store of protected-tree manifests, one per registered E04 point, as the service
+	// journaled them, and how many points of this run are a gap or could not be recorded. Like the
+	// publication anchor it is filled by the service and covered by the receipt digest. A receipt with
+	// an empty head carries no binding: the host then has no E04 evidence for the run.
+	E04EvidenceHead        string `json:"e04_evidence_head,omitempty"`
+	E04EvidenceRecordCount int    `json:"e04_evidence_record_count,omitempty"`
+	E04GapCount            int    `json:"e04_gap_count,omitempty"`
+	Success                bool   `json:"success"`
 }
 
 // runProductionPiServe performs the CLI-side production trust decision and then
@@ -584,6 +596,9 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		return err
 	}
 	session.Lifecycle.markTurnCompleted()
+	// E04 post-operation-settlement: the turn has ended, so its operations are settled; the
+	// worker is not torn down yet.
+	session.recordE04(wsoracle.PointPostSettlement)
 
 	settlement = closeWorker()
 	select {
@@ -608,11 +623,15 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	publicationAttemptErr := runProductionPublicationAfterWorkerSettlement(settlement, workerCloseErr, func() error {
 		releaseAdmission()
 		bundle, bundleErr = session.Store.EvidenceBundle()
+		// E04 post-teardown-import: the worker is stopped and settled (the gate above), the loops
+		// are joined, and the supervisor has imported the workspace result.
+		session.recordE04(wsoracle.PointPostTeardown)
 		if bundleErr != nil {
 			publishErr = fmt.Errorf("read production session generation/tool receipt: %w", bundleErr)
 			publicationStatus, disposition = "UNKNOWN", "UNKNOWN"
 		} else if bundleHasNoChange(bundle) {
 			publicationStatus, disposition = "NO_DIFF", "NO_DIFF"
+			session.recordE04(wsoracle.PointPrePublication) // the no-diff release is the publication step
 			if session.Publication != nil {
 				if err := session.Publication.Close(); err != nil {
 					publishErr = fmt.Errorf("close no-diff publication session: %w", err)
@@ -630,6 +649,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 			publishErr = errors.New("production publication runtime is unavailable")
 			publicationStatus, disposition = "UNAVAILABLE", "UNKNOWN"
 		} else {
+			session.recordE04(wsoracle.PointPrePublication) // the step that may write the live root
 			result, finalizeErr := session.Publication.Finalize(ctx)
 			publicationStatus = string(result.Status)
 			if publicationStatus == "" {
@@ -656,6 +676,13 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 				publishErr = fmt.Errorf("finalize registered production session (%s): %w", publicationStatus, finalizeErr)
 			}
 		}
+		// E04 post-publication. The approved deltas reach the live root only here, and the service
+		// has no concrete ledger for what publication wrote (see production_e04_points_linux.go),
+		// so only a run known to have published nothing records the empty prefix.
+		if disposition != "NO_DIFF" || publishErr != nil {
+			session.E04.setLedger(productionE04LedgerUnavailable())
+		}
+		session.recordE04(wsoracle.PointPostPublication)
 		return nil
 	})
 	if publicationAttemptErr != nil {
@@ -730,6 +757,10 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	if cleanupErr != nil {
 		publishErr = errors.Join(publishErr, fmt.Errorf("close settled production session before receipt: %w", cleanupErr))
 	}
+	// The final-cleanup point was recorded by the store's closer inside session.close(); the
+	// binding is the store as it stood when it was sealed. A recorder that cannot name its store
+	// leaves no binding, and the host has no E04 evidence for the run.
+	applyE04Binding(&receipt, session.E04)
 	if publishErr != nil || workerCloseErr != nil || cleanupErr != nil {
 		receipt.Success = false
 	}

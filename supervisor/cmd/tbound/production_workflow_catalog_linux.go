@@ -871,6 +871,9 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 	if err := verifyReceiptPublicationAnchor(receipt, entry, publicationTrace); err != nil {
 		return err
 	}
+	if err := verifyReceiptE04Store(receipt, entry.WorkflowID); err != nil {
+		return err
+	}
 	if entry.Terminal {
 		if entry.LatestCheckpointDigest != view.Digest || entry.TerminalRunID != receipt.RunID ||
 			entry.TerminalProofDigest != receipt.TCBProofDigest ||

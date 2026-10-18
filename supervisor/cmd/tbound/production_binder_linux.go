@@ -25,6 +25,7 @@ import (
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workspace"
+	"tbound/supervisor/internal/wsoracle"
 )
 
 // This file is the concrete production runtime binder owned by the CLI
@@ -340,12 +341,21 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 	// The live-root descriptor closes before its private authority duplicate;
 	// both close before the shared journal lock is released.
 	session.LiveRoot, session.PublicationStateRoot, session.PublicationJournal = liveRoot, publicationStateRoot, publicationJournal
+	// Service-side E04 points (production_e04_points_linux.go). The store closes after its final-cleanup
+	// closer has run, and both run before the live root and the writer lease are released.
+	if workflowAdmission != nil {
+		session.E04 = newProductionE04Recorder(artifacts.AuditRoot, workflowID, runID, artifacts.LiveRoot, liveRoot)
+		closers = append(closers, session.E04.close, session.E04.finalCleanup)
+	}
 	session.ManagedLiveRootLease = managedRootLease
 	session.OwnerEpoch, session.PublicationID = ownerEpoch, publicationID
 	if err := recoverManagedLiveRootBeforeCapture(ctx, managedRootLease, liveRoot, publicationStateRoot,
 		publicationJournal, ownerEpoch); err != nil {
 		return fail(fmt.Errorf("recover registered managed-root publications before source capture: %w", err))
 	}
+	// E04 baseline: the writer lease is held and recovered, and nothing has been captured, so no
+	// workspace or cell exists yet.
+	session.recordE04(wsoracle.PointBaseline)
 
 	policy, err := productionGatePolicy()
 	if err != nil {
@@ -478,6 +488,9 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 		return fail(fmt.Errorf("bind durable D06 provenance before worker exposure: %w", err))
 	}
 	session.Prepared = prepared
+	// E04 post-materialization: the workspace generation is seeded from the live root and the
+	// private-Git snapshot is bound; the worker is not exposed to anything yet.
+	session.recordE04(wsoracle.PointPostMaterialization)
 	if workflowAdmission != nil {
 		conversation, err := initializeProductionFreshWorkflow(ctx, config, workflowAdmission, profile, template,
 			storePolicyDigest, metadataPolicyDigest, managed, storeRoot, adminRoot,

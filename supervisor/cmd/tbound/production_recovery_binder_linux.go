@@ -24,6 +24,7 @@ import (
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflowrecovery"
 	"tbound/supervisor/internal/workspace"
+	"tbound/supervisor/internal/wsoracle"
 )
 
 // bindProductionPiRecoverySession resumes only the host-catalog-selected
@@ -328,11 +329,19 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 	if err != nil {
 		return fail(err)
 	}
+	// Service-side E04 points for the new run of the resumed workflow (production_e04_points_linux.go):
+	// the same store as the earlier runs, the points tagged with this run. The store closes after its
+	// final-cleanup closer has run, and both run before the writer lease is released. They are
+	// registered before liveRoot.Close because the closer stack is popped once after Activate, and
+	// liveRoot.Close must stay the last entry there.
+	e04 := newProductionE04Recorder(artifacts.AuditRoot, entry.WorkflowID, newRunID, artifacts.LiveRoot, liveRoot)
+	closers = append(closers, e04.close, e04.finalCleanup)
 	closers = append(closers, liveRoot.Close)
 	if err := recoverManagedLiveRootBeforeCapture(ctx, managedRootLease, liveRoot, publicationStateRoot,
 		publicationJournal, publicationEpoch); err != nil {
 		return fail(fmt.Errorf("recover managed-root lifecycle only after clean-restart reservation: %w", err))
 	}
+	e04.record(wsoracle.PointBaseline) // lease held and recovered, before source capture and before any cell
 	verifiedRoot, ok := managedRootLease.verified.(*piruntime.VerifiedD09ManagedLiveRoot)
 	if !ok {
 		return fail(ErrManagedSourceCaptureUnavailable)
@@ -361,7 +370,9 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 	if err := recovered.Authority.BindPreparedSession(prepared); err != nil {
 		return fail(err)
 	}
+	e04.record(wsoracle.PointPostMaterialization) // retained Store tip and D06 snapshot activated and bound
 	session = &productionPiSession{
+		E04:     e04,
 		Profile: profile, D09Template: template, Authority: recovered.Authority,
 		Prepared: prepared, Store: managed.Store(), Generation: tip, ManagedStore: managed,
 		Lifecycle: &productionLifecycleEvidence{}, StoreJournal: storeJournal,
