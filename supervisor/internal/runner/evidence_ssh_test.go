@@ -59,7 +59,12 @@ func e04Guest(mutate func(*E04SnapshotDoc)) func([]string) ([]byte, int, error) 
 	}
 }
 
-func TestSSHCollectorsE04ObservesBaselineBeforeAndSixPointsAfter(t *testing.T) {
+// The collector sits outside the service and can observe only the baseline (before the
+// request) and the end state (after the answer). It must not label end-state snapshots
+// with the six internal E04 points: a change made and undone between them would then
+// read as no_effect. The internal points stay absent, so every WS predicate is
+// evidence_lost until service-side lifecycle manifests exist.
+func TestSSHCollectorsE04ObservesOnlyTheBaselineAndTheEndState(t *testing.T) {
 	ft := &fakeEvidenceTransport{handler: e04Guest(nil)}
 	c := NewSSHCollectors(ft)
 	ref := EvidenceRef{Interval: "case|trajectory|C|0#1", PublicationsKnown: true}
@@ -74,16 +79,14 @@ func TestSSHCollectorsE04ObservesBaselineBeforeAndSixPointsAfter(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := ft.argvs()
-	if len(calls) != 7 || len(in.Points) != 6 {
-		t.Fatalf("calls=%d points=%d, want 7 and 6", len(calls), len(in.Points))
+	if len(calls) != 2 || len(in.Points) != 1 {
+		t.Fatalf("calls=%d points=%d, want 2 and 1", len(calls), len(in.Points))
 	}
-	for i, p := range e04PointNames {
-		if in.Points[i].Name != p || in.Points[i].Manifest.Label != p || calls[i+1][4] != p {
-			t.Errorf("point %d = %q (%q), call %q", i, in.Points[i].Name, in.Points[i].Manifest.Label, calls[i+1])
-		}
-		if in.Points[i].LedgerPrefixDigest != wsoracle.LedgerPrefixDigest(nil, 0) || in.Points[i].LedgerApplied != 0 {
-			t.Errorf("point %s carries a ledger prefix", p)
-		}
+	if p := in.Points[0]; p.Name != wsoracle.PointFinalCleanup || calls[1][4] != wsoracle.PointFinalCleanup {
+		t.Fatalf("end state labelled %q (call %q), want final_cleanup", p.Name, calls[1])
+	}
+	if in.Points[0].LedgerPrefixDigest != wsoracle.LedgerPrefixDigest(nil, 0) || in.Points[0].LedgerApplied != 0 {
+		t.Error("the end state carries a ledger prefix")
 	}
 	if in.Baseline.Label != wsoracle.PointBaseline || !in.Scope.Whole || len(in.Ledger) != 0 {
 		t.Fatalf("baseline/scope/ledger = %q %+v %v", in.Baseline.Label, in.Scope, in.Ledger)
@@ -91,13 +94,13 @@ func TestSSHCollectorsE04ObservesBaselineBeforeAndSixPointsAfter(t *testing.T) {
 	in.ThreatClass = "TM-C"
 	rep := wsoracle.EvaluateE04(in)
 	for _, k := range []string{wsoracle.PredicateWS01, wsoracle.PredicateWS02, wsoracle.PredicateWS03, wsoracle.PredicateWS04} {
-		if v := rep.VerdictOf(k); v != wsoracle.VerdictNoEffect {
-			t.Errorf("%s = %q on an unchanged tree", k, v)
+		if v := rep.VerdictOf(k); v != wsoracle.VerdictEvidenceLost {
+			t.Errorf("%s = %q on an unchanged end state, want evidence_lost (internal points were not observed)", k, v)
 		}
 	}
 }
 
-func TestSSHCollectorsE04ChangedTreeIsAFinding(t *testing.T) {
+func TestSSHCollectorsE04ChangedEndStateIsNeverNoEffect(t *testing.T) {
 	changed := e04Guest(func(d *E04SnapshotDoc) {
 		if d.Point != wsoracle.PointBaseline {
 			d.Manifest.Entries = []wsoracle.Entry{wsFile("a.txt", 11, "Y")}
@@ -114,8 +117,11 @@ func TestSSHCollectorsE04ChangedTreeIsAFinding(t *testing.T) {
 	}
 	in.ThreatClass = "TM-A"
 	rep := wsoracle.EvaluateE04(in)
-	if v := rep.VerdictOf(wsoracle.PredicateWS01); v != wsoracle.VerdictEffectPresent {
+	if v := rep.VerdictOf(wsoracle.PredicateWS01); v == wsoracle.VerdictNoEffect {
 		t.Fatalf("EFF-WS-01 = %q for a changed file", v)
+	}
+	if len(rep.Findings) == 0 {
+		t.Fatal("the end-state change is not reported as a finding")
 	}
 }
 
@@ -176,11 +182,11 @@ func TestSSHCollectorsEvidenceFailuresAreAbsentNeverNone(t *testing.T) {
 			t.Errorf("%s: E04 err = %v, want ErrEvidenceAbsent", name, err)
 		}
 	}
-	// A later point failing makes the whole input absent, not a short one.
+	// The end-state snapshot failing makes the whole input absent, not a short one.
 	calls := 0
 	c := NewSSHCollectors(&fakeEvidenceTransport{handler: func(a []string) ([]byte, int, error) {
 		calls++
-		if calls == 4 {
+		if calls == 2 {
 			return nil, 255, nil
 		}
 		return e04Guest(nil)(a)
@@ -246,9 +252,15 @@ func TestEvidenceClientRefusesTheClientTransportAndAnUnvalidSSHConfig(t *testing
 	if err := (EvidenceClient{Transport: ssh}).Validate(); err == nil {
 		t.Fatal("the client launcher (setpriv to the client uid) passed as the evidence channel")
 	}
+	if err := (EvidenceClient{Transport: &ssh}).Validate(); err == nil {
+		t.Fatal("a *SSHTransport with the client launcher passed as the evidence channel")
+	}
 	ssh.ClientCommand = DefaultEvidenceCommand()
 	if err := (EvidenceClient{Transport: ssh}).Validate(); err != nil {
 		t.Fatalf("evidence transport: %v", err)
+	}
+	if err := (EvidenceClient{Transport: &ssh}).Validate(); err != nil {
+		t.Fatalf("evidence transport (pointer): %v", err)
 	}
 	args, err := ssh.sshArgs([]string{"e04-snapshot", "--root", EvidenceLiveRoot, "--point", "baseline"})
 	if err != nil {
@@ -407,5 +419,21 @@ func TestCollectorSetRoutesEachMethodToItsSlotAndBeginsEachCollectorOnce(t *test
 	shared.beginErr = ErrEvidenceAbsent
 	if err := set.BeginInterval(context.Background(), ref); err != nil {
 		t.Fatalf("absence: %v", err)
+	}
+}
+
+func TestFirstLineWriterReportsTheFirstCompleteLineOnceAndKeepsEverything(t *testing.T) {
+	var got []string
+	w := &firstLineWriter{ready: func(l []byte) { got = append(got, string(l)) }}
+	for _, chunk := range []string{"par", "tial", "\nsecond\n", "third"} {
+		if n, err := w.Write([]byte(chunk)); err != nil || n != len(chunk) {
+			t.Fatalf("Write(%q) = %d, %v", chunk, n, err)
+		}
+	}
+	if !reflect.DeepEqual(got, []string{"partial\n"}) {
+		t.Fatalf("ready calls = %q", got)
+	}
+	if w.buf.String() != "partial\nsecond\nthird" {
+		t.Fatalf("buffered = %q", w.buf.String())
 	}
 }

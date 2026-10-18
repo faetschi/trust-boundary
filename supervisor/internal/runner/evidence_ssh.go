@@ -33,6 +33,10 @@ const (
 	EvidenceProcCapture        = "proc-capture"
 	EvidenceProcMonitor        = "proc-monitor"
 	EvidencePublicationJournal = "publication-interval-journal"
+	// EvidenceNetCanary is the one evidence kind with an effect: it sends one canary request to
+	// the guest NET sink (EFF-NET-01), and only to the sink. EvidenceNetJournal reads the sink journal.
+	EvidenceNetCanary  = "net-canary"
+	EvidenceNetJournal = "net-journal"
 	// EvidenceSSHOriginalCommand is the forced-command entry: it reads
 	// $SSH_ORIGINAL_COMMAND, validates it word by word (no shell) and dispatches one of
 	// the kinds above.
@@ -46,6 +50,15 @@ const (
 	// EvidenceLiveRoot is the one protected root e04-snapshot accepts. The guest pins it
 	// to piruntime.D09ManagedPiLiveRootPath (a test keeps the two equal).
 	EvidenceLiveRoot = "/var/lib/tbound/live"
+
+	// The guest NET sink (`tbound netsink`, infra/guest/systemd/tbound-netsink.service) and its
+	// fixed places. NetsinkAddr is a loopback alias of the guest root network namespace: a cell
+	// (network-none, its own namespace) can never reach it, so any arrival means the cell left
+	// its namespace. NetsinkURL is the value of {{REGISTERED_SINK_URL}} in the corpus.
+	NetsinkAddr        = "127.0.33.1:8080"
+	NetsinkURL         = "http://" + NetsinkAddr
+	NetsinkJournalPath = "/var/lib/tbound-netsink/journal.jsonl"
+	NetsinkSecretPath  = "/etc/tbound/netsink.secret"
 )
 
 // DefaultEvidenceCommand is the guest-side launcher of the evidence subcommand: no
@@ -72,6 +85,32 @@ type PublicationJournalDoc struct {
 	JournalB64  string `json:"journal_b64"`
 	Head        string `json:"head"`
 	Count       int    `json:"count"`
+}
+
+// NetCanaryDoc is the output of `tbound evidence net-canary`: the canary was journaled by the
+// sink at Seq, whose record hash is Hash.
+type NetCanaryDoc struct {
+	Schema   string `json:"schema"`
+	Kind     string `json:"kind"`
+	Phase    string `json:"phase"`
+	Interval string `json:"interval"`
+	Seq      uint64 `json:"seq"`
+	Hash     string `json:"hash"`
+}
+
+// NetJournalDoc is the output of `tbound evidence net-journal`: the sink journal from its first
+// record through the end canary of the interval tag (Count records, the last one hashing to
+// Head), base64, with the sequence numbers of the interval's first start canary and last end
+// canary.
+type NetJournalDoc struct {
+	Schema     string `json:"schema"`
+	Kind       string `json:"kind"`
+	Interval   string `json:"interval"`
+	JournalB64 string `json:"journal_b64"`
+	Head       string `json:"head"`
+	Count      int    `json:"count"`
+	StartSeq   uint64 `json:"start_seq"`
+	EndSeq     uint64 `json:"end_seq"`
 }
 
 // DecodeEvidenceDoc decodes exactly one JSON document, with no unknown field and no
@@ -111,10 +150,48 @@ func (c EvidenceClient) Validate() error {
 			return fmt.Errorf("evidence transport: %w", err)
 		}
 	}
-	if t, ok := c.Transport.(SSHTransport); ok && !slices.Equal(t.launcher(), DefaultEvidenceCommand()) {
+	// Both SSHTransport and *SSHTransport expose the launcher; any transport that names
+	// one must name exactly the evidence command.
+	if t, ok := c.Transport.(interface{ launcher() []string }); ok && !slices.Equal(t.launcher(), DefaultEvidenceCommand()) {
 		return errors.New("evidence transport must launch exactly the evidence command (SSHTransport.ClientCommand = DefaultEvidenceCommand())")
 	}
 	return nil
+}
+
+// ReadyTransport is a Transport that can tell the caller when the remote command wrote its
+// first stdout line while the command keeps running (the guest proc-monitor acknowledges its
+// first poll that way). ready is called at most once, with that line, from the transport's
+// own goroutine; the returned stdout still holds everything the command wrote, the first
+// line included.
+type ReadyTransport interface {
+	Transport
+	RunReady(ctx context.Context, argv []string, ready func(firstLine []byte)) (stdout, stderr []byte, exitCode int, err error)
+}
+
+// CanReport reports whether the evidence transport can confirm a first line early.
+func (c EvidenceClient) CanReport() bool {
+	_, ok := c.Transport.(ReadyTransport)
+	return ok
+}
+
+// CallReady is Call over a ReadyTransport: ready receives the command's first stdout line as
+// soon as it is written. A transport that cannot report it is a configuration error, not
+// absent evidence.
+func (c EvidenceClient) CallReady(ctx context.Context, ready func([]byte), argv ...string) ([]byte, error) {
+	rt, ok := c.Transport.(ReadyTransport)
+	if !ok {
+		return nil, errors.New("evidence transport cannot report the first output line (ReadyTransport)")
+	}
+	stdout, stderr, exit, err := rt.RunReady(ctx, argv, ready)
+	switch {
+	case err != nil:
+		return nil, evidenceAbsent("evidence transport: %v", err)
+	case exit != 0:
+		return nil, evidenceAbsent("evidence command exited %d: %s", exit, clip(stderr))
+	case len(bytes.TrimSpace(stdout)) == 0:
+		return nil, evidenceAbsent("evidence command wrote nothing")
+	}
+	return stdout, nil
 }
 
 // Call runs `tbound evidence <argv...>` and returns its one JSON document. Any failure
@@ -255,11 +332,10 @@ func (s CollectorSet) Validate() error {
 // settlement, teardown import, publication, cleanup). A collector outside the service
 // cannot sample those moments, so it observes the protected root at two times: the
 // baseline, in BeginInterval right before the request is sent, and after the run, when
-// the service has answered (teardown and cleanup are over). The six later points are
-// each a real snapshot taken after the run, labelled with the point's name, and no more:
-// what E04 then establishes is the retained state at the end of the run. A change that
-// is made and undone inside the run is not seen (wsoracle documents that blind spot; here
-// it covers the whole run). The approved-delta ledger is not collected: E04 is served
+// the service has answered (teardown and cleanup are over). Only those two are observed:
+// the end state is the one final_cleanup snapshot and the five internal points stay absent,
+// so EvaluateE04 answers evidence_lost for WS-01..04 (with any end-state difference still
+// listed as a finding), never no_effect (see e04LaterPoints). The approved-delta ledger is not collected: E04 is served
 // only for an interval whose receipt anchor shows no publication, since a published
 // change is an approved change that only a ledger can explain; any other interval stays
 // absent.
@@ -279,10 +355,16 @@ func NewSSHCollectors(t Transport) *SSHCollectors {
 // Validate checks the evidence transport.
 func (c *SSHCollectors) Validate() error { return c.Client.Validate() }
 
-var e04LaterPoints = []string{
-	wsoracle.PointPostMaterialization, wsoracle.PointPostSettlement, wsoracle.PointPostTeardown,
-	wsoracle.PointPrePublication, wsoracle.PointPostPublication, wsoracle.PointFinalCleanup,
-}
+// TODO(service-lifecycle-snapshots): the six internal E04 points (post_materialization,
+// post_settlement, post_teardown, pre_publication, post_publication, final_cleanup) are
+// moments inside the service run. A collector outside the service sees only the state
+// before the request and the state after the answer, so it must not label an end-state
+// snapshot with an internal point: a file changed at post_settlement and restored before
+// the answer would then read as no_effect. Only the end state is collected, as
+// final_cleanup (the last point, the one the end of the run is), and the other five stay
+// absent so EvaluateE04 returns evidence_lost for WS-01..04. The real fix is service-side
+// manifests captured at the service's own lifecycle barriers.
+var e04LaterPoints = []string{wsoracle.PointFinalCleanup}
 
 func (c *SSHCollectors) snapshot(ctx context.Context, point string) (wsoracle.Manifest, error) {
 	var doc E04SnapshotDoc

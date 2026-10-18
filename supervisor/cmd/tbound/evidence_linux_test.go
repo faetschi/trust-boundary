@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/netoracle"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/procoracle"
 	"tbound/supervisor/internal/runner"
@@ -41,10 +42,17 @@ func evTestRegistration() (procoracle.Registration, time.Time, time.Time) {
 
 type evTestEnv struct {
 	evidenceEnv
-	traces   map[string]audit.Trace
-	reads    []string
-	captured []string
-	monitors int
+	traces     map[string]audit.Trace
+	reads      []string
+	captured   []string
+	monitors   int
+	locks      int // monitor locks currently held
+	lockErr    error
+	nPolls     int         // polls the fake monitor returns (default 1)
+	canaries   [][2]string // (phase, tag) of every canary the fake sink was asked to journal
+	canaryErr  error
+	netJournal []byte
+	netReads   int
 }
 
 func newEvTestEnv(uid int) *evTestEnv {
@@ -62,10 +70,37 @@ func newEvTestEnv(uid int) *evTestEnv {
 			return procoracle.Snapshot{Seq: seq, Point: p, RegistrationDigest: reg.Digest(), CellPath: c.Hierarchy, CellInode: c.Inode,
 				IdentityScanned: true, ScannedPIDs: 3, Registry: procoracle.Registry{Recorded: true}, ObservedAt: time.Unix(1_700_000_003, 0).UTC()}, nil
 		},
-		monitor: func(_ context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration) ([]procoracle.Snapshot, error) {
+		monitor: func(_ context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot)) ([]procoracle.Snapshot, error) {
 			e.monitors++
-			return []procoracle.Snapshot{{Seq: 1, Point: procoracle.PointMonitor, RegistrationDigest: reg.Digest(), CellPath: c.Hierarchy, CellInode: c.Inode,
-				IdentityScanned: true, ScannedPIDs: 3, Registry: procoracle.Registry{Recorded: true}, ObservedAt: time.Unix(1_700_000_001, 0).UTC()}}, nil
+			n := max(e.nPolls, 1)
+			polls := make([]procoracle.Snapshot, n)
+			for i := range polls {
+				polls[i] = procoracle.Snapshot{Seq: i + 1, Point: procoracle.PointMonitor, RegistrationDigest: reg.Digest(), CellPath: c.Hierarchy, CellInode: c.Inode,
+					IdentityScanned: true, ScannedPIDs: 3, Registry: procoracle.Registry{Recorded: true}, ObservedAt: time.Unix(1_700_000_001, 0).UTC()}
+			}
+			ready(polls[0])
+			return polls, nil
+		},
+		lockMonitor: func() (func(), error) {
+			if e.lockErr != nil {
+				return nil, e.lockErr
+			}
+			e.locks++
+			return func() { e.locks-- }, nil
+		},
+		netCanary: func(_ context.Context, phase, tag string) (netoracle.CanaryAck, error) {
+			if e.canaryErr != nil {
+				return netoracle.CanaryAck{}, e.canaryErr
+			}
+			e.canaries = append(e.canaries, [2]string{phase, tag})
+			return netoracle.CanaryAck{Seq: uint64(len(e.canaries)) + 10, Hash: strings.Repeat("e", 64)}, nil
+		},
+		netJournal: func() ([]byte, error) {
+			e.netReads++
+			if e.netJournal == nil {
+				return nil, os.ErrNotExist
+			}
+			return e.netJournal, nil
 		},
 		readTrace: func(path string, mustExist bool) (audit.Trace, error) {
 			e.reads = append(e.reads, path)
@@ -274,17 +309,31 @@ func TestEvidenceProcCaptureAndMonitorBindToTheServiceRegistration(t *testing.T)
 		t.Error("a deadline before the start was accepted")
 	}
 
-	// The monitor.
+	// The monitor: line one acknowledges the first poll, line two is the final document.
 	env = newEvTestEnv(0)
 	out, err := runEvTest(t, env, "proc-monitor", "--registration", reg.Digest(),
 		"--interval-start", procoracle.InstantArg(start), "--deadline", procoracle.InstantArg(deadline), "--duration", "30", "--interval", "500")
 	if err != nil {
 		t.Fatal(err)
 	}
+	lines := strings.SplitAfter(out, "\n")
+	if len(lines) != 3 || lines[2] != "" {
+		t.Fatalf("monitor stdout is not exactly two lines: %q", out)
+	}
+	var ready procoracle.MonitorReadyDoc
+	if err := runner.DecodeEvidenceDoc([]byte(lines[0]), &ready); err != nil {
+		t.Fatalf("first line: %v", err)
+	}
+	if ready.Schema != runner.EvidenceSchema || ready.Kind != procoracle.MonitorReadyKind || ready.RegistrationDigest != reg.Digest() ||
+		ready.FirstPollSeq != 1 || !ready.FirstPollAt.Equal(time.Unix(1_700_000_001, 0).UTC()) {
+		t.Fatalf("ready doc = %+v", ready)
+	}
 	var mon procoracle.MonitorDoc
-	singleDoc(t, out, &mon)
-	if mon.Kind != "proc-monitor" || mon.RegistrationDigest != reg.Digest() || len(mon.Polls) != 1 || env.monitors != 1 {
-		t.Fatalf("monitor doc = %+v", mon)
+	if err := runner.DecodeEvidenceDoc([]byte(lines[1]), &mon); err != nil {
+		t.Fatalf("second line: %v", err)
+	}
+	if mon.Kind != "proc-monitor" || mon.RegistrationDigest != reg.Digest() || len(mon.Polls) != 1 || env.monitors != 1 || env.locks != 0 {
+		t.Fatalf("monitor doc = %+v (locks held after the run: %d)", mon, env.locks)
 	}
 	env = newEvTestEnv(0)
 	if out, err := runEvTest(t, env, "proc-monitor", "--registration", strings.Repeat("1", 64),
@@ -590,5 +639,106 @@ func TestEvidenceProcCellIsTheServicesRegisteredCell(t *testing.T) {
 	reg, _, _ := evTestRegistration()
 	if reg.CellCgroupPath != evTestHierarchy || reg.CellCgroupInode != evTestInode {
 		t.Fatalf("registration = %+v", reg)
+	}
+}
+
+// Codex 00f77c6 (4): one hour at 50 ms retained ~72k scans, unbounded in number and size,
+// with any number of monitors at once.
+func TestEvidenceProcMonitorIsBoundedAndExclusive(t *testing.T) {
+	reg, start, deadline := evTestRegistration()
+	args := func(duration, interval string) []string {
+		return []string{"proc-monitor", "--registration", reg.Digest(), "--interval-start", procoracle.InstantArg(start),
+			"--deadline", procoracle.InstantArg(deadline), "--duration", duration, "--interval", interval}
+	}
+	if evidenceMaxMonitorSeconds != 1500 || evidenceMinMonitorMillis != 200 || int(procoracle.MaxGuestMonitorDuration/time.Second) != evidenceMaxMonitorSeconds ||
+		int(procoracle.MinGuestPollInterval/time.Millisecond) != evidenceMinMonitorMillis {
+		t.Fatalf("guest monitor bounds %d s / %d ms disagree with the host's", evidenceMaxMonitorSeconds, evidenceMinMonitorMillis)
+	}
+	for name, a := range map[string][]string{
+		"too long":        args("1501", "500"),
+		"an hour":         args("3600", "500"),
+		"too fast":        args("30", "199"),
+		"50 ms":           args("30", "50"),
+		"too slow":        args("30", "1001"),
+		"zero seconds":    args("0", "500"),
+		"leading zeros":   args("030", "500"),
+		"largest allowed": args("1500", "200"), // 7500 samples is within the cap and must pass
+	} {
+		env := newEvTestEnv(0)
+		out, err := runEvTest(t, env, a...)
+		if name == "largest allowed" {
+			if err != nil {
+				t.Errorf("%s: the largest allowed monitor was refused: %v", name, err)
+			}
+			continue
+		}
+		if err == nil || out != "" || env.monitors != 0 || env.locks != 0 {
+			t.Errorf("%s: err=%v stdout=%q monitors=%d", name, err, out, env.monitors)
+		}
+	}
+
+	// A second monitor is refused while one holds the lock, before anything is polled.
+	env := newEvTestEnv(0)
+	env.lockErr = errors.New("another proc-monitor is running")
+	if out, err := runEvTest(t, env, args("30", "500")...); err == nil || out != "" || env.monitors != 0 {
+		t.Fatalf("second monitor: err=%v stdout=%q monitors=%d", err, out, env.monitors)
+	}
+
+	// A monitor that kept more samples than the cap, or more bytes, is an error, not a document.
+	env = newEvTestEnv(0)
+	env.nPolls = evidenceMaxMonitorSamples + 1
+	if _, err := runEvTest(t, env, args("30", "500")...); err == nil {
+		t.Error("an over-long poll record was written")
+	}
+	env = newEvTestEnv(0)
+	env.nPolls = 50
+	defer func(old int) { evidenceMaxMonitorBytes = old }(evidenceMaxMonitorBytes)
+	evidenceMaxMonitorBytes = 1024
+	if _, err := runEvTest(t, env, args("30", "500")...); err == nil {
+		t.Error("an over-sized poll record was written")
+	}
+}
+
+func TestEvidenceMonitorLockIsExclusiveRootOwnedAndReleased(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "monitor.lock")
+	uid := uint32(os.Geteuid())
+	release, err := lockEvidenceMonitorFile(path, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("lock file: %v %v", info, err)
+	}
+	if second, err := lockEvidenceMonitorFile(path, uid); err == nil {
+		second()
+		t.Fatal("a second monitor took the lock")
+	}
+	release()
+	again, err := lockEvidenceMonitorFile(path, uid)
+	if err != nil {
+		t.Fatalf("lock after release: %v", err)
+	}
+	again()
+	// Not owned by the required uid: refused.
+	if r, err := lockEvidenceMonitorFile(path, uid+1); err == nil {
+		r()
+		t.Error("a lock file of another owner was accepted")
+	}
+	// A symlink is never followed; a loose mode is refused.
+	link := filepath.Join(dir, "link.lock")
+	if err := os.Symlink(path, link); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := lockEvidenceMonitorFile(link, uid); err == nil {
+		r()
+		t.Error("a symlink lock path was followed")
+	}
+	if err := os.Chmod(path, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := lockEvidenceMonitorFile(path, uid); err == nil {
+		r()
+		t.Error("a world-writable lock file was accepted")
 	}
 }

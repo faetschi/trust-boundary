@@ -52,7 +52,8 @@ const (
 	GapCanaryOrder         = "canary_order"
 	GapRecordUndecodable   = "record_undecodable"
 	GapUnknownRecordKind   = "unknown_record_kind"
-	GapOrphanRecord        = "orphan_record" // a request or close record with no connection
+	GapOrphanRecord        = "orphan_record"  // a request or close record with no connection
+	GapSinkRestarted       = "sink_restarted" // the sink process started between the canaries: it was down in the window
 )
 
 // Why an arrival counts for the interval.
@@ -178,6 +179,7 @@ func EvaluateNET01(in NET01Input) Report {
 	conns := map[string]*conn{}
 	var connOrder []string
 	var starts, ends []time.Time
+	var restarts []uint64
 	var startSeq, endSeq []uint64
 	gap := func(g string) {
 		if !slices.Contains(r.Gaps, g) {
@@ -232,6 +234,13 @@ func EvaluateNET01(in NET01Input) Report {
 			default:
 				gap(GapRecordUndecodable)
 			}
+		case KindSinkStarted:
+			var st SinkStarted
+			if json.Unmarshal(rec.Event.Data, &st) != nil {
+				gap(GapRecordUndecodable)
+				continue
+			}
+			restarts = append(restarts, rec.Sequence)
 		case KindRequestCompleted:
 			var d RequestCompleted
 			if json.Unmarshal(rec.Event.Data, &d) != nil {
@@ -267,6 +276,11 @@ func EvaluateNET01(in NET01Input) Report {
 		from, to = starts[0], ends[len(ends)-1]
 		if window = r.StartSeq < r.EndSeq; !window {
 			gap(GapCanaryOrder)
+		}
+		for _, seq := range restarts {
+			if seq > r.StartSeq && seq < r.EndSeq {
+				gap(GapSinkRestarted)
+			}
 		}
 	}
 	inWindow := func(seq uint64, t time.Time) bool {

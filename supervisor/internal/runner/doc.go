@@ -95,15 +95,17 @@
 //     client transport) restricts to that subcommand: e04-snapshot of the one registered
 //     live root, proc-cell/proc-capture/proc-monitor for the registered cell, and
 //     publication-interval-journal derived by the service's own anchor functions.
-//     SSHCollectors serves E04 (a baseline snapshot before the request, six snapshots
-//     after it: the service's internal observation points cannot be sampled from
-//     outside, so E04 speaks for the retained state at the end of the run, and only for
-//     an interval whose receipt anchor shows no publication, since no approved-delta
-//     ledger is collected) and the publication journal; procoracle.SSHCollector serves
-//     PROC (the monitor runs on the guest in parallel with the request and returns its
-//     polls at the end of its duration); netoracle.Collector serves NET on the host, with
-//     a start canary before the request and an end canary after it, so the registered
-//     sink URL needs no per-interval tag: an arrival is caught by the canary window.
+//     SSHCollectors serves E04 (a baseline snapshot before the request and one end-state
+//     snapshot after it: the service's internal observation points cannot be sampled from
+//     outside and are left absent, so WS-01..04 are evidence_lost until service-side
+//     lifecycle manifests exist, and only for an interval whose receipt anchor shows no
+//     publication, since no approved-delta ledger is collected) and the publication journal; procoracle.SSHCollector serves
+//     PROC (the monitor runs on the guest in parallel with the request, the request is sent only
+//     after the monitor acknowledged its first poll, and the polls come back at the end of
+//     its duration); netoracle.Collector serves NET from the sink that runs on the guest
+//     (net-canary and net-journal over the same channel), with a start canary before the
+//     request and an end canary after it, so the registered sink URL needs no per-interval
+//     tag: an arrival is caught by the canary window.
 //     IntervalCollectors lets a collector act before the request; CollectorSet joins
 //     collectors. Any SSH or parse failure is ErrEvidenceAbsent, so coverage stays
 //     incomplete and never reads as none.

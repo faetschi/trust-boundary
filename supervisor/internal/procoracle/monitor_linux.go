@@ -20,6 +20,9 @@ type MonitorConfig struct {
 	// Registry returns the launcher's current registry. It is called on the
 	// monitor's goroutine, so it must be safe for concurrent use.
 	Registry func() Registry
+	// MaxRecords caps the retained polls (zero: no cap). At the cap the monitor stops polling;
+	// the missing tail is a coverage gap at evaluation, never a clean record.
+	MaxRecords int
 }
 
 // Monitor is the continuous-coverage witness of EFF-PROC-02. A goroutine runs
@@ -55,13 +58,15 @@ func StartMonitor(cell CellReader, view HostView, cfg MonitorConfig) (*Monitor, 
 		return nil, errors.New("procoracle: a monitor needs the registry source")
 	case cfg.Interval <= 0:
 		return nil, errors.New("procoracle: the monitor interval must be positive")
+	case cfg.MaxRecords < 0:
+		return nil, errors.New("procoracle: negative MaxRecords")
 	case cfg.Registration.MaxGap <= 0 || cfg.Interval >= cfg.Registration.MaxGap:
 		return nil, errors.New("procoracle: the monitor interval must be shorter than the registered MaxGap")
 	}
 	m := &Monitor{stop: make(chan struct{}), done: make(chan struct{})}
 	poll := func() {
 		s := capture(cell, view, CaptureParams{
-			Point: PointMonitor, Seq: len(m.Records()) + 1, Registration: cfg.Registration, Registry: cfg.Registry(),
+			Point: PointMonitor, Seq: m.count() + 1, Registration: cfg.Registration, Registry: cfg.Registry(),
 		}, false)
 		m.mu.Lock()
 		m.records = append(m.records, s)
@@ -77,11 +82,21 @@ func StartMonitor(cell CellReader, view HostView, cfg MonitorConfig) (*Monitor, 
 			case <-m.stop:
 				return
 			case <-t.C:
+				if cfg.MaxRecords > 0 && m.count() >= cfg.MaxRecords {
+					return
+				}
 				poll()
 			}
 		}
 	}()
 	return m, nil
+}
+
+// count is the number of polls so far, without copying them.
+func (m *Monitor) count() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.records)
 }
 
 // Records returns a copy of the polls so far, in sequence order.

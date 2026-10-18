@@ -869,3 +869,31 @@ func withSeq2(s Snapshot, seq int, pt Point) Snapshot {
 	s.ObservedAt = t0.Add(time.Duration(seq) * time.Second)
 	return s
 }
+
+// A monitor retains every poll, so it must stop at its record cap instead of growing with
+// the guest's uptime: the missing tail is a coverage gap, never a clean record.
+func TestMonitorStopsPollingAtItsRecordCap(t *testing.T) {
+	f := newFakeProc(t)
+	reg := monitorReg(5 * time.Second)
+	reg.IntervalStart = time.Now().Add(-time.Second)
+	m, err := StartMonitor(&fakeMonitorCell{}, HostView{ProcRoot: f.root}, MonitorConfig{
+		Registration: reg, Interval: time.Millisecond, Registry: recordedRegistry, MaxRecords: 3,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	recs := m.Stop()
+	if len(recs) != 3 {
+		t.Fatalf("records = %d, want exactly the cap of 3", len(recs))
+	}
+	for i, s := range recs {
+		if s.Seq != i+1 {
+			t.Fatalf("poll %d has seq %d", i, s.Seq)
+		}
+	}
+	if _, err := StartMonitor(&fakeMonitorCell{}, HostView{ProcRoot: f.root}, MonitorConfig{
+		Registration: reg, Interval: time.Millisecond, Registry: recordedRegistry, MaxRecords: -1}); err == nil {
+		t.Error("a negative record cap was accepted")
+	}
+}

@@ -193,3 +193,45 @@ func (c SSHTransport) Run(ctx context.Context, argv []string) ([]byte, []byte, i
 	}
 	return stdout.Bytes(), stderr.Bytes(), 0, nil
 }
+
+// firstLineWriter buffers everything written to it and calls ready once, with the first
+// complete line (newline included), as soon as that line is in.
+type firstLineWriter struct {
+	buf   bytes.Buffer
+	ready func([]byte)
+	fired bool
+}
+
+func (w *firstLineWriter) Write(p []byte) (int, error) {
+	w.buf.Write(p)
+	if !w.fired && w.ready != nil {
+		if i := bytes.IndexByte(w.buf.Bytes(), '\n'); i >= 0 {
+			w.fired = true
+			w.ready(append([]byte(nil), w.buf.Bytes()[:i+1]...))
+		}
+	}
+	return len(p), nil
+}
+
+// RunReady implements ReadyTransport: Run, plus a call to ready with the first stdout line
+// while the remote command is still running.
+func (c SSHTransport) RunReady(ctx context.Context, argv []string, ready func([]byte)) ([]byte, []byte, int, error) {
+	args, err := c.sshArgs(argv)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	stdout := &firstLineWriter{ready: ready}
+	var stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, c.SSHPath, args...)
+	cmd.Stdout, cmd.Stderr = stdout, &stderr
+	cmd.WaitDelay = 5 * time.Second
+	runErr := cmd.Run()
+	if ctx.Err() != nil {
+		return stdout.buf.Bytes(), stderr.Bytes(), 0, ctx.Err()
+	}
+	var exit *exec.ExitError
+	if errors.As(runErr, &exit) {
+		return stdout.buf.Bytes(), stderr.Bytes(), exit.ExitCode(), nil
+	}
+	return stdout.buf.Bytes(), stderr.Bytes(), 0, runErr
+}

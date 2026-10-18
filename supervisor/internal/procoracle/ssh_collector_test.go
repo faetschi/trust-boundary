@@ -6,6 +6,7 @@ import (
 	"errors"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -32,6 +33,20 @@ type fakeGuest struct {
 	release   chan struct{} // the monitor returns when this closes (nil: at once)
 	processes map[Point][]Process
 	mutateReg func(*Registration)
+	// The monitor's readiness line (the guest writes it right after its first poll).
+	readyHold   chan struct{} // the ack is withheld until this closes (nil: sent at once)
+	noReady     bool          // the monitor never acknowledges
+	readyMutate func(*MonitorReadyDoc)
+	// failMonLate: the monitor acknowledges and then dies.
+	failMonLate bool
+}
+
+// Run is a transport that cannot report readiness: used to prove that such a transport
+// is refused.
+type plainTransport struct{ g *fakeGuest }
+
+func (p plainTransport) Run(ctx context.Context, argv []string) ([]byte, []byte, int, error) {
+	return p.g.Run(ctx, argv)
 }
 
 func flagsOf(argv []string) map[string]string {
@@ -43,6 +58,10 @@ func flagsOf(argv []string) map[string]string {
 }
 
 func (g *fakeGuest) Run(ctx context.Context, argv []string) ([]byte, []byte, int, error) {
+	return g.RunReady(ctx, argv, nil)
+}
+
+func (g *fakeGuest) RunReady(ctx context.Context, argv []string, ready func([]byte)) ([]byte, []byte, int, error) {
 	g.mu.Lock()
 	g.calls = append(g.calls, append([]string(nil), argv...))
 	cell, release := g.cell, g.release
@@ -77,6 +96,29 @@ func (g *fakeGuest) Run(ctx context.Context, argv []string) ([]byte, []byte, int
 		IdentityScanned: true, ScannedPIDs: 5, Registry: Registry{Recorded: true}}
 	switch argv[0] {
 	case runner.EvidenceProcMonitor:
+		if g.failMon {
+			return nil, []byte("monitor failed"), 2, nil
+		}
+		var readyLine []byte
+		if !g.noReady {
+			if g.readyHold != nil {
+				select {
+				case <-g.readyHold:
+				case <-ctx.Done():
+					return nil, nil, 0, ctx.Err()
+				}
+			}
+			rd := MonitorReadyDoc{Schema: runner.EvidenceSchema, Kind: MonitorReadyKind, RegistrationDigest: reg.Digest(),
+				FirstPollSeq: 1, FirstPollAt: start.Add(100 * time.Millisecond)}
+			if g.readyMutate != nil {
+				g.readyMutate(&rd)
+			}
+			b, _ := json.Marshal(rd)
+			readyLine = append(b, '\n')
+			if ready != nil {
+				ready(readyLine)
+			}
+		}
 		if release != nil {
 			select {
 			case <-release:
@@ -84,8 +126,8 @@ func (g *fakeGuest) Run(ctx context.Context, argv []string) ([]byte, []byte, int
 				return nil, nil, 0, ctx.Err()
 			}
 		}
-		if g.failMon {
-			return nil, []byte("monitor failed"), 2, nil
+		if g.failMonLate {
+			return readyLine, []byte("monitor died"), 2, nil
 		}
 		var polls []Snapshot
 		for i := 1; i <= 6; i++ {
@@ -93,7 +135,8 @@ func (g *fakeGuest) Run(ctx context.Context, argv []string) ([]byte, []byte, int
 			s.Seq, s.Point, s.ObservedAt = i, PointMonitor, sshT0.Add(time.Duration(i)*time.Second)
 			polls = append(polls, s)
 		}
-		return reply(MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor, RegistrationDigest: reg.Digest(), Polls: polls})
+		final, _, _, _ := reply(MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor, RegistrationDigest: reg.Digest(), Polls: polls})
+		return append(readyLine, final...), nil, 0, nil
 	case runner.EvidenceProcCapture:
 		p := Point(f["--point"])
 		seq, ok := GuestPointSeq(p)
@@ -191,7 +234,7 @@ func TestSSHCollectorSurvivorAndEscapeAreObserved(t *testing.T) {
 
 func TestSSHCollectorFailuresLeaveEvidenceLostOrAbsentNeverNone(t *testing.T) {
 	// The monitor failing: PROC-02 has no coverage and is lost; the snapshots still speak.
-	g := &fakeGuest{cell: sshCell, failMon: true}
+	g := &fakeGuest{cell: sshCell, failMonLate: true}
 	c, _ := newSSHCollector(g)
 	if err := c.BeginInterval(context.Background(), sshRef); err != nil {
 		t.Fatal(err)
@@ -215,7 +258,8 @@ func TestSSHCollectorFailuresLeaveEvidenceLostOrAbsentNeverNone(t *testing.T) {
 		"wrong digest": {cell: sshCell, mutateReg: func(r *Registration) { r.CellUID++ }},
 	} {
 		c, _ := newSSHCollector(g)
-		if err := c.BeginInterval(context.Background(), sshRef); err != nil {
+		// A monitor that never acknowledged leaves Begin absent already.
+		if err := c.BeginInterval(context.Background(), sshRef); err != nil && !errors.Is(err, runner.ErrEvidenceAbsent) {
 			t.Fatalf("%s: %v", name, err)
 		}
 		if ev, err := c.Proc(context.Background(), sshRef); !errors.Is(err, runner.ErrEvidenceAbsent) {
@@ -278,6 +322,9 @@ func TestSSHCollectorValidate(t *testing.T) {
 		"grace too long": func(c *SSHCollector) { c.TeardownGrace = time.Minute },
 		"slow polls":     func(c *SSHCollector) { c.PollInterval = GuestMaxGap },
 		"no transport":   func(c *SSHCollector) { c.Client = runner.EvidenceClient{} },
+		"long monitor":   func(c *SSHCollector) { c.MonitorDuration = MaxGuestMonitorDuration + time.Second },
+		"fast polls":     func(c *SSHCollector) { c.PollInterval = MinGuestPollInterval - time.Millisecond },
+		"no readiness":   func(c *SSHCollector) { c.Client = runner.EvidenceClient{Transport: plainTransport{}} },
 	} {
 		c := ok()
 		mutate(c)
@@ -293,5 +340,77 @@ func TestSSHCollectorValidate(t *testing.T) {
 	}
 	if got, err := ParseInstantArg(strconv.FormatInt(sshT0.UnixNano(), 10)); err != nil || !got.Equal(sshT0) {
 		t.Errorf("round trip: %v %v", got, err)
+	}
+}
+
+func TestGuestMaxGapIsASmallMultipleOfThePollInterval(t *testing.T) {
+	if GuestMaxGap > 2*GuestPollInterval {
+		t.Fatalf("GuestMaxGap %s is more than twice the poll interval %s", GuestMaxGap, GuestPollInterval)
+	}
+	if GuestPollInterval < MinGuestPollInterval || MaxGuestMonitorDuration > 1500*time.Second {
+		t.Fatalf("guest monitor bounds: poll %s duration %s", GuestPollInterval, MaxGuestMonitorDuration)
+	}
+}
+
+// Codex 00f77c6: the monitor used to be started without waiting for its first poll, so a
+// short request could be over before monitoring began. BeginInterval now returns only after
+// the guest acknowledged its first poll, so the request is never sent before it.
+func TestSSHCollectorBeginWaitsForTheMonitorsFirstPoll(t *testing.T) {
+	g := &fakeGuest{cell: sshCell, readyHold: make(chan struct{}), release: make(chan struct{})}
+	c, _ := newSSHCollector(g)
+	returned := make(chan error, 1)
+	go func() { returned <- c.BeginInterval(context.Background(), sshRef) }()
+	select {
+	case err := <-returned:
+		t.Fatalf("BeginInterval returned (%v) before the monitor acknowledged its first poll", err)
+	case <-time.After(150 * time.Millisecond):
+	}
+	close(g.readyHold)
+	select {
+	case err := <-returned:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("BeginInterval did not return after the acknowledgement")
+	}
+	close(g.release)
+	if _, err := c.Proc(context.Background(), sshRef); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSSHCollectorBeginWithoutAValidAcknowledgementIsAbsentAndStartsNothing(t *testing.T) {
+	for name, g := range map[string]*fakeGuest{
+		"no ack, monitor keeps running": {cell: sshCell, noReady: true, release: make(chan struct{})},
+		"ack withheld":                  {cell: sshCell, readyHold: make(chan struct{})},
+		"other digest": {cell: sshCell, release: make(chan struct{}),
+			readyMutate: func(d *MonitorReadyDoc) { d.RegistrationDigest = strings.Repeat("0", 64) }},
+		"wrong kind":   {cell: sshCell, release: make(chan struct{}), readyMutate: func(d *MonitorReadyDoc) { d.Kind = "x" }},
+		"wrong schema": {cell: sshCell, release: make(chan struct{}), readyMutate: func(d *MonitorReadyDoc) { d.Schema = "x" }},
+		"not the first poll": {cell: sshCell, release: make(chan struct{}),
+			readyMutate: func(d *MonitorReadyDoc) { d.FirstPollSeq = 2 }},
+		"first poll later than MaxGap": {cell: sshCell, release: make(chan struct{}),
+			readyMutate: func(d *MonitorReadyDoc) { d.FirstPollAt = sshT0.Add(GuestMaxGap + time.Millisecond) }},
+		"no first poll time":        {cell: sshCell, release: make(chan struct{}), readyMutate: func(d *MonitorReadyDoc) { d.FirstPollAt = time.Time{} }},
+		"monitor ended without ack": {cell: sshCell, failMon: true},
+	} {
+		c, _ := newSSHCollector(g)
+		c.ReadyTimeout = 100 * time.Millisecond
+		err := c.BeginInterval(context.Background(), sshRef)
+		if !errors.Is(err, runner.ErrEvidenceAbsent) {
+			t.Errorf("%s: Begin err = %v, want ErrEvidenceAbsent", name, err)
+		}
+		if _, err := c.Proc(context.Background(), sshRef); !errors.Is(err, runner.ErrEvidenceAbsent) {
+			t.Errorf("%s: Proc err = %v, want ErrEvidenceAbsent (no interval may stand)", name, err)
+		}
+	}
+}
+
+func TestSSHCollectorRefusesATransportThatCannotReportReadiness(t *testing.T) {
+	c, _ := newSSHCollector(&fakeGuest{cell: sshCell})
+	c.Client = runner.EvidenceClient{Transport: plainTransport{g: &fakeGuest{cell: sshCell}}}
+	if err := c.BeginInterval(context.Background(), sshRef); err == nil || errors.Is(err, runner.ErrEvidenceAbsent) {
+		t.Fatalf("Begin over a non-streaming transport = %v, want a configuration error", err)
 	}
 }

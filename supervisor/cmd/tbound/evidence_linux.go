@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/netoracle"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/procoracle"
 	"tbound/supervisor/internal/runner"
@@ -31,8 +32,10 @@ import (
 
 // `tbound evidence <kind> [--flag value]...` is the guest half of the runner's evidence
 // collection (internal/runner/evidence_ssh.go, internal/procoracle/ssh_collector.go). It
-// is READ-ONLY: it writes exactly one JSON document to stdout (usage goes to stderr), writes
-// nothing to disk, mutates no state, takes no lock and opens every file read-only. It
+// is READ-ONLY with two small exceptions: net-canary (one request to the guest NET sink, below)
+// and the monitor lock (proc-monitor flocks one empty root-owned file in /run). It writes one
+// JSON document to stdout (proc-monitor: a readiness line first; usage goes to stderr), writes
+// nothing else to disk, mutates no other state and opens every other file read-only. It
 // refuses any unknown kind, flag or malformed value, and it refuses to run as any uid
 // other than evidenceRequiredUID, which is root. That uid is the one the evidence SSH key
 // logs in as, with a forced command restricted to this subcommand (sshd Match User +
@@ -57,11 +60,25 @@ import (
 //	    from a flag; the registration they and the two instants make must digest to D.
 //	proc-monitor                 --registration D --interval-start NS --deadline NS
 //	                             --duration SECONDS --interval MILLISECONDS
-//	    procoracle.StartMonitor over the same cell for SECONDS, then the poll records, once.
+//	    procoracle.StartMonitor over the same cell for SECONDS (1..1500) at MILLISECONDS (200..1000),
+//	    then the poll records, once. TWO lines: the readiness line (procoracle.MonitorReadyDoc),
+//	    written right after the first poll and before polling on, then the final document. At
+//	    most one monitor runs at a time (flock on a root-owned lock file in /run: the one
+//	    file this subcommand creates, a lock with no content); a second is refused.
 //	publication-interval-journal --interval-ref REF
 //	    the interval journal of the corpus admission REF names (marker record, then the
 //	    workflow's publication records), base64, with the head and count the receipt
 //	    anchor carries; derived by the service's own anchor functions.
+//	net-canary                   --phase start|end --interval TAG
+//	    the ONE kind with an effect: it sends a single GET canary request to the guest NET sink
+//	    (runner.NetsinkAddr, 127.0.33.1:8080) with the sink-private secret and prints the journal
+//	    position the sink acknowledged. The effect is a journal record in the sink itself and
+//	    nothing else: the request goes to the fixed loopback address, never to an address the
+//	    caller names. It is its own kind (not folded into net-journal) so that net-journal stays
+//	    read-only and the forced command's one effectful verb is explicit and auditable.
+//	net-journal                  --interval TAG
+//	    the sink journal (netoracle.ExtractInterval) from its first record through the end canary
+//	    of TAG, base64, with head, count and the canaries' sequence numbers. Read-only.
 //	ssh-original-command
 //	    the forced-command entry: reads $SSH_ORIGINAL_COMMAND, which must be
 //	    "/usr/local/bin/tbound evidence <kind> ..." in plain or single-quoted words of the
@@ -70,7 +87,21 @@ const (
 	evidenceRequiredUID   = 0
 	evidenceMaxValueBytes = 256
 	evidenceMaxCommand    = 2048
+
+	// proc-monitor bounds (the host side lives in procoracle: MaxGuestMonitorDuration,
+	// MinGuestPollInterval): the monitor keeps every poll in memory and writes them once.
+	evidenceMaxMonitorSeconds = 1500
+	evidenceMinMonitorMillis  = 200
+	evidenceMaxMonitorMillis  = 1000
+	// evidenceMaxMonitorSamples is the most polls retained; at 1500 s and 200 ms that is 7500.
+	evidenceMaxMonitorSamples = 8000
+	// evidenceMonitorLockPath is the one root-owned lock file that admits a single monitor.
+	evidenceMonitorLockPath = "/run/tbound-evidence-monitor.lock"
 )
+
+// evidenceMaxMonitorBytes caps the size of the monitor's final document (a variable so a
+// test can lower it).
+var evidenceMaxMonitorBytes = 16 << 20
 
 const evidenceUsage = `usage: tbound evidence <kind> [--flag value]...   (read-only; root only; one JSON document on stdout)
   e04-snapshot                 --root <protected root> --point <e04 point>
@@ -78,6 +109,8 @@ const evidenceUsage = `usage: tbound evidence <kind> [--flag value]...   (read-o
   proc-capture                 --registration <digest> --point <post_teardown|final_cleanup> --interval-start <ns> --deadline <ns>
   proc-monitor                 --registration <digest> --interval-start <ns> --deadline <ns> --duration <s> --interval <ms>
   publication-interval-journal --interval-ref <ref>
+  net-canary                   --phase <start|end> --interval <tag>   (sends ONE canary to the guest NET sink: the only effect)
+  net-journal                  --interval <tag>
   ssh-original-command         (forced-command entry; reads $SSH_ORIGINAL_COMMAND)
 `
 
@@ -96,6 +129,8 @@ var evidenceFlags = map[string][]string{
 	runner.EvidenceProcCapture:        {"--registration", "--point", "--interval-start", "--deadline"},
 	runner.EvidenceProcMonitor:        {"--registration", "--interval-start", "--deadline", "--duration", "--interval"},
 	runner.EvidencePublicationJournal: {"--interval-ref"},
+	runner.EvidenceNetCanary:          {"--phase", "--interval"},
+	runner.EvidenceNetJournal:         {"--interval"},
 	runner.EvidenceSSHOriginalCommand: {},
 }
 
@@ -126,9 +161,16 @@ type evidenceEnv struct {
 	snapshot func(root, label string) wsoracle.Manifest
 	// cell resolves the registered cell from the service's own registration.
 	cell func(ctx context.Context) (evidenceCell, error)
-	// capture and monitor observe it (procoracle.Capture and StartMonitor).
+	// capture and monitor observe it (procoracle.Capture and StartMonitor). monitor calls ready
+	// with its first poll before it polls on.
 	capture func(c evidenceCell, reg procoracle.Registration, p procoracle.Point, seq int) (procoracle.Snapshot, error)
-	monitor func(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration) ([]procoracle.Snapshot, error)
+	monitor func(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot)) ([]procoracle.Snapshot, error)
+	// lockMonitor admits one monitor at a time; the release function frees it.
+	lockMonitor func() (release func(), err error)
+	// netCanary sends one canary to the guest NET sink (the one kind with an effect, on the sink
+	// only); netJournal reads the sink journal file, read-only.
+	netCanary  func(ctx context.Context, phase, tag string) (netoracle.CanaryAck, error)
+	netJournal func() ([]byte, error)
 	// readTrace reads and verifies an audit journal without opening it for writing. A
 	// missing file is an empty trace unless mustExist.
 	readTrace func(path string, mustExist bool) (audit.Trace, error)
@@ -138,6 +180,8 @@ func productionEvidenceEnv() evidenceEnv {
 	return evidenceEnv{
 		geteuid: os.Geteuid, getenv: os.Getenv, snapshot: wsoracle.Snapshot,
 		cell: loadEvidenceCell, capture: captureEvidenceCell, monitor: monitorEvidenceCell, readTrace: readEvidenceTrace,
+		lockMonitor: func() (func(), error) { return lockEvidenceMonitorFile(evidenceMonitorLockPath, evidenceRequiredUID) },
+		netCanary:   sendNetsinkCanary, netJournal: readNetsinkJournal,
 	}
 }
 
@@ -226,9 +270,13 @@ func runEvidence(ctx context.Context, args []string, stdout io.Writer, env evide
 	case runner.EvidenceProcCapture:
 		doc, err = evidenceProcCapture(ctx, env, flags)
 	case runner.EvidenceProcMonitor:
-		doc, err = evidenceProcMonitor(ctx, env, flags)
+		doc, err = evidenceProcMonitor(ctx, env, flags, stdout)
 	case runner.EvidencePublicationJournal:
 		doc, err = evidencePublicationJournal(env, flags["--interval-ref"])
+	case runner.EvidenceNetCanary:
+		doc, err = evidenceNetCanary(ctx, env, flags)
+	case runner.EvidenceNetJournal:
+		doc, err = evidenceNetJournal(env, flags["--interval"])
 	}
 	if err != nil {
 		return err
@@ -324,25 +372,51 @@ func evidenceProcCapture(ctx context.Context, env evidenceEnv, f map[string]stri
 		RegistrationDigest: reg.Digest(), Snapshot: snap}, nil
 }
 
-func evidenceProcMonitor(ctx context.Context, env evidenceEnv, f map[string]string) (procoracle.MonitorDoc, error) {
+func evidenceProcMonitor(ctx context.Context, env evidenceEnv, f map[string]string, stdout io.Writer) (procoracle.MonitorDoc, error) {
 	seconds, err := strconv.Atoi(f["--duration"])
-	if err != nil || seconds < 1 || seconds > 3600 || strconv.Itoa(seconds) != f["--duration"] {
-		return procoracle.MonitorDoc{}, errors.New("--duration must be 1..3600 seconds")
+	if err != nil || seconds < 1 || seconds > evidenceMaxMonitorSeconds || strconv.Itoa(seconds) != f["--duration"] {
+		return procoracle.MonitorDoc{}, fmt.Errorf("--duration must be 1..%d seconds", evidenceMaxMonitorSeconds)
 	}
 	millis, err := strconv.Atoi(f["--interval"])
-	if err != nil || millis < 50 || millis > 1000 || strconv.Itoa(millis) != f["--interval"] {
-		return procoracle.MonitorDoc{}, errors.New("--interval must be 50..1000 milliseconds")
+	if err != nil || millis < evidenceMinMonitorMillis || millis > evidenceMaxMonitorMillis || strconv.Itoa(millis) != f["--interval"] {
+		return procoracle.MonitorDoc{}, fmt.Errorf("--interval must be %d..%d milliseconds", evidenceMinMonitorMillis, evidenceMaxMonitorMillis)
 	}
 	cell, reg, err := evidenceRegistration(ctx, env, f)
 	if err != nil {
 		return procoracle.MonitorDoc{}, err
 	}
-	polls, err := env.monitor(ctx, cell, reg, time.Duration(seconds)*time.Second, time.Duration(millis)*time.Millisecond)
-	if err != nil {
-		return procoracle.MonitorDoc{}, err
+	// One monitor at a time, taken before anything is polled.
+	if env.lockMonitor == nil {
+		return procoracle.MonitorDoc{}, errors.New("no monitor lock")
 	}
-	return procoracle.MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor,
-		RegistrationDigest: reg.Digest(), Polls: polls}, nil
+	release, err := env.lockMonitor()
+	if err != nil {
+		return procoracle.MonitorDoc{}, fmt.Errorf("proc-monitor refused: %w", err)
+	}
+	defer release()
+	var readyErr error
+	polls, err := env.monitor(ctx, cell, reg, time.Duration(seconds)*time.Second, time.Duration(millis)*time.Millisecond, func(first procoracle.Snapshot) {
+		line, err := json.Marshal(procoracle.MonitorReadyDoc{Schema: runner.EvidenceSchema, Kind: procoracle.MonitorReadyKind,
+			RegistrationDigest: reg.Digest(), FirstPollSeq: first.Seq, FirstPollAt: first.ObservedAt})
+		if err == nil {
+			_, err = stdout.Write(append(line, '\n'))
+		}
+		readyErr = err
+	})
+	switch {
+	case err != nil:
+		return procoracle.MonitorDoc{}, err
+	case readyErr != nil:
+		return procoracle.MonitorDoc{}, fmt.Errorf("the readiness line could not be written: %w", readyErr)
+	case len(polls) == 0 || len(polls) > evidenceMaxMonitorSamples:
+		return procoracle.MonitorDoc{}, fmt.Errorf("the monitor kept %d polls, want 1..%d", len(polls), evidenceMaxMonitorSamples)
+	}
+	doc := procoracle.MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor,
+		RegistrationDigest: reg.Digest(), Polls: polls}
+	if encoded, err := json.Marshal(doc); err != nil || len(encoded) > evidenceMaxMonitorBytes {
+		return procoracle.MonitorDoc{}, fmt.Errorf("the monitor record is %d bytes (cap %d)", len(encoded), evidenceMaxMonitorBytes)
+	}
+	return doc, nil
 }
 
 // evidenceCellFrom derives the cell from the verified managed-root registration and the
@@ -412,17 +486,19 @@ func captureEvidenceCell(c evidenceCell, reg procoracle.Registration, p procorac
 		Point: p, Seq: seq, Registration: reg, Registry: evidenceRegistry()}), nil
 }
 
-func monitorEvidenceCell(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration) ([]procoracle.Snapshot, error) {
+func monitorEvidenceCell(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot)) ([]procoracle.Snapshot, error) {
 	dir, err := openEvidenceCellDir(c.CgroupPath)
 	if err != nil {
 		return nil, err
 	}
 	defer dir.Close()
 	m, err := procoracle.StartMonitor(procoracle.HeldCell(dir), procoracle.HostProc(), procoracle.MonitorConfig{
-		Registration: reg, Interval: interval, Registry: evidenceRegistry})
+		Registration: reg, Interval: interval, Registry: evidenceRegistry, MaxRecords: evidenceMaxMonitorSamples})
 	if err != nil {
 		return nil, err
 	}
+	// StartMonitor took the first poll synchronously: say so before polling on.
+	ready(m.Records()[0])
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	select {
@@ -526,4 +602,32 @@ func evidencePublicationJournal(env evidenceEnv, ref string) (runner.Publication
 	}
 	return runner.PublicationJournalDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidencePublicationJournal,
 		IntervalRef: ref, JournalB64: base64.StdEncoding.EncodeToString(journal), Head: anchor.Head, Count: anchor.Count}, nil
+}
+
+// lockEvidenceMonitorFile takes the exclusive, non-blocking flock that admits one
+// proc-monitor at a time. The lock file must be a regular file of mode 0600 owned by uid
+// (root in production), is never followed through a symlink, and holds no data. The
+// returned function frees the lock; the kernel frees it as well when the process exits.
+func lockEvidenceMonitorFile(path string, uid uint32) (func(), error) {
+	fd, err := syscall.Open(path, syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("monitor lock %s: %w", path, err)
+	}
+	var st syscall.Stat_t
+	if err := syscall.Fstat(fd, &st); err != nil {
+		_ = syscall.Close(fd)
+		return nil, fmt.Errorf("monitor lock %s: %w", path, err)
+	}
+	if st.Mode&syscall.S_IFMT != syscall.S_IFREG || st.Uid != uid || st.Mode&0o7777 != 0o600 {
+		_ = syscall.Close(fd)
+		return nil, fmt.Errorf("monitor lock %s is not a regular 0600 file of uid %d", path, uid)
+	}
+	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = syscall.Close(fd)
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			return nil, errors.New("another proc-monitor is running")
+		}
+		return nil, fmt.Errorf("monitor lock %s: %w", path, err)
+	}
+	return func() { _ = syscall.Close(fd) }, nil
 }

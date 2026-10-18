@@ -1,6 +1,7 @@
 package procoracle
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -22,8 +23,24 @@ import (
 // than the poll spacing; GuestMaxGap only bounds how far a poll may be late (a loaded
 // guest, the SSH connect before the first poll) before coverage is lost.
 const (
-	GuestMaxGap       = 5 * time.Second
 	GuestPollInterval = 500 * time.Millisecond
+	// GuestMaxGap is twice the poll interval: one late poll is tolerated, two are a gap. The
+	// monitor acknowledges its first poll before the request is sent (MonitorReadyDoc), so the
+	// first poll is never later than the request.
+	GuestMaxGap = 2 * GuestPollInterval
+
+	// MinGuestPollInterval and MaxGuestMonitorDuration bound what the guest accepts and the
+	// host asks for: the monitor keeps every poll, so both limit its memory and output. The
+	// duration is the trial budget bound (1200 s) plus margin.
+	MinGuestPollInterval    = 200 * time.Millisecond
+	MaxGuestMonitorDuration = 1500 * time.Second
+
+	// DefaultReadyTimeout is how long BeginInterval waits for the monitor's first poll.
+	DefaultReadyTimeout = 10 * time.Second
+
+	// MonitorReadyKind marks the acknowledgement line proc-monitor writes right after its
+	// first poll.
+	MonitorReadyKind = "proc-monitor-ready"
 )
 
 // Sampling points `proc-capture` serves, and their snapshot numbers in the interval
@@ -51,6 +68,17 @@ type MonitorDoc struct {
 	Kind               string     `json:"kind"`
 	RegistrationDigest string     `json:"registration_digest"`
 	Polls              []Snapshot `json:"polls"`
+}
+
+// MonitorReadyDoc is the first line `tbound evidence proc-monitor` writes, right after its first
+// poll and before it polls on: the monitor is running and covers the cell from FirstPollAt.
+// The final MonitorDoc follows as the second line when the monitor's time is up.
+type MonitorReadyDoc struct {
+	Schema             string    `json:"schema"`
+	Kind               string    `json:"kind"`
+	RegistrationDigest string    `json:"registration_digest"`
+	FirstPollSeq       int       `json:"first_poll_seq"`
+	FirstPollAt        time.Time `json:"first_poll_at"`
 }
 
 // CellDoc is the output of `tbound evidence proc-cell`: the registered cell as the guest
@@ -105,7 +133,9 @@ type procInterval struct {
 // BeginInterval first asks the guest for the registered cell (proc-cell: cgroup path, inode,
 // uid, gid, checked against CellUID and CellGID), then fixes the registration (the interval
 // starts now; the teardown deadline is
-// TeardownGrace later) and starts `proc-monitor` over SSH in parallel with the request. The
+// TeardownGrace later) and starts `proc-monitor` over SSH in parallel with the request, and returns only after the
+// guest acknowledged its first poll (MonitorReadyDoc, within ReadyTimeout; otherwise the
+// interval is absent), so the request is never sent before monitoring began. The
 // guest runs the monitor for MonitorDuration and returns the poll records in one document
 // when that time is up (a Transport returns output only at the end): Proc therefore waits
 // for the monitor to finish, so MonitorDuration should be a tight upper bound of a step
@@ -132,6 +162,9 @@ type SSHCollector struct {
 	TeardownGrace time.Duration
 	// PollInterval defaults to GuestPollInterval.
 	PollInterval time.Duration
+	// ReadyTimeout is how long BeginInterval waits for the guest monitor's acknowledgement of
+	// its first poll; it defaults to DefaultReadyTimeout. Without it the interval is absent.
+	ReadyTimeout time.Duration
 	// Policy is EFF-PROC-03's authorization input.
 	Policy Policy
 	// Now and Wait are test seams (time.Now and a timer).
@@ -149,6 +182,13 @@ func (c *SSHCollector) now() time.Time {
 	return time.Now()
 }
 
+func (c *SSHCollector) readyTimeout() time.Duration {
+	if c.ReadyTimeout > 0 {
+		return c.ReadyTimeout
+	}
+	return DefaultReadyTimeout
+}
+
 func (c *SSHCollector) pollInterval() time.Duration {
 	if c.PollInterval > 0 {
 		return c.PollInterval
@@ -161,14 +201,20 @@ func (c *SSHCollector) Validate() error {
 	switch {
 	case c.CellUID == 0 || c.CellGID == 0:
 		return errors.New("procoracle: the collector needs the uid and gid of the service registration")
-	case c.MonitorDuration < time.Second || c.MonitorDuration > time.Hour:
-		return errors.New("procoracle: MonitorDuration must be between one second and one hour")
+	case c.MonitorDuration < time.Second || c.MonitorDuration > MaxGuestMonitorDuration:
+		return errors.New("procoracle: MonitorDuration must be between one second and MaxGuestMonitorDuration")
 	case c.TeardownGrace < 0 || c.TeardownGrace > c.MonitorDuration:
 		return errors.New("procoracle: TeardownGrace must lie within MonitorDuration")
-	case c.pollInterval() >= GuestMaxGap || c.pollInterval() < 50*time.Millisecond:
-		return errors.New("procoracle: PollInterval must be between 50ms and the guest MaxGap")
+	case c.pollInterval() >= GuestMaxGap || c.pollInterval() < MinGuestPollInterval:
+		return errors.New("procoracle: PollInterval must be between MinGuestPollInterval and the guest MaxGap")
 	}
-	return c.Client.Validate()
+	if err := c.Client.Validate(); err != nil {
+		return err
+	}
+	if !c.Client.CanReport() {
+		return errors.New("procoracle: the evidence transport cannot report the monitor's first poll (runner.ReadyTransport)")
+	}
+	return nil
 }
 
 func (c *SSHCollector) wait(ctx context.Context, until time.Time) error {
@@ -216,9 +262,22 @@ func (c *SSHCollector) BeginInterval(ctx context.Context, ref runner.EvidenceRef
 	args := append([]string{runner.EvidenceProcMonitor}, registrationArgs(reg)...)
 	args = append(args, "--duration", strconv.Itoa(int((c.MonitorDuration+time.Second-1)/time.Second)),
 		"--interval", strconv.Itoa(int(c.pollInterval()/time.Millisecond)))
+	readyCh := make(chan []byte, 1)
 	go func() {
+		raw, err := c.Client.CallReady(mctx, func(line []byte) {
+			select {
+			case readyCh <- line:
+			default:
+			}
+		}, args...)
 		var doc MonitorDoc
-		err := c.Client.CallDoc(mctx, &doc, args...)
+		if err == nil {
+			// Line one is the acknowledgement (checked by BeginInterval), the rest is the document.
+			_, rest, _ := bytes.Cut(raw, []byte("\n"))
+			if derr := runner.DecodeEvidenceDoc(rest, &doc); derr != nil {
+				err = fmt.Errorf("%w: malformed monitor document: %v", runner.ErrEvidenceAbsent, derr)
+			}
+		}
 		switch {
 		case err != nil:
 		case doc.Schema != runner.EvidenceSchema || doc.Kind != runner.EvidenceProcMonitor || doc.RegistrationDigest != reg.Digest():
@@ -230,6 +289,46 @@ func (c *SSHCollector) BeginInterval(ctx context.Context, ref runner.EvidenceRef
 		}
 		iv.done <- monitorResult{polls: doc.Polls}
 	}()
+	// The request is sent only after the guest has acknowledged its first poll: otherwise a
+	// short request could be over before monitoring began. No acknowledgement, no interval.
+	fail := func(format string, args ...any) error {
+		cancel()
+		return fmt.Errorf("%w: "+format, append([]any{runner.ErrEvidenceAbsent}, args...)...)
+	}
+	timer := time.NewTimer(c.readyTimeout())
+	defer timer.Stop()
+	var line []byte
+	select {
+	case line = <-readyCh:
+	case res := <-iv.done:
+		// The monitor ended; it still may have acknowledged first.
+		select {
+		case line = <-readyCh:
+			iv.done <- res
+		default:
+			if res.err != nil {
+				cancel()
+				return res.err
+			}
+			return fail("the monitor ended without acknowledging its first poll")
+		}
+	case <-timer.C:
+		return fail("the monitor did not acknowledge its first poll within %s", c.readyTimeout())
+	case <-ctx.Done():
+		return fail("waiting for the monitor's first poll: %v", ctx.Err())
+	}
+	var ready MonitorReadyDoc
+	if err := runner.DecodeEvidenceDoc(line, &ready); err != nil {
+		return fail("malformed monitor acknowledgement: %v", err)
+	}
+	switch {
+	case ready.Schema != runner.EvidenceSchema || ready.Kind != MonitorReadyKind || ready.RegistrationDigest != reg.Digest():
+		return fail("the monitor acknowledgement is not for this registration")
+	case ready.FirstPollSeq != 1 || ready.FirstPollAt.IsZero():
+		return fail("the monitor acknowledgement is not for its first poll")
+	case ready.FirstPollAt.After(start.Add(GuestMaxGap)):
+		return fail("the first poll (%s) is more than MaxGap after the interval start", ready.FirstPollAt.Format(time.RFC3339Nano))
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.active == nil {

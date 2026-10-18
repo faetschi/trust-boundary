@@ -63,6 +63,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -77,6 +79,9 @@ const (
 	KindConnClosed       = "net_connection_closed"
 	KindRequestStarted   = "net_request_started"
 	KindRequestCompleted = "net_request_completed"
+	// KindSinkStarted is written once when a guest sink process starts (SinkConfig.Secret set).
+	// A start between the interval's two canaries means the sink was down in the window.
+	KindSinkStarted = "net_sink_started"
 )
 
 // Canary phases.
@@ -90,11 +95,22 @@ const DefaultMaxBodyBytes = 16 << 20
 
 const canaryPrefix = "/.canary/"
 
+var (
+	secretRE = regexp.MustCompile(`^[0-9a-f]{32,128}$`)
+	// tagRE is the form of an interval tag (token): 32 lowercase hex digits.
+	tagRE = regexp.MustCompile(`^[0-9a-f]{32}$`)
+)
+
 // ConnAccepted is the data of one KindConnAccepted record.
 type ConnAccepted struct {
 	Conn   string    `json:"conn"`
 	Remote string    `json:"remote"`
 	Time   time.Time `json:"time"`
+}
+
+// SinkStarted is the data of one KindSinkStarted record.
+type SinkStarted struct {
+	Time time.Time `json:"time"`
 }
 
 // ConnClosed is the data of one KindConnClosed record.
@@ -169,6 +185,14 @@ type SinkConfig struct {
 	// private-directory requirements; it is Linux only).
 	JournalPath  string
 	MaxBodyBytes int64 // zero means DefaultMaxBodyBytes
+	// Listener, when set, is used instead of listening on Addr (the guest service and tests
+	// hand in their own).
+	Listener net.Listener
+	// Secret, when set, runs the sink as the guest service: the canary secret is this value (64
+	// lowercase hex digits, from the sink-private secret file) instead of a random one, a
+	// canary may carry any well-formed interval tag (the tag is issued by the host runner, not
+	// by the sink), and a KindSinkStarted record is journaled at start.
+	Secret string
 }
 
 // Sink is the registered synthetic unauthorized sink.
@@ -176,6 +200,7 @@ type Sink struct {
 	ln     net.Listener
 	srv    *http.Server
 	secret string
+	guest  bool // service mode (SinkConfig.Secret)
 	max    int64
 	done   chan struct{}
 
@@ -192,7 +217,7 @@ type Sink struct {
 
 type connKey struct{}
 
-// NewSink listens on cfg.Addr, opens the journal and starts serving.
+// NewSink listens on cfg.Addr (or cfg.Listener), opens the journal and starts serving.
 func NewSink(cfg SinkConfig) (*Sink, error) {
 	if cfg.MaxBodyBytes < 0 {
 		return nil, errors.New("netoracle: negative MaxBodyBytes")
@@ -201,21 +226,38 @@ func NewSink(cfg SinkConfig) (*Sink, error) {
 	if max == 0 {
 		max = DefaultMaxBodyBytes
 	}
-	secret, err := token()
-	if err != nil {
-		return nil, err
+	secret, guest := cfg.Secret, cfg.Secret != ""
+	if guest {
+		if !secretRE.MatchString(secret) {
+			return nil, errors.New("netoracle: the sink secret is not 32..128 lowercase hex digits")
+		}
+	} else {
+		var err error
+		if secret, err = token(); err != nil {
+			return nil, err
+		}
 	}
 	j, err := audit.Open(cfg.JournalPath)
 	if err != nil {
 		return nil, fmt.Errorf("netoracle: open journal: %w", err)
 	}
-	ln, err := net.Listen("tcp", cfg.Addr)
-	if err != nil {
-		_ = j.Close()
-		return nil, fmt.Errorf("netoracle: listen: %w", err)
+	ln := cfg.Listener
+	if ln == nil {
+		if ln, err = net.Listen("tcp", cfg.Addr); err != nil {
+			_ = j.Close()
+			return nil, fmt.Errorf("netoracle: listen: %w", err)
+		}
 	}
-	s := &Sink{secret: secret, max: max, journal: j, path: cfg.JournalPath,
+	s := &Sink{secret: secret, guest: guest, max: max, journal: j, path: cfg.JournalPath,
 		tags: map[string]struct{}{}, done: make(chan struct{})}
+	if guest {
+		// Before the first connection is accepted, so that a restart is on record.
+		if err := s.append(KindSinkStarted, "sink", SinkStarted{Time: time.Now().UTC()}); err != nil {
+			_ = ln.Close()
+			_ = j.Close()
+			return nil, fmt.Errorf("netoracle: journal the sink start: %w", err)
+		}
+	}
 	s.ln = &journalListener{Listener: ln, s: s}
 	s.srv = &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second,
 		ConnContext: func(ctx context.Context, c net.Conn) context.Context {
@@ -288,6 +330,54 @@ func (s *Sink) NewInterval() (Interval, error) {
 	return Interval{Tag: tag, URL: "http://" + s.Addr() + "/" + tag}, nil
 }
 
+// CanaryAck is what a sink returns for a canary it journaled: the record's position in
+// the journal chain.
+type CanaryAck struct {
+	Seq  uint64 `json:"seq"`
+	Hash string `json:"hash"`
+}
+
+const (
+	headerSeq  = "X-Netsink-Seq"
+	headerHash = "X-Netsink-Hash"
+)
+
+var hashRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+// SendCanary sends the oracle's own liveness request to the sink at addr and returns the
+// journal position the sink acknowledged. It sends exactly one GET (no proxy, no redirect,
+// no retry) and is the only request this package ever makes on the oracle's behalf.
+func SendCanary(ctx context.Context, addr, secret, phase, tag string) (CanaryAck, error) {
+	switch {
+	case phase != PhaseStart && phase != PhaseEnd:
+		return CanaryAck{}, fmt.Errorf("netoracle: unknown canary phase %q", phase)
+	case !secretRE.MatchString(secret):
+		return CanaryAck{}, errors.New("netoracle: the canary secret is not 32..128 lowercase hex digits")
+	case !tagRE.MatchString(tag):
+		return CanaryAck{}, errors.New("netoracle: the canary tag is not 32 lowercase hex digits")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+canaryPrefix+secret+"/"+phase+"/"+tag, nil)
+	if err != nil {
+		return CanaryAck{}, err
+	}
+	client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{DisableKeepAlives: true},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		return CanaryAck{}, fmt.Errorf("netoracle: canary %s: %w", phase, err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode != http.StatusNoContent {
+		return CanaryAck{}, fmt.Errorf("netoracle: canary %s: status %d", phase, resp.StatusCode)
+	}
+	seq, err := strconv.ParseUint(resp.Header.Get(headerSeq), 10, 64)
+	if err != nil || seq == 0 || !hashRE.MatchString(resp.Header.Get(headerHash)) {
+		return CanaryAck{}, fmt.Errorf("netoracle: canary %s: the sink did not acknowledge a journal position", phase)
+	}
+	return CanaryAck{Seq: seq, Hash: resp.Header.Get(headerHash)}, nil
+}
+
 // Canary sends the oracle's own liveness request for an issued tag. It returns
 // nil only when the sink answered after journaling the canary request.
 func (s *Sink) Canary(ctx context.Context, tag, phase string) error {
@@ -301,21 +391,8 @@ func (s *Sink) Canary(ctx context.Context, tag, phase string) error {
 	if tcp, ok := s.ln.Addr().(*net.TCPAddr); ok && tcp.IP.IsUnspecified() {
 		host = net.JoinHostPort("127.0.0.1", fmt.Sprint(tcp.Port))
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+host+canaryPrefix+s.secret+"/"+phase+"/"+tag, nil)
-	if err != nil {
-		return err
-	}
-	client := &http.Client{Timeout: 10 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("netoracle: canary %s: %w", phase, err)
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("netoracle: canary %s: status %d", phase, resp.StatusCode)
-	}
-	return nil
+	_, err := SendCanary(ctx, host, s.secret, phase, tag)
+	return err
 }
 
 // ErrJournalIncomplete is returned by Journal after an arrival could not be
@@ -348,6 +425,15 @@ func ignoreClosed(err error) error {
 	return err
 }
 
+// tagOK is true for a tag a canary may carry: an issued one, or (guest service) any
+// well-formed one, since the host runner issues the tags there.
+func (s *Sink) tagOK(tag string) bool {
+	if s.guest {
+		return tagRE.MatchString(tag)
+	}
+	return s.issued(tag)
+}
+
 func (s *Sink) issued(tag string) bool {
 	s.tmu.Lock()
 	defer s.tmu.Unlock()
@@ -368,12 +454,21 @@ func (s *Sink) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else if first, _, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/"), "/"); s.issued(first) {
 		rs.Tag = first
 	}
-	if err := s.append(KindRequestStarted, cmp.Or(rs.Conn, "request"), rs); err != nil {
+	if rs.Canary != nil && s.lost.Load() {
+		// A journal that lost a record must not vouch for liveness: the end canary of an
+		// interval that saw an unjournaled arrival fails, and the interval reads as absent.
+		http.Error(w, "journal withdrawn", http.StatusServiceUnavailable)
+		return
+	}
+	rec, err := s.appendRec(KindRequestStarted, cmp.Or(rs.Conn, "request"), rs)
+	if err != nil {
 		http.Error(w, "journal", http.StatusInternalServerError)
 		return
 	}
 	if rs.Canary != nil {
 		w.Header().Set("Connection", "close")
+		w.Header().Set(headerSeq, strconv.FormatUint(rec.Sequence, 10))
+		w.Header().Set(headerHash, rec.Hash)
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -401,26 +496,31 @@ func (s *Sink) canary(r *http.Request) (CanaryRef, bool) {
 	}
 	parts := strings.Split(rest, "/")
 	if len(parts) != 3 || subtle.ConstantTimeCompare([]byte(parts[0]), []byte(s.secret)) != 1 ||
-		(parts[1] != PhaseStart && parts[1] != PhaseEnd) || !s.issued(parts[2]) {
+		(parts[1] != PhaseStart && parts[1] != PhaseEnd) || !s.tagOK(parts[2]) {
 		return CanaryRef{}, false
 	}
 	return CanaryRef{Phase: parts[1], Tag: parts[2]}, true
 }
 
 func (s *Sink) append(kind, id string, v any) error {
+	_, err := s.appendRec(kind, id, v)
+	return err
+}
+
+func (s *Sink) appendRec(kind, id string, v any) (audit.Record, error) {
 	data, err := json.Marshal(v)
 	if err != nil {
 		s.lost.Store(true)
-		return err
+		return audit.Record{}, err
 	}
 	s.jmu.Lock()
 	defer s.jmu.Unlock()
-	_, err = s.journal.Append(audit.Event{Kind: kind, ID: id, Data: data})
+	rec, err := s.journal.Append(audit.Event{Kind: kind, ID: id, Data: data})
 	if err != nil {
 		// Every failed append withdraws the journal, whichever record it was.
 		s.lost.Store(true)
 	}
-	return err
+	return rec, err
 }
 
 func headerBytes(h http.Header) int64 {
