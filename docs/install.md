@@ -68,14 +68,5 @@ and have not been qualified end to end on a clean machine.
 
 ## Doctor
 
-`tbound-doctor` checks the explicit Pi CLI or resolves `pi` from `PATH`.
-It verifies the version and reports the resolved executable fingerprint:
-
-```sh
-tbound-doctor --pi "$(command -v pi)"
-tbound-doctor --json
-```
-
-Doctor is a diagnostic. `dev_ready` does not mean that the Pi extension,
-managed service, or Linux containment profile is admitted. `governed_ready`
-remains false.
+Run `tbound-doctor --pi "$(command -v pi)"` after installing. It is advisory only;
+see [doctor](doctor.md).

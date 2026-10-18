@@ -6,7 +6,7 @@
 
 OpenRouter documents `POST https://openrouter.ai/api/v1/chat/completions`, an API key in `Authorization: Bearer`, a Chat Completions `messages` body, and both streaming and non-streaming operation. Its streaming guide describes SSE delivery. See the [Chat Completions API](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion) and [streaming quickstart](https://openrouter.ai/docs/cookbook/get-started/quickstart).
 
-The committed broker now constructs the fixed-profile HTTP request and executes it through the OpenRouter transport, and OpenRouter `LoadCredentials` loads configured model and key inputs. The [2026-10-05 real-provider evidence record](evidence/real-provider-durable-2026-10-05.json) reports a successful exchange and successful IPC delivery, broker correlation, gate/audit ordering, durable write, and store/reopen verification in a WSL2 Ubuntu development-only run. It also records `pi_adapter_wired: false`, `command_containment_status: not-established`, `g1_durability_established: false`, and `sessionrepo_provider_exchange_claimed: false`; it does not establish Pi composition, a sessionrepo-owned provider exchange, or production qualification.
+The broker builds the fixed-profile request and executes it through the OpenRouter transport. The development-only 2026-10-05 exchange is recorded in [provider-durable-evidence](provider-durable-evidence.md); it does not establish Pi composition or production qualification.
 
 ## Optional test profile: OpenCode Go
 
@@ -18,7 +18,7 @@ A later Go profile must be separate and fixed to the chosen model's documented e
 
 OpenCode's Go guide says to obtain an API key and gives endpoint URLs, but does not explicitly specify the raw HTTP authorization header. The [AI SDK OpenAI-compatible provider docs](https://ai-sdk.dev/providers/openai-compatible-providers) say that the SDK's `apiKey` option sends `Authorization: Bearer <apiKey>`. Applying that convention to a direct Go request is an inference, not an explicit guarantee in the Go guide.
 
-Go usage limits are model-specific: 20% of the model's monthly allowance in a five-hour window, 50% weekly, and 100% monthly. On reaching a limit, Go can block requests unless Zen balance fallback is enabled; the guide says free models remain available. Check the current guide and account Console when planning a test because limits and models may change.
+Go usage limits are model-specific and change; check the current guide before planning a test.
 
 ## Broker and evidence constraints
 
@@ -26,5 +26,3 @@ Go usage limits are model-specific: 20% of the model's monthly allowance in a fi
 - Committed OpenRouter `LoadCredentials` requires `TBOUND_OPENROUTER_MODEL` and accepts the API key from `TBOUND_OPENROUTER_API_KEY` or `TBOUND_OPENROUTER_API_KEY_FILE`; `NewHTTPDoer` passes the key to the transport through a closure, and the captured request record does not include its Authorization header. These code and development-evidence facts do not establish production secret provisioning or Pi/runtime wiring. Provider keys must never enter Pi, its tool cell, transcripts, prompts, request bodies, audit records, or logs.
 - Keep the exact validated request body separate from credentials. Treat the profile ID, exact model ID, runtime/build versions, `User-Agent`, and `x-opencode-session` as non-secret request metadata. Freeze the selected model and runtime in the evaluation profile before a trial; keep the Go session ID stable for that conversation.
 - OpenRouter and OpenCode Go calls reach hosted services. Report them as hosted-provider tests. An offline verifier run or a self-hosted test does not establish a hosted provider exchange, and a hosted exchange does not establish an offline run.
-
-No credentials were read, configured, or used while preparing this note.
