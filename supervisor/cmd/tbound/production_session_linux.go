@@ -251,7 +251,20 @@ type productionPiReceipt struct {
 	PublicationStatus        string   `json:"publication_status"`
 	Disposition              string   `json:"disposition"`
 	PublicationTransactionID string   `json:"publication_transaction_id,omitempty"`
-	Success                  bool     `json:"success"`
+	// The publication anchor of a corpus-mode interval (see production_publication_anchor_linux.go).
+	// The service fills it from its own publication journal and its host catalog entry, never from
+	// a request field. PublicationIntervalRef is the runner's IntervalRef of the trial
+	// (<case_id>|<role>|C|<repeat>#<attempt>). PublicationJournalHead is the head hash of the
+	// interval journal: a runner_interval record for that ref, then the workflow's "publication*"
+	// records of the shared publication journal, chained from sequence 1. PublicationJournalRecordCount
+	// is how many of those records are not publication_owner_epoch. A receipt with an empty head
+	// carries no anchor, and its count means nothing. The guest executor copies head and count into
+	// runner.PublicationFree.AnchorHead and AnchorCount. The receipt digest of the terminal record
+	// (piServiceTerminalDigest) covers all three, as it covers every receipt byte.
+	PublicationIntervalRef        string `json:"publication_interval_ref,omitempty"`
+	PublicationJournalHead        string `json:"publication_journal_head,omitempty"`
+	PublicationJournalRecordCount int    `json:"publication_journal_record_count"`
+	Success                       bool   `json:"success"`
 }
 
 // runProductionPiServe performs the CLI-side production trust decision and then
@@ -677,6 +690,15 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		Success: settled && lifecycleOK && publishErr == nil && workerCloseErr == nil &&
 			(disposition == "PUBLISHED" && publicationStatus == string(publication.StatusSucceeded) ||
 				noChangeReleased && disposition == "NO_DIFF" && publicationStatus == "NO_DIFF"),
+	}
+	if session.PublicationJournal == nil {
+		if config.workflowAdmission != nil && config.workflowAdmission.Entry.CorpusManifestDigest != "" {
+			publishErr = errors.Join(publishErr, errors.New("anchor production publication interval: no publication journal"))
+		}
+	} else if publicationTrace, traceErr := session.PublicationJournal.Trace(); traceErr != nil {
+		publishErr = errors.Join(publishErr, fmt.Errorf("read production publication journal for the interval anchor: %w", traceErr))
+	} else if anchorErr := applyPublicationAnchor(&receipt, config.workflowAdmission, session.WorkflowID, publicationTrace); anchorErr != nil {
+		publishErr = errors.Join(publishErr, fmt.Errorf("anchor production publication interval: %w", anchorErr))
 	}
 	if bundleErr == nil {
 		receipt.GenerationCount = len(bundle.Generations)

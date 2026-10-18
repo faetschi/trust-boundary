@@ -174,7 +174,7 @@ func TestCorpusQuotaProfileIsPinnedInEntryEnvelopeAndRuntimeDigest(t *testing.T)
 		}
 		if code := catalog.screenTerminalReplay(config, corpusTestDigest("cfg"), corpusTestDigest("reg"), request,
 			piServiceRequestState{accepted: state.accepted, acceptedRecord: record,
-				terminal: &piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID, Status: "completed"}}); code != "" {
+				terminal: &piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID, Status: "completed", Receipt: anchorTestReceiptJSON(t)}}); code != "" {
 			t.Fatalf("%s: matching binding refused: %s", profile, code)
 		}
 		tampered := catalog.entries[record.Hash]
@@ -182,7 +182,7 @@ func TestCorpusQuotaProfileIsPinnedInEntryEnvelopeAndRuntimeDigest(t *testing.T)
 		catalog.entries[record.Hash] = tampered
 		if code := catalog.screenTerminalReplay(config, corpusTestDigest("cfg"), corpusTestDigest("reg"), request,
 			piServiceRequestState{accepted: state.accepted, acceptedRecord: record,
-				terminal: &piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID, Status: "completed"}}); code != replayBindingMismatch {
+				terminal: &piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID, Status: "completed", Receipt: anchorTestReceiptJSON(t)}}); code != replayBindingMismatch {
 			t.Fatalf("%s: an entry reserved under the other profile replayed: %q", profile, code)
 		}
 	}

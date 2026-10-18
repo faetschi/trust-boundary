@@ -302,15 +302,15 @@ func IntervalRef(s Step) string { return fmt.Sprintf("%s#%d", s.ID(), s.Attempt)
 // governed service's own receipt for the interval and must equal the recomputed head
 // and the counted publications. An interval without an anchor is NOT exempt.
 //
-// TODO(guest-executor): bind the anchor to the service receipt of the interval. No
-// receipt field carries the publication-journal head or record count yet: the
-// service's per-request receipt (productionPiReceipt in
-// supervisor/cmd/tbound/production_session_linux.go) has PublicationStatus and
-// PublicationTransactionID only. The service must add the head hash and the record
-// count of the interval's publication journal to that receipt (for example
-// publication_journal_head and publication_journal_record_count), and the
-// guest-backed executor must copy them into AnchorHead and AnchorCount unchanged.
-// Until then no executor can fill the anchor and no interval is exempt.
+// The service fills the anchor in its receipt (productionPiReceipt in
+// supervisor/cmd/tbound/production_session_linux.go): publication_interval_ref is the
+// IntervalRef of the trial, publication_journal_head the head of the interval journal
+// (this package's marker record, then the workflow's publication records, chained from
+// sequence 1) and publication_journal_record_count the publications in it. The
+// guest-backed executor must check that the receipt's interval ref is IntervalRef of
+// the step and copy the head and count into AnchorHead and AnchorCount unchanged. See
+// production_publication_anchor_linux.go for the derivation and the case/role/attempt
+// mapping. A receipt without a head carries no anchor, and then no interval is exempt.
 type PublicationFree struct {
 	// Journal is the journal bytes covering the interval.
 	Journal []byte `json:"journal"`
