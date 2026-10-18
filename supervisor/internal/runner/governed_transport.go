@@ -145,12 +145,20 @@ func (c SSHTransport) sshArgs(argv []string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	// -F /dev/null and the global known-hosts file keep the user's and the system's ssh
+	// configuration (host-key files, proxies, canonicalization, match blocks) out of the
+	// connection: only the pinned known-hosts file and the options below apply.
 	return []string{
+		"-F", "/dev/null",
 		"-T",
 		"-o", "BatchMode=yes",
 		"-o", "StrictHostKeyChecking=yes",
 		"-o", "HostKeyAlias=" + c.HostKeyAlias,
 		"-o", "UserKnownHostsFile=" + c.KnownHostsFile,
+		"-o", "GlobalKnownHostsFile=/dev/null",
+		"-o", "CanonicalizeHostname=no",
+		"-o", "ProxyCommand=none",
+		"-o", "ProxyJump=none",
 		"-o", "IdentitiesOnly=yes",
 		"-o", "PasswordAuthentication=no",
 		"-o", "ForwardAgent=no",

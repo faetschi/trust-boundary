@@ -282,18 +282,23 @@ func defaultOutcome(cfg Config, s Step) Outcome {
 	return o
 }
 
-// fakeWSRefs gives every WS finding of a default outcome a report reference of its
-// own, as a wired executor gets from RecordE04 and RecordWS. The digest is synthetic.
+// fakeWSRefs gives every finding of a default outcome a report reference of its own,
+// as a wired executor gets from RecordE04, RecordWS, netoracle.RecordNET01/02 and
+// procoracle.Apply, each of the version its key requires (oracleVersionFor). The
+// digests are synthetic. As with the real recorders, the aggregate OracleReport
+// belongs to the WS findings only.
 func fakeWSRefs(o *Outcome, s Step) {
-	if !o.hasWSFindings() {
-		return
-	}
-	sum := sha256.Sum256([]byte("fake-oracle-report:" + IntervalRef(s)))
-	o.OracleReport = hex.EncodeToString(sum[:])
 	o.OracleRefs = map[string]OracleRef{}
-	for _, k := range oracleKeys {
-		if o.Oracles[k] != "" {
-			o.OracleRefs[k] = OracleRef{Version: wsoracle.OracleVersion, Report: o.OracleReport}
+	for _, k := range slices.Concat(oracleKeys, observerKeys) {
+		if o.Oracles[k] == "" {
+			continue
 		}
+		v, _ := oracleVersionFor(k)
+		sum := sha256.Sum256([]byte("fake-oracle-report:" + v + ":" + IntervalRef(s)))
+		d := hex.EncodeToString(sum[:])
+		if slices.Contains(oracleKeys, k) {
+			o.OracleReport = d
+		}
+		o.OracleRefs[k] = OracleRef{Version: v, Report: d}
 	}
 }

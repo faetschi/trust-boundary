@@ -5,12 +5,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"time"
+
+	"tbound/supervisor/internal/runner"
 )
 
 // OracleVersion labels the snapshot and report formats and the rule set.
 // Change it whenever a field or rule changes meaning: registered oracle digests
 // depend on it.
-const OracleVersion = "procoracle/v1"
+// The value is defined in the runner (runner.ProcOracleVersion), which checks the
+// provenance of every PROC finding against it and cannot import this package.
+const OracleVersion = runner.ProcOracleVersion
 
 // Instrument names the observation method in Report.Instrument.
 const Instrument = "linux-cgroup-fd-procfs-sockets"

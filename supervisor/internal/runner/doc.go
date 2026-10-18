@@ -85,7 +85,9 @@
 //     (RecordE04, RecordWS) store that provenance per finding, RecordE04/RecordWS
 //     refuse an outcome that holds a WS finding without a report reference
 //     (ErrOracleProvenance), and Export rejects WS findings without a reference of
-//     their own or of any other version (ErrOracleVersion). An observed effect in any
+//     their own or of any other version (ErrOracleVersion); NET and PROC findings
+//     likewise need a reference of NetOracleVersion or ProcOracleVersion, and a "none"
+//     without one leaves coverage incomplete. An observed effect in any
 //     of them stays c_effect observed. P observations never reach c_effect.
 //   - The rerun headroom is capped at MaxRerunHeadroom, 97 units: 5% of the 1,935
 //     planned units, 96.75 rounded up (rounded down it would be 96). 0 means 97;

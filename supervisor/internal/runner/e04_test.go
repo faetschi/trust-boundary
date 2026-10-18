@@ -332,7 +332,7 @@ func TestCompleteCoverageForCleanTMAAndTMCComesOnlyThroughE04(t *testing.T) {
 
 		// E04 plus the other required oracles: complete, and no effect.
 		ok := merge(others, OraclesFromE04(cleanE04(name)))
-		if o := (&Outcome{Oracles: ok}); !oraclesComplete(o, req) {
+		if o := withObserverRefs(&Outcome{Oracles: ok}); !oraclesComplete(o, req) {
 			t.Fatalf("%s: clean E04 plus fakes is not complete: %v", name, ok)
 		}
 		rec := cfg.AssembleAdversarial(cViewWith(cfg, class, ok)).Record

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os/exec"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -286,6 +287,7 @@ type stubCollectors struct {
 	journal []byte
 	e04     *wsoracle.EvaluateE04Input
 	net     map[string]Finding
+	refs    map[string]OracleRef // nil: a valid ref for every net finding
 	err     error
 	seen    EvidenceRef
 }
@@ -298,14 +300,21 @@ func (c *stubCollectors) PublicationJournal(_ context.Context, ref EvidenceRef) 
 	return c.journal, nil
 }
 
-func (c *stubCollectors) Net(context.Context, EvidenceRef) (map[string]Finding, error) {
+func (c *stubCollectors) Net(context.Context, EvidenceRef) (ObserverEvidence, error) {
 	if c.err != nil {
-		return nil, c.err
+		return ObserverEvidence{}, c.err
 	}
 	if c.net == nil {
-		return nil, ErrEvidenceAbsent
+		return ObserverEvidence{}, ErrEvidenceAbsent
 	}
-	return c.net, nil
+	refs := c.refs
+	if refs == nil {
+		refs = map[string]OracleRef{}
+		for k := range c.net {
+			refs[k] = OracleRef{Version: NetOracleVersion, Report: "net-report-" + k}
+		}
+	}
+	return ObserverEvidence{Findings: c.net, Refs: refs}, nil
 }
 
 func TestGovernedCJournalFromTheCollectorMakesTheIntervalExemptOnlyWithAMatchingAnchor(t *testing.T) {
@@ -567,5 +576,88 @@ func TestSSHTransportArgvCarriesAHostileCaseIDAsOneQuotedWord(t *testing.T) {
 	remote := args[len(args)-1]
 	if !strings.Contains(remote, `'x'\''; rm -rf / #'`) {
 		t.Fatalf("hostile id not quoted as one word: %s", remote)
+	}
+}
+
+func TestGovernedCNetFindingsNeedAReportRefOfTheNetVersion(t *testing.T) {
+	f := newGovernedFixture(t)
+	f.respond("completed", "", f.receipt(true), 0)
+	good := OracleRef{Version: NetOracleVersion, Report: "r"}
+	for name, c := range map[string]*stubCollectors{
+		"no refs":         {net: map[string]Finding{OracleNet01: FindingNone}, refs: map[string]OracleRef{}},
+		"wrong version":   {net: map[string]Finding{OracleNet01: FindingNone}, refs: map[string]OracleRef{OracleNet01: {Version: ProcOracleVersion, Report: "r"}}},
+		"empty report":    {net: map[string]Finding{OracleNet01: FindingNone}, refs: map[string]OracleRef{OracleNet01: {Version: NetOracleVersion}}},
+		"one of two lack": {net: map[string]Finding{OracleNet01: FindingNone, OracleNet02: FindingObserved}, refs: map[string]OracleRef{OracleNet01: good}},
+	} {
+		f.g.Collectors = c
+		o, err := f.g.Execute(context.Background(), f.step)
+		if !errors.Is(err, ErrOracleProvenance) {
+			t.Errorf("%s: err = %v, want ErrOracleProvenance", name, err)
+		}
+		if len(o.Oracles) != 0 {
+			t.Errorf("%s: findings recorded without provenance: %v", name, o.Oracles)
+		}
+	}
+	// Lost evidence credits nothing and may come without a reference.
+	f.g.Collectors = &stubCollectors{net: map[string]Finding{OracleNet01: FindingLost}, refs: map[string]OracleRef{}}
+	if o, err := f.g.Execute(context.Background(), f.step); err != nil || o.Oracles[OracleNet01] != FindingLost {
+		t.Errorf("lost finding: %v, %v", o.Oracles, err)
+	}
+	// The recorded finding carries its ref, and the outcome is exportable.
+	f.g.Collectors = &stubCollectors{net: map[string]Finding{OracleNet01: FindingNone}}
+	o, err := f.g.Execute(context.Background(), f.step)
+	if err != nil || !o.refValid(OracleNet01) || !oracleVersionOK(&o) {
+		t.Errorf("valid ref: refs %v, err %v", o.OracleRefs, err)
+	}
+}
+
+// A refused or busy answer is followed by exit 2 like every answer but a successful
+// completion. Exit 0 beside it contradicts the client's contract: the answer is
+// malformed, not a clean refusal that voids the begin.
+func TestGovernedCRefusedOrBusyWithAnInconsistentExitIsMalformed(t *testing.T) {
+	for _, status := range []string{"refused", "busy"} {
+		for _, exit := range []int{0, 1, 3} {
+			f := newGovernedFixture(t)
+			f.respond(status, "invalid-request", nil, exit)
+			_, err := f.g.Execute(context.Background(), f.step)
+			if !errors.Is(err, ErrGovernedMalformed) {
+				t.Errorf("%s with exit %d: err = %v, want ErrGovernedMalformed", status, exit, err)
+			}
+			if errors.Is(err, ErrSetupRefused) {
+				t.Errorf("%s with exit %d: reported as a clean refusal: %v", status, exit, err)
+			}
+		}
+	}
+}
+
+func TestSSHTransportIgnoresUserAndSystemSSHConfiguration(t *testing.T) {
+	args, err := goodSSH().sshArgs([]string{"serve", "--pi"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The option words, up to the destination.
+	opts := args[:len(args)-3]
+	has := func(pair ...string) bool {
+		for i := 0; i+len(pair) <= len(opts); i++ {
+			if slices.Equal(opts[i:i+len(pair)], pair) {
+				return true
+			}
+		}
+		return false
+	}
+	for _, want := range [][]string{
+		{"-F", "/dev/null"},
+		{"-o", "GlobalKnownHostsFile=/dev/null"},
+		{"-o", "UserKnownHostsFile=/keys/known_hosts"},
+		{"-o", "CanonicalizeHostname=no"},
+		{"-o", "ProxyCommand=none"},
+		{"-o", "ProxyJump=none"},
+	} {
+		if !has(want...) {
+			t.Errorf("ssh args lack %q: %q", want, args)
+		}
+	}
+	if args[len(args)-3] != "--" {
+		t.Errorf("destination does not follow --: %q", args)
 	}
 }

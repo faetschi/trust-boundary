@@ -49,6 +49,15 @@ type EvidenceRef struct {
 	RunID string
 }
 
+// ObserverEvidence is what a NET or PROC collector returns: the findings and, for each
+// key, the report reference that binds it (version and digest of the oracle report
+// behind it, as netoracle.RecordNET01 or procoracle.Apply write them to OracleRefs).
+// A finding that credits anything (not lost) without a valid reference is refused.
+type ObserverEvidence struct {
+	Findings map[string]Finding
+	Refs     map[string]OracleRef
+}
+
 // Collectors supply the host-side evidence of one governed interval, next to the
 // service's own receipt. Each method returns ErrEvidenceAbsent (or nothing usable)
 // when it has none: absent evidence leaves the oracle missing, so the interval is
@@ -64,9 +73,9 @@ type Collectors interface {
 	// evidence only together with the receipt's anchor (PublicationFree).
 	PublicationJournal(ctx context.Context, ref EvidenceRef) ([]byte, error)
 	// Net returns findings for EFF-NET-01 and EFF-NET-02. Adversarial steps only.
-	Net(ctx context.Context, ref EvidenceRef) (map[string]Finding, error)
+	Net(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error)
 	// Proc returns findings for EFF-PROC-01..03. Adversarial steps only.
-	Proc(ctx context.Context, ref EvidenceRef) (map[string]Finding, error)
+	Proc(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error)
 }
 
 // AbsentCollectors has no evidence of any kind. It is the default, and the base for
@@ -79,11 +88,11 @@ func (AbsentCollectors) E04(context.Context, EvidenceRef) (wsoracle.EvaluateE04I
 func (AbsentCollectors) PublicationJournal(context.Context, EvidenceRef) ([]byte, error) {
 	return nil, ErrEvidenceAbsent
 }
-func (AbsentCollectors) Net(context.Context, EvidenceRef) (map[string]Finding, error) {
-	return nil, ErrEvidenceAbsent
+func (AbsentCollectors) Net(context.Context, EvidenceRef) (ObserverEvidence, error) {
+	return ObserverEvidence{}, ErrEvidenceAbsent
 }
-func (AbsentCollectors) Proc(context.Context, EvidenceRef) (map[string]Finding, error) {
-	return nil, ErrEvidenceAbsent
+func (AbsentCollectors) Proc(context.Context, EvidenceRef) (ObserverEvidence, error) {
+	return ObserverEvidence{}, ErrEvidenceAbsent
 }
 
 // GovernedC is the guest-backed adapter for Configuration C (and the governed replays
@@ -239,6 +248,12 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		return Outcome{Metrics: Metrics{LatencyMS: latency}}, fmt.Errorf("%w (client exit %d)", err, exit)
 	}
 	if resp.Status == "refused" || resp.Status == "busy" {
+		// Like every answer but a successful completion, a refusal is followed by exit 2.
+		// Any other code contradicts the client's contract: the answer is malformed, not
+		// a clean refusal that voids the begin.
+		if exit != 2 {
+			return Outcome{Metrics: Metrics{LatencyMS: latency}}, fmt.Errorf("%w: exit code %d does not fit status %s", ErrGovernedMalformed, exit, resp.Status)
+		}
 		return Outcome{}, fmt.Errorf("%w: service %s: %s", ErrSetupRefused, resp.Status, resp.ErrorCode)
 	}
 
@@ -352,15 +367,15 @@ func (g GovernedC) collect(ctx context.Context, ref EvidenceRef, o *Outcome) []e
 	for _, src := range []struct {
 		name string
 		keys []string
-		get  func(context.Context, EvidenceRef) (map[string]Finding, error)
+		get  func(context.Context, EvidenceRef) (ObserverEvidence, error)
 	}{{"NET", netKeys, c.Net}, {"PROC", procKeys, c.Proc}} {
-		found, err := src.get(ctx, ref)
+		ev, err := src.get(ctx, ref)
 		switch {
 		case errors.Is(err, ErrEvidenceAbsent):
 		case err != nil:
 			errs = append(errs, fmt.Errorf("runner: %s collector: %w", src.name, err))
 		default:
-			if err := o.recordObserver(src.name, src.keys, found); err != nil {
+			if err := o.recordObserver(src.name, src.keys, ev); err != nil {
 				errs = append(errs, err)
 			}
 		}
@@ -369,9 +384,14 @@ func (g GovernedC) collect(ctx context.Context, ref EvidenceRef, o *Outcome) []e
 }
 
 // recordObserver stores an observer's findings, all or none: every key must be one
-// of the instrument's own predicates and every value a finding.
-func (o *Outcome) recordObserver(name string, keys []string, found map[string]Finding) error {
-	for k, f := range found {
+// of the instrument's own predicates, every value a finding, and every finding that
+// credits anything (not lost) must carry a reference of the version its key requires
+// with a report digest. An outcome that already holds such a finding for a key
+// without a reference of its own is refused too, so that a later report cannot
+// give it provenance. The references are bound per key; a second report of another
+// version marks the key "mixed", which no export accepts, and folds its digest in.
+func (o *Outcome) recordObserver(name string, keys []string, ev ObserverEvidence) error {
+	for k, f := range ev.Findings {
 		if !slices.Contains(keys, k) {
 			return fmt.Errorf("runner: %s collector reported %q, which is not a %s predicate", name, k, name)
 		}
@@ -380,12 +400,35 @@ func (o *Outcome) recordObserver(name string, keys []string, found map[string]Fi
 		default:
 			return fmt.Errorf("runner: %s collector reported finding %q for %s", name, f, k)
 		}
+		if want, _ := oracleVersionFor(k); needsRef(f) && (ev.Refs[k].Report == "" || ev.Refs[k].Version != want) {
+			return fmt.Errorf("%w: %s collector reported %s without a %s report reference", ErrOracleProvenance, name, k, want)
+		}
+		if needsRef(o.Oracles[k]) && o.OracleRefs[k].Report == "" {
+			return fmt.Errorf("%w: %s holds a finding with no report reference", ErrOracleProvenance, k)
+		}
 	}
 	if o.Oracles == nil {
 		o.Oracles = map[string]Finding{}
 	}
-	for k, f := range found {
+	if o.OracleRefs == nil {
+		o.OracleRefs = map[string]OracleRef{}
+	}
+	for k, f := range ev.Findings {
 		o.Oracles[k] = mergeFinding(o.Oracles[k], f)
+		next := ev.Refs[k]
+		if next.Report == "" {
+			continue
+		}
+		ref := o.OracleRefs[k]
+		if ref.Report == "" {
+			ref = next
+		} else {
+			if ref.Version != next.Version {
+				ref.Version = "mixed"
+			}
+			ref.Report = foldDigest(ref.Report, next.Report)
+		}
+		o.OracleRefs[k] = ref
 	}
 	return nil
 }

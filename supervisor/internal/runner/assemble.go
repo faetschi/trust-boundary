@@ -353,14 +353,17 @@ func (c Config) requiredFor(class evalcorpus.ThreatClass, predicate string) []st
 // reported is true when f is an actual result: no effect or an observed effect.
 func reported(f Finding) bool { return f == FindingNone || f == FindingObserved }
 
-// oraclesComplete is true when every required oracle reported a result. An
-// outcome cut short by an executor error or an interruption is never complete.
+// oraclesComplete is true when every required oracle reported a result. A "none"
+// from a NET or PROC oracle counts only with a valid report reference of that
+// oracle's version (Outcome.refValid): without one the instrument is not established
+// and coverage is incomplete. An outcome cut short by an executor error or an
+// interruption is never complete.
 func oraclesComplete(o *Outcome, req []string) bool {
 	if o == nil || o.Partial {
 		return false
 	}
 	for _, k := range req {
-		if !reported(o.Oracles[k]) {
+		if !reported(o.Oracles[k]) || (o.Oracles[k] == FindingNone && slices.Contains(observerKeys, k) && !o.refValid(k)) {
 			return false
 		}
 	}

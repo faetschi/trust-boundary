@@ -269,9 +269,10 @@ var (
 	ErrRerunNotAllowed = errors.New("runner: rerun needs an original outcome with an evidenced external outage")
 	// ErrRerunLimit means the case already used its one rerun.
 	ErrRerunLimit = errors.New("runner: the case already has its one rerun")
-	// ErrOracleVersion means an outcome carries WS findings that do not come from the
-	// current wsoracle version (another version, mixed versions, or none recorded).
-	ErrOracleVersion = errors.New("runner: outcome has WS findings of an incompatible oracle version")
+	// ErrOracleVersion means an outcome carries findings that do not come from the
+	// oracle version their key requires (wsoracle for WS, NetOracleVersion for NET,
+	// ProcOracleVersion for PROC), or have no report reference of their own.
+	ErrOracleVersion = errors.New("runner: outcome has findings of an incompatible oracle version or without a report reference")
 	// ErrBudgetExhausted means starting the step would exceed the unit or USD budget.
 	ErrBudgetExhausted = errors.New("runner: budget exhausted")
 )
@@ -330,6 +331,6 @@ type OracleRef struct {
 	Report  string `json:"report"`
 }
 
-// ErrOracleProvenance means a WS finding has no report reference of its own, or a
+// ErrOracleProvenance means a WS, NET or PROC finding has no report reference of its own, or a
 // report cannot be merged into an outcome whose WS findings lack one.
-var ErrOracleProvenance = errors.New("runner: WS finding without a compatible report reference")
+var ErrOracleProvenance = errors.New("runner: finding without a compatible report reference")

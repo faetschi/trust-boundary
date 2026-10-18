@@ -56,6 +56,29 @@ func (p *PublicationFree) verifies(interval string) bool {
 	return publications == 0 && p.AnchorCount == publications
 }
 
+// The oracle versions that NET and PROC findings must carry. The runner owns them
+// so that it can check provenance without importing netoracle or procoracle, which
+// import the runner (an import cycle); those packages define their OracleVersion as
+// these constants, so there is one source and no registration order.
+const (
+	NetOracleVersion  = "netoracle/v1"
+	ProcOracleVersion = "procoracle/v1"
+)
+
+// oracleVersionFor is the oracle version a finding under key must be bound to. It is
+// false for a key with no provenance requirement (EFF-TRANSIENT).
+func oracleVersionFor(key string) (string, bool) {
+	switch {
+	case slices.Contains(oracleKeys, key):
+		return wsoracle.OracleVersion, true
+	case key == OracleNet01 || key == OracleNet02:
+		return NetOracleVersion, true
+	case key == OracleProc01 || key == OracleProc02 || key == OracleProc03:
+		return ProcOracleVersion, true
+	}
+	return "", false
+}
+
 // oracleKeys are the Outcome.Oracles keys that a wsoracle report supplies.
 var oracleKeys = []string{OracleWS, OracleWS01, OracleWS02, OracleWS03, OracleWS04, OracleWS05, OracleWS06}
 
@@ -64,14 +87,49 @@ func (o *Outcome) hasWSFindings() bool {
 	return slices.ContainsFunc(oracleKeys, func(k string) bool { return o.Oracles[k] != "" })
 }
 
-// oracleVersionOK is false for an outcome whose WS findings do not come from the
-// current oracle version, or lack provenance of their own. Every WS finding needs a
-// report reference (OracleRefs) of the current version with a report digest, and the
-// outcome as a whole must name the current version and a report: another version,
-// mixed versions, a missing reference or none at all beside WS findings is refused.
+// needsRef is true for a finding that must be bound to a report: any result. Lost
+// evidence credits nothing, so it may stand without one.
+func needsRef(f Finding) bool { return f != "" && f != FindingLost }
+
+// refValid is true when o binds key to a report of the oracle version that key
+// requires: a non-empty report digest and exactly that version ("mixed" is not one).
+func (o *Outcome) refValid(key string) bool {
+	want, ok := oracleVersionFor(key)
+	if !ok {
+		return true
+	}
+	ref := o.OracleRefs[key]
+	return ref.Report != "" && ref.Version == want
+}
+
+// observerKeys are the NET and PROC keys, supplied by netoracle and procoracle.
+var observerKeys = []string{OracleNet01, OracleNet02, OracleProc01, OracleProc02, OracleProc03}
+
+// observerRefsOK is false when a NET or PROC finding lacks a valid reference of its
+// own (refValid). Each such oracle carries its own version; none of them touches
+// Outcome.OracleVersion or OracleReport, which belong to the WS findings.
+func observerRefsOK(o *Outcome) bool {
+	for _, k := range observerKeys {
+		if needsRef(o.Oracles[k]) && !o.refValid(k) {
+			return false
+		}
+	}
+	return true
+}
+
+// oracleVersionOK is false for an outcome whose findings do not come from the
+// oracle versions their keys require, or lack provenance of their own. Every WS
+// finding needs a report reference (OracleRefs) of the wsoracle version with a report
+// digest, and the outcome as a whole must name that version and a report; every
+// NET and PROC finding needs a reference of the netoracle or procoracle version
+// with a report digest. Another version, mixed versions, a missing reference or none
+// at all is refused.
 func oracleVersionOK(o *Outcome) bool {
 	if o == nil {
 		return true
+	}
+	if !observerRefsOK(o) {
+		return false
 	}
 	if !o.hasWSFindings() {
 		return o.OracleVersion == "" || o.OracleVersion == wsoracle.OracleVersion
