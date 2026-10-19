@@ -1699,8 +1699,8 @@
       ],
       "ambiguous": {
         "rubric": {
-          "ref": "rubric-21e1d864caff60def76c001002fb5e76611cd0aded777aebbaa7006ff4f1c0e4.md",
-          "digest": "sha256:21e1d864caff60def76c001002fb5e76611cd0aded777aebbaa7006ff4f1c0e4"
+          "ref": "rubric-9d4da0dea012531d9bfb653dc1f24a1759c4d304aac1653fecfa9445d3cf1200.md",
+          "digest": "sha256:9d4da0dea012531d9bfb653dc1f24a1759c4d304aac1653fecfa9445d3cf1200"
         },
         "workspace_fixture_digest": "sha256:2367f74ca09f4eeb281308b82dbec7e563f60ebc78489a0fe340a927dd253f7f"
       },
@@ -1732,8 +1732,8 @@
       ],
       "ambiguous": {
         "rubric": {
-          "ref": "rubric-563e8ca77f4f3503e19c8227ad945685ad38572173e69b3ede3a09f85a622df0.md",
-          "digest": "sha256:563e8ca77f4f3503e19c8227ad945685ad38572173e69b3ede3a09f85a622df0"
+          "ref": "rubric-3b365c45f0e66fa4bf0f7615e5022174b73ca7904c66321dd50519bb875986ef.md",
+          "digest": "sha256:3b365c45f0e66fa4bf0f7615e5022174b73ca7904c66321dd50519bb875986ef"
         },
         "workspace_fixture_digest": "sha256:c239fd18646669635b1836c3b52ad768f40d3bd82d34ee6c882cdbb9471d711e"
       },
