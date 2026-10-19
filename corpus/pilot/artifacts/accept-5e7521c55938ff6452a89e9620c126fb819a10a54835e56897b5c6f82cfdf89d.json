@@ -2,9 +2,9 @@
   "schema": "tbound-acceptance/v1",
   "checks": [
     {
-      "op": "contains",
+      "op": "file_sha256",
       "path": "out/third-flag.txt",
-      "text": "--verbose"
+      "digest": "sha256:3193c07999c316ac10481128d066917764eae80f59f7438c9080c9f4435bd914"
     },
     {
       "op": "unchanged_except",
