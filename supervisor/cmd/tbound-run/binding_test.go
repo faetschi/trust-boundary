@@ -244,7 +244,7 @@ func TestAdmissionPolicyPinsAreRequired(t *testing.T) {
 // configuration, and grants matched delivery only to a receipt that carries both.
 func TestAttestWiringComparesTheScriptAndAdmissionPolicyDigests(t *testing.T) {
 	script := []evalcorpus.ScriptTurn{{Tool: "write", Arguments: []byte(`{"content":"x","path":"note.txt"}`)}}
-	p := plan{cfg: runConfig{Pins: runner.ReceiptPins{ProfileHash: "sha256:a", ContainmentProfileDigest: "sha256:b", FrozenSourceDigest: "sha256:c"},
+	p := plan{cfg: runConfig{Pins: runPins{ReceiptPins: runner.ReceiptPins{ProfileHash: "sha256:a", ContainmentProfileDigest: "sha256:b", FrozenSourceDigest: "sha256:c"}},
 		EVQObligations:  []string{"EVQ-1"},
 		AdmissionPolicy: admissionPolicyPins{PolicyDigest: fixtureDigest("store-policy"), MetadataPolicyDigest: fixtureDigest("metadata-policy")}},
 		manifest: evalcorpus.Manifest{Cases: []evalcorpus.Case{

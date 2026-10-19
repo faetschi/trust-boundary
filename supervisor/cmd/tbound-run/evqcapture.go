@@ -22,7 +22,6 @@ import (
 	"slices"
 	"strings"
 
-	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/guestevidence"
 )
 
@@ -746,40 +745,13 @@ func (r evqCapture) requirePinnedInput(name string, data []byte) error {
 	return nil
 }
 
-// loadFreezeBinding reads the freeze commit and the receipt pins of run.json. It reads only those two
-// members and does not validate the rest: the file may not yet name the evq_results this command writes.
-// `plan` validates the whole file.
-func loadFreezeBinding(path string) (string, string, string, error) {
+// loadFreezeBinding reads the freeze commit and the receipt pins of run.json (guestevidence.ParseRunBinding:
+// only those members, the rest of the file is not validated, because it may not yet name the evq_results this
+// command writes). `plan` validates the whole file.
+func loadFreezeBinding(path string) (guestevidence.RunBinding, error) {
 	data, err := readRegularFile(path, maxConfigBytes)
 	if err != nil {
-		return "", "", "", fmt.Errorf("config: %w", err)
+		return guestevidence.RunBinding{}, fmt.Errorf("config: %w", err)
 	}
-	var doc struct {
-		FreezeCommit string `json:"freeze_commit"`
-		Pins         struct {
-			ProfileHash        string `json:"profile_hash"`
-			FrozenSourceDigest string `json:"frozen_source_digest"`
-		} `json:"pins"`
-	}
-	if err := decodeLenientJSON(data, &doc); err != nil {
-		return "", "", "", fmt.Errorf("config: %w", err)
-	}
-	if !guestevidence.IsCommit(doc.FreezeCommit) {
-		return "", "", "", fmt.Errorf("config: freeze_commit %q is not 40 lowercase hex digits", doc.FreezeCommit)
-	}
-	return doc.FreezeCommit, doc.Pins.ProfileHash, doc.Pins.FrozenSourceDigest, nil
-}
-
-func decodeLenientJSON(data []byte, v any) error {
-	if err := protocol.ValidateStrictJSON(data); err != nil {
-		return err
-	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	if err := dec.Decode(v); err != nil {
-		return err
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return errors.New("trailing data")
-	}
-	return nil
+	return guestevidence.ParseRunBinding(data)
 }

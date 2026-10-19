@@ -57,6 +57,12 @@ type Expect struct {
 	// the receipt of a real provider exchange must carry both.
 	ProfileHash        string
 	FrozenSourceDigest string
+	// ContainmentProfileDigest is run.json pins.containment_profile_digest: the digest of the production
+	// cell template. A direct-runtime route artifact must be of exactly that template.
+	ContainmentProfileDigest string
+	// AdminPubkeyDigest is run.json pins.admin_pubkey_digest: the digest of the admin public key file that
+	// verifies the signed host profile. A direct-runtime route artifact must be verified under exactly that key.
+	AdminPubkeyDigest string
 	// CommitTree is the git tree id of Commit as the Go capture recorded it: the adapter run is bound to
 	// the commit through it.
 	CommitTree string

@@ -25,7 +25,7 @@ func expect() Expect {
 	for _, p := range TestPackages() {
 		tb[p] = digestOf("test binary " + p)
 	}
-	return Expect{Commit: testCommit, BinarySHA256: testBinary, ProfileHash: digestOf("profile"), FrozenSourceDigest: digestOf("source"), CommitTree: adapterTree, TestBinaries: tb}
+	return Expect{Commit: testCommit, BinarySHA256: testBinary, ProfileHash: digestOf("profile"), FrozenSourceDigest: digestOf("source"), CommitTree: adapterTree, TestBinaries: tb, ContainmentProfileDigest: digestOf("production template"), AdminPubkeyDigest: digestOf("admin key")}
 }
 
 func encode(t *testing.T, kind string, data any) []byte {
@@ -471,6 +471,9 @@ func TestCapabilityDelegationChainAndCellsProbe(t *testing.T) {
 func goodRouteDenied(kind string) RouteDenied {
 	cell, _ := routeCellKindFor(kind)
 	e := expect()
+	if kind == KindRouteDirectRuntime {
+		return goodDirectRuntime()
+	}
 	attempt := func(method, outcome string, exit int, seq uint64) RouteAttempt {
 		return RouteAttempt{Method: method, Argv: []string{"/bin/bash", "-lc", "cat /home/node/.profile"}, ExitCode: exit, Outcome: outcome,
 			ResultDigest: digestOf("result " + method), ReceiptDigest: digestOf("receipt " + method), ContainerID: "container-" + method, JournalSequence: seq}
@@ -485,7 +488,8 @@ func goodRouteDenied(kind string) RouteDenied {
 
 func TestRouteArtifactRequiredValues(t *testing.T) {
 	e := expect()
-	for _, kind := range []string{KindRouteBashView, KindRouteDirectRuntime} {
+	// The attempt-level mutations are the command cell's (one command, one container, one receipt each); the Pi runtime cell's are in route_direct_test.go.
+	for _, kind := range []string{KindRouteBashView} {
 		if err := Validate(kind, encode(t, kind, goodRouteDenied(kind)), e); err != nil {
 			t.Fatalf("%s: good artifact refused: %v", kind, err)
 		}

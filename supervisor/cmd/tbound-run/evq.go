@@ -241,7 +241,8 @@ func (a *app) evqCmd(args []string) error {
 			return fmt.Errorf("%w: --artifact %s needs --guest-binary-sha256 sha256:<hex>", errUsage, kind)
 		}
 	}
-	commit, profileHash, frozenSource, err := loadFreezeBinding(*config)
+	binding, err := loadFreezeBinding(*config)
+	commit := binding.Commit
 	if err != nil {
 		return err
 	}
@@ -263,8 +264,8 @@ func (a *app) evqCmd(args []string) error {
 	in := evqInputs{Outcomes: outcomes, Commit: commit, CaptureDigest: recordDigest, TestJSON: rec.TestJSONSHA256,
 		Artifacts: map[string]string{}, ArtifactErrors: map[string]string{}}
 	known := m.artifactKinds()
-	expect := guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary, ProfileHash: profileHash,
-		FrozenSourceDigest: frozenSource, CommitTree: rec.GitTree, TestBinaries: rec.TestBinaries}
+	expect := guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary, ProfileHash: binding.ProfileHash, ContainmentProfileDigest: binding.ContainmentProfileDigest,
+		FrozenSourceDigest: binding.FrozenSourceDigest, AdminPubkeyDigest: binding.AdminPubkeyDigest, CommitTree: rec.GitTree, TestBinaries: rec.TestBinaries}
 	seen := map[string]bool{}
 	for _, spec := range artifacts {
 		kind, path, ok := strings.Cut(spec, "=")

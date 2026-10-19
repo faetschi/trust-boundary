@@ -6,6 +6,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+
+	"tbound/supervisor/internal/cellview"
 )
 
 // The E06 exposure matrix (route-matrix.json) has two cells that the prototype sandbox tests cannot
@@ -32,6 +34,9 @@ const (
 
 	RouteOutcomeDenied = "denied"
 	RouteOutcomeRead   = "read"
+	// RouteOutcomeMetadata is a stat that returned the metadata of the target: no content was read.
+	// Landlock does not mediate stat(2), so a Pi runtime cell shows the metadata of a target it cannot open.
+	RouteOutcomeMetadata = "metadata"
 )
 
 // RouteMethods are the denied attempts every route artifact carries, in order.
@@ -54,6 +59,22 @@ type RouteDenied struct {
 	Cell RouteCell `json:"cell"`
 	// Journal is the head of the verified hash chain the attempts were read from.
 	Journal RouteJournal `json:"journal"`
+	// ProbeProfileDigest and ProfileSourceDigest (Pi runtime cell only) are read from the signed host profile
+	// whose digest the session journal records for the probe run: the probe profile's own digest, and its
+	// source provenance digest, which is the run's frozen source digest. The producer takes the source from
+	// there and refuses a pin that differs; the validator requires both to equal the run pins.
+	ProbeProfileDigest  string `json:"probe_profile_digest,omitempty"`
+	ProfileSourceDigest string `json:"profile_source_digest,omitempty"`
+	// View (Pi runtime cell only) is what the probe process measured inside the cell, before its attempts: the
+	// lstat facts of every component of the target's path as the cell's own mounts show them, and the identity of
+	// the probe. Ordinary file permissions computed from it must allow the access, so that only the cell's
+	// confinement stands between the cell and the bytes.
+	View *cellview.View `json:"view,omitempty"`
+	// AdminPubkeyDigest (Pi runtime cell only) is the digest of the admin public key the signed probe host
+	// profile was verified under; the validator requires it to equal run.json pins.admin_pubkey_digest.
+	AdminPubkeyDigest string `json:"admin_pubkey_digest,omitempty"`
+	// Limits (Pi runtime cell only) are what the artifact does not establish (DirectRuntimeLimits).
+	Limits []string `json:"limits,omitempty"`
 	// Control reads a file inside the workspace in the same cell: the detector sees a successful read.
 	Control RouteAttempt `json:"control"`
 	// Attempts are the denied requests of the target, one per method of RouteMethods.
@@ -66,6 +87,14 @@ type RouteCell struct {
 	ImageDigest           string `json:"image_digest"`
 	TemplateDigest        string `json:"template_digest"`
 	LandlockRulesetDigest string `json:"landlock_ruleset_digest"`
+	// ProductionTemplateDigest (Pi runtime cell only) is the digest of the production cell template: the
+	// probe cell's template is that template plus the route_probe member, so the probe ran in the production
+	// cell's image, mounts, Landlock ruleset, seccomp profile and user mapping.
+	ProductionTemplateDigest string `json:"production_template_digest,omitempty"`
+	// CellUID and CellGID (Pi runtime cell only) are the unprivileged identity of the cell, the template's: the
+	// identity the probe measured permissions for.
+	CellUID uint32 `json:"cell_uid,omitempty"`
+	CellGID uint32 `json:"cell_gid,omitempty"`
 }
 
 // RouteJournal names the audit journal the evidence was read from: the verified record count and the
@@ -87,6 +116,9 @@ type RouteAttempt struct {
 	ReceiptDigest   string   `json:"receipt_digest"`
 	ContainerID     string   `json:"container_id"`
 	JournalSequence uint64   `json:"journal_sequence"`
+	// Op and Errno (Pi runtime cell only) name the operation (open, stat or list) and the errno it got.
+	Op    string `json:"op,omitempty"`
+	Errno string `json:"errno,omitempty"`
 }
 
 func routeCellKindFor(kind string) (string, bool) {
@@ -145,6 +177,16 @@ func validateRoute(kind string, raw []byte, e Expect) error {
 		add("the journal head is not stated (%d records, hash %q)", r.Journal.Records, r.Journal.HeadHash)
 	}
 
+	if kind == KindRouteDirectRuntime {
+		directRuntimeProblems(r, e, add)
+		if len(problems) > 0 {
+			return errors.New(strings.Join(problems, "; "))
+		}
+		return nil
+	}
+	if r.Cell.ProductionTemplateDigest != "" || r.Cell.CellUID != 0 || r.Cell.CellGID != 0 || r.View != nil || r.AdminPubkeyDigest != "" || len(r.Limits) != 0 || r.ProbeProfileDigest != "" || r.ProfileSourceDigest != "" || r.Control.Op != "" || r.Control.Errno != "" {
+		add("a command cell artifact carries members of the Pi runtime cell artifact")
+	}
 	seenContainers := map[string]bool{}
 	seenReceipts := map[string]bool{}
 	checkAttempt := func(a RouteAttempt, wantMethod, wantOutcome string) {
@@ -169,6 +211,9 @@ func validateRoute(kind string, raw []byte, e Expect) error {
 		seenContainers[a.ContainerID], seenReceipts[a.ReceiptDigest] = true, true
 		if r.Journal.Records != 0 && a.JournalSequence > r.Journal.Records {
 			add("attempt %s: journal sequence %d is beyond the %d verified records", wantMethod, a.JournalSequence, r.Journal.Records)
+		}
+		if a.Op != "" || a.Errno != "" {
+			add("attempt %s: op and errno belong to the Pi runtime cell artifact", wantMethod)
 		}
 		if wantOutcome == RouteOutcomeDenied && !argvNamesTarget(a, r.Target) {
 			add("attempt %s: the command does not request the target %s", wantMethod, r.Target)

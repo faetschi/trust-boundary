@@ -82,7 +82,11 @@ type D09CellTemplate struct {
 	ManagedLiveRootRegistrationDigest string `json:"managed_live_root_registration_digest"`
 	UserNamespaceMappingProfile       string `json:"user_namespace_mapping_profile"`
 	UserNamespaceMappingDigest        string `json:"user_namespace_mapping_digest"`
-	registered                        bool
+	// RouteProbe, when present, makes the template a route-probe template: a cell launched from it runs the
+	// direct-runtime route probe instead of Pi (see d09_route_probe.go). It is absent from a production
+	// template, whose canonical form and digest the member does not change.
+	RouteProbe *D09RouteProbe `json:"route_probe,omitempty"`
+	registered bool
 }
 
 // Digest returns the canonical template digest that a signed profile binds in
@@ -143,7 +147,15 @@ func (t D09CellTemplate) Config() D09Config {
 		XattrScanUID:                      t.XattrScanUID,
 		XattrScanGID:                      t.XattrScanGID,
 		XattrScanPrivilegeProfile:         t.XattrScanPrivilegeProfile,
+		RouteProbe:                        t.routeProbeConfig(),
 	}
+}
+
+func (t D09CellTemplate) routeProbeConfig() D09RouteProbe {
+	if t.RouteProbe == nil {
+		return D09RouteProbe{}
+	}
+	return *t.RouteProbe
 }
 
 func templateDigestOrEmpty(t D09CellTemplate) string {
@@ -182,6 +194,9 @@ func validateD09CellTemplate(t D09CellTemplate) error {
 		t.UserNamespaceMappingProfile != D09UserNamespaceMappingProfile || !validDigest(t.UserNamespaceMappingDigest) ||
 		DigestD09XattrVisibilityProfile(t.XattrFilesystemMagic, t.XattrMountOptionsDigest, t.XattrScanUID, t.XattrScanGID,
 			t.XattrScanPrivilegeProfile) != t.XattrVisibilityProfileDigest {
+		return ErrD09TemplateInvalid
+	}
+	if t.RouteProbe != nil && t.RouteProbe.Validate(roPaths, rwPaths) != nil {
 		return ErrD09TemplateInvalid
 	}
 	return nil

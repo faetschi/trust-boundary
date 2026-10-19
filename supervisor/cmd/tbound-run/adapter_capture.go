@@ -30,7 +30,7 @@ const adapterDir = "adapter"
 
 type adapterCaptureOptions struct {
 	repo, commit, out string
-	nodeBin, npmBin   string
+	nodeBin, npmCLI   string
 	gitBin            string
 	npmCache          string
 	// piCLIBin, when set, requires the official Pi CLI integration test and names the executable.
@@ -46,14 +46,14 @@ func (a *app) evqAdapterCaptureCmd(args []string) error {
 	flags.StringVar(&o.commit, "commit", "", "the frozen commit, 40 lowercase hex digits")
 	flags.StringVar(&o.out, "out", "", "adapter-tests artifact file to create (an absolute path)")
 	flags.StringVar(&o.nodeBin, "node", "", "the Node executable that runs the tests (absolute path)")
-	flags.StringVar(&o.npmBin, "npm", "", "the npm executable that belongs to --node (absolute path)")
+	flags.StringVar(&o.npmCLI, "npm-cli", "", "npm's npm-cli.js, which --node runs (absolute path); npm is never executed directly")
 	flags.StringVar(&o.npmCache, "npm-cache", "", "prepared npm cache directory (the install is offline)")
 	flags.StringVar(&o.piCLIBin, "pi-cli-bin", "", "optional official pi executable: requires the Pi CLI integration test (Linux, Node v24.21.0)")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w: %v", errUsage, err)
 	}
-	if flags.NArg() != 0 || o.repo == "" || o.commit == "" || o.out == "" || o.nodeBin == "" || o.npmBin == "" || o.npmCache == "" {
-		return fmt.Errorf("%w: evq-adapter-capture takes --repo, --commit, --out, --node, --npm and --npm-cache (and optional --pi-cli-bin)", errUsage)
+	if flags.NArg() != 0 || o.repo == "" || o.commit == "" || o.out == "" || o.nodeBin == "" || o.npmCLI == "" || o.npmCache == "" {
+		return fmt.Errorf("%w: evq-adapter-capture takes --repo, --commit, --out, --node, --npm-cli and --npm-cache (and optional --pi-cli-bin)", errUsage)
 	}
 	if runtime.GOOS != "linux" {
 		return errors.New("evq-adapter-capture runs the adapter tests under a POSIX environment: run it on Linux or WSL")
@@ -69,7 +69,7 @@ func runAdapterCapture(ctx context.Context, o adapterCaptureOptions) (err error)
 	if !guestevidence.IsCommit(o.commit) {
 		return fmt.Errorf("%w: --commit must be 40 lowercase hex digits, not a branch or an abbreviation", errUsage)
 	}
-	for name, p := range map[string]string{"--out": o.out, "--node": o.nodeBin, "--npm": o.npmBin, "--npm-cache": o.npmCache} {
+	for name, p := range map[string]string{"--out": o.out, "--node": o.nodeBin, "--npm-cli": o.npmCLI, "--npm-cache": o.npmCache} {
 		if !filepath.IsAbs(p) {
 			return fmt.Errorf("%w: %s must be an absolute path", errUsage, name)
 		}
@@ -143,7 +143,7 @@ func runAdapterCapture(ctx context.Context, o adapterCaptureOptions) (err error)
 		return errors.New("the frozen commit has no adapter/package-lock.json: there is nothing to install offline from")
 	}
 
-	run := adapterRunner{ctx: ctx, dir: filepath.Join(src, adapterDir), nodeBin: o.nodeBin, npmBin: o.npmBin}
+	run := adapterRunner{ctx: ctx, dir: filepath.Join(src, adapterDir), nodeBin: o.nodeBin, npmCLI: o.npmCLI}
 	run.env = []string{
 		"PATH=" + filepath.Dir(o.nodeBin) + ":/usr/bin:/bin", "HOME=" + filepath.Join(work, "home"), "TMPDIR=" + filepath.Join(work, "tmp"),
 		"LANG=C", "LC_ALL=C", "NO_COLOR=1", "npm_config_cache=" + o.npmCache, "npm_config_logs_dir=" + filepath.Join(work, "logs"),
@@ -161,6 +161,9 @@ func runAdapterCapture(ctx context.Context, o adapterCaptureOptions) (err error)
 	if rec.Npm.Version, err = run.npmVersion(); err != nil {
 		return err
 	}
+	if rec.Npm.CLISHA256, err = digestNonEmptyFile(o.npmCLI); err != nil {
+		return err
+	}
 
 	_, installExit, err := run.npm(guestevidence.AdapterInstallArgv[1:])
 	if err != nil {
@@ -170,6 +173,10 @@ func runAdapterCapture(ctx context.Context, o adapterCaptureOptions) (err error)
 		return fmt.Errorf("the offline install exited %d: the cache does not hold the lockfile's packages", installExit)
 	}
 	if rec.Npm.NodeModulesDigest, rec.Npm.NodeModulesFiles, err = digestNodeModules(filepath.Join(run.dir, "node_modules")); err != nil {
+		return err
+	}
+
+	if rec.Node.ExecPath, err = run.scriptNode(); err != nil {
 		return err
 	}
 
@@ -223,13 +230,13 @@ func runAdapterCapture(ctx context.Context, o adapterCaptureOptions) (err error)
 type adapterRunner struct {
 	ctx             context.Context
 	dir             string
-	nodeBin, npmBin string
+	nodeBin, npmCLI string
 	env             []string
 }
 
 // npm runs npm with args in the adapter directory and returns its combined output and exit status.
 func (r adapterRunner) npm(args []string) ([]byte, int, error) {
-	cmd := exec.CommandContext(r.ctx, r.npmBin, args...)
+	cmd := exec.CommandContext(r.ctx, r.nodeBin, append([]string{r.npmCLI}, args...)...)
 	cmd.Dir, cmd.Env = r.dir, r.env
 	var buf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &buf, &buf
@@ -251,6 +258,50 @@ func (r adapterRunner) npmVersion() (string, error) {
 		return "", fmt.Errorf("npm --version: exit %d: %v", code, err)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// scriptNode asks npm what a lifecycle script of the run sees (`npm run env`): the Node that npm runs under
+// (npm_node_execpath) and the PATH on which a script's `node` resolves. Both must be the selected Node, or
+// the tests could run under a different Node than the one the artifact records. It returns the Node's path.
+func (r adapterRunner) scriptNode() (string, error) {
+	out, code, err := r.npm([]string{"run", "env"})
+	if err != nil || code != 0 {
+		return "", fmt.Errorf("npm run env: exit %d: %v", code, err)
+	}
+	return scriptNodeFromEnv(out, r.nodeBin)
+}
+
+func scriptNodeFromEnv(env []byte, nodeBin string) (string, error) {
+	want, err := filepath.EvalSymlinks(nodeBin)
+	if err != nil {
+		return "", fmt.Errorf("--node: %w", err)
+	}
+	execPath, scriptPath := "", ""
+	for _, line := range strings.Split(string(env), "\n") {
+		if v, ok := strings.CutPrefix(line, "npm_node_execpath="); ok {
+			execPath = v
+		}
+		if v, ok := strings.CutPrefix(line, "PATH="); ok {
+			scriptPath = v
+		}
+	}
+	if resolved, err := filepath.EvalSymlinks(execPath); err != nil || execPath == "" || resolved != want {
+		return "", fmt.Errorf("npm runs under the Node %q, not the selected %s", execPath, nodeBin)
+	}
+	for _, dir := range filepath.SplitList(scriptPath) {
+		if dir == "" || !filepath.IsAbs(dir) {
+			continue
+		}
+		candidate := filepath.Join(dir, "node")
+		if info, err := os.Stat(candidate); err != nil || info.IsDir() || info.Mode().Perm()&0o111 == 0 {
+			continue
+		}
+		if resolved, err := filepath.EvalSymlinks(candidate); err != nil || resolved != want {
+			return "", fmt.Errorf("a script's `node` resolves to %s on PATH, not to the selected %s", candidate, nodeBin)
+		}
+		return execPath, nil
+	}
+	return "", fmt.Errorf("no `node` on the scripts' PATH %q: the selected %s is not on it", scriptPath, nodeBin)
 }
 
 func (r adapterRunner) nodeFacts() (version, platform, arch string, err error) {

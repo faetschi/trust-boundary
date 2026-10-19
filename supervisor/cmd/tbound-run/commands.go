@@ -322,7 +322,7 @@ func (a *app) selfcheck(p plan) error {
 	for _, k := range []struct{ name, path string }{{"client", ssh.Client.Key}, {"evidence", ssh.Evidence.Key}, {"trial", ssh.Trial.Key}} {
 		check(k.name+" key file exists", statRegular(k.path)) // only stat: a key is never opened here
 	}
-	check("attest settings", runner.Attest{EVQ: p.cfg.EVQObligations, EVQResults: p.evq, Pins: p.cfg.Pins}.Validate())
+	check("attest settings", runner.Attest{EVQ: p.cfg.EVQObligations, EVQResults: p.evq, Pins: p.cfg.Pins.ReceiptPins}.Validate())
 	check("collectors", p.collectors().Validate())
 	check("trial transport", runner.ResetExecutor{Transport: p.cfg.transports().trial}.Validate())
 

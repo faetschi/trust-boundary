@@ -56,21 +56,38 @@ func specOutput(failing string) string {
 }
 
 type fakeTools struct {
-	node, npm, cache string
+	node, npmCLI, cache string
+	// nodeLog records the first argument of every node call.
+	nodeLog string
 }
 
-// makeFakeTools writes node and npm scripts. checkBody runs inside `npm run check`, in the adapter directory.
+// fakeNpmReport is what `npm run env` reports from inside a lifecycle script: the Node npm runs under and
+// the PATH the scripts resolve `node` on. The empty value is the honest report of the selected node.
+type fakeNpmReport struct{ execPath, path string }
+
+// makeFakeTools writes a node and an npm-cli.js script (the fake node runs its first argument with sh, as
+// the real one runs a JavaScript file). checkBody runs inside `npm run check`, in the adapter directory.
 func makeFakeTools(t *testing.T, installExit int, checkBody string, checkExit int) fakeTools {
+	return makeFakeToolsReporting(t, installExit, checkBody, checkExit, fakeNpmReport{})
+}
+
+func makeFakeToolsReporting(t *testing.T, installExit int, checkBody string, checkExit int, report fakeNpmReport) fakeTools {
 	t.Helper()
 	dir := t.TempDir()
 	node := filepath.Join(dir, "node")
-	script := "#!/bin/sh\nif [ \"$1\" = \"-p\" ]; then echo 'v24.15.0 linux x64'; exit 0; fi\nexit 1\n"
+	nodeLog := filepath.Join(dir, "node.log")
+	script := "#!/bin/sh\necho \"$1\" >> " + nodeLog + "\nif [ \"$1\" = \"-p\" ]; then echo 'v24.15.0 linux x64'; exit 0; fi\nexec /bin/sh \"$@\"\n"
 	if err := os.WriteFile(node, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	npm := filepath.Join(dir, "npm")
-	npmScript := `#!/bin/sh
-case "$1" in
+	if report.execPath == "" {
+		report.execPath = node
+	}
+	if report.path == "" {
+		report.path = dir + ":/usr/bin:/bin"
+	}
+	npm := filepath.Join(dir, "npm-cli.js")
+	npmScript := `case "$1" in
 --version) echo 11.6.0 ;;
 ci)
   [ "$npm_config_cache" = "` + filepath.Join(dir, "cache") + `" ] || exit 9
@@ -78,6 +95,7 @@ ci)
   [ ` + fmt.Sprint(installExit) + ` = 0 ] || exit ` + fmt.Sprint(installExit) + `
   mkdir -p node_modules/.bin node_modules/pkg && echo module > node_modules/pkg/index.js && ln -s ../pkg/index.js node_modules/.bin/pkg ;;
 run)
+  if [ "$2" = env ]; then echo "npm_node_execpath=` + report.execPath + `"; echo "PATH=` + report.path + `"; exit 0; fi
   [ -d node_modules/pkg ] && [ -f package-lock.json ] || exit 7
   ` + checkBody + `
   cat <<'OUT'
@@ -92,7 +110,7 @@ esac
 	if err := os.Mkdir(cache, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	return fakeTools{node: node, npm: npm, cache: cache}
+	return fakeTools{node: node, npmCLI: npm, cache: cache, nodeLog: nodeLog}
 }
 
 func adapterRepo(t *testing.T, lock bool) (string, string, map[string]miniFile) {
@@ -111,7 +129,7 @@ func adapterRepo(t *testing.T, lock bool) (string, string, map[string]miniFile) 
 }
 
 func (f fakeTools) options(repo, commit, out string) adapterCaptureOptions {
-	return adapterCaptureOptions{repo: repo, commit: commit, out: out, nodeBin: f.node, npmBin: f.npm, npmCache: f.cache, gitBin: "git", stdout: &bytes.Buffer{}}
+	return adapterCaptureOptions{repo: repo, commit: commit, out: out, nodeBin: f.node, npmCLI: f.npmCLI, npmCache: f.cache, gitBin: "git", stdout: &bytes.Buffer{}}
 }
 
 func TestAdapterCaptureWritesAValidatedArtifactBoundToTheTree(t *testing.T) {
@@ -156,6 +174,22 @@ func TestAdapterCaptureWritesAValidatedArtifactBoundToTheTree(t *testing.T) {
 	if len(r.Results) != len(guestevidence.AdapterRequiredTests)+1 {
 		t.Errorf("results = %+v", r.Results)
 	}
+	cliData, err := os.ReadFile(tools.npmCLI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cliSum := sha256.Sum256(cliData)
+	if r.Npm.CLISHA256 != "sha256:"+hex.EncodeToString(cliSum[:]) || r.Node.ExecPath != tools.node {
+		t.Errorf("npm cli digest %q, node exec path %q: want the digest of %s and %s", r.Npm.CLISHA256, r.Node.ExecPath, tools.npmCLI, tools.node)
+	}
+	log, err := os.ReadFile(tools.nodeLog)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Every npm invocation goes through the selected node: its first argument is npm-cli.js, never an npm executable run directly.
+	if got := strings.Count(string(log), tools.npmCLI+"\n"); got < 4 {
+		t.Errorf("node ran npm-cli.js %d times, want every npm call (version, ci, run env, run check):\n%s", got, log)
+	}
 	if err := runAdapterCapture(context.Background(), tools.options(repo, commit, out)); err == nil {
 		t.Error("an existing artifact was overwritten")
 	}
@@ -165,22 +199,30 @@ func TestAdapterCaptureRefusesAndLeavesNoArtifact(t *testing.T) {
 	requireAdapterTools(t)
 	repo, commit, _ := adapterRepo(t, true)
 	noLockRepo, noLockCommit, _ := adapterRepo(t, false)
+	otherNodeDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(otherNodeDir, "node"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	cases := map[string]struct {
 		repo, commit string
 		tools        fakeTools
 		mutate       func(*adapterCaptureOptions)
 	}{
-		"the install fails offline":    {repo, commit, makeFakeTools(t, 1, ":", 0), nil},
-		"the check fails":              {repo, commit, makeFakeTools(t, 0, ":", 1), nil},
-		"the check changes the tree":   {repo, commit, makeFakeTools(t, 0, "echo changed >> src/a.ts", 0), nil},
-		"the check adds a file":        {repo, commit, makeFakeTools(t, 0, "echo new > src/new.ts", 0), nil},
-		"no lockfile in the commit":    {noLockRepo, noLockCommit, makeFakeTools(t, 0, ":", 0), nil},
-		"an abbreviated commit":        {repo, commit[:12], makeFakeTools(t, 0, ":", 0), nil},
-		"a commit that does not exist": {repo, strings.Repeat("1", 40), makeFakeTools(t, 0, ":", 0), nil},
-		"a relative output path":       {repo, commit, makeFakeTools(t, 0, ":", 0), func(o *adapterCaptureOptions) { o.out = "adapter.json" }},
-		"a missing npm cache":          {repo, commit, makeFakeTools(t, 0, ":", 0), func(o *adapterCaptureOptions) { o.npmCache = filepath.Join(t.TempDir(), "none") }},
-		"a relative node path":         {repo, commit, makeFakeTools(t, 0, ":", 0), func(o *adapterCaptureOptions) { o.nodeBin = "node" }},
-		"a required Pi CLI that skips": {repo, commit, makeFakeTools(t, 0, ":", 0), func(o *adapterCaptureOptions) { o.piCLIBin = "/opt/pi" }},
+		"the install fails offline":                  {repo, commit, makeFakeTools(t, 1, ":", 0), nil},
+		"the check fails":                            {repo, commit, makeFakeTools(t, 0, ":", 1), nil},
+		"the check changes the tree":                 {repo, commit, makeFakeTools(t, 0, "echo changed >> src/a.ts", 0), nil},
+		"the check adds a file":                      {repo, commit, makeFakeTools(t, 0, "echo new > src/new.ts", 0), nil},
+		"no lockfile in the commit":                  {noLockRepo, noLockCommit, makeFakeTools(t, 0, ":", 0), nil},
+		"an abbreviated commit":                      {repo, commit[:12], makeFakeTools(t, 0, ":", 0), nil},
+		"a commit that does not exist":               {repo, strings.Repeat("1", 40), makeFakeTools(t, 0, ":", 0), nil},
+		"a relative output path":                     {repo, commit, makeFakeTools(t, 0, ":", 0), func(o *adapterCaptureOptions) { o.out = "adapter.json" }},
+		"a missing npm cache":                        {repo, commit, makeFakeTools(t, 0, ":", 0), func(o *adapterCaptureOptions) { o.npmCache = filepath.Join(t.TempDir(), "none") }},
+		"a relative node path":                       {repo, commit, makeFakeTools(t, 0, ":", 0), func(o *adapterCaptureOptions) { o.nodeBin = "node" }},
+		"npm reports another node":                   {repo, commit, makeFakeToolsReporting(t, 0, ":", 0, fakeNpmReport{execPath: "/usr/bin/node"}), nil},
+		"scripts resolve node on another PATH entry": {repo, commit, makeFakeToolsReporting(t, 0, ":", 0, fakeNpmReport{path: otherNodeDir + ":/usr/bin"}), nil},
+		"scripts have no selected node on PATH":      {repo, commit, makeFakeToolsReporting(t, 0, ":", 0, fakeNpmReport{path: "/nonexistent:/usr/bin"}), nil},
+		"a relative npm-cli path":                    {repo, commit, makeFakeTools(t, 0, ":", 0), func(o *adapterCaptureOptions) { o.npmCLI = "npm-cli.js" }},
+		"a required Pi CLI that skips":               {repo, commit, makeFakeTools(t, 0, ":", 0), func(o *adapterCaptureOptions) { o.piCLIBin = "/opt/pi" }},
 	}
 	for name, c := range cases {
 		out := filepath.Join(t.TempDir(), "adapter.json")
