@@ -52,6 +52,10 @@ func (f *recordingProbeFS) LSM() string {
 	f.order = append(f.order, "lsm")
 	return "unconfined"
 }
+func (f *recordingProbeFS) Overflow() (uint32, uint32, bool) {
+	f.order = append(f.order, "overflow")
+	return 65534, 65534, true
+}
 
 // homeFacts is a view of /home/node/.profile that file permissions alone would not refuse.
 func homeFacts() map[string]cellview.Fact {
@@ -119,7 +123,7 @@ func TestRouteProbeMeasuresThePathBeforeTheAttempts(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"lstat /", "lstat /home", "lstat /home/node", "lstat /home/node/.profile", "acl /home/node/.profile", "identity", "lsm"} {
+	for _, want := range []string{"lstat /", "lstat /home", "lstat /home/node", "lstat /home/node/.profile", "acl /home/node/.profile", "identity", "lsm", "overflow"} {
 		if !slices.Contains(measured, want) {
 			t.Errorf("no %q in the measurement %q", want, measured)
 		}

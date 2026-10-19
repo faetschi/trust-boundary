@@ -5,6 +5,7 @@ package piruntime
 import (
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -115,4 +116,20 @@ func (OSRouteProbeFS) LSM() string {
 		context = context[:128]
 	}
 	return context
+}
+
+// Overflow reads the ids the kernel reports for an owner or group the process's user namespace does not
+// map. ok is false when either file cannot be read or does not hold an id.
+func (OSRouteProbeFS) Overflow() (uid, gid uint32, ok bool) {
+	read := func(name string) (uint32, bool) {
+		data, err := os.ReadFile("/proc/sys/fs/" + name)
+		if err != nil {
+			return 0, false
+		}
+		id, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 32)
+		return uint32(id), err == nil
+	}
+	uid, uidOK := read("overflowuid")
+	gid, gidOK := read("overflowgid")
+	return uid, gid, uidOK && gidOK
 }

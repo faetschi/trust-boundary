@@ -155,7 +155,7 @@ func writeRouteArtifact(t *testing.T, dir, kind string, mutate func(*guesteviden
 		d.ProbeProfileDigest, d.ProfileSourceDigest = sha256Of([]byte("probe profile")), guestPins.source
 		d.Cell.CellUID, d.Cell.CellGID = 100731, 100731
 		d.AdminPubkeyDigest, d.Limits = guestPins.admin, guestevidence.DirectRuntimeLimits
-		d.View = &cellview.View{EUID: 100731, EGID: 100731, Facts: []cellview.Fact{
+		d.View = &cellview.View{EUID: 100731, EGID: 100731, OverflowRead: true, OverflowUID: 65534, OverflowGID: 65534, Facts: []cellview.Fact{
 			{Path: "/", Kind: cellview.KindDir, Mode: 0o755}, {Path: "/home", Kind: cellview.KindDir, Mode: 0o755},
 			{Path: "/home/node", Kind: cellview.KindDir, Mode: 0o755, UID: 1000, GID: 1000},
 			{Path: "/home/node/.profile", Kind: cellview.KindFile, Mode: 0o644, UID: 1000, GID: 1000, Size: 100}}}

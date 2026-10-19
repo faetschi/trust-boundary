@@ -20,10 +20,13 @@ type fakeFS struct {
 	groups []uint32
 	lsm    string
 	acled  []string
+	// overflow ids the fake kernel reports; overflowBroken makes them unreadable.
+	overflowUID, overflowGID uint32
+	overflowBroken           bool
 }
 
 func newFS(facts ...Fact) *fakeFS {
-	fs := &fakeFS{facts: map[string]Fact{}, acl: map[string]string{}, euid: cellUID, egid: cellGID}
+	fs := &fakeFS{facts: map[string]Fact{}, acl: map[string]string{}, euid: cellUID, egid: cellGID, overflowUID: 65534, overflowGID: 65534}
 	for _, f := range facts {
 		fs.facts[f.Path] = f
 	}
@@ -43,6 +46,9 @@ func (f *fakeFS) ACL(p string) string {
 }
 func (f *fakeFS) Identity() (uint32, uint32, []uint32) { return f.euid, f.egid, f.groups }
 func (f *fakeFS) LSM() string                          { return f.lsm }
+func (f *fakeFS) Overflow() (uint32, uint32, bool) {
+	return f.overflowUID, f.overflowGID, !f.overflowBroken
+}
 
 func (f *fakeFS) lookup(p string) (Node, error) {
 	fact, err := f.Lstat(p)
@@ -273,5 +279,95 @@ func TestProblemsNameWhatPermissionsWouldAllowOrRefuse(t *testing.T) {
 	v.Facts[1].Path = "/home/"
 	if got := v.Problems("/home/node/.profile", cellUID, cellGID, admitted); len(got) == 0 {
 		t.Error("an unclean component")
+	}
+}
+
+// The reviewer's scenario: Linux shows an owner that the cell's user namespace does not map as the
+// overflow id (default 65534), and the cell template allows cell uid 65534. A host-root-owned 0400 file
+// then looks owned by the probe, its owner class reads it, yet open fails with EACCES from file
+// permissions alone. The measurement must not call that evidence of confinement.
+func TestAnOverflowIdIsNeverTakenForOwnershipOfTheProbe(t *testing.T) {
+	const overflow = 65534
+	hostRootFile := func() *fakeFS {
+		fs := newFS(dir("/", 0o755, 0), dir("/home", 0o755, 0), dir("/home/node", 0o755, 1000),
+			file("/home/node/.profile", 0o400, overflow, 807))
+		fs.euid, fs.egid = overflow, overflow
+		return fs
+	}
+	target := "/home/node/.profile"
+	got := hostRootFile()
+	v := Measure(got, target)
+	if p := v.Problems(target, overflow, overflow, admitted); !strings.Contains(strings.Join(p, ";"), "overflow") {
+		t.Errorf("an overflow-owned 0400 file read by the overflow identity: %v", p)
+	}
+	if v.Permits(v.Facts[3], bitRead) {
+		t.Error("the owner class applied to an overflow owner")
+	}
+
+	for name, set := range map[string]func(*fakeFS){
+		"the probe identity is the overflow uid": func(fs *fakeFS) { fs.egid = cellGID; fs.euid = overflow },
+		"the probe group is the overflow gid":    func(fs *fakeFS) { fs.euid = cellUID; fs.egid = overflow },
+		"a supplementary group is the overflow":  func(fs *fakeFS) { fs.euid, fs.egid, fs.groups = cellUID, cellGID, []uint32{4242, overflow} },
+		"the file has an overflow owner":         func(fs *fakeFS) { fs.euid, fs.egid = cellUID, cellGID },
+		"a directory has an overflow owner": func(fs *fakeFS) {
+			fs.euid, fs.egid = cellUID, cellGID
+			fs.facts["/home"] = dir("/home", 0o755, overflow)
+			fs.facts[target] = file(target, 0o644, 1000, 807)
+		},
+		"a directory has an overflow group": func(fs *fakeFS) {
+			fs.euid, fs.egid = cellUID, cellGID
+			fs.facts["/home/node"] = Fact{Path: "/home/node", Kind: KindDir, Mode: 0o755, UID: 1000, GID: overflow}
+			fs.facts[target] = file(target, 0o644, 1000, 807)
+		},
+		"the file has an overflow group the probe would match": func(fs *fakeFS) {
+			fs.euid, fs.egid, fs.groups = cellUID, cellGID, []uint32{overflow}
+			fs.facts[target] = Fact{Path: target, Kind: KindFile, Mode: 0o040, UID: 1000, GID: overflow, Size: 807}
+		},
+		"the file has an overflow group and open for other": func(fs *fakeFS) {
+			fs.euid, fs.egid = cellUID, cellGID
+			fs.facts[target] = Fact{Path: target, Kind: KindFile, Mode: 0o004, UID: 1000, GID: overflow, Size: 807}
+		},
+	} {
+		fs := hostRootFile()
+		set(fs)
+		p := Measure(fs, target).Problems(target, fs.euid, fs.egid, admitted)
+		if !strings.Contains(strings.Join(p, ";"), "overflow") {
+			t.Errorf("%s: %v", name, p)
+		}
+	}
+
+	// An overflow id that differs from the default is honoured too.
+	fs := openHome()
+	fs.overflowUID, fs.overflowGID = 1000, 1000
+	if p := problemsOf(fs, target); !strings.Contains(strings.Join(p, ";"), "overflow") {
+		t.Errorf("a custom overflow uid equal to the owner: %v", p)
+	}
+}
+
+func TestUnreadableOverflowIdsRefuseTheView(t *testing.T) {
+	fs := openHome()
+	fs.overflowBroken = true
+	v := Measure(fs, "/home/node/.profile")
+	if v.OverflowRead {
+		t.Error("unreadable overflow ids recorded as read")
+	}
+	if p := problemsOf(fs, "/home/node/.profile"); !strings.Contains(strings.Join(p, ";"), "overflow") {
+		t.Errorf("unreadable overflow ids: %v", p)
+	}
+	// A view that carries no overflow statement at all (an older or forged artifact) is refused.
+	v = Measure(openHome(), "/home/node/.profile")
+	v.OverflowRead, v.OverflowUID, v.OverflowGID = false, 0, 0
+	if p := v.Problems("/home/node/.profile", cellUID, cellGID, admitted); !strings.Contains(strings.Join(p, ";"), "overflow") {
+		t.Errorf("a view without overflow ids: %v", p)
+	}
+}
+
+func TestMappedIdsStillPassWithTheOverflowIdsRecorded(t *testing.T) {
+	v := Measure(openHome(), "/home/node/.profile")
+	if !v.OverflowRead || v.OverflowUID != 65534 || v.OverflowGID != 65534 {
+		t.Errorf("overflow ids = %+v", v)
+	}
+	if p := v.Problems("/home/node/.profile", cellUID, cellGID, admitted); len(p) != 0 {
+		t.Errorf("mapped owners: %v", p)
 	}
 }

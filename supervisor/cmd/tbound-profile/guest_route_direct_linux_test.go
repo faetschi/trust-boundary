@@ -137,6 +137,7 @@ func (f deniedFS) Lstat(p string) (cellview.Fact, error) {
 func (f deniedFS) ACL(p string) string                { return f.acl[p] }
 func (deniedFS) Identity() (uint32, uint32, []uint32) { return 100731, 100732, nil }
 func (deniedFS) LSM() string                          { return "unconfined" }
+func (deniedFS) Overflow() (uint32, uint32, bool)     { return 65534, 65534, true }
 
 // drSignProfile signs the host profile with a fresh key, writes the three files and returns the digest the
 // service journals for it.

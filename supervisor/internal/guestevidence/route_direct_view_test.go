@@ -15,7 +15,7 @@ const (
 // goodView is what the probe in the cell measured for a target that file permissions alone would not
 // refuse: a world-readable file below searchable directories, none owned by the cell identity.
 func goodView() *cellview.View {
-	return &cellview.View{EUID: testCellUID, EGID: testCellGID, LSM: "unconfined", Facts: []cellview.Fact{
+	return &cellview.View{EUID: testCellUID, EGID: testCellGID, LSM: "unconfined", OverflowRead: true, OverflowUID: 65534, OverflowGID: 65534, Facts: []cellview.Fact{
 		{Path: "/", Kind: cellview.KindDir, Mode: 0o755},
 		{Path: "/home", Kind: cellview.KindDir, Mode: 0o755},
 		{Path: "/home/node", Kind: cellview.KindDir, Mode: 0o755, UID: 1000, GID: 1000},
@@ -69,6 +69,11 @@ func TestDirectRuntimeArtifactMutations(t *testing.T) {
 		"an unclean component":                        func(r *RouteDenied) { fact(r, "/home").Path = "/home/" },
 		"the probe is not the cell identity":          func(r *RouteDenied) { r.View.EUID = 0 },
 		"the probe has another group":                 func(r *RouteDenied) { r.View.EGID = 1 },
+		"the overflow ids were not read":              func(r *RouteDenied) { r.View.OverflowRead = false },
+		"no overflow ids stated":                      func(r *RouteDenied) { r.View.OverflowRead, r.View.OverflowUID, r.View.OverflowGID = false, 0, 0 },
+		"a file owner that is the overflow uid":       func(r *RouteDenied) { fact(r, "/home/node/.profile").UID = 65534 },
+		"a directory group that is the overflow gid":  func(r *RouteDenied) { fact(r, "/home/node").GID = 65534 },
+		"a supplementary group that is the overflow":  func(r *RouteDenied) { r.View.Groups = []uint32{65534} },
 		"the artifact names no cell identity":         func(r *RouteDenied) { r.Cell.CellUID, r.Cell.CellGID = 0, 0 },
 		"the cell identity is root":                   func(r *RouteDenied) { r.Cell.CellUID, r.View.EUID = 0, 0 },
 		"limits not stated":                           func(r *RouteDenied) { r.Limits = nil },
@@ -158,5 +163,20 @@ func TestDirectRuntimeLimitsStateThatLandlockAloneIsNotShown(t *testing.T) {
 		if !strings.Contains(all, want) {
 			t.Errorf("the limits do not mention %q", want)
 		}
+	}
+}
+
+// The review finding against 0fd1834: the kernel shows an owner the cell's user namespace does not map as
+// the overflow id (65534), and the cell template allows cell uid 65534. A file owned by host root then
+// looks owned by the probe, so ordinary permissions looked like they allowed an open that file permissions
+// alone refuse. The artifact is refused.
+func TestDirectRuntimeArtifactRefusesAnOverflowOwnedTarget(t *testing.T) {
+	r := cloneDirect(goodDirectRuntime())
+	r.Cell.CellUID, r.Cell.CellGID = 65534, 65534
+	r.View.EUID, r.View.EGID = 65534, 65534
+	r.View.Facts[3] = cellview.Fact{Path: "/home/node/.profile", Kind: cellview.KindFile, Mode: 0o400, UID: 65534, GID: 65534, Size: 807}
+	err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, r), expect())
+	if err == nil || !strings.Contains(err.Error(), "overflow") {
+		t.Errorf("an overflow-owned 0400 file read as the overflow identity: %v", err)
 	}
 }

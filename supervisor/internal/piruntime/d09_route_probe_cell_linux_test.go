@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -300,6 +301,15 @@ func TestOSRouteProbeFSMeasuresARealPathAndChangesNothing(t *testing.T) {
 	}
 	if v.EUID != uint32(os.Geteuid()) || v.EGID != uint32(os.Getegid()) {
 		t.Errorf("identity %d:%d", v.EUID, v.EGID)
+	}
+	for path, got := range map[string]uint32{"/proc/sys/fs/overflowuid": v.OverflowUID, "/proc/sys/fs/overflowgid": v.OverflowGID} {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want, err := strconv.ParseUint(strings.TrimSpace(string(raw)), 10, 32); err != nil || uint32(want) != got || !v.OverflowRead {
+			t.Errorf("%s: recorded %d (read %v), the kernel says %q", path, got, v.OverflowRead, raw)
+		}
 	}
 	for _, f := range v.Facts {
 		if f.Path == file && (f.Mode != 0o644 || f.Size != 5 || f.UID != uint32(os.Geteuid())) {
