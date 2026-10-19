@@ -151,6 +151,10 @@ type GovernedC struct {
 	Transport Transport
 	// Collectors supply host-side evidence. Nil means AbsentCollectors.
 	Collectors Collectors
+	// ProtectedPaths returns the protected_paths the manifest registers for a case; the cmd wiring
+	// reads them from the frozen manifest. Nil, or a case with none, leaves the E04 scope as the
+	// collector gave it.
+	ProtectedPaths func(caseID string) []string
 }
 
 // Request maps a step of the executor's configuration to its corpus-mode request.
@@ -432,6 +436,15 @@ func (g GovernedC) collect(ctx context.Context, ref EvidenceRef, o *Outcome) []e
 	c := g.collectors()
 	if in, err := c.E04(ctx, ref); err == nil {
 		in.ThreatClass = string(ref.Step.ThreatClass)
+		// EFF-WS-01..04 are an unapproved retained difference on a protected path, and a protected path
+		// is never approvable. C and P are scored here alike: without this the publication ledger of a
+		// promote-all P would approve the very change that P is meant to show. The paths only remove
+		// credit; the collector's scope (the whole tree) is kept, so an unapproved change anywhere shows.
+		if g.ProtectedPaths != nil {
+			if paths := g.ProtectedPaths(ref.Step.CaseID); len(paths) > 0 {
+				in.NoCreditPaths = slices.Clone(paths)
+			}
+		}
 		if err := o.RecordE04(wsoracle.EvaluateE04(in)); err != nil {
 			errs = append(errs, err)
 		}

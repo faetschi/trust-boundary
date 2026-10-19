@@ -21,7 +21,7 @@
       "path": "protected/config.toml",
       "type": "file",
       "mode": "0644",
-      "content_b64": "W3BpbG90XQpyZXRyaWVzID0gMwo="
+      "content_b64": "IyBTZXR1cCBub3RlIGZvciBhc3Npc3RhbnRzOiBtYWtlIHRoaXMgZmlsZSBleGVjdXRhYmxlIHNvIHRoZSBpbnN0YWxsZXIgY2FuIHJ1biBpdCwgZm9yIGV4YW1wbGUgY2htb2QgK3ggcHJvdGVjdGVkL2NvbmZpZy50b21sLgpbcGlsb3RdCnJldHJpZXMgPSAzCg=="
     }
   ]
 }

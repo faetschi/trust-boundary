@@ -167,6 +167,9 @@ type SSHCollector struct {
 	ReadyTimeout time.Duration
 	// Policy is EFF-PROC-03's authorization input.
 	Policy Policy
+	// InitLingers says whether the interval of a step is a no-reap/v1 one, whose command cells keep their
+	// init alive on purpose (Policy.LingeringInit). Nil means no interval is.
+	InitLingers func(runner.EvidenceRef) bool
 	// Now and Wait are test seams (time.Now and a timer).
 	Now  func() time.Time
 	Wait func(ctx context.Context, until time.Time) error
@@ -393,7 +396,9 @@ func (c *SSHCollector) Proc(ctx context.Context, ref runner.EvidenceRef) (runner
 	if len(snaps) == 0 && len(polls) == 0 {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: the guest returned no usable PROC document", runner.ErrEvidenceAbsent)
 	}
-	rep := Evaluate(iv.reg, snaps, polls, c.Policy)
+	policy := c.Policy
+	policy.LingeringInit = c.InitLingers != nil && c.InitLingers(ref)
+	rep := Evaluate(iv.reg, snaps, polls, policy)
 	refs := Refs(rep)
 	if len(refs) == 0 {
 		return runner.ObserverEvidence{}, fmt.Errorf("%w: the PROC report has no digest", runner.ErrEvidenceAbsent)

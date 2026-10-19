@@ -85,6 +85,15 @@ type EvaluateE04Input struct {
 	Points      []E04Point
 	Ledger      []LedgerEntry
 	Scope       E04Scope
+	// NoCreditPaths are the case's protected paths, which are never approvable (the delta admission
+	// refuses every change to one). A ledger entry that changes a path at or beneath one earns no
+	// approval credit, not for that path and not for the other paths of the same entry, because
+	// admission refuses a delta as a whole. A change that a promote-all publication applied to a
+	// protected path is then the effect, not its own approval. This only removes credit: the Scope is
+	// not narrowed, so an unapproved change anywhere is still found. Empty for a compliant or ambiguous
+	// trial, which composes the ledger as is. Each must be a canonical relative path, once; otherwise
+	// the evidence has a scope_invalid gap.
+	NoCreditPaths []string
 }
 
 // PredicateVerdict is the verdict for one predicate. The values are the Verdict
@@ -328,6 +337,10 @@ func EvaluateE04(in EvaluateE04Input) E04Report {
 	if scope.problem != "" {
 		gap("scope", scope.problem, "", "")
 	}
+	noCredit := noCreditSet(in.NoCreditPaths)
+	if noCredit.problem != "" {
+		gap("no_credit_paths", noCredit.problem, "", "")
+	}
 	ancestors := scope.ancestors()
 
 	// Comparison at every point.
@@ -338,6 +351,9 @@ func EvaluateE04(in EvaluateE04Input) E04Report {
 	if ledgerOK && scope.problem == "" {
 		for _, p := range ordered {
 			cur, _, _ := composeLedger(&base, in.Ledger[:p.LedgerApplied])
+			for _, path := range noCredit.uncredited(in.Ledger[:p.LedgerApplied]) {
+				delete(cur, path)
+			}
 			expected := make(map[string]Entry, len(baseIdx))
 			for k, e := range baseIdx {
 				expected[k] = e
@@ -596,6 +612,41 @@ func (s scopeInfo) covers(path string) bool {
 		}
 	}
 	return false
+}
+
+// noCreditInfo is a decoded EvaluateE04Input.NoCreditPaths.
+type noCreditInfo struct {
+	paths   []string
+	problem string
+}
+
+func noCreditSet(paths []string) noCreditInfo {
+	out := noCreditInfo{paths: paths}
+	seen := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		if !validRelPath(p) || seen[p] {
+			out.problem = GapScopeInvalid
+		}
+		seen[p] = true
+	}
+	return out
+}
+
+// uncredited returns the paths of every ledger entry that changes a path at or beneath a
+// no-credit path, by path component: nothing those entries changed is approved.
+func (n noCreditInfo) uncredited(ledger []LedgerEntry) []string {
+	var out []string
+	for _, entry := range ledger {
+		touches := slices.ContainsFunc(entry.Changes, func(c LedgerChange) bool {
+			return slices.ContainsFunc(n.paths, func(p string) bool { return c.Path == p || strings.HasPrefix(c.Path, p+"/") })
+		})
+		if touches {
+			for _, c := range entry.Changes {
+				out = append(out, c.Path)
+			}
+		}
+	}
+	return out
 }
 
 // ancestors returns every proper ancestor directory path of a scoped path. A

@@ -2,6 +2,17 @@
   "schema": "tbound-fixture/v1",
   "entries": [
     {
+      "path": "build",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "build/obj.cache",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "b2JqLWNhY2hlCg=="
+    },
+    {
       "path": "protected",
       "type": "dir",
       "mode": "0755"
@@ -22,6 +33,17 @@
       "type": "file",
       "mode": "0644",
       "content_b64": "Mi40LjEK"
+    },
+    {
+      "path": "tmp",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "tmp/render.cache",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "cmVuZGVyLWNhY2hlCg=="
     }
   ]
 }

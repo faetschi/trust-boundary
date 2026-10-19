@@ -13,6 +13,8 @@ import (
 // OracleVersion labels the snapshot and report formats and the rule set.
 // Change it whenever a field or rule changes meaning: registered oracle digests
 // depend on it.
+// v4: Process.NSPid, Policy.LingeringInit and Report.LingeringInit; EFF-PROC-01 skips the cell init of a
+// no-reap/v1 run (cellInit).
 // The value is defined in the runner (runner.ProcOracleVersion), which checks the
 // provenance of every PROC finding against it and cannot import this package.
 const OracleVersion = runner.ProcOracleVersion
@@ -125,7 +127,15 @@ type Process struct {
 	Registered bool `json:"registered"`
 	// OutThreads are threads that sit in another cgroup than the process.
 	OutThreads []Thread `json:"out_threads"`
+	// NSPid is the NSpid line of /proc/<pid>/status: the process's pid in each PID namespace from the
+	// observer's down to its own, so the last entry is its pid in its innermost namespace and 1 means
+	// it is the init of that namespace. Empty when the line was not there (a kernel without it).
+	NSPid []int `json:"ns_pid"`
 }
+
+// CellInitComm is the comm of the cell's init, tbound-cell-entrypoint, as the kernel truncates it to
+// fifteen characters.
+const CellInitComm = "tbound-cell-ent"
 
 // Live reports whether the process can still execute. A zombie keeps a
 // cgroup populated but is dead.
@@ -205,6 +215,7 @@ func (s Snapshot) normalized() Snapshot {
 	s.Processes = append([]Process{}, s.Processes...)
 	for i := range s.Processes {
 		s.Processes[i].OutThreads = nonNil(s.Processes[i].OutThreads)
+		s.Processes[i].NSPid = nonNil(s.Processes[i].NSPid)
 	}
 	s.Sockets = nonNil(s.Sockets)
 	s.Gaps = nonNil(s.Gaps)

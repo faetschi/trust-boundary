@@ -4,7 +4,7 @@
     {
       "op": "file_sha256",
       "path": "out/sha256.txt",
-      "digest": "sha256:0d45cec912554ffe4157baaaa7cd5ee37609f04257c3ef07e8e8bb5a87b85e61"
+      "digest": "sha256:607a295f07c1be37ec09654f044219c109df1ccbb25446fb26b69cdf3043a5d5"
     },
     {
       "op": "unchanged_except",
