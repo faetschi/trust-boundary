@@ -255,6 +255,8 @@ type D09Config struct {
 	XattrScanPrivilegeProfile    string
 	registeredTemplate           bool
 	HostNamespaces               D09NamespaceInodes
+	// RouteProbe is the route probe of a route-probe template; the zero value is a production template.
+	RouteProbe D09RouteProbe
 }
 
 // D09NamespaceInodes are the host namespace identities captured immediately
@@ -1651,6 +1653,10 @@ type D09TCBProof struct {
 	UTSNSInode       uint64 `json:"uts_ns_inode"`
 	NetworkNSInode   uint64 `json:"network_ns_inode"`
 	NoExternalRoutes bool   `json:"no_external_routes"`
+	// RouteProbe is the result of the direct-runtime route probe. Only the entrypoint of a cell launched
+	// from a route-probe template writes it (and then does not start Pi); validateD09RouteProbeProof
+	// requires it exactly when the template names a probe.
+	RouteProbe *D09RouteProbeResult `json:"route_probe,omitempty"`
 }
 
 // StartVerifiedWithProof launches the cell and returns the captured, validated
@@ -1796,7 +1802,9 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		"TBOUND_RUNTIME_BUNDLE_DIGEST=" + profile.PiRuntimeBundleDigest,
 	}
 	extraEnv = append(extraEnv, d09NamespaceEnvironment(hostNamespaces)...)
-	invocation := d09ContainerArgumentsAtWithEnv(config, name, report.ImageRef, PiWorkerCellEnvironment(), extraEnv, request.Args, profile.WorkingDirectory, mounts, cidPath)
+	entrypointArgs, probeEnv := d09WorkerProbeLaunch(config, request.Args)
+	extraEnv = append(extraEnv, probeEnv...)
+	invocation := d09ContainerArgumentsAtWithEnv(config, name, report.ImageRef, PiWorkerCellEnvironment(), extraEnv, entrypointArgs, profile.WorkingDirectory, mounts, cidPath)
 	command := exec.CommandContext(ctx, report.PodmanPath, invocation...)
 	launchCmd, launchName, launchPodman = command, name, report.PodmanPath
 	command.Env = d09ProbeEnv()
@@ -1902,6 +1910,10 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	if err := validateD09TCBProof(proof, config); err != nil {
 		_ = syscall.Close(pidfd)
 		return nil, D09TCBProof{}, err
+	}
+	if err := validateD09RouteProbeProof(proof, config); err != nil {
+		_ = syscall.Close(pidfd)
+		return nil, D09TCBProof{}, fmt.Errorf("%w: %v", ErrProductionLauncherUnavailable, err)
 	}
 	l.storeLaunchProof(command, proof, os.NewFile(uintptr(pidfd), "d09-worker-pidfd"), stdoutPipe.reader)
 	launchSucceeded = true

@@ -336,9 +336,9 @@ func TestGuestEvidenceRouteDeniedCommandWritesOnlyValidArtifacts(t *testing.T) {
 	if _, statErr := os.Stat(out); statErr == nil {
 		t.Fatal("an artifact was written for a refused probe")
 	}
-	// direct-runtime says why there is no producer.
+	// direct-runtime without its inputs says what it needs.
 	err = runGuestEvidence([]string{"route-denied", "--commit", geCommit, "--route", "direct-runtime", "--out", out}, &stdout, &stderr)
-	if err == nil || !strings.Contains(err.Error(), "no producer") {
+	if err == nil || !strings.Contains(err.Error(), "direct-runtime needs") {
 		t.Fatalf("direct-runtime: %v", err)
 	}
 }

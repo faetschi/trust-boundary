@@ -25,6 +25,10 @@
 //     digest-verified Node binary at fd3 with the fixed argv and exactly the
 //     four signed environment fields.
 //
+// A fifth, gated mode is the direct-runtime route probe (route_probe_linux.go): selected only by the
+// signed route-probe template, it does steps 1 to 3 as for a Pi cell, then reads the registered
+// outside-workspace target (reads only), reports the errnos in the proof, and exits without Pi.
+//
 // The writable command view, descriptor role mapping, and session composition
 // are owned elsewhere (see docs/governed-setup.md and the session composition
 // runbook). This entrypoint deliberately does not open a private-Git or host
@@ -87,6 +91,10 @@ func main() {
 	delta, deltaErr := cellDeltaFromEnv(os.Getenv, commandMode)
 	if deltaErr != nil {
 		fatal("command-cell delta: %v", deltaErr)
+	}
+	probe, probeErr := routeProbeFromEnv(os.Args, os.Getenv, commandMode)
+	if probeErr != nil {
+		fatal("route probe: %v", probeErr)
 	}
 	var target string
 	var argv []string
@@ -223,12 +231,24 @@ func main() {
 	if proofFile == nil {
 		fatal("dedicated TCB proof fd%d is not open", proofFD)
 	}
+	if probe != nil {
+		// Route probe mode: the attempts run here, after the same measurements, mounts and Landlock
+		// ruleset as a Pi cell, and are reported in the proof. Pi is not started.
+		proof["route_probe"] = piruntime.RunD09RouteProbe(piruntime.OSRouteProbeFS{}, *probe)
+	}
 	if encoded, err := json.Marshal(proof); err == nil {
+		if len(encoded) > proofLineLimit {
+			fatal("TCB proof is %d bytes, the host reads at most %d", len(encoded), proofLineLimit)
+		}
 		_, _ = proofFile.Write(append(encoded, '\n'))
 	}
 	// Close the proof pipe before Node starts so the worker cannot forge it.
 	if err := proofFile.Close(); err != nil {
 		fatal("close TCB proof fd%d: %v", proofFD, err)
+	}
+	if probe != nil {
+		holdForHost(routeProbeHold)
+		os.Exit(0)
 	}
 
 	execTarget := "/proc/self/fd/3"

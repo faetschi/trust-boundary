@@ -264,6 +264,7 @@ func journalProductionLaunchProof(journal *audit.Journal, lifecycle *productionL
 		proof.LandlockRulesetDigest != template.LandlockRulesetDigest ||
 		proof.ImageDigest != template.ExpectedImageDigest || proof.TemplateDigest != templateDigest ||
 		proof.ContainerName == "" || proof.LeaderPID <= 0 || proof.ContainerLeaderPID != 1 ||
+		(proof.RouteProbe != nil) != (template.RouteProbe != nil) ||
 		launcherPID <= 0 || proof.LauncherProcessPID != launcherPID || !proof.ConsumerMountsVerified || !proof.RawSourceFDsClosed ||
 		proof.WorkerMountID == 0 || proof.RuntimeMountID == 0 || proof.WorkerDevice == 0 || proof.WorkerInode == 0 ||
 		proof.RuntimeDevice == 0 || proof.RuntimeInode == 0 || !strings.HasSuffix(proof.ImageRef, "@"+template.ExpectedImageDigest) {

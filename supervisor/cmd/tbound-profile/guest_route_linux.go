@@ -28,8 +28,7 @@ import (
 // `cat: <operand>: Permission denied` on stderr, nothing on stdout; for the control, exit 0 and the
 // file's bytes). A receipt whose result digest is anything else is not an attempt and nothing is written.
 //
-// Only the bash-view route is produced here. The Pi runtime cell has no path that lets a run make a
-// direct read, so the direct-runtime artifact has no producer yet.
+// The direct-runtime route is produced from a probe run of the Pi runtime cell (guest_route_direct_linux.go).
 
 const (
 	commandSettledKind   = "production_d09_command_settled"
@@ -43,16 +42,25 @@ type routeProbeOptions struct {
 	target                  string
 	controlPath             string
 	controlFile             string
+	// direct-runtime only: the pins of the run (the run produced no completed response), the probe and
+	// production cell templates, and the tree root sees the target in.
+	profileHash, frozenSource         string
+	probeTemplate, productionTemplate string
+	targetRoot                        string
 }
 
 // routeProbeEnv holds the seams of the probe: how the journal is read and how a receipt is checked.
 type routeProbeEnv struct {
 	readJournal     func(path string) ([]byte, error)
 	validateReceipt func(piruntime.D09CommandReceipt) error
+	readFile        func(path string) ([]byte, error)
+	stat            func(path string) (os.FileInfo, error)
 }
 
 func productionRouteProbeEnv() routeProbeEnv {
 	return routeProbeEnv{
+		readFile: func(path string) ([]byte, error) { return readBoundedFile(path, maxGuestInputSize) },
+		stat:     os.Stat,
 		readJournal: func(path string) ([]byte, error) {
 			f, err := os.Open(path)
 			if err != nil {
@@ -87,7 +95,7 @@ func probeRouteDenied(o routeProbeOptions, env routeProbeEnv) (guestevidence.Rou
 	case "bash-view":
 		kind = guestevidence.KindRouteBashView
 	case "direct-runtime":
-		return d, "", errors.New("the direct-runtime route has no producer: the Pi runtime cell offers no path for a direct read, so a probe cannot be made through the production cells")
+		return probeRouteDirectRuntime(o, env)
 	default:
 		return d, "", fmt.Errorf("--route %q is not bash-view or direct-runtime", o.route)
 	}

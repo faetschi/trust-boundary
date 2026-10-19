@@ -33,7 +33,7 @@ usage:
   tbound-run selfcheck --config run.json
   tbound-run fixture digest <spec.json>
   tbound-run evq-capture  --repo <git repo> --commit <40-hex> --out <new dir>     (Linux or WSL)
-  tbound-run evq-adapter-capture --repo <git repo> --commit <40-hex> --node <abs> --npm <abs> --npm-cache <dir> --out <new file>   (Linux or WSL; offline)
+  tbound-run evq-adapter-capture --repo <git repo> --commit <40-hex> --node <abs> --npm-cli <abs npm-cli.js> --npm-cache <dir> --out <new file>   (Linux or WSL; offline)
   tbound-run evq          --mapping evq-mapping.json --config run.json --capture <dir> [--guest-binary-sha256 sha256:.. (needed for guest kinds) --artifact kind=file ...] --out evq_results.json
   tbound-run route-report --matrix route-matrix.json --config run.json --capture <dir> --out route_report.json
 `

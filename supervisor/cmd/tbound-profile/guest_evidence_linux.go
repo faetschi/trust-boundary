@@ -35,6 +35,7 @@ const guestEvidenceUsage = `  tbound-profile guest-evidence capability        --
   tbound-profile guest-evidence netsink           --commit <40-hex> --out <new file>
   tbound-profile guest-evidence provider-exchange --commit <40-hex> --response <file> --profile-hash <sha256> --frozen-source-digest <sha256> --out <new file>
   tbound-profile guest-evidence route-denied      --commit <40-hex> --route bash-view --run-id <id> --response <file> --target <abs path> --control-path <rel path> --control-file <file> --profile-hash <sha256> --frozen-source-digest <sha256> [--audit-root <dir>] --out <new file>
+  tbound-profile guest-evidence route-denied      --commit <40-hex> --route direct-runtime --run-id <id> --target <abs path> --control-path <rel path> --profile-hash <sha256> --frozen-source-digest <sha256> --probe-template <file> --production-template <file> --target-root <dir> [--audit-root <dir>] --out <new file>
   tbound-profile guest-evidence tests             --commit <40-hex> --kind guest-tests-procoracle|guest-tests-landlock-connect --test-binary <abs file> --out <new file>
 `
 
@@ -70,12 +71,15 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	frozenSource := flags.String("frozen-source-digest", "", "provider-exchange: run.json pins.frozen_source_digest")
 	testKind := flags.String("kind", "", "tests: the artifact kind")
 	testBinary := flags.String("test-binary", "", "tests: the test binary built by tbound-run evq-capture")
-	route := flags.String("route", "", "route-denied: bash-view (direct-runtime has no producer)")
+	route := flags.String("route", "", "route-denied: bash-view or direct-runtime")
 	runID := flags.String("run-id", "", "route-denied: receipt.run_id of the route-probe run")
 	auditRoot := flags.String("audit-root", "/var/lib/tbound/audit", "route-denied: directory of the service audit journals")
 	target := flags.String("target", "", "route-denied: the registered outside-workspace file the probe commands request")
 	controlPath := flags.String("control-path", "", "route-denied: the workspace file the control command reads, relative to /work")
 	controlFile := flags.String("control-file", "", "route-denied: that workspace file as it is on the guest, for its bytes")
+	probeTemplate := flags.String("probe-template", "", "route-denied direct-runtime: the route-probe cell template the probe cell was launched from")
+	productionTemplate := flags.String("production-template", "", "route-denied direct-runtime: the production cell template the probe template derives from")
+	targetRoot := flags.String("target-root", "", "route-denied direct-runtime: a directory where root sees the cell image tree, to prove the target exists from outside the cell")
 	if err := flags.Parse(rest); err != nil {
 		return err
 	}
@@ -108,7 +112,8 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 		data, err = providerExchangeFrom(*response)
 	case "route-denied":
 		data, artifactKind, err = probeRouteDenied(routeProbeOptions{route: *route, runID: *runID, auditRoot: *auditRoot, response: *response,
-			target: *target, controlPath: *controlPath, controlFile: *controlFile}, productionRouteProbeEnv())
+			target: *target, controlPath: *controlPath, controlFile: *controlFile,
+			profileHash: *profileHash, frozenSource: *frozenSource, probeTemplate: *probeTemplate, productionTemplate: *productionTemplate, targetRoot: *targetRoot}, productionRouteProbeEnv())
 	case "tests":
 		artifactKind = *testKind
 		var run guestevidence.TestRun

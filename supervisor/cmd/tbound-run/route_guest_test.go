@@ -133,6 +133,26 @@ func writeRouteArtifact(t *testing.T, dir, kind string, mutate func(*guesteviden
 		Control: attempt("control", "read", 0, 2),
 		Attempts: []guestevidence.RouteAttempt{attempt("absolute", "denied", 1, 3), attempt("traversal", "denied", 1, 4),
 			attempt("symlink", "denied", 1, 5)}}
+	if kind == guestevidence.KindRouteDirectRuntime {
+		// The Pi runtime cell artifact: one proof, open/stat/list by each name, the target shown from outside.
+		var observed []guestevidence.RouteDirectObservation
+		for _, method := range guestevidence.RouteMethods {
+			for _, op := range guestevidence.RouteDirectOps {
+				errno := 13
+				if op == guestevidence.RouteOpStat {
+					errno = 0
+				}
+				observed = append(observed, guestevidence.RouteDirectObservation{Method: method, Op: op, Errno: errno})
+			}
+		}
+		var err error
+		d.Control, d.Attempts, err = guestevidence.DirectRuntimeAttempts(d.Target, "/work/src/release.txt", "tbound-d09-cell-1", sha256Of([]byte("proof")), 2, 0, observed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d.Cell.ProductionTemplateDigest = sha256Of([]byte("production template"))
+		d.TargetFact = &guestevidence.RouteTarget{Regular: true, Mode: 0o644, Size: 100, ParentMode: 0o755}
+	}
 	if mutate != nil {
 		mutate(&d)
 	}

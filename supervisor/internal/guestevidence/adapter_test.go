@@ -58,8 +58,8 @@ func goodAdapter(t *testing.T) AdapterRun {
 	t.Helper()
 	r := AdapterRun{CommitTree: adapterTree, AdapterTree: strings.Repeat("d", 40), AdapterTreeDigest: digestOf("adapter tree"), AdapterFiles: 12,
 		PackageJSONSHA256: digestOf("package.json"), PackageLockSHA256: digestOf("package-lock.json"),
-		Node: AdapterNode{Version: "v24.15.0", SHA256: digestOf("node"), Platform: "linux", Arch: "x64"},
-		Npm:  AdapterNpm{Version: "11.6.0", InstallArgv: slices.Clone(AdapterInstallArgv), NodeModulesDigest: digestOf("node_modules"), NodeModulesFiles: 3000},
+		Node: AdapterNode{Version: "v24.15.0", SHA256: digestOf("node"), Platform: "linux", Arch: "x64", ExecPath: "/opt/node/bin/node"},
+		Npm:  AdapterNpm{Version: "11.6.0", CLISHA256: digestOf("npm-cli"), InstallArgv: slices.Clone(AdapterInstallArgv), NodeModulesDigest: digestOf("node_modules"), NodeModulesFiles: 3000},
 		Argv: slices.Clone(AdapterCheckArgv), Env: map[string]string{"LANG": "C", "NO_COLOR": "1"}}
 	remakeAdapterOutput(&r, adapterOutput)
 	if len(r.Results) == 0 {
@@ -102,6 +102,9 @@ func TestAdapterRequiredValues(t *testing.T) {
 		"node not a release":     func(r *AdapterRun) { r.Node.Version = "v24.15" },
 		"no node digest":         func(r *AdapterRun) { r.Node.SHA256 = "" },
 		"no platform":            func(r *AdapterRun) { r.Node.Platform = "" },
+		"no node exec path":      func(r *AdapterRun) { r.Node.ExecPath = "" },
+		"relative exec path":     func(r *AdapterRun) { r.Node.ExecPath = "node" },
+		"no npm cli digest":      func(r *AdapterRun) { r.Npm.CLISHA256 = "" },
 		"no npm version":         func(r *AdapterRun) { r.Npm.Version = "" },
 		"online install":         func(r *AdapterRun) { r.Npm.InstallArgv = []string{"npm", "ci"} },
 		"install with scripts":   func(r *AdapterRun) { r.Npm.InstallArgv = []string{"npm", "ci", "--offline"} },

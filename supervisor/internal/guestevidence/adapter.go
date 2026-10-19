@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path"
 	"regexp"
 	"slices"
 	"strconv"
@@ -72,11 +73,17 @@ type AdapterNode struct {
 	SHA256   string `json:"sha256"`
 	Platform string `json:"platform"`
 	Arch     string `json:"arch"`
+	// ExecPath is process.execPath as npm reported it from inside a lifecycle script of the run
+	// (npm_node_execpath): the Node the package scripts ran under. The capture refuses a run whose value
+	// is not the selected Node.
+	ExecPath string `json:"exec_path"`
 }
 
 // AdapterNpm identifies the offline install that made adapter/node_modules from the lockfile.
 type AdapterNpm struct {
-	Version           string   `json:"version"`
+	Version string `json:"version"`
+	// CLISHA256 is the digest of npm-cli.js, which the selected Node ran: npm is never executed directly.
+	CLISHA256         string   `json:"cli_sha256"`
 	InstallArgv       []string `json:"install_argv"`
 	InstallExit       int      `json:"install_exit"`
 	NodeModulesDigest string   `json:"node_modules_digest"`
@@ -186,6 +193,12 @@ func validateAdapter(raw []byte, e Expect) error {
 		add("the Node runtime is not identified (digest %q, platform %q, arch %q)", r.Node.SHA256, r.Node.Platform, r.Node.Arch)
 	}
 
+	if !path.IsAbs(r.Node.ExecPath) || path.Clean(r.Node.ExecPath) != r.Node.ExecPath {
+		add("node exec path %q is not a clean absolute path", r.Node.ExecPath)
+	}
+	if !IsDigest(r.Npm.CLISHA256) {
+		add("npm-cli.js is not digested")
+	}
 	if strings.TrimSpace(r.Npm.Version) == "" {
 		add("npm version is missing")
 	}
