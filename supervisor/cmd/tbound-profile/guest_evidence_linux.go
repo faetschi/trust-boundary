@@ -35,7 +35,7 @@ const guestEvidenceUsage = `  tbound-profile guest-evidence capability        --
   tbound-profile guest-evidence netsink           --commit <40-hex> --out <new file>
   tbound-profile guest-evidence provider-exchange --commit <40-hex> --response <file> --profile-hash <sha256> --frozen-source-digest <sha256> --out <new file>
   tbound-profile guest-evidence route-denied      --commit <40-hex> --route bash-view --run-id <id> --response <file> --target <abs path> --control-path <rel path> --control-file <file> --profile-hash <sha256> --frozen-source-digest <sha256> [--audit-root <dir>] --out <new file>
-  tbound-profile guest-evidence route-denied      --commit <40-hex> --route direct-runtime --run-id <id> --target <abs path> --control-path <rel path> --profile-hash <sha256> --frozen-source-digest <sha256> --probe-template <file> --production-template <file> --target-root <dir> [--audit-root <dir>] --out <new file>
+  tbound-profile guest-evidence route-denied      --commit <40-hex> --route direct-runtime --run-id <id> --target <abs path> --control-path <rel path> --run-config <run.json> --probe-template <file> --production-template <file> [--host-profile <file> --host-profile-signature <file> --host-profile-key <file>] [--oci-layout <dir>] [--audit-root <dir>] --out <new file>
   tbound-profile guest-evidence tests             --commit <40-hex> --kind guest-tests-procoracle|guest-tests-landlock-connect --test-binary <abs file> --out <new file>
 `
 
@@ -79,7 +79,11 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	controlFile := flags.String("control-file", "", "route-denied: that workspace file as it is on the guest, for its bytes")
 	probeTemplate := flags.String("probe-template", "", "route-denied direct-runtime: the route-probe cell template the probe cell was launched from")
 	productionTemplate := flags.String("production-template", "", "route-denied direct-runtime: the production cell template the probe template derives from")
-	targetRoot := flags.String("target-root", "", "route-denied direct-runtime: a directory where root sees the cell image tree, to prove the target exists from outside the cell")
+	runConfig := flags.String("run-config", "", "route-denied direct-runtime: run.json; its freeze_commit (must be --commit) and pins (profile_hash, containment_profile_digest, frozen_source_digest) are the expectations the journal and the probe profile are held to")
+	hostProfile := flags.String("host-profile", "/etc/tbound/pi-host-profile.json", "route-denied direct-runtime: the signed host profile the probe run used (its digest must be the one the session journal records)")
+	hostProfileSig := flags.String("host-profile-signature", "/etc/tbound/pi-host-profile.ed25519", "route-denied direct-runtime: the Ed25519 signature of that profile")
+	hostProfileKey := flags.String("host-profile-key", "/etc/tbound/pi-host-profile.pub", "route-denied direct-runtime: the public key that verifies it")
+	ociLayout := flags.String("oci-layout", "", "route-denied direct-runtime: the local OCI layout that holds the probed image (default: oci_layout_path of the probe template)")
 	if err := flags.Parse(rest); err != nil {
 		return err
 	}
@@ -111,9 +115,20 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 		artifactKind = guestevidence.KindProviderExchange
 		data, err = providerExchangeFrom(*response)
 	case "route-denied":
-		data, artifactKind, err = probeRouteDenied(routeProbeOptions{route: *route, runID: *runID, auditRoot: *auditRoot, response: *response,
+		opts := routeProbeOptions{route: *route, runID: *runID, auditRoot: *auditRoot, response: *response,
 			target: *target, controlPath: *controlPath, controlFile: *controlFile,
-			profileHash: *profileHash, frozenSource: *frozenSource, probeTemplate: *probeTemplate, productionTemplate: *productionTemplate, targetRoot: *targetRoot}, productionRouteProbeEnv())
+			profileHash: *profileHash, frozenSource: *frozenSource, probeTemplate: *probeTemplate, productionTemplate: *productionTemplate,
+			hostProfile: *hostProfile, hostProfileSig: *hostProfileSig, hostProfileKey: *hostProfileKey, ociLayout: *ociLayout}
+		if *route == "direct-runtime" {
+			// The expectations come from run.json, which also names the freeze commit, not from the caller.
+			binding, pinErr := directRuntimePins(*runConfig, *commit, *profileHash, *frozenSource)
+			if pinErr != nil {
+				return pinErr
+			}
+			opts.profileHash, opts.frozenSource, opts.containmentDigest = binding.ProfileHash, binding.FrozenSourceDigest, binding.ContainmentProfileDigest
+			expect.ProfileHash, expect.FrozenSourceDigest, expect.ContainmentProfileDigest = binding.ProfileHash, binding.FrozenSourceDigest, binding.ContainmentProfileDigest
+		}
+		data, artifactKind, err = probeRouteDenied(opts, productionRouteProbeEnv())
 	case "tests":
 		artifactKind = *testKind
 		var run guestevidence.TestRun

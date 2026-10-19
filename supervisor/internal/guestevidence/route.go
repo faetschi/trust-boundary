@@ -57,9 +57,15 @@ type RouteDenied struct {
 	Cell RouteCell `json:"cell"`
 	// Journal is the head of the verified hash chain the attempts were read from.
 	Journal RouteJournal `json:"journal"`
-	// TargetFact (Pi runtime cell only) is what root saw of the target from outside the cell: it exists,
-	// is a regular file, is readable by other users, and its directory can be listed by them, so only the
-	// cell's confinement stands between the cell and the bytes.
+	// ProbeProfileDigest and ProfileSourceDigest (Pi runtime cell only) are read from the signed host profile
+	// whose digest the session journal records for the probe run: the probe profile's own digest, and its
+	// source provenance digest, which is the run's frozen source digest. The producer takes the source from
+	// there and refuses a pin that differs; the validator requires both to equal the run pins.
+	ProbeProfileDigest  string `json:"probe_profile_digest,omitempty"`
+	ProfileSourceDigest string `json:"profile_source_digest,omitempty"`
+	// TargetFact (Pi runtime cell only) is what the verified image of the probe shows of the target: it
+	// exists, is a regular file the cell identity can read, and the cell identity can search every
+	// directory above it, so only the cell's confinement stands between the cell and the bytes.
 	TargetFact *RouteTarget `json:"target_fact,omitempty"`
 	// Control reads a file inside the workspace in the same cell: the detector sees a successful read.
 	Control RouteAttempt `json:"control"`
@@ -160,13 +166,13 @@ func validateRoute(kind string, raw []byte, e Expect) error {
 	}
 
 	if kind == KindRouteDirectRuntime {
-		directRuntimeProblems(r, add)
+		directRuntimeProblems(r, e, add)
 		if len(problems) > 0 {
 			return errors.New(strings.Join(problems, "; "))
 		}
 		return nil
 	}
-	if r.Cell.ProductionTemplateDigest != "" || r.TargetFact != nil || r.Control.Op != "" || r.Control.Errno != "" {
+	if r.Cell.ProductionTemplateDigest != "" || r.TargetFact != nil || r.ProbeProfileDigest != "" || r.ProfileSourceDigest != "" || r.Control.Op != "" || r.Control.Errno != "" {
 		add("a command cell artifact carries members of the Pi runtime cell artifact")
 	}
 	seenContainers := map[string]bool{}

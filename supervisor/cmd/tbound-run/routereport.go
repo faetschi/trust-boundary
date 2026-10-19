@@ -169,7 +169,8 @@ func (a *app) routeReportCmd(args []string) error {
 	if len(artifacts) > 0 && !guestevidence.IsDigest(*guestBinary) {
 		return fmt.Errorf("%w: --artifact needs --guest-binary-sha256 sha256:<hex>", errUsage)
 	}
-	commit, profileHash, frozenSource, err := loadFreezeBinding(*config)
+	binding, err := loadFreezeBinding(*config)
+	commit := binding.Commit
 	if err != nil {
 		return err
 	}
@@ -188,8 +189,8 @@ func (a *app) routeReportCmd(args []string) error {
 	if err := rec.requirePinnedInput(evqPinnedInputs[1], mdata); err != nil {
 		return fmt.Errorf("route matrix: %w", err)
 	}
-	guest, err := loadGuestRouteArtifacts(m, artifacts, guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary,
-		ProfileHash: profileHash, FrozenSourceDigest: frozenSource})
+	guest, err := loadGuestRouteArtifacts(m, artifacts, guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary, ContainmentProfileDigest: binding.ContainmentProfileDigest,
+		ProfileHash: binding.ProfileHash, FrozenSourceDigest: binding.FrozenSourceDigest})
 	if err != nil {
 		return err
 	}

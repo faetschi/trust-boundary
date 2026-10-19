@@ -106,7 +106,7 @@ func TestRouteReportGuestCellsAreCoveredByTheirArtifactsAndTheirTests(t *testing
 func guestRouteEnv(t *testing.T) *routeEnv {
 	t.Helper()
 	e := newRouteEnv(t, guestRouteDoc(), passingRoutePkgs(allRouteRefs...))
-	pins := `{"freeze_commit":"` + commit + `","pins":{"profile_hash":"` + guestPins.profile + `","frozen_source_digest":"` + guestPins.source + `"}}`
+	pins := `{"freeze_commit":"` + commit + `","pins":{"profile_hash":"` + guestPins.profile + `","containment_profile_digest":"` + sha256Of([]byte("production template")) + `","frozen_source_digest":"` + guestPins.source + `"}}`
 	if err := os.WriteFile(e.config, []byte(pins), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,10 @@ func writeRouteArtifact(t *testing.T, dir, kind string, mutate func(*guesteviden
 			t.Fatal(err)
 		}
 		d.Cell.ProductionTemplateDigest = sha256Of([]byte("production template"))
-		d.TargetFact = &guestevidence.RouteTarget{Regular: true, Mode: 0o644, Size: 100, ParentMode: 0o755}
+		d.ProbeProfileDigest, d.ProfileSourceDigest = sha256Of([]byte("probe profile")), guestPins.source
+		d.TargetFact = &guestevidence.RouteTarget{Regular: true, Mode: 0o644, UID: 1000, GID: 1000, Size: 100, ParentMode: 0o755, ImageDigest: d.Cell.ImageDigest,
+			CellUID: 100731, CellGID: 100731, ResolvedPath: "/home/node/.profile",
+			Ancestors: []guestevidence.RouteAncestor{{Path: "/", Mode: 0o755}, {Path: "/home", Mode: 0o755}, {Path: "/home/node", Mode: 0o755, UID: 1000, GID: 1000}}}
 	}
 	if mutate != nil {
 		mutate(&d)

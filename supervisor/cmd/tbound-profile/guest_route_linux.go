@@ -42,11 +42,13 @@ type routeProbeOptions struct {
 	target                  string
 	controlPath             string
 	controlFile             string
-	// direct-runtime only: the pins of the run (the run produced no completed response), the probe and
-	// production cell templates, and the tree root sees the target in.
-	profileHash, frozenSource         string
-	probeTemplate, productionTemplate string
-	targetRoot                        string
+	// direct-runtime only: the pins of the run (the run produced no completed response; they come from
+	// run.json), the probe and production cell templates, the signed host profile files the probe run used,
+	// and the OCI layout that holds the probed image (empty: the one the probe template names).
+	profileHash, frozenSource, containmentDigest string
+	probeTemplate, productionTemplate            string
+	hostProfile, hostProfileSig, hostProfileKey  string
+	ociLayout                                    string
 }
 
 // routeProbeEnv holds the seams of the probe: how the journal is read and how a receipt is checked.
@@ -54,13 +56,11 @@ type routeProbeEnv struct {
 	readJournal     func(path string) ([]byte, error)
 	validateReceipt func(piruntime.D09CommandReceipt) error
 	readFile        func(path string) ([]byte, error)
-	stat            func(path string) (os.FileInfo, error)
 }
 
 func productionRouteProbeEnv() routeProbeEnv {
 	return routeProbeEnv{
 		readFile: func(path string) ([]byte, error) { return readBoundedFile(path, maxGuestInputSize) },
-		stat:     os.Stat,
 		readJournal: func(path string) ([]byte, error) {
 			f, err := os.Open(path)
 			if err != nil {

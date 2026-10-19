@@ -57,6 +57,9 @@ type Expect struct {
 	// the receipt of a real provider exchange must carry both.
 	ProfileHash        string
 	FrozenSourceDigest string
+	// ContainmentProfileDigest is run.json pins.containment_profile_digest: the digest of the production
+	// cell template. A direct-runtime route artifact must be of exactly that template.
+	ContainmentProfileDigest string
 	// CommitTree is the git tree id of Commit as the Go capture recorded it: the adapter run is bound to
 	// the commit through it.
 	CommitTree string

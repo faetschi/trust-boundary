@@ -22,7 +22,10 @@ const (
 // RouteDirectOps are the operations the probe tries with each method.
 var RouteDirectOps = []string{RouteOpOpen, RouteOpStat, RouteOpList}
 
-// RouteTarget is what root saw of the registered target, from outside the cell, when the artifact was made.
+// RouteTarget is what the verified image of the probe shows of the registered target: the facts that
+// decide whether a refusal inside the cell can be file permissions instead of the cell's confinement. They
+// are read from the layers of the OCI image whose manifest digest is ImageDigest, which must be the image
+// the probe cell ran.
 type RouteTarget struct {
 	Regular    bool   `json:"regular"`
 	Mode       uint32 `json:"mode"`
@@ -30,6 +33,95 @@ type RouteTarget struct {
 	GID        uint32 `json:"gid"`
 	Size       int64  `json:"size"`
 	ParentMode uint32 `json:"parent_mode"`
+	// ImageDigest is the manifest digest of the image the facts were read from.
+	ImageDigest string `json:"image_digest"`
+	// CellUID and CellGID are the identity the permissions are judged for (the template's cell identity).
+	CellUID uint32 `json:"cell_uid"`
+	CellGID uint32 `json:"cell_gid"`
+	// ResolvedPath is the target after the symlinks of the image are followed; Ancestors are the directories
+	// the resolution passed through, the root and every directory above ResolvedPath included.
+	ResolvedPath string          `json:"resolved_path"`
+	Ancestors    []RouteAncestor `json:"ancestors"`
+}
+
+// RouteAncestor is a directory in the image tree above the target.
+type RouteAncestor struct {
+	Path string `json:"path"`
+	Mode uint32 `json:"mode"`
+	UID  uint32 `json:"uid"`
+	GID  uint32 `json:"gid"`
+}
+
+// ImageAccess reports the read, write and search bits that ordinary file permissions give the identity
+// (cellUID, cellGID, no supplementary groups) on an object with the given mode and owner: the owner class if
+// the identity owns it, else the group class if it is in the group, else the other class.
+func ImageAccess(mode, uid, gid, cellUID, cellGID uint32) (read, write, search bool) {
+	shift := uint(0)
+	switch {
+	case uid == cellUID:
+		shift = 6
+	case gid == cellGID:
+		shift = 3
+	}
+	bits := (mode >> shift) & 7
+	return bits&4 != 0, bits&2 != 0, bits&1 != 0
+}
+
+// targetFactProblems checks the baseline against the probed image and the cell identity.
+func targetFactProblems(r RouteDenied, add func(format string, args ...any)) {
+	t := r.TargetFact
+	switch {
+	case t == nil:
+		add("what the verified image shows of the target is not stated")
+		return
+	case !t.Regular || t.Size <= 0:
+		add("the target is not a non-empty regular file (size %d): there is nothing to read", t.Size)
+	}
+	if !IsDigest(t.ImageDigest) || t.ImageDigest != r.Cell.ImageDigest {
+		add("the baseline is of image %q, the probe cell ran image %q", t.ImageDigest, r.Cell.ImageDigest)
+	}
+	if t.CellUID == 0 {
+		add("the baseline is judged for uid 0: it must be judged for the unprivileged cell identity")
+	}
+	if read, _, _ := ImageAccess(t.Mode, t.UID, t.GID, t.CellUID, t.CellGID); !read {
+		add("the target (mode %04o owner %d:%d) is not readable by the cell identity %d:%d: a denial could be file permissions, not the cell", t.Mode, t.UID, t.GID, t.CellUID, t.CellGID)
+	}
+	resolved := t.ResolvedPath
+	if !path.IsAbs(resolved) || path.Clean(resolved) != resolved || resolved == "/" {
+		add("the resolved target %q is not a clean absolute path", resolved)
+		return
+	}
+	seen := map[string]RouteAncestor{}
+	for _, a := range t.Ancestors {
+		if !path.IsAbs(a.Path) || path.Clean(a.Path) != a.Path {
+			add("ancestor %q is not a clean absolute path", a.Path)
+			continue
+		}
+		if _, dup := seen[a.Path]; dup {
+			add("ancestor %q is stated twice", a.Path)
+		}
+		seen[a.Path] = a
+		if _, _, search := ImageAccess(a.Mode, a.UID, a.GID, t.CellUID, t.CellGID); !search {
+			add("the cell identity cannot search the directory %s (mode %04o owner %d:%d) above the target", a.Path, a.Mode, a.UID, a.GID)
+		}
+	}
+	parent := path.Dir(resolved)
+	for dir := parent; ; dir = path.Dir(dir) {
+		if _, ok := seen[dir]; !ok {
+			add("the directory %s above the target is not in the baseline", dir)
+		}
+		if dir == "/" {
+			break
+		}
+	}
+	if p, ok := seen[parent]; ok {
+		if read, _, _ := ImageAccess(p.Mode, p.UID, p.GID, t.CellUID, t.CellGID); !read {
+			add("the cell identity cannot list the directory of the target %s (mode %04o)", parent, p.Mode)
+		}
+		if p.Mode != t.ParentMode {
+			add("the directory of the target is stated with mode %04o and %04o", p.Mode, t.ParentMode)
+		}
+	}
 }
 
 // RouteDirectObservation is one attempt of the probe as the cell reported it: the errno of the operation,
@@ -150,20 +242,20 @@ func DirectRuntimeAttempts(target, controlPath, containerID, proofDigest string,
 // directRuntimeProblems checks what is specific to the Pi runtime cell: the production template the probe
 // template derives from, what root saw of the target, and every attempt (open, stat, list by each method)
 // of the one proof the cell gave.
-func directRuntimeProblems(r RouteDenied, add func(format string, args ...any)) {
+func directRuntimeProblems(r RouteDenied, e Expect, add func(format string, args ...any)) {
 	if !IsDigest(r.Cell.ProductionTemplateDigest) || r.Cell.ProductionTemplateDigest == r.Cell.TemplateDigest {
 		add("the production template digest is missing or equals the probe template's: the probe cell is not shown to be the production cell plus the probe")
 	}
-	switch t := r.TargetFact; {
-	case t == nil:
-		add("what root saw of the target, from outside the cell, is not stated")
-	case !t.Regular || t.Size <= 0:
-		add("the target is not a non-empty regular file (size %d): there is nothing to read", t.Size)
-	case t.Mode&0o004 == 0:
-		add("the target (mode %04o) is not readable by other users: a denial could be file permissions, not the cell", t.Mode)
-	case t.ParentMode&0o005 != 0o005:
-		add("the directory of the target (mode %04o) cannot be listed by other users", t.ParentMode)
+	if e.ContainmentProfileDigest == "" || r.Cell.ProductionTemplateDigest != e.ContainmentProfileDigest {
+		add("the production template %q is not the one the run pins (containment_profile_digest %q)", r.Cell.ProductionTemplateDigest, e.ContainmentProfileDigest)
 	}
+	if !IsDigest(r.ProbeProfileDigest) || r.ProbeProfileDigest == r.ProfileHash {
+		add("the probe profile digest is missing or equals the run's profile: the probe ran under the production profile plus the probe template")
+	}
+	if e.FrozenSourceDigest == "" || r.ProfileSourceDigest != e.FrozenSourceDigest || r.ProfileSourceDigest != r.FrozenSourceDigest {
+		add("the source of the journaled probe profile %q is not the run's frozen source %q", r.ProfileSourceDigest, e.FrozenSourceDigest)
+	}
+	targetFactProblems(r, add)
 
 	shared := func(a RouteAttempt, what string) {
 		if !IsDigest(a.ReceiptDigest) || strings.TrimSpace(a.ContainerID) == "" || a.JournalSequence == 0 {
