@@ -25,7 +25,29 @@ func expect() Expect {
 	for _, p := range TestPackages() {
 		tb[p] = digestOf("test binary " + p)
 	}
-	return Expect{Commit: testCommit, BinarySHA256: testBinary, ProfileHash: digestOf("profile"), FrozenSourceDigest: digestOf("source"), CommitTree: adapterTree, TestBinaries: tb, ContainmentProfileDigest: digestOf("production template"), AdminPubkeyDigest: digestOf("admin key")}
+	return Expect{Commit: testCommit, BinarySHA256: testBinary, FrozenSourceDigest: digestOf("source"), CommitTree: adapterTree, TestBinaries: tb, BaseTemplateDigest: digestOf("base template"), ImageDigest: digestOf("image"), AdminPubkeyDigest: digestOf("admin key")}
+}
+
+// The profile and template of a run under its own config (G1, route probe): never the pilot's.
+var (
+	g1ProfileDigest  = digestOf("g1 profile")
+	g1TemplateDigest = digestOf("g1 template")
+)
+
+// goodBinding is the binding a producer states for a run under its own signed profile.
+func goodBinding(e Expect, profile, template string) ProfileBinding {
+	return ProfileBinding{ProfileDigest: profile, TemplateDigest: template, BaseTemplateDigest: e.BaseTemplateDigest,
+		RegistrationDigest: digestOf("registration of " + profile), ImageDigest: e.ImageDigest, SourceDigest: e.FrozenSourceDigest, AdminPubkeyDigest: e.AdminPubkeyDigest}
+}
+
+// The profile of a route-probe run under its own config.
+var probeProfileDigest = digestOf("route probe profile")
+
+func goodProviderExchange(t *testing.T, e Expect) ProviderExchange {
+	t.Helper()
+	p := NewProviderExchange(goodResponse(t, e, nil))
+	p.Binding = goodBinding(e, g1ProfileDigest, g1TemplateDigest)
+	return p
 }
 
 func encode(t *testing.T, kind string, data any) []byte {
@@ -55,7 +77,7 @@ func goodNetSink() NetSink {
 }
 
 func goodReceipt(e Expect) map[string]any {
-	return map[string]any{"schema_version": receiptSchema, "profile_hash": e.ProfileHash, "frozen_source_digest": e.FrozenSourceDigest,
+	return map[string]any{"schema_version": receiptSchema, "profile_hash": g1ProfileDigest, "containment_profile_digest": g1TemplateDigest, "frozen_source_digest": e.FrozenSourceDigest,
 		"provider_exchange": true, "claim_bearing": false, "task_admitted": true, "turn_completed": true, "success": true,
 		"tool_sequence": []string{"read", "edit", "bash", "read"}, "provider_turns": 5,
 		"source_generation": "g0", "final_generation": "g2", "generation_count": 3,
@@ -97,7 +119,7 @@ func goodArtifacts(t *testing.T, e Expect) []artifactCase {
 	return []artifactCase{
 		{KindCapability, goodCapability()},
 		{KindNetSink, goodNetSink()},
-		{KindProviderExchange, NewProviderExchange(goodResponse(t, e, nil))},
+		{KindProviderExchange, goodProviderExchange(t, e)},
 		{KindProcOracleTests, goodTests(KindProcOracleTests, e)},
 		{KindLandlockConnectTests, goodTests(KindLandlockConnectTests, e)},
 		{KindAdapterTests, goodAdapter(t)},
@@ -296,12 +318,13 @@ func TestProviderExchangeRequiredValues(t *testing.T) {
 		"descendants left":     func(_, f map[string]any) { f["descendants_settled"] = false },
 	} {
 		p := NewProviderExchange(goodResponse(t, e, mutate))
+		p.Binding = goodBinding(e, g1ProfileDigest, g1TemplateDigest)
 		if err := Validate(KindProviderExchange, encode(t, KindProviderExchange, p), e); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
 	// The wrapper must show the response it names.
-	p := NewProviderExchange(goodResponse(t, e, nil))
+	p := goodProviderExchange(t, e)
 	p.ResponseSHA256 = digestOf("other response")
 	if err := Validate(KindProviderExchange, encode(t, KindProviderExchange, p), e); err == nil {
 		t.Error("a digest that is not the response's was accepted")
@@ -312,15 +335,52 @@ func TestProviderExchangeRequiredValues(t *testing.T) {
 		"trailing data":    goodResponse(t, e, nil) + "{}",
 		"not json":         "local Pi service completed",
 	} {
-		if err := Validate(KindProviderExchange, encode(t, KindProviderExchange, NewProviderExchange(raw)), e); err == nil {
+		if err := Validate(KindProviderExchange, encode(t, KindProviderExchange, ProviderExchange{Response: raw, ResponseSHA256: NewProviderExchange(raw).ResponseSHA256, Binding: goodBinding(e, g1ProfileDigest, g1TemplateDigest)}), e); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	// The run must pin the profile and the source, or the receipt is not bound at all.
-	noPins := e
-	noPins.ProfileHash, noPins.FrozenSourceDigest = "", ""
-	if err := Validate(KindProviderExchange, encode(t, KindProviderExchange, NewProviderExchange(goodResponse(t, noPins, nil))), noPins); err == nil {
-		t.Error("a receipt was accepted although the run pins nothing to bind it to")
+	// The run must pin what the run shares with the pilot, or the receipt is bound to nothing.
+	for name, mutate := range map[string]func(*Expect){
+		"no source pin":        func(x *Expect) { x.FrozenSourceDigest = "" },
+		"no base template pin": func(x *Expect) { x.BaseTemplateDigest = "" },
+		"no admin key pin":     func(x *Expect) { x.AdminPubkeyDigest = "" },
+		"no image pin":         func(x *Expect) { x.ImageDigest = "" },
+	} {
+		x := e
+		mutate(&x)
+		if err := Validate(KindProviderExchange, encode(t, KindProviderExchange, goodProviderExchange(t, e)), x); err == nil {
+			t.Errorf("%s: a receipt was accepted although the run pins nothing to bind it to", name)
+		}
+	}
+}
+
+// A G1 run has its own config, registration, template and signed profile, so its receipt can never carry the
+// pilot's profile_hash. The artifact is bound to what the runs share instead: the base cell template, the
+// image, the source and the admin key.
+func TestProviderExchangeIsBoundToTheBaseTemplateNotToThePilotProfile(t *testing.T) {
+	e := expect()
+	good := goodProviderExchange(t, e)
+	if err := Validate(KindProviderExchange, encode(t, KindProviderExchange, good), e); err != nil {
+		t.Fatalf("a run under its own profile and template was refused: %v", err)
+	}
+	for name, mutate := range map[string]func(*ProviderExchange){
+		"no binding":                       func(p *ProviderExchange) { p.Binding = ProfileBinding{} },
+		"another base template":            func(p *ProviderExchange) { p.Binding.BaseTemplateDigest = digestOf("another base") },
+		"another source":                   func(p *ProviderExchange) { p.Binding.SourceDigest = digestOf("another source") },
+		"another admin key":                func(p *ProviderExchange) { p.Binding.AdminPubkeyDigest = digestOf("another key") },
+		"another image":                    func(p *ProviderExchange) { p.Binding.ImageDigest = digestOf("another image") },
+		"another profile than the receipt": func(p *ProviderExchange) { p.Binding.ProfileDigest = digestOf("another profile") },
+		"another template than the receipt": func(p *ProviderExchange) {
+			p.Binding.TemplateDigest = digestOf("another template")
+		},
+		"no registration":                   func(p *ProviderExchange) { p.Binding.RegistrationDigest = "" },
+		"the template is the base template": func(p *ProviderExchange) { p.Binding.TemplateDigest = p.Binding.BaseTemplateDigest },
+	} {
+		p := good
+		mutate(&p)
+		if err := Validate(KindProviderExchange, encode(t, KindProviderExchange, p), e); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
 	}
 }
 
@@ -478,7 +538,8 @@ func goodRouteDenied(kind string) RouteDenied {
 		return RouteAttempt{Method: method, Argv: []string{"/bin/bash", "-lc", "cat /home/node/.profile"}, ExitCode: exit, Outcome: outcome,
 			ResultDigest: digestOf("result " + method), ReceiptDigest: digestOf("receipt " + method), ContainerID: "container-" + method, JournalSequence: seq}
 	}
-	return RouteDenied{RunID: "run-1", ProfileHash: e.ProfileHash, FrozenSourceDigest: e.FrozenSourceDigest, Target: "/home/node/.profile",
+	return RouteDenied{RunID: "run-1", ProfileHash: probeProfileDigest, FrozenSourceDigest: e.FrozenSourceDigest, Target: "/home/node/.profile",
+		Binding: goodBinding(e, probeProfileDigest, digestOf("template")),
 		Cell:    RouteCell{Kind: cell, ImageDigest: digestOf("image"), TemplateDigest: digestOf("template"), LandlockRulesetDigest: digestOf("ruleset")},
 		Journal: RouteJournal{Records: 9, HeadHash: strings.Repeat("a", 64)},
 		Control: attempt(RouteMethodControl, RouteOutcomeRead, 0, 2),
@@ -494,14 +555,20 @@ func TestRouteArtifactRequiredValues(t *testing.T) {
 			t.Fatalf("%s: good artifact refused: %v", kind, err)
 		}
 		for name, mutate := range map[string]func(*RouteDenied){
-			"no run id":                func(r *RouteDenied) { r.RunID = "" },
-			"another profile":          func(r *RouteDenied) { r.ProfileHash = digestOf("other") },
-			"another source":           func(r *RouteDenied) { r.FrozenSourceDigest = digestOf("other") },
-			"relative target":          func(r *RouteDenied) { r.Target = "home/node/.profile" },
-			"unclean target":           func(r *RouteDenied) { r.Target = "/home/node/../node/.profile" },
-			"target inside /work":      func(r *RouteDenied) { r.Target = "/work/src/release.txt" },
-			"target inside /etc":       func(r *RouteDenied) { r.Target = "/etc/hostname" },
-			"target is a ruleset root": func(r *RouteDenied) { r.Target = "/tmp" },
+			"no run id":                        func(r *RouteDenied) { r.RunID = "" },
+			"another profile":                  func(r *RouteDenied) { r.ProfileHash = digestOf("other") },
+			"another source":                   func(r *RouteDenied) { r.FrozenSourceDigest = digestOf("other") },
+			"no binding":                       func(r *RouteDenied) { r.Binding = ProfileBinding{} },
+			"another base template":            func(r *RouteDenied) { r.Binding.BaseTemplateDigest = digestOf("other") },
+			"binding of another source":        func(r *RouteDenied) { r.Binding.SourceDigest = digestOf("other") },
+			"another admin key":                func(r *RouteDenied) { r.Binding.AdminPubkeyDigest = digestOf("other") },
+			"another image than the cell's":    func(r *RouteDenied) { r.Binding.ImageDigest = digestOf("other") },
+			"another template than the cell's": func(r *RouteDenied) { r.Binding.TemplateDigest = digestOf("other") },
+			"relative target":                  func(r *RouteDenied) { r.Target = "home/node/.profile" },
+			"unclean target":                   func(r *RouteDenied) { r.Target = "/home/node/../node/.profile" },
+			"target inside /work":              func(r *RouteDenied) { r.Target = "/work/src/release.txt" },
+			"target inside /etc":               func(r *RouteDenied) { r.Target = "/etc/hostname" },
+			"target is a ruleset root":         func(r *RouteDenied) { r.Target = "/tmp" },
 			"the other cell kind": func(r *RouteDenied) {
 				if r.Cell.Kind == RouteCellCommand {
 					r.Cell.Kind = RouteCellPiRuntime
@@ -543,11 +610,16 @@ func TestRouteArtifactRequiredValues(t *testing.T) {
 				t.Errorf("%s / %s: accepted", kind, name)
 			}
 		}
-		// The run must pin the profile and the source, or the artifact is bound to nothing.
-		noPins := e
-		noPins.ProfileHash, noPins.FrozenSourceDigest = "", ""
-		if err := Validate(kind, encode(t, kind, goodRouteDenied(kind)), noPins); err == nil {
-			t.Errorf("%s: accepted although the run pins nothing", kind)
+		// The run must pin what the run shares with the pilot, or the artifact is bound to nothing.
+		for name, mutate := range map[string]func(*Expect){
+			"no source pin": func(x *Expect) { x.FrozenSourceDigest = "" }, "no base template pin": func(x *Expect) { x.BaseTemplateDigest = "" },
+			"no admin key pin": func(x *Expect) { x.AdminPubkeyDigest = "" }, "no image pin": func(x *Expect) { x.ImageDigest = "" },
+		} {
+			x := e
+			mutate(&x)
+			if err := Validate(kind, encode(t, kind, goodRouteDenied(kind)), x); err == nil {
+				t.Errorf("%s / %s: accepted although the run pins nothing", kind, name)
+			}
 		}
 	}
 	// One route's artifact is not the other's.

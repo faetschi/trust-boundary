@@ -129,9 +129,7 @@ func runCorpusPins(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	base := template
-	base.ManagedLiveRootRegistrationDigest = ""
-	baseDigest, err := base.Digest()
+	baseDigest, err := baseTemplateDigest(template)
 	if err != nil {
 		return err
 	}

@@ -190,8 +190,8 @@ func TestLoadFreezeBinding(t *testing.T) {
 		}
 		return p
 	}
-	b, err := loadFreezeBinding(write(`{"freeze_commit":"` + commit + `","pins":{"profile_hash":"p","frozen_source_digest":"f","containment_profile_digest":"c","admin_pubkey_digest":"k"},"other":1}`))
-	if err != nil || b.Commit != commit || b.ProfileHash != "p" || b.FrozenSourceDigest != "f" || b.ContainmentProfileDigest != "c" || b.AdminPubkeyDigest != "k" {
+	b, err := loadFreezeBinding(write(`{"freeze_commit":"` + commit + `","v_image_digest":"i","pins":{"profile_hash":"p","frozen_source_digest":"f","containment_profile_digest":"c","base_template_digest":"b","admin_pubkey_digest":"k"},"other":1}`))
+	if err != nil || b.Commit != commit || b.FrozenSourceDigest != "f" || b.BaseTemplateDigest != "b" || b.ImageDigest != "i" || b.AdminPubkeyDigest != "k" {
 		t.Fatalf("binding = %+v %v", b, err)
 	}
 	for name, content := range map[string]string{

@@ -27,6 +27,8 @@ const (
 type ProviderExchange struct {
 	Response       string `json:"response"`
 	ResponseSHA256 string `json:"response_sha256"`
+	// Binding ties the run's own signed profile and template to what the run shares with the pilot.
+	Binding ProfileBinding `json:"binding"`
 }
 
 // NewProviderExchange wraps a response line.
@@ -49,6 +51,7 @@ type receiptFacts struct {
 	SchemaVersion      string   `json:"schema_version"`
 	RunID              string   `json:"run_id"`
 	ProfileHash        string   `json:"profile_hash"`
+	TemplateDigest     string   `json:"containment_profile_digest"`
 	FrozenSourceDigest string   `json:"frozen_source_digest"`
 	ProviderExchange   bool     `json:"provider_exchange"`
 	ClaimBearing       bool     `json:"claim_bearing"`
@@ -109,11 +112,10 @@ func validateProviderExchange(raw []byte, e Expect) error {
 	if f.SchemaVersion != receiptSchema {
 		add("receipt schema %q, want %q", f.SchemaVersion, receiptSchema)
 	}
-	if e.ProfileHash == "" || e.FrozenSourceDigest == "" {
-		add("run.json pins.profile_hash and pins.frozen_source_digest are required to bind the receipt")
-	} else if f.ProfileHash != e.ProfileHash || f.FrozenSourceDigest != e.FrozenSourceDigest {
-		add("the receipt is for profile %q and source %q, the run pins %q and %q", f.ProfileHash, f.FrozenSourceDigest, e.ProfileHash, e.FrozenSourceDigest)
+	if !IsDigest(f.ProfileHash) || !IsDigest(f.TemplateDigest) || f.FrozenSourceDigest != e.FrozenSourceDigest {
+		add("the receipt is for profile %q, template %q and source %q, the run pins source %q", f.ProfileHash, f.TemplateDigest, f.FrozenSourceDigest, e.FrozenSourceDigest)
 	}
+	bindingProblems(p.Binding, e, f.ProfileHash, f.TemplateDigest, p.Binding.ImageDigest, f.FrozenSourceDigest, add)
 	if !f.ProviderExchange || !f.TaskAdmitted || !f.TurnCompleted || !f.Success {
 		add("the receipt does not show a completed, successful run with a provider exchange (exchange %t, admitted %t, completed %t, success %t)",
 			f.ProviderExchange, f.TaskAdmitted, f.TurnCompleted, f.Success)

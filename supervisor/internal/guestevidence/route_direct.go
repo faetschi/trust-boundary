@@ -154,20 +154,11 @@ func DirectRuntimeAttempts(target, controlPath, containerID, proofDigest string,
 // directRuntimeProblems checks what is specific to the Pi runtime cell: the production template the probe
 // template derives from, what the probe measured inside the cell, and every attempt (open, stat, list by each method)
 // of the one proof the cell gave.
-func directRuntimeProblems(r RouteDenied, e Expect, add func(format string, args ...any)) {
+func directRuntimeProblems(r RouteDenied, add func(format string, args ...any)) {
 	if !IsDigest(r.Cell.ProductionTemplateDigest) || r.Cell.ProductionTemplateDigest == r.Cell.TemplateDigest {
 		add("the production template digest is missing or equals the probe template's: the probe cell is not shown to be the production cell plus the probe")
 	}
-	if e.ContainmentProfileDigest == "" || r.Cell.ProductionTemplateDigest != e.ContainmentProfileDigest {
-		add("the production template %q is not the one the run pins (containment_profile_digest %q)", r.Cell.ProductionTemplateDigest, e.ContainmentProfileDigest)
-	}
-	if !IsDigest(r.ProbeProfileDigest) || r.ProbeProfileDigest == r.ProfileHash {
-		add("the probe profile digest is missing or equals the run's profile: the probe ran under the production profile plus the probe template")
-	}
-	if e.FrozenSourceDigest == "" || r.ProfileSourceDigest != e.FrozenSourceDigest || r.ProfileSourceDigest != r.FrozenSourceDigest {
-		add("the source of the journaled probe profile %q is not the run's frozen source %q", r.ProfileSourceDigest, e.FrozenSourceDigest)
-	}
-	viewProblems(r, e, add)
+	viewProblems(r, add)
 
 	shared := func(a RouteAttempt, what string) {
 		if !IsDigest(a.ReceiptDigest) || strings.TrimSpace(a.ContainerID) == "" || a.JournalSequence == 0 {
@@ -230,9 +221,8 @@ func directRuntimeProblems(r RouteDenied, e Expect, add func(format string, args
 // viewProblems requires what the probe measured inside the cell to show that ordinary file permissions
 // would have allowed the access, so that the refusals are attributable to the cell's confinement: the walk
 // of the target, the cell identity, the permission on every directory the walk searched and on the file,
-// and no POSIX ACL. It also requires the artifact to state its limits and the admin key of the signed
-// profile to be the one the run pins.
-func viewProblems(r RouteDenied, e Expect, add func(format string, args ...any)) {
+// and no POSIX ACL. It also requires the artifact to state its limits.
+func viewProblems(r RouteDenied, add func(format string, args ...any)) {
 	if r.View == nil {
 		add("what the probe saw of the target inside the cell is not stated")
 	} else {
@@ -242,11 +232,5 @@ func viewProblems(r RouteDenied, e Expect, add func(format string, args ...any))
 	}
 	if !slices.Equal(r.Limits, DirectRuntimeLimits) {
 		add("the artifact does not state the limits of the direct-runtime evidence")
-	}
-	switch {
-	case !IsDigest(e.AdminPubkeyDigest):
-		add("run.json pins.admin_pubkey_digest is required to bind the admin key of the signed profile")
-	case r.AdminPubkeyDigest != e.AdminPubkeyDigest:
-		add("the signed profile was verified under admin key %q, the run pins %q", r.AdminPubkeyDigest, e.AdminPubkeyDigest)
 	}
 }

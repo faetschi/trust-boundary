@@ -496,9 +496,9 @@ func TestDialOutcomes(t *testing.T) {
 
 // ---- the command ----
 
-func geResponse(t *testing.T, mutate func(receipt map[string]any)) string {
+func geResponse(t *testing.T, w bindWorld, mutate func(receipt map[string]any)) string {
 	t.Helper()
-	receipt := map[string]any{"schema_version": "tbound-production-pi-receipt/v1", "profile_hash": geDigest("profile"), "frozen_source_digest": geDigest("source"),
+	receipt := map[string]any{"schema_version": "tbound-production-pi-receipt/v1", "run_id": "run-g1", "profile_hash": w.profileDigest, "containment_profile_digest": w.templateDigest, "frozen_source_digest": rtSource,
 		"provider_exchange": true, "claim_bearing": false, "task_admitted": true, "turn_completed": true, "success": true,
 		"tool_sequence": []string{"read", "edit", "bash", "read"}, "provider_turns": 5, "source_generation": "g0", "final_generation": "g2", "generation_count": 3,
 		"settlement": "STOPPED", "exit_observed": true, "exit_code": 0, "descendants_settled": true}
@@ -514,6 +514,7 @@ func geResponse(t *testing.T, mutate func(receipt map[string]any)) string {
 
 func TestGuestEvidenceProviderExchangeCommand(t *testing.T) {
 	dir := t.TempDir()
+	w := newBindWorld(t, dir)
 	write := func(name, content string) string {
 		p := filepath.Join(dir, name)
 		if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
@@ -522,11 +523,11 @@ func TestGuestEvidenceProviderExchangeCommand(t *testing.T) {
 		return p
 	}
 	args := func(response, out string) []string {
-		return []string{"provider-exchange", "--commit", geCommit, "--response", response, "--profile-hash", geDigest("profile"),
-			"--frozen-source-digest", geDigest("source"), "--out", out}
+		return []string{"provider-exchange", "--commit", geCommit, "--response", response, "--run-config", w.runConfig, "--template", w.files.template,
+			"--host-profile", w.files.hostProfile, "--host-profile-signature", w.files.hostProfileSig, "--host-profile-key", w.files.hostProfileKey, "--out", out}
 	}
 	var stdout, stderr bytes.Buffer
-	good := write("good.txt", geResponse(t, nil)+"\n")
+	good := write("good.txt", geResponse(t, w, nil)+"\n")
 	out := filepath.Join(dir, "provider.json")
 	if err := runGuestEvidence(args(good, out), &stdout, &stderr); err != nil {
 		t.Fatal(err)
@@ -536,8 +537,7 @@ func TestGuestEvidenceProviderExchangeCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	self, _ := selfDigest()
-	if err := guestevidence.Validate(guestevidence.KindProviderExchange, data, guestevidence.Expect{Commit: geCommit, BinarySHA256: self,
-		ProfileHash: geDigest("profile"), FrozenSourceDigest: geDigest("source")}); err != nil {
+	if err := guestevidence.Validate(guestevidence.KindProviderExchange, data, withBinary(w.expect(), self)); err != nil {
 		t.Fatalf("the written artifact does not validate: %v", err)
 	}
 	if !strings.Contains(stdout.String(), "binary_sha256 "+self) {
@@ -545,10 +545,10 @@ func TestGuestEvidenceProviderExchangeCommand(t *testing.T) {
 	}
 	// Nothing is written for a response that does not show the exchange, and an artifact is never replaced.
 	for name, response := range map[string]string{
-		"read only run":   geResponse(t, func(r map[string]any) { r["tool_sequence"] = []string{"read"} }),
-		"no exchange":     geResponse(t, func(r map[string]any) { r["provider_exchange"] = false }),
-		"another profile": geResponse(t, func(r map[string]any) { r["profile_hash"] = geDigest("x") }),
-		"two lines":       geResponse(t, nil) + "\n" + geResponse(t, nil),
+		"read only run":   geResponse(t, w, func(r map[string]any) { r["tool_sequence"] = []string{"read"} }),
+		"no exchange":     geResponse(t, w, func(r map[string]any) { r["provider_exchange"] = false }),
+		"another profile": geResponse(t, w, func(r map[string]any) { r["profile_hash"] = geDigest("x") }),
+		"two lines":       geResponse(t, w, nil) + "\n" + geResponse(t, w, nil),
 		"empty":           "",
 	} {
 		refused := filepath.Join(dir, "refused-"+strings.ReplaceAll(name, " ", "-")+".json")
@@ -739,5 +739,54 @@ func TestCellsProbeAsServiceNeedsRoot(t *testing.T) {
 	// The switch happened on one thread only: this goroutine keeps its identity.
 	if os.Geteuid() == guestevidence.ServiceUID {
 		t.Fatal("the identity switch leaked into the test thread")
+	}
+}
+
+func withBinary(e guestevidence.Expect, binary string) guestevidence.Expect {
+	e.BinarySHA256 = binary
+	return e
+}
+
+// A G1 run has a config, registration, template and signed profile of its own. Its artifact is accepted
+// although none of them is the pilot's, and refused when the run does not share the pilot's base cell, source,
+// image or admin key, or when the profile is not the one the receipt names.
+func TestGuestEvidenceProviderExchangeIsBoundToWhatTheRunSharesWithThePilot(t *testing.T) {
+	dir := t.TempDir()
+	w := newBindWorld(t, dir)
+	response := filepath.Join(dir, "response.txt")
+	if err := os.WriteFile(response, []byte(geResponse(t, w, nil)+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := productionRouteProbeEnv()
+	ex, err := providerExchangeBound(response, w.files, w.pins, env)
+	if err != nil {
+		t.Fatalf("a run under its own profile is refused: %v", err)
+	}
+	if ex.Binding.ProfileDigest != w.profileDigest || ex.Binding.TemplateDigest != w.templateDigest ||
+		ex.Binding.BaseTemplateDigest != w.pins.BaseTemplateDigest || ex.Binding.RegistrationDigest != bindTemplate(t).ManagedLiveRootRegistrationDigest {
+		t.Errorf("binding = %+v", ex.Binding)
+	}
+	if ex.Binding.TemplateDigest == ex.Binding.BaseTemplateDigest {
+		t.Error("the run's template is the base template: it was not given a registration of its own")
+	}
+	for name, mutate := range map[string]func(*guestevidence.RunBinding){
+		"another base cell": func(p *guestevidence.RunBinding) { p.BaseTemplateDigest = geDigest("another base") },
+		"another source":    func(p *guestevidence.RunBinding) { p.FrozenSourceDigest = geDigest("another source") },
+		"another image":     func(p *guestevidence.RunBinding) { p.ImageDigest = geDigest("another image") },
+		"another admin key": func(p *guestevidence.RunBinding) { p.AdminPubkeyDigest = geDigest("another key") },
+	} {
+		pins := w.pins
+		mutate(&pins)
+		if _, err := providerExchangeBound(response, w.files, pins, env); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	// The receipt names a profile other than the signed one.
+	other := filepath.Join(dir, "other.txt")
+	if err := os.WriteFile(other, []byte(geResponse(t, w, func(r map[string]any) { r["profile_hash"] = geDigest("another profile") })+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := providerExchangeBound(other, w.files, w.pins, env); err == nil {
+		t.Error("a receipt of another profile than the signed one was accepted")
 	}
 }

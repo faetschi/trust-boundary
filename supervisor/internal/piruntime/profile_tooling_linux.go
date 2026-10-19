@@ -283,3 +283,33 @@ func DefaultLinuxHostProfileTemplate() HostProfile {
 func MarshalUnsignedLinuxHostProfileTemplate() ([]byte, error) {
 	return json.Marshal(DefaultLinuxHostProfileTemplate())
 }
+
+// PlaceholderFields names the fields of a profile that still hold the value the generated template put there for
+// the operator to replace: the template id, and the digests of the Node executable, the cgroup root, the runtime
+// bundle, the source provenance, the offline verifier and the provider profile. A profile with one is not a
+// profile of anything measured, and neither the signing tool nor the launcher accepts it.
+func (p HostProfile) PlaceholderFields() []string {
+	var fields []string
+	if p.ID == LinuxHostProfileTemplateID {
+		fields = append(fields, "ID")
+	}
+	for _, f := range []struct{ name, value, label string }{
+		{"ExecutableDigest", p.ExecutableDigest, "node-executable"},
+		{"CgroupRootDigest", p.CgroupRootDigest, "cgroup-root"},
+		{"PiRuntimeBundleDigest", p.PiRuntimeBundleDigest, "pi-runtime-bundle"},
+		{"SourceProvenanceDigest", p.SourceProvenanceDigest, "source-provenance"},
+		{"OfflineVerifierDigest", p.OfflineVerifierDigest, "cosign-offline"},
+		{"ProviderProfileDigest", p.ProviderProfileDigest, "go-providerbridge"},
+	} {
+		if f.value == placeholderDigest(f.label) {
+			fields = append(fields, f.name)
+		}
+	}
+	return fields
+}
+
+// OfflineVerifierDigest is the OfflineVerifierDigest a profile pins for the offline image verifier: the digest of
+// the pinned cosign executable and of the cosign public key it verifies under, in that order.
+func OfflineVerifierDigest(cosignDigest, cosignPublicKeyDigest string) string {
+	return DigestBytes([]byte("tbound-offline-verifier/v1\x00" + cosignDigest + "\x00" + cosignPublicKeyDigest))
+}

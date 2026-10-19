@@ -271,7 +271,7 @@ func TestBuildEVQResultsChangedArtifactChangesEvidence(t *testing.T) {
 var (
 	guestBinary = fixtureDigest("tbound-profile built from the freeze commit")
 	profilePin  = fixtureDigest("profile")
-	sourcePin   = fixtureDigest("source")
+	sourcePin   = fixtureDigest("tree") // the archive tree digest of the fixture capture (writeCapture)
 )
 
 type evqEnv struct {
@@ -949,7 +949,7 @@ func newRouteEnv(t *testing.T, matrix []byte, pkgs []pkgRun) *routeEnv {
 	if err := os.WriteFile(e.matrix, matrix, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(e.config, []byte(`{"freeze_commit":"`+commit+`"}`), 0o600); err != nil {
+	if err := os.WriteFile(e.config, []byte(`{"freeze_commit":"`+commit+`","pins":{"frozen_source_digest":"`+sourcePin+`"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Mkdir(e.capture, 0o700); err != nil {

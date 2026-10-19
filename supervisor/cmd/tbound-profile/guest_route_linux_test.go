@@ -24,9 +24,8 @@ const (
 )
 
 var (
-	rtProfile = geDigest("profile")
-	rtSource  = geDigest("source")
-	rtBytes   = []byte("version=2.4.0\nstatus=draft\n")
+	rtSource = geDigest("source")
+	rtBytes  = []byte("version=2.4.0\nstatus=draft\n")
 )
 
 // rtResult is the result the cell returns for each probe method.
@@ -51,7 +50,7 @@ func rtReceipt(t *testing.T, method string, result sessionrepo.CommandResult) pi
 	cmd := guestevidence.RouteProbeCommands(rtTarget, rtControl)[method]
 	return piruntime.D09CommandReceipt{
 		SchemaVersion: "tbound-d09-command-receipt/v1", ContainerID: "container-" + method,
-		ImageDigest: geDigest("image"), TemplateDigest: geDigest("template"), ResultDigest: piruntime.DigestBytes(encoded),
+		ImageDigest: geDigest("image"), TemplateDigest: rtTemplateDigest(t), ResultDigest: piruntime.DigestBytes(encoded),
 		ReceiptDigest: geDigest("receipt " + method), ExitCode: result.ExitCode,
 		CommandSpec: sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", cmd}},
 		Proof: piruntime.D09CommandProof{CapEff: "0000000000000000", NoNewPrivs: true, Seccomp: 2, LandlockTSYNC: true, CgroupV2: true,
@@ -65,6 +64,7 @@ type rtEnv struct {
 	response string
 	control  string
 	opts     routeProbeOptions
+	world    bindWorld
 }
 
 // rtJournal writes a command audit journal with one settled event per entry of receipts (in order) and a
@@ -85,6 +85,7 @@ func rtJournal(t *testing.T, receipts []piruntime.D09CommandReceipt, mutateEvent
 	if err := os.Chmod(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	world := newBindWorld(t, dir)
 	j, err := audit.Open(filepath.Join(dir, rtRunID+"-command-audit.jsonl"))
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +98,7 @@ func rtJournal(t *testing.T, receipts []piruntime.D09CommandReceipt, mutateEvent
 		if err != nil {
 			t.Fatal(err)
 		}
-		event := map[string]any{"schema_version": commandSettledSchema, "run_id": rtRunID, "profile_digest": rtProfile,
+		event := map[string]any{"schema_version": commandSettledSchema, "run_id": rtRunID, "profile_digest": world.profileDigest,
 			"receipt": json.RawMessage(raw), "unread_member": i}
 		if mutateEvent != nil {
 			mutateEvent(&event)
@@ -113,8 +114,8 @@ func rtJournal(t *testing.T, receipts []piruntime.D09CommandReceipt, mutateEvent
 	if err := j.Close(); err != nil {
 		t.Fatal(err)
 	}
-	e := rtEnv{audit: dir, response: filepath.Join(t.TempDir(), "response.txt"), control: filepath.Join(t.TempDir(), "release.txt")}
-	receipt := goodGEReceiptFor(rtProfile, rtSource)
+	e := rtEnv{audit: dir, response: filepath.Join(t.TempDir(), "response.txt"), control: filepath.Join(t.TempDir(), "release.txt"), world: world}
+	receipt := goodGEReceiptFor(world.profileDigest, world.templateDigest, rtSource)
 	receipt["run_id"] = rtRunID
 	resp, err := json.Marshal(map[string]any{"schema_version": "tbound-pi-service-response/v1", "request_id": "req-1", "status": "completed", "receipt": receipt})
 	if err != nil {
@@ -126,13 +127,14 @@ func rtJournal(t *testing.T, receipts []piruntime.D09CommandReceipt, mutateEvent
 	if err := os.WriteFile(e.control, rtBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	e.opts = routeProbeOptions{route: "bash-view", runID: rtRunID, auditRoot: dir, response: e.response, target: rtTarget, controlPath: rtControl, controlFile: e.control}
+	e.opts = routeProbeOptions{route: "bash-view", runID: rtRunID, auditRoot: dir, response: e.response, target: rtTarget, controlPath: rtControl, controlFile: e.control,
+		pins: world.pins, template: world.files.template, hostProfile: world.files.hostProfile, hostProfileSig: world.files.hostProfileSig, hostProfileKey: world.files.hostProfileKey}
 	return e
 }
 
-// goodGEReceiptFor is a completed non-claim-bearing receipt of the pinned profile and source.
-func goodGEReceiptFor(profile, source string) map[string]any {
-	return map[string]any{"schema_version": "tbound-production-pi-receipt/v1", "profile_hash": profile, "frozen_source_digest": source,
+// goodGEReceiptFor is a completed non-claim-bearing receipt of a run under the given profile and template, of the pinned source.
+func goodGEReceiptFor(profile, template, source string) map[string]any {
+	return map[string]any{"schema_version": "tbound-production-pi-receipt/v1", "profile_hash": profile, "containment_profile_digest": template, "frozen_source_digest": source,
 		"provider_exchange": true, "claim_bearing": false, "task_admitted": true, "turn_completed": true, "success": true,
 		"tool_sequence": []string{"bash", "bash", "bash", "bash"}, "provider_turns": 5, "source_generation": "g0", "final_generation": "g0",
 		"generation_count": 1, "settlement": "STOPPED", "exit_observed": true, "exit_code": 0, "descendants_settled": true}
@@ -153,10 +155,6 @@ func rtEnvStub() routeProbeEnv {
 	return env
 }
 
-func rtExpect() guestevidence.Expect {
-	return guestevidence.Expect{Commit: geCommit, BinarySHA256: geDigest("self"), ProfileHash: rtProfile, FrozenSourceDigest: rtSource}
-}
-
 func TestRouteProbeBuildsAnArtifactThatPasses(t *testing.T) {
 	e := rtJournal(t, rtAllReceipts(t), nil)
 	d, kind, err := probeRouteDenied(e.opts, rtEnvStub())
@@ -171,7 +169,7 @@ func TestRouteProbeBuildsAnArtifactThatPasses(t *testing.T) {
 			t.Errorf("attempt %d = %+v", i, d.Attempts[i])
 		}
 	}
-	if err := guestevidence.Validate(kind, mustEncodeGE(t, kind, d), rtExpect()); err != nil {
+	if err := guestevidence.Validate(kind, mustEncodeGE(t, kind, d), e.world.expect()); err != nil {
 		t.Fatalf("the artifact is refused: %v", err)
 	}
 	// Commands of the run that are not part of the probe, and events of another run, are skipped.
@@ -280,7 +278,7 @@ func TestRouteProbeBindsTheRunAndTheJournal(t *testing.T) {
 		"no run id":     func(r map[string]any) { delete(r, "run_id") },
 	} {
 		e := rtJournal(t, rtAllReceipts(t), nil)
-		receipt := goodGEReceiptFor(rtProfile, rtSource)
+		receipt := goodGEReceiptFor(e.world.profileDigest, e.world.templateDigest, rtSource)
 		receipt["run_id"] = rtRunID
 		mutate(receipt)
 		resp, _ := json.Marshal(map[string]any{"schema_version": "tbound-pi-service-response/v1", "request_id": "r", "status": "completed", "receipt": receipt})
@@ -329,7 +327,8 @@ func TestGuestEvidenceRouteDeniedCommandWritesOnlyValidArtifacts(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := runGuestEvidence([]string{"route-denied", "--commit", geCommit, "--route", "bash-view", "--run-id", rtRunID, "--response", e.response,
 		"--audit-root", e.audit, "--target", rtTarget, "--control-path", rtControl, "--control-file", e.control,
-		"--profile-hash", rtProfile, "--frozen-source-digest", rtSource, "--out", out}, &stdout, &stderr)
+		"--run-config", e.world.runConfig, "--template", e.world.files.template, "--host-profile", e.world.files.hostProfile,
+		"--host-profile-signature", e.world.files.hostProfileSig, "--host-profile-key", e.world.files.hostProfileKey, "--out", out}, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("a journal of hand-made receipts produced an artifact")
 	}
@@ -338,7 +337,50 @@ func TestGuestEvidenceRouteDeniedCommandWritesOnlyValidArtifacts(t *testing.T) {
 	}
 	// direct-runtime without its inputs says what it needs.
 	err = runGuestEvidence([]string{"route-denied", "--commit", geCommit, "--route", "direct-runtime", "--out", out}, &stdout, &stderr)
-	if err == nil || !strings.Contains(err.Error(), "direct-runtime needs") {
+	if err == nil || !strings.Contains(err.Error(), "needs --run-config") {
 		t.Fatalf("direct-runtime: %v", err)
+	}
+}
+
+// The route-probe run has a config, registration, template and signed profile of its own: the artifact states
+// them, and they are bound to what the run shares with the pilot, not to the pilot's profile.
+func TestRouteProbeIsBoundToTheRunsOwnProfile(t *testing.T) {
+	e := rtJournal(t, rtAllReceipts(t), nil)
+	d, kind, err := probeRouteDenied(e.opts, rtEnvStub())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.ProfileHash != e.world.profileDigest || d.Binding.ProfileDigest != e.world.profileDigest || d.Binding.TemplateDigest != d.Cell.TemplateDigest ||
+		d.Binding.BaseTemplateDigest != e.world.pins.BaseTemplateDigest || d.Binding.ImageDigest != d.Cell.ImageDigest {
+		t.Fatalf("artifact = %+v", d)
+	}
+	if err := guestevidence.Validate(kind, mustEncodeGE(t, kind, d), e.world.expect()); err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	for name, mutate := range map[string]func(*routeProbeOptions){
+		"another base cell": func(o *routeProbeOptions) { o.pins.BaseTemplateDigest = geDigest("another base") },
+		"another source":    func(o *routeProbeOptions) { o.pins.FrozenSourceDigest = geDigest("another source") },
+		"another image":     func(o *routeProbeOptions) { o.pins.ImageDigest = geDigest("another image") },
+		"another admin key": func(o *routeProbeOptions) { o.pins.AdminPubkeyDigest = geDigest("another key") },
+		"no host profile":   func(o *routeProbeOptions) { o.hostProfile = "" },
+		"no template":       func(o *routeProbeOptions) { o.template = "" },
+	} {
+		o := e.opts
+		mutate(&o)
+		if _, _, err := probeRouteDenied(o, rtEnvStub()); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	// The receipt's template is the run's own: a run in another template is not the template the profile names.
+	other := rtAllReceipts(t)
+	for i := range other {
+		other[i].TemplateDigest = geDigest("another template")
+	}
+	oe := rtJournal(t, other, nil)
+	od, okind, err := probeRouteDenied(oe.opts, rtEnvStub())
+	if err == nil {
+		if err = guestevidence.Validate(okind, mustEncodeGE(t, okind, od), oe.world.expect()); err == nil {
+			t.Error("commands in a cell of another template than the run's profile names were accepted")
+		}
 	}
 }

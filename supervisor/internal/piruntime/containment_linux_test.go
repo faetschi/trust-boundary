@@ -163,7 +163,7 @@ func newTestLauncher(config D09Config, runner D09ProbeRunner) *D09PodmanCrunLaun
 }
 
 func validD09Profile() HostProfile {
-	profile := DefaultLinuxHostProfileTemplate()
+	profile := measuredProfile()
 	profile.ID = "pi-host-profile-v1"
 	profile.Digest = DigestBytes([]byte("signed-test"))
 	profile.ContainmentProfileDigest = DigestBytes([]byte("test-template"))
@@ -323,6 +323,13 @@ func TestD09AdmissionRequiresARealBoundManagedLiveRoot(t *testing.T) {
 	templateProfile.Digest = DigestBytes([]byte("signed-test"))
 	if err := launcher.admitsFrozenLinuxProfile(templateProfile); !errors.Is(err, ErrProductionLauncherUnavailable) {
 		t.Fatalf("an unedited template profile was admitted: %v", err)
+	}
+	// A profile with a real id that still holds a placeholder identity (here the source provenance of the frozen
+	// commit) is not admitted for any config, smoke or corpus.
+	placeholder := validD09Profile()
+	placeholder.SourceProvenanceDigest = placeholderDigest("source-provenance")
+	if err := launcher.admitsFrozenLinuxProfile(placeholder); !errors.Is(err, ErrProductionLauncherUnavailable) {
+		t.Fatalf("a profile with a placeholder source provenance was admitted: %v", err)
 	}
 	profile.ContainmentProfile = "host-exec-v1"
 	if err := launcher.admitsFrozenLinuxProfile(profile); !errors.Is(err, ErrProductionLauncherUnavailable) {

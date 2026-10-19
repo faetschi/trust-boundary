@@ -114,19 +114,22 @@ func TestProfileCommandInitSignVerify(t *testing.T) {
 		t.Fatalf("init --force: %v", err)
 	}
 
-	_, privateKey, err := ed25519.GenerateKey(cryptorand.Reader)
-	if err != nil {
-		t.Fatal(err)
+	// An unedited template is not signed; a profile with the measured values is, to a new path.
+	w := newSignWorld(t)
+	keyPath := w.key
+	if err := run([]string{"sign", "--profile", profilePath, "--key", keyPath, "--out-sig", filepath.Join(dir, "x.sig"), "--out-pub", filepath.Join(dir, "x.pub"), "--out-profile", filepath.Join(dir, "x.json")}, &out, &errOut); err == nil {
+		t.Fatal("sign accepted the unedited template")
 	}
-	keyPath := filepath.Join(dir, "host.ed25519")
-	if err := os.WriteFile(keyPath, privateKey, 0o600); err != nil {
-		t.Fatal(err)
+	if err := run(append([]string{"init", "--out", profilePath, "--force"}, w.initFlags...), &out, &errOut); err != nil {
+		t.Fatalf("init with measured values: %v (%s)", err, errOut.String())
 	}
 	sigPath := filepath.Join(dir, "pi-host-profile.ed25519")
 	pubPath := filepath.Join(dir, "pi-host-profile.pub")
-	if err := run([]string{"sign", "--profile", profilePath, "--key", keyPath, "--out-sig", sigPath, "--out-pub", pubPath}, &out, &errOut); err != nil {
+	signedPath := filepath.Join(dir, "pi-host-profile.signed.json")
+	if err := run([]string{"sign", "--profile", profilePath, "--key", keyPath, "--out-sig", sigPath, "--out-pub", pubPath, "--out-profile", signedPath}, &out, &errOut); err != nil {
 		t.Fatalf("sign: %v (%s)", err, errOut.String())
 	}
+	profilePath = signedPath
 	if err := run([]string{"verify", "--profile", profilePath, "--sig", sigPath, "--pub", pubPath}, &out, &errOut); err != nil {
 		t.Fatalf("verify: %v (%s)", err, errOut.String())
 	}
@@ -219,15 +222,31 @@ func TestProfileCommandTemplateInitDigest(t *testing.T) {
 	}
 	// The two command-cell delta identities are derived from the printed template digest.
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 3 || !strings.Contains(lines[1], "delta net-sink/v1 template digest: sha256:") ||
-		!strings.Contains(lines[2], "delta no-reap/v1 template digest: sha256:") {
+	if len(lines) != 4 || !strings.Contains(lines[1], "base template digest") || !strings.Contains(lines[2], "delta net-sink/v1 template digest: sha256:") ||
+		!strings.Contains(lines[3], "delta no-reap/v1 template digest: sha256:") {
 		t.Fatalf("template-digest did not print the two delta template digests: %q", out.String())
 	}
 	base := strings.TrimSpace(lines[0][strings.LastIndex(lines[0], " ")+1:])
 	netSink, _ := piruntime.ParseD09CellDelta(piruntime.D09CellDeltaNetSink)
 	want, err := netSink.TemplateDigest(base)
-	if err != nil || !strings.HasSuffix(lines[1], want) {
-		t.Fatalf("printed net-sink digest is not the derived one: %q want %s (%v)", lines[1], want, err)
+	if err != nil || !strings.HasSuffix(lines[2], want) {
+		t.Fatalf("printed net-sink digest is not the derived one: %q want %s (%v)", lines[2], want, err)
+	}
+	// The base template digest is the digest with the registration emptied, the same for any registration: it is the
+	// pin that the runs under a config of their own share with the pilot.
+	baseLine := strings.TrimSpace(lines[1][strings.LastIndex(lines[1], " ")+1:])
+	other := strings.Replace(measured, strings.Repeat("3", 64), strings.Repeat("4", 64), 1)
+	otherPath := filepath.Join(dir, "other-registration.json")
+	if err := os.WriteFile(otherPath, []byte(other), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := run([]string{"template-digest", "--template", otherPath}, &out, &errOut); err != nil {
+		t.Fatal(err)
+	}
+	otherLines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if otherLines[0] == lines[0] || !strings.HasSuffix(otherLines[1], baseLine) {
+		t.Fatalf("a template of another registration: digest line %q, base line %q, want base %s", otherLines[0], otherLines[1], baseLine)
 	}
 }
 
@@ -235,14 +254,15 @@ func TestProfileCommandRejectsShortPrivateKey(t *testing.T) {
 	dir := t.TempDir()
 	profilePath := filepath.Join(dir, "pi-host-profile.json")
 	var out, errOut bytes.Buffer
-	if err := run([]string{"init", "--out", profilePath}, &out, &errOut); err != nil {
+	// A measured profile, so that the key is what is refused.
+	if err := run(append([]string{"init", "--out", profilePath}, newSignWorld(t).initFlags...), &out, &errOut); err != nil {
 		t.Fatalf("init: %v", err)
 	}
 	keyPath := filepath.Join(dir, "short.ed25519")
 	if err := os.WriteFile(keyPath, []byte("too-short"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := run([]string{"sign", "--profile", profilePath, "--key", keyPath, "--out-sig", filepath.Join(dir, "sig"), "--out-pub", filepath.Join(dir, "pub")}, &out, &errOut); err == nil {
+	if err := run([]string{"sign", "--profile", profilePath, "--key", keyPath, "--out-sig", filepath.Join(dir, "sig"), "--out-pub", filepath.Join(dir, "pub"), "--out-profile", filepath.Join(dir, "signed.json")}, &out, &errOut); err == nil {
 		t.Fatal("sign accepted a short Ed25519 private key")
 	}
 }

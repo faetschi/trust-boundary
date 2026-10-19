@@ -32,6 +32,7 @@ usage:
   tbound-run report    --config run.json --out <dir>
   tbound-run selfcheck --config run.json
   tbound-run fixture digest <spec.json>
+  tbound-run source-digest --repo <git repo> --commit <40-hex>     (the frozen source digest: host profile SourceProvenanceDigest, run.json pins.frozen_source_digest)
   tbound-run evq-capture  --repo <git repo> --commit <40-hex> --out <new dir>     (Linux or WSL)
   tbound-run evq-adapter-capture --repo <git repo> --commit <40-hex> --node <abs> --npm-cli <abs npm-cli.js> --npm-cache <dir> --out <new file>   (Linux or WSL; offline)
   tbound-run evq          --mapping evq-mapping.json --config run.json --capture <dir> [--guest-binary-sha256 sha256:.. (needed for guest kinds) --artifact kind=file ...] --out evq_results.json
@@ -83,6 +84,8 @@ func (a *app) run(args []string) error {
 		return a.fixtureCmd(rest)
 	case "evq":
 		return a.evqCmd(rest)
+	case "source-digest":
+		return a.sourceDigestCmd(rest)
 	case "evq-capture":
 		return a.evqCaptureCmd(rest)
 	case "evq-adapter-capture":

@@ -32,12 +32,12 @@ func goodDirectRuntimeWith(obs []RouteDirectObservation, controlErrno int) Route
 	if err != nil {
 		panic(err)
 	}
-	return RouteDenied{RunID: "run-1", ProfileHash: e.ProfileHash, FrozenSourceDigest: e.FrozenSourceDigest, Target: "/home/node/.profile",
+	return RouteDenied{RunID: "run-1", ProfileHash: digestOf("probe profile"), FrozenSourceDigest: e.FrozenSourceDigest, Target: "/home/node/.profile",
+		Binding: goodBinding(e, digestOf("probe profile"), digestOf("probe template")),
 		Cell: RouteCell{Kind: RouteCellPiRuntime, ImageDigest: digestOf("image"), TemplateDigest: digestOf("probe template"),
 			LandlockRulesetDigest: digestOf("ruleset"), ProductionTemplateDigest: digestOf("production template"), CellUID: testCellUID, CellGID: testCellGID},
-		Journal:            RouteJournal{Records: 9, HeadHash: strings.Repeat("a", 64)},
-		ProbeProfileDigest: digestOf("probe profile"), ProfileSourceDigest: e.FrozenSourceDigest,
-		View: goodView(), AdminPubkeyDigest: e.AdminPubkeyDigest, Limits: DirectRuntimeLimits,
+		Journal: RouteJournal{Records: 9, HeadHash: strings.Repeat("a", 64)},
+		View:    goodView(), Limits: DirectRuntimeLimits,
 		Control: control, Attempts: attempts}
 }
 
@@ -110,10 +110,7 @@ func TestBashViewArtifactCarriesNoDirectRuntimeMembers(t *testing.T) {
 		"a production template digest": func(r *RouteDenied) { r.Cell.ProductionTemplateDigest = digestOf("x") },
 		"a cell identity":              func(r *RouteDenied) { r.Cell.CellUID = 5 },
 		"a view":                       func(r *RouteDenied) { r.View = &cellview.View{} },
-		"an admin key digest":          func(r *RouteDenied) { r.AdminPubkeyDigest = digestOf("x") },
 		"limits":                       func(r *RouteDenied) { r.Limits = DirectRuntimeLimits },
-		"a probe profile digest":       func(r *RouteDenied) { r.ProbeProfileDigest = digestOf("x") },
-		"a profile source digest":      func(r *RouteDenied) { r.ProfileSourceDigest = digestOf("x") },
 		"an op":                        func(r *RouteDenied) { r.Attempts[0].Op = RouteOpOpen },
 		"an errno":                     func(r *RouteDenied) { r.Attempts[0].Errno = "EACCES" },
 	} {
@@ -157,22 +154,33 @@ func TestDirectRuntimeArtifactIsBoundLikeEveryRouteArtifact(t *testing.T) {
 			t.Errorf("%s: accepted", name)
 		}
 	}
-	noPins := e
-	noPins.ProfileHash, noPins.FrozenSourceDigest = "", ""
-	if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, goodDirectRuntime()), noPins); err == nil {
-		t.Error("accepted although the run pins nothing")
+	for name, mutate := range map[string]func(*Expect){
+		"no source pin": func(x *Expect) { x.FrozenSourceDigest = "" }, "no base template pin": func(x *Expect) { x.BaseTemplateDigest = "" },
+		"no admin key pin": func(x *Expect) { x.AdminPubkeyDigest = "" }, "no image pin": func(x *Expect) { x.ImageDigest = "" },
+	} {
+		x := e
+		mutate(&x)
+		if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, goodDirectRuntime()), x); err == nil {
+			t.Errorf("%s: accepted although the run pins nothing", name)
+		}
 	}
 }
 
-func TestDirectRuntimeArtifactIsBoundToThePinnedProductionTemplate(t *testing.T) {
+// The probe runs under its own config and registration, so its production template and its profile are not the
+// pilot's. What it shares with the pilot is the base template (the template without its registration), the image,
+// the source and the admin key.
+func TestDirectRuntimeArtifactIsBoundToTheBaseTemplateNotToThePilotTemplate(t *testing.T) {
 	e := expect()
 	d := goodDirectRuntime()
-	e.ContainmentProfileDigest = d.Cell.ProductionTemplateDigest
 	if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, d), e); err != nil {
-		t.Fatalf("an artifact of the pinned production template is refused: %v", err)
+		t.Fatalf("a probe under its own registration is refused: %v", err)
 	}
-	e.ContainmentProfileDigest = digestOf("another production template")
+	d.Cell.ProductionTemplateDigest = digestOf("the template of another registration")
+	if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, d), e); err != nil {
+		t.Fatalf("the production template of the probe run is not compared with a pilot pin: %v", err)
+	}
+	d.Binding.BaseTemplateDigest = digestOf("another base template")
 	if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, d), e); err == nil {
-		t.Error("an artifact of another production template than the run pins was accepted")
+		t.Error("an artifact of another base template than the run pins was accepted")
 	}
 }

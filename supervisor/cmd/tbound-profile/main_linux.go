@@ -21,6 +21,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -32,10 +33,13 @@ import (
 const usageText = `tbound-profile — Linux host-profile generator, signer, and verifier
 
 usage:
-  tbound-profile init            --out <profile.json> [--force]
+  tbound-profile init            --out <profile.json> [--force] [--id <id>] [--node-digest <sha256>]
+                                 [--runtime-bundle-digest <sha256>] [--template-digest <sha256>] [--cgroup-root-digest <sha256>]
+                                 [--source-digest <sha256>] [--cosign <file> --cosign-pub <file>]
+                                 [--provider-route engineering|research [--research-profile <path>]]
   tbound-profile sign            --profile <profile.json> --key <ed25519-private>
-                                 --out-sig <signature.ed25519> --out-pub <public.pub>
-                                 [--out-profile <signed.json>]
+                                 --out-sig <new signature.ed25519> --out-pub <new public.pub>
+                                 --out-profile <new signed.json>
   tbound-profile verify          --profile <profile.json> --sig <signature.ed25519> --pub <public.pub>
   tbound-profile runtime-bundle-digest --root <read-only-runtime-bundle>
   tbound-profile template-init   --out <d09-cell.json> [--force]
@@ -87,6 +91,12 @@ corpus digest, the quota profile, the runner plan digest (the allocation comes f
 manifest split seed), the planned units and rerun headroom, the evalscore schema, the optional
 research profile and ledger configuration digests, and the reviewer names, bound by a
 domain-labelled record_digest (tbound-preregistration/v1). It is deterministic.
+
+init fills the identities the operator measures: the node, runtime bundle, cell template and
+cgroup root digests, the source digest of the freeze commit (tbound-run source-digest), the offline
+verifier (the digest of the cosign executable with the digest of its public key) and the provider
+route profile (the corpus manifest model pin of that route). sign and verify refuse a profile that
+still holds a template placeholder, and sign writes only new paths (O_EXCL), never in place.
 
 The private key is read from --key only and is never printed. The signature
 covers the verifier's domain-prefixed canonical profile bytes, and the written
@@ -179,8 +189,18 @@ func run(args []string, stdout, stderr io.Writer) error {
 func runInit(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tbound-profile init", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	out := flags.String("out", "", "output path for the canonical unsigned HostProfile template")
+	out := flags.String("out", "", "output path for the canonical unsigned HostProfile")
 	force := flags.Bool("force", false, "overwrite an existing output file")
+	id := flags.String("id", "", "profile id (not the template id)")
+	node := flags.String("node-digest", "", "ExecutableDigest: digest of the host Node executable")
+	bundle := flags.String("runtime-bundle-digest", "", "PiRuntimeBundleDigest (tbound-profile runtime-bundle-digest)")
+	template := flags.String("template-digest", "", "ContainmentProfileDigest: the cell template digest (tbound-profile template-digest)")
+	cgroupRoot := flags.String("cgroup-root-digest", "", "CgroupRootDigest (tbound-profile cgroup-root-digest)")
+	source := flags.String("source-digest", "", "SourceProvenanceDigest: the digest of the frozen source (tbound-run source-digest: the archive tree digest of the freeze commit)")
+	cosign := flags.String("cosign", "", "OfflineVerifierDigest: the pinned cosign executable (hashed with --cosign-pub)")
+	cosignPub := flags.String("cosign-pub", "", "OfflineVerifierDigest: the cosign public key file (hashed with --cosign)")
+	route := flags.String("provider-route", "", "ProviderProfileDigest: the route profile digest (engineering or research), the corpus manifest's model pin")
+	researchProfile := flags.String("research-profile", "", "frozen research profile JSON (required for, and only for, --provider-route research)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -190,28 +210,89 @@ func runInit(args []string, stdout, stderr io.Writer) error {
 	if strings.TrimSpace(*out) == "" {
 		return errors.New("--out is required")
 	}
-	encoded, err := piruntime.MarshalUnsignedLinuxHostProfileTemplate()
+	profile := piruntime.DefaultLinuxHostProfileTemplate()
+	if *id != "" {
+		if *id == piruntime.LinuxHostProfileTemplateID {
+			return fmt.Errorf("--id %q is the template id, which the launcher refuses", *id)
+		}
+		profile.ID = *id
+	}
+	for _, d := range []struct {
+		flag, value string
+		dst         *string
+	}{
+		{"--node-digest", *node, &profile.ExecutableDigest}, {"--runtime-bundle-digest", *bundle, &profile.PiRuntimeBundleDigest},
+		{"--template-digest", *template, &profile.ContainmentProfileDigest}, {"--cgroup-root-digest", *cgroupRoot, &profile.CgroupRootDigest},
+		{"--source-digest", *source, &profile.SourceProvenanceDigest},
+	} {
+		if d.value == "" {
+			continue
+		}
+		if !pinDigestRE.MatchString(d.value) {
+			return fmt.Errorf("%s must be sha256:<64 lowercase hex>", d.flag)
+		}
+		*d.dst = d.value
+	}
+	if (*cosign == "") != (*cosignPub == "") {
+		return errors.New("--cosign and --cosign-pub are given together: the offline verifier is the executable and the key")
+	}
+	if *cosign != "" {
+		cosignDigest, err := fileDigest(*cosign, false)
+		if err != nil {
+			return fmt.Errorf("--cosign: %w", err)
+		}
+		pubDigest, err := fileDigest(*cosignPub, false)
+		if err != nil {
+			return fmt.Errorf("--cosign-pub: %w", err)
+		}
+		profile.OfflineVerifierDigest = piruntime.OfflineVerifierDigest(cosignDigest, pubDigest)
+	}
+	if *route != "" || *researchProfile != "" {
+		model, err := modelPinFor(*route, *researchProfile)
+		if err != nil {
+			return err
+		}
+		if profile.ProviderProfileDigest, err = corpusPin("model", model); err != nil {
+			return err
+		}
+	}
+	encoded, err := json.Marshal(profile)
 	if err != nil {
 		return err
 	}
 	if err := writeNewFile(*out, encoded, *force); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(stdout, "wrote canonical unsigned host profile template: %s\nDigest is empty until signed; replace placeholder digests with the measured experiment values (cgroup_root_digest comes from 'tbound-profile cgroup-root-digest --uid <service-uid>'), then:\n  tbound-profile sign --profile %s --key <ed25519-private> --out-sig %s.ed25519 --out-pub %s.pub\n",
-		*out, *out, strings.TrimSuffix(*out, ".json"), strings.TrimSuffix(*out, ".json")); err != nil {
-		return err
+	placeholders := "none"
+	if fields := profile.PlaceholderFields(); len(fields) != 0 {
+		placeholders = strings.Join(fields, ", ")
 	}
-	return nil
+	_, err = fmt.Fprintf(stdout, "wrote canonical unsigned host profile: %s\nDigest is empty until signed. Placeholders left (sign refuses them): %s\nThen:\n  tbound-profile sign --profile %s --key <ed25519-private> --out-sig <new>.ed25519 --out-pub <new>.pub --out-profile <new>.signed.json\n",
+		*out, placeholders, *out)
+	return err
+}
+
+// createNewFile creates path with O_EXCL (a path that exists, a link or not, is refused) and writes data.
+func createNewFile(path string, data []byte, mode os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, mode)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", path, err)
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return f.Close()
 }
 
 func runSign(args []string, stdout, stderr io.Writer) error {
 	flags := flag.NewFlagSet("tbound-profile sign", flag.ContinueOnError)
 	flags.SetOutput(stderr)
-	profilePath := flags.String("profile", "", "path to the unsigned or partially signed HostProfile JSON")
+	profilePath := flags.String("profile", "", "path to the unsigned HostProfile JSON")
 	keyPath := flags.String("key", "", "path to a raw 64-byte Ed25519 private key")
-	outSig := flags.String("out-sig", "", "output path for the raw 64-byte Ed25519 signature")
-	outPub := flags.String("out-pub", "", "output path for the raw 32-byte Ed25519 public key")
-	outProfile := flags.String("out-profile", "", "output path for the signed profile JSON (default: rewrite --profile)")
+	outSig := flags.String("out-sig", "", "new output path for the raw 64-byte Ed25519 signature")
+	outPub := flags.String("out-pub", "", "new output path for the raw 32-byte Ed25519 public key")
+	outProfile := flags.String("out-profile", "", "new output path for the signed profile JSON")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -219,8 +300,20 @@ func runSign(args []string, stdout, stderr io.Writer) error {
 		return errors.New("unexpected positional arguments")
 	}
 	if strings.TrimSpace(*profilePath) == "" || strings.TrimSpace(*keyPath) == "" ||
-		strings.TrimSpace(*outSig) == "" || strings.TrimSpace(*outPub) == "" {
-		return errors.New("--profile, --key, --out-sig, and --out-pub are required")
+		strings.TrimSpace(*outSig) == "" || strings.TrimSpace(*outPub) == "" || strings.TrimSpace(*outProfile) == "" {
+		return errors.New("--profile, --key, --out-sig, --out-pub, and --out-profile are required: signing is never in place")
+	}
+	// Every output is a new path: nothing is overwritten, and the profile that is read is never rewritten.
+	outputs := []string{*outSig, *outPub, *outProfile}
+	for i, p := range outputs {
+		if _, err := os.Lstat(p); err == nil {
+			return fmt.Errorf("refusing to overwrite existing %s: signature outputs are new paths", p)
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if filepath.Clean(p) == filepath.Clean(*profilePath) || slices.Contains(outputs[:i], p) {
+			return fmt.Errorf("output %s is the input profile or another output", p)
+		}
 	}
 	profileBytes, err := os.ReadFile(*profilePath)
 	if err != nil {
@@ -229,6 +322,9 @@ func runSign(args []string, stdout, stderr io.Writer) error {
 	profile, err := decodeStrictHostProfile(profileBytes)
 	if err != nil {
 		return err
+	}
+	if fields := profile.PlaceholderFields(); len(fields) != 0 {
+		return fmt.Errorf("refusing to sign a profile that still holds template placeholders: %s", strings.Join(fields, ", "))
 	}
 	privateKey, err := os.ReadFile(*keyPath)
 	if err != nil {
@@ -245,24 +341,18 @@ func runSign(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	target := strings.TrimSpace(*outProfile)
-	if target == "" {
-		target = *profilePath
+	for _, o := range []struct {
+		path string
+		data []byte
+		mode os.FileMode
+	}{{*outSig, signature, 0o600}, {*outPub, publicKey, 0o644}, {*outProfile, signedJSON, 0o600}} {
+		if err := createNewFile(o.path, o.data, o.mode); err != nil {
+			return err
+		}
 	}
-	if err := os.WriteFile(*outSig, signature, 0o600); err != nil {
-		return fmt.Errorf("write Ed25519 signature: %w", err)
-	}
-	if err := os.WriteFile(*outPub, publicKey, 0o644); err != nil {
-		return fmt.Errorf("write Ed25519 public key: %w", err)
-	}
-	if err := os.WriteFile(target, signedJSON, 0o600); err != nil {
-		return fmt.Errorf("write signed host profile: %w", err)
-	}
-	if _, err := fmt.Fprintf(stdout, "signed host profile: %s\nDigest: %s\nPublic key (hex): %s\nSignature: %s\n",
-		target, signedProfile.Digest, hex.EncodeToString(publicKey), *outSig); err != nil {
-		return err
-	}
-	return nil
+	_, err = fmt.Fprintf(stdout, "signed host profile: %s\nDigest: %s\nPublic key (hex): %s\nSignature: %s\n",
+		*outProfile, signedProfile.Digest, hex.EncodeToString(publicKey), *outSig)
+	return err
 }
 
 func runVerify(args []string, stdout, stderr io.Writer) error {
@@ -284,10 +374,11 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("host profile verification failed: %w", err)
 	}
-	if _, err := fmt.Fprintf(stdout, "verified signed host profile %s (digest %s, mode %s)\n", profile.ID, profile.Digest, profile.Mode); err != nil {
-		return err
+	if fields := profile.PlaceholderFields(); len(fields) != 0 {
+		return fmt.Errorf("the signature verifies, but the profile still holds template placeholders and is not admissible: %s", strings.Join(fields, ", "))
 	}
-	return nil
+	_, err = fmt.Fprintf(stdout, "verified signed host profile %s (digest %s, mode %s)\n", profile.ID, profile.Digest, profile.Mode)
+	return err
 }
 
 func runRuntimeBundleDigest(args []string, stdout, stderr io.Writer) error {
@@ -367,6 +458,15 @@ func runTemplateDigest(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if _, err := fmt.Fprintf(stdout, "D09 cell template canonical digest: %s\n", digest); err != nil {
+		return err
+	}
+	// The base template (no registration digest) is what the pilot and the runs under a config of their own share:
+	// it is run.json pins.base_template_digest and the input of the corpus manifest's profile_digest pin.
+	base, err := baseTemplateDigest(template)
+	if err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(stdout, "D09 base template digest (registration digest emptied; run.json pins.base_template_digest): %s\n", base); err != nil {
 		return err
 	}
 	// The command-cell delta templates are derived from this digest by code (no extra signature);

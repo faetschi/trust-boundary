@@ -53,16 +53,16 @@ type Expect struct {
 	Commit string
 	// BinarySHA256 is the digest of the tbound-profile executable built from Commit (P1).
 	BinarySHA256 string
-	// ProfileHash and FrozenSourceDigest are run.json pins.profile_hash and pins.frozen_source_digest:
-	// the receipt of a real provider exchange must carry both.
-	ProfileHash        string
+	// FrozenSourceDigest, BaseTemplateDigest, ImageDigest and AdminPubkeyDigest are what a G1 run, a route-probe
+	// run and a direct-runtime probe run share with the pilot (see ProfileBinding): run.json pins.frozen_source_digest,
+	// pins.base_template_digest (the cell template without its registration digest), v_image_digest and
+	// pins.admin_pubkey_digest (the key that verifies the signed host profile of the run). The pilot's own
+	// profile_hash and containment_profile_digest are not expected of these artifacts: each of those runs has
+	// its own config, registration, template and profile.
 	FrozenSourceDigest string
-	// ContainmentProfileDigest is run.json pins.containment_profile_digest: the digest of the production
-	// cell template. A direct-runtime route artifact must be of exactly that template.
-	ContainmentProfileDigest string
-	// AdminPubkeyDigest is run.json pins.admin_pubkey_digest: the digest of the admin public key file that
-	// verifies the signed host profile. A direct-runtime route artifact must be verified under exactly that key.
-	AdminPubkeyDigest string
+	BaseTemplateDigest string
+	ImageDigest        string
+	AdminPubkeyDigest  string
 	// CommitTree is the git tree id of Commit as the Go capture recorded it: the adapter run is bound to
 	// the commit through it.
 	CommitTree string

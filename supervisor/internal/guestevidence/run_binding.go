@@ -10,29 +10,32 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 )
 
-// RunBinding is what run.json pins for the evidence: the freeze commit and the receipt pins every artifact
-// is checked against. `tbound-run` and the guest producer that must not take these from the caller read it
+// RunBinding is what run.json pins for the evidence: the freeze commit and the pins every artifact is
+// checked against. `tbound-run` and the guest producers that must not take these from the caller read it
 // with ParseRunBinding, so they cannot disagree about which members count.
 type RunBinding struct {
-	Commit                   string
-	ProfileHash              string
-	ContainmentProfileDigest string
-	FrozenSourceDigest       string
+	Commit string
+	// FrozenSourceDigest, BaseTemplateDigest, ImageDigest and AdminPubkeyDigest are what the G1, route-probe and
+	// direct-runtime probe runs share with the pilot (ProfileBinding). The pilot's own profile_hash and
+	// containment_profile_digest are receipt pins (runner.ReceiptPins), not part of this binding.
+	FrozenSourceDigest string
+	BaseTemplateDigest string
+	ImageDigest        string
 	// AdminPubkeyDigest is the digest of the admin public key file that verifies the signed host profiles.
 	AdminPubkeyDigest string
 }
 
-// ParseRunBinding reads the freeze commit and the receipt pins of run.json. It reads only those members and
+// ParseRunBinding reads the freeze commit and the pins of run.json. It reads only those members and
 // does not validate the rest: the file may not yet name the evq_results the evidence produces. A duplicate
 // key, trailing data and a malformed freeze commit are refused.
 func ParseRunBinding(data []byte) (RunBinding, error) {
 	var doc struct {
 		FreezeCommit string `json:"freeze_commit"`
+		VImageDigest string `json:"v_image_digest"`
 		Pins         struct {
-			ProfileHash              string `json:"profile_hash"`
-			ContainmentProfileDigest string `json:"containment_profile_digest"`
-			FrozenSourceDigest       string `json:"frozen_source_digest"`
-			AdminPubkeyDigest        string `json:"admin_pubkey_digest"`
+			FrozenSourceDigest string `json:"frozen_source_digest"`
+			BaseTemplateDigest string `json:"base_template_digest"`
+			AdminPubkeyDigest  string `json:"admin_pubkey_digest"`
 		} `json:"pins"`
 	}
 	if err := protocol.ValidateStrictJSON(data); err != nil {
@@ -48,6 +51,6 @@ func ParseRunBinding(data []byte) (RunBinding, error) {
 	if !IsCommit(doc.FreezeCommit) {
 		return RunBinding{}, fmt.Errorf("config: freeze_commit %q is not 40 lowercase hex digits", doc.FreezeCommit)
 	}
-	return RunBinding{Commit: doc.FreezeCommit, ProfileHash: doc.Pins.ProfileHash,
-		ContainmentProfileDigest: doc.Pins.ContainmentProfileDigest, FrozenSourceDigest: doc.Pins.FrozenSourceDigest, AdminPubkeyDigest: doc.Pins.AdminPubkeyDigest}, nil
+	return RunBinding{Commit: doc.FreezeCommit, FrozenSourceDigest: doc.Pins.FrozenSourceDigest, BaseTemplateDigest: doc.Pins.BaseTemplateDigest,
+		ImageDigest: doc.VImageDigest, AdminPubkeyDigest: doc.Pins.AdminPubkeyDigest}, nil
 }

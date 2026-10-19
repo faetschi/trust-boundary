@@ -68,13 +68,16 @@ type runConfig struct {
 	Proc   procConfig `json:"proc"`
 }
 
-// runPins are the pins of run.json: the receipt identity values and, for the direct-runtime route evidence, the
-// digest of the admin public key file that verifies the signed host profiles (sha256 of the raw key file, as
-// piruntime.DigestBytes defines it). The key pin is optional here and required by the producer and the validator
-// of that evidence.
+// runPins are the pins of run.json: the receipt identity values of the pilot and, for the guest evidence of the
+// runs that have a config of their own (G1, route probe, direct-runtime probe), what those runs share with the
+// pilot: the digest of the admin public key file that verifies the signed host profiles (sha256 of the raw key
+// file, as piruntime.DigestBytes defines it) and the base cell template digest (the template with its
+// registration digest emptied; `tbound-profile template-digest` prints it). Both are optional here and
+// required by the producers and the validators of that evidence.
 type runPins struct {
 	runner.ReceiptPins
-	AdminPubkeyDigest string `json:"admin_pubkey_digest,omitempty"`
+	AdminPubkeyDigest  string `json:"admin_pubkey_digest,omitempty"`
+	BaseTemplateDigest string `json:"base_template_digest,omitempty"`
 }
 
 // admissionPolicyPins are the Store policy and metadata policy digests of the governed service.
@@ -177,6 +180,9 @@ func (c runConfig) validate() error {
 	}
 	if c.Pins.AdminPubkeyDigest != "" && !digestRE.MatchString(c.Pins.AdminPubkeyDigest) {
 		return errors.New("pins.admin_pubkey_digest must be sha256:<64 hex>")
+	}
+	if c.Pins.BaseTemplateDigest != "" && !digestRE.MatchString(c.Pins.BaseTemplateDigest) {
+		return errors.New("pins.base_template_digest must be sha256:<64 hex>")
 	}
 	if c.VImageDigest != "" && !digestRE.MatchString(c.VImageDigest) {
 		return errors.New("v_image_digest must be sha256:<64 hex>")

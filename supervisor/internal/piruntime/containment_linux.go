@@ -937,6 +937,9 @@ func (l *D09PodmanCrunLauncher) admitsFrozenLinuxProfile(profile HostProfile) er
 	if profile.ID == LinuxHostProfileTemplateID {
 		return fmt.Errorf("%w: unsigned template profile is not admissible", ErrProductionLauncherUnavailable)
 	}
+	if placeholders := profile.PlaceholderFields(); len(placeholders) != 0 {
+		return fmt.Errorf("%w: profile still holds template placeholders (%s)", ErrProductionLauncherUnavailable, strings.Join(placeholders, ", "))
+	}
 	if profile.ContainmentProfile != D09ContainmentProfile || profile.SettlementProfile != D09SettlementProfile {
 		return fmt.Errorf("%w: signed profile does not select the frozen D09 containment/settlement profile", ErrProductionLauncherUnavailable)
 	}
