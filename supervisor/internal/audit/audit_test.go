@@ -122,8 +122,10 @@ func TestRunEffectCompletesShortWritesAndReconstructsTrace(t *testing.T) {
 		t.Fatalf("unexpected reconstructed effect: %+v", effect)
 	}
 	if want := []EffectBoundary{
+		EffectBoundaryBeforeIntent,
 		EffectBoundaryAfterIntentSync,
 		EffectBoundaryAfterCallbackReturn,
+		EffectBoundaryAfterOutcomeSync,
 	}; !reflect.DeepEqual(observed, want) {
 		t.Fatalf("lifecycle observations = %v, want %v", observed, want)
 	}
@@ -413,8 +415,10 @@ func TestIntentSyncFailurePreventsEffect(t *testing.T) {
 	file := &faultFile{failSyncCall: 1, failSync: errInjectedSync}
 	journal := testJournal(file)
 	observerCalls := 0
-	journal.lifecycleHook = func(EffectBoundary) error {
-		observerCalls++
+	journal.lifecycleHook = func(boundary EffectBoundary) error {
+		if boundary != EffectBoundaryBeforeIntent {
+			observerCalls++
+		}
 		return nil
 	}
 	called := false
@@ -1225,4 +1229,52 @@ func testFrame(t *testing.T, sequence uint64, previousHash string, event Event) 
 		t.Fatal(err)
 	}
 	return append(encoded, '\n')
+}
+
+func TestBeforeIntentHookFailureWritesNothingAndSkipsTheEffect(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	journal.lifecycleHook = func(boundary EffectBoundary) error {
+		if boundary == EffectBoundaryBeforeIntent {
+			return errInjectedLifecycleHook
+		}
+		return nil
+	}
+	_, err := journal.RunEffect("before-intent", []byte("intent"), func() ([]byte, error) {
+		t.Fatal("effect ran although the intent boundary failed")
+		return nil, nil
+	})
+	if !errors.Is(err, ErrLifecycleHook) || !errors.Is(err, errInjectedLifecycleHook) {
+		t.Fatalf("RunEffect error = %v, want the lifecycle hook failure", err)
+	}
+	if len(file.data) != 0 {
+		t.Fatalf("a failed before-intent boundary wrote %d journal bytes", len(file.data))
+	}
+	journal.lifecycleHook = nil
+	if _, err := journal.RunEffect("before-intent", []byte("intent"), func() ([]byte, error) { return []byte("ok"), nil }); err != nil {
+		t.Fatalf("the same effect ID was not retryable after nothing became durable: %v", err)
+	}
+}
+
+func TestAfterOutcomeSyncHookSeesDurableOutcome(t *testing.T) {
+	file := &faultFile{}
+	journal := testJournal(file)
+	journal.lifecycleHook = func(boundary EffectBoundary) error {
+		if boundary != EffectBoundaryAfterOutcomeSync {
+			return nil
+		}
+		trace, err := Verify(bytes.NewReader(file.data))
+		if err != nil || len(trace.Effects) != 1 || trace.Effects[0].Unresolved || trace.Effects[0].Outcome != "success" {
+			t.Fatalf("outcome was not durable at the boundary: %+v err=%v", trace, err)
+		}
+		return errInjectedLifecycleHook
+	}
+	result, err := journal.RunEffect("after-outcome", nil, func() ([]byte, error) { return []byte("result"), nil })
+	if result != nil || !errors.Is(err, ErrLifecycleHook) {
+		t.Fatalf("result=%q error=%v, want the result withheld by the hook failure", result, err)
+	}
+	trace, err := Verify(bytes.NewReader(file.data))
+	if err != nil || len(trace.Records) != 2 || trace.Effects[0].Unresolved {
+		t.Fatalf("hook failure changed the durable outcome: %+v err=%v", trace, err)
+	}
 }

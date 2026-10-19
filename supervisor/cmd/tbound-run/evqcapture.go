@@ -477,17 +477,23 @@ func verifyTree(dir string, tree map[string]treeEntry) (map[string]string, strin
 	if len(digests) != len(tree) {
 		return nil, "", fmt.Errorf("the extraction has %d files, the commit's tree has %d", len(digests), len(tree))
 	}
+	return digests, treeListingDigest(digests, tree, ""), nil
+}
+
+// treeListingDigest is the digest of the canonical listing (mode, content sha256, path) of the files
+// below prefix.
+func treeListingDigest(digests map[string]string, tree map[string]treeEntry, prefix string) string {
 	h := sha256.New()
 	for _, name := range slices.Sorted(func(yield func(string) bool) {
 		for n := range digests {
-			if !yield(n) {
+			if strings.HasPrefix(n, prefix) && !yield(n) {
 				return
 			}
 		}
 	}) {
 		fmt.Fprintf(h, "%s %s %s\n", tree[name].mode, strings.TrimPrefix(digests[name], "sha256:"), name)
 	}
-	return digests, "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 
 // ---- toolchain ----

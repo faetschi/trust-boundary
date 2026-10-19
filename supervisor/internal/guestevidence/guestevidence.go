@@ -29,8 +29,12 @@ const (
 
 // Kinds lists every kind, sorted.
 func Kinds() []string {
-	return []string{KindCapability, KindNetSink, KindProviderExchange, KindLandlockConnectTests, KindProcOracleTests}
+	return []string{KindAdapterTests, KindCapability, KindNetSink, KindProviderExchange, KindRouteBashView, KindRouteDirectRuntime, KindLandlockConnectTests, KindProcOracleTests}
 }
+
+// IsGuestKind reports whether a kind is produced by `tbound-profile guest-evidence` on the guest and
+// so bound to the digest of the tbound-profile executable.
+func IsGuestKind(kind string) bool { return kind != KindAdapterTests && slices.Contains(Kinds(), kind) }
 
 var (
 	commitRE = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -53,6 +57,9 @@ type Expect struct {
 	// the receipt of a real provider exchange must carry both.
 	ProfileHash        string
 	FrozenSourceDigest string
+	// CommitTree is the git tree id of Commit as the Go capture recorded it: the adapter run is bound to
+	// the commit through it.
+	CommitTree string
 	// TestBinaries maps a package import path to the sha256 of the test binary the frozen-commit
 	// capture built for it (`tbound-run evq-capture`).
 	TestBinaries map[string]string
@@ -106,7 +113,7 @@ func Validate(kind string, file []byte, e Expect) error {
 	if len(file) == 0 || len(file) > MaxBytes {
 		return fmt.Errorf("guest artifact %s: size %d is outside 1..%d bytes", kind, len(file), MaxBytes)
 	}
-	if !IsCommit(e.Commit) || !IsDigest(e.BinarySHA256) {
+	if !IsCommit(e.Commit) || (IsGuestKind(kind) && !IsDigest(e.BinarySHA256)) {
 		return fmt.Errorf("guest artifact %s: the expected commit and binary digest are not given", kind)
 	}
 	var env envelope
@@ -120,19 +127,25 @@ func Validate(kind string, file []byte, e Expect) error {
 		return fmt.Errorf("guest artifact %s: it is a %q document", kind, env.Kind)
 	case env.Commit != e.Commit:
 		return fmt.Errorf("guest artifact %s: made for commit %q, the run is frozen at %q", kind, env.Commit, e.Commit)
-	case env.BinarySHA256 != e.BinarySHA256:
+	case !IsDigest(env.BinarySHA256):
+		return fmt.Errorf("guest artifact %s: the producer binary digest %q is malformed", kind, env.BinarySHA256)
+	case IsGuestKind(kind) && env.BinarySHA256 != e.BinarySHA256:
 		return fmt.Errorf("guest artifact %s: written by binary %q, the frozen build is %q", kind, env.BinarySHA256, e.BinarySHA256)
 	case len(env.Data) == 0:
 		return fmt.Errorf("guest artifact %s: no data", kind)
 	}
 	var err error
 	switch kind {
+	case KindAdapterTests:
+		err = validateAdapter(env.Data, e)
 	case KindCapability:
 		err = validateCapability(env.Data)
 	case KindNetSink:
 		err = validateNetSink(env.Data)
 	case KindProviderExchange:
 		err = validateProviderExchange(env.Data, e)
+	case KindRouteBashView, KindRouteDirectRuntime:
+		err = validateRoute(kind, env.Data, e)
 	case KindProcOracleTests, KindLandlockConnectTests:
 		err = validateTests(kind, env.Data, e)
 	}

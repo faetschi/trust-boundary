@@ -234,10 +234,12 @@ func (a *app) evqCmd(args []string) error {
 		return fmt.Errorf("%w: %v", errUsage, err)
 	}
 	if flags.NArg() != 0 || *mapping == "" || *config == "" || *capture == "" || *out == "" {
-		return fmt.Errorf("%w: evq takes --mapping, --config, --capture, --out and optional --guest-binary-sha256 with --artifact kind=file", errUsage)
+		return fmt.Errorf("%w: evq takes --mapping, --config, --capture, --out and optional --guest-binary-sha256 (for guest kinds) with --artifact kind=file", errUsage)
 	}
-	if len(artifacts) > 0 && !guestevidence.IsDigest(*guestBinary) {
-		return fmt.Errorf("%w: --artifact needs --guest-binary-sha256 sha256:<hex>", errUsage)
+	for _, spec := range artifacts {
+		if kind, _, _ := strings.Cut(spec, "="); guestevidence.IsGuestKind(kind) && !guestevidence.IsDigest(*guestBinary) {
+			return fmt.Errorf("%w: --artifact %s needs --guest-binary-sha256 sha256:<hex>", errUsage, kind)
+		}
 	}
 	commit, profileHash, frozenSource, err := loadFreezeBinding(*config)
 	if err != nil {
@@ -262,7 +264,7 @@ func (a *app) evqCmd(args []string) error {
 		Artifacts: map[string]string{}, ArtifactErrors: map[string]string{}}
 	known := m.artifactKinds()
 	expect := guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary, ProfileHash: profileHash,
-		FrozenSourceDigest: frozenSource, TestBinaries: rec.TestBinaries}
+		FrozenSourceDigest: frozenSource, CommitTree: rec.GitTree, TestBinaries: rec.TestBinaries}
 	seen := map[string]bool{}
 	for _, spec := range artifacts {
 		kind, path, ok := strings.Cut(spec, "=")

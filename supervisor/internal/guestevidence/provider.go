@@ -47,6 +47,7 @@ type serviceResponse struct {
 // document: members this validator does not read are not constrained here.
 type receiptFacts struct {
 	SchemaVersion      string   `json:"schema_version"`
+	RunID              string   `json:"run_id"`
 	ProfileHash        string   `json:"profile_hash"`
 	FrozenSourceDigest string   `json:"frozen_source_digest"`
 	ProviderExchange   bool     `json:"provider_exchange"`
@@ -136,4 +137,35 @@ func validateProviderExchange(raw []byte, e Expect) error {
 		return errors.New(strings.Join(problems, "; "))
 	}
 	return nil
+}
+
+// RunIdentity is what a completed service response states about its run: the run id and the profile
+// and frozen source the receipt is for.
+type RunIdentity struct {
+	RunID              string
+	ProfileHash        string
+	FrozenSourceDigest string
+}
+
+// RunIdentityFromResponse reads one response line of the governed client and returns the identity of
+// the run if the response is a completed, successful, non-claim-bearing run of the production
+// receipt schema.
+func RunIdentityFromResponse(response string) (RunIdentity, error) {
+	var resp serviceResponse
+	if err := decodeLenient([]byte(response), &resp); err != nil {
+		return RunIdentity{}, fmt.Errorf("the response is not a service response: %w", err)
+	}
+	var f receiptFacts
+	if err := decodeLenient(resp.Receipt, &f); err != nil || len(resp.Receipt) == 0 {
+		return RunIdentity{}, fmt.Errorf("the response carries no readable receipt: %v", err)
+	}
+	switch {
+	case resp.SchemaVersion != responseSchema || resp.Status != "completed" || resp.ErrorCode != "":
+		return RunIdentity{}, fmt.Errorf("the response is not a completed %s (status %q, error %q)", responseSchema, resp.Status, resp.ErrorCode)
+	case f.SchemaVersion != receiptSchema || !f.TaskAdmitted || !f.TurnCompleted || !f.Success || f.ClaimBearing:
+		return RunIdentity{}, errors.New("the receipt does not show a completed, successful, non-claim-bearing run")
+	case f.RunID == "" || !IsDigest(f.ProfileHash) || !IsDigest(f.FrozenSourceDigest):
+		return RunIdentity{}, errors.New("the receipt does not name the run, its profile and its source")
+	}
+	return RunIdentity{RunID: f.RunID, ProfileHash: f.ProfileHash, FrozenSourceDigest: f.FrozenSourceDigest}, nil
 }

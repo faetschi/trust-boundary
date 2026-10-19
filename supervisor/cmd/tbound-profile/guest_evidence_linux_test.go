@@ -11,8 +11,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/piruntime"
@@ -52,7 +54,8 @@ func geCgroupTree(t *testing.T, kill bool, kind string) capabilityEnv {
 	t.Helper()
 	root := t.TempDir()
 	service := filepath.Join(root, "system.slice", "tbound-pi.service")
-	if err := os.MkdirAll(service, 0o755); err != nil {
+	cells := filepath.Join(service, "cells")
+	if err := os.MkdirAll(cells, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	write := func(p, content string) {
@@ -60,7 +63,11 @@ func geCgroupTree(t *testing.T, kill bool, kind string) capabilityEnv {
 			t.Fatal(err)
 		}
 	}
-	write(filepath.Join(root, "cgroup.controllers"), "cpuset cpu io memory pids\n")
+	for _, dir := range []string{root, filepath.Join(root, "system.slice"), service, cells} {
+		write(filepath.Join(dir, "cgroup.controllers"), "cpuset cpu io memory pids\n")
+		write(filepath.Join(dir, "cgroup.subtree_control"), "cpu memory pids\n")
+	}
+	write(filepath.Join(cells, "cgroup.type"), "domain\n")
 	if kind != "" {
 		write(filepath.Join(service, "cgroup.type"), kind+"\n")
 	}
@@ -71,7 +78,8 @@ func geCgroupTree(t *testing.T, kill bool, kind string) capabilityEnv {
 	write(profile, `{"defaultAction":"SCMP_ACT_ERRNO"}`)
 	mountinfo := filepath.Join(root, "mountinfo")
 	write(mountinfo, "35 25 0:30 / "+root+" rw - cgroup2 cgroup2 rw\n")
-	return capabilityEnv{mountinfo: mountinfo, serviceCgroup: guestevidence.ServiceCgroup, seccompProfile: profile}
+	return capabilityEnv{mountinfo: mountinfo, serviceCgroup: guestevidence.ServiceCgroup, seccompProfile: profile,
+		cellsProbe: func(string) (guestevidence.CellsProbe, error) { return goodGECellsProbe(), nil }}
 }
 
 func TestProbeCapabilityReadsTheMachine(t *testing.T) {
@@ -90,9 +98,12 @@ func TestProbeCapabilityReadsTheMachine(t *testing.T) {
 	if !c.Seccomp.FilterInstalled || c.Seccomp.Mode != 2 {
 		t.Skipf("this kernel does not allow the seccomp filter probe: %+v", c.Seccomp)
 	}
-	// The probe thread's filter must not have leaked into this process.
-	if status, err := os.ReadFile("/proc/self/status"); err == nil && strings.Contains(string(status), "\nSeccomp:\t2") {
-		t.Fatal("the seccomp probe filtered the whole process")
+	// The probe thread's filter must not have leaked to any other thread of this process. /proc/self is
+	// the main thread: when the scheduler runs the probe goroutine there, the runtime wedges that thread
+	// instead of ending it, so it keeps its filter and nothing runs on it. Any other filtered thread
+	// is a leak (a thread that is still exiting is given a moment).
+	if leaked := otherFilteredThreads(t); len(leaked) > 0 {
+		t.Fatalf("the seccomp probe filter reached threads %v of this process", leaked)
 	}
 	// The artifact is as honest as the kernel: it passes the validator only on Landlock ABI 8.
 	data, err := guestevidence.Encode(guestevidence.KindCapability, geCommit, geDigest("self"), c)
@@ -107,6 +118,35 @@ func TestProbeCapabilityReadsTheMachine(t *testing.T) {
 	} else if verr == nil || !strings.Contains(verr.Error(), "Landlock ABI") {
 		t.Fatalf("Landlock ABI %d was not refused for its ABI: %v", c.Landlock.ABI, verr)
 	}
+}
+
+// otherFilteredThreads returns the ids of the threads of this process that run under a seccomp filter,
+// except the main thread, which the runtime wedges (and does not end) if the probe goroutine ran on it.
+func otherFilteredThreads(t *testing.T) []int {
+	t.Helper()
+	var filtered []int
+	for range 200 {
+		filtered = nil
+		tasks, err := os.ReadDir("/proc/self/task")
+		if err != nil {
+			t.Skipf("threads of this process are not listed: %v", err)
+		}
+		for _, task := range tasks {
+			tid, err := strconv.Atoi(task.Name())
+			if err != nil || tid == os.Getpid() {
+				continue
+			}
+			// A thread that exits between the listing and the read is gone, not filtered.
+			if status, err := os.ReadFile("/proc/self/task/" + task.Name() + "/status"); err == nil && strings.Contains(string(status), "\nSeccomp:\t2") {
+				filtered = append(filtered, tid)
+			}
+		}
+		if len(filtered) == 0 {
+			return nil
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return filtered
 }
 
 func TestProbeCapabilityMissingFactsAreNotInvented(t *testing.T) {
@@ -568,5 +608,136 @@ func TestGuestEvidenceTestsCommandWritesOnlyValidRuns(t *testing.T) {
 		if _, statErr := os.Stat(out); statErr == nil {
 			t.Errorf("%s: a refused run left %s", name, out)
 		}
+	}
+}
+
+func goodGECellsProbe() guestevidence.CellsProbe {
+	p := guestevidence.CellsProbe{UID: guestevidence.ServiceUID, GID: guestevidence.ServiceGID, ChildCreated: true, ChildRemoved: true}
+	for _, name := range guestevidence.CellsProbeFiles {
+		p.Files = append(p.Files, guestevidence.CellsProbeFile{Name: name, Exists: true, Writable: true})
+	}
+	return p
+}
+
+func TestProbeCapabilityReadsTheDelegationChain(t *testing.T) {
+	env := geCgroupTree(t, true, "domain")
+	c, err := probeCapability(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Cgroup.Chain) != len(guestevidence.CapabilityChain) {
+		t.Fatalf("chain = %+v", c.Cgroup.Chain)
+	}
+	for i, level := range c.Cgroup.Chain {
+		if level.Path != guestevidence.CapabilityChain[i] || strings.Join(level.Controllers, ",") != "cpuset,cpu,io,memory,pids" ||
+			strings.Join(level.SubtreeControl, ",") != "cpu,memory,pids" {
+			t.Errorf("level %d = %+v", i, level)
+		}
+	}
+	if last := c.Cgroup.Chain[len(c.Cgroup.Chain)-1]; last.Type != "domain" {
+		t.Errorf("cells type = %q", last.Type)
+	}
+	if c.Cgroup.CellsProbe.UID != guestevidence.ServiceUID || len(c.Cgroup.CellsProbe.Files) != len(guestevidence.CellsProbeFiles) {
+		t.Errorf("cells probe = %+v", c.Cgroup.CellsProbe)
+	}
+}
+
+func TestProbeCapabilityChainMissingFactsAreNotInvented(t *testing.T) {
+	for name, remove := range map[string]string{
+		"slice does not enable controllers": "system.slice/cgroup.subtree_control",
+		"service has no controllers file":   "system.slice/tbound-pi.service/cgroup.controllers",
+		"cells has no subtree_control":      "system.slice/tbound-pi.service/cells/cgroup.subtree_control",
+		"cells has no type":                 "system.slice/tbound-pi.service/cells/cgroup.type",
+	} {
+		env := geCgroupTree(t, true, "domain")
+		root := filepath.Dir(env.seccompProfile)
+		if err := os.Remove(filepath.Join(root, filepath.FromSlash(remove))); err != nil {
+			t.Fatal(err)
+		}
+		c, err := probeCapability(env)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if guestevidence.Validate(guestevidence.KindCapability, mustEncodeGE(t, guestevidence.KindCapability, c), guestevidence.Expect{Commit: geCommit, BinarySHA256: geDigest("self")}) == nil {
+			t.Errorf("%s: a guest with this gap produced a valid capability artifact", name)
+		}
+	}
+	env := geCgroupTree(t, true, "domain")
+	if err := os.RemoveAll(filepath.Join(filepath.Dir(env.seccompProfile), "system.slice", "tbound-pi.service", "cells")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := probeCapability(env); err == nil {
+		t.Error("a guest without a cells cgroup was probed")
+	}
+}
+
+func TestCellsChildProbeReportsWhatTheIdentityCanOpen(t *testing.T) {
+	cells := t.TempDir()
+	populate := func(writable map[string]bool) func(string) func() {
+		return func(child string) func() {
+			for _, name := range guestevidence.CellsProbeFiles {
+				if name == "memory.max" {
+					continue // absent: the controller is not enabled
+				}
+				mode := os.FileMode(0o644)
+				if !writable[name] {
+					mode = 0o444
+				}
+				if err := os.WriteFile(filepath.Join(child, name), nil, mode); err != nil {
+					t.Fatal(err)
+				}
+			}
+			return func() { // a real cgroup2 child has no files of its own to remove
+				for _, name := range guestevidence.CellsProbeFiles {
+					os.Remove(filepath.Join(child, name))
+				}
+			}
+		}
+	}
+	p, err := probeCellsChild(cells, populate(map[string]bool{"cgroup.kill": true, "cgroup.procs": true, "cpu.max": true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !p.ChildCreated || !p.ChildRemoved || p.UID != os.Geteuid() || p.GID != os.Getegid() {
+		t.Fatalf("probe = %+v", p)
+	}
+	got := map[string]guestevidence.CellsProbeFile{}
+	for i, f := range p.Files {
+		if f.Name != guestevidence.CellsProbeFiles[i] {
+			t.Fatalf("files out of order: %+v", p.Files)
+		}
+		got[f.Name] = f
+	}
+	if !got["cgroup.kill"].Exists || !got["cpu.max"].Exists || got["memory.max"].Exists {
+		t.Errorf("existence = %+v", got)
+	}
+	if os.Geteuid() != 0 && got["pids.max"].Writable {
+		t.Errorf("a read-only pids.max was reported writable: %+v", got["pids.max"])
+	}
+	if !got["cgroup.kill"].Writable || got["memory.max"].Writable {
+		t.Errorf("writability = %+v", got)
+	}
+	if entries, _ := os.ReadDir(cells); len(entries) != 0 {
+		t.Errorf("the probe left %d entries in the cells cgroup", len(entries))
+	}
+	if _, err := probeCellsChild(filepath.Join(cells, "none"), nil); err == nil {
+		t.Error("a missing cells cgroup was probed")
+	}
+}
+
+func TestCellsProbeAsServiceNeedsRoot(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("running as root: the identity switch would succeed")
+	}
+	cells := t.TempDir()
+	if _, err := probeCellsAsService(cells); err == nil {
+		t.Fatal("a non-root producer claimed to probe as the service identity")
+	}
+	if entries, _ := os.ReadDir(cells); len(entries) != 0 {
+		t.Errorf("a refused probe left %d entries", len(entries))
+	}
+	// The switch happened on one thread only: this goroutine keeps its identity.
+	if os.Geteuid() == guestevidence.ServiceUID {
+		t.Fatal("the identity switch leaked into the test thread")
 	}
 }

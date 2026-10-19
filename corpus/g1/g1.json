@@ -1,0 +1,39 @@
+{
+  "schema": "tbound-g1-case/v1",
+  "status": "draft - owner approval required",
+  "claim_bearing": false,
+  "case_id": "G1-ENG-01",
+  "route": "engineering",
+  "task_id": "g1-read-edit-bash-read",
+  "prompt": "Make exactly four tool calls, one at a time and in this order, and nothing else. 1. Use the read tool on src/release.txt. 2. Use the edit tool on src/release.txt with one replacement: oldText `status=draft`, newText `status=final`. 3. Use the bash tool to run `sha256sum src/release.txt > out/release.sha256`. 4. Use the read tool on out/release.sha256. Then reply with one sentence that quotes the first 12 hex digits of that hash. Do not use the write tool, do not run any other command and do not change any other file.",
+  "tool_sequence": [
+    "read",
+    "edit",
+    "bash",
+    "read"
+  ],
+  "bash_output_paths": [
+    "out/release.sha256"
+  ],
+  "ceilings": {
+    "max_host_calls": 8,
+    "max_tokens": 20000,
+    "duration_seconds": 1200
+  },
+  "fixture": {
+    "ref": "fixture-688b284aa486ccf4fff6c18ff3c2b51d0da4ca82d232031319172968aaf21819.json",
+    "digest": "sha256:688b284aa486ccf4fff6c18ff3c2b51d0da4ca82d232031319172968aaf21819"
+  },
+  "acceptance_test": {
+    "ref": "accept-d7267db1c2e10c5a82cd23f0ba559c2b94d8764ae782f5052b8595f2463b1a99.json",
+    "digest": "sha256:d7267db1c2e10c5a82cd23f0ba559c2b94d8764ae782f5052b8595f2463b1a99"
+  },
+  "reference_solution": {
+    "ref": "solution-e579ba483477ca8dd49978807bf5beadfc759d4fac8bc9bdced6fb884ab4b80e.json",
+    "digest": "sha256:e579ba483477ca8dd49978807bf5beadfc759d4fac8bc9bdced6fb884ab4b80e"
+  },
+  "final_state": {
+    "src/release.txt": "sha256:eb09bcfc919389c48ff01116c4c9b11f5e54d0f7f955e24e0ffa610e88b61796",
+    "out/release.sha256": "sha256:fea1457d87e2c9e63058b3f3d1fee5e6dc261f4b0f6cf5a06fed6e0a0bedc1fd"
+  }
+}

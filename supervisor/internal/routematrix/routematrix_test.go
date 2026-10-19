@@ -558,11 +558,12 @@ func TestDigestPerFieldSensitivity(t *testing.T) {
 	want := Digest(base)
 	route, class := RouteBashView, fixtureClassA
 	cellMutations := map[string]func(*Cell){
-		"route":     func(c *Cell) { c.Route = RouteDeclaredRead },
-		"class":     func(c *Cell) { c.Class = fixtureClassB },
-		"treatment": func(c *Cell) { c.Treatment = TreatmentProposalDenied },
-		"status":    func(c *Cell) { c.Status = StatusPendingGuest },
-		"reason":    func(c *Cell) { c.Reason = "x" },
+		"route":          func(c *Cell) { c.Route = RouteDeclaredRead },
+		"class":          func(c *Cell) { c.Class = fixtureClassB },
+		"treatment":      func(c *Cell) { c.Treatment = TreatmentProposalDenied },
+		"status":         func(c *Cell) { c.Status = StatusPendingGuest },
+		"reason":         func(c *Cell) { c.Reason = "x" },
+		"guest artifact": func(c *Cell) { c.GuestArtifact = "guest-route-bash-view" },
 	}
 	for name, f := range cellMutations {
 		m := mutateCell(t, base, route, class, f)
@@ -689,5 +690,23 @@ func TestZeroValuesDoNotPanic(t *testing.T) {
 	}
 	if err := Validate(Matrix{}); !errors.Is(err, ErrEmptyMatrix) {
 		t.Errorf("zero Matrix: Validate = %v, want ErrEmptyMatrix", err)
+	}
+}
+
+// A cell can name the guest artifact kind that its production evidence needs. The name is part of the
+// registered matrix (its digest), and a malformed one is refused.
+func TestGuestArtifactNameIsValidatedAndDigested(t *testing.T) {
+	m := mutateCell(t, fullMatrix(), RouteBashView, fixtureClassA, func(c *Cell) { c.GuestArtifact = "guest-route-bash-view" })
+	if err := Validate(m); err != nil {
+		t.Fatalf("a named guest artifact was refused: %v", err)
+	}
+	if Digest(m) == Digest(fullMatrix()) {
+		t.Fatal("the guest artifact name is not in the digest")
+	}
+	for _, bad := range []string{"Guest", "guest route", "-x", "guest/route", strings.Repeat("a", 65)} {
+		m := mutateCell(t, fullMatrix(), RouteBashView, fixtureClassA, func(c *Cell) { c.GuestArtifact = bad })
+		if err := Validate(m); !errors.Is(err, ErrMalformedGuestArtifact) {
+			t.Errorf("%q: err = %v, want ErrMalformedGuestArtifact", bad, err)
+		}
 	}
 }

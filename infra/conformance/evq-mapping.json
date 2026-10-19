@@ -49,7 +49,12 @@
     {
       "id": "EVQ-SURFACE-ADAPTER-EQUIVALENCE",
       "title": "Surface closure: the Pi adapter is side-effect-free and equivalent for every registered tool",
-      "note": "Not established. The adapter tests are TypeScript (adapter/src/*.test.ts, run by node scripts/test.mjs) and need an installed adapter/node_modules that the frozen git archive does not contain, so no Go test JSON and no capture covers them; their cases (frame golden vector, malformed frames, proxy tools round-trip, official Pi CLI load) do not yet state tool-by-tool equivalence either. Mapping needs a node capture of the frozen commit with its own validator and a test that compares the adapter and Go projection for each of the four tools."
+      "tests": {
+        "tbound/supervisor/internal/broker": [
+          "TestGoProjectionEqualsTheAdapterToolSurfaceForEveryTool"
+        ]
+      },
+      "artifacts": ["adapter-tests"]
     },
     {
       "id": "EVQ-PROPOSAL-INTEGRITY",
@@ -235,7 +240,21 @@
     {
       "id": "EVQ-RECOVERY-LIFECYCLE-CUTPOINTS",
       "title": "Recovery conformance: the eight lifecycle cutpoints LC-01 to LC-08 injected end to end",
-      "note": "Not established. 02-process-model section 11 states the prototype does not implement the eight end-to-end injectors. Only LC-04 (effect intent durable, callback not entered) and LC-05 (Bash runner entry) have an end-to-end crash test, TestGovernedWriteCrashWithholdsProviderResult in cmd/tbound; LC-01, LC-02, LC-03 and LC-06 have no injector and LC-07 and LC-08 only partial ones (sessionrepo promotion crash, publication fault boundaries). A mapping of the two would claim eight."
+      "tests": {
+        "tbound/supervisor/cmd/tbound": [
+          "TestLifecycleCutpointLC01ReceiptBeforeDecision",
+          "TestLifecycleCutpointLC02DecisionBeforeAuthorization",
+          "TestLifecycleCutpointLC03AuthorizationBeforeEffectIntent",
+          "TestGovernedWriteCrashWithholdsProviderResult",
+          "TestLifecycleCutpointLC06EffectObservedBeforeOutcome",
+          "TestLifecycleCutpointLC07OutcomeBeforeCheckpoint",
+          "TestLifecycleCutpointLC08AfterCheckpoint"
+        ],
+        "tbound/supervisor/internal/audit": [
+          "TestBeforeIntentHookFailureWritesNothingAndSkipsTheEffect",
+          "TestAfterOutcomeSyncHookSeesDurableOutcome"
+        ]
+      }
     },
     {
       "id": "EVQ-JOURNAL-FAULTS",
@@ -368,7 +387,20 @@
     {
       "id": "EVQ-COMMAND-VIEW-FAULTS",
       "title": "Command-view conformance: setup, COW and teardown fault injection with ENOSPC, EDQUOT, EIO, EROFS and cross-device cases (02 section 11)",
-      "note": "Not established. Only the read-only view is tested (an EROFS write through the generation exposure view: TestSessionRepositoryGenerationExposureModeE01Style and TestSessionRepositoryExposureMountBackedReadOnlyRefresh in sessionrepo). No test injects ENOSPC, EDQUOT, EIO or a cross-device operation, or a cancellation or crash during setup, first COW allocation, teardown or before import, so nothing shows no partial-generation admission or idempotent cleanup under those faults."
+      "tests": {
+        "tbound/supervisor/internal/faultfs": [
+          "TestCheckIsInertWithoutHookAndRestores",
+          "TestInstallIsOnlyCalledFromTests"
+        ],
+        "tbound/supervisor/internal/sessionrepo": [
+          "TestCommandViewSetupFaultsFailClosedWithIdempotentCleanup",
+          "TestCopyOnWriteAndPromotionFaultsQuarantineWithoutPromotion",
+          "TestSettledCommandViewImportFaultsQuarantineAfterOneRun",
+          "TestCommandViewTeardownFaultsWithholdResultAndRecoverConsistently",
+          "TestHeadStateWriteFaultsRecoverCommittedPrefix",
+          "TestAuditJournalFaultsOnStoreMutationFailClosed"
+        ]
+      }
     }
   ]
 }

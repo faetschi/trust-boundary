@@ -14,6 +14,13 @@
 // show the required fact is refused. A refused artifact is never "present": the obligation it is
 // mapped to stays not passed.
 //
+// Two kinds are not made on the guest. adapter-tests is the capture of the TypeScript adapter tests that
+// `tbound-run evq-adapter-capture` makes from a `git archive` of the freeze commit with an offline npm
+// install; its binary_sha256 is the digest of that tbound-run executable, and it is bound to the commit by
+// the git tree id that the Go capture also records. The guest-route-* kinds are made on the guest from the
+// service audit journal of a governed route-probe run, and bind the run to the profile and source of
+// run.json.
+//
 // An artifact proves what its producer observed on the machine it ran on. It cannot prove that the
 // machine is the pinned guest; the runbook ties each producer to a guest step.
 package guestevidence

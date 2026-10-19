@@ -403,8 +403,12 @@ func TestGovernedWriteCrashWithholdsProviderResult(t *testing.T) {
 
 func governedCrashChild(t *testing.T) {
 	phase, root := os.Getenv(governedCrashPhase), os.Getenv(governedCrashRoot)
-	if phase != "write-after-intent" && phase != "bash-runner-entry" && phase != "write" && phase != "recover" && phase != "write-after-outcome" && phase != "recover-after-outcome" || root == "" {
+	if !governedCrashValidPhase(phase) || root == "" {
 		t.Fatal("invalid child inputs")
+	}
+	if phase == "replay-strict" || phase == "replay-permissive" {
+		governedCrashReplayChild(t, root, phase == "replay-permissive")
+		return
 	}
 	if phase == "recover" || phase == "recover-after-outcome" {
 		journal, err := audit.OpenWithLifecycleHook(filepath.Join(root, "session-audit.jsonl"), func(audit.EffectBoundary) error {
@@ -544,6 +548,18 @@ func governedCrashChild(t *testing.T) {
 			}
 			os.Exit(governedCrashExit)
 		}
+		if (phase == "lc03-before-intent" || phase == "lc03-bash-before-intent") && boundary == audit.EffectBoundaryBeforeIntent {
+			if err := governedCrashWriteSynced(filepath.Join(root, "crash.marker"), []byte("authorization-durable:intent-not-appended\n")); err != nil {
+				return err
+			}
+			os.Exit(governedCrashExit)
+		}
+		if (phase == "lc07-outcome-sync" || phase == "lc07-read-outcome-sync") && boundary == audit.EffectBoundaryAfterOutcomeSync {
+			if err := governedCrashWriteSynced(filepath.Join(root, "crash.marker"), []byte("outcome-durable:checkpoint-not-reconciled\n")); err != nil {
+				return err
+			}
+			os.Exit(governedCrashExit)
+		}
 		if phase != "write" || boundary != audit.EffectBoundaryAfterCallbackReturn {
 			return nil
 		}
@@ -566,7 +582,7 @@ func governedCrashChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer providerJournal.Close()
-	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: []gate.Rule{{Tool: "write", Effect: gate.EffectAllow}, {Tool: "bash", Effect: gate.EffectAllow}}})
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: governedCrashRules()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -575,7 +591,7 @@ func governedCrashChild(t *testing.T) {
 	var bashOutputPaths []string
 	var command string
 	var crashRunner *governedCrashCommandRunner
-	if phase == "bash-runner-entry" {
+	if governedCrashBashPhase(phase) {
 		command = governedCrashBashFixtureCommand(root)
 		crashRunner = &governedCrashCommandRunner{t: t, root: root, command: command, leases: make(map[string]string)}
 		authorityRunner, commandRunner, bashOutputPaths = crashRunner, crashRunner, []string{"task.txt"}
@@ -647,7 +663,11 @@ func governedCrashChild(t *testing.T) {
 	}
 	tool, callID := "write", "crash-write"
 	arguments := json.RawMessage(`{"path":"task.txt","content":"after\n"}`)
-	if phase == "bash-runner-entry" {
+	if phase == "lc07-read-outcome-sync" {
+		tool, callID = "read", "crash-read"
+		arguments = json.RawMessage(`{"path":"task.txt"}`)
+	}
+	if governedCrashBashPhase(phase) {
 		tool, callID = "bash", "crash-bash"
 		encodedArguments, err := json.Marshal(struct {
 			Command string `json:"command"`
@@ -684,12 +704,25 @@ func governedCrashChild(t *testing.T) {
 	if decision.Verdict != gate.Allow {
 		t.Fatalf("proposal not allowed: %+v", decision)
 	}
+	if phase == "lc01-receipt" {
+		// LC-01: the provider exchange and the captured call are durable; the
+		// correlated decision is not.
+		if err := governedCrashWriteSynced(filepath.Join(root, "crash.marker"), []byte("exchange-durable:decision-not-recorded\n")); err != nil {
+			t.Fatal(err)
+		}
+		os.Exit(governedCrashExit)
+	}
 	if err := conversation.RecordDecision(ctx, proposal, decision); err != nil {
 		t.Fatal(err)
 	}
 	var inner providerbridge.Executor = durable
 	if phase == "write-after-outcome" {
 		inner = governedCrashAfterDurableExecutor{inner: durable, root: root}
+	}
+	if phase == "lc02-decision" {
+		// LC-02: the correlated decision is durable; the Store has not been
+		// entered, so no governed_operation_authorization exists.
+		inner = governedCrashBeforeStoreExecutor{root: root}
 	}
 	executor, err := providerbridge.NewExecutor(conversation, inner)
 	if err != nil {
@@ -788,7 +821,7 @@ func governedCrashProcess(t *testing.T, phase, root string, wantExit int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(executable, "-test.run=^TestGovernedWriteCrashWithholdsProviderResult$")
+	cmd := exec.Command(executable, "-test.run=^"+strings.SplitN(t.Name(), "/", 2)[0]+"$")
 	// This explicit environment contains no inherited credentials or Git config.
 	cmd.Env = []string{governedCrashPhase + "=" + phase, governedCrashRoot + "=" + root, "TMPDIR=" + os.TempDir(), "PATH=" + filepath.Dir(gitPath)}
 	output, err := cmd.CombinedOutput()
@@ -894,6 +927,25 @@ func (e governedCrashAfterDurableExecutor) Execute(ctx context.Context, proposal
 	return output, nil
 }
 
+type governedCrashBeforeStoreExecutor struct{ root string }
+
+func (e governedCrashBeforeStoreExecutor) Execute(context.Context, protocol.Proposal, gate.Decision) (json.RawMessage, error) {
+	if err := governedCrashWriteSynced(filepath.Join(e.root, "crash.marker"), []byte("decision-durable:authorization-not-appended\n")); err != nil {
+		return nil, err
+	}
+	os.Exit(governedCrashExit)
+	return nil, nil
+}
+
+func governedCrashValidPhase(phase string) bool {
+	switch phase {
+	case "write-after-intent", "bash-runner-entry", "write", "recover", "write-after-outcome", "recover-after-outcome",
+		"lc01-receipt", "lc02-decision", "lc03-before-intent", "lc03-bash-before-intent", "lc07-outcome-sync", "lc07-read-outcome-sync", "replay-strict", "replay-permissive":
+		return true
+	}
+	return false
+}
+
 func governedCrashWriteSynced(path string, data []byte) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
@@ -911,4 +963,14 @@ func governedCrashWriteSynced(path string, data []byte) error {
 	}
 	defer directory.Close()
 	return directory.Sync()
+}
+
+func governedCrashBashPhase(phase string) bool {
+	return phase == "bash-runner-entry" || phase == "lc03-bash-before-intent"
+}
+
+// governedCrashRules is the one gate policy shared by the crashing writer and
+// the replaying recovery child, so provider decision digests agree.
+func governedCrashRules() []gate.Rule {
+	return []gate.Rule{{Tool: "write", Effect: gate.EffectAllow}, {Tool: "bash", Effect: gate.EffectAllow}, {Tool: "read", Effect: gate.EffectAllow}}
 }

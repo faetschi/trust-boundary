@@ -7,8 +7,10 @@ import (
 	"flag"
 	"fmt"
 	"slices"
+	"sort"
 	"strings"
 
+	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/routematrix"
 )
 
@@ -27,6 +29,8 @@ type routeCellFile struct {
 	Status    string              `json:"status"`
 	Reason    string              `json:"reason"`
 	Evidence  []routeEvidenceFile `json:"evidence"`
+	// GuestArtifact is the guest artifact kind whose validated presence the cell needs for production.
+	GuestArtifact string `json:"guest_artifact"`
 }
 
 // parseRouteMatrix reads the pinned route matrix definition strictly. It does not validate the
@@ -49,7 +53,8 @@ func parseRouteMatrix(data []byte) (routematrix.Matrix, error) {
 	}
 	for _, c := range doc.Cells {
 		cell := routematrix.Cell{Route: routematrix.Route(c.Route), Class: routematrix.SensitiveClass(c.Class),
-			Treatment: routematrix.Treatment(c.Treatment), Status: routematrix.Status(c.Status), Reason: c.Reason}
+			Treatment: routematrix.Treatment(c.Treatment), Status: routematrix.Status(c.Status), Reason: c.Reason,
+			GuestArtifact: c.GuestArtifact}
 		for _, e := range c.Evidence {
 			cell.Evidence = append(cell.Evidence, routematrix.Evidence{Kind: routematrix.EvidenceKind(e.Kind), TestRef: e.TestRef})
 		}
@@ -70,24 +75,63 @@ func (o *testOutcomes) refPassed(ref string) bool {
 // test reference of it passed; otherwise it is reported Missing. The lookup of routematrix.Coverage is
 // "the test passed", so a reference that failed, was skipped or is absent keeps the report incomplete.
 func buildRouteReport(m routematrix.Matrix, o *testOutcomes) (routematrix.Report, error) {
+	return buildRouteReportWithGuest(m, o, guestRouteArtifacts{})
+}
+
+// guestRouteArtifacts is the guest evidence a route report is given: Digests maps an artifact kind to
+// the sha256 of its file once the file passed the kind's validator, Errors maps a kind to why a
+// supplied file did not.
+type guestRouteArtifacts struct {
+	Digests, Errors map[string]string
+}
+
+// buildRouteReportWithGuest is buildRouteReport for a matrix whose production cells need guest
+// artifacts. A cell that names a guest artifact is Covered only if every test of it passed (the
+// prototype evidence) and its artifact is present and valid; otherwise it is Pending_Guest, with the
+// reason, or Missing if a test did not pass. A cell declared Missing stays Missing.
+func buildRouteReportWithGuest(m routematrix.Matrix, o *testOutcomes, guest guestRouteArtifacts) (routematrix.Report, error) {
 	cells := make([]routematrix.Cell, len(m.Cells))
 	copy(cells, m.Cells)
+	var pending []string
 	for i, c := range cells {
-		if c.Status != routematrix.StatusCovered {
+		if c.Status == routematrix.StatusMissing {
 			continue
 		}
+		if c.Status == routematrix.StatusPendingGuest && c.GuestArtifact == "" {
+			continue
+		}
+		testsPassed := true
 		for _, e := range c.Evidence {
 			if !o.refPassed(e.TestRef) {
 				cells[i].Status = routematrix.StatusMissing
 				cells[i].Reason = strings.TrimSpace(c.Reason + " test " + e.TestRef + " did not pass in the supplied test JSON.")
+				testsPassed = false
 				break
 			}
+		}
+		if !testsPassed || c.GuestArtifact == "" {
+			continue
+		}
+		switch digest := guest.Digests[c.GuestArtifact]; {
+		case digest != "":
+			cells[i].Status = routematrix.StatusCovered
+			cells[i].Reason = strings.TrimSpace(c.Reason + " Guest artifact " + c.GuestArtifact + " " + digest + ".")
+		default:
+			cells[i].Status = routematrix.StatusPendingGuest
+			why := "guest artifact " + c.GuestArtifact + " not supplied"
+			if e := guest.Errors[c.GuestArtifact]; e != "" {
+				why = "guest artifact " + c.GuestArtifact + " refused: " + e
+			}
+			cells[i].Reason = strings.TrimSpace(c.Reason + " " + why + ".")
+			pending = append(pending, fmt.Sprintf("route %q class %q: %s", c.Route, c.Class, why))
 		}
 	}
 	rep, err := routematrix.Coverage(routematrix.Matrix{Classes: m.Classes, Cells: cells}, o.refPassed)
 	if err != nil {
 		return routematrix.Report{}, err
 	}
+	rep.Reasons = append(rep.Reasons, pending...)
+	sort.Strings(rep.Reasons)
 	if rep.Reasons == nil {
 		rep.Reasons = []string{}
 	}
@@ -113,13 +157,19 @@ func (a *app) routeReportCmd(args []string) error {
 	config := flags.String("config", "", "run.json: its freeze_commit binds the evidence")
 	capture := flags.String("capture", "", "capture directory made by `tbound-run evq-capture` for the freeze commit")
 	out := flags.String("out", "", "route_report.json to create")
+	guestBinary := flags.String("guest-binary-sha256", "", "sha256:<hex> of the tbound-profile binary built from the freeze commit (P1); required with --artifact")
+	var artifacts stringList
+	flags.Var(&artifacts, "artifact", "<kind>=<file>: a guest artifact named by a cell of the matrix (repeatable)")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w: %v", errUsage, err)
 	}
 	if flags.NArg() != 0 || *matrix == "" || *config == "" || *capture == "" || *out == "" {
-		return fmt.Errorf("%w: route-report takes --matrix, --config, --capture and --out", errUsage)
+		return fmt.Errorf("%w: route-report takes --matrix, --config, --capture, --out and optional --guest-binary-sha256 with --artifact kind=file", errUsage)
 	}
-	commit, _, _, err := loadFreezeBinding(*config)
+	if len(artifacts) > 0 && !guestevidence.IsDigest(*guestBinary) {
+		return fmt.Errorf("%w: --artifact needs --guest-binary-sha256 sha256:<hex>", errUsage)
+	}
+	commit, profileHash, frozenSource, err := loadFreezeBinding(*config)
 	if err != nil {
 		return err
 	}
@@ -138,11 +188,25 @@ func (a *app) routeReportCmd(args []string) error {
 	if err := rec.requirePinnedInput(evqPinnedInputs[1], mdata); err != nil {
 		return fmt.Errorf("route matrix: %w", err)
 	}
-	rep, err := buildRouteReport(m, o)
+	guest, err := loadGuestRouteArtifacts(m, artifacts, guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary,
+		ProfileHash: profileHash, FrozenSourceDigest: frozenSource})
+	if err != nil {
+		return err
+	}
+	rep, err := buildRouteReportWithGuest(m, o, guest)
 	if err != nil {
 		return fmt.Errorf("route matrix: %w", err)
 	}
 	rep.Binding = routeBinding(commit, recordDigest, routematrix.Digest(m))
+	for _, kind := range slices.Sorted(func(yield func(string) bool) {
+		for k := range guest.Digests {
+			if !yield(k) {
+				return
+			}
+		}
+	}) {
+		rep.Binding += ";artifact:" + kind + "=" + guest.Digests[kind]
+	}
 	data, err := json.MarshalIndent(rep, "", "  ")
 	if err != nil {
 		return err
@@ -164,4 +228,43 @@ func (a *app) routeReportCmd(args []string) error {
 	}
 	fmt.Fprintf(a.out, "route_report_sha256 sha256:%s\n", hex.EncodeToString(sum[:]))
 	return nil
+}
+
+// loadGuestRouteArtifacts validates the supplied guest artifacts against what the run freezes. An
+// artifact whose kind no cell of the matrix names, a repeated kind and a malformed argument are usage
+// errors; a file that fails its validator is not: its cell stays Pending_Guest and the report says why.
+func loadGuestRouteArtifacts(m routematrix.Matrix, specs []string, expect guestevidence.Expect) (guestRouteArtifacts, error) {
+	named := map[string]bool{}
+	for _, c := range m.Cells {
+		if c.GuestArtifact != "" {
+			named[c.GuestArtifact] = true
+		}
+	}
+	out := guestRouteArtifacts{Digests: map[string]string{}, Errors: map[string]string{}}
+	seen := map[string]bool{}
+	for _, spec := range specs {
+		kind, path, ok := strings.Cut(spec, "=")
+		if !ok || kind == "" || path == "" {
+			return out, fmt.Errorf("%w: --artifact %q is not <kind>=<file>", errUsage, spec)
+		}
+		if !named[kind] || !slices.Contains(guestevidence.Kinds(), kind) {
+			return out, fmt.Errorf("%w: --artifact kind %q is not named by a cell of the matrix", errUsage, kind)
+		}
+		if seen[kind] {
+			return out, fmt.Errorf("%w: --artifact kind %q is given twice", errUsage, kind)
+		}
+		seen[kind] = true
+		data, err := readRegularFile(path, guestevidence.MaxBytes)
+		if err != nil {
+			out.Errors[kind] = err.Error()
+			continue
+		}
+		if err := guestevidence.Validate(kind, data, expect); err != nil {
+			out.Errors[kind] = err.Error()
+			continue
+		}
+		sum := sha256.Sum256(data)
+		out.Digests[kind] = "sha256:" + hex.EncodeToString(sum[:])
+	}
+	return out, nil
 }

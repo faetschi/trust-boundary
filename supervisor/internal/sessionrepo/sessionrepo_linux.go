@@ -453,14 +453,14 @@ func (s *Store) Seed(source *os.File, attestation RootAttestation) (*Generation,
 		if err != nil {
 			return nil, fmt.Errorf("import baseline: %w", err)
 		}
-		if err := syncTreeDirectories(stage); err != nil {
+		if err := syncStageTree(stage); err != nil {
 			return nil, fmt.Errorf("sync baseline directories: %w", err)
 		}
-		if err := renameNoReplace(s.genDir, stageName, "g0"); err != nil {
+		if err := promoteStage(s.genDir, stageName, "g0"); err != nil {
 			return nil, fmt.Errorf("promote baseline generation: %w", err)
 		}
 		keepStage = true
-		if err := syncDirectory(s.genDir); err != nil {
+		if err := syncPromotion(s.genDir); err != nil {
 			return nil, fmt.Errorf("sync baseline promotion: %w", err)
 		}
 		generation, err = s.openGenerationLocked("g0", snapshot)
@@ -788,14 +788,14 @@ func (s *Store) RunBash(ctx context.Context, input *Generation, operation delta.
 			}
 			return payload, nil
 		}
-		if err := syncTreeDirectories(stage); err != nil {
+		if err := syncStageTree(stage); err != nil {
 			return nil, fmt.Errorf("sync command generation directories: %w", err)
 		}
-		if err := renameNoReplace(s.genDir, stageName, outputID); err != nil {
+		if err := promoteStage(s.genDir, stageName, outputID); err != nil {
 			return nil, fmt.Errorf("promote command generation: %w", err)
 		}
 		keepStage = true
-		if err := syncDirectory(s.genDir); err != nil {
+		if err := syncPromotion(s.genDir); err != nil {
 			return nil, fmt.Errorf("sync command generation promotion: %w", err)
 		}
 		generation, err := s.openGenerationLocked(outputID, snapshot)

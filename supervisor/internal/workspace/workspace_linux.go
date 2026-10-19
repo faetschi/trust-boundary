@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/faultfs"
 )
 
 // linuxOPath is Linux O_PATH, which is not exposed by syscall on all Go versions.
@@ -553,7 +554,11 @@ func walkSubdirectory(parentSource, parentDestination *os.File, name, path strin
 	}
 	var output *os.File
 	if parentDestination != nil {
-		if err := syscall.Mkdirat(int(parentDestination.Fd()), name, 0o700); err != nil {
+		err := faultfs.Check(faultfs.SiteWorkspaceImport, faultfs.OpMkdir)
+		if err == nil {
+			err = syscall.Mkdirat(int(parentDestination.Fd()), name, 0o700)
+		}
+		if err != nil {
 			return fmt.Errorf("create imported directory %q: %w", path, err)
 		}
 		output, err = openDirectory(parentDestination, name)
@@ -605,7 +610,11 @@ func walkRegularFile(parentSource, parentDestination *os.File, name, path string
 	}
 	var destination *os.File
 	if parentDestination != nil {
-		fd, err := syscall.Openat(int(parentDestination.Fd()), name, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0o600)
+		fd := -1
+		err := faultfs.Check(faultfs.SiteWorkspaceImport, faultfs.OpCreate)
+		if err == nil {
+			fd, err = syscall.Openat(int(parentDestination.Fd()), name, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0o600)
+		}
 		if err != nil {
 			return fmt.Errorf("create imported file %q: %w", path, err)
 		}
@@ -630,7 +639,11 @@ func walkRegularFile(parentSource, parentDestination *os.File, name, path string
 		if err := syscall.Fchmod(int(destination.Fd()), mode); err != nil {
 			return fmt.Errorf("normalize file mode %q: %w", path, err)
 		}
-		if err := destination.Sync(); err != nil {
+		err := faultfs.Check(faultfs.SiteWorkspaceImport, faultfs.OpFsync)
+		if err == nil {
+			err = destination.Sync()
+		}
+		if err != nil {
 			return fmt.Errorf("sync imported file %q: %w", path, err)
 		}
 		info, err := statFile(destination)
@@ -653,7 +666,11 @@ func transferFile(source, destination *os.File, contentHash hash.Hash, state *wa
 				return copied, fmt.Errorf("%w: file contents at %q", ErrLimit, path)
 			}
 			if destination != nil {
-				if err := writeFull(destination, buffer[:n]); err != nil {
+				err := faultfs.Check(faultfs.SiteWorkspaceImport, faultfs.OpWrite)
+				if err == nil {
+					err = writeFull(destination, buffer[:n])
+				}
+				if err != nil {
 					return copied, fmt.Errorf("write imported file %q: %w", path, err)
 				}
 			}

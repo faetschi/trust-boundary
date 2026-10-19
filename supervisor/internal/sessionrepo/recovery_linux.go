@@ -20,6 +20,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/faultfs"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/workflowrecovery"
 	"tbound/supervisor/internal/workspace"
@@ -929,7 +930,11 @@ func atomicWriteRepositoryState(root *os.File, encoded []byte) error {
 		return fmt.Errorf("mint repository state staging name: %w", err)
 	}
 	tempName := ".repository-state-" + hex.EncodeToString(token[:])
-	fd, err := syscall.Openat(int(root.Fd()), tempName, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0o600)
+	fd := -1
+	err := faultfs.Check(faultfs.SiteHeadState, faultfs.OpCreate)
+	if err == nil {
+		fd, err = syscall.Openat(int(root.Fd()), tempName, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0o600)
+	}
 	if err != nil {
 		return fmt.Errorf("create repository state staging file: %w", err)
 	}
@@ -941,6 +946,9 @@ func atomicWriteRepositoryState(root *os.File, encoded []byte) error {
 			_ = unlinkAt(int(root.Fd()), tempName, 0)
 		}
 	}()
+	if err := faultfs.Check(faultfs.SiteHeadState, faultfs.OpWrite); err != nil {
+		return fmt.Errorf("write repository state: %w", err)
+	}
 	if err := writeAll(file, encoded); err != nil {
 		return err
 	}
@@ -949,6 +957,9 @@ func atomicWriteRepositoryState(root *os.File, encoded []byte) error {
 	}
 	if err := syscall.Fchmod(fd, 0o600); err != nil {
 		return err
+	}
+	if err := faultfs.Check(faultfs.SiteHeadState, faultfs.OpFsync); err != nil {
+		return fmt.Errorf("sync repository state: %w", err)
 	}
 	if err := file.Sync(); err != nil {
 		return err
@@ -967,7 +978,11 @@ func atomicWriteRepositoryState(root *os.File, encoded []byte) error {
 		// renameat is safe here because the repository root is private and this
 		// initial state file is created only by the supervisor.
 	}
-	if err := syscall.Renameat(int(root.Fd()), tempName, int(root.Fd()), repositoryStateName); err != nil {
+	err = faultfs.Check(faultfs.SiteHeadState, faultfs.OpRename)
+	if err == nil {
+		err = syscall.Renameat(int(root.Fd()), tempName, int(root.Fd()), repositoryStateName)
+	}
+	if err != nil {
 		return fmt.Errorf("promote repository state: %w", err)
 	}
 	tempExists = false

@@ -34,6 +34,7 @@ import (
 const guestEvidenceUsage = `  tbound-profile guest-evidence capability        --commit <40-hex> --seccomp-profile <abs file> --out <new file> [--service-cgroup </system.slice/..service>]
   tbound-profile guest-evidence netsink           --commit <40-hex> --out <new file>
   tbound-profile guest-evidence provider-exchange --commit <40-hex> --response <file> --profile-hash <sha256> --frozen-source-digest <sha256> --out <new file>
+  tbound-profile guest-evidence route-denied      --commit <40-hex> --route bash-view --run-id <id> --response <file> --target <abs path> --control-path <rel path> --control-file <file> --profile-hash <sha256> --frozen-source-digest <sha256> [--audit-root <dir>] --out <new file>
   tbound-profile guest-evidence tests             --commit <40-hex> --kind guest-tests-procoracle|guest-tests-landlock-connect --test-binary <abs file> --out <new file>
 `
 
@@ -69,6 +70,12 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	frozenSource := flags.String("frozen-source-digest", "", "provider-exchange: run.json pins.frozen_source_digest")
 	testKind := flags.String("kind", "", "tests: the artifact kind")
 	testBinary := flags.String("test-binary", "", "tests: the test binary built by tbound-run evq-capture")
+	route := flags.String("route", "", "route-denied: bash-view (direct-runtime has no producer)")
+	runID := flags.String("run-id", "", "route-denied: receipt.run_id of the route-probe run")
+	auditRoot := flags.String("audit-root", "/var/lib/tbound/audit", "route-denied: directory of the service audit journals")
+	target := flags.String("target", "", "route-denied: the registered outside-workspace file the probe commands request")
+	controlPath := flags.String("control-path", "", "route-denied: the workspace file the control command reads, relative to /work")
+	controlFile := flags.String("control-file", "", "route-denied: that workspace file as it is on the guest, for its bytes")
 	if err := flags.Parse(rest); err != nil {
 		return err
 	}
@@ -99,6 +106,9 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	case "provider-exchange":
 		artifactKind = guestevidence.KindProviderExchange
 		data, err = providerExchangeFrom(*response)
+	case "route-denied":
+		data, artifactKind, err = probeRouteDenied(routeProbeOptions{route: *route, runID: *runID, auditRoot: *auditRoot, response: *response,
+			target: *target, controlPath: *controlPath, controlFile: *controlFile}, productionRouteProbeEnv())
 	case "tests":
 		artifactKind = *testKind
 		var run guestevidence.TestRun
@@ -161,6 +171,9 @@ type capabilityEnv struct {
 	mountinfo      string
 	serviceCgroup  string
 	seccompProfile string
+	// cellsProbe probes a child of the cells cgroup at the given directory as the service identity;
+	// nil is the production probe (probeCellsAsService). Tests replace it.
+	cellsProbe func(cellsDir string) (guestevidence.CellsProbe, error)
 }
 
 // cgroup2Mount returns the mount point of the cgroup2 hierarchy from mountinfo text.
@@ -228,6 +241,16 @@ func probeCapability(env capabilityEnv) (guestevidence.Capability, error) {
 	if st, err := os.Stat(filepath.Join(dir, "cgroup.kill")); err == nil && st.Mode().IsRegular() {
 		c.Cgroup.KillInterface = true
 	}
+	if c.Cgroup.Chain, err = readDelegationChain(mount); err != nil {
+		return c, err
+	}
+	probe := env.cellsProbe
+	if probe == nil {
+		probe = probeCellsAsService
+	}
+	if c.Cgroup.CellsProbe, err = probe(filepath.Join(mount, guestevidence.CellsCgroup)); err != nil {
+		return c, fmt.Errorf("cells cgroup probe: %w", err)
+	}
 	c.Landlock = probeLandlock()
 	c.Seccomp.FilterInstalled, c.Seccomp.Mode = probeSeccompFilter()
 	return c, nil
@@ -252,7 +275,8 @@ func probeLandlock() guestevidence.CapabilityLandlock {
 
 // probeSeccompFilter installs an allow-everything filter on a thread of its own and reads the thread's
 // seccomp mode back. The thread is locked and never unlocked, so the runtime ends it with the goroutine
-// and the filter is never inherited by anything else of this process.
+// (or, if it is the main thread, wedges it) and the filter is never inherited by anything else of this
+// process: threads the runtime starts from a locked thread come from its template thread.
 func probeSeccompFilter() (installed bool, mode int) {
 	type result struct {
 		installed bool
@@ -647,4 +671,95 @@ func udpOutcome(addr string) string {
 		return "error: " + err.Error()
 	}
 	return guestevidence.ProbeSent
+}
+
+// ---- delegation chain and the cells cgroup ----
+
+// readDelegationChain reads, for every cgroup from the root to the cells cgroup, its type, the
+// controllers it has and the controllers it enables for its children. A file that is absent gives an
+// empty value, which the validator refuses; the cells cgroup itself must exist.
+func readDelegationChain(mount string) ([]guestevidence.CgroupLevel, error) {
+	var chain []guestevidence.CgroupLevel
+	for _, p := range guestevidence.CapabilityChain {
+		dir := filepath.Join(mount, p)
+		if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+			return nil, fmt.Errorf("cgroup %s is not present below %s: %v", p, mount, err)
+		}
+		read := func(name string) string {
+			data, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil {
+				return ""
+			}
+			return strings.TrimSpace(string(data))
+		}
+		chain = append(chain, guestevidence.CgroupLevel{Path: p, Type: read("cgroup.type"),
+			Controllers: strings.Fields(read("cgroup.controllers")), SubtreeControl: strings.Fields(read("cgroup.subtree_control"))})
+	}
+	return chain, nil
+}
+
+// probeCellsAsService makes, inspects and removes a child of the cells cgroup with the identity of the
+// governed service (uid 995, gid 986). The identity is switched on one locked OS thread with raw system
+// calls, which change the credentials of the calling thread only; the goroutine ends without unlocking,
+// so the runtime ends the thread and nothing else of this process runs as the service. It needs root.
+func probeCellsAsService(cellsDir string) (guestevidence.CellsProbe, error) {
+	type result struct {
+		probe guestevidence.CellsProbe
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		runtime.LockOSThread()
+		uid, gid := uintptr(guestevidence.ServiceUID), uintptr(guestevidence.ServiceGID)
+		if _, _, errno := unix.RawSyscall(unix.SYS_SETGROUPS, 0, 0, 0); errno != 0 {
+			done <- result{err: fmt.Errorf("drop supplementary groups: %w", errno)}
+			return
+		}
+		if _, _, errno := unix.RawSyscall(unix.SYS_SETRESGID, gid, gid, gid); errno != 0 {
+			done <- result{err: fmt.Errorf("switch to gid %d: %w", gid, errno)}
+			return
+		}
+		if _, _, errno := unix.RawSyscall(unix.SYS_SETRESUID, uid, uid, uid); errno != 0 {
+			done <- result{err: fmt.Errorf("switch to uid %d: %w", uid, errno)}
+			return
+		}
+		p, err := probeCellsChild(cellsDir, nil)
+		done <- result{p, err}
+	}()
+	r := <-done
+	return r.probe, r.err
+}
+
+// probeCellsChild runs as the calling identity: it creates a child cgroup of cellsDir, opens each of
+// guestevidence.CellsProbeFiles for writing without writing anything (so nothing is killed, moved or
+// limited), and removes the child. populate, when not nil, runs after the child exists and returns what
+// to undo before the removal (a test makes the files a real cgroup2 filesystem would have).
+func probeCellsChild(cellsDir string, populate func(child string) (undo func())) (guestevidence.CellsProbe, error) {
+	p := guestevidence.CellsProbe{UID: os.Geteuid(), GID: os.Getegid()}
+	child := filepath.Join(cellsDir, fmt.Sprintf("tbound-evq-probe-%d", os.Getpid()))
+	if err := os.Mkdir(child, 0o755); err != nil {
+		return p, fmt.Errorf("make a child of the cells cgroup: %w", err)
+	}
+	p.ChildCreated = true
+	undo := func() {}
+	if populate != nil {
+		undo = populate(child)
+	}
+	for _, name := range guestevidence.CellsProbeFiles {
+		f := guestevidence.CellsProbeFile{Name: name}
+		if _, err := os.Lstat(filepath.Join(child, name)); err == nil {
+			f.Exists = true
+		}
+		if file, err := os.OpenFile(filepath.Join(child, name), os.O_WRONLY, 0); err == nil {
+			f.Writable = true
+			file.Close()
+		}
+		p.Files = append(p.Files, f)
+	}
+	undo()
+	if err := os.Remove(child); err != nil {
+		return p, fmt.Errorf("remove the probe child %s (an empty cgroup stays; remove it by hand): %w", child, err)
+	}
+	p.ChildRemoved = true
+	return p, nil
 }

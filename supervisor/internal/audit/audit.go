@@ -21,6 +21,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"tbound/supervisor/internal/faultfs"
 )
 
 const (
@@ -71,6 +73,14 @@ type EffectBoundary uint8
 const (
 	EffectBoundaryAfterIntentSync EffectBoundary = iota + 1
 	EffectBoundaryAfterCallbackReturn
+	// EffectBoundaryBeforeIntent is reached after the unresolved-effect checks
+	// and before the intent append: nothing of this effect is durable yet, and
+	// a hook failure returns without calling the effect.
+	EffectBoundaryBeforeIntent
+	// EffectBoundaryAfterOutcomeSync is reached after the terminal outcome
+	// append returned: the outcome is durable, and the caller has not yet
+	// received the result.
+	EffectBoundaryAfterOutcomeSync
 )
 
 // LifecycleHook is an optional trusted-host test/observation hook. It must not
@@ -354,6 +364,9 @@ func (j *Journal) RunEffectWithBeforeOutcome(id string, intent []byte,
 	if _, exists := j.effects[id]; exists {
 		return nil, fmt.Errorf("%w: %s", ErrDuplicateEffect, id)
 	}
+	if err := j.observeLifecycle(EffectBoundaryBeforeIntent); err != nil {
+		return nil, err
+	}
 	_, err := j.appendLocked(Event{Kind: intentKind, ID: id, Data: cloneBytes(intent)})
 	if err != nil {
 		return nil, fmt.Errorf("%w: intent: %w", ErrDurability, err)
@@ -389,6 +402,9 @@ func (j *Journal) RunEffectWithBeforeOutcome(id string, intent []byte,
 	}
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrOutcomeUnknown, errors.Join(ErrDurability, err))
+	}
+	if err := j.observeLifecycle(EffectBoundaryAfterOutcomeSync); err != nil {
+		return nil, err
 	}
 	if effectErr != nil {
 		return nil, fmt.Errorf("%w: callback reported an error: %w", ErrOutcomeUnknown, effectErr)
@@ -468,7 +484,13 @@ func (j *Journal) appendLocked(event Event) (Record, error) {
 		return Record{}, ErrRecordTooLarge
 	}
 	encoded = append(encoded, '\n')
+	if err := faultfs.Check(faultfs.SiteAuditJournal, faultfs.OpWrite); err != nil {
+		return Record{}, j.failLocked(err)
+	}
 	if err := writeFull(j.file, encoded); err != nil {
+		return Record{}, j.failLocked(err)
+	}
+	if err := faultfs.Check(faultfs.SiteAuditJournal, faultfs.OpFsync); err != nil {
 		return Record{}, j.failLocked(err)
 	}
 	if err := j.file.Sync(); err != nil {

@@ -19,8 +19,9 @@
       "route": "bash-view",
       "class": "outside-workspace-path",
       "treatment": "unreachable",
-      "status": "Covered",
-      "reason": "A bash cat of a canary file outside the Landlock ruleset, by absolute path and through a symlink in the cell root, exits non-zero with a permission denial and releases no canary byte; an inside control file is read by the same command. The cell is the prototype sandbox (Landlock, seccomp, private mounts) on the capture host, not the podman command cell of the guest.",
+      "status": "Pending_Guest",
+      "guest_artifact": "guest-route-bash-view",
+      "reason": "Production route not yet evidenced: the tests below run the prototype sandbox (Landlock, seccomp, private mounts) on the capture host, not the Podman command cell of the guest. The cell is Covered only with a guest-route-bash-view artifact: denied reads of the registered outside-workspace target by absolute path, parent traversal and symlink through bash in the guest command cell, with a control read, bound to the run profile and source. Prototype evidence: A bash cat of a canary file outside the Landlock ruleset, by absolute path and through a symlink in the cell root, exits non-zero with a permission denial and releases no canary byte; an inside control file is read by the same command. The cell is the prototype sandbox (Landlock, seccomp, private mounts) on the capture host, not the podman command cell of the guest.",
       "evidence": [
         {"kind": "AttemptedRead", "test_ref": "tbound/supervisor/internal/sandbox.TestDeniedReadMatrixConfinement"},
         {"kind": "SuccessfulRead", "test_ref": "tbound/supervisor/internal/sandbox.TestOutsideWorkspaceReadRecordsNoSuccessfulReadBashView"}
@@ -30,8 +31,9 @@
       "route": "direct-runtime",
       "class": "outside-workspace-path",
       "treatment": "unreachable",
-      "status": "Covered",
-      "reason": "A process in the cell opens the outside canary file by absolute path, by parent traversal and through a symlink: every open fails with EACCES or EPERM and returns no byte, while an inside file is read in the same probe run.",
+      "status": "Pending_Guest",
+      "guest_artifact": "guest-route-direct-runtime",
+      "reason": "Production route not yet evidenced: the tests below run the prototype sandbox on the capture host, not the Pi runtime cell of the guest. The cell is Covered only with a guest-route-direct-runtime artifact: denied direct reads of the registered target from the Pi runtime cell, with a control read, bound to the run profile and source. Prototype evidence: A process in the cell opens the outside canary file by absolute path, by parent traversal and through a symlink: every open fails with EACCES or EPERM and returns no byte, while an inside file is read in the same probe run.",
       "evidence": [
         {"kind": "AttemptedRead", "test_ref": "tbound/supervisor/internal/sandbox.TestLandlockAllowsInsideDeniesOutside"},
         {"kind": "SuccessfulRead", "test_ref": "tbound/supervisor/internal/sandbox.TestOutsideWorkspaceReadRecordsNoSuccessfulReadDirectRuntime"}

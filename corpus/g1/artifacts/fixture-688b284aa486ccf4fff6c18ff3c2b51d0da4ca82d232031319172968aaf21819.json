@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/release.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "dmVyc2lvbj0yLjQuMApzdGF0dXM9ZHJhZnQK"
+    }
+  ]
+}

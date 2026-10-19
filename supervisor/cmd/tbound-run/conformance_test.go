@@ -312,11 +312,29 @@ func (e *evqEnv) base(out string) []string {
 	return []string{"--mapping", e.mapping, "--config", e.config, "--capture", e.capture, "--out", out}
 }
 
+// capabilityChain is a delegation chain that enables cpu, memory and pids at every level to the cells cgroup.
+func capabilityChain() []guestevidence.CgroupLevel {
+	var chain []guestevidence.CgroupLevel
+	for _, p := range guestevidence.CapabilityChain {
+		chain = append(chain, guestevidence.CgroupLevel{Path: p, Type: "domain", Controllers: []string{"cpu", "memory", "pids"}, SubtreeControl: []string{"cpu", "memory", "pids"}})
+	}
+	return chain
+}
+
+func capabilityCellsProbe() guestevidence.CellsProbe {
+	p := guestevidence.CellsProbe{UID: guestevidence.ServiceUID, GID: guestevidence.ServiceGID, ChildCreated: true, ChildRemoved: true}
+	for _, name := range guestevidence.CellsProbeFiles {
+		p.Files = append(p.Files, guestevidence.CellsProbeFile{Name: name, Exists: true, Writable: true})
+	}
+	return p
+}
+
 func capabilityArtifact(t *testing.T, mutate func(*guestevidence.Capability)) []byte {
 	t.Helper()
 	c := guestevidence.Capability{KernelRelease: "6.8.0-synthetic", Arch: "amd64",
 		Cgroup: guestevidence.CapabilityCgroup{Mount: "/sys/fs/cgroup", FSType: "cgroup2", Controllers: []string{"cpu", "memory", "pids"},
-			ServiceCgroup: guestevidence.ServiceCgroup, ServiceCgroupType: "domain", KillInterface: true},
+			ServiceCgroup: guestevidence.ServiceCgroup, ServiceCgroupType: "domain", KillInterface: true,
+			Chain: capabilityChain(), CellsProbe: capabilityCellsProbe()},
 		Landlock: guestevidence.CapabilityLandlock{ABI: 8, ErrataSupported: true, Errata: 1},
 		Seccomp:  guestevidence.CapabilitySeccomp{FilterInstalled: true, Mode: 2, ProfileSHA256: fixtureDigest("seccomp")}}
 	if mutate != nil {
@@ -577,16 +595,12 @@ const (
 	routeMatrixPath = "infra/conformance/route-matrix.json"
 )
 
-// The obligations that have no implementable evidence yet. Mapping one of them is a deliberate
+// The obligations that have no implementable evidence yet (none). Mapping one of them is a deliberate
 // change that edits this list.
-var wantUnmappedEVQ = []string{
-	"EVQ-COMMAND-VIEW-FAULTS",
-	"EVQ-RECOVERY-LIFECYCLE-CUTPOINTS",
-	"EVQ-SURFACE-ADAPTER-EQUIVALENCE",
-}
+var wantUnmappedEVQ []string
 
 // The obligations that need a guest artifact, and so are not passed from tests alone.
-var wantGuestEVQ = []string{"EVQ-LINUX-CAPABILITY-GUEST", "EVQ-NETWORK-SINK-GUEST", "EVQ-ORACLE-PROCESS", "EVQ-PROVIDER-REAL-EXCHANGE"}
+var wantGuestEVQ = []string{"EVQ-LINUX-CAPABILITY-GUEST", "EVQ-NETWORK-SINK-GUEST", "EVQ-ORACLE-PROCESS", "EVQ-PROVIDER-REAL-EXCHANGE", "EVQ-SURFACE-ADAPTER-EQUIVALENCE"}
 
 func TestPinnedEVQMapping(t *testing.T) {
 	m, err := parseEVQMapping(readRepoFile(t, evqMappingPath))
@@ -616,10 +630,11 @@ func TestPinnedEVQMapping(t *testing.T) {
 		t.Errorf("unmapped obligations = %v, want %v", unmapped, wantUnmappedEVQ)
 	}
 	wantGuest := map[string][]string{
-		"EVQ-LINUX-CAPABILITY-GUEST": {guestevidence.KindCapability},
-		"EVQ-NETWORK-SINK-GUEST":     {guestevidence.KindNetSink, guestevidence.KindLandlockConnectTests},
-		"EVQ-ORACLE-PROCESS":         {guestevidence.KindProcOracleTests},
-		"EVQ-PROVIDER-REAL-EXCHANGE": {guestevidence.KindProviderExchange},
+		"EVQ-LINUX-CAPABILITY-GUEST":      {guestevidence.KindCapability},
+		"EVQ-NETWORK-SINK-GUEST":          {guestevidence.KindNetSink, guestevidence.KindLandlockConnectTests},
+		"EVQ-ORACLE-PROCESS":              {guestevidence.KindProcOracleTests},
+		"EVQ-PROVIDER-REAL-EXCHANGE":      {guestevidence.KindProviderExchange},
+		"EVQ-SURFACE-ADAPTER-EQUIVALENCE": {guestevidence.KindAdapterTests},
 	}
 	if !reflect.DeepEqual(guest, wantGuest) {
 		t.Errorf("guest artifacts = %v, want %v", guest, wantGuest)
@@ -629,6 +644,16 @@ func TestPinnedEVQMapping(t *testing.T) {
 	var kinds []string
 	for _, ks := range guest {
 		kinds = append(kinds, ks...)
+	}
+	// A route cell of the pinned matrix names its own guest artifact, so the route kinds are used there.
+	routeMatrix, err := parseRouteMatrix(readRepoFile(t, routeMatrixPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range routeMatrix.Cells {
+		if c.GuestArtifact != "" {
+			kinds = append(kinds, c.GuestArtifact)
+		}
 	}
 	slices.Sort(kinds)
 	if want := slices.Sorted(slices.Values(guestevidence.Kinds())); !slices.Equal(kinds, want) {
@@ -1067,16 +1092,26 @@ func TestPinnedRouteMatrix(t *testing.T) {
 		t.Fatalf("pinned matrix: %v", err)
 	}
 	var refs []string
+	guest := guestRouteArtifacts{Digests: map[string]string{}}
 	for _, c := range m.Cells {
-		if c.Status != routematrix.StatusCovered {
-			t.Errorf("cell %s/%s is declared %s", c.Route, c.Class, c.Status)
+		switch {
+		case c.Status == routematrix.StatusCovered && c.GuestArtifact == "":
+		case c.Status == routematrix.StatusPendingGuest && c.GuestArtifact != "":
+			guest.Digests[c.GuestArtifact] = sha256Of([]byte(c.GuestArtifact))
+		default:
+			t.Errorf("cell %s/%s is declared %s with guest artifact %q", c.Route, c.Class, c.Status, c.GuestArtifact)
 		}
 		for _, e := range c.Evidence {
 			refs = append(refs, e.TestRef)
 		}
 	}
-	// With all its tests passing, every cell has its evidence and the report is complete.
+	// With all its tests passing but no guest artifact, the production cells are not covered.
 	rep, err := buildRouteReport(m, outcomesOf(t, passAll(refs...)))
+	if err != nil || rep.Complete || rep.ByStatus[routematrix.StatusPendingGuest] != len(guest.Digests) {
+		t.Fatalf("without guest artifacts: %+v %v", rep, err)
+	}
+	// With all its tests passing and every guest artifact, every cell has its evidence and the report is complete.
+	rep, err = buildRouteReportWithGuest(m, outcomesOf(t, passAll(refs...)), guest)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1085,7 +1120,7 @@ func TestPinnedRouteMatrix(t *testing.T) {
 	}
 	// Any one of its tests not passing, and the report is not complete.
 	for _, ref := range refs {
-		rep, err := buildRouteReport(m, outcomesOf(t, routeTests(refs, map[string]string{ref: "skip"})))
+		rep, err := buildRouteReportWithGuest(m, outcomesOf(t, routeTests(refs, map[string]string{ref: "skip"})), guest)
 		if err != nil || rep.Complete {
 			t.Errorf("%s skipped: %+v %v", ref, rep, err)
 		}

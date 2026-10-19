@@ -77,6 +77,9 @@ type Cell struct {
 	Evidence  []Evidence
 	Status    Status
 	Reason    string
+	// GuestArtifact names the guest artifact kind whose validated presence the production evidence of
+	// this cell needs, or is empty. The report writer, not the matrix, decides whether it is present.
+	GuestArtifact string
 }
 
 // Matrix is a registered exposure matrix. Routes are fixed by the spec; Classes
@@ -100,24 +103,25 @@ type Report struct {
 }
 
 var (
-	ErrEmptyMatrix         = errors.New("routematrix: empty matrix")
-	ErrEmptyClass          = errors.New("routematrix: empty sensitive class")
-	ErrDuplicateClass      = errors.New("routematrix: duplicate sensitive class")
-	ErrUnknownClass        = errors.New("routematrix: cell class not registered")
-	ErrUnknownRoute        = errors.New("routematrix: unknown route")
-	ErrUnknownTreatment    = errors.New("routematrix: unknown treatment")
-	ErrTreatmentNotAllowed = errors.New("routematrix: treatment not allowed for route")
-	ErrUnknownStatus       = errors.New("routematrix: unknown status")
-	ErrUnknownEvidence     = errors.New("routematrix: unknown evidence kind")
-	ErrEvidenceNotAllowed  = errors.New("routematrix: evidence kind not allowed for route")
-	ErrDuplicateEvidence   = errors.New("routematrix: duplicate evidence kind in cell")
-	ErrMissingCell         = errors.New("routematrix: missing cell")
-	ErrDuplicateCell       = errors.New("routematrix: duplicate cell")
-	ErrMissingTestRef      = errors.New("routematrix: evidence without test ref")
-	ErrMalformedTestRef    = errors.New("routematrix: malformed test ref")
-	ErrMissingReason       = errors.New("routematrix: pending cell without reason")
-	ErrNilLookup           = errors.New("routematrix: nil ref lookup")
-	ErrMissingRef          = errors.New("routematrix: test ref not found")
+	ErrEmptyMatrix            = errors.New("routematrix: empty matrix")
+	ErrEmptyClass             = errors.New("routematrix: empty sensitive class")
+	ErrDuplicateClass         = errors.New("routematrix: duplicate sensitive class")
+	ErrUnknownClass           = errors.New("routematrix: cell class not registered")
+	ErrUnknownRoute           = errors.New("routematrix: unknown route")
+	ErrUnknownTreatment       = errors.New("routematrix: unknown treatment")
+	ErrTreatmentNotAllowed    = errors.New("routematrix: treatment not allowed for route")
+	ErrUnknownStatus          = errors.New("routematrix: unknown status")
+	ErrUnknownEvidence        = errors.New("routematrix: unknown evidence kind")
+	ErrEvidenceNotAllowed     = errors.New("routematrix: evidence kind not allowed for route")
+	ErrDuplicateEvidence      = errors.New("routematrix: duplicate evidence kind in cell")
+	ErrMissingCell            = errors.New("routematrix: missing cell")
+	ErrDuplicateCell          = errors.New("routematrix: duplicate cell")
+	ErrMissingTestRef         = errors.New("routematrix: evidence without test ref")
+	ErrMalformedTestRef       = errors.New("routematrix: malformed test ref")
+	ErrMissingReason          = errors.New("routematrix: pending cell without reason")
+	ErrNilLookup              = errors.New("routematrix: nil ref lookup")
+	ErrMissingRef             = errors.New("routematrix: test ref not found")
+	ErrMalformedGuestArtifact = errors.New("routematrix: malformed guest artifact kind")
 )
 
 // allowedTreatments is the implementer's per-route treatment policy, OPEN (see
@@ -161,7 +165,9 @@ var requiredEvidence = map[Route][]EvidenceKind{
 var testRefPattern = regexp.MustCompile(
 	`^([A-Za-z0-9_][A-Za-z0-9_.-]*/)+[A-Za-z0-9_][A-Za-z0-9_.-]*\.Test[A-Z0-9_][A-Za-z0-9_]*$`)
 
-const digestDomain = "routematrix/v2"
+var guestArtifactRE = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
+
+const digestDomain = "routematrix/v3"
 
 // Validate checks a registered matrix. It rejects an empty matrix, duplicate or
 // empty classes, unknown routes, classes, treatments, statuses or evidence kinds,
@@ -234,6 +240,9 @@ func validateCell(c Cell, classes map[SensitiveClass]bool) error {
 	case StatusMissing:
 	default:
 		return fmt.Errorf("%w: %q", ErrUnknownStatus, c.Status)
+	}
+	if c.GuestArtifact != "" && !guestArtifactRE.MatchString(c.GuestArtifact) {
+		return fmt.Errorf("%w: %q", ErrMalformedGuestArtifact, c.GuestArtifact)
 	}
 	return validateEvidence(c)
 }
@@ -411,6 +420,7 @@ func encodeCell(c Cell) []byte {
 	writeString(&buf, string(c.Treatment))
 	writeString(&buf, string(c.Status))
 	writeString(&buf, c.Reason)
+	writeString(&buf, c.GuestArtifact)
 	ev := append([]Evidence(nil), c.Evidence...)
 	sort.Slice(ev, func(i, j int) bool {
 		if ev[i].Kind != ev[j].Kind {

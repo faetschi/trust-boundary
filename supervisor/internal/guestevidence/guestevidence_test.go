@@ -25,7 +25,7 @@ func expect() Expect {
 	for _, p := range TestPackages() {
 		tb[p] = digestOf("test binary " + p)
 	}
-	return Expect{Commit: testCommit, BinarySHA256: testBinary, ProfileHash: digestOf("profile"), FrozenSourceDigest: digestOf("source"), TestBinaries: tb}
+	return Expect{Commit: testCommit, BinarySHA256: testBinary, ProfileHash: digestOf("profile"), FrozenSourceDigest: digestOf("source"), CommitTree: adapterTree, TestBinaries: tb}
 }
 
 func encode(t *testing.T, kind string, data any) []byte {
@@ -40,7 +40,8 @@ func encode(t *testing.T, kind string, data any) []byte {
 func goodCapability() Capability {
 	return Capability{KernelRelease: "6.8.0-synthetic", Arch: "amd64",
 		Cgroup: CapabilityCgroup{Mount: "/sys/fs/cgroup", FSType: "cgroup2", Controllers: []string{"cpuset", "cpu", "io", "memory", "pids"},
-			ServiceCgroup: ServiceCgroup, ServiceCgroupType: "domain", KillInterface: true},
+			ServiceCgroup: ServiceCgroup, ServiceCgroupType: "domain", KillInterface: true,
+			Chain: goodChain(), CellsProbe: goodCellsProbe()},
 		Landlock: CapabilityLandlock{ABI: 8, ErrataSupported: true, Errata: 3},
 		Seccomp:  CapabilitySeccomp{FilterInstalled: true, Mode: 2, ProfileSHA256: digestOf("seccomp")}}
 }
@@ -99,6 +100,9 @@ func goodArtifacts(t *testing.T, e Expect) []artifactCase {
 		{KindProviderExchange, NewProviderExchange(goodResponse(t, e, nil))},
 		{KindProcOracleTests, goodTests(KindProcOracleTests, e)},
 		{KindLandlockConnectTests, goodTests(KindLandlockConnectTests, e)},
+		{KindAdapterTests, goodAdapter(t)},
+		{KindRouteBashView, goodRouteDenied(KindRouteBashView)},
+		{KindRouteDirectRuntime, goodRouteDenied(KindRouteDirectRuntime)},
 	}
 }
 
@@ -133,6 +137,9 @@ func TestEnvelopeIsBoundToTheCommitAndTheBinary(t *testing.T) {
 			"short commit pin":       func(x Expect) Expect { x.Commit = x.Commit[:39]; return x },
 			"no digest after sha256": func(x Expect) Expect { x.BinarySHA256 = "sha256:"; return x },
 		} {
+			if !IsGuestKind(c.kind) && (strings.Contains(name, "binary") || strings.Contains(name, "sha256")) {
+				continue // an adapter run is bound to the commit tree, not to the guest binary
+			}
 			if err := Validate(c.kind, good, mutate(e)); err == nil {
 				t.Errorf("%s with %s: accepted", c.kind, name)
 			}
@@ -376,5 +383,171 @@ func TestEncodeIsDeterministicAndNewlineTerminated(t *testing.T) {
 	b := encode(t, KindCapability, goodCapability())
 	if !bytes.Equal(a, b) || a[len(a)-1] != '\n' {
 		t.Fatal("encoding is not deterministic")
+	}
+}
+
+func goodChain() []CgroupLevel {
+	var chain []CgroupLevel
+	for _, p := range CapabilityChain {
+		chain = append(chain, CgroupLevel{Path: p, Type: "domain", Controllers: []string{"cpuset", "cpu", "io", "memory", "pids"}, SubtreeControl: []string{"cpu", "memory", "pids"}})
+	}
+	return chain
+}
+
+func goodCellsProbe() CellsProbe {
+	p := CellsProbe{UID: ServiceUID, GID: ServiceGID, ChildCreated: true, ChildRemoved: true}
+	for _, name := range CellsProbeFiles {
+		p.Files = append(p.Files, CellsProbeFile{Name: name, Exists: true, Writable: true})
+	}
+	return p
+}
+
+// The delegation chain from the hierarchy root to the cells cgroup (thesis E01) must enable cpu, memory
+// and pids at every level, and the governed service identity must be able to make, use and remove a
+// child cgroup of the cells cgroup.
+func TestCapabilityDelegationChainAndCellsProbe(t *testing.T) {
+	e := expect()
+	without := func(list []string, drop string) []string {
+		var out []string
+		for _, s := range list {
+			if s != drop {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	for name, mutate := range map[string]func(*Capability){
+		"no chain":                    func(c *Capability) { c.Cgroup.Chain = nil },
+		"chain stops at the service":  func(c *Capability) { c.Cgroup.Chain = c.Cgroup.Chain[:3] },
+		"chain skips system.slice":    func(c *Capability) { c.Cgroup.Chain = append(c.Cgroup.Chain[:1:1], c.Cgroup.Chain[2:]...) },
+		"chain reordered":             func(c *Capability) { c.Cgroup.Chain[1], c.Cgroup.Chain[2] = c.Cgroup.Chain[2], c.Cgroup.Chain[1] },
+		"chain of another cells path": func(c *Capability) { c.Cgroup.Chain[3].Path = "/system.slice/tbound-pi.service/other" },
+		"root lacks pids":             func(c *Capability) { c.Cgroup.Chain[0].Controllers = without(c.Cgroup.Chain[0].Controllers, "pids") },
+		"root does not enable memory": func(c *Capability) {
+			c.Cgroup.Chain[0].SubtreeControl = without(c.Cgroup.Chain[0].SubtreeControl, "memory")
+		},
+		"slice does not enable cpu": func(c *Capability) {
+			c.Cgroup.Chain[1].SubtreeControl = without(c.Cgroup.Chain[1].SubtreeControl, "cpu")
+		},
+		"service does not enable pids": func(c *Capability) {
+			c.Cgroup.Chain[2].SubtreeControl = without(c.Cgroup.Chain[2].SubtreeControl, "pids")
+		},
+		"service lacks memory": func(c *Capability) { c.Cgroup.Chain[2].Controllers = without(c.Cgroup.Chain[2].Controllers, "memory") },
+		"cells does not enable cpu": func(c *Capability) {
+			c.Cgroup.Chain[3].SubtreeControl = without(c.Cgroup.Chain[3].SubtreeControl, "cpu")
+		},
+		"cells lacks cpu":          func(c *Capability) { c.Cgroup.Chain[3].Controllers = without(c.Cgroup.Chain[3].Controllers, "cpu") },
+		"cells is threaded":        func(c *Capability) { c.Cgroup.Chain[3].Type = "threaded" },
+		"cells type unknown":       func(c *Capability) { c.Cgroup.Chain[3].Type = "" },
+		"no probe":                 func(c *Capability) { c.Cgroup.CellsProbe = CellsProbe{} },
+		"probe as root":            func(c *Capability) { c.Cgroup.CellsProbe.UID = 0 },
+		"probe as another user":    func(c *Capability) { c.Cgroup.CellsProbe.UID = 1000 },
+		"probe with another group": func(c *Capability) { c.Cgroup.CellsProbe.GID = 0 },
+		"child not created":        func(c *Capability) { c.Cgroup.CellsProbe.ChildCreated = false },
+		"child not removed":        func(c *Capability) { c.Cgroup.CellsProbe.ChildRemoved = false },
+		"no probe files":           func(c *Capability) { c.Cgroup.CellsProbe.Files = nil },
+		"a probe file is missing":  func(c *Capability) { c.Cgroup.CellsProbe.Files = c.Cgroup.CellsProbe.Files[1:] },
+		"an unknown probe file": func(c *Capability) {
+			c.Cgroup.CellsProbe.Files = append(c.Cgroup.CellsProbe.Files, CellsProbeFile{Name: "io.max", Exists: true, Writable: true})
+		},
+		"probe files out of order": func(c *Capability) { f := c.Cgroup.CellsProbe.Files; f[0], f[1] = f[1], f[0] },
+		"cgroup.kill absent": func(c *Capability) {
+			c.Cgroup.CellsProbe.Files[0].Exists = false
+			c.Cgroup.CellsProbe.Files[0].Writable = false
+		},
+		"cgroup.kill not writable":      func(c *Capability) { c.Cgroup.CellsProbe.Files[0].Writable = false },
+		"cgroup.procs not writable":     func(c *Capability) { c.Cgroup.CellsProbe.Files[1].Writable = false },
+		"pids.max not writable":         func(c *Capability) { c.Cgroup.CellsProbe.Files[4].Writable = false },
+		"writable but absent is absurd": func(c *Capability) { c.Cgroup.CellsProbe.Files[2].Exists = false },
+	} {
+		c := goodCapability()
+		mutate(&c)
+		if err := Validate(KindCapability, encode(t, KindCapability, c), e); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func goodRouteDenied(kind string) RouteDenied {
+	cell, _ := routeCellKindFor(kind)
+	e := expect()
+	attempt := func(method, outcome string, exit int, seq uint64) RouteAttempt {
+		return RouteAttempt{Method: method, Argv: []string{"/bin/bash", "-lc", "cat /home/node/.profile"}, ExitCode: exit, Outcome: outcome,
+			ResultDigest: digestOf("result " + method), ReceiptDigest: digestOf("receipt " + method), ContainerID: "container-" + method, JournalSequence: seq}
+	}
+	return RouteDenied{RunID: "run-1", ProfileHash: e.ProfileHash, FrozenSourceDigest: e.FrozenSourceDigest, Target: "/home/node/.profile",
+		Cell:    RouteCell{Kind: cell, ImageDigest: digestOf("image"), TemplateDigest: digestOf("template"), LandlockRulesetDigest: digestOf("ruleset")},
+		Journal: RouteJournal{Records: 9, HeadHash: strings.Repeat("a", 64)},
+		Control: attempt(RouteMethodControl, RouteOutcomeRead, 0, 2),
+		Attempts: []RouteAttempt{attempt(RouteMethodAbsolute, RouteOutcomeDenied, 1, 4), attempt(RouteMethodTraversal, RouteOutcomeDenied, 1, 6),
+			attempt(RouteMethodSymlink, RouteOutcomeDenied, 1, 8)}}
+}
+
+func TestRouteArtifactRequiredValues(t *testing.T) {
+	e := expect()
+	for _, kind := range []string{KindRouteBashView, KindRouteDirectRuntime} {
+		if err := Validate(kind, encode(t, kind, goodRouteDenied(kind)), e); err != nil {
+			t.Fatalf("%s: good artifact refused: %v", kind, err)
+		}
+		for name, mutate := range map[string]func(*RouteDenied){
+			"no run id":                func(r *RouteDenied) { r.RunID = "" },
+			"another profile":          func(r *RouteDenied) { r.ProfileHash = digestOf("other") },
+			"another source":           func(r *RouteDenied) { r.FrozenSourceDigest = digestOf("other") },
+			"relative target":          func(r *RouteDenied) { r.Target = "home/node/.profile" },
+			"unclean target":           func(r *RouteDenied) { r.Target = "/home/node/../node/.profile" },
+			"target inside /work":      func(r *RouteDenied) { r.Target = "/work/src/release.txt" },
+			"target inside /etc":       func(r *RouteDenied) { r.Target = "/etc/hostname" },
+			"target is a ruleset root": func(r *RouteDenied) { r.Target = "/tmp" },
+			"the other cell kind": func(r *RouteDenied) {
+				if r.Cell.Kind == RouteCellCommand {
+					r.Cell.Kind = RouteCellPiRuntime
+				} else {
+					r.Cell.Kind = RouteCellCommand
+				}
+			},
+			"no image digest":      func(r *RouteDenied) { r.Cell.ImageDigest = "" },
+			"no template digest":   func(r *RouteDenied) { r.Cell.TemplateDigest = "" },
+			"no ruleset digest":    func(r *RouteDenied) { r.Cell.LandlockRulesetDigest = "" },
+			"no journal":           func(r *RouteDenied) { r.Journal = RouteJournal{} },
+			"bad journal hash":     func(r *RouteDenied) { r.Journal.HeadHash = "xyz" },
+			"no control":           func(r *RouteDenied) { r.Control = RouteAttempt{} },
+			"control denied":       func(r *RouteDenied) { r.Control.Outcome, r.Control.ExitCode = RouteOutcomeDenied, 1 },
+			"control exit nonzero": func(r *RouteDenied) { r.Control.ExitCode = 1 },
+			"control as an attempt": func(r *RouteDenied) {
+				r.Attempts[0] = r.Control
+			},
+			"no attempts":           func(r *RouteDenied) { r.Attempts = nil },
+			"a method is missing":   func(r *RouteDenied) { r.Attempts = r.Attempts[:2] },
+			"methods out of order":  func(r *RouteDenied) { r.Attempts[0], r.Attempts[1] = r.Attempts[1], r.Attempts[0] },
+			"an extra attempt":      func(r *RouteDenied) { r.Attempts = append(r.Attempts, r.Attempts[0]) },
+			"a read, not a denial":  func(r *RouteDenied) { r.Attempts[1].Outcome = RouteOutcomeRead },
+			"an unclassified read":  func(r *RouteDenied) { r.Attempts[1].Outcome = "other" },
+			"exit zero for denial":  func(r *RouteDenied) { r.Attempts[2].ExitCode = 0 },
+			"no command":            func(r *RouteDenied) { r.Attempts[0].Argv = nil },
+			"command not on target": func(r *RouteDenied) { r.Attempts[0].Argv = []string{"/bin/bash", "-lc", "cat /home/node/.bashrc"} },
+			"no result digest":      func(r *RouteDenied) { r.Attempts[0].ResultDigest = "" },
+			"no receipt digest":     func(r *RouteDenied) { r.Attempts[0].ReceiptDigest = "" },
+			"no container":          func(r *RouteDenied) { r.Attempts[0].ContainerID = "" },
+			"no journal sequence":   func(r *RouteDenied) { r.Attempts[0].JournalSequence = 0 },
+			"sequence past journal": func(r *RouteDenied) { r.Attempts[0].JournalSequence = 10 },
+			"one container twice":   func(r *RouteDenied) { r.Attempts[1].ContainerID = r.Attempts[0].ContainerID },
+			"one receipt twice":     func(r *RouteDenied) { r.Attempts[1].ReceiptDigest = r.Attempts[0].ReceiptDigest },
+		} {
+			r := goodRouteDenied(kind)
+			mutate(&r)
+			if err := Validate(kind, encode(t, kind, r), e); err == nil {
+				t.Errorf("%s / %s: accepted", kind, name)
+			}
+		}
+		// The run must pin the profile and the source, or the artifact is bound to nothing.
+		noPins := e
+		noPins.ProfileHash, noPins.FrozenSourceDigest = "", ""
+		if err := Validate(kind, encode(t, kind, goodRouteDenied(kind)), noPins); err == nil {
+			t.Errorf("%s: accepted although the run pins nothing", kind)
+		}
+	}
+	// One route's artifact is not the other's.
+	if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, goodRouteDenied(KindRouteBashView)), e); err == nil {
+		t.Error("a command-cell artifact was accepted as a Pi-runtime-cell one")
 	}
 }

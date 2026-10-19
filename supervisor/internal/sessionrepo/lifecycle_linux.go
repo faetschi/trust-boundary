@@ -23,6 +23,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/faultfs"
 	"tbound/supervisor/internal/workspace"
 )
 
@@ -101,7 +102,11 @@ func (s *Store) createStageLocked(name string) (*os.File, error) {
 	if !validInternalName(name) {
 		return nil, ErrInvalidOptions
 	}
-	if err := syscall.Mkdirat(int(s.genDir.Fd()), name, 0o700); err != nil {
+	err := faultfs.Check(faultfs.SiteStageSetup, faultfs.OpMkdir)
+	if err == nil {
+		err = syscall.Mkdirat(int(s.genDir.Fd()), name, 0o700)
+	}
+	if err != nil {
 		return nil, fmt.Errorf("create private generation staging directory: %w", err)
 	}
 	stage, err := openDirectoryAt(s.genDir, name)
@@ -348,14 +353,14 @@ func (s *Store) mutate(ctx context.Context, input *Generation, tool string, oper
 			}
 			return payload, nil
 		}
-		if err := syncTreeDirectories(stage); err != nil {
+		if err := syncStageTree(stage); err != nil {
 			return nil, fmt.Errorf("sync mutation generation directories: %w", err)
 		}
-		if err := renameNoReplace(s.genDir, stageName, outputID); err != nil {
+		if err := promoteStage(s.genDir, stageName, outputID); err != nil {
 			return nil, fmt.Errorf("promote mutation generation: %w", err)
 		}
 		keepStage = true
-		if err := syncDirectory(s.genDir); err != nil {
+		if err := syncPromotion(s.genDir); err != nil {
 			return nil, fmt.Errorf("sync mutation generation promotion: %w", err)
 		}
 		generation, err := s.openGenerationLocked(outputID, snapshot)
@@ -523,7 +528,10 @@ func (s *Store) newViewLocked(input *Generation) (*CommandView, error) {
 		if _, seen := s.usedViewIDs[candidate]; seen {
 			continue
 		}
-		err = syscall.Mkdirat(int(s.viewDir.Fd()), candidate, 0o700)
+		err = faultfs.Check(faultfs.SiteViewSetup, faultfs.OpMkdir)
+		if err == nil {
+			err = syscall.Mkdirat(int(s.viewDir.Fd()), candidate, 0o700)
+		}
 		if errors.Is(err, syscall.EEXIST) {
 			continue
 		}
@@ -553,7 +561,11 @@ func (s *Store) newViewLocked(input *Generation) (*CommandView, error) {
 		_ = removeTreeAt(int(s.viewDir.Fd()), name)
 		return nil, ErrGenerationModified
 	}
-	if err := syncTreeDirectories(root); err != nil {
+	err = faultfs.Check(faultfs.SiteViewSetup, faultfs.OpFsync)
+	if err == nil {
+		err = syncTreeDirectories(root)
+	}
+	if err != nil {
 		_ = root.Close()
 		_ = removeTreeAt(int(s.viewDir.Fd()), name)
 		return nil, fmt.Errorf("sync command view directories: %w", err)
@@ -609,8 +621,15 @@ func (s *Store) discardViewLocked(view *CommandView) error {
 		closeErr = view.root.Close()
 		view.root = nil
 	}
-	removeErr := removeTreeAt(int(s.viewDir.Fd()), view.id)
-	if err := syncDirectory(s.viewDir); err != nil {
+	removeErr := faultfs.Check(faultfs.SiteViewTeardown, faultfs.OpUnlink)
+	if removeErr == nil {
+		removeErr = removeTreeAt(int(s.viewDir.Fd()), view.id)
+	}
+	syncErr := faultfs.Check(faultfs.SiteViewTeardown, faultfs.OpFsync)
+	if syncErr == nil {
+		syncErr = syncDirectory(s.viewDir)
+	}
+	if err := syncErr; err != nil {
 		return errors.Join(closeErr, removeErr, err)
 	}
 	return errors.Join(closeErr, removeErr)
@@ -1155,7 +1174,11 @@ func replaceRegularAt(root *os.File, path string, content []byte, executableBits
 		return fmt.Errorf("generate temporary file identity: %w", err)
 	}
 	tempName := ".tbound-write-" + hex.EncodeToString(token)
-	fd, err := syscall.Openat(int(parent.Fd()), tempName, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0o600)
+	fd := -1
+	err = faultfs.Check(faultfs.SiteStageApply, faultfs.OpCreate)
+	if err == nil {
+		fd, err = syscall.Openat(int(parent.Fd()), tempName, syscall.O_WRONLY|syscall.O_CREAT|syscall.O_EXCL|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0o600)
+	}
 	if err != nil {
 		return fmt.Errorf("create temporary output file: %w", err)
 	}
@@ -1167,6 +1190,9 @@ func replaceRegularAt(root *os.File, path string, content []byte, executableBits
 			_ = unlinkAt(int(parent.Fd()), tempName, 0)
 		}
 	}()
+	if err := faultfs.Check(faultfs.SiteStageApply, faultfs.OpWrite); err != nil {
+		return fmt.Errorf("write output contents: %w", err)
+	}
 	if err := writeAll(file, content); err != nil {
 		return err
 	}
@@ -1180,7 +1206,11 @@ func replaceRegularAt(root *os.File, path string, content []byte, executableBits
 	if err := syscall.Fchmod(fd, mode); err != nil {
 		return fmt.Errorf("normalize output mode: %w", err)
 	}
-	if err := file.Sync(); err != nil {
+	err = faultfs.Check(faultfs.SiteStageApply, faultfs.OpFsync)
+	if err == nil {
+		err = file.Sync()
+	}
+	if err != nil {
 		return fmt.Errorf("sync output contents: %w", err)
 	}
 	if err := file.Close(); err != nil {
@@ -1193,7 +1223,11 @@ func replaceRegularAt(root *os.File, path string, content []byte, executableBits
 	if existed != exists || (existed && !sameNode(prior, current)) {
 		return workspace.ErrSourceChanged
 	}
-	if err := syscall.Renameat(int(parent.Fd()), tempName, int(parent.Fd()), leaf); err != nil {
+	err = faultfs.Check(faultfs.SiteStageApply, faultfs.OpRename)
+	if err == nil {
+		err = syscall.Renameat(int(parent.Fd()), tempName, int(parent.Fd()), leaf)
+	}
+	if err != nil {
 		return fmt.Errorf("atomically replace file: %w", err)
 	}
 	tempExists = false
@@ -1421,4 +1455,27 @@ func unlinkAt(parentFD int, name string, flags uintptr) error {
 		return errno
 	}
 	return nil
+}
+
+// syncStageTree, promoteStage and syncPromotion are the fault-injectable steps
+// that make a staged generation durable and then visible under its final name.
+func syncStageTree(stage *os.File) error {
+	if err := faultfs.Check(faultfs.SiteStageSetup, faultfs.OpFsync); err != nil {
+		return err
+	}
+	return syncTreeDirectories(stage)
+}
+
+func promoteStage(genDir *os.File, stageName, outputID string) error {
+	if err := faultfs.Check(faultfs.SitePromote, faultfs.OpRename); err != nil {
+		return err
+	}
+	return renameNoReplace(genDir, stageName, outputID)
+}
+
+func syncPromotion(genDir *os.File) error {
+	if err := faultfs.Check(faultfs.SitePromote, faultfs.OpFsync); err != nil {
+		return err
+	}
+	return syncDirectory(genDir)
 }
