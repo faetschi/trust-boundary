@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/netoracle"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/procoracle"
@@ -32,8 +33,10 @@ import (
 
 // `tbound evidence <kind> [--flag value]...` is the guest half of the runner's evidence
 // collection (internal/runner/evidence_ssh.go, internal/procoracle/ssh_collector.go). It
-// is READ-ONLY with two small exceptions: net-canary (one request to the guest NET sink, below)
-// and the monitor lock (proc-monitor flocks one empty root-owned file in /run). It writes one
+// is READ-ONLY with three small exceptions: net-canary (one request to the guest NET sink, below),
+// the monitor locks (proc-monitor and transient-watch each flock one empty root-owned file in /run) and the
+// liveness canary of transient-watch (one uniquely named file written and removed in the live root at the start and
+// the end of the watch: the instrument's own contract, effectoracle doc.go). It writes one
 // JSON document to stdout (proc-monitor: a readiness line first; usage goes to stderr), writes
 // nothing else to disk, mutates no other state and opens every other file read-only. It
 // refuses any unknown kind, flag or malformed value, and it refuses to run as any uid
@@ -72,6 +75,13 @@ import (
 //	e04-points                   --interval-ref REF
 //	    the service's own protected-tree manifests at the seven E04 points of the admission REF
 //	    names, bound by the receipt's head and count (evidence_e04_points_linux.go). Read-only.
+//	transient-watch              --interval-ref REF --duration SECONDS
+//	    effectoracle (inotify) over the one registered live root for SECONDS (1..1500): EFF-TRANSIENT.
+//	    TWO lines: the readiness line (runner.TransientReadyDoc), written once the observer runs and
+//	    before the request is sent, then the final document (runner.TransientDoc: the effectoracle
+//	    report). At most one watch runs at a time (flock on a root-owned lock file in /run); a second
+//	    is refused. The watch cannot be bound to the admission (it starts before the request); the
+//	    host binds the report to the publication ledger of the interval.
 //	net-canary                   --phase start|end --interval TAG
 //	    the ONE kind with an effect: it sends a single GET canary request to the guest NET sink
 //	    (runner.NetsinkAddr, 127.0.33.1:8080) with the sink-private secret and prints the journal
@@ -100,6 +110,8 @@ const (
 	evidenceMaxMonitorSamples = 8000
 	// evidenceMonitorLockPath is the one root-owned lock file that admits a single monitor.
 	evidenceMonitorLockPath = "/run/tbound-evidence-monitor.lock"
+	// evidenceTransientLockPath is the one lock file that admits a single transient-watch.
+	evidenceTransientLockPath = "/run/tbound-evidence-transient.lock"
 )
 
 // evidenceMaxMonitorBytes caps the size of the monitor's final document (a variable so a
@@ -113,6 +125,7 @@ const evidenceUsage = `usage: tbound evidence <kind> [--flag value]...   (read-o
   proc-monitor                 --registration <digest> --interval-start <ns> --deadline <ns> --duration <s> --interval <ms>
   publication-interval-journal --interval-ref <ref>
   e04-points                   --interval-ref <ref>
+  transient-watch              --interval-ref <ref> --duration <s>   (inotify over the live root; writes a liveness canary there)
   net-canary                   --phase <start|end> --interval <tag>   (sends ONE canary to the guest NET sink: the only effect)
   net-journal                  --interval <tag>
   ssh-original-command         (forced-command entry; reads $SSH_ORIGINAL_COMMAND)
@@ -133,6 +146,7 @@ var evidenceFlags = map[string][]string{
 	runner.EvidenceProcCapture:        {"--registration", "--point", "--interval-start", "--deadline"},
 	runner.EvidenceProcMonitor:        {"--registration", "--interval-start", "--deadline", "--duration", "--interval"},
 	runner.EvidencePublicationJournal: {"--interval-ref"},
+	runner.EvidenceTransientWatch:     {"--interval-ref", "--duration"},
 	runner.EvidenceNetCanary:          {"--phase", "--interval"},
 	runner.EvidenceNetJournal:         {"--interval"},
 	runner.EvidenceSSHOriginalCommand: {},
@@ -174,6 +188,10 @@ type evidenceEnv struct {
 	monitor func(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot)) ([]procoracle.Snapshot, error)
 	// lockMonitor admits one monitor at a time; the release function frees it.
 	lockMonitor func() (release func(), err error)
+	// lockTransient admits one transient-watch at a time; watch is the effectoracle observer over root for d (it calls
+	// ready once the observer runs, before it waits).
+	lockTransient func() (release func(), err error)
+	watch         func(ctx context.Context, root string, d time.Duration, ready func() error) (*effectoracle.Report, error)
 	// netCanary sends one canary to the guest NET sink (the one kind with an effect, on the sink
 	// only); netJournal reads the sink journal file, read-only.
 	netCanary  func(ctx context.Context, phase, tag string) (netoracle.CanaryAck, error)
@@ -189,6 +207,8 @@ func productionEvidenceEnv() evidenceEnv {
 		cell: loadEvidenceCell, capture: captureEvidenceCell, monitor: monitorEvidenceCell, readTrace: readEvidenceTrace,
 		lockMonitor: func() (func(), error) { return lockEvidenceMonitorFile(evidenceMonitorLockPath, evidenceRequiredUID) },
 		netCanary:   sendNetsinkCanary, netJournal: readNetsinkJournal,
+		lockTransient: func() (func(), error) { return lockEvidenceMonitorFile(evidenceTransientLockPath, evidenceRequiredUID) },
+		watch:         watchEvidenceRoot,
 	}
 }
 
@@ -283,6 +303,8 @@ func runEvidence(ctx context.Context, args []string, stdout io.Writer, env evide
 		doc, err = evidenceProcMonitor(ctx, env, flags, stdout)
 	case runner.EvidencePublicationJournal:
 		doc, err = evidencePublicationJournal(env, flags["--interval-ref"])
+	case runner.EvidenceTransientWatch:
+		doc, err = evidenceTransientWatch(ctx, env, flags, stdout)
 	case runner.EvidenceNetCanary:
 		doc, err = evidenceNetCanary(ctx, env, flags)
 	case runner.EvidenceNetJournal:
@@ -667,4 +689,58 @@ func lockEvidenceMonitorFile(path string, uid uint32) (func(), error) {
 		return nil, fmt.Errorf("monitor lock %s: %w", path, err)
 	}
 	return func() { _ = syscall.Close(fd) }, nil
+}
+
+func evidenceTransientWatch(ctx context.Context, env evidenceEnv, f map[string]string, stdout io.Writer) (runner.TransientDoc, error) {
+	seconds, err := strconv.Atoi(f["--duration"])
+	if err != nil || seconds < 1 || seconds > runner.MaxTransientWatchSeconds || strconv.Itoa(seconds) != f["--duration"] {
+		return runner.TransientDoc{}, fmt.Errorf("--duration must be 1..%d seconds", runner.MaxTransientWatchSeconds)
+	}
+	if env.lockTransient == nil || env.watch == nil {
+		return runner.TransientDoc{}, errors.New("no transient observer")
+	}
+	root := evidenceLiveRoots[0]
+	release, err := env.lockTransient()
+	if err != nil {
+		return runner.TransientDoc{}, fmt.Errorf("transient-watch refused: %w", err)
+	}
+	defer release()
+	ref := f["--interval-ref"]
+	report, err := env.watch(ctx, root, time.Duration(seconds)*time.Second, func() error {
+		line, err := json.Marshal(runner.TransientReadyDoc{Schema: runner.EvidenceSchema, Kind: runner.TransientReadyKind, IntervalRef: ref, Root: root})
+		if err == nil {
+			_, err = stdout.Write(append(line, '\n'))
+		}
+		return err
+	})
+	if err != nil {
+		return runner.TransientDoc{}, err
+	}
+	doc := runner.TransientDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceTransientWatch, IntervalRef: ref, Root: root,
+		DurationSeconds: seconds, Report: *report}
+	if encoded, err := json.Marshal(doc); err != nil || len(encoded) > evidenceMaxMonitorBytes {
+		return runner.TransientDoc{}, fmt.Errorf("the transient report is %d bytes (cap %d)", len(encoded), evidenceMaxMonitorBytes)
+	}
+	return doc, nil
+}
+
+// watchEvidenceRoot is the effectoracle observer over root for d. ready is called once the observer runs (its start
+// barrier, liveness canary included, has passed): the host sends the request only after that. A watch that is
+// cancelled early (the host went away) is stopped and reports what it saw.
+func watchEvidenceRoot(ctx context.Context, root string, d time.Duration, ready func() error) (*effectoracle.Report, error) {
+	observer, err := effectoracle.Start(root)
+	if err != nil {
+		return nil, err
+	}
+	if err := ready(); err != nil {
+		_, _ = observer.Stop()
+		return nil, fmt.Errorf("the readiness line could not be written: %w", err)
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+	return observer.Stop()
 }

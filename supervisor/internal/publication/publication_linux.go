@@ -238,6 +238,22 @@ type Result struct {
 	Objects       []ObjectResult         `json:"objects"`
 	Binding       CommitBinding          `json:"binding"`
 	Ledger        []wsoracle.LedgerEntry `json:"ledger,omitempty"`
+	// Evidence is what the EFF-WS-05 and EFF-WS-06 oracles need of the transaction besides Ledger (see
+	// OracleEvidence). Publish sets it on every result it returns once the transaction is planned; it is nil for a
+	// request refused before that, and for a Recover result. It is process-local: it is not journaled, so a result
+	// read back from the journal has none.
+	Evidence *OracleEvidence `json:"-"`
+}
+
+// OracleEvidence is the publication-side input of the EFF-WS-05 and EFF-WS-06 oracles that the live-root manifests
+// and the ledger do not carry. Sealed is the wsoracle manifest of the sealed generation as Publish held it (the
+// tree the ledger is reconciled against), AffectedPaths the intended affected-object set (every planned object,
+// and the source of a move, as sorted canonical relative paths), and LockIdentity the identity of the live-root
+// repository lock Publish held for the transaction.
+type OracleEvidence struct {
+	Sealed        wsoracle.Manifest
+	AffectedPaths []string
+	LockIdentity  string
 }
 
 type openHow struct {
@@ -585,6 +601,8 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 			plans[index].BackupName = fmt.Sprintf("original-%04d", index)
 		}
 	}
+	evidence := &OracleEvidence{Sealed: wsoracle.SnapshotDir(request.SealedRoot, "sealed"), AffectedPaths: affectedPaths(plans),
+		LockIdentity: r.liveRootLockIdentity(rootID)}
 	prep := prepareRecord{SchemaVersion: publicationSchema, TransactionID: txID, WorkflowID: r.options.WorkflowID,
 		OwnerEpoch: r.options.OwnerEpoch, PublicationID: request.PublicationID, OriginProposalID: binding.OriginProposalID,
 		SealedGeneration: request.Chain.Sealed.Generation, Binding: binding, LiveRoot: rootID,
@@ -592,7 +610,7 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err := r.appendRecord("publication_prepare", txID, prep); err != nil {
 		return Result{}, fmt.Errorf("persist publication recovery plan: %w", err)
 	}
-	pendingResult := Result{TransactionID: txID, PublicationID: request.PublicationID, Status: StatusUnknown, Binding: binding}
+	pendingResult := Result{TransactionID: txID, PublicationID: request.PublicationID, Status: StatusUnknown, Binding: binding, Evidence: evidence}
 	if err := injectFault(inject, "after-prepare-checkpoint", -1); err != nil {
 		return pendingResult, err
 	}
@@ -682,9 +700,38 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	}
 	tx, err := readOneTransaction(r.options.Journal, r.options.WorkflowID, txID)
 	if err != nil {
-		return Result{TransactionID: txID, PublicationID: request.PublicationID, Status: StatusUnknown, Binding: binding}, err
+		return Result{TransactionID: txID, PublicationID: request.PublicationID, Status: StatusUnknown, Binding: binding, Evidence: evidence}, err
 	}
-	return r.reconcile(request.LiveRoot, artifact, tx, inject)
+	result, err := r.reconcile(request.LiveRoot, artifact, tx, inject)
+	result.Evidence = evidence
+	return result, err
+}
+
+// affectedPaths is the intended affected-object set of a plan: every object path and the source path of a move,
+// sorted and without repeats.
+func affectedPaths(plans []objectPlan) []string {
+	seen := map[string]bool{}
+	var paths []string
+	for _, plan := range plans {
+		for _, p := range []string{plan.Path, plan.SourcePath} {
+			if p != "" && !seen[p] {
+				seen[p] = true
+				paths = append(paths, p)
+			}
+		}
+	}
+	sort.Strings(paths)
+	return paths
+}
+
+// liveRootLockIdentity names the live-root repository lock the repository holds for the root: the lock file name
+// (which carries the root identity) and the device and inode of the held lock file.
+func (r *Repository) liveRootLockIdentity(rootID fileIdentity) string {
+	lock := r.liveLocks[liveRootLockKey(rootID)]
+	if lock == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s@%016x:%016x", lock.name, lock.lockID.Device, lock.lockID.Inode)
 }
 
 func clonePublicationTransitions(input []delta.Transition) []delta.Transition {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/wsoracle"
@@ -105,13 +106,11 @@ func TestNetAndProcRefsAreVersionedPerKey(t *testing.T) {
 		OracleWS01: wsoracle.OracleVersion, OracleWS: wsoracle.OracleVersion,
 		OracleNet01: NetOracleVersion, OracleNet02: NetOracleVersion,
 		OracleProc01: ProcOracleVersion, OracleProc02: ProcOracleVersion, OracleProc03: ProcOracleVersion,
+		OracleTransient: effectoracle.OracleVersion,
 	} {
 		if got, ok := oracleVersionFor(k); !ok || got != want {
 			t.Errorf("oracleVersionFor(%s) = %q, %v; want %q", k, got, ok, want)
 		}
-	}
-	if _, ok := oracleVersionFor(OracleTransient); ok {
-		t.Error("EFF-TRANSIENT has no provenance requirement")
 	}
 }
 

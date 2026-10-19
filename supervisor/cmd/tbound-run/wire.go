@@ -19,8 +19,8 @@ type wireFunc func(p plan) (runner.Executors, error)
 //	Attest( ResetExecutor( GovernedC ) )          for C, and the same stack with Configuration P for P
 //
 // GovernedC drives `tbound serve --pi` with the client key and gets its evidence from
-// the evidence key (E04 and publication journal, the NET sink, the PROC monitor); the
-// reset wrapper calls `tbound trial reset` with the trial key; Attest adds what the host
+// the evidence key (E04, the publication journal and the EFF-WS-05/06 inputs, the NET sink, the PROC monitor,
+// the transient-mutation watch); the reset wrapper calls `tbound trial reset` with the trial key; Attest adds what the host
 // establishes (channel, E01 identity against the pins, route, EVQ, matched delivery) and
 // refuses a delta on a C receipt.
 //
@@ -46,8 +46,10 @@ func wireSSH(p plan) (runner.Executors, error) {
 }
 
 // collectors are the host-side evidence sources, all over the evidence key.
-func (p plan) collectors() runner.CollectorSet {
-	ev := p.cfg.transports().evidence
+func (p plan) collectors() runner.CollectorSet { return p.collectorsOver(p.cfg.transports().evidence) }
+
+// collectorsOver is collectors over a given evidence transport (the seam of the observer-coverage test).
+func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 	ssh := runner.NewSSHCollectors(ev)
 	proc := &procoracle.SSHCollector{
 		Client:          runner.EvidenceClient{Transport: ev},
@@ -58,7 +60,9 @@ func (p plan) collectors() runner.CollectorSet {
 		Policy:          procoracle.Policy{AuthorizedSockets: p.cfg.Proc.AuthorizedSockets},
 		InitLingers:     p.initLingers,
 	}
-	return runner.CollectorSet{E04From: ssh, JournalFrom: ssh, NetFrom: netoracle.NewCollector(ev), ProcFrom: proc}
+	// The transient observer watches for the same time as the PROC monitor: a step must fit both windows.
+	transient := &runner.TransientCollector{Client: runner.EvidenceClient{Transport: ev}, Duration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second}
+	return runner.CollectorSet{E04From: ssh, JournalFrom: ssh, PublicationFrom: ssh, NetFrom: netoracle.NewCollector(ev), ProcFrom: proc, TransientFrom: transient}
 }
 
 // attest wraps an executor with the host-side attestation of this run.

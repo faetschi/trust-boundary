@@ -60,6 +60,9 @@ type EvidenceRef struct {
 	E04Head     string
 	E04Count    int
 	E04GapCount int
+	// Ended is when the client invocation returned: the end of the request, as the host saw it. It is what a collector
+	// whose observation window is bounded in time (TransientCollector) compares its window with.
+	Ended time.Time
 }
 
 // ObserverEvidence is what a NET or PROC collector returns: the findings and, for each
@@ -89,6 +92,13 @@ type Collectors interface {
 	Net(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error)
 	// Proc returns findings for EFF-PROC-01..03. Adversarial steps only.
 	Proc(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error)
+	// Publication returns the EFF-WS-05 and EFF-WS-06 inputs of an interval that published, from the service's own
+	// store, bound to the receipt. They are publication predicates, not a separate observer: GovernedC has
+	// wsoracle judge them and records them with RecordWS. Adversarial steps only.
+	Publication(ctx context.Context, ref EvidenceRef) (PublicationInputs, error)
+	// Transient returns the finding for EFF-TRANSIENT (key OracleTransient) and the reference of the effectoracle
+	// report behind it. Adversarial steps only.
+	Transient(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error)
 }
 
 // AbsentCollectors has no evidence of any kind. It is the default, and the base for
@@ -105,6 +115,12 @@ func (AbsentCollectors) Net(context.Context, EvidenceRef) (ObserverEvidence, err
 	return ObserverEvidence{}, ErrEvidenceAbsent
 }
 func (AbsentCollectors) Proc(context.Context, EvidenceRef) (ObserverEvidence, error) {
+	return ObserverEvidence{}, ErrEvidenceAbsent
+}
+func (AbsentCollectors) Publication(context.Context, EvidenceRef) (PublicationInputs, error) {
+	return PublicationInputs{}, ErrEvidenceAbsent
+}
+func (AbsentCollectors) Transient(context.Context, EvidenceRef) (ObserverEvidence, error) {
 	return ObserverEvidence{}, ErrEvidenceAbsent
 }
 
@@ -134,8 +150,8 @@ func (AbsentCollectors) Proc(context.Context, EvidenceRef) (ObserverEvidence, er
 //     IntervalRef of the step), head and record count, carried in PublicationFree
 //     together with the journal bytes of Collectors. Without those bytes the interval is
 //     not exempt;
-//   - oracle findings come only from Collectors (E04 manifests judged by wsoracle, NET,
-//     PROC). A missing collector leaves its oracles missing; nothing is filled in. Route
+//   - oracle findings come only from Collectors (E04 manifests and the publication inputs of
+//     EFF-WS-05/06 judged by wsoracle, NET, PROC, the transient observer). A missing collector leaves its oracles missing; nothing is filled in. Route
 //     coverage is not set.
 //
 // Prepare checks the configuration and the step mapping and sends nothing; the runner
@@ -298,6 +314,7 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 	}
 	t0 := time.Now()
 	stdout, stderr, exit, err := g.Transport.Run(ctx, argv)
+	ended := time.Now()
 	latency := int(time.Since(t0).Milliseconds())
 	if err != nil {
 		return Outcome{}, fmt.Errorf("runner: governed transport: %w", err)
@@ -326,7 +343,7 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		E01:     E01Identity{Digest: "sha256:" + hex.EncodeToString(sum[:])},
 		Metrics: Metrics{LatencyMS: latency},
 	}
-	ref := EvidenceRef{Step: s, Interval: IntervalRef(s), Request: request}
+	ref := EvidenceRef{Step: s, Interval: IntervalRef(s), Request: request, Ended: ended}
 	var errs []error
 	if beginErr != nil {
 		errs = append(errs, beginErr)
@@ -421,11 +438,12 @@ func (g GovernedC) collectors() Collectors {
 }
 
 var (
-	netKeys  = []string{OracleNet01, OracleNet02}
-	procKeys = []string{OracleProc01, OracleProc02, OracleProc03}
+	netKeys       = []string{OracleNet01, OracleNet02}
+	procKeys      = []string{OracleProc01, OracleProc02, OracleProc03}
+	transientKeys = []string{OracleTransient}
 )
 
-// collect folds the collectors' E04, NET and PROC evidence into o. Absent evidence
+// collect folds the collectors' E04, publication (EFF-WS-05, EFF-WS-06), NET, PROC and transient evidence into o. Absent evidence
 // adds nothing. Anything else wrong with a collector is an error, and keeps what the
 // other collectors established.
 func (g GovernedC) collect(ctx context.Context, ref EvidenceRef, o *Outcome) []error {
@@ -451,11 +469,16 @@ func (g GovernedC) collect(ctx context.Context, ref EvidenceRef, o *Outcome) []e
 	} else if !errors.Is(err, ErrEvidenceAbsent) {
 		errs = append(errs, fmt.Errorf("runner: E04 collector: %w", err))
 	}
+	if in, err := c.Publication(ctx, ref); err == nil {
+		errs = append(errs, o.recordPublication(ref.Step.ThreatClass, in)...)
+	} else if !errors.Is(err, ErrEvidenceAbsent) {
+		errs = append(errs, fmt.Errorf("runner: publication collector: %w", err))
+	}
 	for _, src := range []struct {
 		name string
 		keys []string
 		get  func(context.Context, EvidenceRef) (ObserverEvidence, error)
-	}{{"NET", netKeys, c.Net}, {"PROC", procKeys, c.Proc}} {
+	}{{"NET", netKeys, c.Net}, {"PROC", procKeys, c.Proc}, {"TRANSIENT", transientKeys, c.Transient}} {
 		ev, err := src.get(ctx, ref)
 		switch {
 		case errors.Is(err, ErrEvidenceAbsent):
@@ -465,6 +488,24 @@ func (g GovernedC) collect(ctx context.Context, ref EvidenceRef, o *Outcome) []e
 			if err := o.recordObserver(src.name, src.keys, ev); err != nil {
 				errs = append(errs, err)
 			}
+		}
+	}
+	return errs
+}
+
+// recordPublication judges the publication inputs with wsoracle and records the reports with RecordWS. EFF-WS-06 is
+// recorded only for a class the matrix registers it for (TM-A, TM-B): for another class it is not a predicate of the
+// run, and an effect it found would be an unregistered observation.
+func (o *Outcome) recordPublication(class evalcorpus.ThreatClass, in PublicationInputs) []error {
+	var errs []error
+	if in.WS05 != nil {
+		if err := o.RecordWS(wsoracle.EvaluateWS05(*in.WS05)); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if _, registered := observerFor(wsoracle.PredicateWS06, class); registered && in.WS06 != nil {
+		if err := o.RecordWS(wsoracle.EvaluateWS06(*in.WS06)); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	return errs

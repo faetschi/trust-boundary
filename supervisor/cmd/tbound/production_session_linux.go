@@ -859,6 +859,8 @@ func (session *productionPiSession) settleProductionTurn(ctx context.Context, op
 			// The live-root ledger is what the publication itself applied (result.Ledger), taken
 			// only when the outcome says exactly what happened; otherwise it stays unavailable.
 			session.E04.setLedger(productionE04LedgerFromResult(result, finalizeErr))
+			// What publication held besides the ledger, for EFF-WS-05/06: carried by the post-publication record.
+			session.E04.setPublication(productionE04PublicationFromResult(result))
 			e04LedgerSet = true
 			if finalizeErr == nil && result.Status == publication.StatusSucceeded && len(result.Objects) == 0 {
 				out.publicationStatus, out.disposition = "NO_DIFF", "NO_DIFF"

@@ -239,7 +239,7 @@ type IntervalCollectors interface {
 // own slot, and a nil slot is AbsentCollectors. BeginInterval and EndInterval reach every
 // distinct slot that implements IntervalCollectors once.
 type CollectorSet struct {
-	E04From, JournalFrom, NetFrom, ProcFrom Collectors
+	E04From, JournalFrom, PublicationFrom, NetFrom, ProcFrom, TransientFrom Collectors
 }
 
 func (s CollectorSet) slot(c Collectors) Collectors {
@@ -257,6 +257,10 @@ func (s CollectorSet) PublicationJournal(ctx context.Context, ref EvidenceRef) (
 	return s.slot(s.JournalFrom).PublicationJournal(ctx, ref)
 }
 
+func (s CollectorSet) Publication(ctx context.Context, ref EvidenceRef) (PublicationInputs, error) {
+	return s.slot(s.PublicationFrom).Publication(ctx, ref)
+}
+
 func (s CollectorSet) Net(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error) {
 	return s.slot(s.NetFrom).Net(ctx, ref)
 }
@@ -265,11 +269,15 @@ func (s CollectorSet) Proc(ctx context.Context, ref EvidenceRef) (ObserverEviden
 	return s.slot(s.ProcFrom).Proc(ctx, ref)
 }
 
+func (s CollectorSet) Transient(ctx context.Context, ref EvidenceRef) (ObserverEvidence, error) {
+	return s.slot(s.TransientFrom).Transient(ctx, ref)
+}
+
 // distinct returns the slots once each. Slots whose dynamic type is not comparable are
 // kept as they are.
 func (s CollectorSet) distinct() []Collectors {
 	var out []Collectors
-	for _, c := range []Collectors{s.E04From, s.JournalFrom, s.NetFrom, s.ProcFrom} {
+	for _, c := range []Collectors{s.E04From, s.JournalFrom, s.PublicationFrom, s.NetFrom, s.ProcFrom, s.TransientFrom} {
 		if c == nil {
 			continue
 		}
@@ -324,8 +332,9 @@ func (s CollectorSet) Validate() error {
 	return errors.Join(errs...)
 }
 
-// SSHCollectors collects E04 manifests and the publication interval journal from the
-// guest. NET and PROC stay absent here (see CollectorSet).
+// SSHCollectors collects E04 manifests, the publication interval journal and the EFF-WS-05 and
+// EFF-WS-06 inputs from the guest. NET and PROC stay absent here (see CollectorSet), and so does
+// the transient observer (TransientCollector).
 //
 // E04. The seven registered points are moments inside the service run (materialization,
 // settlement, teardown import, publication, cleanup). A collector outside the service
@@ -352,11 +361,8 @@ func (c *SSHCollectors) Validate() error { return c.Client.Validate() }
 
 // E04 implements Collectors.
 func (c *SSHCollectors) E04(ctx context.Context, ref EvidenceRef) (wsoracle.EvaluateE04Input, error) {
-	if ref.E04Head == "" || ref.E04Count <= 0 {
-		return wsoracle.EvaluateE04Input{}, evidenceAbsent("the receipt carries no E04 evidence binding for %s", ref.Interval)
-	}
-	var doc E04PointsDoc
-	if err := c.Client.CallDoc(ctx, &doc, EvidenceE04Points, "--interval-ref", ref.Interval); err != nil {
+	doc, err := c.e04Doc(ctx, ref)
+	if err != nil {
 		return wsoracle.EvaluateE04Input{}, err
 	}
 	return E04PointsInput(doc, ref.Interval, ref.E04Head, ref.E04Count)
@@ -382,4 +388,28 @@ func (c *SSHCollectors) PublicationJournal(ctx context.Context, ref EvidenceRef)
 		return nil, evidenceAbsent("journal does not verify against the head the guest named")
 	}
 	return journal, nil
+}
+
+// Publication implements Collectors. EFF-WS-05 and EFF-WS-06 are publication predicates, so their inputs are the
+// ones publication itself keeps: the service's baseline, pre-publication and post-publication manifests, the
+// approved-delta ledger it applied and, in the post-publication record, the sealed generation's manifest, the
+// intended affected set and the lock identity (E04PublicationEvidence). They come from the same store the receipt
+// binds as E04 does (e04-points), so a document that does not match the receipt is absent, and the interval journal
+// stays the only judge of whether the interval published at all (PublicationFree).
+func (c *SSHCollectors) Publication(ctx context.Context, ref EvidenceRef) (PublicationInputs, error) {
+	doc, err := c.e04Doc(ctx, ref)
+	if err != nil {
+		return PublicationInputs{}, err
+	}
+	return E04PublicationInputs(doc, ref.Interval, ref.E04Head, ref.E04Count)
+}
+
+// e04Doc fetches the E04 point store of the interval the receipt binds.
+func (c *SSHCollectors) e04Doc(ctx context.Context, ref EvidenceRef) (E04PointsDoc, error) {
+	if ref.E04Head == "" || ref.E04Count <= 0 {
+		return E04PointsDoc{}, evidenceAbsent("the receipt carries no E04 evidence binding for %s", ref.Interval)
+	}
+	var doc E04PointsDoc
+	err := c.Client.CallDoc(ctx, &doc, EvidenceE04Points, "--interval-ref", ref.Interval)
+	return doc, err
 }

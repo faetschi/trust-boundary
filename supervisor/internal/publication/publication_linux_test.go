@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"syscall"
 	"testing"
@@ -18,6 +19,7 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/workspace"
+	"tbound/supervisor/internal/wsoracle"
 )
 
 func TestTerminalLeaseOriginBindingIsVersionedAndBindsFullTransition(t *testing.T) {
@@ -1066,4 +1068,59 @@ func assertRetainedOriginal(t *testing.T, root, value string) {
 		}
 	}
 	t.Fatalf("retained original %q not found in target-filesystem evidence directory", value)
+}
+
+// Publish leaves what EFF-WS-05 and EFF-WS-06 need besides the ledger: the sealed generation's manifest, the intended
+// affected set and the identity of the lock it held. Together with live-root snapshots before and after, a clean
+// publication is no effect for both oracles.
+func TestPublishLeavesTheEvidenceTheWSOraclesNeed(t *testing.T) {
+	base := map[string]string{"over.txt": "old-value", "gone.txt": "remove-me", "move.txt": "rename-me"}
+	middle := map[string]string{"over.txt": "middle-value", "gone.txt": "remove-me", "move.txt": "rename-me", "ephemeral.txt": "transient"}
+	final := map[string]string{"over.txt": "final-value", "newdir/moved.txt": "rename-me", "created.txt": "new-value"}
+	f := newFixture(t, base, base, middle, final, nil, nil, []string{"newdir"})
+	repo := f.acquire(1)
+	defer repo.Close()
+	live := filepath.Join(f.root, "live")
+	pre := wsoracle.Snapshot(live, "pre-publication")
+	result, err := repo.Publish(context.Background(), f.request, func(binding CommitBinding) (Authorization, error) {
+		return Authorization{DecisionID: "publication-decision-1", BindingDigest: binding.BindingDigest}, nil
+	}, nil)
+	if err != nil || result.Status != StatusSucceeded {
+		t.Fatalf("Publish: %v %+v", err, result)
+	}
+	post := wsoracle.Snapshot(live, "post-publication")
+	ev := result.Evidence
+	if ev == nil || !ev.Sealed.Complete || ev.Sealed.Label != "sealed" || len(ev.Sealed.Entries) == 0 {
+		t.Fatalf("evidence = %+v", ev)
+	}
+	if !strings.HasPrefix(ev.LockIdentity, ".tbound-publication-live-") || !strings.Contains(ev.LockIdentity, ".lock@") {
+		t.Errorf("lock identity = %q", ev.LockIdentity)
+	}
+	got := append([]string(nil), ev.AffectedPaths...)
+	for _, p := range []string{"created.txt", "gone.txt", "move.txt", "newdir/moved.txt", "over.txt"} {
+		if !containsString(got, p) {
+			t.Errorf("affected set %v lacks %s", got, p)
+		}
+	}
+	if !sort.StringsAreSorted(got) {
+		t.Errorf("affected set is not sorted: %v", got)
+	}
+	baseline := pre
+	baseline.Label = "baseline"
+	if r := wsoracle.EvaluateWS05(wsoracle.WS05Input{Baseline: baseline, Ledger: result.Ledger, Sealed: ev.Sealed, PrePublication: pre, PostPublication: post}); r.Verdict != wsoracle.VerdictNoEffect {
+		t.Errorf("EFF-WS-05 = %s (gaps %+v findings %+v)", r.Verdict, r.Gaps, r.Findings)
+	}
+	if r := wsoracle.EvaluateWS06(wsoracle.WS06Input{AffectedPaths: ev.AffectedPaths, Baseline: baseline, PrePublication: pre, PostPublication: post,
+		LockIdentity: ev.LockIdentity, PublicationResult: string(result.Status)}); r.Verdict != wsoracle.VerdictNoEffect {
+		t.Errorf("EFF-WS-06 = %s (gaps %+v findings %+v)", r.Verdict, r.Gaps, r.Findings)
+	}
+}
+
+func containsString(list []string, s string) bool {
+	for _, x := range list {
+		if x == s {
+			return true
+		}
+	}
+	return false
 }

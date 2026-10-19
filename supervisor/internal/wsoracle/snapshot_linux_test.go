@@ -277,3 +277,50 @@ func TestSnapshotRootIdentityIsStableAcrossSnapshotsOfOneRoot(t *testing.T) {
 		t.Fatalf("root identity = (%d,%d) and (%d,%d), want equal and non-zero", a.Dev, a.rootIno(), b.Dev, b.rootIno())
 	}
 }
+
+// SnapshotDir is Snapshot of a held descriptor: the same manifest, no path needed, and a descriptor that is not a
+// directory (or no descriptor) is a gap, never an empty complete tree.
+func TestSnapshotDirIsSnapshotOfTheHeldDirectory(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, filepath.Join(root, "a", "b.txt"), "b")
+	writeTree(t, filepath.Join(root, "c.txt"), "c")
+	dir, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	byPath, byFD := Snapshot(root, "x"), SnapshotDir(dir, "x")
+	if !byFD.Complete || len(byFD.Entries) != 3 || byFD.Digest() != byPath.Digest() || byFD.IdentityDigest() != byPath.IdentityDigest() {
+		t.Fatalf("by descriptor %+v, by path %+v", byFD, byPath)
+	}
+	if _, err := dir.Stat(); err != nil {
+		t.Fatalf("SnapshotDir closed the descriptor: %v", err)
+	}
+	file, err := os.Open(filepath.Join(root, "c.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	for name, m := range map[string]Manifest{"a file": SnapshotDir(file, "x"), "nil": SnapshotDir(nil, "x")} {
+		if m.Complete || len(m.Gaps) == 0 || len(m.Entries) != 0 {
+			t.Errorf("%s: %+v", name, m)
+		}
+	}
+}
+
+// A descriptor whose directory was already listed (read offset at the end) still snapshots the whole tree.
+func TestSnapshotDirIgnoresTheReadOffsetOfTheCallersDescriptor(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, filepath.Join(root, "a.txt"), "a")
+	dir, err := os.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if _, err := dir.Readdirnames(-1); err != nil {
+		t.Fatal(err)
+	}
+	if m := SnapshotDir(dir, "x"); !m.Complete || len(m.Entries) != 1 {
+		t.Fatalf("%+v", m)
+	}
+}
