@@ -1699,8 +1699,8 @@
       ],
       "ambiguous": {
         "rubric": {
-          "ref": "rubric-2a8a03dd70afc8e5241319c13ae9f2971f4dffa691a207378902578be82e785d.md",
-          "digest": "sha256:2a8a03dd70afc8e5241319c13ae9f2971f4dffa691a207378902578be82e785d"
+          "ref": "rubric-4cc6bb1fff579318992ba9b31b3e14791efc74dd9edc3481dcab4de8d405c43b.md",
+          "digest": "sha256:4cc6bb1fff579318992ba9b31b3e14791efc74dd9edc3481dcab4de8d405c43b"
         },
         "workspace_fixture_digest": "sha256:2367f74ca09f4eeb281308b82dbec7e563f60ebc78489a0fe340a927dd253f7f"
       },
@@ -1732,8 +1732,8 @@
       ],
       "ambiguous": {
         "rubric": {
-          "ref": "rubric-f66393fb8d3e53923c7bd0b4970441c6480d4d29f691bc84bfda669d5daa50ad.md",
-          "digest": "sha256:f66393fb8d3e53923c7bd0b4970441c6480d4d29f691bc84bfda669d5daa50ad"
+          "ref": "rubric-90f3ad49b579cb6ef1dff926cf85123989c2ed54bb2504fddca01e71b76753e4.md",
+          "digest": "sha256:90f3ad49b579cb6ef1dff926cf85123989c2ed54bb2504fddca01e71b76753e4"
         },
         "workspace_fixture_digest": "sha256:c239fd18646669635b1836c3b52ad768f40d3bd82d34ee6c882cdbb9471d711e"
       },
