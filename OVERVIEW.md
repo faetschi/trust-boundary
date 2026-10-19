@@ -1,16 +1,16 @@
 # TBound — current state
 
-Updated 2026-10-19. Branch `codex/tbound-prototype`, HEAD after `051cfe0` (local only; do not push — origin diverged, backup `backup/tbound-prototype-3aed7bf`). **Paused at the owner's request** pending the merge of `integration/prototype-merge` (oracle calibration fixes wsoracle/v8, procoracle/v4 + origin's commits). Green results verify code only: G1 false, H1 unexecuted, containment not established. Engineering route OpenCode Go only.
+Updated 2026-10-20. Branch `codex/tbound-prototype` (local; merged with origin at `d019e94`; do not push without the owner). Tip: see `git log -1`. Last full gate `3ecde15`: 4085 pass / 0 fail / 24 skip (pinned Go 1.27.1, -race, build/vet/gofmt/Windows vet clean); webchat extension 174/0/0, boundary script OK; web frontend npm gate not run (no offline Node deps). Green results verify code only: G1 false, H1 unexecuted. Engineering route OpenCode Go only.
 
 | Milestone | Current state |
 | --- | --- |
 | System | Code complete, reviewed. Not installed on the guest. |
-| Measurement | Oracles + runner complete. Gap: EFF-TRANSIENT, WS-05, WS-06 have no production source (observer coverage can't be complete) — first item after the merge. |
-| Research enablement | All five configurations wired (C, P scripted replay + deltas, B, V container, adaptive attacker), per-trial reset, task oracle, `tbound-run`. Every increment Codex-reviewed. |
-| Evidence (EVQ / routes) | 18 of 22 EVQ obligations established offline (bound to the frozen commit via `evq-capture`); 4 need guest artifacts (real provider exchange, net sink, process oracle, Linux capability). Route report: 2 of 4 cells covered; bash-view and direct-runtime need guest probe runs (producers exist). |
+| Measurement | Oracles (wsoracle/v8, netoracle/v3, procoracle/v4) and all observer sources wired in production: E04, NET, PROC, WS-05/06 from publication evidence, EFF-TRANSIENT via inotify transient-watch. |
+| Research enablement | C, P (scripted replay + deltas), B, V, adaptive attacker, per-trial reset, task oracle, `tbound-run`. |
+| Evidence (EVQ / routes) | 18 of 22 EVQ obligations established offline (commit-bound capture); 4 need guest artifacts. Route report: 2 of 4 cells covered; bash-view and direct-runtime need guest probe runs (producers exist). Guest evidence bound to the frozen source via ProfileBinding. |
 | Experiment | Pilot corpus built and validated except reviews; G1 engineering case drafted (needs your approval). |
-| Guest (ABI 8) | 172.30.8.106; nft + Landlock present. Signing runbook consolidated (5 signatures + 2 deferred). |
+| Guest (ABI 8) | 172.30.8.106; nft + Landlock present. Runbook consolidated: 13 owner signatures, K0 key generation, RC-1 root console before Z1, re-registration cycle RG-1..8. |
 
-After the merge: rebuild + re-pin digests, observer-coverage sources, runbook gaps (cosign key generation, root console after Z1, R5-5 alias), freeze → signing session + spikes + smoke + guest evidence → owner + advisor reviews → pre-registration → pilot → thesis corpus → G0/G1.
+Freeze blockers: Codex review of `9ed7458..3ecde15` (Codex limit until 02:57; Sonnet reviews done and fixed); then F0 freeze → signing session (owner) → guest spikes, smoke, G1, probe runs, guest EVQ artifacts → owner + advisor pilot reviews → pre-registration → pilot → thesis corpus → G0/G1.
 
-Thesis amendments needed: D32 feedback allowlist (+ command_failed boolean), retry budget semantics, mismatched-budget pairs invalid; configuration definitions (P scripted replay, B no denials, V container); new stated limits (see TASK_STATE.md).
+Thesis amendments needed: D32 feedback allowlist (+ command_failed), retry budget semantics, mismatched-budget pairs invalid; configuration definitions (P scripted replay, B no denials, V container); stated limits incl. transient-watch canaries written by the evidence channel, symlink-free probe target, AppArmor/seccomp as co-causes for route denials.
