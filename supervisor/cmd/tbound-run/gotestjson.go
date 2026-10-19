@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 )
 
@@ -15,24 +16,39 @@ const maxTestEventLine = 16 << 20
 
 // testOutcomes are the results of named Go tests read from `go test -json` output. It is the one
 // reader of test evidence for the EVQ results and the route report, so both fail closed the same
-// way: a test counts as passed only when every observed run of it passed, nothing in it was skipped,
-// and its package did not fail as a whole.
+// way. It follows the lifecycle of every package and test: a package counts only if it started and
+// finished with a package-level pass (a cut stream, a package run that never finished and a skipped
+// package do not), a test counts as passed only when each of its run events has exactly one pass,
+// it has no failure and no skip, and a failure of any test or of the package fails every test of
+// that package.
 type testOutcomes struct {
-	pkgFailed map[string]bool
-	tests     map[testKey]*testTally
+	pkgs  map[string]*pkgTally
+	tests map[testKey]*testTally
 }
 
 type testKey struct{ pkg, name string }
 
-// testTally counts the result events of one top-level test. subBad is set when a subtest of it
-// failed or was skipped: the parent can report pass over a skipped subtest, and that is not a pass here.
+// pkgTally counts the package-level events of one package and notes a failed test anywhere in it.
+type pkgTally struct {
+	start, pass, fail, skip int
+	testFailed              bool
+}
+
+// testTally counts the lifecycle events of one top-level test. subs counts run and result events
+// per subtest: an unfinished, unmatched, failed or skipped subtest makes the parent not pass,
+// because the parent can report pass over a skipped subtest.
 type testTally struct {
-	pass, fail, skip int
-	subBad           bool
+	runs, pass, fail, skip int
+	subs                   map[string]*subTally
+}
+
+type subTally struct {
+	runs, results int
+	notPassed     bool
 }
 
 func newTestOutcomes() *testOutcomes {
-	return &testOutcomes{pkgFailed: map[string]bool{}, tests: map[testKey]*testTally{}}
+	return &testOutcomes{pkgs: map[string]*pkgTally{}, tests: map[testKey]*testTally{}}
 }
 
 // testEvent is the part of a test2json event this package reads. Other members are ignored.
@@ -76,30 +92,59 @@ func (o *testOutcomes) addReader(r io.Reader) error {
 }
 
 func (o *testOutcomes) record(ev testEvent) {
-	if ev.Action != "pass" && ev.Action != "fail" && ev.Action != "skip" {
-		return
+	p := o.pkgs[ev.Package]
+	if p == nil {
+		p = &pkgTally{}
+		o.pkgs[ev.Package] = p
 	}
 	if ev.Test == "" {
-		if ev.Action == "fail" {
-			o.pkgFailed[ev.Package] = true
+		switch ev.Action {
+		case "start":
+			p.start++
+		case "pass":
+			p.pass++
+		case "fail":
+			p.fail++
+		case "skip":
+			p.skip++
 		}
+		return
+	}
+	if ev.Action != "run" && ev.Action != "pass" && ev.Action != "fail" && ev.Action != "skip" {
 		return
 	}
 	top, _, isSub := strings.Cut(ev.Test, "/")
 	k := testKey{ev.Package, top}
 	t := o.tests[k]
 	if t == nil {
-		t = &testTally{}
+		t = &testTally{subs: map[string]*subTally{}}
 		o.tests[k] = t
 	}
-	switch {
-	case isSub:
-		if ev.Action != "pass" {
-			t.subBad = true
+	if ev.Action == "fail" {
+		p.testFailed = true
+	}
+	if isSub {
+		s := t.subs[ev.Test]
+		if s == nil {
+			s = &subTally{}
+			t.subs[ev.Test] = s
 		}
-	case ev.Action == "pass":
+		if ev.Action == "run" {
+			s.runs++
+			return
+		}
+		s.results++
+		if ev.Action != "pass" {
+			s.notPassed = true
+		}
+		return
+	}
+	switch ev.Action {
+	case "run":
+		t.runs++
+	case "pass":
 		t.pass++
-	case ev.Action == "fail":
+	case "fail":
 		t.fail++
 	default:
 		t.skip++
@@ -111,20 +156,62 @@ func (o *testOutcomes) passed(pkg, name string) bool { return o.state(pkg, name)
 
 // state is empty for a passed test and otherwise names why it did not pass.
 func (o *testOutcomes) state(pkg, name string) string {
+	p := o.pkgs[pkg]
 	t := o.tests[testKey{pkg, name}]
 	switch {
-	case o.pkgFailed[pkg]:
+	case p == nil:
+		return "no result in the test JSON"
+	case p.fail > 0 || p.testFailed:
 		return "its package failed"
+	case p.start == 0:
+		return "its package has no start event"
+	case p.skip > 0:
+		return "its package was skipped"
+	case p.pass != p.start:
+		return "its package did not finish with a package-level pass"
 	case t == nil:
 		return "no result in the test JSON"
 	case t.fail > 0:
 		return "failed"
 	case t.skip > 0:
 		return "skipped"
-	case t.subBad:
-		return "a subtest failed or was skipped"
-	case t.pass == 0:
-		return "no pass event"
+	case t.runs == 0 || t.runs != t.pass:
+		return "run and pass events do not match (unfinished, or a result without a run)"
+	}
+	for _, s := range t.subs {
+		switch {
+		case s.notPassed:
+			return "a subtest failed or was skipped"
+		case s.runs == 0 || s.runs != s.results:
+			return "a subtest did not finish"
+		}
 	}
 	return ""
+}
+
+// packageNames lists every package that has an event, sorted.
+func (o *testOutcomes) packageNames() []string {
+	names := make([]string, 0, len(o.pkgs))
+	for n := range o.pkgs {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	return names
+}
+
+// packageFinished reports whether the package started and every start has exactly one package-level
+// result (pass, fail or skip). A cut stream leaves a package unfinished.
+func (o *testOutcomes) packageFinished(pkg string) bool {
+	p := o.pkgs[pkg]
+	return p != nil && p.start > 0 && p.start == p.pass+p.fail+p.skip
+}
+
+// anyFailed reports whether any package or test failed in the stream.
+func (o *testOutcomes) anyFailed() bool {
+	for _, p := range o.pkgs {
+		if p.fail > 0 || p.testFailed {
+			return true
+		}
+	}
+	return false
 }

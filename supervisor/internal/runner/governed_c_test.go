@@ -526,7 +526,8 @@ func TestSSHTransportRunsTheRunbookClientIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	remote := args[len(args)-1]
-	want := "'setpriv' '--reuid' '994' '--regid' '985' '--clear-groups' '/usr/local/bin/tbound' 'serve' '--pi'"
+	want := "'setpriv' '--reuid' '994' '--regid' '985' '--clear-groups' " +
+		"'--bounding-set=-all' '--inh-caps=-all' '--ambient-caps=-all' '--no-new-privs' '--' '/usr/local/bin/tbound' 'serve' '--pi'"
 	if remote != want {
 		t.Fatalf("remote command = %s, want %s", remote, want)
 	}

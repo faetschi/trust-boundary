@@ -48,7 +48,8 @@
     },
     {
       "id": "EVQ-SURFACE-ADAPTER-EQUIVALENCE",
-      "title": "Surface closure: the Pi adapter is side-effect-free and equivalent for every registered tool (adapter tests are TypeScript, not Go)"
+      "title": "Surface closure: the Pi adapter is side-effect-free and equivalent for every registered tool",
+      "note": "Not established. The adapter tests are TypeScript (adapter/src/*.test.ts, run by node scripts/test.mjs) and need an installed adapter/node_modules that the frozen git archive does not contain, so no Go test JSON and no capture covers them; their cases (frame golden vector, malformed frames, proxy tools round-trip, official Pi CLI load) do not yet state tool-by-tool equivalence either. Mapping needs a node capture of the frozen commit with its own validator and a test that compares the adapter and Go projection for each of the four tools."
     },
     {
       "id": "EVQ-PROPOSAL-INTEGRITY",
@@ -127,7 +128,8 @@
     },
     {
       "id": "EVQ-PROVIDER-REAL-EXCHANGE",
-      "title": "E05 G1: one real provider exchange and two successive generations (read, edit, Bash, read); needs the network and a real provider key"
+      "title": "E05 G1: one real provider exchange and two successive generations (read, edit, Bash, read); needs the network and a real provider key",
+      "artifacts": ["guest-provider-exchange"]
     },
     {
       "id": "EVQ-WORKSPACE-CONFINEMENT",
@@ -232,7 +234,8 @@
     },
     {
       "id": "EVQ-RECOVERY-LIFECYCLE-CUTPOINTS",
-      "title": "Recovery conformance: the eight lifecycle cutpoints LC-01 to LC-08 injected end to end (the injectors are not implemented)"
+      "title": "Recovery conformance: the eight lifecycle cutpoints LC-01 to LC-08 injected end to end",
+      "note": "Not established. 02-process-model section 11 states the prototype does not implement the eight end-to-end injectors. Only LC-04 (effect intent durable, callback not entered) and LC-05 (Bash runner entry) have an end-to-end crash test, TestGovernedWriteCrashWithholdsProviderResult in cmd/tbound; LC-01, LC-02, LC-03 and LC-06 have no injector and LC-07 and LC-08 only partial ones (sessionrepo promotion crash, publication fault boundaries). A mapping of the two would claim eight."
     },
     {
       "id": "EVQ-JOURNAL-FAULTS",
@@ -309,19 +312,15 @@
     },
     {
       "id": "EVQ-NETWORK-SINK-GUEST",
-      "title": "The net-sink nft rule (socket cgroupv2) and the Landlock connect right load and discriminate on the guest kernel (BL-2, BL-3, Spike A and B)"
+      "title": "The net-sink nft rule (socket cgroupv2) and the Landlock connect right load and discriminate on the guest kernel (BL-2, BL-3, Spike A and B)",
+      "artifacts": ["guest-netsink", "guest-tests-landlock-connect"]
     },
     {
       "id": "EVQ-ORACLE-PROCESS",
-      "title": "Process oracle: surviving, escaped and listening processes are detected, a clean teardown is none, unreadable or missing evidence is lost",
+      "title": "Process oracle: surviving, escaped and listening processes are detected, a clean teardown is none, unreadable or missing evidence is lost; the Real* tests run against real cgroups on the guest",
       "tests": {
         "tbound/supervisor/internal/procoracle": [
           "TestCaptureEscapedDoubleForkDaemonWithEmptyCellAndRecordedRegistry",
-          "TestRealCleanTeardownIsNoEffect",
-          "TestRealDetachedSleepSurvivingIsProc01",
-          "TestRealReparentedSurvivorIsProc01",
-          "TestRealProcessMovedOutOfTheCellIsProc02",
-          "TestRealResidualListenerIsProc03",
           "TestEvaluateCleanTeardownIsNoEffect",
           "TestEvaluateSurvivorIsProc01",
           "TestEvaluateZombieIsNotASurvivor",
@@ -329,7 +328,8 @@
           "TestMonitorGapGreaterThanMaxGapIsEvidenceLost",
           "TestCaptureHiddenOrUnreadableProcIsEvidenceLost"
         ]
-      }
+      },
+      "artifacts": ["guest-tests-procoracle"]
     },
     {
       "id": "EVQ-PROCESS-CONTAINMENT",
@@ -362,11 +362,13 @@
     },
     {
       "id": "EVQ-LINUX-CAPABILITY-GUEST",
-      "title": "Linux capability on the guest: effective cgroup-v2 mode and controllers, cgroup.kill, Landlock ABI and errata, seccomp digest (Spike A); no guest receipt format exists to bind"
+      "title": "Linux capability on the guest: effective cgroup-v2 mode and controllers, cgroup.kill, Landlock ABI and errata, seccomp (Spike A)",
+      "artifacts": ["guest-capability"]
     },
     {
       "id": "EVQ-COMMAND-VIEW-FAULTS",
-      "title": "Command-view conformance: setup, COW and teardown fault injection with ENOSPC, EDQUOT, EIO, EROFS and cross-device cases (02 section 11); not implemented as a suite"
+      "title": "Command-view conformance: setup, COW and teardown fault injection with ENOSPC, EDQUOT, EIO, EROFS and cross-device cases (02 section 11)",
+      "note": "Not established. Only the read-only view is tested (an EROFS write through the generation exposure view: TestSessionRepositoryGenerationExposureModeE01Style and TestSessionRepositoryExposureMountBackedReadOnlyRefresh in sessionrepo). No test injects ENOSPC, EDQUOT, EIO or a cross-device operation, or a cancellation or crash during setup, first COW allocation, teardown or before import, so nothing shows no partial-generation admission or idempotent cleanup under those faults."
     }
   ]
 }

@@ -8,39 +8,44 @@
       "route": "declared-read",
       "class": "outside-workspace-path",
       "treatment": "unreachable",
-      "status": "Missing",
-      "reason": "AttemptedRead evidence exists (absolute path, parent traversal and symlink escape rows); no test records a SuccessfulRead of this class on this route.",
+      "status": "Covered",
+      "reason": "A real file outside the workspace holding a fresh canary is requested by absolute path, by parent traversal and through a symlink substituted into the sealed tree: every attempt is refused, and neither the in-memory operation evidence nor the durable audit journal, also after a reopen, records a successful read of it. A control read of an inside file proves the detectors see a successful read.",
       "evidence": [
-        {"kind": "AttemptedRead", "test_ref": "tbound/supervisor/internal/sessionrepo.TestSessionRepositoryDeniedReadMatrixE2E"}
+        {"kind": "AttemptedRead", "test_ref": "tbound/supervisor/internal/sessionrepo.TestSessionRepositoryDeniedReadMatrixE2E"},
+        {"kind": "SuccessfulRead", "test_ref": "tbound/supervisor/internal/sessionrepo.TestOutsideWorkspaceReadRecordsNoSuccessfulReadDeclaredRead"}
       ]
     },
     {
       "route": "bash-view",
       "class": "outside-workspace-path",
       "treatment": "unreachable",
-      "status": "Missing",
-      "reason": "AttemptedRead evidence exists (cat of the denied target inside the cell); no test records a SuccessfulRead of this class on this route.",
+      "status": "Covered",
+      "reason": "A bash cat of a canary file outside the Landlock ruleset, by absolute path and through a symlink in the cell root, exits non-zero with a permission denial and releases no canary byte; an inside control file is read by the same command. The cell is the prototype sandbox (Landlock, seccomp, private mounts) on the capture host, not the podman command cell of the guest.",
       "evidence": [
-        {"kind": "AttemptedRead", "test_ref": "tbound/supervisor/internal/sandbox.TestDeniedReadMatrixConfinement"}
+        {"kind": "AttemptedRead", "test_ref": "tbound/supervisor/internal/sandbox.TestDeniedReadMatrixConfinement"},
+        {"kind": "SuccessfulRead", "test_ref": "tbound/supervisor/internal/sandbox.TestOutsideWorkspaceReadRecordsNoSuccessfulReadBashView"}
       ]
     },
     {
       "route": "direct-runtime",
       "class": "outside-workspace-path",
       "treatment": "unreachable",
-      "status": "Missing",
-      "reason": "AttemptedRead evidence exists (a direct read outside the Landlock ruleset is denied); no test records a SuccessfulRead of this class on this route.",
+      "status": "Covered",
+      "reason": "A process in the cell opens the outside canary file by absolute path, by parent traversal and through a symlink: every open fails with EACCES or EPERM and returns no byte, while an inside file is read in the same probe run.",
       "evidence": [
-        {"kind": "AttemptedRead", "test_ref": "tbound/supervisor/internal/sandbox.TestLandlockAllowsInsideDeniesOutside"}
+        {"kind": "AttemptedRead", "test_ref": "tbound/supervisor/internal/sandbox.TestLandlockAllowsInsideDeniesOutside"},
+        {"kind": "SuccessfulRead", "test_ref": "tbound/supervisor/internal/sandbox.TestOutsideWorkspaceReadRecordsNoSuccessfulReadDirectRuntime"}
       ]
     },
     {
       "route": "provider-broker",
       "class": "outside-workspace-path",
       "treatment": "proposal-denied",
-      "status": "Missing",
-      "reason": "No provider-channel disclosure classification test exists; provider-channel confidentiality is outside H1 (E06).",
-      "evidence": []
+      "status": "Covered",
+      "reason": "Classification only; provider-channel confidentiality is outside H1. A proposed read of an outside file is denied by the trusted executor (the result is withheld and the conversation closed) or by the gate (a DENY tool message without output): no provider request carries the canary content. The path the model itself proposed is in the history by design. A control executor that really reads the file puts the canary into the next provider request, so the detector is live.",
+      "evidence": [
+        {"kind": "ProviderChannelDisclosure", "test_ref": "tbound/supervisor/internal/providerbridge.TestProviderChannelDisclosureOfOutsideReadIsNone"}
+      ]
     }
   ]
 }

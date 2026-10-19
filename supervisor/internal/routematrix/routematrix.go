@@ -94,6 +94,9 @@ type Report struct {
 	// Reasons lists, in sorted order, every fact that keeps Complete false.
 	Reasons  []string
 	Complete bool
+	// Binding names the frozen commit and the test capture the report was derived from. Coverage leaves
+	// it empty; the report writer fills it, and a run refuses a report without the frozen commit in it.
+	Binding string `json:",omitempty"`
 }
 
 var (

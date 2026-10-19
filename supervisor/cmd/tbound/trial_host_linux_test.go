@@ -53,7 +53,7 @@ func nftJSON(t *testing.T, mutate func(items []map[string]any) []map[string]any)
 
 func TestVerifyNetSinkRulesetAcceptsExactlyTheExpectedRules(t *testing.T) {
 	path, level, _ := piruntime.D09NetSinkNftMatch(hostTestCellsPath)
-	if err := verifyNetSinkRuleset(nftJSON(t, nil), path, level); err != nil {
+	if err := piruntime.VerifyNetSinkRuleset(nftJSON(t, nil), path, level); err != nil {
 		t.Fatalf("the expected table was refused: %v", err)
 	}
 	rule := func(items []map[string]any, i int) map[string]any { return items[i]["rule"].(map[string]any) }
@@ -106,12 +106,12 @@ func TestVerifyNetSinkRulesetAcceptsExactlyTheExpectedRules(t *testing.T) {
 		},
 	}
 	for name, mutate := range cases {
-		if err := verifyNetSinkRuleset(nftJSON(t, mutate), path, level); err == nil {
+		if err := piruntime.VerifyNetSinkRuleset(nftJSON(t, mutate), path, level); err == nil {
 			t.Errorf("%s: the table was accepted", name)
 		}
 	}
 	for _, bad := range []string{"", "not json", `{"nftables":[]}`, `{}`} {
-		if err := verifyNetSinkRuleset([]byte(bad), path, level); err == nil {
+		if err := piruntime.VerifyNetSinkRuleset([]byte(bad), path, level); err == nil {
 			t.Errorf("listing %q was accepted", bad)
 		}
 	}

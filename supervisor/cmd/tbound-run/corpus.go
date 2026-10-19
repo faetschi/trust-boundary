@@ -94,13 +94,18 @@ func loadPlan(cfg runConfig) (plan, error) {
 	if cfg.VImageDigest == "" && slices.ContainsFunc(sched.Steps, func(s runner.Step) bool { return s.Configuration == runner.CfgV }) {
 		return plan{}, errors.New("config: v_image_digest is required: the plan has Configuration V steps, and a V outcome is E01-verified only against the pinned cell image")
 	}
-	route, err := loadRoute(cfg.RouteReport)
+	route, err := loadRoute(cfg.RouteReport, cfg.FreezeCommit)
 	if err != nil {
 		return plan{}, err
 	}
 	evq, evqDigest, err := loadEVQResults(cfg.EVQResults)
 	if err != nil {
 		return plan{}, err
+	}
+	for _, r := range evq {
+		if r.Passed && !evqEvidenceBoundTo(r, cfg.FreezeCommit) {
+			return plan{}, fmt.Errorf("evq results: %s passed with evidence that is not bound to the freeze commit %s (%q)", r.ID, cfg.FreezeCommit, r.EvidenceRef)
+		}
 	}
 	if sched.RunBinding, err = cfg.runBinding(route, evqDigest); err != nil {
 		return plan{}, err

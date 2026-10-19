@@ -227,7 +227,7 @@ func (c runConfig) transports() transports {
 
 // loadRoute reads the route report: its digest is the sha256 of the file bytes, and it
 // is complete only if the routematrix.Report says so.
-func loadRoute(path string) (runner.RouteCoverage, error) {
+func loadRoute(path, freezeCommit string) (runner.RouteCoverage, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return runner.RouteCoverage{}, fmt.Errorf("route report: %w", err)
@@ -240,11 +240,11 @@ func loadRoute(path string) (runner.RouteCoverage, error) {
 	if err != nil || len(data) > maxConfigBytes {
 		return runner.RouteCoverage{}, errors.New("route report: unreadable or too large")
 	}
-	return parseRouteReport(data)
+	return parseRouteReport(data, freezeCommit)
 }
 
 // parseRouteReport decodes the route report strictly and takes its digest over the bytes.
-func parseRouteReport(data []byte) (runner.RouteCoverage, error) {
+func parseRouteReport(data []byte, freezeCommit string) (runner.RouteCoverage, error) {
 	var rep routematrix.Report
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
@@ -253,6 +253,10 @@ func parseRouteReport(data []byte) (runner.RouteCoverage, error) {
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
 		return runner.RouteCoverage{}, errors.New("route report: trailing data")
+	}
+	// A report made for another commit, or not made by `route-report` at all, is not evidence for this freeze.
+	if !routeBoundTo(rep.Binding, freezeCommit) {
+		return runner.RouteCoverage{}, fmt.Errorf("route report: it is not bound to the freeze commit %s (binding %q)", freezeCommit, rep.Binding)
 	}
 	sum := sha256.Sum256(data)
 	return runner.RouteCoverage{Complete: rep.Complete, Digest: "sha256:" + hex.EncodeToString(sum[:])}, nil

@@ -26,9 +26,13 @@ type Transport interface {
 // uid 994 (tbound-client) and primary gid 985 (tbound-pi-clients) through setpriv,
 // because the client account's login shell is nologin. The service admits only that
 // uid and gid (AllowedClientUIDs and AllowedClientPrimaryGID of the signed
-// registration), and the client checks its own identity before it dials.
+// registration), and the client checks its own identity before it dials. setpriv also
+// clears the supplementary groups, empties the bounding, inheritable and ambient
+// capability sets and sets no_new_privs, so the client runs with no capability and
+// cannot regain one; `--` ends setpriv's options before the binary.
 func DefaultClientCommand() []string {
-	return []string{"setpriv", "--reuid", "994", "--regid", "985", "--clear-groups", "/usr/local/bin/tbound"}
+	return []string{"setpriv", "--reuid", "994", "--regid", "985", "--clear-groups",
+		"--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs", "--", "/usr/local/bin/tbound"}
 }
 
 // SSHTransport runs the client on the guest through the Git Bash ssh binary.

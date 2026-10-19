@@ -23,8 +23,8 @@ import (
 )
 
 // evqAllPassed is a synthetic conformance results file that passes the two fixture obligations.
-const evqAllPassed = `{"obligations":[{"id":"EVQ-1","passed":true,"evidence_ref":"synthetic-artifact-1"},` +
-	`{"id":"EVQ-2","passed":true,"evidence_ref":"synthetic-artifact-2"}]}`
+const evqAllPassed = `{"obligations":[{"id":"EVQ-1","passed":true,"evidence_ref":"commit=` + commit + `;synthetic-artifact-1"},` +
+	`{"id":"EVQ-2","passed":true,"evidence_ref":"commit=` + commit + `;synthetic-artifact-2"}]}`
 
 func fixtureFileDigest(content string) string {
 	sum := sha256.Sum256([]byte(content))
@@ -119,7 +119,7 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 	e.file("corpus.json", string(raw))
-	route, err := json.Marshal(routematrix.Report{Total: 4, Complete: true,
+	route, err := json.Marshal(routematrix.Report{Total: 4, Complete: true, Binding: "commit=" + commit,
 		ByStatus: map[routematrix.Status]int{routematrix.StatusCovered: 4}})
 	if err != nil {
 		t.Fatal(err)

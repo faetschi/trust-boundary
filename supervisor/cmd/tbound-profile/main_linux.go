@@ -62,7 +62,7 @@ usage:
                                 [--max-host-calls <n> --max-tokens <n> --duration-seconds <n>]
   tbound-profile corpus-pins    --template <d09-cell.json> --runtime-bundle-digest <sha256> --node-digest <sha256>
                                 [--provider-route engineering|research --research-profile <path>] [--manifest <path>]
-  tbound-profile preregistration-record --freeze-commit <40-hex> --corpus-manifest <path>
+` + guestEvidenceUsage + `  tbound-profile preregistration-record --freeze-commit <40-hex> --corpus-manifest <path>
                                 --quota-profile thesis|pilot --runner-config <path>
                                 [--research-profile <path>] [--research-ledger-config <path>]
                                 [--evalscore-schema <name>] --reviewers owner,advisor
@@ -162,6 +162,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runCorpusDigest(args[1:], stdout, stderr)
 	case "corpus-pins":
 		return runCorpusPins(args[1:], stdout, stderr)
+	case "guest-evidence":
+		return runGuestEvidence(args[1:], stdout, stderr)
 	case "preregistration-record":
 		return runPreregistrationRecord(args[1:], stdout, stderr)
 	case "help", "-h", "--help":

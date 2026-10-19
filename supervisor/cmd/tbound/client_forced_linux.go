@@ -20,8 +20,8 @@ import (
 // ssh-original-command`. It takes no argument: it reads $SSH_ORIGINAL_COMMAND, which must be
 // exactly what runner.SSHTransport sends for a governed client run,
 //
-//	setpriv --reuid 994 --regid 985 --clear-groups /usr/local/bin/tbound serve --pi
-//	  --task-id <case_id> --role <role> --attempt <1|2> --task-request-id <id> --bash-no-outputs
+//	setpriv --reuid 994 --regid 985 --clear-groups --bounding-set=-all --inh-caps=-all
+//	  --ambient-caps=-all --no-new-privs -- /usr/local/bin/tbound serve --pi --task-id <case_id> --role <role> --attempt <1|2> --task-request-id <id> --bash-no-outputs
 //
 // (runner.DefaultClientCommand and runner.GovernedRequest.Argv, every word shell-quoted by
 // SSHTransport.RemoteCommand), and runs that and nothing else. The key logs in as root, because
@@ -48,7 +48,7 @@ const (
 )
 
 const clientForcedUsage = `usage: tbound client-forced   (root only; forced-command entry; reads $SSH_ORIGINAL_COMMAND)
-  accepted: setpriv --reuid 994 --regid 985 --clear-groups /usr/local/bin/tbound serve --pi --task-id <id> --role <role> --attempt <1|2> --task-request-id <id> --bash-no-outputs
+  accepted: setpriv --reuid 994 --regid 985 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs -- /usr/local/bin/tbound serve --pi --task-id <id> --role <role> --attempt <1|2> --task-request-id <id> --bash-no-outputs
 `
 
 // clientForcedFlags are the flags that carry a value; --bash-no-outputs is the one bare flag.

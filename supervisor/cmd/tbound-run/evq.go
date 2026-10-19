@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/runner"
 )
 
@@ -35,6 +36,9 @@ type evqObligation struct {
 	Title     string              `json:"title"`
 	Tests     map[string][]string `json:"tests"`
 	Artifacts []string            `json:"artifacts"`
+	// Note says why an unmapped obligation has no evidence. An unmapped obligation needs one; a
+	// mapped one has none.
+	Note string `json:"note"`
 }
 
 func (o evqObligation) unmapped() bool { return len(o.Tests) == 0 && len(o.Artifacts) == 0 }
@@ -103,6 +107,12 @@ func parseEVQMapping(data []byte) (evqMapping, error) {
 			if !artifactKindRE.MatchString(k) || slices.Contains(o.Artifacts[:i], k) {
 				return evqMapping{}, fmt.Errorf("EVQ mapping: %s: artifact kind %q is malformed or repeated", o.ID, k)
 			}
+			if !slices.Contains(guestevidence.Kinds(), k) {
+				return evqMapping{}, fmt.Errorf("EVQ mapping: %s: artifact kind %q has no validator (known: %s)", o.ID, k, strings.Join(guestevidence.Kinds(), ", "))
+			}
+		}
+		if o.unmapped() != (strings.TrimSpace(o.Note) != "") {
+			return evqMapping{}, fmt.Errorf("EVQ mapping: %s: an unmapped obligation needs a note that says why, and a mapped one has none", o.ID)
 		}
 	}
 	sum := sha256.Sum256(data)
@@ -126,12 +136,19 @@ func (m evqMapping) artifactKinds() []string {
 	})
 }
 
-// evqInputs is the evidence an EVQ run is given: the parsed test results, the sha256 of each test JSON
-// file, and the sha256 of each artifact by kind.
+// evqInputs is the evidence an EVQ run is given: the verified capture of the frozen commit and the
+// guest artifacts that passed their validators.
 type evqInputs struct {
-	Outcomes  *testOutcomes
-	TestJSON  []string
-	Artifacts map[string]string
+	Outcomes *testOutcomes
+	// Commit is run.json freeze_commit; CaptureDigest is the sha256 of the capture record and TestJSON the
+	// sha256 of the test JSON it states.
+	Commit        string
+	CaptureDigest string
+	TestJSON      string
+	// Artifacts maps a kind to the sha256 of its file once the file passed the kind's validator.
+	// ArtifactErrors maps a kind to why a supplied file did not.
+	Artifacts      map[string]string
+	ArtifactErrors map[string]string
 }
 
 // evqStatus is the outcome of one obligation with the reasons it is not passed.
@@ -139,17 +156,19 @@ type evqStatus struct {
 	ID       string
 	Passed   bool
 	Unmapped bool
+	Note     string
 	Reasons  []string
 }
 
 // buildEVQResults decides every obligation of the mapping, in mapping order. An obligation is passed
-// only if it is mapped, every mapped test passed and every mapped artifact is present. A passed
-// obligation's evidence_ref binds the mapping, the test JSON files and the artifacts it used by sha256.
+// only if it is mapped, every mapped test passed and every mapped artifact passed its validator. A passed
+// obligation's evidence_ref binds the frozen commit, the capture record, the mapping, the test JSON and
+// the artifacts it used by sha256.
 func buildEVQResults(m evqMapping, in evqInputs) (runner.EVQResults, []evqStatus) {
 	results := make(runner.EVQResults, 0, len(m.Obligations))
 	statuses := make([]evqStatus, 0, len(m.Obligations))
 	for _, o := range m.Obligations {
-		st := evqStatus{ID: o.ID, Unmapped: o.unmapped()}
+		st := evqStatus{ID: o.ID, Unmapped: o.unmapped(), Note: o.Note}
 		if st.Unmapped {
 			st.Reasons = append(st.Reasons, "no evidence is mapped yet")
 		}
@@ -167,16 +186,19 @@ func buildEVQResults(m evqMapping, in evqInputs) (runner.EVQResults, []evqStatus
 			}
 		}
 		for _, kind := range slices.Sorted(slices.Values(o.Artifacts)) {
-			if in.Artifacts[kind] == "" {
+			switch {
+			case in.ArtifactErrors[kind] != "":
+				st.Reasons = append(st.Reasons, fmt.Sprintf("artifact %s: refused: %s", kind, in.ArtifactErrors[kind]))
+			case in.Artifacts[kind] == "":
 				st.Reasons = append(st.Reasons, fmt.Sprintf("artifact %s: not supplied", kind))
 			}
 		}
 		st.Passed = len(st.Reasons) == 0
 		res := runner.EVQResult{ID: o.ID, Passed: st.Passed}
 		if st.Passed {
-			parts := []string{"evq-mapping=" + m.Digest}
+			parts := []string{"commit=" + in.Commit, "evq-capture=" + in.CaptureDigest, "evq-mapping=" + m.Digest}
 			if len(o.Tests) > 0 {
-				parts = append(parts, "go-test-json="+strings.Join(in.TestJSON, ","))
+				parts = append(parts, "go-test-json="+in.TestJSON)
 			}
 			for _, kind := range slices.Sorted(slices.Values(o.Artifacts)) {
 				parts = append(parts, "artifact:"+kind+"="+in.Artifacts[kind])
@@ -189,22 +211,37 @@ func buildEVQResults(m evqMapping, in evqInputs) (runner.EVQResults, []evqStatus
 	return results, statuses
 }
 
-// evqCmd is `tbound-run evq`. The results are established once for a frozen configuration, from tests
-// run on the frozen commit and artifacts collected on the guest, and the file is pinned in run.json by
-// its sha256. The command never overwrites a results file.
+// evqEvidenceBoundTo reports whether a passed result's evidence_ref names the frozen commit. `plan` uses
+// it so that results made for another commit are never run against this freeze.
+func evqEvidenceBoundTo(r runner.EVQResult, freezeCommit string) bool {
+	return slices.Contains(strings.Split(r.EvidenceRef, ";"), "commit="+freezeCommit)
+}
+
+// evqCmd is `tbound-run evq`. The results are established once for a frozen configuration, from the
+// capture of the frozen commit and the artifacts the guest produced for it, and the file is pinned in
+// run.json by its sha256. The command never overwrites a results file.
 func (a *app) evqCmd(args []string) error {
 	flags := flag.NewFlagSet("tbound-run evq", flag.ContinueOnError)
 	flags.SetOutput(a.errOut)
 	mapping := flags.String("mapping", "", "EVQ mapping file (infra/conformance/evq-mapping.json)")
+	config := flags.String("config", "", "run.json: its freeze_commit and pins bind the evidence")
+	capture := flags.String("capture", "", "capture directory made by `tbound-run evq-capture` for the freeze commit")
+	guestBinary := flags.String("guest-binary-sha256", "", "sha256:<hex> of the tbound-profile binary built from the freeze commit (P1); required with --artifact")
 	out := flags.String("out", "", "evq_results.json to create")
-	var testJSON, artifacts stringList
-	flags.Var(&testJSON, "test-json", "`go test -json` output of the frozen commit (repeatable)")
+	var artifacts stringList
 	flags.Var(&artifacts, "artifact", "<kind>=<file>: a guest artifact named by the mapping (repeatable)")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w: %v", errUsage, err)
 	}
-	if flags.NArg() != 0 || *mapping == "" || *out == "" || len(testJSON) == 0 {
-		return fmt.Errorf("%w: evq takes --mapping, --test-json (one or more), --out and optional --artifact kind=file", errUsage)
+	if flags.NArg() != 0 || *mapping == "" || *config == "" || *capture == "" || *out == "" {
+		return fmt.Errorf("%w: evq takes --mapping, --config, --capture, --out and optional --guest-binary-sha256 with --artifact kind=file", errUsage)
+	}
+	if len(artifacts) > 0 && !guestevidence.IsDigest(*guestBinary) {
+		return fmt.Errorf("%w: --artifact needs --guest-binary-sha256 sha256:<hex>", errUsage)
+	}
+	commit, profileHash, frozenSource, err := loadFreezeBinding(*config)
+	if err != nil {
+		return err
 	}
 	mdata, err := readRegularFile(*mapping, maxConfigBytes)
 	if err != nil {
@@ -214,15 +251,19 @@ func (a *app) evqCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	in := evqInputs{Outcomes: newTestOutcomes(), Artifacts: map[string]string{}}
-	for _, p := range testJSON {
-		digest, err := parseTestJSONFile(p, in.Outcomes)
-		if err != nil {
-			return err
-		}
-		in.TestJSON = append(in.TestJSON, digest)
+	rec, recordDigest, outcomes, err := loadEVQCapture(*capture, commit)
+	if err != nil {
+		return err
 	}
+	if err := rec.requirePinnedInput(evqPinnedInputs[0], mdata); err != nil {
+		return fmt.Errorf("EVQ mapping: %w", err)
+	}
+	in := evqInputs{Outcomes: outcomes, Commit: commit, CaptureDigest: recordDigest, TestJSON: rec.TestJSONSHA256,
+		Artifacts: map[string]string{}, ArtifactErrors: map[string]string{}}
 	known := m.artifactKinds()
+	expect := guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary, ProfileHash: profileHash,
+		FrozenSourceDigest: frozenSource, TestBinaries: rec.TestBinaries}
+	seen := map[string]bool{}
 	for _, spec := range artifacts {
 		kind, path, ok := strings.Cut(spec, "=")
 		if !ok || kind == "" || path == "" {
@@ -231,14 +272,21 @@ func (a *app) evqCmd(args []string) error {
 		if !slices.Contains(known, kind) {
 			return fmt.Errorf("%w: --artifact kind %q is not named by the mapping (known: %s)", errUsage, kind, strings.Join(known, ", "))
 		}
-		if _, dup := in.Artifacts[kind]; dup {
+		if seen[kind] {
 			return fmt.Errorf("%w: --artifact kind %q is given twice", errUsage, kind)
 		}
-		digest, err := digestNonEmptyFile(path)
+		seen[kind] = true
+		data, err := readRegularFile(path, guestevidence.MaxBytes)
 		if err != nil {
-			return fmt.Errorf("artifact %s: %w", kind, err)
+			in.ArtifactErrors[kind] = err.Error()
+			continue
 		}
-		in.Artifacts[kind] = digest
+		if err := guestevidence.Validate(kind, data, expect); err != nil {
+			in.ArtifactErrors[kind] = err.Error()
+			continue
+		}
+		sum := sha256.Sum256(data)
+		in.Artifacts[kind] = "sha256:" + hex.EncodeToString(sum[:])
 	}
 	results, statuses := buildEVQResults(m, in)
 	data, err := json.MarshalIndent(struct {
@@ -254,6 +302,7 @@ func (a *app) evqCmd(args []string) error {
 	if err := writeNewFile(*out, data); err != nil {
 		return err
 	}
+	fmt.Fprintf(a.out, "commit %s\nevq_capture %s\ntest_json %s\ngo %s\n", commit, recordDigest, rec.TestJSONSHA256, rec.GoVersion)
 	return a.printEVQReport(m, statuses, data)
 }
 
@@ -268,7 +317,7 @@ func (a *app) printEVQReport(m evqMapping, statuses []evqStatus, data []byte) er
 			fmt.Fprintf(a.out, "%s passed\n", s.ID)
 		case s.Unmapped:
 			unmapped++
-			fmt.Fprintf(a.out, "%s not_passed unmapped\n", s.ID)
+			fmt.Fprintf(a.out, "%s not_passed unmapped\n  note: %s\n", s.ID, s.Note)
 		default:
 			fmt.Fprintf(a.out, "%s not_passed\n", s.ID)
 			for _, r := range s.Reasons {

@@ -27,7 +27,7 @@ func bindingMutations() map[string]func(e *env) {
 			e.cfg["pins"].(map[string]string)["frozen_source_digest"] = fixtureDigest("other-source")
 		},
 		"route report": func(e *env) {
-			route, err := json.Marshal(routematrix.Report{Total: 5, Complete: true,
+			route, err := json.Marshal(routematrix.Report{Total: 5, Complete: true, Binding: "commit=" + commit,
 				ByStatus: map[routematrix.Status]int{routematrix.StatusCovered: 5}})
 			if err != nil {
 				e.t.Fatal(err)
@@ -35,8 +35,8 @@ func bindingMutations() map[string]func(e *env) {
 			e.file("route.json", string(route))
 		},
 		"evq results file": func(e *env) {
-			e.setEVQ(`{"obligations":[{"id":"EVQ-1","passed":true,"evidence_ref":"synthetic-artifact-1"},` +
-				`{"id":"EVQ-2","passed":false,"evidence_ref":"synthetic-artifact-2"}]}`)
+			e.setEVQ(`{"obligations":[{"id":"EVQ-1","passed":true,"evidence_ref":"commit=` + commit + `;synthetic-artifact-1"},` +
+				`{"id":"EVQ-2","passed":false,"evidence_ref":"commit=` + commit + `;synthetic-artifact-2"}]}`)
 		},
 		"admission policy pin": func(e *env) {
 			e.cfg["admission_policy"].(map[string]string)["policy_digest"] = fixtureDigest("other-store-policy")
@@ -146,7 +146,16 @@ func TestEVQResultsPinIsEnforced(t *testing.T) {
 		"missing section": func(e *env) { delete(e.cfg, "evq_results") },
 		"missing file":    func(e *env) { e.cfg["evq_results"].(map[string]string)["path"] = e.path("absent.json") },
 		"malformed":       func(e *env) { e.setEVQ(`{"obligations":[{"id":"EVQ-1","passed":true}]}`) },
-		"unknown member":  func(e *env) { e.setEVQ(`{"obligations":[{"id":"EVQ-1","passed":false,"evidence_ref":"","x":1}]}`) },
+		"evidence for no commit": func(e *env) {
+			e.setEVQ(`{"obligations":[{"id":"EVQ-1","passed":true,"evidence_ref":"synthetic-artifact-1"},{"id":"EVQ-2","passed":false,"evidence_ref":""}]}`)
+		},
+		"evidence for another commit": func(e *env) {
+			e.setEVQ(`{"obligations":[{"id":"EVQ-1","passed":true,"evidence_ref":"commit=` + strings.Repeat("0", 40) + `;synthetic-artifact-1"},{"id":"EVQ-2","passed":false,"evidence_ref":""}]}`)
+		},
+		"a prefix of the commit": func(e *env) {
+			e.setEVQ(`{"obligations":[{"id":"EVQ-1","passed":true,"evidence_ref":"commit=` + commit[:39] + `;synthetic-artifact-1"},{"id":"EVQ-2","passed":false,"evidence_ref":""}]}`)
+		},
+		"unknown member": func(e *env) { e.setEVQ(`{"obligations":[{"id":"EVQ-1","passed":false,"evidence_ref":"","x":1}]}`) },
 	} {
 		e := newEnv(t)
 		mutate(e)
@@ -168,7 +177,7 @@ func (p evqProbe) Execute(context.Context, runner.Step) (runner.Outcome, error) 
 // does not name is not passed, whatever the receipt says, and the export says evq_passed false.
 func TestAttestWiringUsesThePinnedEVQResults(t *testing.T) {
 	e := newEnv(t)
-	e.setEVQ(`{"obligations":[{"id":"EVQ-1","passed":true,"evidence_ref":"synthetic-artifact-1"}]}`)
+	e.setEVQ(`{"obligations":[{"id":"EVQ-1","passed":true,"evidence_ref":"commit=` + commit + `;synthetic-artifact-1"}]}`)
 	p, err := loadPlan(mustConfig(t, e))
 	if err != nil {
 		t.Fatal(err)
@@ -188,7 +197,7 @@ func TestAttestWiringUsesThePinnedEVQResults(t *testing.T) {
 	if err != nil || !out.E01.Verified {
 		t.Fatalf("attest: %+v %v", out, err)
 	}
-	want := []runner.Obligation{{ID: "EVQ-1", Passed: true, EvidenceRef: "synthetic-artifact-1"}, {ID: "EVQ-2", Passed: false}}
+	want := []runner.Obligation{{ID: "EVQ-1", Passed: true, EvidenceRef: "commit=" + commit + ";synthetic-artifact-1"}, {ID: "EVQ-2", Passed: false}}
 	if len(out.EVQ) != 2 || out.EVQ[0] != want[0] || out.EVQ[1] != want[1] {
 		t.Fatalf("EVQ %+v, want %+v", out.EVQ, want)
 	}
@@ -294,5 +303,30 @@ func TestAttestWiringComparesTheScriptAndAdmissionPolicyDigests(t *testing.T) {
 		if out, err := run(receipt(mutate)); !errors.Is(err, runner.ErrReceiptPolicy) || out.MatchedDelivery || out.E01.Verified {
 			t.Errorf("%s: %+v %v", name, out, err)
 		}
+	}
+}
+
+// A route report is evidence for one freeze commit: an unbound report, one bound to another commit and one
+// that only mentions the commit are all refused by the plan, whatever they say about completeness.
+func TestPlanRefusesARouteReportNotBoundToTheFreezeCommit(t *testing.T) {
+	for name, binding := range map[string]string{
+		"no binding":           "",
+		"another commit":       "commit=" + strings.Repeat("0", 40) + ";evq-capture=" + fixtureDigest("c"),
+		"a prefix of ours":     "commit=" + commit[:39],
+		"the commit mentioned": "note=commit=" + commit,
+	} {
+		e := newEnv(t)
+		route, err := json.Marshal(routematrix.Report{Total: 4, Complete: true, Binding: binding,
+			ByStatus: map[routematrix.Status]int{routematrix.StatusCovered: 4}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.file("route.json", string(route))
+		if _, err := e.cliCfg(nil, "plan"); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+	if _, err := newEnv(t).cliCfg(nil, "plan"); err != nil {
+		t.Fatalf("the bound fixture was refused: %v", err)
 	}
 }

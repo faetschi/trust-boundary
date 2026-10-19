@@ -60,11 +60,14 @@ as a thesis result. It runs on the OpenCode Go engineering route only, no OpenRo
 2. Reviews: every case has two `TODO-` reviews with `human`/`blinded` false. The owner and the advisor
    each set a distinct `role`, their `reviewer` name, `human: true`, `blinded: true` and a `decision`.
    Different decisions need an `adjudication` by a third human, blinded reviewer. Do not copy sign-offs.
-3. `evq_results` and `route_report` (the other two `run.json` inputs besides the manifest) are generated, not authored:
-   `tbound-run evq --mapping infra/conformance/evq-mapping.json --test-json go-test.json --out evq_results.json` and
-   `tbound-run route-report --matrix infra/conformance/route-matrix.json --test-json go-test.json --out route_report.json`
-   (`go-test.json` is `go test -json` of the frozen commit on Linux). Unmapped obligations stay not passed and the route
-   report is incomplete until more evidence exists; see "EVQ results and route report" in `infra/guest/PROVISIONING-SIGNING.md`.
+3. `evq_results` and `route_report` (the other two `run.json` inputs besides the manifest) are generated, not authored,
+   from one capture of the frozen commit on Linux or WSL:
+   `tbound-run evq-capture --repo <repo> --commit <freeze_commit> --out <new dir>`, then
+   `tbound-run evq --mapping infra/conformance/evq-mapping.json --config run.json --capture <dir> --out evq_results.json` and
+   `tbound-run route-report --matrix infra/conformance/route-matrix.json --config run.json --capture <dir> --out route_report.json`.
+   Unmapped obligations stay not passed with a stated reason, the guest obligations need `--artifact kind=file`, and the
+   route report is complete only when every cell has passed tests; see "EVQ results and route report" in
+   `infra/guest/PROVISIONING-SIGNING.md`.
    The attacker artifact and pivot tables are "Adaptive attacker" below.
 4. Command-cell toolset. The stimuli use only what the signed cell image has (the node:24.21.0-bookworm-slim
    base plus the entrypoint; evidence `F:/TBoundAssets/recovery-20261015/incH1b/toolset-evidence.txt`, from the

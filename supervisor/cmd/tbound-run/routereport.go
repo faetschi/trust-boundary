@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 
 	"tbound/supervisor/internal/routematrix"
@@ -93,20 +94,34 @@ func buildRouteReport(m routematrix.Matrix, o *testOutcomes) (routematrix.Report
 	return rep, nil
 }
 
+// routeBinding is what the report carries about its origin.
+func routeBinding(commit, captureDigest, matrixDigest string) string {
+	return "commit=" + commit + ";evq-capture=" + captureDigest + ";route-matrix=" + matrixDigest
+}
+
+// routeBoundTo reports whether a route report names the frozen commit.
+func routeBoundTo(binding, freezeCommit string) bool {
+	return slices.Contains(strings.Split(binding, ";"), "commit="+freezeCommit)
+}
+
 // routeReportCmd is `tbound-run route-report`. The report is derived from the pinned route matrix
-// definition and the test results of the frozen commit only; it is never authored by hand.
+// definition and the capture of the frozen commit only; it is never authored by hand.
 func (a *app) routeReportCmd(args []string) error {
 	flags := flag.NewFlagSet("tbound-run route-report", flag.ContinueOnError)
 	flags.SetOutput(a.errOut)
 	matrix := flags.String("matrix", "", "route matrix definition (infra/conformance/route-matrix.json)")
+	config := flags.String("config", "", "run.json: its freeze_commit binds the evidence")
+	capture := flags.String("capture", "", "capture directory made by `tbound-run evq-capture` for the freeze commit")
 	out := flags.String("out", "", "route_report.json to create")
-	var testJSON stringList
-	flags.Var(&testJSON, "test-json", "`go test -json` output of the frozen commit (repeatable)")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("%w: %v", errUsage, err)
 	}
-	if flags.NArg() != 0 || *matrix == "" || *out == "" || len(testJSON) == 0 {
-		return fmt.Errorf("%w: route-report takes --matrix, --test-json (one or more) and --out", errUsage)
+	if flags.NArg() != 0 || *matrix == "" || *config == "" || *capture == "" || *out == "" {
+		return fmt.Errorf("%w: route-report takes --matrix, --config, --capture and --out", errUsage)
+	}
+	commit, _, _, err := loadFreezeBinding(*config)
+	if err != nil {
+		return err
 	}
 	mdata, err := readRegularFile(*matrix, maxConfigBytes)
 	if err != nil {
@@ -116,35 +131,31 @@ func (a *app) routeReportCmd(args []string) error {
 	if err != nil {
 		return err
 	}
-	o := newTestOutcomes()
-	var digests []string
-	for _, p := range testJSON {
-		d, err := parseTestJSONFile(p, o)
-		if err != nil {
-			return err
-		}
-		digests = append(digests, d)
+	rec, recordDigest, o, err := loadEVQCapture(*capture, commit)
+	if err != nil {
+		return err
+	}
+	if err := rec.requirePinnedInput(evqPinnedInputs[1], mdata); err != nil {
+		return fmt.Errorf("route matrix: %w", err)
 	}
 	rep, err := buildRouteReport(m, o)
 	if err != nil {
 		return fmt.Errorf("route matrix: %w", err)
 	}
+	rep.Binding = routeBinding(commit, recordDigest, routematrix.Digest(m))
 	data, err := json.MarshalIndent(rep, "", "  ")
 	if err != nil {
 		return err
 	}
 	data = append(data, '\n')
-	if _, err := parseRouteReport(data); err != nil {
+	if _, err := parseRouteReport(data, commit); err != nil {
 		return fmt.Errorf("generated report is not accepted by the runner: %w", err)
 	}
 	if err := writeNewFile(*out, data); err != nil {
 		return err
 	}
 	sum := sha256.Sum256(data)
-	fmt.Fprintf(a.out, "matrix_digest %s\n", routematrix.Digest(m))
-	for _, d := range digests {
-		fmt.Fprintf(a.out, "test_json %s\n", d)
-	}
+	fmt.Fprintf(a.out, "commit %s\nevq_capture %s\nmatrix_digest %s\ntest_json %s\n", commit, recordDigest, routematrix.Digest(m), rec.TestJSONSHA256)
 	fmt.Fprintf(a.out, "cells %d\ncovered %d\npending_guest %d\nmissing %d\n", rep.Total,
 		rep.ByStatus[routematrix.StatusCovered], rep.ByStatus[routematrix.StatusPendingGuest], rep.ByStatus[routematrix.StatusMissing])
 	fmt.Fprintf(a.out, "complete %t\n", rep.Complete)

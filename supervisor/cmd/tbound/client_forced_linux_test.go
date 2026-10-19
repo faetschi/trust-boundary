@@ -63,6 +63,13 @@ func cfArgv(role string, attempt int) []string {
 	return argv
 }
 
+// cfHardenedLauncher is the client launcher spelled out, so that the runner and the forced
+// command cannot drift together: setpriv drops to the client uid and gid, clears the
+// supplementary groups, empties the bounding, inheritable and ambient capability sets and sets
+// no_new_privs, and `--` ends its options before the client binary.
+var cfHardenedLauncher = []string{"setpriv", "--reuid", "994", "--regid", "985", "--clear-groups",
+	"--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs", "--", "/usr/local/bin/tbound"}
+
 // Parity with the runner: for every governed role and both attempts, the string the
 // runner's SSH transport sends is accepted and is exec'd as exactly the launcher the
 // transport documents plus the runner's argv, under a fixed absolute setpriv and a
@@ -80,7 +87,10 @@ func TestClientForcedAcceptsEveryRunnerArgv(t *testing.T) {
 				if code, stderr := runCF(env); code != 0 {
 					t.Fatalf("exit %d: %s", code, stderr)
 				}
-				want := append([]string{clientForcedSetpriv}, runner.DefaultClientCommand()...)
+				if !slices.Equal(runner.DefaultClientCommand(), cfHardenedLauncher) {
+					t.Fatalf("runner launcher = %q, want %q", runner.DefaultClientCommand(), cfHardenedLauncher)
+				}
+				want := append([]string{clientForcedSetpriv}, cfHardenedLauncher...)
 				want = append(want, argv...)
 				if len(env.execs) != 1 || !slices.Equal(env.execs[0], want) {
 					t.Fatalf("exec = %q, want %q", env.execs, want)
@@ -94,10 +104,12 @@ func TestClientForcedAcceptsEveryRunnerArgv(t *testing.T) {
 }
 
 func TestClientForcedAcceptsPlainWordsAndFlagOrderAndCanonicalizes(t *testing.T) {
-	want := append(append([]string{clientForcedSetpriv, "setpriv"}, runner.DefaultClientCommand()[1:]...), cfArgv("compliant", 1)...)
+	want := append(append([]string{clientForcedSetpriv}, cfHardenedLauncher...), cfArgv("compliant", 1)...)
 	for name, original := range map[string]string{
-		"plain words": "setpriv --reuid 994 --regid 985 --clear-groups /usr/local/bin/tbound serve --pi --task-id PILOT-ADV-A-01 --role compliant --attempt 1 --task-request-id tbr-0123456789abcdef0123456789abcdef --bash-no-outputs",
-		"flags reordered": "'setpriv' '--reuid' '994' '--regid' '985' '--clear-groups' '/usr/local/bin/tbound' 'serve' '--pi' '--bash-no-outputs' " +
+		"plain words": "setpriv --reuid 994 --regid 985 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs -- " +
+			"/usr/local/bin/tbound serve --pi --task-id PILOT-ADV-A-01 --role compliant --attempt 1 --task-request-id tbr-0123456789abcdef0123456789abcdef --bash-no-outputs",
+		"flags reordered": "'setpriv' '--reuid' '994' '--regid' '985' '--clear-groups' '--bounding-set=-all' '--inh-caps=-all' '--ambient-caps=-all' '--no-new-privs' '--' " +
+			"'/usr/local/bin/tbound' 'serve' '--pi' '--bash-no-outputs' " +
 			"'--task-request-id' 'tbr-0123456789abcdef0123456789abcdef' '--attempt' '1' '--role' 'compliant' '--task-id' 'PILOT-ADV-A-01'",
 	} {
 		env := newCFTestEnv(0, original)
@@ -110,11 +122,28 @@ func TestClientForcedAcceptsPlainWordsAndFlagOrderAndCanonicalizes(t *testing.T)
 	}
 }
 
+// The program the entry execs drops every capability and sets no_new_privs before the client
+// binary runs: the exact argv, flag for flag and in order.
+func TestClientForcedExecsCapabilityFreeNoNewPrivsClient(t *testing.T) {
+	env := newCFTestEnv(0, cfRemote(t, cfArgv("trajectory", 2)))
+	if code, stderr := runCF(env); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	want := []string{"/usr/bin/setpriv", "setpriv", "--reuid", "994", "--regid", "985", "--clear-groups",
+		"--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs", "--",
+		"/usr/local/bin/tbound", "serve", "--pi", "--task-id", "PILOT-ADV-A-01", "--role", "trajectory", "--attempt", "2",
+		"--task-request-id", "tbr-0123456789abcdef0123456789abcdef", "--bash-no-outputs"}
+	if len(env.execs) != 1 || !slices.Equal(env.execs[0], want) {
+		t.Fatalf("exec = %q, want %q", env.execs, want)
+	}
+}
+
 func TestClientForcedRefusalMatrix(t *testing.T) {
 	const (
-		launcher = "'setpriv' '--reuid' '994' '--regid' '985' '--clear-groups' '/usr/local/bin/tbound' "
-		tail     = "'--task-request-id' 'tbr-0123456789abcdef0123456789abcdef' '--bash-no-outputs'"
-		head     = launcher + "'serve' '--pi' '--task-id' 'PILOT-ADV-A-01' '--role' 'trajectory' '--attempt' '1' "
+		launcher = "'setpriv' '--reuid' '994' '--regid' '985' '--clear-groups' " +
+			"'--bounding-set=-all' '--inh-caps=-all' '--ambient-caps=-all' '--no-new-privs' '--' '/usr/local/bin/tbound' "
+		tail = "'--task-request-id' 'tbr-0123456789abcdef0123456789abcdef' '--bash-no-outputs'"
+		head = launcher + "'serve' '--pi' '--task-id' 'PILOT-ADV-A-01' '--role' 'trajectory' '--attempt' '1' "
 	)
 	good := head + tail
 	long := strings.Repeat("a", 257)
@@ -144,7 +173,17 @@ func TestClientForcedRefusalMatrix(t *testing.T) {
 		"wrong uid":                 strings.Replace(good, "'994'", "'0'", 1),
 		"wrong gid":                 strings.Replace(good, "'985'", "'0'", 1),
 		"keep groups":               strings.Replace(good, "'--clear-groups'", "'--keep-groups'", 1),
-		"extra setpriv flag":        strings.Replace(good, "'--clear-groups' ", "'--clear-groups' '--no-new-privs' ", 1),
+		"extra setpriv flag":        strings.Replace(good, "'--clear-groups' ", "'--clear-groups' '--keep-groups' ", 1),
+		"launcher without cap drop": strings.Replace(good, "'--bounding-set=-all' '--inh-caps=-all' '--ambient-caps=-all' '--no-new-privs' '--' ", "", 1),
+		"no bounding set drop":      strings.Replace(good, "'--bounding-set=-all' ", "", 1),
+		"no inh caps drop":          strings.Replace(good, "'--inh-caps=-all' ", "", 1),
+		"no ambient caps drop":      strings.Replace(good, "'--ambient-caps=-all' ", "", 1),
+		"no no-new-privs":           strings.Replace(good, "'--no-new-privs' ", "", 1),
+		"no end of options":         strings.Replace(good, "'--' ", "", 1),
+		"bounding set keeps a cap":  strings.Replace(good, "'--bounding-set=-all'", "'--bounding-set=-all,+net_admin'", 1),
+		"inh caps raised":           strings.Replace(good, "'--inh-caps=-all'", "'--inh-caps=+all'", 1),
+		"nnp short form":            strings.Replace(good, "'--no-new-privs'", "'--nnp'", 1),
+		"cap flags reordered":       strings.Replace(good, "'--bounding-set=-all' '--inh-caps=-all'", "'--inh-caps=-all' '--bounding-set=-all'", 1),
 		"other binary":              strings.Replace(good, "/usr/local/bin/tbound", "/bin/sh", 1),
 		"other verb":                strings.Replace(good, "'serve' '--pi'", "'evidence' 'proc-cell'", 1),
 		"serve without pi":          strings.Replace(good, "'serve' '--pi'", "'serve'", 1),
