@@ -1,0 +1,209 @@
+/*
+ * The rail (v2): the source binding, the sessions (the active row is highlighted), the observation streams, and the muted
+ * footnotes at its foot. Colours are alias tokens (tokens.test.ts). The phone breakpoint is a literal: layout.ts holds the
+ * value, and Rail.test.tsx checks that the two agree.
+ */
+
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-2h);
+  border-right: 1px solid var(--border);
+  background: var(--sidebar);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rail {
+    transition: opacity var(--dur-fast) var(--ease-std);
+  }
+}
+
+.railHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  min-height: var(--row-h-toolbar);
+}
+
+/* The collapse toggle. In the icon column it is the only control, centred beside the dot. */
+.toggle {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.toggle:hover {
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.heading {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: var(--lh-2xs);
+  text-transform: uppercase;
+}
+
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* The source binding: a bordered card with the name and its source chip on one line. */
+.binding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1h) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.bindingName {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The one session: its row is the active row, so it carries the highlight. */
+.sessionRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-1h) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--sidebar-accent);
+  color: var(--foreground);
+}
+
+.sessionTitle {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line {
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-2xs);
+}
+
+/* The status line keeps the dot on the first line, beside the words, and the words wrap beneath it. */
+.statusLine {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-2xs);
+}
+
+.trust {
+  color: var(--state-reported-ink);
+}
+
+.streams {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stream {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--foreground);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
+
+/* The read-only footnotes sit at the foot of the rail, muted and small. */
+.footnote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: auto;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.otherNote,
+.note {
+  color: var(--muted-foreground);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-2xs);
+}
+
+/* Phones: the rail is one row of its own, a disclosure strip that opens the same body. */
+@media (max-width: 760px) {
+  .rail {
+    padding: var(--space-2) var(--space-3);
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+/* The strip button on a phone: the one row that opens the body. */
+.strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--foreground);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}

@@ -1,0 +1,93 @@
+/*
+ * Markdown output (react.tsx). These class names are global on purpose: the parity test pins
+ * them against toHtmlString.ts, so they cannot be hashed by CSS modules. Colour comes from the
+ * alias tier only (tokens.test.ts enforces that for every component sheet).
+ */
+
+.md-body {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.md-body > * {
+  margin: 0;
+}
+
+.md-body > * + * {
+  margin-top: var(--space-2);
+}
+
+.md-body h3,
+.md-body h4,
+.md-body h5,
+.md-body h6 {
+  font: 600 var(--text-body) / 1.4 var(--font-sans);
+}
+
+.md-body ul,
+.md-body ol {
+  padding-left: var(--space-4);
+}
+
+.md-body ul {
+  list-style: disc;
+}
+
+.md-body ol {
+  list-style: decimal;
+}
+
+.md-body li + li {
+  margin-top: var(--space-1);
+}
+
+.md-body li > *,
+.md-body blockquote > * {
+  margin: 0;
+}
+
+.md-body li > * + *,
+.md-body blockquote > * + * {
+  margin-top: var(--space-1h);
+}
+
+.md-body blockquote {
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+.md-body a {
+  color: var(--info);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md-body code {
+  font-family: var(--font-mono);
+  font-size: 0.8125em;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-xs);
+  background: var(--secondary);
+}
+
+.md-body .md-code {
+  padding: var(--space-2) var(--space-2h);
+  overflow-x: auto;
+  white-space: pre;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--secondary);
+}
+
+.md-body .md-code code {
+  padding: 0;
+  background: none;
+  font-size: var(--text-xs);
+}
+
+.md-truncated {
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}

@@ -1,0 +1,33 @@
+{
+  "name": "@tbound/webchat-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Phase 1 React + TypeScript scaffold for the optional tbound web chat extension. Not the product UI.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "build": "vite build",
+    "check:sinks": "node scripts/check-sinks.mjs --self-test && node scripts/check-sinks.mjs",
+    "check:deps": "node scripts/check-deps.mjs --self-test && node scripts/check-deps.mjs",
+    "repro": "node scripts/repro-check.mjs",
+    "verify": "npm run typecheck && npm run test && npm run build && npm run check:sinks && npm run check:deps"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "happy-dom": "21.0.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.4",
+    "vitest": "5.0.4"
+  }
+}

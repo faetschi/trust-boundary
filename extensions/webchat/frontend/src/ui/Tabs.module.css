@@ -1,0 +1,32 @@
+.tablist {
+  display: flex;
+  gap: var(--space-1);
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  min-height: var(--row-h-button);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+/* The selected tab takes the info tone on its underline (v2 .tab.is-active), and the text stays the foreground. */
+.tab[aria-selected="true"] {
+  border-bottom-color: var(--info);
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.tab:hover {
+  background: var(--accent);
+}
+
+.panel {
+  min-width: 0;
+  outline-offset: -2px;
+}
