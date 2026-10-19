@@ -173,6 +173,31 @@ func (c EvidenceClient) CanReport() bool {
 	return ok
 }
 
+// StdinTransport is a ReadyTransport that also gives the remote command a stdin the caller controls: the command
+// sees what is written to stdin and its end of file when the caller closes it, or when the session is gone (the
+// guest transient-watch ends on a stop line and treats an end of file without one as an abort).
+type StdinTransport interface {
+	ReadyTransport
+	RunReadyStdin(ctx context.Context, argv []string, stdin io.Reader, ready func(firstLine []byte)) (stdout, stderr []byte, exitCode int, err error)
+}
+
+// CanStop reports whether the evidence transport can hand the remote command a controlled stdin.
+func (c EvidenceClient) CanStop() bool {
+	_, ok := c.Transport.(StdinTransport)
+	return ok
+}
+
+// CallStdin is CallReady with a stdin for the remote command. A transport that cannot give one is a configuration
+// error, not absent evidence.
+func (c EvidenceClient) CallStdin(ctx context.Context, stdin io.Reader, ready func([]byte), argv ...string) ([]byte, error) {
+	st, ok := c.Transport.(StdinTransport)
+	if !ok {
+		return nil, errors.New("evidence transport cannot give the command a controlled stdin (StdinTransport)")
+	}
+	stdout, stderr, exit, err := st.RunReadyStdin(ctx, argv, stdin, ready)
+	return evidenceOutput(stdout, stderr, exit, err)
+}
+
 // CallReady is Call over a ReadyTransport: ready receives the command's first stdout line as
 // soon as it is written. A transport that cannot report it is a configuration error, not
 // absent evidence.
@@ -182,6 +207,10 @@ func (c EvidenceClient) CallReady(ctx context.Context, ready func([]byte), argv 
 		return nil, errors.New("evidence transport cannot report the first output line (ReadyTransport)")
 	}
 	stdout, stderr, exit, err := rt.RunReady(ctx, argv, ready)
+	return evidenceOutput(stdout, stderr, exit, err)
+}
+
+func evidenceOutput(stdout, stderr []byte, exit int, err error) ([]byte, error) {
 	switch {
 	case err != nil:
 		return nil, evidenceAbsent("evidence transport: %v", err)
@@ -361,7 +390,7 @@ func (c *SSHCollectors) Validate() error { return c.Client.Validate() }
 
 // E04 implements Collectors.
 func (c *SSHCollectors) E04(ctx context.Context, ref EvidenceRef) (wsoracle.EvaluateE04Input, error) {
-	doc, err := c.e04Doc(ctx, ref)
+	doc, err := c.Client.e04Doc(ctx, ref)
 	if err != nil {
 		return wsoracle.EvaluateE04Input{}, err
 	}
@@ -397,19 +426,39 @@ func (c *SSHCollectors) PublicationJournal(ctx context.Context, ref EvidenceRef)
 // binds as E04 does (e04-points), so a document that does not match the receipt is absent, and the interval journal
 // stays the only judge of whether the interval published at all (PublicationFree).
 func (c *SSHCollectors) Publication(ctx context.Context, ref EvidenceRef) (PublicationInputs, error) {
-	doc, err := c.e04Doc(ctx, ref)
+	doc, err := c.Client.e04Doc(ctx, ref)
 	if err != nil {
 		return PublicationInputs{}, err
 	}
-	return E04PublicationInputs(doc, ref.Interval, ref.E04Head, ref.E04Count)
+	in, err := E04PublicationInputs(doc, ref.Interval, ref.E04Head, ref.E04Count)
+	if err != nil {
+		return PublicationInputs{}, err
+	}
+	// The transaction the store says it recorded must be one the anchored publication journal holds.
+	journal, err := c.PublicationJournal(ctx, ref)
+	if err != nil {
+		return PublicationInputs{}, err
+	}
+	if err := bindPublicationTransaction(journal, ref.PublicationHead, in); err != nil {
+		return PublicationInputs{}, err
+	}
+	return in, nil
 }
 
-// e04Doc fetches the E04 point store of the interval the receipt binds.
-func (c *SSHCollectors) e04Doc(ctx context.Context, ref EvidenceRef) (E04PointsDoc, error) {
+// e04Doc fetches the E04 point store of the interval the receipt binds and checks that it is the store of the run the
+// receipt names: the store of a workflow can hold the points of earlier runs, and the receipt's head and count bind
+// the whole store, not one run.
+func (c EvidenceClient) e04Doc(ctx context.Context, ref EvidenceRef) (E04PointsDoc, error) {
 	if ref.E04Head == "" || ref.E04Count <= 0 {
 		return E04PointsDoc{}, evidenceAbsent("the receipt carries no E04 evidence binding for %s", ref.Interval)
 	}
 	var doc E04PointsDoc
-	err := c.Client.CallDoc(ctx, &doc, EvidenceE04Points, "--interval-ref", ref.Interval)
-	return doc, err
+	if err := c.CallDoc(ctx, &doc, EvidenceE04Points, "--interval-ref", ref.Interval); err != nil {
+		return E04PointsDoc{}, err
+	}
+	// An empty RunID on either side never matches (e04DocRecords refuses a store with none).
+	if doc.RunID != ref.RunID {
+		return E04PointsDoc{}, evidenceAbsent("the E04 store is for run %q, the receipt names %q", doc.RunID, ref.RunID)
+	}
+	return doc, nil
 }

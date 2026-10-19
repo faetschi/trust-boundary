@@ -20,3 +20,6 @@ func (o *Observer) Mark(name string) error {
 func (o *Observer) Stop() (*Report, error) {
 	return nil, ErrUnsupported
 }
+
+// Abort does nothing on platforms other than Linux, where no observer exists.
+func (o *Observer) Abort() {}

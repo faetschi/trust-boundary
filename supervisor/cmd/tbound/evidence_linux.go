@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -76,19 +77,26 @@ import (
 //	    the service's own protected-tree manifests at the seven E04 points of the admission REF
 //	    names, bound by the receipt's head and count (evidence_e04_points_linux.go). Read-only.
 //	transient-watch              --interval-ref REF --duration SECONDS
-//	    effectoracle (inotify) over the one registered live root for SECONDS (1..1500): EFF-TRANSIENT.
-//	    TWO lines: the readiness line (runner.TransientReadyDoc), written once the observer runs and
-//	    before the request is sent, then the final document (runner.TransientDoc: the effectoracle
-//	    report). At most one watch runs at a time (flock on a root-owned lock file in /run); a second
-//	    is refused. The watch cannot be bound to the admission (it starts before the request); the
-//	    host binds the report to the publication ledger of the interval.
+//	    effectoracle (inotify) over the one registered live root: EFF-TRANSIENT. SECONDS (1..1500) is
+//	    only the cap on a watch nobody ended. TWO lines: the readiness line (runner.TransientReadyDoc),
+//	    written once the observer runs and before the request is sent, then the final document
+//	    (runner.TransientDoc: the effectoracle report, the window actually observed and why it ended).
+//	    The host ends the watch over the session's stdin: the line "stop" stops the observer (its stop
+//	    canary and the full-tree snapshot are written then, with the session open) and reports. A
+//	    stdin that ends without that line, a signal, or a failed readiness line is an ABORT: the
+//	    observer is closed without writing anything into the live root and the command fails, so no
+//	    canary is written after the session is gone. Only a watch nobody ended (SECONDS up) stops on
+//	    its own timer, and says so. At most one watch runs at a time (flock on a root-owned lock file
+//	    in /run); a second is refused. The watch cannot be bound to the admission (it starts before
+//	    the request); the host binds the report to the publication ledger of the interval.
 //	net-canary                   --phase start|end --interval TAG
-//	    the ONE kind with an effect: it sends a single GET canary request to the guest NET sink
+//	    an effectful kind (the other is transient-watch, whose effect is its liveness canary files in
+//	    the live root): it sends a single GET canary request to the guest NET sink
 //	    (runner.NetsinkAddr, 127.0.33.1:8080) with the sink-private secret and prints the journal
 //	    position the sink acknowledged. The effect is a journal record in the sink itself and
 //	    nothing else: the request goes to the fixed loopback address, never to an address the
 //	    caller names. It is its own kind (not folded into net-journal) so that net-journal stays
-//	    read-only and the forced command's one effectful verb is explicit and auditable.
+//	    read-only and the forced command's effectful verbs are explicit and auditable.
 //	net-journal                  --interval TAG
 //	    the sink journal (netoracle.ExtractInterval) from its first record through the end canary
 //	    of TAG, base64, with head, count and the canaries' sequence numbers. Read-only.
@@ -125,8 +133,8 @@ const evidenceUsage = `usage: tbound evidence <kind> [--flag value]...   (read-o
   proc-monitor                 --registration <digest> --interval-start <ns> --deadline <ns> --duration <s> --interval <ms>
   publication-interval-journal --interval-ref <ref>
   e04-points                   --interval-ref <ref>
-  transient-watch              --interval-ref <ref> --duration <s>   (inotify over the live root; writes a liveness canary there)
-  net-canary                   --phase <start|end> --interval <tag>   (sends ONE canary to the guest NET sink: the only effect)
+  transient-watch              --interval-ref <ref> --duration <s>   (inotify over the live root; ends on a "stop" line on stdin; writes a liveness canary in the live root at start and at stop)
+  net-canary                   --phase <start|end> --interval <tag>   (sends ONE canary to the guest NET sink; with transient-watch, the only effects)
   net-journal                  --interval <tag>
   ssh-original-command         (forced-command entry; reads $SSH_ORIGINAL_COMMAND)
 `
@@ -188,10 +196,13 @@ type evidenceEnv struct {
 	monitor func(ctx context.Context, c evidenceCell, reg procoracle.Registration, d, interval time.Duration, ready func(procoracle.Snapshot)) ([]procoracle.Snapshot, error)
 	// lockMonitor admits one monitor at a time; the release function frees it.
 	lockMonitor func() (release func(), err error)
-	// lockTransient admits one transient-watch at a time; watch is the effectoracle observer over root for d (it calls
-	// ready once the observer runs, before it waits).
+	// lockTransient admits one transient-watch at a time; watch is the effectoracle observer over root (it calls ready
+	// once the observer runs, before it waits). stdin is the session's standard input, the channel the host ends a
+	// watch on: stop receives nil for the stop line and an error for any other end of the input, and the watch then
+	// aborts without writing anything. d is the cap on a watch nobody ended.
 	lockTransient func() (release func(), err error)
-	watch         func(ctx context.Context, root string, d time.Duration, ready func() error) (*effectoracle.Report, error)
+	watch         func(ctx context.Context, root string, d time.Duration, ready func() error, stop <-chan error) (transientWatch, error)
+	stdin         io.Reader
 	// netCanary sends one canary to the guest NET sink (the one kind with an effect, on the sink
 	// only); netJournal reads the sink journal file, read-only.
 	netCanary  func(ctx context.Context, phase, tag string) (netoracle.CanaryAck, error)
@@ -208,7 +219,7 @@ func productionEvidenceEnv() evidenceEnv {
 		lockMonitor: func() (func(), error) { return lockEvidenceMonitorFile(evidenceMonitorLockPath, evidenceRequiredUID) },
 		netCanary:   sendNetsinkCanary, netJournal: readNetsinkJournal,
 		lockTransient: func() (func(), error) { return lockEvidenceMonitorFile(evidenceTransientLockPath, evidenceRequiredUID) },
-		watch:         watchEvidenceRoot,
+		watch:         watchEvidenceRoot, stdin: os.Stdin,
 	}
 }
 
@@ -691,6 +702,14 @@ func lockEvidenceMonitorFile(path string, uid uint32) (func(), error) {
 	return func() { _ = syscall.Close(fd) }, nil
 }
 
+// transientWatch is what the guest observer returns: the report, the window it observed (from its start barrier to its
+// stop barrier, on its own monotonic clock) and why the watch ended.
+type transientWatch struct {
+	Report  *effectoracle.Report
+	Elapsed time.Duration
+	Stop    string
+}
+
 func evidenceTransientWatch(ctx context.Context, env evidenceEnv, f map[string]string, stdout io.Writer) (runner.TransientDoc, error) {
 	seconds, err := strconv.Atoi(f["--duration"])
 	if err != nil || seconds < 1 || seconds > runner.MaxTransientWatchSeconds || strconv.Itoa(seconds) != f["--duration"] {
@@ -704,43 +723,93 @@ func evidenceTransientWatch(ctx context.Context, env evidenceEnv, f map[string]s
 	if err != nil {
 		return runner.TransientDoc{}, fmt.Errorf("transient-watch refused: %w", err)
 	}
+	// The lock is held until the observer has stopped or aborted: watch returns only then.
 	defer release()
 	ref := f["--interval-ref"]
-	report, err := env.watch(ctx, root, time.Duration(seconds)*time.Second, func() error {
+	// The host ends the watch over stdin. Read from the start so that a session that is already gone aborts the watch
+	// before it can write anything.
+	stop := make(chan error, 1)
+	go func() { stop <- readTransientStop(env.stdin) }()
+	result, err := env.watch(ctx, root, time.Duration(seconds)*time.Second, func() error {
 		line, err := json.Marshal(runner.TransientReadyDoc{Schema: runner.EvidenceSchema, Kind: runner.TransientReadyKind, IntervalRef: ref, Root: root})
 		if err == nil {
 			_, err = stdout.Write(append(line, '\n'))
 		}
 		return err
-	})
+	}, stop)
 	if err != nil {
 		return runner.TransientDoc{}, err
 	}
 	doc := runner.TransientDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceTransientWatch, IntervalRef: ref, Root: root,
-		DurationSeconds: seconds, Report: *report}
+		DurationSeconds: seconds, ElapsedMicros: result.Elapsed.Microseconds(), Stop: result.Stop, Report: *result.Report}
 	if encoded, err := json.Marshal(doc); err != nil || len(encoded) > evidenceMaxMonitorBytes {
 		return runner.TransientDoc{}, fmt.Errorf("the transient report is %d bytes (cap %d)", len(encoded), evidenceMaxMonitorBytes)
 	}
 	return doc, nil
 }
 
-// watchEvidenceRoot is the effectoracle observer over root for d. ready is called once the observer runs (its start
-// barrier, liveness canary included, has passed): the host sends the request only after that. A watch that is
-// cancelled early (the host went away) is stopped and reports what it saw.
-func watchEvidenceRoot(ctx context.Context, root string, d time.Duration, ready func() error) (*effectoracle.Report, error) {
+// readTransientStop reads the first line of the session's stdin: nil for the stop line, an error for anything else
+// (the end of the input before a line, another line, no input).
+func readTransientStop(stdin io.Reader) error {
+	if stdin == nil {
+		return errors.New("no stdin")
+	}
+	line, err := bufio.NewReader(io.LimitReader(stdin, 64)).ReadString('\n')
+	switch {
+	case line == runner.TransientStopLine:
+		return nil
+	case err != nil:
+		return fmt.Errorf("stdin ended without a stop request: %w", err)
+	}
+	return errors.New("stdin held something other than the stop request")
+}
+
+// watchEvidenceRoot is the effectoracle observer over root. ready is called once the observer runs (its start
+// barrier, liveness canary included, has passed): the host sends the request only after that. The watch ends when the
+// host asks (stop receives nil), and then the observer is stopped (its stop canary and snapshot are written, while the
+// host's session is open) and the report returned with the window actually observed. It ends on its own after d only
+// if nobody ended it, and says so. When the host's session ends without a stop request (stop receives an error), on a
+// signal, or when the readiness line cannot be written, the session is gone or going: the observer is closed WITHOUT a
+// stop canary or any other write into the root, and the watch fails.
+func watchEvidenceRoot(ctx context.Context, root string, d time.Duration, ready func() error, stop <-chan error) (transientWatch, error) {
 	observer, err := effectoracle.Start(root)
 	if err != nil {
-		return nil, err
+		return transientWatch{}, err
 	}
+	started := time.Now()
 	if err := ready(); err != nil {
-		_, _ = observer.Stop()
-		return nil, fmt.Errorf("the readiness line could not be written: %w", err)
+		observer.Abort()
+		return transientWatch{}, fmt.Errorf("the readiness line could not be written: %w", err)
+	}
+	aborted := func(cause error) (transientWatch, error) {
+		observer.Abort()
+		return transientWatch{}, fmt.Errorf("the transient watch was aborted and wrote nothing more: %w", cause)
 	}
 	timer := time.NewTimer(d)
 	defer timer.Stop()
+	reason := runner.TransientStopRequested
 	select {
-	case <-timer.C:
+	case err := <-stop:
+		if err != nil {
+			return aborted(err)
+		}
 	case <-ctx.Done():
+		return aborted(ctx.Err())
+	case <-timer.C:
+		// Nobody ended the watch. Take one last look at the session first: a host that is gone must not get a stop
+		// canary.
+		select {
+		case err := <-stop:
+			if err != nil {
+				return aborted(err)
+			}
+		default:
+			reason = runner.TransientStopTimer
+		}
 	}
-	return observer.Stop()
+	report, err := observer.Stop()
+	if err != nil {
+		return transientWatch{}, err
+	}
+	return transientWatch{Report: report, Elapsed: time.Since(started), Stop: reason}, nil
 }

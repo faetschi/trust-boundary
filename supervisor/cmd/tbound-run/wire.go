@@ -60,7 +60,7 @@ func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 		Policy:          procoracle.Policy{AuthorizedSockets: p.cfg.Proc.AuthorizedSockets},
 		InitLingers:     p.initLingers,
 	}
-	// The transient observer watches for the same time as the PROC monitor: a step must fit both windows.
+	// The transient observer is ended by the host when the request is over; the PROC monitor's time is only its cap.
 	transient := &runner.TransientCollector{Client: runner.EvidenceClient{Transport: ev}, Duration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second}
 	return runner.CollectorSet{E04From: ssh, JournalFrom: ssh, PublicationFrom: ssh, NetFrom: netoracle.NewCollector(ev), ProcFrom: proc, TransientFrom: transient}
 }

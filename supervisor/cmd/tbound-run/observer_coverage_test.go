@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -58,10 +61,16 @@ type obsFixture struct {
 	t         *testing.T
 	step      runner.Step
 	published bool
-	// rogue writes a file into the live root and removes it again between two E04 points (an effect no snapshot sees).
-	rogue  bool
-	live   string
-	sealed string
+	// rogue writes a file (rogueName, default rogue.bin) into the live root and removes it again between two E04 points
+	// (an effect no snapshot sees). With a published interval rogueName may be a path the publication ledger names.
+	rogue     bool
+	rogueName string
+	// failRequest makes the request transport fail before the service does anything.
+	failRequest bool
+	// watchEnds receives how the guest transient-watch ended: "stop" or "abort".
+	watchEnds chan string
+	live      string
+	sealed    string
 
 	sink     *netoracle.Sink
 	sinkPath string
@@ -82,7 +91,7 @@ func newObsFixture(t *testing.T, published bool) *obsFixture {
 	}
 	dir := t.TempDir()
 	f := &obsFixture{t: t, published: published, live: filepath.Join(dir, "live"), sealed: filepath.Join(dir, "sealed"),
-		release: make(chan struct{}),
+		release: make(chan struct{}), watchEnds: make(chan string, 4),
 		step: runner.Step{Index: 1, CaseID: "obs-case", Kind: evalcorpus.KindAdversarial, ThreatClass: evalcorpus.ClassTMA,
 			Configuration: runner.CfgC, Role: runner.RoleTrajectory, Attempt: 1, Predicate: "EFF-WS-01", WitnessID: "w-obs"}}
 	for _, root := range []string{f.live, f.sealed} {
@@ -171,17 +180,27 @@ func (f *obsFixture) serve() {
 		points = append(points, pt{name, snap(name)})
 	}
 	var ledger []wsoracle.LedgerEntry
-	if f.published {
-		if err := os.WriteFile(filepath.Join(f.live, "new.txt"), []byte("published\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
 	if f.rogue {
-		rogue := filepath.Join(f.live, "rogue.bin")
+		name := f.rogueName
+		if name == "" {
+			name = "rogue.bin"
+		}
+		rogue := filepath.Join(f.live, name)
 		if err := os.WriteFile(rogue, []byte("x"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Remove(rogue); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if f.published {
+		// Publication applies an object by renaming a staged file into the live root, as the real one does (the
+		// staged file is outside the watched tree, so the observer sees one moved_to), never by writing it in place.
+		staged := filepath.Join(filepath.Dir(f.live), "staged-new.txt")
+		if err := os.WriteFile(staged, []byte("published\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(staged, filepath.Join(f.live, "new.txt")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -232,7 +251,8 @@ func (f *obsFixture) serve() {
 
 	journal := []audit.Event{{Kind: runner.IntervalMarkerKind, ID: interval}}
 	if f.published {
-		journal = append(journal, audit.Event{Kind: "publication_prepare", ID: "pub-obs"}, audit.Event{Kind: "publication_terminal", ID: "pub-obs"})
+		prepare, _ := json.Marshal(map[string]string{"transaction_id": "pub-obs", "publication_id": "pubid-obs"})
+		journal = append(journal, audit.Event{Kind: "publication_prepare", ID: "pub-obs", Data: prepare}, audit.Event{Kind: "publication_terminal", ID: "pub-obs"})
 	}
 	// The anchor counts the publication records of the journal, not the interval marker before them.
 	jbytes, jhead, jcount := f.journalFile("publication.jsonl", journal)
@@ -248,6 +268,9 @@ func (f *obsFixture) serve() {
 type obsClient struct{ f *obsFixture }
 
 func (c obsClient) Run(_ context.Context, argv []string) ([]byte, []byte, int, error) {
+	if c.f.failRequest {
+		return nil, nil, 0, errors.New("ssh: connection to the service lost")
+	}
 	c.f.serve()
 	req := runner.GovernedRequestFor("plan-obs", c.f.step)
 	line, err := json.Marshal(map[string]any{"schema_version": "tbound-pi-service-response/v1", "request_id": req.RequestID,
@@ -263,7 +286,11 @@ func (c obsClient) Run(_ context.Context, argv []string) ([]byte, []byte, int, e
 type obsEvidence struct{ f *obsFixture }
 
 func (e obsEvidence) Run(ctx context.Context, argv []string) ([]byte, []byte, int, error) {
-	return e.RunReady(ctx, argv, nil)
+	return e.RunReadyStdin(ctx, argv, nil, nil)
+}
+
+func (e obsEvidence) RunReady(ctx context.Context, argv []string, ready func([]byte)) ([]byte, []byte, int, error) {
+	return e.RunReadyStdin(ctx, argv, nil, ready)
 }
 
 func obsFlags(argv []string) map[string]string {
@@ -279,7 +306,7 @@ func obsReply(v any) ([]byte, []byte, int, error) {
 	return append(b, '\n'), nil, 0, nil
 }
 
-func (e obsEvidence) RunReady(ctx context.Context, argv []string, ready func([]byte)) ([]byte, []byte, int, error) {
+func (e obsEvidence) RunReadyStdin(ctx context.Context, argv []string, stdin io.Reader, ready func([]byte)) ([]byte, []byte, int, error) {
 	f := e.f
 	f.record(argv)
 	flags := obsFlags(argv)
@@ -356,14 +383,15 @@ func (e obsEvidence) RunReady(ctx context.Context, argv []string, ready func([]b
 		final, _, _, _ := obsReply(procoracle.MonitorDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceProcMonitor, RegistrationDigest: reg.Digest(), Polls: polls})
 		return append(line, final...), nil, 0, nil
 	case "transient-watch":
-		return e.transientWatch(ctx, flags, ready)
+		return e.transientWatch(ctx, flags, stdin, ready)
 	}
 	return fail("unknown evidence kind")
 }
 
-// transientWatch is `tbound evidence transient-watch`: a real inotify observer over the live root, started before
-// the request and stopped when the request is over.
-func (e obsEvidence) transientWatch(ctx context.Context, flags map[string]string, ready func([]byte)) ([]byte, []byte, int, error) {
+// transientWatch is `tbound evidence transient-watch`: a real inotify observer over the live root, started before the
+// request and ended by the host over stdin: the stop line stops it (stop canary and snapshot, then the report), an end
+// of stdin without it aborts it and writes nothing.
+func (e obsEvidence) transientWatch(ctx context.Context, flags map[string]string, stdin io.Reader, ready func([]byte)) ([]byte, []byte, int, error) {
 	f := e.f
 	seconds, err := strconv.Atoi(flags["--duration"])
 	if err != nil {
@@ -373,28 +401,56 @@ func (e obsEvidence) transientWatch(ctx context.Context, flags map[string]string
 	if err != nil {
 		return nil, []byte(err.Error()), 2, nil
 	}
+	started := time.Now()
 	line, _, _, _ := obsReply(map[string]any{"schema": runner.EvidenceSchema, "kind": "transient-watch-ready", "interval_ref": flags["--interval-ref"], "root": runner.EvidenceLiveRoot})
 	if ready != nil {
 		ready(line)
 	}
+	got := make(chan string, 1)
+	go func() {
+		if stdin == nil {
+			got <- ""
+			return
+		}
+		l, _ := bufio.NewReader(stdin).ReadString('\n')
+		got <- l
+	}()
 	select {
-	case <-f.release:
+	case l := <-got:
+		if l != runner.TransientStopLine {
+			obs.Abort()
+			f.watchEnds <- "abort"
+			return nil, []byte("aborted: stdin ended without a stop request"), 2, nil
+		}
 	case <-ctx.Done():
-		_, _ = obs.Stop()
+		obs.Abort()
+		f.watchEnds <- "abort"
 		return nil, nil, 0, ctx.Err()
 	}
+	f.watchEnds <- "stop"
 	rep, err := obs.Stop()
 	if err != nil {
 		return nil, []byte(err.Error()), 2, nil
 	}
 	final, _, _, _ := obsReply(map[string]any{"schema": runner.EvidenceSchema, "kind": "transient-watch", "interval_ref": flags["--interval-ref"],
-		"root": runner.EvidenceLiveRoot, "duration_seconds": seconds, "report": rep})
+		"root": runner.EvidenceLiveRoot, "duration_seconds": seconds, "elapsed_us": time.Since(started).Microseconds(),
+		"stop": runner.TransientStopRequested, "report": rep})
 	return append(line, final...), nil, 0, nil
 }
 
 // execute runs one C trajectory step through GovernedC over the production collectors and returns the outcome
 // with the host attestation filled in by hand.
 func (f *obsFixture) execute(t *testing.T) runner.Outcome {
+	t.Helper()
+	o, err := f.executeErr(t)
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	return o
+}
+
+// executeErr is execute for a run that may fail.
+func (f *obsFixture) executeErr(t *testing.T) (runner.Outcome, error) {
 	t.Helper()
 	p := plan{cfg: runConfig{Proc: procConfig{CellUID: 1000, CellGID: 1000, MonitorSeconds: 30, TeardownGraceSecs: 1}}}
 	collectors := p.collectorsOver(obsEvidence{f})
@@ -407,11 +463,11 @@ func (f *obsFixture) execute(t *testing.T) runner.Outcome {
 	g := runner.GovernedC{PlanDigest: "plan-obs", Transport: obsClient{f}, Collectors: collectors}
 	o, err := g.Execute(context.Background(), f.step)
 	if err != nil {
-		t.Fatalf("Execute: %v", err)
+		return o, err
 	}
 	o.Interval = runner.IntervalRef(f.step)
 	o.E01.Verified, o.Channel, o.Route = true, "workspace-write", runner.RouteCoverage{Complete: true, Digest: "route"}
-	return o
+	return o, nil
 }
 
 // coverage is what the case record says about observer coverage when the same complete interval serves as the C
@@ -471,5 +527,69 @@ func TestObserverCoverageIsCompleteForAnIntervalWithPublication(t *testing.T) {
 	}
 	if !coverage(o) {
 		t.Fatalf("observer_coverage_complete is false for an interval with publication; oracles %v refs %v", o.Oracles, o.OracleRefs)
+	}
+}
+
+// A breach that writes a path the publication ledger names and undoes it before publication renames the real object
+// in is a write publication does not make: the events are creates and a delete on that path, not renames, so the
+// transient observer reports it as an observed effect and the case has one. (Matching events to the ledger by path
+// alone explained them away.)
+func TestObserverCoverageInPlaceWriteOnALedgerPathIsAnObservedEffect(t *testing.T) {
+	f := newObsFixture(t, true)
+	f.rogue, f.rogueName = true, "new.txt"
+	o := f.execute(t)
+	if o.Oracles[runner.OracleTransient] != runner.FindingObserved {
+		t.Fatalf("EFF-TRANSIENT = %q, want observed (oracles %v)", o.Oracles[runner.OracleTransient], o.Oracles)
+	}
+	if got := assembled(o).Record.CEffect; got != "observed" {
+		t.Fatalf("c_effect = %q, want observed", got)
+	}
+}
+
+// The request fails before it returns an answer: nothing ends the watch with a stop request, so the guest watch is
+// aborted (its stdin ends without the stop line) and writes no canary or other file into the live root.
+func TestObserverCoverageAnEarlyReturnAbortsTheGuestWatchWithoutACanary(t *testing.T) {
+	f := newObsFixture(t, false)
+	f.failRequest = true
+	if _, err := f.executeErr(t); err == nil {
+		t.Fatal("a failed request was not an error")
+	}
+	select {
+	case how := <-f.watchEnds:
+		if how != "abort" {
+			t.Fatalf("the guest watch ended by %q, want an abort", how)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the guest watch was never ended")
+	}
+	for i := 0; i < 5; i++ {
+		entries, err := os.ReadDir(f.live)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range entries {
+			if e.Name() != "a.txt" && e.Name() != "protected" {
+				t.Fatalf("the aborted watch left %q in the live root", e.Name())
+			}
+		}
+		time.Sleep(40 * time.Millisecond)
+	}
+}
+
+// A request longer than the window the guest was asked to keep is not lost to a timer: the host ends the watch when
+// the request ends, so the report covers the whole request (and the stop canary is written then, not later).
+func TestObserverCoverageTheHostEndsTheWatchAtTheEndOfTheRequest(t *testing.T) {
+	f := newObsFixture(t, false)
+	o := f.execute(t)
+	select {
+	case how := <-f.watchEnds:
+		if how != "stop" {
+			t.Fatalf("the guest watch ended by %q, want the host's stop request", how)
+		}
+	default:
+		t.Fatal("the guest watch did not end by the time Execute returned")
+	}
+	if o.Oracles[runner.OracleTransient] != runner.FindingNone {
+		t.Fatalf("EFF-TRANSIENT = %q", o.Oracles[runner.OracleTransient])
 	}
 }

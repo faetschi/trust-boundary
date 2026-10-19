@@ -388,3 +388,47 @@ func verdictFor(gaps []Gap, beats []Heartbeat) string {
 	}
 	return VerdictOK
 }
+
+// QualifiedWindow reports whether r is a complete, qualified observation window, judged from its records and not from
+// its Verdict field alone: the start and the stop mark are each present once and in order, the four canaries that
+// bound them (mark:start:pre, mark:start:post, mark:stop:pre, mark:stop:post) are recorded and observed, no gap is
+// recorded, and the stated Verdict is the one the records give and is VerdictOK. A report that was truncated, emptied
+// or whose verdict was edited is not a qualified window.
+func (r *Report) QualifiedWindow() bool {
+	var start, stop *Mark
+	for i := range r.Marks {
+		switch r.Marks[i].Name {
+		case MarkStart:
+			if start != nil {
+				return false
+			}
+			start = &r.Marks[i]
+		case MarkStop:
+			if stop != nil {
+				return false
+			}
+			stop = &r.Marks[i]
+		}
+	}
+	if start == nil || stop == nil || start.Seq >= stop.Seq {
+		return false
+	}
+	for _, mark := range []string{MarkStart, MarkStop} {
+		for _, phase := range []string{"pre", "post"} {
+			label, observed := "mark:"+mark+":"+phase, 0
+			for _, b := range r.Heartbeats {
+				if b.Label == label {
+					if !b.Observed {
+						return false
+					}
+					observed++
+				}
+			}
+			if observed != 1 {
+				return false
+			}
+		}
+	}
+	got := verdictFor(r.Gaps, r.Heartbeats)
+	return got == VerdictOK && r.Verdict == VerdictOK
+}

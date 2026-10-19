@@ -119,10 +119,13 @@
 //     holds: E04PublicationEvidence), and GovernedC records the reports with RecordWS. A store with no
 //     publication evidence leaves them absent, so only an interval evidenced publication-free is exempt.
 //     EFF-TRANSIENT has a source of its own: TransientCollector starts the guest transient-watch (effectoracle,
-//     inotify, over the live root) before the request and reads its report after it, and decides the finding
-//     against the publication ledger (an event the ledger does not name is observed, a ledger change with no
-//     event is lost); its window is the PROC monitor's, a request that outlasts it is lost, and the instrument
-//     writes a liveness canary into the live root at its start and its end.
+//     inotify, over the live root) before the request and ends it itself, over the session's stdin, when the
+//     request is over (a session that ends without that stop request aborts the guest watch, which then writes
+//     nothing), and decides the finding against the publication ledger: publication's own writes are renames, so
+//     an event the ledger does not explain, of any kind, is observed, a ledger change with no event it explains
+//     is lost, and so is a report that is not a complete qualified window by its own records or a window that
+//     does not cover the request. The PROC monitor's time is only the cap on a watch nobody ended. The
+//     instrument writes a liveness canary into the live root at its start and its end (not after the session is gone).
 //     IntervalCollectors lets a collector act before the request; CollectorSet joins
 //     collectors. Any SSH or parse failure is ErrEvidenceAbsent, so coverage stays
 //     incomplete and never reads as none.

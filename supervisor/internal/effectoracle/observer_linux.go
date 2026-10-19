@@ -194,6 +194,21 @@ func (o *Observer) Stop() (*Report, error) {
 	return o.report, nil
 }
 
+// Abort ends the observation without a report. Unlike Stop it takes no stop mark and writes no canary or any other
+// file into the root: the caller uses it when the window can no longer be reported (the process that asked for it
+// is gone), so that nothing is written into the root after the session that owned the observer. Stop after Abort
+// returns ErrStopped. Abort is idempotent and does nothing after Stop.
+func (o *Observer) Abort() {
+	o.ctrl.Lock()
+	defer o.ctrl.Unlock()
+	if o.stopped {
+		return
+	}
+	o.stopped = true
+	_ = o.src.Close()
+	<-o.readerDone
+}
+
 // readLoop applies kernel records in queue order until the source is closed or
 // a read or parse fails. A failure is recorded as a read_error gap. The reader
 // then stops, so later canaries fail fast.

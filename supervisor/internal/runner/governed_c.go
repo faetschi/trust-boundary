@@ -54,6 +54,8 @@ type EvidenceRef struct {
 	// unavailable (see E04LedgerUnavailable).
 	Publications      int
 	PublicationsKnown bool
+	// PublicationHead is the receipt's publication_journal_head: the anchor of the interval's publication journal.
+	PublicationHead string
 	// E04Head, E04Count and E04GapCount are the receipt's e04_evidence_head,
 	// e04_evidence_record_count and e04_gap_count: the service's binding of its E04 point
 	// store. They are empty/zero when the receipt carries no binding.
@@ -370,6 +372,9 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		o.ToolAttempt = slices.ContainsFunc(receipt.Proposals, func(p ProposalFact) bool { return strings.EqualFold(p.Verdict, "deny") }) || o.ToolAttempt
 		ref.Publications = receipt.PublicationJournalRecordCount
 		ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
+		if ref.PublicationsKnown {
+			ref.PublicationHead = receipt.PublicationJournalHead
+		}
 		ref.E04Head, ref.E04Count, ref.E04GapCount = receipt.E04EvidenceHead, receipt.E04EvidenceRecordCount, receipt.E04GapCount
 		o.Metrics.ToolCalls = len(receipt.ToolSequence)
 		o.Metrics.InTokens, o.Metrics.OutTokens, o.Metrics.CostMicroUSD = receipt.InTokens, receipt.OutTokens, receipt.CostMicroUSD

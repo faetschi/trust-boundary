@@ -246,6 +246,9 @@ func e04DocRecords(doc E04PointsDoc, interval, receiptHead string, receiptCount 
 type PublicationInputs struct {
 	WS05 *wsoracle.WS05Input
 	WS06 *wsoracle.WS06Input
+	// TransactionID and PublicationID are the publication transaction the store recorded (E04PublicationEvidence). The
+	// collector checks them against the anchored publication journal (bindPublicationTransaction).
+	TransactionID, PublicationID string
 }
 
 // E04PublicationInputs verifies doc against the receipt binding (E04PointsInput) and builds the publication
@@ -263,12 +266,16 @@ func E04PublicationInputs(doc E04PointsDoc, interval, receiptHead string, receip
 func publicationInputsOf(records []E04PointRecord) (PublicationInputs, error) {
 	var post *E04PointRecord
 	manifests := map[string]wsoracle.Manifest{}
+	seen := map[string]bool{}
 	for i := range records {
 		p := &records[i]
+		// A repeated point is refused for every point, as E04PointsInput does: a last-wins read would let a second
+		// record replace the baseline or the pre-publication manifest.
+		if seen[p.Point] {
+			return PublicationInputs{}, e04PointsAbsent("point %s is recorded twice for the run", p.Point)
+		}
+		seen[p.Point] = true
 		if p.Point == wsoracle.PointPostPublication {
-			if post != nil {
-				return PublicationInputs{}, e04PointsAbsent("point %s is recorded twice for the run", p.Point)
-			}
 			post = p
 		}
 		if p.Status == E04StatusSnapshot && p.Manifest != nil {
@@ -291,7 +298,8 @@ func publicationInputsOf(records []E04PointRecord) (PublicationInputs, error) {
 	sealed.Label = "sealed"
 	baseline, pre, after := manifest(wsoracle.PointBaseline), manifest(wsoracle.PointPrePublication), manifest(wsoracle.PointPostPublication)
 	in := PublicationInputs{WS06: &wsoracle.WS06Input{AffectedPaths: slices.Clone(pub.AffectedPaths), Baseline: baseline, PrePublication: pre,
-		PostPublication: after, LockIdentity: pub.LockIdentity, PublicationResult: pub.Status}}
+		PostPublication: after, LockIdentity: pub.LockIdentity, PublicationResult: pub.Status},
+		TransactionID: pub.TransactionID, PublicationID: pub.PublicationID}
 	switch post.LedgerBasis {
 	case E04LedgerPublication:
 		in.WS05 = &wsoracle.WS05Input{Baseline: baseline, Ledger: slices.Clone(post.Ledger), Sealed: sealed, PrePublication: pre, PostPublication: after}
@@ -299,4 +307,33 @@ func publicationInputsOf(records []E04PointRecord) (PublicationInputs, error) {
 		in.WS05 = &wsoracle.WS05Input{Baseline: baseline, Sealed: sealed, PrePublication: pre, PostPublication: after}
 	}
 	return in, nil
+}
+
+// bindPublicationTransaction checks the publication transaction the E04 store recorded against the publication
+// journal the receipt anchors. The journal must verify as an audit chain that ends on head (the receipt's
+// publication_journal_head), and one of its publication_prepare records must be the transaction and publication the
+// store names: a store of another transaction, or one that names a transaction the service never prepared, is
+// absent evidence, never a publication that happened.
+func bindPublicationTransaction(journal []byte, head string, in PublicationInputs) error {
+	if in.TransactionID == "" {
+		return e04PointsAbsent("the store names no publication transaction")
+	}
+	trace, err := audit.Verify(bytes.NewReader(journal))
+	if err != nil || len(trace.Records) == 0 || trace.Records[len(trace.Records)-1].Hash != head {
+		return e04PointsAbsent("the publication journal does not end on the receipt's anchor head")
+	}
+	for _, record := range trace.Records {
+		if record.Event.Kind != "publication_prepare" {
+			continue
+		}
+		var prepare struct {
+			TransactionID string `json:"transaction_id"`
+			PublicationID string `json:"publication_id"`
+		}
+		if json.Unmarshal(record.Event.Data, &prepare) == nil &&
+			prepare.TransactionID == in.TransactionID && prepare.PublicationID == in.PublicationID {
+			return nil
+		}
+	}
+	return e04PointsAbsent("the anchored publication journal holds no transaction %s of publication %s", in.TransactionID, in.PublicationID)
 }
