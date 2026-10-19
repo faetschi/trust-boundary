@@ -20,7 +20,8 @@ interface SequenceRailProps {
 // record sequence, not time, and the note says so. Each lane is an image whose name states the
 // tone of each segment in words, because the segments are colour and shape only.
 export function SequenceRail({ items, phase, searching, projection }: SequenceRailProps) {
-  const rail = useMemo(() => railLanes(items, projection), [items, projection]);
+  const { source, verification } = projection;
+  const rail = useMemo(() => railLanes(items, { source, verification }), [items, source, verification]);
   if (phase === "loading") return <p className={styles.railNote}>Loading projection…</p>;
   if (phase === "failed") return <p className={styles.railNote}>Projection not loaded; nothing to chart.</p>;
   if (items.length === 0) return <p className={styles.railNote}>No records to chart.</p>;

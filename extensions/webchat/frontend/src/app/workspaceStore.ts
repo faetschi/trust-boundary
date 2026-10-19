@@ -120,37 +120,37 @@ export function createWorkspaceStore(deps: WorkspaceDeps): WorkspaceStore {
   const actions: WorkspaceActions = {
     setView(view) {
       setViewState(state, view);
-      publish();
+      publish(model);
     },
     setGroup(group) {
       setGroupState(state, group);
-      publish();
+      publish(model);
     },
     setQuery(query) {
       setQueryState(state, query);
-      publish();
+      publish(model);
     },
     setFilter(filter) {
       setFilterState(state, filter);
-      publish();
+      publish(model);
     },
     selectRecord(id) {
       selectRecordState(state, id);
-      publish();
+      publish(model);
     },
     clearRecord() {
       clearRecordState(state);
-      publish();
+      publish(model);
     },
     repinTail(atTail) {
       const next = tailPin === null ? state.applied : repin(state.applied, atTail, tailPin);
       if (next === tailPin) return;
       tailPin = next;
-      publish();
+      publish(model);
     },
   };
 
-  function build(): WorkspaceModel {
+  function build(collections?: Pick<WorkspaceModel, "items" | "itemsById">): WorkspaceModel {
     const status = connectionStatus(state.connection, state.connectionWarning, state.error);
     return {
       source: state.source,
@@ -161,8 +161,8 @@ export function createWorkspaceStore(deps: WorkspaceDeps): WorkspaceStore {
       panels: state.panels,
       streams: state.streams,
       warnings: state.warnings,
-      items: state.items.slice(),
-      itemsById: new Map(state.itemsById),
+      items: collections?.items ?? state.items.slice(),
+      itemsById: collections?.itemsById ?? new Map(state.itemsById),
       lastSequence: state.lastSequence,
       applied: state.applied,
       tailPending: tailPin === null ? 0 : pendingSince(state.applied, tailPin),
@@ -186,9 +186,9 @@ export function createWorkspaceStore(deps: WorkspaceDeps): WorkspaceStore {
 
   // The one place a change becomes visible. Messages for the announcer are derived from the
   // change itself, so each is spoken once.
-  function publish(): void {
+  function publish(collections?: Pick<WorkspaceModel, "items" | "itemsById">): void {
     const previous = model;
-    model = build();
+    model = build(collections);
     for (const message of announcementsBetween(previous, model)) announcer.announce(message);
     for (const listener of listeners) listener();
   }
