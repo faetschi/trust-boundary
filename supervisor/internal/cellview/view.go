@@ -24,8 +24,6 @@ type Fact struct {
 	UID  uint32 `json:"u"`
 	GID  uint32 `json:"g"`
 	Size int64  `json:"z,omitempty"`
-	// Link is the text of a symbolic link.
-	Link string `json:"l,omitempty"`
 	// ACL names the POSIX ACLs the file has ("access", "default", "access+default") or ACLUnreadable. It is
 	// read for directories and regular files only: permissions are not checked on a symbolic link.
 	ACL string `json:"a,omitempty"`
@@ -66,17 +64,17 @@ func Measure(src Source, target string) View {
 	v.EUID, v.EGID, v.Groups = src.Identity()
 	v.LSM = src.LSM()
 	v.OverflowUID, v.OverflowGID, v.OverflowRead = src.Overflow()
-	_, err := Resolve(target, func(p string) (Node, error) {
+	err := Walk(target, func(p string) (string, error) {
 		f, err := src.Lstat(p)
 		if err != nil {
-			return Node{}, fmt.Errorf("%s: %w", p, err)
+			return "", fmt.Errorf("%s: %w", p, err)
 		}
 		f.Path = p
 		if f.Kind == KindDir || f.Kind == KindFile {
 			f.ACL = src.ACL(p)
 		}
 		v.Facts = append(v.Facts, f)
-		return Node{Kind: f.Kind, Link: f.Link}, nil
+		return f.Kind, nil
 	})
 	if err != nil {
 		v.Err = err.Error()
@@ -115,11 +113,11 @@ func (v View) Permits(f Fact, bit uint32) bool {
 
 // Problems checks the measurement of target for the cell identity (cellUID, cellGID). It returns the
 // reasons a refusal of the file inside the cell could be file permissions and not the cell's confinement:
-// a failed or incomplete walk, a path that ends inside the paths the cell may read, an ACL that is present
+// a failed or incomplete walk, a symbolic link on any component (the permission model has no fs.protected_symlinks rule), a path that ends inside the paths the cell may read, an ACL that is present
 // or unreadable on a component that counts, an owner or group that is the overflow id (the kernel's name for
 // an id the cell does not map, so the permission class is unknown) or overflow ids that were not read, and a
-// missing permission: search on every directory the walk
-// searched (a directory left by ".." included), read on the directory that holds the name, and read on the
+// missing permission: search on every directory above
+// the target, read on the directory that holds the name, and read on the
 // file. An empty result means ordinary permissions would have allowed the open and the listing.
 func (v View) Problems(target string, cellUID, cellGID uint32, admitted []string) []string {
 	var problems []string
@@ -154,19 +152,18 @@ func (v View) Problems(target string, cellUID, cellGID uint32, admitted []string
 		}
 		facts[f.Path] = f
 	}
-	walk, err := Resolve(target, func(p string) (Node, error) {
+	if err := Walk(target, func(p string) (string, error) {
 		f, ok := facts[p]
 		if !ok {
-			return Node{}, fmt.Errorf("no fact for %s", p)
+			return "", fmt.Errorf("no fact for %s", p)
 		}
-		return Node{Kind: f.Kind, Link: f.Link}, nil
-	})
-	if err != nil {
+		return f.Kind, nil
+	}); err != nil {
 		return append(problems, "the recorded components do not make the walk of the target: "+err.Error())
 	}
 	for _, root := range admitted {
-		if walk.Resolved == root || strings.HasPrefix(walk.Resolved, root+"/") {
-			add("the target resolves to %s, inside the cell's admitted path %s: a read of it would not be a policy failure", walk.Resolved, root)
+		if target == root || strings.HasPrefix(target, root+"/") {
+			add("the target %s is inside the cell's admitted path %s: a read of it would not be a policy failure", target, root)
 		}
 	}
 	acl := func(f Fact) {
@@ -181,7 +178,9 @@ func (v View) Problems(target string, cellUID, cellGID uint32, admitted []string
 			add("%s has owner %d:%d, the overflow id %d:%d of an owner the cell does not map: its permission class for the probe is unknown", f.Path, f.UID, f.GID, v.OverflowUID, v.OverflowGID)
 		}
 	}
-	for _, dir := range walk.Searched {
+	components, _ := Components(target)
+	listDir := path.Dir(target)
+	for _, dir := range components[:len(components)-1] {
 		f := facts[dir]
 		acl(f)
 		known(f)
@@ -189,19 +188,19 @@ func (v View) Problems(target string, cellUID, cellGID uint32, admitted []string
 			add("the cell identity cannot search the directory %s (mode %04o owner %d:%d) that the walk of the target passes", dir, f.Mode&0o7777, f.UID, f.GID)
 		}
 	}
-	list := facts[walk.ListDir]
+	list := facts[listDir]
 	known(list)
 	if !v.Permits(list, bitRead) {
-		add("the cell identity cannot list the directory %s of the target (mode %04o owner %d:%d)", walk.ListDir, list.Mode&0o7777, list.UID, list.GID)
+		add("the cell identity cannot list the directory %s of the target (mode %04o owner %d:%d)", listDir, list.Mode&0o7777, list.UID, list.GID)
 	}
-	file := facts[walk.Resolved]
+	file := facts[target]
 	acl(file)
 	known(file)
 	switch {
 	case file.Kind != KindFile || file.Size <= 0:
-		add("%s is not a non-empty regular file: there is nothing to read", walk.Resolved)
+		add("%s is not a non-empty regular file: there is nothing to read", target)
 	case !v.Permits(file, bitRead):
-		add("the target %s (mode %04o owner %d:%d) is not readable by the cell identity: a denial could be file permissions", walk.Resolved, file.Mode&0o7777, file.UID, file.GID)
+		add("the target %s (mode %04o owner %d:%d) is not readable by the cell identity: a denial could be file permissions", target, file.Mode&0o7777, file.UID, file.GID)
 	}
 	return problems
 }

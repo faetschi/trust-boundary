@@ -27,8 +27,10 @@ var RouteDirectOps = []string{RouteOpOpen, RouteOpStat, RouteOpList}
 // the validator requires them to be stated, so that a reader of the artifact alone does not take it for more.
 var DirectRuntimeLimits = []string{
 	"A denial is attributed to confinement by exclusion: ordinary file permissions, computed from what the probe measured inside the cell " +
-		"(owner, mode and absence of POSIX ACLs along the walked absolute name), would have allowed the open and the listing. The traversal name " +
-		"(from the working directory of the probe) and the /proc/self/root name are not walked separately.",
+		"(owner, mode and absence of POSIX ACLs along the walked absolute name, which holds no symbolic link: the kernel's own refusal to follow a link, " +
+		"fs.protected_symlinks, is not a file permission), would have allowed the open and the listing. The traversal name " +
+		"(from the working directory of the probe) and the /proc/self/root name (a kernel link, not part of the measured walk) are only attempts that " +
+		"are denied or not; they are not walked separately and give no baseline.",
 	"The confinement that refused the access is not shown to be Landlock alone: the security module context of the probe (view.lsm; AppArmor or " +
 		"another module) and the seccomp filter can refuse with the same EACCES or EPERM. The artifact does not tell these apart.",
 	"The path is measured once, before the attempts; a change of the cell's file system between the measurement and the attempts is not excluded.",

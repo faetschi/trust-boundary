@@ -446,7 +446,7 @@ func TestDirectRuntimeProbeJudgesWhatTheCellSeesAndNotTheImage(t *testing.T) {
 		acl   map[string]string
 	}{
 		"the workspace mount replaces /home/node with a link into /work": {facts: func(m map[string]cellview.Fact) {
-			m["/home/node"] = cellview.Fact{Path: "/home/node", Kind: cellview.KindLink, Mode: 0o777, Link: "/work/private"}
+			m["/home/node"] = cellview.Fact{Path: "/home/node", Kind: cellview.KindLink, Mode: 0o777}
 			m["/work"] = dirFact("/work", 0o755, 0)
 			m["/work/private"] = dirFact("/work/private", 0o755, 0)
 			m["/work/private/.profile"] = cellview.Fact{Path: "/work/private/.profile", Kind: cellview.KindFile, Mode: 0o644, Size: 807}
@@ -476,32 +476,26 @@ func TestDirectRuntimeProbeJudgesWhatTheCellSeesAndNotTheImage(t *testing.T) {
 	}
 }
 
-// Leaving a directory by ".." needs search permission on it, and a link that leads through a closed directory
-// counts as well as one that leads through an open directory.
-func TestDirectRuntimeProbeFollowsLinksAndDotDotAsTheKernelDoes(t *testing.T) {
-	linkFacts := func(locked uint32) func(map[string]cellview.Fact) {
+// A symbolic link on any component of the walked name is never a permission baseline: the kernel may refuse
+// to follow it (fs.protected_symlinks) for a reason the modes do not show.
+func TestDirectRuntimeProbeRefusesAnySymbolicLinkOnTheWalk(t *testing.T) {
+	linkAt := func(p string) func(map[string]cellview.Fact) {
 		return func(m map[string]cellview.Fact) {
-			d := func(p string, mode uint32) cellview.Fact {
-				return cellview.Fact{Path: p, Kind: cellview.KindDir, Mode: mode}
-			}
-			m["/home/node"] = cellview.Fact{Path: "/home/node", Kind: cellview.KindLink, Mode: 0o777, Link: "/locked/../public"}
-			m["/locked"], m["/public"] = d("/locked", locked), d("/public", 0o755)
-			m["/public/.profile"] = cellview.Fact{Path: "/public/.profile", Kind: cellview.KindFile, Mode: 0o644, Size: 9}
+			m[p] = cellview.Fact{Path: p, Kind: cellview.KindLink, Mode: 0o777, UID: 1000, GID: 1000}
 		}
 	}
-	if err := drRefusal(t, drBuildWith(t, drOpts{facts: linkFacts(0o700)})); err == nil {
-		t.Error("a link that leaves a 0700 directory by '..' gave a valid artifact")
-	} else if !strings.Contains(err.Error(), "/locked") {
-		t.Errorf("the refusal does not name the directory: %v", err)
+	for name, facts := range map[string]func(map[string]cellview.Fact){
+		"the final name is a link":     linkAt(drTarget),
+		"the home directory is a link": linkAt("/home/node"),
+		"the root is a link":           linkAt("/"),
+	} {
+		err := drRefusal(t, drBuildWith(t, drOpts{facts: facts}))
+		if err == nil || !strings.Contains(err.Error(), "symbolic link") {
+			t.Errorf("%s: %v", name, err)
+		}
 	}
-	if err := drRefusal(t, drBuildWith(t, drOpts{facts: linkFacts(0o711)})); err != nil {
-		t.Errorf("the same walk over a searchable directory: %v", err)
-	}
-	loop := func(m map[string]cellview.Fact) {
-		m["/home/node"] = cellview.Fact{Path: "/home/node", Kind: cellview.KindLink, Mode: 0o777, Link: "/home/node"}
-	}
-	if err := drRefusal(t, drBuildWith(t, drOpts{facts: loop})); err == nil {
-		t.Error("a link loop gave a valid artifact")
+	if err := drRefusal(t, drBuildWith(t, drOpts{})); err != nil {
+		t.Errorf("the path without a link: %v", err)
 	}
 }
 

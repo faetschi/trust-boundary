@@ -52,7 +52,8 @@ const (
 
 // D09RouteProbeMethods are the ways the probe names the target, in order: the absolute path, a parent
 // traversal from the cell's /work, and the kernel's own symbolic link to the root of the process
-// (/proc/self/root; the probe makes no symbolic link of its own, because it writes nothing).
+// (/proc/self/root; the probe makes no symbolic link of its own, because it writes nothing). Only the absolute
+// name is measured as the permission baseline; the other two are attempts that count as denials or not.
 var D09RouteProbeMethods = []string{"absolute", "traversal", "symlink"}
 
 // D09RouteProbeOps are the operations tried by each method, in order.
@@ -62,7 +63,8 @@ var D09RouteProbeOps = []string{D09RouteProbeOpOpen, D09RouteProbeOpStat, D09Rou
 type D09RouteProbe struct {
 	Name string `json:"name"`
 	// Target is the registered outside-workspace file. It must lie outside every path of the template's
-	// Landlock ruleset.
+	// Landlock ruleset, and its path must hold no symbolic link on any component: the permission baseline is
+	// measured on that path and refuses a link (fs.protected_symlinks is not a file permission).
 	Target string `json:"target"`
 	// Control is a file the cell may read (inside its ruleset), read in the same run.
 	Control string `json:"control"`

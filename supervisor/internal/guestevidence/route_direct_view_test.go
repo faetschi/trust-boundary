@@ -112,18 +112,19 @@ func TestDirectRuntimeArtifactMutations(t *testing.T) {
 }
 
 // Reproductions of the review findings against the first direct-runtime baseline. The baseline judged the
-// image, where the cell sees its mounts, and its walk left a directory by ".." without the search permission
-// the kernel checks. Judged from what the cell measured, both are refused, and so is a key the run does not pin.
+// image, where the cell sees its mounts, and followed symbolic links, where the kernel's refusal to follow a link
+// owned by another user in a sticky directory (fs.protected_symlinks) is not a file permission. Judged from
+// what the cell measured on a path without links, both are refused, and so is a key the run does not pin.
 func TestDirectRuntimeArtifactRefusesWhatTheFirstBaselineAccepted(t *testing.T) {
 	e := expect()
 	// The image holds a readable file at the target, but the cell's mounts replace /home/node with a link
 	// into the workspace.
 	mountReplaced := cloneDirect(goodDirectRuntime())
 	mountReplaced.View.Facts = []cellview.Fact{{Path: "/", Kind: cellview.KindDir, Mode: 0o755}, {Path: "/home", Kind: cellview.KindDir, Mode: 0o755},
-		{Path: "/home/node", Kind: cellview.KindLink, Mode: 0o777, Link: "/work/private"}, {Path: "/work", Kind: cellview.KindDir, Mode: 0o755},
+		{Path: "/home/node", Kind: cellview.KindLink, Mode: 0o777}, {Path: "/work", Kind: cellview.KindDir, Mode: 0o755},
 		{Path: "/work/private", Kind: cellview.KindDir, Mode: 0o755}, {Path: "/work/private/.profile", Kind: cellview.KindFile, Mode: 0o644, Size: 807}}
 	err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, mountReplaced), e)
-	if err == nil || !strings.Contains(err.Error(), "admitted path /work") {
+	if err == nil || !strings.Contains(err.Error(), "symbolic link") {
 		t.Errorf("a target the cell's mounts lead into the workspace: %v", err)
 	}
 	// The mount shows a directory the cell cannot search where the image has an open one.
@@ -132,19 +133,14 @@ func TestDirectRuntimeArtifactRefusesWhatTheFirstBaselineAccepted(t *testing.T) 
 	if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, closed), e); err == nil {
 		t.Error("a directory the mounts closed was judged by the image's modes")
 	}
-	// A link whose text goes through a 0700 directory and back by "..": the kernel needs search on it.
-	dotdot := cloneDirect(goodDirectRuntime())
-	dotdot.View.Facts = []cellview.Fact{{Path: "/", Kind: cellview.KindDir, Mode: 0o755}, {Path: "/home", Kind: cellview.KindDir, Mode: 0o755},
-		{Path: "/home/node", Kind: cellview.KindLink, Mode: 0o777, Link: "/locked/../public"}, {Path: "/locked", Kind: cellview.KindDir, Mode: 0o700},
-		{Path: "/public", Kind: cellview.KindDir, Mode: 0o755}, {Path: "/public/.profile", Kind: cellview.KindFile, Mode: 0o644, Size: 807}}
-	err = Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, dotdot), e)
-	if err == nil || !strings.Contains(err.Error(), "cannot search the directory /locked") {
-		t.Errorf("leaving a 0700 directory by '..': %v", err)
-	}
-	// With the directory searchable the same artifact is valid: the refusal is about permission, not the link.
-	dotdot.View.Facts[3].Mode = 0o711
-	if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, dotdot), e); err != nil {
-		t.Errorf("a walk over a searchable directory: %v", err)
+	// A link owned by another user in a sticky world-writable directory: the open fails with EACCES from
+	// fs.protected_symlinks although the target's modes allow it.
+	sticky := cloneDirect(goodDirectRuntime())
+	sticky.View.Facts = []cellview.Fact{{Path: "/", Kind: cellview.KindDir, Mode: 0o755}, {Path: "/home", Kind: cellview.KindDir, Mode: 0o1777},
+		{Path: "/home/node", Kind: cellview.KindDir, Mode: 0o755, UID: 1000, GID: 1000}, {Path: "/home/node/.profile", Kind: cellview.KindLink, Mode: 0o777, UID: 1000, GID: 1000}}
+	err = Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, sticky), e)
+	if err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Errorf("a final symbolic link: %v", err)
 	}
 	// A profile verified under a key other than the pinned one is refused, whatever the facts say.
 	e.AdminPubkeyDigest = digestOf("the pinned admin key")

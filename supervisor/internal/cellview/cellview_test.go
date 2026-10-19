@@ -50,18 +50,13 @@ func (f *fakeFS) Overflow() (uint32, uint32, bool) {
 	return f.overflowUID, f.overflowGID, !f.overflowBroken
 }
 
-func (f *fakeFS) lookup(p string) (Node, error) {
-	fact, err := f.Lstat(p)
-	return Node{Kind: fact.Kind, Link: fact.Link}, err
-}
-
 func dir(p string, mode, uid uint32) Fact {
 	return Fact{Path: p, Kind: KindDir, Mode: mode, UID: uid, GID: uid}
 }
 func file(p string, mode, uid uint32, size int64) Fact {
 	return Fact{Path: p, Kind: KindFile, Mode: mode, UID: uid, GID: uid, Size: size}
 }
-func link(p, to string) Fact { return Fact{Path: p, Kind: KindLink, Mode: 0o777, Link: to} }
+func link(p string) Fact { return Fact{Path: p, Kind: KindLink, Mode: 0o777} }
 
 // openHome is a world-readable file below searchable directories.
 func openHome() *fakeFS {
@@ -96,11 +91,15 @@ func TestMeasureRecordsEveryComponentWithTheCellIdentity(t *testing.T) {
 }
 
 func TestMeasureReadsTheACLOfDirectoriesAndFilesOnly(t *testing.T) {
-	fs := newFS(dir("/", 0o755, 0), dir("/a", 0o755, 0), link("/a/l", "/b"), dir("/b", 0o755, 0), file("/b/f", 0o644, 0, 1))
-	Measure(fs, "/a/l/f")
+	fs := newFS(dir("/", 0o755, 0), dir("/a", 0o755, 0), dir("/a/b", 0o755, 0), file("/a/b/f", 0o644, 0, 1))
+	Measure(fs, "/a/b/f")
 	slices.Sort(fs.acled)
-	if want := []string{"/", "/a", "/b", "/b/f"}; !slices.Equal(fs.acled, want) {
+	if want := []string{"/", "/a", "/a/b", "/a/b/f"}; !slices.Equal(fs.acled, want) {
 		t.Errorf("ACLs read for %v, want %v", fs.acled, want)
+	}
+	fs = newFS(dir("/", 0o755, 0), link("/a"), dir("/b", 0o755, 0))
+	if v := Measure(fs, "/a/f"); v.Err == "" || len(v.Facts) != 2 || v.Facts[1].Kind != KindLink {
+		t.Errorf("the walk went past a link: %+v", v)
 	}
 }
 
@@ -119,10 +118,10 @@ func TestMeasureFailsClosedOnAComponentItCannotExamine(t *testing.T) {
 // replace /home/node with a link into the workspace, or with a directory the cell cannot search. The
 // in-cell facts show the mount, not the image.
 func TestAPathAMountReplacesIsJudgedByWhatTheCellSees(t *testing.T) {
-	fs := newFS(dir("/", 0o755, 0), dir("/home", 0o755, 0), link("/home/node", "/work/private"),
+	fs := newFS(dir("/", 0o755, 0), dir("/home", 0o755, 0), link("/home/node"),
 		dir("/work", 0o755, 0), dir("/work/private", 0o755, 0), file("/work/private/.profile", 0o644, 0, 5))
 	got := problemsOf(fs, "/home/node/.profile")
-	if len(got) == 0 || !strings.Contains(strings.Join(got, ";"), "admitted path /work") {
+	if len(got) == 0 || !strings.Contains(strings.Join(got, ";"), "symbolic link") {
 		t.Errorf("a target that the mounts lead into the workspace: %v", got)
 	}
 	fs = newFS(dir("/", 0o755, 0), dir("/home", 0o755, 0), dir("/home/node", 0o700, 0), file("/home/node/.profile", 0o644, 0, 5))
@@ -131,58 +130,41 @@ func TestAPathAMountReplacesIsJudgedByWhatTheCellSees(t *testing.T) {
 	}
 }
 
-// Leaving a directory by ".." needs search permission on it.
-func TestLeavingADirectoryByDotDotNeedsSearchPermissionOnIt(t *testing.T) {
-	facts := []Fact{dir("/", 0o755, 0), dir("/locked", 0o700, 0), dir("/public", 0o755, 0), file("/public/f", 0o644, 0, 3)}
-	fs := newFS(append(facts, link("/start", "/locked/../public"))...)
-	w, err := Resolve("/start/f", fs.lookup)
-	if err != nil || w.Resolved != "/public/f" || !slices.Contains(w.Searched, "/locked") {
-		t.Fatalf("walk = %+v, %v", w, err)
-	}
-	got := problemsOf(fs, "/start/f")
-	if len(got) != 1 || !strings.Contains(got[0], "/locked") || !strings.Contains(got[0], "cannot search") {
-		t.Errorf("problems = %v", got)
-	}
-	fs.facts["/locked"] = dir("/locked", 0o711, 0)
-	if got := problemsOf(fs, "/start/f"); len(got) != 0 {
-		t.Errorf("a directory that can be searched: %v", got)
+// The target inside the workspace is refused for what it is, with or without a mount that leads there.
+func TestATargetInsideTheAdmittedPathsIsRefused(t *testing.T) {
+	fs := newFS(dir("/", 0o755, 0), dir("/work", 0o755, 0), dir("/work/private", 0o755, 0), file("/work/private/.profile", 0o644, 0, 5))
+	got := problemsOf(fs, "/work/private/.profile")
+	if len(got) == 0 || !strings.Contains(strings.Join(got, ";"), "admitted path /work") {
+		t.Errorf("a target inside the workspace: %v", got)
 	}
 }
 
-func TestResolveFollowsLinksDotsAndFailsOnLoops(t *testing.T) {
-	fs := newFS(dir("/", 0o755, 0), dir("/srv", 0o755, 0), dir("/srv/home", 0o755, 0), file("/srv/home/f", 0o644, 0, 1), link("/home", "srv/home"),
-		link("/loop", "/loop"), link("/dots", "srv/./home/../home"), link("/up", "srv/./home/.."), file("/file", 0o644, 0, 1))
-	for name, c := range map[string]struct {
-		target, resolved, listDir string
-		searched                  []string
-	}{
-		"relative link to a directory": {"/home/f", "/srv/home/f", "/srv/home", []string{"/", "/srv"}},
-		"dot and dot-dot":              {"/dots/f", "/srv/home/f", "/srv/home", []string{"/", "/srv", "/srv/home"}},
-		"link ending in dot-dot":       {"/up/home/f", "/srv/home/f", "/srv/home", []string{"/", "/srv", "/srv/home"}},
-	} {
-		w, err := Resolve(c.target, fs.lookup)
-		if err != nil || w.Resolved != c.resolved || w.ListDir != c.listDir {
-			t.Errorf("%s: %+v %v", name, w, err)
-			continue
-		}
-		for _, d := range c.searched {
-			if !slices.Contains(w.Searched, d) {
-				t.Errorf("%s: %s not searched (searched %v)", name, d, w.Searched)
-			}
-		}
+func TestWalkLooksUpEveryComponentAndRefusesLinksAndNonDirectories(t *testing.T) {
+	fs := newFS(dir("/", 0o755, 0), dir("/srv", 0o755, 0), dir("/srv/home", 0o755, 0), file("/srv/home/f", 0o644, 0, 1), link("/home"),
+		link("/srv/l"), file("/file", 0o644, 0, 1))
+	lookup := func(p string) (string, error) {
+		f, err := fs.Lstat(p)
+		return f.Kind, err
+	}
+	if err := Walk("/srv/home/f", lookup); err != nil {
+		t.Errorf("a path without links: %v", err)
+	}
+	if got, _ := Components("/srv/home/f"); !slices.Equal(got, []string{"/", "/srv", "/srv/home", "/srv/home/f"}) {
+		t.Errorf("components = %v", got)
 	}
 	for name, target := range map[string]string{
-		"a loop":                  "/loop/f",
+		"a link directory":        "/home/f",
+		"a link as the last name": "/srv/l",
 		"a name below a file":     "/file/f",
 		"a missing name":          "/srv/absent",
 		"a relative target":       "srv/home/f",
 		"an unclean target":       "/srv//home/f",
+		"a dot-dot target":        "/srv/../srv/home/f",
 		"the root":                "/",
-		"dot-dot below a file":    "/file/../srv/home/f",
 		"a parent that is a file": "/srv/home/f/x",
 	} {
-		if w, err := Resolve(target, fs.lookup); err == nil {
-			t.Errorf("%s: resolved to %+v", name, w)
+		if err := Walk(target, lookup); err == nil {
+			t.Errorf("%s: walked", name)
 		}
 	}
 }
@@ -249,8 +231,8 @@ func TestProblemsNameWhatPermissionsWouldAllowOrRefuse(t *testing.T) {
 		"the cell's group has no x":           func(fs *fakeFS) { fs.facts["/home"] = Fact{Path: "/home", Kind: KindDir, Mode: 0o705, GID: cellGID} },
 		"the probe is not the cell identity":  func(fs *fakeFS) { fs.euid = 0 },
 		"the probe has another group":         func(fs *fakeFS) { fs.egid = 5 },
-		"the target is inside the workspace":  func(fs *fakeFS) { fs.facts["/home/node"] = link("/home/node", "/work") },
-		"the root is a link":                  func(fs *fakeFS) { fs.facts["/"] = link("/", "/x") },
+		"the target is inside the workspace":  func(fs *fakeFS) { fs.facts["/home/node"] = link("/home/node") },
+		"the root is a link":                  func(fs *fakeFS) { fs.facts["/"] = link("/") },
 		"a directory is missing from the run": func(fs *fakeFS) { delete(fs.facts, "/home") },
 	} {
 		fs := openHome()
@@ -369,5 +351,28 @@ func TestMappedIdsStillPassWithTheOverflowIdsRecorded(t *testing.T) {
 	}
 	if p := v.Problems("/home/node/.profile", cellUID, cellGID, admitted); len(p) != 0 {
 		t.Errorf("mapped owners: %v", p)
+	}
+}
+
+// The reviewer's scenario for fs.protected_symlinks: the registered name is a symbolic link owned by
+// another user in a sticky world-writable directory. The target's own permissions allow the read, yet with
+// protected_symlinks=1 the open fails with EACCES. The permission model has no such rule, so it refuses any
+// walk that passes a symbolic link, whichever component it is.
+func TestAWalkThatPassesASymbolicLinkIsNeverTheDACBaseline(t *testing.T) {
+	sticky := dir("/srv/drop", 0o1777, 0)
+	for name, fs := range map[string]*fakeFS{
+		"the final component is a link in a sticky world-writable directory": newFS(dir("/", 0o755, 0), dir("/srv", 0o755, 0), sticky,
+			dir("/real", 0o755, 0), file("/real/token", 0o644, 0, 9), link("/srv/drop/token")),
+		"an intermediate component is a link": newFS(dir("/", 0o755, 0), dir("/srv", 0o755, 0), link("/srv/drop"),
+			dir("/real", 0o755, 0), file("/real/token", 0o644, 0, 9)),
+	} {
+		got := problemsOf(fs, "/srv/drop/token")
+		if len(got) == 0 || !strings.Contains(strings.Join(got, ";"), "symbolic link") {
+			t.Errorf("%s: %v", name, got)
+		}
+	}
+	fs := newFS(dir("/", 0o755, 0), dir("/srv", 0o755, 0), sticky, file("/srv/drop/token", 0o644, 0, 9))
+	if got := problemsOf(fs, "/srv/drop/token"); len(got) != 0 {
+		t.Errorf("the same name without a link: %v", got)
 	}
 }

@@ -50,7 +50,7 @@ func (OSRouteProbeFS) List(path string) error {
 }
 
 // Lstat reads the metadata of path without following a final symbolic link (fstatat with
-// AT_SYMLINK_NOFOLLOW) and, for a symbolic link, its text. Landlock does not mediate either call.
+// AT_SYMLINK_NOFOLLOW). Landlock does not mediate either call.
 func (OSRouteProbeFS) Lstat(path string) (cellview.Fact, error) {
 	var st syscall.Stat_t
 	if err := syscall.Lstat(path, &st); err != nil {
@@ -64,12 +64,6 @@ func (OSRouteProbeFS) Lstat(path string) (cellview.Fact, error) {
 		f.Kind = cellview.KindFile
 	case syscall.S_IFLNK:
 		f.Kind = cellview.KindLink
-		buf := make([]byte, 4096)
-		n, err := syscall.Readlink(path, buf)
-		if err != nil {
-			return cellview.Fact{}, err
-		}
-		f.Link = string(buf[:n])
 	default:
 		f.Kind = cellview.KindOther
 	}

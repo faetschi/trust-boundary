@@ -3,16 +3,18 @@
 //
 // The cell is measured, not emulated: the facts are the lstat results the process itself gets for every
 // component of the path, in the mount namespace it runs in, so mounts that replace image paths are part
-// of them. Resolve is the one implementation of the kernel's path walk (symbolic links, "." and ".."),
-// run by the cell against its real file system (Measure) and again by the validator against the recorded
-// facts (View.Problems), so both agree on which directories the walk had to search.
+// of them. Walk is the one definition of which components the measurement covers, run by the cell against
+// its real file system (Measure) and again by the validator against the recorded facts (View.Problems).
+//
+// The path must hold no symbolic link. Linux refuses to follow a link owned by another user in a sticky
+// world-writable directory (fs.protected_symlinks), a rule that file permissions do not describe, so a
+// walk that passes a link could not tell a permission denial from a confinement denial.
 package cellview
 
 import (
-	"errors"
 	"fmt"
 	"path"
-	"strings"
+	"slices"
 )
 
 // The kinds of a node.
@@ -23,141 +25,43 @@ const (
 	KindOther = "o"
 )
 
-// MaxLinks is the number of symbolic links one walk may follow (the kernel's limit).
-const MaxLinks = 40
+// Lookup returns the kind of the component at p (lstat: a final symbolic link is not followed).
+type Lookup func(p string) (string, error)
 
-// Node is what lstat shows of a component: its kind and, for a symbolic link, its text.
-type Node struct {
-	Kind string
-	Link string
-}
-
-// Lookup returns the node at p without following a final symbolic link. p is absolute and holds no
-// symbolic link, "." or "..": the walk resolves them before it asks.
-type Lookup func(p string) (Node, error)
-
-// Walk is the outcome of resolving a path.
-type Walk struct {
-	// Resolved is the file the path names once every symbolic link is followed.
-	Resolved string
-	// ListDir is the directory that holds the last name of the path as written (the directory a listing
-	// of "the directory of the path" opens).
-	ListDir string
-	// Searched are the directories in which the walk looked up a name, "." and ".." included, in order of
-	// first use. The kernel needs search permission on each of them. A directory left by ".." is among
-	// them: the kernel checks it before it steps to the parent.
-	Searched []string
-}
-
-type resolver struct {
-	lookup   Lookup
-	nodes    map[string]Node
-	searched []string
-	seen     map[string]bool
-	links    int
-}
-
-// Resolve walks target (a clean absolute path) the way the kernel does.
-func Resolve(target string, lookup Lookup) (Walk, error) {
-	var w Walk
+// Components returns "/", every directory below it on the way to target, and target itself, in the order
+// the kernel looks them up. The kernel needs search permission on each of them but the last.
+func Components(target string) ([]string, error) {
 	if !path.IsAbs(target) || path.Clean(target) != target || target == "/" {
-		return w, fmt.Errorf("%q is not a clean absolute path of a file", target)
+		return nil, fmt.Errorf("%q is not a clean absolute path of a file", target)
 	}
-	r := &resolver{lookup: lookup, nodes: map[string]Node{}, seen: map[string]bool{}}
-	root, err := r.node("/")
-	if err != nil {
-		return w, err
+	parts := []string{target}
+	for p := path.Dir(target); ; p = path.Dir(p) {
+		parts = append(parts, p)
+		if p == "/" {
+			break
+		}
 	}
-	if root.Kind != KindDir {
-		return w, errors.New("/ is not a directory")
-	}
-	dir, last, err := r.walk("/", strings.Split(path.Dir(target), "/"))
-	if err != nil {
-		return w, err
-	}
-	if last.Kind != KindDir {
-		return w, fmt.Errorf("%s is not a directory", dir)
-	}
-	resolved, _, err := r.walk(dir, []string{path.Base(target)})
-	if err != nil {
-		return w, err
-	}
-	return Walk{Resolved: resolved, ListDir: dir, Searched: r.searched}, nil
+	slices.Reverse(parts)
+	return parts, nil
 }
 
-func (r *resolver) node(p string) (Node, error) {
-	if n, ok := r.nodes[p]; ok {
-		return n, nil
-	}
-	n, err := r.lookup(p)
+// Walk looks up every component of target and fails when one is a symbolic link, when a directory above
+// the target is not a directory, or when the lookup fails.
+func Walk(target string, lookup Lookup) error {
+	parts, err := Components(target)
 	if err != nil {
-		return Node{}, err
+		return err
 	}
-	r.nodes[p] = n
-	return n, nil
-}
-
-func (r *resolver) search(dir string) {
-	if !r.seen[dir] {
-		r.seen[dir] = true
-		r.searched = append(r.searched, dir)
-	}
-}
-
-func hasName(names []string) bool {
-	for _, n := range names {
-		if n != "" {
-			return true
+	for i, p := range parts {
+		kind, err := lookup(p)
+		switch {
+		case err != nil:
+			return err
+		case kind == KindLink:
+			return fmt.Errorf("%s is a symbolic link: the path of the target must hold none, because file permissions do not describe the kernel's refusal to follow one (fs.protected_symlinks)", p)
+		case i < len(parts)-1 && kind != KindDir:
+			return fmt.Errorf("%s is not a directory", p)
 		}
 	}
-	return false
-}
-
-// walk resolves names below cur (a directory without symbolic links) and returns where it ends and the
-// node there.
-func (r *resolver) walk(cur string, names []string) (string, Node, error) {
-	last := Node{Kind: KindDir}
-	for len(names) > 0 {
-		name := names[0]
-		names = names[1:]
-		if name == "" {
-			continue
-		}
-		r.search(cur)
-		switch name {
-		case ".":
-			continue
-		case "..":
-			cur, last = path.Dir(cur), Node{Kind: KindDir}
-			continue
-		}
-		next := path.Join(cur, name)
-		n, err := r.node(next)
-		if err != nil {
-			return "", Node{}, err
-		}
-		switch n.Kind {
-		case KindLink:
-			r.links++
-			if r.links > MaxLinks {
-				return "", Node{}, errors.New("too many levels of symbolic links")
-			}
-			if n.Link == "" {
-				return "", Node{}, fmt.Errorf("the symbolic link %s is empty", next)
-			}
-			if strings.HasPrefix(n.Link, "/") {
-				cur = "/"
-			}
-			last = Node{Kind: KindDir}
-			names = append(strings.Split(n.Link, "/"), names...)
-		case KindDir:
-			cur, last = next, n
-		default:
-			if hasName(names) {
-				return "", Node{}, fmt.Errorf("%s is not a directory", next)
-			}
-			return next, n, nil
-		}
-	}
-	return cur, last, nil
+	return nil
 }

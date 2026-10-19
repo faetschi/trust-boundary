@@ -265,7 +265,7 @@ func TestRouteProbeSourceHoldsNoWritingCall(t *testing.T) {
 	}
 }
 
-// The real surface measures a real path: a symbolic link in the middle, the owner and mode of each
+// The real surface measures a real path: the owner and mode of each
 // component, the ACL attribute reads, and the identity of the process. Nothing in the tree changes.
 func TestOSRouteProbeFSMeasuresARealPathAndChangesNothing(t *testing.T) {
 	root := t.TempDir()
@@ -284,7 +284,7 @@ func TestOSRouteProbeFSMeasuresARealPathAndChangesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := treeSnapshot(t, root)
-	target := filepath.Join(root, "alias", "secret")
+	target := filepath.Join(real, "secret")
 	v := cellview.Measure(OSRouteProbeFS{}, target)
 	if v.Err != "" {
 		t.Fatalf("the walk of %s: %s", target, v.Err)
@@ -292,12 +292,14 @@ func TestOSRouteProbeFSMeasuresARealPathAndChangesNothing(t *testing.T) {
 	kinds := map[string]string{}
 	for _, f := range v.Facts {
 		kinds[f.Path] = f.Kind
-		if f.Kind == cellview.KindLink && f.Link != "real" {
-			t.Errorf("link text %q", f.Link)
-		}
 	}
-	if kinds[filepath.Join(root, "alias")] != cellview.KindLink || kinds[file] != cellview.KindFile || kinds[real] != cellview.KindDir || kinds["/"] != cellview.KindDir {
+	if kinds[file] != cellview.KindFile || kinds[real] != cellview.KindDir || kinds["/"] != cellview.KindDir {
 		t.Errorf("kinds = %v", kinds)
+	}
+	// A path through a symbolic link is not walked past it: the link is recorded and the walk fails.
+	linked := cellview.Measure(OSRouteProbeFS{}, filepath.Join(root, "alias", "secret"))
+	if linked.Err == "" || linked.Facts[len(linked.Facts)-1].Kind != cellview.KindLink {
+		t.Errorf("a walk through a link: %+v", linked)
 	}
 	if v.EUID != uint32(os.Geteuid()) || v.EGID != uint32(os.Getegid()) {
 		t.Errorf("identity %d:%d", v.EUID, v.EGID)
