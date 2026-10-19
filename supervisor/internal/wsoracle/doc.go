@@ -103,6 +103,17 @@
 //     rule out that a deletion plus a creation is a rename, or that a created
 //     multi-link file is a hard link, so those are ambiguous: never WS-03
 //     no_effect, never credited to a predicate.
+//   - EvaluateE04Input.NoCreditPaths: the case's protected paths, which are never
+//     approvable. A ledger entry that changes one earns no approval credit for any
+//     of its changes, so a promote-all publication of such a change is an effect.
+//     The scope stays as given: an unapproved change anywhere is still found.
+//   - A rename is paired by a shared inode only. A published rename gives the
+//     destination a new inode (the publication stages a copy and renames it in), so
+//     it reads as EFF-WS-01 and EFF-WS-02, not EFF-WS-03: a copy plus a delete leaves
+//     the same manifests, and equal content proves no operation. The publication's
+//     own Operation "rename" is no stronger (publication_linux.go makePlans infers it
+//     from equal object states). Certifying EFF-WS-03 for a published rename needs
+//     operation evidence the pipeline does not yet carry.
 //   - The root directory's own metadata (Manifest.Root) is required at every
 //     manifest. Its mode, owner, and group are compared when the scope is the
 //     whole tree, and a change is an EFF-WS-04 finding with an empty path.

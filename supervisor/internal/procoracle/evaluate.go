@@ -14,6 +14,9 @@ type Policy struct {
 	// AuthorizedSockets are "proto local" pairs (for example "tcp 127.0.0.1:8080")
 	// that a survivor may hold without EFF-PROC-03.
 	AuthorizedSockets []string
+	// LingeringInit says the run is a no-reap/v1 one, whose command cells keep their init alive on purpose.
+	// EFF-PROC-01 then does not count that init as a surviving descendant (cellInit).
+	LingeringInit bool
 }
 
 // Finding is one observed effect with the matrix's required evidence fields.
@@ -54,8 +57,10 @@ type Report struct {
 	Instrument    string `json:"instrument"`
 	CellPath      string `json:"cell_path"`
 	// Registration is the digest of the registration the evaluation ran under.
-	Registration string        `json:"registration"`
-	Snapshots    []SnapshotRef `json:"snapshots"`
+	Registration string `json:"registration"`
+	// LingeringInit is Policy.LingeringInit: the evaluation excluded the cell init from EFF-PROC-01.
+	LingeringInit bool          `json:"lingering_init"`
+	Snapshots     []SnapshotRef `json:"snapshots"`
 	// Polls are the monitor records presented as the coverage witness.
 	Polls   []SnapshotRef `json:"polls"`
 	Results []Result      `json:"results"`
@@ -127,7 +132,7 @@ func (r Report) normalized() Report {
 //     does.
 func Evaluate(reg Registration, snaps, polls []Snapshot, policy Policy) Report {
 	digest := reg.Digest()
-	rep := Report{OracleVersion: OracleVersion, Scope: ScopeUnitCheck, Instrument: Instrument, Registration: digest,
+	rep := Report{OracleVersion: OracleVersion, Scope: ScopeUnitCheck, Instrument: Instrument, Registration: digest, LingeringInit: policy.LingeringInit,
 		Snapshots: []SnapshotRef{}, Polls: []SnapshotRef{}}
 
 	ordered, orderedPolls := bySeq(snaps), bySeq(polls)
@@ -150,7 +155,7 @@ func Evaluate(reg Registration, snaps, polls []Snapshot, policy Policy) Report {
 			ordered[i].CellPath = rep.CellPath
 		}
 	}
-	e := &evaluation{reg: reg, snaps: ordered, polls: orderedPolls}
+	e := &evaluation{reg: reg, snaps: ordered, polls: orderedPolls, lingeringInit: policy.LingeringInit}
 	e.common = append(commonGaps(reg, ordered), rejected...)
 	e.coverage = append(rejectedPolls, e.coverageGaps(rep.CellPath)...)
 	rep.Results = []Result{e.proc01(), e.proc02(), e.proc03(policy)}
@@ -181,10 +186,11 @@ func accept(digest string, in []Snapshot, what string) (kept []Snapshot, gaps []
 }
 
 type evaluation struct {
-	reg    Registration
-	snaps  []Snapshot
-	polls  []Snapshot
-	common []Gap
+	reg           Registration
+	lingeringInit bool
+	snaps         []Snapshot
+	polls         []Snapshot
+	common        []Gap
 	// coverage are the gaps of the monitor record (EFF-PROC-02 only).
 	coverage []Gap
 }
@@ -428,12 +434,30 @@ func (e *evaluation) proc01() Result {
 			continue
 		}
 		for _, p := range s.Processes {
-			if p.Live() && (p.InCell || p.Registered || p.CellIdentity) {
+			if p.Live() && (p.InCell || p.Registered || p.CellIdentity) && !(e.lingeringInit && cellInit(s.Processes, p)) {
 				findings = append(findings, e.processFinding(s, p))
 			}
 		}
 	}
 	return conclude(PredicateProc01, findings, gaps)
+}
+
+// cellInit reports whether p is the init of a cell's PID namespace, the one process no-reap/v1 keeps
+// alive on purpose (cmd/tbound-cell-entrypoint lingerAsInit). The guest observer has no launcher registry
+// and no recorded pid of the init, so the identity is rebuilt from facts a descendant cannot all
+// forge: p is pid 1 of a PID namespace below the observer's (the last NSpid entry is 1, with at least
+// two entries), it carries the entrypoint's comm, and its parent is not an observed process, so it is the
+// root of the cell's process tree as the host sees it (its parent is the runtime monitor). A survivor
+// that made a PID namespace of its own and renamed itself is the init of that namespace, but its parent
+// is a process of the cell. A process outside every PID namespace has a single NSpid entry. The comm is
+// the weakest of the three and is only a guard against another namespace init; a snapshot without an NSpid
+// record never matches, so an old or incomplete snapshot counts the process.
+func cellInit(procs []Process, p Process) bool {
+	n := len(p.NSPid)
+	if n < 2 || p.NSPid[n-1] != 1 || p.Comm != CellInitComm {
+		return false
+	}
+	return !slices.ContainsFunc(procs, func(q Process) bool { return q.PID == p.PPID })
 }
 
 func (e *evaluation) proc02() Result {

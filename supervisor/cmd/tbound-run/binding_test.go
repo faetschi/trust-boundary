@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/procoracle"
 	"tbound/supervisor/internal/routematrix"
 	"tbound/supervisor/internal/runner"
 )
@@ -328,5 +330,81 @@ func TestPlanRefusesARouteReportNotBoundToTheFreezeCommit(t *testing.T) {
 	}
 	if _, err := newEnv(t).cliCfg(nil, "plan"); err != nil {
 		t.Fatalf("the bound fixture was refused: %v", err)
+	}
+}
+
+// The E04 scope of an adversarial trial is the case's protected_paths (they are never approvable), in P as in C.
+func TestWiredExecutorsScoreE04OverTheManifestsProtectedPaths(t *testing.T) {
+	e := newEnv(t)
+	p := plan{cfg: mustConfig(t, e), sched: e.sched(), manifest: evalcorpus.Manifest{Cases: []evalcorpus.Case{
+		{CaseID: "guarded", Trial: &evalcorpus.Trial{ProtectedPaths: []string{"protected/a.cfg", "protected/b.cfg"}}},
+		{CaseID: "open", Trial: &evalcorpus.Trial{}},
+		{CaseID: "no-trial"},
+	}}}
+	for id, want := range map[string][]string{"guarded": {"protected/a.cfg", "protected/b.cfg"}, "open": nil, "no-trial": nil, "unknown": nil} {
+		if got := p.protectedPaths(id); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: protected paths %q, want %q", id, got, want)
+		}
+	}
+	ex, err := wireSSH(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, exec := range map[string]runner.Executor{"C": ex.C, "P": ex.P} {
+		var governed runner.GovernedC
+		inner := exec.(runner.Attest).Inner
+		for {
+			switch v := inner.(type) {
+			case runner.AcceptExecutor:
+				inner = v.Inner
+				continue
+			case runner.ResetExecutor:
+				inner = v.Inner
+				continue
+			case runner.GovernedC:
+				governed = v
+			}
+			break
+		}
+		if governed.ProtectedPaths == nil {
+			t.Fatalf("%s: the governed executor has no protected-path source", name)
+		}
+		if got := governed.ProtectedPaths("guarded"); !reflect.DeepEqual(got, []string{"protected/a.cfg", "protected/b.cfg"}) {
+			t.Errorf("%s: protected paths %q", name, got)
+		}
+	}
+}
+
+// Only the P half of a case whose registered delta is no-reap/v1 keeps its cell init alive on purpose; the
+// C half of the same case, and every other delta, must not.
+func TestPlanInitLingersOnlyForTheNoReapHalfP(t *testing.T) {
+	p := plan{manifest: evalcorpus.Manifest{Cases: []evalcorpus.Case{
+		{CaseID: "reap", Trial: &evalcorpus.Trial{PDelta: evalcorpus.PDeltaNoReap}},
+		{CaseID: "plain", Trial: &evalcorpus.Trial{}},
+		{CaseID: "sink", Trial: &evalcorpus.Trial{PDelta: evalcorpus.PDeltaNetSink}},
+		{CaseID: "no-trial"},
+	}}}
+	ref := func(id string, cfg runner.Configuration) runner.EvidenceRef {
+		return runner.EvidenceRef{Step: runner.Step{CaseID: id, Configuration: cfg}}
+	}
+	for _, tc := range []struct {
+		ref  runner.EvidenceRef
+		want bool
+	}{
+		{ref("reap", runner.CfgP), true},
+		{ref("reap", runner.CfgC), false},
+		{ref("reap", runner.CfgB), false},
+		{ref("plain", runner.CfgP), false},
+		{ref("sink", runner.CfgP), false},
+		{ref("no-trial", runner.CfgP), false},
+		{ref("unknown", runner.CfgP), false},
+	} {
+		if got := p.initLingers(tc.ref); got != tc.want {
+			t.Errorf("%s/%s: %v, want %v", tc.ref.Step.CaseID, tc.ref.Step.Configuration, got, tc.want)
+		}
+	}
+	proc, ok := p.collectors().ProcFrom.(*procoracle.SSHCollector)
+	if !ok || proc.InitLingers == nil {
+		t.Fatalf("the PROC collector %T has no lingering-init source", p.collectors().ProcFrom)
 	}
 }

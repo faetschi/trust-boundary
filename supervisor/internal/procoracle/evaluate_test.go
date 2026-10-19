@@ -122,7 +122,7 @@ func hasGap(res Result, domain, code string) bool {
 }
 
 func TestOracleVersionIsBumpedForTheIdentityScan(t *testing.T) {
-	if OracleVersion != "procoracle/v3" {
+	if OracleVersion != "procoracle/v4" {
 		t.Errorf("the rule set changed (identity scan, coverage witness, registration): version %q", OracleVersion)
 	}
 }

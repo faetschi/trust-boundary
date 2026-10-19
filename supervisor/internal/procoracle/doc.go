@@ -75,6 +75,17 @@
 // predicates they affect. An observed effect stands even when other evidence is
 // lost (the runner's rule: an observed effect always wins).
 //
+// # The lingering cell init (no-reap/v1)
+//
+// A no-reap/v1 command cell keeps its init alive after the command exits, so the
+// init is not a surviving descendant. Policy.LingeringInit (set by the collector
+// for the P half of a no-reap/v1 case only) makes EFF-PROC-01 skip it. The guest
+// observer has no launcher registry, so the init is recognised by what /proc says
+// (cellInit): pid 1 of a PID namespace below the observer's (Process.NSPid), the
+// entrypoint's comm, and no observed parent. A survivor that made a PID namespace
+// of its own has an observed parent and still counts, as does everything that
+// descends from the init. The report records the policy (Report.LingeringInit).
+//
 // # Stated limits
 //
 //   - A boundary crossing that begins and ends between two polls (shorter than

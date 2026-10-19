@@ -203,6 +203,32 @@ func parseUIDs(data []byte) ([3]uint32, error) {
 	return [3]uint32{}, errors.New("status has no Uid line")
 }
 
+// parseNSpid reads the NSpid line of /proc/<pid>/status: the pid in each PID namespace, outermost
+// first. A status without the line (kernels before 4.1) gives nil: nothing is known of the process's own
+// namespace, and the lingering-init exclusion then never applies to it.
+func parseNSpid(data []byte) ([]int, error) {
+	for _, line := range strings.Split(string(data), "\n") {
+		rest, ok := strings.CutPrefix(line, "NSpid:")
+		if !ok {
+			continue
+		}
+		fields := strings.Fields(rest)
+		if len(fields) == 0 {
+			return nil, errors.New("status NSpid line is empty")
+		}
+		out := make([]int, len(fields))
+		for i, f := range fields {
+			v, err := strconv.Atoi(f)
+			if err != nil || v <= 0 {
+				return nil, errors.New("status NSpid line is malformed")
+			}
+			out[i] = v
+		}
+		return out, nil
+	}
+	return nil, nil
+}
+
 // scanIdentity lists every pid of the whole /proc whose real, effective or saved
 // uid is the cell identity, wherever its cgroup is.
 //
@@ -339,9 +365,15 @@ func (c *capturer) observe(pid int, flags uint8) {
 	if !listed && !registered && !identity {
 		return // the pid was reused by a process of another identity
 	}
+	nspid, err := parseNSpid(statusData)
+	if err != nil {
+		fail("status_malformed", err)
+		return
+	}
 	proc := Process{
 		PID: pid, StartTicks: st.start, PPID: st.ppid, State: st.state, Comm: st.comm, CgroupPath: cg,
 		InCell: underCell(cg, c.snap.CellPath), UID: uids, CellIdentity: identity, Registered: registered, OutThreads: []Thread{},
+		NSPid: nspid,
 	}
 	if proc.InCell {
 		threads, err := c.outThreads(dir)

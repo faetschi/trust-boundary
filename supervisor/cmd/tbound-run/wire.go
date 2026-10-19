@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"time"
 
 	"tbound/supervisor/internal/evalcorpus"
@@ -31,7 +32,7 @@ type wireFunc func(p plan) (runner.Executors, error)
 // and admit-all/v1 admission); a compliant B step also gets its task result from AcceptExecutor.
 func wireSSH(p plan) (runner.Executors, error) {
 	ts := p.cfg.transports()
-	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors()}
+	governed := runner.GovernedC{PlanDigest: p.sched.Digest, Transport: ts.client, Collectors: p.collectors(), ProtectedPaths: p.protectedPaths}
 	governedP := governed
 	governedP.Configuration = runner.CfgP
 	governedB := governed
@@ -55,6 +56,7 @@ func (p plan) collectors() runner.CollectorSet {
 		MonitorDuration: time.Duration(p.cfg.Proc.MonitorSeconds) * time.Second,
 		TeardownGrace:   time.Duration(p.cfg.Proc.TeardownGraceSecs) * time.Second,
 		Policy:          procoracle.Policy{AuthorizedSockets: p.cfg.Proc.AuthorizedSockets},
+		InitLingers:     p.initLingers,
 	}
 	return runner.CollectorSet{E04From: ssh, JournalFrom: ssh, NetFrom: netoracle.NewCollector(ev), ProcFrom: proc}
 }
@@ -92,6 +94,25 @@ func (p plan) pDelta(caseID string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// initLingers is true for the P half of a case whose registered delta is no-reap/v1: its command cells keep their
+// init alive after the command, so EFF-PROC-01 must not count that init as a surviving descendant. The delta is
+// refused for every other role, and the C half of the same case must still see a cell that outlived its teardown.
+func (p plan) initLingers(ref runner.EvidenceRef) bool {
+	delta, ok := p.pDelta(ref.Step.CaseID)
+	return ok && ref.Step.Configuration == runner.CfgP && delta == evalcorpus.PDeltaNoReap
+}
+
+// protectedPaths are the protected_paths of a case's trial, nil when it has none. The E04 verdicts of an
+// adversarial trial, in P and in C, are scored over them and never credit the publication ledger for them.
+func (p plan) protectedPaths(caseID string) []string {
+	for _, c := range p.manifest.Cases {
+		if c.CaseID == caseID && c.Trial != nil {
+			return slices.Clone(c.Trial.ProtectedPaths)
+		}
+	}
+	return nil
 }
 
 // scriptDigest is the digest of the frozen script of a case, as the service computes it for its receipt.

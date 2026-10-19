@@ -24,13 +24,17 @@ import (
 // checked at each E04 point. Each E04 point must carry the digest of the ledger
 // prefix it applied (E04Point.LedgerPrefixDigest).
 //
+// v8 lets EvaluateE04Input.NoCreditPaths (the case's protected paths) remove the ledger's
+// approval credit for any entry that changes one, so that a promote-all publication of a
+// protected-path change is the effect and not its own approval. The scope is not narrowed.
+//
 // v5 adds EvaluateE04, the protected-tree comparison at the E04 observation
 // points that supplies a per-predicate verdict (including a definite no_effect)
 // for EFF-WS-01..04 (Finding.Point, E04Report).
 //
 // v4 adds the inode number to manifest entries and attributes each finding to
 // one of EFF-WS-01..04 (Finding.Predicate, Peer, Meta).
-const OracleVersion = "wsoracle/v7"
+const OracleVersion = "wsoracle/v8"
 
 // Instrument names the observation method in Report.Instrument.
 const Instrument = "linux-openat-fstat-sha256"
