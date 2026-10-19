@@ -4,6 +4,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"tbound/supervisor/internal/cellview"
 )
 
 const goodControlPath = "/work/src/release.txt"
@@ -32,11 +34,11 @@ func goodDirectRuntimeWith(obs []RouteDirectObservation, controlErrno int) Route
 	}
 	return RouteDenied{RunID: "run-1", ProfileHash: e.ProfileHash, FrozenSourceDigest: e.FrozenSourceDigest, Target: "/home/node/.profile",
 		Cell: RouteCell{Kind: RouteCellPiRuntime, ImageDigest: digestOf("image"), TemplateDigest: digestOf("probe template"),
-			LandlockRulesetDigest: digestOf("ruleset"), ProductionTemplateDigest: digestOf("production template")},
+			LandlockRulesetDigest: digestOf("ruleset"), ProductionTemplateDigest: digestOf("production template"), CellUID: testCellUID, CellGID: testCellGID},
 		Journal:            RouteJournal{Records: 9, HeadHash: strings.Repeat("a", 64)},
 		ProbeProfileDigest: digestOf("probe profile"), ProfileSourceDigest: e.FrozenSourceDigest,
-		TargetFact: goodTargetFact(),
-		Control:    control, Attempts: attempts}
+		View: goodView(), AdminPubkeyDigest: e.AdminPubkeyDigest, Limits: DirectRuntimeLimits,
+		Control: control, Attempts: attempts}
 }
 
 func goodDirectRuntime() RouteDenied { return goodDirectRuntimeWith(goodObservations(), 0) }
@@ -102,75 +104,14 @@ func TestDirectRuntimeArtifactRefusesAReadAndAnythingThatIsNotAPolicyDenial(t *t
 	}
 }
 
-func TestDirectRuntimeArtifactMutations(t *testing.T) {
-	e := expect()
-	for name, mutate := range map[string]func(*RouteDenied){
-		"no target fact":                                  func(r *RouteDenied) { r.TargetFact = nil },
-		"the target does not exist":                       func(r *RouteDenied) { r.TargetFact.Regular = false },
-		"the target is empty":                             func(r *RouteDenied) { r.TargetFact.Size = 0 },
-		"the target is not world-readable":                func(r *RouteDenied) { r.TargetFact.Mode = 0o600 },
-		"the target is the cell's own, no owner read":     func(r *RouteDenied) { r.TargetFact.UID, r.TargetFact.Mode = r.TargetFact.CellUID, 0o044 },
-		"the parent is not listable":                      func(r *RouteDenied) { r.TargetFact.ParentMode, r.TargetFact.Ancestors[2].Mode = 0o711, 0o711 },
-		"the parent mode differs from its ancestor entry": func(r *RouteDenied) { r.TargetFact.ParentMode = 0o700 },
-		"an ancestor cannot be searched":                  func(r *RouteDenied) { r.TargetFact.Ancestors[1].Mode = 0o700 },
-		"the root cannot be searched":                     func(r *RouteDenied) { r.TargetFact.Ancestors[0].Mode = 0o700 },
-		"an ancestor owned by the cell with no owner search": func(r *RouteDenied) {
-			r.TargetFact.Ancestors[1].UID, r.TargetFact.Ancestors[1].Mode = r.TargetFact.CellUID, 0o655
-		},
-		"an ancestor is missing": func(r *RouteDenied) { r.TargetFact.Ancestors = r.TargetFact.Ancestors[1:] },
-		"the root is missing":    func(r *RouteDenied) { r.TargetFact.Ancestors = r.TargetFact.Ancestors[:2] },
-		"no ancestors":           func(r *RouteDenied) { r.TargetFact.Ancestors = nil },
-		"an ancestor stated twice": func(r *RouteDenied) {
-			r.TargetFact.Ancestors = append(r.TargetFact.Ancestors, r.TargetFact.Ancestors[0])
-		},
-		"an unclean ancestor":                           func(r *RouteDenied) { r.TargetFact.Ancestors[1].Path = "/home/" },
-		"a resolved path that is not clean":             func(r *RouteDenied) { r.TargetFact.ResolvedPath = "/home/node/../node/.profile" },
-		"no resolved path":                              func(r *RouteDenied) { r.TargetFact.ResolvedPath = "" },
-		"the baseline is of another image":              func(r *RouteDenied) { r.TargetFact.ImageDigest = digestOf("another image") },
-		"the baseline names no image":                   func(r *RouteDenied) { r.TargetFact.ImageDigest = "" },
-		"the baseline is judged for root":               func(r *RouteDenied) { r.TargetFact.CellUID = 0 },
-		"no probe profile digest":                       func(r *RouteDenied) { r.ProbeProfileDigest = "" },
-		"the probe profile is the production profile":   func(r *RouteDenied) { r.ProbeProfileDigest = r.ProfileHash },
-		"the journaled profile holds another source":    func(r *RouteDenied) { r.ProfileSourceDigest = digestOf("another source") },
-		"no journaled profile source":                   func(r *RouteDenied) { r.ProfileSourceDigest = "" },
-		"another production template than the run pins": func(r *RouteDenied) { r.Cell.ProductionTemplateDigest = digestOf("another production template") },
-		"no production template digest":                 func(r *RouteDenied) { r.Cell.ProductionTemplateDigest = "" },
-		"the probe is the production template":          func(r *RouteDenied) { r.Cell.ProductionTemplateDigest = r.Cell.TemplateDigest },
-		"the command cell kind":                         func(r *RouteDenied) { r.Cell.Kind = RouteCellCommand },
-		"an attempt missing":                            func(r *RouteDenied) { r.Attempts = r.Attempts[1:] },
-		"attempts reordered":                            func(r *RouteDenied) { r.Attempts[0], r.Attempts[3] = r.Attempts[3], r.Attempts[0] },
-		"an operand other than the target":              func(r *RouteDenied) { r.Attempts[0].Argv[1] = "/home/node/.bashrc" },
-		"a tampered result digest":                      func(r *RouteDenied) { r.Attempts[1].ResultDigest = digestOf("tampered") },
-		"an errno name that is not the code":            func(r *RouteDenied) { r.Attempts[0].Errno = "EPERM" },
-		"another proof for one attempt":                 func(r *RouteDenied) { r.Attempts[4].ReceiptDigest = digestOf("another proof") },
-		"another cell for one attempt":                  func(r *RouteDenied) { r.Attempts[4].ContainerID = "tbound-d09-cell-2" },
-		"another record for one attempt":                func(r *RouteDenied) { r.Attempts[4].JournalSequence = 6 },
-		"the control from another proof":                func(r *RouteDenied) { r.Control.ReceiptDigest = digestOf("another proof") },
-		"the control outside /work":                     func(r *RouteDenied) { r.Control.Argv[1] = "/home/node/.bashrc" },
-		"the control is a stat":                         func(r *RouteDenied) { r.Control.Op = RouteOpStat },
-		"sequence past the journal":                     func(r *RouteDenied) { r.Journal.Records = 4 },
-	} {
-		r := goodDirectRuntime()
-		tf := *r.TargetFact
-		tf.Ancestors = append([]RouteAncestor(nil), tf.Ancestors...)
-		r.TargetFact = &tf
-		r.Attempts = append([]RouteAttempt(nil), r.Attempts...)
-		for i := range r.Attempts {
-			r.Attempts[i].Argv = append([]string(nil), r.Attempts[i].Argv...)
-		}
-		r.Control.Argv = append([]string(nil), r.Control.Argv...)
-		mutate(&r)
-		if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, r), e); err == nil {
-			t.Errorf("%s: accepted", name)
-		}
-	}
-}
-
 func TestBashViewArtifactCarriesNoDirectRuntimeMembers(t *testing.T) {
 	e := expect()
 	for name, mutate := range map[string]func(*RouteDenied){
 		"a production template digest": func(r *RouteDenied) { r.Cell.ProductionTemplateDigest = digestOf("x") },
-		"a target fact":                func(r *RouteDenied) { r.TargetFact = &RouteTarget{Regular: true} },
+		"a cell identity":              func(r *RouteDenied) { r.Cell.CellUID = 5 },
+		"a view":                       func(r *RouteDenied) { r.View = &cellview.View{} },
+		"an admin key digest":          func(r *RouteDenied) { r.AdminPubkeyDigest = digestOf("x") },
+		"limits":                       func(r *RouteDenied) { r.Limits = DirectRuntimeLimits },
 		"a probe profile digest":       func(r *RouteDenied) { r.ProbeProfileDigest = digestOf("x") },
 		"a profile source digest":      func(r *RouteDenied) { r.ProfileSourceDigest = digestOf("x") },
 		"an op":                        func(r *RouteDenied) { r.Attempts[0].Op = RouteOpOpen },
@@ -210,10 +151,7 @@ func TestDirectRuntimeArtifactIsBoundLikeEveryRouteArtifact(t *testing.T) {
 		"no journal":               func(r *RouteDenied) { r.Journal = RouteJournal{} },
 		"bad journal hash":         func(r *RouteDenied) { r.Journal.HeadHash = "xyz" },
 	} {
-		r := goodDirectRuntime()
-		tf := *r.TargetFact
-		tf.Ancestors = append([]RouteAncestor(nil), tf.Ancestors...)
-		r.TargetFact = &tf
+		r := cloneDirect(goodDirectRuntime())
 		mutate(&r)
 		if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, r), e); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -236,35 +174,5 @@ func TestDirectRuntimeArtifactIsBoundToThePinnedProductionTemplate(t *testing.T)
 	e.ContainmentProfileDigest = digestOf("another production template")
 	if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, d), e); err == nil {
 		t.Error("an artifact of another production template than the run pins was accepted")
-	}
-}
-
-// goodTargetFact is a baseline read from the probed image: the target is world-readable below searchable
-// directories, and the cell identity (100731:100731) owns none of them.
-func goodTargetFact() *RouteTarget {
-	return &RouteTarget{Regular: true, Mode: 0o644, UID: 1000, GID: 1000, Size: 807, ParentMode: 0o755, ImageDigest: digestOf("image"),
-		CellUID: 100731, CellGID: 100731, ResolvedPath: "/home/node/.profile",
-		Ancestors: []RouteAncestor{{Path: "/", Mode: 0o755}, {Path: "/home", Mode: 0o755}, {Path: "/home/node", Mode: 0o755, UID: 1000, GID: 1000}}}
-}
-
-func TestImageAccessJudgesTheCellIdentityByOwnerGroupThenOther(t *testing.T) {
-	for name, c := range map[string]struct {
-		mode, uid, gid uint32
-		r, w, x        bool
-	}{
-		"other":                      {0o604, 1, 1, true, false, false},
-		"other has no bits":          {0o700, 1, 1, false, false, false},
-		"owner class applies":        {0o407, 100731, 1, true, false, false},
-		"owner class is not other":   {0o077, 100731, 1, false, false, false},
-		"group class applies":        {0o070, 1, 100731, true, true, true},
-		"group class is not other":   {0o707, 1, 100731, false, false, false},
-		"the owner wins over group":  {0o470, 100731, 100731, true, false, false},
-		"search only":                {0o001, 1, 1, false, false, true},
-		"special bits are no access": {0o4000, 1, 1, false, false, false},
-	} {
-		r, w, x := ImageAccess(c.mode, c.uid, c.gid, 100731, 100731)
-		if r != c.r || w != c.w || x != c.x {
-			t.Errorf("%s: got %v %v %v", name, r, w, x)
-		}
 	}
 }

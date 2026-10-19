@@ -9,28 +9,63 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"tbound/supervisor/internal/cellview"
 )
 
 // recordingProbeFS is a fake root for the route probe: it implements exactly the read operations of
 // D09RouteProbeFS (the interface has no write operation, so the probe cannot make one), records every call
-// and answers from a table.
+// and answers from a table. The measurement of the path (Lstat, ACL, Identity, LSM) answers from facts, and
+// every call is also in order, so a test can see that the measurement comes before the attempts.
 type recordingProbeFS struct {
 	calls  []string
+	order  []string
 	answer map[string]error
+	facts  map[string]cellview.Fact
 }
 
 func (f *recordingProbeFS) do(op, path string) error {
 	f.calls = append(f.calls, op+" "+path)
+	f.order = append(f.order, op+" "+path)
 	return f.answer[op+" "+path]
 }
 func (f *recordingProbeFS) OpenRead(path string) error { return f.do("open", path) }
 func (f *recordingProbeFS) Stat(path string) error     { return f.do("stat", path) }
 func (f *recordingProbeFS) List(path string) error     { return f.do("list", path) }
+func (f *recordingProbeFS) Lstat(path string) (cellview.Fact, error) {
+	f.order = append(f.order, "lstat "+path)
+	fact, ok := f.facts[path]
+	if !ok {
+		return cellview.Fact{}, syscall.ENOENT
+	}
+	return fact, nil
+}
+func (f *recordingProbeFS) ACL(path string) string {
+	f.order = append(f.order, "acl "+path)
+	return ""
+}
+func (f *recordingProbeFS) Identity() (uint32, uint32, []uint32) {
+	f.order = append(f.order, "identity")
+	return 100731, 100732, nil
+}
+func (f *recordingProbeFS) LSM() string {
+	f.order = append(f.order, "lsm")
+	return "unconfined"
+}
+
+// homeFacts is a view of /home/node/.profile that file permissions alone would not refuse.
+func homeFacts() map[string]cellview.Fact {
+	d := func(p string, uid uint32) cellview.Fact {
+		return cellview.Fact{Path: p, Kind: cellview.KindDir, Mode: 0o755, UID: uid, GID: uid}
+	}
+	return map[string]cellview.Fact{"/": d("/", 0), "/home": d("/home", 0), "/home/node": d("/home/node", 1000),
+		"/home/node/.profile": {Path: "/home/node/.profile", Kind: cellview.KindFile, Mode: 0o644, UID: 1000, GID: 1000, Size: 807}}
+}
 
 var testRouteProbe = D09RouteProbe{Name: D09RouteProbeName, Target: "/home/node/.profile", Control: "/work/src/release.txt"}
 
 func TestRouteProbeMakesOnlyTheReadAttemptsOfTheThreeRoutesAndTheControl(t *testing.T) {
-	fsys := &recordingProbeFS{answer: map[string]error{}}
+	fsys := &recordingProbeFS{answer: map[string]error{}, facts: homeFacts()}
 	for _, p := range []string{"/home/node/.profile", "../../../../home/node/.profile", "/proc/self/root/home/node/.profile",
 		"/home/node", "../../../../home/node", "/proc/self/root/home/node"} {
 		fsys.answer["open "+p] = syscall.EACCES
@@ -66,6 +101,43 @@ func TestRouteProbeMakesOnlyTheReadAttemptsOfTheThreeRoutesAndTheControl(t *test
 	}
 }
 
+// The path is measured from inside the cell before any attempt, component by component, with lstat and
+// the attribute reads only, and the identity of the probe and its security module context are recorded.
+func TestRouteProbeMeasuresThePathBeforeTheAttempts(t *testing.T) {
+	fsys := &recordingProbeFS{answer: map[string]error{}, facts: homeFacts()}
+	result := RunD09RouteProbe(fsys, testRouteProbe)
+	firstAttempt := slices.IndexFunc(fsys.order, func(c string) bool { return strings.HasPrefix(c, "open ") })
+	if firstAttempt < 0 {
+		t.Fatalf("no attempt in %q", fsys.order)
+	}
+	var measured []string
+	for i, c := range fsys.order {
+		if !strings.HasPrefix(c, "open ") && !strings.HasPrefix(c, "stat ") && !strings.HasPrefix(c, "list ") {
+			measured = append(measured, c)
+			if i > firstAttempt {
+				t.Errorf("%q is a measurement after the first attempt", c)
+			}
+		}
+	}
+	for _, want := range []string{"lstat /", "lstat /home", "lstat /home/node", "lstat /home/node/.profile", "acl /home/node/.profile", "identity", "lsm"} {
+		if !slices.Contains(measured, want) {
+			t.Errorf("no %q in the measurement %q", want, measured)
+		}
+	}
+	v := result.View
+	if v.Err != "" || len(v.Facts) != 4 || v.EUID != 100731 || v.EGID != 100732 || v.LSM != "unconfined" {
+		t.Fatalf("view = %+v", v)
+	}
+	if got := v.Problems(testRouteProbe.Target, 100731, 100732, []string{"/work", "/tmp"}); len(got) != 0 {
+		t.Errorf("the view of a readable file is refused: %v", got)
+	}
+	// A path the cell cannot examine is recorded as such and not guessed.
+	gone := RunD09RouteProbe(&recordingProbeFS{}, testRouteProbe)
+	if gone.View.Err == "" {
+		t.Error("a path that cannot be examined has no error in the view")
+	}
+}
+
 func TestRouteProbeRecordsASucceededReadAndAnUnknownFailure(t *testing.T) {
 	fsys := &recordingProbeFS{answer: map[string]error{"open /home/node/.profile": nil, "list /home/node": errors.New("not an errno")}}
 	result := RunD09RouteProbe(fsys, testRouteProbe)
@@ -90,6 +162,7 @@ func TestRouteProbeResultShapeIsExact(t *testing.T) {
 		"attempts reordered": func(r *D09RouteProbeResult) { r.Attempts[0], r.Attempts[1] = r.Attempts[1], r.Attempts[0] },
 		"another method":     func(r *D09RouteProbeResult) { r.Attempts[0].Method = "control" },
 		"no control":         func(r *D09RouteProbeResult) { r.ControlRead = D09RouteProbeAttempt{} },
+		"no measurement":     func(r *D09RouteProbeResult) { r.View = cellview.View{} },
 	}
 	for name, mutate := range cases {
 		r := good
@@ -155,13 +228,24 @@ func TestProofWithProbeResultFitsTheProofLine(t *testing.T) {
 		WorkerMountID: 1234, RuntimeMountID: 1235, WorkerDevice: 4294967295, WorkerInode: 18446744073709551615,
 		RuntimeDevice: 4294967295, RuntimeInode: 18446744073709551615, UserNSInode: 4026532999, MountNSInode: 4026532999,
 		PIDNSInode: 4026532999, IPCNSInode: 4026532999, UTSNSInode: 4026532999, NetworkNSInode: 4026532999, NoExternalRoutes: true}
-	result := RunD09RouteProbe(&recordingProbeFS{}, D09RouteProbe{Name: D09RouteProbeName, Target: "/" + strings.Repeat("d", 100), Control: "/work/" + strings.Repeat("c", 100)})
+	// A target of about 100 characters in five components, every one measured with owner and mode.
+	parts := []string{strings.Repeat("a", 19), strings.Repeat("b", 19), strings.Repeat("c", 19), strings.Repeat("d", 19), strings.Repeat("e", 19)}
+	target := "/" + strings.Join(parts, "/")
+	fsys := &recordingProbeFS{facts: map[string]cellview.Fact{"/": {Path: "/", Kind: cellview.KindDir, Mode: 0o755}}}
+	for i := range parts {
+		p := "/" + strings.Join(parts[:i+1], "/")
+		fsys.facts[p] = cellview.Fact{Path: p, Kind: cellview.KindDir, Mode: 0o755, UID: 4294967295, GID: 4294967295}
+	}
+	fsys.facts[target] = cellview.Fact{Path: target, Kind: cellview.KindFile, Mode: 0o644, UID: 4294967295, GID: 4294967295, Size: 9007199254740991}
+	result := RunD09RouteProbe(fsys, D09RouteProbe{Name: D09RouteProbeName, Target: target, Control: "/work/" + strings.Repeat("c", 100)})
+	result.View.Groups = []uint32{4294967295, 4294967294, 4294967293, 4294967292}
+	result.View.LSM = strings.Repeat("l", 128)
 	proof.RouteProbe = &result
 	line, err := json.Marshal(proof)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(line) > 4095 {
-		t.Fatalf("a full proof with a probe result is %d bytes; the proof line holds 4095", len(line))
+		t.Fatalf("a full proof with a probe result and a measured view is %d bytes; the proof line holds 4095", len(line))
 	}
 }

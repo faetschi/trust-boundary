@@ -265,7 +265,7 @@ func (a *app) evqCmd(args []string) error {
 		Artifacts: map[string]string{}, ArtifactErrors: map[string]string{}}
 	known := m.artifactKinds()
 	expect := guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary, ProfileHash: binding.ProfileHash, ContainmentProfileDigest: binding.ContainmentProfileDigest,
-		FrozenSourceDigest: binding.FrozenSourceDigest, CommitTree: rec.GitTree, TestBinaries: rec.TestBinaries}
+		FrozenSourceDigest: binding.FrozenSourceDigest, AdminPubkeyDigest: binding.AdminPubkeyDigest, CommitTree: rec.GitTree, TestBinaries: rec.TestBinaries}
 	seen := map[string]bool{}
 	for _, spec := range artifacts {
 		kind, path, ok := strings.Cut(spec, "=")

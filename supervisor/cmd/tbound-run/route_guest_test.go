@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"tbound/supervisor/internal/cellview"
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/routematrix"
 )
@@ -106,15 +107,15 @@ func TestRouteReportGuestCellsAreCoveredByTheirArtifactsAndTheirTests(t *testing
 func guestRouteEnv(t *testing.T) *routeEnv {
 	t.Helper()
 	e := newRouteEnv(t, guestRouteDoc(), passingRoutePkgs(allRouteRefs...))
-	pins := `{"freeze_commit":"` + commit + `","pins":{"profile_hash":"` + guestPins.profile + `","containment_profile_digest":"` + sha256Of([]byte("production template")) + `","frozen_source_digest":"` + guestPins.source + `"}}`
+	pins := `{"freeze_commit":"` + commit + `","pins":{"profile_hash":"` + guestPins.profile + `","containment_profile_digest":"` + sha256Of([]byte("production template")) + `","frozen_source_digest":"` + guestPins.source + `","admin_pubkey_digest":"` + guestPins.admin + `"}}`
 	if err := os.WriteFile(e.config, []byte(pins), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return e
 }
 
-var guestPins = struct{ profile, source, binary string }{
-	"sha256:" + strings.Repeat("a", 64), "sha256:" + strings.Repeat("b", 64), "sha256:" + strings.Repeat("c", 64)}
+var guestPins = struct{ profile, source, binary, admin string }{
+	"sha256:" + strings.Repeat("a", 64), "sha256:" + strings.Repeat("b", 64), "sha256:" + strings.Repeat("c", 64), "sha256:" + strings.Repeat("e", 64)}
 
 // writeRouteArtifact writes a good artifact of kind, bound to the run's pins and the commit.
 func writeRouteArtifact(t *testing.T, dir, kind string, mutate func(*guestevidence.RouteDenied)) string {
@@ -152,9 +153,12 @@ func writeRouteArtifact(t *testing.T, dir, kind string, mutate func(*guesteviden
 		}
 		d.Cell.ProductionTemplateDigest = sha256Of([]byte("production template"))
 		d.ProbeProfileDigest, d.ProfileSourceDigest = sha256Of([]byte("probe profile")), guestPins.source
-		d.TargetFact = &guestevidence.RouteTarget{Regular: true, Mode: 0o644, UID: 1000, GID: 1000, Size: 100, ParentMode: 0o755, ImageDigest: d.Cell.ImageDigest,
-			CellUID: 100731, CellGID: 100731, ResolvedPath: "/home/node/.profile",
-			Ancestors: []guestevidence.RouteAncestor{{Path: "/", Mode: 0o755}, {Path: "/home", Mode: 0o755}, {Path: "/home/node", Mode: 0o755, UID: 1000, GID: 1000}}}
+		d.Cell.CellUID, d.Cell.CellGID = 100731, 100731
+		d.AdminPubkeyDigest, d.Limits = guestPins.admin, guestevidence.DirectRuntimeLimits
+		d.View = &cellview.View{EUID: 100731, EGID: 100731, Facts: []cellview.Fact{
+			{Path: "/", Kind: cellview.KindDir, Mode: 0o755}, {Path: "/home", Kind: cellview.KindDir, Mode: 0o755},
+			{Path: "/home/node", Kind: cellview.KindDir, Mode: 0o755, UID: 1000, GID: 1000},
+			{Path: "/home/node/.profile", Kind: cellview.KindFile, Mode: 0o644, UID: 1000, GID: 1000, Size: 100}}}
 	}
 	if mutate != nil {
 		mutate(&d)

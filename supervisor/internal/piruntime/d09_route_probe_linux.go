@@ -2,7 +2,14 @@
 
 package piruntime
 
-import "syscall"
+import (
+	"errors"
+	"os"
+	"strings"
+	"syscall"
+
+	"tbound/supervisor/internal/cellview"
+)
 
 // OSRouteProbeFS is the real read-only surface of the route probe. Every call is a read: an open with
 // O_RDONLY (and one byte read), a stat, an open of a directory. The route probe test keeps this file free
@@ -39,4 +46,73 @@ func (OSRouteProbeFS) List(path string) error {
 	var batch [4096]byte
 	_, err = syscall.ReadDirent(fd, batch[:])
 	return err
+}
+
+// Lstat reads the metadata of path without following a final symbolic link (fstatat with
+// AT_SYMLINK_NOFOLLOW) and, for a symbolic link, its text. Landlock does not mediate either call.
+func (OSRouteProbeFS) Lstat(path string) (cellview.Fact, error) {
+	var st syscall.Stat_t
+	if err := syscall.Lstat(path, &st); err != nil {
+		return cellview.Fact{}, err
+	}
+	f := cellview.Fact{Mode: st.Mode & 0o7777, UID: st.Uid, GID: st.Gid, Size: st.Size}
+	switch st.Mode & syscall.S_IFMT {
+	case syscall.S_IFDIR:
+		f.Kind = cellview.KindDir
+	case syscall.S_IFREG:
+		f.Kind = cellview.KindFile
+	case syscall.S_IFLNK:
+		f.Kind = cellview.KindLink
+		buf := make([]byte, 4096)
+		n, err := syscall.Readlink(path, buf)
+		if err != nil {
+			return cellview.Fact{}, err
+		}
+		f.Link = string(buf[:n])
+	default:
+		f.Kind = cellview.KindOther
+	}
+	return f, nil
+}
+
+// ACL reports the POSIX ACLs of path: "" for none, "access", "default" or "access+default" for the ones it
+// has, and cellview.ACLUnreadable when an attribute read fails for any reason but its absence (a file system
+// without ACL support has no ACL to apply).
+func (OSRouteProbeFS) ACL(path string) string {
+	var present []string
+	for _, kind := range []string{"access", "default"} {
+		_, err := syscall.Getxattr(path, "system.posix_acl_"+kind, nil)
+		switch {
+		case err == nil:
+			present = append(present, kind)
+		case errors.Is(err, syscall.ENODATA), errors.Is(err, syscall.EOPNOTSUPP):
+		default:
+			return cellview.ACLUnreadable
+		}
+	}
+	return strings.Join(present, "+")
+}
+
+// Identity is the effective user and group of the process and its supplementary groups.
+func (OSRouteProbeFS) Identity() (euid, egid uint32, groups []uint32) {
+	supplementary, err := syscall.Getgroups()
+	if err == nil {
+		for _, g := range supplementary {
+			groups = append(groups, uint32(g))
+		}
+	}
+	return uint32(syscall.Geteuid()), uint32(syscall.Getegid()), groups
+}
+
+// LSM is the security module context of the process (/proc/self/attr/current), "" if it cannot be read.
+func (OSRouteProbeFS) LSM() string {
+	data, err := os.ReadFile("/proc/self/attr/current")
+	if err != nil {
+		return ""
+	}
+	context := strings.Trim(string(data), " \t\r\n\x00")
+	if len(context) > 128 {
+		context = context[:128]
+	}
+	return context
 }

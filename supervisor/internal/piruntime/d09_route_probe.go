@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"syscall"
+
+	"tbound/supervisor/internal/cellview"
 )
 
 // The direct-runtime route probe (E06): a read of the registered outside-workspace target made from
@@ -23,8 +25,14 @@ import (
 // rebind the consumer mounts, apply the same Landlock ruleset), makes the attempts below, reports them in
 // the TCB proof, and exits without starting Pi.
 //
+// Before the attempts the probe measures the path to the target from inside the cell (cellview.Measure): the
+// lstat result, owner, mode and POSIX ACL presence of every component of the registered path, followed the way
+// the kernel follows it, with the identity of the probe process and its security module context. The cell sees
+// its own mounts, so the facts are those of the cell and not of the image it was built from.
+//
 // The probe only reads: it opens the paths O_RDONLY and reads one byte, stats them and opens a
-// directory. D09RouteProbeFS has no operation that writes, and a test keeps the implementation to it.
+// directory; the measurement is lstat, readlink and reads of attributes. D09RouteProbeFS has no operation that
+// writes, and a test keeps the implementation to it.
 
 const (
 	// D09RouteProbeName is the one registered probe.
@@ -139,10 +147,14 @@ type D09RouteProbeResult struct {
 	Control     string                 `json:"control"`
 	ControlRead D09RouteProbeAttempt   `json:"control_read"`
 	Attempts    []D09RouteProbeAttempt `json:"attempts"`
+	// View is what the probe process saw along the path to the target, measured before the attempts.
+	View cellview.View `json:"view"`
 }
 
-// D09RouteProbeFS is the whole file system surface of the probe: reads only.
+// D09RouteProbeFS is the whole file system surface of the probe: reads only. The embedded surface is the
+// measurement of the path to the target (lstat, ACL attributes, identity).
 type D09RouteProbeFS interface {
+	cellview.Source
 	// OpenRead opens path O_RDONLY, reads at most one byte, discards it and closes the file.
 	OpenRead(path string) error
 	// Stat reads the metadata of path.
@@ -166,6 +178,7 @@ func probeErrno(err error) int {
 // D09RouteProbeOps, and reports the errno of each.
 func RunD09RouteProbe(fsys D09RouteProbeFS, p D09RouteProbe) D09RouteProbeResult {
 	result := D09RouteProbeResult{Name: p.Name, Target: p.Target, Control: p.Control}
+	result.View = cellview.Measure(fsys, p.Target)
 	result.ControlRead = D09RouteProbeAttempt{Method: D09RouteProbeMethodControl, Op: D09RouteProbeOpOpen, Errno: probeErrno(fsys.OpenRead(p.Control))}
 	for _, method := range D09RouteProbeMethods {
 		for _, op := range D09RouteProbeOps {
@@ -195,6 +208,9 @@ func (r D09RouteProbeResult) CheckShape(p D09RouteProbe) error {
 	}
 	if r.ControlRead.Method != D09RouteProbeMethodControl || r.ControlRead.Op != D09RouteProbeOpOpen {
 		return errors.New("the probe result has no control read")
+	}
+	if len(r.View.Facts) == 0 && r.View.Err == "" {
+		return errors.New("the probe result carries no measurement of the path to the target")
 	}
 	if len(r.Attempts) != len(D09RouteProbeMethods)*len(D09RouteProbeOps) {
 		return fmt.Errorf("the probe result has %d attempts, want %d", len(r.Attempts), len(D09RouteProbeMethods)*len(D09RouteProbeOps))

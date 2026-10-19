@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"tbound/supervisor/internal/cellview"
 )
 
 // measuredRouteProbeTemplate is a measured production template (no probe): Landlock reads /usr and
@@ -249,7 +251,7 @@ func TestOSRouteProbeFSReadsAndChangesNothing(t *testing.T) {
 func TestRouteProbeSourceHoldsNoWritingCall(t *testing.T) {
 	forbidden := []string{"O_WRONLY", "O_RDWR", "O_CREAT", "O_TRUNC", "O_APPEND", "O_EXCL", "syscall.Write", "Unlink", "Rmdir", "Mkdir", "Symlink", "Link(",
 		"Rename", "Chmod", "Chown", "Truncate", "Mknod", "Setxattr", "Removexattr", "Utimes", "Mount", "os.Create", "os.OpenFile", "os.WriteFile", "os.Remove", "os.Mkdir", "ioutil"}
-	for _, name := range []string{"d09_route_probe.go", "d09_route_probe_linux.go"} {
+	for _, name := range []string{"d09_route_probe.go", "d09_route_probe_linux.go", "../cellview/resolve.go", "../cellview/view.go"} {
 		src, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
@@ -259,5 +261,58 @@ func TestRouteProbeSourceHoldsNoWritingCall(t *testing.T) {
 				t.Errorf("%s contains %q: the route probe performs reads only", name, token)
 			}
 		}
+	}
+}
+
+// The real surface measures a real path: a symbolic link in the middle, the owner and mode of each
+// component, the ACL attribute reads, and the identity of the process. Nothing in the tree changes.
+func TestOSRouteProbeFSMeasuresARealPathAndChangesNothing(t *testing.T) {
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	if err := os.Mkdir(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(real, "secret")
+	if err := os.WriteFile(file, []byte("bytes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(file, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("real", filepath.Join(root, "alias")); err != nil {
+		t.Fatal(err)
+	}
+	before := treeSnapshot(t, root)
+	target := filepath.Join(root, "alias", "secret")
+	v := cellview.Measure(OSRouteProbeFS{}, target)
+	if v.Err != "" {
+		t.Fatalf("the walk of %s: %s", target, v.Err)
+	}
+	kinds := map[string]string{}
+	for _, f := range v.Facts {
+		kinds[f.Path] = f.Kind
+		if f.Kind == cellview.KindLink && f.Link != "real" {
+			t.Errorf("link text %q", f.Link)
+		}
+	}
+	if kinds[filepath.Join(root, "alias")] != cellview.KindLink || kinds[file] != cellview.KindFile || kinds[real] != cellview.KindDir || kinds["/"] != cellview.KindDir {
+		t.Errorf("kinds = %v", kinds)
+	}
+	if v.EUID != uint32(os.Geteuid()) || v.EGID != uint32(os.Getegid()) {
+		t.Errorf("identity %d:%d", v.EUID, v.EGID)
+	}
+	for _, f := range v.Facts {
+		if f.Path == file && (f.Mode != 0o644 || f.Size != 5 || f.UID != uint32(os.Geteuid())) {
+			t.Errorf("fact of the file = %+v", f)
+		}
+		if f.ACL == cellview.ACLUnreadable && f.Kind != cellview.KindLink {
+			t.Logf("ACL of %s is unreadable on this file system", f.Path)
+		}
+	}
+	if _, err := (OSRouteProbeFS{}).Lstat(filepath.Join(root, "absent")); !errors.Is(err, syscall.ENOENT) {
+		t.Errorf("an absent component gives %v, want ENOENT", err)
+	}
+	if after := treeSnapshot(t, root); !slices.Equal(before, after) {
+		t.Fatalf("the measurement changed the tree:\nbefore %q\nafter  %q", before, after)
 	}
 }

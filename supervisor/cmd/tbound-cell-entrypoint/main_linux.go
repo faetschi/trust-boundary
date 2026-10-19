@@ -26,8 +26,9 @@
 //     four signed environment fields.
 //
 // A fifth, gated mode is the direct-runtime route probe (route_probe_linux.go): selected only by the
-// signed route-probe template, it does steps 1 to 3 as for a Pi cell, then reads the registered
-// outside-workspace target (reads only), reports the errnos in the proof, and exits without Pi.
+// signed route-probe template, it does steps 1 to 3 as for a Pi cell, measures the path to the registered
+// outside-workspace target as the cell sees it (lstat of each component, ACL attributes, its own identity),
+// reads the target (reads only), reports the measurement and the errnos in the proof, and exits without Pi.
 //
 // The writable command view, descriptor role mapping, and session composition
 // are owned elsewhere (see docs/governed-setup.md and the session composition

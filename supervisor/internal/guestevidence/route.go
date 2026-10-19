@@ -6,6 +6,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+
+	"tbound/supervisor/internal/cellview"
 )
 
 // The E06 exposure matrix (route-matrix.json) has two cells that the prototype sandbox tests cannot
@@ -63,10 +65,16 @@ type RouteDenied struct {
 	// there and refuses a pin that differs; the validator requires both to equal the run pins.
 	ProbeProfileDigest  string `json:"probe_profile_digest,omitempty"`
 	ProfileSourceDigest string `json:"profile_source_digest,omitempty"`
-	// TargetFact (Pi runtime cell only) is what the verified image of the probe shows of the target: it
-	// exists, is a regular file the cell identity can read, and the cell identity can search every
-	// directory above it, so only the cell's confinement stands between the cell and the bytes.
-	TargetFact *RouteTarget `json:"target_fact,omitempty"`
+	// View (Pi runtime cell only) is what the probe process measured inside the cell, before its attempts: the
+	// lstat facts of every component of the target's path as the cell's own mounts show them, and the identity of
+	// the probe. Ordinary file permissions computed from it must allow the access, so that only the cell's
+	// confinement stands between the cell and the bytes.
+	View *cellview.View `json:"view,omitempty"`
+	// AdminPubkeyDigest (Pi runtime cell only) is the digest of the admin public key the signed probe host
+	// profile was verified under; the validator requires it to equal run.json pins.admin_pubkey_digest.
+	AdminPubkeyDigest string `json:"admin_pubkey_digest,omitempty"`
+	// Limits (Pi runtime cell only) are what the artifact does not establish (DirectRuntimeLimits).
+	Limits []string `json:"limits,omitempty"`
 	// Control reads a file inside the workspace in the same cell: the detector sees a successful read.
 	Control RouteAttempt `json:"control"`
 	// Attempts are the denied requests of the target, one per method of RouteMethods.
@@ -83,6 +91,10 @@ type RouteCell struct {
 	// probe cell's template is that template plus the route_probe member, so the probe ran in the production
 	// cell's image, mounts, Landlock ruleset, seccomp profile and user mapping.
 	ProductionTemplateDigest string `json:"production_template_digest,omitempty"`
+	// CellUID and CellGID (Pi runtime cell only) are the unprivileged identity of the cell, the template's: the
+	// identity the probe measured permissions for.
+	CellUID uint32 `json:"cell_uid,omitempty"`
+	CellGID uint32 `json:"cell_gid,omitempty"`
 }
 
 // RouteJournal names the audit journal the evidence was read from: the verified record count and the
@@ -172,7 +184,7 @@ func validateRoute(kind string, raw []byte, e Expect) error {
 		}
 		return nil
 	}
-	if r.Cell.ProductionTemplateDigest != "" || r.TargetFact != nil || r.ProbeProfileDigest != "" || r.ProfileSourceDigest != "" || r.Control.Op != "" || r.Control.Errno != "" {
+	if r.Cell.ProductionTemplateDigest != "" || r.Cell.CellUID != 0 || r.Cell.CellGID != 0 || r.View != nil || r.AdminPubkeyDigest != "" || len(r.Limits) != 0 || r.ProbeProfileDigest != "" || r.ProfileSourceDigest != "" || r.Control.Op != "" || r.Control.Errno != "" {
 		add("a command cell artifact carries members of the Pi runtime cell artifact")
 	}
 	seenContainers := map[string]bool{}

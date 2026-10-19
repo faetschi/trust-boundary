@@ -62,7 +62,7 @@ func (p plan) collectors() runner.CollectorSet {
 // attest wraps an executor with the host-side attestation of this run.
 func (p plan) attest(inner runner.Executor) runner.Attest {
 	return runner.Attest{
-		Inner: inner, Pins: p.cfg.Pins, EVQ: p.cfg.EVQObligations, EVQResults: p.evq, Route: p.route,
+		Inner: inner, Pins: p.cfg.Pins.ReceiptPins, EVQ: p.cfg.EVQObligations, EVQResults: p.evq, Route: p.route,
 		PDelta: p.pDelta, ScriptDigest: p.scriptDigest, AdmissionPolicyDigest: p.admissionPolicyDigest,
 		AttackerDigest: p.manifest.Pins.AttackerDigest, PivotsDigest: p.pivotsDigest,
 	}

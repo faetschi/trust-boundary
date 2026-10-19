@@ -3,21 +3,19 @@
 package main
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/cellview"
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/piruntime"
 )
@@ -28,8 +26,7 @@ const (
 )
 
 // drWorld is a complete direct-runtime probe run: the production and probe templates, the signed host profile
-// of the probe run, the TCB proof the probe cell gave, the session journal that holds it, run.json and the
-// OCI layout of the probed image.
+// of the probe run, the TCB proof the probe cell gave, the session journal that holds it and run.json.
 type drWorld struct {
 	dir                string
 	probeTemplate      piruntime.D09CellTemplate
@@ -37,112 +34,22 @@ type drWorld struct {
 	proof              piruntime.D09TCBProof
 	opts               routeProbeOptions
 	runConfig          string
-	imageDigest        string
 	expect             guestevidence.Expect
 }
 
 // drOpts shapes a world. The zero value is a good probe run.
 type drOpts struct {
-	probe   func(*piruntime.D09RouteProbeResult)
-	proof   func(*piruntime.D09TCBProof)
-	event   func(*map[string]any)
-	image   [][]drEntry                  // layers of the probed image; nil is drGoodImage
+	probe func(*piruntime.D09RouteProbeResult)
+	proof func(*piruntime.D09TCBProof)
+	event func(*map[string]any)
+	// facts changes what the probe measures in the cell (the cell's own view of the path), acl what it reads as ACLs.
+	facts func(map[string]cellview.Fact)
+	acl   map[string]string
+	// pin is the admin key digest run.json pins; empty pins the key that signed the probe profile.
+	pin     string
 	profile func(*piruntime.HostProfile) // changes the production profile, and with it the probe profile and the pins
 	// probeProfile changes the probe profile only.
 	probeProfile func(*piruntime.HostProfile)
-}
-
-// drEntry is one tar entry of a layer.
-type drEntry struct {
-	name     string
-	typ      byte
-	mode     int64
-	uid, gid int
-	body     string
-	link     string
-}
-
-func drDir(name string, mode int64, uid int) drEntry {
-	return drEntry{name: name, typ: tar.TypeDir, mode: mode, uid: uid, gid: uid}
-}
-
-func drFile(name string, mode int64, uid int, body string) drEntry {
-	return drEntry{name: name, typ: tar.TypeReg, mode: mode, uid: uid, gid: uid, body: body}
-}
-
-func drSymlink(name, link string) drEntry {
-	return drEntry{name: name, typ: tar.TypeSymlink, mode: 0o777, link: link}
-}
-
-// drGoodImage is an image in which the target is world-readable below searchable directories.
-func drGoodImage() [][]drEntry {
-	return [][]drEntry{{drDir("./", 0o755, 0), drDir("home/", 0o755, 0), drDir("home/node/", 0o755, 1000),
-		drFile("home/node/.profile", 0o644, 1000, "export PATH=$HOME/bin:$PATH\n")}}
-}
-
-// drLayout writes an OCI layout into layout holding one image with the given layers (the first layer
-// gzip-compressed, the others plain) and returns the manifest digest.
-func drLayout(t *testing.T, layout string, layers [][]drEntry) string {
-	t.Helper()
-	blobs := filepath.Join(layout, "blobs", "sha256")
-	if err := os.MkdirAll(blobs, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	put := func(data []byte) string {
-		sum := sha256.Sum256(data)
-		name := hex.EncodeToString(sum[:])
-		if err := os.WriteFile(filepath.Join(blobs, name), data, 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return "sha256:" + name
-	}
-	var descriptors []map[string]any
-	for i, entries := range layers {
-		var raw bytes.Buffer
-		tw := tar.NewWriter(&raw)
-		for _, e := range entries {
-			hdr := &tar.Header{Name: e.name, Typeflag: e.typ, Mode: e.mode, Uid: e.uid, Gid: e.uid, Linkname: e.link}
-			if e.typ == tar.TypeReg {
-				hdr.Size = int64(len(e.body))
-			}
-			if err := tw.WriteHeader(hdr); err != nil {
-				t.Fatal(err)
-			}
-			if e.typ == tar.TypeReg {
-				if _, err := tw.Write([]byte(e.body)); err != nil {
-					t.Fatal(err)
-				}
-			}
-		}
-		if err := tw.Close(); err != nil {
-			t.Fatal(err)
-		}
-		data, media := raw.Bytes(), "application/vnd.oci.image.layer.v1.tar"
-		if i == 0 {
-			var zipped bytes.Buffer
-			zw := gzip.NewWriter(&zipped)
-			if _, err := zw.Write(data); err != nil {
-				t.Fatal(err)
-			}
-			if err := zw.Close(); err != nil {
-				t.Fatal(err)
-			}
-			data, media = zipped.Bytes(), "application/vnd.oci.image.layer.v1.tar+gzip"
-		}
-		descriptors = append(descriptors, map[string]any{"mediaType": media, "digest": put(data), "size": len(data)})
-	}
-	config := put([]byte(`{"architecture":"amd64","os":"linux"}`))
-	manifest, err := json.Marshal(map[string]any{"schemaVersion": 2, "mediaType": "application/vnd.oci.image.manifest.v1+json",
-		"config": map[string]any{"mediaType": "application/vnd.oci.image.config.v1+json", "digest": config, "size": 36}, "layers": descriptors})
-	if err != nil {
-		t.Fatal(err)
-	}
-	digest := put(manifest)
-	index, _ := json.Marshal(map[string]any{"schemaVersion": 2, "manifests": []map[string]any{{"mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": digest, "size": len(manifest)}}})
-	if err := os.WriteFile(filepath.Join(layout, "index.json"), index, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	return digest
 }
 
 func drTemplate(t *testing.T, imageDigest, ociLayout string) piruntime.D09CellTemplate {
@@ -186,17 +93,31 @@ func drWriteJSON(t *testing.T, path string, v any) {
 	}
 }
 
+// drGoodFacts is what the probe measures in a cell whose permissions would allow the read: a world-readable
+// file below searchable directories, none owned by the cell identity (100731:100732).
+func drGoodFacts() map[string]cellview.Fact {
+	d := func(p string, uid uint32) cellview.Fact {
+		return cellview.Fact{Path: p, Kind: cellview.KindDir, Mode: 0o755, UID: uid, GID: uid}
+	}
+	return map[string]cellview.Fact{"/": d("/", 0), "/home": d("/home", 0), "/home/node": d("/home/node", 1000),
+		drTarget: {Path: drTarget, Kind: cellview.KindFile, Mode: 0o644, UID: 1000, GID: 1000, Size: 807}}
+}
+
 // drDeniedProbe is the result a cell that denies the target reports.
-func drDeniedProbe(p piruntime.D09RouteProbe, mutate func(*piruntime.D09RouteProbeResult)) *piruntime.D09RouteProbeResult {
-	result := piruntime.RunD09RouteProbe(deniedFS{}, p)
+func drDeniedProbe(p piruntime.D09RouteProbe, fs deniedFS, mutate func(*piruntime.D09RouteProbeResult)) *piruntime.D09RouteProbeResult {
+	result := piruntime.RunD09RouteProbe(fs, p)
 	if mutate != nil {
 		mutate(&result)
 	}
 	return &result
 }
 
-// deniedFS refuses every open and listing and shows the metadata of every stat, as the cell does.
-type deniedFS struct{}
+// deniedFS refuses every open and listing and shows the metadata of every stat, as the cell does. It measures
+// the path from facts, with the cell identity of drTemplate.
+type deniedFS struct {
+	facts map[string]cellview.Fact
+	acl   map[string]string
+}
 
 func (deniedFS) OpenRead(p string) error {
 	if strings.HasPrefix(p, "/work/") {
@@ -206,6 +127,16 @@ func (deniedFS) OpenRead(p string) error {
 }
 func (deniedFS) Stat(string) error { return nil }
 func (deniedFS) List(string) error { return syscall.EACCES }
+func (f deniedFS) Lstat(p string) (cellview.Fact, error) {
+	fact, ok := f.facts[p]
+	if !ok {
+		return cellview.Fact{}, syscall.ENOENT
+	}
+	return fact, nil
+}
+func (f deniedFS) ACL(p string) string                { return f.acl[p] }
+func (deniedFS) Identity() (uint32, uint32, []uint32) { return 100731, 100732, nil }
+func (deniedFS) LSM() string                          { return "unconfined" }
 
 // drSignProfile signs the host profile with a fresh key, writes the three files and returns the digest the
 // service journals for it.
@@ -234,6 +165,15 @@ func drSignProfile(t *testing.T, dir, name string, profile piruntime.HostProfile
 
 // drBuild writes the world. mutateProof changes the proof before it is journaled; mutateEvent changes the
 // journal event.
+// drFS is the cell's file system as the probe measures it in a world.
+func drFS(o drOpts) deniedFS {
+	facts := drGoodFacts()
+	if o.facts != nil {
+		o.facts(facts)
+	}
+	return deniedFS{facts: facts, acl: o.acl}
+}
+
 func drBuild(t *testing.T, mutateProbe func(*piruntime.D09RouteProbeResult), mutateProof func(*piruntime.D09TCBProof), mutateEvent func(*map[string]any)) drWorld {
 	return drBuildWith(t, drOpts{probe: mutateProbe, proof: mutateProof, event: mutateEvent})
 }
@@ -252,13 +192,7 @@ func drBuildWith(t *testing.T, o drOpts) drWorld {
 	if err := os.Chmod(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	layers := o.image
-	if layers == nil {
-		layers = drGoodImage()
-	}
-	layout := filepath.Join(dir, "oci")
-	imageDigest := drLayout(t, layout, layers)
-	w := drWorld{dir: dir, imageDigest: imageDigest, productionTemplate: drTemplate(t, imageDigest, layout)}
+	w := drWorld{dir: dir, productionTemplate: drTemplate(t, geDigest("image"), "/opt/tbound/cell/pi-cell-oci")}
 	w.probeTemplate = w.productionTemplate
 	probe := piruntime.D09RouteProbe{Name: piruntime.D09RouteProbeName, Target: drTarget, Control: "/work/" + drControl}
 	w.probeTemplate.RouteProbe = &probe
@@ -285,13 +219,21 @@ func drBuildWith(t *testing.T, o drOpts) drWorld {
 		o.probeProfile(&probeProfile)
 	}
 	hostProfile, hostSig, hostKey, probeProfileDigest := drSignProfile(t, dir, "probe-profile", probeProfile)
+	keyBytes, err := os.ReadFile(hostKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adminPin := piruntime.DigestBytes(keyBytes)
+	if o.pin != "" {
+		adminPin = o.pin
+	}
 
 	w.proof = piruntime.D09TCBProof{Schema: "tbound-pi-entrypoint/v1", UID: w.probeTemplate.CellUID, GID: w.probeTemplate.CellGID, CapEff: "0000000000000000",
 		NoNewPrivs: true, Seccomp: 2, LandlockABI: 8, LandlockRulesetDigest: w.probeTemplate.LandlockRulesetDigest, LandlockTSYNC: true, CgroupV2: true,
 		ContainerName: "tbound-d09-cell-abc", LeaderPID: 4242, ContainerLeaderPID: 1, LauncherProcessPID: 4000,
 		ImageRef: "localhost/tbound/pi-cell@" + w.probeTemplate.ExpectedImageDigest, ImageDigest: w.probeTemplate.ExpectedImageDigest, TemplateDigest: probeDigest,
 		ConsumerMountsVerified: true, RawSourceFDsClosed: true, WorkerMountID: 11, RuntimeMountID: 12, WorkerDevice: 1, WorkerInode: 2, RuntimeDevice: 3, RuntimeInode: 4,
-		NoExternalRoutes: true, RouteProbe: drDeniedProbe(probe, o.probe)}
+		NoExternalRoutes: true, RouteProbe: drDeniedProbe(probe, drFS(o), o.probe)}
 	if o.proof != nil {
 		o.proof(&w.proof)
 	}
@@ -328,12 +270,12 @@ func drBuildWith(t *testing.T, o drOpts) drWorld {
 	drWriteJSON(t, productionTemplatePath, w.productionTemplate)
 	w.runConfig = filepath.Join(dir, "run.json")
 	drWriteJSON(t, w.runConfig, map[string]any{"freeze_commit": geCommit, "pins": map[string]string{"profile_hash": profileHash,
-		"containment_profile_digest": productionDigest, "frozen_source_digest": rtSource}, "other": 1})
+		"containment_profile_digest": productionDigest, "frozen_source_digest": rtSource, "admin_pubkey_digest": adminPin}, "other": 1})
 	w.opts = routeProbeOptions{route: "direct-runtime", runID: rtRunID, auditRoot: dir, target: drTarget, controlPath: drControl,
-		profileHash: profileHash, frozenSource: rtSource, containmentDigest: productionDigest,
+		profileHash: profileHash, frozenSource: rtSource, containmentDigest: productionDigest, adminPubkeyDigest: adminPin,
 		probeTemplate: probeTemplatePath, productionTemplate: productionTemplatePath,
 		hostProfile: hostProfile, hostProfileSig: hostSig, hostProfileKey: hostKey}
-	w.expect = guestevidence.Expect{Commit: geCommit, BinarySHA256: geDigest("self"), ProfileHash: profileHash, FrozenSourceDigest: rtSource, ContainmentProfileDigest: productionDigest}
+	w.expect = guestevidence.Expect{Commit: geCommit, BinarySHA256: geDigest("self"), ProfileHash: profileHash, FrozenSourceDigest: rtSource, ContainmentProfileDigest: productionDigest, AdminPubkeyDigest: adminPin}
 	return w
 }
 
@@ -351,8 +293,8 @@ func TestDirectRuntimeProbeBuildsAnArtifactThatPasses(t *testing.T) {
 	if d.Cell.TemplateDigest != probeDigest || d.Cell.ProductionTemplateDigest != productionDigest || d.Cell.ImageDigest != w.probeTemplate.ExpectedImageDigest {
 		t.Errorf("cell = %+v", d.Cell)
 	}
-	if d.TargetFact == nil || !d.TargetFact.Regular || d.TargetFact.Mode != 0o644 || d.TargetFact.ParentMode != 0o755 || d.TargetFact.Size == 0 {
-		t.Errorf("target fact = %+v", d.TargetFact)
+	if d.View == nil || len(d.View.Facts) != 4 || d.AdminPubkeyDigest != w.opts.adminPubkeyDigest {
+		t.Errorf("view = %+v admin key %s", d.View, d.AdminPubkeyDigest)
 	}
 	if err := guestevidence.Validate(kind, mustEncodeGE(t, kind, d), w.expect); err != nil {
 		t.Fatalf("the artifact is refused: %v", err)
@@ -413,7 +355,8 @@ func TestDirectRuntimeProbeRefusesWhatIsNotTheProbeCell(t *testing.T) {
 		"another profile pin":                  {opts: func(o *routeProbeOptions) { o.profileHash = geDigest("other") }},
 		"another source pin":                   {opts: func(o *routeProbeOptions) { o.frozenSource = geDigest("another source") }},
 		"another production template pin":      {opts: func(o *routeProbeOptions) { o.containmentDigest = geDigest("another production template") }},
-		"a layout that is not there":           {opts: func(o *routeProbeOptions) { o.ociLayout = filepath.Join(o.auditRoot, "nowhere") }},
+		"no admin key pin":                     {opts: func(o *routeProbeOptions) { o.adminPubkeyDigest = "" }},
+		"another admin key pin":                {opts: func(o *routeProbeOptions) { o.adminPubkeyDigest = geDigest("another admin key") }},
 		"no host profile":                      {opts: func(o *routeProbeOptions) { o.hostProfile = "" }},
 		"a profile signature of nothing":       {opts: func(o *routeProbeOptions) { o.hostProfileSig = o.hostProfileKey }},
 		"no production template":               {opts: func(o *routeProbeOptions) { o.productionTemplate = "" }},
@@ -465,159 +408,167 @@ func drRefusal(t *testing.T, w drWorld) error {
 	return err
 }
 
-// ---- the baseline is read from the probed image, for the cell identity ----
+// ---- the evidence is what the cell measured, for the cell identity ----
 
-func TestDirectRuntimeProbeRecordsTheBaselineOfTheProbedImage(t *testing.T) {
+func TestDirectRuntimeProbeRecordsWhatTheCellMeasured(t *testing.T) {
 	w := drBuild(t, nil, nil, nil)
 	d, _, err := probeRouteDenied(w.opts, productionRouteProbeEnv())
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := d.TargetFact
-	if f == nil || f.ImageDigest != w.imageDigest || f.ImageDigest != d.Cell.ImageDigest || f.ResolvedPath != drTarget || f.UID != 1000 || f.Mode != 0o644 ||
-		f.ParentMode != 0o755 || f.CellUID != uint32(w.probeTemplate.CellUID) || f.CellGID != uint32(w.probeTemplate.CellGID) || f.Size != int64(len("export PATH=$HOME/bin:$PATH\n")) {
-		t.Fatalf("baseline = %+v", f)
+	v := d.View
+	if v == nil || v.Err != "" || v.EUID != uint32(w.probeTemplate.CellUID) || v.EGID != uint32(w.probeTemplate.CellGID) || v.LSM != "unconfined" ||
+		d.Cell.CellUID != uint32(w.probeTemplate.CellUID) || d.Cell.CellGID != uint32(w.probeTemplate.CellGID) {
+		t.Fatalf("view = %+v cell = %+v", v, d.Cell)
 	}
 	var paths []string
-	for _, a := range f.Ancestors {
-		paths = append(paths, a.Path)
+	for _, f := range v.Facts {
+		paths = append(paths, f.Path)
 	}
-	if strings.Join(paths, " ") != "/ /home /home/node" {
-		t.Errorf("ancestors = %v", paths)
+	if strings.Join(paths, " ") != "/ /home /home/node /home/node/.profile" {
+		t.Errorf("components = %v", paths)
+	}
+	if !slices.Equal(d.Limits, guestevidence.DirectRuntimeLimits) {
+		t.Errorf("limits = %v", d.Limits)
 	}
 }
 
-func TestDirectRuntimeProbeNeedsTheTargetToBeReadableByTheCellIdentity(t *testing.T) {
-	cell := 100731 // the cell uid of drTemplate
-	for name, file := range map[string]drEntry{
-		"only its owner can read it":                                drFile("home/node/.profile", 0o600, 1000, "x\n"),
-		"it is the cell's own file and the owner class has no read": drFile("home/node/.profile", 0o044, cell, "x\n"),
-		"it is empty":                drFile("home/node/.profile", 0o644, 1000, ""),
-		"it is a directory":          drDir("home/node/.profile", 0o755, 1000),
-		"it is a symlink to nothing": drSymlink("home/node/.profile", "/nowhere"),
+// The cell sees its own mounts: a file the image holds and a mount replaces is judged by what the mount shows.
+func TestDirectRuntimeProbeJudgesWhatTheCellSeesAndNotTheImage(t *testing.T) {
+	file := cellview.Fact{Path: drTarget, Kind: cellview.KindFile, Mode: 0o644, UID: 1000, GID: 1000, Size: 807}
+	dirFact := func(p string, mode, uid uint32) cellview.Fact {
+		return cellview.Fact{Path: p, Kind: cellview.KindDir, Mode: mode, UID: uid, GID: uid}
+	}
+	cell := uint32(100731)
+	for name, c := range map[string]struct {
+		facts func(map[string]cellview.Fact)
+		acl   map[string]string
+	}{
+		"the workspace mount replaces /home/node with a link into /work": {facts: func(m map[string]cellview.Fact) {
+			m["/home/node"] = cellview.Fact{Path: "/home/node", Kind: cellview.KindLink, Mode: 0o777, Link: "/work/private"}
+			m["/work"] = dirFact("/work", 0o755, 0)
+			m["/work/private"] = dirFact("/work/private", 0o755, 0)
+			m["/work/private/.profile"] = cellview.Fact{Path: "/work/private/.profile", Kind: cellview.KindFile, Mode: 0o644, Size: 807}
+		}},
+		"a mount closes the home directory": {facts: func(m map[string]cellview.Fact) { m["/home/node"] = dirFact("/home/node", 0o700, 0) }},
+		"the file is owner-only":            {facts: func(m map[string]cellview.Fact) { f := file; f.Mode = 0o600; m[drTarget] = f }},
+		"the file is the cell's own and its owner class has no read": {facts: func(m map[string]cellview.Fact) {
+			f := file
+			f.UID, f.Mode = cell, 0o044
+			m[drTarget] = f
+		}},
+		"the file is empty":                              {facts: func(m map[string]cellview.Fact) { f := file; f.Size = 0; m[drTarget] = f }},
+		"the file is a socket":                           {facts: func(m map[string]cellview.Fact) { f := file; f.Kind = cellview.KindOther; m[drTarget] = f }},
+		"the root is closed":                             {facts: func(m map[string]cellview.Fact) { m["/"] = dirFact("/", 0o700, 0) }},
+		"an ancestor is closed":                          {facts: func(m map[string]cellview.Fact) { m["/home"] = dirFact("/home", 0o700, 0) }},
+		"the parent has no read":                         {facts: func(m map[string]cellview.Fact) { m["/home/node"] = dirFact("/home/node", 0o711, 1000) }},
+		"the cell owns an ancestor with no owner search": {facts: func(m map[string]cellview.Fact) { m["/home"] = dirFact("/home", 0o655, cell) }},
+		"a component is missing in the cell":             {facts: func(m map[string]cellview.Fact) { delete(m, "/home/node") }},
+		"an ACL on the file":                             {acl: map[string]string{drTarget: "access"}},
+		"a default ACL on the parent":                    {acl: map[string]string{"/home/node": "default"}},
+		"an ACL that could not be read":                  {acl: map[string]string{"/home": cellview.ACLUnreadable}},
 	} {
-		w := drBuildWith(t, drOpts{image: [][]drEntry{{drDir("./", 0o755, 0), drDir("home/", 0o755, 0), drDir("home/node/", 0o755, 1000), file}}})
+		w := drBuildWith(t, drOpts{facts: c.facts, acl: c.acl})
 		if err := drRefusal(t, w); err == nil {
 			t.Errorf("%s: a valid artifact came out", name)
 		}
 	}
 }
 
-func TestDirectRuntimeProbeNeedsEveryAncestorToBeSearchableByTheCellIdentity(t *testing.T) {
-	cell := 100731
-	file := drFile("home/node/.profile", 0o644, 1000, "export X=1\n")
-	for name, dirs := range map[string][]drEntry{
-		"the image root":                                {drDir("./", 0o700, 0), drDir("home/", 0o755, 0), drDir("home/node/", 0o755, 1000)},
-		"an ancestor of the parent":                     {drDir("./", 0o755, 0), drDir("home/", 0o700, 0), drDir("home/node/", 0o755, 1000)},
-		"the parent":                                    {drDir("./", 0o755, 0), drDir("home/", 0o755, 0), drDir("home/node/", 0o750, 1000)},
-		"the parent cannot be listed":                   {drDir("./", 0o755, 0), drDir("home/", 0o755, 0), drDir("home/node/", 0o711, 1000)},
-		"the cell's own directory with no owner search": {drDir("./", 0o755, 0), drDir("home/", 0o655, cell), drDir("home/node/", 0o755, 1000)},
-		"an ancestor with no entry in the image":        {drDir("./", 0o755, 0), drDir("home/node/", 0o755, 1000)},
-	} {
-		w := drBuildWith(t, drOpts{image: [][]drEntry{append(dirs, file)}})
-		if err := drRefusal(t, w); err == nil {
-			t.Errorf("%s cannot be searched or has no entry, and a valid artifact came out", name)
+// Leaving a directory by ".." needs search permission on it, and a link that leads through a closed directory
+// counts as well as one that leads through an open directory.
+func TestDirectRuntimeProbeFollowsLinksAndDotDotAsTheKernelDoes(t *testing.T) {
+	linkFacts := func(locked uint32) func(map[string]cellview.Fact) {
+		return func(m map[string]cellview.Fact) {
+			d := func(p string, mode uint32) cellview.Fact {
+				return cellview.Fact{Path: p, Kind: cellview.KindDir, Mode: mode}
+			}
+			m["/home/node"] = cellview.Fact{Path: "/home/node", Kind: cellview.KindLink, Mode: 0o777, Link: "/locked/../public"}
+			m["/locked"], m["/public"] = d("/locked", locked), d("/public", 0o755)
+			m["/public/.profile"] = cellview.Fact{Path: "/public/.profile", Kind: cellview.KindFile, Mode: 0o644, Size: 9}
 		}
 	}
-}
-
-func TestDirectRuntimeProbeFollowsSymlinksOfTheImage(t *testing.T) {
-	file := drFile("srv/home/node/.profile", 0o644, 1000, "export X=1\n")
-	open := []drEntry{drDir("./", 0o755, 0), drDir("srv/", 0o755, 0), drDir("srv/home/", 0o755, 0), drDir("srv/home/node/", 0o755, 1000), file, drSymlink("home", "srv/home")}
-	w := drBuildWith(t, drOpts{image: [][]drEntry{open}})
-	d, _, err := probeRouteDenied(w.opts, productionRouteProbeEnv())
-	if err != nil {
-		t.Fatalf("a target below a symlinked directory: %v", err)
+	if err := drRefusal(t, drBuildWith(t, drOpts{facts: linkFacts(0o700)})); err == nil {
+		t.Error("a link that leaves a 0700 directory by '..' gave a valid artifact")
+	} else if !strings.Contains(err.Error(), "/locked") {
+		t.Errorf("the refusal does not name the directory: %v", err)
 	}
-	if d.TargetFact.ResolvedPath != "/srv/home/node/.profile" {
-		t.Errorf("resolved to %q", d.TargetFact.ResolvedPath)
+	if err := drRefusal(t, drBuildWith(t, drOpts{facts: linkFacts(0o711)})); err != nil {
+		t.Errorf("the same walk over a searchable directory: %v", err)
 	}
-	if err := guestevidence.Validate(guestevidence.KindRouteDirectRuntime, mustEncodeGE(t, guestevidence.KindRouteDirectRuntime, d), w.expect); err != nil {
-		t.Errorf("the artifact is refused: %v", err)
+	loop := func(m map[string]cellview.Fact) {
+		m["/home/node"] = cellview.Fact{Path: "/home/node", Kind: cellview.KindLink, Mode: 0o777, Link: "/home/node"}
 	}
-	// The directories the link leads through count as ancestors: one that cannot be searched refuses the artifact.
-	closed := []drEntry{drDir("./", 0o755, 0), drDir("srv/", 0o700, 0), drDir("srv/home/", 0o755, 0), drDir("srv/home/node/", 0o755, 1000), file, drSymlink("home", "srv/home")}
-	if err := drRefusal(t, drBuildWith(t, drOpts{image: [][]drEntry{closed}})); err == nil {
-		t.Error("a target below a closed directory that a symlink leads through gave a valid artifact")
-	}
-	loop := []drEntry{drDir("./", 0o755, 0), drDir("home/", 0o755, 0), drSymlink("home/node", "/home/node")}
-	if err := drRefusal(t, drBuildWith(t, drOpts{image: [][]drEntry{loop}})); err == nil {
-		t.Error("a symlink loop gave a valid artifact")
+	if err := drRefusal(t, drBuildWith(t, drOpts{facts: loop})); err == nil {
+		t.Error("a link loop gave a valid artifact")
 	}
 }
 
-func TestDirectRuntimeProbeAppliesTheLayersInOrder(t *testing.T) {
-	base := drGoodImage()[0]
-	for name, upper := range map[string][]drEntry{
-		"a layer narrows the file":         {drFile("home/node/.profile", 0o600, 1000, "export X=1\n")},
-		"a layer narrows the directory":    {drDir("home/", 0o700, 0)},
-		"a whiteout removes the file":      {{name: "home/node/.wh..profile", typ: tar.TypeReg}},
-		"an opaque directory empties it":   {{name: "home/node/.wh..wh..opq", typ: tar.TypeReg}, drFile("home/node/other", 0o644, 1000, "x\n")},
-		"a whiteout removes the directory": {{name: "home/.wh.node", typ: tar.TypeReg}},
-	} {
-		w := drBuildWith(t, drOpts{image: [][]drEntry{base, upper}})
-		if err := drRefusal(t, w); err == nil {
-			t.Errorf("%s: a valid artifact came out", name)
-		}
-	}
-	// A later layer can also open what an earlier one closed.
-	closed := []drEntry{drDir("./", 0o755, 0), drDir("home/", 0o700, 0), drDir("home/node/", 0o755, 1000), drFile("home/node/.profile", 0o644, 1000, "export X=1\n")}
-	w := drBuildWith(t, drOpts{image: [][]drEntry{closed, {drDir("home/", 0o755, 0)}}})
-	if err := drRefusal(t, w); err != nil {
-		t.Errorf("a layer that opens the directory: %v", err)
-	}
-}
+// ---- the image baseline is gone ----
 
-func TestDirectRuntimeProbeRefusesABaselineThatIsNotTheProbedImage(t *testing.T) {
-	// The same target, readable and listable, in an image that is not the probed one.
-	w := drBuild(t, nil, nil, nil)
-	other := filepath.Join(w.dir, "other-oci")
-	otherDigest := drLayout(t, other, [][]drEntry{append(drGoodImage()[0], drFile("etc/motd", 0o644, 0, "other image\n"))})
-	if otherDigest == w.imageDigest {
-		t.Fatal("the decoy image is the probed image")
+func TestDirectRuntimeProducerHoldsNoImageBaseline(t *testing.T) {
+	if _, err := os.Stat("guest_route_image_linux.go"); err == nil {
+		t.Error("guest_route_image_linux.go exists: the producer applies image layers on the host")
 	}
-	w.opts.ociLayout = other
-	if err := drRefusal(t, w); err == nil {
-		t.Error("a baseline from a layout that does not hold the probed image gave a valid artifact")
-	}
-
-	// A layout whose index names the probed image but whose blobs are not the image's.
-	w = drBuild(t, nil, nil, nil)
-	blobs := filepath.Join(w.dir, "oci", "blobs", "sha256")
-	entries, err := os.ReadDir(blobs)
+	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		p := filepath.Join(blobs, e.Name())
-		orig, err := os.ReadFile(p)
+		if !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(e.Name())
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, append(append([]byte(nil), orig...), 'x'), 0o644); err != nil {
-			t.Fatal(err)
+		for _, token := range []string{"imageBaseline", "applyLayer", "applyEntry", ".wh.", "wh..opq", "archive/tar", "ociLayout", "oci-layout"} {
+			if strings.Contains(string(src), token) {
+				t.Errorf("%s contains %q: the host must not emulate the image", e.Name(), token)
+			}
 		}
-		if err := drRefusal(t, w); err == nil {
-			t.Errorf("blob %s was altered and a valid artifact came out", e.Name())
-		}
-		if err := os.WriteFile(p, orig, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := drRefusal(t, w); err != nil {
-		t.Fatalf("the restored layout is refused: %v", err)
 	}
 }
 
-func TestDirectRuntimeArtifactStatesTheBaselineOfAnotherImageIsNotValid(t *testing.T) {
-	w := drBuild(t, nil, nil, nil)
+// ---- the admin key is the one the run pins ----
+
+func TestDirectRuntimeProbeRefusesAHostProfileKeyThatTheRunDoesNotPin(t *testing.T) {
+	// The run pins one admin key; the profile, its signature and the journal are all consistent under
+	// another key. Before the pin the producer verified under whatever --host-profile-key said.
+	w := drBuildWith(t, drOpts{pin: geDigest("the admin key of the run")})
+	_, _, err := probeRouteDenied(w.opts, productionRouteProbeEnv())
+	if err == nil || !strings.Contains(err.Error(), "admin_pubkey_digest") {
+		t.Fatalf("a profile signed under an unpinned key: %v", err)
+	}
+	// The same world under the pin of its own key is a valid artifact.
+	if err := drRefusal(t, drBuild(t, nil, nil, nil)); err != nil {
+		t.Fatalf("the pinned key is refused: %v", err)
+	}
+	// A key file of the right size that is not the pinned key, over the pinned world.
+	w = drBuild(t, nil, nil, nil)
+	other, _, err2 := ed25519.GenerateKey(rand.Reader)
+	if err2 != nil {
+		t.Fatal(err2)
+	}
+	if err := os.WriteFile(w.opts.hostProfileKey, other, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if drProbeFails(t, w) == nil {
+		t.Error("a caller-supplied key replaced the pinned admin key")
+	}
+	// The artifact states the key digest; one packaged under another pin is refused by the validator.
+	w = drBuild(t, nil, nil, nil)
 	d, kind, err := probeRouteDenied(w.opts, productionRouteProbeEnv())
 	if err != nil {
 		t.Fatal(err)
 	}
-	d.TargetFact.ImageDigest = geDigest("another image")
-	if err := guestevidence.Validate(kind, mustEncodeGE(t, kind, d), w.expect); err == nil {
-		t.Error("an artifact whose baseline is of another image than the cell's was accepted")
+	if d.AdminPubkeyDigest != w.opts.adminPubkeyDigest {
+		t.Errorf("the artifact states key %s, the pin is %s", d.AdminPubkeyDigest, w.opts.adminPubkeyDigest)
+	}
+	e := w.expect
+	e.AdminPubkeyDigest = geDigest("another admin key")
+	if err := guestevidence.Validate(kind, mustEncodeGE(t, kind, d), e); err == nil {
+		t.Error("an artifact verified under one key validates under the pin of another")
 	}
 }
 
@@ -680,6 +631,8 @@ func TestDirectRuntimeArtifactRepackagedUnderOtherPinsIsRefused(t *testing.T) {
 		"another source digest":       func(e *guestevidence.Expect) { e.FrozenSourceDigest = geDigest("another source") },
 		"another profile hash":        func(e *guestevidence.Expect) { e.ProfileHash = geDigest("another profile") },
 		"another production template": func(e *guestevidence.Expect) { e.ContainmentProfileDigest = geDigest("another template") },
+		"another admin key":           func(e *guestevidence.Expect) { e.AdminPubkeyDigest = geDigest("another admin key") },
+		"no admin key pin":            func(e *guestevidence.Expect) { e.AdminPubkeyDigest = "" },
 		"no production template pin":  func(e *guestevidence.Expect) { e.ContainmentProfileDigest = "" },
 	} {
 		e := w.expect
@@ -700,7 +653,7 @@ func TestDirectRuntimeArtifactRepackagedUnderOtherPinsIsRefused(t *testing.T) {
 func TestDirectRuntimePinsComeFromTheRunConfigThatNamesTheCommit(t *testing.T) {
 	w := drBuild(t, nil, nil, nil)
 	b, err := directRuntimePins(w.runConfig, geCommit, "", "")
-	if err != nil || b.Commit != geCommit || b.FrozenSourceDigest != rtSource || b.ProfileHash != w.opts.profileHash || b.ContainmentProfileDigest != w.opts.containmentDigest {
+	if err != nil || b.Commit != geCommit || b.FrozenSourceDigest != rtSource || b.ProfileHash != w.opts.profileHash || b.ContainmentProfileDigest != w.opts.containmentDigest || b.AdminPubkeyDigest != w.opts.adminPubkeyDigest {
 		t.Fatalf("pins = %+v %v", b, err)
 	}
 	if _, err := directRuntimePins(w.runConfig, geCommit, b.ProfileHash, b.FrozenSourceDigest); err != nil {
@@ -720,6 +673,12 @@ func TestDirectRuntimePinsComeFromTheRunConfigThatNamesTheCommit(t *testing.T) {
 	drWriteJSON(t, w.runConfig, map[string]any{"freeze_commit": geCommit, "pins": map[string]string{"profile_hash": geDigest("p")}})
 	if _, err := directRuntimePins(w.runConfig, geCommit, "", ""); err == nil {
 		t.Error("a run config with no containment and source pins was accepted")
+	}
+	// run.json without the admin key pin: the key would be whatever the caller passes.
+	drWriteJSON(t, w.runConfig, map[string]any{"freeze_commit": geCommit, "pins": map[string]string{"profile_hash": w.opts.profileHash,
+		"containment_profile_digest": w.opts.containmentDigest, "frozen_source_digest": rtSource}})
+	if _, err := directRuntimePins(w.runConfig, geCommit, "", ""); err == nil {
+		t.Error("a run config with no admin key pin was accepted")
 	}
 }
 

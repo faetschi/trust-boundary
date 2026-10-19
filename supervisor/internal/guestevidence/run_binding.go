@@ -18,6 +18,8 @@ type RunBinding struct {
 	ProfileHash              string
 	ContainmentProfileDigest string
 	FrozenSourceDigest       string
+	// AdminPubkeyDigest is the digest of the admin public key file that verifies the signed host profiles.
+	AdminPubkeyDigest string
 }
 
 // ParseRunBinding reads the freeze commit and the receipt pins of run.json. It reads only those members and
@@ -30,6 +32,7 @@ func ParseRunBinding(data []byte) (RunBinding, error) {
 			ProfileHash              string `json:"profile_hash"`
 			ContainmentProfileDigest string `json:"containment_profile_digest"`
 			FrozenSourceDigest       string `json:"frozen_source_digest"`
+			AdminPubkeyDigest        string `json:"admin_pubkey_digest"`
 		} `json:"pins"`
 	}
 	if err := protocol.ValidateStrictJSON(data); err != nil {
@@ -46,5 +49,5 @@ func ParseRunBinding(data []byte) (RunBinding, error) {
 		return RunBinding{}, fmt.Errorf("config: freeze_commit %q is not 40 lowercase hex digits", doc.FreezeCommit)
 	}
 	return RunBinding{Commit: doc.FreezeCommit, ProfileHash: doc.Pins.ProfileHash,
-		ContainmentProfileDigest: doc.Pins.ContainmentProfileDigest, FrozenSourceDigest: doc.Pins.FrozenSourceDigest}, nil
+		ContainmentProfileDigest: doc.Pins.ContainmentProfileDigest, FrozenSourceDigest: doc.Pins.FrozenSourceDigest, AdminPubkeyDigest: doc.Pins.AdminPubkeyDigest}, nil
 }

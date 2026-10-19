@@ -43,12 +43,12 @@ type routeProbeOptions struct {
 	controlPath             string
 	controlFile             string
 	// direct-runtime only: the pins of the run (the run produced no completed response; they come from
-	// run.json), the probe and production cell templates, the signed host profile files the probe run used,
-	// and the OCI layout that holds the probed image (empty: the one the probe template names).
+	// run.json), the probe and production cell templates and the signed host profile files the probe run used.
 	profileHash, frozenSource, containmentDigest string
 	probeTemplate, productionTemplate            string
 	hostProfile, hostProfileSig, hostProfileKey  string
-	ociLayout                                    string
+	// adminPubkeyDigest is run.json pins.admin_pubkey_digest: hostProfileKey must hash to it.
+	adminPubkeyDigest string
 }
 
 // routeProbeEnv holds the seams of the probe: how the journal is read and how a receipt is checked.

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path"
+	"slices"
 	"strings"
 )
 
@@ -22,106 +23,15 @@ const (
 // RouteDirectOps are the operations the probe tries with each method.
 var RouteDirectOps = []string{RouteOpOpen, RouteOpStat, RouteOpList}
 
-// RouteTarget is what the verified image of the probe shows of the registered target: the facts that
-// decide whether a refusal inside the cell can be file permissions instead of the cell's confinement. They
-// are read from the layers of the OCI image whose manifest digest is ImageDigest, which must be the image
-// the probe cell ran.
-type RouteTarget struct {
-	Regular    bool   `json:"regular"`
-	Mode       uint32 `json:"mode"`
-	UID        uint32 `json:"uid"`
-	GID        uint32 `json:"gid"`
-	Size       int64  `json:"size"`
-	ParentMode uint32 `json:"parent_mode"`
-	// ImageDigest is the manifest digest of the image the facts were read from.
-	ImageDigest string `json:"image_digest"`
-	// CellUID and CellGID are the identity the permissions are judged for (the template's cell identity).
-	CellUID uint32 `json:"cell_uid"`
-	CellGID uint32 `json:"cell_gid"`
-	// ResolvedPath is the target after the symlinks of the image are followed; Ancestors are the directories
-	// the resolution passed through, the root and every directory above ResolvedPath included.
-	ResolvedPath string          `json:"resolved_path"`
-	Ancestors    []RouteAncestor `json:"ancestors"`
-}
-
-// RouteAncestor is a directory in the image tree above the target.
-type RouteAncestor struct {
-	Path string `json:"path"`
-	Mode uint32 `json:"mode"`
-	UID  uint32 `json:"uid"`
-	GID  uint32 `json:"gid"`
-}
-
-// ImageAccess reports the read, write and search bits that ordinary file permissions give the identity
-// (cellUID, cellGID, no supplementary groups) on an object with the given mode and owner: the owner class if
-// the identity owns it, else the group class if it is in the group, else the other class.
-func ImageAccess(mode, uid, gid, cellUID, cellGID uint32) (read, write, search bool) {
-	shift := uint(0)
-	switch {
-	case uid == cellUID:
-		shift = 6
-	case gid == cellGID:
-		shift = 3
-	}
-	bits := (mode >> shift) & 7
-	return bits&4 != 0, bits&2 != 0, bits&1 != 0
-}
-
-// targetFactProblems checks the baseline against the probed image and the cell identity.
-func targetFactProblems(r RouteDenied, add func(format string, args ...any)) {
-	t := r.TargetFact
-	switch {
-	case t == nil:
-		add("what the verified image shows of the target is not stated")
-		return
-	case !t.Regular || t.Size <= 0:
-		add("the target is not a non-empty regular file (size %d): there is nothing to read", t.Size)
-	}
-	if !IsDigest(t.ImageDigest) || t.ImageDigest != r.Cell.ImageDigest {
-		add("the baseline is of image %q, the probe cell ran image %q", t.ImageDigest, r.Cell.ImageDigest)
-	}
-	if t.CellUID == 0 {
-		add("the baseline is judged for uid 0: it must be judged for the unprivileged cell identity")
-	}
-	if read, _, _ := ImageAccess(t.Mode, t.UID, t.GID, t.CellUID, t.CellGID); !read {
-		add("the target (mode %04o owner %d:%d) is not readable by the cell identity %d:%d: a denial could be file permissions, not the cell", t.Mode, t.UID, t.GID, t.CellUID, t.CellGID)
-	}
-	resolved := t.ResolvedPath
-	if !path.IsAbs(resolved) || path.Clean(resolved) != resolved || resolved == "/" {
-		add("the resolved target %q is not a clean absolute path", resolved)
-		return
-	}
-	seen := map[string]RouteAncestor{}
-	for _, a := range t.Ancestors {
-		if !path.IsAbs(a.Path) || path.Clean(a.Path) != a.Path {
-			add("ancestor %q is not a clean absolute path", a.Path)
-			continue
-		}
-		if _, dup := seen[a.Path]; dup {
-			add("ancestor %q is stated twice", a.Path)
-		}
-		seen[a.Path] = a
-		if _, _, search := ImageAccess(a.Mode, a.UID, a.GID, t.CellUID, t.CellGID); !search {
-			add("the cell identity cannot search the directory %s (mode %04o owner %d:%d) above the target", a.Path, a.Mode, a.UID, a.GID)
-		}
-	}
-	parent := path.Dir(resolved)
-	for dir := parent; ; dir = path.Dir(dir) {
-		if _, ok := seen[dir]; !ok {
-			add("the directory %s above the target is not in the baseline", dir)
-		}
-		if dir == "/" {
-			break
-		}
-	}
-	if p, ok := seen[parent]; ok {
-		if read, _, _ := ImageAccess(p.Mode, p.UID, p.GID, t.CellUID, t.CellGID); !read {
-			add("the cell identity cannot list the directory of the target %s (mode %04o)", parent, p.Mode)
-		}
-		if p.Mode != t.ParentMode {
-			add("the directory of the target is stated with mode %04o and %04o", p.Mode, t.ParentMode)
-		}
-	}
+// DirectRuntimeLimits are what a direct-runtime artifact does not establish. The artifact states them, and
+// the validator requires them to be stated, so that a reader of the artifact alone does not take it for more.
+var DirectRuntimeLimits = []string{
+	"A denial is attributed to confinement by exclusion: ordinary file permissions, computed from what the probe measured inside the cell " +
+		"(owner, mode and absence of POSIX ACLs along the walked absolute name), would have allowed the open and the listing. The traversal name " +
+		"(from the working directory of the probe) and the /proc/self/root name are not walked separately.",
+	"The confinement that refused the access is not shown to be Landlock alone: the security module context of the probe (view.lsm; AppArmor or " +
+		"another module) and the seccomp filter can refuse with the same EACCES or EPERM. The artifact does not tell these apart.",
+	"The path is measured once, before the attempts; a change of the cell's file system between the measurement and the attempts is not excluded.",
 }
 
 // RouteDirectObservation is one attempt of the probe as the cell reported it: the errno of the operation,
@@ -240,7 +150,7 @@ func DirectRuntimeAttempts(target, controlPath, containerID, proofDigest string,
 }
 
 // directRuntimeProblems checks what is specific to the Pi runtime cell: the production template the probe
-// template derives from, what root saw of the target, and every attempt (open, stat, list by each method)
+// template derives from, what the probe measured inside the cell, and every attempt (open, stat, list by each method)
 // of the one proof the cell gave.
 func directRuntimeProblems(r RouteDenied, e Expect, add func(format string, args ...any)) {
 	if !IsDigest(r.Cell.ProductionTemplateDigest) || r.Cell.ProductionTemplateDigest == r.Cell.TemplateDigest {
@@ -255,7 +165,7 @@ func directRuntimeProblems(r RouteDenied, e Expect, add func(format string, args
 	if e.FrozenSourceDigest == "" || r.ProfileSourceDigest != e.FrozenSourceDigest || r.ProfileSourceDigest != r.FrozenSourceDigest {
 		add("the source of the journaled probe profile %q is not the run's frozen source %q", r.ProfileSourceDigest, e.FrozenSourceDigest)
 	}
-	targetFactProblems(r, add)
+	viewProblems(r, e, add)
 
 	shared := func(a RouteAttempt, what string) {
 		if !IsDigest(a.ReceiptDigest) || strings.TrimSpace(a.ContainerID) == "" || a.JournalSequence == 0 {
@@ -312,5 +222,29 @@ func directRuntimeProblems(r RouteDenied, e Expect, add func(format string, args
 			}
 			shared(a, what)
 		}
+	}
+}
+
+// viewProblems requires what the probe measured inside the cell to show that ordinary file permissions
+// would have allowed the access, so that the refusals are attributable to the cell's confinement: the walk
+// of the target, the cell identity, the permission on every directory the walk searched and on the file,
+// and no POSIX ACL. It also requires the artifact to state its limits and the admin key of the signed
+// profile to be the one the run pins.
+func viewProblems(r RouteDenied, e Expect, add func(format string, args ...any)) {
+	if r.View == nil {
+		add("what the probe saw of the target inside the cell is not stated")
+	} else {
+		for _, p := range r.View.Problems(r.Target, r.Cell.CellUID, r.Cell.CellGID, RouteRulesetRoots) {
+			add("%s", p)
+		}
+	}
+	if !slices.Equal(r.Limits, DirectRuntimeLimits) {
+		add("the artifact does not state the limits of the direct-runtime evidence")
+	}
+	switch {
+	case !IsDigest(e.AdminPubkeyDigest):
+		add("run.json pins.admin_pubkey_digest is required to bind the admin key of the signed profile")
+	case r.AdminPubkeyDigest != e.AdminPubkeyDigest:
+		add("the signed profile was verified under admin key %q, the run pins %q", r.AdminPubkeyDigest, e.AdminPubkeyDigest)
 	}
 }

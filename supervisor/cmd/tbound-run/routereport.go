@@ -190,7 +190,7 @@ func (a *app) routeReportCmd(args []string) error {
 		return fmt.Errorf("route matrix: %w", err)
 	}
 	guest, err := loadGuestRouteArtifacts(m, artifacts, guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary, ContainmentProfileDigest: binding.ContainmentProfileDigest,
-		ProfileHash: binding.ProfileHash, FrozenSourceDigest: binding.FrozenSourceDigest})
+		ProfileHash: binding.ProfileHash, FrozenSourceDigest: binding.FrozenSourceDigest, AdminPubkeyDigest: binding.AdminPubkeyDigest})
 	if err != nil {
 		return err
 	}

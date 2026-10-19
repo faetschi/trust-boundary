@@ -45,8 +45,8 @@ type runConfig struct {
 	// attacker artifact needs it: the adaptive caps are then those of the artifact (adaptiveCapsFor).
 	Artifacts string   `json:"artifacts_dir"`
 	OnlyCases []string `json:"only_cases"`
-	// Pins are the receipt identity values E01 is verified against.
-	Pins runner.ReceiptPins `json:"pins"`
+	// Pins are the receipt identity values E01 is verified against, and the admin key pin of the route evidence.
+	Pins runPins `json:"pins"`
 	// AdmissionPolicy pins the two Store policy digests the service commits its admission_policy_digest to.
 	// With the manifest they give the digest a scripted receipt must carry.
 	AdmissionPolicy admissionPolicyPins `json:"admission_policy"`
@@ -66,6 +66,15 @@ type runConfig struct {
 	RunDir string     `json:"run_dir"`
 	SSH    sshConfig  `json:"ssh"`
 	Proc   procConfig `json:"proc"`
+}
+
+// runPins are the pins of run.json: the receipt identity values and, for the direct-runtime route evidence, the
+// digest of the admin public key file that verifies the signed host profiles (sha256 of the raw key file, as
+// piruntime.DigestBytes defines it). The key pin is optional here and required by the producer and the validator
+// of that evidence.
+type runPins struct {
+	runner.ReceiptPins
+	AdminPubkeyDigest string `json:"admin_pubkey_digest,omitempty"`
 }
 
 // admissionPolicyPins are the Store policy and metadata policy digests of the governed service.
@@ -166,6 +175,9 @@ func (c runConfig) validate() error {
 	if !digestRE.MatchString(c.AdmissionPolicy.PolicyDigest) || !digestRE.MatchString(c.AdmissionPolicy.MetadataPolicyDigest) {
 		return errors.New("admission_policy needs policy_digest and metadata_policy_digest as sha256:<64 hex>")
 	}
+	if c.Pins.AdminPubkeyDigest != "" && !digestRE.MatchString(c.Pins.AdminPubkeyDigest) {
+		return errors.New("pins.admin_pubkey_digest must be sha256:<64 hex>")
+	}
 	if c.VImageDigest != "" && !digestRE.MatchString(c.VImageDigest) {
 		return errors.New("v_image_digest must be sha256:<64 hex>")
 	}
@@ -184,7 +196,7 @@ func (c runConfig) validate() error {
 	if c.Proc.CellUID == 0 || c.Proc.CellGID == 0 || c.Proc.MonitorSeconds <= 0 || c.Proc.TeardownGraceSecs < 0 {
 		return errors.New("proc needs cell_uid, cell_gid, monitor_seconds and a non-negative teardown_grace_seconds")
 	}
-	if err := (runner.Attest{EVQ: c.EVQObligations, Pins: c.Pins}).Validate(); err != nil {
+	if err := (runner.Attest{EVQ: c.EVQObligations, Pins: c.Pins.ReceiptPins}).Validate(); err != nil {
 		return err
 	}
 	ts := c.transports()
@@ -300,7 +312,7 @@ const runBindingDomain = "tbound-run-binding/v1"
 func (c runConfig) runBinding(route runner.RouteCoverage, evqDigest string) (string, error) {
 	doc := struct {
 		Domain           string              `json:"domain"`
-		Pins             runner.ReceiptPins  `json:"pins"`
+		Pins             runPins             `json:"pins"`
 		RouteDigest      string              `json:"route_digest"`
 		RouteComplete    bool                `json:"route_complete"`
 		EVQResultsDigest string              `json:"evq_results_digest"`

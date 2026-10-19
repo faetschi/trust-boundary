@@ -25,7 +25,7 @@ func expect() Expect {
 	for _, p := range TestPackages() {
 		tb[p] = digestOf("test binary " + p)
 	}
-	return Expect{Commit: testCommit, BinarySHA256: testBinary, ProfileHash: digestOf("profile"), FrozenSourceDigest: digestOf("source"), CommitTree: adapterTree, TestBinaries: tb, ContainmentProfileDigest: digestOf("production template")}
+	return Expect{Commit: testCommit, BinarySHA256: testBinary, ProfileHash: digestOf("profile"), FrozenSourceDigest: digestOf("source"), CommitTree: adapterTree, TestBinaries: tb, ContainmentProfileDigest: digestOf("production template"), AdminPubkeyDigest: digestOf("admin key")}
 }
 
 func encode(t *testing.T, kind string, data any) []byte {

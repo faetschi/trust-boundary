@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -34,16 +35,20 @@ import (
 //     template's digest put back, it hashes to the run's pinned profile_hash. The frozen source digest is
 //     read from that profile (source_provenance_digest) and must equal the run's pin, and the production
 //     template must be the one the run pins (containment_profile_digest). The pins come from run.json, the
-//     file that also names the freeze commit, so the artifact says nothing the caller asserts;
+//     file that also names the freeze commit, so the artifact says nothing the caller asserts. The public key
+//     that verifies the profile must be the admin key the run pins: the key file is hashed and compared with
+//     pins.admin_pubkey_digest before it verifies anything, so a caller cannot choose the key;
 //   - the proof against the probe template (image, template, Landlock ruleset, user mapping, empty
 //     capability set, no_new_privs, seccomp filter, cgroup v2, verified mounts, no route out, PID 1);
 //   - that the probe template is the production template plus the probe member and nothing else, so the
 //     probe ran in the cell a production Pi run runs in;
 //   - that the probe the cell ran is the one asked for (target, control) and complete;
-//   - what the probed image shows of the target (guest_route_image_linux.go): a non-empty regular file the
-//     cell identity can read, below directories it can search, so that only the cell's confinement keeps the
-//     bytes from it. The facts are read from the image whose digest the proof names, in the OCI layout of the
-//     template, not from a directory the operator points at.
+//   - what the probe measured inside the cell before its attempts (internal/cellview): the lstat facts of every
+//     component of the target's path as the cell's own mounts show them, and the identity of the probe. The
+//     validator computes ordinary file permissions from them and requires them to allow search of every
+//     directory the walk passes and read of the file and of its directory, with no POSIX ACL, so that only
+//     the cell's confinement keeps the bytes from it. Nothing is read from the image or from a directory the
+//     operator points at.
 //
 // The attempts are stated by guestevidence.DirectRuntimeAttempts and the validator then requires every open
 // and listing to be refused with EACCES or EPERM.
@@ -84,9 +89,9 @@ func probeRouteDirectRuntime(o routeProbeOptions, env routeProbeEnv) (guestevide
 	kind := guestevidence.KindRouteDirectRuntime
 	if o.runID == "" || !filepath.IsAbs(o.auditRoot) || !filepath.IsAbs(o.target) || o.controlPath == "" || filepath.IsAbs(o.controlPath) ||
 		!guestevidence.IsDigest(o.profileHash) || !guestevidence.IsDigest(o.frozenSource) || !guestevidence.IsDigest(o.containmentDigest) ||
-		o.probeTemplate == "" || o.productionTemplate == "" || o.hostProfile == "" || o.hostProfileSig == "" || o.hostProfileKey == "" {
+		!guestevidence.IsDigest(o.adminPubkeyDigest) || o.probeTemplate == "" || o.productionTemplate == "" || o.hostProfile == "" || o.hostProfileSig == "" || o.hostProfileKey == "" {
 		return d, "", errors.New("direct-runtime needs --run-id, an absolute --audit-root, an absolute --target, a relative --control-path, the run pins (profile_hash, containment_profile_digest, " +
-			"frozen_source_digest, from --run-config), --probe-template, --production-template and the signed host profile of the probe run (--host-profile, --host-profile-signature, --host-profile-key)")
+			"frozen_source_digest, admin_pubkey_digest, from --run-config), --probe-template, --production-template and the signed host profile of the probe run (--host-profile, --host-profile-signature, --host-profile-key)")
 	}
 
 	probeTemplate, probeDigest, err := loadTemplateFile(env, o.probeTemplate)
@@ -144,7 +149,7 @@ func probeRouteDirectRuntime(o routeProbeOptions, env routeProbeEnv) (guestevide
 	if event.SchemaVersion != tcbProofSchema || event.RunID != o.runID {
 		return d, "", fmt.Errorf("journal record %d is a launch proof of schema %q for run %q", sequence, event.SchemaVersion, event.RunID)
 	}
-	profile, err := piruntime.VerifyLinuxSignedHostProfileFiles(o.hostProfile, o.hostProfileSig, o.hostProfileKey)
+	profile, err := verifyProbeHostProfile(env, o)
 	if err != nil {
 		return d, "", fmt.Errorf("the signed host profile of the probe run: %w", err)
 	}
@@ -169,15 +174,8 @@ func probeRouteDirectRuntime(o routeProbeOptions, env routeProbeEnv) (guestevide
 	if err := result.CheckShape(probe); err != nil {
 		return d, "", err
 	}
+	view := result.View
 
-	layout := o.ociLayout
-	if layout == "" {
-		layout = probeTemplate.OCILayoutPath
-	}
-	fact, err := imageBaseline(layout, event.Proof.ImageDigest, o.target, probeTemplate.CellUID, probeTemplate.CellGID)
-	if err != nil {
-		return d, "", fmt.Errorf("the baseline of the target in the probed image: %w", err)
-	}
 	observed := make([]guestevidence.RouteDirectObservation, len(result.Attempts))
 	for i, a := range result.Attempts {
 		observed[i] = guestevidence.RouteDirectObservation{Method: a.Method, Op: a.Op, Errno: a.Errno}
@@ -189,10 +187,33 @@ func probeRouteDirectRuntime(o routeProbeOptions, env routeProbeEnv) (guestevide
 	d = guestevidence.RouteDenied{RunID: o.runID, ProfileHash: o.profileHash, FrozenSourceDigest: profile.SourceProvenanceDigest, Target: o.target,
 		ProbeProfileDigest: profile.Digest, ProfileSourceDigest: profile.SourceProvenanceDigest,
 		Cell: guestevidence.RouteCell{Kind: guestevidence.RouteCellPiRuntime, ImageDigest: event.Proof.ImageDigest, TemplateDigest: event.Proof.TemplateDigest,
-			LandlockRulesetDigest: event.Proof.LandlockRulesetDigest, ProductionTemplateDigest: productionDigest},
-		Journal:    guestevidence.RouteJournal{Records: uint64(len(trace.Records)), HeadHash: trace.Records[len(trace.Records)-1].Hash},
-		TargetFact: &fact, Control: control, Attempts: attempts}
+			LandlockRulesetDigest: event.Proof.LandlockRulesetDigest, ProductionTemplateDigest: productionDigest,
+			CellUID: uint32(probeTemplate.CellUID), CellGID: uint32(probeTemplate.CellGID)},
+		Journal: guestevidence.RouteJournal{Records: uint64(len(trace.Records)), HeadHash: trace.Records[len(trace.Records)-1].Hash},
+		View:    &view, AdminPubkeyDigest: o.adminPubkeyDigest, Limits: guestevidence.DirectRuntimeLimits,
+		Control: control, Attempts: attempts}
 	return d, kind, nil
+}
+
+// verifyProbeHostProfile verifies the signed host profile of the probe run under the admin public key the run
+// pins. The key is read once: the bytes that hash to the pinned digest are the bytes that verify the profile.
+func verifyProbeHostProfile(env routeProbeEnv, o routeProbeOptions) (piruntime.HostProfile, error) {
+	key, err := env.readFile(o.hostProfileKey)
+	if err != nil {
+		return piruntime.HostProfile{}, fmt.Errorf("--host-profile-key: %w", err)
+	}
+	if got := piruntime.DigestBytes(key); got != o.adminPubkeyDigest {
+		return piruntime.HostProfile{}, fmt.Errorf("--host-profile-key hashes to %s, the run pins admin_pubkey_digest %s: the profile is not verified under the admin key of the run", got, o.adminPubkeyDigest)
+	}
+	profileBytes, err := env.readFile(o.hostProfile)
+	if err != nil {
+		return piruntime.HostProfile{}, fmt.Errorf("--host-profile: %w", err)
+	}
+	signature, err := env.readFile(o.hostProfileSig)
+	if err != nil {
+		return piruntime.HostProfile{}, fmt.Errorf("--host-profile-signature: %w", err)
+	}
+	return piruntime.VerifyLinuxSignedHostProfile(profileBytes, signature, ed25519.PublicKey(key))
 }
 
 func loadTemplateFile(env routeProbeEnv, path string) (piruntime.D09CellTemplate, string, error) {
@@ -274,8 +295,8 @@ func directRuntimePins(runConfig, commit, profileHash, frozenSource string) (gue
 		return b, fmt.Errorf("run.json is frozen at %s, --commit is %s", b.Commit, commit)
 	case profileHash != "" && profileHash != b.ProfileHash, frozenSource != "" && frozenSource != b.FrozenSourceDigest:
 		return b, errors.New("--profile-hash or --frozen-source-digest differs from run.json pins")
-	case !guestevidence.IsDigest(b.ProfileHash) || !guestevidence.IsDigest(b.ContainmentProfileDigest) || !guestevidence.IsDigest(b.FrozenSourceDigest):
-		return b, errors.New("run.json pins need profile_hash, containment_profile_digest and frozen_source_digest")
+	case !guestevidence.IsDigest(b.ProfileHash) || !guestevidence.IsDigest(b.ContainmentProfileDigest) || !guestevidence.IsDigest(b.FrozenSourceDigest) || !guestevidence.IsDigest(b.AdminPubkeyDigest):
+		return b, errors.New("run.json pins need profile_hash, containment_profile_digest, frozen_source_digest and admin_pubkey_digest")
 	}
 	return b, nil
 }
