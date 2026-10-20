@@ -23,13 +23,16 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 )
 
+// ociLayerMaxDecompressed bounds the decompressed size of one layer; a variable so tests can use a
+// small bound.
+var ociLayerMaxDecompressed int64 = 8 << 30
+
 const (
-	ociImageFileMaxBytes    = 128 << 20
-	ociLayerMaxDecompressed = 8 << 30
-	ociManifestMaxBytes     = 4 << 20
-	ociMaxLayers            = 4096
-	ociWhiteoutPrefix       = ".wh."
-	ociOpaqueWhiteout       = ".wh..wh..opq"
+	ociImageFileMaxBytes = 128 << 20
+	ociManifestMaxBytes  = 4 << 20
+	ociMaxLayers         = 4096
+	ociWhiteoutPrefix    = ".wh."
+	ociOpaqueWhiteout    = ".wh..wh..opq"
 )
 
 // ociImageFile is the final content identity of one regular file in a layered
@@ -163,6 +166,18 @@ func (d *digestingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// countingReader counts the bytes read through it.
+type countingReader struct {
+	reader io.Reader
+	count  int64
+}
+
+func (c *countingReader) Read(p []byte) (int, error) {
+	n, err := c.reader.Read(p)
+	c.count += int64(n)
+	return n, err
+}
+
 // scanOCILayer reads a whole layer blob, verifies its digest, and reports what
 // the layer does to target (a path relative to the image root).
 func scanOCILayer(blobPath string, layer ociLayerDescriptor, target string, maximum int64, requireImmutable bool) (ociLayerResult, int64, error) {
@@ -202,8 +217,21 @@ func scanOCILayer(blobPath string, layer ociLayerDescriptor, target string, maxi
 	case len(magic) == 4 && magic[0] == 0x28 && magic[1] == 0xb5 && magic[2] == 0x2f && magic[3] == 0xfd:
 		return result, 0, errors.New("zstd-compressed OCI layers are not supported")
 	}
-	if err := scanTarForTarget(io.LimitReader(content, ociLayerMaxDecompressed), target, &result); err != nil {
+	// Read through the decompressor with one byte of slack past the bound. io.LimitReader at the bound
+	// would report EOF there, and a tar parser that stops at an entry boundary cannot tell that from
+	// the end of the archive: entries after the bound (an override, a whiteout) would go unseen while
+	// the compressed blob still hashes correctly.
+	counted := &countingReader{reader: io.LimitReader(content, ociLayerMaxDecompressed+1)}
+	if err := scanTarForTarget(counted, target, &result); err != nil {
 		return ociLayerResult{}, 0, err
+	}
+	// The archive ended (end blocks or EOF). Consume the rest of the decompressed stream, which also
+	// makes the gzip reader verify its checksum, and refuse a layer that is larger than the bound.
+	if _, err := io.Copy(io.Discard, counted); err != nil {
+		return ociLayerResult{}, 0, err
+	}
+	if counted.count > ociLayerMaxDecompressed {
+		return ociLayerResult{}, 0, fmt.Errorf("OCI layer decompresses to more than %d bytes", ociLayerMaxDecompressed)
 	}
 	if _, err := io.Copy(io.Discard, buffered); err != nil {
 		return ociLayerResult{}, 0, err

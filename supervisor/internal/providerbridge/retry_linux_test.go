@@ -70,37 +70,63 @@ func journalKinds(t *testing.T, journal *audit.Journal) []string {
 
 func TestRetryableFailureClassification(t *testing.T) {
 	for name, test := range map[string]struct {
-		status     int
-		body       string
-		retryAfter string
-		want       bool
+		status      int
+		contentType string
+		body        string
+		retryAfter  string
+		want        bool
 	}{
-		"502":                         {502, "", "", true},
-		"503 with the endpoint body":  {503, unavailableBody, "", true},
-		"503 bare":                    {503, "", "", true},
-		"504":                         {504, "", "", true},
-		"422 endpoint unavailable":    {422, unavailableBody, "", true},
-		"422 other":                   {422, `{"error":"invalid"}`, "", false},
-		"400":                         {400, unavailableBody, "", false},
-		"401":                         {401, "", "", false},
-		"429":                         {429, "", "", false},
-		"429 retry-after 0":           {429, "", "0", true},
-		"429 retry-after 3":           {429, "", "3", true},
-		"429 retry-after 10":          {429, "", "10", true},
-		"429 retry-after 11":          {429, "", "11", false},
-		"429 retry-after 3600":        {429, "", "3600", false},
-		"429 retry-after date":        {429, "", "Wed, 21 Oct 2026 07:28:00 GMT", false},
-		"429 retry-after -1":          {429, "", "-1", false},
-		"429 retry-after 1.5":         {429, "", "1.5", false},
-		"503 ignores retry-after":     {503, "", "3600", true},
-		"500":                         {500, unavailableBody, "", false},
-		"200":                         {200, "", "", false},
-		"503 carrying stream bytes":   {503, "data: {\"id\":\"x\"}\n\n", "", false},
-		"503 carrying a completion":   {503, `{"choices":[{}]}`, "", false},
-		"503 above the body bound":    {503, strings.Repeat("x", retryFailureBodyLimit+1), "", false},
-		"422 stream bytes and phrase": {422, "data: Endpoint is unavailable", "", false},
+		"502":                         {502, "", "", "", true},
+		"503 with the endpoint body":  {503, "", unavailableBody, "", true},
+		"503 bare":                    {503, "", "", "", true},
+		"504":                         {504, "", "", "", true},
+		"422 endpoint unavailable":    {422, "", unavailableBody, "", true},
+		"422 other":                   {422, "", `{"error":"invalid"}`, "", false},
+		"400":                         {400, "", unavailableBody, "", false},
+		"401":                         {401, "", "", "", false},
+		"429":                         {429, "", "", "", false},
+		"429 retry-after 0":           {429, "", "", "0", true},
+		"429 retry-after 3":           {429, "", "", "3", true},
+		"429 retry-after 10":          {429, "", "", "10", true},
+		"429 retry-after 11":          {429, "", "", "11", false},
+		"429 retry-after 3600":        {429, "", "", "3600", false},
+		"429 retry-after date":        {429, "", "", "Wed, 21 Oct 2026 07:28:00 GMT", false},
+		"429 retry-after -1":          {429, "", "", "-1", false},
+		"429 retry-after 1.5":         {429, "", "", "1.5", false},
+		"503 ignores retry-after":     {503, "", "", "3600", true},
+		"500":                         {500, "", unavailableBody, "", false},
+		"200":                         {200, "", "", "", false},
+		"503 carrying stream bytes":   {503, "", "data: {\"id\":\"x\"}\n\n", "", false},
+		"503 carrying a completion":   {503, "", `{"choices":[{}]}`, "", false},
+		"503 above the body bound":    {503, "", strings.Repeat("x", retryFailureBodyLimit+1), "", false},
+		"422 stream bytes and phrase": {422, "", "data: Endpoint is unavailable", "", false},
+
+		"503 SSE event and data":        {503, "", "event: message\ndata: {\"choices\":[{\"delta\":{\"content\":\"model output\"}}]}\n\n", "", false},
+		"503 SSE event only":            {503, "", "event: ping\n\n", "", false},
+		"503 SSE id and retry":          {503, "", "id: 7\nretry: 100\n\n", "", false},
+		"503 SSE comment":               {503, "", ": keep-alive\n\n", "", false},
+		"503 SSE after a JSON line":     {503, "", unavailableBody + "\ndata: x\n", "", false},
+		"503 SSE content type":          {503, "text/event-stream", unavailableBody, "", false},
+		"503 SSE content type params":   {503, "Text/Event-Stream; charset=utf-8", "", "", false},
+		"503 JSON content type":         {503, "application/json; charset=utf-8", unavailableBody, "", true},
+		"503 escaped choices key":       {503, "", `{"choices":[{"delta":{"content":"x"}}]}`, "", false},
+		"503 error plus choices":        {503, "", `{"error":"x","choices":[]}`, "", false},
+		"503 not an object":             {503, "", `[{"error":"x"}]`, "", false},
+		"503 trailing data":             {503, "", unavailableBody + " trailing", "", false},
+		"503 two objects":               {503, "", unavailableBody + unavailableBody, "", false},
+		"503 other top-level key":       {503, "", `{"detail":"x"}`, "", false},
+		"503 unknown error member":      {503, "", `{"error":{"message":"x","choices":[]}}`, "", false},
+		"503 message not a string":      {503, "", `{"error":{"message":7}}`, "", false},
+		"503 HTML gateway page":         {503, "", "<html>Bad Gateway</html>", "", false},
+		"503 string error":              {503, "", `{"error":"overloaded"}`, "", true},
+		"422 phrase in the message":     {422, "", `{"error":{"message":"Upstream: Endpoint is unavailable."}}`, "", true},
+		"422 phrase in the string":      {422, "", `{"error":"Endpoint is unavailable"}`, "", true},
+		"422 phrase only in type":       {422, "", `{"error":{"type":"Endpoint is unavailable","message":"x"}}`, "", false},
+		"422 phrase outside error":      {422, "", `{"note":"Endpoint is unavailable"}`, "", false},
+		"422 empty":                     {422, "", "", "", false},
+		"429 SSE body with retry-after": {429, "", "data: x", "1", false},
 	} {
-		if got := RetryableProviderFailure(test.status, []byte(test.body), test.retryAfter); got != test.want {
+		if got := RetryableProviderFailure(test.status, test.contentType, []byte(test.body), test.retryAfter); got != test.want {
 			t.Errorf("%s: retryable = %v, want %v", name, got, test.want)
 		}
 	}

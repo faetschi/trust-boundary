@@ -214,3 +214,48 @@ func TestLauncherVerifiesInImageFilesAgainstTheSignedLayoutWithoutPodman(t *test
 		t.Fatalf("podman was invoked: %v", runner.calls)
 	}
 }
+
+// A tar parser that stops at an entry boundary cannot tell io.LimitReader's EOF from the end of the
+// archive. With the bound exactly at the end of the first entry, an override after it was never read
+// and the earlier digest was returned while the compressed blob still hashed correctly.
+func TestOversizedLayerAlignedToAnEntryBoundaryIsRefusedNotTruncated(t *testing.T) {
+	original := ociLayerMaxDecompressed
+	t.Cleanup(func() { ociLayerMaxDecompressed = original })
+	for _, compress := range []bool{false, true} {
+		layer := ociTestLayer(t, compress,
+			regEntry("usr/local/bin/node", "node v1", 0o755), // 512-byte header + 512 bytes of data
+			regEntry("usr/local/bin/node", "node v2", 0o755))
+		layout, manifest := ociTestLayout(t, layer)
+
+		ociLayerMaxDecompressed = 8 << 30
+		if got, err := readOCIImageFile(context.Background(), layout, manifest, "/usr/local/bin/node", false); err != nil ||
+			got.digest != DigestBytes([]byte("node v2")) {
+			t.Fatalf("compress=%v: without the bound the later entry must win: %+v, %v", compress, got, err)
+		}
+		ociLayerMaxDecompressed = 1024 // exactly the first entry
+		if got, err := readOCIImageFile(context.Background(), layout, manifest, "/usr/local/bin/node", false); err == nil {
+			t.Fatalf("compress=%v: a layer larger than the bound resolved to %+v instead of being refused", compress, got)
+		}
+		ociLayerMaxDecompressed = 1024 + 1024 + 1024 // both entries and the end blocks fit
+		if got, err := readOCIImageFile(context.Background(), layout, manifest, "/usr/local/bin/node", false); err != nil ||
+			got.digest != DigestBytes([]byte("node v2")) {
+			t.Fatalf("compress=%v: a layer within the bound was refused or misread: %+v, %v", compress, got, err)
+		}
+	}
+}
+
+// Trailing bytes after the end-of-archive blocks count against the bound too.
+func TestTrailingBytesAfterTheArchiveEndCountAgainstTheBound(t *testing.T) {
+	original := ociLayerMaxDecompressed
+	t.Cleanup(func() { ociLayerMaxDecompressed = original })
+	layer := append(ociTestLayer(t, false, regEntry("usr/local/bin/node", "node", 0o755)), make([]byte, 4096)...)
+	layout, manifest := ociTestLayout(t, layer)
+	ociLayerMaxDecompressed = 2048
+	if _, err := readOCIImageFile(context.Background(), layout, manifest, "/usr/local/bin/node", false); err == nil {
+		t.Fatal("padding beyond the bound was accepted")
+	}
+	ociLayerMaxDecompressed = 1 << 20
+	if _, err := readOCIImageFile(context.Background(), layout, manifest, "/usr/local/bin/node", false); err != nil {
+		t.Fatalf("padding within the bound was refused: %v", err)
+	}
+}

@@ -60,14 +60,15 @@ type providerExchangeEvidence struct {
 }
 
 type providerRetryEvidence struct {
-	WorkflowID string                         `json:"workflow_id"`
-	Turn       uint64                         `json:"turn"`
-	Attempt    uint64                         `json:"attempt"`
-	Request    providerRequestEvidence        `json:"request"`
-	StatusCode int                            `json:"status_code"`
-	Response   []byte                         `json:"response"`
-	RetryAfter string                         `json:"retry_after,omitempty"`
-	HostCall   providerbridge.HostCallBinding `json:"host_call"`
+	WorkflowID  string                         `json:"workflow_id"`
+	Turn        uint64                         `json:"turn"`
+	Attempt     uint64                         `json:"attempt"`
+	Request     providerRequestEvidence        `json:"request"`
+	StatusCode  int                            `json:"status_code"`
+	Response    []byte                         `json:"response"`
+	RetryAfter  string                         `json:"retry_after,omitempty"`
+	ContentType string                         `json:"content_type,omitempty"`
+	HostCall    providerbridge.HostCallBinding `json:"host_call"`
 }
 
 type providerHostCallReservationEvidence struct {
@@ -821,7 +822,7 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 				retry.Turn != pendingHostCall.Turn || retry.Turn != providerTurn+1 || retry.HostCall != pendingHostCall.Binding ||
 				!reflect.DeepEqual(retry.Request, pendingHostCall.Request) ||
 				providerRequestEvidenceDigest(retry.Request) != pendingHostCall.Binding.RequestDigest ||
-				!providerbridge.RetryableProviderFailure(retry.StatusCode, retry.Response, retry.RetryAfter) {
+				!providerbridge.RetryableProviderFailure(retry.StatusCode, retry.ContentType, retry.Response, retry.RetryAfter) {
 				return governedCapture{}, ErrGovernedSessionEvidence
 			}
 			pendingHostCall = nil
