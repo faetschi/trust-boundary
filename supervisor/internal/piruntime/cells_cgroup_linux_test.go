@@ -243,3 +243,25 @@ func TestEnsureCellsCgroupRefusesWhenControllerEnablementFails(t *testing.T) {
 		}
 	})
 }
+
+// The service unit runs with UMask=0077, so mkdirat(0755) really creates 0700.
+func TestEnsureCellsCgroupSetsTheExactModeOnADirectoryItCreatedUnderTheUnitUmask(t *testing.T) {
+	fake := newFakeServiceCgroup(t, true)
+	cellsCgroupMkdirat = func(fd int, name string, mode uint32) error {
+		if err := syscall.Mkdirat(fd, name, 0o700); err != nil {
+			return err
+		}
+		if err := os.Chmod(filepath.Join(fake.dir, name), 0o700); err != nil {
+			return err
+		}
+		writeFakeControlFiles(t, filepath.Join(fake.dir, name), true)
+		return nil
+	}
+	if err := ensureCellsCgroup(fake.parent, fake.uid); err != nil {
+		t.Fatalf("a freshly created cells directory masked to 0700 by the umask was refused: %v", err)
+	}
+	info, err := os.Lstat(fake.cells())
+	if err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("cells mode = %v, %v; want 0755", info, err)
+	}
+}
