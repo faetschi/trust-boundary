@@ -51,6 +51,17 @@ jobs:
       - name: Official Pi runtime closure regressions
         run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
 
+      - name: Offline guest and teardown witness regressions
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s infra/guest -p 'test_*.py' -v
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s infra/repro -p 'test_cgroup_teardown_witness.py' -v
+
+      - name: Offline package and publisher regressions
+        run: |
+          umask 077
+          bash tests/packaging/verify-package-manager-layout.sh
+          bash tests/packaging/verify-publish-release-assets.sh
+
       - name: Install and verify official Pi CLI
         run: |
           umask 077
