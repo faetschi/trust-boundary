@@ -885,6 +885,19 @@ func applyLandlockFor(requiredABI int, delta piruntime.D09CellDelta) (int, strin
 			return 0, "", fmt.Errorf("add landlock rule %q: %w", rule.path, errno)
 		}
 	}
+	// Execute and read on the held Node binary itself (fd3), added before the ruleset is enforced.
+	for _, rule := range plan.heldFDRules {
+		if err := checkHeldFDRule(rule); err != nil {
+			return 0, "", err
+		}
+		attr := struct {
+			AllowedAccess uint64
+			ParentFd      int32
+		}{rule.access, int32(rule.fd)}
+		if _, _, errno := syscall.Syscall6(uintptr(sysLandlockAddRule), fd, landlockRulePathBeneath, uintptr(unsafe.Pointer(&attr)), 0, 0, 0); errno != 0 {
+			return 0, "", fmt.Errorf("add landlock rule for held descriptor %d: %w", rule.fd, errno)
+		}
+	}
 	// The only network right ever allowed: connect to a TCP port of the delta (net-sink/v1: 8080).
 	for _, port := range plan.connectPorts {
 		attr := struct {

@@ -72,11 +72,31 @@ type landlockPlan struct {
 	scoped       uint64
 	connectPorts []uint16
 	pathRules    []landlockRule
+	// heldFDRules are file rules on descriptors the cell already holds: the verified Node binary at
+	// fd3, which lives on a host mount no path rule covers.
+	heldFDRules []landlockFDRule
+}
+
+type landlockFDRule struct {
+	fd     int
+	access uint64
+}
+
+// landlockHeldFDAccessMask is every right a held-descriptor rule may carry: execute and read.
+const landlockHeldFDAccessMask = piruntime.D09LandlockHeldBinaryAccess
+
+func checkHeldFDRule(rule landlockFDRule) error {
+	if rule.fd != piruntime.D09LandlockHeldBinaryFD || rule.access == 0 || rule.access&^landlockHeldFDAccessMask != 0 {
+		return fmt.Errorf("Landlock descriptor rule fd %d with access %#x exceeds the held-binary profile (fd %d, access %#x)",
+			rule.fd, rule.access, piruntime.D09LandlockHeldBinaryFD, landlockHeldFDAccessMask)
+	}
+	return nil
 }
 
 func planLandlock(delta piruntime.D09CellDelta, roPaths, rwPaths []string) landlockPlan {
 	plan := landlockPlan{delta: delta, handledFS: landlockAccessAllABI8, handledNet: landlockAccessAllNet,
-		connectPorts: delta.ConnectPorts(), pathRules: appendRules(roPaths, landlockReadExecute, rwPaths, landlockAccessAllABI8)}
+		connectPorts: delta.ConnectPorts(), pathRules: appendRules(roPaths, landlockReadExecute, rwPaths, landlockAccessAllABI8),
+		heldFDRules: []landlockFDRule{{fd: piruntime.D09LandlockHeldBinaryFD, access: piruntime.D09LandlockHeldBinaryAccess}}}
 	if delta.ScopedAbstractUnix() {
 		plan.scoped = piruntime.D09LandlockScopeAbstractUnix
 	}

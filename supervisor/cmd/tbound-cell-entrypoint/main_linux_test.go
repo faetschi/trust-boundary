@@ -108,6 +108,7 @@ func TestSignedNodeEnvironmentStripsHelperVars(t *testing.T) {
 // lacks the required ABI. It is not a unit fake of /proc/self/task.
 func TestLandlockTSYNCReachesEnforcement(t *testing.T) {
 	command := exec.Command(os.Args[0])
+	command.ExtraFiles = heldBinaryStandIn(t)
 	command.Env = append(os.Environ(),
 		"TBOUND_LL_CHILD=1",
 		"TBOUND_LANDLOCK_ABI=8",
@@ -172,6 +173,7 @@ func landlockNetChild(name string) int {
 func TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink(t *testing.T) {
 	for _, name := range []string{"", piruntime.D09CellDeltaNoReap, piruntime.D09CellDeltaNetSink} {
 		command := exec.Command(os.Args[0])
+		command.ExtraFiles = heldBinaryStandIn(t)
 		command.Env = append(os.Environ(), "TBOUND_LL_NET_CHILD="+name, "TBOUND_LANDLOCK_ABI=8",
 			"TBOUND_LANDLOCK_RO_PATH=/", "TBOUND_LANDLOCK_RW_PATH=/tmp")
 		if name == "" {
@@ -216,4 +218,58 @@ func TestNoExternalRoutesStillRefusesRealDefaultsAndForeignInterfaces(t *testing
 			t.Errorf("%s was accepted", name)
 		}
 	}
+}
+
+// heldBinaryStandIn is the descriptor the real launch passes at fd3 (the held Node binary): the
+// Landlock ruleset has a rule on it, so a child that applies the ruleset must have one open.
+func heldBinaryStandIn(t *testing.T) []*os.File {
+	t.Helper()
+	file, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	return []*os.File{file}
+}
+
+// The held Node binary is on a host mount no path rule covers, so exec of /proc/self/fd/3 is
+// denied unless the ruleset names that descriptor, with exactly execute and read.
+func TestLandlockPlanAllowsExactlyExecuteAndReadOnTheHeldBinary(t *testing.T) {
+	for _, delta := range []piruntime.D09CellDelta{{}, mustDelta(t, piruntime.D09CellDeltaNoReap), mustDelta(t, piruntime.D09CellDeltaNetSink)} {
+		plan := planLandlock(delta, []string{"/usr"}, []string{"/work"})
+		if len(plan.heldFDRules) != 1 || plan.heldFDRules[0].fd != 3 ||
+			plan.heldFDRules[0].access != piruntime.D09LandlockFSExecute|piruntime.D09LandlockFSReadFile {
+			t.Fatalf("delta %q: held descriptor rules = %+v, want exactly fd 3 with execute|read", delta.Name(), plan.heldFDRules)
+		}
+		if err := checkHeldFDRule(plan.heldFDRules[0]); err != nil {
+			t.Fatalf("the planned rule was refused: %v", err)
+		}
+	}
+}
+
+func TestLandlockHeldDescriptorRuleRefusesMoreRightsAndOtherDescriptors(t *testing.T) {
+	execRead := piruntime.D09LandlockFSExecute | piruntime.D09LandlockFSReadFile
+	for name, rule := range map[string]landlockFDRule{
+		"write added":    {3, execRead | piruntime.D09LandlockFSWriteFile},
+		"truncate added": {3, execRead | piruntime.D09LandlockFSTruncate},
+		"read-dir added": {3, execRead | piruntime.D09LandlockFSReadDir},
+		"all rights":     {3, piruntime.D09LandlockHandledFS},
+		"no rights":      {3, 0},
+		"another fd":     {4, execRead},
+		"standard input": {0, execRead},
+		"negative fd":    {-1, execRead},
+	} {
+		if err := checkHeldFDRule(rule); err == nil {
+			t.Errorf("%s: rule %+v was accepted", name, rule)
+		}
+	}
+}
+
+func mustDelta(t *testing.T, name string) piruntime.D09CellDelta {
+	t.Helper()
+	delta, err := piruntime.ParseD09CellDelta(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return delta
 }
