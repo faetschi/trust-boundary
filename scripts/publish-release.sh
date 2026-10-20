@@ -23,19 +23,23 @@ esac
 ls "$DIST"/tbound-"$VERSION"-*.tar.gz >/dev/null 2>&1 || die "no artifacts for version $VERSION in $DIST"
 [ -f "$DIST/SHA256SUMS" ] || die "missing $DIST/SHA256SUMS"
 
-files=("$DIST"/tbound-"$VERSION"-*.tar.gz "$DIST/SHA256SUMS")
+files=("$DIST"/tbound-"$VERSION"-*.tar.gz)
+for sidecar in "$DIST/tbound-cell-entrypoint-$VERSION-linux-amd64.metadata.json" \
+               "$DIST/tbound-cell-entrypoint-$VERSION-linux-amd64.sha256"; do
+  if [ -f "$sidecar" ]; then files+=("$sidecar"); fi
+done
 
 # Require the checksums to actually cover the artifacts before publishing.
 if ( cd "$DIST" && sha256sum -c SHA256SUMS >/dev/null 2>&1 ); then :
 elif ( cd "$DIST" && shasum -a 256 -c SHA256SUMS >/dev/null 2>&1 ); then :
 else die "SHA256SUMS does not verify the artifacts in $DIST"; fi
-# Every uploaded tarball must appear in SHA256SUMS (coverage, not just validity).
-# Every uploaded tarball must appear in SHA256SUMS (coverage, not just validity).
+# Every uploaded artifact must appear in SHA256SUMS (coverage, not just validity).
 # Use exact field comparison, not a regex, so metacharacters can't spoof a match.
-for f in "$DIST"/tbound-"$VERSION"-*.tar.gz; do
+for f in "${files[@]}"; do
   base="$(basename "$f")"
   awk -v a="$base" '$2==a {found=1} END {exit !found}' "$DIST/SHA256SUMS" || die "SHA256SUMS is missing an entry for $base"
 done
+files+=("$DIST/SHA256SUMS")
 
 TARGET="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || echo '')"
 target_arg=()

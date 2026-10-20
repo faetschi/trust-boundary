@@ -5,6 +5,7 @@
 # The script never installs packages, changes rpm/dpkg databases, or writes into
 # the repository dist directory.
 set -euo pipefail
+umask 077
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 VERSION=1.2.3
@@ -58,6 +59,31 @@ if command -v dpkg-deb >/dev/null 2>&1; then
     exit 1
   fi
   echo "  PASS  DEB keeps TCB entrypoint outside /usr/bin"
+  check_mode() {
+    local listing="$1" mode="$2" path="$3"
+    if ! printf '%s\n' "$listing" | awk -v mode="$mode" -v path="$path" \
+        '$1 == mode && $NF == path {found=1} END {exit !found}'; then
+      echo "  FAIL  DEB expected $mode for $path" >&2
+      exit 1
+    fi
+  }
+  for path in ./ ./usr/ ./usr/bin/ ./usr/lib/ ./usr/lib/tbound/ ./usr/lib/tbound/runtime/; do
+    check_mode "$contents" drwxr-xr-x "$path"
+  done
+  for path in ./usr/bin/tbound ./usr/bin/tbound-doctor ./usr/bin/tbound-profile \
+              ./usr/lib/tbound/tbound-cell-entrypoint; do
+    check_mode "$contents" -rwxr-xr-x "$path"
+  done
+  check_mode "$contents" -rw-r--r-- ./usr/lib/tbound/runtime/package.json
+  check_mode "$contents" -r--r--r-- ./usr/lib/tbound/cell-entrypoint.json
+  control_contents="$(dpkg-deb --ctrl-tarfile "$DEB" | tar -tvf -)"
+  check_mode "$control_contents" drwxr-xr-x ./
+  check_mode "$control_contents" -rw-r--r-- ./control
+  [ "$(dpkg-deb --field "$DEB" Package)" = tbound ]
+  [ "$(dpkg-deb --field "$DEB" Version)" = "$VERSION" ]
+  [ "$(dpkg-deb --field "$DEB" Architecture)" = amd64 ]
+  [ "$(stat -c '%a' "$BASE")" = 700 ]
+  echo "  PASS  DEB metadata and payload modes are correct under umask 077; outer temp stays private"
 else
   echo "  SKIP  dpkg-deb unavailable"
 fi
