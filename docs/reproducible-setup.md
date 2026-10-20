@@ -78,6 +78,34 @@ reported after the user-prefix install and do not undo it. Review the script
 before running it; it creates a new VM and does not delete an existing one. See
 [infra/repro/README.md](../infra/repro/README.md#qemu-on-linux-linux-vm-path).
 
+## Thesis run readiness
+
+A checkout contains the install, measurement, and evidence components, but a
+successful setup is not a thesis run. The repository-side pieces are:
+
+- host bootstrap, pinned toolchains, Pi, TBound install, doctor and the
+  explicit cgroup-reuse qualification wrapper;
+- D09 image build/sign tools in `packaging/governed/`, service units in
+  `infra/guest/systemd/`, and the owner runbook
+  [`infra/guest/PROVISIONING-SIGNING.md`](../infra/guest/PROVISIONING-SIGNING.md);
+- the draft pilot and G1 corpora under [`corpus/pilot`](../corpus/pilot/README.md)
+  and `corpus/g1`, with `build.py`, artifacts, fixtures, and rubrics;
+- the EVQ/route inputs in [`infra/conformance`](../infra/conformance), the
+  `tbound-run`/`tbound-profile`/`tbound-doctor` commands, and the evidence
+  index under `docs/`.
+
+Owner-gated material is not in the repository: the offline admin and Cosign
+keys, the signed host profile and D09 image/registration, the service account
+and managed live root, corpus reviews and preregistration, the provider-route
+switch/credentials, and a qualified ABI-8 guest. Do not treat a local build or
+a probe pass as those artifacts.
+
+The correct order is: native Linux setup (or an optional qualified VM), install
+and doctor, explicit cgroup-reuse qualification, the owner signing session,
+corpus review/digest/preregistration, then the pilot and thesis corpus. The
+pilot README is explicit that its results are not thesis results. See
+[`docs/status.md`](status.md) for the current claim boundary.
+
 ## What a probe means
 
 The capability probe reports host mechanisms and tool availability. It does

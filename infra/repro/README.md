@@ -286,6 +286,8 @@ summary rather than treating the raw exit code alone as a capability result.
 - `run-cgroup-reuse-check.sh` — explicit opt-in wrapper for the audited
   delegated-scope cgroup-reuse probe (one run, no retry).
 - `test_cgroup_reuse_check.sh` — mock test for the qualification wiring.
+- `test_thesis_assets.sh` — read-only inventory of repository-side thesis
+  assets and the setup guide's owner-gated links.
 - `test_windows_tool_manifest.ps1` — mock test for the portable Windows tool
   manifest parser (runs without inspecting Windows binaries).
 - `bootstrap-hyperv-windows.ps1` — Hyper-V VM creation and guest provisioning.
