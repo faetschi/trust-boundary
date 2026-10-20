@@ -2450,6 +2450,9 @@ func d09ContainerArgumentsAtWithEnv(config D09Config, name, imageRef string, env
 	}
 	vector := []string{
 		"run", "--name", name,
+		// Pi runs --mode rpc and reads its requests on stdin, which podman forwards only with
+		// --interactive. No -t: stdin is a pipe, not a terminal.
+		"--interactive",
 		"--runtime", config.CrunPath,
 		"--pull=never",
 		"--network=none",

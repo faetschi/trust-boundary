@@ -1379,3 +1379,28 @@ func TestValidateLaunchProofUsesTheHostNamespacesCapturedAtLaunch(t *testing.T) 
 		t.Fatal("a proof sharing the host's user namespace was accepted")
 	}
 }
+
+// Pi's --mode rpc reads its requests on stdin; podman forwards the service's stdin to the
+// container only with --interactive, otherwise Pi reads EOF after initialising and exits.
+func TestD09WorkerCellForwardsStdinButCommandCellsDoNot(t *testing.T) {
+	const image = "localhost/tbound/pi-cell@" + fakeD09Digest
+	config := D09Config{UID: 1000, GID: 1000, PidsMax: 128, MemoryMB: 512, CPUs: "1", SeccompProfilePath: "/etc/tbound/seccomp.json",
+		CgroupsPath: "/sys/fs/cgroup/tbound", EntrypointPath: "/usr/local/bin/tbound-pi-entrypoint", CrunPath: "/usr/bin/crun",
+		LandlockABI: 1, LandlockRulesetDigest: DigestBytes([]byte("landlock")), CommandExecutable: "/bin/bash"}
+	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
+	worker := d09ContainerArgumentsAtWithEnv(config, "n", image, PiWorkerCellEnvironment(), nil, PiWorkerCellArguments(), PiWorkerCellWorkdir, nil, "")
+	at := indexOfString(worker, "--interactive")
+	if at < 0 || at > indexOfString(worker, image) {
+		t.Fatalf("the worker cell does not forward stdin (no --interactive before the image): %q", worker)
+	}
+	for _, flag := range []string{"-t", "--tty", "-it", "-ti"} {
+		if indexOfString(worker, flag) >= 0 {
+			t.Fatalf("the worker cell allocates a tty (%s): %q", flag, worker)
+		}
+	}
+	command := d09CommandCellArguments(config, "n", "/tmp/cid", image, "/view", "v", "l", 1, 2,
+		sessionrepo.CommandSpec{Executable: "/bin/bash"})
+	if indexOfString(command, "--interactive") >= 0 || indexOfString(command, "-i") >= 0 {
+		t.Fatalf("a command cell reads no stdin but forwards it: %q", command)
+	}
+}
