@@ -132,8 +132,8 @@ func (s D09ManagedPiServiceSocket) Validate(serviceUID, serviceGID int) error {
 	}
 	previous := -1
 	for _, uid := range s.AllowedClientUIDs {
-		if uid < 0 || uid == serviceUID || uid <= previous {
-			return fmt.Errorf("%w: allowed client UIDs must be sorted, unique and distinct from the service", ErrD09ManagedLiveRootRefused)
+		if uid <= 0 || uid == serviceUID || uid <= previous {
+			return fmt.Errorf("%w: allowed client UIDs must be positive, sorted, unique and distinct from the service", ErrD09ManagedLiveRootRefused)
 		}
 		previous = uid
 	}
@@ -268,8 +268,8 @@ func validD09WorkflowBashPaths(paths []string) bool {
 }
 
 // D09ManagedLiveRootMeasurementOptions contains explicit client authorization
-// policy chosen by the host operator. It is never inferred from the invoking
-// user's UID/GID. The calibration digest must name a separately fixed-anchor-
+// policy for nonroot clients chosen by the host operator. It is never inferred
+// from the invoking user's UID/GID. The calibration digest must name a separately fixed-anchor-
 // signed artifact; a plain digest is not sufficient at load/verification time.
 type D09ManagedLiveRootMeasurementOptions struct {
 	AllowedClientUIDs                 []int
@@ -495,7 +495,7 @@ func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, ser
 		return registration, ErrD09ManagedLiveRootRefused
 	}
 	for index, uid := range options.AllowedClientUIDs {
-		if uid < 0 || (index > 0 && options.AllowedClientUIDs[index-1] >= uid) {
+		if uid <= 0 || (index > 0 && options.AllowedClientUIDs[index-1] >= uid) {
 			return registration, ErrD09ManagedLiveRootRefused
 		}
 	}

@@ -65,6 +65,48 @@ func validManagedLiveRootRegistration() D09ManagedLiveRootRegistration {
 	}
 }
 
+func TestD09ManagedPiServiceSocketRejectsRootClients(t *testing.T) {
+	registration := validManagedLiveRootRegistration()
+	socket := registration.ServiceSocket
+	if err := socket.Validate(registration.ServiceUID, registration.ServiceGID); err != nil {
+		t.Fatalf("nonroot client registration refused: %v", err)
+	}
+	for _, uids := range [][]int{{0}, {0, 1000}} {
+		socket.AllowedClientUIDs = uids
+		if err := socket.Validate(registration.ServiceUID, registration.ServiceGID); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+			t.Fatalf("root client registration %v accepted: %v", uids, err)
+		}
+	}
+}
+
+func TestD09ManagedRootMeasurementRejectsRootClientsBeforeOpeningRoot(t *testing.T) {
+	// A missing direct child of / has a root-owned ancestor for either test UID.
+	// This path is only inspected; measurement must never create it.
+	root := filepath.Join("/", "tbound-measurement-"+filepath.Base(filepath.Dir(t.TempDir())))
+	if _, err := os.Lstat(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("measurement probe path must be absent: %v", err)
+	}
+	options := D09ManagedLiveRootMeasurementOptions{
+		AllowedClientUIDs: []int{1000}, AllowedClientPrimaryGID: 994,
+		ManagedRootXattrCalibrationDigest: DigestBytes([]byte("calibration")),
+	}
+	measure := func() error {
+		_, err := MeasureD09ManagedLiveRootRegistrationWithOptions(root, D09ManagedPiServiceName, D09ManagedPiServiceGroup,
+			D09ManagedPiServiceUnitPath, "/etc/systemd/system/var-lib-tbound-live.mount", "/usr/local/bin/tbound",
+			D09ManagedPiServiceCgroupPath, options)
+		return err
+	}
+	if err := measure(); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("nonroot client did not reach root measurement: %v", err)
+	}
+	for _, uids := range [][]int{{0}, {0, 1000}} {
+		options.AllowedClientUIDs = uids
+		if err := measure(); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+			t.Fatalf("root client measurement %v reached the filesystem: %v", uids, err)
+		}
+	}
+}
+
 func TestD09ManagedLiveRootRegistrationSignatureAndClosedPolicy(t *testing.T) {
 	seed := [ed25519.SeedSize]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
 		17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}

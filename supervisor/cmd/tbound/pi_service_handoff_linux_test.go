@@ -135,6 +135,28 @@ func TestValidatePiServiceUnitPinsServicePolicy(t *testing.T) {
 	}
 }
 
+func TestPiServiceSocketRegistrationRejectsRootClients(t *testing.T) {
+	socket := piServiceSocketRegistration{
+		SchemaVersion: piServiceSocketSchema, Mode: piServiceSocketMode,
+		SocketPath: piServiceSocketPath, ListenStream: piServiceSocketPath,
+		SocketUnitPath: piServiceSocketUnitPath, SocketUnitDigest: digestBytes([]byte("socket-unit")),
+		Accept: "no", ServiceUnit: "tbound-pi.service", SocketUser: "root", SocketGroup: "tbound-pi-clients",
+		SocketUID: 0, SocketGID: 994, SocketMode: 0o660, DirectoryMode: 0o755,
+		ParentPath: "/run/tbound", ParentUID: 0, ParentGID: 0, ParentMode: 0o755,
+		ParentFilesystemMagic: 0x01021994, ParentMountPolicy: "tmpfs-rw-nodev-nosuid/v1",
+		AllowedClientUIDs: []int{1000}, AllowedClientPrimaryGID: 994,
+	}
+	if err := validatePiServiceSocketRegistration(socket, 995, 986); err != nil {
+		t.Fatalf("nonroot client registration refused: %v", err)
+	}
+	for _, uids := range [][]int{{0}, {0, 1000}} {
+		socket.AllowedClientUIDs = uids
+		if err := validatePiServiceSocketRegistration(socket, 995, 986); !errors.Is(err, ErrPiServiceUnavailable) {
+			t.Fatalf("root client registration %v accepted: %v", uids, err)
+		}
+	}
+}
+
 func TestValidatePiServiceSocketUnitPinsActivationPolicy(t *testing.T) {
 	socket := piServiceSocketRegistration{
 		SocketPath: "/run/tbound/serve-pi.sock", ServiceUnit: "tbound-pi.service",
