@@ -43,6 +43,7 @@ usage:
   tbound-profile xattr-measure   --source <protected-read-only-directory>
   tbound-profile xattr-digest    --filesystem-magic <n> --mount-options-digest <sha256> --uid <n> --gid <n>
   tbound-profile cgroup-root-digest --uid <service-uid> [--cgroups-path </system.slice/name.service/cells>]
+  tbound-profile cgroup-reuse-check --confirm-disposable-cgroup
   tbound-profile xattr-calibration-measure --source <calibration-corpus> --access-profile <profile>
                                            --probe-corpus-digest <sha256> [--out <json>]
   tbound-profile xattr-calibration-sign --calibration <json> --key <ed25519-private>
@@ -110,6 +111,12 @@ after the profile is verified.
 The profile's CgroupRootDigest is derived, not measured: cgroup-root-digest hashes the
 canonical cells cgroup path, cgroup2, the service uid and cpu,memory,pids. It binds
 no inode or mount id, so it stays valid across service restarts.
+
+cgroup-reuse-check is an explicit operator diagnostic inside an existing writable
+delegated user scope. It creates two disposable child cgroups, starts fixed sleep
+processes, and tests cloning into the same target after killing and draining it.
+It never changes systemd, the kernel or delegation settings. JSON results are
+scoped advisory observations, never governed readiness or runtime admission.
 `
 
 func main() {
@@ -142,6 +149,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runXattrDigest(args[1:], stdout, stderr)
 	case "cgroup-root-digest":
 		return runCgroupRootDigest(args[1:], stdout, stderr)
+	case "cgroup-reuse-check":
+		return runCgroupReuseCheck(args[1:], stdout, stderr)
 	case "xattr-calibration-measure":
 		return runXattrCalibrationMeasure(args[1:], stdout, stderr)
 	case "xattr-calibration-sign":

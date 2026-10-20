@@ -4,7 +4,8 @@
 # operator must provision before `tbound serve --pi` can be admitted. It changes
 # nothing, needs no sudo, and never installs anything.
 #
-# Exit 0 if every governed requirement is present, 1 otherwise.
+# Exit 0 when the read-only inventory has no FAIL findings, 1 otherwise.
+# WARN findings remain unverified; exit 0 is not setup qualification.
 set -uo pipefail
 
 pass=0; warn=0; fail=0
@@ -32,15 +33,43 @@ if [ -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
   [ "$v" = "1" ] && warnf apparmor "restrict_unprivileged_userns=$v (may block raw userns)" || ok apparmor "restrict_unprivileged_userns=$v"
 fi
 
-# cgroup v2 delegation + kill.
-if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
-  ctrl="$(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null | tr -s ' ')"
-  [ -n "$ctrl" ] && ok cgroup-controllers "$ctrl" || bad cgroup-controllers "empty (no delegation)"
+# Current-scope cgroup inventory. Root controller names are not delegation.
+cg_rel="$(awk 'index($0, "0::") == 1 { sub(/^0::/, ""); print; exit }' /proc/self/cgroup 2>/dev/null)"
+cg_mount="$(awk '{ for (i=6; i<=NF; i++) if ($i == "-" && $(i+1) == "cgroup2" && $4 == "/") { print $5; exit } }' /proc/self/mountinfo 2>/dev/null)"
+case "$cg_rel" in
+  /*) ;;
+  *) cg_rel= ;;
+esac
+case "/$cg_rel/" in
+  */../*|*/./*) cg_rel= ;;
+esac
+if [ -n "$cg_rel" ] && [ -n "$cg_mount" ] && [[ "$cg_mount" != *\\* ]]; then
+  cg_path="${cg_mount%/}/${cg_rel#/}"
+  ok cgroup-scope "$cg_path (inventory only)"
+  if [ -r "$cg_path/cgroup.type" ]; then
+    cg_type="$(cat "$cg_path/cgroup.type" 2>/dev/null)"
+    [ "$cg_type" = domain ] && ok cgroup-type "$cg_type" || bad cgroup-type "$cg_type (need domain)"
+  else
+    bad cgroup-type "unreadable at $cg_path"
+  fi
+  if [ -r "$cg_path/cgroup.controllers" ]; then
+    ctrl="$(cat "$cg_path/cgroup.controllers" 2>/dev/null)"
+    ok cgroup-controllers "available in current scope: ${ctrl:-none}; availability does not prove delegation"
+  else
+    bad cgroup-controllers "unreadable at $cg_path"
+  fi
+  for control in cgroup.kill cgroup.events memory.max pids.max; do
+    if [ -e "$cg_path/$control" ]; then
+      ok "$control" "present in current scope; access/enforcement unverified"
+    else
+      warnf "$control" "absent in current scope; use the intended delegated service scope"
+    fi
+  done
 else
-  bad cgroup-v2 "/sys/fs/cgroup/cgroup.controllers missing (not cgroup v2)"
+  warnf cgroup-scope "cannot resolve current scope from a cgroup2 mount rooted at /; run tbound-doctor for details"
 fi
-if [ -e /sys/fs/cgroup/cgroup.kill ]; then ok cgroup-kill present; else bad cgroup-kill "not present at root; a delegated subtree with cgroup.kill is required"; fi
-if [ -r /sys/fs/cgroup/cgroup.events ]; then ok cgroup-events "populated=$(grep -m1 populated /sys/fs/cgroup/cgroup.events 2>/dev/null | awk '{print $2}')"; else bad cgroup-events "unavailable (recursive populated accounting is required)"; fi
+warnf cgroup-delegation "writability and controller enforcement are not established by this read-only inventory"
+warnf cgroup-reuse "unverified; in an authorized delegated scope run: tbound-profile cgroup-reuse-check --confirm-disposable-cgroup"
 
 # Containment + image tooling.
 for bin in podman crun cosign; do

@@ -129,6 +129,11 @@ func buildReport(ctx context.Context, version, prefix string, opts piinstall.Opt
 
 	if runtime.GOOS == "linux" {
 		rep.Checks = append(rep.Checks, cgroupCheck())
+		rep.Checks = append(rep.Checks, check{
+			Name: "cgroup-reuse", Status: warn,
+			Detail:      "post-kill cgroup reuse is unverified; the default doctor performs read-only inventory",
+			Remediation: "Inside an authorized delegated scope, run: tbound-profile cgroup-reuse-check --confirm-disposable-cgroup",
+		})
 		rep.Checks = append(rep.Checks, lookPathCheck("podman", "needed for governed containment (Phase 2)"))
 		rep.Checks = append(rep.Checks, lookPathCheck("crun", "needed for governed containment (Phase 2)"))
 		rep.Checks = append(rep.Checks, lookPathCheck("cosign", "needed to verify the signed cell image (Phase 2)"))
@@ -155,18 +160,6 @@ func buildReport(ctx context.Context, version, prefix string, opts piinstall.Opt
 	rep.GovReady = false
 	rep.GovernedPrereqsAdvisory = rep.DevReady && runtime.GOOS == "linux" && rep.WarnCount == 0
 	return rep
-}
-
-func cgroupCheck() check {
-	b, err := os.ReadFile("/sys/fs/cgroup/cgroup.controllers")
-	if err != nil {
-		return check{Name: "cgroup-v2", Status: warn, Detail: "cgroup v2 not detected", Remediation: "governed runs need delegated non-threaded cgroup v2 with cgroup.kill"}
-	}
-	controllers := strings.TrimSpace(string(b))
-	if controllers == "" {
-		return check{Name: "cgroup-v2", Status: warn, Detail: "cgroup v2 present but no controllers delegated", Remediation: "delegate a cgroup v2 subtree with memory/pids and writable cgroup.kill"}
-	}
-	return check{Name: "cgroup-v2", Status: pass, Detail: "controllers: " + controllers}
 }
 
 func landlockCheckForABI(abi int, err error, requiredABI int) check {

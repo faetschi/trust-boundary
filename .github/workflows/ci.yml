@@ -49,7 +49,9 @@ jobs:
           printf 'TBOUND_PI_CLI_BIN=%s/tbound-pi-cli/bin/pi\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
 
       - name: Official Pi runtime closure regressions
-        run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
+        run: |
+          python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
+          python3 -m unittest discover -s scripts -p 'test_governed_host_cgroup.py' -v
 
       - name: Offline guest and teardown witness regressions
         run: |
