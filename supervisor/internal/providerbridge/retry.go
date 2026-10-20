@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"strconv"
 	"strings"
 	"time"
 
 	"tbound/supervisor/internal/broker"
+	"tbound/supervisor/internal/broker/protocol"
 )
 
 // Pre-effect provider retry.
@@ -54,7 +56,7 @@ const (
 // completion content: an SSE content type, any SSE field or comment line, extra top-level
 // members or trailing data all make it ineligible.
 func RetryableProviderFailure(status int, contentType string, body []byte, retryAfter string) bool {
-	if mediaType, _, _ := strings.Cut(contentType, ";"); strings.EqualFold(strings.TrimSpace(mediaType), "text/event-stream") {
+	if !contentTypeEligible(contentType) {
 		return false
 	}
 	message, ok := providerErrorBody(body)
@@ -71,6 +73,53 @@ func RetryableProviderFailure(status int, contentType string, body []byte, retry
 		return eligible
 	}
 	return false
+}
+
+// contentTypeIneligible is the journaled marker for a Content-Type that was observed but cannot
+// make a failure eligible: several values, an oversized or malformed one. It is never the same as
+// the empty string, which means the header was absent. '!' is not a valid media-type character.
+const contentTypeIneligible = "!"
+
+const maxJournaledContentType = 128
+
+// journaledContentType reduces the Content-Type values of a response to what the retry record
+// carries: "" when the header was absent, the normalized media type (lower case, no parameters)
+// when there is exactly one well-formed value, and contentTypeIneligible otherwise. An observed
+// header is never turned into an absent one, so replay classifies it as the live path did.
+func journaledContentType(values []string) string {
+	switch len(values) {
+	case 0:
+		return ""
+	case 1:
+		value := values[0]
+		if len(value) > maxJournaledContentType {
+			return contentTypeIneligible
+		}
+		mediaType, _, err := mime.ParseMediaType(value)
+		if err != nil || mediaType == "" {
+			return contentTypeIneligible
+		}
+		return mediaType
+	}
+	return contentTypeIneligible
+}
+
+// contentTypeEligible reports whether a journaled Content-Type allows an error response to be
+// retried: absent, or JSON (application/json or a +json type). Event streams, the marker and
+// anything else are not. Records written before the normalization kept the header as sent, so a
+// stored value is parsed again.
+func contentTypeEligible(journaled string) bool {
+	if journaled == "" {
+		return true
+	}
+	if journaled == contentTypeIneligible || len(journaled) > maxJournaledContentType {
+		return false
+	}
+	mediaType, _, err := mime.ParseMediaType(journaled)
+	if err != nil {
+		return false
+	}
+	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json")
 }
 
 // providerErrorBody accepts an empty body or the provider error object and returns its message.
@@ -92,6 +141,10 @@ func providerErrorBody(body []byte) (string, bool) {
 				return "", false
 			}
 		}
+	}
+	// Duplicate members, at any depth, would let a later one decide what a map decode keeps.
+	if protocol.ValidateStrictJSON(trimmed) != nil {
+		return "", false
 	}
 	decoder := json.NewDecoder(bytes.NewReader(trimmed))
 	var object map[string]json.RawMessage
@@ -163,7 +216,7 @@ func retryableExchange(records []broker.ExchangeRecord) bool {
 	if len(records) != 1 || !records[0].ResponseComplete() {
 		return false
 	}
-	return RetryableProviderFailure(records[0].StatusCode(), records[0].ContentType(), records[0].ResponseBody(), records[0].RetryAfter())
+	return RetryableProviderFailure(records[0].StatusCode(), journaledContentType(records[0].ContentTypes()), records[0].ResponseBody(), records[0].RetryAfter())
 }
 
 type exchangeRetryEvidence struct {
@@ -187,7 +240,7 @@ func (c *Conversation) recordRetryableFailureLocked(ctx context.Context, records
 	}
 	evidence := exchangeRetryEvidence{WorkflowID: c.cfg.WorkflowID, Turn: c.turns + 1, Attempt: attempt,
 		Request: requestEvidenceFromBroker(records[0].Request()), StatusCode: records[0].StatusCode(),
-		Response: records[0].ResponseBody(), RetryAfter: records[0].RetryAfter(), ContentType: records[0].ContentType(), HostCall: binding}
+		Response: records[0].ResponseBody(), RetryAfter: records[0].RetryAfter(), ContentType: journaledContentType(records[0].ContentTypes()), HostCall: binding}
 	data, err := json.Marshal(evidence)
 	if err != nil {
 		return fmt.Errorf("encode retryable provider failure: %w", err)
