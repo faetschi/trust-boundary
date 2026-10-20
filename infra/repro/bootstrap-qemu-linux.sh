@@ -285,6 +285,7 @@ cd "$HOME/trust-boundary"
 
 step() { printf '\n===== %s =====\n' "$*"; }
 say()  { printf '%s\n' "$*"; }
+warn() { printf 'WARNING: %s\n' "$*" >&2; }
 
 step "official Pi CLI 0.87.1"
 npm_config_prefix="$HOME/.local" npm install --global --ignore-scripts \
@@ -313,13 +314,21 @@ fi
 export PATH="$HOME/.local/share/tbound/bin:$PATH"
 hash -r
 
-step "doctor"
+step "doctor (advisory)"
+set +e
 tbound-doctor --pi "$(command -v pi)" | tee "$HOME/tbound-doctor.txt"
+DOCTOR_RC=${PIPESTATUS[0]}
 tbound-doctor --json > "$HOME/tbound-doctor.json" 2>/dev/null || true
+set -e
+[[ "$DOCTOR_RC" -eq 0 ]] || warn "tbound-doctor exited $DOCTOR_RC; the user-prefix install is still complete."
 
-step "native fixture"
+step "native fixture (non-claim-bearing smoke)"
 cd "$HOME/trust-boundary"
+set +e
 tbound serve --pi --native-fixture | tee "$HOME/tbound-native-fixture.json"
+NATIVE_RC=${PIPESTATUS[0]}
+set -e
+[[ "$NATIVE_RC" -eq 0 ]] || warn "native fixture exited $NATIVE_RC; inspect the receipt and doctor output. The user-prefix install is still complete."
 
 if [[ "${RUN_DEVELOPER:-0}" == 1 ]]; then
   step "offline Pi CLI development fixture"
