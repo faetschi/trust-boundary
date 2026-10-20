@@ -9,6 +9,8 @@
 # Usage:
 #   run-cgroup-reuse-check.sh --tbound-profile PATH --out DIR [--no-scope]
 #
+# --out must not exist: the helper refuses files, directories, and symlinks so
+# stale probe-rc/result evidence can never be mistaken for the current run.
 # --no-scope is for mock tests only; it is not a qualification result.
 #
 # The probe contract:
@@ -38,7 +40,19 @@ done
 [[ -n "$OUT" ]] || { printf 'ERROR: --out is required\n' >&2; exit 2; }
 
 umask 077
-install -d -m 700 "$OUT" || exit 2
+# Never reuse a previous run directory: stale probe-rc/result files must not be
+# mistaken for the current run. Refuse files, directories, and symlinks.
+if [[ -e "$OUT" || -L "$OUT" ]]; then
+  printf 'ERROR: --out already exists; use a fresh directory for each single run: %s\n' "$OUT" >&2
+  exit 2
+fi
+OUT_PARENT="$(dirname -- "$OUT")"
+if [[ -L "$OUT_PARENT" ]]; then
+  printf 'ERROR: refusing a symlinked output parent: %s\n' "$OUT_PARENT" >&2
+  exit 2
+fi
+[[ -d "$OUT_PARENT" ]] || install -d -m 700 "$OUT_PARENT" || exit 2
+mkdir -m 700 "$OUT" || exit 2
 OUT="$(cd "$OUT" && pwd)" || exit 2
 : > "$OUT/setup-error.txt"
 
@@ -82,8 +96,10 @@ else
     printf 'systemd-run is unavailable; a writable delegated user scope is required\n' > "$OUT/setup-error.txt"
     exit 2
   fi
-  if ! systemctl --user is-system-running >/dev/null 2>&1; then
-    printf 'user systemd manager is unavailable; cannot create a delegated scope\n' > "$OUT/setup-error.txt"
+  # A degraded but reachable user manager is still usable for one transient
+  # delegated scope. Do not require is-system-running to report "running".
+  if ! systemctl --user show-environment >/dev/null 2>&1; then
+    printf 'user systemd manager is unreachable; cannot create a delegated scope\n' > "$OUT/setup-error.txt"
     exit 2
   fi
   systemd-run --user --scope -p Delegate=yes \
@@ -99,12 +115,15 @@ fi
 if [[ -s "$OUT/stderr" ]]; then
   cat "$OUT/stderr" >&2
 fi
+if [[ "$scope_rc" -ne 0 ]]; then
+  # A failed scope/transport invalidates even a probe that printed result=pass.
+  printf 'scope/transport exited %s; qualification is unverified (see systemd-run.log)\n' "$scope_rc" > "$OUT/setup-error.txt"
+  printf 'ERROR: %s\n' "$(cat "$OUT/setup-error.txt")" >&2
+  exit 2
+fi
 if [[ -s "$OUT/probe-rc.txt" ]]; then
   # Preserve the probe exit exactly; scope-rc.txt records transport separately.
   exit "$(cat "$OUT/probe-rc.txt")"
-fi
-if [[ "$scope_rc" -ne 0 ]]; then
-  exit 2
 fi
 printf 'probe produced no rc; qualification is unverified\n' >&2
 exit 2
