@@ -926,3 +926,26 @@ func TestPiServiceSocketParentMountAcceptsReadOnlyOnlyInTheServiceNamespace(t *t
 		t.Fatal("a malformed options string was accepted")
 	}
 }
+
+func TestPiServiceServerAllowedAcceptsTheSystemdListenerOrTheService(t *testing.T) {
+	for name, test := range map[string]struct {
+		peer    piServicePeerCredentials
+		allowed bool
+	}{
+		"systemd listener creator":     {piServicePeerCredentials{PID: 1, UID: 0, GID: 0}, true},
+		"service process":              {piServicePeerCredentials{PID: 4242, UID: 995, GID: 986}, true},
+		"root with another pid":        {piServicePeerCredentials{PID: 4242, UID: 0, GID: 0}, false},
+		"pid 1 with a non-root uid":    {piServicePeerCredentials{PID: 1, UID: 995, GID: 0}, false},
+		"pid 1 with a non-root gid":    {piServicePeerCredentials{PID: 1, UID: 0, GID: 986}, false},
+		"another user":                 {piServicePeerCredentials{PID: 4242, UID: 1000, GID: 986}, false},
+		"service uid with another gid": {piServicePeerCredentials{PID: 4242, UID: 995, GID: 1000}, false},
+		"no pid":                       {piServicePeerCredentials{PID: 0, UID: 995, GID: 986}, false},
+	} {
+		if got := piServiceServerAllowed(test.peer, 995, 986); got != test.allowed {
+			t.Fatalf("%s: allowed = %v, want %v", name, got, test.allowed)
+		}
+	}
+	if piServiceServerAllowed(piServicePeerCredentials{PID: 1, UID: 0, GID: 0}, 0, 0) {
+		t.Fatal("a root service registration was accepted")
+	}
+}

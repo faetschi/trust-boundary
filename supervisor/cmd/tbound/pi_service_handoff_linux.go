@@ -1176,8 +1176,21 @@ func piServicePeerAllowed(socket piServiceSocketRegistration, peer piServicePeer
 	return index < len(socket.AllowedClientUIDs) && socket.AllowedClientUIDs[index] == peer.UID
 }
 
+// piServiceServerAllowed decides whether the SO_PEERCRED of a connected client socket
+// identifies the registered server. tbound-pi.socket is socket-activated (Accept=no),
+// so systemd creates the listener and the kernel reports the listener creator, pid 1
+// uid 0 gid 0, not the service process. That identity is accepted only because the
+// socket path is bound to the registered root-owned socket file in a root-owned tmpfs
+// directory (measured and revalidated before and after the connect), where only root
+// can have bound it. uid 0 with any other pid, and every other uid or gid, are refused.
 func piServiceServerAllowed(peer piServicePeerCredentials, serviceUID, serviceGID int) bool {
-	return peer.PID > 0 && serviceUID > 0 && serviceGID > 0 && peer.UID == serviceUID && peer.GID == serviceGID
+	if serviceUID <= 0 || serviceGID <= 0 {
+		return false
+	}
+	if peer.PID == 1 && peer.UID == 0 && peer.GID == 0 {
+		return true
+	}
+	return peer.PID > 0 && peer.UID == serviceUID && peer.GID == serviceGID
 }
 
 func newPiServiceRequestJournal(journal *audit.Journal) (*piServiceRequestJournal, error) {
