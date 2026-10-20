@@ -416,7 +416,10 @@ func (l *D09PodmanCrunLauncher) isClosed() bool {
 func (*D09PodmanCrunLauncher) requirePerLaunchProof() {}
 
 type d09LaunchRecord struct {
-	proof          D09TCBProof
+	proof D09TCBProof
+	// hostNamespaces are the host namespace inodes captured when this cell was launched. The
+	// proof's namespaces are checked against them, not against a re-capture at validation time.
+	hostNamespaces D09NamespaceInodes
 	pidfd          *os.File
 	stdout         io.ReadCloser
 	proofRead      bool
@@ -1884,7 +1887,7 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		_ = syscall.Close(pidfd)
 		return nil, D09TCBProof{}, fmt.Errorf("%w: %v", ErrProductionLauncherUnavailable, err)
 	}
-	l.storeLaunchProof(command, proof, os.NewFile(uintptr(pidfd), "d09-worker-pidfd"), stdoutPipe.reader)
+	l.storeLaunchProof(command, proof, config.HostNamespaces, os.NewFile(uintptr(pidfd), "d09-worker-pidfd"), stdoutPipe.reader)
 	launchSucceeded = true
 	return command, proof, nil
 }
@@ -1919,7 +1922,7 @@ func descriptorPathForMount(file *os.File) (string, error) {
 
 // storeLaunchProof registers the captured, validated proof against the exact
 // launched command so it can be retrieved once and never for a different launch.
-func (l *D09PodmanCrunLauncher) storeLaunchProof(cmd *exec.Cmd, proof D09TCBProof, pidfd *os.File, stdout io.ReadCloser) {
+func (l *D09PodmanCrunLauncher) storeLaunchProof(cmd *exec.Cmd, proof D09TCBProof, hostNamespaces D09NamespaceInodes, pidfd *os.File, stdout io.ReadCloser) {
 	if l == nil || cmd == nil {
 		return
 	}
@@ -1934,6 +1937,7 @@ func (l *D09PodmanCrunLauncher) storeLaunchProof(cmd *exec.Cmd, proof D09TCBProo
 		l.proofs[cmd] = record
 	}
 	record.proof = proof
+	record.hostNamespaces = hostNamespaces
 	record.pidfd = pidfd
 	record.stdout = stdout
 }
@@ -2018,7 +2022,13 @@ func (l *D09PodmanCrunLauncher) ValidateLaunchProof(value any, profile HostProfi
 	if err := validateD09TCBProof(proof, l.config.normalized()); err != nil {
 		return err
 	}
-	return validateD09NamespaceProof(proof, l.config.HostNamespaces)
+	// StartVerified captured the host namespaces on its own copy of the config and kept them with
+	// this launch's record; the launcher's base config never holds them.
+	host := l.config.HostNamespaces
+	if record := l.launchRecord(cmd); record != nil && record.hostNamespaces != (D09NamespaceInodes{}) {
+		host = record.hostNamespaces
+	}
+	return validateD09NamespaceProof(proof, host)
 }
 
 type d09LaunchSettler struct {

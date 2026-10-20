@@ -858,7 +858,7 @@ func TestD09TakeLaunchProofIsPerCommand(t *testing.T) {
 		ImageDigest: DigestBytes([]byte("image")), TemplateDigest: DigestBytes([]byte("template")),
 	}
 	stdoutA := io.NopCloser(strings.NewReader(`{"id":"request-a","type":"response","command":"prompt","success":true}` + "\n"))
-	launcher.storeLaunchProof(cmdA, proof, proofRead, stdoutA)
+	launcher.storeLaunchProof(cmdA, proof, D09NamespaceInodes{}, proofRead, stdoutA)
 	if _, ok := launcher.TakeLaunchProof(cmdB); ok {
 		t.Fatal("a foreign command was returned a proof")
 	}
@@ -1333,5 +1333,49 @@ func TestD09CgroupParentIsRelativeToTheCgroup2Root(t *testing.T) {
 		if strings.Contains(strings.Join(vector, " "), "/sys/fs/cgroup") {
 			t.Fatalf("%s cell: the host cgroup mount prefix reached podman: %q", name, vector)
 		}
+	}
+}
+
+// StartVerified captures the host namespaces on a local copy of the config, so the launcher's base
+// config has none; the per-launch record carries them to ValidateLaunchProof.
+func TestValidateLaunchProofUsesTheHostNamespacesCapturedAtLaunch(t *testing.T) {
+	imageDigest := DigestBytes([]byte("image"))
+	templateDigest := DigestBytes([]byte("template"))
+	config := D09Config{UID: 1, GID: 1, ExpectedImageDigest: imageDigest, TemplateDigest: templateDigest,
+		LandlockABI: 8, LandlockRulesetDigest: DigestBytes([]byte("landlock"))}
+	bindTestD09UserNamespace(&config, 1, 1, 1701, 1702)
+	profile := HostProfile{Mode: ModeProduction, ContainmentProfileDigest: templateDigest}
+	launcher := &D09PodmanCrunLauncher{config: config}
+	cmd := exec.Command("/bin/true")
+	cmd.Process = &os.Process{Pid: 4242}
+	proof := D09TCBProof{
+		Schema: "tbound-pi-entrypoint/v1", UID: 1, GID: 1, CapEff: d09EmptyCapabilitySet,
+		NoNewPrivs: true, Seccomp: 2, LandlockABI: 8, LandlockRulesetDigest: config.LandlockRulesetDigest,
+		LandlockTSYNC: true, CgroupV2: true, ContainerName: "cell", LeaderPID: 9,
+		ContainerLeaderPID: 1, LauncherProcessPID: 4242, ImageRef: "image@" + imageDigest,
+		ImageDigest: imageDigest, TemplateDigest: templateDigest, ConsumerMountsVerified: true,
+		RawSourceFDsClosed: true, WorkerMountID: 1, RuntimeMountID: 2,
+		WorkerDevice: 1, WorkerInode: 2, RuntimeDevice: 1, RuntimeInode: 3,
+		UserNSInode: 200, MountNSInode: 201, PIDNSInode: 202, IPCNSInode: 203, UTSNSInode: 204, NetworkNSInode: 205,
+		NoExternalRoutes: true,
+	}
+	bindTestD09TCBProofMaps(&proof, config)
+	if err := launcher.ValidateLaunchProof(proof, profile, cmd); err == nil {
+		t.Fatal("a proof was validated against namespaces nobody captured")
+	}
+	host := D09NamespaceInodes{User: 100, Mount: 101, PID: 102, IPC: 103, UTS: 104, Network: 105}
+	launcher.storeLaunchProof(cmd, proof, host, nil, nil)
+	if err := launcher.ValidateLaunchProof(proof, profile, cmd); err != nil {
+		t.Fatalf("a proof in private namespaces was refused against the namespaces captured at launch: %v", err)
+	}
+	same := proof
+	same.NetworkNSInode = host.Network
+	if err := launcher.ValidateLaunchProof(same, profile, cmd); err == nil {
+		t.Fatal("a proof sharing the host's network namespace was accepted")
+	}
+	same = proof
+	same.UserNSInode = host.User
+	if err := launcher.ValidateLaunchProof(same, profile, cmd); err == nil {
+		t.Fatal("a proof sharing the host's user namespace was accepted")
 	}
 }
