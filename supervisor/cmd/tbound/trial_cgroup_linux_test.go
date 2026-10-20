@@ -367,11 +367,54 @@ func TestKillCgroupRefuses(t *testing.T) {
 // The wait is for the processes to leave: populated 1 at first, 0 a little later.
 func TestKillCgroupWaitsForTheProcessesToLeave(t *testing.T) {
 	dir, path := fakeCgroupDir(t, true, "populated 1\n")
+	done := make(chan error, 1)
 	go func() {
-		time.Sleep(50 * time.Millisecond)
-		_ = os.WriteFile(filepath.Join(path, "cgroup.events"), []byte("populated 0\n"), 0o600)
+		done <- killCgroup(dir, 5*time.Second)
 	}()
-	if err := killCgroup(dir, 5*time.Second); err != nil {
+	joined := false
+	t.Cleanup(func() {
+		if !joined {
+			<-done
+		}
+	})
+	// Observe the kill before checking that populated 1 keeps it waiting.
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		select {
+		case err := <-done:
+			joined = true
+			t.Fatalf("killCgroup finished while populated 1: %v", err)
+		default:
+		}
+		data, err := os.ReadFile(filepath.Join(path, "cgroup.kill"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(data) == "1" {
+			break
+		}
+		if !time.Now().Before(deadline) {
+			t.Fatal("killCgroup did not write cgroup.kill")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	select {
+	case err := <-done:
+		joined = true
+		t.Fatalf("killCgroup finished while populated 1: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	// A kernel events read returns a complete snapshot. Publish the fake snapshot
+	// atomically, so the reader cannot see the empty interval of a truncating write.
+	next := filepath.Join(path, "cgroup.events.next")
+	if err := os.WriteFile(next, []byte("populated 0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(next, filepath.Join(path, "cgroup.events")); err != nil {
+		t.Fatal(err)
+	}
+	err := <-done
+	joined = true
+	if err != nil {
 		t.Fatalf("killCgroup: %v", err)
 	}
 }
