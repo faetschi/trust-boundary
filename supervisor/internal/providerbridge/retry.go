@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -46,24 +47,85 @@ const (
 	retryFailureBodyLimit = 16 << 10
 )
 
-// RetryableProviderFailure reports whether an HTTP response that is not a completion may be
-// retried: 502, 503 and 504, or 422 whose body says the endpoint is unavailable. A body that
-// carries stream or completion content is never retryable.
-func RetryableProviderFailure(status int, body []byte, retryAfter string) bool {
-	if len(body) > retryFailureBodyLimit || bytes.HasPrefix(bytes.TrimSpace(body), []byte("data:")) ||
-		bytes.Contains(body, []byte(`"choices"`)) {
+// RetryableProviderFailure reports whether a complete HTTP response that is not a completion may
+// be retried: 502, 503 and 504, 422 whose error says the endpoint is unavailable, or 429 with a
+// short Retry-After. The body must be empty or exactly the provider's error object
+// ({"error": "..."} or {"error": {"type", "message", ...}}) parsed as JSON, never stream or
+// completion content: an SSE content type, any SSE field or comment line, extra top-level
+// members or trailing data all make it ineligible.
+func RetryableProviderFailure(status int, contentType string, body []byte, retryAfter string) bool {
+	if mediaType, _, _ := strings.Cut(contentType, ";"); strings.EqualFold(strings.TrimSpace(mediaType), "text/event-stream") {
+		return false
+	}
+	message, ok := providerErrorBody(body)
+	if !ok {
 		return false
 	}
 	switch status {
 	case 502, 503, 504:
 		return true
 	case 422:
-		return bytes.Contains(body, []byte("Endpoint is unavailable"))
+		return strings.Contains(message, "Endpoint is unavailable")
 	case 429:
-		_, ok := rateLimitDelay(retryAfter)
-		return ok
+		_, eligible := rateLimitDelay(retryAfter)
+		return eligible
 	}
 	return false
+}
+
+// providerErrorBody accepts an empty body or the provider error object and returns its message.
+func providerErrorBody(body []byte) (string, bool) {
+	trimmed := bytes.TrimSpace(body)
+	if len(trimmed) == 0 {
+		return "", true
+	}
+	if len(body) > retryFailureBodyLimit {
+		return "", false
+	}
+	for _, line := range bytes.Split(body, []byte("\n")) {
+		line = bytes.TrimRight(line, "\r")
+		if len(line) > 0 && line[0] == ':' {
+			return "", false
+		}
+		for _, field := range []string{"data", "event", "id", "retry"} {
+			if bytes.HasPrefix(line, []byte(field+":")) || bytes.Equal(line, []byte(field)) {
+				return "", false
+			}
+		}
+	}
+	decoder := json.NewDecoder(bytes.NewReader(trimmed))
+	var object map[string]json.RawMessage
+	if err := decoder.Decode(&object); err != nil || len(object) != 1 {
+		return "", false
+	}
+	if _, trailing := decoder.Token(); !errors.Is(trailing, io.EOF) {
+		return "", false
+	}
+	raw, present := object["error"]
+	if !present {
+		return "", false
+	}
+	var text string
+	if json.Unmarshal(raw, &text) == nil {
+		return text, true
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return "", false
+	}
+	message := ""
+	for key, value := range fields {
+		switch key {
+		case "message":
+			if json.Unmarshal(value, &message) != nil {
+				return "", false
+			}
+		case "type", "code", "param", "status", "metadata":
+		default:
+			return "", false
+		}
+	}
+	return message, true
 }
 
 // MaxRetryAfter bounds the Retry-After a 429 may carry for the attempt to be repeated.
@@ -95,21 +157,25 @@ var retryWait = func(ctx context.Context, delay time.Duration) error {
 }
 
 func retryableExchange(records []broker.ExchangeRecord) bool {
-	if len(records) != 1 || !records[0].HasResponse() {
+	// Only a response received whole (endpoint validated, body read to its end within the bound,
+	// clean close) can be an eligible HTTP failure; a read failure or a transport-policy violation
+	// is UNKNOWN even when its status looks retryable.
+	if len(records) != 1 || !records[0].ResponseComplete() {
 		return false
 	}
-	return RetryableProviderFailure(records[0].StatusCode(), records[0].ResponseBody(), records[0].RetryAfter())
+	return RetryableProviderFailure(records[0].StatusCode(), records[0].ContentType(), records[0].ResponseBody(), records[0].RetryAfter())
 }
 
 type exchangeRetryEvidence struct {
-	WorkflowID string          `json:"workflow_id"`
-	Turn       uint64          `json:"turn"`
-	Attempt    uint64          `json:"attempt"`
-	Request    requestEvidence `json:"request"`
-	StatusCode int             `json:"status_code"`
-	Response   []byte          `json:"response"`
-	RetryAfter string          `json:"retry_after,omitempty"`
-	HostCall   HostCallBinding `json:"host_call"`
+	WorkflowID  string          `json:"workflow_id"`
+	Turn        uint64          `json:"turn"`
+	Attempt     uint64          `json:"attempt"`
+	Request     requestEvidence `json:"request"`
+	StatusCode  int             `json:"status_code"`
+	Response    []byte          `json:"response"`
+	RetryAfter  string          `json:"retry_after,omitempty"`
+	ContentType string          `json:"content_type,omitempty"`
+	HostCall    HostCallBinding `json:"host_call"`
 }
 
 // recordRetryableFailureLocked closes a failed attempt: it journals the retryable failure bound
@@ -121,7 +187,7 @@ func (c *Conversation) recordRetryableFailureLocked(ctx context.Context, records
 	}
 	evidence := exchangeRetryEvidence{WorkflowID: c.cfg.WorkflowID, Turn: c.turns + 1, Attempt: attempt,
 		Request: requestEvidenceFromBroker(records[0].Request()), StatusCode: records[0].StatusCode(),
-		Response: records[0].ResponseBody(), RetryAfter: records[0].RetryAfter(), HostCall: binding}
+		Response: records[0].ResponseBody(), RetryAfter: records[0].RetryAfter(), ContentType: records[0].ContentType(), HostCall: binding}
 	data, err := json.Marshal(evidence)
 	if err != nil {
 		return fmt.Errorf("encode retryable provider failure: %w", err)
