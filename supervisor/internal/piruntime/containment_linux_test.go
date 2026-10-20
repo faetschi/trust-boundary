@@ -469,7 +469,7 @@ func TestD09ContainerArgumentsComposeFrozenCell(t *testing.T) {
 		"--memory 512m",
 		"--cpus 1",
 		"--runtime /usr/bin/crun",
-		"--cgroup-parent /sys/fs/cgroup/tbound",
+		"--cgroup-parent /tbound",
 		"--preserve-fds 8",
 		"--uidmap 1000:0:1",
 		"--gidmap 1000:0:1",
@@ -1299,4 +1299,39 @@ func indexOfString(values []string, want string) int {
 		}
 	}
 	return -1
+}
+
+// cgroup_manager=cgroupfs makes podman and crun prepend /sys/fs/cgroup themselves.
+func TestD09CgroupParentIsRelativeToTheCgroup2Root(t *testing.T) {
+	const scope = "/sys/fs/cgroup/system.slice/tbound-pi.service/cells/pi-wf-abc-e1"
+	const want = "/system.slice/tbound-pi.service/cells/pi-wf-abc-e1"
+	if got, err := d09PodmanCgroupParent(scope); err != nil || got != want {
+		t.Fatalf("d09PodmanCgroupParent = %q, %v; want %q", got, err, want)
+	}
+	for _, bad := range []string{"", "/", "/sys/fs/cgroup", "/sys/fs/cgroup/", "/system.slice/x", "/sys/fs/cgroup/../x",
+		"/sys/fs/cgroup//x", "/sys/fs/cgroup/a,b", "sys/fs/cgroup/x", "/sys/fs/cgroupx/y"} {
+		if got, err := d09PodmanCgroupParent(bad); err == nil {
+			t.Fatalf("%q was accepted as %q", bad, got)
+		}
+	}
+
+	config := D09Config{UID: 1000, GID: 1000, PidsMax: 128, MemoryMB: 512, CPUs: "1", SeccompProfilePath: "/etc/tbound/seccomp.json",
+		CgroupsPath: scope, EntrypointPath: "/usr/local/bin/tbound-pi-entrypoint", CrunPath: "/usr/bin/crun",
+		LandlockABI: 1, LandlockRulesetDigest: DigestBytes([]byte("landlock")), CommandExecutable: "/bin/bash"}
+	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
+	image := "localhost/tbound/pi-cell@" + fakeD09Digest
+	vectors := map[string][]string{
+		"worker": d09ContainerArgumentsAtWithEnv(config, "n", image, PiWorkerCellEnvironment(), nil, PiWorkerCellArguments(), PiWorkerCellWorkdir, nil, ""),
+		"command": d09CommandCellArguments(config, "n", "/tmp/cid", image, "/view", "v", "l", 1, 2,
+			sessionrepo.CommandSpec{Executable: "/bin/bash"}),
+	}
+	for name, vector := range vectors {
+		at := indexOfString(vector, "--cgroup-parent")
+		if at < 0 || at+1 >= len(vector) || vector[at+1] != want {
+			t.Fatalf("%s cell: --cgroup-parent = %q, want %q", name, vector, want)
+		}
+		if strings.Contains(strings.Join(vector, " "), "/sys/fs/cgroup") {
+			t.Fatalf("%s cell: the host cgroup mount prefix reached podman: %q", name, vector)
+		}
+	}
 }

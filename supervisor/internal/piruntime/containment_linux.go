@@ -1709,6 +1709,9 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		return nil, D09TCBProof{}, fmt.Errorf("resolve held D09 cgroup scope: %w", err)
 	}
 	config.CgroupsPath = scopePath
+	if _, err := d09PodmanCgroupParent(scopePath); err != nil {
+		return nil, D09TCBProof{}, err
+	}
 	if profile.WorkingDirectory != PiWorkerCellDefaultWorkingDirectory {
 		return nil, D09TCBProof{}, fmt.Errorf("%w: D09 worker CWD must be the registered consumer mount %s", ErrHostProfileMismatch, PiWorkerCellDefaultWorkingDirectory)
 	}
@@ -2452,7 +2455,7 @@ func d09ContainerArgumentsAtWithEnv(config D09Config, name, imageRef string, env
 	}
 	vector = append(vector, "--rm")
 	if strings.TrimSpace(config.CgroupsPath) != "" {
-		vector = append(vector, "--cgroup-parent", config.CgroupsPath)
+		vector = append(vector, "--cgroup-parent", d09PodmanCgroupParentOrSelf(config.CgroupsPath))
 	}
 	for _, item := range d09EnvironmentArguments(environment) {
 		vector = append(vector, "-e", item)

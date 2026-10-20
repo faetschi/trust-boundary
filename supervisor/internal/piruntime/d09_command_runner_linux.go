@@ -582,6 +582,9 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 	}
 	config.HostNamespaces = hostNamespaces
 	config.CgroupsPath = scopePath
+	if _, err := d09PodmanCgroupParent(scopePath); err != nil {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+	}
 	outputToken := ""
 	if r.delta.NoReap() {
 		if outputToken, err = newD09OutputToken(); err != nil {
@@ -988,7 +991,7 @@ func d09CommandCellArgumentsDelta(plan d09DeltaPlan, config D09Config, name, cid
 		"--uidmap", strconv.Itoa(config.CellUID) + ":0:1", "--gidmap", strconv.Itoa(config.CellGID) + ":0:1",
 		"--user", uid + ":" + gid, "--workdir", "/work", "--preserve-fds", "3",
 		"--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777",
-		"--cgroup-parent", config.CgroupsPath,
+		"--cgroup-parent", d09PodmanCgroupParentOrSelf(config.CgroupsPath),
 		"--mount", "type=bind,src=" + viewPath + ",dst=/work,rw,bind-propagation=rprivate",
 		"-e", "HOME=" + PiWorkerCellHome, "-e", "TMPDIR=" + PiWorkerCellTemp, "-e", "LANG=C.UTF-8", "-e", "PI_OFFLINE=1",
 		"-e", "TBOUND_CELL_UID=" + uid, "-e", "TBOUND_CELL_GID=" + gid,
