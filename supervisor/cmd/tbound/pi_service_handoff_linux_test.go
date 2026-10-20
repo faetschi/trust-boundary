@@ -893,3 +893,34 @@ func mustPiServicePayloadDigest(t *testing.T, request piServiceRequest) string {
 	}
 	return digest
 }
+
+func TestPiServiceSocketParentMountAcceptsReadOnlyOnlyInTheServiceNamespace(t *testing.T) {
+	const super = "rw,size=401508k,mode=755,inode64"
+	join := func(flags string) string { return strings.Join([]string{"/", "/run", flags, "tmpfs", "tmpfs", super}, "\x00") }
+	host := join("rw,nosuid,nodev,noexec,relatime")
+	service := join("ro,nosuid,nodev,noexec,relatime")
+	if !piServiceSocketParentMountAcceptable(host, false) || !piServiceSocketParentMountAcceptable(host, true) {
+		t.Fatal("host-namespace rw,nosuid,nodev parent was refused")
+	}
+	if !piServiceSocketParentMountAcceptable(service, true) {
+		t.Fatal("service-namespace ro,nosuid,nodev parent was refused")
+	}
+	if piServiceSocketParentMountAcceptable(service, false) {
+		t.Fatal("the host-namespace client accepted a read-only socket parent")
+	}
+	for name, flags := range map[string]string{
+		"suid allowed":   "rw,nodev,noexec,relatime",
+		"devices":        "rw,nosuid,noexec,relatime",
+		"no access flag": "nosuid,nodev,relatime",
+		"both ro and rw": "ro,rw,nosuid,nodev",
+	} {
+		for _, serviceNamespace := range []bool{false, true} {
+			if piServiceSocketParentMountAcceptable(join(flags), serviceNamespace) {
+				t.Fatalf("%s accepted (service namespace %v)", name, serviceNamespace)
+			}
+		}
+	}
+	if piServiceSocketParentMountAcceptable("rw,nosuid,nodev", true) {
+		t.Fatal("a malformed options string was accepted")
+	}
+}

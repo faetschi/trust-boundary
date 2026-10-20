@@ -215,7 +215,7 @@ func (activated *piServiceActivatedListener) Revalidate() error {
 	if err != nil || !ok || unixAddress.Name != activated.Policy.SocketPath {
 		return errors.Join(ErrPiServiceUnavailable, err)
 	}
-	return activated.Identity.revalidate(activated.Policy)
+	return activated.Identity.revalidate(activated.Policy, true)
 }
 
 type piServiceSocketRuntimeIdentity struct {
@@ -980,7 +980,7 @@ func systemdActivatedPiListener(socket piServiceSocketRegistration) (*piServiceA
 		_ = file.Close()
 		return nil, errors.Join(ErrPiServiceUnavailable, err)
 	}
-	identity, err := measurePiServiceSocketPath(socket)
+	identity, err := measurePiServiceSocketPath(socket, true)
 	if err != nil {
 		_ = file.Close()
 		return nil, err
@@ -1032,10 +1032,10 @@ func verifyActivatedPiListenerFile(fd *os.File, socket piServiceSocketRegistrati
 	}
 	// FD/socketfs identity and filesystem pathname identity are intentionally
 	// checked separately. They are not required to be os.SameFile/inode-equal.
-	return identity.revalidate(socket)
+	return identity.revalidate(socket, true)
 }
 
-func measurePiServiceSocketPath(socket piServiceSocketRegistration) (piServiceSocketRuntimeIdentity, error) {
+func measurePiServiceSocketPath(socket piServiceSocketRegistration, serviceNamespace bool) (piServiceSocketRuntimeIdentity, error) {
 	var identity piServiceSocketRuntimeIdentity
 	if !filepath.IsAbs(socket.SocketPath) || filepath.Clean(socket.SocketPath) != socket.SocketPath ||
 		socket.ParentPath != filepath.Dir(socket.SocketPath) {
@@ -1064,8 +1064,7 @@ func measurePiServiceSocketPath(socket piServiceSocketRegistration) (piServiceSo
 		return identity, errors.Join(ErrPiServiceUnavailable, err)
 	}
 	mountOptions, err := piServiceMountOptions(parentMountID)
-	if err != nil || !containsMountOption(mountOptions, "rw") || !containsMountOption(mountOptions, "nodev") ||
-		!containsMountOption(mountOptions, "nosuid") || containsMountOption(mountOptions, "ro") {
+	if err != nil || !piServiceSocketParentMountAcceptable(mountOptions, serviceNamespace) {
 		return identity, errors.Join(ErrPiServiceUnavailable, err)
 	}
 	if socket.ParentMountPolicy != "tmpfs-rw-nodev-nosuid/v1" {
@@ -1137,8 +1136,8 @@ func containsMountOption(joined, expected string) bool {
 	return false
 }
 
-func (identity piServiceSocketRuntimeIdentity) revalidate(socket piServiceSocketRegistration) error {
-	current, err := measurePiServiceSocketPath(socket)
+func (identity piServiceSocketRuntimeIdentity) revalidate(socket piServiceSocketRegistration, serviceNamespace bool) error {
+	current, err := measurePiServiceSocketPath(socket, serviceNamespace)
 	if err != nil {
 		return err
 	}
@@ -1726,7 +1725,7 @@ func callProductionPiService(ctx context.Context, socket piServiceSocketRegistra
 	if !piServicePeerAllowed(socket, allowed) {
 		return ErrPiServiceRefused
 	}
-	socketIdentity, err := measurePiServiceSocketPath(socket)
+	socketIdentity, err := measurePiServiceSocketPath(socket, false)
 	if err != nil {
 		return err
 	}
@@ -1747,7 +1746,7 @@ func callProductionPiService(ctx context.Context, socket piServiceSocketRegistra
 	if err != nil || !piServiceServerAllowed(serverPeer, serviceUID, serviceGID) {
 		return errors.Join(ErrPiServiceRefused, err)
 	}
-	if err := socketIdentity.revalidate(socket); err != nil {
+	if err := socketIdentity.revalidate(socket, false); err != nil {
 		return errors.Join(ErrPiServiceRefused, err)
 	}
 	response, err := callPiServiceConn(unixConn, request)
@@ -2077,4 +2076,25 @@ func evidenceFingerprint(paths []string) string {
 		}
 	}
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil))
+}
+
+// piServiceSocketParentMountAcceptable checks the per-mount flags of the socket
+// parent from the joined piServiceMountOptions string. nosuid and nodev are
+// always required. The client, in the host mount namespace, also requires rw;
+// the service's ProtectSystem=strict namespace remounts the parent read-only,
+// which only narrows access to a directory the service never writes (systemd
+// creates the socket), so there ro is accepted and rw is too.
+func piServiceSocketParentMountAcceptable(joined string, serviceNamespace bool) bool {
+	fields := strings.Split(joined, "\x00")
+	if len(fields) != 6 {
+		return false
+	}
+	flags := make(map[string]bool)
+	for _, flag := range strings.Split(fields[2], ",") {
+		flags[flag] = true
+	}
+	if !flags["nosuid"] || !flags["nodev"] || flags["ro"] == flags["rw"] {
+		return false
+	}
+	return serviceNamespace || flags["rw"]
 }
