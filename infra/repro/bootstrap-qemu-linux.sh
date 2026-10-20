@@ -279,7 +279,7 @@ set -euo pipefail
 export GOTOOLCHAIN=local
 export PATH="/opt/tbound/toolchains/go1.27.1/bin:/opt/tbound/toolchains/node-v24.21.0-linux-x64/bin:$HOME/.local/bin:$PATH"
 export TMPDIR="$HOME/.cache/tbound-tmp"
-mkdir -m 700 -p "$TMPDIR"
+install -d -m 700 "$TMPDIR"
 umask 077
 cd "$HOME/trust-boundary"
 
@@ -332,11 +332,12 @@ set -e
 
 if [[ "${RUN_DEVELOPER:-0}" == 1 ]]; then
   step "offline Pi CLI development fixture"
-  export TBOUND_DEV_FIXTURE_PI="$(realpath "$(command -v pi)")"
-  export TBOUND_DEV_FIXTURE_NODE="$(realpath "$(command -v node)")"
-  export TBOUND_DEV_FIXTURE_ADAPTER="$HOME/trust-boundary/adapter"
-  export TBOUND_DEV_FIXTURE_ROOT="$HOME/.local/state/tbound-dev-fixture"
-  mkdir -m 700 -p "$TBOUND_DEV_FIXTURE_ROOT"
+  TBOUND_DEV_FIXTURE_PI="$(realpath "$(command -v pi)")"
+  TBOUND_DEV_FIXTURE_NODE="$(realpath "$(command -v node)")"
+  TBOUND_DEV_FIXTURE_ADAPTER="$HOME/trust-boundary/adapter"
+  TBOUND_DEV_FIXTURE_ROOT="$HOME/.local/state/tbound-dev-fixture"
+  export TBOUND_DEV_FIXTURE_PI TBOUND_DEV_FIXTURE_NODE TBOUND_DEV_FIXTURE_ADAPTER TBOUND_DEV_FIXTURE_ROOT
+  install -d -m 700 "$TBOUND_DEV_FIXTURE_ROOT"
   tbound serve --pi --dev-fixture | tee "$HOME/tbound-dev-fixture.json"
 
   step "install verification"
