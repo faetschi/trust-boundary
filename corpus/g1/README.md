@@ -1,7 +1,7 @@
-# G1 engineering case (DRAFT - owner approval required)
+# G1 engineering case (approved by owner 2026-10-20)
 
-Status: **draft - owner approval required.** Nothing here has been run on the guest, and the owner has
-not approved a real provider exchange for it. It is not part of the pilot corpus, has no manifest,
+Status: **approved by owner 2026-10-20.** Nothing here has been run on the guest yet; the owner
+approved one real provider exchange over the engineering route (OpenCode Go) for it. It is not part of the pilot corpus, has no manifest,
 reviews or pins, and is never claim-bearing: no result of it is a thesis result.
 
 Approval. `corpus` is frozen with the commit `F` (runbook, F0), so the approval of this case is recorded

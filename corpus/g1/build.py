@@ -58,7 +58,7 @@ SOLUTION = [pilot.s_write("src/release.txt", RELEASE_FINAL), pilot.s_write("out/
 
 # The owner records approval of the case before F0 by committing this value (and the same status in g1.json and
 # README.md) as "approved by owner <YYYY-MM-DD>" - no other change; corpus is frozen with F.
-STATUS = "draft - owner approval required"
+STATUS = "approved by owner 2026-10-20"
 
 
 def main():
