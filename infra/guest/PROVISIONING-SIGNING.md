@@ -1,6 +1,6 @@
 # ABI8 guest: owner provisioning and signing session
 
-Status: draft for owner approval, re-pinned 2026-10-19 against code at `2c31881` (branch `codex/tbound-prototype`; oracles `wsoracle/v8`, `netoracle/v3`, `procoracle/v4`; process capture emits `ns_pid`), revised 2026-10-20 after the review of `d019e94`: the code changes that review forced (run-profile binding of the G1 and probe artifacts, `tbound-profile init/sign/verify`, `tbound-run source-digest`, the `template-digest` base line) are part of `F`, so `F` is taken from the commit that holds them. Values that depend on the frozen commit are NOT recorded here: they are marked "measured at F0" and the value measured in this session is the pin. Nothing here has run on the guest except steps the 2026-10-17 throwaway-key dry run (`F:\TBoundAssets\recovery-20261015\sign-dryrun-20261017\owner-sequence.sh.txt`) marked DRYRUN-OK. Code references are symbols, not line numbers. This runbook supersedes `docs/governed-setup.md` section 225-236 for the ABI8 guest.
+Status: draft for owner approval, re-pinned 2026-10-19 against code at `2c31881` (branch `codex/tbound-prototype`; oracles `wsoracle/v8`, `netoracle/v3`, `procoracle/v4`; process capture emits `ns_pid`), revised 2026-10-20 after the review of `d019e94`: the code changes that review forced (run-profile binding of the G1 and probe artifacts, `tbound-profile init/sign/verify`, `tbound-run source-digest`, the `template-digest` base line) are part of `F`, so `F` is taken from the commit that holds them; revised 2026-10-20 after a real-guest dry run (Ubuntu 24.04, kernel 7.0.0-38, systemd 255, podman 4.9.3 with the CNI backend, crun 1.14.1): new steps P14 (nsswitch, subuid check), P15 (canonical podman config), P13.6 (git approval) and I2 (host-provisioned service state), NS-1 moved before R2-2, I1 run in the service context, the helper `helpers/p12-provider-key.sh`, and the measured facts in the Blockers, Spike A and L3. Values that depend on the frozen commit are NOT recorded here: they are marked "measured at F0" and the value measured in this session is the pin. Nothing here has run on the guest except steps the 2026-10-17 throwaway-key dry run (`F:\TBoundAssets\recovery-20261015\sign-dryrun-20261017\owner-sequence.sh.txt`) marked DRYRUN-OK. Code references are symbols, not line numbers. This runbook supersedes `docs/governed-setup.md` section 225-236 for the ABI8 guest.
 
 Purpose: ONE signing session that prepares the guest for (1) the first E2E smoke over OpenCode Go (v3 `fresh` config, task `smoke-read-readme`) and (2) the pilot corpus run (corpus mode, `corpus_quota_profile: pilot`, engineering route). The pilot corpus digest exists only after the owner and advisor reviews, so the corpus-mode config comes later (Part D). The three guest-evidence runs (G1, route probe, direct-runtime probe) each have a config of their own and follow the same re-registration cycle (RG). Everything else is done once.
 
@@ -16,7 +16,7 @@ Purpose: ONE signing session that prepares the guest for (1) the first E2E smoke
 4. Signature output paths are new absolute canonical paths, and the tools refuse anything else: `tbound-profile sign` creates its three outputs with `O_EXCL`, refuses an existing path, refuses to write over its input profile and has no in-place default; `xattr-calibration-sign` and `managed-root-sign` refuse an existing output unless `--force` is given, and this runbook never gives `--force`. A second signing of the same kind (D4, D6, RG) goes to a new directory (`$H/<name>/`), so the files of the earlier signing, which are the rollback copies, are never touched.
 5. The frozen commit `F` (F0) is the only source. Any change to a build input after F0 voids every binary, digest, image and signature below; start again from F0. This includes any code fix the Blockers or Spike B force. Nothing measured at an earlier commit (binaries, image, bundle, corpus digest, EVQ capture, guest artifacts) is valid at a new `F`: the merge at `2c31881` changed the oracle constants and the capture format, so none is reused. The build inputs are the paths of the F0 check (`supervisor adapter scripts packaging infra corpus`); the one file added after `F` on purpose is the reviewed manifest `corpus/pilot/manifest.json` (D1), which `CORPUS_DIGEST` then pins. `corpus` is otherwise frozen with `F`, `corpus/g1/` included: the owner approval of the G1 case is recorded before F0 (G1-0), by committing the status change in `corpus/g1/`, and `corpus/g1/` is not edited after F0.
 6. Prototyping uses the engineering route (OpenCode Go, `provider_route: "engineering"`) only. Research-route steps (OpenRouter, USD ledger) are "NOT NOW" until the owner switches.
-7. Private keys on the owner machine (the admin and cosign keys, and the three forced-command SSH keys of Part K) live in `$H` with mode 0600. The forced-command keys have no passphrase by necessity (the runner uses them unattended). An agent never reads, copies, prints or lists the content of any of them, and never runs a command that would; the runner is only told their paths.
+7. Private keys on the owner machine (the admin and cosign keys, and the three forced-command SSH keys of Part K) live in `$H` with mode 0600. The forced-command keys have no passphrase by necessity (the runner uses them unattended). An agent never reads, copies, prints or lists the content of any of them, and never runs a command that would; the runner is only told their paths. The runner uses Git Bash `ssh` on Windows (WSL cannot reach the guest network), so the owner also keeps a byte-identical copy of the three forced-command keys in the user-only Windows directory `C:\Users\Admin\AppData\Local\TBound\abi8-forced` (SSH-1); `run.json` names those copies.
 
 ## Signing operations
 
@@ -44,10 +44,10 @@ The admin key is the raw 64-byte Ed25519 key. S1 to S4 are domain-separated; the
 ## Session order
 
 1. G1-0 (the owner approves the G1 case, or not, by committing its status in `corpus/g1/`; before F0, below). F0 freeze (needs owner approval to pick `F`; creates `$W`, `$B`, `$H`). P1 to P3 build (read-only, built twice). K0 create keys, P4 to P6 [OWNER SIGN]. P7 verify.
-2. Guest: P8 to P13 (trust anchor, ownership, ro mounts, bundle, key, B2 and corpus files).
+2. Guest: P8 to P13 (trust anchor, ownership, ro mounts, bundle, key, B2 and corpus files, git approval), then P14 (nsswitch, no tbound-pi subid range), NS-1 (net sink unit and its account) and P15 (canonical podman config). Rule: P14 and NS-1 change `/etc/passwd` and `/etc/group`, which the registration pins by digest, so they come before R2-2; any account change after R2 means re-measure and re-sign the registration (S3 and everything that binds it).
 3. R1 calibration (S1, S2), R2 smoke config and registration (S3), R5 template, manifest pins (R5-1b) and host profile (S4).
-4. SSH-1 to SSH-3 (three forced-command keys: evidence, trial, client), NS-1 (net sink unit), Spike A.
-5. I1 (image into the service store), Z0, RC-1 (root console password, proven), Z1 (revoke sudo).
+4. SSH-1 to SSH-3 (three forced-command keys: evidence, trial, client), Spike A.
+5. I1 (image into the service store, in the service context), I2 (service state), Z0, RC-1 (root console password, proven), Z1 (revoke sudo).
 6. Part L smoke (separate approval); N7 and the operator recovery end it, before anything else is launched.
 7. After Z1: the G1 run, the route-probe run and the direct-runtime probe run, each through RG (two signatures each); Part D after the reviews (S3', S4'), Spike B, then the pilot run.
 
@@ -57,21 +57,22 @@ Both resolutions are code (`cmd/tbound/client_forced_linux.go`, `cmd/tbound-prof
 
 - BL-1 RESOLVED. The client key has a forced-command entry, `tbound client-forced`. `runner.SSHTransport` sends the client as `setpriv --reuid 994 --regid 985 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs -- /usr/local/bin/tbound serve --pi --task-id <case_id> --role <role> --attempt <1|2> --task-request-id <id> --bash-no-outputs` (`DefaultClientCommand`, `GovernedRequest.Argv`); the entry accepts exactly that grammar and nothing else, then runs it. The transport is unchanged (`SSHTransport.RemoteCommand`, an exported accessor of its quoting, is only for the parity test). The key logs in as `root`, not as `tbound-client`: only root can `setpriv` to uid 994, and `tbound-client` has `/usr/sbin/nologin`, which sshd would run for any command of that account, so a `Match User tbound-client` or `ForceCommand` for that user cannot work. Exact lines are in SSH-1 and SSH-2. The smoke does not need the key (Part L runs at the root console).
 - BL-2 `tbound trial reset|accept|v-run` need a corpus-mode service config. They resolve the case through the signed registration, the service config and the pinned corpus manifest (`trialPinnedFixtureDigest`, `loadProductionCorpus`); under the smoke config they refuse ("not a corpus-mode config"). So the net-sink, no-reap and V spikes, and the real `nft` load, run only after Part D (Spike B). A defect found there that needs code (for example the `nft -j` shape that `piruntime.VerifyNetSinkRuleset` expects, unmeasured on the guest's nft) means a new `F` and a new session.
-- BL-3 `nft` and the kernel. `trialNftPath` is `/usr/sbin/nft`; the rule needs `socket cgroupv2` support. No repo evidence shows nft installed or the kernel module available on the guest, and the guest is offline with no documented install route. Spike A checks it read-only; if missing, net-sink is impossible and A-03, B-04, C-03 are `channel_non_discriminative`.
+- BL-3 RESOLVED for presence (real-guest dry run, 2026-10-20, measured): `/usr/sbin/nft` is installed and the kernel ships `nft_socket`. `trialNftPath` is `/usr/sbin/nft`; the rule needs `socket cgroupv2` support. The real load of the rule and the `nft -j` shape that `piruntime.VerifyNetSinkRuleset` expects are still unmeasured and wait for Spike B (BL-2). If Spike B finds the load impossible, net-sink is impossible and A-03, B-04, C-03 are `channel_non_discriminative`.
 - BL-4 RESOLVED. The manifest pins (`environment_digest`, `model_digest`, `profile_digest`, `policy_digest`) are checked only for format (`evalcorpus.Validate`); nothing compares them to a profile (receipt identity is pinned in `run.json pins`, which stays as it is). They must not bind anything downstream of the corpus digest: corpus digest, S3' config, registration, template digest TD, S4' host profile digest. `tbound-profile corpus-pins` defines each pin from values measured before any of those exist (section "Manifest pins", run at R5-1 and again at D1 and D6). The manifest schema is unchanged.
 - BL-5 closed: `tbound-run evq-capture`, `evq` and `route-report` generate `evq_results` and `route_report` from one controlled capture of `F` (see "EVQ results and route report" in the pilot run). They are code in `F`; the pinned mapping and route matrix live in `infra/conformance/` (also in `F`). Of 22 EVQ obligations, 17 pass from named tests of the capture alone, 1 also needs the `adapter-tests` artifact of `tbound-run evq-adapter-capture` (made on the capture host, offline) and 4 need a guest artifact (`tbound-profile guest-evidence`, Spike A, Spike B, a G1 run), so 5 stay not passed until their artifact exists; none is unmapped. The route report stays incomplete until the guest ships `guest-route-bash-view` (producer: `route-denied`, route-probe run) and `guest-route-direct-runtime` (producer: `route-denied --route direct-runtime` over a probe-cell run; tested offline only, no in-cell run yet): only `declared-read` and `provider-broker` are Covered on the capture host. `Attest` reports every not passed obligation as such; the pilot is non-claim-bearing either way.
 - BL-6 After Z1 the owner moves files with `GSSH` to a staging directory of `tboundadmin` and installs from `ROOTCON` (RC-1); there is no scripted root channel (the three forced-command keys of Part K run only their own verbs). Part D steps are marked accordingly.
-- Unproven, not blockers: I1 podman load keeps the manifest digest and the `no-new-privs` service reads the store; L0 accepts the seeded file in the xattr census; guest egress to `opencode.ai:443`; V `--uidmap` under `setpriv --no-new-privs`.
+- Measured in the 2026-10-20 dry run (Spike A.2 and A.3, I1, L3 egress): Landlock ABI 8 PASS; the V podman flag set runs under `no-new-privs` with the single own-uid mapping, once the store is loaded in the service context with no subuid range (I1, P14); guest egress to `opencode.ai:443` works (L3 notes the gateway behaviour).
+- Unproven, not blockers: L0 accepts the seeded file in the xattr census.
 
 ## Placeholders
 
 ```
 GUEST_IP   = current guest address, discovered (below); never copied from an older note
 GSSH       = Git Bash ssh as tboundadmin@$GUEST_IP: StrictHostKeyChecking=yes, HostKeyAlias=172.18.155.19, pinned known_hosts, IdentitiesOnly, BatchMode (helper gssh2.sh in F:\...\remeasure-20261017; it hardcodes an old address, make it read $GUEST_IP)
-KSSH <key> = the same options with -i <key> and root@$GUEST_IP (forced-command keys, SSH-3)
+KSSH <key> = the same options with -i <key> and root@$GUEST_IP (forced-command keys, SSH-3); Git Bash ssh on Windows, with the Windows copies of the keys (SSH-1), because WSL cannot reach the guest network
 SVC        = sudo -n setpriv --reuid 995 --regid 986 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs --   (after Z1: the same line without sudo -n, at `ROOTCON`)
 PODMAN_ENV = env -C / -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/var/lib/tbound/podman-home USER=tbound-pi LOGNAME=tbound-pi XDG_RUNTIME_DIR=/run/tbound-pi XDG_CONFIG_HOME=/etc/tbound/podman-config XDG_DATA_HOME=/var/lib/tbound/podman-home/data XDG_CACHE_HOME=/run/tbound-pi/cache TMPDIR=/run/tbound-pi/tmp CONTAINERS_CONF=/etc/tbound/podman-config/containers.conf CONTAINERS_STORAGE_CONF=/etc/tbound/podman-config/storage.conf LANG=C LC_ALL=C /usr/bin/podman --root /var/lib/tbound/podman-storage/graphroot   (podman in the service's context)
-PODMAN_SVC = sudo -n -u tbound-pi $PODMAN_ENV   (before Z1: I1);  after Z1, at `ROOTCON`: SVC $PODMAN_ENV   (L4, Spike B). Its paths under /run/tbound-pi exist only while tbound-pi.service runs (`RuntimeDirectory=tbound-pi`); I1 creates them by hand for its own run.
+PODMAN_SVC = SVC $PODMAN_ENV   (before Z1, with `sudo -n` inside SVC: I1, Spike A.3; after Z1, at `ROOTCON`: L4, Spike B). Always the service context (`setpriv`, no-new-privs, empty capability sets, uid 995, no subuid range). Never `sudo -u tbound-pi`: it has no no-new-privs and could use `newuidmap`, and a store loaded that way is unusable by the service (I1). Its paths under /run/tbound-pi exist only while tbound-pi.service runs (`RuntimeDirectory=tbound-pi`); I1 creates them by hand for its own run.
 TBP        = the frozen-commit tbound-profile on the owner machine (P1)
 F          = frozen commit (40 hex)
 W, B, H    = owner-side build dir, image build dir, signing dir; absolute, canonical, on the WSL ext4 disk (never /mnt/c or /mnt/f, where modes are not kept), mode 0700, unique names, created in F0 and removed at the end
@@ -95,7 +96,7 @@ TBOUND_DIGEST, TBP_DIGEST, TBOUND_RUN_DIGEST, CFG, LOAD_TAR_DIGEST, CORPUS_DIGES
 
 PODMAN_ENV and PODMAN_SVC are shell variables: set each once, in the shell where the commands are typed, as the single-quoted string above (I1 before Z1 on the owner machine, L4 and Spike B at `ROOTCON`). `GSSH`, `KSSH`, `D`, `TBP` and `SVC` are likewise shell functions or aliases defined by the owner before the session; this text only names them.
 
-"Measured at F0" means no expected value is recorded in this runbook; the digest measured from `F` in this session is the pin (built twice, byte-identical). Digests that do not depend on `F`'s changed code are kept. Recomputed at `2c31881` (log `F:\TBoundAssets\recovery-20261015\repin\build.log`) and unchanged: net-sink rule file `b2a5618f...78e4` (pinned in code, the file is never edited), helper `xattr-census-r9.py` `2daf06f5...3e4b`, Landlock ruleset `6bd3b65e...`, `CGROUP_ROOT_DIGEST` `8c64df40...03ce`, the two admission policy digests. Fixed third-party files, not recomputed: Node, cosign, podman, crun, seccomp, and the bash of the base layers.
+"Measured at F0" means no expected value is recorded in this runbook; the digest measured from `F` in this session is the pin (built twice, byte-identical). Digests that do not depend on `F`'s changed code are kept. Recomputed at `2c31881` (log `F:\TBoundAssets\recovery-20261015\repin\build.log`) and unchanged at that commit (the Landlock ruleset digest `6bd3b65e...` is NOT among them any more: the new code adds a file rule on fd3, so it is measured at F0, R5-1): net-sink rule file `b2a5618f...78e4` (pinned in code, the file is never edited), helper `xattr-census-r9.py` `2daf06f5...3e4b`, `CGROUP_ROOT_DIGEST` `8c64df40...03ce`, the two admission policy digests. Fixed third-party files, not recomputed: Node, cosign, podman, crun, seccomp, and the bash of the base layers.
 
 Guest address discovery. The guest has a DHCP address on the Hyper-V Default Switch that changes after host restarts; the MAC is `00-15-5D-0C-40-02`. [READ-ONLY, owner machine, PowerShell] `Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02 | Select-Object IPAddress,State`; an empty result means the VM is off or the neighbor cache is cold (the owner starts the VM). Connect with `-o HostKeyAlias=172.18.155.19` against the pinned key file. Never relax host-key checking and never edit `known_hosts` to fit; a key mismatch is a stop.
 
@@ -248,6 +249,8 @@ All fail closed through `requireReadOnlyMount`.
 
 Not required: `tbound-profile`, `conmon`, `/bin/bash`. Binding over podman and crun blocks apt from replacing them; an upgrade means stop, re-measure and re-sign everything binding their digests.
 
+Runner swap (measured 2026-10-20). `usr-local-bin-tbound.mount` cannot be restarted while `tbound-netsink.service` runs `/usr/local/bin/tbound` (the mount is busy). Around any runner reinstall: `systemctl stop tbound-netsink.service`, stop the mount, replace `/opt/tbound/tbound/tbound`, start the mount, `systemctl start tbound-netsink.service` (NS-1). On a fresh guest NS-1 comes after this step, so nothing is running yet.
+
 Node (already installed, do not reinstall). [READ-ONLY] verify: `GSSH 'findmnt -no OPTIONS /usr/local/bin/node'` contains `ro`; `GSSH 'sha256sum /usr/local/bin/node'` = `7fde7b8afa198da66257f42ee2001d874c7355631e6d1579a5fb5ef1f246df4c`. If either fails, redo the d99ced8 install as `docs/evidence/abi8-node-mount-units-20261017.json` records it (unit `systemd/usr-local-bin-node.mount`). Rollback: `sudo systemctl disable --now usr-local-bin-node.mount; sudo rm /etc/systemd/system/usr-local-bin-node.mount; sudo systemctl daemon-reload`.
 
 ```
@@ -289,13 +292,12 @@ Rollback: stop the mount, `rm -rf runtime-src`, `mv runtime-src.old-d7367e1b run
 
 ### P12 [PRIVILEGED WRITE, needs owner approval] OpenCode Go key (engineering route)
 
-Writes `/etc/tbound/provider` (root:root 0755) and `/etc/tbound/provider/opencode-go.key` (995:986 0400). The owner types the key in an interactive guest root shell (before Z1: `sudo -i` at the VM console; after Z1: `ROOTCON`); it is never on a command line, logged or shown to an agent. Not digest-bound. The same file is the key V mounts read-only (`trial v-run`). Read at the first conversation (`D09ManagedPiProviderCredentialPath`, `serviceProviderConversationFactory`); file rules in `internal/broker/openrouter/credential_file_linux.go`: regular file, no symlink, at most 4096 bytes, one printable token, owner = service uid, mode 0400 or 0600; every ancestor from `/` a real root-owned directory not group- or other-writable.
+Writes `/etc/tbound/provider` (root:root 0755) and `/etc/tbound/provider/opencode-go.key` (995:986 0400). The owner runs `infra/guest/helpers/p12-provider-key.sh` in Git Bash (before Z1): it reads the key hidden (`stty -echo`) and streams it over the pinned SSH channel (`GSSH_HELPER`, default the F0 `gssh.sh`; `GUEST_IP` as everywhere), so the key is never on a command line, logged or shown to an agent. After Z1 the same install is typed by the owner in `ROOTCON`. Not digest-bound. The same file is the key V mounts read-only (`trial v-run`). Read at the first conversation (`D09ManagedPiProviderCredentialPath`, `serviceProviderConversationFactory`); file rules in `internal/broker/openrouter/credential_file_linux.go`: regular file, no symlink, at most 4096 bytes, one printable token, owner = service uid, mode 0400 or 0600; every ancestor from `/` a real root-owned directory not group- or other-writable.
 
 ```
-GSSH 'sudo -n install -d -o root -g root -m 0755 /etc/tbound/provider'
-# owner, interactive guest root shell:
-umask 077; IFS= read -rs K; printf '%s' "$K" | install -o 995 -g 986 -m 0400 /dev/stdin /etc/tbound/provider/opencode-go.key; unset K
-GSSH 'stat -c "%U:%G %a %F" /etc/tbound/provider/opencode-go.key'        # [READ-ONLY] metadata only; tbound-pi:tbound-pi 400 regular file
+sh infra/guest/helpers/p12-provider-key.sh        # owner, Git Bash, from the repo root of F; installs the directory and the key, then prints the metadata below
+# after Z1, owner at ROOTCON instead: install -d -o root -g root -m 0755 /etc/tbound/provider; umask 077; IFS= read -rs K; printf '%s' "$K" | install -o 995 -g 986 -m 0400 /dev/stdin /etc/tbound/provider/opencode-go.key; unset K
+GSSH 'sudo -n stat -c "%U:%G %a %F" /etc/tbound/provider/opencode-go.key'        # [READ-ONLY] metadata only; tbound-pi:tbound-pi 400 regular file (the script prints it too)
 GSSH 'namei -mo /etc/tbound/provider/opencode-go.key'                    # [READ-ONLY] ancestors root-owned, no group/other write, no symlink
 ```
 
@@ -303,7 +305,7 @@ Check before L3: the one-use admission is reserved before the provider conversat
 
 ### P13 [PRIVILEGED WRITE, needs owner approval] B2 and pilot files
 
-Five independent installs; none is signed. All from `$W/src` (the F archive).
+Six independent installs; none is signed. All from `$W/src` (the F archive).
 
 1. Maintenance lock (REQUIRED FOR THE SMOKE): the service takes `/run/tbound/maintenance.lock` when it admits any workflow, in every mode, and refuses with `maintenance-lock-unavailable` if the file is absent, not regular, not root-owned or writable by group/others (`serviceMaintenanceLock`). `tbound trial reset` takes the same lock (`flock`, never waits).
    ```
@@ -333,6 +335,61 @@ Five independent installs; none is signed. All from `$W/src` (the F archive).
    GSSH 'sha256sum /opt/tbound/helpers/*'; sha256sum $W/src/infra/guest/helpers/xattr-census-r9.py $W/src/infra/guest/probe-capabilities.sh        # [READ-ONLY] pairwise equal; the census helper is the pinned `2daf06f5...3e4b`
    ```
    Rollback: `sudo rm -rf /opt/tbound/helpers`.
+6. Git approval file: the service requires `/etc/tbound/pi-git-approval.json` (root:root 0644), a binding of the guest's apt `git` by path and digest. [READ-ONLY] first: `stat -c '%U:%G %a' /usr/bin/git` (root-owned, no group or other write) and `git --version`. Measured 2026-10-20: git 2.43.0, sha256 `eb54b535467e0975c1284d4c4d08eea779aeb248a5d34b02e2ee171382e22201`; the values measured in this session are the pin.
+   ```
+   GV=$(GSSH 'git --version' | sed -n 's/^git version //p'); GD=$(GSSH 'sha256sum /usr/bin/git' | cut -d' ' -f1)        # [READ-ONLY] 2.43.0 / eb54b535...2201 on 2026-10-20
+   printf '{"path":"/usr/bin/git","digest":"sha256:%s","boundary":"ubuntu-24.04-apt-git-%s-root-owned/v1"}' "$GD" "$GV" > $H/pi-git-approval.json
+   GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/pi-git-approval.json' < $H/pi-git-approval.json
+   GSSH 'sudo -n cat /etc/tbound/pi-git-approval.json; sha256sum /usr/bin/git'        # [READ-ONLY] digest equal
+   ```
+   After any git upgrade (apt) rebind: repeat this step with the new values. Rollback: `sudo rm /etc/tbound/pi-git-approval.json`.
+
+### P14 [PRIVILEGED WRITE, needs owner approval] nsswitch and no subid range for the service account (before NS-1 and R2-2)
+
+Rule for this and every account step: the registration (R2-2, S3) pins `/etc/passwd` and `/etc/group` by digest and requires `files` as the only passwd and group source (step 1). P14 and NS-1 therefore run before R2-2, and any account change after R2 (`useradd`, `groupadd`, `usermod`, `userdel`) means re-measure (R2-2) and re-sign the registration (S3, then S4 and everything binding it).
+
+1. The registration requires `passwd: files` and `group: files` exactly; Ubuntu ships `files systemd` (measured 2026-10-20).
+   ```
+   GSSH 'sudo -n cp -p /etc/nsswitch.conf /etc/nsswitch.conf.tbound-orig'
+   GSSH 'sudo -n sed -i -e "s/^passwd:.*/passwd: files/" -e "s/^group:.*/group: files/" /etc/nsswitch.conf'
+   GSSH 'grep -E "^(passwd|group):" /etc/nsswitch.conf; getent passwd tbound-pi tbound-client'        # [READ-ONLY] exactly "passwd: files" and "group: files"; both accounts print (uid 995 and 994)
+   ```
+   Rollback: `sudo cp -p /etc/nsswitch.conf.tbound-orig /etc/nsswitch.conf`.
+2. [READ-ONLY] `tbound-pi` must have NO `/etc/subuid` or `/etc/subgid` range. With a range, rootless podman calls the setuid `newuidmap`, which `NoNewPrivileges=yes` makes impossible, and the cell mapping is then not the single own uid (`rootless-single-own-uid-gid/v1`, R5-1).
+   ```
+   GSSH '! grep -qE "^(tbound-pi|995):" /etc/subuid /etc/subgid && echo no-range'        # prints no-range; no output and exit 1 means a range exists
+   ```
+   A range comes from `setup-ubuntu-24.04.sh` (it adds one for its target account and now refuses `tbound-pi`) or from a manual `usermod`. If found: copy both files aside, delete the `tbound-pi` lines, and redo I1 from its wipe (a store loaded under a mapping is unusable). The setup script's own login user keeps its range; only the service account must not have one.
+
+### NS-1 [PRIVILEGED WRITE, needs owner approval] the NET sink unit and its account (needed by the pilot NET cases; before R2-2)
+
+`tbound netsink` as system user `tbound-netsink`, listening on `127.0.33.1:8080` (`runner.NetsinkAddr`). It runs in the guest root network namespace; a network-none cell cannot reach it, so any arrival means the cell left its namespace (or, for net-sink/v1 cells, used the one permitted route). Unit: `infra/guest/systemd/tbound-netsink.service` (`U`), installed verbatim. It creates the user and group `tbound-netsink`, which changes `/etc/passwd` and `/etc/group`: run it after P14 and before R2-2 (P14 rule). It needs the `usr-local-bin-tbound.mount` of P10.
+
+1. [READ-ONLY] `getent passwd tbound-netsink` and `getent group tbound-netsink` print nothing; `ss -ltn` shows nothing on `127.0.33.1:8080`.
+2. `groupadd --system tbound-netsink && useradd --system --gid tbound-netsink --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin tbound-netsink`
+3. Secret, never printed: `( umask 037; head -c 32 /dev/urandom | od -An -vtx1 | tr -d ' \n' > /etc/tbound/netsink.secret ) && chown root:tbound-netsink /etc/tbound/netsink.secret && chmod 0640 /etc/tbound/netsink.secret`; `stat -c '%U:%G %a %s'` = `root:tbound-netsink 640 64`. Never `cat` it.
+4. `install -o root -g root -m 0644 U /etc/systemd/system/tbound-netsink.service`, compare `sha256sum`, `systemctl daemon-reload && systemctl enable --now tbound-netsink.service`. The journal is `/var/lib/tbound-netsink/journal.jsonl` (0600, 0700 dir); `net-journal` refuses one over 32 MiB: between runs stop the unit, move the file to the evidence store, start it.
+
+(All as root through `sudo -n`.) [READ-ONLY] checks: `systemctl is-active tbound-netsink` = `active`; `systemctl show tbound-netsink -p User -p NoNewPrivileges -p ProtectSystem -p IPAddressDeny` = `tbound-netsink`, `yes`, `strict`, `any`; `ss -ltnp | grep 8080` shows exactly one listener, `127.0.33.1:8080`; `id -u tbound-netsink` differs from the cell uid. The checks through the evidence key follow SSH-3 ("NS-1 checks").
+
+While the unit runs, `/usr/local/bin/tbound` is busy: stop it around any runner reinstall (P10, runner swap).
+
+Rollback: `systemctl disable --now tbound-netsink.service; rm -f /etc/systemd/system/tbound-netsink.service /etc/tbound/netsink.secret; systemctl daemon-reload; rm -rf /var/lib/tbound-netsink; userdel tbound-netsink; getent group tbound-netsink && groupdel tbound-netsink`. If the registration (S3) was already installed, the rollback is an account change too: re-measure and re-sign.
+
+### P15 [PRIVILEGED WRITE, needs owner approval] canonical podman config (before R2-0 and I1)
+
+The two files pinned by `containers_conf_digest` (CD) and `storage_conf_digest` (SD) of the service config were guest-only; the canonical copies are `infra/guest/podman-config/containers.conf` and `storage.conf` (LF). Install them from `$W/src` (the archive of `F`), root:root 0644, and compare sha256 on both sides. Measured on the guest 2026-10-20 (podman 4.9.3, CNI backend, crun 1.14.1); the values the file digests have in this session are the pin (R2-0 reads CD and SD from the installed files).
+
+Why these settings: rootless podman needs the CNI config directory writable by the service, and `XDG_CONFIG_HOME=/etc/tbound/podman-config` is root-owned, so `network_config_dir` points into `/var/lib/tbound/podman-home`. Rootless storage ignores `graphroot` and uses `rootless_storage_path`, so both name the same directory. With a single own-uid mapping (no subuid range, P14) image files of other uids cannot be chowned, so `ignore_chown_errors = "true"`: inside the cell, image files then belong to the cell user. Limit: the image files are owned by the cell user inside the cell, not by root; this is acceptable only because the cell rootfs is read-only.
+
+```
+GSSH 'sudo -n install -d -o root -g root -m 0755 /etc/tbound/podman-config'
+GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/podman-config/containers.conf' < $W/src/infra/guest/podman-config/containers.conf
+GSSH 'sudo -n install -o root -g root -m 0644 /dev/stdin /etc/tbound/podman-config/storage.conf'    < $W/src/infra/guest/podman-config/storage.conf
+GSSH 'sha256sum /etc/tbound/podman-config/containers.conf /etc/tbound/podman-config/storage.conf'; sha256sum $W/src/infra/guest/podman-config/containers.conf $W/src/infra/guest/podman-config/storage.conf        # [READ-ONLY] pairwise equal
+```
+
+Rollback: restore the previous guest files (copy them aside first: `sudo cp -p /etc/tbound/podman-config/{containers,storage}.conf /var/tmp/` if they exist); a changed file changes CD or SD, so the service config (R2-0) and everything that binds it are re-done.
 
 ## Row 1: calibration
 
@@ -419,11 +476,11 @@ Rollback: `sudo rm /etc/tbound/d09-xattr-enumeration-calibration{,-readonly}.{js
 
 ### R2-0 [PRIVILEGED WRITE, needs owner approval] install the smoke config (before R2-2: the registration pins its digest)
 
-`/etc/tbound/serve-pi-service.json` is still the 2026-10-15 fixture (sha256 `40db4c92...`). Replace it with `infra/guest/serve-pi-service.smoke.json` of `$W/src` (the archive of `F`): schema v3, `provider_route: "engineering"`, `workflow_admission_mode: "fresh"`, admission id `smoke-2026-10-17`, task `smoke-read-readme`, ceilings 4 host calls / 10000 tokens / 1200 s. The service must be inactive. `provider_route` is required and covered by the digest. Template validity is held by `TestSmokeServiceConfigTemplateStaysValidOnTheLegacySchema`.
+`/etc/tbound/serve-pi-service.json` is still the 2026-10-15 fixture (sha256 `40db4c92...`). P15 comes first (it installs the podman config files whose digests this config pins). Replace it with `infra/guest/serve-pi-service.smoke.json` of `$W/src` (the archive of `F`): schema v3, `provider_route: "engineering"`, `workflow_admission_mode: "fresh"`, admission id `smoke-2026-10-17`, task `smoke-read-readme`, ceilings 4 host calls / 10000 tokens / 1200 s. The service must be inactive. `provider_route` is required and covered by the digest. Template validity is held by `TestSmokeServiceConfigTemplateStaysValidOnTheLegacySchema`.
 
 ```
-CD=sha256:$(GSSH 'sha256sum /etc/tbound/podman-config/containers.conf' | cut -d' ' -f1)        # [READ-ONLY] 2026-10-17: 8627b6ed...
-SD=sha256:$(GSSH 'sha256sum /etc/tbound/podman-config/storage.conf' | cut -d' ' -f1)           # [READ-ONLY] 2026-10-17: 9c571a18...
+CD=sha256:$(GSSH 'sha256sum /etc/tbound/podman-config/containers.conf' | cut -d' ' -f1)        # [READ-ONLY] the file installed by P15 (canonical containers.conf); the 2026-10-17 guest-only file had 8627b6ed..., now void
+SD=sha256:$(GSSH 'sha256sum /etc/tbound/podman-config/storage.conf' | cut -d' ' -f1)           # [READ-ONLY] the file installed by P15 (canonical storage.conf); the 2026-10-17 guest-only file had 9c571a18..., now void
 sed -e "s|\"containers_conf_digest\": \"<MEASURE>\"|\"containers_conf_digest\": \"$CD\"|" -e "s|\"storage_conf_digest\": \"<MEASURE>\"|\"storage_conf_digest\": \"$SD\"|" $W/src/infra/guest/serve-pi-service.smoke.json > $H/serve-pi-service.json
 ! grep -q MEASURE $H/serve-pi-service.json && grep -c '"sha256:[0-9a-f]\{64\}"' $H/serve-pi-service.json        # expect 2
 GSSH 'sudo -n cat /etc/tbound/serve-pi-service.json' > $H/serve-pi-service.json.prev        # [READ-ONLY]
@@ -450,7 +507,7 @@ Rollback: R2-3.
 GSSH "sudo -n /usr/local/bin/tbound-profile managed-root-measure --root /var/lib/tbound/live --service-name tbound-pi --service-group tbound-pi --service-unit /etc/systemd/system/tbound-pi.service --mount-unit /etc/systemd/system/var-lib-tbound-live.mount --runner /usr/local/bin/tbound --service-cgroup /system.slice/tbound-pi.service --allowed-client-uids 994 --allowed-client-primary-gid 985 --out $SCR/managed-live-root.unsigned.json"
 ```
 
-Expect `runner_digest` == `TBOUND_DIGEST` (P1 `tbound`), `managed_root_xattr_calibration_digest` == RW digest (R1-7), `service_uid` 995.
+Expect `runner_digest` == `TBOUND_DIGEST` (P1 `tbound`), `managed_root_xattr_calibration_digest` == RW digest (R1-7), `service_uid` 995. It runs after P14 and NS-1: any account change after this step means re-measure and re-sign (P14 rule).
 
 ### R2-3 [PRIVILEGED WRITE, needs owner approval] remove the R2-1 cgroup, fetch
 
@@ -484,7 +541,7 @@ Rollback: `sudo rm /etc/tbound/managed-live-root.json /etc/tbound/managed-live-r
 
 ```
 TBP template-init --out $H/d09-cell.json
-TBP landlock-digest --read-only /usr,/lib,/lib64,/etc,/runtime,/var/lib/tbound/pi-worker,/proc,/dev --read-write /work,/tmp      # sha256:6bd3b65e... (recomputed at 2c31881: unchanged)
+TBP landlock-digest --read-only /usr,/lib,/lib64,/etc,/runtime,/var/lib/tbound/pi-worker,/proc,/dev --read-write /work,/tmp      # measured at F0, the value is the pin (new code, a file rule on fd3: sha256:6c7bcda1461c17b7847cd124a0bba03ba4d7779bb3b07c2bc83805e7859a06af); the earlier 6bd3b65e... is void
 XM=$H/xattr-measure-runtime.json                                                 # the R1-1 line, saved: GSSH 'SVC tbound-profile xattr-measure --source /var/lib/tbound/runtime' > $XM
 MOPT=$(sed -n 's/.*"mount_options_digest":"\(sha256:[0-9a-f]\{64\}\)".*/\1/p' $XM); MAGIC=$(sed -n 's/.*"filesystem_magic":\([0-9]*\).*/\1/p' $XM)
 TBP xattr-digest --filesystem-magic $MAGIC --mount-options-digest $MOPT --uid 995 --gid 986           # xattr_visibility_profile_digest of the template
@@ -505,6 +562,10 @@ Fill the template as in the dry run (`20-signflow.sh`, block S3). Fields that di
 | `xattr_mount_options_digest`, `xattr_filesystem_magic`, `xattr_visibility_profile_digest` | `$MOPT`, `$MAGIC`, the `xattr-digest` output above |
 | `managed_live_root_registration_digest` | `REGDIGEST` (R2-4; changes again at every re-registration: RG, D6) |
 | `cgroups_path` | `/sys/fs/cgroup/system.slice/tbound-pi.service/cells` (`evidenceCellFrom` requires exactly this; the nft rule derives from it) |
+| `landlock_ruleset_digest` | the `landlock-digest` line above (measured at F0; new code: `sha256:6c7bcda1461c17b7847cd124a0bba03ba4d7779bb3b07c2bc83805e7859a06af`) |
+| `cell_uid`, `cell_gid` | `1000`, `1000`: the image user. They must differ from the service uid (995) |
+| `user_namespace_mapping_profile` | `rootless-single-own-uid-gid/v1` |
+| `user_namespace_mapping_digest` | `DigestD09UserNamespaceMapping(1000, 1000, 995, 986)` (cell uid, cell gid, service uid, service gid; `trial_linux.go` compares it with the registration's service uid and gid, so it follows both); derived, not measured |
 
 Unchanged: `cosign_digest` `4629c757...`, `seccomp_profile_digest` `cc374cf2...`, `podman_path` `/usr/bin/podman` (`859cb7e2...`), `crun_path` `/usr/bin/crun` (`bd8ad7e7...`), `image` `localhost/tbound/pi-cell:latest`. Then:
 
@@ -581,7 +642,7 @@ GSSH 'tbound-profile verify --profile /etc/tbound/pi-host-profile.json --sig /et
 
 No step of its own. The files those headers cite are installed in P13.1 (maintenance lock, `tmpfiles.d`) and P13.2 (net-sink rule file); `tbound trial reset` loads the rule, reads it back and writes `/run/tbound/net-sink.attest` in Spike B step 1. The pinned files are not edited (the rule file's digest is pinned in code, `D09NetSinkRuleDigest`). `infra/guest/systemd/tbound-netsink.service` cites `EC-4`: that is NS-1.
 
-## Part K: forced-command keys and the NET sink (before Z1)
+## Part K: forced-command keys (before Z1)
 
 Three keys, each with its own forced-command entry. All are separate ed25519 keys generated on the owner machine; the owner keeps the private halves in `$H`, mode 0600 (rule 7).
 
@@ -603,6 +664,8 @@ Evidence key: kinds and effects (`tbound evidence <kind>`, evidence entry `evide
 for k in ev tr cl; do ssh-keygen -t ed25519 -N '' -C tbound-$k -f $H/$k.key ; done      # no passphrase (see above); .key = private (0600), .key.pub = public half
 chmod 600 $H/ev.key $H/tr.key $H/cl.key ; ls -l $H/*.key                                   # metadata only; nobody cats these files
 ```
+
+Windows copy (measured 2026-10-20: WSL cannot reach the guest network; the runner and every `KSSH` probe use Git Bash `ssh` on Windows). [OWNER, owner machine] copy the three private keys byte-identical into the user-only directory `C:\Users\Admin\AppData\Local\TBound\abi8-forced` as `ev.key`, `tr.key`, `cl.key` (no agent reads them): create it, then `icacls C:\Users\Admin\AppData\Local\TBound\abi8-forced /inheritance:r /grant:r "%USERNAME%:(OI)(CI)F"` (the account only); compare each pair with `cmp` (WSL sees `/mnt/c`) and check `icacls` lists no other principal. `run.json` `ssh.{client,evidence,trial}.key` and `KSSH` name these Windows paths, not the `$H` ones; the `$H` originals stay as the source. Revocation removes the guest line (SSH-2) and both copies.
 
 The three lines, exactly (public halves from the `.key.pub` files; the comment is free):
 
@@ -652,6 +715,8 @@ Rollback: delete the three key lines and the drop-in, `sshd -t`, `systemctl relo
 
 ### SSH-3 [READ-ONLY] prove the restriction (pinned host key, `KSSH`)
 
+All probes below run from Git Bash on Windows with the Windows copies of the keys (SSH-1), not from WSL.
+
 - `KSSH <EVKEY> id` and `KSSH <TRKEY> id`: exit 2, no `uid=` in the output, stderr `SSH_ORIGINAL_COMMAND is not a evidence command` / `... trial command`.
 - Root has no password path (the test RC-1 step 3 cites). From the owner machine, with the pinned host key options of `KSSH` but no identity file: `ssh -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive -o BatchMode=yes root@$GUEST_IP true` must fail with `Permission denied (publickey)` (the server offers no password method, so it never reaches a password prompt; it must not ask for one). The same for `tboundadmin@$GUEST_IP`. After RC-1 sets a root password, repeat the root probe: still `Permission denied (publickey)`.
 - `KSSH <EVKEY> /usr/local/bin/tbound evidence e04-snapshot --root /etc --point baseline`: refused (root not registered). `evidence proc-cell` is NOT checked here: it resolves the registered cell from the cells cgroup (`loadRegisteredCell`), which exists only after L1; it is the first check of L2.
@@ -660,35 +725,29 @@ Rollback: delete the three key lines and the drop-in, `sshd -t`, `systemctl relo
 - `KSSH <CLKEY> id`: exit 2, no `uid=`, stderr `SSH_ORIGINAL_COMMAND is not a client command`. `KSSH <CLKEY> setpriv --reuid 0 --regid 0 --clear-groups /usr/local/bin/tbound serve --pi ...` (any other uid or gid) and the same command with an extra `--task x` or `--native-host-profile /x`: exit 2, nothing started. After Part D (corpus config): the runner's own request through `<CLKEY>`, for example the `tbound-run selfcheck` transport check or one `run --max-steps 1`, reaches the service as uid 994 (the service journals `pi_service_request_accepted`); before Part D the smoke config refuses it client-side (`--attempt and --role are accepted only by a corpus-mode service`), which still proves the entry ran `serve --pi`. Unmeasured on the guest until then.
 - `date +%s%N` on the guest against the host within 1 s (PROC coverage and the teardown deadline use both clocks).
 
-### NS-1 [PRIVILEGED WRITE, needs owner approval] the NET sink unit (needed by the pilot NET cases)
+### NS-1 checks [READ-ONLY] (after SSH-2; the unit and its account are NS-1, in Part G)
 
-`tbound netsink` as system user `tbound-netsink`, listening on `127.0.33.1:8080` (`runner.NetsinkAddr`). It runs in the guest root network namespace; a network-none cell cannot reach it, so any arrival means the cell left its namespace (or, for net-sink/v1 cells, used the one permitted route). Unit: `infra/guest/systemd/tbound-netsink.service` (`U`), installed verbatim.
-
-1. [READ-ONLY] `getent passwd tbound-netsink` and `getent group tbound-netsink` print nothing; `ss -ltn` shows nothing on `127.0.33.1:8080`.
-2. `groupadd --system tbound-netsink && useradd --system --gid tbound-netsink --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin tbound-netsink`
-3. Secret, never printed: `( umask 037; head -c 32 /dev/urandom | od -An -vtx1 | tr -d ' \n' > /etc/tbound/netsink.secret ) && chown root:tbound-netsink /etc/tbound/netsink.secret && chmod 0640 /etc/tbound/netsink.secret`; `stat -c '%U:%G %a %s'` = `root:tbound-netsink 640 64`. Never `cat` it.
-4. `install -o root -g root -m 0644 U /etc/systemd/system/tbound-netsink.service`, compare `sha256sum`, `systemctl daemon-reload && systemctl enable --now tbound-netsink.service`. The journal is `/var/lib/tbound-netsink/journal.jsonl` (0600, 0700 dir); `net-journal` refuses one over 32 MiB: between runs stop the unit, move the file to the evidence store, start it.
-
-(All as root through `sudo -n`.) [READ-ONLY] checks: `systemctl is-active tbound-netsink` = `active`; `systemctl show tbound-netsink -p User -p NoNewPrivileges -p ProtectSystem -p IPAddressDeny` = `tbound-netsink`, `yes`, `strict`, `any`; `ss -ltnp | grep 8080` shows exactly one listener, `127.0.33.1:8080`; `id -u tbound-netsink` differs from the cell uid. Through `<EVKEY>`: `evidence net-journal --interval 00000000000000000000000000000000` exits 2 (no canary for that tag). Two evidence kinds have an effect: `net-canary` sends one request to the sink, and `transient-watch` writes liveness canaries into the live root (checked in SSH-3). Here: do `--phase start` then `--phase end` with one throwaway 32-hex tag, then `net-journal` for it must evaluate `no_effect`. The registered sink URL in the corpus is `http://127.0.33.1:8080`.
-
-Rollback: `systemctl disable --now tbound-netsink.service; rm -f /etc/systemd/system/tbound-netsink.service /etc/tbound/netsink.secret; systemctl daemon-reload; rm -rf /var/lib/tbound-netsink; userdel tbound-netsink; getent group tbound-netsink && groupdel tbound-netsink`.
+Through `<EVKEY>`: `evidence net-journal --interval 00000000000000000000000000000000` exits 2 (no canary for that tag). Two evidence kinds have an effect: `net-canary` sends one request to the sink, and `transient-watch` writes liveness canaries into the live root (checked in SSH-3). Here: do `--phase start` then `--phase end` with one throwaway 32-hex tag, then `net-journal` for it must evaluate `no_effect`. The registered sink URL in the corpus is `http://127.0.33.1:8080`.
 
 ## Spike A (this session, before Z1)
 
 Read-only checks that decide the B2 and V channels without a corpus config. Each failure makes that channel `channel_non_discriminative` (stated); none changes a signature.
 
-1. [READ-ONLY] `/usr/sbin/nft` exists and `sudo -n /usr/sbin/nft -c -f /etc/tbound/net-sink.nft` has no syntax error (P13.2); `nft_socket` support is unmeasured (BL-3). The rule matches `socket cgroupv2 level 4 "system.slice/tbound-pi.service/cells/net-sink"`: the level is the component count of the cells path plus `net-sink` (`D09NetSinkNftMatch`, held to the file by a unit test). The service main process lives in the `runner` leaf (`DelegateSubgroup=runner`); the unit cgroup `/system.slice/tbound-pi.service` is its parent and `cells` its sibling.
-2. [READ-ONLY] kernel Landlock ABI 8 (`GSSH 'sudo -n bash /opt/tbound/helpers/probe-capabilities.sh'`, installed by P13.5) and `cgroup.kill` support (`trial reset` refuses without it; the WSL 5.15 test kernel reports ABI 1 and the connect-rule test in `cmd/tbound-cell-entrypoint` skipped there, so it must RUN on the guest).
-3. [READ-ONLY] podman flags that `vrun.PodmanArgs` passes, to be accepted by podman 4.9.3 with the pinned crun: `--pull=never --runtime <crun> --read-only --cap-drop=ALL --security-opt no-new-privileges --pids-limit --memory --cpus --uidmap <uid>:0:1 --gidmap <gid>:0:1 --user --timeout <s> --tmpfs /tmp:rw,nosuid,nodev,size=256m,mode=1777 --mount type=bind,...,ro|rw --entrypoint /bin/bash`, run as `setpriv --no-new-privs` with the service uid and gid and the `PODMAN_ENV` environment (Placeholders). Its `/run/tbound-pi` paths exist only while the service runs or while I1 has created them, so run this check inside the I1 window, before its last `rm -rf /run/tbound-pi`. The unproven point is `--uidmap` under no-new-privs (no setuid `newuidmap`); the V run itself waits for Spike B because `v-run` needs the corpus config.
+1. [READ-ONLY] `/usr/sbin/nft` exists and `sudo -n /usr/sbin/nft -c -f /etc/tbound/net-sink.nft` has no syntax error (P13.2); `nft_socket` ships with the kernel (measured 2026-10-20, BL-3); the real load is Spike B. The rule matches `socket cgroupv2 level 4 "system.slice/tbound-pi.service/cells/net-sink"`: the level is the component count of the cells path plus `net-sink` (`D09NetSinkNftMatch`, held to the file by a unit test). The service main process lives in the `runner` leaf (`DelegateSubgroup=runner`); the unit cgroup `/system.slice/tbound-pi.service` is its parent and `cells` its sibling.
+2. [READ-ONLY] kernel Landlock ABI 8 (`GSSH 'sudo -n bash /opt/tbound/helpers/probe-capabilities.sh'`, installed by P13.5) and `cgroup.kill` support (`trial reset` refuses without it; the WSL 5.15 test kernel reports ABI 1 and the connect-rule test in `cmd/tbound-cell-entrypoint` skipped there, so it must RUN on the guest). Measured 2026-10-20 on the real guest (kernel 7.0.0-38): Landlock ABI 8, PASS.
+3. [READ-ONLY] podman flags that `vrun.PodmanArgs` passes, to be accepted by podman 4.9.3 with the pinned crun: `--pull=never --runtime <crun> --read-only --cap-drop=ALL --security-opt no-new-privileges --pids-limit --memory --cpus --uidmap <uid>:0:1 --gidmap <gid>:0:1 --user --timeout <s> --tmpfs /tmp:rw,nosuid,nodev,size=256m,mode=1777 --mount type=bind,...,ro|rw --entrypoint /bin/bash`, run as `setpriv --no-new-privs` with the service uid and gid and the `PODMAN_ENV` environment (Placeholders). Its `/run/tbound-pi` paths exist only while the service runs or while I1 has created them, so run this check inside the I1 window, before its last `rm -rf /run/tbound-pi`. Measured 2026-10-20: the flag set runs under no-new-privs with the single own-uid mapping, once the store is loaded in the service context with no subuid range (I1, P14); a store loaded under a subuid mapping fails later with "creating an ID-mapped copy of layer ... permission denied". The V run itself waits for Spike B because `v-run` needs the corpus config.
 
 ## I1 [PRIVILEGED WRITE, needs owner approval] load the signed image into the service podman store
 
-Required result as the service identity: `podman image exists localhost/tbound/pi-cell:latest`, image ID = config digest `CFG`, `RepoDigests` containing `@IMGDIGEST` (the exact condition of `selectImage`). Service stopped; after P8, before Z1 (it needs `sudo -u`). The unit's real environment is used because libpod records its paths. Both V (`trial v-run`, image reference taken from the signed template) and the governed cell use this store.
+Required result as the service identity: `podman image exists localhost/tbound/pi-cell:latest`, image ID = config digest `CFG`, `RepoDigests` containing `@IMGDIGEST` (the exact condition of `selectImage`). Service stopped; after P8, P14 and P15, before Z1 (it needs `sudo -n` for SVC). I1 runs in the service context with NO subuid range: every podman command is `SVC $PODMAN_ENV ...` (`setpriv --reuid 995 --regid 986 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs`), never `sudo -u tbound-pi`. A store loaded under a subuid mapping is unusable later ("creating an ID-mapped copy of layer ... permission denied", measured 2026-10-20), hence the wipe of graphroot and podman-home first. The unit's real environment is used because libpod records its paths. Both V (`trial v-run`, image reference taken from the signed template) and the governed cell use this store.
 
 ```
 CFG=<image config digest from P3, sha256: form>            SCR=/var/tmp/tbound-cal-20261017      # PODMAN_ENV and PODMAN_SVC: Placeholders
 
-GSSH 'systemctl is-active tbound-pi.service; sudo -n ls -A /var/lib/tbound/podman-storage/graphroot | wc -l; ls -d /run/tbound-pi'        # [READ-ONLY] inactive / 0 / No such file
+GSSH 'systemctl is-active tbound-pi.service; ls -d /run/tbound-pi'        # [READ-ONLY] inactive / No such file
+GSSH '! grep -qE "^(tbound-pi|995):" /etc/subuid /etc/subgid && echo no-range'        # [READ-ONLY] P14 step 2: no-range; otherwise stop
+GSSH 'sudo -n find /var/lib/tbound/podman-storage/graphroot /var/lib/tbound/podman-home -mindepth 1 -delete'        # wipe both: a store (or podman-home state) made under any other mapping is unusable
+GSSH 'sudo -n ls -A /var/lib/tbound/podman-storage/graphroot /var/lib/tbound/podman-home | wc -l; sudo -n stat -c "%U:%G %a %n" /var/lib/tbound/podman-storage/graphroot /var/lib/tbound/podman-home'        # [READ-ONLY] 0; both 995:986 (tbound-pi:tbound-pi), directories kept
 GSSH 'sudo -n install -o 995 -g 986 -m 0600 /dev/stdin /var/tmp/tbound-cal-20261017/pi-cell-load.tar' < $H/pi-cell-load.tar
 GSSH 'sudo -n sha256sum /var/tmp/tbound-cal-20261017/pi-cell-load.tar'        # == LOAD_TAR_DIGEST
 GSSH 'sudo -n install -d -o 995 -g 986 -m 0700 /run/tbound-pi /run/tbound-pi/tmp /run/tbound-pi/cache'
@@ -698,11 +757,26 @@ GSSH "$PODMAN_SVC tag ${CFG#sha256:} localhost/tbound/pi-cell:latest"
 GSSH "$PODMAN_SVC image exists localhost/tbound/pi-cell:latest; echo exists=\$?"                       # exists=0
 GSSH "$PODMAN_SVC image inspect localhost/tbound/pi-cell:latest --format '{{.Id}} {{.Digest}} {{.ManifestType}} {{range .RepoDigests}}{{.}} {{end}}'"      # <CFG> <IMGDIGEST> application/vnd.oci.image.manifest.v1+json localhost/tbound/pi-cell@<IMGDIGEST>
 GSSH "$PODMAN_SVC images --no-trunc --format '{{.Repository}}:{{.Tag}} {{.ID}}'"                        # exactly one line, :latest
-GSSH "sudo -n setpriv --reuid 995 --regid 986 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs -- $PODMAN_ENV image inspect localhost/tbound/pi-cell:latest --format '{{.Digest}}'"        # C4: == IMGDIGEST in the service's own context
+GSSH "$PODMAN_SVC image inspect localhost/tbound/pi-cell:latest --format '{{.Digest}}'"        # C4: == IMGDIGEST, read again in a fresh service-context process (every command above already ran in it)
 GSSH 'sudo -n rm -rf /run/tbound-pi'
 ```
 
-If podman rewrote the manifest (`Digest` differs) stop and report; do not re-sign. If C4 fails but the normal inspect passes, the store needs `newuidmap`, ineffective under `NoNewPrivileges=yes`: stop before Z1 (a service-context design issue). Rollback: `sudo rm -rf /run/tbound-pi; sudo find /var/lib/tbound/podman-storage/graphroot -mindepth 1 -delete`.
+If podman rewrote the manifest (`Digest` differs) stop and report; do not re-sign. If any command fails with an ID-mapping or `newuidmap` error, the store or the account has a subuid mapping (P14 step 2): wipe again and redo I1. Rollback: `sudo rm -rf /run/tbound-pi; sudo find /var/lib/tbound/podman-storage/graphroot /var/lib/tbound/podman-home -mindepth 1 -delete`.
+
+## I2 [PRIVILEGED WRITE, needs owner approval] host-provisioned service state (service stopped, before L1)
+
+The service needs workflow state that nothing else creates (found in the 2026-10-20 dry run): the recovery catalog, the workflow-owner directory and the workflow root database. `/var/lib/tbound/private-admin` and `/var/lib/tbound/sessions` are created 995:986 0700 by systemd `StateDirectory=` at the first service start; so that this step works on a fresh guest too, without starting the service, the parents are created here the same way (idempotent). `tbound workflow-root-init` is a code command of `F`: run once as the service identity; it refuses if `root.db` exists and prints one JSON line.
+
+```
+GSSH 'sudo -n systemctl is-active tbound-pi.service'        # [READ-ONLY] inactive
+GSSH 'sudo -n install -d -o 995 -g 986 -m 0700 /var/lib/tbound/private-admin /var/lib/tbound/sessions'
+GSSH 'sudo -n install -d -o 995 -g 986 -m 0700 /var/lib/tbound/private-admin/workflow-recovery /var/lib/tbound/sessions/workflow-owners'
+GSSH 'sudo -n install -o 995 -g 986 -m 0600 /dev/null /var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl'
+GSSH 'SVC /usr/local/bin/tbound workflow-root-init'        # one JSON line; a refusal because root.db exists means this step already ran: stop and read it, do not delete root.db
+GSSH 'sudo -n stat -c "%U:%G %a %n" /var/lib/tbound/private-admin /var/lib/tbound/sessions /var/lib/tbound/private-admin/workflow-recovery /var/lib/tbound/sessions/workflow-owners /var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl'        # [READ-ONLY] tbound-pi:tbound-pi 700 for the four directories, 600 for catalog.jsonl
+```
+
+Rollback (before the first service start only): `sudo rm -rf /var/lib/tbound/private-admin/workflow-recovery /var/lib/tbound/sessions/workflow-owners` and the `root.db` that `workflow-root-init` created; after a launch these hold the workflow catalog and are not removed (L4, operator recovery).
 
 ## Z0, Z1
 
@@ -783,7 +857,7 @@ CLIENT /usr/local/bin/tbound serve --pi --task-id smoke-read-readme --task-reque
 echo "exit=$?"
 ```
 
-`--task-id`, `--task` and `--bash-no-outputs` (`workflow_bash_output_paths: []`) must equal the installed config exactly; a `fresh` config takes no `--attempt` or `--role`. A mismatch is journaled and then refused by `ResolveAdmission` (`workflowEnvelopeMatchesRequest`): `unknown` / `task-outcome-unknown`, request id consumed (N7). The client's uid and gid must equal the registered `AllowedClientUIDs` and `AllowedClientPrimaryGID` (994, 985; `piServicePeerAllowed`). Success: one JSON line `{"schema_version":"tbound-pi-service-response/v1","request_id":"<RID>","status":"completed","receipt":{...,"success":true,...}}` and exit 0 (`callProductionPiService`, `productionPiReceipt`); expect `provider_exchange:true`. Otherwise stderr `local Pi service <status>: <error_code>` and exit 2. Provider traffic: `https://opencode.ai/inference/go/v1/chat/completions`, model `deepseek-v4.1-flash` (`Endpoint`, `ApprovedModel` in `internal/broker/openrouter/openrouter.go`), key only from `/etc/tbound/provider/opencode-go.key`; a missing credential fails closed, no other route. Guest egress to `opencode.ai:443` is unmeasured.
+`--task-id`, `--task` and `--bash-no-outputs` (`workflow_bash_output_paths: []`) must equal the installed config exactly; a `fresh` config takes no `--attempt` or `--role`. A mismatch is journaled and then refused by `ResolveAdmission` (`workflowEnvelopeMatchesRequest`): `unknown` / `task-outcome-unknown`, request id consumed (N7). The client's uid and gid must equal the registered `AllowedClientUIDs` and `AllowedClientPrimaryGID` (994, 985; `piServicePeerAllowed`). Success: one JSON line `{"schema_version":"tbound-pi-service-response/v1","request_id":"<RID>","status":"completed","receipt":{...,"success":true,...}}` and exit 0 (`callProductionPiService`, `productionPiReceipt`); expect `provider_exchange:true`. Otherwise stderr `local Pi service <status>: <error_code>` and exit 2. Provider traffic: `https://opencode.ai/inference/go/v1/chat/completions`, model `deepseek-v4.1-flash` (`Endpoint`, `ApprovedModel` in `internal/broker/openrouter/openrouter.go`), key only from `/etc/tbound/provider/opencode-go.key`; a missing credential fails closed, no other route. Guest egress to `opencode.ai:443` works (measured 2026-10-20). Measured gateway behaviour of the dry run: the gateway requires the `X-Opencode-Session` header (the broker sends it) and rejects the `developer` role (code fix pending on another branch, so an L3 on a build without it fails); the upstream is flaky, about 40% of calls answer 503 "Endpoint is unavailable". A single L3 failure on a 503 is therefore not a stop (the retry policy is pending in code): read the journal and the catalog (L4) for the terminal state before deciding, because the request id is consumed and the admission is one-use; any other error code remains a stop.
 
 Rollback: stop the service (L1). The task is read-only; any live-root output is removed only by an owner-supervised console action.
 
@@ -886,7 +960,7 @@ The host builds `tbound-run.exe` (P1) and uses Git Bash `ssh` with three keys an
 | `evq_obligations`, `evq_results` | the `evq_obligations` line printed by `tbound-run evq` (all 22 IDs of the mapping); `{path, sha256: "sha256:<hex>"}` with the `results_sha256` it printed; every passed result names `commit=<freeze_commit>` or `plan` refuses it |
 | `route_report` | absolute path of the `route_report.json` written by `tbound-run route-report` for this `freeze_commit`; its file digest is the route digest |
 | `ledger`, `run_dir` | `"synthetic-empty"`; a new absolute directory (holds `journal.jsonl`) |
-| `ssh` | `path` (Git Bash `ssh.exe`), `known_hosts`, `host` = `GUEST_IP`, `host_key_alias` = `172.18.155.19`, `client`, `evidence`, `trial` each `{user, key}` with three different key files (`client` user `root`, forced command `tbound client-forced`) |
+| `ssh` | `path` (Git Bash `ssh.exe`), `known_hosts`, `host` = `GUEST_IP`, `host_key_alias` = `172.18.155.19`, `client`, `evidence`, `trial` each `{user, key}` with three different key files, the Windows copies of SSH-1 (`client` user `root`, forced command `tbound client-forced`) |
 | `proc` | `cell_uid`, `cell_gid` (from `evidence proc-cell`, L2), `monitor_seconds` (tight bound of one step), `teardown_grace_seconds`, `authorized_sockets` (`[]` unless the owner authorizes a survivor socket) |
 | `only_cases` | optional; use a one-case list for the first trial |
 
