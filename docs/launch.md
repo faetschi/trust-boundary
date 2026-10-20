@@ -1,31 +1,47 @@
 # Launch TBound
 
 The Go-only native fixture and an offline Pi CLI development fixture are
-available on Linux. Start the native fixture with:
+available directly on native Linux, inside Windows WSL2, or in an optional
+separate Linux VM; see [install](install.md) for the environment choices.
+The native fixture needs no Node or Pi. For a source build, install Go 1.27.1
+on `PATH` first. From the repository root:
 
 ```sh
+umask 077
+mkdir -m 700 -p "$HOME/.cache/tbound-build" "$HOME/.cache/tbound-tmp"
+export TMPDIR="$HOME/.cache/tbound-tmp"
 cd supervisor
-go build -o /tmp/tbound ./cmd/tbound
-/tmp/tbound serve --pi --native-fixture
+go build -o "$HOME/.cache/tbound-build/tbound" ./cmd/tbound
+"$HOME/.cache/tbound-build/tbound" serve --pi --native-fixture
 ```
 
 The JSON receipt marks `claim_bearing=false` and
-`containment=not-established`. Use a private output directory in place of
-`/tmp` if required by your host policy.
+`containment=not-established`. Protected audit paths reject any group- or
+other-writable ancestor, including sticky `/tmp`, so the private `TMPDIR` is
+required on native Linux, WSL2, and a Linux VM alike. Existing directories must
+already have suitable permissions; `mkdir -m` does not change them. Keep build
+output outside the checkout to avoid its historical tracked ELF and ignored
+local executable. If TBound is already installed, use
+`tbound serve --pi --native-fixture` with the same private `TMPDIR`; Go is
+needed only for the source build.
 
 ## Offline Pi CLI fixture
 
 This development route launches the official Pi 0.87.1 CLI over RPC, the
 isolated TBound extension, and a scripted offline provider, replacing the
-former embedded-SDK development fixture. It requires absolute paths and an
-existing owned mode-0700 directory on ext4. From the repository root, set:
+former embedded-SDK development fixture. Install Node and Pi separately via
+[install](install.md#optional-pi-cli). It requires absolute paths and an owned
+mode-0700 fixture directory on ext4, with protected ancestors. From the
+repository root, set:
 
 ```sh
+umask 077
 export TBOUND_DEV_FIXTURE_PI="$(realpath "$(command -v pi)")"
 export TBOUND_DEV_FIXTURE_NODE="$(realpath "$(command -v node)")"
 export TBOUND_DEV_FIXTURE_ADAPTER="$(pwd)/adapter"
 export TBOUND_DEV_FIXTURE_ROOT="$HOME/.local/state/tbound-dev-fixture"
-mkdir -m 700 -p "$TBOUND_DEV_FIXTURE_ROOT"
+mkdir -m 700 -p "$TBOUND_DEV_FIXTURE_ROOT" "$HOME/.cache/tbound-tmp"
+export TMPDIR="$HOME/.cache/tbound-tmp"
 test "$(stat -f -c %T "$TBOUND_DEV_FIXTURE_ROOT")" = ext2/ext3
 test "$(stat -c %a "$TBOUND_DEV_FIXTURE_ROOT")" = 700
 mkdir -m 700 -p "$HOME/.cache/tbound-build"
@@ -82,8 +98,9 @@ client/server operation, and a positive governed Pi launch remain unverified.
 
 ## Existing Windows Hyper-V VM
 
-TBound runs inside Ubuntu, not as a Windows security boundary. To resume the
-existing ABI 8 guest, open elevated PowerShell:
+This optional test VM is separate from the native Linux and WSL2 development
+paths above. TBound runs inside its Ubuntu guest; native Windows is not the
+isolation boundary. To resume the existing ABI 8 guest, open elevated PowerShell:
 
 ```powershell
 Get-VM -Name 'TBound-Ubuntu-2404-ABI8' | Select-Object Name, State

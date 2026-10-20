@@ -1,10 +1,66 @@
 # Install TBound and Pi
 
-Install and run Pi inside Linux. On a Windows host, use an Ubuntu VM. TBound
-does not create the isolation boundary by itself: the production Linux profile
-and signed managed service remain unqualified.
+Choose the Linux environment that fits your host:
 
-## Pi CLI
+- **Native Linux:** build, install, and run directly; no VM is required.
+- **Windows with WSL2:** run the Linux commands inside your WSL2 distribution,
+  with the checkout and fixture directories on its Linux filesystem rather than
+  under `/mnt/c`. This is a development route, not a qualified governed host.
+- **Separate Linux VM:** optionally use a dedicated VM for test infrastructure.
+  It is an alternative to native Linux or WSL2. See the existing reference VM
+  steps in [launch](launch.md#existing-windows-hyper-v-vm) and the canonical
+  [reproducible setup](reproducible-setup.md) and linked infrastructure runbooks
+  before creating or provisioning a VM.
+
+Start with the Go-only native fixture below. Node and Pi are optional until you
+want the Pi integration. General installation does not provision or qualify the
+production Linux profile or signed managed service.
+
+## Build and install TBound from source
+
+Building requires Bash, `make`, and the pinned Go 1.27.1 installed on `PATH`,
+plus access to any Go modules not already cached. Run `go version` to confirm
+the selected toolchain. From the repository root on Linux amd64:
+
+```sh
+make build VERSION=dev
+bash install/install.sh --version dev --local-dist dist --no-path
+export PATH="$HOME/.local/share/tbound/bin:$PATH"
+umask 077
+mkdir -m 700 -p "$HOME/.cache/tbound-tmp"
+export TMPDIR="$HOME/.cache/tbound-tmp"
+tbound serve --pi --native-fixture
+```
+
+The fixture needs no Node, Pi, credentials, or provider access. Its receipt
+reports `claim_bearing=false` and `containment=not-established`. Protected audit
+paths reject any group- or other-writable ancestor, including sticky `/tmp`;
+use a private `TMPDIR` on native Linux, WSL2, and a Linux VM alike. Existing
+directories must already have suitable permissions; `mkdir -m` does not change
+them.
+
+The install script verifies the local release archive and installs the Go
+commands and packaged runtime assets into a user-owned prefix. Installing an
+already-built matching Linux artifact needs no Go or `make`; see the
+[installer reference](../install/README.md) for `--local-dist`, version, and
+prefix options. Release hosting and public package publication are not available. The package and container
+templates are distribution work, not a governed runtime.
+
+To build only the CLI for a local fixture, choose a private output path:
+
+```sh
+umask 077
+mkdir -m 700 -p "$HOME/.cache/tbound-build" "$HOME/.cache/tbound-tmp"
+export TMPDIR="$HOME/.cache/tbound-tmp"
+cd supervisor
+go build -o "$HOME/.cache/tbound-build/tbound" ./cmd/tbound
+```
+
+Avoid building into the source tree: it contains a tracked historical ELF and
+an ignored local Windows executable. Continue with [launch](launch.md) to run
+the fixture.
+
+## Optional Pi CLI
 
 The offline development integration uses the official Pi CLI at 0.87.1. Install it inside
 the Linux user environment with Node.js 22.19 or newer:
@@ -32,41 +88,8 @@ this route. See
 [launch](launch.md) for its required environment. Do not put provider
 credentials in fixtures or source control.
 
-## Build and install TBound from source
-
-Go 1.27.1 is the current reproducibility pin. From a Linux checkout:
-
-```sh
-make build VERSION=dev
-bash install/install.sh --version dev --local-dist dist --no-path
-export PATH="$HOME/.local/share/tbound/bin:$PATH"
-tbound-doctor --pi "$(command -v pi)"
-```
-
-The install script verifies the local release archive and installs the Go
-commands and packaged runtime assets into a user-owned prefix. Release hosting
-and public package publication are not available. The package and container
-templates are distribution work, not a governed runtime.
-
-To build only the CLI for a local fixture, choose a private output path:
-
-```sh
-mkdir -m 700 -p "$HOME/.cache/tbound-build"
-cd supervisor
-go build -o "$HOME/.cache/tbound-build/tbound" ./cmd/tbound
-```
-
-Avoid building into the source tree: it contains a tracked historical ELF and
-an ignored local Windows executable.
-
-## Linux host and Windows VM
-
-For the existing reference VM, follow [launch.md](launch.md) to start and
-connect to Ubuntu. For a new host, read [reproducible-setup.md](reproducible-setup.md)
-and the linked infrastructure runbooks first. Those procedures are prototypes
-and have not been qualified end to end on a clean machine.
-
 ## Doctor
 
-Run `tbound-doctor --pi "$(command -v pi)"` after installing. It is advisory only;
-see [doctor](doctor.md).
+Optionally run `tbound-doctor` for an advisory host report. After installing Pi,
+use `tbound-doctor --pi "$(command -v pi)"`. Its Pi and governed-host findings
+are separate from the Go-only fixture check; see [doctor](doctor.md).

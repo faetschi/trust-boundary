@@ -16,13 +16,22 @@ See [current status](docs/status.md) and [architecture](docs/architecture.md).
 ## What you can run
 
 Two local fixtures are available on Linux; neither is claim-bearing. The
-Go-only fixture exercises the native lifecycle without launching Pi:
+Go-only fixture exercises the native lifecycle without launching Pi. With
+Go 1.27.1 on `PATH`, run from the repository root:
 
 ```sh
+umask 077
+mkdir -m 700 -p "$HOME/.cache/tbound-build" "$HOME/.cache/tbound-tmp"
+export TMPDIR="$HOME/.cache/tbound-tmp"
 cd supervisor
-go build -o /tmp/tbound ./cmd/tbound
-/tmp/tbound serve --pi --native-fixture
+go build -o "$HOME/.cache/tbound-build/tbound" ./cmd/tbound
+"$HOME/.cache/tbound-build/tbound" serve --pi --native-fixture
 ```
+
+Protected audit paths reject group- or other-writable ancestors, including
+sticky `/tmp`; use the private `TMPDIR` on every Linux environment. Existing
+directories must already have suitable permissions; see [launch](docs/launch.md).
+An already-built TBound artifact needs no Go toolchain.
 
 The offline Pi CLI fixture starts the official CLI (Pi 0.87.1, Node 24.21.0
 pin) with an isolated extension and a scripted provider. Its environment and
@@ -31,10 +40,12 @@ installing Pi is in [install](docs/install.md). The production-shaped
 `serve --pi` command is a client for a registered local service and returns
 `service unavailable` when that service is absent.
 
-Run TBound inside Linux. On Windows, use the existing Ubuntu Hyper-V guest or a
-separately qualified Linux VM; native Windows is not the isolation boundary.
-The reference VM is development infrastructure, not a clean G1 baseline. For
-new hosts see [reproducibility setup](docs/reproducible-setup.md).
+Run directly on native Linux without a VM. On Windows, run the Linux commands
+inside WSL2, or use a separate Linux VM as optional test infrastructure. Keep
+WSL2 fixtures on its Linux filesystem. These development choices do not qualify
+a governed host; the reference VM is not a clean G1 baseline. See
+[install](docs/install.md) for the three paths and
+[reproducibility setup](docs/reproducible-setup.md) for VM procedures.
 
 ## How the intended workflow fits together
 
