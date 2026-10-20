@@ -117,6 +117,33 @@ func TestDevFixtureCommandRunnerSettlesDurableBash(t *testing.T) {
 	}
 }
 
+// The CLI fixture composition must authorize the output of its scripted Bash
+// turn, not merely configure a command runner that passes isolated Store tests.
+func TestDevelopmentFixtureDurableExecutorRunsScopedBash(t *testing.T) {
+	commands := newBoundedDevelopmentFixtureCommandRunner()
+	_, executor, _, _, cleanup, err := setupDevelopmentFixtureStore(durablePrivateBase(t), commands)
+	if err != nil {
+		t.Fatalf("set up development fixture: %v", err)
+	}
+	defer cleanup()
+	proposal, decision := durableBashProposal(string(developmentFixtureTurns[2].Arguments))
+	if _, err := executor.Execute(context.Background(), proposal, decision); err != nil {
+		t.Fatalf("execute fixture Bash through composed executor: %v", err)
+	}
+	if tip := executor.Tip(); tip.ID() != "g1" {
+		t.Fatalf("fixture Bash tip = %q, want g1", tip.ID())
+	}
+	source, err := executor.Tip().ReadOnlyMountSource()
+	if err != nil {
+		t.Fatalf("open fixture Bash generation: %v", err)
+	}
+	defer source.Close()
+	content, err := os.ReadFile(fmt.Sprintf("/proc/self/fd/%d/task.txt", source.Fd()))
+	if err != nil || string(content) != "bash" {
+		t.Fatalf("fixture Bash task.txt = %q, error = %v; want bash", content, err)
+	}
+}
+
 // TestDevFixtureCommandRunnerRejectsUnregisteredShape proves the runner fails
 // closed on a command shape outside the registered `/bin/bash -lc` form and on a
 // view it was never authorized for.
