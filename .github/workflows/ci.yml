@@ -73,6 +73,29 @@ jobs:
           pi_version="$("$TBOUND_PI_CLI_BIN" --version)"
           test "$pi_version" = "0.87.1"
 
+      - name: Prepare hosted namespace test prerequisites
+        working-directory: supervisor
+        run: |
+          set -euo pipefail
+          umask 077
+          uname -r
+          if test -r /proc/self/attr/current; then
+            cat /proc/self/attr/current
+          fi
+          # Boot-only setting on this disposable runner; no persistent host policy.
+          # https://documentation.ubuntu.com/release-notes/24.04/
+          if test -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns; then
+            restriction="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)"
+            printf 'AppArmor user namespace restriction: %s\n' "$restriction"
+            if test "$restriction" = 1; then
+              sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+            fi
+          fi
+          if ! go test -mod=readonly -count=1 -v ./internal/sandbox -run '^TestProbeMechanisms$'; then
+            sudo dmesg | grep -E 'apparmor=.*DENIED|userns' | tail -20 || true
+            exit 1
+          fi
+
       - name: Go unit suite
         working-directory: supervisor
         run: umask 077; go test -mod=readonly -count=1 ./...
