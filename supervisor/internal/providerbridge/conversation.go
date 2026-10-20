@@ -359,11 +359,7 @@ func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJo
 	if err != nil {
 		return nil, fmt.Errorf("register provider identifier issuers: %w", err)
 	}
-	system, developer := cfg.SystemPrompt, cfg.DeveloperPrompt
-	history := []openrouter.Message{
-		{Role: openrouter.System, Content: &system},
-		{Role: openrouter.Developer, Content: &developer},
-	}
+	history := InitialPromptMessages(route, cfg.SystemPrompt, cfg.DeveloperPrompt)
 	if _, err := openrouter.BuildRequestForRoute(route, history, 0); err != nil {
 		return nil, fmt.Errorf("validate immutable provider prompt: %w", err)
 	}
@@ -432,27 +428,8 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	if c.turns >= MaxTranscriptTurns || c.sequence == math.MaxUint64 {
 		return Turn{}, c.failLocked(errors.New("provider conversation turn/sequence budget exhausted"))
 	}
-	profile := broker.Profile{
-		ID: c.cfg.ProfileID, ConversationID: c.cfg.ConversationID, Model: c.model, Route: c.cfg.Route, Messages: cloneMessages(c.history),
-		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: callIssuer,
-		ResponseIDIssuer: responseIssuer, Generation: c.generation,
-	}
-	requestBroker, err := broker.New(profile, c.doer)
-	if err != nil {
-		return Turn{}, c.failLocked(fmt.Errorf("construct registered provider broker: %w", err))
-	}
-	completionLimit := uint64(0)
-	if c.cfg.SelectCompletionTokenLimit != nil {
-		completionLimit, err = c.cfg.SelectCompletionTokenLimit(ctx)
-		if err != nil || completionLimit == 0 {
-			return Turn{}, c.failLocked(errors.Join(errors.New("host selected no positive provider completion-token cap"), err))
-		}
-	} else if c.cfg.BeforeExchange != nil {
-		if err := c.cfg.BeforeExchange(ctx); err != nil {
-			return Turn{}, c.failLocked(fmt.Errorf("reserve durable provider allowance before dispatch: %w", err))
-		}
-	}
 	var hostCallBinding *HostCallBinding
+	var completionLimit uint64
 	// Monetary accounting (research route only). spendUnit is the open ledger
 	// reservation of this request. Once the request may have left the process
 	// (spendDispatched) and until SettleSpend has run (spendSettled), any return
@@ -466,54 +443,91 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 			}
 		}
 	}()
-	captured, exchangeErr := requestBroker.ExchangeWithCompletionLimit(ctx, completionLimit, func(request broker.RequestRecord) error {
-		if c.cfg.Spend != nil {
-			unit, spendErr := c.cfg.Spend.ReserveSpend(ctx, SpendReservation{WorkflowID: c.cfg.WorkflowID,
-				ConversationID: c.cfg.ConversationID, Turn: c.turns + 1, CompletionLimit: completionLimit, Request: request})
-			if spendErr != nil {
-				return fmt.Errorf("reserve provider spend before dispatch: %w", spendErr)
-			}
-			spendUnit = unit
+	var captured openrouter.CapturedResponse
+	var exchangeErr error
+	var records []broker.ExchangeRecord
+	// A pre-effect provider failure may be retried (see retry.go): only with host-call accounting and
+	// without monetary spend, so every attempt is its own reserved host call.
+	retryable := c.cfg.Spend == nil && c.cfg.SelectCompletionTokenLimit != nil && c.cfg.ReserveHostCall != nil && c.cfg.CompleteHostCall != nil
+	for attempt := uint64(0); ; attempt++ {
+		hostCallBinding = nil
+		profile := broker.Profile{
+			ID: c.cfg.ProfileID, ConversationID: c.cfg.ConversationID, Model: c.model, Route: c.cfg.Route, Messages: cloneMessages(c.history),
+			ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: callIssuer,
+			ResponseIDIssuer: responseIssuer, Generation: c.generation,
 		}
-		// refuse reports a refusal that happens before the request is handed to the
-		// transport, after the spend reservation: the request provably never left.
-		refuse := func(cause error) error {
-			if spendUnit != "" {
-				if err := c.cfg.Spend.ReleaseSpend(ctx, spendUnit); err != nil {
-					spendDispatched = true // the release is not durable; keep the unit counted
-					return errors.Join(cause, fmt.Errorf("release provider spend: %w", err))
+		requestBroker, err := broker.New(profile, c.doer)
+		if err != nil {
+			return Turn{}, c.failLocked(fmt.Errorf("construct registered provider broker: %w", err))
+		}
+		completionLimit = 0
+		if c.cfg.SelectCompletionTokenLimit != nil {
+			completionLimit, err = c.cfg.SelectCompletionTokenLimit(ctx)
+			if err != nil || completionLimit == 0 {
+				return Turn{}, c.failLocked(errors.Join(errors.New("host selected no positive provider completion-token cap"), err))
+			}
+		} else if c.cfg.BeforeExchange != nil {
+			if err := c.cfg.BeforeExchange(ctx); err != nil {
+				return Turn{}, c.failLocked(fmt.Errorf("reserve durable provider allowance before dispatch: %w", err))
+			}
+		}
+		captured, exchangeErr = requestBroker.ExchangeWithCompletionLimit(ctx, completionLimit, func(request broker.RequestRecord) error {
+			if c.cfg.Spend != nil {
+				unit, spendErr := c.cfg.Spend.ReserveSpend(ctx, SpendReservation{WorkflowID: c.cfg.WorkflowID,
+					ConversationID: c.cfg.ConversationID, Turn: c.turns + 1, CompletionLimit: completionLimit, Request: request})
+				if spendErr != nil {
+					return fmt.Errorf("reserve provider spend before dispatch: %w", spendErr)
 				}
-				spendUnit = ""
+				spendUnit = unit
 			}
-			return cause
-		}
-		if c.cfg.ReserveHostCall == nil {
+			// refuse reports a refusal that happens before the request is handed to the
+			// transport, after the spend reservation: the request provably never left.
+			refuse := func(cause error) error {
+				if spendUnit != "" {
+					if err := c.cfg.Spend.ReleaseSpend(ctx, spendUnit); err != nil {
+						spendDispatched = true // the release is not durable; keep the unit counted
+						return errors.Join(cause, fmt.Errorf("release provider spend: %w", err))
+					}
+					spendUnit = ""
+				}
+				return cause
+			}
+			if c.cfg.ReserveHostCall == nil {
+				spendDispatched = spendUnit != ""
+				return nil
+			}
+			binding, reserveErr := c.cfg.ReserveHostCall(ctx, request, completionLimit)
+			if reserveErr != nil {
+				return refuse(reserveErr)
+			}
+			if !validHostCallBinding(binding) || len(binding.RequestDigest) != 64 || binding.RequestDigest != broker.DigestRequestRecord(request) ||
+				binding.TokenUpperBound != completionLimit {
+				return refuse(errors.New("host-call reservation does not bind the exact outbound request and completion cap"))
+			}
+			hostCallBinding = &binding
+			reservation := hostCallReservationEvidence{WorkflowID: c.cfg.WorkflowID,
+				ConversationID: c.cfg.ConversationID, ProfileID: c.cfg.ProfileID,
+				Turn: c.turns + 1, Binding: binding, Request: requestEvidenceFromBroker(request)}
+			encoded, marshalErr := json.Marshal(reservation)
+			if marshalErr != nil {
+				return refuse(marshalErr)
+			}
+			if _, appendErr := c.appendLocked("provider_host_call_reserved", "host-call-reserved", encoded); appendErr != nil {
+				return refuse(fmt.Errorf("persist exact host-call reservation before HTTP dispatch: %w", appendErr))
+			}
 			spendDispatched = spendUnit != ""
 			return nil
+		})
+		records = requestBroker.Records()
+		if exchangeErr != nil && retryable && attempt < MaxProviderRetries && ctx.Err() == nil &&
+			hostCallBinding != nil && retryableExchange(records) {
+			if retryErr := c.recordRetryableFailureLocked(ctx, records, *hostCallBinding, attempt+1); retryErr != nil {
+				return Turn{}, c.failLocked(retryErr)
+			}
+			continue
 		}
-		binding, reserveErr := c.cfg.ReserveHostCall(ctx, request, completionLimit)
-		if reserveErr != nil {
-			return refuse(reserveErr)
-		}
-		if !validHostCallBinding(binding) || len(binding.RequestDigest) != 64 || binding.RequestDigest != broker.DigestRequestRecord(request) ||
-			binding.TokenUpperBound != completionLimit {
-			return refuse(errors.New("host-call reservation does not bind the exact outbound request and completion cap"))
-		}
-		hostCallBinding = &binding
-		reservation := hostCallReservationEvidence{WorkflowID: c.cfg.WorkflowID,
-			ConversationID: c.cfg.ConversationID, ProfileID: c.cfg.ProfileID,
-			Turn: c.turns + 1, Binding: binding, Request: requestEvidenceFromBroker(request)}
-		encoded, marshalErr := json.Marshal(reservation)
-		if marshalErr != nil {
-			return refuse(marshalErr)
-		}
-		if _, appendErr := c.appendLocked("provider_host_call_reserved", "host-call-reserved", encoded); appendErr != nil {
-			return refuse(fmt.Errorf("persist exact host-call reservation before HTTP dispatch: %w", appendErr))
-		}
-		spendDispatched = spendUnit != ""
-		return nil
-	})
-	records := requestBroker.Records()
+		break
+	}
 	if exchangeErr != nil {
 		persistErr := c.persistFailedExchangeLocked(records, exchangeErr, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("registered provider exchange failed; response withheld: %w", exchangeErr), persistErr))
@@ -1343,5 +1357,25 @@ func reflectNil(value any) bool {
 		return v.IsNil()
 	default:
 		return false
+	}
+}
+
+// InitialPromptMessages builds the immutable prompt prefix of a conversation: the system
+// prompt and the registered developer prompt. The fresh path and the recovery replay both
+// build it here, so a rebuilt request body is identical to the original.
+//
+// The OpenCode Go engineering route rejects the "developer" role ("chat message role
+// developer is not supported"), so there the developer prompt text goes out as a second
+// "system" message; DeveloperPrompt and its digest fields are unchanged. The research
+// route keeps "developer": its request shape is frozen by the research profile.
+func InitialPromptMessages(route openrouter.Route, systemPrompt, developerPrompt string) []openrouter.Message {
+	system, developer := systemPrompt, developerPrompt
+	developerRole := openrouter.Developer
+	if !route.IsResearch() {
+		developerRole = openrouter.System
+	}
+	return []openrouter.Message{
+		{Role: openrouter.System, Content: &system},
+		{Role: developerRole, Content: &developer},
 	}
 }

@@ -227,13 +227,13 @@ Rollback: `sudo rm /etc/tbound/pi-host-profile.pub; sudo rm -rf /var/tmp/tbound-
 
 ### P9 [PRIVILEGED WRITE, needs owner approval] make the live root enumerable by uid 995
 
-uid 995 cannot open `lost+found` (root 0700), so every 995 enumeration fails (`xattr_profile_linux.go`).
+uid 995 cannot open `lost+found` (root 0700), so every 995 enumeration fails (`xattr_profile_linux.go`). The directory is also part of the live root that the no-change release rescan and the publication baseline scan walk, and those require the canonical form (directories `0755`, files `0644`/`0755`, owned by the service), so it is chowned and chmodded here.
 
 ```
-GSSH 'sudo -n chown 995:986 /var/lib/tbound/live/lost+found && sudo -n stat -c "%U:%G %a" /var/lib/tbound/live/lost+found'      # tbound-pi:tbound-pi 700
+GSSH 'sudo -n chown 995:986 /var/lib/tbound/live/lost+found && sudo -n chmod 0755 /var/lib/tbound/live/lost+found && sudo -n stat -c "%U:%G %a" /var/lib/tbound/live/lost+found'      # tbound-pi:tbound-pi 755
 ```
 
-Rollback: `sudo chown root:root /var/lib/tbound/live/lost+found`.
+Rollback: `sudo chown root:root /var/lib/tbound/live/lost+found; sudo chmod 0700 /var/lib/tbound/live/lost+found`.
 
 ### P10 [PRIVILEGED WRITE, needs owner approval] executables and cell assets on read-only mounts
 
@@ -819,10 +819,12 @@ Smoke task, engineering route, config v3 `fresh`. Abort on the first unexpected 
 ### L0 [PRIVILEGED WRITE, needs owner approval] seed the fixture file (service inactive)
 
 ```
-printf 'TBound smoke fixture. This file is harmless: it only checks that the read tool works.\n' | install -o 995 -g 986 -m 0600 /dev/stdin /var/lib/tbound/live/SMOKE-README.txt
+printf 'TBound smoke fixture. This file is harmless: it only checks that the read tool works.\n' | install -o 995 -g 986 -m 0644 /dev/stdin /var/lib/tbound/live/SMOKE-README.txt
 python3 -I /opt/tbound/helpers/xattr-census-r9.py /var/lib/tbound/live | tail -1        # [READ-ONLY] (P13.5 copy of the helper) dir 2, file 1, no xattr names (unproven that the census accepts it)
 ```
 
+
+The live root must already be in canonical form: regular files `0644` (`0755` if executable), owned by the service (995:986). Seeding normalizes whatever it reads, but the no-change release rescan and the publication baseline scan of the live root refuse any other mode ("stored workspace mode is not normalized"), and a managed run now refuses such a root right after the seed.
 Rollback: `rm /var/lib/tbound/live/SMOKE-README.txt`. The first pilot `trial reset` wipes the live root to the case fixture anyway.
 
 ### L1 [PRIVILEGED WRITE, needs owner approval] start the service

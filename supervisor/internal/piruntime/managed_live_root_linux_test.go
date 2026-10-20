@@ -3,10 +3,12 @@
 package piruntime
 
 import (
-	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -304,36 +306,6 @@ FileDescriptorName=tbound-pi
 	}
 }
 
-func TestD09ImageFD3ExecutableMustMatchSignedHostDigest(t *testing.T) {
-	root := t.TempDir()
-	path := filepath.Join(root, strings.TrimPrefix(PiWorkerCellExecutable, string(os.PathSeparator)))
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("immutable Node ELF fixture"), 0o555); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(path, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	digest, err := hashImageExecutable(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	imageRef := "localhost/tbound/pi-cell@sha256:" + strings.Repeat("a", 64)
-	runner := &fakeD09Runner{results: map[string]D09CommandResult{
-		"podman image mount " + imageRef:   {ExitCode: 0, Stdout: []byte(root + "\n")},
-		"podman image unmount " + imageRef: {ExitCode: 0},
-	}}
-	launcher := &D09PodmanCrunLauncher{runner: runner}
-	if err := launcher.verifyImageWorkerExecutable(context.Background(), "podman", imageRef, PiWorkerCellExecutable, digest); err != nil {
-		t.Fatalf("matching image/host fd3 executable was refused: %v", err)
-	}
-	if err := launcher.verifyImageWorkerExecutable(context.Background(), "podman", imageRef, PiWorkerCellExecutable, DigestBytes([]byte("different host node"))); err == nil {
-		t.Fatal("different host fd3 executable digest was accepted for the signed image")
-	}
-}
-
 func TestManagedWriterRequiresFilesOnlyLocalIdentityAndSingleGroup(t *testing.T) {
 	valid := []byte("passwd: files\ngroup: files\nshadow: files\n")
 	if !localFilesOnlyNSSwitch(valid) {
@@ -416,5 +388,99 @@ func TestD09ManagedPiServiceConfigDigestChangesWithProviderRoute(t *testing.T) {
 	}
 	if digest(D09ManagedPiProviderRouteResearch) != research {
 		t.Fatal("the service config digest is not deterministic")
+	}
+}
+
+func TestManagedLiveRootAccountChecksAcceptRealUbuntuGuestFiles(t *testing.T) {
+	read := func(name string) []byte {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join("testdata", "ubuntu-24.04-accounts", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+	passwd, groupFile, nsswitch := read("passwd"), read("group"), read("nsswitch.conf")
+	if !localFilesOnlyNSSwitch(nsswitch) {
+		t.Fatal("real guest files-only nsswitch.conf was rejected")
+	}
+	uid, gid, shell, ok := lookupLocalServiceAccount(passwd, groupFile, "tbound-pi", "tbound-pi")
+	if !ok || uid != 995 || gid != 986 || shell != "/usr/sbin/nologin" {
+		t.Fatalf("real guest service account lookup = %d %d %q %v", uid, gid, shell, ok)
+	}
+	reg := D09ManagedLiveRootRegistration{ServiceName: "tbound-pi", ServiceGroup: "tbound-pi",
+		ServiceUID: uid, ServiceGID: gid, ServiceLoginShell: shell}
+	if !registeredLocalServiceAccount(passwd, reg) {
+		t.Fatal("real guest service account was rejected")
+	}
+	if !registeredLocalServiceGroup(groupFile, reg) {
+		t.Fatal("real guest service group was rejected")
+	}
+	if socketGID, ok := registeredLocalGroupGID(groupFile, D09ManagedPiSocketGroup); !ok || socketGID != 985 {
+		t.Fatalf("real guest socket group gid = %d %v, want 985 true", socketGID, ok)
+	}
+}
+
+func TestRegisteredLocalGroupGIDRefusesNamedNonPositiveAndCollisions(t *testing.T) {
+	for name, groupFile := range map[string]string{
+		"named root gid 0":       "root:x:0:\ntbound-pi-clients:x:0:\n",
+		"named negative gid":     "root:x:0:\ntbound-pi-clients:x:-5:\n",
+		"another group same gid": "root:x:0:\ntbound-pi-clients:x:985:\nother:x:985:\n",
+		"duplicate named group":  "root:x:0:\ntbound-pi-clients:x:985:\ntbound-pi-clients:x:986:\n",
+		"missing":                "root:x:0:\nnogroup:x:65534:\n",
+		"unparsable other gid":   "root:x:0:\nbroken:x:abc:\ntbound-pi-clients:x:985:\n",
+	} {
+		if gid, ok := registeredLocalGroupGID([]byte(groupFile), "tbound-pi-clients"); ok {
+			t.Fatalf("%s: accepted with gid %d", name, gid)
+		}
+	}
+	if gid, ok := registeredLocalGroupGID([]byte("root:x:0:\nnogroup:x:65534:\ntbound-pi-clients:x:985:\n"), "tbound-pi-clients"); !ok || gid != 985 {
+		t.Fatalf("root and nogroup lines made the lookup fail: %d %v", gid, ok)
+	}
+}
+
+func TestSystemdDropInCheckContract(t *testing.T) {
+	reg := validManagedLiveRootRegistration()
+	for _, path := range []string{reg.ServiceUnitPath, reg.MountUnitPath, reg.ServiceSocket.SocketUnitPath} {
+		if !validSystemdUnitPath(path) {
+			t.Fatalf("registered full unit path was refused: %q", path)
+		}
+		if validSystemdUnitPath(filepath.Base(path)) {
+			t.Fatalf("a bare unit name was accepted as a unit path: %q", filepath.Base(path))
+		}
+		if err := verifyNoSystemdDropIns(filepath.Base(path)); err == nil {
+			t.Fatalf("verifyNoSystemdDropIns accepted a bare unit name: %q", filepath.Base(path))
+		}
+	}
+}
+
+// verifyNoSystemdDropIns takes full /etc/systemd/system paths and refuses a bare
+// name, so no caller may pass filepath.Base(...) (real-host defect: measure and
+// writer-process verification refused on every real guest).
+func TestNoCallerPassesBareUnitNamesToVerifyNoSystemdDropIns(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "managed_live_root_linux.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if name, ok := call.Fun.(*ast.Ident); !ok || name.Name != "verifyNoSystemdDropIns" {
+			return true
+		}
+		calls++
+		for _, arg := range call.Args {
+			if inner, ok := arg.(*ast.CallExpr); ok {
+				t.Errorf("%s: verifyNoSystemdDropIns argument is a call, not a full unit path", fset.Position(inner.Pos()))
+			}
+		}
+		return true
+	})
+	if calls != 3 {
+		t.Fatalf("expected 3 verifyNoSystemdDropIns callers, found %d", calls)
 	}
 }

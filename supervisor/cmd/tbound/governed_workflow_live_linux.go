@@ -16,7 +16,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
-	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/gate"
@@ -425,10 +424,8 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 	}
 	profile := broker.Profile{
 		ID: profileID, Model: config.Route.Resolved().Model, Route: config.Route,
-		Messages: []openrouter.Message{
-			{Role: openrouter.System, Content: stringPointer(config.SystemPrompt)},
-			{Role: openrouter.Developer, Content: stringPointer(config.DeveloperPrompt)},
-		}, ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
+		Messages:     providerbridge.InitialPromptMessages(config.Route.Resolved(), config.SystemPrompt, config.DeveloperPrompt),
+		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 		ResponseIDIssuer: governedResponseIssuer, Generation: config.InitialGenerationID,
 	}
 	providerPins := providerbridge.RecoveryPins{
@@ -447,13 +444,22 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 		checkpoint.Pins.StoreJournalCount > 0 && priorStoreTrace.Records[checkpoint.Pins.StoreJournalCount-1].Hash != checkpoint.Pins.StoreJournalHead {
 		return workflowrecovery.Pins{}, errors.Join(workflowrecovery.ErrObservation, err)
 	}
+	// The worker's launch proof is journaled in the Store journal after the workflow checkpoint was
+	// taken and before the first provider exchange. It is the only record that may follow the
+	// checkpointed prefix here; it changes no Store state, and this checkpoint commits the extended
+	// count and head. Anything else after the prefix is unaccounted Store evidence.
+	storeTail := priorStoreTrace.Records[checkpoint.Pins.StoreJournalCount:]
+	if err := verifyLaunchProofTail(storeTail, workflowID, sessionID, conversationID); err != nil {
+		return workflowrecovery.Pins{}, errors.Join(workflowrecovery.ErrObservation, err)
+	}
+	storeCount, storeHead := uint64(len(priorStoreTrace.Records)), auditHeadHash(priorStoreTrace.Records)
 	projection, verifier, err := replayGovernedTranscript(providerJournal, storeJournal, store, replayPins,
 		priorAuthorizationSequence, true)
 	if err != nil {
 		return workflowrecovery.Pins{}, errors.Join(workflowrecovery.ErrObservation, err)
 	}
-	if projection.StoreAuditRecordCount != checkpoint.Pins.StoreJournalCount ||
-		projection.StoreAuditHead != checkpoint.Pins.StoreJournalHead ||
+	if projection.StoreAuditRecordCount != storeCount ||
+		projection.StoreAuditHead != storeHead ||
 		projection.AdmissionRecordCount != checkpoint.Pins.AdmissionJournalCount ||
 		projection.AdmissionJournalHead != checkpoint.Pins.AdmissionJournalHead ||
 		projection.StoreHeadGeneration != checkpoint.Pins.StoreTipGenerationID ||
@@ -476,6 +482,7 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 		}
 	}
 	next := cloneWorkflowPins(checkpoint.Pins)
+	next.StoreJournalCount, next.StoreJournalHead = storeCount, storeHead
 	active := &next.ProviderTranscripts[activeIndex]
 	active.JournalCount = projection.Provider.ProviderJournalRecordCount
 	active.JournalHead = projection.Provider.ProviderJournalHead
@@ -511,6 +518,8 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 		}
 		reservation.Disposition = workflowrecovery.HostCallTerminal
 		reservation.OutcomeDigest = expectedHostCall.OutcomeDigest
+		// The settled attempt is a retryable failure exactly when the replayed journal closed it that way.
+		reservation.RetryableFailure = projection.Provider.HostCallRetryableFailure
 		if projection.Provider.Disposition == providerbridge.DispositionAwaitingGateDecision &&
 			projection.Provider.PendingCall != nil {
 			if projection.Provider.HostCall == nil ||
@@ -1060,4 +1069,25 @@ func sameCapturedProposal(replayed, journaled protocol.Proposal) bool {
 	right, rightErr := json.Marshal(journaled.Arguments)
 	return leftErr == nil && rightErr == nil && bytes.Equal(left, right) &&
 		replayed.SchemaVersion == journaled.SchemaVersion && replayed.ToolCallID == journaled.ToolCallID && replayed.Tool == journaled.Tool
+}
+
+// verifyLaunchProofTail accepts an empty tail or exactly one durable D09 launch-proof record of
+// this workflow, session and conversation (journalProductionLaunchProof). The record is written by
+// the host from the launcher's validated proof and carries no Store mutation.
+func verifyLaunchProofTail(tail []audit.Record, workflowID, sessionID, conversationID string) error {
+	if len(tail) == 0 {
+		return nil
+	}
+	if len(tail) != 1 || tail[0].Event.Kind != "production_tcb_proof" || tail[0].Event.Outcome != "" {
+		return errors.New("Store journal holds records past the checkpoint other than one launch proof")
+	}
+	var event productionLaunchTCBProofEvent
+	decoder := json.NewDecoder(bytes.NewReader(tail[0].Event.Data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&event); err != nil || event.SchemaVersion != "tbound-production-launch-tcb-proof/v1" ||
+		event.WorkflowID != workflowID || event.SessionID != sessionID || event.ConversationID != conversationID ||
+		event.RunID == "" || tail[0].Event.ID != "production-tcb-proof:"+event.RunID {
+		return errors.Join(errors.New("launch proof record does not belong to this workflow, session and conversation"), err)
+	}
+	return nil
 }

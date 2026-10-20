@@ -544,14 +544,16 @@ func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, ser
 	if err != nil {
 		return registration, err
 	}
-	rootOptions, rootReadOnly, err := mountOptionsForID(rootMountID)
-	if err != nil || rootReadOnly || !hasMountOption(rootOptions, "nosuid") || !hasMountOption(rootOptions, "nodev") {
+	rootRecord, err := mountRecordForDescriptor(root)
+	rootOptions := rootRecord.options()
+	if err != nil || rootRecord.readOnly() || !hasMountOption(rootOptions, "nosuid") || !hasMountOption(rootOptions, "nodev") {
 		return registration, errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
-	parentOptions, _, err := mountOptionsForID(parentMountID)
+	parentRecord, err := mountRecordForDescriptor(parent)
 	if err != nil {
 		return registration, err
 	}
+	parentOptions := parentRecord.options()
 	passwd, err := readRootOwnedConfigFile("/etc/passwd", 8<<20)
 	if err != nil {
 		return registration, err
@@ -646,7 +648,7 @@ func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, ser
 	if err := validateManagedSystemdPolicy(rootPath, serviceName, serviceGroup, runnerPath, uint64(rootFS.Type), serviceUnitBytes, mountUnitBytes); err != nil {
 		return registration, err
 	}
-	if err := verifyNoSystemdDropIns(filepath.Base(serviceUnitPath), filepath.Base(mountUnitPath)); err != nil {
+	if err := verifyNoSystemdDropIns(serviceUnitPath, mountUnitPath, D09ManagedPiSocketUnitPath); err != nil {
 		return registration, err
 	}
 	shellDigest, err := measureProtectedNonLoginShell(shell)
@@ -1237,12 +1239,13 @@ func verifyD09ManagedRootDescriptor(reg D09ManagedLiveRootRegistration, root *os
 	if err := syscall.Fstatfs(int(root.Fd()), &fs); err != nil || uint64(fs.Type) != reg.RootFilesystemMagic {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
-	rootMountID, err := descriptorMountID(root.Fd())
-	if err != nil || rootMountID != reg.RootMountID {
-		return errors.Join(ErrD09ManagedLiveRootRefused, err)
-	}
-	rootOptions, rootRO, err := mountOptionsForID(rootMountID)
-	if err != nil || rootRO || !hasMountOption(rootOptions, "nosuid") || !hasMountOption(rootOptions, "nodev") || DigestBytes([]byte(rootOptions)) != reg.RootMountOptionsDigest {
+	// Mount IDs are local to a mount namespace, and the service runs in its own,
+	// so the registration's measured-namespace RootMountID/ParentMountID are
+	// informational. The mount is bound by device, filesystem root, mount point,
+	// type, source and options instead, all of which are namespace-stable.
+	rootRecord, err := mountRecordForDescriptor(root)
+	if err != nil || rootRecord.readOnly() || !hasMountOption(rootRecord.options(), "nosuid") ||
+		!hasMountOption(rootRecord.options(), "nodev") || !rootRecord.matchesRegisteredOptions(reg.RootMountOptionsDigest, false) {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
 	parentFD, err := syscall.Openat(int(root.Fd()), "..", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
@@ -1267,12 +1270,10 @@ func verifyD09ManagedRootDescriptor(reg D09ManagedLiveRootRegistration, root *os
 	if err := syscall.Fstatfs(int(parent.Fd()), &parentFS); err != nil || uint64(parentFS.Type) != reg.ParentFilesystemMagic {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
-	parentMountID, err := descriptorMountID(parent.Fd())
-	if err != nil || parentMountID != reg.ParentMountID {
-		return errors.Join(ErrD09ManagedLiveRootRefused, err)
-	}
-	parentOptions, _, err := mountOptionsForID(parentMountID)
-	if err != nil || DigestBytes([]byte(parentOptions)) != reg.ParentMountOptionsDigest {
+	// The parent may be remounted read-only (and nosuid/nodev/noexec) by the
+	// service unit's ProtectSystem=strict; only that narrowing is accepted.
+	parentRecord, err := mountRecordForDescriptor(parent)
+	if err != nil || !parentRecord.matchesRegisteredOptions(reg.ParentMountOptionsDigest, true) {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
 	return nil
@@ -1330,7 +1331,7 @@ func verifyD09ManagedWriterProcess(reg D09ManagedLiveRootRegistration) error {
 	if err := validateManagedSystemdPolicy(reg.RootPath, reg.ServiceName, reg.ServiceGroup, reg.RunnerPath, reg.RootFilesystemMagic, serviceUnitBytes, mountUnitBytes); err != nil {
 		return err
 	}
-	if err := verifyNoSystemdDropIns(filepath.Base(reg.ServiceUnitPath), filepath.Base(reg.MountUnitPath)); err != nil {
+	if err := verifyNoSystemdDropIns(reg.ServiceUnitPath, reg.MountUnitPath, reg.ServiceSocket.SocketUnitPath); err != nil {
 		return err
 	}
 	if err := verifyD09ManagedServiceWritableDirectories(reg); err != nil {
@@ -1345,6 +1346,9 @@ func verifyD09ManagedWriterProcess(reg D09ManagedLiveRootRegistration) error {
 	}
 	cgroup, err := currentUnifiedCgroupPath()
 	if err != nil || cgroup != d09ManagedRunnerCgroupPath(reg.ServiceCgroupPath) {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	if err := enableManagedServiceCgroupControllers(reg.ServiceCgroupPath, reg.ServiceUID); err != nil {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
 	parentIdentity, err := measureManagedServiceCgroup(reg.ServiceCgroupPath, reg.ServiceUID)
@@ -1618,44 +1622,19 @@ func measureManagedRunnerCgroup(relative string, expectedUID int) (managedServic
 
 func measureManagedCgroup(relative string, expectedUID int, servicePar bool) (managedServiceCgroupIdentity, error) {
 	var identity managedServiceCgroupIdentity
-	if expectedUID <= 0 || !filepath.IsAbs(relative) || filepath.Clean(relative) != relative {
+	if expectedUID <= 0 {
 		return identity, ErrD09ManagedLiveRootRefused
 	}
-	for _, component := range strings.Split(strings.TrimPrefix(relative, string(os.PathSeparator)), string(os.PathSeparator)) {
-		if component == "" || component == "." || component == ".." {
-			return identity, ErrD09ManagedLiveRootRefused
-		}
-	}
-	data, err := os.ReadFile("/proc/self/mountinfo")
+	hostPath, err := managedCgroupHostPath(relative)
 	if err != nil {
 		return identity, err
 	}
-	var hostPath string
-	for _, line := range strings.Split(string(data), "\n") {
-		parts := strings.SplitN(line, " - ", 2)
-		if len(parts) != 2 || !strings.HasPrefix(parts[1], "cgroup2 ") {
-			continue
-		}
-		left := strings.Fields(parts[0])
-		if len(left) < 5 {
-			continue
-		}
-		rootPath := filepath.Clean(unescapeMountField(left[3]))
-		mountPath := filepath.Clean(unescapeMountField(left[4]))
-		if rootPath == "/" {
-			hostPath = filepath.Join(mountPath, strings.TrimPrefix(relative, string(os.PathSeparator)))
-		} else if relative == rootPath || strings.HasPrefix(relative, rootPath+string(os.PathSeparator)) {
-			remainder := strings.TrimPrefix(strings.TrimPrefix(relative, rootPath), string(os.PathSeparator))
-			hostPath = filepath.Join(mountPath, remainder)
-		}
-		if hostPath != "" {
-			break
-		}
+	var file *os.File
+	if servicePar {
+		file, err = openAbsoluteDirectoryNoSymlinks(hostPath)
+	} else {
+		file, err = openManagedRunnerCgroupLeaf(hostPath, expectedUID)
 	}
-	if hostPath == "" {
-		return identity, ErrD09ManagedLiveRootRefused
-	}
-	file, err := openAbsoluteDirectoryNoSymlinks(hostPath)
 	if err != nil {
 		return identity, err
 	}
@@ -1804,7 +1783,7 @@ func registeredLocalGroupGID(groupFile []byte, name string) (int, bool) {
 			continue
 		}
 		gid, err := strconv.Atoi(fields[2])
-		if err != nil || gid <= 0 {
+		if err != nil || (fields[0] == name && gid <= 0) {
 			return 0, false
 		}
 		groups = append(groups, struct {
@@ -2063,4 +2042,133 @@ func openRootOwnedConfigFile(path string, maximum int64) (*os.File, os.FileInfo,
 		return nil, nil, errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
 	return file, info, nil
+}
+
+// rootMountID is the mount ID of the held root in the current mount namespace.
+// Registration RootMountID is not comparable across namespaces, so run-scoped
+// evidence binds to this value, which the same process measures for the lease.
+func (v *VerifiedD09ManagedLiveRoot) rootMountID() (uint64, error) {
+	if v == nil {
+		return 0, ErrD09ManagedLiveRootRefused
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.closed || v.root == nil {
+		return 0, ErrD09ManagedLiveRootRefused
+	}
+	return descriptorMountID(v.root.Fd())
+}
+
+// managedCgroupHostPath maps a cgroup-namespace-relative cgroup path to its path
+// below the cgroup2 mount visible to this process.
+func managedCgroupHostPath(relative string) (string, error) {
+	if !filepath.IsAbs(relative) || filepath.Clean(relative) != relative {
+		return "", ErrD09ManagedLiveRootRefused
+	}
+	for _, component := range strings.Split(strings.TrimPrefix(relative, string(os.PathSeparator)), string(os.PathSeparator)) {
+		if component == "" || component == "." || component == ".." {
+			return "", ErrD09ManagedLiveRootRefused
+		}
+	}
+	data, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return "", err
+	}
+	var hostPath string
+	for _, line := range strings.Split(string(data), "\n") {
+		parts := strings.SplitN(line, " - ", 2)
+		if len(parts) != 2 || !strings.HasPrefix(parts[1], "cgroup2 ") {
+			continue
+		}
+		left := strings.Fields(parts[0])
+		if len(left) < 5 {
+			continue
+		}
+		rootPath := filepath.Clean(unescapeMountField(left[3]))
+		mountPath := filepath.Clean(unescapeMountField(left[4]))
+		if rootPath == "/" {
+			hostPath = filepath.Join(mountPath, strings.TrimPrefix(relative, string(os.PathSeparator)))
+		} else if relative == rootPath || strings.HasPrefix(relative, rootPath+string(os.PathSeparator)) {
+			remainder := strings.TrimPrefix(strings.TrimPrefix(relative, rootPath), string(os.PathSeparator))
+			hostPath = filepath.Join(mountPath, remainder)
+		}
+		if hostPath != "" {
+			return hostPath, nil
+		}
+	}
+	return "", ErrD09ManagedLiveRootRefused
+}
+
+// openManagedRunnerCgroupLeaf opens the runner leaf relative to its already
+// opened unit cgroup. With Delegate=yes systemd chowns the unit cgroup to the
+// service user, so the root-owned-ancestor walk of openAbsoluteDirectoryNoSymlinks
+// cannot be used for the leaf: the unit cgroup must be owned by the service UID
+// and every ancestor above it must still be root-owned and not group/other
+// writable, which that walk enforces for the unit cgroup.
+func openManagedRunnerCgroupLeaf(leafPath string, serviceUID int) (*os.File, error) {
+	if serviceUID <= 0 || filepath.Base(leafPath) != D09ManagedPiRunnerCgroupLeaf {
+		return nil, ErrD09ManagedLiveRootRefused
+	}
+	unit, err := openAbsoluteDirectoryNoSymlinks(filepath.Dir(leafPath))
+	if err != nil {
+		return nil, err
+	}
+	defer unit.Close()
+	return openManagedRunnerLeafBelow(unit, serviceUID)
+}
+
+func openManagedRunnerLeafBelow(unit *os.File, serviceUID int) (*os.File, error) {
+	info, err := unit.Stat()
+	if err != nil || !info.IsDir() {
+		return nil, errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(stat.Uid) != serviceUID || info.Mode().Perm()&0o022 != 0 {
+		return nil, ErrD09ManagedLiveRootRefused
+	}
+	fd, err := syscall.Openat(int(unit.Fd()), D09ManagedPiRunnerCgroupLeaf,
+		syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	return os.NewFile(uintptr(fd), D09ManagedPiRunnerCgroupLeaf), nil
+}
+
+// enableManagedServiceCgroupControllers enables exactly cpu, memory and pids on
+// the runner's own unit cgroup, which systemd delegates with the controllers
+// available but not enabled. It must run before the identity measurement
+// requires them, and only once the caller has proven it runs in the registered
+// runner leaf of that cgroup.
+func enableManagedServiceCgroupControllers(relative string, serviceUID int) error {
+	hostPath, err := managedCgroupHostPath(relative)
+	if err != nil {
+		return err
+	}
+	unit, err := openAbsoluteDirectoryNoSymlinks(hostPath)
+	if err != nil {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	defer unit.Close()
+	if err := requireCgroup2Descriptor(unit); err != nil {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	return enableControllersOnServiceCgroup(unit, serviceUID)
+}
+
+func enableControllersOnServiceCgroup(unit *os.File, serviceUID int) error {
+	info, err := unit.Stat()
+	if err != nil || !info.IsDir() {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || serviceUID <= 0 || int(stat.Uid) != serviceUID {
+		return ErrD09ManagedLiveRootRefused
+	}
+	if err := requireNoCgroupProcesses(unit); err != nil {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	if err := enableD09SubtreeControllers(unit); err != nil {
+		return errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	return nil
 }

@@ -13,7 +13,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
-	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/sessionlaunch"
@@ -127,10 +126,7 @@ func initializeProductionFreshWorkflow(ctx context.Context, config productionSer
 			Path: entry.CommandJournalPath, Pin: commandPin, Sessions: commandSessions}},
 		ProductionProfile: profile, D09Template: template, GatePolicy: policy,
 		ProviderProfile: broker.Profile{ID: profile.ProviderProfile, Model: config.providerRoute.Model(), Route: config.providerRoute.Route(),
-			Messages: []openrouter.Message{
-				{Role: openrouter.System, Content: &systemPrompt},
-				{Role: openrouter.Developer, Content: &developerPrompt},
-			}, ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
+			Messages: providerbridge.InitialPromptMessages(config.providerRoute.Route(), systemPrompt, developerPrompt), ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 			ResponseIDIssuer: governedResponseIssuer, Generation: baseline.ID()},
 		ProviderRoute:         config.providerRoute,
 		ProviderProfileDigest: config.providerRoute.ProviderProfileDigest(profile.ProviderProfileDigest),

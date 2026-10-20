@@ -468,7 +468,7 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 	if !ok || viewStat.Ino == 0 {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrHostBindingsMissing
 	}
-	viewMountPath := fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), viewSource.Fd())
+	viewMountPath := viewPath // canonical path, not /proc/<pid>/fd: see descriptorPathForMount; the entrypoint checks TBOUND_COMMAND_VIEW_DEVICE/INODE
 
 	report, err := r.launcher.Probe(ctx)
 	if err != nil {
@@ -582,6 +582,9 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 	}
 	config.HostNamespaces = hostNamespaces
 	config.CgroupsPath = scopePath
+	if _, err := d09PodmanCgroupParent(scopePath); err != nil {
+		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+	}
 	outputToken := ""
 	if r.delta.NoReap() {
 		if outputToken, err = newD09OutputToken(); err != nil {
@@ -893,32 +896,58 @@ func newD09CIDFifo(path string) (*os.File, error) {
 	return os.OpenFile(path, os.O_RDWR|syscall.O_NONBLOCK, 0)
 }
 
+// readD09CIDFifo waits for the 64-hex container id podman writes to its cidfile
+// FIFO. The FIFO is opened O_RDWR by this process, so an early podman exit never
+// produces EOF, and a Go read on a pollable FIFO blocks in the poller without
+// returning EAGAIN. The read therefore runs in a goroutine and the wait ends with
+// the context or the timeout, whichever is first; the pending read is then
+// released through the read deadline.
 func readD09CIDFifo(ctx context.Context, fifo *os.File, timeout time.Duration) (string, error) {
 	if ctx == nil || fifo == nil {
 		return "", ErrProductionLauncherUnavailable
 	}
 	readCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	buffer := make([]byte, 256)
+	_ = fifo.SetReadDeadline(time.Time{}) // an earlier wait on this FIFO may have left an expired deadline
+	type readResult struct {
+		data []byte
+		err  error
+	}
 	for {
-		n, err := fifo.Read(buffer)
-		if n > 0 {
-			id := strings.TrimSpace(string(buffer[:n]))
-			if len(id) != 64 {
-				return "", errors.New("cidfile did not contain a complete 64-hex container id")
-			}
-			if _, err := hex.DecodeString(id); err != nil {
-				return "", errors.New("cidfile container id is not hexadecimal")
-			}
-			return id, nil
-		}
-		if err != nil && !errors.Is(err, syscall.EAGAIN) && !errors.Is(err, syscall.EWOULDBLOCK) {
-			return "", err
-		}
+		completed := make(chan readResult, 1)
+		go func() {
+			buffer := make([]byte, 256)
+			n, err := fifo.Read(buffer)
+			completed <- readResult{data: buffer[:n], err: err}
+		}()
 		select {
+		case result := <-completed:
+			if len(result.data) > 0 {
+				id := strings.TrimSpace(string(result.data))
+				if len(id) != 64 {
+					return "", errors.New("cidfile did not contain a complete 64-hex container id")
+				}
+				if _, err := hex.DecodeString(id); err != nil {
+					return "", errors.New("cidfile container id is not hexadecimal")
+				}
+				return id, nil
+			}
+			if result.err != nil && !errors.Is(result.err, syscall.EAGAIN) && !errors.Is(result.err, syscall.EWOULDBLOCK) {
+				return "", result.err
+			}
+			select {
+			case <-readCtx.Done():
+				return "", readCtx.Err()
+			case <-time.After(20 * time.Millisecond):
+			}
 		case <-readCtx.Done():
+			_ = fifo.SetReadDeadline(time.Now())
+			// Let the released read finish so it cannot take bytes meant for a later read.
+			select {
+			case <-completed:
+			case <-time.After(time.Second):
+			}
 			return "", readCtx.Err()
-		case <-time.After(20 * time.Millisecond):
 		}
 	}
 }
@@ -967,7 +996,7 @@ func d09CommandCellArgumentsDelta(plan d09DeltaPlan, config D09Config, name, cid
 		"--uidmap", strconv.Itoa(config.CellUID) + ":0:1", "--gidmap", strconv.Itoa(config.CellGID) + ":0:1",
 		"--user", uid + ":" + gid, "--workdir", "/work", "--preserve-fds", "3",
 		"--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777",
-		"--cgroup-parent", config.CgroupsPath,
+		"--cgroup-parent", d09PodmanCgroupParentOrSelf(config.CgroupsPath),
 		"--mount", "type=bind,src=" + viewPath + ",dst=/work,rw,bind-propagation=rprivate",
 		"-e", "HOME=" + PiWorkerCellHome, "-e", "TMPDIR=" + PiWorkerCellTemp, "-e", "LANG=C.UTF-8", "-e", "PI_OFFLINE=1",
 		"-e", "TBOUND_CELL_UID=" + uid, "-e", "TBOUND_CELL_GID=" + gid,
@@ -1011,7 +1040,9 @@ func d09CommandCellArgumentsDelta(plan d09DeltaPlan, config D09Config, name, cid
 		// operator reset find and remove exactly these containers (tbound trial reset).
 		args = append(args, "--label", D09NoReapContainerLabel, "--label", D09LeaseContainerLabelKey+"="+leaseID)
 	}
-	args = append(args, imageRef, entrypoint, spec.Executable)
+	// Pin the verified entrypoint explicitly; the image ENTRYPOINT would otherwise be followed by
+	// the entrypoint path again and the entrypoint requires argv[1] to be the signed command.
+	args = append(args, "--entrypoint", entrypoint, imageRef, spec.Executable)
 	return append(args, spec.Args...)
 }
 

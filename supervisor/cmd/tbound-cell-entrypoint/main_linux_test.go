@@ -108,6 +108,7 @@ func TestSignedNodeEnvironmentStripsHelperVars(t *testing.T) {
 // lacks the required ABI. It is not a unit fake of /proc/self/task.
 func TestLandlockTSYNCReachesEnforcement(t *testing.T) {
 	command := exec.Command(os.Args[0])
+	command.ExtraFiles = heldBinaryStandIn(t)
 	command.Env = append(os.Environ(),
 		"TBOUND_LL_CHILD=1",
 		"TBOUND_LANDLOCK_ABI=8",
@@ -172,6 +173,7 @@ func landlockNetChild(name string) int {
 func TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink(t *testing.T) {
 	for _, name := range []string{"", piruntime.D09CellDeltaNoReap, piruntime.D09CellDeltaNetSink} {
 		command := exec.Command(os.Args[0])
+		command.ExtraFiles = heldBinaryStandIn(t)
 		command.Env = append(os.Environ(), "TBOUND_LL_NET_CHILD="+name, "TBOUND_LANDLOCK_ABI=8",
 			"TBOUND_LANDLOCK_RO_PATH=/", "TBOUND_LANDLOCK_RW_PATH=/tmp")
 		if name == "" {
@@ -185,4 +187,89 @@ func TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink(t *testing.T) {
 			t.Errorf("delta %q: %v: %s", name, err, strings.TrimSpace(string(output)))
 		}
 	}
+}
+
+// Lines measured in a --network=none namespace on the guest kernel.
+const (
+	rejectDefaultIPv6 = "00000000000000000000000000000000 00 00000000000000000000000000000000 00 00000000000000000000000000000000 ffffffff 00000001 00000000 00200200       lo"
+	loopbackIPv6      = "00000000000000000000000000000001 80 00000000000000000000000000000000 00 00000000000000000000000000000000 00000000 00000002 00000000 80200001       lo"
+	ipv4Header        = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT"
+)
+
+func TestNoExternalRoutesAcceptsTheKernelsLoopbackRejectDefaults(t *testing.T) {
+	ipv6 := rejectDefaultIPv6 + "\n" + rejectDefaultIPv6 + "\n" + loopbackIPv6 + "\n"
+	if err := externalRouteIn(ipv4Header+"\n", ipv6); err != nil {
+		t.Fatalf("the empty IPv4 table with the kernel's reject ::/0 entries on lo was refused: %v", err)
+	}
+}
+
+func TestNoExternalRoutesStillRefusesRealDefaultsAndForeignInterfaces(t *testing.T) {
+	const accept = "00000000000000000000000000000001 80 00000000000000000000000000000000 00 00000000000000000000000000000000 00000000 00000002 00000000 80200001       lo"
+	for name, test := range map[string]struct{ ipv4, ipv6 string }{
+		"default IPv6 route without RTF_REJECT": {ipv4Header + "\n", "00000000000000000000000000000000 00 00000000000000000000000000000000 00 fe800000000000000000000000000001 00000400 00000001 00000000 00000003       lo\n"},
+		"unicast default flags 0x1 (RTF_UP)":    {ipv4Header + "\n", "00000000000000000000000000000000 00 00000000000000000000000000000000 00 00000000000000000000000000000000 00000400 00000001 00000000 00000001       lo\n"},
+		"reject default on another interface":   {ipv4Header + "\n", strings.Replace(rejectDefaultIPv6, "       lo", "       eth0", 1) + "\n"},
+		"unparsable flags":                      {ipv4Header + "\n", strings.Replace(rejectDefaultIPv6, "00200200", "zzzzzzzz", 1) + "\n"},
+		"IPv6 route on eth0":                    {ipv4Header + "\n", strings.Replace(accept, "       lo", "       eth0", 1) + "\n"},
+		"default IPv4 route":                    {ipv4Header + "\nlo\t00000000\t0100007F\t0003\t0\t0\t0\t00000000\t0\t0\t0\n", rejectDefaultIPv6 + "\n"},
+		"IPv4 route on eth0":                    {ipv4Header + "\neth0\t0000A8C0\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0\n", rejectDefaultIPv6 + "\n"},
+	} {
+		if err := externalRouteIn(test.ipv4, test.ipv6); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+}
+
+// heldBinaryStandIn is the descriptor the real launch passes at fd3 (the held Node binary): the
+// Landlock ruleset has a rule on it, so a child that applies the ruleset must have one open.
+func heldBinaryStandIn(t *testing.T) []*os.File {
+	t.Helper()
+	file, err := os.Open(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	return []*os.File{file}
+}
+
+// The held Node binary is on a host mount no path rule covers, so exec of /proc/self/fd/3 is
+// denied unless the ruleset names that descriptor, with exactly execute and read.
+func TestLandlockPlanAllowsExactlyExecuteAndReadOnTheHeldBinary(t *testing.T) {
+	for _, delta := range []piruntime.D09CellDelta{{}, mustDelta(t, piruntime.D09CellDeltaNoReap), mustDelta(t, piruntime.D09CellDeltaNetSink)} {
+		plan := planLandlock(delta, []string{"/usr"}, []string{"/work"})
+		if len(plan.heldFDRules) != 1 || plan.heldFDRules[0].fd != 3 ||
+			plan.heldFDRules[0].access != piruntime.D09LandlockFSExecute|piruntime.D09LandlockFSReadFile {
+			t.Fatalf("delta %q: held descriptor rules = %+v, want exactly fd 3 with execute|read", delta.Name(), plan.heldFDRules)
+		}
+		if err := checkHeldFDRule(plan.heldFDRules[0]); err != nil {
+			t.Fatalf("the planned rule was refused: %v", err)
+		}
+	}
+}
+
+func TestLandlockHeldDescriptorRuleRefusesMoreRightsAndOtherDescriptors(t *testing.T) {
+	execRead := piruntime.D09LandlockFSExecute | piruntime.D09LandlockFSReadFile
+	for name, rule := range map[string]landlockFDRule{
+		"write added":    {3, execRead | piruntime.D09LandlockFSWriteFile},
+		"truncate added": {3, execRead | piruntime.D09LandlockFSTruncate},
+		"read-dir added": {3, execRead | piruntime.D09LandlockFSReadDir},
+		"all rights":     {3, piruntime.D09LandlockHandledFS},
+		"no rights":      {3, 0},
+		"another fd":     {4, execRead},
+		"standard input": {0, execRead},
+		"negative fd":    {-1, execRead},
+	} {
+		if err := checkHeldFDRule(rule); err == nil {
+			t.Errorf("%s: rule %+v was accepted", name, rule)
+		}
+	}
+}
+
+func mustDelta(t *testing.T, name string) piruntime.D09CellDelta {
+	t.Helper()
+	delta, err := piruntime.ParseD09CellDelta(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return delta
 }

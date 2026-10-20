@@ -293,8 +293,7 @@ func combinedRecoveryProviderConfig(conversationID, generationID, treeDigest str
 func combinedRecoveryProviderProfile(generationID string) broker.Profile {
 	systemPrompt, developerPrompt := governedReplaySystem, governedReplayDeveloper
 	return broker.Profile{ID: combinedRecoveryProfile, Model: providerbridge.ApprovedModel,
-		Messages: []openrouter.Message{{Role: openrouter.System, Content: &systemPrompt},
-			{Role: openrouter.Developer, Content: &developerPrompt}},
+		Messages:     providerbridge.InitialPromptMessages(openrouter.Route{}, systemPrompt, developerPrompt),
 		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 		ResponseIDIssuer: governedResponseIssuer, Generation: generationID}
 }

@@ -62,11 +62,9 @@ func TestNearBoundExchangeAndMaximumCanonicalProjectionAppend(t *testing.T) {
 	developerPrompt := strings.Repeat("d", openrouter.MaxAssistantTextBytes)
 	userPrompt := strings.Repeat("u", MaxPromptBytes)
 	completionLimit := uint64(math.MaxInt32)
-	messages := []openrouter.Message{
-		{Role: openrouter.System, Content: &systemPrompt},
-		{Role: openrouter.Developer, Content: &developerPrompt},
-		{Role: openrouter.User, Content: &userPrompt},
-	}
+	// The engineering route sends the developer prompt as a second system message.
+	messages := append(InitialPromptMessages(openrouter.EngineeringRoute(), systemPrompt, developerPrompt),
+		openrouter.Message{Role: openrouter.User, Content: &userPrompt})
 	built, err := openrouter.BuildRequestWithCompletionLimit(ApprovedModel, messages, completionLimit)
 	if err != nil {
 		t.Fatalf("build maximum bounded request: %v", err)

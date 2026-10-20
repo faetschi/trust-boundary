@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 
 	"tbound/supervisor/internal/audit"
@@ -22,6 +23,10 @@ type ScriptTurn struct {
 	Tool       string          `json:"tool,omitempty"`
 	Arguments  json.RawMessage `json:"arguments,omitempty"`
 	Text       string          `json:"text,omitempty"`
+	// FailStatus, when set, makes the scripted transport answer that HTTP status with FailBody
+	// instead of a completion: failure injection for the offline provider (retry tests).
+	FailStatus int    `json:"fail_status,omitempty"`
+	FailBody   string `json:"fail_body,omitempty"`
 }
 
 // ScriptMessage is the part of one request message that a ScriptSource may read: the role, the text
@@ -144,6 +149,10 @@ func (d *scriptedDoer) Do(request *http.Request) (*http.Response, error) {
 	turn, err := d.source.Next(history)
 	if err != nil {
 		return nil, fmt.Errorf("scripted provider: %w", err)
+	}
+	if turn.FailStatus != 0 {
+		return &http.Response{StatusCode: turn.FailStatus, Header: make(http.Header),
+			Body: io.NopCloser(strings.NewReader(turn.FailBody)), Request: request}, nil
 	}
 	if turn.ResponseID == "" {
 		turn.ResponseID = fmt.Sprintf("scripted-response-%d", n)

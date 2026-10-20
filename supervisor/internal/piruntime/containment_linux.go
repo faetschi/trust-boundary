@@ -416,7 +416,10 @@ func (l *D09PodmanCrunLauncher) isClosed() bool {
 func (*D09PodmanCrunLauncher) requirePerLaunchProof() {}
 
 type d09LaunchRecord struct {
-	proof          D09TCBProof
+	proof D09TCBProof
+	// hostNamespaces are the host namespace inodes captured when this cell was launched. The
+	// proof's namespaces are checked against them, not against a re-capture at validation time.
+	hostNamespaces D09NamespaceInodes
 	pidfd          *os.File
 	stdout         io.ReadCloser
 	proofRead      bool
@@ -913,7 +916,9 @@ func (s *d09OwnedCommandScope) Remove() error {
 	}
 	s.removing = true
 	s.mu.Unlock()
-	err := unlinkatDir(int(s.scope.root.Fd()), s.name)
+	removeContext, cancelRemove := context.WithTimeout(context.Background(), d09CleanupTimeout)
+	err := removeSettledCgroup(removeContext, int(s.scope.root.Fd()), s.name)
+	cancelRemove()
 	s.mu.Lock()
 	s.removing = false
 	if err == nil {
@@ -955,7 +960,7 @@ func (l *D09PodmanCrunLauncher) admitsFrozenLinuxProfile(profile HostProfile) er
 	if !managedRootBound {
 		return fmt.Errorf("%w: trusted composition has not bound the verified managed live-root registration", ErrD09ManagedLiveRootRefused)
 	}
-	report, err := l.Probe(context.Background())
+	_, err := l.Probe(context.Background())
 	if err != nil {
 		return err
 	}
@@ -963,8 +968,7 @@ func (l *D09PodmanCrunLauncher) admitsFrozenLinuxProfile(profile HostProfile) er
 		if profile.ChildExecutable != PiWorkerCellExecutable {
 			return fmt.Errorf("%w: production D09 host fd3 executable path differs from the frozen in-image Node path", ErrHostProfileMismatch)
 		}
-		if err := l.verifyImageWorkerExecutable(context.Background(), report.PodmanPath, report.ImageRef,
-			profile.ChildExecutable, profile.ExecutableDigest); err != nil {
+		if err := l.verifyImageWorkerExecutable(context.Background(), profile.ChildExecutable, profile.ExecutableDigest); err != nil {
 			return err
 		}
 	}
@@ -1020,12 +1024,23 @@ func (l *D09PodmanCrunLauncher) Probe(ctx context.Context) (D09Report, error) {
 	config := l.config.normalized()
 	report := D09Report{}
 	var missing []D09Prerequisite
+	var managedRootErr error
+	if l.productionRunner() {
+		// The template config carries no service uid/gid; they come from the signed
+		// registration the managed root verifies against, so resolve it before the
+		// identity check instead of waiting for BindManagedLiveRoot.
+		registration, err := l.ensureManagedLiveRoot(ctx)
+		managedRootErr = err
+		if err == nil {
+			config = withRegisteredServiceIdentity(config, registration)
+		}
+	}
 	if err := validateD09CellIdentity(config); err != nil {
 		missing = append(missing, D09Prerequisite{Name: "cell-identity", Detail: err.Error()})
 	}
 	if l.productionRunner() {
-		if _, err := l.ensureManagedLiveRoot(ctx); err != nil {
-			missing = append(missing, D09Prerequisite{Name: "managed-live-root", Detail: err.Error()})
+		if managedRootErr != nil {
+			missing = append(missing, D09Prerequisite{Name: "managed-live-root", Detail: managedRootErr.Error()})
 		}
 		abi, abiErr := D09LandlockKernelABI()
 		if abiErr != nil {
@@ -1140,7 +1155,7 @@ func (l *D09PodmanCrunLauncher) Probe(ctx context.Context) (D09Report, error) {
 				missing = append(missing, D09Prerequisite{Name: "seccomp-profile", Detail: err.Error()})
 			}
 			if l.productionRunner() {
-				if err := l.verifyEntrypointInImage(ctx, report.PodmanPath, report.ImageRef, config); err != nil {
+				if err := l.verifyEntrypointInImage(ctx, config); err != nil {
 					missing = append(missing, D09Prerequisite{Name: "entrypoint", Detail: err.Error()})
 				}
 			}
@@ -1168,92 +1183,38 @@ func (l *D09PodmanCrunLauncher) Probe(ctx context.Context) (D09Report, error) {
 	return report, nil
 }
 
-// verifyEntrypointInImage temporarily mounts the exact pinned, already-cosign-
-// verified image through the verified Podman binary, hashes the entrypoint
-// bytes actually stored in that image against the protected template digest,
-// then unmounts the image. Any mount/hash/unmount ambiguity fails admission.
-func (l *D09PodmanCrunLauncher) verifyEntrypointInImage(ctx context.Context, podmanPath, imageRef string, config D09Config) error {
-	mounted := l.runner.Run(ctx, podmanPath, "image", "mount", imageRef)
-	if mounted.Err != nil || mounted.ExitCode != 0 {
-		return errors.Join(errors.New("mount pinned image to verify signed in-image entrypoint"), mounted.Err)
-	}
-	root := strings.TrimSpace(string(mounted.Stdout))
-	unmount := func() error {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), d09CleanupTimeout)
-		defer cancel()
-		result := l.runner.Run(cleanupCtx, podmanPath, "image", "unmount", imageRef)
-		if result.Err != nil || result.ExitCode != 0 {
-			return errors.Join(errors.New("unmount pinned image after entrypoint verification"), result.Err)
-		}
-		return nil
-	}
-	if !filepath.IsAbs(root) {
-		return errors.Join(errors.New("podman image mount returned no absolute image root"), unmount())
-	}
-	entry := filepath.Join(root, strings.TrimPrefix(filepath.Clean(config.EntrypointPath), string(os.PathSeparator)))
-	digest, err := hashImageExecutable(entry)
-	if err != nil {
-		return errors.Join(err, unmount())
-	}
-	if digest != config.EntrypointDigest {
-		return errors.Join(fmt.Errorf("in-image entrypoint digest mismatch: got %s want %s", digest, config.EntrypointDigest), unmount())
-	}
-	return unmount()
+// verifyEntrypointInImage hashes the entrypoint stored in the exact pinned,
+// cosign-verified OCI layout against the protected template digest. Rootless
+// podman cannot mount an image outside `podman unshare`, and a mount made there
+// would be invisible to this process, so the bytes come from the verified
+// layers (the store image is bound to the same manifest digest by selectImage).
+func (l *D09PodmanCrunLauncher) verifyEntrypointInImage(ctx context.Context, config D09Config) error {
+	return l.verifyImageFile(ctx, config, config.EntrypointPath, config.EntrypointDigest, "in-image entrypoint")
 }
 
 // verifyImageWorkerExecutable binds the held host fd3 Node bytes to the exact
 // executable at the signed in-image path. Both identities must be the same
 // digest: image signature verification alone cannot authenticate a different
 // host binary which the entrypoint actually executes through fd3.
-func (l *D09PodmanCrunLauncher) verifyImageWorkerExecutable(ctx context.Context, podmanPath, imageRef, executablePath, expectedDigest string) error {
+func (l *D09PodmanCrunLauncher) verifyImageWorkerExecutable(ctx context.Context, executablePath, expectedDigest string) error {
 	if ctx == nil || !filepath.IsAbs(executablePath) || filepath.Clean(executablePath) != executablePath || !validDigest(expectedDigest) {
 		return ErrHostProfileMismatch
 	}
-	mounted := l.runner.Run(ctx, podmanPath, "image", "mount", imageRef)
-	if mounted.Err != nil || mounted.ExitCode != 0 {
-		return errors.Join(errors.New("mount pinned image to verify the fd3 worker executable identity"), mounted.Err)
-	}
-	root := strings.TrimSpace(string(mounted.Stdout))
-	unmount := func() error {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), d09CleanupTimeout)
-		defer cancel()
-		result := l.runner.Run(cleanupCtx, podmanPath, "image", "unmount", imageRef)
-		if result.Err != nil || result.ExitCode != 0 {
-			return errors.Join(errors.New("unmount pinned image after fd3 worker identity verification"), result.Err)
-		}
-		return nil
-	}
-	if !filepath.IsAbs(root) {
-		return errors.Join(errors.New("podman image mount returned no absolute image root for fd3 verification"), unmount())
-	}
-	imageExecutable := filepath.Join(root, strings.TrimPrefix(executablePath, string(os.PathSeparator)))
-	digest, err := hashImageExecutable(imageExecutable)
-	if err != nil || digest != expectedDigest {
-		return errors.Join(fmt.Errorf("in-image fd3 executable digest mismatch: got %s want %s", digest, expectedDigest), err, unmount())
-	}
-	return unmount()
+	return l.verifyImageFile(ctx, l.config, executablePath, expectedDigest, "in-image fd3 executable")
 }
 
-func hashImageExecutable(path string) (string, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
-		return "", errors.New("in-image entrypoint is not a non-writable executable regular file")
-	}
-	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+func (l *D09PodmanCrunLauncher) verifyImageFile(ctx context.Context, config D09Config, imagePath, expectedDigest, what string) error {
+	file, err := readOCIImageFile(ctx, config.OCILayoutPath, config.ExpectedImageDigest, filepath.Clean(imagePath), l.productionRunner())
 	if err != nil {
-		return "", err
+		return fmt.Errorf("%s: %w", what, err)
 	}
-	defer file.Close()
-	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) {
-		return "", errors.New("in-image entrypoint changed while opening")
+	if file.mode&0o111 == 0 || file.mode&0o022 != 0 {
+		return fmt.Errorf("%s is not a non-writable executable regular file", what)
 	}
-	hash := sha256.New()
-	n, err := io.Copy(hash, io.LimitReader(file, (128<<20)+1))
-	if err != nil || n != info.Size() {
-		return "", errors.Join(errors.New("in-image entrypoint read was incomplete or oversized"), err)
+	if file.digest != expectedDigest {
+		return fmt.Errorf("%s digest mismatch: got %s want %s", what, file.digest, expectedDigest)
 	}
-	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
+	return nil
 }
 
 type d09PodmanInfo struct {
@@ -1690,8 +1651,10 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 			return
 		}
 		if launchCmd != nil && launchCmd.Process != nil {
+			record := l.launchRecord(launchCmd)
 			returnedErr = errors.Join(returnedErr,
 				l.cleanupFailedContainer(launchCmd, launchPodman, launchName))
+			returnedErr = errors.Join(returnedErr, l.failedLaunchExitStatus(record))
 			return
 		}
 		if stdoutPipe != nil {
@@ -1751,6 +1714,9 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		return nil, D09TCBProof{}, fmt.Errorf("resolve held D09 cgroup scope: %w", err)
 	}
 	config.CgroupsPath = scopePath
+	if _, err := d09PodmanCgroupParent(scopePath); err != nil {
+		return nil, D09TCBProof{}, err
+	}
 	if profile.WorkingDirectory != PiWorkerCellDefaultWorkingDirectory {
 		return nil, D09TCBProof{}, fmt.Errorf("%w: D09 worker CWD must be the registered consumer mount %s", ErrHostProfileMismatch, PiWorkerCellDefaultWorkingDirectory)
 	}
@@ -1832,22 +1798,27 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		return nil, D09TCBProof{}, fmt.Errorf("start D09 rootless Podman/crun cell: %w", startErr)
 	}
 	_ = proofWrite.Close()
-	cid, err := readD09CIDFifo(ctx, cidFile, d09CommandStartTimeout)
+	// Everything below waits on podman or on the cell it starts. If podman exits first
+	// (a failed mount, a refused image), nothing will ever answer, so each wait also ends
+	// as soon as the podman process has exited instead of running to a deadline.
+	watchCtx, stopWatch := contextEndingWithProcess(ctx, command.Process.Pid)
+	defer stopWatch()
+	cid, err := readD09CIDFifo(watchCtx, cidFile, d09CommandStartTimeout)
 	if err != nil {
-		return nil, D09TCBProof{}, fmt.Errorf("observe D09 worker container id: %w", err)
+		return nil, D09TCBProof{}, fmt.Errorf("observe D09 worker container id: %w", errors.Join(err, context.Cause(watchCtx)))
 	}
-	inspectCtx, cancelInspect := context.WithTimeout(ctx, d09WorkerProofTimeout)
+	inspectCtx, cancelInspect := context.WithTimeout(watchCtx, d09WorkerProofTimeout)
 	containerState, err := inspectContainer(inspectCtx, report.PodmanPath, cid)
 	cancelInspect()
 	if err != nil || containerState.State.Status != "running" || containerState.State.PID <= 0 ||
 		strings.TrimPrefix(containerState.Name, "/") != name {
 		return nil, D09TCBProof{}, errors.Join(fmt.Errorf("D09 worker container identity/state is not running as the requested cell"), err)
 	}
-	startupProofCtx, cancelStartupProof := context.WithTimeout(ctx, d09WorkerProofTimeout)
+	startupProofCtx, cancelStartupProof := context.WithTimeout(watchCtx, d09WorkerProofTimeout)
 	proof, err := readD09TCBProofContext(startupProofCtx, proofRead)
 	cancelStartupProof()
 	if err != nil {
-		return nil, D09TCBProof{}, fmt.Errorf("captured TCB proof is missing or invalid: %w", err)
+		return nil, D09TCBProof{}, fmt.Errorf("captured TCB proof is missing or invalid: %w", errors.Join(err, context.Cause(watchCtx)))
 	}
 	proof.ContainerName = name
 	proof.LauncherProcessPID = command.Process.Pid
@@ -1918,11 +1889,23 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		_ = syscall.Close(pidfd)
 		return nil, D09TCBProof{}, fmt.Errorf("%w: %v", ErrProductionLauncherUnavailable, err)
 	}
-	l.storeLaunchProof(command, proof, os.NewFile(uintptr(pidfd), "d09-worker-pidfd"), stdoutPipe.reader)
+	l.storeLaunchProof(command, proof, config.HostNamespaces, os.NewFile(uintptr(pidfd), "d09-worker-pidfd"), stdoutPipe.reader)
 	launchSucceeded = true
 	return command, proof, nil
 }
 
+// descriptorPathForMount returns the canonical absolute path the held directory
+// descriptor resolves to, for use as a Podman bind-mount source. It is not a
+// /proc/<pid>/fd path: rootless Podman re-execs into its own user namespace, from
+// which the service's /proc/<pid>/fd fails the ptrace access check.
+//
+// A path can be swapped between this resolution and the mount, so the path is not
+// the authority. The cell entrypoint compares the device and inode of the directory
+// it actually received with TBOUND_WORKER_DEVICE/INODE and TBOUND_RUNTIME_DEVICE/INODE
+// (command cells: TBOUND_COMMAND_VIEW_DEVICE/INODE), which the launcher takes from
+// the held descriptors, and refuses to start otherwise (cmd/tbound-cell-entrypoint,
+// "consumer mount identities differ"). That check covers both the worker exposure and
+// the runtime mount, so a swap fails closed before the proof is written.
 func descriptorPathForMount(file *os.File) (string, error) {
 	if file == nil {
 		return "", ErrHostBindingsMissing
@@ -1931,17 +1914,17 @@ func descriptorPathForMount(file *os.File) (string, error) {
 	if err != nil || !info.IsDir() {
 		return "", ErrHostBindingsMissing
 	}
-	path := fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), file.Fd())
-	link, err := os.Readlink(path)
-	if err != nil || !filepath.IsAbs(link) || strings.HasSuffix(link, " (deleted)") || strings.Contains(link, ",") {
+	link, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), file.Fd()))
+	if err != nil || !filepath.IsAbs(link) || filepath.Clean(link) != link || strings.HasSuffix(link, " (deleted)") ||
+		strings.ContainsAny(link, ",\n\x00") {
 		return "", ErrHostBindingsMissing
 	}
-	return path, nil
+	return link, nil
 }
 
 // storeLaunchProof registers the captured, validated proof against the exact
 // launched command so it can be retrieved once and never for a different launch.
-func (l *D09PodmanCrunLauncher) storeLaunchProof(cmd *exec.Cmd, proof D09TCBProof, pidfd *os.File, stdout io.ReadCloser) {
+func (l *D09PodmanCrunLauncher) storeLaunchProof(cmd *exec.Cmd, proof D09TCBProof, hostNamespaces D09NamespaceInodes, pidfd *os.File, stdout io.ReadCloser) {
 	if l == nil || cmd == nil {
 		return
 	}
@@ -1956,6 +1939,7 @@ func (l *D09PodmanCrunLauncher) storeLaunchProof(cmd *exec.Cmd, proof D09TCBProo
 		l.proofs[cmd] = record
 	}
 	record.proof = proof
+	record.hostNamespaces = hostNamespaces
 	record.pidfd = pidfd
 	record.stdout = stdout
 }
@@ -2040,7 +2024,13 @@ func (l *D09PodmanCrunLauncher) ValidateLaunchProof(value any, profile HostProfi
 	if err := validateD09TCBProof(proof, l.config.normalized()); err != nil {
 		return err
 	}
-	return validateD09NamespaceProof(proof, l.config.HostNamespaces)
+	// StartVerified captured the host namespaces on its own copy of the config and kept them with
+	// this launch's record; the launcher's base config never holds them.
+	host := l.config.HostNamespaces
+	if record := l.launchRecord(cmd); record != nil && record.hostNamespaces != (D09NamespaceInodes{}) {
+		host = record.hostNamespaces
+	}
+	return validateD09NamespaceProof(proof, host)
 }
 
 type d09LaunchSettler struct {
@@ -2095,9 +2085,19 @@ func (s d09LaunchSettler) Settle(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// readD09TCBProof reads the single strict-JSON proof line the entrypoint writes
-// on fd10 and closes before exec.
+// readD09TCBProof reads the single strict-JSON proof line the entrypoint writes on fd10, then
+// closes the host's read end so nothing written later is parsed and later writers get EPIPE.
+//
+// It does not wait for EOF. podman's monitor (conmon) holds its own copy of every --preserve-fds
+// descriptor for the whole container lifetime, so the pipe never reaches EOF while the cell runs.
+// The guarantee does not rest on EOF: the entrypoint closes fd10 in the cell before it execs Node
+// (a close error is fatal there), so Node never holds the descriptor, and the only other holder is
+// the trusted conmon, which never writes to it. A byte already buffered behind the proof line is
+// still refused.
 func readD09TCBProof(reader io.Reader) (D09TCBProof, error) {
+	if closer, ok := reader.(io.Closer); ok {
+		defer closer.Close()
+	}
 	buffered := bufio.NewReaderSize(reader, 4096)
 	raw, err := buffered.ReadSlice('\n')
 	if err != nil {
@@ -2116,8 +2116,8 @@ func readD09TCBProof(reader io.Reader) (D09TCBProof, error) {
 	if err := decoder.Decode(&proof); err != nil {
 		return D09TCBProof{}, fmt.Errorf("decode TCB proof: %w", err)
 	}
-	if _, err := buffered.ReadByte(); !errors.Is(err, io.EOF) {
-		return D09TCBProof{}, fmt.Errorf("entrypoint proof pipe was not closed before worker exec")
+	if buffered.Buffered() != 0 {
+		return D09TCBProof{}, errors.New("entrypoint proof pipe carried data after the proof line")
 	}
 	return proof, nil
 }
@@ -2452,6 +2452,9 @@ func d09ContainerArgumentsAtWithEnv(config D09Config, name, imageRef string, env
 	}
 	vector := []string{
 		"run", "--name", name,
+		// Pi runs --mode rpc and reads its requests on stdin, which podman forwards only with
+		// --interactive. No -t: stdin is a pipe, not a terminal.
+		"--interactive",
 		"--runtime", config.CrunPath,
 		"--pull=never",
 		"--network=none",
@@ -2477,7 +2480,7 @@ func d09ContainerArgumentsAtWithEnv(config D09Config, name, imageRef string, env
 	}
 	vector = append(vector, "--rm")
 	if strings.TrimSpace(config.CgroupsPath) != "" {
-		vector = append(vector, "--cgroup-parent", config.CgroupsPath)
+		vector = append(vector, "--cgroup-parent", d09PodmanCgroupParentOrSelf(config.CgroupsPath))
 	}
 	for _, item := range d09EnvironmentArguments(environment) {
 		vector = append(vector, "-e", item)
@@ -2502,11 +2505,10 @@ func d09ContainerArgumentsAtWithEnv(config D09Config, name, imageRef string, env
 	for _, mount := range mounts {
 		vector = append(vector, "--mount", mount)
 	}
-	vector = append(vector,
-		imageRef,
-		entrypoint,
-		"/proc/self/fd/3",
-	)
+	// The image declares ENTRYPOINT, and podman runs ENTRYPOINT plus the trailing words.
+	// Naming the verified entrypoint path explicitly pins it regardless of the image config,
+	// and leaves argv[1] as the held fd3 binary the entrypoint requires.
+	vector = append(vector, "--entrypoint", entrypoint, imageRef, "/proc/self/fd/3")
 	return append(vector, arguments...)
 }
 
@@ -2556,6 +2558,14 @@ func d09ProbeEnv() []string {
 	env := []string{"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}
 	for _, key := range allow {
 		if value, ok := os.LookupEnv(key); ok {
+			env = append(env, key+"="+value)
+		}
+	}
+	// The managed service pins its podman configuration in its unit environment.
+	// Podman must see exactly those values, or it silently falls back to the
+	// default graphroot and network directories; any other inherited value is dropped.
+	for key, pinned := range d09PinnedPodmanEnv {
+		if value, ok := os.LookupEnv(key); ok && value == pinned {
 			env = append(env, key+"="+value)
 		}
 	}
@@ -2728,4 +2738,26 @@ func (s *d09OwnedCommandScope) populated() (bool, error) {
 		return false, ErrCgroupScopeRefused
 	}
 	return readCgroupPopulated(s.scope.file)
+}
+
+// withRegisteredServiceIdentity fills the user-namespace host uid/gid from the
+// verified registration when the launcher config, built from the registered
+// template, does not carry them yet. It only fills zero values and only for the
+// registration the config is bound to; validateD09CellIdentity then still
+// requires them to reproduce the signed mapping digest.
+func withRegisteredServiceIdentity(config D09Config, registration D09ManagedLiveRootRegistration) D09Config {
+	if config.UserNamespaceHostUID == 0 && config.UserNamespaceHostGID == 0 &&
+		registration.Digest != "" && registration.Digest == config.ManagedLiveRootRegistrationDigest {
+		config.UserNamespaceHostUID = registration.ServiceUID
+		config.UserNamespaceHostGID = registration.ServiceGID
+	}
+	return config
+}
+
+// d09PinnedPodmanEnv are the podman variables the signed managed service config
+// pins (containers_conf_path, storage_conf_path, xdg_cache_home).
+var d09PinnedPodmanEnv = map[string]string{
+	"CONTAINERS_CONF":         D09ManagedPiContainersConfPath,
+	"CONTAINERS_STORAGE_CONF": D09ManagedPiStorageConfPath,
+	"XDG_CACHE_HOME":          D09ManagedPiPodmanCacheHome,
 }

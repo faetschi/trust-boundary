@@ -114,6 +114,7 @@ type ExchangeRecord struct {
 	responseBody []byte
 	responseSet  bool
 	failure      string
+	retryAfter   string
 }
 
 func (r ExchangeRecord) Request() RequestRecord { return cloneRequestRecord(r.request) }
@@ -121,6 +122,9 @@ func (r ExchangeRecord) StatusCode() int        { return r.statusCode }
 func (r ExchangeRecord) HasResponse() bool      { return r.responseSet }
 func (r ExchangeRecord) ResponseBody() []byte   { return append([]byte(nil), r.responseBody...) }
 func (r ExchangeRecord) Failure() string        { return r.failure }
+
+// RetryAfter is the bounded Retry-After header value of the response, as sent.
+func (r ExchangeRecord) RetryAfter() string { return r.retryAfter }
 
 // Broker serializes provider exchanges and proposal correlation for one
 // registered profile/session. A valid provider tool call is admitted to the
@@ -253,6 +257,9 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	}
 	record := &b.records[recordIndex]
 	record.statusCode = response.StatusCode
+	if value := response.Header.Get("Retry-After"); len(value) <= 32 {
+		record.retryAfter = value
+	}
 	record.responseSet = true
 	if response.Request != nil && response.Request.URL != nil &&
 		(response.Request.Method != http.MethodPost || response.Request.URL.String() != b.profile.Route.Resolved().Endpoint) {

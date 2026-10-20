@@ -21,6 +21,9 @@ type DevelopmentProviderTurn struct {
 	Tool       string          `json:"tool,omitempty"`
 	Arguments  json.RawMessage `json:"arguments,omitempty"`
 	Text       string          `json:"text,omitempty"`
+	// FailStatus and FailBody inject a provider HTTP failure (see ScriptTurn).
+	FailStatus int    `json:"fail_status,omitempty"`
+	FailBody   string `json:"fail_body,omitempty"`
 }
 
 // NewDevelopmentOfflineConversation constructs a Conversation whose provider
@@ -45,11 +48,12 @@ func NewDevelopmentOfflineConversation(cfg Config, journal *audit.Journal, turns
 	}
 	copied := make([]ScriptTurn, len(turns))
 	for index, turn := range turns {
-		if turn.ResponseID == "" {
+		if turn.ResponseID == "" && turn.FailStatus == 0 {
 			return nil, errors.New("development offline turn requires a response ID")
 		}
 		copied[index] = ScriptTurn{ResponseID: turn.ResponseID, CallID: turn.CallID, Tool: turn.Tool,
-			Arguments: append(json.RawMessage(nil), turn.Arguments...), Text: turn.Text}
+			Arguments: append(json.RawMessage(nil), turn.Arguments...), Text: turn.Text,
+			FailStatus: turn.FailStatus, FailBody: turn.FailBody}
 	}
 	return NewScriptedConversation(cfg, journal, &developmentSource{turns: copied})
 }
