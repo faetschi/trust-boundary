@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
 	"tbound/supervisor/internal/broker"
 )
@@ -20,6 +23,8 @@ import (
 // durably by a provider_exchange_retryable_failure record that binds that reservation, so the
 // journal never has two open reservations and replay can prove every attempt.
 //
+//   - a 429 is eligible only with a Retry-After of at most MaxRetryAfter whole seconds, which is
+//     waited out before the next attempt (the context ends the wait);
 //   - at most MaxProviderRetries extra attempts per turn, then the existing failure path
 //     (provider_exchange_unknown) applies to the last attempt;
 //   - never after a 200 or any streamed/completion byte, never for other 4xx, never for a
@@ -44,7 +49,7 @@ const (
 // RetryableProviderFailure reports whether an HTTP response that is not a completion may be
 // retried: 502, 503 and 504, or 422 whose body says the endpoint is unavailable. A body that
 // carries stream or completion content is never retryable.
-func RetryableProviderFailure(status int, body []byte) bool {
+func RetryableProviderFailure(status int, body []byte, retryAfter string) bool {
 	if len(body) > retryFailureBodyLimit || bytes.HasPrefix(bytes.TrimSpace(body), []byte("data:")) ||
 		bytes.Contains(body, []byte(`"choices"`)) {
 		return false
@@ -54,15 +59,46 @@ func RetryableProviderFailure(status int, body []byte) bool {
 		return true
 	case 422:
 		return bytes.Contains(body, []byte("Endpoint is unavailable"))
+	case 429:
+		_, ok := rateLimitDelay(retryAfter)
+		return ok
 	}
 	return false
+}
+
+// MaxRetryAfter bounds the Retry-After a 429 may carry for the attempt to be repeated.
+const MaxRetryAfter = 10 * time.Second
+
+// rateLimitDelay parses a Retry-After in whole seconds, 0 to MaxRetryAfter. An HTTP date, a longer
+// delay or anything else is not eligible.
+func rateLimitDelay(value string) (time.Duration, bool) {
+	seconds, err := strconv.ParseUint(strings.TrimSpace(value), 10, 32)
+	if err != nil || time.Duration(seconds)*time.Second > MaxRetryAfter {
+		return 0, false
+	}
+	return time.Duration(seconds) * time.Second, true
+}
+
+// retryWait waits before the next attempt; a seam for tests.
+var retryWait = func(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func retryableExchange(records []broker.ExchangeRecord) bool {
 	if len(records) != 1 || !records[0].HasResponse() {
 		return false
 	}
-	return RetryableProviderFailure(records[0].StatusCode(), records[0].ResponseBody())
+	return RetryableProviderFailure(records[0].StatusCode(), records[0].ResponseBody(), records[0].RetryAfter())
 }
 
 type exchangeRetryEvidence struct {
@@ -72,6 +108,7 @@ type exchangeRetryEvidence struct {
 	Request    requestEvidence `json:"request"`
 	StatusCode int             `json:"status_code"`
 	Response   []byte          `json:"response"`
+	RetryAfter string          `json:"retry_after,omitempty"`
 	HostCall   HostCallBinding `json:"host_call"`
 }
 
@@ -84,7 +121,7 @@ func (c *Conversation) recordRetryableFailureLocked(ctx context.Context, records
 	}
 	evidence := exchangeRetryEvidence{WorkflowID: c.cfg.WorkflowID, Turn: c.turns + 1, Attempt: attempt,
 		Request: requestEvidenceFromBroker(records[0].Request()), StatusCode: records[0].StatusCode(),
-		Response: records[0].ResponseBody(), HostCall: binding}
+		Response: records[0].ResponseBody(), RetryAfter: records[0].RetryAfter(), HostCall: binding}
 	data, err := json.Marshal(evidence)
 	if err != nil {
 		return fmt.Errorf("encode retryable provider failure: %w", err)
@@ -95,6 +132,12 @@ func (c *Conversation) recordRetryableFailureLocked(ctx context.Context, records
 	}
 	if err := c.cfg.CompleteHostCall(ctx, HostCallCompletion{Binding: binding, OutcomeDigest: record.Hash}); err != nil {
 		return fmt.Errorf("settle failed provider attempt reservation before the next attempt: %w", err)
+	}
+	// A rate-limited attempt is repeated only after the delay the provider named (at most MaxRetryAfter).
+	if delay, ok := rateLimitDelay(evidence.RetryAfter); ok && evidence.StatusCode == 429 {
+		if err := retryWait(ctx, delay); err != nil {
+			return fmt.Errorf("wait out the provider rate limit: %w", err)
+		}
 	}
 	return nil
 }

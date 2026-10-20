@@ -378,7 +378,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			if err := unmarshalCanonicalEvent(record.Event.Data, &evidence); err != nil ||
 				evidence.WorkflowID != cfg.WorkflowID || evidence.Turn != providerSequence+1 || evidence.Attempt != turnRetries+1 ||
 				evidence.HostCall != pendingHostCall.Binding || !reflect.DeepEqual(evidence.Request, pendingHostCall.Request) ||
-				!RetryableProviderFailure(evidence.StatusCode, evidence.Response) ||
+				!RetryableProviderFailure(evidence.StatusCode, evidence.Response, evidence.RetryAfter) ||
 				verifyReplayEventID(record, cfg.ConversationID, exchangeRetryID, ordinal) != nil {
 				return TranscriptProjection{}, replayError("provider retryable failure does not bind its reserved host request")
 			}

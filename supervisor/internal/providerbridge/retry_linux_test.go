@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
@@ -69,27 +70,37 @@ func journalKinds(t *testing.T, journal *audit.Journal) []string {
 
 func TestRetryableFailureClassification(t *testing.T) {
 	for name, test := range map[string]struct {
-		status int
-		body   string
-		want   bool
+		status     int
+		body       string
+		retryAfter string
+		want       bool
 	}{
-		"502":                         {502, "", true},
-		"503 with the endpoint body":  {503, unavailableBody, true},
-		"503 bare":                    {503, "", true},
-		"504":                         {504, "", true},
-		"422 endpoint unavailable":    {422, unavailableBody, true},
-		"422 other":                   {422, `{"error":"invalid"}`, false},
-		"400":                         {400, unavailableBody, false},
-		"401":                         {401, "", false},
-		"429":                         {429, "", false},
-		"500":                         {500, unavailableBody, false},
-		"200":                         {200, "", false},
-		"503 carrying stream bytes":   {503, "data: {\"id\":\"x\"}\n\n", false},
-		"503 carrying a completion":   {503, `{"choices":[{}]}`, false},
-		"503 above the body bound":    {503, strings.Repeat("x", retryFailureBodyLimit+1), false},
-		"422 stream bytes and phrase": {422, "data: Endpoint is unavailable", false},
+		"502":                         {502, "", "", true},
+		"503 with the endpoint body":  {503, unavailableBody, "", true},
+		"503 bare":                    {503, "", "", true},
+		"504":                         {504, "", "", true},
+		"422 endpoint unavailable":    {422, unavailableBody, "", true},
+		"422 other":                   {422, `{"error":"invalid"}`, "", false},
+		"400":                         {400, unavailableBody, "", false},
+		"401":                         {401, "", "", false},
+		"429":                         {429, "", "", false},
+		"429 retry-after 0":           {429, "", "0", true},
+		"429 retry-after 3":           {429, "", "3", true},
+		"429 retry-after 10":          {429, "", "10", true},
+		"429 retry-after 11":          {429, "", "11", false},
+		"429 retry-after 3600":        {429, "", "3600", false},
+		"429 retry-after date":        {429, "", "Wed, 21 Oct 2026 07:28:00 GMT", false},
+		"429 retry-after -1":          {429, "", "-1", false},
+		"429 retry-after 1.5":         {429, "", "1.5", false},
+		"503 ignores retry-after":     {503, "", "3600", true},
+		"500":                         {500, unavailableBody, "", false},
+		"200":                         {200, "", "", false},
+		"503 carrying stream bytes":   {503, "data: {\"id\":\"x\"}\n\n", "", false},
+		"503 carrying a completion":   {503, `{"choices":[{}]}`, "", false},
+		"503 above the body bound":    {503, strings.Repeat("x", retryFailureBodyLimit+1), "", false},
+		"422 stream bytes and phrase": {422, "data: Endpoint is unavailable", "", false},
 	} {
-		if got := RetryableProviderFailure(test.status, []byte(test.body)); got != test.want {
+		if got := RetryableProviderFailure(test.status, []byte(test.body), test.retryAfter); got != test.want {
 			t.Errorf("%s: retryable = %v, want %v", name, got, test.want)
 		}
 	}
@@ -315,5 +326,65 @@ func TestJournalEndingAfterARetryableFailureReplaysToAwaitingExchange(t *testing
 	open := truncatedRetryJournal(t, journal, 2, func(*exchangeRetryEvidence) {})
 	if _, err := ReplayTranscript(open, pins, nil); !errors.Is(err, ErrTranscriptReplay) {
 		t.Fatalf("a journal ending with an open reservation replayed: %v", err)
+	}
+}
+
+func withRecordedRetryWait(t *testing.T) *[]time.Duration {
+	t.Helper()
+	var waits []time.Duration
+	original := retryWait
+	retryWait = func(_ context.Context, delay time.Duration) error { waits = append(waits, delay); return nil }
+	t.Cleanup(func() { retryWait = original })
+	return &waits
+}
+
+// A rate-limited attempt is repeated only when the provider names a short wait, which is honoured.
+func TestRateLimitedAttemptIsRetriedAfterItsRetryAfter(t *testing.T) {
+	waits := withRecordedRetryWait(t)
+	conversation, journal, doer, hooks, cfg := retryConversation(t, []fixtureResponse{
+		{failStatus: 429, retryAfter: "3"}, {failStatus: 503}, {responseID: "response-ok", text: "finished"},
+	})
+	turn, err := conversation.NextTurn(context.Background())
+	if err != nil || turn.AssistantText != "finished" {
+		t.Fatalf("turn = %+v, err = %v", turn, err)
+	}
+	if doer.call != 3 || len(hooks.reservations) != 3 || len(*waits) != 1 || (*waits)[0] != 3*time.Second {
+		t.Fatalf("attempts=%d reservations=%d waits=%v, want 3, 3 and one 3 s wait", doer.call, len(hooks.reservations), *waits)
+	}
+	projection, err := ReplayTranscript(journal, RecoveryPins{Config: cfg, Model: ApprovedModel,
+		Policy: recoveryTestPolicy(t, true), RequireHostCallReservations: true}, nil)
+	if err != nil || projection.ProviderRetries != 2 {
+		t.Fatalf("replay of a journal with a rate-limited retry: %+v, %v", projection, err)
+	}
+	// Forging the Retry-After out of the eligible range is refused by replay.
+	forged := tamperedRetryJournal(t, journal, func(e *exchangeRetryEvidence) { e.RetryAfter = "60" })
+	if _, err := ReplayTranscript(forged, RecoveryPins{Config: cfg, Model: ApprovedModel,
+		Policy: recoveryTestPolicy(t, true), RequireHostCallReservations: true}, nil); !errors.Is(err, ErrTranscriptReplay) {
+		t.Fatalf("a retry record with an ineligible Retry-After replayed: %v", err)
+	}
+}
+
+func TestRateLimitWithoutAShortRetryAfterIsNotRetried(t *testing.T) {
+	for name, retryAfter := range map[string]string{"absent": "", "long": "30", "date": "Wed, 21 Oct 2026 07:28:00 GMT"} {
+		waits := withRecordedRetryWait(t)
+		conversation, journal, doer, hooks, _ := retryConversation(t, []fixtureResponse{
+			{failStatus: 429, retryAfter: retryAfter}, {responseID: "r", text: "late"},
+		})
+		if _, err := conversation.NextTurn(context.Background()); err == nil {
+			t.Fatalf("%s: rate-limited attempt succeeded", name)
+		}
+		kinds := journalKinds(t, journal)
+		if doer.call != 1 || len(hooks.reservations) != 1 || len(*waits) != 0 || kinds[len(kinds)-1] != "provider_exchange_unknown" {
+			t.Fatalf("%s: attempts=%d reservations=%d waits=%v kinds=%v", name, doer.call, len(hooks.reservations), *waits, kinds)
+		}
+	}
+}
+
+func TestRetryWaitEndsWithTheContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	started := time.Now()
+	if err := retryWait(ctx, MaxRetryAfter); !errors.Is(err, context.Canceled) || time.Since(started) > time.Second {
+		t.Fatalf("a canceled context did not end the wait: %v after %v", err, time.Since(started))
 	}
 }

@@ -61,6 +61,7 @@ type fixtureResponse struct {
 	// failStatus, when set, answers that HTTP status with failBody instead of a completion.
 	failStatus int
 	failBody   string
+	retryAfter string
 }
 
 type fixtureDoer struct {
@@ -104,7 +105,11 @@ func (d *fixtureDoer) Do(request *http.Request) (*http.Response, error) {
 	d.call++
 	d.mu.Unlock()
 	if response.failStatus != 0 {
-		return &http.Response{StatusCode: response.failStatus, Header: make(http.Header),
+		header := make(http.Header)
+		if response.retryAfter != "" {
+			header.Set("Retry-After", response.retryAfter)
+		}
+		return &http.Response{StatusCode: response.failStatus, Header: header,
 			Body: io.NopCloser(strings.NewReader(response.failBody)), Request: request}, nil
 	}
 	var raw []byte
