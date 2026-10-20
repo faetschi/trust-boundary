@@ -33,6 +33,7 @@ const (
 )
 
 type governedReplayFixture struct {
+	authority       *SessionOperationAuthority
 	store           *sessionrepo.Store
 	storeJournal    *audit.Journal
 	providerJournal *audit.Journal
@@ -188,7 +189,8 @@ func newGovernedReplayFixtureWithPolicy(t *testing.T, turns []providerbridge.Dev
 		BashOutputPaths: []string{"task.txt"},
 	}
 	return &governedReplayFixture{
-		store: store, storeJournal: storeJournal, providerJournal: providerJournal,
+		authority: authority,
+		store:     store, storeJournal: storeJournal, providerJournal: providerJournal,
 		policy: policy, durable: durable, conversation: conversation, providerExec: providerExec, pins: pins,
 	}
 }
