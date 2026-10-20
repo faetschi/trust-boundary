@@ -1031,3 +1031,26 @@ type durableRepositoryState struct {
 	GenerationEffects   []string             `json:"generation_effects"`
 	ApprovedDeltaLedger []delta.Transition   `json:"approved_delta_ledger"`
 }
+
+// RequireCanonicalSource proves that the source root a generation was seeded from is already in
+// the canonical form later steps demand of it: regular files 0644/0755, owned by the supervisor,
+// and the same tree digest as the generation. Seed normalizes whatever it imports, so a source
+// with other modes (for example 0600) is admitted and seeded, but the no-change release rescan and
+// the publication baseline scan of that same root require the canonical form and would refuse it
+// only after the whole run. Calling this right after Seed refuses such a root before any work.
+func (s *Store) RequireCanonicalSource(source *os.File, generation *Generation) error {
+	if s == nil || source == nil || generation == nil {
+		return workspace.ErrUntrustedRoot
+	}
+	s.mu.Lock()
+	options := s.options.workspaceOptions(generation.id, true)
+	s.mu.Unlock()
+	snapshot, err := workspace.Scan(source, options)
+	if err != nil {
+		return fmt.Errorf("source root is not in canonical form: %w", err)
+	}
+	if snapshot.TreeDigest != generation.snapshot.TreeDigest {
+		return errors.New("source root differs from the seeded generation")
+	}
+	return nil
+}

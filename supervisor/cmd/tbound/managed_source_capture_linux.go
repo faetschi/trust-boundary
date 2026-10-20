@@ -303,6 +303,11 @@ func seedManagedRootSourceWithProof(ctx context.Context, store *sessionrepo.Stor
 	if err != nil {
 		return nil, err
 	}
+	// The release rescan and the publication baseline scan of this root require its canonical form.
+	if err := store.RequireCanonicalSource(source, generation); err != nil {
+		refusalErr := recordManagedRootSourceCaptureRefusal(journal, runID, proof, "after-seed", generation)
+		return nil, errors.Join(ErrManagedSourceCaptureUnavailable, err, refusalErr)
+	}
 	if err := proof.revalidate(ctx, source); err != nil {
 		refusalErr := recordManagedRootSourceCaptureRefusal(journal, runID, proof, "after-seed", generation)
 		return nil, errors.Join(ErrManagedSourceCaptureUnavailable, err, refusalErr)

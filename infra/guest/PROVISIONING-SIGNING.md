@@ -745,10 +745,12 @@ Smoke task, engineering route, config v3 `fresh`. Abort on the first unexpected 
 ### L0 [PRIVILEGED WRITE, needs owner approval] seed the fixture file (service inactive)
 
 ```
-printf 'TBound smoke fixture. This file is harmless: it only checks that the read tool works.\n' | install -o 995 -g 986 -m 0600 /dev/stdin /var/lib/tbound/live/SMOKE-README.txt
+printf 'TBound smoke fixture. This file is harmless: it only checks that the read tool works.\n' | install -o 995 -g 986 -m 0644 /dev/stdin /var/lib/tbound/live/SMOKE-README.txt
 python3 -I /opt/tbound/helpers/xattr-census-r9.py /var/lib/tbound/live | tail -1        # [READ-ONLY] (P13.5 copy of the helper) dir 2, file 1, no xattr names (unproven that the census accepts it)
 ```
 
+
+The live root must already be in canonical form: regular files `0644` (`0755` if executable), owned by the service (995:986). Seeding normalizes whatever it reads, but the no-change release rescan and the publication baseline scan of the live root refuse any other mode ("stored workspace mode is not normalized"), and a managed run now refuses such a root right after the seed.
 Rollback: `rm /var/lib/tbound/live/SMOKE-README.txt`. The first pilot `trial reset` wipes the live root to the case fixture anyway.
 
 ### L1 [PRIVILEGED WRITE, needs owner approval] start the service
