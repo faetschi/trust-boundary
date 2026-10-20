@@ -15,7 +15,6 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
 	"tbound/supervisor/internal/broker/correlation"
-	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/gate"
@@ -537,8 +536,7 @@ func validateGovernedReplayPins(pins GovernedReplayPins) error {
 	cfg := pins.Provider.Config
 	profile := pins.Profile
 	route := profile.Route.Resolved()
-	wantMessages := []openrouter.Message{{Role: openrouter.System, Content: stringPointer(cfg.SystemPrompt)},
-		{Role: openrouter.Developer, Content: stringPointer(cfg.DeveloperPrompt)}}
+	wantMessages := providerbridge.InitialPromptMessages(route, cfg.SystemPrompt, cfg.DeveloperPrompt)
 	if cfg.WorkflowID == "" || cfg.ConversationID == "" || cfg.ProfileID == "" || cfg.InitialGenerationID == "" ||
 		cfg.InitialTreeDigest == "" || cfg.SystemPrompt == "" || cfg.DeveloperPrompt == "" ||
 		pins.Provider.Model != route.Model || cfg.Route.Resolved() != route || profile.ID != cfg.ProfileID ||

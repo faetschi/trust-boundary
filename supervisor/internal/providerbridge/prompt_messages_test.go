@@ -12,7 +12,7 @@ import (
 func promptRoles(t *testing.T, route openrouter.Route) (roles []string, contents []string) {
 	t.Helper()
 	user := "user task"
-	messages := append(initialPromptMessages(route, "system text", "developer text"), openrouter.Message{Role: openrouter.User, Content: &user})
+	messages := append(InitialPromptMessages(route, "system text", "developer text"), openrouter.Message{Role: openrouter.User, Content: &user})
 	built, err := openrouter.BuildRequestForRoute(route, messages, 512)
 	if err != nil {
 		t.Fatalf("the immutable prompt does not build a request: %v", err)
@@ -59,8 +59,8 @@ func TestResearchRouteKeepsTheDeveloperRole(t *testing.T) {
 }
 
 func TestRebuiltPromptPrefixIsIdentical(t *testing.T) {
-	first := initialPromptMessages(openrouter.EngineeringRoute(), "s", "d")
-	second := initialPromptMessages(openrouter.EngineeringRoute(), "s", "d")
+	first := InitialPromptMessages(openrouter.EngineeringRoute(), "s", "d")
+	second := InitialPromptMessages(openrouter.EngineeringRoute(), "s", "d")
 	a, errA := json.Marshal(first)
 	b, errB := json.Marshal(second)
 	if errA != nil || errB != nil || string(a) != string(b) {

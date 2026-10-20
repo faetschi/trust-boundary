@@ -16,7 +16,6 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
-	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/gate"
@@ -425,10 +424,8 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 	}
 	profile := broker.Profile{
 		ID: profileID, Model: config.Route.Resolved().Model, Route: config.Route,
-		Messages: []openrouter.Message{
-			{Role: openrouter.System, Content: stringPointer(config.SystemPrompt)},
-			{Role: openrouter.Developer, Content: stringPointer(config.DeveloperPrompt)},
-		}, ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
+		Messages:     providerbridge.InitialPromptMessages(config.Route.Resolved(), config.SystemPrompt, config.DeveloperPrompt),
+		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 		ResponseIDIssuer: governedResponseIssuer, Generation: config.InitialGenerationID,
 	}
 	providerPins := providerbridge.RecoveryPins{

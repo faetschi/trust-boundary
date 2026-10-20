@@ -359,7 +359,7 @@ func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJo
 	if err != nil {
 		return nil, fmt.Errorf("register provider identifier issuers: %w", err)
 	}
-	history := initialPromptMessages(route, cfg.SystemPrompt, cfg.DeveloperPrompt)
+	history := InitialPromptMessages(route, cfg.SystemPrompt, cfg.DeveloperPrompt)
 	if _, err := openrouter.BuildRequestForRoute(route, history, 0); err != nil {
 		return nil, fmt.Errorf("validate immutable provider prompt: %w", err)
 	}
@@ -1342,7 +1342,7 @@ func reflectNil(value any) bool {
 	}
 }
 
-// initialPromptMessages builds the immutable prompt prefix of a conversation: the system
+// InitialPromptMessages builds the immutable prompt prefix of a conversation: the system
 // prompt and the registered developer prompt. The fresh path and the recovery replay both
 // build it here, so a rebuilt request body is identical to the original.
 //
@@ -1350,7 +1350,7 @@ func reflectNil(value any) bool {
 // developer is not supported"), so there the developer prompt text goes out as a second
 // "system" message; DeveloperPrompt and its digest fields are unchanged. The research
 // route keeps "developer": its request shape is frozen by the research profile.
-func initialPromptMessages(route openrouter.Route, systemPrompt, developerPrompt string) []openrouter.Message {
+func InitialPromptMessages(route openrouter.Route, systemPrompt, developerPrompt string) []openrouter.Message {
 	system, developer := systemPrompt, developerPrompt
 	developerRole := openrouter.Developer
 	if !route.IsResearch() {

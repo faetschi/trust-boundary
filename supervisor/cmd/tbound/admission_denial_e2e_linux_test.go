@@ -15,7 +15,6 @@ import (
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker"
 	"tbound/supervisor/internal/broker/correlation"
-	"tbound/supervisor/internal/broker/openrouter"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/evalcorpus"
@@ -364,10 +363,7 @@ func (w *denialWorkflow) replayPins() GovernedReplayPins {
 		w.t.Fatal(err)
 	}
 	profile := broker.Profile{ID: denialProfileID, Model: config.Route.Resolved().Model, Route: config.Route,
-		Messages: []openrouter.Message{
-			{Role: openrouter.System, Content: stringPointer(config.SystemPrompt)},
-			{Role: openrouter.Developer, Content: stringPointer(config.DeveloperPrompt)},
-		}, ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
+		Messages: providerbridge.InitialPromptMessages(config.Route, config.SystemPrompt, config.DeveloperPrompt), ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 		ResponseIDIssuer: governedResponseIssuer, Generation: config.InitialGenerationID}
 	return GovernedReplayPins{
 		Provider: providerbridge.RecoveryPins{Config: config, Model: config.Route.Resolved().Model, Policy: w.policy,
