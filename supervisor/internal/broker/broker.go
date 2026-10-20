@@ -115,7 +115,7 @@ type ExchangeRecord struct {
 	responseSet  bool
 	failure      string
 	retryAfter   string
-	contentType  string
+	contentTypes []string
 	// responseComplete is true only when the endpoint was validated, the body was non-nil and
 	// read to its end within the bound, and the body closed cleanly. An empty body still counts: it is
 	// a complete (empty) HTTP response, which the 200 path refuses for its own reason.
@@ -131,8 +131,10 @@ func (r ExchangeRecord) Failure() string        { return r.failure }
 // RetryAfter is the bounded Retry-After header value of the response, as sent.
 func (r ExchangeRecord) RetryAfter() string { return r.retryAfter }
 
-// ContentType is the bounded Content-Type header value of the response, as sent.
-func (r ExchangeRecord) ContentType() string { return r.contentType }
+// ContentTypes is every Content-Type header value of the response, in order, each cut at 256
+// bytes (a longer value is ineligible whatever its tail says) and at most 9 values (more than one is
+// ambiguous whatever the rest say).
+func (r ExchangeRecord) ContentTypes() []string { return append([]string(nil), r.contentTypes...) }
 
 // ResponseComplete reports that the response was received whole: endpoint and method validated, a
 // body read to its end within the byte bound, and a clean close. A read failure (for example an
@@ -273,8 +275,14 @@ func (b *Broker) ExchangeWithCompletionLimit(ctx context.Context, completionLimi
 	if value := response.Header.Get("Retry-After"); len(value) <= 32 {
 		record.retryAfter = value
 	}
-	if value := response.Header.Get("Content-Type"); len(value) <= 128 {
-		record.contentType = value
+	for index, value := range response.Header.Values("Content-Type") {
+		if index == 9 {
+			break
+		}
+		if len(value) > 256 {
+			value = value[:256]
+		}
+		record.contentTypes = append(record.contentTypes, value)
 	}
 	record.responseSet = true
 	if response.Request != nil && response.Request.URL != nil &&

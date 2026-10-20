@@ -125,6 +125,19 @@ func TestRetryableFailureClassification(t *testing.T) {
 		"422 phrase outside error":      {422, "", `{"note":"Endpoint is unavailable"}`, "", false},
 		"422 empty":                     {422, "", "", "", false},
 		"429 SSE body with retry-after": {429, "", "data: x", "1", false},
+
+		"503 duplicate top-level error":      {503, "", `{"error":{"choices":[{"delta":{"content":"already produced"}}]},"error":"overloaded"}`, "", false},
+		"503 duplicate identical error":      {503, "", `{"error":"overloaded","error":"overloaded"}`, "", false},
+		"503 duplicate via escaped key":      {503, "", `{"error":"a","error":"b"}`, "", false},
+		"503 duplicate nested type":          {503, "", `{"error":{"type":"a","type":"b","message":"m"}}`, "", false},
+		"422 duplicate message phrase last":  {422, "", `{"error":{"message":"x","message":"Endpoint is unavailable"}}`, "", false},
+		"422 duplicate message phrase first": {422, "", `{"error":{"message":"Endpoint is unavailable","message":"x"}}`, "", false},
+		"429 duplicate error":                {429, "", `{"error":"a","error":"b"}`, "3", false},
+		"503 marker for an ineligible type":  {503, contentTypeIneligible, unavailableBody, "", false},
+		"503 text/plain":                     {503, "text/plain", unavailableBody, "", false},
+		"503 vendor +json":                   {503, "application/problem+json", unavailableBody, "", true},
+		"503 stored oversized header":        {503, "application/json; x=" + strings.Repeat("a", 130), unavailableBody, "", false},
+		"503 stored malformed header":        {503, "application/json,", unavailableBody, "", false},
 	} {
 		if got := RetryableProviderFailure(test.status, test.contentType, []byte(test.body), test.retryAfter); got != test.want {
 			t.Errorf("%s: retryable = %v, want %v", name, got, test.want)
