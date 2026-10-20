@@ -226,13 +226,13 @@ Rollback: `sudo rm /etc/tbound/pi-host-profile.pub; sudo rm -rf /var/tmp/tbound-
 
 ### P9 [PRIVILEGED WRITE, needs owner approval] make the live root enumerable by uid 995
 
-uid 995 cannot open `lost+found` (root 0700), so every 995 enumeration fails (`xattr_profile_linux.go`).
+uid 995 cannot open `lost+found` (root 0700), so every 995 enumeration fails (`xattr_profile_linux.go`). The directory is also part of the live root that the no-change release rescan and the publication baseline scan walk, and those require the canonical form (directories `0755`, files `0644`/`0755`, owned by the service), so it is chowned and chmodded here.
 
 ```
-GSSH 'sudo -n chown 995:986 /var/lib/tbound/live/lost+found && sudo -n stat -c "%U:%G %a" /var/lib/tbound/live/lost+found'      # tbound-pi:tbound-pi 700
+GSSH 'sudo -n chown 995:986 /var/lib/tbound/live/lost+found && sudo -n chmod 0755 /var/lib/tbound/live/lost+found && sudo -n stat -c "%U:%G %a" /var/lib/tbound/live/lost+found'      # tbound-pi:tbound-pi 755
 ```
 
-Rollback: `sudo chown root:root /var/lib/tbound/live/lost+found`.
+Rollback: `sudo chown root:root /var/lib/tbound/live/lost+found; sudo chmod 0700 /var/lib/tbound/live/lost+found`.
 
 ### P10 [PRIVILEGED WRITE, needs owner approval] executables and cell assets on read-only mounts
 
