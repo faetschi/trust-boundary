@@ -37,7 +37,7 @@ func TestManagedRootSignVerifyOfflineCommands(t *testing.T) {
 		SocketUID: 0, SocketGID: 993, SocketMode: 0o660, DirectoryMode: 0o755,
 		ParentPath: piruntime.D09ManagedPiServiceSocketParentPath, ParentUID: 0, ParentGID: 0,
 		ParentMode: 0o755, ParentFilesystemMagic: 0x01021994, ParentMountPolicy: "tmpfs-rw-nodev-nosuid/v1",
-		AllowedClientUIDs: []int{1000}, AllowedClientPrimaryGID: 994,
+		AllowedClientUIDs: []int{1000}, AllowedClientPrimaryGID: 993,
 	}
 	registration := piruntime.D09ManagedLiveRootRegistration{
 		SchemaVersion: piruntime.D09ManagedLiveRootSchema, WriterPolicy: piruntime.D09ManagedLiveRootWriterPolicy,

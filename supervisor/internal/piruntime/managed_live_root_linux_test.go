@@ -44,7 +44,7 @@ func validManagedLiveRootRegistration() D09ManagedLiveRootRegistration {
 		SocketUID: 0, SocketGID: 993, SocketMode: 0o660, DirectoryMode: 0o755,
 		ParentPath: D09ManagedPiServiceSocketParentPath, ParentUID: 0, ParentGID: 0,
 		ParentMode: 0o755, ParentFilesystemMagic: 0x01021994, ParentMountPolicy: "tmpfs-rw-nodev-nosuid/v1",
-		AllowedClientUIDs: []int{1000}, AllowedClientPrimaryGID: 994,
+		AllowedClientUIDs: []int{1000}, AllowedClientPrimaryGID: 993,
 	}
 	return D09ManagedLiveRootRegistration{
 		SchemaVersion: D09ManagedLiveRootSchema, WriterPolicy: D09ManagedLiveRootWriterPolicy,
@@ -62,6 +62,47 @@ func validManagedLiveRootRegistration() D09ManagedLiveRootRegistration {
 		ManagedRootXattrCalibrationDigest: DigestBytes([]byte("signed-managed-rw-calibration")),
 		RunnerPath:                        "/usr/local/bin/tbound", RunnerDigest: DigestBytes([]byte("runner")),
 		ServiceCgroupPath: D09ManagedPiServiceCgroupPath,
+	}
+}
+
+func TestD09ManagedPiServiceSocketClientIdentityPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*D09ManagedPiServiceSocket)
+		valid  bool
+	}{
+		{name: "matching client and socket group", valid: true},
+		{name: "multiple sorted nonroot clients", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientUIDs = []int{1000, 1001} }, valid: true},
+		{name: "root primary group", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientPrimaryGID = 0 }},
+		{name: "negative primary group", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientPrimaryGID = -1 }},
+		{name: "primary group differs from socket", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientPrimaryGID++ }},
+		{name: "service primary group", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientPrimaryGID = 992 }},
+		{name: "matching service and socket group", mutate: func(s *D09ManagedPiServiceSocket) { s.SocketGID, s.AllowedClientPrimaryGID = 992, 992 }},
+		{name: "root socket group", mutate: func(s *D09ManagedPiServiceSocket) { s.SocketGID, s.AllowedClientPrimaryGID = 0, 0 }},
+		{name: "negative socket group", mutate: func(s *D09ManagedPiServiceSocket) { s.SocketGID, s.AllowedClientPrimaryGID = -1, -1 }},
+		{name: "root client", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientUIDs = []int{0} }},
+		{name: "root and nonroot clients", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientUIDs = []int{0, 1000} }},
+		{name: "negative client", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientUIDs = []int{-1} }},
+		{name: "service client", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientUIDs = []int{991} }},
+		{name: "duplicate clients", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientUIDs = []int{1000, 1000} }},
+		{name: "unsorted clients", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientUIDs = []int{1001, 1000} }},
+		{name: "no clients", mutate: func(s *D09ManagedPiServiceSocket) { s.AllowedClientUIDs = nil }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			registration := validManagedLiveRootRegistration()
+			socket := registration.ServiceSocket
+			if tc.mutate != nil {
+				tc.mutate(&socket)
+			}
+			err := socket.Validate(registration.ServiceUID, registration.ServiceGID)
+			if tc.valid {
+				if err != nil {
+					t.Fatalf("valid client identity refused: %v", err)
+				}
+			} else if !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+				t.Fatalf("invalid client identity accepted or returned unexpected error: %v", err)
+			}
+		})
 	}
 }
 
@@ -133,6 +174,37 @@ func TestD09ManagedLiveRootRegistrationSignatureAndClosedPolicy(t *testing.T) {
 	if err := json.Unmarshal(encoded, &roundTrip); err != nil {
 		t.Fatal(err)
 	}
+	for _, tc := range []struct {
+		name string
+		gid  int
+	}{
+		{name: "root client group", gid: 0},
+		{name: "negative client group", gid: -1},
+		{name: "different client group", gid: roundTrip.ServiceSocket.SocketGID + 1},
+		{name: "service client group", gid: roundTrip.ServiceGID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			invalid := roundTrip
+			invalid.ServiceSocket.AllowedClientPrimaryGID = tc.gid
+			if _, _, _, err := SignD09ManagedLiveRootRegistration(invalid, privateKey); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+				t.Fatalf("invalid client group signing accepted or returned unexpected error: %v", err)
+			}
+			// An authorized signature cannot make an invalid identity policy valid.
+			message, err := D09ManagedLiveRootSigningBytes(invalid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			invalid.Digest = DigestBytes(message)
+			encoded, err := json.Marshal(invalid)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := VerifyD09ManagedLiveRootRegistration(encoded, ed25519.Sign(privateKey, message), privateKey.Public().(ed25519.PublicKey)); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+				t.Fatalf("authorized signature bypassed client group policy: %v", err)
+			}
+		})
+	}
+
 	mutated := roundTrip
 	mutated.WriterPolicy = "0700-means-exclusive/v1"
 	if err := mutated.Validate(); !errors.Is(err, ErrD09ManagedLiveRootRefused) {

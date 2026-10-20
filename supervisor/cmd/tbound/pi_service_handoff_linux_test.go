@@ -157,6 +157,82 @@ func TestPiServiceSocketRegistrationRejectsRootClients(t *testing.T) {
 	}
 }
 
+func TestPiServiceSocketRegistrationMatchesLibraryIdentityPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(*piruntime.D09ManagedLiveRootRegistration)
+		valid  bool
+	}{
+		{name: "matching client and socket group", valid: true},
+		{name: "multiple sorted nonroot clients", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) {
+			r.ServiceSocket.AllowedClientUIDs = []int{1000, 1001}
+		}, valid: true},
+		{name: "root primary group", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceSocket.AllowedClientPrimaryGID = 0 }},
+		{name: "negative primary group", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceSocket.AllowedClientPrimaryGID = -1 }},
+		{name: "primary group differs from socket", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceSocket.AllowedClientPrimaryGID++ }},
+		{name: "service primary group", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) {
+			r.ServiceSocket.AllowedClientPrimaryGID = r.ServiceGID
+		}},
+		{name: "matching service and socket group", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) {
+			r.ServiceSocket.SocketGID, r.ServiceSocket.AllowedClientPrimaryGID = r.ServiceGID, r.ServiceGID
+		}},
+		{name: "root socket group", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceSocket.SocketGID = 0 }},
+		{name: "root client", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceSocket.AllowedClientUIDs = []int{0} }},
+		{name: "root and nonroot clients", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceSocket.AllowedClientUIDs = []int{0, 1000} }},
+		{name: "negative client", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceSocket.AllowedClientUIDs = []int{-1} }},
+		{name: "service client", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) {
+			r.ServiceSocket.AllowedClientUIDs = []int{r.ServiceUID}
+		}},
+		{name: "duplicate clients", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) {
+			r.ServiceSocket.AllowedClientUIDs = []int{1000, 1000}
+		}},
+		{name: "unsorted clients", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) {
+			r.ServiceSocket.AllowedClientUIDs = []int{1001, 1000}
+		}},
+		{name: "no clients", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceSocket.AllowedClientUIDs = nil }},
+		{name: "root service UID", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceUID = 0 }},
+		{name: "negative service UID", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceUID = -1 }},
+		{name: "root service GID", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceGID = 0 }},
+		{name: "negative service GID", mutate: func(r *piruntime.D09ManagedLiveRootRegistration) { r.ServiceGID = -1 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			reg := piruntime.D09ManagedLiveRootRegistration{
+				ServiceUID: 995, ServiceGID: 986,
+				ServiceSocket: piruntime.D09ManagedPiServiceSocket{
+					SchemaVersion: piServiceSocketSchema, Mode: piServiceSocketMode,
+					SocketPath: piServiceSocketPath, ListenStream: piServiceSocketPath,
+					SocketUnitPath: piServiceSocketUnitPath, SocketUnitDigest: digestBytes([]byte("socket-unit")),
+					Accept: "no", ServiceUnit: "tbound-pi.service", SocketUser: "root", SocketGroup: "tbound-pi-clients",
+					SocketUID: 0, SocketGID: 994, SocketMode: 0o660, DirectoryMode: 0o755,
+					ParentPath: "/run/tbound", ParentUID: 0, ParentGID: 0, ParentMode: 0o755,
+					ParentFilesystemMagic: 0x01021994, ParentMountPolicy: "tmpfs-rw-nodev-nosuid/v1",
+					AllowedClientUIDs: []int{1000}, AllowedClientPrimaryGID: 994,
+				},
+			}
+			if tc.mutate != nil {
+				tc.mutate(&reg)
+			}
+			encoded, err := json.Marshal(reg.ServiceSocket)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var socket piServiceSocketRegistration
+			if err := json.Unmarshal(encoded, &socket); err != nil {
+				t.Fatal(err)
+			}
+			libraryErr := reg.ServiceSocket.Validate(reg.ServiceUID, reg.ServiceGID)
+			receiverErr := validatePiServiceSocketRegistration(socket, reg.ServiceUID, reg.ServiceGID)
+			if tc.valid {
+				if libraryErr != nil || receiverErr != nil {
+					t.Fatalf("valid identity refused: library=%v receiver=%v", libraryErr, receiverErr)
+				}
+			} else if !errors.Is(libraryErr, piruntime.ErrD09ManagedLiveRootRefused) || !errors.Is(receiverErr, ErrPiServiceUnavailable) {
+				t.Fatalf("invalid identity accepted or returned unexpected error: library=%v receiver=%v", libraryErr, receiverErr)
+			}
+		})
+	}
+}
+
 func TestValidatePiServiceSocketUnitPinsActivationPolicy(t *testing.T) {
 	socket := piServiceSocketRegistration{
 		SocketPath: "/run/tbound/serve-pi.sock", ServiceUnit: "tbound-pi.service",

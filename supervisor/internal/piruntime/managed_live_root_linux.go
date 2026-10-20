@@ -124,10 +124,12 @@ func (s D09ManagedPiServiceSocket) Validate(serviceUID, serviceGID int) error {
 		s.SocketPath != D09ManagedPiServiceSocketPath || s.SocketUnitPath != D09ManagedPiSocketUnitPath ||
 		!validDigest(s.SocketUnitDigest) || s.ListenStream != D09ManagedPiServiceSocketPath || s.Accept != "no" ||
 		s.ServiceUnit != "tbound-pi.service" || s.SocketUser != "root" || s.SocketGroup != D09ManagedPiSocketGroup ||
-		s.SocketUID != 0 || s.SocketGID <= 0 || s.SocketGID == serviceGID || s.SocketMode != 0o660 || s.DirectoryMode != 0o755 ||
+		s.SocketUID != 0 || s.SocketGID <= 0 || s.SocketGID == serviceGID || serviceUID <= 0 || serviceGID <= 0 ||
+		s.SocketMode != 0o660 || s.DirectoryMode != 0o755 ||
 		s.ParentPath != D09ManagedPiServiceSocketParentPath || s.ParentUID != 0 || s.ParentGID != 0 || s.ParentMode != 0o755 ||
 		s.ParentFilesystemMagic != 0x01021994 || s.ParentMountPolicy != "tmpfs-rw-nodev-nosuid/v1" ||
-		s.AllowedClientPrimaryGID < 0 || s.AllowedClientPrimaryGID == serviceGID || len(s.AllowedClientUIDs) == 0 {
+		len(s.AllowedClientUIDs) == 0 || s.AllowedClientPrimaryGID <= 0 ||
+		s.AllowedClientPrimaryGID == serviceGID || s.AllowedClientPrimaryGID != s.SocketGID {
 		return ErrD09ManagedLiveRootRefused
 	}
 	previous := -1
