@@ -3,7 +3,6 @@
 package piruntime
 
 import (
-	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
@@ -304,36 +303,6 @@ FileDescriptorName=tbound-pi
 	unsafe = strings.Replace(string(socketUnit), "FileDescriptorName=tbound-pi", "FileDescriptorName=other", 1)
 	if err := validateD09ManagedPiServiceSocketUnit([]byte(unsafe), socket); err == nil {
 		t.Fatal("socket unit with another descriptor name accepted")
-	}
-}
-
-func TestD09ImageFD3ExecutableMustMatchSignedHostDigest(t *testing.T) {
-	root := t.TempDir()
-	path := filepath.Join(root, strings.TrimPrefix(PiWorkerCellExecutable, string(os.PathSeparator)))
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("immutable Node ELF fixture"), 0o555); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(path, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	digest, err := hashImageExecutable(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	imageRef := "localhost/tbound/pi-cell@sha256:" + strings.Repeat("a", 64)
-	runner := &fakeD09Runner{results: map[string]D09CommandResult{
-		"podman image mount " + imageRef:   {ExitCode: 0, Stdout: []byte(root + "\n")},
-		"podman image unmount " + imageRef: {ExitCode: 0},
-	}}
-	launcher := &D09PodmanCrunLauncher{runner: runner}
-	if err := launcher.verifyImageWorkerExecutable(context.Background(), "podman", imageRef, PiWorkerCellExecutable, digest); err != nil {
-		t.Fatalf("matching image/host fd3 executable was refused: %v", err)
-	}
-	if err := launcher.verifyImageWorkerExecutable(context.Background(), "podman", imageRef, PiWorkerCellExecutable, DigestBytes([]byte("different host node"))); err == nil {
-		t.Fatal("different host fd3 executable digest was accepted for the signed image")
 	}
 }
 

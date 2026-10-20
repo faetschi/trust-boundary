@@ -955,7 +955,7 @@ func (l *D09PodmanCrunLauncher) admitsFrozenLinuxProfile(profile HostProfile) er
 	if !managedRootBound {
 		return fmt.Errorf("%w: trusted composition has not bound the verified managed live-root registration", ErrD09ManagedLiveRootRefused)
 	}
-	report, err := l.Probe(context.Background())
+	_, err := l.Probe(context.Background())
 	if err != nil {
 		return err
 	}
@@ -963,8 +963,7 @@ func (l *D09PodmanCrunLauncher) admitsFrozenLinuxProfile(profile HostProfile) er
 		if profile.ChildExecutable != PiWorkerCellExecutable {
 			return fmt.Errorf("%w: production D09 host fd3 executable path differs from the frozen in-image Node path", ErrHostProfileMismatch)
 		}
-		if err := l.verifyImageWorkerExecutable(context.Background(), report.PodmanPath, report.ImageRef,
-			profile.ChildExecutable, profile.ExecutableDigest); err != nil {
+		if err := l.verifyImageWorkerExecutable(context.Background(), profile.ChildExecutable, profile.ExecutableDigest); err != nil {
 			return err
 		}
 	}
@@ -1151,7 +1150,7 @@ func (l *D09PodmanCrunLauncher) Probe(ctx context.Context) (D09Report, error) {
 				missing = append(missing, D09Prerequisite{Name: "seccomp-profile", Detail: err.Error()})
 			}
 			if l.productionRunner() {
-				if err := l.verifyEntrypointInImage(ctx, report.PodmanPath, report.ImageRef, config); err != nil {
+				if err := l.verifyEntrypointInImage(ctx, config); err != nil {
 					missing = append(missing, D09Prerequisite{Name: "entrypoint", Detail: err.Error()})
 				}
 			}
@@ -1179,92 +1178,38 @@ func (l *D09PodmanCrunLauncher) Probe(ctx context.Context) (D09Report, error) {
 	return report, nil
 }
 
-// verifyEntrypointInImage temporarily mounts the exact pinned, already-cosign-
-// verified image through the verified Podman binary, hashes the entrypoint
-// bytes actually stored in that image against the protected template digest,
-// then unmounts the image. Any mount/hash/unmount ambiguity fails admission.
-func (l *D09PodmanCrunLauncher) verifyEntrypointInImage(ctx context.Context, podmanPath, imageRef string, config D09Config) error {
-	mounted := l.runner.Run(ctx, podmanPath, "image", "mount", imageRef)
-	if mounted.Err != nil || mounted.ExitCode != 0 {
-		return errors.Join(errors.New("mount pinned image to verify signed in-image entrypoint"), mounted.Err)
-	}
-	root := strings.TrimSpace(string(mounted.Stdout))
-	unmount := func() error {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), d09CleanupTimeout)
-		defer cancel()
-		result := l.runner.Run(cleanupCtx, podmanPath, "image", "unmount", imageRef)
-		if result.Err != nil || result.ExitCode != 0 {
-			return errors.Join(errors.New("unmount pinned image after entrypoint verification"), result.Err)
-		}
-		return nil
-	}
-	if !filepath.IsAbs(root) {
-		return errors.Join(errors.New("podman image mount returned no absolute image root"), unmount())
-	}
-	entry := filepath.Join(root, strings.TrimPrefix(filepath.Clean(config.EntrypointPath), string(os.PathSeparator)))
-	digest, err := hashImageExecutable(entry)
-	if err != nil {
-		return errors.Join(err, unmount())
-	}
-	if digest != config.EntrypointDigest {
-		return errors.Join(fmt.Errorf("in-image entrypoint digest mismatch: got %s want %s", digest, config.EntrypointDigest), unmount())
-	}
-	return unmount()
+// verifyEntrypointInImage hashes the entrypoint stored in the exact pinned,
+// cosign-verified OCI layout against the protected template digest. Rootless
+// podman cannot mount an image outside `podman unshare`, and a mount made there
+// would be invisible to this process, so the bytes come from the verified
+// layers (the store image is bound to the same manifest digest by selectImage).
+func (l *D09PodmanCrunLauncher) verifyEntrypointInImage(ctx context.Context, config D09Config) error {
+	return l.verifyImageFile(ctx, config, config.EntrypointPath, config.EntrypointDigest, "in-image entrypoint")
 }
 
 // verifyImageWorkerExecutable binds the held host fd3 Node bytes to the exact
 // executable at the signed in-image path. Both identities must be the same
 // digest: image signature verification alone cannot authenticate a different
 // host binary which the entrypoint actually executes through fd3.
-func (l *D09PodmanCrunLauncher) verifyImageWorkerExecutable(ctx context.Context, podmanPath, imageRef, executablePath, expectedDigest string) error {
+func (l *D09PodmanCrunLauncher) verifyImageWorkerExecutable(ctx context.Context, executablePath, expectedDigest string) error {
 	if ctx == nil || !filepath.IsAbs(executablePath) || filepath.Clean(executablePath) != executablePath || !validDigest(expectedDigest) {
 		return ErrHostProfileMismatch
 	}
-	mounted := l.runner.Run(ctx, podmanPath, "image", "mount", imageRef)
-	if mounted.Err != nil || mounted.ExitCode != 0 {
-		return errors.Join(errors.New("mount pinned image to verify the fd3 worker executable identity"), mounted.Err)
-	}
-	root := strings.TrimSpace(string(mounted.Stdout))
-	unmount := func() error {
-		cleanupCtx, cancel := context.WithTimeout(context.Background(), d09CleanupTimeout)
-		defer cancel()
-		result := l.runner.Run(cleanupCtx, podmanPath, "image", "unmount", imageRef)
-		if result.Err != nil || result.ExitCode != 0 {
-			return errors.Join(errors.New("unmount pinned image after fd3 worker identity verification"), result.Err)
-		}
-		return nil
-	}
-	if !filepath.IsAbs(root) {
-		return errors.Join(errors.New("podman image mount returned no absolute image root for fd3 verification"), unmount())
-	}
-	imageExecutable := filepath.Join(root, strings.TrimPrefix(executablePath, string(os.PathSeparator)))
-	digest, err := hashImageExecutable(imageExecutable)
-	if err != nil || digest != expectedDigest {
-		return errors.Join(fmt.Errorf("in-image fd3 executable digest mismatch: got %s want %s", digest, expectedDigest), err, unmount())
-	}
-	return unmount()
+	return l.verifyImageFile(ctx, l.config, executablePath, expectedDigest, "in-image fd3 executable")
 }
 
-func hashImageExecutable(path string) (string, error) {
-	info, err := os.Lstat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode()&0o111 == 0 || info.Mode().Perm()&0o022 != 0 {
-		return "", errors.New("in-image entrypoint is not a non-writable executable regular file")
-	}
-	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+func (l *D09PodmanCrunLauncher) verifyImageFile(ctx context.Context, config D09Config, imagePath, expectedDigest, what string) error {
+	file, err := readOCIImageFile(ctx, config.OCILayoutPath, config.ExpectedImageDigest, filepath.Clean(imagePath), l.productionRunner())
 	if err != nil {
-		return "", err
+		return fmt.Errorf("%s: %w", what, err)
 	}
-	defer file.Close()
-	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) {
-		return "", errors.New("in-image entrypoint changed while opening")
+	if file.mode&0o111 == 0 || file.mode&0o022 != 0 {
+		return fmt.Errorf("%s is not a non-writable executable regular file", what)
 	}
-	hash := sha256.New()
-	n, err := io.Copy(hash, io.LimitReader(file, (128<<20)+1))
-	if err != nil || n != info.Size() {
-		return "", errors.Join(errors.New("in-image entrypoint read was incomplete or oversized"), err)
+	if file.digest != expectedDigest {
+		return fmt.Errorf("%s digest mismatch: got %s want %s", what, file.digest, expectedDigest)
 	}
-	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
+	return nil
 }
 
 type d09PodmanInfo struct {
