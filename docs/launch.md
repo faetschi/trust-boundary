@@ -4,17 +4,10 @@ The Go-only native fixture and an offline Pi CLI development fixture are
 available on Linux. Start the native fixture with:
 
 ```sh
-mkdir -m 700 -p "$HOME/.cache/tbound-tmp"
-export TMPDIR="$HOME/.cache/tbound-tmp"
 cd supervisor
 go build -o /tmp/tbound ./cmd/tbound
 /tmp/tbound serve --pi --native-fixture
 ```
-
-The audit journal rejects any ancestor that is writable by group or other. The
-default `/tmp` is world-writable, so the private `TMPDIR` above is required on
-a stock host; without it the fixture fails closed with
-`writable ancestor mode 0777`.
 
 The JSON receipt marks `claim_bearing=false` and
 `containment=not-established`. Use a private output directory in place of
@@ -32,8 +25,7 @@ export TBOUND_DEV_FIXTURE_PI="$(realpath "$(command -v pi)")"
 export TBOUND_DEV_FIXTURE_NODE="$(realpath "$(command -v node)")"
 export TBOUND_DEV_FIXTURE_ADAPTER="$(pwd)/adapter"
 export TBOUND_DEV_FIXTURE_ROOT="$HOME/.local/state/tbound-dev-fixture"
-export TMPDIR="$HOME/.cache/tbound-tmp"
-mkdir -m 700 -p "$TBOUND_DEV_FIXTURE_ROOT" "$TMPDIR"
+mkdir -m 700 -p "$TBOUND_DEV_FIXTURE_ROOT"
 test "$(stat -f -c %T "$TBOUND_DEV_FIXTURE_ROOT")" = ext2/ext3
 test "$(stat -c %a "$TBOUND_DEV_FIXTURE_ROOT")" = 700
 mkdir -m 700 -p "$HOME/.cache/tbound-build"

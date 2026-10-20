@@ -293,8 +293,6 @@ main() {
   fi
   log "next:"
   log "  $prefix/bin/tbound-doctor        # check readiness"
-  log "  mkdir -m 700 -p \"$HOME/.cache/tbound-tmp\""
-  log "  export TMPDIR=\"$HOME/.cache/tbound-tmp\"   # required private audit-journal root"
   log "  $prefix/bin/tbound serve --pi --native-fixture   # non-claim-bearing smoke test"
   log "done"
 }
