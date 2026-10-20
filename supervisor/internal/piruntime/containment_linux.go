@@ -916,7 +916,9 @@ func (s *d09OwnedCommandScope) Remove() error {
 	}
 	s.removing = true
 	s.mu.Unlock()
-	err := unlinkatDir(int(s.scope.root.Fd()), s.name)
+	removeContext, cancelRemove := context.WithTimeout(context.Background(), d09CleanupTimeout)
+	err := removeSettledCgroup(removeContext, int(s.scope.root.Fd()), s.name)
+	cancelRemove()
 	s.mu.Lock()
 	s.removing = false
 	if err == nil {
