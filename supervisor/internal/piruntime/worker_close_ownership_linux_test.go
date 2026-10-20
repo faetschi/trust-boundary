@@ -361,3 +361,21 @@ func TestPiWorkerFailedLaunchUnknownRetainsChannels(t *testing.T) {
 	}
 	waitWorkerEventPump(t, worker)
 }
+
+// RunGovernedChannels closes the provider channel when its loops end, and worker teardown closes it
+// again through PiWorkerChannels.Close. The second close of a net.Conn is net.ErrClosed, which was
+// recorded as a worker close error (close_error=true) and refused publication for a clean worker.
+func TestProviderChannelClosedByTheGovernedLoopDoesNotFailWorkerClose(t *testing.T) {
+	worker := newPiWorkerEventPumpFixture(t, 1)
+	channels := worker.Channels
+	if err := channels.ProviderChannel().Close(); err != nil {
+		t.Fatalf("first close of the provider channel: %v", err)
+	}
+	if err := channels.ProviderChannel().Close(); err != nil {
+		t.Fatalf("a repeated close of the provider channel returned %v", err)
+	}
+	if err := channels.Close(); err != nil {
+		t.Fatalf("worker channel teardown after the governed loop closed the provider channel: %v", err)
+	}
+	waitWorkerEventPump(t, worker)
+}

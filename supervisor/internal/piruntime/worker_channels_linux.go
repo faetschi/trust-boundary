@@ -158,6 +158,22 @@ func (w *closeOnceWriter) Close() error {
 	return w.err
 }
 
+// closeOnceConn makes Close idempotent with a sticky result. The provider channel is closed by
+// whoever finishes first: the governed channel loop when it ends and PiWorkerChannels.Close at
+// worker teardown, which both reach it through ProviderChannel. A second Close of a net.Conn
+// returns net.ErrClosed, which teardown recorded as a worker close error and which then blocked
+// publication of an otherwise cleanly STOPPED worker.
+type closeOnceConn struct {
+	net.Conn
+	once sync.Once
+	err  error
+}
+
+func (c *closeOnceConn) Close() error {
+	c.once.Do(func() { c.err = c.Conn.Close() })
+	return c.err
+}
+
 type piWorkerBootstrapWire struct {
 	SchemaVersion          string            `json:"schema_version"`
 	ProfileID              string            `json:"profile_id"`
@@ -273,7 +289,7 @@ func newPiWorkerChannels(workerExposure, runtimeAssets *os.File) (*PiWorkerChann
 		return nil, cleanup(fmt.Errorf("create Go provider bridge socketpair: %w", err))
 	}
 	c.childProvider = providerChild
-	c.providerChannel = providerParent
+	c.providerChannel = &closeOnceConn{Conn: providerParent}
 	if c.eventReader, c.childEvents, err = os.Pipe(); err != nil {
 		return nil, cleanup(fmt.Errorf("create Pi worker event pipe: %w", err))
 	}
