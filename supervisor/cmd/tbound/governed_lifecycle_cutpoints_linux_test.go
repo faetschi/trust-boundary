@@ -317,12 +317,6 @@ func TestLifecycleCutpointLC01ReceiptBeforeDecision(t *testing.T) {
 	lcRequireBaselineBytes(t, root)
 }
 
-func lcLogReplay(t *testing.T, name string, replay lcReplay) {
-	t.Helper()
-	encoded, _ := json.MarshalIndent(replay, "", " ")
-	t.Logf("%s replay: %s", name, encoded)
-}
-
 func TestLifecycleCutpointLC02DecisionBeforeAuthorization(t *testing.T) {
 	if os.Getenv(governedCrashPhase) != "" {
 		governedCrashChild(t)

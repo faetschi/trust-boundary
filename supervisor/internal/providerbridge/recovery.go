@@ -720,10 +720,6 @@ func validateRecoveryPins(pins RecoveryPins) error {
 	return nil
 }
 
-func verifyReplayRequest(request requestEvidence, profileID, conversationID string, route openrouter.Route, history []openrouter.Message) error {
-	return verifyReplayRequestWithCompletionLimit(request, profileID, conversationID, route, history, 0)
-}
-
 func verifyReplayRequestWithCompletionLimit(request requestEvidence, profileID, conversationID string,
 	route openrouter.Route, history []openrouter.Message, completionLimit uint64) error {
 	route = route.Resolved()
