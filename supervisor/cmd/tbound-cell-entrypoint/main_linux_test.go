@@ -186,3 +186,34 @@ func TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink(t *testing.T) {
 		}
 	}
 }
+
+// Lines measured in a --network=none namespace on the guest kernel.
+const (
+	rejectDefaultIPv6 = "00000000000000000000000000000000 00 00000000000000000000000000000000 00 00000000000000000000000000000000 ffffffff 00000001 00000000 00200200       lo"
+	loopbackIPv6      = "00000000000000000000000000000001 80 00000000000000000000000000000000 00 00000000000000000000000000000000 00000000 00000002 00000000 80200001       lo"
+	ipv4Header        = "Iface\tDestination\tGateway \tFlags\tRefCnt\tUse\tMetric\tMask\t\tMTU\tWindow\tIRTT"
+)
+
+func TestNoExternalRoutesAcceptsTheKernelsLoopbackRejectDefaults(t *testing.T) {
+	ipv6 := rejectDefaultIPv6 + "\n" + rejectDefaultIPv6 + "\n" + loopbackIPv6 + "\n"
+	if err := externalRouteIn(ipv4Header+"\n", ipv6); err != nil {
+		t.Fatalf("the empty IPv4 table with the kernel's reject ::/0 entries on lo was refused: %v", err)
+	}
+}
+
+func TestNoExternalRoutesStillRefusesRealDefaultsAndForeignInterfaces(t *testing.T) {
+	const accept = "00000000000000000000000000000001 80 00000000000000000000000000000000 00 00000000000000000000000000000000 00000000 00000002 00000000 80200001       lo"
+	for name, test := range map[string]struct{ ipv4, ipv6 string }{
+		"default IPv6 route without RTF_REJECT": {ipv4Header + "\n", "00000000000000000000000000000000 00 00000000000000000000000000000000 00 fe800000000000000000000000000001 00000400 00000001 00000000 00000003       lo\n"},
+		"unicast default flags 0x1 (RTF_UP)":    {ipv4Header + "\n", "00000000000000000000000000000000 00 00000000000000000000000000000000 00 00000000000000000000000000000000 00000400 00000001 00000000 00000001       lo\n"},
+		"reject default on another interface":   {ipv4Header + "\n", strings.Replace(rejectDefaultIPv6, "       lo", "       eth0", 1) + "\n"},
+		"unparsable flags":                      {ipv4Header + "\n", strings.Replace(rejectDefaultIPv6, "00200200", "zzzzzzzz", 1) + "\n"},
+		"IPv6 route on eth0":                    {ipv4Header + "\n", strings.Replace(accept, "       lo", "       eth0", 1) + "\n"},
+		"default IPv4 route":                    {ipv4Header + "\nlo\t00000000\t0100007F\t0003\t0\t0\t0\t00000000\t0\t0\t0\n", rejectDefaultIPv6 + "\n"},
+		"IPv4 route on eth0":                    {ipv4Header + "\neth0\t0000A8C0\t00000000\t0001\t0\t0\t0\t00FFFFFF\t0\t0\t0\n", rejectDefaultIPv6 + "\n"},
+	} {
+		if err := externalRouteIn(test.ipv4, test.ipv6); err == nil {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+}

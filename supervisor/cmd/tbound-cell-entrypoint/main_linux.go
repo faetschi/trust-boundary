@@ -342,7 +342,22 @@ func requireNoExternalRoutes() error {
 	if err != nil {
 		return err
 	}
-	for index, line := range strings.Split(strings.TrimSpace(string(ipv4)), "\n") {
+	ipv6, err := os.ReadFile("/proc/net/ipv6_route")
+	if err != nil {
+		return err
+	}
+	return externalRouteIn(string(ipv4), string(ipv6))
+}
+
+// rtfReject is RTF_REJECT: the route fails lookups (unreachable, prohibit, blackhole).
+const rtfReject = 0x0200
+
+// externalRouteIn refuses any route that could leave the namespace. Every route must be on lo,
+// and no default IPv4 route is accepted. The kernel puts its own ::/0 entries on lo of every
+// namespace, flagged RTF_REJECT (unreachable, e.g. flags 00200200); only such a reject default is
+// accepted. A ::/0 route that is not a reject route, or is on another interface, still refuses.
+func externalRouteIn(ipv4, ipv6 string) error {
+	for index, line := range strings.Split(strings.TrimSpace(ipv4), "\n") {
 		if index == 0 || strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -354,11 +369,7 @@ func requireNoExternalRoutes() error {
 			return fmt.Errorf("default IPv4 route is present")
 		}
 	}
-	ipv6, err := os.ReadFile("/proc/net/ipv6_route")
-	if err != nil {
-		return err
-	}
-	for _, line := range strings.Split(strings.TrimSpace(string(ipv6)), "\n") {
+	for _, line := range strings.Split(strings.TrimSpace(ipv6), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -367,7 +378,10 @@ func requireNoExternalRoutes() error {
 			return fmt.Errorf("unexpected IPv6 route %q", line)
 		}
 		if fields[0] == strings.Repeat("0", 32) && fields[1] == "00" {
-			return fmt.Errorf("default IPv6 route is present")
+			flags, err := strconv.ParseUint(fields[8], 16, 32)
+			if err != nil || flags&rtfReject == 0 {
+				return fmt.Errorf("default IPv6 route is present")
+			}
 		}
 	}
 	return nil
