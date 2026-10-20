@@ -1359,9 +1359,6 @@ func TestEventsCarryTheKernelsRenameCookies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rep.StartMonoNS <= 0 {
-		t.Errorf("start_mono_ns = %d", rep.StartMonoNS)
-	}
 	cookie := map[string]uint32{}
 	for _, ev := range rep.Events {
 		switch ev.Kind {

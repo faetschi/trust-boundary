@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -143,24 +144,68 @@ func (p plainWatchTransport) Run(ctx context.Context, argv []string) ([]byte, []
 	return p.g.Run(ctx, argv)
 }
 
-// okReport is a complete qualified window with the given events.
+// okReport is a complete qualified window in which publication fenced its apply (twice, the way publication does)
+// and the given events lie between the two fences.
 func okReport(events ...effectoracle.Event) effectoracle.Report {
-	return effectoracle.Report{OracleVersion: effectoracle.OracleVersion, Instrument: effectoracle.Instrument,
-		Verdict: effectoracle.VerdictOK, Events: events, StartMonoNS: testReportStart,
+	return placedReport(nil, events, nil)
+}
+
+// placedReport is a complete qualified window with events before the first fence, between the fences, and after the
+// second one, in the order of the observer's queue (Seq): when the reader took an event does not enter into it.
+func placedReport(before, within, after []effectoracle.Event) effectoracle.Report {
+	r := effectoracle.Report{OracleVersion: effectoracle.OracleVersion, Instrument: effectoracle.Instrument,
+		Verdict: effectoracle.VerdictOK, FenceDir: effectoracle.FenceDir,
 		Heartbeats: []effectoracle.Heartbeat{
 			{Seq: 1, Label: "mark:start:pre", Observed: true}, {Seq: 2, Label: "mark:start:post", Observed: true},
 			{Seq: 4, Label: "mark:stop:pre", Observed: true}, {Seq: 5, Label: "mark:stop:post", Observed: true}},
 		Marks: []effectoracle.Mark{{Seq: 3, Name: effectoracle.MarkStart, Quiescent: true}, {Seq: 6, Name: effectoracle.MarkStop, Quiescent: true}}}
+	seq := uint64(30)
+	put := func(events []effectoracle.Event) {
+		for _, e := range events {
+			e.Seq = seq
+			seq++
+			r.Events = append(r.Events, e)
+		}
+	}
+	fence := func() {
+		r.Fences = append(r.Fences, alternation(seq)...)
+		seq += uint64(2 * effectoracle.FenceBurst)
+	}
+	put(before)
+	fence()
+	put(within)
+	seq += 20 // room for records of the observer between the events and the second fence
+	fence()
+	put(after)
+	return r
 }
 
-// The test clocks, in nanoseconds on one monotonic clock: the report starts at testReportStart, publication applied its
-// ledger between testApplyStart and testApplyEnd, and ev places its events inside that window.
-const (
-	testReportStart = 500_000_000
-	testApplyStart  = 1_000_000_000
-	testApplyEnd    = 1_500_000_000
-	testEventAt     = 600_000_000 // AtNS: testReportStart + testEventAt is inside the window
-)
+// alternation is what effectoracle.FenceRoot leaves in the queue of an observer of the root: FenceBurst opens of the fence
+// directory, each followed by a read of it, in records with consecutive sequence numbers from seq on.
+func alternation(seq uint64) []effectoracle.Fence {
+	var out []effectoracle.Fence
+	for i := 0; i < effectoracle.FenceBurst; i++ {
+		out = append(out, effectoracle.Fence{Seq: seq, Op: effectoracle.FenceOpen, Path: effectoracle.FenceDir, IsDir: true},
+			effectoracle.Fence{Seq: seq + 1, Op: effectoracle.FenceAccess, Path: effectoracle.FenceDir, IsDir: true})
+		seq += 2
+	}
+	return out
+}
+
+// scanFence is the records of a scan of the fence directory as publication's scans leave them: three opens in a row,
+// then two reads. It is not a fence.
+func scanFence(seq uint64) []effectoracle.Fence {
+	var out []effectoracle.Fence
+	for i := uint64(0); i < 3; i++ {
+		out = append(out, effectoracle.Fence{Seq: seq + i, Op: effectoracle.FenceOpen, Path: effectoracle.FenceDir, IsDir: true})
+	}
+	for i := uint64(3); i < 5; i++ {
+		out = append(out, effectoracle.Fence{Seq: seq + i, Op: effectoracle.FenceAccess, Path: effectoracle.FenceDir, IsDir: true})
+	}
+	return out
+}
+
+const testEventAt = 600_000_000 // AtNS of every test event: the read time, which the judge does not use
 
 var evCookie atomic.Uint32
 
@@ -181,11 +226,17 @@ func newTransient(g *watchGuest) *TransientCollector {
 // publishedGuest serves the store of e04ptPublishedRun: the ledger has one entry, an overwrite of protected.txt.
 func publishedGuest(t *testing.T, report effectoracle.Report) (*watchGuest, EvidenceRef) {
 	t.Helper()
+	return publishedGuestFenced(t, report, 2)
+}
+
+// publishedGuestFenced is publishedGuest for a publication that made fenceBursts fences.
+func publishedGuestFenced(t *testing.T, report effectoracle.Report, fenceBursts int) (*watchGuest, EvidenceRef) {
+	t.Helper()
 	records, _ := e04ptPublishedRun("published")
 	sealed := wsoracle.Manifest{}
 	records[5].Publication = &E04PublicationEvidence{TransactionID: "pub-0123456789abcdef", PublicationID: "p", Status: "SUCCEEDED",
 		LockIdentity: "lock", Sealed: sealed, SealedIdentityDigest: sealed.IdentityDigest(),
-		ApplyStartMonoNS: testApplyStart, ApplyEndMonoNS: testApplyEnd}
+		FenceDir: effectoracle.FenceDir, FenceBursts: fenceBursts}
 	doc, head, count := e04ptDoc(t, records)
 	g := newWatchGuest(report)
 	g.e04 = doc
@@ -228,6 +279,18 @@ func TestTransientCollectorPublishedIntervalWithExactlyThePublicationRenamesIsNo
 	var o Outcome
 	if err := o.recordObserver("TRANSIENT", transientKeys, got); err != nil || !o.refValid(OracleTransient) {
 		t.Fatalf("record: %v", err)
+	}
+}
+
+// The collector reads whether publication fenced from the post-publication record: a transaction that made one fence
+// (or none) leaves the window unplaced, so the exact publication events are lost, not none.
+func TestTransientCollectorAPublicationThatDidNotFenceTwiceIsLost(t *testing.T) {
+	for opens, want := range map[int]Finding{2: FindingNone, 1: FindingLost, 0: FindingLost} {
+		g, ref := publishedGuestFenced(t, okReport(publicationEvents()...), opens)
+		got, err := runTransient(t, newTransient(g), ref)
+		if err != nil || got.Findings[OracleTransient] != want {
+			t.Errorf("%d fence opens: %v, %v, want %s", opens, got.Findings, err, want)
+		}
 	}
 }
 
@@ -616,7 +679,6 @@ func TestJudgeTransientIsAPureFunctionOfReportAndLedger(t *testing.T) {
 		{Path: "gone.txt", Before: &before},
 		{Path: "d/b", After: &after},
 	}}}
-	win := applyWindow{startNS: testApplyStart, endNS: testApplyEnd}
 	real := func() []effectoracle.Event {
 		return []effectoracle.Event{ev("created.txt", "moved_to"), ev("over.txt", "moved_to"), ev("over.txt", "moved_from"),
 			ev("gone.txt", "moved_from"), ev("d/b", "moved_to")}
@@ -625,31 +687,55 @@ func TestJudgeTransientIsAPureFunctionOfReportAndLedger(t *testing.T) {
 		r := real()
 		return append(r[:i], r[i+1:]...)
 	}
-	withAt := func(at int64) effectoracle.Report {
+	pair := func() []effectoracle.Event {
+		return []effectoracle.Event{ev("evil", "moved_to"), ev("evil", "moved_from")}
+	}
+	lateReads := func(d time.Duration) effectoracle.Report {
 		r := okReport(real()...)
 		for i := range r.Events {
-			r.Events[i].AtNS = at
+			r.Events[i].AtNS = int64(d)
 		}
 		return r
 	}
-	lastAt := func(at int64) effectoracle.Report {
+	scanned := func() effectoracle.Report {
 		r := okReport(real()...)
-		r.Events[len(r.Events)-1].AtNS = at
+		r.Fences = append(append(scanFence(1), r.Fences...), scanFence(900)...)
 		return r
 	}
-	firstAt := func(at int64) effectoracle.Report {
+	op := func(seq uint64, o string) effectoracle.Fence {
+		return effectoracle.Fence{Seq: seq, Op: o, Path: effectoracle.FenceDir, IsDir: true}
+	}
+	inserted := func(fences ...effectoracle.Fence) effectoracle.Report {
 		r := okReport(real()...)
-		r.Events[0].AtNS = at
+		r.Fences = append(r.Fences, fences...)
+		sort.SliceStable(r.Fences, func(i, j int) bool { return r.Fences[i].Seq < r.Fences[j].Seq })
 		return r
 	}
-	firstAndLastAt := func(first, last int64) effectoracle.Report {
+	// thirdFence is another process making a fence, at seq on.
+	thirdFence := func(seq uint64) effectoracle.Report { return inserted(alternation(seq)...) }
+	brokenFence := func() effectoracle.Report {
 		r := okReport(real()...)
-		r.Events[0].AtNS, r.Events[len(r.Events)-1].AtNS = first, last
+		r.Fences = append(r.Fences[:3], r.Fences[4:]...)
 		return r
 	}
-	surplusAt := func(at int64) effectoracle.Report {
-		r := okReport(append(real(), ev("evil", "create"))...)
-		r.Events[len(r.Events)-1].AtNS = at
+	onlyFirstFence := func() effectoracle.Report {
+		r := okReport(real()...)
+		r.Fences = r.Fences[:2*effectoracle.FenceBurst]
+		return r
+	}
+	noFences := func() effectoracle.Report {
+		r := okReport(real()...)
+		r.Fences = nil
+		return r
+	}
+	unwatched := func() effectoracle.Report {
+		r := okReport(real()...)
+		r.FenceDir = ""
+		return r
+	}
+	withSurplus := func(r effectoracle.Report) effectoracle.Report {
+		r.Events = append(r.Events, ev("evil", "create"))
+		r.Events[len(r.Events)-1].Seq = 43
 		return r
 	}
 	sharedCookie := func() effectoracle.Report {
@@ -667,11 +753,6 @@ func TestJudgeTransientIsAPureFunctionOfReportAndLedger(t *testing.T) {
 		r.Events[4].IsDir = true
 		return r
 	}
-	noClock := func() effectoracle.Report {
-		r := okReport(real()...)
-		r.StartMonoNS = 0
-		return r
-	}
 	unqualified := func() effectoracle.Report {
 		r := okReport(real()...)
 		r.Marks = nil
@@ -681,56 +762,66 @@ func TestJudgeTransientIsAPureFunctionOfReportAndLedger(t *testing.T) {
 		rep    effectoracle.Report
 		ledger []wsoracle.LedgerEntry
 		known  bool
-		win    applyWindow
+		fenced bool
 		want   Finding
 	}{
-		"the events of a real publication":       {okReport(real()...), ledger, true, win, FindingNone},
-		"the displaced old file is not optional": {okReport(without(2)...), ledger, true, win, FindingLost},
-		"created file written in place":          {okReport(append(real(), ev("created.txt", "close_write"))...), ledger, true, win, FindingObserved},
-		"created file with a create event":       {okReport(append(real(), ev("created.txt", "create"))...), ledger, true, win, FindingObserved},
-		"deleted file unlinked":                  {okReport(append(real(), ev("gone.txt", "delete"))...), ledger, true, win, FindingObserved},
-		"deleted file moved in":                  {okReport(append(real(), ev("gone.txt", "moved_to"))...), ledger, true, win, FindingObserved},
-		"created file moved away":                {okReport(append(real(), ev("created.txt", "moved_from"))...), ledger, true, win, FindingObserved},
-		"created file renamed in twice":          {okReport(append(real(), ev("created.txt", "moved_to"))...), ledger, true, win, FindingObserved},
-		"deleted file moved away twice":          {okReport(append(real(), ev("gone.txt", "moved_from"))...), ledger, true, win, FindingObserved},
-		"overwritten file modified":              {okReport(append(real(), ev("over.txt", "modify"))...), ledger, true, win, FindingObserved},
-		"overwritten file attrib":                {okReport(append(real(), ev("over.txt", "attrib"))...), ledger, true, win, FindingObserved},
-		"a path no ledger entry names":           {okReport(append(real(), ev("c", "moved_to"))...), ledger, true, win, FindingObserved},
-		"the operations in another order":        {okReport(append(without(0), ev("created.txt", "moved_to"))...), ledger, true, win, FindingObserved},
-		"a directory renamed in for a file":      {dirForFile(), ledger, true, win, FindingObserved},
-		"created file not seen":                  {okReport(without(0)...), ledger, true, win, FindingLost},
-		"deleted file not seen":                  {okReport(without(3)...), ledger, true, win, FindingLost},
-		"overwrite not seen":                     {okReport(without(1)...), ledger, true, win, FindingLost},
-		"unqualified window":                     {unqualified(), ledger, true, win, FindingLost},
-		"quiet and no ledger":                    {okReport(), nil, true, win, FindingNone},
-		"quiet and no ledger or window":          {okReport(), nil, true, applyWindow{}, FindingNone},
-		"quiet and unqualified, no ledger":       {effectoracle.Report{Verdict: effectoracle.VerdictOK}, nil, true, win, FindingLost},
-		"unknown ledger":                         {okReport(), nil, false, win, FindingLost},
-		"unknown ledger and event":               {okReport(ev("a", "create")), nil, false, win, FindingLost},
+		"the events of a real publication":       {okReport(real()...), ledger, true, true, FindingNone},
+		"the displaced old file is not optional": {okReport(without(2)...), ledger, true, true, FindingLost},
+		"created file written in place":          {okReport(append(real(), ev("created.txt", "close_write"))...), ledger, true, true, FindingObserved},
+		"created file with a create event":       {okReport(append(real(), ev("created.txt", "create"))...), ledger, true, true, FindingObserved},
+		"deleted file unlinked":                  {okReport(append(real(), ev("gone.txt", "delete"))...), ledger, true, true, FindingObserved},
+		"deleted file moved in":                  {okReport(append(real(), ev("gone.txt", "moved_to"))...), ledger, true, true, FindingObserved},
+		"created file moved away":                {okReport(append(real(), ev("created.txt", "moved_from"))...), ledger, true, true, FindingObserved},
+		"created file renamed in twice":          {okReport(append(real(), ev("created.txt", "moved_to"))...), ledger, true, true, FindingObserved},
+		"deleted file moved away twice":          {okReport(append(real(), ev("gone.txt", "moved_from"))...), ledger, true, true, FindingObserved},
+		"overwritten file modified":              {okReport(append(real(), ev("over.txt", "modify"))...), ledger, true, true, FindingObserved},
+		"overwritten file attrib":                {okReport(append(real(), ev("over.txt", "attrib"))...), ledger, true, true, FindingObserved},
+		"a path no ledger entry names":           {okReport(append(real(), ev("c", "moved_to"))...), ledger, true, true, FindingObserved},
+		"the operations in another order":        {okReport(append(without(0), ev("created.txt", "moved_to"))...), ledger, true, true, FindingObserved},
+		"a directory renamed in for a file":      {dirForFile(), ledger, true, true, FindingObserved},
+		"created file not seen":                  {okReport(without(0)...), ledger, true, true, FindingLost},
+		"deleted file not seen":                  {okReport(without(3)...), ledger, true, true, FindingLost},
+		"overwrite not seen":                     {okReport(without(1)...), ledger, true, true, FindingLost},
+		"unqualified window":                     {unqualified(), ledger, true, true, FindingLost},
+		"quiet and no ledger":                    {okReport(), nil, true, true, FindingNone},
+		"quiet and no ledger or window":          {okReport(), nil, true, false, FindingNone},
+		"quiet and unqualified, no ledger":       {effectoracle.Report{Verdict: effectoracle.VerdictOK}, nil, true, true, FindingLost},
+		"unknown ledger":                         {okReport(), nil, false, true, FindingLost},
+		"unknown ledger and event":               {okReport(ev("a", "create")), nil, false, true, FindingLost},
 		// Cookies: every rename of publication has a kernel cookie of its own.
-		"a rename within the live root": {sharedCookie(), ledger, true, win, FindingObserved},
-		"no cookie on a rename":         {noCookie(), ledger, true, win, FindingLost},
-		// Time: the events fall inside the transaction's window on the guest's monotonic clock.
-		"before the transaction began": {withAt(testApplyStart - testReportStart - int64(2*time.Millisecond)), ledger, true, win, FindingObserved},
-		// An event is stamped when the reader got it, which can be arbitrarily after the kernel event: one read after the
-		// window may have happened inside it, so a late reading of exactly publication's events is lost, never observed
-		// and never clean. A surplus event stays observed whenever it was read.
-		"publication events read just after the window":  {withAt(testApplyEnd - testReportStart + int64(time.Millisecond)), ledger, true, win, FindingLost},
-		"publication events read 2.2 s after the window": {withAt(testApplyEnd - testReportStart + int64(2200*time.Millisecond)), ledger, true, win, FindingLost},
-		"publication events read long after the window":  {withAt(testApplyEnd - testReportStart + int64(time.Hour)), ledger, true, win, FindingLost},
-		"one publication event read after the window":    {lastAt(testApplyEnd - testReportStart + int64(2200*time.Millisecond)), ledger, true, win, FindingLost},
-		"in the window, up to its last nanosecond":       {withAt(testApplyEnd - testReportStart), ledger, true, win, FindingNone},
-		"surplus event read after the window":            {surplusAt(testApplyEnd - testReportStart + int64(2200*time.Millisecond)), ledger, true, win, FindingObserved},
-		"surplus event read long after the window":       {surplusAt(testApplyEnd - testReportStart + int64(time.Hour)), ledger, true, win, FindingObserved},
-		"surplus event read in the window":               {surplusAt(testApplyEnd - testReportStart), ledger, true, win, FindingObserved},
-		"one event before the window, the rest in it":    {firstAt(testApplyStart - testReportStart - int64(time.Second)), ledger, true, win, FindingObserved},
-		"an event before the window and one after it":    {firstAndLastAt(testApplyStart-testReportStart-int64(time.Second), testApplyEnd-testReportStart+int64(time.Second)), ledger, true, win, FindingObserved},
-		"no window known":             {okReport(real()...), ledger, true, applyWindow{}, FindingLost},
-		"window never ended":          {okReport(real()...), ledger, true, applyWindow{startNS: testApplyStart}, FindingLost},
-		"report without a clock":      {noClock(), ledger, true, win, FindingLost},
-		"surplus event and no window": {okReport(append(real(), ev("evil", "create"))...), ledger, true, applyWindow{}, FindingObserved},
+		"a rename within the live root": {sharedCookie(), ledger, true, true, FindingObserved},
+		"no cookie on a rename":         {noCookie(), ledger, true, true, FindingLost},
+		// Order, not time: the window is between the two opens of the fence directory in the observer's queue, and when
+		// the reader took the events does not matter.
+		"events read 2.2 s late (the reviewer's case)": {lateReads(2200 * time.Millisecond), ledger, true, true, FindingNone},
+		"events read an hour late":                     {lateReads(time.Hour), ledger, true, true, FindingNone},
+		"scans of the directory around the fences":     {scanned(), ledger, true, true, FindingNone},
+		"every event before the first fence":           {placedReport(real(), nil, nil), ledger, true, true, FindingObserved},
+		"every event after the second fence":           {placedReport(nil, nil, real()), ledger, true, true, FindingObserved},
+		"the first event before the first fence":       {placedReport(real()[:1], real()[1:], nil), ledger, true, true, FindingObserved},
+		"the last event after the second fence":        {placedReport(nil, real()[:4], real()[4:]), ledger, true, true, FindingObserved},
+		"a rename pair before the fences":              {placedReport(pair(), real(), nil), ledger, true, true, FindingObserved},
+		"a rename pair after the fences":               {placedReport(nil, real(), pair()), ledger, true, true, FindingObserved},
+		"a surplus event after the fences":             {placedReport(nil, real(), []effectoracle.Event{ev("evil", "create")}), ledger, true, true, FindingObserved},
+		"a rename pair inside the fences":              {placedReport(nil, append(real(), pair()...), nil), ledger, true, true, FindingObserved},
+		// Another process that makes a fence of its own leaves a third one, which makes the fences ambiguous: the expected
+		// events are lost, a surplus event is still observed. A few opens and reads are no fence, and are not told from
+		// publication's own scans, which also open and read the directory next to its fences.
+		"a third fence between the fences":         {thirdFence(50), ledger, true, true, FindingLost},
+		"a third fence before the fences":          {thirdFence(7), ledger, true, true, FindingLost},
+		"a third fence after the fences":           {thirdFence(900), ledger, true, true, FindingLost},
+		"a stray open between the fences":          {inserted(op(45, effectoracle.FenceOpen)), ledger, true, true, FindingNone},
+		"records next to the fences":               {inserted(op(29, effectoracle.FenceAccess), op(79, effectoracle.FenceOpen)), ledger, true, true, FindingNone},
+		"a fence broken by another record":         {brokenFence(), ledger, true, true, FindingLost},
+		"one fence missed":                         {onlyFirstFence(), ledger, true, true, FindingLost},
+		"no fence in the report":                   {noFences(), ledger, true, true, FindingLost},
+		"the report did not watch the directory":   {unwatched(), ledger, true, true, FindingLost},
+		"publication did not fence twice":          {okReport(real()...), ledger, true, false, FindingLost},
+		"surplus event, publication did not fence": {okReport(append(real(), ev("evil", "create"))...), ledger, true, false, FindingObserved},
+		"surplus event, the report did not watch":  {withSurplus(unwatched()), ledger, true, true, FindingObserved},
+		"surplus event and a third fence":          {withSurplus(thirdFence(50)), ledger, true, true, FindingObserved},
 	} {
-		if got := judgeTransient(&tc.rep, tc.ledger, tc.known, tc.win); got != tc.want {
+		if got := judgeTransient(&tc.rep, tc.ledger, tc.known, tc.fenced); got != tc.want {
 			t.Errorf("%s: %s, want %s", name, got, tc.want)
 		}
 	}
@@ -748,7 +839,7 @@ func TestJudgeTransientIsAPureFunctionOfReportAndLedger(t *testing.T) {
 		"another":  {okReport(ev("d", "moved_from"), ev("e", "moved_to")), FindingObserved},
 		"none":     {okReport(), FindingLost},
 	} {
-		if got := judgeTransient(&tc.rep, removedDir, true, win); got != tc.want {
+		if got := judgeTransient(&tc.rep, removedDir, true, true); got != tc.want {
 			t.Errorf("unsupported operation, %s: %s, want %s", name, got, tc.want)
 		}
 	}

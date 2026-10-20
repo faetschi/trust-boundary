@@ -11,7 +11,7 @@ import (
 
 // OracleVersion labels the report format and rule set. Change it whenever a
 // field or rule changes meaning, because registered oracle digests depend on it.
-const OracleVersion = "effectoracle/v2"
+const OracleVersion = "effectoracle/v3"
 
 // Instrument names the event source in Report.Instrument.
 const Instrument = "linux-inotify-recursive"
@@ -32,6 +32,27 @@ const (
 	KindMovedFrom  = "moved_from"
 	KindMovedTo    = "moved_to"
 	KindAttrib     = "attrib"
+)
+
+// FenceDir is the directory of the watched root whose opens and reads the observer records as fences (Report.Fences).
+// A process that wants the records of its writes to the root placed by order, not by a clock, makes a fence with
+// FenceRoot before the writes and another after them. The inotify queue is FIFO and an event is queued by the system
+// call that causes it, so the events recorded between the two fences happened between them however late the reader
+// took them. A scan of the tree opens the directory and reads it too, but not as a fence does: a fence is an unbroken
+// alternation of FenceBurst opens and reads, in records with consecutive sequence numbers. The directory is the one a
+// file system makes at its root (lost+found); the observer reads it at its own snapshots with the fence records
+// switched off.
+const FenceDir = "lost+found"
+
+// FenceBurst is how many times a fence opens the directory and reads it. The kernel merges identical events that are
+// next to each other in the queue, which would turn a run of opens into fewer records; an open and a read alternate, so
+// every one of them is recorded.
+const FenceBurst = 6
+
+// Fence operations: a directory opened, a directory (or a file in it) read.
+const (
+	FenceOpen   = "open"
+	FenceAccess = "access"
 )
 
 // Gap kinds. Each one is an explicit incompleteness record.
@@ -100,10 +121,10 @@ type Report struct {
 	Gaps          []Gap       `json:"gaps"`
 	Marks         []Mark      `json:"marks"`
 	Events        []Event     `json:"events"`
-	// StartMonoNS is CLOCK_MONOTONIC (nanoseconds) when the observer started, so that at_ns offsets can be placed on
-	// the host machine's monotonic clock: an event happened at StartMonoNS+AtNS or earlier (AtNS is when the reader
-	// recorded it). Zero when the clock could not be read. Like at_ns it is timing and not part of the digest.
-	StartMonoNS int64 `json:"start_mono_ns"`
+	// FenceDir is FenceDir when the observer watched that directory for opens from the end of the start mark on, and
+	// empty when it did not (the directory was absent or could not be watched, or the watch could not be armed).
+	FenceDir string  `json:"fence_dir"`
+	Fences   []Fence `json:"fences"`
 }
 
 // Event is one kernel-observed workspace mutation. Path is slash-separated and
@@ -120,6 +141,17 @@ type Event struct {
 	Path   string `json:"path"`
 	IsDir  bool   `json:"is_dir"`
 	Cookie uint32 `json:"cookie"`
+}
+
+// Fence is one open or read of the fence directory (Path is FenceDir) or of an entry in it, in the same sequence as
+// the other records. The observer's own snapshots are not recorded. Whether records are a fence of some process is for
+// the reader of the report to decide from the pattern: FenceBurst or more opens of the directory in a row.
+type Fence struct {
+	Seq   uint64 `json:"seq"`
+	AtNS  int64  `json:"at_ns"`
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	IsDir bool   `json:"is_dir"`
 }
 
 // Heartbeat records one canary attempt. Observed is false when the canary was
@@ -310,8 +342,12 @@ func (r *Report) canonical(dropTiming bool) Report {
 		}
 		c.Events = append(c.Events, e)
 	}
-	if dropTiming {
-		c.StartMonoNS = 0
+	c.Fences = make([]Fence, 0, len(r.Fences))
+	for _, f := range r.Fences {
+		if dropTiming {
+			f.AtNS = 0
+		}
+		c.Fences = append(c.Fences, f)
 	}
 	c.Marks = make([]Mark, 0, len(r.Marks))
 	for _, m := range r.Marks {

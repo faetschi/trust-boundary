@@ -28,6 +28,7 @@ import (
 	"golang.org/x/sys/unix"
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/workspace"
 	"tbound/supervisor/internal/wsoracle"
 )
@@ -254,12 +255,14 @@ type OracleEvidence struct {
 	Sealed        wsoracle.Manifest
 	AffectedPaths []string
 	LockIdentity  string
-	// ApplyStartMonoNS and ApplyEndMonoNS bound the writes of the transaction to the live root: CLOCK_MONOTONIC
-	// (nanoseconds, the guest machine clock) just before the first object is applied and just after the last. Every
-	// rename publication makes into or out of the live root happens between them. ApplyEndMonoNS is zero while the
-	// transaction has not left the apply loop; both are zero for a transaction that never reached it.
-	ApplyStartMonoNS int64
-	ApplyEndMonoNS   int64
+	// FenceDir and FenceBursts (the number of fences) say how the writes of the transaction to the live root were bracketed for the inotify
+	// observer (effectoracle.FenceDir): the directory of the live root opened and read (effectoracle.FenceRoot) just
+	// before the first object is applied and again just after the last: FenceBursts fences (2 when both were made, 1
+	// when only the first was, 0 when the directory could not be opened or the transaction never reached the apply
+	// loop). The queue of the observer is in the order of the system calls, so every rename publication makes into or
+	// out of the live root lies between the two fences in it, however late the observer's reader takes the events.
+	FenceDir    string
+	FenceBursts int
 }
 
 type openHow struct {
@@ -701,9 +704,14 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err := injectFault(inject, "after-token-checkpoint", -1); err != nil {
 		return pendingResult, err
 	}
-	evidence.ApplyStartMonoNS = monotonicNS()
+	evidence.FenceDir = effectoracle.FenceDir
+	if effectoracle.FenceRoot(request.LiveRoot) == nil {
+		evidence.FenceBursts = 1
+	}
 	applyErr := r.apply(ctx, request.LiveRoot, artifact, prep, inject)
-	evidence.ApplyEndMonoNS = monotonicNS()
+	if evidence.FenceBursts == 1 && effectoracle.FenceRoot(request.LiveRoot) == nil {
+		evidence.FenceBursts = 2
+	}
 	if applyErr != nil {
 		return pendingResult, applyErr
 	}
@@ -2505,14 +2513,4 @@ func validPlan(plan objectPlan) bool {
 
 func validObjectStatus(status ObjectStatus) bool {
 	return status == ObjectSucceeded || status == ObjectFailed || status == ObjectUnknown
-}
-
-// monotonicNS reads CLOCK_MONOTONIC in nanoseconds, the clock the transient-mutation observer
-// (internal/effectoracle) places its events on. It is zero when the clock cannot be read.
-func monotonicNS() int64 {
-	var ts unix.Timespec
-	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts); err != nil {
-		return 0
-	}
-	return ts.Nano()
 }

@@ -15,8 +15,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 // defaultCanaryTimeout bounds how long a canary may take to be observed. A
@@ -34,11 +32,15 @@ const watchMask = syscall.IN_CREATE | syscall.IN_DELETE | syscall.IN_MODIFY |
 	syscall.IN_ATTRIB | syscall.IN_DELETE_SELF | syscall.IN_MOVE_SELF |
 	syscall.IN_ONLYDIR | syscall.IN_DONT_FOLLOW
 
+// fenceMask is added to the watch of FenceDir, and to no other: the opens and reads of the fence directory. Any other
+// directory would make a record of every scan of the tree.
+const fenceMask = syscall.IN_OPEN | syscall.IN_ACCESS
+
 // maskNames lists the requested masks, sorted, for Report.Masks.
 var maskNames = []string{
-	"IN_ATTRIB", "IN_CLOSE_WRITE", "IN_CREATE", "IN_DELETE", "IN_DELETE_SELF",
+	"IN_ACCESS", "IN_ATTRIB", "IN_CLOSE_WRITE", "IN_CREATE", "IN_DELETE", "IN_DELETE_SELF",
 	"IN_DONT_FOLLOW", "IN_MODIFY", "IN_MOVED_FROM", "IN_MOVED_TO", "IN_MOVE_SELF",
-	"IN_ONLYDIR",
+	"IN_ONLYDIR", "IN_OPEN",
 }
 
 // canaryExpect lists the events the oracle itself causes for one canary, in the
@@ -53,12 +55,11 @@ const stopPostLabel = "mark:" + MarkStop + ":post"
 // are safe for concurrent use. Mark and Stop serialize on ctrl. The reader
 // goroutine and the control path serialize on mu.
 type Observer struct {
-	root      string
-	t0        time.Time
-	startMono int64 // CLOCK_MONOTONIC at t0, nanoseconds (0: unreadable)
-	nonce     string
-	src       inotifyAPI
-	timeout   time.Duration
+	root    string
+	t0      time.Time
+	nonce   string
+	src     inotifyAPI
+	timeout time.Duration
 
 	ctrl     sync.Mutex      // serializes Mark, Stop, and canary writes
 	startCtx context.Context // set under ctrl only while Start takes the start mark; once done, no canary is written
@@ -68,6 +69,9 @@ type Observer struct {
 	wds        map[int]string           // watch descriptor -> slash-relative directory
 	rootWd     int                      // -1 when the root is not watched
 	rootLost   bool                     // the root was deleted, moved, or unmounted
+	fenceWd    int                      // watch descriptor of FenceDir, -1 when it is not watched
+	fenceArmed bool                     // the watch of FenceDir asks for opens and reads
+	fenceEver  bool                     // it was armed after the start mark
 	readerDead bool                     // the reader stopped after a read or parse failure
 	issued     map[string]*canaryWaiter // every canary name issued, kept for matching
 	canaries   int
@@ -80,6 +84,7 @@ type Observer struct {
 	beats  []Heartbeat
 	gaps   []Gap
 	marks  []Mark
+	fences []Fence
 
 	readerDone chan struct{}
 
@@ -147,13 +152,13 @@ func startWith(ctx context.Context, root string, src inotifyAPI, timeout time.Du
 	}
 	o := &Observer{
 		root:       abs,
-		startMono:  MonotonicNS(),
 		t0:         time.Now(),
 		nonce:      nonce,
 		src:        src,
 		timeout:    timeout,
 		wds:        make(map[int]string),
 		rootWd:     -1,
+		fenceWd:    -1,
 		issued:     make(map[string]*canaryWaiter),
 		raced:      make(map[string]map[string]bool),
 		readerDone: make(chan struct{}),
@@ -167,6 +172,11 @@ func startWith(ctx context.Context, root string, src inotifyAPI, timeout time.Du
 	o.startCtx = ctx
 	err = o.markLocked(MarkStart)
 	o.startCtx = nil
+	if err == nil {
+		o.mu.Lock()
+		o.setFenceLocked(true)
+		o.mu.Unlock()
+	}
 	o.ctrl.Unlock()
 	if err == nil {
 		err = ctx.Err()
@@ -323,6 +333,15 @@ func (o *Observer) applyLocked(rec rawEvent) {
 			}
 		}
 	}
+	if rec.mask&fenceMask != 0 {
+		// Only the fence directory's watch asks for these.
+		op := FenceOpen
+		if rec.mask&syscall.IN_ACCESS != 0 {
+			op = FenceAccess
+		}
+		o.fences = append(o.fences, Fence{Seq: o.nextSeqLocked(), AtNS: o.sinceLocked(), Op: op, Path: rel, IsDir: rec.mask&syscall.IN_ISDIR != 0})
+		return
+	}
 	kind, ok := kindOf(rec.mask)
 	if !ok {
 		o.gapLocked(GapUnmappedEvent, rel, o.seq, fmt.Sprintf("unexpected mask %#x", rec.mask))
@@ -411,7 +430,11 @@ func (o *Observer) watchTreeLocked(rel string, from uint64) {
 		return
 	}
 	defer func() { _ = dir.Close() }()
-	wd, err := o.src.AddWatch(abs, watchMask)
+	mask := uint32(watchMask)
+	if rel == FenceDir && o.fenceArmed {
+		mask |= fenceMask
+	}
+	wd, err := o.src.AddWatch(abs, mask)
 	if err != nil {
 		kind := GapWatchError
 		if errors.Is(err, syscall.ENOSPC) {
@@ -439,6 +462,8 @@ func (o *Observer) watchTreeLocked(rel string, from uint64) {
 	o.wds[wd] = rel
 	if rel == "." {
 		o.rootWd = wd
+	} else if rel == FenceDir {
+		o.fenceWd = wd
 	}
 	names, err := dirNames(dir)
 	if err != nil {
@@ -584,6 +609,9 @@ func (o *Observer) rootLostLocked(detail string) {
 func (o *Observer) markLocked(name string) error {
 	o.canaryLocked("mark:" + name + ":pre")
 	o.mu.Lock()
+	// The snapshot opens and reads the fence directory like any other: its records are not a process's fence.
+	wasArmed := o.fenceArmed
+	o.setFenceLocked(false)
 	pre := o.seq
 	o.mu.Unlock()
 
@@ -591,6 +619,9 @@ func (o *Observer) markLocked(name string) error {
 	o.canaryLocked("mark:" + name + ":post")
 	o.mu.Lock()
 	defer o.mu.Unlock()
+	if wasArmed && name != MarkStop {
+		o.setFenceLocked(true)
+	}
 	for _, u := range res.unreadable {
 		o.gapLocked(GapSnapshotUnreadable, u.path, pre, errnoName(u.err))
 	}
@@ -760,7 +791,6 @@ func (o *Observer) buildReport() *Report {
 	defer o.mu.Unlock()
 	r := &Report{
 		OracleVersion: OracleVersion,
-		StartMonoNS:   o.startMono,
 		Instrument:    Instrument,
 		Masks:         append([]string(nil), maskNames...),
 		Preservation:  append([]string(nil), PreservationFields...),
@@ -768,6 +798,10 @@ func (o *Observer) buildReport() *Report {
 		Gaps:          append([]Gap(nil), o.gaps...),
 		Marks:         append([]Mark(nil), o.marks...),
 		Events:        append([]Event(nil), o.events...),
+		Fences:        append([]Fence(nil), o.fences...),
+	}
+	if o.fenceWd >= 0 && o.fenceEver {
+		r.FenceDir = FenceDir
 	}
 	r.Verdict = verdictFor(r.Gaps, r.Heartbeats)
 	return r
@@ -791,13 +825,28 @@ func newNonce() (string, error) {
 	return hex.EncodeToString(b[:]), nil
 }
 
-// MonotonicNS reads CLOCK_MONOTONIC in nanoseconds, the clock Report.StartMonoNS is on (and the clock the publication
-// transaction's apply window is recorded on, so that the two can be compared). It
-// is zero when the clock cannot be read.
-func MonotonicNS() int64 {
-	var ts unix.Timespec
-	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts); err != nil {
-		return 0
+// setFenceLocked switches the fence records of the fence directory's watch on or off. It does nothing when the
+// directory is not watched or the watch is already so. A watch that cannot be changed is a gap: the records it keeps or
+// withholds cannot be trusted. The caller holds mu.
+func (o *Observer) setFenceLocked(on bool) {
+	if o.fenceWd < 0 || o.fenceArmed == on {
+		return
 	}
-	return ts.Nano()
+	mask := uint32(watchMask)
+	if on {
+		mask |= fenceMask
+	}
+	wd, err := o.src.AddWatch(filepath.Join(o.root, FenceDir), mask)
+	if err != nil {
+		o.gapLocked(GapWatchError, FenceDir, o.seq, "fence: "+errnoName(err))
+		return
+	}
+	if wd != o.fenceWd {
+		o.gapLocked(GapWatchError, FenceDir, o.seq, "fence: the directory was replaced")
+		return
+	}
+	o.fenceArmed = on
+	if on {
+		o.fenceEver = true
+	}
 }

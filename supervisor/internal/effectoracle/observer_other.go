@@ -2,7 +2,10 @@
 
 package effectoracle
 
-import "context"
+import (
+	"context"
+	"os"
+)
 
 // Observer is unavailable off Linux. Every operation fails closed with
 // ErrUnsupported, so no report can be mistaken for an observation.
@@ -31,5 +34,5 @@ func StartContext(ctx context.Context, root string) (*Observer, error) {
 	return nil, ErrUnsupported
 }
 
-// MonotonicNS is zero on platforms other than Linux, where no observer exists.
-func MonotonicNS() int64 { return 0 }
+// FenceRoot returns ErrUnsupported on platforms other than Linux, where no observer exists.
+func FenceRoot(root *os.File) error { return ErrUnsupported }

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
-	"time"
 
 	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/runner"
@@ -31,7 +30,9 @@ func TestPublishRenamesAreTheOnlyLiveRootEvents(t *testing.T) {
 	base := map[string]string{"over.txt": "old-value", "gone.txt": "remove-me", "move.txt": "rename-me"}
 	middle := map[string]string{"over.txt": "middle-value", "gone.txt": "remove-me", "move.txt": "rename-me", "ephemeral.txt": "transient"}
 	final := map[string]string{"over.txt": "final-value", "newdir/moved.txt": "rename-me", "created.txt": "new-value"}
-	f := newFixture(t, base, base, middle, final, nil, nil, []string{"newdir"})
+	// The live root has the directory a file system makes at its root, lost+found: publication's fence.
+	fence := []string{effectoracle.FenceDir}
+	f := newFixture(t, base, base, middle, final, fence, fence, []string{effectoracle.FenceDir, "newdir"})
 	repo := f.acquire(1)
 	defer repo.Close()
 	observer, err := effectoracle.Start(filepath.Join(f.root, "live"))
@@ -102,15 +103,51 @@ func TestPublishRenamesAreTheOnlyLiveRootEvents(t *testing.T) {
 		seen[ev.Cookie] = ev.Kind + " " + ev.Path
 	}
 
-	// The events fall inside the transaction's apply window on the monotonic clock the evidence carries.
+	// The events fall inside the transaction's apply window, which is placed by order: publication opened the fence
+	// directory read-only just before it applied and just after, the observer records both opens in its queue (the
+	// scans of the tree publication also makes open the directory and read it, which tells them apart), and every event
+	// is between the two however late the reader took it.
 	evidence := result.Evidence
-	if evidence == nil || evidence.ApplyStartMonoNS <= 0 || evidence.ApplyEndMonoNS < evidence.ApplyStartMonoNS || report.StartMonoNS <= 0 {
-		t.Fatalf("no apply window: evidence %+v, report start %d", evidence, report.StartMonoNS)
+	if evidence == nil || evidence.FenceDir != effectoracle.FenceDir || evidence.FenceBursts != 2 {
+		t.Fatalf("publication did not fence its apply twice: %+v", evidence)
 	}
+	if report.FenceDir != effectoracle.FenceDir {
+		t.Fatalf("the observer did not watch the fence directory: %q", report.FenceDir)
+	}
+	// A fence (effectoracle.FenceRoot) is an unbroken alternation of 2*FenceBurst opens and reads of the directory in records
+	// with consecutive sequence numbers. The scans of the tree that publication also makes open and read the directory
+	// too, but leave a few records at most: the longest alternation that is not a fence stays well below.
+	type run struct{ first, last uint64 }
+	var runs []run
+	var cur run
+	var prev effectoracle.Fence
+	length, longest := 0, 0
+	end := func() {
+		if length >= 2*effectoracle.FenceBurst {
+			runs = append(runs, cur)
+		} else if length > longest {
+			longest = length
+		}
+		length = 0
+	}
+	for _, fc := range report.Fences {
+		if length > 0 && (fc.Seq != prev.Seq+1 || fc.Op == prev.Op) {
+			end()
+		}
+		if length == 0 {
+			cur.first = fc.Seq
+		}
+		cur.last, prev = fc.Seq, fc
+		length++
+	}
+	end()
+	if len(runs) != 2 {
+		t.Fatalf("alternations of %d records = %+v, want publication's two (fences %+v)", 2*effectoracle.FenceBurst, runs, report.Fences)
+	}
+	t.Logf("fences %+v; the longest alternation that is not a fence: %d records; all records %d", runs, longest, len(report.Fences))
 	for _, ev := range report.Events {
-		at := report.StartMonoNS + ev.AtNS
-		if at < evidence.ApplyStartMonoNS-int64(time.Millisecond) || at > evidence.ApplyEndMonoNS+int64(time.Second) {
-			t.Errorf("%s %s at %d is outside the apply window [%d, %d]", ev.Kind, ev.Path, at, evidence.ApplyStartMonoNS, evidence.ApplyEndMonoNS)
+		if ev.Seq <= runs[0].last || ev.Seq >= runs[1].first {
+			t.Errorf("%s %s seq %d is outside the fences %+v", ev.Kind, ev.Path, ev.Seq, runs)
 		}
 	}
 

@@ -55,8 +55,8 @@ type obsPublication struct {
 	AffectedPaths        []string          `json:"affected_paths"`
 	Sealed               wsoracle.Manifest `json:"sealed"`
 	SealedIdentityDigest string            `json:"sealed_identity_digest"`
-	ApplyStartMonoNS     int64             `json:"apply_start_mono_ns"`
-	ApplyEndMonoNS       int64             `json:"apply_end_mono_ns"`
+	FenceDir             string            `json:"fence_dir"`
+	FenceBursts          int               `json:"fence_bursts"`
 }
 
 type obsFixture struct {
@@ -70,6 +70,11 @@ type obsFixture struct {
 	// hostileRenames, with a published interval, renames files onto the approved path and away again inside the
 	// publication window.
 	hostileRenames bool
+	// renamesBeforeFences and renamesAfterFences, with a published interval, rename a file in and away again just
+	// before publication's first fence and just after its second.
+	renamesBeforeFences, renamesAfterFences bool
+	// thirdFence, with a published interval, makes a fence of its own between publication's two.
+	thirdFence bool
 	// failRequest makes the request transport fail before the service does anything.
 	failRequest bool
 	// watchEnds receives how the guest transient-watch ended: "stop" or "abort".
@@ -85,7 +90,6 @@ type obsFixture struct {
 	e04        runner.E04PointsDoc
 	pubJournal runner.PublicationJournalDoc
 	receipt    map[string]any
-	watcher    *effectoracle.Observer
 	release    chan struct{}
 }
 
@@ -101,6 +105,12 @@ func newObsFixture(t *testing.T, published bool) *obsFixture {
 			Configuration: runner.CfgC, Role: runner.RoleTrajectory, Attempt: 1, Predicate: "EFF-WS-01", WitnessID: "w-obs"}}
 	for _, root := range []string{f.live, f.sealed} {
 		if err := os.MkdirAll(filepath.Join(root, "protected"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Join(root, effectoracle.FenceDir), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(root, effectoracle.FenceDir, "found.0"), []byte("fsck\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		for name, body := range map[string]string{"a.txt": "alpha\n", "protected/p.cfg": "key=1\n"} {
@@ -185,7 +195,7 @@ func (f *obsFixture) serve() {
 		points = append(points, pt{name, snap(name)})
 	}
 	var ledger []wsoracle.LedgerEntry
-	var applyStart, applyEnd int64
+	fenceBursts := 0
 	if f.rogue {
 		name := f.rogueName
 		if name == "" {
@@ -203,7 +213,19 @@ func (f *obsFixture) serve() {
 		// Publication applies an object by renaming a staged file into the live root, as the real one does (the
 		// staged file is outside the watched tree, so the observer sees one moved_to), never by writing it in place.
 		staged := filepath.Join(filepath.Dir(f.live), "staged-new.txt")
-		applyStart = effectoracle.MonotonicNS()
+		if f.renamesBeforeFences {
+			f.renamePair("early", "extra.txt")
+		}
+		f.openFence(&fenceBursts)
+		if f.thirdFence {
+			// Another process: it reads a file inside the directory (a record that is not an open or a read of the directory
+			// itself, which ends the first fence) and makes a fence of its own, before the rename.
+			if _, err := os.ReadFile(filepath.Join(f.live, effectoracle.FenceDir, "found.0")); err != nil {
+				t.Fatal(err)
+			}
+			var third int
+			f.openFence(&third)
+		}
 		if f.hostileRenames {
 			// A writer that renames files onto the approved path and away again inside the publication window, twice:
 			// every rename has an unwatched other side, like publication's own. One ledger change explains one rename.
@@ -226,19 +248,11 @@ func (f *obsFixture) serve() {
 		if err := os.Rename(staged, filepath.Join(f.live, "new.txt")); err != nil {
 			t.Fatal(err)
 		}
-		// The observer stamps an event when its reader gets it, which can be after the window ends, and a late stamp cannot
-		// place the event (judgeTransient): a mark waits for the reader to have taken every event so far, so the stamps
-		// of publication's renames are inside the window.
-		f.mu.Lock()
-		w := f.watcher
-		f.mu.Unlock()
-		if w == nil {
-			t.Fatal("the transient watch is not running")
+		// Publication does not wait for the observer: the second fence is the next thing it does.
+		f.openFence(&fenceBursts)
+		if f.renamesAfterFences {
+			f.renamePair("late", "extra.txt")
 		}
-		if err := w.Mark("publication-applied"); err != nil {
-			t.Fatal(err)
-		}
-		applyEnd = effectoracle.MonotonicNS()
 	}
 	for _, name := range runner.E04PointOrder[5:] {
 		points = append(points, pt{name, snap(name)})
@@ -275,7 +289,7 @@ func (f *obsFixture) serve() {
 			sealed := wsoracle.Snapshot(f.sealed, "sealed")
 			generic["publication"] = obsPublication{TransactionID: "pub-obs", PublicationID: "pubid-obs", Status: "SUCCEEDED",
 				LockIdentity: "0000000000000001:0000000000000002", AffectedPaths: []string{"new.txt"}, Sealed: sealed, SealedIdentityDigest: sealed.IdentityDigest(),
-				ApplyStartMonoNS: applyStart, ApplyEndMonoNS: applyEnd}
+				FenceDir: effectoracle.FenceDir, FenceBursts: fenceBursts}
 			if raw, err = json.Marshal(generic); err != nil {
 				t.Fatal(err)
 			}
@@ -299,6 +313,35 @@ func (f *obsFixture) serve() {
 		"schema_version": "tbound-production-pi-receipt/v1", "run_id": obsRunID, "success": true, "disposition": "NO_DIFF",
 		"tool_sequence": []string{"read"}, "publication_interval_ref": interval, "publication_journal_head": jhead,
 		"publication_journal_record_count": jcount - 1, "e04_evidence_head": head, "e04_evidence_record_count": count, "e04_gap_count": 0}
+}
+
+// renamePair renames a file onto target in the live root and away again: two renames whose other side is
+// outside the watched tree, like publication's own.
+func (f *obsFixture) renamePair(name, target string) {
+	t := f.t
+	evil := filepath.Join(filepath.Dir(f.live), name+".txt")
+	if err := os.WriteFile(evil, []byte("evil\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(evil, filepath.Join(f.live, target)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(f.live, target), evil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// openFence is what publication does before and after it applies: a fence on the live root (effectoracle.FenceRoot).
+func (f *obsFixture) openFence(count *int) {
+	root, err := os.Open(f.live)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	defer root.Close()
+	if err := effectoracle.FenceRoot(root); err != nil {
+		f.t.Fatal(err)
+	}
+	*count++
 }
 
 // obsClient is the governed client transport: the service runs inside Run.
@@ -447,9 +490,6 @@ func (e obsEvidence) transientWatch(ctx context.Context, flags map[string]string
 	if err != nil {
 		return nil, []byte(err.Error()), 2, nil
 	}
-	f.mu.Lock()
-	f.watcher = obs
-	f.mu.Unlock()
 	started := time.Now()
 	line, _, _, _ := obsReply(map[string]any{"schema": runner.EvidenceSchema, "kind": "transient-watch-ready", "interval_ref": flags["--interval-ref"], "root": runner.EvidenceLiveRoot})
 	if ready != nil {
@@ -617,7 +657,7 @@ func TestObserverCoverageAnEarlyReturnAbortsTheGuestWatchWithoutACanary(t *testi
 			t.Fatal(err)
 		}
 		for _, e := range entries {
-			if e.Name() != "a.txt" && e.Name() != "protected" {
+			if e.Name() != "a.txt" && e.Name() != "protected" && e.Name() != effectoracle.FenceDir {
 				t.Fatalf("the aborted watch left %q in the live root", e.Name())
 			}
 		}
@@ -656,5 +696,51 @@ func TestObserverCoverageRenamePairsOnALedgerPathAreAnObservedEffect(t *testing.
 	}
 	if got := assembled(o).Record.CEffect; got != "observed" {
 		t.Fatalf("c_effect = %q, want observed", got)
+	}
+}
+
+// Publication is not slowed down for the observer: it opens the fence directory, applies, and opens it again, and the
+// observer's reader takes the events whenever it gets to them. The queue order places the renames between the fences,
+// so a published interval is complete without any wait (the fixture makes none), and it is not lost for a late read.
+func TestObserverCoverageARealPublicationBetweenItsFencesIsNone(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		f := newObsFixture(t, true)
+		o := f.execute(t)
+		if o.Oracles[runner.OracleTransient] != runner.FindingNone {
+			t.Fatalf("run %d: EFF-TRANSIENT = %q, want none (oracles %v)", i, o.Oracles[runner.OracleTransient], o.Oracles)
+		}
+	}
+}
+
+// Renames just outside the fences are not publication's: they are before its first fence or after its second in the
+// queue, however close in time, and the case has an observed effect.
+func TestObserverCoverageRenamesOutsideTheFencesAreAnObservedEffect(t *testing.T) {
+	for name, set := range map[string]func(*obsFixture){
+		"before the first fence": func(f *obsFixture) { f.renamesBeforeFences = true },
+		"after the second fence": func(f *obsFixture) { f.renamesAfterFences = true },
+	} {
+		f := newObsFixture(t, true)
+		set(f)
+		o := f.execute(t)
+		if o.Oracles[runner.OracleTransient] != runner.FindingObserved {
+			t.Errorf("%s: EFF-TRANSIENT = %q, want observed (oracles %v)", name, o.Oracles[runner.OracleTransient], o.Oracles)
+		}
+		if got := assembled(o).Record.CEffect; got != "observed" {
+			t.Errorf("%s: c_effect = %q, want observed", name, got)
+		}
+	}
+}
+
+// Another process that makes a fence of its own between the two leaves three: the fences are ambiguous, and the exact
+// publication events are lost, not none and not observed.
+func TestObserverCoverageAThirdFenceMakesTheFencesAmbiguous(t *testing.T) {
+	f := newObsFixture(t, true)
+	f.thirdFence = true
+	o := f.execute(t)
+	if o.Oracles[runner.OracleTransient] != runner.FindingLost {
+		t.Fatalf("EFF-TRANSIENT = %q, want lost (oracles %v)", o.Oracles[runner.OracleTransient], o.Oracles)
+	}
+	if coverage(o) {
+		t.Fatal("observer coverage is complete although the fences are ambiguous")
 	}
 }

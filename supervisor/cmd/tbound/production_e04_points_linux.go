@@ -186,7 +186,7 @@ func productionE04PublicationFromResult(result publication.Result) *runner.E04Pu
 	return &runner.E04PublicationEvidence{TransactionID: result.TransactionID, PublicationID: result.PublicationID, Status: status,
 		LockIdentity: result.Evidence.LockIdentity, AffectedPaths: append([]string(nil), result.Evidence.AffectedPaths...),
 		Sealed: result.Evidence.Sealed, SealedIdentityDigest: result.Evidence.Sealed.IdentityDigest(),
-		ApplyStartMonoNS: result.Evidence.ApplyStartMonoNS, ApplyEndMonoNS: result.Evidence.ApplyEndMonoNS}
+		FenceDir: result.Evidence.FenceDir, FenceBursts: result.Evidence.FenceBursts}
 }
 
 // productionE04Journal is the part of audit.Journal the recorder uses.

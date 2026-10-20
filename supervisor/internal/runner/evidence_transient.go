@@ -133,22 +133,35 @@ func (iv *transientInterval) abort() {
 // What the report becomes. The live root changes only through publication, and publication applies every object by
 // rename from or to its private artifact directory, outside the watched tree (PublicationEventSequence). Each ledger
 // operation therefore explains exactly its own events, once and in the order applied, and nothing else. Transient
-// fetches the ledger and the publication's apply window (both CLOCK_MONOTONIC on the guest) from the same store the
-// receipt binds (e04-points) and decides:
+// fetches the ledger and whether publication fenced its apply (below) from the same store the receipt binds
+// (e04-points) and decides:
 //
 //   - an event the ledger does not explain: any kind but the operation's renames, on any path; a rename beyond the
 //     ones the ledger operations make (a repeat, a surplus, another path, out of order, a directory where a file is
 //     expected); a rename whose cookie another event shares (a rename within the live root, which publication never
-//     makes); an event outside the apply window (the observer's clock, placed by Report.StartMonoNS, against the
-//     transaction's start and end): observed, even when the report is otherwise unqualified;
+//     makes); an event outside the apply window (before the first fence or after the second): observed, even when
+//     the report is otherwise unqualified;
 //   - a report that is not a complete qualified window by its own records (effectoracle Report.QualifiedWindow: start
 //     and stop mark, the four canaries observed, no gap, a verdict the records give; the host recomputes it and does
 //     not trust the stated one), a window that does not cover the request (the guest did not stop on the host's
 //     request, or it observed for less time than the request lasted), or a ledger that cannot be had: lost;
 //   - a ledger operation whose events were not all seen (the instrument missed a write that happened), an operation
-//     whose events are not known, a rename without a cookie, or events that cannot be placed in time (no apply
-//     window or report clock): lost;
+//     whose events are not known, a rename without a cookie, or an expected event that cannot be placed because the
+//     fences cannot be told (below): lost;
 //   - otherwise none.
+//
+// The apply window is placed by order, not by a clock. The observer stamps an event when its reader takes it, which
+// can be any time after the kernel queued it; the kernel's queue, however, is FIFO and filled by the system call
+// itself. Publication makes a fence (effectoracle.FenceRoot: the fence directory of the live root opened and read
+// effectoracle.FenceBurst times) just before it applies the first object and another just after the last, and says so
+// in its evidence (FenceBursts). The observer records every open and read of that directory in the order of its queue
+// (Report.Fences). The scans of the tree that publication and others make open the directory and read it too, but
+// with a few opens and reads at most; a fence is an unbroken alternation of 2*FenceBurst of them in records with
+// consecutive sequence numbers. When publication fenced twice, the report watched the directory, and exactly two such
+// alternations are in it, the events between them are inside the apply window however late they were read, and the
+// events before the first or after the second are outside it. Any other number of them (another process made one, or
+// one was missed), a report that did not watch the directory, or a publication that did not fence twice leaves the
+// window unplaced: the events cannot be put in or out of it, so the expected ones are lost.
 //
 // The reference digest folds the ledger's prefix digest into the report digest, so the decision is bound to both
 // inputs. Limits: the observer sees the live root only (the workspace the cell writes is not watched); a writer that
@@ -366,8 +379,8 @@ func (c *TransientCollector) Transient(ctx context.Context, ref EvidenceRef) (Ob
 	if err != nil {
 		return ObserverEvidence{}, evidenceAbsent("the transient report has no digest: %v", err)
 	}
-	ledger, window, known := c.publicationLedger(ctx, ref)
-	finding := judgeTransient(&rep, ledger, known, window)
+	ledger, fenced, known := c.publicationLedger(ctx, ref)
+	finding := judgeTransient(&rep, ledger, known, fenced)
 	switch {
 	case rep.OracleVersion != effectoracle.OracleVersion:
 		// Another rule set: nothing in the report is read.
@@ -393,30 +406,18 @@ func windowCovers(doc TransientDoc, request time.Duration) bool {
 	return doc.Stop == TransientStopRequested && time.Duration(doc.ElapsedMicros)*time.Microsecond >= request
 }
 
-// applyWindow is when publication wrote to the live root, from the post-publication record: CLOCK_MONOTONIC
-// nanoseconds on the guest, the clock the observer's report is placed on (Report.StartMonoNS + Event.AtNS).
-type applyWindow struct{ startNS, endNS int64 }
-
-func (w applyWindow) known() bool { return w.startNS > 0 && w.endNS >= w.startNS }
-
-// eventLagBefore is the slack before the apply window for the two clock reads: an event is stamped when the reader got
-// it, which is at or after the kernel event, so a stamp before the window start is an event that happened before it
-// (give or take the nanoseconds between the clock reads). There is no slack after the window: how long the reader takes
-// to wake up has no upper bound, so a late stamp says nothing about when the event happened.
-const eventLagBefore = time.Millisecond
-
 // publicationLedger is the live-root ledger the service recorded for the interval, from the store the receipt
-// binds, with the window publication wrote in. It is known when the post-publication record says what was applied:
+// binds, with whether publication fenced its apply (twice, on the fence directory the observer watches). It is known when the post-publication record says what was applied:
 // the entries (E04LedgerPublication) or nothing (E04LedgerNone). Any other basis, a missing record or a store that does
-// not match the receipt leaves it unknown. The window is zero when the record carries no publication evidence.
-func (c *TransientCollector) publicationLedger(ctx context.Context, ref EvidenceRef) ([]wsoracle.LedgerEntry, applyWindow, bool) {
+// not match the receipt leaves it unknown. It is not fenced when the record carries no publication evidence.
+func (c *TransientCollector) publicationLedger(ctx context.Context, ref EvidenceRef) ([]wsoracle.LedgerEntry, bool, bool) {
 	doc, err := c.Client.e04Doc(ctx, ref)
 	if err != nil {
-		return nil, applyWindow{}, false
+		return nil, false, false
 	}
 	records, err := e04DocRecords(doc, ref.Interval, ref.E04Head, ref.E04Count)
 	if err != nil {
-		return nil, applyWindow{}, false
+		return nil, false, false
 	}
 	var post []E04PointRecord
 	for _, p := range records {
@@ -425,19 +426,17 @@ func (c *TransientCollector) publicationLedger(ctx context.Context, ref Evidence
 		}
 	}
 	if len(post) != 1 {
-		return nil, applyWindow{}, false
+		return nil, false, false
 	}
-	var window applyWindow
-	if pub := post[0].Publication; pub != nil {
-		window = applyWindow{startNS: pub.ApplyStartMonoNS, endNS: pub.ApplyEndMonoNS}
-	}
+	pub := post[0].Publication
+	fenced := pub != nil && pub.FenceDir == effectoracle.FenceDir && pub.FenceBursts == 2
 	switch post[0].LedgerBasis {
 	case E04LedgerPublication:
-		return post[0].Ledger, window, true
+		return post[0].Ledger, fenced, true
 	case E04LedgerNone:
-		return nil, window, true
+		return nil, fenced, true
 	}
-	return nil, applyWindow{}, false
+	return nil, false, false
 }
 
 // PublicationEvent is one live-root event the observer sees when publication applies a ledger change.
@@ -483,22 +482,19 @@ func PublicationEventSequence(ledger []wsoracle.LedgerEntry) (seq []PublicationE
 
 // judgeTransient decides the EFF-TRANSIENT finding of an effectoracle report against the publication ledger of the
 // interval (see TransientCollector for the rules). It does not read the window timing of the guest's watch
-// (windowCovers).
+// (windowCovers), and it reads no clock at all: the apply window is placed by the order of the observer's records.
+// fenced is whether publication's evidence says it opened the fence directory before and after its apply.
 //
 // Each ledger operation explains exactly its own events (PublicationEventSequence), once, in order. The events are
 // matched against that sequence in order; an event with no entry left to explain it (a surplus, a repeat, an
 // event of another kind, another path, a directory flag that differs, or out of order) is observed. So are an event
-// stamped before the window publication wrote in, and a rename whose cookie another event shares (a rename between two
-// paths of the live root: publication moves between the artifact directory and the live root, never within it).
-//
-// An event is stamped when the reader processed it, which is at or after the kernel event and after an unbounded
-// delay. So a stamp before the window start proves the event happened before it, but a stamp after the window end
-// proves nothing: the event may have happened inside the window. An event stamped after the window end that is
-// otherwise exactly an expected publication event makes the finding lost (never none, never observed on timing alone);
-// a surplus event is observed whenever it was stamped. A sequence entry no event matched, a cookie that is zero on a
-// rename, a window that cannot be placed, an operation with no known events or a report that is not a qualified
-// window is lost. Without the ledger nothing is explained and an event is not read.
-func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, known bool, window applyWindow) Finding {
+// outside the apply window (applyFences), and a rename whose cookie another event shares (a rename between two paths
+// of the live root: publication moves between the artifact directory and the live root, never within it). When the
+// window cannot be placed (applyFences) an expected event may be inside it or not, so it makes the finding lost,
+// never none; a surplus event is observed wherever it lies. A sequence entry no event matched, a cookie that is zero
+// on a rename, an operation with no known events or a report that is not a qualified window is lost. Without the
+// ledger nothing is explained and an event is not read.
+func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, known, fenced bool) Finding {
 	if !known {
 		return FindingLost
 	}
@@ -516,6 +512,7 @@ func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, kno
 			ledgerPaths[ch.Path] = true
 		}
 	}
+	first, last, placed := applyFences(rep, fenced)
 	next := 0 // want[:next] are used up
 	for _, ev := range rep.Events {
 		if ev.Kind == effectoracle.KindMovedFrom || ev.Kind == effectoracle.KindMovedTo {
@@ -526,13 +523,8 @@ func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, kno
 				return FindingObserved
 			}
 		}
-		stampedAfterWindow := false
-		if !window.known() || rep.StartMonoNS <= 0 {
-			lost = true
-		} else if at := rep.StartMonoNS + ev.AtNS; at < window.startNS-int64(eventLagBefore) {
+		if placed && (ev.Seq < first || ev.Seq > last) {
 			return FindingObserved
-		} else if at > window.endNS {
-			stampedAfterWindow = true
 		}
 		k := next
 		for k < len(want) && (want[k].Path != ev.Path || want[k].Kind != ev.Kind || want[k].IsDir != ev.IsDir) {
@@ -550,7 +542,7 @@ func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, kno
 			return FindingObserved
 		}
 		next = k + 1
-		lost = lost || stampedAfterWindow // an exact publication event, but whether it was inside the window is unknown
+		lost = lost || !placed // an exact publication event, but whether it was inside the apply window is unknown
 	}
 	if supported {
 		// Every event matched a distinct entry, so fewer events than entries means an operation was not seen in full.
@@ -562,6 +554,54 @@ func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, kno
 		return FindingLost
 	}
 	return FindingNone
+}
+
+// applyFences places publication's apply in the report by the order of its records: the sequence number of the last
+// record of the fence that began it and of the first record of the fence that ended it, and whether they could be
+// told. They can when publication fenced twice (fenced), the report watched the fence directory, and the directory has
+// exactly two fences: runs of at least 2*effectoracle.FenceBurst records that alternate between an open and a read and
+// have consecutive sequence numbers (no other record between them; the kernel does not merge an open with a read, only
+// identical events next to each other). Every record in the queue between the two fences happened between them, and
+// every one before or after happened before or after. A fence may be longer than FenceRoot makes it by records next to
+// it that are not publication's (its own scans open and read the directory right before and after, and cannot be told
+// apart), which changes neither end. The scans publication and others make leave a few opens and reads, not such an
+// alternation, and the observer's own snapshots are not recorded. Another process that makes an alternation this long
+// leaves a third fence, an ambiguity the order cannot resolve.
+func applyFences(rep *effectoracle.Report, fenced bool) (first, last uint64, ok bool) {
+	if !fenced || rep.FenceDir != effectoracle.FenceDir {
+		return 0, 0, false
+	}
+	type run struct{ first, last uint64 }
+	var runs []run
+	var cur run
+	length := 0
+	var prev effectoracle.Fence
+	end := func() {
+		if length >= 2*effectoracle.FenceBurst {
+			runs = append(runs, cur)
+		}
+		length = 0
+	}
+	for _, f := range rep.Fences {
+		if f.Path != effectoracle.FenceDir || !f.IsDir || (f.Op != effectoracle.FenceOpen && f.Op != effectoracle.FenceAccess) {
+			end()
+			continue
+		}
+		if length > 0 && (f.Seq != prev.Seq+1 || f.Op == prev.Op) {
+			end() // another record came between, or the same operation twice: not the same alternation
+		}
+		if length == 0 {
+			cur.first = f.Seq
+		}
+		cur.last = f.Seq
+		prev = f
+		length++
+	}
+	end()
+	if len(runs) != 2 || runs[0].last >= runs[1].first {
+		return 0, 0, false
+	}
+	return runs[0].last, runs[1].first, true
 }
 
 // ErrObserverStartUnconfirmed: the transient watch did not acknowledge that it runs and its guest command could not be
