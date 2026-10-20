@@ -63,7 +63,7 @@ the JSON error and observations for the reason. A missing user bus or writable
 delegation needs an operator-provided scope; rerunning this command as root
 does not establish that prerequisite.
 
-The audit reproduced a kernel defect on Ubuntu `7.0.0-38-generic`: a new clone
+The installed check confirmed a kernel incompatibility on Ubuntu `7.0.0-38-generic`: a new clone
 into a previously killed cgroup immediately received SIGKILL while both controls
 stayed alive. An incompatible result requires an operator-qualified kernel with
 the [upstream cgroup reuse fix](https://github.com/torvalds/linux/commit/8e359920216689b3b79e0fe8961a77fe312a511f),
