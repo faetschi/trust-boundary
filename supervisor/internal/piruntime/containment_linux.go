@@ -1020,12 +1020,23 @@ func (l *D09PodmanCrunLauncher) Probe(ctx context.Context) (D09Report, error) {
 	config := l.config.normalized()
 	report := D09Report{}
 	var missing []D09Prerequisite
+	var managedRootErr error
+	if l.productionRunner() {
+		// The template config carries no service uid/gid; they come from the signed
+		// registration the managed root verifies against, so resolve it before the
+		// identity check instead of waiting for BindManagedLiveRoot.
+		registration, err := l.ensureManagedLiveRoot(ctx)
+		managedRootErr = err
+		if err == nil {
+			config = withRegisteredServiceIdentity(config, registration)
+		}
+	}
 	if err := validateD09CellIdentity(config); err != nil {
 		missing = append(missing, D09Prerequisite{Name: "cell-identity", Detail: err.Error()})
 	}
 	if l.productionRunner() {
-		if _, err := l.ensureManagedLiveRoot(ctx); err != nil {
-			missing = append(missing, D09Prerequisite{Name: "managed-live-root", Detail: err.Error()})
+		if managedRootErr != nil {
+			missing = append(missing, D09Prerequisite{Name: "managed-live-root", Detail: managedRootErr.Error()})
 		}
 		abi, abiErr := D09LandlockKernelABI()
 		if abiErr != nil {
@@ -2728,4 +2739,18 @@ func (s *d09OwnedCommandScope) populated() (bool, error) {
 		return false, ErrCgroupScopeRefused
 	}
 	return readCgroupPopulated(s.scope.file)
+}
+
+// withRegisteredServiceIdentity fills the user-namespace host uid/gid from the
+// verified registration when the launcher config, built from the registered
+// template, does not carry them yet. It only fills zero values and only for the
+// registration the config is bound to; validateD09CellIdentity then still
+// requires them to reproduce the signed mapping digest.
+func withRegisteredServiceIdentity(config D09Config, registration D09ManagedLiveRootRegistration) D09Config {
+	if config.UserNamespaceHostUID == 0 && config.UserNamespaceHostGID == 0 &&
+		registration.Digest != "" && registration.Digest == config.ManagedLiveRootRegistrationDigest {
+		config.UserNamespaceHostUID = registration.ServiceUID
+		config.UserNamespaceHostGID = registration.ServiceGID
+	}
+	return config
 }

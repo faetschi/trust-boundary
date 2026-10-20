@@ -1184,3 +1184,37 @@ func TestD09XattrAttestationRejectsUnregisteredTemplate(t *testing.T) {
 		t.Fatal("caller-built/unregistered template minted a workspace xattr attestation")
 	}
 }
+
+// The launcher config built from the registered template carries no service
+// uid/gid (they are only set when the managed root is bound), but Probe checks
+// the cell identity before that bind. The signed registration supplies them.
+func TestProbeCellIdentityUsesTheRegisteredServiceIdentityBeforeTheManagedRootIsBound(t *testing.T) {
+	config, _ := completeD09Host(t)
+	serviceUID, serviceGID := config.UserNamespaceHostUID, config.UserNamespaceHostGID
+	config.registeredTemplate = true
+	unbound := config
+	unbound.UserNamespaceHostUID, unbound.UserNamespaceHostGID = 0, 0
+	if err := validateD09CellIdentity(unbound); err == nil {
+		t.Fatal("a config without the service identity passed the cell identity check")
+	}
+	registration := D09ManagedLiveRootRegistration{Digest: config.ManagedLiveRootRegistrationDigest,
+		ServiceUID: serviceUID, ServiceGID: serviceGID}
+	if err := validateD09CellIdentity(withRegisteredServiceIdentity(unbound, registration)); err != nil {
+		t.Fatalf("the registered service identity was not used: %v", err)
+	}
+	other := registration
+	other.Digest = DigestBytes([]byte("another registration"))
+	if err := validateD09CellIdentity(withRegisteredServiceIdentity(unbound, other)); err == nil {
+		t.Fatal("the service identity of another registration was used")
+	}
+	wrong := registration
+	wrong.ServiceUID++
+	if err := validateD09CellIdentity(withRegisteredServiceIdentity(unbound, wrong)); err == nil {
+		t.Fatal("a registered service identity that does not reproduce the signed mapping digest was accepted")
+	}
+	bound := config
+	bound.UserNamespaceHostUID++
+	if got := withRegisteredServiceIdentity(bound, registration); got.UserNamespaceHostUID != bound.UserNamespaceHostUID {
+		t.Fatal("an already-bound service identity was overwritten")
+	}
+}
