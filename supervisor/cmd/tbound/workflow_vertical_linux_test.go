@@ -238,6 +238,17 @@ func verifyWorkflowVerticalCapturedOperationMismatches(t *testing.T, ctx context
 }
 
 func TestWorkflowVerticalFreshPromptMultiTurnStoreTerminal(t *testing.T) {
+	runWorkflowVertical(t, false)
+}
+
+// A real launch journals the worker's TCB proof in the Store journal after the workflow checkpoint
+// and before the first provider exchange, so the first exchange sees the journal one record past
+// the checkpointed count. The checkpoint must absorb exactly that record.
+func TestWorkflowVerticalFirstTurnAfterTheLaunchProofRecord(t *testing.T) {
+	runWorkflowVertical(t, true)
+}
+
+func runWorkflowVertical(t *testing.T, launchProof bool) {
 	ctx := context.Background()
 	root := privateGovernedTestRoot(t)
 	sourcePath, storePath, adminPath := filepath.Join(root, "source"), filepath.Join(root, "store"), filepath.Join(root, "admin")
@@ -463,6 +474,21 @@ func TestWorkflowVerticalFreshPromptMultiTurnStoreTerminal(t *testing.T) {
 	}
 	if err := authority.BindInitialWorkflowPrompt(workflowVerticalTaskID, workflowVerticalPrompt+" changed", taskDigest); err == nil {
 		t.Fatal("changed initial prompt replaced the exact fresh catalog prompt")
+	}
+	if launchProof {
+		before, _ := ledger.Snapshot()
+		proofData, err := json.Marshal(productionLaunchTCBProofEvent{SchemaVersion: "tbound-production-launch-tcb-proof/v1",
+			RunID: "vertical-run", SessionID: workflowVerticalSessionID, WorkflowID: workflowVerticalID,
+			ConversationID: workflowVerticalConversation})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := storeJournal.Append(audit.Event{Kind: "production_tcb_proof", ID: "production-tcb-proof:vertical-run", Data: proofData}); err != nil {
+			t.Fatal(err)
+		}
+		if trace, err := storeJournal.Trace(); err != nil || uint64(len(trace.Records)) != before.Pins.StoreJournalCount+1 {
+			t.Fatalf("the launch proof did not put the Store journal one record past the checkpoint: %v", err)
+		}
 	}
 	config := providerbridge.Config{WorkflowID: workflowVerticalID, ConversationID: workflowVerticalConversation,
 		ProfileID: workflowVerticalProfile, InitialGenerationID: baseline.ID(), InitialTreeDigest: baseline.TreeDigest(),
