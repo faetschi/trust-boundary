@@ -1958,6 +1958,9 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	if err := verifyPiServiceEnvironment(serviceConfig, registration); err != nil {
 		return err
 	}
+	if err := ensurePiServiceScratchDirectories(serviceConfig, registration.ServiceUID); err != nil {
+		return errors.Join(ErrPiServiceUnavailable, err)
+	}
 	// A corpus-mode service admits only trials of its frozen manifest. The manifest is
 	// read through the strict root-owned walk, must match the signed digest and pass
 	// evalcorpus.Validate, or the service refuses to start before it listens.
@@ -2110,4 +2113,62 @@ func piServiceSocketParentMountAcceptable(joined string, serviceNamespace bool) 
 		return false
 	}
 	return serviceNamespace || flags["rw"]
+}
+
+// ensurePiServiceScratchDirectories creates the per-start scratch directories the
+// signed config names. The unit's RuntimeDirectory= makes only the runtime dir,
+// afresh at every start, so TMPDIR and XDG_CACHE_HOME below it must be made here.
+func ensurePiServiceScratchDirectories(config piServiceConfig, serviceUID int) error {
+	for _, directory := range []string{config.TMPDir, config.XDGCacheHome} {
+		if filepath.Dir(directory) != config.XDGRuntimeDir {
+			return fmt.Errorf("scratch directory %s is not a direct child of %s", directory, config.XDGRuntimeDir)
+		}
+	}
+	runtime, err := openServiceDirectoryNoSymlinks(config.XDGRuntimeDir)
+	if err != nil {
+		return fmt.Errorf("open service runtime directory: %w", err)
+	}
+	defer runtime.Close()
+	return ensureScratchDirectoriesIn(runtime, serviceUID, filepath.Base(config.TMPDir), filepath.Base(config.XDGCacheHome))
+}
+
+// ensureScratchDirectoriesIn makes each name a service-owned 0700 directory
+// below the open runtime directory, descriptor-relative and without following
+// links. A directory it created is chmod'ed through its descriptor; an existing
+// one must already be exactly right.
+func ensureScratchDirectoriesIn(runtime *os.File, serviceUID int, names ...string) error {
+	for _, name := range names {
+		if name == "" || name == "." || name == ".." || strings.ContainsRune(name, '/') {
+			return fmt.Errorf("invalid scratch directory name %q", name)
+		}
+		mkdirErr := syscall.Mkdirat(int(runtime.Fd()), name, 0o700)
+		if mkdirErr != nil && !errors.Is(mkdirErr, syscall.EEXIST) {
+			return fmt.Errorf("create scratch directory %s: %w", name, mkdirErr)
+		}
+		fd, err := syscall.Openat(int(runtime.Fd()), name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+		if err != nil {
+			return fmt.Errorf("open scratch directory %s without following links: %w", name, err)
+		}
+		directory := os.NewFile(uintptr(fd), name)
+		err = func() error {
+			defer directory.Close()
+			if mkdirErr == nil {
+				if err := syscall.Fchmod(int(directory.Fd()), 0o700); err != nil {
+					return err
+				}
+			}
+			var stat syscall.Stat_t
+			if err := syscall.Fstat(int(directory.Fd()), &stat); err != nil {
+				return err
+			}
+			if int(stat.Uid) != serviceUID || stat.Mode&0o7777 != 0o700 {
+				return fmt.Errorf("scratch directory %s must be owned by uid %d with mode 0700", name, serviceUID)
+			}
+			return nil
+		}()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

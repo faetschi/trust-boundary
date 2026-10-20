@@ -949,3 +949,55 @@ func TestPiServiceServerAllowedAcceptsTheSystemdListenerOrTheService(t *testing.
 		t.Fatal("a root service registration was accepted")
 	}
 }
+
+func TestEnsureScratchDirectoriesCreatesServiceOwned0700DirectoriesAndRefusesOthers(t *testing.T) {
+	runtime := t.TempDir()
+	open := func() *os.File {
+		file, err := os.Open(runtime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = file.Close() })
+		return file
+	}
+	uid := os.Geteuid()
+	if err := ensureScratchDirectoriesIn(open(), uid, "tmp", "cache"); err != nil {
+		t.Fatalf("scratch directories were not created: %v", err)
+	}
+	for _, name := range []string{"tmp", "cache"} {
+		info, err := os.Lstat(filepath.Join(runtime, name))
+		if err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
+			t.Fatalf("%s = %v, %v; want a 0700 directory", name, info, err)
+		}
+	}
+	if err := ensureScratchDirectoriesIn(open(), uid, "tmp", "cache"); err != nil {
+		t.Fatalf("existing correct directories were refused: %v", err)
+	}
+	if err := os.Chmod(filepath.Join(runtime, "tmp"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureScratchDirectoriesIn(open(), uid, "tmp"); err == nil {
+		t.Fatal("an existing directory with mode 0755 was accepted")
+	}
+	if err := ensureScratchDirectoriesIn(open(), uid+1, "cache"); err == nil {
+		t.Fatal("a directory owned by another uid was accepted")
+	}
+	if err := os.Symlink(runtime, filepath.Join(runtime, "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureScratchDirectoriesIn(open(), uid, "linked"); err == nil {
+		t.Fatal("a symlink was followed as a scratch directory")
+	}
+	for _, name := range []string{"", ".", "..", "a/b"} {
+		if err := ensureScratchDirectoriesIn(open(), uid, name); err == nil {
+			t.Fatalf("scratch directory name %q was accepted", name)
+		}
+	}
+}
+
+func TestEnsurePiServiceScratchDirectoriesRequiresDirectChildrenOfTheRuntimeDirectory(t *testing.T) {
+	config := piServiceConfig{XDGRuntimeDir: "/run/tbound-pi", TMPDir: "/run/tbound-pi/tmp", XDGCacheHome: "/run/tbound-pi/sub/cache"}
+	if err := ensurePiServiceScratchDirectories(config, 995); err == nil {
+		t.Fatal("a scratch directory that is not a direct child of the runtime directory was accepted")
+	}
+}
