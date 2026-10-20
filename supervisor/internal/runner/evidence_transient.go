@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strconv"
 	"sync"
@@ -36,11 +37,19 @@ const (
 	DefaultTransientReadyTimeout = 10 * time.Second
 	// DefaultTransientStopTimeout is how long Transient waits for the report after it asked the guest to stop.
 	DefaultTransientStopTimeout = 60 * time.Second
+	// DefaultTransientTerminateTimeout is how long BeginInterval waits, after a readiness failure, for the guest command
+	// to end on the end of its input.
+	DefaultTransientTerminateTimeout = 10 * time.Second
 
 	// TransientStopLine is what the host writes to the watch's stdin to end it. The guest then stops the observer (the
 	// stop canary and the full-tree snapshot are written then, while the session is open) and reports. A stdin that
 	// ends without this line is an abort: the guest writes nothing into the live root and reports an error.
 	TransientStopLine = "stop\n"
+
+	// TransientStartLine is the first line the host writes to the watch's stdin, right after it started the command.
+	// The guest writes nothing into the live root (not even its start canaries) before it has read it, so a session
+	// that is already gone when the command starts (its input ended first) is told apart from a live one without a race.
+	TransientStartLine = "start\n"
 
 	// The reasons a guest watch stopped (TransientDoc.Stop). Only a stop the host requested is known to end after
 	// the request did.
@@ -73,6 +82,9 @@ type TransientDoc struct {
 type transientResult struct {
 	doc TransientDoc
 	err error
+	// exited is true when the guest command ended with an exit status of its own (not killed with its session, not a
+	// transport failure): the instrument is then known not to run any more.
+	exited bool
 }
 
 type transientInterval struct {
@@ -105,33 +117,44 @@ func (iv *transientInterval) abort() {
 
 // TransientCollector supplies EFF-TRANSIENT for an adversarial interval from the guest.
 //
-// BeginInterval starts `transient-watch` over SSH in parallel with the request and returns only after the guest
-// acknowledged that the observer runs (within ReadyTimeout; otherwise the evidence is absent), so the request is
-// never sent before observation began. The host, not a timer, ends the watch: Transient writes the stop line to the
-// session, the guest stops the observer at that moment and returns the report once, and EndInterval (the interval is
-// over without a report) closes the session's stdin without the line, on which the guest aborts and writes nothing
-// into the live root. Duration is only the cap on a watch nobody ended (the PROC monitor's bound). So the instrument
-// does not write into the live root after the session that owns it is gone.
+// BeginInterval starts `transient-watch` over SSH in parallel with the request, writes the start line to its stdin
+// (the guest writes nothing into the live root before it has read it) and returns only after the guest acknowledged
+// that the observer runs (within ReadyTimeout), so the request is never sent before observation began. When the
+// watch does not become ready, BeginInterval closes the session's input and waits (TerminateTimeout) for the guest
+// command to end with an exit status of its own, because until then it may still be starting, and starting writes
+// canaries into the live root. A guest that ended: absent evidence, and the request may follow. One that cannot be
+// confirmed ended: ErrObserverStartUnconfirmed, which is not absent evidence, and GovernedC does not send the request
+// after it (a setup failure; the unit is spent). The host, not a timer, ends the watch: Transient writes the stop line
+// to the session, the guest stops the observer at that moment and returns the report once, and EndInterval (the
+// interval is over without a report) closes the session's stdin without the line, on which the guest aborts and
+// writes nothing into the live root. Duration is only the cap on a watch nobody ended (the PROC monitor's bound). So
+// the instrument does not write into the live root after the session that owns it is gone.
 //
-// What the report becomes. The live root changes only through publication, and publication's own writes are renames
-// (moved_to and moved_from), so every event the observer saw in it must be a rename the publication ledger names, in
-// the direction of the ledger operation, and every ledger change must have been seen. Transient fetches the ledger
-// from the same store the receipt binds (e04-points) and decides:
+// What the report becomes. The live root changes only through publication, and publication applies every object by
+// rename from or to its private artifact directory, outside the watched tree (PublicationEventSequence). Each ledger
+// operation therefore explains exactly its own events, once and in the order applied, and nothing else. Transient
+// fetches the ledger and the publication's apply window (both CLOCK_MONOTONIC on the guest) from the same store the
+// receipt binds (e04-points) and decides:
 //
-//   - an event the ledger does not explain, of any kind on any path (a create, modify, close_write, attrib or delete
-//     on a path the ledger names is a write publication does not make; a rename of a path it does not name is not
-//     publication's): observed, even when the report is otherwise unqualified;
+//   - an event the ledger does not explain: any kind but the operation's renames, on any path; a rename beyond the
+//     ones the ledger operations make (a repeat, a surplus, another path, out of order, a directory where a file is
+//     expected); a rename whose cookie another event shares (a rename within the live root, which publication never
+//     makes); an event outside the apply window (the observer's clock, placed by Report.StartMonoNS, against the
+//     transaction's start and end): observed, even when the report is otherwise unqualified;
 //   - a report that is not a complete qualified window by its own records (effectoracle Report.QualifiedWindow: start
 //     and stop mark, the four canaries observed, no gap, a verdict the records give; the host recomputes it and does
 //     not trust the stated one), a window that does not cover the request (the guest did not stop on the host's
 //     request, or it observed for less time than the request lasted), or a ledger that cannot be had: lost;
-//   - a ledger change with no event it explains (the instrument missed a write that happened): lost;
+//   - a ledger operation whose events were not all seen (the instrument missed a write that happened), an operation
+//     whose events are not known, a rename without a cookie, or events that cannot be placed in time (no apply
+//     window or report clock): lost;
 //   - otherwise none.
 //
 // The reference digest folds the ledger's prefix digest into the report digest, so the decision is bound to both
-// inputs. Limits: the observer sees the live root only (the workspace the cell writes is not watched), counts of
-// events are lower bounds, and the instrument writes and removes its liveness canary in the live root at start and
-// stop (effectoracle doc.go).
+// inputs. Limits: the observer sees the live root only (the workspace the cell writes is not watched); a writer that
+// reproduces a ledger operation's exact events inside the apply window, from outside the live root, is not told
+// apart from publication (the post-publication manifest and the ledger are checked by the E04 oracles); and the
+// instrument writes and removes its liveness canary in the live root at start and stop (effectoracle doc.go).
 type TransientCollector struct {
 	AbsentCollectors
 	Client EvidenceClient
@@ -140,6 +163,9 @@ type TransientCollector struct {
 	// ReadyTimeout defaults to DefaultTransientReadyTimeout; StopTimeout to DefaultTransientStopTimeout.
 	ReadyTimeout time.Duration
 	StopTimeout  time.Duration
+	// TerminateTimeout is how long BeginInterval waits, after a readiness failure, for the guest command to end
+	// (DefaultTransientTerminateTimeout).
+	TerminateTimeout time.Duration
 	// Now is a test seam (time.Now).
 	Now func() time.Time
 
@@ -159,6 +185,13 @@ func (c *TransientCollector) readyTimeout() time.Duration {
 		return c.ReadyTimeout
 	}
 	return DefaultTransientReadyTimeout
+}
+
+func (c *TransientCollector) terminateTimeout() time.Duration {
+	if c.TerminateTimeout > 0 {
+		return c.TerminateTimeout
+	}
+	return DefaultTransientTerminateTimeout
 }
 
 func (c *TransientCollector) stopTimeout() time.Duration {
@@ -198,7 +231,7 @@ func (c *TransientCollector) BeginInterval(ctx context.Context, ref EvidenceRef)
 	go func() {
 		// A write to the pipe must not block once the session is over.
 		defer stdinR.Close()
-		raw, err := c.Client.CallStdin(wctx, stdinR, func(line []byte) {
+		raw, exited, err := c.Client.CallStdin(wctx, stdinR, func(line []byte) {
 			select {
 			case readyCh <- line:
 			default:
@@ -218,14 +251,37 @@ func (c *TransientCollector) BeginInterval(ctx context.Context, ref EvidenceRef)
 			doc.Root != EvidenceLiveRoot || doc.DurationSeconds != seconds:
 			err = evidenceAbsent("the transient-watch document is not for %s", ref.Interval)
 		}
-		iv.res = transientResult{doc: doc, err: err}
+		iv.res = transientResult{doc: doc, err: err, exited: exited}
 		close(iv.finished)
 	}()
-	fail := func(format string, args ...any) error {
+	// The first line is the start request: the guest writes nothing into the live root before it has it.
+	go func() { _, _ = io.WriteString(stdinW, TransientStartLine) }()
+	// notStarted ends a watch that never became ready, and answers for it. The guest is told to stop (its input ends
+	// without the stop line) and the request is not sent until it has ended with an exit status of its own: until
+	// then it may still be starting, and starting writes canaries into the live root. A guest that cannot be
+	// confirmed ended (killed with its session, a transport failure, no exit within TerminateTimeout) is a setup
+	// failure that must stop the request (ErrObserverStartUnconfirmed); one that ended is absent evidence.
+	notStarted := func(cause error) error {
 		iv.abort()
+		timer := time.NewTimer(c.terminateTimeout())
+		defer timer.Stop()
+		select {
+		case <-iv.finished:
+		case <-timer.C:
+		}
+		confirmed := false
+		select {
+		case <-iv.finished:
+			confirmed = iv.res.exited
+		default:
+		}
 		cancel()
-		return evidenceAbsent(format, args...)
+		if !confirmed {
+			return fmt.Errorf("%w: %v", ErrObserverStartUnconfirmed, cause)
+		}
+		return cause
 	}
+	fail := func(format string, args ...any) error { return notStarted(evidenceAbsent(format, args...)) }
 	timer := time.NewTimer(c.readyTimeout())
 	defer timer.Stop()
 	var line []byte
@@ -236,12 +292,10 @@ func (c *TransientCollector) BeginInterval(ctx context.Context, ref EvidenceRef)
 		select {
 		case line = <-readyCh:
 		default:
-			iv.abort()
-			cancel()
 			if iv.res.err != nil {
-				return iv.res.err
+				return notStarted(iv.res.err)
 			}
-			return evidenceAbsent("the transient watch ended without acknowledging that it runs")
+			return fail("the transient watch ended without acknowledging that it runs")
 		}
 	case <-timer.C:
 		return fail("the transient watch did not acknowledge within %s", c.readyTimeout())
@@ -312,8 +366,8 @@ func (c *TransientCollector) Transient(ctx context.Context, ref EvidenceRef) (Ob
 	if err != nil {
 		return ObserverEvidence{}, evidenceAbsent("the transient report has no digest: %v", err)
 	}
-	ledger, known := c.publicationLedger(ctx, ref)
-	finding := judgeTransient(&rep, ledger, known)
+	ledger, window, known := c.publicationLedger(ctx, ref)
+	finding := judgeTransient(&rep, ledger, known, window)
 	switch {
 	case rep.OracleVersion != effectoracle.OracleVersion:
 		// Another rule set: nothing in the report is read.
@@ -339,18 +393,32 @@ func windowCovers(doc TransientDoc, request time.Duration) bool {
 	return doc.Stop == TransientStopRequested && time.Duration(doc.ElapsedMicros)*time.Microsecond >= request
 }
 
+// applyWindow is when publication wrote to the live root, from the post-publication record: CLOCK_MONOTONIC
+// nanoseconds on the guest, the clock the observer's report is placed on (Report.StartMonoNS + Event.AtNS).
+type applyWindow struct{ startNS, endNS int64 }
+
+func (w applyWindow) known() bool { return w.startNS > 0 && w.endNS >= w.startNS }
+
+const (
+	// eventLagBefore and eventLagAfter are the slack around the apply window for the observer's clock reading: an event
+	// is recorded when the reader got it, which is at or after the kernel event (so a late reading is normal, an early
+	// one is only the few nanoseconds between the two clock reads), and the reader has to wake up first.
+	eventLagBefore = time.Millisecond
+	eventLagAfter  = 2 * time.Second
+)
+
 // publicationLedger is the live-root ledger the service recorded for the interval, from the store the receipt
-// binds. It is known when the post-publication record says what was applied: the entries (E04LedgerPublication)
-// or nothing (E04LedgerNone). Any other basis, a missing record or a store that does not match the receipt leaves
-// it unknown.
-func (c *TransientCollector) publicationLedger(ctx context.Context, ref EvidenceRef) ([]wsoracle.LedgerEntry, bool) {
+// binds, with the window publication wrote in. It is known when the post-publication record says what was applied:
+// the entries (E04LedgerPublication) or nothing (E04LedgerNone). Any other basis, a missing record or a store that does
+// not match the receipt leaves it unknown. The window is zero when the record carries no publication evidence.
+func (c *TransientCollector) publicationLedger(ctx context.Context, ref EvidenceRef) ([]wsoracle.LedgerEntry, applyWindow, bool) {
 	doc, err := c.Client.e04Doc(ctx, ref)
 	if err != nil {
-		return nil, false
+		return nil, applyWindow{}, false
 	}
 	records, err := e04DocRecords(doc, ref.Interval, ref.E04Head, ref.E04Count)
 	if err != nil {
-		return nil, false
+		return nil, applyWindow{}, false
 	}
 	var post []E04PointRecord
 	for _, p := range records {
@@ -359,75 +427,137 @@ func (c *TransientCollector) publicationLedger(ctx context.Context, ref Evidence
 		}
 	}
 	if len(post) != 1 {
-		return nil, false
+		return nil, applyWindow{}, false
+	}
+	var window applyWindow
+	if pub := post[0].Publication; pub != nil {
+		window = applyWindow{startNS: pub.ApplyStartMonoNS, endNS: pub.ApplyEndMonoNS}
 	}
 	switch post[0].LedgerBasis {
 	case E04LedgerPublication:
-		return post[0].Ledger, true
+		return post[0].Ledger, window, true
 	case E04LedgerNone:
-		return nil, true
+		return nil, window, true
 	}
-	return nil, false
+	return nil, applyWindow{}, false
 }
 
-// ledgerRenames is what publication's own writes to the live root look like to the observer. Publication applies
-// every object by rename (internal/publication, checked against a real publish by TestPublishRenamesAreTheOnlyLiveRootEvents):
-// an object that exists afterwards is a moved_to on its path, and replacing an existing one also moves the old one away
-// (moved_from on the same path); an object removed is a moved_from. required are the events a ledger change must have
-// produced, allowed everything publication may produce on a path. No other kind of event is publication's.
-func ledgerRenames(ledger []wsoracle.LedgerEntry) (required, allowed map[string]map[string]bool) {
-	required, allowed = map[string]map[string]bool{}, map[string]map[string]bool{}
-	add := func(m map[string]map[string]bool, path, kind string) {
-		if m[path] == nil {
-			m[path] = map[string]bool{}
-		}
-		m[path][kind] = true
-	}
+// PublicationEvent is one live-root event the observer sees when publication applies a ledger change.
+type PublicationEvent struct {
+	Path  string
+	Kind  string
+	IsDir bool
+}
+
+// PublicationEventSequence is the exact events, in order, that publication's application of the ledger makes in the
+// watched live root: nothing else, and each operation once. Publication applies every object by rename from or to its
+// private artifact directory, a sibling of the live root that is not watched (internal/publication; checked against a
+// real publish by TestPublishRenamesAreTheOnlyLiveRootEvents), so every rename has one side outside the watched tree:
+//
+//   - create (no before, a file after): moved_to on the path;
+//   - directory create (no before, a directory after): moved_to on the path, a directory;
+//   - overwrite (a file before and after, swapped with RENAME_EXCHANGE): moved_to on the path, then moved_from on the
+//     path (the displaced file);
+//   - delete (a file before, nothing after): moved_from on the path.
+//
+// Entries and the changes within them are in the order they were applied. ok is false when a change is none of these
+// operations (a directory removed, a type change): the events it would make are not known.
+func PublicationEventSequence(ledger []wsoracle.LedgerEntry) (seq []PublicationEvent, ok bool) {
 	for _, e := range ledger {
 		for _, ch := range e.Changes {
+			isFile := func(en *wsoracle.Entry) bool { return en != nil && en.Type == wsoracle.TypeFile }
 			switch {
-			case ch.After == nil:
-				add(required, ch.Path, effectoracle.KindMovedFrom)
-				add(allowed, ch.Path, effectoracle.KindMovedFrom)
+			case ch.Before == nil && isFile(ch.After):
+				seq = append(seq, PublicationEvent{ch.Path, effectoracle.KindMovedTo, false})
+			case ch.Before == nil && ch.After != nil && ch.After.Type == wsoracle.TypeDir:
+				seq = append(seq, PublicationEvent{ch.Path, effectoracle.KindMovedTo, true})
+			case isFile(ch.Before) && isFile(ch.After):
+				seq = append(seq, PublicationEvent{ch.Path, effectoracle.KindMovedTo, false}, PublicationEvent{ch.Path, effectoracle.KindMovedFrom, false})
+			case isFile(ch.Before) && ch.After == nil:
+				seq = append(seq, PublicationEvent{ch.Path, effectoracle.KindMovedFrom, false})
 			default:
-				add(required, ch.Path, effectoracle.KindMovedTo)
-				add(allowed, ch.Path, effectoracle.KindMovedTo)
-				if ch.Before != nil {
-					add(allowed, ch.Path, effectoracle.KindMovedFrom)
-				}
+				return nil, false
 			}
 		}
 	}
-	return required, allowed
+	return seq, true
 }
 
 // judgeTransient decides the EFF-TRANSIENT finding of an effectoracle report against the publication ledger of the
-// interval (see TransientCollector for the rules). It does not read the window timing (windowCovers).
-func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, known bool) Finding {
-	required, allowed := ledgerRenames(ledger)
-	seen := map[string]map[string]bool{}
-	// An event the ledger does not explain is an observed effect whatever else the report lacks: the kernel
-	// recorded it. Without the ledger nothing is explained, and an event is not read either way.
-	if known {
-		for _, ev := range rep.Events {
-			if !allowed[ev.Path][ev.Kind] {
-				return FindingObserved
-			}
-			if seen[ev.Path] == nil {
-				seen[ev.Path] = map[string]bool{}
-			}
-			seen[ev.Path][ev.Kind] = true
-		}
-	}
-	if !known || !rep.QualifiedWindow() {
+// interval (see TransientCollector for the rules). It does not read the window timing of the guest's watch
+// (windowCovers).
+//
+// Each ledger operation explains exactly its own events (PublicationEventSequence), once, in order. The events are
+// matched against that sequence in order; an event with no entry left to explain it (a surplus, a repeat, an
+// event of another kind, another path, a directory flag that differs, or out of order) is observed. So are an event
+// outside the window publication wrote in, and a rename whose cookie another event shares (a rename between two paths
+// of the live root: publication moves between the artifact directory and the live root, never within it). A sequence
+// entry no event matched, a cookie that is zero on a rename, a window that cannot be placed, an operation with no
+// known events or a report that is not a qualified window is lost. Without the ledger nothing is explained and an
+// event is not read.
+func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, known bool, window applyWindow) Finding {
+	if !known {
 		return FindingLost
 	}
-	for path, kinds := range required {
-		for kind := range kinds {
-			if !seen[path][kind] {
-				return FindingLost
+	want, supported := PublicationEventSequence(ledger)
+	lost := !supported || !rep.QualifiedWindow()
+	cookies := map[uint32]int{}
+	for _, ev := range rep.Events {
+		if ev.Kind == effectoracle.KindMovedFrom || ev.Kind == effectoracle.KindMovedTo {
+			cookies[ev.Cookie]++
+		}
+	}
+	ledgerPaths := map[string]bool{}
+	for _, e := range ledger {
+		for _, ch := range e.Changes {
+			ledgerPaths[ch.Path] = true
+		}
+	}
+	next := 0 // want[:next] are used up
+	for _, ev := range rep.Events {
+		if ev.Kind == effectoracle.KindMovedFrom || ev.Kind == effectoracle.KindMovedTo {
+			switch {
+			case ev.Cookie == 0:
+				lost = true // the kernel gives every rename a cookie
+			case cookies[ev.Cookie] > 1:
+				return FindingObserved
 			}
 		}
+		if !window.known() || rep.StartMonoNS <= 0 {
+			lost = true
+		} else if at := rep.StartMonoNS + ev.AtNS; at < window.startNS-int64(eventLagBefore) || at > window.endNS+int64(eventLagAfter) {
+			return FindingObserved
+		}
+		k := next
+		for k < len(want) && (want[k].Path != ev.Path || want[k].Kind != ev.Kind || want[k].IsDir != ev.IsDir) {
+			k++
+		}
+		if !supported {
+			// The events of the operation that has none known cannot be told apart, but a path no ledger change names is not
+			// publication's.
+			if !ledgerPaths[ev.Path] {
+				return FindingObserved
+			}
+			continue
+		}
+		if k == len(want) {
+			return FindingObserved
+		}
+		next = k + 1
+	}
+	if supported {
+		// Every event matched a distinct entry, so fewer events than entries means an operation was not seen in full.
+		if len(rep.Events) < len(want) {
+			lost = true
+		}
+	}
+	if lost {
+		return FindingLost
 	}
 	return FindingNone
 }
+
+// ErrObserverStartUnconfirmed: the transient watch did not acknowledge that it runs and its guest command could not be
+// confirmed ended, so it may still be starting, and starting writes canaries into the live root. It is not absent
+// evidence: GovernedC does not send the request after it (a setup failure; the unit is spent).
+var ErrObserverStartUnconfirmed = errors.New("runner: the transient watch did not start and cannot be confirmed ended")

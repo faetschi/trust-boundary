@@ -187,17 +187,6 @@ func (c EvidenceClient) CanStop() bool {
 	return ok
 }
 
-// CallStdin is CallReady with a stdin for the remote command. A transport that cannot give one is a configuration
-// error, not absent evidence.
-func (c EvidenceClient) CallStdin(ctx context.Context, stdin io.Reader, ready func([]byte), argv ...string) ([]byte, error) {
-	st, ok := c.Transport.(StdinTransport)
-	if !ok {
-		return nil, errors.New("evidence transport cannot give the command a controlled stdin (StdinTransport)")
-	}
-	stdout, stderr, exit, err := st.RunReadyStdin(ctx, argv, stdin, ready)
-	return evidenceOutput(stdout, stderr, exit, err)
-}
-
 // CallReady is Call over a ReadyTransport: ready receives the command's first stdout line as
 // soon as it is written. A transport that cannot report it is a configuration error, not
 // absent evidence.
@@ -461,4 +450,18 @@ func (c EvidenceClient) e04Doc(ctx context.Context, ref EvidenceRef) (E04PointsD
 		return E04PointsDoc{}, evidenceAbsent("the E04 store is for run %q, the receipt names %q", doc.RunID, ref.RunID)
 	}
 	return doc, nil
+}
+
+// CallStdin is CallReady with a stdin for the remote command (a transport that cannot give one is a configuration
+// error, not absent evidence). It also says whether the remote command ended with an exit status of its own: the
+// transport reported one (it did not fail, and the command was not killed by a signal or the end of its session), and
+// it is not the 255 ssh itself exits with.
+func (c EvidenceClient) CallStdin(ctx context.Context, stdin io.Reader, ready func([]byte), argv ...string) ([]byte, bool, error) {
+	st, ok := c.Transport.(StdinTransport)
+	if !ok {
+		return nil, false, errors.New("evidence transport cannot give the command a controlled stdin (StdinTransport)")
+	}
+	stdout, stderr, exit, err := st.RunReadyStdin(ctx, argv, stdin, ready)
+	raw, oerr := evidenceOutput(stdout, stderr, exit, err)
+	return raw, err == nil && exit >= 0 && exit != 255, oerr
 }

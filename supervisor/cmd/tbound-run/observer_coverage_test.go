@@ -55,6 +55,8 @@ type obsPublication struct {
 	AffectedPaths        []string          `json:"affected_paths"`
 	Sealed               wsoracle.Manifest `json:"sealed"`
 	SealedIdentityDigest string            `json:"sealed_identity_digest"`
+	ApplyStartMonoNS     int64             `json:"apply_start_mono_ns"`
+	ApplyEndMonoNS       int64             `json:"apply_end_mono_ns"`
 }
 
 type obsFixture struct {
@@ -65,6 +67,9 @@ type obsFixture struct {
 	// (an effect no snapshot sees). With a published interval rogueName may be a path the publication ledger names.
 	rogue     bool
 	rogueName string
+	// hostileRenames, with a published interval, renames files onto the approved path and away again inside the
+	// publication window.
+	hostileRenames bool
 	// failRequest makes the request transport fail before the service does anything.
 	failRequest bool
 	// watchEnds receives how the guest transient-watch ended: "stop" or "abort".
@@ -180,6 +185,7 @@ func (f *obsFixture) serve() {
 		points = append(points, pt{name, snap(name)})
 	}
 	var ledger []wsoracle.LedgerEntry
+	var applyStart, applyEnd int64
 	if f.rogue {
 		name := f.rogueName
 		if name == "" {
@@ -197,12 +203,30 @@ func (f *obsFixture) serve() {
 		// Publication applies an object by renaming a staged file into the live root, as the real one does (the
 		// staged file is outside the watched tree, so the observer sees one moved_to), never by writing it in place.
 		staged := filepath.Join(filepath.Dir(f.live), "staged-new.txt")
+		applyStart = effectoracle.MonotonicNS()
+		if f.hostileRenames {
+			// A writer that renames files onto the approved path and away again inside the publication window, twice:
+			// every rename has an unwatched other side, like publication's own. One ledger change explains one rename.
+			for i := 0; i < 2; i++ {
+				evil := filepath.Join(filepath.Dir(f.live), fmt.Sprintf("evil-%d.txt", i))
+				if err := os.WriteFile(evil, []byte("evil\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(evil, filepath.Join(f.live, "new.txt")); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Rename(filepath.Join(f.live, "new.txt"), evil); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
 		if err := os.WriteFile(staged, []byte("published\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.Rename(staged, filepath.Join(f.live, "new.txt")); err != nil {
 			t.Fatal(err)
 		}
+		applyEnd = effectoracle.MonotonicNS()
 	}
 	for _, name := range runner.E04PointOrder[5:] {
 		points = append(points, pt{name, snap(name)})
@@ -238,7 +262,8 @@ func (f *obsFixture) serve() {
 			}
 			sealed := wsoracle.Snapshot(f.sealed, "sealed")
 			generic["publication"] = obsPublication{TransactionID: "pub-obs", PublicationID: "pubid-obs", Status: "SUCCEEDED",
-				LockIdentity: "0000000000000001:0000000000000002", AffectedPaths: []string{"new.txt"}, Sealed: sealed, SealedIdentityDigest: sealed.IdentityDigest()}
+				LockIdentity: "0000000000000001:0000000000000002", AffectedPaths: []string{"new.txt"}, Sealed: sealed, SealedIdentityDigest: sealed.IdentityDigest(),
+				ApplyStartMonoNS: applyStart, ApplyEndMonoNS: applyEnd}
 			if raw, err = json.Marshal(generic); err != nil {
 				t.Fatal(err)
 			}
@@ -397,6 +422,15 @@ func (e obsEvidence) transientWatch(ctx context.Context, flags map[string]string
 	if err != nil {
 		return nil, []byte("bad duration"), 2, nil
 	}
+	// The host's start line comes first: nothing is written into the live root before it.
+	if stdin == nil {
+		return nil, []byte("aborted: no stdin"), 2, nil
+	}
+	input := bufio.NewReader(stdin)
+	if l, _ := input.ReadString('\n'); l != runner.TransientStartLine {
+		f.watchEnds <- "abort"
+		return nil, []byte("aborted: no start request"), 2, nil
+	}
 	obs, err := effectoracle.Start(f.live)
 	if err != nil {
 		return nil, []byte(err.Error()), 2, nil
@@ -412,7 +446,7 @@ func (e obsEvidence) transientWatch(ctx context.Context, flags map[string]string
 			got <- ""
 			return
 		}
-		l, _ := bufio.NewReader(stdin).ReadString('\n')
+		l, _ := input.ReadString('\n')
 		got <- l
 	}()
 	select {
@@ -591,5 +625,21 @@ func TestObserverCoverageTheHostEndsTheWatchAtTheEndOfTheRequest(t *testing.T) {
 	}
 	if o.Oracles[runner.OracleTransient] != runner.FindingNone {
 		t.Fatalf("EFF-TRANSIENT = %q", o.Oracles[runner.OracleTransient])
+	}
+}
+
+// A writer that renames other files onto the approved overwrite path and away again, inside the publication window and
+// before the real publication renames the approved file in, leaves renames the ledger's one change does not explain: the
+// events are renames of the right path and kind, but there are more of them than the one operation makes. (Matching
+// events to the ledger by path and kind alone explained any number of them.)
+func TestObserverCoverageRenamePairsOnALedgerPathAreAnObservedEffect(t *testing.T) {
+	f := newObsFixture(t, true)
+	f.hostileRenames = true
+	o := f.execute(t)
+	if o.Oracles[runner.OracleTransient] != runner.FindingObserved {
+		t.Fatalf("EFF-TRANSIENT = %q, want observed (oracles %v)", o.Oracles[runner.OracleTransient], o.Oracles)
+	}
+	if got := assembled(o).Record.CEffect; got != "observed" {
+		t.Fatalf("c_effect = %q, want observed", got)
 	}
 }

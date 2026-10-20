@@ -81,7 +81,10 @@ import (
 //	    only the cap on a watch nobody ended. TWO lines: the readiness line (runner.TransientReadyDoc),
 //	    written once the observer runs and before the request is sent, then the final document
 //	    (runner.TransientDoc: the effectoracle report, the window actually observed and why it ended).
-//	    The host ends the watch over the session's stdin: the line "stop" stops the observer (its stop
+//	    The host talks to the watch over the session's stdin. The first line is "start": nothing is written
+//	    into the live root, not even the start canaries, before it is read, so an input that ended first
+//	    writes nothing, and a session that ends while the observer starts stops the start before its
+//	    next canary. Then the line "stop" stops the observer (its stop
 //	    canary and the full-tree snapshot are written then, with the session open) and reports. A
 //	    stdin that ends without that line, a signal, or a failed readiness line is an ABORT: the
 //	    observer is closed without writing anything into the live root and the command fails, so no
@@ -726,10 +729,29 @@ func evidenceTransientWatch(ctx context.Context, env evidenceEnv, f map[string]s
 	// The lock is held until the observer has stopped or aborted: watch returns only then.
 	defer release()
 	ref := f["--interval-ref"]
-	// The host ends the watch over stdin. Read from the start so that a session that is already gone aborts the watch
-	// before it can write anything.
+	// The host talks to the watch over stdin: the start line first, the stop line to end it. Nothing is written into
+	// the live root (not even the observer's start canaries) before the start line has been read, so an input that
+	// ended before the command read it (the session is already gone) writes nothing, whichever side was quicker.
+	if env.stdin == nil {
+		return runner.TransientDoc{}, errors.New("transient-watch: no stdin")
+	}
+	input, startRead := bufio.NewReader(io.LimitReader(env.stdin, 128)), make(chan error, 1)
+	go func() { startRead <- readTransientLine(input, runner.TransientStartLine) }()
+	startTimer := time.NewTimer(time.Duration(seconds) * time.Second)
+	defer startTimer.Stop()
+	select {
+	case err := <-startRead:
+		if err != nil {
+			return runner.TransientDoc{}, fmt.Errorf("transient-watch was not started: %w", err)
+		}
+	case <-ctx.Done():
+		return runner.TransientDoc{}, fmt.Errorf("transient-watch was not started: %w", ctx.Err())
+	case <-startTimer.C:
+		return runner.TransientDoc{}, errors.New("transient-watch was not started within its cap")
+	}
+	// From here the host ends the watch over stdin.
 	stop := make(chan error, 1)
-	go func() { stop <- readTransientStop(env.stdin) }()
+	go func() { stop <- readTransientLine(input, runner.TransientStopLine) }()
 	result, err := env.watch(ctx, root, time.Duration(seconds)*time.Second, func() error {
 		line, err := json.Marshal(runner.TransientReadyDoc{Schema: runner.EvidenceSchema, Kind: runner.TransientReadyKind, IntervalRef: ref, Root: root})
 		if err == nil {
@@ -748,20 +770,17 @@ func evidenceTransientWatch(ctx context.Context, env evidenceEnv, f map[string]s
 	return doc, nil
 }
 
-// readTransientStop reads the first line of the session's stdin: nil for the stop line, an error for anything else
-// (the end of the input before a line, another line, no input).
-func readTransientStop(stdin io.Reader) error {
-	if stdin == nil {
-		return errors.New("no stdin")
-	}
-	line, err := bufio.NewReader(io.LimitReader(stdin, 64)).ReadString('\n')
+// readTransientLine reads the next line of the session's stdin: nil for want, an error for anything else (the end of
+// the input before a line, another line).
+func readTransientLine(input *bufio.Reader, want string) error {
+	line, err := input.ReadString('\n')
 	switch {
-	case line == runner.TransientStopLine:
+	case line == want:
 		return nil
 	case err != nil:
-		return fmt.Errorf("stdin ended without a stop request: %w", err)
+		return fmt.Errorf("stdin ended without %q: %w", strings.TrimSpace(want), err)
 	}
-	return errors.New("stdin held something other than the stop request")
+	return fmt.Errorf("stdin held something other than %q", strings.TrimSpace(want))
 }
 
 // watchEvidenceRoot is the effectoracle observer over root. ready is called once the observer runs (its start
@@ -770,11 +789,41 @@ func readTransientStop(stdin io.Reader) error {
 // host's session is open) and the report returned with the window actually observed. It ends on its own after d only
 // if nobody ended it, and says so. When the host's session ends without a stop request (stop receives an error), on a
 // signal, or when the readiness line cannot be written, the session is gone or going: the observer is closed WITHOUT a
-// stop canary or any other write into the root, and the watch fails.
+// stop canary or any other write into the root, and the watch fails. That holds while the observer starts too: a
+// session that is gone before the start writes nothing, and one that goes during it stops the start before its next
+// canary (effectoracle.StartContext).
 func watchEvidenceRoot(ctx context.Context, root string, d time.Duration, ready func() error, stop <-chan error) (transientWatch, error) {
-	observer, err := effectoracle.Start(root)
+	// A session that is already gone is seen before anything is written.
+	var early *error
+	select {
+	case err := <-stop:
+		if err != nil {
+			return transientWatch{}, fmt.Errorf("the transient watch was aborted before it started and wrote nothing: %w", err)
+		}
+		early = &err
+	default:
+	}
+	// The stop channel is forwarded so that the session ending cancels the start too.
+	startCtx, cancelStart := context.WithCancel(ctx)
+	defer cancelStart()
+	session := make(chan error, 1)
+	if early != nil {
+		session <- nil
+	} else {
+		go func() {
+			select {
+			case err := <-stop:
+				session <- err
+				if err != nil {
+					cancelStart()
+				}
+			case <-startCtx.Done():
+			}
+		}()
+	}
+	observer, err := effectoracle.StartContext(startCtx, root)
 	if err != nil {
-		return transientWatch{}, err
+		return transientWatch{}, fmt.Errorf("the transient watch did not start (nothing more was written): %w", err)
 	}
 	started := time.Now()
 	if err := ready(); err != nil {
@@ -789,7 +838,7 @@ func watchEvidenceRoot(ctx context.Context, root string, d time.Duration, ready 
 	defer timer.Stop()
 	reason := runner.TransientStopRequested
 	select {
-	case err := <-stop:
+	case err := <-session:
 		if err != nil {
 			return aborted(err)
 		}
@@ -799,7 +848,7 @@ func watchEvidenceRoot(ctx context.Context, root string, d time.Duration, ready 
 		// Nobody ended the watch. Take one last look at the session first: a host that is gone must not get a stop
 		// canary.
 		select {
-		case err := <-stop:
+		case err := <-session:
 			if err != nil {
 				return aborted(err)
 			}

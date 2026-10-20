@@ -8,6 +8,7 @@ import (
 	"io"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,8 +26,12 @@ type watchGuest struct {
 	e04     E04PointsDoc
 	noReady bool
 	fail    bool
-	ready   func(*TransientReadyDoc)
-	doc     func(*TransientDoc)
+	// endDelay is how long the guest takes to end after its stdin ended without the stop line; hang makes it ignore
+	// that end and run until its session is killed (it then fails with the session's error, no exit status).
+	endDelay time.Duration
+	hang     bool
+	ready    func(*TransientReadyDoc)
+	doc      func(*TransientDoc)
 	// ends records how each transient watch ended: "stop" (the stop line), "eof" (stdin ended without it) or
 	// "cancelled" (the session was killed).
 	ends chan string
@@ -86,15 +91,23 @@ func (g *watchGuest) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 				got <- "eof"
 				return
 			}
-			l, err := bufio.NewReader(stdin).ReadString('\n')
-			if err == nil && l == TransientStopLine {
-				got <- "stop"
-				return
+			br := bufio.NewReader(stdin)
+			for _, want := range []string{TransientStartLine, TransientStopLine} {
+				if l, err := br.ReadString('\n'); err != nil || l != want {
+					got <- "eof"
+					return
+				}
 			}
-			got <- "eof"
+			got <- "stop"
 		}()
 		select {
 		case how := <-got:
+			if how != "stop" && g.hang {
+				<-ctx.Done()
+				g.end("cancelled")
+				return nil, nil, 0, ctx.Err()
+			}
+			time.Sleep(g.endDelay)
 			g.end(how)
 			if how != "stop" {
 				return nil, []byte("aborted: stdin ended without a stop request"), 2, nil
@@ -133,15 +146,32 @@ func (p plainWatchTransport) Run(ctx context.Context, argv []string) ([]byte, []
 // okReport is a complete qualified window with the given events.
 func okReport(events ...effectoracle.Event) effectoracle.Report {
 	return effectoracle.Report{OracleVersion: effectoracle.OracleVersion, Instrument: effectoracle.Instrument,
-		Verdict: effectoracle.VerdictOK, Events: events,
+		Verdict: effectoracle.VerdictOK, Events: events, StartMonoNS: testReportStart,
 		Heartbeats: []effectoracle.Heartbeat{
 			{Seq: 1, Label: "mark:start:pre", Observed: true}, {Seq: 2, Label: "mark:start:post", Observed: true},
 			{Seq: 4, Label: "mark:stop:pre", Observed: true}, {Seq: 5, Label: "mark:stop:post", Observed: true}},
 		Marks: []effectoracle.Mark{{Seq: 3, Name: effectoracle.MarkStart, Quiescent: true}, {Seq: 6, Name: effectoracle.MarkStop, Quiescent: true}}}
 }
 
+// The test clocks, in nanoseconds on one monotonic clock: the report starts at testReportStart, publication applied its
+// ledger between testApplyStart and testApplyEnd, and ev places its events inside that window.
+const (
+	testReportStart = 500_000_000
+	testApplyStart  = 1_000_000_000
+	testApplyEnd    = 1_500_000_000
+	testEventAt     = 600_000_000 // AtNS: testReportStart + testEventAt is inside the window
+)
+
+var evCookie atomic.Uint32
+
+// ev is one event as the kernel gives it for a rename with an unwatched other side: every rename has a cookie of its
+// own.
 func ev(path, kind string) effectoracle.Event {
-	return effectoracle.Event{Seq: 1, Kind: kind, Path: path}
+	e := effectoracle.Event{Seq: 1, AtNS: testEventAt, Kind: kind, Path: path}
+	if kind == effectoracle.KindMovedTo || kind == effectoracle.KindMovedFrom {
+		e.Cookie = evCookie.Add(1)
+	}
+	return e
 }
 
 func newTransient(g *watchGuest) *TransientCollector {
@@ -152,6 +182,10 @@ func newTransient(g *watchGuest) *TransientCollector {
 func publishedGuest(t *testing.T, report effectoracle.Report) (*watchGuest, EvidenceRef) {
 	t.Helper()
 	records, _ := e04ptPublishedRun("published")
+	sealed := wsoracle.Manifest{}
+	records[5].Publication = &E04PublicationEvidence{TransactionID: "pub-0123456789abcdef", PublicationID: "p", Status: "SUCCEEDED",
+		LockIdentity: "lock", Sealed: sealed, SealedIdentityDigest: sealed.IdentityDigest(),
+		ApplyStartMonoNS: testApplyStart, ApplyEndMonoNS: testApplyEnd}
 	doc, head, count := e04ptDoc(t, records)
 	g := newWatchGuest(report)
 	g.e04 = doc
@@ -571,8 +605,9 @@ func TestCollectorSetRoutesPublicationAndTransientToTheirSlots(t *testing.T) {
 	}
 }
 
-// The ledger operations decide which events publication makes. These are the events of a real publish
-// (internal/publication, TestPublishRenamesAreTheOnlyLiveRootEvents).
+// The ledger operations decide which events publication makes: each operation explains exactly its own events, once,
+// in the order publication applied them. These are the events of a real publish (internal/publication,
+// TestPublishRenamesAreTheOnlyLiveRootEvents, which takes its expectation from PublicationEventSequence).
 func TestJudgeTransientIsAPureFunctionOfReportAndLedger(t *testing.T) {
 	before, after := wsoracle.Entry{Path: "x", Type: wsoracle.TypeFile}, wsoracle.Entry{Path: "x", Type: wsoracle.TypeFile, Size: 1}
 	ledger := []wsoracle.LedgerEntry{{ID: "p/0", Sequence: 1, Changes: []wsoracle.LedgerChange{
@@ -581,38 +616,195 @@ func TestJudgeTransientIsAPureFunctionOfReportAndLedger(t *testing.T) {
 		{Path: "gone.txt", Before: &before},
 		{Path: "d/b", After: &after},
 	}}}
-	real := []effectoracle.Event{ev("created.txt", "moved_to"), ev("gone.txt", "moved_from"), ev("over.txt", "moved_to"),
-		ev("over.txt", "moved_from"), ev("d/b", "moved_to")}
+	win := applyWindow{startNS: testApplyStart, endNS: testApplyEnd}
+	real := func() []effectoracle.Event {
+		return []effectoracle.Event{ev("created.txt", "moved_to"), ev("over.txt", "moved_to"), ev("over.txt", "moved_from"),
+			ev("gone.txt", "moved_from"), ev("d/b", "moved_to")}
+	}
 	without := func(i int) []effectoracle.Event {
-		return append(append([]effectoracle.Event(nil), real[:i]...), real[i+1:]...)
+		r := real()
+		return append(r[:i], r[i+1:]...)
+	}
+	withAt := func(at int64) effectoracle.Report {
+		r := okReport(real()...)
+		for i := range r.Events {
+			r.Events[i].AtNS = at
+		}
+		return r
+	}
+	sharedCookie := func() effectoracle.Report {
+		r := okReport(real()...)
+		r.Events[0].Cookie, r.Events[1].Cookie = 9, 9
+		return r
+	}
+	noCookie := func() effectoracle.Report {
+		r := okReport(real()...)
+		r.Events[0].Cookie = 0
+		return r
+	}
+	dirForFile := func() effectoracle.Report {
+		r := okReport(real()...)
+		r.Events[4].IsDir = true
+		return r
+	}
+	noClock := func() effectoracle.Report {
+		r := okReport(real()...)
+		r.StartMonoNS = 0
+		return r
+	}
+	unqualified := func() effectoracle.Report {
+		r := okReport(real()...)
+		r.Marks = nil
+		return r
 	}
 	for name, tc := range map[string]struct {
 		rep    effectoracle.Report
 		ledger []wsoracle.LedgerEntry
 		known  bool
+		win    applyWindow
 		want   Finding
 	}{
-		"the events of a real publication": {okReport(real...), ledger, true, FindingNone},
-		"a displaced old file is optional": {okReport(without(3)...), ledger, true, FindingNone},
-		"created file written in place":    {okReport(append(real, ev("created.txt", "close_write"))...), ledger, true, FindingObserved},
-		"created file with a create event": {okReport(append(real, ev("created.txt", "create"))...), ledger, true, FindingObserved},
-		"deleted file unlinked":            {okReport(append(real, ev("gone.txt", "delete"))...), ledger, true, FindingObserved},
-		"deleted file moved in":            {okReport(append(real, ev("gone.txt", "moved_to"))...), ledger, true, FindingObserved},
-		"created file moved away":          {okReport(append(real, ev("created.txt", "moved_from"))...), ledger, true, FindingObserved},
-		"overwritten file modified":        {okReport(append(real, ev("over.txt", "modify"))...), ledger, true, FindingObserved},
-		"overwritten file attrib":          {okReport(append(real, ev("over.txt", "attrib"))...), ledger, true, FindingObserved},
-		"a path no ledger entry names":     {okReport(append(real, ev("c", "moved_to"))...), ledger, true, FindingObserved},
-		"created file not seen":            {okReport(without(0)...), ledger, true, FindingLost},
-		"deleted file not seen":            {okReport(without(1)...), ledger, true, FindingLost},
-		"overwrite not seen":               {okReport(without(2)...), ledger, true, FindingLost},
-		"unqualified window":               {func() effectoracle.Report { r := okReport(real...); r.Marks = nil; return r }(), ledger, true, FindingLost},
-		"quiet and no ledger":              {okReport(), nil, true, FindingNone},
-		"quiet and unqualified, no ledger": {effectoracle.Report{Verdict: effectoracle.VerdictOK}, nil, true, FindingLost},
-		"unknown ledger":                   {okReport(), nil, false, FindingLost},
-		"unknown ledger and event":         {okReport(ev("a", "create")), nil, false, FindingLost},
+		"the events of a real publication":       {okReport(real()...), ledger, true, win, FindingNone},
+		"the displaced old file is not optional": {okReport(without(2)...), ledger, true, win, FindingLost},
+		"created file written in place":          {okReport(append(real(), ev("created.txt", "close_write"))...), ledger, true, win, FindingObserved},
+		"created file with a create event":       {okReport(append(real(), ev("created.txt", "create"))...), ledger, true, win, FindingObserved},
+		"deleted file unlinked":                  {okReport(append(real(), ev("gone.txt", "delete"))...), ledger, true, win, FindingObserved},
+		"deleted file moved in":                  {okReport(append(real(), ev("gone.txt", "moved_to"))...), ledger, true, win, FindingObserved},
+		"created file moved away":                {okReport(append(real(), ev("created.txt", "moved_from"))...), ledger, true, win, FindingObserved},
+		"created file renamed in twice":          {okReport(append(real(), ev("created.txt", "moved_to"))...), ledger, true, win, FindingObserved},
+		"deleted file moved away twice":          {okReport(append(real(), ev("gone.txt", "moved_from"))...), ledger, true, win, FindingObserved},
+		"overwritten file modified":              {okReport(append(real(), ev("over.txt", "modify"))...), ledger, true, win, FindingObserved},
+		"overwritten file attrib":                {okReport(append(real(), ev("over.txt", "attrib"))...), ledger, true, win, FindingObserved},
+		"a path no ledger entry names":           {okReport(append(real(), ev("c", "moved_to"))...), ledger, true, win, FindingObserved},
+		"the operations in another order":        {okReport(append(without(0), ev("created.txt", "moved_to"))...), ledger, true, win, FindingObserved},
+		"a directory renamed in for a file":      {dirForFile(), ledger, true, win, FindingObserved},
+		"created file not seen":                  {okReport(without(0)...), ledger, true, win, FindingLost},
+		"deleted file not seen":                  {okReport(without(3)...), ledger, true, win, FindingLost},
+		"overwrite not seen":                     {okReport(without(1)...), ledger, true, win, FindingLost},
+		"unqualified window":                     {unqualified(), ledger, true, win, FindingLost},
+		"quiet and no ledger":                    {okReport(), nil, true, win, FindingNone},
+		"quiet and no ledger or window":          {okReport(), nil, true, applyWindow{}, FindingNone},
+		"quiet and unqualified, no ledger":       {effectoracle.Report{Verdict: effectoracle.VerdictOK}, nil, true, win, FindingLost},
+		"unknown ledger":                         {okReport(), nil, false, win, FindingLost},
+		"unknown ledger and event":               {okReport(ev("a", "create")), nil, false, win, FindingLost},
+		// Cookies: every rename of publication has a kernel cookie of its own.
+		"a rename within the live root": {sharedCookie(), ledger, true, win, FindingObserved},
+		"no cookie on a rename":         {noCookie(), ledger, true, win, FindingLost},
+		// Time: the events fall inside the transaction's window on the guest's monotonic clock.
+		"before the transaction began": {withAt(testApplyStart - testReportStart - int64(2*time.Millisecond)), ledger, true, win, FindingObserved},
+		"long after the transaction":   {withAt(testApplyEnd - testReportStart + int64(3*time.Second)), ledger, true, win, FindingObserved},
+		"just after the transaction":   {withAt(testApplyEnd - testReportStart + int64(time.Second)), ledger, true, win, FindingNone},
+		"no window known":              {okReport(real()...), ledger, true, applyWindow{}, FindingLost},
+		"window never ended":           {okReport(real()...), ledger, true, applyWindow{startNS: testApplyStart}, FindingLost},
+		"report without a clock":       {noClock(), ledger, true, win, FindingLost},
+		"surplus event and no window":  {okReport(append(real(), ev("evil", "create"))...), ledger, true, applyWindow{}, FindingObserved},
 	} {
-		if got := judgeTransient(&tc.rep, tc.ledger, tc.known); got != tc.want {
+		if got := judgeTransient(&tc.rep, tc.ledger, tc.known, tc.win); got != tc.want {
 			t.Errorf("%s: %s, want %s", name, got, tc.want)
 		}
+	}
+	// A ledger change that is none of the four operations has no known events: nothing it names can be explained.
+	dir := wsoracle.Entry{Path: "d", Type: wsoracle.TypeDir}
+	removedDir := []wsoracle.LedgerEntry{{ID: "p/0", Sequence: 1, Changes: []wsoracle.LedgerChange{{Path: "d", Before: &dir}}}}
+	if _, ok := PublicationEventSequence(removedDir); ok {
+		t.Error("a removed directory has a known event sequence")
+	}
+	for name, tc := range map[string]struct {
+		rep  effectoracle.Report
+		want Finding
+	}{
+		"its path": {okReport(ev("d", "moved_from")), FindingLost},
+		"another":  {okReport(ev("d", "moved_from"), ev("e", "moved_to")), FindingObserved},
+		"none":     {okReport(), FindingLost},
+	} {
+		if got := judgeTransient(&tc.rep, removedDir, true, win); got != tc.want {
+			t.Errorf("unsupported operation, %s: %s, want %s", name, got, tc.want)
+		}
+	}
+}
+
+func TestPublicationEventSequencePerOperation(t *testing.T) {
+	file, file2 := wsoracle.Entry{Type: wsoracle.TypeFile}, wsoracle.Entry{Type: wsoracle.TypeFile, Size: 2}
+	dir := wsoracle.Entry{Type: wsoracle.TypeDir}
+	ledger := []wsoracle.LedgerEntry{
+		{ID: "p/0", Sequence: 1, Changes: []wsoracle.LedgerChange{{Path: "d", After: &dir}}},
+		{ID: "p/1", Sequence: 2, Changes: []wsoracle.LedgerChange{{Path: "d/new", After: &file}}},
+		{ID: "p/2", Sequence: 3, Changes: []wsoracle.LedgerChange{{Path: "over", Before: &file, After: &file2}}},
+		{ID: "p/3", Sequence: 4, Changes: []wsoracle.LedgerChange{{Path: "gone", Before: &file}}},
+	}
+	want := []PublicationEvent{
+		{"d", effectoracle.KindMovedTo, true}, {"d/new", effectoracle.KindMovedTo, false},
+		{"over", effectoracle.KindMovedTo, false}, {"over", effectoracle.KindMovedFrom, false}, {"gone", effectoracle.KindMovedFrom, false}}
+	if got, ok := PublicationEventSequence(ledger); !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("sequence = %v, %v; want %v", got, ok, want)
+	}
+	for name, ch := range map[string]wsoracle.LedgerChange{
+		"directory removed":     {Path: "d", Before: &dir},
+		"file became directory": {Path: "x", Before: &file, After: &dir},
+		"directory became file": {Path: "x", Before: &dir, After: &file},
+		"directory modified":    {Path: "x", Before: &dir, After: &dir},
+		"empty change":          {Path: "x"},
+	} {
+		if _, ok := PublicationEventSequence([]wsoracle.LedgerEntry{{ID: "p/0", Sequence: 1, Changes: []wsoracle.LedgerChange{ch}}}); ok {
+			t.Errorf("%s: has a known sequence", name)
+		}
+	}
+	if got, ok := PublicationEventSequence(nil); !ok || len(got) != 0 {
+		t.Errorf("no ledger: %v, %v", got, ok)
+	}
+}
+
+// Publication's own renames are the only explanation a ledger operation gives, once each. A hostile writer that
+// renames files onto an approved overwrite path and restores the approved file between snapshots leaves more
+// moved_to/moved_from events on the path than the one overwrite explains: every surplus event is an observed effect.
+func TestTransientCollectorRenamePairsBeyondTheApprovedOperationAreObserved(t *testing.T) {
+	to, from := effectoracle.KindMovedTo, effectoracle.KindMovedFrom
+	for name, events := range map[string][]effectoracle.Event{
+		"two rename pairs on the approved path":   {ev("protected.txt", to), ev("protected.txt", from), ev("protected.txt", to), ev("protected.txt", from)},
+		"a third rename in":                       append(publicationEvents(), ev("protected.txt", to)),
+		"the approved overwrite after a pair":     append([]effectoracle.Event{ev("protected.txt", to), ev("protected.txt", from)}, publicationEvents()...),
+		"the displaced file seen twice":           {ev("protected.txt", to), ev("protected.txt", from), ev("protected.txt", from)},
+		"renamed away before the approved rename": {ev("protected.txt", from), ev("protected.txt", to), ev("protected.txt", from)},
+	} {
+		g, ref := publishedGuest(t, okReport(events...))
+		got, err := runTransient(t, newTransient(g), ref)
+		if err != nil || got.Findings[OracleTransient] != FindingObserved {
+			t.Errorf("%s: %v, %v, want observed", name, got.Findings, err)
+		}
+	}
+}
+
+// A watch that did not acknowledge is ended before the request is sent: the host closes the session's input and
+// returns only once the guest command has ended with an exit status of its own, so the instrument cannot still be
+// starting (writing canaries into the live root) while the request runs.
+func TestTransientCollectorBeginWaitsForTheGuestToEndAfterAReadinessTimeout(t *testing.T) {
+	g := newWatchGuest(okReport())
+	g.noReady, g.endDelay = true, 300*time.Millisecond
+	c := newTransient(g)
+	c.ReadyTimeout = 50 * time.Millisecond
+	err := c.BeginInterval(context.Background(), EvidenceRef{Interval: e04ptInterval})
+	if !errors.Is(err, ErrEvidenceAbsent) {
+		t.Fatalf("err = %v, want absent", err)
+	}
+	select {
+	case how := <-g.ends:
+		if how != "eof" {
+			t.Fatalf("the guest ended by %q, want the end of its input", how)
+		}
+	default:
+		t.Fatal("BeginInterval returned while the guest command was still running")
+	}
+}
+
+// A guest that cannot be confirmed ended (it ignores the end of its input, and the session has to be killed) is a
+// setup failure, not absent evidence: the caller must not send the request.
+func TestTransientCollectorBeginRefusesWhenTheGuestCannotBeConfirmedEnded(t *testing.T) {
+	g := newWatchGuest(okReport())
+	g.noReady, g.hang = true, true
+	c := newTransient(g)
+	c.ReadyTimeout, c.TerminateTimeout = 50*time.Millisecond, 100*time.Millisecond
+	err := c.BeginInterval(context.Background(), EvidenceRef{Interval: e04ptInterval})
+	if !errors.Is(err, ErrObserverStartUnconfirmed) || errors.Is(err, ErrEvidenceAbsent) {
+		t.Fatalf("err = %v, want ErrObserverStartUnconfirmed and not absent", err)
 	}
 }

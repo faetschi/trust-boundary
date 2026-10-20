@@ -3,6 +3,7 @@
 package effectoracle
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -14,6 +15,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // defaultCanaryTimeout bounds how long a canary may take to be observed. A
@@ -50,14 +53,16 @@ const stopPostLabel = "mark:" + MarkStop + ":post"
 // are safe for concurrent use. Mark and Stop serialize on ctrl. The reader
 // goroutine and the control path serialize on mu.
 type Observer struct {
-	root    string
-	t0      time.Time
-	nonce   string
-	src     inotifyAPI
-	timeout time.Duration
+	root      string
+	t0        time.Time
+	startMono int64 // CLOCK_MONOTONIC at t0, nanoseconds (0: unreadable)
+	nonce     string
+	src       inotifyAPI
+	timeout   time.Duration
 
-	ctrl sync.Mutex // serializes Mark, Stop, and canary writes
-	mu   sync.Mutex // guards the state below, which the reader also updates
+	ctrl     sync.Mutex      // serializes Mark, Stop, and canary writes
+	startCtx context.Context // set under ctrl only while Start takes the start mark; once done, no canary is written
+	mu       sync.Mutex      // guards the state below, which the reader also updates
 
 	seq        uint64
 	wds        map[int]string           // watch descriptor -> slash-relative directory
@@ -100,12 +105,23 @@ type canaryWaiter struct {
 // when the root itself cannot be snapshotted. A watch that cannot be installed
 // does not fail Start. It is recorded as a gap, and the verdict is evidence_lost.
 func Start(root string) (*Observer, error) {
-	return startWith(root, nil, defaultCanaryTimeout)
+	return startWith(context.Background(), root, nil, defaultCanaryTimeout)
 }
 
-// startWith is Start with an injectable kernel surface and canary timeout. A
+// StartContext is Start that can be called off. ctx is checked before every canary the start writes: once it is done,
+// the start writes nothing more into the root, closes the watch and returns ctx's error (a canary already written is
+// still removed). A ctx that is done before the call writes nothing at all. Once StartContext has returned an
+// observer, ctx no longer matters: use Abort or Stop.
+func StartContext(ctx context.Context, root string) (*Observer, error) {
+	return startWith(ctx, root, nil, defaultCanaryTimeout)
+}
+
+// startWith is StartContext with an injectable kernel surface and canary timeout. A
 // nil src selects the kernel implementation.
-func startWith(root string, src inotifyAPI, timeout time.Duration) (*Observer, error) {
+func startWith(ctx context.Context, root string, src inotifyAPI, timeout time.Duration) (*Observer, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
@@ -131,6 +147,7 @@ func startWith(root string, src inotifyAPI, timeout time.Duration) (*Observer, e
 	}
 	o := &Observer{
 		root:       abs,
+		startMono:  MonotonicNS(),
 		t0:         time.Now(),
 		nonce:      nonce,
 		src:        src,
@@ -147,8 +164,13 @@ func startWith(root string, src inotifyAPI, timeout time.Duration) (*Observer, e
 	go o.readLoop()
 
 	o.ctrl.Lock()
+	o.startCtx = ctx
 	err = o.markLocked(MarkStart)
+	o.startCtx = nil
 	o.ctrl.Unlock()
+	if err == nil {
+		err = ctx.Err()
+	}
 	if err != nil {
 		_ = src.Close()
 		<-o.readerDone
@@ -308,6 +330,9 @@ func (o *Observer) applyLocked(rec rawEvent) {
 	}
 	isDir := rec.mask&syscall.IN_ISDIR != 0
 	ev := Event{Seq: o.nextSeqLocked(), AtNS: o.sinceLocked(), Kind: kind, Path: rel, IsDir: isDir}
+	if kind == KindMovedFrom || kind == KindMovedTo {
+		ev.Cookie = rec.cookie
+	}
 	o.events = append(o.events, ev)
 	if anomaly {
 		o.gapLocked(GapCanaryAnomaly, rel, ev.Seq-1, kind+" event for an issued canary name that the oracle did not cause")
@@ -600,6 +625,12 @@ func canaryFileName(nonce string, n int) string {
 func (o *Observer) canaryLocked(label string) bool {
 	freeze := label == stopPostLabel
 	o.mu.Lock()
+	if o.startCtx != nil && o.startCtx.Err() != nil {
+		// Start was called off: nothing more is written into the root.
+		o.beatLocked(label, false, "start cancelled")
+		o.mu.Unlock()
+		return false
+	}
 	if o.readerDead || o.rootLost || o.rootWd < 0 {
 		detail := "root not watched"
 		if o.readerDead {
@@ -729,6 +760,7 @@ func (o *Observer) buildReport() *Report {
 	defer o.mu.Unlock()
 	r := &Report{
 		OracleVersion: OracleVersion,
+		StartMonoNS:   o.startMono,
 		Instrument:    Instrument,
 		Masks:         append([]string(nil), maskNames...),
 		Preservation:  append([]string(nil), PreservationFields...),
@@ -757,4 +789,15 @@ func newNonce() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b[:]), nil
+}
+
+// MonotonicNS reads CLOCK_MONOTONIC in nanoseconds, the clock Report.StartMonoNS is on (and the clock the publication
+// transaction's apply window is recorded on, so that the two can be compared). It
+// is zero when the clock cannot be read.
+func MonotonicNS() int64 {
+	var ts unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts); err != nil {
+		return 0
+	}
+	return ts.Nano()
 }

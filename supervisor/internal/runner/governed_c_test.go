@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os/exec"
 	"reflect"
 	"slices"
@@ -660,5 +661,23 @@ func TestSSHTransportIgnoresUserAndSystemSSHConfiguration(t *testing.T) {
 	}
 	if args[len(args)-3] != "--" {
 		t.Errorf("destination does not follow --: %q", args)
+	}
+}
+
+// An observer whose start cannot be confirmed settled (ErrObserverStartUnconfirmed) must not have the request sent
+// after it: the step is a setup failure with an empty outcome (the unit is spent), the request never leaves.
+func TestGovernedCDoesNotSendTheRequestWhenAnObserverStartIsUnconfirmed(t *testing.T) {
+	f := newGovernedFixture(t)
+	var events []string
+	rc := &recordingCollectors{events: &events, beginErr: fmt.Errorf("%w: test", ErrObserverStartUnconfirmed)}
+	f.g.Transport = orderTransport{events: &events, inner: f.tr}
+	f.g.Collectors = rc
+	f.respond("completed", "", f.receipt(true), 0)
+	o, err := f.g.Execute(context.Background(), f.step)
+	if !errors.Is(err, ErrSetupRefused) || hasOutcome(o) {
+		t.Fatalf("outcome=%+v err=%v, want an empty outcome and ErrSetupRefused", o, err)
+	}
+	if f.tr.callCount() != 0 || !reflect.DeepEqual(events, []string{"begin", "end"}) {
+		t.Fatalf("the request was sent after an unconfirmed observer start: %v, %d calls", events, f.tr.callCount())
 	}
 }

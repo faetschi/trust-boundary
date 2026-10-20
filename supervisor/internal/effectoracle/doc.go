@@ -129,7 +129,15 @@
 //
 // The at_ns fields are monotonic offsets from Start. Report.JSON includes them,
 // and Report.Digest excludes them, so identical workloads produce identical
-// digests.
+// digests. Report.StartMonoNS is CLOCK_MONOTONIC at Start, so an offset can be
+// placed on the machine's monotonic clock (an event happened at StartMonoNS+AtNS
+// or earlier: AtNS is when the reader recorded it); the digest excludes it too.
+// A moved_from or moved_to event carries the kernel's rename cookie. The two
+// halves of a rename between watched paths share one; a rename whose other side
+// is outside the watched tree has a cookie of its own. The digest keeps which
+// events share a cookie, not the cookie values. StartContext is Start that a
+// done context calls off: it checks the context before every canary it writes,
+// so a start that is called off writes nothing more into the root.
 //
 // On platforms other than Linux, Start returns ErrUnsupported.
 package effectoracle

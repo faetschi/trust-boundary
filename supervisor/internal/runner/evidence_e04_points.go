@@ -94,6 +94,11 @@ type E04PublicationEvidence struct {
 	AffectedPaths        []string          `json:"affected_paths"`
 	Sealed               wsoracle.Manifest `json:"sealed"`
 	SealedIdentityDigest string            `json:"sealed_identity_digest"`
+	// ApplyStartMonoNS and ApplyEndMonoNS are the writes window of the transaction to the live root, CLOCK_MONOTONIC
+	// nanoseconds on the guest (publication.OracleEvidence): the transient-mutation judge places the observer's events
+	// in it. Zero when the transaction never reached the apply loop.
+	ApplyStartMonoNS int64 `json:"apply_start_mono_ns"`
+	ApplyEndMonoNS   int64 `json:"apply_end_mono_ns"`
 }
 
 // E04PointsDoc is the output of `tbound evidence e04-points`. JournalB64 is the first Count

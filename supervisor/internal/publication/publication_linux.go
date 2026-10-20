@@ -254,6 +254,12 @@ type OracleEvidence struct {
 	Sealed        wsoracle.Manifest
 	AffectedPaths []string
 	LockIdentity  string
+	// ApplyStartMonoNS and ApplyEndMonoNS bound the writes of the transaction to the live root: CLOCK_MONOTONIC
+	// (nanoseconds, the guest machine clock) just before the first object is applied and just after the last. Every
+	// rename publication makes into or out of the live root happens between them. ApplyEndMonoNS is zero while the
+	// transaction has not left the apply loop; both are zero for a transaction that never reached it.
+	ApplyStartMonoNS int64
+	ApplyEndMonoNS   int64
 }
 
 type openHow struct {
@@ -695,8 +701,11 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err := injectFault(inject, "after-token-checkpoint", -1); err != nil {
 		return pendingResult, err
 	}
-	if err := r.apply(ctx, request.LiveRoot, artifact, prep, inject); err != nil {
-		return pendingResult, err
+	evidence.ApplyStartMonoNS = monotonicNS()
+	applyErr := r.apply(ctx, request.LiveRoot, artifact, prep, inject)
+	evidence.ApplyEndMonoNS = monotonicNS()
+	if applyErr != nil {
+		return pendingResult, applyErr
 	}
 	tx, err := readOneTransaction(r.options.Journal, r.options.WorkflowID, txID)
 	if err != nil {
@@ -2496,4 +2505,14 @@ func validPlan(plan objectPlan) bool {
 
 func validObjectStatus(status ObjectStatus) bool {
 	return status == ObjectSucceeded || status == ObjectFailed || status == ObjectUnknown
+}
+
+// monotonicNS reads CLOCK_MONOTONIC in nanoseconds, the clock the transient-mutation observer
+// (internal/effectoracle) places its events on. It is zero when the clock cannot be read.
+func monotonicNS() int64 {
+	var ts unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts); err != nil {
+		return 0
+	}
+	return ts.Nano()
 }

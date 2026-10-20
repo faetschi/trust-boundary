@@ -38,7 +38,7 @@ type transientEnv struct {
 func newTransientEnv(uid int) *transientEnv {
 	e := &transientEnv{evTestEnv: newEvTestEnv(uid), report: &effectoracle.Report{OracleVersion: effectoracle.OracleVersion,
 		Instrument: effectoracle.Instrument, Verdict: effectoracle.VerdictOK}}
-	e.stdin = strings.NewReader(runner.TransientStopLine)
+	e.stdin = strings.NewReader(runner.TransientStartLine + runner.TransientStopLine)
 	e.lockTransient = func() (func(), error) {
 		if e.lockErr != nil {
 			return nil, e.lockErr
@@ -109,12 +109,12 @@ func TestEvidenceTransientWatchAcknowledgesThenReportsOverTheLiveRootOnly(t *tes
 // A session that ends without the stop line is an abort: no document, an error, the readiness line at most, the
 // observer told (so it writes nothing) and the lock released.
 func TestEvidenceTransientWatchAbortsWhenTheSessionEndsWithoutAStopRequest(t *testing.T) {
+	start := runner.TransientStartLine
 	for name, stdin := range map[string]io.Reader{
-		"stdin ends at once":     strings.NewReader(""),
-		"another line":           strings.NewReader("go\n"),
-		"stop without a newline": strings.NewReader("stop"),
-		"a long line":            strings.NewReader(strings.Repeat("s", 4096)),
-		"no stdin":               nil,
+		"stdin ends after the start": strings.NewReader(start),
+		"another line":               strings.NewReader(start + "go\n"),
+		"stop without a newline":     strings.NewReader(start + "stop"),
+		"a long line":                strings.NewReader(start + strings.Repeat("s", 4096)),
 	} {
 		env := newTransientEnv(0)
 		env.stdin = stdin
@@ -351,11 +351,13 @@ func TestWatchEvidenceRootTimerCapIsReportedAsSuch(t *testing.T) {
 	if o.err != nil || o.res.Stop != runner.TransientStopTimer || !o.res.Report.QualifiedWindow() {
 		t.Fatalf("timer stop: %+v", o)
 	}
+	// A session that is gone is seen before the observer starts, whenever the cap is.
 	gone := make(chan error, 1)
 	gone <- errors.New("stdin ended without a stop request")
-	o = waitWatch(t, startRealWatch(t, context.Background(), t.TempDir(), 50*time.Millisecond, gone))
-	if o.err == nil || o.res.Report != nil {
-		t.Fatalf("a session that was gone at the cap got a report: %+v", o)
+	started := false
+	res, err := watchEvidenceRoot(context.Background(), t.TempDir(), 50*time.Millisecond, func() error { started = true; return nil }, gone)
+	if err == nil || res.Report != nil || started {
+		t.Fatalf("a session that was gone got a watch: %+v %v started=%v", res, err, started)
 	}
 }
 
@@ -376,6 +378,9 @@ func TestEvidenceTransientWatchEndToEndOverARealPipe(t *testing.T) {
 		go func() {
 			errc <- runEvidence(context.Background(), []string{"transient-watch", "--interval-ref", "r#1", "--duration", "60"}, &out, env.evidenceEnv)
 		}()
+		if _, err := io.WriteString(pw, runner.TransientStartLine); err != nil {
+			t.Fatal(err)
+		}
 		deadline := time.After(10 * time.Second)
 		for {
 			if strings.Contains(out.String(), "\n") {
@@ -456,6 +461,75 @@ func (p *tap) drain() []string {
 			name := strings.TrimRight(string(buf[off+syscall.SizeofInotifyEvent:off+syscall.SizeofInotifyEvent+length]), "\x00")
 			names = append(names, name)
 			off += syscall.SizeofInotifyEvent + length
+		}
+	}
+}
+
+// A session that is already gone when the watch starts (the host's input ended before the guest command read any of
+// it) must not have the live root touched: the instrument's start canaries are not written, whichever of the stop
+// channel and the first canary is reached first.
+func TestWatchEvidenceRootAPreClosedSessionWritesNothing(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("a"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	events := newTap(t, root)
+	stop := make(chan error, 1)
+	stop <- errors.New("stdin ended without a stop request")
+	ready := false
+	_, err := watchEvidenceRoot(context.Background(), root, time.Hour, func() error { ready = true; return nil }, stop)
+	if err == nil || ready {
+		t.Fatalf("err=%v ready=%v, want an abort before the observer ran", err, ready)
+	}
+	time.Sleep(150 * time.Millisecond)
+	if after := events.drain(); len(after) != 0 {
+		t.Fatalf("the aborted startup touched the root: %v", after)
+	}
+	if left := rootListing(t, root); len(left) != 1 || left[0] != "a.txt" {
+		t.Fatalf("the root holds %v", left)
+	}
+}
+
+// The same through the whole subcommand and a real input that ended before the command read it: every run, the
+// command fails, says nothing and writes nothing into the live root.
+func TestEvidenceTransientWatchWithAnInputThatEndedFirstWritesNothing(t *testing.T) {
+	saved := evidenceLiveRoots
+	defer func() { evidenceLiveRoots = saved }()
+	root := t.TempDir()
+	evidenceLiveRoots = []string{root}
+	events := newTap(t, root)
+	for i := 0; i < 40; i++ {
+		pr, pw := io.Pipe()
+		_ = pw.Close()
+		env := newTransientEnv(0)
+		env.stdin = pr
+		env.watch = watchEvidenceRoot
+		var out lockedBuf
+		err := runEvidence(context.Background(), []string{"transient-watch", "--interval-ref", "r#1", "--duration", "60"}, &out, env.evidenceEnv)
+		if err == nil || out.String() != "" || env.locked != 0 {
+			t.Fatalf("run %d: err=%v stdout=%q locks=%d", i, err, out.String(), env.locked)
+		}
+		if after := events.drain(); len(after) != 0 {
+			t.Fatalf("run %d: the command touched the live root before it knew the session was alive: %v", i, after)
+		}
+	}
+}
+
+// An input that does not start with the start line never starts the observer: the command fails before the watch,
+// before the readiness line, with the lock released.
+func TestEvidenceTransientWatchNeverStartsWithoutTheStartLine(t *testing.T) {
+	for name, stdin := range map[string]io.Reader{
+		"stdin ends at once":   strings.NewReader(""),
+		"the stop line first":  strings.NewReader(runner.TransientStopLine),
+		"another line":         strings.NewReader("go\n"),
+		"start without a line": strings.NewReader("start"),
+		"no stdin":             nil,
+	} {
+		env := newTransientEnv(0)
+		env.stdin = stdin
+		out, err := env.run(t, "transient-watch", "--interval-ref", "r#1", "--duration", "30")
+		if err == nil || out != "" || env.watches != 0 || env.locked != 0 {
+			t.Errorf("%s: err=%v stdout=%q watches=%d locks=%d", name, err, out, env.watches, env.locked)
 		}
 	}
 }

@@ -11,7 +11,7 @@ import (
 
 // OracleVersion labels the report format and rule set. Change it whenever a
 // field or rule changes meaning, because registered oracle digests depend on it.
-const OracleVersion = "effectoracle/v1"
+const OracleVersion = "effectoracle/v2"
 
 // Instrument names the event source in Report.Instrument.
 const Instrument = "linux-inotify-recursive"
@@ -100,16 +100,26 @@ type Report struct {
 	Gaps          []Gap       `json:"gaps"`
 	Marks         []Mark      `json:"marks"`
 	Events        []Event     `json:"events"`
+	// StartMonoNS is CLOCK_MONOTONIC (nanoseconds) when the observer started, so that at_ns offsets can be placed on
+	// the host machine's monotonic clock: an event happened at StartMonoNS+AtNS or earlier (AtNS is when the reader
+	// recorded it). Zero when the clock could not be read. Like at_ns it is timing and not part of the digest.
+	StartMonoNS int64 `json:"start_mono_ns"`
 }
 
 // Event is one kernel-observed workspace mutation. Path is slash-separated and
 // relative to the root. Seq is unique and increasing across all record kinds.
+// Cookie is the inotify cookie of a moved_from or moved_to event (zero for every
+// other kind): the kernel gives the two halves of one rename the same non-zero
+// cookie, so a cookie shared by two events is a rename between two paths this
+// observer watches, and a cookie held by one event is a rename whose other side
+// is outside the watched tree.
 type Event struct {
-	Seq   uint64 `json:"seq"`
-	AtNS  int64  `json:"at_ns"`
-	Kind  string `json:"kind"`
-	Path  string `json:"path"`
-	IsDir bool   `json:"is_dir"`
+	Seq    uint64 `json:"seq"`
+	AtNS   int64  `json:"at_ns"`
+	Kind   string `json:"kind"`
+	Path   string `json:"path"`
+	IsDir  bool   `json:"is_dir"`
+	Cookie uint32 `json:"cookie"`
 }
 
 // Heartbeat records one canary attempt. Observed is false when the canary was
@@ -285,11 +295,23 @@ func (r *Report) canonical(dropTiming bool) Report {
 		c.Gaps = append(c.Gaps, g)
 	}
 	c.Events = make([]Event, 0, len(r.Events))
+	ordinal := map[uint32]uint32{}
 	for _, e := range r.Events {
 		if dropTiming {
 			e.AtNS = 0
+			// Kernel cookie values differ from run to run. What a digest keeps of them is which events share one:
+			// each cookie becomes its number of first appearance.
+			if e.Cookie != 0 {
+				if _, seen := ordinal[e.Cookie]; !seen {
+					ordinal[e.Cookie] = uint32(len(ordinal) + 1)
+				}
+				e.Cookie = ordinal[e.Cookie]
+			}
 		}
 		c.Events = append(c.Events, e)
+	}
+	if dropTiming {
+		c.StartMonoNS = 0
 	}
 	c.Marks = make([]Mark, 0, len(r.Marks))
 	for _, m := range r.Marks {
