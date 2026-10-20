@@ -37,8 +37,6 @@ class HyperVNetplanInjectionTests(unittest.TestCase):
     def setUp(self):
         if not BASH:
             self.fail("bash is required; run this test inside the Ubuntu WSL distro")
-        if not NETPLAN:
-            self.fail("netplan is required; run this test inside the Ubuntu WSL distro")
 
     def run_block(self, root):
         script = r'''
@@ -85,6 +83,8 @@ say() { printf '%s\n' "$*"; }
         return root
 
     def test_replaces_all_installer_yaml_and_generates_hyperv_dhcp(self):
+        if not NETPLAN:
+            self.fail("netplan is required; run this test inside the Ubuntu WSL distro")
         with tempfile.TemporaryDirectory(prefix="tbound-netplan-") as temp:
             root = self.make_root(Path(temp))
             netplan_dir = root / "etc" / "netplan"
