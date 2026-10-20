@@ -1218,3 +1218,37 @@ func TestProbeCellIdentityUsesTheRegisteredServiceIdentityBeforeTheManagedRootIs
 		t.Fatal("an already-bound service identity was overwritten")
 	}
 }
+
+func envValue(env []string, key string) (string, bool) {
+	for _, entry := range env {
+		if value, ok := strings.CutPrefix(entry, key+"="); ok {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func TestD09ProbeEnvCarriesTheServicePinnedPodmanConfiguration(t *testing.T) {
+	t.Setenv("CONTAINERS_CONF", D09ManagedPiContainersConfPath)
+	t.Setenv("CONTAINERS_STORAGE_CONF", D09ManagedPiStorageConfPath)
+	t.Setenv("XDG_CACHE_HOME", D09ManagedPiPodmanCacheHome)
+	env := d09ProbeEnv()
+	for key, want := range map[string]string{"CONTAINERS_CONF": D09ManagedPiContainersConfPath,
+		"CONTAINERS_STORAGE_CONF": D09ManagedPiStorageConfPath, "XDG_CACHE_HOME": D09ManagedPiPodmanCacheHome} {
+		if got, ok := envValue(env, key); !ok || got != want {
+			t.Fatalf("%s = %q (present %v), want the pinned %q", key, got, ok, want)
+		}
+	}
+}
+
+func TestD09ProbeEnvDropsPodmanConfigurationThatIsNotThePinnedOne(t *testing.T) {
+	t.Setenv("CONTAINERS_CONF", "/tmp/attacker/containers.conf")
+	t.Setenv("CONTAINERS_STORAGE_CONF", "/tmp/attacker/storage.conf")
+	t.Setenv("XDG_CACHE_HOME", "/tmp/attacker/cache")
+	env := d09ProbeEnv()
+	for _, key := range []string{"CONTAINERS_CONF", "CONTAINERS_STORAGE_CONF", "XDG_CACHE_HOME"} {
+		if got, ok := envValue(env, key); ok {
+			t.Fatalf("%s=%q was inherited although it is not the pinned value", key, got)
+		}
+	}
+}

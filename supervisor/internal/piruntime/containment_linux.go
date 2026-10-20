@@ -2570,6 +2570,14 @@ func d09ProbeEnv() []string {
 			env = append(env, key+"="+value)
 		}
 	}
+	// The managed service pins its podman configuration in its unit environment.
+	// Podman must see exactly those values, or it silently falls back to the
+	// default graphroot and network directories; any other inherited value is dropped.
+	for key, pinned := range d09PinnedPodmanEnv {
+		if value, ok := os.LookupEnv(key); ok && value == pinned {
+			env = append(env, key+"="+value)
+		}
+	}
 	if _, ok := os.LookupEnv("XDG_RUNTIME_DIR"); !ok {
 		env = append(env, "XDG_RUNTIME_DIR=/run/user/"+strconv.Itoa(os.Geteuid()))
 	}
@@ -2753,4 +2761,12 @@ func withRegisteredServiceIdentity(config D09Config, registration D09ManagedLive
 		config.UserNamespaceHostGID = registration.ServiceGID
 	}
 	return config
+}
+
+// d09PinnedPodmanEnv are the podman variables the signed managed service config
+// pins (containers_conf_path, storage_conf_path, xdg_cache_home).
+var d09PinnedPodmanEnv = map[string]string{
+	"CONTAINERS_CONF":         D09ManagedPiContainersConfPath,
+	"CONTAINERS_STORAGE_CONF": D09ManagedPiStorageConfPath,
+	"XDG_CACHE_HOME":          D09ManagedPiPodmanCacheHome,
 }
