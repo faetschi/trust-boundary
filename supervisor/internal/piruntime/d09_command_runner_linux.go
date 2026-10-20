@@ -942,6 +942,11 @@ func readD09CIDFifo(ctx context.Context, fifo *os.File, timeout time.Duration) (
 			}
 		case <-readCtx.Done():
 			_ = fifo.SetReadDeadline(time.Now())
+			// Let the released read finish so it cannot take bytes meant for a later read.
+			select {
+			case <-completed:
+			case <-time.After(time.Second):
+			}
 			return "", readCtx.Err()
 		}
 	}
