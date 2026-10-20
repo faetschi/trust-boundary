@@ -39,6 +39,11 @@
     After provisioning: disconnect the adapter, create the golden baseline, and
     follow infra/guest/README.md for the offline phase.
 
+    Windows host tools are verified by fixed system paths, TrustedInstaller
+    ownership, and a valid Microsoft Authenticode signature. An optional
+    -WindowsToolManifestPath JSON object can add operator-reviewed per-tool
+    SHA-256 pins without baking build-specific hashes into this script.
+
 .EXAMPLE
     .\bootstrap-hyperv-windows.ps1 -ImageKind GoldenVhdx `
         -ImageSourcePath '<verified generic Ubuntu Server install VHDX>' `
@@ -68,6 +73,7 @@ param(
     [int]$BootTimeoutSeconds = 900,
     [int]$MinimumFreeGb = 120,
     [string]$WslDistro,
+    [ValidateNotNullOrEmpty()][string]$WindowsToolManifestPath,
     [switch]$SkipWslInjection,
     [switch]$KeepSshHostKeys,
     [string]$RepoRoot
@@ -88,14 +94,7 @@ $script:SshExePath = Join-Path $script:OpenSshDirectory 'ssh.exe'
 $script:SshKeyscanExePath = Join-Path $script:OpenSshDirectory 'ssh-keyscan.exe'
 $script:SshKeygenExePath = Join-Path $script:OpenSshDirectory 'ssh-keygen.exe'
 $script:ScpExePath = Join-Path $script:OpenSshDirectory 'scp.exe'
-$script:ExpectedWindowsToolSha256 = @{
-    'wsl.exe' = '4e589e3883229b7a74a4acdb878689dcec94e2539fcad1c194f415b149c337a9'
-    'cmd.exe' = 'badf4752413cb0cbdc03fb95820ca167f0cdc63b597ccdb5ef43111180e088b0'
-    'ssh.exe' = 'c9a80ae8af88aa0ff7a08a7e65dbad0d408854d757a433c6a78ab46d8d38aad1'
-    'ssh-keyscan.exe' = 'bfb8caae4c31698c09686ae208dc204941bc185fa282f3973c4e0a44087cc08a'
-    'ssh-keygen.exe' = '539ae392c61a53fadddf0bbb152126f3e0bc042e8a4ed50718ab16fbf872cbcc'
-    'scp.exe' = '29328a55ab58bfcbfe0a7361fff2dc7a50fb28975e8e641b69e9a97ba1840fc8'
-}
+$script:WindowsToolNames = @('wsl.exe', 'cmd.exe', 'ssh.exe', 'ssh-keyscan.exe', 'ssh-keygen.exe', 'scp.exe')
 
 function Write-Step {
     param([Parameter(Mandatory)][string]$Message)
@@ -130,10 +129,35 @@ function Assert-NoReparsePathComponents {
     }
 }
 
+function Read-WindowsToolManifest {
+    param([string]$Path)
+    $hashes = @{}
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $hashes }
+    $resolved = (Resolve-Path -LiteralPath $Path -ErrorAction Stop).ProviderPath
+    Assert-NoReparsePathComponents -Path $resolved
+    $parsed = Get-Content -LiteralPath $resolved -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+    if ($null -eq $parsed -or $parsed -isnot [pscustomobject]) {
+        throw "Windows tool manifest must be a JSON object of tool name to SHA-256: $resolved"
+    }
+    $allowed = @{}
+    foreach ($name in $script:WindowsToolNames) { $allowed[$name] = $true }
+    foreach ($property in $parsed.PSObject.Properties) {
+        if (-not $allowed.ContainsKey($property.Name)) {
+            throw "Windows tool manifest contains an unknown tool: $($property.Name)"
+        }
+        $value = [string]$property.Value
+        if ($value -notmatch '^[A-Fa-f0-9]{64}$') {
+            throw "Windows tool manifest SHA-256 is invalid for $($property.Name)"
+        }
+        $hashes[$property.Name] = $value.ToLowerInvariant()
+    }
+    return $hashes
+}
+
 function Assert-TrustedWindowsExecutable {
     param(
         [Parameter(Mandatory)][string]$Path,
-        [Parameter(Mandatory)][string]$ExpectedSha256,
+        [string]$ExpectedSha256,
         [Parameter(Mandatory)][string[]]$TrustedDirectories
     )
     $fullPath = [IO.Path]::GetFullPath($Path)
@@ -151,11 +175,15 @@ function Assert-TrustedWindowsExecutable {
         throw "Windows executable is not a regular file owned by $($script:TrustedWindowsOwner): $fullPath"
     }
     $actualSha256 = (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
-    if ($actualSha256 -cne $ExpectedSha256) { throw "Pinned Windows executable SHA-256 mismatch: $fullPath" }
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedSha256) -and $actualSha256 -cne $ExpectedSha256.ToLowerInvariant()) {
+        throw "Pinned Windows executable SHA-256 mismatch: $fullPath"
+    }
     $signature = Get-AuthenticodeSignature -FilePath $fullPath -ErrorAction Stop
+    $signerSubject = if ($null -ne $signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { '' }
     if ($signature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
-        $signature.SignerCertificate.Subject -notmatch '^CN=Microsoft Windows, O=Microsoft Corporation,') {
-        throw "Windows executable lacks a valid Microsoft Windows signature: $fullPath"
+        $signerSubject -notmatch '(^|, )O=Microsoft Corporation(,|$)' -or
+        $signerSubject -notmatch '(^|, )CN=Microsoft (Windows|Corporation)(,|$)') {
+        throw "Windows executable lacks a valid Microsoft Windows/Corporation signature: $fullPath"
     }
     return $actualSha256
 }
@@ -336,20 +364,41 @@ foreach ($file in @($bootstrapLinux, $landlockProfileGate, $setupUbuntu, $probeC
     }
 }
 
+$reviewedToolHashes = Read-WindowsToolManifest -Path $WindowsToolManifestPath
+$requiredTools = @('cmd.exe', 'ssh.exe', 'ssh-keyscan.exe', 'ssh-keygen.exe', 'scp.exe')
+if (-not $SkipWslInjection) { $requiredTools += 'wsl.exe' }
+if ($reviewedToolHashes.Count -gt 0) {
+    foreach ($name in $requiredTools) {
+        if (-not $reviewedToolHashes.ContainsKey($name)) {
+            throw "Windows tool manifest is missing the required entry '$name': $WindowsToolManifestPath"
+        }
+    }
+}
+function Get-ExpectedWindowsToolHash {
+    param([Parameter(Mandatory)][string]$Name)
+    if ($reviewedToolHashes.ContainsKey($Name)) { return $reviewedToolHashes[$Name] }
+    return ''
+}
+
 $toolHashes = @{}
 if (-not $SkipWslInjection) {
-    $toolHashes['wsl.exe'] = Assert-TrustedWindowsExecutable -Path $script:WslExePath -ExpectedSha256 $script:ExpectedWindowsToolSha256['wsl.exe'] -TrustedDirectories @($script:WindowsDirectory, $script:SystemDirectory)
+    $toolHashes['wsl.exe'] = Assert-TrustedWindowsExecutable -Path $script:WslExePath -ExpectedSha256 (Get-ExpectedWindowsToolHash -Name 'wsl.exe') -TrustedDirectories @($script:WindowsDirectory, $script:SystemDirectory)
 }
-$toolHashes['cmd.exe'] = Assert-TrustedWindowsExecutable -Path $script:CmdExePath -ExpectedSha256 $script:ExpectedWindowsToolSha256['cmd.exe'] -TrustedDirectories @($script:WindowsDirectory, $script:SystemDirectory)
+$toolHashes['cmd.exe'] = Assert-TrustedWindowsExecutable -Path $script:CmdExePath -ExpectedSha256 (Get-ExpectedWindowsToolHash -Name 'cmd.exe') -TrustedDirectories @($script:WindowsDirectory, $script:SystemDirectory)
 foreach ($tool in @(
         @{ Name = 'ssh.exe'; Path = $script:SshExePath },
         @{ Name = 'ssh-keyscan.exe'; Path = $script:SshKeyscanExePath },
         @{ Name = 'ssh-keygen.exe'; Path = $script:SshKeygenExePath },
         @{ Name = 'scp.exe'; Path = $script:ScpExePath })) {
-    $toolHashes[$tool.Name] = Assert-TrustedWindowsExecutable -Path $tool.Path -ExpectedSha256 $script:ExpectedWindowsToolSha256[$tool.Name] -TrustedDirectories @($script:WindowsDirectory, $script:SystemDirectory, $script:OpenSshDirectory)
+    $toolHashes[$tool.Name] = Assert-TrustedWindowsExecutable -Path $tool.Path -ExpectedSha256 (Get-ExpectedWindowsToolHash -Name $tool.Name) -TrustedDirectories @($script:WindowsDirectory, $script:SystemDirectory, $script:OpenSshDirectory)
 }
 $script:VerifiedWindowsToolHashes = $toolHashes
-Write-Host 'Pinned Windows host tools verified (SHA-256):'
+if ($reviewedToolHashes.Count -gt 0) {
+    Write-Host 'Windows host tools verified (Microsoft signature/owner + operator-reviewed SHA-256 manifest):'
+}
+else {
+    Write-Host 'Windows host tools verified (Microsoft signature + TrustedInstaller ownership; no per-build hash pin):'
+}
 foreach ($toolName in @('cmd.exe', 'ssh.exe', 'ssh-keyscan.exe', 'ssh-keygen.exe', 'scp.exe')) {
     Write-Host ("  {0}: {1}" -f $toolName, $script:VerifiedWindowsToolHashes[$toolName])
 }

@@ -83,14 +83,15 @@ What it does, in order, and what each step verifies:
 3. **Cosign** — not packaged for Ubuntu 24.04; installs the pinned static
    binary `v3.1.3` (SHA-256 pinned in the script) under
    `/opt/tbound/toolchains/` with a `/usr/local/bin/cosign` symlink.
-4. **Unprivileged user namespace fix** — Ubuntu 24.04 sets
+4. **Unprivileged user namespace policy** — Ubuntu 24.04 sets
    `kernel.apparmor_restrict_unprivileged_userns=1`, which breaks rootless
-    user namespaces (`write /proc/self/uid_map: Operation not permitted`).
-    After an explicit operator confirmation it writes
-    `/etc/sysctl.d/99-tbound-userns.conf` and applies
-    `kernel.apparmor_restrict_unprivileged_userns=0`. This relaxes a system-wide
-    AppArmor restriction; prefer a scoped AppArmor profile on shared or daily-
-    driver hosts, and use the sysctl only on a dedicated evaluation machine.
+   user namespaces (`write /proc/self/uid_map: Operation not permitted`).
+   The bootstrap leaves this host-wide setting unchanged by default. Only an
+   explicit `TBOUND_APPLY_USERNS_SYSCTL=1` opts in to writing
+   `/etc/sysctl.d/99-tbound-userns.conf` and setting the sysctl to 0. Do not
+   treat that unconfined workaround as governed-profile compatible; prefer a
+   scoped AppArmor profile on shared or daily-driver hosts, and use it only on
+   a dedicated disposable evaluation machine.
 5. **cgroup v2 and Landlock prechecks** — verifies a cgroup v2 mount and
    reports broad Landlock availability plus a separate exact D09 profile
    result. Production source freezes D09 to ABI 8
@@ -116,16 +117,21 @@ bash infra/repro/bootstrap-qemu-linux.sh --vm-dir "$HOME/.local/share/tbound-vm"
 
 The script downloads and SHA-256 verifies the Ubuntu 24.04 cloud image, creates
 a cloud-init seed and a 40 GiB overlay, boots the VM with KVM when usable (TCG
-otherwise), installs `linux-generic-hwe-24.04` when available, runs
-`bootstrap-linux.sh` in the guest, installs the pinned Pi CLI, builds and
-installs TBound, and runs the native fixture plus `make verify`. It stores the
-VM, SSH key, console log, and guest provisioning logs under `--vm-dir`.
+otherwise), runs `bootstrap-linux.sh`, installs the pinned Pi CLI, installs
+TBound from source (or from `--local-dist`), and runs `tbound-doctor` plus the
+native fixture. The default is the GA kernel and a light install: no adapter
+check, no Go race, and no `make verify`. `--developer` opts into those checks;
+`--hwe` opts into the ABI-8 HWE kernel, which is currently unqualified.
+AppArmor/user-namespace relaxation is also opt-in
+(`--allow-userns-sysctl`). The script stores the VM, SSH key, console log, and
+guest provisioning logs under `--vm-dir`.
 
 Re-running with `--start`, `--stop`, `--ssh`, or `--status` manages the existing
 VM. The default memory is 3 GiB because TCG hosts are often memory-constrained;
-the script adds a 2 GiB guest swapfile. This path installs the application and
-development fixtures only. The signed host profile, D09 image, and managed
-service still require the operator signing session.
+the script adds a 2 GiB guest swapfile. User-prefix installation is independent
+of capability/qualification results: a failed probe is reported but does not
+undo the install. The signed host profile, D09 image, and managed service still
+require the operator signing session.
 
 ## Path B: Hyper-V VM from Windows
 
@@ -173,6 +179,14 @@ What it does, in order:
 5. **Report** — prints next steps for recording the candidate, disconnecting
    the NIC, freezing the measured disk, and running the offline checks. These
    steps do not register or qualify the candidate.
+
+Windows host-tool verification is portable across Windows builds: the script
+requires the fixed `System32`/`OpenSSH` paths, TrustedInstaller ownership, and a
+valid Microsoft Authenticode signature. It no longer embeds one host's
+`wsl.exe`/`cmd.exe`/OpenSSH hashes. Pass `-WindowsToolManifestPath` with a JSON
+object of `{ "tool.exe": "<64-hex sha256>" }` for an additional
+operator-reviewed pin; a supplied manifest must cover every tool used and fails
+closed on missing or unknown entries.
 
 For the two Hyper-V image modes:
 

@@ -26,10 +26,12 @@ The prototype bootstrap targets Ubuntu 24.04 amd64:
 sudo bash infra/repro/bootstrap-linux.sh <trial-user>
 ```
 
-Read the script and review each host change before proceeding. In particular,
-the user-namespace workaround can relax a system-wide AppArmor restriction.
-On a shared system, use a separately reviewed scoped policy or a dedicated
-disposable host. See [infra/repro/README.md](../infra/repro/README.md) and the
+Read the script and review each host change before proceeding. The
+user-namespace workaround is **not** applied by default; set
+`TBOUND_APPLY_USERNS_SYSCTL=1` only on a dedicated disposable host after
+reviewing the system-wide AppArmor trade-off. On a shared system, use a
+separately reviewed scoped policy instead. See
+[infra/repro/README.md](../infra/repro/README.md) and the
 [guest runbook](../infra/guest/README.md).
 
 ## Windows with an Ubuntu Hyper-V guest
@@ -49,10 +51,13 @@ bash infra/repro/bootstrap-qemu-linux.sh --vm-dir "$HOME/.local/share/tbound-vm"
 ```
 
 The script uses KVM when it can open `/dev/kvm` and otherwise falls back to
-TCG, which is much slower. It installs the Ubuntu HWE kernel when available,
-runs the guest bootstrap, installs Pi and TBound, and runs the native fixture
-and install verification. Review the script before running it; it creates a
-new VM and does not delete an existing one. See
+TCG, which is much slower. The default light install uses the GA kernel,
+installs Pi and TBound, and runs `tbound-doctor` plus the native fixture.
+`--developer` opts into adapter/install verification; `--hwe` opts into the
+ABI-8 HWE kernel, which is not yet qualified; `--allow-userns-sysctl` opts into
+the host-wide AppArmor workaround. Qualification failures are reported after
+the user-prefix install and do not undo it. Review the script before running
+it; it creates a new VM and does not delete an existing one. See
 [infra/repro/README.md](../infra/repro/README.md#path-c-qemu-vm-on-a-linux-host).
 
 ## What a probe means

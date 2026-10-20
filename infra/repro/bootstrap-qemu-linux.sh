@@ -19,8 +19,12 @@
 #   --disk GB         Guest disk (default: 40)
 #   --port PORT       Host SSH port (default: 2222)
 #   --image FILE      Use a local Ubuntu 24.04 cloud qcow2 instead of downloading
-#   --no-hwe          Keep the cloud image GA kernel (Landlock ABI < 8)
-#   --no-check        Do not run the adapter check in the guest
+#   --local-dist DIR  Install a prebuilt local release instead of building in-guest
+#   --version VER     Release/install version (default: dev)
+#   --hwe             Opt in to the HWE kernel (ABI 8, not yet qualified)
+#   --allow-userns-sysctl
+#                     Opt in to changing the host-wide AppArmor userns sysctl
+#   --developer       Run adapter checks, the Pi dev fixture, and make verify
 #   --check           Print host prerequisites and exit
 #
 # The script never deletes an existing VM directory. It refuses to overwrite a
@@ -36,8 +40,12 @@ MEMORY_MB=3072
 DISK_GB=40
 SSH_PORT=2222
 IMAGE=""
-INSTALL_HWE=1
-RUN_ADAPTER_CHECK=1
+LOCAL_DIST=""
+DIST_VERSION="dev"
+INSTALL_HWE=0
+ALLOW_USERNS_SYSCTL=0
+RUN_DEVELOPER=0
+QUALIFICATION_STATUS="not run"
 MODE=create
 
 say()  { printf '%s\n' "$*"; }
@@ -60,8 +68,11 @@ while (($# > 0)); do
     --disk) DISK_GB="${2:?--disk needs a value}"; shift 2 ;;
     --port) SSH_PORT="${2:?--port needs a value}"; shift 2 ;;
     --image) IMAGE="${2:?--image needs a value}"; shift 2 ;;
-    --no-hwe) INSTALL_HWE=0; shift ;;
-    --no-check) RUN_ADAPTER_CHECK=0; shift ;;
+    --local-dist) LOCAL_DIST="${2:?--local-dist needs a value}"; shift 2 ;;
+    --version) DIST_VERSION="${2:?--version needs a value}"; shift 2 ;;
+    --hwe) INSTALL_HWE=1; shift ;;
+    --allow-userns-sysctl) ALLOW_USERNS_SYSCTL=1; shift ;;
+    --developer) RUN_DEVELOPER=1; shift ;;
     --check) MODE=check; shift ;;
     --start) MODE=start; shift ;;
     --stop) MODE=stop; shift ;;
@@ -77,6 +88,11 @@ done
 [[ "$MEMORY_MB" =~ ^[1-9][0-9]*$ ]] || die "--memory must be a positive integer"
 [[ "$DISK_GB" =~ ^[1-9][0-9]*$ ]] || die "--disk must be a positive integer"
 [[ "$SSH_PORT" =~ ^[1-9][0-9]*$ ]] || die "--port must be a positive integer"
+[[ "$DIST_VERSION" =~ ^[A-Za-z0-9._-]+$ ]] || die "--version has invalid characters: $DIST_VERSION"
+if [[ -n "$LOCAL_DIST" ]]; then
+  [[ -d "$LOCAL_DIST" ]] || die "--local-dist is not a directory: $LOCAL_DIST"
+  LOCAL_DIST="$(cd -- "$LOCAL_DIST" && pwd)"
+fi
 
 KEY="$VM_DIR/id_ed25519_${VM_NAME//[^A-Za-z0-9_.-]/_}"
 KNOWN="$VM_DIR/known_hosts"
@@ -268,6 +284,7 @@ umask 077
 cd "$HOME/trust-boundary"
 
 step() { printf '\n===== %s =====\n' "$*"; }
+say()  { printf '%s\n' "$*"; }
 
 step "official Pi CLI 0.87.1"
 npm_config_prefix="$HOME/.local" npm install --global --ignore-scripts \
@@ -276,18 +293,23 @@ export PATH="$HOME/.local/bin:$PATH"
 hash -r
 pi --version
 
-step "adapter dependencies"
-cd "$HOME/trust-boundary/adapter"
-npm ci --ignore-scripts --no-audit --no-fund
-if [[ "${RUN_ADAPTER_CHECK:-1}" == 1 ]]; then
-  step "adapter check (slow-VM timeout override)"
+if [[ "${RUN_DEVELOPER:-0}" == 1 ]]; then
+  step "adapter dependencies and developer check"
+  cd "$HOME/trust-boundary/adapter"
+  npm ci --ignore-scripts --no-audit --no-fund
   TBOUND_TEST_TIMEOUT_MS=120000 npm run check
 fi
 
-step "build and install tbound"
+step "install tbound"
 cd "$HOME/trust-boundary"
-make build VERSION=dev
-bash install/install.sh --version dev --local-dist dist --no-path
+if [[ -n "${TBOUND_LOCAL_DIST:-}" ]]; then
+  step "install prebuilt local release"
+  bash install/install.sh --version "$TBOUND_DIST_VERSION" --local-dist "$TBOUND_LOCAL_DIST" --no-path
+else
+  step "build and install from source"
+  make build VERSION="$TBOUND_DIST_VERSION"
+  bash install/install.sh --version "$TBOUND_DIST_VERSION" --local-dist dist --no-path
+fi
 export PATH="$HOME/.local/share/tbound/bin:$PATH"
 hash -r
 
@@ -299,22 +321,23 @@ step "native fixture"
 cd "$HOME/trust-boundary"
 tbound serve --pi --native-fixture | tee "$HOME/tbound-native-fixture.json"
 
-step "offline Pi CLI development fixture"
-export TBOUND_DEV_FIXTURE_PI="$(realpath "$(command -v pi)")"
-export TBOUND_DEV_FIXTURE_NODE="$(realpath "$(command -v node)")"
-export TBOUND_DEV_FIXTURE_ADAPTER="$HOME/trust-boundary/adapter"
-export TBOUND_DEV_FIXTURE_ROOT="$HOME/.local/state/tbound-dev-fixture"
-mkdir -m 700 -p "$TBOUND_DEV_FIXTURE_ROOT"
-tbound serve --pi --dev-fixture | tee "$HOME/tbound-dev-fixture.json"
+if [[ "${RUN_DEVELOPER:-0}" == 1 ]]; then
+  step "offline Pi CLI development fixture"
+  export TBOUND_DEV_FIXTURE_PI="$(realpath "$(command -v pi)")"
+  export TBOUND_DEV_FIXTURE_NODE="$(realpath "$(command -v node)")"
+  export TBOUND_DEV_FIXTURE_ADAPTER="$HOME/trust-boundary/adapter"
+  export TBOUND_DEV_FIXTURE_ROOT="$HOME/.local/state/tbound-dev-fixture"
+  mkdir -m 700 -p "$TBOUND_DEV_FIXTURE_ROOT"
+  tbound serve --pi --dev-fixture | tee "$HOME/tbound-dev-fixture.json"
 
-step "install verification"
-make verify 2>&1 | tee "$HOME/tbound-make-verify.log" | tail -30
+  step "install verification"
+  make verify 2>&1 | tee "$HOME/tbound-make-verify.log" | tail -30
+fi
 
-step "governed-host advisory"
-bash scripts/check-governed-host.sh > "$HOME/tbound-governed-host.txt" 2>&1 || true
-tail -8 "$HOME/tbound-governed-host.txt"
+step "qualification"
+say "User-prefix install is complete. Kernel/cgroup qualification is separate and does"
+say "not gate this install; use tbound-doctor and the audited cgroup-reuse probe."
 
-step "done"
 GUEST
   chmod +x "$VM_DIR/provision-guest.sh"
 }
@@ -327,6 +350,7 @@ print_result() {
   say "  Start/stop   : $0 --vm-dir '$VM_DIR' --start | --stop"
   say "  Guest shell  : $0 --vm-dir '$VM_DIR' --ssh"
   say "  Console log  : $CONSOLE"
+  say "  Qualification: $QUALIFICATION_STATUS"
   say
   say "The guest install is development-only. Governed serve --pi still requires the"
   say "owner's signed host profile, D09 image, and service provisioning; see"
@@ -382,7 +406,13 @@ say "Plan:"
 say "  create $VM_NAME in $VM_DIR"
 say "  Ubuntu 24.04 cloud image, ${CPUS} vCPU, ${MEMORY_MB} MiB RAM, ${DISK_GB} GiB disk"
 say "  trial user: $TRIAL_USER, SSH 127.0.0.1:$SSH_PORT"
-say "  install HWE kernel: $([[ "$INSTALL_HWE" == 1 ]] && echo yes || echo no)"
+say "  install from: $([[ -n "$LOCAL_DIST" ]] && echo "prebuilt $LOCAL_DIST" || echo "source (Go compiler required in guest)")"
+say "  install HWE kernel (opt-in, unqualified): $([[ "$INSTALL_HWE" == 1 ]] && echo yes || echo no)"
+say "  allow global AppArmor userns sysctl: $([[ "$ALLOW_USERNS_SYSCTL" == 1 ]] && echo yes || echo no)"
+say "  developer checks: $([[ "$RUN_DEVELOPER" == 1 ]] && echo yes || echo no)"
+if [[ "$INSTALL_HWE" == 1 ]]; then
+  warn "The HWE 7.0 kernel provides Landlock ABI 8 but is not qualified; the functional cgroup/reuse probe may fail."
+fi
 if ! kvm_usable; then
   warn "KVM is not usable; this will use TCG and can take tens of minutes."
 fi
@@ -430,21 +460,40 @@ tar -C "$ROOT" \
   --exclude='*.qcow2' --exclude='*.img' --exclude='*.iso' \
   -czf - . | ssh_guest 'rm -rf "$HOME/trust-boundary" && mkdir -p "$HOME/trust-boundary" && tar -xzf - -C "$HOME/trust-boundary"'
 
+if [[ -n "$LOCAL_DIST" ]]; then
+  step "copy prebuilt release into guest"
+  tar -C "$LOCAL_DIST" -czf - . | ssh_guest 'rm -rf "$HOME/tbound-dist" && mkdir -p "$HOME/tbound-dist" && tar -xzf - -C "$HOME/tbound-dist"'
+fi
+
 step "bootstrap guest host"
 set +e
-ssh_guest "cd \"\$HOME/trust-boundary\" && sudo -n env TBOUND_ASSUME_YES=1 RUN_ADAPTER_CHECK=$RUN_ADAPTER_CHECK bash infra/repro/bootstrap-linux.sh '$TRIAL_USER'"
+ssh_guest "cd \"\$HOME/trust-boundary\" && sudo -n env TBOUND_ASSUME_YES=1 TBOUND_APPLY_USERNS_SYSCTL=$ALLOW_USERNS_SYSCTL bash infra/repro/bootstrap-linux.sh '$TRIAL_USER'"
 bootstrap_rc=$?
 set -e
-if [[ "$bootstrap_rc" -ne 0 ]]; then
-  warn "bootstrap-linux.sh exited $bootstrap_rc; inspect the guest log before continuing."
-  ssh_guest 'sudo -n tail -40 /var/log/tbound-repro-bootstrap.log || true'
-  exit "$bootstrap_rc"
-fi
+case "$bootstrap_rc" in
+  0) QUALIFICATION_STATUS="capability probe passed (host still not G1-qualified)"; say "Guest host bootstrap and capability probe completed." ;;
+  1|3|4)
+    QUALIFICATION_STATUS="probe reported exit $bootstrap_rc; install continues, host NOT qualified"
+    warn "Guest provisioning completed, but the capability/qualification probe reported exit $bootstrap_rc."
+    warn "This does not undo the user-prefix install below; inspect the guest log for the exact failed checks."
+    ssh_guest 'sudo -n tail -40 /var/log/tbound-repro-bootstrap.log || true'
+    ;;
+  *)
+    warn "bootstrap-linux.sh failed with exit $bootstrap_rc; stopping before install."
+    ssh_guest 'sudo -n tail -40 /var/log/tbound-repro-bootstrap.log || true'
+    exit "$bootstrap_rc"
+    ;;
+esac
 
 step "install Pi and tbound"
 write_guest_provisioner
 scp -q -P "$SSH_PORT" -i "$KEY" -o UserKnownHostsFile="$KNOWN" -o StrictHostKeyChecking=yes \
   "$VM_DIR/provision-guest.sh" "$TRIAL_USER@127.0.0.1:/home/$TRIAL_USER/provision-guest.sh"
-ssh_guest "RUN_ADAPTER_CHECK=$RUN_ADAPTER_CHECK bash \"\$HOME/provision-guest.sh\""
+if [[ -n "$LOCAL_DIST" ]]; then
+  guest_dist="\$HOME/tbound-dist"
+else
+  guest_dist=""
+fi
+ssh_guest "RUN_DEVELOPER=$RUN_DEVELOPER TBOUND_DIST_VERSION=$DIST_VERSION TBOUND_LOCAL_DIST=\"$guest_dist\" bash \"\$HOME/provision-guest.sh\""
 
 print_result

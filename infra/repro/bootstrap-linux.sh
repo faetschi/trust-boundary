@@ -332,26 +332,34 @@ else
     say "Ubuntu 24.04 restricts unprivileged user namespaces ($SYSCTL_KEY=$CURRENT)."
     say 'This blocks rootless Podman and the probe user-namespace check with'
     say '  "write /proc/self/uid_map: Operation not permitted".'
-    say "Proposed change: write $SYSCTL_FILE containing"
-    say "  $SYSCTL_KEY = 0"
-    say 'and apply it now with sysctl -w. This is the documented Ubuntu fix for'
-    say 'dedicated evaluation environments; it restores the upstream default under'
-    say 'which any local user may create user namespaces. Review that trade-off for this host.'
-    if confirm "Write $SYSCTL_FILE and set $SYSCTL_KEY=0 now?"; then
-      if [[ -e "$SYSCTL_FILE" ]]; then
-        grep -Eq '^[[:space:]]*kernel\.apparmor_restrict_unprivileged_userns[[:space:]]*=[[:space:]]*0' "$SYSCTL_FILE" || \
-          die "$SYSCTL_FILE already exists with different content; inspect it manually"
-      else
-        (set -o noclobber; printf '# TBound evaluation environment: allow unprivileged user namespaces (rootless Podman).\n%s = 0\n' "$SYSCTL_KEY" > "$SYSCTL_FILE") \
-          || die "could not create $SYSCTL_FILE (does it already exist?)"
-        chmod 0644 "$SYSCTL_FILE"
-      fi
-      sysctl -w "$SYSCTL_KEY=0" >/dev/null
-      APPLIED=$(sysctl -n "$SYSCTL_KEY")
-      [[ "$APPLIED" == "0" ]] || die "sysctl write did not take effect ($SYSCTL_KEY=$APPLIED)"
-      say "$SYSCTL_KEY=0 applied (runtime) and persisted in $SYSCTL_FILE."
+    if [[ "${TBOUND_APPLY_USERNS_SYSCTL:-0}" != 1 ]]; then
+      say 'Leaving the host-wide AppArmor restriction unchanged (explicit opt-in required).'
+      say 'Set TBOUND_APPLY_USERNS_SYSCTL=1 only for a disposable evaluation host that'
+      say 'has reviewed the trade-off; the governed profile expects a scoped alternative.'
+      say 'The user-namespace/rootless-Podman probe checks will likely fail; installation'
+      say 'can still continue, but this host is not qualified.'
     else
-      die 'refused to change the user namespace policy; the probe user-namespace check will keep failing until it is applied'
+      say "Proposed change: write $SYSCTL_FILE containing"
+      say "  $SYSCTL_KEY = 0"
+      say 'and apply it now with sysctl -w. This is the documented Ubuntu fix for'
+      say 'dedicated evaluation environments; it restores the upstream default under'
+      say 'which any local user may create user namespaces. Review that trade-off for this host.'
+      if confirm "Write $SYSCTL_FILE and set $SYSCTL_KEY=0 now?"; then
+        if [[ -e "$SYSCTL_FILE" ]]; then
+          grep -Eq '^[[:space:]]*kernel\.apparmor_restrict_unprivileged_userns[[:space:]]*=[[:space:]]*0' "$SYSCTL_FILE" || \
+            die "$SYSCTL_FILE already exists with different content; inspect it manually"
+        else
+          (set -o noclobber; printf '# TBound evaluation environment: allow unprivileged user namespaces (rootless Podman).\n%s = 0\n' "$SYSCTL_KEY" > "$SYSCTL_FILE") \
+            || die "could not create $SYSCTL_FILE (does it already exist?)"
+          chmod 0644 "$SYSCTL_FILE"
+        fi
+        sysctl -w "$SYSCTL_KEY=0" >/dev/null
+        APPLIED=$(sysctl -n "$SYSCTL_KEY")
+        [[ "$APPLIED" == "0" ]] || die "sysctl write did not take effect ($SYSCTL_KEY=$APPLIED)"
+        say "$SYSCTL_KEY=0 applied (runtime) and persisted in $SYSCTL_FILE."
+      else
+        say 'User namespace policy left unchanged; the probe will report the restriction.'
+      fi
     fi
   fi
 fi
