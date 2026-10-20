@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -61,7 +62,7 @@ type combinedRecoveryScenario struct {
 var combinedRecoveryScenarios = map[string]combinedRecoveryScenario{
 	"two-cycles":      {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute},
 	"retry-exhausted": {maxPreEffectRetries: 0, maxCleanRestarts: 2, deadline: 10 * time.Minute},
-	"deadline":        {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 8 * time.Second},
+	"deadline":        {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute},
 	"absent-scope-no-receipt": {maxPreEffectRetries: 2, maxCleanRestarts: 2, deadline: 10 * time.Minute,
 		withoutCleanupReceipt: true},
 }
@@ -935,9 +936,7 @@ func TestGovernedRecoveryCombinedDeadlineChargesNothing(t *testing.T) {
 	root := privateGovernedTestRoot(t)
 	const scenario = "deadline"
 	original := combinedRecoveryRunChild(t, root, scenario, "original", "o", combinedRecoveryCrashExit)
-	if wait := time.Until(original.Deadline) + 500*time.Millisecond; wait > 0 {
-		time.Sleep(wait)
-	}
+	combinedRecoveryExpireDeadline(t, root, original.Deadline)
 	result := combinedRecoveryRunChild(t, root, scenario, "recover", "r1", 0)
 	if result.Activated || !strings.HasPrefix(result.PrepareError, "load retained checkpoint:") ||
 		!strings.Contains(result.PrepareError, "deadline") {
@@ -946,5 +945,37 @@ func TestGovernedRecoveryCombinedDeadlineChargesNothing(t *testing.T) {
 	}
 	if result.RetainedError != "" {
 		t.Fatalf("deadline refusal changed retained crash evidence: %s", result.RetainedError)
+	}
+}
+
+// combinedRecoveryExpireDeadline uses the recovery package's test binary so its
+// existing private host-clock seam stays outside production. The original child
+// has already crashed; only the real protected clock's expiry transition is
+// driven here, before the next fresh process attempts production recovery.
+func combinedRecoveryExpireDeadline(t *testing.T, root string, deadline time.Time) {
+	t.Helper()
+	helper := filepath.Join(root, "workflowrecovery.test")
+	compiler := filepath.Join(runtime.GOROOT(), "bin", "go")
+	build := exec.Command(compiler, "test", "-race", "-mod=readonly", "-c", "-o", helper, "./internal/workflowrecovery")
+	build.Dir = filepath.Join("..", "..")
+	build.Env = append(os.Environ(), "GOROOT="+runtime.GOROOT(), "GOTOOLCHAIN=local", "GOPROXY=off",
+		"GONOPROXY=none", "GOSUMDB=off", "GOVCS=*:off", "GOWORK=off")
+	if output, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("build offline protected-clock test helper: %v\n%s", err, output)
+	}
+	p := combinedRecoveryPathsFor(root)
+	command := exec.Command(helper, "-test.v", "-test.run=^TestProtectedRootLifecycleProcessHelper$")
+	command.Env = []string{"TBOUND_PROTECTED_ROOT_LIFECYCLE_MODE=expire-deadline",
+		"TBOUND_PROTECTED_ROOT_LIFECYCLE_ROOT=" + p.rootDB,
+		"TBOUND_PROTECTED_ROOT_LIFECYCLE_STORE_ROOT=" + p.ownerStore,
+		"TBOUND_PROTECTED_ROOT_LIFECYCLE_OWNER=" + p.ownerDB,
+		"TBOUND_PROTECTED_ROOT_LIFECYCLE_WORKFLOW=" + combinedRecoveryWorkflow,
+		"TMPDIR=" + os.TempDir()}
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("expire the retained workflow through its protected clock: %v\n%s", err, output)
+	}
+	if !strings.Contains(string(output), "PROTECTED_RECOVERY_DEADLINE_EXPIRED deadline="+deadline.Format(time.RFC3339Nano)) {
+		t.Fatalf("protected-clock helper did not confirm the original deadline's durable expiry:\n%s", output)
 	}
 }

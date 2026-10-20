@@ -1065,6 +1065,21 @@ func TestProtectedRootDeadlineClockRollbackAndBootChangePersistPause(t *testing.
 	}
 }
 
+func TestProtectedRootLifecycleDeadlineExpiryAcrossProcesses(t *testing.T) {
+	rootPath, ownerStoreRoot, _ := newProtectedRootTestDirs(t)
+	workflow := "protected-root-process-deadline-expiry"
+	_, root := createProtectedRoot(t, rootPath, ownerStoreRoot, workflow)
+	if err := root.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ownerPath := filepath.Join(ownerStoreRoot, "workflow.sqlite")
+	runProtectedRootHelper(t, rootPath, ownerStoreRoot, ownerPath, workflow, "fresh")
+	runProtectedRootHelper(t, rootPath, ownerStoreRoot, ownerPath, workflow, "expire-deadline")
+
+	// A fresh reader must observe persisted expiry without consulting its clock.
+	runSettledCheckpointReadHelper(t, rootPath, ownerStoreRoot, ownerPath, workflow, true, false)
+}
+
 func TestProtectedRootLifecycleProcessHelper(t *testing.T) {
 	mode := os.Getenv(protectedRootHelperModeEnv)
 	if mode == "" {
@@ -1115,9 +1130,101 @@ func TestProtectedRootLifecycleProcessHelper(t *testing.T) {
 		if err := owner.AcquireOwnerEpoch(ctx, workflow, checkpoint.Pins.OwnerEpoch, next); err != nil {
 			t.Fatalf("persist abandoned owner-fence preparation: %v", err)
 		}
+	case "expire-deadline":
+		expireProtectedRootDeadlineForTest(t, root, boundary, rootPath, ownerStoreRoot, ownerPath, workflow)
 	default:
 		t.Fatalf("unknown helper mode %q", mode)
 	}
+}
+
+// expireProtectedRootDeadlineForTest advances only the existing private clock
+// seam. The immutable deadline, checkpoint, pins and owner fence are retained;
+// production VerifyWorkflowDeadline performs the durable expiry transition.
+func expireProtectedRootDeadlineForTest(t *testing.T, root *ProtectedTrustedRoot, boundary *LinuxHostBoundary,
+	rootPath, ownerStoreRoot, ownerPath, workflow string) {
+	t.Helper()
+	ctx := context.Background()
+	initial, exists, err := loadProtectedRootState(ctx, root.db, workflow)
+	if err != nil || !exists || initial.ClockExpired != 0 || initial.ClockUncertain != 0 {
+		t.Fatalf("load unexpired protected clock: state=%+v exists=%v err=%v", initial, exists, err)
+	}
+	deadline, err := parseProtectedUTC(initial.WorkflowDeadlineUTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	anchor, err := parseProtectedUTC(initial.ClockAnchorWallUTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err := parseProtectedUTC(initial.ClockObservedUTC)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := LoadSettledCheckpoint(ctx, ownerPath, root, workflow)
+	if err != nil || before.ClockExpired || before.ClockUncertain || !before.Checkpoint.Limits.Deadline.Equal(deadline) {
+		t.Fatalf("load unchanged original checkpoint before expiry: view=%+v err=%v", before, err)
+	}
+
+	wall := deadline.Add(-time.Nanosecond)
+	boot := initial.ClockAnchorBootTimeNS + int64(wall.Sub(anchor))
+	if !anchor.Before(wall) || wall.Before(observed) || boot < initial.ClockObservedBootTimeNS {
+		t.Fatal("original protected clock cannot advance to just before its deadline")
+	}
+	root.clockNow = func() (time.Time, string, int64, error) { return wall, initial.ClockBootID, boot, nil }
+	owner, err := OpenExistingSQLiteOwner(ownerPath, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+	checkpoint, digest, exists, err := owner.LoadCheckpoint(ctx, workflow)
+	if err != nil || !exists || digest != before.Digest || !reflect.DeepEqual(checkpoint, before.Checkpoint) {
+		t.Fatalf("positive control at deadline minus 1ns: exists=%v err=%v checkpoint changed=%v",
+			exists, err, digest != before.Digest || !reflect.DeepEqual(checkpoint, before.Checkpoint))
+	}
+	positive, exists, err := loadProtectedRootState(ctx, root.db, workflow)
+	if err != nil || !exists || positive.ClockExpired != 0 || positive.ClockUncertain != 0 {
+		t.Fatalf("positive control expired or paused: state=%+v exists=%v err=%v", positive, exists, err)
+	}
+
+	wall = deadline
+	boot++
+	if err := root.VerifyWorkflowDeadline(ctx, workflow, deadline); !errors.Is(err, ErrDeadline) {
+		t.Fatalf("protected clock at immutable deadline = %v, want ErrDeadline", err)
+	}
+	expired, exists, err := loadProtectedRootState(ctx, root.db, workflow)
+	if err != nil || !exists || expired.ClockExpired != 1 || expired.ClockUncertain != 0 {
+		t.Fatalf("durable expiry transition: state=%+v exists=%v err=%v", expired, exists, err)
+	}
+	// Only clock observations, sticky expiry and the state revision may move.
+	unchanged := expired
+	unchanged.ClockObservedUTC = initial.ClockObservedUTC
+	unchanged.ClockObservedBootTimeNS = initial.ClockObservedBootTimeNS
+	unchanged.ClockExpired = initial.ClockExpired
+	unchanged.Revision = initial.Revision
+	if !reflect.DeepEqual(unchanged, initial) {
+		t.Fatal("deadline expiry changed protected checkpoint, fence or original clock anchors")
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := root.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	reopened, err := OpenExistingProtectedRoot(rootPath, ownerStoreRoot, boundary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if err := reopened.VerifyWorkflowDeadline(ctx, workflow, deadline); !errors.Is(err, ErrDeadline) {
+		t.Fatalf("real-clock reopen lost sticky expiry: %v", err)
+	}
+	after, err := LoadSettledCheckpoint(ctx, ownerPath, reopened, workflow)
+	before.ClockExpired = true
+	if err != nil || !reflect.DeepEqual(after, before) {
+		t.Fatalf("deadline expiry changed retained checkpoint, counters or owner history: err=%v", err)
+	}
+	t.Logf("PROTECTED_RECOVERY_DEADLINE_EXPIRED deadline=%s", deadline.Format(time.RFC3339Nano))
 }
 
 func runProtectedRootHelper(t *testing.T, rootPath, ownerStoreRoot, ownerPath, workflow, mode string) {
