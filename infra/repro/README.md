@@ -154,7 +154,10 @@ otherwise), runs `bootstrap-linux.sh`, installs the pinned Pi CLI, installs
 TBound from source (or from `--local-dist`), and runs `tbound-doctor` plus the
 native fixture. The default is the GA kernel and a light install: no adapter
 check, no Go race, and no `make verify`. `--developer` opts into those checks;
-`--hwe` opts into the ABI-8 HWE kernel, which is currently unqualified.
+`--hwe` opts into the ABI-8 HWE kernel, which is currently unqualified. The
+audited one-run probe on Ubuntu `7.0.0-38-generic` returned `incompatible`/exit 2
+(post-kill clone SIGKILL, controls alive), so HWE 7.0 is not a compatible kernel
+for this profile.
 AppArmor/user-namespace relaxation is also opt-in
 (`--allow-userns-sysctl`). `--qualify-cgroup-reuse` is a separate explicit
 consent to run the audited `tbound-profile cgroup-reuse-check

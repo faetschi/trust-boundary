@@ -78,6 +78,20 @@ reported after the user-prefix install and do not undo it. Review the script
 before running it; it creates a new VM and does not delete an existing one. See
 [infra/repro/README.md](../infra/repro/README.md#qemu-on-linux-linux-vm-path).
 
+### Observed cgroup-reuse result (2026-10-20)
+
+The audited one-run `tbound-profile cgroup-reuse-check
+--confirm-disposable-cgroup` check on the existing Ubuntu 24.04.5 VM with kernel
+`7.0.0-38-generic` returned **`incompatible` / exit 2**: the post-kill clone
+received SIGKILL while the fresh and outside controls remained alive. Source,
+archive, identity, and raw observations are in the audit receipts.
+
+This means HWE 7.0 is **not** a compatible kernel for this profile. HWE remains
+unqualified, and GA 6.8 remains development-only (Landlock ABI 4). Use a
+fixed/backported kernel or wait for the functional check to pass before treating
+a host as qualified. Do not retry, extend sleeps, or bypass the clone path to
+obtain a different result.
+
 ## Thesis run readiness
 
 A checkout contains the install, measurement, and evidence components, but a
