@@ -1804,7 +1804,7 @@ func registeredLocalGroupGID(groupFile []byte, name string) (int, bool) {
 			continue
 		}
 		gid, err := strconv.Atoi(fields[2])
-		if err != nil || gid <= 0 {
+		if err != nil || (fields[0] == name && gid <= 0) {
 			return 0, false
 		}
 		groups = append(groups, struct {

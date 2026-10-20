@@ -418,3 +418,51 @@ func TestD09ManagedPiServiceConfigDigestChangesWithProviderRoute(t *testing.T) {
 		t.Fatal("the service config digest is not deterministic")
 	}
 }
+
+func TestManagedLiveRootAccountChecksAcceptRealUbuntuGuestFiles(t *testing.T) {
+	read := func(name string) []byte {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join("testdata", "ubuntu-24.04-accounts", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+	passwd, groupFile, nsswitch := read("passwd"), read("group"), read("nsswitch.conf")
+	if !localFilesOnlyNSSwitch(nsswitch) {
+		t.Fatal("real guest files-only nsswitch.conf was rejected")
+	}
+	uid, gid, shell, ok := lookupLocalServiceAccount(passwd, groupFile, "tbound-pi", "tbound-pi")
+	if !ok || uid != 995 || gid != 986 || shell != "/usr/sbin/nologin" {
+		t.Fatalf("real guest service account lookup = %d %d %q %v", uid, gid, shell, ok)
+	}
+	reg := D09ManagedLiveRootRegistration{ServiceName: "tbound-pi", ServiceGroup: "tbound-pi",
+		ServiceUID: uid, ServiceGID: gid, ServiceLoginShell: shell}
+	if !registeredLocalServiceAccount(passwd, reg) {
+		t.Fatal("real guest service account was rejected")
+	}
+	if !registeredLocalServiceGroup(groupFile, reg) {
+		t.Fatal("real guest service group was rejected")
+	}
+	if socketGID, ok := registeredLocalGroupGID(groupFile, D09ManagedPiSocketGroup); !ok || socketGID != 985 {
+		t.Fatalf("real guest socket group gid = %d %v, want 985 true", socketGID, ok)
+	}
+}
+
+func TestRegisteredLocalGroupGIDRefusesNamedNonPositiveAndCollisions(t *testing.T) {
+	for name, groupFile := range map[string]string{
+		"named root gid 0":       "root:x:0:\ntbound-pi-clients:x:0:\n",
+		"named negative gid":     "root:x:0:\ntbound-pi-clients:x:-5:\n",
+		"another group same gid": "root:x:0:\ntbound-pi-clients:x:985:\nother:x:985:\n",
+		"duplicate named group":  "root:x:0:\ntbound-pi-clients:x:985:\ntbound-pi-clients:x:986:\n",
+		"missing":                "root:x:0:\nnogroup:x:65534:\n",
+		"unparsable other gid":   "root:x:0:\nbroken:x:abc:\ntbound-pi-clients:x:985:\n",
+	} {
+		if gid, ok := registeredLocalGroupGID([]byte(groupFile), "tbound-pi-clients"); ok {
+			t.Fatalf("%s: accepted with gid %d", name, gid)
+		}
+	}
+	if gid, ok := registeredLocalGroupGID([]byte("root:x:0:\nnogroup:x:65534:\ntbound-pi-clients:x:985:\n"), "tbound-pi-clients"); !ok || gid != 985 {
+		t.Fatalf("root and nogroup lines made the lookup fail: %d %v", gid, ok)
+	}
+}
