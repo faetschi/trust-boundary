@@ -226,6 +226,18 @@ func (f *obsFixture) serve() {
 		if err := os.Rename(staged, filepath.Join(f.live, "new.txt")); err != nil {
 			t.Fatal(err)
 		}
+		// The observer stamps an event when its reader gets it, which can be after the window ends, and a late stamp cannot
+		// place the event (judgeTransient): a mark waits for the reader to have taken every event so far, so the stamps
+		// of publication's renames are inside the window.
+		f.mu.Lock()
+		w := f.watcher
+		f.mu.Unlock()
+		if w == nil {
+			t.Fatal("the transient watch is not running")
+		}
+		if err := w.Mark("publication-applied"); err != nil {
+			t.Fatal(err)
+		}
 		applyEnd = effectoracle.MonotonicNS()
 	}
 	for _, name := range runner.E04PointOrder[5:] {
@@ -435,6 +447,9 @@ func (e obsEvidence) transientWatch(ctx context.Context, flags map[string]string
 	if err != nil {
 		return nil, []byte(err.Error()), 2, nil
 	}
+	f.mu.Lock()
+	f.watcher = obs
+	f.mu.Unlock()
 	started := time.Now()
 	line, _, _, _ := obsReply(map[string]any{"schema": runner.EvidenceSchema, "kind": "transient-watch-ready", "interval_ref": flags["--interval-ref"], "root": runner.EvidenceLiveRoot})
 	if ready != nil {

@@ -632,6 +632,26 @@ func TestJudgeTransientIsAPureFunctionOfReportAndLedger(t *testing.T) {
 		}
 		return r
 	}
+	lastAt := func(at int64) effectoracle.Report {
+		r := okReport(real()...)
+		r.Events[len(r.Events)-1].AtNS = at
+		return r
+	}
+	firstAt := func(at int64) effectoracle.Report {
+		r := okReport(real()...)
+		r.Events[0].AtNS = at
+		return r
+	}
+	firstAndLastAt := func(first, last int64) effectoracle.Report {
+		r := okReport(real()...)
+		r.Events[0].AtNS, r.Events[len(r.Events)-1].AtNS = first, last
+		return r
+	}
+	surplusAt := func(at int64) effectoracle.Report {
+		r := okReport(append(real(), ev("evil", "create"))...)
+		r.Events[len(r.Events)-1].AtNS = at
+		return r
+	}
 	sharedCookie := func() effectoracle.Report {
 		r := okReport(real()...)
 		r.Events[0].Cookie, r.Events[1].Cookie = 9, 9
@@ -692,12 +712,23 @@ func TestJudgeTransientIsAPureFunctionOfReportAndLedger(t *testing.T) {
 		"no cookie on a rename":         {noCookie(), ledger, true, win, FindingLost},
 		// Time: the events fall inside the transaction's window on the guest's monotonic clock.
 		"before the transaction began": {withAt(testApplyStart - testReportStart - int64(2*time.Millisecond)), ledger, true, win, FindingObserved},
-		"long after the transaction":   {withAt(testApplyEnd - testReportStart + int64(3*time.Second)), ledger, true, win, FindingObserved},
-		"just after the transaction":   {withAt(testApplyEnd - testReportStart + int64(time.Second)), ledger, true, win, FindingNone},
-		"no window known":              {okReport(real()...), ledger, true, applyWindow{}, FindingLost},
-		"window never ended":           {okReport(real()...), ledger, true, applyWindow{startNS: testApplyStart}, FindingLost},
-		"report without a clock":       {noClock(), ledger, true, win, FindingLost},
-		"surplus event and no window":  {okReport(append(real(), ev("evil", "create"))...), ledger, true, applyWindow{}, FindingObserved},
+		// An event is stamped when the reader got it, which can be arbitrarily after the kernel event: one read after the
+		// window may have happened inside it, so a late reading of exactly publication's events is lost, never observed
+		// and never clean. A surplus event stays observed whenever it was read.
+		"publication events read just after the window":  {withAt(testApplyEnd - testReportStart + int64(time.Millisecond)), ledger, true, win, FindingLost},
+		"publication events read 2.2 s after the window": {withAt(testApplyEnd - testReportStart + int64(2200*time.Millisecond)), ledger, true, win, FindingLost},
+		"publication events read long after the window":  {withAt(testApplyEnd - testReportStart + int64(time.Hour)), ledger, true, win, FindingLost},
+		"one publication event read after the window":    {lastAt(testApplyEnd - testReportStart + int64(2200*time.Millisecond)), ledger, true, win, FindingLost},
+		"in the window, up to its last nanosecond":       {withAt(testApplyEnd - testReportStart), ledger, true, win, FindingNone},
+		"surplus event read after the window":            {surplusAt(testApplyEnd - testReportStart + int64(2200*time.Millisecond)), ledger, true, win, FindingObserved},
+		"surplus event read long after the window":       {surplusAt(testApplyEnd - testReportStart + int64(time.Hour)), ledger, true, win, FindingObserved},
+		"surplus event read in the window":               {surplusAt(testApplyEnd - testReportStart), ledger, true, win, FindingObserved},
+		"one event before the window, the rest in it":    {firstAt(testApplyStart - testReportStart - int64(time.Second)), ledger, true, win, FindingObserved},
+		"an event before the window and one after it":    {firstAndLastAt(testApplyStart-testReportStart-int64(time.Second), testApplyEnd-testReportStart+int64(time.Second)), ledger, true, win, FindingObserved},
+		"no window known":             {okReport(real()...), ledger, true, applyWindow{}, FindingLost},
+		"window never ended":          {okReport(real()...), ledger, true, applyWindow{startNS: testApplyStart}, FindingLost},
+		"report without a clock":      {noClock(), ledger, true, win, FindingLost},
+		"surplus event and no window": {okReport(append(real(), ev("evil", "create"))...), ledger, true, applyWindow{}, FindingObserved},
 	} {
 		if got := judgeTransient(&tc.rep, tc.ledger, tc.known, tc.win); got != tc.want {
 			t.Errorf("%s: %s, want %s", name, got, tc.want)

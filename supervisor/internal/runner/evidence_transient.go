@@ -399,13 +399,11 @@ type applyWindow struct{ startNS, endNS int64 }
 
 func (w applyWindow) known() bool { return w.startNS > 0 && w.endNS >= w.startNS }
 
-const (
-	// eventLagBefore and eventLagAfter are the slack around the apply window for the observer's clock reading: an event
-	// is recorded when the reader got it, which is at or after the kernel event (so a late reading is normal, an early
-	// one is only the few nanoseconds between the two clock reads), and the reader has to wake up first.
-	eventLagBefore = time.Millisecond
-	eventLagAfter  = 2 * time.Second
-)
+// eventLagBefore is the slack before the apply window for the two clock reads: an event is stamped when the reader got
+// it, which is at or after the kernel event, so a stamp before the window start is an event that happened before it
+// (give or take the nanoseconds between the clock reads). There is no slack after the window: how long the reader takes
+// to wake up has no upper bound, so a late stamp says nothing about when the event happened.
+const eventLagBefore = time.Millisecond
 
 // publicationLedger is the live-root ledger the service recorded for the interval, from the store the receipt
 // binds, with the window publication wrote in. It is known when the post-publication record says what was applied:
@@ -490,11 +488,16 @@ func PublicationEventSequence(ledger []wsoracle.LedgerEntry) (seq []PublicationE
 // Each ledger operation explains exactly its own events (PublicationEventSequence), once, in order. The events are
 // matched against that sequence in order; an event with no entry left to explain it (a surplus, a repeat, an
 // event of another kind, another path, a directory flag that differs, or out of order) is observed. So are an event
-// outside the window publication wrote in, and a rename whose cookie another event shares (a rename between two paths
-// of the live root: publication moves between the artifact directory and the live root, never within it). A sequence
-// entry no event matched, a cookie that is zero on a rename, a window that cannot be placed, an operation with no
-// known events or a report that is not a qualified window is lost. Without the ledger nothing is explained and an
-// event is not read.
+// stamped before the window publication wrote in, and a rename whose cookie another event shares (a rename between two
+// paths of the live root: publication moves between the artifact directory and the live root, never within it).
+//
+// An event is stamped when the reader processed it, which is at or after the kernel event and after an unbounded
+// delay. So a stamp before the window start proves the event happened before it, but a stamp after the window end
+// proves nothing: the event may have happened inside the window. An event stamped after the window end that is
+// otherwise exactly an expected publication event makes the finding lost (never none, never observed on timing alone);
+// a surplus event is observed whenever it was stamped. A sequence entry no event matched, a cookie that is zero on a
+// rename, a window that cannot be placed, an operation with no known events or a report that is not a qualified
+// window is lost. Without the ledger nothing is explained and an event is not read.
 func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, known bool, window applyWindow) Finding {
 	if !known {
 		return FindingLost
@@ -523,10 +526,13 @@ func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, kno
 				return FindingObserved
 			}
 		}
+		stampedAfterWindow := false
 		if !window.known() || rep.StartMonoNS <= 0 {
 			lost = true
-		} else if at := rep.StartMonoNS + ev.AtNS; at < window.startNS-int64(eventLagBefore) || at > window.endNS+int64(eventLagAfter) {
+		} else if at := rep.StartMonoNS + ev.AtNS; at < window.startNS-int64(eventLagBefore) {
 			return FindingObserved
+		} else if at > window.endNS {
+			stampedAfterWindow = true
 		}
 		k := next
 		for k < len(want) && (want[k].Path != ev.Path || want[k].Kind != ev.Kind || want[k].IsDir != ev.IsDir) {
@@ -544,6 +550,7 @@ func judgeTransient(rep *effectoracle.Report, ledger []wsoracle.LedgerEntry, kno
 			return FindingObserved
 		}
 		next = k + 1
+		lost = lost || stampedAfterWindow // an exact publication event, but whether it was inside the window is unknown
 	}
 	if supported {
 		// Every event matched a distinct entry, so fewer events than entries means an operation was not seen in full.

@@ -93,8 +93,9 @@
 //     arrive as one. The presence of an event for a path is recorded. Event
 //     counts are lower bounds and are not exact.
 //   - Kernel-level races between an event and the oracle's later read or hash.
-//     Events carry the time the oracle read them, not the kernel's time, and a
-//     file can change again before its digest is taken.
+//     Events carry the time the oracle read them, not the kernel's time (a later
+//     reading says nothing about when the event happened, only that it did not
+//     happen after it), and a file can change again before its digest is taken.
 //   - Mutations that happen during Start, before the first barrier. Start must
 //     run before the workload begins.
 //   - Mutations between a directory's creation and the installation of its
@@ -131,7 +132,8 @@
 // and Report.Digest excludes them, so identical workloads produce identical
 // digests. Report.StartMonoNS is CLOCK_MONOTONIC at Start, so an offset can be
 // placed on the machine's monotonic clock (an event happened at StartMonoNS+AtNS
-// or earlier: AtNS is when the reader recorded it); the digest excludes it too.
+// or earlier, by an unbounded amount: AtNS is when the reader recorded it, so it
+// bounds the time of the event from above and never from below); the digest excludes it too.
 // A moved_from or moved_to event carries the kernel's rename cookie. The two
 // halves of a rename between watched paths share one; a rename whose other side
 // is outside the watched tree has a cookie of its own. The digest keeps which
