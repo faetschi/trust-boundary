@@ -200,7 +200,7 @@ What it does, in order:
     in VMConnect (or accepts `-GuestHostKeyFingerprint`), checks the scanned
     key against it, then copies
     `infra/repro/bootstrap-linux.sh`, `infra/guest/setup-ubuntu-24.04.sh`, and
-    `infra/guest/probe-capabilities.sh` to the guest and runs the same Path A
+    `infra/guest/probe-capabilities.sh` to the guest and runs the same Path 1
     bootstrap inside the guest over SSH.
     The single PowerShell confirmation approves the complete VM creation,
     offline injection, and unattended guest bootstrap plan. The guest bootstrap
