@@ -19,6 +19,13 @@ if [[ "$TARGET_UID" == 0 ]]; then
   printf 'The Podman trial account must be a non-root user.\n' >&2
   exit 2
 fi
+if [[ "$TARGET_USER" == tbound-pi ]]; then
+  # The managed service account must have NO /etc/subuid or /etc/subgid range: with one,
+  # rootless Podman calls the setuid newuidmap, which NoNewPrivileges forbids
+  # (infra/guest/PROVISIONING-SIGNING.md, P14). This script adds such a range below.
+  printf 'tbound-pi is the managed service account and must have no subordinate ID range; pass the provisioning login user.\n' >&2
+  exit 2
+fi
 
 . /etc/os-release
 if [[ "${ID:-}" != ubuntu || "${VERSION_CODENAME:-}" != noble || "${VERSION_ID:-}" != 24.04 ]]; then
