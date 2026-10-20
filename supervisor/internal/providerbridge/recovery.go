@@ -228,6 +228,7 @@ type TranscriptProjection struct {
 	EventCount                 uint64                         `json:"event_count"`
 	ProviderJournalRecordCount uint64                         `json:"provider_journal_record_count"`
 	ExchangeCount              uint64                         `json:"exchange_count"`
+	ProviderRetries            uint64                         `json:"provider_retries,omitempty"`
 	CapturedCallCount          uint64                         `json:"captured_call_count"`
 	DecisionCount              uint64                         `json:"decision_count"`
 	ResultCount                uint64                         `json:"result_count"`
@@ -307,6 +308,8 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	var exchangeSequence uint64
 	var retiredCall *ProviderCallRetirementBinding
 	var ordinal, providerSequence, exchangeCount, callCount, decisionCount, resultCount uint64
+	var turnRetries, totalRetries uint64
+	hostCallIDs := make(map[string]struct{})
 	var storeDecisionChecks uint64
 	responses := make(map[string]struct{})
 	calls := make(map[string]struct{})
@@ -354,7 +357,33 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				evidence.Binding.TokenUpperBound); err != nil || requestEvidenceDigest(evidence.Request) != evidence.Binding.RequestDigest {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, errors.New("provider host-call reservation does not bind the exact request"), err)
 			}
+			if _, reused := hostCallIDs[evidence.Binding.CallID]; reused {
+				return TranscriptProjection{}, replayError("provider host-call identity was reused by a later reservation")
+			}
+			hostCallIDs[evidence.Binding.CallID] = struct{}{}
 			pendingHostCall = &evidence
+
+		case exchangeRetryKind:
+			// A failed, retryable attempt of the turn being awaited: it closes exactly the open
+			// reservation, is itself retryable by the same rule the live path applied, and the
+			// turn stays awaiting its exchange. At most MaxProviderRetries per turn.
+			if state != replayAwaitExchange || pendingHostCall == nil || turnRetries >= MaxProviderRetries || totalRetries == math.MaxUint64 {
+				return TranscriptProjection{}, replayError("provider retryable failure is out of order or exceeds the retry bound")
+			}
+			var evidence exchangeRetryEvidence
+			if err := unmarshalCanonicalEvent(record.Event.Data, &evidence); err != nil ||
+				evidence.WorkflowID != cfg.WorkflowID || evidence.Turn != providerSequence+1 || evidence.Attempt != turnRetries+1 ||
+				evidence.HostCall != pendingHostCall.Binding || !reflect.DeepEqual(evidence.Request, pendingHostCall.Request) ||
+				!RetryableProviderFailure(evidence.StatusCode, evidence.Response) ||
+				verifyReplayEventID(record, cfg.ConversationID, exchangeRetryID, ordinal) != nil {
+				return TranscriptProjection{}, replayError("provider retryable failure does not bind its reserved host request")
+			}
+			binding := pendingHostCall.Binding
+			lastHostCall = &binding
+			lastHostCallOutcomeDigest = record.Hash
+			pendingHostCall = nil
+			turnRetries++
+			totalRetries++
 
 		case "provider_exchange":
 			if state != replayAwaitExchange || providerSequence >= MaxTranscriptTurns || exchangeCount == math.MaxUint64 {
@@ -439,6 +468,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			}
 			providerSequence++
 			exchangeCount++
+			turnRetries = 0
 			exchangeRecord = record
 			if pendingHostCall != nil {
 				binding := pendingHostCall.Binding
@@ -677,7 +707,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 		SystemPromptDigest: digestString(cfg.SystemPrompt), DeveloperPromptDigest: digestString(cfg.DeveloperPrompt),
 		InitialGenerationID: cfg.InitialGenerationID, InitialTreeDigest: cfg.InitialTreeDigest,
 		ProviderGenerationID: currentGeneration, ProviderTreeDigest: currentTree,
-		ProviderSequence: providerSequence, EventCount: ordinal, ProviderJournalRecordCount: uint64(len(trace.Records)), ExchangeCount: exchangeCount,
+		ProviderSequence: providerSequence, EventCount: ordinal, ProviderJournalRecordCount: uint64(len(trace.Records)), ExchangeCount: exchangeCount, ProviderRetries: totalRetries,
 		CapturedCallCount: callCount, DecisionCount: decisionCount, ResultCount: resultCount,
 		HistoryDigest: digestDomain("tbound/provider-history/v1", request.Body()), Disposition: dispositionForReplayState(state, retiredCall != nil),
 		HostCall: lastHostCall, HostCallOutcomeDigest: lastHostCallOutcomeDigest,
