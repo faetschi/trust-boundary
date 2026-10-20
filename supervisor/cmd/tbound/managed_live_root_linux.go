@@ -302,7 +302,7 @@ func measureManagedLiveRootDescriptor(root *os.File) (managedLiveRootDescriptorI
 func managedRegistrationMatchesDescriptor(registration piruntime.D09ManagedLiveRootRegistration,
 	identity managedLiveRootDescriptorIdentity) bool {
 	return registration.RootPath == identity.Path && registration.RootDevice == identity.Device &&
-		registration.RootInode == identity.Inode && registration.RootMountID == identity.MountID &&
+		registration.RootInode == identity.Inode &&
 		registration.RootFilesystemMagic == identity.Filesystem && uint32(registration.RootUID) == identity.UID &&
 		uint32(registration.RootGID) == identity.GID && registration.RootMode == identity.Mode
 }

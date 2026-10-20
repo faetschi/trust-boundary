@@ -102,7 +102,7 @@ func (l *managedLiveRootLease) currentManagedSourceLeaseEvidence(ctx context.Con
 	registration := verified.Registration()
 	cgroupProvider, ok := verified.(managedRootCgroupIdentityProvider)
 	if !ok || registration.Digest != registrationDigest || registration.RootDevice != identity.Device ||
-		registration.RootInode != identity.Inode || registration.RootMountID != identity.MountID ||
+		registration.RootInode != identity.Inode ||
 		registration.ServiceCgroupPath != serviceCgroup.Path {
 		return piruntime.D09ManagedSourceLeaseEvidence{}, ErrManagedLiveRootUnavailable
 	}

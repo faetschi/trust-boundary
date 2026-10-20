@@ -544,14 +544,16 @@ func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, ser
 	if err != nil {
 		return registration, err
 	}
-	rootOptions, rootReadOnly, err := mountOptionsForID(rootMountID)
-	if err != nil || rootReadOnly || !hasMountOption(rootOptions, "nosuid") || !hasMountOption(rootOptions, "nodev") {
+	rootRecord, err := mountRecordForDescriptor(root)
+	rootOptions := rootRecord.options()
+	if err != nil || rootRecord.readOnly() || !hasMountOption(rootOptions, "nosuid") || !hasMountOption(rootOptions, "nodev") {
 		return registration, errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
-	parentOptions, _, err := mountOptionsForID(parentMountID)
+	parentRecord, err := mountRecordForDescriptor(parent)
 	if err != nil {
 		return registration, err
 	}
+	parentOptions := parentRecord.options()
 	passwd, err := readRootOwnedConfigFile("/etc/passwd", 8<<20)
 	if err != nil {
 		return registration, err
@@ -1237,12 +1239,13 @@ func verifyD09ManagedRootDescriptor(reg D09ManagedLiveRootRegistration, root *os
 	if err := syscall.Fstatfs(int(root.Fd()), &fs); err != nil || uint64(fs.Type) != reg.RootFilesystemMagic {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
-	rootMountID, err := descriptorMountID(root.Fd())
-	if err != nil || rootMountID != reg.RootMountID {
-		return errors.Join(ErrD09ManagedLiveRootRefused, err)
-	}
-	rootOptions, rootRO, err := mountOptionsForID(rootMountID)
-	if err != nil || rootRO || !hasMountOption(rootOptions, "nosuid") || !hasMountOption(rootOptions, "nodev") || DigestBytes([]byte(rootOptions)) != reg.RootMountOptionsDigest {
+	// Mount IDs are local to a mount namespace, and the service runs in its own,
+	// so the registration's measured-namespace RootMountID/ParentMountID are
+	// informational. The mount is bound by device, filesystem root, mount point,
+	// type, source and options instead, all of which are namespace-stable.
+	rootRecord, err := mountRecordForDescriptor(root)
+	if err != nil || rootRecord.readOnly() || !hasMountOption(rootRecord.options(), "nosuid") ||
+		!hasMountOption(rootRecord.options(), "nodev") || !rootRecord.matchesRegisteredOptions(reg.RootMountOptionsDigest, false) {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
 	parentFD, err := syscall.Openat(int(root.Fd()), "..", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
@@ -1267,12 +1270,10 @@ func verifyD09ManagedRootDescriptor(reg D09ManagedLiveRootRegistration, root *os
 	if err := syscall.Fstatfs(int(parent.Fd()), &parentFS); err != nil || uint64(parentFS.Type) != reg.ParentFilesystemMagic {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
-	parentMountID, err := descriptorMountID(parent.Fd())
-	if err != nil || parentMountID != reg.ParentMountID {
-		return errors.Join(ErrD09ManagedLiveRootRefused, err)
-	}
-	parentOptions, _, err := mountOptionsForID(parentMountID)
-	if err != nil || DigestBytes([]byte(parentOptions)) != reg.ParentMountOptionsDigest {
+	// The parent may be remounted read-only (and nosuid/nodev/noexec) by the
+	// service unit's ProtectSystem=strict; only that narrowing is accepted.
+	parentRecord, err := mountRecordForDescriptor(parent)
+	if err != nil || !parentRecord.matchesRegisteredOptions(reg.ParentMountOptionsDigest, true) {
 		return errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
 	return nil
@@ -2063,4 +2064,19 @@ func openRootOwnedConfigFile(path string, maximum int64) (*os.File, os.FileInfo,
 		return nil, nil, errors.Join(ErrD09ManagedLiveRootRefused, err)
 	}
 	return file, info, nil
+}
+
+// rootMountID is the mount ID of the held root in the current mount namespace.
+// Registration RootMountID is not comparable across namespaces, so run-scoped
+// evidence binds to this value, which the same process measures for the lease.
+func (v *VerifiedD09ManagedLiveRoot) rootMountID() (uint64, error) {
+	if v == nil {
+		return 0, ErrD09ManagedLiveRootRefused
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.closed || v.root == nil {
+		return 0, ErrD09ManagedLiveRootRefused
+	}
+	return descriptorMountID(v.root.Fd())
 }
