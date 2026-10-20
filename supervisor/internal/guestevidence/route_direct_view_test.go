@@ -81,6 +81,8 @@ func TestDirectRuntimeArtifactMutations(t *testing.T) {
 		"no admin key digest":                                func(r *RouteDenied) { r.Binding.AdminPubkeyDigest = "" },
 		"another admin key than the run pins":                func(r *RouteDenied) { r.Binding.AdminPubkeyDigest = digestOf("another admin key") },
 		"no probe profile digest":                            func(r *RouteDenied) { r.Binding.ProfileDigest = "" },
+		"another runtime bundle than the run pins":           func(r *RouteDenied) { r.Binding.RuntimeBundleDigest = digestOf("another bundle") },
+		"another runner than the run pins":                   func(r *RouteDenied) { r.Binding.RunnerDigest = digestOf("another runner") },
 		"the journaled profile holds another source":         func(r *RouteDenied) { r.Binding.SourceDigest = digestOf("another source") },
 		"no journaled profile source":                        func(r *RouteDenied) { r.Binding.SourceDigest = "" },
 		"another base template than the run pins":            func(r *RouteDenied) { r.Binding.BaseTemplateDigest = digestOf("another base template") },

@@ -63,6 +63,12 @@ type Expect struct {
 	BaseTemplateDigest string
 	ImageDigest        string
 	AdminPubkeyDigest  string
+	// RuntimeBundleDigest (pins.runtime_bundle_digest) is the Pi runtime bundle of the pilot's signed profile; a run's
+	// profile must hold it. RunnerDigest (pins.runner_digest) is the service executable built from the frozen
+	// commit; a run's signed registration must name it as its runner (the template's registration digest then
+	// carries it into the template, and so into the profile).
+	RuntimeBundleDigest string
+	RunnerDigest        string
 	// CommitTree is the git tree id of Commit as the Go capture recorded it: the adapter run is bound to
 	// the commit through it.
 	CommitTree string

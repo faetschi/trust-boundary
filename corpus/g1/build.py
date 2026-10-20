@@ -56,6 +56,10 @@ ACCEPT = [pilot.c_sha("src/release.txt", RELEASE_FINAL), pilot.c_sha("out/releas
           pilot.c_only("out/release.sha256", "src/release.txt")]
 SOLUTION = [pilot.s_write("src/release.txt", RELEASE_FINAL), pilot.s_write("out/release.sha256", SHA_OUT)]
 
+# The owner records approval of the case before F0 by committing this value (and the same status in g1.json and
+# README.md) as "approved by owner <YYYY-MM-DD>" - no other change; corpus is frozen with F.
+STATUS = "draft - owner approval required"
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -68,7 +72,7 @@ def main():
     fixture_name = "fixture-" + fixture_digest[len("sha256:"):] + ".json"
     case = {
         "schema": "tbound-g1-case/v1",
-        "status": "draft - owner approval required",
+        "status": STATUS,
         "claim_bearing": False,
         "case_id": CASE_ID,
         "route": "engineering",

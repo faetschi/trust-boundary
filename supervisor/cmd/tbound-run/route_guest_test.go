@@ -107,7 +107,7 @@ func TestRouteReportGuestCellsAreCoveredByTheirArtifactsAndTheirTests(t *testing
 func guestRouteEnv(t *testing.T) *routeEnv {
 	t.Helper()
 	e := newRouteEnv(t, guestRouteDoc(), passingRoutePkgs(allRouteRefs...))
-	pins := `{"freeze_commit":"` + commit + `","v_image_digest":"` + guestPins.image + `","pins":{"profile_hash":"` + sha256Of([]byte("pilot profile")) + `","containment_profile_digest":"` + sha256Of([]byte("pilot template")) + `","base_template_digest":"` + guestPins.base + `","frozen_source_digest":"` + guestPins.source + `","admin_pubkey_digest":"` + guestPins.admin + `"}}`
+	pins := `{"freeze_commit":"` + commit + `","v_image_digest":"` + guestPins.image + `","pins":{"profile_hash":"` + sha256Of([]byte("pilot profile")) + `","containment_profile_digest":"` + sha256Of([]byte("pilot template")) + `","base_template_digest":"` + guestPins.base + `","frozen_source_digest":"` + guestPins.source + `","admin_pubkey_digest":"` + guestPins.admin + `","runtime_bundle_digest":"` + guestPins.bundle + `","runner_digest":"` + guestPins.runner + `"}}`
 	if err := os.WriteFile(e.config, []byte(pins), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -115,9 +115,10 @@ func guestRouteEnv(t *testing.T) *routeEnv {
 }
 
 // guestPins are the pins the guest artifacts are bound to; profile is the run's own profile (never the pilot's).
-var guestPins = struct{ profile, source, binary, admin, base, image string }{
+var guestPins = struct{ profile, source, binary, admin, base, image, bundle, runner string }{
 	"sha256:" + strings.Repeat("a", 64), fixtureDigest("tree"), "sha256:" + strings.Repeat("c", 64), "sha256:" + strings.Repeat("e", 64),
-	"sha256:" + strings.Repeat("f", 64), "sha256:" + strings.Repeat("9", 64)}
+	"sha256:" + strings.Repeat("f", 64), "sha256:" + strings.Repeat("9", 64),
+	"sha256:" + strings.Repeat("7", 64), "sha256:" + strings.Repeat("6", 64)}
 
 // writeRouteArtifact writes a good artifact of kind, bound to the run's pins and the commit.
 func writeRouteArtifact(t *testing.T, dir, kind string, mutate func(*guestevidence.RouteDenied)) string {
@@ -132,7 +133,8 @@ func writeRouteArtifact(t *testing.T, dir, kind string, mutate func(*guesteviden
 	}
 	d := guestevidence.RouteDenied{RunID: "run-1", ProfileHash: guestPins.profile, FrozenSourceDigest: guestPins.source, Target: "/home/node/.profile",
 		Binding: guestevidence.ProfileBinding{ProfileDigest: guestPins.profile, TemplateDigest: sha256Of([]byte("t")), BaseTemplateDigest: guestPins.base,
-			RegistrationDigest: sha256Of([]byte("registration")), ImageDigest: guestPins.image, SourceDigest: guestPins.source, AdminPubkeyDigest: guestPins.admin},
+			RegistrationDigest: sha256Of([]byte("registration")), ImageDigest: guestPins.image, SourceDigest: guestPins.source, AdminPubkeyDigest: guestPins.admin,
+			RuntimeBundleDigest: guestPins.bundle, RunnerDigest: guestPins.runner},
 		Cell:    guestevidence.RouteCell{Kind: cell, ImageDigest: guestPins.image, TemplateDigest: sha256Of([]byte("t")), LandlockRulesetDigest: sha256Of([]byte("l"))},
 		Journal: guestevidence.RouteJournal{Records: 9, HeadHash: strings.Repeat("d", 64)},
 		Control: attempt("control", "read", 0, 2),
@@ -244,6 +246,21 @@ func TestRouteReportCommandCoversGuestCellsOnlyWithValidArtifacts(t *testing.T) 
 	}
 	if rep := status(foreign); rep.Complete || rep.ByRoute[routematrix.RouteBashView][routematrix.StatusPendingGuest] != 1 {
 		t.Fatalf("foreign artifact: %+v", rep)
+	}
+
+	// A run of another service build or of another runtime bundle than run.json pins covers nothing.
+	for name, mutate := range map[string]func(*guestevidence.RouteDenied){
+		"another runner":         func(d *guestevidence.RouteDenied) { d.Binding.RunnerDigest = sha256Of([]byte("another runner")) },
+		"another runtime bundle": func(d *guestevidence.RouteDenied) { d.Binding.RuntimeBundleDigest = sha256Of([]byte("another bundle")) },
+	} {
+		art := writeRouteArtifact(t, t.TempDir(), guestevidence.KindRouteBashView, mutate)
+		out := filepath.Join(e.dir, strings.ReplaceAll(name, " ", "-")+".json")
+		if err := e.run(with(out, "--artifact", guestevidence.KindRouteBashView+"="+art)...); err != nil {
+			t.Fatal(err)
+		}
+		if rep := status(out); rep.Complete || rep.ByRoute[routematrix.RouteBashView][routematrix.StatusPendingGuest] != 1 {
+			t.Fatalf("%s: %+v", name, rep)
+		}
 	}
 }
 

@@ -81,3 +81,15 @@ func requireFrozenSource(pin string, rec evqCapture) error {
 	}
 	return nil
 }
+
+// guestExpect is what run.json pins for the guest artifacts of the runs with a config of their own: the frozen source
+// (requireFrozenSource ties it to the capture), the base cell template, the image, the admin key, the Pi runtime bundle
+// of their signed profiles and the runner: the service executable their signed registrations name, which the owner
+// pins from the reproducible build of the frozen commit. The producers verify each run's signed registration under the
+// admin key and compare its runner with the pin, so the artifact states the build the service ran; the validators
+// require the artifact to carry every one of these values.
+func guestExpect(commit, guestBinary string, b guestevidence.RunBinding) guestevidence.Expect {
+	return guestevidence.Expect{Commit: commit, BinarySHA256: guestBinary,
+		FrozenSourceDigest: b.FrozenSourceDigest, BaseTemplateDigest: b.BaseTemplateDigest, ImageDigest: b.ImageDigest, AdminPubkeyDigest: b.AdminPubkeyDigest,
+		RuntimeBundleDigest: b.RuntimeBundleDigest, RunnerDigest: b.RunnerDigest}
+}

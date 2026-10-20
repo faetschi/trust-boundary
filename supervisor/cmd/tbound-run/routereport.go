@@ -192,8 +192,7 @@ func (a *app) routeReportCmd(args []string) error {
 	if err := rec.requirePinnedInput(evqPinnedInputs[1], mdata); err != nil {
 		return fmt.Errorf("route matrix: %w", err)
 	}
-	guest, err := loadGuestRouteArtifacts(m, artifacts, guestevidence.Expect{Commit: commit, BinarySHA256: *guestBinary,
-		FrozenSourceDigest: binding.FrozenSourceDigest, BaseTemplateDigest: binding.BaseTemplateDigest, ImageDigest: binding.ImageDigest, AdminPubkeyDigest: binding.AdminPubkeyDigest})
+	guest, err := loadGuestRouteArtifacts(m, artifacts, guestExpect(commit, *guestBinary, binding))
 	if err != nil {
 		return err
 	}

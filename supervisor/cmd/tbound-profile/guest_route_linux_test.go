@@ -128,7 +128,8 @@ func rtJournal(t *testing.T, receipts []piruntime.D09CommandReceipt, mutateEvent
 		t.Fatal(err)
 	}
 	e.opts = routeProbeOptions{route: "bash-view", runID: rtRunID, auditRoot: dir, response: e.response, target: rtTarget, controlPath: rtControl, controlFile: e.control,
-		pins: world.pins, template: world.files.template, hostProfile: world.files.hostProfile, hostProfileSig: world.files.hostProfileSig, hostProfileKey: world.files.hostProfileKey}
+		pins: world.pins, template: world.files.template, hostProfile: world.files.hostProfile, hostProfileSig: world.files.hostProfileSig, hostProfileKey: world.files.hostProfileKey,
+		registration: world.files.registration, registrationSig: world.files.registrationSig}
 	return e
 }
 
@@ -328,7 +329,8 @@ func TestGuestEvidenceRouteDeniedCommandWritesOnlyValidArtifacts(t *testing.T) {
 	err := runGuestEvidence([]string{"route-denied", "--commit", geCommit, "--route", "bash-view", "--run-id", rtRunID, "--response", e.response,
 		"--audit-root", e.audit, "--target", rtTarget, "--control-path", rtControl, "--control-file", e.control,
 		"--run-config", e.world.runConfig, "--template", e.world.files.template, "--host-profile", e.world.files.hostProfile,
-		"--host-profile-signature", e.world.files.hostProfileSig, "--host-profile-key", e.world.files.hostProfileKey, "--out", out}, &stdout, &stderr)
+		"--host-profile-signature", e.world.files.hostProfileSig, "--host-profile-key", e.world.files.hostProfileKey,
+		"--registration", e.world.files.registration, "--registration-signature", e.world.files.registrationSig, "--out", out}, &stdout, &stderr)
 	if err == nil {
 		t.Fatal("a journal of hand-made receipts produced an artifact")
 	}

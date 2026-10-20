@@ -271,12 +271,14 @@ func TestConfigIsStrict(t *testing.T) {
 		"user with option": func(c map[string]any) {
 			c["ssh"].(map[string]any)["client"] = map[string]string{"user": "-oProxyCommand=x", "key": c["ssh"].(map[string]any)["client"].(map[string]string)["key"]}
 		},
-		"known_hosts dev null":         func(c map[string]any) { c["ssh"].(map[string]any)["known_hosts"] = "/dev/null" },
-		"no proc":                      func(c map[string]any) { delete(c, "proc") },
-		"image pin not digest":         func(c map[string]any) { c["v_image_digest"] = "latest" },
-		"image pin short":              func(c map[string]any) { c["v_image_digest"] = "sha256:abc" },
-		"admin key pin not digest":     func(c map[string]any) { c["pins"].(map[string]string)["admin_pubkey_digest"] = "key" },
-		"base template pin not digest": func(c map[string]any) { c["pins"].(map[string]string)["base_template_digest"] = "key" },
+		"known_hosts dev null":          func(c map[string]any) { c["ssh"].(map[string]any)["known_hosts"] = "/dev/null" },
+		"no proc":                       func(c map[string]any) { delete(c, "proc") },
+		"image pin not digest":          func(c map[string]any) { c["v_image_digest"] = "latest" },
+		"image pin short":               func(c map[string]any) { c["v_image_digest"] = "sha256:abc" },
+		"admin key pin not digest":      func(c map[string]any) { c["pins"].(map[string]string)["admin_pubkey_digest"] = "key" },
+		"base template pin not digest":  func(c map[string]any) { c["pins"].(map[string]string)["base_template_digest"] = "key" },
+		"runtime bundle pin not digest": func(c map[string]any) { c["pins"].(map[string]string)["runtime_bundle_digest"] = "key" },
+		"runner pin not digest":         func(c map[string]any) { c["pins"].(map[string]string)["runner_digest"] = "key" },
 	} {
 		e := newEnv(t)
 		mutate(e.cfg)

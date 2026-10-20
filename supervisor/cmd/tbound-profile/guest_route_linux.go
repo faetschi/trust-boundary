@@ -48,6 +48,8 @@ type routeProbeOptions struct {
 	// host profile files of the run, the key hashing to pins.AdminPubkeyDigest.
 	template                                    string
 	hostProfile, hostProfileSig, hostProfileKey string
+	// registration and registrationSig are the signed managed live root registration of the run (verified under the same key).
+	registration, registrationSig string
 	// direct-runtime only: the probe and production cell templates (the run produced no completed response).
 	probeTemplate, productionTemplate string
 }
@@ -114,8 +116,7 @@ func probeRouteDenied(o routeProbeOptions, env routeProbeEnv) (guestevidence.Rou
 	if identity.RunID != o.runID {
 		return d, "", fmt.Errorf("the response is for run %q, not %q", identity.RunID, o.runID)
 	}
-	binding, err := bindRunFromFiles(env, runProfileFiles{template: o.template, hostProfile: o.hostProfile, hostProfileSig: o.hostProfileSig, hostProfileKey: o.hostProfileKey},
-		o.pins, identity.ProfileHash)
+	binding, err := bindRunFromFiles(env, o.profileFiles(), o.pins, identity.ProfileHash)
 	if err != nil {
 		return d, "", err
 	}
@@ -250,4 +251,10 @@ func decodeStrictAllowUnknown(data []byte, v any) error {
 		return errors.New("trailing data")
 	}
 	return nil
+}
+
+// profileFiles names the signed profile, registration and template files of the run.
+func (o routeProbeOptions) profileFiles() runProfileFiles {
+	return runProfileFiles{template: o.template, hostProfile: o.hostProfile, hostProfileSig: o.hostProfileSig, hostProfileKey: o.hostProfileKey,
+		registration: o.registration, registrationSig: o.registrationSig}
 }

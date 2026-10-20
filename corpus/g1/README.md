@@ -4,6 +4,12 @@ Status: **draft - owner approval required.** Nothing here has been run on the gu
 not approved a real provider exchange for it. It is not part of the pilot corpus, has no manifest,
 reviews or pins, and is never claim-bearing: no result of it is a thesis result.
 
+Approval. `corpus` is frozen with the commit `F` (runbook, F0), so the approval of this case is recorded
+*before* F0, by committing the status change in `corpus/g1/` and nothing else: `STATUS` in `build.py`, `status`
+in `g1.json` and the Status line of this file become `approved by owner <YYYY-MM-DD>` (rebuild with `build.py`; the artifacts do
+not change). That commit is part of `F`. The status is not changed after F0: an edit under `corpus` after F voids
+the freeze. Until the owner commits it, the status stays draft.
+
 Purpose: the one governed run that can pass `EVQ-PROVIDER-REAL-EXCHANGE` (thesis E05): a real provider
 exchange on the engineering route (OpenCode Go, `deepseek-v4.1-flash`) and the two-generation
 transcript `read(g0) -> edit(g1) -> Bash(g2) -> read(g2)`. The `guest-provider-exchange` validator

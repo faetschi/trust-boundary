@@ -45,6 +45,8 @@ type drOpts struct {
 	// facts changes what the probe measures in the cell (the cell's own view of the path), acl what it reads as ACLs.
 	facts func(map[string]cellview.Fact)
 	acl   map[string]string
+	// registrationRunner is the runner the run's signed registration names; empty is the runner run.json pins.
+	registrationRunner string
 	// pin is the admin key digest run.json pins; empty pins the key that signed the probe profile.
 	pin     string
 	profile func(*piruntime.HostProfile) // changes the production profile, and with it the probe profile and the pins
@@ -146,10 +148,17 @@ func (deniedFS) Overflow() (uint32, uint32, bool)     { return 65534, 65534, tru
 // service journals for it.
 func drSignProfile(t *testing.T, dir, name string, profile piruntime.HostProfile) (profilePath, sigPath, keyPath, digest string) {
 	t.Helper()
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return drSignProfileWith(t, dir, name, profile, priv)
+}
+
+// drSignProfileWith signs the host profile with the given admin key.
+func drSignProfileWith(t *testing.T, dir, name string, profile piruntime.HostProfile, priv ed25519.PrivateKey) (profilePath, sigPath, keyPath, digest string) {
+	t.Helper()
+	pub := priv.Public().(ed25519.PublicKey)
 	profileJSON, sig, pubKey, err := piruntime.SignLinuxHostProfile(profile, priv)
 	if err != nil {
 		t.Fatal(err)
@@ -165,6 +174,23 @@ func drSignProfile(t *testing.T, dir, name string, profile piruntime.HostProfile
 		}
 	}
 	return profilePath, sigPath, keyPath, signed.Digest
+}
+
+// drSignRegistration signs a registration that names the given runner with the admin key and writes the registration and
+// its signature. It returns the paths and the registration digest the template of the run names.
+func drSignRegistration(t *testing.T, dir, name string, priv ed25519.PrivateKey, runnerDigest string) (registrationPath, sigPath, digest string) {
+	t.Helper()
+	encoded, sig, digest, err := piruntime.SignD09ManagedLiveRootRegistration(testRegistration(runnerDigest), priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registrationPath, sigPath = filepath.Join(dir, name+".json"), filepath.Join(dir, name+".ed25519")
+	for p, data := range map[string][]byte{registrationPath: encoded, sigPath: sig} {
+		if err := os.WriteFile(p, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return registrationPath, sigPath, digest
 }
 
 // drBuild writes the world. mutateProof changes the proof before it is journaled; mutateEvent changes the
@@ -197,7 +223,17 @@ func drBuildWith(t *testing.T, o drOpts) drWorld {
 		t.Fatal(err)
 	}
 	pilot := drTemplate(t, geDigest("image"), "/opt/tbound/cell/pi-cell-oci")
+	_, adminKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registrationRunner := geDigest("runner")
+	if o.registrationRunner != "" {
+		registrationRunner = o.registrationRunner
+	}
+	registration, registrationSig, registrationDigest := drSignRegistration(t, dir, "run-registration", adminKey, registrationRunner)
 	w := drWorld{dir: dir, productionTemplate: drTemplate(t, geDigest("image"), "/opt/tbound/cell/pi-cell-oci")}
+	w.productionTemplate.ManagedLiveRootRegistrationDigest = registrationDigest
 	if o.template != nil {
 		o.template(&w.productionTemplate)
 	}
@@ -219,6 +255,7 @@ func drBuildWith(t *testing.T, o drOpts) drWorld {
 	// The signed profile of the probe run names the probe template.
 	production := piruntime.DefaultLinuxHostProfileTemplate()
 	production.SourceProvenanceDigest = rtSource
+	runtimeBundle := production.PiRuntimeBundleDigest
 	if o.profile != nil {
 		o.profile(&production)
 	}
@@ -227,7 +264,7 @@ func drBuildWith(t *testing.T, o drOpts) drWorld {
 	if o.probeProfile != nil {
 		o.probeProfile(&probeProfile)
 	}
-	hostProfile, hostSig, hostKey, probeProfileDigest := drSignProfile(t, dir, "probe-profile", probeProfile)
+	hostProfile, hostSig, hostKey, probeProfileDigest := drSignProfileWith(t, dir, "probe-profile", probeProfile, adminKey)
 	keyBytes, err := os.ReadFile(hostKey)
 	if err != nil {
 		t.Fatal(err)
@@ -280,13 +317,14 @@ func drBuildWith(t *testing.T, o drOpts) drWorld {
 	w.runConfig = filepath.Join(dir, "run.json")
 	drWriteJSON(t, w.runConfig, map[string]any{"freeze_commit": geCommit, "v_image_digest": w.productionTemplate.ExpectedImageDigest,
 		"pins": map[string]string{"profile_hash": geDigest("pilot profile"), "containment_profile_digest": geDigest("pilot template"), "base_template_digest": base,
-			"frozen_source_digest": rtSource, "admin_pubkey_digest": adminPin}, "other": 1})
+			"frozen_source_digest": rtSource, "admin_pubkey_digest": adminPin, "runtime_bundle_digest": runtimeBundle, "runner_digest": geDigest("runner")}, "other": 1})
 	w.opts = routeProbeOptions{route: "direct-runtime", runID: rtRunID, auditRoot: dir, target: drTarget, controlPath: drControl,
-		pins:          guestevidence.RunBinding{Commit: geCommit, FrozenSourceDigest: rtSource, BaseTemplateDigest: base, ImageDigest: w.productionTemplate.ExpectedImageDigest, AdminPubkeyDigest: adminPin},
+		pins: guestevidence.RunBinding{Commit: geCommit, FrozenSourceDigest: rtSource, BaseTemplateDigest: base, ImageDigest: w.productionTemplate.ExpectedImageDigest, AdminPubkeyDigest: adminPin,
+			RuntimeBundleDigest: runtimeBundle, RunnerDigest: geDigest("runner")},
 		probeTemplate: probeTemplatePath, productionTemplate: productionTemplatePath,
-		hostProfile: hostProfile, hostProfileSig: hostSig, hostProfileKey: hostKey}
+		hostProfile: hostProfile, hostProfileSig: hostSig, hostProfileKey: hostKey, registration: registration, registrationSig: registrationSig}
 	w.expect = guestevidence.Expect{Commit: geCommit, BinarySHA256: geDigest("self"), FrozenSourceDigest: rtSource, BaseTemplateDigest: base,
-		ImageDigest: w.productionTemplate.ExpectedImageDigest, AdminPubkeyDigest: adminPin}
+		ImageDigest: w.productionTemplate.ExpectedImageDigest, AdminPubkeyDigest: adminPin, RuntimeBundleDigest: runtimeBundle, RunnerDigest: geDigest("runner")}
 	return w
 }
 
@@ -366,6 +404,11 @@ func TestDirectRuntimeProbeRefusesWhatIsNotTheProbeCell(t *testing.T) {
 		"another source pin":                   {opts: func(o *routeProbeOptions) { o.pins.FrozenSourceDigest = geDigest("another source") }},
 		"another base template pin":            {opts: func(o *routeProbeOptions) { o.pins.BaseTemplateDigest = geDigest("another base template") }},
 		"another image pin":                    {opts: func(o *routeProbeOptions) { o.pins.ImageDigest = geDigest("another image") }},
+		"another runtime bundle pin":           {opts: func(o *routeProbeOptions) { o.pins.RuntimeBundleDigest = geDigest("another bundle") }},
+		"another runner pin":                   {opts: func(o *routeProbeOptions) { o.pins.RunnerDigest = geDigest("another runner") }},
+		"no runner pin":                        {opts: func(o *routeProbeOptions) { o.pins.RunnerDigest = "" }},
+		"no registration":                      {opts: func(o *routeProbeOptions) { o.registration = "" }},
+		"a registration signature of nothing":  {opts: func(o *routeProbeOptions) { o.registrationSig = o.hostProfileKey }},
 		"no admin key pin":                     {opts: func(o *routeProbeOptions) { o.pins.AdminPubkeyDigest = "" }},
 		"another admin key pin":                {opts: func(o *routeProbeOptions) { o.pins.AdminPubkeyDigest = geDigest("another admin key") }},
 		"no host profile":                      {opts: func(o *routeProbeOptions) { o.hostProfile = "" }},
@@ -627,13 +670,17 @@ func TestDirectRuntimeArtifactRepackagedUnderOtherPinsIsRefused(t *testing.T) {
 		t.Fatalf("the artifact is refused: %v", err)
 	}
 	for name, mutate := range map[string]func(*guestevidence.Expect){
-		"another commit":        func(e *guestevidence.Expect) { e.Commit = strings.Repeat("1", 40) },
-		"another source digest": func(e *guestevidence.Expect) { e.FrozenSourceDigest = geDigest("another source") },
-		"another base template": func(e *guestevidence.Expect) { e.BaseTemplateDigest = geDigest("another base template") },
-		"another image":         func(e *guestevidence.Expect) { e.ImageDigest = geDigest("another image") },
-		"another admin key":     func(e *guestevidence.Expect) { e.AdminPubkeyDigest = geDigest("another admin key") },
-		"no admin key pin":      func(e *guestevidence.Expect) { e.AdminPubkeyDigest = "" },
-		"no base template pin":  func(e *guestevidence.Expect) { e.BaseTemplateDigest = "" },
+		"another commit":         func(e *guestevidence.Expect) { e.Commit = strings.Repeat("1", 40) },
+		"another source digest":  func(e *guestevidence.Expect) { e.FrozenSourceDigest = geDigest("another source") },
+		"another base template":  func(e *guestevidence.Expect) { e.BaseTemplateDigest = geDigest("another base template") },
+		"another image":          func(e *guestevidence.Expect) { e.ImageDigest = geDigest("another image") },
+		"another admin key":      func(e *guestevidence.Expect) { e.AdminPubkeyDigest = geDigest("another admin key") },
+		"another runtime bundle": func(e *guestevidence.Expect) { e.RuntimeBundleDigest = geDigest("another bundle") },
+		"another runner":         func(e *guestevidence.Expect) { e.RunnerDigest = geDigest("another runner") },
+		"no runner pin":          func(e *guestevidence.Expect) { e.RunnerDigest = "" },
+		"no runtime bundle pin":  func(e *guestevidence.Expect) { e.RuntimeBundleDigest = "" },
+		"no admin key pin":       func(e *guestevidence.Expect) { e.AdminPubkeyDigest = "" },
+		"no base template pin":   func(e *guestevidence.Expect) { e.BaseTemplateDigest = "" },
 	} {
 		e := w.expect
 		mutate(&e)
@@ -667,7 +714,8 @@ func TestRunBindingPinsComeFromTheRunConfigThatNamesTheCommit(t *testing.T) {
 	}
 	// run.json without one of the pins the artifact is bound to: the value would be whatever the caller passes.
 	pins := func(drop string) map[string]any {
-		p := map[string]string{"base_template_digest": w.opts.pins.BaseTemplateDigest, "frozen_source_digest": rtSource, "admin_pubkey_digest": w.opts.pins.AdminPubkeyDigest}
+		p := map[string]string{"base_template_digest": w.opts.pins.BaseTemplateDigest, "frozen_source_digest": rtSource, "admin_pubkey_digest": w.opts.pins.AdminPubkeyDigest,
+			"runtime_bundle_digest": w.opts.pins.RuntimeBundleDigest, "runner_digest": w.opts.pins.RunnerDigest}
 		doc := map[string]any{"freeze_commit": geCommit, "v_image_digest": w.opts.pins.ImageDigest, "pins": p}
 		if drop == "v_image_digest" {
 			delete(doc, drop)
@@ -675,7 +723,7 @@ func TestRunBindingPinsComeFromTheRunConfigThatNamesTheCommit(t *testing.T) {
 		delete(p, drop)
 		return doc
 	}
-	for _, drop := range []string{"base_template_digest", "frozen_source_digest", "admin_pubkey_digest", "v_image_digest"} {
+	for _, drop := range []string{"base_template_digest", "frozen_source_digest", "admin_pubkey_digest", "runtime_bundle_digest", "runner_digest", "v_image_digest"} {
 		drWriteJSON(t, w.runConfig, pins(drop))
 		if _, err := runBindingPins(w.runConfig, geCommit); err == nil {
 			t.Errorf("a run config with no %s was accepted", drop)
@@ -745,7 +793,7 @@ func TestGuestEvidenceDirectRuntimeCommandWritesOnlyValidArtifacts(t *testing.T)
 		return runGuestEvidence([]string{"route-denied", "--commit", geCommit, "--route", "direct-runtime", "--run-id", rtRunID,
 			"--audit-root", w.dir, "--target", drTarget, "--control-path", drControl, "--run-config", w.runConfig,
 			"--probe-template", w.opts.probeTemplate, "--production-template", w.opts.productionTemplate, "--host-profile", w.opts.hostProfile,
-			"--host-profile-signature", w.opts.hostProfileSig, "--host-profile-key", w.opts.hostProfileKey,
+			"--host-profile-signature", w.opts.hostProfileSig, "--host-profile-key", w.opts.hostProfileKey, "--registration", w.opts.registration, "--registration-signature", w.opts.registrationSig,
 			"--out", out}, &stdout, &stderr)
 	}
 	good := drBuild(t, nil, nil, nil)
@@ -784,4 +832,41 @@ func drProbeFails(t *testing.T, w drWorld) error {
 		t.Logf("refused: %v", err)
 	}
 	return err
+}
+
+// ---- the runs share the pilot's runtime bundle and the service build ----
+
+func TestDirectRuntimeProbeRefusesAProfileOfAnotherRuntimeBundleThanTheRunPins(t *testing.T) {
+	// Same source label, base template and image; only the Pi runtime bundle of the signed profile differs.
+	w := drBuildWith(t, drOpts{profile: func(p *piruntime.HostProfile) { p.PiRuntimeBundleDigest = geDigest("another runtime bundle") }})
+	if _, _, err := probeRouteDenied(w.opts, productionRouteProbeEnv()); err == nil || !strings.Contains(err.Error(), "runtime_bundle_digest") {
+		t.Fatalf("a profile of another runtime bundle bound to the run: %v", err)
+	}
+}
+
+func TestDirectRuntimeProbeRefusesARegistrationOfAnotherRunnerThanTheRunPins(t *testing.T) {
+	// The service the run started is not the build of the frozen commit: its signed registration names another runner.
+	w := drBuildWith(t, drOpts{registrationRunner: geDigest("a service built elsewhere")})
+	if _, _, err := probeRouteDenied(w.opts, productionRouteProbeEnv()); err == nil || !strings.Contains(err.Error(), "runner_digest") {
+		t.Fatalf("a registration of another runner bound to the run: %v", err)
+	}
+	// The registration is verified under the pinned admin key: one signed by another key is refused.
+	w = drBuild(t, nil, nil, nil)
+	other := drBuildWith(t, drOpts{})
+	w.opts.registration, w.opts.registrationSig = other.opts.registration, other.opts.registrationSig
+	if _, _, err := probeRouteDenied(w.opts, productionRouteProbeEnv()); err == nil {
+		t.Error("a registration signed under another key was accepted")
+	}
+}
+
+func TestDirectRuntimeArtifactRetainsTheRuntimeBundleAndRunner(t *testing.T) {
+	w := drBuild(t, nil, nil, nil)
+	d, _, err := probeRouteDenied(w.opts, productionRouteProbeEnv())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Binding.RuntimeBundleDigest != w.opts.pins.RuntimeBundleDigest || d.Binding.RunnerDigest != w.opts.pins.RunnerDigest ||
+		d.Binding.RegistrationDigest != w.productionTemplate.ManagedLiveRootRegistrationDigest {
+		t.Errorf("binding = %+v", d.Binding)
+	}
 }

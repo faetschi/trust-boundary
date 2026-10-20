@@ -56,7 +56,7 @@ func loadG1(t *testing.T) (g1Case, string) {
 
 func TestG1CaseIsADraftEngineeringCaseOfTheG1Sequence(t *testing.T) {
 	c, _ := loadG1(t)
-	if c.Schema != "tbound-g1-case/v1" || c.ClaimBearing || c.Route != "engineering" || !strings.Contains(c.Status, "owner approval required") {
+	if c.Schema != "tbound-g1-case/v1" || c.ClaimBearing || c.Route != "engineering" || !(strings.Contains(c.Status, "owner approval required") || strings.HasPrefix(c.Status, "approved by owner ")) {
 		t.Fatalf("case header = %+v", c)
 	}
 	if !slices.Equal(c.ToolSequence, guestevidence.G1ToolSequence) {

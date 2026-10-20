@@ -17,16 +17,8 @@ import (
 	"tbound/supervisor/internal/piruntime"
 )
 
-func TestManagedRootSignVerifyOfflineCommands(t *testing.T) {
-	dir := t.TempDir()
-	_, privateKey, err := ed25519.GenerateKey(cryptorand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keyPath := filepath.Join(dir, "offline-test.key")
-	if err := os.WriteFile(keyPath, privateKey, 0o600); err != nil {
-		t.Fatal(err)
-	}
+// testRegistration is a measured registration that passes the closed policy, naming the given runner.
+func testRegistration(runnerDigest string) piruntime.D09ManagedLiveRootRegistration {
 	rootMountDigest := piruntime.DigestBytes([]byte("rw,nosuid,nodev,relatime\x00ext4\x00/dev/test"))
 	parentMountDigest := piruntime.DigestBytes([]byte("ro,nosuid,nodev,relatime\x00ext4\x00/dev/test"))
 	serviceSocket := piruntime.D09ManagedPiServiceSocket{
@@ -39,7 +31,7 @@ func TestManagedRootSignVerifyOfflineCommands(t *testing.T) {
 		ParentMode: 0o755, ParentFilesystemMagic: 0x01021994, ParentMountPolicy: "tmpfs-rw-nodev-nosuid/v1",
 		AllowedClientUIDs: []int{1000}, AllowedClientPrimaryGID: 994,
 	}
-	registration := piruntime.D09ManagedLiveRootRegistration{
+	return piruntime.D09ManagedLiveRootRegistration{
 		SchemaVersion: piruntime.D09ManagedLiveRootSchema, WriterPolicy: piruntime.D09ManagedLiveRootWriterPolicy,
 		RootPath: piruntime.D09ManagedPiLiveRootPath, RootDevice: 10, RootInode: 20, RootFilesystemMagic: 0xef53,
 		RootMountID: 101, RootMountOptionsDigest: rootMountDigest, RootUID: 991, RootGID: 992, RootMode: 0o700,
@@ -58,9 +50,22 @@ func TestManagedRootSignVerifyOfflineCommands(t *testing.T) {
 			"/var/lib/tbound/sessions",
 		},
 		ServiceSocket: serviceSocket, ManagedRootXattrCalibrationDigest: piruntime.DigestBytes([]byte("managed-root-xattr-calibration")),
-		RunnerPath: "/usr/local/bin/tbound", RunnerDigest: piruntime.DigestBytes([]byte("runner")),
+		RunnerPath: "/usr/local/bin/tbound", RunnerDigest: runnerDigest,
 		ServiceCgroupPath: piruntime.D09ManagedPiServiceCgroupPath,
 	}
+}
+
+func TestManagedRootSignVerifyOfflineCommands(t *testing.T) {
+	dir := t.TempDir()
+	_, privateKey, err := ed25519.GenerateKey(cryptorand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPath := filepath.Join(dir, "offline-test.key")
+	if err := os.WriteFile(keyPath, privateKey, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	registration := testRegistration(piruntime.DigestBytes([]byte("runner")))
 	registrationPath := filepath.Join(dir, "registration.json")
 	encoded, err := json.Marshal(registration)
 	if err != nil {
@@ -88,6 +93,15 @@ func TestManagedRootSignVerifyOfflineCommands(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "not a live-root quiescence permit") {
 		t.Fatal("offline verification overstated registration as present quiescence")
+	}
+	// The owner checks the runner of a registration against the digest of the reproducible build of the frozen commit.
+	if err := run([]string{"managed-root-verify", "--registration", signedPath, "--sig", signaturePath, "--pub", publicKeyPath,
+		"--runner-digest", registration.RunnerDigest}, &out, &errOut); err != nil {
+		t.Fatalf("managed-root-verify with the registered runner: %v", err)
+	}
+	if err := run([]string{"managed-root-verify", "--registration", signedPath, "--sig", signaturePath, "--pub", publicKeyPath,
+		"--runner-digest", piruntime.DigestBytes([]byte("another build"))}, &out, &errOut); err == nil {
+		t.Fatal("managed-root-verify accepted a registration of another runner than the one pinned")
 	}
 	if err := os.WriteFile(signaturePath, []byte(fmt.Sprintf("%064d", 0)), 0o600); err != nil {
 		t.Fatal(err)
@@ -132,6 +146,20 @@ func TestProfileCommandInitSignVerify(t *testing.T) {
 	profilePath = signedPath
 	if err := run([]string{"verify", "--profile", profilePath, "--sig", sigPath, "--pub", pubPath}, &out, &errOut); err != nil {
 		t.Fatalf("verify: %v (%s)", err, errOut.String())
+	}
+	signedProfile, err := os.ReadFile(profilePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var held struct{ PiRuntimeBundleDigest string }
+	if err := json.Unmarshal(signedProfile, &held); err != nil || held.PiRuntimeBundleDigest == "" {
+		t.Fatalf("signed profile holds no runtime bundle digest: %v", err)
+	}
+	if err := run([]string{"verify", "--profile", profilePath, "--sig", sigPath, "--pub", pubPath, "--runtime-bundle-digest", held.PiRuntimeBundleDigest}, &out, &errOut); err != nil {
+		t.Fatalf("verify with the profile's runtime bundle: %v", err)
+	}
+	if err := run([]string{"verify", "--profile", profilePath, "--sig", sigPath, "--pub", pubPath, "--runtime-bundle-digest", piruntime.DigestBytes([]byte("another bundle"))}, &out, &errOut); err == nil {
+		t.Fatal("verify accepted a profile of another runtime bundle than the one pinned")
 	}
 
 	// A tampered signed profile must be rejected.

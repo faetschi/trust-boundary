@@ -33,9 +33,9 @@ import (
 // guestEvidenceUsage is the part of the usage text for `tbound-profile guest-evidence`.
 const guestEvidenceUsage = `  tbound-profile guest-evidence capability        --commit <40-hex> --seccomp-profile <abs file> --out <new file> [--service-cgroup </system.slice/..service>]
   tbound-profile guest-evidence netsink           --commit <40-hex> --out <new file>
-  tbound-profile guest-evidence provider-exchange --commit <40-hex> --response <file> --run-config <run.json> --template <file> [--host-profile <file> --host-profile-signature <file> --host-profile-key <file>] --out <new file>
-  tbound-profile guest-evidence route-denied      --commit <40-hex> --route bash-view --run-id <id> --response <file> --target <abs path> --control-path <rel path> --control-file <file> --run-config <run.json> --template <file> [--host-profile <file> --host-profile-signature <file> --host-profile-key <file>] [--audit-root <dir>] --out <new file>
-  tbound-profile guest-evidence route-denied      --commit <40-hex> --route direct-runtime --run-id <id> --target <abs path> --control-path <rel path> --run-config <run.json> --probe-template <file> --production-template <file> [--host-profile <file> --host-profile-signature <file> --host-profile-key <file>] [--audit-root <dir>] --out <new file>
+  tbound-profile guest-evidence provider-exchange --commit <40-hex> --response <file> --run-config <run.json> --template <file> [--host-profile <file> --host-profile-signature <file> --host-profile-key <file> --registration <file> --registration-signature <file>] --out <new file>
+  tbound-profile guest-evidence route-denied      --commit <40-hex> --route bash-view --run-id <id> --response <file> --target <abs path> --control-path <rel path> --control-file <file> --run-config <run.json> --template <file> [--host-profile <file> --host-profile-signature <file> --host-profile-key <file> --registration <file> --registration-signature <file>] [--audit-root <dir>] --out <new file>
+  tbound-profile guest-evidence route-denied      --commit <40-hex> --route direct-runtime --run-id <id> --target <abs path> --control-path <rel path> --run-config <run.json> --probe-template <file> --production-template <file> [--host-profile <file> --host-profile-signature <file> --host-profile-key <file> --registration <file> --registration-signature <file>] [--audit-root <dir>] --out <new file>
   tbound-profile guest-evidence tests             --commit <40-hex> --kind guest-tests-procoracle|guest-tests-landlock-connect --test-binary <abs file> --out <new file>
 `
 
@@ -78,10 +78,12 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	probeTemplate := flags.String("probe-template", "", "route-denied direct-runtime: the route-probe cell template the probe cell was launched from")
 	productionTemplate := flags.String("production-template", "", "route-denied direct-runtime: the production cell template the probe template derives from")
 	template := flags.String("template", "", "provider-exchange, route-denied bash-view: the cell template (d09-cell.json) the run used")
-	runConfig := flags.String("run-config", "", "run.json; its freeze_commit (must be --commit), v_image_digest and pins (frozen_source_digest, base_template_digest, admin_pubkey_digest) are the expectations the run's own signed profile and template are held to")
+	runConfig := flags.String("run-config", "", "run.json; its freeze_commit (must be --commit), v_image_digest and pins (frozen_source_digest, base_template_digest, admin_pubkey_digest, runtime_bundle_digest, runner_digest) are the expectations the run's own signed profile, registration and template are held to")
 	hostProfile := flags.String("host-profile", "/etc/tbound/pi-host-profile.json", "the signed host profile the run used; copy it away before the next profile is installed (its digest must be the run's: the receipt's profile_hash, or the one the session journal records)")
 	hostProfileSig := flags.String("host-profile-signature", "/etc/tbound/pi-host-profile.ed25519", "the Ed25519 signature of that profile")
 	hostProfileKey := flags.String("host-profile-key", "/etc/tbound/pi-host-profile.pub", "the admin public key that verifies it (its sha256 must be run.json pins.admin_pubkey_digest)")
+	registration := flags.String("registration", piruntime.D09ManagedLiveRootRegistrationPath, "the signed managed live root registration the run used (copy it away with the profile); verified under the same admin key, its runner_digest must be run.json pins.runner_digest")
+	registrationSig := flags.String("registration-signature", piruntime.D09ManagedLiveRootSignaturePath, "the Ed25519 signature of that registration")
 	if err := flags.Parse(rest); err != nil {
 		return err
 	}
@@ -102,7 +104,8 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	var artifactKind string
 	var data any
 	expect := guestevidence.Expect{Commit: *commit, BinarySHA256: self}
-	files := runProfileFiles{template: *template, hostProfile: *hostProfile, hostProfileSig: *hostProfileSig, hostProfileKey: *hostProfileKey}
+	files := runProfileFiles{template: *template, hostProfile: *hostProfile, hostProfileSig: *hostProfileSig, hostProfileKey: *hostProfileKey,
+		registration: *registration, registrationSig: *registrationSig}
 	// The artifacts of runs under a config of their own are held to what run.json pins, which also names the freeze
 	// commit, and never to what the caller says.
 	var pins guestevidence.RunBinding
@@ -111,6 +114,7 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 		expect.FrozenSourceDigest, expect.BaseTemplateDigest, expect.ImageDigest, expect.AdminPubkeyDigest = pins.FrozenSourceDigest, pins.BaseTemplateDigest, pins.ImageDigest, pins.AdminPubkeyDigest
+		expect.RuntimeBundleDigest, expect.RunnerDigest = pins.RuntimeBundleDigest, pins.RunnerDigest
 	}
 	switch kind {
 	case "capability":
@@ -126,7 +130,8 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 		opts := routeProbeOptions{route: *route, runID: *runID, auditRoot: *auditRoot, response: *response,
 			target: *target, controlPath: *controlPath, controlFile: *controlFile,
 			pins: pins, template: *template, probeTemplate: *probeTemplate, productionTemplate: *productionTemplate,
-			hostProfile: *hostProfile, hostProfileSig: *hostProfileSig, hostProfileKey: *hostProfileKey}
+			hostProfile: *hostProfile, hostProfileSig: *hostProfileSig, hostProfileKey: *hostProfileKey,
+			registration: *registration, registrationSig: *registrationSig}
 		data, artifactKind, err = probeRouteDenied(opts, productionRouteProbeEnv())
 	case "tests":
 		artifactKind = *testKind

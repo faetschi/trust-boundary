@@ -25,7 +25,7 @@ func expect() Expect {
 	for _, p := range TestPackages() {
 		tb[p] = digestOf("test binary " + p)
 	}
-	return Expect{Commit: testCommit, BinarySHA256: testBinary, FrozenSourceDigest: digestOf("source"), CommitTree: adapterTree, TestBinaries: tb, BaseTemplateDigest: digestOf("base template"), ImageDigest: digestOf("image"), AdminPubkeyDigest: digestOf("admin key")}
+	return Expect{Commit: testCommit, BinarySHA256: testBinary, FrozenSourceDigest: digestOf("source"), CommitTree: adapterTree, TestBinaries: tb, BaseTemplateDigest: digestOf("base template"), ImageDigest: digestOf("image"), AdminPubkeyDigest: digestOf("admin key"), RuntimeBundleDigest: digestOf("runtime bundle"), RunnerDigest: digestOf("runner")}
 }
 
 // The profile and template of a run under its own config (G1, route probe): never the pilot's.
@@ -37,7 +37,8 @@ var (
 // goodBinding is the binding a producer states for a run under its own signed profile.
 func goodBinding(e Expect, profile, template string) ProfileBinding {
 	return ProfileBinding{ProfileDigest: profile, TemplateDigest: template, BaseTemplateDigest: e.BaseTemplateDigest,
-		RegistrationDigest: digestOf("registration of " + profile), ImageDigest: e.ImageDigest, SourceDigest: e.FrozenSourceDigest, AdminPubkeyDigest: e.AdminPubkeyDigest}
+		RegistrationDigest: digestOf("registration of " + profile), ImageDigest: e.ImageDigest, SourceDigest: e.FrozenSourceDigest, AdminPubkeyDigest: e.AdminPubkeyDigest,
+		RuntimeBundleDigest: e.RuntimeBundleDigest, RunnerDigest: e.RunnerDigest}
 }
 
 // The profile of a route-probe run under its own config.
@@ -341,10 +342,12 @@ func TestProviderExchangeRequiredValues(t *testing.T) {
 	}
 	// The run must pin what the run shares with the pilot, or the receipt is bound to nothing.
 	for name, mutate := range map[string]func(*Expect){
-		"no source pin":        func(x *Expect) { x.FrozenSourceDigest = "" },
-		"no base template pin": func(x *Expect) { x.BaseTemplateDigest = "" },
-		"no admin key pin":     func(x *Expect) { x.AdminPubkeyDigest = "" },
-		"no image pin":         func(x *Expect) { x.ImageDigest = "" },
+		"no source pin":         func(x *Expect) { x.FrozenSourceDigest = "" },
+		"no base template pin":  func(x *Expect) { x.BaseTemplateDigest = "" },
+		"no admin key pin":      func(x *Expect) { x.AdminPubkeyDigest = "" },
+		"no image pin":          func(x *Expect) { x.ImageDigest = "" },
+		"no runtime bundle pin": func(x *Expect) { x.RuntimeBundleDigest = "" },
+		"no runner pin":         func(x *Expect) { x.RunnerDigest = "" },
 	} {
 		x := e
 		mutate(&x)
@@ -369,6 +372,10 @@ func TestProviderExchangeIsBoundToTheBaseTemplateNotToThePilotProfile(t *testing
 		"another source":                   func(p *ProviderExchange) { p.Binding.SourceDigest = digestOf("another source") },
 		"another admin key":                func(p *ProviderExchange) { p.Binding.AdminPubkeyDigest = digestOf("another key") },
 		"another image":                    func(p *ProviderExchange) { p.Binding.ImageDigest = digestOf("another image") },
+		"another runtime bundle":           func(p *ProviderExchange) { p.Binding.RuntimeBundleDigest = digestOf("another bundle") },
+		"another runner":                   func(p *ProviderExchange) { p.Binding.RunnerDigest = digestOf("another runner") },
+		"no runtime bundle":                func(p *ProviderExchange) { p.Binding.RuntimeBundleDigest = "" },
+		"no runner":                        func(p *ProviderExchange) { p.Binding.RunnerDigest = "" },
 		"another profile than the receipt": func(p *ProviderExchange) { p.Binding.ProfileDigest = digestOf("another profile") },
 		"another template than the receipt": func(p *ProviderExchange) {
 			p.Binding.TemplateDigest = digestOf("another template")
@@ -562,6 +569,8 @@ func TestRouteArtifactRequiredValues(t *testing.T) {
 			"another base template":            func(r *RouteDenied) { r.Binding.BaseTemplateDigest = digestOf("other") },
 			"binding of another source":        func(r *RouteDenied) { r.Binding.SourceDigest = digestOf("other") },
 			"another admin key":                func(r *RouteDenied) { r.Binding.AdminPubkeyDigest = digestOf("other") },
+			"another runtime bundle":           func(r *RouteDenied) { r.Binding.RuntimeBundleDigest = digestOf("other") },
+			"another runner":                   func(r *RouteDenied) { r.Binding.RunnerDigest = digestOf("other") },
 			"another image than the cell's":    func(r *RouteDenied) { r.Binding.ImageDigest = digestOf("other") },
 			"another template than the cell's": func(r *RouteDenied) { r.Binding.TemplateDigest = digestOf("other") },
 			"relative target":                  func(r *RouteDenied) { r.Target = "home/node/.profile" },
@@ -614,6 +623,7 @@ func TestRouteArtifactRequiredValues(t *testing.T) {
 		for name, mutate := range map[string]func(*Expect){
 			"no source pin": func(x *Expect) { x.FrozenSourceDigest = "" }, "no base template pin": func(x *Expect) { x.BaseTemplateDigest = "" },
 			"no admin key pin": func(x *Expect) { x.AdminPubkeyDigest = "" }, "no image pin": func(x *Expect) { x.ImageDigest = "" },
+			"no runtime bundle pin": func(x *Expect) { x.RuntimeBundleDigest = "" }, "no runner pin": func(x *Expect) { x.RunnerDigest = "" },
 		} {
 			x := e
 			mutate(&x)

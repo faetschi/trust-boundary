@@ -40,7 +40,7 @@ usage:
   tbound-profile sign            --profile <profile.json> --key <ed25519-private>
                                  --out-sig <new signature.ed25519> --out-pub <new public.pub>
                                  --out-profile <new signed.json>
-  tbound-profile verify          --profile <profile.json> --sig <signature.ed25519> --pub <public.pub>
+  tbound-profile verify          --profile <profile.json> --sig <signature.ed25519> --pub <public.pub> [--runtime-bundle-digest <sha256:..>]
   tbound-profile runtime-bundle-digest --root <read-only-runtime-bundle>
   tbound-profile template-init   --out <d09-cell.json> [--force]
   tbound-profile template-digest --template <d09-cell.json>
@@ -60,7 +60,7 @@ usage:
                                       --allowed-client-primary-gid <gid>
   tbound-profile managed-root-sign --registration <json> --key <ed25519-private>
                                     --out-sig <signature> [--out-registration <signed.json>]
-  tbound-profile managed-root-verify --registration <json> --sig <signature> --pub <public-key>
+  tbound-profile managed-root-verify --registration <json> --sig <signature> --pub <public-key> [--runner-digest <sha256:..>]
   tbound-profile research-ledger-genesis [--profile <abs>] [--ledger-config <abs>] [--ledger <abs>]
   tbound-profile corpus-digest --manifest <path> [--quota-profile thesis|pilot] [--artifacts <dir>]
                                 [--max-host-calls <n> --max-tokens <n> --duration-seconds <n>]
@@ -361,6 +361,7 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 	profilePath := flags.String("profile", "", "path to the signed HostProfile JSON")
 	sigPath := flags.String("sig", "", "path to the raw 64-byte Ed25519 signature")
 	pubPath := flags.String("pub", "", "path to the raw 32-byte Ed25519 public key")
+	runtimeBundle := flags.String("runtime-bundle-digest", "", "optional: refuse a profile whose PiRuntimeBundleDigest is not this digest (the pinned BUNDLE_DIGEST of the freeze)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -376,6 +377,9 @@ func runVerify(args []string, stdout, stderr io.Writer) error {
 	}
 	if fields := profile.PlaceholderFields(); len(fields) != 0 {
 		return fmt.Errorf("the signature verifies, but the profile still holds template placeholders and is not admissible: %s", strings.Join(fields, ", "))
+	}
+	if *runtimeBundle != "" && profile.PiRuntimeBundleDigest != *runtimeBundle {
+		return fmt.Errorf("the profile holds runtime bundle %s, --runtime-bundle-digest is %s", profile.PiRuntimeBundleDigest, *runtimeBundle)
 	}
 	_, err = fmt.Fprintf(stdout, "verified signed host profile %s (digest %s, mode %s)\n", profile.ID, profile.Digest, profile.Mode)
 	return err
@@ -915,6 +919,7 @@ func runManagedRootVerify(args []string, stdout, stderr io.Writer) error {
 	registrationPath := flags.String("registration", "", "signed managed-live-root registration JSON")
 	sigPath := flags.String("sig", "", "raw Ed25519 registration signature")
 	pubPath := flags.String("pub", "", "authorized raw Ed25519 public key")
+	runnerDigest := flags.String("runner-digest", "", "optional: refuse a registration whose runner_digest is not this digest (the pinned TBOUND_DIGEST of the reproducible build of the freeze)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -937,8 +942,11 @@ func runManagedRootVerify(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("managed-root signature/policy verification failed: %w", err)
 	}
-	_, err = fmt.Fprintf(stdout, "verified signed managed live-root policy %s for %s (service %s, digest %s)\nThis verifies policy/signature only; it is not a live-root quiescence permit.\n",
-		registration.SchemaVersion, registration.RootPath, registration.ServiceName, registration.Digest)
+	if *runnerDigest != "" && registration.RunnerDigest != *runnerDigest {
+		return fmt.Errorf("the registration names runner %s, --runner-digest is %s", registration.RunnerDigest, *runnerDigest)
+	}
+	_, err = fmt.Fprintf(stdout, "verified signed managed live-root policy %s for %s (service %s, digest %s, runner %s)\nThis verifies policy/signature only; it is not a live-root quiescence permit.\n",
+		registration.SchemaVersion, registration.RootPath, registration.ServiceName, registration.Digest, registration.RunnerDigest)
 	return err
 }
 

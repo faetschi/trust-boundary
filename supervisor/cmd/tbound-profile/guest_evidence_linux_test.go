@@ -524,7 +524,8 @@ func TestGuestEvidenceProviderExchangeCommand(t *testing.T) {
 	}
 	args := func(response, out string) []string {
 		return []string{"provider-exchange", "--commit", geCommit, "--response", response, "--run-config", w.runConfig, "--template", w.files.template,
-			"--host-profile", w.files.hostProfile, "--host-profile-signature", w.files.hostProfileSig, "--host-profile-key", w.files.hostProfileKey, "--out", out}
+			"--host-profile", w.files.hostProfile, "--host-profile-signature", w.files.hostProfileSig, "--host-profile-key", w.files.hostProfileKey,
+			"--registration", w.files.registration, "--registration-signature", w.files.registrationSig, "--out", out}
 	}
 	var stdout, stderr bytes.Buffer
 	good := write("good.txt", geResponse(t, w, nil)+"\n")
@@ -763,17 +764,20 @@ func TestGuestEvidenceProviderExchangeIsBoundToWhatTheRunSharesWithThePilot(t *t
 		t.Fatalf("a run under its own profile is refused: %v", err)
 	}
 	if ex.Binding.ProfileDigest != w.profileDigest || ex.Binding.TemplateDigest != w.templateDigest ||
-		ex.Binding.BaseTemplateDigest != w.pins.BaseTemplateDigest || ex.Binding.RegistrationDigest != bindTemplate(t).ManagedLiveRootRegistrationDigest {
+		ex.Binding.BaseTemplateDigest != w.pins.BaseTemplateDigest || !guestevidence.IsDigest(ex.Binding.RegistrationDigest) ||
+		ex.Binding.RunnerDigest != w.pins.RunnerDigest || ex.Binding.RuntimeBundleDigest != w.pins.RuntimeBundleDigest {
 		t.Errorf("binding = %+v", ex.Binding)
 	}
 	if ex.Binding.TemplateDigest == ex.Binding.BaseTemplateDigest {
 		t.Error("the run's template is the base template: it was not given a registration of its own")
 	}
 	for name, mutate := range map[string]func(*guestevidence.RunBinding){
-		"another base cell": func(p *guestevidence.RunBinding) { p.BaseTemplateDigest = geDigest("another base") },
-		"another source":    func(p *guestevidence.RunBinding) { p.FrozenSourceDigest = geDigest("another source") },
-		"another image":     func(p *guestevidence.RunBinding) { p.ImageDigest = geDigest("another image") },
-		"another admin key": func(p *guestevidence.RunBinding) { p.AdminPubkeyDigest = geDigest("another key") },
+		"another base cell":      func(p *guestevidence.RunBinding) { p.BaseTemplateDigest = geDigest("another base") },
+		"another source":         func(p *guestevidence.RunBinding) { p.FrozenSourceDigest = geDigest("another source") },
+		"another image":          func(p *guestevidence.RunBinding) { p.ImageDigest = geDigest("another image") },
+		"another admin key":      func(p *guestevidence.RunBinding) { p.AdminPubkeyDigest = geDigest("another key") },
+		"another runtime bundle": func(p *guestevidence.RunBinding) { p.RuntimeBundleDigest = geDigest("another bundle") },
+		"another runner (not the build of the frozen commit)": func(p *guestevidence.RunBinding) { p.RunnerDigest = geDigest("another runner") },
 	} {
 		pins := w.pins
 		mutate(&pins)

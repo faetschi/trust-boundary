@@ -157,6 +157,7 @@ func TestDirectRuntimeArtifactIsBoundLikeEveryRouteArtifact(t *testing.T) {
 	for name, mutate := range map[string]func(*Expect){
 		"no source pin": func(x *Expect) { x.FrozenSourceDigest = "" }, "no base template pin": func(x *Expect) { x.BaseTemplateDigest = "" },
 		"no admin key pin": func(x *Expect) { x.AdminPubkeyDigest = "" }, "no image pin": func(x *Expect) { x.ImageDigest = "" },
+		"no runtime bundle pin": func(x *Expect) { x.RuntimeBundleDigest = "" }, "no runner pin": func(x *Expect) { x.RunnerDigest = "" },
 	} {
 		x := e
 		mutate(&x)
