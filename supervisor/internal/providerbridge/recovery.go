@@ -296,11 +296,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	if err != nil {
 		return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 	}
-	system, developer := cfg.SystemPrompt, cfg.DeveloperPrompt
-	history := []openrouter.Message{
-		{Role: openrouter.System, Content: &system},
-		{Role: openrouter.Developer, Content: &developer},
-	}
+	history := initialPromptMessages(route, cfg.SystemPrompt, cfg.DeveloperPrompt)
 	currentGeneration, currentTree := cfg.InitialGenerationID, cfg.InitialTreeDigest
 	state := replayAwaitPrompt
 	var pending *replayDecision

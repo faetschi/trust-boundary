@@ -359,11 +359,7 @@ func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJo
 	if err != nil {
 		return nil, fmt.Errorf("register provider identifier issuers: %w", err)
 	}
-	system, developer := cfg.SystemPrompt, cfg.DeveloperPrompt
-	history := []openrouter.Message{
-		{Role: openrouter.System, Content: &system},
-		{Role: openrouter.Developer, Content: &developer},
-	}
+	history := initialPromptMessages(route, cfg.SystemPrompt, cfg.DeveloperPrompt)
 	if _, err := openrouter.BuildRequestForRoute(route, history, 0); err != nil {
 		return nil, fmt.Errorf("validate immutable provider prompt: %w", err)
 	}
@@ -1343,5 +1339,25 @@ func reflectNil(value any) bool {
 		return v.IsNil()
 	default:
 		return false
+	}
+}
+
+// initialPromptMessages builds the immutable prompt prefix of a conversation: the system
+// prompt and the registered developer prompt. The fresh path and the recovery replay both
+// build it here, so a rebuilt request body is identical to the original.
+//
+// The OpenCode Go engineering route rejects the "developer" role ("chat message role
+// developer is not supported"), so there the developer prompt text goes out as a second
+// "system" message; DeveloperPrompt and its digest fields are unchanged. The research
+// route keeps "developer": its request shape is frozen by the research profile.
+func initialPromptMessages(route openrouter.Route, systemPrompt, developerPrompt string) []openrouter.Message {
+	system, developer := systemPrompt, developerPrompt
+	developerRole := openrouter.Developer
+	if !route.IsResearch() {
+		developerRole = openrouter.System
+	}
+	return []openrouter.Message{
+		{Role: openrouter.System, Content: &system},
+		{Role: developerRole, Content: &developer},
 	}
 }
