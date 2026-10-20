@@ -1646,8 +1646,10 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 			return
 		}
 		if launchCmd != nil && launchCmd.Process != nil {
+			record := l.launchRecord(launchCmd)
 			returnedErr = errors.Join(returnedErr,
 				l.cleanupFailedContainer(launchCmd, launchPodman, launchName))
+			returnedErr = errors.Join(returnedErr, l.failedLaunchExitStatus(record))
 			return
 		}
 		if stdoutPipe != nil {
@@ -1788,22 +1790,27 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 		return nil, D09TCBProof{}, fmt.Errorf("start D09 rootless Podman/crun cell: %w", startErr)
 	}
 	_ = proofWrite.Close()
-	cid, err := readD09CIDFifo(ctx, cidFile, d09CommandStartTimeout)
+	// Everything below waits on podman or on the cell it starts. If podman exits first
+	// (a failed mount, a refused image), nothing will ever answer, so each wait also ends
+	// as soon as the podman process has exited instead of running to a deadline.
+	watchCtx, stopWatch := contextEndingWithProcess(ctx, command.Process.Pid)
+	defer stopWatch()
+	cid, err := readD09CIDFifo(watchCtx, cidFile, d09CommandStartTimeout)
 	if err != nil {
-		return nil, D09TCBProof{}, fmt.Errorf("observe D09 worker container id: %w", err)
+		return nil, D09TCBProof{}, fmt.Errorf("observe D09 worker container id: %w", errors.Join(err, context.Cause(watchCtx)))
 	}
-	inspectCtx, cancelInspect := context.WithTimeout(ctx, d09WorkerProofTimeout)
+	inspectCtx, cancelInspect := context.WithTimeout(watchCtx, d09WorkerProofTimeout)
 	containerState, err := inspectContainer(inspectCtx, report.PodmanPath, cid)
 	cancelInspect()
 	if err != nil || containerState.State.Status != "running" || containerState.State.PID <= 0 ||
 		strings.TrimPrefix(containerState.Name, "/") != name {
 		return nil, D09TCBProof{}, errors.Join(fmt.Errorf("D09 worker container identity/state is not running as the requested cell"), err)
 	}
-	startupProofCtx, cancelStartupProof := context.WithTimeout(ctx, d09WorkerProofTimeout)
+	startupProofCtx, cancelStartupProof := context.WithTimeout(watchCtx, d09WorkerProofTimeout)
 	proof, err := readD09TCBProofContext(startupProofCtx, proofRead)
 	cancelStartupProof()
 	if err != nil {
-		return nil, D09TCBProof{}, fmt.Errorf("captured TCB proof is missing or invalid: %w", err)
+		return nil, D09TCBProof{}, fmt.Errorf("captured TCB proof is missing or invalid: %w", errors.Join(err, context.Cause(watchCtx)))
 	}
 	proof.ContainerName = name
 	proof.LauncherProcessPID = command.Process.Pid
@@ -1879,6 +1886,18 @@ func (l *D09PodmanCrunLauncher) StartVerifiedWithProof(ctx context.Context, requ
 	return command, proof, nil
 }
 
+// descriptorPathForMount returns the canonical absolute path the held directory
+// descriptor resolves to, for use as a Podman bind-mount source. It is not a
+// /proc/<pid>/fd path: rootless Podman re-execs into its own user namespace, from
+// which the service's /proc/<pid>/fd fails the ptrace access check.
+//
+// A path can be swapped between this resolution and the mount, so the path is not
+// the authority. The cell entrypoint compares the device and inode of the directory
+// it actually received with TBOUND_WORKER_DEVICE/INODE and TBOUND_RUNTIME_DEVICE/INODE
+// (command cells: TBOUND_COMMAND_VIEW_DEVICE/INODE), which the launcher takes from
+// the held descriptors, and refuses to start otherwise (cmd/tbound-cell-entrypoint,
+// "consumer mount identities differ"). That check covers both the worker exposure and
+// the runtime mount, so a swap fails closed before the proof is written.
 func descriptorPathForMount(file *os.File) (string, error) {
 	if file == nil {
 		return "", ErrHostBindingsMissing
@@ -1887,12 +1906,12 @@ func descriptorPathForMount(file *os.File) (string, error) {
 	if err != nil || !info.IsDir() {
 		return "", ErrHostBindingsMissing
 	}
-	path := fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), file.Fd())
-	link, err := os.Readlink(path)
-	if err != nil || !filepath.IsAbs(link) || strings.HasSuffix(link, " (deleted)") || strings.Contains(link, ",") {
+	link, err := os.Readlink(fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), file.Fd()))
+	if err != nil || !filepath.IsAbs(link) || filepath.Clean(link) != link || strings.HasSuffix(link, " (deleted)") ||
+		strings.ContainsAny(link, ",\n\x00") {
 		return "", ErrHostBindingsMissing
 	}
-	return path, nil
+	return link, nil
 }
 
 // storeLaunchProof registers the captured, validated proof against the exact
