@@ -235,6 +235,10 @@ func TestJournaledContentTypeNeverTurnsAnObservedHeaderIntoAbsent(t *testing.T) 
 		"malformed":              {[]string{"application/json,"}, contentTypeIneligible},
 		"comma-joined":           {[]string{"application/json, text/event-stream"}, contentTypeIneligible},
 		"empty value plus value": {[]string{"", "application/json"}, contentTypeIneligible},
+		"bare token +json":       {[]string{"foo+json"}, contentTypeIneligible},
+		"no type":                {[]string{"/x+json"}, contentTypeIneligible},
+		"no subtype":             {[]string{"application/"}, contentTypeIneligible},
+		"bare json":              {[]string{"json"}, contentTypeIneligible},
 	} {
 		if got := journaledContentType(test.values); got != test.want {
 			t.Errorf("%s: journaled %q, want %q", name, got, test.want)
@@ -297,6 +301,23 @@ func TestRetryRecordContentTypeIsNormalizedAndReplayEnforcesIt(t *testing.T) {
 		}
 		if !want && !errors.Is(err, ErrTranscriptReplay) {
 			t.Errorf("stored content type %q replayed: %v", stored, err)
+		}
+	}
+}
+
+// A bare token such as foo+json parses as a media type but is not one: live and replay refuse it.
+func TestBareTokenJSONSuffixIsNotAJSONContentType(t *testing.T) {
+	for _, value := range []string{"foo+json", "/x+json", "application/", "application/+json", "json"} {
+		if got := journaledContentType([]string{value}); got != contentTypeIneligible {
+			t.Errorf("%q journaled as %q, want the ineligible marker", value, got)
+		}
+		if contentTypeEligible(value) {
+			t.Errorf("stored content type %q is eligible", value)
+		}
+	}
+	for _, value := range []string{"application/json", "application/problem+json", "Application/JSON; charset=utf-8"} {
+		if !contentTypeEligible(value) || !contentTypeEligible(journaledContentType([]string{value})) {
+			t.Errorf("%q is not eligible", value)
 		}
 	}
 }

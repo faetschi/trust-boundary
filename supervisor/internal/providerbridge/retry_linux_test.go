@@ -138,6 +138,14 @@ func TestRetryableFailureClassification(t *testing.T) {
 		"503 vendor +json":                   {503, "application/problem+json", unavailableBody, "", true},
 		"503 stored oversized header":        {503, "application/json; x=" + strings.Repeat("a", 130), unavailableBody, "", false},
 		"503 stored malformed header":        {503, "application/json,", unavailableBody, "", false},
+		"503 bare token +json":               {503, "foo+json", unavailableBody, "", false},
+		"503 no type +json":                  {503, "/x+json", unavailableBody, "", false},
+		"503 no subtype":                     {503, "application/", unavailableBody, "", false},
+		"503 empty +json subtype":            {503, "application/+json", unavailableBody, "", false},
+		"503 two slashes":                    {503, "application/a/b+json", unavailableBody, "", false},
+		"503 bare json":                      {503, "json", unavailableBody, "", false},
+		"503 application json":               {503, "application/json", unavailableBody, "", true},
+		"503 problem+json":                   {503, "application/problem+json", unavailableBody, "", true},
 	} {
 		if got := RetryableProviderFailure(test.status, test.contentType, []byte(test.body), test.retryAfter); got != test.want {
 			t.Errorf("%s: retryable = %v, want %v", name, got, test.want)

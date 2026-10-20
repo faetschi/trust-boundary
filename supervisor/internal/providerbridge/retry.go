@@ -96,7 +96,7 @@ func journaledContentType(values []string) string {
 			return contentTypeIneligible
 		}
 		mediaType, _, err := mime.ParseMediaType(value)
-		if err != nil || mediaType == "" {
+		if err != nil || !wellFormedMediaType(mediaType) {
 			return contentTypeIneligible
 		}
 		return mediaType
@@ -116,10 +116,17 @@ func contentTypeEligible(journaled string) bool {
 		return false
 	}
 	mediaType, _, err := mime.ParseMediaType(journaled)
-	if err != nil {
+	if err != nil || !wellFormedMediaType(mediaType) {
 		return false
 	}
 	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json")
+}
+
+// wellFormedMediaType requires exactly one slash with a nonempty type and subtype. mime.ParseMediaType
+// also accepts a bare token ("foo+json"), which is not a media type.
+func wellFormedMediaType(mediaType string) bool {
+	mainType, subtype, found := strings.Cut(mediaType, "/")
+	return found && mainType != "" && subtype != "" && !strings.Contains(subtype, "/") && !strings.HasPrefix(subtype, "+")
 }
 
 // providerErrorBody accepts an empty body or the provider error object and returns its message.
