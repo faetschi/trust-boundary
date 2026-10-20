@@ -364,10 +364,11 @@ foreach ($file in @($bootstrapLinux, $landlockProfileGate, $setupUbuntu, $probeC
     }
 }
 
+$manifestSupplied = -not [string]::IsNullOrWhiteSpace($WindowsToolManifestPath)
 $reviewedToolHashes = Read-WindowsToolManifest -Path $WindowsToolManifestPath
 $requiredTools = @('cmd.exe', 'ssh.exe', 'ssh-keyscan.exe', 'ssh-keygen.exe', 'scp.exe')
 if (-not $SkipWslInjection) { $requiredTools += 'wsl.exe' }
-if ($reviewedToolHashes.Count -gt 0) {
+if ($manifestSupplied) {
     foreach ($name in $requiredTools) {
         if (-not $reviewedToolHashes.ContainsKey($name)) {
             throw "Windows tool manifest is missing the required entry '$name': $WindowsToolManifestPath"
@@ -393,7 +394,7 @@ foreach ($tool in @(
     $toolHashes[$tool.Name] = Assert-TrustedWindowsExecutable -Path $tool.Path -ExpectedSha256 (Get-ExpectedWindowsToolHash -Name $tool.Name) -TrustedDirectories @($script:WindowsDirectory, $script:SystemDirectory, $script:OpenSshDirectory)
 }
 $script:VerifiedWindowsToolHashes = $toolHashes
-if ($reviewedToolHashes.Count -gt 0) {
+if ($manifestSupplied) {
     Write-Host 'Windows host tools verified (Microsoft signature/owner + operator-reviewed SHA-256 manifest):'
 }
 else {

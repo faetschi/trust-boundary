@@ -62,7 +62,11 @@ the default VM name already exists.
 ```sh
 # from the checkout (or after copying infra/ to the host)
 sudo bash infra/repro/bootstrap-linux.sh <trial-user>       # interactive confirmations
-TBOUND_ASSUME_YES=1 sudo -E bash infra/repro/bootstrap-linux.sh <trial-user>   # unattended
+TBOUND_ASSUME_YES=1 sudo -E bash infra/repro/bootstrap-linux.sh <trial-user>   # unattended, no userns sysctl
+
+# Only on a dedicated disposable host after reviewing the system-wide effect:
+TBOUND_APPLY_USERNS_SYSCTL=1 TBOUND_ASSUME_YES=1 sudo -E \
+  bash infra/repro/bootstrap-linux.sh <trial-user>
 ```
 
 Do not set `TBOUND_ASSUME_YES=1` on a daily-driver or shared host: it accepts
@@ -245,6 +249,8 @@ summary rather than treating the raw exit code alone as a capability result.
 - `bootstrap-linux.sh` — native Linux bootstrap (idempotent, fail-closed).
 - `bootstrap-qemu-linux.sh` — Linux-host QEMU VM creation and guest provisioning.
 - `test_bootstrap_package_status.sh` — regression for held-package detection.
+- `test_windows_tool_manifest.ps1` — mock test for the portable Windows tool
+  manifest parser (runs without inspecting Windows binaries).
 - `bootstrap-hyperv-windows.ps1` — Hyper-V VM creation and guest provisioning.
 - `probe-host.ps1` — one-command capability report (SSH / WSL / saved capture).
 - [DISPOSABLE-CGROUP-TEARDOWN.md](DISPOSABLE-CGROUP-TEARDOWN.md) — operator procedure and trust boundary for the destructive `cgroup_teardown_witness.py` component probe; not qualification evidence.
