@@ -896,7 +896,9 @@ func mustPiServicePayloadDigest(t *testing.T, request piServiceRequest) string {
 
 func TestPiServiceSocketParentMountAcceptsReadOnlyOnlyInTheServiceNamespace(t *testing.T) {
 	const super = "rw,size=401508k,mode=755,inode64"
-	join := func(flags string) string { return strings.Join([]string{"/", "/run", flags, "tmpfs", "tmpfs", super}, "\x00") }
+	join := func(flags string) string {
+		return strings.Join([]string{"/", "/run", flags, "tmpfs", "tmpfs", super}, "\x00")
+	}
 	host := join("rw,nosuid,nodev,noexec,relatime")
 	service := join("ro,nosuid,nodev,noexec,relatime")
 	if !piServiceSocketParentMountAcceptable(host, false) || !piServiceSocketParentMountAcceptable(host, true) {
