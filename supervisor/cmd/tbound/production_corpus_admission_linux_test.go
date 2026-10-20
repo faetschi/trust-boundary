@@ -655,9 +655,10 @@ func TestFreshModeAdmissionIsUnchangedByCorpusSupport(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, _, _ := requests.lookup(peer, request, digest)
+	// A legitimate path may contain "corpus" without adding corpus-mode members.
 	config := piServiceConfig{WorkflowAdmissionMode: "fresh", WorkflowAdmissionID: "host-task-2026-10-14",
 		WorkflowTaskID: "approved-task", WorkflowPrompt: "Read the approved host task.",
-		WorkflowOwnerStoreRoot: filepath.Join(root, "owners"), WorkflowDurationSeconds: 1200,
+		WorkflowOwnerStoreRoot: filepath.Join(root, "corpus-owners"), WorkflowDurationSeconds: 1200,
 		WorkflowMaxPreEffectRetries: 2, WorkflowMaxCleanRestarts: 2, WorkflowMaxHostCalls: 4, WorkflowMaxTokens: 10000}
 	if code := catalog.admissionScreen(config)(peer, request); code != "" {
 		t.Fatalf("fresh request screened out: %q", code)
@@ -678,9 +679,31 @@ func TestFreshModeAdmissionIsUnchangedByCorpusSupport(t *testing.T) {
 		entry.CorpusManifestDigest != "" || entry.Limits.MaxHostCalls != 4 || entry.Limits.MaxTokens != 10000 {
 		t.Fatalf("fresh admission changed: %+v", entry)
 	}
-	encoded, err := json.Marshal(entry)
-	if err != nil || strings.Contains(string(encoded), "corpus") {
-		t.Fatalf("fresh catalog entry encoding carries corpus members: %s %v", encoded, err)
+	for _, field := range []string{"fresh", "corpus_manifest_digest", "corpus_quota_profile"} {
+		t.Run(field, func(t *testing.T) {
+			candidate := entry
+			switch field {
+			case "corpus_manifest_digest":
+				candidate.CorpusManifestDigest = corpusTestDigest("manifest")
+			case "corpus_quota_profile":
+				candidate.CorpusQuotaProfile = "pilot"
+			}
+			encoded, err := json.Marshal(candidate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var members map[string]json.RawMessage
+			if err := json.Unmarshal(encoded, &members); err != nil {
+				t.Fatal(err)
+			}
+			carriesCorpus := false
+			for member := range members {
+				carriesCorpus = carriesCorpus || strings.Contains(member, "corpus")
+			}
+			if carriesCorpus != (field != "fresh") {
+				t.Fatalf("corpus-member detection for %s: got %t in %s", field, carriesCorpus, encoded)
+			}
+		})
 	}
 }
 
