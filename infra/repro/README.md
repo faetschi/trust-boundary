@@ -1,20 +1,27 @@
 # Reproducible evaluation-environment bootstrap
 
-These scripts make it simple for another researcher to host the tbound
-evaluation Linux environment in three supported ways:
+These scripts support three distinct paths. **Native Linux is first**; a VM is
+optional for tests, not a prerequisite.
 
-- **Path A — native Linux** (Ubuntu 24.04 amd64, bare metal or any hypervisor):
-  `bootstrap-linux.sh` prepares the environment and runs the capability probe.
-- **Path B — Windows Hyper-V VM** (targets the reference host profile):
-  `bootstrap-hyperv-windows.ps1` creates the VM from a generic install VHDX
-  or an existing VHDX, enables SSH key auth, and runs the same
-  `bootstrap-linux.sh` inside the guest. The local ISO preparation recipe is
-  in [CLEAN-GUEST-QUALIFICATION.md](CLEAN-GUEST-QUALIFICATION.md).
-- **Path C — Linux QEMU VM** (a Linux host that cannot use Hyper-V, including
-  WSL2): `bootstrap-qemu-linux.sh` creates an Ubuntu 24.04 cloud-image VM,
-  installs the HWE kernel when available, runs the same guest bootstrap, and
-  installs/smoke-tests TBound. KVM is used when usable; otherwise it falls back
-  to TCG with a clear performance warning.
+1. **Native Linux (recommended, no VM)** — Ubuntu 24.04 amd64, bare metal or any
+   hypervisor: `bootstrap-linux.sh` prepares the host and runs the capability
+   probe. This is the shortest path for a fresh PC that already runs Linux.
+2. **Windows WSL2 (development only)** — an Ubuntu 24.04 WSL2 distro is useful
+   for the CLI/fixtures, but it is **not** the governed qualification profile.
+   WSL2 does not establish the D09 cgroup/Landlock/KVM boundary; use the WSL
+   probe mode only as a development smoke.
+3. **Linux VM (optional, for tests/qualification)** — only when a VM is wanted:
+   - **Hyper-V on Windows:** `bootstrap-hyperv-windows.ps1` creates the VM from
+     a generic install VHDX or an existing VHDX, enables SSH key auth, and runs
+     the same guest bootstrap.
+   - **QEMU on Linux (including a Linux host with no usable KVM):**
+     `bootstrap-qemu-linux.sh` creates an Ubuntu 24.04 cloud-image VM, runs the
+     guest bootstrap, and installs/smoke-tests TBound. KVM is used when usable;
+     otherwise TCG is used with a clear performance warning.
+
+Do not start with the VM path on a native Linux host. The VM path is for tests
+that need a disposable guest or a separately measured kernel; it does not make
+WSL2 a governed profile.
 
 `probe-host.ps1` turns `infra/guest/probe-capabilities.sh` (reused by path,
 never modified) into a one-command capability report for any of those hosts,
@@ -40,24 +47,25 @@ the default VM name already exists.
 
 ## Prerequisites
 
-- **Path A:** Ubuntu 24.04 (Noble) amd64 with root access (sudo) and network
-  access for the provisioning downloads. Nothing else.
-- **Path B:** Windows 10/11 or Windows Server with Hyper-V enabled and its
-  PowerShell module; the OpenSSH client (`ssh.exe`, optional feature); a
-  default WSL2 distro (used only for the offline SSH-key injection step);
-  a generic install VHDX prepared from authenticated Ubuntu Server media, plus
-  its SHA-256. See
-  [CLEAN-GUEST-QUALIFICATION.md](CLEAN-GUEST-QUALIFICATION.md) for the
-  artifact verification, the manual local ISO-to-VHDX procedure and qualification
-  guidance. `GoldenVhdx` reuses the resulting existing disk.
-- **Path C:** Linux amd64 (including WSL2) with `qemu-system-x86`, `qemu-img`,
-  `cloud-image-utils`, `curl`, and OpenSSH. No sudo is required on the host;
-  the guest bootstrap uses the cloud-init account's passwordless sudo.
+- **Path 1 (native Linux):** Ubuntu 24.04 (Noble) amd64 with root access (sudo)
+  and network access for provisioning downloads. Nothing else.
+- **Path 2 (Windows WSL2, development only):** Windows 10/11 with WSL2 and an
+  Ubuntu 24.04 distro. This is a development smoke path, not a governed
+  qualification environment.
+- **Path 3 (Linux VM, optional):**
+  - **Hyper-V:** Windows 10/11 or Windows Server with Hyper-V enabled and its
+    PowerShell module; the OpenSSH client (`ssh.exe`, optional feature); a
+    default WSL2 distro (used only for offline SSH-key injection); a generic
+    install VHDX prepared from authenticated Ubuntu Server media plus its
+    SHA-256. See [CLEAN-GUEST-QUALIFICATION.md](CLEAN-GUEST-QUALIFICATION.md).
+  - **QEMU:** Linux amd64 with `qemu-system-x86`, `qemu-img`,
+    `cloud-image-utils`, `curl`, and OpenSSH. No sudo is required on the host;
+    the guest bootstrap uses the cloud-init account's passwordless sudo.
 - **All paths:** the `infra/guest/probe-capabilities.sh` script from this
   repository (the bootstrap resolves it relative to its own location, so copy
   the whole `infra/` tree, not just `infra/repro/`).
 
-## Path A: native Linux
+## Path 1: native Linux (recommended, no VM)
 
 ```sh
 # from the checkout (or after copying infra/ to the host)
@@ -112,7 +120,28 @@ FAIL. HWE may provide ABI 8 on an older GA installation, but the live ABI must
 be measured after reboot. `cgroup.kill-write` and `uidmap-helpers` are
 UNVERIFIED by design of the read-only probe.
 
-## Path C: QEMU VM on a Linux host
+## Path 2: Windows WSL2 (development only)
+
+WSL2 is a convenient development host for the CLI and fixtures, but it is **not**
+the D09/G1 qualification profile. Use the read-only probe in WSL mode for a
+development smoke:
+
+```powershell
+.\infra\repro\probe-host.ps1 -Target Wsl -Distro <distro>
+```
+
+For a local TBound build inside WSL, follow the native Linux build/install steps
+only if the distro has a usable cgroup v2 mount; otherwise use WSL for source
+editing and run TBound in native Linux or the optional VM path. Do not present a
+WSL probe pass as governed qualification, and do not apply the host-wide
+AppArmor/userns workaround merely to make WSL pass.
+
+## Path 3: Linux VM (optional, for tests/qualification)
+
+Use one of the following only when a disposable guest is actually wanted.
+Native Linux remains the first choice.
+
+### QEMU on Linux (Linux VM path)
 
 ```sh
 # from the checkout; the host needs QEMU, cloud-image-utils, curl, and OpenSSH
@@ -137,7 +166,7 @@ of capability/qualification results: a failed probe is reported but does not
 undo the install. The signed host profile, D09 image, and managed service still
 require the operator signing session.
 
-## Path B: Hyper-V VM from Windows
+### Hyper-V on Windows (Linux VM path)
 
 ```powershell
 # elevated PowerShell, from the checkout; use a generic VHDX prepared from

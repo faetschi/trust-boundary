@@ -18,7 +18,7 @@ The Pi CLI is installed in the Linux user environment. TBound no longer intends
 to maintain a private Node or SDK package tree. The CLI/RPC extension path is
 still in migration; see [install](install.md) and [status](status.md).
 
-## Native Linux
+## Native Linux (recommended, no VM)
 
 The prototype bootstrap targets Ubuntu 24.04 amd64:
 
@@ -34,7 +34,22 @@ separately reviewed scoped policy instead. See
 [infra/repro/README.md](../infra/repro/README.md) and the
 [guest runbook](../infra/guest/README.md).
 
-## Windows with an Ubuntu Hyper-V guest
+## Windows WSL2 (development only)
+
+An Ubuntu 24.04 WSL2 distro can run the CLI and fixtures, but it is **not** the
+governed qualification profile: WSL2 does not provide the declared D09 cgroup,
+Landlock, and VM boundary. Use the read-only WSL probe as a development smoke:
+
+```powershell
+.\infra\repro\probe-host.ps1 -Target Wsl -Distro <distro>
+```
+
+Do not present a WSL pass as governed qualification, and do not relax the
+host-wide AppArmor/userns policy just to make WSL pass. Use native Linux or one
+of the optional Linux VM paths for governed work.
+
+## Windows with an Ubuntu Hyper-V guest (optional Linux VM)
+
 
 For the existing reference VM, use the start and resume steps in
 [launch](launch.md#existing-windows-hyper-v-vm). To create a new guest, first
@@ -42,9 +57,9 @@ review [infra/repro/README.md](../infra/repro/README.md) and the
 [Hyper-V host runbook](../infra/hyperv/SETUP.md). The automated creation path
 has not been qualified on a clean host.
 
-## Linux host with a QEMU guest
+## Linux host with a QEMU guest (optional Linux VM)
 
-On a Linux host without Hyper-V (including WSL2), create a cloud-image VM with:
+On a Linux host without Hyper-V (or from a WSL2 development host), create a cloud-image VM with:
 
 ```sh
 bash infra/repro/bootstrap-qemu-linux.sh --vm-dir "$HOME/.local/share/tbound-vm"
@@ -58,7 +73,7 @@ ABI-8 HWE kernel, which is not yet qualified; `--allow-userns-sysctl` opts into
 the host-wide AppArmor workaround. Qualification failures are reported after
 the user-prefix install and do not undo it. Review the script before running
 it; it creates a new VM and does not delete an existing one. See
-[infra/repro/README.md](../infra/repro/README.md#path-c-qemu-vm-on-a-linux-host).
+[infra/repro/README.md](../infra/repro/README.md#qemu-on-linux-linux-vm-path).
 
 ## What a probe means
 
