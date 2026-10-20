@@ -646,7 +646,7 @@ func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, ser
 	if err := validateManagedSystemdPolicy(rootPath, serviceName, serviceGroup, runnerPath, uint64(rootFS.Type), serviceUnitBytes, mountUnitBytes); err != nil {
 		return registration, err
 	}
-	if err := verifyNoSystemdDropIns(filepath.Base(serviceUnitPath), filepath.Base(mountUnitPath)); err != nil {
+	if err := verifyNoSystemdDropIns(serviceUnitPath, mountUnitPath, D09ManagedPiSocketUnitPath); err != nil {
 		return registration, err
 	}
 	shellDigest, err := measureProtectedNonLoginShell(shell)
@@ -1330,7 +1330,7 @@ func verifyD09ManagedWriterProcess(reg D09ManagedLiveRootRegistration) error {
 	if err := validateManagedSystemdPolicy(reg.RootPath, reg.ServiceName, reg.ServiceGroup, reg.RunnerPath, reg.RootFilesystemMagic, serviceUnitBytes, mountUnitBytes); err != nil {
 		return err
 	}
-	if err := verifyNoSystemdDropIns(filepath.Base(reg.ServiceUnitPath), filepath.Base(reg.MountUnitPath)); err != nil {
+	if err := verifyNoSystemdDropIns(reg.ServiceUnitPath, reg.MountUnitPath, reg.ServiceSocket.SocketUnitPath); err != nil {
 		return err
 	}
 	if err := verifyD09ManagedServiceWritableDirectories(reg); err != nil {

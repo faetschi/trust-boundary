@@ -7,6 +7,9 @@ import (
 	"crypto/ed25519"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -464,5 +467,51 @@ func TestRegisteredLocalGroupGIDRefusesNamedNonPositiveAndCollisions(t *testing.
 	}
 	if gid, ok := registeredLocalGroupGID([]byte("root:x:0:\nnogroup:x:65534:\ntbound-pi-clients:x:985:\n"), "tbound-pi-clients"); !ok || gid != 985 {
 		t.Fatalf("root and nogroup lines made the lookup fail: %d %v", gid, ok)
+	}
+}
+
+func TestSystemdDropInCheckContract(t *testing.T) {
+	reg := validManagedLiveRootRegistration()
+	for _, path := range []string{reg.ServiceUnitPath, reg.MountUnitPath, reg.ServiceSocket.SocketUnitPath} {
+		if !validSystemdUnitPath(path) {
+			t.Fatalf("registered full unit path was refused: %q", path)
+		}
+		if validSystemdUnitPath(filepath.Base(path)) {
+			t.Fatalf("a bare unit name was accepted as a unit path: %q", filepath.Base(path))
+		}
+		if err := verifyNoSystemdDropIns(filepath.Base(path)); err == nil {
+			t.Fatalf("verifyNoSystemdDropIns accepted a bare unit name: %q", filepath.Base(path))
+		}
+	}
+}
+
+// verifyNoSystemdDropIns takes full /etc/systemd/system paths and refuses a bare
+// name, so no caller may pass filepath.Base(...) (real-host defect: measure and
+// writer-process verification refused on every real guest).
+func TestNoCallerPassesBareUnitNamesToVerifyNoSystemdDropIns(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "managed_live_root_linux.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if name, ok := call.Fun.(*ast.Ident); !ok || name.Name != "verifyNoSystemdDropIns" {
+			return true
+		}
+		calls++
+		for _, arg := range call.Args {
+			if inner, ok := arg.(*ast.CallExpr); ok {
+				t.Errorf("%s: verifyNoSystemdDropIns argument is a call, not a full unit path", fset.Position(inner.Pos()))
+			}
+		}
+		return true
+	})
+	if calls != 3 {
+		t.Fatalf("expected 3 verifyNoSystemdDropIns callers, found %d", calls)
 	}
 }
