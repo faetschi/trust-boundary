@@ -4,6 +4,7 @@ package piruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -163,5 +164,61 @@ func TestContainerIDFifoReadHonoursItsTimeoutAndReturnsAWrittenID(t *testing.T) 
 	}
 	if got, err := readD09CIDFifo(context.Background(), fifo, 5*time.Second); err != nil || got != id {
 		t.Fatalf("read = %q, %v; want %q", got, err, id)
+	}
+}
+
+func proofLine(t *testing.T) []byte {
+	t.Helper()
+	encoded, err := json.Marshal(D09TCBProof{Schema: "tbound-pi-entrypoint/v1", ContainerName: "cell", LeaderPID: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(encoded, '\n')
+}
+
+// conmon keeps its own copy of the preserved proof descriptor for the container's whole lifetime,
+// so the host sees no EOF after the entrypoint closes its end.
+func TestProofIsReadFromOneLineWithoutWaitingForEOF(t *testing.T) {
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer write.Close()
+	if _, err := write.Write(proofLine(t)); err != nil {
+		t.Fatal(err)
+	}
+	type result struct {
+		proof D09TCBProof
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		proof, err := readD09TCBProof(read)
+		done <- result{proof, err}
+	}()
+	select {
+	case got := <-done:
+		if got.err != nil || got.proof.ContainerName != "cell" || got.proof.LeaderPID != 7 {
+			t.Fatalf("proof = %+v, %v", got.proof, got.err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the proof read waited for EOF although the writer kept its end open")
+	}
+	if _, err := write.Write([]byte("later\n")); err == nil {
+		t.Fatal("a later write reached the host: the read end was not closed after the proof line")
+	}
+}
+
+func TestProofWithDataBehindItsLineIsRefused(t *testing.T) {
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer write.Close()
+	if _, err := write.Write(append(proofLine(t), []byte("{\"forged\":true}\n")...)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readD09TCBProof(read); err == nil {
+		t.Fatal("data written behind the proof line was accepted")
 	}
 }

@@ -2073,9 +2073,19 @@ func (s d09LaunchSettler) Settle(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-// readD09TCBProof reads the single strict-JSON proof line the entrypoint writes
-// on fd10 and closes before exec.
+// readD09TCBProof reads the single strict-JSON proof line the entrypoint writes on fd10, then
+// closes the host's read end so nothing written later is parsed and later writers get EPIPE.
+//
+// It does not wait for EOF. podman's monitor (conmon) holds its own copy of every --preserve-fds
+// descriptor for the whole container lifetime, so the pipe never reaches EOF while the cell runs.
+// The guarantee does not rest on EOF: the entrypoint closes fd10 in the cell before it execs Node
+// (a close error is fatal there), so Node never holds the descriptor, and the only other holder is
+// the trusted conmon, which never writes to it. A byte already buffered behind the proof line is
+// still refused.
 func readD09TCBProof(reader io.Reader) (D09TCBProof, error) {
+	if closer, ok := reader.(io.Closer); ok {
+		defer closer.Close()
+	}
 	buffered := bufio.NewReaderSize(reader, 4096)
 	raw, err := buffered.ReadSlice('\n')
 	if err != nil {
@@ -2094,8 +2104,8 @@ func readD09TCBProof(reader io.Reader) (D09TCBProof, error) {
 	if err := decoder.Decode(&proof); err != nil {
 		return D09TCBProof{}, fmt.Errorf("decode TCB proof: %w", err)
 	}
-	if _, err := buffered.ReadByte(); !errors.Is(err, io.EOF) {
-		return D09TCBProof{}, fmt.Errorf("entrypoint proof pipe was not closed before worker exec")
+	if buffered.Buffered() != 0 {
+		return D09TCBProof{}, errors.New("entrypoint proof pipe carried data after the proof line")
 	}
 	return proof, nil
 }
