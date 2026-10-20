@@ -25,6 +25,8 @@
 #   --allow-userns-sysctl
 #                     Opt in to changing the host-wide AppArmor userns sysctl
 #   --developer       Run adapter checks, the Pi dev fixture, and make verify
+#   --qualify-cgroup-reuse
+#                     Explicit consent to run the audited cgroup-reuse probe once
 #   --check           Print host prerequisites and exit
 #
 # The script never deletes an existing VM directory. It refuses to overwrite a
@@ -45,7 +47,9 @@ DIST_VERSION="dev"
 INSTALL_HWE=0
 ALLOW_USERNS_SYSCTL=0
 RUN_DEVELOPER=0
-QUALIFICATION_STATUS="not run"
+RUN_CGROUP_REUSE_CHECK=0
+QUALIFICATION_STATUS="not run (default doctor is read-only)"
+QUALIFICATION_EXIT=0
 MODE=create
 
 say()  { printf '%s\n' "$*"; }
@@ -73,6 +77,7 @@ while (($# > 0)); do
     --hwe) INSTALL_HWE=1; shift ;;
     --allow-userns-sysctl) ALLOW_USERNS_SYSCTL=1; shift ;;
     --developer) RUN_DEVELOPER=1; shift ;;
+    --qualify-cgroup-reuse) RUN_CGROUP_REUSE_CHECK=1; shift ;;
     --check) MODE=check; shift ;;
     --start) MODE=start; shift ;;
     --stop) MODE=stop; shift ;;
@@ -330,6 +335,22 @@ NATIVE_RC=${PIPESTATUS[0]}
 set -e
 [[ "$NATIVE_RC" -eq 0 ]] || warn "native fixture exited $NATIVE_RC; inspect the receipt and doctor output. The user-prefix install is still complete."
 
+if [[ "${RUN_CGROUP_REUSE_CHECK:-0}" == 1 ]]; then
+  step "explicit cgroup-reuse qualification (opt-in, one run, no retry)"
+  OUT="$HOME/tbound-qualification/cgroup-reuse"
+  set +e
+  bash "$HOME/trust-boundary/infra/repro/run-cgroup-reuse-check.sh" \
+    --tbound-profile "$(command -v tbound-profile)" --out "$OUT"
+  CGROUP_REUSE_RC=$?
+  set -e
+  printf '%s\n' "$CGROUP_REUSE_RC" > "$HOME/tbound-cgroup-reuse.rc"
+  case "$CGROUP_REUSE_RC" in
+    0) warn "cgroup-reuse check passed (advisory only; no containment/G1 claim)." ;;
+    2) warn "cgroup-reuse check returned incompatible/unverified/cleanup (exit 2); this is a qualification failure, not an install failure." ;;
+    *) warn "cgroup-reuse check returned unexpected exit $CGROUP_REUSE_RC; retain as invalid setup." ;;
+  esac
+fi
+
 if [[ "${RUN_DEVELOPER:-0}" == 1 ]]; then
   step "offline Pi CLI development fixture"
   TBOUND_DEV_FIXTURE_PI="$(realpath "$(command -v pi)")"
@@ -420,6 +441,7 @@ say "  install from: $([[ -n "$LOCAL_DIST" ]] && echo "prebuilt $LOCAL_DIST" || 
 say "  install HWE kernel (opt-in, unqualified): $([[ "$INSTALL_HWE" == 1 ]] && echo yes || echo no)"
 say "  allow global AppArmor userns sysctl: $([[ "$ALLOW_USERNS_SYSCTL" == 1 ]] && echo yes || echo no)"
 say "  developer checks: $([[ "$RUN_DEVELOPER" == 1 ]] && echo yes || echo no)"
+say "  explicit cgroup-reuse qualification: $([[ "$RUN_CGROUP_REUSE_CHECK" == 1 ]] && echo yes || echo no)"
 if [[ "$INSTALL_HWE" == 1 ]]; then
   warn "The HWE 7.0 kernel provides Landlock ABI 8 but is not qualified; the functional cgroup/reuse probe may fail."
 fi
@@ -504,6 +526,19 @@ if [[ -n "$LOCAL_DIST" ]]; then
 else
   guest_dist=""
 fi
-ssh_guest "RUN_DEVELOPER=$RUN_DEVELOPER TBOUND_DIST_VERSION=$DIST_VERSION TBOUND_LOCAL_DIST=\"$guest_dist\" bash \"\$HOME/provision-guest.sh\""
+ssh_guest "RUN_DEVELOPER=$RUN_DEVELOPER RUN_CGROUP_REUSE_CHECK=$RUN_CGROUP_REUSE_CHECK TBOUND_DIST_VERSION=$DIST_VERSION TBOUND_LOCAL_DIST=\"$guest_dist\" bash \"\$HOME/provision-guest.sh\""
+if [[ "$RUN_CGROUP_REUSE_CHECK" == 1 ]]; then
+  scp -q -r -P "$SSH_PORT" -i "$KEY" -o UserKnownHostsFile="$KNOWN" -o StrictHostKeyChecking=yes \
+    "$TRIAL_USER@127.0.0.1:/home/$TRIAL_USER/tbound-qualification" "$VM_DIR/qualification" 2>/dev/null || true
+  guest_qrc=$(ssh_guest 'cat "$HOME/tbound-cgroup-reuse.rc" 2>/dev/null || echo 2' || echo 2)
+  case "$guest_qrc" in
+    0) QUALIFICATION_STATUS="cgroup-reuse check passed (advisory)" ;;
+    2) QUALIFICATION_STATUS="cgroup-reuse check incompatible/unverified (exit 2); install remains complete"; QUALIFICATION_EXIT=2 ;;
+    *) QUALIFICATION_STATUS="cgroup-reuse check invalid setup (exit $guest_qrc); install remains complete"; QUALIFICATION_EXIT=2 ;;
+  esac
+fi
 
 print_result
+if [[ "$QUALIFICATION_EXIT" -ne 0 ]]; then
+  exit "$QUALIFICATION_EXIT"
+fi

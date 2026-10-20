@@ -70,9 +70,12 @@ TCG, which is much slower. The default light install uses the GA kernel,
 installs Pi and TBound, and runs `tbound-doctor` plus the native fixture.
 `--developer` opts into adapter/install verification; `--hwe` opts into the
 ABI-8 HWE kernel, which is not yet qualified; `--allow-userns-sysctl` opts into
-the host-wide AppArmor workaround. Qualification failures are reported after
-the user-prefix install and do not undo it. Review the script before running
-it; it creates a new VM and does not delete an existing one. See
+the host-wide AppArmor workaround. `--qualify-cgroup-reuse` explicitly runs the
+audited cgroup-reuse probe once in a delegated scope; it is not part of the
+default install, and an `incompatible`/`unverified` exit 2 is a qualification
+failure that leaves the user-prefix install intact. Qualification failures are
+reported after the user-prefix install and do not undo it. Review the script
+before running it; it creates a new VM and does not delete an existing one. See
 [infra/repro/README.md](../infra/repro/README.md#qemu-on-linux-linux-vm-path).
 
 ## What a probe means

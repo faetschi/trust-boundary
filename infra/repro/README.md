@@ -156,8 +156,13 @@ native fixture. The default is the GA kernel and a light install: no adapter
 check, no Go race, and no `make verify`. `--developer` opts into those checks;
 `--hwe` opts into the ABI-8 HWE kernel, which is currently unqualified.
 AppArmor/user-namespace relaxation is also opt-in
-(`--allow-userns-sysctl`). The script stores the VM, SSH key, console log, and
-guest provisioning logs under `--vm-dir`.
+(`--allow-userns-sysctl`). `--qualify-cgroup-reuse` is a separate explicit
+consent to run the audited `tbound-profile cgroup-reuse-check
+--confirm-disposable-cgroup` once in a delegated user scope; it is not run by
+the default install. Its JSON/exit are preserved and an `incompatible` or
+`unverified` exit 2 is reported as a qualification failure, not an install
+failure. The script stores the VM, SSH key, console log, and guest provisioning
+logs under `--vm-dir`.
 
 Re-running with `--start`, `--stop`, `--ssh`, or `--status` manages the existing
 VM. The default memory is 3 GiB because TCG hosts are often memory-constrained;
@@ -278,6 +283,9 @@ summary rather than treating the raw exit code alone as a capability result.
 - `bootstrap-linux.sh` — native Linux bootstrap (idempotent, fail-closed).
 - `bootstrap-qemu-linux.sh` — Linux-host QEMU VM creation and guest provisioning.
 - `test_bootstrap_package_status.sh` — regression for held-package detection.
+- `run-cgroup-reuse-check.sh` — explicit opt-in wrapper for the audited
+  delegated-scope cgroup-reuse probe (one run, no retry).
+- `test_cgroup_reuse_check.sh` — mock test for the qualification wiring.
 - `test_windows_tool_manifest.ps1` — mock test for the portable Windows tool
   manifest parser (runs without inspecting Windows binaries).
 - `bootstrap-hyperv-windows.ps1` — Hyper-V VM creation and guest provisioning.
