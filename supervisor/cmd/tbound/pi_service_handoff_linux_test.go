@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -507,6 +508,85 @@ func testPiServiceResponseServer(t *testing.T, path string, request piServiceReq
 	return client
 }
 
+func TestPiServiceReleasesTaskBeforeSendingTerminal(t *testing.T) {
+	for _, replay := range []bool{false, true} {
+		name := "original"
+		if replay {
+			name = "replay"
+		}
+		t.Run(name, func(t *testing.T) {
+			releaseStarted := make(chan struct{})
+			allowRelease := make(chan struct{})
+			released := make(chan struct{})
+			unblockRelease := sync.OnceFunc(func() { close(allowRelease) })
+			registration := piServiceSocketRegistration{
+				AllowedClientUIDs: []int{os.Geteuid()}, AllowedClientPrimaryGID: os.Getegid(),
+			}
+			server := newPiServiceTestServerLocked(t, registration,
+				func(context.Context, piServiceRequest) (json.RawMessage, error) {
+					return json.RawMessage(`{"success":true}`), nil
+				}, func() (func(), error) {
+					return func() {
+						close(releaseStarted)
+						<-allowRelease
+						close(released)
+					}, nil
+				})
+			t.Cleanup(unblockRelease)
+			conn := dialPiServiceTest(t, server.path)
+			defer conn.Close()
+			request := piServiceRequest{RequestID: "request-completed", TaskID: "task-1", Prompt: "work"}
+			payload, err := json.Marshal(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := writePiServiceRequest(conn, payload); err != nil {
+				t.Fatal(err)
+			}
+			if err := conn.CloseWrite(); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case <-releaseStarted:
+			case <-time.After(5 * time.Second):
+				t.Fatal("task did not reach maintenance release")
+			}
+			if replay {
+				conn = dialPiServiceTest(t, server.path)
+				defer conn.Close()
+				if err := writePiServiceRequest(conn, payload); err != nil {
+					t.Fatal(err)
+				}
+				if err := conn.CloseWrite(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			// A terminal, including a reconnect's replay, cannot become visible until
+			// maintenance is released and the active slot can be reused. The deadline
+			// bounds the negative assertion; the release channel fixes the task phase.
+			if err := conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond)); err != nil {
+				t.Fatal(err)
+			}
+			var firstByte [1]byte
+			count, err := conn.Read(firstByte[:])
+			var timeout net.Error
+			if count != 0 || !errors.As(err, &timeout) || !timeout.Timeout() {
+				t.Fatalf("terminal was sent before maintenance/slot release: bytes=%d err=%v", count, err)
+			}
+			unblockRelease()
+			response, err := readPiServiceResponse(conn)
+			if err != nil || response.Status != "completed" {
+				t.Fatalf("terminal after release: %+v, %v", response, err)
+			}
+			select {
+			case <-released:
+			default:
+				t.Fatal("terminal arrived before maintenance release finished")
+			}
+		})
+	}
+}
+
 func TestPiServiceBusyDisconnectAndUnresolvedReplay(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -525,6 +605,14 @@ func TestPiServiceBusyDisconnectAndUnresolvedReplay(t *testing.T) {
 		return json.RawMessage(`{"success":true,"request_id":"` + request.RequestID + `"}`), nil
 	}
 	server := newPiServiceTestServer(t, registration, runTask)
+	// This requests-only fixture considers completed work settled so an old
+	// terminal can be replayed while a different task occupies the active slot.
+	server.requests.settlementVerifier = func(context.Context, piServiceRequestState) error { return nil }
+	priorRequest := piServiceRequest{RequestID: "request-prior", TaskID: "task-prior", Prompt: "previous work"}
+	prior := roundTripPiServiceRequest(t, server.path, priorRequest)
+	if prior.Status != "completed" {
+		t.Fatalf("prior task did not complete: %+v", prior)
+	}
 	firstRequest := piServiceRequest{RequestID: "request-blocking", TaskID: "task-1", Prompt: "work"}
 	firstResult := make(chan piServiceResponse, 1)
 	go func() { firstResult <- roundTripPiServiceRequest(t, server.path, firstRequest) }()
@@ -532,6 +620,10 @@ func TestPiServiceBusyDisconnectAndUnresolvedReplay(t *testing.T) {
 	case <-started:
 	case <-time.After(5 * time.Second):
 		t.Fatal("first task did not enter the single active slot")
+	}
+	if replay := roundTripPiServiceRequest(t, server.path, priorRequest); replay.Status != "completed" ||
+		!bytes.Equal(replay.Receipt, prior.Receipt) || server.calls.Load() != 2 {
+		t.Fatalf("old terminal did not replay while another task was active: %+v calls=%d", replay, server.calls.Load())
 	}
 	busy := roundTripPiServiceRequest(t, server.path,
 		piServiceRequest{RequestID: "request-busy", TaskID: "task-2", Prompt: "other"})

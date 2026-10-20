@@ -1365,6 +1365,16 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 
 func (j *piServiceRequestJournal) complete(clientUID int, request piServiceRequest, payloadDigest string,
 	response piServiceResponse) error {
+	return j.completeAndRelease(clientUID, request, payloadDigest, response, nil)
+}
+
+// completeAndRelease durably records the terminal, then releases the task before
+// publishing it to concurrent lookups. A reconnect cannot replay completion while
+// the completed task still holds the active slot or maintenance lock. release must
+// not call back into the journal; the production callback only closes the lock and
+// clears the active slot.
+func (j *piServiceRequestJournal) completeAndRelease(clientUID int, request piServiceRequest, payloadDigest string,
+	response piServiceResponse, release func()) error {
 	if j == nil {
 		return ErrPiServiceUnavailable
 	}
@@ -1385,6 +1395,9 @@ func (j *piServiceRequestJournal) complete(clientUID int, request piServiceReque
 	}
 	if _, err := j.journal.Append(audit.Event{Kind: "pi_service_request_terminal", ID: key + "/terminal", Data: data}); err != nil {
 		return err
+	}
+	if release != nil {
+		release()
 	}
 	state.terminal = &response
 	j.entries[key] = state
@@ -1632,10 +1645,10 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 				continue
 			}
 		}
-		free := func() {
+		free := sync.OnceFunc(func() {
 			release()
 			active.Store(false)
-		}
+		})
 		acceptedRecord := prior.acceptedRecord
 		acceptedEvent := prior.accepted
 		if !exists {
@@ -1706,10 +1719,11 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 				// converted to a fresh workflow or a terminal success by retrying.
 				response = piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
 					Status: "unknown", ErrorCode: "retained-workflow-recovery-unresolved"}
-			} else if err := journal.complete(peer.UID, request, payloadDigest, response); err != nil {
+			} else if err := journal.completeAndRelease(peer.UID, request, payloadDigest, response, free); err != nil {
 				response = piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
 					Status: "unknown", ErrorCode: "terminal-journal-unavailable"}
 			}
+			free()                                  // also release on recovery or journal failure before sending a response
 			_ = writePiServiceFrame(conn, response) // disconnect never cancels accepted work
 		}(unixConn, peer, request, payloadDigest, acceptedEvent, acceptedRecord, exists)
 	}
