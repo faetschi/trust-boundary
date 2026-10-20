@@ -2477,11 +2477,10 @@ func d09ContainerArgumentsAtWithEnv(config D09Config, name, imageRef string, env
 	for _, mount := range mounts {
 		vector = append(vector, "--mount", mount)
 	}
-	vector = append(vector,
-		imageRef,
-		entrypoint,
-		"/proc/self/fd/3",
-	)
+	// The image declares ENTRYPOINT, and podman runs ENTRYPOINT plus the trailing words.
+	// Naming the verified entrypoint path explicitly pins it regardless of the image config,
+	// and leaves argv[1] as the held fd3 binary the entrypoint requires.
+	vector = append(vector, "--entrypoint", entrypoint, imageRef, "/proc/self/fd/3")
 	return append(vector, arguments...)
 }
 

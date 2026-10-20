@@ -1032,7 +1032,9 @@ func d09CommandCellArgumentsDelta(plan d09DeltaPlan, config D09Config, name, cid
 		// operator reset find and remove exactly these containers (tbound trial reset).
 		args = append(args, "--label", D09NoReapContainerLabel, "--label", D09LeaseContainerLabelKey+"="+leaseID)
 	}
-	args = append(args, imageRef, entrypoint, spec.Executable)
+	// Pin the verified entrypoint explicitly; the image ENTRYPOINT would otherwise be followed by
+	// the entrypoint path again and the entrypoint requires argv[1] to be the signed command.
+	args = append(args, "--entrypoint", entrypoint, imageRef, spec.Executable)
 	return append(args, spec.Args...)
 }
 

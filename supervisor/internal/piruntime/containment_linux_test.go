@@ -1252,3 +1252,51 @@ func TestD09ProbeEnvDropsPodmanConfigurationThatIsNotThePinnedOne(t *testing.T) 
 		}
 	}
 }
+
+// The signed image declares ENTRYPOINT ["/usr/local/bin/tbound-pi-entrypoint"], so podman runs
+// the ENTRYPOINT followed by whatever comes after the image reference. The entrypoint refuses
+// unless argv[1] is the held fd3 binary (or, in command mode, the signed command).
+func TestD09ContainerArgumentsDoNotRepeatTheImageEntrypointAsAnArgument(t *testing.T) {
+	const image = "localhost/tbound/pi-cell@" + fakeD09Digest
+	config := D09Config{UID: 1000, GID: 1000, PidsMax: 128, MemoryMB: 512, CPUs: "1", SeccompProfilePath: "/etc/tbound/seccomp.json",
+		CgroupsPath: "/sys/fs/cgroup/tbound", EntrypointPath: "/usr/local/bin/tbound-pi-entrypoint", CrunPath: "/usr/bin/crun",
+		LandlockABI: 1, LandlockRulesetDigest: DigestBytes([]byte("landlock")), LandlockROPath: "/usr", LandlockRWPath: "/work",
+		CommandExecutable: "/bin/bash"}
+	bindTestD09UserNamespace(&config, 1000, 1000, 1701, 1702)
+
+	check := func(name string, args []string, wantFirst string) {
+		t.Helper()
+		imageAt := indexOfString(args, image)
+		if imageAt < 0 || imageAt+1 >= len(args) {
+			t.Fatalf("%s: image reference is missing or last: %q", name, args)
+		}
+		if args[imageAt+1] != wantFirst {
+			t.Fatalf("%s: the word after the image is %q, want %q (an ENTRYPOINT image would see the entrypoint as argv[1]):\n%q",
+				name, args[imageAt+1], wantFirst, args)
+		}
+		flag := indexOfString(args, "--entrypoint")
+		if flag < 0 || flag+1 >= imageAt || args[flag+1] != config.EntrypointPath {
+			t.Fatalf("%s: --entrypoint %s is not pinned before the image: %q", name, config.EntrypointPath, args)
+		}
+		for _, word := range args[imageAt+1:] {
+			if word == config.EntrypointPath {
+				t.Fatalf("%s: the entrypoint path is repeated after the image: %q", name, args)
+			}
+		}
+	}
+	worker := d09ContainerArgumentsAtWithEnv(config, "tbound-pi-cell-deadbeef", image, PiWorkerCellEnvironment(), nil,
+		PiWorkerCellArguments(), PiWorkerCellWorkdir, nil, "")
+	check("worker cell", worker, "/proc/self/fd/3")
+	command := d09CommandCellArguments(config, "tbound-pi-cell-cmd-x", "/tmp/cid", image, "/work-view", "view-1", "lease-1", 1, 2,
+		sessionrepo.CommandSpec{Executable: "/bin/bash", Args: []string{"-lc", "true"}})
+	check("command cell", command, "/bin/bash")
+}
+
+func indexOfString(values []string, want string) int {
+	for index, value := range values {
+		if value == want {
+			return index
+		}
+	}
+	return -1
+}
