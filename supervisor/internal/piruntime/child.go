@@ -604,10 +604,10 @@ func (p *Process) Settle(ctx context.Context) (Settlement, error) {
 			}
 			p.settleMu.Lock()
 			p.settleResult, p.settleErr = result, errors.Join(err, waitResult.observationErr)
-			close(done)
-			p.settleMu.Unlock()
 			p.recordSettlement(result)
 			p.releaseSettlementWorker()
+			close(done)
+			p.settleMu.Unlock()
 		}()
 	}
 	done := p.settleDone
@@ -743,8 +743,9 @@ func newObservationWriter(stream string, sink ObservationSink, max int) (*observ
 	ctx, cancel := context.WithCancel(context.Background())
 	w := &observationWriter{stream: stream, sink: sink, left: max, queue: make(chan Observation, observationQueueSize), ctx: ctx, cancel: cancel, done: make(chan struct{})}
 	go func() {
-		defer releaseObservationWorker()
 		defer close(w.done)
+		// Completion includes returning the worker's capacity to its owner.
+		defer releaseObservationWorker()
 		for event := range w.queue {
 			select {
 			case <-w.ctx.Done():

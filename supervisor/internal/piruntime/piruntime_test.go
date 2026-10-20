@@ -635,15 +635,27 @@ func TestRepeatedObservationStartCloseReleasesBoundedWorkers(t *testing.T) {
 }
 
 func TestWorkerPermitsRefuseSaturation(t *testing.T) {
+	observationHeld := 0
+	settlementHeld := 0
+	t.Cleanup(func() {
+		for ; observationHeld > 0; observationHeld-- {
+			releaseObservationWorker()
+		}
+		for ; settlementHeld > 0; settlementHeld-- {
+			releaseSettlementWorker()
+		}
+	})
 	for i := 0; i < maxObservationWorkers; i++ {
 		if !tryAcquireObservationWorker() {
 			t.Fatalf("observation worker permit %d was unavailable before saturation", i)
 		}
+		observationHeld++
 	}
 	if tryAcquireObservationWorker() {
+		observationHeld++
 		t.Fatal("observation worker registration exceeded the global bound")
 	}
-	for i := 0; i < maxObservationWorkers; i++ {
+	for ; observationHeld > 0; observationHeld-- {
 		releaseObservationWorker()
 	}
 
@@ -651,12 +663,73 @@ func TestWorkerPermitsRefuseSaturation(t *testing.T) {
 		if !tryAcquireSettlementWorker() {
 			t.Fatalf("settlement worker permit %d was unavailable before saturation", i)
 		}
+		settlementHeld++
 	}
 	if tryAcquireSettlementWorker() {
+		settlementHeld++
 		t.Fatal("settlement worker registration exceeded the global bound")
 	}
-	for i := 0; i < maxSettlementWorkers; i++ {
+	for ; settlementHeld > 0; settlementHeld-- {
 		releaseSettlementWorker()
+	}
+}
+
+func TestObservationCloseReleasesLastWorkerPermit(t *testing.T) {
+	held := 0
+	t.Cleanup(func() {
+		for ; held > 0; held-- {
+			releaseObservationWorker()
+		}
+	})
+	for ; held < maxObservationWorkers-1; held++ {
+		if !tryAcquireObservationWorker() {
+			t.Fatalf("observation worker permit %d unavailable", held)
+		}
+	}
+	for i := 0; i < maxObservationWorkers*4; i++ {
+		writer, err := newObservationWriter("stdout", testHostObservationSink{}, 32)
+		if err != nil {
+			t.Fatalf("observation worker %d registration: %v", i, err)
+		}
+		if tryAcquireObservationWorker() {
+			releaseObservationWorker()
+			t.Fatal("active observation writer did not retain its worker permit")
+		}
+		if err := writer.Close(context.Background()); err != nil {
+			t.Fatalf("observation worker %d close: %v", i, err)
+		}
+		if !tryAcquireObservationWorker() {
+			t.Fatalf("observation worker %d close returned before releasing its permit", i)
+		}
+		releaseObservationWorker()
+	}
+}
+
+func TestSettlementCompletionReleasesLastWorkerPermit(t *testing.T) {
+	held := 0
+	t.Cleanup(func() {
+		for ; held > 0; held-- {
+			releaseSettlementWorker()
+		}
+	})
+	for ; held < maxSettlementWorkers-1; held++ {
+		if !tryAcquireSettlementWorker() {
+			t.Fatalf("settlement worker permit %d unavailable", held)
+		}
+	}
+	for i := 0; i < maxSettlementWorkers*4; i++ {
+		process := completedProcess(NoDescendants{})
+		settlement, err := process.Settle(context.Background())
+		if err != nil || settlement.State != SettlementStopped {
+			t.Fatalf("settlement worker %d completion: result=%+v err=%v", i, settlement, err)
+		}
+		if !tryAcquireSettlementWorker() {
+			t.Fatalf("settlement worker %d completion returned before releasing its permit", i)
+		}
+		releaseSettlementWorker()
+		if got := process.LastSettlement(); got != settlement {
+			t.Fatalf("completed settlement was not published: got=%+v want=%+v", got, settlement)
+		}
 	}
 }
 
