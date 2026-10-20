@@ -1631,10 +1631,6 @@ func artifactHasRegular(artifact *os.File, name string, expected delta.ObjectSta
 	return err == nil && actual == expected
 }
 
-func artifactHasStage(artifact *os.File, name string, expected delta.ObjectState, maxBytes int64) bool {
-	return artifactHasRegular(artifact, name, expected, maxBytes)
-}
-
 func artifactMatches(artifact *os.File, name string, expected delta.ObjectState, expectedID *fileIdentity, maxBytes int64) bool {
 	if expectedID == nil {
 		return false

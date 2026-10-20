@@ -144,17 +144,6 @@ func (deniedFS) Identity() (uint32, uint32, []uint32) { return 100731, 100732, n
 func (deniedFS) LSM() string                          { return "unconfined" }
 func (deniedFS) Overflow() (uint32, uint32, bool)     { return 65534, 65534, true }
 
-// drSignProfile signs the host profile with a fresh key, writes the three files and returns the digest the
-// service journals for it.
-func drSignProfile(t *testing.T, dir, name string, profile piruntime.HostProfile) (profilePath, sigPath, keyPath, digest string) {
-	t.Helper()
-	_, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return drSignProfileWith(t, dir, name, profile, priv)
-}
-
 // drSignProfileWith signs the host profile with the given admin key.
 func drSignProfileWith(t *testing.T, dir, name string, profile piruntime.HostProfile, priv ed25519.PrivateKey) (profilePath, sigPath, keyPath, digest string) {
 	t.Helper()

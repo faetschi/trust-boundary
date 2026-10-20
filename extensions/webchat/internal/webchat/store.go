@@ -371,11 +371,6 @@ func itemPointer(item Item) *Item {
 	return &copy
 }
 
-func panelsPointer(panels Panels) *Panels {
-	copy := clonePanels(panels)
-	return &copy
-}
-
 func cloneItem(item Item) Item { return item }
 
 // initialized reports whether a Store was produced by NewStore. A zero-value

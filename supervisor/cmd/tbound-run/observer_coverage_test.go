@@ -142,17 +142,6 @@ func (f *obsFixture) record(argv []string) {
 	f.mu.Unlock()
 }
 
-func (f *obsFixture) called(kind string) bool {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	for _, c := range f.calls {
-		if len(c) > 0 && c[0] == kind {
-			return true
-		}
-	}
-	return false
-}
-
 // journalFile appends events to a fresh audit journal and returns its bytes, head and record count.
 func (f *obsFixture) journalFile(name string, events []audit.Event) ([]byte, string, int) {
 	f.t.Helper()
