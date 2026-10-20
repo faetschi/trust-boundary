@@ -130,7 +130,7 @@ func TestRetryableFailuresThenSuccessAreEachReservedAndReplay(t *testing.T) {
 	}
 	if projection.ProviderRetries != 2 || projection.ExchangeCount != 1 || projection.ProviderSequence != 1 ||
 		projection.HostCall == nil || *projection.HostCall != hooks.reservations[2] ||
-		projection.HostCallOutcomeDigest != trace.Records[6].Hash || !VerifyTranscriptProjectionCommitment(projection) ||
+		projection.HostCallOutcomeDigest != trace.Records[6].Hash || projection.HostCallRetryableFailure || !VerifyTranscriptProjectionCommitment(projection) ||
 		projection.Disposition != DispositionAwaitingHostPrompt {
 		t.Fatalf("projection = %+v", projection)
 	}
@@ -306,7 +306,7 @@ func TestJournalEndingAfterARetryableFailureReplaysToAwaitingExchange(t *testing
 	if err != nil {
 		t.Fatalf("journal ending after a retryable failure did not replay: %v", err)
 	}
-	if projection.Disposition != DispositionAwaitingProviderExchange || projection.ProviderRetries != 1 ||
+	if projection.Disposition != DispositionAwaitingProviderExchange || !projection.HostCallRetryableFailure || projection.ProviderRetries != 1 ||
 		projection.ExchangeCount != 0 || projection.HostCall == nil || *projection.HostCall != hooks.reservations[0] {
 		t.Fatalf("projection = %+v", projection)
 	}

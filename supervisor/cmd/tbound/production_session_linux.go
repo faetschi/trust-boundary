@@ -244,20 +244,22 @@ type productionPiReceipt struct {
 	ProposalCount            uint64   `json:"proposal_count"`
 	ToolSequence             []string `json:"tool_sequence"`
 	ProviderTurns            int      `json:"provider_turns"`
-	SourceGeneration         string   `json:"source_generation"`
-	FinalGeneration          string   `json:"final_generation"`
-	GenerationCount          int      `json:"generation_count"`
-	Settlement               string   `json:"settlement"`
-	ExitObserved             bool     `json:"exit_observed"`
-	ExitCode                 int      `json:"exit_code"`
-	DescendantsSettled       bool     `json:"descendants_settled"`
-	CommandRunnerProfile     string   `json:"command_runner_profile"`
-	CommandCellSettlements   int      `json:"command_cell_settlement_count"`
-	TCBProofDigest           string   `json:"tcb_proof_digest,omitempty"`
-	TCBProofJournalSequence  uint64   `json:"tcb_proof_journal_sequence,omitempty"`
-	PublicationStatus        string   `json:"publication_status"`
-	Disposition              string   `json:"disposition"`
-	PublicationTransactionID string   `json:"publication_transaction_id,omitempty"`
+	// ProviderRetries counts failed, retryable provider attempts that were repeated (each its own reserved host call).
+	ProviderRetries          int    `json:"provider_retries,omitempty"`
+	SourceGeneration         string `json:"source_generation"`
+	FinalGeneration          string `json:"final_generation"`
+	GenerationCount          int    `json:"generation_count"`
+	Settlement               string `json:"settlement"`
+	ExitObserved             bool   `json:"exit_observed"`
+	ExitCode                 int    `json:"exit_code"`
+	DescendantsSettled       bool   `json:"descendants_settled"`
+	CommandRunnerProfile     string `json:"command_runner_profile"`
+	CommandCellSettlements   int    `json:"command_cell_settlement_count"`
+	TCBProofDigest           string `json:"tcb_proof_digest,omitempty"`
+	TCBProofJournalSequence  uint64 `json:"tcb_proof_journal_sequence,omitempty"`
+	PublicationStatus        string `json:"publication_status"`
+	Disposition              string `json:"disposition"`
+	PublicationTransactionID string `json:"publication_transaction_id,omitempty"`
 	// The publication anchor of a corpus-mode interval (see production_publication_anchor_linux.go).
 	// The service fills it from its own publication journal and its host catalog entry, never from
 	// a request field. PublicationIntervalRef is the runner's IntervalRef of the trial
@@ -725,6 +727,10 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	}
 	if providerTraceErr == nil {
 		for _, record := range providerTrace.Records {
+			if record.Event.Kind == "provider_exchange_retryable_failure" {
+				receipt.ProviderRetries++
+				continue
+			}
 			if record.Event.Kind != "provider_exchange" {
 				continue
 			}

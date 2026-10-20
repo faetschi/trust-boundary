@@ -239,7 +239,10 @@ type TranscriptProjection struct {
 	RetiredCall                *ProviderCallRetirementBinding `json:"retired_call,omitempty"`
 	HostCall                   *HostCallBinding               `json:"host_call,omitempty"`
 	HostCallOutcomeDigest      string                         `json:"host_call_outcome_digest,omitempty"`
-	ProjectionDigest           string                         `json:"projection_digest"`
+	// HostCallRetryableFailure is true when HostCall was a failed attempt closed by a retryable-failure
+	// record, not by an exchange.
+	HostCallRetryableFailure bool   `json:"host_call_retryable_failure,omitempty"`
+	ProjectionDigest         string `json:"projection_digest"`
 }
 
 const transcriptProjectionSchema = "tbound-provider-transcript-projection/v1"
@@ -304,6 +307,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	var pendingHostCall *hostCallReservationEvidence
 	var lastHostCall *HostCallBinding
 	var lastHostCallOutcomeDigest string
+	var lastHostCallRetryable bool
 	var exchangeRecord audit.Record
 	var exchangeSequence uint64
 	var retiredCall *ProviderCallRetirementBinding
@@ -381,6 +385,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			binding := pendingHostCall.Binding
 			lastHostCall = &binding
 			lastHostCallOutcomeDigest = record.Hash
+			lastHostCallRetryable = true
 			pendingHostCall = nil
 			turnRetries++
 			totalRetries++
@@ -474,6 +479,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 				binding := pendingHostCall.Binding
 				lastHostCall = &binding
 				lastHostCallOutcomeDigest = record.Hash
+				lastHostCallRetryable = false
 				pendingHostCall = nil
 			}
 			if hasCall {
@@ -710,7 +716,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 		ProviderSequence: providerSequence, EventCount: ordinal, ProviderJournalRecordCount: uint64(len(trace.Records)), ExchangeCount: exchangeCount, ProviderRetries: totalRetries,
 		CapturedCallCount: callCount, DecisionCount: decisionCount, ResultCount: resultCount,
 		HistoryDigest: digestDomain("tbound/provider-history/v1", request.Body()), Disposition: dispositionForReplayState(state, retiredCall != nil),
-		HostCall: lastHostCall, HostCallOutcomeDigest: lastHostCallOutcomeDigest,
+		HostCall: lastHostCall, HostCallOutcomeDigest: lastHostCallOutcomeDigest, HostCallRetryableFailure: lastHostCallRetryable,
 	}
 	if state == replayAwaitDecision && pending != nil {
 		binding, err := providerCallRetirementBinding(cfg.WorkflowID, cfg.ConversationID, cfg.ProfileID,

@@ -518,6 +518,8 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 		}
 		reservation.Disposition = workflowrecovery.HostCallTerminal
 		reservation.OutcomeDigest = expectedHostCall.OutcomeDigest
+		// The settled attempt is a retryable failure exactly when the replayed journal closed it that way.
+		reservation.RetryableFailure = projection.Provider.HostCallRetryableFailure
 		if projection.Provider.Disposition == providerbridge.DispositionAwaitingGateDecision &&
 			projection.Provider.PendingCall != nil {
 			if projection.Provider.HostCall == nil ||

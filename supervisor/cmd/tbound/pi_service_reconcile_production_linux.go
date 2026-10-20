@@ -411,7 +411,7 @@ func providerJournalHasUnknownExchange(trace audit.Trace) bool {
 }
 
 // providerJournalUndisposed counts the host-call reservations of a provider-bridge journal that
-// no later exchange (provider_exchange or provider_exchange_unknown) disposes of.
+// no later exchange (provider_exchange, provider_exchange_unknown or a settled provider_exchange_retryable_failure) disposes of.
 func providerJournalUndisposed(trace audit.Trace) int {
 	undisposed, open := 0, false
 	for _, record := range trace.Records {
@@ -421,7 +421,7 @@ func providerJournalUndisposed(trace audit.Trace) int {
 				undisposed++
 			}
 			open = true
-		case "provider_exchange", "provider_exchange_unknown":
+		case "provider_exchange", "provider_exchange_unknown", "provider_exchange_retryable_failure":
 			open = false
 		}
 	}

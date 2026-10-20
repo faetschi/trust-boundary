@@ -59,6 +59,16 @@ type providerExchangeEvidence struct {
 	HostCall *providerbridge.HostCallBinding `json:"host_call,omitempty"`
 }
 
+type providerRetryEvidence struct {
+	WorkflowID string                         `json:"workflow_id"`
+	Turn       uint64                         `json:"turn"`
+	Attempt    uint64                         `json:"attempt"`
+	Request    providerRequestEvidence        `json:"request"`
+	StatusCode int                            `json:"status_code"`
+	Response   []byte                         `json:"response"`
+	HostCall   providerbridge.HostCallBinding `json:"host_call"`
+}
+
 type providerHostCallReservationEvidence struct {
 	WorkflowID     string                         `json:"workflow_id"`
 	ConversationID string                         `json:"conversation_id"`
@@ -800,6 +810,22 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 			return governedCapture{}, ErrGovernedSessionEvidence
 		}
 		providerOrdinal = record.Sequence
+		if pendingHostCall != nil && record.Event.Kind == "provider_exchange_retryable_failure" {
+			// A failed, retryable attempt closes exactly the open reservation (see providerbridge/retry.go).
+			if err := verifyProviderEventID(record, a.conversationID, "exchange-retry", providerOrdinal); err != nil {
+				return governedCapture{}, err
+			}
+			var retry providerRetryEvidence
+			if err := unmarshalGovernedJSON(record.Event.Data, &retry); err != nil || retry.WorkflowID != a.workflowID ||
+				retry.Turn != pendingHostCall.Turn || retry.Turn != providerTurn+1 || retry.HostCall != pendingHostCall.Binding ||
+				!reflect.DeepEqual(retry.Request, pendingHostCall.Request) ||
+				providerRequestEvidenceDigest(retry.Request) != pendingHostCall.Binding.RequestDigest ||
+				!providerbridge.RetryableProviderFailure(retry.StatusCode, retry.Response) {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
+			pendingHostCall = nil
+			continue
+		}
 		if pendingHostCall != nil && record.Event.Kind != "provider_exchange" {
 			if record.Event.Kind == "provider_exchange_unknown" {
 				if err := verifyProviderEventID(record, a.conversationID, "exchange", providerOrdinal); err != nil {

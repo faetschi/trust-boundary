@@ -238,17 +238,23 @@ func verifyWorkflowVerticalCapturedOperationMismatches(t *testing.T, ctx context
 }
 
 func TestWorkflowVerticalFreshPromptMultiTurnStoreTerminal(t *testing.T) {
-	runWorkflowVertical(t, false)
+	runWorkflowVertical(t, false, 0)
+}
+
+// Two retryable provider failures precede the first read: each attempt is its own reserved host call
+// and token reservation, settled in the ledger, and the run then proceeds exactly as without them.
+func TestWorkflowVerticalRetriesRetryableProviderFailuresBeforeTheFirstRead(t *testing.T) {
+	runWorkflowVertical(t, true, 2)
 }
 
 // A real launch journals the worker's TCB proof in the Store journal after the workflow checkpoint
 // and before the first provider exchange, so the first exchange sees the journal one record past
 // the checkpointed count. The checkpoint must absorb exactly that record.
 func TestWorkflowVerticalFirstTurnAfterTheLaunchProofRecord(t *testing.T) {
-	runWorkflowVertical(t, true)
+	runWorkflowVertical(t, true, 0)
 }
 
-func runWorkflowVertical(t *testing.T, launchProof bool) {
+func runWorkflowVertical(t *testing.T, launchProof bool, retries int) {
 	ctx := context.Background()
 	root := privateGovernedTestRoot(t)
 	sourcePath, storePath, adminPath := filepath.Join(root, "source"), filepath.Join(root, "store"), filepath.Join(root, "admin")
@@ -419,7 +425,7 @@ func runWorkflowVertical(t *testing.T, launchProof bool) {
 	}
 	taskDigest := digestBytes([]byte("vertical task source identity"))
 	limits := workflowrecovery.Limits{MaxPreEffectRetries: 2, MaxCleanRestarts: 2,
-		MaxHostCalls: 4, MaxTokens: 2048, Deadline: deadline}
+		MaxHostCalls: uint64(4 + 2*retries), MaxTokens: uint64(2048 + 1024*retries), Deadline: deadline}
 	pins := workflowrecovery.Pins{
 		WorkflowID: workflowVerticalID, SessionID: workflowVerticalSessionID,
 		RecoveryGeneration: 1, OwnerEpoch: 1,
@@ -493,10 +499,15 @@ func runWorkflowVertical(t *testing.T, launchProof bool) {
 	config := providerbridge.Config{WorkflowID: workflowVerticalID, ConversationID: workflowVerticalConversation,
 		ProfileID: workflowVerticalProfile, InitialGenerationID: baseline.ID(), InitialTreeDigest: baseline.TreeDigest(),
 		SystemPrompt: governedReplaySystem, DeveloperPrompt: governedReplayDeveloper}
-	turns := []providerbridge.DevelopmentProviderTurn{
+	turns := make([]providerbridge.DevelopmentProviderTurn, 0, 2+retries)
+	for attempt := 0; attempt < retries; attempt++ {
+		turns = append(turns, providerbridge.DevelopmentProviderTurn{FailStatus: 503 - attempt%2,
+			FailBody: `{"error":{"type":"server_error","message":"Upstream request failed: Endpoint is unavailable."}}`})
+	}
+	turns = append(turns, []providerbridge.DevelopmentProviderTurn{
 		{ResponseID: "vertical-response-1", CallID: "vertical-tool-call-1", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
 		{ResponseID: "vertical-response-2", CallID: "vertical-tool-call-2", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
-	}
+	}...)
 	conversation, err := authority.newProviderConversation(config, func(config providerbridge.Config,
 		journal *audit.Journal) (*providerbridge.Conversation, error) {
 		return providerbridge.NewDevelopmentOfflineConversation(config, journal, turns)
@@ -543,7 +554,7 @@ func runWorkflowVertical(t *testing.T, launchProof bool) {
 			reservation.Binding.TokenUpperBound != 1024 || reservation.CapturedCall == nil ||
 			reservation.CapturedCall.Disposition != workflowrecovery.CapturedCallAvailable ||
 			reservation.CapturedCall.ToolCallID != expectedToolCall ||
-			checkpoint.Counters.HostCalls != uint64(index*2+1) || checkpoint.Counters.Tokens != uint64(index+1)*1024 ||
+			checkpoint.Counters.HostCalls != uint64(index*2+1+retries) || checkpoint.Counters.Tokens != uint64(index+1+retries)*1024 ||
 			checkpoint.Pins.PendingCallDisposition != workflowrecovery.PendingCallCaptured ||
 			checkpoint.Pins.ProviderDisposition != workflowrecovery.DispositionAwaitingGateDecision ||
 			!priorEffectSettled {
@@ -575,7 +586,7 @@ func runWorkflowVertical(t *testing.T, launchProof bool) {
 			checkpoint.Pins.EffectReservation.Disposition != workflowrecovery.EffectReservationTerminal ||
 			checkpoint.Pins.PendingCallDisposition != workflowrecovery.PendingCallTerminal ||
 			checkpoint.Pins.ProviderDisposition != workflowrecovery.DispositionAwaitingProviderExchange ||
-			checkpoint.Counters.HostCalls != uint64((index+1)*2) || checkpoint.Counters.Tokens != uint64(index+1)*1024 {
+			checkpoint.Counters.HostCalls != uint64((index+1)*2+retries) || checkpoint.Counters.Tokens != uint64(index+1+retries)*1024 {
 			t.Fatalf("provider result was not checkpointed after the terminal Store outcome on turn %d: pins=%+v counters=%+v",
 				index+1, checkpoint.Pins, checkpoint.Counters)
 		}
@@ -619,6 +630,19 @@ func runWorkflowVertical(t *testing.T, launchProof bool) {
 				t.Fatalf("rejected duplicate authorization changed durable state for %s", expectedToolCall)
 			}
 		}
+	}
+	providedTrace, traceErr := providerJournal.Trace()
+	if traceErr != nil {
+		t.Fatal(traceErr)
+	}
+	retryRecords := 0
+	for _, record := range providedTrace.Records {
+		if record.Event.Kind == "provider_exchange_retryable_failure" {
+			retryRecords++
+		}
+	}
+	if retryRecords != retries {
+		t.Fatalf("provider journal holds %d retryable-failure records, want %d", retryRecords, retries)
 	}
 	if observer.seen != 2 {
 		t.Fatalf("observed Store-terminal-before-provider-result checkpoints = %d, want 2", observer.seen)
