@@ -11,6 +11,8 @@ bootstrap or capability probe is not evidence of containment or G1.
 - The official Pi CLI experiment pin is 0.87.1. Pi's documented Node minimum
   is 22.19; the reproducibility pin is separate from that minimum.
 - The guest setup pins Go 1.27.1.
+- GNU `make` is installed and held by the guarded guest provisioner; the
+  documented `make build` install path needs it.
 
 The Pi CLI is installed in the Linux user environment. TBound no longer intends
 to maintain a private Node or SDK package tree. The CLI/RPC extension path is
@@ -37,6 +39,21 @@ For the existing reference VM, use the start and resume steps in
 review [infra/repro/README.md](../infra/repro/README.md) and the
 [Hyper-V host runbook](../infra/hyperv/SETUP.md). The automated creation path
 has not been qualified on a clean host.
+
+## Linux host with a QEMU guest
+
+On a Linux host without Hyper-V (including WSL2), create a cloud-image VM with:
+
+```sh
+bash infra/repro/bootstrap-qemu-linux.sh --vm-dir "$HOME/.local/share/tbound-vm"
+```
+
+The script uses KVM when it can open `/dev/kvm` and otherwise falls back to
+TCG, which is much slower. It installs the Ubuntu HWE kernel when available,
+runs the guest bootstrap, installs Pi and TBound, and runs the native fixture
+and install verification. Review the script before running it; it creates a
+new VM and does not delete an existing one. See
+[infra/repro/README.md](../infra/repro/README.md#path-c-qemu-vm-on-a-linux-host).
 
 ## What a probe means
 

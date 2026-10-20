@@ -19,10 +19,17 @@ Two local fixtures are available on Linux; neither is claim-bearing. The
 Go-only fixture exercises the native lifecycle without launching Pi:
 
 ```sh
+mkdir -m 700 -p "$HOME/.cache/tbound-tmp"
+export TMPDIR="$HOME/.cache/tbound-tmp"
 cd supervisor
 go build -o /tmp/tbound ./cmd/tbound
 /tmp/tbound serve --pi --native-fixture
 ```
+
+The fixture's audit journal requires every ancestor of its temporary directory
+to be non-writable by group/other. The default `/tmp` is world-writable, so set
+a private `TMPDIR` as shown; a bare `/tmp/tbound serve --pi --native-fixture`
+fails closed with `writable ancestor mode 0777`.
 
 The offline Pi CLI fixture starts the official CLI (Pi 0.87.1, Node 24.21.0
 pin) with an isolated extension and a scripted provider. Its environment and

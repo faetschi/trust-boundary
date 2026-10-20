@@ -33,14 +33,35 @@ if [ -r /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
 fi
 
 # cgroup v2 delegation + kill.
-if [ -r /sys/fs/cgroup/cgroup.controllers ]; then
+if [ -e /sys/fs/cgroup/cgroup.controllers ]; then
   ctrl="$(cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null | tr -s ' ')"
   [ -n "$ctrl" ] && ok cgroup-controllers "$ctrl" || bad cgroup-controllers "empty (no delegation)"
 else
   bad cgroup-v2 "/sys/fs/cgroup/cgroup.controllers missing (not cgroup v2)"
 fi
-if [ -e /sys/fs/cgroup/cgroup.kill ]; then ok cgroup-kill present; else bad cgroup-kill "not present at root; a delegated subtree with cgroup.kill is required"; fi
-if [ -r /sys/fs/cgroup/cgroup.events ]; then ok cgroup-events "populated=$(grep -m1 populated /sys/fs/cgroup/cgroup.events 2>/dev/null | awk '{print $2}')"; else bad cgroup-events "unavailable (recursive populated accounting is required)"; fi
+# /sys/fs/cgroup itself may not expose cgroup.kill on a systemd host; the
+# delegated scope for this shell is the useful readiness signal. Prefer the
+# current cgroup and fall back to the hierarchy root.
+cgroup_rel="$(awk -F: '$1 == "0" { print $3; exit }' /proc/self/cgroup 2>/dev/null || true)"
+if [ -z "$cgroup_rel" ] || [ "$cgroup_rel" = "/" ]; then
+  cgroup_dir=/sys/fs/cgroup
+else
+  cgroup_dir="/sys/fs/cgroup$cgroup_rel"
+fi
+if [ -e "$cgroup_dir/cgroup.kill" ]; then
+  ok cgroup-kill "present in current cgroup: $cgroup_dir"
+elif [ -e /sys/fs/cgroup/cgroup.kill ]; then
+  ok cgroup-kill "present at /sys/fs/cgroup"
+else
+  bad cgroup-kill "not present in the current cgroup or at the hierarchy root; a delegated subtree with cgroup.kill is required"
+fi
+if [ -r "$cgroup_dir/cgroup.events" ]; then
+  ok cgroup-events "current cgroup populated=$(grep -m1 populated "$cgroup_dir/cgroup.events" 2>/dev/null | awk '{print $2}')"
+elif [ -r /sys/fs/cgroup/cgroup.events ]; then
+  ok cgroup-events "root populated=$(grep -m1 populated /sys/fs/cgroup/cgroup.events 2>/dev/null | awk '{print $2}')"
+else
+  bad cgroup-events "unavailable in the current cgroup (recursive populated accounting is required)"
+fi
 
 # Containment + image tooling.
 for bin in podman crun cosign; do

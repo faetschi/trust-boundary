@@ -1,7 +1,7 @@
 # Reproducible evaluation-environment bootstrap
 
 These scripts make it simple for another researcher to host the tbound
-evaluation Linux environment in two supported ways:
+evaluation Linux environment in three supported ways:
 
 - **Path A — native Linux** (Ubuntu 24.04 amd64, bare metal or any hypervisor):
   `bootstrap-linux.sh` prepares the environment and runs the capability probe.
@@ -10,6 +10,11 @@ evaluation Linux environment in two supported ways:
   or an existing VHDX, enables SSH key auth, and runs the same
   `bootstrap-linux.sh` inside the guest. The local ISO preparation recipe is
   in [CLEAN-GUEST-QUALIFICATION.md](CLEAN-GUEST-QUALIFICATION.md).
+- **Path C — Linux QEMU VM** (a Linux host that cannot use Hyper-V, including
+  WSL2): `bootstrap-qemu-linux.sh` creates an Ubuntu 24.04 cloud-image VM,
+  installs the HWE kernel when available, runs the same guest bootstrap, and
+  installs/smoke-tests TBound. KVM is used when usable; otherwise it falls back
+  to TCG with a clear performance warning.
 
 `probe-host.ps1` turns `infra/guest/probe-capabilities.sh` (reused by path,
 never modified) into a one-command capability report for any of those hosts,
@@ -45,7 +50,10 @@ the default VM name already exists.
   [CLEAN-GUEST-QUALIFICATION.md](CLEAN-GUEST-QUALIFICATION.md) for the
   artifact verification, the manual local ISO-to-VHDX procedure and qualification
   guidance. `GoldenVhdx` reuses the resulting existing disk.
-- **Both paths:** the `infra/guest/probe-capabilities.sh` script from this
+- **Path C:** Linux amd64 (including WSL2) with `qemu-system-x86`, `qemu-img`,
+  `cloud-image-utils`, `curl`, and OpenSSH. No sudo is required on the host;
+  the guest bootstrap uses the cloud-init account's passwordless sudo.
+- **All paths:** the `infra/guest/probe-capabilities.sh` script from this
   repository (the bootstrap resolves it relative to its own location, so copy
   the whole `infra/` tree, not just `infra/repro/`).
 
@@ -98,6 +106,26 @@ with no unexpected UNVERIFIED; `4` unexpected UNVERIFIED when there is no
 FAIL. HWE may provide ABI 8 on an older GA installation, but the live ABI must
 be measured after reboot. `cgroup.kill-write` and `uidmap-helpers` are
 UNVERIFIED by design of the read-only probe.
+
+## Path C: QEMU VM on a Linux host
+
+```sh
+# from the checkout; the host needs QEMU, cloud-image-utils, curl, and OpenSSH
+bash infra/repro/bootstrap-qemu-linux.sh --vm-dir "$HOME/.local/share/tbound-vm"
+```
+
+The script downloads and SHA-256 verifies the Ubuntu 24.04 cloud image, creates
+a cloud-init seed and a 40 GiB overlay, boots the VM with KVM when usable (TCG
+otherwise), installs `linux-generic-hwe-24.04` when available, runs
+`bootstrap-linux.sh` in the guest, installs the pinned Pi CLI, builds and
+installs TBound, and runs the native fixture plus `make verify`. It stores the
+VM, SSH key, console log, and guest provisioning logs under `--vm-dir`.
+
+Re-running with `--start`, `--stop`, `--ssh`, or `--status` manages the existing
+VM. The default memory is 3 GiB because TCG hosts are often memory-constrained;
+the script adds a 2 GiB guest swapfile. This path installs the application and
+development fixtures only. The signed host profile, D09 image, and managed
+service still require the operator signing session.
 
 ## Path B: Hyper-V VM from Windows
 
@@ -201,6 +229,8 @@ summary rather than treating the raw exit code alone as a capability result.
   image identity and offline qualification worksheet; not a G1 registration.
 
 - `bootstrap-linux.sh` — native Linux bootstrap (idempotent, fail-closed).
+- `bootstrap-qemu-linux.sh` — Linux-host QEMU VM creation and guest provisioning.
+- `test_bootstrap_package_status.sh` — regression for held-package detection.
 - `bootstrap-hyperv-windows.ps1` — Hyper-V VM creation and guest provisioning.
 - `probe-host.ps1` — one-command capability report (SSH / WSL / saved capture).
 - [DISPOSABLE-CGROUP-TEARDOWN.md](DISPOSABLE-CGROUP-TEARDOWN.md) — operator procedure and trust boundary for the destructive `cgroup_teardown_witness.py` component probe; not qualification evidence.

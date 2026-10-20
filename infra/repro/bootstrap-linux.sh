@@ -35,6 +35,15 @@ say() { printf '%s\n' "$*"; }
 step() { printf '\n== %s ==\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
 
+# package_installed accepts both ordinary installed ("ii") and held installed
+# ("hi") dpkg states. The guarded provisioner holds its runtime/build packages,
+# so a second bootstrap run must not mistake a held package for a missing one.
+package_installed() {
+  local status
+  status=$(dpkg-query -W -f='${db:Status-Abbrev}' "$1" 2>/dev/null) || return 1
+  [[ "$status" == [ih]i* ]]
+}
+
 LOG_FILE=/var/log/tbound-repro-bootstrap.log
 PROBE_OUTPUT=
 COSIGN_TMP_CLEANUP=
@@ -220,24 +229,24 @@ if [[ -d "$NODE_DEST" && -d "$GO_DEST" ]]; then
   say "Pinned toolchains verified: Node v${NODE_VERSION} at $NODE_DEST, Go ${GO_VERSION} at $GO_DEST"
 
   MISSING_PKGS=()
-  for pkg_cmd in 'podman:podman' 'crun:crun' 'uidmap:newuidmap' 'slirp4netns:slirp4netns' 'fuse-overlayfs:fuse-overlayfs' 'libseccomp2:' 'ca-certificates:' 'curl:curl' 'xz-utils:' 'gnupg:' 'python3:python3'; do
+  for pkg_cmd in 'podman:podman' 'crun:crun' 'uidmap:newuidmap' 'slirp4netns:slirp4netns' 'fuse-overlayfs:fuse-overlayfs' 'libseccomp2:' 'ca-certificates:' 'curl:curl' 'xz-utils:' 'gnupg:' 'python3:python3' 'make:make'; do
     pkg=${pkg_cmd%%:*}
     cmd=${pkg_cmd#*:}
     if [[ -n "$cmd" ]]; then
       command -v "$cmd" >/dev/null 2>&1 || MISSING_PKGS+=("$pkg")
     else
-      dpkg-query -W -f='${db:Status-Abbrev}' "$pkg" 2>/dev/null | grep -q '^ii' || MISSING_PKGS+=("$pkg")
+      package_installed "$pkg" || MISSING_PKGS+=("$pkg")
     fi
   done
   if ((${#MISSING_PKGS[@]} > 0)); then
-    say "Runtime packages are missing: ${MISSING_PKGS[*]}"
+    say "Required packages or commands are missing: ${MISSING_PKGS[*]}"
     say 'This bootstrap does not run APT while the pinned toolchain directories already exist,'
     say 'because infra/guest/setup-ubuntu-24.04.sh performs the guarded APT validation and would'
     say 'refuse those existing directories. Install the missing packages with a reviewed command, for example:'
     say "  sudo apt-get install -y --no-install-recommends ${MISSING_PKGS[*]}"
-    die 'install the missing runtime packages manually, then re-run this bootstrap'
+    die 'install the missing runtime packages and build commands manually, then re-run this bootstrap'
   fi
-  say 'Podman, crun, uidmap and helper packages are present.'
+  say 'Podman, crun, uidmap, helper packages, and make are present.'
 else
   if [[ -d "$NODE_DEST" || -d "$GO_DEST" ]]; then
     die "only one pinned toolchain directory exists ($NODE_DEST, $GO_DEST); inspect and resolve manually before bootstrapping"

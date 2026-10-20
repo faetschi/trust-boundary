@@ -34,7 +34,9 @@ credentials in fixtures or source control.
 
 ## Build and install TBound from source
 
-Go 1.27.1 is the current reproducibility pin. From a Linux checkout:
+Go 1.27.1 is the current reproducibility pin. The documented build uses GNU
+`make`; the guarded guest provisioner installs and holds it. From a Linux
+checkout:
 
 ```sh
 make build VERSION=dev
@@ -63,8 +65,12 @@ an ignored local Windows executable.
 
 For the existing reference VM, follow [launch.md](launch.md) to start and
 connect to Ubuntu. For a new host, read [reproducible-setup.md](reproducible-setup.md)
-and the linked infrastructure runbooks first. Those procedures are prototypes
-and have not been qualified end to end on a clean machine.
+and the linked infrastructure runbooks first. On a Linux host that only has
+QEMU (including a WSL2 host with KVM unavailable), use
+`infra/repro/bootstrap-qemu-linux.sh`; it creates a cloud-image VM, installs the
+HWE kernel when available, runs the guest bootstrap, and installs/smoke-tests
+TBound. These procedures are prototypes and have not been qualified end to end
+on a clean machine.
 
 ## Doctor
 

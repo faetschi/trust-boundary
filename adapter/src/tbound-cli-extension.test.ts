@@ -17,6 +17,19 @@ const token = "ab".repeat(32);
 const descriptorProfile = "tbound-pi-cli-fdmap/v1;exec=3;exposure=4;bootstrap=5;ipc=6;provider=7;events=8;bundle=9;control=0";
 const sourceRoot = dirname(fileURLToPath(import.meta.url));
 
+// The default keeps CI strict. Emulated or heavily loaded development VMs can
+// raise every bounded wait with TBOUND_TEST_TIMEOUT_MS without changing the
+// fixture's assertions or defaults.
+const withinTimeoutMs = (() => {
+  const raw = process.env.TBOUND_TEST_TIMEOUT_MS;
+  if (raw === undefined || raw === "") return 15_000;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`TBOUND_TEST_TIMEOUT_MS must be a positive integer; got ${JSON.stringify(raw)}`);
+  }
+  return parsed;
+})();
+
 function findPi(): string | undefined {
   // This integration path exercises Linux inherited descriptors, so a Windows
   // npm .cmd shim is neither an eligible CLI nor evidence of the test runtime.
@@ -131,7 +144,7 @@ class RpcReader {
   }
 }
 
-async function within<T>(promise: Promise<T>, label: string, milliseconds = 15_000): Promise<T> {
+async function within<T>(promise: Promise<T>, label: string, milliseconds = withinTimeoutMs): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
