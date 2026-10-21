@@ -12,7 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TBOUND_REQUIRE_PI_CLI_INTEGRATION: "1"
-      TBOUND_PI_CLI_BIN: ${{ runner.temp }}/tbound-pi-cli/bin/pi
     steps:
       - uses: actions/checkout@v4
 
@@ -47,6 +46,18 @@ jobs:
               path = os.path.dirname(path)
           PY
           printf 'TMPDIR=%s\n' "$TMPDIR" >> "$GITHUB_ENV"
+          printf 'TBOUND_PI_CLI_BIN=%s/tbound-pi-cli/bin/pi\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+
+      - name: Offline setup regressions (mock/parser only)
+        run: |
+          umask 077
+          bash infra/repro/test_bootstrap_package_status.sh
+          bash infra/repro/test_cgroup_reuse_check.sh
+          bash infra/repro/test_thesis_assets.sh
+
+      - name: Windows tool manifest mock (parser only; not Windows execution)
+        shell: pwsh
+        run: ./infra/repro/test_windows_tool_manifest.ps1
 
       - name: Official Pi runtime closure regressions
         run: python3 -m unittest discover -s scripts -p 'test_prepare_official_pi_runtime.py' -v
