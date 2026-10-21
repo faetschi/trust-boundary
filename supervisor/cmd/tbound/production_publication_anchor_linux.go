@@ -238,14 +238,14 @@ func verifyReceiptPublicationAnchor(receipt productionPiReceipt, entry piService
 	}
 	ref, ok := admissionIntervalRef(entry)
 	if !ok || ref != receipt.PublicationIntervalRef {
-		return ErrPiWorkflowCatalog
+		return fmt.Errorf("%w: receipt publication interval is not this admission's", ErrPiWorkflowCatalog)
 	}
 	anchor, err := publicationAnchorFor(trace, entry.WorkflowID, ref)
 	if err != nil {
 		return errors.Join(ErrPiWorkflowCatalog, err)
 	}
 	if anchor.Head != receipt.PublicationJournalHead || anchor.Count != receipt.PublicationJournalRecordCount {
-		return ErrPiWorkflowCatalog
+		return fmt.Errorf("%w: receipt publication head or count differs from the journal anchor", ErrPiWorkflowCatalog)
 	}
 	return nil
 }

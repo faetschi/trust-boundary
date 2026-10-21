@@ -657,6 +657,13 @@ func (c *piServiceWorkflowCatalog) admissionEntry(admissionHash string) (piServi
 	return clonePiServiceWorkflowEntry(entry), true
 }
 
+// settlementRefusal names the check of a prior's settlement verification that refused it. The
+// service logs the cause of a prior-workflow-unsettled refusal, and the name says which check it
+// was; errors.Is still matches err.
+func settlementRefusal(check string, err error) error {
+	return fmt.Errorf("settlement check %s: %w", check, err)
+}
+
 // verifyCompletedServiceRequest verifies that a completed prior request is settled. The prior is
 // checked against the bindings it ran under, as its own records name them: the service config and
 // registration of its accepted record, the host profile and template of its receipt, the registration
@@ -667,7 +674,7 @@ func (c *piServiceWorkflowCatalog) admissionEntry(admissionHash string) (piServi
 func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequest(ctx context.Context, state piServiceRequestState,
 	verified *piruntime.VerifiedD09ManagedLiveRoot, template piruntime.D09CellTemplate, profile piruntime.HostProfile) error {
 	if ctx == nil || ctx.Err() != nil || verified == nil {
-		return ErrPiServiceUnresolvedPrior
+		return settlementRefusal("service-context", ErrPiServiceUnresolvedPrior)
 	}
 	entry, receipt, err := c.completedPriorAdmission(state)
 	if err != nil {
@@ -678,46 +685,46 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequest(ctx context.Con
 	}
 	registration := verified.Registration()
 	if registration.Digest != template.ManagedLiveRootRegistrationDigest {
-		return ErrPiWorkflowCatalog
+		return settlementRefusal("current-registration-template", ErrPiWorkflowCatalog)
 	}
 	root, err := verified.DuplicateRoot()
 	if err != nil {
-		return errors.Join(ErrPiWorkflowCatalog, err)
+		return settlementRefusal("live-root-open", errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	defer root.Close()
 	if err := verified.Revalidate(ctx, root); err != nil {
-		return errors.Join(ErrPiWorkflowCatalog, err)
+		return settlementRefusal("live-root-revalidate", errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	rootDescriptor, err := measureManagedLiveRootDescriptor(root)
 	if err != nil || !managedRegistrationMatchesDescriptor(registration, rootDescriptor) {
-		return errors.Join(ErrManagedLiveRootUnavailable, err)
+		return settlementRefusal("live-root-descriptor", errors.Join(ErrManagedLiveRootUnavailable, err))
 	}
 	rootID := workflow.RootIdentity{Device: rootDescriptor.Device, Inode: rootDescriptor.Inode}
 	if rootID == (workflow.RootIdentity{}) {
-		return ErrManagedLiveRootUnavailable
+		return settlementRefusal("live-root-identity", ErrManagedLiveRootUnavailable)
 	}
 	drainVerifier := catalogOwnerDrainVerifier{catalog: c, cgroupRoot: template.CgroupsPath,
 		cgroupRootDigest: profile.CgroupRootDigest, containment: profile.ContainmentProfile,
 		settlement: profile.SettlementProfile}
 	boundary, err := workflowrecovery.NewLinuxHostBoundary(c.ownerRoot(), uint32(os.Geteuid()), drainVerifier, c)
 	if err != nil {
-		return errors.Join(ErrPiWorkflowCatalog, err)
+		return settlementRefusal("owner-boundary", errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	protectedRoot, err := workflowrecovery.OpenExistingProtectedRoot(piServiceWorkflowRootDBPath, c.ownerRoot(), boundary)
 	if err != nil {
-		return errors.Join(ErrPiWorkflowCatalog, err)
+		return settlementRefusal("protected-root-open", errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	defer protectedRoot.Close()
 	view, err := workflowrecovery.LoadSettledCheckpoint(ctx, entry.OwnerDBPath, protectedRoot, entry.WorkflowID)
 	if err != nil {
-		return errors.Join(ErrPiWorkflowCatalog, err)
+		return settlementRefusal("settled-checkpoint-load", errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	checkpoint := view.Checkpoint
 	pins := checkpoint.Pins
 	if view.Digest != checkpoint.ComputedCheckpointDigest || view.OwnerStoreIdentity != entry.OwnerStoreIdentity ||
 		view.OwnerStoreIdentity.Path != entry.OwnerDBPath || !validBareWorkflowDigest(entry.RootIdentityDigest) ||
 		pins.WorkflowID != entry.WorkflowID || checkpoint.Limits != entry.Limits {
-		return ErrPiWorkflowCatalog
+		return settlementRefusal("settled-checkpoint-admission", ErrPiWorkflowCatalog)
 	}
 	return c.verifyCompletedServiceRequestPins(ctx, state, entry, receipt, view, registration, rootDescriptor, rootID,
 		drainVerifier, template)
@@ -736,11 +743,11 @@ func (c *piServiceWorkflowCatalog) completedPriorAdmission(state piServiceReques
 		state.terminal.SchemaVersion != piServiceResponseSchema || state.terminal.RequestID != state.accepted.RequestID ||
 		state.terminal.Status != "completed" || len(state.terminal.Receipt) == 0 ||
 		!validDigestText(state.accepted.ConfigDigest) || !validDigestText(state.accepted.RegistrationID) {
-		return piServiceWorkflowEntry{}, productionPiReceipt{}, ErrPiServiceUnresolvedPrior
+		return piServiceWorkflowEntry{}, productionPiReceipt{}, settlementRefusal("prior-request-records", ErrPiServiceUnresolvedPrior)
 	}
 	var persistedAccepted piServiceRequestAcceptedEvent
 	if err := unmarshalGovernedJSON(state.acceptedRecord.Event.Data, &persistedAccepted); err != nil || persistedAccepted != state.accepted {
-		return piServiceWorkflowEntry{}, productionPiReceipt{}, errors.Join(ErrPiWorkflowCatalog, err)
+		return piServiceWorkflowEntry{}, productionPiReceipt{}, settlementRefusal("prior-accepted-record", errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	entry, ok := c.admissionEntry(state.acceptedRecord.Hash)
 	if !ok || entry.AdmissionRecordHash != state.acceptedRecord.Hash || entry.AdmissionSequence != state.acceptedRecord.Sequence ||
@@ -750,7 +757,7 @@ func (c *piServiceWorkflowCatalog) completedPriorAdmission(state piServiceReques
 		entry.ServiceConfigDigest != state.accepted.ConfigDigest || entry.ServiceRegistrationID != state.accepted.RegistrationID ||
 		!entry.CheckpointBound || !entry.FreshAuthorizationUsed ||
 		requireWorkflowCatalogPath(entry, piServiceConfig{WorkflowOwnerStoreRoot: c.ownerRoot()}) != nil {
-		return piServiceWorkflowEntry{}, productionPiReceipt{}, ErrPiWorkflowCatalog
+		return piServiceWorkflowEntry{}, productionPiReceipt{}, settlementRefusal("prior-catalog-admission", ErrPiWorkflowCatalog)
 	}
 	var receipt productionPiReceipt
 	if err := unmarshalGovernedJSON(state.terminal.Receipt, &receipt); err != nil ||
@@ -762,7 +769,7 @@ func (c *piServiceWorkflowCatalog) completedPriorAdmission(state piServiceReques
 		!validDigestText(receipt.TCBProofDigest) || receipt.TCBProofJournalSequence == 0 ||
 		!validIdentityText(receipt.ProfileID) || !validDigestText(receipt.ProfileHash) ||
 		!validDigestText(receipt.ContainmentProfileDigest) {
-		return piServiceWorkflowEntry{}, productionPiReceipt{}, errors.Join(ErrPiWorkflowCatalog, err)
+		return piServiceWorkflowEntry{}, productionPiReceipt{}, settlementRefusal("prior-receipt", errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	return entry, receipt, nil
 }
@@ -771,11 +778,11 @@ func validateSettledServiceProfile(profile piruntime.HostProfile, template pirun
 	if profile.Mode != piruntime.ModeProduction || profile.ContainmentProfile != piruntime.D09ContainmentProfile ||
 		profile.SettlementProfile != piruntime.D09SettlementProfile || !validDigestText(profile.Digest) ||
 		!validDigestText(profile.CgroupRootDigest) || template.LandlockABI != 8 {
-		return ErrPiWorkflowCatalog
+		return settlementRefusal("current-profile", ErrPiWorkflowCatalog)
 	}
 	templateDigest, err := template.Digest()
 	if err != nil || templateDigest != profile.ContainmentProfileDigest {
-		return errors.Join(ErrPiWorkflowCatalog, err)
+		return settlementRefusal("current-profile-template", errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	return nil
 }
@@ -784,41 +791,41 @@ func validateSettledServiceDisposition(pins workflowrecovery.Pins, expectedConve
 	if pins.PendingCallDisposition != workflowrecovery.PendingCallNone &&
 		pins.PendingCallDisposition != workflowrecovery.PendingCallTerminal &&
 		pins.PendingCallDisposition != workflowrecovery.PendingCallRetired {
-		return errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown)
+		return settlementRefusal("pending-call-disposition", errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown))
 	}
 	if pins.ProviderDisposition != workflowrecovery.DispositionNone &&
 		pins.ProviderDisposition != workflowrecovery.DispositionAwaitingHostPrompt &&
 		pins.ProviderDisposition != workflowrecovery.DispositionTerminal &&
 		pins.ProviderDisposition != workflowrecovery.DispositionRetired {
-		return errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown)
+		return settlementRefusal("provider-disposition", errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown))
 	}
 	if len(pins.ProviderTranscripts) == 0 {
 		if pins.ProviderDisposition != workflowrecovery.DispositionNone {
-			return errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown)
+			return settlementRefusal("provider-disposition-without-transcript", errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown))
 		}
 	} else {
 		latest := pins.ProviderTranscripts[len(pins.ProviderTranscripts)-1]
 		if pins.ProviderDisposition != latest.Disposition || latest.ConversationID != expectedConversationID {
-			return errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown)
+			return settlementRefusal("provider-latest-transcript", errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown))
 		}
 	}
 	if effect := pins.EffectReservation; effect != nil &&
 		effect.Disposition != workflowrecovery.EffectReservationTerminal &&
 		effect.Disposition != workflowrecovery.EffectReservationRetired {
-		return errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown)
+		return settlementRefusal("effect-reservation-disposition", errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown))
 	}
 	if call := pins.HostCallReservation; call != nil &&
 		call.Disposition != workflowrecovery.HostCallTerminal &&
 		call.Disposition != workflowrecovery.HostCallRetired {
-		return errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown)
+		return settlementRefusal("host-call-reservation-disposition", errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown))
 	}
 	for index, transcript := range pins.ProviderTranscripts {
 		quiescentLatestConversation := index == len(pins.ProviderTranscripts)-1 &&
 			transcript.Disposition == workflowrecovery.DispositionAwaitingHostPrompt
 		if transcript.Disposition != workflowrecovery.DispositionTerminal &&
 			transcript.Disposition != workflowrecovery.DispositionRetired && !quiescentLatestConversation {
-			return fmt.Errorf("%w: %w: transcript %d lacks terminal lineage disposition",
-				ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown, index)
+			return settlementRefusal("transcript-lineage", fmt.Errorf("%w: %w: transcript %d lacks terminal lineage disposition",
+				ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown, index))
 		}
 	}
 	return nil
@@ -834,7 +841,7 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 		pins.ProfileDigest != bareWorkflowDigest(receipt.ProfileHash) ||
 		pins.OwnerEpoch == 0 || pins.RecoveryGeneration == 0 || pins.StoreJournalCount == 0 ||
 		!validBareWorkflowDigest(pins.StoreJournalHead) {
-		return ErrPiWorkflowCatalog
+		return settlementRefusal("checkpoint-pins", ErrPiWorkflowCatalog)
 	}
 	expectedRunID, expectedSessionID, expectedConversationID := entry.RunID, entry.SessionID, entry.ConversationID
 	if pins.RecoveryGeneration > 1 {
@@ -846,13 +853,13 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 		return err
 	}
 	if receipt.RunID != expectedRunID || pins.SessionID != expectedSessionID {
-		return ErrPiWorkflowCatalog
+		return settlementRefusal("checkpoint-run-session", ErrPiWorkflowCatalog)
 	}
 	if err := c.verifySettledOwnerScopes(entry, view.OwnerEpochs, template.CgroupsPath); err != nil {
 		return err
 	}
 	if _, err := drainVerifier.VerifyOwnerCellsDrainedWithProof(ctx, entry.WorkflowID, view.OwnerEpochs); err != nil {
-		return errors.Join(ErrPiWorkflowCatalog, err)
+		return settlementRefusal("owner-drain-proof", errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	storeJournal, err := openPiServiceSettlementJournal(entry.StoreJournalPath)
 	if err != nil {
@@ -861,25 +868,25 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 	storeTrace, traceErr := storeJournal.Trace()
 	if traceErr != nil {
 		_ = storeJournal.Close()
-		return errors.Join(ErrPiWorkflowCatalog, traceErr)
+		return settlementRefusal("store-journal-trace", errors.Join(ErrPiWorkflowCatalog, traceErr))
 	}
 	if pins.StoreJournalCount > uint64(len(storeTrace.Records)) ||
 		auditHeadHash(storeTrace.Records[:pins.StoreJournalCount]) != pins.StoreJournalHead ||
 		receipt.TCBProofJournalSequence > pins.StoreJournalCount {
 		_ = storeJournal.Close()
-		return ErrPiWorkflowCatalog
+		return settlementRefusal("store-journal-head", ErrPiWorkflowCatalog)
 	}
 	proofRecord, proofEvent, err := verifyServiceTCBProof(storeTrace, receipt, expectedSessionID,
 		entry.WorkflowID, expectedConversationID)
 	storeCloseErr := storeJournal.Close()
 	if storeCloseErr != nil {
-		return errors.Join(ErrPiWorkflowCatalog, storeCloseErr)
+		return settlementRefusal("store-journal-close", errors.Join(ErrPiWorkflowCatalog, storeCloseErr))
 	}
 	if err != nil {
 		return err
 	}
 	if pins.ImageDigest != bareWorkflowDigest(proofEvent.Proof.ImageDigest) {
-		return ErrPiWorkflowCatalog
+		return settlementRefusal("checkpoint-image-pin", ErrPiWorkflowCatalog)
 	}
 	publicationJournal, err := openPiServiceSettlementJournal(filepath.Join(productionAuditRootDefault, "publication-audit.jsonl"))
 	if err != nil {
@@ -888,7 +895,7 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 	publicationTrace, traceErr := publicationJournal.Trace()
 	if traceErr != nil {
 		_ = publicationJournal.Close()
-		return errors.Join(ErrPiWorkflowCatalog, traceErr)
+		return settlementRefusal("publication-journal-trace", errors.Join(ErrPiWorkflowCatalog, traceErr))
 	}
 	settlementID := receipt.PublicationTransactionID
 	if receipt.Disposition == "NO_DIFF" {
@@ -904,26 +911,26 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 	}
 	publicationCloseErr := publicationJournal.Close()
 	if publicationCloseErr != nil {
-		return errors.Join(ErrPiWorkflowCatalog, publicationCloseErr)
+		return settlementRefusal("publication-journal-close", errors.Join(ErrPiWorkflowCatalog, publicationCloseErr))
 	}
 	if err := verifyReceiptPublicationAnchor(receipt, entry, publicationTrace); err != nil {
-		return err
+		return settlementRefusal("publication-anchor", err)
 	}
 	if err := verifyReceiptE04Store(receipt, entry.WorkflowID); err != nil {
-		return err
+		return settlementRefusal("e04-store", err)
 	}
 	if entry.Terminal {
 		if entry.LatestCheckpointDigest != view.Digest || entry.TerminalRunID != receipt.RunID ||
 			entry.TerminalProofDigest != receipt.TCBProofDigest ||
 			entry.TerminalProofSequence != receipt.TCBProofJournalSequence ||
 			entry.TerminalTransactionID != settlementID {
-			return ErrPiWorkflowCatalog
+			return settlementRefusal("catalog-terminal-mismatch", ErrPiWorkflowCatalog)
 		}
 		return c.markSettledTerminal(entry.AdmissionRecordHash, view.Digest, receipt.RunID, receipt.TCBProofDigest,
 			receipt.TCBProofJournalSequence, settlementID)
 	}
 	if proofRecord.Sequence != receipt.TCBProofJournalSequence || proofEvent.ProofDigest != receipt.TCBProofDigest {
-		return ErrPiWorkflowCatalog
+		return settlementRefusal("tcb-proof-receipt", ErrPiWorkflowCatalog)
 	}
 	return c.markSettledTerminal(entry.AdmissionRecordHash, view.Digest, receipt.RunID, receipt.TCBProofDigest,
 		receipt.TCBProofJournalSequence, settlementID)
@@ -942,27 +949,30 @@ func (c *piServiceWorkflowCatalog) markSettledTerminal(admissionHash, settledDig
 	proofSequence uint64, transactionID string) error {
 	entry, ok := c.admissionEntry(admissionHash)
 	if !ok || !entry.CheckpointBound {
-		return ErrPiWorkflowCatalog
+		return settlementRefusal("catalog-terminal-admission", ErrPiWorkflowCatalog)
 	}
 	if entry.LatestCheckpointDigest != settledDigest {
 		if entry.Terminal {
-			return ErrPiWorkflowCatalog
+			return settlementRefusal("catalog-terminal-moved", ErrPiWorkflowCatalog)
 		}
 		if err := c.MarkCheckpoint(admissionHash, entry.LatestCheckpointDigest, settledDigest); err != nil {
-			return err
+			return settlementRefusal("catalog-terminal-advance", err)
 		}
 	}
-	return c.MarkTerminal(admissionHash, settledDigest, runID, proofDigest, proofSequence, transactionID)
+	if err := c.MarkTerminal(admissionHash, settledDigest, runID, proofDigest, proofSequence, transactionID); err != nil {
+		return settlementRefusal("catalog-terminal-mark", err)
+	}
+	return nil
 }
 
 func (c *piServiceWorkflowCatalog) verifySettledOwnerScopes(entry piServiceWorkflowEntry,
 	owners []workflowrecovery.OwnerEpochIdentity, cgroupRoot string) error {
 	if len(owners) == 0 || filepath.Clean(cgroupRoot) != cgroupRoot || !filepath.IsAbs(cgroupRoot) {
-		return ErrPiWorkflowCatalog
+		return settlementRefusal("owner-scope-arguments", ErrPiWorkflowCatalog)
 	}
 	scopes := c.ownerScopesForAdmission(entry.AdmissionRecordHash, entry.WorkflowID)
 	if len(scopes) != len(owners) {
-		return ErrPiWorkflowCatalog
+		return settlementRefusal("owner-scope-count", ErrPiWorkflowCatalog)
 	}
 	for index, owner := range owners {
 		scope := scopes[index]
@@ -971,17 +981,17 @@ func (c *piServiceWorkflowCatalog) verifySettledOwnerScopes(entry piServiceWorkf
 		if scope.OwnerEpoch != owner.Epoch || scope.Incarnation != owner.Incarnation || !scope.Drained ||
 			scope.AdmissionHash != entry.AdmissionRecordHash || scope.WorkflowID != entry.WorkflowID ||
 			scope.ScopeName != name {
-			return ErrPiWorkflowCatalog
+			return settlementRefusal("owner-scope-record", ErrPiWorkflowCatalog)
 		}
 		if scope.Unexposed {
 			if scope.ScopePath != "" || scope.ScopeIdentityDigest != "" {
-				return ErrPiWorkflowCatalog
+				return settlementRefusal("owner-scope-unexposed", ErrPiWorkflowCatalog)
 			}
 		} else if scope.ScopePath != path || !validDigestText(scope.ScopeIdentityDigest) {
-			return ErrPiWorkflowCatalog
+			return settlementRefusal("owner-scope-path", ErrPiWorkflowCatalog)
 		}
 		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-			return errors.Join(ErrPiWorkflowCatalog, err)
+			return settlementRefusal("owner-scope-present", errors.Join(ErrPiWorkflowCatalog, err))
 		}
 	}
 	return nil
@@ -989,20 +999,20 @@ func (c *piServiceWorkflowCatalog) verifySettledOwnerScopes(entry piServiceWorkf
 
 func openPiServiceSettlementJournal(path string) (*audit.Journal, error) {
 	if filepath.Clean(path) != path || filepath.Dir(path) != productionAuditRootDefault {
-		return nil, ErrPiWorkflowCatalog
+		return nil, settlementRefusal("journal-path:"+filepath.Base(path), ErrPiWorkflowCatalog)
 	}
 	info, err := os.Lstat(path)
 	if err != nil {
-		return nil, errors.Join(ErrPiWorkflowCatalog, err)
+		return nil, settlementRefusal("journal-stat:"+filepath.Base(path), errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o600 ||
 		!ok || stat.Uid != uint32(os.Geteuid()) {
-		return nil, errors.Join(ErrPiWorkflowCatalog, err)
+		return nil, settlementRefusal("journal-mode:"+filepath.Base(path), errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	journal, err := audit.Open(path)
 	if err != nil {
-		return nil, errors.Join(ErrPiWorkflowCatalog, err)
+		return nil, settlementRefusal("journal-open:"+filepath.Base(path), errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	return journal, nil
 }
@@ -1019,13 +1029,13 @@ func verifyServiceTCBProof(trace audit.Trace, receipt productionPiReceipt, sessi
 		record := &trace.Records[index]
 		if record.Event.Kind == "production_tcb_proof" && record.Event.ID == "production-tcb-proof:"+receipt.RunID {
 			if matched != nil {
-				return audit.Record{}, productionLaunchTCBProofEvent{}, ErrPiWorkflowCatalog
+				return audit.Record{}, productionLaunchTCBProofEvent{}, settlementRefusal("tcb-proof-duplicate", ErrPiWorkflowCatalog)
 			}
 			matched = record
 		}
 	}
 	if matched == nil || matched.Sequence != receipt.TCBProofJournalSequence {
-		return audit.Record{}, productionLaunchTCBProofEvent{}, ErrPiWorkflowCatalog
+		return audit.Record{}, productionLaunchTCBProofEvent{}, settlementRefusal("tcb-proof-record", ErrPiWorkflowCatalog)
 	}
 	var event productionLaunchTCBProofEvent
 	err := unmarshalGovernedJSON(matched.Event.Data, &event)
@@ -1042,12 +1052,12 @@ func verifyServiceTCBProof(trace audit.Trace, receipt productionPiReceipt, sessi
 		!validDigestText(event.Proof.SourceBindingDigest) || event.Proof.SourceBindingDigest != event.SourceBindingDigest ||
 		event.Proof.SourceGenerationID != event.SourceGenerationID || event.Proof.SourceStoreAuditCount == 0 ||
 		!validBareWorkflowDigest(event.Proof.SourceStoreAuditHead) {
-		return audit.Record{}, productionLaunchTCBProofEvent{}, errors.Join(ErrPiWorkflowCatalog, err)
+		return audit.Record{}, productionLaunchTCBProofEvent{}, settlementRefusal("tcb-proof-event", errors.Join(ErrPiWorkflowCatalog, err))
 	}
 	if event.Proof.SourceStoreAuditCount >= receipt.TCBProofJournalSequence ||
 		event.Proof.SourceStoreAuditCount > uint64(len(trace.Records)) ||
 		auditHeadHash(trace.Records[:event.Proof.SourceStoreAuditCount]) != event.Proof.SourceStoreAuditHead {
-		return audit.Record{}, productionLaunchTCBProofEvent{}, ErrPiWorkflowCatalog
+		return audit.Record{}, productionLaunchTCBProofEvent{}, settlementRefusal("tcb-proof-source-audit", ErrPiWorkflowCatalog)
 	}
 	return *matched, event, nil
 }
@@ -1069,12 +1079,12 @@ func priorRunRegistrationDigest(trace audit.Trace, root workflow.RootIdentity, w
 		}
 		if digest != "" || !validDigestText(event.RegistrationDigest) ||
 			record.Event.ID != managedLiveRootRunEventID(root, event.RegistrationDigest, runID, ownerEpoch) {
-			return "", ErrManagedLiveRootUnavailable
+			return "", settlementRefusal("run-admission-ambiguous", ErrManagedLiveRootUnavailable)
 		}
 		digest = event.RegistrationDigest
 	}
 	if digest == "" {
-		return "", ErrManagedLiveRootUnavailable
+		return "", settlementRefusal("run-admission-missing", ErrManagedLiveRootUnavailable)
 	}
 	return digest, nil
 }
@@ -1085,7 +1095,7 @@ func verifyManagedPiPublicationSettlement(journal *audit.Journal, trace audit.Tr
 	transactionID string) error {
 	if journal == nil || root == (workflow.RootIdentity{}) || !validIdentityText(workflowID) ||
 		!validIdentityText(runID) || ownerEpoch == 0 || !boundedProductionIdentity(transactionID, productionRequestMaxBytes) {
-		return ErrManagedLiveRootUnavailable
+		return settlementRefusal("publication-arguments", ErrManagedLiveRootUnavailable)
 	}
 	key := managedWorkflowEventID(root, workflowID, "production-publication-"+workflowID)
 	registrationDigest, err := priorRunRegistrationDigest(trace, root, workflowID, runID, ownerEpoch)
@@ -1110,7 +1120,7 @@ func verifyManagedPiPublicationSettlement(journal *audit.Journal, trace audit.Tr
 					event.WorkflowID != workflowID || event.PublicationID != "production-publication-"+workflowID ||
 					event.OwnerEpoch != ownerEpoch || event.ServiceUID != registration.ServiceUID ||
 					event.ServiceGID != registration.ServiceGID || !sameStableRootDescriptor(event.Descriptor, rootDescriptor) {
-					return errors.Join(ErrManagedLiveRootUnavailable, err)
+					return settlementRefusal("run-admission-event", errors.Join(ErrManagedLiveRootUnavailable, err))
 				}
 				admitted = record
 			}
@@ -1123,41 +1133,41 @@ func verifyManagedPiPublicationSettlement(journal *audit.Journal, trace audit.Tr
 					event.WorkflowID != workflowID || event.PublicationID != "production-publication-"+workflowID ||
 					event.OwnerEpoch != ownerEpoch || event.Outcome != "publication-succeeded" ||
 					event.ResolvedByRunID != "" || event.ResolvedByOwnerEpoch != 0 {
-					return errors.Join(ErrManagedLiveRootUnavailable, err)
+					return settlementRefusal("run-release-event", errors.Join(ErrManagedLiveRootUnavailable, err))
 				}
 				released, resolvedSeq, resolvedHash = record, event.LifecycleJournalSequence, event.LifecycleJournalRecordHash
 			}
 		case "workflow_publication_pending":
 			var event managedRootPendingWire
 			if err := unmarshalGovernedJSON(record.Event.Data, &event); err != nil {
-				return errors.Join(ErrManagedLiveRootUnavailable, err)
+				return settlementRefusal("publication-pending-decode", errors.Join(ErrManagedLiveRootUnavailable, err))
 			}
 			if event.Root == root && event.WorkflowID == workflowID && event.PublicationID == "production-publication-"+workflowID {
 				if record.Event.ID != key || event.OwnerEpoch != ownerEpoch || pendingSeq != 0 {
-					return ErrManagedLiveRootUnavailable
+					return settlementRefusal("publication-pending-record", ErrManagedLiveRootUnavailable)
 				}
 				pendingSeq = record.Sequence
 			}
 		case "workflow_publication_transaction":
 			var event managedRootTransactionWire
 			if err := unmarshalGovernedJSON(record.Event.Data, &event); err != nil {
-				return errors.Join(ErrManagedLiveRootUnavailable, err)
+				return settlementRefusal("publication-transaction-decode", errors.Join(ErrManagedLiveRootUnavailable, err))
 			}
 			if event.Root == root && event.WorkflowID == workflowID && event.PublicationID == "production-publication-"+workflowID {
 				if record.Event.ID != key+"/transaction" || event.TransactionID != transactionID || transactionSeq != 0 {
-					return ErrManagedLiveRootUnavailable
+					return settlementRefusal("publication-transaction-record", ErrManagedLiveRootUnavailable)
 				}
 				transactionSeq = record.Sequence
 			}
 		case "workflow_publication_resolved":
 			var event managedRootResolvedWire
 			if err := unmarshalGovernedJSON(record.Event.Data, &event); err != nil {
-				return errors.Join(ErrManagedLiveRootUnavailable, err)
+				return settlementRefusal("publication-resolved-decode", errors.Join(ErrManagedLiveRootUnavailable, err))
 			}
 			if event.Root == root && event.WorkflowID == workflowID && event.PublicationID == "production-publication-"+workflowID {
 				if record.Event.ID != key+"/resolved" || event.TransactionID != transactionID ||
 					event.Status != publication.StatusSucceeded || publicationResolved != nil {
-					return ErrManagedLiveRootUnavailable
+					return settlementRefusal("publication-resolved-record", ErrManagedLiveRootUnavailable)
 				}
 				publicationResolved = record
 			}
@@ -1165,18 +1175,18 @@ func verifyManagedPiPublicationSettlement(journal *audit.Journal, trace audit.Tr
 	}
 	if admitted == nil || released == nil || publicationResolved == nil || pendingSeq == 0 || transactionSeq == 0 ||
 		resolvedSeq == 0 || publicationResolved.Sequence != resolvedSeq || publicationResolved.Hash != resolvedHash {
-		return ErrManagedLiveRootUnavailable
+		return settlementRefusal("publication-records-incomplete", ErrManagedLiveRootUnavailable)
 	}
 	if err := validateManagedPublicationOrder(pendingSeq, transactionSeq, publicationResolved.Sequence); err != nil {
-		return err
+		return settlementRefusal("publication-order", err)
 	}
 	var releasedEvent managedLiveRootRunResolvedEvent
 	if err := unmarshalGovernedJSON(released.Event.Data, &releasedEvent); err != nil ||
 		releasedEvent.AdmissionSequence != admitted.Sequence || releasedEvent.AdmissionRecordHash != admitted.Hash {
-		return errors.Join(ErrManagedLiveRootUnavailable, err)
+		return settlementRefusal("run-release-admission-link", errors.Join(ErrManagedLiveRootUnavailable, err))
 	}
 	if _, pending, err := managedRootLedgerState(journal, root); err != nil || len(pending) != 0 {
-		return errors.Join(ErrManagedLiveRootUnavailable, err)
+		return settlementRefusal("managed-root-ledger-pending", errors.Join(ErrManagedLiveRootUnavailable, err))
 	}
 	return nil
 }
@@ -1214,7 +1224,7 @@ func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.
 	registration piruntime.D09ManagedLiveRootRegistration, workflowID, runID string, ownerEpoch uint64) (string, error) {
 	if journal == nil || root == (workflow.RootIdentity{}) || !validIdentityText(workflowID) ||
 		!validIdentityText(runID) || ownerEpoch == 0 {
-		return "", ErrManagedLiveRootUnavailable
+		return "", settlementRefusal("no-publication-arguments", ErrManagedLiveRootUnavailable)
 	}
 	publicationID := "production-publication-" + workflowID
 	key := managedWorkflowEventID(root, workflowID, publicationID)
@@ -1229,7 +1239,7 @@ func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.
 		if record.Event.ID == key || strings.HasPrefix(record.Event.ID, key+"/") {
 			switch record.Event.Kind {
 			case "workflow_publication_pending", "workflow_publication_transaction", "workflow_publication_resolved":
-				return "", ErrManagedLiveRootUnavailable
+				return "", settlementRefusal("no-publication-publication-record", ErrManagedLiveRootUnavailable)
 			}
 		}
 		switch record.Event.Kind {
@@ -1242,21 +1252,21 @@ func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.
 					event.WorkflowID != workflowID || event.PublicationID != publicationID ||
 					event.OwnerEpoch != ownerEpoch || event.ServiceUID != registration.ServiceUID ||
 					event.ServiceGID != registration.ServiceGID || !sameStableRootDescriptor(event.Descriptor, rootDescriptor) {
-					return "", errors.Join(ErrManagedLiveRootUnavailable, err)
+					return "", settlementRefusal("run-admission-event", errors.Join(ErrManagedLiveRootUnavailable, err))
 				}
 				admitted = record
 			}
 		case "managed_live_root_run_released":
 			if record.Event.ID == admissionID+"/released" {
 				if released != nil {
-					return "", ErrManagedLiveRootUnavailable
+					return "", settlementRefusal("run-release-duplicate", ErrManagedLiveRootUnavailable)
 				}
 				released = record
 			}
 		}
 	}
 	if admitted == nil || released == nil {
-		return "", ErrManagedLiveRootUnavailable
+		return "", settlementRefusal("run-admission-or-release-missing", ErrManagedLiveRootUnavailable)
 	}
 	var event managedLiveRootRunResolvedEvent
 	if err := unmarshalGovernedJSON(released.Event.Data, &event); err != nil ||
@@ -1267,7 +1277,7 @@ func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.
 		event.ResolvedByRunID != "" || event.ResolvedByOwnerEpoch != 0 ||
 		event.AdmissionSequence != admitted.Sequence || event.AdmissionRecordHash != admitted.Hash ||
 		event.LifecycleJournalSequence < admitted.Sequence || event.LifecycleJournalSequence >= released.Sequence {
-		return "", errors.Join(ErrManagedLiveRootUnavailable, err)
+		return "", settlementRefusal("run-release-event", errors.Join(ErrManagedLiveRootUnavailable, err))
 	}
 	anchored := false
 	for _, record := range trace.Records {
@@ -1277,13 +1287,13 @@ func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.
 		}
 	}
 	if !anchored {
-		return "", ErrManagedLiveRootUnavailable
+		return "", settlementRefusal("run-release-lifecycle-anchor", ErrManagedLiveRootUnavailable)
 	}
 	if err := verifyManagedNoChangeSeed(trace, runID, admitted.Sequence, released.Sequence, event.ReleasedTreeDigest); err != nil {
 		return "", err
 	}
 	if _, pending, err := managedRootLedgerState(journal, root); err != nil || len(pending) != 0 {
-		return "", errors.Join(ErrManagedLiveRootUnavailable, err)
+		return "", settlementRefusal("managed-root-ledger-pending", errors.Join(ErrManagedLiveRootUnavailable, err))
 	}
 	return "no-publication:" + released.Hash, nil
 }
@@ -1300,12 +1310,12 @@ func verifyManagedNoChangeSeed(trace audit.Trace, runID string, admissionSeq, re
 			continue
 		}
 		if seeded != nil {
-			return ErrManagedLiveRootUnavailable
+			return settlementRefusal("no-change-seed-duplicate", ErrManagedLiveRootUnavailable)
 		}
 		seeded = record
 	}
 	if seeded == nil || seeded.Sequence <= admissionSeq || seeded.Sequence >= releaseSeq || !validManagedTreeDigest(releasedTree) {
-		return ErrManagedLiveRootUnavailable
+		return settlementRefusal("no-change-seed-missing", ErrManagedLiveRootUnavailable)
 	}
 	var evidence struct {
 		SchemaVersion          string `json:"schema_version"`
@@ -1320,7 +1330,7 @@ func verifyManagedNoChangeSeed(trace audit.Trace, runID string, admissionSeq, re
 	if err := unmarshalGovernedJSON(seeded.Event.Data, &evidence); err != nil ||
 		evidence.SchemaVersion != "tbound-managed-root-source-capture-seeded/v1" || evidence.RunID != runID ||
 		evidence.GenerationID != "g0" || evidence.TreeDigest != releasedTree {
-		return errors.Join(ErrManagedLiveRootUnavailable, err)
+		return settlementRefusal("no-change-seed-evidence", errors.Join(ErrManagedLiveRootUnavailable, err))
 	}
 	return nil
 }
@@ -1468,14 +1478,14 @@ func (v catalogOwnerDrainVerifier) VerifyOwnerCellsDrainedWithProof(ctx context.
 		filepath.Clean(v.cgroupRoot) != v.cgroupRoot || !filepath.IsAbs(v.cgroupRoot) ||
 		!validDigestText(v.cgroupRootDigest) || v.containment != piruntime.D09ContainmentProfile ||
 		v.settlement != piruntime.D09SettlementProfile {
-		return nil, workflowrecovery.ErrOwnerFence
+		return nil, fmt.Errorf("%w: drain verifier arguments", workflowrecovery.ErrOwnerFence)
 	}
 	entry, ok := v.catalog.workflowEntry(workflow)
 	settledTerminal := entry.Terminal && validIdentityText(entry.TerminalRunID) &&
 		validDigestText(entry.TerminalProofDigest) && entry.TerminalProofSequence > 0 &&
 		boundedProductionIdentity(entry.TerminalTransactionID, productionRequestMaxBytes)
 	if !ok || !entry.CheckpointBound || entry.Terminal && !settledTerminal {
-		return nil, errors.Join(workflowrecovery.ErrOwnerFence, ErrPiWorkflowCatalog)
+		return nil, fmt.Errorf("%w: %w: workflow has no checkpoint-bound catalog entry or a malformed terminal", workflowrecovery.ErrOwnerFence, ErrPiWorkflowCatalog)
 	}
 	digests := make([]string, 0, len(owners))
 	priorEpoch := uint64(0)
@@ -1484,7 +1494,7 @@ func (v catalogOwnerDrainVerifier) VerifyOwnerCellsDrainedWithProof(ctx context.
 			return nil, err
 		}
 		if owner.Epoch <= priorEpoch || !validWorkflowOwnerIncarnation(owner.Incarnation) {
-			return nil, workflowrecovery.ErrOwnerFence
+			return nil, fmt.Errorf("%w: owner epochs are not increasing or an incarnation is malformed", workflowrecovery.ErrOwnerFence)
 		}
 		priorEpoch = owner.Epoch
 		digest, err := v.drainOwnerEpoch(ctx, entry, owner)
@@ -1505,7 +1515,7 @@ func (v catalogOwnerDrainVerifier) drainOwnerEpoch(ctx context.Context, entry pi
 	owner workflowrecovery.OwnerEpochIdentity) (string, error) {
 	state, exists := v.catalog.ownerScope(entry.WorkflowID, owner.Epoch)
 	if exists && (state.AdmissionHash != entry.AdmissionRecordHash || state.Incarnation != owner.Incarnation) {
-		return "", ErrPiWorkflowCatalog
+		return "", fmt.Errorf("%w: owner scope record belongs to another admission or incarnation", ErrPiWorkflowCatalog)
 	}
 	process, err := workflowOwnerProcessObservation(owner.Incarnation)
 	if err != nil {
@@ -1517,7 +1527,7 @@ func (v catalogOwnerDrainVerifier) drainOwnerEpoch(ctx context.Context, entry pi
 	name := workflowOwnerScopeName(entry.WorkflowID, owner.Epoch)
 	if exists && state.Drained {
 		if _, err := os.Lstat(filepath.Join(v.cgroupRoot, name)); !errors.Is(err, os.ErrNotExist) {
-			return "", errors.Join(ErrPiWorkflowCatalog, err)
+			return "", fmt.Errorf("%w: drained owner scope is present (%v)", ErrPiWorkflowCatalog, err)
 		}
 		if state.Unexposed {
 			// The binder cleaned this owner up before any worker scope was created, so
@@ -1526,7 +1536,7 @@ func (v catalogOwnerDrainVerifier) drainOwnerEpoch(ctx context.Context, entry pi
 			// The proof digest binds the workflow and scope name instead, so two workflows
 			// at one epoch under one owner never share it.
 			if state.ScopeIdentityDigest != "" || state.ScopePath != "" || state.ScopeName != name {
-				return "", ErrPiWorkflowCatalog
+				return "", fmt.Errorf("%w: unexposed owner cleanup receipt carries a scope binding", ErrPiWorkflowCatalog)
 			}
 			return proveOwnerDrain(owner, process,
 				drainproof.ScopeObservation{Absent: true, NeverBound: true,
@@ -1567,7 +1577,7 @@ func (v catalogOwnerDrainVerifier) drainOwnerEpoch(ctx context.Context, entry pi
 	// Remove returned nil, so the scope settled and was unlinked. The absence is
 	// observed again rather than assumed from that return value.
 	if _, err := os.Lstat(filepath.Join(v.cgroupRoot, name)); !errors.Is(err, os.ErrNotExist) {
-		return "", errors.Join(ErrPiWorkflowCatalog, err)
+		return "", fmt.Errorf("%w: removed owner scope is still present (%v)", ErrPiWorkflowCatalog, err)
 	}
 	if !exists {
 		// A dead owner's unbound scope is the scope a crash left between creation and

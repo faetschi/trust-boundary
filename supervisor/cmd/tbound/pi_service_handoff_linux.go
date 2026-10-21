@@ -1333,7 +1333,7 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 			continue
 		}
 		if prior.terminal == nil || prior.terminal.Status != "completed" || j.settlementVerifier == nil {
-			return audit.Record{}, ErrPiServiceUnresolvedPrior
+			return audit.Record{}, fmt.Errorf("%w: request %q has no completed terminal", ErrPiServiceUnresolvedPrior, prior.accepted.RequestID)
 		}
 		mark := piServiceVerifiedSettlement{acceptedHash: prior.acceptedRecord.Hash,
 			acceptedSequence: prior.acceptedRecord.Sequence, terminal: prior.terminal}
@@ -1348,7 +1348,7 @@ func (j *piServiceRequestJournal) begin(ctx context.Context, peer piServicePeerC
 		}
 		if err := j.settlementVerifier(ctx, prior); err != nil {
 			delete(j.verified, key)
-			return audit.Record{}, fmt.Errorf("%w: %v", ErrPiServiceUnresolvedPrior, err)
+			return audit.Record{}, fmt.Errorf("%w: request %q: %v", ErrPiServiceUnresolvedPrior, prior.accepted.RequestID, err)
 		}
 		if j.verified == nil {
 			j.verified = make(map[string]piServiceVerifiedSettlement)
@@ -2012,11 +2012,11 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 	requests.settlementVerifier = func(settlementCtx context.Context, prior piServiceRequestState) error {
 		template, _, err := piruntime.LoadD09CellTemplate(settlementCtx)
 		if err != nil {
-			return errors.Join(ErrPiServiceUnresolvedPrior, err)
+			return settlementRefusal("current-template-load", errors.Join(ErrPiServiceUnresolvedPrior, err))
 		}
 		profile, err := piruntime.LoadLinuxSignedHostProfile("")
 		if err != nil {
-			return errors.Join(ErrPiServiceUnresolvedPrior, err)
+			return settlementRefusal("current-profile-load", errors.Join(ErrPiServiceUnresolvedPrior, err))
 		}
 		return workflowCatalog.verifyCompletedServiceRequest(settlementCtx, prior, verified, template, profile)
 	}
