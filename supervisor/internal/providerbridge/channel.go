@@ -19,6 +19,10 @@ const (
 	maxChannelFrames   = 2048
 )
 
+// ErrProviderTurnFailed marks Serve's return after a provider turn failed: the worker got an error
+// frame and the bridge closed the conversation.
+var ErrProviderTurnFailed = errors.New("provider turn failed")
+
 // channelRequest is deliberately unable to carry prompt text, history, model,
 // endpoint, headers, API keys, tool calls, or tool results.
 type channelRequest struct {

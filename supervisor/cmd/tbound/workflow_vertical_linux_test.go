@@ -269,6 +269,7 @@ type workflowVerticalFixture struct {
 	providerJournal     *audit.Journal
 	providerJournalPath string
 	limits              workflowrecovery.Limits
+	ownerStoreIdentity  workflowrecovery.OwnerStoreIdentity
 }
 
 func runWorkflowVertical(t *testing.T, launchProof bool, retries int) {
@@ -675,7 +676,7 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 	}
 	return &workflowVerticalFixture{ctx: ctx, authority: authority, ledger: ledger, conversation: conversation,
 		durable: durable, policy: policy, store: store, storeJournal: storeJournal, providerJournal: providerJournal,
-		providerJournalPath: providerJournalPath, limits: limits}
+		providerJournalPath: providerJournalPath, limits: limits, ownerStoreIdentity: ownerStoreIdentity}
 }
 
 func TestWorkflowDigestDomainsFailClosed(t *testing.T) {

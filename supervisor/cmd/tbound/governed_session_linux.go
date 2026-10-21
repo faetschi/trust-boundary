@@ -1306,6 +1306,11 @@ func RunGovernedChannels(ctx context.Context, supervisor *Supervisor, providerCh
 		}
 	}
 	conversation.Close()
+	return governedChannelsError(serveErr, bridgeErr)
+}
+
+// governedChannelsError is the error RunGovernedChannels returns for its two loop results.
+func governedChannelsError(serveErr, bridgeErr error) error {
 	return errors.Join(serveErr, bridgeErr)
 }
 

@@ -366,10 +366,7 @@ func (r *piServiceUnknownReconciler) reconcileProvider(_ context.Context, entry 
 		}
 		var problems []string
 		for _, conversationID := range conversationIDs {
-			path := entry.ProviderJournalPath
-			if conversationID != entry.ConversationID {
-				path = productionRecoveryProviderJournalPath(r.auditRoot, entry.WorkflowID, conversationID)
-			}
+			path := providerJournalPathFor(r.auditRoot, entry, conversationID)
 			if path == "" {
 				problems = append(problems, "conversation "+conversationID+" has no valid provider journal path")
 				continue
@@ -397,6 +394,16 @@ func (r *piServiceUnknownReconciler) reconcileProvider(_ context.Context, entry 
 		}
 	}
 	return "sha256:" + hex.EncodeToString(digest.Sum(nil)), settlement, nil
+}
+
+// providerJournalPathFor is the provider-bridge journal of one conversation of the entry's workflow:
+// the entry's own journal for its first conversation, a recovery journal for a later one. It is ""
+// when no valid path exists.
+func providerJournalPathFor(auditRoot string, entry piServiceWorkflowEntry, conversationID string) string {
+	if conversationID == entry.ConversationID {
+		return entry.ProviderJournalPath
+	}
+	return productionRecoveryProviderJournalPath(auditRoot, entry.WorkflowID, conversationID)
 }
 
 // providerJournalHasUnknownExchange reports whether a provider-bridge journal records an exchange
@@ -438,7 +445,8 @@ func providerJournalUndisposed(trace audit.Trace) int {
 // for owners that were never exposed), and the catalog's owner-scope records must be exactly
 // those epochs, all drained and removed.
 func (c *piServiceWorkflowCatalog) reconcileSettledOwner(ctx context.Context, entry piServiceWorkflowEntry,
-	view workflowrecovery.SettledCheckpointView, drain catalogOwnerDrainVerifier, cgroupRoot string) (piServiceOwnerReconciliation, error) {
+	view workflowrecovery.SettledCheckpointView, drain catalogOwnerDrainVerifier, cgroupRoot string,
+	providerTrace func(conversationID string) (audit.Trace, error)) (piServiceOwnerReconciliation, error) {
 	pins := view.Checkpoint.Pins
 	if !validBareWorkflowDigest(view.Digest) || view.Digest != view.Checkpoint.ComputedCheckpointDigest ||
 		view.OwnerStoreIdentity != entry.OwnerStoreIdentity || view.OwnerStoreIdentity.Path != entry.OwnerDBPath ||
@@ -528,7 +536,7 @@ func (c *piServiceWorkflowCatalog) reconcileProductionOwner(ctx context.Context,
 	if err != nil {
 		return piServiceOwnerReconciliation{}, unreconciledf("owner checkpoint: the settled owner checkpoint cannot be loaded: %v", err)
 	}
-	return c.reconcileSettledOwner(ctx, entry, view, drain, template.CgroupsPath)
+	return c.reconcileSettledOwner(ctx, entry, view, drain, template.CgroupsPath, nil)
 }
 
 // settlementEvidenceFiles names the per-request host files a settlement verification reads:

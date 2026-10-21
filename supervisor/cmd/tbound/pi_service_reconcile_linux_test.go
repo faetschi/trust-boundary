@@ -235,6 +235,8 @@ type ownerFixture struct {
 	view     workflowrecovery.SettledCheckpointView
 	owner    workflowrecovery.OwnerEpochIdentity
 	root     string
+	// providerTrace reads the provider journal of one conversation; nil means none is installed.
+	providerTrace func(conversationID string) (audit.Trace, error)
 }
 
 func newOwnerFixture(t *testing.T, mutate func(*ownerFixture)) *ownerFixture {
@@ -271,7 +273,7 @@ func newOwnerFixture(t *testing.T, mutate func(*ownerFixture)) *ownerFixture {
 
 func (f *ownerFixture) reconcile(t *testing.T) (piServiceOwnerReconciliation, error) {
 	t.Helper()
-	return f.catalog.reconcileSettledOwner(context.Background(), f.entry, f.view, f.verifier, f.root)
+	return f.catalog.reconcileSettledOwner(context.Background(), f.entry, f.view, f.verifier, f.root, f.providerTrace)
 }
 
 // Owner side: drained and settled reconciles and returns the drain-proof digest per epoch; a
