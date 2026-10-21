@@ -423,3 +423,32 @@ func TestBundleHasNoChangeRoutesRevertedRunsWithoutPublication(t *testing.T) {
 		})
 	}
 }
+
+// The admission record carries the mount ID of the namespace the run executed in. A prior is verified
+// in full when the service starts again, in a new namespace, where the same root has another mount ID.
+func TestNoChangeSettlementIgnoresTheNamespaceLocalMountIDButNothingElse(t *testing.T) {
+	run := startNoChangeRun(t, true)
+	if err := run.release(); err != nil {
+		t.Fatalf("real lease close: %v", err)
+	}
+	restarted := run.identity
+	restarted.MountID += 1000
+	if settlementID, err := run.verify(t, restarted); err != nil || !strings.HasPrefix(settlementID, "no-publication:") {
+		t.Fatalf("a settlement verified in another mount namespace was refused: id=%q err=%v", settlementID, err)
+	}
+	for name, mutate := range map[string]func(*managedLiveRootDescriptorIdentity){
+		"inode":      func(d *managedLiveRootDescriptorIdentity) { d.Inode++ },
+		"device":     func(d *managedLiveRootDescriptorIdentity) { d.Device++ },
+		"filesystem": func(d *managedLiveRootDescriptorIdentity) { d.Filesystem++ },
+		"owner":      func(d *managedLiveRootDescriptorIdentity) { d.UID++ },
+		"group":      func(d *managedLiveRootDescriptorIdentity) { d.GID++ },
+		"mode":       func(d *managedLiveRootDescriptorIdentity) { d.Mode ^= 0o070 },
+		"path":       func(d *managedLiveRootDescriptorIdentity) { d.Path += "/other" },
+	} {
+		changed := restarted
+		mutate(&changed)
+		if _, err := run.verify(t, changed); !errors.Is(err, ErrManagedLiveRootUnavailable) {
+			t.Errorf("%s changed since admission was accepted: %v", name, err)
+		}
+	}
+}
