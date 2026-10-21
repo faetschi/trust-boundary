@@ -893,14 +893,40 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 			entry.TerminalTransactionID != settlementID {
 			return ErrPiWorkflowCatalog
 		}
-		return c.MarkTerminal(entry.AdmissionRecordHash, view.Digest, receipt.RunID, receipt.TCBProofDigest,
+		return c.markSettledTerminal(entry.AdmissionRecordHash, view.Digest, receipt.RunID, receipt.TCBProofDigest,
 			receipt.TCBProofJournalSequence, settlementID)
 	}
 	if proofRecord.Sequence != receipt.TCBProofJournalSequence || proofEvent.ProofDigest != receipt.TCBProofDigest {
 		return ErrPiWorkflowCatalog
 	}
-	return c.MarkTerminal(entry.AdmissionRecordHash, view.Digest, receipt.RunID, receipt.TCBProofDigest,
+	return c.markSettledTerminal(entry.AdmissionRecordHash, view.Digest, receipt.RunID, receipt.TCBProofDigest,
 		receipt.TCBProofJournalSequence, settlementID)
+}
+
+// markSettledTerminal records the terminal state of a workflow whose settlement was just verified
+// against its authenticated, settled owner checkpoint. The catalog follows the workflow's checkpoint
+// only where the service binds it (the initial one and the empty-transcript one), while the ledger
+// advances at every provider reservation, exchange and effect, so by the time the workflow settles
+// the catalog's latest digest is an early one. MarkTerminal refuses a terminal record that does not
+// name the catalog's latest digest, so a completed workflow never became terminal and every later
+// request was refused as an unsettled prior. The settled digest is the one LoadSettledCheckpoint
+// authenticated (append-only history and protected-root head) and the caller has just checked its
+// pins against this admission, so the catalog advances to it, then marks it terminal.
+func (c *piServiceWorkflowCatalog) markSettledTerminal(admissionHash, settledDigest, runID, proofDigest string,
+	proofSequence uint64, transactionID string) error {
+	entry, ok := c.admissionEntry(admissionHash)
+	if !ok || !entry.CheckpointBound {
+		return ErrPiWorkflowCatalog
+	}
+	if entry.LatestCheckpointDigest != settledDigest {
+		if entry.Terminal {
+			return ErrPiWorkflowCatalog
+		}
+		if err := c.MarkCheckpoint(admissionHash, entry.LatestCheckpointDigest, settledDigest); err != nil {
+			return err
+		}
+	}
+	return c.MarkTerminal(admissionHash, settledDigest, runID, proofDigest, proofSequence, transactionID)
 }
 
 func (c *piServiceWorkflowCatalog) verifySettledOwnerScopes(entry piServiceWorkflowEntry,
@@ -1023,7 +1049,7 @@ func verifyManagedPiPublicationSettlement(journal *audit.Journal, trace audit.Tr
 					event.RegistrationDigest != registration.Digest || event.RunID != runID ||
 					event.WorkflowID != workflowID || event.PublicationID != "production-publication-"+workflowID ||
 					event.OwnerEpoch != ownerEpoch || event.ServiceUID != registration.ServiceUID ||
-					event.ServiceGID != registration.ServiceGID || event.Descriptor != rootDescriptor {
+					event.ServiceGID != registration.ServiceGID || !sameStableRootDescriptor(event.Descriptor, rootDescriptor) {
 					return errors.Join(ErrManagedLiveRootUnavailable, err)
 				}
 				admitted = record
@@ -1151,7 +1177,7 @@ func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.
 					event.RegistrationDigest != registration.Digest || event.RunID != runID ||
 					event.WorkflowID != workflowID || event.PublicationID != publicationID ||
 					event.OwnerEpoch != ownerEpoch || event.ServiceUID != registration.ServiceUID ||
-					event.ServiceGID != registration.ServiceGID || event.Descriptor != rootDescriptor {
+					event.ServiceGID != registration.ServiceGID || !sameStableRootDescriptor(event.Descriptor, rootDescriptor) {
 					return "", errors.Join(ErrManagedLiveRootUnavailable, err)
 				}
 				admitted = record
@@ -1799,4 +1825,14 @@ func requireWorkflowCatalogPath(entry piServiceWorkflowEntry, config piServiceCo
 		return fmt.Errorf("%w: retained host layout does not match the fixed private service roots", ErrPiWorkflowCatalog)
 	}
 	return nil
+}
+
+// sameStableRootDescriptor compares the live-root identity journaled at admission with the one
+// measured now, leaving out the mount ID. A mount ID is local to a mount namespace and a service
+// start creates a fresh namespace, so a settlement verified after the service restarted (which is
+// when a prior is verified in full) always saw a different one; the device, inode, filesystem, owner
+// and mode, and the registration's own binding, identify the root.
+func sameStableRootDescriptor(admitted, current managedLiveRootDescriptorIdentity) bool {
+	admitted.MountID, current.MountID = 0, 0
+	return admitted == current
 }

@@ -1669,6 +1669,8 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 				errorCode := "request-journal-unavailable"
 				if errors.Is(err, ErrPiServiceUnresolvedPrior) {
 					errorCode = "prior-workflow-unsettled"
+					// The response carries only the stable code; the cause belongs in the service log.
+					fmt.Fprintf(os.Stderr, "prior Pi workflow is not settled: %v\n", err)
 				}
 				_ = writePiServiceFrame(unixConn, piServiceResponse{SchemaVersion: piServiceResponseSchema,
 					RequestID: request.RequestID, Status: "refused", ErrorCode: errorCode})
