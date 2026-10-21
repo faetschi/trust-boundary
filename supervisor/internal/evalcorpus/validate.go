@@ -71,6 +71,10 @@ func PilotQuotas() Quotas {
 //   - review.count, review.role, review.identity, review.human, review.blinded: two
 //     reviews from different roles and different reviewers, both human and blinded
 //     (role and reviewer comparisons use the normalized forms of sameIdentity);
+//   - review.decision, review.placeholder, review.rejected: a decision is exactly accept
+//     or reject, role, reviewer and adjudicator do not start with TODO, and the standing
+//     decision of every case (the agreed review decision, or the adjudication when the
+//     reviews disagree) is accept, so one rejected case makes the manifest non-admissible;
 //   - adjudication.missing, adjudication.unexpected, adjudication.human,
 //     adjudication.blinded, adjudication.not_third: an adjudication exactly when the
 //     reviews disagree, by a third human and blinded reviewer;
@@ -215,7 +219,9 @@ func (v *validator) reviews(label string, c *Case) {
 		}
 		v.required(p+" role", r.Role)
 		v.required(p+" reviewer", r.Reviewer)
-		v.required(p+" decision", r.Decision)
+		v.noPlaceholder(p+" role", r.Role)
+		v.noPlaceholder(p+" reviewer", r.Reviewer)
+		v.decision(p+" decision", r.Decision)
 	}
 	a, b := c.Reviews[0], c.Reviews[1]
 	if sameIdentity(a.Role, b.Role) {
@@ -228,6 +234,7 @@ func (v *validator) reviews(label string, c *Case) {
 		if c.Adjudication != nil {
 			v.add("adjudication.unexpected", "%s: the reviews agree but an adjudication is recorded", label)
 		}
+		v.settled(label, a.Decision)
 		return
 	}
 	adj := c.Adjudication
@@ -235,16 +242,46 @@ func (v *validator) reviews(label string, c *Case) {
 		v.add("adjudication.missing", "%s: the reviews disagree and no adjudication is recorded", label)
 		return
 	}
+	v.settled(label, adj.Decision)
 	if !adj.Human {
 		v.add("adjudication.human", "%s: the adjudicator is not a human reviewer", label)
 	}
 	if !adj.Blinded {
 		v.add("adjudication.blinded", "%s: the adjudicator is not blinded", label)
 	}
-	v.required(label+" adjudication decision", adj.Decision)
+	v.decision(label+" adjudication decision", adj.Decision)
 	v.required(label+" adjudicator", adj.Adjudicator)
+	v.noPlaceholder(label+" adjudicator", adj.Adjudicator)
 	if sameIdentity(adj.Adjudicator, a.Reviewer) || sameIdentity(adj.Adjudicator, b.Reviewer) {
 		v.add("adjudication.not_third", "%s: the adjudicator is one of the two reviewers", label)
+	}
+}
+
+// decision reports a blank value as field.empty and any value other than exactly
+// DecisionAccept or DecisionReject as review.decision.
+func (v *validator) decision(path, value string) {
+	switch {
+	case strings.TrimSpace(value) == "":
+		v.add("field.empty", "%s is empty", path)
+	case value != DecisionAccept && value != DecisionReject:
+		v.add("review.decision", "%s is %q; want exactly %q or %q", path, value, DecisionAccept, DecisionReject)
+	}
+}
+
+// noPlaceholder reports a role, reviewer or adjudicator that still carries the TODO-
+// prefix of the draft manifest.
+func (v *validator) noPlaceholder(path, value string) {
+	if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(value)), "TODO") {
+		v.add("review.placeholder", "%s is the placeholder %q", path, value)
+	}
+}
+
+// settled reports review.rejected when the decision that stands for a case, the shared
+// review decision or else the adjudication, is a reject. A decision outside the
+// enumeration is reported by decision and is not repeated here.
+func (v *validator) settled(label, decision string) {
+	if decision == DecisionReject {
+		v.add("review.rejected", "%s: the standing review decision is reject; the manifest is not admissible", label)
 	}
 }
 

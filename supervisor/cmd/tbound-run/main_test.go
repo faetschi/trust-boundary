@@ -42,8 +42,8 @@ func fixtureDigest(label string) string {
 
 func fixtureReviews() []evalcorpus.Review {
 	return []evalcorpus.Review{
-		{Role: "reviewer-a", Reviewer: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "synthetic-label"},
-		{Role: "reviewer-b", Reviewer: "synthetic-reviewer-2", Human: true, Blinded: true, Decision: "synthetic-label"},
+		{Role: "reviewer-a", Reviewer: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "accept"},
+		{Role: "reviewer-b", Reviewer: "synthetic-reviewer-2", Human: true, Blinded: true, Decision: "accept"},
 	}
 }
 

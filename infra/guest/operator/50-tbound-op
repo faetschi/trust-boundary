@@ -1,0 +1,3 @@
+# tbound-op: the only NOPASSWD rule left for the automation after Z1 (spec: DESIGN.md).
+Defaults!/opt/tbound/operator/tbound-op env_reset,!setenv
+tboundadmin ALL=(root) NOPASSWD: /opt/tbound/operator/tbound-op

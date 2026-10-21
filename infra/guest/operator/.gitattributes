@@ -1,0 +1,2 @@
+# The operator dispatcher is installed on the guest as shipped: LF only, never CRLF.
+* text eol=lf
