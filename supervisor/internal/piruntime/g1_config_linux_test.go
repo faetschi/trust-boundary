@@ -54,9 +54,13 @@ func TestG1ServiceConfigTemplateIsValidAndIsTheCase(t *testing.T) {
 		uint64(config.WorkflowDurationSeconds) != c.Ceilings["duration_seconds"] {
 		t.Error("the config's ceilings differ from corpus/g1/g1.json")
 	}
-	// Four tool calls and the final text turn need at least five provider turns of host calls.
-	if config.WorkflowMaxHostCalls < 5 || len(config.WorkflowBashOutputPaths) == 0 {
-		t.Errorf("host calls %d, bash output paths %v: no room for read, edit, Bash (with an output), read and the final turn",
-			config.WorkflowMaxHostCalls, config.WorkflowBashOutputPaths)
+	// A provider turn (ReserveHostCall) and every tool effect (ReserveEffect, which `read` also passes
+	// through) each charge one workflow host call. The case is four tool calls plus the final text turn:
+	// 4 effects + 5 provider turns = 9 host calls. workflowrecovery.TestG1TurnPatternNeedsNineHostCalls
+	// shows that 8 refuses the fifth turn. Retries re-spend provider turns, so the ceiling keeps headroom.
+	const effects, providerTurns = 4, 5
+	if config.WorkflowMaxHostCalls < effects+providerTurns || len(config.WorkflowBashOutputPaths) == 0 {
+		t.Errorf("host calls %d, bash output paths %v: no room for %d effects and %d provider turns, or no Bash output scope",
+			config.WorkflowMaxHostCalls, config.WorkflowBashOutputPaths, effects, providerTurns)
 	}
 }
