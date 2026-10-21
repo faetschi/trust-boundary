@@ -423,7 +423,7 @@ func inspectSQLitePath(path string, create bool) (string, string, error) {
 	if err != nil || uid != uint32(syscall.Geteuid()) || info.Mode().Perm() != 0o600 {
 		return "", "", fmt.Errorf("%w: SQLite owner database must be supervisor-owned mode 0600", ErrOwnerStore)
 	}
-	identity, err := computeSQLiteStorageIdentity(clean, info)
+	identity, err := measureSQLiteStorageIdentity(clean, info)
 	if err != nil {
 		return "", "", err
 	}

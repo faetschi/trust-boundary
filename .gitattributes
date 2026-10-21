@@ -8,3 +8,4 @@ infra/guest/systemd/* text eol=lf
 infra/guest/nftables/* text eol=lf
 corpus/** text eol=lf
 supervisor/internal/piruntime/testdata/ubuntu-24.04-accounts/* text eol=lf
+supervisor/cmd/tbound/testdata/** -text

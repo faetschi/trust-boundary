@@ -495,7 +495,7 @@ func verifyReceiptE04Binding(receipt productionPiReceipt, trace audit.Trace) err
 	count := receipt.E04EvidenceRecordCount
 	if receipt.E04EvidenceHead == "" || count <= 0 || count > len(trace.Records) ||
 		auditHeadHash(trace.Records[:count]) != receipt.E04EvidenceHead {
-		return ErrPiWorkflowCatalog
+		return fmt.Errorf("%w: receipt e04 evidence head or count differs from the store", ErrPiWorkflowCatalog)
 	}
 	return nil
 }

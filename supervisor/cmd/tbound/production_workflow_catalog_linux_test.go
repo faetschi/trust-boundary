@@ -656,8 +656,8 @@ func TestSettledServiceRequestPinsMatchBareRootIdentity(t *testing.T) {
 	view := workflowrecovery.SettledCheckpointView{Checkpoint: workflowrecovery.Checkpoint{Pins: pins}}
 	// An admitted bare root identity must pass the pin comparison and reach the disposition gate, which refuses the unresolved exchange.
 	err := (*piServiceWorkflowCatalog)(nil).verifyCompletedServiceRequestPins(context.Background(), piServiceRequestState{}, entry,
-		productionPiReceipt{}, view, piruntime.D09ManagedLiveRootRegistration{}, managedLiveRootDescriptorIdentity{},
-		workflow.RootIdentity{}, catalogOwnerDrainVerifier{}, template, profile)
+		productionPiReceipt{ProfileHash: profile.Digest}, view, piruntime.D09ManagedLiveRootRegistration{}, managedLiveRootDescriptorIdentity{},
+		workflow.RootIdentity{}, catalogOwnerDrainVerifier{}, template)
 	if !errors.Is(err, workflowrecovery.ErrPendingUnknown) {
 		t.Fatalf("admitted bare root identity did not reach the settled disposition gate: %v", err)
 	}
