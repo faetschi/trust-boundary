@@ -615,7 +615,7 @@ func (s *stream) chunk(raw []byte) error {
 	if e != nil {
 		return e
 	}
-	if e = keys(c, []string{"index", "delta", "finish_reason"}, []string{"logprobs", "native_finish_reason"}); e != nil {
+	if e = keys(c, []string{"index", "delta"}, []string{"finish_reason", "logprobs", "native_finish_reason"}); e != nil {
 		return e
 	}
 	index, e := integer(c["index"])
@@ -635,8 +635,9 @@ func (s *stream) chunk(raw []byte) error {
 	if e = s.delta(c["delta"]); e != nil {
 		return e
 	}
-	finishRaw := c["finish_reason"]
-	if isNull(finishRaw) {
+	// Some OpenCode Go upstreams omit finish_reason until the final chunk; absent means null.
+	finishRaw, hasFinish := c["finish_reason"]
+	if !hasFinish || isNull(finishRaw) {
 		return nil
 	}
 	finish, e := strRaw(finishRaw)
@@ -650,7 +651,7 @@ func (s *stream) chunk(raw []byte) error {
 
 // trailerChunk accepts a terminal metadata chunk that real providers send after
 // finish_reason (for example an OpenRouter usage chunk). It permits an empty
-// choices array or one choice with a null finish_reason, and it rejects any new
+// choices array or one choice with a null, absent or equal finish_reason, and it rejects any new
 // trusted content or tool call, so nothing can be smuggled in after completion.
 func (s *stream) trailerChunk(choices []json.RawMessage) error {
 	if len(choices) == 0 {
@@ -663,15 +664,15 @@ func (s *stream) trailerChunk(choices []json.RawMessage) error {
 	if e != nil {
 		return e
 	}
-	if e = keys(c, []string{"index", "delta", "finish_reason"}, []string{"logprobs", "native_finish_reason"}); e != nil {
+	if e = keys(c, []string{"index", "delta"}, []string{"finish_reason", "logprobs", "native_finish_reason"}); e != nil {
 		return e
 	}
 	index, e := integer(c["index"])
 	if e != nil || index != 0 {
 		return errors.New("choice index must be zero")
 	}
-	if !isNull(c["finish_reason"]) {
-		finish, e := strRaw(c["finish_reason"])
+	if v, ok := c["finish_reason"]; ok && !isNull(v) {
+		finish, e := strRaw(v)
 		if e != nil || finish != s.out.finish {
 			return errors.New("conflicting finish reason after completion")
 		}
