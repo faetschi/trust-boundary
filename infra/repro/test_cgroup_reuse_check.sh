@@ -179,7 +179,7 @@ fi
 
 # 6. --help is mutation-free.
 set +e
-PATH="$BIN:$PATH" "$HELPER" --help >/dev/null 2>&1
+PATH="$BIN:$PATH" bash "$HELPER" --help >/dev/null 2>&1
 help_rc=$?
 set -e
 if [[ "$help_rc" -eq 0 ]]; then ok "--help exit 0"; else fail "--help exit $help_rc"; fi
