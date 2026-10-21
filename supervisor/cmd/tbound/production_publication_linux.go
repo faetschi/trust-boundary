@@ -202,7 +202,21 @@ func productionCleanupSafe(evidence productionLifecycleSnapshot, runner *product
 	if !evidence.workerLaunchAttempted {
 		return true
 	}
-	return evidence.workerSettled() && (!evidence.channelsStarted || evidence.channelsJoined && evidence.channelsErr == nil)
+	return evidence.workerSettled() && evidence.channelsSettled()
+}
+
+// channelsSettled reports whether the governed loops ended without a local failure: they never
+// started, or they joined either cleanly or with only a failed provider turn. That turn's exchange is
+// disposed of in the provider journal (an unknown one is reconciled at abandon); nothing local is open.
+func (s productionLifecycleSnapshot) channelsSettled() bool {
+	if !s.channelsStarted {
+		return true
+	}
+	if !s.channelsJoined {
+		return false
+	}
+	_, providerTurnOnly := s.channelsErr.(providerTurnFailure)
+	return s.channelsErr == nil || providerTurnOnly
 }
 
 func validateProductionLifecycle(evidence productionLifecycleSnapshot, runID string, runner *productionCommandRunner) error {

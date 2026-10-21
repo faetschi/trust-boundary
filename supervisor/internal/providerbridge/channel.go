@@ -180,7 +180,7 @@ func Serve(ctx context.Context, channel io.ReadWriteCloser, conversation *Conver
 				if err := writeResponse(channelResponse{Kind: "error", RequestID: result.requestID, Error: safeFailure(result.err)}); err != nil {
 					return err
 				}
-				return fmt.Errorf("provider turn failed; conversation closed: %w", result.err)
+				return fmt.Errorf("%w; conversation closed: %w", ErrProviderTurnFailed, result.err)
 			}
 			turn := result.turn
 			if err := writeResponse(channelResponse{Kind: "turn", RequestID: result.requestID, Turn: &turn}); err != nil {

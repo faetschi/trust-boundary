@@ -396,6 +396,39 @@ func (r *piServiceUnknownReconciler) reconcileProvider(_ context.Context, entry 
 	return "sha256:" + hex.EncodeToString(digest.Sum(nil)), settlement, nil
 }
 
+// unknownExchangeClosesHostCall reports whether the provider journal of the checkpoint's latest
+// conversation closes the checkpoint's reserved host call as unknown: its last two records are the
+// reservation of exactly that binding in that conversation and the provider_exchange_unknown bound to
+// it. The reservation charged its host call and token upper bound when it was made, so the checkpoint
+// counters must already hold both.
+func unknownExchangeClosesHostCall(checkpoint workflowrecovery.Checkpoint, trace audit.Trace, workflowID, conversationID string) bool {
+	call := checkpoint.Pins.HostCallReservation
+	if call == nil || call.Disposition != workflowrecovery.HostCallReserved || call.CapturedCall != nil ||
+		call.Binding.TokenUpperBound == 0 || checkpoint.Counters.HostCalls == 0 ||
+		checkpoint.Counters.Tokens < call.Binding.TokenUpperBound || len(trace.Records) < 2 {
+		return false
+	}
+	reserved, closed := trace.Records[len(trace.Records)-2].Event, trace.Records[len(trace.Records)-1].Event
+	if reserved.Kind != "provider_host_call_reserved" || closed.Kind != "provider_exchange_unknown" {
+		return false
+	}
+	var reservation struct {
+		WorkflowID     string                            `json:"workflow_id"`
+		ConversationID string                            `json:"conversation_id"`
+		Binding        *workflowrecovery.HostCallBinding `json:"binding"`
+	}
+	var unknown struct {
+		WorkflowID string                            `json:"workflow_id"`
+		HostCall   *workflowrecovery.HostCallBinding `json:"host_call"`
+	}
+	if json.Unmarshal(reserved.Data, &reservation) != nil || json.Unmarshal(closed.Data, &unknown) != nil ||
+		reservation.Binding == nil || unknown.HostCall == nil {
+		return false
+	}
+	return reservation.WorkflowID == workflowID && reservation.ConversationID == conversationID &&
+		unknown.WorkflowID == workflowID && *reservation.Binding == call.Binding && *unknown.HostCall == call.Binding
+}
+
 // providerJournalPathFor is the provider-bridge journal of one conversation of the entry's workflow:
 // the entry's own journal for its first conversation, a recovery journal for a later one. It is ""
 // when no valid path exists.
@@ -440,7 +473,8 @@ func providerJournalUndisposed(trace audit.Trace) int {
 
 // reconcileSettledOwner proves the owner side from the workflow's latest settled owner
 // checkpoint: it must be the checkpoint the catalog entry authorized, its pins must carry no
-// pending effect, host call, pending call or undisposed provider exchange, every owner epoch it
+// pending effect, host call, pending call or undisposed provider exchange (a reserved host call
+// counts as disposed only when providerTrace shows it closed as unknown), every owner epoch it
 // names must be proven drained by the owner drain verifier (drainproof, with NeverBound receipts
 // for owners that were never exposed), and the catalog's owner-scope records must be exactly
 // those epochs, all drained and removed.
@@ -459,7 +493,13 @@ func (c *piServiceWorkflowCatalog) reconcileSettledOwner(ctx context.Context, en
 	if pins.RecoveryGeneration > 1 {
 		expectedConversationID = fmt.Sprintf("%s-conversation-g%d", entry.WorkflowID, pins.RecoveryGeneration)
 	}
-	if err := validateSettledServiceDisposition(pins, expectedConversationID); err != nil {
+	closedUnknown := false
+	if providerTrace != nil {
+		if trace, err := providerTrace(expectedConversationID); err == nil {
+			closedUnknown = unknownExchangeClosesHostCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
+		}
+	}
+	if err := validateSettledServiceDisposition(pins, expectedConversationID, closedUnknown); err != nil {
 		problems = append(problems, "owner checkpoint: pending effect, host call, pending call or provider exchange: "+err.Error())
 	}
 	proofs, err := drain.VerifyOwnerCellsDrainedWithProof(ctx, entry.WorkflowID, view.OwnerEpochs)
@@ -536,7 +576,15 @@ func (c *piServiceWorkflowCatalog) reconcileProductionOwner(ctx context.Context,
 	if err != nil {
 		return piServiceOwnerReconciliation{}, unreconciledf("owner checkpoint: the settled owner checkpoint cannot be loaded: %v", err)
 	}
-	return c.reconcileSettledOwner(ctx, entry, view, drain, template.CgroupsPath, nil)
+	providerTrace := func(conversationID string) (audit.Trace, error) {
+		path := providerJournalPathFor(productionAuditRootDefault, entry, conversationID)
+		if path == "" {
+			return audit.Trace{}, errors.New("no valid provider journal path")
+		}
+		trace, _, err := readProductionAuditJournal(path)
+		return trace, err
+	}
+	return c.reconcileSettledOwner(ctx, entry, view, drain, template.CgroupsPath, providerTrace)
 }
 
 // settlementEvidenceFiles names the per-request host files a settlement verification reads:
