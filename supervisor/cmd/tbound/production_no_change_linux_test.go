@@ -29,12 +29,14 @@ const (
 
 // noChangeRun is one managed live-root run. Admission, ledger recovery, seeding
 // of the Store baseline, and release all go through the real lease. Only the
-// registration verifier is the existing test seam; the audit journal and the
-// Store are real and file-backed.
+// registration verifier is the existing test seam; the audit journals and the
+// Store are real and file-backed. As in production, the lease writes the
+// publication journal and the Store and its seed write the store journal.
 type noChangeRun struct {
 	authority    *managedLiveRootAuthority
 	journal      *audit.Journal
 	journalPath  string
+	storeJournal *audit.Journal
 	live         *os.File
 	lease        *managedLiveRootLease
 	registration piruntime.D09ManagedLiveRootRegistration
@@ -74,7 +76,7 @@ func startNoChangeRun(t *testing.T, seed bool) *noChangeRun {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = journal.Close() })
-	store := newNoChangeStore(t, root)
+	store, storeJournal := newNoChangeStore(t, root)
 	authority := newFakeManagedLiveRootAuthority()
 	ctx := context.Background()
 	lease, err := authority.acquire(ctx, live, piruntime.D09CellTemplate{ManagedLiveRootRegistrationDigest: testManagedRootDigest},
@@ -91,14 +93,15 @@ func startNoChangeRun(t *testing.T, seed bool) *noChangeRun {
 			snapshot:   piruntime.D09ManagedLiveRootSnapshotEvidence{RunID: noChangeRunID, EvidenceDigest: managedRootTestPolicy},
 			xattr:      piruntime.D09ManagedRootXattrEvidence{RunID: noChangeRunID, EvidenceDigest: managedRootTestXattr},
 			revalidate: func(context.Context, *os.File) error { return nil }}
-		baseline, err = seedManagedRootSourceWithProof(ctx, store, live, journal, noChangeRunID, proof)
+		baseline, err = seedManagedRootSourceWithProof(ctx, store, live, storeJournal, noChangeRunID, proof)
 	} else {
 		baseline, err = store.Seed(live, sessionrepo.RootAttestation{Quiescent: true})
 	}
 	if err != nil {
 		t.Fatalf("seed the Store baseline from the live root: %v", err)
 	}
-	return &noChangeRun{authority: authority, journal: journal, journalPath: journalPath, live: live, lease: lease,
+	return &noChangeRun{authority: authority, journal: journal, journalPath: journalPath, storeJournal: storeJournal,
+		live: live, lease: lease,
 		registration: lease.verified.Registration(), identity: lease.identity,
 		root:     workflow.RootIdentity{Device: lease.identity.Device, Inode: lease.identity.Inode},
 		baseline: baseline,
@@ -106,7 +109,7 @@ func startNoChangeRun(t *testing.T, seed bool) *noChangeRun {
 			XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}}}
 }
 
-func newNoChangeStore(t *testing.T, root string) *sessionrepo.Store {
+func newNoChangeStore(t *testing.T, root string) (*sessionrepo.Store, *audit.Journal) {
 	t.Helper()
 	storePath := filepath.Join(root, "store")
 	if err := os.Mkdir(storePath, 0o700); err != nil {
@@ -129,7 +132,7 @@ func newNoChangeStore(t *testing.T, root string) *sessionrepo.Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-	return store
+	return store, storeJournal
 }
 
 // release closes the lease as the session does after a no-change run: mark no
