@@ -1,0 +1,986 @@
+#!/bin/bash -p
+# tbound-op: root-owned operator dispatcher for the TBound guest (spec: DESIGN.md next to this file).
+# Installed root:root 0755 at /opt/tbound/operator/tbound-op, called as
+#   sudo -n /opt/tbound/operator/tbound-op <verb> [args]
+# (sudoers 50-tbound-op: NOPASSWD for exactly this path, env_reset, !setenv).
+# No path arguments, no eval, no free-form commands: every verb is a fixed sequence of fixed commands whose inputs are
+# (a) NAME/SHA/RUNID/RID arguments checked by anchored regexes, (b) fixed staged file names in ~tboundadmin/stage-<NAME>/
+# copied O_NOFOLLOW into a root-only tmpfs work dir and hashed there, (c) pins in /opt/tbound/operator/pins.env.
+set -euo pipefail
+umask 077
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+export LC_ALL=C
+unset BASH_ENV ENV CDPATH GLOBIGNORE || true
+IFS=$' \t\n'
+cd /
+
+OPDIR=/opt/tbound/operator
+PINS=$OPDIR/pins.env
+CFGTPL=$OPDIR/cfg-templates
+ETC=/etc/tbound
+TB=/usr/local/bin/tbound
+TBP=/usr/local/bin/tbound-profile
+GA=/root/ga
+STATE=$GA/state
+PREV=$GA/prev
+OUTROOT=/var/tmp/tbound-op
+LOGF=/var/log/tbound-op.log
+LOCK=/run/tbound-op.lock
+RUNDIR=/run/tbound-op
+ADMIN=tboundadmin
+SVC_UNIT=tbound-pi.service
+SOCK_UNIT=tbound-pi.socket
+CG=/sys/fs/cgroup/system.slice/tbound-pi.service
+LIVE=/var/lib/tbound/live
+AUDIT=/var/lib/tbound/audit
+CATALOG=/var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl
+CLIENT_PRIV=(setpriv --reuid 994 --regid 985 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs --)
+SVC_PRIV=(setpriv --reuid 995 --regid 986 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs --)
+PODMAN=(env -C / -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/var/lib/tbound/podman-home USER=tbound-pi LOGNAME=tbound-pi
+  XDG_RUNTIME_DIR=/run/tbound-pi XDG_CONFIG_HOME=/etc/tbound/podman-config XDG_DATA_HOME=/var/lib/tbound/podman-home/data
+  XDG_CACHE_HOME=/run/tbound-pi/cache TMPDIR=/run/tbound-pi/tmp CONTAINERS_CONF=/etc/tbound/podman-config/containers.conf
+  CONTAINERS_STORAGE_CONF=/etc/tbound/podman-config/storage.conf LANG=C LC_ALL=C /usr/bin/podman)
+
+re_name='^(smoke|g1|rp|dr|pilot)$'
+re_sha='^(sha256:)?[0-9a-f]{64}$'
+re_runid='^[A-Za-z0-9._-]{8,128}$'
+re_rid='^(smoke|g1|rp|dr)-req-[0-9]{8}T[0-9]{6}Z$'
+re_dig='^sha256:[0-9a-f]{64}$'
+
+[[ $EUID -eq 0 ]] || { echo "tbound-op: must run as root (via sudo)" >&2; exit 2; }
+WORK=""
+HOOK=""
+CG_MADE=0
+ARGV_Q=$(printf '%q ' "$@")
+
+# ---------------------------------------------------------------------------------------------------------------- log
+logline() {
+  [[ -e $LOGF ]] || install -m 0640 -o root -g adm /dev/null "$LOGF"
+  printf '%s %s %s\n' "$(date -u +%FT%TZ)" "${SUDO_USER:-root}" "$*" >>"$LOGF"
+}
+cg_cleanup() { if [[ $CG_MADE == 1 ]]; then rmdir "$CG" 2>/dev/null || true; CG_MADE=0; fi; }
+on_exit() {
+  local rc=$?
+  if [[ -n $HOOK ]]; then "$HOOK" || true; fi
+  if [[ -n $WORK ]]; then rm -rf -- "$WORK"; fi
+  logline "END rc=$rc argv=$ARGV_Q"
+  exit "$rc"
+}
+trap on_exit EXIT
+die() { printf 'tbound-op: %s\n' "$*" >&2; logline "FAIL $*"; exit 1; }
+usage() { printf 'tbound-op: %s\n' "$*" >&2; logline "USAGE $*"; exit 2; }
+say() { printf '%s\n' "$*"; }
+
+logline "BEGIN argv=$ARGV_Q"
+
+# ------------------------------------------------------------------------------------------------- argument grammar
+(($# >= 1)) || usage "no verb"
+for a in "$@"; do
+  [[ $a != *$'\n'* && $a =~ ^[A-Za-z0-9._:,=-]{1,160}$ && $a != *..* ]] || usage "argument outside the allowed alphabet"
+done
+VERB=$1
+shift
+ARGS=("$@")
+need_argc() { local lo=$1 hi=$2; ((${#ARGS[@]} >= lo && ${#ARGS[@]} <= hi)) || usage "$VERB: wrong number of arguments"; }
+need_name() { [[ ${1:-} =~ $re_name ]] || usage "bad NAME"; }
+need_sha() { [[ ${1:-} =~ $re_sha ]] || usage "bad SHA"; }
+norm_sha() { printf 'sha256:%s' "${1#sha256:}"; }
+
+# ------------------------------------------------------------------------------------------------------------- pins
+declare -A PIN
+load_pins() {
+  local line k v
+  [[ -f $PINS && ! -L $PINS && $(stat -c '%u:%a' "$PINS") == 0:444 && $(stat -c '%u:%a' "$OPDIR") == 0:755 ]] || die "pins.env or its directory has the wrong owner/mode"
+  while IFS= read -r line || [[ -n $line ]]; do
+    if [[ -z $line || $line == \#* ]]; then continue; fi
+    if [[ $line =~ ^([A-Z][A-Z0-9_]*)=(sha256:[0-9a-f]{64}|[0-9a-f]{40})$ ]]; then PIN[${BASH_REMATCH[1]}]=${BASH_REMATCH[2]}
+    else die "malformed pins.env line"; fi
+  done <"$PINS"
+  for k in F TBOUND_DIGEST TBP_DIGEST BUNDLE_DIGEST BASE_TD IMGDIGEST ADMIN_PUB_DIGEST SRC_DIGEST CFG TPL_SMOKE TPL_G1 TPL_RP TPL_PILOT; do
+    [[ -n ${PIN[$k]:-} ]] || die "pins.env lacks $k"
+  done
+}
+
+sha() { local h; h=$(sha256sum -- "$1") || return 1; printf 'sha256:%s' "${h%% *}"; }
+
+anchor_ok() { [[ $(sha "$ETC/pi-host-profile.pub") == "${PIN[ADMIN_PUB_DIGEST]}" ]]; }
+
+# ---------------------------------------------------------------------------------------------- python helpers (-I)
+py() { python3 -I -c "$@"; }
+read -r -d '' PY_STAGE <<'EOF' || true
+import os, stat, sys
+home, sub, fn, dest, cap, uid = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], int(sys.argv[5]), int(sys.argv[6])
+base = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
+def bad(m):
+    sys.stderr.write("stage: %s\n" % m)
+    sys.exit(1)
+try:
+    hd = os.open(home, base | os.O_DIRECTORY)
+    st = os.fstat(hd)
+    if st.st_uid not in (0, uid):
+        bad("home directory owner")
+    sd = os.open(sub, base | os.O_DIRECTORY, dir_fd=hd)
+    st = os.fstat(sd)
+    if st.st_uid != uid:
+        bad("staging directory owner")
+    fd = os.open(fn, base | os.O_NONBLOCK, dir_fd=sd)
+    st = os.fstat(fd)
+    if not stat.S_ISREG(st.st_mode):
+        bad("staged file is not a regular file")
+    if st.st_uid != uid:
+        bad("staged file owner")
+    if st.st_size > cap:
+        bad("staged file larger than the cap")
+    out = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    n = 0
+    while True:
+        b = os.read(fd, 1 << 20)
+        if not b:
+            break
+        n += len(b)
+        if n > cap:
+            bad("staged file grew past the cap")
+        while b:
+            b = b[os.write(out, b):]
+    os.fsync(out)
+except OSError as e:
+    bad(str(e))
+EOF
+read -r -d '' PY_JGET <<'EOF' || true
+import json, sys
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+k = sys.argv[2]
+if not isinstance(d, dict) or k not in d:
+    sys.exit(3)
+v = d[k]
+sys.stdout.write(v if isinstance(v, str) else json.dumps(v, separators=(",", ":")))
+EOF
+read -r -d '' PY_CFGCHECK <<'EOF' || true
+import json, re, sys
+tpl = open(sys.argv[1], encoding="utf-8", newline="").read()
+got = open(sys.argv[2], encoding="utf-8", newline="").read()
+cd, sd, mode = sys.argv[3:6]
+def bad(m):
+    sys.stderr.write("cfgcheck: %s\n" % m)
+    sys.exit(1)
+if "\r" in got:
+    bad("staged config contains CR")
+try:
+    json.loads(got)
+except ValueError:
+    bad("staged config is not JSON")
+t = tpl
+for key, val in (("containers_conf_digest", cd), ("storage_conf_digest", sd)):
+    old = '"%s": "<MEASURE>"' % key
+    if t.count(old) != 1:
+        bad("template lacks %s" % old)
+    t = t.replace(old, '"%s": "%s"' % (key, val))
+extra = ""
+if mode == "dr":
+    tid = re.findall(r'^  "workflow_admission_id": "([^"\\]+)",$', tpl, re.M)
+    g = re.findall(r'^  "workflow_admission_id": "([a-z0-9][a-z0-9-]{4,62}[a-z0-9])",$', got, re.M)
+    if len(tid) != 1 or len(g) != 1:
+        bad("admission id not found exactly once")
+    if g[0] == tid[0]:
+        bad("dr needs a NEW admission id, not the route-probe one")
+    t = t.replace('"workflow_admission_id": "%s"' % tid[0], '"workflow_admission_id": "%s"' % g[0])
+    extra = g[0]
+elif mode == "pilot":
+    g = re.findall(r'"corpus_manifest_digest": "(sha256:[0-9a-f]{64})"', got)
+    old = '"corpus_manifest_digest": "<CORPUS_DIGEST>"'
+    if len(g) != 1 or t.count(old) != 1:
+        bad("corpus digest not found exactly once")
+    t = t.replace(old, '"corpus_manifest_digest": "%s"' % g[0])
+    extra = g[0]
+if t != got:
+    tl, gl = t.split("\n"), got.split("\n")
+    for i in range(max(len(tl), len(gl))):
+        a = tl[i] if i < len(tl) else "<end>"
+        b = gl[i] if i < len(gl) else "<end>"
+        if a != b:
+            bad("differs from the shipped template at line %d: want %r got %r" % (i + 1, a, b))
+print(extra)
+EOF
+read -r -d '' PY_TPLCMP <<'EOF' || true
+import json, sys
+a = json.load(open(sys.argv[1], encoding="utf-8"))
+b = json.load(open(sys.argv[2], encoding="utf-8"))
+if "route_probe" not in a or "route_probe" in b:
+    sys.exit("probe template must carry route_probe and the production template must not")
+del a["route_probe"]
+if a != b:
+    sys.exit("production template differs from the probe template by more than route_probe")
+EOF
+jget() { py "$PY_JGET" "$1" "$2"; }
+jhas() { py "$PY_JGET" "$1" "$2" >/dev/null 2>&1; }
+
+# ------------------------------------------------------------------------------------------------ work dir, outputs
+mkwork() {
+  [[ -n $WORK ]] && return 0
+  install -d -o root -g root -m 0700 "$RUNDIR"
+  WORK=$(mktemp -d "$RUNDIR/w.XXXXXX")
+}
+# Export destination only: nothing under $OUTROOT is ever read back by this script. A directory is accepted only if it is
+# root:tboundadmin 0750 (so tboundadmin cannot create or replace entries in it); an existing directory of any other
+# owner or mode, or a symlink, makes the verb fail. New directories are created root-owned from the start (mkdir 0700,
+# then chown/chmod), never with install -d on a path somebody else may have made.
+mk_rootdir() {
+  local d=$1
+  [[ ! -L $d ]] || die "$d is a symlink: refused"
+  if [[ ! -e $d ]]; then
+    if mkdir -m 0700 -- "$d" 2>/dev/null; then chown root:"$ADMIN" "$d"; chmod 0750 "$d"; fi
+  fi
+  [[ -d $d && ! -L $d && $(stat -c '%u:%G:%a' "$d") == "0:$ADMIN:750" ]] || die "$d is not a root:$ADMIN 0750 directory (owner must remove it)"
+}
+check_outroot() { mk_rootdir "$OUTROOT"; }
+outdir() {
+  local n=${1:-_}
+  mk_rootdir "$OUTROOT"; mk_rootdir "$OUTROOT/$n"
+  printf '%s' "$OUTROOT/$n"
+}
+put_out() {   # NAME srcfile dstname
+  local d; d=$(outdir "$1")
+  install -o root -g "$ADMIN" -m 0640 "$2" "$d/$3.new"
+  mv -f -- "$d/$3.new" "$d/$3"
+}
+emit() {   # NAME dstname : stdin -> out dir file and stdout
+  mkwork
+  cat >"$WORK/emit.tmp"
+  put_out "$1" "$WORK/emit.tmp" "$2"
+  cat "$WORK/emit.tmp"
+  rm -f -- "$WORK/emit.tmp"
+}
+prep_ga() { install -d -o root -g root -m 0700 "$GA" "$STATE" "$PREV"; }
+
+stage_copy() {   # NAME FIXEDFILE DEST CAP
+  local home; home=$(getent passwd "$ADMIN" | cut -d: -f6)
+  [[ $home == /home/$ADMIN ]] || die "unexpected home of $ADMIN"
+  py "$PY_STAGE" "$home" "stage-$1" "$2" "$3" "$4" "$(id -u "$ADMIN")" || die "staged file $1/$2 refused"
+}
+stage_hashed() {   # NAME FIXEDFILE DEST CAP WANTSHA : copy, hash the COPY, compare
+  stage_copy "$1" "$2" "$3" "$4"
+  [[ $(sha "$3") == "$(norm_sha "$5")" ]] || die "staged $2 does not hash to the given SHA (copy hashed: $(sha "$3"))"
+}
+
+# -------------------------------------------------------------------------------------------------------- state
+st_file() { printf '%s/%s' "$STATE" "$1"; }
+# one-use markers (client launched, n7 done) live in NAME.once and survive st_reset/rollback
+st_kfile() { case $2 in client|n7) printf '%s/%s.once' "$STATE" "$1";; *) st_file "$1";; esac; }
+st_get() {   # NAME KEY
+  local f; f=$(st_kfile "$1" "$2")
+  [[ -f $f ]] || return 0
+  sed -n "s/^$2=//p" "$f" | head -1
+}
+st_put() {   # NAME KEY VALUE
+  local f
+  f=$(st_kfile "$1" "$2")
+  [[ $3 =~ ^[A-Za-z0-9:._,-]*$ ]] || die "state value outside the alphabet"
+  { [[ -f $f ]] && grep -v "^$2=" "$f" || true; printf '%s=%s\n' "$2" "$3"; } | sort >"$f.new"
+  mv -f -- "$f.new" "$f"
+}
+st_reset() { rm -f -- "$(st_file "$1")"; }
+rank() { case ${1:-} in config) echo 1;; reg) echo 2;; prof) echo 3;; started) echo 4;; *) echo 0;; esac; }
+st_rank() { rank "$(st_get "$1" state)"; }
+inst_name() {   # NAME of the state whose recorded cfg equals the installed config; empty if none
+  local cs n found=""
+  cs=$(sha "$ETC/serve-pi-service.json")
+  for n in smoke g1 rp dr pilot; do
+    if [[ -f $(st_file "$n") && $(st_get "$n" cfg) == "$cs" && $(st_rank "$n") -ge 1 ]]; then
+      [[ -z $found ]] || die "two states claim the installed config ($found, $n)"
+      found=$n
+    fi
+  done
+  printf '%s' "$found"
+}
+backup_once() {   # NAME FILE(basename under /etc/tbound)
+  install -d -o root -g root -m 0700 "$PREV/$1"
+  if [[ -e $PREV/$1/$2 ]]; then return 0; fi
+  [[ -e $ETC/$2 ]] || return 0
+  cp -p -- "$ETC/$2" "$PREV/$1/$2.new"
+  mv -n -- "$PREV/$1/$2.new" "$PREV/$1/$2"
+  rm -f -- "$PREV/$1/$2.new"
+}
+install_atomic() {   # SRC DST MODE
+  if [[ -f $2 && $(sha "$1") == "$(sha "$2")" && $(stat -c '%u:%g:%a' "$2") == "0:0:${3#0}" ]]; then return 0; fi
+  install -o root -g root -m "$3" "$1" "$2.new"
+  mv -f -- "$2.new" "$2"
+}
+
+svc_inactive() {
+  local u s
+  for u in $SVC_UNIT $SOCK_UNIT; do s=$(systemctl is-active "$u" || true); case $s in inactive|failed) ;; *) return 1;; esac; done
+}
+svc_active() {
+  [[ $(systemctl is-active $SVC_UNIT || true) == active && $(systemctl is-active $SOCK_UNIT || true) == active ]]
+}
+need_inactive() { svc_inactive || die "tbound-pi.service and .socket must be inactive (svc stop first)"; }
+
+# ------------------------------------------------------------------------------------------------ verification core
+podman_cfg_digests() {   # sets CD SD
+  CD=$(sha "$ETC/podman-config/containers.conf"); SD=$(sha "$ETC/podman-config/storage.conf")
+}
+tpl_for() { case $1 in smoke) echo smoke;; g1) echo g1;; rp|dr) echo route-probe;; pilot) echo corpus-pilot;; esac; }
+tplpin_for() { case $1 in smoke) echo TPL_SMOKE;; g1) echo TPL_G1;; rp|dr) echo TPL_RP;; pilot) echo TPL_PILOT;; esac; }
+cfg_structural() {   # NAME FILE -> CFG_EXTRA
+  local n=$1 f=$2 t mode=plain
+  t=$CFGTPL/serve-pi-service.$(tpl_for "$n").json
+  [[ $(sha "$t") == "${PIN[$(tplpin_for "$n")]}" ]] || die "shipped config template for $n does not match its pin"
+  [[ $n == dr ]] && mode=dr
+  [[ $n == pilot ]] && mode=pilot
+  podman_cfg_digests
+  CFG_EXTRA=$(py "$PY_CFGCHECK" "$t" "$f" "$CD" "$SD" "$mode") || die "config for $n is not the shipped template with only the allowed members changed"
+}
+parse_digest() { sed -n 's/.*digest \(sha256:[0-9a-f]\{64\}\),.*/\1/p' | head -1; }
+
+check_tools() {
+  [[ $(sha "$TB") == "${PIN[TBOUND_DIGEST]}" ]] || die "$TB does not match TBOUND_DIGEST"
+  [[ $(sha "$TBP") == "${PIN[TBP_DIGEST]}" ]] || die "$TBP does not match TBP_DIGEST"
+  anchor_ok || die "/etc/tbound/pi-host-profile.pub does not match ADMIN_PUB_DIGEST"
+}
+check_registration() {   # REGJSON REGSIG CFGSHA -> REGD
+  local out
+  out=$("$TBP" managed-root-verify --registration "$1" --sig "$2" --pub "$ETC/pi-host-profile.pub" --runner-digest "${PIN[TBOUND_DIGEST]}" 2>&1) || die "managed-root-verify failed: $out"
+  REGD=$(printf '%s\n' "$out" | parse_digest)
+  [[ $REGD =~ $re_dig ]] || die "no registration digest in the verify output"
+  [[ $out == *"runner ${PIN[TBOUND_DIGEST]}"* ]] || die "registration does not name the pinned runner"
+  [[ $(jget "$1" service_config_digest) == "$3" ]] || die "registration does not bind the installed config digest"
+  [[ $(jget "$1" runner_digest) == "${PIN[TBOUND_DIGEST]}" ]] || die "registration runner_digest differs from TBOUND_DIGEST"
+  [[ $(jget "$1" service_uid) == 995 && $(jget "$1" service_gid) == 986 ]] || die "registration service uid/gid"
+  [[ $(jget "$1" passwd_digest) == "$(sha /etc/passwd)" && $(jget "$1" group_digest) == "$(sha /etc/group)" &&
+     $(jget "$1" nsswitch_digest) == "$(sha /etc/nsswitch.conf)" ]] || die "account files changed since the registration was measured"
+}
+check_template_bind() {   # TEMPLATE REGD NAME -> TD (sets TDV, BASEV)
+  local out
+  out=$("$TBP" template-digest --template "$1" 2>&1) || die "template-digest failed: $out"
+  TDV=$(printf '%s\n' "$out" | sed -n 's/^D09 cell template canonical digest: \(sha256:[0-9a-f]\{64\}\)$/\1/p')
+  BASEV=$(printf '%s\n' "$out" | sed -n 's/^D09 base template digest .*: \(sha256:[0-9a-f]\{64\}\)$/\1/p')
+  [[ $TDV =~ $re_dig && $BASEV =~ $re_dig ]] || die "cannot parse template-digest output"
+  [[ $BASEV == "${PIN[BASE_TD]}" ]] || die "template BASE_TD differs from the pin"
+  [[ $(jget "$1" managed_live_root_registration_digest) == "$2" ]] || die "template does not name the registration digest"
+  [[ $(jget "$1" expected_image_digest) == "${PIN[IMGDIGEST]}" ]] || die "template image is not IMGDIGEST"
+  if [[ $3 == dr && $4 == probe ]]; then jhas "$1" route_probe || die "dr probe template lacks route_probe"
+  else ! jhas "$1" route_probe || die "template carries route_probe"; fi
+}
+check_profile() {   # PROFJSON PROFSIG TEMPLATE REGD NAME KIND -> PROFD, TDV
+  local out
+  out=$("$TBP" verify --profile "$1" --sig "$2" --pub "$ETC/pi-host-profile.pub" --runtime-bundle-digest "${PIN[BUNDLE_DIGEST]}" 2>&1) || die "profile verify failed: $out"
+  PROFD=$(printf '%s\n' "$out" | parse_digest)
+  [[ $PROFD =~ $re_dig ]] || die "no profile digest in the verify output"
+  check_template_bind "$3" "$4" "$5" "${6:-prod}"
+  [[ $(jget "$1" ContainmentProfileDigest) == "$TDV" ]] || die "profile ContainmentProfileDigest != template TD"
+  [[ $(jget "$1" SourceProvenanceDigest) == "${PIN[SRC_DIGEST]}" ]] || die "profile source digest != SRC_DIGEST"
+  [[ $(jget "$1" PiRuntimeBundleDigest) == "${PIN[BUNDLE_DIGEST]}" ]] || die "profile bundle digest != BUNDLE_DIGEST"
+}
+verify_installed() {   # NAME : the full chain on the installed files
+  local n=$1 cfg=$ETC/serve-pi-service.json kind=prod
+  check_tools
+  VI_CFG=$(sha "$cfg")
+  cfg_structural "$n" "$cfg"
+  check_registration "$ETC/managed-live-root.json" "$ETC/managed-live-root.ed25519" "$VI_CFG"
+  [[ $n == dr ]] && kind=probe
+  check_profile "$ETC/pi-host-profile.json" "$ETC/pi-host-profile.ed25519" "$ETC/d09-cell.json" "$REGD" "$n" "$kind"
+  VI_REG=$REGD; VI_PROF=$PROFD; VI_TD=$TDV
+}
+archive_run() {   # NAME [PRODTEMPLATE]
+  local n=$1 f d=$GA/$1
+  install -d -o root -g root -m 0755 "$d"
+  for f in pi-host-profile.json pi-host-profile.ed25519 pi-host-profile.pub managed-live-root.json managed-live-root.ed25519 serve-pi-service.json; do
+    install -o root -g root -m 0644 "$ETC/$f" "$d/$f"
+  done
+  if [[ $n == dr ]]; then
+    install -o root -g root -m 0644 "$ETC/d09-cell.json" "$d/d09-cell.route-probe.json"
+    if [[ -n ${2:-} ]]; then install -o root -g root -m 0644 "$2" "$d/d09-cell.json"; fi
+  else
+    install -o root -g root -m 0644 "$ETC/d09-cell.json" "$d/d09-cell.json"
+  fi
+  mkwork
+  (cd "$d" && sha256sum -- * | sort -k2) >"$WORK/archive.sha256"
+  put_out "$n" "$WORK/archive.sha256" archive.sha256
+  cat "$WORK/archive.sha256"
+}
+record_chain() {   # NAME STATE : write the installed hashes into the state file
+  local n=$1
+  st_put "$n" state "$2"
+  st_put "$n" cfg "$(sha "$ETC/serve-pi-service.json")"
+  st_put "$n" regjson "$(sha "$ETC/managed-live-root.json")"
+  st_put "$n" regsig "$(sha "$ETC/managed-live-root.ed25519")"
+  st_put "$n" profjson "$(sha "$ETC/pi-host-profile.json")"
+  st_put "$n" profsig "$(sha "$ETC/pi-host-profile.ed25519")"
+  st_put "$n" tpl "$(sha "$ETC/d09-cell.json")"
+  st_put "$n" reg "$VI_REG"; st_put "$n" prof "$VI_PROF"; st_put "$n" td "$VI_TD"
+}
+
+# ---------------------------------------------------------------------------------------------------------- verbs
+v_cfg_install() {
+  local n=${ARGS[0]:-} want; need_argc 2 2; need_name "$n"; need_sha "${ARGS[1]:-}"
+  want=$(norm_sha "${ARGS[1]:-}")
+  [[ -z $(st_get "$n" client) ]] || die "$n: the one-use admission of this NAME is spent (client-run done)"
+  need_inactive; check_tools; mkwork; prep_ga
+  stage_hashed "$n" serve-pi-service.json "$WORK/cfg" 16384 "$want"
+  cfg_structural "$n" "$WORK/cfg"
+  if [[ $n == dr ]]; then
+    local a
+    a=$CFG_EXTRA
+    if [[ $(st_get dr cfg) != "$want" ]]; then
+      if grep -qF "\"workflow_admission_id\": \"$a\"" "$CFGTPL"/*.json || { [[ -f $STATE/admissions ]] && grep -qxF -- "$a" "$STATE/admissions"; }; then die "admission id $a was used before"; fi
+      printf '%s\n' "$a" >>"$STATE/admissions"
+    fi
+  fi
+  if [[ $n == pilot ]]; then
+    [[ -f $GA/state/corpus-digest && $(cat "$GA/state/corpus-digest") == "$CFG_EXTRA" ]] || die "config corpus digest is not the digest of the installed manifest (manifest-install first)"
+  fi
+  if [[ $(sha "$ETC/serve-pi-service.json") == "$want" ]]; then say "config already installed"
+  else backup_once "$n" serve-pi-service.json; install_atomic "$WORK/cfg" "$ETC/serve-pi-service.json" 0644; fi
+  [[ $(sha "$ETC/serve-pi-service.json") == "$want" ]] || die "installed config differs after install"
+  if [[ $(st_get "$n" cfg) == "$want" && $(st_rank "$n") -ge 1 ]]; then say "state $n unchanged: $(st_get "$n" state)"
+  else st_reset "$n"; st_put "$n" state config; st_put "$n" cfg "$want"; fi
+  say "cfg-install $n ok: $want (state $(st_get "$n" state))"
+}
+
+v_reg_measure() {
+  local n=${ARGS[0]:-} cs
+  need_argc 1 1; need_name "$n"
+  need_inactive; check_tools; mkwork; prep_ga
+  cs=$(sha "$ETC/serve-pi-service.json")
+  [[ $(st_rank "$n") -ge 1 && $(st_get "$n" cfg) == "$cs" ]] || die "$n: installed config is not the one recorded for $n (cfg-install first)"
+  [[ ! -e $GA/reg-$n ]] || die "$GA/reg-$n exists already"
+  [[ ! -e $CG ]] || die "$CG exists although the service is inactive: owner must inspect it"
+  HOOK=cg_cleanup
+  mkdir "$CG"; CG_MADE=1
+  echo "+cpu +memory +pids" >"$CG/cgroup.subtree_control"
+  chown 995:986 "$CG" "$CG/cgroup.procs" "$CG/cgroup.threads" "$CG/cgroup.subtree_control"
+  [[ $(cat "$CG/cgroup.type") == domain && $(cat "$CG/cgroup.subtree_control") == "cpu memory pids" && $(wc -c <"$CG/cgroup.procs") == 0 ]] || die "unexpected cgroup state"
+  "$TBP" managed-root-measure --root "$LIVE" --service-name tbound-pi --service-group tbound-pi \
+    --service-unit /etc/systemd/system/tbound-pi.service --mount-unit /etc/systemd/system/var-lib-tbound-live.mount \
+    --runner "$TB" --service-cgroup /system.slice/tbound-pi.service --allowed-client-uids 994 --allowed-client-primary-gid 985 \
+    --out "$WORK/managed-live-root.unsigned.json" >/dev/null || die "managed-root-measure failed"
+  rmdir "$CG"; CG_MADE=0
+  local u=$WORK/managed-live-root.unsigned.json
+  [[ $(jget "$u" runner_digest) == "${PIN[TBOUND_DIGEST]}" ]] || die "measured runner_digest != TBOUND_DIGEST"
+  [[ $(jget "$u" service_uid) == 995 && $(jget "$u" service_gid) == 986 ]] || die "measured service uid/gid"
+  [[ $(jget "$u" service_config_digest) == "$cs" ]] || die "measured service_config_digest != installed config"
+  [[ $(jget "$u" passwd_digest) == "$(sha /etc/passwd)" && $(jget "$u" group_digest) == "$(sha /etc/group)" &&
+     $(jget "$u" nsswitch_digest) == "$(sha /etc/nsswitch.conf)" ]] || die "measured account digests differ from the files"
+  install -d -o root -g root -m 0700 "$GA/reg-$n"
+  install -o root -g root -m 0600 "$u" "$GA/reg-$n/managed-live-root.unsigned.json"
+  put_out "$n" "$u" managed-live-root.unsigned.json
+  say "reg-measure $n ok: $(sha "$u") -> $OUTROOT/$n/managed-live-root.unsigned.json (fetch, sign on the owner machine)"
+}
+
+v_reg_install() {
+  local n=${ARGS[0]:-} cs; need_argc 3 3; need_name "$n"; need_sha "${ARGS[1]:-}"; need_sha "${ARGS[2]:-}"
+  need_inactive; check_tools; mkwork; prep_ga
+  cs=$(sha "$ETC/serve-pi-service.json")
+  [[ $(st_rank "$n") -ge 1 && $(st_get "$n" cfg) == "$cs" ]] || die "$n: installed config is not the one recorded for $n"
+  stage_hashed "$n" managed-live-root.json "$WORK/reg.json" 16384 "${ARGS[1]:-}"
+  stage_hashed "$n" managed-live-root.ed25519 "$WORK/reg.sig" 256 "${ARGS[2]:-}"
+  check_registration "$WORK/reg.json" "$WORK/reg.sig" "$cs"
+  backup_once "$n" managed-live-root.json; backup_once "$n" managed-live-root.ed25519
+  install_atomic "$WORK/reg.json" "$ETC/managed-live-root.json" 0644
+  install_atomic "$WORK/reg.sig" "$ETC/managed-live-root.ed25519" 0644
+  check_registration "$ETC/managed-live-root.json" "$ETC/managed-live-root.ed25519" "$cs"
+  st_put "$n" state reg; st_put "$n" cfg "$cs"; st_put "$n" reg "$REGD"
+  st_put "$n" regjson "$(sha "$ETC/managed-live-root.json")"; st_put "$n" regsig "$(sha "$ETC/managed-live-root.ed25519")"
+  say "reg-install $n ok: REGDIGEST $REGD (state reg)"
+}
+
+v_prof_install() {
+  local n=${ARGS[0]:-} cs kind=prod prodsha=""
+  need_argc 4 5; need_name "$n"; need_sha "${ARGS[1]:-}"; need_sha "${ARGS[2]:-}"; need_sha "${ARGS[3]:-}"
+  if [[ $n == dr ]]; then ((${#ARGS[@]} == 5)) || usage "dr needs SHA_PRODTEMPLATE"; need_sha "${ARGS[4]:-}"; prodsha=${ARGS[4]:-}; kind=probe
+  else ((${#ARGS[@]} == 4)) || usage "only dr takes SHA_PRODTEMPLATE"; fi
+  need_inactive; check_tools; mkwork; prep_ga
+  cs=$(sha "$ETC/serve-pi-service.json")
+  [[ $(st_rank "$n") -ge 2 && $(st_get "$n" cfg) == "$cs" ]] || die "$n: state must be reg with the installed config (reg-install first)"
+  [[ $(sha "$ETC/managed-live-root.json") == "$(st_get "$n" regjson)" ]] || die "installed registration is not the one recorded for $n"
+  local reg; reg=$(st_get "$n" reg)
+  stage_hashed "$n" pi-host-profile.json "$WORK/prof.json" 16384 "${ARGS[1]:-}"
+  stage_hashed "$n" pi-host-profile.ed25519 "$WORK/prof.sig" 256 "${ARGS[2]:-}"
+  if [[ $n == dr ]]; then stage_hashed "$n" d09-cell.route-probe.json "$WORK/tpl.json" 65536 "${ARGS[3]:-}"
+  else stage_hashed "$n" d09-cell.json "$WORK/tpl.json" 65536 "${ARGS[3]:-}"; fi
+  check_profile "$WORK/prof.json" "$WORK/prof.sig" "$WORK/tpl.json" "$reg" "$n" "$kind"
+  if [[ $n == dr ]]; then
+    stage_hashed "$n" d09-cell.json "$WORK/prod.json" 65536 "$prodsha"
+    py "$PY_TPLCMP" "$WORK/tpl.json" "$WORK/prod.json" || die "production template is not the probe template minus route_probe"
+    check_template_bind "$WORK/prod.json" "$reg" dr prod
+  fi
+  backup_once "$n" pi-host-profile.json; backup_once "$n" pi-host-profile.ed25519; backup_once "$n" d09-cell.json
+  install_atomic "$WORK/prof.json" "$ETC/pi-host-profile.json" 0644
+  install_atomic "$WORK/prof.sig" "$ETC/pi-host-profile.ed25519" 0644
+  install_atomic "$WORK/tpl.json" "$ETC/d09-cell.json" 0644
+  verify_installed "$n"
+  [[ $VI_REG == "$reg" ]] || die "installed registration digest differs from the recorded one"
+  archive_run "$n" "${prodsha:+$WORK/prod.json}"
+  record_chain "$n" prof
+  say "prof-install $n ok: profile $VI_PROF TD $VI_TD (state prof)"
+}
+
+v_adopt() {
+  local n=${ARGS[0]:-}; need_argc 1 1; [[ $n == smoke ]] || usage "adopt supports smoke only"
+  check_tools; mkwork; prep_ga
+  verify_installed smoke
+  archive_run smoke
+  if svc_active; then record_chain smoke started; else record_chain smoke prof; fi
+  say "adopt smoke ok: cfg $VI_CFG reg $VI_REG profile $VI_PROF TD $VI_TD (state $(st_get smoke state))"
+}
+
+v_rollback() {
+  local n=${ARGS[0]:-} part=${ARGS[1]:-} f files=()
+  need_argc 2 2; need_name "$n"; [[ $part =~ ^(cfg|reg|prof|all)$ ]] || usage "bad rollback part"
+  need_inactive; check_tools; mkwork; prep_ga
+  case $part in
+    cfg) files=(serve-pi-service.json);;
+    reg) files=(managed-live-root.json managed-live-root.ed25519);;
+    prof) files=(pi-host-profile.json pi-host-profile.ed25519 d09-cell.json);;
+    all) files=(serve-pi-service.json managed-live-root.json managed-live-root.ed25519 pi-host-profile.json pi-host-profile.ed25519 d09-cell.json);;
+  esac
+  for f in "${files[@]}"; do [[ -f $PREV/$n/$f ]] || die "no backup $PREV/$n/$f: rollback refused"; done
+  for f in "${files[@]}"; do install_atomic "$PREV/$n/$f" "$ETC/$f" 0644; [[ $(sha "$ETC/$f") == "$(sha "$PREV/$n/$f")" ]] || die "restore of $f failed"; done
+  case $part in
+    reg|all) "$TBP" managed-root-verify --registration "$ETC/managed-live-root.json" --sig "$ETC/managed-live-root.ed25519" --pub "$ETC/pi-host-profile.pub" --runner-digest "${PIN[TBOUND_DIGEST]}" >/dev/null || die "restored registration does not verify";;
+  esac
+  case $part in
+    prof|all) "$TBP" verify --profile "$ETC/pi-host-profile.json" --sig "$ETC/pi-host-profile.ed25519" --pub "$ETC/pi-host-profile.pub" --runtime-bundle-digest "${PIN[BUNDLE_DIGEST]}" >/dev/null || die "restored profile does not verify";;
+  esac
+  st_reset "$n"
+  say "rollback $n $part ok (state of $n cleared; restored: ${files[*]}); run status to see which NAME the installed set matches"
+}
+
+v_manifest_install() {
+  local want out dig
+  need_argc 2 2; need_sha "${ARGS[0]:-}"; need_sha "${ARGS[1]:-}"
+  want=$(norm_sha "${ARGS[1]:-}")
+  check_tools; mkwork; prep_ga
+  stage_hashed pilot manifest.json "$WORK/manifest.json" $((16 * 1024 * 1024)) "${ARGS[0]:-}"
+  out=$("$TBP" corpus-digest --manifest "$WORK/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --max-host-calls 8 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "corpus-digest refused the manifest: ${out:0:600}"
+  dig=$(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
+  [[ $dig == "$want" ]] || die "corpus digest of the staged manifest is not the given CORPUS_DIGEST"
+  need_inactive
+  install -d -o root -g root -m 0755 "$ETC/corpus"
+  install_atomic "$WORK/manifest.json" "$ETC/corpus/manifest.json" 0644
+  out=$("$TBP" corpus-digest --manifest "$ETC/corpus/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --max-host-calls 8 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "installed manifest does not verify"
+  [[ $(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u) == "$want" ]] || die "installed manifest digest differs"
+  printf '%s\n' "$want" >"$GA/state/corpus-digest"
+  say "manifest-install ok: $want"
+}
+
+v_svc() {
+  local act=${ARGS[0]:-} n ts
+  need_argc 1 1; [[ $act =~ ^(start|stop)$ ]] || usage "svc start|stop"
+  check_tools; mkwork; prep_ga
+  if [[ $act == stop ]]; then
+    systemctl stop $SVC_UNIT $SOCK_UNIT
+    svc_inactive || die "service or socket still active after stop"
+    say "svc stop ok: service and socket inactive"
+    return 0
+  fi
+  n=$(inst_name)
+  [[ -n $n && $(st_rank "$n") -ge 3 ]] || die "no NAME with state >= prof matches the installed config (status shows the chain)"
+  local k f
+  for pair in cfg:serve-pi-service.json regjson:managed-live-root.json regsig:managed-live-root.ed25519 profjson:pi-host-profile.json profsig:pi-host-profile.ed25519 tpl:d09-cell.json; do
+    k=${pair%%:*}; f=${pair##*:}
+    [[ $(sha "$ETC/$f") == "$(st_get "$n" "$k")" ]] || die "installed $f differs from the one recorded for $n"
+  done
+  verify_installed "$n"
+  ts=$(date -u '+%Y-%m-%d %H:%M:%S')
+  systemctl start $SOCK_UNIT
+  systemctl start $SVC_UNIT || true
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10; do svc_active && break; sleep 1; done
+  journalctl -u $SVC_UNIT --since "$ts" --no-pager >"$WORK/journal.txt" 2>&1 || true
+  put_out "$n" "$WORK/journal.txt" svc-start-journal.txt
+  tail -n 8 "$WORK/journal.txt"
+  svc_active || die "service or socket not active after start (journal saved to $OUTROOT/$n/svc-start-journal.txt)"
+  [[ $(st_rank "$n") -ge 4 ]] || st_put "$n" state started
+  say "svc start ok for $n: service and socket active"
+}
+
+live_listing() { find "$LIVE" -mindepth 1 -printf '%y %m %U:%G %P\n' | sort; }
+SMOKE_TEXT='TBound smoke fixture. This file is harmless: it only checks that the read tool works.'
+live_is_smoke() {
+  [[ $(live_listing) == $'d 755 995:986 lost+found\nf 644 995:986 SMOKE-README.txt' ]] &&
+    [[ $(cat "$LIVE/SMOKE-README.txt"; echo x) == "$SMOKE_TEXT"$'\nx' ]]
+}
+live_is_g1() {
+  [[ $(live_listing) == $'d 755 995:986 lost+found\nd 755 995:986 out\nd 755 995:986 src\nf 644 995:986 src/release.txt' ]]
+}
+live_report() {   # NAME
+  { echo "== listing"; live_listing; echo "== census"; python3 -I /opt/tbound/helpers/xattr-census-r9.py "$LIVE" | tail -1; } >"$WORK/live.txt" 2>&1 || true
+  put_out "$1" "$WORK/live.txt" live-listing.txt
+  cat "$WORK/live.txt"
+}
+v_seed_live() {
+  local w=${ARGS[0]:-}; need_argc 1 1; [[ $w =~ ^(smoke|g1)$ ]] || usage "seed-live smoke|g1"
+  check_tools; mkwork; prep_ga
+  if [[ $w == smoke ]]; then
+    if live_is_smoke; then say "live root already is the smoke fixture"
+    else
+      need_inactive
+      rm -rf --one-file-system -- "$LIVE/src" "$LIVE/out"
+      rm -f -- "$LIVE/SMOKE-README.txt"
+      printf '%s\n' "$SMOKE_TEXT" | install -o 995 -g 986 -m 0644 /dev/stdin "$LIVE/SMOKE-README.txt"
+      live_is_smoke || die "live root is not exactly the smoke fixture (unexpected extra entries: owner must look)"
+    fi
+  else
+    if live_is_g1 && [[ $(cat "$LIVE/src/release.txt") == $'version=2.4.0\nstatus=draft' ]]; then say "live root already is the g1 fixture"
+    else
+      need_inactive
+      rm -f -- "$LIVE/SMOKE-README.txt"
+      install -d -o 995 -g 986 -m 0755 "$LIVE/src" "$LIVE/out"
+      printf 'version=2.4.0\nstatus=draft\n' | install -o 995 -g 986 -m 0644 /dev/stdin "$LIVE/src/release.txt"
+      live_is_g1 || die "live root is not exactly the g1 fixture (unexpected extra entries: owner must look)"
+    fi
+  fi
+  live_report "$w"
+}
+
+declare -A TASK_OF=([smoke]=smoke-read-readme [g1]=g1-read-edit-bash-read [rp]=route-probe-bash-view [dr]=route-probe-bash-view)
+declare -A RESP_OF=([smoke]=smoke-response.txt [g1]=response.txt [rp]=probe-response.txt [dr]=dr-response.txt)
+new_rid() {   # NAME -> RID (never reused)
+  local r
+  r="$1-req-$(date -u +%Y%m%dT%H%M%SZ)"
+  [[ $r =~ $re_rid ]] || die "bad generated request id"
+  if [[ -f $STATE/rids ]] && grep -qxF -- "$r" "$STATE/rids"; then die "request id $r was used before; retry in a second"; fi
+  printf '%s\n' "$r" >>"$STATE/rids"
+  printf '%s' "$r"
+}
+client_args() {   # NAME : sets C_TASK C_PROMPT C_FLAGS(array); cross-checks the installed config
+  local n=$1 cfg=$ETC/serve-pi-service.json paths
+  C_TASK=$(jget "$cfg" workflow_task_id)
+  [[ $C_TASK == "${TASK_OF[$n]}" ]] || die "installed config task id $C_TASK is not the one of $n"
+  C_PROMPT=$(jget "$cfg" workflow_prompt)
+  paths=$(jget "$cfg" workflow_bash_output_paths)
+  case $n in
+    g1) [[ $paths == '["out/release.sha256"]' ]] || die "installed config bash output paths are not the g1 ones"; C_FLAGS=(--bash-output out/release.sha256);;
+    *) [[ $paths == '[]' ]] || die "installed config bash output paths are not empty"; C_FLAGS=(--bash-no-outputs);;
+  esac
+}
+v_client_run() {
+  local n=${ARGS[0]:-} rid d resp
+  need_argc 1 1; [[ $n =~ ^(smoke|g1|rp|dr)$ ]] || usage "client-run smoke|g1|rp|dr"
+  check_tools; mkwork; prep_ga
+  [[ $(inst_name) == "$n" && $(st_rank "$n") -ge 4 ]] || die "$n: installed config is not $n's, or $n is not in state started (adopt/svc start)"
+  [[ -z $(st_get "$n" client) ]] || die "$n: a client-run was already launched (one-use admission)"
+  svc_active || die "service and socket must be active"
+  verify_installed "$n"
+  case $n in smoke) live_is_smoke || die "live root is not the smoke fixture (seed-live smoke)";; g1) live_is_g1 || die "live root is not the g1 fixture (seed-live g1)";; *) [[ -f $LIVE/src/release.txt ]] || die "live root lacks src/release.txt";; esac
+  client_args "$n"
+  rid=$(new_rid "$n")
+  st_put "$n" client "$rid"
+  install -d -o root -g root -m 0755 "$GA/out"
+  d=$(outdir "$n"); resp=$GA/out/${RESP_OF[$n]}
+  [[ ! -e $resp ]] || die "$resp exists"
+  # authoritative client status: $STATE/NAME.client-status (root-only); client-run.status in the out dir is an export copy
+  echo "launched $(date -u +%FT%TZ) rid=$rid" >"$STATE/$n.client-status"; put_out "$n" "$STATE/$n.client-status" client-run.status
+  # detached child; it inherits the lock fd 9, so no other mutating verb runs until the client returns
+  setsid -f bash -c '
+    out=$1; err=$2; stf=$3; exp=$4; mirror=$5; shift 5
+    cd /
+    "$@" >"$out" 2>"$err"; rc=$?
+    printf "done exit=%s %s\n" "$rc" "$(date -u +%FT%TZ)" >"$stf.new" && mv -f "$stf.new" "$stf"
+    for pair in "$out:$mirror" "$err:$mirror.err" "$stf:$exp"; do
+      install -o root -g tboundadmin -m 0640 "${pair%%:*}" "${pair#*:}.new" 2>/dev/null && mv -f "${pair#*:}.new" "${pair#*:}"
+    done
+  ' _ "$resp" "$GA/out/${RESP_OF[$n]}.err" "$STATE/$n.client-status" "$d/client-run.status" "$d/${RESP_OF[$n]}" \
+    "${CLIENT_PRIV[@]}" "$TB" serve --pi --task-id "$C_TASK" --task-request-id "$rid" --task "$C_PROMPT" "${C_FLAGS[@]}" \
+    </dev/null >/dev/null 2>&1
+  say "client-run $n launched: rid $rid (status: tbound-op status $n; response: $d/${RESP_OF[$n]})"
+}
+
+v_negative() {
+  local k=${ARGS[0]:-} n o rid res="" rc f od=_
+  need_argc 1 1; [[ $k =~ ^(n2|n5|n6|n7)$ ]] || usage "negative n2|n5|n6|n7"
+  check_tools; mkwork; prep_ga
+  o="$WORK/neg.txt"; : >"$o"
+  case $k in
+    n2)
+      rc=0; setpriv --reuid 1000 --regid 1000 --clear-groups python3 -I -c 'import socket; s=socket.socket(socket.AF_UNIX); s.connect("/run/tbound/serve-pi.sock")' >"$WORK/n2.out" 2>&1 || rc=$?
+      cat "$WORK/n2.out" >>"$o"
+      [[ $rc -ne 0 && $(cat "$WORK/n2.out") == *PermissionError* ]] && res=PASS || res=FAIL;;
+    n5)
+      res=PASS
+      for f in "--native-host-profile $ETC/pi-host-profile.json" "--workspace /work" "--source /src"; do
+        rc=0; "${CLIENT_PRIV[@]}" "$TB" serve --pi $f --task-id n5-probe --task-request-id smoke-req-20000101T000000Z --task x --bash-no-outputs >"$WORK/n5.out" 2>&1 || rc=$?
+        { echo "== $f -> exit $rc"; cat "$WORK/n5.out"; } >>"$o"
+        [[ $rc -eq 2 && $(cat "$WORK/n5.out") == *"service-owned and cannot be selected by the client"* ]] || res=FAIL
+      done;;
+    n6|n7)
+      od=smoke
+      n=$(inst_name)
+      [[ $n == smoke && -n $(st_get smoke client) ]] || die "$k runs after the smoke client-run, with the smoke config installed"
+      svc_active || die "service and socket must be active"
+      client_args smoke
+      rid=$(new_rid smoke)
+      if [[ $k == n6 ]]; then
+        rc=0; timeout 120 setpriv --reuid 1000 --regid 985 --clear-groups "$TB" serve --pi --task-id "$C_TASK" --task-request-id "$rid" --task "$C_PROMPT" "${C_FLAGS[@]}" >"$WORK/n6.out" 2>&1 || rc=$?
+        cat "$WORK/n6.out" >>"$o"
+        [[ $rc -eq 2 && $(cat "$WORK/n6.out") == *"local Pi service refused the request"* ]] && res=PASS || res=FAIL
+      else
+        [[ -z $(st_get smoke n7) ]] || die "n7 was run already"
+        st_put smoke n7 "$rid"
+        rc=0; timeout 1300 "${CLIENT_PRIV[@]}" "$TB" serve --pi --task-id smoke-unknown-task --task-request-id "$rid" --task "$C_PROMPT" "${C_FLAGS[@]}" >"$WORK/n7.out" 2>&1 || rc=$?
+        { echo "rid=$rid"; cat "$WORK/n7.out"; } >>"$o"
+        [[ $rc -eq 2 && $(cat "$WORK/n7.out") == *task-outcome-unknown* ]] && res=PASS || res=FAIL
+      fi;;
+  esac
+  echo "result=$res" >>"$o"
+  put_out "$od" "$o" "negative-$k.txt"
+  cat "$o"
+  [[ $res == PASS ]] || die "negative $k did not give the expected refusal"
+}
+
+l4_facts() {   # RID : deterministic fact list
+  local rid=$1 req=$AUDIT/serve-pi-requests.jsonl c=$CG/cells
+  echo "rid=$rid"
+  echo "request_records:"; { grep -F -- "\"$rid\"" "$req" || true; } | cut -c1-600
+  echo "catalog_owner_scope_drained=$(grep -c pi_workflow_owner_scope_drained "$CATALOG" || true)"
+  echo "catalog_unexposed_true=$(grep -c '"unexposed":true' "$CATALOG" || true)"
+  echo "cells_children=$({ ls -A "$c" 2>/dev/null || echo unavailable; } | tr '\n' ' ')"
+  echo "cells_procs_bytes=$(wc -c <"$c/cgroup.procs" 2>/dev/null || echo unavailable)"
+  local ps pn=unavailable
+  if ps=$("${SVC_PRIV[@]}" "${PODMAN[@]}" ps -a --format '{{.ID}}' 2>/dev/null); then pn=$(printf '%s' "$ps" | grep -c . || true); fi
+  echo "podman_ps_a_lines=$pn"
+}
+v_abandon() {
+  local rid=${ARGS[0]:-} tok facts want
+  ((${#ARGS[@]} == 1 || ${#ARGS[@]} == 3)) || usage "abandon RID [--confirm TOKEN]"
+  [[ $rid =~ $re_rid ]] || usage "bad RID"
+  check_tools; mkwork; prep_ga
+  grep -qxF -- "$rid" "$STATE/rids" 2>/dev/null || die "$rid was not generated by this dispatcher"
+  grep -qF -- "\"$rid\"" "$AUDIT/serve-pi-requests.jsonl" || die "no request record for $rid"
+  facts=$(l4_facts "$rid"); tok=$(printf '%s\n' "$facts" | sha256sum | cut -c1-12)
+  if ((${#ARGS[@]} == 1)); then
+    printf '%s\n' "$facts"; say "TOKEN=$tok"; say "re-run: abandon $rid --confirm $tok (after reading the facts: workflow finished, scope drained, no pending effect)"
+    return 0
+  fi
+  [[ ${ARGS[1]:-} == --confirm && ${ARGS[2]:-} =~ ^[0-9a-f]{12}$ ]] || usage "abandon RID --confirm <12 hex>"
+  [[ ${ARGS[2]:-} == "$tok" ]] || { printf '%s\n' "$facts"; die "facts changed: token is now $tok"; }
+  systemctl stop $SVC_UNIT $SOCK_UNIT
+  "$TB" abandon-unknown --request-id "$rid" --reason "operator recovery via tbound-op for $rid, facts $tok" || { systemctl start $SOCK_UNIT || true; die "abandon-unknown failed (socket restarted)"; }
+  systemctl start $SOCK_UNIT
+  say "abandon $rid ok; socket started (service starts on demand; use svc start for a run)"
+}
+
+GE_OUT=$GA/out
+v_stage_ga() {
+  local k=${ARGS[0]:-} dst fn mode pin="" want
+  need_argc 2 2; need_sha "${ARGS[1]:-}"
+  case $k in
+    tbound-profile) fn=tbound-profile; mode=0500; pin=${PIN[TBP_DIGEST]};;
+    procoracle-test) fn=procoracle.test; mode=0500; pin=${PIN[TEST_PROCORACLE]:-};;
+    cell-entrypoint-test) fn=tbound-cell-entrypoint.test; mode=0500; pin=${PIN[TEST_ENTRYPOINT]:-};;
+    run-json) fn=run.json; mode=0444;;
+    *) usage "stage-ga tbound-profile|procoracle-test|cell-entrypoint-test|run-json SHA";;
+  esac
+  check_tools; mkwork; prep_ga
+  stage_hashed ga "$fn" "$WORK/$fn" $((256 * 1024 * 1024)) "${ARGS[1]:-}"
+  if [[ $k == run-json ]]; then
+    printf '{"freeze_commit":"%s","v_image_digest":"%s","pins":{"frozen_source_digest":"%s","base_template_digest":"%s","admin_pubkey_digest":"%s","runtime_bundle_digest":"%s","runner_digest":"%s"}}\n' \
+      "${PIN[F]}" "${PIN[IMGDIGEST]}" "${PIN[SRC_DIGEST]}" "${PIN[BASE_TD]}" "${PIN[ADMIN_PUB_DIGEST]}" "${PIN[BUNDLE_DIGEST]}" "${PIN[TBOUND_DIGEST]}" >"$WORK/run.expected"
+    cmp -s "$WORK/run.json" "$WORK/run.expected" || die "staged run.json is not the file generated from the pins"
+  else
+    [[ -n $pin ]] || die "pins.env has no pin for $k (owner adds TEST_PROCORACLE / TEST_ENTRYPOINT after the capture)"
+    [[ $(sha "$WORK/$fn") == "$pin" ]] || die "staged $fn does not match its pin"
+  fi
+  install -d -o root -g root -m 0700 "$GE_OUT"
+  install_atomic "$WORK/$fn" "$GA/$fn" "$mode"
+  say "stage-ga $k ok: $(sha "$GA/$fn") -> $GA/$fn ($mode)"
+}
+
+ge_common() { [[ -f $GA/tbound-profile && $(sha "$GA/tbound-profile") == "${PIN[TBP_DIGEST]}" ]] || die "/root/ga/tbound-profile missing or not TBP_DIGEST (stage-ga tbound-profile)"; }
+ge_runjson() {
+  [[ -f $GA/run.json ]] || die "/root/ga/run.json missing (stage-ga run-json)"
+  printf '{"freeze_commit":"%s","v_image_digest":"%s","pins":{"frozen_source_digest":"%s","base_template_digest":"%s","admin_pubkey_digest":"%s","runtime_bundle_digest":"%s","runner_digest":"%s"}}\n' \
+    "${PIN[F]}" "${PIN[IMGDIGEST]}" "${PIN[SRC_DIGEST]}" "${PIN[BASE_TD]}" "${PIN[ADMIN_PUB_DIGEST]}" "${PIN[BUNDLE_DIGEST]}" "${PIN[TBOUND_DIGEST]}" >"$WORK/run.expected"
+  cmp -s "$GA/run.json" "$WORK/run.expected" || die "/root/ga/run.json differs from the pins"
+}
+ge_files() { local n=$1 f; for f in pi-host-profile.json pi-host-profile.ed25519 pi-host-profile.pub managed-live-root.json managed-live-root.ed25519 d09-cell.json; do [[ -f $GA/$n/$f ]] || die "$GA/$n/$f missing (prof-install $n)"; done
+  [[ $(sha "$GA/$n/pi-host-profile.pub") == "${PIN[ADMIN_PUB_DIGEST]}" ]] || die "archived key is not the pinned admin key"; }
+v_guest_evidence() {
+  local k=${ARGS[0]:-} runid="" out args=() n
+  ((${#ARGS[@]} >= 1 && ${#ARGS[@]} <= 2)) || usage "guest-evidence KIND [RUNID]"
+  check_tools; mkwork; prep_ga; ge_common
+  case $k in
+    route-bash-view|route-direct-runtime)
+      runid=${ARGS[1]:-}; [[ $runid =~ $re_runid ]] || usage "RUNID required"
+      [[ -f $AUDIT/$runid-session-audit.jsonl ]] || die "no $AUDIT/$runid-session-audit.jsonl";;
+    *) ((${#ARGS[@]} == 1)) || usage "$k takes no RUNID";;
+  esac
+  case $k in
+    capability) out=capability.json; args=(capability --commit "${PIN[F]}" --seccomp-profile /opt/tbound/cell/seccomp.json --out "$GE_OUT/$out");;
+    netsink) out=netsink.json; args=(netsink --commit "${PIN[F]}" --out "$GE_OUT/$out");;
+    landlock-connect)
+      out=landlock-connect.json; [[ -x $GA/tbound-cell-entrypoint.test && $(sha "$GA/tbound-cell-entrypoint.test") == "${PIN[TEST_ENTRYPOINT]:-x}" ]] || die "entrypoint test binary missing or not its pin"
+      args=(tests --commit "${PIN[F]}" --kind guest-tests-landlock-connect --test-binary "$GA/tbound-cell-entrypoint.test" --out "$GE_OUT/$out");;
+    procoracle)
+      out=procoracle.json; [[ -x $GA/procoracle.test && $(sha "$GA/procoracle.test") == "${PIN[TEST_PROCORACLE]:-x}" ]] || die "procoracle test binary missing or not its pin"
+      args=(tests --commit "${PIN[F]}" --kind guest-tests-procoracle --test-binary "$GA/procoracle.test" --out "$GE_OUT/$out");;
+    provider-exchange)
+      out=provider.json; ge_runjson; ge_files g1; [[ -f $GE_OUT/response.txt ]] || die "no $GE_OUT/response.txt (client-run g1)"
+      args=(provider-exchange --commit "${PIN[F]}" --response "$GE_OUT/response.txt" --run-config "$GA/run.json" --template "$GA/g1/d09-cell.json"
+        --host-profile "$GA/g1/pi-host-profile.json" --host-profile-signature "$GA/g1/pi-host-profile.ed25519" --host-profile-key "$GA/g1/pi-host-profile.pub"
+        --registration "$GA/g1/managed-live-root.json" --registration-signature "$GA/g1/managed-live-root.ed25519" --out "$GE_OUT/$out");;
+    route-bash-view)
+      out=route-bash-view.json; ge_runjson; ge_files rp; [[ -f $GE_OUT/probe-response.txt ]] || die "no $GE_OUT/probe-response.txt (client-run rp)"
+      args=(route-denied --commit "${PIN[F]}" --route bash-view --run-id "$runid" --response "$GE_OUT/probe-response.txt" --target /home/node/.profile
+        --control-path src/release.txt --control-file "$LIVE/src/release.txt" --run-config "$GA/run.json" --template "$GA/rp/d09-cell.json"
+        --host-profile "$GA/rp/pi-host-profile.json" --host-profile-signature "$GA/rp/pi-host-profile.ed25519" --host-profile-key "$GA/rp/pi-host-profile.pub"
+        --registration "$GA/rp/managed-live-root.json" --registration-signature "$GA/rp/managed-live-root.ed25519" --out "$GE_OUT/$out");;
+    route-direct-runtime)
+      out=route-direct-runtime.json; ge_runjson; ge_files dr; [[ -f $GA/dr/d09-cell.route-probe.json ]] || die "dr probe template not archived"
+      args=(route-denied --commit "${PIN[F]}" --route direct-runtime --run-id "$runid" --target /home/node/.profile --control-path src/release.txt
+        --run-config "$GA/run.json" --probe-template "$GA/dr/d09-cell.route-probe.json" --production-template "$GA/dr/d09-cell.json"
+        --host-profile "$GA/dr/pi-host-profile.json" --host-profile-signature "$GA/dr/pi-host-profile.ed25519" --host-profile-key "$GA/dr/pi-host-profile.pub"
+        --registration "$GA/dr/managed-live-root.json" --registration-signature "$GA/dr/managed-live-root.ed25519" --out "$GE_OUT/$out");;
+    *) usage "unknown guest-evidence kind";;
+  esac
+  [[ ! -e $GE_OUT/$out ]] || die "$GE_OUT/$out exists already (refused to overwrite)"
+  install -d -o root -g root -m 0700 "$GE_OUT"
+  (cd "$GA" && env -i PATH="$PATH" LC_ALL=C "$GA/tbound-profile" guest-evidence "${args[@]}") || die "guest-evidence $k refused (nothing written)"
+  put_out _ "$GE_OUT/$out" "evidence-$out"
+  say "guest-evidence $k ok: $(sha "$GE_OUT/$out") -> $OUTROOT/_/evidence-$out"
+}
+
+v_collect() {
+  local k=${ARGS[0]:-} f runid
+  mkwork
+  case $k in
+    requests) need_argc 1 1; cp -- "$AUDIT/serve-pi-requests.jsonl" "$WORK/c"; put_out _ "$WORK/c" serve-pi-requests.jsonl; say "collected requests ($(wc -c <"$WORK/c") bytes)";;
+    catalog) need_argc 1 1; cp -- "$CATALOG" "$WORK/c"; put_out _ "$WORK/c" catalog.jsonl; say "collected catalog ($(wc -c <"$WORK/c") bytes)";;
+    audit)
+      need_argc 2 2; runid=${ARGS[1]:-}; [[ $runid =~ $re_runid ]] || usage "bad RUNID"
+      [[ -f $AUDIT/$runid-session-audit.jsonl ]] || die "no $AUDIT/$runid-session-audit.jsonl"
+      for f in session provider command; do
+        if [[ -f $AUDIT/$runid-$f-audit.jsonl ]]; then cp -- "$AUDIT/$runid-$f-audit.jsonl" "$WORK/c"; put_out _ "$WORK/c" "$runid-$f-audit.jsonl"; say "collected $runid-$f-audit.jsonl"; fi
+      done;;
+    evidence-out)
+      need_argc 1 1
+      for f in "$GE_OUT"/*; do
+        [[ -f $f && ! -L $f ]] || continue
+        [[ $(stat -c %s "$f") -le 16777216 ]] || continue
+        put_out _ "$f" "out-$(basename "$f")"; say "collected out-$(basename "$f")"
+      done;;
+    l4)
+      need_argc 1 1
+      {
+        echo "== $(date -u +%FT%TZ) cgroup"; find "$CG" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>&1 || true; echo "-- cells"; ls -A "$CG/cells" 2>&1 || true
+        echo "-- cells/cgroup.procs"; cat "$CG/cells/cgroup.procs" 2>&1 || true
+        for d in "$CG"/cells/pi-wf-*; do [[ -d $d ]] && { echo "-- $d"; cat "$d/cgroup.events"; }; done
+        echo "== podman ps -a"; "${SVC_PRIV[@]}" "${PODMAN[@]}" ps -a 2>&1 || true
+        echo "== mounts below podman-storage or /run/tbound-pi in any mount namespace"
+        cat /proc/[0-9]*/mountinfo 2>/dev/null | awk '{print $5}' | grep -E '^/(var/lib/tbound/podman-storage|run/tbound-pi)' | sort | uniq -c || true
+        echo "== requests"; wc -l "$AUDIT/serve-pi-requests.jsonl"; tail -n 5 "$AUDIT/serve-pi-requests.jsonl" | cut -c1-500
+        echo "== catalog"; wc -l "$CATALOG"; echo "drained=$(grep -c pi_workflow_owner_scope_drained "$CATALOG" || true) unexposed_true=$(grep -c '"unexposed":true' "$CATALOG" || true)"
+        echo "== audit files"; ls -l "$AUDIT"
+        echo "== maintenance lock"; flock -n /run/tbound/maintenance.lock true && echo lock-free || echo lock-held
+      } >"$WORK/l4.txt" 2>&1
+      put_out _ "$WORK/l4.txt" l4.txt
+      for f in "$AUDIT"/*.jsonl; do [[ -f $f && $(stat -c %s "$f") -le 67108864 ]] && put_out _ "$f" "audit-$(basename "$f")"; done
+      cp -- "$CATALOG" "$WORK/c"; put_out _ "$WORK/c" catalog.jsonl
+      cat "$WORK/l4.txt";;
+    *) usage "collect l4|evidence-out|audit RUNID|requests|catalog";;
+  esac
+}
+
+v_diag() {
+  local k=${ARGS[0]:-} p
+  need_argc 1 1
+  [[ $k =~ ^(l2|mounts|census-live|podman-ps|podman-ps-noreap|nft-sink|probe-capabilities|image-probe|live-listing|netsink-journal-size)$ ]] || usage "diag l2|mounts|census-live|podman-ps|podman-ps-noreap|nft-sink|probe-capabilities|image-probe|live-listing|netsink-journal-size"
+  mkwork
+  {
+    case $k in
+      l2)
+        echo "== service cgroup"; find "$CG" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>&1; stat -c '%U:%G %a' "$CG/cells" 2>&1
+        cat "$CG/cells/cgroup.type" "$CG/cells/cgroup.subtree_control" "$CG/cells/cgroup.procs" 2>&1
+        echo "-- runner procs"; cat "$CG/runner/cgroup.procs" 2>&1
+        echo "-- cgroup-root-digest (profile: $(jget "$ETC/pi-host-profile.json" CgroupRootDigest))"; "$TBP" cgroup-root-digest --uid 995 2>&1
+        echo "== mounts"; for p in /usr/local/bin/tbound /usr/local/bin/node /usr/bin/podman /usr/bin/crun /opt/tbound/cell /var/lib/tbound/runtime; do findmnt -n -o TARGET,OPTIONS "$p" 2>&1 || echo "NOMOUNT $p"; done
+        echo "== maintenance lock"; flock -n /run/tbound/maintenance.lock true && echo lock-free || echo lock-held;;
+      mounts) for p in /usr/local/bin/tbound /usr/local/bin/node /usr/bin/podman /usr/bin/crun /opt/tbound/cell /var/lib/tbound/runtime /var/lib/tbound/live; do findmnt -n -o TARGET,OPTIONS "$p" 2>&1 || echo "NOMOUNT $p"; done;;
+      census-live) python3 -I /opt/tbound/helpers/xattr-census-r9.py "$LIVE" 2>&1 | tail -3;;
+      podman-ps) "${SVC_PRIV[@]}" "${PODMAN[@]}" ps -a 2>&1;;
+      podman-ps-noreap) "${SVC_PRIV[@]}" "${PODMAN[@]}" ps -a --filter label=tbound.delta=no-reap 2>&1;;
+      nft-sink) nft list table inet tbound_net_sink 2>&1 || true; echo "-- attest"; cat /run/tbound/net-sink.attest 2>&1 || true;;
+      probe-capabilities) bash /opt/tbound/helpers/probe-capabilities.sh 2>&1 || true;;
+      image-probe)
+        "${SVC_PRIV[@]}" "${PODMAN[@]}" image exists localhost/tbound/pi-cell:latest 2>/dev/null && echo "exists=0" || echo "exists=1"
+        "${SVC_PRIV[@]}" "${PODMAN[@]}" image inspect localhost/tbound/pi-cell:latest --format '{{.Id}} {{.Digest}} {{range .RepoDigests}}{{.}} {{end}}' 2>/dev/null || true
+        echo "pins: CFG=${PIN[CFG]} IMGDIGEST=${PIN[IMGDIGEST]}";;
+      live-listing) live_listing;;
+      netsink-journal-size) stat -c '%s bytes %U:%G %a %n' /var/lib/tbound-netsink/journal.jsonl 2>&1;;
+      *) usage "diag l2|mounts|census-live|podman-ps|podman-ps-noreap|nft-sink|probe-capabilities|image-probe|live-listing|netsink-journal-size";;
+    esac
+  } >"$WORK/diag.txt" 2>&1 || true
+  put_out _ "$WORK/diag.txt" "diag-$k.txt"
+  cat "$WORK/diag.txt"
+}
+
+v_netsink_rotate() {
+  local j=/var/lib/tbound-netsink/journal.jsonl ts; need_argc 0 0
+  check_tools; ts=$(date -u +%Y%m%dT%H%M%SZ)
+  [[ -f $j && ! -L $j ]] || die "$j is not a regular file"
+  systemctl stop tbound-netsink.service
+  mv -n -- "$j" "$j.$ts"
+  systemctl start tbound-netsink.service
+  sleep 1
+  [[ $(systemctl is-active tbound-netsink.service || true) == active ]] || die "tbound-netsink.service not active after rotation (journal kept as $j.$ts)"
+  say "netsink-rotate ok: $j.$ts ($(stat -c %s "$j.$ts") bytes); new journal $( [[ -f $j ]] && stat -c %s "$j" || echo 'not yet created') bytes"
+}
+
+v_status() {
+  local n only=${ARGS[0]:-} cs
+  ((${#ARGS[@]} <= 1)) || usage "status [NAME]"
+  [[ -z $only ]] || need_name "$only"
+  say "tbound-op status $(date -u +%FT%TZ) pins F=${PIN[F]}"
+  say "anchor: $(anchor_ok && echo ok || echo MISMATCH) (pi-host-profile.pub $(sha "$ETC/pi-host-profile.pub"))"
+  say "runner: $(sha "$TB" | cut -c1-23) tbound-profile: $(sha "$TBP" | cut -c1-23)"
+  say "service=$(systemctl is-active $SVC_UNIT || true) socket=$(systemctl is-active $SOCK_UNIT || true)"
+  cs=$(sha "$ETC/serve-pi-service.json")
+  say "installed: cfg $cs reg $(sha "$ETC/managed-live-root.json" | cut -c1-23) prof $(sha "$ETC/pi-host-profile.json" | cut -c1-23) tpl $(sha "$ETC/d09-cell.json" | cut -c1-23)"
+  say "installed config matches state of: ${INST:-$(inst_name)}"
+  for n in smoke g1 rp dr pilot; do
+    [[ -n $only && $only != "$n" ]] && continue
+    if [[ -f $STATE/$n.once ]]; then say "-- $n one-use markers: $(tr '\n' ' ' <"$STATE/$n.once")"; fi
+    if [[ -f $STATE/$n.client-status ]]; then say "-- $n client-run.status: $(cat "$STATE/$n.client-status")"; fi
+    [[ -f $(st_file "$n") ]] || { say "-- $n: no state"; continue; }
+    say "-- $n:"; sed 's/^/     /' "$(st_file "$n")"
+    [[ -f $GA/out/${RESP_OF[$n]:-x}.err ]] && say "     client stderr: $(head -c 300 "$GA/out/${RESP_OF[$n]}.err")"
+  done
+  say "-- last log lines"; tail -n 5 "$LOGF" 2>/dev/null || true
+}
+
+# ----------------------------------------------------------------------------------------------------- dispatch
+load_pins
+case $VERB in
+  status|diag|collect) ;;
+  *)
+    exec 9>"$LOCK"
+    flock -w 5 9 || die "busy: another tbound-op verb or a client-run holds $LOCK"
+    ;;
+esac
+check_outroot
+if [[ $VERB != status ]]; then anchor_ok || die "/etc/tbound/pi-host-profile.pub does not match ADMIN_PUB_DIGEST"; fi
+[[ $VERB == status ]] || [[ $VERB == diag || $VERB == collect ]] || prep_ga
+case $VERB in
+  status) v_status;;
+  diag) v_diag;;
+  collect) v_collect;;
+  cfg-install) v_cfg_install;;
+  reg-measure) v_reg_measure;;
+  reg-install) v_reg_install;;
+  prof-install) v_prof_install;;
+  adopt) v_adopt;;
+  rollback) v_rollback;;
+  manifest-install) v_manifest_install;;
+  svc) v_svc;;
+  seed-live) v_seed_live;;
+  client-run) v_client_run;;
+  negative) v_negative;;
+  abandon) v_abandon;;
+  guest-evidence) v_guest_evidence;;
+  stage-ga) v_stage_ga;;
+  netsink-rotate) v_netsink_rotate;;
+  *) usage "unknown verb";;
+esac
+logline "OK $ARGV_Q"
