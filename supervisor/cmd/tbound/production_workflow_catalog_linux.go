@@ -657,6 +657,37 @@ func (c *piServiceWorkflowCatalog) admissionEntry(admissionHash string) (piServi
 	return clonePiServiceWorkflowEntry(entry), true
 }
 
+// settlementLiveRoot is the running service's managed live root as the settlement verification
+// reads it: the registration it was verified under, and the root's identity measured now.
+type settlementLiveRoot interface {
+	Registration() piruntime.D09ManagedLiveRootRegistration
+	measureRoot(ctx context.Context) (managedLiveRootDescriptorIdentity, error)
+}
+
+// verifiedSettlementLiveRoot measures the root of the service's verified registration.
+type verifiedSettlementLiveRoot struct {
+	*piruntime.VerifiedD09ManagedLiveRoot
+}
+
+func (v verifiedSettlementLiveRoot) measureRoot(ctx context.Context) (managedLiveRootDescriptorIdentity, error) {
+	if v.VerifiedD09ManagedLiveRoot == nil {
+		return managedLiveRootDescriptorIdentity{}, settlementRefusal("service-context", ErrPiServiceUnresolvedPrior)
+	}
+	root, err := v.DuplicateRoot()
+	if err != nil {
+		return managedLiveRootDescriptorIdentity{}, settlementRefusal("live-root-open", errors.Join(ErrPiWorkflowCatalog, err))
+	}
+	defer root.Close()
+	if err := v.Revalidate(ctx, root); err != nil {
+		return managedLiveRootDescriptorIdentity{}, settlementRefusal("live-root-revalidate", errors.Join(ErrPiWorkflowCatalog, err))
+	}
+	descriptor, err := measureManagedLiveRootDescriptor(root)
+	if err != nil {
+		return managedLiveRootDescriptorIdentity{}, settlementRefusal("live-root-descriptor", errors.Join(ErrManagedLiveRootUnavailable, err))
+	}
+	return descriptor, nil
+}
+
 // settlementRefusal names the check of a prior's settlement verification that refused it. The
 // service logs the cause of a prior-workflow-unsettled refusal, and the name says which check it
 // was; errors.Is still matches err.
@@ -672,8 +703,8 @@ func settlementRefusal(check string, err error) error {
 // re-registration cycle installs its own, and a freeze changes the runner and the image, so a prior
 // from an earlier cycle is still a prior that must settle, not one that can never verify.
 func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequest(ctx context.Context, state piServiceRequestState,
-	verified *piruntime.VerifiedD09ManagedLiveRoot, template piruntime.D09CellTemplate, profile piruntime.HostProfile) error {
-	if ctx == nil || ctx.Err() != nil || verified == nil {
+	live settlementLiveRoot, template piruntime.D09CellTemplate, profile piruntime.HostProfile) error {
+	if ctx == nil || ctx.Err() != nil || live == nil {
 		return settlementRefusal("service-context", ErrPiServiceUnresolvedPrior)
 	}
 	entry, receipt, err := c.completedPriorAdmission(state)
@@ -683,21 +714,16 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequest(ctx context.Con
 	if err := validateSettledServiceProfile(profile, template); err != nil {
 		return err
 	}
-	registration := verified.Registration()
+	registration := live.Registration()
 	if registration.Digest != template.ManagedLiveRootRegistrationDigest {
 		return settlementRefusal("current-registration-template", ErrPiWorkflowCatalog)
 	}
-	root, err := verified.DuplicateRoot()
+	rootDescriptor, err := live.measureRoot(ctx)
 	if err != nil {
-		return settlementRefusal("live-root-open", errors.Join(ErrPiWorkflowCatalog, err))
+		return err
 	}
-	defer root.Close()
-	if err := verified.Revalidate(ctx, root); err != nil {
-		return settlementRefusal("live-root-revalidate", errors.Join(ErrPiWorkflowCatalog, err))
-	}
-	rootDescriptor, err := measureManagedLiveRootDescriptor(root)
-	if err != nil || !managedRegistrationMatchesDescriptor(registration, rootDescriptor) {
-		return settlementRefusal("live-root-descriptor", errors.Join(ErrManagedLiveRootUnavailable, err))
+	if !managedRegistrationMatchesDescriptor(registration, rootDescriptor) {
+		return settlementRefusal("live-root-descriptor", ErrManagedLiveRootUnavailable)
 	}
 	rootID := workflow.RootIdentity{Device: rootDescriptor.Device, Inode: rootDescriptor.Inode}
 	if rootID == (workflow.RootIdentity{}) {

@@ -2018,7 +2018,7 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 		if err != nil {
 			return settlementRefusal("current-profile-load", errors.Join(ErrPiServiceUnresolvedPrior, err))
 		}
-		return workflowCatalog.verifyCompletedServiceRequest(settlementCtx, prior, verified, template, profile)
+		return workflowCatalog.verifyCompletedServiceRequest(settlementCtx, prior, verifiedSettlementLiveRoot{verified}, template, profile)
 	}
 	// A cached settlement is tied to the per-request evidence files it read, and an abandoned
 	// unknown request is skipped only while its workflow re-reconciles to the bound evidence.
