@@ -660,39 +660,12 @@ func (c *piServiceWorkflowCatalog) admissionEntry(admissionHash string) (piServi
 func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequest(ctx context.Context, state piServiceRequestState,
 	configDigest, registrationID string, verified *piruntime.VerifiedD09ManagedLiveRoot,
 	template piruntime.D09CellTemplate, profile piruntime.HostProfile) error {
-	if ctx == nil || ctx.Err() != nil || c == nil || verified == nil || state.terminal == nil ||
-		state.accepted.SchemaVersion != "tbound-pi-service-request-accepted/v1" ||
-		state.acceptedRecord.Sequence == 0 || state.acceptedRecord.Event.Kind != "pi_service_request_accepted" ||
-		state.acceptedRecord.Event.ID != piServiceRequestKey(state.accepted.ClientUID, state.accepted.RequestID) ||
-		!validBareWorkflowDigest(state.acceptedRecord.Hash) || !validDigestText(state.accepted.PayloadDigest) ||
-		state.terminal.SchemaVersion != piServiceResponseSchema || state.terminal.RequestID != state.accepted.RequestID ||
-		state.terminal.Status != "completed" || len(state.terminal.Receipt) == 0 ||
-		!validDigestText(configDigest) || !validDigestText(registrationID) {
+	if ctx == nil || ctx.Err() != nil || verified == nil {
 		return ErrPiServiceUnresolvedPrior
 	}
-	var persistedAccepted piServiceRequestAcceptedEvent
-	if err := unmarshalGovernedJSON(state.acceptedRecord.Event.Data, &persistedAccepted); err != nil || persistedAccepted != state.accepted {
-		return errors.Join(ErrPiWorkflowCatalog, err)
-	}
-	entry, ok := c.admissionEntry(state.acceptedRecord.Hash)
-	if !ok || entry.AdmissionRecordHash != state.acceptedRecord.Hash || entry.AdmissionSequence != state.acceptedRecord.Sequence ||
-		entry.PeerUID != state.accepted.ClientUID || entry.PeerGID != state.accepted.ClientGID ||
-		entry.PeerPID != state.accepted.ClientPID || entry.RequestID != state.accepted.RequestID ||
-		entry.TaskID != state.accepted.TaskID || entry.PayloadDigest != state.accepted.PayloadDigest ||
-		entry.ServiceConfigDigest != configDigest || entry.ServiceRegistrationID != registrationID ||
-		!entry.CheckpointBound || !entry.FreshAuthorizationUsed ||
-		requireWorkflowCatalogPath(entry, piServiceConfig{WorkflowOwnerStoreRoot: c.ownerRoot()}) != nil {
-		return ErrPiWorkflowCatalog
-	}
-	var receipt productionPiReceipt
-	if err := unmarshalGovernedJSON(state.terminal.Receipt, &receipt); err != nil ||
-		receipt.SchemaVersion != "tbound-production-pi-receipt/v1" || receipt.Mode != "production" || !receipt.Success ||
-		!receipt.WorkerReady || !receipt.TaskAdmitted || !receipt.TurnCompleted || !receipt.ExitObserved ||
-		!receipt.DescendantsSettled || receipt.Settlement != string(piruntime.SettlementStopped) ||
-		!productionReceiptSettlementClaimed(receipt) ||
-		!boundedProductionIdentity(receipt.RunID, productionTaskIDMaxBytes) ||
-		!validDigestText(receipt.TCBProofDigest) || receipt.TCBProofJournalSequence == 0 {
-		return errors.Join(ErrPiWorkflowCatalog, err)
+	entry, receipt, err := c.completedPriorAdmission(state, configDigest, registrationID)
+	if err != nil {
+		return err
 	}
 	if err := validateSettledServiceProfile(profile, template); err != nil {
 		return err
@@ -742,6 +715,48 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequest(ctx context.Con
 	}
 	return c.verifyCompletedServiceRequestPins(ctx, state, entry, receipt, view, registration, rootDescriptor, rootID,
 		drainVerifier, template, profile)
+}
+
+// completedPriorAdmission returns the catalog admission and the decoded receipt of a completed
+// prior request, after checking that its accepted record, its catalog admission and its receipt
+// agree with each other.
+func (c *piServiceWorkflowCatalog) completedPriorAdmission(state piServiceRequestState,
+	configDigest, registrationID string) (piServiceWorkflowEntry, productionPiReceipt, error) {
+	if c == nil || state.terminal == nil ||
+		state.accepted.SchemaVersion != "tbound-pi-service-request-accepted/v1" ||
+		state.acceptedRecord.Sequence == 0 || state.acceptedRecord.Event.Kind != "pi_service_request_accepted" ||
+		state.acceptedRecord.Event.ID != piServiceRequestKey(state.accepted.ClientUID, state.accepted.RequestID) ||
+		!validBareWorkflowDigest(state.acceptedRecord.Hash) || !validDigestText(state.accepted.PayloadDigest) ||
+		state.terminal.SchemaVersion != piServiceResponseSchema || state.terminal.RequestID != state.accepted.RequestID ||
+		state.terminal.Status != "completed" || len(state.terminal.Receipt) == 0 ||
+		!validDigestText(configDigest) || !validDigestText(registrationID) {
+		return piServiceWorkflowEntry{}, productionPiReceipt{}, ErrPiServiceUnresolvedPrior
+	}
+	var persistedAccepted piServiceRequestAcceptedEvent
+	if err := unmarshalGovernedJSON(state.acceptedRecord.Event.Data, &persistedAccepted); err != nil || persistedAccepted != state.accepted {
+		return piServiceWorkflowEntry{}, productionPiReceipt{}, errors.Join(ErrPiWorkflowCatalog, err)
+	}
+	entry, ok := c.admissionEntry(state.acceptedRecord.Hash)
+	if !ok || entry.AdmissionRecordHash != state.acceptedRecord.Hash || entry.AdmissionSequence != state.acceptedRecord.Sequence ||
+		entry.PeerUID != state.accepted.ClientUID || entry.PeerGID != state.accepted.ClientGID ||
+		entry.PeerPID != state.accepted.ClientPID || entry.RequestID != state.accepted.RequestID ||
+		entry.TaskID != state.accepted.TaskID || entry.PayloadDigest != state.accepted.PayloadDigest ||
+		entry.ServiceConfigDigest != configDigest || entry.ServiceRegistrationID != registrationID ||
+		!entry.CheckpointBound || !entry.FreshAuthorizationUsed ||
+		requireWorkflowCatalogPath(entry, piServiceConfig{WorkflowOwnerStoreRoot: c.ownerRoot()}) != nil {
+		return piServiceWorkflowEntry{}, productionPiReceipt{}, ErrPiWorkflowCatalog
+	}
+	var receipt productionPiReceipt
+	if err := unmarshalGovernedJSON(state.terminal.Receipt, &receipt); err != nil ||
+		receipt.SchemaVersion != "tbound-production-pi-receipt/v1" || receipt.Mode != "production" || !receipt.Success ||
+		!receipt.WorkerReady || !receipt.TaskAdmitted || !receipt.TurnCompleted || !receipt.ExitObserved ||
+		!receipt.DescendantsSettled || receipt.Settlement != string(piruntime.SettlementStopped) ||
+		!productionReceiptSettlementClaimed(receipt) ||
+		!boundedProductionIdentity(receipt.RunID, productionTaskIDMaxBytes) ||
+		!validDigestText(receipt.TCBProofDigest) || receipt.TCBProofJournalSequence == 0 {
+		return piServiceWorkflowEntry{}, productionPiReceipt{}, errors.Join(ErrPiWorkflowCatalog, err)
+	}
+	return entry, receipt, nil
 }
 
 func validateSettledServiceProfile(profile piruntime.HostProfile, template piruntime.D09CellTemplate) error {
