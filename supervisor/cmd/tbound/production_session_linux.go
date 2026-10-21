@@ -522,6 +522,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 	worker, err := piruntime.LaunchD09PiSDKWorker(ctx, capability, session.D09Channels, bootstrap)
 	if err != nil {
 		workerLaunchErr = err
+		session.Lifecycle.markLaunchFailed(err)
 		return productionLaunchFailure(err, journalLaunchProof)
 	}
 	session.Lifecycle.markWorkerLaunched(worker.PID())

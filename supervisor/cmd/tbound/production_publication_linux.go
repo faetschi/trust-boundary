@@ -141,6 +141,10 @@ func (e *productionLifecycleEvidence) markWorkerLaunched(pid int) {
 	e.mu.Unlock()
 }
 
+// markLaunchFailed records a launch that yielded no worker.
+func (e *productionLifecycleEvidence) markLaunchFailed(err error) {
+}
+
 func (e *productionLifecycleEvidence) markWorkerLaunchAttempted() {
 	if e == nil {
 		return

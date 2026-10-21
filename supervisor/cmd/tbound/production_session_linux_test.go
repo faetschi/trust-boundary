@@ -280,3 +280,38 @@ func TestProductionUnsafeSessionCloseReachesBinderQuarantine(t *testing.T) {
 		t.Fatalf("quarantine holds=%d closers=%d, want one hold with %d owner closers", held, heldClosers, len(owners))
 	}
 }
+
+// Defect #33: a launch that failed after admission, with its cell stopped, its exit observed and its
+// descendants settled (the dr route-probe cell, a readiness timeout), left the run's owners in
+// quarantine and the managed-root run unreleased, so abandon-unknown could never settle the workflow.
+// Such a launch frees cleanup and aborts the managed-root run before its task; any launch whose
+// settlement is not proven still keeps them.
+func TestSettledLaunchFailureReleasesCleanupAndAbortsBeforeTask(t *testing.T) {
+	settled := piruntime.Settlement{State: piruntime.SettlementStopped, ExitObserved: true, DescendantsSettled: true}
+	for name, tc := range map[string]struct {
+		err      error
+		reclaims bool
+	}{
+		"settled route-probe launch": {&piruntime.PiWorkerLaunchError{Cause: piruntime.ErrD09RouteProbeLaunched, Settlement: settled}, true},
+		"settled readiness timeout":  {&piruntime.PiWorkerLaunchError{Cause: context.DeadlineExceeded, Settlement: settled}, true},
+		"unknown stop":               {&piruntime.PiWorkerLaunchError{Cause: context.DeadlineExceeded, Settlement: piruntime.Settlement{State: piruntime.SettlementUnknown}}, false},
+		"cleanup error":              {&piruntime.PiWorkerLaunchError{Cause: context.DeadlineExceeded, Settlement: settled, CleanupErr: errors.New("close stdout")}, false},
+		"untyped failure":            {errors.New("StartChild refused"), false},
+		"joined unknown settlement": {errors.Join(&piruntime.PiWorkerLaunchError{Cause: context.DeadlineExceeded, Settlement: settled},
+			piruntime.ErrUnknownSettlement), false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			lifecycle := &productionLifecycleEvidence{}
+			lifecycle.markWorkerLaunchAttempted()
+			lifecycle.markLaunchFailed(tc.err)
+			snapshot := lifecycle.snapshot()
+			if got := productionCleanupSafe(snapshot, newProductionCommandRunner(nil)); got != tc.reclaims {
+				t.Fatalf("cleanup safe after launch failure %v = %t, want %t", tc.err, got, tc.reclaims)
+			}
+			abortErr := (&managedLiveRootLease{}).abortBeforeTask(snapshot, newProductionCommandRunner(nil))
+			if tc.reclaims && abortErr != nil || !tc.reclaims && !errors.Is(abortErr, ErrManagedLiveRootRetained) {
+				t.Fatalf("abort before task after launch failure %v = %v, want aborted=%t", tc.err, abortErr, tc.reclaims)
+			}
+		})
+	}
+}
