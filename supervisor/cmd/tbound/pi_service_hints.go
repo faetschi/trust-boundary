@@ -15,8 +15,8 @@ var piServiceErrorHints = map[string]string{
 	"maintenance-lock-unavailable": "the service could not take the maintenance lock; check the service log, and retry once the cause is fixed",
 	"maintenance-in-progress":      "a maintenance operation holds the service; wait until it ends, then send the request again",
 	"request-journal-unavailable":  "the request journal could not be read or written; check the service log and the journal directory; the request may or may not be recorded, so read the journal before sending the next request",
-	"socket-authority-changed":     "the service socket no longer matches its registration; the request is recorded but did not run; restore the registered socket unit, restart the service, and reconcile the recorded request",
-	"terminal-journal-unavailable": "the run finished but its result could not be journaled; check the service log and journal; the next request is blocked until the request is settled or abandoned",
+	"socket-authority-changed":     "the service socket no longer matches its registration; the request is recorded but this attempt did not start a run; restore the registered socket unit, restart the service, and reconcile the recorded request",
+	"terminal-journal-unavailable": "the run ended; its outcome was not recorded (its result could not be journaled); check the service log and journal; the next request is blocked until the request is settled or abandoned",
 
 	"task-outcome-unknown":                  "the run's outcome could not be established; the next request is blocked until it is abandoned: reconcile it with `tbound abandon-unknown` (guest: `tbound-op abandon <rid>`) while its registration is installed",
 	"retained-workflow-recovery-unresolved": "recovery of the retained workflow failed and the request stays unresolved; check the service log, then settle it with `tbound abandon-unknown` (guest: `tbound-op abandon <rid>`); retrying cannot turn it into a new run",
@@ -33,16 +33,28 @@ var piServiceErrorHints = map[string]string{
 	"role-kind-mismatch":   "this role is not allowed for the case; use a role its case kind allows",
 	"role-unavailable":     "the case has no servable artifact for this role in the installed corpus; pick another role or install the missing artifact",
 
-	"admission-already-used":  "this case, role and attempt were already admitted under another request id (single use); use the next attempt or role, or replay the original request id",
-	"replay-binding-mismatch": "the stored result belongs to a different manifest, service config or registration than the active one; the request id is consumed, so install the original binding to read it back, or use a fresh admission",
+	"admission-already-used":  "this case, role and attempt were already admitted under another request id (single use); replay the original request id to read it back; use the next attempt or role only after the earlier run's outcome is settled (completed, or abandoned via tbound-op abandon)",
+	"replay-binding-mismatch": "the stored result belongs to a different manifest, service config or registration than the active one; the request id is consumed, so install the original binding to read it back, or use a fresh admission only after the earlier run's outcome is settled (completed, or abandoned via tbound-op abandon)",
 }
 
 // piServiceRefusalMessage is the client's one-line answer for a non-completed response,
-// with a second hint line when the code is known. An unknown code prints the code only.
+// with a second hint line when the code is known. The status and code come from the wire, so
+// one outside the known set is printed quoted (%q): a newline in it cannot start a line of its
+// own, such as a forged "hint:" line. A known code keeps the documented
+// "local Pi service <status>: <error_code>" first line.
 func piServiceRefusalMessage(status, errorCode string) string {
+	hint := piServiceErrorHints[errorCode]
+	if !knownPiServiceStatus[status] {
+		status = fmt.Sprintf("%q", status)
+	}
+	if hint == "" && errorCode != "" {
+		errorCode = fmt.Sprintf("%q", errorCode)
+	}
 	message := fmt.Sprintf("local Pi service %s: %s", status, errorCode)
-	if hint := piServiceErrorHints[errorCode]; hint != "" {
+	if hint != "" {
 		message += "\nhint: " + hint
 	}
 	return message
 }
+
+var knownPiServiceStatus = map[string]bool{"refused": true, "busy": true, "unknown": true}
