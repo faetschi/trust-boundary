@@ -438,3 +438,43 @@ func runG1UnknownExchange(t *testing.T, laterTurn bool) {
 		t.Fatalf("a later request stayed blocked after the abandon: %v", err)
 	}
 }
+
+// An untrusted worker can send `next` before the prompt is admitted. That turn fails, the governed
+// loops join with only the provider-turn failure, and the settled worker leaves cleanup safe. The
+// managed-root lease must then abort before the task like cleanup does, not stay retained. Any other
+// channel failure still retains it.
+func TestProviderTurnFailureBeforeTaskAbortsTheManagedLiveRoot(t *testing.T) {
+	turnFailed := fmt.Errorf("%w; conversation closed: %w", providerbridge.ErrProviderTurnFailed,
+		errors.New("registered provider exchange failed; response withheld"))
+	beforeTask := func(joined bool, channelsErr error) productionLifecycleSnapshot {
+		lifecycle := &productionLifecycleEvidence{}
+		lifecycle.markWorkerLaunchAttempted()
+		lifecycle.markWorkerLaunched(4242)
+		lifecycle.markWorkerClosed(g1SettledWorker, nil)
+		lifecycle.markChannelsStarted()
+		if joined {
+			lifecycle.markChannelsJoined(channelsErr)
+		}
+		return lifecycle.snapshot()
+	}
+	for name, tc := range map[string]struct {
+		snapshot productionLifecycleSnapshot
+		aborts   bool
+	}{
+		"provider turn failure only": {beforeTask(true, governedChannelsError(nil, turnFailed)), true},
+		"clean channels":             {beforeTask(true, nil), true},
+		"untyped bridge failure": {beforeTask(true,
+			governedChannelsError(nil, errors.New("provider channel request is replayed or out of order"))), false},
+		"supervisor loop failed too": {beforeTask(true,
+			governedChannelsError(errors.New("executor failed; result withheld"), turnFailed)), false},
+		"channels never joined": {beforeTask(false, nil), false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			lease := &managedLiveRootLease{}
+			err := lease.abortBeforeTask(tc.snapshot, newProductionCommandRunner(nil))
+			if tc.aborts && (err != nil || !lease.abortedBeforeTask) || !tc.aborts && !errors.Is(err, ErrManagedLiveRootRetained) {
+				t.Fatalf("abort before task = %v (aborted=%t), want aborted=%t", err, lease.abortedBeforeTask, tc.aborts)
+			}
+		})
+	}
+}
