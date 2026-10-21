@@ -19,8 +19,10 @@ const (
 	maxChannelFrames   = 2048
 )
 
-// ErrProviderTurnFailed marks Serve's return after a provider turn failed: the worker got an error
-// frame and the bridge closed the conversation.
+// ErrProviderTurnFailed marks Serve's return after a provider turn failed and left its exchange
+// disposed of in the provider journal (an unknown record, reconciled at abandon): the worker got an
+// error frame and the bridge closed the conversation. A turn failure that left no such disposition
+// (a failed journal write, host-call completion or spend mark) is not typed.
 var ErrProviderTurnFailed = errors.New("provider turn failed")
 
 // channelRequest is deliberately unable to carry prompt text, history, model,
@@ -180,7 +182,11 @@ func Serve(ctx context.Context, channel io.ReadWriteCloser, conversation *Conver
 				if err := writeResponse(channelResponse{Kind: "error", RequestID: result.requestID, Error: safeFailure(result.err)}); err != nil {
 					return err
 				}
-				return fmt.Errorf("%w; conversation closed: %w", ErrProviderTurnFailed, result.err)
+				var journaled journaledFailure
+				if errors.As(result.err, &journaled) {
+					return fmt.Errorf("%w; conversation closed: %w", ErrProviderTurnFailed, result.err)
+				}
+				return fmt.Errorf("provider turn failed without a journaled disposition; conversation closed: %w", result.err)
 			}
 			turn := result.turn
 			if err := writeResponse(channelResponse{Kind: "turn", RequestID: result.requestID, Turn: &turn}); err != nil {
