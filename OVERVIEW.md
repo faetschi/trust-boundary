@@ -1,18 +1,18 @@
 # TBound — current state
 
-Updated 2026-10-20 (night). Engineering route OpenCode Go only. Green results verify code only: G1 false, H1 unexecuted.
+Updated 2026-10-21. Frozen commit **F′ = b42b920** (codex/tbound-prototype). Engineering route OpenCode Go only. Green results verify code only: G1 false, H1 unexecuted.
 
-**Headline: a governed smoke completed on the real guest** (dry run, throwaway keys): service start, signed cell, Landlock + TCB proof, Pi in the cell, broker, real OpenCode Go exchange, `read` allowed, receipt `status: completed`, disposition `NO_DIFF`. Getting there took 30 real-host fixes that the offline gate could not see.
+**Headline: the first real governed smoke on the frozen build succeeded** on the ABI 8 guest (signed F′ image, real keys, sudo narrowed): `status completed`, `success true`, one real OpenCode Go exchange, `read` allowed, disposition `NO_DIFF`, worker settled.
 
 | Milestone | Current state |
 | --- | --- |
-| System | 30 real-host defects fixed red-first (accounts, mount namespaces, cgroup delegation, rootless podman, entrypoint, proof pipe, provider roles + bounded retry, workflow checkpoint, canonical live root). Merged for review on `integ/real-host-20261020` (`1f69281`); Codex review and full gate running. |
-| Measurement | All observers have production sources (unchanged). |
-| Research enablement | C, P, B, V, adaptive attacker, per-trial reset, task oracle, `tbound-run`. V podman flags proven under no-new-privs. |
-| Evidence (EVQ / routes) | 18 of 22 EVQ offline; the 4 guest artifacts are now reachable (G1, probes). Route report 2 of 4 cells. |
-| Guest (ABI 8, 172.29.201.195) | Real: K0 keys, P8–P13, R1 (S1, S2), SSH-1..3, NS-1, P12 key, Spike A, guest config fixes. Dry-run artifacts (throwaway key, dev image) are rolled back before the real session. |
-| Experiment | Pilot corpus validated except reviews; G1 approved. |
+| System | 30 real-host defects fixed (Codex-reviewed, gate 4194/0/24), frozen as F′. New: defect #31 — a completed fresh workflow leaves no `pi_workflow_terminal` in the host catalog, so the next run is refused `prior-workflow-unsettled`; fix in progress (needs a new freeze F″). |
+| Measurement | All observers have production sources. EVQ capture of F′ done (archive digest = frozen source). |
+| Research enablement | C, P, B, V, adaptive attacker, per-trial reset, task oracle, `tbound-run`. |
+| Evidence (EVQ / routes) | 18 of 22 EVQ offline; guest producers staged (test binaries pinned). G1, route-probe and direct-runtime runs blocked by #31. |
+| Guest (ABI 8, 172.29.194.24) | F′ installed; S1–S5 signed; real smoke done; L5 N2/N5/N6 pass. Sudo narrowed to a reviewed operator dispatcher (`tbound-op`, Codex OK) plus your password sudo (owner channel). |
+| Experiment | Pilot review packet + pre-registration draft ready for you and your advisor (`review-artifacts/`). Corpus review gate tightened for the next freeze. |
 
-Provider note: OpenCode Go's upstream is flaky (503 / 429 bursts); the broker now retries pre-effect 5xx (each attempt a reserved host call).
+Needs you: pilot corpus review with your advisor (packet: `review-artifacts/pilot-review-packet-20261021.md`), decisions in the pre-registration draft.
 
-Next: Codex review + gate → merge → new freeze F′ (rebuild, S5, I1, R2/R5 = S3/S4) → RC-1/Z1 (root console, needs you at the VM console) → real smoke → G1 / probe runs → guest EVQ artifacts → owner + advisor pilot review → pre-registration → pilot.
+Next: fix #31 → freeze F″ (rebuild, reinstall via your password sudo or the kit) → G1 → route probes → guest EVQ artifacts → reviewed manifest → pre-registration → pilot → thesis corpus.
