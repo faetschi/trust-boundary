@@ -925,8 +925,9 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 	}
 	settlementID := receipt.PublicationTransactionID
 	if receipt.Disposition == "NO_DIFF" {
-		settlementID, err = verifyManagedPiNoPublicationSettlement(publicationJournal, publicationTrace, rootDescriptor, rootID,
-			registration, entry.WorkflowID, receipt.RunID, pins.OwnerEpoch)
+		source := audit.Trace{Records: storeTrace.Records[:proofEvent.Proof.SourceStoreAuditCount]}
+		settlementID, err = verifyManagedPiNoPublicationSettlement(publicationJournal, publicationTrace, source,
+			rootDescriptor, rootID, registration, entry.WorkflowID, receipt.RunID, pins.OwnerEpoch)
 	} else {
 		err = verifyManagedPiPublicationSettlement(publicationJournal, publicationTrace, rootDescriptor, rootID, registration, entry.WorkflowID,
 			receipt.RunID, pins.OwnerEpoch, receipt.PublicationTransactionID)
@@ -1245,7 +1246,10 @@ func productionReceiptSettlementClaimed(receipt productionPiReceipt) bool {
 // workflow, the admitted root identity must still match, and the released tree
 // digest must equal this run's durable seed. It returns the
 // release identity that terminal settlement binds in place of a transaction ID.
-func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.Trace,
+// verifyManagedPiNoPublicationSettlement verifies the no-change settlement of a run: its admission and
+// release in the publication journal (journal, trace), and the Store seed in source, the records of
+// the run's store journal that its launch bound as the source state.
+func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace, source audit.Trace,
 	rootDescriptor managedLiveRootDescriptorIdentity, root workflow.RootIdentity,
 	registration piruntime.D09ManagedLiveRootRegistration, workflowID, runID string, ownerEpoch uint64) (string, error) {
 	if journal == nil || root == (workflow.RootIdentity{}) || !validIdentityText(workflowID) ||
@@ -1315,7 +1319,7 @@ func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.
 	if !anchored {
 		return "", settlementRefusal("run-release-lifecycle-anchor", ErrManagedLiveRootUnavailable)
 	}
-	if err := verifyManagedNoChangeSeed(trace, runID, admitted.Sequence, released.Sequence, event.ReleasedTreeDigest); err != nil {
+	if err := verifyManagedNoChangeSeed(source, runID, event.ReleasedTreeDigest); err != nil {
 		return "", err
 	}
 	if _, pending, err := managedRootLedgerState(journal, root); err != nil || len(pending) != 0 {
@@ -1324,14 +1328,15 @@ func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.
 	return "no-publication:" + released.Hash, nil
 }
 
-// verifyManagedNoChangeSeed binds a no-change release to the admitted tree. This
-// run's durable seed of the managed root must sit between admission and release,
-// and its tree digest must equal the digest that release rescanned from the root.
-func verifyManagedNoChangeSeed(trace audit.Trace, runID string, admissionSeq, releaseSeq uint64, releasedTree string) error {
+// verifyManagedNoChangeSeed binds a no-change release to the seeded tree. The run seeds its Store from
+// the managed root into its store journal before launch, so its one seed record is in the source
+// state the launch proof bound, and its tree digest must equal the digest that release rescanned
+// from the root.
+func verifyManagedNoChangeSeed(source audit.Trace, runID, releasedTree string) error {
 	id := "managed-root-source-capture-seeded:" + runID
 	var seeded *audit.Record
-	for index := range trace.Records {
-		record := &trace.Records[index]
+	for index := range source.Records {
+		record := &source.Records[index]
 		if record.Event.Kind != "managed_root_source_capture_seeded" || record.Event.ID != id {
 			continue
 		}
@@ -1340,7 +1345,7 @@ func verifyManagedNoChangeSeed(trace audit.Trace, runID string, admissionSeq, re
 		}
 		seeded = record
 	}
-	if seeded == nil || seeded.Sequence <= admissionSeq || seeded.Sequence >= releaseSeq || !validManagedTreeDigest(releasedTree) {
+	if seeded == nil || !validManagedTreeDigest(releasedTree) {
 		return settlementRefusal("no-change-seed-missing", ErrManagedLiveRootUnavailable)
 	}
 	var evidence struct {

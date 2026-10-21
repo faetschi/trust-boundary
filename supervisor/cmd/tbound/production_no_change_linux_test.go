@@ -144,6 +144,16 @@ func (r *noChangeRun) release() error {
 	return r.lease.close()
 }
 
+// storeTrace is the store journal. The harness launches nothing, so all of it is the source state.
+func (r *noChangeRun) storeTrace(t *testing.T) audit.Trace {
+	t.Helper()
+	trace, err := r.storeJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return trace
+}
+
 func (r *noChangeRun) trace(t *testing.T) audit.Trace {
 	t.Helper()
 	trace, err := r.journal.Trace()
@@ -156,7 +166,7 @@ func (r *noChangeRun) trace(t *testing.T) audit.Trace {
 // verify runs the public settlement verifier against the journal as it stands.
 func (r *noChangeRun) verify(t *testing.T, identity managedLiveRootDescriptorIdentity) (string, error) {
 	t.Helper()
-	return verifyManagedPiNoPublicationSettlement(r.journal, r.trace(t), identity, r.root, r.registration,
+	return verifyManagedPiNoPublicationSettlement(r.journal, r.trace(t), r.storeTrace(t), identity, r.root, r.registration,
 		noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
 }
 
@@ -204,12 +214,13 @@ func releaseRecordHash(t *testing.T, trace audit.Trace) string {
 }
 
 type noChangeFreshRequest struct {
-	JournalPath string
-	Identity    managedLiveRootDescriptorIdentity
-	Digest      string
-	ServiceUID  int
-	ServiceGID  int
-	ResultPath  string
+	JournalPath      string
+	StoreJournalPath string
+	Identity         managedLiveRootDescriptorIdentity
+	Digest           string
+	ServiceUID       int
+	ServiceGID       int
+	ResultPath       string
 }
 
 type noChangeFreshResult struct {
@@ -226,7 +237,8 @@ func (r *noChangeRun) verifyInFreshProcess(t *testing.T) noChangeFreshResult {
 	}
 	dir := filepath.Dir(r.journalPath)
 	requestPath, resultPath := filepath.Join(dir, "fresh-request.json"), filepath.Join(dir, "fresh-result.json")
-	encoded, err := json.Marshal(noChangeFreshRequest{JournalPath: r.journalPath, Identity: r.identity,
+	encoded, err := json.Marshal(noChangeFreshRequest{JournalPath: r.journalPath,
+		StoreJournalPath: filepath.Join(dir, "store-audit.jsonl"), Identity: r.identity,
 		Digest: r.registration.Digest, ServiceUID: r.registration.ServiceUID, ServiceGID: r.registration.ServiceGID,
 		ResultPath: resultPath})
 	if err != nil {
@@ -275,7 +287,16 @@ func TestNoChangeSettlementFreshProcessHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	settlementID, verifyErr := verifyManagedPiNoPublicationSettlement(journal, trace, request.Identity,
+	storeFile, err := os.Open(request.StoreJournalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer storeFile.Close()
+	source, err := audit.Verify(storeFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settlementID, verifyErr := verifyManagedPiNoPublicationSettlement(journal, trace, source, request.Identity,
 		workflow.RootIdentity{Device: request.Identity.Device, Inode: request.Identity.Inode},
 		piruntime.D09ManagedLiveRootRegistration{Digest: request.Digest, ServiceUID: request.ServiceUID, ServiceGID: request.ServiceGID},
 		noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
