@@ -1007,9 +1007,20 @@ func releaseProductionSessionAdmissionIfSafe(
 	return true
 }
 
-// productionLaunchFailure is the error of a launch that yielded no worker.
+// productionLaunchFailure is the error of a launch that yielded no worker. A route-probe cell never
+// yields one: it ran its probe and did not start Pi. Its validated launch proof is journaled as the
+// run's production_tcb_proof, the record the guest-route-direct-runtime producer reads, and the run
+// still fails.
 func productionLaunchFailure(err error, journalLaunchProof func(launcherPID int, proof piruntime.D09TCBProof) error) error {
-	return fmt.Errorf("launch admitted production Pi worker: %w", err)
+	var launchErr *piruntime.PiWorkerLaunchError
+	if !errors.As(err, &launchErr) || launchErr.RouteProbe == nil {
+		return fmt.Errorf("launch admitted production Pi worker: %w", err)
+	}
+	if journalErr := journalLaunchProof(launchErr.RouteProbe.LauncherPID, launchErr.RouteProbe.Proof); journalErr != nil {
+		return errors.Join(fmt.Errorf("launch route-probe cell: %w", err),
+			fmt.Errorf("journal route-probe launch proof: %w", journalErr))
+	}
+	return fmt.Errorf("route-probe launch proof journaled, Pi not started: %w", err)
 }
 
 // productionSessionCloseIfUnsafe lets the binder's own Close guard run when
