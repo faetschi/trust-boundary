@@ -903,16 +903,13 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 		return settlementRefusal("store-journal-head", ErrPiWorkflowCatalog)
 	}
 	proofRecord, proofEvent, err := verifyServiceTCBProof(storeTrace, receipt, expectedSessionID,
-		entry.WorkflowID, expectedConversationID)
+		entry.WorkflowID, expectedConversationID, pins.ImageDigest)
 	storeCloseErr := storeJournal.Close()
 	if storeCloseErr != nil {
 		return settlementRefusal("store-journal-close", errors.Join(ErrPiWorkflowCatalog, storeCloseErr))
 	}
 	if err != nil {
 		return err
-	}
-	if pins.ImageDigest != bareWorkflowDigest(proofEvent.Proof.ImageDigest) {
-		return settlementRefusal("checkpoint-image-pin", ErrPiWorkflowCatalog)
 	}
 	publicationJournal, err := openPiServiceSettlementJournal(filepath.Join(productionAuditRootDefault, "publication-audit.jsonl"))
 	if err != nil {
@@ -1047,10 +1044,11 @@ func openPiServiceSettlementJournal(path string) (*audit.Journal, error) {
 // verifyServiceTCBProof returns the one launch proof of a prior run, the one its receipt names. The
 // launch checked that proof against the run's own signed profile and template before it journaled it
 // (journalProductionLaunchProof); a later service may run under another profile and template, so the
-// settlement binds the record to the profile and template the receipt names and checks that its proof
-// is intact, instead of checking the proof again against the running service's template.
-func verifyServiceTCBProof(trace audit.Trace, receipt productionPiReceipt, sessionID, workflowID, conversationID string) (
-	audit.Record, productionLaunchTCBProofEvent, error) {
+// settlement binds the record to the profile and template the receipt names, and to the image the
+// checkpoint pinned (imagePin, bare), and checks that its proof is intact, instead of checking the
+// proof again against the running service's template.
+func verifyServiceTCBProof(trace audit.Trace, receipt productionPiReceipt, sessionID, workflowID, conversationID,
+	imagePin string) (audit.Record, productionLaunchTCBProofEvent, error) {
 	var matched *audit.Record
 	for index := range trace.Records {
 		record := &trace.Records[index]
@@ -1085,6 +1083,9 @@ func verifyServiceTCBProof(trace audit.Trace, receipt productionPiReceipt, sessi
 		event.Proof.SourceStoreAuditCount > uint64(len(trace.Records)) ||
 		auditHeadHash(trace.Records[:event.Proof.SourceStoreAuditCount]) != event.Proof.SourceStoreAuditHead {
 		return audit.Record{}, productionLaunchTCBProofEvent{}, settlementRefusal("tcb-proof-source-audit", ErrPiWorkflowCatalog)
+	}
+	if imagePin != bareWorkflowDigest(event.Proof.ImageDigest) {
+		return audit.Record{}, productionLaunchTCBProofEvent{}, settlementRefusal("checkpoint-image-pin", ErrPiWorkflowCatalog)
 	}
 	return *matched, event, nil
 }

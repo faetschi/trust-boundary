@@ -3,14 +3,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/publication"
+	"tbound/supervisor/internal/workflow"
+	"tbound/supervisor/internal/workspace"
 )
 
 // Defect #31 on the real guest. Every run of the re-registration cycle (G1, route probe, pilot)
@@ -162,11 +168,24 @@ func TestNoChangeSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.T
 	}
 }
 
-// The launch proof a receipt names was checked against the run's own signed profile and template
-// before it was journaled. Its settlement binds it to the profile and template the receipt names.
-func TestServiceTCBProofOfAPriorIsBoundToTheProfileItsReceiptNames(t *testing.T) {
-	root := privateGovernedTestRoot(t)
-	journal, err := audit.Open(filepath.Join(root, "session-audit.jsonl"))
+// refusedBy fails unless err is the named settlement check's refusal of sentinel.
+func refusedBy(t *testing.T, err error, sentinel error, check string) {
+	t.Helper()
+	if !errors.Is(err, sentinel) || !strings.Contains(fmt.Sprint(err), "settlement check "+check+":") {
+		t.Errorf("want the %s refusal (%v), got %v", check, sentinel, err)
+	}
+}
+
+const (
+	priorProofRunID, priorProofSessionID, priorProofWorkflowID = "prior-run", "prior-run", "prior-workflow"
+	priorProofConversationID, priorProofGenerationID           = "prior-conversation", "g0"
+)
+
+// priorLaunchProof journals a prior run's launch proof after one store record, as the launch does,
+// and returns the journal records, the proof record and the receipt that names it.
+func priorLaunchProof(t *testing.T) (audit.Trace, audit.Record, productionPiReceipt, piruntime.D09CellTemplate) {
+	t.Helper()
+	journal, err := audit.Open(filepath.Join(privateGovernedTestRoot(t), "session-audit.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,30 +197,61 @@ func TestServiceTCBProofOfAPriorIsBoundToTheProfileItsReceiptNames(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	const runID, sessionID, workflowID, conversationID, generationID = "prior-run", "prior-run", "prior-workflow", "prior-conversation", "g0"
 	sourceBinding := digestBytes([]byte("prior source binding"))
-	priorProfile, priorTemplate, proof := productionProofFixture()
-	proof.SourceGenerationID, proof.SourceBindingDigest = generationID, sourceBinding
+	profile, template, proof := productionProofFixture()
+	proof.SourceGenerationID, proof.SourceBindingDigest = priorProofGenerationID, sourceBinding
 	proof.SourceStoreAuditCount, proof.SourceStoreAuditHead = 1, auditHeadHash(before.Records)
 	evidence := &productionLifecycleEvidence{}
-	if err := journalProductionLaunchProof(journal, evidence, runID, sessionID, workflowID, conversationID, generationID,
-		sourceBinding, priorProfile, priorTemplate, proof.LauncherProcessPID, proof); err != nil {
+	if err := journalProductionLaunchProof(journal, evidence, priorProofRunID, priorProofSessionID, priorProofWorkflowID,
+		priorProofConversationID, priorProofGenerationID, sourceBinding, profile, template, proof.LauncherProcessPID, proof); err != nil {
 		t.Fatal(err)
 	}
 	snapshot := evidence.snapshot()
-	receipt := productionPiReceipt{RunID: runID, ProfileID: priorProfile.ID, ProfileHash: priorProfile.Digest,
-		ContainmentProfileDigest: priorProfile.ContainmentProfileDigest,
-		TCBProofDigest:           snapshot.proofDigest, TCBProofJournalSequence: snapshot.proofSeq}
-
 	trace, err := journal.Trace()
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, event, err := verifyServiceTCBProof(trace, receipt, sessionID, workflowID, conversationID)
+	receipt := productionPiReceipt{RunID: priorProofRunID, ProfileID: profile.ID, ProfileHash: profile.Digest,
+		ContainmentProfileDigest: profile.ContainmentProfileDigest,
+		TCBProofDigest:           snapshot.proofDigest, TCBProofJournalSequence: snapshot.proofSeq}
+	return trace, trace.Records[len(trace.Records)-1], receipt, template
+}
+
+// rejournal writes events into a fresh journal in order and returns its records, so a test can
+// place a changed or repeated proof record in an intact hash chain.
+func rejournal(t *testing.T, events ...audit.Event) audit.Trace {
+	t.Helper()
+	journal, err := audit.Open(filepath.Join(privateGovernedTestRoot(t), "session-audit.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer journal.Close()
+	for _, event := range events {
+		if _, err := journal.Append(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	trace, err := journal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return trace
+}
+
+func verifyPriorProof(trace audit.Trace, receipt productionPiReceipt, imagePin string) (audit.Record, productionLaunchTCBProofEvent, error) {
+	return verifyServiceTCBProof(trace, receipt, priorProofSessionID, priorProofWorkflowID, priorProofConversationID, imagePin)
+}
+
+// The launch proof a receipt names was checked against the run's own signed profile and template
+// before it was journaled. Its settlement binds it to the profile and template the receipt names.
+func TestServiceTCBProofOfAPriorIsBoundToTheProfileItsReceiptNames(t *testing.T) {
+	trace, proofRecord, receipt, template := priorLaunchProof(t)
+	imagePin := bareWorkflowDigest(template.ExpectedImageDigest)
+	record, event, err := verifyPriorProof(trace, receipt, imagePin)
 	if err != nil {
 		t.Fatalf("the launch proof the receipt of a prior run names was refused: %v", err)
 	}
-	if record.Sequence != snapshot.proofSeq || event.Proof.ImageDigest != priorTemplate.ExpectedImageDigest {
+	if record.Sequence != proofRecord.Sequence || event.Proof.ImageDigest != template.ExpectedImageDigest {
 		t.Fatalf("verified proof = sequence %d image %q", record.Sequence, event.Proof.ImageDigest)
 	}
 
@@ -214,8 +264,165 @@ func TestServiceTCBProofOfAPriorIsBoundToTheProfileItsReceiptNames(t *testing.T)
 	} {
 		changed := receipt
 		mutate(&changed)
-		if _, _, err := verifyServiceTCBProof(trace, changed, sessionID, workflowID, conversationID); !errors.Is(err, ErrPiWorkflowCatalog) {
+		if _, _, err := verifyPriorProof(trace, changed, imagePin); !errors.Is(err, ErrPiWorkflowCatalog) {
 			t.Errorf("%s: a proof that is not the one the receipt names was accepted: %v", name, err)
 		}
 	}
+}
+
+// The proof digest commits to the proof the launch checked: a record whose proof was changed while
+// it kept the digest is not that proof.
+func TestServiceTCBProofWithChangedContentUnderItsDigestIsRefused(t *testing.T) {
+	trace, proofRecord, receipt, template := priorLaunchProof(t)
+	var event productionLaunchTCBProofEvent
+	if err := json.Unmarshal(proofRecord.Event.Data, &event); err != nil {
+		t.Fatal(err)
+	}
+	event.Proof.CapEff = "0000003fffffffff"
+	changed, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := rejournal(t, trace.Records[0].Event,
+		audit.Event{Kind: proofRecord.Event.Kind, ID: proofRecord.Event.ID, Data: changed})
+	_, _, err = verifyPriorProof(forged, receipt, bareWorkflowDigest(template.ExpectedImageDigest))
+	refusedBy(t, err, ErrPiWorkflowCatalog, "tcb-proof-event")
+}
+
+// A run has one launch proof. A second record under the run's proof ID is refused even when the
+// receipt names the later one.
+func TestServiceTCBProofRecordedTwiceIsRefused(t *testing.T) {
+	trace, proofRecord, receipt, template := priorLaunchProof(t)
+	twice := rejournal(t, trace.Records[0].Event, proofRecord.Event, proofRecord.Event)
+	receipt.TCBProofJournalSequence = twice.Records[2].Sequence
+	_, _, err := verifyPriorProof(twice, receipt, bareWorkflowDigest(template.ExpectedImageDigest))
+	refusedBy(t, err, ErrPiWorkflowCatalog, "tcb-proof-duplicate")
+}
+
+// The settled checkpoint pins the image the run launched; a proof of another image is not its proof.
+func TestServiceTCBProofOfAnotherImageThanTheCheckpointPinIsRefused(t *testing.T) {
+	trace, _, receipt, _ := priorLaunchProof(t)
+	_, _, err := verifyPriorProof(trace, receipt, strings.Repeat("6", 64))
+	refusedBy(t, err, ErrPiWorkflowCatalog, "checkpoint-image-pin")
+}
+
+// publishedPriorRun runs one PUBLISHED managed live-root run through the real lease and RootLedger
+// (permit, pending, transaction, succeeded resolution, durable terminal, release), with the
+// production publication ID, and returns its publication journal.
+func publishedPriorRun(t *testing.T) (*audit.Journal, managedLiveRootDescriptorIdentity, piruntime.D09ManagedLiveRootRegistration, string) {
+	t.Helper()
+	root := privateGovernedTestRoot(t)
+	livePath := filepath.Join(root, "live")
+	if err := os.Mkdir(livePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(livePath, "task.txt"), []byte("before\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	live, err := os.Open(livePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = live.Close() })
+	journal, err := audit.Open(filepath.Join(root, "publication-audit.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = journal.Close() })
+	store, baseline, tip, bundle, metadataDigest := managedRootTestSession(t)
+	t.Cleanup(func() { _ = store.Close() })
+	options := workspace.Options{Generation: baseline.ID(), MetadataPolicyDigest: metadataDigest,
+		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
+		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: managedRootTestXattr, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}}
+	rootLedger, err := workflow.NewRootLedger(journal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	lease, err := newFakeManagedLiveRootAuthority().acquire(ctx, live,
+		piruntime.D09CellTemplate{ManagedLiveRootRegistrationDigest: testManagedRootDigest}, journal,
+		publishedPriorRunID, publishedPriorWorkflowID, publishedPriorPublicationID, 1)
+	if err != nil {
+		t.Fatalf("acquire test-only registered-root boundary: %v", err)
+	}
+	if err := lease.completeAdmissionRecovery(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.issuePublicationPermit(ctx, live, baseline, tip); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.authorizePublication(ctx, live, workflow.EvidenceRequest{Bundle: bundle, Verified: bundle.ValidatedChain,
+		LiveRoot: live, Workflow: publishedPriorWorkflowID, OwnerEpoch: 1}, baseline); err != nil {
+		t.Fatal(err)
+	}
+	reservation, err := rootLedger.Begin(live, publishedPriorWorkflowID, 1, publishedPriorPublicationID, options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const transactionID = "published-prior-transaction"
+	if err := rootLedger.RecordTransaction(reservation, live, publishedPriorWorkflowID, publishedPriorPublicationID, transactionID); err != nil {
+		t.Fatal(err)
+	}
+	if err := rootLedger.Resolve(reservation, live, publishedPriorWorkflowID, publishedPriorPublicationID, transactionID,
+		publication.StatusSucceeded); err != nil {
+		t.Fatal(err)
+	}
+	reservation.Release()
+	if err := lease.recordDurableTerminal(ctx, journal, publication.StatusSucceeded, transactionID); err != nil {
+		t.Fatal(err)
+	}
+	identity, registration := lease.identity, lease.verified.Registration()
+	if err := lease.close(); err != nil {
+		t.Fatal(err)
+	}
+	return journal, identity, registration, transactionID
+}
+
+const (
+	publishedPriorRunID         = "published-prior-run"
+	publishedPriorWorkflowID    = "published-prior-workflow"
+	publishedPriorPublicationID = "production-publication-" + publishedPriorWorkflowID
+)
+
+// G1 publishes (read, edit, bash, read), and the next cycle, under its own registration, settles it.
+func TestPublishedSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.T) {
+	journal, identity, registration, transactionID := publishedPriorRun(t)
+	root := workflow.RootIdentity{Device: identity.Device, Inode: identity.Inode}
+	next := registration
+	next.Digest = digestBytes([]byte("registration of the next cycle"))
+	settle := func(transaction string) error {
+		trace, err := journal.Trace()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return verifyManagedPiPublicationSettlement(journal, trace, identity, root, next, publishedPriorWorkflowID,
+			publishedPriorRunID, 1, transaction)
+	}
+	if err := settle(transactionID); err != nil {
+		t.Fatalf("a run published under its own registration was refused under the next one: %v", err)
+	}
+	refusedBy(t, settle("another-transaction"), ErrManagedLiveRootUnavailable, "publication-transaction-record")
+
+	var admitted managedLiveRootRunAdmittedEvent
+	trace, err := journal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, record := range trace.Records {
+		if record.Event.Kind == "managed_live_root_run_admitted" {
+			if err := json.Unmarshal(record.Event.Data, &admitted); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	admitted.RegistrationDigest = next.Digest
+	data, err := json.Marshal(admitted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := journal.Append(audit.Event{Kind: "managed_live_root_run_admitted",
+		ID: managedLiveRootRunEventID(root, next.Digest, publishedPriorRunID, 1), Data: data}); err != nil {
+		t.Fatal(err)
+	}
+	refusedBy(t, settle(transactionID), ErrManagedLiveRootUnavailable, "run-admission-ambiguous")
 }
