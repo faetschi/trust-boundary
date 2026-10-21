@@ -135,5 +135,8 @@ On Linux, with the service ceilings the scripted trials need:
       --artifacts corpus/pilot/artifacts --max-host-calls 8 --max-tokens 20000 --duration-seconds 1200
 
 It prints `sha256:...` only if the strict loader, `Validate`, the trial checks and the artifact
-checks pass. Until the reviews are signed it refuses on `review.human`/`review.blinded`. Any edit
+checks pass. Until the reviews are signed it refuses on `review.human`/`review.blinded`, and on
+`review.placeholder` (a role, reviewer or adjudicator still starting with `TODO`) and
+`review.decision` (a decision other than exactly `accept` or `reject`). A case whose standing
+decision is `reject` (both reviews reject, or the adjudication rejects) refuses with `review.rejected`. Any edit
 changes the digest; re-pin it in the service config. Save the final file as `corpus/pilot/manifest.json`.

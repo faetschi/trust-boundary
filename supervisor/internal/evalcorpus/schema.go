@@ -143,8 +143,16 @@ type ScriptTurn struct {
 	Text      string          `json:"text,omitempty"`
 }
 
+// The only review and adjudication decisions. Validate refuses any other value, and a
+// case whose standing decision is DecisionReject makes the manifest non-admissible.
+const (
+	DecisionAccept = "accept"
+	DecisionReject = "reject"
+)
+
 // Review is one construct-validity review. Every case has exactly two, from different
-// roles and different reviewers, both human and blinded.
+// roles and different reviewers, both human and blinded. Decision is exactly "accept" or
+// "reject"; role and reviewer must not be TODO placeholders.
 type Review struct {
 	Role     string `json:"role"`
 	Reviewer string `json:"reviewer"`
@@ -154,7 +162,8 @@ type Review struct {
 }
 
 // Adjudication is required exactly when the two reviews disagree. The adjudicator is a
-// third reviewer: human and blinded, and not either of the two reviewers.
+// third reviewer: human and blinded, and not either of the two reviewers. Its decision is
+// the standing decision of the case.
 type Adjudication struct {
 	Adjudicator string `json:"adjudicator"`
 	Human       bool   `json:"human"`

@@ -29,8 +29,8 @@ func fixtureDigest(label string) string {
 
 func fixtureReviews() []evalcorpus.Review {
 	return []evalcorpus.Review{
-		{Role: "reviewer-a", Reviewer: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "synthetic-label"},
-		{Role: "reviewer-b", Reviewer: "synthetic-reviewer-2", Human: true, Blinded: true, Decision: "synthetic-label"},
+		{Role: "reviewer-a", Reviewer: "synthetic-reviewer-1", Human: true, Blinded: true, Decision: "accept"},
+		{Role: "reviewer-b", Reviewer: "synthetic-reviewer-2", Human: true, Blinded: true, Decision: "accept"},
 	}
 }
 
@@ -312,5 +312,44 @@ func TestCorpusDigestArtifactsMustVerify(t *testing.T) {
 	}
 	if _, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot", "--artifacts", filepath.Join(artifacts, "absent")); err == nil {
 		t.Fatal("an artifact directory that does not exist was accepted")
+	}
+}
+
+func TestCorpusDigestRefusesRejectedAndPlaceholderReviews(t *testing.T) {
+	dir := t.TempDir()
+	q := evalcorpus.PilotQuotas()
+
+	rejected := fixtureManifest(t, q, "corpus-digest-seed")
+	rejected.Cases[2].Reviews[0].Decision = "reject"
+	rejected.Cases[2].Reviews[1].Decision = "reject"
+	rejectedID := rejected.Cases[2].CaseID
+	placeholder := fixtureManifest(t, q, "corpus-digest-seed")
+	placeholder.Cases[4].Reviews[0].Reviewer = "TODO-REVIEWER-OWNER"
+	placeholder.Cases[4].Reviews[0].Role = "TODO-ROLE-1"
+	placeholderID := placeholder.Cases[4].CaseID
+	freeText := fixtureManifest(t, q, "corpus-digest-seed")
+	freeText.Cases[5].Reviews[1].Decision = "TODO-DECISION"
+
+	for _, tc := range []struct {
+		name, id string
+		m        evalcorpus.Manifest
+		rule     string
+	}{
+		{"rejected case", rejectedID, rejected, "review.rejected"},
+		{"placeholder reviewer and role", placeholderID, placeholder, "review.placeholder"},
+		{"free-text decision", freeText.Cases[5].CaseID, freeText, "review.decision"},
+	} {
+		path := writeManifest(t, dir, strings.ReplaceAll(tc.name, " ", "-")+".json", tc.m)
+		out, _, err := runCLI("corpus-digest", "--manifest", path, "--quota-profile", "pilot")
+		if err == nil {
+			t.Errorf("%s: accepted", tc.name)
+			continue
+		}
+		if out != "" {
+			t.Errorf("%s: printed %q on failure", tc.name, out)
+		}
+		if !strings.Contains(err.Error(), tc.rule) || !strings.Contains(err.Error(), tc.id) {
+			t.Errorf("%s: error %q does not name rule %s and case %s", tc.name, err, tc.rule, tc.id)
+		}
 	}
 }
