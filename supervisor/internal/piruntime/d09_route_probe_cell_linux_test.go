@@ -3,6 +3,7 @@
 package piruntime
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/cellview"
 )
@@ -326,5 +328,37 @@ func TestOSRouteProbeFSMeasuresARealPathAndChangesNothing(t *testing.T) {
 	}
 	if after := treeSnapshot(t, root); !slices.Equal(before, after) {
 		t.Fatalf("the measurement changed the tree:\nbefore %q\nafter  %q", before, after)
+	}
+}
+
+// A probe cell never sends readiness. Its launch ends once the launch proof is validated: the cell is
+// stopped and the proof is handed to the caller, which journals it, instead of a readiness timeout that
+// loses it.
+func TestRouteProbeLaunchEndsWithItsProofInsteadOfWaitingForReadiness(t *testing.T) {
+	probe := D09RouteProbeResult{Name: D09RouteProbeName, Target: "/home/node/.profile", Control: "/work/src/release.txt"}
+	profile, capability, channels, _, settler, _ :=
+		newSimulatedD09LaunchHelperFixture(t, func(p *D09TCBProof) { p.RouteProbe = &probe })
+	bootstrap := PiWorkerBootstrap{SessionID: "session-1", WorkflowID: "workflow-1", ConversationID: "conversation-1"}
+	if err := bindD09BootstrapSourceEvidence(&bootstrap, capability.runtime.D09SourceEvidence); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	worker, err := launchPiCLIWorker(ctx, profile, capability.runtime, capability, channels.channels, bootstrap, false, "")
+	var launchErr *PiWorkerLaunchError
+	if worker != nil || !errors.As(err, &launchErr) || !errors.Is(err, ErrD09RouteProbeLaunched) {
+		t.Fatalf("route-probe launch returned worker=%v err=%v, want a launch error caused by ErrD09RouteProbeLaunched", worker, err)
+	}
+	if launchErr.Settlement.State != SettlementStopped || !launchErr.Settlement.ExitObserved ||
+		!launchErr.Settlement.DescendantsSettled || launchErr.CleanupErr != nil {
+		t.Fatalf("route-probe cell was not settled: %+v cleanup=%v", launchErr.Settlement, launchErr.CleanupErr)
+	}
+	launch := launchErr.RouteProbe
+	if launch == nil || launch.LauncherPID <= 0 || launch.Proof.LauncherProcessPID != launch.LauncherPID ||
+		launch.Proof.RouteProbe == nil || launch.Proof.RouteProbe.Target != probe.Target {
+		t.Fatalf("route-probe launch error carries launch=%+v, want the cell's validated proof with its probe result", launch)
+	}
+	if got := settler.Calls(); got != 1 {
+		t.Fatalf("per-command settlement calls=%d, want 1", got)
 	}
 }

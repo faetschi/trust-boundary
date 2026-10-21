@@ -1803,6 +1803,8 @@ type PiWorkerLaunchError struct {
 	Cause      error
 	Settlement Settlement
 	CleanupErr error
+	// RouteProbe is set only on a launch from a route-probe template (ErrD09RouteProbeLaunched).
+	RouteProbe *D09RouteProbeLaunch
 
 	// processOwner keeps an unsettled launch's stdout reader reachable. It is
 	// released only with this error/owner; UNKNOWN cleanup never closes it.
