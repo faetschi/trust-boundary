@@ -102,11 +102,9 @@ func TestSmokePriorIsCheckedAgainstTheConfigAndRegistrationItWasAdmittedUnder(t 
 	if !ok || state.terminal == nil || state.terminal.Status != "completed" {
 		t.Fatalf("exported request journal has no completed smoke request: %+v", state)
 	}
-	g1RegistrationID := digestBytes([]byte("registration identity of the G1 service"))
-
-	entry, receipt, err := catalog.completedPriorAdmission(state, defect31G1ConfigDigest, g1RegistrationID)
+	entry, receipt, err := catalog.completedPriorAdmission(state)
 	if err != nil {
-		t.Fatalf("the completed smoke prior was refused by the G1 service: %v", err)
+		t.Fatalf("the completed smoke prior was refused under the G1 service: %v", err)
 	}
 	if entry.WorkflowID != defect31SmokeWorkflow || receipt.RunID != defect31SmokeRunID {
 		t.Fatalf("prior admission = workflow %q run %q", entry.WorkflowID, receipt.RunID)
@@ -119,7 +117,7 @@ func TestSmokePriorIsCheckedAgainstTheConfigAndRegistrationItWasAdmittedUnder(t 
 	if forged.acceptedRecord.Event.Data, err = json.Marshal(forged.accepted); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := catalog.completedPriorAdmission(forged, defect31G1ConfigDigest, g1RegistrationID); !errors.Is(err, ErrPiWorkflowCatalog) {
+	if _, _, err := catalog.completedPriorAdmission(forged); !errors.Is(err, ErrPiWorkflowCatalog) {
 		t.Fatalf("an accepted record that disagrees with its catalog admission was accepted: %v", err)
 	}
 }
@@ -195,37 +193,28 @@ func TestServiceTCBProofOfAPriorIsBoundToTheProfileItsReceiptNames(t *testing.T)
 		ContainmentProfileDigest: priorProfile.ContainmentProfileDigest,
 		TCBProofDigest:           snapshot.proofDigest, TCBProofJournalSequence: snapshot.proofSeq}
 
-	// The service that verifies the prior runs under the next cycle's profile, and after a freeze a new image.
-	currentProfile, currentTemplate := priorProfile, priorTemplate
-	currentTemplate.ExpectedImageDigest = "sha256:" + strings.Repeat("6", 64)
-	currentProfile.ID, currentProfile.Digest = "next-cycle-profile", "sha256:"+strings.Repeat("7", 64)
-	if currentProfile.ContainmentProfileDigest, err = currentTemplate.Digest(); err != nil {
-		t.Fatal(err)
-	}
 	trace, err := journal.Trace()
 	if err != nil {
 		t.Fatal(err)
 	}
-	record, event, err := verifyServiceTCBProof(journal, trace, receipt, sessionID, workflowID, conversationID,
-		currentProfile, currentTemplate)
+	record, event, err := verifyServiceTCBProof(trace, receipt, sessionID, workflowID, conversationID)
 	if err != nil {
-		t.Fatalf("the launch proof of a prior run was refused under the next cycle's profile: %v", err)
+		t.Fatalf("the launch proof the receipt of a prior run names was refused: %v", err)
 	}
 	if record.Sequence != snapshot.proofSeq || event.Proof.ImageDigest != priorTemplate.ExpectedImageDigest {
 		t.Fatalf("verified proof = sequence %d image %q", record.Sequence, event.Proof.ImageDigest)
 	}
 
 	for name, mutate := range map[string]func(*productionPiReceipt){
-		"another profile id":       func(r *productionPiReceipt) { r.ProfileID = currentProfile.ID },
-		"another profile digest":   func(r *productionPiReceipt) { r.ProfileHash = currentProfile.Digest },
-		"another template digest":  func(r *productionPiReceipt) { r.ContainmentProfileDigest = currentProfile.ContainmentProfileDigest },
+		"another profile id":       func(r *productionPiReceipt) { r.ProfileID = "next-cycle-profile" },
+		"another profile digest":   func(r *productionPiReceipt) { r.ProfileHash = digestBytes([]byte("next-cycle-profile")) },
+		"another template digest":  func(r *productionPiReceipt) { r.ContainmentProfileDigest = digestBytes([]byte("next-cycle-template")) },
 		"another proof digest":     func(r *productionPiReceipt) { r.TCBProofDigest = digestBytes([]byte("other proof")) },
 		"another journal sequence": func(r *productionPiReceipt) { r.TCBProofJournalSequence = 1 },
 	} {
 		changed := receipt
 		mutate(&changed)
-		if _, _, err := verifyServiceTCBProof(journal, trace, changed, sessionID, workflowID, conversationID,
-			currentProfile, currentTemplate); !errors.Is(err, ErrPiWorkflowCatalog) {
+		if _, _, err := verifyServiceTCBProof(trace, changed, sessionID, workflowID, conversationID); !errors.Is(err, ErrPiWorkflowCatalog) {
 			t.Errorf("%s: a proof that is not the one the receipt names was accepted: %v", name, err)
 		}
 	}

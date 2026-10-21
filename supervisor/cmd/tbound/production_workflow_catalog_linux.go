@@ -657,13 +657,19 @@ func (c *piServiceWorkflowCatalog) admissionEntry(admissionHash string) (piServi
 	return clonePiServiceWorkflowEntry(entry), true
 }
 
+// verifyCompletedServiceRequest verifies that a completed prior request is settled. The prior is
+// checked against the bindings it ran under, as its own records name them: the service config and
+// registration of its accepted record, the host profile and template of its receipt, the registration
+// digest of its managed-root admission. The running service's registration, profile and template
+// only locate and measure what exists now (the live root, the owner cells, the protected root): every
+// re-registration cycle installs its own, and a freeze changes the runner and the image, so a prior
+// from an earlier cycle is still a prior that must settle, not one that can never verify.
 func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequest(ctx context.Context, state piServiceRequestState,
-	configDigest, registrationID string, verified *piruntime.VerifiedD09ManagedLiveRoot,
-	template piruntime.D09CellTemplate, profile piruntime.HostProfile) error {
+	verified *piruntime.VerifiedD09ManagedLiveRoot, template piruntime.D09CellTemplate, profile piruntime.HostProfile) error {
 	if ctx == nil || ctx.Err() != nil || verified == nil {
 		return ErrPiServiceUnresolvedPrior
 	}
-	entry, receipt, err := c.completedPriorAdmission(state, configDigest, registrationID)
+	entry, receipt, err := c.completedPriorAdmission(state)
 	if err != nil {
 		return err
 	}
@@ -714,14 +720,14 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequest(ctx context.Con
 		return ErrPiWorkflowCatalog
 	}
 	return c.verifyCompletedServiceRequestPins(ctx, state, entry, receipt, view, registration, rootDescriptor, rootID,
-		drainVerifier, template, profile)
+		drainVerifier, template)
 }
 
 // completedPriorAdmission returns the catalog admission and the decoded receipt of a completed
 // prior request, after checking that its accepted record, its catalog admission and its receipt
-// agree with each other.
-func (c *piServiceWorkflowCatalog) completedPriorAdmission(state piServiceRequestState,
-	configDigest, registrationID string) (piServiceWorkflowEntry, productionPiReceipt, error) {
+// agree with each other, including on the config and registration the prior was admitted under.
+func (c *piServiceWorkflowCatalog) completedPriorAdmission(state piServiceRequestState) (
+	piServiceWorkflowEntry, productionPiReceipt, error) {
 	if c == nil || state.terminal == nil ||
 		state.accepted.SchemaVersion != "tbound-pi-service-request-accepted/v1" ||
 		state.acceptedRecord.Sequence == 0 || state.acceptedRecord.Event.Kind != "pi_service_request_accepted" ||
@@ -729,7 +735,7 @@ func (c *piServiceWorkflowCatalog) completedPriorAdmission(state piServiceReques
 		!validBareWorkflowDigest(state.acceptedRecord.Hash) || !validDigestText(state.accepted.PayloadDigest) ||
 		state.terminal.SchemaVersion != piServiceResponseSchema || state.terminal.RequestID != state.accepted.RequestID ||
 		state.terminal.Status != "completed" || len(state.terminal.Receipt) == 0 ||
-		!validDigestText(configDigest) || !validDigestText(registrationID) {
+		!validDigestText(state.accepted.ConfigDigest) || !validDigestText(state.accepted.RegistrationID) {
 		return piServiceWorkflowEntry{}, productionPiReceipt{}, ErrPiServiceUnresolvedPrior
 	}
 	var persistedAccepted piServiceRequestAcceptedEvent
@@ -741,7 +747,7 @@ func (c *piServiceWorkflowCatalog) completedPriorAdmission(state piServiceReques
 		entry.PeerUID != state.accepted.ClientUID || entry.PeerGID != state.accepted.ClientGID ||
 		entry.PeerPID != state.accepted.ClientPID || entry.RequestID != state.accepted.RequestID ||
 		entry.TaskID != state.accepted.TaskID || entry.PayloadDigest != state.accepted.PayloadDigest ||
-		entry.ServiceConfigDigest != configDigest || entry.ServiceRegistrationID != registrationID ||
+		entry.ServiceConfigDigest != state.accepted.ConfigDigest || entry.ServiceRegistrationID != state.accepted.RegistrationID ||
 		!entry.CheckpointBound || !entry.FreshAuthorizationUsed ||
 		requireWorkflowCatalogPath(entry, piServiceConfig{WorkflowOwnerStoreRoot: c.ownerRoot()}) != nil {
 		return piServiceWorkflowEntry{}, productionPiReceipt{}, ErrPiWorkflowCatalog
@@ -753,7 +759,9 @@ func (c *piServiceWorkflowCatalog) completedPriorAdmission(state piServiceReques
 		!receipt.DescendantsSettled || receipt.Settlement != string(piruntime.SettlementStopped) ||
 		!productionReceiptSettlementClaimed(receipt) ||
 		!boundedProductionIdentity(receipt.RunID, productionTaskIDMaxBytes) ||
-		!validDigestText(receipt.TCBProofDigest) || receipt.TCBProofJournalSequence == 0 {
+		!validDigestText(receipt.TCBProofDigest) || receipt.TCBProofJournalSequence == 0 ||
+		!validIdentityText(receipt.ProfileID) || !validDigestText(receipt.ProfileHash) ||
+		!validDigestText(receipt.ContainmentProfileDigest) {
 		return piServiceWorkflowEntry{}, productionPiReceipt{}, errors.Join(ErrPiWorkflowCatalog, err)
 	}
 	return entry, receipt, nil
@@ -819,11 +827,11 @@ func validateSettledServiceDisposition(pins workflowrecovery.Pins, expectedConve
 func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context.Context, state piServiceRequestState,
 	entry piServiceWorkflowEntry, receipt productionPiReceipt, view workflowrecovery.SettledCheckpointView,
 	registration piruntime.D09ManagedLiveRootRegistration, rootDescriptor managedLiveRootDescriptorIdentity, rootID workflow.RootIdentity,
-	drainVerifier catalogOwnerDrainVerifier, template piruntime.D09CellTemplate, profile piruntime.HostProfile) error {
+	drainVerifier catalogOwnerDrainVerifier, template piruntime.D09CellTemplate) error {
 	pins := view.Checkpoint.Pins
 	if pins.RootIdentityDigest != entry.RootIdentityDigest ||
 		pins.TaskDigest != bareWorkflowDigest(entry.TaskDigest) || pins.PromptDigest != bareWorkflowDigest(entry.PromptDigest) ||
-		pins.ProfileDigest != bareWorkflowDigest(profile.Digest) || pins.ImageDigest != bareWorkflowDigest(template.ExpectedImageDigest) ||
+		pins.ProfileDigest != bareWorkflowDigest(receipt.ProfileHash) ||
 		pins.OwnerEpoch == 0 || pins.RecoveryGeneration == 0 || pins.StoreJournalCount == 0 ||
 		!validBareWorkflowDigest(pins.StoreJournalHead) {
 		return ErrPiWorkflowCatalog
@@ -861,14 +869,17 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 		_ = storeJournal.Close()
 		return ErrPiWorkflowCatalog
 	}
-	proofRecord, proofEvent, err := verifyServiceTCBProof(storeJournal, storeTrace, receipt, expectedSessionID,
-		entry.WorkflowID, expectedConversationID, profile, template)
+	proofRecord, proofEvent, err := verifyServiceTCBProof(storeTrace, receipt, expectedSessionID,
+		entry.WorkflowID, expectedConversationID)
 	storeCloseErr := storeJournal.Close()
 	if storeCloseErr != nil {
 		return errors.Join(ErrPiWorkflowCatalog, storeCloseErr)
 	}
 	if err != nil {
 		return err
+	}
+	if pins.ImageDigest != bareWorkflowDigest(proofEvent.Proof.ImageDigest) {
+		return ErrPiWorkflowCatalog
 	}
 	publicationJournal, err := openPiServiceSettlementJournal(filepath.Join(productionAuditRootDefault, "publication-audit.jsonl"))
 	if err != nil {
@@ -996,38 +1007,41 @@ func openPiServiceSettlementJournal(path string) (*audit.Journal, error) {
 	return journal, nil
 }
 
-func verifyServiceTCBProof(journal *audit.Journal, trace audit.Trace, receipt productionPiReceipt, sessionID, workflowID, conversationID string,
-	profile piruntime.HostProfile, template piruntime.D09CellTemplate) (audit.Record, productionLaunchTCBProofEvent, error) {
+// verifyServiceTCBProof returns the one launch proof of a prior run, the one its receipt names. The
+// launch checked that proof against the run's own signed profile and template before it journaled it
+// (journalProductionLaunchProof); a later service may run under another profile and template, so the
+// settlement binds the record to the profile and template the receipt names and checks that its proof
+// is intact, instead of checking the proof again against the running service's template.
+func verifyServiceTCBProof(trace audit.Trace, receipt productionPiReceipt, sessionID, workflowID, conversationID string) (
+	audit.Record, productionLaunchTCBProofEvent, error) {
 	var matched *audit.Record
 	for index := range trace.Records {
 		record := &trace.Records[index]
-		if record.Sequence == receipt.TCBProofJournalSequence && record.Event.Kind == "production_tcb_proof" &&
-			record.Event.ID == "production-tcb-proof:"+receipt.RunID {
+		if record.Event.Kind == "production_tcb_proof" && record.Event.ID == "production-tcb-proof:"+receipt.RunID {
 			if matched != nil {
 				return audit.Record{}, productionLaunchTCBProofEvent{}, ErrPiWorkflowCatalog
 			}
 			matched = record
 		}
 	}
-	if matched == nil {
+	if matched == nil || matched.Sequence != receipt.TCBProofJournalSequence {
 		return audit.Record{}, productionLaunchTCBProofEvent{}, ErrPiWorkflowCatalog
 	}
 	var event productionLaunchTCBProofEvent
-	if err := unmarshalGovernedJSON(matched.Event.Data, &event); err != nil ||
-		event.SchemaVersion != "tbound-production-launch-tcb-proof/v1" || event.RunID != receipt.RunID ||
+	err := unmarshalGovernedJSON(matched.Event.Data, &event)
+	var encodedProof []byte
+	if err == nil {
+		encodedProof, err = json.Marshal(event.Proof)
+	}
+	if err != nil || event.SchemaVersion != "tbound-production-launch-tcb-proof/v1" || event.RunID != receipt.RunID ||
 		event.SessionID != sessionID || event.WorkflowID != workflowID || event.ConversationID != conversationID ||
-		event.ProfileID != profile.ID || event.ProfileDigest != profile.Digest || event.ProofDigest != receipt.TCBProofDigest ||
+		event.ProfileID != receipt.ProfileID || event.ProfileDigest != receipt.ProfileHash ||
+		event.ProofDigest != receipt.TCBProofDigest || digestBytes(encodedProof) != event.ProofDigest ||
+		event.Proof.TemplateDigest != receipt.ContainmentProfileDigest || !validDigestText(event.Proof.ImageDigest) ||
 		!validDigestText(event.SourceBindingDigest) || !validIdentityText(event.SourceGenerationID) ||
 		!validDigestText(event.Proof.SourceBindingDigest) || event.Proof.SourceBindingDigest != event.SourceBindingDigest ||
 		event.Proof.SourceGenerationID != event.SourceGenerationID || event.Proof.SourceStoreAuditCount == 0 ||
 		!validBareWorkflowDigest(event.Proof.SourceStoreAuditHead) {
-		return audit.Record{}, productionLaunchTCBProofEvent{}, errors.Join(ErrPiWorkflowCatalog, err)
-	}
-	snapshot := productionLifecycleSnapshot{proofRunID: receipt.RunID, proofDigest: receipt.TCBProofDigest,
-		proofSeq: matched.Sequence, proofRecordHash: matched.Hash, proofEventID: matched.Event.ID,
-		workerPID: event.Proof.LauncherProcessPID}
-	if err := verifyProductionLaunchProofJournal(journal, snapshot, profile, template,
-		receipt.RunID, sessionID, workflowID, conversationID, event.SourceGenerationID, event.SourceBindingDigest); err != nil {
 		return audit.Record{}, productionLaunchTCBProofEvent{}, errors.Join(ErrPiWorkflowCatalog, err)
 	}
 	if event.Proof.SourceStoreAuditCount >= receipt.TCBProofJournalSequence ||
@@ -1038,16 +1052,47 @@ func verifyServiceTCBProof(journal *audit.Journal, trace audit.Trace, receipt pr
 	return *matched, event, nil
 }
 
+// priorRunRegistrationDigest returns the managed-root registration a run was admitted under, from its
+// one admission record. A run settles under its own registration; the service verifying it may run
+// under a later one. The settlement matches every record of the run against this digest.
+func priorRunRegistrationDigest(trace audit.Trace, root workflow.RootIdentity, workflowID, runID string,
+	ownerEpoch uint64) (string, error) {
+	var digest string
+	for _, record := range trace.Records {
+		if record.Event.Kind != "managed_live_root_run_admitted" {
+			continue
+		}
+		var event managedLiveRootRunAdmittedEvent
+		if unmarshalGovernedJSON(record.Event.Data, &event) != nil || event.Root != root || event.RunID != runID ||
+			event.WorkflowID != workflowID || event.OwnerEpoch != ownerEpoch {
+			continue
+		}
+		if digest != "" || !validDigestText(event.RegistrationDigest) ||
+			record.Event.ID != managedLiveRootRunEventID(root, event.RegistrationDigest, runID, ownerEpoch) {
+			return "", ErrManagedLiveRootUnavailable
+		}
+		digest = event.RegistrationDigest
+	}
+	if digest == "" {
+		return "", ErrManagedLiveRootUnavailable
+	}
+	return digest, nil
+}
+
 func verifyManagedPiPublicationSettlement(journal *audit.Journal, trace audit.Trace,
 	rootDescriptor managedLiveRootDescriptorIdentity, root workflow.RootIdentity,
 	registration piruntime.D09ManagedLiveRootRegistration, workflowID, runID string, ownerEpoch uint64,
 	transactionID string) error {
-	if journal == nil || root == (workflow.RootIdentity{}) || !validDigestText(registration.Digest) || !validIdentityText(workflowID) ||
+	if journal == nil || root == (workflow.RootIdentity{}) || !validIdentityText(workflowID) ||
 		!validIdentityText(runID) || ownerEpoch == 0 || !boundedProductionIdentity(transactionID, productionRequestMaxBytes) {
 		return ErrManagedLiveRootUnavailable
 	}
 	key := managedWorkflowEventID(root, workflowID, "production-publication-"+workflowID)
-	admissionID := managedLiveRootRunEventID(root, registration.Digest, runID, ownerEpoch)
+	registrationDigest, err := priorRunRegistrationDigest(trace, root, workflowID, runID, ownerEpoch)
+	if err != nil {
+		return err
+	}
+	admissionID := managedLiveRootRunEventID(root, registrationDigest, runID, ownerEpoch)
 	var admitted *audit.Record
 	var released *audit.Record
 	var pendingSeq, transactionSeq, resolvedSeq uint64
@@ -1061,7 +1106,7 @@ func verifyManagedPiPublicationSettlement(journal *audit.Journal, trace audit.Tr
 				var event managedLiveRootRunAdmittedEvent
 				if err := unmarshalGovernedJSON(record.Event.Data, &event); err != nil || admitted != nil ||
 					event.SchemaVersion != "tbound-managed-live-root-run-admitted/v1" || event.Root != root ||
-					event.RegistrationDigest != registration.Digest || event.RunID != runID ||
+					event.RegistrationDigest != registrationDigest || event.RunID != runID ||
 					event.WorkflowID != workflowID || event.PublicationID != "production-publication-"+workflowID ||
 					event.OwnerEpoch != ownerEpoch || event.ServiceUID != registration.ServiceUID ||
 					event.ServiceGID != registration.ServiceGID || !sameStableRootDescriptor(event.Descriptor, rootDescriptor) {
@@ -1074,7 +1119,7 @@ func verifyManagedPiPublicationSettlement(journal *audit.Journal, trace audit.Tr
 				var event managedLiveRootRunResolvedEvent
 				if err := unmarshalGovernedJSON(record.Event.Data, &event); err != nil || released != nil ||
 					event.SchemaVersion != "tbound-managed-live-root-run-resolved/v1" || event.Root != root ||
-					event.RegistrationDigest != registration.Digest || event.RunID != runID ||
+					event.RegistrationDigest != registrationDigest || event.RunID != runID ||
 					event.WorkflowID != workflowID || event.PublicationID != "production-publication-"+workflowID ||
 					event.OwnerEpoch != ownerEpoch || event.Outcome != "publication-succeeded" ||
 					event.ResolvedByRunID != "" || event.ResolvedByOwnerEpoch != 0 {
@@ -1167,13 +1212,17 @@ func productionReceiptSettlementClaimed(receipt productionPiReceipt) bool {
 func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.Trace,
 	rootDescriptor managedLiveRootDescriptorIdentity, root workflow.RootIdentity,
 	registration piruntime.D09ManagedLiveRootRegistration, workflowID, runID string, ownerEpoch uint64) (string, error) {
-	if journal == nil || root == (workflow.RootIdentity{}) || !validDigestText(registration.Digest) || !validIdentityText(workflowID) ||
+	if journal == nil || root == (workflow.RootIdentity{}) || !validIdentityText(workflowID) ||
 		!validIdentityText(runID) || ownerEpoch == 0 {
 		return "", ErrManagedLiveRootUnavailable
 	}
 	publicationID := "production-publication-" + workflowID
 	key := managedWorkflowEventID(root, workflowID, publicationID)
-	admissionID := managedLiveRootRunEventID(root, registration.Digest, runID, ownerEpoch)
+	registrationDigest, err := priorRunRegistrationDigest(trace, root, workflowID, runID, ownerEpoch)
+	if err != nil {
+		return "", err
+	}
+	admissionID := managedLiveRootRunEventID(root, registrationDigest, runID, ownerEpoch)
 	var admitted, released *audit.Record
 	for index := range trace.Records {
 		record := &trace.Records[index]
@@ -1189,7 +1238,7 @@ func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.
 				var event managedLiveRootRunAdmittedEvent
 				if err := unmarshalGovernedJSON(record.Event.Data, &event); err != nil || admitted != nil ||
 					event.SchemaVersion != "tbound-managed-live-root-run-admitted/v1" || event.Root != root ||
-					event.RegistrationDigest != registration.Digest || event.RunID != runID ||
+					event.RegistrationDigest != registrationDigest || event.RunID != runID ||
 					event.WorkflowID != workflowID || event.PublicationID != publicationID ||
 					event.OwnerEpoch != ownerEpoch || event.ServiceUID != registration.ServiceUID ||
 					event.ServiceGID != registration.ServiceGID || !sameStableRootDescriptor(event.Descriptor, rootDescriptor) {
@@ -1212,7 +1261,7 @@ func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace audit.
 	var event managedLiveRootRunResolvedEvent
 	if err := unmarshalGovernedJSON(released.Event.Data, &event); err != nil ||
 		event.SchemaVersion != "tbound-managed-live-root-run-resolved/v1" || event.Root != root ||
-		event.RegistrationDigest != registration.Digest || event.RunID != runID ||
+		event.RegistrationDigest != registrationDigest || event.RunID != runID ||
 		event.WorkflowID != workflowID || event.PublicationID != publicationID ||
 		event.OwnerEpoch != ownerEpoch || event.Outcome != "no-publication" ||
 		event.ResolvedByRunID != "" || event.ResolvedByOwnerEpoch != 0 ||
