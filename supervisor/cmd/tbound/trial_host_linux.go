@@ -226,7 +226,7 @@ func (h trialHost) ensureNetSinkParent(cell evidenceCell) (*os.File, error) {
 		}
 		return os.NewFile(uintptr(fd), piruntime.D09NetSinkCgroupName), nil
 	}
-	if err := h.removeCgroupTree(int(cells.Fd()), piruntime.D09NetSinkCgroupName, 0); err != nil && !errors.Is(err, syscall.ENOENT) {
+	if err := h.removeCgroupTree(int(cells.Fd()), piruntime.D09NetSinkCgroupName, 0); err != nil && !errors.Is(err, errCgroupAbsent) {
 		return nil, fmt.Errorf("net-sink parent cgroup: the previous one cannot be replaced: %w", err)
 	}
 	parent, err := open()
@@ -362,11 +362,19 @@ func (h trialHost) removeNoReapCgroups(cell evidenceCell) error {
 
 const trialCgroupTreeDepth = 8
 
+// errCgroupAbsent is removeCgroupTree's error when the directory it was asked to remove does not exist.
+// A cgroup that vanishes below it (ENOENT while the tree is removed) is not absence: it is another
+// process changing the tree, and an error.
+var errCgroupAbsent = errors.New("cgroup is absent")
+
 func (h trialHost) removeCgroupTree(parentFD int, name string, depth int) error {
 	if depth > trialCgroupTreeDepth {
 		return fmt.Errorf("cgroup %s is nested deeper than %d levels", name, trialCgroupTreeDepth)
 	}
 	fd, err := syscall.Openat(parentFD, name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if errors.Is(err, syscall.ENOENT) && depth == 0 {
+		return fmt.Errorf("cgroup %s: %w", name, errCgroupAbsent)
+	}
 	if err != nil {
 		return fmt.Errorf("cgroup %s: %w", name, err)
 	}
