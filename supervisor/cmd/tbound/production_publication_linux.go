@@ -42,6 +42,7 @@ type productionLifecycleEvidence struct {
 	proofRecordHash       string
 	proofEventID          string
 	workerLaunchAttempted bool
+	launchFailureSettled  bool
 	workerLaunched        bool
 	workerPID             int
 	workerClosed          bool
@@ -61,6 +62,7 @@ type productionLifecycleSnapshot struct {
 	proofRecordHash       string
 	proofEventID          string
 	workerLaunchAttempted bool
+	launchFailureSettled  bool
 	workerLaunched        bool
 	workerPID             int
 	workerClosed          bool
@@ -141,8 +143,31 @@ func (e *productionLifecycleEvidence) markWorkerLaunched(pid int) {
 	e.mu.Unlock()
 }
 
-// markLaunchFailed records a launch that yielded no worker.
+// markLaunchFailed records a launch that yielded no worker. Only a typed launch error whose whole tree
+// proves the cell stopped, its exit observed and its descendants settled counts as settled; any other
+// failure leaves the launch unsettled.
 func (e *productionLifecycleEvidence) markLaunchFailed(err error) {
+	if e == nil {
+		return
+	}
+	var launchErr *piruntime.PiWorkerLaunchError
+	settled := errors.As(err, &launchErr) && !incompleteProductionLaunchFailure(err) && !unresolvedProductionLaunchUnknown(err, false)
+	e.mu.Lock()
+	e.launchFailureSettled = settled
+	e.mu.Unlock()
+}
+
+// workerSettled reports whether no Pi worker process of this run can still run: no launch was
+// attempted, a failed launch was settled, or the launched worker closed with a complete settlement.
+func (s productionLifecycleSnapshot) workerSettled() bool {
+	switch {
+	case !s.workerLaunchAttempted:
+		return true
+	case !s.workerLaunched:
+		return s.launchFailureSettled
+	}
+	return s.workerClosed && s.workerCloseErr == nil && s.settlement.State == piruntime.SettlementStopped &&
+		s.settlement.ExitObserved && s.settlement.DescendantsSettled
 }
 
 func (e *productionLifecycleEvidence) markWorkerLaunchAttempted() {
@@ -163,7 +188,7 @@ func (e *productionLifecycleEvidence) snapshot() productionLifecycleSnapshot {
 	return productionLifecycleSnapshot{
 		proofDigest: e.proofDigest, proofSeq: e.proofSeq, proofRunID: e.proofRunID,
 		proofRecordHash: e.proofRecordHash, proofEventID: e.proofEventID,
-		workerLaunchAttempted: e.workerLaunchAttempted, workerLaunched: e.workerLaunched, workerPID: e.workerPID,
+		workerLaunchAttempted: e.workerLaunchAttempted, launchFailureSettled: e.launchFailureSettled, workerLaunched: e.workerLaunched, workerPID: e.workerPID,
 		workerClosed: e.workerClosed, workerCloseErr: e.workerCloseErr, settlement: e.settlement,
 		taskAdmitted: e.taskAdmitted, turnCompleted: e.turnCompleted,
 		channelsStarted: e.channelsStarted, channelsJoined: e.channelsJoined, channelsErr: e.channelsErr,
@@ -177,12 +202,7 @@ func productionCleanupSafe(evidence productionLifecycleSnapshot, runner *product
 	if !evidence.workerLaunchAttempted {
 		return true
 	}
-	if !evidence.workerLaunched || !evidence.workerClosed || evidence.workerCloseErr != nil || evidence.settlement.State != piruntime.SettlementStopped ||
-		!evidence.settlement.ExitObserved || !evidence.settlement.DescendantsSettled ||
-		(evidence.channelsStarted && (!evidence.channelsJoined || evidence.channelsErr != nil)) {
-		return false
-	}
-	return true
+	return evidence.workerSettled() && (!evidence.channelsStarted || evidence.channelsJoined && evidence.channelsErr == nil)
 }
 
 func validateProductionLifecycle(evidence productionLifecycleSnapshot, runID string, runner *productionCommandRunner) error {
