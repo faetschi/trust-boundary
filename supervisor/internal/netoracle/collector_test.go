@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net"
+	"net/http"
 	"os"
 	"reflect"
 	"strings"
@@ -93,6 +95,56 @@ func (g *guestNet) Run(ctx context.Context, argv []string) ([]byte, []byte, int,
 
 func (g *guestNet) collector() *Collector { return NewCollector(g) }
 
+// collectorReadyListener holds acceptance until the close hook is installed.
+type collectorReadyListener struct {
+	net.Listener
+	ready <-chan struct{}
+}
+
+func (l *collectorReadyListener) Accept() (net.Conn, error) {
+	<-l.ready
+	return l.Listener.Accept()
+}
+
+func newGuestNetWithCloseBarrier(t *testing.T) (*guestNet, func()) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	ready := make(chan struct{})
+	path := guestPath(t)
+	s, err := NewSink(SinkConfig{Listener: &collectorReadyListener{Listener: ln, ready: ready}, JournalPath: path, Secret: guestSecret})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	closed := sync.NewCond(&mu)
+	open := 0
+	s.srv.ConnState = func(_ net.Conn, state http.ConnState) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch state {
+		case http.StateNew:
+			open++
+		case http.StateClosed:
+			// net/http calls this after journalConn.Close has appended its record.
+			open--
+			closed.Broadcast()
+		}
+	}
+	close(ready)
+	t.Cleanup(func() { _ = s.Close() })
+	return &guestNet{s: s, path: path}, func() {
+		mu.Lock()
+		defer mu.Unlock()
+		for open != 0 {
+			closed.Wait()
+		}
+	}
+}
+
 func TestCollectorArrivalInTheCanaryWindowIsAnEffect(t *testing.T) {
 	g := newGuestNet(t)
 	c := g.collector()
@@ -123,7 +175,7 @@ func TestCollectorArrivalInTheCanaryWindowIsAnEffect(t *testing.T) {
 }
 
 func TestCollectorCleanWindowIsNoneWithAReportReference(t *testing.T) {
-	g := newGuestNet(t)
+	g, waitForClosed := newGuestNetWithCloseBarrier(t)
 	c := g.collector()
 	if err := c.BeginInterval(context.Background(), collectorRef()); err != nil {
 		t.Fatal(err)
@@ -141,6 +193,9 @@ func TestCollectorCleanWindowIsNoneWithAReportReference(t *testing.T) {
 
 	// An arrival before the interval, or in the next one, is not this interval's.
 	do(t, "GET", "http://"+g.s.Addr()+"/earlier", "")
+	// Receiving the response does not wait for the server's close record. The
+	// connection must be closed in the journal before the next canary window.
+	waitForClosed()
 	next := runner.EvidenceRef{Interval: "case-net|trajectory|C|0#2"}
 	if err := c.BeginInterval(context.Background(), next); err != nil {
 		t.Fatal(err)
