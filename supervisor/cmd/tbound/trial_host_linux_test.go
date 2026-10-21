@@ -369,7 +369,7 @@ func TestCleanNoReapRemovesLabelledContainersAndTheNrCgroups(t *testing.T) {
 		left = append(left, e.Name())
 	}
 	if got := strings.Join(left, " "); got != "net-sink tbound-cmd-cc worker" {
-		t.Fatalf("cgroups left: %q; the persistent net-sink parent and what is not tbound-nr-* must stay", got)
+		t.Fatalf("cgroups left: %q; the net-sink parent (ensureNetSink replaces it) and what is not tbound-nr-* must stay", got)
 	}
 	// The containers are found by the label, removed forcibly, and gone when asked again.
 	if len(pod.calls) != 3 || strings.Join(pod.calls[0], " ") != "ps -a -q --no-trunc --filter label="+piruntime.D09NoReapContainerLabel ||
@@ -456,5 +456,80 @@ func TestServicePodmanCommandRunsAsTheServiceWithItsStorage(t *testing.T) {
 	}
 	if len(cmd.Env) != 13 || cmd.Dir != "/" {
 		t.Errorf("the environment must be the service's closed list (got %d entries), dir %q", len(cmd.Env), cmd.Dir)
+	}
+}
+
+// Kernels that bump the kill sequence of a cgroup on cgroup.kill (upstream 8e35992) SIGKILL every
+// CLONE_INTO_CGROUP child later started in the same cgroup, so the guest-netsink probe cannot run in a
+// net-sink directory that an earlier reset killed. Each reset therefore gives it a new directory, loads
+// the rule for that one and attests it.
+func TestEnsureNetSinkIsAFreshCgroupAfterEveryReset(t *testing.T) {
+	f := newHostFixture(t)
+	ctx := context.Background()
+	if err := f.host.ensureNetSink(ctx, f.cell); err != nil {
+		t.Fatal(err)
+	}
+	// Held open, so the directory the next reset creates cannot reuse its inode number.
+	old := f.parent(t)
+	oldInfo, err := old.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := f.attestation(t)
+	// What the command cell left below it: empty command and container scopes.
+	if err := os.MkdirAll(filepath.Join(f.cells, piruntime.D09NetSinkCgroupName, "tbound-cmd-aa", "libpod-bb"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.host.ensureNetSink(ctx, f.cell); err != nil {
+		t.Fatal(err)
+	}
+	parentPath := filepath.Join(f.cells, piruntime.D09NetSinkCgroupName)
+	fresh, err := os.Stat(parentPath)
+	if err != nil || !fresh.IsDir() {
+		t.Fatalf("no net-sink parent after the reset: %v", err)
+	}
+	if os.SameFile(oldInfo, fresh) {
+		t.Fatal("the reset kept the net-sink directory that cgroup.kill was written to")
+	}
+	if entries, _ := os.ReadDir(parentPath); len(entries) != 0 {
+		t.Fatalf("the new net-sink directory is not empty: %v", entries)
+	}
+	if st := fresh.Sys().(*syscall.Stat_t); st.Uid != f.host.owner.UID || st.Gid != f.host.owner.GID {
+		t.Fatalf("new parent owner %d:%d, want the service identity", st.Uid, st.Gid)
+	}
+	// The rule was loaded after the directory was recreated, and the attestation names the new one.
+	if len(f.nft.calls) != 4 || strings.Join(f.nft.calls[2], " ") != "-f -" {
+		t.Fatalf("the rule was not loaded again: %v", f.nft.calls)
+	}
+	second := f.attestation(t)
+	want, err := piruntime.NewD09NetSinkAttestation(hostTestBootID, f.parent(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second != want || second.ParentIno == first.ParentIno {
+		t.Fatalf("attestation %+v (first %+v), want %+v for the new directory", second, first, want)
+	}
+}
+
+// A net-sink directory that cannot be removed (a process or a cgroup still in use) refuses the
+// reset before the rule is loaded, and the attestation stays void.
+func TestEnsureNetSinkRefusesWhenTheOldParentCannotBeRemoved(t *testing.T) {
+	f := newHostFixture(t)
+	ctx := context.Background()
+	if err := f.host.ensureNetSink(ctx, f.cell); err != nil {
+		t.Fatal(err)
+	}
+	// A plain file stands for what makes rmdir fail on a real cgroup.
+	if err := os.WriteFile(filepath.Join(f.cells, piruntime.D09NetSinkCgroupName, "busy"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.host.ensureNetSink(ctx, f.cell); err == nil {
+		t.Fatal("the reset went on with a net-sink directory it could not replace")
+	}
+	if _, err := os.Stat(f.attest); !os.IsNotExist(err) {
+		t.Fatalf("an attestation survived: %v", err)
+	}
+	if len(f.nft.calls) != 2 {
+		t.Fatalf("the rule was loaded for a directory that was not replaced: %v", f.nft.calls)
 	}
 }
