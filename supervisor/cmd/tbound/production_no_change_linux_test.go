@@ -144,7 +144,8 @@ func (r *noChangeRun) release() error {
 	return r.lease.close()
 }
 
-// storeTrace is the store journal. The harness launches nothing, so all of it is the source state.
+// storeTrace is the store journal. The harness launches nothing; its verify takes all of it as the
+// launch-bound source state.
 func (r *noChangeRun) storeTrace(t *testing.T) audit.Trace {
 	t.Helper()
 	trace, err := r.storeJournal.Trace()
@@ -166,8 +167,9 @@ func (r *noChangeRun) trace(t *testing.T) audit.Trace {
 // verify runs the public settlement verifier against the journal as it stands.
 func (r *noChangeRun) verify(t *testing.T, identity managedLiveRootDescriptorIdentity) (string, error) {
 	t.Helper()
-	return verifyManagedPiNoPublicationSettlement(r.journal, r.trace(t), r.storeTrace(t), identity, r.root, r.registration,
-		noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
+	store := r.storeTrace(t)
+	return verifyManagedPiNoPublicationSettlement(r.journal, r.trace(t), store, uint64(len(store.Records)), identity, r.root,
+		r.registration, noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
 }
 
 // writeRelease appends a release record in the shape close writes, anchored to
@@ -296,7 +298,7 @@ func TestNoChangeSettlementFreshProcessHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	settlementID, verifyErr := verifyManagedPiNoPublicationSettlement(journal, trace, source, request.Identity,
+	settlementID, verifyErr := verifyManagedPiNoPublicationSettlement(journal, trace, source, uint64(len(source.Records)), request.Identity,
 		workflow.RootIdentity{Device: request.Identity.Device, Inode: request.Identity.Inode},
 		piruntime.D09ManagedLiveRootRegistration{Digest: request.Digest, ServiceUID: request.ServiceUID, ServiceGID: request.ServiceGID},
 		noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)

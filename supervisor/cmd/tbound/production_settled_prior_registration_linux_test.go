@@ -137,7 +137,8 @@ func TestNoChangeSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.T
 	}
 	next := run.registration
 	next.Digest = digestBytes([]byte("registration of the next cycle"))
-	settlementID, err := verifyManagedPiNoPublicationSettlement(run.journal, run.trace(t), run.storeTrace(t), run.identity, run.root, next,
+	store := run.storeTrace(t)
+	settlementID, err := verifyManagedPiNoPublicationSettlement(run.journal, run.trace(t), store, uint64(len(store.Records)), run.identity, run.root, next,
 		noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
 	if err != nil || !strings.HasPrefix(settlementID, "no-publication:") {
 		t.Fatalf("a run settled under its own registration was refused under the next one: id=%q err=%v", settlementID, err)
@@ -162,7 +163,7 @@ func TestNoChangeSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.T
 		ID: managedLiveRootRunEventID(run.root, next.Digest, noChangeRunID, noChangeOwnerEpoch), Data: data}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := verifyManagedPiNoPublicationSettlement(run.journal, run.trace(t), run.storeTrace(t), run.identity, run.root, next,
+	if _, err := verifyManagedPiNoPublicationSettlement(run.journal, run.trace(t), store, uint64(len(store.Records)), run.identity, run.root, next,
 		noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch); !errors.Is(err, ErrManagedLiveRootUnavailable) {
 		t.Fatalf("a run admitted under two registrations was settled: %v", err)
 	}
@@ -425,4 +426,73 @@ func TestPublishedSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.
 		t.Fatal(err)
 	}
 	refusedBy(t, settle(transactionID), ErrManagedLiveRootUnavailable, "run-admission-ambiguous")
+}
+
+// settleNoChange verifies a released no-change run whose launch bound the first launchSourceCount
+// records of its store journal as its source state.
+func settleNoChange(t *testing.T, run *noChangeRun, launchSourceCount uint64) error {
+	t.Helper()
+	_, err := verifyManagedPiNoPublicationSettlement(run.journal, run.trace(t), run.storeTrace(t), launchSourceCount,
+		run.identity, run.root, run.registration, noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
+	return err
+}
+
+// noChangeSeed returns the store-journal record of the run's Store seed.
+func noChangeSeed(t *testing.T, run *noChangeRun) audit.Record {
+	t.Helper()
+	for _, record := range run.storeTrace(t).Records {
+		if record.Event.Kind == "managed_root_source_capture_seeded" {
+			return record
+		}
+	}
+	t.Fatal("the run has no seed record")
+	return audit.Record{}
+}
+
+// The no-change settlement takes the run's seed only from the store records its launch bound as the
+// source state, where the run seeded its Store before launch.
+func TestNoChangeSeedIsTakenFromTheLaunchBoundSourceState(t *testing.T) {
+	released := func(t *testing.T, seed bool) *noChangeRun {
+		t.Helper()
+		run := startNoChangeRun(t, seed)
+		if err := run.release(); err != nil {
+			t.Fatalf("real lease close: %v", err)
+		}
+		return run
+	}
+	t.Run("seed at the last record of the prefix", func(t *testing.T) {
+		run := released(t, true)
+		if err := settleNoChange(t, run, noChangeSeed(t, run).Sequence); err != nil {
+			t.Fatalf("a seed at the end of the launch-bound source state was refused: %v", err)
+		}
+	})
+	t.Run("seed only after the prefix", func(t *testing.T) {
+		run := released(t, true)
+		refusedBy(t, settleNoChange(t, run, noChangeSeed(t, run).Sequence-1), ErrManagedLiveRootUnavailable, "no-change-seed-missing")
+	})
+	t.Run("two seeds in the prefix", func(t *testing.T) {
+		run := released(t, true)
+		if _, err := run.storeJournal.Append(noChangeSeed(t, run).Event); err != nil {
+			t.Fatal(err)
+		}
+		refusedBy(t, settleNoChange(t, run, uint64(len(run.storeTrace(t).Records))), ErrManagedLiveRootUnavailable, "no-change-seed-duplicate")
+	})
+	t.Run("only another run's seed", func(t *testing.T) {
+		donor := released(t, true)
+		var evidence map[string]any
+		if err := json.Unmarshal(noChangeSeed(t, donor).Event.Data, &evidence); err != nil {
+			t.Fatal(err)
+		}
+		evidence["run_id"] = "run-other"
+		data, err := json.Marshal(evidence)
+		if err != nil {
+			t.Fatal(err)
+		}
+		run := released(t, false)
+		if _, err := run.storeJournal.Append(audit.Event{Kind: "managed_root_source_capture_seeded",
+			ID: "managed-root-source-capture-seeded:run-other", Data: data}); err != nil {
+			t.Fatal(err)
+		}
+		refusedBy(t, settleNoChange(t, run, uint64(len(run.storeTrace(t).Records))), ErrManagedLiveRootUnavailable, "no-change-seed-missing")
+	})
 }

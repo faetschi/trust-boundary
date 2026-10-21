@@ -922,9 +922,8 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 	}
 	settlementID := receipt.PublicationTransactionID
 	if receipt.Disposition == "NO_DIFF" {
-		source := audit.Trace{Records: storeTrace.Records[:proofEvent.Proof.SourceStoreAuditCount]}
-		settlementID, err = verifyManagedPiNoPublicationSettlement(publicationJournal, publicationTrace, source,
-			rootDescriptor, rootID, registration, entry.WorkflowID, receipt.RunID, pins.OwnerEpoch)
+		settlementID, err = verifyManagedPiNoPublicationSettlement(publicationJournal, publicationTrace, storeTrace,
+			proofEvent.Proof.SourceStoreAuditCount, rootDescriptor, rootID, registration, entry.WorkflowID, receipt.RunID, pins.OwnerEpoch)
 	} else {
 		err = verifyManagedPiPublicationSettlement(publicationJournal, publicationTrace, rootDescriptor, rootID, registration, entry.WorkflowID,
 			receipt.RunID, pins.OwnerEpoch, receipt.PublicationTransactionID)
@@ -1248,15 +1247,19 @@ func productionReceiptSettlementClaimed(receipt productionPiReceipt) bool {
 // digest must equal this run's durable seed. It returns the
 // release identity that terminal settlement binds in place of a transaction ID.
 // verifyManagedPiNoPublicationSettlement verifies the no-change settlement of a run: its admission and
-// release in the publication journal (journal, trace), and the Store seed in source, the records of
-// the run's store journal that its launch bound as the source state.
-func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace, source audit.Trace,
+// release in the publication journal (journal, trace), and the Store seed among the first
+// launchSourceCount records of the run's store journal (store), the source state its launch bound.
+func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace, store audit.Trace, launchSourceCount uint64,
 	rootDescriptor managedLiveRootDescriptorIdentity, root workflow.RootIdentity,
 	registration piruntime.D09ManagedLiveRootRegistration, workflowID, runID string, ownerEpoch uint64) (string, error) {
 	if journal == nil || root == (workflow.RootIdentity{}) || !validIdentityText(workflowID) ||
 		!validIdentityText(runID) || ownerEpoch == 0 {
 		return "", settlementRefusal("no-publication-arguments", ErrManagedLiveRootUnavailable)
 	}
+	if launchSourceCount > uint64(len(store.Records)) {
+		return "", settlementRefusal("no-change-source-bound", ErrManagedLiveRootUnavailable)
+	}
+	source := audit.Trace{Records: store.Records[:launchSourceCount]}
 	publicationID := "production-publication-" + workflowID
 	key := managedWorkflowEventID(root, workflowID, publicationID)
 	registrationDigest, err := priorRunRegistrationDigest(trace, root, workflowID, runID, ownerEpoch)
