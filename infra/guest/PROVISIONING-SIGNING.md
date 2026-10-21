@@ -362,6 +362,13 @@ Rule for this and every account step: the registration (R2-2, S3) pins `/etc/pas
    ```
    A range comes from `setup-ubuntu-24.04.sh` (it adds one for its target account and now refuses `tbound-pi`) or from a manual `usermod`. If found: copy both files aside, delete the `tbound-pi` lines, and redo I1 from its wipe (a store loaded under a mapping is unusable). The setup script's own login user keeps its range; only the service account must not have one.
 
+3. Leave the root-equivalent groups now, not at Z1' (a group change after R2-2 voids the signed registration, measured 2026-10-21): tboundadmin keeps `sudo` (password) and leaves `lxd` and `admin`.
+   ```
+   GSSH 'for g in lxd admin; do getent group $g | grep -qw tboundadmin && sudo -n gpasswd -d tboundadmin $g; done; true'
+   GSSH 'getent group lxd admin'        # [READ-ONLY] tboundadmin in neither
+   ```
+   Rollback: `sudo gpasswd -a tboundadmin lxd` (not recommended: lxd membership is root-equivalent).
+
 ### NS-1 [PRIVILEGED WRITE, needs owner approval] the NET sink unit and its account (needed by the pilot NET cases; before R2-2)
 
 `tbound netsink` as system user `tbound-netsink`, listening on `127.0.33.1:8080` (`runner.NetsinkAddr`). It runs in the guest root network namespace; a network-none cell cannot reach it, so any arrival means the cell left its namespace (or, for net-sink/v1 cells, used the one permitted route). Unit: `infra/guest/systemd/tbound-netsink.service` (`U`), installed verbatim. It creates the user and group `tbound-netsink`, which changes `/etc/passwd` and `/etc/group`: run it after P14 and before R2-2 (P14 rule). It needs the `usr-local-bin-tbound.mount` of P10.
@@ -814,8 +821,9 @@ GSSH 'sudo -n -l -U tboundadmin'                                         # [READ
 GSSH 'install -d -m 0700 ~/stage-op' ; GSSH 'cat > ~/stage-op/50-tbound-op' < infra/guest/operator/50-tbound-op         # stage the rule file
 GSSH 'sudo -n visudo -cf ~tboundadmin/stage-op/50-tbound-op && sudo -n install -o root -g root -m 0440 ~tboundadmin/stage-op/50-tbound-op /etc/sudoers.d/50-tbound-op'     # syntax-checked first; installed after the drop-in still exists
 GSSH 'sudo -n /opt/tbound/operator/tbound-op status'                     # [READ-ONLY] the dispatcher runs and its pins hold
-# Z1'-b: leave lxd and admin; keep sudo
-GSSH 'for g in lxd admin; do getent group $g | grep -qw tboundadmin && sudo -n gpasswd -d tboundadmin $g; done; true'
+GSSH 'sudo -n /opt/tbound/operator/tbound-op adopt smoke'                # initialize the dispatcher state from the installed, verified smoke artifacts (svc start and client-run refuse without it)
+# Z1'-b: lxd and admin were left in P14 (before R2-2; a group change after R2-2 voids the signed registration). Check only:
+GSSH 'id -nG tboundadmin | tr " " "\n" | grep -xE "lxd|admin" && echo STOP || echo ok'      # [READ-ONLY] ok
 # Z1'-c: the last NOPASSWD sudo command
 GSSH 'sudo -n rm /etc/sudoers.d/90-tbound-tboundadmin'
 GSSH 'sudo -n true'                                                      # [READ-ONLY] must now fail ("a password is required")
