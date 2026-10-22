@@ -23,27 +23,32 @@ import (
 )
 
 const (
-	D09ManagedLiveRootRegistrationPath  = "/etc/tbound/managed-live-root.json"
-	D09ManagedLiveRootSignaturePath     = "/etc/tbound/managed-live-root.ed25519"
-	D09ManagedLiveRootSchema            = "tbound-managed-live-root-registration/v1"
-	D09ManagedLiveRootWriterPolicy      = "managed-nonlogin-single-service-writer/v1"
-	D09ManagedPiServiceSocketSchema     = "tbound-managed-pi-service-socket/v1"
-	D09ManagedPiServiceSocketMode       = "systemd-socket-activation-single-task/v1"
-	D09ManagedPiServiceConfigSchema     = "tbound-pi-service-config/v4"
-	D09ManagedPiServiceConfigPath       = "/etc/tbound/serve-pi-service.json"
-	D09ManagedPiProviderCredentialPath  = "/etc/tbound/provider/opencode-go.key"
-	D09ManagedPiServiceSocketPath       = "/run/tbound/serve-pi.sock"
-	D09ManagedPiSocketUnitPath          = "/etc/systemd/system/tbound-pi.socket"
-	D09ManagedPiServiceUnitPath         = "/etc/systemd/system/tbound-pi.service"
-	D09ManagedPiWorkflowCatalogPath     = "/var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl"
-	D09ManagedPiWorkflowRootDBPath      = "/var/lib/tbound/private-admin/workflow-recovery/root.db"
-	D09ManagedPiOwnerStoreRoot          = "/var/lib/tbound/sessions/workflow-owners"
-	D09ManagedPiServiceCgroupPath       = "/system.slice/tbound-pi.service"
-	D09ManagedPiServiceName             = "tbound-pi"
-	D09ManagedPiServiceGroup            = "tbound-pi"
-	D09ManagedPiSocketGroup             = "tbound-pi-clients"
-	D09ManagedPiLiveRootPath            = "/var/lib/tbound/live"
-	D09ManagedPiLiveRootParentPath      = "/var/lib/tbound"
+	D09ManagedLiveRootRegistrationPath = "/etc/tbound/managed-live-root.json"
+	D09ManagedLiveRootSignaturePath    = "/etc/tbound/managed-live-root.ed25519"
+	D09ManagedLiveRootSchema           = "tbound-managed-live-root-registration/v1"
+	D09ManagedLiveRootWriterPolicy     = "managed-nonlogin-single-service-writer/v1"
+	D09ManagedPiServiceSocketSchema    = "tbound-managed-pi-service-socket/v1"
+	D09ManagedPiServiceSocketMode      = "systemd-socket-activation-single-task/v1"
+	D09ManagedPiServiceConfigSchema    = "tbound-pi-service-config/v4"
+	D09ManagedPiServiceConfigPath      = "/etc/tbound/serve-pi-service.json"
+	D09ManagedPiProviderCredentialPath = "/etc/tbound/provider/opencode-go.key"
+	D09ManagedPiServiceSocketPath      = "/run/tbound/serve-pi.sock"
+	D09ManagedPiSocketUnitPath         = "/etc/systemd/system/tbound-pi.socket"
+	D09ManagedPiServiceUnitPath        = "/etc/systemd/system/tbound-pi.service"
+	D09ManagedPiWorkflowCatalogPath    = "/var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl"
+	D09ManagedPiWorkflowRootDBPath     = "/var/lib/tbound/private-admin/workflow-recovery/root.db"
+	D09ManagedPiOwnerStoreRoot         = "/var/lib/tbound/sessions/workflow-owners"
+	D09ManagedPiServiceCgroupPath      = "/system.slice/tbound-pi.service"
+	D09ManagedPiServiceName            = "tbound-pi"
+	D09ManagedPiServiceGroup           = "tbound-pi"
+	D09ManagedPiSocketGroup            = "tbound-pi-clients"
+	// The live root is a fixed child of its dedicated mount. Publication stages
+	// artifacts and the live-root lock in the root's parent, which must be the
+	// same mount, so the service-owned mount root is that staging parent.
+	D09ManagedPiLiveMountPath           = "/var/lib/tbound/live"
+	D09ManagedPiLiveRootName            = "root"
+	D09ManagedPiLiveRootPath            = D09ManagedPiLiveMountPath + "/" + D09ManagedPiLiveRootName
+	D09ManagedPiLiveRootParentPath      = D09ManagedPiLiveMountPath
 	D09ManagedPiServiceSocketParentPath = "/run/tbound"
 	D09ManagedPiRuntimeDir              = "/run/tbound-pi"
 	D09ManagedPiPodmanHome              = "/var/lib/tbound/podman-home"
@@ -280,7 +285,7 @@ type D09ManagedLiveRootMeasurementOptions struct {
 func d09ManagedPiServiceWritablePaths() []string {
 	paths := []string{
 		"/var/lib/tbound/audit",
-		D09ManagedPiLiveRootPath,
+		D09ManagedPiLiveMountPath,
 		"/var/lib/tbound/private-admin",
 		"/var/lib/tbound/publication-state",
 		"/var/lib/tbound/sessions",
@@ -368,8 +373,8 @@ func (r D09ManagedLiveRootRegistration) Validate() error {
 		r.RootDevice == 0 || r.RootInode == 0 || r.RootFilesystemMagic == 0 || r.RootMountID == 0 ||
 		!validDigest(r.RootMountOptionsDigest) || r.RootUID <= 0 || r.RootGID <= 0 || r.RootMode != 0o700 ||
 		r.ParentDevice == 0 || r.ParentInode == 0 || r.ParentFilesystemMagic == 0 || r.ParentMountID == 0 ||
-		r.RootMountID == r.ParentMountID ||
-		!validDigest(r.ParentMountOptionsDigest) || r.ParentUID != 0 || r.ParentGID != 0 || r.ParentMode&0o022 != 0 ||
+		r.RootMountID != r.ParentMountID || r.RootDevice != r.ParentDevice || r.RootInode == r.ParentInode ||
+		!validDigest(r.ParentMountOptionsDigest) || r.ParentUID != r.ServiceUID || r.ParentGID != r.ServiceGID || r.ParentMode&0o022 != 0 ||
 		r.ServiceName != D09ManagedPiServiceName || r.ServiceGroup != D09ManagedPiServiceGroup || r.ServiceUID <= 0 || r.ServiceGID <= 0 ||
 		r.ServiceUID != r.RootUID || r.ServiceGID != r.RootGID || r.ServiceLoginShell != "/usr/sbin/nologin" ||
 		!validDigest(r.ServiceShellDigest) || !validDigest(r.PasswdDigest) || !validDigest(r.GroupDigest) || !validDigest(r.NSSwitchDigest) ||
@@ -385,7 +390,7 @@ func (r D09ManagedLiveRootRegistration) Validate() error {
 	}
 	serviceBase := filepath.Base(r.ServiceUnitPath)
 	if serviceBase != "tbound-pi.service" || !validSystemdUnitPath(r.ServiceUnitPath) || !validSystemdUnitPath(r.MountUnitPath) ||
-		filepath.Base(r.MountUnitPath) != systemdMountUnitName(r.RootPath)+".mount" {
+		filepath.Base(r.MountUnitPath) != systemdMountUnitName(r.ParentPath)+".mount" {
 		return ErrD09ManagedLiveRootRefused
 	}
 	if err := r.ServiceSocket.Validate(r.ServiceUID, r.ServiceGID); err != nil {
@@ -499,7 +504,7 @@ func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, ser
 			return registration, ErrD09ManagedLiveRootRefused
 		}
 	}
-	root, err := openAbsoluteDirectoryNoSymlinks(rootPath)
+	root, err := openManagedLiveRoot(rootPath)
 	if err != nil {
 		return registration, err
 	}
@@ -524,7 +529,8 @@ func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, ser
 	}
 	if err != nil || parentErr != nil || rootPathErr != nil || parentPathErr != nil || !rootOK || !parentOK ||
 		filepath.Clean(rootPathObserved) != rootPath || filepath.Clean(parentPathObserved) != filepath.Dir(rootPath) ||
-		!rootInfo.IsDir() || !parentInfo.IsDir() || parentStat.Uid != 0 || parentInfo.Mode()&os.ModeSymlink != 0 ||
+		!rootInfo.IsDir() || !parentInfo.IsDir() || parentStat.Uid != rootStat.Uid || parentStat.Gid != rootStat.Gid ||
+		parentStat.Dev != rootStat.Dev || parentStat.Ino == rootStat.Ino || parentInfo.Mode()&os.ModeSymlink != 0 ||
 		rootInfo.Mode()&os.ModeSymlink != 0 || uint32(rootStat.Mode)&0o7777 != 0o700 || uint32(parentStat.Mode)&0o022 != 0 {
 		return registration, errors.Join(ErrD09ManagedLiveRootRefused, err, parentErr, rootPathErr, parentPathErr)
 	}
@@ -543,6 +549,9 @@ func MeasureD09ManagedLiveRootRegistrationWithOptions(rootPath, serviceName, ser
 	parentMountID, err := descriptorMountID(parent.Fd())
 	if err != nil {
 		return registration, err
+	}
+	if rootMountID != parentMountID {
+		return registration, fmt.Errorf("%w: live root and its staging parent must be one mount", ErrD09ManagedLiveRootRefused)
 	}
 	rootRecord, err := mountRecordForDescriptor(root)
 	rootOptions := rootRecord.options()
@@ -725,6 +734,34 @@ func openAbsoluteDirectoryNoSymlinks(path string) (*os.File, error) {
 		current = next
 	}
 	return current, nil
+}
+
+// openManagedLiveRoot opens the fixed live-root child beneath its mount root.
+// The mount root is service-owned (systemd StateDirectory=), so it is the only
+// ancestor exempt from the root-owner rule.
+func openManagedLiveRoot(rootPath string) (*os.File, error) {
+	if !canonicalAbsolutePath(rootPath) || filepath.Base(rootPath) != D09ManagedPiLiveRootName {
+		return nil, ErrD09ManagedLiveRootRefused
+	}
+	mount, err := openAbsoluteDirectoryNoSymlinks(filepath.Dir(rootPath))
+	if err != nil {
+		return nil, err
+	}
+	defer mount.Close()
+	return openManagedLiveRootChild(mount)
+}
+
+func openManagedLiveRootChild(mount *os.File) (*os.File, error) {
+	fd, err := syscall.Openat(int(mount.Fd()), D09ManagedPiLiveRootName, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, errors.Join(ErrD09ManagedLiveRootRefused, err)
+	}
+	root := os.NewFile(uintptr(fd), D09ManagedPiLiveRootName)
+	if err := validateProtectedDirectoryOwner(root, false); err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	return root, nil
 }
 
 func validateProtectedDirectoryOwner(directory *os.File, requireRootOwner bool) error {
@@ -1484,7 +1521,7 @@ func validateManagedSystemdPolicy(rootPath, serviceName, serviceGroup, runnerPat
 	if !userOK || user != serviceName || !groupOK || group != serviceGroup || !execOK || len(startFields) == 0 || startFields[0] != runnerPath ||
 		!nnpOK || !strings.EqualFold(noNewPrivs, "yes") || !protectSystemOK || protectSystem != "strict" ||
 		!protectHomeOK || !strings.EqualFold(protectHome, "yes") || !privateTmpOK || !strings.EqualFold(privateTmp, "yes") ||
-		!rwOK || !containsExactPath(strings.Fields(readWritePaths), rootPath) ||
+		!rwOK || !containsExactPath(strings.Fields(readWritePaths), filepath.Dir(rootPath)) ||
 		!delegateOK || !strings.EqualFold(delegate, "yes") || !delegateSubgroupOK || delegateSubgroup != D09ManagedPiRunnerCgroupLeaf ||
 		!killModeOK || killMode != "control-group" || !umaskOK || umask != "0077" {
 		return fmt.Errorf("%w: protected service unit is not a single non-login managed-root writer with strict filesystem policy", ErrD09ManagedLiveRootRefused)
@@ -1501,7 +1538,7 @@ func validateManagedSystemdPolicy(rootPath, serviceName, serviceGroup, runnerPat
 	options, optionsOK := oneUnitValue(mount, "Mount", "Options")
 	typeValue, typeOK := oneUnitValue(mount, "Mount", "Type")
 	mountOptions := strings.Split(options, ",")
-	if !whereOK || where != rootPath || !whatOK || !(filepath.IsAbs(what) || strings.HasPrefix(what, "UUID=") || strings.HasPrefix(what, "LABEL=")) ||
+	if !whereOK || filepath.Base(rootPath) != D09ManagedPiLiveRootName || where != filepath.Dir(rootPath) || !whatOK || !(filepath.IsAbs(what) || strings.HasPrefix(what, "UUID=") || strings.HasPrefix(what, "LABEL=")) ||
 		!optionsOK || !typeOK || !mountTypeMatchesMagic(typeValue, filesystemMagic) ||
 		!containsExactPath(mountOptions, "rw") || !containsExactPath(mountOptions, "nosuid") || !containsExactPath(mountOptions, "nodev") ||
 		containsExactPath(mountOptions, "ro") || containsExactPath(mountOptions, "suid") || containsExactPath(mountOptions, "dev") {

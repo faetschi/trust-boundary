@@ -107,7 +107,12 @@ func TestD09ManagedLiveRootRegistrationSignatureAndClosedPolicy(t *testing.T) {
 // Publication stages artifacts and the live-root lock in the live root's parent,
 // as the non-root writer, and refuses unless both are on one mount.
 func TestD09ManagedLiveRootRegistrationRequiresTheStagingParentLayout(t *testing.T) {
-	if err := validManagedLiveRootRegistration().Validate(); err != nil {
+	digested := func() D09ManagedLiveRootRegistration {
+		registration := validManagedLiveRootRegistration()
+		registration.Digest = DigestBytes([]byte("registration"))
+		return registration
+	}
+	if err := digested().Validate(); err != nil {
 		t.Fatalf("live root as the fixed child of the service-owned mount root refused: %v", err)
 	}
 	refused := map[string]func(*D09ManagedLiveRootRegistration){
@@ -123,7 +128,7 @@ func TestD09ManagedLiveRootRegistrationRequiresTheStagingParentLayout(t *testing
 		"group-writable parent": func(r *D09ManagedLiveRootRegistration) { r.ParentMode = 0o720 },
 	}
 	for name, mutate := range refused {
-		registration := validManagedLiveRootRegistration()
+		registration := digested()
 		mutate(&registration)
 		if err := registration.Validate(); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
 			t.Errorf("%s: registration accepted: %v", name, err)

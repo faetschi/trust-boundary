@@ -160,4 +160,3 @@ func directoryNames(t *testing.T, path string) []string {
 	}
 	return names
 }
-
