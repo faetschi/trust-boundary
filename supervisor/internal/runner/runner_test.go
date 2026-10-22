@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -140,6 +141,74 @@ func TestJournalTornTailIsRepaired(t *testing.T) {
 	b, _ := os.ReadFile(path)
 	if strings.Contains(string(b), `"seq":999`) {
 		t.Fatal("torn tail was not removed")
+	}
+}
+
+// Two runners must never own one journal: the second open is refused while the
+// first handle is live, before it can read, repair or write the file. Only after
+// the first closes may a new owner resume and see every record the first wrote.
+func TestJournalRefusesASecondOwnerOfTheSameTrialStep(t *testing.T) {
+	s := smallSchedule(t, smallConfig())
+	dir := t.TempDir()
+	path := filepath.Join(dir, "journal.jsonl")
+	first := openJournal(t, dir, s)
+
+	var second *Journal
+	var secondErr error
+	checked := false
+	fake := NewFakeExecutor(s.Config)
+	fake.Hook = func(Step, *Outcome) error {
+		if checked {
+			return nil
+		}
+		checked = true
+		// A second owner tries to open the same journal to execute the same
+		// trial step while the first is mid-step.
+		second, secondErr = OpenJournal(path, s)
+		return nil
+	}
+	rep, err := mustRunner(t, s, first, fake, Options{}).Run(context.Background())
+	if err != nil || !rep.Finished {
+		t.Fatal(err, rep)
+	}
+	if !checked {
+		t.Fatal("no step was executed")
+	}
+	if secondErr == nil {
+		_ = second.Close()
+		t.Fatal("a second owner opened the journal while the first was live")
+	}
+	if second != nil {
+		t.Fatal("a failed open returned a journal handle")
+	}
+	if !strings.Contains(secondErr.Error(), "exclusive writer") {
+		t.Fatalf("second open error is not clear: %v", secondErr)
+	}
+	firstEntries := first.Entries()
+	executed := fake.Calls()
+	if len(executed) == 0 {
+		t.Fatal("the first owner executed no step")
+	}
+	done := false
+	for _, e := range firstEntries {
+		if e.Kind == EntryDone && e.StepID == executed[0].ID() {
+			done = true
+		}
+	}
+	if !done {
+		t.Fatalf("the first owner did not record the step it executed")
+	}
+	if err := first.Close(); err != nil {
+		t.Fatalf("close the first owner: %v", err)
+	}
+
+	resumed, err := OpenJournal(path, s)
+	if err != nil {
+		t.Fatalf("a new open after the first owner closed: %v", err)
+	}
+	defer resumed.Close()
+	if got := resumed.Entries(); !reflect.DeepEqual(got, firstEntries) {
+		t.Fatalf("the reopened journal has %d records, the first owner wrote %d", len(got), len(firstEntries))
 	}
 }
 

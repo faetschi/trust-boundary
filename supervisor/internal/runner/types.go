@@ -311,6 +311,12 @@ var (
 	ErrPlanMismatch = errors.New("runner: journal plan digest or run binding differs from the plan")
 	// ErrJournalCorrupt means a journal failed validation other than a torn tail.
 	ErrJournalCorrupt = errors.New("runner: journal is corrupt")
+	// ErrJournalLocked means another journal handle holds the file's exclusive
+	// lock; a journal has one writer at a time.
+	ErrJournalLocked = errors.New("runner: journal already has an exclusive writer")
+	// ErrJournalLockUnsupported means the platform cannot take the journal's
+	// exclusive lock, so the journal fails closed.
+	ErrJournalLockUnsupported = errors.New("runner: journal locking is not supported on this platform")
 	// ErrOverPlanned means the plan has more steps than the unit cap.
 	ErrOverPlanned = errors.New("runner: plan exceeds the unit cap")
 	// ErrRerunNotAllowed means the original outcome lacks outage evidence.
