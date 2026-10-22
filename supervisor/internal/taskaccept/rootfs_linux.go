@@ -181,7 +181,7 @@ func (s statInfo) Name() string       { return s.name }
 func (s statInfo) Size() int64        { return s.st.Size }
 func (s statInfo) ModTime() time.Time { return time.Unix(int64(s.st.Mtim.Sec), int64(s.st.Mtim.Nsec)) }
 func (s statInfo) IsDir() bool        { return s.Mode().IsDir() }
-func (s statInfo) Sys() any           { return nil }
+func (s statInfo) Sys() any           { return &s.st }
 
 // Mode maps the lstat mode the way os.FileInfo does.
 func (s statInfo) Mode() fs.FileMode {
