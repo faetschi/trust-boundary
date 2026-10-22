@@ -681,9 +681,17 @@ func requireReadOnlyMount(path string) error {
 	if err != nil {
 		return err
 	}
+	if !mountinfoReadOnly(string(data), path) {
+		return fmt.Errorf("command executable is not on a read-only mount")
+	}
+	return nil
+}
+
+// mountinfoReadOnly reports whether the mount that covers path (the longest matching mount point) is mounted ro.
+func mountinfoReadOnly(mountinfo, path string) bool {
 	clean := filepath.Clean(path)
 	best, ro := -1, false
-	for _, line := range strings.Split(string(data), "\n") {
+	for _, line := range strings.Split(mountinfo, "\n") {
 		parts := strings.SplitN(line, " - ", 2)
 		if len(parts) != 2 {
 			continue
@@ -701,10 +709,7 @@ func requireReadOnlyMount(path string) error {
 			ro = strings.Contains(","+fields[5]+",", ",ro,")
 		}
 	}
-	if best < 0 || !ro {
-		return fmt.Errorf("command executable is not on a read-only mount")
-	}
-	return nil
+	return best >= 0 && ro
 }
 
 func validDigest(value string) bool {
