@@ -551,14 +551,97 @@ func runCommandCell(commandPath string, args []string, base map[string]any, delt
 	os.Exit(exitCode)
 }
 
+// userNamespaceIDSpace is 2^32, the size of a user namespace's id space.
+const userNamespaceIDSpace = uint64(1) << 32
+
+// parseUIDMapRootUID returns the inside-namespace uid that a /proc/self/uid_map
+// maps to outside uid 0: the uid the frozen image's root has as this cell sees
+// it. A rootless cell with a single own-uid mapping ("1000 0 1") yields 1000,
+// because the image root is uid 0 of the podman namespace the cell is nested
+// in; a rootful or initial namespace ("0 0 4294967295") yields 0, so rootful
+// behaviour is unchanged. It fails closed when outside uid 0 is unmapped or
+// claimed twice, and on any line it cannot read exactly: a map this function
+// cannot read exactly never names a root.
+func parseUIDMapRootUID(raw string) (uint32, error) {
+	if strings.TrimSpace(raw) == "" {
+		return 0, errors.New("uid_map is empty")
+	}
+	var root uint32
+	found := false
+	for index, line := range strings.Split(strings.TrimSpace(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 3 {
+			return 0, fmt.Errorf("uid_map line %d does not have exactly three fields", index+1)
+		}
+		var values [3]uint64
+		for field, text := range fields {
+			value, err := strconv.ParseUint(text, 10, 32)
+			if err != nil {
+				return 0, fmt.Errorf("uid_map line %d is not three decimal 32-bit ids", index+1)
+			}
+			values[field] = value
+		}
+		inside, outside, length := values[0], values[1], values[2]
+		if length == 0 || inside+length > userNamespaceIDSpace || outside+length > userNamespaceIDSpace {
+			return 0, fmt.Errorf("uid_map line %d is an empty or overflowing range", index+1)
+		}
+		if outside != 0 {
+			continue
+		}
+		if found {
+			return 0, errors.New("uid_map maps outside uid 0 more than once")
+		}
+		found, root = true, uint32(inside)
+	}
+	if !found {
+		return 0, errors.New("uid_map does not map outside uid 0, so the cell cannot name an image root")
+	}
+	return root, nil
+}
+
+func readSelfUIDMap() ([]byte, error) { return os.ReadFile("/proc/self/uid_map") }
+
+// requireImageRootOwned accepts owner only when it is the inside uid that the
+// caller's user namespace maps to outside uid 0, i.e. when the file belongs to
+// the frozen image's root. The owner is compared with the mapped id and not
+// with a literal 0 because a rootless single-uid podman namespace shows
+// image-root files owned by the cell uid inside the cell. Nothing else is
+// relaxed: the read-only mount (requireReadOnlyMount), the absent group/world
+// write bits and the signed digest remain the immutability and content proofs.
+// This check refuses a file owned by any other identity in the image, and it
+// refuses whenever the map cannot name the root unambiguously.
+func requireImageRootOwned(owner uint32, readUIDMap func() ([]byte, error)) error {
+	if readUIDMap == nil {
+		return errors.New("no uid_map reader to identify the image root")
+	}
+	raw, err := readUIDMap()
+	if err != nil {
+		return fmt.Errorf("read the cell user-namespace uid_map: %w", err)
+	}
+	root, err := parseUIDMapRootUID(string(raw))
+	if err != nil {
+		return err
+	}
+	if owner != root {
+		return fmt.Errorf("file is owned by uid %d, not by the image root uid %d (the inside uid mapped to outside uid 0)", owner, root)
+	}
+	return nil
+}
+
 func digestCommandExecutable(path string) (string, error) {
 	before, err := os.Lstat(path)
 	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o022 != 0 || before.Size() <= 0 || before.Size() > 128<<20 {
 		return "", fmt.Errorf("command executable must be a non-symlink immutable regular image file")
 	}
 	owner, ok := before.Sys().(*syscall.Stat_t)
-	if !ok || owner.Uid != 0 || before.Mode().Perm()&0o111 == 0 {
-		return "", fmt.Errorf("command executable must be root-owned and executable")
+	if !ok {
+		return "", errors.New("command executable has no stable in-image ownership")
+	}
+	if err := requireImageRootOwned(owner.Uid, readSelfUIDMap); err != nil {
+		return "", fmt.Errorf("command executable must be root-owned: %w", err)
+	}
+	if before.Mode().Perm()&0o111 == 0 {
+		return "", errors.New("command executable must be executable")
 	}
 	if err := requireReadOnlyMount(path); err != nil {
 		return "", err
@@ -573,8 +656,14 @@ func digestCommandExecutable(path string) (string, error) {
 		return "", fmt.Errorf("command executable is not a regular immutable image file")
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != 0 || info.Mode().Perm()&0o111 == 0 {
-		return "", fmt.Errorf("command executable must be root-owned and executable in the frozen image")
+	if !ok {
+		return "", errors.New("command executable lost its ownership identity in the frozen image")
+	}
+	if err := requireImageRootOwned(stat.Uid, readSelfUIDMap); err != nil {
+		return "", fmt.Errorf("command executable must be root-owned in the frozen image: %w", err)
+	}
+	if info.Mode().Perm()&0o111 == 0 {
+		return "", errors.New("command executable must be executable in the frozen image")
 	}
 	hash := sha256.New()
 	n, err := io.Copy(hash, io.LimitReader(file, before.Size()+1))
