@@ -32,7 +32,8 @@ ADMIN=tboundadmin
 SVC_UNIT=tbound-pi.service
 SOCK_UNIT=tbound-pi.socket
 CG=/sys/fs/cgroup/system.slice/tbound-pi.service
-LIVE=/var/lib/tbound/live
+LIVE_MOUNT=/var/lib/tbound/live
+LIVE=$LIVE_MOUNT/root   # the registered live root; the mount root is publication's same-mount staging parent
 AUDIT=/var/lib/tbound/audit
 CATALOG=/var/lib/tbound/private-admin/workflow-recovery/catalog.jsonl
 CLIENT_PRIV=(setpriv --reuid 994 --regid 985 --clear-groups --bounding-set=-all --inh-caps=-all --ambient-caps=-all --no-new-privs --)
@@ -599,11 +600,18 @@ v_svc() {
 live_listing() { find "$LIVE" -mindepth 1 -printf '%y %m %U:%G %P\n' | sort; }
 SMOKE_TEXT='TBound smoke fixture. This file is harmless: it only checks that the read tool works.'
 live_is_smoke() {
-  [[ $(live_listing) == $'d 755 995:986 lost+found\nf 644 995:986 SMOKE-README.txt' ]] &&
+  [[ $(live_listing) == 'f 644 995:986 SMOKE-README.txt' ]] &&
     [[ $(cat "$LIVE/SMOKE-README.txt"; echo x) == "$SMOKE_TEXT"$'\nx' ]]
 }
 live_is_g1() {
-  [[ $(live_listing) == $'d 755 995:986 lost+found\nd 755 995:986 out\nd 755 995:986 src\nf 644 995:986 src/release.txt' ]]
+  [[ $(live_listing) == $'d 755 995:986 out\nd 755 995:986 src\nf 644 995:986 src/release.txt' ]]
+}
+live_dir() {   # the live root is a real 995:986 0700 directory directly under its mount root
+  [[ -L $LIVE ]] && die "$LIVE is a symlink (owner must look)"
+  [[ $(findmnt -n -o TARGET --target "$LIVE_MOUNT") == "$LIVE_MOUNT" ]] || die "$LIVE_MOUNT is not mounted"
+  install -d -o 995 -g 986 -m 0700 "$LIVE"
+  [[ $(stat -c '%U:%G %a %d' "$LIVE") == "tbound-pi:tbound-pi 700 $(stat -c %d "$LIVE_MOUNT")" ]] ||
+    die "$LIVE is not a tbound-pi 0700 directory on the live mount (owner must look)"
 }
 live_report() {   # NAME
   { echo "== listing"; live_listing; echo "== census"; python3 -I /opt/tbound/helpers/xattr-census-r9.py "$LIVE" | tail -1; } >"$WORK/live.txt" 2>&1 || true
@@ -616,7 +624,7 @@ v_seed_live() {
   if [[ $w == smoke ]]; then
     if live_is_smoke; then say "live root already is the smoke fixture"
     else
-      need_inactive
+      need_inactive; live_dir
       rm -rf --one-file-system -- "$LIVE/src" "$LIVE/out"
       rm -f -- "$LIVE/SMOKE-README.txt"
       printf '%s\n' "$SMOKE_TEXT" | install -o 995 -g 986 -m 0644 /dev/stdin "$LIVE/SMOKE-README.txt"
@@ -625,7 +633,7 @@ v_seed_live() {
   else
     if live_is_g1 && [[ $(cat "$LIVE/src/release.txt") == $'version=2.4.0\nstatus=draft' ]]; then say "live root already is the g1 fixture"
     else
-      need_inactive
+      need_inactive; live_dir
       rm -f -- "$LIVE/SMOKE-README.txt"
       install -d -o 995 -g 986 -m 0755 "$LIVE/src" "$LIVE/out"
       printf 'version=2.4.0\nstatus=draft\n' | install -o 995 -g 986 -m 0644 /dev/stdin "$LIVE/src/release.txt"
