@@ -13,7 +13,7 @@ import (
 // lockJournal takes an exclusive, nonblocking byte-range lock on the journal (the Windows
 // counterpart of flock LOCK_EX|LOCK_NB): tbound-run.exe drives trials from the Windows host.
 func lockJournal(f *os.File) error {
-	var ol windows.Overlapped
+	ol := windows.Overlapped{OffsetHigh: 0x7FFFFFFF} // a byte far past EOF: readers and copies of the journal stay unblocked
 	err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &ol)
 	if err == nil {
 		return nil
@@ -26,7 +26,7 @@ func lockJournal(f *os.File) error {
 
 // unlockJournal releases the lock. Closing the handle would release it too.
 func unlockJournal(f *os.File) error {
-	var ol windows.Overlapped
+	ol := windows.Overlapped{OffsetHigh: 0x7FFFFFFF} // a byte far past EOF: readers and copies of the journal stay unblocked
 	if err := windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, &ol); err != nil {
 		return fmt.Errorf("unlock journal: %w", err)
 	}
