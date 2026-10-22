@@ -203,10 +203,11 @@ func loadProductionCorpus(config piServiceConfig) (*productionCorpus, error) {
 	corpus := &productionCorpus{digest: digest, quotaProfile: profile, trials: make(map[string]evalcorpus.Trial, len(manifest.Cases)),
 		cases: make(map[string]corpusCase, len(manifest.Cases)), fixtures: make(map[string]string, len(manifest.Cases))}
 	if err := corpusadmit.CheckTrials(manifest.Cases, &corpusadmit.Ceilings{MaxHostCalls: config.WorkflowMaxHostCalls,
-		MaxTokens: config.WorkflowMaxTokens, DurationSeconds: config.WorkflowDurationSeconds}); err != nil {
+		MaxTokens: config.WorkflowMaxTokens, DurationSeconds: config.WorkflowDurationSeconds,
+		MaxPreEffectRetries: config.WorkflowMaxPreEffectRetries}); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrPiServiceCorpus, err)
 	}
-	if err := corpusadmit.CheckAttacker(manifest, attackerArtifacts()); err != nil {
+	if err := corpusadmit.CheckAttacker(manifest, attackerArtifacts(), config.WorkflowMaxPreEffectRetries); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrPiServiceCorpus, err)
 	}
 	if manifest.Pins.AttackerDigest != "" {

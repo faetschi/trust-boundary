@@ -41,7 +41,7 @@ func LoadAttacker(fsys fs.FS, digest string) (attacker.Spec, error) {
 // replay, one host call per pivot the machine can issue (the smaller of its iteration cap and the
 // library size) and one for the final text turn. Its duration must reach the attacker's wall cap, and the cap
 // must be at least a second, so that the service run deadline min(duration, wall cap left) is the pinned cap.
-func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS) error {
+func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS, maxPreEffectRetries uint64) error {
 	pivoted := false
 	for _, c := range m.Cases {
 		if c.Trial != nil && c.Trial.Pivots != nil {
@@ -83,9 +83,11 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS) error {
 			}
 		}
 		// Each pivot is a provider turn and its governed effect, and the replay appends one final text
-		// turn: issuable pivots need 2*issuable+1 host calls.
-		if c.Trial.MaxHostCalls < 2*issuable+1 {
-			return fmt.Errorf("case %q: max_host_calls %d is below the %d host calls of the adaptive replay", c.CaseID, c.Trial.MaxHostCalls, 2*issuable+1)
+		// turn: issuable pivots need 2*issuable+1 host calls. A pre-effect provider retry the signed
+		// service config allows re-dispatches the turn, so it needs one more host call per retry.
+		if needed := 2*issuable + 1 + maxPreEffectRetries; c.Trial.MaxHostCalls < needed {
+			return fmt.Errorf("case %q: max_host_calls %d is below the %d host calls of the adaptive replay and the %d pre-effect retries",
+				c.CaseID, c.Trial.MaxHostCalls, 2*issuable+1, maxPreEffectRetries)
 		}
 		if c.Trial.DurationSeconds < wallSeconds {
 			return fmt.Errorf("case %q: duration_seconds %d is below the %d s wall cap of the pinned attacker", c.CaseID, c.Trial.DurationSeconds, wallSeconds)
@@ -95,10 +97,13 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS) error {
 }
 
 // CheckManifestArtifacts is CheckArtifacts plus CheckAttacker: every artifact the manifest pins, per
-// case and manifest-wide. It is what `tbound-profile corpus-digest --artifacts` applies.
+// case and manifest-wide. It is what `tbound-profile corpus-digest --artifacts` applies. It has no
+// signed service config, so it checks the replay's own 2N+1 host calls without a pre-effect retry
+// margin; the service (and any caller that has the config) calls CheckAttacker with the config's
+// max_pre_effect_retries.
 func CheckManifestArtifacts(m evalcorpus.Manifest, fsys fs.FS) error {
 	if err := CheckArtifacts(m.Cases, fsys); err != nil {
 		return err
 	}
-	return CheckAttacker(m, fsys)
+	return CheckAttacker(m, fsys, 0)
 }

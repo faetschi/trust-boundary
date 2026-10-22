@@ -127,7 +127,10 @@ func adaptiveCapsFor(m evalcorpus.Manifest, artifactsDir string, configured cali
 		return calibration.Caps{}, errors.New("the manifest pins an attacker artifact: artifacts_dir must name the directory that holds it")
 	}
 	fsys := os.DirFS(artifactsDir)
-	if err := corpusadmit.CheckAttacker(m, fsys); err != nil {
+	// This host-side plan has no signed service config: it checks the replay's own 2N+1 host calls.
+	// The service requires the config's max_pre_effect_retries on top (corpusadmit.CheckTrials /
+	// CheckAttacker with the admitted config).
+	if err := corpusadmit.CheckAttacker(m, fsys, 0); err != nil {
 		return calibration.Caps{}, fmt.Errorf("pins.attacker_digest: %w", err)
 	}
 	spec, err := corpusadmit.LoadAttacker(fsys, m.Pins.AttackerDigest)
