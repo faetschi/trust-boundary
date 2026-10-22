@@ -48,7 +48,7 @@ const (
 	EvidenceBinaryPath = "/usr/local/bin/tbound"
 	// EvidenceLiveRoot is the one protected root e04-snapshot accepts. The guest pins it
 	// to piruntime.D09ManagedPiLiveRootPath (a test keeps the two equal).
-	EvidenceLiveRoot = "/var/lib/tbound/live"
+	EvidenceLiveRoot = "/var/lib/tbound/live/root"
 
 	// The guest NET sink (`tbound netsink`, infra/guest/systemd/tbound-netsink.service) and its
 	// fixed places. NetsinkAddr is a loopback alias of the guest root network namespace: a cell
