@@ -119,10 +119,11 @@ it is not a qualification report.
    (`deepseek/deepseek-v4.1-flash`) with a US$5 maximum total spend. Routing, current
    price ceilings, request/token limits, and a full trial cost estimate remain pending;
    no paid run has occurred. Reserve each request's worst-case cost against the shared
-   durable budget before sending, including pilot, retry, calibration, and evaluation.
+   durable budget before sending, including pilot, retry, calibration, and evaluation. This is the engineering/test channel pinned by `ApprovedModel`. The research evaluation model (DeepSeek V4.1 Flash, `docs/decisions/2026-10-14-qualification-and-research-procedure.md`) is not yet in code and is a candidate until frozen in the experiment manifest.
    Protocol 48 is historical. The draft 51-trial recovery amendment (17 scenarios
    across three replications: eight lifecycle, nine incident) remains unadopted,
    unfrozen, unregistered, and unexecuted. E07 remains separate.
+7. **Result state vocabulary:** the supervisor records SUCCEEDED, DENIED, FAILED, UNKNOWN (+ denied_after_effect at the sessionrepo layer). The web-chat state `lost` has no producer in this repo; a missing terminal record is `Unresolved` (empty outcome) in the journal and is treated like UNKNOWN. See AH-technical/01-decisions-glossary.md (LOST).
 
 ## Blockers
 

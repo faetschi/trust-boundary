@@ -1,11 +1,10 @@
 # Frontend product agent handoff
 
-Paste the instruction below into a new agent thread. Select a **new worktree**
-based on `codex/tbound-prototype`, with branch `codex/tbound-web-chat`. Keep the
+Paste the instruction below into a new agent thread. Continue on the existing `codex/tbound-web-chat` worktree (do not create another). Keep the
 core implementation thread on `codex/tbound-prototype`. Do not share checkouts.
 
 This plan incorporates the final findings from
-[Frontend Existing Companion Review](t3-thread://v1/thread:provider:codex:native-thread:01a1369f-2715-79e1-aaac-10b6d7462593).
+Frontend Existing Companion Review (review thread not in repo; findings summarized here).
 That review was read-only; it did not implement or test the proposed chat service.
 
 ## Instruction for the new thread
@@ -50,6 +49,8 @@ Contract work and explicitly labelled mock UI can proceed in parallel. A typed
 post-run receipt importer can provide an intermediate demo; the existing fixture
 loader cannot import the actual development receipt, and that receipt supplies
 no G1/H1 qualification fields. Those require separate authoritative provenance.
+
+Milestone 1 is largely complete on `codex/tbound-web-chat`; see that branch's TASK_STATE.md and QA receipts.
 
 Useful source locations:
 

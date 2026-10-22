@@ -577,7 +577,7 @@ one-use publication permit; no piruntime registration API grants publication aut
 
 Credentials stay in the Go broker; Pi/cells never receive the key. The approved
 test channel is `nvidia/nemotron-3.5-lightning:free` with the secure loader and
-synthetic content. Genuine provider runs need separate approval.
+synthetic content. Genuine provider runs need separate approval. This is the engineering/test channel pinned by `ApprovedModel`. The research evaluation model (DeepSeek V4.1 Flash, `docs/decisions/2026-10-14-qualification-and-research-procedure.md`) is not yet in code and is a candidate until frozen in the experiment manifest.
 
 ## 6. Evidence and reset
 

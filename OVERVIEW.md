@@ -1,21 +1,49 @@
-# TBound — current state
+# TBound — current state 22.10
 
-Updated 2026-10-22. Freeze **F3 = ea59706** is installed on the guest. **F4 (`next/f4`, tip d237d39, gate 4307/0/24) is in final review before freezing.** Engineering route OpenCode Go only. Green results verify code only: G1 false, H1 unexecuted.
+## Prompt i used
 
-**Headline: one full real run (G1: read, edit, bash, publish) is the gate; F4 now fixes everything known to block it.** An outside pre-mortem found a blocker no test covered: publication could never succeed, because the live root was its own mount point. F4 moves it to `/var/lib/tbound/live/root`.
+```prompt
+/pstack:in-your-own-words explain where we stand with tbound implementation for a overview: i dont want to overengineer too much, so i need a simple understandable "big picture" whats still left todo, and what cn be done with current state
+```
 
-| Milestone | Current state |
-| --- | --- |
-| System | Built. F4 fixes: streaming capture, cleanup + abandon after provider-turn failure and failed launch, direct-runtime launch proof, live-root layout (publication), G1 host-call budget (reads count), bash cell umask, refusal hints, cgroup-test guard, net-sink per reset. |
-| Measurement | All observers have production sources; 18 of 22 EVQ met offline. |
-| Research enablement | Corpus tooling, adaptive attacker, per-trial reset, oracle, `tbound-run`: built. Pilot budgets too small (2N+1 host calls); fix with the reviewed pilot manifest. |
-| Guest (ABI 8, 172.29.194.24) | Qualified, F3 installed, sudo narrowed. Stuck F3 G1 request → option A: archive the service state, start fresh on F4. |
-| G1 (first full governed run) | Next, on F4. |
-| Route probes, last 4 EVQ | After G1. |
-| Pre-registration, pilot | Drafts ready; waiting for your and your advisor's review. |
-| Research claims (H1 corpus) | After the pilot. |
-| Host | WSL on F:. Subagents: DeepSeek V4.1 Flash 1017 (max); Codex for reviews when reachable. |
+## Output
 
-Needs you: pilot corpus review with your advisor; pre-registration decisions.
+**What I think you're after**
 
-Next: review fixes → freeze + sign F4 → archive guest state → install F4 → G1 → route probe → direct-runtime probe → guest EVQ → pilot freeze (budgets + reviewed manifest) → pilot → H1.
+You want to step back from the daily details and see TBound as a whole. Your worry is that it keeps growing more complex while the thesis still has no results, so you want three things:
+
+- how close we are to having something that produces thesis evidence;
+- what is actually still left, without the jargon;
+- what the system can already do today, so you can work with it now if it makes sense.
+
+The real problem is a trade-off: get the thesis claims tested soon enough, without building more machinery than they need.
+
+**The big picture**
+
+TBound's job for the thesis is to run a coding agent inside a locked box and prove two things: what the agent tried to do, and what actually changed. All the pieces of that box are built: the isolation, the mediated tools, the signed setup and the evidence recorders.
+
+What's missing is one full, real run on the test VM that goes all the way through: read, edit, run a command, publish the change. Each attempt so far has found a bug that only shows up on the real machine. All of those are now fixed in F4, but F4 isn't frozen or tested on the VM yet.
+
+**Still left to do**
+
+1. **Freeze F4 and get one full run through (G1).** This is the gate; everything below waits on it. Expect a day or so, possibly one more fix if the VM finds another bug.
+2. **Two short probe runs and collecting the last 4 evidence items.** About half a day.
+3. **Your part with your advisor:** approve the test case set and the pre-registration. This runs in parallel.
+4. **A small pilot run, then the real thesis run (H1).** That produces the actual research results.
+
+That's it. Nothing new needs to be built for the thesis. The product ideas, such as easier setup or the provisioning tool, are explicitly parked until after the thesis.
+
+**What you can do with the current state**
+
+- **Offline (no VM):** run the system on your machine with the built-in test fixture, the evaluation tooling and the 18 evidence checks that already pass. Good for writing the thesis's method and system chapters, with real logs and receipts as examples.
+- **On the VM:** a single governed read-only task already worked end to end (the smoke run on F1). That's a valid demo of the boundary and its evidence, just not the full G1 scenario.
+- **Already concrete for writing:**
+  - the threat model, the architecture and the evaluation design;
+  - today's defects as engineering findings, e.g. "the real-host validation found N defects the tests missed";
+  - the kernel limitation, as a stated limitation.
+
+**Overengineering**
+
+The heavy part is per-run signing and freezing, and that's where most of the pain came from. For the thesis, keep it: it's what makes the evidence trustworthy. But don't add anything new. The rule from here on: only fix what blocks G1, the probes, the pilot or H1.
+
+Is that the picture you had in mind? Or do you want me to cut further, for example skip the two probe runs if your advisor agrees those evidence items aren't essential to the claims?

@@ -162,8 +162,7 @@ terminal transition digest, lease operation, and trusted proposal/call identity.
 That binding is persisted in the prepare/token/commit records, included in the
 commit digest through a derived origin identifier, and checked again by recovery.
 Legacy v1 proposal-call journals keep their original digest/decoder path. The
-read->write->edit->bash regression publishes with the Bash proposal identity,
-without a fake final write or caller-supplied origin string.
+component regression `TestPublicationRuntimePublishesVersionedAuthenticatedTerminalLeaseOrigin` (fixture Trust, read->write->edit->bash) publishes with the Bash proposal identity. Production publication of a bash-last chain is not yet evidenced.
 
 ## Legacy SDK-worker TCB proof (not the current CLI dev path)
 

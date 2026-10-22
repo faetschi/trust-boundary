@@ -9,7 +9,7 @@ existing source; the source is named next to each value. Where the prototype
 does not yet have a required frozen identity, the value is recorded as a gap in
 [§7](#7-must-freeze-before-g1-gap-list) rather than implied here.
 
-- Repository branch: `codex/tbound-prototype` (`TASK_STATE.md` "Current verified state" / git).
+- Repository branch: `codex/tbound-prototype` (`TASK_STATE.md` "Current verified state" (TASK_STATE.md@29196d6) / git).
 - This file is the only artifact produced by this task; it supersedes nothing and edits nothing.
 
 ---
@@ -18,27 +18,27 @@ does not yet have a required frozen identity, the value is recorded as a gap in
 
 | Value | Source |
 |---|---|
-| Hyper-V guest `TBound-Ubuntu-2404`, Generation 2 | `TASK_STATE.md` "Decisions and constraints" (VM definition) |
-| 8 vCPU, 16 GiB RAM, 40 GiB dynamically expanding VHDX | `TASK_STATE.md` "Decisions and constraints" (`16 GiB fixed RAM`, `40 GiB dynamically expanding VHDX`) |
-| Ubuntu Server 24.04.5 LTS | `TASK_STATE.md` "VM and guest baseline" |
-| Kernel `6.8.0-146-generic`, amd64 | `TASK_STATE.md` "VM and guest baseline"; guest-validation section |
-| Root filesystem ext4 on LVM | `TASK_STATE.md` "VM and guest baseline" |
-| Account `tboundadmin`, UID 1000 | `TASK_STATE.md` "VM and guest baseline" |
-| VM lifecycle task set `\TBoundVmOps\{Status,Start,Stop,Connect,Disconnect}` runnable **unelevated** | `TASK_STATE.md` "Workstreams"/autonomy verification sections; `TASK_STATE.md` "Progress — this session" (fixed-task helper) |
-| Network at rest: NIC on `Default Switch` for trusted maintenance only; disconnect + offline gate required before any untrusted execution | `TASK_STATE.md` "Decisions and constraints" |
+| Hyper-V guest `TBound-Ubuntu-2404`, Generation 2 | `TASK_STATE.md` "Decisions and constraints" (TASK_STATE.md@29196d6) (VM definition) |
+| 8 vCPU, 16 GiB RAM, 40 GiB dynamically expanding VHDX | `TASK_STATE.md` "Decisions and constraints" (TASK_STATE.md@29196d6) (`16 GiB fixed RAM`, `40 GiB dynamically expanding VHDX`) |
+| Ubuntu Server 24.04.5 LTS | `TASK_STATE.md` "VM and guest baseline" (TASK_STATE.md@29196d6) |
+| Kernel `6.8.0-146-generic`, amd64 | `TASK_STATE.md` "VM and guest baseline" (TASK_STATE.md@29196d6); guest-validation section |
+| Root filesystem ext4 on LVM | `TASK_STATE.md` "VM and guest baseline" (TASK_STATE.md@29196d6) |
+| Account `tboundadmin`, UID 1000 | `TASK_STATE.md` "VM and guest baseline" (TASK_STATE.md@29196d6) |
+| VM lifecycle task set `\TBoundVmOps\{Status,Start,Stop,Connect,Disconnect}` runnable **unelevated** | `TASK_STATE.md` "Workstreams" (TASK_STATE.md@29196d6)/autonomy verification sections; `TASK_STATE.md` "Progress — this session" (TASK_STATE.md@29196d6) (fixed-task helper) |
+| Network at rest: NIC on `Default Switch` for trusted maintenance only; disconnect + offline gate required before any untrusted execution | `TASK_STATE.md` "Decisions and constraints" (TASK_STATE.md@29196d6) |
 
 ## 2. Toolchain
 
 | Value | Source |
 |---|---|
-| Guest Go `go1.27.1` | `TASK_STATE.md` "VM and guest baseline" (also earlier toolline note under `/opt/tbound`) |
-| Guest Node `v24.21.0` | `TASK_STATE.md` "VM and guest baseline" |
-| Host Node `v24.15.0` | `TASK_STATE.md` "Autonomous continuation plan" (supersedes earlier "Node unavailable"); `adapter/artifacts/pi-closure-report.json` `runtime.node` |
-| Rootless Podman `4.9.3` | `TASK_STATE.md` "VM and guest baseline"; `podman_linux.go` `runCell` comment ("podman 4.9.3") |
-| crun `1.14.1` | `TASK_STATE.md` "VM and guest baseline" |
+| Guest Go `go1.27.1` | `TASK_STATE.md` "VM and guest baseline" (TASK_STATE.md@29196d6) (also earlier toolline note under `/opt/tbound`) |
+| Guest Node `v24.21.0` | `TASK_STATE.md` "VM and guest baseline" (TASK_STATE.md@29196d6) |
+| Host Node `v24.15.0` | `TASK_STATE.md` "Autonomous continuation plan" (TASK_STATE.md@29196d6) (supersedes earlier "Node unavailable"); `adapter/artifacts/pi-closure-report.json` `runtime.node` |
+| Rootless Podman `4.9.3` | `TASK_STATE.md` "VM and guest baseline" (TASK_STATE.md@29196d6); `podman_linux.go` `runCell` comment ("podman 4.9.3") |
+| crun `1.14.1` | `TASK_STATE.md` "VM and guest baseline" (TASK_STATE.md@29196d6) |
 | cgroup v2 mounted, **not delegated** to `tboundadmin` | `TASK_STATE.md` guest-validation section; `internal/sandbox/cgroup_linux.go` `ErrCgroupUnsupported` |
-| GCC `13.3` | `TASK_STATE.md` "VM and guest baseline" |
-| Guest subordinate UID/GID ranges of 65,536 entries | `TASK_STATE.md` "VM and guest baseline" |
+| GCC `13.3` | `TASK_STATE.md` "VM and guest baseline" (TASK_STATE.md@29196d6) |
+| Guest subordinate UID/GID ranges of 65,536 entries | `TASK_STATE.md` "VM and guest baseline" (TASK_STATE.md@29196d6) |
 
 ## 3. Isolation facts observed
 
@@ -76,7 +76,7 @@ does not yet have a required frozen identity, the value is recorded as a gap in
 
 | Claim | Status | Source |
 |---|---|---|
-| Live provider exchange | **partial** — a real one-shot OpenRouter exchange with a captured tool call succeeded via `cmd/tbound-provider` on 2026-10-05 (HTTP 200, `captured_tool_calls=1`, ordered four-tool manifest respected); the adapter→Pi session wiring is still not live | `TASK_STATE.md` "Progress — session 2026-10-05" (genuine provider exchange); `supervisor/cmd/tbound-provider`, `supervisor/internal/broker/openrouter` |
+| Live provider exchange | **partial** — a real one-shot OpenRouter exchange with a captured tool call succeeded via `cmd/tbound-provider` on 2026-10-05 (HTTP 200, `captured_tool_calls=1`, ordered four-tool manifest respected); the adapter→Pi session wiring is still not live | `TASK_STATE.md` "Progress — session 2026-10-05" (TASK_STATE.md@29196d6) (genuine provider exchange); `supervisor/cmd/tbound-provider`, `supervisor/internal/broker/openrouter` |
 | Live effect execution | **false** | same |
 | Containment established | **false / not-established** | same; `podman_linux.go` `Profile`; `internal/sandbox/doc.go` |
 | G1 durability established | **false** | same |
@@ -127,7 +127,7 @@ cited requirement is the source that makes the gap a prerequisite.
 Not listed above, but also outstanding for a claim-bearing path: the real
 provider exchange (privately supplied model ID + API key) and the checkpoint
 restore demonstration (needs a Hyper-V checkpoint task outside `\TBoundVmOps`).
-— `TASK_STATE.md` "Open decisions (blocking full G1)".
+— `TASK_STATE.md` "Open decisions (blocking full G1)" (TASK_STATE.md@29196d6).
 
 ## 8. Reconciliation note
 
@@ -141,7 +141,7 @@ that are now contradicted by green tests and later verified runs. Examples:
   gofmt, or tests" (`implementation-status.md` "Current broker slice and
   provider plan").
 - `TASK_STATE.md` records that these packages now compile and that the full
-  Linux `-race` suite is green (`TASK_STATE.md` "Progress — session 2026-10-05":
+  Linux `-race` suite is green (`TASK_STATE.md` "Progress — session 2026-10-05" (TASK_STATE.md@29196d6):
   "WSL `go test -race -count=1 ./...` all packages green", "Windows `go build
   ./...` green", "gofmt -l supervisor empty"), and the adapter closure probe is
   green with exactly four tools and `provider_stream_attempts=0`.
@@ -149,9 +149,7 @@ that are now contradicted by green tests and later verified runs. Examples:
   `37405715…` host-automation pin paragraph that `TASK_STATE.md` marks
   superseded.
 
-This is recorded here **for later documentation reconciliation only**. No
-existing file is edited by this manifest; `docs/implementation-status.md` should
-be reconciled in a separate, reviewed change.
+`docs/implementation-status.md` was retired; see `docs/status.md`.
 
 ---
 
@@ -196,10 +194,10 @@ registers an LC case.
 
 ### Provenance
 
-- Primary prototype sources: `supervisor/internal/podman/podman_linux.go`,
+- Primary prototype sources: `supervisor/internal/podman/podman_linux.go` (moved; symbols now in `supervisor/internal/piruntime/containment_linux.go`, verify),
   `supervisor/internal/sandbox/` (`doc.go`, `sandbox_linux.go`,
   `cgroup_linux.go`, `landlock_linux.go`), `adapter/src/proxy-tools.ts`,
-  `adapter/src/closure-probe.ts`, `adapter/artifacts/pi-closure-report.json`.
+  `adapter/src/closure-probe.ts` (retired; see `git show 29196d6:adapter/src/closure-probe.ts`), `adapter/artifacts/pi-closure-report.json` (retired; see `git show 29196d6:adapter/artifacts/pi-closure-report.json`).
 - Status/reconciliation sources: `TASK_STATE.md`,
   `docs/implementation-status.md`.
 - Normative/requirement sources:
