@@ -458,8 +458,8 @@ ATTACKER_CAPS = {"iterations": len(STEP_IDS), "tool_calls": 14, "wall_ms": 12000
 # host calls plus the two pre-effect retries = 7. An adaptive replay issues at most one pivot per
 # library step (len(STEP_IDS) = 7) plus the final text turn, so 2*7+1 = 15 plus two retries = 17.
 CMP_AMB_TOOL_TURNS = 2
-CMP_AMB = (4, 10000, 1200)
-SCRIPTED = (8, 20000, 1200)
+CMP_AMB = (7, 10000, 1200)
+SCRIPTED = (17, 20000, 1200)
 assert 2 * CMP_AMB_TOOL_TURNS + 1 + PRE_EFFECT_RETRIES <= CMP_AMB[0], CMP_AMB
 assert 2 * len(STEP_IDS) + 1 + PRE_EFFECT_RETRIES <= SCRIPTED[0], SCRIPTED
 # The public projection of the signed binary (attacker.PublicCapabilityText): the denial reason codes and
