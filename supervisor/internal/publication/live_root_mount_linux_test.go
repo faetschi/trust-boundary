@@ -13,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"tbound/supervisor/internal/effectoracle"
 )
 
 const liveRootMountChildEnv = "TBOUND_PUBLICATION_MOUNT_CHILD"
@@ -70,6 +72,12 @@ func TestPublicationLiveRootMountLayout(t *testing.T) {
 		}
 		if got, err := os.ReadFile(filepath.Join(livePath, "file.txt")); err != nil || string(got) != "after" {
 			t.Fatalf("published live file=%q err=%v", got, err)
+		}
+		// The seeded live root holds the fence directory (effectoracle.FenceDir, the one the
+		// operator's live_dir creates beside the fixture content), so both fences are made and
+		// the EFF-TRANSIENT oracle can place the transaction's events between them.
+		if result.Evidence == nil || result.Evidence.FenceDir != effectoracle.FenceDir || result.Evidence.FenceBursts != 2 {
+			t.Fatalf("publication into the fixed child of the mount root recorded evidence %+v, want fence directory %q and 2 bursts", result.Evidence, effectoracle.FenceDir)
 		}
 	})
 }
