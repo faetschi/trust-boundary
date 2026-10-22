@@ -289,7 +289,7 @@ func ValidateChain(spec ChainSpec, entries []Transition, verify DecisionVerifier
 		}
 
 		for j, change := range entry.Changes {
-			if err := validatePath(change.Path); err != nil {
+			if err := validateChangePath(change.Path); err != nil {
 				return Result{}, invalid("%s change[%d]: %v", prefix, j, err)
 			}
 			if j > 0 && entry.Changes[j-1].Path >= change.Path {
@@ -717,6 +717,23 @@ func validatePath(value string) error {
 				return errors.New("path contains a control character")
 			}
 		}
+	}
+	return nil
+}
+
+// fenceDir is the effect oracle's fence directory of a managed live root (trialfix.LostFound,
+// effectoracle.FenceDir). A manifest may name it, because a scan of the live root sees it, but
+// no approved change may create, rewrite or remove it or anything below it.
+const fenceDir = "lost+found"
+
+// validateChangePath is validatePath for the path of an approved change: the fence directory and
+// everything below it are not workspace content and cannot be proposed.
+func validateChangePath(value string) error {
+	if err := validatePath(value); err != nil {
+		return err
+	}
+	if value == fenceDir || strings.HasPrefix(value, fenceDir+"/") {
+		return fmt.Errorf("path is %s, the live root's fence directory, or below it", fenceDir)
 	}
 	return nil
 }

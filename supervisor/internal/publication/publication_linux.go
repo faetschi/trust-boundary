@@ -258,9 +258,10 @@ type OracleEvidence struct {
 	// FenceDir and FenceBursts (the number of fences) say how the writes of the transaction to the live root were bracketed for the inotify
 	// observer (effectoracle.FenceDir): the directory of the live root opened and read (effectoracle.FenceRoot) just
 	// before the first object is applied and again just after the last: FenceBursts fences (2 when both were made, 1
-	// when only the first was, 0 when the directory could not be opened or the transaction never reached the apply
-	// loop). The queue of the observer is in the order of the system calls, so every rename publication makes into or
-	// out of the live root lies between the two fences in it, however late the observer's reader takes the events.
+	// when the closing fence failed after the apply, 0 when the transaction never reached the apply loop). A failed
+	// opening fence refuses the apply, so a transaction that applied anything has at least one fence. The queue of the
+	// observer is in the order of the system calls, so every rename publication makes into or out of the live root lies
+	// between the two fences in it, however late the observer's reader takes the events.
 	FenceDir    string
 	FenceBursts int
 }
@@ -697,6 +698,15 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err != nil {
 		return pendingResult, r.abortPrepared(artifactParent, artifact, prep, err, inject)
 	}
+	// The opening fence is what places the apply in the observer's queue. Without it the apply
+	// cannot be placed, so a write publication made could not be told from one it did not: refuse
+	// to apply rather than apply unexplained. Fence before the token is consumed, so the refusal is
+	// the ordinary abort-before-token, which keeps the journal's ordering valid for later publications.
+	evidence.FenceDir = effectoracle.FenceDir
+	if err := effectoracle.FenceRoot(request.LiveRoot); err != nil {
+		return pendingResult, r.abortPrepared(artifactParent, artifact, prep, fmt.Errorf("refusing to apply without the fence directory: %w", err), inject)
+	}
+	evidence.FenceBursts = 1
 	token := tokenRecord{TransactionID: txID, TokenID: tokenID, DecisionID: authorization.DecisionID, BindingDigest: binding.BindingDigest, Binding: binding}
 	if err := r.appendRecord("publication_token_consumed", txID, token); err != nil {
 		return pendingResult, fmt.Errorf("persist single-use commit token: %w", err)
@@ -704,12 +714,10 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err := injectFault(inject, "after-token-checkpoint", -1); err != nil {
 		return pendingResult, err
 	}
-	evidence.FenceDir = effectoracle.FenceDir
-	if effectoracle.FenceRoot(request.LiveRoot) == nil {
-		evidence.FenceBursts = 1
-	}
 	applyErr := r.apply(ctx, request.LiveRoot, artifact, prep, inject)
-	if evidence.FenceBursts == 1 && effectoracle.FenceRoot(request.LiveRoot) == nil {
+	if applyErr == nil && effectoracle.FenceRoot(request.LiveRoot) == nil {
+		// The apply is durable; a missing closing fence leaves the window unplaceable, which the
+		// transient oracle reads as lost evidence (FenceBursts 1), never as none.
 		evidence.FenceBursts = 2
 	}
 	if applyErr != nil {
@@ -2229,6 +2237,11 @@ func validateRelativePath(path string) error {
 				return delta.ErrInvalidChain
 			}
 		}
+	}
+	// The fence directory of the live root is the effect oracle's, not published content: a plan
+	// may not create, rewrite or remove it or anything below it.
+	if path == effectoracle.FenceDir || strings.HasPrefix(path, effectoracle.FenceDir+"/") {
+		return delta.ErrInvalidChain
 	}
 	return nil
 }

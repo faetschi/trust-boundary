@@ -18,6 +18,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/workspace"
 	"tbound/supervisor/internal/wsoracle"
 )
@@ -70,7 +71,25 @@ type fixture struct {
 }
 
 func newFixture(t *testing.T, liveFiles, baseFiles, middleFiles, finalFiles map[string]string, baseDirs, middleDirs, finalDirs []string) *fixture {
+	return newFixtureWithFence(t, liveFiles, baseFiles, middleFiles, finalFiles, baseDirs, middleDirs, finalDirs, true)
+}
+
+// newFixtureWithoutFence builds a fixture whose live root has no fence directory, for the refusal
+// that publication must make without one.
+func newFixtureWithoutFence(t *testing.T, liveFiles, baseFiles, middleFiles, finalFiles map[string]string) *fixture {
+	return newFixtureWithFence(t, liveFiles, baseFiles, middleFiles, finalFiles, nil, nil, nil, false)
+}
+
+// newFixtureWithFence builds one fixture. The managed live root holds the fence directory
+// (effectoracle.FenceDir) and the baseline generation is imported from it, so every generation
+// of the fixture holds it too and no delta proposes a change to it.
+func newFixtureWithFence(t *testing.T, liveFiles, baseFiles, middleFiles, finalFiles map[string]string, baseDirs, middleDirs, finalDirs []string, fence bool) *fixture {
 	t.Helper()
+	if fence {
+		baseDirs = append(baseDirs, effectoracle.FenceDir)
+		middleDirs = append(middleDirs, effectoracle.FenceDir)
+		finalDirs = append(finalDirs, effectoracle.FenceDir)
+	}
 	root := t.TempDir()
 	livePath, basePath := filepath.Join(root, "live"), filepath.Join(root, "base")
 	middlePath, finalPath := filepath.Join(root, "middle"), filepath.Join(root, "sealed")

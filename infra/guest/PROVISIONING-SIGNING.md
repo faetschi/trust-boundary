@@ -229,12 +229,12 @@ Rollback: `sudo rm /etc/tbound/pi-host-profile.pub; sudo rm -rf /var/tmp/tbound-
 
 ### P9 [PRIVILEGED WRITE, needs owner approval] make the live root enumerable by uid 995
 
-uid 995 cannot open `lost+found` (root 0700), so every 995 enumeration fails (`xattr_profile_linux.go`). The directory is also part of the live root that the no-change release rescan and the publication baseline scan walk, and those require the canonical form (directories `0755`, files `0644`/`0755`, owned by the service), so it is chowned and chmodded here. Since F4 the live root is `/var/lib/tbound/live/root`, and `tbound-op live_dir` creates its fence directory `lost+found` (995:986 0755) with the root; this step only re-checks it (and repairs a root that predates F4).
+uid 995 cannot open `lost+found` (root 0700), so every 995 enumeration fails (`xattr_profile_linux.go`). The directory is also part of the live root that the no-change release rescan and the publication baseline scan walk, and those require the canonical form (directories `0755`, files `0644`/`0755`, owned by the service), so it is chowned and chmodded here. Since F4 the live root is `/var/lib/tbound/live/root`, and `tbound-op live_dir` creates its fence directory `lost+found` (995:986 0755) with the root; this step uses `install -d` (create-or-fix), so it also works on a root that predates F4, and it re-asserts the owner and mode of an existing fence.
 
 After a publication the image root (the mount point `/var/lib/tbound/live`, not the live root) also holds publication's lock file `.tbound-publication-live-<dev>-<ino>.lock`, the live root's device and inode in hex. That file is expected image state and stays after the run. `tbound-op diag live-listing` accepts only `lost+found`, `root` and names matching that lock pattern in the image root; anything else, above all a `.tbound-publication-<txid>` stage directory left by a crashed transaction, is reported as `owner must look`.
 
 ```
-GSSH 'sudo -n chown 995:986 /var/lib/tbound/live/root/lost+found && sudo -n chmod 0755 /var/lib/tbound/live/root/lost+found && sudo -n stat -c "%U:%G %a" /var/lib/tbound/live/root/lost+found'      # tbound-pi:tbound-pi 755
+GSSH 'sudo -n install -d -o 995 -g 986 -m 0755 /var/lib/tbound/live/root/lost+found && sudo -n stat -c "%U:%G %a" /var/lib/tbound/live/root/lost+found'      # tbound-pi:tbound-pi 755
 ```
 
 Rollback: `sudo chown root:root /var/lib/tbound/live/root/lost+found; sudo chmod 0700 /var/lib/tbound/live/root/lost+found`.

@@ -181,7 +181,8 @@ func TestDigestRefusesAnInvalidSpec(t *testing.T) {
 }
 
 // liveManifest is what wsoracle.Snapshot reports for a tree populated from sampleSpec: real
-// inode numbers and link counts, the device, another label, and a lost+found at the top.
+// inode numbers and link counts, the device, another label, and the canonical fence directory
+// at the top.
 func liveManifest() wsoracle.Manifest {
 	m := impliedManifest()
 	m.Label = "reset"
@@ -193,10 +194,13 @@ func liveManifest() wsoracle.Manifest {
 			m.Entries[i].Nlink = 2
 		}
 	}
-	m.Entries = append(m.Entries,
-		wsoracle.Entry{Path: "lost+found", Type: "dir", Mode: 0o700, Nlink: 2, Ino: 11},
-		wsoracle.Entry{Path: "lost+found/junk", Type: "file", Mode: 0o600, Nlink: 1, Ino: 12, Size: 1, SHA256: wsoracleSum("x")})
+	m.Entries = append(m.Entries, canonicalFenceEntry())
 	return m
+}
+
+// canonicalFenceEntry is the empty fence directory of a tree owned by the canonical owner.
+func canonicalFenceEntry() wsoracle.Entry {
+	return wsoracle.Entry{Path: LostFound, Type: "dir", Mode: 0o755, UID: 995, GID: 986, Nlink: 2, Ino: 11}
 }
 
 func TestTreeDigestOfALiveSnapshotEqualsTheSpecDigest(t *testing.T) {
@@ -204,6 +208,42 @@ func TestTreeDigestOfALiveSnapshotEqualsTheSpecDigest(t *testing.T) {
 	got, err := TreeDigest(liveManifest())
 	if err != nil || got != want {
 		t.Fatalf("TreeDigest = %s, %v; want %s", got, err, want)
+	}
+}
+
+// TestTreeDigestLeavesOutOnlyTheCanonicalEmptyFence is the fence subtree: a payload in it, or
+// a fence that is not the empty 0755 directory of the fixture owner, is part of the tree.
+func TestTreeDigestLeavesOutOnlyTheCanonicalEmptyFence(t *testing.T) {
+	want, _ := Digest(sampleSpec())
+	setFence := func(change func(*wsoracle.Entry)) func(*wsoracle.Manifest) {
+		return func(m *wsoracle.Manifest) {
+			for i := range m.Entries {
+				if m.Entries[i].Path == LostFound {
+					change(&m.Entries[i])
+				}
+			}
+		}
+	}
+	payload := func(m *wsoracle.Manifest) {
+		m.Entries = append(m.Entries,
+			wsoracle.Entry{Path: "lost+found/exfil", Type: "file", Mode: 0o600, UID: 995, GID: 986, Nlink: 1, Size: 1, SHA256: wsoracleSum("x")})
+	}
+	cases := map[string]func(*wsoracle.Manifest){
+		"payload": payload,
+		"mode":    setFence(func(e *wsoracle.Entry) { e.Mode = 0o700 }),
+		"owner":   setFence(func(e *wsoracle.Entry) { e.UID = 0 }),
+		"group":   setFence(func(e *wsoracle.Entry) { e.GID = 0 }),
+		"file":    setFence(func(e *wsoracle.Entry) { e.Type = "file" }),
+		"symlink": setFence(func(e *wsoracle.Entry) { e.Type = "symlink" }),
+	}
+	for name, mutate := range cases {
+		t.Run(name, func(t *testing.T) {
+			m := liveManifest()
+			mutate(&m)
+			if got, err := TreeDigest(m); err != nil || got == want {
+				t.Fatalf("TreeDigest = %s, %v; want a digest other than the spec's", got, err)
+			}
+		})
 	}
 }
 

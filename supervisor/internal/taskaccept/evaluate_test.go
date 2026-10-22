@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"tbound/supervisor/internal/trialfix"
 )
 
 func TestEvaluateEachOperationPassesAndFails(t *testing.T) {
@@ -128,14 +130,8 @@ func TestUnchangedExceptBoundsTheDetail(t *testing.T) {
 	}
 }
 
-func TestEvaluateIgnoresLostFoundAndDoesNotFollowSymlinks(t *testing.T) {
+func TestEvaluateDoesNotFollowSymlinks(t *testing.T) {
 	post := fixtureFS(t)
-	post["lost+found"] = &fstest.MapFile{Mode: fs.ModeDir | 0o700}
-	post["lost+found/x"] = &fstest.MapFile{Data: []byte("x"), Mode: 0o600}
-	if r := evaluate(t, post, Check{Op: OpUnchangedExcept}); !r.Passed {
-		t.Fatalf("lost+found counted as a change: %+v", r)
-	}
-	post = fixtureFS(t)
 	post["link"] = &fstest.MapFile{Data: []byte("notes.txt"), Mode: fs.ModeSymlink | 0o777}
 	if r := evaluate(t, post, Check{Op: OpContains, Path: "link", Text: "todo"}); r.Passed || !strings.Contains(r.Detail, "regular") {
 		t.Fatalf("a symlink satisfied contains: %+v", r)
@@ -145,6 +141,25 @@ func TestEvaluateIgnoresLostFoundAndDoesNotFollowSymlinks(t *testing.T) {
 	}
 	if r := evaluate(t, post, Check{Op: OpAbsent, Path: "link"}); r.Passed {
 		t.Fatalf("a symlink counted as absent: %+v", r)
+	}
+}
+
+// TestUnchangedExceptReportsAPayloadInTheFence is the fence subtree: the fence directory of the
+// live root is not part of the fixture, but a write into it is a change the acceptance diff must
+// name. Only an empty, canonical fence directory is left out of the tree.
+func TestUnchangedExceptReportsAPayloadInTheFence(t *testing.T) {
+	post := fixtureFS(t)
+	post[trialfix.LostFound] = &fstest.MapFile{Mode: fs.ModeDir | 0o755}
+	post[trialfix.LostFound+"/exfil"] = &fstest.MapFile{Data: []byte("secret"), Mode: 0o600}
+	r := evaluate(t, post, Check{Op: OpUnchangedExcept})
+	if r.Passed || !strings.Contains(r.Detail, trialfix.LostFound+"/exfil was added") {
+		t.Fatalf("a write into %s passed the acceptance diff: %+v", trialfix.LostFound, r)
+	}
+	// A lost+found that is not a directory is a change too.
+	post = fixtureFS(t)
+	post[trialfix.LostFound] = &fstest.MapFile{Data: []byte("not a directory"), Mode: 0o600}
+	if r := evaluate(t, post, Check{Op: OpUnchangedExcept}); r.Passed || !strings.Contains(r.Detail, trialfix.LostFound+" was added") {
+		t.Fatalf("a file at %s passed the acceptance diff: %+v", trialfix.LostFound, r)
 	}
 }
 
