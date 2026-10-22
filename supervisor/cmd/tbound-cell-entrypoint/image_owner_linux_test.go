@@ -3,7 +3,6 @@
 package main
 
 import (
-	"errors"
 	"testing"
 )
 
@@ -47,41 +46,48 @@ func TestParseUIDMapRootUID(t *testing.T) {
 	}
 }
 
-func mapReader(raw string, err error) func() ([]byte, error) {
-	return func() ([]byte, error) { return []byte(raw), err }
-}
-
 // The ownership decision the command cell makes about the executable it is
-// about to run, with the uid_map reader injected: the owner must be the inside
-// uid that this namespace maps to outside uid 0. An unmapped outside 0 is
-// refused, so the check fails closed instead of falling back to uid 0.
+// about to run, over the uid_map the cell measured and registered: the owner must be the inside
+// uid that this namespace maps to outside uid 0. An unmapped outside 0 is refused, so the check
+// fails closed instead of falling back to uid 0.
 func TestRequireImageRootOwnedAcceptsOnlyTheMappedRoot(t *testing.T) {
-	rootless := mapReader("1000 0 1\n", nil)
-	rootful := mapReader("0 0 4294967295\n", nil)
-	unmapped := mapReader("0 1000 1\n", nil)
+	rootless, rootful, unmapped := "1000 0 1\n", "0 0 4294967295\n", "0 1000 1\n"
 	for name, test := range map[string]struct {
 		owner  uint32
-		read   func() ([]byte, error)
+		uidMap string
 		accept bool
 	}{
-		"rootless cell accepts its mapped root":    {owner: 1000, read: rootless, accept: true},
-		"rootless cell refuses uid 0":              {owner: 0, read: rootless},
-		"rootless cell refuses a neighbouring uid": {owner: 1001, read: rootless},
-		"rootless cell refuses the overflow uid":   {owner: 65534, read: rootless},
-		"rootful keeps accepting uid 0":            {owner: 0, read: rootful, accept: true},
-		"rootful refuses the cell uid":             {owner: 1000, read: rootful},
-		"unmapped outside 0 refuses uid 0":         {owner: 0, read: unmapped},
-		"unmapped outside 0 refuses the cell uid":  {owner: 1000, read: unmapped},
-		"unreadable map refuses":                   {owner: 0, read: func() ([]byte, error) { return nil, errors.New("permission denied") }},
-		"malformed map refuses":                    {owner: 1000, read: mapReader("garbage\n", nil)},
-		"absent reader refuses":                    {owner: 0},
+		"rootless cell accepts its mapped root":    {owner: 1000, uidMap: rootless, accept: true},
+		"rootless cell refuses uid 0":              {owner: 0, uidMap: rootless},
+		"rootless cell refuses a neighbouring uid": {owner: 1001, uidMap: rootless},
+		"rootless cell refuses the overflow uid":   {owner: 65534, uidMap: rootless},
+		"rootful keeps accepting uid 0":            {owner: 0, uidMap: rootful, accept: true},
+		"rootful refuses the cell uid":             {owner: 1000, uidMap: rootful},
+		"unmapped outside 0 refuses uid 0":         {owner: 0, uidMap: unmapped},
+		"unmapped outside 0 refuses the cell uid":  {owner: 1000, uidMap: unmapped},
+		"empty map refuses":                        {owner: 0},
+		"malformed map refuses":                    {owner: 1000, uidMap: "garbage\n"},
 	} {
-		err := requireImageRootOwned(test.owner, test.read)
+		err := requireImageRootOwned(test.owner, test.uidMap)
 		if test.accept && err != nil {
 			t.Errorf("%s: uid %d was refused: %v", name, test.owner, err)
 		}
 		if !test.accept && err == nil {
 			t.Errorf("%s: uid %d was accepted", name, test.owner)
 		}
+	}
+}
+
+// TestRequireImageRootOwnedUsesTheMeasuredMap: the map that was measured at start and compared
+// with the registered digest decides, not a second read of the process's own map.
+func TestRequireImageRootOwnedUsesTheMeasuredMap(t *testing.T) {
+	if err := requireImageRootOwned(0, "0 0 4294967295\n"); err != nil {
+		t.Fatalf("the measured rootful map was not used: %v", err)
+	}
+	if err := requireImageRootOwned(0, "1000 0 1\n"); err == nil {
+		t.Fatal("uid 0 was accepted against a rootless measured map")
+	}
+	if err := requireImageRootOwned(1000, "1000 0 1\n"); err != nil {
+		t.Fatalf("the measured rootless map was not used: %v", err)
 	}
 }
