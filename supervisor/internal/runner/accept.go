@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/taskaccept"
@@ -84,7 +85,8 @@ func (a AcceptExecutor) judge(ctx context.Context, s Step) TaskResult {
 	return taskOfAccept(&doc, s.CaseID)
 }
 
-// parseAcceptDoc reads exactly one result document.
+// parseAcceptDoc reads exactly one result document and requires end of input:
+// trailing whitespace is fine, anything else is data after the document.
 func parseAcceptDoc(raw []byte) (taskaccept.AcceptDoc, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -92,8 +94,14 @@ func parseAcceptDoc(raw []byte) (taskaccept.AcceptDoc, error) {
 	if err := decoder.Decode(&doc); err != nil {
 		return taskaccept.AcceptDoc{}, err
 	}
-	if decoder.More() {
+	// Decoder.More reports whether another array or object element follows; it
+	// is false for any other junk (for example "] garbage"), so it does not
+	// establish end of input. Decode again and require io.EOF.
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err == nil {
 		return taskaccept.AcceptDoc{}, errors.New("data after the accept document")
+	} else if !errors.Is(err, io.EOF) {
+		return taskaccept.AcceptDoc{}, fmt.Errorf("data after the accept document: %w", err)
 	}
 	return doc, nil
 }
