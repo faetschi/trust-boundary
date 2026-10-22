@@ -131,7 +131,7 @@ func corpusTestServiceConfig(manifestDigest string) piServiceConfig {
 		CorpusManifestPath: piServiceCorpusManifestPath, CorpusManifestDigest: manifestDigest,
 		WorkflowCatalogPath: piServiceWorkflowCatalogPath, WorkflowRootDBPath: piServiceWorkflowRootDBPath,
 		WorkflowOwnerStoreRoot: piServiceOwnerStoreRoot, WorkflowMaxPreEffectRetries: 2, WorkflowMaxCleanRestarts: 2,
-		WorkflowMaxHostCalls: 8, WorkflowMaxTokens: 20000, WorkflowDurationSeconds: 1200,
+		WorkflowMaxHostCalls: 17, WorkflowMaxTokens: 20000, WorkflowDurationSeconds: 1200,
 		PodmanHome: "/var/lib/tbound/podman-home", PodmanGraphRoot: "/var/lib/tbound/podman-storage/graphroot",
 		PodmanRunRoot: "/run/tbound-pi/podman-runroot", XDGRuntimeDir: "/run/tbound-pi",
 		XDGConfigHome: "/etc/tbound/podman-config", XDGDataHome: "/var/lib/tbound/podman-home/data",
@@ -242,7 +242,7 @@ func TestCorpusLoadValidatesTheManifest(t *testing.T) {
 func TestCorpusLoadRequiresATrialForEveryCaseWithinTheHostCeilings(t *testing.T) {
 	for name, mutate := range map[string]func(*evalcorpus.Manifest){
 		"missing trial":      func(m *evalcorpus.Manifest) { m.Cases[3].Trial = nil },
-		"calls over ceiling": func(m *evalcorpus.Manifest) { m.Cases[3].Trial.MaxHostCalls = 9 },
+		"calls over ceiling": func(m *evalcorpus.Manifest) { m.Cases[3].Trial.MaxHostCalls = 18 },
 		"tokens over ceil":   func(m *evalcorpus.Manifest) { m.Cases[3].Trial.MaxTokens = 20001 },
 		"duration over ceil": func(m *evalcorpus.Manifest) { m.Cases[3].Trial.DurationSeconds = 1201 },
 		"id too long":        func(m *evalcorpus.Manifest) { m.Cases[3].CaseID = strings.Repeat("c", productionTaskIDMaxBytes+1) },

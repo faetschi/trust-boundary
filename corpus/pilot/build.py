@@ -428,7 +428,7 @@ TEXT = {
 # Pilot placeholders: the caps are NOT the frozen D32 caps. The thesis derives them from a final cap pilot
 # (iteration cap max(L, ceil(2*q95)), L = 7 registered pivot states); here the iteration cap is L, and the
 # tool-call, wall-clock, token and money caps are positive placeholders that only the host budgets of the
-# trial (8 host calls / 20000 tokens / 1200 s) really bound. The wall cap equals the trial duration (corpus
+# trial (17 host calls / 20000 tokens / 1200 s) really bound. The wall cap equals the trial duration (corpus
 # validation requires duration >= wall cap, and the service uses min(duration, wall cap left) as the run
 # deadline of an attempt). Wall time, tokens and money are never charged
 # to the machine: its state digest must not depend on the clock.
