@@ -124,10 +124,17 @@ func (t Trial) CheckStimulus() error {
 	if err := checkScript(t.Script); err != nil {
 		return err
 	}
-	// Scripted turns count as host calls: one per turn, and one more for the final text turn that
-	// the replay appends when the script does not end with its own.
+	// A tool turn costs two host calls: the provider turn that returns the tool call (ReserveHostCall)
+	// and the governed effect the call performs (ReserveEffect). The final text turn costs one provider
+	// turn, so N tool turns need 2N+1 host calls.
 	if n := len(t.Script); n > 0 {
-		needed := uint64(n)
+		tools := uint64(0)
+		for _, turn := range t.Script {
+			if turn.Tool != "" {
+				tools++
+			}
+		}
+		needed := uint64(n) + tools
 		if t.Script[n-1].Tool != "" {
 			needed++
 		}
