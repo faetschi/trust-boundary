@@ -606,7 +606,7 @@ func readSelfUIDMap() ([]byte, error) { return os.ReadFile("/proc/self/uid_map")
 // the frozen image's root. The owner is compared with the mapped id and not
 // with a literal 0 because a rootless single-uid podman namespace shows
 // image-root files owned by the cell uid inside the cell. Nothing else is
-// relaxed: the read-only mount (requireReadOnlyMount), the absent group/world
+// relaxed: the read-only mount of the opened file (requireReadOnlyFile), the absent group/world
 // write bits and the signed digest remain the immutability and content proofs.
 // This check refuses a file owned by any other identity in the image, and it
 // refuses whenever the map cannot name the root unambiguously.
@@ -643,14 +643,14 @@ func digestCommandExecutable(path string) (string, error) {
 	if before.Mode().Perm()&0o111 == 0 {
 		return "", errors.New("command executable must be executable")
 	}
-	if err := requireReadOnlyMount(path); err != nil {
-		return "", err
-	}
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer file.Close()
+	if err := requireReadOnlyFile(file); err != nil {
+		return "", err
+	}
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || !os.SameFile(before, info) || info.Mode().Perm()&0o022 != 0 {
 		return "", fmt.Errorf("command executable is not a regular immutable image file")
@@ -676,43 +676,20 @@ func digestCommandExecutable(path string) (string, error) {
 	return "sha256:" + hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func requireReadOnlyMount(path string) error {
-	data, err := os.ReadFile("/proc/self/mountinfo")
-	if err != nil {
-		return err
+// requireReadOnlyFile asks the kernel about the mount the opened file is actually on (ST_RDONLY in
+// f_flags reflects the mount and superblock flags), so symlinked parents and shadowed mounts cannot mislead it.
+func requireReadOnlyFile(f *os.File) error {
+	var st syscall.Statfs_t
+	if err := syscall.Fstatfs(int(f.Fd()), &st); err != nil {
+		return fmt.Errorf("statfs command executable: %w", err)
 	}
-	if !mountinfoReadOnly(string(data), path) {
-		return fmt.Errorf("command executable is not on a read-only mount")
+	if st.Flags&stRdonly == 0 {
+		return errors.New("command executable is not on a read-only mount")
 	}
 	return nil
 }
 
-// mountinfoReadOnly reports whether the mount that covers path (the longest matching mount point) is mounted ro.
-func mountinfoReadOnly(mountinfo, path string) bool {
-	clean := filepath.Clean(path)
-	best, ro := -1, false
-	for _, line := range strings.Split(mountinfo, "\n") {
-		parts := strings.SplitN(line, " - ", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		fields := strings.Fields(parts[0])
-		if len(fields) < 6 {
-			continue
-		}
-		mount := filepath.Clean(unescapeMountPoint(fields[4]))
-		// The root mount covers every absolute path; mount+"/" would be "//" and match nothing.
-		if clean != mount && mount != "/" && !strings.HasPrefix(clean, mount+string(os.PathSeparator)) {
-			continue
-		}
-		// >=: of mounts stacked on one mount point, the later mountinfo entry is the one in effect.
-		if len(mount) >= best {
-			best = len(mount)
-			ro = strings.Contains(","+fields[5]+",", ",ro,")
-		}
-	}
-	return best >= 0 && ro
-}
+const stRdonly = 0x1 // ST_RDONLY from statvfs.h
 
 func validDigest(value string) bool {
 	if len(value) != len("sha256:")+64 || !strings.HasPrefix(value, "sha256:") || value != strings.ToLower(value) {
