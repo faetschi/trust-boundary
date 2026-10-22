@@ -115,6 +115,25 @@ func TestAcceptExecutorNeverPassesWhenTheAcceptCallFails(t *testing.T) {
 	}
 }
 
+// A passing document followed by anything but whitespace is not one document and
+// carries no verdict; trailing whitespace alone does.
+func TestAcceptExecutorRejectsTrailingJunkAfterTheAcceptDocument(t *testing.T) {
+	pass := acceptJSON(t, "cmp-1", true)
+	for name, tc := range map[string]struct {
+		raw  []byte
+		want TaskResult
+	}{
+		"bracket junk": {append(append([]byte(nil), pass...), []byte("] garbage")...), TaskLost},
+		"whitespace":   {append(append([]byte(" \n\t"), pass...), []byte(" \r\n\t")...), TaskPass},
+	} {
+		tr := &scriptedTransport{reply: func([]string) ([]byte, []byte, int, error) { return tc.raw, nil, 0, nil }}
+		got, err := AcceptExecutor{Inner: &fixedInner{}, Transport: tr}.Execute(context.Background(), compliantStep(CfgC))
+		if err != nil || got.Task != tc.want {
+			t.Errorf("%s: task %q err %v, want %q", name, got.Task, err, tc.want)
+		}
+	}
+}
+
 func TestAcceptExecutorLeavesOtherStepsAndFailedRunsAlone(t *testing.T) {
 	tr := &scriptedTransport{reply: func([]string) ([]byte, []byte, int, error) { return acceptJSON(t, "cmp-1", true), nil, 0, nil }}
 	for name, s := range map[string]Step{
