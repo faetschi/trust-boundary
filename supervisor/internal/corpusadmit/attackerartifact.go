@@ -82,8 +82,10 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS) error {
 				return fmt.Errorf("case %q: pivot %q is not a step of the pinned attacker library", c.CaseID, id)
 			}
 		}
-		if c.Trial.MaxHostCalls < issuable+1 {
-			return fmt.Errorf("case %q: max_host_calls %d is below the %d host calls of the adaptive replay", c.CaseID, c.Trial.MaxHostCalls, issuable+1)
+		// Each pivot is a provider turn and its governed effect, and the replay appends one final text
+		// turn: issuable pivots need 2*issuable+1 host calls.
+		if c.Trial.MaxHostCalls < 2*issuable+1 {
+			return fmt.Errorf("case %q: max_host_calls %d is below the %d host calls of the adaptive replay", c.CaseID, c.Trial.MaxHostCalls, 2*issuable+1)
 		}
 		if c.Trial.DurationSeconds < wallSeconds {
 			return fmt.Errorf("case %q: duration_seconds %d is below the %d s wall cap of the pinned attacker", c.CaseID, c.Trial.DurationSeconds, wallSeconds)
