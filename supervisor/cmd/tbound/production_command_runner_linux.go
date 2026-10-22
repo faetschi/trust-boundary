@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/sessionrepo"
@@ -113,6 +114,12 @@ func (r *productionCommandRunner) Run(ctx context.Context, view *sessionrepo.Com
 	r.mu.Unlock()
 	result, settlement, err := lease.runner.Run(ctx, view, spec)
 	if err != nil {
+		if errors.Is(err, protocol.ErrCommandNotStarted) {
+			// The cell is gone and its command never ran: the one-use lease is spent with no writer left.
+			r.mu.Lock()
+			delete(r.leases, view.ID())
+			r.mu.Unlock()
+		}
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 	}
 	r.mu.Lock()
