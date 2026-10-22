@@ -30,7 +30,7 @@ tbound-profile template-init --out d09-cell.json
 # Measure and offline-sign the exact managed writer root/service/mount policy.
 # The registration signature is policy only; the CLI separately verifies that
 # no run/command cell is active before it permits publication.
-tbound-profile managed-root-measure --root /var/lib/tbound/live \
+tbound-profile managed-root-measure --root /var/lib/tbound/live/root \
   --service-name tbound-writer --service-group tbound-writer \
   --service-unit /etc/systemd/system/tbound-writer.service \
   --mount-unit /etc/systemd/system/var-lib-tbound-live.mount \

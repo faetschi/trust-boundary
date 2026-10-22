@@ -229,13 +229,15 @@ Rollback: `sudo rm /etc/tbound/pi-host-profile.pub; sudo rm -rf /var/tmp/tbound-
 
 ### P9 [PRIVILEGED WRITE, needs owner approval] make the live root enumerable by uid 995
 
-uid 995 cannot open `lost+found` (root 0700), so every 995 enumeration fails (`xattr_profile_linux.go`). The directory is also part of the live root that the no-change release rescan and the publication baseline scan walk, and those require the canonical form (directories `0755`, files `0644`/`0755`, owned by the service), so it is chowned and chmodded here.
+uid 995 cannot open `lost+found` (root 0700), so every 995 enumeration fails (`xattr_profile_linux.go`). The directory is also part of the live root that the no-change release rescan and the publication baseline scan walk, and those require the canonical form (directories `0755`, files `0644`/`0755`, owned by the service), so it is chowned and chmodded here. Since F4 the live root is `/var/lib/tbound/live/root`, and `tbound-op live_dir` creates its fence directory `lost+found` (995:986 0755) with the root; this step only re-checks it (and repairs a root that predates F4).
+
+After a publication the image root (the mount point `/var/lib/tbound/live`, not the live root) also holds publication's lock file `.tbound-publication-live-<dev>-<ino>.lock`, the live root's device and inode in hex. That file is expected image state and stays after the run. `tbound-op diag live-listing` accepts only `lost+found`, `root` and names matching that lock pattern in the image root; anything else, above all a `.tbound-publication-<txid>` stage directory left by a crashed transaction, is reported as `owner must look`.
 
 ```
-GSSH 'sudo -n chown 995:986 /var/lib/tbound/live/lost+found && sudo -n chmod 0755 /var/lib/tbound/live/lost+found && sudo -n stat -c "%U:%G %a" /var/lib/tbound/live/lost+found'      # tbound-pi:tbound-pi 755
+GSSH 'sudo -n chown 995:986 /var/lib/tbound/live/root/lost+found && sudo -n chmod 0755 /var/lib/tbound/live/root/lost+found && sudo -n stat -c "%U:%G %a" /var/lib/tbound/live/root/lost+found'      # tbound-pi:tbound-pi 755
 ```
 
-Rollback: `sudo chown root:root /var/lib/tbound/live/lost+found; sudo chmod 0700 /var/lib/tbound/live/lost+found`.
+Rollback: `sudo chown root:root /var/lib/tbound/live/root/lost+found; sudo chmod 0700 /var/lib/tbound/live/root/lost+found`.
 
 ### P10 [PRIVILEGED WRITE, needs owner approval] executables and cell assets on read-only mounts
 
@@ -408,7 +410,7 @@ Both calibrations are made in place by the root writer against the live trees (R
 
 ```
 GSSH 'sudo -n python3 -I - /var/lib/tbound/runtime' < xattr-census-r9.py > $H/census-runtime-base.jsonl
-GSSH 'sudo -n python3 -I - /var/lib/tbound/live'    < xattr-census-r9.py > $H/census-live-base.jsonl
+GSSH 'sudo -n python3 -I - /var/lib/tbound/live/root'    < xattr-census-r9.py > $H/census-live-base.jsonl
 GSSH 'SVC tbound-profile runtime-bundle-digest --root /var/lib/tbound/runtime'                  # BUNDLE_DIGEST
 GSSH 'SVC tbound-profile xattr-measure --source /var/lib/tbound/runtime' | tee $H/xattr-measure-runtime.json          # read_only true, root_owned true; R5-1 derives the template's mount-options digest from this line
 ```
@@ -442,16 +444,16 @@ Repeat the R1-1 checks; `xattr-calibration-measure` must refuse again. Rollback:
 ### R1-5 [PRIVILEGED WRITE, needs owner approval] read-write calibration on the live root (after P9)
 
 ```
-GSSH 'sudo -n python3 -I - /var/lib/tbound/live' < xattr-census-r9.py > $H/census-live-base2.jsonl
-GSSH "sudo -n sh -c 'set -e; D=/var/lib/tbound/live/tbound-xattr-probe-20261017; install -d -o 995 -g 986 -m 0700 \$D; install -o 995 -g 986 -m 0600 /dev/null \$D/plain.txt; python3 -I -c \"import os;os.setxattr(\\\"\$D/plain.txt\\\",\\\"user.tbound.calibration-probe\\\",b\\\"x\\\")\"'"
-GSSH 'sudo -n python3 -I - /var/lib/tbound/live' < xattr-census-r9.py > $H/census-live-probe.jsonl
+GSSH 'sudo -n python3 -I - /var/lib/tbound/live/root' < xattr-census-r9.py > $H/census-live-base2.jsonl
+GSSH "sudo -n sh -c 'set -e; D=/var/lib/tbound/live/root/tbound-xattr-probe-20261017; install -d -o 995 -g 986 -m 0700 \$D; install -o 995 -g 986 -m 0600 /dev/null \$D/plain.txt; python3 -I -c \"import os;os.setxattr(\\\"\$D/plain.txt\\\",\\\"user.tbound.calibration-probe\\\",b\\\"x\\\")\"'"
+GSSH 'sudo -n python3 -I - /var/lib/tbound/live/root' < xattr-census-r9.py > $H/census-live-probe.jsonl
 PCD_RW=sha256:$(sha256sum $H/census-live-probe.jsonl | cut -d' ' -f1)
-GSSH "SVC tbound-profile xattr-calibration-measure --source /var/lib/tbound/live --access-profile managed-live-root-rw-under-recovered-lease/v1 --probe-corpus-digest $PCD_RW --out $SCR/cal-rw.unsigned.json"
-GSSH "sudo -n rm -rf /var/lib/tbound/live/tbound-xattr-probe-20261017"
-GSSH 'sudo -n python3 -I - /var/lib/tbound/live' < xattr-census-r9.py | sha256sum        # [READ-ONLY] == census-live-base2.jsonl
+GSSH "SVC tbound-profile xattr-calibration-measure --source /var/lib/tbound/live/root --access-profile managed-live-root-rw-under-recovered-lease/v1 --probe-corpus-digest $PCD_RW --out $SCR/cal-rw.unsigned.json"
+GSSH "sudo -n rm -rf /var/lib/tbound/live/root/tbound-xattr-probe-20261017"
+GSSH 'sudo -n python3 -I - /var/lib/tbound/live/root' < xattr-census-r9.py | sha256sum        # [READ-ONLY] == census-live-base2.jsonl
 ```
 
-Rollback: `sudo rm -rf /var/lib/tbound/live/tbound-xattr-probe-20261017`.
+Rollback: `sudo rm -rf /var/lib/tbound/live/root/tbound-xattr-probe-20261017`.
 
 ### R1-6 [READ-ONLY] fetch the unsigned calibrations
 
@@ -845,7 +847,7 @@ Smoke task, engineering route, config v3 `fresh`. Abort on the first unexpected 
 
 ```
 printf 'TBound smoke fixture. This file is harmless: it only checks that the read tool works.\n' | install -o 995 -g 986 -m 0644 /dev/stdin /var/lib/tbound/live/root/SMOKE-README.txt
-python3 -I /opt/tbound/helpers/xattr-census-r9.py /var/lib/tbound/live/root | tail -1        # [READ-ONLY] (P13.5 copy of the helper) dir 2, file 1, no xattr names (unproven that the census accepts it)
+python3 -I /opt/tbound/helpers/xattr-census-r9.py /var/lib/tbound/live/root | tail -1        # [READ-ONLY] (P13.5 copy of the helper) dir 3, file 1, no xattr names (unproven that the census accepts it)
 ```
 
 
@@ -1051,7 +1053,7 @@ G1 run (`EVQ-PROVIDER-REAL-EXCHANGE`; draft, owner approval required for every s
 - G1-0 [OWNER] is done before F0 (section F0), not here: the approval of the case is the status commit in `corpus/g1/`, and `corpus` is frozen with `F`. Here, check [READ-ONLY] that the frozen case is the approved one: `grep -c '"status": "approved by owner ' $W/src/corpus/g1/g1.json` prints 1. If it prints 0 the case was not approved before the freeze; do not edit `corpus/g1/` now (that voids `F`): skip the G1 run, or start again from F0 with the approval committed.
 - G1-1 [READ-ONLY] RG-1 with `NAME=g1`: stage the config as R2-0 does for the smoke config (the two podman config digests) from `$W/src/infra/guest/serve-pi-service.g1.json`; the service is inactive.
 - G1-2 [PRIVILEGED WRITE and OWNER SIGN] RG-2 to RG-7 with `NAME=g1`: install the config as `/etc/tbound/serve-pi-service.json` (the smoke config is kept in `/root/ga/prev/g1/`), measure the registration, S3g, install it, build the template with the new registration digest (BASE_TD must be R5-1's), a fresh profile `pi-host-profile-g1-<F12>`, S4g, install both, verify, and keep the G1 profile, signature, key, template and config in `/root/ga/g1/`.
-- G1-3 [PRIVILEGED WRITE, `ROOTCON`] seed the fixture with the service inactive, so that the live root is the fixture and nothing else: `rm -f /var/lib/tbound/live/root/SMOKE-README.txt; install -d -o 995 -g 986 -m 0755 /var/lib/tbound/live/root/src /var/lib/tbound/live/root/out; printf 'version=2.4.0\nstatus=draft\n' | install -o 995 -g 986 -m 0644 /dev/stdin /var/lib/tbound/live/root/src/release.txt`. [READ-ONLY] `find /var/lib/tbound/live/root -mindepth 1 -printf '%y %m %U:%G %P\n' | sort` is `d 755 995:986 out`, `d 755 995:986 src`, `f 644 995:986 src/release.txt`, and the xattr census (`python3 -I /opt/tbound/helpers/xattr-census-r9.py /var/lib/tbound/live/root`, P13.5) finds no xattr name.
+- G1-3 [PRIVILEGED WRITE, `ROOTCON`] seed the fixture with the service inactive, so that the live root is the fixture and nothing else: `rm -f /var/lib/tbound/live/root/SMOKE-README.txt; install -d -o 995 -g 986 -m 0755 /var/lib/tbound/live/root/src /var/lib/tbound/live/root/out; printf 'version=2.4.0\nstatus=draft\n' | install -o 995 -g 986 -m 0644 /dev/stdin /var/lib/tbound/live/root/src/release.txt`. [READ-ONLY] `find /var/lib/tbound/live/root -mindepth 1 -printf '%y %m %U:%G %P\n' | sort` is `d 755 995:986 lost+found`, `d 755 995:986 out`, `d 755 995:986 src`, `f 644 995:986 src/release.txt`, and the xattr census (`python3 -I /opt/tbound/helpers/xattr-census-r9.py /var/lib/tbound/live/root`, P13.5) finds no xattr name.
 - G1-4 [PRIVILEGED WRITE] RG-8 (start the service) and L2, then the run. The root-console client takes `--bash-output`; the forced-command client of the pilot takes only `--bash-no-outputs`: `PROMPT=$(/usr/local/bin/node -p 'JSON.parse(require("fs").readFileSync("/etc/tbound/serve-pi-service.json","utf8")).workflow_prompt'); RID=g1-req-$(date -u +%Y%m%dT%H%M%SZ); CLIENT /usr/local/bin/tbound serve --pi --task-id g1-read-edit-bash-read --task-request-id "$RID" --task "$PROMPT" --bash-output out/release.sha256 > /root/ga/out/response.txt; echo "exit=$?"` (`CLIENT` is the `setpriv` prefix of Part L; `/root/ga/out` exists).
 - G1-5 [READ-ONLY] L4 observation, then the acceptance of `corpus/g1`: the live `src/release.txt` and `out/release.sha256` hash to the `final_state` digests of `g1.json` (`sha256sum` of each file, compared with the hex part), `out/release.sha256` is the `sha256sum` line of the edited file, and nothing else changed. Then `TBPG provider-exchange` as in the table (with the G1 copies in `/root/ga/g1/`). The tool writes nothing if the receipt is not a completed, successful run with the tool sequence `read, edit, bash, read` and generations `g0` to `g2`, or if the G1 profile and template are not bound to the pins. A run that ended otherwise has consumed its admission id, and the dispatcher refuses a second G1 by design (one-use client marker, g1 config pinned byte for byte by TPL_G1 with no admission-id exception, existing /root/ga/reg-g1). A repeat is therefore NOT another ordinary RG cycle: it is an owner recovery: (1) a new freeze with a new G1 admission id in infra/guest/serve-pi-service.g1.json (corpus/g1 unchanged), (2) the owner moves /root/ga/reg-g1, /root/ga/state/g1 and /root/ga/state/g1.once aside with the password sudo channel, (3) the new pins.env (TPL_G1) installed, then the full RG cycle (two more signatures). Open: publication of an edit and a Bash output to the managed live root has not been exercised by the read-only smoke; the receipt `disposition` must be `PUBLISHED` for `success`.
 - G1-6 stop the service (`systemctl stop tbound-pi.service tbound-pi.socket`); the route-probe run, the direct-runtime probe run and Part D follow, each with its own RG cycle (keep the `.prev` copies).

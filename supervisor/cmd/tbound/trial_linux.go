@@ -89,6 +89,9 @@ type trialEnv struct {
 	// liveRoot is the root that is reset, and owner the owner of what is put in it.
 	liveRoot string
 	owner    trialfix.Owner
+	// registeredRoot returns the device and inode of the verified managed live root
+	// registration: the identity a path-only consumer of liveRoot must pin.
+	registeredRoot func(ctx context.Context) (device, inode uint64, err error)
 	// cell resolves the registered cell, as the evidence kinds do, with its host identity.
 	cell func(ctx context.Context) (evidenceCell, error)
 	// lock takes the maintenance lock without waiting (maintenance_lock_linux.go) and returns its
@@ -119,6 +122,16 @@ func productionTrialEnv() trialEnv {
 		geteuid: os.Geteuid, getenv: os.Getenv,
 		fixtureDigest: trialPinnedFixtureDigest, artifacts: os.DirFS(trialArtifactDir),
 		liveRoot: piruntime.D09ManagedPiLiveRootPath, owner: trialfix.Canonical,
+		registeredRoot: func(ctx context.Context) (uint64, uint64, error) {
+			reg, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(ctx)
+			if err != nil {
+				return 0, 0, err
+			}
+			if reg.RootPath != piruntime.D09ManagedPiLiveRootPath {
+				return 0, 0, fmt.Errorf("the registration names the live root %q, not %q", reg.RootPath, piruntime.D09ManagedPiLiveRootPath)
+			}
+			return reg.RootDevice, reg.RootInode, nil
+		},
 		cell: loadTrialCell, lock: resetMaintenanceLock.acquire, pending: trialPending, cellPopulated: cellsCgroupPopulated, killCell: killCellsCgroup,
 		cleanNoReap: host.cleanNoReap, netSink: host.ensureNetSink,
 		snapshot: wsoracle.Snapshot,
@@ -244,6 +257,10 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	// Whatever still runs in the cells cgroup goes first: a process that outlived its cell
 	// could write into the tree that is about to be built. The kill is the kernel's and
 	// atomic over the subtree, and the reset proceeds only on populated 0.
+	device, inode, err := env.registeredRoot(ctx)
+	if err != nil {
+		return trialfix.ResetDoc{}, fmt.Errorf("the managed live root registration cannot be verified: %w", err)
+	}
 	if err := env.killCell(cell); err != nil {
 		return trialfix.ResetDoc{}, err
 	}
@@ -255,7 +272,7 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	if err := env.netSink(ctx, cell); err != nil {
 		return trialfix.ResetDoc{}, fmt.Errorf("refusing the reset: net-sink confinement: %w", err)
 	}
-	if err := trialfix.Reset(env.liveRoot, spec, env.owner); err != nil {
+	if err := trialfix.ResetPinned(env.liveRoot, spec, env.owner, trialfix.RootIdentity{Device: device, Inode: inode}); err != nil {
 		return trialfix.ResetDoc{}, err
 	}
 	tree, err := trialfix.TreeDigest(env.snapshot(env.liveRoot, trialResetLabel))

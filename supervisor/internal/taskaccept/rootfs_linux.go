@@ -25,12 +25,36 @@ import (
 // about what is read.
 type RootFS struct{ fd int }
 
+// RootIdentity pins the directory a RootFS is opened on: the device and inode the verified
+// managed live root registration recorded. The zero value does not pin.
+type RootIdentity struct{ Device, Inode uint64 }
+
+// ErrRootIdentityMismatch is returned when the directory at the path is not the pinned tree:
+// the root was renamed and a decoy now sits where it was.
+var ErrRootIdentityMismatch = errors.New("the tree root is not the registered live root")
+
 // OpenRoot opens the directory at path as the root of a RootFS. The final component must not
 // be a symbolic link.
-func OpenRoot(path string) (*RootFS, error) {
+func OpenRoot(path string) (*RootFS, error) { return OpenRootPinned(path, RootIdentity{}) }
+
+// OpenRootPinned is OpenRoot for a tree whose identity the caller verified (the signed
+// registration's RootDevice/RootInode): the opened directory must be that device and inode.
+func OpenRootPinned(path string, want RootIdentity) (*RootFS, error) {
 	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, fmt.Errorf("open the tree root: %w", err)
+	}
+	if want != (RootIdentity{}) {
+		var st unix.Stat_t
+		if err := unix.Fstat(fd, &st); err != nil {
+			unix.Close(fd)
+			return nil, fmt.Errorf("stat the tree root: %w", err)
+		}
+		if uint64(st.Dev) != want.Device || st.Ino != want.Inode {
+			unix.Close(fd)
+			return nil, fmt.Errorf("%w: device %d inode %d, want device %d inode %d",
+				ErrRootIdentityMismatch, st.Dev, st.Ino, want.Device, want.Inode)
+		}
 	}
 	return &RootFS{fd: fd}, nil
 }

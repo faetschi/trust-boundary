@@ -443,6 +443,10 @@ v_reg_measure() {
   local n=${ARGS[0]:-} cs
   need_argc 1 1; need_name "$n"
   need_inactive; check_tools; mkwork; prep_ga
+  # The G1 cycle measures before seed-live runs: the live root (and the fence directory in it, which
+  # the measurement's baseline scan walks) must exist before managed-root-measure opens it. install -d
+  # keeps an existing inode, so a seeded root is measured, not replaced.
+  live_dir
   cs=$(sha "$ETC/serve-pi-service.json")
   [[ $(st_rank "$n") -ge 1 && $(st_get "$n" cfg) == "$cs" ]] || die "$n: installed config is not the one recorded for $n (cfg-install first)"
   [[ ! -e $GA/reg-$n ]] || die "$GA/reg-$n exists already"
@@ -598,13 +602,28 @@ v_svc() {
 }
 
 live_listing() { find "$LIVE" -mindepth 1 -printf '%y %m %U:%G %P\n' | sort; }
+# The image root (the mount root) is publication's same-mount staging parent: it may hold the fence
+# directory of the file system, the live root, and the lock files of the exact identity-bearing name
+# publication uses. Anything else -- above all a .tbound-publication-<txid> stage directory left by a
+# crashed transaction -- is a finding for the owner, not noise.
+live_image_root() {
+  local n bad=0
+  while IFS= read -r n; do
+    case $n in
+      lost+found|root) continue;;
+    esac
+    if [[ $n =~ ^\.tbound-publication-live-[0-9a-f]{16}-[0-9a-f]{16}\.lock$ ]]; then continue; fi
+    printf 'image-root: owner must look: %s\n' "$n"; bad=1
+  done < <(find "$LIVE_MOUNT" -mindepth 1 -maxdepth 1 -printf '%f\n' 2>/dev/null | sort)
+  return "$bad"
+}
 SMOKE_TEXT='TBound smoke fixture. This file is harmless: it only checks that the read tool works.'
 live_is_smoke() {
-  [[ $(live_listing) == 'f 644 995:986 SMOKE-README.txt' ]] &&
+  [[ $(live_listing) == $'d 755 995:986 lost+found\nf 644 995:986 SMOKE-README.txt' ]] &&
     [[ $(cat "$LIVE/SMOKE-README.txt"; echo x) == "$SMOKE_TEXT"$'\nx' ]]
 }
 live_is_g1() {
-  [[ $(live_listing) == $'d 755 995:986 out\nd 755 995:986 src\nf 644 995:986 src/release.txt' ]]
+  [[ $(live_listing) == $'d 755 995:986 lost+found\nd 755 995:986 out\nd 755 995:986 src\nf 644 995:986 src/release.txt' ]]
 }
 live_dir() {   # the live root is a real 995:986 0700 directory directly under its mount root
   [[ -L $LIVE ]] && die "$LIVE is a symlink (owner must look)"
@@ -612,9 +631,15 @@ live_dir() {   # the live root is a real 995:986 0700 directory directly under i
   install -d -o 995 -g 986 -m 0700 "$LIVE"
   [[ $(stat -c '%U:%G %a %d' "$LIVE") == "tbound-pi:tbound-pi 700 $(stat -c %d "$LIVE_MOUNT")" ]] ||
     die "$LIVE is not a tbound-pi 0700 directory on the live mount (owner must look)"
+  # The fence directory of effectoracle.FenceRoot: publication opens <live root>/lost+found to bracket
+  # its writes for the inotify observer (FenceBursts), and trialfix.Wipe keeps it across a reset. It is
+  # part of the scanned live root, so it carries the canonical form the baseline scan requires.
+  install -d -o 995 -g 986 -m 0755 "$LIVE/lost+found"
+  [[ $(stat -c '%U:%G %a' "$LIVE/lost+found") == "tbound-pi:tbound-pi 755" ]] ||
+    die "$LIVE/lost+found is not a tbound-pi 0755 directory (owner must look)"
 }
 live_report() {   # NAME
-  { echo "== listing"; live_listing; echo "== census"; python3 -I /opt/tbound/helpers/xattr-census-r9.py "$LIVE" | tail -1; } >"$WORK/live.txt" 2>&1 || true
+  { echo "== image root"; live_image_root || true; echo "== listing"; live_listing; echo "== census"; python3 -I /opt/tbound/helpers/xattr-census-r9.py "$LIVE" | tail -1; } >"$WORK/live.txt" 2>&1 || true
   put_out "$1" "$WORK/live.txt" live-listing.txt
   cat "$WORK/live.txt"
 }
@@ -915,7 +940,7 @@ v_diag() {
         "${SVC_PRIV[@]}" "${PODMAN[@]}" image exists localhost/tbound/pi-cell:latest 2>/dev/null && echo "exists=0" || echo "exists=1"
         "${SVC_PRIV[@]}" "${PODMAN[@]}" image inspect localhost/tbound/pi-cell:latest --format '{{.Id}} {{.Digest}} {{range .RepoDigests}}{{.}} {{end}}' 2>/dev/null || true
         echo "pins: CFG=${PIN[CFG]} IMGDIGEST=${PIN[IMGDIGEST]}";;
-      live-listing) live_listing;;
+      live-listing) live_image_root || true; live_listing;;
       netsink-journal-size) stat -c '%s bytes %U:%G %a %n' /var/lib/tbound-netsink/journal.jsonl 2>&1;;
       *) usage "diag l2|mounts|census-live|podman-ps|podman-ps-noreap|nft-sink|probe-capabilities|image-probe|live-listing|netsink-journal-size";;
     esac

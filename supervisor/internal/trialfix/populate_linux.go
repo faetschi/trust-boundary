@@ -13,16 +13,42 @@ import (
 
 const openDirFlags = unix.O_RDONLY | unix.O_DIRECTORY | unix.O_NOFOLLOW | unix.O_CLOEXEC
 
+// RootIdentity pins the directory Reset replaces: the device and inode the verified managed
+// live root registration recorded. The zero value does not pin.
+type RootIdentity struct{ Device, Inode uint64 }
+
 // Reset replaces the content of root with the spec's tree, in place: Wipe, then Populate.
 // The root directory itself (inode, mode, owner) and a top-level lost+found are kept.
 func Reset(root string, spec Spec, owner Owner) error {
-	if _, err := spec.Files(); err != nil {
+	return ResetPinned(root, spec, owner, RootIdentity{})
+}
+
+// ResetPinned is Reset for a root whose identity the caller verified (the signed registration's
+// RootDevice/RootInode). The directory at root must still be that device and inode before
+// anything is wiped: a root that was renamed and replaced by a decoy is refused. The descriptor
+// is held across Wipe and Populate, so the check and the wipe see the same directory.
+func ResetPinned(root string, spec Spec, owner Owner, want RootIdentity) error {
+	files, err := spec.Files()
+	if err != nil {
 		return err
 	}
-	if err := Wipe(root); err != nil {
+	rfd, err := unix.Open(root, openDirFlags, 0)
+	if err != nil {
+		return fmt.Errorf("open the fixture root: %w", err)
+	}
+	defer unix.Close(rfd)
+	var st unix.Stat_t
+	if err := unix.Fstat(rfd, &st); err != nil {
+		return fmt.Errorf("stat the fixture root: %w", err)
+	}
+	if want != (RootIdentity{}) && (uint64(st.Dev) != want.Device || st.Ino != want.Inode) {
+		return fmt.Errorf("the fixture root is not the registered live root: device %d inode %d, want device %d inode %d",
+			st.Dev, st.Ino, want.Device, want.Inode)
+	}
+	if err := wipeDir(rfd, uint64(st.Dev), true); err != nil {
 		return err
 	}
-	return Populate(root, spec, owner)
+	return populateFD(rfd, files, owner)
 }
 
 // Wipe removes everything under root except a top-level lost+found. Every step is relative
@@ -114,6 +140,11 @@ func Populate(root string, spec Spec, owner Owner) error {
 		return fmt.Errorf("open the fixture root: %w", err)
 	}
 	defer unix.Close(rfd)
+	return populateFD(rfd, files, owner)
+}
+
+// populateFD builds the spec's tree under the held root descriptor.
+func populateFD(rfd int, files []File, owner Owner) error {
 	for _, f := range files {
 		if err := populateOne(rfd, f, owner); err != nil {
 			return fmt.Errorf("populate %q: %w", f.Path, err)

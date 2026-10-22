@@ -13,6 +13,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"tbound/supervisor/internal/effectoracle"
 )
 
 const liveRootMountChildEnv = "TBOUND_PUBLICATION_MOUNT_CHILD"
@@ -51,14 +53,17 @@ func TestPublicationLiveRootMountLayout(t *testing.T) {
 	})
 
 	t.Run("fixed child of the mount root publishes", func(t *testing.T) {
-		f := newFixture(t, base, base, middle, final, nil, nil, nil)
+		// The seeded live root and every generation carry the fence directory the operator creates
+		// (tbound-op live_dir), so the delta does not plan it away.
+		f := newFixture(t, base, base, middle, final, []string{effectoracle.FenceDir},
+			[]string{effectoracle.FenceDir}, []string{effectoracle.FenceDir})
 		mountRoot := filepath.Join(f.root, "image")
 		if err := os.Mkdir(mountRoot, 0o700); err != nil {
 			t.Fatal(err)
 		}
 		mountPrivateTmpfs(t, mountRoot)
 		livePath := filepath.Join(mountRoot, "root")
-		makeTree(t, livePath, base, nil)
+		makeTree(t, livePath, base, []string{effectoracle.FenceDir})
 		reopenLiveRoot(t, f, livePath)
 		repo := f.acquire(1)
 		result, err := repo.Publish(context.Background(), f.request, allow, nil)
@@ -70,6 +75,12 @@ func TestPublicationLiveRootMountLayout(t *testing.T) {
 		}
 		if got, err := os.ReadFile(filepath.Join(livePath, "file.txt")); err != nil || string(got) != "after" {
 			t.Fatalf("published live file=%q err=%v", got, err)
+		}
+		// The seeded live root holds the fence directory (effectoracle.FenceDir, the one the
+		// operator's live_dir creates beside the fixture content), so both fences are made and
+		// the EFF-TRANSIENT oracle can place the transaction's events between them.
+		if result.Evidence == nil || result.Evidence.FenceDir != effectoracle.FenceDir || result.Evidence.FenceBursts != 2 {
+			t.Fatalf("publication into the fixed child of the mount root recorded evidence %+v, want fence directory %q and 2 bursts", result.Evidence, effectoracle.FenceDir)
 		}
 	})
 }
