@@ -698,6 +698,15 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err != nil {
 		return pendingResult, r.abortPrepared(artifactParent, artifact, prep, err, inject)
 	}
+	// The opening fence is what places the apply in the observer's queue. Without it the apply
+	// cannot be placed, so a write publication made could not be told from one it did not: refuse
+	// to apply rather than apply unexplained. Fence before the token is consumed, so the refusal is
+	// the ordinary abort-before-token, which keeps the journal's ordering valid for later publications.
+	evidence.FenceDir = effectoracle.FenceDir
+	if err := effectoracle.FenceRoot(request.LiveRoot); err != nil {
+		return pendingResult, r.abortPrepared(artifactParent, artifact, prep, fmt.Errorf("refusing to apply without the fence directory: %w", err), inject)
+	}
+	evidence.FenceBursts = 1
 	token := tokenRecord{TransactionID: txID, TokenID: tokenID, DecisionID: authorization.DecisionID, BindingDigest: binding.BindingDigest, Binding: binding}
 	if err := r.appendRecord("publication_token_consumed", txID, token); err != nil {
 		return pendingResult, fmt.Errorf("persist single-use commit token: %w", err)
@@ -705,16 +714,6 @@ func (r *Repository) Publish(ctx context.Context, request Request, authorize Aut
 	if err := injectFault(inject, "after-token-checkpoint", -1); err != nil {
 		return pendingResult, err
 	}
-	// The opening fence is what places the apply in the observer's queue. Without it the apply
-	// cannot be placed, so a write publication made could not be told from one it did not: refuse
-	// to apply rather than apply unexplained. Nothing has been applied yet, and the transaction is
-	// settled as failed after the consumed token.
-	evidence.FenceDir = effectoracle.FenceDir
-	if err := effectoracle.FenceRoot(request.LiveRoot); err != nil {
-		return pendingResult, r.abortPreparedWith(artifactParent, artifact, prep, "aborted-before-apply",
-			fmt.Errorf("refusing to apply without the fence directory: %w", err), inject)
-	}
-	evidence.FenceBursts = 1
 	applyErr := r.apply(ctx, request.LiveRoot, artifact, prep, inject)
 	if applyErr == nil && effectoracle.FenceRoot(request.LiveRoot) == nil {
 		// The apply is durable; a missing closing fence leaves the window unplaceable, which the
@@ -1241,18 +1240,12 @@ func classifyObservedObject(root, artifact *os.File, plan objectPlan, latest, ap
 }
 
 func (r *Repository) abortPrepared(parent, artifact *os.File, prep prepareRecord, cause error, inject FaultInjector) error {
-	return r.abortPreparedWith(parent, artifact, prep, "aborted-before-token-consumption", cause, inject)
-}
-
-// abortPreparedWith settles a prepared transaction as failed. durability names what the objects
-// are known to be: nothing was applied.
-func (r *Repository) abortPreparedWith(parent, artifact *os.File, prep prepareRecord, durability string, cause error, inject FaultInjector) error {
 	if err := removePreparedArtifacts(parent, artifact, prep, inject); err != nil {
 		return errors.Join(cause, err)
 	}
 	objects := make([]ObjectResult, len(prep.Plans))
 	for i, plan := range prep.Plans {
-		objects[i] = ObjectResult{Path: plan.Path, SourcePath: plan.SourcePath, Operation: plan.Operation, Status: ObjectFailed, Durability: durability}
+		objects[i] = ObjectResult{Path: plan.Path, SourcePath: plan.SourcePath, Operation: plan.Operation, Status: ObjectFailed, Durability: "aborted-before-token-consumption"}
 	}
 	terminal := terminalRecord{TransactionID: prep.TransactionID, Status: StatusFailed, Objects: objects, Reason: cause.Error()}
 	if err := r.appendRecord("publication_aborted", prep.TransactionID, terminal); err != nil {
