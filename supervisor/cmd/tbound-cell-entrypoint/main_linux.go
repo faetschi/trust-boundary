@@ -701,10 +701,12 @@ func mountinfoReadOnly(mountinfo, path string) bool {
 			continue
 		}
 		mount := filepath.Clean(unescapeMountPoint(fields[4]))
-		if clean != mount && !strings.HasPrefix(clean, mount+string(os.PathSeparator)) {
+		// The root mount covers every absolute path; mount+"/" would be "//" and match nothing.
+		if clean != mount && mount != "/" && !strings.HasPrefix(clean, mount+string(os.PathSeparator)) {
 			continue
 		}
-		if len(mount) > best {
+		// >=: of mounts stacked on one mount point, the later mountinfo entry is the one in effect.
+		if len(mount) >= best {
 			best = len(mount)
 			ro = strings.Contains(","+fields[5]+",", ",ro,")
 		}
