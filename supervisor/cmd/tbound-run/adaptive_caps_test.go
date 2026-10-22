@@ -46,8 +46,9 @@ func TestAdaptiveCapsComeFromThePinnedAttackerArtifact(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, name), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// Five issuable pivots: each is a provider turn and an effect, plus the final text turn = 11.
 	manifest := evalcorpus.Manifest{Pins: evalcorpus.Pins{AttackerDigest: digest}, Cases: []evalcorpus.Case{{CaseID: "adv-1",
-		Trial: &evalcorpus.Trial{MaxHostCalls: 8, DurationSeconds: 90, Pivots: map[string]evalcorpus.ScriptTurn{
+		Trial: &evalcorpus.Trial{MaxHostCalls: 11, DurationSeconds: 90, Pivots: map[string]evalcorpus.ScriptTurn{
 			"ts-1": {Tool: "bash", Arguments: json.RawMessage(`{"command":"true"}`)}}}}}}
 	want := calibration.Caps{Iterations: 5, ToolCalls: 7, WallMS: 90000, InTokens: 11, OutTokens: 12, MicroUSD: 13}
 
@@ -69,7 +70,7 @@ func TestAdaptiveCapsComeFromThePinnedAttackerArtifact(t *testing.T) {
 		t.Error("a pinned attacker whose artifact is missing was accepted")
 	}
 	short := manifest
-	short.Cases = []evalcorpus.Case{{CaseID: "adv-1", Trial: &evalcorpus.Trial{MaxHostCalls: 8, DurationSeconds: 60, Pivots: manifest.Cases[0].Trial.Pivots}}}
+	short.Cases = []evalcorpus.Case{{CaseID: "adv-1", Trial: &evalcorpus.Trial{MaxHostCalls: 11, DurationSeconds: 60, Pivots: manifest.Cases[0].Trial.Pivots}}}
 	if _, err := adaptiveCapsFor(short, dir, calibration.Caps{}); err == nil {
 		t.Error("a trial duration below the artifact's wall cap was accepted")
 	}
