@@ -5,6 +5,7 @@ package piruntime
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -1279,6 +1280,7 @@ func processMountNamespaceReferences(ctx context.Context, expectedInode uint64) 
 		return false, err
 	}
 	needle := fmt.Sprintf("mnt:[%d]", expectedInode)
+	var firstErr error
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
 			return false, err
@@ -1296,7 +1298,8 @@ func processMountNamespaceReferences(ctx context.Context, expectedInode uint64) 
 		} else if foreignProcessDenied(pid, statErr) {
 			continue
 		} else if !errors.Is(statErr, os.ErrNotExist) && !errors.Is(statErr, syscall.ESRCH) {
-			return false, fmt.Errorf("inspect %s: %w", namespace, statErr)
+			firstErr = cmp.Or(firstErr, fmt.Errorf("inspect %s: %w", namespace, statErr))
+			continue
 		}
 		fds := filepath.Join("/proc", pid, "fd")
 		fdEntries, readErr := os.ReadDir(fds)
@@ -1304,7 +1307,8 @@ func processMountNamespaceReferences(ctx context.Context, expectedInode uint64) 
 			if errors.Is(readErr, os.ErrNotExist) || errors.Is(readErr, syscall.ESRCH) || foreignProcessDenied(pid, readErr) {
 				continue
 			}
-			return false, fmt.Errorf("scan %s: %w", fds, readErr)
+			firstErr = cmp.Or(firstErr, fmt.Errorf("scan %s: %w", fds, readErr))
+			continue
 		}
 		for _, fd := range fdEntries {
 			target, linkErr := os.Readlink(filepath.Join(fds, fd.Name()))
@@ -1312,14 +1316,15 @@ func processMountNamespaceReferences(ctx context.Context, expectedInode uint64) 
 				if errors.Is(linkErr, os.ErrNotExist) || errors.Is(linkErr, syscall.ESRCH) {
 					continue
 				}
-				return false, fmt.Errorf("read %s fd target: %w", fds, linkErr)
+				firstErr = cmp.Or(firstErr, fmt.Errorf("read %s fd target: %w", fds, linkErr))
+				continue
 			}
 			if target == needle {
 				return true, nil
 			}
 		}
 	}
-	return false, nil
+	return false, firstErr // an inaccessible process of the service's own is UNKNOWN unless a reference was found
 }
 
 func isProcessID(value string) bool {
