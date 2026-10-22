@@ -97,8 +97,11 @@ type Journal struct {
 	poisoned error
 }
 
-// OpenJournal opens or creates the journal at path for the schedule s. A new
-// file gets a header. An existing file is replayed: it must belong to s
+// OpenJournal opens or creates the journal at path for the schedule s. The
+// returned handle holds an exclusive nonblocking OS lock on the file until
+// Close; a second open while it is live fails with ErrJournalLocked instead of
+// reading, repairing or appending behind the first writer. A new file gets a
+// header. An existing file is replayed under the lock: it must belong to s
 // (ErrPlanMismatch otherwise) and must be consistent (ErrJournalCorrupt). A
 // final line cut short by a crash is dropped and the file truncated to the last
 // complete record.
@@ -106,8 +109,27 @@ func OpenJournal(path string, s Schedule) (*Journal, error) {
 	if s.Digest == "" {
 		return nil, errors.New("runner: schedule has no digest")
 	}
-	data, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("runner: journal directory: %w", err)
+	}
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("runner: open journal: %w", err)
+	}
+	// The lock is taken before the file is read: replay, torn-tail repair and
+	// every append below are exclusive to this handle. Until the handle is
+	// returned, every error path closes it (which releases the lock).
+	keepOpen := false
+	defer func() {
+		if !keepOpen {
+			_ = f.Close()
+		}
+	}()
+	if err := lockJournal(f); err != nil {
+		return nil, fmt.Errorf("runner: open journal %s: %w", path, err)
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
 		return nil, fmt.Errorf("runner: read journal: %w", err)
 	}
 	j := &Journal{path: path, sched: s, state: map[stepKey]*keyState{}, rerun: map[string]stepKey{}}
@@ -133,43 +155,32 @@ func OpenJournal(path string, s Schedule) (*Journal, error) {
 		off, keep, needNL = next, next, !complete
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return nil, fmt.Errorf("runner: journal directory: %w", err)
-	}
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
-	if err != nil {
-		return nil, fmt.Errorf("runner: open journal: %w", err)
-	}
 	j.f = f
-	fail := func(err error) (*Journal, error) {
-		_ = f.Close()
-		return nil, fmt.Errorf("runner: repair journal: %w", err)
-	}
 	if keep != len(data) { // drop a torn record
 		if err := f.Truncate(int64(keep)); err != nil {
-			return fail(err)
+			return nil, fmt.Errorf("runner: repair journal: %w", err)
 		}
 	}
 	if _, err := f.Seek(0, io.SeekEnd); err != nil {
-		return fail(err)
+		return nil, fmt.Errorf("runner: repair journal: %w", err)
 	}
 	if needNL {
 		if _, err := f.Write([]byte{'\n'}); err != nil {
-			return fail(err)
+			return nil, fmt.Errorf("runner: repair journal: %w", err)
 		}
 	}
 	if keep != len(data) || needNL {
 		if err := f.Sync(); err != nil {
-			return fail(err)
+			return nil, fmt.Errorf("runner: repair journal: %w", err)
 		}
 	}
 	if len(j.entries) == 0 {
 		if err := j.append(Entry{Kind: EntryHeader, PlanDigest: s.Digest, PlannedUnits: s.Units(), RunBinding: s.RunBinding}); err != nil {
-			_ = f.Close()
 			return nil, err
 		}
 		syncDir(filepath.Dir(path))
 	}
+	keepOpen = true
 	return j, nil
 }
 
@@ -182,16 +193,22 @@ func syncDir(dir string) {
 	}
 }
 
-// Close closes the file. Every record is already durable.
+// Close releases the exclusive lock and closes the file. Every record is
+// already durable.
 func (j *Journal) Close() error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if j.f == nil {
 		return nil
 	}
-	err := j.f.Close()
+	f := j.f
 	j.f = nil
-	return err
+	unlockErr := unlockJournal(f)
+	closeErr := f.Close()
+	if unlockErr != nil {
+		return unlockErr
+	}
+	return closeErr
 }
 
 // Entries returns a copy of the records, in order.

@@ -32,6 +32,7 @@ const (
 	workflowVerticalProfile      = "profile-vertical-fresh"
 	workflowVerticalTaskID       = "task-vertical-fresh"
 	workflowVerticalPrompt       = "Read the pinned fixture file twice."
+	workflowVerticalBashOutput   = "out.txt"
 )
 
 type verticalFreshWorkflowPolicy struct {
@@ -410,8 +411,10 @@ func runWorkflowVertical(t *testing.T, launchProof bool, retries int) {
 	}
 }
 
+// newWorkflowVerticalFixture builds a read-only workflow; a production command runner also allows Bash
+// with the output scope workflowVerticalBashOutput.
 func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
-	turns []providerbridge.DevelopmentProviderTurn) *workflowVerticalFixture {
+	turns []providerbridge.DevelopmentProviderTurn, bash ...*productionCommandRunner) *workflowVerticalFixture {
 	t.Helper()
 	ctx := context.Background()
 	root := privateGovernedTestRoot(t)
@@ -444,15 +447,21 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 	}
 	t.Cleanup(func() { _ = commandJournal.Close() })
 
-	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion,
-		Rules: []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}})
+	rules := []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}
+	var runner governedCommandRunner = newDevelopmentFixtureCommandRunner()
+	var commandRunner sessionrepo.CommandRunner
+	var bashOutput []string
+	if len(bash) == 1 {
+		rules = append(rules, gate.Rule{Tool: "bash", Effect: gate.EffectAllow})
+		runner, commandRunner, bashOutput = bash[0], bash[0], []string{workflowVerticalBashOutput}
+	}
+	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: rules})
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := newDevelopmentFixtureCommandRunner()
 	authority, err := NewSessionOperationAuthority(storeJournal, providerJournal,
 		workflowVerticalID, workflowVerticalConversation, workflowVerticalProfile,
-		policy, governedReplayStorePolicy, governedReplayMetaPolicy, runner, nil)
+		policy, governedReplayStorePolicy, governedReplayMetaPolicy, runner, bashOutput)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,6 +513,7 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 		Store: store, Tip: baseline, CallIssuer: governedCallIssuer,
 		PolicyDigest: governedReplayStorePolicy, MetadataPolicyDigest: governedReplayMetaPolicy,
 		AfterDurableOperation: authority.SettleDurableOperation,
+		CommandRunner:         commandRunner, BashOutputPaths: bashOutput,
 	})
 	if err != nil {
 		t.Fatal(err)
