@@ -408,7 +408,7 @@ Both calibrations are made in place by the root writer against the live trees (R
 
 ```
 GSSH 'sudo -n python3 -I - /var/lib/tbound/runtime' < xattr-census-r9.py > $H/census-runtime-base.jsonl
-GSSH 'sudo -n python3 -I - /var/lib/tbound/live'    < xattr-census-r9.py > $H/census-live-base.jsonl
+GSSH 'sudo -n python3 -I - /var/lib/tbound/live/root'    < xattr-census-r9.py > $H/census-live-base.jsonl
 GSSH 'SVC tbound-profile runtime-bundle-digest --root /var/lib/tbound/runtime'                  # BUNDLE_DIGEST
 GSSH 'SVC tbound-profile xattr-measure --source /var/lib/tbound/runtime' | tee $H/xattr-measure-runtime.json          # read_only true, root_owned true; R5-1 derives the template's mount-options digest from this line
 ```
@@ -442,16 +442,16 @@ Repeat the R1-1 checks; `xattr-calibration-measure` must refuse again. Rollback:
 ### R1-5 [PRIVILEGED WRITE, needs owner approval] read-write calibration on the live root (after P9)
 
 ```
-GSSH 'sudo -n python3 -I - /var/lib/tbound/live' < xattr-census-r9.py > $H/census-live-base2.jsonl
-GSSH "sudo -n sh -c 'set -e; D=/var/lib/tbound/live/tbound-xattr-probe-20261017; install -d -o 995 -g 986 -m 0700 \$D; install -o 995 -g 986 -m 0600 /dev/null \$D/plain.txt; python3 -I -c \"import os;os.setxattr(\\\"\$D/plain.txt\\\",\\\"user.tbound.calibration-probe\\\",b\\\"x\\\")\"'"
-GSSH 'sudo -n python3 -I - /var/lib/tbound/live' < xattr-census-r9.py > $H/census-live-probe.jsonl
+GSSH 'sudo -n python3 -I - /var/lib/tbound/live/root' < xattr-census-r9.py > $H/census-live-base2.jsonl
+GSSH "sudo -n sh -c 'set -e; D=/var/lib/tbound/live/root/tbound-xattr-probe-20261017; install -d -o 995 -g 986 -m 0700 \$D; install -o 995 -g 986 -m 0600 /dev/null \$D/plain.txt; python3 -I -c \"import os;os.setxattr(\\\"\$D/plain.txt\\\",\\\"user.tbound.calibration-probe\\\",b\\\"x\\\")\"'"
+GSSH 'sudo -n python3 -I - /var/lib/tbound/live/root' < xattr-census-r9.py > $H/census-live-probe.jsonl
 PCD_RW=sha256:$(sha256sum $H/census-live-probe.jsonl | cut -d' ' -f1)
-GSSH "SVC tbound-profile xattr-calibration-measure --source /var/lib/tbound/live --access-profile managed-live-root-rw-under-recovered-lease/v1 --probe-corpus-digest $PCD_RW --out $SCR/cal-rw.unsigned.json"
-GSSH "sudo -n rm -rf /var/lib/tbound/live/tbound-xattr-probe-20261017"
-GSSH 'sudo -n python3 -I - /var/lib/tbound/live' < xattr-census-r9.py | sha256sum        # [READ-ONLY] == census-live-base2.jsonl
+GSSH "SVC tbound-profile xattr-calibration-measure --source /var/lib/tbound/live/root --access-profile managed-live-root-rw-under-recovered-lease/v1 --probe-corpus-digest $PCD_RW --out $SCR/cal-rw.unsigned.json"
+GSSH "sudo -n rm -rf /var/lib/tbound/live/root/tbound-xattr-probe-20261017"
+GSSH 'sudo -n python3 -I - /var/lib/tbound/live/root' < xattr-census-r9.py | sha256sum        # [READ-ONLY] == census-live-base2.jsonl
 ```
 
-Rollback: `sudo rm -rf /var/lib/tbound/live/tbound-xattr-probe-20261017`.
+Rollback: `sudo rm -rf /var/lib/tbound/live/root/tbound-xattr-probe-20261017`.
 
 ### R1-6 [READ-ONLY] fetch the unsigned calibrations
 
