@@ -20,7 +20,7 @@ func TestPublishRefusesToApplyWithoutTheFenceDirectory(t *testing.T) {
 	base := map[string]string{"a.txt": "a"}
 	middle := map[string]string{"a.txt": "b"}
 	final := map[string]string{"a.txt": "c"}
-	f := newFixture(t, base, base, middle, final, nil, nil, nil)
+	f := newFixtureWithoutFence(t, base, base, middle, final)
 	if _, err := os.Lstat(filepath.Join(f.root, "live", effectoracle.FenceDir)); !os.IsNotExist(err) {
 		t.Fatalf("the fixture has a fence directory: %v", err)
 	}
