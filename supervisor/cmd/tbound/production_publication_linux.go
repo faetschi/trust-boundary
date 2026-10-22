@@ -28,6 +28,11 @@ var (
 	ErrProductionCommandEvidence       = errors.New("production Bash operation lacks registered signed D09 settlement evidence")
 )
 
+// commandEvidenceRefused names the failed check so a refusal on a real host says which evidence was refused.
+func commandEvidenceRefused(check string, causes ...error) error {
+	return errors.Join(append([]error{fmt.Errorf("%w: %s", ErrProductionCommandEvidence, check)}, causes...)...)
+}
+
 // productionLifecycleEvidence records observations made by this run. These
 // fields are populated only from PiSDKWorker.Close, the joined governed loops,
 // task admission, turn_end, and the actual command runner receipt map. They are
@@ -247,21 +252,21 @@ type productionBashEvidenceVerifier interface {
 func verifyProductionBashEvidence(ctx context.Context, runner sessionrepo.CommandRunner, operation sessionrepo.OperationEvidence) error {
 	if ctx == nil || runner == nil || operation.Tool != "bash" || operation.CommandContainmentStatus != "not-established" ||
 		operation.CommandRunnerProfile == "" {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("verify-operation-shape")
 	}
 	profile, ok := runner.(sessionrepo.CommandRunnerProfile)
 	if !ok || profile.Profile() == "" || operation.CommandRunnerProfile != profile.Profile() {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("verify-runner-profile")
 	}
 	verifier, ok := runner.(productionBashEvidenceVerifier)
 	if !ok {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("verify-not-verifier")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if err := verifier.VerifyProductionBashEvidence(ctx, operation); err != nil {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("verify-runner", err)
 	}
 	return nil
 }

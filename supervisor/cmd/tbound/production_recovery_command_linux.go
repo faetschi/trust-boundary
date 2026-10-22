@@ -51,7 +51,7 @@ func newProductionHistoricalBashHistory(inputs []productionRecoveryCommandJourna
 	profile piruntime.HostProfile, template piruntime.D09CellTemplate, workflowID string,
 	conversationIDs map[string]struct{}) (*productionHistoricalBashHistory, error) {
 	if len(inputs) == 0 || workflowID == "" {
-		return nil, ErrProductionCommandEvidence
+		return nil, commandEvidenceRefused("history-inputs")
 	}
 	history := &productionHistoricalBashHistory{
 		byEffect:    make(map[string]*productionHistoricalBashVerifier),
@@ -60,11 +60,11 @@ func newProductionHistoricalBashHistory(inputs []productionRecoveryCommandJourna
 	seenSession := make(map[string]struct{}, len(inputs))
 	for _, input := range inputs {
 		if input.Journal == nil || input.Path == "" || input.Pin.IdentityDigest == "" || len(input.Sessions) == 0 {
-			return nil, ErrProductionCommandEvidence
+			return nil, commandEvidenceRefused("history-journal-input")
 		}
 		for _, session := range input.Sessions {
 			if session.RunID == "" || session.SessionID == "" || session.ConversationID == "" {
-				return nil, ErrProductionCommandEvidence
+				return nil, commandEvidenceRefused("history-session-identity")
 			}
 			if _, duplicate := seenSession[session.SessionID]; duplicate {
 				return nil, errors.New("old command journals repeat a workflow session identity")
@@ -96,7 +96,7 @@ func newProductionHistoricalBashHistory(inputs []productionRecoveryCommandJourna
 
 func (h *productionHistoricalBashHistory) VerifySettlement(settlement sessionrepo.CommandSettlement, viewID, leaseID string) error {
 	if h == nil || viewID == "" || leaseID == "" {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("history-settlement-identity")
 	}
 	verifiers := h.byLeaseView[viewID+"\x00"+leaseID]
 	if len(verifiers) != 1 {
@@ -107,11 +107,11 @@ func (h *productionHistoricalBashHistory) VerifySettlement(settlement sessionrep
 
 func (h *productionHistoricalBashHistory) VerifyStoreBundle(bundle sessionrepo.EvidenceBundle) error {
 	if h == nil {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("history-bundle-unavailable")
 	}
 	trace, err := audit.Verify(bytes.NewReader(bundle.AuditJournal))
 	if err != nil || uint64(len(trace.Records)) != bundle.AuditRecordCount || auditHeadHash(trace.Records) != bundle.AuditHeadHash {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("history-audit-journal", err)
 	}
 	used := make(map[string]struct{}, len(h.byEffect))
 	for _, operation := range bundle.Operations {
@@ -138,7 +138,7 @@ func (h *productionHistoricalBashHistory) VerifyUnleasedProviderCallRetirement(
 	binding providerbridge.ProviderCallRetirementBinding) error {
 	if h == nil || binding.WorkflowID == "" || binding.ConversationID == "" ||
 		binding.ToolCallIDIssuer != governedCallIssuer || binding.ToolCallID == "" {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("history-call-retirement")
 	}
 	for _, verifier := range h.entries {
 		for _, event := range verifier.byEffect {
@@ -155,14 +155,14 @@ func (h *productionHistoricalBashHistory) VerifyIdleProviderLineageRetirement(wo
 	providerSequence, previousOwnerEpoch, retirementOwnerEpoch uint64) error {
 	if h == nil || workflowID == "" || conversationID == "" ||
 		retirementOwnerEpoch <= previousOwnerEpoch {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("history-lineage-retirement")
 	}
 	return h.VerifyUnchanged()
 }
 
 func (h *productionHistoricalBashHistory) VerifyGovernedVerifier(verifier *governedStoreReplayVerifier) error {
 	if h == nil || verifier == nil {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("history-governed-verifier-unavailable")
 	}
 	for _, decision := range verifier.decisions {
 		if decision.binding.Proposal.Tool != "bash" || decision.binding.GateDecision.Verdict != gate.Allow {
@@ -189,7 +189,7 @@ func (h *productionHistoricalBashHistory) VerifyGovernedVerifier(verifier *gover
 
 func (h *productionHistoricalBashHistory) VerifyUnchanged() error {
 	if h == nil {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("history-unchanged-unavailable")
 	}
 	for _, verifier := range h.entries {
 		if err := verifier.VerifyUnchanged(); err != nil {
@@ -223,15 +223,15 @@ func newProductionHistoricalBashVerifier(journal *audit.Journal, pin productionH
 	if journal == nil || pin.IdentityDigest == "" || runID == "" || sessionID == "" || workflowID == "" || conversationID == "" ||
 		profile.Mode != piruntime.ModeProduction || profile.ContainmentProfile != piruntime.D09ContainmentProfile ||
 		profile.SettlementProfile != piruntime.D09SettlementProfile {
-		return nil, ErrProductionCommandEvidence
+		return nil, commandEvidenceRefused("historical-profile")
 	}
 	profileDigest := profile.Digest
 	if !validDigestText(profileDigest) {
-		return nil, ErrProductionCommandEvidence
+		return nil, commandEvidenceRefused("historical-profile-digest")
 	}
 	templateDigest, err := template.Digest()
 	if err != nil || profile.ContainmentProfileDigest != templateDigest {
-		return nil, errors.Join(ErrProductionCommandEvidence, err)
+		return nil, commandEvidenceRefused("historical-template-digest", err)
 	}
 	trace, err := journal.Trace()
 	if err != nil {
@@ -278,7 +278,7 @@ func validateHistoricalD09Receipt(event productionD09CommandSettledEvent, profil
 	template piruntime.D09CellTemplate, templateDigest string) error {
 	var receipt piruntime.D09CommandReceipt
 	if len(event.Receipt) == 0 || unmarshalGovernedJSON(event.Receipt, &receipt) != nil || receipt.ValidateSnapshot() != nil {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("historical-receipt-snapshot")
 	}
 	if receipt.ReceiptDigest != event.ReceiptDigest || receipt.TemplateDigest != templateDigest ||
 		receipt.ImageDigest != template.ExpectedImageDigest || receipt.ImageRef != registeredD09ImageDigestRef(template) ||
@@ -288,21 +288,21 @@ func validateHistoricalD09Receipt(event productionD09CommandSettledEvent, profil
 		receipt.Settlement.ExitCode != receipt.ExitCode ||
 		event.Operation.ExitCode == nil || *event.Operation.ExitCode != receipt.ExitCode ||
 		profile.ContainmentProfileDigest != templateDigest || profile.SettlementProfile != piruntime.D09SettlementProfile {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("historical-receipt-binding")
 	}
 	if receipt.Proof.CapEff != "0000000000000000" || !receipt.Proof.NoNewPrivs || receipt.Proof.Seccomp != 2 ||
 		!receipt.Proof.CgroupV2 || !receipt.Proof.LandlockTSYNC || receipt.Proof.LandlockABI < template.LandlockABI ||
 		receipt.Proof.LandlockRulesetDigest != template.LandlockRulesetDigest || !receipt.Proof.ConsumerMountsVerified ||
 		!receipt.Proof.RawSourceFDsClosed || !receipt.Proof.NoExternalRoutes || receipt.Proof.WorkerMountID == 0 ||
 		receipt.Proof.WorkerMountID != receipt.Proof.RuntimeMountID {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("historical-receipt-proof")
 	}
 	return nil
 }
 
 func (v *productionHistoricalBashVerifier) VerifySettlement(settlement sessionrepo.CommandSettlement, viewID, leaseID string) error {
 	if v == nil || viewID == "" || leaseID == "" {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("historical-settlement-identity")
 	}
 	events := v.byLeaseView[viewID+"\x00"+leaseID]
 	if len(events) != 1 {
@@ -312,18 +312,18 @@ func (v *productionHistoricalBashVerifier) VerifySettlement(settlement sessionre
 	if unmarshalGovernedJSON(events[0].Receipt, &receipt) != nil || receipt.ValidateSnapshot() != nil ||
 		!reflect.DeepEqual(receipt.Settlement, settlement) || events[0].Operation.ViewID != viewID ||
 		events[0].Operation.Operation.LeaseID != leaseID {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("historical-settlement-receipt")
 	}
 	return nil
 }
 
 func (v *productionHistoricalBashVerifier) VerifyStoreBundle(bundle sessionrepo.EvidenceBundle) error {
 	if v == nil {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("historical-bundle-unavailable")
 	}
 	trace, err := audit.Verify(bytes.NewReader(bundle.AuditJournal))
 	if err != nil || uint64(len(trace.Records)) != bundle.AuditRecordCount || auditHeadHash(trace.Records) != bundle.AuditHeadHash {
-		return errors.Join(ErrProductionCommandEvidence, err)
+		return commandEvidenceRefused("historical-audit-journal", err)
 	}
 	used := make(map[string]struct{}, len(v.byEffect))
 	for _, operation := range bundle.Operations {
@@ -426,7 +426,7 @@ func mustJSON(value any) []byte {
 
 func (v *productionHistoricalBashVerifier) VerifyUnchanged() error {
 	if v == nil || v.journal == nil {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("historical-unchanged-unavailable")
 	}
 	trace, err := v.journal.Trace()
 	if err != nil {
@@ -440,7 +440,7 @@ func (v *productionHistoricalBashVerifier) VerifyUnchanged() error {
 
 func (v *productionHistoricalBashVerifier) VerifyGovernedVerifier(verifier *governedStoreReplayVerifier) error {
 	if v == nil || verifier == nil {
-		return ErrProductionCommandEvidence
+		return commandEvidenceRefused("historical-governed-verifier-unavailable")
 	}
 	for _, decision := range verifier.decisions {
 		if decision.binding.Proposal.Tool != "bash" || decision.binding.GateDecision.Verdict != gate.Allow {
