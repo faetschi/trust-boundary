@@ -447,7 +447,11 @@ func runCommandCell(commandPath string, args []string, base map[string]any, delt
 	if !validDigest(expectedCommandDigest) {
 		fatal("command mode requires the signed command executable digest")
 	}
-	observedCommandDigest, err := digestCommandExecutable(commandPath)
+	measuredUIDMap, ok := base["uid_map"].(string)
+	if !ok || strings.TrimSpace(measuredUIDMap) == "" {
+		fatal("command mode requires the measured user-namespace uid_map")
+	}
+	observedCommandDigest, err := digestCommandExecutable(commandPath, measuredUIDMap)
 	if err != nil || observedCommandDigest != expectedCommandDigest {
 		fatal("command executable digest mismatch: observed %s expected %s (%v)", observedCommandDigest, expectedCommandDigest, err)
 	}
@@ -599,26 +603,20 @@ func parseUIDMapRootUID(raw string) (uint32, error) {
 	return root, nil
 }
 
-func readSelfUIDMap() ([]byte, error) { return os.ReadFile("/proc/self/uid_map") }
-
-// requireImageRootOwned accepts owner only when it is the inside uid that the
-// caller's user namespace maps to outside uid 0, i.e. when the file belongs to
-// the frozen image's root. The owner is compared with the mapped id and not
-// with a literal 0 because a rootless single-uid podman namespace shows
-// image-root files owned by the cell uid inside the cell. Nothing else is
-// relaxed: the read-only mount (requireReadOnlyMount), the absent group/world
-// write bits and the signed digest remain the immutability and content proofs.
-// This check refuses a file owned by any other identity in the image, and it
-// refuses whenever the map cannot name the root unambiguously.
-func requireImageRootOwned(owner uint32, readUIDMap func() ([]byte, error)) error {
-	if readUIDMap == nil {
-		return errors.New("no uid_map reader to identify the image root")
+// requireImageRootOwned accepts owner only when it is the inside uid that the measured,
+// registered uid_map maps to outside uid 0, i.e. when the file belongs to the frozen image's root.
+// The map is the one measureD09UserNamespaceMaps read at start and compared with the registered
+// digest; nothing reads /proc/self/uid_map a second time. The owner is compared with the mapped id
+// and not with a literal 0 because a rootless single-uid podman namespace shows image-root files
+// owned by the cell uid inside the cell. Nothing else is relaxed: the read-only mount, the absent
+// group/world write bits and the signed digest remain the immutability and content proofs. This
+// check refuses a file owned by any other identity in the image, and it refuses whenever the map
+// cannot name the root unambiguously.
+func requireImageRootOwned(owner uint32, measuredUIDMap string) error {
+	if strings.TrimSpace(measuredUIDMap) == "" {
+		return errors.New("no measured uid_map to identify the image root")
 	}
-	raw, err := readUIDMap()
-	if err != nil {
-		return fmt.Errorf("read the cell user-namespace uid_map: %w", err)
-	}
-	root, err := parseUIDMapRootUID(string(raw))
+	root, err := parseUIDMapRootUID(measuredUIDMap)
 	if err != nil {
 		return err
 	}
@@ -628,7 +626,7 @@ func requireImageRootOwned(owner uint32, readUIDMap func() ([]byte, error)) erro
 	return nil
 }
 
-func digestCommandExecutable(path string) (string, error) {
+func digestCommandExecutable(path, measuredUIDMap string) (string, error) {
 	before, err := os.Lstat(path)
 	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 || before.Mode().Perm()&0o022 != 0 || before.Size() <= 0 || before.Size() > 128<<20 {
 		return "", fmt.Errorf("command executable must be a non-symlink immutable regular image file")
@@ -637,7 +635,7 @@ func digestCommandExecutable(path string) (string, error) {
 	if !ok {
 		return "", errors.New("command executable has no stable in-image ownership")
 	}
-	if err := requireImageRootOwned(owner.Uid, readSelfUIDMap); err != nil {
+	if err := requireImageRootOwned(owner.Uid, measuredUIDMap); err != nil {
 		return "", fmt.Errorf("command executable must be root-owned: %w", err)
 	}
 	if before.Mode().Perm()&0o111 == 0 {
@@ -651,6 +649,12 @@ func digestCommandExecutable(path string) (string, error) {
 		return "", err
 	}
 	defer file.Close()
+	// The path check above is lexical; this is the descriptor that is actually hashed and then
+	// executed. Its mount must be read-only too, so a writable mount over the path, or a mount
+	// moved after the lexical check, cannot supply a writable executable.
+	if err := requireReadOnlyMountDescriptor(int(file.Fd())); err != nil {
+		return "", err
+	}
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || !os.SameFile(before, info) || info.Mode().Perm()&0o022 != 0 {
 		return "", fmt.Errorf("command executable is not a regular immutable image file")
@@ -659,7 +663,7 @@ func digestCommandExecutable(path string) (string, error) {
 	if !ok {
 		return "", errors.New("command executable lost its ownership identity in the frozen image")
 	}
-	if err := requireImageRootOwned(stat.Uid, readSelfUIDMap); err != nil {
+	if err := requireImageRootOwned(stat.Uid, measuredUIDMap); err != nil {
 		return "", fmt.Errorf("command executable must be root-owned in the frozen image: %w", err)
 	}
 	if info.Mode().Perm()&0o111 == 0 {
@@ -703,6 +707,101 @@ func requireReadOnlyMount(path string) error {
 	}
 	if best < 0 || !ro {
 		return fmt.Errorf("command executable is not on a read-only mount")
+	}
+	return nil
+}
+
+// requireReadOnlyMountDescriptor requires the mount of the opened descriptor fd to be read-only.
+// It reads the mount ID the kernel recorded for that exact descriptor (/proc/self/fdinfo/<fd>)
+// and looks it up in /proc/self/mountinfo, so the check is about the object that is hashed and
+// executed, not about the path's spelling.
+func requireReadOnlyMountDescriptor(fd int) error {
+	fdinfo, err := os.ReadFile("/proc/self/fdinfo/" + strconv.Itoa(fd))
+	if err != nil {
+		return fmt.Errorf("read the command executable's descriptor mount: %w", err)
+	}
+	mountinfo, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		return err
+	}
+	if err := requireReadOnlyMountID(fdinfo, mountinfo); err != nil {
+		return fmt.Errorf("command executable is not on a read-only mount: %w", err)
+	}
+	return nil
+}
+
+// parseFdinfoMountID returns the mount ID of one /proc/self/fdinfo/<fd> document. It requires
+// exactly one mnt_id line with a nonzero decimal ID.
+func parseFdinfoMountID(data []byte) (uint64, error) {
+	var id uint64
+	found := false
+	for index, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		name, value, ok := strings.Cut(line, ":")
+		if !ok || strings.TrimSpace(name) != "mnt_id" {
+			continue
+		}
+		if found {
+			return 0, errors.New("the descriptor has more than one mount id")
+		}
+		parsed, err := strconv.ParseUint(strings.TrimSpace(value), 10, 64)
+		if err != nil || parsed == 0 {
+			return 0, fmt.Errorf("the descriptor mount id on line %d is not a nonzero decimal id", index+1)
+		}
+		found, id = true, parsed
+	}
+	if !found {
+		return 0, errors.New("the descriptor has no mount id")
+	}
+	return id, nil
+}
+
+// parseMountInfoReadOnly maps every mount ID of /proc/self/mountinfo to whether the mount is
+// read-only. A line without the fields or the " - " separator is an error: a mount table that
+// cannot be read exactly never proves a mount read-only.
+func parseMountInfoReadOnly(data []byte) (map[uint64]bool, error) {
+	mounts := map[uint64]bool{}
+	for index, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, " - ", 2)
+		if len(parts) != 2 {
+			return nil, fmt.Errorf("mountinfo line %d has no separator", index+1)
+		}
+		fields := strings.Fields(parts[0])
+		if len(fields) < 6 {
+			return nil, fmt.Errorf("mountinfo line %d has fewer than six fields", index+1)
+		}
+		id, err := strconv.ParseUint(fields[0], 10, 64)
+		if err != nil || id == 0 {
+			return nil, fmt.Errorf("mountinfo line %d has no mount id", index+1)
+		}
+		mounts[id] = strings.Contains(","+fields[5]+",", ",ro,")
+	}
+	if len(mounts) == 0 {
+		return nil, errors.New("mountinfo is empty")
+	}
+	return mounts, nil
+}
+
+// requireReadOnlyMountID requires the descriptor's mount ID to name a mount that mountinfo
+// reports read-only.
+func requireReadOnlyMountID(fdinfo, mountinfo []byte) error {
+	id, err := parseFdinfoMountID(fdinfo)
+	if err != nil {
+		return err
+	}
+	mounts, err := parseMountInfoReadOnly(mountinfo)
+	if err != nil {
+		return err
+	}
+	readOnly, ok := mounts[id]
+	if !ok {
+		return fmt.Errorf("the descriptor mount %d is not in mountinfo", id)
+	}
+	if !readOnly {
+		return fmt.Errorf("the descriptor mount %d is writable", id)
 	}
 	return nil
 }
