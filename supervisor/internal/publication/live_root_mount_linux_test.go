@@ -53,14 +53,17 @@ func TestPublicationLiveRootMountLayout(t *testing.T) {
 	})
 
 	t.Run("fixed child of the mount root publishes", func(t *testing.T) {
-		f := newFixture(t, base, base, middle, final, nil, nil, nil)
+		// The seeded live root and every generation carry the fence directory the operator creates
+		// (tbound-op live_dir), so the delta does not plan it away.
+		f := newFixture(t, base, base, middle, final, []string{effectoracle.FenceDir},
+			[]string{effectoracle.FenceDir}, []string{effectoracle.FenceDir})
 		mountRoot := filepath.Join(f.root, "image")
 		if err := os.Mkdir(mountRoot, 0o700); err != nil {
 			t.Fatal(err)
 		}
 		mountPrivateTmpfs(t, mountRoot)
 		livePath := filepath.Join(mountRoot, "root")
-		makeTree(t, livePath, base, nil)
+		makeTree(t, livePath, base, []string{effectoracle.FenceDir})
 		reopenLiveRoot(t, f, livePath)
 		repo := f.acquire(1)
 		result, err := repo.Publish(context.Background(), f.request, allow, nil)

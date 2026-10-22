@@ -146,6 +146,7 @@ t 4.prof-install-identical 0 'prof-install smoke ok.*state prof' prof-install sm
 r 4.inspect-installed-unchanged 0 "$TPL" 'sha256sum /etc/tbound/d09-cell.json'
 r 4.setup-clear-measure-dir 0 - 'sudo -n rm -rf /root/ga/reg-smoke'
 t 4.reg-measure 0 'reg-measure smoke ok' reg-measure smoke
+r 4.inspect-reg-measure-live-root 0 'tbound-pi tbound-pi 700'$'\n''tbound-pi tbound-pi 755' 'stat -c "%U %G %a" /var/lib/tbound/live/root; stat -c "%U %G %a" /var/lib/tbound/live/root/lost+found'
 r 4.inspect-measured-equals-installed 0 'DIFFERENT=0' 'cd /var/tmp/tbound-op/smoke && python3 -I -c "
 import json
 a=json.load(open(\"managed-live-root.unsigned.json\")); b=json.load(open(\"/etc/tbound/managed-live-root.json\"))
@@ -163,7 +164,7 @@ t 4.seed-live-g1 0 'src/release.txt' seed-live g1
 t 4.seed-live-g1-again 0 'already is the g1 fixture' seed-live g1
 t 4.seed-live-smoke-reseed 0 'SMOKE-README.txt' seed-live smoke
 t 4.seed-live-smoke-noop-again 0 'already is the smoke fixture' seed-live smoke
-r 4.inspect-live-root-exact 0 '^f 644 995:986 SMOKE-README.txt' 'sudo -n find /var/lib/tbound/live/root -mindepth 1 -printf "%y %m %U:%G %P\n" | sort; sudo -n stat -c "%s %U:%G %a" /var/lib/tbound/live/root/SMOKE-README.txt'
+r 4.inspect-live-root-exact 0 '^d 755 995:986 lost\+found'$'\n''f 644 995:986 SMOKE-README.txt' 'sudo -n find /var/lib/tbound/live/root -mindepth 1 -printf "%y %m %U:%G %P\n" | sort; sudo -n stat -c "%s %U:%G %a" /var/lib/tbound/live/root/SMOKE-README.txt'
 r 4.setup-draft-manifest 0 - 'true'
 cat /c/Users/Admin/AppData/Local/Temp/tb-integ/corpus/pilot/manifest.draft.json | sh "$GSH" 'install -d -m 0700 ~/stage-pilot && cat > ~/stage-pilot/manifest.json'
 MS=$(sha '~/stage-pilot/manifest.json')
@@ -223,7 +224,7 @@ t 6b.status-after-cleanup 0 'pilot: no state' status pilot
 sec "7. Final state"
 t 7.status 0 'service=active socket=active.*state=started' status smoke
 t 7.adopt-verifies-chain 0 'adopt smoke ok.*state started' adopt smoke
-r 7.live-root 0 '^f 644 995:986 SMOKE-README.txt' 'sudo -n find /var/lib/tbound/live/root -mindepth 1 -printf "%y %m %U:%G %P\n" | sort'
+r 7.live-root 0 '^d 755 995:986 lost\+found'$'\n''f 644 995:986 SMOKE-README.txt' 'sudo -n find /var/lib/tbound/live/root -mindepth 1 -printf "%y %m %U:%G %P\n" | sort'
 r 7.installed-chain-unchanged 0 'a46353903e6d82bc.*4b99e9d96010ecb8.*cf766b7b23f1bbe8.*cf97920f5549a43b' 'sudo -n sha256sum /etc/tbound/serve-pi-service.json /etc/tbound/managed-live-root.json /etc/tbound/pi-host-profile.json /etc/tbound/d09-cell.json | cut -c1-16 | tr "\n" " "'
 r 7.one-use-markers-absent 0 'no-once-files' 'sudo -n sh -c "ls /root/ga/state/*.once 2>/dev/null || echo no-once-files"'
 r 7.installed-hashes 0 - 'sudo -n sha256sum /opt/tbound/operator/tbound-op /opt/tbound/operator/pins.env /etc/sudoers.d/50-tbound-op'
