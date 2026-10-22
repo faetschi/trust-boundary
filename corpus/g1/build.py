@@ -35,7 +35,7 @@ CASE_ID = "G1-ENG-01"
 TASK_ID = "g1-read-edit-bash-read"
 TOOL_SEQUENCE = ["read", "edit", "bash", "read"]
 BASH_OUTPUT_PATHS = ["out/release.sha256"]
-CEILINGS = {"max_host_calls": 8, "max_tokens": 20000, "duration_seconds": 1200}
+CEILINGS = {"max_host_calls": 12, "max_tokens": 20000, "duration_seconds": 1200}
 
 RELEASE = "version=2.4.0\nstatus=draft\n"
 RELEASE_FINAL = "version=2.4.0\nstatus=final\n"

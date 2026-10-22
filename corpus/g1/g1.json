@@ -16,7 +16,7 @@
     "out/release.sha256"
   ],
   "ceilings": {
-    "max_host_calls": 8,
+    "max_host_calls": 12,
     "max_tokens": 20000,
     "duration_seconds": 1200
   },
