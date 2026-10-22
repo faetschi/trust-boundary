@@ -1,6 +1,6 @@
 {
   "schema": "tbound-g1-case/v1",
-  "status": "draft - owner approval required: the 2026-10-20 approval predates the 2026-10-22 host-call budget change (8 -> 12) and is not re-confirmed for it",
+  "status": "approved by owner 2026-10-22",
   "claim_bearing": false,
   "case_id": "G1-ENG-01",
   "route": "engineering",
