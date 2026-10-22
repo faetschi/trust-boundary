@@ -291,11 +291,46 @@ func runG1UnknownExchange(t *testing.T, laterTurn bool) {
 		t.Fatal("the bridge did not close after the failed turn")
 	}
 	channelsErr := governedChannelsError(nil, bridgeErr)
-	checkpoint, checkpointDigest := f.ledger.Snapshot()
+	checkpoint, _ := f.ledger.Snapshot()
 	if call := checkpoint.Pins.HostCallReservation; call == nil || call.Disposition != workflowrecovery.HostCallReserved {
 		t.Fatalf("the failed turn did not leave its host call reserved: %+v", checkpoint.Pins.HostCallReservation)
 	}
 
+	h := newUnknownRequestHarness(t, f)
+	const reason = "G1 provider exchange unknown; operator recovery"
+	if err := h.abandon(reason); !errors.Is(err, ErrPiServiceUnreconciled) ||
+		!strings.Contains(err.Error(), "managed-root run") || !strings.Contains(err.Error(), "owner scope") {
+		t.Fatalf("abandon before cleanup was not refused for the unreleased run and the undrained scope: %v", err)
+	}
+	if !h.cleanup(t, settledWorkerLifecycle(g1SettledWorker, true, channelsErr), newProductionCommandRunner(nil)) {
+		t.Fatal("cleanup kept the owners after the provider turn failure")
+	}
+	abandoned := h.abandoned(t, reason)
+	if abandoned.Reconciliation.ProviderSettlement != providerSettlementBoundedRetainedLiability ||
+		abandoned.Reconciliation.WorkflowID != workflowVerticalID {
+		t.Fatalf("the abandon record does not name the bounded provider liability: %+v", abandoned.Reconciliation)
+	}
+	if err := h.requests.admit(t, 2, true); err != nil {
+		t.Fatalf("a later request stayed blocked after the abandon: %v", err)
+	}
+}
+
+// unknownRequestHarness is the host side of one request that ended unknown, over real pieces: the
+// request journal holding the unknown terminal, the catalog with the workflow's owner scope, the
+// managed-root lease in the publication journal, and the production abandon reconciler over the
+// fixture's owner checkpoint (as of construction) and provider journal.
+type unknownRequestHarness struct {
+	ctx                                context.Context
+	requests                           *incrementalJournal
+	requestID                          string
+	catalogJournal, publicationJournal *audit.Journal
+	lease                              *managedLiveRootLease
+	closers                            []func() error
+}
+
+func newUnknownRequestHarness(t *testing.T, f *workflowVerticalFixture) *unknownRequestHarness {
+	t.Helper()
+	checkpoint, checkpointDigest := f.ledger.Snapshot()
 	hostRoot := privateGovernedTestRoot(t)
 	cgroupRoot, auditRoot, livePath := filepath.Join(hostRoot, "cells"), filepath.Join(hostRoot, "audit"), filepath.Join(hostRoot, "live")
 	for _, path := range []string{cgroupRoot, auditRoot, livePath} {
@@ -307,13 +342,13 @@ func runG1UnknownExchange(t *testing.T, laterTurn bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer live.Close()
+	t.Cleanup(func() { _ = live.Close() })
 	publicationPath := filepath.Join(auditRoot, "publication-audit.jsonl")
 	publicationJournal, err := audit.Open(publicationPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer publicationJournal.Close()
+	t.Cleanup(func() { _ = publicationJournal.Close() })
 	lease, err := newFakeManagedLiveRootAuthority().acquire(f.ctx, live,
 		piruntime.D09CellTemplate{ManagedLiveRootRegistrationDigest: testManagedRootDigest}, publicationJournal,
 		"g1-run", workflowVerticalID, "g1-publication", 1)
@@ -326,14 +361,14 @@ func runG1UnknownExchange(t *testing.T, laterTurn bool) {
 	lease.markTaskAdmitted()
 
 	requests := openIncrementalJournal(t, filepath.Join(incrementalTestRoot(t), "requests.jsonl"))
-	defer requests.close(t)
+	t.Cleanup(func() { requests.close(t) })
 	if err := requests.admitUnknown(t, 1); err != nil {
 		t.Fatal(err)
 	}
 	request, payloadDigest := incrementalRequest(1)
 	state, exists, err := requests.requests.lookup(incrementalPeer(), request, payloadDigest)
 	if err != nil || !exists {
-		t.Fatalf("the unknown G1 request is not journaled: %v", err)
+		t.Fatalf("the unknown request is not journaled: %v", err)
 	}
 
 	incarnation := workflowrecovery.OwnerIncarnation{Digest: strings.Repeat("b", 64), BootID: "different-boot", PID: 424242,
@@ -347,7 +382,7 @@ func runG1UnknownExchange(t *testing.T, laterTurn bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer catalogJournal.Close()
+	t.Cleanup(func() { _ = catalogJournal.Close() })
 	entry := piServiceWorkflowEntry{AdmissionRecordHash: state.acceptedRecord.Hash, WorkflowID: workflowVerticalID,
 		SessionID: workflowVerticalSessionID, RunID: "g1-run", ConversationID: workflowVerticalConversation,
 		ProviderJournalPath: f.providerJournalPath, OwnerDBPath: f.ownerStoreIdentity.Path, OwnerStoreIdentity: f.ownerStoreIdentity,
@@ -384,45 +419,24 @@ func runG1UnknownExchange(t *testing.T, laterTurn bool) {
 			})
 		}}
 	requests.requests.setReconciler(reconciler)
-
-	const reason = "G1 provider exchange unknown; operator recovery"
-	if _, err := requests.requests.abandonUnknown(f.ctx, request.RequestID, reason); !errors.Is(err, ErrPiServiceUnreconciled) ||
-		!strings.Contains(err.Error(), "managed-root run") || !strings.Contains(err.Error(), "owner scope") {
-		t.Fatalf("abandon before cleanup was not refused for the unreleased run and the undrained scope: %v", err)
-	}
-
-	lifecycle := settledWorkerLifecycle(g1SettledWorker, true, channelsErr)
-	runner := newProductionCommandRunner(nil)
 	removeScope := func() error {
 		if err := os.Remove(scopePath); err != nil {
 			return err
 		}
 		return catalog.MarkOwnerScopeDrained(entry.AdmissionRecordHash, workflowVerticalID, 1, incarnation, cgroupRoot, "session_cleanup_complete")
 	}
-	closers := []func() error{lease.close, removeScope}
-	var quarantine productionCleanupQuarantineState
-	if err := productionSessionCloseIfUnsafe(lifecycle.snapshot(), runner, nil); err != nil {
-		t.Fatalf("the session close guard kept the owners after the provider turn failure: %v", err)
-	}
-	if !lease.canRelease() {
-		t.Fatal("the managed-root lease cannot be released after the provider turn failure")
-	}
-	if retainProductionCleanupIfUnsafe(&quarantine, lifecycle.snapshot(), runner, closers) {
-		t.Fatal("the binder quarantined the owner closers after the provider turn failure")
-	}
-	for index := len(closers) - 1; index >= 0; index-- {
-		if err := closers[index](); err != nil {
-			t.Fatalf("owner closer %d: %v", index, err)
-		}
-	}
-	if kinds := journalKinds(t, catalogJournal); len(kinds) != 1 || kinds[0] != "pi_workflow_owner_scope_drained" {
-		t.Fatalf("catalog records after cleanup: %v", kinds)
-	}
-	if kinds := journalKinds(t, publicationJournal); kinds[len(kinds)-1] != "managed_live_root_run_released" {
-		t.Fatalf("publication records after cleanup: %v", kinds)
-	}
+	return &unknownRequestHarness{ctx: f.ctx, requests: requests, requestID: request.RequestID, catalogJournal: catalogJournal,
+		publicationJournal: publicationJournal, lease: lease, closers: []func() error{lease.close, removeScope}}
+}
 
-	record, err := requests.requests.abandonUnknown(f.ctx, request.RequestID, reason)
+func (h *unknownRequestHarness) abandon(reason string) error {
+	_, err := h.requests.requests.abandonUnknown(h.ctx, h.requestID, reason)
+	return err
+}
+
+func (h *unknownRequestHarness) abandoned(t *testing.T, reason string) piServiceRequestAbandonedEvent {
+	t.Helper()
+	record, err := h.requests.requests.abandonUnknown(h.ctx, h.requestID, reason)
 	if err != nil {
 		t.Fatalf("abandon after cleanup: %v", err)
 	}
@@ -430,13 +444,34 @@ func runG1UnknownExchange(t *testing.T, laterTurn bool) {
 	if err := json.Unmarshal(record.Event.Data, &abandoned); err != nil {
 		t.Fatal(err)
 	}
-	if abandoned.Reconciliation.ProviderSettlement != providerSettlementBoundedRetainedLiability ||
-		abandoned.Reconciliation.WorkflowID != workflowVerticalID {
-		t.Fatalf("the abandon record does not name the bounded provider liability: %+v", abandoned.Reconciliation)
+	return abandoned
+}
+
+// cleanup runs the session close guard and the binder's cleanup guard over the lifecycle and command
+// runner. When both let the owners go, it runs the owner closers and checks their records: the
+// owner-scope drain receipt and the managed-root run release. It reports whether cleanup ran.
+func (h *unknownRequestHarness) cleanup(t *testing.T, lifecycle *productionLifecycleEvidence, runner *productionCommandRunner) bool {
+	t.Helper()
+	var quarantine productionCleanupQuarantineState
+	if productionSessionCloseIfUnsafe(lifecycle.snapshot(), runner, nil) != nil ||
+		retainProductionCleanupIfUnsafe(&quarantine, lifecycle.snapshot(), runner, h.closers) {
+		return false
 	}
-	if err := requests.admit(t, 2, true); err != nil {
-		t.Fatalf("a later request stayed blocked after the abandon: %v", err)
+	if !h.lease.canRelease() {
+		t.Fatal("cleanup is safe but the managed-root lease cannot be released")
 	}
+	for index := len(h.closers) - 1; index >= 0; index-- {
+		if err := h.closers[index](); err != nil {
+			t.Fatalf("owner closer %d: %v", index, err)
+		}
+	}
+	if kinds := journalKinds(t, h.catalogJournal); len(kinds) != 1 || kinds[0] != "pi_workflow_owner_scope_drained" {
+		t.Fatalf("catalog records after cleanup: %v", kinds)
+	}
+	if kinds := journalKinds(t, h.publicationJournal); kinds[len(kinds)-1] != "managed_live_root_run_released" {
+		t.Fatalf("publication records after cleanup: %v", kinds)
+	}
+	return true
 }
 
 // An untrusted worker can send `next` before the prompt is admitted. That turn fails, the governed
