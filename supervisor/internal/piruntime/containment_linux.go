@@ -550,7 +550,7 @@ func (l *D09PodmanCrunLauncher) ensureManagedLiveRoot(ctx context.Context) (D09M
 	if registration.Digest != l.config.ManagedLiveRootRegistrationDigest {
 		return D09ManagedLiveRootRegistration{}, ErrD09ManagedLiveRootRefused
 	}
-	root, err := openAbsoluteDirectoryNoSymlinks(registration.RootPath)
+	root, err := openManagedLiveRoot(registration.RootPath)
 	if err != nil {
 		return D09ManagedLiveRootRegistration{}, err
 	}

@@ -995,6 +995,9 @@ func d09CommandCellArgumentsDelta(plan d09DeltaPlan, config D09Config, name, cid
 		"--pids-limit", strconv.Itoa(config.PidsMax), "--memory", strconv.Itoa(config.MemoryMB) + "m", "--cpus", config.CPUs,
 		"--uidmap", strconv.Itoa(config.CellUID) + ":0:1", "--gidmap", strconv.Itoa(config.CellGID) + ":0:1",
 		"--user", uid + ":" + gid, "--workdir", "/work", "--preserve-fds", "3",
+		// tbound-pi.service runs with UMask=0077, which a podman-started cell inherits. The settled view
+		// import accepts only 0644 and 0755 files, so files a command creates must not be 0600.
+		"--umask=0022",
 		"--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777",
 		"--cgroup-parent", d09PodmanCgroupParentOrSelf(config.CgroupsPath),
 		"--mount", "type=bind,src=" + viewPath + ",dst=/work,rw,bind-propagation=rprivate",

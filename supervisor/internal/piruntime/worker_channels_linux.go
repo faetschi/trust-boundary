@@ -1484,6 +1484,14 @@ func launchPiCLIWorker(ctx context.Context, profile HostProfile, runtime HostRun
 		if err := bindD09ConsumerViewProof(&bootstrap, runtime, process.PID(), proof); err != nil {
 			return nil, stopFailedPiLaunch(process, channels, err)
 		}
+		if proof.RouteProbe != nil {
+			failed := stopFailedPiLaunch(process, channels, ErrD09RouteProbeLaunched)
+			var launchErr *PiWorkerLaunchError
+			if errors.As(failed, &launchErr) {
+				launchErr.RouteProbe = &D09RouteProbeLaunch{LauncherPID: process.PID(), Proof: proof}
+			}
+			return nil, failed
+		}
 		if err := channels.writeBootstrap(profile, bootstrap); err != nil {
 			return nil, stopFailedPiLaunch(process, channels, err)
 		}
@@ -1803,6 +1811,8 @@ type PiWorkerLaunchError struct {
 	Cause      error
 	Settlement Settlement
 	CleanupErr error
+	// RouteProbe is set only on a launch from a route-probe template (ErrD09RouteProbeLaunched).
+	RouteProbe *D09RouteProbeLaunch
 
 	// processOwner keeps an unsettled launch's stdout reader reachable. It is
 	// released only with this error/owner; UNKNOWN cleanup never closes it.

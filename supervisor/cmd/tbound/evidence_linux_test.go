@@ -237,7 +237,7 @@ func TestEvidenceRefusesAnyUidButTheEvidenceUid(t *testing.T) {
 			}
 		}
 		env.getenv = func(string) string {
-			return "/usr/local/bin/tbound evidence e04-snapshot --root /var/lib/tbound/live --point baseline"
+			return "/usr/local/bin/tbound evidence e04-snapshot --root /var/lib/tbound/live/root --point baseline"
 		}
 		if out, err := runEvTest(t, env, "ssh-original-command"); err == nil || out != "" {
 			t.Errorf("uid %d: forced command ran: %v %q", uid, err, out)

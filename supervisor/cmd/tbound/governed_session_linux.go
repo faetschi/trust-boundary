@@ -1306,6 +1306,21 @@ func RunGovernedChannels(ctx context.Context, supervisor *Supervisor, providerCh
 		}
 	}
 	conversation.Close()
+	return governedChannelsError(serveErr, bridgeErr)
+}
+
+// providerTurnFailure is RunGovernedChannels' error when its only failure is the provider bridge
+// closing the conversation after a failed provider turn: the supervisor loop returned nil.
+type providerTurnFailure struct{ err error }
+
+func (f providerTurnFailure) Error() string { return f.err.Error() }
+func (f providerTurnFailure) Unwrap() error { return f.err }
+
+// governedChannelsError is the error RunGovernedChannels returns for its two loop results.
+func governedChannelsError(serveErr, bridgeErr error) error {
+	if serveErr == nil && errors.Is(bridgeErr, providerbridge.ErrProviderTurnFailed) {
+		return providerTurnFailure{err: bridgeErr}
+	}
 	return errors.Join(serveErr, bridgeErr)
 }
 

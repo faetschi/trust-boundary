@@ -436,11 +436,17 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	// from NextTurn leaves the cost unestablished and marks the unit uncertain.
 	var spendUnit string
 	spendDispatched, spendSettled := false, false
+	// disposed is set where the failed exchange is left disposed of in the provider journal.
+	disposed := false
 	defer func() {
 		if spendUnit != "" && spendDispatched && !spendSettled {
 			if err := c.cfg.Spend.UncertainSpend(context.WithoutCancel(ctx), spendUnit); err != nil {
 				turnErr = errors.Join(turnErr, fmt.Errorf("mark provider spend uncertain: %w", err))
+				disposed = false
 			}
+		}
+		if disposed && turnErr != nil {
+			turnErr = journaledFailure{turnErr}
 		}
 	}()
 	var captured openrouter.CapturedResponse
@@ -530,10 +536,12 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	}
 	if exchangeErr != nil {
 		persistErr := c.persistFailedExchangeLocked(records, exchangeErr, hostCallBinding)
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("registered provider exchange failed; response withheld: %w", exchangeErr), persistErr))
 	}
 	if err := ctx.Err(); err != nil {
 		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider exchange canceled; response withheld: %w", err), persistErr))
 	}
 	if len(records) != 1 || !records[0].HasResponse() {
@@ -567,6 +575,7 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 	}
 	if err := validateTurnProjectionBudget(projection); err != nil {
 		persistErr := c.persistFailedExchangeLocked(records, err, hostCallBinding)
+		disposed = exchangeDisposed(persistErr, records, hostCallBinding)
 		return Turn{}, c.failLocked(errors.Join(fmt.Errorf("provider response projection exceeds its durable evidence budget: %w", err), persistErr))
 	}
 	callArray := []openrouter.PriorToolCall(nil)
@@ -1075,6 +1084,19 @@ func validateTurnProjectionBudget(projection Turn) error {
 		return errors.New("canonical provider turn projection exceeds one mebibyte")
 	}
 	return nil
+}
+
+// journaledFailure marks a NextTurn error whose failed exchange is disposed of in the provider
+// journal: persistFailedExchangeLocked wrote its unknown record, or nothing reserved was left open.
+// It keeps the wrapped error's text, which reaches the worker.
+type journaledFailure struct{ error }
+
+func (f journaledFailure) Unwrap() error { return f.error }
+
+// exchangeDisposed reports whether persistFailedExchangeLocked left the exchange disposed of. With no
+// exchange record to journal, a made host-call reservation stays open (it is not in the journal).
+func exchangeDisposed(persistErr error, records []broker.ExchangeRecord, hostCall *HostCallBinding) bool {
+	return persistErr == nil && (len(records) > 0 || hostCall == nil)
 }
 
 func (c *Conversation) persistFailedExchangeLocked(records []broker.ExchangeRecord, failure error,

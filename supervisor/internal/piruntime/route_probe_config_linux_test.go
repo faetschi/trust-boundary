@@ -40,6 +40,7 @@ func TestRouteProbeServiceConfigTemplateIsValidAndIsTheCase(t *testing.T) {
 	var c struct {
 		TaskID   string            `json:"task_id"`
 		Prompt   string            `json:"prompt"`
+		Commands map[string]string `json:"commands"`
 		Ceilings map[string]uint64 `json:"ceilings"`
 	}
 	if err := json.Unmarshal(caseData, &c); err != nil {
@@ -54,5 +55,11 @@ func TestRouteProbeServiceConfigTemplateIsValidAndIsTheCase(t *testing.T) {
 	if uint64(config.WorkflowMaxHostCalls) != c.Ceilings["max_host_calls"] || uint64(config.WorkflowMaxTokens) != c.Ceilings["max_tokens"] ||
 		uint64(config.WorkflowDurationSeconds) != c.Ceilings["duration_seconds"] {
 		t.Error("the config's ceilings differ from the case")
+	}
+	// Every Bash call is an effect (one host call) and every provider turn is one more: four probe
+	// commands plus five provider turns (one per command and the final text) need nine host calls.
+	if effects, turns := uint64(len(c.Commands)), uint64(len(c.Commands)+1); config.WorkflowMaxHostCalls < effects+turns {
+		t.Errorf("host calls %d, need %d for %d bash effects and %d provider turns",
+			config.WorkflowMaxHostCalls, effects+turns, effects, turns)
 	}
 }

@@ -74,6 +74,36 @@ func (g *watchGuest) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 		if g.fail {
 			return nil, []byte("watch failed"), 2, nil
 		}
+		// Like the real guest, it takes the start line before it acknowledges, so the host's lines reach it in the
+		// order it wrote them: the host writes the start line from a goroutine of its own, and a stop line written
+		// before that goroutine ran would otherwise be read as the start line.
+		got := make(chan string, 1)
+		started := make(chan struct{})
+		go func() {
+			if stdin == nil {
+				close(started)
+				got <- "eof"
+				return
+			}
+			br := bufio.NewReader(stdin)
+			for i, want := range []string{TransientStartLine, TransientStopLine} {
+				l, err := br.ReadString('\n')
+				if i == 0 {
+					close(started)
+				}
+				if err != nil || l != want {
+					got <- "eof"
+					return
+				}
+			}
+			got <- "stop"
+		}()
+		select {
+		case <-started:
+		case <-ctx.Done():
+			g.end("cancelled")
+			return nil, nil, 0, ctx.Err()
+		}
 		var first []byte
 		if !g.noReady {
 			rd := TransientReadyDoc{Schema: EvidenceSchema, Kind: TransientReadyKind, IntervalRef: argv[2], Root: EvidenceLiveRoot}
@@ -86,21 +116,6 @@ func (g *watchGuest) RunReadyStdin(ctx context.Context, argv []string, stdin io.
 			}
 		}
 		// The guest waits for the host's stop line.
-		got := make(chan string, 1)
-		go func() {
-			if stdin == nil {
-				got <- "eof"
-				return
-			}
-			br := bufio.NewReader(stdin)
-			for _, want := range []string{TransientStartLine, TransientStopLine} {
-				if l, err := br.ReadString('\n'); err != nil || l != want {
-					got <- "eof"
-					return
-				}
-			}
-			got <- "stop"
-		}()
 		select {
 		case how := <-got:
 			if how != "stop" && g.hang {

@@ -544,11 +544,7 @@ func (l *managedLiveRootLease) abortBeforeTask(lifecycle productionLifecycleSnap
 	if l == nil || lifecycle.taskAdmitted || lifecycle.turnCompleted || runner != nil && runner.Pending() != 0 {
 		return ErrManagedLiveRootRetained
 	}
-	if lifecycle.workerLaunchAttempted && (!lifecycle.workerLaunched || !lifecycle.workerClosed || lifecycle.workerCloseErr != nil ||
-		lifecycle.settlement.State != piruntime.SettlementStopped || !lifecycle.settlement.ExitObserved || !lifecycle.settlement.DescendantsSettled) {
-		return ErrManagedLiveRootRetained
-	}
-	if lifecycle.channelsStarted && (!lifecycle.channelsJoined || lifecycle.channelsErr != nil) {
+	if !lifecycle.workerSettled() || !lifecycle.channelsSettled() {
 		return ErrManagedLiveRootRetained
 	}
 	l.mu.Lock()

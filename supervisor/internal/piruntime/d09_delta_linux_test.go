@@ -721,3 +721,19 @@ func TestNewNetSinkCommandScopeRefusesWithoutTheLoadAttestation(t *testing.T) {
 		t.Fatalf("a command cgroup was created below the unattested parent: %v", entries)
 	}
 }
+
+// The service runs with UMask=0077 and podman does not reset the process umask in a cell it starts, so a
+// Bash command inherits 0077 and creates 0600 files. The settled-view import accepts only 0644 and 0755
+// files owned by the service, so every command cell, under every delta, names --umask=0022 before the image.
+func TestD09CommandCellsSetUmask0022(t *testing.T) {
+	for _, name := range []string{"", D09CellDeltaNetSink, D09CellDeltaNoReap} {
+		plan, config := testD09DeltaPlan(t, name)
+		spec := sessionrepo.CommandSpec{Executable: config.CommandExecutable, Args: []string{"-lc", "true"}}
+		image := "localhost/tbound/pi-cell@sha256:" + strings.Repeat("a", 64)
+		args := d09CommandCellArgumentsDelta(plan, config, "tbound-pi-cell-cmd-x", "/tmp/cid", image, "/proc/123/fd/4", "view-1", "lease-1", 1, 2, spec)
+		at, imageAt := indexOfString(args, "--umask=0022"), indexOfString(args, image)
+		if at < 0 || imageAt < 0 || at > imageAt {
+			t.Errorf("delta %q: --umask=0022 must be a podman option before the image: %q", name, args)
+		}
+	}
+}

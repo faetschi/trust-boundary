@@ -231,7 +231,7 @@ func TestEvidenceClientRefusesTheClientTransportAndAnUnvalidSSHConfig(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := args[len(args)-1]; got != `'/usr/local/bin/tbound' 'evidence' 'e04-snapshot' '--root' '/var/lib/tbound/live' '--point' 'baseline'` {
+	if got := args[len(args)-1]; got != `'/usr/local/bin/tbound' 'evidence' 'e04-snapshot' '--root' '/var/lib/tbound/live/root' '--point' 'baseline'` {
 		t.Fatalf("remote command = %s", got)
 	}
 	ssh.KnownHostsFile = ""

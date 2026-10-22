@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -425,3 +426,26 @@ func sseChunk(responseID string, delta any, finish any) []byte {
 }
 
 func stringPointer(value string) *string { return &value }
+
+// The F3 G1 first turn: OpenCode Go answered 200 with a complete stream whose
+// delta chunks omit finish_reason. The broker recorded it as an unknown exchange
+// ("capture OpenRouter response: missing field \"finish_reason\"").
+func TestExchangeCapturesG1StreamWhoseChunksOmitFinishReason(t *testing.T) {
+	body, err := os.ReadFile("openrouter/testdata/opencode-go-g1-turn1.sse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	broker, _ := newTestBroker(t, body)
+	captured, err := broker.Exchange(context.Background())
+	if err != nil {
+		t.Fatalf("G1 turn 1 exchange: %v", err)
+	}
+	call, ok := captured.ToolCall()
+	if !ok || call.Name != "read" || string(call.RawArguments) != `{"path": "src/release.txt"}` {
+		t.Fatalf("tool call ok=%v call=%+v", ok, call)
+	}
+	records := broker.Records()
+	if len(records) != 1 || records[0].Failure() != "" || records[0].StatusCode() != http.StatusOK || !bytes.Equal(records[0].ResponseBody(), body) {
+		t.Fatalf("exchange record: %+v", records)
+	}
+}

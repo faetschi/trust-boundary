@@ -27,13 +27,16 @@ import (
 //   - ensureNetSink makes the net-sink/v1 confinement current. nft resolves the cgroup path of the
 //     rule to a cgroup id when it loads, so a reboot, an unloaded table or a recreated parent
 //     directory silently ends the confinement; the pinned rule file alone proves nothing about the
-//     kernel. The reset creates the net-sink parent cgroup if it is absent (owned by the service
-//     identity), loads the pinned file as one transaction, reads the table back and compares it to
-//     the exact rules, and only then writes the root-owned attestation the service checks
-//     (piruntime.D09NetSinkAttestation).
+//     kernel. The reset gives every run a new net-sink parent cgroup (owned by the service
+//     identity): it removes the old directory, which cgroup.kill was written to, and creates it
+//     again, because a kernel that bumps the kill sequence of a cgroup SIGKILLs every
+//     CLONE_INTO_CGROUP child later started in it (upstream 8e35992; the guest-netsink probe is
+//     one). It then loads the pinned file as one transaction for the new directory, reads the
+//     table back and compares it to the exact rules, and only then writes the root-owned
+//     attestation the service checks (piruntime.D09NetSinkAttestation).
 //   - cleanNoReap removes what no-reap/v1 cells leave behind: their containers (no --rm; labelled
 //     piruntime.D09NoReapContainerLabel) through the service's own podman context, and their
-//     empty tbound-nr-* cgroups. The persistent net-sink parent is never touched.
+//     empty tbound-nr-* cgroups. The net-sink parent is not theirs: ensureNetSink replaces it.
 //
 // Both run after cgroup.kill and the wait for populated 0, so no process is left in those cgroups.
 type trialHost struct {
@@ -203,9 +206,13 @@ func (h trialHost) readRuleFile() ([]byte, error) {
 	return data, nil
 }
 
-// ensureNetSinkParent opens the net-sink parent below the registered cells cgroup, creating it
-// if it is absent, and makes the service identity its owner (and the owner of the files the
-// service writes to manage it: the delegation contract of cgroup v2).
+// ensureNetSinkParent creates a new net-sink parent below the registered cells cgroup, removing
+// the one a previous reset left (with the empty scopes below it), and makes the service identity
+// its owner (and the owner of the files the service writes to manage it: the delegation contract
+// of cgroup v2). The old directory has had cgroup.kill written to it; see the head of this file.
+// The nft rule is loaded after this, so it resolves the path to the new cgroup id, and the
+// attestation is made from the new directory. A directory that cannot be removed (a process or a
+// cgroup still in use) is a refusal.
 func (h trialHost) ensureNetSinkParent(cell evidenceCell) (*os.File, error) {
 	cells, err := h.openCells(cell)
 	if err != nil {
@@ -218,6 +225,9 @@ func (h trialHost) ensureNetSinkParent(cell evidenceCell) (*os.File, error) {
 			return nil, err
 		}
 		return os.NewFile(uintptr(fd), piruntime.D09NetSinkCgroupName), nil
+	}
+	if err := h.removeCgroupTree(int(cells.Fd()), piruntime.D09NetSinkCgroupName, 0); err != nil && !errors.Is(err, errCgroupAbsent) {
+		return nil, fmt.Errorf("net-sink parent cgroup: the previous one cannot be replaced: %w", err)
 	}
 	parent, err := open()
 	if errors.Is(err, syscall.ENOENT) {
@@ -325,7 +335,7 @@ func (h trialHost) removeNoReapContainers(ctx context.Context) error {
 
 // removeNoReapCgroups removes the tbound-nr-* children of the cells cgroup with everything below
 // them. rmdir of a cgroup that still holds a process or a child fails; that is a refusal. Nothing
-// else is removed: the net-sink parent persists because the nft rule is bound to its id.
+// else is removed: the net-sink parent is replaced by ensureNetSink, which loads the nft rule for the new one.
 func (h trialHost) removeNoReapCgroups(cell evidenceCell) error {
 	cells, err := h.openCells(cell)
 	if err != nil {
@@ -352,11 +362,19 @@ func (h trialHost) removeNoReapCgroups(cell evidenceCell) error {
 
 const trialCgroupTreeDepth = 8
 
+// errCgroupAbsent is removeCgroupTree's error when the directory it was asked to remove does not exist.
+// A cgroup that vanishes below it (ENOENT while the tree is removed) is not absence: it is another
+// process changing the tree, and an error.
+var errCgroupAbsent = errors.New("cgroup is absent")
+
 func (h trialHost) removeCgroupTree(parentFD int, name string, depth int) error {
 	if depth > trialCgroupTreeDepth {
 		return fmt.Errorf("cgroup %s is nested deeper than %d levels", name, trialCgroupTreeDepth)
 	}
 	fd, err := syscall.Openat(parentFD, name, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if errors.Is(err, syscall.ENOENT) && depth == 0 {
+		return fmt.Errorf("cgroup %s: %w", name, errCgroupAbsent)
+	}
 	if err != nil {
 		return fmt.Errorf("cgroup %s: %w", name, err)
 	}

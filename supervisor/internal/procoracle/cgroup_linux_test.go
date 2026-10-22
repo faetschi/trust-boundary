@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"tbound/supervisor/internal/cgroupguard"
 	"tbound/supervisor/internal/piruntime"
 )
 
@@ -103,11 +104,22 @@ func ownCgroupPath(t *testing.T) string {
 
 func newRealEnv(t *testing.T) *realEnv {
 	t.Helper()
-	base := filepath.Join(cgroup2Mount(t), ownCgroupPath(t))
+	if !cgroupguard.Enabled() {
+		t.Skip("set " + cgroupguard.Env + "=1 to run the real-cgroup tests (in a delegated scope, not a login session)")
+	}
+	own := ownCgroupPath(t)
+	if why := cgroupguard.RefuseBase(own); why != "" {
+		t.Fatalf("%s: refusing to create cgroups below %q; run under systemd-run --user --scope -p Delegate=yes", why, own)
+	}
+	base := filepath.Join(cgroup2Mount(t), own)
 	work, err := os.MkdirTemp(base, "procoracle-")
 	if err != nil {
 		t.Skipf("cannot create a cgroup below %s (%v): the cgroup is not delegated to this user "+
 			"(run under `systemd-run --user --scope -p Delegate=yes`)", base, err)
+	}
+	if err := cgroupguard.ApplyLimits(work, base); err != nil {
+		_ = os.Remove(work)
+		t.Fatalf("refusing to run in an uncapped cgroup: %v", err)
 	}
 	e := &realEnv{t: t, work: work, cellDir: filepath.Join(work, "cell"), outerDir: filepath.Join(work, "outer")}
 	t.Cleanup(e.cleanup)

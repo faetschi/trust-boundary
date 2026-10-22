@@ -41,7 +41,7 @@ func trialAdmitted(t *testing.T, root workflow.RootIdentity, runID string) (audi
 	t.Helper()
 	admitted := managedLiveRootRunAdmittedEvent{SchemaVersion: "tbound-managed-live-root-run-admitted/v1", Root: root,
 		RegistrationDigest: trialTestRegistration,
-		Descriptor:         managedLiveRootDescriptorIdentity{Path: "/var/lib/tbound/live", Device: root.Device, Inode: root.Inode, MountID: 9, Mode: 0o700},
+		Descriptor:         managedLiveRootDescriptorIdentity{Path: "/var/lib/tbound/live/root", Device: root.Device, Inode: root.Inode, MountID: 9, Mode: 0o700},
 		ServiceCgroup:      piruntime.D09ManagedLiveRootCgroupIdentity{Path: "/system.slice/tbound-pi.service", Device: 1, Inode: 2, MountID: 3},
 		RunID:              runID, WorkflowID: "wf-" + runID, PublicationID: "pub-" + runID, OwnerEpoch: 1, ProcessID: 100, ServiceUID: 990, ServiceGID: 990}
 	data, err := json.Marshal(admitted)

@@ -513,11 +513,17 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		WorkflowID:     session.WorkflowID,
 		ConversationID: session.ConversationID,
 	}
+	journalLaunchProof := func(launcherPID int, proof piruntime.D09TCBProof) error {
+		return journalProductionLaunchProof(session.StoreJournal, session.Lifecycle, session.RunID,
+			session.SessionID, session.WorkflowID, session.ConversationID, session.Generation.ID(),
+			session.Prepared.Provenance().BindingDigest, session.Profile, session.D09Template, launcherPID, proof)
+	}
 	session.Lifecycle.markWorkerLaunchAttempted()
 	worker, err := piruntime.LaunchD09PiSDKWorker(ctx, capability, session.D09Channels, bootstrap)
 	if err != nil {
 		workerLaunchErr = err
-		return fmt.Errorf("launch admitted production Pi worker: %w", err)
+		session.Lifecycle.markLaunchFailed(err)
+		return productionLaunchFailure(err, journalLaunchProof)
 	}
 	session.Lifecycle.markWorkerLaunched(worker.PID())
 	closeWorker := func() piruntime.Settlement {
@@ -540,9 +546,7 @@ func runComposedProductionPiSession(ctx context.Context, output io.Writer, confi
 		settlement = closeWorker()
 		return errors.Join(errors.New("production D09 worker has no captured launch TCB proof"), workerCloseErr)
 	}
-	if err := journalProductionLaunchProof(session.StoreJournal, session.Lifecycle, session.RunID,
-		session.SessionID, session.WorkflowID, session.ConversationID, session.Generation.ID(),
-		session.Prepared.Provenance().BindingDigest, session.Profile, session.D09Template, worker.PID(), launchProof); err != nil {
+	if err := journalLaunchProof(worker.PID(), launchProof); err != nil {
 		settlement = closeWorker()
 		return errors.Join(fmt.Errorf("journal production D09 launch proof before task release: %w", err), workerCloseErr)
 	}
@@ -1002,6 +1006,22 @@ func releaseProductionSessionAdmissionIfSafe(
 		release()
 	}
 	return true
+}
+
+// productionLaunchFailure is the error of a launch that yielded no worker. A route-probe cell never
+// yields one: it ran its probe and did not start Pi. Its validated launch proof is journaled as the
+// run's production_tcb_proof, the record the guest-route-direct-runtime producer reads, and the run
+// still fails.
+func productionLaunchFailure(err error, journalLaunchProof func(launcherPID int, proof piruntime.D09TCBProof) error) error {
+	var launchErr *piruntime.PiWorkerLaunchError
+	if !errors.As(err, &launchErr) || launchErr.RouteProbe == nil {
+		return fmt.Errorf("launch admitted production Pi worker: %w", err)
+	}
+	if journalErr := journalLaunchProof(launchErr.RouteProbe.LauncherPID, launchErr.RouteProbe.Proof); journalErr != nil {
+		return errors.Join(fmt.Errorf("launch route-probe cell: %w", err),
+			fmt.Errorf("journal route-probe launch proof: %w", journalErr))
+	}
+	return fmt.Errorf("route-probe launch proof journaled, Pi not started: %w", err)
 }
 
 // productionSessionCloseIfUnsafe lets the binder's own Close guard run when

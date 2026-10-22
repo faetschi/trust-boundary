@@ -675,7 +675,7 @@ func TestSettledServiceDispositionRejectsUnresolvedPins(t *testing.T) {
 			HostCallReservation:    &workflowrecovery.HostCallReservationPin{Disposition: workflowrecovery.HostCallTerminal},
 		}
 	}
-	if err := validateSettledServiceDisposition(settled(), currentConversation); err != nil {
+	if err := validateSettledServiceDisposition(settled(), currentConversation, false); err != nil {
 		t.Fatalf("fully settled current conversation was refused: %v", err)
 	}
 	retired := settled()
@@ -684,7 +684,7 @@ func TestSettledServiceDispositionRejectsUnresolvedPins(t *testing.T) {
 	retired.PendingCallDisposition = workflowrecovery.PendingCallRetired
 	retired.EffectReservation.Disposition = workflowrecovery.EffectReservationRetired
 	retired.HostCallReservation.Disposition = workflowrecovery.HostCallRetired
-	if err := validateSettledServiceDisposition(retired, currentConversation); err != nil {
+	if err := validateSettledServiceDisposition(retired, currentConversation, false); err != nil {
 		t.Fatalf("fully retired pins were refused: %v", err)
 	}
 	closedHistory := settled()
@@ -692,7 +692,7 @@ func TestSettledServiceDispositionRejectsUnresolvedPins(t *testing.T) {
 		{ConversationID: "conversation-previous-g1", Disposition: workflowrecovery.DispositionRetired},
 		{ConversationID: currentConversation, Disposition: workflowrecovery.DispositionAwaitingHostPrompt},
 	}
-	if err := validateSettledServiceDisposition(closedHistory, currentConversation); err != nil {
+	if err := validateSettledServiceDisposition(closedHistory, currentConversation, false); err != nil {
 		t.Fatalf("a quiescent latest conversation after closed history was refused: %v", err)
 	}
 
@@ -748,7 +748,7 @@ func TestSettledServiceDispositionRejectsUnresolvedPins(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			pins := settled()
 			test.mutate(&pins)
-			if err := validateSettledServiceDisposition(pins, currentConversation); !errors.Is(err, workflowrecovery.ErrPendingUnknown) {
+			if err := validateSettledServiceDisposition(pins, currentConversation, false); !errors.Is(err, workflowrecovery.ErrPendingUnknown) {
 				t.Fatalf("unresolved pins were admitted: %v", err)
 			}
 		})
@@ -765,7 +765,7 @@ func TestSettledServiceDispositionAcceptsPureEmptyProviderResult(t *testing.T) {
 			Disposition: workflowrecovery.DispositionTerminal}},
 		PendingCallDisposition: workflowrecovery.PendingCallNone,
 	}
-	if err := validateSettledServiceDisposition(pins, currentConversation); err != nil {
+	if err := validateSettledServiceDisposition(pins, currentConversation, false); err != nil {
 		t.Fatalf("pure empty provider result without reservations was refused: %v", err)
 	}
 }

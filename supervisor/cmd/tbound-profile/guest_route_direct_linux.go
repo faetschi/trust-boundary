@@ -21,9 +21,10 @@ import (
 //
 // The attempts are made by the signed entrypoint of a cell launched from a route-probe template (the
 // production cell template plus a route_probe member; see internal/piruntime/d09_route_probe.go). The
-// entrypoint reports them in its TCB proof, which the production session journals as a
-// `production_tcb_proof` event of the run (`<audit-root>/<run id>-session-audit.jsonl`) before it does
-// anything else with the cell. This producer reads that journal, as the bash-view producer reads the
+// entrypoint reports them in its TCB proof. The cell sends no readiness, so the launcher stops it once the
+// proof is validated, and the production session journals the proof as the run's `production_tcb_proof`
+// event (`<audit-root>/<run id>-session-audit.jsonl`) and fails the run; nothing else reaches the cell
+// (piruntime.ErrD09RouteProbeLaunched). This producer reads that journal, as the bash-view producer reads the
 // command audit, and checks:
 //
 //   - the journal's hash chain, and exactly one proof event, of this run, whose recorded digest is the

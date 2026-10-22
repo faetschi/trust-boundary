@@ -36,7 +36,6 @@ func testD09ManagedPiServiceConfig() D09ManagedPiServiceConfig {
 
 func validManagedLiveRootRegistration() D09ManagedLiveRootRegistration {
 	rootOptions := DigestBytes([]byte("rw,nosuid,nodev,relatime\x00ext4\x00/dev/test"))
-	parentOptions := DigestBytes([]byte("ro,nosuid,nodev,relatime\x00ext4\x00/dev/test"))
 	serviceUID, serviceGID := 991, 992
 	serviceSocket := D09ManagedPiServiceSocket{
 		SchemaVersion: D09ManagedPiServiceSocketSchema, Mode: D09ManagedPiServiceSocketMode,
@@ -50,10 +49,10 @@ func validManagedLiveRootRegistration() D09ManagedLiveRootRegistration {
 	}
 	return D09ManagedLiveRootRegistration{
 		SchemaVersion: D09ManagedLiveRootSchema, WriterPolicy: D09ManagedLiveRootWriterPolicy,
-		RootPath: "/var/lib/tbound/live", RootDevice: 10, RootInode: 20, RootFilesystemMagic: 0xef53,
+		RootPath: "/var/lib/tbound/live/root", RootDevice: 10, RootInode: 20, RootFilesystemMagic: 0xef53,
 		RootMountID: 101, RootMountOptionsDigest: rootOptions, RootUID: 991, RootGID: 992, RootMode: 0o700,
-		ParentPath: "/var/lib/tbound", ParentDevice: 10, ParentInode: 19, ParentFilesystemMagic: 0xef53,
-		ParentMountID: 100, ParentMountOptionsDigest: parentOptions, ParentUID: 0, ParentGID: 0, ParentMode: 0o755,
+		ParentPath: "/var/lib/tbound/live", ParentDevice: 10, ParentInode: 2, ParentFilesystemMagic: 0xef53,
+		ParentMountID: 101, ParentMountOptionsDigest: rootOptions, ParentUID: 991, ParentGID: 992, ParentMode: 0o700,
 		ServiceName: D09ManagedPiServiceName, ServiceGroup: D09ManagedPiServiceGroup, ServiceUID: serviceUID, ServiceGID: serviceGID,
 		ServiceLoginShell: "/usr/sbin/nologin", ServiceShellDigest: DigestBytes([]byte("nologin")),
 		PasswdDigest: DigestBytes([]byte("passwd")), GroupDigest: DigestBytes([]byte("group")), NSSwitchDigest: DigestBytes([]byte("nsswitch")),
@@ -105,6 +104,88 @@ func TestD09ManagedLiveRootRegistrationSignatureAndClosedPolicy(t *testing.T) {
 	}
 }
 
+// Publication stages artifacts and the live-root lock in the live root's parent,
+// as the non-root writer, and refuses unless both are on one mount.
+func TestD09ManagedLiveRootRegistrationRequiresTheStagingParentLayout(t *testing.T) {
+	digested := func() D09ManagedLiveRootRegistration {
+		registration := validManagedLiveRootRegistration()
+		registration.Digest = DigestBytes([]byte("registration"))
+		return registration
+	}
+	if err := digested().Validate(); err != nil {
+		t.Fatalf("live root as the fixed child of the service-owned mount root refused: %v", err)
+	}
+	refused := map[string]func(*D09ManagedLiveRootRegistration){
+		"mount root itself": func(r *D09ManagedLiveRootRegistration) {
+			r.RootPath, r.ParentPath = "/var/lib/tbound/live", "/var/lib/tbound"
+		},
+		"another child":            func(r *D09ManagedLiveRootRegistration) { r.RootPath = "/var/lib/tbound/live/other" },
+		"parent on another mount":  func(r *D09ManagedLiveRootRegistration) { r.ParentMountID = 100 },
+		"parent on another device": func(r *D09ManagedLiveRootRegistration) { r.ParentDevice = 11 },
+		"root-owned parent the writer cannot stage in": func(r *D09ManagedLiveRootRegistration) {
+			r.ParentUID, r.ParentGID, r.ParentMode = 0, 0, 0o755
+		},
+		"group-writable parent": func(r *D09ManagedLiveRootRegistration) { r.ParentMode = 0o720 },
+	}
+	for name, mutate := range refused {
+		registration := digested()
+		mutate(&registration)
+		if err := registration.Validate(); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+			t.Errorf("%s: registration accepted: %v", name, err)
+		}
+	}
+}
+
+func TestD09ManagedLiveRootMountUnitMustMountTheRootsParent(t *testing.T) {
+	serviceUnit := []byte("[Service]\nUser=tbound-pi\nGroup=tbound-pi\nExecStart=/usr/local/bin/tbound serve --pi\n" +
+		"NoNewPrivileges=yes\nProtectSystem=strict\nProtectHome=yes\nPrivateTmp=yes\nReadWritePaths=/var/lib/tbound/live\n" +
+		"Delegate=yes\nDelegateSubgroup=runner\nKillMode=control-group\nUMask=0077\n")
+	mountUnit := []byte("[Mount]\nWhat=/var/lib/tbound/live.img\nWhere=/var/lib/tbound/live\nType=ext4\nOptions=loop,rw,nosuid,nodev\n")
+	check := func(rootPath string) error {
+		return validateManagedSystemdPolicy(rootPath, "tbound-pi", "tbound-pi", "/usr/local/bin/tbound", 0xef53, serviceUnit, mountUnit)
+	}
+	if err := check("/var/lib/tbound/live/root"); err != nil {
+		t.Fatalf("live root as the fixed child of the mount root refused: %v", err)
+	}
+	for _, rootPath := range []string{"/var/lib/tbound/live", "/var/lib/tbound/live/other",
+		"/var/lib/tbound/live/root/nested", "/var/lib/tbound/root", "/var/lib/tbound/livex/root"} {
+		if err := check(rootPath); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+			t.Errorf("live root %q accepted against Where=/var/lib/tbound/live: %v", rootPath, err)
+		}
+	}
+}
+
+func TestD09ManagedLiveRootOpensOnlyARealChildDirectory(t *testing.T) {
+	mountRoot := t.TempDir()
+	mount, err := os.Open(mountRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mount.Close()
+	child := filepath.Join(mountRoot, D09ManagedPiLiveRootName)
+	if err := os.Mkdir(filepath.Join(mountRoot, "target"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("target", child); err != nil {
+		t.Fatal(err)
+	}
+	if root, err := openManagedLiveRootChild(mount); err == nil {
+		_ = root.Close()
+		t.Fatal("a symlinked live root child was opened")
+	}
+	if err := os.Remove(child); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(mountRoot, "target"), child); err != nil {
+		t.Fatal(err)
+	}
+	root, err := openManagedLiveRootChild(mount)
+	if err != nil {
+		t.Fatalf("real live root child refused: %v", err)
+	}
+	_ = root.Close()
+}
+
 func TestD09ManagedLiveRootSystemdPolicyIsConcrete(t *testing.T) {
 	serviceUnit := []byte(`[Unit]
 Description=TBound managed writer
@@ -128,19 +209,19 @@ Where=/var/lib/tbound/live
 Type=ext4
 Options=rw,nosuid,nodev
 `)
-	if err := validateManagedSystemdPolicy("/var/lib/tbound/live", "tbound-writer", "tbound-writer", "/usr/local/bin/tbound", 0xef53, serviceUnit, mountUnit); err != nil {
+	if err := validateManagedSystemdPolicy("/var/lib/tbound/live/root", "tbound-writer", "tbound-writer", "/usr/local/bin/tbound", 0xef53, serviceUnit, mountUnit); err != nil {
 		t.Fatalf("valid measured service/mount policy refused: %v", err)
 	}
 	unsafe := strings.Replace(string(serviceUnit), "ProtectSystem=strict", "ProtectSystem=off", 1)
-	if err := validateManagedSystemdPolicy("/var/lib/tbound/live", "tbound-writer", "tbound-writer", "/usr/local/bin/tbound", 0xef53, []byte(unsafe), mountUnit); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+	if err := validateManagedSystemdPolicy("/var/lib/tbound/live/root", "tbound-writer", "tbound-writer", "/usr/local/bin/tbound", 0xef53, []byte(unsafe), mountUnit); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
 		t.Fatalf("unprotected service filesystem policy accepted: %v", err)
 	}
 	unsafe = strings.Replace(string(mountUnit), "Options=rw,nosuid,nodev", "Options=rw,suid,dev", 1)
-	if err := validateManagedSystemdPolicy("/var/lib/tbound/live", "tbound-writer", "tbound-writer", "/usr/local/bin/tbound", 0xef53, serviceUnit, []byte(unsafe)); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+	if err := validateManagedSystemdPolicy("/var/lib/tbound/live/root", "tbound-writer", "tbound-writer", "/usr/local/bin/tbound", 0xef53, serviceUnit, []byte(unsafe)); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
 		t.Fatalf("unsafe live-root mount options accepted: %v", err)
 	}
 	unsafe = strings.Replace(string(serviceUnit), "DelegateSubgroup=runner\n", "", 1)
-	if err := validateManagedSystemdPolicy("/var/lib/tbound/live", "tbound-writer", "tbound-writer", "/usr/local/bin/tbound", 0xef53, []byte(unsafe), mountUnit); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
+	if err := validateManagedSystemdPolicy("/var/lib/tbound/live/root", "tbound-writer", "tbound-writer", "/usr/local/bin/tbound", 0xef53, []byte(unsafe), mountUnit); !errors.Is(err, ErrD09ManagedLiveRootRefused) {
 		t.Fatalf("service unit without the closed runner delegate subgroup accepted: %v", err)
 	}
 }

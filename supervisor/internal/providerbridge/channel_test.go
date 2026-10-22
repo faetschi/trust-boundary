@@ -1,11 +1,15 @@
 package providerbridge
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
+	"net/http"
+	"os"
 	"testing"
 	"time"
 )
@@ -173,4 +177,67 @@ func readChannelTestFrame(reader io.Reader) (map[string]any, error) {
 	var frame map[string]any
 	err := json.Unmarshal(body, &frame)
 	return frame, err
+}
+
+// A provider turn that ends in an unknown exchange (the F3 G1 stream with its [DONE] cut off) closes
+// the bridge with ErrProviderTurnFailed, after the worker got its error frame and the exchange was
+// journaled as unknown. A channel protocol violation is another failure and is not typed as one.
+func TestServeTypesAFailedProviderTurn(t *testing.T) {
+	body, err := os.ReadFile("../broker/openrouter/testdata/opencode-go-g1-turn1.sse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cut := bytes.TrimSuffix(body, []byte("data: [DONE]\n\n"))
+	serverConn, clientConn := net.Pipe()
+	defer clientConn.Close()
+	journal := &memoryJournal{}
+	doer := &fixtureDoer{responses: []fixtureResponse{{failStatus: http.StatusOK, failBody: string(cut)}}}
+	conversation := newFixtureConversation(t, journal, doer, "g0", "tree-g0")
+	if err := conversation.AdmitPrompt("task-g1", "trusted host-admitted prompt"); err != nil {
+		t.Fatal(err)
+	}
+	serveDone := make(chan error, 1)
+	go func() { serveDone <- Serve(context.Background(), serverConn, conversation) }()
+	if err := writeChannelTestFrame(clientConn, map[string]any{
+		"version": bridgeSchemaVersion, "sequence": 1, "kind": "next", "request_id": "request-g1",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	frame, err := readChannelTestFrame(clientConn)
+	if err != nil || frame["kind"] != "error" {
+		t.Fatalf("failed turn frame=%v err=%v", frame, err)
+	}
+	select {
+	case serveErr := <-serveDone:
+		if !errors.Is(serveErr, ErrProviderTurnFailed) {
+			t.Fatalf("failed provider turn closed the bridge with %v, want ErrProviderTurnFailed", serveErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider bridge did not stop after the failed turn")
+	}
+	unknown := false
+	for _, event := range journal.snapshot() {
+		unknown = unknown || event.Kind == "provider_exchange_unknown"
+	}
+	if !unknown {
+		t.Fatal("the failed exchange has no durable unknown record")
+	}
+
+	violationServer, violationClient := net.Pipe()
+	defer violationClient.Close()
+	other := newFixtureConversation(t, &memoryJournal{}, &fixtureDoer{}, "g0", "tree-g0")
+	go func() { serveDone <- Serve(context.Background(), violationServer, other) }()
+	if err := writeChannelTestFrame(violationClient, map[string]any{
+		"version": bridgeSchemaVersion, "sequence": 2, "kind": "next", "request_id": "request-out-of-order",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case serveErr := <-serveDone:
+		if serveErr == nil || errors.Is(serveErr, ErrProviderTurnFailed) {
+			t.Fatalf("an out-of-order request closed the bridge with %v, want an untyped failure", serveErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider bridge did not stop after an out-of-order request")
+	}
 }

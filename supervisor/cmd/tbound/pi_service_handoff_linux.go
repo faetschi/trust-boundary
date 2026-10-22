@@ -1779,7 +1779,7 @@ func callProductionPiService(ctx context.Context, socket piServiceSocketRegistra
 		return err
 	}
 	if response.Status != "completed" {
-		return fmt.Errorf("local Pi service %s: %s", response.Status, response.ErrorCode)
+		return errors.New(piServiceRefusalMessage(response.Status, response.ErrorCode))
 	}
 	if len(response.Receipt) == 0 {
 		return ErrPiServiceRefused
