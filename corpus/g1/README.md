@@ -1,6 +1,8 @@
-# G1 engineering case (approved by owner 2026-10-20)
+# G1 engineering case (approved by owner 2026-10-22)
 
-Status: **approved by owner 2026-10-20.** Nothing here has been run on the guest yet; the owner
+Status: **approved by owner 2026-10-22.** The owner first approved the case on 2026-10-20 and re-approved it on
+2026-10-22 for the host-call budget change (8 -> 12, merged with F4: reads charge host calls, 5 turns + 4 effects = 9);
+prompt, fixture and acceptance are unchanged. Nothing here has been run on the guest successfully yet; the owner
 approved one real provider exchange over the engineering route (OpenCode Go) for it. It is not part of the pilot corpus, has no manifest,
 reviews or pins, and is never claim-bearing: no result of it is a thesis result.
 

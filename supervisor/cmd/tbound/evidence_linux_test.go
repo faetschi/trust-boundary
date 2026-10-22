@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -64,7 +65,8 @@ func newEvTestEnv(uid int) *evTestEnv {
 			return wsoracle.Manifest{Label: label, Complete: true, Dev: 3, Entries: []wsoracle.Entry{},
 				Root: &wsoracle.Entry{Type: wsoracle.TypeDir, Mode: 0o700, UID: 995, GID: 986, Nlink: 2, Ino: 42}}
 		},
-		cell: func(context.Context) (evidenceCell, error) { return evTestCell(), nil },
+		cell:    func(context.Context) (evidenceCell, error) { return evTestCell(), nil },
+		pinRoot: func(context.Context, string) error { return nil },
 		capture: func(c evidenceCell, reg procoracle.Registration, p procoracle.Point, seq int) (procoracle.Snapshot, error) {
 			e.captured = append(e.captured, string(p))
 			return procoracle.Snapshot{Seq: seq, Point: p, RegistrationDigest: reg.Digest(), CellPath: c.Hierarchy, CellInode: c.Inode,
@@ -171,6 +173,42 @@ func TestEvidenceE04SnapshotOfTheRegisteredRootOnEveryPoint(t *testing.T) {
 	// flag order is free
 	if _, err := runEvTest(t, newEvTestEnv(0), "e04-snapshot", "--point", "baseline", "--root", piruntime.D09ManagedPiLiveRootPath); err != nil {
 		t.Fatalf("flags in the other order: %v", err)
+	}
+}
+
+func TestOpenPinnedLiveRootRefusesARenamedRootAndADecoy(t *testing.T) {
+	dir := t.TempDir()
+	var st syscall.Stat_t
+	if err := syscall.Stat(dir, &st); err != nil {
+		t.Fatal(err)
+	}
+	decoy := filepath.Join(filepath.Dir(dir), "decoy")
+	if err := os.Mkdir(decoy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(dir, dir+"-old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(decoy, dir); err != nil {
+		t.Fatal(err)
+	}
+	if fd, err := openPinnedLiveRoot(dir, uint64(st.Dev), st.Ino); err == nil {
+		syscall.Close(fd)
+		t.Fatal("openPinnedLiveRoot accepted a decoy at the registered root's path")
+	}
+	fd, err := openPinnedLiveRoot(dir+"-old", uint64(st.Dev), st.Ino)
+	if err != nil {
+		t.Fatalf("openPinnedLiveRoot of the real root under its new name: %v", err)
+	}
+	syscall.Close(fd)
+}
+
+func TestEvidenceE04SnapshotRefusesARootThatIsNotPinned(t *testing.T) {
+	env := newEvTestEnv(0)
+	env.pinRoot = func(context.Context, string) error { return errors.New("device 1 inode 2, want device 3 inode 4") }
+	if _, err := runEvTest(t, env, "e04-snapshot", "--root", piruntime.D09ManagedPiLiveRootPath, "--point", "baseline"); err == nil ||
+		!strings.Contains(err.Error(), "not the registered live root") {
+		t.Fatalf("e04-snapshot of an unpinned root: %v", err)
 	}
 }
 

@@ -170,6 +170,40 @@ func TestResetReplacesADirtyTreeWithTheSpecAndIsRepeatable(t *testing.T) {
 	}
 }
 
+func TestResetPinnedRefusesARenamedRootAndADecoy(t *testing.T) {
+	root, owner := testRoot(t)
+	var st syscall.Stat_t
+	if err := syscall.Stat(root, &st); err != nil {
+		t.Fatal(err)
+	}
+	want := RootIdentity{Device: uint64(st.Dev), Inode: st.Ino}
+
+	decoy := filepath.Join(filepath.Dir(root), "decoy")
+	if err := os.Mkdir(decoy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(decoy, "keep"), []byte("decoy"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(root, root+"-old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(decoy, root); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ResetPinned(root, sampleSpec(), owner, want); err == nil {
+		t.Fatal("ResetPinned wiped a decoy at the registered root's path")
+	}
+	if got, err := os.ReadFile(filepath.Join(root, "keep")); err != nil || string(got) != "decoy" {
+		t.Fatalf("the decoy was touched: %q, %v", got, err)
+	}
+	// The tree that really is the registered inode is still resettable under its new name.
+	if err := ResetPinned(root+"-old", sampleSpec(), owner, want); err != nil {
+		t.Fatalf("ResetPinned of the real root under its new name: %v", err)
+	}
+}
+
 // The next test needs root: it chowns to the canonical owner and wipes a directory the
 // owner cannot enter.
 func TestResetAsRootChownsToTheCanonicalOwnerAndWipesClosedDirectories(t *testing.T) {

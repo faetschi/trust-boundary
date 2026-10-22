@@ -21,6 +21,26 @@ func TestCheckTrialsAcceptsBoundedTrials(t *testing.T) {
 	}
 }
 
+// A scripted tool turn is a provider turn (ReserveHostCall) and a governed effect (ReserveEffect);
+// the final text turn is one provider turn. One tool turn plus that text turn needs exactly 3 host
+// calls, and 2 is one short.
+func TestCheckTrialsChargesTheProviderTurnAndTheEffectOfAToolTurn(t *testing.T) {
+	for _, tc := range []struct {
+		calls uint64
+		ok    bool
+	}{{3, true}, {2, false}} {
+		c := scriptedCase(t, "a")
+		c.Trial.MaxHostCalls = tc.calls
+		err := CheckTrials([]evalcorpus.Case{c}, nil)
+		if tc.ok && err != nil {
+			t.Errorf("budget %d: refused a script that needs 3: %v", tc.calls, err)
+		}
+		if !tc.ok && (err == nil || !strings.Contains(err.Error(), "host calls")) {
+			t.Errorf("budget %d: err %v, want a host-call refusal", tc.calls, err)
+		}
+	}
+}
+
 func TestCheckTrialsRefusals(t *testing.T) {
 	long := strings.Repeat("x", TaskIDMaxBytes)
 	mut := func(f func(*evalcorpus.Case)) []evalcorpus.Case {

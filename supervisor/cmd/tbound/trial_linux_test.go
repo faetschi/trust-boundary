@@ -107,6 +107,13 @@ func newTrialTestEnv(t *testing.T) *trialTestEnv {
 		artifacts: e.files,
 		liveRoot:  root,
 		owner:     owner,
+		registeredRoot: func(context.Context) (uint64, uint64, error) {
+			var st syscall.Stat_t
+			if err := syscall.Stat(root, &st); err != nil {
+				return 0, 0, err
+			}
+			return uint64(st.Dev), st.Ino, nil
+		},
 		cell: func(context.Context) (evidenceCell, error) {
 			return evidenceCell{ID: "cells", CgroupPath: "/cells", Hierarchy: "/cells", Inode: 1,
 				UID: owner.UID + trialTestInCellOffset, GID: owner.GID + trialTestInCellOffset, HostUID: owner.UID, HostGID: owner.GID}, nil

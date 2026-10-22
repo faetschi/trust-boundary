@@ -191,6 +191,9 @@ type evidenceEnv struct {
 	getenv  func(string) string
 	// snapshot is wsoracle.Snapshot.
 	snapshot func(root, label string) wsoracle.Manifest
+	// pinRoot verifies that path is still the registered live root: the opened directory's
+	// device and inode must be the verified signed registration's.
+	pinRoot func(ctx context.Context, path string) error
 	// cell resolves the registered cell from the service's own registration.
 	cell func(ctx context.Context) (evidenceCell, error)
 	// capture and monitor observe it (procoracle.Capture and StartMonitor). monitor calls ready
@@ -217,7 +220,7 @@ type evidenceEnv struct {
 
 func productionEvidenceEnv() evidenceEnv {
 	return evidenceEnv{
-		geteuid: os.Geteuid, getenv: os.Getenv, snapshot: wsoracle.Snapshot,
+		geteuid: os.Geteuid, getenv: os.Getenv, snapshot: wsoracle.Snapshot, pinRoot: pinRegisteredLiveRoot,
 		cell: loadEvidenceCell, capture: captureEvidenceCell, monitor: monitorEvidenceCell, readTrace: readEvidenceTrace,
 		lockMonitor: func() (func(), error) { return lockEvidenceMonitorFile(evidenceMonitorLockPath, evidenceRequiredUID) },
 		netCanary:   sendNetsinkCanary, netJournal: readNetsinkJournal,
@@ -305,7 +308,7 @@ func runEvidence(ctx context.Context, args []string, stdout io.Writer, env evide
 	var doc any
 	switch kind {
 	case runner.EvidenceE04Snapshot:
-		doc, err = evidenceE04Snapshot(env, flags)
+		doc, err = evidenceE04Snapshot(ctx, env, flags)
 	case runner.EvidenceProcCell:
 		var cell evidenceCell
 		if cell, err = env.cell(ctx); err == nil {
@@ -370,7 +373,7 @@ func parseOriginalCommand(s, verb string) ([]string, error) {
 	return words[2:], nil
 }
 
-func evidenceE04Snapshot(env evidenceEnv, f map[string]string) (runner.E04SnapshotDoc, error) {
+func evidenceE04Snapshot(ctx context.Context, env evidenceEnv, f map[string]string) (runner.E04SnapshotDoc, error) {
 	root, point := f["--root"], f["--point"]
 	if !slices.Contains(evidenceLiveRoots, root) {
 		return runner.E04SnapshotDoc{}, fmt.Errorf("root %q is not a registered protected root", root)
@@ -378,8 +381,48 @@ func evidenceE04Snapshot(env evidenceEnv, f map[string]string) (runner.E04Snapsh
 	if !slices.Contains(evidencePoints, point) {
 		return runner.E04SnapshotDoc{}, fmt.Errorf("%q is not an E04 observation point", point)
 	}
+	if err := env.pinRoot(ctx, root); err != nil {
+		return runner.E04SnapshotDoc{}, fmt.Errorf("the root %q is not the registered live root: %w", root, err)
+	}
 	return runner.E04SnapshotDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceE04Snapshot, Point: point, Root: root,
 		Manifest: env.snapshot(root, point)}, nil
+}
+
+// pinRegisteredLiveRoot opens path with O_NOFOLLOW and requires the directory to be the
+// device and inode of the verified signed registration. A live root that was renamed and
+// replaced by a decoy at the same path is refused before a manifest of it is taken.
+func pinRegisteredLiveRoot(ctx context.Context, path string) error {
+	reg, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(ctx)
+	if err != nil {
+		return err
+	}
+	if reg.RootPath != path {
+		return fmt.Errorf("the registration names %q", reg.RootPath)
+	}
+	fd, err := openPinnedLiveRoot(path, reg.RootDevice, reg.RootInode)
+	if err != nil {
+		return err
+	}
+	return syscall.Close(fd)
+}
+
+// openPinnedLiveRoot opens path without following the final component and returns the
+// descriptor only when it is the wanted device and inode.
+func openPinnedLiveRoot(path string, device, inode uint64) (int, error) {
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, err
+	}
+	var st syscall.Stat_t
+	if err := syscall.Fstat(fd, &st); err != nil {
+		syscall.Close(fd)
+		return -1, err
+	}
+	if uint64(st.Dev) != device || st.Ino != inode {
+		syscall.Close(fd)
+		return -1, fmt.Errorf("device %d inode %d, want device %d inode %d", st.Dev, st.Ino, device, inode)
+	}
+	return fd, nil
 }
 
 // evidenceRegistration rebuilds the registration from the service's own cell and the two

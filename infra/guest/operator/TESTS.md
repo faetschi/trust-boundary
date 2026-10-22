@@ -1236,6 +1236,8 @@ f 644 995:986 SMOKE-README.txt
 
 Command: `sudo -n find /var/lib/tbound/live -mindepth 1 -printf "%y %m %U:%G %P\n" | sort; sudo -n stat -c "%s %U:%G %a" /var/lib/tbound/live/SMOKE-README.txt`
 
+Pre-F4 historical recording: the path is the pre-F4 layout, where `/var/lib/tbound/live` was both the mount point and the live root. Under F4 the same listing is `find /var/lib/tbound/live/root ...` (with `lost+found` inside it), and the image root is listed separately by `diag live-listing`.
+
 Expected: rc=0, output ~ /^d 755 995:986 lost\+found
 f 644 995:986 SMOKE-README.txt/. Got rc=0.
 
@@ -1795,6 +1797,8 @@ adopt smoke ok: cfg sha256:a46353903e6d82bc4e716ac64914be5b97ae72c7a0b7daa5875aa
 #### 7.live-root  PASS
 
 Command: `sudo -n find /var/lib/tbound/live -mindepth 1 -printf "%y %m %U:%G %P\n" | sort`
+
+Pre-F4 historical recording: the path is the pre-F4 layout, where `/var/lib/tbound/live` was both the mount point and the live root. Under F4 the same listing is `find /var/lib/tbound/live/root ...` (with `lost+found` inside it), and the image root is listed separately by `diag live-listing`.
 
 Expected: rc=0, output ~ /^d 755 995:986 lost\+found
 f 644 995:986 SMOKE-README.txt/. Got rc=0.
