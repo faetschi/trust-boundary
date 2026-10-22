@@ -558,13 +558,13 @@ v_manifest_install() {
   want=$(norm_sha "${ARGS[1]:-}")
   check_tools; mkwork; prep_ga
   stage_hashed pilot manifest.json "$WORK/manifest.json" $((16 * 1024 * 1024)) "${ARGS[0]:-}"
-  out=$("$TBP" corpus-digest --manifest "$WORK/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --max-host-calls 8 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "corpus-digest refused the manifest: ${out:0:600}"
+  out=$("$TBP" corpus-digest --manifest "$WORK/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "corpus-digest refused the manifest: ${out:0:600}"
   dig=$(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u)
   [[ $dig == "$want" ]] || die "corpus digest of the staged manifest is not the given CORPUS_DIGEST"
   need_inactive
   install -d -o root -g root -m 0755 "$ETC/corpus"
   install_atomic "$WORK/manifest.json" "$ETC/corpus/manifest.json" 0644
-  out=$("$TBP" corpus-digest --manifest "$ETC/corpus/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --max-host-calls 8 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "installed manifest does not verify"
+  out=$("$TBP" corpus-digest --manifest "$ETC/corpus/manifest.json" --quota-profile pilot --artifacts /opt/tbound/corpus/artifacts --max-host-calls 17 --max-tokens 20000 --duration-seconds 1200 2>&1) || die "installed manifest does not verify"
   [[ $(printf '%s\n' "$out" | grep -Eo 'sha256:[0-9a-f]{64}' | sort -u) == "$want" ]] || die "installed manifest digest differs"
   printf '%s\n' "$want" >"$GA/state/corpus-digest"
   say "manifest-install ok: $want"
