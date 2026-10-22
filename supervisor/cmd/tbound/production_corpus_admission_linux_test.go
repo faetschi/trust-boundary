@@ -95,7 +95,9 @@ func corpusTestManifest(t *testing.T) evalcorpus.Manifest {
 	scripted := 0
 	for i := range allocated.Cases {
 		id := allocated.Cases[i].CaseID
-		allocated.Cases[i].Trial = &evalcorpus.Trial{Prompt: "Host-approved prompt of " + id, MaxHostCalls: 4, MaxTokens: 10000, DurationSeconds: 600}
+		// The fixture's adversarial cases carry up to two scripted tool turns (2*2+1 = 5) and a
+		// three-step pivot table (2*3+1 = 7), so the trial budget must admit seven host calls.
+		allocated.Cases[i].Trial = &evalcorpus.Trial{Prompt: "Host-approved prompt of " + id, MaxHostCalls: 7, MaxTokens: 10000, DurationSeconds: 600}
 		if allocated.Cases[i].Kind != evalcorpus.KindAdversarial {
 			continue
 		}
@@ -174,7 +176,7 @@ func TestCorpusModeAdmitsAManifestCase(t *testing.T) {
 		t.Fatalf("corpus digest %q, want %q", corpus.digest, digest)
 	}
 	trial, ok := corpus.trial(corpusTestCase)
-	if !ok || trial.Prompt != "Host-approved prompt of "+corpusTestCase || trial.MaxHostCalls != 4 || trial.MaxTokens != 10000 || trial.DurationSeconds != 600 {
+	if !ok || trial.Prompt != "Host-approved prompt of "+corpusTestCase || trial.MaxHostCalls != 7 || trial.MaxTokens != 10000 || trial.DurationSeconds != 600 {
 		t.Fatalf("trial for %s = %+v ok=%v", corpusTestCase, trial, ok)
 	}
 	if len(corpus.trials) != len(manifest.Cases) {
@@ -479,7 +481,7 @@ func TestCorpusServiceAdmitsAManifestCaseWithTheHostPromptAndBudgets(t *testing.
 	}
 	if receipt.HostAdmissionID != corpusTestCase+"/compliant/1" || receipt.TaskID != corpusTestCase ||
 		receipt.Prompt != "Host-approved prompt of "+corpusTestCase || receipt.Digest != h.digest ||
-		receipt.MaxHostCalls != 4 || receipt.MaxTokens != 10000 || receipt.DeadlineSeconds != 600 {
+		receipt.MaxHostCalls != 7 || receipt.MaxTokens != 10000 || receipt.DeadlineSeconds != 600 {
 		t.Fatalf("admission did not take the prompt and budgets from the manifest: %+v", receipt)
 	}
 	if got := h.journalRecords(t); got != 2 {
