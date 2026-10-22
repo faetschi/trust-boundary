@@ -861,6 +861,13 @@ func sameD09CommandProofIdentity(first, final d09CommandProof) bool {
 		first.Delta == final.Delta && first.DeltaTemplateDigest == final.DeltaTemplateDigest
 }
 
+// d09PreStartFailure types a failed command run as protocol.ErrCommandNotStarted when the host never
+// sent the start acknowledgement, which the entrypoint waits for before it starts the command, and the
+// cell's cgroup was then observed empty. Any other failure stays untyped.
+func d09PreStartFailure(err error, ackSent, cellSettled bool) error {
+	return err
+}
+
 func (r *D09CommandRunner) cleanupCommand(scope *d09OwnedCommandScope, podmanPath, name string) {
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), d09CommandCleanupLimit)
 	defer cancel()
