@@ -222,7 +222,7 @@ go build -o "$PRIVATE/tbound-profile" ./cmd/tbound-profile
 # currently active. Use only a dedicated service UID/GID that cannot be used by
 # interactive or adjacent processes, and bind the resulting registration digest
 # into d09-cell.json before computing the template digest.
-"$PRIVATE/tbound-profile" managed-root-measure --root /var/lib/tbound/live \
+"$PRIVATE/tbound-profile" managed-root-measure --root /var/lib/tbound/live/root \
   --service-name tbound-writer --service-group tbound-writer \
   --service-unit /etc/systemd/system/tbound-writer.service \
   --mount-unit /etc/systemd/system/var-lib-tbound-live.mount \
@@ -564,8 +564,9 @@ Production always loads `/etc/tbound/managed-live-root.json` and
 descriptor and current host state. Offline `tbound-profile managed-root-measure`,
 `managed-root-sign`, and `managed-root-verify` only create/review operator input;
 they do not install services, acquire locks, stop writers, or issue permits. The
-live directory is service-owned UID/GID mode 0700 under a root-owned protected
-parent and a dedicated RW `nosuid,nodev` mount. The signed `service_cgroup_path`
+live directory is service-owned UID/GID mode 0700, the fixed `root` child of a
+dedicated RW `nosuid,nodev` mount whose service-owned root is the same-mount
+publication staging parent. The signed `service_cgroup_path`
 is stable policy; kernel cgroup device/inode/mount ID are freshly measured and
 held stable by the verified object for that service invocation. Missing or
 mismatched registration refuses before launch. The CLI-owned managed live-root

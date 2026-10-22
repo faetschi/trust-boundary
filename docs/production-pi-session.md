@@ -203,7 +203,9 @@ status/transaction, and `success`.
 
 A missing protected artifact is a precise refusal, never a synthesized success.
 The registered root itself is owned by its dedicated service UID/GID with exact
-mode `0700`; its direct parent is root-owned and not group/world writable. The
+mode `0700`; its direct parent is the root of its own mount, owned by the same
+service UID/GID and not group/world writable, so publication stages there on the
+same mount. The
 non-login service account must not be shared with interactive or adjacent
 processes. The registration signs this policy and protected systemd/mount/runner
 configuration; Runtime A verifies the current process and per-invocation

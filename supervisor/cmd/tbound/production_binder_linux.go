@@ -44,7 +44,7 @@ const (
 	productionStoreRootDefault = "/var/lib/tbound/sessions"
 	productionAuditRootDefault = "/var/lib/tbound/audit"
 	productionAdminRootDefault = "/var/lib/tbound/private-admin"
-	productionLiveRootDefault  = "/var/lib/tbound/live"
+	productionLiveRootDefault  = piruntime.D09ManagedPiLiveRootPath
 	productionStateRootDefault = "/var/lib/tbound/publication-state"
 	productionGitPathDefault   = "/usr/bin/git"
 	productionGitApprovalPath  = "/etc/tbound/pi-git-approval.json"

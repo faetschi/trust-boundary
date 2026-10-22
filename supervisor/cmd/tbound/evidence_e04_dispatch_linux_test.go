@@ -38,7 +38,7 @@ func TestE04PointsKindIsDispatchedByRunEvidence(t *testing.T) {
 	for name, args := range map[string][]string{
 		"no flag":          {runner.EvidenceE04Points},
 		"flag of a kind":   {runner.EvidenceE04Points, "--interval", e04TestInterval},
-		"a snapshot flag":  {runner.EvidenceE04Points, "--root", "/var/lib/tbound/live", "--point", "baseline"},
+		"a snapshot flag":  {runner.EvidenceE04Points, "--root", "/var/lib/tbound/live/root", "--point", "baseline"},
 		"equals form":      {runner.EvidenceE04Points, "--interval-ref=" + e04TestInterval},
 		"a leading dash":   {runner.EvidenceE04Points, "--interval-ref", "-x"},
 		"outside alphabet": {runner.EvidenceE04Points, "--interval-ref", "a;b"},

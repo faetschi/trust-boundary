@@ -20,7 +20,6 @@ import (
 // testRegistration is a measured registration that passes the closed policy, naming the given runner.
 func testRegistration(runnerDigest string) piruntime.D09ManagedLiveRootRegistration {
 	rootMountDigest := piruntime.DigestBytes([]byte("rw,nosuid,nodev,relatime\x00ext4\x00/dev/test"))
-	parentMountDigest := piruntime.DigestBytes([]byte("ro,nosuid,nodev,relatime\x00ext4\x00/dev/test"))
 	serviceSocket := piruntime.D09ManagedPiServiceSocket{
 		SchemaVersion: piruntime.D09ManagedPiServiceSocketSchema, Mode: piruntime.D09ManagedPiServiceSocketMode,
 		SocketPath: piruntime.D09ManagedPiServiceSocketPath, SocketUnitPath: piruntime.D09ManagedPiSocketUnitPath,
@@ -35,8 +34,8 @@ func testRegistration(runnerDigest string) piruntime.D09ManagedLiveRootRegistrat
 		SchemaVersion: piruntime.D09ManagedLiveRootSchema, WriterPolicy: piruntime.D09ManagedLiveRootWriterPolicy,
 		RootPath: piruntime.D09ManagedPiLiveRootPath, RootDevice: 10, RootInode: 20, RootFilesystemMagic: 0xef53,
 		RootMountID: 101, RootMountOptionsDigest: rootMountDigest, RootUID: 991, RootGID: 992, RootMode: 0o700,
-		ParentPath: piruntime.D09ManagedPiLiveRootParentPath, ParentDevice: 10, ParentInode: 19, ParentFilesystemMagic: 0xef53,
-		ParentMountID: 100, ParentMountOptionsDigest: parentMountDigest, ParentUID: 0, ParentGID: 0, ParentMode: 0o755,
+		ParentPath: piruntime.D09ManagedPiLiveRootParentPath, ParentDevice: 10, ParentInode: 2, ParentFilesystemMagic: 0xef53,
+		ParentMountID: 101, ParentMountOptionsDigest: rootMountDigest, ParentUID: 991, ParentGID: 992, ParentMode: 0o700,
 		ServiceName: piruntime.D09ManagedPiServiceName, ServiceGroup: piruntime.D09ManagedPiServiceGroup, ServiceUID: 991, ServiceGID: 992,
 		ServiceLoginShell: "/usr/sbin/nologin", ServiceShellDigest: piruntime.DigestBytes([]byte("nologin")),
 		PasswdDigest: piruntime.DigestBytes([]byte("passwd")), GroupDigest: piruntime.DigestBytes([]byte("group")),
