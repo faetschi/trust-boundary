@@ -94,7 +94,7 @@ func TestPopulateAndWipeRefuseASymlinkRoot(t *testing.T) {
 	if err := Populate(link, sampleSpec(), owner); err == nil {
 		t.Fatal("Populate followed a symlink root")
 	}
-	if err := Wipe(link); err == nil {
+	if err := Wipe(link, owner); err == nil {
 		t.Fatal("Wipe followed a symlink root")
 	}
 }
@@ -165,7 +165,7 @@ func TestWipeRemovesEverythingInPlaceAndKeepsOnlyACanonicalFence(t *testing.T) {
 	dirty(t, root, outside)
 	before := rootIdentity(t, root)
 
-	if err := Wipe(root); err != nil {
+	if err := Wipe(root, owner); err != nil {
 		t.Fatalf("Wipe: %v", err)
 	}
 	after := rootIdentity(t, root)

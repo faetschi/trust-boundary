@@ -17,8 +17,14 @@ const openDirFlags = unix.O_RDONLY | unix.O_DIRECTORY | unix.O_NOFOLLOW | unix.O
 // live root registration recorded. The zero value does not pin.
 type RootIdentity struct{ Device, Inode uint64 }
 
+// FenceMode is the mode of the canonical fence directory (LostFound): a real directory owned by
+// the fixture owner, empty, and readable and traversable by the cell. The effect oracle opens
+// and reads it as its window marker (effectoracle.FenceRoot).
+const FenceMode uint32 = 0o755
+
 // Reset replaces the content of root with the spec's tree, in place: Wipe, then Populate.
-// The root directory itself (inode, mode, owner) and a top-level lost+found are kept.
+// The root directory itself (inode, mode, owner) is kept, and the fence directory is left (or
+// made) canonical and empty.
 func Reset(root string, spec Spec, owner Owner) error {
 	return ResetPinned(root, spec, owner, RootIdentity{})
 }
@@ -45,17 +51,17 @@ func ResetPinned(root string, spec Spec, owner Owner, want RootIdentity) error {
 		return fmt.Errorf("the fixture root is not the registered live root: device %d inode %d, want device %d inode %d",
 			st.Dev, st.Ino, want.Device, want.Inode)
 	}
-	if err := wipeDir(rfd, uint64(st.Dev), true); err != nil {
+	if err := wipeDir(rfd, uint64(st.Dev), true, &owner); err != nil {
 		return err
 	}
 	return populateFD(rfd, files, owner)
 }
 
-// Wipe removes everything under root except a top-level lost+found. Every step is relative
-// to a directory descriptor opened with O_NOFOLLOW: a symlink is unlinked and never
-// followed, and a directory on another device is refused rather than entered. The root
-// itself is not touched.
-func Wipe(root string) error {
+// Wipe removes everything under root and makes the fence directory canonical. Every step is
+// relative to a directory descriptor opened with O_NOFOLLOW: a symlink is unlinked and never
+// followed, and a directory on another device is refused rather than entered. The root itself
+// is not touched.
+func Wipe(root string, owner Owner) error {
 	rfd, err := unix.Open(root, openDirFlags, 0)
 	if err != nil {
 		return fmt.Errorf("open the fixture root: %w", err)
@@ -65,37 +71,112 @@ func Wipe(root string) error {
 	if err := unix.Fstat(rfd, &st); err != nil {
 		return fmt.Errorf("stat the fixture root: %w", err)
 	}
-	return wipeDir(rfd, uint64(st.Dev), true)
+	return wipeDir(rfd, uint64(st.Dev), true, &owner)
 }
 
-func wipeDir(dirfd int, dev uint64, top bool) error {
+// wipeDir removes every entry of the directory open at dirfd. At the top of the root, the entry
+// named LostFound is kept back and handed to canonicalFence, which replaces whatever it is with
+// the empty 0755 directory of the fixture owner: the cell may write the fence, and what it
+// leaves there is not carried into the next trial.
+func wipeDir(dirfd int, dev uint64, top bool, fence *Owner) error {
 	names, err := listNames(dirfd)
 	if err != nil {
 		return fmt.Errorf("list a directory: %w", err)
 	}
 	for _, name := range names {
-		if top && name == LostFound {
+		if top && fence != nil && name == LostFound {
 			continue
 		}
-		var st unix.Stat_t
-		if err := unix.Fstatat(dirfd, name, &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
-			return fmt.Errorf("stat %q: %w", name, err)
-		}
-		if st.Mode&unix.S_IFMT != unix.S_IFDIR {
-			if err := unix.Unlinkat(dirfd, name, 0); err != nil {
-				return fmt.Errorf("remove %q: %w", name, err)
-			}
-			continue
-		}
-		if uint64(st.Dev) != dev {
-			return fmt.Errorf("%q is on another device", name)
-		}
-		if err := wipeChild(dirfd, name, &st, dev); err != nil {
+		if err := removeEntry(dirfd, name, dev); err != nil {
 			return err
 		}
-		if err := unix.Unlinkat(dirfd, name, unix.AT_REMOVEDIR); err != nil {
-			return fmt.Errorf("remove directory %q: %w", name, err)
+	}
+	if top && fence != nil {
+		return canonicalFence(dirfd, dev, *fence)
+	}
+	return nil
+}
+
+// removeEntry unlinks name from the directory open at dirfd, wiping a directory first. A
+// directory on another device is refused rather than entered.
+func removeEntry(dirfd int, name string, dev uint64) error {
+	var st unix.Stat_t
+	if err := unix.Fstatat(dirfd, name, &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return fmt.Errorf("stat %q: %w", name, err)
+	}
+	if st.Mode&unix.S_IFMT != unix.S_IFDIR {
+		if err := unix.Unlinkat(dirfd, name, 0); err != nil {
+			return fmt.Errorf("remove %q: %w", name, err)
 		}
+		return nil
+	}
+	if uint64(st.Dev) != dev {
+		return fmt.Errorf("%q is on another device", name)
+	}
+	if err := wipeChild(dirfd, name, &st, dev); err != nil {
+		return err
+	}
+	if err := unix.Unlinkat(dirfd, name, unix.AT_REMOVEDIR); err != nil {
+		return fmt.Errorf("remove directory %q: %w", name, err)
+	}
+	return nil
+}
+
+// canonicalFence makes the top-level LostFound the canonical fence: a real directory, owned by
+// owner, mode FenceMode and empty. A symlink, a file, a directory of another device, a directory
+// with the wrong owner or mode, and a directory with content are all removed and recreated. It
+// fails closed if the entry changes while it is examined or cannot be recreated.
+func canonicalFence(dirfd int, dev uint64, owner Owner) error {
+	var st unix.Stat_t
+	err := unix.Fstatat(dirfd, LostFound, &st, unix.AT_SYMLINK_NOFOLLOW)
+	switch {
+	case err == nil:
+		if st.Mode&unix.S_IFMT == unix.S_IFDIR && uint64(st.Dev) == dev && st.Uid == owner.UID &&
+			st.Gid == owner.GID && st.Mode&0o7777 == FenceMode {
+			fd, err := unix.Openat(dirfd, LostFound, openDirFlags, 0)
+			if err != nil {
+				return fmt.Errorf("open %q: %w", LostFound, err)
+			}
+			var got unix.Stat_t
+			ferr := unix.Fstat(fd, &got)
+			names, lerr := listNames(fd)
+			unix.Close(fd)
+			if ferr != nil || got.Ino != st.Ino || got.Dev != st.Dev {
+				return fmt.Errorf("%q changed while it was checked", LostFound)
+			}
+			if lerr != nil {
+				return fmt.Errorf("list %q: %w", LostFound, lerr)
+			}
+			if len(names) == 0 {
+				return nil
+			}
+		}
+		if err := removeEntry(dirfd, LostFound, dev); err != nil {
+			return err
+		}
+	case !errors.Is(err, unix.ENOENT):
+		return fmt.Errorf("stat %q: %w", LostFound, err)
+	}
+	if err := unix.Mkdirat(dirfd, LostFound, 0o700); err != nil {
+		return fmt.Errorf("create %q: %w", LostFound, err)
+	}
+	fd, err := unix.Openat(dirfd, LostFound, openDirFlags, 0)
+	if err != nil {
+		return fmt.Errorf("open %q: %w", LostFound, err)
+	}
+	defer unix.Close(fd)
+	var made unix.Stat_t
+	if err := unix.Fstat(fd, &made); err != nil {
+		return fmt.Errorf("stat %q: %w", LostFound, err)
+	}
+	if made.Mode&unix.S_IFMT != unix.S_IFDIR || uint64(made.Dev) != dev {
+		return fmt.Errorf("%q is not a directory on the live root's device", LostFound)
+	}
+	if err := unix.Fchown(fd, int(owner.UID), int(owner.GID)); err != nil {
+		return fmt.Errorf("chown %q: %w", LostFound, err)
+	}
+	if err := unix.Fchmod(fd, FenceMode); err != nil {
+		return fmt.Errorf("chmod %q: %w", LostFound, err)
 	}
 	return nil
 }
@@ -110,7 +191,7 @@ func wipeChild(dirfd int, name string, st *unix.Stat_t, dev uint64) error {
 	if err := unix.Fstat(fd, &got); err != nil || got.Ino != st.Ino || got.Dev != st.Dev {
 		return fmt.Errorf("directory %q changed while it was wiped", name)
 	}
-	return wipeDir(fd, dev, false)
+	return wipeDir(fd, dev, false, nil)
 }
 
 // listNames returns the names in the directory open at dirfd, read through a duplicate
