@@ -817,17 +817,22 @@ func validateSettledServiceProfile(profile piruntime.HostProfile, template pirun
 // checkpoint to be disposed of. closedUnknown is true only on the abandon path, once the provider
 // journal of the latest conversation closed the checkpoint's reserved host call as unknown: that
 // reserved call, and the provider exchange the conversation still awaits, then count as disposed.
-func validateSettledServiceDisposition(pins workflowrecovery.Pins, expectedConversationID string, closedUnknown bool) error {
+// commandNeverStarted is likewise true only on the abandon path, once that journal closed the held
+// Bash call as a command that never started: the captured call, its reserved effect and the gate
+// result the conversation awaits then count as disposed.
+func validateSettledServiceDisposition(pins workflowrecovery.Pins, expectedConversationID string, closedUnknown, commandNeverStarted bool) error {
 	awaitedExchangeClosed := closedUnknown && pins.ProviderDisposition == workflowrecovery.DispositionAwaitingProviderExchange
+	awaitedCallClosed := commandNeverStarted && pins.ProviderDisposition == workflowrecovery.DispositionAwaitingGateDecision
 	if pins.PendingCallDisposition != workflowrecovery.PendingCallNone &&
 		pins.PendingCallDisposition != workflowrecovery.PendingCallTerminal &&
-		pins.PendingCallDisposition != workflowrecovery.PendingCallRetired {
+		pins.PendingCallDisposition != workflowrecovery.PendingCallRetired &&
+		!(commandNeverStarted && pins.PendingCallDisposition == workflowrecovery.PendingCallCaptured) {
 		return settlementRefusal("pending-call-disposition", errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown))
 	}
 	if pins.ProviderDisposition != workflowrecovery.DispositionNone &&
 		pins.ProviderDisposition != workflowrecovery.DispositionAwaitingHostPrompt &&
 		pins.ProviderDisposition != workflowrecovery.DispositionTerminal &&
-		pins.ProviderDisposition != workflowrecovery.DispositionRetired && !awaitedExchangeClosed {
+		pins.ProviderDisposition != workflowrecovery.DispositionRetired && !awaitedExchangeClosed && !awaitedCallClosed {
 		return settlementRefusal("provider-disposition", errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown))
 	}
 	if len(pins.ProviderTranscripts) == 0 {
@@ -842,7 +847,8 @@ func validateSettledServiceDisposition(pins workflowrecovery.Pins, expectedConve
 	}
 	if effect := pins.EffectReservation; effect != nil &&
 		effect.Disposition != workflowrecovery.EffectReservationTerminal &&
-		effect.Disposition != workflowrecovery.EffectReservationRetired {
+		effect.Disposition != workflowrecovery.EffectReservationRetired &&
+		!(commandNeverStarted && effect.Disposition == workflowrecovery.EffectReservationReserved) {
 		return settlementRefusal("effect-reservation-disposition", errors.Join(ErrPiWorkflowCatalog, workflowrecovery.ErrPendingUnknown))
 	}
 	if call := pins.HostCallReservation; call != nil &&
@@ -854,7 +860,8 @@ func validateSettledServiceDisposition(pins workflowrecovery.Pins, expectedConve
 	for index, transcript := range pins.ProviderTranscripts {
 		latest := index == len(pins.ProviderTranscripts)-1
 		quiescentLatestConversation := latest && (transcript.Disposition == workflowrecovery.DispositionAwaitingHostPrompt ||
-			awaitedExchangeClosed && transcript.Disposition == workflowrecovery.DispositionAwaitingProviderExchange)
+			awaitedExchangeClosed && transcript.Disposition == workflowrecovery.DispositionAwaitingProviderExchange ||
+			awaitedCallClosed && transcript.Disposition == workflowrecovery.DispositionAwaitingGateDecision)
 		if transcript.Disposition != workflowrecovery.DispositionTerminal &&
 			transcript.Disposition != workflowrecovery.DispositionRetired && !quiescentLatestConversation {
 			return settlementRefusal("transcript-lineage", fmt.Errorf("%w: %w: transcript %d lacks terminal lineage disposition",
@@ -882,7 +889,7 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 		expectedRunID = expectedSessionID
 		expectedConversationID = fmt.Sprintf("%s-conversation-g%d", entry.WorkflowID, pins.RecoveryGeneration)
 	}
-	if err := validateSettledServiceDisposition(pins, expectedConversationID, false); err != nil {
+	if err := validateSettledServiceDisposition(pins, expectedConversationID, false, false); err != nil {
 		return err
 	}
 	if receipt.RunID != expectedRunID || pins.SessionID != expectedSessionID {

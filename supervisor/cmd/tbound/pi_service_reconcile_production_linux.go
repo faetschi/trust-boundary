@@ -429,6 +429,47 @@ func unknownExchangeClosesHostCall(checkpoint workflowrecovery.Checkpoint, trace
 		unknown.WorkflowID == workflowID && *reservation.Binding == call.Binding && *unknown.HostCall == call.Binding
 }
 
+// commandNeverStartedClosesCall reports whether the provider journal of the checkpoint's latest
+// conversation closes the Bash call the checkpoint still holds as a command that never started: the
+// checkpoint holds exactly one captured call, consumed by its effect reservation and awaiting its gate
+// result, and the journal's last record is that call's UNKNOWN result typed command_not_started, with
+// no executor output. The runner types that only when the cell never got its start acknowledgement and
+// is gone, so the reserved effect cannot have happened and no output reached the model.
+func commandNeverStartedClosesCall(checkpoint workflowrecovery.Checkpoint, trace audit.Trace, workflowID, conversationID string) bool {
+	pins := checkpoint.Pins
+	effect, call := pins.EffectReservation, pins.HostCallReservation
+	if effect == nil || effect.Disposition != workflowrecovery.EffectReservationReserved || call == nil ||
+		call.Disposition != workflowrecovery.HostCallTerminal || call.CapturedCall == nil ||
+		call.CapturedCall.Disposition != workflowrecovery.CapturedCallConsumed ||
+		pins.PendingCallDisposition != workflowrecovery.PendingCallCaptured ||
+		pins.ProviderDisposition != workflowrecovery.DispositionAwaitingGateDecision || len(trace.Records) == 0 {
+		return false
+	}
+	captured := call.CapturedCall
+	if effect.Binding.WorkflowID != workflowID || effect.Binding.ConversationID != conversationID ||
+		captured.WorkflowID != workflowID || captured.ConversationID != conversationID ||
+		effect.Binding.ToolCallID != captured.ToolCallID || effect.Binding.HostCallID != captured.HostCallID ||
+		captured.HostCallID != call.Binding.CallID {
+		return false
+	}
+	closed := trace.Records[len(trace.Records)-1].Event
+	var result struct {
+		WorkflowID           string `json:"workflow_id"`
+		ConversationID       string `json:"conversation_id"`
+		ToolCallID           string `json:"tool_call_id"`
+		ExecutorOutputDigest string `json:"executor_output_digest"`
+		ExecutorOutput       []byte `json:"executor_output"`
+		Outcome              string `json:"outcome"`
+		CommandNotStarted    bool   `json:"command_not_started"`
+	}
+	if closed.Kind != "provider_tool_result_unknown" || json.Unmarshal(closed.Data, &result) != nil {
+		return false
+	}
+	return result.CommandNotStarted && result.Outcome == "UNKNOWN" && len(result.ExecutorOutput) == 0 &&
+		result.ExecutorOutputDigest == digestBytes(nil) && result.WorkflowID == workflowID &&
+		result.ConversationID == conversationID && result.ToolCallID == captured.ToolCallID
+}
+
 // providerJournalPathFor is the provider-bridge journal of one conversation of the entry's workflow:
 // the entry's own journal for its first conversation, a recovery journal for a later one. It is ""
 // when no valid path exists.
@@ -474,7 +515,8 @@ func providerJournalUndisposed(trace audit.Trace) int {
 // reconcileSettledOwner proves the owner side from the workflow's latest settled owner
 // checkpoint: it must be the checkpoint the catalog entry authorized, its pins must carry no
 // pending effect, host call, pending call or undisposed provider exchange (a reserved host call
-// counts as disposed only when providerTrace shows it closed as unknown), every owner epoch it
+// counts as disposed only when providerTrace shows it closed as unknown, a held Bash call only when it
+// shows the command never started), every owner epoch it
 // names must be proven drained by the owner drain verifier (drainproof, with NeverBound receipts
 // for owners that were never exposed), and the catalog's owner-scope records must be exactly
 // those epochs, all drained and removed.
@@ -493,13 +535,14 @@ func (c *piServiceWorkflowCatalog) reconcileSettledOwner(ctx context.Context, en
 	if pins.RecoveryGeneration > 1 {
 		expectedConversationID = fmt.Sprintf("%s-conversation-g%d", entry.WorkflowID, pins.RecoveryGeneration)
 	}
-	closedUnknown := false
+	closedUnknown, commandNeverStarted := false, false
 	if providerTrace != nil {
 		if trace, err := providerTrace(expectedConversationID); err == nil {
 			closedUnknown = unknownExchangeClosesHostCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
+			commandNeverStarted = commandNeverStartedClosesCall(view.Checkpoint, trace, entry.WorkflowID, expectedConversationID)
 		}
 	}
-	if err := validateSettledServiceDisposition(pins, expectedConversationID, closedUnknown); err != nil {
+	if err := validateSettledServiceDisposition(pins, expectedConversationID, closedUnknown, commandNeverStarted); err != nil {
 		problems = append(problems, "owner checkpoint: pending effect, host call, pending call or provider exchange: "+err.Error())
 	}
 	proofs, err := drain.VerifyOwnerCellsDrainedWithProof(ctx, entry.WorkflowID, view.OwnerEpochs)

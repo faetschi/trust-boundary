@@ -916,6 +916,9 @@ func (c *Conversation) recordUnknownExecutionLocked(proposal protocol.Proposal, 
 			ExecutorOutput       []byte `json:"executor_output,omitempty"`
 			Outcome              string `json:"outcome"`
 			Failure              string `json:"failure"`
+			// CommandNotStarted types the UNKNOWN: the runner proved the command never started and its cell
+			// gone, and no output exists. Abandon accepts exactly that as the call's disposition.
+			CommandNotStarted bool `json:"command_not_started,omitempty"`
 		}{
 			WorkflowID: c.cfg.WorkflowID, ConversationID: c.cfg.ConversationID,
 			ResponseIDIssuer: responseIssuer, ToolCallIDIssuer: callIssuer,
@@ -923,6 +926,7 @@ func (c *Conversation) recordUnknownExecutionLocked(proposal protocol.Proposal, 
 			Generation: c.current.generation, ResultID: stableResultID(c.cfg.WorkflowID, c.cfg.ConversationID, c.current.responseID, c.current.call.ID),
 			ResultDigest: resultDigest, ExecutorOutputDigest: "sha256:" + hex.EncodeToString(rawDigest[:]), ExecutorOutput: rawOutput,
 			Outcome: "UNKNOWN", Failure: safeFailure(cause),
+			CommandNotStarted: proposal.Tool == "bash" && len(rawOutput) == 0 && errors.Is(cause, protocol.ErrCommandNotStarted),
 		})
 		if marshalErr == nil {
 			if _, appendErr := c.appendLocked("provider_tool_result_unknown", "unknown-result", data); appendErr != nil {

@@ -424,7 +424,7 @@ func (b *d09BoundedOutput) Overflowed() bool {
 // became readable, cgroup.kill reached populated=0, and no surviving process
 // mount table references the exact command-view source. Any unknown state
 // returns no result or settlement.
-func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandView, spec sessionrepo.CommandSpec) (sessionrepo.CommandResult, sessionrepo.CommandSettlement, error) {
+func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandView, spec sessionrepo.CommandSpec) (_ sessionrepo.CommandResult, _ sessionrepo.CommandSettlement, err error) {
 	if r == nil || ctx == nil || r.launcher == nil || !validIdentity(r.leaseID) {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrProductionLauncherUnavailable
 	}
@@ -492,6 +492,7 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, ErrCgroupScopeRefused
 	}
 	containerStarted := false
+	ackSent := false
 	abandoned := false // a no-reap/v1 scope handed over to the operator reset: never killed here
 	scopeClosed := false
 	name := ""
@@ -527,6 +528,7 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 		if scope.IsSettled() {
 			_ = closeScope()
 		}
+		err = d09PreStartFailure(err, ackSent, scope.IsSettled())
 	}()
 	if scope.scope.containment != D09ContainmentProfile || scope.scope.settlement != D09SettlementProfile {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("%w: command scope profile differs from frozen D09", ErrCgroupScopeRefused)
@@ -685,6 +687,7 @@ func (r *D09CommandRunner) Run(ctx context.Context, view *sessionrepo.CommandVie
 	}
 	var ack [1]byte
 	ack[0] = 1
+	ackSent = true // from here the cell may hold the acknowledgement and start the command
 	if err := writeD09All(ackWrite, ack[:]); err != nil {
 		r.cleanupCommand(scope, report.PodmanPath, name)
 		_ = command.Process.Kill()
@@ -865,7 +868,10 @@ func sameD09CommandProofIdentity(first, final d09CommandProof) bool {
 // sent the start acknowledgement, which the entrypoint waits for before it starts the command, and the
 // cell's cgroup was then observed empty. Any other failure stays untyped.
 func d09PreStartFailure(err error, ackSent, cellSettled bool) error {
-	return err
+	if err == nil || ackSent || !cellSettled {
+		return err
+	}
+	return errors.Join(protocol.ErrCommandNotStarted, err)
 }
 
 func (r *D09CommandRunner) cleanupCommand(scope *d09OwnedCommandScope, podmanPath, name string) {

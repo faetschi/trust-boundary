@@ -206,9 +206,11 @@ func productionCleanupSafe(evidence productionLifecycleSnapshot, runner *product
 }
 
 // channelsSettled reports whether the governed loops ended without a local failure: they never
-// started, or they joined either cleanly or with only a failed provider turn. The bridge types that
-// failure only when the turn left its exchange disposed of in the provider journal (an unknown one is
-// reconciled at abandon); nothing local is open. Cleanup and the managed-root abort share this check.
+// started, or they joined either cleanly, with only a failed provider turn, or on a command cell that
+// never started its command. The bridge types the turn failure only when the turn left its exchange
+// disposed of in the provider journal (an unknown one is reconciled at abandon); the command failure
+// is typed only once the runner proved the cell gone, and its call is reconciled at abandon. Nothing
+// local is open. Cleanup and the managed-root abort share this check.
 func (s productionLifecycleSnapshot) channelsSettled() bool {
 	if !s.channelsStarted {
 		return true
@@ -217,7 +219,8 @@ func (s productionLifecycleSnapshot) channelsSettled() bool {
 		return false
 	}
 	_, providerTurnOnly := s.channelsErr.(providerTurnFailure)
-	return s.channelsErr == nil || providerTurnOnly
+	_, commandNotStarted := s.channelsErr.(commandNotStartedFailure)
+	return s.channelsErr == nil || providerTurnOnly || commandNotStarted
 }
 
 func validateProductionLifecycle(evidence productionLifecycleSnapshot, runID string, runner *productionCommandRunner) error {
