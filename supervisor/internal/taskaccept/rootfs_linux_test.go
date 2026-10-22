@@ -3,10 +3,12 @@
 package taskaccept
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"tbound/supervisor/internal/trialfix"
@@ -74,6 +76,38 @@ func TestRootFSEvaluatesPassAndFail(t *testing.T) {
 	doc, err = Evaluate("case-1", check, fixtureSpec(), openRoot(t, dir))
 	if err != nil || doc.Passed || doc.Results[1].Passed {
 		t.Fatalf("collateral change must fail unchanged_except: %+v, %v", doc, err)
+	}
+}
+
+func TestOpenRootPinnedRefusesARenamedRootAndADecoy(t *testing.T) {
+	dir := t.TempDir()
+	writeFixtureTree(t, dir)
+	var st syscall.Stat_t
+	if err := syscall.Stat(dir, &st); err != nil {
+		t.Fatal(err)
+	}
+	want := RootIdentity{Device: uint64(st.Dev), Inode: st.Ino}
+
+	decoy := filepath.Join(filepath.Dir(dir), "decoy")
+	if err := os.Mkdir(decoy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(dir, dir+"-old"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(decoy, dir); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := OpenRootPinned(dir, want); !errors.Is(err, ErrRootIdentityMismatch) {
+		if r != nil {
+			r.Close()
+		}
+		t.Fatalf("OpenRootPinned accepted a decoy: %v", err)
+	}
+	if r, err := OpenRootPinned(dir+"-old", want); err != nil {
+		t.Fatalf("OpenRootPinned of the real root under its new name: %v", err)
+	} else {
+		r.Close()
 	}
 }
 
