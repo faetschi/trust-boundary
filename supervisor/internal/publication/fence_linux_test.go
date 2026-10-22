@@ -39,6 +39,14 @@ func TestPublishRefusesToApplyWithoutTheFenceDirectory(t *testing.T) {
 	if readErr != nil || string(got) != "a" {
 		t.Fatalf("the live root was changed by a refused publication: %q, %v", got, readErr)
 	}
+	// The refusal must leave a journal later publications can still read: a second attempt may
+	// refuse again (still no fence) but never on transaction ordering.
+	_, again := repo.Publish(context.Background(), f.request, func(b CommitBinding) (Authorization, error) {
+		return Authorization{DecisionID: "d2", BindingDigest: b.BindingDigest}, nil
+	}, nil)
+	if again != nil && strings.Contains(again.Error(), "ordering") {
+		t.Fatalf("a refused publication poisoned the journal: %v", again)
+	}
 }
 
 // A proposal may not name the fence directory or anything below it: the directory is the effect
