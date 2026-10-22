@@ -189,11 +189,13 @@ func (c evidenceCell) doc() procoracle.CellDoc {
 type evidenceEnv struct {
 	geteuid func() int
 	getenv  func(string) string
-	// snapshot is wsoracle.Snapshot.
-	snapshot func(root, label string) wsoracle.Manifest
-	// pinRoot verifies that path is still the registered live root: the opened directory's
-	// device and inode must be the verified signed registration's.
-	pinRoot func(ctx context.Context, path string) error
+	// snapshotDir is wsoracle.SnapshotDir: the manifest of the directory a descriptor holds.
+	snapshotDir func(dir *os.File, label string) wsoracle.Manifest
+	// pinRoot opens path without following the final component, requires it to be the device and
+	// inode of the verified signed registration, and returns the held descriptor with that
+	// identity. The caller snapshots through the descriptor and closes it, so a path that is
+	// renamed and replaced by a decoy after the pin changes nothing about what is read.
+	pinRoot func(ctx context.Context, path string) (*os.File, uint64, uint64, error)
 	// cell resolves the registered cell from the service's own registration.
 	cell func(ctx context.Context) (evidenceCell, error)
 	// capture and monitor observe it (procoracle.Capture and StartMonitor). monitor calls ready
@@ -220,7 +222,7 @@ type evidenceEnv struct {
 
 func productionEvidenceEnv() evidenceEnv {
 	return evidenceEnv{
-		geteuid: os.Geteuid, getenv: os.Getenv, snapshot: wsoracle.Snapshot, pinRoot: pinRegisteredLiveRoot,
+		geteuid: os.Geteuid, getenv: os.Getenv, snapshotDir: wsoracle.SnapshotDir, pinRoot: pinRegisteredLiveRoot,
 		cell: loadEvidenceCell, capture: captureEvidenceCell, monitor: monitorEvidenceCell, readTrace: readEvidenceTrace,
 		lockMonitor: func() (func(), error) { return lockEvidenceMonitorFile(evidenceMonitorLockPath, evidenceRequiredUID) },
 		netCanary:   sendNetsinkCanary, netJournal: readNetsinkJournal,
@@ -381,29 +383,47 @@ func evidenceE04Snapshot(ctx context.Context, env evidenceEnv, f map[string]stri
 	if !slices.Contains(evidencePoints, point) {
 		return runner.E04SnapshotDoc{}, fmt.Errorf("%q is not an E04 observation point", point)
 	}
-	if err := env.pinRoot(ctx, root); err != nil {
+	pinned, device, inode, err := env.pinRoot(ctx, root)
+	if err != nil {
 		return runner.E04SnapshotDoc{}, fmt.Errorf("the root %q is not the registered live root: %w", root, err)
 	}
+	if pinned != nil {
+		defer pinned.Close()
+	}
+	manifest := env.snapshotDir(pinned, point)
+	if manifest.Dev != device || manifest.Root == nil || manifest.Root.Ino != inode {
+		return runner.E04SnapshotDoc{}, fmt.Errorf("the root %q is not the registered live root: the snapshot is device %d inode %d, want device %d inode %d",
+			root, manifest.Dev, manifestRootIno(manifest), device, inode)
+	}
 	return runner.E04SnapshotDoc{Schema: runner.EvidenceSchema, Kind: runner.EvidenceE04Snapshot, Point: point, Root: root,
-		Manifest: env.snapshot(root, point)}, nil
+		Manifest: manifest}, nil
 }
 
-// pinRegisteredLiveRoot opens path with O_NOFOLLOW and requires the directory to be the
-// device and inode of the verified signed registration. A live root that was renamed and
-// replaced by a decoy at the same path is refused before a manifest of it is taken.
-func pinRegisteredLiveRoot(ctx context.Context, path string) error {
+// manifestRootIno is the root inode of a manifest, or zero when it has no root.
+func manifestRootIno(m wsoracle.Manifest) uint64 {
+	if m.Root == nil {
+		return 0
+	}
+	return m.Root.Ino
+}
+
+// pinRegisteredLiveRoot opens path with O_NOFOLLOW, requires the directory to be the device and
+// inode of the verified signed registration, and returns the held descriptor with that identity.
+// A live root that was renamed and replaced by a decoy at the same path is refused, and a caller
+// that takes a manifest through the descriptor reads the registered inode, not the path.
+func pinRegisteredLiveRoot(ctx context.Context, path string) (*os.File, uint64, uint64, error) {
 	reg, err := piruntime.LoadVerifiedD09ManagedLiveRootPolicy(ctx)
 	if err != nil {
-		return err
+		return nil, 0, 0, err
 	}
 	if reg.RootPath != path {
-		return fmt.Errorf("the registration names %q", reg.RootPath)
+		return nil, 0, 0, fmt.Errorf("the registration names %q", reg.RootPath)
 	}
 	fd, err := openPinnedLiveRoot(path, reg.RootDevice, reg.RootInode)
 	if err != nil {
-		return err
+		return nil, 0, 0, err
 	}
-	return syscall.Close(fd)
+	return os.NewFile(uintptr(fd), path), reg.RootDevice, reg.RootInode, nil
 }
 
 // openPinnedLiveRoot opens path without following the final component and returns the

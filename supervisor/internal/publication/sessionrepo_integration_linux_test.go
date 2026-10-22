@@ -192,6 +192,14 @@ func makeSessionRepoTestTree(t *testing.T, root string, files map[string]string)
 	if err := os.Mkdir(root, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// The managed live root holds the effect oracle's fence directory, and the baseline generation
+	// is imported from it.
+	if err := os.Mkdir(filepath.Join(root, "lost+found"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(filepath.Join(root, "lost+found"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	for path, contents := range files {
 		fullPath := filepath.Join(root, filepath.FromSlash(path))
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {

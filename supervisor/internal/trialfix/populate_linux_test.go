@@ -94,7 +94,7 @@ func TestPopulateAndWipeRefuseASymlinkRoot(t *testing.T) {
 	if err := Populate(link, sampleSpec(), owner); err == nil {
 		t.Fatal("Populate followed a symlink root")
 	}
-	if err := Wipe(link); err == nil {
+	if err := Wipe(link, owner); err == nil {
 		t.Fatal("Wipe followed a symlink root")
 	}
 }
@@ -120,8 +120,43 @@ func dirty(t *testing.T, root, outside string) {
 	must(os.WriteFile(filepath.Join(root, "lost+found", "keep"), []byte("keep"), 0o600))
 }
 
-func TestWipeRemovesEverythingInPlaceAndKeepsLostFoundRootAndOutsideTargets(t *testing.T) {
-	root, _ := testRoot(t)
+// fenceState reports the type, mode, owner and names of the top-level fence directory.
+func fenceState(t *testing.T, root string) (mode os.FileMode, uid, gid uint32, names []string) {
+	t.Helper()
+	info, err := os.Lstat(filepath.Join(root, LostFound))
+	if err != nil {
+		t.Fatalf("stat %s: %v", LostFound, err)
+	}
+	if !info.IsDir() {
+		return info.Mode(), 0, 0, nil
+	}
+	st, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		t.Fatal("the fence directory has no owner")
+	}
+	entries, err := os.ReadDir(filepath.Join(root, LostFound))
+	if err != nil {
+		t.Fatalf("read %s: %v", LostFound, err)
+	}
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return info.Mode(), st.Uid, st.Gid, names
+}
+
+// requireCanonicalFence requires the fence directory a reset leaves: a real directory, owned by
+// the fixture owner, mode 0755, and empty. The effect oracle opens it and the cell may write it,
+// so what a run leaves there is not carried into the next trial.
+func requireCanonicalFence(t *testing.T, root string, owner Owner) {
+	t.Helper()
+	mode, uid, gid, names := fenceState(t, root)
+	if !mode.IsDir() || mode&os.ModeSymlink != 0 || mode.Perm() != 0o755 || uid != owner.UID || gid != owner.GID || len(names) != 0 {
+		t.Fatalf("%s is %v %d:%d with %v, want an empty directory 0755 %d:%d", LostFound, mode, uid, gid, names, owner.UID, owner.GID)
+	}
+}
+
+func TestWipeRemovesEverythingInPlaceAndKeepsOnlyACanonicalFence(t *testing.T) {
+	root, owner := testRoot(t)
 	outsideDir := t.TempDir()
 	outside := filepath.Join(outsideDir, "precious")
 	if err := os.WriteFile(outside, []byte("precious"), 0o600); err != nil {
@@ -130,7 +165,7 @@ func TestWipeRemovesEverythingInPlaceAndKeepsLostFoundRootAndOutsideTargets(t *t
 	dirty(t, root, outside)
 	before := rootIdentity(t, root)
 
-	if err := Wipe(root); err != nil {
+	if err := Wipe(root, owner); err != nil {
 		t.Fatalf("Wipe: %v", err)
 	}
 	after := rootIdentity(t, root)
@@ -138,14 +173,67 @@ func TestWipeRemovesEverythingInPlaceAndKeepsLostFoundRootAndOutsideTargets(t *t
 		t.Fatalf("root changed: %+v -> %+v", before, after)
 	}
 	names, err := os.ReadDir(root)
-	if err != nil || len(names) != 1 || names[0].Name() != "lost+found" {
-		t.Fatalf("root holds %v, %v; want only lost+found", names, err)
+	if err != nil || len(names) != 1 || names[0].Name() != LostFound {
+		t.Fatalf("root holds %v, %v; want only %s", names, err, LostFound)
 	}
-	if got, err := os.ReadFile(filepath.Join(root, "lost+found", "keep")); err != nil || string(got) != "keep" {
-		t.Fatalf("lost+found/keep = %q, %v", got, err)
-	}
+	requireCanonicalFence(t, root, owner)
 	if got, err := os.ReadFile(outside); err != nil || string(got) != "precious" {
 		t.Fatalf("a symlink target outside the root was touched: %q, %v", got, err)
+	}
+}
+
+// TestResetRemovesAPayloadLeftInTheFence is the fence payload: the fence directory is inside
+// the live root and owned by the cell, so a run can leave content in it.
+func TestResetRemovesAPayloadLeftInTheFence(t *testing.T) {
+	root, owner := testRoot(t)
+	outside := filepath.Join(t.TempDir(), "precious")
+	if err := os.WriteFile(outside, []byte("precious"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dirty(t, root, outside)
+	if err := Reset(root, sampleSpec(), owner); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	requireCanonicalFence(t, root, owner)
+}
+
+func TestResetRecreatesAMissingFence(t *testing.T) {
+	root, owner := testRoot(t)
+	if err := Reset(root, sampleSpec(), owner); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	requireCanonicalFence(t, root, owner)
+}
+
+func TestResetReplacesAFenceThatIsAFile(t *testing.T) {
+	root, owner := testRoot(t)
+	if err := os.WriteFile(filepath.Join(root, LostFound), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Reset(root, sampleSpec(), owner); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	requireCanonicalFence(t, root, owner)
+}
+
+func TestResetReplacesAFenceThatIsASymlink(t *testing.T) {
+	root, owner := testRoot(t)
+	target := filepath.Join(t.TempDir(), "outside")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "keep"), []byte("outside"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(root, LostFound)); err != nil {
+		t.Fatal(err)
+	}
+	if err := Reset(root, sampleSpec(), owner); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	requireCanonicalFence(t, root, owner)
+	if got, err := os.ReadFile(filepath.Join(target, "keep")); err != nil || string(got) != "outside" {
+		t.Fatalf("the symlink target was touched: %q, %v", got, err)
 	}
 }
 
@@ -165,9 +253,7 @@ func TestResetReplacesADirtyTreeWithTheSpecAndIsRepeatable(t *testing.T) {
 			t.Fatalf("Reset %d: tree digest %s, want %s", i, got, want)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(root, "lost+found", "keep")); err != nil {
-		t.Fatalf("lost+found was not kept: %v", err)
-	}
+	requireCanonicalFence(t, root, owner)
 }
 
 func TestResetPinnedRefusesARenamedRootAndADecoy(t *testing.T) {

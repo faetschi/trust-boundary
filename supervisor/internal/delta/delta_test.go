@@ -382,3 +382,22 @@ func testDigest(value string) string {
 }
 
 func wrongTreeDigest() string { return TreeDigestProfile + strings.Repeat("0", 64) }
+
+// The fence directory of a managed live root is the effect oracle's window marker: a manifest
+// may name it (a live-root scan sees it), but no approved change may create, rewrite or remove
+// anything in it.
+func TestChangePathsRefuseTheFenceDirectory(t *testing.T) {
+	for _, path := range []string{"lost+found", "lost+found/exfil", "lost+found/a/b"} {
+		if err := validateChangePath(path); err == nil {
+			t.Errorf("validateChangePath(%q) accepted the fence directory", path)
+		}
+		if err := validatePath(path); err != nil {
+			t.Errorf("validatePath(%q) = %v, but a live-root manifest names its fence", path, err)
+		}
+	}
+	for _, path := range []string{"src/lost+found", "lost+found.txt", "a/lost+found/b"} {
+		if err := validateChangePath(path); err != nil {
+			t.Errorf("validateChangePath(%q) = %v, want a normal path", path, err)
+		}
+	}
+}

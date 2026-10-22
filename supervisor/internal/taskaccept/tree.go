@@ -64,19 +64,18 @@ func (n node) read(limit int64) ([]byte, error) {
 	return data, nil
 }
 
-// treeOfFS snapshots fsys without following symbolic links. A top-level lost+found, which a
-// filesystem creates, is left out as in a fixture digest.
+// treeOfFS snapshots fsys without following symbolic links. The canonical fence directory of a
+// managed live root (an empty top-level lost+found owned by the fixture owner with mode 0755) is
+// left out, as in a fixture digest. Any other lost+found, and everything under it, is part of the
+// post-run tree: a write into the fence must show up in the acceptance diff.
 func treeOfFS(fsys fs.FS) (tree, error) {
 	t := tree{}
 	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if p == trialfix.LostFound {
-			if d.IsDir() {
-				return fs.SkipDir
-			}
-			return nil
+		if p == trialfix.LostFound && canonicalFenceDir(fsys, d) {
+			return fs.SkipDir
 		}
 		if len(t) > MaxTreeEntries { // the root is not counted
 			return fmt.Errorf("the tree has more than %d entries", MaxTreeEntries)
@@ -96,6 +95,24 @@ func treeOfFS(fsys fs.FS) (tree, error) {
 		return nil, fmt.Errorf("reading the post-run tree: %w", err)
 	}
 	return t, nil
+}
+
+// canonicalFenceDir reports whether d, the top-level lost+found of fsys, is the fence directory
+// of a managed live root: a real directory, owned by the fixture owner, mode 0755, and empty.
+func canonicalFenceDir(fsys fs.FS, d fs.DirEntry) bool {
+	info, err := d.Info()
+	if err != nil || !info.IsDir() || info.Mode()&fs.ModeSymlink != 0 {
+		return false
+	}
+	if info.Mode().Perm() != fs.FileMode(trialfix.FenceMode) || info.Mode()&(fs.ModeSetuid|fs.ModeSetgid|fs.ModeSticky) != 0 {
+		return false
+	}
+	uid, gid, ok := fileOwner(info)
+	if !ok || uid != trialfix.OwnerUID || gid != trialfix.OwnerGID {
+		return false
+	}
+	entries, err := fs.ReadDir(fsys, trialfix.LostFound)
+	return err == nil && len(entries) == 0
 }
 
 // treeOfFixture is the tree a fixture spec names.

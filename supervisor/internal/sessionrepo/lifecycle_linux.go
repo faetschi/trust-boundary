@@ -27,6 +27,10 @@ import (
 	"tbound/supervisor/internal/workspace"
 )
 
+// fenceDir is the effect oracle's fence directory of the managed live root (trialfix.LostFound,
+// effectoracle.FenceDir). It is not workspace content: no view path names it.
+const fenceDir = "lost+found"
+
 func validateOptions(options Options) error {
 	return validateOptionProfile(options, true)
 }
@@ -938,6 +942,11 @@ func validateRelativePath(value string) error {
 				return ErrInvalidPath
 			}
 		}
+	}
+	// The fence directory of the managed live root (trialfix.LostFound, effectoracle.FenceDir) is
+	// the effect oracle's: it is not workspace content, so no view path reads, writes or names it.
+	if value == fenceDir || strings.HasPrefix(value, fenceDir+"/") {
+		return ErrInvalidPath
 	}
 	return nil
 }

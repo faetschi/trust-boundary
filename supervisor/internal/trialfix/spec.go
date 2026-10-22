@@ -8,9 +8,10 @@
 // The digest is the wsoracle manifest digest of the manifest the spec implies. That
 // manifest has the canonical root (owner 995:986, mode 0700) and every entry owned by the
 // same owner; link counts are normalized (a directory's count follows from its
-// subdirectories and is recorded as zero, a file's is one); a top-level lost+found, which
-// the filesystem creates, is left out. The spec carries no symlink, hard link, extended
-// attribute or special file, and no ownership: ownership is implicit.
+// subdirectories and is recorded as zero, a file's is one); the canonical fence directory
+// (an empty top-level lost+found owned by the fixture owner with mode 0755) is left out. The
+// spec carries no symlink, hard link, extended attribute or special file, and no ownership:
+// ownership is implicit.
 package trialfix
 
 import (
@@ -49,8 +50,9 @@ const (
 	RootMode uint32 = 0o700
 )
 
-// LostFound is the top-level directory a filesystem creates in its root. It is not part of
-// a fixture: a spec may not name it and a tree digest leaves it out.
+// LostFound is the top-level directory a filesystem creates in its root, and the fence directory
+// the effect oracle opens (effectoracle.FenceDir). It is not part of a fixture: a spec may not
+// name it, and a tree digest leaves out only the canonical empty fence directory.
 const LostFound = "lost+found"
 
 // Label is the label of the implied manifest, and of a live manifest after TreeDigest.
@@ -259,23 +261,26 @@ func DigestOwned(s Spec, owner Owner) (string, error) {
 }
 
 // TreeDigest applies the canonicalization of Digest to a live snapshot, so that a tree
-// populated from a spec digests equal to it: the label is the fixture label, a top-level
-// lost+found and everything under it is left out, the link count of a directory (the root
-// included) is zeroed, and inode numbers and the device do not take part. The owner, the
-// modes and the content stay as observed, so the tree digests equal only if the root and
-// every entry really have the fixture's owner and mode and nothing else is present. It
-// refuses a manifest that is not complete and without gaps, or has no root.
+// populated from a spec digests equal to it: the label is the fixture label, the canonical
+// fence directory (an empty lost+found owned by the fixture owner with mode FenceMode) is left
+// out, the link count of a directory (the root included) is zeroed, and inode numbers and the
+// device do not take part. A fence that is not canonical, and everything below it, stays in the
+// digest: a write into the fence changes the tree. The owner, the modes and the content stay as
+// observed, so the tree digests equal only if the root and every entry really have the fixture's
+// owner and mode and nothing else is present. It refuses a manifest that is not complete and
+// without gaps, or has no root.
 func TreeDigest(live wsoracle.Manifest) (string, error) {
 	if !live.Complete || len(live.Gaps) != 0 || live.Root == nil {
 		return "", errors.New("the live snapshot is incomplete")
 	}
+	skipFence := canonicalFenceIn(live)
 	m := wsoracle.Manifest{Label: Label, Complete: true, Gaps: nil}
 	root := *live.Root
 	root.Ino, root.Nlink = 0, 0
 	m.Root = &root
 	m.Entries = make([]wsoracle.Entry, 0, len(live.Entries))
 	for _, e := range live.Entries {
-		if e.Path == LostFound || strings.HasPrefix(e.Path, LostFound+"/") {
+		if skipFence && (e.Path == LostFound || strings.HasPrefix(e.Path, LostFound+"/")) {
 			continue
 		}
 		e.Ino = 0
@@ -286,6 +291,21 @@ func TreeDigest(live wsoracle.Manifest) (string, error) {
 	}
 	sort.Slice(m.Entries, func(i, j int) bool { return m.Entries[i].Path < m.Entries[j].Path })
 	return "sha256:" + m.Digest(), nil
+}
+
+// canonicalFenceIn reports whether the snapshot holds the canonical fence: a top-level lost+found
+// that is a real directory of the root's owner with mode FenceMode and nothing below it.
+func canonicalFenceIn(live wsoracle.Manifest) bool {
+	canonical := false
+	for _, e := range live.Entries {
+		switch {
+		case e.Path == LostFound:
+			canonical = e.Type == wsoracle.TypeDir && e.Mode == FenceMode && e.UID == live.Root.UID && e.GID == live.Root.GID
+		case strings.HasPrefix(e.Path, LostFound+"/"):
+			return false
+		}
+	}
+	return canonical
 }
 
 func sha256Hex(b []byte) string {

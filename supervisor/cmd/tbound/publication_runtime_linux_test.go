@@ -21,6 +21,7 @@ import (
 	"tbound/supervisor/internal/broker/correlation"
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/delta"
+	"tbound/supervisor/internal/effectoracle"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/ipc"
 	"tbound/supervisor/internal/publication"
@@ -805,6 +806,10 @@ func newPublicationRuntimeFixture(t *testing.T, inject publication.FaultInjector
 	durableWriteFile(t, filepath.Join(base, "live", durableWritePath), "baseline\n", 0o644)
 	durableMkdir(t, filepath.Join(base, "live", "build"), 0o755)
 	durableWriteFile(t, filepath.Join(base, "live", "build", "result.txt"), "baseline result\n", 0o644)
+	// The managed live root holds the effect oracle's fence directory, and the baseline generation
+	// is imported from the live root.
+	durableMkdir(t, filepath.Join(base, "source", effectoracle.FenceDir), 0o755)
+	durableMkdir(t, filepath.Join(base, "live", effectoracle.FenceDir), 0o755)
 	storeJournal, err := audit.Open(filepath.Join(base, "session-audit", "journal.jsonl"))
 	if err != nil {
 		t.Fatal(err)
