@@ -316,8 +316,8 @@ func TestTrialResetFailsWhenTheKillOrTheVerificationFails(t *testing.T) {
 	e.rootUntouched(t) // the kill precedes the wipe
 
 	e = newTrialTestEnv(t)
-	e.snapshotFn = func(r, label string) wsoracle.Manifest {
-		m := wsoracle.Snapshot(r, label)
+	e.snapshotDirFn = func(dir *os.File, label string) wsoracle.Manifest {
+		m := wsoracle.SnapshotDir(dir, label)
 		m.Entries = append(m.Entries, wsoracle.Entry{Path: "extra", Type: wsoracle.TypeFile, Mode: 0o600, UID: e.owner.UID, GID: e.owner.GID, Nlink: 1,
 			SHA256: strings.Repeat("0", 64)})
 		return m
@@ -325,7 +325,7 @@ func TestTrialResetFailsWhenTheKillOrTheVerificationFails(t *testing.T) {
 	if _, out, err := e.run(t, "reset", trialTestCase); err == nil || out != "" || !strings.Contains(err.Error(), "does not digest") {
 		t.Fatalf("verification failure: err %v, output %q", err, out)
 	}
-	e.snapshotFn = func(r, label string) wsoracle.Manifest {
+	e.snapshotDirFn = func(dir *os.File, label string) wsoracle.Manifest {
 		return wsoracle.Manifest{Label: label, Gaps: []wsoracle.Gap{{Manifest: label, Kind: wsoracle.GapUnreadable}}}
 	}
 	if _, out, err := e.run(t, "reset", trialTestCase); err == nil || out != "" {

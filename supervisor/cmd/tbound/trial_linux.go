@@ -112,6 +112,8 @@ type trialEnv struct {
 	netSink func(ctx context.Context, cell evidenceCell) error
 	// snapshot is wsoracle.Snapshot.
 	snapshot func(root, label string) wsoracle.Manifest
+	// snapshotDir is wsoracle.SnapshotDir: the digest snapshot of a directory the caller holds.
+	snapshotDir func(dir *os.File, label string) wsoracle.Manifest
 	// task is what the accept and v-run verbs need (trial_accept_linux.go, trial_vrun_linux.go).
 	task trialTaskEnv
 }
@@ -134,8 +136,8 @@ func productionTrialEnv() trialEnv {
 		},
 		cell: loadTrialCell, lock: resetMaintenanceLock.acquire, pending: trialPending, cellPopulated: cellsCgroupPopulated, killCell: killCellsCgroup,
 		cleanNoReap: host.cleanNoReap, netSink: host.ensureNetSink,
-		snapshot: wsoracle.Snapshot,
-		task:     productionTrialTaskEnv(),
+		snapshot: wsoracle.Snapshot, snapshotDir: wsoracle.SnapshotDir,
+		task: productionTrialTaskEnv(),
 	}
 }
 
@@ -275,7 +277,21 @@ func trialReset(ctx context.Context, args []string, env trialEnv) (trialfix.Rese
 	if err := trialfix.ResetPinned(env.liveRoot, spec, env.owner, trialfix.RootIdentity{Device: device, Inode: inode}); err != nil {
 		return trialfix.ResetDoc{}, err
 	}
-	tree, err := trialfix.TreeDigest(env.snapshot(env.liveRoot, trialResetLabel))
+	// The digest is taken through the registered inode the reset verified, not through the path:
+	// a root that is renamed after the reset and replaced by a decoy does not change what is
+	// digested.
+	pinned, err := openPinnedLiveRoot(env.liveRoot, device, inode)
+	if err != nil {
+		return trialfix.ResetDoc{}, fmt.Errorf("the reset root is no longer the registered live root: %w", err)
+	}
+	pinnedFile := os.NewFile(uintptr(pinned), env.liveRoot)
+	manifest := env.snapshotDir(pinnedFile, trialResetLabel)
+	_ = pinnedFile.Close()
+	if manifest.Dev != device || manifest.Root == nil || manifest.Root.Ino != inode {
+		return trialfix.ResetDoc{}, fmt.Errorf("the reset tree is not the registered live root: device %d inode %d, want device %d inode %d",
+			manifest.Dev, manifestRootIno(manifest), device, inode)
+	}
+	tree, err := trialfix.TreeDigest(manifest)
 	if err != nil {
 		return trialfix.ResetDoc{}, err
 	}
@@ -342,15 +358,33 @@ func trialPending(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("the publication lifecycle journal cannot be read: %w", err)
 	}
-	info, err := os.Lstat(piruntime.D09ManagedPiLiveRootPath)
-	if err != nil || !info.IsDir() {
-		return fmt.Errorf("the live root cannot be identified: %v", err)
+	root, err := trialRootIdentity(registration, piruntime.D09ManagedPiLiveRootPath)
+	if err != nil {
+		return err
+	}
+	return trialPendingFrom(catalog, lifecycle, root, registration.Digest)
+}
+
+// trialRootIdentity reports the registration's device and inode for path, and refuses when the
+// path no longer is that directory: a live root that was renamed and replaced by a decoy is not
+// the root the registered runs were made on.
+func trialRootIdentity(registration piruntime.D09ManagedLiveRootRegistration, path string) (workflow.RootIdentity, error) {
+	if registration.RootPath != path {
+		return workflow.RootIdentity{}, fmt.Errorf("the registration names %q, not %q", registration.RootPath, path)
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return workflow.RootIdentity{}, fmt.Errorf("the live root cannot be identified: %v", err)
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return errors.New("the live root cannot be identified")
+		return workflow.RootIdentity{}, errors.New("the live root cannot be identified")
 	}
-	return trialPendingFrom(catalog, lifecycle, workflow.RootIdentity{Device: uint64(stat.Dev), Inode: stat.Ino}, registration.Digest)
+	if uint64(stat.Dev) != registration.RootDevice || stat.Ino != registration.RootInode {
+		return workflow.RootIdentity{}, fmt.Errorf("the live root is device %d inode %d, not the registered live root device %d inode %d",
+			stat.Dev, stat.Ino, registration.RootDevice, registration.RootInode)
+	}
+	return workflow.RootIdentity{Device: registration.RootDevice, Inode: registration.RootInode}, nil
 }
 
 // trialPendingFrom is trialPending over the two traces: a catalog admission without a terminal

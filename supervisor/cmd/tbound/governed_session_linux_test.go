@@ -86,6 +86,11 @@ func TestSyntheticProviderAuditBindsRealE05StoreAndLeaseOrigin(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(sourcePath, "build"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// The live root this test publishes into holds the effect oracle's fence directory, so the
+	// baseline generation seeded from this source must hold it too.
+	if err := os.Mkdir(filepath.Join(sourcePath, "lost+found"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	storeRoot, err := os.Open(storeRootPath)
 	if err != nil {
 		t.Fatal(err)

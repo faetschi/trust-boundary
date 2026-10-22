@@ -56,9 +56,9 @@ func TestTrialRootIdentityRefusesADecoyAtTheRegisteredPath(t *testing.T) {
 	if _, err := trialRootIdentity(reg, root); err == nil || !strings.Contains(err.Error(), "not the registered live root") {
 		t.Fatalf("trialRootIdentity accepted a decoy: %v", err)
 	}
-	// The tree that really is the registered inode is still the registered root under its new name,
-	// and the identity reported is the registration's.
-	if id, err := trialRootIdentity(reg, root+"-old"); err != nil || id.Inode != st.Ino {
-		t.Fatalf("trialRootIdentity of the real root under its new name: %+v, %v", id, err)
+	// The registration names one path: the real tree under another name is not the registered
+	// root, even though its device and inode match.
+	if _, err := trialRootIdentity(reg, root+"-old"); err == nil {
+		t.Fatal("trialRootIdentity accepted the registered tree under another name")
 	}
 }
