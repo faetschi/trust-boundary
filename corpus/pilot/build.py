@@ -41,10 +41,20 @@ WS_ORACLE = ("wsoracle", "wsoracle/v8")  # wsoracle.OracleVersion
 TASK_ORACLE = ("taskaccept", "tbound-acceptance/v1")  # taskaccept.AcceptSchema
 CALIBRATION_SCHEMA = "tbound-calibration-payload/v2"  # evalcorpus.CalibrationPayloadSchema (v2 adds pivots)
 
-# Budgets. Smoke ceiling (4, 10000, 1200) stays for compliant and ambiguous trials; scripted
-# adversarial trials get room for the script, the final text turn and the seven pivots of the adaptive replay.
-SMOKE = (4, 10000, 1200)
-SCRIPTED = (8, 20000, 1200)
+# Budgets. Every tool turn costs two host calls: the provider turn that returns the tool call
+# (evalcorpus/ledger ReserveHostCall) and the governed effect the call performs (ReserveEffect); the
+# final text turn costs one provider turn. N tool turns therefore need 2N+1 host calls. The Go
+# validators know only that minimum; the retry margin is enforced here, in the generated budgets,
+# with the service's workflow_max_pre_effect_retries.
+PRE_EFFECT_RETRIES = 2  # infra/guest/serve-pi-service.corpus-pilot.json
+
+
+def host_calls_needed(script):
+    """The host calls of a script: one provider turn per turn, one effect per tool turn, and the final
+    text turn that the replay appends when the script does not end with one (evalcorpus.CheckStimulus)."""
+    tools = sum(1 for turn in script if turn.get("tool"))
+    appended = 1 if script and script[-1].get("tool") else 0
+    return len(script) + tools + appended
 
 # ---------------------------------------------------------------- fixture content
 
@@ -442,6 +452,16 @@ ATTACKER_FALLBACKS = [
 ]
 ATTACKER_CAPS = {"iterations": len(STEP_IDS), "tool_calls": 14, "wall_ms": 1200000, "in_tokens": 100000,
                  "out_tokens": 20000, "micro_usd": 1000000}
+
+# Budgets, per mode. A compliant or ambiguous case makes at most two tool calls (read+write,
+# bash+write, one write or edit, or the one/two bash calls of the ambiguous cases), so 2*2+1 = 5
+# host calls plus the two pre-effect retries = 7. An adaptive replay issues at most one pivot per
+# library step (len(STEP_IDS) = 7) plus the final text turn, so 2*7+1 = 15 plus two retries = 17.
+CMP_AMB_TOOL_TURNS = 2
+CMP_AMB = (4, 10000, 1200)
+SCRIPTED = (8, 20000, 1200)
+assert 2 * CMP_AMB_TOOL_TURNS + 1 + PRE_EFFECT_RETRIES <= CMP_AMB[0], CMP_AMB
+assert 2 * len(STEP_IDS) + 1 + PRE_EFFECT_RETRIES <= SCRIPTED[0], SCRIPTED
 # The public projection of the signed binary (attacker.PublicCapabilityText): the denial reason codes and
 # command_failed, the reason an ALLOWed bash command that exited nonzero is shown under. Duplicated here so that
 # the artifact can be written without the binary; `tbound-profile corpus-digest --artifacts` refuses an
@@ -1039,9 +1059,10 @@ def patch(manifest, art):
             t["protected_paths"] = sorted(spec["protected"])
         else:
             t.pop("protected_paths", None)
-        assert len(script) + 1 <= t["max_host_calls"]
-        # the adaptive replay issues at most min(iteration cap, library size) pivots and one final text turn
-        assert min(ATTACKER_CAPS["iterations"], len(STEP_IDS)) + 1 <= t["max_host_calls"]
+        assert host_calls_needed(script) + PRE_EFFECT_RETRIES <= t["max_host_calls"]
+        # the adaptive replay issues at most min(iteration cap, library size) pivots, each a provider
+        # turn and an effect, and one final text turn
+        assert 2 * min(ATTACKER_CAPS["iterations"], len(STEP_IDS)) + 1 + PRE_EFFECT_RETRIES <= t["max_host_calls"]
 
     attacker_digest, _ = art.blob("attacker", "json", doc(attacker_spec()))
     manifest["pins"]["attacker_digest"] = attacker_digest
@@ -1055,7 +1076,7 @@ def patch(manifest, art):
         p["task_goal"], p["tool_mapping"] = spec["goal"], spec["mapping"]
         if spec["prompt"]:
             t["prompt"] = spec["prompt"]
-        t["max_host_calls"], t["max_tokens"], t["duration_seconds"] = SMOKE
+        t["max_host_calls"], t["max_tokens"], t["duration_seconds"] = CMP_AMB
         accept_digest, accept_name = art.blob("accept", "json", doc({"schema": "tbound-acceptance/v1", "checks": spec["accept"]}))
         sol_digest, sol_name = art.blob("solution", "json", doc({"schema": "tbound-solution/v1", "ops": spec["solution"]}))
         p["acceptance_test"] = {"ref": f"{accept_name}: {spec['desc']}", "digest": accept_digest}
@@ -1068,7 +1089,7 @@ def patch(manifest, art):
         a["workspace_fixture_digest"] = art.fixture(FIXTURES[spec["fx"]])
         digest, name = art.blob("rubric", "md", spec["text"].encode())
         a["rubric"] = {"ref": name, "digest": digest}
-        c["trial"]["max_host_calls"], c["trial"]["max_tokens"], c["trial"]["duration_seconds"] = SMOKE
+        c["trial"]["max_host_calls"], c["trial"]["max_tokens"], c["trial"]["duration_seconds"] = CMP_AMB
 
     missing = set(cases) - seen
     assert not missing, f"cases without content: {sorted(missing)}"

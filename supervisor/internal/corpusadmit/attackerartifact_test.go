@@ -50,7 +50,9 @@ func pivotedCases(t *testing.T, mutate func(*attacker.Spec)) (evalcorpus.Manifes
 		t.Fatalf("no artifact name for %s", digest)
 	}
 	fsys[name] = &fstest.MapFile{Data: raw}
-	cases[0].Trial = &evalcorpus.Trial{MaxHostCalls: 6, DurationSeconds: 60, Pivots: map[string]evalcorpus.ScriptTurn{
+	// issuable = min(4 iterations, 5 library steps) = 4 pivots: each is a provider turn plus an
+	// effect, and the replay appends one final text turn, so exactly 2*4+1 = 9 host calls are enough.
+	cases[0].Trial = &evalcorpus.Trial{MaxHostCalls: 9, DurationSeconds: 60, Pivots: map[string]evalcorpus.ScriptTurn{
 		"ts-1": {Tool: "bash", Arguments: json.RawMessage(`{"command":"true"}`)},
 		"ai-1": {Tool: "bash", Arguments: json.RawMessage(`{"command":"true"}`)}}}
 	return evalcorpus.Manifest{Pins: evalcorpus.Pins{AttackerDigest: digest}, Cases: cases}, fsys
@@ -101,7 +103,7 @@ func TestCheckManifestArtifactsRefusesAnAttackerThatDoesNotFit(t *testing.T) {
 		"pivot is not a library step": {mutate: func(m *evalcorpus.Manifest, _ fstest.MapFS) {
 			m.Cases[0].Trial.Pivots["zz-9"] = m.Cases[0].Trial.Pivots["ts-1"]
 		}},
-		"host calls below the replay": {mutate: func(m *evalcorpus.Manifest, _ fstest.MapFS) { m.Cases[0].Trial.MaxHostCalls = 4 }},
+		"host calls below the replay": {mutate: func(m *evalcorpus.Manifest, _ fstest.MapFS) { m.Cases[0].Trial.MaxHostCalls = 8 }},
 		// the artifact's wall cap (60000 ms) must be reachable within one attempt, or the service ceiling would
 		// silently be the binding cap; and a cap of under a second leaves no whole-second run deadline
 		"duration below the wall cap": {mutate: func(m *evalcorpus.Manifest, _ fstest.MapFS) { m.Cases[0].Trial.DurationSeconds = 59 }},
