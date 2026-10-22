@@ -67,6 +67,8 @@ type trialTestEnv struct {
 	dirtyAtKill bool
 	killErr     error
 	snapshotFn  func(root, label string) wsoracle.Manifest
+	// snapshotDirFn replaces the digest snapshot of the pinned root.
+	snapshotDirFn func(dir *os.File, label string) wsoracle.Manifest
 	// events is the order in which the reset used its seams.
 	events     []string
 	lockErr    error
@@ -151,6 +153,13 @@ func newTrialTestEnv(t *testing.T) *trialTestEnv {
 				return e.snapshotFn(r, label)
 			}
 			return wsoracle.Snapshot(r, label)
+		},
+		snapshotDir: func(dir *os.File, label string) wsoracle.Manifest {
+			e.events = append(e.events, "verify")
+			if e.snapshotDirFn != nil {
+				return e.snapshotDirFn(dir, label)
+			}
+			return wsoracle.SnapshotDir(dir, label)
 		},
 	}
 	return e
