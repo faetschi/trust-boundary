@@ -32,6 +32,11 @@ import (
 	"tbound/supervisor/internal/wsoracle"
 )
 
+// FenceMode is the mode of the canonical fence directory (LostFound): a real directory owned by
+// the fixture owner, empty, and readable and traversable by the cell. The effect oracle opens
+// and reads it as its window marker (effectoracle.FenceRoot).
+const FenceMode uint32 = 0o755
+
 // Schema is the only accepted value of Spec.Schema.
 const Schema = "tbound-fixture/v1"
 

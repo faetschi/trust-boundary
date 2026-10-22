@@ -17,11 +17,6 @@ const openDirFlags = unix.O_RDONLY | unix.O_DIRECTORY | unix.O_NOFOLLOW | unix.O
 // live root registration recorded. The zero value does not pin.
 type RootIdentity struct{ Device, Inode uint64 }
 
-// FenceMode is the mode of the canonical fence directory (LostFound): a real directory owned by
-// the fixture owner, empty, and readable and traversable by the cell. The effect oracle opens
-// and reads it as its window marker (effectoracle.FenceRoot).
-const FenceMode uint32 = 0o755
-
 // Reset replaces the content of root with the spec's tree, in place: Wipe, then Populate.
 // The root directory itself (inode, mode, owner) is kept, and the fence directory is left (or
 // made) canonical and empty.
