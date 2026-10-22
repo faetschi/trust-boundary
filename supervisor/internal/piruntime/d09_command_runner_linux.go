@@ -1255,6 +1255,21 @@ func processMountNamespaceInode(pid int) (uint64, error) {
 // processMountNamespaceReferences proves the exact container mount namespace
 // is no longer held by process membership or an open namespace fd. Any
 // unreadable live /proc entry is UNKNOWN rather than assumed detached.
+// foreignProcessDenied reports an access denial on a process another user owns. Such a process cannot have
+// joined the cell's mount namespace, which belongs to the service's own user namespace, without privilege
+// (trusted root); a denial on one of the service's own processes still fails closed.
+func foreignProcessDenied(pid string, err error) bool {
+	if !errors.Is(err, os.ErrPermission) {
+		return false
+	}
+	info, statErr := os.Stat(filepath.Join("/proc", pid))
+	if statErr != nil {
+		return false
+	}
+	owner, ok := info.Sys().(*syscall.Stat_t)
+	return ok && int(owner.Uid) != os.Geteuid()
+}
+
 func processMountNamespaceReferences(ctx context.Context, expectedInode uint64) (bool, error) {
 	if ctx == nil || expectedInode == 0 {
 		return false, errors.New("empty mount namespace identity")
@@ -1278,13 +1293,15 @@ func processMountNamespaceReferences(ctx context.Context, expectedInode uint64) 
 			if stat, ok := info.Sys().(*syscall.Stat_t); ok && stat.Ino == expectedInode {
 				return true, nil
 			}
+		} else if foreignProcessDenied(pid, statErr) {
+			continue
 		} else if !errors.Is(statErr, os.ErrNotExist) && !errors.Is(statErr, syscall.ESRCH) {
 			return false, fmt.Errorf("inspect %s: %w", namespace, statErr)
 		}
 		fds := filepath.Join("/proc", pid, "fd")
 		fdEntries, readErr := os.ReadDir(fds)
 		if readErr != nil {
-			if errors.Is(readErr, os.ErrNotExist) || errors.Is(readErr, syscall.ESRCH) {
+			if errors.Is(readErr, os.ErrNotExist) || errors.Is(readErr, syscall.ESRCH) || foreignProcessDenied(pid, readErr) {
 				continue
 			}
 			return false, fmt.Errorf("scan %s: %w", fds, readErr)
