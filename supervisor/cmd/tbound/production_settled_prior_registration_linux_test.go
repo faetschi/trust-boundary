@@ -496,3 +496,52 @@ func TestNoChangeSeedIsTakenFromTheLaunchBoundSourceState(t *testing.T) {
 		refusedBy(t, settleNoChange(t, run, uint64(len(run.storeTrace(t).Records))), ErrManagedLiveRootUnavailable, "no-change-seed-missing")
 	})
 }
+
+// F10 on the real guest: G1 (published) was the first run on the managed root, so its managed-root
+// epoch was 1; the route probe (no change) was the second, so the publication journal admitted and
+// released it at managed-root epoch 2. The next service verifies the probe with its workflow's
+// checkpoint, whose owner epoch is the workflow's own (1 for every fresh workflow). The settlement
+// must take the run's managed-root epoch from the run's admission, not from the checkpoint.
+func TestNoChangeSettlementOfTheSecondRunOnTheManagedRoot(t *testing.T) {
+	first := startNoChangeRun(t, true)
+	if err := first.release(); err != nil {
+		t.Fatalf("release the first run: %v", err)
+	}
+	const runID, workflowID = "run-no-change-second", "workflow-no-change-second"
+	ctx := context.Background()
+	lease, err := first.authority.acquire(ctx, first.live,
+		piruntime.D09CellTemplate{ManagedLiveRootRegistrationDigest: testManagedRootDigest},
+		first.journal, runID, workflowID, "production-publication-"+workflowID, 2)
+	if err != nil {
+		t.Fatalf("admit the second run at managed-root epoch 2: %v", err)
+	}
+	if err := lease.completeAdmissionRecovery(ctx); err != nil {
+		t.Fatal(err)
+	}
+	store, storeJournal := newNoChangeStore(t, privateGovernedTestRoot(t))
+	proof := managedRootSeedQualificationProof{qualificationDigest: testManagedRootDigest,
+		snapshot:   piruntime.D09ManagedLiveRootSnapshotEvidence{RunID: runID, EvidenceDigest: managedRootTestPolicy},
+		xattr:      piruntime.D09ManagedRootXattrEvidence{RunID: runID, EvidenceDigest: managedRootTestXattr},
+		revalidate: func(context.Context, *os.File) error { return nil }}
+	baseline, err := seedManagedRootSourceWithProof(ctx, store, first.live, storeJournal, runID, proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.markNoPublication(first.options, baseline); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.close(); err != nil {
+		t.Fatal(err)
+	}
+	source, err := storeJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := first.registration
+	next.Digest = digestBytes([]byte("registration of the next cycle"))
+	settlementID, err := verifyManagedPiNoPublicationSettlement(first.journal, first.trace(t), source,
+		uint64(len(source.Records)), first.identity, first.root, next, workflowID, runID, 1)
+	if err != nil || !strings.HasPrefix(settlementID, "no-publication:") {
+		t.Fatalf("the second run on the managed root, released with no change, was refused: id=%q err=%v", settlementID, err)
+	}
+}
