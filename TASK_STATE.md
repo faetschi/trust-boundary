@@ -63,6 +63,40 @@ Current checkpoint, 2026-10-23. History before this date: git log of this file a
   Twelve new fixture/acceptance/solution digest triples; all original case-level digests unchanged.
   This is an unsigned draft, not an admitted corpus digest or thesis result. No push.
 
+## Pilot round 2 review fixes (isolated worktree, 2026-10-24)
+
+- `feat/pilot-20-compliant`, base `8389a15`, same `tb-p20` worktree; no push.
+  Finding 1: `543d797` preserves scripted source caps through host calibration and cap derivation;
+  scripted token/money caps AND usage must be zero, model caps remain positive.
+  Finding 2: `63dc535` moves the slug assertions/marker into `tests/slug.test.js` in the fixture;
+  the prompt asks to run it and record stdout, with the exact acceptance/solution witness unchanged.
+  The other eleven new prompts were checked: no other read/bash result leak; write tasks explicitly
+  specify the files to create. Finding 3: `c3ee080` requires scripted caps at pivot-replay admission,
+  matching runtime construction. Finding 4: `7a449bf` expects 20 acceptance cases in the operator
+  cross-check and labels the old 21-case refusal as historical.
+- Red before implementation: `TestPinnedPilotScriptedPairsCanCalibrate` failed for all eleven
+  actual pinned adaptive pilot cases (`input tokens cap is unset`); the prompt-output regression
+  failed on bash-05 (`slug: 3 passed`); the admission/runtime regression failed because admission
+  returned nil for model caps that runtime rejected. Each passed after its fix. The operator-count
+  assertion also failed before the documentation fix and passed afterward.
+- Verified code commit `7a449bf7d3539a0348920e65a396b59c3c62f188`, tree
+  `40b5344fbdc3d0cdcea2558ff576d201bbf036ac`. Fresh WSL private copy
+  `/home/jeli2k/tmp/p20b.NJAh`, `umask 077`, private `TMPDIR`,
+  `GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local`, Go `/home/jeli2k/opt/go1.27.1/bin/go`:
+  `go test ./internal/attacker/ ./internal/providerbridge/ ./internal/evalcorpus/ ./internal/corpusadmit/ ./internal/calibration/ ./internal/runner/ ./cmd/tbound-run/ ./cmd/tbound/ -count=1 -json`
+  exit 0: 1,966 passing tests/subtests, zero failures, eight existing environment-dependent skips;
+  `go vet ./...` exit 0. Logs: `tests.jsonl`, `vet.log` there. No new regression skipped.
+  Skips: pinned Pi offline fixture, real-provider exchange, foreign credential ownership, five
+  real-cgroup tests. No guest, SSH, sudo, external network, or secret/key reads.
+- Two `python3 -I corpus/pilot/build.py --tbound-run /home/jeli2k/tmp/p20b.NJAh/tbound-run`
+  builds from the verified code matched all 76 committed generated files byte for byte, and each
+  other (`build.log`). The fixture's Node tests printed the exact witness and rejected a deliberately
+  broken helper. All changed files checked LF/no BOM; `git diff --check` passed.
+- Canonical draft manifest digest (`evalcorpus.Digest`):
+  `sha256:10622637da6d92c57a3748bfd14dccdfa0c27d771f6e564a5041ec1699ff6f8a`.
+  Attacker unchanged: `sha256:57c3c54b048432ae5e6cdcaba3a1b4764e45a8cca2b67acaba549c1d45627993`.
+  Draft/human-review status remains unchanged; this is not an admitted corpus or a guest result.
+
 ## Working rules
 
 - Freeze loop: gate -> freeze -> archive previous guest state (option A) -> install -> guest chain. Kit lessons: no BOM/LF only; decode base64 event data, never grep it; step 40 requires each evidence artifact's commit to equal the freeze commit; stale uid-995 podman pause processes need `RECLAIM_PODMAN_PAUSE=1`; the dr request ends unknown by design and must be archived before the pilot cycle.
