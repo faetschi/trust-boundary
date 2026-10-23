@@ -139,7 +139,7 @@ func TestNoChangeSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.T
 	next.Digest = digestBytes([]byte("registration of the next cycle"))
 	store := run.storeTrace(t)
 	settlementID, err := verifyManagedPiNoPublicationSettlement(run.journal, run.trace(t), store, uint64(len(store.Records)), run.identity, run.root, next,
-		noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
+		noChangeWorkflowID, noChangeRunID)
 	if err != nil || !strings.HasPrefix(settlementID, "no-publication:") {
 		t.Fatalf("a run settled under its own registration was refused under the next one: id=%q err=%v", settlementID, err)
 	}
@@ -164,7 +164,7 @@ func TestNoChangeSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.T
 		t.Fatal(err)
 	}
 	if _, err := verifyManagedPiNoPublicationSettlement(run.journal, run.trace(t), store, uint64(len(store.Records)), run.identity, run.root, next,
-		noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch); !errors.Is(err, ErrManagedLiveRootUnavailable) {
+		noChangeWorkflowID, noChangeRunID); !errors.Is(err, ErrManagedLiveRootUnavailable) {
 		t.Fatalf("a run admitted under two registrations was settled: %v", err)
 	}
 }
@@ -309,8 +309,9 @@ func TestServiceTCBProofOfAnotherImageThanTheCheckpointPinIsRefused(t *testing.T
 
 // publishedPriorRun runs one PUBLISHED managed live-root run through the real lease and RootLedger
 // (permit, pending, transaction, succeeded resolution, durable terminal, release), with the
-// production publication ID, and returns its publication journal.
-func publishedPriorRun(t *testing.T) (*audit.Journal, managedLiveRootDescriptorIdentity, piruntime.D09ManagedLiveRootRegistration, string) {
+// production publication ID, and returns its publication journal. The run is admitted at managed-root
+// epoch ownerEpoch: each earlier epoch is a run on the same root that ends before publication.
+func publishedPriorRun(t *testing.T, ownerEpoch uint64) (*audit.Journal, managedLiveRootDescriptorIdentity, piruntime.D09ManagedLiveRootRegistration, string) {
 	t.Helper()
 	root := privateGovernedTestRoot(t)
 	livePath := filepath.Join(root, "live")
@@ -340,9 +341,24 @@ func publishedPriorRun(t *testing.T) (*audit.Journal, managedLiveRootDescriptorI
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	lease, err := newFakeManagedLiveRootAuthority().acquire(ctx, live,
+	authority := newFakeManagedLiveRootAuthority()
+	for epoch := uint64(1); epoch < ownerEpoch; epoch++ {
+		earlier := fmt.Sprintf("earlier-run-%d", epoch)
+		lease, err := authority.acquire(ctx, live, piruntime.D09CellTemplate{ManagedLiveRootRegistrationDigest: testManagedRootDigest},
+			journal, earlier, earlier, "production-publication-"+earlier, epoch)
+		if err != nil {
+			t.Fatalf("admit the earlier run at managed-root epoch %d: %v", epoch, err)
+		}
+		if err := lease.completeAdmissionRecovery(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if err := lease.close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lease, err := authority.acquire(ctx, live,
 		piruntime.D09CellTemplate{ManagedLiveRootRegistrationDigest: testManagedRootDigest}, journal,
-		publishedPriorRunID, publishedPriorWorkflowID, publishedPriorPublicationID, 1)
+		publishedPriorRunID, publishedPriorWorkflowID, publishedPriorPublicationID, ownerEpoch)
 	if err != nil {
 		t.Fatalf("acquire test-only registered-root boundary: %v", err)
 	}
@@ -353,10 +369,10 @@ func publishedPriorRun(t *testing.T) (*audit.Journal, managedLiveRootDescriptorI
 		t.Fatal(err)
 	}
 	if err := lease.authorizePublication(ctx, live, workflow.EvidenceRequest{Bundle: bundle, Verified: bundle.ValidatedChain,
-		LiveRoot: live, Workflow: publishedPriorWorkflowID, OwnerEpoch: 1}, baseline); err != nil {
+		LiveRoot: live, Workflow: publishedPriorWorkflowID, OwnerEpoch: ownerEpoch}, baseline); err != nil {
 		t.Fatal(err)
 	}
-	reservation, err := rootLedger.Begin(live, publishedPriorWorkflowID, 1, publishedPriorPublicationID, options)
+	reservation, err := rootLedger.Begin(live, publishedPriorWorkflowID, ownerEpoch, publishedPriorPublicationID, options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +403,7 @@ const (
 
 // G1 publishes (read, edit, bash, read), and the next cycle, under its own registration, settles it.
 func TestPublishedSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.T) {
-	journal, identity, registration, transactionID := publishedPriorRun(t)
+	journal, identity, registration, transactionID := publishedPriorRun(t, 1)
 	root := workflow.RootIdentity{Device: identity.Device, Inode: identity.Inode}
 	next := registration
 	next.Digest = digestBytes([]byte("registration of the next cycle"))
@@ -397,7 +413,7 @@ func TestPublishedSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.
 			t.Fatal(err)
 		}
 		return verifyManagedPiPublicationSettlement(journal, trace, identity, root, next, publishedPriorWorkflowID,
-			publishedPriorRunID, 1, transaction)
+			publishedPriorRunID, transaction)
 	}
 	if err := settle(transactionID); err != nil {
 		t.Fatalf("a run published under its own registration was refused under the next one: %v", err)
@@ -433,7 +449,7 @@ func TestPublishedSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.
 func settleNoChange(t *testing.T, run *noChangeRun, launchSourceCount uint64) error {
 	t.Helper()
 	_, err := verifyManagedPiNoPublicationSettlement(run.journal, run.trace(t), run.storeTrace(t), launchSourceCount,
-		run.identity, run.root, run.registration, noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
+		run.identity, run.root, run.registration, noChangeWorkflowID, noChangeRunID)
 	return err
 }
 
@@ -494,5 +510,99 @@ func TestNoChangeSeedIsTakenFromTheLaunchBoundSourceState(t *testing.T) {
 			t.Fatal(err)
 		}
 		refusedBy(t, settleNoChange(t, run, uint64(len(run.storeTrace(t).Records))), ErrManagedLiveRootUnavailable, "no-change-seed-missing")
+	})
+}
+
+// F10 on the real guest: G1 (published) was the first run on the managed root, so its managed-root
+// epoch was 1; the route probe (no change) was the second, so the publication journal admitted and
+// released it at managed-root epoch 2. The next service verifies the probe with its workflow's
+// checkpoint, whose owner epoch is the workflow's own (1 for every fresh workflow). The settlement
+// must take the run's managed-root epoch from the run's admission, not from the checkpoint.
+func TestNoChangeSettlementOfTheSecondRunOnTheManagedRoot(t *testing.T) {
+	first := startNoChangeRun(t, true)
+	if err := first.release(); err != nil {
+		t.Fatalf("release the first run: %v", err)
+	}
+	const runID, workflowID = "run-no-change-second", "workflow-no-change-second"
+	ctx := context.Background()
+	lease, err := first.authority.acquire(ctx, first.live,
+		piruntime.D09CellTemplate{ManagedLiveRootRegistrationDigest: testManagedRootDigest},
+		first.journal, runID, workflowID, "production-publication-"+workflowID, 2)
+	if err != nil {
+		t.Fatalf("admit the second run at managed-root epoch 2: %v", err)
+	}
+	if err := lease.completeAdmissionRecovery(ctx); err != nil {
+		t.Fatal(err)
+	}
+	store, storeJournal := newNoChangeStore(t, privateGovernedTestRoot(t))
+	proof := managedRootSeedQualificationProof{qualificationDigest: testManagedRootDigest,
+		snapshot:   piruntime.D09ManagedLiveRootSnapshotEvidence{RunID: runID, EvidenceDigest: managedRootTestPolicy},
+		xattr:      piruntime.D09ManagedRootXattrEvidence{RunID: runID, EvidenceDigest: managedRootTestXattr},
+		revalidate: func(context.Context, *os.File) error { return nil }}
+	baseline, err := seedManagedRootSourceWithProof(ctx, store, first.live, storeJournal, runID, proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.markNoPublication(first.options, baseline); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.close(); err != nil {
+		t.Fatal(err)
+	}
+	source, err := storeJournal.Trace()
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := first.registration
+	next.Digest = digestBytes([]byte("registration of the next cycle"))
+	settlementID, err := verifyManagedPiNoPublicationSettlement(first.journal, first.trace(t), source,
+		uint64(len(source.Records)), first.identity, first.root, next, workflowID, runID)
+	if err != nil || !strings.HasPrefix(settlementID, "no-publication:") {
+		t.Fatalf("the second run on the managed root, released with no change, was refused: id=%q err=%v", settlementID, err)
+	}
+}
+
+// G1 published as the first run on the managed root. A run that publishes after another run on the
+// same root is admitted at managed-root epoch 2, while its workflow checkpoint's owner epoch is 1;
+// the next cycle settles it at the epoch of its admission.
+func TestPublishedSettlementOfTheSecondRunOnTheManagedRoot(t *testing.T) {
+	journal, identity, registration, transactionID := publishedPriorRun(t, 2)
+	root := workflow.RootIdentity{Device: identity.Device, Inode: identity.Inode}
+	next := registration
+	next.Digest = digestBytes([]byte("registration of the next cycle"))
+	settle := func() error {
+		trace, err := journal.Trace()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return verifyManagedPiPublicationSettlement(journal, trace, identity, root, next, publishedPriorWorkflowID,
+			publishedPriorRunID, transactionID)
+	}
+	if err := settle(); err != nil {
+		t.Fatalf("the second run on the managed root, published, was refused under the next registration: %v", err)
+	}
+
+	t.Run("second admission of the run at another epoch is ambiguous", func(t *testing.T) {
+		trace, err := journal.Trace()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var admitted managedLiveRootRunAdmittedEvent
+		for _, record := range trace.Records {
+			if record.Event.Kind == "managed_live_root_run_admitted" &&
+				unmarshalGovernedJSON(record.Event.Data, &admitted) == nil && admitted.RunID == publishedPriorRunID {
+				break
+			}
+		}
+		admitted.OwnerEpoch = 3
+		data, err := json.Marshal(admitted)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := journal.Append(audit.Event{Kind: "managed_live_root_run_admitted",
+			ID: managedLiveRootRunEventID(root, admitted.RegistrationDigest, publishedPriorRunID, 3), Data: data}); err != nil {
+			t.Fatal(err)
+		}
+		refusedBy(t, settle(), ErrManagedLiveRootUnavailable, "run-admission-ambiguous")
 	})
 }

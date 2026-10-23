@@ -937,10 +937,10 @@ func (c *piServiceWorkflowCatalog) verifyCompletedServiceRequestPins(ctx context
 	settlementID := receipt.PublicationTransactionID
 	if receipt.Disposition == "NO_DIFF" {
 		settlementID, err = verifyManagedPiNoPublicationSettlement(publicationJournal, publicationTrace, storeTrace,
-			proofEvent.Proof.SourceStoreAuditCount, rootDescriptor, rootID, registration, entry.WorkflowID, receipt.RunID, pins.OwnerEpoch)
+			proofEvent.Proof.SourceStoreAuditCount, rootDescriptor, rootID, registration, entry.WorkflowID, receipt.RunID)
 	} else {
 		err = verifyManagedPiPublicationSettlement(publicationJournal, publicationTrace, rootDescriptor, rootID, registration, entry.WorkflowID,
-			receipt.RunID, pins.OwnerEpoch, receipt.PublicationTransactionID)
+			receipt.RunID, receipt.PublicationTransactionID)
 	}
 	if err != nil {
 		_ = publicationJournal.Close()
@@ -1103,43 +1103,43 @@ func verifyServiceTCBProof(trace audit.Trace, receipt productionPiReceipt, sessi
 	return *matched, event, nil
 }
 
-// priorRunRegistrationDigest returns the managed-root registration a run was admitted under, from its
-// one admission record. A run settles under its own registration; the service verifying it may run
-// under a later one. The settlement matches every record of the run against this digest.
-func priorRunRegistrationDigest(trace audit.Trace, root workflow.RootIdentity, workflowID, runID string,
-	ownerEpoch uint64) (string, error) {
+// priorRunAdmission returns the managed-root registration and owner epoch a run was admitted under,
+// from its one admission record. A run settles under its own registration; the service verifying it
+// may run under a later one. The epoch is the managed root's (one per run on the root), not the
+// workflow's checkpoint owner epoch. The settlement matches every record of the run against both.
+func priorRunAdmission(trace audit.Trace, root workflow.RootIdentity, workflowID, runID string) (string, uint64, error) {
 	var digest string
+	var ownerEpoch uint64
 	for _, record := range trace.Records {
 		if record.Event.Kind != "managed_live_root_run_admitted" {
 			continue
 		}
 		var event managedLiveRootRunAdmittedEvent
 		if unmarshalGovernedJSON(record.Event.Data, &event) != nil || event.Root != root || event.RunID != runID ||
-			event.WorkflowID != workflowID || event.OwnerEpoch != ownerEpoch {
+			event.WorkflowID != workflowID {
 			continue
 		}
-		if digest != "" || !validDigestText(event.RegistrationDigest) ||
-			record.Event.ID != managedLiveRootRunEventID(root, event.RegistrationDigest, runID, ownerEpoch) {
-			return "", settlementRefusal("run-admission-ambiguous", ErrManagedLiveRootUnavailable)
+		if digest != "" || !validDigestText(event.RegistrationDigest) || event.OwnerEpoch == 0 ||
+			record.Event.ID != managedLiveRootRunEventID(root, event.RegistrationDigest, runID, event.OwnerEpoch) {
+			return "", 0, settlementRefusal("run-admission-ambiguous", ErrManagedLiveRootUnavailable)
 		}
-		digest = event.RegistrationDigest
+		digest, ownerEpoch = event.RegistrationDigest, event.OwnerEpoch
 	}
 	if digest == "" {
-		return "", settlementRefusal("run-admission-missing", ErrManagedLiveRootUnavailable)
+		return "", 0, settlementRefusal("run-admission-missing", ErrManagedLiveRootUnavailable)
 	}
-	return digest, nil
+	return digest, ownerEpoch, nil
 }
 
 func verifyManagedPiPublicationSettlement(journal *audit.Journal, trace audit.Trace,
 	rootDescriptor managedLiveRootDescriptorIdentity, root workflow.RootIdentity,
-	registration piruntime.D09ManagedLiveRootRegistration, workflowID, runID string, ownerEpoch uint64,
-	transactionID string) error {
+	registration piruntime.D09ManagedLiveRootRegistration, workflowID, runID string, transactionID string) error {
 	if journal == nil || root == (workflow.RootIdentity{}) || !validIdentityText(workflowID) ||
-		!validIdentityText(runID) || ownerEpoch == 0 || !boundedProductionIdentity(transactionID, productionRequestMaxBytes) {
+		!validIdentityText(runID) || !boundedProductionIdentity(transactionID, productionRequestMaxBytes) {
 		return settlementRefusal("publication-arguments", ErrManagedLiveRootUnavailable)
 	}
 	key := managedWorkflowEventID(root, workflowID, "production-publication-"+workflowID)
-	registrationDigest, err := priorRunRegistrationDigest(trace, root, workflowID, runID, ownerEpoch)
+	registrationDigest, ownerEpoch, err := priorRunAdmission(trace, root, workflowID, runID)
 	if err != nil {
 		return err
 	}
@@ -1265,9 +1265,9 @@ func productionReceiptSettlementClaimed(receipt productionPiReceipt) bool {
 // launchSourceCount records of the run's store journal (store), the source state its launch bound.
 func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace, store audit.Trace, launchSourceCount uint64,
 	rootDescriptor managedLiveRootDescriptorIdentity, root workflow.RootIdentity,
-	registration piruntime.D09ManagedLiveRootRegistration, workflowID, runID string, ownerEpoch uint64) (string, error) {
+	registration piruntime.D09ManagedLiveRootRegistration, workflowID, runID string) (string, error) {
 	if journal == nil || root == (workflow.RootIdentity{}) || !validIdentityText(workflowID) ||
-		!validIdentityText(runID) || ownerEpoch == 0 {
+		!validIdentityText(runID) {
 		return "", settlementRefusal("no-publication-arguments", ErrManagedLiveRootUnavailable)
 	}
 	if launchSourceCount > uint64(len(store.Records)) {
@@ -1276,7 +1276,7 @@ func verifyManagedPiNoPublicationSettlement(journal *audit.Journal, trace, store
 	source := audit.Trace{Records: store.Records[:launchSourceCount]}
 	publicationID := "production-publication-" + workflowID
 	key := managedWorkflowEventID(root, workflowID, publicationID)
-	registrationDigest, err := priorRunRegistrationDigest(trace, root, workflowID, runID, ownerEpoch)
+	registrationDigest, ownerEpoch, err := priorRunAdmission(trace, root, workflowID, runID)
 	if err != nil {
 		return "", err
 	}
