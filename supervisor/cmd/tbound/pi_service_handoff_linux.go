@@ -1131,17 +1131,6 @@ func piServiceMountOptions(mountID uint64) (string, error) {
 	return "", errors.New("socket parent mount ID is absent from mountinfo")
 }
 
-func containsMountOption(joined, expected string) bool {
-	for _, field := range strings.Split(joined, "\x00") {
-		for _, option := range strings.Split(field, ",") {
-			if option == expected {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 func (identity piServiceSocketRuntimeIdentity) revalidate(socket piServiceSocketRegistration, serviceNamespace bool) error {
 	current, err := measurePiServiceSocketPath(socket, serviceNamespace)
 	if err != nil {

@@ -8,12 +8,7 @@ export type DeclaredToolName = (typeof declaredToolNames)[number];
 
 export type ToolProposal = IpcProposal;
 
-export interface ProbeProposalReply {
-  verdict: "DENY";
-  reason: "probe-only";
-}
-
-export type ProposalReply = IpcResult | ProbeProposalReply;
+export type ProposalReply = IpcResult;
 
 export interface ProposalSender {
   send(proposal: ToolProposal, signal?: AbortSignal): Promise<ProposalReply>;

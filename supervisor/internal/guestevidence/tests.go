@@ -27,10 +27,10 @@ var testSpecs = map[string]TestSpec{
 		},
 	},
 	// EVQ-NETWORK-SINK-GUEST: the Landlock TCP connect right of the command cell. It skips below
-	// Landlock ABI 4, so it must run on the guest kernel.
+	// Landlock ABI 8 and requires enforcement on a second thread, so it must run on the guest kernel.
 	KindLandlockConnectTests: {
 		Package:  "tbound/supervisor/cmd/tbound-cell-entrypoint",
-		Required: []string{"TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink"},
+		Required: []string{"TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink", "TestLandlockTSYNCReachesEnforcement"},
 	},
 }
 

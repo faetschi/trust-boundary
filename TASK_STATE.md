@@ -8,7 +8,7 @@ Current checkpoint, 2026-10-23. History before this date: git log of this file a
 - On the real guest (F11/F12, correct Landlock TSYNC): **G1 passed** (read, edit, bash, publish), **route probe passed**, **direct-runtime probe passed** (launch proof, Pi not started; ends `unknown` by design).
 - EVQ dry run on F12: **18/22** passed (17 capture + adapter). Not passed: 3 guest artifacts were stale (kit bug, now fixed), capability stale, netsink missing (needs a trial reset). Route report: 3 routes covered, bash-view stale. "21/22 with fresh artifacts" is a forecast, not a result.
 - Merged since F12 (not yet on the guest): static denial hints + C-DH code (C-DH parked, default-off), f5-review item 6 (retry-margin budgets), adapter-tests reporter pin, tbound-op audit fixes (seed-live symlink safety, base64 counts). Gate on 5a29215: 4489 pass / 0 fail / 25 skip (the extra skip is the ABI-8 Landlock thread test, guest-only).
-- Open on branches: `fix/audit-go` (audit fixes 1, 2, 4, 5, 7) under review.
+- Audit fixes merged: adaptive receipt fields kept, empty bash scope survives recovery, Landlock setup errors fail instead of skip, the TSYNC thread test is a required guest test, dead code removed (fix/audit-go, reviewed); tbound-op fixes (fix/audit-tbound-op, reviewed).
 
 ## Decisions (owner, 2026-10-23)
 

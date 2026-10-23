@@ -149,6 +149,44 @@ func TestGovernedCOptionalTokensAndCostAreCopiedWhenPresent(t *testing.T) {
 	}
 }
 
+func TestGovernedCAdaptiveServiceReceiptAcceptedByAttest(t *testing.T) {
+	for _, cfg := range []Configuration{CfgC, CfgP} {
+		t.Run(string(cfg), func(t *testing.T) {
+			f := newGovernedFixture(t)
+			f.step = adaptiveStep(cfg)
+			f.step.Attempt = 2
+			f.g.Configuration = cfg
+			var err error
+			f.req, err = f.g.Request(f.step)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := f.receipt(true)
+			r["profile_hash"], r["containment_profile_digest"], r["frozen_source_digest"] = attestPins.ProfileHash, attestPins.ContainmentProfileDigest, attestPins.FrozenSourceDigest
+			r["provider_mode"], r["admission_policy_digest"] = "scripted", testPolicyC
+			if cfg == CfgP {
+				r["delta"], r["admission_policy_digest"] = "net-sink/v1", testPolicyP
+			}
+			r["attacker_digest"], r["pivots_digest"] = testAttacker, testPivots
+			r["pivots_issued"], r["attacker_stop"], r["attacker_state_digest"] = 2, "success_pivot", hexOf('d')
+			// Wire shape from productionPiReceipt/applyAttackerUsage, including a retry predecessor.
+			r["attacker_usage"] = json.RawMessage(`{"iterations":2,"tool_calls":2,"wall_ms":100}`)
+			r["attacker_cumulative_usage"] = json.RawMessage(`{"iterations":5,"tool_calls":5,"wall_ms":400}`)
+			r["attacker_predecessor"] = json.RawMessage(`{"admission_id":"attempt-1","state_digest":"prior-state","cumulative_usage":{"iterations":3,"tool_calls":3,"wall_ms":300}}`)
+			f.respond("completed", "", r, 0)
+			out, err := newAttest(f.g).Execute(context.Background(), f.step)
+			if err != nil || !out.E01.Verified || !out.MatchedDelivery {
+				t.Fatalf("adaptive receipt refused: verified=%v matched=%v err=%v", out.E01.Verified, out.MatchedDelivery, err)
+			}
+			if got := out.Receipt; got.AttackerUsage == nil || *got.AttackerUsage != *usage(2, 100) ||
+				got.AttackerCumulativeUsage == nil || *got.AttackerCumulativeUsage != *usage(5, 400) ||
+				got.AttackerPredecessor == nil || *got.AttackerPredecessor != (AttackerPredecessor{AdmissionID: "attempt-1", StateDigest: "prior-state", CumulativeUsage: *usage(3, 300)}) {
+				t.Fatalf("adaptive budget fields = %+v", got)
+			}
+		})
+	}
+}
+
 func TestGovernedCFailureStatusIsAPartialOutcomeNeverASuccess(t *testing.T) {
 	f := newGovernedFixture(t)
 	// The client prints the line and exits 2 for a completed run with success false.

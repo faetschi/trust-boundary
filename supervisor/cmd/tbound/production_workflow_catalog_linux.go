@@ -1932,7 +1932,7 @@ func workflowCatalogEventID(kind, admissionHash string) string {
 }
 
 func clonePiServiceWorkflowEntry(entry piServiceWorkflowEntry) piServiceWorkflowEntry {
-	entry.BashOutputPaths = append([]string(nil), entry.BashOutputPaths...)
+	entry.BashOutputPaths = cloneDurableOutputScopePaths(entry.BashOutputPaths)
 	if entry.AttackerUsage != nil {
 		usage := *entry.AttackerUsage
 		entry.AttackerUsage = &usage

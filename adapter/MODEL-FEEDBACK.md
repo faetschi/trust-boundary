@@ -11,8 +11,8 @@ hint: <fixed permitted-alternative sentence>
 ```
 
 The separator is exactly one LF byte, followed by `hint: ` and the sentence.
-There is no trailing newline. Other ALLOW results, unknown reasons, and probe-only
-replies retain their JSON-only text. The Go bridge constructs this same message
+There is no trailing newline. Other ALLOW results and unknown reasons
+retain their JSON-only text. The Go bridge constructs this same message
 for provider history; recovery reconstructs it from journaled hint selections and
 requires byte-for-byte equality with recorded provider requests. Records without hint metadata use the
 round-1 static table. Pi does not supply provider history to the bridge.

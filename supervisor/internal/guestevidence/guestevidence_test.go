@@ -101,9 +101,13 @@ func goodResponse(t *testing.T, e Expect, mutate func(response, receipt map[stri
 
 func goodTests(kind string, e Expect) TestRun {
 	spec, _ := SpecFor(kind)
+	required := spec.Required
+	if kind == KindLandlockConnectTests {
+		required = []string{"TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink", "TestLandlockTSYNCReachesEnforcement"}
+	}
 	r := TestRun{Package: spec.Package, TestBinarySHA256: e.TestBinaries[spec.Package], Args: slices.Clone(TestRunArgs), KernelRelease: "6.8.0-synthetic",
 		OutputSHA256: digestOf("output")}
-	for _, name := range spec.Required {
+	for _, name := range required {
 		r.Results = append(r.Results, TestResult{Test: name, Action: TestPass})
 	}
 	r.Results = append(r.Results, TestResult{Test: "TestSomethingElseSkips", Action: TestSkip})
@@ -426,6 +430,23 @@ func TestTestRunRequiredValues(t *testing.T) {
 			t.Errorf("%s: accepted although the capture recorded no test binary", kind)
 		}
 		_ = spec
+	}
+}
+
+func TestLandlockArtifactRequiresPassingSecondThreadEnforcement(t *testing.T) {
+	e := expect()
+	for _, action := range []string{"absent", TestSkip} {
+		t.Run(action, func(t *testing.T) {
+			r := goodTests(KindLandlockConnectTests, e)
+			r.Results = []TestResult{{Test: "TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink", Action: TestPass}}
+			if action != "absent" {
+				r.Results = append(r.Results, TestResult{Test: "TestLandlockTSYNCReachesEnforcement", Action: action})
+			}
+			if err := Validate(KindLandlockConnectTests, encode(t, KindLandlockConnectTests, r), e); err == nil ||
+				!strings.Contains(err.Error(), "TestLandlockTSYNCReachesEnforcement") {
+				t.Fatalf("artifact with %s second-thread result was not refused: %v", action, err)
+			}
+		})
 	}
 }
 
