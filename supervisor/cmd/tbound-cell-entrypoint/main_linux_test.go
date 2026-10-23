@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"syscall"
 	"testing"
@@ -18,22 +19,62 @@ import (
 	"tbound/supervisor/internal/piruntime"
 )
 
-// TestMain lets the test binary act as the Landlock TSYNC child: when
-// TBOUND_LL_CHILD=1 it applies the registered ABI8 TSYNC ruleset and exits,
-// proving the real (multi-threaded) Go process can reach enforcement. Exit code
-// 3 means the kernel lacks the required ABI (explicit unsupported skip).
+// TestMain lets the test binary act as the Landlock TSYNC child (landlockTSYNCChild) when
+// TBOUND_LL_CHILD=1. Exit code 3 means the kernel lacks the required ABI (explicit unsupported
+// skip).
 func TestMain(m *testing.M) {
 	if name := os.Getenv("TBOUND_LL_NET_CHILD"); name != "" {
 		os.Exit(landlockNetChild(name))
 	}
 	if os.Getenv("TBOUND_LL_CHILD") == "1" {
-		if _, _, err := applyLandlock(8); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(3)
-		}
-		os.Exit(0)
+		os.Exit(landlockTSYNCChild())
 	}
 	os.Exit(m.Run())
+}
+
+// landlockTSYNCChild applies the registered ruleset from one locked OS thread and requires that a
+// second OS thread, running before the ruleset was applied, is confined too: its connect to
+// 127.0.0.1:8081 must fail with EACCES. A ruleset applied to the calling thread only fails here.
+// It exits 3 only when the kernel does not report the registered ABI, 1 when the ruleset cannot be
+// applied and 12 when the other thread is not confined.
+func landlockTSYNCChild() int {
+	abi, _, errno := syscall.Syscall(uintptr(sysLandlockCreateRuleset), 0, 0, landlockCreateRulesetVersion)
+	if errno != 0 || int(abi) != landlockTSYNCABI {
+		fmt.Fprintf(os.Stderr, "the kernel reports Landlock ABI %d (%v), the registered ABI is %d\n", int(abi), errno, landlockTSYNCABI)
+		return 3
+	}
+	runtime.LockOSThread()
+	tid, start, result := make(chan int), make(chan struct{}), make(chan error)
+	go func() {
+		runtime.LockOSThread()
+		tid <- syscall.Gettid()
+		<-start
+		result <- connectLoopback(8081)
+	}()
+	if <-tid == syscall.Gettid() {
+		fmt.Fprintln(os.Stderr, "the second goroutine runs on the applying OS thread")
+		return 1
+	}
+	if _, _, err := applyLandlock(8); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	close(start)
+	if err := <-result; !errors.Is(err, syscall.EACCES) {
+		fmt.Fprintf(os.Stderr, "a connect from another OS thread was not denied by Landlock: %v\n", err)
+		return 12
+	}
+	return 0
+}
+
+// connectLoopback connects a TCP socket on the calling OS thread (no netpoller hand-off).
+func connectLoopback(port int) error {
+	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_STREAM|syscall.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer syscall.Close(fd)
+	return syscall.Connect(fd, &syscall.SockaddrInet4{Port: port, Addr: [4]byte{127, 0, 0, 1}})
 }
 
 func TestSplitPaths(t *testing.T) {
