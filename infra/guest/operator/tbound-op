@@ -677,8 +677,8 @@ v_seed_live() {
     if live_is_smoke; then say "live root already is the smoke fixture"
     else
       need_inactive; live_dir
-      "${SVC_PRIV[@]}" rm -rf --one-file-system -- "$LIVE/src" "$LIVE/out"
-      "${SVC_PRIV[@]}" rm -f -- "$LIVE/SMOKE-README.txt"
+      "${SVC_PRIV[@]}" rm -rf --one-file-system -- "$LIVE/src" "$LIVE/out" || die "cannot clear src/out as the service uid (nested entry not removable by it): owner must look"
+      "${SVC_PRIV[@]}" rm -f -- "$LIVE/SMOKE-README.txt" || die "cannot remove SMOKE-README.txt as the service uid: owner must look"
       printf '%s\n' "$SMOKE_TEXT" | live_write_fixture "$LIVE/SMOKE-README.txt"
       live_is_smoke || die "live root is not exactly the smoke fixture (unexpected extra entries: owner must look)"
     fi
@@ -686,7 +686,7 @@ v_seed_live() {
     if live_is_g1 && [[ $(cat "$LIVE/src/release.txt") == $'version=2.4.0\nstatus=draft' ]]; then say "live root already is the g1 fixture"
     else
       need_inactive; live_dir
-      "${SVC_PRIV[@]}" rm -f -- "$LIVE/SMOKE-README.txt"
+      "${SVC_PRIV[@]}" rm -f -- "$LIVE/SMOKE-README.txt" || die "cannot remove SMOKE-README.txt as the service uid: owner must look"
       local d
       for d in "$LIVE/src" "$LIVE/out"; do
         [[ -d $d ]] || "${SVC_PRIV[@]}" mkdir -m 0755 -- "$d"
