@@ -44,7 +44,7 @@ func TestLocalChooserUsesOnlyCandidateIDsAndLogprobConfidence(t *testing.T) {
 				}
 				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(tc.raw))}, nil
 			})}
-			got := NewChoiceHintProvider(cfg).Hint(context.Background(), in)
+			got := newChoiceHintProvider(cfg).Hint(context.Background(), in)
 			if calls != 1 || got.FallbackReason != tc.want || got.Transport != "local" || got.ModelDigest != modelDigest {
 				t.Fatalf("%+v calls=%d", got, calls)
 			}
@@ -60,7 +60,7 @@ func TestLocalChooserUsesOnlyCandidateIDsAndLogprobConfidence(t *testing.T) {
 	for _, endpoint := range []string{"https://public.example/v1", "http://8.8.8.8/v1", "http://192.168.1.3@public.example/v1", "file:///v1", "http://127.0.0.1/v1?redirect=1"} {
 		calls := 0
 		cfg := ChooserConfig{Kind: "local", Enabled: true, BaseURL: endpoint, Model: "local/fixture", ModelDigest: modelDigest, Client: hintDoerFunc(func(*http.Request) (*http.Response, error) { calls++; return nil, nil })}
-		if got := NewChoiceHintProvider(cfg).Hint(context.Background(), in); calls != 0 || got.FallbackReason != "chooser_error" {
+		if got := newChoiceHintProvider(cfg).Hint(context.Background(), in); calls != 0 || got.FallbackReason != "chooser_error" {
 			t.Fatalf("%s %+v calls=%d", endpoint, got, calls)
 		}
 	}

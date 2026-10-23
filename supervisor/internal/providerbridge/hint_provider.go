@@ -171,7 +171,9 @@ func journaledResultText(encoded []byte, result protocol.Result, selection *Hint
 	if selection == nil {
 		return modelResultText(encoded, result), nil
 	}
-	if (selection.ManifestDigest != "" && !validModelFileDigest(selection.ManifestDigest)) ||
+	if (selection.Endpoint != "" && !((selection.Transport == "local" && validLocalEndpoint(selection.Endpoint)) ||
+		(selection.Transport == "decisions" && validDecisionsEndpoint(selection.Endpoint)))) ||
+		(selection.ManifestDigest != "" && !validModelFileDigest(selection.ManifestDigest)) ||
 		(selection.Provider == "static" && (selection.Transport != "" || selection.Endpoint != "" || selection.ModelDigest != "")) ||
 		(selection.FallbackReason == "" && selection.Transport == "local" && (!validLocalEndpoint(selection.Endpoint) || !validModelFileDigest(selection.ModelDigest))) ||
 		(selection.FallbackReason == "" && selection.Transport == "decisions" && (!validDecisionsEndpoint(selection.Endpoint) || selection.ModelDigest != "")) ||

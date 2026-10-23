@@ -213,3 +213,60 @@ func TestHintReplaySubprocess(t *testing.T) {
 		t.Fatalf("%+v %v", projection, err)
 	}
 }
+
+func TestFallbackHintJournalRejectsEndpointCredentials(t *testing.T) {
+	for _, kind := range []string{"decisions", "local"} {
+		for _, endpoint := range []string{"http://127.0.0.1:8080/v1?key=credential-marker", "http://user:credential-marker@127.0.0.1:8080/v1"} {
+			t.Run(kind+"/"+endpoint, func(t *testing.T) {
+				cfg := recoveryTestConfig()
+				cfg.HintProvider = newChoiceHintProvider(ChooserConfig{Kind: kind, BaseURL: endpoint, Model: "offline/fixture"})
+				journal := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "credentials.audit"))
+				defer journal.Close()
+				conversation, err := newWithDoer(cfg, ApprovedModel, &fixtureDoer{responses: []fixtureResponse{
+					{responseID: "first", callID: "first-call", tool: "write", arguments: json.RawMessage(`{"path":"task.txt","content":"x"}`)},
+				}}, journal)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := conversation.AdmitPrompt("task-hints", "Fix the public task"); err != nil {
+					t.Fatal(err)
+				}
+				wrapped, err := NewExecutor(conversation, &denyingExecutor{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, _, err := driveDenialTurn(t, conversation, wrapped, recoveryTestPolicy(t, false), true); err != nil {
+					t.Fatal(err)
+				}
+				trace, err := journal.Trace()
+				if err != nil {
+					t.Fatal(err)
+				}
+				found := false
+				for _, record := range trace.Records {
+					if record.Event.Kind != "provider_tool_result" {
+						continue
+					}
+					var evidence resultEvidence
+					if err := json.Unmarshal(record.Event.Data, &evidence); err != nil {
+						t.Fatal(err)
+					}
+					if evidence.Hint == nil {
+						t.Fatal("missing hint selection")
+					}
+					encoded, err := json.Marshal(evidence.Hint)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if strings.Contains(string(encoded), "credential-marker") || evidence.Hint.Endpoint != "" {
+						t.Fatalf("endpoint credentials reached journal: %s", encoded)
+					}
+					found = true
+				}
+				if !found {
+					t.Fatal("missing journaled result")
+				}
+			})
+		}
+	}
+}

@@ -48,7 +48,7 @@ type DecisionsResponse struct {
 
 type decisionsChooser struct{ cfg ChooserConfig }
 
-func NewChoiceHintProvider(cfg ChooserConfig) ChoiceHintProvider {
+func newChoiceHintProvider(cfg ChooserConfig) ChoiceHintProvider {
 	kind := cfg.Kind
 	if kind == "" {
 		kind = "decisions"

@@ -100,7 +100,7 @@ func NewCDHProvider(m CDHManifest, cfg ChooserConfig) (ChoiceHintProvider, error
 	}
 	cfg.Kind, cfg.BaseURL, cfg.ModelDigest = m.Transports[index].Kind, m.Transports[index].Endpoint, m.Transports[index].ModelDigest
 	cfg.MinConfidence, cfg.Timeout = m.MinConfidence, time.Duration(m.TimeoutMS)*time.Millisecond
-	p := NewChoiceHintProvider(cfg)
+	p := newChoiceHintProvider(cfg)
 	p.ManifestDigest = digest
 	return p, nil
 }

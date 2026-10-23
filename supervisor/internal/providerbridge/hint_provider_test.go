@@ -83,7 +83,7 @@ func TestChoiceHintFallbacks(t *testing.T) {
 			}
 		})
 	}
-	disabled := NewChoiceHintProvider(ChooserConfig{Model: "fixture/model"})
+	disabled := newChoiceHintProvider(ChooserConfig{Model: "fixture/model"})
 	if out := disabled.Hint(context.Background(), HintInput{ReasonCode: "policy_rule_deny"}); out.FallbackReason != "disabled" {
 		t.Fatal(out)
 	}
@@ -127,13 +127,13 @@ func TestDecisionsClientOfflineContract(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"answers":{"hint":{"type":"choice","choice":"1","confidence":0.93,"probabilities":{"0":0.07,"1":0.93}}},"model":"fixture/decision"}`))}, nil
 	})
-	p := NewChoiceHintProvider(ChooserConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", BearerToken: "fake", Client: client})
+	p := newChoiceHintProvider(ChooserConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", BearerToken: "fake", Client: client})
 	got := p.Hint(context.Background(), in)
 	if got.CandidateID != "1" || got.FallbackReason != "" || got.Confidence != .93 {
 		t.Fatal(got)
 	}
 	for _, raw := range []string{`{`, `{}`, `{"answers":{"hint":{"type":"choice","choice":"unregistered","confidence":1}}}`, strings.Repeat("x", 65537)} {
-		p = NewChoiceHintProvider(ChooserConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", Client: hintDoerFunc(func(*http.Request) (*http.Response, error) {
+		p = newChoiceHintProvider(ChooserConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", Client: hintDoerFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(raw))}, nil
 		})})
 		if out := p.Hint(context.Background(), in); out.FallbackReason == "" || out.CandidateID != "0" {
@@ -141,7 +141,7 @@ func TestDecisionsClientOfflineContract(t *testing.T) {
 		}
 	}
 	for _, status := range []int{301, 400, 401, 429, 500} {
-		p = NewChoiceHintProvider(ChooserConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", Client: hintDoerFunc(func(*http.Request) (*http.Response, error) {
+		p = newChoiceHintProvider(ChooserConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", Client: hintDoerFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader("private error"))}, nil
 		})})
 		if out := p.Hint(context.Background(), in); out.FallbackReason != "chooser_error" {
