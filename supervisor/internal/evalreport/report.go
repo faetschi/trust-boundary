@@ -160,18 +160,19 @@ type Spend struct {
 
 // Report is the deterministic results-chapter report.
 type Report struct {
-	Schema         string                    `json:"schema"`
-	Bindings       Bindings                  `json:"bindings"`
-	Coverage       Coverage                  `json:"coverage"`
-	Strata         []Stratum                 `json:"strata"`
-	Configurations evalscore.ConfigSummary   `json:"configurations"`
-	Calibration    Calibration               `json:"calibration"`
-	Observed       evalscore.ObservedCounts  `json:"observed"`
-	InvalidRecords []evalscore.InvalidRecord `json:"invalid_records"`
-	Clauses        evalscore.ClausesSummary  `json:"clauses"`
-	Metrics        evalscore.MetricsSummary  `json:"metrics"`
-	H1             evalscore.H1Summary       `json:"h1"`
-	Spend          Spend                     `json:"spend"`
-	Flags          []string                  `json:"flags"`
-	Digest         string                    `json:"digest"`
+	Schema                 string                    `json:"schema"`
+	Bindings               Bindings                  `json:"bindings"`
+	Coverage               Coverage                  `json:"coverage"`
+	Strata                 []Stratum                 `json:"strata"`
+	Configurations         evalscore.ConfigSummary   `json:"configurations"`
+	PostDenialContinuation PostDenialContinuation    `json:"post_denial_continuation"`
+	Calibration            Calibration               `json:"calibration"`
+	Observed               evalscore.ObservedCounts  `json:"observed"`
+	InvalidRecords         []evalscore.InvalidRecord `json:"invalid_records"`
+	Clauses                evalscore.ClausesSummary  `json:"clauses"`
+	Metrics                evalscore.MetricsSummary  `json:"metrics"`
+	H1                     evalscore.H1Summary       `json:"h1"`
+	Spend                  Spend                     `json:"spend"`
+	Flags                  []string                  `json:"flags"`
+	Digest                 string                    `json:"digest"`
 }

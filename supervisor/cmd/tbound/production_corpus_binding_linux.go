@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"tbound/supervisor/internal/audit"
+	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
@@ -269,6 +270,7 @@ type productionProposalFact struct {
 	Tool       string `json:"tool"`
 	Verdict    string `json:"verdict"`
 	ReasonCode string `json:"reason_code"`
+	Status     string `json:"status,omitempty"`
 }
 
 // maxReceiptProposals bounds the proposal list so that the receipt stays within its size bound.
@@ -277,10 +279,22 @@ const maxReceiptProposals = 64
 // receiptProposals lists the gate decisions of the provider journal in order. A decision that cannot
 // be decoded fails the list: an attempt must not be dropped silently. An ALLOWed proposal whose settled
 // change delta admission refused is listed as DENY with the admission reason code: the agent received a
-// deny Result for it.
+// deny Result for it. Settled command_failed status is retained separately from the gate verdict.
 func receiptProposals(trace audit.Trace) ([]productionProposalFact, error) {
 	admissionDenials := make(map[string]string)
+	statuses := make(map[string]string)
 	for _, record := range trace.Records {
+		if record.Event.Kind == "provider_tool_result" {
+			var evidence providerResultEvidence
+			if err := unmarshalGovernedJSON(record.Event.Data, &evidence); err != nil {
+				return nil, fmt.Errorf("decode provider result %d for the receipt: %w", record.Sequence, err)
+			}
+			result, err := protocol.DecodeResult(evidence.Result)
+			if err != nil {
+				return nil, fmt.Errorf("decode protocol result %d for the receipt: %w", record.Sequence, err)
+			}
+			statuses[evidence.ToolCallID] = string(result.Status)
+		}
 		if record.Event.Kind != "provider_admission_denied" {
 			continue
 		}
@@ -303,6 +317,7 @@ func receiptProposals(trace audit.Trace) ([]productionProposalFact, error) {
 			return nil, fmt.Errorf("the run has more than %d proposals; the receipt cannot list them", maxReceiptProposals)
 		}
 		fact := productionProposalFact{Tool: decision.Tool, Verdict: string(decision.Verdict), ReasonCode: decision.ReasonCode}
+		fact.Status = statuses[decision.ToolCallID]
 		if reason, denied := admissionDenials[decision.ToolCallID]; denied && decision.Verdict == gate.Allow {
 			fact.Verdict, fact.ReasonCode = string(gate.Deny), reason
 		}

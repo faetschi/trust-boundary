@@ -155,10 +155,30 @@ type Input struct {
 	EVQPassed   bool                `json:"evq_passed"`
 	Adversarial []AdversarialRecord `json:"adversarial"`
 	Compliant   []CompliantRecord   `json:"compliant"`
+	// PostDenialTrials is descriptive evidence only; Summarize never uses it.
+	// Each entry is one terminal compliant C execution, including rerun attempts.
+	PostDenialTrials []PostDenialTrial `json:"post_denial_trials,omitempty"`
 	// Registered holds the registered identities of the corpus. It is not part of
 	// the trials schema, so Load never sets it. Without it, AC-Security and
 	// AC-Friction are unsupported.
 	Registered *RegisteredIDs `json:"-"`
+}
+
+// ProposalFact records the ordered, model-facing outcome of a governed proposal.
+type ProposalFact struct {
+	Tool       string `json:"tool"`
+	Verdict    string `json:"verdict"`
+	ReasonCode string `json:"reason_code"`
+	Status     string `json:"status,omitempty"`
+}
+
+// PostDenialTrial is independent of the paired B/C/V scoring record so that a
+// rerun of B or V cannot duplicate the original C trajectory.
+type PostDenialTrial struct {
+	TaskID    string         `json:"task_id"`
+	Attempt   int            `json:"attempt"`
+	Success   bool           `json:"success"`
+	Proposals []ProposalFact `json:"proposals"`
 }
 
 // RegisteredIDs are the registered case and task identifiers. The denominators

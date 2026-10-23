@@ -10,7 +10,7 @@ import (
 )
 
 // Load decodes one evalscore-trials/v1 JSON object from r and validates it. It
-// reads at most MaxInputBytes. Every field in the schema is required, must be
+// reads at most MaxInputBytes. Every scoring field in the schema is required, must be
 // spelled exactly as written, and must appear once and not as null. Unknown,
 // duplicate, and mistyped fields are errors, as are trailing data and invalid
 // UTF-8. encoding/json matches field names case-insensitively, so the exact-key
@@ -41,6 +41,10 @@ import (
 //	  }]
 //	}
 //
+// The optional post_denial_trials array carries descriptive C execution records
+// (task_id, attempt, success, proposals). Each proposal has tool, verdict,
+// reason_code and optional status. These records never affect Summarize.
+//
 // Load checks JSON shape and the structural rules of validate. It does not check
 // enum values: a record with an unregistered enum value loads, and Summarize
 // reports it as an invalid record, counted as UNSUPPORTED.
@@ -63,12 +67,13 @@ func Load(r io.Reader) (Input, error) {
 	}
 
 	var top struct {
-		Schema      string            `json:"schema"`
-		EVQPassed   bool              `json:"evq_passed"`
-		Adversarial []json.RawMessage `json:"adversarial"`
-		Compliant   []json.RawMessage `json:"compliant"`
+		Schema           string            `json:"schema"`
+		EVQPassed        bool              `json:"evq_passed"`
+		Adversarial      []json.RawMessage `json:"adversarial"`
+		Compliant        []json.RawMessage `json:"compliant"`
+		PostDenialTrials []json.RawMessage `json:"post_denial_trials"`
 	}
-	if err := decodeObject(data, &top, "schema", "evq_passed", "adversarial", "compliant"); err != nil {
+	if err := decodeObjectOptional(data, &top, []string{"post_denial_trials"}, "schema", "evq_passed", "adversarial", "compliant"); err != nil {
 		return Input{}, fmt.Errorf("evalscore: top level: %w", err)
 	}
 
@@ -91,6 +96,32 @@ func Load(r io.Reader) (Input, error) {
 			return Input{}, fmt.Errorf("evalscore: compliant[%d]: %w", i, err)
 		}
 		in.Compliant = append(in.Compliant, rec)
+	}
+	seenTrials := map[string]bool{}
+	for i, raw := range top.PostDenialTrials {
+		var trial struct {
+			TaskID    string            `json:"task_id"`
+			Attempt   int               `json:"attempt"`
+			Success   bool              `json:"success"`
+			Proposals []json.RawMessage `json:"proposals"`
+		}
+		if err := decodeObject(raw, &trial, "task_id", "attempt", "success", "proposals"); err != nil {
+			return Input{}, fmt.Errorf("evalscore: post_denial_trials[%d]: %w", i, err)
+		}
+		key := fmt.Sprintf("%s/%d", trial.TaskID, trial.Attempt)
+		if trial.TaskID == "" || trial.Attempt < 1 || seenTrials[key] {
+			return Input{}, fmt.Errorf("evalscore: invalid or duplicate post-denial trial %q", key)
+		}
+		seenTrials[key] = true
+		rec := PostDenialTrial{TaskID: trial.TaskID, Attempt: trial.Attempt, Success: trial.Success, Proposals: []ProposalFact{}}
+		for _, raw := range trial.Proposals {
+			var p ProposalFact
+			if err := decodeObjectOptional(raw, &p, []string{"status"}, "tool", "verdict", "reason_code"); err != nil {
+				return Input{}, fmt.Errorf("evalscore: post-denial proposal: %w", err)
+			}
+			rec.Proposals = append(rec.Proposals, p)
+		}
+		in.PostDenialTrials = append(in.PostDenialTrials, rec)
 	}
 	if err := in.validate(); err != nil {
 		return Input{}, err
@@ -115,12 +146,20 @@ var compFields = []string{
 // into dst. It rejects duplicate, unknown, missing, and null fields, and any
 // data after the object.
 func decodeObject(raw []byte, dst any, fields ...string) error {
+	return decodeObjectOptional(raw, dst, nil, fields...)
+}
+
+// Optional fields are additive descriptive evidence; existing v1 inputs remain valid.
+func decodeObjectOptional(raw []byte, dst any, optional []string, fields ...string) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
 		return errors.New("expected a JSON object")
 	}
 	known := make(map[string]bool, len(fields))
 	for _, f := range fields {
+		known[f] = true
+	}
+	for _, f := range optional {
 		known[f] = true
 	}
 	seen := make(map[string]json.RawMessage, len(fields))
@@ -144,6 +183,9 @@ func decodeObject(raw []byte, dst any, fields ...string) error {
 			return fmt.Errorf("field %q: %w", key, err)
 		}
 		seen[key] = v
+		if bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
+			return fmt.Errorf("field %q is null", key)
+		}
 	}
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('}') {
 		return errors.New("unterminated JSON object")
@@ -152,12 +194,9 @@ func decodeObject(raw []byte, dst any, fields ...string) error {
 		return errors.New("trailing data after JSON object")
 	}
 	for _, f := range fields {
-		v, ok := seen[f]
+		_, ok := seen[f]
 		if !ok {
 			return fmt.Errorf("missing field %q", f)
-		}
-		if bytes.Equal(bytes.TrimSpace(v), []byte("null")) {
-			return fmt.Errorf("field %q is null", f)
 		}
 	}
 	return json.Unmarshal(raw, dst)
