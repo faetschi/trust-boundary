@@ -853,9 +853,10 @@ func newPublicationRuntimeFixture(t *testing.T, inject publication.FaultInjector
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspaceOptions := workspace.Options{Generation: "g0", MetadataPolicyDigest: durableMetadataDigest,
-		Limits: workspace.DefaultLimits(), QuiescentRoot: true,
-		XattrVisibility: workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted}}
+	// The binding a production session gives the root ledger and the publication repository (G1 at F8
+	// published nothing because that binding was refused by every publication scan).
+	workspaceOptions := productionWorkspaceOptions("g0", durableMetadataDigest,
+		workspace.XattrVisibilityAttestation{ProfileDigest: durableXattrDigest, Authority: workspace.XattrAuthorityBoundedNoHiddenTrusted})
 	trust := customTrust
 	if trust == nil {
 		trust = &runtimeFixtureTrust{authority: authority, callIssuer: durableCallIssuer, callID: durableCallID, sequence: 1,
