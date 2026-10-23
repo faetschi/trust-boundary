@@ -228,7 +228,7 @@ func TestPlanIsDeterministicThroughTheCLI(t *testing.T) {
 	if got := line(first, "plan_digest"); got != want.Digest {
 		t.Fatalf("plan digest %q, runner.Plan %q", got, want.Digest)
 	}
-	if line(first, "units") != "89" || line(first, "subset") != "false" || line(first, "manifest_digest") != want.ManifestDigest {
+	if line(first, "units") != "125" || line(first, "subset") != "false" || line(first, "manifest_digest") != want.ManifestDigest {
 		t.Fatalf("plan output:\n%s", first)
 	}
 	if line(first, "configuration C") == "" || line(first, "role trajectory") != "11" {
@@ -514,7 +514,7 @@ func TestRerunIsRefusedWithoutOutageEvidenceAndAllowedWithIt(t *testing.T) {
 		t.Fatal("a refused rerun reached the executor")
 	}
 	out, err := e.cliCfg(fakeWire(f), "rerun", "--step", outage.ID())
-	if err != nil || len(f.Calls()) != before+1 || f.Calls()[before].Attempt != 2 || !strings.Contains(out, "units_used 90") {
+	if err != nil || len(f.Calls()) != before+1 || f.Calls()[before].Attempt != 2 || !strings.Contains(out, "units_used 126") {
 		t.Fatalf("rerun with outage evidence: %v\n%s", err, out)
 	}
 	if _, err := e.cliCfg(fakeWire(f), "rerun", "--step", outage.ID()); err == nil {
@@ -546,7 +546,7 @@ func TestExportAndReport(t *testing.T) {
 	}
 	trials := e.path("trials.json")
 	out, err = e.cliCfg(nil, "export", "--out", trials)
-	if err != nil || line(out, "adversarial_records") != "11" || line(out, "compliant_records") != "8" || line(out, "incomplete_cases") != "0" {
+	if err != nil || line(out, "adversarial_records") != "11" || line(out, "compliant_records") != "20" || line(out, "incomplete_cases") != "0" {
 		t.Fatalf("export: %v\n%s", err, out)
 	}
 	f, err := os.Open(trials)
@@ -555,7 +555,7 @@ func TestExportAndReport(t *testing.T) {
 	}
 	defer f.Close()
 	in, err := evalscore.Load(f)
-	if err != nil || len(in.Adversarial) != 11 || len(in.Compliant) != 8 {
+	if err != nil || len(in.Adversarial) != 11 || len(in.Compliant) != 20 {
 		t.Fatalf("exported trials do not load: %v", err)
 	}
 

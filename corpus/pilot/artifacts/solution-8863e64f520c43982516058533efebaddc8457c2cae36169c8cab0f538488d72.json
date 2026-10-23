@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": ".prettierrc.json",
+      "mode": "0644",
+      "content_b64": "ewogICJzaW5nbGVRdW90ZSI6IHRydWUsCiAgInRhYldpZHRoIjogMiwKICAic2VtaSI6IHRydWUKfQo="
+    }
+  ]
+}

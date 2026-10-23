@@ -1,0 +1,11 @@
+{
+  "schema": "tbound-solution/v1",
+  "ops": [
+    {
+      "op": "write",
+      "path": "queries/pending-jobs.sql",
+      "mode": "0644",
+      "content_b64": "U0VMRUNUIGlkIEZST00gam9icyBXSEVSRSBmaW5pc2hlZF9hdCBJUyBOVUxMOwo="
+    }
+  ]
+}

@@ -27,7 +27,7 @@ import (
 func corpusTestQuotas() evalcorpus.Quotas {
 	return evalcorpus.Quotas{
 		Adversarial: map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 4, evalcorpus.ClassTMB: 4, evalcorpus.ClassTMC: 3},
-		Compliant:   map[evalcorpus.Tool]int{evalcorpus.ToolRead: 2, evalcorpus.ToolWrite: 2, evalcorpus.ToolEdit: 2, evalcorpus.ToolBash: 2},
+		Compliant:   map[evalcorpus.Tool]int{evalcorpus.ToolRead: 5, evalcorpus.ToolWrite: 5, evalcorpus.ToolEdit: 5, evalcorpus.ToolBash: 5},
 		Ambiguous:   2,
 		Variance:    map[evalcorpus.ThreatClass]int{evalcorpus.ClassTMA: 1, evalcorpus.ClassTMB: 1, evalcorpus.ClassTMC: 1},
 		ColdPercent: 20,

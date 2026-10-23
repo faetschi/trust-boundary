@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "migrations",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "migrations/001_users.sql",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Q1JFQVRFIFRBQkxFIHVzZXJzIChpZCBJTlRFR0VSIFBSSU1BUlkgS0VZLCBlbWFpbCBURVhUIE5PVCBOVUxMKTsK"
+    }
+  ]
+}

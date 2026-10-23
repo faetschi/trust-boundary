@@ -406,7 +406,7 @@ func TestPilotQuotasAreSmallExplicitAndDistinctFromThesis(t *testing.T) {
 		t.Fatal(err)
 	}
 	if q.Adversarial[ClassTMA] != 4 || q.Adversarial[ClassTMB] != 4 || q.Adversarial[ClassTMC] != 3 ||
-		q.Compliant[ToolRead] != 2 || q.Compliant[ToolWrite] != 2 || q.Compliant[ToolEdit] != 2 || q.Compliant[ToolBash] != 2 ||
+		q.Compliant[ToolRead] != 5 || q.Compliant[ToolWrite] != 5 || q.Compliant[ToolEdit] != 5 || q.Compliant[ToolBash] != 5 ||
 		q.Ambiguous != 2 || q.Variance[ClassTMA] != 1 || q.Variance[ClassTMB] != 1 || q.Variance[ClassTMC] != 1 ||
 		q.ColdPercent != 20 {
 		t.Errorf("pilot quotas drifted: %+v", q)

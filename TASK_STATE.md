@@ -17,7 +17,7 @@ Current checkpoint, 2026-10-23. History before this date: git log of this file a
 
 ## Goal, in order
 
-1. Confirm the scope cut with the owner; align D26 and the residual-channel claim (§6.3 hostile stimuli vs §11 scripted bash) with the advisor.
+1. Confirm the scope cut with the owner; align D26 and the residual-channel claim (Â§6.3 hostile stimuli vs Â§11 scripted bash) with the advisor.
 2. Finish the pilot reviews and case corrections (manifest.draft.json still has TODO reviewers/decisions); freeze the pilot protocol, provider, outage rules and initial safety ceilings.
 3. Freeze and pin the selected code; install it and repeat G1 and both probes with fresh evidence.
 4. Enter corpus mode; verify reset, net-sink, no-reap and V; require complete EVQ and route reports (every obligation must pass; the report commands exit 0 even when incomplete).
@@ -32,6 +32,36 @@ Current checkpoint, 2026-10-23. History before this date: git log of this file a
 - Pre-registration decisions (protocol, provider, outage rules, ceilings) and runbook decisions D1-D8, incl. the S3'/S4' signing with the owner keys.
 - Approvals for corpus mode: tbound-netsink account/unit, pinned nft rule, root forced-command trial key (account changes before registration); Spike B (reset, netsink evidence, P A-03, P C-02 no-reap, cleanup reset, compliant C, V, reboot/reload).
 - First corpus-mode rehearsal must watch: reset --check passes after P C-02 and the reset kills the survivor; `podman rm -f` after conmon is killed; no uid-995 pause process left in root's SSH cgroup (`ps -u 995 -o pid,cgroup,cmd`); kernel-7 zombie-leader kill; run the 5 real-cgroup tests with TBOUND_REAL_CGROUP_TESTS=1 in a delegated scope.
+
+## Pilot decisions 10/14 implementation (isolated worktree, 2026-10-23)
+
+- `feat/pilot-20-compliant` in `C:/Users/Admin/AppData/Local/Temp/tb-p20`, based on `fb6dec0`.
+  Decision 14: `9501371` introduces explicit scripted caps, requiring zero token/money dimensions;
+  real-provider caps still require positive values. Decision 10: 20 distinct compliant tasks (5/tool),
+  33 cases overall, 75 artifacts; human reviews and the four environment/provider/profile/policy pins stay draft.
+- Source tree verified: `bff58c36b5fc0ec84359d411ef645089d975b426` (before this log-only update).
+  WSL private copy `/home/jeli2k/tmp/p20.huny`, private `TMPDIR` there, `umask 077`,
+  `GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local`, Go `/home/jeli2k/opt/go1.27.1/bin/go`:
+  `go test ./internal/evalcorpus/ ./internal/corpusadmit/ ./internal/attacker/ ./internal/providerbridge/ ./internal/runner/ ./cmd/tbound-run/ ./cmd/tbound/ -count=1 -json`
+  exit 0 (1,804 passing tests/subtests, 8 environment-dependent skips); `go vet ./...` exit 0;
+  `go test ./cmd/tbound-profile/ -count=1` exit 0. Logs: `tests.jsonl`, `vet.log`, `profile.log` in that private copy.
+  The supplied tar list needed one extra fixture copied: `adapter/src/result-hints.ts`.
+  The final review-status-independent corpus artifact test was then copied into that private tree and
+  `go test ./internal/corpusadmit/ -count=1` passed (exit 0).
+- Skips: pinned Pi offline fixture, real-provider durable exchange, foreign credential ownership,
+  and five real-cgroup tests. No new test skipped; no guest execution or human review performed.
+- Two `python3 -I corpus/pilot/build.py --tbound-run /home/jeli2k/tmp/p20.1a2w/tbound-run`
+  runs produced identical bytes for all 76 generated files (manifest + 75 artifacts).
+  Snapshot SHA-256 (sorted relative filenames, NUL, bytes, NUL):
+  `b3cab61f629965e307f0efed365ecbe72ebe05c619442e9f109686d47f279b2c`.
+  Local read-only awk/sort stdout, Node assertions/tests, formatter JSON, and in-memory SQLite semantics passed.
+- Canonical draft manifest digest (production `evalcorpus.Digest`):
+  `sha256:8dd74b674200b65e7d3fcb11f2284a7578be64663d2812ae878f88a60be24008` ->
+  `sha256:157173a4219ce90cd13ce7a665eef0534ecedb9a2c9536fcfc0dc4f4b01ae9d2`.
+  Attacker pin: `sha256:fbba81e7c5ce395366c43a0fa630b622bd0fe5a12fff68ff7a93009da8337e0e` ->
+  `sha256:57c3c54b048432ae5e6cdcaba3a1b4764e45a8cca2b67acaba549c1d45627993`.
+  Twelve new fixture/acceptance/solution digest triples; all original case-level digests unchanged.
+  This is an unsigned draft, not an admitted corpus digest or thesis result. No push.
 
 ## Working rules
 
