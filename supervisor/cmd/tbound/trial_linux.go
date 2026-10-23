@@ -463,10 +463,13 @@ func openCellsCgroup(cell evidenceCell) (*os.File, error) {
 	return dir, nil
 }
 
+// openResetCheckCgroup is the verified opener; tests replace it with a fake cgroupfs.
+var openResetCheckCgroup = openCellsCgroup
+
 // cellsCgroupPopulated reports whether the cells cgroup or one below it holds a live process
 // outside the tbound-nr-* scopes (cgroupLiveOutsideNoReap).
 func cellsCgroupPopulated(cell evidenceCell) (bool, error) {
-	dir, err := openCellsCgroup(cell)
+	dir, err := openResetCheckCgroup(cell)
 	if err != nil {
 		return false, err
 	}

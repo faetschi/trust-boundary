@@ -228,6 +228,42 @@ func TestTrialResetCheckOnlyVerifiesPreconditionsAndTheArtifact(t *testing.T) {
 	}
 }
 
+func TestTrialResetCheckProductionReadinessIgnoresOnlyNoReapSurvivors(t *testing.T) {
+	e := newTrialTestEnv(t)
+	_, path := fakeCgroupDir(t, true, "populated 1\n")
+	if err := os.WriteFile(filepath.Join(path, "cgroup.procs"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	addScope := func(name string) {
+		t.Helper()
+		child := filepath.Join(path, name)
+		if err := os.Mkdir(child, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(child, "cgroup.events"), []byte("populated 1\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	addScope("tbound-nr-aa")
+	old := openResetCheckCgroup
+	t.Cleanup(func() { openResetCheckCgroup = old })
+	openResetCheckCgroup = func(evidenceCell) (*os.File, error) { return os.Open(path) }
+	// Keep the production --check predicate: replacing it with the helper would miss a wiring regression.
+	e.cellPopulated = productionTrialEnv().cellPopulated
+	doc, _, err := e.run(t, "reset", trialTestCase, "--check")
+	if err != nil || !doc.Check || doc.FixtureDigest != e.digest {
+		t.Fatalf("--check with only no-reap survivors: doc %+v, err %v", doc, err)
+	}
+	addScope("tbound-cmd-bb")
+	if _, out, err := e.run(t, "reset", trialTestCase, "--check"); err == nil || !strings.Contains(err.Error(), "cells cgroup holds processes") || out != "" {
+		t.Fatalf("--check with a live command scope: err %v, output %q; want a refusal", err, out)
+	}
+	e.rootUntouched(t)
+	if got := strings.Join(e.events, ","); got != "lock,pending,unlock,lock,pending,unlock" {
+		t.Fatalf("--check did work beyond readiness: %s", got)
+	}
+}
+
 // A populated cells cgroup is a refusal of --check, and the work of the reset: it is killed
 // before the tree is wiped, and the reset goes on.
 func TestTrialResetKillsAPopulatedCellsCgroupAndCheckRefuses(t *testing.T) {
