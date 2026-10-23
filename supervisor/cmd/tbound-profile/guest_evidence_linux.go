@@ -485,6 +485,13 @@ func runGuestTests(ctx context.Context, kind, binary, cgroupParent string) (run 
 // newGuestTestsCgroup makes a fresh cgroup below parent, capped as cgroupguard caps a test cgroup,
 // and returns it open with the function that kills what is left in it and removes its tree.
 func newGuestTestsCgroup(parent string) (*os.File, func() error, error) {
+	// A run that was killed before its removal leaves its cgroup behind.
+	leftovers, _ := filepath.Glob(filepath.Join(parent, "tbound-guest-tests-*"))
+	for _, leftover := range leftovers {
+		if err := removeCgroupTree(leftover); err != nil {
+			return nil, nil, fmt.Errorf("leftover guest-tests cgroup: %w", err)
+		}
+	}
 	dir, err := os.MkdirTemp(parent, "tbound-guest-tests-")
 	if err != nil {
 		return nil, nil, fmt.Errorf("guest-tests cgroup: %w", err)

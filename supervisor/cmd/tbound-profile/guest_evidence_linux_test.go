@@ -843,6 +843,10 @@ func TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt(t *testin
 	if _, err := os.Stat(filepath.Join(mount, own, "pids.max")); err != nil {
 		t.Skipf("no cgroup2 pids controller on %q (hybrid hierarchy?): the fresh-cgroup run is NOT verified here", own)
 	}
+	leftover := filepath.Join(mount, own, "tbound-guest-tests-leftover")
+	if err := os.MkdirAll(filepath.Join(leftover, "procoracle-1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	dir := t.TempDir()
 	seen := filepath.Join(dir, "seen")
 	script := "#!/bin/sh\nprintf 'guard=%s\\n' \"$" + cgroupguard.Env + "\" > " + seen + "\ncat /proc/self/cgroup >> " + seen + "\n"
@@ -861,6 +865,9 @@ func TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt(t *testin
 	}
 	if _, err := os.Stat(filepath.Join(mount, cg)); !os.IsNotExist(err) {
 		t.Fatalf("the fresh cgroup %q was not removed: %v", cg, err)
+	}
+	if _, err := os.Stat(leftover); !os.IsNotExist(err) {
+		t.Fatalf("the leftover cgroup of an earlier run was not removed: %v", err)
 	}
 	// Without a cgroup parent nothing is created and the guard is not set.
 	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, bin, ""); err != nil {
