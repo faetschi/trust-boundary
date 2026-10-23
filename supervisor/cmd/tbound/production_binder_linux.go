@@ -478,10 +478,7 @@ func (b *productionBinder) BindProductionPiSession(ctx context.Context, config p
 		return fail(fmt.Errorf("bind verified baseline generation: %w", err))
 	}
 	session.Generation = g0
-	session.Workspace = workspace.Options{
-		Generation: g0.ID(), MetadataPolicyDigest: metadataPolicyDigest, Limits: workspace.DefaultLimits(),
-		XattrVisibility: xattrVisibility,
-	}
+	session.Workspace = productionWorkspaceOptions(g0.ID(), metadataPolicyDigest, xattrVisibility)
 
 	adminRoot, err := os.Open(adminRootPath)
 	if err != nil {
@@ -965,4 +962,11 @@ func productionToken() (string, error) {
 		return "", fmt.Errorf("mint production cgroup token: %w", err)
 	}
 	return hex.EncodeToString(token[:]), nil
+}
+
+// productionWorkspaceOptions is the workspace binding of a production session: the root ledger
+// records it and the publication repository scans the live and sealed roots with it.
+func productionWorkspaceOptions(generation, metadataPolicyDigest string, xattr workspace.XattrVisibilityAttestation) workspace.Options {
+	return workspace.Options{Generation: generation, MetadataPolicyDigest: metadataPolicyDigest,
+		Limits: workspace.DefaultLimits(), XattrVisibility: xattr}
 }
