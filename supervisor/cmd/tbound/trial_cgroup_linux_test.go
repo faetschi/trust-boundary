@@ -549,6 +549,14 @@ func TestCellsLiveOutsideNoReapIgnoresOnlyNoReapScopes(t *testing.T) {
 // any other child does, and the reset's kill ends both.
 func TestCellsLiveOutsideNoReapOnARealCgroup(t *testing.T) {
 	cg := newTestCgroup(t)
+	liveOutsideNoReap := func() (bool, error) {
+		dir, err := os.Open(cg.path)
+		if err != nil {
+			return false, err
+		}
+		defer dir.Close()
+		return cgroupLiveOutsideNoReap(dir)
+	}
 	start := func(child string) {
 		path := filepath.Join(cg.path, child)
 		if err := os.Mkdir(path, 0o755); err != nil {
@@ -567,11 +575,11 @@ func TestCellsLiveOutsideNoReapOnARealCgroup(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	start("tbound-nr-aa")
-	if live, err := cgroupLiveOutsideNoReap(cg.dir); err != nil || live {
+	if live, err := liveOutsideNoReap(); err != nil || live {
 		t.Fatalf("a no-reap survivor alone: live %v, err %v", live, err)
 	}
 	start("tbound-cmd-bb")
-	if live, err := cgroupLiveOutsideNoReap(cg.dir); err != nil || !live {
+	if live, err := liveOutsideNoReap(); err != nil || !live {
 		t.Fatalf("a live command scope: live %v, err %v", live, err)
 	}
 	if err := killCgroup(cg.dir, 5*time.Second); err != nil {
