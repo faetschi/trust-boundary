@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -40,8 +41,8 @@ import (
 //
 // Both run after cgroup.kill and the wait for populated 0, so no process is left in those cgroups.
 type trialHost struct {
-	// nft runs the nft binary with stdin; podman runs the service's podman (arguments after the
-	// storage flags). Tests replace them.
+	// nft runs the nft binary with stdin; podman runs the service's podman (servicePodmanCommand)
+	// with the given arguments. Tests replace them.
 	nft    func(ctx context.Context, stdin []byte, args ...string) ([]byte, error)
 	podman func(ctx context.Context, args ...string) ([]byte, error)
 	// ruleFile and attestFile are piruntime.D09NetSinkRulePath and D09NetSinkAttestPath; rootUID is
@@ -62,7 +63,9 @@ type trialHost struct {
 const (
 	trialNftPath    = "/usr/sbin/nft"
 	trialPodmanPath = "/usr/bin/podman"
-	trialHostWait   = 60 * time.Second
+	// trialSetprivPath is util-linux setpriv, the runbook's SVC prefix.
+	trialSetprivPath = "/usr/bin/setpriv"
+	trialHostWait    = 60 * time.Second
 	// trialNoReapPrefix names the command cgroups of no-reap/v1 (piruntime.d09DetachedScopePrefix).
 	trialNoReapPrefix = "tbound-nr-"
 )
@@ -106,13 +109,17 @@ func runTrialCommand(cmd *exec.Cmd, stdin []byte) ([]byte, error) {
 	return stdout.Bytes(), nil
 }
 
-// servicePodmanCommand is podman in the service's context, as the provisioning steps run it
-// (PROVISIONING-SIGNING.md I1, PODMAN_SVC): the service uid and gid with no supplementary groups,
-// the unit's environment, and the unit's storage and runroot.
+// servicePodmanCommand is podman in the service's context, exactly as PROVISIONING-SIGNING.md runs
+// it (SVC, PODMAN_ENV): setpriv drops root to the service uid and gid with no supplementary groups,
+// empty capability sets and no-new-privs (without it podman could use newuidmap, and a store loaded
+// that way is unusable by the service), and the unit's closed environment. No --root or --runroot:
+// with them podman ignores storage.conf (ignore_chown_errors); the storage comes from
+// CONTAINERS_STORAGE_CONF, as for the service.
 func servicePodmanCommand(ctx context.Context, uid, gid uint32, args ...string) *exec.Cmd {
-	full := append([]string{"--root", piruntime.D09ManagedPiPodmanGraphroot, "--runroot", piruntime.D09ManagedPiPodmanRunroot}, args...)
+	full := append([]string{"--reuid", strconv.FormatUint(uint64(uid), 10), "--regid", strconv.FormatUint(uint64(gid), 10),
+		"--clear-groups", "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs", "--", trialPodmanPath}, args...)
 	ctx, cancel := context.WithTimeout(ctx, trialHostWait)
-	cmd := exec.CommandContext(ctx, trialPodmanPath, full...)
+	cmd := exec.CommandContext(ctx, trialSetprivPath, full...)
 	cmd.Cancel = func() error { defer cancel(); return cmd.Process.Kill() }
 	cmd.Dir = "/"
 	cmd.Env = []string{
@@ -123,7 +130,6 @@ func servicePodmanCommand(ctx context.Context, uid, gid uint32, args ...string) 
 		"TMPDIR=" + piruntime.D09ManagedPiTempDir, "CONTAINERS_CONF=" + piruntime.D09ManagedPiContainersConfPath,
 		"CONTAINERS_STORAGE_CONF=" + piruntime.D09ManagedPiStorageConfPath, "LANG=C", "LC_ALL=C",
 	}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uid, Gid: gid}}
 	return cmd
 }
 
