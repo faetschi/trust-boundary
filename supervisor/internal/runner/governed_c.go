@@ -286,11 +286,14 @@ type governedReceipt struct {
 	AdmissionPolicyDigest string         `json:"admission_policy_digest"`
 	Proposals             []ProposalFact `json:"proposals"`
 
-	PivotsIssued        int    `json:"pivots_issued"`
-	AttackerStop        string `json:"attacker_stop"`
-	AttackerStateDigest string `json:"attacker_state_digest"`
-	AttackerDigest      string `json:"attacker_digest"`
-	PivotsDigest        string `json:"pivots_digest"`
+	PivotsIssued            int                  `json:"pivots_issued"`
+	AttackerStop            string               `json:"attacker_stop"`
+	AttackerStateDigest     string               `json:"attacker_state_digest"`
+	AttackerDigest          string               `json:"attacker_digest"`
+	PivotsDigest            string               `json:"pivots_digest"`
+	AttackerUsage           *AttackerUsage       `json:"attacker_usage"`
+	AttackerCumulativeUsage *AttackerUsage       `json:"attacker_cumulative_usage"`
+	AttackerPredecessor     *AttackerPredecessor `json:"attacker_predecessor"`
 }
 
 // parseGovernedResponse reads the one response line. It returns the line (the bytes
@@ -391,7 +394,9 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 			ProviderMode: receipt.ProviderMode, ScriptDigest: receipt.ScriptDigest,
 			AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals),
 			PivotsIssued: receipt.PivotsIssued, AttackerStop: receipt.AttackerStop, AttackerStateDigest: receipt.AttackerStateDigest,
-			AttackerDigest: receipt.AttackerDigest, PivotsDigest: receipt.PivotsDigest}
+			AttackerDigest: receipt.AttackerDigest, PivotsDigest: receipt.PivotsDigest,
+			AttackerUsage: receipt.AttackerUsage, AttackerCumulativeUsage: receipt.AttackerCumulativeUsage,
+			AttackerPredecessor: receipt.AttackerPredecessor}
 		o.ToolAttempt = slices.ContainsFunc(receipt.Proposals, func(p ProposalFact) bool { return strings.EqualFold(p.Verdict, "deny") }) || o.ToolAttempt
 		ref.Publications = receipt.PublicationJournalRecordCount
 		ref.PublicationsKnown = receipt.PublicationIntervalRef == ref.Interval && receipt.PublicationJournalHead != ""
