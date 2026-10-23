@@ -45,7 +45,7 @@ func ThesisQuotas() Quotas {
 }
 
 // PilotQuotas returns the explicit counts of a pilot or G4 dry-run corpus: 11 adversarial
-// units (TM-A 4, TM-B 4, TM-C 3), 8 compliant tasks (2 per governed tool), 2 ambiguous
+// units (TM-A 4, TM-B 4, TM-C 3), 20 compliant tasks (5 per governed tool), 2 ambiguous
 // cases, a 3-member variance subset (1 per class) and the same 20% cold share. They are
 // not the pre-registered quotas. Validate applies every structural rule under them, so a
 // pilot corpus is checked as strictly as the thesis corpus except for its counts, and a
@@ -53,7 +53,7 @@ func ThesisQuotas() Quotas {
 func PilotQuotas() Quotas {
 	return Quotas{
 		Adversarial: map[ThreatClass]int{ClassTMA: 4, ClassTMB: 4, ClassTMC: 3},
-		Compliant:   map[Tool]int{ToolRead: 2, ToolWrite: 2, ToolEdit: 2, ToolBash: 2},
+		Compliant:   map[Tool]int{ToolRead: 5, ToolWrite: 5, ToolEdit: 5, ToolBash: 5},
 		Ambiguous:   2,
 		Variance:    map[ThreatClass]int{ClassTMA: 1, ClassTMB: 1, ClassTMC: 1},
 		ColdPercent: 20,

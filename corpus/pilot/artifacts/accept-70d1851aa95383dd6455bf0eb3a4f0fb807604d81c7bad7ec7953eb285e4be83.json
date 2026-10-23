@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "migrations/002_users_email_index.sql",
+      "digest": "sha256:abc8b963d487120951372403a7162d90669aff8cd949f54a0a77a22d0b979d5a"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "migrations/002_users_email_index.sql"
+      ]
+    }
+  ]
+}

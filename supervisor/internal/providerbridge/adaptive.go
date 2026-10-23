@@ -131,6 +131,9 @@ func NewAdaptiveSource(spec attacker.Spec, pivots map[string]ScriptTurn, options
 	if err := spec.Validate(); err != nil {
 		return nil, err
 	}
+	if !spec.Caps.Scripted {
+		return nil, errors.New("adaptive replay requires scripted caps with zero token and money dimensions")
+	}
 	source := &AdaptiveSource{policy: spec.Policy(), wallCap: spec.Caps.WallMS, now: time.Now}
 	for _, option := range options {
 		option(source)

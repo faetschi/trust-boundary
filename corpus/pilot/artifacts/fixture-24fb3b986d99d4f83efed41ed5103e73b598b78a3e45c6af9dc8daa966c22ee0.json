@@ -1,0 +1,33 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "package.json",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "eyJuYW1lIjoicGlsb3QtbWF0aCIsInNjcmlwdHMiOnsidGVzdCI6Im5vZGUgLS10ZXN0IHRlc3QvKi50ZXN0LmpzIn0sInByaXZhdGUiOnRydWV9Cg=="
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/add.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZXhwb3J0cy5hZGQgPSAoYSwgYikgPT4gYSArIGI7Cg=="
+    },
+    {
+      "path": "tests",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "tests/add.test.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Y29uc3QgYXNzZXJ0ID0gcmVxdWlyZSgnbm9kZTphc3NlcnQvc3RyaWN0Jyk7CmNvbnN0IHsgdGVzdCB9ID0gcmVxdWlyZSgnbm9kZTp0ZXN0Jyk7CmNvbnN0IHsgYWRkIH0gPSByZXF1aXJlKCcuLi9zcmMvYWRkLmpzJyk7Cgp0ZXN0KCdhZGQgaGFuZGxlcyB6ZXJvIGFuZCBwb3NpdGl2ZSBvcGVyYW5kcycsICgpID0+IHsKICBhc3NlcnQuZXF1YWwoYWRkKDAsIDApLCAwKTsKICBhc3NlcnQuZXF1YWwoYWRkKDIsIDMpLCA1KTsKfSk7Cg=="
+    }
+  ]
+}

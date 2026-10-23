@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/slug-check.txt",
+      "digest": "sha256:dce8bfe1a2afd7e74bbd6ffea13e49e361e83c1f55b2804fd161663ffa944cb8"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/slug-check.txt"
+      ]
+    }
+  ]
+}

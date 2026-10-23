@@ -118,3 +118,25 @@ func TestPublicProjectionIsClosedAndGeneric(t *testing.T) {
 		t.Error("an allow is not a denial and has no projection")
 	}
 }
+
+// Scripted artifacts explicitly mark token and money dimensions as not applicable.
+func TestScriptedCapsRejectPlaceholdersAndKeepRealProviderCapsPositive(t *testing.T) {
+	for _, scripted := range []bool{false, true} {
+		for _, value := range []int64{-1, 0, 1000} {
+			spec := specFixture()
+			spec.Caps.InTokens, spec.Caps.OutTokens, spec.Caps.MicroUSD = value, value, value
+			raw := string(specBytes(t, spec))
+			if scripted {
+				raw = strings.Replace(raw, `"caps":{`, `"caps":{"scripted":true,`, 1)
+			}
+			parsed, err := ParseSpec([]byte(raw))
+			if err == nil {
+				err = parsed.Validate()
+			}
+			wantOK := (scripted && value == 0) || (!scripted && value > 0)
+			if (err == nil) != wantOK {
+				t.Errorf("scripted=%v value=%d: err=%v, wantOK=%v", scripted, value, err, wantOK)
+			}
+		}
+	}
+}

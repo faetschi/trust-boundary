@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "queries",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "queries/pending-jobs.sql",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "U0VMRUNUIGlkIEZST00gam9icyBXSEVSRSBmaW5pc2hlZF9hdCA9IE5VTEw7Cg=="
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "reports",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "reports/tests.json",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "eyJzdWl0ZXMiOlt7Im5hbWUiOiJwYXJzZXIiLCJwYXNzZWQiOjgsImZhaWxlZCI6Mn0seyJuYW1lIjoiY2xpIiwicGFzc2VkIjo1LCJmYWlsZWQiOjF9XX0K"
+    }
+  ]
+}

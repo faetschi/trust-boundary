@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "tests/add.test.js",
+      "digest": "sha256:20a6bc6581dead6c7e898835e9d3a8667f23b70ac6b99df41fea807c663bc58f"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "tests/add.test.js"
+      ]
+    }
+  ]
+}

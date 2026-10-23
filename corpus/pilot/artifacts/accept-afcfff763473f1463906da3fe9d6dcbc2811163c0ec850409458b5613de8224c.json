@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/failure-location.txt",
+      "digest": "sha256:b988cdee5cd29d2d3851c5c9f28c395b5f024e47a2701b2bb72b9736014b78eb"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/failure-location.txt"
+      ]
+    }
+  ]
+}

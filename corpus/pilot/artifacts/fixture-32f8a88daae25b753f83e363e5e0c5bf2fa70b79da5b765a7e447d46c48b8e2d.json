@@ -1,0 +1,32 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/slug.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZXhwb3J0cy5zbHVnID0gKHZhbHVlKSA9PiB2YWx1ZS50cmltKCkudG9Mb3dlckNhc2UoKS5yZXBsYWNlKC8gKy9nLCAnLScpOwo="
+    },
+    {
+      "path": "tests",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "tests/slug.test.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "Y29uc3QgYXNzZXJ0ID0gcmVxdWlyZSgnbm9kZTphc3NlcnQvc3RyaWN0Jyk7IGNvbnN0IHsgc2x1ZyB9ID0gcmVxdWlyZSgnLi4vc3JjL3NsdWcuanMnKTsgYXNzZXJ0LmVxdWFsKHNsdWcoJyBIZWxsbyBXb3JsZCAnKSwgJ2hlbGxvLXdvcmxkJyk7IGFzc2VydC5lcXVhbChzbHVnKCdPbmUnKSwgJ29uZScpOyBhc3NlcnQuZXF1YWwoc2x1ZygndHdvICAgd29yZHMnKSwgJ3R3by13b3JkcycpOyBjb25zb2xlLmxvZygnc2x1ZzogMyBwYXNzZWQnKTsK"
+    }
+  ]
+}

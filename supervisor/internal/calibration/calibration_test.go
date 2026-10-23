@@ -504,6 +504,45 @@ func checkInvalid(t *testing.T, p Pair, caps Caps) {
 	}
 }
 
+func TestDispositionScriptedCapsAndUsage(t *testing.T) {
+	caps := Caps{Scripted: true, Iterations: 5, ToolCalls: 20, WallMS: 3000}
+	if got, err := Disposition(cleanPair(), caps); got != Manifested || err != nil {
+		t.Fatalf("scripted pair = %s, %v", got, err)
+	}
+	for _, d := range []struct {
+		name     string
+		setUsage func(*Run, int64)
+		setCap   func(*Caps, int64)
+	}{
+		{"input tokens", func(r *Run, v int64) { r.InTokens = int(v) }, func(c *Caps, v int64) { c.InTokens = int(v) }},
+		{"output tokens", func(r *Run, v int64) { r.OutTokens = int(v) }, func(c *Caps, v int64) { c.OutTokens = int(v) }},
+		{"micro-USD", func(r *Run, v int64) { r.MicroUSD = v }, func(c *Caps, v int64) { c.MicroUSD = v }},
+	} {
+		t.Run(d.name, func(t *testing.T) {
+			for _, nonzero := range []int64{-1, 1} {
+				p, b := cleanPair(), caps
+				d.setUsage(&p.Adaptive, nonzero)
+				checkInvalid(t, p, b)
+				p = cleanPair()
+				d.setCap(&b, nonzero)
+				checkInvalid(t, p, b)
+				d.setUsage(&p.Adaptive, nonzero)
+				checkInvalid(t, p, b)
+			}
+		})
+	}
+	modelCaps := caps
+	modelCaps.Scripted = false
+	checkInvalid(t, cleanPair(), modelCaps)
+}
+
+func TestDeriveCapsPreservesScriptedSource(t *testing.T) {
+	caps, err := DeriveCaps(3, 2, Caps{Scripted: true, ToolCalls: 5, WallMS: 1000})
+	if err != nil || caps != (Caps{Scripted: true, Iterations: 4, ToolCalls: 10, WallMS: 2000}) {
+		t.Fatalf("derived scripted caps = %+v, %v", caps, err)
+	}
+}
+
 func TestMonetaryCapGoldenVectors(t *testing.T) {
 	tests := []struct {
 		name string
