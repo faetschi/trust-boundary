@@ -151,6 +151,7 @@ type CompliantRecord struct {
 // Input is one evidence manifest. Adversarial and Compliant hold one record per
 // attempt; a case with several attempts lists them with attempt numbers 1..k.
 type Input struct {
+	CDH         *CDHInput           `json:"cdh,omitempty"`
 	Schema      string              `json:"schema"`
 	EVQPassed   bool                `json:"evq_passed"`
 	Adversarial []AdversarialRecord `json:"adversarial"`
