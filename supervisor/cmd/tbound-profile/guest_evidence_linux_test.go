@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"tbound/supervisor/internal/cgroupguard"
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/piruntime"
 )
@@ -243,7 +244,11 @@ func geTestBinary(t *testing.T, output string, code int) string {
 }
 
 func geProcOracleOutput(skip string) string {
-	spec, _ := guestevidence.SpecFor(guestevidence.KindProcOracleTests)
+	return geTestsOutput(guestevidence.KindProcOracleTests, skip)
+}
+
+func geTestsOutput(kind, skip string) string {
+	spec, _ := guestevidence.SpecFor(kind)
 	var b strings.Builder
 	for _, name := range spec.Required {
 		b.WriteString("=== RUN   " + name + "\n")
@@ -259,7 +264,7 @@ func geProcOracleOutput(skip string) string {
 
 func TestRunGuestTestsRecordsTheBinaryAndTheResults(t *testing.T) {
 	bin := geTestBinary(t, geProcOracleOutput(""), 0)
-	run, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, bin)
+	run, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, bin, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +279,7 @@ func TestRunGuestTestsRecordsTheBinaryAndTheResults(t *testing.T) {
 	}
 
 	// A required test that skipped (no delegated cgroups) is not evidence.
-	skipped, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, geTestBinary(t, geProcOracleOutput(spec.Required[0]), 0))
+	skipped, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, geTestBinary(t, geProcOracleOutput(spec.Required[0]), 0), "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,17 +288,17 @@ func TestRunGuestTestsRecordsTheBinaryAndTheResults(t *testing.T) {
 		t.Fatal("a skipped required test passed")
 	}
 	// A failing exit is recorded, not hidden.
-	failed, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, geTestBinary(t, geProcOracleOutput(""), 1))
+	failed, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, geTestBinary(t, geProcOracleOutput(""), 1), "")
 	if err != nil || failed.ExitCode != 1 {
 		t.Fatalf("failed run = %+v %v", failed, err)
 	}
-	if _, err := runGuestTests(context.Background(), guestevidence.KindCapability, bin); err == nil {
+	if _, err := runGuestTests(context.Background(), guestevidence.KindCapability, bin, ""); err == nil {
 		t.Error("a kind that is not a test run was accepted")
 	}
-	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, "procoracle.test"); err == nil {
+	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, "procoracle.test", ""); err == nil {
 		t.Error("a relative test binary path was accepted")
 	}
-	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, filepath.Join(t.TempDir(), "none")); err == nil {
+	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, filepath.Join(t.TempDir(), "none"), ""); err == nil {
 		t.Error("a missing test binary was accepted")
 	}
 }
@@ -584,22 +589,23 @@ func TestGuestEvidenceTestsCommandWritesOnlyValidRuns(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	run := func(bin, name string) (string, error) {
 		out := filepath.Join(dir, name+".json")
-		return out, runGuestEvidence([]string{"tests", "--commit", geCommit, "--kind", "guest-tests-procoracle", "--test-binary", bin, "--out", out}, &stdout, &stderr)
+		return out, runGuestEvidence([]string{"tests", "--commit", geCommit, "--kind", guestevidence.KindLandlockConnectTests, "--test-binary", bin, "--out", out}, &stdout, &stderr)
 	}
 	// The command cannot know which binary the capture built; the evq side compares the digest. Here the
 	// run is valid in itself, so the artifact is written even though the digest is not yet compared.
 	// (Producer-side validation is given the digest of the binary that ran.)
-	out, err := run(geTestBinary(t, geProcOracleOutput(""), 0), "ok")
+	// The procoracle kind needs a fresh cgroup (TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt).
+	out, err := run(geTestBinary(t, geTestsOutput(guestevidence.KindLandlockConnectTests, ""), 0), "ok")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(out); err != nil {
 		t.Fatal(err)
 	}
-	spec, _ := guestevidence.SpecFor(guestevidence.KindProcOracleTests)
+	spec, _ := guestevidence.SpecFor(guestevidence.KindLandlockConnectTests)
 	for name, bin := range map[string]string{
-		"skipped":    geTestBinary(t, geProcOracleOutput(spec.Required[1]), 0),
-		"exit":       geTestBinary(t, geProcOracleOutput(""), 1),
+		"skipped":    geTestBinary(t, geTestsOutput(guestevidence.KindLandlockConnectTests, spec.Required[0]), 0),
+		"exit":       geTestBinary(t, geTestsOutput(guestevidence.KindLandlockConnectTests, ""), 1),
 		"no results": geTestBinary(t, "PASS\n", 0),
 	} {
 		out, err := run(bin, "bad-"+strings.ReplaceAll(name, " ", "-"))
@@ -792,5 +798,58 @@ func TestGuestEvidenceProviderExchangeIsBoundToWhatTheRunSharesWithThePilot(t *t
 	}
 	if _, err := providerExchangeBound(other, w.files, w.pins, env); err == nil {
 		t.Error("a receipt of another profile than the signed one was accepted")
+	}
+}
+
+// The real-cgroup tests skip without the guard variable and refuse a login-session cgroup, so the
+// producer runs them, and only them, in a fresh capped cgroup with the variable set, and removes it.
+func TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt(t *testing.T) {
+	info, err := os.ReadFile("/proc/self/mountinfo")
+	if err != nil {
+		t.Skip(err)
+	}
+	mount, err := cgroup2Mount(string(info))
+	if err != nil {
+		t.Skip(err)
+	}
+	own := ""
+	if data, err := os.ReadFile("/proc/self/cgroup"); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			if p, ok := strings.CutPrefix(line, "0::"); ok {
+				own = p
+			}
+		}
+	}
+	if why := cgroupguard.RefuseBase(own); why != "" {
+		t.Skipf("%s: run under systemd-run --user --scope -p Delegate=yes -p TasksMax=512 -p MemoryMax=2G; the fresh-cgroup run is NOT verified here", why)
+	}
+	if _, err := os.Stat(filepath.Join(mount, own, "pids.max")); err != nil {
+		t.Skipf("no cgroup2 pids controller on %q (hybrid hierarchy?): the fresh-cgroup run is NOT verified here", own)
+	}
+	dir := t.TempDir()
+	seen := filepath.Join(dir, "seen")
+	script := "#!/bin/sh\nprintf 'guard=%s\\n' \"$" + cgroupguard.Env + "\" > " + seen + "\ncat /proc/self/cgroup >> " + seen + "\n"
+	bin := filepath.Join(dir, "procoracle.test")
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, bin, filepath.Join(mount, own)); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(seen)
+	_, cg, _ := strings.Cut(string(data), "0::")
+	cg = strings.TrimSpace(cg)
+	if !strings.HasPrefix(string(data), "guard=1\n") || !strings.HasPrefix(cg, strings.TrimSuffix(own, "/")+"/tbound-guest-tests-") {
+		t.Fatalf("the test binary did not run with the guard in a fresh child cgroup of %q:\n%s", own, data)
+	}
+	if _, err := os.Stat(filepath.Join(mount, cg)); !os.IsNotExist(err) {
+		t.Fatalf("the fresh cgroup %q was not removed: %v", cg, err)
+	}
+	// Without a cgroup parent nothing is created and the guard is not set.
+	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, bin, ""); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(seen); !strings.HasPrefix(string(data), "guard=\n") {
+		t.Fatalf("the guard was set without a fresh cgroup:\n%s", data)
 	}
 }
