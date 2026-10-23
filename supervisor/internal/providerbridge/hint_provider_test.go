@@ -2,8 +2,10 @@ package providerbridge
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net/http"
@@ -25,6 +27,14 @@ func goodChoice(_ context.Context, _ HintInput, _ map[string]string) (ChoiceAnsw
 }
 
 func TestFrozenHintCandidates(t *testing.T) {
+	raw, err := json.Marshal(frozenHintCandidates())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fmt.Sprintf("%x", sha256.Sum256(raw)); got != "e28ad5dac7c75e7cfb23a0fd22ff946218f5dffe8c56754724e31f01611f1d9e" {
+		t.Fatalf("v1 candidate bytes changed: %s; retain v1 and add a new version", got)
+	}
+
 	if len(alternativeHints) != len(permittedAlternativeHints) {
 		t.Fatal("reason coverage drift")
 	}
