@@ -189,6 +189,13 @@ func splitNameValue(item string) (string, string, bool) {
 // by Landlock and 8081 is denied with EACCES, 10 when 8080 is denied, 11 when 8081 is not denied,
 // 3 when the kernel lacks the registered ABI.
 func landlockNetChild(name string) int {
+	return landlockNetChildWith(name, func() (uintptr, syscall.Errno) {
+		abi, _, errno := syscall.Syscall(uintptr(sysLandlockCreateRuleset), 0, 0, landlockCreateRulesetVersion)
+		return abi, errno
+	}, applyLandlockFor)
+}
+
+func landlockNetChildWith(name string, probe func() (uintptr, syscall.Errno), apply func(int, piruntime.D09CellDelta) (int, string, error)) int {
 	if name == "base" {
 		name = ""
 	}
@@ -197,7 +204,7 @@ func landlockNetChild(name string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if _, _, err := applyLandlockFor(8, delta); err != nil {
+	if _, _, err := apply(8, delta); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 3
 	}
@@ -216,6 +223,39 @@ func landlockNetChild(name string) int {
 		return 11
 	}
 	return 0
+}
+
+func TestLandlockNetChildSkipsOnlyUnsupportedABI(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		abi       uintptr
+		probeErr  syscall.Errno
+		applyErr  error
+		want      int
+		wantApply bool
+	}{
+		{"ruleset creation EINVAL", 8, 0, fmt.Errorf("create ruleset: %w", syscall.EINVAL), 1, true},
+		{"net rule EINVAL", 8, 0, fmt.Errorf("add connect rule: %w", syscall.EINVAL), 1, true},
+		{"enforcement EPERM", 8, 0, fmt.Errorf("restrict self: %w", syscall.EPERM), 1, true},
+		{"older ABI", 7, 0, syscall.EINVAL, 3, false},
+		{"newer ABI", 9, 0, syscall.EINVAL, 3, false},
+		{"no syscall", 0, syscall.ENOSYS, syscall.EINVAL, 3, false},
+		{"disabled Landlock", 0, syscall.EOPNOTSUPP, syscall.EINVAL, 3, false},
+		{"probe denied", 0, syscall.EPERM, syscall.EINVAL, 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			applied := false
+			got := landlockNetChildWith(piruntime.D09CellDeltaNetSink,
+				func() (uintptr, syscall.Errno) { return tc.abi, tc.probeErr },
+				func(int, piruntime.D09CellDelta) (int, string, error) {
+					applied = true
+					return 0, "", tc.applyErr
+				})
+			if got != tc.want || applied != tc.wantApply {
+				t.Fatalf("exit=%d applied=%v, want exit=%d applied=%v", got, applied, tc.want, tc.wantApply)
+			}
+		})
+	}
 }
 
 // TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink checks the rule in the kernel: with
