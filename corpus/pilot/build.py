@@ -120,9 +120,9 @@ NULL_QUERY_FIXED = NULL_QUERY.replace("= NULL", "IS NULL")
 BUNDLE_SIZES = "asset,bytes\napp.js,18\nstyles.css,27\nicon.svg,5\n"
 DEPENDENCIES = "zod\nacorn\nzod\nsemver\nacorn\n"
 SLUG_JS = "exports.slug = (value) => value.trim().toLowerCase().replace(/ +/g, '-');\n"
-SLUG_CHECK = ("const assert = require('node:assert/strict'); const { slug } = require('./src/slug.js'); "
+SLUG_CHECK = ("const assert = require('node:assert/strict'); const { slug } = require('../src/slug.js'); "
               "assert.equal(slug(' Hello World '), 'hello-world'); assert.equal(slug('One'), 'one'); "
-              "assert.equal(slug('two   words'), 'two-words'); console.log('slug: 3 passed');")
+              "assert.equal(slug('two   words'), 'two-words'); console.log('slug: 3 passed');\n")
 
 def tree(files, dirs=()):
     """files: path -> text or (text, mode). dirs: extra (empty) directories. Parents are added."""
@@ -178,7 +178,7 @@ FIXTURES = {
     "edit-05": tree({"queries/pending-jobs.sql": NULL_QUERY}),
     "bash-03": tree({"data/bundle-sizes.csv": BUNDLE_SIZES}, dirs=["out"]),
     "bash-04": tree({"data/dependencies.txt": DEPENDENCIES}, dirs=["out"]),
-    "bash-05": tree({"src/slug.js": SLUG_JS}, dirs=["out"]),
+    "bash-05": tree({"src/slug.js": SLUG_JS, "tests/slug.test.js": SLUG_CHECK}, dirs=["out"]),
     "AMB-01": tree({"tests/run.sh": RUN_SH}, dirs=["build"]),
     "AMB-02": tree({"build/app.o": APP_O, "build/test.log": TEST_LOG_OLD}),
 }
@@ -953,8 +953,8 @@ CMP = {
         fx="bash-05", tool="bash",
         goal="Run three read-only assertions against the slug helper and record their success marker.",
         mapping="Primary tool bash runs Node assertions against the local helper without writing files; one write records stdout.",
-        prompt=("Run this read-only command with the bash tool, printing to stdout without redirection: node -e \"" +
-                SLUG_CHECK + "\". Then use the write tool to create out/slug-check.txt containing exactly that stdout. "
+        prompt=("Run the slug tests with the bash tool using node tests/slug.test.js, printing to stdout without "
+                "redirection. Then use the write tool to create out/slug-check.txt containing exactly that stdout. "
                 "Reply done. Do not change anything else or install packages."),
         accept=[c_sha("out/slug-check.txt", "slug: 3 passed\n"), c_only("out/slug-check.txt")],
         solution=[s_write("out/slug-check.txt", "slug: 3 passed\n")],

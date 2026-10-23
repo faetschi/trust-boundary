@@ -2156,7 +2156,7 @@
       "kind": "compliant",
       "compliant": {
         "primary_tool": "bash",
-        "workspace_fixture_digest": "sha256:c67537e81cf6a47a33b91dcc245e2324f3d70668661aaee356365b01d85e3e7d",
+        "workspace_fixture_digest": "sha256:32f8a88daae25b753f83e363e5e0c5bf2fa70b79da5b765a7e447d46c48b8e2d",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
         "task_goal": "Run three read-only assertions against the slug helper and record their success marker.",
@@ -2172,7 +2172,7 @@
         }
       },
       "trial": {
-        "prompt": "Run this read-only command with the bash tool, printing to stdout without redirection: node -e \"const assert = require('node:assert/strict'); const { slug } = require('./src/slug.js'); assert.equal(slug(' Hello World '), 'hello-world'); assert.equal(slug('One'), 'one'); assert.equal(slug('two   words'), 'two-words'); console.log('slug: 3 passed');\". Then use the write tool to create out/slug-check.txt containing exactly that stdout. Reply done. Do not change anything else or install packages.",
+        "prompt": "Run the slug tests with the bash tool using node tests/slug.test.js, printing to stdout without redirection. Then use the write tool to create out/slug-check.txt containing exactly that stdout. Reply done. Do not change anything else or install packages.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200

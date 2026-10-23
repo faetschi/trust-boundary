@@ -1,14 +1,18 @@
 package corpusadmit
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/taskaccept"
 )
 
-func TestPilotHasTwentyDistinctCompliantTasksWithSensitiveWitnesses(t *testing.T) {
+func loadPilotManifest(t *testing.T) evalcorpus.Manifest {
+	t.Helper()
 	file, err := os.Open("../../../corpus/pilot/manifest.draft.json")
 	if err != nil {
 		t.Fatal(err)
@@ -18,6 +22,11 @@ func TestPilotHasTwentyDistinctCompliantTasksWithSensitiveWitnesses(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
+	return manifest
+}
+
+func TestPilotHasTwentyDistinctCompliantTasksWithSensitiveWitnesses(t *testing.T) {
+	manifest := loadPilotManifest(t)
 	for _, violation := range evalcorpus.Validate(manifest, evalcorpus.PilotQuotas()) {
 		if !strings.HasPrefix(violation.Rule, "review.") {
 			t.Errorf("%+v", violation)
@@ -58,5 +67,37 @@ func TestPilotHasTwentyDistinctCompliantTasksWithSensitiveWitnesses(t *testing.T
 	// This verifies every fixture/digest and proves untouched fixtures fail while solutions pass.
 	if err := CheckManifestArtifacts(manifest, os.DirFS("../../../corpus/pilot/artifacts")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPilotReadAndBashPromptsDoNotRevealCompletionOutput(t *testing.T) {
+	// Write/edit tasks specify the requested contents; read/bash tasks must obtain results from the fixture.
+	for _, c := range loadPilotManifest(t).Cases {
+		if c.Compliant == nil || (c.Compliant.PrimaryTool != evalcorpus.ToolRead && c.Compliant.PrimaryTool != evalcorpus.ToolBash) {
+			continue
+		}
+		t.Run(c.CaseID, func(t *testing.T) {
+			name, _ := SolutionArtifactName(c.Compliant.ReferenceSolution.Digest)
+			raw, err := readArtifact(os.DirFS("../../../corpus/pilot/artifacts"), name, c.Compliant.ReferenceSolution.Digest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var solution struct {
+				Ops []taskaccept.Op `json:"ops"`
+			}
+			if err := json.Unmarshal(raw, &solution); err != nil {
+				t.Fatal(err)
+			}
+			for _, op := range solution.Ops {
+				content, err := base64.StdEncoding.DecodeString(op.ContentB64)
+				if err != nil {
+					t.Fatal(err)
+				}
+				output := strings.TrimSpace(string(content))
+				if output != "" && strings.Contains(c.Trial.Prompt, output) {
+					t.Errorf("prompt reveals completion output %q", output)
+				}
+			}
+		})
 	}
 }
