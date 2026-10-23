@@ -73,11 +73,10 @@ func HintCandidates(reason string) map[string]string {
 }
 
 type ChoiceAnswer struct {
-	MissingConfidence bool               `json:"-"`
-	Type              string             `json:"type"`
-	Choice            string             `json:"choice"`
-	Confidence        float64            `json:"confidence"`
-	Probabilities     map[string]float64 `json:"probabilities"`
+	MissingConfidence bool    `json:"-"`
+	Type              string  `json:"type"`
+	Choice            string  `json:"choice"`
+	Confidence        float64 `json:"confidence"`
 }
 
 type HintChooser interface {

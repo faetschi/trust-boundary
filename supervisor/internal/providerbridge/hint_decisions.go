@@ -43,7 +43,6 @@ type DecisionsRequest struct {
 
 type DecisionsResponse struct {
 	Answers map[string]ChoiceAnswer `json:"answers"`
-	Model   string                  `json:"model"`
 }
 
 type decisionsChooser struct{ cfg ChooserConfig }
