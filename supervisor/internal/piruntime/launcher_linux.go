@@ -749,34 +749,6 @@ func verifyImmutableLinuxExecutable(path string) error {
 	return nil
 }
 
-func digestLinuxExecutable(path string) (string, error) {
-	if !filepath.IsAbs(path) {
-		return "", ErrLinuxLauncherRefused
-	}
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_CLOEXEC|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		return "", err
-	}
-	file := os.NewFile(uintptr(fd), path)
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
-		return "", ErrLinuxLauncherRefused
-	}
-	var magic [4]byte
-	if _, err := file.ReadAt(magic[:], 0); err != nil || !bytes.Equal(magic[:], []byte{0x7f, 'E', 'L', 'F'}) {
-		return "", errors.New("Linux Node executable is not ELF")
-	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return "", err
-	}
-	h := sha256.New()
-	if _, err := io.Copy(h, file); err != nil {
-		return "", err
-	}
-	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
-}
-
 func minimalPiWorkerEnvironment(environment []string) bool {
 	allowed := map[string]bool{"HOME": true, "TMPDIR": true, "LANG": true, "PI_OFFLINE": true}
 	values := make(map[string]string, len(environment))
@@ -808,28 +780,6 @@ func validatePrivateDirectory(environment []string) error {
 		if !ok || stat.Uid != uint32(os.Geteuid()) {
 			return fmt.Errorf("Pi worker %s must be owned by the launching user", name)
 		}
-	}
-	return nil
-}
-
-func validatePrivateWorkingDirectory(path string, handle *os.File) error {
-	if handle == nil || !filepath.IsAbs(path) {
-		return ErrHostBindingsMissing
-	}
-	opened, err := handle.Stat()
-	if err != nil || !opened.IsDir() {
-		return ErrHostBindingsMissing
-	}
-	pathInfo, err := os.Lstat(path)
-	if err != nil || !pathInfo.IsDir() || pathInfo.Mode()&os.ModeSymlink != 0 || !os.SameFile(opened, pathInfo) {
-		return ErrHostBindingsMissing
-	}
-	if pathInfo.Mode().Perm() != 0o700 {
-		return errors.New("Pi worker CWD must be a private mode-0700 directory")
-	}
-	stat, ok := pathInfo.Sys().(*syscall.Stat_t)
-	if !ok || stat.Uid != uint32(os.Geteuid()) {
-		return errors.New("Pi worker CWD must be owned by the launching user")
 	}
 	return nil
 }
