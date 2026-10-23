@@ -101,6 +101,14 @@ func TestDirectRuntimeArtifactRefusesAReadAndAnythingThatIsNotAPolicyDenial(t *t
 	if Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, d), e) == nil {
 		t.Error("a control read outside the Pi cell's workspace was accepted")
 	}
+	// A path that only starts with the workspace prefix but leaves it through ".." is not inside it.
+	escape := RouteDirectWorkspace + "/../../../home/node/.profile"
+	d = goodDirectRuntime()
+	d.Control.Argv = []string{RouteOpOpen, escape}
+	d.Control.ResultDigest = RouteDirectResultDigest(RouteOpOpen, escape, 0)
+	if Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, d), e) == nil {
+		t.Error("a control read escaping the workspace through .. was accepted")
+	}
 	// The stat of a denied cell may be denied as well.
 	if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime,
 		goodDirectRuntimeWith(withErrno("absolute", "stat", int(syscall.EACCES)), 0)), e); err != nil {
