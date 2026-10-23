@@ -169,7 +169,7 @@ func (r *noChangeRun) verify(t *testing.T, identity managedLiveRootDescriptorIde
 	t.Helper()
 	store := r.storeTrace(t)
 	return verifyManagedPiNoPublicationSettlement(r.journal, r.trace(t), store, uint64(len(store.Records)), identity, r.root,
-		r.registration, noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
+		r.registration, noChangeWorkflowID, noChangeRunID)
 }
 
 // writeRelease appends a release record in the shape close writes, anchored to
@@ -301,7 +301,7 @@ func TestNoChangeSettlementFreshProcessHelper(t *testing.T) {
 	settlementID, verifyErr := verifyManagedPiNoPublicationSettlement(journal, trace, source, uint64(len(source.Records)), request.Identity,
 		workflow.RootIdentity{Device: request.Identity.Device, Inode: request.Identity.Inode},
 		piruntime.D09ManagedLiveRootRegistration{Digest: request.Digest, ServiceUID: request.ServiceUID, ServiceGID: request.ServiceGID},
-		noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
+		noChangeWorkflowID, noChangeRunID)
 	result := noChangeFreshResult{SettlementID: settlementID}
 	if verifyErr != nil {
 		result.Error = verifyErr.Error()

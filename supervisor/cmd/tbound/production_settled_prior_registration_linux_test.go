@@ -139,7 +139,7 @@ func TestNoChangeSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.T
 	next.Digest = digestBytes([]byte("registration of the next cycle"))
 	store := run.storeTrace(t)
 	settlementID, err := verifyManagedPiNoPublicationSettlement(run.journal, run.trace(t), store, uint64(len(store.Records)), run.identity, run.root, next,
-		noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
+		noChangeWorkflowID, noChangeRunID)
 	if err != nil || !strings.HasPrefix(settlementID, "no-publication:") {
 		t.Fatalf("a run settled under its own registration was refused under the next one: id=%q err=%v", settlementID, err)
 	}
@@ -164,7 +164,7 @@ func TestNoChangeSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.T
 		t.Fatal(err)
 	}
 	if _, err := verifyManagedPiNoPublicationSettlement(run.journal, run.trace(t), store, uint64(len(store.Records)), run.identity, run.root, next,
-		noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch); !errors.Is(err, ErrManagedLiveRootUnavailable) {
+		noChangeWorkflowID, noChangeRunID); !errors.Is(err, ErrManagedLiveRootUnavailable) {
 		t.Fatalf("a run admitted under two registrations was settled: %v", err)
 	}
 }
@@ -397,7 +397,7 @@ func TestPublishedSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.
 			t.Fatal(err)
 		}
 		return verifyManagedPiPublicationSettlement(journal, trace, identity, root, next, publishedPriorWorkflowID,
-			publishedPriorRunID, 1, transaction)
+			publishedPriorRunID, transaction)
 	}
 	if err := settle(transactionID); err != nil {
 		t.Fatalf("a run published under its own registration was refused under the next one: %v", err)
@@ -433,7 +433,7 @@ func TestPublishedSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.
 func settleNoChange(t *testing.T, run *noChangeRun, launchSourceCount uint64) error {
 	t.Helper()
 	_, err := verifyManagedPiNoPublicationSettlement(run.journal, run.trace(t), run.storeTrace(t), launchSourceCount,
-		run.identity, run.root, run.registration, noChangeWorkflowID, noChangeRunID, noChangeOwnerEpoch)
+		run.identity, run.root, run.registration, noChangeWorkflowID, noChangeRunID)
 	return err
 }
 
@@ -540,7 +540,7 @@ func TestNoChangeSettlementOfTheSecondRunOnTheManagedRoot(t *testing.T) {
 	next := first.registration
 	next.Digest = digestBytes([]byte("registration of the next cycle"))
 	settlementID, err := verifyManagedPiNoPublicationSettlement(first.journal, first.trace(t), source,
-		uint64(len(source.Records)), first.identity, first.root, next, workflowID, runID, 1)
+		uint64(len(source.Records)), first.identity, first.root, next, workflowID, runID)
 	if err != nil || !strings.HasPrefix(settlementID, "no-publication:") {
 		t.Fatalf("the second run on the managed root, released with no change, was refused: id=%q err=%v", settlementID, err)
 	}
