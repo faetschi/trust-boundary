@@ -746,7 +746,7 @@ func (c *Conversation) RecordDecision(ctx context.Context, proposal protocol.Pro
 	c.current.decision = decision
 	if decision.Verdict == gate.Deny {
 		result := resultFor(proposal, decision, nil)
-		if err := c.appendToolResultLocked(result, "", c.treeDigest, 0); err != nil {
+		if err := c.appendToolResultLocked(ctx, result, "", c.treeDigest, 0); err != nil {
 			return c.failLocked(fmt.Errorf("persist denied tool result; result withheld: %w", err))
 		}
 		if c.cfg.AdvanceProgress != nil {
@@ -836,7 +836,7 @@ func (e *ResultingExecutor) Execute(ctx context.Context, proposal protocol.Propo
 		}
 	}
 	result := resultFor(proposal, decision, output)
-	if err := c.appendToolResultLocked(result, nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID); err != nil {
+	if err := c.appendToolResultLocked(ctx, result, nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID); err != nil {
 		return nil, c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist exact executor result; IPC result withheld: %w", err), output)
 	}
 	if transitionSequence != 0 {
@@ -874,7 +874,7 @@ func (c *Conversation) recordAdmissionDenied(ctx context.Context, proposal proto
 		return c.recordUnknownExecutionLocked(proposal, decision, errors.New("admission denial effect ID was replayed"))
 	}
 	result := admissionDeniedResult(proposal, decision, denied.ReasonCode)
-	if err := c.appendResultLocked("provider_admission_denied", result, denied.ReasonCode, c.generation, c.treeDigest, 0, "", denied.EffectID); err != nil {
+	if err := c.appendResultLocked(ctx, "provider_admission_denied", result, denied.ReasonCode, c.generation, c.treeDigest, 0, "", denied.EffectID); err != nil {
 		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist admission denial; IPC result withheld: %w", err))
 	}
 	c.effectIDs[denied.EffectID] = struct{}{}
@@ -955,7 +955,7 @@ func (c *Conversation) Close() {
 	c.mu.Unlock()
 }
 
-func (c *Conversation) appendToolResultLocked(result protocol.Result, nextGeneration, nextTreeDigest string, transitionSequence uint64, transitionIDs ...string) error {
+func (c *Conversation) appendToolResultLocked(ctx context.Context, result protocol.Result, nextGeneration, nextTreeDigest string, transitionSequence uint64, transitionIDs ...string) error {
 	transitionID, effectID := "", ""
 	if len(transitionIDs) > 0 {
 		transitionID = transitionIDs[0]
@@ -963,12 +963,12 @@ func (c *Conversation) appendToolResultLocked(result protocol.Result, nextGenera
 	if len(transitionIDs) > 1 {
 		effectID = transitionIDs[1]
 	}
-	return c.appendResultLocked("provider_tool_result", result, "", nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID)
+	return c.appendResultLocked(ctx, "provider_tool_result", result, "", nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID)
 }
 
 // appendResultLocked journals the exact protocol result of the current call and appends it to the history.
 // A non-empty denialReason makes it the provider_admission_denied record of an ALLOWed operation.
-func (c *Conversation) appendResultLocked(kind string, result protocol.Result, denialReason, nextGeneration, nextTreeDigest string,
+func (c *Conversation) appendResultLocked(ctx context.Context, kind string, result protocol.Result, denialReason, nextGeneration, nextTreeDigest string,
 	transitionSequence uint64, transitionID, effectID string) error {
 	if c.current == nil {
 		return ErrWrongState
@@ -1007,7 +1007,7 @@ func (c *Conversation) appendResultLocked(kind string, result protocol.Result, d
 				break
 			}
 		}
-		selection := selectHint(context.Background(), c.cfg.HintProvider, input)
+		selection := selectHint(ctx, c.cfg.HintProvider, input)
 		base.Hint = &selection
 	}
 	var evidence []byte

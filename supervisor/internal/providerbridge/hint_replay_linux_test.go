@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/gate"
 )
 
 func TestHintReplayAcrossFreshProcesses(t *testing.T) {
@@ -369,6 +370,65 @@ func TestHintReplayRejectsMixedMetadataAcrossFreshProcesses(t *testing.T) {
 					}
 				})
 			}
+		})
+	}
+}
+
+func TestConversationHintChooserUsesCallerContext(t *testing.T) {
+	type contextKey struct{}
+	for _, kind := range []string{"gate", "admission", "command_failed"} {
+		t.Run(kind, func(t *testing.T) {
+			tool, args := "write", json.RawMessage(`{"path":"task.txt","content":"x"}`)
+			inner := &denyingExecutor{deny: map[int]*protocol.AdmissionDeniedError{}}
+			if kind == "admission" {
+				inner.deny[0] = protectedWriteDenial("effect-denied")
+			}
+			if kind == "command_failed" {
+				tool, args = "bash", json.RawMessage(`{"command":"false"}`)
+				inner.outputs = []json.RawMessage{mutationOutput("bash", "g1", recoveryTestTree("tree-1"), "transition-1", 1, "effect-1", &commandSummary{ExitCode: 3, ExitObserved: true, CommandContainmentStatus: "not-established", CommandRunnerProfile: "fixture-runner"})}
+			}
+			_, policy, journal, conversation, wrapped, _ := newDenialFixture(t, kind != "gate", []fixtureResponse{
+				{responseID: "first", callID: "first-call", tool: tool, arguments: args},
+			}, inner)
+			defer journal.Close()
+			ctx, cancel := context.WithCancel(context.WithValue(context.Background(), contextKey{}, "caller"))
+			defer cancel()
+			called := false
+			conversation.cfg.HintProvider = ChoiceHintProvider{Model: "offline/fixture", Chooser: chooserFunc(func(chooserCtx context.Context, _ HintInput, _ map[string]string) (ChoiceAnswer, error) {
+				called = true
+				if chooserCtx.Value(contextKey{}) != "caller" {
+					t.Error("chooser lost caller context")
+				}
+				cancel()
+				if !errors.Is(chooserCtx.Err(), context.Canceled) {
+					t.Error("caller cancellation did not reach chooser")
+				}
+				return ChoiceAnswer{}, chooserCtx.Err()
+			})}
+			turn, err := conversation.NextTurn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			proposal := proposalFor(turn)
+			matched, err := conversation.Correlate(ctx, proposal)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decision := gate.Evaluate(proposal, matched, policy)
+			if err := conversation.RecordDecision(ctx, proposal, decision); err != nil {
+				t.Fatal(err)
+			}
+			if kind != "gate" {
+				_, err := wrapped.Execute(ctx, proposal, decision)
+				var denied *protocol.AdmissionDeniedError
+				if (kind == "admission" && !errors.As(err, &denied)) || (kind == "command_failed" && err != nil) {
+					t.Fatal(err)
+				}
+			}
+			if !called {
+				t.Fatal("chooser was not called")
+			}
+			conversation.Close()
 		})
 	}
 }
