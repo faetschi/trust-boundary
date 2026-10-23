@@ -444,8 +444,8 @@ v_reg_measure() {
   need_argc 1 1; need_name "$n"
   need_inactive; check_tools; mkwork; prep_ga
   # The G1 cycle measures before seed-live runs: the live root (and the fence directory in it, which
-  # the measurement's baseline scan walks) must exist before managed-root-measure opens it. install -d
-  # keeps an existing inode, so a seeded root is measured, not replaced.
+  # the measurement's baseline scan walks) must exist before managed-root-measure opens it.
+  # live_dir keeps an existing inode, so a seeded root is measured, not replaced.
   live_dir
   cs=$(sha "$ETC/serve-pi-service.json")
   [[ $(st_rank "$n") -ge 1 && $(st_get "$n" cfg) == "$cs" ]] || die "$n: installed config is not the one recorded for $n (cfg-install first)"
@@ -625,18 +625,44 @@ live_is_smoke() {
 live_is_g1() {
   [[ $(live_listing) == $'d 755 995:986 lost+found\nd 755 995:986 out\nd 755 995:986 src\nf 644 995:986 src/release.txt' ]]
 }
+live_check_dir() {   # existing directories are checked without following links or repairing metadata
+  local d=$1 mode=$2
+  [[ ! -L $d ]] || die "$d is a symlink (owner must look)"
+  if [[ -e $d ]]; then
+    [[ -d $d && $(stat -c '%u:%g:%a' "$d") == "995:986:$mode" ]] ||
+      die "$d is not a 995:986 $mode directory (owner must look)"
+  fi
+}
+live_check_paths() {   # preflight all fixture paths before even creating the fence
+  local links
+  [[ -d $LIVE_MOUNT && ! -L $LIVE_MOUNT ]] || die "$LIVE_MOUNT is not a real directory"
+  live_check_dir "$LIVE" 700
+  if [[ -d $LIVE ]]; then
+    [[ $(stat -c %d "$LIVE") == "$(stat -c %d "$LIVE_MOUNT")" ]] || die "$LIVE is not on the live mount"
+    links=$(find "$LIVE" -type l -print -quit) || die "cannot check $LIVE for symlinks"
+    [[ -z $links ]] || die "live root contains a symlink (owner must look)"
+  fi
+  live_check_dir "$LIVE/lost+found" 755
+  live_check_dir "$LIVE/src" 755
+  live_check_dir "$LIVE/out" 755
+}
 live_dir() {   # the live root is a real 995:986 0700 directory directly under its mount root
-  [[ -L $LIVE ]] && die "$LIVE is a symlink (owner must look)"
+  live_check_paths
   [[ $(findmnt -n -o TARGET --target "$LIVE_MOUNT") == "$LIVE_MOUNT" ]] || die "$LIVE_MOUNT is not mounted"
-  install -d -o 995 -g 986 -m 0700 "$LIVE"
-  [[ $(stat -c '%U:%G %a %d' "$LIVE") == "tbound-pi:tbound-pi 700 $(stat -c %d "$LIVE_MOUNT")" ]] ||
-    die "$LIVE is not a tbound-pi 0700 directory on the live mount (owner must look)"
+  if [[ ! -e $LIVE ]]; then
+    mkdir -m 0700 -- "$LIVE"
+    chown -h 995:986 "$LIVE"
+  fi
   # The fence directory of effectoracle.FenceRoot: publication opens <live root>/lost+found to bracket
   # its writes for the inotify observer (FenceBursts), and trialfix.Wipe keeps it across a reset. It is
   # part of the scanned live root, so it carries the canonical form the baseline scan requires.
-  install -d -o 995 -g 986 -m 0755 "$LIVE/lost+found"
-  [[ $(stat -c '%U:%G %a' "$LIVE/lost+found") == "tbound-pi:tbound-pi 755" ]] ||
-    die "$LIVE/lost+found is not a tbound-pi 0755 directory (owner must look)"
+  # All writes below the uid-995-owned root use that uid, including if a checked path is later swapped.
+  [[ -d $LIVE/lost+found ]] || "${SVC_PRIV[@]}" mkdir -m 0755 -- "$LIVE/lost+found"
+  live_check_paths
+}
+live_write_fixture() {
+  # cat reads the inherited pipe: reopening root's /dev/stdin after dropping uid can fail permission checks.
+  "${SVC_PRIV[@]}" sh -c 'install -m 0644 /dev/null "$1" && cat >"$1"' sh "$1"
 }
 live_report() {   # NAME
   { echo "== image root"; live_image_root || true; echo "== listing"; live_listing; echo "== census"; python3 -I /opt/tbound/helpers/xattr-census-r9.py "$LIVE" | tail -1; } >"$WORK/live.txt" 2>&1 || true
@@ -646,22 +672,27 @@ live_report() {   # NAME
 v_seed_live() {
   local w=${ARGS[0]:-}; need_argc 1 1; [[ $w =~ ^(smoke|g1)$ ]] || usage "seed-live smoke|g1"
   check_tools; mkwork; prep_ga
+  live_check_paths
   if [[ $w == smoke ]]; then
     if live_is_smoke; then say "live root already is the smoke fixture"
     else
       need_inactive; live_dir
-      rm -rf --one-file-system -- "$LIVE/src" "$LIVE/out"
-      rm -f -- "$LIVE/SMOKE-README.txt"
-      printf '%s\n' "$SMOKE_TEXT" | install -o 995 -g 986 -m 0644 /dev/stdin "$LIVE/SMOKE-README.txt"
+      "${SVC_PRIV[@]}" rm -rf --one-file-system -- "$LIVE/src" "$LIVE/out"
+      "${SVC_PRIV[@]}" rm -f -- "$LIVE/SMOKE-README.txt"
+      printf '%s\n' "$SMOKE_TEXT" | live_write_fixture "$LIVE/SMOKE-README.txt"
       live_is_smoke || die "live root is not exactly the smoke fixture (unexpected extra entries: owner must look)"
     fi
   else
     if live_is_g1 && [[ $(cat "$LIVE/src/release.txt") == $'version=2.4.0\nstatus=draft' ]]; then say "live root already is the g1 fixture"
     else
       need_inactive; live_dir
-      rm -f -- "$LIVE/SMOKE-README.txt"
-      install -d -o 995 -g 986 -m 0755 "$LIVE/src" "$LIVE/out"
-      printf 'version=2.4.0\nstatus=draft\n' | install -o 995 -g 986 -m 0644 /dev/stdin "$LIVE/src/release.txt"
+      "${SVC_PRIV[@]}" rm -f -- "$LIVE/SMOKE-README.txt"
+      local d
+      for d in "$LIVE/src" "$LIVE/out"; do
+        [[ -d $d ]] || "${SVC_PRIV[@]}" mkdir -m 0755 -- "$d"
+      done
+      live_check_paths
+      printf 'version=2.4.0\nstatus=draft\n' | live_write_fixture "$LIVE/src/release.txt"
       live_is_g1 || die "live root is not exactly the g1 fixture (unexpected extra entries: owner must look)"
     fi
   fi
