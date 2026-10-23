@@ -309,8 +309,9 @@ func TestServiceTCBProofOfAnotherImageThanTheCheckpointPinIsRefused(t *testing.T
 
 // publishedPriorRun runs one PUBLISHED managed live-root run through the real lease and RootLedger
 // (permit, pending, transaction, succeeded resolution, durable terminal, release), with the
-// production publication ID, and returns its publication journal.
-func publishedPriorRun(t *testing.T) (*audit.Journal, managedLiveRootDescriptorIdentity, piruntime.D09ManagedLiveRootRegistration, string) {
+// production publication ID, and returns its publication journal. The run is admitted at managed-root
+// epoch ownerEpoch: each earlier epoch is a run on the same root that ends before publication.
+func publishedPriorRun(t *testing.T, ownerEpoch uint64) (*audit.Journal, managedLiveRootDescriptorIdentity, piruntime.D09ManagedLiveRootRegistration, string) {
 	t.Helper()
 	root := privateGovernedTestRoot(t)
 	livePath := filepath.Join(root, "live")
@@ -340,9 +341,24 @@ func publishedPriorRun(t *testing.T) (*audit.Journal, managedLiveRootDescriptorI
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	lease, err := newFakeManagedLiveRootAuthority().acquire(ctx, live,
+	authority := newFakeManagedLiveRootAuthority()
+	for epoch := uint64(1); epoch < ownerEpoch; epoch++ {
+		earlier := fmt.Sprintf("earlier-run-%d", epoch)
+		lease, err := authority.acquire(ctx, live, piruntime.D09CellTemplate{ManagedLiveRootRegistrationDigest: testManagedRootDigest},
+			journal, earlier, earlier, "production-publication-"+earlier, epoch)
+		if err != nil {
+			t.Fatalf("admit the earlier run at managed-root epoch %d: %v", epoch, err)
+		}
+		if err := lease.completeAdmissionRecovery(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if err := lease.close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	lease, err := authority.acquire(ctx, live,
 		piruntime.D09CellTemplate{ManagedLiveRootRegistrationDigest: testManagedRootDigest}, journal,
-		publishedPriorRunID, publishedPriorWorkflowID, publishedPriorPublicationID, 1)
+		publishedPriorRunID, publishedPriorWorkflowID, publishedPriorPublicationID, ownerEpoch)
 	if err != nil {
 		t.Fatalf("acquire test-only registered-root boundary: %v", err)
 	}
@@ -353,10 +369,10 @@ func publishedPriorRun(t *testing.T) (*audit.Journal, managedLiveRootDescriptorI
 		t.Fatal(err)
 	}
 	if err := lease.authorizePublication(ctx, live, workflow.EvidenceRequest{Bundle: bundle, Verified: bundle.ValidatedChain,
-		LiveRoot: live, Workflow: publishedPriorWorkflowID, OwnerEpoch: 1}, baseline); err != nil {
+		LiveRoot: live, Workflow: publishedPriorWorkflowID, OwnerEpoch: ownerEpoch}, baseline); err != nil {
 		t.Fatal(err)
 	}
-	reservation, err := rootLedger.Begin(live, publishedPriorWorkflowID, 1, publishedPriorPublicationID, options)
+	reservation, err := rootLedger.Begin(live, publishedPriorWorkflowID, ownerEpoch, publishedPriorPublicationID, options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -387,7 +403,7 @@ const (
 
 // G1 publishes (read, edit, bash, read), and the next cycle, under its own registration, settles it.
 func TestPublishedSettlementOfARunAdmittedUnderAnEarlierRegistration(t *testing.T) {
-	journal, identity, registration, transactionID := publishedPriorRun(t)
+	journal, identity, registration, transactionID := publishedPriorRun(t, 1)
 	root := workflow.RootIdentity{Device: identity.Device, Inode: identity.Inode}
 	next := registration
 	next.Digest = digestBytes([]byte("registration of the next cycle"))
@@ -543,5 +559,26 @@ func TestNoChangeSettlementOfTheSecondRunOnTheManagedRoot(t *testing.T) {
 		uint64(len(source.Records)), first.identity, first.root, next, workflowID, runID)
 	if err != nil || !strings.HasPrefix(settlementID, "no-publication:") {
 		t.Fatalf("the second run on the managed root, released with no change, was refused: id=%q err=%v", settlementID, err)
+	}
+}
+
+// G1 published as the first run on the managed root. A run that publishes after another run on the
+// same root is admitted at managed-root epoch 2, while its workflow checkpoint's owner epoch is 1;
+// the next cycle settles it at the epoch of its admission.
+func TestPublishedSettlementOfTheSecondRunOnTheManagedRoot(t *testing.T) {
+	journal, identity, registration, transactionID := publishedPriorRun(t, 2)
+	root := workflow.RootIdentity{Device: identity.Device, Inode: identity.Inode}
+	next := registration
+	next.Digest = digestBytes([]byte("registration of the next cycle"))
+	settle := func() error {
+		trace, err := journal.Trace()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return verifyManagedPiPublicationSettlement(journal, trace, identity, root, next, publishedPriorWorkflowID,
+			publishedPriorRunID, transactionID)
+	}
+	if err := settle(); err != nil {
+		t.Fatalf("the second run on the managed root, published, was refused under the next registration: %v", err)
 	}
 }
