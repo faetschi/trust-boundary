@@ -801,6 +801,23 @@ func TestGuestEvidenceProviderExchangeIsBoundToWhatTheRunSharesWithThePilot(t *t
 	}
 }
 
+func TestRunGuestTestsStopsAHangingBinary(t *testing.T) {
+	old := guestTestsTimeout
+	guestTestsTimeout = time.Second
+	t.Cleanup(func() { guestTestsTimeout = old })
+	bin := filepath.Join(t.TempDir(), "procoracle.test")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexec sleep 60\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if _, err := runGuestTests(context.Background(), guestevidence.KindProcOracleTests, bin, ""); err == nil {
+		t.Fatal("a binary killed at the timeout was recorded as a run")
+	}
+	if took := time.Since(start); took > 20*time.Second {
+		t.Fatalf("the hanging binary was stopped only after %s", took)
+	}
+}
+
 // The real-cgroup tests skip without the guard variable and refuse a login-session cgroup, so the
 // producer runs them, and only them, in a fresh capped cgroup with the variable set, and removes it.
 func TestRunGuestTestsRunsTheRealCgroupTestsInAFreshCgroupAndRemovesIt(t *testing.T) {

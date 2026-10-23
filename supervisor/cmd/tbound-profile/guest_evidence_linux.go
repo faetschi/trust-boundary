@@ -53,6 +53,9 @@ const (
 	maxGuestInputSize = 1 << 20
 )
 
+// guestTestsTimeout bounds a guest test run; a variable so a test can shorten it.
+var guestTestsTimeout = 15 * time.Minute
+
 func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
 		return errors.New("guest-evidence needs a kind\n" + guestEvidenceUsage)
@@ -444,7 +447,10 @@ func runGuestTests(ctx context.Context, kind, binary, cgroupParent string) (run 
 	}
 	defer os.RemoveAll(work)
 	var out bytes.Buffer
+	ctx, cancel := context.WithTimeout(ctx, guestTestsTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, guestevidence.TestRunArgs...)
+	cmd.WaitDelay = 10 * time.Second // a leftover child holding the output pipe must not block Wait
 	cmd.Dir, cmd.Env = work, []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=" + work, "TMPDIR=" + work, "LANG=C", "LC_ALL=C"}
 	cmd.Stdout, cmd.Stderr = &limitedWriter{w: &out, left: maxTestRunOutput}, &limitedWriter{w: &out, left: maxTestRunOutput}
 	if cgroupParent != "" {
