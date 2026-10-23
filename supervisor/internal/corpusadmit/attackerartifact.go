@@ -41,6 +41,7 @@ func LoadAttacker(fsys fs.FS, digest string) (attacker.Spec, error) {
 // replay, one host call per pivot the machine can issue (the smaller of its iteration cap and the
 // library size) and one for the final text turn. Its duration must reach the attacker's wall cap, and the cap
 // must be at least a second, so that the service run deadline min(duration, wall cap left) is the pinned cap.
+// Pivot replays require scripted caps, matching providerbridge.NewAdaptiveSource.
 func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS, maxPreEffectRetries uint64) error {
 	pivoted := false
 	for _, c := range m.Cases {
@@ -62,6 +63,9 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS, maxPreEffectRetries uint64
 	}
 	issuable := uint64(len(steps))
 	caps := spec.CapsValue()
+	if !caps.Scripted {
+		return fmt.Errorf("adaptive replay requires scripted caps with zero token and money dimensions")
+	}
 	if caps.Iterations > 0 && uint64(caps.Iterations) < issuable {
 		issuable = uint64(caps.Iterations)
 	}

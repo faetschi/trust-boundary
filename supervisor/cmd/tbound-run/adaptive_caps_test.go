@@ -29,7 +29,7 @@ func attackerSpecFixture() attacker.Spec {
 			{ID: attacker.ClassToolSwap, Steps: []string{"ts-1"}}, {ID: attacker.ClassAlternateInterpreter, Steps: []string{"ai-1"}},
 			{ID: attacker.ClassAbsolutePath, Steps: []string{"ap-1"}}, {ID: attacker.ClassDirectResidualSyscall, Steps: []string{"drs-1"}},
 			{ID: attacker.ClassCompoundSequence, Steps: []string{"cs-1"}}}},
-		Caps:     attacker.SpecCaps{Iterations: 5, ToolCalls: 7, WallMS: 90000, InTokens: 11, OutTokens: 12, MicroUSD: 13},
+		Caps:     attacker.SpecCaps{Scripted: true, Iterations: 5, ToolCalls: 7, WallMS: 90000},
 		Feedback: attacker.SpecFeedback{ReasonCodes: reasons, CapabilityTexts: texts, ManifestedReason: "effect_manifested", MaxCapabilityBytes: 128}}
 }
 
@@ -50,7 +50,7 @@ func TestAdaptiveCapsComeFromThePinnedAttackerArtifact(t *testing.T) {
 	manifest := evalcorpus.Manifest{Pins: evalcorpus.Pins{AttackerDigest: digest}, Cases: []evalcorpus.Case{{CaseID: "adv-1",
 		Trial: &evalcorpus.Trial{MaxHostCalls: 11, DurationSeconds: 90, Pivots: map[string]evalcorpus.ScriptTurn{
 			"ts-1": {Tool: "bash", Arguments: json.RawMessage(`{"command":"true"}`)}}}}}}
-	want := calibration.Caps{Iterations: 5, ToolCalls: 7, WallMS: 90000, InTokens: 11, OutTokens: 12, MicroUSD: 13}
+	want := calibration.Caps{Scripted: true, Iterations: 5, ToolCalls: 7, WallMS: 90000}
 
 	if got, err := adaptiveCapsFor(manifest, dir, calibration.Caps{}); err != nil || got != want {
 		t.Fatalf("left out: %+v, %v", got, err)

@@ -8,6 +8,7 @@ import (
 
 	"tbound/supervisor/internal/attacker"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/taskaccept"
 )
 
@@ -27,7 +28,7 @@ func attackerSpecForTest() attacker.Spec {
 			{ID: attacker.ClassToolSwap, Steps: []string{"ts-1", "ts-2"}}, {ID: attacker.ClassAlternateInterpreter, Steps: []string{"ai-1"}},
 			{ID: attacker.ClassAbsolutePath, Steps: []string{"ap-1"}}, {ID: attacker.ClassDirectResidualSyscall, Steps: []string{"drs-1"}},
 			{ID: attacker.ClassCompoundSequence, Steps: []string{"cs-1"}}}},
-		Caps:     attacker.SpecCaps{Iterations: 4, ToolCalls: 4, WallMS: 60000, InTokens: 10, OutTokens: 10, MicroUSD: 10},
+		Caps:     attacker.SpecCaps{Scripted: true, Iterations: 4, ToolCalls: 4, WallMS: 60000},
 		Feedback: attacker.SpecFeedback{ReasonCodes: reasons, CapabilityTexts: texts, ManifestedReason: "effect_manifested", MaxCapabilityBytes: 128}}
 }
 
@@ -78,6 +79,13 @@ func TestCheckManifestArtifactsAcceptsAMatchingAttacker(t *testing.T) {
 	spec, err := LoadAttacker(fsys, m.Pins.AttackerDigest)
 	if err != nil || spec.Seed != "seed-A" {
 		t.Fatalf("LoadAttacker = %+v, %v", spec, err)
+	}
+	pivots := map[string]providerbridge.ScriptTurn{}
+	for id, turn := range m.Cases[0].Trial.Pivots {
+		pivots[id] = providerbridge.ScriptTurn{Tool: turn.Tool, Arguments: turn.Arguments}
+	}
+	if _, err := providerbridge.NewAdaptiveSource(spec, pivots); err != nil {
+		t.Fatalf("admitted replay must construct: %v", err)
 	}
 	// a manifest without pivots needs no attacker artifact, and CheckArtifacts itself is unchanged
 	plain, plainFS := artifactCases(t)
@@ -134,5 +142,25 @@ func TestCheckAttackerChargesPreEffectRetries(t *testing.T) {
 	m.Cases[0].Trial.MaxHostCalls = 11
 	if err := CheckAttacker(m, fsys, 2); err != nil {
 		t.Fatalf("a replay that covers its retries: %v", err)
+	}
+}
+
+func TestCheckAttackerRefusesModelCapsForScriptedReplay(t *testing.T) {
+	m, fsys := pivotedCases(t, func(s *attacker.Spec) {
+		s.Caps = attacker.SpecCaps{Iterations: 4, ToolCalls: 4, WallMS: 60000, InTokens: 10, OutTokens: 10, MicroUSD: 10}
+	})
+	spec, err := LoadAttacker(fsys, m.Pins.AttackerDigest)
+	if err != nil {
+		t.Fatalf("valid model artifact: %v", err)
+	}
+	pivots := map[string]providerbridge.ScriptTurn{}
+	for id, turn := range m.Cases[0].Trial.Pivots {
+		pivots[id] = providerbridge.ScriptTurn{Tool: turn.Tool, Arguments: turn.Arguments}
+	}
+	if _, err := providerbridge.NewAdaptiveSource(spec, pivots); err == nil || !strings.Contains(err.Error(), "scripted") {
+		t.Fatalf("runtime must refuse model caps for replay: %v", err)
+	}
+	if err := CheckAttacker(m, fsys, 0); err == nil || !strings.Contains(err.Error(), "scripted") {
+		t.Fatalf("admission must refuse what runtime refuses: %v", err)
 	}
 }
