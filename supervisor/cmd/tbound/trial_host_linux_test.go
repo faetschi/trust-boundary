@@ -436,15 +436,19 @@ func TestCleanNoReapWithoutTheRuntimeDirSkipsPodman(t *testing.T) {
 	}
 }
 
-// The reset's podman is the service's: its uid and gid, its storage and runroot flags, its environment.
+// The reset's podman is the service's, as PROVISIONING-SIGNING.md runs it (SVC, PODMAN_ENV): setpriv
+// drops root to the service uid and gid with no groups, no capabilities and no-new-privs, and podman
+// takes its storage from CONTAINERS_STORAGE_CONF. No --root: with it podman ignores storage.conf
+// (ignore_chown_errors) and the service never passes it.
 func TestServicePodmanCommandRunsAsTheServiceWithItsStorage(t *testing.T) {
 	cmd := servicePodmanCommand(context.Background(), 995, 986, "ps", "-a")
-	wantArgs := []string{"/usr/bin/podman", "--root", piruntime.D09ManagedPiPodmanGraphroot, "--runroot", piruntime.D09ManagedPiPodmanRunroot, "ps", "-a"}
-	if strings.Join(cmd.Args, " ") != strings.Join(wantArgs, " ") || cmd.Path != "/usr/bin/podman" {
+	wantArgs := []string{"/usr/bin/setpriv", "--reuid", "995", "--regid", "986", "--clear-groups", "--bounding-set=-all",
+		"--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs", "--", "/usr/bin/podman", "ps", "-a"}
+	if strings.Join(cmd.Args, " ") != strings.Join(wantArgs, " ") || cmd.Path != "/usr/bin/setpriv" {
 		t.Fatalf("args %v", cmd.Args)
 	}
-	if cred := cmd.SysProcAttr.Credential; cred == nil || cred.Uid != 995 || cred.Gid != 986 || cred.NoSetGroups || len(cred.Groups) != 0 {
-		t.Fatalf("credential %+v", cmd.SysProcAttr.Credential)
+	if cmd.SysProcAttr != nil && cmd.SysProcAttr.Credential != nil {
+		t.Fatalf("setpriv drops the identity; a credential would make it run without the privilege to do so: %+v", cmd.SysProcAttr.Credential)
 	}
 	env := strings.Join(cmd.Env, "\n")
 	for _, want := range []string{"XDG_RUNTIME_DIR=/run/tbound-pi", "HOME=/var/lib/tbound/podman-home", "USER=tbound-pi",
