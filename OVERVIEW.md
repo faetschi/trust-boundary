@@ -1,30 +1,29 @@
 # TBound — current state
 
-Updated 2026-10-23. Freeze **F9 = af6f38f** is installed on the guest (172.24.152.73). Engineering route OpenCode Go.
+Updated 2026-10-23. Last freeze on the guest: **F12 = eed7722** (guest 172.24.152.73). Engineering route OpenCode Go.
 
-**Headline: G1 passed.** The first real governed run on the guest read a file, edited it, ran a bash command in the command cell, read the result and published the change to the live root (request `g1-req-20261023T165907Z`, `success: true`, disposition `PUBLISHED`, publication `SUCCEEDED`, transaction `pub-8e4650488051c5672504f1e50c11d682`). The live root now holds the edited `src/release.txt` and the bash-written `out/release.sha256`.
+**Headline: the governed path works on the real guest; the pilot is not ready yet.** G1 (read, edit, bash, publish), the route probe and the direct-runtime probe pass on F11/F12 with correct Landlock confinement. The EVQ dry run passes 18 of 22 items; the rest need fresh artifacts from the next freeze and a netsink artifact from a trial reset.
 
-How each freeze got one stage further on the real, unprivileged, rootless guest:
+What the real guest exposed, freeze by freeze (each fixed with a regression test):
 
-| Freeze | Where the run stopped | Fixed in the next freeze |
-| --- | --- | --- |
-| F4 | executable "not root-owned" inside the cell | ownership via the cell's uid_map |
-| F5 | read-only check never matched the root mount | `fstatfs` read-only check on the opened file |
-| F6 | post-command namespace scan denied on root's processes | scan skips other users' processes |
-| F7 | Bash settlement evidence compared host and cell mount IDs | bind the command view by device/inode |
-| F8 | publication refused: the session binding never attested quiescence | binding carries the quiescence attestation |
-| F9 | **passed** | |
-
-F9 also logs the cause of any unknown service outcome to the journal, so a failure names itself.
+| Freeze | Real-host bug |
+| --- | --- |
+| F4-F6 | ownership via uid_map, read-only check on the root mount, namespace scan of other users' processes |
+| F7 | Bash evidence compared host and cell mount IDs |
+| F8 | publication never attested quiescence |
+| F9 | (G1 passed) route probe: nil vs empty change list broke the evidence binding |
+| F10 | Landlock restricted only one thread (wrong flag constant); prior settlement used the wrong epoch |
+| F11 | direct-runtime probe read its control file at the wrong path |
+| F12 | freeze kit reused stale guest evidence |
 
 | Milestone | State |
 | --- | --- |
-| System | Built; G1 passed on the real guest. |
-| Measurement | Observers built; 18 of 22 EVQ met offline; the last 4 come from the guest steps below. |
-| Research enablement | Built. Denial hints (static table, thesis treatment) and the secondary arm C-DH (decision-model hints) are in progress for the pilot freeze. |
-| Route probe, direct-runtime probe, guest EVQ | Next (F9 kit steps 31, 32, 40). |
-| Pre-registration, pilot, H1 | After the probes and EVQ. |
+| System | Built; G1 and both probes pass on the real guest. |
+| Measurement | 18/22 EVQ in the dry run; full EVQ + route report needed at the pilot freeze. |
+| Research enablement | Static denial hints (H1 treatment) merged. C-DH parked until after H1. |
+| Pilot | Needs advisor review, protocol decisions, then corpus-mode checks (reset, net-sink, no-reap, V). |
+| Pre-registration, H1 | After the pilots (caps and costs come from the pilot). |
 
-Needs you: pilot corpus review with your advisor; pre-registration decisions; OpenRouter balance for the C-DH chooser experiments when they are ready.
+Needs you: advisor review of the pilot manifest, the D26 scope cut and the residual-channel claim; pre-registration decisions.
 
-Next: route probe → direct-runtime probe → guest EVQ → pilot freeze (hints, C-DH, pilot budget fix, advisor-reviewed manifest) → pre-registration → pilot → H1.
+Next: TASK_STATE.md "Goal, in order".
