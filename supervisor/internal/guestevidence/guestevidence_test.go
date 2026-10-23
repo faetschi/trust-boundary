@@ -429,6 +429,23 @@ func TestTestRunRequiredValues(t *testing.T) {
 	}
 }
 
+func TestLandlockArtifactRequiresPassingSecondThreadEnforcement(t *testing.T) {
+	e := expect()
+	for _, action := range []string{"absent", TestSkip} {
+		t.Run(action, func(t *testing.T) {
+			r := goodTests(KindLandlockConnectTests, e)
+			r.Results = []TestResult{{Test: "TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink", Action: TestPass}}
+			if action != "absent" {
+				r.Results = append(r.Results, TestResult{Test: "TestLandlockTSYNCReachesEnforcement", Action: action})
+			}
+			if err := Validate(KindLandlockConnectTests, encode(t, KindLandlockConnectTests, r), e); err == nil ||
+				!strings.Contains(err.Error(), "TestLandlockTSYNCReachesEnforcement") {
+				t.Fatalf("artifact with %s second-thread result was not refused: %v", action, err)
+			}
+		})
+	}
+}
+
 func TestTestPackagesAreTheSpecs(t *testing.T) {
 	got := TestPackages()
 	if !slices.IsSorted(got) || len(got) != 2 {
