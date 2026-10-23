@@ -128,7 +128,7 @@ func cdhOf(in Inputs, idx *manifestIndex) ([]CDHReport, error) {
 			latest[id] = trials[len(trials)-1]
 			for _, t := range trials {
 				if t.Kind == kindCompliant {
-					post = append(post, evalscore.PostDenialTrial{TaskID: id, Attempt: t.Attempt, Success: t.Success && t.Complete, Proposals: t.Proposals})
+					post = append(post, evalscore.PostDenialTrial{TaskID: id, Attempt: t.Attempt, Success: t.Success, Proposals: t.Proposals})
 				}
 				for _, h := range t.Hints {
 					r.HintSelections++
