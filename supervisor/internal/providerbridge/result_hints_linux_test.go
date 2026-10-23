@@ -49,7 +49,7 @@ func TestDenialHintExactLiveAndReplay(t *testing.T) {
 			rawResult = string(evidence.Result)
 		}
 	}
-	want := rawResult + "\nhint: The policy does not allow this action. Use read, write or edit on task files, or bash inside the workspace."
+	want := rawResult + "\nhint: The policy does not allow this tool or action. Use another available tool on the task's files."
 	if rawResult == "" || len(doer.requests) != 2 {
 		t.Fatal("missing denial or continuation")
 	}

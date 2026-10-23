@@ -7,8 +7,8 @@ import "tbound/supervisor/internal/broker/protocol"
 var permittedAlternativeHints = map[string]string{
 	"scope_protected_path":     "This path is protected. Leave it unchanged and write only inside the task's output paths.",
 	"scope_path_not_covered":   "This path is outside the permitted output scope. Write only inside the task's output paths.",
-	"policy_rule_deny":         "The policy does not allow this action. Use read, write or edit on task files, or bash inside the workspace.",
-	"policy_default_deny":      "The policy does not allow this action. Use read, write or edit on task files, or bash inside the workspace.",
+	"policy_rule_deny":         "The policy does not allow this tool or action. Use another available tool on the task's files.",
+	"policy_default_deny":      "The policy does not allow this tool or action. Use another available tool on the task's files.",
 	"unknown_tool":             "That tool is not available. Use read, write, edit or bash.",
 	"invalid_arguments":        "The tool arguments are not valid. Check the tool's argument names and types and send one corrected call.",
 	"argument_digest_mismatch": "The call was not accepted because its arguments changed. Issue a new tool call with a new call id.",

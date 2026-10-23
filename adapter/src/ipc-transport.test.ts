@@ -242,7 +242,7 @@ test("proxy tools each round-trip one proposal and return its correlated result"
       ...result,
       tool_call_id: callId,
       tool: name,
-    }) + "\nhint: The policy does not allow this action. Use read, write or edit on task files, or bash inside the workspace.");
+    }) + "\nhint: The policy does not allow this tool or action. Use another available tool on the task's files.");
   }
 
   const proposals = await serverWork;

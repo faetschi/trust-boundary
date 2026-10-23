@@ -351,7 +351,7 @@ test("official Pi CLI 0.87.1 loads the mediated extension and settles simulated 
       record.type === "tool_execution_end" && record.toolCallId === callID, `hinted ${tool.name} result`);
     assert.deepEqual(completed.result, {
       content: [{ type: "text", text: JSON.stringify(denial) +
-        "\nhint: The policy does not allow this action. Use read, write or edit on task files, or bash inside the workspace." }],
+        "\nhint: The policy does not allow this tool or action. Use another available tool on the task's files." }],
     });
   }
 
