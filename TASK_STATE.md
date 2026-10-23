@@ -29,6 +29,9 @@ Current checkpoint, 2026-10-23. History before this date: git log of this file a
 
 ## Needs the owner
 
+- Owner answers 2026-10-23: reviewers = owner (reviewer 1) + advisor (reviewer 2), a third human only for disagreements; the coordinated signing/provisioning session (S3'/S4', installs, tbound-netsink, trial key, Spike B) happens AFTER the reviews (one signing round on the final manifest digest); TM-C scope narrowed (advisor to confirm).
+- Next orchestrator work for this: blinded review packets + checklists for the 20+11 pilot cases (after feat/pilot-20-compliant lands); a prepared, verified provisioning bundle for the owner session.
+
 - Advisor: pilot corpus review (manifest TODOs), D26 scope cut, the residual-channel claim.
 - Pre-registration decisions (protocol, provider, outage rules, ceilings) and runbook decisions D1-D8, incl. the S3'/S4' signing with the owner keys.
 - Approvals for corpus mode: tbound-netsink account/unit, pinned nft rule, root forced-command trial key (account changes before registration); Spike B (reset, netsink evidence, P A-03, P C-02 no-reap, cleanup reset, compliant C, V, reboot/reload).
