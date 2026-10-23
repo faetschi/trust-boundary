@@ -199,11 +199,20 @@ func scriptHistory(request *http.Request) ([]ScriptMessage, error) {
 			history[i].Content = *message.Content
 			// Scripted D32 sources retain their Result-only public projection.
 			if message.Role == "tool" {
-				raw, _, hinted := strings.Cut(*message.Content, "\nhint: ")
+				raw, suffix, hinted := strings.Cut(*message.Content, "\nhint: ")
 				if hinted {
 					result, err := protocol.DecodeResult([]byte(raw))
-					if err != nil || modelResultText([]byte(raw), result) != *message.Content {
-						return nil, errors.New("scripted provider tool hint differs from the fixed Result hint")
+					valid := false
+					if err == nil {
+						for _, candidate := range HintCandidates(hintReason(result)) {
+							if suffix == candidate {
+								valid = true
+								break
+							}
+						}
+					}
+					if !valid {
+						return nil, errors.New("scripted provider tool hint differs from the frozen Result candidates")
 					}
 					history[i].Content = raw
 				}
