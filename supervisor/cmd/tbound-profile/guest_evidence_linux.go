@@ -26,6 +26,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"tbound/supervisor/internal/cgroupguard"
 	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/piruntime"
 )
@@ -51,6 +52,9 @@ const (
 	maxTestRunOutput  = 64 << 20
 	maxGuestInputSize = 1 << 20
 )
+
+// guestTestsTimeout bounds a guest test run; a variable so a test can shorten it.
+var guestTestsTimeout = 15 * time.Minute
 
 func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	if len(args) == 0 {
@@ -136,7 +140,19 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	case "tests":
 		artifactKind = *testKind
 		var run guestevidence.TestRun
-		run, err = runGuestTests(context.Background(), *testKind, *testBinary)
+		cgroupParent := ""
+		if *testKind == guestevidence.KindProcOracleTests {
+			// The real-cgroup tests run in a fresh cgroup below the hierarchy root, not in the
+			// operator's login session.
+			var info []byte
+			if info, err = os.ReadFile("/proc/self/mountinfo"); err == nil {
+				cgroupParent, err = cgroup2Mount(string(info))
+			}
+			if err != nil {
+				return err
+			}
+		}
+		run, err = runGuestTests(context.Background(), *testKind, *testBinary, cgroupParent)
 		expect.TestBinaries = map[string]string{run.Package: run.TestBinarySHA256}
 		data = run
 	default:
@@ -406,8 +422,10 @@ func parseTestOutput(out []byte) []guestevidence.TestResult {
 }
 
 // runGuestTests runs the test binary the capture of the frozen commit built, with the fixed arguments, and
-// records what happened. The digest of the binary is the digest of the file that ran.
-func runGuestTests(ctx context.Context, kind, binary string) (guestevidence.TestRun, error) {
+// records what happened. The digest of the binary is the digest of the file that ran. With a
+// cgroupParent the binary runs in a fresh capped child cgroup of it, with the real-cgroup opt-in
+// (cgroupguard.Env) set, and the child is removed afterwards.
+func runGuestTests(ctx context.Context, kind, binary, cgroupParent string) (run guestevidence.TestRun, err error) {
 	spec, ok := guestevidence.SpecFor(kind)
 	if !ok {
 		return guestevidence.TestRun{}, fmt.Errorf("--kind must be one of guest-tests-procoracle, guest-tests-landlock-connect, not %q", kind)
@@ -429,10 +447,26 @@ func runGuestTests(ctx context.Context, kind, binary string) (guestevidence.Test
 	}
 	defer os.RemoveAll(work)
 	var out bytes.Buffer
+	ctx, cancel := context.WithTimeout(ctx, guestTestsTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, binary, guestevidence.TestRunArgs...)
+	cmd.WaitDelay = 10 * time.Second // a leftover child holding the output pipe must not block Wait
 	cmd.Dir, cmd.Env = work, []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "HOME=" + work, "TMPDIR=" + work, "LANG=C", "LC_ALL=C"}
 	cmd.Stdout, cmd.Stderr = &limitedWriter{w: &out, left: maxTestRunOutput}, &limitedWriter{w: &out, left: maxTestRunOutput}
-	run := guestevidence.TestRun{Package: spec.Package, TestBinarySHA256: digest, Args: slices.Clone(guestevidence.TestRunArgs),
+	if cgroupParent != "" {
+		cell, remove, cgErr := newGuestTestsCgroup(cgroupParent)
+		if cgErr != nil {
+			return guestevidence.TestRun{}, cgErr
+		}
+		defer func() {
+			if removeErr := remove(); removeErr != nil && err == nil {
+				err = removeErr
+			}
+		}()
+		cmd.SysProcAttr = &syscall.SysProcAttr{UseCgroupFD: true, CgroupFD: int(cell.Fd())}
+		cmd.Env = append(cmd.Env, cgroupguard.Env+"=1")
+	}
+	run = guestevidence.TestRun{Package: spec.Package, TestBinarySHA256: digest, Args: slices.Clone(guestevidence.TestRunArgs),
 		KernelRelease: unix.ByteSliceToString(uts.Release[:])}
 	var exitErr *exec.ExitError
 	switch err := cmd.Run(); {
@@ -446,6 +480,57 @@ func runGuestTests(ctx context.Context, kind, binary string) (guestevidence.Test
 	run.OutputSHA256 = "sha256:" + hex.EncodeToString(sum[:])
 	run.Results = parseTestOutput(out.Bytes())
 	return run, nil
+}
+
+// newGuestTestsCgroup makes a fresh cgroup below parent, capped as cgroupguard caps a test cgroup,
+// and returns it open with the function that kills what is left in it and removes its tree.
+func newGuestTestsCgroup(parent string) (*os.File, func() error, error) {
+	// A run that was killed before its removal leaves its cgroup behind.
+	leftovers, _ := filepath.Glob(filepath.Join(parent, "tbound-guest-tests-*"))
+	for _, leftover := range leftovers {
+		if err := removeCgroupTree(leftover); err != nil {
+			return nil, nil, fmt.Errorf("leftover guest-tests cgroup: %w", err)
+		}
+	}
+	dir, err := os.MkdirTemp(parent, "tbound-guest-tests-")
+	if err != nil {
+		return nil, nil, fmt.Errorf("guest-tests cgroup: %w", err)
+	}
+	if err := cgroupguard.ApplyLimits(dir, parent); err != nil {
+		return nil, nil, errors.Join(err, removeCgroupTree(dir))
+	}
+	cell, err := os.Open(dir)
+	if err != nil {
+		return nil, nil, errors.Join(err, removeCgroupTree(dir))
+	}
+	return cell, func() error { _ = cell.Close(); return removeCgroupTree(dir) }, nil
+}
+
+// removeCgroupTree kills every process in the cgroup tree at dir and removes its directories,
+// deepest first, retrying while the killed processes exit.
+func removeCgroupTree(dir string) error {
+	_ = os.WriteFile(filepath.Join(dir, "cgroup.kill"), []byte("1"), 0)
+	var err error
+	for range 50 {
+		var dirs []string
+		_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, walkErr error) error {
+			if walkErr == nil && d.IsDir() {
+				dirs = append(dirs, path)
+			}
+			return nil
+		})
+		err = nil
+		for _, d := range slices.Backward(dirs) {
+			if removeErr := os.Remove(d); removeErr != nil && !os.IsNotExist(removeErr) {
+				err = fmt.Errorf("remove guest-tests cgroup: %w", removeErr)
+			}
+		}
+		if err == nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return err
 }
 
 type limitedWriter struct {
