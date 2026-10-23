@@ -48,7 +48,8 @@ import (
 //	    kept), populates it from the fixture, and prints the digest of the fixture next to the
 //	    digest of the resulting tree, which must be equal.
 //	reset <case_id> --check
-//	    the refusals only, and a populated cells cgroup is one of them. It changes nothing.
+//	    the refusals only, and a populated cells cgroup is one of them, except for live processes in
+//	    tbound-nr-* scopes: no-reap/v1 leaves them by design and the reset kills them. It changes nothing.
 //	accept <case_id> [--tree live]
 //	    evaluates the case's pinned acceptance artifact against the live root (read-only,
 //	    links are never followed) and prints the result document (trial_accept_linux.go).
@@ -100,7 +101,8 @@ type trialEnv struct {
 	// pending returns an error naming what is still pending: a workflow admission without a
 	// terminal, or a managed-root run that holds the live root.
 	pending func(ctx context.Context) error
-	// cellPopulated reports whether the cells cgroup (or one below it) holds a live process.
+	// cellPopulated reports whether the cells cgroup (or one below it) holds a live process that is
+	// not in a tbound-nr-* scope (no-reap/v1 survivors are the reset's work, not a refusal).
 	cellPopulated func(cell evidenceCell) (bool, error)
 	// killCell kills every process of the cells cgroup subtree and fails unless the cgroup is
 	// unpopulated afterwards.
@@ -461,14 +463,55 @@ func openCellsCgroup(cell evidenceCell) (*os.File, error) {
 	return dir, nil
 }
 
-// cellsCgroupPopulated reports whether the cells cgroup or one below it holds a live process.
+// cellsCgroupPopulated reports whether the cells cgroup or one below it holds a live process
+// outside the tbound-nr-* scopes (cgroupLiveOutsideNoReap).
 func cellsCgroupPopulated(cell evidenceCell) (bool, error) {
 	dir, err := openCellsCgroup(cell)
 	if err != nil {
 		return false, err
 	}
 	defer dir.Close()
-	return cgroupPopulated(dir)
+	return cgroupLiveOutsideNoReap(dir)
+}
+
+// cgroupLiveOutsideNoReap reports whether dir itself or a child cgroup other than a tbound-nr-*
+// scope holds a live process. Those scopes hold what no-reap/v1 leaves running by design; only the
+// reset's cgroup.kill ends it, and the reset runs after the --check of the runner's Prepare, so
+// counting them would refuse every trial after a no-reap run.
+func cgroupLiveOutsideNoReap(dir *os.File) (bool, error) {
+	if populated, err := cgroupPopulated(dir); err != nil || !populated {
+		return populated, err
+	}
+	fd, err := unix.Openat(int(dir.Fd()), "cgroup.procs", unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+	if err != nil {
+		return false, fmt.Errorf("read cgroup.procs: %w", err)
+	}
+	procs := os.NewFile(uintptr(fd), "cgroup.procs")
+	data, err := io.ReadAll(io.LimitReader(procs, 1))
+	procs.Close()
+	if err != nil || len(data) != 0 {
+		return true, err
+	}
+	entries, err := dir.ReadDir(-1)
+	if err != nil {
+		return false, err
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), trialNoReapPrefix) {
+			continue
+		}
+		fd, err := unix.Openat(int(dir.Fd()), entry.Name(), unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC|unix.O_NOFOLLOW, 0)
+		if err != nil {
+			return false, fmt.Errorf("cgroup %s: %w", entry.Name(), err)
+		}
+		child := os.NewFile(uintptr(fd), entry.Name())
+		populated, err := cgroupPopulated(child)
+		child.Close()
+		if err != nil || populated {
+			return populated, err
+		}
+	}
+	return false, nil
 }
 
 // killCellsCgroup is the production killCell: cgroup.kill, then the wait for populated 0.
