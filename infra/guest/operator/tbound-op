@@ -802,12 +802,23 @@ for line in open(sys.argv[1]):
     if data.get("request_id") == sys.argv[2]: print(ev["kind"], json.dumps(data, sort_keys=True))' "$AUDIT/serve-pi-requests.jsonl" "$1"
 }
 
+catalog_unexposed_count() {   # cleanup events whose decoded payload records no worker exposure
+  python3 -I -c 'import base64,json,sys
+count = 0
+for line in open(sys.argv[1]):
+    ev = json.loads(line)["event"]
+    if ev["kind"] == "pi_workflow_owner_scope_drained":
+        data = json.loads(base64.b64decode(ev["data"], validate=True))
+        if data.get("unexposed") is True: count += 1
+print(count)' "$CATALOG"
+}
+
 l4_facts() {   # RID : deterministic fact list
   local rid=$1 c=$CG/cells
   echo "rid=$rid"
   echo "request_records:"; { req_records "$rid" || true; } | cut -c1-600
   echo "catalog_owner_scope_drained=$(grep -c pi_workflow_owner_scope_drained "$CATALOG" || true)"
-  echo "catalog_unexposed_true=$(grep -c '"unexposed":true' "$CATALOG" || true)"
+  echo "catalog_unexposed_true=$(catalog_unexposed_count || echo unavailable)"
   echo "cells_children=$({ ls -A "$c" 2>/dev/null || echo unavailable; } | tr '\n' ' ')"
   echo "cells_procs_bytes=$(wc -c <"$c/cgroup.procs" 2>/dev/null || echo unavailable)"
   local ps pn=unavailable
@@ -943,7 +954,7 @@ v_collect() {
         echo "== mounts below podman-storage or /run/tbound-pi in any mount namespace"
         cat /proc/[0-9]*/mountinfo 2>/dev/null | awk '{print $5}' | grep -E '^/(var/lib/tbound/podman-storage|run/tbound-pi)' | sort | uniq -c || true
         echo "== requests"; wc -l "$AUDIT/serve-pi-requests.jsonl"; tail -n 5 "$AUDIT/serve-pi-requests.jsonl" | cut -c1-500
-        echo "== catalog"; wc -l "$CATALOG"; echo "drained=$(grep -c pi_workflow_owner_scope_drained "$CATALOG" || true) unexposed_true=$(grep -c '"unexposed":true' "$CATALOG" || true)"
+        echo "== catalog"; wc -l "$CATALOG"; echo "drained=$(grep -c pi_workflow_owner_scope_drained "$CATALOG" || true) unexposed_true=$(catalog_unexposed_count || echo unavailable)"
         echo "== audit files"; ls -l "$AUDIT"
         echo "== maintenance lock"; flock -n /run/tbound/maintenance.lock true && echo lock-free || echo lock-held
       } >"$WORK/l4.txt" 2>&1

@@ -37,7 +37,7 @@ Verbs:
 - abandon RID --confirm <12 hex of sha256 of the printed L4 fact list> — prints facts first; then stop service+socket, abandon-unknown with fixed reason, start socket.
 - guest-evidence capability|netsink|landlock-connect|procoracle|provider-exchange|route-bash-view|route-direct-runtime [RUNID] — hardwired flags; preconditions on test binary / tbound-profile / run.json digests; refuse existing out; copy result to output.
 - stage-ga tbound-profile|procoracle-test|cell-entrypoint-test|run-json SHA — copy+hash+pin compare; install 0500 (run.json 0444) to /root/ga/.
-- collect l4|evidence-out|audit RUNID|requests|catalog — allow-listed copies to output dir.
+- collect l4|evidence-out|audit RUNID|requests|catalog — allow-listed copies to output dir. The l4 summary and abandon fact list count never-exposed cleanups from decoded base64 JSON data on pi_workflow_owner_scope_drained events (`unexposed` must be boolean true); malformed/unreadable cleanup data reports unavailable. Event-kind counts use the outer kind field.
 - diag l2|mounts|census-live|podman-ps|podman-ps-noreap|nft-sink|probe-capabilities|image-probe|live-listing|netsink-journal-size — fixed read-only wrappers.
 - spikeb nft-delete|net-sink-rmdir|reboot (optional), netsink-rotate, provider-key (optional, tty only), status [NAME].
 

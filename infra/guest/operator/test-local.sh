@@ -3,7 +3,9 @@
 set -euo pipefail
 [[ $EUID -ne 0 ]] || { echo 'Run these temporary-directory tests without root.' >&2; exit 1; }
 python3 -I - "$(dirname -- "$(realpath -- "$0")")/tbound-op" "$@" <<'PY'
+import base64
 import grp
+import json
 import os
 from pathlib import Path
 import pwd
@@ -173,6 +175,74 @@ ARGS=($2)
                 self.assertEqual(stat.S_IMODE((self.live / "lost+found").stat().st_mode), 0o755)
                 for p in self.live.rglob("*"):
                     self.assertEqual((p.stat().st_uid, p.stat().st_gid), (os.getuid(), os.getgid()))
+
+
+class CatalogTests(unittest.TestCase):
+    def diagnostics(self, events, entry):
+        with tempfile.TemporaryDirectory(prefix="tbound-op-catalog-test-") as tmp:
+            base = Path(tmp)
+            catalog = base / "catalog.jsonl"
+            catalog.write_text("".join(json.dumps(ev) + "\n" for ev in events))
+            (base / "audit").mkdir()
+            (base / "audit" / "serve-pi-requests.jsonl").touch()
+            (base / "cg" / "cells").mkdir(parents=True)
+            (base / "cg" / "cells" / "cgroup.procs").touch()
+            (base / "work").mkdir()
+            helpers = source[source.index("req_records() {"):source.index("GE_OUT=$GA/out")]
+            collect = source[source.index("v_collect() {"):source.index("v_diag() {")]
+            script = """set -euo pipefail
+die() { echo "$*" >&2; exit 1; }
+need_argc() { :; }
+mkwork() { :; }
+put_out() { :; }
+flock() { return 1; }
+# Only the fixed /proc read is stubbed; catalog, request, and cgroup reads use temp files.
+cat() { case ${1:-} in /proc/*) return 0;; *) command cat "$@";; esac; }
+CATALOG=$1/catalog.jsonl
+AUDIT=$1/audit
+CG=$1/cg
+WORK=$1/work
+SVC_PRIV=(false)
+PODMAN=(false)
+ARGS=(l4)
+""" + helpers + collect + "\n" + entry + "\n"
+            return subprocess.run(["bash", "-c", script, "test-local", tmp], capture_output=True, text=True)
+
+    @staticmethod
+    def event(kind="pi_workflow_owner_scope_drained", **data):
+        return {"event": {"kind": kind, "data": base64.b64encode(json.dumps(data).encode()).decode()}}
+
+    def test_unexposed_cleanup_counts_decoded_boolean_in_both_diagnostics(self):
+        events = [self.event(unexposed=True), self.event(unexposed=True),
+                  self.event(unexposed=False), self.event(), self.event(unexposed="true"),
+                  self.event("other_event", unexposed=True)]
+        # A decoy outside the encoded payload must not contribute to the count.
+        events[-1]["unexposed"] = True
+        for entry, field in (("l4_facts test-request", "catalog_unexposed_true=2"),
+                             ("v_collect", "unexposed_true=2")):
+            with self.subTest(entry=entry):
+                got = self.diagnostics(events, entry)
+                self.assertEqual(got.returncode, 0, got.stderr)
+                self.assertIn(field, got.stdout)
+
+    def test_no_unexposed_cleanup_counts_zero_in_both_diagnostics(self):
+        for events in ([], [self.event(unexposed=False), self.event("other_event", unexposed=True)]):
+            for entry, field in (("l4_facts test-request", "catalog_unexposed_true=0"),
+                                 ("v_collect", "unexposed_true=0")):
+                with self.subTest(events=events, entry=entry):
+                    got = self.diagnostics(events, entry)
+                    self.assertEqual(got.returncode, 0, got.stderr)
+                    self.assertIn(field, got.stdout)
+
+    def test_invalid_cleanup_payload_is_unavailable_in_both_diagnostics(self):
+        event = self.event(unexposed=True)
+        event["event"]["data"] = "not-base64"
+        for entry, field in (("l4_facts test-request", "catalog_unexposed_true=unavailable"),
+                             ("v_collect", "unexposed_true=unavailable")):
+            with self.subTest(entry=entry):
+                got = self.diagnostics([event], entry)
+                self.assertEqual(got.returncode, 0, got.stderr)
+                self.assertIn(field, got.stdout)
 
 
 unittest.main(verbosity=2)
