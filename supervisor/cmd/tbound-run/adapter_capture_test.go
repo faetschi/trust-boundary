@@ -158,6 +158,9 @@ func TestAdapterCaptureWritesAValidatedArtifactBoundToTheTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := env.Data
+	if r.TestReporter != "spec" {
+		t.Errorf("test_reporter = %q, want spec", r.TestReporter)
+	}
 	adapterOnly := map[string]miniFile{}
 	for n, f := range files {
 		if strings.HasPrefix(n, "adapter/") {

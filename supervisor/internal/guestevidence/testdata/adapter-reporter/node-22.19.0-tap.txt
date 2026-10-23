@@ -1,0 +1,236 @@
+TAP version 13
+# Subtest: adapter's registered model is the broker-approved model
+ok 1 - adapter's registered model is the broker-approved model
+  ---
+  duration_ms: 0.762692
+  type: 'test'
+  ...
+# Subtest: Go turn projection must match its fixed model and finish/call shape
+ok 2 - Go turn projection must match its fixed model and finish/call shape
+  ---
+  duration_ms: 4.489183
+  type: 'test'
+  ...
+# Subtest: provider cancellation sends only the matching bounded cancel frame
+ok 3 - provider cancellation sends only the matching bounded cancel frame
+  ---
+  duration_ms: 1.457346
+  type: 'test'
+  ...
+# Subtest: Go-compatible frame golden vector encodes and decodes
+ok 4 - Go-compatible frame golden vector encodes and decodes
+  ---
+  duration_ms: 7.097545
+  type: 'test'
+  ...
+# Subtest: rejects oversized, truncated, and malformed frames
+    # Subtest: clean EOF is a normal close
+    ok 1 - clean EOF is a normal close
+      ---
+      duration_ms: 2.464569
+      type: 'test'
+      ...
+    # Subtest: oversized announced length
+    ok 2 - oversized announced length
+      ---
+      duration_ms: 1.112721
+      type: 'test'
+      ...
+    # Subtest: truncated prefix
+    ok 3 - truncated prefix
+      ---
+      duration_ms: 0.760139
+      type: 'test'
+      ...
+    # Subtest: truncated payload
+    ok 4 - truncated payload
+      ---
+      duration_ms: 0.954057
+      type: 'test'
+      ...
+    # Subtest: duplicate and unknown fields
+    ok 5 - duplicate and unknown fields
+      ---
+      duration_ms: 2.071834
+      type: 'test'
+      ...
+    1..5
+ok 5 - rejects oversized, truncated, and malformed frames
+  ---
+  duration_ms: 8.015485
+  type: 'test'
+  ...
+# Subtest: checks token, sequence, replay, and message direction
+    # Subtest: binding token mismatch
+    ok 1 - binding token mismatch
+      ---
+      duration_ms: 0.817878
+      type: 'test'
+      ...
+    # Subtest: sequence must start at one and increase by one
+    ok 2 - sequence must start at one and increase by one
+      ---
+      duration_ms: 0.908185
+      type: 'test'
+      ...
+    # Subtest: replayed sequence is rejected
+    ok 3 - replayed sequence is rejected
+      ---
+      duration_ms: 1.111314
+      type: 'test'
+      ...
+    # Subtest: wrong direction is rejected
+    ok 4 - wrong direction is rejected
+      ---
+      duration_ms: 0.684772
+      type: 'test'
+      ...
+    # Subtest: unknown kind is rejected
+    ok 5 - unknown kind is rejected
+      ---
+      duration_ms: 0.578969
+      type: 'test'
+      ...
+    1..5
+ok 6 - checks token, sequence, replay, and message direction
+  ---
+  duration_ms: 4.769402
+  type: 'test'
+  ...
+# Subtest: proxy tools each round-trip one proposal and return its correlated result
+ok 7 - proxy tools each round-trip one proposal and return its correlated result
+  ---
+  duration_ms: 5.11797
+  type: 'test'
+  ...
+# Subtest: proxy feedback appends exactly the fixed hint, and leaves successful ALLOW unchanged
+    # Subtest: successful ALLOW
+    ok 1 - successful ALLOW
+      ---
+      duration_ms: 1.476685
+      type: 'test'
+      ...
+    # Subtest: failed command
+    ok 2 - failed command
+      ---
+      duration_ms: 1.023515
+      type: 'test'
+      ...
+    # Subtest: unknown reason
+    ok 3 - unknown reason
+      ---
+      duration_ms: 0.927924
+      type: 'test'
+      ...
+    # Subtest: empty status
+    ok 4 - empty status
+      ---
+      duration_ms: 1.014801
+      type: 'test'
+      ...
+    # Subtest: object prototype name
+    ok 5 - object prototype name
+      ---
+      duration_ms: 1.231798
+      type: 'test'
+      ...
+    # Subtest: argument_digest_mismatch
+    ok 6 - argument_digest_mismatch
+      ---
+      duration_ms: 1.021681
+      type: 'test'
+      ...
+    # Subtest: correlation_required
+    ok 7 - correlation_required
+      ---
+      duration_ms: 1.848431
+      type: 'test'
+      ...
+    # Subtest: invalid_arguments
+    ok 8 - invalid_arguments
+      ---
+      duration_ms: 0.914401
+      type: 'test'
+      ...
+    # Subtest: invalid_policy
+    ok 9 - invalid_policy
+      ---
+      duration_ms: 0.877472
+      type: 'test'
+      ...
+    # Subtest: policy_default_deny
+    ok 10 - policy_default_deny
+      ---
+      duration_ms: 0.774623
+      type: 'test'
+      ...
+    # Subtest: policy_rule_deny
+    ok 11 - policy_rule_deny
+      ---
+      duration_ms: 0.77734
+      type: 'test'
+      ...
+    # Subtest: scope_path_not_covered
+    ok 12 - scope_path_not_covered
+      ---
+      duration_ms: 0.697254
+      type: 'test'
+      ...
+    # Subtest: scope_protected_path
+    ok 13 - scope_protected_path
+      ---
+      duration_ms: 0.808063
+      type: 'test'
+      ...
+    # Subtest: unknown_tool
+    ok 14 - unknown_tool
+      ---
+      duration_ms: 0.717032
+      type: 'test'
+      ...
+    1..14
+ok 8 - proxy feedback appends exactly the fixed hint, and leaves successful ALLOW unchanged
+  ---
+  duration_ms: 15.041668
+  type: 'test'
+  ...
+# Subtest: IPC rejects command status outside allowed failed bash results
+    # Subtest: DENY read command_failed
+    ok 1 - DENY read command_failed
+      ---
+      duration_ms: 0.511227
+      type: 'test'
+      ...
+    # Subtest: DENY read unexpected
+    ok 2 - DENY read unexpected
+      ---
+      duration_ms: 0.502522
+      type: 'test'
+      ...
+    # Subtest: ALLOW read command_failed
+    ok 3 - ALLOW read command_failed
+      ---
+      duration_ms: 0.420821
+      type: 'test'
+      ...
+    1..3
+ok 9 - IPC rejects command status outside allowed failed bash results
+  ---
+  duration_ms: 1.69528
+  type: 'test'
+  ...
+# Subtest: official Pi CLI 0.87.1 loads the mediated extension and settles simulated host-fixture denials
+ok 10 - official Pi CLI 0.87.1 loads the mediated extension and settles simulated host-fixture denials # SKIP set TBOUND_REQUIRE_PI_CLI_INTEGRATION=1 in CI or provide the pinned pi executable on PATH
+  ---
+  duration_ms: 0.616543
+  type: 'test'
+  ...
+1..10
+# tests 37
+# suites 0
+# pass 36
+# fail 0
+# cancelled 0
+# skipped 1
+# todo 0
+# duration_ms 9157.184567
