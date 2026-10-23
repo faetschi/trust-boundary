@@ -136,25 +136,26 @@ type providerPromptEvidence struct {
 }
 
 type providerResultEvidence struct {
-	WorkflowID       string `json:"workflow_id"`
-	ConversationID   string `json:"conversation_id"`
-	ResponseIDIssuer string `json:"response_id_issuer"`
-	ToolCallIDIssuer string `json:"tool_call_id_issuer"`
-	ResponseID       string `json:"response_id"`
-	ToolCallID       string `json:"tool_call_id"`
-	Tool             string `json:"tool"`
-	ArgumentDigest   string `json:"argument_digest"`
-	Sequence         uint64 `json:"sequence"`
-	GenerationFrom   string `json:"generation_from"`
-	GenerationTo     string `json:"generation_to"`
-	TreeDigestFrom   string `json:"tree_digest_from"`
-	TreeDigestTo     string `json:"tree_digest_to"`
-	ResultID         string `json:"result_id"`
-	ResultDigest     string `json:"result_digest"`
-	Result           []byte `json:"result"`
-	TransitionID     string `json:"transition_id,omitempty"`
-	TransitionSeq    uint64 `json:"transition_sequence,omitempty"`
-	EffectID         string `json:"effect_id,omitempty"`
+	WorkflowID       string                        `json:"workflow_id"`
+	ConversationID   string                        `json:"conversation_id"`
+	ResponseIDIssuer string                        `json:"response_id_issuer"`
+	ToolCallIDIssuer string                        `json:"tool_call_id_issuer"`
+	ResponseID       string                        `json:"response_id"`
+	ToolCallID       string                        `json:"tool_call_id"`
+	Tool             string                        `json:"tool"`
+	ArgumentDigest   string                        `json:"argument_digest"`
+	Sequence         uint64                        `json:"sequence"`
+	GenerationFrom   string                        `json:"generation_from"`
+	GenerationTo     string                        `json:"generation_to"`
+	TreeDigestFrom   string                        `json:"tree_digest_from"`
+	TreeDigestTo     string                        `json:"tree_digest_to"`
+	ResultID         string                        `json:"result_id"`
+	ResultDigest     string                        `json:"result_digest"`
+	Result           []byte                        `json:"result"`
+	Hint             *providerbridge.HintSelection `json:"hint,omitempty"`
+	TransitionID     string                        `json:"transition_id,omitempty"`
+	TransitionSeq    uint64                        `json:"transition_sequence,omitempty"`
+	EffectID         string                        `json:"effect_id,omitempty"`
 }
 
 // providerAdmissionDeniedEvidence is the provider_admission_denied journal record: the DENY Result of an
