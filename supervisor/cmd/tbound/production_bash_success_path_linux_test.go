@@ -42,6 +42,7 @@ type sealedD09Cell struct {
 	leaseID        string
 	template       piruntime.D09CellTemplate
 	templateDigest string
+	readOnly       bool // the command only reads the view (route probe `cat`)
 	receipt        piruntime.D09CommandReceipt
 }
 
@@ -56,13 +57,15 @@ func (c *sealedD09Cell) Run(_ context.Context, view *sessionrepo.CommandView,
 	if err := syscall.Fstat(int(source.Fd()), &stat); err != nil {
 		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
 	}
-	task, err := os.OpenFile(fmt.Sprintf("/proc/self/fd/%d/task.txt", source.Fd()), os.O_WRONLY|os.O_APPEND, 0)
-	if err != nil {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
-	}
-	_, writeErr := task.WriteString("bash-stage\n")
-	if err := task.Close(); writeErr != nil || err != nil {
-		return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("cell write: %v %v", writeErr, err)
+	if !c.readOnly {
+		task, err := os.OpenFile(fmt.Sprintf("/proc/self/fd/%d/task.txt", source.Fd()), os.O_WRONLY|os.O_APPEND, 0)
+		if err != nil {
+			return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, err
+		}
+		_, writeErr := task.WriteString("bash-stage\n")
+		if err := task.Close(); writeErr != nil || err != nil {
+			return sessionrepo.CommandResult{}, sessionrepo.CommandSettlement{}, fmt.Errorf("cell write: %v %v", writeErr, err)
+		}
 	}
 	const cellName, cellMountID = "cell-success-path", 706
 	result := sessionrepo.CommandResult{ExitObserved: true, ExitCode: 0, Stdout: []byte("ok\n")}
@@ -103,6 +106,19 @@ func (c *sealedD09Cell) TakeCommandReceipt(*sessionrepo.CommandView, sessionrepo
 // settlement with requireEvidencedBashContainment → the Bash-evidence half of
 // CheckPublicationPrerequisites → ResolveTerminalLeaseOrigin. Only the cell itself is a fixture.
 func TestProductionBashSuccessPathSettlesPublishesAndResolvesOrigin(t *testing.T) {
+	driveProductionBashSuccessPath(t, `{"command":"printf 'bash-stage\\n' >> task.txt"}`, []string{"task.txt"}, false,
+		"baseline\nbash-stage\n")
+}
+
+// TestProductionBashNoChangeSettlesPublishesAndResolvesOrigin is the route probe's first call: a
+// read-only Bash under workflow_bash_output_paths [] changes nothing, yet must still bind to its
+// sealed D09 receipt (empty, attested effect) and settle like a writing Bash.
+func TestProductionBashNoChangeSettlesPublishesAndResolvesOrigin(t *testing.T) {
+	driveProductionBashSuccessPath(t, `{"command":"cat task.txt"}`, []string{}, true, "baseline\n")
+}
+
+func driveProductionBashSuccessPath(t *testing.T, rawArguments string, outputPaths []string, readOnly bool, wantTask string) {
+	t.Helper()
 	root := privateGovernedTestRoot(t)
 	const (
 		workflowID     = "success-path-workflow"
@@ -137,12 +153,12 @@ func TestProductionBashSuccessPathSettlesPublishesAndResolvesOrigin(t *testing.T
 	}
 	profile.ContainmentProfileDigest = templateDigest
 	runner := newProductionCommandRunner(func(leaseID string) (sessionrepo.CommandRunner, error) {
-		cell := &sealedD09Cell{leaseID: leaseID, template: template, templateDigest: templateDigest}
+		cell := &sealedD09Cell{leaseID: leaseID, template: template, templateDigest: templateDigest, readOnly: readOnly}
 		return newProductionD09BashRunnerWithInvoker(leaseID, cell, commandJournal, runID, "success-path-session",
 			workflowID, conversationID, profile, template), nil
 	})
 	authority, err := NewSessionOperationAuthority(storeJournal, providerJournal, workflowID, conversationID, providerID,
-		gatePolicy, storePolicyDigest, metadataPolicyDigest, runner, []string{"task.txt"})
+		gatePolicy, storePolicyDigest, metadataPolicyDigest, runner, outputPaths)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,14 +219,14 @@ func TestProductionBashSuccessPathSettlesPublishesAndResolvesOrigin(t *testing.T
 	}
 	durable, err := NewDurableExecutor(DurableExecutorConfig{Store: store, Tip: g0, CallIssuer: governedCallIssuer,
 		PolicyDigest: storePolicyDigest, MetadataPolicyDigest: metadataPolicyDigest,
-		BashOutputPaths: []string{"task.txt"}, CommandRunner: runner})
+		BashOutputPaths: outputPaths, CommandRunner: runner})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// One captured provider Bash call, gated and executed exactly as the provider bridge does.
 	const responseID, callID = "success-response-bash", "success-call-bash"
-	arguments := json.RawMessage(`{"command":"printf 'bash-stage\\n' >> task.txt"}`)
+	arguments := json.RawMessage(rawArguments)
 	argumentDigest, err := protocol.CanonicalArgumentsDigest("bash", arguments)
 	if err != nil {
 		t.Fatal(err)
@@ -335,7 +351,7 @@ func TestProductionBashSuccessPathSettlesPublishesAndResolvesOrigin(t *testing.T
 		t.Fatalf("terminal lease origin = %+v err=%v; want %+v", resolved, err, providerCall)
 	}
 	if final, err := os.ReadFile(filepath.Join(storeRootPath, "generations", tip.ID(), "task.txt")); err != nil ||
-		string(final) != "baseline\nbash-stage\n" {
+		string(final) != wantTask {
 		t.Fatalf("Bash output generation = %q err=%v", final, err)
 	}
 }
