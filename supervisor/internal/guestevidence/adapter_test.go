@@ -3,12 +3,13 @@ package guestevidence
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
 	"slices"
 	"strings"
 	"testing"
 )
 
-// adapterOutput is the shape of `npm run check` output on a non-terminal (node:test spec reporter):
+// adapterOutput is the shape of `npm run check` output with node:test's spec reporter:
 // 18 tests of which 8 are top-level, and the official Pi CLI test is skipped.
 const adapterOutput = `npm notice run tbound-pi-closure-spike@0.1.0 check
 npm notice run npm run typecheck && npm test
@@ -60,7 +61,7 @@ func goodAdapter(t *testing.T) AdapterRun {
 		PackageJSONSHA256: digestOf("package.json"), PackageLockSHA256: digestOf("package-lock.json"),
 		Node: AdapterNode{Version: "v24.15.0", SHA256: digestOf("node"), Platform: "linux", Arch: "x64", ExecPath: "/opt/node/bin/node"},
 		Npm:  AdapterNpm{Version: "11.6.0", CLISHA256: digestOf("npm-cli"), InstallArgv: slices.Clone(AdapterInstallArgv), NodeModulesDigest: digestOf("node_modules"), NodeModulesFiles: 3000},
-		Argv: slices.Clone(AdapterCheckArgv), Env: map[string]string{"LANG": "C", "NO_COLOR": "1"}}
+		Argv: slices.Clone(AdapterCheckArgv), TestReporter: "spec", Env: map[string]string{"LANG": "C", "NO_COLOR": "1"}}
 	remakeAdapterOutput(&r, adapterOutput)
 	if len(r.Results) == 0 {
 		t.Fatal("the sample output has no results")
@@ -90,6 +91,51 @@ func TestParseAdapterOutputReadsTopLevelResults(t *testing.T) {
 	}
 }
 
+func TestAdapterReporterSamples(t *testing.T) {
+	// Captured offline in adapter/ on the same source, before adding the runner regression test.
+	for _, sample := range []struct {
+		file, node, reporter string
+	}{
+		{"node-22.19.0-tap.txt", "v22.19.0", "tap"},
+		{"node-24.15.0-spec.txt", "v24.15.0", "spec"},
+	} {
+		t.Run(sample.file, func(t *testing.T) {
+			output, err := os.ReadFile("testdata/adapter-reporter/" + sample.file)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r := goodAdapter(t)
+			r.Node.Version, r.TestReporter = sample.node, sample.reporter
+			remakeAdapterOutput(&r, string(output))
+			err = Validate(KindAdapterTests, encode(t, KindAdapterTests, r), adapterExpect())
+			if sample.reporter == "spec" {
+				if err != nil {
+					t.Fatalf("spec output refused: %v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), `no "tests" counter`) {
+				t.Fatalf("unselected TAP output must be refused, got %v", err)
+			}
+		})
+	}
+}
+
+func TestAdapterRefusesEveryMissingCounter(t *testing.T) {
+	for _, counter := range []string{"tests", "suites", "pass", "fail", "cancelled", "skipped", "todo"} {
+		t.Run(counter, func(t *testing.T) {
+			r := goodAdapter(t)
+			for _, line := range strings.Split(adapterOutput, "\n") {
+				if strings.HasPrefix(line, "ℹ "+counter+" ") {
+					remakeAdapterOutput(&r, strings.Replace(adapterOutput, line+"\n", "", 1))
+					break
+				}
+			}
+			if err := Validate(KindAdapterTests, encode(t, KindAdapterTests, r), adapterExpect()); err == nil || !strings.Contains(err.Error(), `no "`+counter+`" counter`) {
+				t.Fatalf("missing %s counter: %v", counter, err)
+			}
+		})
+	}
+}
+
 func TestAdapterRequiredValues(t *testing.T) {
 	failed := strings.Replace(strings.Replace(adapterOutput, "✔ Go-compatible frame golden vector encodes and decodes", "✖ Go-compatible frame golden vector encodes and decodes", 1), "ℹ fail 0", "ℹ fail 1", 1)
 	for name, mutate := range map[string]func(*AdapterRun){
@@ -114,6 +160,8 @@ func TestAdapterRequiredValues(t *testing.T) {
 		"typecheck only":         func(r *AdapterRun) { r.Argv = []string{"npm", "run", "typecheck"} },
 		"filtered tests":         func(r *AdapterRun) { r.Argv = append(r.Argv, "--", "--test-name-pattern=x") },
 		"non-zero exit":          func(r *AdapterRun) { r.ExitCode = 1 },
+		"missing reporter":       func(r *AdapterRun) { r.TestReporter = "" },
+		"different reporter":     func(r *AdapterRun) { r.TestReporter = "tap" },
 		"NODE_OPTIONS":           func(r *AdapterRun) { r.Env["NODE_OPTIONS"] = "--test-only" },
 		"malformed env name":     func(r *AdapterRun) { r.Env["A=B"] = "x" },
 		"output digest mismatch": func(r *AdapterRun) { r.OutputSHA256 = digestOf("another output") },
@@ -122,7 +170,13 @@ func TestAdapterRequiredValues(t *testing.T) {
 		"a result was dropped":   func(r *AdapterRun) { r.Results = r.Results[1:] },
 		"a result is repeated":   func(r *AdapterRun) { r.Results = append(r.Results, r.Results[0]) },
 		"a failure":              func(r *AdapterRun) { remakeAdapterOutput(r, failed) },
-		"cut run":                func(r *AdapterRun) { remakeAdapterOutput(r, strings.Split(adapterOutput, "ℹ tests")[0]) },
+		"failure counter only": func(r *AdapterRun) {
+			remakeAdapterOutput(r, strings.Replace(adapterOutput, "ℹ fail 0", "ℹ fail 1", 1))
+		},
+		"cancelled run": func(r *AdapterRun) {
+			remakeAdapterOutput(r, strings.Replace(adapterOutput, "ℹ cancelled 0", "ℹ cancelled 1", 1))
+		},
+		"cut run": func(r *AdapterRun) { remakeAdapterOutput(r, strings.Split(adapterOutput, "ℹ tests")[0]) },
 		"counters disagree": func(r *AdapterRun) {
 			remakeAdapterOutput(r, strings.Replace(adapterOutput, "ℹ tests 18", "ℹ tests 19", 1))
 		},

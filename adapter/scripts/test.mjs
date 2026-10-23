@@ -13,7 +13,7 @@ if (suites.length === 0) {
 
 const result = spawnSync(
   process.execPath,
-  ["--experimental-strip-types", "--test", ...suites],
+  ["--experimental-strip-types", "--test", "--test-reporter=spec", ...suites],
   { stdio: "inherit", shell: false },
 );
 

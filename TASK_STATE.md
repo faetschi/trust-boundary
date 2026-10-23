@@ -1,5 +1,18 @@
 # TBound task state
 
+2026-10-23, isolated `fix/adapter-tests-tap` from `5a29215`: pinned the adapter
+runner to `--test-reporter=spec`; adapter artifacts now require `test_reporter:
+"spec"` and older artifacts must be recaptured. Red first: Node 22.19.0 emitted
+TAP and failed the piped-runner regression; the capture test failed on missing
+reporter metadata (both exit 1). Real default TAP/spec fixtures recorded offline.
+Final receipts: WSL Go 1.27.3, private TMPDIR + umask 077 + GOPROXY/GOSUMDB off,
+`go test ./internal/guestevidence/ ./cmd/tbound-run/ -count=1` and same-package
+`go vet` exit 0; gofmt clean. Git discovery ceiling avoids the Windows worktree
+gitdir during WSL tests. `npm.cmd run check` on Windows Node 24.22.1 and offline
+WSL `npm run check` on Node 22.19.0 and 24.15.0 all exit 0, each 37 passes and
+one optional Pi CLI prerequisite skip. No dependency/runtime pins changed; the
+adapter tree, runner executable and regenerated evidence digests change. No push.
+
 2026-10-23 round 3, isolated `feat/denial-hints`: static/decision/local candidate-only hints; H1 remains static. Fixed scripted candidate 1, fallback endpoint credential validation, mixed-format replay and caller cancellation; removed dead response fields. C-DH final model/controls, runner integration, product dry-run and live collection remain deferred; design/freeze seams: `docs/design/denial-hint-providers.md`. Executable, journal heads/transcript commitments and adapter bundle require re-pinning; no live calls or push.
 Round 2 receipts (source `2df906a`): private WSL TMPDIR + umask 077, Go 1.27.1 `go test -json ./internal/providerbridge/ ./cmd/tbound/ ./internal/workflowrecovery/ ./cmd/tbound-hint-eval/ -count=1`: exit 0, 1255 pass / 0 fail / 8 environment skips; same-package `go vet`: exit 0; gofmt and `git diff --check`: clean. `go run ./cmd/tbound-hint-eval`: exit 0, 20 synthetic scenarios per provider (no measured model outcomes).
 Adapter receipts: round 2 `npm.cmd run check`: exit 0, tsc clean, 36 pass / 0 fail / 1 qualified-Pi prerequisite skip; prior static-hint round Go targeted checks: 1555 pass / 0 fail / 8 environment skips, qualified Linux adapter: 37 pass / 0 skip. Adapter runtime unchanged in rounds 2-3; parent owns full gate/re-freeze.

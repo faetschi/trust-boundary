@@ -60,6 +60,7 @@ type AdapterRun struct {
 	Node              AdapterNode       `json:"node"`
 	Npm               AdapterNpm        `json:"npm"`
 	Argv              []string          `json:"argv"`
+	TestReporter      string            `json:"test_reporter"`
 	Env               map[string]string `json:"env"`
 	ExitCode          int               `json:"exit_code"`
 	Output            string            `json:"output"`
@@ -102,7 +103,7 @@ var (
 	adapterPlainEnv  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
-// ParseAdapterOutput reads the spec reporter output of `node --test` (the default for a non-terminal):
+// ParseAdapterOutput reads the spec reporter output of `node --test --test-reporter=spec`:
 // the top-level result lines (indentation 0), the number of result lines at every depth and the final
 // counters. A top-level test with subtests is reported by its own closing line.
 func ParseAdapterOutput(output string) (results []TestResult, lines int, sum AdapterSummary, err error) {
@@ -214,6 +215,9 @@ func validateAdapter(raw []byte, e Expect) error {
 
 	if !slices.Equal(r.Argv, AdapterCheckArgv) {
 		add("invocation %q, want %q", r.Argv, AdapterCheckArgv)
+	}
+	if r.TestReporter != "spec" {
+		add("test reporter %q, want spec", r.TestReporter)
 	}
 	if r.ExitCode != 0 {
 		add("the check exited %d", r.ExitCode)
