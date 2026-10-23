@@ -120,3 +120,19 @@ func TestCheckManifestArtifactsRefusesAnAttackerThatDoesNotFit(t *testing.T) {
 		}
 	}
 }
+
+// A pre-effect retry reserves one more provider turn, so the adaptive replay needs 2*issuable+1
+// host calls plus one per retry the signed service config allows.
+func TestCheckAttackerChargesPreEffectRetries(t *testing.T) {
+	m, fsys := pivotedCases(t, nil)
+	if err := CheckAttacker(m, fsys, 0); err != nil {
+		t.Fatalf("without retries: %v", err)
+	}
+	if err := CheckAttacker(m, fsys, 2); err == nil || !strings.Contains(err.Error(), "pre-effect retries") {
+		t.Fatalf("a 9-host-call replay with 2 retries allowed: %v", err)
+	}
+	m.Cases[0].Trial.MaxHostCalls = 11
+	if err := CheckAttacker(m, fsys, 2); err != nil {
+		t.Fatalf("a replay that covers its retries: %v", err)
+	}
+}

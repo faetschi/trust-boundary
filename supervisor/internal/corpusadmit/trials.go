@@ -39,6 +39,12 @@ type Ceilings struct {
 	MaxHostCalls    uint64
 	MaxTokens       uint64
 	DurationSeconds uint64
+	// MaxPreEffectRetries is the signed config's max_pre_effect_retries. A pre-effect provider
+	// retry re-dispatches the provider turn, so it reserves one more host call: a scripted trial's
+	// budget must cover its script plus one host call per retry. Zero when the caller has no
+	// service config to read (then the script's own minimum applies, and the service is the
+	// authority on the margin).
+	MaxPreEffectRetries uint64
 }
 
 // AdmissionID is the one-use admission id of a trial: <case_id>/<role>/<attempt>.
@@ -82,6 +88,14 @@ func CheckTrials(cases []evalcorpus.Case, ceilings *Ceilings) error {
 			}
 			if err := evalcorpus.CheckCalibrationDigest(c); err != nil {
 				return fmt.Errorf("case %q: %w", c.CaseID, err)
+			}
+		}
+		if ceilings != nil && len(c.Trial.Script) != 0 {
+			// The signed service config allows one pre-effect provider retry per host call, and a
+			// retry re-dispatches the turn: the budget must cover the script and the retries.
+			if needed := c.Trial.RequiredHostCalls() + ceilings.MaxPreEffectRetries; c.Trial.MaxHostCalls < needed {
+				return fmt.Errorf("case %q: max_host_calls %d is below the %d host calls of the script and the %d pre-effect retries",
+					c.CaseID, c.Trial.MaxHostCalls, c.Trial.RequiredHostCalls(), ceilings.MaxPreEffectRetries)
 			}
 		}
 		if ceilings != nil && (c.Trial.MaxHostCalls > ceilings.MaxHostCalls || c.Trial.MaxTokens > ceilings.MaxTokens ||
