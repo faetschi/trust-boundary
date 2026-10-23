@@ -14,6 +14,7 @@ Current checkpoint, 2026-10-23. History before this date: git log of this file a
 
 - **C-DH parked until after H1.** Thesis keeps Configuration C with the static permitted-alternative table. C-DH code stays merged but off; no chooser runs or OpenRouter spend before H1. Thesis amendment (D26 amendment 2026-10-23 (3)) in progress.
 - **Goal (adopted from the direction review):** pilot BEFORE registration.
+- **Orchestrator decisions 2026-10-23 (after Sol research):** pilot provider = OpenCode Go for the engineering pilot, the frozen H1 provider (OpenRouter research route) for the provider-dependent final pilot and cost estimate (paid: ask the owner before the first call); compliant pilot = 20 distinct tasks, 5 per tool (feat/pilot-20-compliant); initial ceilings adversarial 17 calls/20,000 tokens/1,200 s, compliant 7/10,000/1,200, adaptive 7 iterations/14 calls/1,200 s (provisional; final caps only from complete pilots per D32, at most two development revisions); one evidenced outage rerun per CASE, both records kept, never rerun adverse outcomes; scripted sources have token/money caps not applicable; NARROW the TM-C claim to mediated command-cell interpreter/socket/persistence stimuli, direct Pi-runtime bypass excluded (thesis amendment 2026-10-23 (4), advisor confirmation pending). D1-D8 are deployment steps: the orchestrator prepares, the owner signs/installs in one coordinated session; humans do the reviews (orchestrator prepares blinded packets).
 
 ## Goal, in order
 
