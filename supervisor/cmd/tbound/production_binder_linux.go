@@ -965,8 +965,11 @@ func productionToken() (string, error) {
 }
 
 // productionWorkspaceOptions is the workspace binding of a production session: the root ledger
-// records it and the publication repository scans the live and sealed roots with it.
+// records it and the publication repository scans the live and sealed roots with it. Those scans
+// run only after productionTrust.AttestQuiescent issued the one-use permit over the managed root
+// (sole writer domain, STOPPED worker, joined loops), so the binding carries that attestation;
+// without it workspace.Scan refuses every publication scan.
 func productionWorkspaceOptions(generation, metadataPolicyDigest string, xattr workspace.XattrVisibilityAttestation) workspace.Options {
 	return workspace.Options{Generation: generation, MetadataPolicyDigest: metadataPolicyDigest,
-		Limits: workspace.DefaultLimits(), XattrVisibility: xattr}
+		Limits: workspace.DefaultLimits(), QuiescentRoot: true, XattrVisibility: xattr}
 }
