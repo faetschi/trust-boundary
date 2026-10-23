@@ -222,7 +222,7 @@ test("official Pi CLI 0.87.1 loads the mediated extension and settles simulated 
   await Promise.all([home, temp, cwd, config, extensionSrc].map((path) => mkdir(path, { recursive: true, mode: 0o700 })));
   t.after(async () => rm(root, { recursive: true, force: true }));
 
-  for (const name of ["tbound-cli-extension.ts", "broker-provider.ts", "proxy-tools.ts", "ipc-transport.ts"]) {
+  for (const name of ["tbound-cli-extension.ts", "broker-provider.ts", "proxy-tools.ts", "ipc-transport.ts", "result-hints.ts"]) {
     await copyFile(join(sourceRoot, name), join(extensionSrc, name));
   }
   await writeFile(join(extensionRoot, "package.json"), '{"private":true,"type":"module"}\n', { mode: 0o600 });

@@ -15,6 +15,7 @@ import {
   type IpcResult,
 } from "./ipc-transport.ts";
 import { createIpcProxyTools, declaredToolNames } from "./proxy-tools.ts";
+import { permittedAlternativeHints } from "./result-hints.ts";
 
 const TOKEN = "00".repeat(32);
 
@@ -237,11 +238,11 @@ test("proxy tools each round-trip one proposal and return its correlated result"
     const callId = `call-${name}`;
     const execution = await tool.execute(callId, args[name] as never, undefined, undefined, {} as never);
     assert.equal(execution.content[0]?.type, "text");
-    assert.deepEqual(JSON.parse(execution.content[0]!.text), {
+    assert.equal(execution.content[0]!.text, JSON.stringify({
       ...result,
       tool_call_id: callId,
       tool: name,
-    });
+    }) + "\nhint: The policy does not allow this action. Use read, write or edit on task files, or bash inside the workspace.");
   }
 
   const proposals = await serverWork;
@@ -253,4 +254,65 @@ test("proxy tools each round-trip one proposal and return its correlated result"
   })));
   client.close();
   server.close();
+});
+
+test("proxy feedback appends exactly the fixed hint, and leaves successful ALLOW unchanged", async (t) => {
+  const allowed: IpcResult = {
+    ...result,
+    response_id: { issuer: "test", opaque: "response" },
+    tool: "bash",
+    sequence: 1,
+    canonical_arguments_digest: `tbound-args-jcs-rfc8785/v1:sha256:${"a".repeat(64)}`,
+    verdict: "ALLOW",
+    reason_code: "policy_rule_allow",
+    output: { text: "unchanged <output>\nsecond line", exit_code: 0 },
+  };
+  const cases: Array<{ name: string; reply: IpcResult; hint?: string }> = [
+    { name: "successful ALLOW", reply: allowed },
+    { name: "failed command", reply: { ...allowed, status: "command_failed" }, hint: permittedAlternativeHints.command_failed },
+    { name: "unknown reason", reply: { ...result, reason_code: "future_reason" } },
+    { name: "empty status", reply: { ...allowed, status: "" } },
+    { name: "object prototype name", reply: { ...result, reason_code: "__proto__" } },
+    ...Object.entries(permittedAlternativeHints).filter(([reason]) => reason !== "command_failed").map(([reason, hint]) => ({
+      name: reason, reply: { ...result, reason_code: reason }, hint,
+    })),
+  ];
+  for (const { name, reply, hint } of cases) {
+    await t.test(name, async () => {
+      const { client, server } = createInMemoryIpcPair(TOKEN);
+      try {
+        const tool = createIpcProxyTools(client, Type).find((tool) => tool.name === "bash");
+        assert.ok(tool);
+        const pending = tool.execute("c", { command: "true" }, undefined, undefined, {} as never);
+        assert.ok(await server.receiveProposal());
+        const sent = { ...reply, tool: "bash" };
+        await server.sendResult(sent);
+        const execution = await pending;
+        assert.deepEqual(execution, {
+          content: [{ type: "text", text: JSON.stringify(sent) + (hint ? `\nhint: ${hint}` : "") }],
+          details: undefined,
+        });
+      } finally {
+        client.close();
+        server.close();
+      }
+    });
+  }
+});
+
+test("IPC rejects command status outside allowed failed bash results", async (t) => {
+  for (const payload of [
+    { ...result, status: "command_failed" },
+    { ...result, status: "unexpected" },
+    { ...result, verdict: "ALLOW", reason_code: "policy_rule_allow", tool: "read", sequence: 1,
+      response_id: { issuer: "test", opaque: "response" },
+      canonical_arguments_digest: `tbound-args-jcs-rfc8785/v1:sha256:${"a".repeat(64)}`, status: "command_failed" },
+  ]) {
+    await t.test(`${payload.verdict} ${payload.tool} ${payload.status}`, async () => {
+      const { client, peer } = await clientAgainstRawPeer();
+      const reading = client.receiveResult();
+      await writeRaw(peer, wireFrame(rawEnvelope({ payload })));
+      await expectCode(reading, "ERR_IPC_MALFORMED_FRAME");
+    });
+  }
 });

@@ -570,7 +570,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 					return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, fmt.Errorf("verify Store result cross-link: %w", err))
 				}
 			}
-			resultContent := string(evidence.Result)
+			resultContent := modelResultText(evidence.Result, decoded)
 			message := openrouter.Message{Role: openrouter.Tool, ToolCallID: evidence.ToolCallID, Content: &resultContent}
 			if err := appendReplayHistory(&history, route, message); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
@@ -607,7 +607,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			}); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, fmt.Errorf("verify Store admission denial cross-link: %w", err))
 			}
-			denialContent := string(evidence.Result)
+			denialContent := modelResultText(evidence.Result, decoded)
 			denialMessage := openrouter.Message{Role: openrouter.Tool, ToolCallID: evidence.ToolCallID, Content: &denialContent}
 			if err := appendReplayHistory(&history, route, denialMessage); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"tbound/supervisor/internal/broker/protocol"
@@ -120,13 +121,17 @@ func TestProviderChannelDisclosureOfOutsideReadIsNone(t *testing.T) {
 			t.Fatalf("the request after the DENY carries %d tool messages, want 1", len(tools))
 		}
 		var object map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(tools[0]), &object); err != nil {
+		raw, hint, _ := strings.Cut(tools[0], "\nhint: ")
+		if hint != permittedAlternativeHints["policy_default_deny"] {
+			t.Fatalf("unexpected denial hint: %q", hint)
+		}
+		if err := json.Unmarshal([]byte(raw), &object); err != nil {
 			t.Fatalf("tool message is not a JSON Result: %v", err)
 		}
 		if output, present := object["output"]; present && string(output) != "null" {
 			t.Fatalf("DENY tool message carries output %s", output)
 		}
-		result, err := protocol.DecodeResult([]byte(tools[0]))
+		result, err := protocol.DecodeResult([]byte(raw))
 		if err != nil || result.Verdict != "DENY" || len(result.Output) != 0 {
 			t.Fatalf("DENY tool message = %+v, %v", result, err)
 		}

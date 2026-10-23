@@ -36,6 +36,7 @@ export interface IpcResult {
   verdict: "ALLOW" | "DENY";
   reason_code: string;
   policy_digest: string;
+  status?: "" | "command_failed";
   output?: unknown;
 }
 
@@ -236,7 +237,7 @@ function validateResult(value: unknown): asserts value is IpcResult {
   exactKeys(
     value,
     ["schema_version", "tool_call_id", "tool", "sequence", "verdict", "reason_code", "policy_digest"],
-    ["response_id", "canonical_arguments_digest", "output"],
+    ["response_id", "canonical_arguments_digest", "status", "output"],
   );
   if (value.schema_version !== "tbound-result/v1" || !validText(value.tool_call_id) ||
       !validText(value.tool) || !validText(value.reason_code) || !validText(value.policy_digest) ||
@@ -261,6 +262,10 @@ function validateResult(value: unknown): asserts value is IpcResult {
   }
   if (value.verdict === "DENY" && Object.hasOwn(value, "output")) {
     fail(MALFORMED, "denial result may not contain executor output");
+  }
+  if (Object.hasOwn(value, "status") && value.status !== "" &&
+      (value.status !== "command_failed" || value.verdict !== "ALLOW" || value.tool !== "bash")) {
+    fail(MALFORMED, "result status is only valid for an allowed failed bash command");
   }
 }
 

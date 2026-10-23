@@ -1007,7 +1007,7 @@ func (c *Conversation) appendResultLocked(kind string, result protocol.Result, d
 	if err != nil {
 		return err
 	}
-	content := string(encoded)
+	content := modelResultText(encoded, result)
 	message := openrouter.Message{Role: openrouter.Tool, ToolCallID: c.current.call.ID, Content: &content}
 	if err := c.appendHistoryLocked(message); err != nil {
 		return err
