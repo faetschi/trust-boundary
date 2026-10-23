@@ -179,7 +179,7 @@ func directRuntimeProblems(r RouteDenied, add func(format string, args ...any)) 
 	switch {
 	case c.Method != RouteMethodControl || c.Op != RouteOpOpen || c.Outcome != RouteOutcomeRead || c.ExitCode != 0 || c.Errno != "":
 		add("the control read (method %q op %q outcome %q errno %d %q) is not a successful open: the detector would see no read", c.Method, c.Op, c.Outcome, c.ExitCode, c.Errno)
-	case len(c.Argv) != 2 || c.Argv[0] != RouteOpOpen || !strings.HasPrefix(c.Argv[1], RouteDirectWorkspace+"/"):
+	case len(c.Argv) != 2 || c.Argv[0] != RouteOpOpen || !strings.HasPrefix(c.Argv[1], RouteDirectWorkspace+"/") || path.Clean(c.Argv[1]) != c.Argv[1]:
 		add("the control read does not open a file inside the Pi cell's workspace %s: %q", RouteDirectWorkspace, c.Argv)
 	case c.ResultDigest != RouteDirectResultDigest(RouteOpOpen, c.Argv[1], 0):
 		add("the control read's result digest is not that of its open and errno")
