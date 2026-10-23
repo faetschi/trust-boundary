@@ -59,7 +59,7 @@ type drOpts struct {
 
 func drTemplate(t *testing.T, imageDigest, ociLayout string) piruntime.D09CellTemplate {
 	t.Helper()
-	landlock, err := piruntime.DigestD09LandlockRules([]string{"/usr", "/etc"}, []string{"/work", "/tmp"})
+	landlock, err := piruntime.DigestD09LandlockRules([]string{"/usr", "/etc", piruntime.PiWorkerCellDefaultWorkingDirectory}, []string{"/work", "/tmp"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func drTemplate(t *testing.T, imageDigest, ociLayout string) piruntime.D09CellTe
 		Image: "localhost/tbound/pi-cell:latest", ExpectedImageDigest: imageDigest,
 		CosignPublicKeyPath: "/etc/tbound/cosign.pub", CosignPublicKeyDigest: geDigest("cosign-pub"),
 		OCILayoutPath: ociLayout, SeccompProfilePath: "/etc/tbound/seccomp.json", SeccompProfileDigest: geDigest("seccomp"),
-		LandlockABI: 8, LandlockRulesetDigest: landlock, LandlockROPath: "/usr,/etc", LandlockRWPath: "/work,/tmp",
+		LandlockABI: 8, LandlockRulesetDigest: landlock, LandlockROPath: "/usr,/etc," + piruntime.PiWorkerCellDefaultWorkingDirectory, LandlockRWPath: "/work,/tmp",
 		FrozenCapabilities: "0000000000000000", EntrypointPath: "/usr/local/bin/tbound-pi-entrypoint", EntrypointDigest: geDigest("entrypoint"),
 		Runtime: "crun", CgroupsPath: "/sys/fs/cgroup/tbound", CPUs: "1", PidsMax: 256, MemoryMB: 1024,
 		PodmanPath: "/usr/bin/podman", PodmanDigest: geDigest("podman"), CrunPath: "/usr/bin/crun", CrunDigest: geDigest("crun"),
@@ -125,7 +125,7 @@ type deniedFS struct {
 }
 
 func (deniedFS) OpenRead(p string) error {
-	if strings.HasPrefix(p, "/work/") {
+	if strings.HasPrefix(p, piruntime.PiWorkerCellDefaultWorkingDirectory+"/") {
 		return nil
 	}
 	return syscall.EACCES
@@ -227,7 +227,7 @@ func drBuildWith(t *testing.T, o drOpts) drWorld {
 		o.template(&w.productionTemplate)
 	}
 	w.probeTemplate = w.productionTemplate
-	probe := piruntime.D09RouteProbe{Name: piruntime.D09RouteProbeName, Target: drTarget, Control: "/work/" + drControl}
+	probe := piruntime.D09RouteProbe{Name: piruntime.D09RouteProbeName, Target: drTarget, Control: piruntime.PiWorkerCellDefaultWorkingDirectory + "/" + drControl}
 	w.probeTemplate.RouteProbe = &probe
 	probeDigest, err := w.probeTemplate.Digest()
 	if err != nil {

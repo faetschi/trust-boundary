@@ -11,7 +11,7 @@ import (
 
 var (
 	routeProbeTemplate = piruntime.DigestBytes([]byte("route-probe template"))
-	routeProbeConfig   = piruntime.D09RouteProbe{Name: piruntime.D09RouteProbeName, Target: "/home/node/.profile", Control: "/work/src/release.txt"}
+	routeProbeConfig   = piruntime.D09RouteProbe{Name: piruntime.D09RouteProbeName, Target: "/home/node/.profile", Control: piruntime.PiWorkerCellDefaultWorkingDirectory + "/src/release.txt"}
 )
 
 func probeEnv(overrides map[string]string) func(string) string {
@@ -20,7 +20,7 @@ func probeEnv(overrides map[string]string) func(string) string {
 		"TBOUND_ROUTE_PROBE_TARGET":        routeProbeConfig.Target,
 		"TBOUND_ROUTE_PROBE_CONTROL":       routeProbeConfig.Control,
 		"TBOUND_ROUTE_PROBE_TEMPLATE_FLAG": routeProbeConfig.TemplateFlag(routeProbeTemplate),
-		"TBOUND_LANDLOCK_RO_PATH":          "/usr,/lib,/etc",
+		"TBOUND_LANDLOCK_RO_PATH":          "/usr,/lib,/etc," + piruntime.PiWorkerCellDefaultWorkingDirectory,
 		"TBOUND_LANDLOCK_RW_PATH":          "/work,/tmp",
 	}
 	for k, v := range overrides {

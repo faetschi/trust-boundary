@@ -8,7 +8,8 @@ import (
 	"tbound/supervisor/internal/cellview"
 )
 
-const goodControlPath = "/work/src/release.txt"
+// goodControlPath lies in the Pi cell's workspace mount: the Pi cell has no /work (that is the command cell's).
+const goodControlPath = "/var/lib/tbound/pi-worker/src/release.txt"
 
 // goodObservations is what the probe in the Pi runtime cell reports for a cell that denies the target:
 // open and list are refused, stat (which Landlock does not mediate) shows the metadata.
@@ -92,6 +93,21 @@ func TestDirectRuntimeArtifactRefusesAReadAndAnythingThatIsNotAPolicyDenial(t *t
 	}
 	if d := goodDirectRuntimeWith(goodObservations(), int(syscall.EACCES)); Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, d), e) == nil {
 		t.Error("a control read that was denied was accepted: the detector would see no successful read")
+	}
+	// The command cell's /work is not mounted in the Pi cell: a control read there finds nothing.
+	d := goodDirectRuntime()
+	d.Control.Argv = []string{RouteOpOpen, "/work/src/release.txt"}
+	d.Control.ResultDigest = RouteDirectResultDigest(RouteOpOpen, "/work/src/release.txt", 0)
+	if Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, d), e) == nil {
+		t.Error("a control read outside the Pi cell's workspace was accepted")
+	}
+	// A path that only starts with the workspace prefix but leaves it through ".." is not inside it.
+	escape := RouteDirectWorkspace + "/../../../home/node/.profile"
+	d = goodDirectRuntime()
+	d.Control.Argv = []string{RouteOpOpen, escape}
+	d.Control.ResultDigest = RouteDirectResultDigest(RouteOpOpen, escape, 0)
+	if Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime, d), e) == nil {
+		t.Error("a control read escaping the workspace through .. was accepted")
 	}
 	// The stat of a denied cell may be denied as well.
 	if err := Validate(KindRouteDirectRuntime, encode(t, KindRouteDirectRuntime,
