@@ -132,7 +132,9 @@ func validateProviderExchange(raw []byte, e Expect) error {
 	if f.SourceGeneration != "g0" || f.FinalGeneration != "g2" || f.GenerationCount != 3 {
 		add("generations %q to %q (%d), want g0 to g2 (3)", f.SourceGeneration, f.FinalGeneration, f.GenerationCount)
 	}
-	if f.Settlement != "STOPPED" || !f.ExitObserved || f.ExitCode != 0 || !f.DescendantsSettled {
+	// The production rule (productionWorkerSettlementAllowsPublication): the supervisor stops the
+	// worker after the turn, so a clean run ends STOPPED with exit -1; the exit code is not part of it.
+	if f.Settlement != "STOPPED" || !f.ExitObserved || !f.DescendantsSettled {
 		add("the run did not settle cleanly (settlement %q, exit observed %t, exit %d, descendants settled %t)", f.Settlement, f.ExitObserved, f.ExitCode, f.DescendantsSettled)
 	}
 	if len(problems) > 0 {

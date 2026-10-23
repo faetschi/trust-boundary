@@ -82,7 +82,7 @@ func goodReceipt(e Expect) map[string]any {
 		"provider_exchange": true, "claim_bearing": false, "task_admitted": true, "turn_completed": true, "success": true,
 		"tool_sequence": []string{"read", "edit", "bash", "read"}, "provider_turns": 5,
 		"source_generation": "g0", "final_generation": "g2", "generation_count": 3,
-		"settlement": "STOPPED", "exit_observed": true, "exit_code": 0, "descendants_settled": true, "some_future_member": 1}
+		"settlement": "STOPPED", "exit_observed": true, "exit_code": -1, "descendants_settled": true, "some_future_member": 1} // G1 on F10: the supervisor stops the worker after the turn
 }
 
 func goodResponse(t *testing.T, e Expect, mutate func(response, receipt map[string]any)) string {
@@ -315,7 +315,6 @@ func TestProviderExchangeRequiredValues(t *testing.T) {
 		"another final":        func(_, f map[string]any) { f["final_generation"] = "g3" },
 		"unsettled":            func(_, f map[string]any) { f["settlement"] = "UNKNOWN" },
 		"exit not observed":    func(_, f map[string]any) { f["exit_observed"] = false },
-		"nonzero exit":         func(_, f map[string]any) { f["exit_code"] = 1 },
 		"descendants left":     func(_, f map[string]any) { f["descendants_settled"] = false },
 	} {
 		p := NewProviderExchange(goodResponse(t, e, mutate))
