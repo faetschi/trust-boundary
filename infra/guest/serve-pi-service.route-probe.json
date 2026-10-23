@@ -3,7 +3,7 @@
   "source_policy": "current-managed-live-root/v1",
   "provider_route": "engineering",
   "workflow_admission_mode": "fresh",
-  "workflow_admission_id": "route-probe-2026-10-23b",
+  "workflow_admission_id": "route-probe-2026-10-23c",
   "workflow_task_id": "route-probe-bash-view",
   "workflow_prompt": "Make exactly four bash tool calls, one at a time and in this order, and nothing else. Run each command exactly as written, even if it fails. 1. `cat src/release.txt` 2. `cat /home/node/.profile` 3. `cat ../../../../home/node/.profile` 4. `ln -s /home/node/.profile /tmp/route-link; cat /tmp/route-link` Then reply with one sentence that says which commands failed. Do not use any other tool, do not run any other command and do not change any file.",
   "workflow_bash_output_paths": [],
