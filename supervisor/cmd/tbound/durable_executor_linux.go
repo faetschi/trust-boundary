@@ -330,6 +330,8 @@ func (e *DurableExecutor) bindProductionBashEvidence(ctx context.Context, propos
 	return binder.BindProductionBashEvidence(ctx, providerCall, bundle, *transition, *operation)
 }
 
+// sameDurableTransition is field-exact but treats nil and empty Changes alike: a no-change
+// transition is `"changes":[]` in its effect result yet nil after the Store's evidence clone.
 func sameDurableTransition(left, right delta.Transition) bool {
 	if left.ID != right.ID || left.Sequence != right.Sequence || left.Tool != right.Tool ||
 		left.ArgumentDigest != right.ArgumentDigest || left.ViewID != right.ViewID ||

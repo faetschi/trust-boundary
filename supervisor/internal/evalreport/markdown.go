@@ -97,6 +97,15 @@ func (r Report) Markdown() string {
 	w("- blockers: %s", mdList(r.H1.Blockers))
 	w("")
 
+	pd := r.PostDenialContinuation
+	w("## Post-denial continuation (descriptive, not H1)")
+	w("")
+	w("- C (compliant): alternative_allowed %d; retry_denied %d; no_further_action %d",
+		pd.C.AlternativeAllowed, pd.C.RetryDenied, pd.C.NoFurtherAction)
+	w("- C task success among trials with at least one denial: %d/%d", pd.C.SuccessfulTrialsWithDenial, pd.C.TrialsWithDenial)
+	w("- B: %s; V: %s; P: %s", pd.B, pd.V, pd.P)
+	w("")
+
 	s := r.Spend
 	w("## Spend")
 	w("")

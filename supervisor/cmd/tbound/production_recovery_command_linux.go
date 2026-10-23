@@ -384,7 +384,7 @@ func sameHistoricalTransitionForEvent(event productionD09CommandSettledEvent, op
 	}
 	var result productionD09CommandEffectResult
 	if unmarshalGovernedJSON(effect.Result, &result) != nil ||
-		!reflect.DeepEqual(result.Transition, event.Transition) || !reflect.DeepEqual(result.Settlement, mustD09Settlement(event)) ||
+		!sameDurableTransition(result.Transition, event.Transition) || !reflect.DeepEqual(result.Settlement, mustD09Settlement(event)) ||
 		result.RunnerProfile != piruntime.D09CommandRunnerProfile {
 		return false
 	}

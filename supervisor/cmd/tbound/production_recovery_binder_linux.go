@@ -401,8 +401,7 @@ func bindProductionPiRecoverySession(ctx context.Context, config productionServe
 		LiveRoot:                      liveRoot, ManagedLiveRootLease: managedRootLease,
 		PublicationStateRoot: publicationStateRoot, PublicationJournal: publicationJournal,
 		OwnerEpoch: publicationEpoch, PublicationID: publicationID,
-		Workspace: workspace.Options{Generation: tip.ID(), MetadataPolicyDigest: metadataPolicyDigest,
-			Limits: workspace.DefaultLimits(), XattrVisibility: qualifiedXattr},
+		Workspace: productionWorkspaceOptions(tip.ID(), metadataPolicyDigest, qualifiedXattr),
 	}
 	if err := managedRootLease.revalidate(ctx, liveRoot); err != nil {
 		return fail(err)

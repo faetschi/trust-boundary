@@ -455,7 +455,7 @@ func validateProductionD09OperationBundle(bundle sessionrepo.EvidenceBundle, tra
 	specBytes, specErr := json.Marshal(effectSpec)
 	argumentDigest, argumentErr := sessionrepo.CommandArgumentsDigest(intentSpec)
 	if commandErr != nil || settlementErr != nil || specErr != nil ||
-		!reflect.DeepEqual(commandResult.Transition, transition) || commandResult.RunnerProfile != piruntime.D09CommandRunnerProfile ||
+		!sameDurableTransition(commandResult.Transition, transition) || commandResult.RunnerProfile != piruntime.D09CommandRunnerProfile ||
 		intentProfile != commandResult.RunnerProfile || !reflect.DeepEqual(effectSpec, intentSpec) ||
 		request.Tool != operation.Tool || request.Tool != transition.Tool || request.EffectID != operation.EffectID ||
 		request.Operation != operation.Operation || request.Operation != transition.Operation ||
