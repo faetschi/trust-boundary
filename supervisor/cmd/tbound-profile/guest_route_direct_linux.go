@@ -116,8 +116,9 @@ func probeRouteDirectRuntime(o routeProbeOptions, env routeProbeEnv) (guestevide
 		return d, "", errors.New("the probe template differs from the production template in more than the route_probe member: the probe did not run in the production cell")
 	}
 	probe := *probeTemplate.RouteProbe
-	if probe.Target != o.target || probe.Control != "/work/"+o.controlPath {
-		return d, "", fmt.Errorf("the probe template asks for target %q and control %q, not %q and %q", probe.Target, probe.Control, o.target, "/work/"+o.controlPath)
+	wantControl := piruntime.PiWorkerCellDefaultWorkingDirectory + "/" + o.controlPath
+	if probe.Target != o.target || probe.Control != wantControl {
+		return d, "", fmt.Errorf("the probe template asks for target %q and control %q, not %q and %q", probe.Target, probe.Control, o.target, wantControl)
 	}
 
 	raw, err := env.readJournal(filepath.Join(o.auditRoot, o.runID+"-session-audit.jsonl"))

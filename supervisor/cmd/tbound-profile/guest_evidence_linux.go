@@ -77,7 +77,7 @@ func runGuestEvidence(args []string, stdout, stderr io.Writer) error {
 	runID := flags.String("run-id", "", "route-denied: receipt.run_id of the route-probe run")
 	auditRoot := flags.String("audit-root", "/var/lib/tbound/audit", "route-denied: directory of the service audit journals")
 	target := flags.String("target", "", "route-denied: the registered outside-workspace file the probe commands request")
-	controlPath := flags.String("control-path", "", "route-denied: the workspace file the control command reads, relative to /work")
+	controlPath := flags.String("control-path", "", "route-denied: the workspace file the control read opens, relative to the workspace root")
 	controlFile := flags.String("control-file", "", "route-denied: that workspace file as it is on the guest, for its bytes")
 	probeTemplate := flags.String("probe-template", "", "route-denied direct-runtime: the route-probe cell template the probe cell was launched from")
 	productionTemplate := flags.String("production-template", "", "route-denied direct-runtime: the production cell template the probe template derives from")

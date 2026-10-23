@@ -48,6 +48,11 @@ const (
 	D09RouteProbeOpOpen = "open"
 	D09RouteProbeOpStat = "stat"
 	D09RouteProbeOpList = "list"
+
+	// PiWorkerCellDefaultWorkingDirectory is the working directory a generated production profile records.
+	// The launcher mounts the source read-only at exactly this path in the Pi cell (TBOUND_WORKER_CWD), so
+	// the probe's control read is of a file under it.
+	PiWorkerCellDefaultWorkingDirectory = "/var/lib/tbound/pi-worker"
 )
 
 // D09RouteProbeMethods are the ways the probe names the target, in order: the absolute path, a parent
@@ -66,7 +71,8 @@ type D09RouteProbe struct {
 	// Landlock ruleset, and its path must hold no symbolic link on any component: the permission baseline is
 	// measured on that path and refuses a link (fs.protected_symlinks is not a file permission).
 	Target string `json:"target"`
-	// Control is a file the cell may read (inside its ruleset), read in the same run.
+	// Control is a workspace file the cell may read, read in the same run: it lies under the Pi cell's
+	// workspace mount (PiWorkerCellDefaultWorkingDirectory) and inside the ruleset.
 	Control string `json:"control"`
 }
 
@@ -99,6 +105,9 @@ func (p D09RouteProbe) Validate(readOnlyPaths, readWritePaths []string) error {
 	}
 	if !inside(all, p.Control) {
 		return fmt.Errorf("route probe control %q lies outside the ruleset: the cell could not read it", p.Control)
+	}
+	if !strings.HasPrefix(p.Control, PiWorkerCellDefaultWorkingDirectory+"/") {
+		return fmt.Errorf("route probe control %q is not a file of the Pi cell's workspace %s", p.Control, PiWorkerCellDefaultWorkingDirectory)
 	}
 	return nil
 }

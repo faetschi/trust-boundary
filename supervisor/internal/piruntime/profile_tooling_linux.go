@@ -26,17 +26,13 @@ const (
 	// PiWorkerCellExecutable is the in-cell Node executable path recorded in a
 	// signed production profile. The frozen cell supplies the pinned Node bytes.
 	PiWorkerCellExecutable = PiCLIProductionExecutable
-	// PiWorkerCellWorkdir is the in-cell mount point of the sealed worker
-	// exposure. It is deliberately a fixed in-cell path, never a live host path.
+	// PiWorkerCellWorkdir is the command cell's mount point of the workspace. The
+	// Pi cell has no /work: it mounts the source at PiWorkerCellDefaultWorkingDirectory.
 	PiWorkerCellWorkdir = "/work"
 	// PiWorkerCellHome and PiWorkerCellTemp are private in-cell tmpfs locations;
 	// neither points into the sealed, read-only source view.
 	PiWorkerCellHome = PiCLIProductionHome
 	PiWorkerCellTemp = PiCLIProductionTemp
-	// PiWorkerCellDefaultWorkingDirectory is the host-side working directory a
-	// generated production profile records. The launcher binds exactly this
-	// path into the cell at PiWorkerCellWorkdir.
-	PiWorkerCellDefaultWorkingDirectory = "/var/lib/tbound/pi-worker"
 	// PiWorkerCellRuntimeBundleRoot is the host-side runtime bundle root a
 	// generated production profile records.
 	PiWorkerCellRuntimeBundleRoot = PiCLIProductionRuntimeBundleRoot
