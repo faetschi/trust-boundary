@@ -270,3 +270,105 @@ func TestFallbackHintJournalRejectsEndpointCredentials(t *testing.T) {
 		}
 	}
 }
+
+func TestHintReplayRejectsMixedMetadataAcrossFreshProcesses(t *testing.T) {
+	if path := os.Getenv("TBOUND_MIXED_HINT_PATH"); path != "" {
+		journal := openRecoveryTestJournal(t, path)
+		defer journal.Close()
+		projection, err := ReplayTranscript(journal, RecoveryPins{Config: recoveryTestConfig(), Model: ApprovedModel,
+			Policy: recoveryTestPolicy(t, os.Getenv("TBOUND_MIXED_HINT_KIND") == "admission")}, &replayVerifierFixture{})
+		if os.Getenv("TBOUND_MIXED_HINT_REJECT") == "1" {
+			if !errors.Is(err, ErrTranscriptReplay) || !strings.Contains(err.Error(), "mixed hint metadata") {
+				t.Fatalf("mixed journal was not rejected: %+v %v", projection, err)
+			}
+		} else if err != nil || projection.ResultCount != 2 {
+			t.Fatalf("uniform journal failed: %+v %v", projection, err)
+		}
+		return
+	}
+	for _, kind := range []string{"gate", "admission"} {
+		t.Run(kind, func(t *testing.T) {
+			journal := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "original.audit"))
+			defer journal.Close()
+			conversation, err := newWithDoer(recoveryTestConfig(), ApprovedModel, &fixtureDoer{responses: []fixtureResponse{
+				{responseID: "first", callID: "first-call", tool: "write", arguments: json.RawMessage(`{"path":"task.txt","content":"x"}`)},
+				{responseID: "second", callID: "second-call", tool: "write", arguments: json.RawMessage(`{"path":"task.txt","content":"y"}`)},
+			}}, journal)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := conversation.AdmitPrompt("task-hints", "Fix the public task"); err != nil {
+				t.Fatal(err)
+			}
+			executor := &denyingExecutor{deny: map[int]*protocol.AdmissionDeniedError{}}
+			if kind == "admission" {
+				executor.deny[0] = protectedWriteDenial("first-effect")
+				executor.deny[1] = protectedWriteDenial("second-effect")
+			}
+			wrapped, err := NewExecutor(conversation, executor)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := 0; i < 2; i++ {
+				_, _, err := driveDenialTurn(t, conversation, wrapped, recoveryTestPolicy(t, kind == "admission"), true)
+				var denied *protocol.AdmissionDeniedError
+				if (kind == "gate" && err != nil) || (kind == "admission" && !errors.As(err, &denied)) {
+					t.Fatal(err)
+				}
+			}
+			trace, err := journal.Trace()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, mode := range []string{"all-present", "all-legacy", "present-then-legacy", "legacy-then-present"} {
+				t.Run(mode, func(t *testing.T) {
+					path := filepath.Join(t.TempDir(), "variant.audit")
+					variant := openRecoveryTestJournal(t, path)
+					index := 0
+					for _, record := range trace.Records {
+						event := record.Event
+						if event.Kind == "provider_tool_result" || event.Kind == "provider_admission_denied" {
+							strip := mode == "all-legacy" || (mode == "present-then-legacy" && index == 1) || (mode == "legacy-then-present" && index == 0)
+							if strip {
+								if event.Kind == "provider_tool_result" {
+									var evidence resultEvidence
+									if err := json.Unmarshal(event.Data, &evidence); err != nil {
+										t.Fatal(err)
+									}
+									evidence.Hint = nil
+									event.Data, err = json.Marshal(evidence)
+								} else {
+									var evidence admissionDeniedEvidence
+									if err := json.Unmarshal(event.Data, &evidence); err != nil {
+										t.Fatal(err)
+									}
+									evidence.Hint = nil
+									event.Data, err = json.Marshal(evidence)
+								}
+								if err != nil {
+									t.Fatal(err)
+								}
+							}
+							index++
+						}
+						if _, err := variant.Append(event); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if err := variant.Close(); err != nil {
+						t.Fatal(err)
+					}
+					reject := "0"
+					if strings.Contains(mode, "then") {
+						reject = "1"
+					}
+					cmd := exec.Command(os.Args[0], "-test.run=^TestHintReplayRejectsMixedMetadataAcrossFreshProcesses$", "-test.count=1")
+					cmd.Env = append(os.Environ(), "TBOUND_MIXED_HINT_PATH="+path, "TBOUND_MIXED_HINT_KIND="+kind, "TBOUND_MIXED_HINT_REJECT="+reject)
+					if output, err := cmd.CombinedOutput(); err != nil {
+						t.Fatalf("fresh replay: %v\n%s", err, output)
+					}
+				})
+			}
+		})
+	}
+}

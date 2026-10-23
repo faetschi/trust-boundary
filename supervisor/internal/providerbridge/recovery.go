@@ -320,6 +320,21 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 	transitions := make(map[string]struct{})
 	effects := make(map[string]struct{})
 	var transitionSequence uint64
+	// Hint-bearing results must use one format throughout the journal, including its tail.
+	hintFormat := 0
+	replayResultText := func(encoded []byte, result protocol.Result, hint *HintSelection) (string, error) {
+		if permittedAlternativeHints[hintReason(result)] != "" {
+			format := 1
+			if hint != nil {
+				format = 2
+			}
+			if hintFormat != 0 && hintFormat != format {
+				return "", replayError("provider journal contains mixed hint metadata formats")
+			}
+			hintFormat = format
+		}
+		return journaledResultText(encoded, result, hint)
+	}
 
 	for _, record := range trace.Records {
 		if record.Sequence != ordinal+1 || record.Event.Outcome != "" || ordinal == math.MaxUint64 {
@@ -570,7 +585,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 					return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, fmt.Errorf("verify Store result cross-link: %w", err))
 				}
 			}
-			resultContent, err := journaledResultText(evidence.Result, decoded, evidence.Hint)
+			resultContent, err := replayResultText(evidence.Result, decoded, evidence.Hint)
 			if err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
@@ -610,7 +625,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			}); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, fmt.Errorf("verify Store admission denial cross-link: %w", err))
 			}
-			denialContent, err := journaledResultText(evidence.Result, decoded, evidence.Hint)
+			denialContent, err := replayResultText(evidence.Result, decoded, evidence.Hint)
 			if err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
 			}
