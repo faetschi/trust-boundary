@@ -195,7 +195,7 @@ func TestRouteProbeConfigurationIsValidatedAgainstTheRuleset(t *testing.T) {
 		// /work is in the ruleset but is the command cell's mount: the Pi cell mounts the workspace elsewhere.
 		"control outside the workspace": {Name: D09RouteProbeName, Target: testRouteProbe.Target, Control: "/work/src/release.txt"},
 		"control is the workspace":      {Name: D09RouteProbeName, Target: testRouteProbe.Target, Control: PiWorkerCellDefaultWorkingDirectory},
-		"newline in target":           {Name: D09RouteProbeName, Target: "/home/node/a\nb", Control: testRouteProbe.Control},
+		"newline in target":             {Name: D09RouteProbeName, Target: "/home/node/a\nb", Control: testRouteProbe.Control},
 	}
 	for name, p := range bad {
 		if err := p.Validate(ro, rw); err == nil {
