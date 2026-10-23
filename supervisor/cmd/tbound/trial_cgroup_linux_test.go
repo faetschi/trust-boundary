@@ -501,3 +501,80 @@ func TestResetHostRemovesNrCgroupsAndCreatesTheNetSinkParentOnRealCgroups(t *tes
 		}
 	}
 }
+
+// A no-reap/v1 run leaves its survivors in tbound-nr-* scopes by design, and only the reset kills
+// them. `reset --check` (the runner's Prepare, which runs before the reset) must therefore not count
+// them, or the next trial after a no-reap run is refused forever; a live process anywhere else in
+// the cells subtree still refuses.
+func TestCellsLiveOutsideNoReapIgnoresOnlyNoReapScopes(t *testing.T) {
+	for name, tc := range map[string]struct {
+		events, procs string
+		children      map[string]string // name -> cgroup.events
+		want          bool
+	}{
+		"idle":                          {"populated 0\n", "", map[string]string{"net-sink": "populated 0\n"}, false},
+		"only no-reap survivors":        {"populated 1\n", "", map[string]string{"tbound-nr-aa": "populated 1\n", "net-sink": "populated 0\n"}, false},
+		"a live command scope":          {"populated 1\n", "", map[string]string{"tbound-nr-aa": "populated 1\n", "tbound-cmd-bb": "populated 1\n"}, true},
+		"a live net-sink scope":         {"populated 1\n", "", map[string]string{"net-sink": "populated 1\n"}, true},
+		"a process in the cells itself": {"populated 1\n", "42\n", map[string]string{"tbound-nr-aa": "populated 1\n"}, true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir, path := fakeCgroupDir(t, true, tc.events)
+			if err := os.WriteFile(filepath.Join(path, "cgroup.procs"), []byte(tc.procs), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			for child, events := range tc.children {
+				if err := os.Mkdir(filepath.Join(path, child), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(path, child, "cgroup.events"), []byte(events), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got, err := cgroupLiveOutsideNoReap(dir); err != nil || got != tc.want {
+				t.Fatalf("cgroupLiveOutsideNoReap = %v, %v; want %v", got, err, tc.want)
+			}
+		})
+	}
+	// A child without readable cgroup.events is an error, not idle.
+	dir, path := fakeCgroupDir(t, true, "populated 1\n")
+	_ = os.WriteFile(filepath.Join(path, "cgroup.procs"), nil, 0o600)
+	_ = os.Mkdir(filepath.Join(path, "tbound-cmd-x"), 0o700)
+	if _, err := cgroupLiveOutsideNoReap(dir); err == nil {
+		t.Fatal("an unreadable child cgroup was taken as idle")
+	}
+}
+
+// The same on the kernel: a live process in a tbound-nr-* scope does not make --check refuse, one in
+// any other child does, and the reset's kill ends both.
+func TestCellsLiveOutsideNoReapOnARealCgroup(t *testing.T) {
+	cg := newTestCgroup(t)
+	start := func(child string) {
+		path := filepath.Join(cg.path, child)
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		d, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer d.Close()
+		cmd := inCgroup(roleCmd("sleeper"), d)
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		go func() { _ = cmd.Wait() }()
+		time.Sleep(100 * time.Millisecond)
+	}
+	start("tbound-nr-aa")
+	if live, err := cgroupLiveOutsideNoReap(cg.dir); err != nil || live {
+		t.Fatalf("a no-reap survivor alone: live %v, err %v", live, err)
+	}
+	start("tbound-cmd-bb")
+	if live, err := cgroupLiveOutsideNoReap(cg.dir); err != nil || !live {
+		t.Fatalf("a live command scope: live %v, err %v", live, err)
+	}
+	if err := killCgroup(cg.dir, 5*time.Second); err != nil {
+		t.Fatal(err)
+	}
+}
