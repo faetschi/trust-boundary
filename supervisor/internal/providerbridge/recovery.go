@@ -570,7 +570,10 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 					return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, fmt.Errorf("verify Store result cross-link: %w", err))
 				}
 			}
-			resultContent := modelResultText(evidence.Result, decoded)
+			resultContent, err := journaledResultText(evidence.Result, decoded, evidence.Hint)
+			if err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
 			message := openrouter.Message{Role: openrouter.Tool, ToolCallID: evidence.ToolCallID, Content: &resultContent}
 			if err := appendReplayHistory(&history, route, message); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
@@ -607,7 +610,10 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 			}); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, fmt.Errorf("verify Store admission denial cross-link: %w", err))
 			}
-			denialContent := modelResultText(evidence.Result, decoded)
+			denialContent, err := journaledResultText(evidence.Result, decoded, evidence.Hint)
+			if err != nil {
+				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
+			}
 			denialMessage := openrouter.Message{Role: openrouter.Tool, ToolCallID: evidence.ToolCallID, Content: &denialContent}
 			if err := appendReplayHistory(&history, route, denialMessage); err != nil {
 				return TranscriptProjection{}, errors.Join(ErrTranscriptReplay, err)
@@ -715,7 +721,7 @@ func ReplayTranscript(journal *audit.Journal, pins RecoveryPins, verifier StoreR
 		ProviderGenerationID: currentGeneration, ProviderTreeDigest: currentTree,
 		ProviderSequence: providerSequence, EventCount: ordinal, ProviderJournalRecordCount: uint64(len(trace.Records)), ExchangeCount: exchangeCount, ProviderRetries: totalRetries,
 		CapturedCallCount: callCount, DecisionCount: decisionCount, ResultCount: resultCount,
-		HistoryDigest: digestDomain("tbound/provider-history/v1", request.Body()), Disposition: dispositionForReplayState(state, retiredCall != nil),
+		HistoryDigest: digestDomain("tbound/provider-history/v2", request.Body()), Disposition: dispositionForReplayState(state, retiredCall != nil),
 		HostCall: lastHostCall, HostCallOutcomeDigest: lastHostCallOutcomeDigest, HostCallRetryableFailure: lastHostCallRetryable,
 	}
 	if state == replayAwaitDecision && pending != nil {

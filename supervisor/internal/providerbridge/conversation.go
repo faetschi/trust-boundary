@@ -57,6 +57,9 @@ type eventJournal interface {
 }
 
 type Config struct {
+	// HintProvider is host-owned and nil selects the frozen static treatment.
+	HintProvider HintProvider
+
 	ConversationID      string
 	WorkflowID          string
 	ProfileID           string
@@ -256,25 +259,26 @@ type promptEvidence struct {
 }
 
 type resultEvidence struct {
-	WorkflowID       string `json:"workflow_id"`
-	ConversationID   string `json:"conversation_id"`
-	ResponseIDIssuer string `json:"response_id_issuer"`
-	ToolCallIDIssuer string `json:"tool_call_id_issuer"`
-	ResponseID       string `json:"response_id"`
-	ToolCallID       string `json:"tool_call_id"`
-	Tool             string `json:"tool"`
-	ArgumentDigest   string `json:"argument_digest"`
-	Sequence         uint64 `json:"sequence"`
-	GenerationFrom   string `json:"generation_from"`
-	GenerationTo     string `json:"generation_to"`
-	TreeDigestFrom   string `json:"tree_digest_from"`
-	TreeDigestTo     string `json:"tree_digest_to"`
-	ResultID         string `json:"result_id"`
-	ResultDigest     string `json:"result_digest"`
-	Result           []byte `json:"result"`
-	TransitionID     string `json:"transition_id,omitempty"`
-	TransitionSeq    uint64 `json:"transition_sequence,omitempty"`
-	EffectID         string `json:"effect_id,omitempty"`
+	WorkflowID       string         `json:"workflow_id"`
+	ConversationID   string         `json:"conversation_id"`
+	ResponseIDIssuer string         `json:"response_id_issuer"`
+	ToolCallIDIssuer string         `json:"tool_call_id_issuer"`
+	ResponseID       string         `json:"response_id"`
+	ToolCallID       string         `json:"tool_call_id"`
+	Tool             string         `json:"tool"`
+	ArgumentDigest   string         `json:"argument_digest"`
+	Sequence         uint64         `json:"sequence"`
+	GenerationFrom   string         `json:"generation_from"`
+	GenerationTo     string         `json:"generation_to"`
+	TreeDigestFrom   string         `json:"tree_digest_from"`
+	TreeDigestTo     string         `json:"tree_digest_to"`
+	ResultID         string         `json:"result_id"`
+	ResultDigest     string         `json:"result_digest"`
+	Result           []byte         `json:"result"`
+	Hint             *HintSelection `json:"hint,omitempty"`
+	TransitionID     string         `json:"transition_id,omitempty"`
+	TransitionSeq    uint64         `json:"transition_sequence,omitempty"`
+	EffectID         string         `json:"effect_id,omitempty"`
 }
 
 // admissionDeniedEvidence is the provider_admission_denied record: the exact DENY Result released for an
@@ -994,6 +998,18 @@ func (c *Conversation) appendResultLocked(kind string, result protocol.Result, d
 		ResultDigest: resultDigest, Result: encoded, TransitionID: transitionID,
 		TransitionSeq: transitionSequence, EffectID: effectID,
 	}
+	if reason := hintReason(result); reason != "" {
+		input := HintInput{ReasonCode: reason, Tool: c.current.call.Name}
+		input.Arguments, _ = protocol.CanonicalArguments(input.Tool, c.current.call.RawArguments)
+		for i := len(c.history) - 1; i >= 0; i-- {
+			if c.history[i].Role == openrouter.User && c.history[i].Content != nil {
+				input.Task = *c.history[i].Content
+				break
+			}
+		}
+		selection := selectHint(context.Background(), c.cfg.HintProvider, input)
+		base.Hint = &selection
+	}
 	var evidence []byte
 	if denialReason != "" {
 		evidence, err = json.Marshal(admissionDeniedEvidence{resultEvidence: base, ReasonCode: denialReason})
@@ -1007,7 +1023,10 @@ func (c *Conversation) appendResultLocked(kind string, result protocol.Result, d
 	if err != nil {
 		return err
 	}
-	content := modelResultText(encoded, result)
+	content, err := journaledResultText(encoded, result, base.Hint)
+	if err != nil {
+		return err
+	}
 	message := openrouter.Message{Role: openrouter.Tool, ToolCallID: c.current.call.ID, Content: &content}
 	if err := c.appendHistoryLocked(message); err != nil {
 		return err

@@ -21,15 +21,20 @@ var permittedAlternativeHints = map[string]string{
 // command only, appends exactly LF + "hint: " + the fixed sentence (no final LF).
 // Journaled Result bytes, their digests, and the wire schema remain unchanged.
 func modelResultText(encoded []byte, result protocol.Result) string {
-	reason := ""
-	if result.Verdict == "DENY" {
-		reason = result.ReasonCode
-	} else if result.Verdict == "ALLOW" && result.Status == protocol.ResultStatusCommandFailed {
-		reason = result.Status
-	}
+	reason := hintReason(result)
 	text := string(encoded)
 	if hint := permittedAlternativeHints[reason]; hint != "" {
 		text += "\nhint: " + hint
 	}
 	return text
+}
+
+func hintReason(result protocol.Result) string {
+	if result.Verdict == "DENY" {
+		return result.ReasonCode
+	}
+	if result.Verdict == "ALLOW" && result.Status == protocol.ResultStatusCommandFailed {
+		return result.Status
+	}
+	return ""
 }
