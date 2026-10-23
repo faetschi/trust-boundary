@@ -160,6 +160,7 @@ type Spend struct {
 
 // Report is the deterministic results-chapter report.
 type Report struct {
+	CDH                    []CDHReport               `json:"cdh,omitempty"`
 	Schema                 string                    `json:"schema"`
 	Bindings               Bindings                  `json:"bindings"`
 	Coverage               Coverage                  `json:"coverage"`

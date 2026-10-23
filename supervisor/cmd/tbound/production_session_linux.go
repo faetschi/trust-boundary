@@ -15,6 +15,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/corpusadmit"
+	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/providerbridge"
@@ -227,6 +228,10 @@ func (a authorityPromptAdmission) Close() {
 // launch. It records only observed launch/lifecycle facts; success is never
 // claimed before a verified STOPPED settlement.
 type productionPiReceipt struct {
+	HintChooser        string               `json:"hint_chooser,omitempty"`
+	HintManifestDigest string               `json:"hint_manifest_digest,omitempty"`
+	Hints              []evalscore.HintFact `json:"hints,omitempty"`
+
 	SchemaVersion            string   `json:"schema_version"`
 	Mode                     string   `json:"mode"`
 	RunID                    string   `json:"run_id"`

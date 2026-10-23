@@ -57,6 +57,9 @@ type eventJournal interface {
 }
 
 type Config struct {
+	// HintProvider is host-owned and nil selects the frozen static treatment.
+	HintProvider HintProvider
+
 	ConversationID      string
 	WorkflowID          string
 	ProfileID           string
@@ -256,25 +259,26 @@ type promptEvidence struct {
 }
 
 type resultEvidence struct {
-	WorkflowID       string `json:"workflow_id"`
-	ConversationID   string `json:"conversation_id"`
-	ResponseIDIssuer string `json:"response_id_issuer"`
-	ToolCallIDIssuer string `json:"tool_call_id_issuer"`
-	ResponseID       string `json:"response_id"`
-	ToolCallID       string `json:"tool_call_id"`
-	Tool             string `json:"tool"`
-	ArgumentDigest   string `json:"argument_digest"`
-	Sequence         uint64 `json:"sequence"`
-	GenerationFrom   string `json:"generation_from"`
-	GenerationTo     string `json:"generation_to"`
-	TreeDigestFrom   string `json:"tree_digest_from"`
-	TreeDigestTo     string `json:"tree_digest_to"`
-	ResultID         string `json:"result_id"`
-	ResultDigest     string `json:"result_digest"`
-	Result           []byte `json:"result"`
-	TransitionID     string `json:"transition_id,omitempty"`
-	TransitionSeq    uint64 `json:"transition_sequence,omitempty"`
-	EffectID         string `json:"effect_id,omitempty"`
+	WorkflowID       string         `json:"workflow_id"`
+	ConversationID   string         `json:"conversation_id"`
+	ResponseIDIssuer string         `json:"response_id_issuer"`
+	ToolCallIDIssuer string         `json:"tool_call_id_issuer"`
+	ResponseID       string         `json:"response_id"`
+	ToolCallID       string         `json:"tool_call_id"`
+	Tool             string         `json:"tool"`
+	ArgumentDigest   string         `json:"argument_digest"`
+	Sequence         uint64         `json:"sequence"`
+	GenerationFrom   string         `json:"generation_from"`
+	GenerationTo     string         `json:"generation_to"`
+	TreeDigestFrom   string         `json:"tree_digest_from"`
+	TreeDigestTo     string         `json:"tree_digest_to"`
+	ResultID         string         `json:"result_id"`
+	ResultDigest     string         `json:"result_digest"`
+	Result           []byte         `json:"result"`
+	Hint             *HintSelection `json:"hint,omitempty"`
+	TransitionID     string         `json:"transition_id,omitempty"`
+	TransitionSeq    uint64         `json:"transition_sequence,omitempty"`
+	EffectID         string         `json:"effect_id,omitempty"`
 }
 
 // admissionDeniedEvidence is the provider_admission_denied record: the exact DENY Result released for an
@@ -742,7 +746,7 @@ func (c *Conversation) RecordDecision(ctx context.Context, proposal protocol.Pro
 	c.current.decision = decision
 	if decision.Verdict == gate.Deny {
 		result := resultFor(proposal, decision, nil)
-		if err := c.appendToolResultLocked(result, "", c.treeDigest, 0); err != nil {
+		if err := c.appendToolResultLocked(ctx, result, "", c.treeDigest, 0); err != nil {
 			return c.failLocked(fmt.Errorf("persist denied tool result; result withheld: %w", err))
 		}
 		if c.cfg.AdvanceProgress != nil {
@@ -832,7 +836,7 @@ func (e *ResultingExecutor) Execute(ctx context.Context, proposal protocol.Propo
 		}
 	}
 	result := resultFor(proposal, decision, output)
-	if err := c.appendToolResultLocked(result, nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID); err != nil {
+	if err := c.appendToolResultLocked(ctx, result, nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID); err != nil {
 		return nil, c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist exact executor result; IPC result withheld: %w", err), output)
 	}
 	if transitionSequence != 0 {
@@ -870,7 +874,7 @@ func (c *Conversation) recordAdmissionDenied(ctx context.Context, proposal proto
 		return c.recordUnknownExecutionLocked(proposal, decision, errors.New("admission denial effect ID was replayed"))
 	}
 	result := admissionDeniedResult(proposal, decision, denied.ReasonCode)
-	if err := c.appendResultLocked("provider_admission_denied", result, denied.ReasonCode, c.generation, c.treeDigest, 0, "", denied.EffectID); err != nil {
+	if err := c.appendResultLocked(ctx, "provider_admission_denied", result, denied.ReasonCode, c.generation, c.treeDigest, 0, "", denied.EffectID); err != nil {
 		return c.recordUnknownExecutionLocked(proposal, decision, fmt.Errorf("persist admission denial; IPC result withheld: %w", err))
 	}
 	c.effectIDs[denied.EffectID] = struct{}{}
@@ -951,7 +955,7 @@ func (c *Conversation) Close() {
 	c.mu.Unlock()
 }
 
-func (c *Conversation) appendToolResultLocked(result protocol.Result, nextGeneration, nextTreeDigest string, transitionSequence uint64, transitionIDs ...string) error {
+func (c *Conversation) appendToolResultLocked(ctx context.Context, result protocol.Result, nextGeneration, nextTreeDigest string, transitionSequence uint64, transitionIDs ...string) error {
 	transitionID, effectID := "", ""
 	if len(transitionIDs) > 0 {
 		transitionID = transitionIDs[0]
@@ -959,12 +963,12 @@ func (c *Conversation) appendToolResultLocked(result protocol.Result, nextGenera
 	if len(transitionIDs) > 1 {
 		effectID = transitionIDs[1]
 	}
-	return c.appendResultLocked("provider_tool_result", result, "", nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID)
+	return c.appendResultLocked(ctx, "provider_tool_result", result, "", nextGeneration, nextTreeDigest, transitionSequence, transitionID, effectID)
 }
 
 // appendResultLocked journals the exact protocol result of the current call and appends it to the history.
 // A non-empty denialReason makes it the provider_admission_denied record of an ALLOWed operation.
-func (c *Conversation) appendResultLocked(kind string, result protocol.Result, denialReason, nextGeneration, nextTreeDigest string,
+func (c *Conversation) appendResultLocked(ctx context.Context, kind string, result protocol.Result, denialReason, nextGeneration, nextTreeDigest string,
 	transitionSequence uint64, transitionID, effectID string) error {
 	if c.current == nil {
 		return ErrWrongState
@@ -994,6 +998,18 @@ func (c *Conversation) appendResultLocked(kind string, result protocol.Result, d
 		ResultDigest: resultDigest, Result: encoded, TransitionID: transitionID,
 		TransitionSeq: transitionSequence, EffectID: effectID,
 	}
+	if reason := hintReason(result); reason != "" {
+		input := HintInput{ReasonCode: reason, Tool: c.current.call.Name}
+		input.Arguments, _ = protocol.CanonicalArguments(input.Tool, c.current.call.RawArguments)
+		for i := len(c.history) - 1; i >= 0; i-- {
+			if c.history[i].Role == openrouter.User && c.history[i].Content != nil {
+				input.Task = *c.history[i].Content
+				break
+			}
+		}
+		selection := selectHint(ctx, c.cfg.HintProvider, input)
+		base.Hint = &selection
+	}
 	var evidence []byte
 	if denialReason != "" {
 		evidence, err = json.Marshal(admissionDeniedEvidence{resultEvidence: base, ReasonCode: denialReason})
@@ -1007,7 +1023,10 @@ func (c *Conversation) appendResultLocked(kind string, result protocol.Result, d
 	if err != nil {
 		return err
 	}
-	content := string(encoded)
+	content, err := journaledResultText(encoded, result, base.Hint)
+	if err != nil {
+		return err
+	}
 	message := openrouter.Message{Role: openrouter.Tool, ToolCallID: c.current.call.ID, Content: &content}
 	if err := c.appendHistoryLocked(message); err != nil {
 		return err

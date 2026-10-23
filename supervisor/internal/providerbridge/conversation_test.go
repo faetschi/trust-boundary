@@ -681,7 +681,11 @@ func assertRequestResultExact(t *testing.T, raw []byte, expected resultEvidence)
 	}
 	last := request.Messages[len(request.Messages)-1]
 	content, ok := last.Content.(string)
-	if !ok || last.Role != "tool" || last.ToolCallID != expected.ToolCallID || content != string(expected.Result) {
+	decoded, err := protocol.DecodeResult(expected.Result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok || last.Role != "tool" || last.ToolCallID != expected.ToolCallID || content != modelResultText(expected.Result, decoded) {
 		t.Fatalf("provider tool result differs from Go-owned durable result: role=%q call=%q content=%q want-call=%q want=%q", last.Role, last.ToolCallID, content, expected.ToolCallID, expected.Result)
 	}
 }

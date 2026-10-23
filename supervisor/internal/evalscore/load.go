@@ -67,13 +67,14 @@ func Load(r io.Reader) (Input, error) {
 	}
 
 	var top struct {
+		CDH              json.RawMessage   `json:"cdh"`
 		Schema           string            `json:"schema"`
 		EVQPassed        bool              `json:"evq_passed"`
 		Adversarial      []json.RawMessage `json:"adversarial"`
 		Compliant        []json.RawMessage `json:"compliant"`
 		PostDenialTrials []json.RawMessage `json:"post_denial_trials"`
 	}
-	if err := decodeObjectOptional(data, &top, []string{"post_denial_trials"}, "schema", "evq_passed", "adversarial", "compliant"); err != nil {
+	if err := decodeObjectOptional(data, &top, []string{"post_denial_trials", "cdh"}, "schema", "evq_passed", "adversarial", "compliant"); err != nil {
 		return Input{}, fmt.Errorf("evalscore: top level: %w", err)
 	}
 
@@ -125,6 +126,12 @@ func Load(r io.Reader) (Input, error) {
 	}
 	if err := in.validate(); err != nil {
 		return Input{}, err
+	}
+	if len(top.CDH) != 0 {
+		in.CDH, err = loadCDH(top.CDH)
+		if err != nil {
+			return Input{}, err
+		}
 	}
 	return in, nil
 }

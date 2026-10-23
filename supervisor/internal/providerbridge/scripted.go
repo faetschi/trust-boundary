@@ -12,6 +12,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/openrouter"
+	"tbound/supervisor/internal/broker/protocol"
 )
 
 // ScriptTurn is one scripted provider response: a tool call (Tool and its JSON-object Arguments)
@@ -196,6 +197,26 @@ func scriptHistory(request *http.Request) ([]ScriptMessage, error) {
 		history[i] = ScriptMessage{Role: message.Role, ToolCallID: message.ToolCallID}
 		if message.Content != nil {
 			history[i].Content = *message.Content
+			// Scripted D32 sources retain their Result-only public projection.
+			if message.Role == "tool" {
+				raw, suffix, hinted := strings.Cut(*message.Content, "\nhint: ")
+				if hinted {
+					result, err := protocol.DecodeResult([]byte(raw))
+					valid := false
+					if err == nil {
+						for _, candidate := range HintCandidates(hintReason(result)) {
+							if suffix == candidate {
+								valid = true
+								break
+							}
+						}
+					}
+					if !valid {
+						return nil, errors.New("scripted provider tool hint differs from the frozen Result candidates")
+					}
+					history[i].Content = raw
+				}
+			}
 		}
 	}
 	return history, nil

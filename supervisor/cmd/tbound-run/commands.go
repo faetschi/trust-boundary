@@ -188,7 +188,14 @@ func (a *app) exportJournal(p plan) (runner.ExportResult, error) {
 		return runner.ExportResult{}, err
 	}
 	defer j.Close()
-	return runner.Export(p.sched, j, runner.ExportOptions{})
+	opt := runner.ExportOptions{}
+	if p.cfg.CDH != nil {
+		opt.CDHBaseline, err = loadCDHBaseline(p.cfg.CDHBaseline)
+		if err != nil {
+			return runner.ExportResult{}, err
+		}
+	}
+	return runner.Export(p.sched, j, opt)
 }
 
 func (a *app) printExport(res runner.ExportResult) {
@@ -330,7 +337,13 @@ func (a *app) selfcheck(p plan) error {
 	if err != nil {
 		check("executors", err)
 	} else {
-		for _, cfg := range []runner.Configuration{runner.CfgB, runner.CfgC, runner.CfgP, runner.CfgV} {
+		configurations := []runner.Configuration{runner.CfgB, runner.CfgC, runner.CfgP, runner.CfgV}
+		if p.cfg.CDH != nil {
+			for _, model := range p.cfg.CDH.Manifest.Models {
+				configurations = append(configurations, runner.CDHConfiguration(model))
+			}
+		}
+		for _, cfg := range configurations {
 			var steps []runner.Step
 			for _, st := range p.sched.Steps {
 				if st.Configuration == cfg {

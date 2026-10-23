@@ -34,6 +34,8 @@ const (
 // key or trailing data is refused. There is deliberately no member that changes how SSH
 // checks the guest host key: StrictHostKeyChecking is always yes against ssh.known_hosts.
 type runConfig struct {
+	CDH         *runner.CDHConfig `json:"cdh,omitempty"`
+	CDHBaseline pinnedFile        `json:"cdh_baseline,omitempty"`
 	// Manifest is the corpus manifest. QuotaProfile is thesis or pilot.
 	Manifest     string `json:"manifest"`
 	QuotaProfile string `json:"quota_profile"`
@@ -161,6 +163,12 @@ func loadConfig(path string) (runConfig, error) {
 }
 
 func (c runConfig) validate() error {
+	if c.CDH == nil && (c.CDHBaseline.Path != "" || c.CDHBaseline.SHA256 != "") {
+		return errors.New("cdh_baseline requires cdh")
+	}
+	if c.CDH != nil && (!filepath.IsAbs(c.CDHBaseline.Path) || !digestRE.MatchString(c.CDHBaseline.SHA256)) {
+		return errors.New("C-DH requires a pinned cdh_baseline")
+	}
 	switch c.QuotaProfile {
 	case quotaThesis, quotaPilot:
 	default:
@@ -228,7 +236,7 @@ func (c runConfig) validate() error {
 
 // runnerConfig is the protocol Config bound into the plan digest.
 func (c runConfig) runnerConfig() runner.Config {
-	return runner.Config{FreezeCommit: c.FreezeCommit, AdaptiveCaps: c.AdaptiveCaps,
+	return runner.Config{CDH: c.CDH, FreezeCommit: c.FreezeCommit, AdaptiveCaps: c.AdaptiveCaps,
 		EVQObligations: slices.Clone(c.EVQObligations), OnlyCases: slices.Clone(c.OnlyCases)}
 }
 
@@ -329,15 +337,16 @@ const runBindingDomain = "tbound-run-binding/v1"
 // was started with. The authorized sockets are a set and are sorted.
 func (c runConfig) runBinding(route runner.RouteCoverage, evqDigest string) (string, error) {
 	doc := struct {
-		Domain           string              `json:"domain"`
-		Pins             runPins             `json:"pins"`
-		RouteDigest      string              `json:"route_digest"`
-		RouteComplete    bool                `json:"route_complete"`
-		EVQResultsDigest string              `json:"evq_results_digest"`
-		Proc             procConfig          `json:"proc"`
-		AdmissionPolicy  admissionPolicyPins `json:"admission_policy"`
-		VImageDigest     string              `json:"v_image_digest"`
-	}{runBindingDomain, c.Pins, route.Digest, route.Complete, evqDigest, c.Proc, c.AdmissionPolicy, c.VImageDigest}
+		CDHBaselineSHA256 string              `json:"cdh_baseline_sha256,omitempty"`
+		Domain            string              `json:"domain"`
+		Pins              runPins             `json:"pins"`
+		RouteDigest       string              `json:"route_digest"`
+		RouteComplete     bool                `json:"route_complete"`
+		EVQResultsDigest  string              `json:"evq_results_digest"`
+		Proc              procConfig          `json:"proc"`
+		AdmissionPolicy   admissionPolicyPins `json:"admission_policy"`
+		VImageDigest      string              `json:"v_image_digest"`
+	}{c.CDHBaseline.SHA256, runBindingDomain, c.Pins, route.Digest, route.Complete, evqDigest, c.Proc, c.AdmissionPolicy, c.VImageDigest}
 	doc.Proc.AuthorizedSockets = slices.Sorted(slices.Values(c.Proc.AuthorizedSockets))
 	if doc.Proc.AuthorizedSockets == nil {
 		doc.Proc.AuthorizedSockets = []string{}

@@ -95,7 +95,7 @@ RUNTIME="$WORK/runtime"
 mkdir -p "$RUNTIME"
 cp "$ROOT/adapter/pi-runtime-package.json" "$RUNTIME/package.json"
 mkdir -p "$RUNTIME/src"
-for runtime_source in tbound-cli-extension.ts broker-provider.ts proxy-tools.ts ipc-transport.ts; do
+for runtime_source in tbound-cli-extension.ts broker-provider.ts proxy-tools.ts ipc-transport.ts result-hints.ts; do
   cp "$ROOT/adapter/src/$runtime_source" "$RUNTIME/src/$runtime_source"
 done
 

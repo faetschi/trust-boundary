@@ -12,7 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/wsoracle"
 )
 
@@ -159,6 +161,7 @@ func (AbsentCollectors) Transient(context.Context, EvidenceRef) (ObserverEvidenc
 // Prepare checks the configuration and the step mapping and sends nothing; the runner
 // journals the start before Execute sends the request.
 type GovernedC struct {
+	CDH *CDHConfig
 	// Configuration is the configuration this executor serves: CfgC (the zero value), CfgP, whose steps
 	// run through the same service under the p-* roles, or CfgB, whose compliant and ambiguous steps run
 	// under the b-* roles.
@@ -181,13 +184,23 @@ func (g GovernedC) Request(s Step) (GovernedRequest, error) {
 	if want == "" {
 		want = CfgC
 	}
-	if want != CfgC && want != CfgP && want != CfgB {
+	if want != CfgC && want != CfgP && want != CfgB && !want.IsCDH() {
 		return GovernedRequest{}, fmt.Errorf("runner: governed executor serves B, C or P, not %s", want)
 	}
 	if s.Configuration != want {
 		return GovernedRequest{}, fmt.Errorf("runner: step %s is configuration %s, not %s", s.ID(), s.Configuration, want)
 	}
 	request := GovernedRequestFor(g.PlanDigest, s)
+	if want.IsCDH() {
+		if g.CDH == nil || g.CDH.Validate() != nil {
+			return GovernedRequest{}, errors.New("runner: C-DH needs a valid pinned manifest")
+		}
+		_, ok := (Config{CDH: g.CDH}).cdhSlot(want)
+		if !ok || (s.Role != RoleCompliant && s.Role != RoleTrajectory) || (s.Role == RoleTrajectory && !slices.Contains(g.CDH.LiveAdversarialCases, s.CaseID)) {
+			return GovernedRequest{}, errors.New("runner: unregistered C-DH chooser or cohort")
+		}
+		request.Role = corpusadmit.CDHRole(strings.TrimPrefix(string(want), "C-DH/"), string(s.Role))
+	}
 	if _, err := request.Argv(); err != nil {
 		return GovernedRequest{}, err
 	}
@@ -241,6 +254,10 @@ type governedResponse struct {
 // governedReceipt is the part of productionPiReceipt (cmd/tbound/production_session_linux.go)
 // that the executor reads. The token and cost fields are optional extensions.
 type governedReceipt struct {
+	HintChooser        string               `json:"hint_chooser"`
+	HintManifestDigest string               `json:"hint_manifest_digest"`
+	Hints              []evalscore.HintFact `json:"hints"`
+
 	SchemaVersion string   `json:"schema_version"`
 	RunID         string   `json:"run_id"`
 	Success       bool     `json:"success"`
@@ -369,6 +386,7 @@ func (g GovernedC) Execute(ctx context.Context, s Step) (Outcome, error) {
 		}
 		ref.RunID = receipt.RunID
 		o.Receipt = &ReceiptFacts{ProfileHash: receipt.ProfileHash, ContainmentProfileDigest: receipt.ContainmentProfileDigest,
+			HintChooser: receipt.HintChooser, HintManifestDigest: receipt.HintManifestDigest, Hints: slices.Clone(receipt.Hints),
 			FrozenSourceDigest: receipt.FrozenSourceDigest, Delta: receipt.Delta,
 			ProviderMode: receipt.ProviderMode, ScriptDigest: receipt.ScriptDigest,
 			AdmissionPolicyDigest: receipt.AdmissionPolicyDigest, Proposals: slices.Clone(receipt.Proposals),

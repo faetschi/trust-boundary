@@ -19,7 +19,7 @@ const DevelopmentPiNodeVersion = "v24.21.0"
 
 var DeveloperPiCLIAdapterSourceFiles = []string{
 	"src/tbound-cli-extension.ts", "src/broker-provider.ts",
-	"src/proxy-tools.ts", "src/ipc-transport.ts",
+	"src/proxy-tools.ts", "src/ipc-transport.ts", "src/result-hints.ts",
 }
 
 // StageDevelopmentPiCLIBundle stages only TBound's mediated extension source.

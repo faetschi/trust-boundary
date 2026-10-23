@@ -93,8 +93,9 @@ type Attest struct {
 	// AttackerDigest is the manifest's pins.attacker_digest, and PivotsDigest returns the digest of a case's
 	// pivot table (evalcorpus.PivotsDigest). An adaptive replay receipt must carry both; empty or nil refuses
 	// every adaptive receipt.
-	AttackerDigest string
-	PivotsDigest   func(caseID string) (digest string, ok bool)
+	AttackerDigest     string
+	HintManifestDigest string
+	PivotsDigest       func(caseID string) (digest string, ok bool)
 }
 
 // Validate checks the configuration of the decorator.
@@ -193,6 +194,12 @@ func (a Attest) checkDelta(s Step, r *ReceiptFacts) error {
 	if r == nil {
 		return nil
 	}
+	if s.Configuration.IsCDH() {
+		if normalizeDelta(r.Delta) != DeltaNone {
+			return ErrReceiptPolicy
+		}
+		return nil
+	}
 	got := normalizeDelta(r.Delta)
 	switch s.Configuration {
 	case CfgC:
@@ -244,6 +251,13 @@ func providerModeOf(role Role) (mode string, ok bool) {
 func (a Attest) checkProvider(s Step, r *ReceiptFacts) error {
 	if r == nil {
 		return nil
+	}
+	if s.Configuration.IsCDH() {
+		if a.HintManifestDigest == "" || r.HintManifestDigest != a.HintManifestDigest || "C-DH/"+r.HintChooser != string(s.Configuration) {
+			return fmt.Errorf("%w: C-DH treatment mismatch", ErrReceiptPolicy)
+		}
+	} else if r.HintManifestDigest != "" || r.HintChooser != "" || len(r.Hints) != 0 {
+		return fmt.Errorf("%w: static configuration carries C-DH evidence", ErrReceiptPolicy)
 	}
 	want, ok := providerModeOf(s.Role)
 	if !ok {

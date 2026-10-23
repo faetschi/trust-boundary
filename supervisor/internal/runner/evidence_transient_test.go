@@ -870,8 +870,8 @@ func TestPublicationEventSequencePerOperation(t *testing.T) {
 		{ID: "p/3", Sequence: 4, Changes: []wsoracle.LedgerChange{{Path: "gone", Before: &file}}},
 	}
 	want := []PublicationEvent{
-		{"d", effectoracle.KindMovedTo, true}, {"d/new", effectoracle.KindMovedTo, false},
-		{"over", effectoracle.KindMovedTo, false}, {"over", effectoracle.KindMovedFrom, false}, {"gone", effectoracle.KindMovedFrom, false}}
+		{Path: "d", Kind: effectoracle.KindMovedTo, IsDir: true}, {Path: "d/new", Kind: effectoracle.KindMovedTo},
+		{Path: "over", Kind: effectoracle.KindMovedTo}, {Path: "over", Kind: effectoracle.KindMovedFrom}, {Path: "gone", Kind: effectoracle.KindMovedFrom}}
 	if got, ok := PublicationEventSequence(ledger); !ok || !reflect.DeepEqual(got, want) {
 		t.Fatalf("sequence = %v, %v; want %v", got, ok, want)
 	}
