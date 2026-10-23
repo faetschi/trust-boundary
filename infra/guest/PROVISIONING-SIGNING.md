@@ -928,7 +928,7 @@ The G1 run, the route-probe run, the direct-runtime probe run and the pilot each
 | Run | `NAME` | Config template (`$W/src/infra/guest/`) | Template installed for the run | Profile `--template-digest` |
 | --- | --- | --- | --- | --- |
 | G1 (`guest-provider-exchange`) | `g1` | `serve-pi-service.g1.json` | base template with the G1 registration | its TD |
-| route probe, bash view (`guest-route-bash-view`) | `rp` | `serve-pi-service.route-probe.json` (admission id `route-probe-2026-10-23`; `route-probe-2026-10-19` was spent by the F9 attempt) | base template with the route-probe registration | its TD |
+| route probe, bash view (`guest-route-bash-view`) | `rp` | `serve-pi-service.route-probe.json` (admission id `route-probe-2026-10-23b`; `route-probe-2026-10-19` and `route-probe-2026-10-23` were spent by F9 and F10) | base template with the route-probe registration | its TD |
 | direct-runtime probe (`guest-route-direct-runtime`) | `dr` | `serve-pi-service.route-probe.json` with a NEW admission id (the one field set by hand; the id of `rp` is spent) | the PROBE template: base template with the `dr` registration plus the `route_probe` member | the probe template's TD |
 | pilot (Part D) | `pilot` | `serve-pi-service.corpus-pilot.json` | base template with the pilot registration | its TD (S4') |
 
