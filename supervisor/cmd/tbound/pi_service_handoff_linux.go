@@ -1712,6 +1712,8 @@ func servePiServiceRequests(ctx context.Context, listener net.Listener, socket p
 			status, errorCode := "completed", ""
 			if len(receipt) == 0 || runErr != nil {
 				status, errorCode = "unknown", "task-outcome-unknown"
+				// The response carries only the stable code; the cause belongs in the service log.
+				fmt.Fprintf(os.Stderr, "request %s outcome unknown: %v\n", request.RequestID, runErr)
 			}
 			response := piServiceResponse{SchemaVersion: piServiceResponseSchema, RequestID: request.RequestID,
 				Status: status, ErrorCode: errorCode, Receipt: append(json.RawMessage(nil), receipt...)}
