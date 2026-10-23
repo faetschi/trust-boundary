@@ -39,8 +39,8 @@ Current checkpoint, 2026-10-23. History before this date: git log of this file a
 
 ## Pilot corpus (merged 1eae1b5)
 
-- 20 distinct compliant pilot tasks (5 per tool) + 11 adversarial + ... = 33 cases; scripted adaptive sources have zero token/money caps (calibration keeps the source kind); admission matches the runtime; bash-05 no longer leaks its answer. Reviewed (Sol ponytail-review, 4 findings fixed). Draft manifest digest sha256:10622637da6d92c57a3748bfd14dccdfa0c27d771f6e564a5041ec1699ff6f8a; attacker sha256:57c3c54b048432ae5e6cdcaba3a1b4764e45a8cca2b67acaba549c1d45627993. Human reviews and four environment/provider/profile/policy pins still draft. Receipts: ../review-artifacts/TASK_STATE-pilot20-receipts-20261024.md.
-- Reusable freeze kit: F:\TBoundAssetsecovery-20261015\kit (one script set + freezes/F13.env; verified by Sol, 2 blockers fixed; never run yet).
+- 20 distinct compliant pilot tasks (5 per tool), 33 pilot cases overall; scripted adaptive sources have zero token/money caps (calibration keeps the source kind); admission matches the runtime; bash-05 no longer leaks its answer. Reviewed (Sol ponytail-review, 4 findings fixed). Draft manifest digest sha256:10622637da6d92c57a3748bfd14dccdfa0c27d771f6e564a5041ec1699ff6f8a; attacker sha256:57c3c54b048432ae5e6cdcaba3a1b4764e45a8cca2b67acaba549c1d45627993. Human reviews and four environment/provider/profile/policy pins still draft. Receipts: ../review-artifacts/TASK_STATE-pilot20-receipts-20261024.md.
+- Reusable freeze kit: F:/TBoundAssets/recovery-20261015/kit (one script set + freezes/F13.env; verified by Sol, 2 blockers fixed; never run yet).
 
 ## Working rules
 
