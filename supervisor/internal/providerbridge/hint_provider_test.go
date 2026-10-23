@@ -203,6 +203,16 @@ func TestCDHManifestPinsTreatment(t *testing.T) {
 			t.Fatal("unresolved manifest accepted")
 		}
 	}
+	extra := m
+	extra.Models = append(append([]string(nil), m.Models...), "third/model")
+	if _, err := extra.Digest(); err == nil {
+		t.Fatal("third chooser accepted")
+	}
+	extra = m
+	extra.Transports = append(append([]HintTransport(nil), m.Transports...), m.Transports[0])
+	if _, err := extra.Digest(); err == nil {
+		t.Fatal("third chooser transport accepted")
+	}
 	roundtrip.MinConfidence = .9
 	if got, _ := roundtrip.Digest(); got == digest {
 		t.Fatal("threshold not pinned")

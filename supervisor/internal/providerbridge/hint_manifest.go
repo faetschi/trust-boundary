@@ -22,8 +22,8 @@ type HintTransport struct {
 type CDHManifest struct {
 	SchemaVersion string                       `json:"schema_version"`
 	Arm           string                       `json:"arm"`
-	Transports    [2]HintTransport             `json:"transports"`
-	Models        [2]string                    `json:"models"`
+	Transports    []HintTransport              `json:"transports"`
+	Models        []string                     `json:"models"`
 	CandidateSet  string                       `json:"candidate_set"`
 	Candidates    map[string]map[string]string `json:"candidates"`
 	InputFields   []string                     `json:"input_fields"`
@@ -33,8 +33,8 @@ type CDHManifest struct {
 
 func NewCDHManifest(openSourceModel string, confidence float64, timeout time.Duration) (CDHManifest, error) {
 	m := CDHManifest{SchemaVersion: "tbound-cdh-manifest/v1", Arm: "C-DH",
-		Models: [2]string{"typesafe/jev-1.14", openSourceModel}, CandidateSet: hintCandidateSet,
-		Transports: [2]HintTransport{{Kind: "decisions", Endpoint: "https://openrouter.ai/api/alpha"}, {Kind: "decisions", Endpoint: "https://openrouter.ai/api/alpha"}},
+		Models: []string{"typesafe/jev-1.14", openSourceModel}, CandidateSet: hintCandidateSet,
+		Transports: []HintTransport{{Kind: "decisions", Endpoint: "https://openrouter.ai/api/alpha"}, {Kind: "decisions", Endpoint: "https://openrouter.ai/api/alpha"}},
 		Candidates: frozenHintCandidates(), InputFields: []string{"reason_code", "tool", "arguments", "task"},
 		MinConfidence: confidence, TimeoutMS: timeout.Milliseconds()}
 	_, err := m.Digest()
@@ -51,7 +51,7 @@ func frozenHintCandidates() map[string]map[string]string {
 
 // Digest validates all frozen fields before hashing deterministic JSON. No digest field hashes itself.
 func (m CDHManifest) Digest() (string, error) {
-	if m.SchemaVersion != "tbound-cdh-manifest/v1" || m.Arm != "C-DH" ||
+	if m.SchemaVersion != "tbound-cdh-manifest/v1" || m.Arm != "C-DH" || len(m.Models) != 2 || len(m.Transports) != 2 ||
 		m.Models[0] != "typesafe/jev-1.14" || !validText(m.Models[1], MaxIdentityBytes) || m.Models[0] == m.Models[1] ||
 		m.CandidateSet != hintCandidateSet || !reflect.DeepEqual(m.Candidates, frozenHintCandidates()) ||
 		!reflect.DeepEqual(m.InputFields, []string{"reason_code", "tool", "arguments", "task"}) ||
