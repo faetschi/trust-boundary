@@ -39,9 +39,8 @@ func TestMain(m *testing.M) {
 // applied and 12 when the other thread is not confined.
 func landlockTSYNCChild() int {
 	abi, _, errno := syscall.Syscall(uintptr(sysLandlockCreateRuleset), 0, 0, landlockCreateRulesetVersion)
-	if errno != 0 || int(abi) != landlockTSYNCABI {
-		fmt.Fprintf(os.Stderr, "the kernel reports Landlock ABI %d (%v), the registered ABI is %d\n", int(abi), errno, landlockTSYNCABI)
-		return 3
+	if code := landlockTestABIExitCode(abi, errno); code != 0 {
+		return code
 	}
 	runtime.LockOSThread()
 	tid, start, result := make(chan int), make(chan struct{}), make(chan error)
@@ -204,9 +203,12 @@ func landlockNetChildWith(name string, probe func() (uintptr, syscall.Errno), ap
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
+	if code := landlockTestABIExitCode(probe()); code != 0 {
+		return code
+	}
 	if _, _, err := apply(8, delta); err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		return 3
+		return 1
 	}
 	denied := func(port int) bool {
 		connection, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), time.Second)
@@ -223,6 +225,17 @@ func landlockNetChildWith(name string, probe func() (uintptr, syscall.Errno), ap
 		return 11
 	}
 	return 0
+}
+
+func landlockTestABIExitCode(abi uintptr, errno syscall.Errno) int {
+	if errno == 0 && int(abi) == landlockTSYNCABI {
+		return 0
+	}
+	fmt.Fprintf(os.Stderr, "the kernel reports Landlock ABI %d (%v), the registered ABI is %d\n", int(abi), errno, landlockTSYNCABI)
+	if errno == syscall.ENOSYS || errno == syscall.EOPNOTSUPP || errno == 0 {
+		return 3
+	}
+	return 1
 }
 
 func TestLandlockNetChildSkipsOnlyUnsupportedABI(t *testing.T) {
