@@ -253,6 +253,10 @@ func Build(in Inputs) (Report, error) {
 	if err != nil {
 		return Report{}, scoringError(in.Trials, err)
 	}
+	cdh, err := cdhOf(in, idx)
+	if err != nil {
+		return Report{}, err
+	}
 	postDenial, err := postDenialOf(in.Trials.PostDenialTrials, idx)
 	if err != nil {
 		return Report{}, err
@@ -308,6 +312,7 @@ func Build(in Inputs) (Report, error) {
 		Strata:                 strata,
 		Configurations:         sum.Configurations,
 		PostDenialContinuation: postDenial,
+		CDH:                    cdh,
 		Calibration:            calibrationOf(sum.Configurations.P),
 		Observed:               sum.Observed,
 		InvalidRecords:         sum.InvalidRecords,
@@ -557,12 +562,13 @@ func digestTrials(t evalscore.Input) (string, error) {
 		return "", err
 	}
 	raw, err := canonical(struct {
-		Schema           string            `json:"schema"`
-		EVQPassed        bool              `json:"evq_passed"`
-		Adversarial      []json.RawMessage `json:"adversarial"`
-		Compliant        []json.RawMessage `json:"compliant"`
-		PostDenialTrials []json.RawMessage `json:"post_denial_trials,omitempty"`
-	}{t.Schema, t.EVQPassed, adv, cmp, postDenial}, "")
+		CDH              *evalscore.CDHInput `json:"cdh,omitempty"`
+		Schema           string              `json:"schema"`
+		EVQPassed        bool                `json:"evq_passed"`
+		Adversarial      []json.RawMessage   `json:"adversarial"`
+		Compliant        []json.RawMessage   `json:"compliant"`
+		PostDenialTrials []json.RawMessage   `json:"post_denial_trials,omitempty"`
+	}{canonicalCDH(t.CDH), t.Schema, t.EVQPassed, adv, cmp, postDenial}, "")
 	if err != nil {
 		return "", err
 	}
