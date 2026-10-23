@@ -132,6 +132,36 @@ func TestHintReplayAcrossFreshProcesses(t *testing.T) {
 				if output, err := cmd.CombinedOutput(); err != nil {
 					t.Fatalf("fresh process: %v\n%s", err, output)
 				}
+
+				if provider == "choice" && kind == "gate" {
+					changedPath := filepath.Join(t.TempDir(), "changed.audit")
+					changed := openRecoveryTestJournal(t, changedPath)
+					for _, r := range trace.Records {
+						event := r.Event
+						if event.Kind == "provider_tool_result" {
+							var e resultEvidence
+							if err := json.Unmarshal(event.Data, &e); err != nil {
+								t.Fatal(err)
+							}
+							e.Hint.CandidateID = "0"
+							event.Data, err = json.Marshal(e)
+							if err != nil {
+								t.Fatal(err)
+							}
+						}
+						if _, err := changed.Append(event); err != nil {
+							t.Fatal(err)
+						}
+					}
+					if err := changed.Close(); err != nil {
+						t.Fatal(err)
+					}
+					check := exec.Command(os.Args[0], "-test.run=^TestHintReplaySubprocess$", "-test.v")
+					check.Env = append(os.Environ(), "TBOUND_HINT_REPLAY_PATH="+changedPath, "TBOUND_HINT_REPLAY_KIND="+kind, "TBOUND_HINT_REPLAY_REJECT=1")
+					if output, err := check.CombinedOutput(); err != nil {
+						t.Fatalf("fresh process tamper check: %v\n%s", err, output)
+					}
+				}
 			})
 		}
 	}
@@ -157,6 +187,12 @@ func TestHintReplaySubprocess(t *testing.T) {
 	})}
 	journal := openRecoveryTestJournal(t, path)
 	projection, err := ReplayTranscript(journal, RecoveryPins{Config: cfg, Model: ApprovedModel, Policy: recoveryTestPolicy(t, os.Getenv("TBOUND_HINT_REPLAY_KIND") != "gate")}, &replayVerifierFixture{})
+	if os.Getenv("TBOUND_HINT_REPLAY_REJECT") == "1" {
+		if !errors.Is(err, ErrTranscriptReplay) || !strings.Contains(err.Error(), "byte-match") {
+			t.Fatalf("changed hint did not fail byte identity: %v", err)
+		}
+		return
+	}
 	if err != nil || projection.ResultCount != 1 || projection.ExchangeCount != 2 {
 		t.Fatalf("%+v %v", projection, err)
 	}
