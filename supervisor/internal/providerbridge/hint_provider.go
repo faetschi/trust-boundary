@@ -23,6 +23,9 @@ type HintInput struct {
 }
 
 type HintSelection struct {
+	Transport      string  `json:"transport,omitempty"`
+	Endpoint       string  `json:"endpoint,omitempty"`
+	ModelDigest    string  `json:"model_digest,omitempty"`
 	ManifestDigest string  `json:"manifest_digest,omitempty"`
 	CandidateSet   string  `json:"candidate_set"`
 	Provider       string  `json:"provider"`
@@ -70,10 +73,11 @@ func HintCandidates(reason string) map[string]string {
 }
 
 type ChoiceAnswer struct {
-	Type          string             `json:"type"`
-	Choice        string             `json:"choice"`
-	Confidence    float64            `json:"confidence"`
-	Probabilities map[string]float64 `json:"probabilities"`
+	MissingConfidence bool               `json:"-"`
+	Type              string             `json:"type"`
+	Choice            string             `json:"choice"`
+	Confidence        float64            `json:"confidence"`
+	Probabilities     map[string]float64 `json:"probabilities"`
 }
 
 type HintChooser interface {
@@ -81,6 +85,9 @@ type HintChooser interface {
 }
 
 type ChoiceHintProvider struct {
+	Transport      string
+	Endpoint       string
+	ModelDigest    string
 	ManifestDigest string
 	Model          string
 	Chooser        HintChooser
@@ -94,6 +101,7 @@ type ChoiceHintProvider struct {
 func (p ChoiceHintProvider) Hint(ctx context.Context, in HintInput) HintSelection {
 	out := StaticHintProvider{}.Hint(ctx, in)
 	out.Provider, out.Model, out.ManifestDigest = "choice", p.Model, p.ManifestDigest
+	out.Transport, out.Endpoint, out.ModelDigest = p.Transport, p.Endpoint, p.ModelDigest
 	fallback := func(reason string) HintSelection { out.FallbackReason = reason; return out }
 	candidates := HintCandidates(in.ReasonCode)
 	if len(candidates) == 0 {
@@ -128,6 +136,9 @@ func (p ChoiceHintProvider) Hint(ctx context.Context, in HintInput) HintSelectio
 	if err != nil || ctx.Err() != nil {
 		return fallback("chooser_error")
 	}
+	if answer.MissingConfidence {
+		return fallback("confidence_missing")
+	}
 	if math.IsNaN(answer.Confidence) || math.IsInf(answer.Confidence, 0) || answer.Confidence < 0 || answer.Confidence > 1 {
 		return fallback("invalid_response")
 	}
@@ -159,6 +170,13 @@ func selectHint(ctx context.Context, provider HintProvider, in HintInput) HintSe
 func journaledResultText(encoded []byte, result protocol.Result, selection *HintSelection) (string, error) {
 	if selection == nil {
 		return modelResultText(encoded, result), nil
+	}
+	if (selection.ManifestDigest != "" && !validModelFileDigest(selection.ManifestDigest)) ||
+		(selection.Provider == "static" && (selection.Transport != "" || selection.Endpoint != "" || selection.ModelDigest != "")) ||
+		(selection.FallbackReason == "" && selection.Transport == "local" && (!validLocalEndpoint(selection.Endpoint) || !validModelFileDigest(selection.ModelDigest))) ||
+		(selection.FallbackReason == "" && selection.Transport == "decisions" && (!validDecisionsEndpoint(selection.Endpoint) || selection.ModelDigest != "")) ||
+		(selection.Transport != "" && selection.Transport != "local" && selection.Transport != "decisions") {
+		return "", errors.New("invalid journaled hint transport")
 	}
 	if selection.CandidateSet != hintCandidateSet ||
 		(selection.Provider != "static" && selection.Provider != "choice") ||

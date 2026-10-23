@@ -14,10 +14,12 @@ import (
 	"tbound/supervisor/internal/broker"
 )
 
-// DecisionsConfig is host-only. No environment/key-file loader or default network client is installed.
+// ChooserConfig is host-only. No environment/key-file loader or default network client is installed.
 // BaseURL is the API root (for example the approved host's /api/alpha); Model is an exact configured ID.
-// A supplied client must honor request contexts and refuse redirects.
-type DecisionsConfig struct {
+// A supplied client must honor request contexts and refuse redirects; local clients must disable proxies.
+type ChooserConfig struct {
+	Kind          string
+	ModelDigest   string
 	Enabled       bool
 	BaseURL       string
 	Model         string
@@ -44,12 +46,21 @@ type DecisionsResponse struct {
 	Model   string                  `json:"model"`
 }
 
-type decisionsChooser struct{ cfg DecisionsConfig }
+type decisionsChooser struct{ cfg ChooserConfig }
 
-func NewChoiceHintProvider(cfg DecisionsConfig) ChoiceHintProvider {
-	p := ChoiceHintProvider{Model: cfg.Model, Timeout: cfg.Timeout, MinConfidence: cfg.MinConfidence}
+func NewChoiceHintProvider(cfg ChooserConfig) ChoiceHintProvider {
+	kind := cfg.Kind
+	if kind == "" {
+		kind = "decisions"
+	}
+	p := ChoiceHintProvider{Model: cfg.Model, Timeout: cfg.Timeout, MinConfidence: cfg.MinConfidence, Transport: kind, Endpoint: cfg.BaseURL, ModelDigest: cfg.ModelDigest}
 	if cfg.Enabled {
-		p.Chooser = decisionsChooser{cfg}
+		switch cfg.Kind {
+		case "", "decisions":
+			p.Chooser = decisionsChooser{cfg}
+		case "local":
+			p.Chooser = localChooser{cfg}
+		}
 	}
 	return p
 }
@@ -59,8 +70,7 @@ func (c decisionsChooser) Choose(ctx context.Context, in HintInput, candidates m
 	if !cfg.Enabled || cfg.Client == nil || cfg.Model == "" {
 		return ChoiceAnswer{}, errors.New("decision client disabled")
 	}
-	base, err := url.Parse(cfg.BaseURL)
-	if err != nil || base.Scheme != "https" || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
+	if !validDecisionsEndpoint(cfg.BaseURL) {
 		return ChoiceAnswer{}, errors.New("invalid decisions base URL")
 	}
 	body, err := json.Marshal(DecisionsRequest{Model: cfg.Model, State: in, Questions: map[string]DecisionQuestion{
@@ -104,3 +114,8 @@ func (c decisionsChooser) Choose(ctx context.Context, in HintInput, candidates m
 }
 
 const protocolArgumentBudget = 1 << 20
+
+func validDecisionsEndpoint(endpoint string) bool {
+	base, err := url.Parse(endpoint)
+	return err == nil && base.Scheme == "https" && base.Host != "" && base.User == nil && base.RawQuery == "" && base.Fragment == ""
+}

@@ -6,17 +6,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"tbound/supervisor/internal/broker/protocol"
 )
 
 func TestHintReplayAcrossFreshProcesses(t *testing.T) {
-	for _, provider := range []string{"static", "choice", "fallback", "legacy"} {
+	for _, provider := range []string{"static", "choice", "local", "fallback", "legacy"} {
 		for _, kind := range []string{"gate", "admission", "command_failed"} {
 			t.Run(provider+"/"+kind, func(t *testing.T) {
 				cfg := recoveryTestConfig()
@@ -28,6 +31,19 @@ func TestHintReplayAcrossFreshProcesses(t *testing.T) {
 						}
 					}
 					cfg.HintProvider = ChoiceHintProvider{Model: "offline/fixture", Chooser: chooser}
+				}
+				if provider == "local" {
+					m, err := NewCDHLocalManifest("local/fixture", "http://127.0.0.1:8080/v1", "sha256:"+strings.Repeat("a", 64), .8, time.Second)
+					if err != nil {
+						t.Fatal(err)
+					}
+					p, err := NewCDHProvider(m, ChooserConfig{Model: m.Models[1], Enabled: true, Client: hintDoerFunc(func(*http.Request) (*http.Response, error) {
+						return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"choices":[{"text":"1","logprobs":{"tokens":["1"],"top_logprobs":[{"0":-3,"1":-0.1}]}}]}`))}, nil
+					})})
+					if err != nil {
+						t.Fatal(err)
+					}
+					cfg.HintProvider = p
 				}
 				path := filepath.Join(t.TempDir(), "hint.audit")
 				journal := openRecoveryTestJournal(t, path)
@@ -84,7 +100,7 @@ func TestHintReplayAcrossFreshProcesses(t *testing.T) {
 							t.Fatal("missing hint metadata")
 						}
 						expected := "0"
-						if provider == "choice" {
+						if provider == "choice" || provider == "local" {
 							expected = "1"
 						}
 						if e.Hint.CandidateID != expected || (provider == "fallback" && e.Hint.FallbackReason != "timeout") {

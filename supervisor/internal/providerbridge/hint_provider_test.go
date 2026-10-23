@@ -83,7 +83,7 @@ func TestChoiceHintFallbacks(t *testing.T) {
 			}
 		})
 	}
-	disabled := NewChoiceHintProvider(DecisionsConfig{Model: "fixture/model"})
+	disabled := NewChoiceHintProvider(ChooserConfig{Model: "fixture/model"})
 	if out := disabled.Hint(context.Background(), HintInput{ReasonCode: "policy_rule_deny"}); out.FallbackReason != "disabled" {
 		t.Fatal(out)
 	}
@@ -127,13 +127,13 @@ func TestDecisionsClientOfflineContract(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"answers":{"hint":{"type":"choice","choice":"1","confidence":0.93,"probabilities":{"0":0.07,"1":0.93}}},"model":"fixture/decision"}`))}, nil
 	})
-	p := NewChoiceHintProvider(DecisionsConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", BearerToken: "fake", Client: client})
+	p := NewChoiceHintProvider(ChooserConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", BearerToken: "fake", Client: client})
 	got := p.Hint(context.Background(), in)
 	if got.CandidateID != "1" || got.FallbackReason != "" || got.Confidence != .93 {
 		t.Fatal(got)
 	}
 	for _, raw := range []string{`{`, `{}`, `{"answers":{"hint":{"type":"choice","choice":"unregistered","confidence":1}}}`, strings.Repeat("x", 65537)} {
-		p = NewChoiceHintProvider(DecisionsConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", Client: hintDoerFunc(func(*http.Request) (*http.Response, error) {
+		p = NewChoiceHintProvider(ChooserConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", Client: hintDoerFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(raw))}, nil
 		})})
 		if out := p.Hint(context.Background(), in); out.FallbackReason == "" || out.CandidateID != "0" {
@@ -141,7 +141,7 @@ func TestDecisionsClientOfflineContract(t *testing.T) {
 		}
 	}
 	for _, status := range []int{301, 400, 401, 429, 500} {
-		p = NewChoiceHintProvider(DecisionsConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", Client: hintDoerFunc(func(*http.Request) (*http.Response, error) {
+		p = NewChoiceHintProvider(ChooserConfig{Enabled: true, BaseURL: "https://offline.invalid/api/alpha", Model: "fixture/decision", Client: hintDoerFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader("private error"))}, nil
 		})})
 		if out := p.Hint(context.Background(), in); out.FallbackReason != "chooser_error" {
@@ -191,11 +191,11 @@ func TestCDHManifestPinsTreatment(t *testing.T) {
 	if got, _ := roundtrip.Digest(); got != digest {
 		t.Fatal("unstable digest")
 	}
-	p, err := NewCDHProvider(m, DecisionsConfig{Model: m.Models[1], Timeout: 2 * time.Second, MinConfidence: .99})
+	p, err := NewCDHProvider(m, ChooserConfig{Model: m.Models[1], Timeout: 2 * time.Second, MinConfidence: .99})
 	if err != nil || p.ManifestDigest != digest || p.Timeout != time.Second || p.MinConfidence != .8 || p.Chooser != nil {
 		t.Fatalf("%+v %v", p, err)
 	}
-	if _, err := NewCDHProvider(m, DecisionsConfig{Model: "unregistered"}); err == nil {
+	if _, err := NewCDHProvider(m, ChooserConfig{Model: "unregistered"}); err == nil {
 		t.Fatal("unregistered model accepted")
 	}
 	for _, model := range []string{"", "typesafe/jev-1.14"} {
