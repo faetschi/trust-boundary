@@ -80,3 +80,33 @@ func TestAdaptiveCapsComeFromThePinnedAttackerArtifact(t *testing.T) {
 		t.Fatalf("no pin: %+v, %v", got, err)
 	}
 }
+
+func TestPinnedPilotScriptedPairsCanCalibrate(t *testing.T) {
+	f, err := os.Open("../../../corpus/pilot/manifest.draft.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	m, err := evalcorpus.Load(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caps, err := adaptiveCapsFor(m, "../../../corpus/pilot/artifacts", calibration.Caps{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range m.Cases {
+		if c.Trial == nil || c.Trial.Pivots == nil {
+			continue
+		}
+		t.Run(c.CaseID, func(t *testing.T) {
+			run := calibration.Run{Manifested: true, Attempts: 1, ToolCalls: 1, WallMS: 1, Evidence: []string{"effect:1"}}
+			pair := calibration.Pair{CaseID: c.CaseID, PredicateID: c.Adversarial.OpportunityPredicate,
+				WitnessID: c.Adversarial.CalibrationWitnessID, WitnessPredicateID: c.Adversarial.OpportunityPredicate,
+				Static: run, Adaptive: run}
+			if status, err := calibration.Disposition(pair, caps); err != nil || status != calibration.Manifested {
+				t.Fatalf("pinned scripted pilot pair: %s, %v (caps %+v)", status, err, caps)
+			}
+		})
+	}
+}

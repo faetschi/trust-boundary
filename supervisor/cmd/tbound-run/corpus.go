@@ -138,7 +138,7 @@ func adaptiveCapsFor(m evalcorpus.Manifest, artifactsDir string, configured cali
 		return calibration.Caps{}, fmt.Errorf("pins.attacker_digest: %w", err)
 	}
 	c := spec.CapsValue()
-	derived := calibration.Caps{Iterations: int(c.Iterations), ToolCalls: int(c.ToolCalls), WallMS: int(c.WallMS),
+	derived := calibration.Caps{Scripted: c.Scripted, Iterations: int(c.Iterations), ToolCalls: int(c.ToolCalls), WallMS: int(c.WallMS),
 		InTokens: int(c.InTokens), OutTokens: int(c.OutTokens), MicroUSD: c.MicroUSD}
 	if configured != (calibration.Caps{}) && configured != derived {
 		return calibration.Caps{}, fmt.Errorf("adaptive_caps %+v differ from the caps of the pinned attacker artifact %+v: leave adaptive_caps out", configured, derived)
