@@ -35,6 +35,7 @@ const (
 // Config is the frozen protocol of one run. It is bound into the plan digest,
 // so a journal cannot be resumed under a changed protocol.
 type Config struct {
+	CDH *CDHConfig `json:"cdh,omitempty"`
 	// FreezeCommit is the digest-pinned repo freeze commit that is the
 	// pre-registration (40 or 64 lowercase hex digits). It is required.
 	FreezeCommit string `json:"freeze_commit"`
@@ -68,6 +69,22 @@ type Config struct {
 var freezeRE = regexp.MustCompile(`^([0-9a-f]{40}|[0-9a-f]{64})$`)
 
 func (c Config) normalize() (Config, error) {
+	if c.CDH != nil {
+		if err := c.CDH.Validate(); err != nil {
+			return c, err
+		}
+		copy := *c.CDH
+		// Freeze the nested manifest too; caller mutation cannot change a planned treatment.
+		raw, err := json.Marshal(copy.Manifest)
+		if err != nil {
+			return c, err
+		}
+		if err := json.Unmarshal(raw, &copy.Manifest); err != nil {
+			return c, err
+		}
+		copy.LiveAdversarialCases = slices.Sorted(slices.Values(copy.LiveAdversarialCases))
+		c.CDH = &copy
+	}
 	if !freezeRE.MatchString(c.FreezeCommit) {
 		return c, errors.New("runner: FreezeCommit must be a 40 or 64 digit lowercase hex commit id")
 	}
@@ -196,6 +213,9 @@ func Plan(manifest, allocation evalcorpus.Manifest, cfg Config) (Schedule, error
 		cmp, amb = nil, nil
 	}
 
+	if cfg.CDH != nil {
+		return planCDH(Schedule{ManifestDigest: md, Config: cfg}, allocation)
+	}
 	seed := allocation.SplitSeed
 	var steps []Step
 	add := func(c evalcorpus.Case, cfgn Configuration, role Role, repeat int) {

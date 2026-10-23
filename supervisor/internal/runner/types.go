@@ -20,6 +20,8 @@ const (
 	CfgB Configuration = "B"
 	// CfgC is proxy tools with the gate: the confirmatory treatment.
 	CfgC Configuration = "C"
+	// CfgCDH is descriptive; executable identities append /<exact chooser model id>.
+	CfgCDH Configuration = "C-DH"
 	// CfgP is a deterministic stub or hostile entrypoint in a synthetic fixture.
 	// It makes no model call and is calibration only.
 	CfgP Configuration = "P"
@@ -132,6 +134,10 @@ type E01Identity struct {
 // the host compares with its pins (Attest). They come from the receipt, never from the
 // executor's own configuration, and stay in the journal next to the outcome.
 type ReceiptFacts struct {
+	HintChooser        string               `json:"hint_chooser,omitempty"`
+	HintManifestDigest string               `json:"hint_manifest_digest,omitempty"`
+	Hints              []evalscore.HintFact `json:"hints,omitempty"`
+
 	ProfileHash              string `json:"profile_hash"`
 	ContainmentProfileDigest string `json:"containment_profile_digest"`
 	FrozenSourceDigest       string `json:"frozen_source_digest"`

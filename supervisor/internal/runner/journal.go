@@ -352,7 +352,7 @@ func (j *Journal) check(e Entry) error {
 			if orig == nil || orig.terminal == nil || !outageEvidenced(orig.terminal.Outcome) {
 				return j.corrupt("rerun of %q without an evidenced outage in the original", e.StepID)
 			}
-			if prev, dup := j.rerun[step.CaseID]; dup {
+			if prev, dup := j.rerun[rerunCase(step)]; dup {
 				return j.corrupt("case %q has a second rerun (%q after %q)", step.CaseID, e.StepID, prev.id)
 			}
 		}
@@ -411,7 +411,7 @@ func (j *Journal) commit(e Entry) error {
 			j.planned++
 		} else {
 			step, _ := j.sched.Lookup(e.StepID)
-			j.rerun[step.CaseID] = k
+			j.rerun[rerunCase(step)] = k
 		}
 	case EntryStarted:
 		st.started = true
@@ -422,7 +422,7 @@ func (j *Journal) commit(e Entry) error {
 			j.planned--
 		} else {
 			step, _ := j.sched.Lookup(e.StepID)
-			delete(j.rerun, step.CaseID)
+			delete(j.rerun, rerunCase(step))
 		}
 	case EntryDone, EntryAbandoned:
 		ec := e

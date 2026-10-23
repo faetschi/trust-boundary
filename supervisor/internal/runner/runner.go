@@ -145,7 +145,7 @@ func (r *Runner) Rerun(ctx context.Context, stepID string) error {
 	if orig == nil || orig.Kind != EntryDone || !outageEvidenced(orig.Outcome) {
 		return fmt.Errorf("%w: %s", ErrRerunNotAllowed, stepID)
 	}
-	if prev, dup := r.j.rerunOf(st.CaseID); dup {
+	if prev, dup := r.j.rerunOf(rerunCase(st)); dup {
 		return fmt.Errorf("%w: %s already rerun as %s", ErrRerunLimit, st.CaseID, prev.id)
 	}
 	stop, err := r.admit(true)

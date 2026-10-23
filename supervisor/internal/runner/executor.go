@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"sync"
 
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/evalscore"
 	"tbound/supervisor/internal/wsoracle"
@@ -54,6 +55,7 @@ type Executor interface {
 // an unwired configuration.
 type Executors struct {
 	A, B, C, P, V Executor
+	CDH           map[Configuration]Executor
 }
 
 // Prepare implements Executor. An unwired configuration refuses with ErrNotWired.
@@ -75,6 +77,9 @@ func (e Executors) Execute(ctx context.Context, s Step) (Outcome, error) {
 }
 
 func (e Executors) of(c Configuration) Executor {
+	if c.IsCDH() {
+		return e.CDH[c]
+	}
 	switch c {
 	case CfgA:
 		return e.A
@@ -210,7 +215,8 @@ func (r GovernedRequest) Argv() ([]string, error) {
 	if r.TaskID == "" || r.RequestID == "" {
 		return nil, errors.New("runner: governed request lacks a case id or request id")
 	}
-	if !slices.Contains(GovernedRoles(), r.Role) {
+	_, _, cdh := corpusadmit.CDHRoleParts(r.Role)
+	if !slices.Contains(GovernedRoles(), r.Role) && !cdh {
 		return nil, fmt.Errorf("runner: governed request role %q is not a governed role", r.Role)
 	}
 	if r.Attempt != 1 && r.Attempt != 2 {

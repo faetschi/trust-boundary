@@ -87,7 +87,7 @@ func loadPlan(cfg runConfig) (plan, error) {
 	if err != nil {
 		return plan{}, fmt.Errorf("runner plan: %w", err)
 	}
-	if cfg.QuotaProfile == quotaThesis && (sched.Subset || sched.Units() != evalreport.PlannedUnits) {
+	if cfg.CDH == nil && cfg.QuotaProfile == quotaThesis && (sched.Subset || sched.Units() != evalreport.PlannedUnits) {
 		return plan{}, fmt.Errorf("a thesis plan must be the registered %d units without a subset; it has %d (subset %t)",
 			evalreport.PlannedUnits, sched.Units(), sched.Subset)
 	}

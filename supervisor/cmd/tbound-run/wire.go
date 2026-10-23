@@ -37,12 +37,22 @@ func wireSSH(p plan) (runner.Executors, error) {
 	governedP.Configuration = runner.CfgP
 	governedB := governed
 	governedB.Configuration = runner.CfgB
-	return runner.Executors{
+	executors := runner.Executors{
 		C: p.attest(runner.AcceptExecutor{Inner: runner.ResetExecutor{Inner: governed, Transport: ts.trial}, Transport: ts.trial}),
 		P: p.attest(runner.ResetExecutor{Inner: governedP, Transport: ts.trial}),
 		B: p.attest(runner.AcceptExecutor{Inner: runner.ResetExecutor{Inner: governedB, Transport: ts.trial}, Transport: ts.trial}),
 		V: p.governedV(ts.trial),
-	}, nil
+	}
+	if p.cfg.CDH != nil {
+		executors.CDH = map[runner.Configuration]runner.Executor{}
+		for _, model := range p.cfg.CDH.Manifest.Models {
+			g := governed
+			g.Configuration = runner.CDHConfiguration(model)
+			g.CDH = p.cfg.CDH
+			executors.CDH[g.Configuration] = p.attest(runner.AcceptExecutor{Inner: runner.ResetExecutor{Inner: g, Transport: ts.trial}, Transport: ts.trial})
+		}
+	}
+	return executors, nil
 }
 
 // collectors are the host-side evidence sources, all over the evidence key.
@@ -67,8 +77,13 @@ func (p plan) collectorsOver(ev runner.Transport) runner.CollectorSet {
 
 // attest wraps an executor with the host-side attestation of this run.
 func (p plan) attest(inner runner.Executor) runner.Attest {
+	var hintDigest string
+	if p.cfg.CDH != nil {
+		hintDigest, _ = p.cfg.CDH.Manifest.Digest()
+	}
 	return runner.Attest{
-		Inner: inner, Pins: p.cfg.Pins.ReceiptPins, EVQ: p.cfg.EVQObligations, EVQResults: p.evq, Route: p.route,
+		HintManifestDigest: hintDigest,
+		Inner:              inner, Pins: p.cfg.Pins.ReceiptPins, EVQ: p.cfg.EVQObligations, EVQResults: p.evq, Route: p.route,
 		PDelta: p.pDelta, ScriptDigest: p.scriptDigest, AdmissionPolicyDigest: p.admissionPolicyDigest,
 		AttackerDigest: p.manifest.Pins.AttackerDigest, PivotsDigest: p.pivotsDigest,
 	}

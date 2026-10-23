@@ -27,6 +27,7 @@ import (
 	"tbound/supervisor/internal/broker/protocol"
 	"tbound/supervisor/internal/piruntime"
 	"tbound/supervisor/internal/researchroute"
+	"tbound/supervisor/internal/runner"
 	"tbound/supervisor/internal/sessionrepo"
 )
 
@@ -148,6 +149,8 @@ type piServiceConfig struct {
 	ContainersConfigDigest      string   `json:"containers_conf_digest"`
 	StorageConfigPath           string   `json:"storage_conf_path"`
 	StorageConfigDigest         string   `json:"storage_conf_digest"`
+
+	CDH *runner.CDHConfig `json:"cdh,omitempty"`
 }
 
 type piServiceSocketFDIdentity struct {
@@ -806,6 +809,9 @@ func readProductionPiServiceConfig(path, expectedDigest string) (piServiceConfig
 // fixed path and digest and carries no inline task, prompt or admission id. In both
 // shapes the workflow_max_* members are the host ceilings of a workflow.
 func validateProductionPiServiceConfig(config piServiceConfig) error {
+	if err := validateServiceCDH(config); err != nil {
+		return err
+	}
 	if (config.SchemaVersion != piServiceConfigSchema && config.SchemaVersion != piServiceConfigSchemaV3) ||
 		config.SourcePolicy != piServiceSourcePolicy ||
 		(config.ProviderRoute != piruntime.D09ManagedPiProviderRouteEngineering && config.ProviderRoute != piruntime.D09ManagedPiProviderRouteResearch) ||
@@ -1982,6 +1988,11 @@ func runProductionPiService(ctx context.Context, output io.Writer) error {
 		return errors.Join(ErrPiServiceUnavailable, err)
 	}
 	defer providerRoute.Close()
+	if corpus != nil {
+		if err := corpus.prepareCDH(serviceConfig.CDH, providerRoute); err != nil {
+			return err
+		}
+	}
 	activated, err := systemdActivatedPiListener(socket)
 	if err != nil {
 		return err

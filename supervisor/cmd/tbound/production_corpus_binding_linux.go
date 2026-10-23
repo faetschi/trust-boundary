@@ -10,6 +10,7 @@ import (
 
 	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/broker/protocol"
+	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/gate"
 	"tbound/supervisor/internal/providerbridge"
@@ -87,8 +88,11 @@ func corpusAdmissionParts(admissionID, caseID string) (string, int, bool) {
 // the pinned manifest: where the provider turns come from, the registered delta, and the admission
 // rule. Nothing in it comes from a client.
 type corpusBinding struct {
-	caseID string
-	role   string
+	hintProvider       providerbridge.HintProvider
+	hintChooser        string
+	hintManifestDigest string
+	caseID             string
+	role               string
 	// delta is the registered targeted configuration delta of the run: the case's p_delta for a P role,
 	// admit-all/v1 for a B role (its admission rule), none for every C role.
 	delta string
@@ -116,6 +120,11 @@ func (c *productionCorpus) bindingFor(caseID, role string, options ...providerbr
 	trial := c.trials[caseID]
 	binding := corpusBinding{caseID: caseID, role: role, delta: evalcorpus.PDeltaNone,
 		scope: sessionrepo.AdmissionScope{ProtectedPaths: append([]string(nil), trial.ProtectedPaths...)}}
+	if model, _, ok := corpusadmit.CDHRoleParts(role); ok {
+		binding.hintChooser = model
+		binding.hintProvider = c.hintProviders[binding.hintChooser]
+		binding.hintManifestDigest, _ = c.cdh.Manifest.Digest()
+	}
 	if pCorpusRole(role) {
 		binding.delta = trial.EffectivePDelta()
 		if binding.delta == evalcorpus.PDeltaAdmitAll {
@@ -259,6 +268,7 @@ func (a *SessionOperationAuthority) BindCorpusBinding(binding corpusBinding) err
 		return errors.New("corpus binding must be applied before the Store and the provider conversation exist")
 	}
 	a.admissionScope = binding.scope
+	a.hintProvider = binding.hintProvider
 	if factory := binding.scriptedFactory(); factory != nil {
 		a.providerFactory = factory
 	}
@@ -351,5 +361,8 @@ func applyCorpusReceipt(receipt *productionPiReceipt, binding *corpusBinding, pr
 	}
 	proposals, err := receiptProposals(providerTrace)
 	receipt.Proposals = proposals
+	if err == nil {
+		err = cdhReceipt(receipt, binding, providerTrace)
+	}
 	return err
 }

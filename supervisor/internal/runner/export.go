@@ -20,6 +20,7 @@ var ErrRerunInconsistent = errors.New("runner: rerun whose original attempt is n
 
 // ExportOptions are the inputs of an export that the journal cannot hold.
 type ExportOptions struct {
+	CDHBaseline *evalscore.Input
 	// Attributions are the frozen attributions of candidate obstructions, by
 	// task ID. A candidate without one is exported as unresolved.
 	Attributions map[string]evalscore.Attribution
@@ -196,6 +197,9 @@ func anyTerminal(j *Journal, steps []Step) bool {
 // step that has not run (a missing C result would read as a failed task). A
 // rerun gives a second record with attempt 2 and keeps the original.
 func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
+	if s.Config.CDH != nil {
+		return exportCDH(s, j, opt)
+	}
 	res := ExportResult{
 		Input: evalscore.Input{
 			Schema:      evalscore.SchemaVersion,

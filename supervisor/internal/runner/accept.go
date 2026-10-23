@@ -40,7 +40,7 @@ type AcceptExecutor struct {
 
 // applies reports whether the step has an acceptance artifact to evaluate.
 func (AcceptExecutor) applies(s Step) bool {
-	return s.Kind == evalcorpus.KindCompliant && (s.Configuration == CfgB || s.Configuration == CfgC)
+	return s.Kind == evalcorpus.KindCompliant && (s.Configuration == CfgB || s.Configuration == CfgC || s.Configuration.IsCDH())
 }
 
 // Prepare implements Executor. It makes no guest call.

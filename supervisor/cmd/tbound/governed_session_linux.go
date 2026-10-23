@@ -280,6 +280,7 @@ type SessionOperationAuthority struct {
 	providerRoute   openrouter.Route
 	providerSpend   providerbridge.SpendAccountant
 	providerFactory func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error)
+	hintProvider    providerbridge.HintProvider
 
 	// admissionScope is the delta-admission rule of the Store (BindCorpusBinding). The zero value is
 	// the registered exact-path rule without protected paths.
