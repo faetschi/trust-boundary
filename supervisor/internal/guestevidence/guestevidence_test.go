@@ -101,9 +101,13 @@ func goodResponse(t *testing.T, e Expect, mutate func(response, receipt map[stri
 
 func goodTests(kind string, e Expect) TestRun {
 	spec, _ := SpecFor(kind)
+	required := spec.Required
+	if kind == KindLandlockConnectTests {
+		required = []string{"TestLandlockConnectRightIsPort8080OnlyAndOnlyForNetSink", "TestLandlockTSYNCReachesEnforcement"}
+	}
 	r := TestRun{Package: spec.Package, TestBinarySHA256: e.TestBinaries[spec.Package], Args: slices.Clone(TestRunArgs), KernelRelease: "6.8.0-synthetic",
 		OutputSHA256: digestOf("output")}
-	for _, name := range spec.Required {
+	for _, name := range required {
 		r.Results = append(r.Results, TestResult{Test: name, Action: TestPass})
 	}
 	r.Results = append(r.Results, TestResult{Test: "TestSomethingElseSkips", Action: TestSkip})
