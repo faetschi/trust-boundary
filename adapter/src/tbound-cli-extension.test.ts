@@ -337,14 +337,21 @@ test("official Pi CLI 0.87.1 loads the mediated extension and settles simulated 
       tool: tool.name,
       arguments: tool.arguments,
     });
-    await ipc.sendResult({
+    const denial = {
       schema_version: "tbound-result/v1",
       tool_call_id: proposal.tool_call_id,
       tool: proposal.tool,
       sequence,
       verdict: "DENY",
-      reason_code: "fixture-deny",
+      reason_code: "policy_rule_deny",
       policy_digest: "simulated-host-fixture/v1",
+    } satisfies Parameters<IpcServer["sendResult"]>[0];
+    await ipc.sendResult(denial);
+    const completed = await waitRpc(rpc, (record) =>
+      record.type === "tool_execution_end" && record.toolCallId === callID, `hinted ${tool.name} result`);
+    assert.deepEqual(completed.result, {
+      content: [{ type: "text", text: JSON.stringify(denial) +
+        "\nhint: The policy does not allow this action. Use read, write or edit on task files, or bash inside the workspace." }],
     });
   }
 
