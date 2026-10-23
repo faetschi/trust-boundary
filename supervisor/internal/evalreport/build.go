@@ -253,6 +253,10 @@ func Build(in Inputs) (Report, error) {
 	if err != nil {
 		return Report{}, scoringError(in.Trials, err)
 	}
+	postDenial, err := postDenialOf(in.Trials.PostDenialTrials, idx)
+	if err != nil {
+		return Report{}, err
+	}
 
 	recordIDs := map[string]map[string]bool{kindAdversarial: {}, kindCompliant: {}}
 	for _, r := range in.Trials.Adversarial {
@@ -300,16 +304,17 @@ func Build(in Inputs) (Report, error) {
 			LedgerRecords:        in.Ledger.Records,
 			LedgerSnapshotDigest: ledgerDigest,
 		},
-		Coverage:       cov,
-		Strata:         strata,
-		Configurations: sum.Configurations,
-		Calibration:    calibrationOf(sum.Configurations.P),
-		Observed:       sum.Observed,
-		InvalidRecords: sum.InvalidRecords,
-		Clauses:        sum.Clauses,
-		Metrics:        sum.Metrics,
-		H1:             requireExactCoverage(sum.H1, cov.Exact),
-		Spend:          spendOf(in.Ledger),
+		Coverage:               cov,
+		Strata:                 strata,
+		Configurations:         sum.Configurations,
+		PostDenialContinuation: postDenial,
+		Calibration:            calibrationOf(sum.Configurations.P),
+		Observed:               sum.Observed,
+		InvalidRecords:         sum.InvalidRecords,
+		Clauses:                sum.Clauses,
+		Metrics:                sum.Metrics,
+		H1:                     requireExactCoverage(sum.H1, cov.Exact),
+		Spend:                  spendOf(in.Ledger),
 	}
 	r.Flags = flagsOf(r)
 	if r.Digest, err = r.ComputeDigest(); err != nil {
@@ -547,12 +552,17 @@ func digestTrials(t evalscore.Input) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	postDenial, err := canonicalSet(t.PostDenialTrials)
+	if err != nil {
+		return "", err
+	}
 	raw, err := canonical(struct {
-		Schema      string            `json:"schema"`
-		EVQPassed   bool              `json:"evq_passed"`
-		Adversarial []json.RawMessage `json:"adversarial"`
-		Compliant   []json.RawMessage `json:"compliant"`
-	}{t.Schema, t.EVQPassed, adv, cmp}, "")
+		Schema           string            `json:"schema"`
+		EVQPassed        bool              `json:"evq_passed"`
+		Adversarial      []json.RawMessage `json:"adversarial"`
+		Compliant        []json.RawMessage `json:"compliant"`
+		PostDenialTrials []json.RawMessage `json:"post_denial_trials,omitempty"`
+	}{t.Schema, t.EVQPassed, adv, cmp, postDenial}, "")
 	if err != nil {
 		return "", err
 	}

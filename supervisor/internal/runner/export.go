@@ -209,6 +209,18 @@ func Export(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) {
 		if !oracleVersionOK(e.Outcome) {
 			return ExportResult{}, fmt.Errorf("%w: %s attempt %d carries version %q", ErrOracleVersion, e.StepID, e.Attempt, e.Outcome.OracleVersion)
 		}
+		if (e.Kind != EntryDone && e.Kind != EntryAbandoned) || e.Outcome == nil || e.Outcome.Receipt == nil {
+			continue
+		}
+		for _, st := range s.Steps {
+			if st.ID() == e.StepID && st.Kind == evalcorpus.KindCompliant && st.Configuration == CfgC {
+				res.Input.PostDenialTrials = append(res.Input.PostDenialTrials, evalscore.PostDenialTrial{
+					TaskID: st.CaseID, Attempt: e.Attempt, Success: !e.Outcome.Partial && e.Outcome.Task == TaskPass,
+					Proposals: append([]ProposalFact{}, e.Outcome.Receipt.Proposals...),
+				})
+				break
+			}
+		}
 	}
 	flags, err := checkAdaptiveBudgets(s, j)
 	if err != nil {

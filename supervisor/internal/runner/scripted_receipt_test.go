@@ -83,6 +83,7 @@ func TestGovernedReceiptCarriesProviderModeScriptDeltaPolicyAndProposals(t *test
 	r["proposals"] = []map[string]string{
 		{"tool": "write", "verdict": "ALLOW", "reason_code": "policy_rule_allow"},
 		{"tool": "bash", "verdict": "DENY", "reason_code": "policy_rule_deny"},
+		{"tool": "bash", "verdict": "ALLOW", "reason_code": "policy_rule_allow", "status": "command_failed"},
 	}
 	f.respond("completed", "", r, 0)
 	o, err := f.g.Execute(context.Background(), f.step)
@@ -91,7 +92,7 @@ func TestGovernedReceiptCarriesProviderModeScriptDeltaPolicyAndProposals(t *test
 	}
 	rc := o.Receipt
 	if rc == nil || rc.ProviderMode != "scripted" || rc.ScriptDigest != "sha256:"+hexOf('s') || rc.Delta != "admit-all/v1" ||
-		rc.AdmissionPolicyDigest != "sha256:"+hexOf('p') || len(rc.Proposals) != 2 ||
+		rc.AdmissionPolicyDigest != "sha256:"+hexOf('p') || len(rc.Proposals) != 3 || rc.Proposals[2].Status != "command_failed" ||
 		rc.Proposals[1] != (ProposalFact{Tool: "bash", Verdict: "DENY", ReasonCode: "policy_rule_deny"}) {
 		t.Fatalf("receipt facts = %+v", rc)
 	}

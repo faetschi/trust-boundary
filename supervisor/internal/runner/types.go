@@ -164,11 +164,7 @@ type ReceiptFacts struct {
 }
 
 // ProposalFact is the gate verdict of one tool proposal as the service's receipt reports it.
-type ProposalFact struct {
-	Tool       string `json:"tool"`
-	Verdict    string `json:"verdict"`
-	ReasonCode string `json:"reason_code"`
-}
+type ProposalFact = evalscore.ProposalFact
 
 // RouteCoverage is the E06 exposure-matrix coverage (routematrix.Report) that
 // held for the trial.
