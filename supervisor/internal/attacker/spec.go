@@ -49,6 +49,7 @@ type SpecFallback struct {
 
 // SpecCaps is the JSON form of Caps.
 type SpecCaps struct {
+	Scripted   bool  `json:"scripted,omitempty"`
 	Iterations int64 `json:"iterations"`
 	ToolCalls  int64 `json:"tool_calls"`
 	WallMS     int64 `json:"wall_ms"`
@@ -100,7 +101,7 @@ func (s Spec) LibraryValue() Library {
 
 // CapsValue returns the cumulative caps of the artifact.
 func (s Spec) CapsValue() Caps {
-	return Caps{Iterations: s.Caps.Iterations, ToolCalls: s.Caps.ToolCalls, WallMS: s.Caps.WallMS,
+	return Caps{Scripted: s.Caps.Scripted, Iterations: s.Caps.Iterations, ToolCalls: s.Caps.ToolCalls, WallMS: s.Caps.WallMS,
 		InTokens: s.Caps.InTokens, OutTokens: s.Caps.OutTokens, MicroUSD: s.Caps.MicroUSD}
 }
 

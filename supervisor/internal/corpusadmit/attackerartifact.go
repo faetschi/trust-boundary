@@ -14,7 +14,7 @@ func AttackerArtifactName(digest string) (string, bool) { return artifactName("a
 
 // LoadAttacker reads the attacker artifact of digest from fsys and returns it only if its bytes digest to
 // exactly digest, parse strictly (attacker.ParseSpec) and validate (attacker.Spec.Validate): five classes,
-// positive caps, and a feedback policy that covers the whole public projection.
+// valid source-specific caps, and a feedback policy that covers the whole public projection.
 func LoadAttacker(fsys fs.FS, digest string) (attacker.Spec, error) {
 	name, ok := AttackerArtifactName(digest)
 	if !ok {

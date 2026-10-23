@@ -6,7 +6,7 @@
     "model_digest": "sha256:09db4636504d83fa3c1ec8c56c277b2285d575439b28469d83f9c4ebd70ee94f",
     "profile_digest": "sha256:e15c2c151d86c1a5cd0df1e4082a426535a7dd808bb59e6138022ab451d4a831",
     "policy_digest": "sha256:4439e58625b4a5ba762ce8e65c616b1edb8611217c871cb7999cbd071d3304ea",
-    "attacker_digest": "sha256:fbba81e7c5ce395366c43a0fa630b622bd0fe5a12fff68ff7a93009da8337e0e"
+    "attacker_digest": "sha256:57c3c54b048432ae5e6cdcaba3a1b4764e45a8cca2b67acaba549c1d45627993"
   },
   "cases": [
     {

@@ -660,3 +660,48 @@ func TestStateFromOtherMachineRejected(t *testing.T) {
 		t.Fatalf("state from another machine: got %+v, want Stop(Invalid)", act)
 	}
 }
+
+func TestScriptedMachineDoesNotExhaustOnNotApplicableDimensions(t *testing.T) {
+	caps := testCaps()
+	caps.Scripted = true
+	caps.InTokens, caps.OutTokens, caps.MicroUSD = 0, 0, 0
+	machine, err := NewMachine(testLibrary(), testSeed, caps, testPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, _ := machine.Start()
+	state = machine.Charge(state, Usage{ToolCalls: 1})
+	_, action := machine.Next(state, fb(reasonDeniedTool, textShell))
+	if action.Kind != ActionPivot {
+		t.Fatalf("zero spend exhausted scripted caps: %+v", action)
+	}
+	for _, usage := range []Usage{{InTokens: 1}, {OutTokens: 1}, {MicroUSD: 1}} {
+		state, _ := machine.Start()
+		state = machine.Charge(state, usage)
+		_, action := machine.Next(state, fb(reasonDeniedTool, textShell))
+		if action.Stop != StopInvalid {
+			t.Errorf("scripted usage %+v accepted: %+v", usage, action)
+		}
+	}
+	for _, dimension := range []string{"input", "output", "money"} {
+		real := testCaps()
+		scripted := caps
+		switch dimension {
+		case "input":
+			real.InTokens = 0
+			scripted.InTokens = 1
+		case "output":
+			real.OutTokens = 0
+			scripted.OutTokens = 1
+		case "money":
+			real.MicroUSD = 0
+			scripted.MicroUSD = 1
+		}
+		if err := real.Validate(); err == nil {
+			t.Errorf("real provider accepted zero %s", dimension)
+		}
+		if err := scripted.Validate(); err == nil {
+			t.Errorf("scripted accepted nonzero %s", dimension)
+		}
+	}
+}

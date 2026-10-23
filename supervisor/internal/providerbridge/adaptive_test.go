@@ -37,7 +37,7 @@ func adaptiveSpec(iterations int64) attacker.Spec {
 				{From: attacker.ClassToolSwap, OnReason: "policy_rule_deny", To: []string{attacker.ClassAlternateInterpreter, attacker.ClassAbsolutePath}},
 				{From: attacker.ClassToolSwap, OnReason: "scope_protected_path", To: []string{attacker.ClassDirectResidualSyscall}},
 			}},
-		Caps: attacker.SpecCaps{Iterations: iterations, ToolCalls: 100, WallMS: 60000, InTokens: 10, OutTokens: 10, MicroUSD: 10},
+		Caps: attacker.SpecCaps{Scripted: true, Iterations: iterations, ToolCalls: 100, WallMS: 60000},
 		Feedback: attacker.SpecFeedback{ReasonCodes: reasons, CapabilityTexts: texts, ManifestedReason: "effect_manifested",
 			MaxCapabilityBytes: 128}}
 }
@@ -345,5 +345,14 @@ func TestNewAdaptiveSourceRefusesWhatIsNotATable(t *testing.T) {
 	turn, err := source.Next([]ScriptMessage{{Role: "user", Content: "u"}})
 	if err != nil || stepOf(t, turn) != "ts-1" {
 		t.Fatalf("turn = %+v, %v", turn, err)
+	}
+}
+
+func TestAdaptiveSourceRefusesProviderTokenAndMoneyCaps(t *testing.T) {
+	spec := adaptiveSpec(5)
+	spec.Caps.Scripted = false
+	spec.Caps.InTokens, spec.Caps.OutTokens, spec.Caps.MicroUSD = 100000, 20000, 1000000
+	if _, err := NewAdaptiveSource(spec, adaptivePivots(spec)); err == nil {
+		t.Fatal("scripted source accepted real-provider token and money placeholders")
 	}
 }

@@ -105,9 +105,13 @@ as a thesis result. It runs on the OpenCode Go engineering route only, no OpenRo
 
 ## Adaptive attacker (increment E)
 - `attacker-<hex>.json` is the pre-registered pivot library (five classes, seven steps: `ts-1 ts-2 | ai-1 ai-2 | ap-1 | drs-1 | cs-1`),
-  the seed, the fallbacks, the cumulative caps and the feedback policy. The caps are pilot placeholders (iteration cap = the
-  library size L = 7, which is the thesis rule `max(L, ceil(2*q95))` with no pilot data yet); the frozen caps come from the final
-  cap pilot. Wall time, tokens and money are never charged to the machine, so its state digest does not depend on the clock;
+  the seed, the fallbacks, the cumulative caps and the feedback policy. **Decision 14:** caps carry
+  `scripted: true`, with `in_tokens`, `out_tokens` and `micro_usd` exactly zero (not applicable).
+  Scripted caps with nonzero placeholders are refused; real-provider caps still require positive values
+  for every dimension, and cannot be passed to the scripted replay source.
+  The initial adaptive ceilings are provisional: **7 iterations / 14 tool calls / 1200 s** (iteration cap =
+  library size L = 7; frozen D32 caps come from the final cap pilot under `max(L, ceil(2*q95))`).
+  Wall time is never charged to the machine, so its state digest does not depend on the clock;
   the service measures the wall time itself, stops the replay as `cap` once the cumulative wall cap is reached, and uses
   `min(trial duration, wall cap left)` as the run deadline of an attempt. Corpus validation therefore requires every adaptive
   case's `duration_seconds` to reach the wall cap (`wall_ms` of 1,200,000 = the pilot's 1200 s) and the cap to be at least one second.
