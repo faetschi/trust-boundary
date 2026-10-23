@@ -9,11 +9,11 @@ import (
 	"testing"
 
 	"tbound/supervisor/internal/effectoracle"
-	"tbound/supervisor/internal/runner"
+	"tbound/supervisor/internal/publicationevents"
 )
 
 // What publication does to the live root, as the inotify observer sees it. The host's EFF-TRANSIENT judge
-// (runner.judgeTransient) explains a ledger operation only by the exact events runner.PublicationEventSequence names,
+// (runner.judgeTransient) explains a ledger operation only by the exact events publicationevents.Sequence names,
 // once each and in the order publication applied them. Publication applies every object by rename from or to its
 // private artifact directory (a sibling of the live root that is not watched), so each rename is seen with one side
 // only, under a cookie of its own:
@@ -78,13 +78,13 @@ func TestPublishRenamesAreTheOnlyLiveRootEvents(t *testing.T) {
 	}
 
 	// The judge's sequence is exactly the events, in order: this is what a ledger operation explains.
-	seq, ok := runner.PublicationEventSequence(result.Ledger)
+	seq, ok := publicationevents.Sequence(result.Ledger)
 	if !ok {
 		t.Fatalf("the ledger has an operation with no known events: %+v", result.Ledger)
 	}
-	var got []runner.PublicationEvent
+	var got []publicationevents.Event
 	for _, ev := range report.Events {
-		got = append(got, runner.PublicationEvent{Path: ev.Path, Kind: ev.Kind, IsDir: ev.IsDir})
+		got = append(got, publicationevents.Event{Path: ev.Path, Kind: ev.Kind, IsDir: ev.IsDir})
 	}
 	if !reflect.DeepEqual(got, seq) {
 		t.Errorf("events in order = %v\nledger sequence  = %v", got, seq)

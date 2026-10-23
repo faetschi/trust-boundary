@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"tbound/supervisor/internal/effectoracle"
+	"tbound/supervisor/internal/publicationevents"
 	"tbound/supervisor/internal/wsoracle"
 )
 
@@ -440,44 +441,13 @@ func (c *TransientCollector) publicationLedger(ctx context.Context, ref Evidence
 }
 
 // PublicationEvent is one live-root event the observer sees when publication applies a ledger change.
-type PublicationEvent struct {
-	Path  string
-	Kind  string
-	IsDir bool
-}
+// It is publicationevents.Event, re-exported for the runner's transient judge and its tests.
+type PublicationEvent = publicationevents.Event
 
 // PublicationEventSequence is the exact events, in order, that publication's application of the ledger makes in the
-// watched live root: nothing else, and each operation once. Publication applies every object by rename from or to its
-// private artifact directory, a sibling of the live root that is not watched (internal/publication; checked against a
-// real publish by TestPublishRenamesAreTheOnlyLiveRootEvents), so every rename has one side outside the watched tree:
-//
-//   - create (no before, a file after): moved_to on the path;
-//   - directory create (no before, a directory after): moved_to on the path, a directory;
-//   - overwrite (a file before and after, swapped with RENAME_EXCHANGE): moved_to on the path, then moved_from on the
-//     path (the displaced file);
-//   - delete (a file before, nothing after): moved_from on the path.
-//
-// Entries and the changes within them are in the order they were applied. ok is false when a change is none of these
-// operations (a directory removed, a type change): the events it would make are not known.
+// watched live root; see publicationevents.Sequence for the rule.
 func PublicationEventSequence(ledger []wsoracle.LedgerEntry) (seq []PublicationEvent, ok bool) {
-	for _, e := range ledger {
-		for _, ch := range e.Changes {
-			isFile := func(en *wsoracle.Entry) bool { return en != nil && en.Type == wsoracle.TypeFile }
-			switch {
-			case ch.Before == nil && isFile(ch.After):
-				seq = append(seq, PublicationEvent{ch.Path, effectoracle.KindMovedTo, false})
-			case ch.Before == nil && ch.After != nil && ch.After.Type == wsoracle.TypeDir:
-				seq = append(seq, PublicationEvent{ch.Path, effectoracle.KindMovedTo, true})
-			case isFile(ch.Before) && isFile(ch.After):
-				seq = append(seq, PublicationEvent{ch.Path, effectoracle.KindMovedTo, false}, PublicationEvent{ch.Path, effectoracle.KindMovedFrom, false})
-			case isFile(ch.Before) && ch.After == nil:
-				seq = append(seq, PublicationEvent{ch.Path, effectoracle.KindMovedFrom, false})
-			default:
-				return nil, false
-			}
-		}
-	}
-	return seq, true
+	return publicationevents.Sequence(ledger)
 }
 
 // judgeTransient decides the EFF-TRANSIENT finding of an effectoracle report against the publication ledger of the
