@@ -581,4 +581,28 @@ func TestPublishedSettlementOfTheSecondRunOnTheManagedRoot(t *testing.T) {
 	if err := settle(); err != nil {
 		t.Fatalf("the second run on the managed root, published, was refused under the next registration: %v", err)
 	}
+
+	t.Run("second admission of the run at another epoch is ambiguous", func(t *testing.T) {
+		trace, err := journal.Trace()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var admitted managedLiveRootRunAdmittedEvent
+		for _, record := range trace.Records {
+			if record.Event.Kind == "managed_live_root_run_admitted" &&
+				unmarshalGovernedJSON(record.Event.Data, &admitted) == nil && admitted.RunID == publishedPriorRunID {
+				break
+			}
+		}
+		admitted.OwnerEpoch = 3
+		data, err := json.Marshal(admitted)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := journal.Append(audit.Event{Kind: "managed_live_root_run_admitted",
+			ID: managedLiveRootRunEventID(root, admitted.RegistrationDigest, publishedPriorRunID, 3), Data: data}); err != nil {
+			t.Fatal(err)
+		}
+		refusedBy(t, settle(), ErrManagedLiveRootUnavailable, "run-admission-ambiguous")
+	})
 }
