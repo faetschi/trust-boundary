@@ -60,6 +60,10 @@ func exportCDH(s Schedule, j *Journal, opt ExportOptions) (ExportResult, error) 
 					t.IdentityVerified = false
 					t.Complete = false
 				}
+				// Same rule as C (assemble.go): incomplete coverage without a recorded loss is an unclassified loss.
+				if t.EvidenceLoss == evalscore.LossNone && !t.Complete {
+					t.EvidenceLoss = evalscore.LossUnclassified
+				}
 			}
 			res.Input.CDH.Trials = append(res.Input.CDH.Trials, t)
 		}
