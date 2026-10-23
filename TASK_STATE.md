@@ -92,6 +92,7 @@ F6 = prototype + fix/ro-mount-root + fix/f5-review + fix/audit-runner + fix/comm
 2026-10-23 18:00: F8 = f388ac1 (codex/tbound-prototype fast-forwarded). F8\tools\all.sh running (gate -> freeze -> archive F7 state -> install -> G1). GUEST IP CHANGED to 172.24.152.73 (look up: Get-NetNeighbor -LinkLayerAddress 00-15-5D-0C-40-02; pinned alias unchanged).
 
 Next: G1 passes (else diagnose the named refusal, fix, F9) -> route probe + direct-runtime probe -> guest EVQ (last 4 of 22) -> pilot freeze (fix/f5-review item 6 + fix/pilot-budget + advisor-reviewed manifest) -> pre-registration -> pilot -> H1. Later: move evidence dispatch from init() into main.go (needs re-sign).
+Parked for after the thesis: generated, gate-verified denial hints (Jev or a small model, static table as fallback), docs/design/denial-hints.md stage 2.
 Thesis limitations to record: kernel 7.0 CLONE_INTO_CGROUP bug; on a single-uid rootless host cell ownership cannot tell image root from the cell user; audit chain has no external anchor.
 
 Constraints: preserve the ten other-session docs and `docs/tbound-product.md`; explicit `git add`; no secret/key/vm_start.txt reads; pinned Go 1.27.1 at /home/jeli2k/opt/go1.27.1 (default 1.22); clean-room gates archive `supervisor docs adapter/src infra`, short private TMPDIR; logs on F:; C: >= 5 GiB; no `wsl --shutdown`; every privileged guest write, signing, or VM state change needs explicit approval; sign only with the owner's keys.
