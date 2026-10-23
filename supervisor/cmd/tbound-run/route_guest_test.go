@@ -153,7 +153,7 @@ func writeRouteArtifact(t *testing.T, dir, kind string, mutate func(*guesteviden
 			}
 		}
 		var err error
-		d.Control, d.Attempts, err = guestevidence.DirectRuntimeAttempts(d.Target, "/work/src/release.txt", "tbound-d09-cell-1", sha256Of([]byte("proof")), 2, 0, observed)
+		d.Control, d.Attempts, err = guestevidence.DirectRuntimeAttempts(d.Target, "/var/lib/tbound/pi-worker/src/release.txt", "tbound-d09-cell-1", sha256Of([]byte("proof")), 2, 0, observed)
 		if err != nil {
 			t.Fatal(err)
 		}

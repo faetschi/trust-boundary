@@ -66,7 +66,7 @@ func homeFacts() map[string]cellview.Fact {
 		"/home/node/.profile": {Path: "/home/node/.profile", Kind: cellview.KindFile, Mode: 0o644, UID: 1000, GID: 1000, Size: 807}}
 }
 
-var testRouteProbe = D09RouteProbe{Name: D09RouteProbeName, Target: "/home/node/.profile", Control: "/work/src/release.txt"}
+var testRouteProbe = D09RouteProbe{Name: D09RouteProbeName, Target: "/home/node/.profile", Control: PiWorkerCellDefaultWorkingDirectory + "/src/release.txt"}
 
 func TestRouteProbeMakesOnlyTheReadAttemptsOfTheThreeRoutesAndTheControl(t *testing.T) {
 	fsys := &recordingProbeFS{answer: map[string]error{}, facts: homeFacts()}
@@ -77,7 +77,7 @@ func TestRouteProbeMakesOnlyTheReadAttemptsOfTheThreeRoutesAndTheControl(t *test
 	}
 	result := RunD09RouteProbe(fsys, testRouteProbe)
 	want := []string{
-		"open /work/src/release.txt",
+		"open " + PiWorkerCellDefaultWorkingDirectory + "/src/release.txt",
 		"open /home/node/.profile", "stat /home/node/.profile", "list /home/node",
 		"open ../../../../home/node/.profile", "stat ../../../../home/node/.profile", "list ../../../../home/node",
 		"open /proc/self/root/home/node/.profile", "stat /proc/self/root/home/node/.profile", "list /proc/self/root/home/node",
@@ -179,7 +179,7 @@ func TestRouteProbeResultShapeIsExact(t *testing.T) {
 }
 
 func TestRouteProbeConfigurationIsValidatedAgainstTheRuleset(t *testing.T) {
-	ro, rw := []string{"/usr", "/lib", "/etc"}, []string{"/work", "/tmp"}
+	ro, rw := []string{"/usr", "/lib", "/etc", PiWorkerCellDefaultWorkingDirectory}, []string{"/work", "/tmp"}
 	if err := testRouteProbe.Validate(ro, rw); err != nil {
 		t.Fatalf("the probe is refused: %v", err)
 	}
@@ -192,6 +192,9 @@ func TestRouteProbeConfigurationIsValidatedAgainstTheRuleset(t *testing.T) {
 		"target is the root":          {Name: D09RouteProbeName, Target: "/", Control: testRouteProbe.Control},
 		"control outside the ruleset": {Name: D09RouteProbeName, Target: testRouteProbe.Target, Control: "/home/node/.bashrc"},
 		"control relative":            {Name: D09RouteProbeName, Target: testRouteProbe.Target, Control: "src/release.txt"},
+		// /work is in the ruleset but is the command cell's mount: the Pi cell mounts the workspace elsewhere.
+		"control outside the workspace": {Name: D09RouteProbeName, Target: testRouteProbe.Target, Control: "/work/src/release.txt"},
+		"control is the workspace":      {Name: D09RouteProbeName, Target: testRouteProbe.Target, Control: PiWorkerCellDefaultWorkingDirectory},
 		"newline in target":           {Name: D09RouteProbeName, Target: "/home/node/a\nb", Control: testRouteProbe.Control},
 	}
 	for name, p := range bad {
@@ -241,7 +244,7 @@ func TestProofWithProbeResultFitsTheProofLine(t *testing.T) {
 		fsys.facts[p] = cellview.Fact{Path: p, Kind: cellview.KindDir, Mode: 0o755, UID: 4294967295, GID: 4294967295}
 	}
 	fsys.facts[target] = cellview.Fact{Path: target, Kind: cellview.KindFile, Mode: 0o644, UID: 4294967295, GID: 4294967295, Size: 9007199254740991}
-	result := RunD09RouteProbe(fsys, D09RouteProbe{Name: D09RouteProbeName, Target: target, Control: "/work/" + strings.Repeat("c", 100)})
+	result := RunD09RouteProbe(fsys, D09RouteProbe{Name: D09RouteProbeName, Target: target, Control: PiWorkerCellDefaultWorkingDirectory + "/" + strings.Repeat("c", 100)})
 	result.View.Groups = []uint32{4294967295, 4294967294, 4294967293, 4294967292}
 	result.View.LSM = strings.Repeat("l", 128)
 	proof.RouteProbe = &result

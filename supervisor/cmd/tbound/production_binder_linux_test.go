@@ -380,7 +380,7 @@ func TestRouteProbeLaunchJournalsItsProofAndStillFails(t *testing.T) {
 	}
 	defer journal.Close()
 	profile, template, proof := productionProofFixture()
-	template.RouteProbe = &piruntime.D09RouteProbe{Name: piruntime.D09RouteProbeName, Target: "/home/node/.profile", Control: "/work/src/release.txt"}
+	template.RouteProbe = &piruntime.D09RouteProbe{Name: piruntime.D09RouteProbeName, Target: "/home/node/.profile", Control: piruntime.PiWorkerCellDefaultWorkingDirectory + "/src/release.txt"}
 	digest, err := template.Digest()
 	if err != nil {
 		t.Fatal(err)
