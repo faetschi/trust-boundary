@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"tbound/supervisor/internal/piruntime"
 )
 
@@ -59,6 +61,14 @@ func TestDigestLandlockRulesIsDeterministicAndOrderSensitive(t *testing.T) {
 	changed, _ := piruntime.DigestD09LandlockRules([]string{"/lib"}, []string{"/usr", "/work", "/tmp"})
 	if changed == first {
 		t.Fatal("ruleset digest is not sensitive to the effective path access")
+	}
+}
+
+// A wrong flag value is not refused by the kernel: 1 is LOG_SAME_EXEC_OFF and restricts only the
+// calling thread, so a Go goroutine that moves to another thread runs outside the ruleset.
+func TestLandlockRestrictSelfFlagIsTheUAPITSYNCValue(t *testing.T) {
+	if landlockRestrictSelfTSYNC != unix.LANDLOCK_RESTRICT_SELF_TSYNC {
+		t.Fatalf("landlock_restrict_self flag = %#x, the uapi LANDLOCK_RESTRICT_SELF_TSYNC is %#x", landlockRestrictSelfTSYNC, unix.LANDLOCK_RESTRICT_SELF_TSYNC)
 	}
 }
 

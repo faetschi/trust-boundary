@@ -72,7 +72,7 @@ const (
 	// landlockRestrictSelfTSYNC makes the ruleset cover every thread in the
 	// thread group, so the multi-threaded Go runtime is fully confined. It
 	// requires the registered TSYNC ABI.
-	landlockRestrictSelfTSYNC = 1
+	landlockRestrictSelfTSYNC = 1 << 3 // uapi LANDLOCK_RESTRICT_SELF_TSYNC; 1 << 0 is LOG_SAME_EXEC_OFF
 	landlockTSYNCABI          = 8
 	landlockAccessAllABI8     = piruntime.D09LandlockHandledFS
 	landlockAccessAllNet      = piruntime.D09LandlockHandledNet
