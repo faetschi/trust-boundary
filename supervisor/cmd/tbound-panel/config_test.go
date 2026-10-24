@@ -40,6 +40,17 @@ func TestValidateModelsFamilies(t *testing.T) {
 	}
 }
 
+// The shipped default lists no models, so it loads but cannot run until the owner chooses.
+func TestDefaultConfigNamesNoModels(t *testing.T) {
+	cfg, err := loadConfig("panel.default.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Models) != 0 || len(cfg.ExampleModels) == 0 || validateModels(cfg.Models) == nil {
+		t.Fatalf("default config must list no models but examples: %+v", cfg)
+	}
+}
+
 func TestLoadConfigDefaultsAndCap(t *testing.T) {
 	dir := t.TempDir()
 	write := func(body string) string {
