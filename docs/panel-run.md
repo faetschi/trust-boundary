@@ -83,8 +83,26 @@ The tool refuses a panel that breaks a D35 rule:
 - fewer or more than three models
 - two models of one family; a reseller fine-tune counts as its base family
 - any Claude/Anthropic, GPT/OpenAI or DeepSeek model, including distills
-- `openrouter/auto` and `:online` variants
+- routers and moving aliases: `openrouter/*`, any id containing `router`, ids
+  starting with `~` or ending in `-latest`, and `:online` variants
 - a model without `max_tokens` or prices, because the budget cap needs a worst case
+
+The family of an id is the first match in this table, checked against the
+lowercase id; otherwise it is the vendor prefix before `/`:
+
+| Id contains | Family |
+|---|---|
+| `gemini`, `gemma`, `google/` | gemini |
+| `qwen`, `qwq` | qwen |
+| `llama` | llama |
+| `mistral`, `mixtral`, `stral`, `wizardlm` | mistral |
+| `grok`, `x-ai/` | grok |
+
+Excluded whenever the id contains `anthropic`, `claude`, `openai`, `gpt` or
+`deepseek`. A fine-tune whose id hides its base model counts as its vendor;
+check such ids by hand. After each call, the tool compares the family of the
+model that answered with the configured one. On a mismatch it marks the answer
+invalid and stops.
 
 Prefer dated model ids over aliases that can move. For reasoning models,
 `max_tokens` also limits the reasoning tokens, so keep it at 4000 or more. Each

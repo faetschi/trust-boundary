@@ -21,17 +21,21 @@ func TestValidateModelsFamilies(t *testing.T) {
 		t.Fatalf("valid panel refused: %v", err)
 	}
 	bad := map[string][]modelConfig{
-		"fewer than three":   panelModels("google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507"),
-		"same family":        panelModels("google/gemini-2.5-pro", "google/gemma-3-27b-it", "qwen/qwen3-235b-a22b-2507"),
-		"llama via reseller": panelModels("meta-llama/llama-4-maverick", "nousresearch/hermes-3-llama-3.1-405b", "qwen/qwen3-235b-a22b-2507"),
-		"anthropic":          panelModels("anthropic/claude-sonnet-4", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"),
-		"openai":             panelModels("openai/gpt-oss-120b", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"),
-		"deepseek distill":   panelModels("deepseek/deepseek-r1-distill-qwen-32b", "google/gemini-2.5-pro", "mistralai/mistral-large-2411"),
-		"deepseek reseller":  panelModels("tngtech/deepseek-r1t-chimera", "google/gemini-2.5-pro", "mistralai/mistral-large-2411"),
-		"auto router":        panelModels("openrouter/auto", "google/gemini-2.5-pro", "mistralai/mistral-large-2411"),
-		"web plugin":         panelModels("qwen/qwen3-235b-a22b-2507:online", "google/gemini-2.5-pro", "mistralai/mistral-large-2411"),
-		"no vendor":          panelModels("gemini", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"),
-		"four models":        panelModels("google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411", "x-ai/grok-4"),
+		"fewer than three":    panelModels("google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507"),
+		"same family":         panelModels("google/gemini-2.5-pro", "google/gemma-3-27b-it", "qwen/qwen3-235b-a22b-2507"),
+		"llama via reseller":  panelModels("meta-llama/llama-4-maverick", "nousresearch/hermes-3-llama-3.1-405b", "qwen/qwen3-235b-a22b-2507"),
+		"anthropic":           panelModels("anthropic/claude-sonnet-4", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"),
+		"openai":              panelModels("openai/gpt-oss-120b", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"),
+		"deepseek distill":    panelModels("deepseek/deepseek-r1-distill-qwen-32b", "google/gemini-2.5-pro", "mistralai/mistral-large-2411"),
+		"deepseek reseller":   panelModels("tngtech/deepseek-r1t-chimera", "google/gemini-2.5-pro", "mistralai/mistral-large-2411"),
+		"auto router":         panelModels("openrouter/auto", "google/gemini-2.5-pro", "mistralai/mistral-large-2411"),
+		"web plugin":          panelModels("qwen/qwen3-235b-a22b-2507:online", "google/gemini-2.5-pro", "mistralai/mistral-large-2411"),
+		"no vendor":           panelModels("gemini", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"),
+		"tilde alias":         panelModels("~google/gemini-pro-latest", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"),
+		"latest alias":        panelModels("google/gemini-pro-latest", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"),
+		"router id":           panelModels("switchpoint/router", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"),
+		"wizardlm is mistral": panelModels("microsoft/wizardlm-2-8x22b", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"),
+		"four models":         panelModels("google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411", "x-ai/grok-4"),
 	}
 	for name, ms := range bad {
 		if err := validateModels(ms); err == nil {

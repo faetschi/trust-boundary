@@ -457,6 +457,11 @@ func (r *runner) rateOne(ctx context.Context, phase int, m modelConfig, c evalco
 	} else if rt.Checklist, err = parseChecklist(resp.Choices[0].Message.Content, blindID, p.Items); err != nil {
 		rt.Error = err.Error()
 	}
+	// A host that answered with another family's model breaks the panel's family separation.
+	familyMismatch := family(resp.Model) != family(m.ID)
+	if familyMismatch {
+		rt.Error = fmt.Sprintf("response model %q is family %q, configured %q is family %q", resp.Model, family(resp.Model), m.ID, family(m.ID))
+	}
 	rt.Valid = rt.Error == ""
 	if rt.Valid {
 		sum.Valid++
@@ -465,6 +470,9 @@ func (r *runner) rateOne(ctx context.Context, phase int, m modelConfig, c evalco
 	}
 	if err := appendJSONL(ratingsPath, rt); err != nil {
 		return err
+	}
+	if familyMismatch {
+		return fmt.Errorf("call %s: %s; stopped", callID, rt.Error)
 	}
 	if !costKnown {
 		return fmt.Errorf("call %s: the response reports no cost; booked the reserved worst case %.6f USD as spent and stopped (check that OpenRouter usage accounting is on)", callID, worst)

@@ -95,12 +95,13 @@ func loadConfig(path string) (panelConfig, error) {
 var excludedTokens = []string{"anthropic", "claude", "openai", "gpt", "deepseek"}
 
 // familyTokens map a substring of a model id to its model family, so a reseller-hosted
-// fine-tune counts as its base family. Unknown ids fall back to the vendor prefix.
+// fine-tune counts as its base family where the id reveals it. Unknown ids fall back to the
+// vendor prefix. docs/panel-run.md documents this table.
 var familyTokens = []struct{ token, family string }{
 	{"gemini", "gemini"}, {"gemma", "gemini"}, {"google/", "gemini"},
 	{"qwen", "qwen"}, {"qwq", "qwen"},
 	{"llama", "llama"},
-	{"mistral", "mistral"}, {"mixtral", "mistral"}, {"stral", "mistral"},
+	{"mistral", "mistral"}, {"mixtral", "mistral"}, {"stral", "mistral"}, {"wizardlm", "mistral"},
 	{"grok", "grok"}, {"x-ai/", "grok"},
 }
 
@@ -129,8 +130,9 @@ func validateModels(models []modelConfig) error {
 		if !found || vendor == "" || name == "" {
 			return fmt.Errorf("model %q is not a vendor/model OpenRouter id", m.ID)
 		}
-		if vendor == "openrouter" || strings.Contains(low, ":online") {
-			return fmt.Errorf("model %q is a router or tool-enabled variant, not a pinned model", m.ID)
+		if vendor == "openrouter" || strings.Contains(low, "router") || strings.HasPrefix(low, "~") ||
+			strings.HasSuffix(low, "-latest") || strings.HasSuffix(low, ":latest") || strings.Contains(low, ":online") {
+			return fmt.Errorf("model %q is a router, a moving alias or a tool-enabled variant, not a pinned model", m.ID)
 		}
 		for _, tok := range excludedTokens {
 			if strings.Contains(low, tok) {

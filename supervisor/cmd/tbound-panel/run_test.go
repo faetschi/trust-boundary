@@ -407,3 +407,16 @@ func assertGates(t *testing.T, out string, incomplete bool) {
 		}
 	}
 }
+
+// An answer from another family than the configured model is invalid and stops the run.
+func TestResponseFromOtherFamilyStops(t *testing.T) {
+	out := t.TempDir()
+	p := &rewriteProvider{fn: func(r map[string]any) { r["model"] = "anthropic/claude-sonnet-4" }}
+	_, err := newRunner(t, testConfig(t, 10), out, p, "fake").run(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "family") || p.calls.Load() != 1 {
+		t.Fatalf("calls %d, err %v", p.calls.Load(), err)
+	}
+	if rs := lines(t, filepath.Join(out, "ratings.jsonl")); len(rs) != 1 || rs[0]["valid"] != false {
+		t.Fatalf("ratings %v", rs)
+	}
+}
