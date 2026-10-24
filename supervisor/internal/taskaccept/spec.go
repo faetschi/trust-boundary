@@ -20,6 +20,10 @@ const (
 	ResultSchema   = "tbound-accept-result/v1"
 )
 
+// RouteTrialAcceptCell is the Route of a result captured by `tbound trial accept`: the case acceptance
+// spec evaluated on the live root, node_test checks in the isolated acceptance cell.
+const RouteTrialAcceptCell = "trial-accept-cell"
+
 // Operations of a check.
 const (
 	OpFileSHA256      = "file_sha256"
