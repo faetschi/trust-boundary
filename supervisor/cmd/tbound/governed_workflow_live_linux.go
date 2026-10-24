@@ -155,6 +155,7 @@ func (v capturedOperationVerifier) VerifyCapturedOperation(ctx context.Context,
 		Config: config, Model: config.Route.Resolved().Model, Policy: policy,
 		CheckpointRecordCount: activePin.JournalCount, CheckpointRecordHead: activePin.JournalHead,
 		RequireHostCallReservations: true,
+		ImportedPrefixDigest:        importedPrefixReplayPin(config.Predecessor.Digest(), len(providerTrace.Records)),
 	}
 	verifier := capturedCallProviderReplayVerifier{authority: a, prefixCount: activePin.JournalCount,
 		checkpoint: checkpoint, binding: binding, proof: proof, request: v.request,
@@ -428,10 +429,15 @@ func (a *SessionOperationAuthority) buildActiveProgressPins(ctx context.Context,
 		ToolManifest: broker.DeclaredToolManifest(), ToolCallIssuer: governedCallIssuer,
 		ResponseIDIssuer: governedResponseIssuer, Generation: config.InitialGenerationID,
 	}
+	providerTrace, err := providerJournal.Trace()
+	if err != nil {
+		return workflowrecovery.Pins{}, errors.Join(workflowrecovery.ErrObservation, err)
+	}
 	providerPins := providerbridge.RecoveryPins{
 		Config: config, Model: config.Route.Resolved().Model, Policy: policy,
 		CheckpointRecordCount: activePin.JournalCount, CheckpointRecordHead: activePin.JournalHead,
 		RequireHostCallReservations: true,
+		ImportedPrefixDigest:        importedPrefixReplayPin(config.Predecessor.Digest(), len(providerTrace.Records)),
 	}
 	replayPins := GovernedReplayPins{
 		Provider: providerPins, Profile: profile, Baseline: storeBundle.Baseline,

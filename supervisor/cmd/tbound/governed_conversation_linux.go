@@ -80,12 +80,18 @@ func (a *SessionOperationAuthority) newProviderConversation(config providerbridg
 		a.mu.Unlock()
 		return nil, errors.New("provider conversation identity differs from durable governed session")
 	}
-	if requireLedger && ledger == nil {
+	if (requireLedger || !config.Predecessor.IsZero()) && ledger == nil {
 		a.mu.Unlock()
 		return nil, workflowrecovery.ErrMissing
 	}
 	if ledger != nil {
 		checkpoint, _ := ledger.Snapshot()
+		// The imported history must be the one the workflow checkpoint pins; research pins and config are both empty.
+		if checkpoint.Pins.ImportedPrefixDigest != bareWorkflowDigest(config.Predecessor.Digest()) ||
+			checkpoint.Pins.PredecessorTurnReceiptDigest != bareWorkflowDigest(config.Predecessor.PredecessorReceiptDigest()) {
+			a.mu.Unlock()
+			return nil, errors.New("provider conversation predecessor differs from the workflow checkpoint pins")
+		}
 		if !reflect.DeepEqual(checkpoint.Pins, ledgerPins) || checkpoint.Pins.WorkflowID != a.workflowID ||
 			checkpoint.Pins.SessionID != a.sessionID || checkpoint.Pins.RecoveryGeneration == 0 ||
 			checkpoint.Pins.StoreTipGenerationID != expectedGeneration ||

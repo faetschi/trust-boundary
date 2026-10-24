@@ -204,8 +204,36 @@ func ReplayGovernedTranscript(providerJournal, storeJournal *audit.Journal, stor
 	return projection, err
 }
 
+// ReplayGovernedPredecessorContext runs the ReplayGovernedTranscript pipeline over a completed
+// predecessor turn and returns its history as a PredecessorContext ending in the boundary message.
+// The transcript must end at a final provider answer, and its Store evidence must be fully resolved.
+func ReplayGovernedPredecessorContext(providerJournal, storeJournal *audit.Journal, store *sessionrepo.Store,
+	pins GovernedReplayPins, boundary providerbridge.TurnBoundary) (providerbridge.PredecessorContext, GovernedTranscriptProjection, error) {
+	var predecessor providerbridge.PredecessorContext
+	projection, _, err := runGovernedReplay(providerJournal, storeJournal, store, pins, 0, true,
+		func(journal *audit.Journal, provider providerbridge.RecoveryPins, verifier providerbridge.StoreReplayVerifier) (providerbridge.TranscriptProjection, error) {
+			replayed, projection, err := providerbridge.ReplayPredecessorContext(journal, provider, verifier, boundary)
+			predecessor = replayed
+			return projection, err
+		})
+	if err != nil {
+		return providerbridge.PredecessorContext{}, GovernedTranscriptProjection{}, err
+	}
+	return predecessor, projection, nil
+}
+
 func replayGovernedTranscript(providerJournal, storeJournal *audit.Journal, store *sessionrepo.Store,
 	pins GovernedReplayPins, priorAuthorizationSequence uint64, requireStoreTip bool) (GovernedTranscriptProjection, *governedStoreReplayVerifier, error) {
+	return runGovernedReplay(providerJournal, storeJournal, store, pins, priorAuthorizationSequence, requireStoreTip,
+		providerbridge.ReplayTranscript)
+}
+
+// governedProviderReplay is the strict provider replay the governed pipeline runs with its Store verifier.
+type governedProviderReplay func(*audit.Journal, providerbridge.RecoveryPins, providerbridge.StoreReplayVerifier) (providerbridge.TranscriptProjection, error)
+
+func runGovernedReplay(providerJournal, storeJournal *audit.Journal, store *sessionrepo.Store,
+	pins GovernedReplayPins, priorAuthorizationSequence uint64, requireStoreTip bool,
+	replayProvider governedProviderReplay) (GovernedTranscriptProjection, *governedStoreReplayVerifier, error) {
 	if providerJournal == nil || storeJournal == nil || store == nil {
 		return GovernedTranscriptProjection{}, nil, errors.New("governed replay requires held provider/Store journals and the concrete Store")
 	}
@@ -252,7 +280,7 @@ func replayGovernedTranscript(providerJournal, storeJournal *audit.Journal, stor
 	}
 	verifier.lastAuthSequence = priorAuthorizationSequence
 	verifier.initialAuthorizationSequence = priorAuthorizationSequence
-	projection, err := providerbridge.ReplayTranscript(providerJournal, pins.Provider, verifier)
+	projection, err := replayProvider(providerJournal, pins.Provider, verifier)
 	if err != nil {
 		return GovernedTranscriptProjection{}, nil, err
 	}

@@ -105,22 +105,25 @@ func (b TurnBoundary) message() (importedMessage, error) {
 
 // ReplayPredecessorContext replays a completed predecessor provider journal with the same strict replay
 // as ReplayTranscript and returns its history after the system and developer prompts, followed by the
-// boundary message. The transcript must end at awaiting_host_prompt after at least one exchange.
-func ReplayPredecessorContext(journal *audit.Journal, pins RecoveryPins, verifier StoreReplayVerifier, boundary TurnBoundary) (PredecessorContext, error) {
+// boundary message. The transcript must end at awaiting_host_prompt after at least one exchange. It also
+// returns the replay's projection, the one ReplayTranscript returns, for callers that verify it further.
+func ReplayPredecessorContext(journal *audit.Journal, pins RecoveryPins, verifier StoreReplayVerifier,
+	boundary TurnBoundary) (PredecessorContext, TranscriptProjection, error) {
 	boundaryMessage, err := boundary.message()
 	if err != nil {
-		return PredecessorContext{}, err
+		return PredecessorContext{}, TranscriptProjection{}, err
 	}
 	var replayed replayedHistory
 	projection, err := replayTranscript(journal, pins, verifier, &replayed)
 	if err != nil {
-		return PredecessorContext{}, err
+		return PredecessorContext{}, TranscriptProjection{}, err
 	}
 	if projection.Disposition != DispositionAwaitingHostPrompt || projection.ProviderSequence == 0 {
-		return PredecessorContext{}, replayError("predecessor transcript did not end with a final provider answer")
+		return PredecessorContext{}, TranscriptProjection{}, replayError("predecessor transcript did not end with a final provider answer")
 	}
 	messages := append(toImportedMessages(replayed.messages), boundaryMessage)
-	return newPredecessorContext(boundary.PredecessorReceiptDigest, messages, setKeys(replayed.responses), setKeys(replayed.calls)), nil
+	predecessor := newPredecessorContext(boundary.PredecessorReceiptDigest, messages, setKeys(replayed.responses), setKeys(replayed.calls))
+	return predecessor, projection, nil
 }
 
 // ExtendPredecessorContext adds the boundary of a predecessor that is not context-eligible to previous.

@@ -178,7 +178,7 @@ func content(message wireMessage) string {
 func TestPredecessorHistoryRoundTripsIntoAFreshConversation(t *testing.T) {
 	p1 := runPredecessor(t)
 	boundary := testBoundary("p1", "no_diff")
-	predecessor, err := ReplayPredecessorContext(p1.journal, p1.pins(), &replayVerifierFixture{}, boundary)
+	predecessor, _, err := ReplayPredecessorContext(p1.journal, p1.pins(), &replayVerifierFixture{}, boundary)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +291,7 @@ func TestPredecessorHistoryRoundTripsIntoAFreshConversation(t *testing.T) {
 			t.Fatalf("history imported %d times", imports)
 		}
 		pins := RecoveryPins{Config: cfg, Model: ApprovedModel, Policy: p1.policy, ImportedPrefixDigest: predecessor.Digest()}
-		chained, err := ReplayPredecessorContext(journal, pins, nil, testBoundary("p2", "published"))
+		chained, _, err := ReplayPredecessorContext(journal, pins, nil, testBoundary("p2", "published"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -337,7 +337,7 @@ func TestPredecessorReplayRefusesTamperedOrIncompleteJournals(t *testing.T) {
 		}
 		events = append(events, event)
 	}
-	if _, err := ReplayPredecessorContext(rechainRecoveryEvents(t, events), p1.pins(), &replayVerifierFixture{}, boundary); !errors.Is(err, ErrTranscriptReplay) {
+	if _, _, err := ReplayPredecessorContext(rechainRecoveryEvents(t, events), p1.pins(), &replayVerifierFixture{}, boundary); !errors.Is(err, ErrTranscriptReplay) {
 		t.Fatalf("flipped prompt byte: err=%v, want ErrTranscriptReplay", err)
 	}
 
@@ -356,12 +356,12 @@ func TestPredecessorReplayRefusesTamperedOrIncompleteJournals(t *testing.T) {
 		t.Fatal(err)
 	}
 	pins := RecoveryPins{Config: cfg, Model: ApprovedModel, Policy: p1.policy}
-	if _, err := ReplayPredecessorContext(journal, pins, nil, boundary); !errors.Is(err, ErrTranscriptReplay) {
+	if _, _, err := ReplayPredecessorContext(journal, pins, nil, boundary); !errors.Is(err, ErrTranscriptReplay) {
 		t.Fatalf("pending tool call: err=%v, want ErrTranscriptReplay", err)
 	}
 
 	empty := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "empty.audit"))
-	if _, err := ReplayPredecessorContext(empty, pins, nil, boundary); !errors.Is(err, ErrTranscriptReplay) {
+	if _, _, err := ReplayPredecessorContext(empty, pins, nil, boundary); !errors.Is(err, ErrTranscriptReplay) {
 		t.Fatalf("empty predecessor: err=%v, want ErrTranscriptReplay", err)
 	}
 	for name, bad := range map[string]TurnBoundary{
@@ -370,7 +370,7 @@ func TestPredecessorReplayRefusesTamperedOrIncompleteJournals(t *testing.T) {
 		"uppercase receipt": {PredecessorReceiptDigest: strings.ToUpper(boundary.PredecessorReceiptDigest), Outcome: "no_diff", ProjectBaselineDigest: boundary.ProjectBaselineDigest},
 		"bad baseline":      {PredecessorReceiptDigest: boundary.PredecessorReceiptDigest, Outcome: "no_diff", ProjectBaselineDigest: "tree-0"},
 	} {
-		if _, err := ReplayPredecessorContext(p1.journal, p1.pins(), &replayVerifierFixture{}, bad); err == nil {
+		if _, _, err := ReplayPredecessorContext(p1.journal, p1.pins(), &replayVerifierFixture{}, bad); err == nil {
 			t.Errorf("%s: boundary accepted", name)
 		}
 		if _, err := ExtendPredecessorContext(PredecessorContext{}, bad); err == nil {
@@ -381,7 +381,7 @@ func TestPredecessorReplayRefusesTamperedOrIncompleteJournals(t *testing.T) {
 
 func TestSuccessorRefusesReusedPredecessorIdentities(t *testing.T) {
 	p1 := runPredecessor(t)
-	predecessor, err := ReplayPredecessorContext(p1.journal, p1.pins(), &replayVerifierFixture{}, testBoundary("p1", "no_diff"))
+	predecessor, _, err := ReplayPredecessorContext(p1.journal, p1.pins(), &replayVerifierFixture{}, testBoundary("p1", "no_diff"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -271,6 +271,32 @@ type workflowVerticalFixture struct {
 	providerJournalPath string
 	limits              workflowrecovery.Limits
 	ownerStoreIdentity  workflowrecovery.OwnerStoreIdentity
+	// config is the provider conversation configuration startConversation passes to the authority.
+	config           providerbridge.Config
+	storePath        string
+	storeJournalPath string
+	closers          []func()
+}
+
+// workflowVerticalOptions shapes prepareWorkflowVertical. rules replace the default read-only rule
+// set; predecessor is pinned into the workflow checkpoint and set on the conversation config;
+// withoutLedger leaves the authority without a workflow ledger, as a governed session without
+// recovery runs.
+type workflowVerticalOptions struct {
+	launchProof   bool
+	retries       int
+	bash          *productionCommandRunner
+	rules         []gate.Rule
+	predecessor   providerbridge.PredecessorContext
+	withoutLedger bool
+}
+
+// close closes every handle the fixture opened, newest first. It runs again harmlessly at cleanup.
+func (f *workflowVerticalFixture) close() {
+	for index := len(f.closers) - 1; index >= 0; index-- {
+		f.closers[index]()
+	}
+	f.closers = nil
 }
 
 func runWorkflowVertical(t *testing.T, launchProof bool, retries int) {
@@ -416,6 +442,23 @@ func runWorkflowVertical(t *testing.T, launchProof bool, retries int) {
 func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 	turns []providerbridge.DevelopmentProviderTurn, bash ...*productionCommandRunner) *workflowVerticalFixture {
 	t.Helper()
+	options := workflowVerticalOptions{launchProof: launchProof, retries: retries}
+	if len(bash) == 1 {
+		options.bash = bash[0]
+	}
+	f := prepareWorkflowVertical(t, options)
+	f.startConversation(t, func(config providerbridge.Config, journal *audit.Journal) (*providerbridge.Conversation, error) {
+		return providerbridge.NewDevelopmentOfflineConversation(config, journal, turns)
+	})
+	return f
+}
+
+// prepareWorkflowVertical builds the workflow up to, not including, its provider conversation.
+func prepareWorkflowVertical(t *testing.T, options workflowVerticalOptions) *workflowVerticalFixture {
+	t.Helper()
+	f := &workflowVerticalFixture{}
+	t.Cleanup(f.close)
+	launchProof, retries := options.launchProof, options.retries
 	ctx := context.Background()
 	root := privateGovernedTestRoot(t)
 	sourcePath, storePath, adminPath := filepath.Join(root, "source"), filepath.Join(root, "store"), filepath.Join(root, "admin")
@@ -429,31 +472,35 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 		t.Fatal(err)
 	}
 
-	storeJournal, err := audit.Open(filepath.Join(root, "store-audit.jsonl"))
+	storeJournalPath := filepath.Join(root, "store-audit.jsonl")
+	storeJournal, err := audit.Open(storeJournalPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = storeJournal.Close() })
+	f.closers = append(f.closers, func() { _ = storeJournal.Close() })
 	providerJournalPath := filepath.Join(root, "provider-audit.jsonl")
 	providerJournal, err := audit.Open(providerJournalPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = providerJournal.Close() })
+	f.closers = append(f.closers, func() { _ = providerJournal.Close() })
 	commandJournalPath := filepath.Join(root, "command-audit.jsonl")
 	commandJournal, err := audit.Open(commandJournalPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = commandJournal.Close() })
+	f.closers = append(f.closers, func() { _ = commandJournal.Close() })
 
-	rules := []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}
+	rules := options.rules
+	if rules == nil {
+		rules = []gate.Rule{{Tool: "read", Effect: gate.EffectAllow}}
+	}
 	var runner governedCommandRunner = newDevelopmentFixtureCommandRunner()
 	var commandRunner sessionrepo.CommandRunner
 	var bashOutput []string
-	if len(bash) == 1 {
+	if options.bash != nil {
 		rules = append(rules, gate.Rule{Tool: "bash", Effect: gate.EffectAllow})
-		runner, commandRunner, bashOutput = bash[0], bash[0], []string{workflowVerticalBashOutput}
+		runner, commandRunner, bashOutput = options.bash, options.bash, []string{workflowVerticalBashOutput}
 	}
 	policy, err := gate.NewPolicy(gate.Profile{Version: gate.ProfileVersion, Rules: rules})
 	if err != nil {
@@ -475,7 +522,7 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = managed.Close() })
+	f.closers = append(f.closers, func() { _ = managed.Close() })
 	store := managed.Store()
 	source, err := os.Open(sourcePath)
 	if err != nil {
@@ -498,14 +545,14 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = admin.Close() })
+	f.closers = append(f.closers, func() { _ = admin.Close() })
 	git, gitProfile := pinGovernedTestGit(t)
-	t.Cleanup(func() { _ = git.Close() })
+	f.closers = append(f.closers, func() { _ = git.Close() })
 	prepared, err := sessionlaunch.Prepare(ctx, managed, baseline, admin, git, gitProfile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = prepared.Close() })
+	f.closers = append(f.closers, func() { _ = prepared.Close() })
 	if err := authority.BindPreparedSession(prepared); err != nil {
 		t.Fatal(err)
 	}
@@ -531,12 +578,12 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = protectedRoot.Close() })
+	f.closers = append(f.closers, func() { _ = protectedRoot.Close() })
 	owner, err := workflowrecovery.CreateFreshSQLiteOwner(filepath.Join(ownerStoreDir, "workflow.sqlite"), protectedRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = owner.Close() })
+	f.closers = append(f.closers, func() { _ = owner.Close() })
 	ownerStoreIdentity, err := owner.OwnerStoreIdentity(ctx, workflowVerticalID)
 	if err != nil {
 		t.Fatal(err)
@@ -601,7 +648,9 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 		StoreIdentityDigest: storeIdentity, AdmissionIdentityDigest: admissionIdentity,
 		CommandIdentityDigest: commandIdentity, AdminIdentityDigest: adminIdentity,
 		TaskDigest: bareWorkflowDigest(taskDigest), PromptDigest: bareWorkflowDigest(digestBytes([]byte(workflowVerticalPrompt))),
-		PolicyDigest: barePolicyDigest(policy.Digest()), ProfileDigest: bareWorkflowDigest(digestBytes([]byte(workflowVerticalProfile))),
+		ImportedPrefixDigest:         bareWorkflowDigest(options.predecessor.Digest()),
+		PredecessorTurnReceiptDigest: bareWorkflowDigest(options.predecessor.PredecessorReceiptDigest()),
+		PolicyDigest:                 barePolicyDigest(policy.Digest()), ProfileDigest: bareWorkflowDigest(digestBytes([]byte(workflowVerticalProfile))),
 		ImageDigest:         bareWorkflowDigest(digestBytes([]byte("vertical-image"))),
 		RuntimeDigest:       bareWorkflowDigest(digestBytes([]byte("vertical-runtime"))),
 		D06ProvenanceDigest: bareWorkflowDigest(d06Digest), PrivateGitIdentityDigest: bareWorkflowDigest(gitIdentityDigest),
@@ -639,15 +688,19 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 	}, transcript); err != nil {
 		t.Fatalf("register the first empty provider transcript before any request: %v", err)
 	}
-	checkpoint, _ := ledger.Snapshot()
-	if err := authority.BindWorkflowLedger(ledger, checkpoint.Pins, 1024); err != nil {
-		t.Fatalf("bind the mandatory actual workflow ledger: %v", err)
-	}
-	if err := authority.BindInitialWorkflowPrompt(workflowVerticalTaskID, workflowVerticalPrompt, taskDigest); err != nil {
-		t.Fatalf("bind the exact host-catalog task prompt: %v", err)
-	}
-	if err := authority.BindInitialWorkflowPrompt(workflowVerticalTaskID, workflowVerticalPrompt+" changed", taskDigest); err == nil {
-		t.Fatal("changed initial prompt replaced the exact fresh catalog prompt")
+	if options.withoutLedger {
+		ledger = nil
+	} else {
+		checkpoint, _ := ledger.Snapshot()
+		if err := authority.BindWorkflowLedger(ledger, checkpoint.Pins, 1024); err != nil {
+			t.Fatalf("bind the mandatory actual workflow ledger: %v", err)
+		}
+		if err := authority.BindInitialWorkflowPrompt(workflowVerticalTaskID, workflowVerticalPrompt, taskDigest); err != nil {
+			t.Fatalf("bind the exact host-catalog task prompt: %v", err)
+		}
+		if err := authority.BindInitialWorkflowPrompt(workflowVerticalTaskID, workflowVerticalPrompt+" changed", taskDigest); err == nil {
+			t.Fatal("changed initial prompt replaced the exact fresh catalog prompt")
+		}
 	}
 	if launchProof {
 		before, _ := ledger.Snapshot()
@@ -664,29 +717,38 @@ func newWorkflowVerticalFixture(t *testing.T, launchProof bool, retries int,
 			t.Fatalf("the launch proof did not put the Store journal one record past the checkpoint: %v", err)
 		}
 	}
-	config := providerbridge.Config{WorkflowID: workflowVerticalID, ConversationID: workflowVerticalConversation,
+	f.config = providerbridge.Config{WorkflowID: workflowVerticalID, ConversationID: workflowVerticalConversation,
 		ProfileID: workflowVerticalProfile, InitialGenerationID: baseline.ID(), InitialTreeDigest: baseline.TreeDigest(),
-		SystemPrompt: governedReplaySystem, DeveloperPrompt: governedReplayDeveloper}
-	conversation, err := authority.newProviderConversation(config, func(config providerbridge.Config,
-		journal *audit.Journal) (*providerbridge.Conversation, error) {
-		return providerbridge.NewDevelopmentOfflineConversation(config, journal, turns)
-	})
+		SystemPrompt: governedReplaySystem, DeveloperPrompt: governedReplayDeveloper, Predecessor: options.predecessor}
+	f.ctx, f.authority, f.ledger, f.durable, f.policy, f.store = ctx, authority, ledger, durable, policy, store
+	f.storeJournal, f.providerJournal, f.providerJournalPath = storeJournal, providerJournal, providerJournalPath
+	f.storePath, f.storeJournalPath = storePath, storeJournalPath
+	f.limits, f.ownerStoreIdentity = limits, ownerStoreIdentity
+	return f
+}
+
+// startConversation constructs the provider conversation through the authority and admits the
+// fixture's exact prompt.
+func (f *workflowVerticalFixture) startConversation(t *testing.T,
+	factory func(providerbridge.Config, *audit.Journal) (*providerbridge.Conversation, error)) {
+	t.Helper()
+	conversation, err := f.authority.newProviderConversation(f.config, factory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { conversation.Close() })
-	if err := authority.AdmitPrompt(conversation, durable, workflowVerticalTaskID, workflowVerticalPrompt+" changed"); err == nil {
-		t.Fatal("changed initial prompt reached the provider conversation")
+	f.closers = append(f.closers, func() { conversation.Close() })
+	f.conversation = conversation
+	if f.ledger != nil {
+		if err := f.authority.AdmitPrompt(conversation, f.durable, workflowVerticalTaskID, workflowVerticalPrompt+" changed"); err == nil {
+			t.Fatal("changed initial prompt reached the provider conversation")
+		}
 	}
-	if err := authority.AdmitPrompt(conversation, durable, workflowVerticalTaskID, workflowVerticalPrompt); err != nil {
+	if err := f.authority.AdmitPrompt(conversation, f.durable, workflowVerticalTaskID, workflowVerticalPrompt); err != nil {
 		t.Fatalf("admit the exact host-catalog prompt: %v", err)
 	}
-	if err := authority.AdmitPrompt(conversation, durable, workflowVerticalTaskID, workflowVerticalPrompt); err == nil {
+	if err := f.authority.AdmitPrompt(conversation, f.durable, workflowVerticalTaskID, workflowVerticalPrompt); err == nil {
 		t.Fatal("duplicate initial prompt was admitted to the provider conversation")
 	}
-	return &workflowVerticalFixture{ctx: ctx, authority: authority, ledger: ledger, conversation: conversation,
-		durable: durable, policy: policy, store: store, storeJournal: storeJournal, providerJournal: providerJournal,
-		providerJournalPath: providerJournalPath, limits: limits, ownerStoreIdentity: ownerStoreIdentity}
 }
 
 func TestWorkflowDigestDomainsFailClosed(t *testing.T) {
