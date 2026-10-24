@@ -73,6 +73,7 @@ You are the most expensive tier. Your comparative advantage is decomposition, ju
 
 ## Task State (`TASK_STATE.md`)
 - Read at session start if relevant; verify against current code
+- TASK_STATE focuses on tbound for the master thesis in @MSE_MA_Thesis, so it should include research state, next steps, completed milestones etc.
 - Update at major milestones or before ending unfinished work
 - Record progress, decisions, blockers, and next steps
 - Keep concise; remove stale information and avoid duplication
