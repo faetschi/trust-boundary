@@ -4,7 +4,7 @@
 `provider-profiles.md` and `provider-conversation-bridge.md`. It does not
 certify a production provider exchange, Pi composition, G1, containment, or H1.
 The engineering route is OpenCode Go; the provider-dependent H1 pilot uses the
-frozen OpenRouter research route (see `../TASK_STATE.md`). Durable evidence for
+frozen OpenRouter research route (see [TASK_STATE](../../TASK_STATE.md)). Durable evidence for
 the 2026-10-05 OpenRouter exchange is in
 [provider durable evidence](provider-durable-evidence.md).
 

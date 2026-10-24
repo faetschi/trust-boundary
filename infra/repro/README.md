@@ -29,7 +29,7 @@ path has been end-to-end qualified on a clean host. Treat them as review-needed
 prototype tooling until that qualification is completed.
 
 If you already use the reference VM `TBound-Ubuntu-2404`, resume it with the
-[repository quickstart's Windows steps](../../README.md#existing-windows-hyper-v-vm-start-connect-resume).
+[Hyper-V setup guide](../hyperv/SETUP.md).
 Do not run the VM bootstrap for it: that script creates a new VM and stops if
 the default VM name already exists.
 

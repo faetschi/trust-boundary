@@ -26,4 +26,4 @@ What the real guest exposed, freeze by freeze (each fixed with a regression test
 
 Needs you: advisor review of the pilot manifest, the D26 scope cut and the residual-channel claim; pre-registration decisions.
 
-Next: TASK_STATE.md "Goal, in order".
+Next: [TASK_STATE.md, "Next (thesis lane)"](TASK_STATE.md#next-thesis-lane).

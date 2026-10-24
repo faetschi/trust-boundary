@@ -24,10 +24,10 @@ Official Pi CLI 0.87.1 (untrusted worker, RPC mode)
 ```
 
 The isolated extension and offline CLI/RPC fixture have passed development
-checks on the existing VM. This diagram still describes an unqualified
-production runtime. Profile tooling and production bindings use the official
-CLI argument contract, but signed closure admission and D09 launch qualification
-remain incomplete. Production launch is refused without an authentic signed
+checks on the existing VM. The governed path has F12 engineering evidence;
+the final evaluation profile still needs qualification. Profile tooling and
+production bindings use the official CLI argument contract.
+Production launch is refused without an authentic signed
 profile and a registered D09 template. Earlier SDK receipts are historical
 transition artifacts, not evidence for the official CLI composition.
 
@@ -104,19 +104,18 @@ CLI routes and exit codes are in [governed host setup](../guides/governed-setup.
 
 ## Current limits
 
-The service handoff, journal, and source-capture implementation exist, but
-provisioned service operation and the real signed-profile path are unqualified.
-Production Pi CLI launch, the D06 sealed-source boundary, production
-command-cell containment, runtime settlement, publication, and independent
-effect observers also remain unqualified. Gates are tracked in
-[current status](../evaluation/status.md). Criteria not tracked there: broker continuation is
-wired to real multi-turn history (current captures and the fixture's
-`nativeFixtureTrust` are synthetic); every effect-capable run has an admitted
+The service handoff, journal, source capture, Pi CLI launch, command cells,
+settlement, and publication have F12 engineering smoke evidence. The final
+evaluation profile and complete independent-effect evidence still need
+qualification. Gates are tracked in [current status](../evaluation/status.md).
+Component fixture captures and `nativeFixtureTrust` remain synthetic.
+Every effect-capable run needs an admitted
 session store and durable recorder (a non-nil interface is not evidence); a
 claim-bearing interactive run needs a reviewed, pinned Pi terminal entrypoint
 with demonstrated PTY typing, tool-result continuation, and denied direct
-effect, config, session, and shortcut routes; and no dataset runner or
-claim-bearing evidence manifest exists yet.
+effect, config, session, and shortcut routes. The dataset runner exists as
+`tbound-run`, but its synthetic-ledger reports are non-claim-bearing; the final
+claim-bearing evaluation manifest is not frozen.
 
 Production admission needs these facts from the trusted host verifier; a nil
 callback result, a client-supplied `ready` string, a model name, or a fixture

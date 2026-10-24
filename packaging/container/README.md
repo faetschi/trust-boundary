@@ -1,7 +1,7 @@
 # tbound container image
 
-`Containerfile` builds a runnable tbound image (CLI + pinned Node/Pi runtime) with
-a multi-stage build, so the Go build toolchain stays out of the final image.
+`Containerfile` builds a runnable tbound image (CLI, Node runtime, and adapter
+sources) with a multi-stage build, so the Go build toolchain stays out of the final image.
 
 ```sh
 podman build -f packaging/container/Containerfile -t tbound:dev .

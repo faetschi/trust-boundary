@@ -1,21 +1,21 @@
 # Production Pi session composition (`serve --pi`)
 
-Status: **CLI composition, command-receipt binding, and managed-root permit
-code are compiled; real-host source qualification and positive publication are
-unverified.** On Linux, the ordinary CLI command is a managed-service client;
+Status (2026-10-24): **G1, including managed-root publication, passes on the
+real guest at F12. Each new freeze needs fresh qualification.** On Linux,
+the ordinary CLI command is a managed-service client;
 the internal --service endpoint is the systemd socket-activated server. This
 document describes the service-side session composition, not a standalone
-user launch command. The service and source-capture path have not been qualified
-on a live Linux host with the real signed profile.
+user launch command. See [current status](../evaluation/status.md) for the
+remaining final-profile and evaluation gates.
 
 **Worker migration:** the Pi worker API names in this implementation record
 refer to the former embedded SDK composition. The selected design is the official Pi 0.87.1 CLI in RPC mode with a TBound
 extension. The public D09 entrypoint revalidates admission, source/runtime
 bindings, and Store source evidence before calling the guarded launch helper.
 The lower-helper integration exercises bootstrap, readiness, one correlated RPC
-failure, and settled close with a simulated launcher. Public launch success,
-H1, G1, signed host admission, authentic proof capture, containment, and host
-qualification remain unverified.
+failure, and settled close with a simulated launcher. Those component tests do
+not establish public launch success, G1, signed host admission, authentic proof
+capture, containment, or host qualification. H1 remains unexecuted.
 See the [CLI reproduction decision](../decisions/2026-10-12-cli-reproduction.md).
 
 ## CLI entry point
@@ -255,12 +255,12 @@ are integrated. C calls `TakeCommandReceipt` once immediately after a successful
 run, and cleanup calls launcher `Close` only after worker/command settlement and
 successful C-owned `scope.Remove`; uncertain cleanup retains both authorities.
 
-**Operator prerequisites (positive path UNVERIFIED here):** provision the
+**Operator prerequisites for a new deployment:** provision the
 existing fixed, root-owned admin public key at `/etc/tbound/pi-host-profile.pub`
 and the signed production profile/template whose
 `managed_live_root_registration_digest` matches the fixed-anchor registration;
 the protected service and mount units; dedicated non-login service account;
 registered managed live filesystem; pinned runner and D09 image/toolchain; and
-protected Git approval. The positive tagged run was not performed here. G1
-remains false and H1 remains unexecuted; no provider trial, signing, host
-provisioning, privileged operation, or containment qualification was performed.
+protected Git approval. The component tests above do not perform signing,
+host provisioning, or containment qualification. The F12 G1 result does not
+qualify a new deployment, and H1 remains unexecuted.
