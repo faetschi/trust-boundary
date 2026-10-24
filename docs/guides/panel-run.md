@@ -110,7 +110,8 @@ invalid and stops.
 Prefer dated model ids over aliases that can move. For reasoning models,
 `max_tokens` also limits the reasoning tokens, so keep it at 4000 or more. Each
 request sets `provider.require_parameters`, so OpenRouter routes only to hosts
-that honour temperature and `max_tokens`. If a model rejects temperature 0, use
+that honour temperature and `max_tokens`, and `provider.data_collection: "deny"`,
+so no host may store or train on the cases (MultiPL-E forbids ML-training use). If a model rejects temperature 0, use
 its deterministic setting and record the reason.
 
 `public_policy` is required. It lists the bash output paths and the allowed

@@ -39,7 +39,8 @@ type chatRequest struct {
 		Include bool `json:"include"`
 	} `json:"usage"`
 	Provider struct {
-		RequireParameters bool `json:"require_parameters"`
+		RequireParameters bool   `json:"require_parameters"`
+		DataCollection    string `json:"data_collection"`
 	} `json:"provider"`
 }
 
@@ -48,6 +49,7 @@ func newRequest(m modelConfig, phase int, user string) chatRequest {
 		Messages: []chatMessage{{"system", systemPrompts[phase]}, {"user", user}}}
 	r.Usage.Include = true
 	r.Provider.RequireParameters = true // only route to hosts that honour temperature and max_tokens
+	r.Provider.DataCollection = "deny"  // cases include MultiPL-E, whose license forbids ML-training use
 	return r
 }
 

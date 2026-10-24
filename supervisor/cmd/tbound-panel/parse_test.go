@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -59,5 +60,12 @@ func TestCostAboveWorstCaseStops(t *testing.T) {
 	s, _ := loadSpend(filepath.Join(out, "calls.jsonl"))
 	if s.settled != 5 {
 		t.Fatalf("spent %+v, want the reported 5 USD", s)
+	}
+}
+
+func TestRequestDeniesDataCollection(t *testing.T) {
+	b, err := json.Marshal(newRequest(modelConfig{ID: "vendor/m", MaxTokens: 10}, 1, "x"))
+	if err != nil || !strings.Contains(string(b), `"data_collection":"deny"`) {
+		t.Fatalf("%s %v", b, err)
 	}
 }
