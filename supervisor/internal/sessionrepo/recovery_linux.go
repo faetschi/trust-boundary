@@ -379,7 +379,7 @@ func traceHead(trace audit.Trace) (string, uint64) {
 
 func (s *Store) indexHistoricalAuthorizationsLocked(trace audit.Trace) error {
 	for _, record := range trace.Records {
-		if record.Event.Kind != "governed_operation_authorization" {
+		if record.Event.Kind != "governed_operation_authorized" {
 			continue
 		}
 		var authorization historicalOperationAuthorization
@@ -389,7 +389,7 @@ func (s *Store) indexHistoricalAuthorizationsLocked(trace audit.Trace) error {
 			authorization.Tool == "" ||
 			(authorization.Operation.Kind != delta.OperationProposalCall && authorization.Operation.Kind != delta.OperationLease) ||
 			!validSHA256(authorization.TypedArgumentDigest) || !validTreeDigest(authorization.InputTreeDigest) ||
-			!validSHA256(authorization.GatePolicyDigest) || authorization.ProviderDecisionSequence == 0 ||
+			!validGatePolicyDigest(authorization.GatePolicyDigest) || authorization.ProviderDecisionSequence == 0 ||
 			!validBareAuditHash(authorization.ProviderDecisionRecordHash) || authorization.GateDecision.Verdict != gate.Allow ||
 			authorization.GateDecision.PolicyDigest != authorization.GatePolicyDigest ||
 			authorization.GateDecision.Tool != authorization.Tool ||
@@ -422,6 +422,11 @@ func decodeCanonicalHistoricalAuthorization(data []byte, target any) error {
 		return errors.Join(errors.New("historical authorization is not canonical JSON"), err)
 	}
 	return nil
+}
+
+// validGatePolicyDigest accepts exactly the gate.Policy.Digest form: the policy profile, then a SHA-256.
+func validGatePolicyDigest(value string) bool {
+	return strings.HasPrefix(value, gate.ProfileVersion+":") && validSHA256(strings.TrimPrefix(value, gate.ProfileVersion+":"))
 }
 
 func validBareAuditHash(value string) bool {
