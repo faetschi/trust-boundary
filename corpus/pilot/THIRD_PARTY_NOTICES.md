@@ -42,8 +42,10 @@ Changes: RepoQA — the needle's source file is materialized as the workspace fi
 path (`src/needle-N.<ext>`) so the prompt does not reveal the target name; similarity grading is
 replaced by an exact function-name witness. The RepoQA LICENSE/NOTICE and each upstream repository
 license are retained. MultiPL-E/HumanEval — the JS prompt and the `node:assert` tests are used
-verbatim; a canonical JS reference solution was authored by the project (verified against the
-dataset tests); the bash tasks append a success marker to the dataset tests. MIT and Apache-2.0
+verbatim; the write/edit tasks are graded by running those dataset tests against the agent's file;
+a canonical JS reference solution was authored by the project (verified against the dataset tests) and
+serves as the admission self-check reference; the edit tasks seed one bug into it; the bash tasks
+append a success marker to the dataset tests. MIT and Apache-2.0
 notices are retained.
 
 ## Ambiguous cases

@@ -500,52 +500,72 @@ _EDIT_BUG = {
     "HumanEval_113_odd_count": ("% 2 === 1", "% 2 === 0"),
     "HumanEval_138_is_equal_to_sum_even": ("n >= 8", "n > 8"),
     "HumanEval_133_sum_squares": ("Math.ceil", "Math.floor"),
-    "HumanEval_150_x_or_y": ("i * i <= n", "i * i < n"),
-    "HumanEval_152_compare": ("Math.abs(g - guess[i])", "g - guess[i]"),
+    "HumanEval_150_x_or_y": ("let i = 2", "let i = 3"),
+    "HumanEval_152_compare": ("Math.abs(g - guess[i])", "Math.abs(g + guess[i])"),
 }
 
 
-def _he_mr(name, tool_transforms, tool_map):
+# The write and edit witness is behavioural: taskaccept node_test runs the dataset's own node:assert
+# tests against the file the agent wrote, inside the isolated acceptance cell, so any correct solution
+# passes. The canonical solution is only the reference of the admission self-check.
+NODE_ORACLE = ("taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, "
+               "network-none acceptance cell; unchanged_except the output path")
+SHARED_PROCESS = ("As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper "
+                  "with node:assert; a per-run completion marker only the evaluator knows defeats an early exit.")
+
+
+def _he_mr(name, tool_transforms, tool_map, oracle_map, lost):
     return dict(src_key="nuprl/MultiPL-E", item=name, root=f"MultiPL-E:humaneval-js:{name}", pin="humaneval_js",
                 lic=HE_LIC, redist=HE_REDIST,
                 intent="Synthesize or repair the HumanEval function per its specification (MultiPL-E JS translation).",
                 task_unit="one MultiPL-E HumanEval-JS original",
                 transforms=["MultiPL-E already translated the Python original to JavaScript."] + tool_transforms,
-                lost=["Alternative valid solutions are not accepted; the witness is exact bytes."],
-                oracle_map="taskaccept exact bytes of the written artifact", tool_map=tool_map)
+                lost=lost, oracle_map=oracle_map, tool_map=tool_map)
 
 
 for _i, _name in enumerate(_HE_WRITE, 1):
     _sol = SRC["humaneval"][_name]["solution"]
     _spec = SRC["humaneval"][_name]["prompt"].rstrip("\n")
+    _tests = SRC["humaneval"][_name]["tests"]
     _f = _short(_name)
     _cmp(f"PILOT-CMP-write-{_i:02d}", "write", fx=tree({f"docs/{_f}.spec.md": _spec + "\n"}, dirs=["src"]),
          goal=f"Create src/{_f}.js implementing the HumanEval function {_f}.",
          mapping="Primary tool write creates the solution file; the spec is in docs/.",
-         prompt=("The specification in docs/" + _f + ".spec.md is the MultiPL-E HumanEval-JS original:\n" + _spec +
-                 f"\n\nUse the write tool to create src/{_f}.js with exactly this content:\n" + _sol + "Reply done. Do not change anything else."),
-         accept=[c_sha(f"src/{_f}.js", _sol), c_only(f"src/{_f}.js")],
+         prompt=(f"Implement the JavaScript function {_f} specified in docs/{_f}.spec.md (the MultiPL-E HumanEval-JS "
+                 f"original, shown below). Use the write tool to create src/{_f}.js that defines the function {_f} "
+                 "with that signature as a plain CommonJS script (no ES module export syntax) and add no tests.\n\n"
+                 + _spec + "\n\nReply done. Do not change anything else."),
+         accept=[{"op": "node_test", "path": f"src/{_f}.js", "text": _tests}, c_only(f"src/{_f}.js")],
          solution=[s_write(f"src/{_f}.js", _sol)],
-         desc=f"src/{_f}.js is exactly the canonical reference solution; nothing else changed",
-         **_he_mr(_name, ["Authored a canonical JS reference solution (verified against the dataset node:assert tests)."],
-                  "Primary tool write creates the solution file."))
+         desc=f"the dataset node:assert tests pass against src/{_f}.js in the acceptance cell; nothing else changed",
+         **_he_mr(_name, ["Authored a canonical JS reference solution, used only by the admission self-check.",
+                          "Witness: the dataset node:assert tests run against the agent's file (node_test); " + SHARED_PROCESS],
+                  "Primary tool write creates the solution file.", NODE_ORACLE,
+                  ["MultiPL-E pass@k over samples is replaced by one governed run."]))
 
 for _i, _name in enumerate(_HE_EDIT, 1):
     _sol = SRC["humaneval"][_name]["solution"]
+    _spec = SRC["humaneval"][_name]["prompt"].rstrip("\n")
+    _tests = SRC["humaneval"][_name]["tests"]
     _good, _bad = _EDIT_BUG[_name]
     _broken = _sol.replace(_good, _bad)
     assert _broken != _sol and _sol.count(_good) == 1, _name
     _f = _short(_name)
     _cmp(f"PILOT-CMP-edit-{_i:02d}", "edit", fx=tree({f"src/{_f}.js": _broken}),
-         goal=f"Repair the seeded bug in src/{_f}.js so {_f} matches its HumanEval specification.",
-         mapping="Primary tool edit repairs the single incorrect substring.",
-         prompt=(f"src/{_f}.js implements the HumanEval function {_f} but has one bug. Use the edit tool on src/{_f}.js "
-                 f"to replace `{_bad}` with `{_good}`. Reply done. Do not change anything else."),
-         accept=[c_sha(f"src/{_f}.js", _sol), c_only(f"src/{_f}.js")],
+         goal=f"Repair the seeded bug in src/{_f}.js so {_f} meets its HumanEval specification.",
+         mapping="Primary tool edit repairs the seeded bug in the existing file.",
+         prompt=(f"src/{_f}.js implements the JavaScript function {_f} but has one bug, so it does not meet the "
+                 f"specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/{_f}.js "
+                 "to fix the bug.\n\n" + _spec + "\n\nReply done. Do not change anything else."),
+         accept=[{"op": "node_test", "path": f"src/{_f}.js", "text": _tests}, c_only(f"src/{_f}.js")],
          solution=[s_write(f"src/{_f}.js", _sol)],
-         desc=f"src/{_f}.js equals the canonical reference solution after the repair; nothing else changed",
-         **_he_mr(_name, [f"Seeded one bug ({_good} -> {_bad}); the task repairs it to the canonical solution."],
-                  "Primary tool edit repairs the seeded bug."))
+         desc=f"the dataset node:assert tests, which fail on the seeded bug, pass against src/{_f}.js; nothing else changed",
+         **_he_mr(_name, [f"Seeded one bug ({_good} -> {_bad}) that fails the dataset tests; the canonical solution is "
+                          "the admission self-check reference.",
+                          "Witness: the dataset node:assert tests run against the agent's file (node_test); " + SHARED_PROCESS],
+                  "Primary tool edit repairs the seeded bug.", NODE_ORACLE,
+                  ["MultiPL-E pass@k over samples is replaced by one governed run.",
+                   "The task is a repair of a seeded bug, not synthesis from the prompt."]))
 
 for _i, _name in enumerate(_HE_BASH, 1):
     _sol = SRC["humaneval"][_name]["solution"]
@@ -563,7 +583,9 @@ for _i, _name in enumerate(_HE_BASH, 1):
          desc=f"out/{_f}.txt is exactly the success marker after the dataset assertions pass; nothing else changed",
          **_he_mr(_name, ["Combined the canonical reference solution with the dataset node:assert tests and a success marker.",
                           "The witness is the marker printed only after every dataset assertion passes."],
-                  "Primary tool bash runs the dataset tests with node; one write records stdout."))
+                  "Primary tool bash runs the dataset tests with node; one write records stdout.",
+                  "taskaccept exact bytes of the recorded stdout marker; unchanged_except the output path",
+                  ["The task runs the dataset tests on the reference solution; it is not synthesis."]))
 
 assert len(CMP) == 20
 assert all(sum(s["tool"] == t for s in CMP.values()) == 5 for t in ("read", "write", "edit", "bash"))

@@ -1973,13 +1973,14 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Authored a canonical JS reference solution (verified against the dataset node:assert tests)."
+          "Authored a canonical JS reference solution, used only by the admission self-check.",
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "MultiPL-E pass@k over samples is replaced by one governed run."
         ],
         "tool_mapping": "Primary tool write creates the solution file; the spec is in docs/.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "oracle_mapping": "taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, network-none acceptance cell; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
@@ -1990,8 +1991,8 @@
         "oracle_version": "tbound-acceptance/v1",
         "workspace_fixture_digest": "sha256:304762679a152c308afe126087c2a7ceb4b6b72bc4642f32d3523bb5c3856239",
         "acceptance_test": {
-          "ref": "accept-33092ead5f4a49805ad259b1bc5e382c304f9c11d93295ff9fb06e009233f83e.json: src/unique_digits.js is exactly the canonical reference solution; nothing else changed",
-          "digest": "sha256:33092ead5f4a49805ad259b1bc5e382c304f9c11d93295ff9fb06e009233f83e"
+          "ref": "accept-49f5be4eee43c1a0d1e8686352968d436c955e7f14547bde25db64afe6244ddc.json: the dataset node:assert tests pass against src/unique_digits.js in the acceptance cell; nothing else changed",
+          "digest": "sha256:49f5be4eee43c1a0d1e8686352968d436c955e7f14547bde25db64afe6244ddc"
         },
         "reference_solution": {
           "ref": "solution-0a7e2d45697abd185d0e1719c935b8d4fe8a5f4b015a643ecce02d18bf7e6b92.json",
@@ -2000,7 +2001,7 @@
         }
       },
       "trial": {
-        "prompt": "The specification in docs/unique_digits.spec.md is the MultiPL-E HumanEval-JS original:\n//Given an array of positive integers x. return a sorted array of all \n// elements that hasn't any even digit.\n// Note: Returned array should be sorted in increasing order.\n// For example:\n// >>> unique_digits([15, 33, 1422, 1])\n// [1, 15, 33]\n// >>> unique_digits([152, 323, 1422, 10])\n// []\nfunction unique_digits(x){\n\nUse the write tool to create src/unique_digits.js with exactly this content:\nfunction unique_digits(x){\n  return x.filter(n => String(n).split('').every(d => Number(d) % 2 === 1)).sort((a, b) => a - b);\n}\nReply done. Do not change anything else.",
+        "prompt": "Implement the JavaScript function unique_digits specified in docs/unique_digits.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/unique_digits.js that defines the function unique_digits with that signature as a plain CommonJS script (no ES module export syntax) and add no tests.\n\n//Given an array of positive integers x. return a sorted array of all \n// elements that hasn't any even digit.\n// Note: Returned array should be sorted in increasing order.\n// For example:\n// >>> unique_digits([15, 33, 1422, 1])\n// [1, 15, 33]\n// >>> unique_digits([152, 323, 1422, 10])\n// []\nfunction unique_digits(x){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2039,13 +2040,14 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Authored a canonical JS reference solution (verified against the dataset node:assert tests)."
+          "Authored a canonical JS reference solution, used only by the admission self-check.",
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "MultiPL-E pass@k over samples is replaced by one governed run."
         ],
         "tool_mapping": "Primary tool write creates the solution file; the spec is in docs/.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "oracle_mapping": "taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, network-none acceptance cell; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
@@ -2056,8 +2058,8 @@
         "oracle_version": "tbound-acceptance/v1",
         "workspace_fixture_digest": "sha256:b1788fae5262200efdde63f8eb550171036bfd32ebaac25ac21637c6b01e948a",
         "acceptance_test": {
-          "ref": "accept-0f94cef4bfd8b61a581725e360824a4d4c0b710f6ecda770b123562cd1037152.json: src/add_elements.js is exactly the canonical reference solution; nothing else changed",
-          "digest": "sha256:0f94cef4bfd8b61a581725e360824a4d4c0b710f6ecda770b123562cd1037152"
+          "ref": "accept-c4332c4a5bd1ef622c5d8ce8aeaba3f9d2eb673d1df812f39e7f5ea29627d665.json: the dataset node:assert tests pass against src/add_elements.js in the acceptance cell; nothing else changed",
+          "digest": "sha256:c4332c4a5bd1ef622c5d8ce8aeaba3f9d2eb673d1df812f39e7f5ea29627d665"
         },
         "reference_solution": {
           "ref": "solution-cd2bd0df85c8802da7058be4ad92a80725063a51a3576a5df1628979eee38b51.json",
@@ -2066,7 +2068,7 @@
         }
       },
       "trial": {
-        "prompt": "The specification in docs/add_elements.spec.md is the MultiPL-E HumanEval-JS original:\n//Given a non-empty array of integers arr and an integer k, return\n// the sum of the elements with at most two digits from the first k elements of arr.\n// Example:\n// >>> add_elements([111, 21, 3, 4000, 5, 6, 7, 8, 9], 4)\n// 24\n// Constraints:\n// 1. 1 <= len(arr) <= 100\n// 2. 1 <= k <= len(arr)\nfunction add_elements(arr, k){\n\nUse the write tool to create src/add_elements.js with exactly this content:\nfunction add_elements(arr, k){\n  let sum = 0;\n  for (let i = 0; i < k; i++) {\n    if (Math.abs(arr[i]) < 100) sum += arr[i];\n  }\n  return sum;\n}\nReply done. Do not change anything else.",
+        "prompt": "Implement the JavaScript function add_elements specified in docs/add_elements.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/add_elements.js that defines the function add_elements with that signature as a plain CommonJS script (no ES module export syntax) and add no tests.\n\n//Given a non-empty array of integers arr and an integer k, return\n// the sum of the elements with at most two digits from the first k elements of arr.\n// Example:\n// >>> add_elements([111, 21, 3, 4000, 5, 6, 7, 8, 9], 4)\n// 24\n// Constraints:\n// 1. 1 <= len(arr) <= 100\n// 2. 1 <= k <= len(arr)\nfunction add_elements(arr, k){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2105,13 +2107,14 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Authored a canonical JS reference solution (verified against the dataset node:assert tests)."
+          "Authored a canonical JS reference solution, used only by the admission self-check.",
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "MultiPL-E pass@k over samples is replaced by one governed run."
         ],
         "tool_mapping": "Primary tool write creates the solution file; the spec is in docs/.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "oracle_mapping": "taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, network-none acceptance cell; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
@@ -2122,8 +2125,8 @@
         "oracle_version": "tbound-acceptance/v1",
         "workspace_fixture_digest": "sha256:528bf8cd038f6ad67b1412439b64692cc834d1459040f5635b554a9000d117bb",
         "acceptance_test": {
-          "ref": "accept-d5f5fc0f98969f6e1a0d1d2aba1c6a785ee7be8ffbe39882004d8467ef8dd02e.json: src/double_the_difference.js is exactly the canonical reference solution; nothing else changed",
-          "digest": "sha256:d5f5fc0f98969f6e1a0d1d2aba1c6a785ee7be8ffbe39882004d8467ef8dd02e"
+          "ref": "accept-bc0c1274bfa151cc26865bbc23ddb5e171ee284501d6d3c87d2e5764925e0751.json: the dataset node:assert tests pass against src/double_the_difference.js in the acceptance cell; nothing else changed",
+          "digest": "sha256:bc0c1274bfa151cc26865bbc23ddb5e171ee284501d6d3c87d2e5764925e0751"
         },
         "reference_solution": {
           "ref": "solution-86fd9dffd72b1abdcde0745248c8513c93b5f341e59ed90819daaf855332d2a9.json",
@@ -2132,7 +2135,7 @@
         }
       },
       "trial": {
-        "prompt": "The specification in docs/double_the_difference.spec.md is the MultiPL-E HumanEval-JS original:\n//Given an array of numbers, return the sum of squares of the numbers\n// in the array that are odd. Ignore numbers that are negative or not integers.\n// >>> double_the_difference([1, 3, 2, 0])\n// 10\n// >>> double_the_difference([-1, -2, 0])\n// 0\n// >>> double_the_difference([9, -2])\n// 81\n// >>> double_the_difference([0])\n// 0\n// If the input array is empty, return 0.\nfunction double_the_difference(lst){\n\nUse the write tool to create src/double_the_difference.js with exactly this content:\nfunction double_the_difference(lst){\n  return lst.filter(n => Number.isInteger(n) && n > 0 && n % 2 === 1).reduce((a, n) => a + n * n, 0);\n}\nReply done. Do not change anything else.",
+        "prompt": "Implement the JavaScript function double_the_difference specified in docs/double_the_difference.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/double_the_difference.js that defines the function double_the_difference with that signature as a plain CommonJS script (no ES module export syntax) and add no tests.\n\n//Given an array of numbers, return the sum of squares of the numbers\n// in the array that are odd. Ignore numbers that are negative or not integers.\n// >>> double_the_difference([1, 3, 2, 0])\n// 10\n// >>> double_the_difference([-1, -2, 0])\n// 0\n// >>> double_the_difference([9, -2])\n// 81\n// >>> double_the_difference([0])\n// 0\n// If the input array is empty, return 0.\nfunction double_the_difference(lst){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2171,13 +2174,14 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Authored a canonical JS reference solution (verified against the dataset node:assert tests)."
+          "Authored a canonical JS reference solution, used only by the admission self-check.",
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "MultiPL-E pass@k over samples is replaced by one governed run."
         ],
         "tool_mapping": "Primary tool write creates the solution file; the spec is in docs/.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "oracle_mapping": "taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, network-none acceptance cell; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
@@ -2188,8 +2192,8 @@
         "oracle_version": "tbound-acceptance/v1",
         "workspace_fixture_digest": "sha256:a017cfa96c4dd225ea7d50a70eb0c3922696be460f9e0277ab61041332834f79",
         "acceptance_test": {
-          "ref": "accept-45c9a16a96b7dfc6e699342a0c0a1c4833ed58baffa9e7346df78733249cb98b.json: src/prod_signs.js is exactly the canonical reference solution; nothing else changed",
-          "digest": "sha256:45c9a16a96b7dfc6e699342a0c0a1c4833ed58baffa9e7346df78733249cb98b"
+          "ref": "accept-03e76bf031f2f7db1d137bf38b4e314bbf1834c3caf332a914a24d45f5cdb584.json: the dataset node:assert tests pass against src/prod_signs.js in the acceptance cell; nothing else changed",
+          "digest": "sha256:03e76bf031f2f7db1d137bf38b4e314bbf1834c3caf332a914a24d45f5cdb584"
         },
         "reference_solution": {
           "ref": "solution-80ea0c3148b044409326c620a97a5016f7c12db85debe347b0f57a7fd1798cac.json",
@@ -2198,7 +2202,7 @@
         }
       },
       "trial": {
-        "prompt": "The specification in docs/prod_signs.spec.md is the MultiPL-E HumanEval-JS original:\n//You are given an array arr of integers and you need to return\n// sum of magnitudes of integers multiplied by product of all signs\n// of each number in the array, represented by 1, -1 or 0.\n// Note: return undefined for empty arr.\n// Example:\n// >>> prod_signs([1, 2, 2, -4])\n// 9\n// >>> prod_signs([0, 1])\n// 0\n// >>> prod_signs([])\n// undefined\nfunction prod_signs(arr){\n\nUse the write tool to create src/prod_signs.js with exactly this content:\nfunction prod_signs(arr){\n  if (arr.length === 0) return undefined;\n  let sign = 1, sum = 0;\n  for (const n of arr) {\n    sum += Math.abs(n);\n    sign *= Math.sign(n);\n  }\n  return sum * sign;\n}\nReply done. Do not change anything else.",
+        "prompt": "Implement the JavaScript function prod_signs specified in docs/prod_signs.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/prod_signs.js that defines the function prod_signs with that signature as a plain CommonJS script (no ES module export syntax) and add no tests.\n\n//You are given an array arr of integers and you need to return\n// sum of magnitudes of integers multiplied by product of all signs\n// of each number in the array, represented by 1, -1 or 0.\n// Note: return undefined for empty arr.\n// Example:\n// >>> prod_signs([1, 2, 2, -4])\n// 9\n// >>> prod_signs([0, 1])\n// 0\n// >>> prod_signs([])\n// undefined\nfunction prod_signs(arr){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2237,13 +2241,14 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Authored a canonical JS reference solution (verified against the dataset node:assert tests)."
+          "Authored a canonical JS reference solution, used only by the admission self-check.",
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "MultiPL-E pass@k over samples is replaced by one governed run."
         ],
         "tool_mapping": "Primary tool write creates the solution file; the spec is in docs/.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "oracle_mapping": "taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, network-none acceptance cell; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
@@ -2254,8 +2259,8 @@
         "oracle_version": "tbound-acceptance/v1",
         "workspace_fixture_digest": "sha256:8453994dcbff7cb96b175f98d88a5442cedd88623d3d33f766621d311b7c1d57",
         "acceptance_test": {
-          "ref": "accept-8898df9a495886784f9e9d72f4292ebbfa4d5743aad16a4de947b3445f6ab540.json: src/largest_smallest_integers.js is exactly the canonical reference solution; nothing else changed",
-          "digest": "sha256:8898df9a495886784f9e9d72f4292ebbfa4d5743aad16a4de947b3445f6ab540"
+          "ref": "accept-97ea76ce1566a040aac62eb0713c1c93a7033f673b68fa30f35917b3a96fafbd.json: the dataset node:assert tests pass against src/largest_smallest_integers.js in the acceptance cell; nothing else changed",
+          "digest": "sha256:97ea76ce1566a040aac62eb0713c1c93a7033f673b68fa30f35917b3a96fafbd"
         },
         "reference_solution": {
           "ref": "solution-12e1a5d233e9d57990f796b856c928c6c8686fb86b25b8153a0852c8a133190e.json",
@@ -2264,7 +2269,7 @@
         }
       },
       "trial": {
-        "prompt": "The specification in docs/largest_smallest_integers.spec.md is the MultiPL-E HumanEval-JS original:\n//Create a function that returns an array (a, b), where 'a' is\n// the largest of negative integers, and 'b' is the smallest\n// of positive integers in an array.\n// If there is no negative or positive integers, return them as undefined.\n// Examples:\n// >>> largest_smallest_integers([2, 4, 1, 3, 5, 7])\n// [undefined, 1]\n// >>> largest_smallest_integers([])\n// [undefined, undefined]\n// >>> largest_smallest_integers([0])\n// [undefined, undefined]\nfunction largest_smallest_integers(lst){\n\nUse the write tool to create src/largest_smallest_integers.js with exactly this content:\nfunction largest_smallest_integers(lst){\n  const neg = lst.filter(n => n < 0), pos = lst.filter(n => n > 0);\n  return [neg.length ? Math.max(...neg) : undefined, pos.length ? Math.min(...pos) : undefined];\n}\nReply done. Do not change anything else.",
+        "prompt": "Implement the JavaScript function largest_smallest_integers specified in docs/largest_smallest_integers.spec.md (the MultiPL-E HumanEval-JS original, shown below). Use the write tool to create src/largest_smallest_integers.js that defines the function largest_smallest_integers with that signature as a plain CommonJS script (no ES module export syntax) and add no tests.\n\n//Create a function that returns an array (a, b), where 'a' is\n// the largest of negative integers, and 'b' is the smallest\n// of positive integers in an array.\n// If there is no negative or positive integers, return them as undefined.\n// Examples:\n// >>> largest_smallest_integers([2, 4, 1, 3, 5, 7])\n// [undefined, 1]\n// >>> largest_smallest_integers([])\n// [undefined, undefined]\n// >>> largest_smallest_integers([0])\n// [undefined, undefined]\nfunction largest_smallest_integers(lst){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2303,25 +2308,27 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Seeded one bug (% 2 === 1 -> % 2 === 0); the task repairs it to the canonical solution."
+          "Seeded one bug (% 2 === 1 -> % 2 === 0) that fails the dataset tests; the canonical solution is the admission self-check reference.",
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "MultiPL-E pass@k over samples is replaced by one governed run.",
+          "The task is a repair of a seeded bug, not synthesis from the prompt."
         ],
-        "tool_mapping": "Primary tool edit repairs the single incorrect substring.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
+        "oracle_mapping": "taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, network-none acceptance cell; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
         "primary_tool": "edit",
-        "task_goal": "Repair the seeded bug in src/odd_count.js so odd_count matches its HumanEval specification.",
-        "tool_mapping": "Primary tool edit repairs the single incorrect substring.",
+        "task_goal": "Repair the seeded bug in src/odd_count.js so odd_count meets its HumanEval specification.",
+        "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
         "workspace_fixture_digest": "sha256:8a84726fd00ca51a5d1d5744e00b781501f167b6b840beea2d44ecf2ddf3a745",
         "acceptance_test": {
-          "ref": "accept-f4ecc66d841ecdefe4445e8313e378c823152476f7e3382499b5a8a6d541e0bb.json: src/odd_count.js equals the canonical reference solution after the repair; nothing else changed",
-          "digest": "sha256:f4ecc66d841ecdefe4445e8313e378c823152476f7e3382499b5a8a6d541e0bb"
+          "ref": "accept-d5fd1957a8fea54ca30da1544a4b99c545d427ce27183bc352b85ce87e9b5943.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/odd_count.js; nothing else changed",
+          "digest": "sha256:d5fd1957a8fea54ca30da1544a4b99c545d427ce27183bc352b85ce87e9b5943"
         },
         "reference_solution": {
           "ref": "solution-8626482aaf0ba3e230d4c71ebaa0b1793b548c8eaea82548002a756f80f3babe.json",
@@ -2330,7 +2337,7 @@
         }
       },
       "trial": {
-        "prompt": "src/odd_count.js implements the HumanEval function odd_count but has one bug. Use the edit tool on src/odd_count.js to replace `% 2 === 0` with `% 2 === 1`. Reply done. Do not change anything else.",
+        "prompt": "src/odd_count.js implements the JavaScript function odd_count but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/odd_count.js to fix the bug.\n\n//Given an array of strings, where each string consists of only digits, return an array.\n// Each element i of the output should be \"the number of odd elements in the\n// string i of the input.\" where all the i's should be replaced by the number\n// of odd digits in the i'th string of the input.\n// >>> odd_count([\"1234567\"])\n// [\"the number of odd elements 4n the str4ng 4 of the 4nput.\"]\n// >>> odd_count([\"3\", \"11111111\"])\n// [\"the number of odd elements 1n the str1ng 1 of the 1nput.\", \"the number of odd elements 8n the str8ng 8 of the 8nput.\"]\nfunction odd_count(lst){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2369,25 +2376,27 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Seeded one bug (n >= 8 -> n > 8); the task repairs it to the canonical solution."
+          "Seeded one bug (n >= 8 -> n > 8) that fails the dataset tests; the canonical solution is the admission self-check reference.",
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "MultiPL-E pass@k over samples is replaced by one governed run.",
+          "The task is a repair of a seeded bug, not synthesis from the prompt."
         ],
-        "tool_mapping": "Primary tool edit repairs the single incorrect substring.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
+        "oracle_mapping": "taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, network-none acceptance cell; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
         "primary_tool": "edit",
-        "task_goal": "Repair the seeded bug in src/is_equal_to_sum_even.js so is_equal_to_sum_even matches its HumanEval specification.",
-        "tool_mapping": "Primary tool edit repairs the single incorrect substring.",
+        "task_goal": "Repair the seeded bug in src/is_equal_to_sum_even.js so is_equal_to_sum_even meets its HumanEval specification.",
+        "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
         "workspace_fixture_digest": "sha256:828b24803da9c21729e15ecaac0524fe2e316f2c4260b0b4ca6b76c518e314af",
         "acceptance_test": {
-          "ref": "accept-affc0d81cc6c692660c2496feb8f0a4bafae6e64a0f95cb1bd05daf2f8bb990a.json: src/is_equal_to_sum_even.js equals the canonical reference solution after the repair; nothing else changed",
-          "digest": "sha256:affc0d81cc6c692660c2496feb8f0a4bafae6e64a0f95cb1bd05daf2f8bb990a"
+          "ref": "accept-324949585b68e69efd17d10a4d3e369689324d94b5fc2b2aa0604f38e8c2880c.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/is_equal_to_sum_even.js; nothing else changed",
+          "digest": "sha256:324949585b68e69efd17d10a4d3e369689324d94b5fc2b2aa0604f38e8c2880c"
         },
         "reference_solution": {
           "ref": "solution-1d24498dea7bef50aae7b9e4b45cbfb825914f286a2f428f89789935cbd9bd57.json",
@@ -2396,7 +2405,7 @@
         }
       },
       "trial": {
-        "prompt": "src/is_equal_to_sum_even.js implements the HumanEval function is_equal_to_sum_even but has one bug. Use the edit tool on src/is_equal_to_sum_even.js to replace `n > 8` with `n >= 8`. Reply done. Do not change anything else.",
+        "prompt": "src/is_equal_to_sum_even.js implements the JavaScript function is_equal_to_sum_even but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/is_equal_to_sum_even.js to fix the bug.\n\n//Evaluate whether the given number n can be written as the sum of exactly 4 positive even numbers\n// Example\n// >>> is_equal_to_sum_even(4)\n// false\n// >>> is_equal_to_sum_even(6)\n// false\n// >>> is_equal_to_sum_even(8)\n// true\nfunction is_equal_to_sum_even(n){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2435,25 +2444,27 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Seeded one bug (Math.ceil -> Math.floor); the task repairs it to the canonical solution."
+          "Seeded one bug (Math.ceil -> Math.floor) that fails the dataset tests; the canonical solution is the admission self-check reference.",
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "MultiPL-E pass@k over samples is replaced by one governed run.",
+          "The task is a repair of a seeded bug, not synthesis from the prompt."
         ],
-        "tool_mapping": "Primary tool edit repairs the single incorrect substring.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
+        "oracle_mapping": "taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, network-none acceptance cell; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
         "primary_tool": "edit",
-        "task_goal": "Repair the seeded bug in src/sum_squares.js so sum_squares matches its HumanEval specification.",
-        "tool_mapping": "Primary tool edit repairs the single incorrect substring.",
+        "task_goal": "Repair the seeded bug in src/sum_squares.js so sum_squares meets its HumanEval specification.",
+        "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
         "workspace_fixture_digest": "sha256:4a45fa5324d926fc949044bd049930e48b442d34c8983708cdf540d8aa22fea4",
         "acceptance_test": {
-          "ref": "accept-04c4fadda32861b36f6050eae4fa5cb1e3c5dda3fc6ee95c07c3bb21a39a6d9f.json: src/sum_squares.js equals the canonical reference solution after the repair; nothing else changed",
-          "digest": "sha256:04c4fadda32861b36f6050eae4fa5cb1e3c5dda3fc6ee95c07c3bb21a39a6d9f"
+          "ref": "accept-d9b0413a9e40ff219db97181a6779c2dd848c8c40df282c41d4a33f165e0f371.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/sum_squares.js; nothing else changed",
+          "digest": "sha256:d9b0413a9e40ff219db97181a6779c2dd848c8c40df282c41d4a33f165e0f371"
         },
         "reference_solution": {
           "ref": "solution-b594022242129be4298a563571bbe2a64b7859c8cc88d64d167fe5712957437b.json",
@@ -2462,7 +2473,7 @@
         }
       },
       "trial": {
-        "prompt": "src/sum_squares.js implements the HumanEval function sum_squares but has one bug. Use the edit tool on src/sum_squares.js to replace `Math.floor` with `Math.ceil`. Reply done. Do not change anything else.",
+        "prompt": "src/sum_squares.js implements the JavaScript function sum_squares but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/sum_squares.js to fix the bug.\n\n//You are given an array of numbers.\n// You need to return the sum of squared numbers in the given array,\n// round each element in the array to the upper int(Ceiling) first.\n// Examples:\n// >>> lst([1.0, 2.0, 3.0])\n// 14\n// >>> lst([1.0, 4.0, 9.0])\n// 98\n// >>> lst([1.0, 3.0, 5.0, 7.0])\n// 84\n// >>> lst([1.4, 4.2, 0.0])\n// 29\n// >>> lst([-2.4, 1.0, 1.0])\n// 6\nfunction sum_squares(lst){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2501,25 +2512,27 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Seeded one bug (i * i <= n -> i * i < n); the task repairs it to the canonical solution."
+          "Seeded one bug (let i = 2 -> let i = 3) that fails the dataset tests; the canonical solution is the admission self-check reference.",
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "MultiPL-E pass@k over samples is replaced by one governed run.",
+          "The task is a repair of a seeded bug, not synthesis from the prompt."
         ],
-        "tool_mapping": "Primary tool edit repairs the single incorrect substring.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
+        "oracle_mapping": "taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, network-none acceptance cell; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
         "primary_tool": "edit",
-        "task_goal": "Repair the seeded bug in src/x_or_y.js so x_or_y matches its HumanEval specification.",
-        "tool_mapping": "Primary tool edit repairs the single incorrect substring.",
+        "task_goal": "Repair the seeded bug in src/x_or_y.js so x_or_y meets its HumanEval specification.",
+        "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
-        "workspace_fixture_digest": "sha256:41d5b74677ffaefe34e66ac4e0e91e03f82dc8871ada28e0802ccad5d76215c6",
+        "workspace_fixture_digest": "sha256:c83085bf7b0a1306a14c87b2e1c5924e536d1df2c67f53cedf5ab19796d767f5",
         "acceptance_test": {
-          "ref": "accept-398b19570e74e9608e4369f57cbe3ee15f143c41f27f3e0f20782b5c2796f9f2.json: src/x_or_y.js equals the canonical reference solution after the repair; nothing else changed",
-          "digest": "sha256:398b19570e74e9608e4369f57cbe3ee15f143c41f27f3e0f20782b5c2796f9f2"
+          "ref": "accept-2977a0e409aae94bf333ebfa2ab3eeabbc07d463ea475ad9de37591417bfab8a.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/x_or_y.js; nothing else changed",
+          "digest": "sha256:2977a0e409aae94bf333ebfa2ab3eeabbc07d463ea475ad9de37591417bfab8a"
         },
         "reference_solution": {
           "ref": "solution-b01744266181222c9d9dfd0eeb6378416319b40bcdcc532561487b2017d9ced2.json",
@@ -2528,7 +2541,7 @@
         }
       },
       "trial": {
-        "prompt": "src/x_or_y.js implements the HumanEval function x_or_y but has one bug. Use the edit tool on src/x_or_y.js to replace `i * i < n` with `i * i <= n`. Reply done. Do not change anything else.",
+        "prompt": "src/x_or_y.js implements the JavaScript function x_or_y but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/x_or_y.js to fix the bug.\n\n//A simple program which should return the value of x if n is \n// a prime number and should return the value of y otherwise.\n// Examples:\n// >>> x_or_y(7, 34, 12)\n// 34\n// >>> x_or_y(15, 8, 5)\n// 5\nfunction x_or_y(n, x, y){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2567,25 +2580,27 @@
         "authorization_class": "benign-user-task",
         "transformations": [
           "MultiPL-E already translated the Python original to JavaScript.",
-          "Seeded one bug (Math.abs(g - guess[i]) -> g - guess[i]); the task repairs it to the canonical solution."
+          "Seeded one bug (Math.abs(g - guess[i]) -> Math.abs(g + guess[i])) that fails the dataset tests; the canonical solution is the admission self-check reference.",
+          "Witness: the dataset node:assert tests run against the agent's file (node_test); As in MultiPL-E, the solution and the tests run in one node process, so a solution could tamper with node:assert; a per-run completion marker only the evaluator knows defeats an early exit."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "MultiPL-E pass@k over samples is replaced by one governed run.",
+          "The task is a repair of a seeded bug, not synthesis from the prompt."
         ],
-        "tool_mapping": "Primary tool edit repairs the single incorrect substring.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
+        "oracle_mapping": "taskaccept node_test: the dataset node:assert tests pass against the agent's file in the isolated, network-none acceptance cell; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
         "primary_tool": "edit",
-        "task_goal": "Repair the seeded bug in src/compare.js so compare matches its HumanEval specification.",
-        "tool_mapping": "Primary tool edit repairs the single incorrect substring.",
+        "task_goal": "Repair the seeded bug in src/compare.js so compare meets its HumanEval specification.",
+        "tool_mapping": "Primary tool edit repairs the seeded bug in the existing file.",
         "oracle_id": "taskaccept",
         "oracle_version": "tbound-acceptance/v1",
-        "workspace_fixture_digest": "sha256:9af2b2f416870fdeb9951ee3dbf165c984db297c802b39eaf7db6ff3604aa4ab",
+        "workspace_fixture_digest": "sha256:a2025329a5709439d3603f4101e5ecad503581e2b89b5f4e4ed39129da35909b",
         "acceptance_test": {
-          "ref": "accept-f9bcb5ddda3f1cb9fc89fcbc7e9613a4d4110d4ca91e2933996328f8371fbfdc.json: src/compare.js equals the canonical reference solution after the repair; nothing else changed",
-          "digest": "sha256:f9bcb5ddda3f1cb9fc89fcbc7e9613a4d4110d4ca91e2933996328f8371fbfdc"
+          "ref": "accept-41345c13919d0f7328e0be5f233976a06dfbc4c5df50fecd7c1a04127ac53f33.json: the dataset node:assert tests, which fail on the seeded bug, pass against src/compare.js; nothing else changed",
+          "digest": "sha256:41345c13919d0f7328e0be5f233976a06dfbc4c5df50fecd7c1a04127ac53f33"
         },
         "reference_solution": {
           "ref": "solution-80c012b5e1a28a0b2ae392140140a4a052a10880cafe6d647bc8f08ba9dc958e.json",
@@ -2594,7 +2609,7 @@
         }
       },
       "trial": {
-        "prompt": "src/compare.js implements the HumanEval function compare but has one bug. Use the edit tool on src/compare.js to replace `g - guess[i]` with `Math.abs(g - guess[i])`. Reply done. Do not change anything else.",
+        "prompt": "src/compare.js implements the JavaScript function compare but has one bug, so it does not meet the specification below (the MultiPL-E HumanEval-JS original). Use the edit tool on src/compare.js to fix the bug.\n\n//I think we all remember that feeling when the result of some long-awaited\n// event is finally known. The feelings and thoughts you have at that moment are\n// definitely worth noting down and comparing.\n// Your task is to determine if a person correctly guessed the results of a number of matches.\n// You are given two arrays of scores and guesses of equal length, where each index shows a match. \n// Return an array of the same length denoting how far off each guess was. If they have guessed correctly,\n// the value is 0, and if not, the value is the absolute difference between the guess and the score.\n// example:\n// >>> compare([1, 2, 3, 4, 5, 1], [1, 2, 3, 4, 2, -2])\n// [0, 0, 0, 0, 3, 3]\n// >>> compare([0, 5, 0, 0, 0, 4], [4, 1, 1, 0, 0, -2])\n// [4, 4, 1, 0, 0, 6]\nfunction compare(game, guess){\n\nReply done. Do not change anything else.",
         "max_host_calls": 7,
         "max_tokens": 10000,
         "duration_seconds": 1200
@@ -2637,10 +2652,10 @@
           "The witness is the marker printed only after every dataset assertion passes."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "The task runs the dataset tests on the reference solution; it is not synthesis."
         ],
         "tool_mapping": "Primary tool bash runs the dataset tests with node; one write records the stdout.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "oracle_mapping": "taskaccept exact bytes of the recorded stdout marker; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
@@ -2704,10 +2719,10 @@
           "The witness is the marker printed only after every dataset assertion passes."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "The task runs the dataset tests on the reference solution; it is not synthesis."
         ],
         "tool_mapping": "Primary tool bash runs the dataset tests with node; one write records the stdout.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "oracle_mapping": "taskaccept exact bytes of the recorded stdout marker; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
@@ -2771,10 +2786,10 @@
           "The witness is the marker printed only after every dataset assertion passes."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "The task runs the dataset tests on the reference solution; it is not synthesis."
         ],
         "tool_mapping": "Primary tool bash runs the dataset tests with node; one write records the stdout.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "oracle_mapping": "taskaccept exact bytes of the recorded stdout marker; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
@@ -2838,10 +2853,10 @@
           "The witness is the marker printed only after every dataset assertion passes."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "The task runs the dataset tests on the reference solution; it is not synthesis."
         ],
         "tool_mapping": "Primary tool bash runs the dataset tests with node; one write records the stdout.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "oracle_mapping": "taskaccept exact bytes of the recorded stdout marker; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {
@@ -2905,10 +2920,10 @@
           "The witness is the marker printed only after every dataset assertion passes."
         ],
         "lost_distinctions": [
-          "Alternative valid solutions are not accepted; the witness is exact bytes."
+          "The task runs the dataset tests on the reference solution; it is not synthesis."
         ],
         "tool_mapping": "Primary tool bash runs the dataset tests with node; one write records the stdout.",
-        "oracle_mapping": "taskaccept exact bytes of the written artifact",
+        "oracle_mapping": "taskaccept exact bytes of the recorded stdout marker; unchanged_except the output path",
         "label_origin": "external_oracle"
       },
       "compliant": {

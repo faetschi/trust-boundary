@@ -65,7 +65,7 @@ func TestPilotHasTwentyDistinctCompliantTasksWithSensitiveWitnesses(t *testing.T
 		t.Errorf("got %d cases, want 33", len(manifest.Cases))
 	}
 	// This verifies every fixture/digest and proves untouched fixtures fail while solutions pass.
-	if err := CheckManifestArtifacts(manifest, os.DirFS("../../../corpus/pilot/artifacts")); err != nil {
+	if err := CheckManifestArtifactsWith(manifest, os.DirFS("../../../corpus/pilot/artifacts"), pilotNode(t)); err != nil {
 		t.Fatal(err)
 	}
 }
