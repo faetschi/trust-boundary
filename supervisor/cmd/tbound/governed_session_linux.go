@@ -840,6 +840,20 @@ func (a *SessionOperationAuthority) resolveFromTrace(trace audit.Trace, decision
 			return governedCapture{}, errors.New("provider host-call reservation was not followed immediately by its exchange")
 		}
 		switch record.Event.Kind {
+		case "provider_history_imported":
+			// A product turn journal opens with its imported predecessor history; providerbridge replay verifies
+			// its messages. Here it must be first and carry the predecessor this conversation was built with.
+			var imported struct {
+				ImportedPrefixDigest string `json:"imported_prefix_digest"`
+			}
+			a.mu.Lock()
+			predecessor := a.providerConfig.Predecessor.Digest()
+			a.mu.Unlock()
+			if recordIndex != 0 || predecessor == "" ||
+				verifyProviderEventID(record, a.conversationID, "history-imported", providerOrdinal) != nil ||
+				json.Unmarshal(record.Event.Data, &imported) != nil || imported.ImportedPrefixDigest != predecessor {
+				return governedCapture{}, ErrGovernedSessionEvidence
+			}
 		case "provider_user_admitted":
 			if activeCaptureKey != "" {
 				return governedCapture{}, ErrGovernedSessionEvidence
