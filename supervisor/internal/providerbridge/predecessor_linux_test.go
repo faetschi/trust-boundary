@@ -452,6 +452,26 @@ func TestOversizedPredecessorIsRefusedBeforeAnyJournalWrite(t *testing.T) {
 	}
 }
 
+func TestPrefixWithoutRoomForThePromptIsRefusedBeforeAnyJournalWrite(t *testing.T) {
+	full := make([]importedMessage, MaxTranscriptTurns*3)
+	for i := range full {
+		text := fmt.Sprintf("message %d", i)
+		full[i] = importedMessage{Role: "user", Content: &text}
+	}
+	journal := openRecoveryTestJournal(t, filepath.Join(t.TempDir(), "p2.audit"))
+	conversation, err := newScripted(successorConfig(newPredecessorContext(sha256Prefixed("receipt"), full, nil, nil)), journal,
+		&recordingSource{inner: NewStaticScript(nil)})
+	if err != nil {
+		t.Fatalf("a prefix at the message cap was refused at construction: %v", err)
+	}
+	if err := conversation.AdmitPrompt("task-full", "one more prompt"); !errors.Is(err, ErrContextExhausted) {
+		t.Fatalf("prompt past the message cap: err=%v, want ErrContextExhausted", err)
+	}
+	if trace, err := journal.Trace(); err != nil || len(trace.Records) != 0 {
+		t.Fatalf("exhausted admission journaled records=%d err=%v", len(trace.Records), err)
+	}
+}
+
 func TestExtendPredecessorContextChainsBoundaries(t *testing.T) {
 	zero := PredecessorContext{}
 	if !zero.IsZero() || zero.Digest() != "" || zero.PredecessorReceiptDigest() != "" {
