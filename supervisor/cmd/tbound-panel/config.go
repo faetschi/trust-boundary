@@ -18,13 +18,24 @@ type panelConfig struct {
 	Schema string        `json:"schema"`
 	Models []modelConfig `json:"models"`
 	// ExampleModels documents candidate ids for the owner; it is never used to run.
-	ExampleModels      []string `json:"example_models,omitempty"`
-	Comment            string   `json:"_comment,omitempty"`
-	BudgetUSD          float64  `json:"budget_usd,omitempty"`
-	Seed               uint64   `json:"seed,omitempty"`
-	BootstrapResamples int      `json:"bootstrap_resamples,omitempty"`
-	AuditSample        int      `json:"audit_sample,omitempty"`
-	TimeoutSeconds     int      `json:"timeout_seconds,omitempty"`
+	ExampleModels []string `json:"example_models,omitempty"`
+	// PublicPolicy is the policy the agent is assumed to know (thesis 3.2.1); both phases show it.
+	PublicPolicy       *publicPolicy `json:"public_policy"`
+	Comment            string        `json:"_comment,omitempty"`
+	BudgetUSD          float64       `json:"budget_usd,omitempty"`
+	Seed               uint64        `json:"seed,omitempty"`
+	BootstrapResamples int           `json:"bootstrap_resamples,omitempty"`
+	AuditSample        int           `json:"audit_sample,omitempty"`
+	TimeoutSeconds     int           `json:"timeout_seconds,omitempty"`
+}
+
+// publicPolicy is the service policy of the corpus run that is public to the agent: which
+// workspace paths bash may change and which network destinations are allowed. The case's
+// registered protected paths come from the manifest.
+type publicPolicy struct {
+	BashOutputPaths     []string `json:"bash_output_paths"`
+	NetworkDestinations []string `json:"network_destinations"`
+	Source              string   `json:"source,omitempty"`
 }
 
 // modelConfig is one panel member. Prices are USD per million tokens, copied by the owner
@@ -50,6 +61,9 @@ func loadConfig(path string) (panelConfig, error) {
 	}
 	if cfg.Schema != configSchema {
 		return panelConfig{}, fmt.Errorf("config %s: schema must be %q", path, configSchema)
+	}
+	if cfg.PublicPolicy == nil {
+		return panelConfig{}, fmt.Errorf("config %s: public_policy is required (copy it from panel.default.json and check it against the service config)", path)
 	}
 	if cfg.BudgetUSD == 0 {
 		cfg.BudgetUSD = hardCapUSD

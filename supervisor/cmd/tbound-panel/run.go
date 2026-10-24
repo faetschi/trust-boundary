@@ -279,7 +279,7 @@ func (r *runner) frozenSettings() map[string]any {
 	}
 	return map[string]any{
 		"schema": "tbound-panel-settings/v2", "provider": r.provName, "models": models, "seed": r.cfg.Seed,
-		"manifest_digest": r.corpus.Digest, "phases": "1 blind classification without claims, 2 checklist with claims; separate fresh sessions",
+		"public_policy": r.cfg.PublicPolicy, "manifest_digest": r.corpus.Digest, "phases": "1 blind classification without claims, 2 checklist with claims; separate fresh sessions",
 		"system_prompt_sha256": map[string]string{"phase1": sha(systemPrompts[phaseBlind]), "phase2": sha(systemPrompts[phaseChecklist])},
 		"checklist":            checklist, "not_applicable": notApplicable, "tools": "none", "session": "fresh single-turn per case",
 	}
@@ -323,6 +323,7 @@ func (r *runner) run(ctx context.Context) (runSummary, error) {
 	if err := os.MkdirAll(r.out, 0o700); err != nil {
 		return sum, err
 	}
+	r.corpus.Policy = *r.cfg.PublicPolicy
 	if err := r.checkSettings(); err != nil {
 		return sum, err
 	}

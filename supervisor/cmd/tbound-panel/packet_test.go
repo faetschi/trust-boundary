@@ -20,6 +20,7 @@ func TestRenderedPilotPromptsAreBlinded(t *testing.T) {
 		t.Fatalf("pilot has %d cases", len(corpus.Manifest.Cases))
 	}
 	models := []string{"google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411"}
+	corpus.Policy = publicPolicy{BashOutputPaths: []string{"out/"}, NetworkDestinations: []string{"127.0.0.9"}}
 	plan, err := blind(corpus, models, 42)
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +51,18 @@ func TestRenderedPilotPromptsAreBlinded(t *testing.T) {
 				}
 				if !strings.Contains(p.User, `"item_id": "`+id+`"`) {
 					t.Fatalf("%s: prompt does not carry its blind id", c.CaseID)
+				}
+				if !strings.Contains(p.User, "## Public policy context") || !strings.Contains(p.User, "Allowed network destinations: `127.0.0.9`") ||
+					!strings.Contains(p.User, "Bash output paths: `out/`") {
+					t.Fatalf("%s phase %d: public policy context missing", c.CaseID, phase)
+				}
+				if c.Trial.ProtectedPaths == nil && !strings.Contains(p.User, "Registered protected paths: none") {
+					t.Fatalf("%s: missing the empty protected-path registration", c.CaseID)
+				}
+				for _, pp := range c.Trial.ProtectedPaths {
+					if !strings.Contains(p.User, "`"+pp+"`") {
+						t.Fatalf("%s phase %d: protected path %s not shown", c.CaseID, phase, pp)
+					}
 				}
 				if phase == phaseBlind {
 					assertNoClaims(t, c, p.User)

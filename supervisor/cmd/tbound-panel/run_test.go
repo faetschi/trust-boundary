@@ -18,7 +18,7 @@ import (
 
 func testConfig(t *testing.T, budget float64) panelConfig {
 	t.Helper()
-	cfg := panelConfig{Schema: configSchema, BudgetUSD: budget, Seed: 7, BootstrapResamples: 200, AuditSample: 60, TimeoutSeconds: 5,
+	cfg := panelConfig{Schema: configSchema, BudgetUSD: budget, PublicPolicy: &publicPolicy{}, Seed: 7, BootstrapResamples: 200, AuditSample: 60, TimeoutSeconds: 5,
 		Models: panelModels("google/gemini-2.5-pro", "qwen/qwen3-235b-a22b-2507", "mistralai/mistral-large-2411")}
 	return cfg
 }
@@ -206,7 +206,7 @@ func TestOpenRouterClientKeepsKeyOutOfOutputs(t *testing.T) {
 func TestDryRunEndToEndOnPilotCorpus(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "panel.json")
-	cfgJSON := `{"schema":"tbound-panel-config/v1","bootstrap_resamples":300,"models":[
+	cfgJSON := `{"schema":"tbound-panel-config/v1","bootstrap_resamples":300,"public_policy":{"bash_output_paths":[],"network_destinations":[]},"models":[
 	 {"id":"google/gemini-2.5-pro","temperature":0,"max_tokens":4000,"prompt_usd_per_mtok":1.25,"completion_usd_per_mtok":10},
 	 {"id":"qwen/qwen3-235b-a22b-2507","temperature":0,"max_tokens":4000,"prompt_usd_per_mtok":0.2,"completion_usd_per_mtok":0.8},
 	 {"id":"mistralai/mistral-large-2411","temperature":0,"max_tokens":4000,"prompt_usd_per_mtok":2,"completion_usd_per_mtok":6}]}`
@@ -294,7 +294,7 @@ func TestLiveRunNeedsKeyAndAMode(t *testing.T) {
 	}
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "panel.json")
-	os.WriteFile(cfgPath, []byte(`{"schema":"tbound-panel-config/v1","models":[
+	os.WriteFile(cfgPath, []byte(`{"schema":"tbound-panel-config/v1","public_policy":{"bash_output_paths":[],"network_destinations":[]},"models":[
 	 {"id":"google/gemini-2.5-pro","prompt_usd_per_mtok":1,"completion_usd_per_mtok":1},
 	 {"id":"qwen/qwen3-235b-a22b-2507","prompt_usd_per_mtok":1,"completion_usd_per_mtok":1},
 	 {"id":"mistralai/mistral-large-2411","prompt_usd_per_mtok":1,"completion_usd_per_mtok":1}]}`), 0o600)
@@ -327,7 +327,7 @@ func TestResumeSkipsCompletedPhase(t *testing.T) {
 func TestEstimateCountsTwoCallsPerCaseAndModel(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "panel.json")
-	os.WriteFile(cfgPath, []byte(`{"schema":"tbound-panel-config/v1","models":[
+	os.WriteFile(cfgPath, []byte(`{"schema":"tbound-panel-config/v1","public_policy":{"bash_output_paths":[],"network_destinations":[]},"models":[
 	 {"id":"google/gemini-2.5-pro","prompt_usd_per_mtok":1,"completion_usd_per_mtok":1},
 	 {"id":"qwen/qwen3-235b-a22b-2507","prompt_usd_per_mtok":1,"completion_usd_per_mtok":1},
 	 {"id":"mistralai/mistral-large-2411","prompt_usd_per_mtok":1,"completion_usd_per_mtok":1}]}`), 0o600)

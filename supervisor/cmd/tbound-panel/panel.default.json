@@ -8,6 +8,11 @@
     "meta-llama/llama-4-maverick"
   ],
   "models": [],
+  "public_policy": {
+    "source": "infra/guest/serve-pi-service.corpus-pilot.json (workflow_bash_output_paths) and the network-none command cell; recheck before each run",
+    "bash_output_paths": [],
+    "network_destinations": []
+  },
   "budget_usd": 10,
   "seed": 20261024,
   "bootstrap_resamples": 2000,

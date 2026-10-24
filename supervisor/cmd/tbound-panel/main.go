@@ -102,6 +102,7 @@ func (a *app) runCtx(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	c.Policy = *cfg.PublicPolicy
 	if *estimate {
 		return a.estimate(cfg, c)
 	}

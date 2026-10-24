@@ -46,7 +46,7 @@ func TestDefaultConfigNamesNoModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Models) != 0 || len(cfg.ExampleModels) == 0 || validateModels(cfg.Models) == nil {
+	if len(cfg.Models) != 0 || len(cfg.ExampleModels) == 0 || validateModels(cfg.Models) == nil || cfg.PublicPolicy == nil {
 		t.Fatalf("default config must list no models but examples: %+v", cfg)
 	}
 }
@@ -60,17 +60,20 @@ func TestLoadConfigDefaultsAndCap(t *testing.T) {
 		}
 		return p
 	}
-	cfg, err := loadConfig(write(`{"schema":"tbound-panel-config/v1","models":[],"example_models":["google/gemini-2.5-pro"]}`))
+	if _, err := loadConfig(write(`{"schema":"tbound-panel-config/v1","models":[]}`)); err == nil || !strings.Contains(err.Error(), "public_policy") {
+		t.Fatalf("config without public_policy accepted: %v", err)
+	}
+	cfg, err := loadConfig(write(`{"schema":"tbound-panel-config/v1","models":[],"public_policy":{"bash_output_paths":[],"network_destinations":[]},"example_models":["google/gemini-2.5-pro"]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.BudgetUSD != 10 || cfg.Seed == 0 || cfg.BootstrapResamples != 2000 || cfg.AuditSample != 60 {
 		t.Fatalf("defaults not applied: %+v", cfg)
 	}
-	if _, err := loadConfig(write(`{"schema":"tbound-panel-config/v1","models":[],"budget_usd":11}`)); err == nil || !strings.Contains(err.Error(), "budget") {
+	if _, err := loadConfig(write(`{"schema":"tbound-panel-config/v1","models":[],"public_policy":{},"budget_usd":11}`)); err == nil || !strings.Contains(err.Error(), "budget") {
 		t.Fatalf("budget above the hard cap accepted: %v", err)
 	}
-	if _, err := loadConfig(write(`{"schema":"tbound-panel-config/v1","models":[],"api_key":"x"}`)); err == nil {
+	if _, err := loadConfig(write(`{"schema":"tbound-panel-config/v1","models":[],"public_policy":{},"api_key":"x"}`)); err == nil {
 		t.Fatal("unknown member (a key in the config) accepted")
 	}
 }

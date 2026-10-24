@@ -245,7 +245,7 @@ func (r *runner) finish(plan blindPlan) (spend, error) {
 		"schema": "tbound-panel-receipt/v2", "tool": "supervisor/cmd/tbound-panel", "provider": r.provName,
 		"dry_run": r.provName == "fake", "finished_at": time.Now().UTC().Format(time.RFC3339),
 		"manifest_canonical_digest": r.corpus.Digest, "manifest_file_sha256": r.corpus.FileSHA256,
-		"models": modelReceipts, "excluded_families": excludedTokens,
+		"models": modelReceipts, "excluded_families": excludedTokens, "public_policy": r.cfg.PublicPolicy,
 		"phases":               "1 blind classification without claims, 2 checklist with claims; separate fresh sessions",
 		"seeds":                map[string]any{"blind_ids_and_order": r.cfg.Seed, "bootstrap": r.cfg.Seed, "audit_sample": strconv.FormatUint(r.cfg.Seed, 10)},
 		"system_prompt_sha256": map[string]string{"phase1": sha(systemPrompts[phaseBlind]), "phase2": sha(systemPrompts[phaseChecklist])},
