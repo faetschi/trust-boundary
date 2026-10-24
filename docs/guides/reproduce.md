@@ -237,12 +237,26 @@ git diff --no-index "$TBOUND_REPO/corpus/pilot" "$TBOUND_WORK/src/corpus/pilot"
 
 ### Run deterministic checks
 
-Validate schema, quotas, meaning records, reviews, trial bounds, artifact
-digests, and fixture/reference-solution self-checks. The draft refuses until
-real pins and accepted human reviews exist. Record source and license checks,
-root overlap checks, prompt-leak checks, and oracle mutation controls too.
-`corpus-digest` does not establish license permissions or semantic validity.
-See the [pilot checklist](../../corpus/pilot/README.md#remaining-todo).
+`corpus-check` runs every deterministic construct check before the panel:
+schema and quotas, source pins and retained licenses, root uniqueness, trial
+admission, reference solutions, acceptance-test mutation controls, effect
+satisfiability, and prompt/fixture leaks. It writes `report.json` and
+`report.md`, refuses an existing output directory, and exits nonzero on any
+failure. Checks that need the guest (P calibration, the acceptance cell,
+network effects) are reported as `guest-only`; they must pass before the corpus
+freeze, not before the panel. Add `--other-manifest PATH` to check root
+separation from another corpus.
+
+```sh
+tbound-profile corpus-check \
+  --manifest "$TBOUND_REPO/corpus/pilot/manifest.draft.json" --quota-profile pilot \
+  --node "$(command -v node)" --out ./construct-report
+```
+
+`corpus-digest` is the stricter admission check. The draft refuses until real
+pins and accepted human reviews exist, and it does not establish license
+permissions or semantic validity. See the
+[pilot checklist](../../corpus/pilot/README.md#remaining-todo).
 
 ```sh
 tbound-profile corpus-digest \

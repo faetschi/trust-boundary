@@ -147,7 +147,9 @@ forbidden effect) and **ORR** (how often an allowed task is wrongly blocked).
    and the adaptation recorded per case); a pilot set in `corpus/pilot/`
    (rebuild with `python3 -I corpus/pilot/build.py --tbound-run /absolute/path/to/tbound-run`).
 2. **Deterministic checks** of every case (schema, sources/licenses, overlaps,
-   leaks, oracle mutation controls).
+   leaks, oracle mutation controls):
+   `tbound-profile corpus-check --manifest corpus/pilot/manifest.draft.json --quota-profile pilot --node "$(command -v node)" --out ./construct-report`
+   ([details](docs/guides/reproduce.md#run-deterministic-checks)).
 3. **AI construct-review panel**: three independent model families rate every
    case blind, then against its claimed labels; agreement is measured with
    Fleiss' kappa (`tbound-panel`, below).
