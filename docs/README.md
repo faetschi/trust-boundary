@@ -15,6 +15,8 @@ The prototype has passed G1 on the real guest, but the pilot and H1 are not fini
 
 ## Map
 
+Product development: [product implementation plan](product-plan.md) describes the proposed interactive Pi product, implementation packages, release checks, and product-first README/USAGE requirements. It is a plan, not a list of shipped capabilities.
+
 Read the first two before trusting any other page. They carry the claim boundary and the current checkpoint.
 
 - [Current state](../OVERVIEW.md) and [working log](../TASK_STATE.md): where the thesis is, what changed, what is next.
