@@ -19,7 +19,9 @@ import (
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
 	"tbound/supervisor/internal/publication"
+	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflow"
+	"tbound/supervisor/internal/workflowrecovery"
 	"tbound/supervisor/internal/workspace"
 )
 
@@ -106,31 +108,65 @@ func (e *productTurnEnv) RunTurn(ctx context.Context, admission productsession.A
 	s.work, s.runErr = e.driveProductTurn(ctx, turn, w, worker)
 	releasePublication()
 	bundle, err := w.store.EvidenceBundle()
-	switch {
-	case err != nil:
+	if err != nil {
 		return s.unknown("the turn's Store evidence could not be read", err)
+	}
+	if err := productTurnChildResolved(bundle, w.ledger); err != nil {
+		return s.unknown("the turn left unresolved Store or workflow state", err)
+	}
+	sealed := sha256DigestFromBarePin(bareStoreTreeDigest(bundle.ValidatedChain.SealedTreeDigest))
+	switch {
 	case s.runErr != nil:
 		s.outcome = productsession.OutcomeFailed
 	case bundleHasNoChange(bundle):
 		s.outcome = productsession.OutcomeNoDiff
 	case turn.PublicationMode == productsession.PublicationReview:
-		s.outcome = "awaiting_review"
-		s.candidate = sha256DigestFromBarePin(bareStoreTreeDigest(bundle.ValidatedChain.SealedTreeDigest))
+		s.outcome, s.candidate = "awaiting_review", sealed
 	default:
 		result, finalizeErr := publish.Finalize(ctx)
-		after, measureErr := e.MeasureProjectBaseline(turn.ProjectID)
 		switch {
-		case measureErr != nil:
-			return s.unknown("the project could not be measured after publication", errors.Join(finalizeErr, measureErr))
 		case finalizeErr == nil && result.Status == publication.StatusSucceeded && len(result.Objects) != 0:
-			s.outcome, s.resultBaseline, s.transactionID = productsession.OutcomePublished, after, result.TransactionID
-		case result.Status == publication.StatusFailed && after == turn.BaselineDigest:
+			s.outcome, s.resultBaseline, s.transactionID = productsession.OutcomePublished, sealed, result.TransactionID
+		case result.Status == publication.StatusFailed:
 			s.outcome, s.runErr = productsession.OutcomeFailed, errors.Join(errors.New("publication failed"), finalizeErr)
 		default:
 			return s.unknown("the publication outcome is not established", finalizeErr)
 		}
 	}
+	// The project must hold exactly the tree this turn commits: the published sealed tree, or the
+	// admitted baseline when nothing was published. Anything else is an external writer.
+	after, err := e.MeasureProjectBaseline(turn.ProjectID)
+	if err != nil {
+		return s.unknown("the project could not be measured after the turn", err)
+	}
+	if after != s.resultBaseline {
+		return s.unknown("the project changed outside the turn", nil)
+	}
 	return s.settle()
+}
+
+// productTurnChildResolved requires the child workflow to have no unresolved work: every Store
+// effect attempt succeeded without quarantine, and no provider call or effect reservation is open.
+func productTurnChildResolved(bundle sessionrepo.EvidenceBundle, ledger *workflowrecovery.Ledger) error {
+	disposition, err := sessionrepo.Reconstruct(bundle)
+	if err != nil {
+		return err
+	}
+	if disposition.Quarantined || disposition.Unknowns != 0 || disposition.Successes != disposition.Attempts {
+		return errors.New("Store evidence is quarantined or has an unresolved effect")
+	}
+	pins := func() workflowrecovery.Pins { checkpoint, _ := ledger.Snapshot(); return checkpoint.Pins }()
+	if effect := pins.EffectReservation; effect != nil && effect.Disposition != workflowrecovery.EffectReservationTerminal &&
+		effect.Disposition != workflowrecovery.EffectReservationRetired {
+		return errors.New("an effect reservation is unresolved")
+	}
+	if call := pins.HostCallReservation; call != nil && call.Disposition != workflowrecovery.HostCallTerminal {
+		return errors.New("a provider host call is unresolved")
+	}
+	if pins.PendingCallDisposition == workflowrecovery.PendingCallCaptured || pins.PendingCallDisposition == workflowrecovery.PendingCallUnknown {
+		return errors.New("a captured provider call is unresolved")
+	}
+	return nil
 }
 
 // driveProductTurn constructs the provider conversation with the imported context, admits the

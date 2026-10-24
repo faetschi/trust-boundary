@@ -46,12 +46,17 @@ type productDriverScript struct {
 	turns     []providerbridge.ScriptTurn
 	check     func([]providerbridge.ScriptMessage) error
 	histories [][]providerbridge.ScriptMessage
+	// onRequest runs before the response to request n (from 1), inside the running turn.
+	onRequest func(n int)
 }
 
 func (s *productDriverScript) Next(history []providerbridge.ScriptMessage) (providerbridge.ScriptTurn, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.histories = append(s.histories, append([]providerbridge.ScriptMessage(nil), history...))
+	if s.onRequest != nil {
+		s.onRequest(len(s.histories))
+	}
 	if len(s.histories) == 1 && s.check != nil {
 		if err := s.check(history); err != nil {
 			return providerbridge.ScriptTurn{}, err
@@ -455,6 +460,53 @@ func TestProductTurnDriverRefusesAStaleBaseline(t *testing.T) {
 	if _, err := f.env.Catalog.SubmitTurn(f.principal, productsession.SubmitTurnRequest{SessionID: f.session.ID,
 		ExpectedRevision: f.currentSession(t).Revision, RequestKey: "turn-2", Prompt: productDriverPromptB}, f.measure(t)); !errors.Is(err, productsession.ErrCode(productsession.CodeProjectBlocked)) {
 		t.Fatalf("submit after a stale baseline: %v", err)
+	}
+}
+
+// A tool call that leaves the Store with an unresolved effect makes the turn unknown: its reservation
+// stays consumed and the session and project stay blocked.
+func TestProductTurnDriverRecordsUnresolvedChildWorkAsUnknown(t *testing.T) {
+	f := newProductDriverFixture(t, productsession.PublicationAuto)
+	admission := f.submit(t, "turn-1", productDriverPromptA)
+	script := &productDriverScript{turns: []providerbridge.ScriptTurn{
+		{ResponseID: "u-response-read", CallID: "u-call-read", Tool: "read", Arguments: json.RawMessage(`{"path":"missing.txt"}`)},
+		{ResponseID: "u-response-final", Text: productDriverAnswerA},
+	}}
+	_, turn, err := f.run(t, admission, script)
+	session := f.currentSession(t)
+	if err == nil || turn.State != productsession.StateUnknown || turn.Refund != (productsession.Budget{}) ||
+		!session.Blocked || session.Consumed != turn.Reservation {
+		t.Fatalf("unresolved child work: turn=%+v session=%+v err=%v", turn, session, err)
+	}
+	if _, err := f.env.Catalog.SubmitTurn(f.principal, productsession.SubmitTurnRequest{SessionID: f.session.ID,
+		ExpectedRevision: session.Revision, RequestKey: "turn-2", Prompt: productDriverPromptB}, f.measure(t)); !errors.Is(err, productsession.ErrCode(productsession.CodePredecessorUnresolved)) {
+		t.Fatalf("submit after an unknown turn: %v", err)
+	}
+}
+
+// An external writer that changes the project while a turn runs makes the turn unknown, whether the
+// turn would have published or found nothing to publish.
+func TestProductTurnDriverRecordsAnExternalEditAsUnknown(t *testing.T) {
+	for name, script := range map[string]*productDriverScript{
+		"no diff": {turns: []providerbridge.ScriptTurn{
+			{ResponseID: "x-response-read", CallID: "x-call-read", Tool: "read", Arguments: json.RawMessage(`{"path":"task.txt"}`)},
+			{ResponseID: "x-response-final", Text: productDriverAnswerA},
+		}},
+		"published": productDriverTurnOne(false),
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newProductDriverFixture(t, productsession.PublicationAuto)
+			admission := f.submit(t, "turn-1", productDriverPromptA)
+			script.onRequest = func(n int) {
+				if n == 2 {
+					writeProductDriverFile(t, f.projectDir, "outside.txt", "written by another process\n")
+				}
+			}
+			_, turn, err := f.run(t, admission, script)
+			if err == nil || turn.State != productsession.StateUnknown || !f.currentSession(t).Blocked {
+				t.Fatalf("external edit during the turn: turn=%+v err=%v", turn, err)
+			}
+		})
 	}
 }
 
