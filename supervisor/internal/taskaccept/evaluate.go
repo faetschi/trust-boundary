@@ -51,6 +51,12 @@ const maxViolations = 8
 // non-regular file at its own path. It returns an error only when the spec was not produced
 // by ParseAccept, the fixture is invalid, or post cannot be read; a failed check is a result.
 func Evaluate(caseID string, spec AcceptSpec, fixture trialfix.Spec, post fs.FS) (AcceptDoc, error) {
+	return EvaluateWith(caseID, spec, fixture, post, nil)
+}
+
+// EvaluateWith is Evaluate with the isolated runner of node_test checks. A node_test check with a
+// nil runner, or whose runner fails, returns an error: acceptance is refused, never passed.
+func EvaluateWith(caseID string, spec AcceptSpec, fixture trialfix.Spec, post fs.FS, runner NodeRunner) (AcceptDoc, error) {
 	before, err := treeOfFixture(fixture)
 	if err != nil {
 		return AcceptDoc{}, err
@@ -59,10 +65,10 @@ func Evaluate(caseID string, spec AcceptSpec, fixture trialfix.Spec, post fs.FS)
 	if err != nil {
 		return AcceptDoc{}, err
 	}
-	return evaluateTree(caseID, spec, before, after)
+	return evaluateTree(caseID, spec, before, after, runner)
 }
 
-func evaluateTree(caseID string, spec AcceptSpec, before, after tree) (AcceptDoc, error) {
+func evaluateTree(caseID string, spec AcceptSpec, before, after tree, runner NodeRunner) (AcceptDoc, error) {
 	if spec.digest == "" {
 		return AcceptDoc{}, errors.New("the acceptance spec was not produced by ParseAccept")
 	}
@@ -77,6 +83,11 @@ func evaluateTree(caseID string, spec AcceptSpec, before, after tree) (AcceptDoc
 			r.Passed, r.Detail = checkContains(after, c)
 		case OpAbsent:
 			r.Passed, r.Detail = checkAbsent(after, c)
+		case OpNodeTest:
+			var err error
+			if r.Passed, r.Detail, err = checkNodeTest(after, c, runner); err != nil {
+				return AcceptDoc{}, err
+			}
 		case OpUnchangedExcept:
 			r.Path = "."
 			r.Passed, r.Detail = checkUnchanged(before, after, c)
