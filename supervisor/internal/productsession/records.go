@@ -108,6 +108,7 @@ type turnTerminalRecord struct {
 type turnAwaitingReviewRecord struct {
 	header
 	TurnID          string `json:"turn_id"`
+	Settlement      string `json:"settlement"`
 	Receipt         []byte `json:"receipt"`
 	ReceiptDigest   string `json:"receipt_digest"`
 	Usage           Budget `json:"usage"`

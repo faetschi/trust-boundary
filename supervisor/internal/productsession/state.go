@@ -72,6 +72,7 @@ type TurnTerminal struct {
 
 // TurnReview settles a changed review-mode turn that now awaits review.
 type TurnReview struct {
+	Settlement      string
 	Receipt         []byte
 	Usage           Budget
 	CandidateDigest string
@@ -210,9 +211,10 @@ func (s *state) project(id string) *project {
 	return p
 }
 
-func (s *state) unresolvedTurns() bool {
+// unsettledTurns reports a turn that is unresolved or unknown. Either fences a registration change.
+func (s *state) unsettledTurns() bool {
 	for _, t := range s.turns {
-		if t.unresolved() {
+		if t.unresolved() || t.State == StateUnknown {
 			return true
 		}
 	}
@@ -324,8 +326,10 @@ func (s *state) reduceCreated(data []byte) (func(), error) {
 		return nil, fail(CodeUnauthorizedPrincipal, "principal is not registered")
 	}
 	key := requestKey{r.Principal, opCreateSession, "", r.RequestKey}
-	if !validIdentity(r.RequestKey) || !validDigest(r.PayloadDigest) || !validDigest(r.BaselineDigest) {
-		return nil, fail(CodeInvalidRequest, "request key or digest is invalid")
+	if !validIdentity(r.RequestKey) || !validDigest(r.BaselineDigest) || r.PayloadDigest != payloadDigest(opCreateSession, CreateSessionRequest{
+		ProjectID: r.ProjectID, ProviderProfile: r.ProviderProfile, PublicationMode: r.PublicationMode, Budget: r.Budget, RequestKey: r.RequestKey,
+	}) {
+		return nil, fail(CodeInvalidRequest, "request key is invalid or the payload digest does not match the request")
 	}
 	if _, dup := s.keys[key]; dup {
 		return nil, fail(CodeRequestConflict, "request key already used")
@@ -406,6 +410,10 @@ func (s *state) reduceAdmitted(data []byte) (func(), error) {
 	}
 	if r.SessionRevision != sess.Revision+1 { // check 5
 		return nil, fail(CodeStaleRevision, fmt.Sprintf("session revision is %d", sess.Revision))
+	}
+	if r.PayloadDigest != payloadDigest(opSubmitTurn, SubmitTurnRequest{SessionID: r.SessionID, ExpectedRevision: sess.Revision,
+		RequestKey: r.RequestKey, Prompt: r.Prompt, ExpectedBaselineDigest: r.ExpectedBaselineDigest}) {
+		return nil, fail(CodeInvalidRequest, "payload digest does not match the request")
 	}
 	proj := s.project(sess.ProjectID) // check 6
 	if proj.blocked {
@@ -541,10 +549,13 @@ func (s *state) reduceTerminal(data []byte) (func(), error) {
 	if r.Outcome != OutcomePublished && r.Outcome != OutcomeNoDiff && r.Outcome != OutcomeFailed {
 		return nil, fail(CodeInvalidRequest, "outcome is not supported in this milestone")
 	}
-	if !validIdentity(r.Settlement) || !validDigest(r.ResultBaselineDigest) {
-		return nil, fail(CodeInvalidRequest, "settlement or result baseline digest is invalid")
+	if !validDigest(r.ResultBaselineDigest) {
+		return nil, fail(CodeInvalidRequest, "result baseline digest is invalid")
 	}
 	if err := checkSettlement(t, r.Receipt, r.ReceiptDigest, r.Usage, r.Refund); err != nil {
+		return nil, err
+	}
+	if err := checkReceipt(t, r.Receipt, r.Outcome, r.Settlement, r.Usage, r.ResultBaselineDigest); err != nil {
 		return nil, err
 	}
 	published := r.Outcome == OutcomePublished
@@ -581,9 +592,12 @@ func (s *state) reduceAwaitingReview(data []byte) (func(), error) {
 	if err := checkSettlement(t, r.Receipt, r.ReceiptDigest, r.Usage, r.Refund); err != nil {
 		return nil, err
 	}
+	if err := checkReceipt(t, r.Receipt, receiptOutcomeAwaitReview, r.Settlement, r.Usage, t.BaselineDigest); err != nil {
+		return nil, err
+	}
 	return func() {
 		s.settle(t, r.Usage)
-		t.State = StateAwaitingReview
+		t.State, t.Settlement = StateAwaitingReview, r.Settlement
 		t.Receipt, t.ReceiptDigest, t.Usage, t.Refund, t.CandidateDigest = slices.Clone(r.Receipt), r.ReceiptDigest, r.Usage, r.Refund, r.CandidateDigest
 	}, nil
 }

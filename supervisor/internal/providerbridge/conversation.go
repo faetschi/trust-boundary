@@ -410,6 +410,11 @@ func (c *Conversation) AdmitPrompt(taskID, prompt string) error {
 	if !validText(taskID, MaxTaskIDBytes) || !validPromptText(prompt, MaxPromptBytes) {
 		return errors.New("user task identity or prompt is invalid or exceeds its bound")
 	}
+	// The prompt must fit before anything is journaled, so exhaustion leaves no unreplayable record.
+	history, err := c.boundedHistoryLocked(openrouter.Message{Role: openrouter.User, Content: &prompt})
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrContextExhausted, err)
+	}
 	if predecessor := c.cfg.Predecessor.sealed; predecessor != nil && !c.importJournaled {
 		imported, err := json.Marshal(predecessor.evidence(c.cfg.WorkflowID, c.cfg.ConversationID))
 		if err != nil {
@@ -432,9 +437,7 @@ func (c *Conversation) AdmitPrompt(taskID, prompt string) error {
 		return c.failLocked(fmt.Errorf("persist user admission: %w", err))
 	}
 	_ = record // Record is retained in the journal; the prompt itself has no Pi-issued receipt.
-	if err := c.appendHistoryLocked(openrouter.Message{Role: openrouter.User, Content: &prompt}); err != nil {
-		return c.failLocked(fmt.Errorf("append admitted user message: %w", err))
-	}
+	c.history = history
 	c.state = stateReadyToExchange
 	return nil
 }
@@ -1072,19 +1075,29 @@ func (c *Conversation) appendResultLocked(ctx context.Context, kind string, resu
 }
 
 func (c *Conversation) appendHistoryLocked(messages ...openrouter.Message) error {
-	proposed := append(cloneMessages(c.history), messages...)
-	if len(proposed) > MaxTranscriptTurns*3+2 {
-		return errors.New("provider transcript message limit exhausted")
-	}
-	request, err := openrouter.BuildRequestForRoute(c.route, proposed, 0)
+	proposed, err := c.boundedHistoryLocked(messages...)
 	if err != nil {
-		return fmt.Errorf("bounded broker transcript rejected: %w", err)
-	}
-	if len(request.Body()) > openrouter.MaxRequestBytes || len(request.Body()) > MaxTranscriptBytes {
-		return errors.New("provider transcript byte budget exhausted")
+		return err
 	}
 	c.history = proposed
 	return nil
+}
+
+// boundedHistoryLocked returns the history with messages appended, or an error if it exceeds the
+// transcript bounds. It changes nothing.
+func (c *Conversation) boundedHistoryLocked(messages ...openrouter.Message) ([]openrouter.Message, error) {
+	proposed := append(cloneMessages(c.history), messages...)
+	if len(proposed) > MaxTranscriptTurns*3+2 {
+		return nil, errors.New("provider transcript message limit exhausted")
+	}
+	request, err := openrouter.BuildRequestForRoute(c.route, proposed, 0)
+	if err != nil {
+		return nil, fmt.Errorf("bounded broker transcript rejected: %w", err)
+	}
+	if len(request.Body()) > openrouter.MaxRequestBytes || len(request.Body()) > MaxTranscriptBytes {
+		return nil, errors.New("provider transcript byte budget exhausted")
+	}
+	return proposed, nil
 }
 
 func (c *Conversation) appendLocked(kind, id string, data []byte) (audit.Record, error) {

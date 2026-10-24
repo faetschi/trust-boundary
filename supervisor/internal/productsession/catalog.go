@@ -57,7 +57,7 @@ func (c *Catalog) replay(registration Registration) error {
 		}
 		commit()
 	}
-	if c.st.regDigest != registration.Digest && c.st.unresolvedTurns() {
+	if c.st.regDigest != registration.Digest && c.st.unsettledTurns() {
 		return fail(CodePredecessorUnresolved, "registration changed while a turn is unresolved")
 	}
 	epoch := c.st.epoch + 1
@@ -189,7 +189,7 @@ func (c *Catalog) MarkAwaitingReview(turnID string, r TurnReview) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.commit(kindTurnAwaitingReview, turnID, turnAwaitingReviewRecord{
-		header: hdr, TurnID: turnID, Receipt: r.Receipt, ReceiptDigest: ReceiptDigest(r.Receipt),
+		header: hdr, TurnID: turnID, Settlement: r.Settlement, Receipt: r.Receipt, ReceiptDigest: ReceiptDigest(r.Receipt),
 		Usage: r.Usage, Refund: c.reservationOf(turnID).minus(r.Usage), CandidateDigest: r.CandidateDigest,
 	})
 }

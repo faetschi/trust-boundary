@@ -134,11 +134,43 @@ func mustLink(t *testing.T, c *Catalog, turnID string) {
 	}
 }
 
-func receipt(turnID string) []byte { return []byte(`{"turn_id":"` + turnID + `"}`) }
+func rawReceipt(turnID string) []byte { return []byte(`{"turn_id":"` + turnID + `"}`) }
+
+// receiptFor builds the v1 receipt the catalog requires for a linked turn.
+func receiptFor(c *Catalog, turnID, outcome string, usage Budget, result string) []byte {
+	turn, _ := c.Turn(turnID)
+	r := TurnReceipt{
+		SchemaVersion: ReceiptSchema, SessionID: turn.SessionID, TurnID: turn.ID, Ordinal: turn.Ordinal,
+		WorkerKind: WorkerHeadlessFixture, WorkerInstance: "worker-" + strings.ReplaceAll(turnID, "/", "-"),
+		ProviderJournalHead: strings.Repeat("a", 64), ProviderJournalCount: 3,
+		StoreJournalHead: strings.Repeat("b", 64), StoreJournalCount: 2,
+		PredecessorReceiptDigest: turn.PredecessorReceiptDigest, BaselineDigest: turn.BaselineDigest,
+		ResultBaselineDigest: result, Outcome: outcome, Settlement: SettlementHeadlessClosed, Usage: usage,
+		ToolSequence: []string{"read"}, Denials: []ReceiptDenial{},
+	}
+	if turn.Link != nil {
+		r.WorkflowID, r.RunID, r.ConversationID = turn.Link.WorkflowID, turn.Link.RunID, turn.Link.ConversationID
+		r.ImportedPrefixDigest = turn.Link.ImportedPrefixDigest
+	}
+	if outcome == OutcomePublished {
+		r.PublicationTransactionID = "tx-" + strings.ReplaceAll(turnID, "/", "-")
+	}
+	data, err := json.Marshal(r)
+	if err != nil {
+		panic(err)
+	}
+	return data
+}
+
+func reviewFor(c *Catalog, turnID string, usage Budget, candidate string) TurnReview {
+	turn, _ := c.Turn(turnID)
+	return TurnReview{Settlement: SettlementHeadlessClosed, Usage: usage, CandidateDigest: candidate,
+		Receipt: receiptFor(c, turnID, receiptOutcomeAwaitReview, usage, turn.BaselineDigest)}
+}
 
 func complete(c *Catalog, turnID, outcome string, usage Budget, result string) error {
 	return c.CompleteTurn(turnID, TurnTerminal{
-		Outcome: outcome, Settlement: "verified", Receipt: receipt(turnID), Usage: usage,
+		Outcome: outcome, Settlement: SettlementHeadlessClosed, Receipt: receiptFor(c, turnID, outcome, usage, result), Usage: usage,
 		ResultBaselineDigest: result, ContextEligible: true,
 	})
 }
@@ -229,9 +261,10 @@ func TestTwoPromptsFormTurnsOneAndTwo(t *testing.T) {
 	}
 	finishNoDiff(t, c, t1.ID, Budget{1, 1, 1})
 	done, _ := c.Turn(t1.ID)
+	wantReceipt := receiptFor(c, t1.ID, OutcomeNoDiff, Budget{1, 1, 1}, b0)
 	t2 := mustSubmit(t, c, uid1, s.ID, 2, "k2", "second prompt")
 	if t2.ID != s.ID+"/turn-2" || t2.PredecessorTurnID != t1.ID || t2.PredecessorReceiptDigest != done.ReceiptDigest ||
-		done.ReceiptDigest != ReceiptDigest(receipt(t1.ID)) || !strings.HasPrefix(done.ReceiptDigest, "sha256:") {
+		done.ReceiptDigest != ReceiptDigest(wantReceipt) || !strings.HasPrefix(done.ReceiptDigest, "sha256:") {
 		t.Fatalf("turn 2: %+v (turn 1 receipt %s)", t2, done.ReceiptDigest)
 	}
 	got, err := c.Session(uid1, s.ID)
@@ -490,9 +523,10 @@ func TestAwaitingReviewBlocksSessionAndProject(t *testing.T) {
 	s := mustSession(t, c, uid1, "beta", "review", bigBudget, "s")
 	other := mustSession(t, c, uid2, "beta", "review", bigBudget, "s2")
 	turn := mustSubmit(t, c, uid1, s.ID, 0, "k1", "p")
-	review := TurnReview{Receipt: receipt(turn.ID), Usage: Budget{2, 10, 5}, CandidateDigest: dg("candidate")}
-	wantCode(t, c.MarkAwaitingReview(turn.ID, review), CodeWrongTurnState) // not linked yet
+	unlinked := TurnReview{Settlement: SettlementHeadlessClosed, Receipt: rawReceipt(turn.ID), Usage: Budget{2, 10, 5}, CandidateDigest: dg("candidate")}
+	wantCode(t, c.MarkAwaitingReview(turn.ID, unlinked), CodeWrongTurnState) // not linked yet
 	mustLink(t, c, turn.ID)
+	review := reviewFor(c, turn.ID, Budget{2, 10, 5}, dg("candidate"))
 	bad := review
 	bad.Usage = Budget{11, 1, 1}
 	wantCode(t, c.MarkAwaitingReview(turn.ID, bad), CodeInvalidRequest)
@@ -518,7 +552,7 @@ func TestAwaitingReviewBlocksSessionAndProject(t *testing.T) {
 	autoSession := mustSession(t, c, uid1, "gamma", "auto", bigBudget, "s3")
 	at := mustSubmit(t, c, uid1, autoSession.ID, 0, "k", "p")
 	mustLink(t, c, at.ID)
-	wantCode(t, c.MarkAwaitingReview(at.ID, TurnReview{Receipt: receipt(at.ID), Usage: Budget{1, 1, 1}, CandidateDigest: dg("c")}), CodeInvalidRequest)
+	wantCode(t, c.MarkAwaitingReview(at.ID, reviewFor(c, at.ID, Budget{1, 1, 1}, dg("c"))), CodeInvalidRequest)
 }
 
 func TestUnknownBlocksSessionAndProject(t *testing.T) {
@@ -654,7 +688,7 @@ func TestOpenReplaysEverySessionTurnAndBudgetField(t *testing.T) {
 	s2 := mustSession(t, c, uid2, "beta", "review", bigBudget, "s2")
 	t4 := mustSubmit(t, c, uid2, s2.ID, 0, "k4", "four")
 	mustLink(t, c, t4.ID)
-	if err := c.MarkAwaitingReview(t4.ID, TurnReview{Receipt: receipt(t4.ID), Usage: Budget{1, 2, 3}, CandidateDigest: dg("cand")}); err != nil {
+	if err := c.MarkAwaitingReview(t4.ID, reviewFor(c, t4.ID, Budget{1, 2, 3}, dg("cand"))); err != nil {
 		t.Fatal(err)
 	}
 	s3 := mustSession(t, c, uid1, "gamma", "auto", bigBudget, "s3")
@@ -754,11 +788,13 @@ func TestOpenRefusesRecordsTheReducerRejects(t *testing.T) {
 	}
 	cases := map[string]audit.Event{
 		"terminal for an unknown turn": good(kindTurnTerminal, turnTerminalRecord{header: hdr, TurnID: "psess-x/turn-1",
-			Outcome: OutcomeNoDiff, Settlement: "verified", Receipt: receipt("x"), ReceiptDigest: ReceiptDigest(receipt("x")), ResultBaselineDigest: b0}),
+			Outcome: OutcomeNoDiff, Settlement: "verified", Receipt: rawReceipt("x"), ReceiptDigest: ReceiptDigest(rawReceipt("x")), ResultBaselineDigest: b0}),
 		"link for an unknown turn": good(kindTurnLinked, turnLinkedRecord{header: hdr, TurnID: "psess-x/turn-1"}),
 		"session on an unknown project": good(kindSessionCreated, sessionCreatedRecord{header: hdr,
 			SessionID: "psess-" + strings.Repeat("a", 32), Principal: uid1, ProjectID: "nope", ProviderProfile: "p1",
-			PublicationMode: "auto", Budget: bigBudget, BaselineDigest: b0, RequestKey: "k", PayloadDigest: dg("x")}),
+			PublicationMode: "auto", Budget: bigBudget, BaselineDigest: b0, RequestKey: "k",
+			PayloadDigest: payloadDigest(opCreateSession, CreateSessionRequest{ProjectID: "nope", ProviderProfile: "p1",
+				PublicationMode: "auto", Budget: bigBudget, RequestKey: "k"})}),
 		"unknown kind":         {Kind: "product_something_else", ID: "evidence", Data: []byte(`{"schema_version":"tbound-product-catalog/v1"}`)},
 		"unknown field":        {Kind: kindTurnAbandoned, ID: "evidence", Data: []byte(`{"schema_version":"tbound-product-catalog/v1","turn_id":"a","refund":{},"extra":1}`)},
 		"wrong schema version": {Kind: kindTurnAbandoned, ID: "evidence", Data: []byte(`{"schema_version":"v0","turn_id":"a","refund":{}}`)},
