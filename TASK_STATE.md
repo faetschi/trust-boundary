@@ -47,7 +47,6 @@ Current checkpoint, 2026-10-23. History before this date: git log of this file a
 - Pilot re-based on established items (merged e59e5f6, gate 4593/0/26): 11 adversarial (InjecAgent 5, ASB 3, AgentDojo 2, RiOSWorld 1), 20 compliant (RepoQA reads, MultiPL-E HumanEval-JS write/edit/bash), 2 ambiguous (ToolEmu); D37 meaning records; upstream licenses in corpus/pilot/licenses; write/edit graded by the dataset tests in an isolated acceptance cell (network none, read-only, cell uid, fail-closed; guest-verify in the rehearsal); bash results unguessable. Manifest sha256:3db1162226a1d38b71ce668a0a97bb9090c51beac442598c6cdd4444853a68d2.
 - AI panel: owner approved up to USD 10 (owner funds OpenRouter later, chooses the 3 models and runs it manually). Turnkey tooling being built (feat/construct-panel: --estimate, --dry-run with fake provider, hard spend cap, Fleiss kappa, advisor audit list, docs/panel-run.md).
 - The old review packets (review-artifacts/pilot-review-packets-20261024) are SUPERSEDED (authored cases).
-- The prepared review packets (review-artifacts/pilot-review-packets-20261024) are ON HOLD: they cover the authored pilot cases, which will be replaced.
 
 ## Pilot corpus (merged 1eae1b5; to be re-based)
 
