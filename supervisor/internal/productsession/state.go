@@ -282,7 +282,8 @@ func (s *state) activeTurns(sess *Session) int {
 // predecessor is the session's latest turn that was not withdrawn.
 func (s *state) predecessor(sess *Session) *Turn {
 	for i := len(sess.Turns) - 1; i >= 0; i-- {
-		if t := s.turns[sess.Turns[i]]; t.State != StateAbandoned {
+		// A turn withdrawn or cancelled before its link did no work and has no evidence to import.
+		if t := s.turns[sess.Turns[i]]; t.State != StateAbandoned && t.RefusalCode != CodeCancelled {
 			return t
 		}
 	}
@@ -664,6 +665,9 @@ func (s *state) reduceTerminal(data []byte) (func(), error) {
 		}
 		if r.Usage != t.Usage || r.Refund != (Budget{}) {
 			return nil, fail(CodeInvalidRequest, "a reviewed turn repeats its review usage and refunds nothing")
+		}
+		if err := sameReviewedExecution(t.Receipt, r.Receipt); err != nil {
+			return nil, err
 		}
 	} else if err := checkSettlement(t, r.Receipt, r.ReceiptDigest, r.Usage, r.Refund); err != nil {
 		return nil, err

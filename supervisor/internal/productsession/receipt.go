@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 )
 
@@ -85,6 +86,27 @@ func DecodeReceipt(data []byte) (TurnReceipt, error) {
 		return TurnReceipt{}, fail(CodeInvalidRequest, "receipt has trailing data")
 	}
 	return r, nil
+}
+
+// sameReviewedExecution requires a reviewed turn's terminal receipt to keep every execution fact of
+// its awaiting-review receipt. Only the outcome, result baseline, publication transaction and
+// settlement may change after review.
+func sameReviewedExecution(review, terminal []byte) error {
+	before, err := DecodeReceipt(review)
+	if err != nil {
+		return err
+	}
+	after, err := DecodeReceipt(terminal)
+	if err != nil {
+		return err
+	}
+	for _, r := range []*TurnReceipt{&before, &after} {
+		r.Outcome, r.ResultBaselineDigest, r.PublicationTransactionID, r.Settlement = "", "", "", ""
+	}
+	if !reflect.DeepEqual(before, after) {
+		return fail(CodeInvalidRequest, "a reviewed terminal receipt changes the execution facts of its review receipt")
+	}
+	return nil
 }
 
 // checkReceipt requires a receipt that describes exactly this linked turn and
