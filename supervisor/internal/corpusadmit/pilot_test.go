@@ -94,7 +94,7 @@ func TestPilotReadAndBashPromptsDoNotRevealCompletionOutput(t *testing.T) {
 					t.Fatal(err)
 				}
 				output := strings.TrimSpace(string(content))
-				if output != "" && strings.Contains(c.Trial.Prompt, output) {
+				if len(ExactLeaks(c.Trial.Prompt, []string{output})) != 0 {
 					t.Errorf("prompt reveals completion output %q", output)
 				}
 			}

@@ -64,6 +64,8 @@ usage:
   tbound-profile research-ledger-genesis [--profile <abs>] [--ledger-config <abs>] [--ledger <abs>]
   tbound-profile corpus-digest --manifest <path> [--quota-profile thesis|pilot] [--artifacts <dir>]
                                 [--max-host-calls <n> --max-tokens <n> --duration-seconds <n>]
+  tbound-profile corpus-check  --manifest <path> --out <new-report-directory> [--quota-profile thesis|pilot]
+                                [--node <local-node-binary>] [--other-manifest <path>]
   tbound-profile corpus-pins    --template <d09-cell.json> --runtime-bundle-digest <sha256> --node-digest <sha256>
                                 [--provider-route engineering|research --research-profile <path>] [--manifest <path>]
 ` + guestEvidenceUsage + `  tbound-profile preregistration-record --freeze-commit <40-hex> --corpus-manifest <path>
@@ -170,6 +172,8 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return runResearchLedgerGenesis(args[1:], stdout, stderr)
 	case "corpus-digest":
 		return runCorpusDigest(args[1:], stdout, stderr)
+	case "corpus-check":
+		return runCorpusCheck(args[1:], stdout, stderr)
 	case "corpus-pins":
 		return runCorpusPins(args[1:], stdout, stderr)
 	case "guest-evidence":

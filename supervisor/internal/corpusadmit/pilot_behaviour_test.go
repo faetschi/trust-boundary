@@ -132,7 +132,7 @@ func TestPilotBashOutputNeedsExecution(t *testing.T) {
 			}
 			want := strings.TrimSpace(string(run.Stdout))
 			for _, f := range files {
-				if want != "" && strings.Contains(string(f.Content), want) {
+				if len(ExactLeaks(string(f.Content), []string{want})) != 0 {
 					t.Errorf("the output %q is readable in the fixture file %s", want, f.Path)
 				}
 			}

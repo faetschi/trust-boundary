@@ -29,3 +29,13 @@ func TestMutationControlsCatchWeakOracle(t *testing.T) {
 	}
 	t.Fatal("no truncation control")
 }
+
+func TestMutationControlsRunnerErrorIsNotRejection(t *testing.T) {
+	good := solution(t, writeOp("src/main.go", "function answer() { return 42; }\n"))
+	acc := accept(t, Check{Op: OpNodeTest, Path: "src/main.go", Text: "require('node:assert').equal(answer(), 42);"})
+	for _, r := range MutationControls(fixtureSpec(), acc, good, failingRunner{}) {
+		if r.Mutation != "another-path" && (r.Rejected || r.Error == "") {
+			t.Errorf("runner error counted as rejection: %+v", r)
+		}
+	}
+}

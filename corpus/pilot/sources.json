@@ -2,31 +2,83 @@
  "pins": {
   "InjecAgent": {
    "rev": "f19c9f2c79a41046eb13c03c51a24c567a8ffa07",
-   "license": "MIT"
+   "license": "MIT",
+   "digests": [
+    "sha256:999d52e15af3c80a3303a09430af0f3878d1f91e4c573ca7b477a91cdfa6b991",
+    "sha256:87952398c989d8ca841724e38ecdbb789676d3841e19dfc44aac7b710df9cb1f"
+   ],
+   "license_files": [
+    "licenses/InjecAgent-LICENCE"
+   ]
   },
   "AgentDojo-v1": {
    "rev": "089ed468cf3ed0322acc66b0211f26d9d90dbf60",
-   "license": "MIT"
+   "license": "MIT",
+   "digests": [
+    "sha256:9252be834b0ae0e28fe06744e052987d71d8ad3666b8d0b1f65f2875f998fca8",
+    "sha256:03e0894ffb544a79fd0bfd2c62cc5f90b19a2b1d429068d800239bfd020b6dcc"
+   ],
+   "license_files": [
+    "licenses/AgentDojo-LICENSE"
+   ]
   },
   "agiresearch/ASB": {
    "rev": "544540ff0788998072f7df463056fd17e62cc9f4",
-   "license": "MIT"
+   "license": "MIT",
+   "digests": [
+    "sha256:9205bf61f1c34f4be5b644ae829da22042c92a86d4d1e70352ccec5f60cf12d6"
+   ],
+   "license_files": [
+    "licenses/ASB-LICENSE"
+   ]
   },
   "JY-Young/RiOSWorld": {
    "rev": "96bb09d9e922fad590603cc8468c602fbc788d95",
-   "license": "Apache-2.0"
+   "license": "Apache-2.0",
+   "digests": [
+    "sha256:6611d0bdcba2dc2dc4c2bce1025373980e4d98fbfe2219fb09749fa9d74a98e5"
+   ],
+   "license_files": [
+    "licenses/RiOSWorld-dataset-card-license.txt",
+    "licenses/Apache-2.0.txt"
+   ]
   },
   "evalplus/repoqa": {
    "rev": "ae876deb1365dbf5a15b0533723c8ed123eee586",
-   "license": "Apache-2.0 (code); upstream repo licenses apply to snippets"
+   "license": "Apache-2.0 (code); upstream repo licenses apply to snippets",
+   "digests": [
+    "sha256:c050a2ad90a7df89d9dc1f1c3b3b20683edd20a56293b35fcaae43dec115d681"
+   ],
+   "license_files": [
+    "licenses/RepoQA-LICENSE",
+    "licenses/axios-LICENSE",
+    "licenses/date-fns-LICENSE.md",
+    "licenses/umami-LICENSE",
+    "licenses/openai-node-LICENSE",
+    "licenses/three.js-LICENSE"
+   ]
   },
   "nuprl/MultiPL-E": {
    "rev": "28441b6024e71d4a1c1c0f6bf171c935cd5a43f2",
-   "license": "MIT"
+   "license": "MIT",
+   "digests": [
+    "sha256:037debd61e3e98ee9da684054ef522d45200ce622ae36b2fab3bbb27769fa51d"
+   ],
+   "license_files": [
+    "licenses/MultiPL-E-dataset-card-license.txt",
+    "licenses/MultiPL-E-repository-LICENSE",
+    "licenses/HumanEval-LICENSE"
+   ]
   },
   "ryoungj/ToolEmu": {
    "rev": "ac4a7ab7ed8c7985d96231e214bd6b54304b7ddb",
-   "license": "Apache-2.0"
+   "license": "Apache-2.0",
+   "digests": [
+    "sha256:63f92818dfc2d4c5bf82de3f03d2fe10c166e697235d07c2f55142c8169460b4"
+   ],
+   "license_files": [
+    "licenses/ToolEmu-LICENSE"
+   ]
   }
  },
  "digests": {

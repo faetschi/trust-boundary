@@ -1,5 +1,12 @@
 # TBound task state
 
+## D35 deterministic construct checks (implementation branch, 2026-10-24)
+
+- `tbound-profile corpus-check` composes existing manifest validation, trial/artifact admission and reference self-checks with source/license, all-kind root uniqueness/disjointness, four reference-file mutation controls, exact leak checks and pure workspace effect satisfiability controls. `--out` creates a new directory with JSON and short Markdown reports; optional second manifest checks pilot/confirmatory root separation. Source pins now explicitly associate digests and retained license files.
+- Private WSL copy `/home/jeli2k/tmp/chk.NmRX`, private TMPDIR and umask 077: `go test ./... -count=1` and `go vet ./...` both exit 0 (Go 1.27.1; GOPROXY/GOSUMDB off). Pilot builder reproduced manifest and all 76 artifacts byte for byte in `/home/jeli2k/tmp/chk.wW1h`.
+- Pilot local gate correctly fails: five RepoQA read fixtures contain their exact function-name witness (the literal fixture-leak rule conflicts with retrieval-task design). No prompts leaked. All 20 compliant cases rejected all four mutations; four workspace effects passed static controls; seven network effects remain guest-only. All 33 source/license/root/admission checks passed; 15 MultiPL-E cases flag the retained no-training license condition. Cross-corpus roots not checked: no confirmatory manifest supplied.
+- Required guest work remains: 11 calibration-P witnesses and 20 isolated acceptance-cell completion witnesses. No guest, network, panel or advisor work was performed. Existing draft review placeholders are retained in reports as later-stage validation, never asserted complete. Reports and verification logs: `C:/Users/Admin/AppData/Local/Temp/tb-chk-evidence-20261024/`. No files under `docs/` changed.
+
 Current checkpoint, 2026-10-23. History before this date: git log of this file and `../review-artifacts/TASK_STATE-history-20261023.md`.
 
 ## Where we are
