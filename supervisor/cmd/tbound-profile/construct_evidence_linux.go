@@ -252,9 +252,6 @@ func (c *constructCtx) outcome(use *constructUse, id, check string) (string, str
 	if c.in.Err != nil {
 		return "", "", c.in.Err
 	}
-	if !fs.ValidPath(id) || strings.Contains(id, "/") {
-		return "", "", errors.New("case_id is not a single safe path component")
-	}
 	m, err := c.loadMap(use)
 	if err != nil {
 		return "", "", err

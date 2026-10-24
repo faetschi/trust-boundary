@@ -248,9 +248,13 @@ freeze, not before the panel. Add `--other-manifest PATH` to check root
 separation from another corpus.
 
 Add `--guest-evidence DIR --run-config run.json --guest-binary-sha256 sha256:...`
-to consume retained [guest construct witnesses](construct-witnesses.md).
-Bound positive/negative outcomes become `pass`/`fail`; missing, malformed or
-mismatched evidence stays `guest-only` with its reason. No flag preserves the local report.
+to recompute those checks from the producers' retained outputs (the runner
+journal, `trial accept` results, the retained NET intervals and the signed run
+files; see [guest construct witnesses](construct-witnesses.md)). Bound
+positive/negative outcomes become `pass`/`fail`, each with the sha256 of its
+source files and the note that nothing outside the operator vouches for them;
+missing, malformed or mismatched files stay `guest-only` with their reason. No
+flag preserves the local report.
 
 ```sh
 tbound-profile corpus-check \
@@ -342,8 +346,9 @@ freeze and receipt pins, report digests, run directory, pinned SSH host key,
 identities, and process collector settings. The [config schema](../../supervisor/cmd/tbound-run/config.go)
 is strict; no ready-to-run config exists for an arbitrary machine. Follow the
 [pilot sequence](../../infra/guest/PROVISIONING-SIGNING.md). Inspect the first unit
-before continuing. Preserve `run_dir/journal.jsonl`; interrupted steps become
-abandoned. Reports have a synthetic empty USD ledger and `claim_bearing=false`.
+before continuing. Preserve `run_dir/journal.jsonl` and `run_dir/net-evidence/` (the
+original NET interval documents; the construct checks recompute from both);
+interrupted steps become abandoned. Reports have a synthetic empty USD ledger and `claim_bearing=false`.
 Use the pilot to calibrate caps, costs, reset behaviour, and feasibility.
 
 ```sh
