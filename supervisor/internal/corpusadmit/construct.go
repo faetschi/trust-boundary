@@ -15,7 +15,22 @@ type ConstructCheck struct {
 	Reason     string                      `json:"reason"`
 	Conditions []string                    `json:"conditions,omitempty"`
 	Mutations  []taskaccept.MutationResult `json:"mutations,omitempty"`
+	// Provenance and Anchor are set only on a guest check that an import turned into pass or fail: the
+	// files the result was recomputed from, and what vouches for them.
+	Provenance []ConstructSource `json:"provenance,omitempty"`
+	Anchor     string            `json:"anchor,omitempty"`
 }
+
+// ConstructSource is one source file of an imported result, by the name it was read under and its sha256.
+type ConstructSource struct {
+	Path   string `json:"path"`
+	SHA256 string `json:"sha256"`
+}
+
+// ConstructAnchor is the Anchor of every imported result. The originals are files the operator retained:
+// the audit chains have no external anchor, so an operator who fabricates consistent originals is not
+// detected (a recorded limitation of the thesis).
+const ConstructAnchor = "operator-retained, no external anchor"
 
 type ConstructCase struct {
 	CaseID string           `json:"case_id"`
