@@ -58,7 +58,8 @@ func (r cellNodeRunner) RunNode(program []byte) (run taskaccept.NodeRun, err err
 	stdout, stderr := &tailBuffer{max: taskaccept.MaxNodeStdout}, &tailBuffer{max: 2048}
 	inv := podmanInvocation{Path: tmpl.PodmanPath, Args: args, Env: vPodmanEnv(), Dir: dir, UID: tmpl.HostUID, GID: tmpl.HostGID,
 		Stdout: stdout, Stderr: stderr}
-	limit := taskaccept.NodeTestTimeout
+	// The cell limit is podman's --timeout (task.deadline maps seconds to a duration, as for v-run).
+	limit := task.deadline(vrun.AcceptTimeoutSeconds)
 	runCtx, cancel := context.WithTimeout(ctx, limit+task.killGrace)
 	started := time.Now()
 	exit, runErr := task.podman.Run(runCtx, inv)
@@ -73,7 +74,9 @@ func (r cellNodeRunner) RunNode(program []byte) (run taskaccept.NodeRun, err err
 	case rmErr != nil:
 		return taskaccept.NodeRun{}, fmt.Errorf("acceptance cell: %w", rmErr)
 	case hitDeadline:
-		return taskaccept.NodeRun{Exit: vTimedOutExit, TimedOut: true, Stdout: stdout.buf}, nil
+		// podman did not end by itself a grace after its own --timeout (e.g. a storage lock): the
+		// cell is broken, not the tests slow, so acceptance is refused.
+		return taskaccept.NodeRun{}, fmt.Errorf("acceptance cell: podman did not exit within %s of its own timeout", task.killGrace)
 	case runErr != nil:
 		return taskaccept.NodeRun{}, fmt.Errorf("acceptance cell: podman could not be run: %w", runErr)
 	case exit >= 125 && exit <= 127:

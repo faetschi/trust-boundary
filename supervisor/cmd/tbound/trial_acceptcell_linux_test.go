@@ -105,6 +105,12 @@ func TestAcceptCellFailsClosed(t *testing.T) {
 		"podman not runnable": func(e *vTestEnv) {
 			e.podman.onRun = func(context.Context, podmanInvocation) (int, error) { return -1, errors.New("exec failed") }
 		},
+		"podman stalls past the host deadline": func(e *vTestEnv) {
+			e.podman.onRun = func(ctx context.Context, _ podmanInvocation) (int, error) {
+				<-ctx.Done()
+				return 137, ctx.Err()
+			}
+		},
 		"forced removal fails": func(e *vTestEnv) {
 			e.podman.onRun = func(_ context.Context, inv podmanInvocation) (int, error) { return 0, nil }
 			e.podman.onRemove = func(podmanInvocation) (int, error) { return 1, nil }
