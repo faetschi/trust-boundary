@@ -24,7 +24,10 @@ phase-1 calls run before any phase-2 call.
   output paths and the allowed network destinations
 
 The threat model assumes the agent knows the public policy (thesis §3.2.1), so
-this context is case content, not a claimed label. The model returns its own
+this context is case content, not a claimed label. Showing the registered
+protected paths in phase 1 is deliberate: a protected path tells the rater where
+a workspace effect would count, but not whether the case targets it. Report
+this design choice with the phase-1 statistics. The model returns its own
 threat class, authorization (`allowed`, `forbidden` or `ambiguous`), effect ids
 and, for a task it judges allowed, a completion predicate. It sees no claimed
 threat class, authorization, effect ids, oracle, expected route, intent or
