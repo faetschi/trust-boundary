@@ -11,24 +11,36 @@ as human reviews.
 
 ## What each model sees
 
-Each request is a fresh single-turn chat with no tools, temperature 0 and a
-`max_tokens` limit. A request contains the system prompt and one case packet:
+Each model rates each case in two separate calls. Every call is a fresh
+single-turn chat with no tools, temperature 0 and a `max_tokens` limit. All
+phase-1 calls run before any phase-2 call.
+
+**Phase 1, blind classification.** The request contains only:
 
 - the task or stimulus text, verbatim
+- the workspace fixture (canary files and case-named canary markers withheld)
+- the agent's tool set: Pi read, write, edit and bash in a sandboxed command cell
+
+The model returns its own threat class, authorization (`allowed`, `forbidden`
+or `ambiguous`), effect ids and, for a task it judges allowed, a completion
+predicate. It sees no claimed label, oracle, route, intent, source or protected
+path, so it judges effects on protected paths from the task and fixture alone.
+
+**Phase 2, checklist.** The request adds:
+
 - the source benchmark item, preserved intent, transformations and lost
   distinctions
-- the workspace fixture (canary files and case-named canary markers withheld)
 - the claimed label, oracle, route and tool mapping to judge, with the proposed
   stimuli, acceptance checks or rubric excerpt
 
-A request never contains configuration names, system verdicts, outcomes, run
-settings, other raters' answers or case ids. Each model gets its own random item
-ids and its own call order, both derived from `seed`. The renderer fails closed
-when a blinding pattern survives, and redacts free-text lines that name one.
+The model answers `pass`, `fail` or `unclear` with a reason for each checklist
+item. The `sensitivity` item is predeclared n/a for ambiguous cases.
 
-Each model answers `pass`, `fail` or `unclear` with a reason for each checklist
-item. It also gives its own threat class, authorization and effect ids. The
-`sensitivity` item is predeclared n/a for ambiguous cases.
+No request contains configuration names, system verdicts, outcomes, run
+settings, other raters' answers or case ids. Each model and phase gets its own
+random item ids and call order, both derived from `seed`. The renderer fails
+closed when a blinding pattern survives, and redacts free-text lines that name
+one.
 
 ## 1. Build the command
 
@@ -92,8 +104,8 @@ run, and disclose any prior exposure of the models to the corpus.
 The estimate calls nothing and writes nothing. It prints calls, prompt bytes,
 estimated tokens, an expected cost and a worst case. The worst case counts
 every prompt byte as a token and every answer at `max_tokens`. For the pilot,
-33 cases × 3 models make 99 calls. With the illustrative prices above, the
-expected cost is about USD 0.91 and the worst case about USD 3.18.
+33 cases × 3 models × 2 phases make 198 calls. With the illustrative prices
+above, the expected cost is about USD 1.20 and the worst case about USD 5.69.
 
 ## 4. Do a dry run
 
@@ -131,8 +143,9 @@ outcome, such as a timeout, keeps its whole worst case counted. If a reported
 cost exceeds the reserved worst case, the configured prices are too low. The run
 then stops until you fix them.
 
-To resume, run the same command again with the same `--out`. Pairs with a
-valid rating are skipped. Invalid answers are recorded and retried on resume. If you
+To resume, run the same command again with the same `--out`. Each case, model
+and phase with a valid answer is skipped, so a completed phase is not called
+again. Invalid answers are recorded and retried on resume. If you
 change a frozen setting (models, temperatures, `max_tokens`, `seed`, prompts or
 manifest), the tool refuses the old directory. Use a new `--out`.
 
@@ -149,15 +162,20 @@ manifest), the tool refuses the old directory. Use a new `--out`.
 |---|---|
 | `receipt.json` | Models, families, observed response models and hosts, settings, seeds, manifest digests, spend and cap |
 | `settings.json` | The frozen settings a resume must match |
-| `blinding.json` | Seed, per-model random item ids and call order |
-| `requests/`, `responses/` | Every raw request body (without the key) and raw response |
+| `blinding.json` | Seed, random item ids and call order per model and phase |
+| `requests/p1`, `requests/p2`, `responses/` | Every raw request body (without the key) and raw response, per phase |
 | `calls.jsonl` | Spend ledger: a reservation before each call, then the settled cost |
-| `ratings.jsonl` | One parsed rating per call, marked valid or invalid with its reason |
-| `stats.md`, `stats.json` | Per-item Fleiss' kappa, raw agreement, prevalence and a 95% root-bootstrap interval, before adjudication |
+| `ratings.jsonl` | One parsed answer per call with its phase, marked valid or invalid with its reason |
+| `stats.md`, `stats.json` | Before adjudication: Fleiss' kappa, raw agreement, prevalence and a 95% root-bootstrap interval per phase-2 checklist item and per phase-1 field, plus the phase-1 agreement with the claimed label per field |
 | `audit.md`, `audit.json` | The advisor's audit list and sign-off fields |
 | `audit-packets/` | The blinded packet of each audited case |
 
-The gate is applied per checklist item:
+Phase-1 effect ids are compared as a set: two answers agree only when they name
+exactly the same ids. The claim agreement rate counts every model's phase-1
+answer against the manifest claim. Effect ids are n/a for ambiguous cases,
+which register no forbidden effect.
+
+The gate is applied per checklist item and per phase-1 field:
 
 | Result | Rule |
 |---|---|
@@ -176,14 +194,17 @@ accepts a failed construct check.
 Send `audit.md`, `audit.json`, `audit-packets/` and `stats.md`. The audit list
 contains:
 
-- every case with a disagreement
+- every case with a checklist disagreement
 - every case with an `unclear` rating
+- every case where the models' phase-1 answers differ from each other or from
+  the claimed label
 - every ambiguous case
 - any case with incomplete ratings
 - a random sample of up to 60 unanimous roots, drawn with the recorded seed and
   listed with the eligible roots
 
-The advisor reviews each listed case and fills the sign-off fields in
+`audit.json` shows each listed case's claimed labels, phase-1 answers and
+phase-2 ratings. The advisor reviews each listed case and fills the sign-off fields in
 `audit.json`: decision, resolution, identity and time with timezone. The
 advisor then signs `audit.md`. An audit error expands review across that case's
 source and tool stratum. Keep this round's ratings and statistics unchanged. A
