@@ -68,6 +68,7 @@ The catalog is one protected `audit.Journal` (hash chain, fsync per record, excl
 | `product_turn_terminal` | After the child workflow has a verified disposition | Outcome, settlement, receipt bytes and digest, actual usage, result baseline digest, `context_eligible`, refund. |
 | `product_turn_awaiting_review` | A changed turn in review mode settled | Receipt bytes and digest, actual usage, refund, candidate tree digest. The turn stays non-terminal and blocks its session and project until P4 resolves it. |
 | `product_turn_abandoned` | Reconciling an admitted turn with no link | Admission withdrawn with a full refund. No provider or tool work can precede the link record. |
+| `product_turn_refused` | The composition refused to launch an admitted, unlinked turn | Outcome `failed` with a full refund. `PREDECESSOR_EVIDENCE_INVALID` blocks the session; `STALE_BASELINE` blocks the project. |
 | `product_turn_unknown` | Reconciling a linked turn that has no verifiable disposition | Reservation stays consumed; project is blocked. |
 
 ### Operations
@@ -80,6 +81,7 @@ func (c *Catalog) LinkTurn(turnID string, link TurnLink) error
 func (c *Catalog) CompleteTurn(turnID string, t TurnTerminal) error
 func (c *Catalog) MarkAwaitingReview(turnID string, r TurnReview) error
 func (c *Catalog) AbandonUnlinkedTurn(turnID string) error
+func (c *Catalog) RefuseUnlinkedTurn(turnID string, code Code) error
 func (c *Catalog) MarkTurnUnknown(turnID string, reason string) error
 func (c *Catalog) Session(p Principal, id string) (Session, error)
 func (c *Catalog) Turn(id string) (Turn, bool)
@@ -104,6 +106,15 @@ func (c *Catalog) Turn(id string) (Turn, bool)
 Then one `product_turn_admitted` record is appended and synced. The reservation is `min(limits.turn, remaining session budget)` per field.
 
 `CompleteTurn` requires a linked, non-terminal turn. Usage may not exceed the reservation in any field. The session receives back `reservation - usage`. A `published` outcome moves the project baseline to `result_baseline_digest`. `no_diff`, `discarded`, `failed`, and `cancelled` require `result_baseline_digest` to equal the admitted baseline. `unknown` is only written by `MarkTurnUnknown`. `awaiting_review` is a non-terminal state that blocks the session and project until P4 resolves it.
+
+### Decisions taken during implementation
+
+- Registration-dependent checks run only for records written under the registration loaded now. Older records are checked for state consistency only, so a new registration can be loaded when no turn is unresolved.
+- A blocked session returns `PREDECESSOR_UNRESOLVED`. A blocked project returns `PROJECT_BLOCKED`, also from `CreateSession`.
+- `BUDGET_EXHAUSTED` requires at least one unit of every budget field, duration included.
+- Abandoned turns keep their ordinal but do not count toward `max_turns_per_session` and are never a predecessor.
+- `MarkAwaitingReview` settles usage and refund at once. A P4 resolution must not settle the turn again.
+- `published` requires an auto-mode turn. A replayed request key returns the turn's current state.
 
 ### Error codes
 
@@ -143,7 +154,7 @@ Go owns the history. Each turn's provider journal is self-contained.
 
 `session_id`, `turn_id`, `ordinal`, `workflow_id`, `run_id`, `conversation_id`, `worker_kind`, `worker_instance`, `provider_journal_head`, `provider_journal_count`, `store_journal_head`, `store_journal_count`, `imported_prefix_digest`, `predecessor_receipt_digest`, `baseline_digest`, `result_baseline_digest`, `outcome`, `settlement`, `publication_transaction_id`, `usage`, `tool_sequence`, `denials`.
 
-Before it imports a predecessor, the next turn reopens the predecessor's retained journals read-only and checks their verified heads and counts against this receipt. A mismatch refuses the launch with `PREDECESSOR_EVIDENCE_INVALID`, records the new turn as `failed` with a full refund, and blocks the session.
+Before it imports a predecessor, the next turn reopens the predecessor's retained journals read-only and checks their verified heads and counts against this receipt. A mismatch refuses the launch with `RefuseUnlinkedTurn(turn, PREDECESSOR_EVIDENCE_INVALID)`: the new turn is `failed` with a full refund, and the session is blocked.
 
 `worker_kind` is `headless-fixture` in milestone 1, because the worker is the in-process deterministic driver. Receipts never claim an OS process settlement that did not happen. A real Pi worker per turn needs the product guest and is pending.
 
