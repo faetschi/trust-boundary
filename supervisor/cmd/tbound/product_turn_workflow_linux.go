@@ -19,6 +19,7 @@ import (
 	"tbound/supervisor/internal/privategit"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/providerbridge"
+	"tbound/supervisor/internal/publication"
 	"tbound/supervisor/internal/sessionlaunch"
 	"tbound/supervisor/internal/sessionrepo"
 	"tbound/supervisor/internal/workflow"
@@ -68,6 +69,8 @@ type productTurnEnv struct {
 	PublicationTrust func(*SessionOperationAuthority) workflow.Trust
 	// MaxWorkerSteps bounds the provider exchanges of one turn.
 	MaxWorkerSteps int
+	// publicationFaults is a trusted-host test seam for publication boundaries; production leaves it nil.
+	publicationFaults publication.FaultInjector
 }
 
 // productTurnWorkflow is one fresh governed workflow composed for an admitted turn.

@@ -238,7 +238,7 @@ func (e *productTurnEnv) beginProductPublication(ctx context.Context, projectID 
 			}
 			return open(workflowID, recovery)
 		},
-		Trust: trust,
+		Trust: trust, FaultInjector: e.publicationFaults,
 	})
 	if err != nil {
 		return nil, nil, err

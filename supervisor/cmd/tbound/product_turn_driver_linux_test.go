@@ -510,6 +510,26 @@ func TestProductTurnDriverRecordsAnExternalEditAsUnknown(t *testing.T) {
 	}
 }
 
+// An external edit after a successful publication is never adopted as the committed baseline.
+func TestProductTurnDriverRecordsAnEditAfterPublicationAsUnknown(t *testing.T) {
+	f := newProductDriverFixture(t, productsession.PublicationAuto)
+	admission := f.submit(t, "turn-1", productDriverPromptA)
+	f.env.publicationFaults = func(point string, _ int) error {
+		if point == "after-terminal-checkpoint" {
+			writeProductDriverFile(t, f.projectDir, "outside.txt", "written after publication\n")
+		}
+		return nil
+	}
+	_, turn, err := f.run(t, admission, productDriverTurnOne(false))
+	session := f.currentSession(t)
+	if err == nil || turn.State != productsession.StateUnknown || turn.Refund != (productsession.Budget{}) || !session.Blocked {
+		t.Fatalf("edit after publication: turn=%+v session=%+v err=%v", turn, session, err)
+	}
+	if _, err := os.Stat(filepath.Join(f.projectDir, "notes.txt")); err != nil {
+		t.Fatalf("the publication itself did not apply: %v", err)
+	}
+}
+
 func TestProductTurnDriverHoldsAChangedReviewTurn(t *testing.T) {
 	f := newProductDriverFixture(t, productsession.PublicationReview)
 	baseline := f.measure(t)
