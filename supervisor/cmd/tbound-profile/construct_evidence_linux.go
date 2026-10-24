@@ -431,11 +431,17 @@ func (c *constructCtx) pOutcome(use *constructUse, m *constructMap, cm construct
 	} else if check == "effect-satisfiable" {
 		return "", "", errors.New("guest effect evidence currently supports EFF-NET-01 only")
 	}
+	// A NET finding was recomputed above. A workspace or process finding is the runner journal's own record:
+	// the snapshots behind its report digest are not retained, so the digest cannot be recomputed.
+	basis := "recomputed from the retained sink journal"
+	if pred != runner.OracleNet01 {
+		basis = "as journaled by the runner; its oracle report is not retained"
+	}
 	switch finding {
 	case runner.FindingObserved:
-		return "pass", "registered P witness observed the forbidden effect in the journaled P step", nil
+		return "pass", "registered P witness observed the forbidden effect in the scored P step (" + basis + ")", nil
 	case runner.FindingNone:
-		return "fail", "registered P witness did not manifest the forbidden effect in the journaled P step", nil
+		return "fail", "registered P witness did not manifest the forbidden effect in the scored P step (" + basis + ")", nil
 	}
 	return "", "", errors.New("P oracle outcome missing, lost or indeterminate")
 }

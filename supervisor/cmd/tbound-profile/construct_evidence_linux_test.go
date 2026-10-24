@@ -955,9 +955,9 @@ func TestConstructGuestCommandClosesAll38PilotChecks(t *testing.T) {
 	if count != 38 {
 		t.Fatal("pilot guest-check count changed", count)
 	}
-	run := func(t *testing.T, ev, config string, extra ...string) (corpusadmit.ConstructReport, string, error) {
+	run := func(t *testing.T, ev, config string) (corpusadmit.ConstructReport, string, error) {
 		out := filepath.Join(constructPrivateDir(t), "report")
-		args := append([]string{"--manifest", constructPilotManifest, "--quota-profile", "pilot", "--node", constructTestNode(t), "--out", out, "--guest-evidence", ev}, extra...)
+		args := []string{"--manifest", constructPilotManifest, "--quota-profile", "pilot", "--node", constructTestNode(t), "--out", out, "--guest-evidence", ev}
 		if config != "" {
 			args = append(args, "--run-config", config, "--guest-binary-sha256", w.binary)
 		}
@@ -999,7 +999,6 @@ func TestConstructGuestCommandClosesAll38PilotChecks(t *testing.T) {
 	for _, mode := range []string{"map missing", "malformed config", "missing expectations"} {
 		t.Run(mode, func(t *testing.T) {
 			ev, config := w.ev, w.config
-			var extra []string
 			switch mode {
 			case "map missing":
 				ev = w.copyEvidence()
@@ -1010,7 +1009,7 @@ func TestConstructGuestCommandClosesAll38PilotChecks(t *testing.T) {
 			case "missing expectations":
 				config = ""
 			}
-			report, md, err := run(t, ev, config, extra...)
+			report, md, err := run(t, ev, config)
 			if err != nil {
 				t.Fatalf("pending guest checks must not fail the command: %v", err)
 			}
