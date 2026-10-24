@@ -17,7 +17,7 @@ func TestConstructCommandRetainsFailedPilotReport(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	err := run([]string{"corpus-check", "--manifest", "../../../corpus/pilot/manifest.draft.json", "--quota-profile", "pilot", "--out", out}, &stdout, &stderr)
 	if err == nil {
-		t.Fatal("missing node and fixture leaks must fail the local gate")
+		t.Fatal("missing node must fail the local gate")
 	}
 	raw, readErr := os.ReadFile(filepath.Join(out, "report.json"))
 	if readErr != nil {
@@ -27,7 +27,7 @@ func TestConstructCommandRetainsFailedPilotReport(t *testing.T) {
 	if err := json.Unmarshal(raw, &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.Passed || report.ReadyForPanel || len(report.Cases) != 33 {
+	if report.Passed || len(report.Cases) != 33 {
 		t.Fatalf("invalid report: %+v", report)
 	}
 	md, err := os.ReadFile(filepath.Join(out, "report.md"))

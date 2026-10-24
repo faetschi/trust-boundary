@@ -123,7 +123,7 @@ func TestExactLeaks(t *testing.T) {
 
 func TestConstructEmptyCorpusCannotPass(t *testing.T) {
 	r := CheckConstructs(evalcorpus.Manifest{}, fstest.MapFS{}, evalcorpus.PilotQuotas(), nil, nil)
-	if r.Passed || r.ReadyForPanel {
+	if r.Passed {
 		t.Fatal("empty corpus passed validation")
 	}
 }

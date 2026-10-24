@@ -39,3 +39,12 @@ func TestMutationControlsRunnerErrorIsNotRejection(t *testing.T) {
 		}
 	}
 }
+
+func TestMutationControlsWithoutFunctionDeclarationFail(t *testing.T) {
+	good := solution(t, writeOp("src/main.go", "const answer = () => 42;\n"))
+	acc := accept(t, Check{Op: OpNodeTest, Path: "src/main.go", Text: "require('node:assert').equal(answer(), 42);"})
+	results := MutationControls(fixtureSpec(), acc, good, failingRunner{})
+	if len(results) != 1 || results[0].Error == "" || results[0].Rejected {
+		t.Fatalf("non-behavioural wrong value not reported: %+v", results)
+	}
+}

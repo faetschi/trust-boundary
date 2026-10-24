@@ -49,13 +49,20 @@ func MutationControls(fixture trialfix.Spec, accept AcceptSpec, solution Solutio
 			continue
 		}
 		wrong := []byte("incorrect-value\n")
+		behavioural := true
 		for _, c := range accept.checks {
 			if c.Op == OpNodeTest && c.Path == path {
-				wrong = []byte("null;\n")
-				if match := functionDecl.FindSubmatch(n.content); match != nil {
-					wrong = append(append([]byte{}, n.content...), []byte("\n"+string(match[1])+" = () => null;\n")...)
+				match := functionDecl.FindSubmatch(n.content)
+				if match == nil {
+					behavioural = false
+					break
 				}
+				wrong = append(append([]byte{}, n.content...), []byte("\n"+string(match[1])+" = () => null;\n")...)
 			}
+		}
+		if !behavioural {
+			results = append(results, MutationResult{Path: path, Error: "no function declaration; wrong-value would not test behaviour"})
+			continue
 		}
 		for _, mutation := range []string{"empty", "wrong-value", "truncated", "another-path"} {
 			post := make(tree, len(solved)+1)

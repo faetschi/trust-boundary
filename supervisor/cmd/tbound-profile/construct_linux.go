@@ -93,7 +93,7 @@ func writeConstructReport(out string, report corpusadmit.ConstructReport, stdout
 
 func constructMarkdown(r corpusadmit.ConstructReport) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# Deterministic construct checks\n\nManifest: `%s`\n\nLocal checks passed: **%t**. Ready for AI panel: **%t**.\n\nGuest-only evidence remains pending. Human/AI review rules are outside step 1; %d existing review violations retained in JSON.\n\n", r.ManifestDigest, r.Passed, r.ReadyForPanel, len(r.DeferredReview))
+	fmt.Fprintf(&b, "# Deterministic construct checks\n\nManifest: `%s`\n\nLocal checks passed: **%t**. The AI panel may run once they pass; guest-only checks must pass before the corpus freeze.\n\nHuman/AI review rules are outside step 1; %d existing review violations retained in JSON.\n\n", r.ManifestDigest, r.Passed, len(r.DeferredReview))
 	b.WriteString("| Check | pass | fail | guest-only | not-checked |\n|---|---:|---:|---:|---:|\n")
 	names := make([]string, 0, len(r.Summary))
 	for name := range r.Summary {

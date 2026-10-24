@@ -33,15 +33,17 @@ type ConstructReport struct {
 	Schema         string                     `json:"schema"`
 	ManifestDigest string                     `json:"manifest_digest"`
 	Passed         bool                       `json:"passed"`
-	ReadyForPanel  bool                       `json:"ready_for_panel"`
 	Summary        map[string]ConstructCounts `json:"summary"`
 	Checks         []ConstructCheck           `json:"checks"`
 	Cases          []ConstructCase            `json:"cases"`
 	DeferredReview []evalcorpus.Violation     `json:"deferred_review,omitempty"`
 }
 
-func errorCheck(name string, err error) ConstructCheck {
+func errorCheck(name string, err error, unchecked ...string) ConstructCheck {
 	r := ConstructCheck{Name: name, Status: "pass", Reason: "existing admission check passed"}
+	for _, gap := range unchecked {
+		r.Reason += "; " + gap + " not checked"
+	}
 	if err != nil {
 		r.Status, r.Reason = "fail", err.Error()
 	}
@@ -52,7 +54,7 @@ func errorCheck(name string, err error) ConstructCheck {
 // Review/adjudication rules are retained separately: D35 step 1 precedes them.
 // Guest-only means required evidence is still pending, never a local pass.
 func CheckConstructs(m evalcorpus.Manifest, set fs.FS, quotas evalcorpus.Quotas, other *evalcorpus.Manifest, runner taskaccept.NodeRunner) ConstructReport {
-	r := ConstructReport{Schema: "tbound-construct-checks/v1", Passed: true, ReadyForPanel: true, Summary: map[string]ConstructCounts{}}
+	r := ConstructReport{Schema: "tbound-construct-checks/v1", Passed: true, Summary: map[string]ConstructCounts{}}
 	digest, err := evalcorpus.Digest(m)
 	r.ManifestDigest = digest
 	r.Checks = append(r.Checks, errorCheck("manifest-digest", err))
@@ -75,7 +77,7 @@ func CheckConstructs(m evalcorpus.Manifest, set fs.FS, quotas evalcorpus.Quotas,
 		r.summarize()
 		return r
 	}
-	r.Checks = append(r.Checks, errorCheck("attacker-artifact", CheckAttacker(m, arts, 0)))
+	r.Checks = append(r.Checks, errorCheck("attacker-artifact", CheckAttacker(m, arts, 0), "pre-effect retries"))
 	for _, c := range m.Cases {
 		cr := ConstructCase{CaseID: c.CaseID}
 		validation := ConstructCheck{Name: "validation", Status: "pass", Reason: "evalcorpus.Validate: schema, digest formats, quotas, paths, calibration payload and meaning fields passed"}
@@ -89,7 +91,7 @@ func CheckConstructs(m evalcorpus.Manifest, set fs.FS, quotas evalcorpus.Quotas,
 			validation.Status, validation.Reason = "fail", strings.Join(details, "; ")
 		}
 		cr.Checks = append(cr.Checks, validation, checkSource(c, set), checkRoots(c, m.Cases), checkOverlap(c, other))
-		cr.Checks = append(cr.Checks, errorCheck("trial-admission", CheckTrials([]evalcorpus.Case{c}, nil)))
+		cr.Checks = append(cr.Checks, errorCheck("trial-admission", CheckTrials([]evalcorpus.Case{c}, nil), "budget ceilings"))
 		cal := ConstructCheck{Name: "calibration-p", Status: "not-checked", Reason: "P calibration applies to adversarial cases only"}
 		cell := ConstructCheck{Name: "acceptance-cell", Status: "not-checked", Reason: "isolated acceptance-cell completion applies to compliant cases only"}
 		if c.Kind == evalcorpus.KindAdversarial && c.Adversarial != nil {
@@ -134,7 +136,7 @@ func CheckConstructs(m evalcorpus.Manifest, set fs.FS, quotas evalcorpus.Quotas,
 }
 
 func (r *ConstructReport) summarize() {
-	r.Passed, r.ReadyForPanel = true, true
+	r.Passed = true
 	r.Summary = map[string]ConstructCounts{}
 	add := func(check ConstructCheck) {
 		counts := r.Summary[check.Name]
@@ -144,10 +146,8 @@ func (r *ConstructReport) summarize() {
 		case "fail":
 			counts.Fail++
 			r.Passed = false
-			r.ReadyForPanel = false
 		case "guest-only":
 			counts.GuestOnly++
-			r.ReadyForPanel = false
 		case "not-checked":
 			counts.NotChecked++
 		}
