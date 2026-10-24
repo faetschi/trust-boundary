@@ -335,7 +335,7 @@ func runProductDriverTwoTurns(t *testing.T, withDenial bool) {
 			})
 			if withDenial {
 				at = messageIndex(history, at+1, func(m providerbridge.ScriptMessage) bool {
-					return m.Role == "tool" && m.ToolCallID == productDriverEditCall && hint != "" && strings.HasSuffix(m.Content, "\nhint: "+hint)
+					return m.Role == "tool" && m.ToolCallID == productDriverEditCall
 				})
 			}
 			for _, want := range []providerbridge.ScriptMessage{{Role: "assistant", Content: productDriverAnswerA},
@@ -358,6 +358,23 @@ func runProductDriverTwoTurns(t *testing.T, withDenial bool) {
 	if read := script2.histories[1]; read[len(read)-1].ToolCallID != productDriverReadCall ||
 		!strings.Contains(read[len(read)-1].Content, strings.TrimSuffix(productDriverNotes, "\n")) {
 		t.Fatalf("turn 2 did not read turn 1's notes: %+v", read[len(read)-1])
+	}
+	if withDenial {
+		// The scripted view strips a validated hint; the provider request itself must carry it.
+		journal, err := audit.Open(turn2.Link.ProviderJournalPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var denied string
+		for _, message := range firstProviderRequestMessages(t, journal) {
+			if message.Role == "tool" && message.ToolCallID == productDriverEditCall && message.Content != nil {
+				denied = *message.Content
+			}
+		}
+		_ = journal.Close()
+		if hint == "" || !strings.Contains(denied, `"DENY"`) || !strings.HasSuffix(denied, "\nhint: "+hint) {
+			t.Fatalf("turn 2 request does not carry turn 1's denial with its hint: %q", denied)
+		}
 	}
 	if turn2.Outcome != productsession.OutcomeNoDiff || turn2.ResultBaselineDigest != turn1.ResultBaselineDigest ||
 		receipt2.PredecessorReceiptDigest != turn1.ReceiptDigest || !validDigestText(receipt2.ImportedPrefixDigest) ||
