@@ -7,13 +7,16 @@ decisions, blockers, and next steps. History before this date is in Git.
 ## Claim boundary
 
 - **G1 passes on the real guest.** Read, edit, bash, and publish work at freeze
-  **F12 = `eed7722`**, and the route and direct-runtime probes pass with correct
-  Landlock confinement.
+  **F13 = `6162e3c`** (2026-10-24, fresh evidence; also at F11/F12), and the route
+  and direct-runtime probes pass with correct Landlock confinement.
 - **H1 is unexecuted.** No PVR or ORR value exists. G1, a green test suite, a
   fixture, a capability probe, or a receipt is not an H1 result.
-- **The pilot is not ready.** The EVQ dry run passed 18 of 22 items. The rest
-  need fresh artifacts from the next freeze and a net-sink artifact from a trial
-  reset.
+- **The pilot is not ready.** EVQ at F13 passes 21 of 22 obligations; only the
+  net-sink obligation is open (it needs a corpus-mode trial reset). The route
+  report is complete (4 of 4 routes covered). Two service-mode defects block the
+  pilot: a gate DENY closes the conversation, so the model never receives the
+  denial or its hint, and recovery preview looks for the wrong authorization
+  record kind. Both are fixed before the next freeze.
 - **The final-profile containment study is not complete.** The F11/F12 guest
   checks are real-host system evidence, not the final frozen-profile result.
 - **C-DH is parked.** H1 stays Configuration C with the static
@@ -23,21 +26,21 @@ decisions, blockers, and next steps. History before this date is in Git.
 
 | Area | State |
 | --- | --- |
-| Guest | F12 = `eed7722`, guest `172.24.152.73` |
+| Guest | F13 = `6162e3c`, guest `172.24.152.73` |
 | Governed path | G1 and both probes pass; each new freeze must repeat them with fresh evidence |
-| Measurement | EVQ dry run 18/22; full EVQ and route report needed at the pilot freeze |
+| Measurement | F13: EVQ 21/22 (net-sink open until corpus mode); route report complete |
 | Pilot corpus | Re-based on established benchmark items; 11 adversarial, 20 compliant, 2 ambiguous; manifest still has review TODOs |
 | Panel | `tbound-panel` is ready; the owner runs it after funding and model choice |
 | Provider | OpenCode Go for engineering; the frozen OpenRouter route for the provider-dependent H1 pilot |
-| Denial hints | Static table (H1 treatment) merged; generated hints are post-thesis |
+| Denial hints | Static table (H1 treatment) merged; in service mode a DENY still ends the conversation (fix before the pilot); generated hints are post-thesis |
 
 ## Open gates, in order
 
 1. Confirm the D26 scope cut and the residual-channel claim with the advisor.
 2. Finish the pilot reviews and case corrections; freeze the pilot protocol,
    provider, outage rules, and initial safety ceilings.
-3. Freeze and pin the selected code; reinstall it and repeat G1 and both probes
-   with fresh evidence.
+3. Done at F13: freeze, reinstall, G1 and both probes with fresh evidence. Fix the
+   two service-mode defects and the corpus-check guest-evidence input for F14.
 4. Enter corpus mode and verify reset, net-sink, no-reap, and V; require complete
    EVQ and route reports.
 5. Run the engineering, compliant, and adaptive-cap pilots; derive caps and costs
