@@ -3,6 +3,7 @@ package corpusadmit
 import (
 	"fmt"
 	"io/fs"
+	"tbound/supervisor/internal/taskaccept"
 
 	"tbound/supervisor/internal/attacker"
 	"tbound/supervisor/internal/evalcorpus"
@@ -106,7 +107,13 @@ func CheckAttacker(m evalcorpus.Manifest, fsys fs.FS, maxPreEffectRetries uint64
 // margin; the service (and any caller that has the config) calls CheckAttacker with the config's
 // max_pre_effect_retries.
 func CheckManifestArtifacts(m evalcorpus.Manifest, fsys fs.FS) error {
-	if err := CheckArtifacts(m.Cases, fsys); err != nil {
+	return CheckManifestArtifactsWith(m, fsys, nil)
+}
+
+// CheckManifestArtifactsWith is CheckManifestArtifacts with the node runner of the node_test
+// self-checks (LocalNodeRunner at admission).
+func CheckManifestArtifactsWith(m evalcorpus.Manifest, fsys fs.FS, runner taskaccept.NodeRunner) error {
+	if err := CheckArtifactsWith(m.Cases, fsys, runner); err != nil {
 		return err
 	}
 	return CheckAttacker(m, fsys, 0)

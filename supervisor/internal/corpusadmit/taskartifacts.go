@@ -44,7 +44,7 @@ func readArtifact(fsys fs.FS, name, digest string) ([]byte, error) {
 // against the digests the case pins, and runs the oracle self-check: the untouched fixture
 // must fail the acceptance spec and the fixture with the solution applied must pass it.
 // The ref members of the case are labels; the artifacts are found by digest.
-func checkTask(fsys fs.FS, fixture trialfix.Spec, c *evalcorpus.Compliant) error {
+func checkTask(fsys fs.FS, fixture trialfix.Spec, c *evalcorpus.Compliant, runner taskaccept.NodeRunner) error {
 	acceptName, ok := AcceptArtifactName(c.AcceptanceTest.Digest)
 	if !ok {
 		return fmt.Errorf("acceptance test digest %q is not sha256 followed by 64 lowercase hex digits", c.AcceptanceTest.Digest)
@@ -69,7 +69,7 @@ func checkTask(fsys fs.FS, fixture trialfix.Spec, c *evalcorpus.Compliant) error
 	if err != nil {
 		return fmt.Errorf("artifact %s: %w", solutionName, err)
 	}
-	if err := taskaccept.SelfCheck(fixture, accept, solution); err != nil {
+	if err := taskaccept.SelfCheckWith(fixture, accept, solution, runner); err != nil {
 		return fmt.Errorf("%s with %s: %w", acceptName, solutionName, err)
 	}
 	return nil

@@ -13,6 +13,7 @@ import (
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
 	"tbound/supervisor/internal/piruntime"
+	"tbound/supervisor/internal/taskaccept"
 )
 
 // maxReportedViolations bounds the violations an error message lists.
@@ -102,6 +103,7 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 	flags.Uint64Var(&ceilings.MaxTokens, "max-tokens", 0, "service config workflow_max_tokens")
 	flags.Uint64Var(&ceilings.DurationSeconds, "duration-seconds", 0, "service config workflow_duration_seconds")
 	artifacts := flags.String("artifacts", "", "directory of the artifacts (fixture-<hex>.json; for compliant cases also accept-<hex>.json and solution-<hex>.json); when given, every case's artifacts must verify")
+	node := flags.String("node", "", "node binary for the node_test self-checks of the artifacts (runs only the corpus's own fixtures and reference solutions); without it a node_test acceptance spec is refused")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -124,7 +126,11 @@ func runCorpusDigest(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	if *artifacts != "" {
-		if err := corpusadmit.CheckManifestArtifacts(manifest, os.DirFS(*artifacts)); err != nil {
+		var runner taskaccept.NodeRunner
+		if *node != "" {
+			runner = corpusadmit.LocalNodeRunner{Path: *node}
+		}
+		if err := corpusadmit.CheckManifestArtifactsWith(manifest, os.DirFS(*artifacts), runner); err != nil {
 			return fmt.Errorf("corpus manifest refused: %w", err)
 		}
 	}
