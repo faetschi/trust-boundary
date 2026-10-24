@@ -202,7 +202,7 @@ func trialAccept(ctx context.Context, args []string, env trialEnv) (taskaccept.A
 		return taskaccept.AcceptDoc{}, err
 	}
 	defer root.Close()
-	return taskaccept.Evaluate(caseID, spec, fixture, root)
+	return taskaccept.EvaluateWith(caseID, spec, fixture, root, cellNodeRunner{ctx: ctx, task: env.task})
 }
 
 // runTrialTask runs one of the task verbs and writes its document: one JSON line on stdout.
