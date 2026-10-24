@@ -1325,6 +1325,11 @@ func TestSQLiteOwnerConcurrentOwnersOnlyOneStaleCASWins(t *testing.T) {
 
 func newWorkflowHarness(t *testing.T, workflow string, limits Limits) (*SQLiteOwner, *testTrustedRoot, *Ledger, Checkpoint, Receipt) {
 	t.Helper()
+	return newWorkflowHarnessWithPins(t, workflow, limits, func(*Pins) {})
+}
+
+func newWorkflowHarnessWithPins(t *testing.T, workflow string, limits Limits, adjust func(*Pins)) (*SQLiteOwner, *testTrustedRoot, *Ledger, Checkpoint, Receipt) {
+	t.Helper()
 	root := newTestTrustedRoot()
 	root.setFence(workflow, 1, 0)
 	directory := t.TempDir()
@@ -1337,6 +1342,7 @@ func newWorkflowHarness(t *testing.T, workflow string, limits Limits) (*SQLiteOw
 	}
 	t.Cleanup(func() { _ = owner.Close() })
 	pins := testPins(root.identity, owner.OwnerIncarnationDigest(), workflow, "session-initial", 1, 1)
+	adjust(&pins)
 	receipt, err := InitializeFresh(context.Background(), owner, pins, limits)
 	if err != nil {
 		t.Fatalf("initialize fresh workflow: %v", err)

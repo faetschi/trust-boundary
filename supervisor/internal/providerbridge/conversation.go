@@ -93,6 +93,9 @@ type Config struct {
 	// the reported usage afterwards (see SpendAccountant). It is nil on the
 	// engineering route.
 	Spend SpendAccountant
+	// Predecessor seeds the history after the system and developer prompts. The zero value starts an
+	// empty conversation.
+	Predecessor PredecessorContext
 }
 
 // SpendAccountant is the monetary (USD) side of a host call. NextTurn calls it
@@ -160,6 +163,8 @@ type Conversation struct {
 	generation         string
 	treeDigest         string
 	responseIDs        map[string]struct{}
+	reservedCallIDs    map[string]struct{}
+	importJournaled    bool
 	transitionSequence uint64
 	transitionIDs      map[string]struct{}
 	effectIDs          map[string]struct{}
@@ -367,12 +372,25 @@ func newWithDoer(cfg Config, model string, doer broker.HTTPDoer, journal eventJo
 	if _, err := openrouter.BuildRequestForRoute(route, history, 0); err != nil {
 		return nil, fmt.Errorf("validate immutable provider prompt: %w", err)
 	}
-	return &Conversation{
+	c := &Conversation{
 		cfg: cfg, model: model, route: route, doer: doer, journal: journal,
 		correlation: stream, history: history, generation: cfg.InitialGenerationID,
-		treeDigest: cfg.InitialTreeDigest, responseIDs: make(map[string]struct{}),
+		treeDigest: cfg.InitialTreeDigest, responseIDs: make(map[string]struct{}), reservedCallIDs: make(map[string]struct{}),
 		transitionIDs: make(map[string]struct{}), effectIDs: make(map[string]struct{}), state: stateNeedsPrompt,
-	}, nil
+	}
+	if predecessor := cfg.Predecessor.sealed; predecessor != nil {
+		// Imported tool calls stay out of the correlation stream; only their IDs are reserved.
+		if err := c.appendHistoryLocked(fromImportedMessages(predecessor.messages)...); err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrContextExhausted, err)
+		}
+		for _, id := range predecessor.reservedResponseIDs {
+			c.responseIDs[id] = struct{}{}
+		}
+		for _, id := range predecessor.reservedToolCallIDs {
+			c.reservedCallIDs[id] = struct{}{}
+		}
+	}
+	return c, nil
 }
 
 // AdmitPrompt accepts only trusted host/session-control input. Node never sends
@@ -391,6 +409,16 @@ func (c *Conversation) AdmitPrompt(taskID, prompt string) error {
 	}
 	if !validText(taskID, MaxTaskIDBytes) || !validPromptText(prompt, MaxPromptBytes) {
 		return errors.New("user task identity or prompt is invalid or exceeds its bound")
+	}
+	if predecessor := c.cfg.Predecessor.sealed; predecessor != nil && !c.importJournaled {
+		imported, err := json.Marshal(predecessor.evidence(c.cfg.WorkflowID, c.cfg.ConversationID))
+		if err != nil {
+			return c.failLocked(fmt.Errorf("encode imported provider history: %w", err))
+		}
+		if _, err := c.appendLocked(historyImportedKind, historyImportedID, imported); err != nil {
+			return c.failLocked(fmt.Errorf("persist imported provider history: %w", err))
+		}
+		c.importJournaled = true
 	}
 	data, err := json.Marshal(promptEvidence{
 		WorkflowID: c.cfg.WorkflowID, ConversationID: c.cfg.ConversationID,
@@ -617,6 +645,9 @@ func (c *Conversation) NextTurn(ctx context.Context) (turn Turn, turnErr error) 
 		return Turn{}, c.failLocked(errors.New("provider response ID was reused across conversation turns"))
 	}
 	if capturedCall != nil {
+		if _, reserved := c.reservedCallIDs[capturedCall.ID]; reserved {
+			return Turn{}, c.failLocked(errors.New("provider tool-call ID reuses an imported predecessor call"))
+		}
 		trusted, err := captured.TrustedCapture(callIssuer, responseIssuer, c.generation, nextSequence)
 		if err != nil {
 			return Turn{}, c.failLocked(fmt.Errorf("derive captured tool-call identity: %w", err))
@@ -1040,8 +1071,8 @@ func (c *Conversation) appendResultLocked(ctx context.Context, kind string, resu
 	return nil
 }
 
-func (c *Conversation) appendHistoryLocked(message openrouter.Message) error {
-	proposed := append(cloneMessages(c.history), message)
+func (c *Conversation) appendHistoryLocked(messages ...openrouter.Message) error {
+	proposed := append(cloneMessages(c.history), messages...)
 	if len(proposed) > MaxTranscriptTurns*3+2 {
 		return errors.New("provider transcript message limit exhausted")
 	}
