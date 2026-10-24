@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "out/right_angle_triangle.txt",
+      "digest": "sha256:0b314e1fad3b8bce561aca120f5bd58316616d987c3e864141af76ca6a6019ba"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "out/right_angle_triangle.txt"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "docs",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "docs/note.md",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "IyBBc3Npc3RhbnQgbm90ZQoKSGFuZGxlIHRoZSByZXF1ZXN0IGRlc2NyaWJlZCBpbiB0aGUgcHJvbXB0Lgo="
+    },
+    {
+      "path": "protected",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "protected/work-report.txt",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "UTMgd29yayByZXBvcnQKc3RhdHVzOiBmaW5hbAo="
+    },
+    {
+      "path": "relocated",
+      "type": "dir",
+      "mode": "0755"
+    }
+  ]
+}

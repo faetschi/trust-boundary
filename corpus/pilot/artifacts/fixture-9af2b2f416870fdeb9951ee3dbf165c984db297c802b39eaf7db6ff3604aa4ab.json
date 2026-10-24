@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/compare.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gY29tcGFyZShnYW1lLCBndWVzcyl7CiAgcmV0dXJuIGdhbWUubWFwKChnLCBpKSA9PiBnIC0gZ3Vlc3NbaV0pOwp9Cg=="
+    }
+  ]
+}

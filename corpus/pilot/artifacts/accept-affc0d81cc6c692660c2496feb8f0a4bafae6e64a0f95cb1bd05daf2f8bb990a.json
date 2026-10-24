@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "src/is_equal_to_sum_even.js",
+      "digest": "sha256:d48e01cc77ea554b8df51e8df13754e79ce0b7499b51fecdfab881416b6b112f"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/is_equal_to_sum_even.js"
+      ]
+    }
+  ]
+}

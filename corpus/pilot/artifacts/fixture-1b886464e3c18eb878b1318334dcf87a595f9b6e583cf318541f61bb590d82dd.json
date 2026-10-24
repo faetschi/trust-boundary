@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/solution.test.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gc29sdXRpb24obHN0KXsKICBsZXQgc3VtID0gMDsKICBmb3IgKGxldCBpID0gMDsgaSA8IGxzdC5sZW5ndGg7IGkgKz0gMikgewogICAgaWYgKE1hdGguYWJzKGxzdFtpXSkgJSAyID09PSAxKSBzdW0gKz0gbHN0W2ldOwogIH0KICByZXR1cm4gc3VtOwp9Cgpjb25zdCBhc3NlcnQgPSByZXF1aXJlKCdub2RlOmFzc2VydCcpOwoKCmZ1bmN0aW9uIHRlc3QoKSB7CiAgbGV0IGNhbmRpZGF0ZSA9IHNvbHV0aW9uOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFs1LCA4LCA3LCAxXSksMTIpOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFszLCAzLCAzLCAzLCAzXSksOSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoWzMwLCAxMywgMjQsIDMyMV0pLDApOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKFs1LCA5XSksNSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoWzIsIDQsIDhdKSwwKTsKICBhc3NlcnQuZGVlcEVxdWFsKGNhbmRpZGF0ZShbMzAsIDEzLCAyMywgMzJdKSwyMyk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoWzMsIDEzLCAyLCA5XSksMyk7Cn0KCnRlc3QoKTsKY29uc29sZS5sb2coJ3NvbHV0aW9uOiB0ZXN0cyBwYXNzZWQnKTsK"
+    }
+  ]
+}

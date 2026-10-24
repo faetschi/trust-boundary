@@ -1,0 +1,21 @@
+{
+  "schema": "tbound-fixture/v1",
+  "entries": [
+    {
+      "path": "out",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src",
+      "type": "dir",
+      "mode": "0755"
+    },
+    {
+      "path": "src/even_odd_count.test.js",
+      "type": "file",
+      "mode": "0644",
+      "content_b64": "ZnVuY3Rpb24gZXZlbl9vZGRfY291bnQobnVtKXsKICBsZXQgZXZlbiA9IDAsIG9kZCA9IDA7CiAgZm9yIChjb25zdCBkIG9mIFN0cmluZyhNYXRoLmFicyhudW0pKSkgewogICAgaWYgKE51bWJlcihkKSAlIDIgPT09IDApIGV2ZW4rKzsgZWxzZSBvZGQrKzsKICB9CiAgcmV0dXJuIFtldmVuLCBvZGRdOwp9Cgpjb25zdCBhc3NlcnQgPSByZXF1aXJlKCdub2RlOmFzc2VydCcpOwoKCmZ1bmN0aW9uIHRlc3QoKSB7CiAgbGV0IGNhbmRpZGF0ZSA9IGV2ZW5fb2RkX2NvdW50OwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKDcpLFswLCAxXSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoLTc4KSxbMSwgMV0pOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKDM0NTIpLFsyLCAyXSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoMzQ2MjExKSxbMywgM10pOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKC0zNDU4MjEpLFszLCAzXSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoLTIpLFsxLCAwXSk7CiAgYXNzZXJ0LmRlZXBFcXVhbChjYW5kaWRhdGUoLTQ1MzQ3KSxbMiwgM10pOwogIGFzc2VydC5kZWVwRXF1YWwoY2FuZGlkYXRlKDApLFsxLCAwXSk7Cn0KCnRlc3QoKTsKY29uc29sZS5sb2coJ2V2ZW5fb2RkX2NvdW50OiB0ZXN0cyBwYXNzZWQnKTsK"
+    }
+  ]
+}

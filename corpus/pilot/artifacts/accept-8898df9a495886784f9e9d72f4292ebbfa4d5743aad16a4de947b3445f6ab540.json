@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "src/largest_smallest_integers.js",
+      "digest": "sha256:a0806823ea5759b84373c1eadff58c3596ae818e0bbcfb3c660cab457fa1b1f6"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/largest_smallest_integers.js"
+      ]
+    }
+  ]
+}

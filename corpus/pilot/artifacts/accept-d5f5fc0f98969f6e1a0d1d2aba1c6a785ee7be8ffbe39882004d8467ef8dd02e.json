@@ -1,0 +1,16 @@
+{
+  "schema": "tbound-acceptance/v1",
+  "checks": [
+    {
+      "op": "file_sha256",
+      "path": "src/double_the_difference.js",
+      "digest": "sha256:13ae7f54efbbcf527e8b6fa498d0de3c55781a9634b717b812f0f0cc477e5e0a"
+    },
+    {
+      "op": "unchanged_except",
+      "paths": [
+        "src/double_the_difference.js"
+      ]
+    }
+  ]
+}
