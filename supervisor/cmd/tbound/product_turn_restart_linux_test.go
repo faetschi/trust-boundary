@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"testing"
 
 	"tbound/supervisor/internal/productsession"
@@ -89,7 +88,7 @@ func TestProductTurnRestartReconcilesEveryCrashBoundary(t *testing.T) {
 				before.State != productsession.StateAwaitingReview {
 				t.Fatalf("the child settled the turn before crashing: %+v", before)
 			}
-			if err := f.env.ReconcileAfterRestart(context.Background(), filepath.Join(f.root, "state", "catalog.jsonl")); err != nil {
+			if err := f.env.ReconcileAfterRestart(context.Background()); err != nil {
 				t.Fatalf("reconcile: %v", err)
 			}
 			turn, session := f.turn(t, id), f.currentSession(t)
@@ -154,7 +153,7 @@ func TestProductTurnRestartRecordsAChangedProjectAsUnknown(t *testing.T) {
 	writeProductDriverFile(t, created.projectDir, "outside.txt", "written while the service was down\n")
 	f := openProductDriverFixture(t, created.root)
 	f.session = created.session
-	if err := f.env.ReconcileAfterRestart(context.Background(), filepath.Join(f.root, "state", "catalog.jsonl")); err == nil {
+	if err := f.env.ReconcileAfterRestart(context.Background()); err == nil {
 		t.Fatal("a changed project reconciled without an error")
 	}
 	turn, session := f.turn(t, f.session.ID+"/turn-1"), f.currentSession(t)

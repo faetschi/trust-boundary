@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"sync"
 
 	"tbound/supervisor/internal/audit"
@@ -317,6 +319,21 @@ func (c *Catalog) Turn(id string) (Turn, bool) {
 		return Turn{}, false
 	}
 	return t.clone(), true
+}
+
+// UnresolvedTurns returns copies of every admitted, linked or awaiting-review turn, ordered by turn ID.
+// Restart reconciliation settles them before any new admission is served.
+func (c *Catalog) UnresolvedTurns() []Turn {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var turns []Turn
+	for _, t := range c.st.turns {
+		if t.unresolved() {
+			turns = append(turns, t.clone())
+		}
+	}
+	slices.SortFunc(turns, func(a, b Turn) int { return strings.Compare(a.ID, b.ID) })
+	return turns
 }
 
 // reservationOf is zero for an unknown turn; the reducer then refuses the

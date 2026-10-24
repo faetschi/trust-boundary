@@ -3,7 +3,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,7 +12,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"tbound/supervisor/internal/audit"
 	"tbound/supervisor/internal/productsession"
 	"tbound/supervisor/internal/publication"
 	"tbound/supervisor/internal/workflowrecovery"
@@ -31,29 +29,19 @@ func (e *productTurnEnv) projectPublicationDir(projectID string) string {
 
 // ReconcileAfterRestart settles every unresolved turn of the catalog from retained evidence, per the
 // P4 restart table. It runs once in a fresh process before any admission is served, and refuses to
-// run while this process drives or holds any turn. It never publishes. catalogPath is the catalog
-// journal the env's Catalog opened.
-func (e *productTurnEnv) ReconcileAfterRestart(ctx context.Context, catalogPath string) error {
+// run while this process drives or holds any turn. It never publishes.
+func (e *productTurnEnv) ReconcileAfterRestart(ctx context.Context) error {
 	e.mu.Lock()
 	busy := len(e.running) != 0 || len(e.pending) != 0
 	e.mu.Unlock()
 	if busy {
 		return errors.New("restart reconciliation runs only before this process drives any turn")
 	}
-	ids, err := productCatalogTurnIDs(catalogPath)
-	if err != nil {
-		return err
-	}
 	var errs []error
-	for _, id := range ids {
-		turn, ok := e.Catalog.Turn(id)
-		if !ok {
-			errs = append(errs, fmt.Errorf("catalog journal names turn %s that the catalog does not hold", id))
-			continue
-		}
+	for _, turn := range e.Catalog.UnresolvedTurns() {
 		switch turn.State {
 		case productsession.StateAdmitted:
-			errs = append(errs, e.Catalog.AbandonUnlinkedTurn(id))
+			errs = append(errs, e.Catalog.AbandonUnlinkedTurn(turn.ID))
 		case productsession.StateLinked:
 			errs = append(errs, e.reconcileLinkedTurn(ctx, turn))
 		case productsession.StateAwaitingReview:
@@ -61,28 +49,6 @@ func (e *productTurnEnv) ReconcileAfterRestart(ctx context.Context, catalogPath 
 		}
 	}
 	return errors.Join(errs...)
-}
-
-// productCatalogTurnIDs lists every admitted turn ID of the catalog journal, verifying its hash
-// chain from the bytes on disk without taking the writer lock the open Catalog holds.
-// shortcut: reads the catalog journal directly; replace with a productsession accessor listing
-// unresolved turns once the catalog has one.
-func productCatalogTurnIDs(catalogPath string) ([]string, error) {
-	data, err := os.ReadFile(catalogPath)
-	if err != nil {
-		return nil, err
-	}
-	trace, err := audit.Verify(bytes.NewReader(data))
-	if err != nil {
-		return nil, err
-	}
-	var ids []string
-	for _, record := range trace.Records {
-		if record.Event.Kind == "product_turn_admitted" {
-			ids = append(ids, record.Event.ID)
-		}
-	}
-	return ids, nil
 }
 
 // reconcileLinkedTurn settles a linked turn whose process died: failed with settlement
