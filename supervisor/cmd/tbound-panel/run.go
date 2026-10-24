@@ -38,6 +38,7 @@ type spendRecord struct {
 	CallID      string  `json:"call_id"`
 	CaseID      string  `json:"case_id,omitempty"`
 	Model       string  `json:"model,omitempty"`
+	Phase       int     `json:"phase,omitempty"`
 	ReservedUSD float64 `json:"reserved_usd,omitempty"`
 	CostUSD     float64 `json:"cost_usd"`
 	CostSource  string  `json:"cost_source,omitempty"` // provider-reported | computed-from-usage | no-charge
@@ -47,7 +48,7 @@ type spendRecord struct {
 
 type spend struct {
 	settled, uncertain float64
-	attempts           map[string]int // model + "\x00" + case id -> reservations so far
+	attempts           map[string]int // pairKey -> reservations so far
 }
 
 func (s spend) total() float64 { return s.settled + s.uncertain }
@@ -66,7 +67,7 @@ func loadSpend(path string) (spend, error) {
 				return fmt.Errorf("call id %q reserved twice", r.CallID)
 			}
 			reserved[r.CallID] = r.ReservedUSD
-			s.attempts[r.Model+"\x00"+r.CaseID]++
+			s.attempts[pairKey(r.Phase, r.Model, r.CaseID)]++
 		case "settle":
 			delete(reserved, r.CallID)
 			s.settled += r.CostUSD
@@ -144,6 +145,7 @@ func sha(s string) string {
 // rating is one line of ratings.jsonl: one model's parsed answer for one case.
 type rating struct {
 	CaseID        string                `json:"case_id"`
+	Phase         int                   `json:"phase"` // 1 blind classification, 2 checklist
 	BlindID       string                `json:"blind_id"`
 	Model         string                `json:"model"`
 	Family        string                `json:"family"`
@@ -175,54 +177,78 @@ type independent struct {
 	ThreatClass   string   `json:"threat_class"`
 	Authorization string   `json:"authorization"`
 	EffectIDs     []string `json:"effect_ids"`
+	// CompletionPredicate is the rater's own completion predicate for a task it judges allowed.
+	CompletionPredicate string `json:"completion_predicate"`
 }
 
-// parseAnswer strictly decodes a model answer. One surrounding code fence is tolerated.
-func parseAnswer(content, blindID string, applicable []string) (map[string]itemRating, *independent, error) {
+// decodeAnswer strictly decodes a model answer into v. One surrounding code fence is tolerated.
+func decodeAnswer(content string, v any) error {
 	s := strings.TrimSpace(content)
 	if strings.HasPrefix(s, "```") {
 		if _, rest, ok := strings.Cut(s, "\n"); ok {
 			s = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(rest), "```"))
 		}
 	}
-	var a struct {
-		ItemID      string                `json:"item_id"`
-		Checklist   map[string]itemRating `json:"checklist"`
-		Independent *independent          `json:"independent"`
-	}
 	dec := json.NewDecoder(strings.NewReader(s))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&a); err != nil {
-		return nil, nil, fmt.Errorf("answer is not the requested JSON object: %v", err)
+	if err := dec.Decode(v); err != nil {
+		return fmt.Errorf("answer is not the requested JSON object: %v", err)
 	}
 	if dec.More() {
-		return nil, nil, errors.New("answer has data after the JSON object")
+		return errors.New("answer has data after the JSON object")
+	}
+	return nil
+}
+
+// parseBlind validates a phase-1 answer.
+func parseBlind(content, blindID string) (*independent, error) {
+	var a struct {
+		ItemID string `json:"item_id"`
+		independent
+	}
+	if err := decodeAnswer(content, &a); err != nil {
+		return nil, err
 	}
 	if a.ItemID != blindID {
-		return nil, nil, fmt.Errorf("answer item_id %q, want %q", a.ItemID, blindID)
+		return nil, fmt.Errorf("answer item_id %q, want %q", a.ItemID, blindID)
 	}
-	if len(a.Checklist) != len(applicable) {
-		return nil, nil, fmt.Errorf("answer rates %d items, want %d", len(a.Checklist), len(applicable))
-	}
-	for _, k := range applicable {
-		r, ok := a.Checklist[k]
-		if !ok || (r.Rating != "pass" && r.Rating != "fail" && r.Rating != "unclear") || strings.TrimSpace(r.Reason) == "" {
-			return nil, nil, fmt.Errorf("item %s: rating %q with reason %q", k, r.Rating, r.Reason)
-		}
-	}
-	in := a.Independent
-	if in == nil {
-		return nil, nil, errors.New("answer has no independent classification")
-	}
+	in := a.independent
 	if !oneOf(in.ThreatClass, "TM-A", "TM-B", "TM-C", "none") || !oneOf(in.Authorization, "allowed", "forbidden", "ambiguous") {
-		return nil, nil, fmt.Errorf("independent classification %q/%q out of range", in.ThreatClass, in.Authorization)
+		return nil, fmt.Errorf("classification %q/%q out of range", in.ThreatClass, in.Authorization)
+	}
+	if in.EffectIDs == nil {
+		return nil, errors.New("answer has no effect_ids array")
 	}
 	for _, e := range in.EffectIDs {
 		if _, ok := effectGlossary[e]; !ok {
-			return nil, nil, fmt.Errorf("unknown effect id %q", e)
+			return nil, fmt.Errorf("unknown effect id %q", e)
 		}
 	}
-	return a.Checklist, in, nil
+	return &in, nil
+}
+
+// parseChecklist validates a phase-2 answer.
+func parseChecklist(content, blindID string, applicable []string) (map[string]itemRating, error) {
+	var a struct {
+		ItemID    string                `json:"item_id"`
+		Checklist map[string]itemRating `json:"checklist"`
+	}
+	if err := decodeAnswer(content, &a); err != nil {
+		return nil, err
+	}
+	if a.ItemID != blindID {
+		return nil, fmt.Errorf("answer item_id %q, want %q", a.ItemID, blindID)
+	}
+	if len(a.Checklist) != len(applicable) {
+		return nil, fmt.Errorf("answer rates %d items, want %d", len(a.Checklist), len(applicable))
+	}
+	for _, k := range applicable {
+		r, ok := a.Checklist[k]
+		if !ok || !oneOf(r.Rating, checklistCategories...) || strings.TrimSpace(r.Reason) == "" {
+			return nil, fmt.Errorf("item %s: rating %q with reason %q", k, r.Rating, r.Reason)
+		}
+	}
+	return a.Checklist, nil
 }
 
 func oneOf(s string, set ...string) bool {
@@ -232,6 +258,11 @@ func oneOf(s string, set ...string) bool {
 		}
 	}
 	return false
+}
+
+// pairKey names one rating unit: a case rated by a model in a phase.
+func pairKey(phase int, model, caseID string) string {
+	return fmt.Sprintf("%d\x00%s\x00%s", phase, model, caseID)
 }
 
 func slug(model string) string { return strings.NewReplacer("/", "__", ":", "_").Replace(model) }
@@ -247,9 +278,10 @@ func (r *runner) frozenSettings() map[string]any {
 		checklist = append(checklist, it.key+": "+it.question)
 	}
 	return map[string]any{
-		"schema": "tbound-panel-settings/v1", "provider": r.provName, "models": models, "seed": r.cfg.Seed,
-		"manifest_digest": r.corpus.Digest, "system_prompt_sha256": sha(renderedSystemPrompt),
-		"checklist": checklist, "not_applicable": notApplicable, "tools": "none", "session": "fresh single-turn per case",
+		"schema": "tbound-panel-settings/v2", "provider": r.provName, "models": models, "seed": r.cfg.Seed,
+		"manifest_digest": r.corpus.Digest, "phases": "1 blind classification without claims, 2 checklist with claims; separate fresh sessions",
+		"system_prompt_sha256": map[string]string{"phase1": sha(systemPrompts[phaseBlind]), "phase2": sha(systemPrompts[phaseChecklist])},
+		"checklist":            checklist, "not_applicable": notApplicable, "tools": "none", "session": "fresh single-turn per case",
 	}
 }
 
@@ -303,8 +335,8 @@ func (r *runner) run(ctx context.Context) (runSummary, error) {
 		return sum, err
 	}
 	if err := writeJSON(filepath.Join(r.out, "blinding.json"), map[string]any{
-		"seed": r.cfg.Seed, "id_derivation": "item- + first 10 hex of sha256(\"tbound-panel/blind-id\\0\" seed \\0 model \\0 case_id)",
-		"order_derivation": "sorted case ids shuffled by math/rand/v2 PCG(seed, first 5 bytes of sha256(model))",
+		"seed": r.cfg.Seed, "id_derivation": "item- + first 10 hex of sha256(\"tbound-panel/blind-id\\0\" seed \\0 rater \\0 case_id), rater = \"p<phase> <model>\"",
+		"order_derivation": "sorted case ids shuffled by math/rand/v2 PCG(seed, first 5 bytes of sha256(rater))",
 		"ids":              plan.ids, "order": plan.order,
 	}); err != nil {
 		return sum, err
@@ -317,7 +349,7 @@ func (r *runner) run(ctx context.Context) (runSummary, error) {
 			return err
 		}
 		if rt.Valid {
-			done[rt.Model+"\x00"+rt.CaseID] = true
+			done[pairKey(rt.Phase, rt.Model, rt.CaseID)] = true
 		}
 		return nil
 	}); err != nil {
@@ -328,17 +360,20 @@ func (r *runner) run(ctx context.Context) (runSummary, error) {
 		cases[c.CaseID] = c
 	}
 	runErr := func() error {
-		for _, m := range r.cfg.Models {
-			for _, caseID := range plan.order[m.ID] {
-				key := m.ID + "\x00" + caseID
-				if done[key] {
-					continue
-				}
-				if err := ctx.Err(); err != nil {
-					return err
-				}
-				if err := r.rateOne(ctx, m, cases[caseID], plan.ids[m.ID][caseID], callsPath, ratingsPath, &sum); err != nil {
-					return err
+		// All phase-1 (blind) calls come before any phase-2 call.
+		for _, phase := range phases {
+			for _, m := range r.cfg.Models {
+				rk := raterKey(phase, m.ID)
+				for _, caseID := range plan.order[rk] {
+					if done[pairKey(phase, m.ID, caseID)] {
+						continue
+					}
+					if err := ctx.Err(); err != nil {
+						return err
+					}
+					if err := r.rateOne(ctx, phase, m, cases[caseID], plan.ids[rk][caseID], callsPath, ratingsPath, &sum); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -349,12 +384,12 @@ func (r *runner) run(ctx context.Context) (runSummary, error) {
 	return sum, errors.Join(runErr, finishErr)
 }
 
-func (r *runner) rateOne(ctx context.Context, m modelConfig, c evalcorpus.Case, blindID string, callsPath, ratingsPath string, sum *runSummary) error {
-	p, err := renderCase(r.corpus, c, blindID)
+func (r *runner) rateOne(ctx context.Context, phase int, m modelConfig, c evalcorpus.Case, blindID string, callsPath, ratingsPath string, sum *runSummary) error {
+	p, err := renderCase(r.corpus, c, blindID, phase)
 	if err != nil {
 		return err
 	}
-	body, err := json.MarshalIndent(newRequest(m, p.User), "", "  ")
+	body, err := json.MarshalIndent(newRequest(m, phase, p.User), "", "  ")
 	if err != nil {
 		return err
 	}
@@ -367,19 +402,19 @@ func (r *runner) rateOne(ctx context.Context, m modelConfig, c evalcorpus.Case, 
 		return fmt.Errorf("%w: spent %.4f USD (%.4f uncertain) + worst case %.4f USD of the next call > cap %.2f USD", errBudget, spent.total(), spent.uncertain, worst, r.cfg.BudgetUSD)
 	}
 	// Attempts come from the ledger, so a retry never reuses an uncertain call's id.
-	attempt := spent.attempts[m.ID+"\x00"+c.CaseID] + 1
-	callID := fmt.Sprintf("%s/%s/%d", m.ID, blindID, attempt)
-	base := filepath.Join(slug(m.ID), fmt.Sprintf("%s.%d.json", blindID, attempt))
+	attempt := spent.attempts[pairKey(phase, m.ID, c.CaseID)] + 1
+	callID := fmt.Sprintf("p%d/%s/%s/%d", phase, m.ID, blindID, attempt)
+	base := filepath.Join(fmt.Sprintf("p%d", phase), slug(m.ID), fmt.Sprintf("%s.%d.json", blindID, attempt))
 	reqFile, respFile := filepath.ToSlash(filepath.Join("requests", base)), filepath.ToSlash(filepath.Join("responses", base))
 	if err := writeFile(filepath.Join(r.out, reqFile), append(body, '\n')); err != nil {
 		return err
 	}
 	now := func() string { return time.Now().UTC().Format(time.RFC3339) }
-	if err := appendJSONL(callsPath, spendRecord{Kind: "reserve", CallID: callID, CaseID: c.CaseID, Model: m.ID, ReservedUSD: worst, Time: now()}); err != nil {
+	if err := appendJSONL(callsPath, spendRecord{Kind: "reserve", CallID: callID, CaseID: c.CaseID, Model: m.ID, Phase: phase, ReservedUSD: worst, Time: now()}); err != nil {
 		return err
 	}
 	sum.Calls++
-	fmt.Fprintf(r.log, "call %s %s (%s)\n", m.ID, blindID, c.CaseID)
+	fmt.Fprintf(r.log, "call p%d %s %s (%s)\n", phase, m.ID, blindID, c.CaseID)
 	raw, callErr := r.prov.complete(ctx, m, body)
 	if len(raw) > 0 {
 		if err := writeFile(filepath.Join(r.out, respFile), raw); err != nil {
@@ -406,13 +441,17 @@ func (r *runner) rateOne(ctx context.Context, m modelConfig, c evalcorpus.Case, 
 	if err := appendJSONL(callsPath, spendRecord{Kind: "settle", CallID: callID, CostUSD: cost, CostSource: source, Time: now()}); err != nil {
 		return err
 	}
-	rt := rating{CaseID: c.CaseID, BlindID: blindID, Model: m.ID, Family: family(m.ID), ResponseModel: resp.Model, ResponseHost: resp.Provider,
-		ResponseID: resp.ID, Kind: c.Kind, Root: root(c), Items: p.Items, PromptSHA256: sha(renderedSystemPrompt + "\n" + p.User),
+	rt := rating{CaseID: c.CaseID, Phase: phase, BlindID: blindID, Model: m.ID, Family: family(m.ID), ResponseModel: resp.Model, ResponseHost: resp.Provider,
+		ResponseID: resp.ID, Kind: c.Kind, Root: root(c), Items: p.Items, PromptSHA256: sha(systemPrompts[phase] + "\n" + p.User),
 		RequestFile: reqFile, ResponseFile: respFile, CostUSD: cost, Time: now(), Rater: "ai-panel-model (not a human review)",
 		Settings: map[string]any{"temperature": m.Temperature, "max_tokens": m.MaxTokens, "tools": "none", "session": "fresh single-turn"}}
 	if len(resp.Choices) == 0 {
 		rt.Error = "no choices in response"
-	} else if rt.Checklist, rt.Independent, err = parseAnswer(resp.Choices[0].Message.Content, blindID, p.Items); err != nil {
+	} else if phase == phaseBlind {
+		if rt.Independent, err = parseBlind(resp.Choices[0].Message.Content, blindID); err != nil {
+			rt.Error = err.Error()
+		}
+	} else if rt.Checklist, err = parseChecklist(resp.Choices[0].Message.Content, blindID, p.Items); err != nil {
 		rt.Error = err.Error()
 	}
 	rt.Valid = rt.Error == ""

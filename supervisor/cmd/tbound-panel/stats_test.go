@@ -2,6 +2,7 @@ package main
 
 import (
 	"math"
+	"reflect"
 	"testing"
 )
 
@@ -63,9 +64,9 @@ func TestItemStatsBootstrapIsSeededAndGroupsRoots(t *testing.T) {
 		{root: "r4", ratings: []string{"fail", "fail", "fail"}},
 		{root: "r4", ratings: []string{"pass", "pass", "pass"}},
 	}
-	a := itemStats(subjects, 7, 500)
-	b := itemStats(subjects, 7, 500)
-	if a != b {
+	a := itemStats(subjects, checklistCategories, 7, 500)
+	b := itemStats(subjects, checklistCategories, 7, 500)
+	if !reflect.DeepEqual(a, b) {
 		t.Fatalf("bootstrap not deterministic: %+v vs %+v", a, b)
 	}
 	if a.Subjects != 6 || a.Roots != 4 || !a.KappaDefined || a.CILow > a.Kappa || a.CIHigh < a.Kappa || a.CILow >= a.CIHigh {

@@ -6,8 +6,8 @@ import (
 	"sort"
 )
 
-// categories is the fixed order of the panel's rating categories.
-var categories = [3]string{"pass", "fail", "unclear"}
+// checklistCategories is the fixed order of the phase-2 rating categories.
+var checklistCategories = []string{"pass", "fail", "unclear"}
 
 const (
 	gatePass      = "pass"
@@ -81,26 +81,26 @@ type subject struct {
 
 // ItemStats is the pre-adjudication agreement record of one checklist item.
 type ItemStats struct {
-	Subjects           int        `json:"subjects"`
-	Roots              int        `json:"roots"`
-	Kappa              float64    `json:"kappa"`
-	KappaDefined       bool       `json:"kappa_defined"`
-	Agreement          float64    `json:"raw_agreement"`
-	Unanimous          float64    `json:"unanimous_share"`
-	Prevalence         [3]float64 `json:"prevalence_pass_fail_unclear"`
-	CILow              float64    `json:"ci95_low"`
-	CIHigh             float64    `json:"ci95_high"`
-	CIDefined          bool       `json:"ci_defined"`
-	UndefinedResamples int        `json:"undefined_resamples"`
-	Gate               string     `json:"gate"`
+	Subjects           int                `json:"subjects"`
+	Roots              int                `json:"roots"`
+	Kappa              float64            `json:"kappa"`
+	KappaDefined       bool               `json:"kappa_defined"`
+	Agreement          float64            `json:"raw_agreement"`
+	Unanimous          float64            `json:"unanimous_share"`
+	Prevalence         map[string]float64 `json:"prevalence"`
+	CILow              float64            `json:"ci95_low"`
+	CIHigh             float64            `json:"ci95_high"`
+	CIDefined          bool               `json:"ci_defined"`
+	UndefinedResamples int                `json:"undefined_resamples"`
+	Gate               string             `json:"gate"`
 }
 
-func countMatrix(subjects []subject) [][]int {
+func countMatrix(subjects []subject, cats []string) [][]int {
 	m := make([][]int, len(subjects))
 	for i, s := range subjects {
-		m[i] = make([]int, len(categories))
+		m[i] = make([]int, len(cats))
 		for _, r := range s.ratings {
-			for j, c := range categories {
+			for j, c := range cats {
 				if r == c {
 					m[i][j]++
 				}
@@ -110,8 +110,9 @@ func countMatrix(subjects []subject) [][]int {
 	return m
 }
 
-// itemStats computes the statistics of one item. Every subject has the same rater count.
-func itemStats(subjects []subject, seed uint64, resamples int) ItemStats {
+// itemStats computes the statistics of one item over the given categories (every rating
+// must be one of them). Every subject has the same rater count.
+func itemStats(subjects []subject, cats []string, seed uint64, resamples int) ItemStats {
 	var st ItemStats
 	st.Subjects = len(subjects)
 	if len(subjects) == 0 {
@@ -119,8 +120,11 @@ func itemStats(subjects []subject, seed uint64, resamples int) ItemStats {
 		return st
 	}
 	var prev []float64
-	st.Kappa, st.Agreement, prev, st.KappaDefined = fleiss(countMatrix(subjects))
-	copy(st.Prevalence[:], prev)
+	st.Kappa, st.Agreement, prev, st.KappaDefined = fleiss(countMatrix(subjects, cats))
+	st.Prevalence = map[string]float64{}
+	for j, c := range cats {
+		st.Prevalence[c] = prev[j]
+	}
 	unanimous := 0
 	byRoot := map[string][]subject{}
 	for _, s := range subjects {
@@ -147,7 +151,7 @@ func itemStats(subjects []subject, seed uint64, resamples int) ItemStats {
 		for range roots {
 			sample = append(sample, byRoot[roots[rng.IntN(len(roots))]]...)
 		}
-		if k, _, _, ok := fleiss(countMatrix(sample)); ok {
+		if k, _, _, ok := fleiss(countMatrix(sample, cats)); ok {
 			ks = append(ks, k)
 		} else {
 			st.UndefinedResamples++

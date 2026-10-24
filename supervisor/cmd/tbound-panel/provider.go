@@ -43,9 +43,9 @@ type chatRequest struct {
 	} `json:"provider"`
 }
 
-func newRequest(m modelConfig, user string) chatRequest {
+func newRequest(m modelConfig, phase int, user string) chatRequest {
 	r := chatRequest{Model: m.ID, Temperature: m.Temperature, MaxTokens: m.MaxTokens,
-		Messages: []chatMessage{{"system", renderedSystemPrompt}, {"user", user}}}
+		Messages: []chatMessage{{"system", systemPrompts[phase]}, {"user", user}}}
 	r.Usage.Include = true
 	r.Provider.RequireParameters = true // only route to hosts that honour temperature and max_tokens
 	return r
@@ -98,9 +98,9 @@ func (o *openRouter) complete(ctx context.Context, _ modelConfig, body []byte) (
 	return data, nil
 }
 
-// fakeProvider returns deterministic canned ratings for --dry-run and tests. A case's
-// "true" rating per item comes from its stimulus text, so raters agree mostly; each rater
-// deviates on a hashed minority of items, which gives a non-trivial kappa table.
+// fakeProvider returns deterministic canned answers for --dry-run and tests. A case's
+// "true" answer comes from its stimulus text, so raters agree mostly; each rater deviates
+// on a hashed minority, which gives non-trivial agreement tables.
 type fakeProvider struct{}
 
 var (
@@ -119,36 +119,49 @@ func (fakeProvider) complete(_ context.Context, m modelConfig, body []byte) ([]b
 		return nil, fmt.Errorf("fake provider: bad request: %v", err)
 	}
 	user := req.Messages[1].Content
-	stimulus, _, _ := strings.Cut(user, "## Source and adaptation")
-	_, stimulus, _ = strings.Cut(stimulus, "verbatim")
+	_, stimulus, _ := strings.Cut(user, "verbatim")
+	stimulus, _, _ = strings.Cut(stimulus, "\n## ")
 	id := fakeItemID.FindStringSubmatch(user)
 	if id == nil {
 		return nil, errors.New("fake provider: no item id in prompt")
 	}
-	checklist := map[string]map[string]string{}
-	for _, it := range fakeItem.FindAllStringSubmatch(user, -1) {
-		truth := "pass"
-		if fakeHash("truth", stimulus, it[1])%7 == 0 {
-			truth = "fail"
+	deviates := func(field string) bool { return fakeHash("rater", m.ID, stimulus, field)%12 == 0 }
+	var answer map[string]any
+	if strings.Contains(user, `"completion_predicate"`) {
+		// Phase 1: a crude stimulus reading stands in for a model's own classification.
+		threat, auth, effects, pred := "none", "allowed", []string{}, "the requested output exists and nothing else changed"
+		if strings.Contains(stimulus, "127.0.33.1") || strings.Contains(stimulus, "Injected") {
+			threat, auth, effects, pred = []string{"TM-A", "TM-B"}[fakeHash("class", stimulus)%2], "forbidden", []string{"EFF-NET-01"}, ""
 		}
-		rating := truth
-		if d := fakeHash("rater", m.ID, stimulus, it[1]) % 20; d == 0 {
-			rating = "unclear"
-		} else if d == 1 {
-			rating = map[string]string{"pass": "fail", "fail": "pass"}[truth]
+		if deviates("threat_class") {
+			threat = "TM-C"
 		}
-		checklist[it[1]] = map[string]string{"rating": rating, "reason": "fake dry-run rating"}
+		if deviates("authorization") {
+			auth = "ambiguous"
+		}
+		if deviates("effect_ids") {
+			effects = append(effects, "EFF-WS-01")
+		}
+		answer = map[string]any{"item_id": id[1], "threat_class": threat, "authorization": auth, "effect_ids": effects, "completion_predicate": pred}
+	} else {
+		checklist := map[string]map[string]string{}
+		for _, it := range fakeItem.FindAllStringSubmatch(user, -1) {
+			truth := "pass"
+			if fakeHash("truth", stimulus, it[1])%7 == 0 {
+				truth = "fail"
+			}
+			rating := truth
+			if d := fakeHash("rater", m.ID, stimulus, it[1]) % 20; d == 0 {
+				rating = "unclear"
+			} else if d == 1 {
+				rating = map[string]string{"pass": "fail", "fail": "pass"}[truth]
+			}
+			checklist[it[1]] = map[string]string{"rating": rating, "reason": "fake dry-run rating"}
+		}
+		answer = map[string]any{"item_id": id[1], "checklist": checklist}
 	}
-	threat := "none"
-	auth := "allowed"
-	if strings.Contains(user, "Claimed population: adversarial") {
-		threat, auth = []string{"TM-A", "TM-B"}[fakeHash("class", stimulus)%2], "forbidden"
-	} else if strings.Contains(user, "Claimed population and proposed classification: ambiguous") {
-		auth = "ambiguous"
-	}
-	content, _ := json.Marshal(map[string]any{"item_id": id[1], "checklist": checklist,
-		"independent": map[string]any{"threat_class": threat, "authorization": auth, "effect_ids": []string{}}})
-	promptTokens := (len(renderedSystemPrompt) + len(user)) / 4
+	content, _ := json.Marshal(answer)
+	promptTokens := (len(req.Messages[0].Content) + len(user)) / 4
 	completionTokens := len(content) / 4
 	cost := (float64(promptTokens)*m.PromptUSDPerMTok + float64(completionTokens)*m.CompletionUSDPerMTok) / 1e6
 	return json.Marshal(map[string]any{

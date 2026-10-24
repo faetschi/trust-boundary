@@ -1,6 +1,9 @@
 // Command tbound-panel runs the blinded three-model AI construct-review panel of the D35
-// amendment (2026-10-24) over a TBound corpus manifest, then reports per-item Fleiss' kappa
-// before adjudication and the advisor's audit list. See docs/panel-run.md.
+// amendment (2026-10-24) over a TBound corpus manifest. Every model rates every case in two
+// separate fresh sessions: phase 1 classifies the case without any claimed label, phase 2
+// rates the checklist with the claims shown. It then reports Fleiss' kappa per checklist item
+// and per phase-1 field, the phase-1 agreement with the claimed labels, all before
+// adjudication, and the advisor's audit list. See docs/panel-run.md.
 //
 // Exactly one mode is required, so nothing spends money by accident:
 //
@@ -122,8 +125,8 @@ func (a *app) runCtx(ctx context.Context, args []string) error {
 }
 
 // expectedCompletionTokens is the typical answer size used for the expected (not worst) cost.
-// shortcut: a guess for six short reasons plus classification; replace with the dry-run mean once a live pilot exists.
-const expectedCompletionTokens = 1200
+// shortcut: a guess for six short reasons or one classification; replace with the dry-run mean once a live pilot exists.
+const expectedCompletionTokens = 800
 
 func (a *app) estimate(cfg panelConfig, c corpus) error {
 	var ids []string
@@ -134,23 +137,25 @@ func (a *app) estimate(cfg panelConfig, c corpus) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(a.out, "%d cases x %d models = %d calls (one fresh request each; retries of invalid answers are extra)\n\n",
-		len(c.Manifest.Cases), len(cfg.Models), len(c.Manifest.Cases)*len(cfg.Models))
+	n := len(c.Manifest.Cases) * len(phases)
+	fmt.Fprintf(a.out, "%d cases x %d models x %d phases = %d calls (one fresh request each; retries of invalid answers are extra)\n\n",
+		len(c.Manifest.Cases), len(cfg.Models), len(phases), n*len(cfg.Models))
 	fmt.Fprintln(a.out, "| Model | Calls | Prompt bytes | Est. prompt tokens (bytes/4) | Est. completion tokens | Expected USD | Worst-case USD |")
 	fmt.Fprintln(a.out, "|---|---|---|---|---|---|---|")
 	var expTotal, worstTotal float64
 	for _, m := range cfg.Models {
 		bytesTotal, worst := 0, 0.0
-		for _, cs := range c.Manifest.Cases {
-			p, err := renderCase(c, cs, plan.ids[m.ID][cs.CaseID])
-			if err != nil {
-				return err
+		for _, phase := range phases {
+			for _, cs := range c.Manifest.Cases {
+				p, err := renderCase(c, cs, plan.ids[raterKey(phase, m.ID)][cs.CaseID], phase)
+				if err != nil {
+					return err
+				}
+				body, _ := json.MarshalIndent(newRequest(m, phase, p.User), "", "  ")
+				bytesTotal += len(body)
+				worst += worstCaseUSD(m, body)
 			}
-			body, _ := json.MarshalIndent(newRequest(m, p.User), "", "  ")
-			bytesTotal += len(body)
-			worst += worstCaseUSD(m, body)
 		}
-		n := len(c.Manifest.Cases)
 		promptTok, complTok := bytesTotal/4, n*expectedCompletionTokens
 		exp := (float64(promptTok)*m.PromptUSDPerMTok + float64(complTok)*m.CompletionUSDPerMTok) / 1e6
 		expTotal += exp
