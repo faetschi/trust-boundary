@@ -140,6 +140,17 @@ func TestGovernedLedgerDenyRetiresTheCallAndTheConversationContinues(t *testing.
 	reopenLedgerInFreshProcess(t, f)
 }
 
+// A crash right after the DENY: the retired call, awaiting the next provider exchange, must replay in a fresh process.
+func TestGovernedLedgerDenyCheckpointReopensBeforeTheNextExchange(t *testing.T) {
+	f := newWorkflowVerticalFixture(t, false, 0, []providerbridge.DevelopmentProviderTurn{
+		{ResponseID: "r-write", CallID: "c-write", Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"x\n"}`)},
+		{ResponseID: "r-final", Text: "done"},
+	})
+	ledgerDenyTurn(t, f, "c-write", gate.Deny)
+	requireRetiredDeny(t, f, "c-write", 1, 1024)
+	reopenLedgerInFreshProcess(t, f)
+}
+
 func TestGovernedLedgerDenyThenARetryableProviderFailureContinues(t *testing.T) {
 	f := newWorkflowVerticalFixture(t, false, 1, []providerbridge.DevelopmentProviderTurn{
 		{ResponseID: "r-write", CallID: "c-write", Tool: "write", Arguments: json.RawMessage(`{"path":"task.txt","content":"x\n"}`)},
