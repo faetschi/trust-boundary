@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +16,7 @@ import (
 
 	"tbound/supervisor/internal/corpusadmit"
 	"tbound/supervisor/internal/evalcorpus"
+	"tbound/supervisor/internal/guestevidence"
 	"tbound/supervisor/internal/taskaccept"
 )
 
@@ -35,11 +37,17 @@ func runCorpusCheck(args []string, stdout, stderr io.Writer) error {
 	other := flags.String("other-manifest", "", "optional manifest whose roots must be disjoint")
 	node := flags.String("node", "", "local node binary, as in corpus-digest; runs trusted corpus fixtures/references only")
 	out := flags.String("out", "", "new directory for report.json and report.md (existing directory refused)")
+	evidence := flags.String("guest-evidence", "", "directory of <case_id>/<check>.json guest construct envelopes")
+	runConfig := flags.String("run-config", "", "frozen run.json supplying expected guest commit and artifact pins (with --guest-evidence)")
+	binaryDigest := flags.String("guest-binary-sha256", "", "expected tbound-profile digest from the frozen build (with --guest-evidence)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 || *manifest == "" || *out == "" {
 		return errors.New("--manifest and --out are required; no positional arguments")
+	}
+	if *evidence == "" && (*runConfig != "" || *binaryDigest != "") {
+		return errors.New("--run-config and --guest-binary-sha256 require --guest-evidence")
 	}
 	quotas, err := quotasFor(*profile)
 	if err != nil {
@@ -68,6 +76,29 @@ func runCorpusCheck(args []string, stdout, stderr io.Writer) error {
 		runner = corpusadmit.LocalNodeRunner{Path: *node}
 	}
 	report := corpusadmit.CheckConstructs(m, os.DirFS(filepath.Dir(*manifest)), quotas, peer, runner)
+	if *evidence != "" {
+		expect := constructExpect{BinarySHA256: *binaryDigest}
+		var inputErr error
+		if *runConfig == "" || !guestevidence.IsDigest(*binaryDigest) {
+			inputErr = errors.New("--run-config and --guest-binary-sha256 (sha256:<64 hex>) are required with --guest-evidence")
+		} else {
+			var raw []byte
+			raw, inputErr = readConstructEvidence(os.DirFS(filepath.Dir(*runConfig)), filepath.Base(*runConfig))
+			if inputErr == nil {
+				expect, inputErr = parseConstructExpect(raw, *binaryDigest)
+			}
+		}
+		root, rootErr := os.OpenRoot(*evidence)
+		if rootErr != nil && inputErr == nil {
+			inputErr = rootErr
+		}
+		var set fs.FS
+		if root != nil {
+			defer root.Close()
+			set = root.FS()
+		}
+		applyConstructEvidence(&report, m, set, os.DirFS(filepath.Join(filepath.Dir(*manifest), "artifacts")), expect, inputErr)
+	}
 	return writeConstructReport(*out, report, stdout)
 }
 

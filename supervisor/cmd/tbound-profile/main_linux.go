@@ -66,6 +66,7 @@ usage:
                                 [--max-host-calls <n> --max-tokens <n> --duration-seconds <n>]
   tbound-profile corpus-check  --manifest <path> --out <new-report-directory> [--quota-profile thesis|pilot]
                                 [--node <local-node-binary>] [--other-manifest <path>]
+                                [--guest-evidence <dir> --run-config <run.json> --guest-binary-sha256 <sha256:..>]
   tbound-profile corpus-pins    --template <d09-cell.json> --runtime-bundle-digest <sha256> --node-digest <sha256>
                                 [--provider-route engineering|research --research-profile <path>] [--manifest <path>]
 ` + guestEvidenceUsage + `  tbound-profile preregistration-record --freeze-commit <40-hex> --corpus-manifest <path>

@@ -162,3 +162,16 @@ func (r *ConstructReport) summarize() {
 		}
 	}
 }
+
+// ResolveGuestChecks imports evidence only for pending guest checks, then
+// recomputes the report's counts and failure status from the resulting checks.
+func (r *ConstructReport) ResolveGuestChecks(resolve func(string, ConstructCheck) ConstructCheck) {
+	for i := range r.Cases {
+		for j, check := range r.Cases[i].Checks {
+			if check.Status == "guest-only" {
+				r.Cases[i].Checks[j] = resolve(r.Cases[i].CaseID, check)
+			}
+		}
+	}
+	r.summarize()
+}
