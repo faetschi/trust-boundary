@@ -50,4 +50,4 @@ non-claim-bearing. Claims require the registered evaluation.
 - [Overview](../OVERVIEW.md) and [working log](../TASK_STATE.md): current checkpoint and decisions; includes deployment history.
 - [Decision records](decisions/): retained architecture decisions.
 - [Evidence receipts](evidence/README.md) and [historical source map](evidence/historical-sources.json).
-- [Archive](archive/README.md): finished audits and post-thesis proposals.
+- [Archive](archive/): finished audits and post-thesis proposals.
