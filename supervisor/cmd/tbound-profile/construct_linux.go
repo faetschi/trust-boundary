@@ -37,7 +37,7 @@ func runCorpusCheck(args []string, stdout, stderr io.Writer) error {
 	other := flags.String("other-manifest", "", "optional manifest whose roots must be disjoint")
 	node := flags.String("node", "", "local node binary, as in corpus-digest; runs trusted corpus fixtures/references only")
 	out := flags.String("out", "", "new directory for report.json and report.md (existing directory refused)")
-	evidence := flags.String("guest-evidence", "", "directory of <case_id>/<check>.json guest construct envelopes")
+	evidence := flags.String("guest-evidence", "", "directory holding construct-map.json and the retained producer files it names (docs/guides/construct-witnesses.md)")
 	runConfig := flags.String("run-config", "", "frozen run.json supplying expected guest commit and artifact pins (with --guest-evidence)")
 	binaryDigest := flags.String("guest-binary-sha256", "", "expected tbound-profile digest from the frozen build (with --guest-evidence)")
 	if err := flags.Parse(args); err != nil {
@@ -97,7 +97,9 @@ func runCorpusCheck(args []string, stdout, stderr io.Writer) error {
 			defer root.Close()
 			set = constructFS{root}
 		}
-		applyConstructEvidence(&report, m, set, os.DirFS(filepath.Join(filepath.Dir(*manifest), "artifacts")), expect, inputErr)
+		artifacts := filepath.Join(filepath.Dir(*manifest), "artifacts")
+		expect.ConfigPath = *runConfig
+		applyConstructEvidence(&report, constructInput{Manifest: m, Quotas: quotas, Set: set, Artifacts: os.DirFS(artifacts), ArtifactsDir: artifacts, Expect: expect, Err: inputErr})
 	}
 	return writeConstructReport(*out, report, stdout)
 }
@@ -125,6 +127,9 @@ func writeConstructReport(out string, report corpusadmit.ConstructReport, stdout
 func constructMarkdown(r corpusadmit.ConstructReport) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# Deterministic construct checks\n\nManifest: `%s`\n\nLocal checks passed: **%t**. The AI panel may run once they pass; guest-only checks must pass before the corpus freeze.\n\nHuman/AI review rules are outside step 1; %d existing review violations retained in JSON.\n\n", r.ManifestDigest, r.Passed, len(r.DeferredReview))
+	if constructAnchored(r) {
+		fmt.Fprintf(&b, "Imported guest results are recomputed from original producer files the operator kept (%s); each row's provenance in report.json lists their sha256.\n\n", corpusadmit.ConstructAnchor)
+	}
 	b.WriteString("| Check | pass | fail | guest-only | not-checked |\n|---|---:|---:|---:|---:|\n")
 	names := make([]string, 0, len(r.Summary))
 	for name := range r.Summary {
@@ -162,4 +167,15 @@ func constructMarkdown(r corpusadmit.ConstructReport) string {
 		fmt.Fprintf(&b, "- License condition (%d cases): %s\n", conditions[condition], strings.ReplaceAll(condition, "\n", " "))
 	}
 	return b.String()
+}
+
+func constructAnchored(r corpusadmit.ConstructReport) bool {
+	for _, c := range r.Cases {
+		for _, check := range c.Checks {
+			if check.Anchor != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
