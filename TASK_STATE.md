@@ -55,6 +55,8 @@ Current checkpoint, 2026-10-23. History before this date: git log of this file a
 
 ## Working rules
 
+- Product direction (owner, 2026-10-24): develop interactive governed Pi as a product in parallel with the thesis. Proposed implementation baseline: [docs/product-plan.md](docs/product-plan.md), P0-P11. README is the product entry point with a small final research section; USAGE must cover clean installation through real governed operation, including Pi/provider/key setup. Planning only so far; product implementation and deployment have not started. Separate product runtime/state from frozen thesis operation. The web-chat deferral below applies to the thesis lane, not the proposed product branch; C-DH remains deferred.
+
 - Freeze loop: gate -> freeze -> archive previous guest state (option A) -> install -> guest chain. Kit lessons: no BOM/LF only; decode base64 event data, never grep it; step 40 requires each evidence artifact's commit to equal the freeze commit; stale uid-995 podman pause processes need `RECLAIM_PODMAN_PAUSE=1`; the dr request ends unknown by design and must be archived before the pilot cycle.
 - Next freeze: prefer one tested script version plus a small per-freeze values file over copying the ~40-file kit again.
 - Thesis limitations to record: kernel 7.0 CLONE_INTO_CGROUP bug; on a single-uid rootless host cell ownership cannot tell image root from the cell user; audit chain has no external anchor; every guest run before F11 had thread-only Landlock (flag bug) and is not evidence.

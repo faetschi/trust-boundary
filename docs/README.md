@@ -5,6 +5,9 @@ signed Pi task per service configuration, or registered cases in corpus mode.
 There is no interactive Pi chat mode yet. The web chat is frozen and outside
 the thesis.
 
+Product development: the [product implementation plan](product-plan.md) describes the
+proposed interactive Pi product. It is a plan, not a list of shipped capabilities.
+
 ## [Guides](guides/): install, run, reproduce
 
 - [Setup](guides/setup.md): host requirements, Pi and TBound installation, Doctor, fixtures.
