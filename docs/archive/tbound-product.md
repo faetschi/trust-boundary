@@ -2,7 +2,7 @@
 
 Written 2026-10-16 against `codex/tbound-prototype` (HEAD `a298f71`), the web-chat
 branch `codex/tbound-web-chat` (HEAD `cd8c7fd`) and its
-`docs/modular-architecture-vision.md`.
+`docs/archive/modular-architecture-vision.md`.
 
 > ### Scope and claim status
 > **This whole document is a PROPOSAL for post-thesis product work.** It changes no
@@ -154,7 +154,7 @@ Status in the table: **REC** = recommended, not yet confirmed by the user. Ask w
 | ID | Existing statement | Where | Conflicts with | Recommendation | Alternatives | Ask when |
 |---|---|---|---|---|---|---|
 | X1 | "Keep the four-tool manifest fixed unless the protocol and conformance plan are explicitly amended before exposure" | `docs/tbound-future-work-multi-profile.md` ("Thesis guardrails") | WS-A, WS-B | **REC:** add a "Product profiles" section to that file. Keep the guardrail text verbatim but scope it to `claim_class: thesis-registered`. Say that any other manifest needs a signed `HarnessProfile` plus a passing ToolSpec conformance kit (§3.5). This document is the "amendment plan" the sentence asks for | (a) Leave the file untouched and let this document override it. Risk: two documents disagree. (b) Rewrite the guardrail globally. Risk: weakens the thesis story | Before A1 (first code change), as part of the P0 ADR |
-| X2 | "Plugins that add tool-execution routes or grow the Pi tool surface beyond the four tools: OUT" | web-chat `docs/modular-architecture-vision.md` §3.5 | WS-A | **REC:** split the row. Keep "Tier 2 clients/plugins can never add tools" as OUT. Add "Tier 1 tool surface is set only by a signed `HarnessProfile` using compiled-in `ToolSpec`s" | Delete the row. Risk: loses the plugin boundary | Before A1 |
+| X2 | "Plugins that add tool-execution routes or grow the Pi tool surface beyond the four tools: OUT" | web-chat `docs/archive/modular-architecture-vision.md` §3.5 | WS-A | **REC:** split the row. Keep "Tier 2 clients/plugins can never add tools" as OUT. Add "Tier 1 tool surface is set only by a signed `HarnessProfile` using compiled-in `ToolSpec`s" | Delete the row. Risk: loses the plugin boundary | Before A1 |
 | X3 | "Tool routes or tool surface: closed set" | same, §3.4 | WS-A | **REC:** same edit as X2: "closed set per profile; `core4` is the thesis set" | Same | Before A1 |
 | X4 | Which branch edits the vision doc | the doc lives on `codex/tbound-web-chat` | X2, X3, X5 | **REC:** make the edits on `codex/tbound-product` in a copy of the doc (it arrives with the next web-chat merge, as `83f07dd` did) and notify the web-chat thread. Do not edit the web-chat checkout from the product thread | Edit on web-chat directly (violates "one thread per checkout") | When the first vision-doc edit is needed |
 | X5 | "Replacing the Pi runtime or adding a second runtime" is a non-goal | vision §9 | WS-B | **REC:** keep it. Clarify that "runtime" means the agent harness. Multiple *Pi versions* are in scope; other harnesses (Claude Code, Codex, …) stay out of scope until a separate decision | Allow other harnesses later. Needs its own adapter, correlation path and conformance suite, which is the largest rewrite in this document | Only if the user raises other harnesses |
@@ -634,9 +634,9 @@ signature and conformance, never a runtime flag.
 ## 9. Sources checked
 
 - Repo: `docs/architecture.md`, `docs/tbound-future-work-multi-profile.md`,
-  `docs/decisions/2026-10-12-cli-reproduction.md`, `docs/frontend-product-agent.md`,
+  `docs/decisions/2026-10-12-cli-reproduction.md`, `docs/archive/frontend-product-agent.md`,
   `docs/publication-contract.md` (skimmed for cadence and baseline rules, not audited);
-  web-chat branch `docs/modular-architecture-vision.md`, `TASK_STATE.md`.
+  web-chat branch `docs/archive/modular-architecture-vision.md`, `TASK_STATE.md`.
 - Code: `internal/{broker,broker/correlation,broker/protocol,gate,piruntime,piinstall,
   sessionrepo,delta}`, `cmd/tbound/{durable_executor,governed_session,
   pi_service_handoff,production_session}_linux.go`, `adapter/src/*.ts`,
