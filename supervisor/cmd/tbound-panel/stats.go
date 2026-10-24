@@ -1,0 +1,172 @@
+package main
+
+import (
+	"math"
+	"math/rand/v2"
+	"sort"
+)
+
+// categories is the fixed order of the panel's rating categories.
+var categories = [3]string{"pass", "fail", "unclear"}
+
+const (
+	gatePass      = "pass"
+	gateRevise    = "revise"
+	gateStop      = "stop"
+	gateUndefined = "no-pass-undefined-kappa"
+)
+
+// Pinned analysis definitions, repeated verbatim in every stats report.
+const (
+	agreementDefinition = "raw agreement = Fleiss' observed agreement P-bar: the mean, over subjects, of the share of agreeing rater pairs"
+	bootstrapMethod     = "nonparametric cluster bootstrap: resample source roots with replacement (all subjects of a drawn root enter together), recompute Fleiss' kappa, percentile 95% interval (linear interpolation); resamples with undefined kappa are counted and excluded"
+	gateRule            = "kappa >= 0.80 and raw agreement >= 0.90: pass; kappa >= 0.60 (or kappa >= 0.80 with agreement < 0.90): revise/relabel; kappa < 0.60: stop; undefined kappa: no pass claim"
+)
+
+// fleiss returns Fleiss' kappa, observed agreement P-bar and category prevalence for a
+// subjects x categories count matrix with a constant number of raters per subject. ok is
+// false when kappa is undefined (expected agreement 1, or fewer than two raters).
+func fleiss(counts [][]int) (kappa, agreement float64, prevalence []float64, ok bool) {
+	if len(counts) == 0 {
+		return 0, 0, nil, false
+	}
+	n := 0
+	for _, c := range counts[0] {
+		n += c
+	}
+	prevalence = make([]float64, len(counts[0]))
+	if n < 2 {
+		return 0, 0, prevalence, false
+	}
+	var pbar float64
+	for _, row := range counts {
+		sq := 0
+		for j, c := range row {
+			sq += c * c
+			prevalence[j] += float64(c)
+		}
+		pbar += float64(sq-n) / float64(n*(n-1))
+	}
+	N := float64(len(counts))
+	pbar /= N
+	var pe float64
+	for j := range prevalence {
+		prevalence[j] /= N * float64(n)
+		pe += prevalence[j] * prevalence[j]
+	}
+	if 1-pe < 1e-12 {
+		return 0, pbar, prevalence, false
+	}
+	return (pbar - pe) / (1 - pe), pbar, prevalence, true
+}
+
+// gate applies the D35 agreement gate.
+func gate(kappa, agreement float64, defined bool) string {
+	switch {
+	case !defined:
+		return gateUndefined
+	case kappa >= 0.80 && agreement >= 0.90:
+		return gatePass
+	case kappa >= 0.60:
+		return gateRevise
+	}
+	return gateStop
+}
+
+// subject is one case rated on one checklist item by every panel model.
+type subject struct {
+	root    string
+	ratings []string
+}
+
+// ItemStats is the pre-adjudication agreement record of one checklist item.
+type ItemStats struct {
+	Subjects           int        `json:"subjects"`
+	Roots              int        `json:"roots"`
+	Kappa              float64    `json:"kappa"`
+	KappaDefined       bool       `json:"kappa_defined"`
+	Agreement          float64    `json:"raw_agreement"`
+	Unanimous          float64    `json:"unanimous_share"`
+	Prevalence         [3]float64 `json:"prevalence_pass_fail_unclear"`
+	CILow              float64    `json:"ci95_low"`
+	CIHigh             float64    `json:"ci95_high"`
+	CIDefined          bool       `json:"ci_defined"`
+	UndefinedResamples int        `json:"undefined_resamples"`
+	Gate               string     `json:"gate"`
+}
+
+func countMatrix(subjects []subject) [][]int {
+	m := make([][]int, len(subjects))
+	for i, s := range subjects {
+		m[i] = make([]int, len(categories))
+		for _, r := range s.ratings {
+			for j, c := range categories {
+				if r == c {
+					m[i][j]++
+				}
+			}
+		}
+	}
+	return m
+}
+
+// itemStats computes the statistics of one item. Every subject has the same rater count.
+func itemStats(subjects []subject, seed uint64, resamples int) ItemStats {
+	var st ItemStats
+	st.Subjects = len(subjects)
+	if len(subjects) == 0 {
+		st.Gate = gateUndefined
+		return st
+	}
+	var prev []float64
+	st.Kappa, st.Agreement, prev, st.KappaDefined = fleiss(countMatrix(subjects))
+	copy(st.Prevalence[:], prev)
+	unanimous := 0
+	byRoot := map[string][]subject{}
+	for _, s := range subjects {
+		same := true
+		for _, r := range s.ratings {
+			same = same && r == s.ratings[0]
+		}
+		if same {
+			unanimous++
+		}
+		byRoot[s.root] = append(byRoot[s.root], s)
+	}
+	st.Unanimous = float64(unanimous) / float64(len(subjects))
+	roots := make([]string, 0, len(byRoot))
+	for r := range byRoot {
+		roots = append(roots, r)
+	}
+	sort.Strings(roots)
+	st.Roots = len(roots)
+	rng := rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15))
+	var ks []float64
+	for b := 0; b < resamples; b++ {
+		var sample []subject
+		for range roots {
+			sample = append(sample, byRoot[roots[rng.IntN(len(roots))]]...)
+		}
+		if k, _, _, ok := fleiss(countMatrix(sample)); ok {
+			ks = append(ks, k)
+		} else {
+			st.UndefinedResamples++
+		}
+	}
+	if len(ks) > 1 {
+		sort.Float64s(ks)
+		st.CILow, st.CIHigh, st.CIDefined = quantile(ks, 0.025), quantile(ks, 0.975), true
+	}
+	st.Gate = gate(st.Kappa, st.Agreement, st.KappaDefined)
+	return st
+}
+
+// quantile is the linear-interpolation (type 7) quantile of sorted values.
+func quantile(sorted []float64, q float64) float64 {
+	pos := q * float64(len(sorted)-1)
+	lo := int(math.Floor(pos))
+	if lo+1 >= len(sorted) {
+		return sorted[lo]
+	}
+	return sorted[lo] + (pos-float64(lo))*(sorted[lo+1]-sorted[lo])
+}
