@@ -66,6 +66,7 @@ The catalog is one protected `audit.Journal` (hash chain, fsync per record, excl
 | `product_turn_admitted` | `SubmitTurn` accepted | **The durable acceptance point.** Turn ID and ordinal, principal, request key, payload digest, exact prompt and its digest, project, policy digest, Bash scope, publication mode, admitted baseline digest, predecessor turn ID and receipt digest, budget reservation, session revision after admission. |
 | `product_turn_linked` | Before any provider or tool work of the turn | Workflow, run, runtime session and conversation IDs, provider/Store/command journal paths, imported prefix digest. |
 | `product_turn_terminal` | After the child workflow has a verified disposition | Outcome, settlement, receipt bytes and digest, actual usage, result baseline digest, `context_eligible`, refund. |
+| `product_turn_awaiting_review` | A changed turn in review mode settled | Receipt bytes and digest, actual usage, refund, candidate tree digest. The turn stays non-terminal and blocks its session and project until P4 resolves it. |
 | `product_turn_abandoned` | Reconciling an admitted turn with no link | Admission withdrawn with a full refund. No provider or tool work can precede the link record. |
 | `product_turn_unknown` | Reconciling a linked turn that has no verifiable disposition | Reservation stays consumed; project is blocked. |
 
@@ -77,6 +78,7 @@ func (c *Catalog) CreateSession(p Principal, r CreateSessionRequest, measuredBas
 func (c *Catalog) SubmitTurn(p Principal, r SubmitTurnRequest, measuredBaseline string) (Admission, error)
 func (c *Catalog) LinkTurn(turnID string, link TurnLink) error
 func (c *Catalog) CompleteTurn(turnID string, t TurnTerminal) error
+func (c *Catalog) MarkAwaitingReview(turnID string, r TurnReview) error
 func (c *Catalog) AbandonUnlinkedTurn(turnID string) error
 func (c *Catalog) MarkTurnUnknown(turnID string, reason string) error
 func (c *Catalog) Session(p Principal, id string) (Session, error)
