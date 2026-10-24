@@ -1,5 +1,9 @@
 # Architecture
 
+**Status (2026-10-24):** G1 passes on the real guest at F12. This page describes
+the authority boundaries and seams, not the current gate state; see
+[current status](status.md) and [OVERVIEW](../OVERVIEW.md).
+
 TBound is a Linux host supervisor prototype for a single Pi coding task. Its
 design keeps authorization and durable execution state outside the model
 worker. The supported tool surface is `read`, `write`, `edit`, and `bash`.

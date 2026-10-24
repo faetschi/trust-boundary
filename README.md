@@ -10,9 +10,10 @@ output stay untrusted.
 The live state is in [OVERVIEW.md](OVERVIEW.md); the detailed log is in
 [TASK_STATE.md](TASK_STATE.md). In short:
 
-- Freeze **F3 = `ea59706`**. Guest run **G1 is pending** on F3.
-- Green tests verify code only. **G1 is false** (containment is
-  `not-established`) and **H1 is unexecuted**. A build, fixture receipt, or
+- Freeze **F12 = `eed7722`**. **G1 passes** on the real guest: read, edit,
+  bash, and publish, plus the route and direct-runtime probes.
+- The pilot is not ready. The EVQ dry run passed 18 of 22 items, and the rest
+  need fresh artifacts. **H1 is unexecuted**; a build, fixture receipt, or
   capability probe is not a thesis result.
 - The engineering provider route is **OpenCode Go**.
 

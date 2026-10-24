@@ -1,5 +1,10 @@
 # Candidate experiment manifest — not G1
 
+> **Status: superseded candidate (written 2026-10-08).** The live pilot manifest
+> is `corpus/pilot/manifest.draft.json`; current state is in
+> [`../TASK_STATE.md`](../TASK_STATE.md). This file is kept only because
+> `infra/repro/CLEAN-GUEST-QUALIFICATION.md` cites it. It is not a G1 manifest.
+
 > **candidate — not G1; makes no containment/provider claim**
 
 This document is a candidate, documentary record only. It is **not** a G1

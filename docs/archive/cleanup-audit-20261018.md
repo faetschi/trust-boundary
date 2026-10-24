@@ -1,6 +1,6 @@
 # Historical core cleanup evidence
 
-This records work tested on the old `94378e8` prototype. These core changes are **not in the rebased PR13**. Their unapplied, provenance-preserving patches are on [codex/cleanup-core-deferred](https://github.com/faetschi/trust-boundary/tree/codex/cleanup-core-deferred), based on `2c31881`, for post-freeze/post-pilot review. See the [current scope and verification](quality-review-20261019/README.md). Historical test results below do not qualify that queue on the new architecture.
+This records work tested on the old `94378e8` prototype. These core changes are **not in the rebased PR13**. Their unapplied, provenance-preserving patches are on [codex/cleanup-core-deferred](https://github.com/faetschi/trust-boundary/tree/codex/cleanup-core-deferred), based on `2c31881`, for post-freeze/post-pilot review. See the [current scope and verification](quality-review-20261019.md). Historical test results below do not qualify that queue on the new architecture.
 
 ## Historical removals
 

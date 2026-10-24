@@ -20,7 +20,7 @@ F0 in `infra/guest/PROVISIONING-SIGNING.md` still governs signing inputs. Histor
 
 | Deferred finding | Conditions for resuming |
 | --- | --- |
-| Unused core helpers, duplicate validation/copying, manifest comparison, and provider buffering | Review the preserved patches against the new architecture after the freeze/pilot; full gate and independent review. Historical proof is in the [core audit](../cleanup-audit-20261018.md), not current PR validation. |
+| Unused core helpers, duplicate validation/copying, manifest comparison, and provider buffering | Review the preserved patches against the new architecture after the freeze/pilot; full gate and independent review. Historical proof is in the [core audit](cleanup-audit-20261018.md), not current PR validation. |
 | Generation-ID index, journal/tree verification profiling, and generation copying | Post-freeze/post-pilot. Preserve tamper checks, recovery, synchronization, duplicate/missing IDs, and error precedence; profile realistic sizes, full gate, independent review. |
 | Large lifecycle/publication file splits and Go SSE/history work | Post-freeze/post-pilot. Keep transaction sequencing, capture-before-admission, bounds, and ownership; full gate and independent review. |
 | Further UI rendering reduction | Measure first. Removing `RecordView.detail` broke helper shape/parity and was withdrawn. Preserve focus, search/order, and trust labels; frontend/webchat gates and independent review. |
