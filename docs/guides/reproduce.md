@@ -247,6 +247,11 @@ network effects) are reported as `guest-only`; they must pass before the corpus
 freeze, not before the panel. Add `--other-manifest PATH` to check root
 separation from another corpus.
 
+Add `--guest-evidence DIR --run-config run.json --guest-binary-sha256 sha256:...`
+to consume retained [guest construct witnesses](construct-witnesses.md).
+Bound positive/negative outcomes become `pass`/`fail`; missing, malformed or
+mismatched evidence stays `guest-only` with its reason. No flag preserves the local report.
+
 ```sh
 tbound-profile corpus-check \
   --manifest "$TBOUND_REPO/corpus/pilot/manifest.draft.json" --quota-profile pilot \
