@@ -146,7 +146,7 @@ func receiptFor(c *Catalog, turnID, outcome string, usage Budget, result string)
 		StoreJournalHead: strings.Repeat("b", 64), StoreJournalCount: 2,
 		PredecessorReceiptDigest: turn.PredecessorReceiptDigest, BaselineDigest: turn.BaselineDigest,
 		ResultBaselineDigest: result, Outcome: outcome, Settlement: SettlementHeadlessClosed, Usage: usage,
-		ToolSequence: []string{"read"}, Denials: []ReceiptDenial{},
+		ToolSequence: []string{"read"}, Denials: []ReceiptDenial{{ToolCallID: "call-1", Tool: "write", ReasonCode: "policy_rule_deny"}},
 	}
 	if turn.Link != nil {
 		r.WorkflowID, r.RunID, r.ConversationID = turn.Link.WorkflowID, turn.Link.RunID, turn.Link.ConversationID

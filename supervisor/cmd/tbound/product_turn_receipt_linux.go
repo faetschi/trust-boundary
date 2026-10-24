@@ -14,50 +14,19 @@ import (
 	"tbound/supervisor/internal/productsession"
 )
 
-const (
-	productTurnReceiptSchema = "tbound-product-turn-receipt/v1"
-	// productWorkerHeadlessFixture is the only worker of milestone 1: the in-process deterministic driver.
-	productWorkerHeadlessFixture = "headless-fixture"
-)
+const productTurnReceiptSchema = productsession.ReceiptSchema
 
 // errProductTurnEvidence marks retained predecessor evidence that differs from its receipt. The turn
 // driver refuses the next turn's launch with productsession.CodePredecessorEvidenceInvalid.
 var errProductTurnEvidence = errors.New("retained product turn evidence differs from its receipt")
 
-// productTurnReceipt is the receipt cmd/tbound writes into product_turn_terminal. It commits the child
-// journals by verified head and record count, so the next turn can check them before importing history.
-type productTurnReceipt struct {
-	SchemaVersion            string                `json:"schema_version"`
-	SessionID                string                `json:"session_id"`
-	TurnID                   string                `json:"turn_id"`
-	Ordinal                  int                   `json:"ordinal"`
-	WorkflowID               string                `json:"workflow_id"`
-	RunID                    string                `json:"run_id"`
-	ConversationID           string                `json:"conversation_id"`
-	WorkerKind               string                `json:"worker_kind"`
-	WorkerInstance           string                `json:"worker_instance"`
-	ProviderJournalHead      string                `json:"provider_journal_head"`
-	ProviderJournalCount     uint64                `json:"provider_journal_count"`
-	StoreJournalHead         string                `json:"store_journal_head"`
-	StoreJournalCount        uint64                `json:"store_journal_count"`
-	ImportedPrefixDigest     string                `json:"imported_prefix_digest"`
-	PredecessorReceiptDigest string                `json:"predecessor_receipt_digest"`
-	BaselineDigest           string                `json:"baseline_digest"`
-	ResultBaselineDigest     string                `json:"result_baseline_digest"`
-	Outcome                  string                `json:"outcome"`
-	Settlement               string                `json:"settlement"`
-	PublicationTransactionID string                `json:"publication_transaction_id"`
-	Usage                    productsession.Budget `json:"usage"`
-	ToolSequence             []string              `json:"tool_sequence"`
-	Denials                  []productTurnDenial   `json:"denials"`
-}
+// productTurnReceipt is the receipt cmd/tbound writes into product_turn_terminal; the catalog checks
+// it against the turn before it settles. It commits the child journals by verified head and record
+// count, so the next turn can check them before importing history.
+type productTurnReceipt = productsession.TurnReceipt
 
 // productTurnDenial is one DENY the turn released to the provider.
-type productTurnDenial struct {
-	ToolCallID string `json:"tool_call_id"`
-	Tool       string `json:"tool"`
-	ReasonCode string `json:"reason_code"`
-}
+type productTurnDenial = productsession.ReceiptDenial
 
 var productTurnReceiptOutcomes = map[string]bool{
 	productsession.OutcomePublished: true, productsession.OutcomeNoDiff: true,
@@ -65,7 +34,7 @@ var productTurnReceiptOutcomes = map[string]bool{
 }
 
 func encodeProductTurnReceipt(receipt productTurnReceipt) ([]byte, error) {
-	if err := receipt.validate(); err != nil {
+	if err := validateProductTurnReceipt(receipt); err != nil {
 		return nil, err
 	}
 	encoded, err := json.Marshal(receipt)
@@ -94,13 +63,14 @@ func decodeProductTurnReceipt(raw []byte) (productTurnReceipt, error) {
 	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
 		return productTurnReceipt{}, errors.New("product turn receipt has trailing data")
 	}
-	if err := receipt.validate(); err != nil {
+	if err := validateProductTurnReceipt(receipt); err != nil {
 		return productTurnReceipt{}, err
 	}
 	return receipt, nil
 }
 
-func (r productTurnReceipt) validate() error {
+// validateProductTurnReceipt checks a receipt on its own; the catalog checks it against the turn.
+func validateProductTurnReceipt(r productTurnReceipt) error {
 	identities := []string{r.SessionID, r.TurnID, r.WorkflowID, r.RunID, r.ConversationID, r.WorkerInstance, r.Settlement}
 	for _, identity := range identities {
 		if identity == "" {
@@ -112,8 +82,8 @@ func (r productTurnReceipt) validate() error {
 		return errors.New("product turn receipt has an unknown schema")
 	case r.Ordinal < 1 || r.TurnID != fmt.Sprintf("%s/turn-%d", r.SessionID, r.Ordinal):
 		return errors.New("product turn receipt turn ID does not match its session and ordinal")
-	case r.WorkerKind != productWorkerHeadlessFixture:
-		return errors.New("product turn receipt claims a worker this milestone does not run")
+	case r.WorkerKind != productsession.WorkerHeadlessFixture || r.Settlement != productsession.SettlementHeadlessClosed:
+		return errors.New("product turn receipt claims a worker or settlement this milestone does not run")
 	case r.ProviderJournalCount == 0 || !validBareWorkflowDigest(r.ProviderJournalHead) ||
 		r.StoreJournalCount == 0 || !validBareWorkflowDigest(r.StoreJournalHead):
 		return errors.New("product turn receipt does not commit both child journals")

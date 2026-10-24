@@ -5,7 +5,9 @@ package productsession
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"slices"
 )
 
@@ -62,6 +64,7 @@ type TurnReceipt struct {
 type ReceiptDenial struct {
 	ToolCallID string `json:"tool_call_id"`
 	Tool       string `json:"tool"`
+	ReasonCode string `json:"reason_code"`
 }
 
 // DecodeReceipt strictly decodes a receipt: strict JSON within MaxReceiptBytes,
@@ -75,6 +78,9 @@ func DecodeReceipt(data []byte) (TurnReceipt, error) {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&r); err != nil || r.SchemaVersion != ReceiptSchema {
 		return TurnReceipt{}, fail(CodeInvalidRequest, "receipt does not match its schema")
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		return TurnReceipt{}, fail(CodeInvalidRequest, "receipt has trailing data")
 	}
 	return r, nil
 }
@@ -111,7 +117,9 @@ func checkReceipt(t *Turn, data []byte, outcome, settlement string, usage Budget
 		return mismatch("publication transaction")
 	case len(r.ToolSequence) > maxReceiptListLen || len(r.Denials) > maxReceiptListLen ||
 		slices.ContainsFunc(r.ToolSequence, func(s string) bool { return !validIdentity(s) }) ||
-		slices.ContainsFunc(r.Denials, func(d ReceiptDenial) bool { return !validIdentity(d.ToolCallID) || !validIdentity(d.Tool) }):
+		slices.ContainsFunc(r.Denials, func(d ReceiptDenial) bool {
+			return !validIdentity(d.ToolCallID) || !validIdentity(d.Tool) || !validIdentity(d.ReasonCode)
+		}):
 		return mismatch("tool sequence or denials")
 	}
 	return nil
